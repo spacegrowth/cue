@@ -102,6 +102,10 @@ pub struct Teammate {
     /// lead's folder): the lead's next reply without a Recommendation line says what it committed. 0: not asked.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub commit_asked_ms: u64,
+    /// When Cue chose to ask its lead to commit its work while the lead was busy: the ask waits on this row (never in
+    /// the lead's chat) and goes once the lead is free (hub/reviews.rs `drain_reviews`). 0: nothing waits.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub commit_wait_ms: u64,
     /// Why it waits on you, when Cue couldn't settle it by itself (its lead didn't say it committed it); "" when it
     /// doesn't. Cleared once it leaves the crew (committed or set aside) or its lead is asked again.
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -316,6 +320,7 @@ pub fn back_at_work(t: &mut Teammate, now: u64) {
     t.review.clear();
     t.review_ms = 0;
     t.commit.clear();
+    t.commit_wait_ms = 0;
     t.stat.clear();
     if t.started_ms == 0 {
         t.started_ms = now;
@@ -422,6 +427,19 @@ pub fn read_review(text: &str) -> (Vec<String>, String) {
     let numbered = |l: &&str| l.split_once('.').is_some_and(|(n, _)| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()));
     let findings = lines().filter(numbered).take(10).map(String::from).collect();
     (findings, recommendation)
+}
+
+/// How many of a review's `findings` call for a change: an exact ` — <kind> — ` part of should-fix, must-fix or
+/// blocker. The rest (note, nit, question, or no kind) are notes. As the window counts them (ui/team.js reviewSays,
+/// tests/fixtures/crew-review.json).
+pub fn fix_findings(findings: &[String]) -> usize {
+    findings.iter().filter(|f| ["should-fix", "must-fix", "blocker"].iter().any(|k| f.to_lowercase().contains(&format!(" — {k} — ")))).count()
+}
+
+/// The member a review ask names ("Review your teammate <name>'s work…"), when `text` is one.
+pub fn review_ask_name(text: &str) -> Option<String> {
+    let rest = text.trim_start().strip_prefix("Review your teammate ")?;
+    rest.split_once("'s work").or_else(|| rest.split_once("’s work")).map(|(n, _)| n.to_string())
 }
 
 /// What a lead's reply to "commit your teammate's work" says it committed for teammate `name`: its

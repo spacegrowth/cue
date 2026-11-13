@@ -4,7 +4,7 @@
 // 6 · hub needs you · 2 ready · 2 working  Handle it ▾ ▴"); open, the same tray grows upward with the members grouped by
 // what you'd do: Needs you (a member's ask, its Deny and Allow on its row), Ready (its review back, one button that
 // agrees with its line), Working (one line each, a plain Stop), then the finished ones folded into "N done ›". A finished
-// one is reviewed by itself (hub/team.rs review_on_finish). Cue clears members by itself (a committed or set-aside one
+// one is reviewed by itself (hub/team_review.rs review_on_finish). Cue clears members by itself (a committed or set-aside one
 // leaves the team). A member's name opens its menu (what it was asked, its full review, its diff).
 
 /** The leads whose tray is open, and per member what's open under its row ("asked", "review"); the member whose menu
@@ -25,10 +25,13 @@ const mateKey = (sid, t) => `${sid}|${t.agent_id || t.call}`;
 
 /** Needs you: it asks you something, or the hub says what it needs (`needs`: its lead didn't say it committed it). */
 const mateNeeds = (sid, t) => !!mateAsk(sid, t) || !!t.needs;
+/** Its lead commits it for Cue (files Cue never saw): Cue's ask waits for the lead to be free, or went and waits for
+ *  the lead's `Committed <name>:` line (hub/team_tidy.rs). Nothing for you to do meanwhile. */
+const mateLeadCommits = (t) => !!(t.commit_wait_ms || t.commit_asked_ms);
 /** The teammates of a lead that wait on you: ready (reviewed, its verdict waiting for your Commit or Send fixes), or
  *  asking or needing you. One whose files Cue never saw doesn't: Cue handles it (its review runs, then Handle it asks
  *  its lead to commit). */
-const mateWaits = (sid) => mateList(sid).filter((t) => t.state === "reviewed" || mateNeeds(sid, t));
+const mateWaits = (sid) => mateList(sid).filter((t) => (t.state === "reviewed" && !mateLeadCommits(t)) || mateNeeds(sid, t));
 /** Per lead, what was already seen waiting on you ("sid|agent", and each ask by its id): a new one opens the tray
  *  once; closed after that, it stays closed until another starts waiting. */
 // SHORTCUT: noticed while the tray is drawn (crewTray), not when the state arrives: fine while every draw of a lead's
@@ -83,17 +86,21 @@ function mateLine(t) {
   else if (t.state === "working" && t.quiet === "stuck") parts.push(`quiet for ${mateQuietMins(t)}m — looks stuck`);
   else if (t.state === "working" && t.quiet === "tool") parts.push(`${t.step || "Running a tool"} for ${mateQuietMins(t)}m`);
   else if (t.state === "working") { if (t.step) parts.push(t.step); if (files) parts.push(`${files} file${files === 1 ? "" : "s"} so far${via}`); }
-  else if (t.state === "queued") parts.push("review queued");
+  // What Cue does for it that waits on its lead (never drawn in the lead's chat: only what was sent shows there).
+  else if (t.state === "queued") parts.push("review waits for the lead");
   else if (t.state === "reviewing") parts.push("reviewing its diff");
+  else if (t.commit_wait_ms) parts.push("Cue asks its lead to commit it when it's free");
+  else if (t.commit_asked_ms) parts.push("its lead commits it");
   else if (t.state === "committed") parts.push(t.commit ? `committed ${t.commit.slice(0, 7)}` : "committed");
-  else { if (t.summary) parts.push(t.summary); if (t.stat) parts.push(t.stat); else if (files) parts.push(`${files} file${files === 1 ? "" : "s"}${via}`); }
+  // Finished: why it's back here when the hub says ("Its review didn't come back"), then its last words and size.
+  else { if (t.step) parts.push(t.step); if (t.summary) parts.push(t.summary); if (t.stat) parts.push(t.stat); else if (files) parts.push(`${files} file${files === 1 ? "" : "s"}${via}`); }
   if (mateUnknownFiles(t)) parts.push(UNKNOWN_FILES);
   return parts.map(esc).join(" · ");
 }
 
 /** Finished, and Cue never saw which files it changed (it wrote them with shell commands outside its lead's folder):
  *  nothing Cue can diff; its Commit asks its lead to commit them (hub/team.rs). */
-const mateUnknownFiles = (t) => ["done", "reviewed"].includes(t.state) && !(t.files || []).length && !t.worktree && !t.stat;
+const mateUnknownFiles = (t) => ["done", "reviewed"].includes(t.state) && !(t.files || []).length && !t.worktree && !t.stat && !mateLeadCommits(t);
 const UNKNOWN_FILES = "Cue doesn't know which files it changed: Commit asks its lead to commit them";
 /** One button of a member's: `look` "primary" (filled) or "" (outlined), both one fixed width so a group's line up, or
  *  "link" (a plain word, on one-line rows). Diff only for one with files Cue knows (or a worktree of its own). */
@@ -103,14 +110,19 @@ const mateBtn = (sid, t, act, label, look = "", held = false) => act === "diff" 
 const mateCommit = (sid, t, look = "primary") => mateBtn(sid, t, "commit", "Commit", look, (t.also || []).length > 0);
 
 /** What a reviewed teammate's review recommends: "fixes", "commit", or "" when it said neither. */
-// A commit that lists findings (notes too) calls for its fixes first: nothing it found is dropped.
-const mateRec = (t) => { const k = verdictKind(t.recommendation); return k === "commit" && (t.findings || []).length ? "fixes" : k; };
+// A commit that lists a finding that needs a change calls for its fixes first; notes alone don't (hub auto_next).
+const mateRec = (t) => { const k = verdictKind(t.recommendation); return k === "commit" && fixCount(t.findings) ? "fixes" : k; };
+/** How many of a review's numbered findings call for a change: an exact " — should-fix — " (must-fix, blocker); the
+ *  rest are notes (sessions/team.rs fix_findings). */
+const FIX_KIND = / — (blocker|must-fix|should-fix|nit|note|question) — /i;
+const findingKind = (line) => FIX_KIND.exec(line)?.[1]?.toLowerCase() || "note";
+const fixCount = (lines) => (lines || []).filter((l) => ["should-fix", "must-fix", "blocker"].includes(findingKind(l))).length;
 /** A review's verdict as what it calls for: "fixes" (send fixes), "commit", or "" (neither). */
 const verdictKind = (verdict) => /fix/.test(verdict || "") ? "fixes" : /^commit/.test(verdict || "") ? "commit" : "";
 /** What a reviewed member's one button is: its review's call; said neither, its findings go back if it has any, else
  *  Commit. The other is in its menu. */
 const mateReadyAct = (t) => mateRec(t) || ((t.findings || []).length ? "fixes" : "commit");
-/** Fix rounds Cue sends back by itself while it handles reviews (hub/team.rs AUTO_FIX_ROUNDS). */
+/** Fix rounds Cue sends back by itself while it handles reviews (hub/team_review.rs AUTO_FIX_ROUNDS). */
 const AUTO_FIX_ROUNDS = 2;
 
 /** A finding as a list item (its number is the list's): where, its words, its kind after them. */
@@ -147,8 +159,8 @@ function mateNeedRow(sid, t) {
 }
 
 /** Ready: its line says what its review found and what its one button does ("2 findings · fixes go back, round 1 of 2"
- *  → Send fixes; "clean review · commit it" → Commit; "commits after rows does" while rows holds it). Its findings as a
- *  plain numbered list under it; its files under a clean one. */
+ *  → Send fixes; "clean review · commit it" or "1 note · commit it" → Commit; "commits after rows does" while rows holds
+ *  it). Its findings as a plain numbered list under it; its files under a clean one. */
 function mateReadyRow(sid, t) {
   const k = mateKey(sid, t), n = (t.findings || []).length, files = t.files || [];
   const after = (t.also || []).length ? `commits after ${t.also.join(", ")} does` : "commit it";
@@ -159,7 +171,8 @@ function mateReadyRow(sid, t) {
     btn = mateBtn(sid, t, "fixes", "Send fixes", "primary");
     if (n) under = `<ol class="mt-fx">${t.findings.map(mateFinding).join("")}</ol>`;
   } else {
-    line = `${verdictKind(t.recommendation) ? "clean review" : "no verdict, nothing found"} · ${after}`;
+    // A commit whose findings are only notes is ready to commit too: its notes say so.
+    line = `${!verdictKind(t.recommendation) ? "no verdict, nothing found" : n ? plural(n, "note") : "clean review"} · ${after}`;
     btn = mateCommit(sid, t);
     under = files.length ? `<div class="mt-l">${esc(`${t.stat || plural(files.length, "file")} · ${files.slice(0, 3).join(", ")}${files.length > 3 ? ", …" : ""}`)}</div>`
       : mateUnknownFiles(t) ? `<div class="mt-l">${esc(UNKNOWN_FILES)}</div>` : "";
@@ -167,11 +180,13 @@ function mateReadyRow(sid, t) {
   return `<div class="mt-row" data-key="mt:${esc(k)}"><div class="mt-n">${mateName(sid, t)}<i>${esc(line)}</i></div><div class="mt-btns">${btn}</div>${under}${mateUnderHtml(sid, t)}</div>`;
 }
 
-/** The one action a working or finished member has, as `look`: Stop at work (Resume first when it looks stuck), Diff
- *  while its review runs or once it's done, Commit when Cue never saw its files. */
+/** The one action a working or finished member has, as `look`: Stop at work (Resume first when it looks stuck), Skip
+ *  while its review waits for the lead, nothing while its lead commits it, Diff while its review runs or once it's done,
+ *  Commit when Cue never saw its files. */
 function mateOneAct(sid, t, look = "link") {
   switch (t.state) {
     case "working": return (t.quiet === "stuck" ? mateBtn(sid, t, "resume", "Resume", look) : "") + mateBtn(sid, t, "stop", "Stop", look);
+    case "queued": return `<button class="mt-lk" data-act="unqueue-review" data-exec="${esc(`team:${sid}:${t.agent_id}`)}">Skip</button>`;
     case "stopped": return mateBtn(sid, t, "diff", "Diff", look);
     default: return mateUnknownFiles(t) ? mateCommit(sid, t, look) : mateBtn(sid, t, "diff", "Diff", look);
   }
@@ -180,11 +195,13 @@ function mateOneAct(sid, t, look = "link") {
 const mateOneRow = (sid, t) => `<div class="mt-one" data-key="mt:${esc(mateKey(sid, t))}">${mateName(sid, t)}<span class="mt-line">${mateLine(t)}</span>${mateOneAct(sid, t)}</div>${mateUnderHtml(sid, t)}`;
 
 /** Which group a member's row is in: "need", "ready" (its review back, or done with files Cue never saw while you
- *  handle reviews, so only your Commit settles it), "working" (at work, or its review is), "done". */
+ *  handle reviews, so only your Commit settles it), "lead" (waiting on the lead: its review queued or under way, or
+ *  its lead commits it for Cue; nothing of its own runs), "working" (at work itself), "done". */
 function mateGroup(sid, t) {
   if (mateNeeds(sid, t)) return "need";
+  if (t.state === "working") return "working";
+  if (["queued", "reviewing"].includes(t.state) || mateLeadCommits(t)) return "lead";
   if (t.state === "reviewed") return "ready";
-  if (["working", "queued", "reviewing"].includes(t.state)) return "working";
   return "done";
 }
 /** Committed members still show among the finished ones for this long after they finished; older ones leave the tray
@@ -214,11 +231,13 @@ function mateMenuHtml(sid, t) {
   return `<div class="more-menu rv-menu mt-menu" data-mt-menu="${k}">${steps}${other}${review}${diff}${t.review ? `<button data-mt-full="${k}">Full review</button>` : ""}<button data-mt-asked="${k}">What it was asked</button></div>`;
 }
 
-/** The tray's line: "● Cue Crew · 6 · hub needs you · 2 ready · 2 working", the dot live while any member works. */
+/** The tray's line: "● Cue Crew · 6 · hub needs you · 1 ready · 1 working · 2 waiting on the lead", the dot live while
+ *  any member works. Only members at work themselves count as working. */
 function crewWords(sid, groups) {
   const need = groups.need, n = need.length;
   const needs = n === 1 ? `${esc(need[0].name)} needs you` : n ? `${n} need you` : "";
-  const rest = [groups.ready.length ? `${groups.ready.length} ready` : "", groups.working.length ? `${groups.working.length} working` : ""].filter(Boolean);
+  const count = (k, words) => groups[k].length ? `${groups[k].length} ${words}` : "";
+  const rest = [count("ready", "ready"), count("working", "working"), count("lead", "waiting on the lead")].filter(Boolean);
   const live = mateList(sid).some((t) => t.state === "working");
   return `<span class="${live ? "dot-live" : "crew-dot"}"></span><span class="crew-w">Cue Crew · ${mateList(sid).length}${needs ? ` <span class="crew-need">· ${needs}</span>` : ""}${rest.length ? ` <span class="crew-mu">· ${rest.join(" · ")}</span>` : ""}</span>`;
 }
@@ -231,13 +250,14 @@ function crewTray(sid) {
   if (!list.length) return "";
   mateOpenOnWait(sid);
   const open = mateOpenLeads.has(sid);
-  const groups = { need: [], ready: [], working: [], done: [] };
+  const groups = { need: [], ready: [], lead: [], working: [], done: [] };
   for (const t of list) groups[mateGroup(sid, t)].push(t);
   const head = `<div class="crew-head" data-mt-open="${esc(sid)}" role="button" aria-expanded="${open}">${crewWords(sid, groups)}<span class="grow"></span>${crewMode(sid)}<button class="crew-car" data-mt-open="${esc(sid)}" aria-label="${open ? "Close the crew" : "Open the crew"}">${open ? "▾" : "▴"}</button></div>`;
   if (!open) return `<div class="crew-tray" data-key="crew-tray" data-crew-tray="${esc(sid)}">${head}</div>`;
   const grp = (label, rows, cls = "") => rows ? `<div class="mt-grp ${cls}">${label}</div>${rows}` : "";
   const body = grp("Needs you", groups.need.map((t) => mateNeedRow(sid, t)).join(""), "red")
     + grp("Ready", groups.ready.map((t) => mateReadyRow(sid, t)).join(""))
+    + grp("Waiting on the lead", groups.lead.map((t) => mateOneRow(sid, t)).join(""))
     + grp("Working", groups.working.map((t) => mateOneRow(sid, t)).join(""))
     + mateDoneHtml(sid, groups.done);
   const menu = (sessionOf(sid)?.team || []).find((t) => mateKey(sid, t) === mateMenu);
@@ -319,11 +339,12 @@ const hasRecommendation = (text) => String(text || "").split("\n").some((l) => R
 function reviewSays(text) {
   const lines = String(text || "").split("\n").map((l) => l.trim());
   const rec = lines.map((l) => RECOMMENDATION.exec(l)).find(Boolean);
-  const kinds = lines.filter((l) => /^\d+\.\s/.test(l)).map((l) => (/ — (blocker|must-fix|should-fix|nit|note|question) — /i.exec(l) || [])[1]?.toLowerCase() || "note");
-  const fix = kinds.filter((k) => ["should-fix", "must-fix", "blocker"].includes(k)).length, notes = kinds.length - fix;
+  const found = reviewFindings(text), fix = fixCount(found), notes = found.length - fix;
   const counts = [fix ? `${fix} should-fix` : "", notes ? `${notes} note${notes === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ");
   return { verdict: rec ? rec[1].trim().toLowerCase() : "", counts };
 }
+/** A review's numbered findings, one line each. */
+const reviewFindings = (text) => String(text || "").split("\n").map((l) => l.trim()).filter((l) => /^\d+\.\s/.test(l));
 /** Which of a chat's replies are a crew member's review (index → its name): after Cue's review request for X, up to
  *  your own next message or Cue's next review request (Cue's other messages don't end it), the reply that is X's saved review word for word, else the last one with a Recommendation
  *  line. `review(name)`: that member's saved review, "" when none. */
@@ -350,8 +371,9 @@ function reviewLineParts(team, name, text) {
   const { verdict, counts } = reviewSays(text);
   const current = !!t && t.state === "reviewed" && (t.review || "").trim() === String(text).trim();
   // Send fixes for a verdict with "fix" in it, Commit for one that starts with "commit", nothing on a guess.
-  // A commit that lists anything (notes too) calls for its fixes first, as the row does (mateRec).
-  const kind = verdictKind(verdict), button = !current ? "" : kind === "commit" && counts ? "fixes" : kind;
+  // A commit that lists a finding that needs a change calls for its fixes first; notes alone don't (as the row's
+  // mateRec, and Cue's own next step, hub auto_next).
+  const kind = verdictKind(verdict), button = !current ? "" : kind === "commit" && fixCount(reviewFindings(text)) ? "fixes" : kind;
   const suffix = !t ? "not in the crew now" : t.state === "committed" ? "committed" : t.state === "aside" ? "set aside" : "";
   const words = [`${name} reviewed: ${verdict || "no verdict"}`, counts, suffix].filter(Boolean).join(" · ");
   return { words, verdict, counts, suffix, button, open: !!t && !suffix, member: t };

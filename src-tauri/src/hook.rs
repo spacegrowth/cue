@@ -274,22 +274,30 @@ pub(crate) fn final_turn(p: &Value) -> Vec<Value> {
 }
 
 /// What was said to the session in the final turn of `transcript`, in order: its prompt and what was typed while it
-/// ran (Cue's asks among them); never Claude Code's own notes (a task's notification, a stop hook's feedback).
-pub(crate) fn turn_asks(transcript: &str) -> Vec<String> {
+/// ran (Cue's asks among them); never Claude Code's own notes (a task's notification, a stop hook's feedback). And
+/// everything said to it in the transcript's tail (this turn's and the turns before it), each with when it was
+/// written (ms; 0 when the entry doesn't say).
+pub(crate) fn said_to(transcript: &str) -> (Vec<String>, Vec<(String, u64)>) {
     if transcript.is_empty() {
-        return vec![];
+        return (vec![], vec![]);
     }
     let entries = read_tail(transcript);
     let start = turn_start(&entries).min(entries.len());
-    entries[start..]
-        .iter()
-        .filter(|e| !entry_flag(e, "isSidechain"))
-        .filter_map(|e| match entry_kind(e) {
+    let said = |e: &Value| -> Option<String> {
+        if entry_flag(e, "isSidechain") {
+            return None;
+        }
+        match entry_kind(e) {
             "user" => user_text(e).filter(|t| !t.trim().is_empty() && !crate::logs::transcript::harness_text(t)),
             "attachment" if crate::logs::transcript::yours_mid_turn(e) => e.pointer("/attachment/prompt").and_then(Value::as_str).map(str::to_string),
             _ => None,
-        })
-        .collect()
+        }
+    };
+    // The turn from its prompt (`turn_start` is the entry after it), so a review asked as the prompt names its member.
+    let this: Vec<String> = entries[start.saturating_sub(1)..].iter().filter_map(said).collect();
+    let when = |e: &Value| e.get("timestamp").and_then(Value::as_str).and_then(crate::logs::transcript::iso_ms).unwrap_or(0);
+    let all = entries.iter().filter_map(|e| said(e).map(|t| (t, when(e)))).collect();
+    (this, all)
 }
 
 /// The text of a "user" entry; None when it carries tool results, not something said.

@@ -225,6 +225,11 @@ fn replies(w: &World, sid: &str, text: &str) {
     w.settle();
 }
 
+/// Skip on member `agent`'s queued review (its row's Skip): Commit is what these cases are about.
+fn skip_review(w: &World, sid: &str, agent: &str) {
+    w.hub().unqueue_review(&format!("team:{sid}:{agent}"));
+}
+
 /// What lead `sid` was sent asking it to commit a member's work.
 fn commit_asks(w: &World, sid: &str) -> Vec<String> {
     w.hosted.sent().into_iter().filter(|(s, t)| s == sid && t.starts_with("Commit your teammate ")).map(|(_, t)| t).collect()
@@ -237,15 +242,19 @@ fn commit_on_a_member_whose_files_cue_never_saw_asks_its_lead_and_its_committed_
     let sid = lead(&w, "work done with shell commands elsewhere");
     w.hub().set_crew_commit(&sid, "wait").unwrap();
     says(&w, &sid, writes("toolu_A", "agentA", "board", &[]));
+    skip_review(&w, &sid, "agentA");
     let said = w.hub().team_action(&sid, "agentA", "commit").unwrap();
-    assert_eq!(said, "Asked its lead to commit board's work");
+    assert_eq!(said, "Cue asks its lead to commit board's work once it's free");
     let t = mate(&w, &sid, "board");
-    assert!(t["commit_asked_ms"].as_u64().is_some_and(|ms| ms > 0) && t["step"] == "Asked its lead to commit it", "{t}");
+    assert!(t["commit_wait_ms"].as_u64().is_some_and(|ms| ms > 0) && t["step"] == "Cue asks its lead to commit it when it's free", "{t}");
     assert!(w.hub().team_action(&sid, "agentA", "commit").is_err(), "asked once");
     assert!(!w.hub().team_tidy(), "the tidy leaves it alone while its lead commits it");
-    // The lead was busy: the ask is kept for its turn's end, so that turn's reply isn't the answer.
+    // The lead was busy: the ask waits on its row until the lead is free, so that turn's reply isn't the answer.
     replies(&w, &sid, "started board");
-    assert!(mate(&w, &sid, "board")["commit_asked_ms"].as_u64().is_some_and(|ms| ms > 0), "still asked");
+    assert!(mate(&w, &sid, "board")["commit_asked_ms"].is_null(), "not asked yet");
+    w.advance(2000);
+    let t = mate(&w, &sid, "board");
+    assert!(t["commit_asked_ms"].as_u64().is_some_and(|ms| ms > 0) && t["step"] == "Asked its lead to commit it", "{t}");
     let asks = commit_asks(&w, &sid);
     assert_eq!(asks.len(), 1, "sent once the lead was free: {:?}", w.hosted.sent());
     assert!(asks[0].starts_with("Commit your teammate board's work now: the files it changed") && asks[0].contains("make a branch crew/board first") && asks[0].ends_with("End your reply with a line `Committed board: <short sha>` for each commit, or `Committed board: nothing` if there was nothing to commit."), "{}", asks[0]);
@@ -265,14 +274,20 @@ fn committed_nothing_sets_it_aside_a_reply_without_either_leaves_it_to_you_and_a
     says(&w, &sid, writes("toolu_C", "agentC", "rows", &[dir.join("a.txt").to_string_lossy().to_string()]));
     says(&w, &sid, writes("toolu_A", "agentA", "board", &[]));
     says(&w, &sid, writes("toolu_B", "agentB", "notes", &[]));
-    // Asked while the lead works: it goes at the turn's end, and the lead's next reply is its answer.
+    skip_review(&w, &sid, "agentA");
+    skip_review(&w, &sid, "agentB");
+    // Asked while the lead works: it goes once the lead is free (before rows's queued review), and the lead's next
+    // reply is its answer.
     w.hub().team_action(&sid, "agentA", "commit").unwrap();
     replies(&w, &sid, "all three finished");
+    w.advance(2000);
     assert_eq!(commit_asks(&w, &sid).len(), 1);
+    assert_eq!(mate(&w, &sid, "rows")["state"], "queued", "its review goes after, once the lead settles");
     replies(&w, &sid, "Nothing of board's was left to commit.\nCommitted board: nothing");
     let t = mate(&w, &sid, "board");
     assert_eq!((t["state"].as_str(), t["step"].as_str()), (Some("aside"), Some("Nothing to commit")), "{t}");
     // Asked while the lead is free: it goes at once.
+    w.advance(10_000);
     w.hub().team_action(&sid, "agentB", "commit").unwrap();
     assert_eq!(commit_asks(&w, &sid).len(), 2);
     replies(&w, &sid, "I couldn't find notes's files.\nThey may be gone.");
@@ -280,8 +295,8 @@ fn committed_nothing_sets_it_aside_a_reply_without_either_leaves_it_to_you_and_a
     assert_eq!(t["step"], "Its lead didn't say it committed: I couldn't find notes's files.", "{t}");
     assert!(t["commit_asked_ms"].is_null(), "no longer waiting on its lead: yours");
     assert_eq!(t["needs"], "Its lead didn't say it committed it", "waiting on you, in the data: {t}");
-    // A review under way, and notes asked again meanwhile: the review's reply files as rows's review, and notes
-    // stays asked.
+    // A review under way, and notes asked again meanwhile: the review's reply files as rows's review, and notes's ask
+    // waits for the lead.
     w.advance(60_000);
     w.hub().drain_reviews();
     w.settle();
@@ -291,8 +306,12 @@ fn committed_nothing_sets_it_aside_a_reply_without_either_leaves_it_to_you_and_a
     replies(&w, &sid, "1. a.txt:1 — should-fix — say more\nRecommendation: send fixes");
     let rows = mate(&w, &sid, "rows");
     assert_eq!((rows["state"].as_str(), rows["recommendation"].as_str()), (Some("reviewed"), Some("send fixes")), "{rows}");
-    assert!(mate(&w, &sid, "notes")["commit_asked_ms"].as_u64().is_some_and(|ms| ms > 0), "the review wasn't its answer");
+    assert!(mate(&w, &sid, "notes")["commit_wait_ms"].as_u64().is_some_and(|ms| ms > 0), "the review wasn't its answer: its ask still waits");
     // Its ask goes now; the lead again says nothing of it: yours, until something settles it.
+    w.advance(10_000);
+    w.hub().drain_reviews();
+    w.settle();
+    assert_eq!(commit_asks(&w, &sid).len(), 3);
     replies(&w, &sid, "Still can't find them.");
     assert_eq!(mate(&w, &sid, "notes")["needs"], "Its lead didn't say it committed it");
     w.hub().team_action(&sid, "agentB", "aside").unwrap();
@@ -310,6 +329,7 @@ fn handled_by_cue_a_clean_review_of_a_member_whose_files_cue_never_saw_asks_its_
     w.hub().drain_reviews();
     w.settle();
     assert_eq!(mate(&w, &sid, "board")["state"], "reviewing");
+    w.advance(30_000); // the review takes a while
     replies(&w, &sid, "Recommendation: commit");
     let asks = commit_asks(&w, &sid);
     assert_eq!(asks.len(), 1, "asked by itself: {:?}", w.hosted.sent());
@@ -327,11 +347,14 @@ fn two_asks_joined_for_a_busy_lead_are_each_settled_by_the_line_naming_it_and_a_
     w.hub().set_crew_commit(&sid, "wait").unwrap();
     for (call, id, name) in [("toolu_A", "agentA", "board"), ("toolu_B", "agentB", "notes"), ("toolu_C", "agentC", "rows")] {
         says(&w, &sid, writes(call, id, name, &[]));
+        skip_review(&w, &sid, id);
     }
-    // Both asked while the lead works: kept, joined into one message for its turn's end.
+    // Both asked while the lead works: they wait, and go joined into one message once it's free.
     w.hub().team_action(&sid, "agentA", "commit").unwrap();
     w.hub().team_action(&sid, "agentB", "commit").unwrap();
     replies(&w, &sid, "all three finished");
+    w.advance(2000);
+    assert_eq!(commit_asks(&w, &sid).len(), 1);
     let sent = w.hosted.sent().last().unwrap().1.clone();
     assert!(sent.contains("Commit your teammate board's") && sent.contains("Commit your teammate notes's"), "one message: {sent}");
     w.hosted_says(&sid, HostedEvent::Taken { text: sent });
@@ -340,7 +363,9 @@ fn two_asks_joined_for_a_busy_lead_are_each_settled_by_the_line_naming_it_and_a_
     assert_eq!((board["state"].as_str(), board["commit"].as_str()), (Some("committed"), Some("abc1234")), "{board}");
     assert_eq!((notes["state"].as_str(), notes["commit"].as_str()), (Some("committed"), Some("def5678")), "{notes}");
     // A reply with a Recommendation line: its Committed line answers the ask; saying nothing of it leaves it asked.
+    w.advance(10_000);
     w.hub().team_action(&sid, "agentC", "commit").unwrap();
+    assert_eq!(commit_asks(&w, &sid).len(), 2, "the lead free: at once");
     w.hosted_says(&sid, HostedEvent::Taken { text: commit_asks(&w, &sid).last().unwrap().clone() });
     replies(&w, &sid, "1. x.rs:1 — note — fine\nRecommendation: commit");
     assert!(mate(&w, &sid, "rows")["commit_asked_ms"].as_u64().is_some_and(|ms| ms > 0), "a review saying nothing of it is no answer");

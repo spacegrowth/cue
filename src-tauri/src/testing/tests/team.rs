@@ -191,7 +191,7 @@ pub(super) fn repo(w: &World) -> std::path::PathBuf {
 }
 
 /// The same, left on main.
-fn main_repo(w: &World) -> std::path::PathBuf {
+pub(super) fn main_repo(w: &World) -> std::path::PathBuf {
     let dir = w.home().to_path_buf();
     git(&dir, &["init", "-q", "-b", "main"]);
     git(&dir, &["config", "user.email", "t@example.com"]);
@@ -563,7 +563,7 @@ fn a_task_dropped_on_a_lead_shows_the_files_a_teammate_already_changes_then_goes
 }
 
 #[test]
-fn by_default_a_clean_review_is_committed_on_a_branch_of_its_own_and_findings_and_notes_go_back_twice_then_wait_for_you() {
+fn by_default_a_clean_review_is_committed_on_a_branch_of_its_own_and_findings_that_need_a_change_go_back_twice_then_wait_for_you() {
     let w = World::new();
     let dir = main_repo(&w);
     let sid = lead(&w, "two parts");
@@ -578,16 +578,16 @@ fn by_default_a_clean_review_is_committed_on_a_branch_of_its_own_and_findings_an
         w.settle();
     };
     says(&w, &sid, writes("toolu_A", "agentA", "rows", &[dir.join("a.txt").to_string_lossy().to_string()]));
-    // A commit with a note: the note goes back first (nothing dropped), then a clean review commits.
-    reviewed(&w, "1. a.txt:1 — note — say why\nRecommendation: commit");
+    // A commit with a finding that needs a change: it goes back first, then a review with only a note commits.
+    reviewed(&w, "1. a.txt:1 — should-fix — say why\nRecommendation: commit");
     let t = mate(&w, &sid, "rows");
-    assert_eq!((t["state"].as_str(), t["fix_rounds"].as_u64()), (Some("working"), Some(1)), "its note sent back by itself: {t}");
-    assert!(w.hosted.sent().last().unwrap().1.contains("1. a.txt:1 — note — say why"));
+    assert_eq!((t["state"].as_str(), t["fix_rounds"].as_u64()), (Some("working"), Some(1)), "its finding sent back by itself: {t}");
+    assert!(w.hosted.sent().last().unwrap().1.contains("1. a.txt:1 — should-fix — say why"));
     w.hosted_says(&sid, HostedEvent::Task { what: "task_notification".into(), detail: json!({ "task_id": "agentA", "status": "completed", "summary": "Said why." }) });
     w.settle();
-    reviewed(&w, "Recommendation: commit");
+    reviewed(&w, "1. a.txt:1 — note — reads well now\nRecommendation: commit");
     let t = mate(&w, &sid, "rows");
-    assert_eq!(t["state"], "committed", "a clean review, committed by itself: {t}");
+    assert_eq!(t["state"], "committed", "a review with only a note, committed by itself: {t}");
     assert_eq!(git(&dir, &["show", "--name-only", "--format=%s", "crew/rows"]).trim(), "rows's part\n\na.txt", "on a branch of its own");
     assert_eq!(git(&dir, &["symbolic-ref", "--short", "HEAD"]).trim(), "main", "the folder stays on main");
     says(&w, &sid, writes("toolu_B", "agentB", "hub", &[dir.join("b.txt").to_string_lossy().to_string()]));

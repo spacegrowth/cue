@@ -4,6 +4,7 @@
 
 use super::team::{first, free_branch, repos};
 use super::*;
+use super::team_review::{didnt_come_back, LeadTurn};
 use crate::sessions::team::{read_committed, Teammate};
 
 /// How often finished crew members are looked at for work committed (or thrown away) outside Cue.
@@ -79,9 +80,7 @@ impl Hub {
         }
         LAST.store(now, std::sync::atomic::Ordering::Relaxed);
         self.later(0, |h| {
-            if h.team_tidy() {
-                h.changed();
-            }
+            h.team_tidy();
         });
     }
 
@@ -89,20 +88,20 @@ impl Hub {
     /// committed since it started (by Cue's Commit, or by you elsewhere) leaves as committed; one whose files are clean
     /// with nothing committed since it started (its changes thrown away) is set aside. Never a loop's crew (a loop
     /// commits its own) and never one on another machine (SHORTCUT: git there is a remote call per file each pass;
-    /// upgrade: one `git status` per folder through cue-host). Runs git: call it off the hub's threads. Whether it
-    /// changed anything.
+    /// upgrade: one `git status` per folder through cue-host). Members stuck waiting for a review are let go first
+    /// (`unstick`). Runs git: call it off the hub's threads. Whether it changed anything (drawn when it did).
     pub(crate) fn team_tidy(&self) -> bool {
+        let mut changed = self.write(|st| unstick(st, now_ms()));
         let leads: Vec<(Origin, Vec<Teammate>)> = self.read(|st| {
             st.sessions.all().into_iter().filter(|s| s.team.iter().any(|t| matches!(t.state.as_str(), "done" | "reviewing" | "reviewed" | "stopped"))).map(|s| (s.origin.clone(), s.team.clone())).collect()
         });
-        let mut changed = false;
         for (origin, team) in leads {
             #[cfg(feature = "ext")]
             if self.ext_leads_loop(&origin.session_id) {
                 continue;
             }
             // One whose lead was asked to commit it waits for the lead's reply (`commit_reply`).
-            for t in team.iter().filter(|t| matches!(t.state.as_str(), "done" | "reviewing" | "reviewed" | "stopped") && t.commit_asked_ms == 0) {
+            for t in team.iter().filter(|t| matches!(t.state.as_str(), "done" | "reviewing" | "reviewed" | "stopped") && t.commit_asked_ms == 0 && t.commit_wait_ms == 0) {
                 let left = if t.files.is_empty() {
                     (t.state == "stopped").then(|| ("aside", String::new(), "Stopped having written nothing".to_string()))
                 } else if origin.machine.is_empty() {
@@ -123,63 +122,185 @@ impl Hub {
                 changed = true;
             }
         }
+        if changed {
+            self.changed();
+        }
         changed
     }
 
     /// Commit on a member whose files Cue never saw (it wrote them with shell commands outside its lead's folder): its
-    /// lead is asked to commit them, on a branch of their own, and to say what it committed. Marked as asked from here:
-    /// the tidy leaves it alone until the lead's reply (`commit_reply`).
+    /// lead is asked to commit them, on a branch of their own, and to say what it committed; the tidy leaves it alone
+    /// until the lead's reply (`commit_reply`). A busy lead isn't sent it then: the ask waits on the member's row
+    /// (`commit_wait_ms`, never in the lead's chat) and goes once the lead is free (`drain_commit_asks`).
     pub(super) fn ask_lead_to_commit(&self, lead: &str, t: &Teammate) -> Result<String, String> {
-        if t.commit_asked_ms > 0 {
-            return Err(format!("Its lead is already asked to commit {}'s work", t.name));
-        }
-        self.send_to_session(lead, &commit_words(&t.name), &[], false)?;
         let now = now_ms();
-        self.write(|st| st.sessions.with_teammate(lead, &t.call, |m| {
-            m.commit_asked_ms = now;
-            m.needs.clear();
-            m.step = "Asked its lead to commit it".into();
-            m.step_ms = now;
-        }));
+        let go = self.write(|st| {
+            let m = st.sessions.team(lead).into_iter().find(|m| m.call == t.call)?;
+            if m.commit_asked_ms > 0 || m.commit_wait_ms > 0 {
+                return Some(Err(format!("Its lead is already asked to commit {}'s work", t.name)));
+            }
+            let waits = Self::lead_waits(st, lead, now);
+            st.sessions.with_teammate(lead, &t.call, |m| if waits { mark_waiting(m, now) } else { mark_asked(m, now) });
+            if !waits {
+                st.review_last.insert(lead.to_string(), now);
+            }
+            Some(Ok(!waits))
+        });
         self.changed();
-        Ok(format!("Asked its lead to commit {}'s work", t.name))
+        match go.ok_or("Cue doesn't know that teammate")?? {
+            false => Ok(format!("Cue asks its lead to commit {}'s work once it's free", t.name)),
+            true => self.send_commit_asks(lead, std::slice::from_ref(t)).map(|_| format!("Asked its lead to commit {}'s work", t.name)),
+        }
+    }
+
+    /// Lead `lead` can't be sent anything of Cue's now: busy (`lead_busy`: working, settling after Cue's last message,
+    /// compacting, asking you something), or a message of yours kept for it (yours goes first).
+    fn lead_waits(st: &Store, lead: &str, now: u64) -> bool {
+        Self::lead_busy(st, lead, now).is_some() || st.sessions.held(lead).is_some()
+    }
+
+    /// Each free lead's members whose commit ask waits (`commit_wait_ms`), sent to it now, joined into one message.
+    /// The lead then settles (`review_last`) before anything else of Cue's goes to it.
+    pub(super) fn drain_commit_asks(&self) {
+        let now = now_ms();
+        let due: Vec<(String, Vec<Teammate>)> = self.write(|st| {
+            let waiting = st.sessions.all().into_iter().filter(|s| s.team.iter().any(|t| t.commit_wait_ms > 0)).map(|s| s.origin.session_id.clone());
+            let leads: Vec<String> = waiting.filter(|l| !Self::lead_waits(st, l, now)).collect();
+            let mut due = vec![];
+            for lead in leads {
+                let mates: Vec<Teammate> = st.sessions.team(&lead).into_iter().filter(|t| t.commit_wait_ms > 0 && t.in_team() && !t.working()).collect();
+                if mates.is_empty() {
+                    continue;
+                }
+                for t in &mates {
+                    st.sessions.with_teammate(&lead, &t.call, |m| mark_asked(m, now));
+                }
+                // Noted here, in the same step: a review taken off the queue meanwhile waits for this to settle.
+                st.review_last.insert(lead.clone(), now);
+                due.push((lead, mates));
+            }
+            due
+        });
+        for (lead, mates) in due {
+            if let Err(e) = self.send_commit_asks(&lead, &mates) {
+                eprintln!("cue: couldn't ask {lead} to commit its crew's work: {e}");
+            }
+        }
+    }
+
+    /// The commit asks of `mates` (marked asked already) sent to `lead` as one message; not sent, each row says so and
+    /// waits on you.
+    fn send_commit_asks(&self, lead: &str, mates: &[Teammate]) -> Result<String, String> {
+        let text = mates.iter().map(|t| commit_words(&t.name)).collect::<Vec<_>>().join("\n\n");
+        let sent = self.send_to_session(lead, &text, &[], false);
+        self.write(|st| {
+            st.review_last.insert(lead.to_string(), now_ms());
+            if let Err(e) = &sent {
+                for t in mates {
+                    st.sessions.with_teammate(lead, &t.call, |m| {
+                        m.commit_asked_ms = 0;
+                        m.step = format!("Couldn't ask its lead to commit it: {e}");
+                        m.needs = "Cue couldn't ask its lead to commit it".into();
+                    });
+                }
+            }
+        });
+        self.changed();
+        sent
     }
 }
 
+/// What a member's row says while Cue's ask to commit it waits for its lead to be free.
+const COMMIT_WAITS: &str = "Cue asks its lead to commit it when it's free";
+
+/// `m`'s commit ask waits for its lead to be free.
+fn mark_waiting(m: &mut Teammate, now: u64) {
+    m.commit_wait_ms = now;
+    m.needs.clear();
+    m.step = COMMIT_WAITS.into();
+    m.step_ms = now;
+}
+
+/// `m`'s commit ask goes to its lead now.
+fn mark_asked(m: &mut Teammate, now: u64) {
+    m.commit_wait_ms = 0;
+    m.commit_asked_ms = now;
+    m.needs.clear();
+    m.step = "Asked its lead to commit it".into();
+    m.step_ms = now;
+}
+
+/// Members stuck in a state nothing will move them out of, put back to done (Review in their menu): one queued for a
+/// review that isn't in Review's queue (nor on its way), and one under review whose lead has been free while
+/// REVIEW_SHOWN_MS passed since its ask (a lead whose transcript Cue can't read, or an ask scrolled out of it: the turn
+/// that answers it, team_review.rs `unanswered`, is the usual way). Whether any changed.
+pub(super) fn unstick(st: &mut Store, now: u64) -> bool {
+    let mut stuck: Vec<(String, String, bool)> = vec![];
+    for s in st.sessions.all() {
+        let lead = s.origin.session_id.clone();
+        // Free as Review's queue judges it: not working, asking you something, compacting, or settling.
+        let free = Hub::lead_busy(st, &lead, now).is_none();
+        for t in &s.team {
+            let key = format!("{}{lead}:{}", super::team::KEY, t.agent_id);
+            let lost = t.state == "queued" && !st.review_queue.iter().any(|q| q.exec == key) && !st.review_sent.contains_key(&key);
+            let long = t.state == "reviewing" && free && now.saturating_sub(t.review_ms) >= super::reviews::REVIEW_SHOWN_MS;
+            if lost || long {
+                stuck.push((lead.clone(), t.call.clone(), lost));
+            }
+        }
+    }
+    for (lead, call, lost) in &stuck {
+        st.sessions.with_teammate(lead, call, |m| {
+            didnt_come_back(m);
+            if *lost {
+                m.step = "Its review didn't go".into();
+            }
+        });
+    }
+    !stuck.is_empty()
+}
+
 /// What a lead is asked to commit its teammate `name`'s work with (files Cue never saw). Its answer names the
-/// teammate, so asks joined into one message (kept for a busy lead's turn's end) are answered each by its own line.
+/// teammate, so asks joined into one message are answered each by its own line.
 fn commit_words(name: &str) -> String {
     let branch = free_branch(name, |_| false);
     format!("Commit your teammate {name}'s work now: the files it changed, in the git repository where it changed them, on the branch that repo is on (not main/master: make a branch {branch} first if it is). Don't change anything else. End your reply with a line `Committed {name}: <short sha>` for each commit, or `Committed {name}: nothing` if there was nothing to commit.")
 }
 
-/// Lead `lead`'s reply `text` as the answer to Cue's asks to commit members' work: each member asked whose ask has
-/// gone (not still kept for, or queued at, the lead's turn's end), by the lines naming it. `Committed <name>: <sha>`:
-/// committed, the first one its commit; `Committed <name>: nothing`: set aside; neither: it waits on you (`needs`),
-/// unless the reply is a `review` (a review may answer an ask too, but saying nothing of it is no answer). Whether it
-/// changed a member.
-/// SHORTCUT: the lead's first prompted reply after an ask went is taken as its answer, as a review's is; a reply to
-/// something else of yours typed meanwhile reads as "didn't say" and leaves it to you. Upgrade: match the reply to
-/// the turn the ask started.
-pub(super) fn commit_reply(st: &mut Store, lead: &str, text: &str, review: bool) -> bool {
+/// Lead `lead`'s turn as the answer to Cue's asks to commit members' work, and as its own word on what it committed.
+/// A member asked whose ask has gone (not still kept for, or queued at, the lead): `Committed <name>: <sha>` commits it
+/// (the first its commit), `Committed <name>: nothing` sets it aside, neither leaves it to you (`needs`), unless the
+/// turn is a `review` (a review may answer an ask, but saying nothing of it is no answer) or unprompted (a teammate's
+/// finish started it: only a commit it names counts). A finished member whose files Cue never saw, not asked (or its
+/// ask still waiting): a `Committed <name>: <sha>` line is its lead committing it by itself, and it's committed (its
+/// ask never goes). Whether it changed a member.
+/// SHORTCUT: the lead's first prompted reply after an ask went is taken as its answer; a reply to something else of
+/// yours typed meanwhile reads as "didn't say" and leaves it to you. Upgrade: match the reply to the turn the ask
+/// started (`LeadTurn::said`, once Cue's asks are in the transcript every time).
+pub(super) fn commit_reply(st: &mut Store, lead: &str, turn: &LeadTurn, review: bool) -> bool {
     let on_its_way = [st.sessions.held(lead).map(|h| h.text), st.sessions.queued_text(lead)].into_iter().flatten().collect::<Vec<_>>().join("\n");
-    let asked: Vec<Teammate> = st.sessions.team(lead).into_iter().filter(|t| t.in_team() && t.commit_asked_ms > 0 && !on_its_way.contains(&commit_words(&t.name))).collect();
-    let alone = asked.len() == 1;
+    let team = st.sessions.team(lead);
+    let asked = |t: &Teammate| t.commit_asked_ms > 0 && !on_its_way.contains(&commit_words(&t.name));
+    let alone = team.iter().filter(|t| t.in_team() && asked(t)).count() == 1;
     let mut changed = false;
-    for t in &asked {
-        let said = read_committed(text, &t.name, alone);
-        if said.is_none() && review {
-            continue;
+    for t in team.iter().filter(|t| t.in_team() && !t.working()) {
+        let said = read_committed(&turn.all, &t.name, alone && asked(t));
+        let answers = match &said {
+            Some(shas) if !shas.is_empty() => asked(t) || (t.files.is_empty() && t.worktree.is_empty()),
+            _ => asked(t) && !turn.unprompted && (said.is_some() || !review),
+        };
+        if answers {
+            st.sessions.with_teammate(lead, &t.call, |m| settle_asked(m, said, turn.answer));
+            changed = true;
         }
-        st.sessions.with_teammate(lead, &t.call, |m| settle_asked(m, said, text));
-        changed = true;
     }
     changed
 }
 
-/// Asked member `m` settled by what its lead `said` (`read_committed`) in reply `text`.
+/// Member `m` settled by what its lead `said` (`read_committed`) in reply `text`.
 fn settle_asked(m: &mut Teammate, said: Option<Vec<String>>, text: &str) {
     m.commit_asked_ms = 0;
+    m.commit_wait_ms = 0;
     m.step_ms = now_ms();
     match said {
         Some(shas) if !shas.is_empty() => {

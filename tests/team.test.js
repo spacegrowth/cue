@@ -246,3 +246,28 @@ assert.doesNotMatch(folded, /data-mt-act|data-crew-open|Open ›/, "no buttons i
   assert.doesNotMatch(d, /aside/i, "no Set aside anywhere");
   delete world.sessions.U;
 }
+
+// ---- what Cue does for a member that waits on its lead: on the member's row, never in the chat ----
+{
+  world.sessions.W = { session_id: "W", team: [
+    { call: "c-w1", agent_id: "w1", name: "queue", state: "queued", started_ms: NOW - 9 * M, ended_ms: NOW - M, files: ["a.js"] },
+    { call: "c-w2", agent_id: "w2", name: "board", state: "reviewed", recommendation: "commit", commit_wait_ms: NOW - M, started_ms: NOW - 9 * M, files: [] },
+    { call: "c-w3", agent_id: "w3", name: "site", state: "done", commit_asked_ms: NOW - M, started_ms: NOW - 9 * M, ended_ms: NOW - 2 * M, files: [] },
+    { call: "c-w4", agent_id: "w4", name: "lost", state: "done", step: "Its review didn't come back", summary: "Board columns", started_ms: NOW - 9 * M, ended_ms: NOW - 2 * M, files: [] },
+    { call: "c-w5", agent_id: "w5", name: "notes", state: "reviewed", recommendation: "commit", findings: ["1. a.md:1 — note — verified fine"], started_ms: NOW - 9 * M, files: ["a.md"] },
+  ] };
+  ctx.mateOpenLeads.add("W");
+  ctx.mateDoneOpen.add("W");
+  const d = ctx.crewTray("W");
+  const rowOf = (name) => { const at = d.indexOf(`>${name}</button>`), next = d.slice(at).search(/<div class="mt-(row|one|grp|done)/); return d.slice(at, next < 0 ? undefined : at + next); };
+  assert.match(rowOf("queue"), /<span class="mt-line">8m · review waits for the lead<\/span><button class="mt-lk" data-act="unqueue-review" data-exec="team:W:w1">Skip<\/button>/, "a queued review: its row says it waits, with Skip");
+  assert.match(rowOf("board"), /<span class="mt-line">[^<]*Cue asks its lead to commit it when it's free<\/span><\/div>/, "a commit ask waiting for the lead: said on its row, no button");
+  assert.match(rowOf("site"), /<span class="mt-line">[^<]*its lead commits it<\/span><\/div>/, "asked: its lead commits it");
+  assert.match(d, /<div class="mt-grp ">Ready<\/div>.*<div class="mt-grp ">Waiting on the lead<\/div>.*>queue<.*>board<.*>site</s, "all three wait on the lead, after Ready, not on you");
+  assert.doesNotMatch(d, /<div class="mt-grp ">Working<\/div>/, "none of them is at work");
+  assert.match(d, /<span class="crew-dot"><\/span><span class="crew-w">Cue Crew · 5 <span class="crew-mu">· 1 ready · 3 waiting on the lead<\/span>/, "counted as waiting on the lead, not working; a still dot");
+  assert.match(rowOf("lost"), /<span class="mt-line">7m · Its review didn't come back · Board columns/, "a review that never came: its row says so");
+  assert.match(rowOf("notes"), /<i>1 note · commit it<\/i>.*data-mt-act="commit"[^>]*>Commit</s, "a commit with only a note: Commit");
+  assert.deepEqual(ctx.mateWaits("W").map((t) => t.name), ["notes"], "only the reviewed one Cue isn't committing waits on you");
+  delete world.sessions.W;
+}

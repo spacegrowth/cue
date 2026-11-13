@@ -304,8 +304,10 @@ test.describe("a hosted lead's crew: the Crew switch, /crew, a task dropped on t
     await expect(handoff.locator(".mt-n")).toHaveText("handoff2 findings · fixes go back, round 1 of 2");
     await expect(handoff.locator("[data-mt-act]")).toHaveText(["Send fixes"]);
     await expect(handoff.locator(".mt-fx li")).toHaveCount(2);
+    // docs's review says commit and lists only a note: a note needs no change, so Commit.
     const docs = tray.locator(".mt-row", { hasText: "docs" });
-    await expect(docs.locator("[data-mt-act]")).toHaveText(["Send fixes"]);
+    await expect(docs.locator(".mt-n i")).toHaveText("1 note · commit it");
+    await expect(docs.locator("[data-mt-act]")).toHaveText(["Commit"]);
     await expect(tray.locator(".mt-row, .mt-one", { hasText: "skill" }), "done: out of the way").toHaveCount(0);
     await expect(tray.locator(".mt-done-line")).toHaveText("1 done ›");
     await tray.locator(".mt-done-line").click();
@@ -329,8 +331,10 @@ test.describe("a hosted lead's crew: the Crew switch, /crew, a task dropped on t
     await expect(rows.locator(".mt-n i")).toHaveText("Its lead didn't say it committed it");
     await expect(tray.locator(".crew-head")).toContainText("rows needs you");
     await expect(page.locator(".active-pane"), "no Set aside anywhere").not.toContainText("Set aside");
-    await docs.locator('[data-mt-act="fixes"]').click();
-    expect((await cue.called("team_action", { action: "fixes" })).args).toMatchObject({ sessionId: "lead", agent: "id-docs" });
+    await handoff.locator('[data-mt-act="fixes"]').click();
+    expect((await cue.called("team_action", { action: "fixes" })).args).toMatchObject({ sessionId: "lead", agent: "id-handoff" });
+    await docs.locator('[data-mt-act="commit"]').click();
+    expect((await cue.called("team_action", { action: "commit" })).args).toMatchObject({ sessionId: "lead", agent: "id-docs" });
   });
 
   test("Cue's review request is Cue's bubble on the right, the review folded inside it, no card of its own", async ({ page }) => {
@@ -369,16 +373,23 @@ test.describe("a hosted lead's crew: the Crew switch, /crew, a task dropped on t
     await expect(page.locator('.stab[data-stab=":diff"]')).toHaveCount(0);
   });
 
-  test("a review waiting for the lead is Cue's bubble too, and Skip takes it off the queue", async ({ cue, page }) => {
-    await cue.change((st) => { st.review_queue = { lead: [{ exec: "id-skill", name: "skill" }] }; });
-    const waits = page.locator(".cue-you", { hasText: "Will ask for skill's review" });
-    await expect(waits).toHaveCount(1);
-    await expect(waits.locator(".cv-you-text b")).toHaveText("skill");
-    await expect(waits.locator(".cv-meta")).toHaveText("Cue · waits for the lead to be free · Skip");
-    await expect(waits.locator("[data-ask-open]")).toHaveCount(0);
-    await waits.locator('[data-act="unqueue-review"]').click();
-    expect((await cue.called("unqueue_review")).args.exec).toBe("id-skill");
-    await expect(waits).toHaveCount(0);
+  test("what Cue will send the lead once it's free waits on the member's row, never in the chat; Skip takes a review off the queue", async ({ cue, page }) => {
+    await cue.change((st) => {
+      const lead = st.sessions.find((s) => s.session_id === "lead");
+      lead.team.find((t) => t.name === "skill").state = "queued";
+      Object.assign(lead.team.find((t) => t.name === "docs"), { commit_wait_ms: Date.now() - 60000, files: [] });
+      st.review_queue = { lead: [{ exec: "team:lead:id-skill", name: "skill" }] };
+    });
+    const tray = page.locator(".crew-tray");
+    if (!(await tray.locator(".crew-body").count())) await tray.locator(".crew-car").click();
+    await expect(page.locator(".cue-you", { hasText: /Will ask|asks its lead/ }), "nothing of it in the chat").toHaveCount(0);
+    const skill = tray.locator(".mt-one", { hasText: "skill" });
+    await expect(skill.locator(".mt-line")).toHaveText(/review waits for the lead$/);
+    const docs = tray.locator(".mt-one", { hasText: "docs" });
+    await expect(docs.locator(".mt-line")).toHaveText(/Cue asks its lead to commit it when it's free$/);
+    await expect(docs.locator("button:not(.mt-name)"), "nothing for you to press").toHaveCount(0);
+    await skill.locator('[data-act="unqueue-review"]').click();
+    expect((await cue.called("unqueue_review")).args.exec).toBe("team:lead:id-skill");
   });
 
   test("/crew is one of the lead's commands, in Cue", async ({ page }) => {

@@ -6,11 +6,11 @@
 use super::*;
 use crate::hosted::HostedEvent;
 use crate::sessions::quiet::Quiet;
-use crate::sessions::team::{add_files, read_review, Teammate};
-use super::team_tidy::{commit_reply, settled, Settled};
+use crate::sessions::team::{add_files, Teammate};
+use super::team_tidy::{settled, Settled};
 
 /// A teammate's review in Review's queue goes by this key: `team:<lead>:<agent id>`.
-const KEY: &str = "team:";
+pub(super) const KEY: &str = "team:";
 
 /// How often the watcher's tick looks for quiet teammates.
 const QUIET_CHECK_MS: u64 = 15_000;
@@ -115,87 +115,6 @@ impl Hub {
         }
         if grew {
             self.changed();
-        }
-    }
-
-    /// The lead's turn ended with `text`: a reply to your Review is that teammate's review (the oldest under review; one
-    /// review at a time goes to a lead). A turn nothing of yours started (a teammate finishing) isn't one. A reply
-    /// without a Recommendation line may be the answer to Cue's ask to commit a member's work (`commit_reply`).
-    /// SHORTCUT: the next prompted reply with a Recommendation line is taken as the review (one without is some other
-    /// reply: a hook's re-prompt, a "started it" line); a review that never says Recommendation leaves its teammate under
-    /// review. Upgrade: match the fork's own Agent call (its task_notification) to the review sent.
-    pub(super) fn team_reply(&self, lead: &str, text: &str, asks: &[String], unprompted: bool) {
-        if unprompted {
-            return;
-        }
-        let (findings, recommendation) = read_review(text);
-        // Its `Committed <name>: …` lines answer Cue's asks to commit a member's work, a review's too; a reply that
-        // isn't a review (no Recommendation line) and says nothing of an ask leaves that member to you.
-        let review = !recommendation.is_empty();
-        if self.write(|st| commit_reply(st, lead, text, review)) {
-            self.changed();
-        }
-        if !review {
-            return;
-        }
-        let filed = self.write(|st| {
-            let (t, stale) = reviewed_member(&st.sessions.team(lead), asks)?;
-            for call in stale {
-                st.sessions.with_teammate(lead, &call, |m| {
-                    m.state = "done".into();
-                    m.review_ms = 0;
-                    m.step = "Its review didn't come back".into();
-                });
-            }
-            let next = auto_next(&st.sessions.crew_commit(lead), &recommendation, findings.len(), t.fix_rounds);
-            st.sessions.with_teammate(lead, &t.call, |m| {
-                m.state = "reviewed".into();
-                m.findings = findings;
-                m.recommendation = recommendation;
-                m.review = text.to_string();
-            });
-            Some((t.call, next))
-        });
-        let Some((call, next)) = filed else { return };
-        self.changed();
-        let lead = lead.to_string();
-        match next {
-            AutoNext::Commit => self.later(0, move |h| h.commit_when_clean(&lead, &call)),
-            AutoNext::Fixes => self.later(0, move |h| {
-                if let Err(e) = h.team_action(&lead, &call, "fixes") {
-                    h.set_teammate(&lead, &call, |m| m.step = format!("Fixes not sent by themselves: {e}"));
-                }
-            }),
-            AutoNext::Ask => {}
-        }
-    }
-
-    /// A crew member that just finished, reviewed by itself through its lead's review queue: only one that finished its
-    /// work (not stopped), and not a loop's (a loop reviews its own crew).
-    fn review_on_finish(&self, lead: &str, origin: &Origin, call: &str) {
-        #[cfg(feature = "ext")]
-        if self.ext_leads_loop(lead) {
-            return;
-        }
-        let Some(t) = self.read(|st| st.sessions.team(lead)).into_iter().find(|t| t.call == call) else { return };
-        if t.state != "done" || t.agent_id.is_empty() || !t.from.is_empty() {
-            return;
-        }
-        if let Err(e) = self.review_teammate(lead, origin, &t) {
-            eprintln!("cue: couldn't queue {}'s review: {e}", t.name);
-        }
-    }
-
-    /// The lead's "commit when clean": a crew member whose review recommends commit goes on a branch of its own (never
-    /// main); held or refused, it stays reviewed with Commit for you, and why is on its row.
-    fn commit_when_clean(&self, lead: &str, call: &str) {
-        let (origin, t) = self.read(|st| (st.sessions.origin(lead), st.sessions.team(lead).into_iter().find(|t| t.call == call)));
-        let (Some(origin), Some(t)) = (origin, t) else { return };
-        if t.state != "reviewed" {
-            return;
-        }
-        if let Err(e) = self.commit_teammate(lead, &origin, &t, true) {
-            self.set_teammate(lead, call, |m| m.step = format!("Not committed by itself: {e}"));
         }
     }
 
@@ -347,41 +266,9 @@ impl Hub {
     }
 
     /// `f` on the teammate, saved with its lead's record and drawn.
-    fn set_teammate(&self, lead: &str, call: &str, f: impl FnOnce(&mut Teammate)) {
+    pub(super) fn set_teammate(&self, lead: &str, call: &str, f: impl FnOnce(&mut Teammate)) {
         self.write(|st| st.sessions.with_teammate(lead, call, f));
         self.changed();
-    }
-
-    /// Review: the lead reviews the teammate's work through a fork, sent when the lead is free (Review's queue, one
-    /// review at a time per lead). Its reply comes back as the teammate's review (`team_reply`).
-    fn review_teammate(&self, lead: &str, origin: &Origin, t: &Teammate) -> Result<String, String> {
-        if t.agent_id.is_empty() || t.working() {
-            return Err(format!("{} is still working", t.name));
-        }
-        let files = changes(&origin.machine, &origin.cwd, t).map(|c| c.files()).unwrap_or_else(|_| t.files.clone());
-        let place = if t.worktree.is_empty() { String::new() } else { format!(" in its worktree {}", t.worktree) };
-        let text = format!(
-            "Review your teammate {name}'s work with a fork (one Agent call, not in the background): read the diff of its files{place} against what it was asked, run its tests, and reply with only numbered findings (`1. file:line — should-fix — what`) and a last line `Recommendation: commit` or `Recommendation: send fixes`. Don't change, commit or message anything.\nWhat it was asked: {what}\nIts files: {files}",
-            name = t.name,
-            what = if t.what.is_empty() { first(&t.asked) } else { t.what.clone() },
-            files = if files.is_empty() { "(none yet)".to_string() } else { files.join(", ") },
-        );
-        self.set_teammate(lead, &t.call, |m| m.state = "queued".into());
-        let key = format!("{KEY}{lead}:{}", t.agent_id);
-        let r = self.review(lead, &key, &text);
-        if r.is_err() {
-            self.set_teammate(lead, &t.call, |m| m.state = "done".into());
-        }
-        r
-    }
-
-    /// A teammate's review typed into its lead (now, or from the queue): it's under review from here.
-    pub(super) fn team_review_sent(&self, key: &str, sent: bool) {
-        let Some((lead, agent)) = teammate_key(key) else { return };
-        self.set_teammate(lead, agent, |m| {
-            m.state = if sent { "reviewing" } else { "done" }.into();
-            m.review_ms = if sent { now_ms() } else { 0 };
-        });
     }
 
     /// Commit: the teammate's files only, `git commit --only -- <its files>`, in its worktree when it has one; held
@@ -390,7 +277,7 @@ impl Hub {
     /// with the same message, and what happened is said per repo.
     /// `branch`: on main, master or a detached HEAD, the commit goes on a new branch crew/<name> made at HEAD
     /// (`commit_to_new_branch`); the folder stays where it is.
-    fn commit_teammate(&self, lead: &str, origin: &Origin, t: &Teammate, branch: bool) -> Result<String, String> {
+    pub(super) fn commit_teammate(&self, lead: &str, origin: &Origin, t: &Teammate, branch: bool) -> Result<String, String> {
         if t.working() || t.agent_id.is_empty() {
             return Err(format!("{} is still working", t.name));
         }
@@ -551,7 +438,7 @@ fn not_on(branch: &str) -> Option<String> {
 
 /// What a teammate changed, as git has it now, per repository its files are in: their diff and its size.
 #[derive(Default)]
-struct Changes {
+pub(super) struct Changes {
     repos: Vec<RepoChanges>,
     diff: String,
     added: u64,
@@ -590,7 +477,7 @@ impl RepoChanges {
 impl Changes {
     /// Every file with changes, as shown: from its repo's top in the teammate's own repo, else with the repo's
     /// folder name first ("other-repo/mac/ui/addon.js").
-    fn files(&self) -> Vec<String> {
+    pub(super) fn files(&self) -> Vec<String> {
         self.repos.iter().flat_map(|r| r.files.iter().map(move |f| if r.label.is_empty() { f.clone() } else { format!("{}/{f}", r.label) })).collect()
     }
 
@@ -777,7 +664,7 @@ fn from_top(top: &str, path: &str) -> Option<String> {
 /// `t`'s changes now, per repository its files are in. Its files as the stream says them (its own edits), or, in a
 /// worktree of its own, whatever changed there (its shell commands' changes too). New files count as all added. A
 /// file in no repository is said so in the diff; an error only when git failed and nothing else could be said.
-fn changes(machine: &str, lead_cwd: &str, t: &Teammate) -> Result<Changes, String> {
+pub(super) fn changes(machine: &str, lead_cwd: &str, t: &Teammate) -> Result<Changes, String> {
     let mut c = Changes::default();
     if t.worktree.is_empty() && t.files.is_empty() {
         return Ok(c);
@@ -867,69 +754,7 @@ fn repo_changes(machine: &str, r: &Repo) -> Result<(RepoChanges, String, u64, u6
     Ok((part, diff, added, removed))
 }
 
-/// How many times Cue sends a teammate its findings by itself before the next review waits for you.
-pub(crate) const AUTO_FIX_ROUNDS: u32 = 2;
-
-/// What Cue does by itself once a teammate's review is in.
-#[derive(Debug, PartialEq)]
-enum AutoNext {
-    Commit,
-    Fixes,
-    Ask,
-}
-
-/// With the lead handling reviews (`crew_commit` "", the default; "wait": ask you every time): a review that asks for
-/// fixes, or says commit but lists findings (notes too: nothing is dropped), goes back to the teammate, up to
-/// `AUTO_FIX_ROUNDS` times; a clean commit is committed to its branch. Anything else waits for you.
-fn auto_next(crew_commit: &str, recommendation: &str, findings: usize, fix_rounds: u32) -> AutoNext {
-    if crew_commit == "wait" {
-        return AutoNext::Ask;
-    }
-    let commit = recommendation.starts_with("commit");
-    if recommendation.contains("fix") || (commit && findings > 0) {
-        return if fix_rounds < AUTO_FIX_ROUNDS { AutoNext::Fixes } else { AutoNext::Ask };
-    }
-    if commit { AutoNext::Commit } else { AutoNext::Ask }
-}
-
 pub(super) fn first(s: &str) -> String {
     s.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("").chars().take(200).collect()
 }
 
-/// The crew member a review reply is about, of `team`'s members under review: the one the turn's ask named ("Review
-/// your teammate <name>'s work", the last of the turn's `asks`), else the one asked longest ago. Named, the members
-/// asked before it whose answer never came (lost to a reply after it, say) are `stale`: they wait no more. Named but
-/// no longer under review: None.
-pub(super) fn reviewed_member(team: &[Teammate], asks: &[String]) -> Option<(Teammate, Vec<String>)> {
-    let reviewing: Vec<&Teammate> = team.iter().filter(|t| t.state == "reviewing").collect();
-    let named = asks.iter().rev().find_map(|a| a.trim_start().strip_prefix("Review your teammate ")?.split_once("'s work").map(|(n, _)| n.to_string()));
-    if let Some(name) = named {
-        // Named, but no longer under review (its work committed meanwhile, say): nobody else's review.
-        let t = reviewing.iter().find(|t| t.name == name)?;
-        let stale = reviewing.iter().filter(|o| o.call != t.call && o.review_ms <= t.review_ms).map(|o| o.call.clone()).collect();
-        return Some(((*t).clone(), stale));
-    }
-    reviewing.into_iter().min_by_key(|t| t.review_ms).map(|t| (t.clone(), vec![]))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::reviewed_member;
-    use crate::sessions::team::Teammate;
-
-    fn mate(name: &str, state: &str, review_ms: u64) -> Teammate {
-        Teammate { call: format!("call-{name}"), name: name.into(), state: state.into(), review_ms, ..Default::default() }
-    }
-
-    #[test]
-    fn a_review_is_the_named_members_and_the_ones_asked_before_it_whose_answer_never_came_wait_no_more() {
-        let team = [mate("loops-board", "reviewing", 10), mate("rows", "reviewing", 20), mate("docs", "reviewing", 30), mate("hub", "done", 0)];
-        let asks = ["Fix the tray.".to_string(), "Review your teammate rows's work with a fork (one Agent call…)".to_string()];
-        let (t, stale) = reviewed_member(&team, &asks).unwrap();
-        assert_eq!((t.name.as_str(), stale), ("rows", vec!["call-loops-board".to_string()]), "docs, asked after it, still waits");
-        let (t, stale) = reviewed_member(&team, &["Go ahead".to_string()]).unwrap();
-        assert_eq!((t.name.as_str(), stale.len()), ("loops-board", 0), "no ask named one: the one asked longest ago, nothing let go");
-        assert!(reviewed_member(&[mate("hub", "done", 0)], &asks).is_none());
-        assert!(reviewed_member(&[mate("docs", "reviewing", 30)], &asks).is_none(), "rows's review, rows no longer under review: not docs's");
-    }
-}

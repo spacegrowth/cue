@@ -95,8 +95,8 @@ const SCREENS = {
   },
   "team-commit-main": {
     scenario: "world-team",
-    // docs's review says commit with a note, so its row offers Send fixes; Commit anyway is in the menu its name opens.
-    setup: async (p) => { await openTeam(p); await p.locator('[data-mt-more="lead|id-docs"]').click(); await p.locator('.mt-menu [data-mt-act="commit"][data-mt-agent="id-docs"]').click(); },
+    // docs's review says commit with only a note (no change needed), so its row offers Commit.
+    setup: async (p) => { await openTeam(p); await p.locator('.mt-row [data-mt-act="commit"][data-mt-agent="id-docs"]').click(); },
     done: async (p) => { await p.locator(".mt-note", { hasText: "is on main" }).waitFor(); await p.locator('.mt-note [data-mt-act="branch"]').waitFor(); },
   },
   // How work goes out to the crew (ui/team_send.js). team-switch: the mode menu open from the tray's line, split on Always.
@@ -127,6 +127,24 @@ const SCREENS = {
       }, 20 * 60_000);
     },
     done: (p) => p.locator(".mt-line", { hasText: "looks stuck" }).waitFor(),
+  },
+  // team-waits: what Cue sends the lead once it's free, on the members' rows (never in the chat): skill's review waits
+  // (Skip), docs's commit ask waits (Cue commits it through its lead: files Cue never saw).
+  "team-waits": {
+    scenario: "world-team",
+    setup: async (p) => {
+      await openCard(p, TEAM_ASK);
+      await p.locator('.mt-row.need [data-act="allow"]').click();
+      await showTeam(p);
+      await p.evaluate(() => {
+        const st = CueBridge.world.state, lead = st.sessions.find((s) => s.session_id === "lead"), at = (n) => lead.team.find((t) => t.name === n);
+        at("skill").state = "queued";
+        Object.assign(at("docs"), { commit_wait_ms: st.now_ms - 60_000, files: [], stat: "" });
+        st.review_queue = { lead: [{ exec: "team:lead:id-skill", name: "skill", at_ms: st.now_ms }] };
+        CueBridge.emit("state", CueBridge.world.snapshot());
+      });
+    },
+    done: async (p) => { await p.locator(".mt-line", { hasText: "review waits for the lead" }).waitFor(); await p.locator(".mt-line", { hasText: "Cue asks its lead to commit it" }).waitFor(); },
   },
   "agents-quiet": {
     scenario: "board-waiting",

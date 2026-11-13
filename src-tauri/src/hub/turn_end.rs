@@ -199,8 +199,9 @@ impl Hub {
                 let _ = crate::tasks::start(me, sid);
             }
         }
-        // A lead's turn ended: its next queued review goes (after a moment, for its hooks to settle).
-        if self.read(|st| st.review_queue.iter().any(|q| q.lead == sid)) {
+        // A lead's turn ended: its next queued review, or its crew's commit asks that wait, go (after a moment, for its
+        // hooks to settle, and for a message of yours kept for it to go first).
+        if self.read(|st| st.review_queue.iter().any(|q| q.lead == sid) || st.sessions.team(sid).iter().any(|t| t.commit_wait_ms > 0)) {
             self.later(1500, |me| me.drain_reviews());
         }
     }

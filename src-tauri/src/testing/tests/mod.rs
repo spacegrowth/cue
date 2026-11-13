@@ -29,6 +29,7 @@ mod store;
 mod tasks;
 mod team;
 mod team_repos;
+mod team_replay;
 mod terminal_screens;
 mod transcripts;
 mod typing;

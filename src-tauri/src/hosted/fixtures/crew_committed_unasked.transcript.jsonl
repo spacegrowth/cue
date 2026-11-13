@@ -1,0 +1,6 @@
+{"type":"user","message":{"role":"user","content":"Commit what {name} made in the site repo, then carry on with the tray."}}
+{"type":"assistant","message":{"model":"claude-opus-5-5","content":[{"type":"tool_use","id":"toolu_commit_{name}","name":"Bash","input":{"command":"git -C ../site commit -am 'Board columns'","description":"Commit {name}'s work"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_commit_{name}","content":"[crew/{name} 0a1b2c3] Board columns"}]}}
+{"type":"assistant","message":{"model":"claude-opus-5-5","content":[{"type":"text","text":"Committed {name}'s work in the site repo.\nCommitted {name}: 0a1b2c3"}]}}
+{"type":"assistant","message":{"model":"claude-opus-5-5","content":[{"type":"text","text":"Now the tray: done, its spacing is fixed."}]}}
+{"type":"system","subtype":"turn_duration"}

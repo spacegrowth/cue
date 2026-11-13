@@ -6,7 +6,7 @@ use super::*;
 pub(super) const REVIEW_SETTLE_MS: u64 = 8000;
 
 /// A review typed in stops counting as running after this long, even if its lead never replied.
-const REVIEW_SHOWN_MS: u64 = 15 * 60_000;
+pub(super) const REVIEW_SHOWN_MS: u64 = 15 * 60_000;
 
 /// What Review does with a review (`take_review`).
 enum Taken {
@@ -39,9 +39,14 @@ impl Hub {
     /// What Review does with `exec`'s review, decided and noted in the store: refused or already done, queued
     /// behind its busy lead, or sent now.
     fn take_review(st: &mut Store, lead: &str, exec: &str, text: &str, now: u64) -> Taken {
-        if st.review_sent.contains_key(exec) {
+        // A crew member's review sent before is over once it isn't under review any more (its review came, it went
+        // back to work and finished again): only one under review now refuses another.
+        let mate = super::team::teammate_key(exec);
+        let reviewing = mate.is_none_or(|(l, a)| st.sessions.team(l).iter().any(|t| t.agent_id == a && t.state == "reviewing"));
+        if st.review_sent.contains_key(exec) && reviewing {
             return Taken::Answer(Err("its lead is already reviewing it".into()));
         }
+        st.review_sent.remove(exec);
         if st.review_queue.iter().any(|q| q.exec == exec) {
             return Taken::Answer(Ok("Already queued: it goes when its lead is free".into()));
         }
@@ -50,6 +55,10 @@ impl Hub {
         if let Some(why) = Self::lead_busy(st, lead, now).or_else(|| ahead.then(|| "reviewing".to_string())) {
             let q = QueuedReview { exec: exec.into(), lead: lead.into(), text: text.into(), at_ms: now };
             st.review_queue.push(q);
+            // A crew member's: marked queued in the same step, so it's never queued with no review in the queue.
+            if let Some((lead, agent)) = super::team::teammate_key(exec) {
+                st.sessions.with_teammate(lead, agent, |m| m.state = "queued".into());
+            }
             return Taken::Queued(why);
         }
         st.review_sent.insert(exec.to_string(), (lead.to_string(), now));
@@ -84,7 +93,10 @@ impl Hub {
     /// compacting, no message of yours waiting to go first). One per lead at a time: the next waits
     /// until that review is done. A review whose teammate is no longer waiting for one (back at work,
     /// set aside) is dropped. Blocking (typing takes a moment): call off the UI thread.
+    /// A free lead's crew commit asks that wait go before its next review (team_tidy.rs `drain_commit_asks`), and
+    /// that review waits for the lead to settle after them, as after a review.
     pub fn drain_reviews(&self) {
+        self.drain_commit_asks();
         let (stale, due) = self.write(|st| Self::take_due_reviews(st, now_ms()));
         if due.is_empty() && stale.is_empty() {
             return;
@@ -131,7 +143,7 @@ impl Hub {
 
     /// Why a lead can't take a review right now, or None when it's free: working (a review or anything
     /// else), compacting, asking you something, or a review just typed in (it takes a moment to show as working).
-    fn lead_busy(st: &Store, lead: &str, now: u64) -> Option<String> {
+    pub(super) fn lead_busy(st: &Store, lead: &str, now: u64) -> Option<String> {
         let reviewing = || st.review_sent.iter().filter(|(_, (l, _))| l == lead).max_by_key(|(_, (_, at))| *at).map(|(e, _)| Self::reviewed_name(st, e));
         let settling = now.saturating_sub(st.review_last.get(lead).copied().unwrap_or(0)) < REVIEW_SETTLE_MS;
         if settling || st.sessions.state(lead).as_deref() == Some("working") {
@@ -198,6 +210,11 @@ impl Hub {
         let t = crate::sessions::team::Teammate { agent_id: agent.into(), name: format!("{agent}-name"), state: "queued".into(), ..Default::default() };
         self.write(|st| st.sessions.add_teammate(lead, t));
         format!("team:{lead}:{agent}")
+    }
+
+    /// Tests: review `exec` gone from the queue, its member left as it was (a queue an older Cue lost).
+    pub(crate) fn unqueue_review_only(&self, exec: &str) {
+        self.write(|st| st.review_queue.retain(|q| q.exec != exec));
     }
 
     /// Tests: teammate `agent` of `lead` set to `state`.
