@@ -427,7 +427,7 @@ fn a_hosted_claude_lead_starts_with_the_team_skill_and_gets_it_again_when_resume
     let sid = lead(&w, "fix the typo in a.txt and add a line to b.txt");
     let skill = skill_in(&launched_args(&w)).expect("the team skill is among its launch options");
     assert!(skill.starts_with(SKILL_START), "{skill}");
-    for habit in ["independent parts", "short plain `name`", "`run_in_background: true`", "`isolation: \"worktree\"`", "never two on the same files", "Don't set a `model`: teammates run on yours", "Don't commit their work"] {
+    for habit in ["independent parts", "short plain `name`", "`run_in_background: true`", "`isolation: \"worktree\"`", "never two on the same files", "Don't set a `model`: teammates run on yours", "Don't commit their work", "One part that will take long"] {
         assert!(skill.contains(habit), "the skill says {habit:?}: {skill}");
     }
     // Plain: none of relay's machinery (packets, reports, status formats, gates, role tags).
