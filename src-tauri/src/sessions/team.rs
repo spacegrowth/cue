@@ -106,6 +106,10 @@ pub struct Teammate {
     /// the lead's chat) and goes once the lead is free (hub/reviews.rs `drain_reviews`). 0: nothing waits.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub commit_wait_ms: u64,
+    /// When Cue's Send fixes for it was kept for its busy lead (it goes when the lead's turn ends, hub/send.rs
+    /// `send_held`): it waits on its lead, not at work yet, until it goes. 0: none kept.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub fixes_kept_ms: u64,
     /// Why it waits on you, when Cue couldn't settle it by itself (its lead didn't say it committed it); "" when it
     /// doesn't. Cleared once it leaves the crew (committed or set aside) or its lead is asked again.
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -310,6 +314,7 @@ fn heard(t: &mut Teammate, last: &str, now: u64) {
 /// A teammate that does something again (Send fixes, a message through its lead) is at work again: its review, if it
 /// had one, was of work it's now changing. Committed or set aside, it comes back to the team.
 pub fn back_at_work(t: &mut Teammate, now: u64) {
+    t.fixes_kept_ms = 0;
     if t.working() {
         return;
     }
@@ -324,6 +329,24 @@ pub fn back_at_work(t: &mut Teammate, now: u64) {
     t.stat.clear();
     if t.started_ms == 0 {
         t.started_ms = now;
+    }
+}
+
+/// Its fixes, kept for its lead, never went (`why`): taken back into your box, or dropped with the kept message (its
+/// lead back on a new terminal, or carried over a handoff). Ready again, its review kept, so Send fixes shows again.
+pub fn fixes_not_sent(t: &mut Teammate, why: &str, now: u64) {
+    if t.fixes_kept_ms == 0 {
+        return;
+    }
+    t.fixes_kept_ms = 0;
+    t.step = why.to_string();
+    t.step_ms = now;
+}
+
+/// Each member of `team` whose fixes were kept in a message to its lead that was dropped without going (`why`).
+pub fn kept_fixes_dropped(team: &mut [Teammate], why: &str, now: u64) {
+    for t in team.iter_mut() {
+        fixes_not_sent(t, why, now);
     }
 }
 
@@ -380,6 +403,9 @@ pub fn carried(team: &[Teammate], from: &str) -> Vec<Teammate> {
         .cloned()
         .map(|mut t| {
             t.from = from.to_string();
+            // Its fixes kept for the old lead stay in that lead's box: not this lead's to send (Send fixes again here).
+            let at = t.step_ms;
+            fixes_not_sent(&mut t, "Its fixes weren't sent before the handoff", at);
             match t.state.as_str() {
                 "working" => {
                     t.state = "stopped".into();

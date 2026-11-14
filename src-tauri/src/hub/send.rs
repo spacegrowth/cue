@@ -577,13 +577,18 @@ impl Hub {
     pub fn send_held(&self, session_id: &str, now: bool) -> Result<String, String> {
         let h = self.write(|st| st.sessions.take_held(session_id)).ok_or("nothing kept for it")?;
         let saved = h.images.iter().map(|p| crate::uploads::Saved { path: p.clone(), mime: crate::uploads::mime_of(p).into() }).collect();
-        self.send_saved(session_id, &h.text, saved, now).inspect_err(|e| {
+        let sent = self.send_saved(session_id, &h.text, saved, now).inspect_err(|e| {
             self.write(|st| {
                 st.sessions.hold_back(session_id, &h.text, h.images.clone());
                 st.sessions.held_failed(session_id, e);
             });
             self.changed();
-        })
+        })?;
+        // Gone (not kept again, its session busy once more): a crew member whose fixes it carried is at work now.
+        if !super::team::kept(&sent) {
+            self.team_kept_left(session_id, &h.text, true);
+        }
+        Ok(sent)
     }
 
     /// Enter once more, for a typed message the agent hasn't reported taking. Not when Cue can see the
@@ -613,7 +618,8 @@ impl Hub {
     /// The kept message, back to you (into the box, to change it): Esc, or Edit.
     pub fn unhold(&self, session_id: &str) -> Option<Exchange> {
         let h = self.write(|st| st.sessions.take_held(session_id));
-        if h.is_some() {
+        if let Some(h) = &h {
+            self.team_kept_left(session_id, &h.text, false);
             self.changed();
         }
         h

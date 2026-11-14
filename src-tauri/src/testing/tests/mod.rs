@@ -29,6 +29,7 @@ mod status_list;
 mod store;
 mod tasks;
 mod team;
+mod team_kept;
 mod team_repos;
 mod team_replay;
 mod terminal_screens;

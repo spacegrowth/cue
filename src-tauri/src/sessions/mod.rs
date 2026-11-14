@@ -214,6 +214,8 @@ impl Parked {
         s.queued = None;
         s.suggestion.clear();
         s.held = None;
+        // Crew fixes that were in that kept message never went: those members are ready again (Send fixes).
+        team::kept_fixes_dropped(&mut s.team, "Its fixes weren't sent: its lead's session ended first", now);
         s.limit = None;
         s.retry = None;
         s.doing.clear();

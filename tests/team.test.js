@@ -271,3 +271,18 @@ assert.doesNotMatch(folded, /data-mt-act|data-crew-open|Open ›/, "no buttons i
   assert.deepEqual(ctx.mateWaits("W").map((t) => t.name), ["notes"], "only the reviewed one Cue isn't committing waits on you");
   delete world.sessions.W;
 }
+
+// ---- fixes kept for a busy lead (hub/team.rs send_fixes): it waits on the lead, not at work, not on you ----
+{
+  world.sessions.K = { session_id: "K", team: [
+    { call: "c-k1", agent_id: "k1", name: "ops", state: "reviewed", recommendation: "send fixes", findings: ["1. a.js:1 — should-fix — x"], fixes_kept_ms: NOW - M, fix_rounds: 1, step: "Fixes go to its lead when its turn ends", started_ms: NOW - 9 * M, ended_ms: NOW - 2 * M, files: ["a.js"] },
+    { call: "c-k2", agent_id: "k2", name: "docs", state: "queued", started_ms: NOW - 9 * M, ended_ms: NOW - M, files: ["b.md"] },
+  ] };
+  ctx.mateOpenLeads.add("K");
+  const d = ctx.crewTray("K");
+  assert.match(d, /<span class="crew-dot"><\/span><span class="crew-w">Cue Crew · 2 <span class="crew-mu">· 2 waiting on the lead<\/span>/, "kept fixes: waiting on the lead, not working, not ready; a still dot");
+  assert.match(d, />ops<\/button><span class="mt-line">7m · its fixes go to its lead when its turn ends<\/span>/, "its row says its fixes wait for the lead");
+  assert.equal(ctx.crewWaitLine("K"), "", "neither at work nor waiting on you: no 'Crew working', no 'Waiting on you'");
+  assert.deepEqual(ctx.mateWaits("K").map((t) => t.name), []);
+  delete world.sessions.K;
+}

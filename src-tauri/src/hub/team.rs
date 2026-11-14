@@ -20,6 +20,28 @@ fn resume_words(name: &str) -> String {
     format!("Your teammate {name} has gone quiet. Ask it where it is and to carry on with its part, with SendMessage (to: \"{name}\").")
 }
 
+/// A teammate's row while its fixes are kept for its busy lead, and once they went.
+const FIXES_KEPT: &str = "Fixes go to its lead when its turn ends";
+const FIXES_SENT: &str = "Fixes sent through its lead";
+/// The same for one carried over a handoff: its lead starts it again with them.
+const FIXES_RESTART: &str = "Fixes sent: its lead starts it again";
+
+/// How Cue's Send fixes for teammate `name` starts (the `(to: "<name>")` after it closes it).
+fn fixes_words(name: &str) -> String {
+    format!("Send your teammate {name} its review's findings with SendMessage (to: \"")
+}
+
+/// Whether `text` (a message to a lead) carries Cue's Send fixes for teammate `name`: its own, or the one that starts
+/// it again after a handoff.
+fn carries_fixes(text: &str, name: &str) -> bool {
+    text.contains(&format!("{}{name}\")", fixes_words(name))) || text.contains(&format!("Your teammate {name} (carried over from the session before you)"))
+}
+
+/// What `send_to_session` said: the message was kept for the busy session, not sent (send.rs `keep`).
+pub(super) fn kept(said: &str) -> bool {
+    said.starts_with("kept in Cue")
+}
+
 /// The most of a diff the window is handed.
 const DIFF_LIMIT: usize = 200_000;
 
@@ -129,13 +151,67 @@ impl Hub {
             what = if t.what.is_empty() { first(&t.asked) } else { t.what.clone() },
             files = if t.files.is_empty() { "(none)".to_string() } else { t.files.join(", ") },
         );
-        self.send_to_session(lead, &text, &[], false)?;
+        let kept = kept(&self.send_to_session(lead, &text, &[], false)?);
         self.set_teammate(lead, &t.call, |m| {
             m.fix_rounds += 1;
-            m.step = "Fixes sent: its lead starts it again".into();
+            m.step = if kept { FIXES_KEPT } else { FIXES_RESTART }.into();
             m.step_ms = now_ms();
+            if kept {
+                m.fixes_kept_ms = m.step_ms;
+            }
         });
-        Ok(format!("Asked its lead to start {} again with the fixes", t.name))
+        Ok(if kept { format!("Cue sends {}'s fixes to its lead when its turn ends", t.name) } else { format!("Asked its lead to start {} again with the fixes", t.name) })
+    }
+
+    /// Send fixes: its lead sends it its review's findings with SendMessage. Sent, it's at work again; kept for its
+    /// busy lead (it goes when the lead's turn ends), it waits on its lead until then (`team_kept_left`).
+    fn send_fixes(&self, lead: &str, t: &Teammate) -> Result<String, String> {
+        let text = format!(
+            "{}{name}\") and let it fix them; don't fix them yourself:\n{}",
+            fixes_words(&t.name),
+            if t.findings.is_empty() { "(the review listed none: ask it to check its work against what it was asked)".to_string() } else { t.findings.join("\n") },
+            name = t.name
+        );
+        let kept = kept(&self.send_to_session(lead, &text, &[], false)?);
+        self.set_teammate(lead, &t.call, |m| {
+            let now = now_ms();
+            if kept {
+                m.fixes_kept_ms = now;
+            } else {
+                crate::sessions::team::back_at_work(m, now);
+            }
+            m.fix_rounds += 1;
+            m.step = if kept { FIXES_KEPT } else { FIXES_SENT }.into();
+            m.step_ms = now;
+        });
+        Ok(if kept { format!("Cue sends {}'s fixes to its lead when its turn ends", t.name) } else { format!("Sent the fixes to {}", t.name) })
+    }
+
+    /// The message kept for lead `lead` (`text`) left Cue: sent (`went`), or taken back into your box. A teammate whose
+    /// fixes it carried is at work once they went (its lead has them now; one carried over a handoff once its lead
+    /// starts it again, team::started), and ready again (Send fixes) when they were taken back.
+    pub(super) fn team_kept_left(&self, lead: &str, text: &str, went: bool) {
+        let mates: Vec<String> = self.read(|st| st.sessions.team(lead)).into_iter().filter(|t| t.fixes_kept_ms > 0 && carries_fixes(text, &t.name)).map(|t| t.call).collect();
+        if mates.is_empty() {
+            return;
+        }
+        let now = now_ms();
+        self.write(|st| {
+            for call in &mates {
+                st.sessions.with_teammate(lead, call, |m| {
+                    if !went {
+                        return crate::sessions::team::fixes_not_sent(m, "Its fixes were taken back: not sent", now);
+                    }
+                    m.fixes_kept_ms = 0;
+                    m.step_ms = now;
+                    m.step = if m.from.is_empty() { FIXES_SENT } else { FIXES_RESTART }.into();
+                    if m.from.is_empty() {
+                        crate::sessions::team::back_at_work(m, now);
+                    }
+                });
+            }
+        });
+        self.changed();
     }
 
     /// One of a teammate's buttons: review, diff, commit, fixes (Send fixes), stop, aside (Set aside). What to say,
@@ -151,21 +227,7 @@ impl Hub {
             // Commit refused on main (or a detached HEAD): a new branch made for it there, then the commit.
             "branch" => self.commit_teammate(lead, &origin, &t, true),
             "fixes" if !t.from.is_empty() => self.fixes_carried_over(lead, &t),
-            "fixes" => {
-                let text = format!(
-                    "Send your teammate {name} its review's findings with SendMessage (to: \"{name}\") and let it fix them; don't fix them yourself:\n{}",
-                    if t.findings.is_empty() { "(the review listed none: ask it to check its work against what it was asked)".to_string() } else { t.findings.join("\n") },
-                    name = t.name
-                );
-                self.send_to_session(lead, &text, &[], false)?;
-                self.set_teammate(lead, &t.call, |m| {
-                    crate::sessions::team::back_at_work(m, now_ms());
-                    m.fix_rounds += 1;
-                    m.step = "Fixes sent through its lead".into();
-                    m.step_ms = now_ms();
-                });
-                Ok(format!("Sent the fixes to {}", t.name))
-            }
+            "fixes" => self.send_fixes(lead, &t),
             // Carried over a handoff: its process ended with its old lead.
             "resume" | "stop" if !t.from.is_empty() => Err(format!("{} stopped with the lead it was carried over from", t.name)),
             // Gone quiet with nothing running: its lead asks it where it is, and to carry on.

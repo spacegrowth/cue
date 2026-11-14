@@ -28,10 +28,15 @@ const mateNeeds = (sid, t) => !!mateAsk(sid, t) || !!t.needs;
 /** Its lead commits it for Cue (files Cue never saw): Cue's ask waits for the lead to be free, or went and waits for
  *  the lead's `Committed <name>:` line (hub/team_tidy.rs). Nothing for you to do meanwhile. */
 const mateLeadCommits = (t) => !!(t.commit_wait_ms || t.commit_asked_ms);
+/** Its fixes are kept for its busy lead (they go when the lead's turn ends, hub/team.rs send_fixes): not at work yet,
+ *  and nothing for you to do. */
+const mateFixesKept = (t) => !!t.fixes_kept_ms;
+/** Something Cue has for it waits on its lead: its commit, or its fixes. */
+const mateOnLead = (t) => mateLeadCommits(t) || mateFixesKept(t);
 /** The teammates of a lead that wait on you: ready (reviewed, its verdict waiting for your Commit or Send fixes), or
  *  asking or needing you. One whose files Cue never saw doesn't: Cue handles it (its review runs, then Handle it asks
  *  its lead to commit). */
-const mateWaits = (sid) => mateList(sid).filter((t) => (t.state === "reviewed" && !mateLeadCommits(t)) || mateNeeds(sid, t));
+const mateWaits = (sid) => mateList(sid).filter((t) => (t.state === "reviewed" && !mateOnLead(t)) || mateNeeds(sid, t));
 /** Per lead, what was already seen waiting on you ("sid|agent", and each ask by its id): a new one opens the tray
  *  once; closed after that, it stays closed until another starts waiting. */
 // SHORTCUT: noticed while the tray is drawn (crewTray), not when the state arrives: fine while every draw of a lead's
@@ -89,6 +94,7 @@ function mateLine(t) {
   // What Cue does for it that waits on its lead (never drawn in the lead's chat: only what was sent shows there).
   else if (t.state === "queued") parts.push("review waits for the lead");
   else if (t.state === "reviewing") parts.push("reviewing its diff");
+  else if (mateFixesKept(t)) parts.push("its fixes go to its lead when its turn ends");
   else if (t.commit_wait_ms) parts.push("Cue asks its lead to commit it when it's free");
   else if (t.commit_asked_ms) parts.push("its lead commits it");
   else if (t.state === "committed") parts.push(t.commit ? `committed ${t.commit.slice(0, 7)}` : "committed");
@@ -196,11 +202,12 @@ const mateOneRow = (sid, t) => `<div class="mt-one" data-key="mt:${esc(mateKey(s
 
 /** Which group a member's row is in: "need", "ready" (its review back, or done with files Cue never saw while you
  *  handle reviews, so only your Commit settles it), "lead" (waiting on the lead: its review queued or under way, or
- *  its lead commits it for Cue; nothing of its own runs), "working" (at work itself), "done". */
+ *  its lead commits it for Cue, or its fixes are kept for the lead; nothing of its own runs), "working" (at work
+ *  itself), "done". */
 function mateGroup(sid, t) {
   if (mateNeeds(sid, t)) return "need";
   if (t.state === "working") return "working";
-  if (["queued", "reviewing"].includes(t.state) || mateLeadCommits(t)) return "lead";
+  if (["queued", "reviewing"].includes(t.state) || mateOnLead(t)) return "lead";
   if (t.state === "reviewed") return "ready";
   return "done";
 }
