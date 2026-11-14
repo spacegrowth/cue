@@ -30,7 +30,9 @@ const addOn = {
    *  stays), "" for the usual one; a band under the head line; rows under the goal; rows of its own in Needs you, drawn
    *  as its rows are, with how many: { html, count }; and decisions of its own in the lead's stream, drawn as the crew
    *  log's are (team.js crewLogRow, big): { html, count }, or with `items: [{ at_ms, html }]` placed in time order
-   *  among the lead's words (else `html` comes first, oldest). The page opens with addOn.openCrewPage. */
+   *  among the lead's words (else `html` comes first, oldest). The page opens with addOn.openCrewPage(sid, { from, back }):
+   *  within the add-on's view `from` (its tab stays selected, Back and Esc return to it), and closes with
+   *  addOn.closeCrewPage(from) (team_page.js). */
   crewPageHead: (sid) => "",
   crewPageBand: (sid) => "",
   crewPageRows: (sid) => "",

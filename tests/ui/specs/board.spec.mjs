@@ -247,7 +247,7 @@ test.describe("a hosted lead's crew on its own page", () => {
   });
 
   test("Esc goes back to the chat; Talk types @name in the stream's box; Open chat goes back too", async ({ page }) => {
-    await page.locator('.cp-lane:has([data-mt-more$="|id-rows"]) [data-cp-talk]').click();
+    await page.locator('.cp-lane[data-key="cp:lead|id-rows"] [data-cp-talk]').click();
     const box = page.locator('.crew-page textarea[data-text="s:lead"]');
     await expect(box).toBeFocused();
     await expect(box).toHaveValue("@rows ");
@@ -279,10 +279,96 @@ test.describe("a hosted lead's crew on its own page", () => {
   });
 
   test("a lane's steps are its own call's: docs started again under its name shows none of the old docs's", async ({ cue, page }) => {
-    const docs = page.locator('.cp-lane:has([data-mt-more$="|id-docs"]) .cp-steps');
-    await expect(docs, "docs's log entry, by its call").toContainText("reviewed: 1 note");
+    const lane = page.locator('.cp-lane[data-key="cp:lead|id-docs"]');
+    await lane.locator("[data-cp-lane]").click();
+    await expect(lane.locator(".co-body"), "docs's log entry, by its call").toContainText("Reviewed: 1 note");
     await cue.change((st) => { Object.assign(st.sessions.find((s) => s.session_id === "lead").team.find((t) => t.name === "docs"), { call: "call-docs-2", state: "working", findings: [], recommendation: "", step: "Editing docs" }); });
-    await expect(docs).toHaveText("working");
+    await expect(lane.locator(".co-body")).not.toContainText("Reviewed: 1 note");
+    await expect(lane.locator(".co-st.now")).toHaveText(/Editing docs/);
+  });
+
+  test("its lanes read down in columns: who with its meter, what it was asked, what it does now, its work; a name opens its lane in place", async ({ page }) => {
+    await expect(page.locator(".cp-hd")).toHaveText(/Who\s*What it was asked\s*Now\s*Its work/i);
+    const hub = page.locator('.cp-lane[data-key="cp:lead|id-hub"]'), rows = page.locator('.cp-lane[data-key="cp:lead|id-rows"]');
+    await expect(hub.locator(".cp-st")).toHaveText("asks you");
+    await expect(hub.locator(".cp-ml")).toHaveText("asked you");
+    await expect(hub.locator(".cp-m b.need")).toHaveCount(1);
+    await expect(hub.locator(".cp-ask")).toHaveText(/^Keep a team per hosted lead/);
+    await expect(hub.locator(".cp-big.q")).toHaveText("Wants to run cd src-tauri && cargo test --features ext");
+    await expect(hub.locator("[data-cp-answer]"), "Answer when it asks you").toHaveText("Answer");
+    await expect(rows.locator(".cp-big")).toHaveText("Running node tests/team.test.js");
+    await expect(rows.locator(".cp-ml"), "a test run is checking").toHaveText("checking");
+    await expect(rows.locator(".cp-work")).toContainText("2 files so far");
+    // Columns line up down the page.
+    const x = (sel) => page.locator(`.cp-lanes > .cp-lane ${sel}`).evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().left)));
+    for (const sel of [".cp-ask", ".cp-now", ".cp-work"]) expect(new Set(await x(sel)).size, sel).toBe(1);
+    // Answer takes you to its row in Needs you.
+    await hub.locator("[data-cp-answer]").click();
+    await expect(page.locator('.cp-needs [data-key="mt:lead|id-hub"] button:not(.mt-name)').first()).toBeFocused();
+    // Opening a lane: in place, others stay put; its steps with times, what review found and with what came of it,
+    // its files.
+    const order = () => page.locator(".crew-page .cp-lanes > .cp-lane").evaluateAll((els) => els.map((e) => e.dataset.key));
+    const before = await order(), handoff = page.locator('.cp-lane[data-key="cp:lead|id-handoff"]');
+    await handoff.locator("[data-cp-lane]").click();
+    await expect(handoff).toHaveClass(/open/);
+    expect(await order()).toEqual(before);
+    await expect(handoff.locator(".co-st").filter({ hasText: /^\d+:\d\dStarted: Carry the team over a handoff$/ })).toHaveCount(1);
+    await expect(handoff.locator(".co-st").filter({ hasText: "Reviewed: 1 should-fix, 1 note" })).toHaveCount(1);
+    await expect(handoff.locator(".co-fd")).toHaveCount(2);
+    await expect(handoff.locator(".co-fd").first().locator(".co-fs")).toHaveText("sent back");
+    await expect(handoff.locator(".co-fl")).toHaveCount(2);
+    await expect(handoff.locator("[data-cp-lane]")).toContainText("⌄");
+    await handoff.locator("[data-cp-lane]").click();
+    await expect(handoff.locator(".co-body")).toHaveCount(0);
+    expect(await page.locator(".crew-page .cp-lanes [title]").count(), "no hover text on the lanes").toBe(0);
+  });
+
+  test("a long reply in the lead's stream is cut at whole blocks, never through a table; Show all opens it", async ({ cue, page }) => {
+    const rowsMd = Array.from({ length: 12 }, (_, i) => `| part ${i} | done |`).join("\n");
+    await cue.change((st, rowsMd) => {
+      const lead = st.sessions.find((s) => s.session_id === "lead");
+      lead.thread.push({ role: "agent", text: `Where the crew is:\n\n| part | state |\n|---|---|\n${rowsMd}\n\nThat's all.`, at_ms: lead.thread.at(-1).at_ms + 500, images: [] });
+    }, rowsMd);
+    const reply = page.locator(".cp-items .cv-agent").filter({ hasText: "Where the crew is" });
+    await expect(reply.locator(".cv-text.cut")).toBeVisible();
+    await expect(reply.locator(".cv-text table"), "the table left out whole, not sliced").toHaveCount(0);
+    await expect(reply.locator(".cp-more")).toHaveText("Show all ›");
+    await reply.locator(".cp-more").click();
+    await expect(reply.locator(".cv-text tbody tr")).toHaveCount(12);
+    await expect(reply.locator(".cv-text")).toContainText("That's all.");
+    await expect(reply.locator(".cp-more")).toHaveText("Less ‹");
+  });
+
+  test("the lead's stream and Needs you get 45% of the page at least; what's above scrolls inside itself", async ({ page }) => {
+    const sizes = () => page.evaluate(() => {
+      const h = (sel) => document.querySelector(sel).getBoundingClientRect().height, u = document.querySelector(".cp-upper");
+      return { body: h(".cp-body"), split: h(".cp-split"), upper: u.scrollHeight > u.clientHeight + 1 };
+    });
+    for (const vp of [{ width: 1280, height: 800 }, { width: 1280, height: 1000 }, { width: 900, height: 600 }]) {
+      await page.setViewportSize(vp);
+      // Every lane open (the done ones too) so the top has more than its share.
+      if (!(await page.locator(".cp-done.open").count())) await page.locator(".cp-done .mt-done-line").click();
+      const z = await sizes();
+      expect(z.split, `${vp.width}×${vp.height}: the bottom's share`).toBeGreaterThanOrEqual(Math.min(0.45 * z.body, z.body) - 1);
+      expect(await page.evaluate(() => { const b = document.querySelector(".cp-body"); return b.scrollHeight - b.clientHeight; }), `${vp.width}×${vp.height}: the page itself doesn't scroll`).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("its lanes: what needs you first, then those at work, then the rest, each in the crew's order; a click moves none", async ({ cue, page }) => {
+    const order = () => page.locator(".crew-page .cp-lanes > .cp-lane").evaluateAll((els) => els.map((e) => e.dataset.key.split("|id-")[1]));
+    // hub asks you; rows works; skill done, handoff and docs reviewed, in the crew's order.
+    await expect.poll(order).toEqual(["hub", "rows", "skill", "handoff", "docs"]);
+    // The tab stays Board: the page opened from the board shows within it.
+    await expect(page.locator(".switch-view button.on")).toHaveText("Board");
+    // docs goes back to work: it joins those at work, after rows (the crew's order).
+    await cue.change((st) => { Object.assign(st.sessions.find((s) => s.session_id === "lead").team.find((t) => t.name === "docs"), { state: "working", step: "Editing docs" }); });
+    await expect.poll(order).toEqual(["hub", "rows", "docs", "skill", "handoff"]);
+    // handoff needs you: it joins hub at the top.
+    await cue.change((st) => { st.sessions.find((s) => s.session_id === "lead").team.find((t) => t.name === "handoff").needs = "commit"; });
+    await expect.poll(order).toEqual(["hub", "handoff", "rows", "docs", "skill"]);
+    // Opening a lane's menu, its review or its Diff moves nothing.
+    await page.locator('.cp-lane[data-key="cp:lead|id-skill"] [data-cp-lane]').click();
+    expect(await order()).toEqual(["hub", "handoff", "rows", "docs", "skill"]);
   });
 
   test("it closes when its lead goes away", async ({ cue, page }) => {

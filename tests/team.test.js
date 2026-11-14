@@ -26,9 +26,12 @@ const ctx = {
   ago: (ms) => `${Math.round((NOW - ms) / M)}m`,
   renderMain() {},
   toast() {},
+  hhmm: (ms) => `T${Math.round((NOW - ms) / M)}`,
+  addOn: {},
 };
 vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(__dirname + "/../ui/team.js", "utf8").replace(/^(const|let) /gm, "var "), ctx);
+vm.runInContext(fs.readFileSync(__dirname + "/../ui/team_page.js", "utf8").replace(/^(const|let) /gm, "var "), ctx);
 
 const mate = (name, state, o = {}) => ({ call: `call-${name}`, agent_id: `id-${name}`, name, state, started_ms: NOW - 9 * M, files: [], ...o });
 world.sessions.L = { session_id: "L", team: [
@@ -325,4 +328,71 @@ assert.doesNotMatch(folded, /data-mt-act|data-crew-open|Open ›/, "no buttons i
   assert.match(d, /<div class="mt-grp ">Ready<\/div>.*data-mt-agent="id-auth"[^>]*>Send fixes<.*Decided on its own · 4/s, "Ask me: Ready with its buttons, then the decisions");
   delete world.commit;
   delete world.sessions.H;
+}
+
+// ---- the crew's page: what a lane says a member does now, and its meter (team_page.js crewNow) ----
+{
+  world.sessions.N = { session_id: "N", team: [
+    mate("auth", "working", { step: "Running: npm run migrate", step_ms: NOW - 2 * M }),
+    mate("api", "working", { step: "Running: npm test -- keys", step_ms: NOW - 3 * M }),
+    mate("web", "working", { step: "Editing ui/keys/usage.tsx", step_ms: NOW - M }),
+    mate("docs", "working", { fix_rounds: 1, step: "Editing docs/limits.md", findings: ["1. docs/limits.md:12 — should-fix — Retry-After is in seconds, not ms", "2. docs/limits.md:30 — note — link the Keys page"] }),
+    mate("cli", "committed", { commit: "3f2a9c1e", recommendation: "commit", ended_ms: NOW - 6 * M }),
+    mate("hub", "reviewed", { findings: ["1. a.rs:1 — note — fine"], recommendation: "commit" }),
+    mate("quiet", "working", { step: "", step_ms: 0 }),
+    mate("gone", "done", { summary: "Wrote it; 3 tests pass" }),
+    mate("held", "done", { needs: "Its review didn't come back" }),
+  ], crew_log: [
+    { id: `d${NOW - 9 * M}-0`, at_ms: NOW - 6 * M, who: "cli", call: "call-cli", kind: "commit", what: "Reviewed: clean. Committed", head: "reviewed: clean", steps: ["committed `crew/cli`"] },
+    { id: `d${NOW - 5 * M}-0`, at_ms: NOW - 4 * M, who: "docs", call: "call-docs", kind: "fixes", what: "Reviewed: 1 should-fix, 1 note. Sent the fix back", head: "reviewed: 1 should-fix, 1 note", steps: ["sent back", "left the note as is"] },
+  ] };
+  world.items.push({ id: "q1", session_id: "N", kind: "permission", agent_id: "id-auth", cmd: "npm run migrate" });
+  ctx.verb = () => "wants to run";
+  const at = (n) => ctx.crewNow("N", world.sessions.N.team.find((t) => t.name === n));
+  const pick = (n) => { const x = at(n); return [x.now, x.sub, x.at, x.look, x.word]; };
+  assert.deepEqual(pick("auth"), ["Wants to run `npm run migrate`", "", 0, "need", "asked you"], "asks you: what it wants, red at its stage; no context the data doesn't have");
+  assert.equal(at("auth").ask, true);
+  world.sessions.N.team[0].step = "Running: npm test";
+  assert.equal(at("auth").sub, "Running `npm test`", "asks you while on another step: that step, in the same form as elsewhere");
+  world.sessions.N.team[0].step = "Running: npm run migrate";
+  assert.deepEqual(pick("api"), ["Running `npm test -- keys`", "on it since T3", 1, "now", "checking"], "a test run is checking");
+  assert.deepEqual(pick("web"), ["Editing `ui/keys/usage.tsx`", "on it since T1", 0, "now", "working"], "an edit is working");
+  const docs = at("docs");
+  assert.deepEqual([docs.now, docs.at, docs.word, docs.fix], ["Fixing what review found", 3, "fixing", ["should-fix", "docs/limits.md:12 — Retry-After is in seconds, not ms"]], "sent back: fixing its first should-fix");
+  assert.deepEqual(pick("cli"), ["Committed `crew/cli` 3f2a9c1", "review: clean · ended T6", 4, "done", "committed"], "committed: its branch from the log, its commit, when it ended");
+  assert.deepEqual(pick("hub"), ["Reviewed: 1 note", "waits for you", 2, "done", "reviewed"], "reviewed: what it found, who it waits on");
+  assert.deepEqual(pick("quiet"), ["Working", "", 0, "now", "working"], "no step yet: just working");
+  assert.deepEqual(pick("gone"), ["Done", "Wrote it; 3 tests pass", 0, "done", "done"], "done: its last words");
+  assert.deepEqual(pick("held"), ["Its review didn't come back", "", 0, "need", "needs you"], "needs you: what the hub says");
+  // The meter: stages before its own done, its own as it is.
+  assert.equal(ctx.crewMeter(docs), '<span class="cp-meter"><span class="cp-m" aria-hidden="true"><b class="done"></b><b class="done"></b><b class="done"></b><b class="now"></b><b class=""></b></span><span class="cp-ml">fixing</span></span>');
+  // Opened: its steps in time order (the log's first words at when noted, the last at when it last grew), the step
+  // it's on last; what review found with what came of it.
+  const t = world.sessions.N.team.find((m) => m.name === "docs");
+  assert.deepEqual(ctx.crewStepTimes("N", t).map(([a, x, on]) => [a && Math.round((NOW - a) / M), x, on]), [[9, "Started", false], [5, "Reviewed: 1 should-fix, 1 note", false], [0, "Sent back", false], [4, "Left the note as is", false], [0, "Editing `docs/limits.md`", true]]);
+  assert.match(ctx.crewFoundRows("N", t), /should-fix<\/span><span>docs\/limits\.md:12 — Retry-After[^<]*<\/span><span class="co-fs">sent back<\/span>.*note<\/span><span>docs\/limits\.md:30 — link the Keys page<\/span><span class="co-fs"><\/span>/s, "a should-fix sent back; a note only 'left as is' when the log says exactly that");
+  const lane = ctx.crewLane("N", t);
+  assert.doesNotMatch(lane, /title=/, "no hover text");
+  assert.match(lane, /data-cp-lane="N\|id-docs" aria-expanded="false">docs <span class="cp-car">›<\/span>/, "its name opens it in place");
+  world.items = world.items.filter((i) => i.id !== "q1");
+  delete world.sessions.N;
+}
+
+
+// ---- the crew's page: a long reply of the lead's cut at whole blocks (team_page.js crewCutReply) ----
+{
+  const cut = ctx.crewCutReply;
+  assert.deepEqual(cut("short\n\nreply"), { text: "short\n\nreply", cut: false }, "short: whole");
+  const table = "| a | b |\n|---|---|\n" + Array.from({ length: 9 }, (_, i) => `| r${i} | x |`).join("\n");
+  assert.deepEqual(cut(`Intro line.\n\n${table}\n\nAfter.`), { text: "Intro line.", cut: true }, "a table that doesn't fit isn't cut through: it's left out whole");
+  assert.deepEqual(cut(table), { text: table.split("\n").slice(0, 7).join("\n"), cut: true }, "a table alone too tall: its head and its first whole rows");
+  const code = "```js\n" + Array.from({ length: 10 }, (_, i) => `l${i}`).join("\n") + "\n```";
+  assert.deepEqual(cut(code), { text: "```js\nl0\nl1\nl2\nl3\nl4\n```", cut: true }, "code alone too tall: its first lines, its fences kept");
+  const list = Array.from({ length: 5 }, (_, i) => `- item ${i}\n  more ${i}`).join("\n");
+  assert.deepEqual(cut(list), { text: "- item 0\n  more 0\n- item 1\n  more 1\n- item 2\n  more 2", cut: true }, "a list by whole items");
+  const lines7 = Array.from({ length: 7 }, (_, i) => `l${i}`).join("\n");
+  assert.deepEqual(cut(`Run this:\n\`\`\`\n${lines7}\n\`\`\``), { text: "Run this:", cut: true }, "code under a text line isn't split: left out whole, fences and all");
+  assert.deepEqual(cut(`Where it is:\n${table}`), { text: "Where it is:", cut: true }, "a table under a text line isn't split either");
+  assert.deepEqual(cut("Run this:\n```\na\nb\n```\nthen\nmore\nand\nmore"), { text: "Run this:\n```\na\nb\n```\nthen\nmore\nand", cut: true }, "code that fits kept whole with the lines around it");
+  assert.deepEqual(cut("p1\n\np2\n\n```\na\nb\n```\n\np3\n\np4\n\np5"), { text: "p1\n\np2\n\n```\na\nb\n```\n\np3\n\np4", cut: true }, "blocks up to six lines' worth");
 }
