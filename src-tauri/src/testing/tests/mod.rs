@@ -11,6 +11,7 @@ mod db_open;
 mod handoffs;
 mod hosted;
 mod insights;
+mod kept_race;
 mod launching;
 mod machine_stream;
 mod machines;

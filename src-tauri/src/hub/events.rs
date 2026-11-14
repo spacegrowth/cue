@@ -23,10 +23,11 @@ impl Hub {
         if event != "active" && self.ended_just_now(&sid) {
             return;
         }
-        // Its turn is over: the message you kept for it (sent while it worked) goes now.
-        let held = event == "stopped" && self.read(|st| st.sessions.held(&sid).is_some());
         self.on_event(origin, event, message, turn, driven_by, from_you);
-        if held {
+        // Its turn is over: the message you kept for it (sent while it worked) goes now. Looked for once the stop
+        // is noted, not before: one kept while it was being handled (it still read as working) goes too, and one
+        // sent after that finds it at its prompt and isn't kept (send.rs `keep`).
+        if event == "stopped" && self.read(|st| st.sessions.held(&sid).is_some()) {
             self.send_held_soon(&sid, 0);
         }
     }
