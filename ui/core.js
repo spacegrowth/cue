@@ -10,6 +10,9 @@ let view = "board";         // the switch in the header: "board" | "read" | "ins
 const addOn = {
   /** Its views in the header's switch, after Board: { id, label() → the button's inside, html() → the view }. */
   views: [],
+  /** A session's name as shown (the add-on may tidy it), and a mark drawn before it wherever its name is shown. */
+  name: (sid, name) => name,
+  nameMark: (sid) => "",
   /** A line on a session's card, under its title. */
   cardLine: (sid) => "",
   /** Its rows in Waiting, among the newest, and how many there are. */
@@ -117,7 +120,7 @@ function usualAgent() {
 const oddAgent = (h) => h && h !== usualAgent() ? `<span class="badge h-${esc(h)}" role="img" aria-label="${esc(agentName(h))}">${agentLetter(h)}</span>` : "";
 const draft = (id) => (drafts[id] ||= { text: "", choices: {}, images: [] });
 /** A session's name. */
-const nameSpan = (sid, project, cls = "proj") => `<span class="${cls}">${esc(nameOf(sid, project))}</span>${hearing(sid)}`;
+const nameSpan = (sid, project, cls = "proj") => `${addOn.nameMark(sid)}<span class="${cls}">${esc(nameOf(sid, project))}</span>${hearing(sid)}`;
 /** Beside a session's name on any card while one of its replies is read out (Listen): a speaker, its waves
  *  moving while it reads, still while paused. */
 const hearing = (sid) => {
@@ -147,7 +150,7 @@ const machLead = (m) => m ? `<span class="mach lead">${esc(machName(m))}</span>`
 const recordOf = (sid) => sessionOf(sid) || parkedOf(sid) || closedOf(sid);
 /** A folder's last part ("…/cue-mini" → "cue-mini"). */
 const baseName = (p) => String(p || "").split("/").filter(Boolean).pop() || "";
-const nameOf = (sid, project) => String(recordOf(sid)?.name || "") || baseName(recordOf(sid)?.cwd) || project;
+const nameOf = (sid, project) => addOn.name(sid, String(recordOf(sid)?.name || "")) || baseName(recordOf(sid)?.cwd) || project;
 const findItem = (id) => state.items.find((i) => i.id === id) || fullItem(state.history.find((i) => i.id === id));
 /** History's rows come brief (hub/kept_history.rs: no conversation, the request cut to a line): a row opened
  *  asks Cue for its card in full, once, and is drawn again with it. Until then (and if it's gone) the row stands in.
