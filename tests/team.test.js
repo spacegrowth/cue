@@ -110,7 +110,7 @@ assert.match(ctx.crewTray("L"), /<div class="mt-ask"><body cargo test --features
 delete ctx.redirectFor;
 assert.doesNotMatch(g, /data-mt-act="stop"[^>]*data-mt-agent="id-hub"/, "an asking member's buttons are its ask's");
 // handoff: its review says commit but lists 2 findings: they go back first (nothing dropped), and its line says so.
-assert.match(g, /handoff<\/button><i>2 findings · fixes go back, round 1 of 2<\/i><\/div><div class="mt-btns"><button class="btn mt-b primary "[^>]*data-mt-act="fixes"[^>]*>Send fixes<\/button><\/div><ol class="mt-fx"><li><code>hub\/handoff.rs:40<\/code> the list is cut at 8 <em>should fix<\/em><\/li><li><code>ui\/core.js:212<\/code> commit after rows <em>note<\/em><\/li><\/ol>/, "one button that agrees with its line; the findings a plain numbered list");
+assert.match(g, /handoff<\/button><i>2 findings · fixes go back, round 1 of 1<\/i><\/div><div class="mt-btns"><button class="btn mt-b primary "[^>]*data-mt-act="fixes"[^>]*>Send fixes<\/button><\/div><ol class="mt-fx"><li><code>hub\/handoff.rs:40<\/code> the list is cut at 8 <em>should fix<\/em><\/li><li><code>ui\/core.js:212<\/code> commit after rows <em>note<\/em><\/li><\/ol>/, "one button that agrees with its line; the findings a plain numbered list");
 assert.doesNotMatch(g, /recommendation: commit/, "no line that disagrees with its button");
 assert.match(g, /rows<\/button><span class="mt-line">9m · Editing teamcard.js · 3 files so far \(1 via shell\)<\/span><button class="mt-lk "[^>]*data-mt-act="stop"[^>]*>Stop<\/button>/, "at work: one line, a plain Stop; a file read off its shell commands says so");
 assert.doesNotMatch(g, /data-mt-act="review"/, "finished: reviewed by itself, no Review button");
@@ -136,7 +136,7 @@ assert.doesNotMatch(g, /data-mt-act="review"/, "finished: reviewed by itself, no
   assert.match(r2, /handoff<\/button><i>2 findings · fixes go back, round 3<\/i>.*>Send fixes</s, "past Cue's own rounds: just the round");
   h.recommendation = "";
   h.fix_rounds = 0;
-  assert.match(ctx.crewTray("L"), /handoff<\/button><i>2 findings · fixes go back, round 1 of 2<\/i>.*>Send fixes</s, "said neither, with findings: they go back");
+  assert.match(ctx.crewTray("L"), /handoff<\/button><i>2 findings · fixes go back, round 1 of 1<\/i>.*>Send fixes</s, "said neither, with findings: they go back");
   h.findings = [];
   assert.match(ctx.crewTray("L"), /handoff<\/button><i>no verdict, nothing found · commits after rows does<\/i>.*>Commit</s, "said neither, nothing found: Commit");
   h.findings = findings;
@@ -239,7 +239,7 @@ assert.doesNotMatch(folded, /data-mt-act|data-crew-open|Open ›/, "no buttons i
   assert.match(d, /board<\/button>.*<div class="mt-l">Cue doesn't know which files it changed: Commit asks its lead to commit them<\/div>/s, "says why");
   assert.match(rowOf("mock"), /8m · Cue doesn't know which files it changed: Commit asks its lead to commit them<\/span><button class="mt-lk "[^>]*data-mt-act="commit"[^>]*>Commit</, "done, files unknown: folded, Commit, not Diff");
   assert.doesNotMatch(rowOf("mock"), /data-mt-act="diff"/);
-  assert.match(rowOf("fixer"), /<i>1 finding · fixes go back, round 1 of 2<\/i>.*data-mt-act="fixes"[^>]*>Send fixes</s, "its review asks for fixes: Send fixes, one button");
+  assert.match(rowOf("fixer"), /<i>1 finding · fixes go back, round 1 of 1<\/i>.*data-mt-act="fixes"[^>]*>Send fixes</s, "its review asks for fixes: Send fixes, one button");
   assert.doesNotMatch(rowOf("quiet"), /data-mt-act=/, "stopped having written nothing: no button (Cue clears it)");
   assert.match(d, /<div class="mt-grp red">Needs you<\/div><div class="mt-row"[^>]*><div class="mt-n">[^]*>lint<\/button><i>Its lead didn't say it committed it<\/i>/, "the hub's needs: under Needs you, what it needs");
   assert.match(d, /<span class="crew-need">· lint needs you<\/span> <span class="crew-mu">· 2 ready<\/span>/, "needs counts in needs you");

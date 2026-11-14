@@ -129,7 +129,7 @@ const verdictKind = (verdict) => /fix/.test(verdict || "") ? "fixes" : /^commit/
  *  Commit. The other is in its menu. */
 const mateReadyAct = (t) => mateRec(t) || ((t.findings || []).length ? "fixes" : "commit");
 /** Fix rounds Cue sends back by itself while it handles reviews (hub/team_review.rs AUTO_FIX_ROUNDS). */
-const AUTO_FIX_ROUNDS = 2;
+const AUTO_FIX_ROUNDS = 1;
 
 /** A finding as a list item (its number is the list's): where, its words, its kind after them. */
 function mateFinding(line) {

@@ -307,7 +307,7 @@ test.describe("a hosted lead's crew: the Crew switch, /crew, a task dropped on t
   test("rows agree with their buttons; done members fold into N done; a name opens its menu; no Set aside", async ({ cue, page }) => {
     const tray = page.locator(".crew-tray");
     const handoff = tray.locator(".mt-row", { hasText: "handoff" });
-    await expect(handoff.locator(".mt-n")).toHaveText("handoff2 findings · fixes go back, round 1 of 2");
+    await expect(handoff.locator(".mt-n")).toHaveText("handoff2 findings · fixes go back, round 1 of 1");
     await expect(handoff.locator("[data-mt-act]")).toHaveText(["Send fixes"]);
     await expect(handoff.locator(".mt-fx li")).toHaveCount(2);
     // docs's review says commit and lists only a note: a note needs no change, so Commit.

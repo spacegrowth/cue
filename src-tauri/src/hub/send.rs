@@ -10,13 +10,13 @@ use crate::clock::now_mono_ms as mono_ms;
 /// spinning on "Sending…" for good.
 const TURN_WAIT_MS: u64 = 45_000;
 
-/// This session's typing turn (see Hub::typing), or an error once the one before has held it for TURN_WAIT.
 /// A reply to a stale card waits for this session: working or compacting, and not one that takes a message
 /// mid-turn itself (Pi).
 fn reply_busy(st: &Store, sid: &str) -> bool {
     (st.sessions.state(sid).as_deref() == Some("working") || st.sessions.compacting_since(sid) > 0) && !st.subscribers.contains_key(sid)
 }
 
+/// This session's typing turn (see Hub::typing), or an error once the one before has held it for TURN_WAIT.
 fn wait_turn(gate: &Mutex<()>) -> Result<std::sync::MutexGuard<'_, ()>, String> {
     // A loop of its own rather than clock::within: the lock lint follows the gate out of a plain return.
     let until = mono_ms() + TURN_WAIT_MS;
