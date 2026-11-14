@@ -5,6 +5,7 @@
 use super::team::{first, free_branch, repos};
 use super::*;
 use super::team_review::{didnt_come_back, LeadTurn};
+use crate::sessions::crew_log::Decided;
 use crate::sessions::team::{read_committed, Teammate};
 
 /// How often finished crew members are looked at for work committed (or thrown away) outside Cue.
@@ -120,6 +121,10 @@ impl Hub {
                     None
                 };
                 let Some((state, sha, why)) = left else { continue };
+                if state == "aside" {
+                    let step = format!("set aside: {}", why.to_lowercase());
+                    self.write(|st| st.sessions.crew_decided(&origin.session_id, now_ms(), Decided::about(t, "aside", &step)));
+                }
                 self.write(|st| st.sessions.with_teammate(&origin.session_id, &t.call, |m| {
                     m.state = state.into();
                     m.commit = sha;

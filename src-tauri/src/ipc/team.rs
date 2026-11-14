@@ -43,3 +43,10 @@ pub(crate) async fn team_hand_out_preview(hub: State<'_, Arc<Hub>>, session_id: 
 pub(crate) async fn team_hand_out(hub: State<'_, Arc<Hub>>, session_id: String, text: String) -> Result<String, String> {
     with_hub(&hub, move |h| h.hand_out(&session_id, &text)).await?
 }
+
+/// Go back on this: one of the crew's decisions on its own (`crew_log`), the lead told to undo it (kept in Cue while
+/// it's busy). What Cue did; refused for one it doesn't know or one you went back on already.
+#[tauri::command]
+pub(crate) async fn crew_go_back(hub: State<'_, Arc<Hub>>, session_id: String, id: String) -> Result<String, String> {
+    with_hub(&hub, move |h| h.crew_go_back(&session_id, &id)).await?
+}

@@ -32,6 +32,25 @@ CueBridge.area("chat", (w) => {
       return `diff --git a/${p} b/${p}\nnew file mode 100644\n--- /dev/null\n+++ b/${p}\n@@ -0,0 +1,2 @@\n+# ${p.split("/").pop()}\n+${t?.name || agent} wrote this\n`;
     }).join("");
   };
+  /** A crew lead's job and what it decided on its own (hub: crew_job, crew_log), for a scenario whose lead has a crew
+   *  but none yet (world-team, built before the hub kept them): the lead split the work, Cue reviewed and handled
+   *  docs and handoff, held rows behind handoff, left spike out. Once, the first time the state is read. */
+  const crewLog = (s, at) => [
+    { id: `d${at - 40 * 60000}-0`, at_ms: at - 40 * 60000, who: "lead", kind: "split", what: "Split the job into 5: hub, rows, skill, handoff, spike", why: "", one_way: false, sha: "", back: "" },
+    { id: `d${at - 18 * 60000}-0`, at_ms: at - 18 * 60000, who: "spike", kind: "aside", what: "Left out of the work: tried it, not worth it", why: "", one_way: false, sha: "", back: "" },
+    { id: `d${at - 9 * 60000}-0`, at_ms: at - 9 * 60000, who: "rows", kind: "hold", what: "Held until handoff lands", why: "both change `ui/core.js`", one_way: false, sha: "", back: "" },
+    { id: `d${at - 4 * 60000}-0`, at_ms: at - 4 * 60000, who: "handoff", kind: "fixes", what: "Reviewed: 1 should-fix, 1 note. Sent the fix back", why: "", one_way: false, sha: "", back: "" },
+    { id: `d${at - 60000}-0`, at_ms: at - 60000, who: "docs", kind: "commit", what: "Reviewed: 1 note, left as is. Committed to `crew/docs`", why: "", one_way: false, sha: "3f2a1c9", back: "" },
+  ].filter((d) => d.who === "lead" || s.team.some((t) => t.name === d.who));
+  const crewFill = () => {
+    for (const s of w.state?.sessions || []) {
+      if (!s.team?.length || s.crew_log !== undefined) continue;
+      s.crew_job ||= String(s.prompt || "").split("\n")[0].trim().slice(0, 140);
+      s.crew_log = crewLog(s, w.state.now_ms || w.now());
+    }
+  };
+  const plainSnapshot = w.snapshot;
+  w.snapshot = () => { crewFill(); return plainSnapshot(); };
   const menu = () => w.q.get("ins") === "cue" ? [compact]
     : w.q.get("ins") === "1" ? [compact, skill("relay:handoff", "Hand this lead off to a fresh successor: it writes its notes and opens the next one")]
     : fullMenu;
@@ -82,6 +101,15 @@ CueBridge.area("chat", (w) => {
     team_mode: () => null,
     crew_commit: () => null,
     crew_review: () => null,
+    // Go back on a crew decision (ipc/team.rs crew_go_back): the lead is told, the entry marked asked; once only.
+    crew_go_back: ({ sessionId, id }) => {
+      const d = (w.session(sessionId)?.crew_log || []).find((x) => x.id === id);
+      if (!d) return Promise.reject("No such decision");
+      if (d.back === "asked") return Promise.reject("Already asked");
+      d.back = "asked";
+      w.changed();
+      return d.one_way ? `Asked the lead to make a revert: ${d.who}` : `Asked the lead to go back on it: ${d.who}`;
+    },
     team_hand_out_preview: ({ text }) => {
       const files = [...new Set(String(text).match(/[\w./-]+\.[a-z]{1,6}\b/g) || [])].map((path) => ({ path, by: ["ui/team.js", "ui/core.js"].includes(path) ? "rows is changing it" : "" }));
       return { lead: "cue", files, overlap: files.some((f) => f.by) };

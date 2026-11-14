@@ -21,6 +21,9 @@ const ctx = {
   decisionButtons: (it) => `<buttons ${it.id}>`,
   md: (s) => s,
   crewMode: () => "",
+  // Ask me (every review waits under Ready) unless a test says Handle it.
+  crewCommit: () => world.commit || "wait",
+  ago: (ms) => `${Math.round((NOW - ms) / M)}m`,
   renderMain() {},
   toast() {},
 };
@@ -90,7 +93,7 @@ assert.equal(ctx.crewTray("nobody"), "", "no crew, no tray");
 // ---- open: the groups ----
 ctx.mateOpenLeads.add("L");
 const g = ctx.crewTray("L");
-assert.match(g, /<div class="crew-body" data-scroll-key="crew:L"><div class="mt-grp red">Needs you<\/div>.*<div class="mt-grp ">Ready<\/div>.*<div class="mt-grp ">Working<\/div>.*<div class="mt-done " data-mt-for="done:L"><button class="mt-lk mt-done-line" data-mt-done="L" aria-expanded="false">2 done ›<\/button><\/div>/s, "Needs you, Ready, Working, then the finished ones (done, and committed in the last hour: not old) folded into N done ›");
+assert.match(g, /<div class="crew-body" data-scroll-key="crew:L"><div class="crew-goal">.*<div class="mt-grp red">Needs you · 1<\/div>.*<div class="mt-grp ">Ready<\/div>.*<div class="mt-grp ">Working<\/div>.*<div class="mt-done " data-mt-for="done:L"><button class="mt-lk mt-done-line" data-mt-done="L" aria-expanded="false">2 done ›<\/button><\/div>/s, "Needs you, Ready, Working, then the finished ones (done, and committed in the last hour: not old) folded into N done ›");
 assert.doesNotMatch(g, /title="/, "no hover text");
 assert.doesNotMatch(g, /Set aside|data-mt-act="aside"/, "no Set aside: Cue clears members by itself");
 assert.doesNotMatch(g, /<svg|stx-ic|⋯|rv-more/, "no person icons, no ⋯");
@@ -241,7 +244,7 @@ assert.doesNotMatch(folded, /data-mt-act|data-crew-open|Open ›/, "no buttons i
   assert.doesNotMatch(rowOf("mock"), /data-mt-act="diff"/);
   assert.match(rowOf("fixer"), /<i>1 finding · fixes go back, round 1 of 1<\/i>.*data-mt-act="fixes"[^>]*>Send fixes</s, "its review asks for fixes: Send fixes, one button");
   assert.doesNotMatch(rowOf("quiet"), /data-mt-act=/, "stopped having written nothing: no button (Cue clears it)");
-  assert.match(d, /<div class="mt-grp red">Needs you<\/div><div class="mt-row"[^>]*><div class="mt-n">[^]*>lint<\/button><i>Its lead didn't say it committed it<\/i>/, "the hub's needs: under Needs you, what it needs");
+  assert.match(d, /<div class="mt-grp red">Needs you · 1<\/div><div class="mt-row"[^>]*><div class="mt-n">[^]*>lint<\/button><i>Its lead didn't say it committed it<\/i>/, "the hub's needs: under Needs you, what it needs");
   assert.match(d, /<span class="crew-need">· lint needs you<\/span> <span class="crew-mu">· 2 ready<\/span>/, "needs counts in needs you");
   assert.doesNotMatch(d, /aside/i, "no Set aside anywhere");
   delete world.sessions.U;
@@ -285,4 +288,41 @@ assert.doesNotMatch(folded, /data-mt-act|data-crew-open|Open ›/, "no buttons i
   assert.equal(ctx.crewWaitLine("K"), "", "neither at work nor waiting on you: no 'Crew working', no 'Waiting on you'");
   assert.deepEqual(ctx.mateWaits("K").map((t) => t.name), []);
   delete world.sessions.K;
+}
+
+// ---- Handle it, the goal and the decisions Cue made on its own (crewGoalHtml, crewLogHtml) ----
+{
+  world.commit = "auto";
+  world.sessions.H = { session_id: "H", project: "api", crew_job: "Rate limits on the public API, per key", team: [
+    mate("auth", "reviewed", { recommendation: "send fixes", findings: ["1. a.rs:1 — should-fix — x"], files: ["a.rs"] }),
+    mate("docs", "reviewed", { recommendation: "commit", files: ["d.md"], review: "1. d.md:1 — note — fine\nRecommendation: commit" }),
+    mate("keys", "reviewed", { recommendation: "send fixes", findings: ["1. k.rs:1 — should-fix — y"], fix_rounds: 1, files: ["k.rs"] }),
+  ], crew_log: [
+    { id: "d1-0", at_ms: NOW - 40 * M, who: "lead", kind: "split", what: "Split the job into 3: auth, docs, keys", why: "", one_way: false, sha: "", back: "" },
+    { id: "d2-0", at_ms: NOW - 4 * M, who: "docs", kind: "commit", what: "Reviewed: 1 note, left as is. Committed to `crew/docs`", why: "", one_way: false, sha: "3f2a1c", back: "" },
+    { id: "d3-0", at_ms: NOW - M, who: "lead", kind: "merge", what: "Merged auth into main", why: "you said yes", one_way: true, sha: "", back: "" },
+    { id: "d4-0", at_ms: NOW - 2 * M, who: "keys", kind: "hold", what: "Held until auth lands", why: "", one_way: false, sha: "", back: "asked" },
+  ] };
+  ctx.mateOpenLeads.add("H");
+  let d = ctx.crewTray("H");
+  assert.match(d, /<div class="crew-goal"><div class="cg-box"><div class="cg-l">The job<\/div><div class="cg-t">Rate limits on the public API, per key<\/div>.*May do alone<\/div><div class="cg-t">Review, send fixes, commit to crew\/ branches<\/div>/s, "the goal on top: the job, and what Cue may do alone");
+  assert.doesNotMatch(d, /data-mt-act="fixes" data-mt-sid="H" data-mt-agent="id-auth"|data-mt-act="commit" data-mt-sid="H" data-mt-agent="id-docs"/, "Handle it: no Send fixes or Commit for the ones Cue handles");
+  assert.match(d, /Needs you · 1<\/div>.*>keys<\/button><i>1 finding · fixes go back, round 2<\/i>.*>Send fixes</s, "out of fix rounds: it needs you, with its button");
+  assert.match(d, />auth<\/button><span class="mt-line">9m · reviewed · Cue sends its fixes back<\/span>/, "Cue handles auth: one line");
+  assert.deepEqual(ctx.mateWaits("H").map((t) => t.name), ["keys"], "only keys waits on you");
+  assert.match(d, /Decided on its own · 4<\/div><div class="cd-row[^"]*"[^>]*><b class="cd-who">lead<\/b><span class="cd-what">Merged auth into main <span class="cd-why">· you said yes<\/span><\/span><span class="cd-at">1m<\/span><span class="cd-one">one-way ·<\/span><button class="mt-lk" data-act="crew-back" data-sid="H" data-id="d3-0">Make a revert<\/button>/, "newest first; one-way offers a revert");
+  assert.match(d, /Committed to <code>crew\/docs<\/code><\/span><span class="cd-at">4m<\/span><button class="mt-lk" data-act="crew-back" data-sid="H" data-id="d2-0">Go back on this<\/button>/, "code in backticks; Go back on this");
+  assert.match(d, /Held until auth lands<\/span><span class="cd-at">2m<\/span><span class="cd-going">going back…<\/span>/, "asked: going back…");
+  assert.doesNotMatch(d, /data-crew-log="H\|d1-0"/, "the lead's line has no member to open");
+  ctx.crewLogOpen.add("H|d2-0");
+  d = ctx.crewTray("H");
+  assert.match(d, /data-crew-log="H\|d2-0" aria-expanded="true">.*<div class="mt-under cd-under" data-mt-for="log:H\|d2-0"><div class="mt-review msg">1\. d\.md:1[^]*Committed <code>3f2a1c<\/code> · 1 file<\/span><button class="mt-lk "[^>]*data-mt-act="diff"/s, "opened: its review, its commit and Diff");
+  ctx.crewBackAsked.add("H|d2-0");
+  assert.match(ctx.crewTray("H"), /crew\/docs<\/code><\/span><span class="cd-at">4m<\/span><span class="cd-going">going back…/, "just clicked: going back… at once");
+  world.commit = "wait";
+  d = ctx.crewTray("H");
+  assert.match(d, /May do alone<\/div><div class="cg-t">Nothing: it asks you first/, "Ask me: it does nothing alone");
+  assert.match(d, /<div class="mt-grp ">Ready<\/div>.*data-mt-agent="id-auth"[^>]*>Send fixes<.*Decided on its own · 4/s, "Ask me: Ready with its buttons, then the decisions");
+  delete world.commit;
+  delete world.sessions.H;
 }

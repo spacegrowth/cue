@@ -14,12 +14,12 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 
 | What | Count |
 |---|---|
-| `#[tauri::command]` | 163 (3 sync) |
+| `#[tauri::command]` | 164 (3 sync) |
 | Lock declarations (static or field) | 111 |
 | Lock acquisitions | 264 |
 | Lock-graph edges | 51 |
 | Spawn sites | 91 |
-| External calls: fs / db / process / notify / login / socket | 362 / 142 / 48 / 4 / 1 / 4 |
+| External calls: fs / db / process / notify / login / socket | 363 / 142 / 48 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -167,6 +167,7 @@ Sync commands run on the main thread. "Hands work to": the threads or pools its 
 | `crew_review` | async | `ipc/team.rs::crew_review` | ipc::with_hub |
 | `team_hand_out_preview` | async | `ipc/team.rs::team_hand_out_preview` | ipc::with_hub |
 | `team_hand_out` | async | `ipc/team.rs::team_hand_out` | ipc::with_hub |
+| `crew_go_back` | async | `ipc/team.rs::crew_go_back` | ipc::with_hub |
 | `dictate_start` | async | `ipc/terminal.rs::dictate_start` | ipc::blocking |
 | `dictate_stop` | async | `ipc/terminal.rs::dictate_stop` | ipc::blocking |
 | `speak_send` | async | `ipc/terminal.rs::speak_send` | ipc::blocking |
@@ -470,7 +471,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (362)
+### fs (363)
 
 | In | Call | Times |
 |---|---|---|
@@ -571,6 +572,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hub/ports.rs::hosts` | Path::is_file | 1 |
 | `hub/team.rs::remove_file` | remove_file | 1 |
 | `hub/team.rs::repo_top` | Path::is_dir | 1 |
+| `hub/team.rs::worktree_gone` | Path::is_dir | 1 |
 | `ipc/chat.rs::codex_log` | Path::is_file | 1 |
 | `ipc/chat.rs::codex_log` | read_dir | 4 |
 | `ipc/chat.rs::mcp_apply_clear_for` | read | 1 |

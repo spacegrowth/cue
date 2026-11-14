@@ -66,8 +66,9 @@ const SCREENS = {
   "team-dark": { scenario: "world-team", setup: async (p) => { await p.emulateMedia({ colorScheme: "dark" }); await openTeam(p); }, done: (p) => p.locator('.mt-row.need [data-act="allow"]').waitFor() },
   "team-open": {
     scenario: "world-team",
-    setup: async (p) => { await openTeam(p); await p.locator('.mt-row.need [data-act="allow"]').click(); await showTeam(p); await p.locator(".mt-done-line").click(); },
-    done: async (p) => { await p.locator(".mt-done.open .mt-one").first().waitFor(); await expect(p.locator(".mt-row.need")).toHaveCount(0); },
+    setup: async (p) => { await openTeam(p); await p.locator('.mt-row.need [data-act="allow"]').click(); await expect(p.locator(".mt-row.need"), "answered: the tray drawn without it before N done opens (it scrolls the tray)").toHaveCount(0); await showTeam(p); await p.locator(".mt-done-line").click(); },
+    // The finished ones at the tray's end, scrolled into it (a late redraw can land after the unfold's own scroll).
+    done: async (p) => { await p.locator(".mt-done.open .mt-one").first().waitFor(); await expect(p.locator(".mt-row.need")).toHaveCount(0); await p.locator(".crew-body").evaluate((el) => { el.scrollTop = el.scrollHeight; }); },
   },
   "team-review": {
     scenario: "world-team",
@@ -95,8 +96,9 @@ const SCREENS = {
   },
   "team-commit-main": {
     scenario: "world-team",
-    // docs's review says commit with only a note (no change needed), so its row offers Commit.
-    setup: async (p) => { await openTeam(p); await p.locator('.mt-row [data-mt-act="commit"][data-mt-agent="id-docs"]').click(); },
+    // docs's review says commit with only a note (no change needed), so its row offers Commit: on Ask me (on Handle it
+    // Cue commits it itself).
+    setup: async (p) => { await p.evaluate(() => { CueBridge.world.session("lead").crew_commit = "wait"; CueBridge.world.changed(0); }); await openTeam(p);await p.locator('.mt-row [data-mt-act="commit"][data-mt-agent="id-docs"]').click(); },
     done: async (p) => { await p.locator(".mt-note", { hasText: "is on main" }).waitFor(); await p.locator('.mt-note [data-mt-act="branch"]').waitFor(); },
   },
   // How work goes out to the crew (ui/team_send.js). team-switch: the mode menu open from the tray's line, split on Always.
@@ -118,6 +120,7 @@ const SCREENS = {
     setup: async (p) => {
       await openCard(p, TEAM_ASK);
       await p.locator('.mt-row.need [data-act="allow"]').click();
+      await expect(p.locator(".mt-row.need"), "answered: drawn before the tray is scrolled").toHaveCount(0);
       await showTeam(p);
       await p.evaluate((ago) => {
         const st = CueBridge.world.state, lead = st.sessions.find((s) => s.session_id === "lead"), at = (n) => lead.team.find((t) => t.name === n);
@@ -126,7 +129,8 @@ const SCREENS = {
         CueBridge.emit("state", CueBridge.world.snapshot());
       }, 20 * 60_000);
     },
-    done: (p) => p.locator(".mt-line", { hasText: "looks stuck" }).waitFor(),
+    // The goal and the decisions above them: the members' lines scrolled into the tray.
+    done: async (p) => { await p.locator(".mt-line", { hasText: "looks stuck" }).waitFor(); await p.locator(".crew-body").evaluate((el) => { el.scrollTop = el.scrollHeight; }); },
   },
   // team-waits: what Cue sends the lead once it's free, on the members' rows (never in the chat): skill's review waits
   // (Skip), docs's commit ask waits (Cue commits it through its lead: files Cue never saw).
@@ -135,6 +139,7 @@ const SCREENS = {
     setup: async (p) => {
       await openCard(p, TEAM_ASK);
       await p.locator('.mt-row.need [data-act="allow"]').click();
+      await expect(p.locator(".mt-row.need"), "answered: drawn before the tray is scrolled").toHaveCount(0);
       await showTeam(p);
       await p.evaluate(() => {
         const st = CueBridge.world.state, lead = st.sessions.find((s) => s.session_id === "lead"), at = (n) => lead.team.find((t) => t.name === n);
@@ -144,7 +149,8 @@ const SCREENS = {
         CueBridge.emit("state", CueBridge.world.snapshot());
       });
     },
-    done: async (p) => { await p.locator(".mt-line", { hasText: "review waits for the lead" }).waitFor(); await p.locator(".mt-line", { hasText: "Cue asks its lead to commit it" }).waitFor(); },
+    // The goal and the decisions above them: the members' lines scrolled into the tray.
+    done: async (p) => { await p.locator(".mt-line", { hasText: "review waits for the lead" }).waitFor(); await p.locator(".mt-line", { hasText: "Cue asks its lead to commit it" }).waitFor(); await p.locator(".crew-body").evaluate((el) => { el.scrollTop = el.scrollHeight; }); },
   },
   "agents-quiet": {
     scenario: "board-waiting",

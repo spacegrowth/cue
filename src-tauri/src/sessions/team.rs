@@ -524,7 +524,14 @@ impl Sessions {
     pub fn team_sees(&mut self, sid: &str, e: &HostedEvent, now: u64) -> bool {
         let Some(s) = self.0.get_mut(sid) else { return false };
         let cwd = s.origin.cwd.clone();
-        sees(&mut s.team, &cwd, e, now)
+        let before: Vec<bool> = s.team.iter().map(Teammate::in_team).collect();
+        let working: Vec<String> = s.team.iter().filter(|t| t.working()).map(|t| t.call.clone()).collect();
+        if !sees(&mut s.team, &cwd, e, now) {
+            return false;
+        }
+        self.crew_joined(sid, &before, now);
+        self.crew_fixed(sid, &working, now);
+        true
     }
 
     /// Tests: `t` joins `sid`'s team as it is.

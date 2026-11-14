@@ -3,9 +3,11 @@
 //! and what Cue does next by itself (commit a clean one, send findings back, or leave it to you). A member whose
 //! review never comes stops waiting, so none stays "under review" (counted at work) for good.
 
-use super::team::{changes, first, KEY};
+use super::team::{changes, first, worktree_gone, KEY};
 use super::team_tidy::commit_reply;
 use super::*;
+use super::crew_log::review_decided;
+use crate::sessions::crew_log::Decided;
 use crate::sessions::team::{fix_findings, read_review, review_ask_name, Teammate};
 
 /// How many times Cue sends a teammate its findings by itself before the next review waits for you.
@@ -188,6 +190,25 @@ pub(super) fn in_repo(c: &super::team::Changes) -> Option<bool> {
     Some(!c.files().is_empty())
 }
 
+/// Whether git shows member `t` (of a lead in `cwd`, on `machine`) changed files in a git repository, None when git
+/// couldn't say. A worktree of its own not where Cue guessed it (sessions/team.rs): Claude Code removes one its agent
+/// changed nothing in, so with no edits made in it, nothing there counts, only its files outside it. Edits made in it
+/// (relative paths) mean it lives elsewhere (a lead in a repo's subfolder, another layout): git can't say, reviewed.
+/// Only asked of this Mac: a machine's folders are never looked up here.
+fn looked(machine: &str, cwd: &str, t: &Teammate) -> Option<bool> {
+    if worktree_gone(machine, t) {
+        if t.files.iter().any(|f| !f.starts_with('/')) {
+            return None;
+        }
+        if t.files.is_empty() {
+            return Some(false);
+        }
+        let rest = Teammate { worktree: String::new(), ..t.clone() };
+        return changes(machine, cwd, &rest).ok().as_ref().and_then(in_repo);
+    }
+    changes(machine, cwd, t).ok().as_ref().and_then(in_repo)
+}
+
 impl Hub {
     /// The lead's turn ended: its reviews filed to their members (`file_turn`); `Committed <name>:` lines settle the
     /// members they name (`commit_reply`); and a member whose review ask this turn took, with neither its review nor
@@ -207,7 +228,9 @@ impl Hub {
             match next {
                 AutoNext::Commit => self.later(0, move |h| h.commit_when_clean(&lead, &call)),
                 AutoNext::Fixes => self.later(0, move |h| {
-                    if let Err(e) = h.team_action(&lead, &call, "fixes") {
+                    let r = h.team_action(&lead, &call, "fixes");
+                    h.crew_fixes_noted(&lead, &call, &r);
+                    if let Err(e) = r {
                         h.set_teammate(&lead, &call, |m| m.step = format!("Fixes not sent by themselves: {e}"));
                     }
                 }),
@@ -220,7 +243,7 @@ impl Hub {
     /// Git is asked only for "only code in a repo" (the default).
     fn why_no_review(&self, lead: &str, origin: &Origin, t: &Teammate) -> Option<&'static str> {
         let setting = self.read(|st| st.sessions.crew_review(lead));
-        no_review(&setting, || changes(&origin.machine, &origin.cwd, t).ok().as_ref().and_then(in_repo))
+        no_review(&setting, || looked(&origin.machine, &origin.cwd, t))
     }
 
     /// A crew member that just finished, reviewed by itself through its lead's review queue: only one that finished its
@@ -254,8 +277,12 @@ impl Hub {
         if t.state != "reviewed" {
             return;
         }
-        if let Err(e) = self.commit_teammate(lead, &origin, &t, true) {
-            self.set_teammate(lead, call, |m| m.step = format!("Not committed by itself: {e}"));
+        match self.commit_teammate(lead, &origin, &t, true) {
+            Ok(said) => self.crew_committed(lead, &t, &said, false),
+            Err(e) => {
+                self.set_teammate(lead, call, |m| m.step = format!("Not committed by itself: {e}"));
+                self.crew_held(lead, &t, &e);
+            }
         }
     }
 
@@ -297,7 +324,14 @@ fn review_words(name: &str, worktree: &str, what: &str, files: &[String]) -> Str
 /// Review `text` filed to member `t` (reviewed), and what Cue does next with it.
 fn file(st: &mut Store, lead: &str, t: &Teammate, text: &str) -> AutoNext {
     let (findings, recommendation) = read_review(text);
-    let next = auto_next(&st.sessions.crew_commit(lead), &recommendation, &findings, t.fix_rounds);
+    let crew_commit = st.sessions.crew_commit(lead);
+    let next = auto_next(&crew_commit, &recommendation, &findings, t.fix_rounds);
+    let now = now_ms();
+    st.sessions.crew_decided(lead, now, review_decided(t, &findings, &recommendation, next == AutoNext::Commit));
+    if next == AutoNext::Ask {
+        let why = ask_why(&crew_commit, &recommendation, &findings);
+        st.sessions.crew_decided(lead, now, Decided { why, ..Decided::about(t, "review", "waits for you") });
+    }
     st.sessions.with_teammate(lead, &t.call, |m| {
         m.state = "reviewed".into();
         m.findings = findings;
@@ -305,6 +339,20 @@ fn file(st: &mut Store, lead: &str, t: &Teammate, text: &str) -> AutoNext {
         m.review = text.to_string();
     });
     next
+}
+
+/// Why a review Cue didn't act on by itself waits for you, under the lead's `crew_commit` setting.
+fn ask_why(crew_commit: &str, recommendation: &str, findings: &[String]) -> String {
+    let why = if crew_commit == "wait" {
+        "Ask me is on: every review waits for you"
+    } else if recommendation.contains("fix") && findings.is_empty() {
+        "It asks for fixes but lists none"
+    } else if recommendation.contains("fix") || fix_findings(findings) > 0 {
+        "Its round of fixes went back already"
+    } else {
+        "The review didn't say commit or send fixes"
+    };
+    why.to_string()
 }
 
 /// Why a finished member isn't reviewed by itself under the Review `setting` ("always", "never", else only code in a

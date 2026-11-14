@@ -12,6 +12,7 @@ use tokio::sync::oneshot;
 mod activity;
 mod asks;
 mod cache_tick;
+mod crew_log;
 mod events;
 mod hand_off;
 mod history;

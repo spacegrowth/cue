@@ -36,7 +36,15 @@ const mateOnLead = (t) => mateLeadCommits(t) || mateFixesKept(t);
 /** The teammates of a lead that wait on you: ready (reviewed, its verdict waiting for your Commit or Send fixes), or
  *  asking or needing you. One whose files Cue never saw doesn't: Cue handles it (its review runs, then Handle it asks
  *  its lead to commit). */
-const mateWaits = (sid) => mateList(sid).filter((t) => (t.state === "reviewed" && !mateOnLead(t)) || mateNeeds(sid, t));
+const mateWaits = (sid) => mateList(sid).filter((t) => (t.state === "reviewed" && !mateOnLead(t) && !mateCueHandles(sid, t)) || mateNeeds(sid, t));
+/** Handle it (team_send.js crewCommit): a reviewed member Cue settles by itself, its fixes sent back (while a round is
+ *  left) or its clean work committed to its crew/ branch. Not one whose last button didn't go through (its reason
+ *  waits for you), nor one out of fix rounds: those wait on you with their buttons. */
+function mateCueHandles(sid, t) {
+  if (t.state !== "reviewed" || mateOnLead(t) || mateNeeds(sid, t) || mateNotes.has(mateKey(sid, t))) return false;
+  if ((typeof crewCommit === "function" ? crewCommit(sid) : "auto") === "wait") return false;
+  return mateReadyAct(t) !== "fixes" || (t.fix_rounds || 0) < AUTO_FIX_ROUNDS;
+}
 /** Per lead, what was already seen waiting on you ("sid|agent", and each ask by its id): a new one opens the tray
  *  once; closed after that, it stays closed until another starts waiting. */
 // SHORTCUT: noticed while the tray is drawn (crewTray), not when the state arrives: fine while every draw of a lead's
@@ -198,7 +206,9 @@ function mateOneAct(sid, t, look = "link") {
   }
 }
 /** Working (or its review running), or finished: one line, its name, how long and what it's on, one plain action. */
-const mateOneRow = (sid, t) => `<div class="mt-one" data-key="mt:${esc(mateKey(sid, t))}">${mateName(sid, t)}<span class="mt-line">${mateLine(t)}</span>${mateOneAct(sid, t)}</div>${mateUnderHtml(sid, t)}`;
+const mateOneRow = (sid, t, line = mateLine(t)) => `<div class="mt-one" data-key="mt:${esc(mateKey(sid, t))}">${mateName(sid, t)}<span class="mt-line">${line}</span>${mateOneAct(sid, t)}</div>${mateUnderHtml(sid, t)}`;
+/** A reviewed member Cue handles: one line, what Cue does with it next. */
+const mateCueRow = (sid, t) => mateOneRow(sid, t, esc(`${mateSpan(t)} · reviewed · ${mateReadyAct(t) === "fixes" ? "Cue sends its fixes back" : "Cue commits it to its branch"}`));
 
 /** Which group a member's row is in: "need", "ready" (its review back, or done with files Cue never saw while you
  *  handle reviews, so only your Commit settles it), "lead" (waiting on the lead: its review queued or under way, or
@@ -206,6 +216,7 @@ const mateOneRow = (sid, t) => `<div class="mt-one" data-key="mt:${esc(mateKey(s
  *  itself), "done". */
 function mateGroup(sid, t) {
   if (mateNeeds(sid, t)) return "need";
+  if (mateCueHandles(sid, t)) return "cue";
   if (t.state === "working") return "working";
   if (["queued", "reviewing"].includes(t.state) || mateOnLead(t)) return "lead";
   if (t.state === "reviewed") return "ready";
@@ -244,7 +255,7 @@ function crewWords(sid, groups) {
   const need = groups.need, n = need.length;
   const needs = n === 1 ? `${esc(need[0].name)} needs you` : n ? `${n} need you` : "";
   const count = (k, words) => groups[k].length ? `${groups[k].length} ${words}` : "";
-  const rest = [count("ready", "ready"), count("working", "working"), count("lead", "waiting on the lead")].filter(Boolean);
+  const rest = [count("ready", "ready"), count("cue", "reviewed"), count("working", "working"), count("lead", "waiting on the lead")].filter(Boolean);
   const live = mateList(sid).some((t) => t.state === "working");
   return `<span class="${live ? "dot-live" : "crew-dot"}"></span><span class="crew-w">Cue Crew · ${mateList(sid).length}${needs ? ` <span class="crew-need">· ${needs}</span>` : ""}${rest.length ? ` <span class="crew-mu">· ${rest.join(" · ")}</span>` : ""}</span>`;
 }
@@ -257,18 +268,71 @@ function crewTray(sid) {
   if (!list.length) return "";
   mateOpenOnWait(sid);
   const open = mateOpenLeads.has(sid);
-  const groups = { need: [], ready: [], lead: [], working: [], done: [] };
+  const groups = { need: [], ready: [], cue: [], lead: [], working: [], done: [] };
   for (const t of list) groups[mateGroup(sid, t)].push(t);
   const head = `<div class="crew-head" data-mt-open="${esc(sid)}" role="button" aria-expanded="${open}">${crewWords(sid, groups)}<span class="grow"></span>${crewMode(sid)}<button class="crew-car" data-mt-open="${esc(sid)}" aria-label="${open ? "Close the crew" : "Open the crew"}">${open ? "▾" : "▴"}</button></div>`;
   if (!open) return `<div class="crew-tray" data-key="crew-tray" data-crew-tray="${esc(sid)}">${head}</div>`;
   const grp = (label, rows, cls = "") => rows ? `<div class="mt-grp ${cls}">${label}</div>${rows}` : "";
-  const body = grp("Needs you", groups.need.map((t) => mateNeedRow(sid, t)).join(""), "red")
-    + grp("Ready", groups.ready.map((t) => mateReadyRow(sid, t)).join(""))
+  // Handle it: a reviewed member left to you (out of fix rounds, or its button refused) is among Needs you, its
+  // buttons on its row; Ask me: every review waits under Ready, as before.
+  const handles = (typeof crewCommit === "function" ? crewCommit(sid) : "auto") !== "wait";
+  const needs = handles ? groups.need.concat(groups.ready) : groups.need, ready = handles ? [] : groups.ready;
+  const needRows = needs.map((t) => mateNeeds(sid, t) ? mateNeedRow(sid, t) : mateReadyRow(sid, t)).join("");
+  const body = crewGoalHtml(sid, handles)
+    + (needRows ? grp(`Needs you · ${needs.length}`, needRows, "red") : `<div class="mt-grp">Needs you · nothing now</div><div class="crew-none">It asks here before anything one-way: merging to main, a new dependency, a choice only you can make.</div>`)
+    + grp("Ready", ready.map((t) => mateReadyRow(sid, t)).join(""))
+    + crewLogHtml(sid)
     + grp("Waiting on the lead", groups.lead.map((t) => mateOneRow(sid, t)).join(""))
-    + grp("Working", groups.working.map((t) => mateOneRow(sid, t)).join(""))
+    + grp("Working", groups.working.map((t) => mateOneRow(sid, t)).join("") + groups.cue.map((t) => mateCueRow(sid, t)).join(""))
     + mateDoneHtml(sid, groups.done);
   const menu = (sessionOf(sid)?.team || []).find((t) => mateKey(sid, t) === mateMenu);
   return `<div class="crew-tray open" data-key="crew-tray" data-crew-tray="${esc(sid)}">${head}<div class="crew-body" data-scroll-key="crew:${esc(sid)}">${body}</div>${menu ? mateMenuHtml(sid, menu) : ""}</div>`;
+}
+
+/** The crew's goal on top of its open tray, four small boxes: its job (the lead's prompt that started its first
+ *  teammate, or the session's name), when it's done well, what Cue may do alone and what asks you first (by the mode). */
+function crewGoalHtml(sid, handles) {
+  const s = sessionOf(sid) || {};
+  const job = s.crew_job || (typeof nameOf === "function" ? nameOf(sid, s.project) : s.project) || "";
+  const box = (label, text) => `<div class="cg-box"><div class="cg-l">${label}</div><div class="cg-t">${esc(text)}</div></div>`;
+  return `<div class="crew-goal">${box("The job", job)}${box("Done well when", "Each part reviewed, with nothing blocking")}`
+    + `${box("May do alone", handles ? "Review, send fixes, commit to crew/ branches" : "Nothing: it asks you first")}`
+    + `${box("Asks you first", handles ? "Merge to main, real choices" : "Every review, fix and commit")}</div>`;
+}
+
+/** Decision lines opened in place ("sid|id"), and the ones you just went back on, until Cue's state says so. */
+const crewLogOpen = new Set();
+const crewBackAsked = new Set();
+/** A decision's words: plain, `code` in backticks as code. */
+const crewCode = (text) => esc(text).replace(/`([^`]+)`/g, "<code>$1</code>");
+/** What the lead (or Cue) decided on its own, newest first: who · what · how long ago · Go back on this (one-way:
+ *  "one-way ·" and Make a revert), or "going back…" once you did. A line whose member has a review or files opens in
+ *  place on its review, what came of it and its Diff. "" when it decided nothing yet. */
+function crewLogHtml(sid) {
+  const log = (sessionOf(sid)?.crew_log || []).slice().reverse().sort((a, b) => (b.at_ms || 0) - (a.at_ms || 0));
+  if (!log.length) return "";
+  const team = sessionOf(sid)?.team || [];
+  const rows = log.map((d) => {
+    const k = `${sid}|${d.id}`, t = team.find((m) => m.name === d.who), open = crewLogOpen.has(k);
+    const has = !!t && !!(t.review || (t.findings || []).length || (t.files || []).length || t.worktree);
+    const going = d.back === "asked" || crewBackAsked.has(k);
+    const act = going ? `<span class="cd-going">going back…</span>`
+      : `<button class="mt-lk" data-act="crew-back" data-sid="${esc(sid)}" data-id="${esc(d.id)}">${d.one_way ? "Make a revert" : "Go back on this"}</button>`;
+    const why = d.why ? ` <span class="cd-why">· ${crewCode(d.why)}</span>` : "";
+    const row = `<div class="cd-row ${open ? "on" : ""} ${has ? "can" : ""}" data-key="cd:${esc(k)}" ${has ? `data-crew-log="${esc(k)}" aria-expanded="${open}"` : ""}>`
+      + `<b class="cd-who">${esc(d.who)}</b><span class="cd-what">${crewCode(d.what)}${why}</span>`
+      + `<span class="cd-at">${d.at_ms ? ago(d.at_ms) : ""}</span>${d.one_way ? `<span class="cd-one">one-way ·</span>` : ""}${act}</div>`;
+    return row + (open && has ? crewLogDetail(sid, t, d, k) : "");
+  }).join("");
+  return `<div class="mt-grp">Decided on its own · ${log.length}</div>${rows}`;
+}
+/** Under an opened decision: its member's review (or its findings), the commit it made, and its Diff. */
+function crewLogDetail(sid, t, d, k) {
+  const review = t.review ? `<div class="mt-review msg">${md(t.review)}</div>` : (t.findings || []).length ? `<ol class="mt-fx">${t.findings.map(mateFinding).join("")}</ol>` : "";
+  const files = (t.files || []).length;
+  const said = [d.sha ? `Committed <code>${esc(d.sha)}</code>` : "", t.stat ? esc(t.stat) : files ? esc(plural(files, "file")) : ""].filter(Boolean).join(" · ");
+  const diff = mateBtn(sid, t, "diff", "Diff", "link");
+  return `<div class="mt-under cd-under" data-mt-for="${esc(`log:${k}`)}">${review}${said || diff ? `<div class="cd-foot">${said ? `<span>${said}</span>` : ""}${diff}</div>` : ""}</div>`;
 }
 
 /** The least of the chat a tray leaves in view above it, in a short pane (the mini window's). */
@@ -433,6 +497,14 @@ if (typeof document !== "undefined") {
     const t = e.target;
     // The mode on the tray's line is team_send.js's: it doesn't open or close the tray.
     if (t.closest?.(".crew-pick")) return;
+    // A decision line opens in place (its own button, Go back on this, is clicks_chat.js's).
+    const log = !t.closest?.("button, a, .cd-under") && t.closest?.("[data-crew-log]");
+    if (log) {
+      e.stopPropagation();
+      const k = log.dataset.crewLog;
+      if (crewLogOpen.has(k)) crewLogOpen.delete(k); else { crewLogOpen.add(k); mateShow = `log:${k}`; }
+      return renderMain();
+    }
     // A member's menu closes on any click but its name (one of its items runs as it closes).
     const closeMenu = mateMenu && !t.closest?.("[data-mt-more]");
     const el = t.closest?.("[data-mt-open], [data-mt-act], [data-mt-more], [data-mt-done], [data-mt-asked], [data-mt-full]");

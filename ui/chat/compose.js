@@ -409,7 +409,7 @@ function box(key, placeholder, label, sendAttrs, images, alt = "", extra = "") {
 /** The box whose "Send at…" bar is open (its clock button), and the time picked there ("HH:MM"). */
 let sendAtFor = null, sendAtTime = "08:01";
 /** "Send at…" under a session's box: what's typed goes at that time (tomorrow if it has passed today), sent by Cue. */
-const sendAtBar = (key) => `<div class="send-at-bar">Send at <input type="time" data-send-at-time value="${esc(sendAtTime)}"> <span class="dim">${esc(sendAtWhen(sendAtTime).words)}</span><span class="grow"></span><button class="btn sm" data-send-at-x>Cancel</button><button class="btn sm primary" data-send-at-go="${esc(key)}">Keep it for then</button></div>`;
+const sendAtBar = (key) => `<div class="send-at-bar">Send at <input type="time" data-send-at-time value="${esc(sendAtTime)}"><span class="grow"></span><button class="btn sm" data-send-at-x>Cancel</button><button class="btn sm primary" data-send-at-go="${esc(key)}">Send ${esc(sendAtWhen(sendAtTime).words)}</button></div>`;
 /** "HH:MM" as the next time it comes: today, or tomorrow once it's passed. */
 function sendAtWhen(hm) {
   const [h, m] = hm.split(":").map(Number), at = new Date();
@@ -418,7 +418,7 @@ function sendAtWhen(hm) {
   const today = at.toDateString() === new Date().toDateString();
   return { ms: at.getTime(), words: `${today ? "today" : "tomorrow"} at ${hm}` };
 }
-/** Keep it for then: the box's text goes to Cue to send at that time; the box is emptied. */
+/** "Send tomorrow at 08:01": the box's text goes to Cue, which sends it then; the box is emptied. */
 function sendAtKeep(key) {
   const d = draft(key), sid = sidOfKey(key);
   if (!d.text.trim()) return toast("Type what to send first");

@@ -154,8 +154,8 @@ test("a crew member's ask: on its row under Needs you, with ↪, Deny and Allow;
   const tray = page.locator(".crew-tray");
   await expect(page.locator(".act-card"), "no ask panel of its own").toHaveCount(0);
   await expect(page.locator('textarea[data-text="s:lead"]'), "the lead's box stays").toBeVisible();
-  await expect(tray.locator(".crew-head")).toContainText("Cue Crew · 5 · hub needs you · 2 ready · 1 working");
-  await expect(tray.locator(".mt-grp").first()).toHaveText("Needs you");
+  await expect(tray.locator(".crew-head")).toContainText("Cue Crew · 5 · hub needs you · 2 reviewed · 1 working");
+  await expect(tray.locator(".mt-grp").first()).toHaveText("Needs you · 1");
   const hub = tray.locator(".mt-row.need");
   await expect(hub.locator(".mt-n")).toHaveText("hubwants to run");
   await expect(hub.locator(".mt-btns button")).toHaveText(["↪", "Deny", "Allow"]);
@@ -199,6 +199,8 @@ test.describe("a hosted lead's crew: the Crew switch, /crew, a task dropped on t
     await openCard(page, TEAM_ASK);
     await page.locator('.mt-row.need [data-act="allow"]').click();
   });
+  /** Ask me: every review waits under Ready with its buttons (on Handle it, the default, Cue handles them itself). */
+  const askMe = (cue) => cue.change((st) => { st.sessions.find((s) => s.session_id === "lead").crew_commit = "wait"; });
   // The lead's card under Sessions is drawn once its ask is answered (as team-handout waits for it).
   const drop = async (page, text) => (await page.locator(".working[data-session='lead']").waitFor(), page.evaluate((text) => {
     const dt = new DataTransfer();
@@ -236,13 +238,42 @@ test.describe("a hosted lead's crew: the Crew switch, /crew, a task dropped on t
     await expect(page.locator(".crew-menu")).toHaveCount(0);
   });
 
-  test("the crew is a tray on the box: one edge with it; its line, its caret and Esc toggle it", async ({ page }) => {
-    // Opened by itself: handoff and docs are ready (they wait on you).
+  // Handle it (the default): Cue sends fixes and commits by itself, so no Send fixes or Commit; what it decided is
+  // listed, each line with Go back on this, which asks the lead and leaves the line saying "going back…".
+  test("Handle it: the goal on top, what it decided on its own, and Go back on this", async ({ cue, page }) => {
     const tray = page.locator(".crew-tray");
     await expect(tray.locator(".crew-body")).toBeVisible();
-    await expect(tray.locator(".crew-head")).toHaveText(/^Cue Crew · 5 · 2 ready · 2 working\s*Handle it ▾\s*▾$/);
+    await expect(tray.locator(".cg-box .cg-t")).toHaveText(["Build the team view: hand out hub, rows, skill and handoff", "Each part reviewed, with nothing blocking", "Review, send fixes, commit to crew/ branches", "Merge to main, real choices"]);
+    await expect(tray.locator(".mt-grp")).toHaveText(["Needs you · nothing now", "Decided on its own · 5", "Working"]);
+    await expect(tray.locator('[data-mt-act="fixes"], [data-mt-act="commit"]'), "Cue does those itself").toHaveCount(0);
+    await expect(tray.locator(".mt-one", { hasText: "handoff" }).locator(".mt-line")).toContainText("reviewed · Cue sends its fixes back");
+    await expect(tray.locator(".cd-row .cd-who")).toHaveText(["docs", "handoff", "rows", "spike", "lead"]);
+    const docs = tray.locator(".cd-row", { hasText: "docs" });
+    await expect(docs.locator(".cd-what code")).toHaveText("crew/docs");
+    // Its line opens in place: its review's findings, the commit and its Diff.
+    await docs.locator(".cd-what").click();
+    await expect(tray.locator(".cd-under")).toContainText("Committed 3f2a1c9");
+    await expect(tray.locator('.cd-under [data-mt-act="diff"]')).toHaveText("Diff");
+    await docs.locator(".cd-what").click();
+    await expect(tray.locator(".cd-under")).toHaveCount(0);
+    await docs.locator('[data-act="crew-back"]').click();
+    const id = (await cue.called("crew_go_back", { sessionId: "lead" })).args.id;
+    expect(id).toMatch(/^d\d+-0$/);
+    await expect(docs.locator(".cd-going")).toHaveText("going back…");
+    await expect(docs.locator('[data-act="crew-back"]')).toHaveCount(0);
+    await expect(tray.locator(".cd-under"), "the button doesn't open its line").toHaveCount(0);
+    await expect(page.locator(".toast")).toHaveText("Asked the lead to go back on it: docs");
+    await expect(tray.locator("[title]"), "no hover text").toHaveCount(0);
+  });
+
+  test("the crew is a tray on the box: one edge with it; its line, its caret and Esc toggle it", async ({ cue, page }) => {
+    // Opened by itself on Ask me: handoff and docs are ready (they wait on you).
+    await askMe(cue);
+    const tray = page.locator(".crew-tray");
+    await expect(tray.locator(".crew-body")).toBeVisible();
+    await expect(tray.locator(".crew-head")).toHaveText(/^Cue Crew · 5 · 2 ready · 2 working\s*Ask me ▾\s*▾$/);
     await expect(tray.locator(".crew-head .dot-live"), "a live dot while any member works").toHaveCount(1);
-    await expect(tray.locator(".mt-grp")).toHaveText(["Ready", "Working"]);
+    await expect(tray.locator(".mt-grp")).toHaveText(["Needs you · nothing now", "Ready", "Decided on its own · 5", "Working"]);
     const box = await page.locator(".foot .field").boundingBox(), t = await tray.boundingBox();
     expect(Math.abs(t.y + t.height - box.y), "it stands on the box's top edge").toBeLessThan(2);
     expect(Math.abs(t.x - box.x) + Math.abs(t.width - box.width), "the box's width").toBeLessThan(2);
@@ -253,7 +284,7 @@ test.describe("a hosted lead's crew: the Crew switch, /crew, a task dropped on t
     expect(widths).toHaveLength(1);
     await tray.locator(".crew-car").click();
     await expect(tray.locator(".crew-body")).toHaveCount(0);
-    await expect(tray.locator(".crew-head")).toHaveText(/^Cue Crew · 5 · 2 ready · 2 working\s*Handle it ▾\s*▴$/);
+    await expect(tray.locator(".crew-head")).toHaveText(/^Cue Crew · 5 · 2 ready · 2 working\s*Ask me ▾\s*▴$/);
     const closed = await tray.boundingBox();
     expect(Math.abs(closed.y + closed.height - box.y), "closed: the same tray, one line high").toBeLessThan(2);
     await tray.locator(".crew-w").click();
@@ -295,7 +326,9 @@ test.describe("a hosted lead's crew: the Crew switch, /crew, a task dropped on t
   });
 
   test("the tray opens by itself once when a member starts waiting on you; closed, it stays closed", async ({ cue, page }) => {
+    await askMe(cue);
     const body = page.locator(".crew-tray .crew-body");
+    await expect(body, "handoff and docs wait on you: open").toBeVisible();
     await page.locator(".crew-tray .crew-car").click();
     await cue.change((st) => { const lead = st.sessions.find((s) => s.session_id === "lead"); lead.team.find((t) => t.name === "rows").step = "Editing ui/a.js"; });
     await expect(page.locator(".crew-tray")).toBeVisible();
@@ -306,6 +339,7 @@ test.describe("a hosted lead's crew: the Crew switch, /crew, a task dropped on t
 
   test("rows agree with their buttons; done members fold into N done; a name opens its menu; no Set aside", async ({ cue, page }) => {
     const tray = page.locator(".crew-tray");
+    await askMe(cue);
     const handoff = tray.locator(".mt-row", { hasText: "handoff" });
     await expect(handoff.locator(".mt-n")).toHaveText("handoff2 findings · fixes go back, round 1 of 1");
     await expect(handoff.locator("[data-mt-act]")).toHaveText(["Send fixes"]);
@@ -333,7 +367,7 @@ test.describe("a hosted lead's crew: the Crew switch, /crew, a task dropped on t
       Object.assign(at("rows"), { state: "done", needs: "Its lead didn't say it committed it" });
     });
     const rows = tray.locator(".mt-row").filter({ has: page.locator(".mt-name", { hasText: /^rows$/ }) });
-    await expect(tray.locator(".mt-grp").first()).toHaveText("Needs you");
+    await expect(tray.locator(".mt-grp").first()).toHaveText("Needs you · 1");
     await expect(rows.locator(".mt-n i")).toHaveText("Its lead didn't say it committed it");
     await expect(tray.locator(".crew-head")).toContainText("rows needs you");
     await expect(page.locator(".active-pane"), "no Set aside anywhere").not.toContainText("Set aside");

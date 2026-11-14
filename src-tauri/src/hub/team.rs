@@ -6,6 +6,7 @@
 use super::*;
 use crate::hosted::HostedEvent;
 use crate::sessions::quiet::Quiet;
+use crate::sessions::crew_log::Decided;
 use crate::sessions::team::{add_files, Teammate};
 use super::team_tidy::{settled, Settled};
 
@@ -92,12 +93,17 @@ impl Hub {
             }
             // Stopped having written nothing: nothing to review or commit, so it leaves the crew (set aside).
             for t in &ended {
-                h.write(|st| st.sessions.with_teammate(&sid, &t.call, |m| {
-                    if m.state == "stopped" && m.files.is_empty() {
+                let aside = h.write(|st| st.sessions.with_teammate(&sid, &t.call, |m| {
+                    let aside = m.state == "stopped" && m.files.is_empty();
+                    if aside {
                         m.state = "aside".into();
                         m.step = "Stopped having written nothing".into();
                     }
+                    aside
                 }));
+                if aside == Some(true) {
+                    h.crew_note(&sid, Decided::about(t, "aside", "set aside: it stopped having written nothing"));
+                }
             }
             h.changed();
             // Its review runs by itself: there's nothing for you to decide before it (docs/dev/cue-teams.md §5).
@@ -223,9 +229,12 @@ impl Hub {
         match action {
             "review" => self.review_teammate(lead, &origin, &t),
             "diff" => changes(&origin.machine, &origin.cwd, &t).map(|c| c.diff),
-            "commit" => self.commit_teammate(lead, &origin, &t, false),
-            // Commit refused on main (or a detached HEAD): a new branch made for it there, then the commit.
-            "branch" => self.commit_teammate(lead, &origin, &t, true),
+            "commit" | "branch" => {
+                // Commit refused on main (or a detached HEAD): "branch" makes a new branch for it there, then commits.
+                let said = self.commit_teammate(lead, &origin, &t, action == "branch")?;
+                self.crew_committed(lead, &t, &said, true);
+                Ok(said)
+            }
             "fixes" if !t.from.is_empty() => self.fixes_carried_over(lead, &t),
             "fixes" => self.send_fixes(lead, &t),
             // Carried over a handoff: its process ended with its old lead.
@@ -558,6 +567,12 @@ fn has_worktree(t: &Teammate) -> bool {
     !t.worktree.is_empty() && t.worktree != "?"
 }
 
+/// A worktree of its own that no longer exists on this Mac (Claude Code removes one its agent changed nothing in):
+/// nothing in it is its. Never asked of a machine (its folders aren't looked up from here).
+pub(super) fn worktree_gone(machine: &str, t: &Teammate) -> bool {
+    machine.is_empty() && has_worktree(t) && !std::path::Path::new(&t.worktree).is_dir()
+}
+
 /// The files git says changed in `t`'s own worktree (None: it has none, or git couldn't say).
 fn worktree_files(machine: &str, lead_cwd: &str, t: &Teammate) -> Option<Vec<String>> {
     if !has_worktree(t) {
@@ -651,7 +666,8 @@ pub(super) struct Repo {
 pub(super) fn repos(machine: &str, lead_cwd: &str, t: &Teammate, whole: bool) -> Vec<Repo> {
     let folder = t.folder(lead_cwd).trim_end_matches('/');
     let home = repo_top(machine, folder);
-    let whole = whole && !t.worktree.is_empty();
+    // A gone worktree read whole would be the folder above it: its lead's.
+    let whole = whole && !t.worktree.is_empty() && !worktree_gone(machine, t);
     let mut out: Vec<Repo> = vec![];
     if let Some(top) = home.as_ref().filter(|_| whole) {
         out.push(Repo { top: top.clone(), label: String::new(), given: vec![], paths: vec![], whole: true });

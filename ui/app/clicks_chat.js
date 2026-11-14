@@ -45,6 +45,13 @@ const QUEUE_CLICKS = [
   // A queued message, sent now: stopping the turn (Esc) makes the agent read it straight away.
   rule("[data-act=send-now]", (sn) => sendQueuedNow(sn.dataset.sid)),
   rule("[data-act=unqueue-review]", (uq) => invoke("unqueue_review", { exec: uq.dataset.exec }).then(() => toast("Taken off the queue")).catch((e) => toast(`Couldn't: ${e}`))),
+  // Go back on a crew decision (team.js crewLogHtml): Cue tells the lead; the line says "going back…" at once.
+  rule("[data-act=crew-back]", (cb) => {
+    const k = `${cb.dataset.sid}|${cb.dataset.id}`;
+    crewBackAsked.add(k);
+    renderMain();
+    invoke("crew_go_back", { sessionId: cb.dataset.sid, id: cb.dataset.id }).then((m) => toast(m), (e) => { crewBackAsked.delete(k); renderMain(); toast(`Couldn't: ${e}`); });
+  }),
   rule("[data-act=held-edit]", (he) => pullHeld(he.dataset.sid)),
   rule("[data-act=held-now]", (hn) => sendHeldNow(hn.dataset.sid)),
   // A message for later: back to the box, dropped, or sent now.
@@ -150,7 +157,7 @@ const BOX_CLICKS = [
   rule("[data-astext]", sendAsText),
   // 📎 on a box: Finder's picker, for that box; × on a picture takes it off.
   rule("[data-attach]", (at) => pickImages(at.dataset.attach)),
-  // The clock on a session's box: its "Send at…" bar, open or shut; Keep it for then hands the text to Cue.
+  // The clock on a session's box: its "Send at…" bar, open or shut; "Send tomorrow at 08:01" hands the text to Cue.
   rule("[data-send-at-open]", (so) => { sendAtFor = sendAtFor === so.dataset.sendAtOpen ? null : so.dataset.sendAtOpen; renderMain(); }),
   rule("[data-send-at-x]", () => { sendAtFor = null; renderMain(); }),
   rule("[data-send-at-go]", (sg) => sendAtKeep(sg.dataset.sendAtGo)),

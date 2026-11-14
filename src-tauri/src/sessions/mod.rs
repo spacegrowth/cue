@@ -6,6 +6,7 @@
 //! what the current turn is doing in `turn`, and your own marks on it (later, star, tell me) in `marks`.
 
 mod bar;
+pub mod crew_log;
 mod delivery;
 mod held;
 pub mod send_at;
@@ -195,6 +196,13 @@ pub struct Session {
     /// only one whose files Cue sees changed in a git repository).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub crew_review: String,
+    /// The crew's job in one line: the lead's prompt that started its first teammate (crew_log.rs). "" until a crew
+    /// forms; set once.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub crew_job: String,
+    /// What the crew decided on its own, oldest first (crew_log.rs).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub crew_log: Vec<crew_log::CrewDecision>,
 }
 
 fn is_zero(n: &u64) -> bool {
@@ -296,6 +304,8 @@ impl Session {
             team_mode: String::new(),
             crew_commit: String::new(),
             crew_review: String::new(),
+            crew_job: String::new(),
+            crew_log: vec![],
         }
     }
 

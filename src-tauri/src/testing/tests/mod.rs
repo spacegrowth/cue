@@ -29,6 +29,7 @@ mod settings;
 mod status_list;
 mod store;
 mod tasks;
+mod crew_log;
 mod team;
 mod team_kept;
 mod team_repos;

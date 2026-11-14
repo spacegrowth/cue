@@ -73,6 +73,37 @@ button.mt-name:hover, .mt-name.on { text-decoration: underline; text-underline-o
 .mt-note.offer { color: var(--ink); }
 .mt-note-acts { display: flex; gap: 6px; padding-top: 4px; }
 .mt-note-acts .mt-b { width: auto; padding: 0 11px; }
+/* The crew's goal on top of the open tray (ui/team.js crewGoalHtml): four small boxes on panel-2, a small-caps label
+   over a few words. */
+.crew-goal { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; padding: 10px 12px 2px; }
+.cg-box { min-width: 0; padding: 6px 8px; border-radius: 7px; background: var(--panel-2); }
+.cg-l { font-size: 9.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.cg-t { margin-top: 2px; font-size: 11.5px; line-height: 1.35; color: var(--ink); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+/* A narrow pane (and the mini window's chat, not a size container): two by two, a line each, so the goal doesn't push
+   what needs you out of the tray. */
+@container ap (max-width: 480px) {
+  .crew-goal { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cg-t { -webkit-line-clamp: 1; }
+}
+.m-chat .crew-goal { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.m-chat .cg-t { -webkit-line-clamp: 1; }
+/* Nothing needs you: one quiet line under its label. */
+.crew-none { padding: 2px 12px 4px; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Decided on its own (crewLogHtml): one line each, who · what, then how long ago and Go back on this at its end. A line
+   with a review or files opens in place under it. */
+.cd-row { display: flex; align-items: baseline; gap: 8px; min-height: 24px; padding: 3px 12px; font-size: 12px; box-sizing: border-box; }
+.cd-row.can { cursor: pointer; }
+.cd-row.can:hover, .cd-row.on { background: var(--panel-2); }
+.cd-who { flex: none; font-weight: 700; color: var(--ink); }
+.cd-what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+.cd-what code, .cd-under code { font: 11.5px var(--mono); }
+.cd-why { color: var(--muted); }
+.cd-at { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
+.cd-one { flex: none; color: var(--muted); }
+.cd-going { flex: none; color: var(--muted); font-size: 12px; font-style: italic; }
+.mt-under.cd-under { margin: 0; padding: 2px 12px 8px; background: var(--panel-2); }
+.cd-under .mt-fx { margin: 0; }
+.cd-foot { display: flex; align-items: baseline; gap: 10px; margin-top: 4px; color: var(--muted); }
 /* The menu a member's name opens, under its name (placeTeamRows). */
 .crew-tray .mt-menu { top: 0; left: 0; right: auto; min-width: 180px; z-index: 31; }
 /* An ask's title: "<lead> › <teammate>". On a card's top line the lead's name is as wide as its words (its usual
