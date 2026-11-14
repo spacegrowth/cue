@@ -16,10 +16,12 @@ pub(super) enum Settled {
     Committed(String),
     /// Every file is clean, but nothing was committed since it started: its changes were thrown away.
     Gone,
+    /// None of its files is one git keeps (in no repository, or ignored): nothing of git's to commit.
+    Scratch,
 }
 
 /// Its files, asked of the git repo each is in (a crew member can work outside its lead's folder): None while any
-/// has uncommitted changes, or git can't say (not in a repo, or ignored there; then it stays for you to see to).
+/// has uncommitted changes, or git can't say; Scratch when none is one git keeps (in no repo, or ignored there).
 pub(super) fn settled(lead_cwd: &str, t: &Teammate) -> Option<Settled> {
     let since = t.started_ms / 1000;
     let mut newest: Option<(u64, String)> = None;
@@ -65,7 +67,7 @@ pub(super) fn settled(lead_cwd: &str, t: &Teammate) -> Option<Settled> {
         }
     }
     if !kept {
-        return None;
+        return Some(Settled::Scratch);
     }
     Some(newest.map_or(Settled::Gone, |(_, sha)| Settled::Committed(sha)))
 }
@@ -86,7 +88,8 @@ impl Hub {
 
     /// The crew tidied: a member that stopped having written nothing is set aside; a finished one whose files are all
     /// committed since it started (by Cue's Commit, or by you elsewhere) leaves as committed; one whose files are clean
-    /// with nothing committed since it started (its changes thrown away) is set aside. Never a loop's crew (a loop
+    /// with nothing committed since it started (its changes thrown away), or a reviewed one with nothing git keeps, is set
+    /// aside. Never a loop's crew (a loop
     /// commits its own) and never one on another machine (SHORTCUT: git there is a remote call per file each pass;
     /// upgrade: one `git status` per folder through cue-host). Members stuck waiting for a review are let go first
     /// (`unstick`). Runs git: call it off the hub's threads. Whether it changed anything (drawn when it did).
@@ -108,7 +111,10 @@ impl Hub {
                     match settled(&origin.cwd, t) {
                         Some(Settled::Committed(sha)) => Some(("committed", sha, "Committed outside Cue".to_string())),
                         Some(Settled::Gone) => Some(("aside", String::new(), "Its changes are gone: nothing left to commit".to_string())),
-                        None => None,
+                        // Reviewed, but nothing git keeps (mocks outside any repo, say): it would wait on a Commit that
+                        // can't commit anything. Before its review it stays, for you to see to.
+                        Some(Settled::Scratch) if t.state == "reviewed" => Some(("aside", String::new(), "Nothing to commit in git: its files are in no repository".to_string())),
+                        Some(Settled::Scratch) | None => None,
                     }
                 } else {
                     None

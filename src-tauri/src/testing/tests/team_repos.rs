@@ -219,6 +219,25 @@ fn scratch_and_ignored_files_dont_keep_a_committed_member_and_commit_on_committe
     let _ = std::fs::remove_file(&scratch);
 }
 
+/// A member whose files are all in no repository (mocks, notes): finished, it stays for you; reviewed, it would wait on a
+/// Commit that can't commit anything, so the tidy sets it aside.
+#[test]
+fn a_reviewed_member_with_nothing_git_keeps_is_set_aside() {
+    let w = World::new();
+    let _dir = repo(&w);
+    let mock = beside(&w, "mock-a.html");
+    std::fs::write(&mock, "<p>mock</p>\n").unwrap();
+    let sid = lead(&w, "make a mock");
+    says(&w, &sid, writes_then_stops("toolu_M", "agentM", "mocks", &[mock.to_string_lossy().to_string()]));
+    assert!(!w.hub().team_tidy(), "not reviewed yet: it stays");
+    assert_eq!(mate(&w, &sid, "mocks")["state"], "stopped");
+    w.hub().set_teammate_state(&sid, "agentM", "reviewed");
+    assert!(w.hub().team_tidy());
+    let m = mate(&w, &sid, "mocks");
+    assert_eq!((m["state"].as_str(), m["step"].as_str()), (Some("aside"), Some("Nothing to commit in git: its files are in no repository")));
+    let _ = std::fs::remove_file(&mock);
+}
+
 /// The lead's turn ends with `text`, a reply to something of yours.
 fn replies(w: &World, sid: &str, text: &str) {
     w.hosted_says(sid, HostedEvent::TurnEnded { text: text.into(), failed: false, cost_usd: 0.0, unprompted: false });
