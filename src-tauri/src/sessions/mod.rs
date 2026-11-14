@@ -186,6 +186,10 @@ pub struct Session {
     /// "clean" commits it on a branch of its own; "" waits for your Commit.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub crew_commit: String,
+    /// Which finished crew members Cue reviews by itself: "always", "never" (Review by hand), or "" (the default:
+    /// only one whose files Cue sees changed in a git repository).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub crew_review: String,
 }
 
 fn is_zero(n: &u64) -> bool {
@@ -285,6 +289,7 @@ impl Session {
             team: vec![],
             team_mode: String::new(),
             crew_commit: String::new(),
+            crew_review: String::new(),
         }
     }
 
@@ -434,6 +439,18 @@ impl Sessions {
         if let Some(s) = self.0.get_mut(session_id) {
             s.prompt = prompt.trim().to_string();
         }
+    }
+
+    /// The lead's Review setting for its crew: "always", "never", or "" (only code in a git repository).
+    pub fn crew_review(&self, sid: &str) -> String {
+        self.0.get(sid).map(|s| s.crew_review.clone()).unwrap_or_default()
+    }
+
+    /// The lead's Review setting set ("always" or "never"; anything else is the default); false when it's gone.
+    pub fn set_crew_review(&mut self, sid: &str, mode: &str) -> bool {
+        let Some(s) = self.0.get_mut(sid) else { return false };
+        s.crew_review = if matches!(mode, "always" | "never") { mode.to_string() } else { String::new() };
+        true
     }
 
     pub fn origin(&self, session_id: &str) -> Option<Origin> {

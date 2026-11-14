@@ -12,6 +12,8 @@ const AUDIT: &str = include_str!("../../hosted/fixtures/crew_review_then_audit.t
 const MID_TURN: &str = include_str!("../../hosted/fixtures/crew_review_mid_turn.transcript.jsonl");
 const NEVER_CAME: &str = include_str!("../../hosted/fixtures/crew_review_never_came.transcript.jsonl");
 const COMMITTED: &str = include_str!("../../hosted/fixtures/crew_committed_unasked.transcript.jsonl");
+const BG_ASK: &str = include_str!("../../hosted/fixtures/crew_review_background_ask.transcript.jsonl");
+const BG_REPORT: &str = include_str!("../../hosted/fixtures/crew_review_background_report.transcript.jsonl");
 
 /// `fixture`'s turn written into lead `sid`'s transcript, its `{name}`, `{ask}` and `{review}` filled in.
 fn turn_in_log(w: &World, sid: &str, fixture: &str, name: &str, ask: &str, review: &str) {
@@ -169,6 +171,7 @@ fn a_review_ask_whose_turn_ended_without_its_review_puts_the_member_back_to_done
     let w = World::new();
     repo(&w);
     let sid = lead(&w, "one part, done with shell commands elsewhere");
+    w.hub().set_crew_review(&sid, "always").unwrap(); // a member whose files Cue never saw: reviewed only when asked to
     says(&w, &sid, writes("toolu_A", "agentA", "board", &[]));
     ends(&w, &sid, "started board", false);
     let ask = next_review(&w, &sid);
@@ -190,14 +193,15 @@ fn a_review_ask_whose_turn_ended_without_its_review_puts_the_member_back_to_done
     assert_eq!(sent(&w, &sid, "Commit your teammate board's work now").len(), 1, "a clean review: its lead commits it");
 }
 
-/// Item 3: the turn the ask started ended without Cue seeing it end (its stream cut off); your next message's turn
-/// ends. The ask is earlier in the transcript than that turn: its turn is over, so the member stops waiting. A member
-/// whose ask hasn't reached the lead yet keeps waiting.
+/// Item 3, with reviews in the background: the turn the ask started ended without Cue seeing it end (its stream cut
+/// off), so Cue can't tell whether its fork went; your next message's turn ends. The member keeps waiting (its fork may
+/// still be out: the tidy lets it go after REVIEW_SHOWN_MS), and so does one whose ask the lead hasn't taken yet.
 #[test]
-fn a_review_ask_answered_by_nothing_before_your_next_turn_ended_stops_waiting_but_one_not_yet_taken_waits() {
+fn a_review_ask_whose_turn_cue_never_saw_waits_through_your_next_turn_as_does_one_not_yet_taken() {
     let w = World::new();
     let dir = repo(&w);
     let sid = lead(&w, "two parts");
+    w.hub().set_crew_review(&sid, "always").unwrap(); // a member whose files Cue never saw: reviewed only when asked to
     says(&w, &sid, writes("toolu_A", "agentA", "board", &[]));
     says(&w, &sid, writes("toolu_B", "agentB", "rows", &[path(&dir, "a.txt")]));
     ends(&w, &sid, "started both", false);
@@ -207,9 +211,66 @@ fn a_review_ask_answered_by_nothing_before_your_next_turn_ended_stops_waiting_bu
     next_review(&w, &sid); // rows's ask goes, but the lead hasn't taken it yet: it's not in its transcript
     Transcript::at(w.hub().session_origin(&sid).unwrap().transcript_path).prompt("Fix the tray's spacing.").assistant("Fixed.");
     ends(&w, &sid, "Fixed.", false);
-    assert_eq!(mate(&w, &sid, "board")["step"], "Its review didn't come back");
-    assert_eq!(state(&w, &sid, "board"), "done");
+    assert_eq!(state(&w, &sid, "board"), "reviewing", "your turn isn't the one that took its ask: {}", mate(&w, &sid, "board"));
     assert_eq!(state(&w, &sid, "rows"), "reviewing", "its ask isn't the lead's yet: still waiting");
+}
+
+/// A review runs in the background: the lead takes the ask, starts the fork, says so and is free at once (you talk to
+/// it meanwhile, and the member waits on). The fork's report starts a turn nothing of yours did; the review in it, named
+/// by its `Review of <name>:` line, is the member's, and the stop hook's audit after it isn't.
+#[test]
+fn a_background_review_frees_the_lead_and_is_filed_from_the_turn_its_report_starts_not_from_the_audit_after_it() {
+    let w = World::new();
+    let dir = repo(&w);
+    let sid = lead(&w, "one part");
+    w.hub().set_crew_commit(&sid, "wait").unwrap();
+    says(&w, &sid, writes("toolu_A", "agentA", "rows", &[path(&dir, "a.txt")]));
+    ends(&w, &sid, "started rows", false);
+    let ask = next_review(&w, &sid);
+    assert!(ask.contains("`run_in_background: true`") && ask.contains("`Review of rows:`") && !ask.contains("not in the background"), "{ask}");
+    turn_in_log(&w, &sid, BG_ASK, "rows", &ask, "");
+    ends(&w, &sid, "Reviewing rows in the background.", false);
+    assert_eq!(state(&w, &sid, "rows"), "reviewing", "its fork is out: it waits");
+    let log = w.hub().session_origin(&sid).unwrap().transcript_path;
+    Transcript::at(&log).prompt("Fix the tray's spacing.").assistant("Fixed it.");
+    ends(&w, &sid, "Fixed it.", false);
+    assert_eq!(state(&w, &sid, "rows"), "reviewing", "your own turn while it runs: not its review, and it waits on");
+    let review = "Review of rows:\n1. a.txt:1 — should-fix — the line says nothing about why\nRecommendation: send fixes";
+    turn_in_log(&w, &sid, BG_REPORT, "rows", "", review);
+    ends(&w, &sid, "1–12: N/A, no edits of mine this turn.", true);
+    let t = mate(&w, &sid, "rows");
+    assert_eq!((t["state"].as_str(), t["recommendation"].as_str(), t["review"].as_str()), (Some("reviewed"), Some("send fixes"), Some(review)), "{t}");
+    assert_eq!(t["findings"].as_array().map(Vec::len), Some(1));
+}
+
+/// Two reviews out in the background at once come back in either order, each filed to the member it names; neither
+/// lets the other go. A turn a teammate's finish started that names no member is still no review.
+#[test]
+fn background_reviews_that_come_back_out_of_order_each_go_to_the_member_they_name() {
+    let w = World::new();
+    let dir = repo(&w);
+    let sid = lead(&w, "two parts");
+    w.hub().set_crew_commit(&sid, "wait").unwrap();
+    says(&w, &sid, writes("toolu_A", "agentA", "rows", &[path(&dir, "a.txt")]));
+    says(&w, &sid, writes("toolu_B", "agentB", "docs", &[path(&dir, "b.txt")]));
+    ends(&w, &sid, "started both", false);
+    for name in ["rows", "docs"] {
+        let ask = next_review(&w, &sid);
+        assert!(ask.starts_with(&format!("Review your teammate {name}'s")), "{ask}");
+        turn_in_log(&w, &sid, BG_ASK, name, &ask, "");
+        ends(&w, &sid, &format!("Reviewing {name} in the background."), false);
+    }
+    assert_eq!((state(&w, &sid, "rows"), state(&w, &sid, "docs")), ("reviewing".into(), "reviewing".into()));
+    ends(&w, &sid, "hub finished.\nRecommendation: commit", true);
+    assert_eq!((state(&w, &sid, "rows"), state(&w, &sid, "docs")), ("reviewing".into(), "reviewing".into()), "names no member: no review");
+    turn_in_log(&w, &sid, BG_REPORT, "docs", "", "Review of docs:\nRecommendation: commit");
+    ends(&w, &sid, "1–12: N/A, no edits of mine this turn.", true);
+    assert_eq!((state(&w, &sid, "rows"), state(&w, &sid, "docs")), ("reviewing".into(), "reviewed".into()), "docs's, and rows waits on");
+    turn_in_log(&w, &sid, BG_REPORT, "rows", "", "**Review of rows:**\n1. a.txt:1 — should-fix — x\nRecommendation: send fixes");
+    ends(&w, &sid, "1–12: N/A, no edits of mine this turn.", true);
+    let (rows, docs) = (mate(&w, &sid, "rows"), mate(&w, &sid, "docs"));
+    assert_eq!((rows["state"].as_str(), rows["recommendation"].as_str()), (Some("reviewed"), Some("send fixes")), "{rows}");
+    assert_eq!(docs["recommendation"], "commit", "{docs}");
 }
 
 /// Item 3, without a transcript to read (or its ask scrolled out of it): a member under review whose lead has been
@@ -219,6 +280,7 @@ fn a_member_under_review_for_long_while_its_lead_is_free_stops_waiting() {
     let w = World::new();
     repo(&w);
     let sid = lead(&w, "one part");
+    w.hub().set_crew_review(&sid, "always").unwrap(); // a member whose files Cue never saw: reviewed only when asked to
     says(&w, &sid, writes("toolu_A", "agentA", "board", &[]));
     ends(&w, &sid, "started board", false);
     next_review(&w, &sid);
@@ -243,6 +305,7 @@ fn a_member_under_review_keeps_waiting_while_its_lead_asks_you_something_or_comp
     let w = World::new();
     repo(&w);
     let sid = lead(&w, "one part");
+    w.hub().set_crew_review(&sid, "always").unwrap(); // a member whose files Cue never saw: reviewed only when asked to
     w.hub().set_crew_commit(&sid, "wait").unwrap();
     says(&w, &sid, writes("toolu_A", "agentA", "board", &[]));
     ends(&w, &sid, "started board", false);
@@ -301,6 +364,7 @@ fn a_member_queued_with_no_review_in_the_queue_is_done_again_at_the_next_tidy() 
     let w = World::new();
     repo(&w);
     let sid = lead(&w, "one part");
+    w.hub().set_crew_review(&sid, "always").unwrap(); // a member whose files Cue never saw: reviewed only when asked to
     says(&w, &sid, writes("toolu_A", "agentA", "board", &[]));
     assert_eq!(state(&w, &sid, "board"), "queued");
     w.hub().team_tidy();
@@ -358,6 +422,7 @@ fn a_committed_line_from_the_lead_with_no_ask_out_commits_the_member_and_no_ask_
     let w = World::new();
     repo(&w);
     let sid = lead(&w, "two parts, done with shell commands elsewhere");
+    w.hub().set_crew_review(&sid, "always").unwrap(); // a member whose files Cue never saw: reviewed only when asked to
     says(&w, &sid, writes("toolu_A", "agentA", "board", &[]));
     assert_eq!(state(&w, &sid, "board"), "queued");
     turn_in_log(&w, &sid, COMMITTED, "board", "", "");
@@ -392,6 +457,7 @@ fn a_commit_ask_waits_on_the_members_row_not_in_the_chat_and_goes_once_the_lead_
     let w = World::new();
     repo(&w);
     let sid = lead(&w, "one part, done with shell commands elsewhere");
+    w.hub().set_crew_review(&sid, "always").unwrap(); // a member whose files Cue never saw: reviewed only when asked to
     w.hub().set_crew_commit(&sid, "wait").unwrap();
     says(&w, &sid, writes("toolu_A", "agentA", "board", &[]));
     w.hub().unqueue_review(&format!("team:{sid}:agentA")).unwrap();

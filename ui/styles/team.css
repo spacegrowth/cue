@@ -83,7 +83,7 @@ button.mt-name:hover, .mt-name.on { text-decoration: underline; text-underline-o
 /* The crew's mode on its tray line, and its menu (ui/team_send.js crewMode), opening upward: two segmented choices,
    split work (Auto · Always · Never) and what happens when a review comes back (Handle it · Ask me). */
 .crew-pick { position: relative; display: inline-flex; flex: none; }
-.crew-menu { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 30; width: 300px; display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 12px; background: var(--panel); box-shadow: 0 0 0 1px var(--line), 0 8px 24px rgba(0, 0, 0, 0.18); color: var(--ink); font-size: 12.5px; font-weight: 400; white-space: normal; cursor: default; }
+.crew-menu { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 30; width: 320px; display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 12px; background: var(--panel); box-shadow: 0 0 0 1px var(--line), 0 8px 24px rgba(0, 0, 0, 0.18); color: var(--ink); font-size: 12.5px; font-weight: 400; white-space: normal; cursor: default; }
 /* In the ⋯ menu: an item like the others, its settings opening under it, in the menu's flow. */
 .crew-in-more { display: flex; flex-direction: column; }
 .crew-in-more .crew-menu { position: static; width: auto; margin: 2px 4px 6px; box-shadow: 0 0 0 1px var(--line); }

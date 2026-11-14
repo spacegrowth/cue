@@ -1,0 +1,5 @@
+{"type":"user","message":{"role":"user","content":"{ask}"}}
+{"type":"assistant","message":{"model":"claude-opus-5-5","content":[{"type":"tool_use","id":"toolu_fork_{name}","name":"Agent","input":{"description":"Review {name}","prompt":"Read {name}'s diff against what it was asked and run its tests.","run_in_background":true}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_fork_{name}","content":"Async agent launched successfully."}]}}
+{"type":"assistant","message":{"model":"claude-opus-5-5","content":[{"type":"text","text":"Reviewing {name} in the background."}]}}
+{"type":"system","subtype":"turn_duration"}

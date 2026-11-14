@@ -225,9 +225,12 @@ fn replies(w: &World, sid: &str, text: &str) {
     w.settle();
 }
 
-/// Skip on member `agent`'s queued review (its row's Skip): Commit is what these cases are about.
+/// Member `agent`, whose files Cue never saw, isn't reviewed by itself (Review: only code in a repo, the default): it's
+/// done at once, its row saying why. Commit is what these cases are about.
 fn skip_review(w: &World, sid: &str, agent: &str) {
-    w.hub().unqueue_review(&format!("team:{sid}:{agent}")).unwrap();
+    let team = w.snapshot().session(sid)["team"].clone();
+    let t = team.as_array().unwrap().iter().find(|t| t["agent_id"] == agent).unwrap().clone();
+    assert_eq!((t["state"].as_str(), t["step"].as_str()), (Some("done"), Some("Not reviewed: no changes Cue can see in a git repo")), "{t}");
 }
 
 /// What lead `sid` was sent asking it to commit a member's work.
@@ -324,6 +327,7 @@ fn handled_by_cue_a_clean_review_of_a_member_whose_files_cue_never_saw_asks_its_
     let w = World::new();
     let _dir = repo(&w);
     let sid = lead(&w, "one part, done with shell commands elsewhere");
+    w.hub().set_crew_review(&sid, "always").unwrap(); // a member whose files Cue never saw: reviewed only when asked to
     says(&w, &sid, writes("toolu_A", "agentA", "board", &[]));
     replies(&w, &sid, "started board");
     w.hub().drain_reviews();

@@ -219,7 +219,13 @@ test.describe("a hosted lead's crew: the Crew switch, /crew, a task dropped on t
     await page.locator('[data-team-sw="lead"][data-team-mode="off"]').click();
     expect((await cue.called("team_mode", { sessionId: "lead" })).args.mode).toBe("off");
     await expect(page.locator(".team-sw button.on").first()).toHaveText("Never");
-    await expect(page.locator(".team-sw").nth(1).locator("button.on")).toHaveText("Handle it");
+    await expect(page.locator(".team-sw").nth(1).locator("button.on"), "Review: only code in a repo, the default").toHaveText("Only code in a repo");
+    await expect(page.locator(".crew-foot")).toContainText("Fixes go back once");
+    await page.locator('[data-crew-review="lead"][data-crew-mode="never"]').click();
+    expect((await cue.called("crew_review", { sessionId: "lead" })).args.mode).toBe("never");
+    await expect(page.locator(".team-sw").nth(1).locator("button.on")).toHaveText("Never");
+    await expect(page.locator(".crew-foot")).toContainText("Review is in each member's menu.");
+    await expect(page.locator(".team-sw").nth(2).locator("button.on")).toHaveText("Handle it");
     await page.locator('[data-crew-commit="lead"][data-crew-mode="wait"]').click();
     expect((await cue.called("crew_commit", { sessionId: "lead" })).args.mode).toBe("wait");
     await expect(page.locator(".crew-foot")).toContainText("waits for your Commit or Send fixes");

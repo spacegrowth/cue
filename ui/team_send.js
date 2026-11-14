@@ -1,7 +1,7 @@
 // ---------- how work goes out to a hosted lead's team (hub/team_out.rs; docs/dev/cue-teams.md §6) ----------
-// The crew's mode on its tray ("Handle it ▾" / "Ask me ▾", team.js crewTray), opening its two settings (split work:
-// Auto, the lead decides; Always; Never; and what happens once a crew member's review, which runs by itself, comes
-// back), Cue's own /crew (Always for one message), and a task handed out by drag: text dropped on a hosted
+// The crew's mode on its tray ("Handle it ▾" / "Ask me ▾", team.js crewTray), opening its three settings (split work:
+// Auto, the lead decides; Always; Never; which finished members are reviewed by themselves; and what happens once a
+// review comes back), Cue's own /crew (Always for one message), and a task handed out by drag: text dropped on a hosted
 // lead's card under Sessions shows the files it names, with who already changes each, before it goes as a new
 // teammate. Cue adds the words; the lead does the rest.
 
@@ -19,26 +19,37 @@ function teamMode(sid) {
   if (now_ === was) teamModeNow.delete(sid);
   return now_ ?? was;
 }
-/** The commit setting you just clicked, until Cue's state says so too. */
-const crewCommitNow = new Map();
-function crewCommit(sid) {
-  // "wait": every review waits for you; anything else (the default): Cue handles it.
-  const was = sessionOf(sid)?.crew_commit === "wait" ? "wait" : "auto", now_ = crewCommitNow.get(sid);
-  if (now_ === was) crewCommitNow.delete(sid);
-  return now_ ?? was;
+/** A crew setting you just clicked (`now`, per lead), until Cue's state says so too (`was`). */
+function crewPicked(now, sid, was) {
+  const picked = now.get(sid);
+  if (picked === was) now.delete(sid);
+  return picked ?? was;
 }
+/** The commit setting: "wait", every review waits for you; anything else (the default): Cue handles it. */
+const crewCommitNow = new Map();
+const crewCommit = (sid) => crewPicked(crewCommitNow, sid, sessionOf(sid)?.crew_commit === "wait" ? "wait" : "auto");
+/** The review setting (hub/team_review.rs no_review): "always", "never", or "code" (the default: only a member whose
+ *  files Cue sees changed in a git repo is reviewed by itself). */
+const crewReviewNow = new Map();
+const crewReview = (sid) => crewPicked(crewReviewNow, sid, ["always", "never"].includes(sessionOf(sid)?.crew_review) ? sessionOf(sid).crew_review : "code");
 const TEAM_MODES = [["auto", "Auto"], ["on", "Always"], ["off", "Never"]];
+const CREW_REVIEWS = [["always", "Always"], ["code", "Only code in a repo"], ["never", "Never"]];
 const CREW_COMMITS = [["auto", "Handle it"], ["wait", "Ask me"]];
 /** Where the crew mode menu is open: the lead's id (on its tray's line), or "more:<lead>" (in its ⋯ menu). */
 let crewMenuFor = null;
-/** The crew's two settings: split work into the crew, and what happens once a crew member's review, which runs by
- *  itself, comes back. */
+/** The crew's three settings: split work into the crew, which finished members are reviewed by themselves, and what
+ *  happens once a review comes back. */
 function crewMenuHtml(sid) {
-  const commit = crewCommit(sid);
+  const commit = crewCommit(sid), review = crewReview(sid);
   const seg = (list, cur, attrs) => `<span class="team-sw" role="group">${list.map(([v, label]) => `<button class="${cur === v ? "on" : ""}" ${attrs(v)} aria-pressed="${cur === v}">${label}</button>`).join("")}</span>`;
-  const foot = commit === "wait" ? "Each review waits for your Commit or Send fixes. Pushing stays yours."
-    : "Fixes and notes go back to the crew member, up to 2 times; a clean review is committed to its branch. You're asked after that. Pushing stays yours.";
-  return `<div class="crew-menu"><div class="crew-q">Split work into the crew</div>${seg(TEAM_MODES, teamMode(sid), (v) => `data-team-sw="${esc(sid)}" data-team-mode="${v}"`)}<div class="crew-q">When a review comes back</div>${seg(CREW_COMMITS, commit, (v) => `data-crew-commit="${esc(sid)}" data-crew-mode="${v}"`)}<div class="crew-foot">${foot}</div></div>`;
+  // Kept short: the menu opens upward over the chat, and a long foot pushes its top out of the pane.
+  const reviewed = review === "never" ? "Review is in each member's menu." : "";
+  const after = commit === "wait" ? "Each review waits for your Commit or Send fixes. Pushing stays yours."
+    : "Fixes go back once; clean work is committed to its branch. Then you're asked. Pushing stays yours.";
+  return `<div class="crew-menu"><div class="crew-q">Split work into the crew</div>${seg(TEAM_MODES, teamMode(sid), (v) => `data-team-sw="${esc(sid)}" data-team-mode="${v}"`)}`
+    + `<div class="crew-q">Review finished work</div>${seg(CREW_REVIEWS, review, (v) => `data-crew-review="${esc(sid)}" data-crew-mode="${v}"`)}`
+    + `<div class="crew-q">When a review comes back</div>${seg(CREW_COMMITS, commit, (v) => `data-crew-commit="${esc(sid)}" data-crew-mode="${v}"`)}`
+    + `<div class="crew-foot">${[reviewed, after].filter(Boolean).join(" ")}</div></div>`;
 }
 /** The mode's word: "Handle it" or "Ask me". */
 const crewModeWord = (sid) => (CREW_COMMITS.find(([v]) => v === crewCommit(sid)) || CREW_COMMITS[0])[1];
@@ -53,13 +64,14 @@ function crewMode(sid) {
 function crewMoreItem(sid) {
   if (!isTeamLead(sid)) return "";
   const open = crewMenuFor === `more:${sid}`;
-  return `<span class="crew-pick crew-in-more"><button data-crew-menu="more:${esc(sid)}" aria-expanded="${open}">Cue Crew: ${crewModeWord(sid)}<span>How work splits into the crew, and what happens when a review comes back</span></button>${open ? crewMenuHtml(sid) : ""}</span>`;
+  return `<span class="crew-pick crew-in-more"><button data-crew-menu="more:${esc(sid)}" aria-expanded="${open}">Cue Crew: ${crewModeWord(sid)}<span>How work splits into the crew, what gets reviewed, and what happens when a review comes back</span></button>${open ? crewMenuHtml(sid) : ""}</span>`;
 }
-async function setCrewCommit(sid, mode) {
-  crewCommitNow.set(sid, mode);
+/** A crew setting picked: shown at once (`now`), then set through `cmd` ("crew_commit", "crew_review"). */
+async function setCrewSetting(now, cmd, sid, mode) {
+  now.set(sid, mode);
   renderMain();
-  try { await invoke("crew_commit", { sessionId: sid, mode }); }
-  catch (e) { crewCommitNow.delete(sid); toast(`Couldn't: ${e}`); renderMain(); }
+  try { await invoke(cmd, { sessionId: sid, mode }); }
+  catch (e) { now.delete(sid); toast(`Couldn't: ${e}`); renderMain(); }
 }
 async function setTeamMode(sid, mode) {
   teamModeNow.set(sid, mode);
@@ -132,11 +144,12 @@ if (typeof document !== "undefined") {
   document.addEventListener("click", (e) => {
     // The crew mode menu closes on a click anywhere outside it.
     if (crewMenuFor && !e.target.closest?.(".crew-pick")) { crewMenuFor = null; renderMain(); }
-    const el = e.target.closest?.("[data-crew-menu], [data-crew-commit], [data-team-sw], [data-ho-go], [data-ho-cancel], [data-ho]");
+    const el = e.target.closest?.("[data-crew-menu], [data-crew-commit], [data-crew-review], [data-team-sw], [data-ho-go], [data-ho-cancel], [data-ho]");
     if (!el) return;
     e.stopPropagation();
     if (el.dataset.crewMenu) { crewMenuFor = crewMenuFor === el.dataset.crewMenu ? null : el.dataset.crewMenu; return renderMain(); }
-    if (el.dataset.crewCommit) return setCrewCommit(el.dataset.crewCommit, el.dataset.crewMode);
+    if (el.dataset.crewCommit) return setCrewSetting(crewCommitNow, "crew_commit", el.dataset.crewCommit, el.dataset.crewMode);
+    if (el.dataset.crewReview) return setCrewSetting(crewReviewNow, "crew_review", el.dataset.crewReview, el.dataset.crewMode);
     if (el.dataset.teamSw) return setTeamMode(el.dataset.teamSw, el.dataset.teamMode);
     if (el.matches("[data-ho-go]")) return sendHandOut();
     if (el.matches("[data-ho-cancel]")) { handOut = null; return renderMain(); }

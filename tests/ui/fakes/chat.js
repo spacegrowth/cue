@@ -81,6 +81,7 @@ CueBridge.area("chat", (w) => {
     // changing marked.
     team_mode: () => null,
     crew_commit: () => null,
+    crew_review: () => null,
     team_hand_out_preview: ({ text }) => {
       const files = [...new Set(String(text).match(/[\w./-]+\.[a-z]{1,6}\b/g) || [])].map((path) => ({ path, by: ["ui/team.js", "ui/core.js"].includes(path) ? "rows is changing it" : "" }));
       return { lead: "cue", files, overlap: files.some((f) => f.by) };

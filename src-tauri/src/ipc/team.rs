@@ -26,6 +26,12 @@ pub(crate) async fn crew_commit(hub: State<'_, Arc<Hub>>, session_id: String, mo
     with_hub(&hub, move |h| h.set_crew_commit(&session_id, &mode)).await?
 }
 
+/// The Crew's Review setting: "always", "code" (only code in a git repository) or "never".
+#[tauri::command]
+pub(crate) async fn crew_review(hub: State<'_, Arc<Hub>>, session_id: String, mode: String) -> Result<(), String> {
+    with_hub(&hub, move |h| h.set_crew_review(&session_id, &mode)).await?
+}
+
 /// A task dropped on a hosted lead, before it goes: the files it names and who touches each now.
 #[tauri::command]
 pub(crate) async fn team_hand_out_preview(hub: State<'_, Arc<Hub>>, session_id: String, text: String) -> Result<serde_json::Value, String> {

@@ -151,6 +151,19 @@ impl Hub {
         Ok(())
     }
 
+    /// Which finished crew members Cue reviews by itself: "always", "code" (the default: only one whose files Cue
+    /// sees changed in a git repository), or "never" (Review by hand).
+    pub fn set_crew_review(&self, sid: &str, mode: &str) -> Result<(), String> {
+        if !matches!(mode, "always" | "code" | "never") {
+            return Err(format!("“{mode}” isn't a review setting"));
+        }
+        if !self.write(|st| st.sessions.set_crew_review(sid, mode)) {
+            return Err("that session is gone".into());
+        }
+        self.changed();
+        Ok(())
+    }
+
     /// A message you typed in a session's box: to a hosted Claude lead with its Team switch's words (`with_team`).
     pub fn send_yours(&self, sid: &str, text: &str, images: &[crate::model::Upload], now: bool) -> Result<String, String> {
         self.send_to_session(sid, &self.team_words(sid, text), images, now)

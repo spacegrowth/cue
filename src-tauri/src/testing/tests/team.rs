@@ -98,6 +98,7 @@ fn an_agent_call_claude_code_refuses_leaves_no_teammate_and_a_refused_write_is_n
 fn a_teammates_current_step_comes_live_its_long_command_is_no_second_teammate_and_its_finish_marks_it_done() {
     let w = World::new();
     let sid = lead(&w, "start a worker");
+    w.hub().set_crew_review(&sid, "always").unwrap(); // a member whose files Cue never saw: reviewed only when asked to
     let ls = lines(include_str!("../../hosted/fixtures/team_live.jsonl"));
     // Up to its first step: the lead's turn ended ("started"), the teammate's Bash call on its way.
     let first = at(&ls, |e| matches!(e, HostedEvent::ToolCall { agent: Some(_), .. }));
@@ -136,6 +137,7 @@ fn a_teammates_ask_is_titled_with_its_name_and_its_lead() {
 fn a_worktree_teammate_works_in_the_folder_claude_code_makes_for_it() {
     let w = World::new();
     let sid = lead(&w, "start a builder in a worktree");
+    w.hub().set_crew_review(&sid, "always").unwrap(); // a member whose files Cue never saw: reviewed only when asked to
     let ls = lines(include_str!("../../hosted/fixtures/team_worktree.jsonl"));
     says(&w, &sid, ls.iter().flatten().cloned());
     let t = mate(&w, &sid, "builder");
@@ -306,6 +308,38 @@ fn review_goes_to_the_free_lead_its_reply_is_the_teammates_review_and_send_fixes
 }
 
 #[test]
+fn by_default_only_a_member_with_code_in_a_git_repo_is_reviewed_by_itself_and_never_leaves_review_to_you() {
+    let w = World::new();
+    let dir = repo(&w);
+    let sid = lead(&w, "mocks and code");
+    assert!(w.snapshot().session(&sid)["crew_review"].is_null(), "only code in a repo: the default, no setting");
+    // Mocks written outside any repository: done at once, its row saying why; no review asked.
+    let outside = w.home().join("mocks");
+    std::fs::create_dir_all(&outside).unwrap();
+    says(&w, &sid, writes("toolu_A", "agentA", "mocks", &[outside.join("mock-1.html").to_string_lossy().to_string()]));
+    let t = mate(&w, &sid, "mocks");
+    assert_eq!((t["state"].as_str(), t["step"].as_str()), (Some("done"), Some("Not reviewed: no changes Cue can see in a git repo")), "{t}");
+    // Code in the repo: reviewed by itself.
+    says(&w, &sid, writes("toolu_B", "agentB", "rows", &[dir.join("a.txt").to_string_lossy().to_string()]));
+    assert_eq!(mate(&w, &sid, "rows")["state"], "queued");
+    // Never: none by itself, even code in a repo; Review by hand still asks for one.
+    w.hub().set_crew_review(&sid, "never").unwrap();
+    assert_eq!(w.snapshot().session(&sid)["crew_review"], "never");
+    says(&w, &sid, writes("toolu_C", "agentC", "docs", &[dir.join("b.txt").to_string_lossy().to_string()]));
+    let t = mate(&w, &sid, "docs");
+    assert_eq!((t["state"].as_str(), t["step"].as_str()), (Some("done"), Some("Not reviewed: reviews are off for this crew")), "{t}");
+    w.hub().team_action(&sid, "agentC", "review").unwrap();
+    assert_eq!(mate(&w, &sid, "docs")["state"], "queued", "asked by hand: it goes");
+    // Always: the mocks too.
+    w.hub().set_crew_review(&sid, "always").unwrap();
+    says(&w, &sid, writes("toolu_D", "agentD", "more-mocks", &[outside.join("mock-2.html").to_string_lossy().to_string()]));
+    assert_eq!(mate(&w, &sid, "more-mocks")["state"], "queued");
+    w.hub().set_crew_review(&sid, "code").unwrap();
+    assert!(w.snapshot().session(&sid)["crew_review"].is_null(), "only code in a repo is no setting");
+    assert!(w.hub().set_crew_review(&sid, "sometimes").is_err());
+}
+
+#[test]
 fn a_finished_crew_member_is_reviewed_by_itself_queued_while_its_lead_works_and_sent_when_it_is_free() {
     let w = World::new();
     let dir = repo(&w);
@@ -326,6 +360,7 @@ fn a_finished_crew_member_is_reviewed_by_itself_queued_while_its_lead_works_and_
 fn after_a_restart_the_team_is_back_from_cue_db_and_a_resumed_teammates_new_lines_add_to_it() {
     let mut w = World::new();
     let sid = lead(&w, "start keeper");
+    w.hub().set_crew_review(&sid, "always").unwrap(); // a member whose files Cue never saw: reviewed only when asked to
     let ls = lines(include_str!("../../hosted/fixtures/team_resume.jsonl"));
     // The first process: keeper started, answered "OK" and finished; the lead's own turns after it.
     let inits: Vec<usize> = include_str!("../../hosted/fixtures/team_resume.jsonl").lines().enumerate().filter(|(_, l)| l.contains("\"subtype\":\"init\"")).map(|(i, _)| i).collect();
@@ -563,7 +598,7 @@ fn a_task_dropped_on_a_lead_shows_the_files_a_teammate_already_changes_then_goes
 }
 
 #[test]
-fn by_default_a_clean_review_is_committed_on_a_branch_of_its_own_and_findings_that_need_a_change_go_back_twice_then_wait_for_you() {
+fn by_default_a_clean_review_is_committed_on_a_branch_of_its_own_and_findings_that_need_a_change_go_back_once_then_wait_for_you() {
     let w = World::new();
     let dir = main_repo(&w);
     let sid = lead(&w, "two parts");
@@ -591,15 +626,14 @@ fn by_default_a_clean_review_is_committed_on_a_branch_of_its_own_and_findings_th
     assert_eq!(git(&dir, &["show", "--name-only", "--format=%s", "crew/rows"]).trim(), "rows's part\n\na.txt", "on a branch of its own");
     assert_eq!(git(&dir, &["symbolic-ref", "--short", "HEAD"]).trim(), "main", "the folder stays on main");
     says(&w, &sid, writes("toolu_B", "agentB", "hub", &[dir.join("b.txt").to_string_lossy().to_string()]));
-    // Findings go back by themselves twice; the third review waits for you.
-    for round in 1..=2 {
-        reviewed(&w, "1. b.txt:1 — should-fix — say more\nRecommendation: send fixes");
-        assert_eq!(mate(&w, &sid, "hub")["fix_rounds"].as_u64(), Some(round), "round {round} sent back by itself");
-        w.hosted_says(&sid, HostedEvent::Task { what: "task_notification".into(), detail: json!({ "task_id": "agentB", "status": "completed", "summary": "Fixed." }) });
-        w.settle();
-    }
+    // Findings go back by themselves once; the next review waits for you.
     reviewed(&w, "1. b.txt:1 — should-fix — say more\nRecommendation: send fixes");
-    assert_eq!(mate(&w, &sid, "hub")["state"], "reviewed", "after two rounds: yours");
+    assert_eq!(mate(&w, &sid, "hub")["fix_rounds"].as_u64(), Some(1), "round 1 sent back by itself");
+    w.hosted_says(&sid, HostedEvent::Task { what: "task_notification".into(), detail: json!({ "task_id": "agentB", "status": "completed", "summary": "Fixed." }) });
+    w.settle();
+    reviewed(&w, "1. b.txt:1 — should-fix — say more\nRecommendation: send fixes");
+    let t = mate(&w, &sid, "hub");
+    assert_eq!((t["state"].as_str(), t["fix_rounds"].as_u64()), (Some("reviewed"), Some(1)), "after one round: yours: {t}");
     assert!(git(&dir, &["branch", "--list", "crew/hub"]).trim().is_empty());
     w.hub().set_crew_commit(&sid, "wait").unwrap();
     assert_eq!(w.snapshot().session(&sid)["crew_commit"], "wait", "Ask me: the lead's setting, in the window's state");
