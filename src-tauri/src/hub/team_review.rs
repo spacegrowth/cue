@@ -260,9 +260,9 @@ enum AutoNext {
 /// With the lead handling reviews (`crew_commit` "", the default; "wait": ask you every time): a review that asks for
 /// fixes, or says commit but lists a finding that needs a change (`fix_findings`), goes back to the teammate, up to
 /// `AUTO_FIX_ROUNDS` times; a commit whose findings are only notes (or none) is committed to its branch. Anything
-/// else waits for you.
+/// else waits for you, and so does "send fixes" with no findings at all: there is nothing to send.
 fn auto_next(crew_commit: &str, recommendation: &str, findings: &[String], fix_rounds: u32) -> AutoNext {
-    if crew_commit == "wait" {
+    if crew_commit == "wait" || (recommendation.contains("fix") && findings.is_empty()) {
         return AutoNext::Ask;
     }
     let commit = recommendation.starts_with("commit");
@@ -324,6 +324,7 @@ mod tests {
         assert_eq!(auto_next("", "commit", &f(&["1. a.rs — should-fix now — x"]), 0), AutoNext::Commit, "not an exact kind: a note, as the window counts it");
         assert_eq!(auto_next("", "send fixes", &notes, 0), AutoNext::Fixes, "asked for fixes: they go back");
         assert_eq!(auto_next("", "send fixes", &[], 1), AutoNext::Ask, "after one round: yours");
+        assert_eq!(auto_next("", "send fixes", &[], 0), AutoNext::Ask, "fixes asked with none listed: nothing to send, yours");
         assert_eq!(auto_next("wait", "commit", &[], 0), AutoNext::Ask);
         assert_eq!(auto_next("", "looks good", &[], 0), AutoNext::Ask, "never Commit on a guess");
     }
