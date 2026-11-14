@@ -273,6 +273,107 @@ fn background_reviews_that_come_back_out_of_order_each_go_to_the_member_they_nam
     assert_eq!(docs["recommendation"], "commit", "{docs}");
 }
 
+/// Members out for review in the background: lead `sid` took each one's ask, started its fork, and is free again.
+fn out_in_background(w: &World, sid: &str, names: &[&str]) {
+    for name in names {
+        let ask = next_review(w, sid);
+        assert!(ask.starts_with(&format!("Review your teammate {name}'s")), "{ask}");
+        turn_in_log(w, sid, BG_ASK, name, &ask, "");
+        ends(w, sid, &format!("Reviewing {name} in the background."), false);
+    }
+}
+
+/// While a review runs in the background you talk to the lead, and its answer happens to end with a Recommendation
+/// line. That's no review: the turn took no review ask, so it's nobody's, and the member waits on for its own.
+#[test]
+fn an_answer_of_yours_with_a_recommendation_line_while_a_review_runs_in_the_background_is_no_review() {
+    let w = World::new();
+    let dir = repo(&w);
+    let sid = lead(&w, "two parts");
+    w.hub().set_crew_commit(&sid, "wait").unwrap();
+    says(&w, &sid, writes("toolu_A", "agentA", "rows", &[path(&dir, "a.txt")]));
+    says(&w, &sid, writes("toolu_B", "agentB", "docs", &[path(&dir, "b.txt")]));
+    ends(&w, &sid, "started both", false);
+    out_in_background(&w, &sid, &["rows", "docs"]);
+    let answer = "The tokenizer splits on spaces only.\nRecommendation: send fixes to the tokenizer";
+    Transcript::at(w.hub().session_origin(&sid).unwrap().transcript_path).prompt("How does the tokenizer split?").assistant(answer);
+    ends(&w, &sid, answer, false);
+    assert_eq!((state(&w, &sid, "rows"), state(&w, &sid, "docs")), ("reviewing".into(), "reviewing".into()), "{}", mate(&w, &sid, "rows"));
+    assert!(mate(&w, &sid, "rows")["review"].as_str().unwrap_or("").is_empty());
+}
+
+/// Two background reports answered in one turn, in one reply: each section is its own member's review, with its own
+/// findings and Recommendation; neither is lost, neither merged into the other.
+#[test]
+fn two_background_reviews_answered_in_one_reply_each_go_to_their_own_member() {
+    let w = World::new();
+    let dir = repo(&w);
+    let sid = lead(&w, "two parts");
+    w.hub().set_crew_commit(&sid, "wait").unwrap();
+    says(&w, &sid, writes("toolu_A", "agentA", "rows", &[path(&dir, "a.txt")]));
+    says(&w, &sid, writes("toolu_B", "agentB", "docs", &[path(&dir, "b.txt")]));
+    ends(&w, &sid, "started both", false);
+    out_in_background(&w, &sid, &["rows", "docs"]);
+    let both = "Both reviews are in.\n\nReview of rows:\n1. a.txt:1 — should-fix — x\nRecommendation: send fixes\n\nReview of docs:\nRecommendation: commit";
+    turn_in_log(&w, &sid, BG_REPORT, "docs", "", both);
+    ends(&w, &sid, "1–12: N/A, no edits of mine this turn.", true);
+    let (rows, docs) = (mate(&w, &sid, "rows"), mate(&w, &sid, "docs"));
+    assert_eq!((rows["state"].as_str(), rows["recommendation"].as_str(), rows["findings"].as_array().map(Vec::len)), (Some("reviewed"), Some("send fixes"), Some(1)), "{rows}");
+    assert_eq!((docs["state"].as_str(), docs["recommendation"].as_str(), docs["findings"].as_array().map_or(0, Vec::len)), (Some("reviewed"), Some("commit"), 0), "{docs}");
+    assert_eq!(docs["review"], "Review of docs:\nRecommendation: commit");
+}
+
+/// The lead's heading strays from the asked `Review of <name>:` (another case, "'s work", a markdown heading, no
+/// colon): still its member's. And an unnamed review in the turn its own fork's report started is its, others under
+/// review or not.
+#[test]
+fn a_stray_heading_or_an_unnamed_review_its_own_fork_reported_still_reaches_its_member() {
+    let w = World::new();
+    let dir = repo(&w);
+    let sid = lead(&w, "three parts");
+    w.hub().set_crew_commit(&sid, "wait").unwrap();
+    for (call, id, name, f) in [("toolu_A", "agentA", "rows", "a.txt"), ("toolu_B", "agentB", "docs", "b.txt"), ("toolu_C", "agentC", "hub", "shared.txt")] {
+        says(&w, &sid, writes(call, id, name, &[path(&dir, f)]));
+    }
+    ends(&w, &sid, "started the crew", false);
+    out_in_background(&w, &sid, &["rows", "docs"]);
+    turn_in_log(&w, &sid, BG_REPORT, "docs", "", "Looks fine.\nRecommendation: commit");
+    ends(&w, &sid, "1–12: N/A, no edits of mine this turn.", true);
+    let docs = mate(&w, &sid, "docs");
+    assert_eq!((docs["state"].as_str(), docs["recommendation"].as_str()), (Some("reviewed"), Some("commit")), "its own fork's report, rows under review too: {docs}");
+    assert_eq!(state(&w, &sid, "rows"), "reviewing", "not rows's");
+    turn_in_log(&w, &sid, BG_REPORT, "rows", "", "## Review of Rows's work\n1. a.txt:1 — should-fix — x\nRecommendation: send fixes");
+    ends(&w, &sid, "1–12: N/A, no edits of mine this turn.", true);
+    assert_eq!(state(&w, &sid, "rows"), "reviewed", "{}", mate(&w, &sid, "rows"));
+    // A teammate's finish (not a review fork's report) with a Recommendation line, its one member under review: no review.
+    out_in_background(&w, &sid, &["hub"]);
+    let note = "<task-notification>\n<task-id>agentA</task-id>\n<tool-use-id>toolu_A</tool-use-id>\n<status>completed</status>\n</task-notification>";
+    Transcript::at(w.hub().session_origin(&sid).unwrap().transcript_path).entry(json!({ "type": "user", "message": { "role": "user", "content": note } }));
+    ends(&w, &sid, "rows finished.\nRecommendation: commit", true);
+    assert_eq!(state(&w, &sid, "hub"), "reviewing");
+}
+
+/// The lead names the review fork anyway (`review-rows`): it is Cue's review, never a crew member of its own (it
+/// would be reviewed in turn, reviews of reviews).
+#[test]
+fn a_review_fork_the_lead_names_is_no_crew_member() {
+    let w = World::new();
+    let dir = repo(&w);
+    let sid = lead(&w, "one part");
+    w.hub().set_crew_review(&sid, "always").unwrap();
+    says(&w, &sid, writes("toolu_A", "agentA", "rows", &[path(&dir, "a.txt")]));
+    ends(&w, &sid, "started rows", false);
+    let ask = next_review(&w, &sid);
+    let fork = json!({ "name": "review-rows", "description": "Review rows", "prompt": ask, "run_in_background": true });
+    says(&w, &sid, [
+        HostedEvent::ToolCall { id: "toolu_fork".into(), name: "Agent".into(), input: fork, agent: None },
+        HostedEvent::Task { what: "task_started".into(), detail: json!({ "tool_use_id": "toolu_fork", "task_id": "agentF", "task_type": "local_agent" }) },
+    ]);
+    let s = w.snapshot();
+    let names: Vec<&str> = s.session(&sid)["team"].as_array().unwrap().iter().filter_map(|t| t["name"].as_str()).collect();
+    assert_eq!(names, ["rows"]);
+}
+
 /// Item 3, without a transcript to read (or its ask scrolled out of it): a member under review whose lead has been
 /// free for REVIEW_SHOWN_MS since its ask went stops waiting at the next tidy.
 #[test]
@@ -309,7 +410,7 @@ fn a_member_under_review_keeps_waiting_while_its_lead_asks_you_something_or_comp
     w.hub().set_crew_commit(&sid, "wait").unwrap();
     says(&w, &sid, writes("toolu_A", "agentA", "board", &[]));
     ends(&w, &sid, "started board", false);
-    next_review(&w, &sid);
+    let review_ask = next_review(&w, &sid);
     let ask = Ask { request_id: "r1".into(), kind: AskKind::Permission, tool_name: "Bash".into(), input: json!({ "command": "cargo test" }), suggestions: json!([]), agent_id: String::new(), tool_use_id: "t1".into(), server: String::new(), message: String::new(), form: Value::Null };
     w.hosted_says(&sid, HostedEvent::Ask(ask));
     w.settle();
@@ -325,6 +426,8 @@ fn a_member_under_review_keeps_waiting_while_its_lead_asks_you_something_or_comp
     w.hub().team_tidy();
     assert_eq!(state(&w, &sid, "board"), "reviewing", "its lead compacts: not free");
     w.hosted_says(&sid, HostedEvent::Compacting { done: true });
+    // The turn that took its ask (its prompt) answers it: a review with no name is the asked member's.
+    Transcript::at(w.hub().session_origin(&sid).unwrap().transcript_path).prompt(&review_ask).assistant("Recommendation: commit");
     ends(&w, &sid, "Recommendation: commit", false);
     let t = mate(&w, &sid, "board");
     assert_eq!((t["state"].as_str(), t["recommendation"].as_str()), (Some("reviewed"), Some("commit")), "the review that came is its: {t}");
@@ -341,11 +444,12 @@ fn a_skip_after_the_review_went_or_the_member_was_resumed_changes_nothing() {
     says(&w, &sid, writes("toolu_A", "agentA", "rows", &[path(&dir, "a.txt")]));
     says(&w, &sid, writes("toolu_B", "agentB", "docs", &[path(&dir, "b.txt")]));
     ends(&w, &sid, "started both", false);
-    next_review(&w, &sid);
+    let ask = next_review(&w, &sid);
     assert_eq!(state(&w, &sid, "rows"), "reviewing");
     let said = w.hub().unqueue_review(&format!("team:{sid}:agentA"));
     assert_eq!(said, Err("Its review isn't waiting any more".to_string()));
     assert_eq!(state(&w, &sid, "rows"), "reviewing", "still under review");
+    Transcript::at(w.hub().session_origin(&sid).unwrap().transcript_path).prompt(&ask).assistant("Recommendation: commit");
     ends(&w, &sid, "Recommendation: commit", false);
     assert_eq!(state(&w, &sid, "rows"), "reviewed", "its review isn't lost");
     // docs is resumed by its lead while its review waits: the review is dropped, and a late Skip leaves it at work.

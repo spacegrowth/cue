@@ -217,7 +217,9 @@ pub fn sees(team: &mut Vec<Teammate>, cwd: &str, e: &HostedEvent, now: u64) -> b
 /// started again under its name); whether the team changed.
 fn started(team: &mut Vec<Teammate>, id: &str, input: &Value, now: u64) -> bool {
     let Some(mate) = input.get("name").and_then(Value::as_str).filter(|n| !n.trim().is_empty()) else { return false };
-    if team.iter().any(|t| t.call == id) {
+    // The fork that reviews a member, its prompt starting as Cue's review ask has it: named or not, never a member
+    // (it would be reviewed in turn).
+    if team.iter().any(|t| t.call == id) || review_ask_name(&str_of(input, "prompt")).is_some() {
         return false;
     }
     let worktree = input.get("isolation").and_then(Value::as_str) == Some("worktree");

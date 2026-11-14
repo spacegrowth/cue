@@ -1,4 +1,4 @@
-{"type":"user","message":{"role":"user","content":"<task-notification>\n<task-id>fork-{name}</task-id>\n<status>completed</status>\n<summary>Agent \"Review {name}\" completed</summary>\n<result>{review}</result>\n</task-notification>"}}
+{"type":"user","message":{"role":"user","content":"<task-notification>\n<task-id>fork-{name}</task-id>\n<tool-use-id>toolu_fork_{name}</tool-use-id>\n<status>completed</status>\n<summary>Agent \"Review {name}\" completed</summary>\n<result>{review}</result>\n</task-notification>"}}
 {"type":"assistant","message":{"model":"claude-opus-5-5","content":[{"type":"text","text":"{review}"}]}}
 {"type":"system","subtype":"stop_hook_summary","hookCount":1}
 {"type":"user","isMeta":true,"message":{"role":"user","content":"Stop hook feedback:\n[bash rules-check-stop.sh]: Unaudited edits this turn. Answer the audit, 1 to 12, in one line each."}}

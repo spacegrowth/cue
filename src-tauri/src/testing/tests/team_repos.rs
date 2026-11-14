@@ -306,7 +306,7 @@ fn committed_nothing_sets_it_aside_a_reply_without_either_leaves_it_to_you_and_a
     assert_eq!(mate(&w, &sid, "rows")["state"], "reviewing");
     w.hub().team_action(&sid, "agentB", "commit").unwrap();
     assert!(mate(&w, &sid, "notes")["needs"].is_null(), "asked again: its lead's again, not yours");
-    replies(&w, &sid, "1. a.txt:1 — should-fix — say more\nRecommendation: send fixes");
+    replies(&w, &sid, "Review of rows:\n1. a.txt:1 — should-fix — say more\nRecommendation: send fixes");
     let rows = mate(&w, &sid, "rows");
     assert_eq!((rows["state"].as_str(), rows["recommendation"].as_str()), (Some("reviewed"), Some("send fixes")), "{rows}");
     assert!(mate(&w, &sid, "notes")["commit_wait_ms"].as_u64().is_some_and(|ms| ms > 0), "the review wasn't its answer: its ask still waits");
@@ -334,7 +334,7 @@ fn handled_by_cue_a_clean_review_of_a_member_whose_files_cue_never_saw_asks_its_
     w.settle();
     assert_eq!(mate(&w, &sid, "board")["state"], "reviewing");
     w.advance(30_000); // the review takes a while
-    replies(&w, &sid, "Recommendation: commit");
+    replies(&w, &sid, "Review of board:\nRecommendation: commit");
     let asks = commit_asks(&w, &sid);
     assert_eq!(asks.len(), 1, "asked by itself: {:?}", w.hosted.sent());
     let t = mate(&w, &sid, "board");

@@ -383,7 +383,7 @@ fn turn_parts(entries: &[Value]) -> (Vec<Value>, bool) {
 }
 
 /// The last ~2 MB of a JSONL transcript, parsed (the first, possibly partial, line is dropped).
-fn read_tail(path: &str) -> Vec<Value> {
+pub(crate) fn read_tail(path: &str) -> Vec<Value> {
     let Ok(mut f) = std::fs::File::open(path) else { return vec![] };
     let len = f.metadata().map(|m| m.len()).unwrap_or(0);
     let from = len.saturating_sub(2_000_000);

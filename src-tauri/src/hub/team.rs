@@ -506,7 +506,7 @@ pub(super) struct Changes {
     added: u64,
     removed: u64,
     /// Its files in a repository git failed to read, as the stream gave them.
-    unread: Vec<String>,
+    pub(super) unread: Vec<String>,
     /// Its files in no git repository, as the stream gave them.
     outside: Vec<String>,
 }

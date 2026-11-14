@@ -18,7 +18,7 @@ fn reviewed_then_busy(w: &World) -> String {
     w.hub().drain_reviews();
     w.settle();
     assert_eq!(mate(w, &sid, "rows")["state"], "reviewing");
-    ends(w, &sid, "1. a.txt:1 — should-fix — say more\nRecommendation: send fixes.");
+    ends(w, &sid, "Review of rows:\n1. a.txt:1 — should-fix — say more\nRecommendation: send fixes.");
     assert_eq!(mate(w, &sid, "rows")["state"], "reviewed");
     w.hosted_says(&sid, HostedEvent::Taken { text: "carry on with the docs".into() });
     says(w, &sid, writes("toolu_B", "agentB", "hub", &[dir.join("b.txt").to_string_lossy().to_string()]));

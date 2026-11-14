@@ -292,7 +292,7 @@ fn review_goes_to_the_free_lead_its_reply_is_the_teammates_review_and_send_fixes
     w.settle();
     let t = mate(&w, &sid, "rows");
     assert_eq!((t["state"].as_str(), t["findings"].as_array().map(Vec::len)), (Some("reviewing"), None), "still waiting for its review: {t}");
-    w.hosted_says(&sid, HostedEvent::TurnEnded { text: "1. a.txt:1 — should-fix — say more\n2. a.txt:1 — note — fine otherwise\nRecommendation: send fixes.".into(), failed: false, cost_usd: 0.0, unprompted: false });
+    w.hosted_says(&sid, HostedEvent::TurnEnded { text: "Review of rows:\n1. a.txt:1 — should-fix — say more\n2. a.txt:1 — note — fine otherwise\nRecommendation: send fixes.".into(), failed: false, cost_usd: 0.0, unprompted: false });
     w.settle();
     let t = mate(&w, &sid, "rows");
     assert_eq!((t["state"].as_str(), t["recommendation"].as_str()), (Some("reviewed"), Some("send fixes")));
@@ -603,35 +603,36 @@ fn by_default_a_clean_review_is_committed_on_a_branch_of_its_own_and_findings_th
     let dir = main_repo(&w);
     let sid = lead(&w, "two parts");
     assert!(w.snapshot().session(&sid)["crew_commit"].is_null(), "handled by Cue: the default, no setting");
-    let reviewed = |w: &World, text: &str| {
+    // Each review names its member, as the ask has it (with no ask in a transcript, an unnamed reply is nobody's).
+    let reviewed = |w: &World, name: &str, text: &str| {
         w.hosted_says(&sid, HostedEvent::TurnEnded { text: "on it".into(), failed: false, cost_usd: 0.0, unprompted: false });
         w.settle();
         w.advance(60_000); // past the last review's settling time: one review at a time goes to a lead
         w.hub().drain_reviews();
         w.settle();
-        w.hosted_says(&sid, HostedEvent::TurnEnded { text: text.into(), failed: false, cost_usd: 0.0, unprompted: false });
+        w.hosted_says(&sid, HostedEvent::TurnEnded { text: format!("Review of {name}:\n{text}"), failed: false, cost_usd: 0.0, unprompted: false });
         w.settle();
     };
     says(&w, &sid, writes("toolu_A", "agentA", "rows", &[dir.join("a.txt").to_string_lossy().to_string()]));
     // A commit with a finding that needs a change: it goes back first, then a review with only a note commits.
-    reviewed(&w, "1. a.txt:1 — should-fix — say why\nRecommendation: commit");
+    reviewed(&w, "rows", "1. a.txt:1 — should-fix — say why\nRecommendation: commit");
     let t = mate(&w, &sid, "rows");
     assert_eq!((t["state"].as_str(), t["fix_rounds"].as_u64()), (Some("working"), Some(1)), "its finding sent back by itself: {t}");
     assert!(w.hosted.sent().last().unwrap().1.contains("1. a.txt:1 — should-fix — say why"));
     w.hosted_says(&sid, HostedEvent::Task { what: "task_notification".into(), detail: json!({ "task_id": "agentA", "status": "completed", "summary": "Said why." }) });
     w.settle();
-    reviewed(&w, "1. a.txt:1 — note — reads well now\nRecommendation: commit");
+    reviewed(&w, "rows", "1. a.txt:1 — note — reads well now\nRecommendation: commit");
     let t = mate(&w, &sid, "rows");
     assert_eq!(t["state"], "committed", "a review with only a note, committed by itself: {t}");
     assert_eq!(git(&dir, &["show", "--name-only", "--format=%s", "crew/rows"]).trim(), "rows's part\n\na.txt", "on a branch of its own");
     assert_eq!(git(&dir, &["symbolic-ref", "--short", "HEAD"]).trim(), "main", "the folder stays on main");
     says(&w, &sid, writes("toolu_B", "agentB", "hub", &[dir.join("b.txt").to_string_lossy().to_string()]));
     // Findings go back by themselves once; the next review waits for you.
-    reviewed(&w, "1. b.txt:1 — should-fix — say more\nRecommendation: send fixes");
+    reviewed(&w, "hub", "1. b.txt:1 — should-fix — say more\nRecommendation: send fixes");
     assert_eq!(mate(&w, &sid, "hub")["fix_rounds"].as_u64(), Some(1), "round 1 sent back by itself");
     w.hosted_says(&sid, HostedEvent::Task { what: "task_notification".into(), detail: json!({ "task_id": "agentB", "status": "completed", "summary": "Fixed." }) });
     w.settle();
-    reviewed(&w, "1. b.txt:1 — should-fix — say more\nRecommendation: send fixes");
+    reviewed(&w, "hub", "1. b.txt:1 — should-fix — say more\nRecommendation: send fixes");
     let t = mate(&w, &sid, "hub");
     assert_eq!((t["state"].as_str(), t["fix_rounds"].as_u64()), (Some("reviewed"), Some(1)), "after one round: yours: {t}");
     assert!(git(&dir, &["branch", "--list", "crew/hub"]).trim().is_empty());
