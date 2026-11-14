@@ -14,7 +14,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 
 | What | Count |
 |---|---|
-| `#[tauri::command]` | 160 (3 sync) |
+| `#[tauri::command]` | 163 (3 sync) |
 | Lock declarations (static or field) | 111 |
 | Lock acquisitions | 264 |
 | Lock-graph edges | 51 |
@@ -153,6 +153,9 @@ Sync commands run on the main thread. "Hands work to": the threads or pools its 
 | `rename_dismiss` | async | `ipc/state.rs::rename_dismiss` | ipc::with_hub |
 | `unhold_message` | async | `ipc/state.rs::unhold_message` | ipc::with_hub |
 | `send_held_now` | async | `ipc/state.rs::send_held_now` | ipc::with_hub |
+| `send_at` | async | `ipc/state.rs::send_at` | ipc::with_hub |
+| `send_at_drop` | async | `ipc/state.rs::send_at_drop` | ipc::with_hub |
+| `send_at_now` | async | `ipc/state.rs::send_at_now` | ipc::with_hub |
 | `set_later` | async | `ipc/state.rs::set_later` | ipc::with_hub |
 | `set_watch` | async | `ipc/state.rs::set_watch` | ipc::with_hub |
 | `set_starred` | async | `ipc/state.rs::set_starred` | ipc::with_hub |

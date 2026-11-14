@@ -172,6 +172,7 @@ function chatHtml(it, s, harness, paged = false) {
   // itself will send its crew's lead once it's free waits on the member's row in the crew tray, team.js: the chat
   // shows only what was sent.)
   if (s?.held) rows.push(heldRow(s));
+  if (s?.send_at) rows.push(sendAtRow(s));
   if (s?.queued) rows.push(`<div class="cv-you queued" data-key="queued">${yourBubble(s.queued, `${s.session_id}:queued`, qPhase(), true)}${thumbs(s.queued.images)}<div class="cv-meta">Queued · it reads this when it finishes the current step · <button class="q-now" data-act="send-now" data-sid="${esc(s.session_id)}">Send now <kbd>⌘↵</kbd></button></div></div>`);
   return rows.length ? (paged && sid ? keyed(olderRow(sid, harness), "older") : "") + rows.join("") : ran.length ? ran.map((r) => r.html).join("") : `<div class="dim cv-empty" data-key="empty">No messages yet in this session.</div>`;
 }
@@ -183,6 +184,16 @@ function heldRow(s) {
   const cue = cueSaid(s.held.text);
   if (cue && !heldWhy) return cueSaidLine({ ...cue, html: cueWill(cue.html) }, `${s.session_id}:held`, s.held.text, `not sent yet · it goes when this turn ends · ${now}`);
   return `<div class="cv-you queued held" data-key="held">${yourBubble(s.held, `${s.session_id}:held`, qPhase(), true)}${thumbs(s.held.images)}<div class="cv-meta">${heldWhy ? `Couldn't send it: ${esc(heldWhy.slice(15))}` : "Not sent yet · it goes when this turn ends"} · <button class="q-now" data-act="held-edit" data-sid="${sid}">Edit</button> · ${now}</div></div>`;
+}
+/** A message Cue sends by itself later: at your time, or (Cue's carry-on) when the usage limit it stopped on resets. */
+function sendAtRow(s) {
+  const l = s.send_at, sid = esc(s.session_id);
+  const at = new Date(l.at_ms), hm = at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const day = at.toDateString() === new Date().toDateString() ? "today" : "tomorrow";
+  const resets = s.limit?.resets_ms ? ` (${new Date(s.limit.resets_ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})` : "";
+  const when = l.failed ? `Couldn't send it: ${esc(l.failed)}` : l.at_ms ? `Not sent yet · Cue sends it ${day} at ${hm}` : `Not sent yet · Cue sends it when your usage limit resets${resets}`;
+  const acts = `${l.at_ms ? `<button class="q-now" data-act="send-at-edit" data-sid="${sid}">Edit</button> · ` : ""}<button class="q-now" data-act="send-at-x" data-sid="${sid}">Cancel</button> · <button class="q-now" data-act="send-at-now" data-sid="${sid}">Send now</button>`;
+  return `<div class="cv-you queued held" data-key="send-at">${yourBubble({ role: "you", text: l.text, at_ms: l.at_ms || Date.now() }, `${s.session_id}:send-at`, qPhase(), true)}<div class="cv-meta">${when} · ${acts}</div></div>`;
 }
 /** In the chat where a restart (after an MCP change) ended: back, with which servers and how long it took,
  *  or why it didn't finish. The latest one also says how each server did, once Claude Code has said

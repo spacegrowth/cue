@@ -556,3 +556,8 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .btw-ask textarea:focus { border-color: var(--accent); }
 /* "Not sent" for an agent's own screen: Run it in a terminal, beside the words. */
 .cv-you .cv-meta .run-here { display: inline-flex; margin: 4px 0 0 6px; vertical-align: middle; }
+
+/* "Send at…" under a session's box: a time, then Cue sends what's typed (compose.js sendAtBar). */
+.send-at-bar { display: flex; align-items: center; gap: 8px; padding: 6px 10px 8px; font-size: 12.5px; border-top: 1px solid var(--line); }
+.send-at-bar input[type=time] { font: 12.5px var(--sans); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; background: var(--panel); color: var(--ink); }
+.send-at-bar .grow { flex: 1; }

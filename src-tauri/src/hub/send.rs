@@ -420,7 +420,7 @@ impl Hub {
 
     /// Send `typed` (and images already saved) to a session. Mid-turn, to an agent Cue types into: Cue
     /// keeps it and sends it when the turn ends (see `held`), unless `now`.
-    fn send_saved(&self, session_id: &str, typed: &str, saved: Vec<crate::uploads::Saved>, now: bool) -> Result<String, String> {
+    pub(super) fn send_saved(&self, session_id: &str, typed: &str, saved: Vec<crate::uploads::Saved>, now: bool) -> Result<String, String> {
         // One message at a time into a session: another being typed into it goes first (see Hub::typing).
         let gate = self.typing_gate(session_id);
         let _typing = wait_turn(&gate)?;

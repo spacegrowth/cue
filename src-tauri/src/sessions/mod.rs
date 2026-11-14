@@ -8,6 +8,7 @@
 mod bar;
 mod delivery;
 mod held;
+pub mod send_at;
 mod marks;
 mod names;
 pub(crate) mod shell_writes;
@@ -174,6 +175,10 @@ pub struct Session {
     /// are already saved (their paths).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub held: Option<Exchange>,
+    /// A message Cue sends by itself later: at a time you picked, or when the usage limit it stopped on resets
+    /// (send_at.rs).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub send_at: Option<send_at::SendAt>,
     /// A hosted lead's teammates (team.rs), from its stream: kept with its record, since a resumed lead's stream
     /// never says them again.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -286,6 +291,7 @@ impl Session {
             teammates_read_ms: 0,
             stuck_ms: 0,
             held: None,
+            send_at: None,
             team: vec![],
             team_mode: String::new(),
             crew_commit: String::new(),

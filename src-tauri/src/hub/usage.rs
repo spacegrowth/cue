@@ -30,6 +30,7 @@ impl Hub {
             st.sessions.set_queued(&sid, None);
             let key = format!("{}|{}", limit.scope, limit.resets_ms.unwrap_or(0) / 60_000);
             st.sessions.set_limit(&sid, Some(limit.clone()));
+            Self::carry_on_after_limit(st, &sid);
             Some(st.told_out.insert(key))
         });
         let Some(announce) = announce else { return };
@@ -142,6 +143,7 @@ impl Hub {
         self.catch_dead_turns(stuck, now);
         self.cache_tick();
         self.tell_limits_back(&limited, now);
+        self.send_at_tick();
     }
 
     /// Can't reach the API: Claude Code tries again for minutes before it gives up, its terminal only

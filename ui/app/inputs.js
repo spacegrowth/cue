@@ -6,6 +6,7 @@
 function onInput(e) {
   if (e.target.matches?.("[data-hsession]")) { histSession = e.target.value; histOpen = null; return renderMain(); }
   if (e.target.matches?.("[data-quick-edit]")) { qpEdit = [...document.querySelectorAll("[data-quick-edit]")].map((i) => i.value); clearTimeout(qpSaveAt); qpSaveAt = setTimeout(saveQuickPhrases, 500); return; }
+  if (e.target.matches?.("[data-send-at-time]")) { sendAtTime = e.target.value || sendAtTime; const w = e.target.parentElement?.querySelector(".dim"); if (w) w.textContent = sendAtWhen(sendAtTime).words; return; }
   const id = e.target.dataset?.text;
   if (!id) return;
   draft(id).text = e.target.value;

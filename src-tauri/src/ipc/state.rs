@@ -69,6 +69,24 @@ pub(crate) async fn send_held_now(hub: State<'_, Arc<Hub>>, session_id: String) 
     with_hub(&hub, move |h| h.send_held(&session_id, true)).await?
 }
 
+/// "Send at…": `text` kept for the session, sent by Cue at `at_ms` (ms since the epoch).
+#[tauri::command]
+pub(crate) async fn send_at(hub: State<'_, Arc<Hub>>, session_id: String, text: String, at_ms: u64) -> Result<String, String> {
+    with_hub(&hub, move |h| h.send_at(&session_id, &text, at_ms)).await?
+}
+
+/// The message for later dropped (Cancel), or taken back to change (Edit): its text, if there was one.
+#[tauri::command]
+pub(crate) async fn send_at_drop(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<Option<String>, String> {
+    with_hub(&hub, move |h| h.drop_send_at(&session_id).map(|l| l.text)).await
+}
+
+/// The message for later, sent now.
+#[tauri::command]
+pub(crate) async fn send_at_now(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
+    with_hub(&hub, move |h| h.send_at_now(&session_id)).await?
+}
+
 /// "Later" on a session: put it off (its finished turns wait under Need to decide), or back.
 #[tauri::command]
 pub(crate) async fn set_later(hub: State<'_, Arc<Hub>>, session_id: String, on: bool) -> Result<(), String> {

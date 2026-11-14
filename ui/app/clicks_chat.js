@@ -47,6 +47,10 @@ const QUEUE_CLICKS = [
   rule("[data-act=unqueue-review]", (uq) => invoke("unqueue_review", { exec: uq.dataset.exec }).then(() => toast("Taken off the queue")).catch((e) => toast(`Couldn't: ${e}`))),
   rule("[data-act=held-edit]", (he) => pullHeld(he.dataset.sid)),
   rule("[data-act=held-now]", (hn) => sendHeldNow(hn.dataset.sid)),
+  // A message for later: back to the box, dropped, or sent now.
+  rule("[data-act=send-at-edit]", (se) => sendAtEdit(se.dataset.sid)),
+  rule("[data-act=send-at-x]", (sx) => invoke("send_at_drop", { sessionId: sx.dataset.sid }).then(() => toast("It won't be sent"))),
+  rule("[data-act=send-at-now]", (sn) => invoke("send_at_now", { sessionId: sn.dataset.sid }).then((m) => toast(m), (e) => toast(`Couldn't send it: ${e}`))),
 ];
 
 /** The ⋯ menu's item `cmd` for session `sid`. */
@@ -146,6 +150,10 @@ const BOX_CLICKS = [
   rule("[data-astext]", sendAsText),
   // 📎 on a box: Finder's picker, for that box; × on a picture takes it off.
   rule("[data-attach]", (at) => pickImages(at.dataset.attach)),
+  // The clock on a session's box: its "Send at…" bar, open or shut; Keep it for then hands the text to Cue.
+  rule("[data-send-at-open]", (so) => { sendAtFor = sendAtFor === so.dataset.sendAtOpen ? null : so.dataset.sendAtOpen; renderMain(); }),
+  rule("[data-send-at-x]", () => { sendAtFor = null; renderMain(); }),
+  rule("[data-send-at-go]", (sg) => sendAtKeep(sg.dataset.sendAtGo)),
   rule("[data-unattach]", (un) => { const [key, n] = un.dataset.unattach.split(/:(?=\d+$)/); draft(key).images.splice(+n, 1); renderMain(); }),
 ];
 

@@ -403,6 +403,37 @@ function box(key, placeholder, label, sendAttrs, images, alt = "", extra = "") {
     <div class="ta-wrap"><textarea rows="2" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" data-text="${esc(key)}"${sug ? ` class="sug" aria-label="${esc(`Suggested: ${sug}. Tab types it in.`)}"` : ""} placeholder="${esc(sug ? " " : placeholder)}">${esc(d.text)}</textarea>${sugLine}</div>
     ${status}<button class="icon-btn mic ${dictating?.key === key ? "on" : ""}" data-mic="${esc(key)}" title="${dictating?.key === key ? "Stop dictating" : "Dictate: talk and it types here"}" aria-label="Dictate">${MIC_ICON}</button>
     ${images ? `<button class="icon-btn" data-attach="${esc(key)}" title="Add an image (or paste one with ⌘V)" aria-label="Add image">${IMAGE_ICON}</button>` : ""}
-    ${extra}${ready ? alt : ""}<button class="btn primary send" ${sendAttrs} ${ready ? "" : "disabled"}>${label}</button></div>${slashHint(key)}</div></div>`;
+    ${images && sidOfKey(key) ? `<button class="icon-btn ${sendAtFor === key ? "on" : ""}" data-send-at-open="${esc(key)}" aria-label="Send at a time">${CLOCK_ICON}</button>` : ""}
+    ${extra}${ready ? alt : ""}<button class="btn primary send" ${sendAttrs} ${ready ? "" : "disabled"}>${label}</button></div>${sendAtFor === key ? sendAtBar(key) : ""}${slashHint(key)}</div></div>`;
+}
+/** The box whose "Send at…" bar is open (its clock button), and the time picked there ("HH:MM"). */
+let sendAtFor = null, sendAtTime = "08:01";
+/** "Send at…" under a session's box: what's typed goes at that time (tomorrow if it has passed today), sent by Cue. */
+const sendAtBar = (key) => `<div class="send-at-bar">Send at <input type="time" data-send-at-time value="${esc(sendAtTime)}"> <span class="dim">${esc(sendAtWhen(sendAtTime).words)}</span><span class="grow"></span><button class="btn sm" data-send-at-x>Cancel</button><button class="btn sm primary" data-send-at-go="${esc(key)}">Keep it for then</button></div>`;
+/** "HH:MM" as the next time it comes: today, or tomorrow once it's passed. */
+function sendAtWhen(hm) {
+  const [h, m] = hm.split(":").map(Number), at = new Date();
+  at.setHours(h || 0, m || 0, 0, 0);
+  if (at.getTime() <= Date.now()) at.setDate(at.getDate() + 1);
+  const today = at.toDateString() === new Date().toDateString();
+  return { ms: at.getTime(), words: `${today ? "today" : "tomorrow"} at ${hm}` };
+}
+/** Keep it for then: the box's text goes to Cue to send at that time; the box is emptied. */
+function sendAtKeep(key) {
+  const d = draft(key), sid = sidOfKey(key);
+  if (!d.text.trim()) return toast("Type what to send first");
+  if (d.images.length) return toast("Pictures can't wait for a time yet: send them now");
+  const when = sendAtWhen(sendAtTime);
+  invoke("send_at", { sessionId: sid, text: d.text, atMs: when.ms }).then(() => {
+    d.text = ""; sendAtFor = null; saveDrafts(); renderMain(); toast(`Cue sends it ${when.words}`);
+  }, (e) => toast(`Couldn't keep it: ${e}`));
+}
+/** The message for later: back into the box to change (Edit), dropped (Cancel), or sent now. */
+async function sendAtEdit(sid) {
+  const text = await invoke("send_at_drop", { sessionId: sid }).catch(() => null);
+  if (!text) return;
+  const d = draft(`s:${sid}`);
+  d.text = d.text.trim() ? `${text}\n\n${d.text}` : text;
+  saveDrafts(); renderMain();
 }
 
