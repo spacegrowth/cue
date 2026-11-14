@@ -317,6 +317,15 @@ test.describe("a hosted lead's crew on its own page", () => {
     await expect(handoff.locator(".co-fd")).toHaveCount(2);
     await expect(handoff.locator(".co-fd").first().locator(".co-fs")).toHaveText("sent back");
     await expect(handoff.locator(".co-fl")).toHaveCount(2);
+    // Open, its task stays at two lines (a lead's brief can be pages long): the steps lead. A short task gets no
+    // Full task; a long one does, and it opens the rest in place.
+    await expect(handoff.locator(".cp-ask")).not.toHaveClass(/full/);
+    await expect(handoff.locator("[data-cp-ask]")).toHaveCount(0);
+    await page.evaluate(() => { const t = sessionOf("lead").team.find((m) => m.name === "handoff"); t.asked = "Carry the team over a handoff. ".repeat(12); renderMain(); });
+    await handoff.locator("[data-cp-ask]").click();
+    await expect(handoff.locator(".cp-ask")).toHaveClass(/full/);
+    await handoff.locator("[data-cp-ask]").click();
+    await expect(handoff.locator(".cp-ask")).not.toHaveClass(/full/);
     await expect(handoff.locator("[data-cp-lane]")).toContainText("⌄");
     await handoff.locator("[data-cp-lane]").click();
     await expect(handoff.locator(".co-body")).toHaveCount(0);

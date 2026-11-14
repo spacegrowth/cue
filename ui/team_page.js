@@ -181,6 +181,9 @@ function crewLaneLinks(sid, t) {
 }
 /** The lanes open in place (a click on the name), by member key; the others stay where they are. */
 const crewLaneOpen = new Set();
+/** Lanes whose task is shown whole (Full task ›): a lead's brief can run long, so even an open lane keeps it to two
+ *  lines and leads with its steps. */
+const crewAskFull = new Set();
 /** An open lane's steps, oldest first, each [time or 0, words, now]: when it started; each of its decisions in the
  *  crew's log (its first words when noted, what came of it, the last at when it last grew), when it finished; at
  *  work, the step it's on. Without a log, what its row says (crewSteps). */
@@ -219,7 +222,7 @@ function crewLaneBody(sid, t) {
   return `<div class="co-body"><div class="co-col"><div class="mt-grp">Steps</div>${steps}</div><div class="co-col">${found}${files}</div></div>`;
 }
 /** One member's lane, read across in columns: who (its name opening the lane in place, its state, its meter), what it
- *  was asked (two lines, the whole of it open), what it's doing now and its context, its work, its links. What its
+ *  was asked (two lines; open, Full task › shows the rest), what it's doing now and its context, its work, its links. What its
  *  links opened (its full review) under it. A committed or set-aside one is dimmed. */
 function crewLane(sid, t) {
   const [word, look] = crewStateWord(sid, t), past = ["committed", "aside"].includes(t.state), k = mateKey(sid, t), open = crewLaneOpen.has(k);
@@ -227,7 +230,7 @@ function crewLane(sid, t) {
   const sub = n.fix ? `${crewKind(n.fix[0])} ${crewCode(n.fix[1])}` : crewCode(n.sub);
   return `<div class="cp-lane ${past ? "past" : ""} ${open ? "open" : ""}" data-key="cp:${esc(k)}">`
     + `<div class="cp-who"><button class="mt-name" data-cp-lane="${esc(k)}" aria-expanded="${open}">${esc(t.name)} <span class="cp-car">${open ? "⌄" : "›"}</span></button><span class="cp-st ${look}">${word}</span>${crewMeter(n)}</div>`
-    + `<div class="cp-ask ${open ? "full" : ""}">${crewCode(asked)}</div>`
+    + `<div class="cp-askc"><div class="cp-ask ${crewAskFull.has(k) ? "full" : ""}">${crewCode(asked)}</div>${open && asked.length > 160 ? `<button class="mt-lk cp-askx" data-cp-ask="${esc(k)}" aria-expanded="${crewAskFull.has(k)}">${crewAskFull.has(k) ? "Less ⌃" : "Full task ›"}</button>` : ""}</div>`
     + `<div class="cp-now"><div class="cp-big ${n.ask ? "q" : ""}">${crewCode(n.now)}</div>${sub ? `<div class="cp-small">${sub}</div>` : ""}</div>`
     + `${crewWork(t)}<div class="cp-links">${crewLaneLinks(sid, t)}</div>${open ? crewLaneBody(sid, t) : ""}${mateUnderHtml(sid, t)}</div>`;
 }
@@ -411,12 +414,13 @@ function crewPageEsc(e) {
 if (typeof document !== "undefined") {
   document.addEventListener("keydown", (e) => { if (crewPageEsc(e)) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
   document.addEventListener("click", (e) => {
-    const el = e.target.closest?.("[data-cp-open], [data-cp-back], [data-cp-chat], [data-cp-talk], [data-cp-goal], [data-cp-more], [data-cp-lane], [data-cp-answer]");
+    const el = e.target.closest?.("[data-cp-open], [data-cp-back], [data-cp-chat], [data-cp-talk], [data-cp-goal], [data-cp-more], [data-cp-lane], [data-cp-ask], [data-cp-answer]");
     if (!el) return;
     e.stopPropagation();
     if (el.dataset.cpOpen) return crewPageOpen(el.dataset.cpOpen);
     if (el.matches("[data-cp-back], [data-cp-chat]")) return crewPageClose(el.matches("[data-cp-chat]"));
     if (el.dataset.cpMore) { const k = el.dataset.cpMore; if (!crewSaidOpen.delete(k)) crewSaidOpen.add(k); return renderMain(); }
+    if (el.dataset.cpAsk) { const k = el.dataset.cpAsk; if (!crewAskFull.delete(k)) crewAskFull.add(k); return renderMain(); }
     if (el.dataset.cpLane) { const k = el.dataset.cpLane; mateMenu = null; if (!crewLaneOpen.delete(k)) crewLaneOpen.add(k); return renderMain(); }
     if (el.dataset.cpAnswer) return crewAnswer(el.dataset.cpAnswer);
     if (el.dataset.cpGoal) { const sid = el.dataset.cpGoal; if (!crewGoalOpen.delete(sid)) crewGoalOpen.add(sid); return renderMain(); }
