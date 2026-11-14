@@ -78,10 +78,11 @@ function crewWaitLine(sid) {
   return working.length ? `<span class="dot-live"></span><span class="cv-what">Crew working: ${working.map((t) => esc(t.name)).join(", ")}</span>` : "";
 }
 
-/** How long: at work, since it started; finished, how long it took. */
+/** How long: at work, since it started; finished, how long it took. In whole minutes ("<1m" before the first), so a
+ *  row's words don't shift every second while you read them. */
 function mateSpan(t) {
   const end = t.state === "working" || !t.ended_ms ? now() : t.ended_ms, s = Math.max(0, Math.round((end - t.started_ms) / 1000));
-  return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m` : `${Math.floor(s / 3600)}h`;
+  return s < 60 ? "<1m" : s < 3600 ? `${Math.floor(s / 60)}m` : `${Math.floor(s / 3600)}h`;
 }
 
 /** Minutes since a teammate's last line. */

@@ -243,3 +243,8 @@ button.mt-name:hover, .mt-name.on { text-decoration: underline; text-underline-o
 .cue-you .cv-you-text b { font-weight: 650; }
 .cue-you .cv-voice-note { color: var(--muted); }
 .cue-you .cv-voice-line { white-space: pre-wrap; }
+
+/* A crew member's line in even-width digits, so the words after its time hold still as it changes (team.js mateLine). */
+.mt-line, .cp-where { font-variant-numeric: tabular-nums; }
+/* The crew's live dots stay still: only the notch's and the rail's dot blink (a pulse in a list pulls the eye). */
+.crew-tray .dot-live, .crew-page .dot-live, .tm-chips .dot-live { animation: none; }
