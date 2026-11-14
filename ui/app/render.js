@@ -12,7 +12,7 @@ let chatOpenTold;
 // The lists a redraw puts back where they were scrolled (the chat keeps its element across draws, chat/patch.js liftChat /
 // settleChat, so its scroll is its own). Each is known by its kind and its place among that kind, or by its
 // data-scroll-key: a list new in this draw (a lead's review rows) is never handed another list's place.
-const SCROLLERS = [".col", ".lv-list", ".sv-scroll", ".sheet-body", ".sec-body", ".card.recent", ".hist", ".hdetail", ".itab", ".vp-list", ".rdv-scroll", ".rdv-list", ".rdv-toc"];
+const SCROLLERS = [".col", ".cp-scroll",".lv-list", ".sv-scroll", ".sheet-body", ".sec-body", ".card.recent", ".hist", ".hdetail", ".itab", ".vp-list", ".rdv-scroll", ".rdv-list", ".rdv-toc"];
 function scrollerKeys() {
   const seen = {};
   return [...document.querySelectorAll(SCROLLERS.join(", "))].map((el) => {
@@ -74,7 +74,8 @@ function topBarHtml(counts) {
       <button class="top-btn icon" data-act="open-settings" title="Settings" aria-label="Settings">${GEAR_ICON}</button></div>`;
 }
 /** The view picked in the header. */
-const viewHtml = () => (view === "history" ? historyView() : view === "insights" ? insightsTabView() : view === "sessions" ? sessionsView() : view === "read" ? readView() : view === "terminal" ? shellView() : addOn.views.find((v) => v.id === view)?.html() ?? boardView());
+// A lead's crew on its own page (team_page.js) takes the board's place while it's open.
+const viewHtml = () => (typeof crewPageShown === "function" && crewPageShown()) || (view === "history" ? historyView() : view === "insights" ? insightsTabView() : view === "sessions" ? sessionsView() : view === "read" ? readView() : view === "terminal" ? shellView() : addOn.views.find((v) => v.id === view)?.html() ?? boardView());
 /** What sits over the window: Move to Cue, a delete to confirm, a picture full size, Send to, a sheet, the live
  *  list in the middle of the window, an action's output. */
 function overlaysHtml() {

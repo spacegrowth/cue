@@ -260,33 +260,51 @@ function crewWords(sid, groups) {
   return `<span class="${live ? "dot-live" : "crew-dot"}"></span><span class="crew-w">Cue Crew · ${mateList(sid).length}${needs ? ` <span class="crew-need">· ${needs}</span>` : ""}${rest.length ? ` <span class="crew-mu">· ${rest.join(" · ")}</span>` : ""}</span>`;
 }
 
+/** A lead's members by the group their row is in (mateGroup). */
+function crewGroups(sid) {
+  const groups = { need: [], ready: [], cue: [], lead: [], working: [], done: [] };
+  for (const t of mateList(sid)) groups[mateGroup(sid, t)].push(t);
+  return groups;
+}
+/** Cue handles reviews by itself (Handle it), rather than leaving each to you (Ask me). */
+const crewHandles = (sid) => (typeof crewCommit === "function" ? crewCommit(sid) : "auto") !== "wait";
+/** Needs you: the members that wait on you, each its row with its buttons. Handle it: a reviewed member left to you
+ *  (out of fix rounds, or its button refused) is among them; Ask me: every review waits under Ready instead, unless
+ *  `ready` (the crew's page, which has no Ready) puts those here too. */
+function crewNeedRows(sid, groups, ready = crewHandles(sid)) {
+  const list = ready ? groups.need.concat(groups.ready) : groups.need;
+  return { list, rows: list.map((t) => mateNeeds(sid, t) ? mateNeedRow(sid, t) : mateReadyRow(sid, t)).join("") };
+}
+/** Nothing needs you: what it would ask you about. */
+const CREW_NONE = "It asks here before anything one-way: merging to main, a new dependency, a choice only you can make.";
+/** The open member's menu, when it's one of this lead's. */
+const mateMenuOf = (sid) => { const t = (sessionOf(sid)?.team || []).find((m) => mateKey(sid, m) === mateMenu); return t ? mateMenuHtml(sid, t) : ""; };
+
 /** The crew's tray on the lead's message box (the box's top corners go square under it): its line (a click on it, or
- *  its caret, opens and closes it; Esc closes it), with the mode ("Handle it ▾", team_send.js crewMode); open, the
- *  groups in a white body that scrolls inside past about half the pane. "" when it has no crew. */
+ *  its caret, opens and closes it; Esc closes it), with Open full › (the crew's page, team_page.js) and the mode
+ *  ("Handle it ▾", team_send.js crewMode); open, the groups in a white body that scrolls inside past about half the
+ *  pane. "" when it has no crew. */
 function crewTray(sid) {
   const list = mateList(sid);
   if (!list.length) return "";
   mateOpenOnWait(sid);
   const open = mateOpenLeads.has(sid);
-  const groups = { need: [], ready: [], cue: [], lead: [], working: [], done: [] };
-  for (const t of list) groups[mateGroup(sid, t)].push(t);
-  const head = `<div class="crew-head" data-mt-open="${esc(sid)}" role="button" aria-expanded="${open}">${crewWords(sid, groups)}<span class="grow"></span>${crewMode(sid)}<button class="crew-car" data-mt-open="${esc(sid)}" aria-label="${open ? "Close the crew" : "Open the crew"}">${open ? "▾" : "▴"}</button></div>`;
+  const groups = crewGroups(sid);
+  // Only in the window that has the crew's page (not the mini one).
+  const full = typeof crewPageOpen === "function" ? `<button class="mt-lk crew-full" data-cp-open="${esc(sid)}">Open full ›</button>` : "";
+  const head = `<div class="crew-head" data-mt-open="${esc(sid)}" role="button" aria-expanded="${open}">${crewWords(sid, groups)}<span class="grow"></span>${full}${crewMode(sid)}<button class="crew-car" data-mt-open="${esc(sid)}" aria-label="${open ? "Close the crew" : "Open the crew"}">${open ? "▾" : "▴"}</button></div>`;
   if (!open) return `<div class="crew-tray" data-key="crew-tray" data-crew-tray="${esc(sid)}">${head}</div>`;
   const grp = (label, rows, cls = "") => rows ? `<div class="mt-grp ${cls}">${label}</div>${rows}` : "";
-  // Handle it: a reviewed member left to you (out of fix rounds, or its button refused) is among Needs you, its
-  // buttons on its row; Ask me: every review waits under Ready, as before.
-  const handles = (typeof crewCommit === "function" ? crewCommit(sid) : "auto") !== "wait";
-  const needs = handles ? groups.need.concat(groups.ready) : groups.need, ready = handles ? [] : groups.ready;
-  const needRows = needs.map((t) => mateNeeds(sid, t) ? mateNeedRow(sid, t) : mateReadyRow(sid, t)).join("");
+  const handles = crewHandles(sid);
+  const needs = crewNeedRows(sid, groups, handles), ready = handles ? [] : groups.ready;
   const body = crewGoalHtml(sid, handles)
-    + (needRows ? grp(`Needs you · ${needs.length}`, needRows, "red") : `<div class="mt-grp">Needs you · nothing now</div><div class="crew-none">It asks here before anything one-way: merging to main, a new dependency, a choice only you can make.</div>`)
+    + (needs.rows ? grp(`Needs you · ${needs.list.length}`, needs.rows, "red") : `<div class="mt-grp">Needs you · nothing now</div><div class="crew-none">${CREW_NONE}</div>`)
     + grp("Ready", ready.map((t) => mateReadyRow(sid, t)).join(""))
     + crewLogHtml(sid)
     + grp("Waiting on the lead", groups.lead.map((t) => mateOneRow(sid, t)).join(""))
     + grp("Working", groups.working.map((t) => mateOneRow(sid, t)).join("") + groups.cue.map((t) => mateCueRow(sid, t)).join(""))
     + mateDoneHtml(sid, groups.done);
-  const menu = (sessionOf(sid)?.team || []).find((t) => mateKey(sid, t) === mateMenu);
-  return `<div class="crew-tray open" data-key="crew-tray" data-crew-tray="${esc(sid)}">${head}<div class="crew-body" data-scroll-key="crew:${esc(sid)}">${body}</div>${menu ? mateMenuHtml(sid, menu) : ""}</div>`;
+  return `<div class="crew-tray open" data-key="crew-tray" data-crew-tray="${esc(sid)}">${head}<div class="crew-body" data-scroll-key="crew:${esc(sid)}">${body}</div>${mateMenuOf(sid)}</div>`;
 }
 
 /** The crew's goal on top of its open tray, four small boxes: its job (the lead's prompt that started its first
@@ -307,21 +325,25 @@ const crewBackAsked = new Set();
 const crewCode = (text) => esc(text).replace(/`([^`]+)`/g, "<code>$1</code>");
 /** What the lead (or Cue) decided on its own, newest first: who · what · how long ago · Go back on this (one-way:
  *  "one-way ·" and Make a revert), or "going back…" once you did. A line whose member has a review or files opens in
- *  place on its review, what came of it and its Diff. "" when it decided nothing yet. */
-function crewLogHtml(sid) {
+ *  place on its review, what came of it and its Diff. "" when it decided nothing yet. `big` (the crew's page): two
+ *  lines each, what was decided over who, why and when, its button outlined; with nothing yet, a line that says so. */
+function crewLogHtml(sid, big = false) {
   const log = (sessionOf(sid)?.crew_log || []).slice().reverse().sort((a, b) => (b.at_ms || 0) - (a.at_ms || 0));
-  if (!log.length) return "";
+  if (!log.length) return big ? `<div class="mt-grp">Decided on its own · 0</div><div class="crew-none">Nothing yet: what it settles by itself shows here.</div>` : "";
   const team = sessionOf(sid)?.team || [];
   const rows = log.map((d) => {
     const k = `${sid}|${d.id}`, t = team.find((m) => m.name === d.who), open = crewLogOpen.has(k);
     const has = !!t && !!(t.review || (t.findings || []).length || (t.files || []).length || t.worktree);
     const going = d.back === "asked" || crewBackAsked.has(k);
     const act = going ? `<span class="cd-going">going back…</span>`
-      : `<button class="mt-lk" data-act="crew-back" data-sid="${esc(sid)}" data-id="${esc(d.id)}">${d.one_way ? "Make a revert" : "Go back on this"}</button>`;
-    const why = d.why ? ` <span class="cd-why">· ${crewCode(d.why)}</span>` : "";
-    const row = `<div class="cd-row ${open ? "on" : ""} ${has ? "can" : ""}" data-key="cd:${esc(k)}" ${has ? `data-crew-log="${esc(k)}" aria-expanded="${open}"` : ""}>`
-      + `<b class="cd-who">${esc(d.who)}</b><span class="cd-what">${crewCode(d.what)}${why}</span>`
-      + `<span class="cd-at">${d.at_ms ? ago(d.at_ms) : ""}</span>${d.one_way ? `<span class="cd-one">one-way ·</span>` : ""}${act}</div>`;
+      : `<button class="${big ? "btn small cd-back" : "mt-lk"}" data-act="crew-back" data-sid="${esc(sid)}" data-id="${esc(d.id)}">${d.one_way ? "Make a revert" : "Go back on this"}</button>`;
+    const attrs = `class="cd-row ${big ? "big" : ""} ${open ? "on" : ""} ${has ? "can" : ""}" data-key="cd:${esc(k)}" ${has ? `data-crew-log="${esc(k)}" aria-expanded="${open}"` : ""}`;
+    const at = d.at_ms ? ago(d.at_ms) : "", one = d.one_way ? `<span class="cd-one">one-way ·</span>` : "";
+    const row = big
+      ? `<div ${attrs}><div class="cd-main"><div class="cd-what">${crewCode(d.what)}</div>`
+        + `<div class="cd-sub"><span class="cd-tag">${esc(d.who)}</span><span class="cd-why">${[d.why ? crewCode(d.why) : "", esc(at)].filter(Boolean).join(" · ")}</span></div></div>${one}${act}</div>`
+      : `<div ${attrs}><b class="cd-who">${esc(d.who)}</b><span class="cd-what">${crewCode(d.what)}${d.why ? ` <span class="cd-why">· ${crewCode(d.why)}</span>` : ""}</span>`
+        + `<span class="cd-at">${at}</span>${one}${act}</div>`;
     return row + (open && has ? crewLogDetail(sid, t, d, k) : "");
   }).join("");
   return `<div class="mt-grp">Decided on its own · ${log.length}</div>${rows}`;
@@ -341,23 +363,24 @@ const TRAY_LEAVES = 80;
  *  never so tall that the chat above it goes), the open menu under the name that opened it, and what just opened
  *  under a row scrolled into the body, its row with it. */
 function placeTeamRows() {
-  for (const tray of document.querySelectorAll(".crew-tray.open")) {
+  // The crew's page too (team_page.js): it scrolls as a whole, so only its menu is placed.
+  for (const tray of document.querySelectorAll(".crew-tray.open, .crew-page")) {
     const pane = tray.closest(".active-pane"), body = tray.querySelector(".crew-body");
-    const head = tray.querySelector(".crew-head").offsetHeight;
+    const head = tray.querySelector(".crew-head")?.offsetHeight || 0;
     // What's under the tray in the pane's flow: the box, or the ask's card.
     const under = [...(pane?.children || [])].filter((el) => el.compareDocumentPosition(tray) & Node.DOCUMENT_POSITION_PRECEDING && getComputedStyle(el).position !== "absolute").reduce((n, el) => n + el.offsetHeight, 0);
     if (pane && body) body.style.maxHeight = `${Math.max(60, Math.min(Math.max(120, Math.round(pane.clientHeight / 2) - head), pane.clientHeight - under - head - TRAY_LEAVES))}px`;
-    const menu = tray.querySelector(".mt-menu"), name = menu && [...tray.querySelectorAll(".crew-body [data-mt-more]")].find((b) => b.dataset.mtMore === menu.dataset.mtMenu);
+    const menu = tray.querySelector(".mt-menu"), name = menu && [...tray.querySelectorAll(".crew-body [data-mt-more], .cp-scroll [data-mt-more]")].find((b) => b.dataset.mtMore === menu.dataset.mtMenu);
     if (menu && name) {
       const t = tray.getBoundingClientRect(), r = name.getBoundingClientRect();
       menu.style.left = `${Math.round(r.left - t.left)}px`;
       menu.style.top = `${Math.round(r.bottom - t.top + 4)}px`;
     }
   }
-  const show = mateShow && [...document.querySelectorAll(".crew-body [data-mt-for]")].filter((e) => e.dataset.mtFor === mateShow);
+  const show = mateShow && [...document.querySelectorAll(".crew-body [data-mt-for], .cp-scroll [data-mt-for]")].filter((e) => e.dataset.mtFor === mateShow);
   mateShow = null;
   if (!show?.length) return;
-  const box = show[0].closest(".crew-body"), row = show[0].closest(".mt-row") || (show[0].matches(".mt-under") && show[0].previousElementSibling) || show[0], last = show[show.length - 1];
+  const box = show[0].closest(".crew-body, .cp-scroll"), row = show[0].closest(".mt-row") || (show[0].matches(".mt-under") && show[0].previousElementSibling) || show[0], last = show[show.length - 1];
   const top = row.offsetTop - box.offsetTop, bottom = last.offsetTop - box.offsetTop + last.offsetHeight;
   if (bottom > box.scrollTop + box.clientHeight) box.scrollTop = Math.min(top, bottom - box.clientHeight);
 }
@@ -468,7 +491,8 @@ const mateTitle = (it) => { const n = mateOfAsk(it); return n ? `<span class="mt
 async function mateAct(sid, agent, action) {
   const k = `${sid}|${agent}`;
   // Diff: the crew folds away for its files in the session's Diff tab (diff.js).
-  if (action === "diff") { mateOpenLeads.delete(sid); return diffShowMember(sid, agent, (sessionOf(sid)?.team || []).find((t) => (t.agent_id || t.call) === agent)?.name || ""); }
+  // From the crew's page, back to the chat for it.
+  if (action === "diff") { mateOpenLeads.delete(sid); if (typeof crewPageSid !== "undefined" && crewPageSid === sid) crewPageSid = null; return diffShowMember(sid, agent, (sessionOf(sid)?.team || []).find((t) => (t.agent_id || t.call) === agent)?.name || ""); }
   // Refused (Commit on main, say): the reason stays under its row until a button of its goes through.
   try { toast(await invoke("team_action", { sessionId: sid, agent, action })); mateNotes.delete(k); }
   catch (e) { mateNotes.set(k, String(e)); mateShow = k; }
@@ -497,6 +521,8 @@ if (typeof document !== "undefined") {
     const t = e.target;
     // The mode on the tray's line is team_send.js's: it doesn't open or close the tray.
     if (t.closest?.(".crew-pick")) return;
+    // Open full › on the tray's line is team_page.js's: it doesn't open or close the tray.
+    if (t.closest?.("[data-cp-open]")) return;
     // A decision line opens in place (its own button, Go back on this, is clicks_chat.js's).
     const log = !t.closest?.("button, a, .cd-under") && t.closest?.("[data-crew-log]");
     if (log) {

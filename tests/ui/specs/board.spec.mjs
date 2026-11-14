@@ -191,6 +191,56 @@ test("a crew member's ask open while the lead asks too: the lead's own card stan
   await expect(page.locator(".crew-tray .mt-row.need")).toHaveCount(1);
 });
 
+// The crew's page (ui/team_page.js): Open full › on the tray's line puts it in the board's place, the tabs and top bar
+// staying; ‹ Back to the chat and Esc go back; the box is the chat's (its draft carries over), Talk types "@name ".
+test.describe("a hosted lead's crew on its own page", () => {
+  const TEAM_ASK = "n1793984390004";
+  test.beforeEach(async ({ cue, page }) => {
+    await cue.open("world-team");
+    await openCard(page, TEAM_ASK);
+    await page.locator('.crew-tray [data-cp-open="lead"]').click();
+    await expect(page.locator('.crew-page[data-crew-page="lead"]')).toBeVisible();
+  });
+
+  test("Open full opens it in the board's place; Back to the chat returns, the draft with it", async ({ page }) => {
+    await expect(page.locator(".active-pane"), "the chat's pane is out of the way").toHaveCount(0);
+    await expect(page.locator(".switch-view"), "the tabs stay").toBeVisible();
+    await expect(page.locator(".crew-page .cp-lane"), "every member, set aside too").toHaveCount(6);
+    await expect(page.locator(".crew-page .cp-lane.past")).toHaveCount(1);
+    await expect(page.locator(".cp-status")).toContainText("Crew of 6");
+    await expect(page.locator(".cp-status [data-crew-menu]")).toHaveText("Handle it ▾");
+    await expect(page.locator(".cp-needs.red .mt-row.need [data-act=allow]")).toBeVisible();
+    await expect(page.locator(".cp-log .cd-row.big [data-act=crew-back]").first()).toHaveText("Go back on this");
+    await page.locator('.crew-page textarea[data-text="s:lead"]').fill("carry on");
+    await page.locator("[data-cp-back]").click();
+    await expect(page.locator(".crew-page")).toHaveCount(0);
+    await expect(page.locator('.active-pane textarea[data-text="s:lead"]'), "the same draft in the chat's box").toHaveValue("carry on");
+  });
+
+  test("Esc goes back to the chat; Talk types @name in the box", async ({ page }) => {
+    await page.locator('.cp-lane:has([data-mt-more$="|id-rows"]) [data-cp-talk]').click();
+    const box = page.locator('.crew-page textarea[data-text="s:lead"]');
+    await expect(box).toBeFocused();
+    await expect(box).toHaveValue("@rows ");
+    await box.fill("");
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".crew-page")).toHaveCount(0);
+    await expect(page.locator(".active-pane .crew-tray")).toBeVisible();
+  });
+
+  test("a lane's steps are its own call's: docs started again under its name shows none of the old docs's", async ({ cue, page }) => {
+    const docs = page.locator('.cp-lane:has([data-mt-more$="|id-docs"]) .cp-steps');
+    await expect(docs, "docs's log entry, by its call").toContainText("reviewed: 1 note");
+    await cue.change((st) => { Object.assign(st.sessions.find((s) => s.session_id === "lead").team.find((t) => t.name === "docs"), { call: "call-docs-2", state: "working", findings: [], recommendation: "", step: "Editing docs" }); });
+    await expect(docs).toHaveText("working");
+  });
+
+  test("it closes when its lead goes away", async ({ cue, page }) => {
+    await cue.change((st) => { st.sessions = st.sessions.filter((s) => s.session_id !== "lead"); st.items = st.items.filter((i) => i.session_id !== "lead"); });
+    await expect(page.locator(".crew-page")).toHaveCount(0);
+  });
+});
+
 // How work goes out to a hosted lead's team (ui/team_send.js; world-team: lead "lead", its teammate hub asking).
 test.describe("a hosted lead's crew: the Crew switch, /crew, a task dropped on the lead", () => {
   const TEAM_ASK = "n1793984390004";
@@ -271,7 +321,7 @@ test.describe("a hosted lead's crew: the Crew switch, /crew, a task dropped on t
     await askMe(cue);
     const tray = page.locator(".crew-tray");
     await expect(tray.locator(".crew-body")).toBeVisible();
-    await expect(tray.locator(".crew-head")).toHaveText(/^Cue Crew · 5 · 2 ready · 2 working\s*Ask me ▾\s*▾$/);
+    await expect(tray.locator(".crew-head")).toHaveText(/^Cue Crew · 5 · 2 ready · 2 working\s*Open full ›\s*Ask me ▾\s*▾$/);
     await expect(tray.locator(".crew-head .dot-live"), "a live dot while any member works").toHaveCount(1);
     await expect(tray.locator(".mt-grp")).toHaveText(["Needs you · nothing now", "Ready", "Decided on its own · 5", "Working"]);
     const box = await page.locator(".foot .field").boundingBox(), t = await tray.boundingBox();
@@ -284,7 +334,7 @@ test.describe("a hosted lead's crew: the Crew switch, /crew, a task dropped on t
     expect(widths).toHaveLength(1);
     await tray.locator(".crew-car").click();
     await expect(tray.locator(".crew-body")).toHaveCount(0);
-    await expect(tray.locator(".crew-head")).toHaveText(/^Cue Crew · 5 · 2 ready · 2 working\s*Ask me ▾\s*▴$/);
+    await expect(tray.locator(".crew-head")).toHaveText(/^Cue Crew · 5 · 2 ready · 2 working\s*Open full ›\s*Ask me ▾\s*▴$/);
     const closed = await tray.boundingBox();
     expect(Math.abs(closed.y + closed.height - box.y), "closed: the same tray, one line high").toBeLessThan(2);
     await tray.locator(".crew-w").click();

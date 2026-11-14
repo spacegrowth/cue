@@ -105,7 +105,76 @@ button.mt-name:hover, .mt-name.on { text-decoration: underline; text-underline-o
 .cd-under .mt-fx { margin: 0; }
 .cd-foot { display: flex; align-items: baseline; gap: 10px; margin-top: 4px; color: var(--muted); }
 /* The menu a member's name opens, under its name (placeTeamRows). */
-.crew-tray .mt-menu { top: 0; left: 0; right: auto; min-width: 180px; z-index: 31; }
+.crew-tray .mt-menu, .crew-page .mt-menu { top: 0; left: 0; right: auto; min-width: 180px; z-index: 31; }
+/* Open full › on the tray's line: the crew's page (ui/team_page.js). */
+.crew-full { margin-right: 2px; }
+
+/* The crew's page (ui/team_page.js): in the board's place, one white panel as the chat's pane is. Its head on the
+   selected-card lime, ‹ Back to the chat first; under it the page scrolls, the lead's box at its foot. */
+.crew-page { position: relative; flex: 1; min-height: 0; margin-top: 14px; display: flex; flex-direction: column; background: var(--panel); color: var(--ink); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; font-size: 13px; }
+.cp-head { flex: none; display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 16px 0 10px; background: var(--sel); color: var(--on-sel); }
+.cp-back { height: 30px; padding: 0 10px; border-radius: 8px; font-size: 12.5px; font-weight: 650; color: var(--on-sel); }
+.cp-back:hover { background: color-mix(in srgb, var(--on-sel) 10%, transparent); }
+.cp-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 700; }
+.cp-proj { flex: none; font-size: 12px; color: color-mix(in srgb, var(--on-sel) 70%, transparent); }
+.cp-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 4px 12px; }
+.crew-page .crew-goal { gap: 10px; padding: 12px 12px 4px; }
+.crew-page .cg-box { padding: 10px 12px; border-radius: 9px; }
+.crew-page .cg-l { font-size: 10.5px; }
+.crew-page .cg-t { margin-top: 4px; font-size: 13px; line-height: 1.4; -webkit-line-clamp: 4; }
+/* One status line under the goal, Handle it / Ask me at its end (its menu opening down here). */
+.cp-status { display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 2px 12px; color: var(--muted); font-size: 12.5px; }
+.cp-count { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cp-status .crew-menu { top: calc(100% + 6px); bottom: auto; }
+/* The crew: one lane per member, its name and state, its steps, where its work is, its links. */
+.cp-crew-l { padding-top: 12px; }
+.cp-crew-l span { margin-left: 4px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+/* One grid for every lane (each a subgrid of it), so their steps, places and links line up down the page. */
+.cp-lanes { display: grid; grid-template-columns: 140px minmax(0, 1fr) minmax(0, max-content) max-content; column-gap: 20px; }
+.cp-lane { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; row-gap: 4px; min-height: 44px; padding: 6px 12px; }
+.cp-where { max-width: 340px; }
+.cp-lane + .cp-lane { border-top: 1px solid var(--line); }
+.cp-lane.past { opacity: 0.6; }
+.cp-who { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; }
+.cp-who .mt-name { font-size: 13px; }
+.cp-st { padding: 1px 7px; border-radius: var(--pill-radius); font: 650 10.5px/1.4 var(--mono); color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); white-space: nowrap; }
+.cp-st.live { background: var(--slab); color: var(--on-slab); box-shadow: none; }
+.cp-st.need { background: var(--deny); color: var(--panel); box-shadow: none; }
+.cp-steps { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; }
+.cp-step { padding: 3px 9px; border-radius: var(--pill-radius); background: var(--panel-2); font-size: 12px; white-space: nowrap; }
+.cp-step.now { background: var(--slab); color: var(--on-slab); }
+.cp-step code { font: 11.5px var(--mono); }
+.cp-to { color: var(--muted); font-size: 11px; }
+.cp-where { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12px; }
+.cp-where code { font: 11.5px var(--mono); }
+.cp-links { display: flex; align-items: center; gap: 12px; justify-content: flex-end; }
+.cp-links .mt-lk { text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--line); }
+.cp-links .mt-lk:hover, .cp-links .mt-lk.on { color: var(--ink); text-decoration-color: currentColor; }
+.cp-lane > .mt-under { grid-column: 1 / -1; }
+/* What it decided on its own beside what needs you; Needs you outlined red (the page's one box). */
+.cp-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: start; padding: 10px 8px 0; }
+.cp-log .mt-grp { padding-left: 4px; }
+.cp-log .crew-none { padding-left: 4px; }
+.cd-row.big { align-items: center; gap: 10px; padding: 8px 4px; border-radius: 0; }
+.cd-row.big + .cd-row.big, .cd-row.big + .cd-under + .cd-row.big { border-top: 1px solid var(--line); }
+.cd-main { flex: 1; min-width: 0; }
+.cd-row.big .cd-what { display: block; font-size: 13px; font-weight: 600; white-space: normal; }
+.cd-sub { display: flex; align-items: baseline; gap: 6px; margin-top: 3px; min-width: 0; color: var(--muted); font-size: 12px; }
+.cd-sub .cd-why { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cd-tag { flex: none; padding: 0 7px; border-radius: var(--pill-radius); box-shadow: inset 0 0 0 1px var(--line); font: 650 10.5px/1.6 var(--mono); color: var(--ink); }
+.cd-back { flex: none; }
+.cp-log .cd-under { padding: 2px 4px 8px; }
+.cp-needs { border-radius: 12px; padding: 0 0 6px; }
+.cp-needs.red { box-shadow: inset 0 0 0 1.5px var(--deny); padding: 4px 4px 8px; }
+.cp-needs .mt-row { padding: 8px 12px; }
+.cp-foot { flex: none; padding: 10px 12px 12px; border-top: 1px solid var(--line); background: var(--panel); }
+/* A narrow window: the two columns one under the other, the lanes' place for its work dropped under its steps. */
+@media (max-width: 1100px) {
+  .cp-cols { grid-template-columns: minmax(0, 1fr); }
+  .cp-lanes { grid-template-columns: 120px minmax(0, 1fr) max-content; }
+  .cp-where { grid-column: 2; grid-row: 2; max-width: none; }
+  .crew-page .crew-goal { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 /* An ask's title: "<lead> › <teammate>". On a card's top line the lead's name is as wide as its words (its usual
    minimum width would leave a second gap before the ›). */
 .mt-of { white-space: nowrap; }

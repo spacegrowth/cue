@@ -101,6 +101,23 @@ const SCREENS = {
     setup: async (p) => { await p.evaluate(() => { CueBridge.world.session("lead").crew_commit = "wait"; CueBridge.world.changed(0); }); await openTeam(p);await p.locator('.mt-row [data-mt-act="commit"][data-mt-agent="id-docs"]').click(); },
     done: async (p) => { await p.locator(".mt-note", { hasText: "is on main" }).waitFor(); await p.locator('.mt-note [data-mt-act="branch"]').waitFor(); },
   },
+  // The crew's page (ui/team_page.js), from Open full › on the tray's line: hub asking, docs committed to its crew/
+  // branch (as the log says), handoff at work on the fix sent back, rows and skill as they are, spike set aside.
+  "team-page": {
+    scenario: "world-team",
+    viewport: { width: 1280, height: 1000 },
+    setup: async (p) => {
+      await p.evaluate(() => {
+        const lead = CueBridge.world.session("lead"), at = (n) => lead.team.find((t) => t.name === n);
+        Object.assign(at("docs"), { state: "committed", commit: "3f2a1c9", stat: "1 file +42 −0" });
+        Object.assign(at("handoff"), { state: "working", fix_rounds: 1, step: "Editing hub/handoff.rs" });
+        CueBridge.world.changed(0);
+      });
+      await openCard(p, TEAM_ASK);
+      await p.locator('.crew-tray [data-cp-open="lead"]').click();
+    },
+    done: async (p) => { await p.locator(".crew-page .cp-lane").nth(5).waitFor(); await p.locator(".cp-needs.red .mt-row.need").waitFor(); },
+  },
   // How work goes out to the crew (ui/team_send.js). team-switch: the mode menu open from the tray's line, split on Always.
   // team-handout: a task dropped on the lead's card under Sessions, one of the files it names already rows's.
   "team-switch": {

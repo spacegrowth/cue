@@ -39,8 +39,8 @@ CueBridge.area("chat", (w) => {
     { id: `d${at - 40 * 60000}-0`, at_ms: at - 40 * 60000, who: "lead", kind: "split", what: "Split the job into 5: hub, rows, skill, handoff, spike", why: "", one_way: false, sha: "", back: "" },
     { id: `d${at - 18 * 60000}-0`, at_ms: at - 18 * 60000, who: "spike", kind: "aside", what: "Left out of the work: tried it, not worth it", why: "", one_way: false, sha: "", back: "" },
     { id: `d${at - 9 * 60000}-0`, at_ms: at - 9 * 60000, who: "rows", kind: "hold", what: "Held until handoff lands", why: "both change `ui/core.js`", one_way: false, sha: "", back: "" },
-    { id: `d${at - 4 * 60000}-0`, at_ms: at - 4 * 60000, who: "handoff", kind: "fixes", what: "Reviewed: 1 should-fix, 1 note. Sent the fix back", why: "", one_way: false, sha: "", back: "" },
-    { id: `d${at - 60000}-0`, at_ms: at - 60000, who: "docs", kind: "commit", what: "Reviewed: 1 note, left as is. Committed to `crew/docs`", why: "", one_way: false, sha: "3f2a1c9", back: "" },
+    { id: `d${at - 4 * 60000}-0`, at_ms: at - 4 * 60000, who: "handoff", kind: "fixes", what: "Reviewed: 1 should-fix, 1 note. Sent the fix back", why: "", one_way: false, sha: "", back: "", call: "call-handoff", head: "reviewed: 1 should-fix, 1 note", steps: ["sent back"] },
+    { id: `d${at - 60000}-0`, at_ms: at - 60000, who: "docs", kind: "commit", what: "Reviewed: 1 note, left as is. Committed to `crew/docs`", why: "", one_way: false, sha: "3f2a1c9", back: "", call: "call-docs", head: "reviewed: 1 note", steps: ["left as is", "committed `crew/docs`"] },
   ].filter((d) => d.who === "lead" || s.team.some((t) => t.name === d.who));
   const crewFill = () => {
     for (const s of w.state?.sessions || []) {
