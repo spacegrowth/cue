@@ -81,3 +81,24 @@ test("⌘↵ with nothing typed sends the kept message now", async ({ cue, page 
   await cue.called("send_held_now", { sessionId: "eng" });
   await expect(page.locator(".active-pane .cv-you.held")).toHaveCount(0);
 });
+
+test("Your kept message says it isn't sent yet", async ({ cue, page }) => {
+  await openWorking(page, "eng");
+  await cue.change((st) => {
+    st.sessions.find((x) => x.session_id === "eng").held = { role: "you", text: "use the new pool", at_ms: Date.now(), images: [] };
+  });
+  await expect(page.locator(".active-pane .cv-you.held")).toContainText("Not sent yet · it goes when this turn ends");
+});
+
+test("Cue's own kept crew message is Cue's bubble in the future tense, not yours, and Send now sends it", async ({ cue, page }) => {
+  await openWorking(page, "eng");
+  await cue.change((st) => {
+    st.sessions.find((x) => x.session_id === "eng").held = { role: "you", text: 'Send your teammate docs its review\'s findings with SendMessage (to: "docs") and let it fix them; don\'t fix them yourself:\n1. a.md:1 — fix', at_ms: Date.now(), images: [] };
+  });
+  const line = page.locator(".active-pane .cv-you.cue-you").last();
+  await expect(line).toContainText("Will send docs's findings back to it");
+  await expect(line).toContainText("Cue · not sent yet · it goes when this turn ends");
+  await expect(page.locator(".active-pane .cv-you.held")).toHaveCount(0);
+  await line.locator('button[data-act="held-now"]').click();
+  await cue.called("send_held_now", { sessionId: "eng" });
+});

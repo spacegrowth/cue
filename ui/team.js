@@ -328,6 +328,8 @@ function cueSaid(text) {
 }
 /** Cue's words for its own bubble, where "Cue" is already its name: "Asked for <b>docs</b>'s review". */
 const cueWords = (html) => html.replace(/^Cue (.)/, (_, c) => c.toUpperCase());
+/** Cue's words for a message it hasn't sent yet: "Cue sent …" → "Cue will send …". */
+const cueWill = (html) => html.replace(/^Cue (sent|asked|handed) /, (_, v) => `Cue will ${{ sent: "send", asked: "ask", handed: "hand" }[v]} `);
 /** Cue's message as a bubble on the right, where yours are, named Cue: its few words, and "+ What Cue sent" unfolds
  *  the exact text (addedNote, opened by `key`). `meta`: what follows "Cue ·" (when it went, or that it waits).
  *  `review`: for a review request, the lead's reply that is the review ({ name, text, team }), folded under its own
