@@ -308,15 +308,19 @@ function crewTray(sid) {
   return `<div class="crew-tray open" data-key="crew-tray" data-crew-tray="${esc(sid)}">${head}<div class="crew-body" data-scroll-key="crew:${esc(sid)}">${body}</div>${mateMenuOf(sid)}</div>`;
 }
 
-/** The crew's goal on top of its open tray, four small boxes: its job (the lead's prompt that started its first
- *  teammate, or the session's name), when it's done well, what Cue may do alone and what asks you first (by the mode). */
-function crewGoalHtml(sid, handles) {
+/** The crew's goal, four parts: its job (the lead's prompt that started its first teammate, or the session's name),
+ *  when it's done well, what Cue may do alone and what asks you first (by the mode). Each [label, short label, text]. */
+function crewGoalParts(sid, handles) {
   const s = sessionOf(sid) || {};
   const job = s.crew_job || (typeof nameOf === "function" ? nameOf(sid, s.project) : s.project) || "";
-  const box = (label, text) => `<div class="cg-box"><div class="cg-l">${label}</div><div class="cg-t">${esc(text)}</div></div>`;
-  return `<div class="crew-goal">${box("The job", job)}${box("Done well when", "Each part reviewed, with nothing blocking")}`
-    + `${box("May do alone", handles ? "Review, send fixes, commit to crew/ branches" : "Nothing: it asks you first")}`
-    + `${box("Asks you first", handles ? "Merge to main, real choices" : "Every review, fix and commit")}</div>`;
+  return [["The job", "", job], ["Done well when", "Done well when", "Each part reviewed, with nothing blocking"],
+    ["May do alone", "Alone", handles ? "Review, send fixes, commit to crew/ branches" : "Nothing: it asks you first"],
+    ["Asks you first", "Asks first", handles ? "Merge to main, real choices" : "Every review, fix and commit"]];
+}
+/** The crew's goal on top of its open tray, four small boxes (crewGoalParts). */
+function crewGoalHtml(sid, handles) {
+  const box = ([label, , text]) => `<div class="cg-box"><div class="cg-l">${label}</div><div class="cg-t">${esc(text)}</div></div>`;
+  return `<div class="crew-goal">${crewGoalParts(sid, handles).map(box).join("")}</div>`;
 }
 
 /** Decision lines opened in place ("sid|id"), and the ones you just went back on, until Cue's state says so. */
@@ -326,30 +330,28 @@ const crewBackAsked = new Set();
 const crewCode = (text) => esc(text).replace(/`([^`]+)`/g, "<code>$1</code>");
 /** What the lead (or Cue) decided on its own, newest first: who · what · how long ago · Go back on this (one-way:
  *  "one-way ·" and Make a revert), or "going back…" once you did. A line whose member has a review or files opens in
- *  place on its review, what came of it and its Diff. "" when it decided nothing yet. `big` (the crew's page): two
- *  lines each, what was decided over who, why and when, its button outlined; with nothing yet, a line that says so.
- *  `extra` ({ html, count }): more rows drawn the same way, after these (the add-on's, on the page). */
-function crewLogHtml(sid, big = false, extra = null) {
+ *  place on its review, what came of it and its Diff. "" when it decided nothing yet. */
+function crewLogHtml(sid) {
   const log = (sessionOf(sid)?.crew_log || []).slice().reverse().sort((a, b) => (b.at_ms || 0) - (a.at_ms || 0));
-  const more = extra?.count ? extra : { html: "", count: 0 };
-  if (!log.length && !more.count) return big ? `<div class="mt-grp">Decided on its own · 0</div><div class="crew-none">Nothing yet: what it settles by itself shows here.</div>` : "";
+  return log.length ? `<div class="mt-grp">Decided on its own · ${log.length}</div>${log.map((d) => crewLogRow(sid, d)).join("")}` : "";
+}
+/** One decision of the crew's log, and what it opened under it. `big` (the crew's page, team_page.js): what was
+ *  decided, then who, why and when, its button outlined. */
+function crewLogRow(sid, d, big = false) {
   const team = sessionOf(sid)?.team || [];
-  const rows = log.map((d) => {
-    const k = `${sid}|${d.id}`, t = team.find((m) => m.name === d.who), open = crewLogOpen.has(k);
-    const has = !!t && !!(t.review || (t.findings || []).length || (t.files || []).length || t.worktree);
-    const going = d.back === "asked" || crewBackAsked.has(k);
-    const act = going ? `<span class="cd-going">going back…</span>`
-      : `<button class="${big ? "btn small cd-back" : "mt-lk"}" data-act="crew-back" data-sid="${esc(sid)}" data-id="${esc(d.id)}">${d.one_way ? "Make a revert" : "Go back on this"}</button>`;
-    const attrs = `class="cd-row ${big ? "big" : ""} ${open ? "on" : ""} ${has ? "can" : ""}" data-key="cd:${esc(k)}" ${has ? `data-crew-log="${esc(k)}" aria-expanded="${open}"` : ""}`;
-    const at = d.at_ms ? ago(d.at_ms) : "", one = d.one_way ? `<span class="cd-one">one-way ·</span>` : "";
-    const row = big
-      ? `<div ${attrs}><div class="cd-main"><div class="cd-what">${crewCode(d.what)}</div>`
-        + `<div class="cd-sub"><span class="cd-tag">${esc(d.who)}</span><span class="cd-why">${[d.why ? crewCode(d.why) : "", esc(at)].filter(Boolean).join(" · ")}</span></div></div>${one}${act}</div>`
-      : `<div ${attrs}><b class="cd-who">${esc(d.who)}</b><span class="cd-what">${crewCode(d.what)}${d.why ? ` <span class="cd-why">· ${crewCode(d.why)}</span>` : ""}</span>`
-        + `<span class="cd-at">${at}</span>${one}${act}</div>`;
-    return row + (open && has ? crewLogDetail(sid, t, d, k) : "");
-  }).join("");
-  return `<div class="mt-grp">Decided on its own · ${log.length + more.count}</div>${rows}${more.html}`;
+  const k = `${sid}|${d.id}`, t = team.find((m) => m.name === d.who), open = crewLogOpen.has(k);
+  const has = !!t && !!(t.review || (t.findings || []).length || (t.files || []).length || t.worktree);
+  const going = d.back === "asked" || crewBackAsked.has(k);
+  const act = going ? `<span class="cd-going">going back…</span>`
+    : `<button class="${big ? "btn small cd-back" : "mt-lk"}" data-act="crew-back" data-sid="${esc(sid)}" data-id="${esc(d.id)}">${d.one_way ? "Make a revert" : "Go back on this"}</button>`;
+  const attrs = `class="cd-row ${big ? "big" : ""} ${open ? "on" : ""} ${has ? "can" : ""}" data-key="cd:${esc(k)}" ${has ? `data-crew-log="${esc(k)}" aria-expanded="${open}"` : ""}`;
+  const at = d.at_ms ? ago(d.at_ms) : "", one = d.one_way ? `<span class="cd-one">one-way ·</span>` : "";
+  const row = big
+    ? `<div ${attrs}><div class="cd-main"><div class="cd-what">${crewCode(d.what)}</div>`
+      + `<div class="cd-sub"><span class="cd-tag">${esc(d.who)}</span><span class="cd-why">${[d.why ? crewCode(d.why) : "", esc(at)].filter(Boolean).join(" · ")}</span></div></div>${one}${act}</div>`
+    : `<div ${attrs}><b class="cd-who">${esc(d.who)}</b><span class="cd-what">${crewCode(d.what)}${d.why ? ` <span class="cd-why">· ${crewCode(d.why)}</span>` : ""}</span>`
+      + `<span class="cd-at">${at}</span>${one}${act}</div>`;
+  return row + (open && has ? crewLogDetail(sid, t, d, k) : "");
 }
 /** Under an opened decision: its member's review (or its findings), the commit it made, and its Diff. */
 function crewLogDetail(sid, t, d, k) {
@@ -366,25 +368,28 @@ const TRAY_LEAVES = 80;
  *  never so tall that the chat above it goes), the open menu under the name that opened it, and what just opened
  *  under a row scrolled into the body, its row with it. */
 function placeTeamRows() {
-  // The crew's page too (team_page.js): it scrolls as a whole, so only its menu is placed.
+  // The crew's page too (team_page.js): its parts scroll inside themselves, so only its menu is placed.
   for (const tray of document.querySelectorAll(".crew-tray.open, .crew-page")) {
     const pane = tray.closest(".active-pane"), body = tray.querySelector(".crew-body");
     const head = tray.querySelector(".crew-head")?.offsetHeight || 0;
     // What's under the tray in the pane's flow: the box, or the ask's card.
     const under = [...(pane?.children || [])].filter((el) => el.compareDocumentPosition(tray) & Node.DOCUMENT_POSITION_PRECEDING && getComputedStyle(el).position !== "absolute").reduce((n, el) => n + el.offsetHeight, 0);
     if (pane && body) body.style.maxHeight = `${Math.max(60, Math.min(Math.max(120, Math.round(pane.clientHeight / 2) - head), pane.clientHeight - under - head - TRAY_LEAVES))}px`;
-    const menu = tray.querySelector(".mt-menu"), name = menu && [...tray.querySelectorAll(".crew-body [data-mt-more], .cp-scroll [data-mt-more]")].find((b) => b.dataset.mtMore === menu.dataset.mtMenu);
+    const menu = tray.querySelector(".mt-menu"), name = menu && [...tray.querySelectorAll(".crew-body [data-mt-more], .cp-body [data-mt-more]")].find((b) => b.dataset.mtMore === menu.dataset.mtMenu);
     if (menu && name) {
       const t = tray.getBoundingClientRect(), r = name.getBoundingClientRect();
       menu.style.left = `${Math.round(r.left - t.left)}px`;
       menu.style.top = `${Math.round(r.bottom - t.top + 4)}px`;
     }
   }
-  const show = mateShow && [...document.querySelectorAll(".crew-body [data-mt-for], .cp-scroll [data-mt-for]")].filter((e) => e.dataset.mtFor === mateShow);
+  const show = mateShow && [...document.querySelectorAll(".crew-body [data-mt-for], .cp-body [data-mt-for]")].filter((e) => e.dataset.mtFor === mateShow);
   mateShow = null;
   if (!show?.length) return;
-  // The drawer and the crew's page can both be open: what opened scrolls in the box it opened in (the first).
-  const box = show[0].closest(".crew-body, .cp-scroll"), row = show[0].closest(".mt-row") || (show[0].matches(".mt-under") && show[0].previousElementSibling) || show[0], last = show.filter((e) => box.contains(e)).at(-1);
+  // The drawer and the crew's page can both be open: what opened scrolls in the box it opened in (the first): on the
+  // page, the lanes' or the stream's, else the page's own.
+  const box = show[0].closest(".crew-body, .cp-scroll, .cp-items, .cp-body"), row = show[0].closest(".mt-row") || (show[0].matches(".mt-under") && show[0].previousElementSibling) || show[0], last = show.filter((e) => box.contains(e)).at(-1);
+  // The stream starts at its end (column-reverse), its scrollTop counting up from there: the browser places it.
+  if (box.matches(".cp-items")) return last.scrollIntoView({ block: "nearest" });
   const top = row.offsetTop - box.offsetTop, bottom = last.offsetTop - box.offsetTop + last.offsetHeight;
   if (bottom > box.scrollTop + box.clientHeight) box.scrollTop = Math.min(top, bottom - box.clientHeight);
 }

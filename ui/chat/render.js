@@ -173,9 +173,11 @@ function chatHtml(it, s, harness, paged = false) {
   // shows only what was sent.)
   if (s?.held) rows.push(heldRow(s));
   if (s?.send_at) rows.push(sendAtRow(s));
-  if (s?.queued) rows.push(`<div class="cv-you queued" data-key="queued">${yourBubble(s.queued, `${s.session_id}:queued`, qPhase(), true)}${thumbs(s.queued.images)}<div class="cv-meta">Queued · it reads this when it finishes the current step · <button class="q-now" data-act="send-now" data-sid="${esc(s.session_id)}">Send now <kbd>⌘↵</kbd></button></div></div>`);
+  if (s?.queued) rows.push(queuedRow(s));
   return rows.length ? (paged && sid ? keyed(olderRow(sid, harness), "older") : "") + rows.join("") : ran.length ? ran.map((r) => r.html).join("") : `<div class="dim cv-empty" data-key="empty">No messages yet in this session.</div>`;
 }
+/** A message queued in its agent, read at its next step, with Send now. */
+const queuedRow = (s) => `<div class="cv-you queued" data-key="queued">${yourBubble(s.queued, `${s.session_id}:queued`, qPhase(), true)}${thumbs(s.queued.images)}<div class="cv-meta">Queued · it reads this when it finishes the current step · <button class="q-now" data-act="send-now" data-sid="${esc(s.session_id)}">Send now <kbd>⌘↵</kbd></button></div></div>`;
 /** A message kept for a session at work, to go when its turn ends: Cue's own crew message as Cue's bubble in the
  *  future tense (never one that looks like yours), yours as not sent yet; one that couldn't be sent says why. */
 function heldRow(s) {

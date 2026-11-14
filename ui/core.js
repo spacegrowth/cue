@@ -26,10 +26,13 @@ const addOn = {
   plain: (text) => text,
   /** Items in a session's ⋯ menu. */
   chatMenu: (sid, s) => "",
-  /** On lead `sid`'s crew page (team_page.js): its own head line in place of the lead's name (‹ Back to the chat
-   *  stays), "" for the usual one; rows under the status line; and rows of its own in Needs you and in Decided on its
-   *  own, drawn as those groups' rows are, with how many: { html, count }. The page opens with addOn.openCrewPage. */
+  /** On lead `sid`'s crew page (team_page.js): its own head line in place of the lead's name (‹ Back to the board
+   *  stays), "" for the usual one; a band under the head line; rows under the goal; rows of its own in Needs you, drawn
+   *  as its rows are, with how many: { html, count }; and decisions of its own in the lead's stream, drawn as the crew
+   *  log's are (team.js crewLogRow, big): { html, count }, or with `items: [{ at_ms, html }]` placed in time order
+   *  among the lead's words (else `html` comes first, oldest). The page opens with addOn.openCrewPage. */
   crewPageHead: (sid) => "",
+  crewPageBand: (sid) => "",
   crewPageRows: (sid) => "",
   crewPageNeeds: (sid) => ({ html: "", count: 0 }),
   crewPageDecided: (sid) => ({ html: "", count: 0 }),

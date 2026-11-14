@@ -101,8 +101,9 @@ const SCREENS = {
     setup: async (p) => { await p.evaluate(() => { CueBridge.world.session("lead").crew_commit = "wait"; CueBridge.world.changed(0); }); await openTeam(p);await p.locator('.mt-row [data-mt-act="commit"][data-mt-agent="id-docs"]').click(); },
     done: async (p) => { await p.locator(".mt-note", { hasText: "is on main" }).waitFor(); await p.locator('.mt-note [data-mt-act="branch"]').waitFor(); },
   },
-  // The crew's page (ui/team_page.js), from Open full › on the tray's line: hub asking, docs committed to its crew/
-  // branch (as the log says), handoff at work on the fix sent back, rows and skill as they are, spike set aside.
+  // The crew's page (ui/team_page.js), from Open full › on the tray's line, across the window: hub asking, docs committed
+  // to its crew/ branch (as the log says), handoff at work on the fix sent back, rows and skill as they are, spike set
+  // aside; the lead's decisions and replies in one stream beside Needs you.
   "team-page": {
     scenario: "world-team",
     viewport: { width: 1280, height: 1000 },
@@ -118,7 +119,8 @@ const SCREENS = {
     },
     done: async (p) => { await p.locator(".crew-page .cp-lane").nth(3).waitFor(); await expect(p.locator(".cp-done .mt-done-line")).toHaveText("2 done ›"); await p.locator(".cp-needs.red .mt-row.need").waitFor(); },
   },
-  // The same at the smallest window, its finished ones unfolded: the lanes on rows of their own, Needs you over Decided.
+  // The same at the smallest window, its finished ones unfolded: too short to fit, the lanes in full and the page
+  // scrolling as a whole.
   "team-page-narrowest": {
     scenario: "world-team",
     viewport: NARROWEST,

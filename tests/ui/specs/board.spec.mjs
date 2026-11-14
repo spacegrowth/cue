@@ -191,8 +191,9 @@ test("a crew member's ask open while the lead asks too: the lead's own card stan
   await expect(page.locator(".crew-tray .mt-row.need")).toHaveCount(1);
 });
 
-// The crew's page (ui/team_page.js): Open full › on the tray's line puts it in the board's columns, the lead's chat left
-// of it as it was; ‹ Back to the board and Esc go back; the box is the chat's, Talk types "@name " in it.
+// The crew's page (ui/team_page.js): Open full › on the tray's line puts it across the window, in the board's and the
+// chat's place; ‹ Back to the board, Open chat › and Esc go back to the chat; its box is the chat's (the same draft),
+// Talk types "@name " in it; the lead's replies and its decisions in one stream, newest last.
 test.describe("a hosted lead's crew on its own page", () => {
   const TEAM_ASK = "n1793984390004";
   test.beforeEach(async ({ cue, page }) => {
@@ -202,13 +203,12 @@ test.describe("a hosted lead's crew on its own page", () => {
     await expect(page.locator('.crew-page[data-crew-page="lead"]')).toBeVisible();
   });
 
-  test("Open full opens it in the board's columns beside the chat; Back to the board returns", async ({ page }) => {
-    await expect(page.locator(".active-pane"), "the chat stays").toBeVisible();
-    await expect(page.locator(".col-waiting, .col-sessions"), "the page in the columns' place").toHaveCount(0);
-    const chat = await page.locator(".col.main").boundingBox(), cp = await page.locator(".crew-page").boundingBox();
-    expect(cp.x, "right of the chat").toBeGreaterThan(chat.x + chat.width);
+  test("Open full opens it across the window; Back to the board returns to the chat, its draft carried over", async ({ page }) => {
+    await expect(page.locator(".active-pane, .col-waiting, .col-sessions"), "the page in the chat's and the columns' place").toHaveCount(0);
     await expect(page.locator(".switch-view"), "the tabs stay").toBeVisible();
-    await expect(page.locator(".crew-page textarea, .crew-page .foot"), "no box of its own: the chat's is the one").toHaveCount(0);
+    const cp = await page.locator(".crew-page").boundingBox(), vw = page.viewportSize();
+    expect(cp.width, "full width").toBeGreaterThan(vw.width - 80);
+    expect(await page.evaluate(() => { const b = document.querySelector(".cp-body"); return b.scrollHeight - b.clientHeight; }), "fits the window: nothing to scroll").toBeLessThanOrEqual(1);
     await expect(page.locator(".crew-page .cp-lanes > .cp-lane"), "the members still in the crew").toHaveCount(5);
     // The set-aside one folded at the end, as in the drawer; unfolded in place, dimmed.
     const done = page.locator(".crew-page .cp-done .mt-done-line");
@@ -217,27 +217,65 @@ test.describe("a hosted lead's crew on its own page", () => {
     await done.click();
     await expect(page.locator(".crew-page .cp-done .cp-lane.past")).toHaveCount(1);
     await expect(done).toHaveText("1 done ⌄");
-    await expect(page.locator(".cp-status")).toContainText("Crew of 6");
+    await expect(page.locator(".cp-status .mt-grp")).toHaveText("The crew · 6");
     await expect(page.locator(".cp-status [data-crew-menu]")).toHaveText("Handle it ▾");
     await expect(page.locator(".cp-needs.red .mt-row.need [data-act=allow]")).toBeVisible();
-    await expect(page.locator(".cp-log .cd-row.big [data-act=crew-back]").first()).toHaveText("Go back on this");
-    await page.locator('.active-pane textarea[data-text="s:lead"]').fill("carry on");
+    // The goal on one line; All of it › opens the four boxes in place.
+    await expect(page.locator(".cp-goal .cp-gt")).toContainText("Done well when: Each part reviewed");
+    await page.locator("[data-cp-goal]").click();
+    await expect(page.locator(".cp-goal.open .cg-box")).toHaveCount(4);
+    await page.locator("[data-cp-goal]").click();
+    await expect(page.locator(".cp-goal .cg-box")).toHaveCount(0);
+    // One stream: the lead's replies and its decisions in time order, each decision with Go back on this.
+    const stream = page.locator(".cp-stream");
+    const decided = await page.evaluate(() => sessionOf("lead").crew_log.length);
+    await expect(stream.locator(".cp-sh")).toContainText(`newest last · ${decided} decided`);
+    await expect(stream.locator(".cd-row.big")).toHaveCount(decided);
+    await expect(stream.locator(".cd-row.big [data-act=crew-back]").first()).toHaveText("Go back on this");
+    expect(await stream.locator(".cv-agent").count(), "the lead's replies").toBeGreaterThan(0);
+    const order = await stream.locator(".cp-items-in > *").evaluateAll((els) => els.map((e) => e.dataset.key));
+    const at = (k) => +(k.match(/^[ay]:(\d+)$/)?.[1] ?? NaN);
+    const said = order.filter((k) => /^[ay]:/.test(k)).map(at);
+    expect(said, "newest last").toEqual([...said].sort((a, b) => a - b));
+    // Its box is the chat's: what's typed there is there when you go back.
+    await stream.locator('textarea[data-text="s:lead"]').fill("carry on");
     await expect(page.locator("[data-cp-back]")).toHaveText("‹ Back to the board");
     await page.locator("[data-cp-back]").click();
     await expect(page.locator(".crew-page")).toHaveCount(0);
     await expect(page.locator(".col-waiting"), "the board's columns are back").toBeVisible();
-    await expect(page.locator('.active-pane textarea[data-text="s:lead"]'), "the chat as it was").toHaveValue("carry on");
+    await expect(page.locator('.active-pane textarea[data-text="s:lead"]'), "the chat as it was, the draft in its box").toHaveValue("carry on");
   });
 
-  test("Esc goes back to the board; Talk types @name in the chat's box", async ({ page }) => {
+  test("Esc goes back to the chat; Talk types @name in the stream's box; Open chat goes back too", async ({ page }) => {
     await page.locator('.cp-lane:has([data-mt-more$="|id-rows"]) [data-cp-talk]').click();
-    const box = page.locator('.active-pane textarea[data-text="s:lead"]');
+    const box = page.locator('.crew-page textarea[data-text="s:lead"]');
     await expect(box).toBeFocused();
     await expect(box).toHaveValue("@rows ");
     await box.fill("");
     await page.keyboard.press("Escape");
     await expect(page.locator(".crew-page")).toHaveCount(0);
     await expect(page.locator(".active-pane .crew-tray")).toBeVisible();
+    await page.locator('.crew-tray [data-cp-open="lead"]').click();
+    await page.locator("[data-cp-chat]").click();
+    await expect(page.locator(".crew-page")).toHaveCount(0);
+    await expect(page.locator(".active-pane")).toBeVisible();
+  });
+
+  test("the stream shows what the chat does: the reply the lead stopped on when it waits on you, and a message queued in it", async ({ cue, page }) => {
+    const stream = page.locator(".cp-stream .cp-items");
+    await cue.change((st) => {
+      const lead = st.sessions.find((s) => s.session_id === "lead");
+      lead.state = "waiting";
+      st.items = st.items.filter((i) => i.session_id !== "lead");
+      st.items.push({ id: "w-lead", kind: "waiting", harness: "claude", session_id: "lead", cwd: lead.cwd, project: lead.project, message: "All five are in: docs is committed, the rest wait on review. Your turn.", created_ms: lead.thread.at(-1).at_ms + 1000 });
+    });
+    await expect(stream.locator(".cv-agent").last(), "its last reply, from its waiting card").toContainText("All five are in: docs is committed");
+    await cue.change((st) => {
+      const lead = st.sessions.find((s) => s.session_id === "lead");
+      lead.state = "working";
+      lead.queued = { role: "you", text: "and keep spike out of it", at_ms: lead.thread.at(-1).at_ms + 2000, images: [] };
+    });
+    await expect(stream.locator(".cv-you.queued").last(), "what you queued, newest last").toContainText("and keep spike out of it");
   });
 
   test("a lane's steps are its own call's: docs started again under its name shows none of the old docs's", async ({ cue, page }) => {
