@@ -61,3 +61,29 @@ fn a_limited_session_you_carried_on_yourself_gets_no_carry_on() {
     assert!(w.terminal.typed("a").is_empty(), "{:?}", w.terminal.typed("a"));
     assert!(w.snapshot().session("a")["send_at"].is_null());
 }
+
+#[test]
+fn a_limit_with_no_known_reset_is_checked_every_15_minutes_and_carries_on_once_claude_answers() {
+    let w = World::new();
+    let a = w.session("a");
+    crate::hub::send_at_probe::set(false);
+    a.prompt("do it all").failed("rate_limit", "You've hit your session limit");
+    let snap = w.snapshot();
+    assert!(snap.session("a")["limit"]["resets_ms"].is_null(), "no reset time known: {}", snap.session("a"));
+    w.hub().usage_tick();
+    w.settle();
+    w.advance(16 * 60 * 1000);
+    w.hub().usage_tick();
+    w.settle();
+    w.hub().usage_tick();
+    w.settle();
+    assert!(w.terminal.typed("a").is_empty(), "still out: nothing sent");
+    crate::hub::send_at_probe::set(true);
+    w.advance(16 * 60 * 1000);
+    w.hub().usage_tick();
+    w.settle();
+    w.hub().usage_tick();
+    w.settle();
+    crate::hub::send_at_probe::set(false);
+    assert_eq!(w.terminal.typed("a"), [CARRY_ON]);
+}

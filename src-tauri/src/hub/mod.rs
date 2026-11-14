@@ -26,6 +26,8 @@ mod reviews;
 mod saves;
 mod send;
 mod send_at;
+#[cfg(test)]
+pub(crate) use send_at::probe as send_at_probe;
 mod sessions;
 mod shown;
 mod team;
@@ -108,6 +110,8 @@ struct Store {
     /// Limits already announced (scope + reset), so each one notifies once going out and once coming back.
     told_out: HashSet<String>,
     told_back: HashSet<String>,
+    /// When Cue last asked Claude Code whether a usage limit with no known reset is over (send_at.rs).
+    limit_probed_ms: u64,
     /// Sessions told their cache is about to run out while waiting on you (cache_tick's heads-up, by the rule
     /// the card's countdown and the header's "going cold" use too): session → the expiry it was told
     /// about, once per expiry. (Answering in time is counted by the insights themselves: insight_events.)

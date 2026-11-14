@@ -144,6 +144,7 @@ impl Hub {
         self.cache_tick();
         self.tell_limits_back(&limited, now);
         self.send_at_tick();
+        self.limit_probe_tick(now);
     }
 
     /// Can't reach the API: Claude Code tries again for minutes before it gives up, its terminal only

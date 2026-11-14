@@ -5,6 +5,9 @@
 use super::*;
 use crate::sessions::send_at::SendAt;
 
+/// How often Cue asks Claude Code whether a plan limit with no known reset is over, while a carry-on waits on it.
+const PROBE_MS: u64 = 15 * 60 * 1000;
+
 impl Hub {
     /// Keep `text` for `session_id`, sent by Cue at `at_ms` (it replaces one kept already).
     pub fn send_at(&self, session_id: &str, text: &str, at_ms: u64) -> Result<String, String> {
@@ -64,11 +67,76 @@ impl Hub {
         sent
     }
 
+    /// A carry-on waits on a plan limit (all models) whose reset Cue doesn't know (no time in the error, no usage numbers
+    /// from a status line): every PROBE_MS Cue asks the small model a one-word question. Answered, the limit is over:
+    /// it's marked reset now, and the next tick sends the carry-on. A few tokens a try, only while something waits.
+    pub(super) fn limit_probe_tick(&self, now: u64) {
+        let due = self.write(|st| {
+            let waits = st.sessions.all().iter().any(|s| {
+                s.state == "limited"
+                    && s.limit.as_ref().is_some_and(|l| l.scope == "all" && l.resets_ms.is_none())
+                    && s.send_at.as_ref().is_some_and(|l| l.at_ms == 0 && l.failed.is_empty())
+            });
+            let due = waits && (st.limit_probed_ms == 0 || now.saturating_sub(st.limit_probed_ms) >= PROBE_MS);
+            if due {
+                st.limit_probed_ms = now;
+            }
+            due
+        });
+        if due {
+            self.later(0, |h| {
+                if probe::back() {
+                    h.limit_over(now_ms());
+                }
+            });
+        }
+    }
+
+    /// The plan limit is over (the probe was answered): every session waiting on it with no known reset, reset now.
+    fn limit_over(&self, now: u64) {
+        let lifted = self.write(|st| {
+            let mut lifted = false;
+            for s in st.sessions.all() {
+                let Some(mut l) = s.limit.clone().filter(|l| l.scope == "all" && l.resets_ms.is_none()) else { continue };
+                if s.state != "limited" {
+                    continue;
+                }
+                l.resets_ms = Some(now);
+                st.sessions.set_limit(&s.origin.session_id, Some(l));
+                lifted = true;
+            }
+            lifted
+        });
+        if lifted {
+            self.changed();
+        }
+    }
+
     /// A turn a usage limit stopped: Cue carries it on when the limit resets, unless something is set for it already
     /// or Settings turned that off. In `st`, as the session is marked limited.
     pub(super) fn carry_on_after_limit(st: &mut Store, session_id: &str) {
         if crate::config::flag("/limits/carry_on") {
             st.sessions.carry_on(session_id);
         }
+    }
+}
+
+/// Whether Claude Code answers again: a one-word ask of the small model (nothing saved, no tools). In tests, what the
+/// test says (`set`), never Claude Code itself.
+pub(crate) mod probe {
+    #[cfg(test)]
+    static BACK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+    /// Tests: whether the probe finds Claude Code back.
+    #[cfg(test)]
+    pub fn set(back: bool) {
+        BACK.store(back, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub(super) fn back() -> bool {
+        #[cfg(test)]
+        return BACK.load(std::sync::atomic::Ordering::Relaxed);
+        #[cfg(not(test))]
+        crate::btw::ask_small("Reply with the word ok.", "cue-limit-probe").is_ok()
     }
 }
