@@ -326,10 +326,12 @@ const crewCode = (text) => esc(text).replace(/`([^`]+)`/g, "<code>$1</code>");
 /** What the lead (or Cue) decided on its own, newest first: who · what · how long ago · Go back on this (one-way:
  *  "one-way ·" and Make a revert), or "going back…" once you did. A line whose member has a review or files opens in
  *  place on its review, what came of it and its Diff. "" when it decided nothing yet. `big` (the crew's page): two
- *  lines each, what was decided over who, why and when, its button outlined; with nothing yet, a line that says so. */
-function crewLogHtml(sid, big = false) {
+ *  lines each, what was decided over who, why and when, its button outlined; with nothing yet, a line that says so.
+ *  `extra` ({ html, count }): more rows drawn the same way, after these (the add-on's, on the page). */
+function crewLogHtml(sid, big = false, extra = null) {
   const log = (sessionOf(sid)?.crew_log || []).slice().reverse().sort((a, b) => (b.at_ms || 0) - (a.at_ms || 0));
-  if (!log.length) return big ? `<div class="mt-grp">Decided on its own · 0</div><div class="crew-none">Nothing yet: what it settles by itself shows here.</div>` : "";
+  const more = extra?.count ? extra : { html: "", count: 0 };
+  if (!log.length && !more.count) return big ? `<div class="mt-grp">Decided on its own · 0</div><div class="crew-none">Nothing yet: what it settles by itself shows here.</div>` : "";
   const team = sessionOf(sid)?.team || [];
   const rows = log.map((d) => {
     const k = `${sid}|${d.id}`, t = team.find((m) => m.name === d.who), open = crewLogOpen.has(k);
@@ -346,7 +348,7 @@ function crewLogHtml(sid, big = false) {
         + `<span class="cd-at">${at}</span>${one}${act}</div>`;
     return row + (open && has ? crewLogDetail(sid, t, d, k) : "");
   }).join("");
-  return `<div class="mt-grp">Decided on its own · ${log.length}</div>${rows}`;
+  return `<div class="mt-grp">Decided on its own · ${log.length + more.count}</div>${rows}${more.html}`;
 }
 /** Under an opened decision: its member's review (or its findings), the commit it made, and its Diff. */
 function crewLogDetail(sid, t, d, k) {
@@ -380,7 +382,8 @@ function placeTeamRows() {
   const show = mateShow && [...document.querySelectorAll(".crew-body [data-mt-for], .cp-scroll [data-mt-for]")].filter((e) => e.dataset.mtFor === mateShow);
   mateShow = null;
   if (!show?.length) return;
-  const box = show[0].closest(".crew-body, .cp-scroll"), row = show[0].closest(".mt-row") || (show[0].matches(".mt-under") && show[0].previousElementSibling) || show[0], last = show[show.length - 1];
+  // The drawer and the crew's page can both be open: what opened scrolls in the box it opened in (the first).
+  const box = show[0].closest(".crew-body, .cp-scroll"), row = show[0].closest(".mt-row") || (show[0].matches(".mt-under") && show[0].previousElementSibling) || show[0], last = show.filter((e) => box.contains(e)).at(-1);
   const top = row.offsetTop - box.offsetTop, bottom = last.offsetTop - box.offsetTop + last.offsetHeight;
   if (bottom > box.scrollTop + box.clientHeight) box.scrollTop = Math.min(top, bottom - box.clientHeight);
 }

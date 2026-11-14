@@ -109,10 +109,12 @@ button.mt-name:hover, .mt-name.on { text-decoration: underline; text-underline-o
 /* Open full › on the tray's line: the crew's page (ui/team_page.js). */
 .crew-full { margin-right: 2px; }
 
-/* The crew's page (ui/team_page.js): in the board's place, one white panel as the chat's pane is. Its head on the
-   selected-card lime, ‹ Back to the chat first; under it the page scrolls, the lead's box at its foot. */
-.crew-page { position: relative; flex: 1; min-height: 0; margin-top: 14px; display: flex; flex-direction: column; background: var(--panel); color: var(--ink); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; font-size: 13px; }
-.cp-head { flex: none; display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 16px 0 10px; background: var(--sel); color: var(--on-sel); }
+/* The crew's page (ui/team_page.js): in the board's columns right of the chat's pane, one white panel as that pane is,
+   its top level with the pane's. Its head on the selected-card lime, ‹ Back to the board first; under it the page
+   scrolls. Its own width decides how it lays out (a size container): see the end. */
+.crew-page { grid-column: 2 / -1; position: relative; min-width: 0; min-height: 0; margin: 24px 0 4px; display: flex; flex-direction: column; background: var(--panel); color: var(--ink); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; font-size: 13px; container: cp / inline-size; }
+.app.focus .crew-page { margin-top: 0; }
+.cp-head { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-height: 48px; padding: 6px 16px 6px 10px; background: var(--sel); color: var(--on-sel); }
 .cp-back { height: 30px; padding: 0 10px; border-radius: 8px; font-size: 12.5px; font-weight: 650; color: var(--on-sel); }
 .cp-back:hover { background: color-mix(in srgb, var(--on-sel) 10%, transparent); }
 .cp-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 700; }
@@ -135,6 +137,10 @@ button.mt-name:hover, .mt-name.on { text-decoration: underline; text-underline-o
 .cp-where { max-width: 340px; }
 .cp-lane + .cp-lane { border-top: 1px solid var(--line); }
 .cp-lane.past { opacity: 0.6; }
+/* The finished ones folded at the end: "N done ›" as in the drawer; unfolded, their lanes (each a subgrid again). */
+.cp-done { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; border-top: 1px solid var(--line); }
+.cp-done > .mt-done-line { grid-column: 1 / -1; justify-self: start; margin: 0 12px; padding: 8px 0; }
+.cp-done > .cp-lane { border-top: 1px solid var(--line); }
 .cp-who { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; }
 .cp-who .mt-name { font-size: 13px; }
 .cp-st { padding: 1px 7px; border-radius: var(--pill-radius); font: 650 10.5px/1.4 var(--mono); color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); white-space: nowrap; }
@@ -167,13 +173,32 @@ button.mt-name:hover, .mt-name.on { text-decoration: underline; text-underline-o
 .cp-needs { border-radius: 12px; padding: 0 0 6px; }
 .cp-needs.red { box-shadow: inset 0 0 0 1.5px var(--deny); padding: 4px 4px 8px; }
 .cp-needs .mt-row { padding: 8px 12px; }
-.cp-foot { flex: none; padding: 10px 12px 12px; border-top: 1px solid var(--line); background: var(--panel); }
-/* A narrow window: the two columns one under the other, the lanes' place for its work dropped under its steps. */
-@media (max-width: 1100px) {
-  .cp-cols { grid-template-columns: minmax(0, 1fr); }
-  .cp-lanes { grid-template-columns: 120px minmax(0, 1fr) max-content; }
-  .cp-where { grid-column: 2; grid-row: 2; max-width: none; }
+/* A narrow page (beside the chat, most windows): the goal two by two; the status line wraps; Decided on its own and
+   Needs you one under the other, Needs you first; each lane on rows of its own: its name and state with its links at
+   the end, then its steps, then where its work is. */
+@container cp (max-width: 820px) {
   .crew-page .crew-goal { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cp-status { flex-wrap: wrap; row-gap: 4px; padding-top: 6px; padding-bottom: 6px; }
+  .cp-count { white-space: normal; }
+  .cp-cols { grid-template-columns: minmax(0, 1fr); }
+  .cp-cols > .cp-needs { grid-row: 1; }
+  .cp-lanes { grid-template-columns: minmax(0, 1fr) max-content; }
+  .cp-lane { row-gap: 6px; padding: 10px 12px; }
+  .cp-who { grid-column: 1; grid-row: 1; flex-direction: row; align-items: center; gap: 8px; }
+  .cp-who .mt-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cp-links { grid-column: 2; grid-row: 1; flex-wrap: wrap; row-gap: 2px; }
+  .cp-steps { grid-column: 1 / -1; grid-row: 2; }
+  .cp-where { grid-column: 1 / -1; grid-row: 3; max-width: none; }
+  .cp-where:empty { display: none; }
+  .cp-lane > .mt-under { grid-row: 4; }
+  .cp-lane > .mt-under + .mt-under { grid-row: 5; }
+}
+/* Narrower still (the smallest window): the links on a row of their own under where its work is. */
+@container cp (max-width: 480px) {
+  .cp-lanes { grid-template-columns: minmax(0, 1fr); }
+  .cp-links { grid-column: 1; grid-row: 4; justify-content: flex-start; }
+  .cp-lane > .mt-under { grid-row: 5; }
+  .cp-lane > .mt-under + .mt-under { grid-row: 6; }
 }
 /* An ask's title: "<lead> › <teammate>". On a card's top line the lead's name is as wide as its words (its usual
    minimum width would leave a second gap before the ›). */

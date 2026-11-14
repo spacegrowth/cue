@@ -26,6 +26,13 @@ const addOn = {
   plain: (text) => text,
   /** Items in a session's ⋯ menu. */
   chatMenu: (sid, s) => "",
+  /** On lead `sid`'s crew page (team_page.js): its own head line in place of the lead's name (‹ Back to the chat
+   *  stays), "" for the usual one; rows under the status line; and rows of its own in Needs you and in Decided on its
+   *  own, drawn as those groups' rows are, with how many: { html, count }. The page opens with addOn.openCrewPage. */
+  crewPageHead: (sid) => "",
+  crewPageRows: (sid) => "",
+  crewPageNeeds: (sid) => ({ html: "", count: 0 }),
+  crewPageDecided: (sid) => ({ html: "", count: 0 }),
   /** Click rules as app/delegate.js walks them ((target, event) → true when taken), tried before the Board's own. */
   clicks: [],
   /** Once the window has its state (boot, app.js). */
