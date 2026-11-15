@@ -678,19 +678,17 @@ test.describe("a hosted lead's crew on its own page", () => {
     const hub = st.items.find((i) => i.id === "n1793984390004");
     hub.agent_id = `id-m${count - 1}`; hub.agent_name = `m${count - 1}`;
   }, count);
-  test("a big crew: two-line rows while they fit, one line each past that; a chip for the ask out of view; ↑ / ↓ move the pick", async ({ cue, page }) => {
+  test("a big crew: two-line rows always, the list scrolls; a chip for the ask out of view; ↑ / ↓ move the pick", async ({ cue, page }) => {
     const list = page.locator(".crew-page .cp-scroll");
     await bigCrew(cue, 5);
-    await expect(list, "five fit on two lines").not.toHaveClass(/\bone\b/);
     await expect(page.locator(".cp-jump")).toBeHidden();
     await bigCrew(cue, 20);
-    await expect(list, "twenty: one line each").toHaveClass(/\bone\b/);
-    await expect(list.locator(".cp-ml").first()).toBeHidden();
+    // Twenty keep their two lines (its word, time and action stay); the list scrolls instead.
+    await expect(list.locator(".cp-ml").first()).toBeVisible();
+    await expect(list.locator(".cp-act").first()).toBeVisible();
+    expect(await list.evaluate((el) => el.scrollHeight > el.clientHeight), "the list scrolls").toBe(true);
     const chip = page.locator(".cp-jump");
     await expect(chip).toHaveText("↓ m19 needs you");
-    // A state change doesn't change the form.
-    await cue.change((st) => { for (const t of st.sessions.find((s) => s.session_id === "lead").team.slice(0, 3)) t.state = "reviewed"; });
-    await expect(list).toHaveClass(/\bone\b/);
     // The chip scrolls to it; nothing is picked.
     await chip.click();
     await expect(page.locator('.cp-card[data-key="cpc:lead|id-m19"]')).toBeInViewport();

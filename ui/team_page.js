@@ -303,7 +303,7 @@ function crewPageView(sid) {
     ${crewPageHead(sid, head)}
     <div class="cp-upper" data-scroll-key="cpu:${esc(sid)}"><div class="cp-top">${addOn.crewPageGoal?.(sid) ?? crewGoalLine(sid, handles)}${rowsAdded}</div></div>
     <div class="cp-body" style="--cp-chat-w:${typeof boardChatWidth === "function" ? boardChatWidth() : "50%"}"><div class="cp-left">${crewPageLeft(sid, decidedAdded, crewBarHtml(sid))}</div>
-      <aside class="cp-list">${crewLeadRow(sid)}${band ? `<div class="cp-band" data-scroll-key="cpb:${esc(sid)}">${band}</div>` : ""}${crewStatusLine(sid, needCount)}<div class="cp-scroll ${crewFit.form === "one" ? "one" : ""}" data-fit data-scroll-key="cpl:${esc(sid)}">${crewRowsHtml(sid)}</div><button class="cp-jump" data-cp-jump="" hidden></button></aside></div>
+      <aside class="cp-list">${crewLeadRow(sid)}${band ? `<div class="cp-band" data-scroll-key="cpb:${esc(sid)}">${band}</div>` : ""}${crewStatusLine(sid, needCount)}<div class="cp-scroll" data-fit data-scroll-key="cpl:${esc(sid)}">${crewRowsHtml(sid)}</div><button class="cp-jump" data-cp-jump="" hidden></button></aside></div>
     ${mateMenuOf(sid)}</div>`;
 }
 /** A record's page (addOn.crewPageRecord `rec`: something whose lead is gone): the add-on's head and rows, its page on
@@ -317,29 +317,17 @@ function crewRecordView(key, rec) {
       <aside class="cp-list">${band ? `<div class="cp-band" data-scroll-key="cpb:${esc(key)}">${band}</div>` : ""}<div class="cp-scroll" data-scroll-key="cpl:${esc(key)}">${rec.mates || ""}</div></aside></div></div>`;
 }
 
-// ---------- a big crew: rows that fit, a chip for an ask out of view, ↑ / ↓ through the list ----------
-/** The list's row form, the roomiest in which every open row fits without scrolling: "two" (two lines), else "one"
- *  (one line: name, what it's on, the meter). Worked out when the number of open rows or the window's size changes,
- *  never when a state changes or a row is picked (`key` says what it was worked out for). `two`: a two-line row's
- *  height, as last measured. */
-const crewFit = { key: "", form: "two", two: 64 };
+// ---------- a big crew: the list scrolls, a chip for an ask out of view, ↑ / ↓ through the list ----------
 /** The list's row that has the cursor ("lead", or a teammate's key), kept across draws; null when it's elsewhere. */
 let crewListFocus = null;
-/** After each draw (app/render.js placeFloating) and on resize: the form, and the jump chip. */
+/** After each draw (app/render.js placeFloating) and on resize: the cursor back on its row, and the jump chip. A big
+ *  crew keeps its two-line rows and the list scrolls; the chip points at an ask out of view. */
 function crewListPlace() {
   const box = crewPageSid && document.querySelector(".crew-page .cp-scroll[data-fit]");
   if (!box) return;
   // The cursor was on a row of the list (↑ / ↓): a draw built the row afresh, so it goes back to it.
   if (crewListFocus && (!document.activeElement || document.activeElement === document.body)) {
     document.querySelector(crewListFocus === "lead" ? ".crew-page .cp-lead" : `.crew-page .cp-row[data-cp-mate="${CSS.escape(crewListFocus)}"]`)?.focus();
-  }
-  const rows = box.querySelectorAll(":scope > .cp-cards > .cp-card"), done = box.querySelector(":scope > .cp-done > .mt-done-line");
-  if (crewFit.form === "two" && rows[0]) crewFit.two = rows[0].offsetHeight;
-  const key = `${crewPageSid}|${rows.length}|${innerWidth}x${innerHeight}`;
-  if (key !== crewFit.key) {
-    crewFit.key = key;
-    const form = rows.length * crewFit.two + (done?.offsetHeight || 0) <= box.clientHeight ? "two" : "one";
-    if (form !== crewFit.form) { crewFit.form = form; return renderMain(); }
   }
   crewJumpPlace(box);
 }
