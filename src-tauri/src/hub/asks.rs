@@ -715,6 +715,10 @@ mod tests {
         assert_eq!(marks(&hub), (pinned, 1_900_000_000_000));
         let at = |h: &Hub| h.read(|st| st.sessions.all().iter().find(|s| s.origin.session_id == "s2").map(|s| s.snoozed_at_ms).unwrap());
         assert!(at(&hub) > 0, "when it was snoozed is kept, so a new ask brings it back");
+        // It finishes another turn (a new card): the snooze is over, and stays over once you answer.
+        hub.event(Origin { session_id: "s2".into(), harness: "claude".into(), ..Default::default() }, "stopped", "Third. Next?".into(), vec![], "");
+        assert_eq!(marks(&hub), (pinned, 0), "a new ask wakes it");
+        hub.set_snooze("s2", 1_900_000_000_000);
         hub.set_pinned("s2", false);
         hub.set_snooze("s2", 0);
         assert_eq!(marks(&hub), (0, 0));

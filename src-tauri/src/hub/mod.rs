@@ -286,6 +286,8 @@ impl Hub {
 
     fn new_item(st: &mut Store, kind: &str, origin: Origin) -> Item {
         st.next += 1;
+        // It asks something new: a snooze on it in the Inbox ends here (as a new reply wakes a snoozed mail).
+        st.sessions.set_snooze(&origin.session_id, 0);
         Item {
             id: format!("n{}", st.next),
             kind: kind.into(),

@@ -167,9 +167,18 @@ test("Pin puts a row under Pinned (kept by Cue); Later and Snooze move it to the
   await page.locator('[data-inbox-tab="inbox"]').click();
   const count = await page.locator('.switch-view [data-view="inbox"] .ib-count').textContent();
   await page.clock.fastForward(1000);
-  await cue.change((st) => { st.items.push({ ...st.items.find((i) => i.id === "n2"), id: "n9", session_id: "sec", project: "filings-bot", created_ms: Date.now(), message: "One more: run the third company too?" }); });
+  // A new finished turn takes the place of its old card, as the hub's does.
+  await cue.change((st) => { st.items = st.items.filter((i) => i.id !== "n3"); st.items.push({ ...st.items.find((i) => i.id === "n2"), id: "n9", session_id: "sec", project: "filings-bot", created_ms: Date.now(), message: "One more: run the third company too?" }); });
   await expect(page.locator('.ib-row[data-inbox-open="sec"]')).toBeVisible();
   await expect(page.locator('.switch-view [data-view="inbox"] .ib-count')).toHaveText(String(+count + 1));
+  // Cue ends the snooze as the new ask comes in (hub new_item): answered, it stays up, under Running with its bar.
+  await cue.change((st) => { st.sessions.find((x) => x.session_id === "sec").snooze_ms = 0; });
+  await page.locator('.ib-row[data-inbox-open="sec"]').click();
+  await page.locator('.inbox-page textarea[data-text="s:sec"]').fill("yes, the third too");
+  await page.locator('.inbox-page [data-act="send"]').click();
+  await expect(page.locator(".inbox-page")).toHaveCount(0);
+  expect(await sectionSids(page, "Running")).toContain("sec");
+  await expect(page.locator('.ib-row[data-inbox-open="sec"] .ib-bar')).toBeVisible();
   // Snoozed again, it stays hidden until its time comes; then it's back.
   await page.locator('.ib-row[data-inbox-open="sec"]').hover();
   await page.locator('.ib-row[data-inbox-open="sec"] [data-inbox-snooze]').click();
