@@ -374,9 +374,9 @@ const inboxTalkBtns = (key) => `<button class="icon-btn mic ${dictating?.key ===
  *  question is words only. */
 const inboxPics = (key) => key.startsWith("s:");
 /** The reply, as in mail: you write right under the message (no frame or line round it), suggested replies under what
- *  you write (they're yours, not its), then Send with Open chat and the project's actions beside it. */
+ *  you write (they're yours, not its), then Send with Open chat beside it (no project actions here: those are the chat's). */
 function inboxReply(sid, key, ph, label, attrs) {
-  return inboxBox(key, ph, label, attrs, `<button class="btn" data-inbox-full="${esc(sid)}">Open chat</button>${inboxActions(sid)}`, inboxSuggest(sid, key));
+  return inboxBox(key, ph, label, attrs, `<button class="btn" data-inbox-full="${esc(sid)}">Open chat</button>`, inboxSuggest(sid, key));
 }
 /** Suggested replies, as mail suggests them: Claude's own suggestion (it goes into the box, to send as it is or
  *  change), then your quick phrases (Settings → Quick phrases: a click sends it, after anything in the box). */
@@ -385,11 +385,6 @@ function inboxSuggest(sid, key) {
   if (!sug && !ps.length) return "";
   const k = `data-key="${esc(key)}" data-sid="${esc(sid)}"`;
   return `<div class="ib-sugs">${sug ? `<button class="ib-sug ai" data-inbox-sug ${k}><span class="ib-sug-k">Suggested</span>${esc(sug)}</button>` : ""}${ps.map((p) => `<button class="ib-sug" data-inbox-phrase="${esc(p)}" ${k}>${esc(p)}</button>`).join("")}</div>`;
-}
-/** Its project's actions (actions.js), as under its latest reply in the chat: run one yourself. */
-function inboxActions(sid) {
-  const s = sessionOf(sid);
-  return s && typeof actReplyHtml === "function" ? actReplyHtml(s, s.since_ms || 0) : "";
 }
 /** A quick phrase clicked: added to what's in the box, and sent. */
 function inboxSendPhrase(el) {

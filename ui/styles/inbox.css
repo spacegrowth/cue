@@ -170,7 +170,7 @@ button.ib-sect.ib-strip { padding: 8px 16px 6px; gap: 5px; }
 .ib-foot { margin-top: 6px; display: flex; flex-direction: column; gap: 7px; padding-top: 4px; }
 .ib-foot:empty { display: none; }
 /* The reply, as in mail: written right under the message, no frame or line round it; suggested replies under what you
-   write (Claude's suggestion first, then your quick phrases), then Send with Open chat and the project's actions. */
+   write (Claude's suggestion first, then your quick phrases), then Send with Open chat. */
 .ib-sugs { display: flex; flex-wrap: wrap; gap: 6px; }
 .ib-sug { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; height: 28px; padding: 0 12px; border: 1px solid var(--line); border-radius: var(--pill-radius); background: var(--panel); color: var(--ink); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ib-sug:hover { background: color-mix(in srgb, var(--ink) 5%, var(--panel)); }
@@ -181,7 +181,6 @@ button.ib-sect.ib-strip { padding: 8px 16px 6px; gap: 5px; }
 .ib-box { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
 .ib-box textarea { width: 100%; min-height: 64px; max-height: 260px; resize: none; border: 0; outline: none; background: transparent; color: var(--ink); font: 13.5px/1.5 var(--sans); padding: 2px 0; }
 .ib-box-acts { display: flex; gap: 8px; align-items: center; min-width: 0; }
-.ib-box-acts .ac-sugs { flex: 1; min-width: 0; }
 .ib-hint { display: flex; gap: 14px; align-items: center; color: var(--muted); font-size: 11.5px; }
 .ib-hint .ib-kbd { margin: 0 2px; }
 .ib-hint { gap: 14px 6px; }
