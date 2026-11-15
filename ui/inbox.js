@@ -18,6 +18,10 @@ let inboxSid = null;
 let inboxOpenedAt = 0;
 /** The open session needed you while it was open: once it's at work again, the next that needs you opens. */
 let inboxAsked = false;
+/** When you sent to the open session from here (Date.now()); it stays open INBOX_SEEN_MS after, so you see what you
+ *  sent land before the next one opens. */
+let inboxWroteAt = 0;
+const INBOX_SEEN_MS = 2000;
 /** The session last opened: its row stays lit, so you see where you were. */
 let inboxLast = null;
 /** The list's tab: "inbox" or "snoozed". */
@@ -680,7 +684,8 @@ function inboxAnswered(sid) {
   if (r && r.kind !== "run") { inboxAsked = true; return false; }
   // Just sent from its box: the box still holds the words until this draw clears it.
   const wrote = (it && (answering.get(it.id) || 0) >= inboxOpenedAt) || outbox.some((o) => o.sid === sid && o.at >= inboxOpenedAt + clockSkew);
-  if (wrote && inboxAsked) return true;
+  if (wrote && inboxAsked && !inboxWroteAt) { inboxWroteAt = Date.now(); setTimeout(() => inboxSid === sid && renderMain(), INBOX_SEEN_MS + 50); }
+  if (inboxWroteAt) return Date.now() - inboxWroteAt >= INBOX_SEEN_MS;
   const f = document.activeElement;
   return inboxAsked && !(f?.matches?.("textarea, input") && f.value);
 }
@@ -702,6 +707,7 @@ function inboxAdvance(sid) {
   inboxSid = inboxLast = next || null;
   inboxAsked = false;
   inboxOpenedAt = Date.now();
+  inboxWroteAt = 0;
   inboxSnoozeAt = "";
   if (next) { active = { id: inboxItems().get(next)?.id || null, sid: next, exact: false }; seenSession(next); }
 }
@@ -721,6 +727,7 @@ function inboxOpen(sid) {
   inboxSid = inboxLast = sid;
   inboxAsked = false;
   inboxOpenedAt = Date.now();
+  inboxWroteAt = 0;
   inboxSnoozeAt = "";
   renderMain();
 }
