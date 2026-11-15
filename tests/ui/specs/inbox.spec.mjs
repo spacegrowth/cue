@@ -580,3 +580,24 @@ test("the project's action buttons stay in its chat, not in the Inbox reply", as
   await expect.poll(() => page.evaluate(() => actReplyHtml(sessionOf("eng"), 0))).toContain("ac-sugs");
   await expect(pg.locator(".ac-sugs")).toHaveCount(0);
 });
+
+test("an earlier message shows two lines, with more when that cuts it; a click opens it whole, with less", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  const long = Array.from({ length: 12 }, (_, n) => `Sentence ${n} of an earlier reply that runs on for a while.`).join(" ");
+  await cue.change((st, long) => {
+    const s = st.sessions.find((x) => x.session_id === "sec"), t0 = Date.now() - 3600000;
+    s.thread = [{ role: "agent", text: long, at_ms: t0 }, { role: "you", text: "short one", at_ms: t0 + 60000 }];
+  }, long);
+  await page.locator('.switch-view [data-view="inbox"]').click();
+  await page.locator('.ib-row[data-inbox-open="sec"]').click();
+  const pg = page.locator('.inbox-page[data-inbox-page="sec"]');
+  const [cut, short] = [pg.locator(".ib-msg").nth(0), pg.locator(".ib-msg").nth(1)];
+  // Two lines tall, not one, and cut with "more"; a short one has no "more".
+  const lines = await cut.locator(".ib-msg-line").evaluate((el) => Math.round(el.getBoundingClientRect().height / parseFloat(getComputedStyle(el).lineHeight)));
+  expect(lines).toBe(2);
+  await expect(cut.locator(".ib-msg-more")).toHaveText("more");
+  await expect(short.locator(".ib-msg-more")).toHaveCount(0);
+  await cut.click();
+  await expect(cut.locator(".ib-msg-body")).toContainText("Sentence 11");
+  await expect(cut.locator(".ib-msg-more")).toHaveText("less");
+});

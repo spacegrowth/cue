@@ -40,6 +40,8 @@ const INBOX_SINK_MS = 8000;
 const INBOX_STRIP_BARS = 8;
 /** "It says": the last paragraphs of its words before the question, at most this many, this long in all (characters). */
 /** Its reply shows whole up to INBOX_SAID_LONG characters; a longer one shows its last paragraphs up to INBOX_SAID_MAX. */
+/** An earlier message longer than this (characters, about two lines here) is cut: it says "more". */
+const INBOX_MSG_CUT = 180;
 const INBOX_SAID_LONG = 2500, INBOX_SAID_MAX = 1200;
 /** "It did": this many lines at most (a folded run is one); the earlier ones are counted above them. */
 const INBOX_STEPS_MAX = 6;
@@ -509,7 +511,10 @@ function inboxEarlier(r, msgs) {
 function inboxMsgHtml(sid, e) {
   const k = `${sid}|${e.at_ms}|${e.role}`, open = inboxMsgOpen.has(k), you = e.role === "you";
   const who = `<span class="ib-msg-who">${you ? "You" : "It"}</span><span class="ib-msg-at">${e.at_ms ? ago(e.at_ms) : ""}</span>`;
-  const body = open ? `<div class="ib-msg-body ${you ? "" : "ib-md msg"}">${you ? esc(e.text).replace(/\n/g, "<br>") : md(e.text, { pathsOf: sid })}${you ? "" : localImages(e.text)}</div>` : `<span class="ib-msg-line">${esc(plain(e.text).replace(/\s+/g, " ").slice(0, 220))}</span>`;
+  // Folded: two lines of it, and "more" when that cuts it (a click opens it whole; "less" folds it again).
+  const line = plain(e.text).replace(/\s+/g, " ").trim(), cut = line.length > INBOX_MSG_CUT || /\n\s*\S/.test(String(e.text).trim());
+  const tag = cut ? `<span class="ib-msg-more">${open ? "less" : "more"}</span>` : "";
+  const body = open ? `<div class="ib-msg-body ${you ? "" : "ib-md msg"}">${you ? esc(e.text).replace(/\n/g, "<br>") : md(e.text, { pathsOf: sid })}${you ? "" : localImages(e.text)}${tag}</div>` : `<span class="ib-msg-fold"><span class="ib-msg-line">${esc(line.slice(0, 600))}</span>${tag}</span>`;
   return `<div class="ib-msg ${you ? "you" : "it"} ${open ? "open" : ""}" role="button" data-inbox-msg="${esc(k)}">${who}${body}</div>`;
 }
 /** What you've written to it that hasn't reached it yet, as its chat shows it (chat/render.js): on its way, queued in
