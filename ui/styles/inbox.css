@@ -1,0 +1,43 @@
+/* ---------- Inbox (inbox.js): one line per session, then a session opened in the list's place ---------- */
+/* "Inbox 3" in the header's switch: how many need you, on the button's one line. */
+.switch-view [data-view="inbox"] { flex: none; white-space: nowrap; }
+.switch-view .ib-count { margin-left: 6px; padding: 0 6px; border-radius: var(--pill-radius); background: var(--deny); color: #fff; font: 700 10.5px/16px var(--sans); display: inline-block; vertical-align: 1px; }
+
+/* The view takes the board's place, full width, one card. */
+.board.ib-board { grid-template-columns: minmax(0, 1fr); }
+.inbox, .inbox-page { grid-column: 1 / -1; min-width: 0; min-height: 0; margin: 0 0 4px; display: flex; flex-direction: column; background: var(--panel); color: var(--ink); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; font-size: 13px; }
+
+/* The list: its head, then the groups, scrolling inside. */
+.ib-top { flex: none; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.ib-top b { font-size: 14px; }
+.ib-counts { color: var(--muted); font-size: 12px; }
+.ib-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 8px; }
+.ib-sect { padding: 12px 16px 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.ib-empty { padding: 28px 16px; color: var(--muted); text-align: center; }
+
+/* A line: dot, name, subject and snippet, time. */
+.ib-row { display: grid; grid-template-columns: 14px minmax(90px, 180px) minmax(0, 1fr) auto; gap: 12px; align-items: center; width: 100%; padding: 8px 16px; border-bottom: 1px solid var(--line); text-align: left; font-size: 12.5px; color: var(--ink); }
+.ib-row:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
+.ib-row.on { background: color-mix(in srgb, var(--sel) 45%, transparent); }
+.ib-dot { display: grid; place-items: center; }
+.ib-dot .hdot { width: 8px; height: 8px; }
+.ib-still .pdot { opacity: 0.45; }
+.ib-who { min-width: 0; display: flex; align-items: center; gap: 4px; }
+.ib-name { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ib-what { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ib-subj { font-weight: 600; }
+.ib-snip { color: var(--muted); }
+.ib-time { color: var(--muted); font-size: 11px; white-space: nowrap; }
+
+/* The open session: its head line, then the Board's chat pane filling the rest. */
+.ib-head { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-height: 48px; padding: 6px 16px 6px 10px; background: var(--sel); color: var(--on-sel); }
+.ib-back, .ib-next { height: 30px; padding: 0 10px; border-radius: 8px; font-size: 12.5px; font-weight: 650; color: var(--on-sel); }
+.ib-back:hover, .ib-next:hover { background: color-mix(in srgb, var(--on-sel) 10%, transparent); }
+.ib-hname { min-width: 0; overflow-wrap: anywhere; font-size: 14px; font-weight: 700; }
+.ib-pill { flex: none; padding: 2px 9px; border-radius: var(--pill-radius); font: 650 11px/1.5 var(--mono); white-space: nowrap; background: color-mix(in srgb, var(--on-sel) 12%, transparent); color: var(--on-sel); }
+.ib-pill.run { background: var(--ink); color: var(--panel); }
+.ib-pill.need { background: var(--deny); color: #fff; }
+.ib-of { font-size: 12.5px; font-weight: 600; color: color-mix(in srgb, var(--on-sel) 72%, transparent); padding: 0 10px; }
+.ib-chat { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.ib-chat > .active-pane { border-radius: 0; box-shadow: none; }
+.ib-chat > .active-pane > .ap-chat { min-height: 84px; }

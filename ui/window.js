@@ -159,7 +159,7 @@ function restoreSpot() {
   let spot = null;
   try { spot = JSON.parse(localStorage.getItem(SPOT) || "null"); } catch {}
   if (!spot) return;
-  if (["board", "sessions", "history", "insights"].includes(spot.view)) view = spot.view;
+  if (["board", "inbox", "sessions", "history", "insights"].includes(spot.view)) view = spot.view;
   // Only if that session is still around; otherwise the usual oldest-first pick stands.
   const card = state.items.find((i) => i.session_id === spot.sid);
   if (spot.sid && (card || sessionOf(spot.sid) || parkedOf(spot.sid))) active = { id: card?.id || null, sid: spot.sid };

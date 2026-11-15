@@ -12,7 +12,7 @@ let chatOpenTold;
 // The lists a redraw puts back where they were scrolled (the chat keeps its element across draws, chat/patch.js liftChat /
 // settleChat, so its scroll is its own). Each is known by its kind and its place among that kind, or by its
 // data-scroll-key: a list new in this draw (a lead's review rows) is never handed another list's place.
-const SCROLLERS = [".col", ".cp-scroll",".lv-list", ".sv-scroll", ".sheet-body", ".sec-body", ".card.recent", ".hist", ".hdetail", ".itab", ".vp-list", ".rdv-scroll", ".rdv-list", ".rdv-toc"];
+const SCROLLERS = [".col", ".cp-scroll", ".ib-scroll", ".lv-list", ".sv-scroll", ".sheet-body", ".sec-body", ".card.recent", ".hist", ".hdetail", ".itab", ".vp-list", ".rdv-scroll", ".rdv-list", ".rdv-toc"];
 function scrollerKeys() {
   const seen = {};
   return [...document.querySelectorAll(SCROLLERS.join(", "))].map((el) => {
@@ -65,17 +65,19 @@ function beforeDraw() {
   return was;
 }
 
-/** The header: the chips, the views (Board, the add-on's, Read, Insights, Terminal), search, usage, the terminal and Settings. */
+/** The header: the chips, the views (Board, Inbox, the add-on's, Read, Insights, Terminal), search, usage, the terminal and Settings. */
 function topBarHtml(counts) {
   return `<div class="top" data-tauri-drag-region><span class="wordmark" data-tauri-drag-region role="img" aria-label="Cue">${CUE_MARK}</span><span class="hchips"><button class="hchip new-chip" data-lv="new" data-spot="1">+ New</button>${counts}${liveChip()}${projChip()}</span><span class="grow" data-tauri-drag-region></span>${updateCard()}<span class="grow" data-tauri-drag-region></span>
       <button class="top-btn icon" data-act="open-search" aria-label="Find (⌘K)">${SEARCH_ICON}</button>
       ${usageChip()}${shellsBtn()}${extPanelBtn()}
-      <div class="switch-view"><button class="${view === "board" ? "on" : ""}" data-view="board">Board</button>${addOn.views.map((v) => `<button class="${view === v.id ? "on" : ""}" data-view="${v.id}">${v.label()}</button>`).join("")}<button class="${view === "read" ? "on" : ""}" data-view="read">Read</button><button class="${view === "insights" ? "on" : ""}" data-view="insights">Insights</button><button class="sv-term ${view === "terminal" ? "on" : ""}" data-view="terminal">Terminal<span class="sh-live ${shellsLive()}">${shellsLive() === "done" ? "✓" : ""}</span></button></div>
+      <div class="switch-view"><button class="${view === "board" ? "on" : ""}" data-view="board">Board</button>${inboxBtn()}${addOn.views.map((v) => `<button class="${view === v.id ? "on" : ""}" data-view="${v.id}">${v.label()}</button>`).join("")}<button class="${view === "read" ? "on" : ""}" data-view="read">Read</button><button class="${view === "insights" ? "on" : ""}" data-view="insights">Insights</button><button class="sv-term ${view === "terminal" ? "on" : ""}" data-view="terminal">Terminal<span class="sh-live ${shellsLive()}">${shellsLive() === "done" ? "✓" : ""}</span></button></div>
       <button class="top-btn icon" data-act="open-settings" title="Settings" aria-label="Settings">${GEAR_ICON}</button></div>`;
 }
+/** Inbox in the header's switch, with how many need you ("Inbox 3"). */
+const inboxBtn = () => { const n = inboxCount(); return `<button class="${view === "inbox" ? "on" : ""}" data-view="inbox">Inbox${n ? `<span class="ib-count">${n}</span>` : ""}</button>`; };
 /** The view picked in the header. */
 // A lead's crew on its own page (team_page.js) takes the board's place while it's open.
-const viewHtml = () => (typeof crewPageShown === "function" && crewPageShown()) || (view === "history" ? historyView() : view === "insights" ? insightsTabView() : view === "sessions" ? sessionsView() : view === "read" ? readView() : view === "terminal" ? shellView() : addOn.views.find((v) => v.id === view)?.html() ?? boardView());
+const viewHtml = () => (typeof crewPageShown === "function" && crewPageShown()) || (view === "history" ? historyView() : view === "inbox" ? inboxView() : view === "insights" ? insightsTabView() : view === "sessions" ? sessionsView() : view === "read" ? readView() : view === "terminal" ? shellView() : addOn.views.find((v) => v.id === view)?.html() ?? boardView());
 /** What sits over the window: Move to Cue, a delete to confirm, a picture full size, Send to, a sheet, the live
  *  list in the middle of the window, an action's output. */
 function overlaysHtml() {
