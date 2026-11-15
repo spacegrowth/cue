@@ -33,18 +33,17 @@ const threeQuestions = (st) => {
   ];
 };
 
-test("the list: a finished turn that asks nothing is under Done, one that asks back needs you; two lines a row", async ({ cue, page }) => {
+test("the list: every finished turn waiting on you needs you, a question or not (as the Board's Waiting); two lines a row", async ({ cue, page }) => {
   await cue.open("board-waiting");
-  // relay's reply ends on a statement, not a question.
-  await cue.change((st) => { st.items.find((i) => i.id === "n1").message = "Carried the spend over to the successor. Tests pass."; });
+  // relay's reply ends on a statement, not a question ("Recommendation: send fixes"): still your turn.
+  await cue.change((st) => { st.items.find((i) => i.id === "n1").message = "Reviewed it.\n\nRecommendation: send fixes"; });
   await openInbox(page);
-  expect(await sections(page)).toEqual(["Needs you", "Running", "Done"]);
+  expect(await sections(page)).toEqual(["Needs you", "Running"]);
   const need = await sectionSids(page, "Needs you");
-  // det and sec end on a question: they need you; relay is Done.
-  expect(need.sort()).toEqual(["api", "det", "pipe", "sec", "web"]);
-  expect(await sectionSids(page, "Done")).toContain("relay");
+  expect(need.sort()).toEqual(["api", "det", "pipe", "relay", "sec", "web"]);
+  await expect(page.locator('.ib-row[data-inbox-open="relay"] .ib-subj')).toHaveText("Recommendation: send fixes");
   expect((await sectionSids(page, "Running")).sort()).toEqual(["alerts", "eng", "names"]);
-  await expect(page.locator('.switch-view [data-view="inbox"] .ib-count')).toHaveText("5");
+  await expect(page.locator('.switch-view [data-view="inbox"] .ib-count')).toHaveText("6");
   // Line 1 the question it ends on, line 2 a useful line; the time at the right.
   const sec = page.locator('.ib-row[data-inbox-open="sec"]');
   await expect(sec.locator(".ib-subj")).toHaveText("Want me to run the next company?");
@@ -54,7 +53,7 @@ test("the list: a finished turn that asks nothing is under Done, one that asks b
   await expect(page.locator(".ib-tab")).toHaveText(["Inbox", "Snoozed"]);
 });
 
-test("the top ask opens by itself, its row lit in place; a row opened is a brief, not its chat; Full chat › goes to the Board's chat", async ({ cue, page }) => {
+test("the top ask opens by itself, its row lit in place; a row opened is a brief, not its chat; Open chat goes to the Board's chat", async ({ cue, page }) => {
   await cue.open("board-waiting");
   await openInbox(page);
   // Never an empty side: the first that needs you is open, its row lit where it was.
@@ -93,7 +92,7 @@ test("the top ask opens by itself, its row lit in place; a row opened is a brief
   await expect(det).toBeVisible();
   await page.locator('.ib-row[data-inbox-open="sec"]').click();
   await expect(page.locator(".inbox-page .ib-qt")).toContainText("next company?");
-  await page.locator(".inbox-page [data-inbox-full]").click();
+  await page.locator(".inbox-page .ib-head [data-inbox-full]").click();
   await expect(page.locator('.switch-view [data-view="board"]')).toHaveClass(/\bon\b/);
   await expect(page.locator(".active-pane")).toBeVisible();
 });
@@ -152,6 +151,7 @@ test("Send opens the next that needs you at once, without waiting on the session
   await cue.override("reply", () => new Promise(() => {}));
   await openInbox(page);
   await page.locator('.ib-row[data-inbox-open="sec"]').click();
+  await page.locator('.inbox-page [data-inbox-reply="sec"]').click();
   await page.locator('.inbox-page textarea[data-text="s:sec"]').fill("yes, run it");
   await page.locator('.inbox-page [data-act="send"]').click();
   await expect(page.locator(".inbox-page")).not.toHaveAttribute("data-inbox-page", "sec");
@@ -170,14 +170,15 @@ test("Send opens the next that needs you at once, without waiting on the session
 
 test("nothing needing you: what's running and what's done lately stand in beside the list", async ({ cue, page }) => {
   await cue.open("board-waiting");
-  await cue.change((st) => { st.items = st.items.filter((i) => i.id === "n1"); st.items[0].message = "Carried the spend over to the successor. Tests pass."; });
+  // relay's turn was answered: it's at rest with nothing waiting, so Done.
+  await cue.change((st) => { st.items = []; st.sessions.find((x) => x.session_id === "relay").since_ms = Date.now() - 60000; });
   await openInbox(page);
   await expect(page.locator(".inbox-page")).toHaveCount(0);
   const calm = page.locator(".ib-calm");
   await expect(calm.locator(".ib-calm-head b")).toHaveText("Nothing needs you");
   await expect(calm.locator('.ib-calm-card.run[data-inbox-open="eng"]')).toContainText("Refactor the order router");
   await expect(calm.locator('.ib-calm-card.run[data-inbox-open="eng"] .ib-bar')).toBeVisible();
-  await expect(calm.locator('.ib-calm-card.done[data-inbox-open="relay"]')).toContainText("Carried the spend over");
+  await expect(calm.locator('.ib-calm-card.done[data-inbox-open="relay"]')).toBeVisible();
   await calm.locator('[data-inbox-open="eng"]').click();
   await expect(page.locator('.inbox-page[data-inbox-page="eng"] .ib-card.run')).toBeVisible();
 });
@@ -210,6 +211,7 @@ test("answered, a row sinks to Running with a moving bar; quiet it slows, stuck 
   await cue.open("board-waiting");
   await openInbox(page);
   await page.locator('.ib-row[data-inbox-open="sec"]').click();
+  await page.locator('.inbox-page [data-inbox-reply="sec"]').click();
   await page.locator('.inbox-page textarea[data-text="s:sec"]').fill("yes, run it");
   await page.locator('.inbox-page [data-act="send"]').click();
   // Once it's at work again the next that needs you opens beside the list; its row is under Running with its bar.
@@ -307,6 +309,7 @@ test("Pin puts a row under Pinned (kept by Cue); Park folds it under Parked at t
   // Cue ends the snooze as the new ask comes in (hub new_item): answered, it stays up, under Running with its bar.
   await cue.change((st) => { st.sessions.find((x) => x.session_id === "sec").snooze_ms = 0; });
   await page.locator('.ib-row[data-inbox-open="sec"]').click();
+  await page.locator('.inbox-page [data-inbox-reply="sec"]').click();
   await page.locator('.inbox-page textarea[data-text="s:sec"]').fill("yes, the third too");
   await page.locator('.inbox-page [data-act="send"]').click();
   await expect(page.locator(".inbox-page")).not.toHaveAttribute("data-inbox-page", "sec");
@@ -326,9 +329,9 @@ test("Pin puts a row under Pinned (kept by Cue); Park folds it under Parked at t
 
 test("a session half full of context comes up as housekeeping: its meter, Compact now, Hand off, Remind me later", async ({ cue, page }) => {
   await cue.open("board-waiting");
-  // relay finished asking nothing (it would be Done), det asks back: both 71% full. eng is at 40%.
+  // relay is at rest with nothing waiting (it would be Done), det asks back: both 71% full. eng is at 40%.
   await cue.change((st) => {
-    st.items.find((i) => i.id === "n1").message = "Carried the spend over to the successor. Tests pass.";
+    st.items = st.items.filter((i) => i.id !== "n1");
     for (const sid of ["relay", "det"]) st.sessions.find((x) => x.session_id === sid).context_pct = 71;
     st.sessions.find((x) => x.session_id === "eng").context_pct = 40;
   });
@@ -354,4 +357,63 @@ test("a session half full of context comes up as housekeeping: its meter, Compac
   await expect(pg.locator(".ib-snz")).toHaveCount(0);
   await pg.locator('[data-act="ins-compact"]').click();
   await cue.called("session_command", { sessionId: "relay", action: "compact" });
+});
+
+test("replying is as in mail: Reply (or R) opens the box, Esc shuts it empty; Open chat beside it", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  await page.locator('.switch-view [data-view="inbox"]').click();
+  await page.locator('.ib-row[data-inbox-open="sec"]').click();
+  const pg = page.locator('.inbox-page[data-inbox-page="sec"]');
+  // No box until you reply: Reply and Open chat in its place, R in the hints.
+  await expect(pg.locator(".ib-box")).toHaveCount(0);
+  await expect(pg.locator(".ib-replybar button")).toHaveText(["Reply", "Open chat"]);
+  await expect(pg.locator(".ib-hint")).toContainText("reply");
+  await page.locator("body").click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press("r");
+  await expect(pg.locator(".ib-box textarea")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(pg.locator(".ib-box")).toHaveCount(0);
+  // Words in it keep it open, Esc or not.
+  await pg.locator('[data-inbox-reply="sec"]').click();
+  await pg.locator(".ib-box textarea").fill("half a thought");
+  await page.keyboard.press("Escape");
+  await expect(pg.locator(".ib-box textarea")).toHaveValue("half a thought");
+});
+
+test("a lead whose crew waits on you needs you: its crew's rows, with their own buttons, in its brief", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  await cue.change((st) => {
+    st.items = st.items.filter((i) => i.session_id !== "eng");
+    const s = st.sessions.find((x) => x.session_id === "eng");
+    s.team = [{ name: "v5-loop", call: "c1", agent_id: "a1", state: "reviewed", recommendation: "send fixes", findings: [{ file: "ui/a.js", line: 3, what: "dead code" }], fix_rounds: 9 }];
+  });
+  await openInbox(page);
+  expect(await sectionSids(page, "Needs you")).toContain("eng");
+  const row = page.locator('.ib-row[data-inbox-open="eng"]');
+  await expect(row.locator(".ib-subj")).toHaveText("1 of its crew needs you");
+  await expect(row.locator(".ib-l2")).toContainText("v5-loop");
+  await row.click();
+  const crew = page.locator('.inbox-page[data-inbox-page="eng"] .ib-crew');
+  await expect(crew).toContainText("v5-loop");
+  await expect(crew.locator(".mt-row")).toHaveCount(1);
+});
+
+test("suggested replies, as mail's: Claude's suggestion goes into the box, a quick phrase sends", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  await cue.change((st) => {
+    st.settings.quick = { phrases: ["go ahead", "show me"] };
+    const s = st.sessions.find((x) => x.session_id === "sec");
+    s.state = "waiting";
+    s.suggestion = "run the next company";
+  });
+  await openInbox(page);
+  await page.locator('.ib-row[data-inbox-open="sec"]').click();
+  const pg = page.locator('.inbox-page[data-inbox-page="sec"]');
+  await expect(pg.locator(".ib-sug")).toHaveText(["Suggestedrun the next company", "go ahead", "show me"]);
+  await pg.locator(".ib-sug.ai").click();
+  await expect(pg.locator(".ib-box textarea")).toHaveValue("run the next company");
+  await pg.locator(".ib-box textarea").fill("");
+  await page.keyboard.press("Escape");
+  await pg.locator('.ib-sug[data-inbox-phrase="go ahead"]').click();
+  await cue.called("reply", { text: "go ahead" });
 });

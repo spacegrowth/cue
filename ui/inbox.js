@@ -20,6 +20,8 @@ let inboxOpenedAt = 0;
 let inboxAsked = false;
 /** The session last opened: its row stays lit, so you see where you were. */
 let inboxLast = null;
+/** The open session whose reply box is open (Reply, or R); null: a Reply button in its place, as in mail. */
+let inboxReplyOpen = null;
 /** The list's tab: "inbox" or "snoozed". */
 let inboxTab = "inbox";
 /** Where a Snooze menu is open: "row:<sid>", "head" or "card" (the open session's); "" when none is. */
@@ -61,6 +63,12 @@ const inboxFull = (s) => inboxCtx(s) >= INBOX_FULL;
 /** The tab a session is listed under. */
 const inboxTabOf = (s) => (inboxSnoozed(s) ? "snoozed" : "inbox");
 
+/** A reply's last line, plain ("Recommendation: send fixes"). */
+const inboxLastLine = (text) => plain(String(text || "").split("\n").map((l) => l.trim()).filter(Boolean).at(-1) || "");
+/** A lead's crew that waits on you, in a few words ("2 of its crew need you"). */
+const inboxCrewSubject = (sid) => { const n = inboxCrew(sid); return `${n} of its crew need${n === 1 ? "s" : ""} you`; };
+/** Who in its crew waits, and on what ("v5-loop: send fixes · at-picker: asks"). */
+const inboxCrewLine = (sid) => (typeof mateWaits === "function" ? mateWaits(sid).map((t) => `${t.name}: ${mateNeeds(sid, t) ? (mateAsk(sid, t) ? verb(mateAsk(sid, t)) : t.needs) : mateReadyAct(t) === "fixes" ? "send fixes" : "commit"}`).join(" · ") : "");
 /** The question a reply ends on (the last sentence with a "?" in its last line), plain; "" when it asks nothing there. */
 function inboxEndQuestion(text) {
   const last = plain(String(text || "").split("\n").map((l) => l.trim()).filter(Boolean).at(-1) || "");
@@ -77,18 +85,22 @@ function inboxItems() {
 }
 /** You've written to it from here and Cue hasn't shown it in its thread yet (not one that failed to go). */
 const inboxSending = (sid) => outbox.some((o) => o.sid === sid && !/^not sent/.test(o.via || ""));
-/** One session's row: { sid, s, it, project, at, kind } where kind is "ask", "turn" (a finished turn that asks you
- *  back, or was interrupted), "chore" (its context is getting full), "run" or "done". One you just answered is at
+/** How many of a lead's crew wait on you (a teammate asking, or its review ready to commit or send back); 0 for
+ *  any other session. */
+const inboxCrew = (sid) => (typeof mateWaits === "function" ? mateWaits(sid).length : 0);
+/** One session's row: { sid, s, it, project, at, kind } where kind is "ask", "turn" (a finished turn: your turn, as
+ *  on the Board's Waiting, or interrupted), "crew" (a lead whose crew waits on you), "chore" (its context is getting
+ *  full), "run" or "done" (finished, nothing waiting). One you just answered is at
  *  work at once, before Cue says so. Null when there's nothing to say of it, unless `keep` (pinned, parked or
  *  snoozed: always listed). */
 function inboxRowOf(sid, s, it, keep = false) {
   const row = (kind, at) => ({ sid, s, it, project: s?.project || it?.project, at, kind });
   if (it && answering.has(it.id) && s) return row("run", now());
   if (it && it.kind !== "waiting") return row("ask", it.created_ms);
-  if (it && (it.interrupted || inboxEndQuestion(finishedText(it)))) return row("turn", it.created_ms);
+  if (it) return row("turn", it.created_ms);
+  if (inboxCrew(sid)) return row("crew", s.since_ms || 0);
   if (s && (s.state === "working" || s.state === "agent" || s.compacting_ms || inboxSending(sid))) return row("run", s.since_ms || 0);
   if (s && inboxFull(s) && !cutOff(s)) return row("chore", s.since_ms || 0);
-  if (it) return row("done", it.created_ms);
   const recent = s && !hiddenIdle.has(idleKey(s)) && now() - (s.since_ms || 0) < INBOX_DONE_MS;
   return recent || keep ? row("done", s?.since_ms || 0) : null;
 }
@@ -184,7 +196,8 @@ function inboxDoneLines(r) {
 /** A row's two lines: [subject, the useful line under it]. */
 function inboxLines(r) {
   if (r.kind === "ask") return [inboxAskSubject(r.it), inboxWhy(r.it) || inboxSoFar(r) || (r.it.kind === "question" ? inboxQuestionLine(r.it) : "")];
-  if (r.kind === "turn") return [r.it.interrupted ? "Interrupted: it stopped mid-turn" : inboxEndQuestion(finishedText(r.it)), inboxSoFar(r)];
+  if (r.kind === "turn") return [r.it.interrupted ? "Interrupted: it stopped mid-turn" : inboxEndQuestion(finishedText(r.it)) || inboxLastLine(finishedText(r.it)) || "Your turn", inboxSoFar(r)];
+  if (r.kind === "crew") return [inboxCrewSubject(r.sid), inboxCrewLine(r.sid)];
   if (r.kind === "chore") return ["Getting full: compact or hand off?", inboxSoFar(r)];
   if (r.kind === "run") return inboxRunLines(r);
   return inboxDoneLines(r);
@@ -197,7 +210,7 @@ function inboxLines(r) {
 function inboxDot(r) {
   const s = r.s, stuck = s && (s.stuck_ms || preStart(s)) && !s.compacting_ms;
   if (r.kind === "ask") return `<span class="hdot ask"></span>`;
-  if (r.kind === "turn" || r.kind === "chore" || (r.kind === "run" && stuck)) return `<span class="ib-amber"></span>`;
+  if (r.kind === "turn" || r.kind === "crew" || r.kind === "chore" || (r.kind === "run" && stuck)) return `<span class="ib-amber"></span>`;
   return r.kind === "run" ? projDot(r.project, true) : `<span class="ib-still">${projDot(r.project)}</span>`;
 }
 /** Its context as a pill ("context 71%"), when it's half full or more. */
@@ -207,7 +220,8 @@ const inboxMeter = (s, cls = "") => `<span class="ib-meter ${inboxFull(s) ? "" :
 /** The badges after its name: how many questions, how full its context is. */
 function inboxBadges(r) {
   const n = r.kind === "ask" && r.it.kind === "question" ? questions(r.it).length : 0;
-  return `${n > 1 ? `<span class="ib-cnt">${n} questions</span>` : ""}${inboxCtxPill(r.s)}`;
+  const crew = r.kind !== "crew" ? inboxCrew(r.sid) : 0;
+  return `${n > 1 ? `<span class="ib-cnt">${n} questions</span>` : ""}${crew ? `<span class="ib-cnt">crew ${crew}</span>` : ""}${inboxCtxPill(r.s)}`;
 }
 /** The bar along a working row's foot: moving; slower and fainter when it's been quiet a while; amber and still when
  *  stuck. Each draw starts it where the clock says it is, so a redraw doesn't jump it back. */
@@ -329,6 +343,41 @@ function inboxLabel(label) {
 }
 /** A plain box to write in, and its button. Enter sends too (app/keys.js, by its draft key). */
 const inboxBox = (key, placeholder, label, attrs) => `<div class="ib-box"><textarea rows="2" data-text="${esc(key)}" placeholder="${esc(placeholder)}" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off">${esc(draft(key).text)}</textarea><button class="btn primary" ${attrs}>${label}</button></div>`;
+/** The reply, as in mail: Reply (R) and Open chat; Reply opens the box (it stays open while it holds words). `quiet`:
+ *  Reply isn't the main button (a question's choices are). */
+function inboxReply(sid, key, ph, label, attrs, quiet = false) {
+  const sugs = inboxSuggest(sid, key);
+  if (inboxReplyOpen === sid || draft(key).text) return `${sugs}${inboxBox(key, ph, label, attrs)}`;
+  return `${sugs}<div class="ib-replybar"><button class="btn ${quiet ? "" : "primary"}" data-inbox-reply="${esc(sid)}">Reply</button><button class="btn" data-inbox-full="${esc(sid)}">Open chat</button>${inboxActions(sid)}</div>`;
+}
+/** Suggested replies, as mail suggests them: Claude's own suggestion (it goes into the box, to send as it is or
+ *  change), then your quick phrases (Settings → Quick phrases: a click sends it, after anything in the box). */
+function inboxSuggest(sid, key) {
+  const sug = suggestionFor(sid), ps = phrases();
+  if (!sug && !ps.length) return "";
+  const k = `data-key="${esc(key)}" data-sid="${esc(sid)}"`;
+  return `<div class="ib-sugs">${sug ? `<button class="ib-sug ai" data-inbox-sug ${k}><span class="ib-sug-k">Suggested</span>${esc(sug)}</button>` : ""}${ps.map((p) => `<button class="ib-sug" data-inbox-phrase="${esc(p)}" ${k}>${esc(p)}</button>`).join("")}</div>`;
+}
+/** Its project's actions (actions.js), as under its latest reply in the chat: run one yourself. */
+function inboxActions(sid) {
+  const s = sessionOf(sid);
+  return s && typeof actReplyHtml === "function" ? actReplyHtml(s, s.since_ms || 0) : "";
+}
+/** A quick phrase clicked: added to what's in the box, and sent. */
+function inboxSendPhrase(el) {
+  const d = draft(el.dataset.key);
+  d.text = withPhrase(d.text, el.dataset.inboxPhrase);
+  saveDrafts();
+  inboxReplyOpen = el.dataset.sid;
+  renderMain();
+  document.querySelector(`.inbox-page .ib-box textarea[data-text="${CSS.escape(el.dataset.key)}"]`)?.closest(".ib-box")?.querySelector(".btn.primary")?.click();
+}
+/** Claude's suggestion clicked: into the box, which opens on it. */
+function inboxTakeSuggestion(el) {
+  draft(el.dataset.key).text = suggestionFor(el.dataset.sid);
+  saveDrafts();
+  inboxReplyTo(el.dataset.sid);
+}
 /** A question's choices, each with what it means and a "Recommended" tag; the one(s) picked lit; numbered on the
  *  question lit (its keys). A click picks (one question: that's the answer). */
 function inboxOpts(it, q, qi, lit) {
@@ -359,7 +408,7 @@ function inboxQuestions(it) {
   const qs = questions(it), n = qs.length, cur = stepOf(it), ready = !!answersFor(it);
   const cards = qs.map((q, qi) => inboxQuestionCard(it, q, qi, n, cur)).join("");
   const send = n > 1 || qs.some((q) => q.multiSelect) ? `<button class="btn primary" data-act="submit-answers" data-id="${esc(it.id)}" ${ready ? "" : "disabled"}>${ready ? `Send ${n > 1 ? `${n} answers` : "answer"}` : `${qs.filter((q) => isAnswered(it, q)).length} of ${n} answered`}</button>` : "";
-  const box = inboxBox(it.id, n > 1 ? `Your own answer to question ${cur + 1}…` : "Or say something else…", n > 1 ? "Answer" : "Send", `data-act="send" data-id="${esc(it.id)}"`);
+  const box = inboxReply(it.session_id, it.id, n > 1 ? `Your own answer to question ${cur + 1}…` : "Or say something else…", n > 1 ? "Answer" : "Send", `data-act="send" data-id="${esc(it.id)}"`, true);
   return [cards, box, `<button class="btn deny ib-decline" data-act="deny" data-id="${esc(it.id)}">Decline</button>${send}`];
 }
 /** Any other ask (a command to run, an edit, a plan, a form, its terminal's): the Board's own card body and buttons. */
@@ -386,12 +435,22 @@ function inboxRunCard(r) {
   const [, line] = inboxRunLines(r);
   return `<div class="ib-card run"><div class="ib-qn">Now</div><div class="ib-qt">${esc(line)}</div>${inboxBar(r.s)}</div>`;
 }
+/** Whether it takes a written reply here: a question, a finished turn, one at work or done (not a permission or the
+ *  context row, which have their own buttons). */
+const inboxCanReply = (r) => !!r && (r.kind === "turn" || r.kind === "crew" || r.kind === "run" || r.kind === "done" || (r.kind === "ask" && r.it.kind === "question"));
 /** The line under the box: the keys that work here (1–N for the question lit, N for the next ask), then `acts` at
  *  its end. */
 function inboxHint(r, acts = "") {
   const it = r.kind === "ask" && r.it.kind === "question" ? r.it : null, n = it ? Math.min(9, questions(it)[stepOf(it)]?.options?.length || 0) : 0;
-  const keys = [n ? `<span><span class="ib-kbd">1</span>–<span class="ib-kbd">${n}</span> pick</span>` : "", inboxNeedOrder().some((x) => x !== r.sid) ? `<span><span class="ib-kbd">N</span> next ask</span>` : ""].filter(Boolean);
+  const keys = [n ? `<span><span class="ib-kbd">1</span>–<span class="ib-kbd">${n}</span> pick</span>` : "", inboxCanReply(r) && inboxReplyOpen !== r.sid ? `<span><span class="ib-kbd">R</span> reply</span>` : "", inboxNeedOrder().some((x) => x !== r.sid) ? `<span><span class="ib-kbd">N</span> next ask</span>` : ""].filter(Boolean);
   return keys.length || acts ? `<div class="ib-hint">${keys.join("")}<span class="grow"></span>${acts}</div>` : "";
+}
+/** A lead's crew that waits on you, a row each with its own buttons, as on its crew's page (team.js): a teammate's ask
+ *  with Deny and Allow, a review ready with Commit or Send fixes. Empty for any other session. */
+function inboxCrewHtml(sid) {
+  const waits = typeof mateWaits === "function" ? mateWaits(sid) : [];
+  if (!waits.length) return "";
+  return `<div class="ib-crew"><div class="ib-k">Its crew · ${waits.length} need${waits.length === 1 ? "s" : ""} you</div>${waits.map((t) => (mateNeeds(sid, t) ? mateNeedRow(sid, t) : mateReadyRow(sid, t))).join("")}</div>`;
 }
 /** The brief's main column: its words before the question, the question with its choices, what it plans next, then
  *  the box to answer in (at the foot). */
@@ -401,15 +460,16 @@ function inboxMain(r) {
   const label = r.kind === "run" ? "It said last" : r.kind === "ask" || r.kind === "turn" ? "It says" : "It said";
   const saidHtml = said ? `<div class="ib-said"><div class="ib-k">${label}</div><div class="ib-md msg">${md(said, { pathsOf: r.sid })}</div></div>` : "";
   const thenHtml = then ? `<div class="ib-then">It plans next: <b>${esc(plain(then))}</b></div>` : "";
-  const reply = (ph) => inboxBox(`s:${r.sid}`, ph, "Send", r.it ? `data-act="send" data-id="${esc(r.it.id)}"` : `data-inbox-send="${esc(r.sid)}"`);
+  const reply = (ph) => inboxReply(r.sid, `s:${r.sid}`, ph, "Send", r.it ? `data-act="send" data-id="${esc(r.it.id)}"` : `data-inbox-send="${esc(r.sid)}"`);
   let top = "", foot = "", acts = "";
   if (r.kind === "ask" && r.it.kind === "question") [top, foot, acts] = inboxQuestions(r.it);
   else if (r.kind === "ask") top = inboxAskCard(r.it);
-  else if (r.kind === "turn") { top = inboxTurnCard(r, q); foot = reply("Reply…"); }
+  else if (r.kind === "turn") { top = q || r.it.interrupted ? inboxTurnCard(r, q) : ""; foot = reply("Reply…"); }
   else if (r.kind === "chore") top = inboxChoreCard(r);
   else if (r.kind === "run") { top = inboxRunCard(r); foot = reply("Tell it something (it reads it when it can)…"); }
   else foot = reply("Tell it what's next…");
-  const first = r.kind === "run" || r.kind === "chore" ? `${top}${saidHtml}` : `${saidHtml}${top}`;
+  const crew = inboxCrewHtml(r.sid);
+  const first = r.kind === "run" || r.kind === "chore" || r.kind === "crew" ? `${crew}${top}${saidHtml}` : `${saidHtml}${top}${crew}`;
   return `<div class="ib-page-body ib-main" data-scroll-key="inbox-main">${first}${thenHtml}<div class="ib-foot">${foot}${inboxHint(r, acts)}</div></div>`;
 }
 
@@ -500,7 +560,7 @@ function inboxAside(r) {
   const you = inboxYouAsked(r), sid = esc(r.sid);
   const asked = you ? `<div class="ib-blk"><div class="ib-k">You asked${you.at ? ` · ${ago(you.at)} ago` : ""}</div><div class="ib-you">${esc(plain(you.text))}</div></div>` : "";
   const ctx = inboxCtx(r.s) ? `<div class="ib-blk"><div class="ib-k">Context</div><div class="ib-ctx">${inboxMeter(r.s, "wide")}<span>${inboxCtx(r.s)}%</span></div></div>` : "";
-  const links = `<div class="ib-links"><button class="ib-link" data-inbox-full="${sid}">Full chat</button><button class="ib-link" data-inbox-diff="${sid}">Diff</button></div>`;
+  const links = `<div class="ib-links"><button class="ib-link" data-inbox-diff="${sid}">Diff</button></div>`;
   return `<aside class="ib-page-body ib-aside" data-scroll-key="inbox-aside">${asked}${inboxDid(r)}${inboxChangedBlock(r)}${ctx}${links}</aside>`;
 }
 
@@ -512,6 +572,7 @@ function inboxStatus(r) {
   if (r.kind === "ask") return `${n > 1 ? `${n} questions` : n ? "asks you" : verb(r.it)} · ${t}`;
   if (r.kind === "turn") return `${r.it.interrupted ? "interrupted" : "your turn"} · ${t}`;
   if (r.kind === "chore") return `context ${inboxCtx(r.s)}% full`;
+  if (r.kind === "crew") return "its crew needs you";
   if (r.kind === "run") return `working · ${ago(r.s?.since_ms || r.at)}`;
   return `finished · ${t}`;
 }
@@ -526,7 +587,7 @@ function inboxStep(sid) {
 function inboxOpened(sid) {
   const r = inboxRowFor(sid), s = r.s;
   const head = `<div class="ib-head"><button class="ib-back" data-inbox-back aria-label="Back to the list">‹</button><span class="ib-dot">${inboxDot(r)}</span><span class="ib-hname">${esc(nameOf(sid, r.project))}</span><span class="ib-status">${esc(inboxStatus(r))}</span><span class="grow"></span>`
-    + `<span class="ib-hacts">${inboxActs(sid, s, "head")}</span>${inboxStep(sid)}</div>`;
+    + `<span class="ib-hacts"><button class="ib-act" data-inbox-full="${esc(sid)}">Open chat</button>${inboxActs(sid, s, "head")}</span>${inboxStep(sid)}</div>`;
   const body = `<div class="ib-brief" data-scroll-key="inbox-brief">${inboxMain(r)}${inboxAside(r)}</div>`;
   return `<div class="inbox-page" data-inbox-page="${esc(sid)}" data-kind="${r.kind}" style="${projStyle(r.project)}">${head}${body}</div>`.replace(/\stitle="[^"]*"/g, "");
 }
@@ -579,6 +640,7 @@ function inboxAdvance(sid) {
   const next = inboxTab === "inbox" ? inboxNeedOrder().find((x) => x !== sid) : null;
   if (!next && !sid) return;
   inboxSid = inboxLast = next || null;
+  inboxReplyOpen = null;
   inboxAsked = false;
   inboxOpenedAt = Date.now();
   inboxSnoozeAt = "";
@@ -597,17 +659,23 @@ function inboxOpen(sid) {
   view = "inbox";
   active = { id: it?.id || null, sid, exact: false };
   seenSession(sid);
+  if (inboxSid !== sid) inboxReplyOpen = null;
   inboxSid = inboxLast = sid;
   inboxAsked = false;
   inboxOpenedAt = Date.now();
   inboxSnoozeAt = "";
   renderMain();
-  const r = inboxRowFor(sid);
-  if (r && r.kind !== "ask" && r.kind !== "chore") document.querySelector(".inbox-page textarea[data-text]")?.focus();
+}
+/** Reply on the open session: its box opens, the cursor in it. */
+function inboxReplyTo(sid) {
+  inboxReplyOpen = sid;
+  renderMain();
+  document.querySelector(".inbox-page .ib-box textarea[data-text]")?.focus();
 }
 /** Back to the list (a narrow window shows one at a time). */
 function inboxClose() {
   inboxSid = null;
+  inboxReplyOpen = null;
   inboxAsked = false;
   inboxSnoozeAt = "";
   renderMain();
@@ -679,7 +747,7 @@ function inboxPick(el) {
 }
 
 /** Keys while the Inbox shows. The open session: Esc (a narrow window) back to the list, a Snooze menu first; N or →
- *  the next that needs you, ← the one before, 1–9 a choice of the question lit. None open: N opens the first that
+ *  the next that needs you, ← the one before, 1–9 a choice of the question lit, R Reply (Esc shuts an empty box). None open: N opens the first that
  *  needs you; the list: the Board's card keys (A, D, G, R, 1–9) are kept from a card not on screen. Not while you type
  *  in a box with text in it, or something is open over it. True when it took the key. */
 function inboxKey(e) {
@@ -690,8 +758,10 @@ function inboxKey(e) {
   if (!inboxSid && e.key === "Enter" && f?.matches?.(".ib-row, .ib-calm-card")) { inboxOpen(f.dataset.inboxOpen); return true; }
   if (!inboxSid && !typing && e.key === "n") { const first = inboxNeedOrder()[0]; if (first) inboxOpen(first); return true; }
   if (!inboxSid) return !typing && /^[adgr1-9]$/.test(e.key);
+  if (e.key === "Escape" && !e.shiftKey && inboxReplyOpen === inboxSid && !(typing && f.value)) { inboxReplyOpen = null; f?.blur?.(); renderMain(); return true; }
   if (e.key === "Escape" && !e.shiftKey) { if ((typing && f.value) || inboxWide()) return false; f?.blur?.(); inboxClose(); return true; }
   if (typing) return false;
+  if (e.key === "r" && inboxReplyOpen !== inboxSid && inboxCanReply(inboxRowFor(inboxSid))) { inboxReplyTo(inboxSid); return true; }
   if (e.key === "n" || e.key === "ArrowRight") { inboxStepTo(1); return true; }
   if (e.key === "ArrowLeft") { inboxStepTo(-1); return true; }
   return inboxDigit(e.key);
@@ -716,6 +786,9 @@ const INBOX_CLICKS = {
   inboxStep: (el) => { const [id, n] = el.dataset.inboxStep.split(/:(?=\d+$)/); qStep[id] = +n; renderMain(); },
   inboxSend: (el) => sendTo(el.dataset.inboxSend),
   inboxFull: (el) => inboxFullChat(el.dataset.inboxFull),
+  inboxReply: (el) => inboxReplyTo(el.dataset.inboxReply),
+  inboxPhrase: inboxSendPhrase,
+  inboxSug: inboxTakeSuggestion,
   inboxDiff: (el) => inboxDiff(el.dataset.inboxDiff),
   inboxBack: () => inboxClose(),
   inboxNext: () => inboxStepTo(1),
