@@ -544,7 +544,7 @@ async function mateAct(sid, agent, action) {
   const k = `${sid}|${agent}`;
   // Diff: the crew folds away for its files in the session's Diff tab (diff.js).
   // From the crew's page, back to the chat for it.
-  if (action === "diff") { mateOpenLeads.delete(sid); if (typeof crewPageSid !== "undefined" && crewPageSid === sid) crewPageSid = null; return diffShowMember(sid, agent, (sessionOf(sid)?.team || []).find((t) => (t.agent_id || t.call) === agent)?.name || ""); }
+  if (action === "diff") { mateOpenLeads.delete(sid); if (typeof crewPageSid !== "undefined" && crewPageSid === sid) crewPageSet(null); return diffShowMember(sid, agent, (sessionOf(sid)?.team || []).find((t) => (t.agent_id || t.call) === agent)?.name || ""); }
   // Refused (Commit on main, say): the reason stays under its row until a button of its goes through.
   try { toast(await invoke("team_action", { sessionId: sid, agent, action })); mateNotes.delete(k); }
   catch (e) { mateNotes.set(k, String(e)); mateShow = k; }

@@ -64,6 +64,9 @@ const addOn = {
   crewPageRecord: (key) => null,
   /** Click rules as app/delegate.js walks them ((target, event) → true when taken), tried before the Board's own. */
   clicks: [],
+  /** The crew page opened, closed, or went to another lead (team_page.js crewPageSet): `sid` the lead's open now, or
+   *  null. */
+  crewPageChanged: (sid) => {},
   /** After each new state from Cue is in `state`, before the window draws it (app.js setState). */
   stateChanged: () => {},
   /** Once the window has its state (boot, app.js). */

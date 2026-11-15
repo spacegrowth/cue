@@ -11,6 +11,12 @@
 
 /** The lead whose crew's page is open; null when none is. It closes when that session goes away, or another opens. */
 let crewPageSid = null;
+/** The open crew page becomes lead `sid`'s (null: none); the add-on hears of each change (addOn.crewPageChanged). */
+function crewPageSet(sid) {
+  if (crewPageSid === sid) return;
+  crewPageSid = sid;
+  try { addOn.crewPageChanged(sid); } catch (e) { console.error(e); }
+}
 /** The view the page was opened from and shows within (its tab stays selected), and what its Back button names:
  *  the board's unless the add-on opened it from one of its views. */
 let crewPageFrom = "board", crewPageBack = "the board";
@@ -19,7 +25,7 @@ let crewPageFrom = "board", crewPageBack = "the board";
 const crewPageOn = (sid) => !!sid && crewPageSid === sid && view === crewPageFrom;
 /** Open the crew's page for lead `sid`, within view `from` (Back names `back`). */
 function crewPageOpen(sid, from = "board", back = "the board") {
-  crewPageSid = sid;
+  crewPageSet(sid);
   crewPageFrom = from;
   crewPageBack = back;
   mateOpenLeads.delete(sid);
@@ -44,7 +50,7 @@ addOn.openCrewPage = (sid, { from = "board", back = "" } = {}) => {
 /** The add-on's way out: the page closes if it was opened within view `from` (any, when not given); true when it did. */
 addOn.closeCrewPage = (from) => {
   if (!crewPageSid || (from && crewPageFrom !== from)) return false;
-  crewPageSid = null;
+  crewPageSet(null);
   crewPageFrom = "board";
   return true;
 };
@@ -52,7 +58,7 @@ addOn.closeCrewPage = (from) => {
  *  the lead's chat on the board, wherever it was opened from (Open chat ›). */
 function crewPageClose(chat = false) {
   const from = crewPageFrom;
-  crewPageSid = null;
+  crewPageSet(null);
   crewPageFrom = "board";
   mateMenu = null;
   if (chat) view = "board";
@@ -66,7 +72,7 @@ function crewPageShown() {
   if (!crewPageSid || view !== crewPageFrom) return null;
   const rec = !sessionOf(crewPageSid) && addOn.crewPageRecord?.(crewPageSid);
   if (rec) return `<div class="board cp-board">${crewRecordView(crewPageSid, rec)}</div>`;
-  if (!sessionOf(crewPageSid) || (active?.sid && active.sid !== crewPageSid)) { crewPageSid = null; return null; }
+  if (!sessionOf(crewPageSid) || (active?.sid && active.sid !== crewPageSid)) { crewPageSet(null); return null; }
   return `<div class="board cp-board">${crewPageView(crewPageSid)}</div>`;
 }
 
