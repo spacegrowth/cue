@@ -12,6 +12,19 @@ pub(crate) async fn team_action(hub: State<'_, Arc<Hub>>, session_id: String, ag
     with_hub(&hub, move |h| h.team_action(&session_id, &agent, &action)).await?
 }
 
+/// Each file a teammate changed with its lines added and removed, as its diff (Diff) has them: `[{ path, add, del }]`,
+/// in the diff's order. The crew page's teammate view lists them.
+#[tauri::command]
+pub(crate) async fn team_diff_stat(hub: State<'_, Arc<Hub>>, session_id: String, agent: String) -> Result<Vec<crate::hub::FileStat>, String> {
+    with_hub(&hub, move |h| h.team_diff_stat(&session_id, &agent)).await?
+}
+
+/// One file's part of a teammate's diff (unified text), by its path as team_diff_stat gives it; "" when it isn't in it.
+#[tauri::command]
+pub(crate) async fn team_diff(hub: State<'_, Arc<Hub>>, session_id: String, agent: String, path: String) -> Result<String, String> {
+    with_hub(&hub, move |h| h.team_diff(&session_id, &agent, &path)).await?
+}
+
 /// The Team switch on a hosted lead's box: "auto" (the lead decides), "on" (split what you send among teammates),
 /// "off" (no teammates).
 #[tauri::command]

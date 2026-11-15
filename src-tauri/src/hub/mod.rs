@@ -50,6 +50,7 @@ pub use history::{split_turn, summary};
 pub use asks::NewAsk;
 pub use hosted::HostedStart;
 pub use quitting::EndsWithCue;
+pub use team::FileStat;
 
 /// What an open Ask connection is told.
 pub enum Reply {
@@ -308,7 +309,7 @@ impl Hub {
             tool_use_id: None,
             request_id: None,
             scan_from: 0,
-            at_prompt: false, agent_id: String::new(), agent_name: String::new(),
+            at_prompt: false, agent_id: String::new(), agent_name: String::new(), one_way: false,
         }
     }
 

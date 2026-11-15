@@ -316,6 +316,10 @@ pub struct Item {
     pub agent_id: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub agent_name: String,
+    /// A permission to run something its project counts one-way (one_way.rs command_one_way: a push to main, say):
+    /// the crew page answers it only with a click, never a key.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub one_way: bool,
 }
 
 pub use crate::clock::now_ms;

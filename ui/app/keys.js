@@ -181,7 +181,9 @@ function keyTyping(e) {
 function keyOnCard(e) {
   // The card under the chat (a crew member's open ask yields to the lead's own, chat/pane.js shownAsk).
   const it = shownAsk(current()?.it);
-  if (!isPending(it)) {
+  // On a crew's page a letter never answers anything (its bar takes ⌘⇧A / ⌘⇧D, team_bar.js): only R, to the box.
+  const page = typeof crewPageSid !== "undefined" && crewPageSid && document.querySelector(".crew-page");
+  if (page || !isPending(it)) {
     if (e.key === "r") { e.preventDefault(); document.querySelector(".active-pane textarea[data-text]")?.focus(); }
     return;
   }

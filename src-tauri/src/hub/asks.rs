@@ -39,6 +39,9 @@ impl Hub {
             context = transcript::recent_context(&origin.transcript_path, 4);
         }
         let scan_from = if origin.transcript_path.is_empty() { 0 } else { transcript::tail_offset(&origin.transcript_path) };
+        // A command its project counts one-way (a push to main, say): answered only with a click on the crew page.
+        let command = (kind == "permission").then(|| tool_input.get("command").and_then(Value::as_str)).flatten();
+        let one_way = command.is_some_and(|c| crate::one_way::command_one_way(&crate::one_way::kinds(&super::crew_log::project_shown_for(&origin)), c));
         let (tx, rx) = oneshot::channel();
         let (id, title) = self.write(|st| {
             let sid = origin.session_id.clone();
@@ -59,6 +62,7 @@ impl Hub {
             // A hosted lead's teammate goes by the name its lead gave it (team.rs).
             it.agent_name = st.sessions.teammate_name(&sid, &agent_id).unwrap_or(agent_name);
             it.agent_id = agent_id;
+            it.one_way = one_way;
             it.request_id = request_id.map(str::to_string);
             it.scan_from = scan_from;
             let asked = match it.kind.as_str() {
@@ -479,6 +483,20 @@ mod tests {
         assert_eq!(hub.pending().iter().filter(|i| i.origin.session_id == "s1").count(), 1);
         hub.finish(&id, "answered", "allowed");
         assert!(hub.add_keyed_ask(origin("s1"), "r1", bash("rm -rf target", "")).is_some(), "answered: asking again is a new ask");
+    }
+
+    #[test]
+    fn a_command_its_project_counts_one_way_is_marked_on_its_card() {
+        let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let hub = Hub::new(None);
+        let origin = |sid: &str| Origin { session_id: sid.into(), harness: "pi".into(), cwd: "/nowhere/cue-one-way-test".into(), ..Default::default() };
+        let (push, _a) = hub.add_ask(origin("s1"), bash("git merge crew/rows && git push origin main", ""));
+        let (test, _b) = hub.add_ask(origin("s2"), bash("npm test", "agent-1"));
+        let pending = hub.pending();
+        let one_way = |id: &str| pending.iter().find(|i| i.id == id).map(|i| i.one_way);
+        assert_eq!((one_way(&push), one_way(&test)), (Some(true), Some(false)), "a push to main, by the default setting");
+        let sent = serde_json::to_value(pending.iter().find(|i| i.id == test).unwrap()).unwrap();
+        assert!(sent.get("one_way").is_none(), "only said when it's so");
     }
 
     #[test]

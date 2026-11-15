@@ -433,11 +433,11 @@ function inboxRunCard(r) {
 /** Whether it takes a written reply here: a question, a finished turn, one at work or done (not a permission or the
  *  context row, which have their own buttons). */
 const inboxCanReply = (r) => !!r && (r.kind === "turn" || r.kind === "crew" || r.kind === "run" || r.kind === "done" || (r.kind === "ask" && r.it.kind === "question"));
-/** The line under the box: the keys that work here (1–N for the question lit, N for the next ask), then `acts` at
+/** The line under the box: the keys that work here (1–N for the question lit), then `acts` at
  *  its end. */
 function inboxHint(r, acts = "") {
   const it = r.kind === "ask" && r.it.kind === "question" ? r.it : null, n = it ? Math.min(9, questions(it)[stepOf(it)]?.options?.length || 0) : 0;
-  const keys = [n ? `<span><span class="ib-kbd">1</span>–<span class="ib-kbd">${n}</span> pick</span>` : "", inboxNeedOrder().some((x) => x !== r.sid) ? `<span><span class="ib-kbd">N</span> next ask</span>` : ""].filter(Boolean);
+  const keys = [n ? `<span><span class="ib-kbd">1</span>–<span class="ib-kbd">${n}</span> pick</span>` : ""].filter(Boolean);
   return keys.length || acts ? `<div class="ib-hint">${keys.join("")}<span class="grow"></span>${acts}</div>` : "";
 }
 /** A lead's crew that waits on you, a row each with its own buttons, as on its crew's page (team.js): a teammate's ask
@@ -624,7 +624,7 @@ function inboxCalmCard(r) {
  *  opens it. Something does (a narrow window, or the Snoozed tab): how many, and how to start. */
 function inboxIdle() {
   const n = inboxCount();
-  if (n) return `<div class="ib-idle"><b>${n} need${n === 1 ? "s" : ""} you</b><span>Pick one on the left, or press N for the first.</span></div>`;
+  if (n) return `<div class="ib-idle"><b>${n} need${n === 1 ? "s" : ""} you</b><span>Pick one on the left.</span></div>`;
   const rows = inboxRows().filter((r) => inboxTabOf(r.s) === "inbox" && !inboxParked(r.s)).sort((a, b) => b.at - a.at);
   const run = rows.filter((r) => r.kind === "run"), done = rows.filter((r) => r.kind === "done").slice(0, INBOX_DONE_MAX);
   const group = (title, xs) => (xs.length ? `<div class="ib-k">${title} · ${xs.length}</div><div class="ib-calm-grid">${xs.map(inboxCalmCard).join("")}</div>` : "");
@@ -764,24 +764,21 @@ function inboxPick(el) {
   if (it) pick(it, qi, oi, questions(it).length > 1);
 }
 
-/** Keys while the Inbox shows. The open session: Esc (a narrow window) back to the list, a Snooze menu first; N or →
- *  the next that needs you, ← the one before, 1–9 a choice of the question lit, R into the reply (Esc out of an empty one). None open: N opens the first that
- *  needs you; the list: the Board's card keys (A, D, G, R, 1–9) are kept from a card not on screen. Not while you type
- *  in a box with text in it, or something is open over it. True when it took the key. */
+/** Keys while the Inbox shows. The open session: Esc (a narrow window) back to the list, a Snooze menu first; 1–9 a
+ *  choice of the question lit, R into the reply (Esc out of an empty one). The list: the Board's card keys (A, D, G, R,
+ *  1–9) are kept from a card not on screen. Not while you type in a box with text in it, or something is open over it.
+ *  True when it took the key. */
 function inboxKey(e) {
   if (view !== "inbox" || e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return false;
   if (sheet || lightbox || liveOpen || deleteAsk || renaming || btwFor || menuFor || redirectFor || (typeof moreFor !== "undefined" && moreFor)) return false;
   const f = document.activeElement, typing = f?.matches?.("textarea, input, select");
   if (e.key === "Escape" && inboxSnoozeAt) { inboxSnoozeAt = ""; renderMain(); return true; }
   if (!inboxSid && e.key === "Enter" && f?.matches?.(".ib-row, .ib-calm-card")) { inboxOpen(f.dataset.inboxOpen); return true; }
-  if (!inboxSid && !typing && e.key === "n") { const first = inboxNeedOrder()[0]; if (first) inboxOpen(first); return true; }
   if (!inboxSid) return !typing && /^[adgr1-9]$/.test(e.key);
   if (e.key === "Escape" && !e.shiftKey && typing && !f.value && f.closest?.(".inbox-page")) { f.blur(); return true; }
   if (e.key === "Escape" && !e.shiftKey) { if ((typing && f.value) || inboxWide()) return false; f?.blur?.(); inboxClose(); return true; }
   if (typing) return false;
   if (e.key === "r" && inboxCanReply(inboxRowFor(inboxSid))) { e.preventDefault(); inboxReplyTo(inboxSid); return true; }
-  if (e.key === "n" || e.key === "ArrowRight") { inboxStepTo(1); return true; }
-  if (e.key === "ArrowLeft") { inboxStepTo(-1); return true; }
   return inboxDigit(e.key);
 }
 /** 1–9 on an open question: that choice of the question lit, held with the rest when there are several. */

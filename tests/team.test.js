@@ -30,10 +30,14 @@ const ctx = {
   toast() {},
   hhmm: (ms) => `T${Math.round((NOW - ms) / M)}`,
   addOn: {},
+  answering: new Map(),
+  firstLine: (s) => String(s ?? "").split("\n").find((l) => l.trim()) || "",
+  questions: () => [],
 };
 vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(__dirname + "/../ui/team.js", "utf8").replace(/^(const|let) /gm, "var "), ctx);
 vm.runInContext(fs.readFileSync(__dirname + "/../ui/team_page.js", "utf8").replace(/^(const|let) /gm, "var "), ctx);
+vm.runInContext(fs.readFileSync(__dirname + "/../ui/team_bar.js", "utf8").replace(/^(const|let) /gm, "var "), ctx);
 
 const mate = (name, state, o = {}) => ({ call: `call-${name}`, agent_id: `id-${name}`, name, state, started_ms: NOW - 9 * M, files: [], ...o });
 world.sessions.L = { session_id: "L", team: [
@@ -387,25 +391,21 @@ assert.doesNotMatch(folded, /data-mt-act|data-crew-open|Open ›/, "no buttons i
   // The meter: stages before its own done, its own as it is.
   assert.equal(ctx.crewMeter(docs), '<span class="cp-meter"><span class="cp-m" aria-hidden="true"><b class="done"></b><b class="done"></b><b class="done"></b><b class="now"></b><b class=""></b></span><span class="cp-ml">fixing</span></span>');
   const t = world.sessions.N.team.find((m) => m.name === "docs");
-  // Its card in the page's list: name, its stage in a word and meter, what it was asked, what it does now; its steps,
-  // what its review found and its files; its files and how long at its foot. Its top is one button: it opens its menu.
-  // At its foot the drawer's one action for it (mateOneAct): Stop at work, Resume first when stuck, Skip while its
-  // review waits.
+  // Its row in the page's list, two lines: its name, its stage in a word and meter, how long, its one action beside the
+  // row (mateOneAct: Stop at work, Resume first when stuck, Skip while its review waits); then one sentence of what
+  // matters now. The row is one button: it picks it (the left shows its brief, steps, review and files).
   t.asked = "Document the limits"; t.files = ["docs/limits.md"];
   const row = ctx.crewListRow("N", t), top = row.slice(0, row.indexOf("</button>"));
   assert.doesNotMatch(row, /title=/, "no hover text");
-  assert.match(row, /^<div class="cp-card [^"]*" data-key="cpc:N\|id-docs"><button class="cp-row" data-key="cp:N\|id-docs" data-mt-more="N\|id-docs" aria-expanded="false">/, "its top is the one button: it opens its menu");
+  assert.match(row, /^<div class="cp-card [^"]*" data-key="cpc:N\|id-docs"><button class="cp-row" data-key="cp:N\|id-docs" data-cp-mate="N\|id-docs" aria-pressed="false">/, "its row is the one button: it picks it");
   assert.equal((top.match(/<button/g) || []).length, 1, "nothing else to press in it");
-  assert.match(row, /<div class="cp-acts"><span class="cp-r">1 file · 9m<\/span><button class="mt-lk " data-mt-act="stop" data-mt-sid="N" data-mt-agent="id-docs" >Stop<\/button><\/div><\/div>$/, "at work: its files and time, and Stop");
+  assert.match(row, /<span class="cp-l1"><span class="cp-nm">docs<\/span><span class="cp-meter">.*<span class="cp-ml">fixing<\/span><\/span><span class="cp-tm">9m<\/span><\/span><span class="cp-now ">Fixing what review found<\/span><\/button>/, "line 1: name, stage, time; line 2: what it's on");
+  assert.doesNotMatch(row, /Document the limits|cp-parts|limits\.md/, "its brief, steps, review and files are on its page, not its row");
+  assert.match(row, /<\/button><span class="cp-act"><button class="mt-lk " data-mt-act="stop" data-mt-sid="N" data-mt-agent="id-docs" >Stop<\/button><\/span><\/div>$/, "at work: Stop beside it");
   assert.match(ctx.crewListRow("N", { ...t, quiet: "stuck" }), /data-mt-act="resume"[^>]*>Resume<\/button><button[^>]*data-mt-act="stop"/, "stuck: Resume, then Stop");
-  assert.match(ctx.crewListRow("N", { ...t, state: "queued" }), /<div class="cp-acts"><span class="cp-r">[^<]*<\/span><button class="mt-lk" data-act="unqueue-review"[^>]*>Skip<\/button><\/div>/, "its review waiting: Skip");
-  assert.match(row, /<span class="cp-nm">docs<\/span><span class="cp-meter">.*<span class="cp-ml">fixing<\/span>/, "its name, its meter and its stage");
-  assert.match(row, /<span class="cp-ask1">Document the limits<\/span><span class="cp-now ">Fixing what review found<\/span><\/button>/, "what it was asked, then what it's doing now; the finding it fixes is in its Review");
-  assert.match(row, /<span class="cp-pl">Steps<\/span><span class="cp-pv"><span class="cp-st now"><span class="cp-t"><\/span><span class="cp-sw">Editing <code>docs\/limits\.md<\/code><\/span><\/span><\/span>/, "no feed of its own: its step now (no time known)");
-  assert.match(ctx.crewListRow("N", world.sessions.N.team.find((m) => m.name === "api")), /<span class="cp-st now"><span class="cp-t">T3<\/span><span class="cp-sw">Running <code>npm test -- keys<\/code><\/span><\/span>/, "with the time it started it");
-  assert.match(row, /<span class="cp-pl">Review<\/span><span class="cp-pv"><span class="cp-fl"><span class="cp-f fix">should-fix<\/span>docs\/limits\.md:12 — Retry-After[^<]*<\/span>/, "what review found: its kind, its words");
-  assert.match(row, /<span class="cp-pl">Files<\/span><span class="cp-pv"><span class="cp-fn"><code>limits\.md<\/code><\/span><\/span>/, "its files by their own names");
-  assert.match(ctx.crewListRow("N", { ...t, findings: [], recommendation: "", state: "working", fix_rounds: 0 }), /<span class="cp-pl">Review<\/span><span class="cp-pv"><span class="cp-dim">not yet<\/span>/, "no review yet");
+  assert.match(ctx.crewListRow("N", { ...t, state: "queued" }), /<span class="cp-act"><button class="mt-lk" data-act="unqueue-review"[^>]*>Skip<\/button><\/span>/, "its review waiting: Skip");
+  assert.match(ctx.crewListRow("N", { ...t, state: "reviewed", fix_rounds: 0, findings: ["1. a.js:1 — should-fix — x"] }), /<span class="cp-now ">1 should-fix · [^<]+<\/span>/, "reviewed: what it found, who settles it");
+  assert.match(ctx.crewListRow("N", { ...t, state: "done", summary: "Limits documented" }), /<span class="cp-now ">Limits documented<\/span>/, "done: its last words");
   assert.match(ctx.crewListRow("N", world.sessions.N.team[0]), /class="cp-card  q /, "one that asks you is marked to show red");
   assert.match(ctx.crewListRow("N", world.sessions.N.team[0]), /<span class="cp-ml">needs you<\/span>/, "its word: needs you");
   world.items = world.items.filter((i) => i.id !== "q1");
@@ -413,7 +413,7 @@ assert.doesNotMatch(folded, /data-mt-act|data-crew-open|Open ›/, "no buttons i
 }
 
 // ---- the crew's page: the list in the crew's order, whatever each one's state; the finished ones folded at its end;
-// Needs you shows its first row, "N more ›" the rest ----
+// Needs you: one list of every ask, in the bar's order ----
 {
   world.sessions.P = { session_id: "P", state: "working", since_ms: NOW - M, harness: "claude", team: [
     mate("api", "working", { step: "Editing api.rs" }),
@@ -436,16 +436,30 @@ assert.doesNotMatch(folded, /data-mt-act|data-crew-open|Open ›/, "no buttons i
   // The list's line: what needs you first, in red; no time since it started.
   assert.match(ctx.crewStatusLine("P", 2), /The crew · 5<\/span><span class="cp-count"><span class="cp-q">2 need you<\/span> · 1 working · 1 committed<\/span>/);
   assert.doesNotMatch(ctx.crewStatusLine("P", 0), /need|since/);
-  // Needs you: nothing at all when nothing needs you; one row and "N more ›" when more do; open, all of them.
-  // Only the rows shown are drawn: none hidden.
-  const rows3 = ["<r1/>", "<r2/>", "<r3/>"];
-  assert.equal(ctx.crewNeedsBox("P", []), "", "nothing needs you: no box");
-  assert.doesNotMatch(ctx.crewNeedsBox("P", ["<r1/>"]), /more/, "one: no more");
-  assert.match(ctx.crewNeedsBox("P", rows3), /^<div class="cp-needs "><div class="cp-nh"><span class="mt-grp red">Needs you · 3<\/span><span class="grow"><\/span><button class="mt-lk cp-nmore" data-cp-needs="P" aria-expanded="false">2 more ›<\/button><\/div><div class="cp-nrows"><r1\/><\/div><\/div>$/, "three: the first only, and 2 more ›");
-  ctx.crewNeedsAll.add("P");
-  assert.match(ctx.crewNeedsBox("P", rows3), /class="cp-needs all".*Fewer ‹<\/button><\/div><div class="cp-nrows"><r1\/><r2\/><r3\/><\/div>/, "open: all of them");
-  ctx.crewNeedsAll.delete("P");
-  // An add-on that still gives its rows as one piece of html: that piece is one row, the count its own.
-  assert.match(ctx.crewNeedsBox("P", ["<r1/>", "<a1/><a2/>"], 3), /Needs you · 3.*2 more ›.*<div class="cp-nrows"><r1\/><\/div>/, "the count stays true");
+  // Needs you (team_bar.js): one list of every ask, the lead's own first, then one-way, then the oldest; an add-on's
+  // in the same shape, or (an older add-on) only its html, drawn whole on the Needs you page.
+  world.items = [
+    { id: "t1", kind: "permission", session_id: "P", agent_id: "id-api", cmd: "npm test", created_ms: NOW - 3 * M },
+    { id: "l1", kind: "permission", session_id: "P", agent_id: "", cmd: "git status", created_ms: NOW - 1 * M },
+    { id: "t2", kind: "permission", session_id: "P", agent_id: "id-web", cmd: "git push origin main", one_way: true, created_ms: NOW - 2 * M },
+  ];
+  ctx.addOn.crewPageNeeds = () => ({ items: [{ html: "<gate/>", at_ms: NOW - 10 * M }, { id: "g2", who: "loop", what: "waits before it acts", cmd: "deploy", buttons: "<b2/>", at_ms: NOW - 8 * M }], count: 2 });
+  const asks = ctx.crewAsks("P");
+  assert.deepEqual(asks.map((x) => x.key), ["a:l1", "a:t2", "x:0", "m:P|id-auth", "x:g2", "a:t1"], "the lead's own, one-way, then the oldest");
+  assert.deepEqual(asks.map((x) => x.who), ["The lead", "web", "", "auth", "loop", "api"]);
+  assert.equal(asks[1].one_way, true);
+  assert.doesNotMatch(asks[1].buttons, /data-bar-key/, "a one-way ask takes no key");
+  assert.match(asks[5].buttons, /data-bar-key="a"/, "Allow takes ⌘⇧A");
+  assert.match(asks[2].buttons, /data-cp-all/, "an older add-on's row: Open › to its whole row");
+  assert.equal(asks[3].what, "Out of fix rounds", "what the hub says it needs");
+  assert.equal(ctx.crewBarShown("P").x.key, "a:l1");
+  ctx.crewBarStep("P", 1);
+  assert.equal(ctx.crewBarShown("P").x.key, "a:t2");
+  world.items = world.items.filter((i) => i.id !== "l1");
+  assert.equal(ctx.crewBarShown("P").x.key, "a:t2", "an ask going doesn't swap the one shown");
+  world.items = world.items.filter((i) => i.id !== "t2");
+  assert.equal(ctx.crewBarShown("P").x.key, "x:0", "the shown one answered: the one after it takes its place");
+  world.items = [];
+  ctx.addOn.crewPageNeeds = undefined;
   delete world.sessions.P;
 }

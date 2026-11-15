@@ -62,7 +62,7 @@ function shownAsk(it) {
  *  waits for its current step (Queue, ↵), or stops it and goes now (⌘↵; the queued message says so, with Send
  *  now). Pi takes it straight into its queue (read at its next step); for the others Cue keeps it until the turn
  *  ends. */
-function activeFoot(it, s, pending, harness, project, sid) {
+function activeFoot(it, s, pending, harness, project, sid, quick = true) {
   // A crew member's ask is answered on its row in the crew's tray (team.js), which opens for it: the box stays, unless
   // the lead itself asks something too, whose card stands there as it would.
   const crewAsk = pending && it.kind !== "waiting" && !!s && !!mateOfAsk(it);
@@ -72,11 +72,11 @@ function activeFoot(it, s, pending, harness, project, sid) {
     if (own !== it) return askFoot(own, sid, harness);
   } else if (pending && it.kind !== "waiting") return askFoot(it, sid, harness);
   // A hosted session has no terminal: the reply goes straight to it.
-  if (pending && !crewAsk) return `<div class="foot">${field(it, s?.hosted ? `Reply to ${project}…` : `Reply to ${project} (typed into its terminal)…`, "Send")}</div>`;
+  if (pending && !crewAsk) return `<div class="foot">${field(it, s?.hosted ? `Reply to ${project}…` : `Reply to ${project} (typed into its terminal)…`, "Send", "", quick)}</div>`;
   if (!s) return "";
   const busy = s.state === "working";
   const after = harness === "pi" ? "it reads this after its current step" : "Cue keeps it and sends it when this turn ends";
-  return `<div class="foot">${box_(`s:${sid}`, busy ? `Message ${nameOf(sid, project)}… ${after}` : `Message ${project}…`, busy ? "Queue" : "Send", `data-act="send-to" data-sid="${esc(sid)}"`)}</div>`;
+  return `<div class="foot">${box_(`s:${sid}`, busy ? `Message ${nameOf(sid, project)}… ${after}` : `Message ${project}…`, busy ? "Queue" : "Send", `data-act="send-to" data-sid="${esc(sid)}"`, "", "", quick)}</div>`;
 }
 /** What fills the chat area instead of the chat: a background agent opened in full (helperPane), or a reply open
  *  in the reader (readerPane, read-only, the box and insight bar out of the way). */
@@ -106,18 +106,23 @@ function chatBody(it, s, harness, sid, page = null) {
  *  it by time: chatHtml's `page`). */
 function activeChat(a, full, crew = null) {
   const { it, s, sid, harness } = a;
+  // The add-on's page on the crew page's left (team_page.js crewLeftOf): in the chat's place, scrolling inside itself.
+  if (crew?.page) return `<div class="ap-chat cp-addon-left" data-scroll-key="cpx:${esc(crew.page.key)}">${crew.page.html}</div>`;
   return full ? full.bar + chatBox(full.forKey, full.body) : chatBox(`m|${sid || it?.id}`, chatBody(it, s, harness, sid, crew ? { extra: crew.extra } : null));
 }
 /** The pane for an open card or session. At work (a turn, or compacting): a light sweeps along the top edge, as
  *  in its terminal tab. Not while it waits. The Next bar (nextBar) is hidden for now (it read as part of the terminal tabs
  *  and the box; N still works). */
 function openPane(a, full, crew = null) {
-  const { s, sid, foot } = a;
+  const { s, sid } = a;
+  // The crew's page showing something else on its left (a teammate, Needs you): that in the pane's place, over its
+  // Needs you and box.
+  if (crew?.view) return `<div class="active-pane cp-alt">${crew.view}${paneFoot(a, null, crew)}</div>`;
   return `<div class="active-pane ${s?.state === "working" || s?.compacting_ms ? "busy" : ""}">${sweep(sid, s)}
     ${activeHead(a)}
     ${btwPanel(sid)}
     ${subHead(s?.cwd || a.it?.cwd, sid)}
-    ${sid ? addOn.chatTop(sid) : ""}
+    ${sid ? addOn.chatTop(sid, { crew: !!crew }) : ""}
     ${sid ? `<div class="ap-bar">${barLabels(sid)}${bar(sid)}${barKey(sid)}</div>` : ""}
     ${sessTabs(sid)}${sid ? statusPanel(a.it, s) : ""}
     ${activeChat(a, full, crew)}${extSlot(sid)}${diffSlot(sid)}${aboutSlot(sid)}${actSlot(sid)}${bgSlot(sid)}
@@ -140,7 +145,7 @@ function paneArgs(cur) {
   const sid = s?.session_id || it?.session_id;
   const ch = pending && it.kind === "waiting" && !it.interrupted ? s?.changes : null;
   const pill = activePill(it, s, pending, ch);
-  const foot = activeFoot(it, s, pending, harness, project, sid);
+  const foot = activeFoot(it, s, pending, harness, project, sid, cur.quick !== false);
   return { it, s, sid, harness, project, pending, ch, pill, foot, onMachine: machTag(s?.machine || it?.machine) };
 }
 /** The Active pane for what's open. `crew` (the crew's page, team_page.js, the same pane on its left): { sid: its lead,
@@ -151,10 +156,13 @@ function activePane(crew = null) {
   const pk = !crew && parkedActive();
   if (pk) return parkedPane(pk);
   // The crew's page: its lead, standing on the item it gives (never a teammate's ask: those are in its Needs you).
-  const cur = crew ? { it: crew.it, s: sessionOf(crew.sid) } : current();
+  // A teammate or Needs you on its left: the box under it without the chat's quick phrases (they belong to the chat).
+  const cur = crew ? { it: crew.it, s: sessionOf(crew.sid), quick: !crew.view } : current();
   if (!cur || (crew && !cur.s)) return emptyPane();
   noteLooked(cur.s?.session_id || cur.it?.session_id);
   const a = paneArgs(cur);
+  // The crew's page's own foot, when it has one (its box held while the lead asks, or with ↪'s chip).
+  if (crew?.foot) a.foot = crew.foot;
   const { it, s, sid, harness, project, foot, onMachine } = a;
   const { full, reading } = fullView(sid, it, s, harness);
   // Restarting (after an MCP change): covered until it's back, with nothing to press meanwhile.

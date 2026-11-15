@@ -164,6 +164,8 @@ Sync commands run on the main thread. "Hands work to": the threads or pools its 
 | `answer_terminal` | async | `ipc/state.rs::answer_terminal` | ipc::blocking |
 | `reply` | async | `ipc/state.rs::reply` | ipc::with_hub |
 | `team_action` | async | `ipc/team.rs::team_action` | ipc::with_hub |
+| `team_diff_stat` | async | `ipc/team.rs::team_diff_stat` | ipc::with_hub |
+| `team_diff` | async | `ipc/team.rs::team_diff` | ipc::with_hub |
 | `team_mode` | async | `ipc/team.rs::team_mode` | ipc::with_hub |
 | `crew_commit` | async | `ipc/team.rs::crew_commit` | ipc::with_hub |
 | `crew_review` | async | `ipc/team.rs::crew_review` | ipc::with_hub |

@@ -117,7 +117,7 @@ const SCREENS = {
       await openCard(p, TEAM_ASK);
       await p.locator('.crew-tray [data-cp-open="lead"]').click();
     },
-    done: async (p) => { await p.locator(".crew-page .cp-scroll .cp-card").nth(3).waitFor(); await expect(p.locator(".cp-done .mt-done-line")).toHaveText("2 done ›"); await p.locator(".cp-needs .mt-row.need").waitFor(); },
+    done: async (p) => { await p.locator(".crew-page .cp-scroll .cp-card").nth(3).waitFor(); await expect(p.locator(".cp-done .mt-done-line")).toHaveText("2 done ›"); await p.locator(".cp-bar [data-act=allow]").waitFor(); },
   },
   // The same at the smallest window, its finished ones unfolded: the cards one to a line, scrolling inside the list.
   "team-page-narrowest": {
@@ -134,7 +134,7 @@ const SCREENS = {
       await p.locator('.crew-tray [data-cp-open="lead"]').click();
       await p.locator(".cp-done .mt-done-line").click();
     },
-    done: async (p) => { await p.locator(".crew-page .cp-done .cp-row").nth(1).waitFor(); await p.locator(".cp-needs .mt-row.need").waitFor(); },
+    done: async (p) => { await p.locator(".crew-page .cp-done .cp-row").nth(1).waitFor(); await p.locator(".cp-bar [data-act=allow]").waitFor(); },
   },
   // How work goes out to the crew (ui/team_send.js). team-switch: the mode menu open from the tray's line, split on Always.
   // team-handout: a task dropped on the lead's card under Sessions, one of the files it names already rows's.

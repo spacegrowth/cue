@@ -96,6 +96,9 @@ CueBridge.area("chat", (w) => {
     // A hosted lead's teammate's buttons (ipc/team.rs): Diff answers with a diff of its files (one in another repo
     // under that repo's name, as the hub writes it), Commit is refused as on main (the scenario's folder), the rest say
     // what was done.
+    // A teammate's diff per file (ipc/team.rs team_diff_stat, team_diff), cut from the same fake diff.
+    team_diff_stat: ({ agent }) => mateDiff(agent).split(/(?=^diff --git )/m).filter(Boolean).map((part) => ({ path: /^\+\+\+ b\/(.*)$/m.exec(part)?.[1] || "", add: part.split("\n").filter((l) => /^\+(?!\+\+)/.test(l)).length, del: part.split("\n").filter((l) => /^-(?!--)/.test(l)).length })),
+    team_diff: ({ agent, path }) => mateDiff(agent).split(/(?=^diff --git )/m).find((part) => part.includes(`+++ b/${path}\n`)) || "",
     team_action: ({ agent, action }) => action === "commit" ? Promise.reject("Not committed: its folder is on main. Cue commits a teammate's work only on a branch of its own: Make a branch and commit puts it on a new one") : action === "branch" ? `Committed 1 file to team/${agent} (c71e04b); your folder stays on main.` : action === "diff" ? mateDiff(agent) : `${action}: ${agent}`,
     // The Team switch, and a task dropped on a lead (ipc/team.rs): the files it names, those world-team's rows is
     // changing marked.

@@ -47,6 +47,35 @@ pub fn commit_one_way(kinds: &[&str], branch: &str) -> bool {
     matches!(branch, "main" | "master") && kinds.contains(&"main")
 }
 
+/// Whether a shell command an agent asks to run is one-way in a project with `kinds`: any of its parts (split at
+/// `&&`, `||`, `;` and `|`) is a git push, merge or commit that names main or master (`main`), any git push (`push`),
+/// a release (`git tag`, `gh release`, a package publish: `release`), or a deploy (`deploy` as a word of it). Read
+/// from its words only: a plain `git push` on a branch that happens to be main isn't seen (Cue doesn't stat the
+/// session's folder for it). The crew page's Needs you bar answers a one-way ask only with a click.
+pub fn command_one_way(kinds: &[&str], command: &str) -> bool {
+    let parts = command.split(['&', '|', ';', '\n']).map(str::trim).filter(|p| !p.is_empty());
+    parts.into_iter().any(|p| {
+        let w: Vec<&str> = p.split_whitespace().collect();
+        let git = w.iter().position(|x| *x == "git").map(|i| &w[i + 1..]).unwrap_or(&[]);
+        // Its subcommand: the first word that isn't an option (nor `-C <dir>` / `-c <key=value>`'s value).
+        let mut sub = "";
+        let mut i = 0;
+        while i < git.len() {
+            match git[i] {
+                "-C" | "-c" => i += 2,
+                x if x.starts_with('-') => i += 1,
+                x => { sub = x; break; }
+            }
+        }
+        let main = git.iter().any(|x| x.split([':', '/']).any(|r| r == "main" || r == "master"));
+        let publish = w.windows(2).any(|p| matches!(p[0], "npm" | "pnpm" | "yarn" | "cargo" | "twine" | "gem") && p[1] == "publish");
+        (kinds.contains(&"main") && matches!(sub, "push" | "merge" | "commit") && main)
+            || (kinds.contains(&"push") && sub == "push")
+            || (kinds.contains(&"release") && (sub == "tag" || publish || w.windows(2).any(|p| p[0] == "gh" && p[1] == "release")))
+            || (kinds.contains(&"deploy") && w.iter().any(|x| *x == "deploy"))
+    })
+}
+
 /// The line the crew lead's instructions get for a project with `kinds` (team_out.rs): what it asks the user first
 /// before. "" when you count nothing one-way there.
 pub fn ask_first(kinds: &[&str]) -> String {
@@ -101,6 +130,20 @@ mod tests {
         assert!(!commit_one_way(DEFAULT, "crew/rows"));
         assert!(!commit_one_way(&[], "main"), "a push to main is fine here: its commit isn't one-way");
         assert!(!commit_one_way(&["push", "release"], "main"));
+    }
+
+    #[test]
+    fn a_command_is_one_way_from_its_words_and_the_setting() {
+        assert!(command_one_way(DEFAULT, "git merge crew/hub main"));
+        assert!(command_one_way(DEFAULT, "cd api && git push origin HEAD:main"));
+        assert!(command_one_way(DEFAULT, "git -C web push origin master"));
+        assert!(!command_one_way(DEFAULT, "git push origin crew/rows"), "a crew branch isn't main");
+        assert!(!command_one_way(DEFAULT, "git log main..crew/rows"), "reading main changes nothing");
+        assert!(!command_one_way(DEFAULT, "npm test"));
+        assert!(!command_one_way(&[], "git push origin main"), "nothing counted one-way here");
+        assert!(command_one_way(&["push"], "npm test; git push"));
+        assert!(command_one_way(&["release"], "npm publish --access public") && command_one_way(&["release"], "gh release create v1"));
+        assert!(command_one_way(&["deploy"], "fly deploy") && !command_one_way(&["deploy"], "npm run deploy-docs"));
     }
 
     #[test]

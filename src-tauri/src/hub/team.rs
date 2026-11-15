@@ -258,6 +258,24 @@ impl Hub {
         }
     }
 
+    /// Teammate `agent` of lead `lead`'s changes, as its Diff reads them.
+    fn mate_changes(&self, lead: &str, agent: &str) -> Result<Changes, String> {
+        let (origin, t) = self.read(|st| (st.sessions.origin(lead), st.sessions.team(lead).into_iter().find(|t| t.agent_id == agent || t.call == agent)));
+        let origin = origin.ok_or("that session is gone")?;
+        let t = t.ok_or("Cue doesn't know that teammate")?;
+        changes(&origin.machine, &origin.cwd, &t)
+    }
+
+    /// Each file teammate `agent` changed, with its lines added and removed, in its diff's order.
+    pub fn team_diff_stat(&self, lead: &str, agent: &str) -> Result<Vec<FileStat>, String> {
+        Ok(diff_files(&self.mate_changes(lead, agent)?.diff).into_iter().map(|(stat, _)| stat).collect())
+    }
+
+    /// File `path`'s part of teammate `agent`'s diff; "" when it isn't in it.
+    pub fn team_diff(&self, lead: &str, agent: &str, path: &str) -> Result<String, String> {
+        Ok(diff_files(&self.mate_changes(lead, agent)?.diff).into_iter().find(|(s, _)| s.path == path).map(|(_, text)| text).unwrap_or_default())
+    }
+
     /// The watcher's tick: each teammate at work that has gone quiet (sessions/quiet.rs), seen to once a quiet stretch.
     /// Finished but lingering: done. A long tool call open: left to it, its row says so. Stuck: its row says so, and
     /// its lead is nudged once (a hosted lead's: Cue never types into a terminal unasked). The optional add-on sees a
@@ -830,6 +848,54 @@ fn repo_changes(machine: &str, r: &Repo) -> Result<(RepoChanges, String, u64, u6
         .collect();
     let part = RepoChanges { top: r.top.clone(), label: r.label.clone(), files, changed, whole: r.whole };
     Ok((part, diff, added, removed))
+}
+
+/// One file of a teammate's diff: its path (under its repo's label when it has one, as the diff shows it), lines
+/// added and removed.
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+pub struct FileStat {
+    pub path: String,
+    pub add: u64,
+    pub del: u64,
+}
+
+/// A unified diff cut into its files, each with its numbers and its own text, in order. A file's path is its `+++ b/`
+/// side, else (deleted) its `--- a/` side, else the `diff --git` line's; lines of anything that isn't a file's part (a
+/// note Cue wrote into the diff) are left out.
+pub(super) fn diff_files(diff: &str) -> Vec<(FileStat, String)> {
+    let mut out: Vec<(FileStat, String)> = vec![];
+    let mut cur: Option<(FileStat, String, bool)> = None;
+    let side = |l: &str, p: &str| l.strip_prefix(p).map(|x| x.trim_end().to_string()).filter(|x| x != "/dev/null");
+    for line in diff.split_inclusive('\n') {
+        let l = line.trim_end_matches('\n');
+        if l.starts_with("diff --git ") {
+            if let Some((s, t, _)) = cur.take() {
+                out.push((s, t));
+            }
+            let path = l.rsplit(" b/").next().unwrap_or("").to_string();
+            cur = Some((FileStat { path, add: 0, del: 0 }, String::new(), false));
+        }
+        let Some((s, text, body)) = cur.as_mut() else { continue };
+        text.push_str(line);
+        if !*body {
+            if let Some(p) = side(l, "+++ b/") {
+                s.path = p;
+            } else if let Some(p) = side(l, "--- a/") {
+                s.path = p;
+            }
+            *body = l.starts_with("@@");
+            continue;
+        }
+        if l.starts_with('+') {
+            s.add += 1;
+        } else if l.starts_with('-') {
+            s.del += 1;
+        }
+    }
+    if let Some((s, t, _)) = cur {
+        out.push((s, t));
+    }
+    out
 }
 
 pub(super) fn first(s: &str) -> String {

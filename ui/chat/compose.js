@@ -117,7 +117,7 @@ async function interrupt(sid) {
   try { toast(`Stopped ${sessionOf(sid)?.project || "it"}: ${(await invoke("interrupt_session", { sessionId: sid })).replace(/^stopped via /, "via ")}`); }
   catch (e) { toast(`Couldn't stop it: ${e}`); }
 }
-const box_ = (key, placeholder, label, attrs, alt = "", extra = "") => box(key, placeholder, label, attrs, true, alt, extra);
+const box_ = (key, placeholder, label, attrs, alt = "", extra = "", quick = true) => box(key, placeholder, label, attrs, true, alt, extra, quick);
 
 /** A waiting message's tracing outline: the window redraws every few seconds, so each copy starts where
  *  the clock says the trace is, and it goes round smoothly instead of jumping back to the start. */
@@ -424,9 +424,10 @@ function draftChips(key) {
   return d.images.length ? `<div class="chips">${d.images.map((im, n) => `<span class="chip"><button class="chip-img" data-draft-lightbox="${esc(key)}:${n}" aria-label="Open ${esc(im.name)}"><img src="${im.data}" alt="${esc(im.name)}"/></button><button class="chip-x" data-unattach="${esc(key)}:${n}" aria-label="Remove image">×</button></span>`).join("")}${d.images.length > 1 ? `<span class="chip-count">${d.images.length} images</span>` : ""}</div>` : "";
 }
 /** A text box that grows as you type (Shift+Enter = new line, Enter = send), optionally with images.
- *  The boxes that message a session (the ones with images) also get the quick phrases.
- *  `alt` shows beside Send once something's typed; `extra` always does. */
-function box(key, placeholder, label, sendAttrs, images, alt = "", extra = "") {
+ *  The boxes that message a session (the ones with images) also get the quick phrases, unless `quick` is false (the
+ *  crew page with a teammate on its left: they belong to the chat). `alt` shows beside Send once something's typed;
+ *  `extra` always does. */
+function box(key, placeholder, label, sendAttrs, images, alt = "", extra = "", quick = true) {
   const d = draft(key);
   const ready = d.text.trim() || (images && d.images.length);
   if (bangTyped(d.text) && !d.images.length) label = "Run";
@@ -440,7 +441,7 @@ function box(key, placeholder, label, sendAttrs, images, alt = "", extra = "") {
   const sug = images ? suggestionFor(sidOfKey(key)) : "";
   const sugLine = `<div class="sug-line" aria-hidden="true">${sug ? `<span class="sug-k">Suggested</span><span class="sug-t">${esc(sug)}</span><kbd>Tab</kbd>` : ""}</div>`;
   // Send sits inside the box, at the end of its row, so the box spans the full width (as the terminal dock does).
-  return `<div class="composer"><div class="field ${images ? "drop" : ""} ${bangTyped(d.text) ? "bang" : ""}" data-drop="${images ? esc(key) : ""}">${sidOfKey(key) ? `<div class="cmd-slot">${cmdMenu(key)}</div>` : ""}${images ? quickRow(`data-quick="${esc(key)}"`, sidOfKey(key)) : ""}${chips}<div class="field-row">
+  return `<div class="composer"><div class="field ${images ? "drop" : ""} ${bangTyped(d.text) ? "bang" : ""}" data-drop="${images ? esc(key) : ""}">${sidOfKey(key) ? `<div class="cmd-slot">${cmdMenu(key)}</div>` : ""}${images && quick ? quickRow(`data-quick="${esc(key)}"`, sidOfKey(key)) : ""}${chips}<div class="field-row">
     <div class="ta-wrap"><textarea rows="2" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" data-text="${esc(key)}"${sug ? ` class="sug" aria-label="${esc(`Suggested: ${sug}. Tab types it in.`)}"` : ""} placeholder="${esc(sug ? " " : placeholder)}">${esc(d.text)}</textarea>${sugLine}</div>
     ${status}<button class="icon-btn mic ${dictating?.key === key ? "on" : ""}" data-mic="${esc(key)}" title="${dictating?.key === key ? "Stop dictating" : "Dictate: talk and it types here"}" aria-label="Dictate">${MIC_ICON}</button>
     ${images ? `<button class="icon-btn" data-attach="${esc(key)}" title="Add an image (or paste one with ⌘V)" aria-label="Add image">${IMAGE_ICON}</button>` : ""}

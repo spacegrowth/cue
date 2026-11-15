@@ -152,11 +152,13 @@ const forkBtn = (sid, i) => `<button class="btw-fork" data-act="btw-fork" data-s
 function btwPanel(sid) {
   if (!sid || btwFor !== sid) return "";
   const log = btwLog.get(sid) || [];
+  // On its crew's page (team_page.js) it is the lead it asks, and it says so.
+  const lead = typeof crewPageOn === "function" && crewPageOn(sid);
   const rows = log.map((e, i) => [e, i]).reverse().map(([e, i]) => `<div class="btw-q">${esc(e.q)}</div>${e.a != null ? `<div class="btw-a msg">${md(e.a)}</div>${forkBtn(sid, i)}` : e.err ? `<div class="btw-a bad">${esc(e.err)}</div>` : `<div class="btw-a dim"><span class="dot-live"></span>Thinking…</div>`}`).join("");
   return `<div class="btw-pop">
-    <div class="btw-head">BY THE WAY · NOT PART OF THE CHAT${log.length ? `<button class="btw-clear" data-act="btw-clear" data-sid="${esc(sid)}">Clear</button>` : ""}<button class="btw-x" data-act="btw-close" aria-label="Close">×</button></div>
-    <div class="btw-ask"><textarea data-text="btw:${esc(sid)}" rows="1" placeholder="Ask without interrupting it…  ↵" spellcheck="false">${esc(draft(`btw:${sid}`).text)}</textarea></div>
-    <div class="btw-body">${rows || `<div class="dim btw-empty">A copy of this conversation answers, so the session never sees it. Each question costs about one turn.</div>`}</div></div>`;
+    <div class="btw-head">${lead ? "BY THE WAY · ASKS THE LEAD, NOT PART OF ITS CHAT" : "BY THE WAY · NOT PART OF THE CHAT"}${log.length ? `<button class="btw-clear" data-act="btw-clear" data-sid="${esc(sid)}">Clear</button>` : ""}<button class="btw-x" data-act="btw-close" aria-label="Close">×</button></div>
+    <div class="btw-ask"><textarea data-text="btw:${esc(sid)}" rows="1" placeholder="${lead ? "Ask the lead without interrupting it…  ↵" : "Ask without interrupting it…  ↵"}" spellcheck="false">${esc(draft(`btw:${sid}`).text)}</textarea></div>
+    <div class="btw-body">${rows || `<div class="dim btw-empty">${lead ? "A copy of the lead's conversation answers, so neither the lead nor its crew sees it." : "A copy of this conversation answers, so the session never sees it."} Each question costs about one turn.</div>`}</div></div>`;
 }
 // ---------- Catch me up: what it did while you weren't looking, above its box ----------
 // Cue notes when this window last showed each session's chat (kept across restarts). Open one you last looked at

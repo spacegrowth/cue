@@ -12,7 +12,7 @@ let chatOpenTold;
 // The lists a redraw puts back where they were scrolled (the chat keeps its element across draws, chat/patch.js liftChat /
 // settleChat, so its scroll is its own). Each is known by its kind and its place among that kind, or by its
 // data-scroll-key: a list new in this draw (a lead's review rows) is never handed another list's place.
-const SCROLLERS = [".col", ".cp-scroll", ".ib-scroll", ".ib-brief", ".ib-page-body", ".lv-list", ".sv-scroll", ".sheet-body", ".sec-body", ".card.recent", ".hist", ".hdetail", ".itab", ".vp-list", ".rdv-scroll", ".rdv-list", ".rdv-toc"];
+const SCROLLERS = [".col", ".cp-scroll", ".cpv-scroll", ".cpm-side", ".cpm-body", ".ib-scroll", ".ib-brief", ".ib-page-body", ".lv-list", ".sv-scroll", ".sheet-body", ".sec-body", ".card.recent", ".hist", ".hdetail", ".itab", ".vp-list", ".rdv-scroll", ".rdv-list", ".rdv-toc"];
 function scrollerKeys() {
   const seen = {};
   return [...document.querySelectorAll(SCROLLERS.join(", "))].map((el) => {
@@ -120,6 +120,7 @@ function placeFloating() {
   placeDiff();  // the Diff tab's page in its slot (diff.js)
   placeActs();  // a chip's actions popover under its dots
   placeTeamRows();   // a lead's open team: its scrolling box ends on a whole row
+  crewListPlace();   // a crew page's list: its rows' form, the chip for an ask out of view (team_page.js)
   placeVoiceList();   // Settings → Voice: the open list under its picker
   const lc = current();
   listenKeep(lc?.s?.session_id || lc?.it?.session_id);   // a reply read out: its marks back on the redrawn chat

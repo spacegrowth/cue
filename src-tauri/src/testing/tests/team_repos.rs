@@ -67,6 +67,16 @@ fn a_teammate_with_files_in_two_repos_shows_both_diffs_and_counts_and_commit_com
     want.sort();
     assert_eq!(seen, want, "each repo's diff, the other repo's paths under its folder name:\n{diff}");
     assert_eq!(mate(&w, &sid, "rows")["stat"], "3 files +3 −1", "counted across both repos");
+    // Per file, as the crew page lists them: the same paths and numbers, and each file's own part of the diff.
+    let stat = w.hub().team_diff_stat(&sid, "agentA").unwrap();
+    let mut per: Vec<(String, u64, u64)> = stat.iter().map(|f| (f.path.clone(), f.add, f.del)).collect();
+    per.sort();
+    let mut want_per = vec![("a.txt".to_string(), 1, 0), (format!("{label}/mac/ui/addon.js"), 1, 0), (format!("{label}/mac/ui/tracked.js"), 1, 1)];
+    want_per.sort();
+    assert_eq!(per, want_per, "{diff}");
+    let one = w.hub().team_diff(&sid, "agentA", &format!("{label}/mac/ui/tracked.js")).unwrap();
+    assert!(one.starts_with("diff --git ") && one.contains("-old") && !one.contains("a.txt") && !one.contains("addon.js"), "{one}");
+    assert_eq!(w.hub().team_diff(&sid, "agentA", "nowhere.txt").unwrap(), "", "a file not in it: nothing");
     let r = w.hub().team_action(&sid, "agentA", "commit").unwrap();
     let home = dir.file_name().unwrap().to_string_lossy().to_string();
     assert!(r.contains(&format!("In {home}: Committed rows's 1 file")) && r.contains(&format!("In {label}: Committed rows's 2 files")), "{r}");

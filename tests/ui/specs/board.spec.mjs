@@ -369,6 +369,8 @@ test.describe("a hosted lead's crew on its own page", () => {
     // btw opens its panel in the pane, as on the board.
     await pane.locator(".ap-head [data-act=btw]").click();
     await expect(pane.locator(".btw-pop")).toBeVisible();
+    await expect(pane.locator(".btw-head"), "it says whom it asks").toContainText("BY THE WAY · ASKS THE LEAD, NOT PART OF ITS CHAT");
+    await expect(pane.locator(".btw-ask textarea")).toHaveAttribute("placeholder", "Ask the lead without interrupting it…  ↵");
     await page.locator("[data-act=btw-close]").click();
     await expect(page.locator(".btw-pop")).toHaveCount(0);
     // Nobody asks and the lead works: working; Stop is the pane's.
@@ -415,30 +417,28 @@ test.describe("a hosted lead's crew on its own page", () => {
     }
   });
 
-  test("the list keeps the crew's order whatever their state; a click opens a member's menu and moves nothing; the finished ones fold at its end", async ({ cue, page }) => {
+  test("the list keeps the crew's order whatever their state; each row two calm lines; a click shows that teammate on the left and moves nothing; the finished ones fold at its end", async ({ cue, page }) => {
     // hub asks you, rows works, skill done, handoff and docs reviewed: the crew's own order.
     await expect.poll(() => rowKeys(page)).toEqual(["hub", "rows", "skill", "handoff", "docs"]);
     // The tab stays Board: the page opened from the board shows within it.
     await expect(page.locator(".switch-view button.on")).toHaveText("Board");
-    // A card: its name, its stage and meter, what it was asked, what it does now (red when it waits on you), its steps,
-    // review and files.
+    // A row: its name, its stage and meter, how long; then one sentence, red when it needs you.
     const card = (n) => page.locator(`.cp-card[data-key="cpc:lead|id-${n}"]`);
     const hub = page.locator('.cp-row[data-key="cp:lead|id-hub"]'), rows = page.locator('.cp-row[data-key="cp:lead|id-rows"]');
     await expect(card("hub")).toHaveClass(/\bq\b/);
     await expect(hub.locator(".cp-ml")).toHaveText("needs you");
     await expect(hub.locator(".cp-nm")).toHaveText("hub");
     await expect(hub.locator(".cp-m b.need")).toHaveCount(1);
-    await expect(hub.locator(".cp-ask1")).toHaveText(/^Keep a team per hosted lead/);
     await expect(hub.locator(".cp-now.q")).toHaveText("Wants to run cd src-tauri && cargo test --features ext");
     await expect(rows.locator(".cp-now")).toHaveText("Running node tests/team.test.js");
     await expect(rows.locator(".cp-ml"), "a test run is checking").toHaveText("checking");
-    await expect(card("rows").locator(".cp-acts .cp-r")).toHaveText(/^2 files · /);
-    await expect(card("rows").locator(".cp-part").filter({ hasText: "Steps" }).locator(".cp-st.now")).toContainText("Running node tests/team.test.js");
-    await expect(card("rows").locator(".cp-part").filter({ hasText: "Files" }).locator(".cp-fn")).toHaveText("team.js core.js");
-    await expect(card("handoff").locator(".cp-part").filter({ hasText: "Review" }).locator(".cp-fl").first()).toContainText("should-fix");
+    await expect(rows.locator(".cp-tm")).toHaveText(/^(<1m|\d+m)$/);
+    await expect(card("handoff").locator(".cp-now")).toHaveText("1 should-fix, 1 note · Cue sends it back");
+    await expect(card("skill").locator(".cp-now")).toHaveText("Team skill written, 12 tests pass");
+    await expect(page.locator(".cp-scroll .cp-row > *"), "two lines, nothing more").toHaveCount(10);
     expect(await page.locator(".cp-scroll .cp-row button").count(), "no buttons in a row").toBe(0);
     // Beside a working one's row, outside it, the drawer's Stop: it stops it, from here.
-    const stop = card("rows").locator('.cp-acts [data-mt-act="stop"]');
+    const stop = card("rows").locator('.cp-act [data-mt-act="stop"]');
     await expect(stop).toHaveText("Stop");
     await stop.click();
     expect((await cue.called("team_action", { sessionId: "lead", action: "stop" })).args.agent).toBe("id-rows");
@@ -451,18 +451,18 @@ test.describe("a hosted lead's crew on its own page", () => {
     });
     await expect(card("handoff")).toHaveClass(/\bq\b/);
     expect(await rowKeys(page)).toEqual(["hub", "rows", "skill", "handoff", "docs"]);
-    // A click on a row opens its menu, under it; nothing moves.
+    // A click on a row: its row lit, the left shows it; nothing moves; Esc goes back to the chat, not the page.
     const skill = page.locator('.cp-row[data-key="cp:lead|id-skill"]');
     await skill.click();
-    await expect(skill).toHaveAttribute("aria-expanded", "true");
-    const menu = page.locator('.crew-page .mt-menu[data-mt-menu="lead|id-skill"]');
-    await expect(menu).toBeVisible();
-    const [m, r] = await Promise.all([menu.boundingBox(), skill.boundingBox()]);
-    expect(m.y).toBeGreaterThanOrEqual(r.y + r.height - 1);
+    await expect(skill).toHaveAttribute("aria-pressed", "true");
+    await expect(card("skill")).toHaveClass(/\bon\b/);
+    await expect(page.locator(".cp-lead"), "The lead isn't lit").not.toHaveClass(/\bon\b/);
+    await expect(page.locator(".cp-left .cpm .cpv-name")).toHaveText("skill");
     expect(await rowKeys(page)).toEqual(["hub", "rows", "skill", "handoff", "docs"]);
     await page.keyboard.press("Escape");
-    await expect(menu).toHaveCount(0);
-    await expect(page.locator(".crew-page"), "Esc closed the menu first").toBeVisible();
+    await expect(page.locator(".cp-left .cpm")).toHaveCount(0);
+    await expect(page.locator(".cp-lead")).toHaveClass(/\bon\b/);
+    await expect(page.locator(".crew-page"), "Esc went back to the chat first").toBeVisible();
     // The set-aside one: folded at the end; unfolded under the fold line, dimmed, the others where they were.
     const done = page.locator(".crew-page .cp-done .mt-done-line");
     await expect(done).toHaveText("1 done ›");
@@ -478,33 +478,309 @@ test.describe("a hosted lead's crew on its own page", () => {
     expect(await rowKeys(page)).toEqual(["hub", "rows", "skill", "handoff", "docs", "spike"]);
   });
 
-  test("Needs you over the box shows one row, N more › the rest; nothing at all when nothing needs you", async ({ cue, page }) => {
-    const needs = page.locator(".cp-left .cp-needs");
-    // hub asks; then handoff needs you too (the hub says it needs a commit).
-    await expect(needs.locator(".mt-grp")).toHaveText("Needs you · 1");
-    await expect(needs.locator("[data-cp-needs]"), "one: nothing more").toHaveCount(0);
-    await cue.change((st) => { st.sessions.find((s) => s.session_id === "lead").team.find((t) => t.name === "handoff").needs = "commit"; });
-    await expect(needs.locator(".mt-grp")).toHaveText("Needs you · 2");
-    const shown = () => needs.locator(".cp-nrows > .mt-row").evaluateAll((els) => els.filter((e) => e.offsetHeight > 0).map((e) => e.dataset.key));
-    await expect.poll(shown).toEqual(["mt:lead|id-hub"]);
-    await expect(needs.locator('.mt-row.need [data-act="allow"]')).toBeVisible();
+  // Needs you (ui/team_bar.js): one bar over the box, one ask at a time, the same height whatever the count.
+  const addAsks = (cue) => cue.change((st) => {
+    const hub = st.items.find((i) => i.id === "n1793984390004");
+    st.items.push({ ...hub, id: "own1", agent_id: "", agent_name: "", agent_pid: 0, tool_input: { command: "git push origin main" }, one_way: true, created_ms: hub.created_ms + 1 });
+    st.items.push({ ...hub, id: "rows1", agent_id: "id-rows", agent_name: "rows", tool_input: { command: "npm run migrate" }, created_ms: hub.created_ms - 5 });
+  });
+  test("Needs you is one bar of one height: one ask, its count and steppers with more; nothing at all when nothing waits", async ({ cue, page }) => {
+    const bar = page.locator(".cp-left .cp-bar");
+    await expect(bar.locator(".cpb-who")).toHaveText("hub");
+    await expect(bar.locator(".cpb-what")).toHaveText("wants to run");
+    await expect(bar.locator(".cpb-cmd")).toHaveText("cd src-tauri && cargo test --features ext");
+    await expect(bar.locator(".cpb-btns button")).toHaveText(["↪", "Deny", "Allow"]);
+    await expect(bar.locator(".cpb-n, [data-cp-step], [data-cp-all].cpb-all"), "one: no count, no steppers").toHaveCount(0);
+    const one = (await bar.boundingBox()).height;
+    expect(Math.round(one)).toBe(68);
     // Over the box, at the bottom of the left.
-    const [n, f] = await Promise.all([needs.boundingBox(), page.locator(".cp-left .active-pane > .foot").boundingBox()]);
-    expect(n.y + n.height).toBeLessThanOrEqual(f.y + 1);
-    const more = needs.locator("[data-cp-needs]");
-    await expect(more).toHaveText("1 more ›");
-    await more.click();
-    await expect.poll(shown).toEqual(["mt:lead|id-hub", "mt:lead|id-handoff"]);
-    await expect(more).toHaveText("Fewer ‹");
-    await more.click();
-    await expect.poll(shown).toEqual(["mt:lead|id-hub"]);
-    // Answered and handled: the box goes, the chat runs down to the box.
+    const [b, f] = await Promise.all([bar.boundingBox(), page.locator(".cp-left .active-pane > .foot").boundingBox()]);
+    expect(b.y + b.height).toBeLessThanOrEqual(f.y + 1);
+    // Two more: the lead's own (one-way) first, then the oldest; the one shown stays shown, only the count rises.
+    await addAsks(cue);
+    await expect(bar.locator(".cpb-n"), "hub, last of the three now").toHaveText("3 of 3");
+    await expect(bar.locator(".cpb-who"), "a new ask never swaps the one shown").toHaveText("hub");
+    expect(Math.round((await bar.boundingBox()).height), "the same height").toBe(68);
+    await expect(page.locator(".cp-status .cp-q"), "the list counts the crew's asks").toHaveText("2 need you");
+    const order = await page.evaluate(() => crewAsks("lead").map((x) => x.key));
+    expect(order).toEqual(["a:own1", "a:rows1", "a:n1793984390004"]);
+    await page.waitForTimeout(650);
+    await bar.locator('[data-cp-step="1"]').click();
+    await expect(bar.locator(".cpb-n"), "round the end").toHaveText("1 of 3");
+    await expect(bar.locator(".cpb-who")).toHaveText("The lead");
+    await expect(bar.locator(".cpb-tag")).toHaveText("one-way");
+    await expect(bar.locator(".cpb-ow"), "one-way: a click, never a key").toHaveText("one-way: answered with a click, never a key");
+    await expect(bar.locator("[data-bar-key]"), "no key on a one-way ask").toHaveCount(0);
+    // The lead asks: the box holds, in place, its draft kept.
+    await expect(page.locator(".cp-left .foot.cp-held textarea")).toHaveAttribute("placeholder", "The lead asks too (1 of 3): answer it first. Your message waits here…");
+    await expect(page.locator(".cp-left .foot.cp-held .btn.send")).toHaveText("Answer first");
+    // Answered and handled: the bar goes, the chat runs down to the box.
     await cue.change((st) => {
-      st.items = st.items.filter((i) => i.agent_id !== "id-hub");
+      st.items = st.items.filter((i) => i.session_id !== "lead");
       const team = st.sessions.find((s) => s.session_id === "lead").team;
       for (const t of team) if (t.state === "reviewed") t.state = "committed";
     });
-    await expect(needs).toHaveCount(0);
+    await expect(bar).toHaveCount(0);
+    await expect(page.locator(".cp-left .foot.cp-held")).toHaveCount(0);
+  });
+
+  test("the bar's buttons are dead for a moment after the ask changes; an answer puts the cursor in the box", async ({ cue, page }) => {
+    await addAsks(cue);
+    const bar = page.locator(".cp-left .cp-bar");
+    await page.waitForTimeout(650);
+    await bar.locator('[data-cp-step="-1"]').click();
+    await expect(bar.locator(".cpb-who")).toHaveText("rows");
+    await expect(bar).toHaveClass(/\bdead\b/);
+    await bar.locator('[data-act="allow"]').click({ force: true });
+    expect(await cue.calls("respond"), "a click in the first moment goes nowhere").toHaveLength(0);
+    await expect(bar).not.toHaveClass(/\bdead\b/);
+    await bar.locator('[data-act="allow"]').click();
+    expect((await cue.called("respond", { id: "rows1" })).args.decision.behavior).toBe("allow");
+    await expect.poll(() => page.evaluate(() => document.activeElement?.dataset?.text)).toBe("s:lead");
+  });
+
+  test("All N › puts every ask on the left, each whole; Esc and ‹ The lead's chat go back", async ({ cue, page }) => {
+    await addAsks(cue);
+    await page.locator(".cp-bar .cpb-all").click();
+    const left = page.locator(".cp-left .active-pane.cp-alt");
+    await expect(left.locator(".cpv-head .cpv-name")).toHaveText("Needs you");
+    await expect(left.locator(".cpn-row")).toHaveCount(3);
+    await expect(left.locator(".cpn-row").first()).toContainText("git push origin main");
+    await expect(page.locator(".cp-bar"), "the page is the bar while it's up").toHaveCount(0);
+    await expect(page.locator('.cp-left textarea[data-text="s:lead"]'), "the box stays").toHaveCount(1);
+    await page.keyboard.press("Escape");
+    await expect(left).toHaveCount(0);
+    await expect(page.locator(".cp-bar")).toBeVisible();
+    await page.locator(".cp-bar .cpb-all").click();
+    await page.locator(".cpv-back").click();
+    await expect(page.locator(".cp-left .active-pane > .ap-chat")).toHaveCount(1);
+  });
+
+  test("↪ puts a chip in the box: its words go as that answer; × takes it off", async ({ cue, page }) => {
+    const bar = page.locator(".cp-left .cp-bar");
+    await bar.locator("[data-cp-chip]").click();
+    await expect(page.locator(".cp-chip")).toContainText("↪ instead, to hub");
+    const box = page.locator('.cp-left textarea[data-text="s:lead"]');
+    await expect(box).toBeFocused();
+    await box.fill("run only the team tests");
+    await box.press("Enter");
+    const r = await cue.called("respond", { id: "n1793984390004" });
+    expect(r.args.decision).toEqual({ behavior: "deny", message: "run only the team tests" });
+    await expect(page.locator(".cp-chip")).toHaveCount(0);
+    expect(await cue.calls("send_to_session"), "nothing sent to the lead").toHaveLength(0);
+  });
+
+  // A teammate on the left (ui/team_mate.js): its head line, Asked, its steps, review and files beside the reading area.
+  test("a picked teammate on the left: its head line, what it was asked, steps, review found, files and three tabs; Talk, the bar's ask, The lead's dot", async ({ cue, page }) => {
+    // btw open on the chat: picking a teammate closes it with the pane's head.
+    await page.locator(".cp-left .ap-head [data-act=btw]").click();
+    await expect(page.locator(".btw-pop")).toBeVisible();
+    await page.locator('.cp-row[data-cp-mate="lead|id-handoff"]').click();
+    await expect(page.locator(".btw-pop")).toHaveCount(0);
+    expect(await page.evaluate(() => btwFor), "closed, not left open out of sight").toBe(null);
+    const v = page.locator(".cp-left .active-pane.cp-alt .cpm");
+    await expect(v.locator(".cpv-back")).toHaveText("‹ The lead's chat");
+    await expect(v.locator(".cpv-name")).toHaveText("handoff");
+    await expect(v.locator(".cpv-head .cp-pill")).toHaveText("reviewed");
+    await expect(v.locator(".cpm-now")).toHaveText("Reviewed: 1 should-fix, 1 note");
+    await expect(v.locator(".cpm-at")).toHaveText("Carry the team over a handoff. Don't commit; finish with a summary.");
+    await expect(v.locator(".cpm-size")).toHaveText(/^2 files · .*, since \d\d:\d\d$/);
+    await expect(v.locator(".cpm-part").first().locator(".cpm-pl")).toHaveText("Steps");
+    await expect(v.locator(".cpm-st").filter({ hasText: "Started" }), "no feed of its own: what Cue keeps, by time").toHaveCount(1);
+    await expect(v.locator(".cpm-fl")).toHaveCount(2);
+    await expect(v.locator(".cpm-fl .cp-f.fix")).toHaveText("should-fix");
+    // Its files with their numbers (team_diff_stat), the first lit and its diff drawn (team_diff); another file picked.
+    await expect(v.locator(".cpm-file .cpm-fp")).toHaveText(["src-tauri/src/hub/handoff.rs", "ui/core.js"]);
+    await expect(v.locator(".cpm-file .cpm-n")).toHaveText(["+2", "+2"]);
+    await expect(v.locator(".cpm-file.on .cpm-fp")).toHaveText("src-tauri/src/hub/handoff.rs");
+    await expect(v.locator(".cpm-diff .add")).toHaveText(["+# handoff.rs", "+handoff wrote this"]);
+    await expect(v.locator(".cpm-lit")).toHaveText("src-tauri/src/hub/handoff.rs");
+    await v.locator('.cpm-file[data-cp-file="ui/core.js"]').click();
+    await expect(v.locator(".cpm-diff .add").first()).toHaveText("+# core.js");
+    await expect(v.locator(".cpm-file.on .cpm-fp")).toHaveText("ui/core.js");
+    await expect(v.locator(".cpm-tabs button:visible")).toHaveText(["Diff so far", "Full review", "Full task"]);
+    await v.locator('[data-cp-tab="task"]').click();
+    await expect(v.locator(".cpm-body")).toContainText("Carry the team over a handoff.");
+    await v.locator('[data-cp-tab="review"]').click();
+    await expect(v.locator(".cpm-body li")).toHaveCount(2);
+    await expect(page.locator('.cp-left textarea[data-text="s:lead"]'), "the box stays").toHaveCount(1);
+    await expect(page.locator(".cp-alt .quick"), "the chat's quick phrases aren't drawn under it").toHaveCount(0);
+    // Talk: "@name " in the box.
+    await v.locator("[data-cp-talk]").click();
+    await expect(page.locator('.cp-left textarea[data-text="s:lead"]')).toHaveValue("@handoff ");
+    // The lead's row, off the chat: its last words, and a dot once it says something new.
+    const lead = page.locator(".cp-lead");
+    await expect(lead).not.toHaveClass(/\bon\b/);
+    await expect(lead.locator(".cp-said")).toHaveCount(0);
+    await cue.change((st) => { const l = st.sessions.find((s) => s.session_id === "lead"); l.thread.push({ role: "agent", text: "handoff's fix is in.", at_ms: Date.now() + 1000, images: [] }); });
+    await expect(lead.locator(".cp-ld")).toHaveText("“handoff's fix is in.”");
+    await expect(lead.locator(".cp-said")).toHaveCount(1);
+    // A teammate that asks: the bar shows its ask when it's picked.
+    await page.locator('.cp-row[data-cp-mate="lead|id-hub"]').click();
+    await expect(page.locator(".cpm .cpv-name")).toHaveText("hub");
+    await expect(page.locator(".cpm .cpm-st.ask")).toContainText("Wants to run cd src-tauri");
+    await expect(page.locator(".cp-bar .cpb-who")).toHaveText("hub");
+    // The lead's row: back to the chat.
+    await lead.click();
+    await expect(page.locator(".cp-left .cpm")).toHaveCount(0);
+    await expect(lead).toHaveClass(/\bon\b/);
+  });
+
+  // The add-on's slots on the page (core.js addOn.crewPage*): its page shares the one left with a teammate.
+  test("the add-on's page on the left: in the chat's place under the pane's head; The lead's row, a teammate or Esc closes it; a record opens with no box", async ({ page }) => {
+    await page.evaluate(() => {
+      window.__left = { key: "loop:1", html: `<div class="their-page">Their page</div>` };
+      window.__closed = 0; window.__esc = 0;
+      addOn.crewPageLeft = () => window.__left;
+      addOn.crewPageLeftClose = () => { const was = !!window.__left; window.__left = null; window.__closed++; return was; };
+      addOn.crewPageEsc = () => { window.__esc++; return false; };
+      addOn.crewPageGoal = () => `<div class="their-goal">Their goal</div>`;
+      renderMain();
+    });
+    const pane = page.locator(".cp-left > .active-pane");
+    await expect(pane.locator(".cp-addon-left .their-page")).toHaveText("Their page");
+    await expect(pane.locator(".ap-head"), "the pane's head stays").toHaveCount(1);
+    await expect(pane.locator(".cp-bar"), "Needs you stays").toHaveCount(1);
+    await expect(pane.locator('textarea[data-text="s:lead"]'), "the box stays").toHaveCount(1);
+    await expect(page.locator(".cp-lead")).not.toHaveClass(/\bon\b/);
+    await expect(page.locator(".cp-top .their-goal"), "its goal row in place of the page's").toHaveCount(1);
+    await expect(page.locator(".cp-goal")).toHaveCount(0);
+    // A teammate picked: their page gives way.
+    await page.locator('.cp-row[data-cp-mate="lead|id-rows"]').click();
+    await expect(page.locator(".cp-left .cpm .cpv-name")).toHaveText("rows");
+    expect(await page.evaluate(() => window.__closed)).toBe(1);
+    // Theirs again; The lead's row goes back to the chat.
+    await page.evaluate(() => { window.__left = { key: "loop:1", html: `<div class="their-page">Their page</div>` }; renderMain(); });
+    await expect(page.locator(".cp-left .cpm"), "theirs is what the left shows").toHaveCount(0);
+    await page.locator(".cp-lead").click();
+    await expect(page.locator(".cp-left .their-page")).toHaveCount(0);
+    await expect(page.locator(".cp-lead")).toHaveClass(/\bon\b/);
+    // Esc asks theirs first (it says no), then on with the page's own order.
+    await page.locator(".cp-left .ap-chat").first().click({ position: { x: 20, y: 20 } });
+    await page.keyboard.press("Escape");
+    expect(await page.evaluate(() => window.__esc)).toBeGreaterThan(0);
+    // A record: no session, no box, no Needs you; its page on the left, its crew by name in the list.
+    await page.evaluate(() => {
+      addOn.crewPageRecord = (key) => key === "run:9" ? { mates: `<div class="their-mates">api · web</div>` } : null;
+      window.__left = { key: "run:9", html: `<div class="their-record">Run 9</div>` };
+      addOn.openCrewPage("run:9", {});
+    });
+    await expect(page.locator(".crew-page.cp-record .their-record")).toHaveText("Run 9");
+    await expect(page.locator(".crew-page.cp-record .their-mates")).toHaveText("api · web");
+    await expect(page.locator(".crew-page.cp-record textarea, .crew-page.cp-record .cp-bar, .crew-page.cp-record [data-cp-chat]")).toHaveCount(0);
+    await page.evaluate(() => { for (const k of ["crewPageLeft", "crewPageLeftClose", "crewPageEsc", "crewPageGoal", "crewPageRecord"]) delete addOn[k]; });
+  });
+
+  // A big crew (SPEC §6): rows get shorter to fit; a chip for an ask out of view; ↑ / ↓ walk the list.
+  const bigCrew = (cue, count) => cue.change((st, count) => {
+    const lead = st.sessions.find((s) => s.session_id === "lead"), base = lead.team[1];
+    lead.team = Array.from({ length: count }, (_, i) => ({ ...base, agent_id: `id-m${i}`, call: `call-m${i}`, name: `m${i}`, also: [], state: "working", step: "Editing handlers.ts" }));
+    const hub = st.items.find((i) => i.id === "n1793984390004");
+    hub.agent_id = `id-m${count - 1}`; hub.agent_name = `m${count - 1}`;
+  }, count);
+  test("a big crew: two-line rows while they fit, one line each past that; a chip for the ask out of view; ↑ / ↓ move the pick", async ({ cue, page }) => {
+    const list = page.locator(".crew-page .cp-scroll");
+    await bigCrew(cue, 5);
+    await expect(list, "five fit on two lines").not.toHaveClass(/\bone\b/);
+    await expect(page.locator(".cp-jump")).toBeHidden();
+    await bigCrew(cue, 20);
+    await expect(list, "twenty: one line each").toHaveClass(/\bone\b/);
+    await expect(list.locator(".cp-ml").first()).toBeHidden();
+    const chip = page.locator(".cp-jump");
+    await expect(chip).toHaveText("↓ m19 needs you");
+    // A state change doesn't change the form.
+    await cue.change((st) => { for (const t of st.sessions.find((s) => s.session_id === "lead").team.slice(0, 3)) t.state = "reviewed"; });
+    await expect(list).toHaveClass(/\bone\b/);
+    // The chip scrolls to it; nothing is picked.
+    await chip.click();
+    await expect(page.locator('.cp-card[data-key="cpc:lead|id-m19"]')).toBeInViewport();
+    await expect(chip).toBeHidden();
+    await expect(page.locator(".cp-lead")).toHaveClass(/\bon\b/);
+    // ↑ / ↓ from The lead's row: the pick walks the list's order, the cursor staying in the list.
+    await page.locator(".cp-lead").focus();
+    await page.keyboard.press("ArrowDown");
+    await expect(page.locator(".cpm .cpv-name")).toHaveText("m0");
+    await page.keyboard.press("ArrowDown");
+    await expect(page.locator(".cpm .cpv-name")).toHaveText("m1");
+    await expect(page.locator('.cp-row[data-cp-mate="lead|id-m1"]')).toBeFocused();
+    await page.keyboard.press("ArrowUp");
+    await expect(page.locator(".cpm .cpv-name")).toHaveText("m0");
+    await page.keyboard.press("Home");
+    await expect(page.locator(".cpm")).toHaveCount(0);
+    await expect(page.locator(".cp-lead")).toBeFocused();
+  });
+
+  // Narrow (SPEC §13): at the smallest window a teammate's side column becomes tabs; the bar keeps the command.
+  test("at the smallest window: a teammate's steps, review and files are tabs before the reading area's; the bar drops its keys and reason, not the command", async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 600 });
+    await expect(page.locator(".cp-bar .cpb-keys")).toBeHidden();
+    await expect(page.locator(".cp-bar .cpb-cmd")).toBeVisible();
+    await page.locator('.cp-row[data-cp-mate="lead|id-handoff"]').click();
+    const v = page.locator(".cpm");
+    await expect(v.locator(".cpm-side")).toBeHidden();
+    await expect(v.locator(".cpm-tabs button:visible")).toHaveText(["Steps", "Review found", "Files", "Diff so far", "Full review", "Full task"]);
+    await v.locator('[data-cp-tab="steps"]').click();
+    await expect(v.locator(".cpm-body .cpm-st").filter({ hasText: "Started" })).toHaveCount(1);
+    await v.locator('[data-cp-tab="files"]').click();
+    await v.locator('.cpm-body [data-cp-file="ui/core.js"]').click();
+    await expect(v.locator('.cpm-tabs [data-cp-tab="diff"]'), "a file picked: its diff").toHaveClass(/\bon\b/);
+    await expect(v.locator(".cpm-diff .add").first()).toHaveText("+# core.js");
+    // Wide again: the side column, its tabs gone.
+    await page.setViewportSize({ width: 1600, height: 1000 });
+    await expect(v.locator(".cpm-side")).toBeVisible();
+    await expect(v.locator('.cpm-tabs [data-cp-tab="steps"]')).toBeHidden();
+  });
+
+  // Keys (SPEC §4): a bare letter is always text here; ⌘⇧A / ⌘⇧D answer the ask the bar shows, never a one-way one.
+  test("letters answer nothing on the page; ⌘⇧A allows the shown ask, ⌘⇧↓ steps, a one-way ask takes no key", async ({ cue, page }) => {
+    await page.locator(".cp-left .ap-chat").first().click({ position: { x: 20, y: 20 } });
+    for (const k of ["a", "d", "1"]) await page.keyboard.press(k);
+    expect(await cue.calls("respond"), "A, D and 1 are only text here").toHaveLength(0);
+    await page.keyboard.press("r");
+    await expect(page.locator('.cp-left textarea[data-text="s:lead"]'), "R: the cursor to the box").toBeFocused();
+    const hub0 = await page.evaluate(() => state.items.find((i) => i.id === "n1793984390004"));
+    await page.keyboard.press("Meta+Shift+A");
+    expect((await cue.called("respond", { id: "n1793984390004" })).args.decision.behavior).toBe("allow");
+    // A one-way ask: no key, said in words.
+    await cue.change((st, hub) => {
+      st.items = st.items.filter((i) => i.id !== hub.id);
+      st.items.push({ ...hub, id: "own1", agent_id: "", agent_name: "", agent_pid: 0, tool_input: { command: "git push origin main" }, one_way: true });
+      st.items.push({ ...hub, id: "rows1", agent_id: "id-rows", agent_name: "rows", tool_input: { command: "npm run migrate" }, created_ms: hub.created_ms + 5 });
+    }, hub0);
+    await expect(page.locator(".cp-bar .cpb-who")).toHaveText("The lead");
+    await page.waitForTimeout(650);
+    await page.keyboard.press("Meta+Shift+A");
+    await page.keyboard.press("Meta+Shift+D");
+    expect(await cue.calls("respond"), "nothing answered the one-way ask").toHaveLength(1);
+    await page.keyboard.press("Meta+Shift+ArrowDown");
+    await expect(page.locator(".cp-bar .cpb-who")).toHaveText("rows");
+    await page.keyboard.press("Meta+Shift+D");
+    expect(await cue.calls("respond"), "inside the moment after the change: nothing").toHaveLength(1);
+    await page.waitForTimeout(650);
+    await page.keyboard.press("Meta+Shift+D");
+    expect((await cue.called("respond", { id: "rows1" })).args.decision.behavior).toBe("deny");
+  });
+
+  test("Esc, nearest first: the box's text keeps it, the chip comes off, the left goes back to the chat, then the page closes; it never stops the lead", async ({ cue, page }) => {
+    await cue.change((st) => { st.sessions.find((s) => s.session_id === "lead").state = "working"; });
+    const box = page.locator('.cp-left textarea[data-text="s:lead"]');
+    await page.locator(".cp-bar [data-cp-chip]").click();
+    await box.fill("just the team tests");
+    await page.keyboard.press("Escape");
+    await expect(box, "the cursor leaves the box").not.toBeFocused();
+    await expect(box, "its draft stays").toHaveValue("just the team tests");
+    await expect(page.locator(".cp-chip")).toHaveCount(1);
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".cp-chip"), "then the chip").toHaveCount(0);
+    await page.locator(".cp-bar [data-cp-all]").first().click();
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".cp-alt"), "then the left back to the chat").toHaveCount(0);
+    await expect(page.locator(".crew-page")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(box, "back on the chat, the cursor in its box: Esc leaves the box first").not.toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".crew-page"), "then the page").toHaveCount(0);
+    expect(await cue.calls("interrupt_session"), "Esc never stops the lead here").toHaveLength(0);
   });
 
   test("it closes when its lead goes away", async ({ cue, page }) => {
@@ -520,6 +796,8 @@ test.describe("a hosted lead's crew: the Crew switch, /crew, a task dropped on t
     await cue.open("world-team");
     await openCard(page, TEAM_ASK);
     await page.locator('.mt-row.need [data-act="allow"]').click();
+    // The answer's state has come back (its draw lands now, not partway through a test's measuring).
+    await page.waitForFunction((id) => !state.items.some((i) => i.id === id), TEAM_ASK);
   });
   /** Ask me: every review waits under Ready with its buttons (on Handle it, the default, Cue handles them itself). */
   const askMe = (cue) => cue.change((st) => { st.sessions.find((s) => s.session_id === "lead").crew_commit = "wait"; });

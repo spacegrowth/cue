@@ -19,8 +19,8 @@ const addOn = {
   waiting: () => ({ html: "", count: 0 }),
   /** Its entries in the waiting chip's list, oldest first: { since, shown() → whether the window shows it now, open() }. */
   waitingChips: () => [],
-  /** A card at the top of a session's chat. */
-  chatTop: (sid) => "",
+  /** A card at the top of a session's chat; `crew`: the chat drawn on its lead's crew page. */
+  chatTop: (sid, { crew = false } = {}) => "",
   /** A reply of session `sid` as drawn: its text (the add-on may take a block of its own out of it) and anything it
    *  draws after it (a card for that block). */
   reply: (sid, text) => ({ text, after: "" }),
@@ -30,8 +30,11 @@ const addOn = {
   /** Items in a session's ⋯ menu. */
   chatMenu: (sid, s) => "",
   /** On lead `sid`'s crew page (team_page.js): its own head line in place of the lead's name (‹ Back to the board
-   *  stays), "" for the usual one; a band under the head line; rows under the goal; rows of its own in Needs you, drawn
-   *  as its rows are, one each: { items: [{ html }], count } (an older `{ html, count }` shows whole, uncapped); and
+   *  stays), "" for the usual one; a band under the head line; rows under the goal; asks of its own in Needs you
+   *  (team_bar.js crewAsks): { items: [{ id, who, what, cmd, why, one_way, buttons, at_ms, html }], count }, each shown
+   *  in the bar as who · what · cmd · why with `buttons` (a button with data-bar-key="a" / "d" takes ⌘⇧A / ⌘⇧D; none
+   *  on a one-way ask), and `html` (optional) as its whole row on the Needs you page. An item with only `html` (or an
+   *  older `{ html, count }`) is in the bar as "waits for you" with Open ›, its html whole on that page; and
    *  decisions of its own in the lead's chat, drawn as the crew
    *  log's are (team.js crewLogRow, big): { html, count }, or with `items: [{ at_ms, html }]` placed in time order
    *  among the lead's words (else `html` comes first, oldest). The page opens with addOn.openCrewPage(sid, { from, back }):
@@ -42,8 +45,27 @@ const addOn = {
   crewPageRows: (sid) => "",
   crewPageNeeds: (sid) => ({ items: [], count: 0 }),
   crewPageDecided: (sid) => ({ html: "", count: 0 }),
+  /** The row under the head of lead `sid`'s crew page in place of its goal row (html), or null for the page's own. */
+  crewPageGoal: (sid) => null,
+  /** A page of its own on the left of lead `sid`'s crew page, in the lead's chat's place (the pane's head, Needs you
+   *  and the box stay): { key: what it is (its scroll is kept by it), html }, or null. It shares the page's one left
+   *  (team_page.js crewLeftOf) with a teammate and Needs you: while it's there it is what the left shows; picking a
+   *  teammate or Needs you, The lead's row, ‹ The lead's chat or Esc closes it (crewPageLeftClose). */
+  crewPageLeft: (sid) => null,
+  /** Esc on the crew page, one step of its own (an edit it has open, then its page on the left): asked after the page's
+   *  menus and btw, before the box gives up the cursor and before the page closes. True when it took the key. */
+  crewPageEsc: (sid) => false,
+  /** Its page on the left of lead `sid`'s crew page closes (the left goes to something else): true when one was open. */
+  crewPageLeftClose: (sid) => false,
+  /** A crew page for `key` when it is no session of the window's: the record of something whose lead is gone, or null.
+   *  Non-null, addOn.openCrewPage(key, …) opens the page as the record: its head (crewPageHead), the rows under the goal
+   *  (crewPageRows; there is no goal line of the page's own), the left (crewPageLeft, which must give one; no box, no
+   *  Needs you), and the list: the band (crewPageBand), then `mates` (html: its crew by name). */
+  crewPageRecord: (key) => null,
   /** Click rules as app/delegate.js walks them ((target, event) → true when taken), tried before the Board's own. */
   clicks: [],
+  /** After each new state from Cue is in `state`, before the window draws it (app.js setState). */
+  stateChanged: () => {},
   /** Once the window has its state (boot, app.js). */
   boot: () => {},
 };

@@ -53,6 +53,8 @@ function setState(s) {
   dropLanded();
   if (s.now_ms) clockSkew = s.now_ms - Date.now();
   applyTheme();
+  // An add-on's error mustn't keep the window from drawing the new state.
+  try { addOn.stateChanged(); } catch (e) { console.error(e); }
   render();
   extNotify();
 }
