@@ -87,6 +87,13 @@ button.ib-sect:hover { color: var(--ink); }
 .ib-row.later:hover, .ib-row.later:focus-within, .ib-row.later.on, .ib-row.parked:hover, .ib-row.parked:focus-within { opacity: 1; }
 .ib-row.parked .ib-dot svg { width: 12px; height: 12px; }
 
+/* Running, a thin strip at the top of the list: "Running · 3" and a small moving bar a session; a click unfolds its rows. */
+button.ib-sect.ib-strip { padding: 8px 16px 6px; gap: 5px; }
+.ib-strip-bars { display: flex; align-items: center; gap: 4px; margin-left: 8px; min-width: 0; }
+.ib-strip-b { position: relative; width: 18px; height: 3px; flex: none; }
+.ib-strip-b .ib-bar { left: 0; right: 0; bottom: 0; }
+.ib-strip-more { font-size: 10px; font-weight: 600; letter-spacing: 0; color: var(--muted); font-variant-numeric: tabular-nums; }
+
 /* The open session: its head (dot, name, what it's at; Pin, Later, Snooze; the next ask), then the brief. */
 .inbox-page { container-type: inline-size; }
 .ib-head { position: relative; flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-height: 50px; padding: 8px 14px 8px 20px; border-bottom: 1px solid var(--line); }

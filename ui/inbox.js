@@ -1,9 +1,11 @@
 // ---------- Inbox: where you see what a session asks, and answer it (the header's Inbox, after Board) ----------
 // The list: a row per session, two lines each (its name and what it asks or is on; then why, or what it found), under
-// Pinned, Needs you, Running, Done and, folded at the foot, Parked (the Board's parked: put off, no notification). A
-// finished turn that ends on a question needs you; one that doesn't is Done. A session whose context is half full or
-// more comes up under Needs you to compact or hand off. Answer one and it sinks to Running, a bar moving along its foot
-// (slower when it's quiet, amber and still when it's stuck); it rises again when it asks again or finishes. A row keeps
+// a thin Running strip at the top (folded: "Running · 3" and a small moving bar for each), then Pinned, Needs you, Done
+// and, folded at the foot, Later and Parked (the Board's parked: put off, no notification). A finished turn that ends on
+// a question needs you; one that doesn't is Done. A session whose context is half full or more comes up under Needs you
+// to compact or hand off. Answer one and it sinks to Running, into the strip; opened, a Running row has a bar moving
+// along its foot (slower when it's quiet, amber and still when it's stuck); it rises again when it asks again or
+// finishes. A row keeps
 // its place while its state stays the same. Hovering a row shows Pin, Later and Snooze (Snoozed is a tab of its own).
 // Beside the list, a brief of the session open: never empty, as the top one that needs you opens by itself (its row
 // lit, where it is). Its main column has its own words before the question (the last paragraph or two), the question
@@ -34,6 +36,8 @@ const INBOX_FULL = 50;
 const INBOX_QUIET_MS = 2 * 60000;
 /** A row that came into Running this recently is still sinking: drawn faded. */
 const INBOX_SINK_MS = 8000;
+/** The Running strip shows this many small bars at most, then "+N". */
+const INBOX_STRIP_BARS = 8;
 /** "It says": the last paragraphs of its words before the question, at most this many, this long in all (characters). */
 /** Its reply shows whole up to INBOX_SAID_LONG characters; a longer one shows its last paragraphs up to INBOX_SAID_MAX. */
 const INBOX_SAID_LONG = 2500, INBOX_SAID_MAX = 1200;
@@ -126,8 +130,8 @@ function inboxSeated(sect, rows) {
   for (const r of fresh.reverse()) inboxSeats.set(r.sid, { sect, n: ++inboxSeq, at: now(), from: inboxSeats.get(r.sid)?.sect || "" });
   return rows.sort((a, b) => inboxSeats.get(b.sid).n - inboxSeats.get(a.sid).n);
 }
-/** The open tab's rows by section, in order: Pinned, Needs you, Running, Done, Parked (all but Needs you on the Inbox
- *  tab only; the Snoozed tab lists its rows as they are). */
+/** The open tab's rows by section, in order: Running (the strip at the top), Pinned, Needs you, Done, Later, Parked
+ *  (Pinned, Later and Parked on the Inbox tab only; the Snoozed tab lists its rows as they are). */
 function inboxSections() {
   const rows = inboxRows().filter((r) => inboxTabOf(r.s) === inboxTab).sort((a, b) => b.at - a.at);
   const box = inboxTab === "inbox", parked = box ? rows.filter((r) => inboxLater(r.s)) : [];
@@ -136,7 +140,7 @@ function inboxSections() {
   const of = (k) => rest.filter((r) => (inboxLater(r.s) ? "need" : inboxSectOf(r)) === k);
   let quiet = 0;
   const done = of("done").filter((r) => r.it || inboxPinned(r.s) || !box || ++quiet <= INBOX_DONE_MAX);
-  return [["pin", "Pinned", inboxSeated("pin", pinned)], ["need", "Needs you", inboxSeated("need", of("need"))], ["run", "Running", inboxSeated("run", of("run"))], ["done", "Done", inboxSeated("done", done)], ["later", "Later", inboxSeated("later", parked)], ["parked", "Parked", inboxParkedRows()]];
+  return [["run", "Running", inboxSeated("run", of("run"))], ["pin", "Pinned", inboxSeated("pin", pinned)], ["need", "Needs you", inboxSeated("need", of("need"))], ["done", "Done", inboxSeated("done", done)], ["later", "Later", inboxSeated("later", parked)], ["parked", "Parked", inboxParkedRows()]];
 }
 
 // ---------- a row's words ----------
@@ -256,9 +260,9 @@ function inboxRowHtml(r) {
     + `<span class="ib-l2">${esc(under)}</span><span class="ib-side">${side}</span>`
     + `<span class="ib-acts ${inboxSnoozeAt === `row:${sid}` ? "open" : ""}">${inboxActs(sid, s, `row:${sid}`)}</span>${kind === "run" && s ? inboxBar(s) : ""}</div>`;
 }
-/** Whether Later or Parked (`key`) is open at the foot of the list (folded unless you opened it; remembered). */
+/** Whether Running, Later or Parked (`key`) is open (folded unless you opened it; remembered). */
 const inboxFoldOpen = (key) => { try { return localStorage.getItem(`cue.inboxFold.${key}`) === "1"; } catch { return false; } };
-/** Open or fold Later or Parked. */
+/** Open or fold Running, Later or Parked. */
 function inboxFold(key) {
   try { localStorage.setItem(`cue.inboxFold.${key}`, inboxFoldOpen(key) ? "0" : "1"); } catch {}
   renderMain();
@@ -273,9 +277,20 @@ function inboxParkedHtml(p) {
     + `<span class="ib-l2">${esc(last ? plain(firstLine(last.text)) : "")}</span><span class="ib-side"><span class="ib-time">${p.parked_ms ? ago(p.parked_ms) : ""}</span></span>`
     + `<span class="ib-acts"><button class="ib-act" data-wake="${esc(sid)}" ${w ? "disabled" : ""}>↺ Resume</button></span></div>`;
 }
-/** A heading and its rows; nothing when it has none. Later's and Parked's headings fold them, with their counts. */
+/** The Running strip's bars: one small moving bar a session, in its project's color; past INBOX_STRIP_BARS, "+N". */
+function inboxStripBars(rows) {
+  const bars = rows.filter((r) => r.s).slice(0, INBOX_STRIP_BARS).map((r) => `<span class="ib-strip-b" style="${projStyle(r.project)}">${inboxBar(r.s)}</span>`).join("");
+  const more = rows.length - INBOX_STRIP_BARS;
+  return `<span class="ib-strip-bars">${bars}${more > 0 ? `<span class="ib-strip-more">+${more}</span>` : ""}</span>`;
+}
+/** A heading and its rows; nothing when it has none. Running's is a thin strip at the top, "Running · 3" and its bars,
+ *  that unfolds its rows; Later's and Parked's headings fold them, with their counts. */
 function inboxSection([key, title, rows]) {
   if (!rows.length) return "";
+  if (key === "run") {
+    const open = inboxFoldOpen(key);
+    return `<button class="ib-sect fold ib-strip" data-inbox-fold="run" aria-expanded="${open}"><span class="ib-fold">${open ? "▾" : "▸"}</span>${title} · <span class="ib-sect-n">${rows.length}</span>${inboxStripBars(rows)}</button>${open ? rows.map(inboxRowHtml).join("") : ""}`;
+  }
   if (key !== "later" && key !== "parked") return `<div class="ib-sect ${key}">${key === "pin" ? PIN_ICON : ""}${title}</div>${rows.map(inboxRowHtml).join("")}`;
   const open = inboxFoldOpen(key), draw = key === "parked" ? inboxParkedHtml : inboxRowHtml;
   return `<button class="ib-sect fold" data-inbox-fold="${key}" aria-expanded="${open}"><span class="ib-fold">${open ? "▾" : "▸"}</span>${title} <span class="ib-sect-n">${rows.length}</span></button>${open ? rows.map(draw).join("") : ""}`;
@@ -290,7 +305,8 @@ function inboxTabs() {
 const inboxEmpty = () => ({ inbox: "Nothing needs you, and nothing is working.", snoozed: "Nothing snoozed. Snooze on a row hides it until the time you pick." })[inboxTab];
 /** The list: its head (how many need you and run, the tabs), then the sections. */
 function inboxList() {
-  const secs = inboxSections(), need = secs[0][2].filter((r) => inboxSectOf(r) === "need").length + secs[1][2].length, run = secs[2][2].length;
+  const secs = inboxSections(), of = (k) => secs.find(([key]) => key === k)[2];
+  const need = of("pin").filter((r) => inboxSectOf(r) === "need").length + of("need").length, run = of("run").length;
   const counts = inboxTab === "inbox" ? [[need, "need you"], [run, "running"]].filter(([c]) => c).map(([c, w]) => `${c} ${w}`).join(" · ") : "";
   const body = secs.map(inboxSection).join("");
   return `<div class="inbox"><div class="ib-top"><b>Inbox</b><span class="ib-counts">${esc(counts)}</span>${inboxTabs()}</div>

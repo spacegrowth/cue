@@ -1,4 +1,5 @@
-// The Inbox (ui/inbox.js): two lines a row under Pinned, Needs you, Running, Done, and folded Later and Parked; a finished turn
+// The Inbox (ui/inbox.js): a folded Running strip at the top (its count and a small bar a session), then two lines a row
+// under Pinned, Needs you, Done, and folded Later and Parked; a finished turn
 // that asks nothing under Done; the top ask opened by itself beside the list as a brief (never its full chat, which is a
 // link): its words, the question with each choice's meaning, what you asked, what it did, what this turn changed, its
 // context; several questions stacked as cards with one Send; Send leaving it open (as a sent email), the answered row sinking to
@@ -11,18 +12,22 @@ const openInbox = async (page) => {
   await page.locator('.switch-view [data-view="inbox"]').click();
   await page.locator(".inbox .ib-row").first().waitFor();
 };
-/** A section's rows' sessions, in order. */
+/** The Running strip at the top of the list. */
+const strip = (page) => page.locator('.ib-sect.ib-strip[data-inbox-fold="run"]');
+/** Running unfolded from the start (remembered, as a click on the strip leaves it). */
+const runOpen = (page) => page.evaluate(() => localStorage.setItem("cue.inboxFold.run", "1"));
+/** A section's rows' sessions, in order (Running's strip counts as its heading). */
 const sectionSids = (page, title) => page.evaluate((t) => {
   const out = [];
   let on = false;
   for (const el of document.querySelectorAll(".ib-scroll > *")) {
-    if (el.matches(".ib-sect")) on = el.textContent.replace(/[▸▾]/, "").trim().toLowerCase() === t.toLowerCase();
+    if (el.matches(".ib-sect")) on = (el.matches(".ib-strip") ? "Running" : el.textContent.replace(/[▸▾]/, "").trim()).toLowerCase() === t.toLowerCase();
     else if (on && el.matches(".ib-row")) out.push(el.dataset.inboxOpen);
   }
   return out;
 }, title);
 /** The section titles, in order. */
-const sections = (page) => page.locator(".ib-sect").allTextContents();
+const sections = (page) => page.locator(".ib-sect").evaluateAll((els) => els.map((el) => (el.matches(".ib-strip") ? "Running" : el.textContent)));
 /** api's ask as three questions, the second allowing several picks. */
 const threeQuestions = (st) => {
   const it = st.items.find((i) => i.id === "n6");
@@ -38,10 +43,11 @@ test("the list: every finished turn waiting on you needs you, a question or not 
   // relay's reply ends on a statement, not a question ("Recommendation: send fixes"): still your turn.
   await cue.change((st) => { st.items.find((i) => i.id === "n1").message = "Reviewed it.\n\nRecommendation: send fixes"; });
   await openInbox(page);
-  expect(await sections(page)).toEqual(["Needs you", "Running"]);
+  expect(await sections(page)).toEqual(["Running", "Needs you"]);
   const need = await sectionSids(page, "Needs you");
   expect(need.sort()).toEqual(["api", "det", "pipe", "relay", "sec", "web"]);
   await expect(page.locator('.ib-row[data-inbox-open="relay"] .ib-subj')).toHaveText("Recommendation: send fixes");
+  await strip(page).click();
   expect((await sectionSids(page, "Running")).sort()).toEqual(["alerts", "eng", "names"]);
   await expect(page.locator('.switch-view [data-view="inbox"] .ib-count')).toHaveText("6");
   // Line 1 the question it ends on, line 2 a useful line; the time at the right.
@@ -51,6 +57,40 @@ test("the list: every finished turn waiting on you needs you, a question or not 
   await expect(sec.locator(".ib-time")).toBeVisible();
   // The tabs: Inbox and Snoozed (parked ones are under Parked, on the Inbox tab).
   await expect(page.locator(".ib-tab")).toHaveText(["Inbox", "Snoozed"]);
+});
+
+test("Running is a thin strip at the top: its count and a small bar a session, folded until clicked; none with nothing running", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  await openInbox(page);
+  // At the very top, above Needs you; folded by default, its rows hidden.
+  await expect(page.locator(".ib-scroll > .ib-sect").first()).toHaveClass(/\bib-strip\b/);
+  await expect(strip(page)).toHaveAttribute("aria-expanded", "false");
+  await expect(strip(page)).toContainText("Running · 3");
+  await expect(strip(page).locator(".ib-strip-b .ib-bar")).toHaveCount(3);
+  await expect(strip(page).locator(".ib-strip-more")).toHaveCount(0);
+  await expect(page.locator(".ib-row.run")).toHaveCount(0);
+  // A click unfolds its rows under it (remembered); a running row opens its brief; another click folds them.
+  await strip(page).click();
+  await expect(strip(page)).toHaveAttribute("aria-expanded", "true");
+  expect((await sectionSids(page, "Running")).sort()).toEqual(["alerts", "eng", "names"]);
+  expect(await page.evaluate(() => localStorage.getItem("cue.inboxFold.run"))).toBe("1");
+  await page.locator('.ib-row[data-inbox-open="eng"]').click();
+  await expect(page.locator(".inbox-page")).toHaveAttribute("data-inbox-page", "eng");
+  await strip(page).click();
+  await expect(strip(page)).toHaveAttribute("aria-expanded", "false");
+  await expect(page.locator(".ib-row.run")).toHaveCount(0);
+  // More than eight running: eight bars, then "+N".
+  await cue.change((st) => {
+    const eng = st.sessions.find((x) => x.session_id === "eng");
+    for (let n = 0; n < 7; n++) st.sessions.push({ ...eng, session_id: `run${n}`, name: `run ${n}` });
+  });
+  await expect(strip(page)).toContainText("Running · 10");
+  await expect(strip(page).locator(".ib-strip-b")).toHaveCount(8);
+  await expect(strip(page).locator(".ib-strip-more")).toHaveText("+2");
+  // Nothing running: no strip.
+  await cue.change((st) => { st.sessions = st.sessions.filter((x) => x.state !== "working" && x.state !== "agent"); });
+  await expect(strip(page)).toHaveCount(0);
+  await expect(page.locator(".ib-sect").first()).toHaveText("Needs you");
 });
 
 test("the top ask opens by itself, its row lit in place; a row opened is a brief, not its chat; Open chat goes to the Board's chat", async ({ cue, page }) => {
@@ -149,6 +189,7 @@ test("Send leaves it open with what you sent, as a sent email; the answered row 
   await cue.open("board-waiting");
   // Cue never answers: the move can't be waiting on the session getting to work.
   await cue.override("reply", () => new Promise(() => {}));
+  await runOpen(page);
   await openInbox(page);
   await page.locator('.ib-row[data-inbox-open="sec"]').click();
   await page.locator('.inbox-page textarea[data-text="s:sec"]').fill("yes, run it");
@@ -210,6 +251,7 @@ test("several questions stack as cards: an answered one dims with its answer, th
 
 test("answered, a row sinks to Running with a moving bar; quiet it slows, stuck it's amber and still; asking again it rises", async ({ cue, page }) => {
   await cue.open("board-waiting");
+  await runOpen(page);
   await openInbox(page);
   await page.locator('.ib-row[data-inbox-open="sec"]').click();
   await page.locator('.inbox-page textarea[data-text="s:sec"]').fill("yes, run it");
@@ -250,7 +292,7 @@ test("Parked lists the Board's parked sessions (stopped and kept) with Resume; L
   // The Board's PARKED · CLOSED drawer has two parked sessions (drift, guide) and ended ones (lost1, lost2).
   await cue.open("parked-ended");
   await cue.change((st) => { st.sessions.find((x) => x.session_id === "eng").later_ms = st.now_ms; });
-  await page.evaluate(() => { localStorage.setItem("cue.inboxFold.later", "1"); localStorage.setItem("cue.inboxFold.parked", "1"); });
+  await page.evaluate(() => { localStorage.setItem("cue.inboxFold.later", "1"); localStorage.setItem("cue.inboxFold.parked", "1"); localStorage.setItem("cue.inboxFold.run", "1"); });
   await openInbox(page);
   expect(await sectionSids(page, "Later 1")).toEqual(["eng"]);
   expect(await sectionSids(page, "Running")).not.toContain("eng");
@@ -264,12 +306,13 @@ test("Parked lists the Board's parked sessions (stopped and kept) with Resume; L
 
 test("Pin puts a row under Pinned (kept by Cue); Later folds it under Later at the foot; Snooze moves it to its tab, and back", async ({ cue, page }) => {
   await cue.open("board-waiting");
+  await runOpen(page);
   await openInbox(page);
   const row = page.locator('.ib-row[data-inbox-open="det"]');
   await row.hover();
   await row.locator("[data-inbox-pin]").click();
   await cue.called("set_pinned", { sessionId: "det", on: true });
-  expect(await sections(page)).toEqual(["Pinned", "Needs you", "Running"]);
+  expect(await sections(page)).toEqual(["Running", "Pinned", "Needs you"]);
   expect(await sectionSids(page, "Pinned")).toEqual(["det"]);
   // Later: the Board's Later (its later mark). Under Later at the foot, folded; not counted as needing you.
   const needN = await page.locator('.switch-view [data-view="inbox"] .ib-count').textContent();
@@ -469,6 +512,7 @@ test("an open session can be closed from its head, as on the Board: Close, then 
 test("what you sent that hasn't gone yet shows: queued on its row, and in its brief with Send now, as in its chat", async ({ cue, page }) => {
   await cue.open("board-waiting");
   await cue.change((st) => { const s = st.sessions.find((x) => x.session_id === "eng"); s.queued = { text: "also check the retry path", at_ms: Date.now(), images: [] }; });
+  await runOpen(page);
   await page.locator('.switch-view [data-view="inbox"]').click();
   const row = page.locator('.ib-row[data-inbox-open="eng"]');
   await expect(row.locator(".ib-l2")).toHaveText("Queued: “also check the retry path”");
@@ -503,6 +547,7 @@ test("at work, it reads as a mail thread: earlier, its message whole, your reply
     const s = st.sessions.find((x) => x.session_id === "eng"), t0 = Date.now() - 600000;
     s.thread = [{ role: "you", text: "Refactor the order router", at_ms: t0 }, { role: "agent", text: "Split the router in two; partial fills next?", at_ms: t0 + 60000 }, { role: "you", text: "yes, partial fills too", at_ms: t0 + 120000 }];
   });
+  await runOpen(page);
   await page.locator('.switch-view [data-view="inbox"]').click();
   await page.locator('.ib-row[data-inbox-open="eng"]').click();
   const pg = page.locator('.inbox-page[data-inbox-page="eng"]');
