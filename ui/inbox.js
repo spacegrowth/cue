@@ -499,7 +499,7 @@ function inboxThread(r, words) {
 /** A message's head as mail's: who on the left, when on the right ("2:14pm · 5m ago"; nothing when not known). */
 const inboxHead = (who, ms) => `<div class="ib-mhead"><span class="ib-k">${who}</span>${ms ? `<span class="ib-when">${clockAt(ms)} · ${ago(ms)} ago</span>` : ""}</div>`;
 function inboxYours(sid, yours) {
-  return yours.map((e) => `<div class="ib-yours">${inboxHead("You", e.at_ms)}<div class="ib-yours-text">${esc(e.text).replace(/\n/g, "<br>")}</div></div>`).join("");
+  return yours.map((e) => `<div class="ib-yours">${inboxHead("You", e.at_ms)}<div class="ib-yours-text">${esc(e.text).replace(/\n/g, "<br>")}</div>${thumbs(e.images)}</div>`).join("");
 }
 function inboxEarlier(r, msgs) {
   if (!msgs.length) return "";
@@ -514,7 +514,7 @@ function inboxMsgHtml(sid, e) {
   // Folded: two lines of it, and "more" when that cuts it (a click opens it whole; "less" folds it again).
   const line = plain(e.text).replace(/\s+/g, " ").trim(), cut = line.length > INBOX_MSG_CUT || /\n\s*\S/.test(String(e.text).trim());
   const tag = cut ? `<span class="ib-msg-more">${open ? "less" : "more"}</span>` : "";
-  const body = open ? `<div class="ib-msg-body ${you ? "" : "ib-md msg"}">${you ? esc(e.text).replace(/\n/g, "<br>") : md(e.text, { pathsOf: sid })}${you ? "" : localImages(e.text)}${tag}</div>` : `<span class="ib-msg-fold"><span class="ib-msg-line">${esc(line.slice(0, 600))}</span>${tag}</span>`;
+  const body = open ? `<div class="ib-msg-body ${you ? "" : "ib-md msg"}">${you ? esc(e.text).replace(/\n/g, "<br>") : md(e.text, { pathsOf: sid })}${thumbs(e.images)}${you ? "" : localImages(e.text)}${tag}</div>` : `<span class="ib-msg-fold"><span class="ib-msg-line">${esc(line.slice(0, 600))}</span>${thumbs(e.images)}${tag}</span>`;
   return `<div class="ib-msg ${you ? "you" : "it"} ${open ? "open" : ""}" role="button" data-inbox-msg="${esc(k)}">${who}${body}</div>`;
 }
 /** What you've written to it that hasn't reached it yet, as its chat shows it (chat/render.js): on its way, queued in
@@ -542,7 +542,7 @@ function inboxMain(r) {
   const label = r.kind === "run" ? "It said last" : r.kind === "ask" || r.kind === "turn" ? "It says" : "It said";
   const whole = inboxWhole.has(r.sid), cut = said !== inboxSaid(words, [q, then], true);
   const shown = whole ? inboxSaid(words, [q, then], true) : said, more = cut ? `<button class="ib-link" data-inbox-whole="${esc(r.sid)}">${whole ? "Show less" : "Show the whole reply"}</button>` : "";
-  const saidHtml = shown ? `<div class="ib-said">${inboxHead(label, thread.said?.at_ms || r.it?.created_ms || 0)}<div class="ib-md msg">${md(shown, { pathsOf: r.sid })}</div>${localImages(shown)}${more}</div>` : "";
+  const saidHtml = shown ? `<div class="ib-said">${inboxHead(label, thread.said?.at_ms || r.it?.created_ms || 0)}<div class="ib-md msg">${md(shown, { pathsOf: r.sid })}</div>${thumbs(thread.said?.images)}${localImages(shown)}${more}</div>` : "";
   const thenHtml = then ? `<div class="ib-then">It plans next: <b>${esc(plain(then))}</b></div>` : "";
   const reply = (ph) => inboxReply(r.sid, `s:${r.sid}`, ph, "Send", r.it ? `data-act="send" data-id="${esc(r.it.id)}"` : `data-inbox-send="${esc(r.sid)}"`);
   let top = "", foot = "", acts = "";

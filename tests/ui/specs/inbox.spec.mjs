@@ -603,3 +603,28 @@ test("an earlier message shows two lines, with more when that cuts it; a click o
   await expect(cut.locator(".ib-msg-body")).toContainText("Sentence 11");
   await expect(cut.locator(".ib-msg-more")).toHaveText("less");
 });
+
+test("pictures sent with a message show in the Inbox, as in the chat: in an earlier row, under your reply and under its message; a click opens one", async ({ cue, page }) => {
+  // The pictures, served as a real (one-pixel) PNG.
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
+  await page.route(/\/tmp\/[a-d]\.png$/, (r) => r.fulfill({ status: 200, contentType: "image/png", body: png }));
+  await cue.open("board-waiting");
+  await cue.change((st) => {
+    const s = st.sessions.find((x) => x.session_id === "eng"), t0 = Date.now() - 600000;
+    s.thread = [
+      { role: "you", text: "Look at this layout", images: ["/tmp/a.png"], at_ms: t0 },
+      { role: "agent", text: "Split the router in two; partial fills next?", images: ["/tmp/b.png"], at_ms: t0 + 60000 },
+      { role: "you", text: "like this one", images: ["/tmp/c.png", "/tmp/d.png"], at_ms: t0 + 120000 },
+    ];
+  });
+  await page.locator('.switch-view [data-view="inbox"]').click();
+  await page.locator('[data-inbox-fold="run"]').click();
+  await page.locator('.ib-row[data-inbox-open="eng"]').click();
+  const pg = page.locator('.inbox-page[data-inbox-page="eng"]');
+  await expect(pg.locator(".ib-msg .thumbs .thumb")).toHaveCount(1);
+  await expect(pg.locator(".ib-said .thumbs .thumb")).toHaveCount(1);
+  await expect(pg.locator(".ib-yours .thumbs .thumb")).toHaveCount(2);
+  await pg.locator(".ib-yours .thumb").first().click();
+  await expect(page.locator(".lightbox img")).toHaveAttribute("src", /c\.png/);
+  await expect(page.locator(".lightbox")).toBeVisible();
+});
