@@ -274,7 +274,8 @@ const crewHandles = (sid) => (typeof crewCommit === "function" ? crewCommit(sid)
  *  `ready` (the crew's page, which has no Ready) puts those here too. */
 function crewNeedRows(sid, groups, ready = crewHandles(sid)) {
   const list = ready ? groups.need.concat(groups.ready) : groups.need;
-  return { list, rows: list.map((t) => mateNeeds(sid, t) ? mateNeedRow(sid, t) : mateReadyRow(sid, t)).join("") };
+  const items = list.map((t) => mateNeeds(sid, t) ? mateNeedRow(sid, t) : mateReadyRow(sid, t));
+  return { list, items, rows: items.join("") };
 }
 /** Nothing needs you: what it would ask you about. */
 const CREW_NONE = "It asks here before anything one-way: merging to main, a new dependency, a choice only you can make.";
@@ -386,10 +387,11 @@ function placeTeamRows() {
   mateShow = null;
   if (!show?.length) return;
   // The drawer and the crew's page can both be open: what opened scrolls in the box it opened in (the first): on the
-  // page, the lanes' or the stream's, else the page's own.
-  const box = show[0].closest(".crew-body, .cp-scroll, .cp-items, .cp-body"), row = show[0].closest(".mt-row") || (show[0].matches(".mt-under") && show[0].previousElementSibling) || show[0], last = show.filter((e) => box.contains(e)).at(-1);
-  // The stream starts at its end (column-reverse), its scrollTop counting up from there: the browser places it.
-  if (box.matches(".cp-items")) return last.scrollIntoView({ block: "nearest" });
+  // page, its list's, its chat's or Needs you's.
+  const box = show[0].closest(".crew-body, .cp-scroll, [data-chat], .cp-nrows"), row = show[0].closest(".mt-row") || (show[0].matches(".mt-under") && show[0].previousElementSibling) || show[0], last = show.filter((e) => box?.contains(e)).at(-1);
+  if (!box) return;
+  // The chat and Needs you: the browser places it, just enough.
+  if (!box.matches(".crew-body, .cp-scroll")) return last.scrollIntoView({ block: "nearest" });
   const top = row.offsetTop - box.offsetTop, bottom = last.offsetTop - box.offsetTop + last.offsetHeight;
   if (bottom > box.scrollTop + box.clientHeight) box.scrollTop = Math.min(top, bottom - box.clientHeight);
 }

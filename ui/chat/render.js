@@ -120,7 +120,9 @@ function reviewFolds(ex, team) {
   return { reviews, reviewAt };
 }
 
-function chatHtml(it, s, harness, paged = false) {
+/** `page`: a page that draws this chat as its own (the crew's page, team_page.js): `extra`, more rows of its own placed
+ *  by time ({ at, html }, each keyed). It folds replies as the chat does. */
+function chatHtml(it, s, harness, paged = false, page = null) {
   const ex = conversation(it, s);
   const lastAgent = ex.map((e) => e.role).lastIndexOf("agent");
   const agentAt = ex.flatMap((e, n) => (e.role === "agent" ? [n] : []));
@@ -159,14 +161,14 @@ function chatHtml(it, s, harness, paged = false) {
     }
     const key = `${s?.session_id || it?.id}:${e.at_ms}`;
     const long = e.text.length > 280 || e.text.split("\n").length > 4;
-    const folded = !recent.has(n) && long && !openMsgs.has(key);
+    const foldable = !recent.has(n) && long, folded = foldable && !openMsgs.has(key);
     const follow = it?.followup && e.text === it.message && !hookInChat(sid, ex.findLast((y) => y.role === "you" && y.at_ms < e.at_ms)?.at_ms ?? 0) ? followHtml(it) : "";
     fwdMsgs.set(key, { text: addOn.plain(e.text), from: project, fromSid: sid });
     const said = addOn.reply(sid, stripStatus(e.text));
     return `<div class="cv-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}"><div class="cv-meta">${esc(agentName(harness))}${machTag(it?.machine || s?.machine)} · ${ago(e.at_ms)} ago${n === lastAgent ? toldMeta(s) : ""}</div>
       <div class="msg cv-text">${md(said.text, { runIn: s?.session_id })}</div>${said.after}${thumbs(e.images)}${localImages(e.text)}
-      <div class="cv-acts">${sid ? listenBtn(key) : ""}${long && paged && sid ? `<button class="cv-pill" data-read="${esc(key)}">${BOOK_ICON}Read</button>` : ""}${!recent.has(n) && long ? `<button class="cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}${n === lastAgent ? actReplyHtml(s, e.at_ms) : ""}<button class="cv-fwd" data-fwd="${esc(key)}">↗ Send to…</button></div>${follow}</div>`;
-  })(), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran, restarts));
+      <div class="cv-acts">${sid ? listenBtn(key) : ""}${long && paged && sid ? `<button class="cv-pill" data-read="${esc(key)}">${BOOK_ICON}Read</button>` : ""}${foldable ? `<button class="cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}${n === lastAgent ? actReplyHtml(s, e.at_ms) : ""}<button class="cv-fwd" data-fwd="${esc(key)}">↗ Send to…</button></div>${follow}</div>`;
+  })(), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran, restarts, page?.extra || []));
   for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(`<div class="cv-you ${o.via ? "" : "sending"}" data-key="${esc(K(`out:${o.at}`))}"><div class="cv-you-text">${esc(o.text).replace(/\n/g, "<br>")}</div>${o.images.length ? `<div class="thumbs">${o.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}<div class="cv-meta" data-sid="${esc(o.sid)}">${/^kept in Cue/.test(o.via || "") ? "Not sent yet · it goes when this turn ends" : /^not sent: /.test(o.via || "") ? `Not sent · ${esc(o.via.slice(10))}${runHereBtn(o.via, s)}` : o.via ? `Sent · via ${esc(o.via)}` : esc(sendingMeta(o.sid))}</div></div>`);
   // Sent while it worked: Cue keeps it until the turn ends. Yours to take back (Edit, Esc) or send now. (What Cue
   // itself will send its crew's lead once it's free waits on the member's row in the crew tray, team.js: the chat

@@ -31,7 +31,8 @@ const addOn = {
   chatMenu: (sid, s) => "",
   /** On lead `sid`'s crew page (team_page.js): its own head line in place of the lead's name (‹ Back to the board
    *  stays), "" for the usual one; a band under the head line; rows under the goal; rows of its own in Needs you, drawn
-   *  as its rows are, with how many: { html, count }; and decisions of its own in the lead's stream, drawn as the crew
+   *  as its rows are, one each: { items: [{ html }], count } (an older `{ html, count }` shows whole, uncapped); and
+   *  decisions of its own in the lead's chat, drawn as the crew
    *  log's are (team.js crewLogRow, big): { html, count }, or with `items: [{ at_ms, html }]` placed in time order
    *  among the lead's words (else `html` comes first, oldest). The page opens with addOn.openCrewPage(sid, { from, back }):
    *  within the add-on's view `from` (its tab stays selected, Back and Esc return to it), and closes with
@@ -39,7 +40,7 @@ const addOn = {
   crewPageHead: (sid) => "",
   crewPageBand: (sid) => "",
   crewPageRows: (sid) => "",
-  crewPageNeeds: (sid) => ({ html: "", count: 0 }),
+  crewPageNeeds: (sid) => ({ items: [], count: 0 }),
   crewPageDecided: (sid) => ({ html: "", count: 0 }),
   /** Click rules as app/delegate.js walks them ((target, event) → true when taken), tried before the Board's own. */
   clicks: [],

@@ -103,7 +103,7 @@ const SCREENS = {
   },
   // The crew's page (ui/team_page.js), from Open full › on the tray's line, across the window: hub asking, docs committed
   // to its crew/ branch (as the log says), handoff at work on the fix sent back, rows and skill as they are, spike set
-  // aside; the lead's decisions and replies in one stream beside Needs you.
+  // aside: the lead's chat on the left with Needs you over its box, the list (The lead, the crew's rows) on the right.
   "team-page": {
     scenario: "world-team",
     viewport: { width: 1280, height: 1000 },
@@ -117,10 +117,9 @@ const SCREENS = {
       await openCard(p, TEAM_ASK);
       await p.locator('.crew-tray [data-cp-open="lead"]').click();
     },
-    done: async (p) => { await p.locator(".crew-page .cp-lane").nth(3).waitFor(); await expect(p.locator(".cp-done .mt-done-line")).toHaveText("2 done ›"); await p.locator(".cp-needs.red .mt-row.need").waitFor(); },
+    done: async (p) => { await p.locator(".crew-page .cp-scroll > .cp-row").nth(3).waitFor(); await expect(p.locator(".cp-done .mt-done-line")).toHaveText("2 done ›"); await p.locator(".cp-needs .mt-row.need").waitFor(); },
   },
-  // The same at the smallest window, its finished ones unfolded: too short to fit, the lanes in full and the page
-  // scrolling as a whole.
+  // The same at the smallest window, its finished ones unfolded: the list narrower, scrolling inside itself.
   "team-page-narrowest": {
     scenario: "world-team",
     viewport: NARROWEST,
@@ -135,7 +134,7 @@ const SCREENS = {
       await p.locator('.crew-tray [data-cp-open="lead"]').click();
       await p.locator(".cp-done .mt-done-line").click();
     },
-    done: async (p) => { await p.locator(".crew-page .cp-done .cp-lane").nth(1).waitFor(); await p.locator(".cp-needs.red .mt-row.need").waitFor(); },
+    done: async (p) => { await p.locator(".crew-page .cp-done .cp-row").nth(1).waitFor(); await p.locator(".cp-needs .mt-row.need").waitFor(); },
   },
   // How work goes out to the crew (ui/team_send.js). team-switch: the mode menu open from the tray's line, split on Always.
   // team-handout: a task dropped on the lead's card under Sessions, one of the files it names already rows's.

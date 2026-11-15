@@ -97,10 +97,15 @@ function activeHead(a) {
       ${s?.state === "working" ? `<button class="btn deny" data-act="interrupt" data-sid="${esc(sid)}" title="Stop it mid-turn (Esc twice)">Stop</button>` : ""}
       ${closable ? closeBtn(sid) : ""}${focus && s?.state !== "working" ? `<span class="esc-hint">esc</span>` : ""}</div>`;
 }
-/** The chat area: the full view in its place, or the chat with the rename notice, Catch me up and its status line. */
+/** The chat's body: its messages (chatHtml, `page` as it takes it), the rename notice, Catch me up and its status line.
+ *  The crew's page draws the same body on its left (team_page.js). */
+function chatBody(it, s, harness, sid, page = null) {
+  return chatHtml(it, s, harness, true, page) + keyed(renameNotice(s), "rename") + (sid && s ? catchUpBar(sid, it, s) : "") + keyed(statusLine(it, s), "status");
+}
+/** The chat area: the full view in its place, or the chat's body. */
 function activeChat(a, full) {
   const { it, s, sid, harness } = a;
-  return full ? full.bar + chatBox(full.forKey, full.body) : chatBox(`m|${sid || it?.id}`, chatHtml(it, s, harness, true) + keyed(renameNotice(s), "rename") + (sid && s ? catchUpBar(sid, it, s) : "") + keyed(statusLine(it, s), "status"));
+  return full ? full.bar + chatBox(full.forKey, full.body) : chatBox(`m|${sid || it?.id}`, chatBody(it, s, harness, sid));
 }
 /** The pane for an open card or session. At work (a turn, or compacting): a light sweeps along the top edge, as
  *  in its terminal tab. Not while it waits. The Next bar (nextBar) is hidden for now (it read as part of the terminal tabs

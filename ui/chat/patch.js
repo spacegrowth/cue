@@ -192,7 +192,7 @@ function grow(el) {
   }
   // Growing the box shrinks the chat above it. If you were reading the end of the chat, keep the
   // end in view (the conversation moves up with the box) instead of letting the box cover it.
-  const chat = el.closest(".active-pane")?.querySelector("[data-chat]");
+  const chat = el.closest(".active-pane, .crew-page")?.querySelector("[data-chat]");
   const pinned = chat && chat.scrollHeight - chat.scrollTop - chat.clientHeight < 24;
   const top = el.scrollTop, atEnd = el.selectionEnd >= el.value.length;
   el.style.height = "auto";

@@ -366,33 +366,60 @@ assert.doesNotMatch(folded, /data-mt-act|data-crew-open|Open ›/, "no buttons i
   assert.deepEqual(pick("held"), ["Its review didn't come back", "", 0, "need", "needs you"], "needs you: what the hub says");
   // The meter: stages before its own done, its own as it is.
   assert.equal(ctx.crewMeter(docs), '<span class="cp-meter"><span class="cp-m" aria-hidden="true"><b class="done"></b><b class="done"></b><b class="done"></b><b class="now"></b><b class=""></b></span><span class="cp-ml">fixing</span></span>');
-  // Opened: its steps in time order (the log's first words at when noted, the last at when it last grew), the step
-  // it's on last; what review found with what came of it.
   const t = world.sessions.N.team.find((m) => m.name === "docs");
-  assert.deepEqual(ctx.crewStepTimes("N", t).map(([a, x, on]) => [a && Math.round((NOW - a) / M), x, on]), [[9, "Started", false], [5, "Reviewed: 1 should-fix, 1 note", false], [0, "Sent back", false], [4, "Left the note as is", false], [0, "Editing `docs/limits.md`", true]]);
-  assert.match(ctx.crewFoundRows("N", t), /should-fix<\/span><span>docs\/limits\.md:12 — Retry-After[^<]*<\/span><span class="co-fs">sent back<\/span>.*note<\/span><span>docs\/limits\.md:30 — link the Keys page<\/span><span class="co-fs"><\/span>/s, "a should-fix sent back; a note only 'left as is' when the log says exactly that");
-  const lane = ctx.crewLane("N", t);
-  assert.doesNotMatch(lane, /title=/, "no hover text");
-  assert.match(lane, /data-cp-lane="N\|id-docs" aria-expanded="false">docs <span class="cp-car">›<\/span>/, "its name opens it in place");
+  // Its row in the page's list: name, its stage in a word and meter, what it was asked, what it does now, its context
+  // (the finding it's fixing), files and how long. No buttons in it: the row opens its menu. Under it, outside it, the
+  // drawer's one action for it (mateOneAct): Stop at work, Resume first when stuck, Skip while its review waits.
+  t.asked = "Document the limits"; t.files = ["docs/limits.md"];
+  const row = ctx.crewListRow("N", t), inRow = row.slice(0, row.indexOf("</button>"));
+  assert.doesNotMatch(row, /title=/, "no hover text");
+  assert.match(row, /^<button class="cp-row[^"]*" data-key="cp:N\|id-docs" data-mt-more="N\|id-docs" aria-expanded="false">/, "the row is the one button: it opens its menu");
+  assert.equal((inRow.match(/<button/g) || []).length, 1, "nothing else to press in it");
+  assert.match(row, /<div class="cp-acts "><button class="mt-lk " data-mt-act="stop" data-mt-sid="N" data-mt-agent="id-docs" >Stop<\/button><\/div>$/, "at work: Stop");
+  assert.match(ctx.crewListRow("N", { ...t, quiet: "stuck" }), /data-mt-act="resume"[^>]*>Resume<\/button><button[^>]*data-mt-act="stop"/, "stuck: Resume, then Stop");
+  assert.match(ctx.crewListRow("N", { ...t, state: "queued" }), /<div class="cp-acts "><button class="mt-lk" data-act="unqueue-review"[^>]*>Skip<\/button><\/div>/, "its review waiting: Skip");
+  assert.match(row, /<span class="cp-nm">docs<\/span><span class="cp-meter">.*<span class="cp-ml">fixing<\/span>/, "its name, its meter and its stage");
+  assert.match(row, /<span class="cp-ask1">Document the limits<\/span><span class="cp-now ">Fixing what review found<\/span>/, "what it was asked, then what it's doing now");
+  assert.match(row, /<span class="cp-x"><span class="cp-f fix">should-fix<\/span>docs\/limits\.md:12 — Retry-After[^<]*<\/span><span class="cp-r">1 file · 9m<\/span>/, "the finding it fixes, its files and how long");
+  assert.match(ctx.crewListRow("N", world.sessions.N.team[0]), /class="cp-row  q /, "one that asks you is marked to show red");
   world.items = world.items.filter((i) => i.id !== "q1");
   delete world.sessions.N;
 }
 
-
-// ---- the crew's page: a long reply of the lead's cut at whole blocks (team_page.js crewCutReply) ----
+// ---- the crew's page: the list in the crew's order, whatever each one's state; the finished ones folded at its end;
+// Needs you shows its first row, "N more ›" the rest ----
 {
-  const cut = ctx.crewCutReply;
-  assert.deepEqual(cut("short\n\nreply"), { text: "short\n\nreply", cut: false }, "short: whole");
-  const table = "| a | b |\n|---|---|\n" + Array.from({ length: 9 }, (_, i) => `| r${i} | x |`).join("\n");
-  assert.deepEqual(cut(`Intro line.\n\n${table}\n\nAfter.`), { text: "Intro line.", cut: true }, "a table that doesn't fit isn't cut through: it's left out whole");
-  assert.deepEqual(cut(table), { text: table.split("\n").slice(0, 7).join("\n"), cut: true }, "a table alone too tall: its head and its first whole rows");
-  const code = "```js\n" + Array.from({ length: 10 }, (_, i) => `l${i}`).join("\n") + "\n```";
-  assert.deepEqual(cut(code), { text: "```js\nl0\nl1\nl2\nl3\nl4\n```", cut: true }, "code alone too tall: its first lines, its fences kept");
-  const list = Array.from({ length: 5 }, (_, i) => `- item ${i}\n  more ${i}`).join("\n");
-  assert.deepEqual(cut(list), { text: "- item 0\n  more 0\n- item 1\n  more 1\n- item 2\n  more 2", cut: true }, "a list by whole items");
-  const lines7 = Array.from({ length: 7 }, (_, i) => `l${i}`).join("\n");
-  assert.deepEqual(cut(`Run this:\n\`\`\`\n${lines7}\n\`\`\``), { text: "Run this:", cut: true }, "code under a text line isn't split: left out whole, fences and all");
-  assert.deepEqual(cut(`Where it is:\n${table}`), { text: "Where it is:", cut: true }, "a table under a text line isn't split either");
-  assert.deepEqual(cut("Run this:\n```\na\nb\n```\nthen\nmore\nand\nmore"), { text: "Run this:\n```\na\nb\n```\nthen\nmore\nand", cut: true }, "code that fits kept whole with the lines around it");
-  assert.deepEqual(cut("p1\n\np2\n\n```\na\nb\n```\n\np3\n\np4\n\np5"), { text: "p1\n\np2\n\n```\na\nb\n```\n\np3\n\np4", cut: true }, "blocks up to six lines' worth");
+  world.sessions.P = { session_id: "P", state: "working", since_ms: NOW - M, harness: "claude", team: [
+    mate("api", "working", { step: "Editing api.rs" }),
+    mate("web", "reviewed", { findings: [], recommendation: "commit" }),
+    mate("auth", "working", { step: "Editing auth.rs", needs: "Out of fix rounds" }),
+    mate("docs", "committed", { ended_ms: NOW - 2 * M }),
+    mate("spike", "aside"),
+  ] };
+  const keys = () => [...ctx.crewRowsHtml("P").matchAll(/class="cp-row[^"]*" data-key="cp:P\|id-(\w+)"/g)].map((m) => m[1]);
+  ctx.mateDoneOpen.delete("P");
+  assert.deepEqual(keys(), ["api", "web", "auth"], "the crew's own order: auth, which needs you, isn't pulled to the top");
+  assert.match(ctx.crewRowsHtml("P"), /data-mt-done="P" aria-expanded="false">2 done ›<\/button><\/div>$/, "committed and set aside folded into one line at the list's end");
+  ctx.mateDoneOpen.add("P");
+  assert.deepEqual(keys(), ["api", "web", "auth", "docs", "spike"], "unfolded: the finished ones under it, in their order");
+  assert.match(ctx.crewRowsHtml("P"), /class="cp-row past  "/, "dimmed");
+  ctx.mateDoneOpen.delete("P");
+  // A change of state moves nothing.
+  world.sessions.P.team[0].state = "reviewed";
+  assert.deepEqual(keys(), ["api", "web", "auth"], "a row never moves for its state");
+  // The list's line: what needs you first, in red; no time since it started.
+  assert.match(ctx.crewStatusLine("P", 2), /The crew · 5<\/span><span class="cp-count"><span class="cp-q">2 need you<\/span> · 1 working · 1 committed<\/span>/);
+  assert.doesNotMatch(ctx.crewStatusLine("P", 0), /need|since/);
+  // Needs you: nothing at all when nothing needs you; one row and "N more ›" when more do; open, all of them.
+  // Only the rows shown are drawn: none hidden.
+  const rows3 = ["<r1/>", "<r2/>", "<r3/>"];
+  assert.equal(ctx.crewNeedsBox("P", []), "", "nothing needs you: no box");
+  assert.doesNotMatch(ctx.crewNeedsBox("P", ["<r1/>"]), /more/, "one: no more");
+  assert.match(ctx.crewNeedsBox("P", rows3), /^<div class="cp-needs "><div class="cp-nh"><span class="mt-grp red">Needs you · 3<\/span><span class="grow"><\/span><button class="mt-lk cp-nmore" data-cp-needs="P" aria-expanded="false">2 more ›<\/button><\/div><div class="cp-nrows"><r1\/><\/div><\/div>$/, "three: the first only, and 2 more ›");
+  ctx.crewNeedsAll.add("P");
+  assert.match(ctx.crewNeedsBox("P", rows3), /class="cp-needs all".*Fewer ‹<\/button><\/div><div class="cp-nrows"><r1\/><r2\/><r3\/><\/div>/, "open: all of them");
+  ctx.crewNeedsAll.delete("P");
+  // An add-on that still gives its rows as one piece of html: that piece is one row, the count its own.
+  assert.match(ctx.crewNeedsBox("P", ["<r1/>", "<a1/><a2/>"], 3), /Needs you · 3.*2 more ›.*<div class="cp-nrows"><r1\/><\/div>/, "the count stays true");
+  delete world.sessions.P;
 }
