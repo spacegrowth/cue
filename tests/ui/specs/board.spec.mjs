@@ -206,18 +206,20 @@ test.describe("a hosted lead's crew on its own page", () => {
   const rowKeys = (page) => page.locator(".crew-page .cp-scroll .cp-row").evaluateAll((els) => els.map((e) => e.dataset.key.split("|id-")[1]));
 
   test("Open full opens it across the window: the lead's chat on the left, the list on the right; Back to the board returns to the chat, its draft carried over", async ({ page }) => {
-    await expect(page.locator(".active-pane, .col-waiting, .col-sessions"), "the page in the chat's and the columns' place").toHaveCount(0);
+    await expect(page.locator(".col-waiting, .col-sessions, .col.main"), "the page in the chat's and the columns' place").toHaveCount(0);
+    await expect(page.locator(".crew-page .cp-left > .active-pane"), "its left the board's chat pane itself").toHaveCount(1);
     await expect(page.locator(".switch-view"), "the tabs stay").toBeVisible();
     const cp = await page.locator(".crew-page").boundingBox(), vw = page.viewportSize();
     expect(cp.width, "full width").toBeGreaterThan(vw.width - 80);
-    // Left | list: the chat's own element on the left, the list 388 wide on the right.
+    // Left | list: the chat's own element on the left, as wide as the board's chat pane (checked once back on the
+    // board, below), the list the rest of the width on the right.
     const left = await page.locator(".cp-left").boundingBox(), list = await page.locator(".cp-list").boundingBox();
-    expect(Math.round(list.width)).toBe(388);
     expect(left.x + left.width).toBeLessThanOrEqual(list.x + 1);
-    await expect(page.locator(".cp-left > .ap-chat[data-chat]"), "the chat's body, kept between draws as the chat's is").toHaveCount(1);
+    expect(Math.round(left.width + list.width), "the list has the rest").toBe(Math.round(cp.width));
+    await expect(page.locator(".cp-left .active-pane > .ap-chat[data-chat]"), "the chat's body, kept between draws as the chat's is").toHaveCount(1);
     // The list: The lead lit on top, then the members still in the crew, the set-aside one folded at the end.
     await expect(page.locator(".cp-list .cp-lead.on")).toContainText("The leadthe chat");
-    await expect(page.locator(".crew-page .cp-scroll > .cp-row"), "the members still in the crew").toHaveCount(5);
+    await expect(page.locator(".crew-page .cp-scroll > .cp-cards > .cp-card"), "the members still in the crew").toHaveCount(5);
     await expect(page.locator(".cp-status .mt-grp")).toHaveText("The crew · 6");
     await expect(page.locator(".cp-status .cp-q"), "hub asks (the reviewed ones Cue handles itself)").toHaveText("1 needs you");
     await expect(page.locator(".cp-status [data-crew-menu]")).toHaveText("Handle it ▾");
@@ -227,11 +229,11 @@ test.describe("a hosted lead's crew on its own page", () => {
     await expect(page.locator(".cp-goal.open .cg-box")).toHaveCount(4);
     await page.locator("[data-cp-goal]").click();
     await expect(page.locator(".cp-goal .cg-box")).toHaveCount(0);
-    // The chat's rows in time order, each decision of the crew's log among them, with Go back on this.
-    const chat = page.locator(".cp-left > .ap-chat");
+    // The chat's rows in time order, each decision of the crew's log among them, with Undo this.
+    const chat = page.locator(".cp-left .active-pane > .ap-chat");
     const decided = await page.evaluate(() => sessionOf("lead").crew_log?.length || 0);
     await expect(chat.locator(".cp-dec .cd-row.big")).toHaveCount(decided);
-    if (decided) await expect(chat.locator(".cd-row.big [data-act=crew-back]").first()).toHaveText("Go back on this");
+    if (decided) await expect(chat.locator(".cd-row.big [data-act=crew-back]").first()).toHaveText("Undo this");
     const order = await chat.locator(":scope > *").evaluateAll((els) => els.map((e) => e.dataset.key || ""));
     const said = order.filter((k) => /^[ay]:\d+$/.test(k)).map((k) => +k.slice(2));
     expect(said.length, "the lead's replies and your messages").toBeGreaterThan(0);
@@ -243,6 +245,7 @@ test.describe("a hosted lead's crew on its own page", () => {
     await expect(page.locator(".crew-page")).toHaveCount(0);
     await expect(page.locator(".col-waiting"), "the board's columns are back").toBeVisible();
     await expect(page.locator('.active-pane textarea[data-text="s:lead"]'), "the chat as it was, the draft in its box").toHaveValue("carry on");
+    expect(Math.round((await page.locator(".active-pane").boundingBox()).width), "the page's chat as wide as the board's").toBe(Math.round(left.width));
   });
 
   test("Esc goes back to the chat, not while the box has text; Open chat goes back too", async ({ page }) => {
@@ -261,7 +264,7 @@ test.describe("a hosted lead's crew on its own page", () => {
   });
 
   test("the left is the chat: the reply the lead stopped on when it waits on you, and a message queued in it", async ({ cue, page }) => {
-    const chat = page.locator(".cp-left > .ap-chat");
+    const chat = page.locator(".cp-left .active-pane > .ap-chat");
     await cue.change((st) => {
       const lead = st.sessions.find((s) => s.session_id === "lead");
       lead.state = "waiting";
@@ -279,15 +282,15 @@ test.describe("a hosted lead's crew on its own page", () => {
     await expect(page.locator(".cp-lead .cp-lr")).toHaveText(/^working · /);
   });
 
-  test("what the lead decided on its own sits in the chat at its time, with Go back on this", async ({ cue, page }) => {
-    const chat = page.locator(".cp-left > .ap-chat");
+  test("what the lead decided on its own sits in the chat at its time, with Undo this", async ({ cue, page }) => {
+    const chat = page.locator(".cp-left .active-pane > .ap-chat");
     await cue.change((st) => {
       const lead = st.sessions.find((s) => s.session_id === "lead"), t = lead.thread;
       lead.crew_log = [{ id: "d1-0", at_ms: t[1].at_ms + 1, who: "handoff", call: "call-handoff", kind: "fixes", what: "Reviewed: 1 should-fix. Sent the fix back", why: "the list is cut at 8" }];
     });
     const row = chat.locator('.cp-dec[data-key="cd:d1-0"]');
     await expect(row.locator(".cd-what")).toHaveText("Reviewed: 1 should-fix. Sent the fix back");
-    await expect(row.locator("[data-act=crew-back]")).toHaveText("Go back on this");
+    await expect(row.locator("[data-act=crew-back]")).toHaveText("Undo this");
     const keys = await chat.locator(":scope > *").evaluateAll((els) => els.map((e) => e.dataset.key || ""));
     const at = await page.evaluate(() => sessionOf("lead").thread.map((e) => e.at_ms));
     // Between Cue's review request for handoff (its review folded into it) and the next one, for docs.
@@ -305,10 +308,10 @@ test.describe("a hosted lead's crew on its own page", () => {
       texts.forEach((text, n) => lead.thread.push({ role: "agent", text, at_ms: t + 100 + n, images: [] }));
       lead.thread.push({ role: "agent", text: `Where the crew is:\n\n| part | state |\n|---|---|\n${rowsMd}\n\nThat's all.`, at_ms: t + 500, images: [] });
     }, [rowsMd, [long("Oldest"), long("Second"), long("Third")]]);
-    const chat = page.locator(".cp-left > .ap-chat"), reply = (w) => chat.locator(".cv-agent").filter({ hasText: w });
+    const chat = page.locator(".cp-left .active-pane > .ap-chat"), reply = (w) => chat.locator(".cv-agent").filter({ hasText: w });
     await expect(reply("Where the crew is")).toBeVisible();
     // The chat sits at its end, as it was: the newest reply's end in view.
-    await expect.poll(() => page.evaluate(() => { const c = document.querySelector(".cp-left > .ap-chat"); return c.scrollHeight - c.scrollTop - c.clientHeight; })).toBeLessThan(30);
+    await expect.poll(() => page.evaluate(() => { const c = document.querySelector(".cp-left .active-pane > .ap-chat"); return c.scrollHeight - c.scrollTop - c.clientHeight; })).toBeLessThan(30);
     // The three newest, every one long: whole, nothing to Show all or Fold.
     for (const w of ["Second paragraph 0", "Third paragraph 0", "Where the crew is"]) {
       await expect(reply(w), w).not.toHaveClass(/folded/);
@@ -327,17 +330,79 @@ test.describe("a hosted lead's crew on its own page", () => {
     await expect(oldest.locator(".cv-more")).toHaveText("Fold");
   });
 
+  test("with the board's columns folded, or full screen, the chat keeps the width it has beside them and the list its room", async ({ page }) => {
+    const widths = () => page.evaluate(() => ({ page: document.querySelector(".crew-page").getBoundingClientRect().width, left: document.querySelector(".cp-left").getBoundingClientRect().width, list: document.querySelector(".cp-list").getBoundingClientRect().width }));
+    const open = await widths();
+    // Both folded by you.
+    await page.evaluate(() => { collapsed.add("waiting"); collapsed.add("sessions"); renderMain(); });
+    const folded = await widths();
+    expect(Math.round(folded.left), "both folded: the chat as wide as beside both").toBe(Math.round(open.left));
+    expect(folded.list, "the list keeps its room").toBeGreaterThan(500);
+    // Full screen: every column folded until you open one there.
+    await page.evaluate(() => { collapsed.clear(); focus = true; focusShown = new Set(); renderMain(); });
+    const full = await widths();
+    expect(Math.round(full.left), "full screen: the same").toBe(Math.round((full.page - 28) * 1.9 / 3.75));
+    expect(full.list).toBeGreaterThan(500);
+    await page.evaluate(() => { focus = false; renderMain(); });
+  });
+
+  test("the head: the name, Cue Crew and the crew's state in a word; the chat pane's own title line, btw, waiting line and box under it", async ({ cue, page }) => {
+    const head = page.locator(".crew-page .cp-head"), pane = page.locator(".crew-page .cp-left > .active-pane");
+    await expect(head.locator(".cp-name")).toHaveText("cue");
+    await expect(head.locator(".cp-kind")).toHaveText("Cue Crew");
+    await expect(head.locator(".cp-pill"), "hub asks you").toHaveText("needs you");
+    await expect(head.locator(".cp-pill")).toHaveClass(/\bneed\b/);
+    // What the pane's title line has isn't repeated in the head: its ⋯, btw, Stop and folder are the pane's.
+    await expect(head.locator("[data-act=btw], [data-act=interrupt], .cp-proj")).toHaveCount(0);
+    await expect(pane.locator(".ap-head [data-act=btw]")).toHaveText("btw");
+    await expect(pane.locator(".ap-chat .cv-status"), "the chat's waiting line").toContainText("Waiting on you");
+    await expect(pane.locator(".crew-tray"), "the crew is in the list, not the tray").toHaveCount(0);
+    // btw opens its panel in the pane, as on the board.
+    await pane.locator(".ap-head [data-act=btw]").click();
+    await expect(pane.locator(".btw-pop")).toBeVisible();
+    await page.locator("[data-act=btw-close]").click();
+    await expect(page.locator(".btw-pop")).toHaveCount(0);
+    // Nobody asks and the lead works: working; Stop is the pane's.
+    await cue.change((st) => {
+      st.items = st.items.filter((i) => i.session_id !== "lead");
+      const lead = st.sessions.find((s) => s.session_id === "lead");
+      lead.state = "working";
+      for (const t of lead.team) t.needs = "";
+    });
+    await expect(head.locator(".cp-pill")).toHaveText("working");
+    await expect(pane.locator(".ap-head [data-act=interrupt]")).toHaveText("Stop");
+  });
+
+  test("its left is the lead's pane whatever the board has open: nothing, or a Quiet session", async ({ page }) => {
+    const left = page.locator(".crew-page .cp-left > .active-pane");
+    const isLead = async (why) => {
+      await expect(left.locator('textarea[data-text="s:lead"]'), why).toHaveCount(1);
+      await expect(left, why).not.toHaveClass(/\bempty\b/);
+    };
+    await isLead("opened from the lead's card");
+    // Nothing open on the board.
+    await page.evaluate(() => { active = null; renderMain(); });
+    await isLead("nothing active");
+    // A Quiet session open (one not in the world: its pane would give up and fall back to what's open).
+    await page.evaluate(() => { quietOpen = "q-elsewhere"; renderMain(); });
+    await isLead("Quiet open");
+    await page.evaluate(() => { quietOpen = null; renderMain(); });
+  });
+
   test("the page fits the window and never scrolls as a whole; the chat and the list scroll inside themselves", async ({ page }) => {
     for (const vp of [{ width: 1280, height: 800 }, { width: 1280, height: 1000 }, { width: 900, height: 600 }]) {
       await page.setViewportSize(vp);
       if (!(await page.locator(".cp-done.open").count())) await page.locator(".cp-done .mt-done-line").click();
       const z = await page.evaluate(() => {
         const p = document.querySelector(".crew-page"), r = (s) => document.querySelector(s).getBoundingClientRect();
-        return { over: p.scrollHeight - p.clientHeight, bottom: r(".cp-left .foot").bottom - r(".crew-page").bottom, list: r(".cp-list").width };
+        return { over: p.scrollHeight - p.clientHeight, bottom: r(".cp-left .foot").bottom - r(".crew-page").bottom, page: r(".crew-page").width, left: r(".cp-left").width, cards: [...document.querySelectorAll(".cp-cards > .cp-card")].map((c) => [Math.round(c.getBoundingClientRect().left), Math.round(c.getBoundingClientRect().width)]), list: r(".cp-scroll").width };
       });
       expect(z.over, `${vp.width}×${vp.height}: the page itself doesn't scroll`).toBeLessThanOrEqual(1);
       expect(z.bottom, `${vp.width}×${vp.height}: the box in view`).toBeLessThanOrEqual(0);
-      expect(Math.round(z.list), `${vp.width}×${vp.height}: the list's width`).toBe(vp.width < 1000 ? 264 : 388);
+      // The board's chat pane: Active's 1.9 of its 3.75 shares, after the columns' two 14px gaps (board.js colLayout).
+      expect(Math.round(z.left), `${vp.width}×${vp.height}: the chat as wide as on the board`).toBe(Math.round((z.page - 28) * 1.9 / 3.75));
+      expect(new Set(z.cards.map(([x]) => x)).size, `${vp.width}×${vp.height}: one card to a line`).toBe(1);
+      expect(z.cards[0][1], `${vp.width}×${vp.height}: as wide as the list`).toBe(Math.round(z.list));
     }
   });
 
@@ -346,19 +411,25 @@ test.describe("a hosted lead's crew on its own page", () => {
     await expect.poll(() => rowKeys(page)).toEqual(["hub", "rows", "skill", "handoff", "docs"]);
     // The tab stays Board: the page opened from the board shows within it.
     await expect(page.locator(".switch-view button.on")).toHaveText("Board");
-    // A row: its name, its stage and meter, what it was asked, what it does now (red when it waits on you).
+    // A card: its name, its stage and meter, what it was asked, what it does now (red when it waits on you), its steps,
+    // review and files.
+    const card = (n) => page.locator(`.cp-card[data-key="cpc:lead|id-${n}"]`);
     const hub = page.locator('.cp-row[data-key="cp:lead|id-hub"]'), rows = page.locator('.cp-row[data-key="cp:lead|id-rows"]');
-    await expect(hub).toHaveClass(/\bq\b/);
+    await expect(card("hub")).toHaveClass(/\bq\b/);
+    await expect(hub.locator(".cp-ml")).toHaveText("needs you");
     await expect(hub.locator(".cp-nm")).toHaveText("hub");
     await expect(hub.locator(".cp-m b.need")).toHaveCount(1);
     await expect(hub.locator(".cp-ask1")).toHaveText(/^Keep a team per hosted lead/);
     await expect(hub.locator(".cp-now.q")).toHaveText("Wants to run cd src-tauri && cargo test --features ext");
     await expect(rows.locator(".cp-now")).toHaveText("Running node tests/team.test.js");
     await expect(rows.locator(".cp-ml"), "a test run is checking").toHaveText("checking");
-    await expect(rows.locator(".cp-r")).toHaveText(/^2 files · /);
+    await expect(card("rows").locator(".cp-acts .cp-r")).toHaveText(/^2 files · /);
+    await expect(card("rows").locator(".cp-part").filter({ hasText: "Steps" }).locator(".cp-st.now")).toContainText("Running node tests/team.test.js");
+    await expect(card("rows").locator(".cp-part").filter({ hasText: "Files" }).locator(".cp-fn")).toHaveText("team.js core.js");
+    await expect(card("handoff").locator(".cp-part").filter({ hasText: "Review" }).locator(".cp-fl").first()).toContainText("should-fix");
     expect(await page.locator(".cp-scroll .cp-row button").count(), "no buttons in a row").toBe(0);
     // Beside a working one's row, outside it, the drawer's Stop: it stops it, from here.
-    const stop = page.locator('.cp-row[data-key="cp:lead|id-rows"] + .cp-acts [data-mt-act="stop"]');
+    const stop = card("rows").locator('.cp-acts [data-mt-act="stop"]');
     await expect(stop).toHaveText("Stop");
     await stop.click();
     expect((await cue.called("team_action", { sessionId: "lead", action: "stop" })).args.agent).toBe("id-rows");
@@ -369,7 +440,7 @@ test.describe("a hosted lead's crew on its own page", () => {
       Object.assign(team.find((t) => t.name === "docs"), { state: "working", step: "Editing docs" });
       team.find((t) => t.name === "handoff").needs = "commit";
     });
-    await expect(page.locator('.cp-row[data-key="cp:lead|id-handoff"]')).toHaveClass(/\bq\b/);
+    await expect(card("handoff")).toHaveClass(/\bq\b/);
     expect(await rowKeys(page)).toEqual(["hub", "rows", "skill", "handoff", "docs"]);
     // A click on a row opens its menu, under it; nothing moves.
     const skill = page.locator('.cp-row[data-key="cp:lead|id-skill"]');
@@ -386,20 +457,20 @@ test.describe("a hosted lead's crew on its own page", () => {
     // The set-aside one: folded at the end; unfolded under the fold line, dimmed, the others where they were.
     const done = page.locator(".crew-page .cp-done .mt-done-line");
     await expect(done).toHaveText("1 done ›");
-    await expect(page.locator(".crew-page .cp-row.past")).toHaveCount(0);
+    await expect(page.locator(".crew-page .cp-card.past")).toHaveCount(0);
     // Where docs's row sits in the list (not on screen: the list scrolls to show what unfolds).
     const at = () => page.locator('.cp-row[data-key="cp:lead|id-docs"]').evaluate((el) => el.getBoundingClientRect().top - el.closest(".cp-scroll").getBoundingClientRect().top + el.closest(".cp-scroll").scrollTop);
     const before = await at();
     await done.click();
     await expect(done).toHaveText("1 done ⌄");
-    await expect(page.locator(".crew-page .cp-done .cp-row.past")).toHaveCount(1);
+    await expect(page.locator(".crew-page .cp-done .cp-card.past")).toHaveCount(1);
     expect(await at(), "nothing above it moved").toBe(before);
-    await expect(page.locator(".crew-page .cp-done .cp-row.past"), "what unfolded is scrolled into view").toBeInViewport();
+    await expect(page.locator(".crew-page .cp-done .cp-card.past"), "what unfolded is scrolled into view").toBeInViewport();
     expect(await rowKeys(page)).toEqual(["hub", "rows", "skill", "handoff", "docs", "spike"]);
   });
 
   test("Needs you over the box shows one row, N more › the rest; nothing at all when nothing needs you", async ({ cue, page }) => {
-    const needs = page.locator(".cp-left > .cp-needs");
+    const needs = page.locator(".cp-left .cp-needs");
     // hub asks; then handoff needs you too (the hub says it needs a commit).
     await expect(needs.locator(".mt-grp")).toHaveText("Needs you · 1");
     await expect(needs.locator("[data-cp-needs]"), "one: nothing more").toHaveCount(0);
@@ -409,7 +480,7 @@ test.describe("a hosted lead's crew on its own page", () => {
     await expect.poll(shown).toEqual(["mt:lead|id-hub"]);
     await expect(needs.locator('.mt-row.need [data-act="allow"]')).toBeVisible();
     // Over the box, at the bottom of the left.
-    const [n, f] = await Promise.all([needs.boundingBox(), page.locator(".cp-left > .foot").boundingBox()]);
+    const [n, f] = await Promise.all([needs.boundingBox(), page.locator(".cp-left .active-pane > .foot").boundingBox()]);
     expect(n.y + n.height).toBeLessThanOrEqual(f.y + 1);
     const more = needs.locator("[data-cp-needs]");
     await expect(more).toHaveText("1 more ›");
@@ -481,8 +552,8 @@ test.describe("a hosted lead's crew: the Crew switch, /crew, a task dropped on t
   });
 
   // Handle it (the default): Cue sends fixes and commits by itself, so no Send fixes or Commit; what it decided is
-  // listed, each line with Go back on this, which asks the lead and leaves the line saying "going back…".
-  test("Handle it: the goal on top, what it decided on its own, and Go back on this", async ({ cue, page }) => {
+  // listed, each line with Undo this, which asks the lead and leaves the line saying "undoing…".
+  test("Handle it: the goal on top, what it decided on its own, and Undo this", async ({ cue, page }) => {
     const tray = page.locator(".crew-tray");
     await expect(tray.locator(".crew-body")).toBeVisible();
     await expect(tray.locator(".cg-box .cg-t")).toHaveText(["Build the team view: hand out hub, rows, skill and handoff", "Each part reviewed, with nothing blocking", "Review, send fixes, commit to crew/ branches", "Merge to main, real choices"]);
@@ -501,7 +572,7 @@ test.describe("a hosted lead's crew: the Crew switch, /crew, a task dropped on t
     await docs.locator('[data-act="crew-back"]').click();
     const id = (await cue.called("crew_go_back", { sessionId: "lead" })).args.id;
     expect(id).toMatch(/^d\d+-0$/);
-    await expect(docs.locator(".cd-going")).toHaveText("going back…");
+    await expect(docs.locator(".cd-going")).toHaveText("undoing…");
     await expect(docs.locator('[data-act="crew-back"]')).toHaveCount(0);
     await expect(tray.locator(".cd-under"), "the button doesn't open its line").toHaveCount(0);
     await expect(page.locator(".toast")).toHaveText("Asked the lead to go back on it: docs");

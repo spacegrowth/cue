@@ -117,9 +117,9 @@ const SCREENS = {
       await openCard(p, TEAM_ASK);
       await p.locator('.crew-tray [data-cp-open="lead"]').click();
     },
-    done: async (p) => { await p.locator(".crew-page .cp-scroll > .cp-row").nth(3).waitFor(); await expect(p.locator(".cp-done .mt-done-line")).toHaveText("2 done ›"); await p.locator(".cp-needs .mt-row.need").waitFor(); },
+    done: async (p) => { await p.locator(".crew-page .cp-scroll .cp-card").nth(3).waitFor(); await expect(p.locator(".cp-done .mt-done-line")).toHaveText("2 done ›"); await p.locator(".cp-needs .mt-row.need").waitFor(); },
   },
-  // The same at the smallest window, its finished ones unfolded: the list narrower, scrolling inside itself.
+  // The same at the smallest window, its finished ones unfolded: the cards one to a line, scrolling inside the list.
   "team-page-narrowest": {
     scenario: "world-team",
     viewport: NARROWEST,

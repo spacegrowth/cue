@@ -254,13 +254,35 @@ function mateMenuHtml(sid, t) {
  *  any member works. Only members at work themselves count as working. */
 function crewWords(sid, groups) {
   const need = groups.need, n = need.length;
-  const needs = n === 1 ? `${esc(need[0].name)} needs you` : n ? `${n} need you` : "";
+  const needs = n === 1 ? `${esc(need[0].name)} ${crewMark(sid, need[0]).word}` : n ? `${n} need you` : "";
   const count = (k, words) => groups[k].length ? `${groups[k].length} ${words}` : "";
   const rest = [count("ready", "ready"), count("cue", "reviewed"), count("working", "working"), count("lead", "waiting on the lead")].filter(Boolean);
   const live = mateList(sid).some((t) => t.state === "working");
   return `<span class="${live ? "dot-live" : "crew-dot"}"></span><span class="crew-w">Cue Crew · ${mateList(sid).length}${needs ? ` <span class="crew-need">· ${needs}</span>` : ""}${rest.length ? ` <span class="crew-mu">· ${rest.join(" · ")}</span>` : ""}</span>`;
 }
 
+/** The five stages of a member's meter, in order. */
+const CREW_STAGES = ["working", "checking", "reviewed", "fixing", "committed"];
+/** A step of its own that checks its work: a test, lint, type check or build run. */
+const CREW_CHECKING = /^Running\b.*\b(test|tests|check|lint|clippy|tsc|build|pytest|jest|vitest|playwright)\b/i;
+/** A member's state as every crew surface says it, the one place it's decided: its `word` (working, checking,
+ *  fixing, queued, reviewing, reviewed, committed, set aside, stopped, done; needs you over any of them), its colour
+ *  `look` ("need": red, yours now; "now": dark, at work; "done": grey, nobody's) and its mark, the stage `at` its
+ *  meter stands at (CREW_STAGES). The crew's page draws its meters and cards from it, the tray and chips their
+ *  "needs you". */
+function crewMark(sid, t) {
+  let at = 0, look = "done", word = { aside: "set aside", stopped: "stopped", committed: "committed", reviewed: "reviewed", queued: "queued", reviewing: "reviewing" }[t.state] || "done";
+  if (t.state === "working") {
+    look = "now";
+    if (t.fix_rounds) { at = 3; word = "fixing"; }
+    else if (CREW_CHECKING.test(t.step || "")) { at = 1; word = "checking"; }
+    else word = "working";
+  } else if (["queued", "reviewing"].includes(t.state)) { at = 2; look = "now"; }
+  else if (t.state === "reviewed") at = 2;
+  else if (t.state === "committed") at = 4;
+  if (mateNeeds(sid, t)) { look = "need"; word = "needs you"; }
+  return { word, look, at };
+}
 /** A lead's members by the group their row is in (mateGroup). */
 function crewGroups(sid) {
   const groups = { need: [], ready: [], cue: [], lead: [], working: [], done: [] };
@@ -329,8 +351,8 @@ const crewLogOpen = new Set();
 const crewBackAsked = new Set();
 /** A decision's words: plain, `code` in backticks as code. */
 const crewCode = (text) => esc(text).replace(/`([^`]+)`/g, "<code>$1</code>");
-/** What the lead (or Cue) decided on its own, newest first: who · what · how long ago · Go back on this (one-way:
- *  "one-way ·" and Make a revert), or "going back…" once you did. A line whose member has a review or files opens in
+/** What the lead (or Cue) decided on its own, newest first: who · what · how long ago · Undo this (one-way:
+ *  "one-way ·" and Make a revert), or "undoing…" once you did. A line whose member has a review or files opens in
  *  place on its review, what came of it and its Diff. "" when it decided nothing yet. */
 function crewLogHtml(sid) {
   const log = (sessionOf(sid)?.crew_log || []).slice().reverse().sort((a, b) => (b.at_ms || 0) - (a.at_ms || 0));
@@ -343,8 +365,8 @@ function crewLogRow(sid, d, big = false) {
   const k = `${sid}|${d.id}`, t = team.find((m) => m.name === d.who), open = crewLogOpen.has(k);
   const has = !!t && !!(t.review || (t.findings || []).length || (t.files || []).length || t.worktree);
   const going = d.back === "asked" || crewBackAsked.has(k);
-  const act = going ? `<span class="cd-going">going back…</span>`
-    : `<button class="${big ? "btn small cd-back" : "mt-lk"}" data-act="crew-back" data-sid="${esc(sid)}" data-id="${esc(d.id)}">${d.one_way ? "Make a revert" : "Go back on this"}</button>`;
+  const act = going ? `<span class="cd-going">undoing…</span>`
+    : `<button class="${big ? "btn small cd-back" : "mt-lk"}" data-act="crew-back" data-sid="${esc(sid)}" data-id="${esc(d.id)}">${d.one_way ? "Make a revert" : "Undo this"}</button>`;
   const attrs = `class="cd-row ${big ? "big" : ""} ${open ? "on" : ""} ${has ? "can" : ""}" data-key="cd:${esc(k)}" ${has ? `data-crew-log="${esc(k)}" aria-expanded="${open}"` : ""}`;
   const at = d.at_ms ? ago(d.at_ms) : "", one = d.one_way ? `<span class="cd-one">one-way ·</span>` : "";
   const row = big
@@ -388,7 +410,7 @@ function placeTeamRows() {
   if (!show?.length) return;
   // The drawer and the crew's page can both be open: what opened scrolls in the box it opened in (the first): on the
   // page, its list's, its chat's or Needs you's.
-  const box = show[0].closest(".crew-body, .cp-scroll, [data-chat], .cp-nrows"), row = show[0].closest(".mt-row") || (show[0].matches(".mt-under") && show[0].previousElementSibling) || show[0], last = show.filter((e) => box?.contains(e)).at(-1);
+  const box = show[0].closest(".crew-body, .cp-scroll, [data-chat], .cp-nrows"), row = show[0].closest(".mt-row, .cp-card") || (show[0].matches(".mt-under") && show[0].previousElementSibling) || show[0], last = show.filter((e) => box?.contains(e)).at(-1);
   if (!box) return;
   // The chat and Needs you: the browser places it, just enough.
   if (!box.matches(".crew-body, .cp-scroll")) return last.scrollIntoView({ block: "nearest" });
@@ -400,7 +422,7 @@ if (typeof window !== "undefined") window.addEventListener("resize", () => { if 
 /** On the lead's title line: a chip for each crew member that needs you ("hub · needs you"); "" when none does (the
  *  crew itself is in its tray on the box, crewTray). */
 function mateChips(sid) {
-  return mateList(sid).map((t) => [t, mateAsk(sid, t)]).filter(([, a]) => a).map(([t, a]) => `<button class="tm-chip need" data-big="${esc(a.id)}"><span class="tm-n">${esc(t.name)}</span> <span class="tm-sub">· needs you</span></button>`).join("");
+  return mateList(sid).map((t) => [t, mateAsk(sid, t)]).filter(([, a]) => a).map(([t, a]) => `<button class="tm-chip need" data-big="${esc(a.id)}"><span class="tm-n">${esc(t.name)}</span> <span class="tm-sub">· ${crewMark(sid, t).word}</span></button>`).join("");
 }
 
 // ---------- Cue's own words to a lead, and its crew's reviews, in the chat ----------
@@ -534,7 +556,7 @@ if (typeof document !== "undefined") {
     if (t.closest?.(".crew-pick")) return;
     // Open full › on the tray's line is team_page.js's: it doesn't open or close the tray.
     if (t.closest?.("[data-cp-open]")) return;
-    // A decision line opens in place (its own button, Go back on this, is clicks_chat.js's).
+    // A decision line opens in place (its own button, Undo this, is clicks_chat.js's).
     const log = !t.closest?.("button, a, .cd-under") && t.closest?.("[data-crew-log]");
     if (log) {
       e.stopPropagation();

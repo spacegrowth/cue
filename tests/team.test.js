@@ -314,14 +314,14 @@ assert.doesNotMatch(folded, /data-mt-act|data-crew-open|Open ›/, "no buttons i
   assert.match(d, />auth<\/button><span class="mt-line">9m · reviewed · Cue sends its fixes back<\/span>/, "Cue handles auth: one line");
   assert.deepEqual(ctx.mateWaits("H").map((t) => t.name), ["keys"], "only keys waits on you");
   assert.match(d, /Decided on its own · 4<\/div><div class="cd-row[^"]*"[^>]*><b class="cd-who">lead<\/b><span class="cd-what">Merged auth into main <span class="cd-why">· you said yes<\/span><\/span><span class="cd-at">1m<\/span><span class="cd-one">one-way ·<\/span><button class="mt-lk" data-act="crew-back" data-sid="H" data-id="d3-0">Make a revert<\/button>/, "newest first; one-way offers a revert");
-  assert.match(d, /Committed to <code>crew\/docs<\/code><\/span><span class="cd-at">4m<\/span><button class="mt-lk" data-act="crew-back" data-sid="H" data-id="d2-0">Go back on this<\/button>/, "code in backticks; Go back on this");
-  assert.match(d, /Held until auth lands<\/span><span class="cd-at">2m<\/span><span class="cd-going">going back…<\/span>/, "asked: going back…");
+  assert.match(d, /Committed to <code>crew\/docs<\/code><\/span><span class="cd-at">4m<\/span><button class="mt-lk" data-act="crew-back" data-sid="H" data-id="d2-0">Undo this<\/button>/, "code in backticks; Undo this");
+  assert.match(d, /Held until auth lands<\/span><span class="cd-at">2m<\/span><span class="cd-going">undoing…<\/span>/, "asked: undoing…");
   assert.doesNotMatch(d, /data-crew-log="H\|d1-0"/, "the lead's line has no member to open");
   ctx.crewLogOpen.add("H|d2-0");
   d = ctx.crewTray("H");
   assert.match(d, /data-crew-log="H\|d2-0" aria-expanded="true">.*<div class="mt-under cd-under" data-mt-for="log:H\|d2-0"><div class="mt-review msg">1\. d\.md:1[^]*Committed <code>3f2a1c<\/code> · 1 file<\/span><button class="mt-lk "[^>]*data-mt-act="diff"/s, "opened: its review, its commit and Diff");
   ctx.crewBackAsked.add("H|d2-0");
-  assert.match(ctx.crewTray("H"), /crew\/docs<\/code><\/span><span class="cd-at">4m<\/span><span class="cd-going">going back…/, "just clicked: going back… at once");
+  assert.match(ctx.crewTray("H"), /crew\/docs<\/code><\/span><span class="cd-at">4m<\/span><span class="cd-going">undoing…/, "just clicked: undoing… at once");
   world.commit = "wait";
   d = ctx.crewTray("H");
   assert.match(d, /May do alone<\/div><div class="cg-t">Nothing: it asks you first/, "Ask me: it does nothing alone");
@@ -350,7 +350,7 @@ assert.doesNotMatch(folded, /data-mt-act|data-crew-open|Open ›/, "no buttons i
   ctx.verb = () => "wants to run";
   const at = (n) => ctx.crewNow("N", world.sessions.N.team.find((t) => t.name === n));
   const pick = (n) => { const x = at(n); return [x.now, x.sub, x.at, x.look, x.word]; };
-  assert.deepEqual(pick("auth"), ["Wants to run `npm run migrate`", "", 0, "need", "asked you"], "asks you: what it wants, red at its stage; no context the data doesn't have");
+  assert.deepEqual(pick("auth"), ["Wants to run `npm run migrate`", "", 0, "need", "needs you"], "asks you: what it wants, red at its stage; no context the data doesn't have");
   assert.equal(at("auth").ask, true);
   world.sessions.N.team[0].step = "Running: npm test";
   assert.equal(at("auth").sub, "Running `npm test`", "asks you while on another step: that step, in the same form as elsewhere");
@@ -367,21 +367,27 @@ assert.doesNotMatch(folded, /data-mt-act|data-crew-open|Open ›/, "no buttons i
   // The meter: stages before its own done, its own as it is.
   assert.equal(ctx.crewMeter(docs), '<span class="cp-meter"><span class="cp-m" aria-hidden="true"><b class="done"></b><b class="done"></b><b class="done"></b><b class="now"></b><b class=""></b></span><span class="cp-ml">fixing</span></span>');
   const t = world.sessions.N.team.find((m) => m.name === "docs");
-  // Its row in the page's list: name, its stage in a word and meter, what it was asked, what it does now, its context
-  // (the finding it's fixing), files and how long. No buttons in it: the row opens its menu. Under it, outside it, the
-  // drawer's one action for it (mateOneAct): Stop at work, Resume first when stuck, Skip while its review waits.
+  // Its card in the page's list: name, its stage in a word and meter, what it was asked, what it does now; its steps,
+  // what its review found and its files; its files and how long at its foot. Its top is one button: it opens its menu.
+  // At its foot the drawer's one action for it (mateOneAct): Stop at work, Resume first when stuck, Skip while its
+  // review waits.
   t.asked = "Document the limits"; t.files = ["docs/limits.md"];
-  const row = ctx.crewListRow("N", t), inRow = row.slice(0, row.indexOf("</button>"));
+  const row = ctx.crewListRow("N", t), top = row.slice(0, row.indexOf("</button>"));
   assert.doesNotMatch(row, /title=/, "no hover text");
-  assert.match(row, /^<button class="cp-row[^"]*" data-key="cp:N\|id-docs" data-mt-more="N\|id-docs" aria-expanded="false">/, "the row is the one button: it opens its menu");
-  assert.equal((inRow.match(/<button/g) || []).length, 1, "nothing else to press in it");
-  assert.match(row, /<div class="cp-acts "><button class="mt-lk " data-mt-act="stop" data-mt-sid="N" data-mt-agent="id-docs" >Stop<\/button><\/div>$/, "at work: Stop");
+  assert.match(row, /^<div class="cp-card [^"]*" data-key="cpc:N\|id-docs"><button class="cp-row" data-key="cp:N\|id-docs" data-mt-more="N\|id-docs" aria-expanded="false">/, "its top is the one button: it opens its menu");
+  assert.equal((top.match(/<button/g) || []).length, 1, "nothing else to press in it");
+  assert.match(row, /<div class="cp-acts"><span class="cp-r">1 file · 9m<\/span><button class="mt-lk " data-mt-act="stop" data-mt-sid="N" data-mt-agent="id-docs" >Stop<\/button><\/div><\/div>$/, "at work: its files and time, and Stop");
   assert.match(ctx.crewListRow("N", { ...t, quiet: "stuck" }), /data-mt-act="resume"[^>]*>Resume<\/button><button[^>]*data-mt-act="stop"/, "stuck: Resume, then Stop");
-  assert.match(ctx.crewListRow("N", { ...t, state: "queued" }), /<div class="cp-acts "><button class="mt-lk" data-act="unqueue-review"[^>]*>Skip<\/button><\/div>/, "its review waiting: Skip");
+  assert.match(ctx.crewListRow("N", { ...t, state: "queued" }), /<div class="cp-acts"><span class="cp-r">[^<]*<\/span><button class="mt-lk" data-act="unqueue-review"[^>]*>Skip<\/button><\/div>/, "its review waiting: Skip");
   assert.match(row, /<span class="cp-nm">docs<\/span><span class="cp-meter">.*<span class="cp-ml">fixing<\/span>/, "its name, its meter and its stage");
-  assert.match(row, /<span class="cp-ask1">Document the limits<\/span><span class="cp-now ">Fixing what review found<\/span>/, "what it was asked, then what it's doing now");
-  assert.match(row, /<span class="cp-x"><span class="cp-f fix">should-fix<\/span>docs\/limits\.md:12 — Retry-After[^<]*<\/span><span class="cp-r">1 file · 9m<\/span>/, "the finding it fixes, its files and how long");
-  assert.match(ctx.crewListRow("N", world.sessions.N.team[0]), /class="cp-row  q /, "one that asks you is marked to show red");
+  assert.match(row, /<span class="cp-ask1">Document the limits<\/span><span class="cp-now ">Fixing what review found<\/span><\/button>/, "what it was asked, then what it's doing now; the finding it fixes is in its Review");
+  assert.match(row, /<span class="cp-pl">Steps<\/span><span class="cp-pv"><span class="cp-st now"><span class="cp-t"><\/span><span class="cp-sw">Editing <code>docs\/limits\.md<\/code><\/span><\/span><\/span>/, "no feed of its own: its step now (no time known)");
+  assert.match(ctx.crewListRow("N", world.sessions.N.team.find((m) => m.name === "api")), /<span class="cp-st now"><span class="cp-t">T3<\/span><span class="cp-sw">Running <code>npm test -- keys<\/code><\/span><\/span>/, "with the time it started it");
+  assert.match(row, /<span class="cp-pl">Review<\/span><span class="cp-pv"><span class="cp-fl"><span class="cp-f fix">should-fix<\/span>docs\/limits\.md:12 — Retry-After[^<]*<\/span>/, "what review found: its kind, its words");
+  assert.match(row, /<span class="cp-pl">Files<\/span><span class="cp-pv"><span class="cp-fn"><code>limits\.md<\/code><\/span><\/span>/, "its files by their own names");
+  assert.match(ctx.crewListRow("N", { ...t, findings: [], recommendation: "", state: "working", fix_rounds: 0 }), /<span class="cp-pl">Review<\/span><span class="cp-pv"><span class="cp-dim">not yet<\/span>/, "no review yet");
+  assert.match(ctx.crewListRow("N", world.sessions.N.team[0]), /class="cp-card  q /, "one that asks you is marked to show red");
+  assert.match(ctx.crewListRow("N", world.sessions.N.team[0]), /<span class="cp-ml">needs you<\/span>/, "its word: needs you");
   world.items = world.items.filter((i) => i.id !== "q1");
   delete world.sessions.N;
 }
@@ -396,13 +402,13 @@ assert.doesNotMatch(folded, /data-mt-act|data-crew-open|Open ›/, "no buttons i
     mate("docs", "committed", { ended_ms: NOW - 2 * M }),
     mate("spike", "aside"),
   ] };
-  const keys = () => [...ctx.crewRowsHtml("P").matchAll(/class="cp-row[^"]*" data-key="cp:P\|id-(\w+)"/g)].map((m) => m[1]);
+  const keys = () => [...ctx.crewRowsHtml("P").matchAll(/class="cp-row" data-key="cp:P\|id-(\w+)"/g)].map((m) => m[1]);
   ctx.mateDoneOpen.delete("P");
   assert.deepEqual(keys(), ["api", "web", "auth"], "the crew's own order: auth, which needs you, isn't pulled to the top");
   assert.match(ctx.crewRowsHtml("P"), /data-mt-done="P" aria-expanded="false">2 done ›<\/button><\/div>$/, "committed and set aside folded into one line at the list's end");
   ctx.mateDoneOpen.add("P");
   assert.deepEqual(keys(), ["api", "web", "auth", "docs", "spike"], "unfolded: the finished ones under it, in their order");
-  assert.match(ctx.crewRowsHtml("P"), /class="cp-row past  "/, "dimmed");
+  assert.match(ctx.crewRowsHtml("P"), /class="cp-card past  "/, "dimmed");
   ctx.mateDoneOpen.delete("P");
   // A change of state moves nothing.
   world.sessions.P.team[0].state = "reviewed";

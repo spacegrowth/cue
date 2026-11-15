@@ -631,13 +631,20 @@ function colLayout(wColl, sColl) {
   if (!wColl && !sColl) return {
     tpl: `minmax(0,${3.75 - w - s}fr) minmax(0,${w}fr) minmax(0,${s}fr)`,
     grips: [{ name: "waiting", left: share(3.75 - w - s) }, { name: "sessions", left: `calc(${share(3.75 - s)} + 14px)` }],
+    main: share(3.75 - w - s),
   };
   const open = !wColl ? "waiting" : !sColl ? "sessions" : null;
   return {
     tpl: ["minmax(0,1fr)", ...(open ? [share(colFr[open])] : []), "34px"].join(" "),
     grips: open ? [{ name: open, left: `calc(100% - 62px - ${share(colFr[open])})` }] : [],
+    // Active: what the open column, the rail and their gaps leave.
+    main: open ? `calc(100% - 62px - ${share(colFr[open])})` : "calc(100% - 48px)",
   };
 }
+/** The width of the board's chat pane (its Active column) beside both columns, as you dragged them, as a length of the
+ *  board's width (100%): the crew's page gives its chat the same (team_page.js). Folds and full screen don't count: with
+ *  both folded the chat is nearly the whole board, which would leave the crew's list no room. */
+const boardChatWidth = () => colLayout(false, false).main;
 const colGrip = (g) => `<div class="col-grip ${colSizing?.name === g.name ? "on" : ""}" data-col-grip="${g.name}" style="left:${g.left}"><i></i>${colSizing?.name === g.name && colSizing.edge ? `<b>${g.name.toUpperCase()} · ${colSizing.edge.toUpperCase()}</b>` : ""}</div>`;
 const colReset = (name) => colMoved(name) ? `<button class="col-reset" data-col-reset="${name}">Reset</button>` : "";
 /** Put a column back to its usual width. */

@@ -102,15 +102,16 @@ function activeHead(a) {
 function chatBody(it, s, harness, sid, page = null) {
   return chatHtml(it, s, harness, true, page) + keyed(renameNotice(s), "rename") + (sid && s ? catchUpBar(sid, it, s) : "") + keyed(statusLine(it, s), "status");
 }
-/** The chat area: the full view in its place, or the chat's body. */
-function activeChat(a, full) {
+/** The chat area: the full view in its place, or the chat's body (with `crew.extra`, the crew's page's rows placed in
+ *  it by time: chatHtml's `page`). */
+function activeChat(a, full, crew = null) {
   const { it, s, sid, harness } = a;
-  return full ? full.bar + chatBox(full.forKey, full.body) : chatBox(`m|${sid || it?.id}`, chatBody(it, s, harness, sid));
+  return full ? full.bar + chatBox(full.forKey, full.body) : chatBox(`m|${sid || it?.id}`, chatBody(it, s, harness, sid, crew ? { extra: crew.extra } : null));
 }
 /** The pane for an open card or session. At work (a turn, or compacting): a light sweeps along the top edge, as
  *  in its terminal tab. Not while it waits. The Next bar (nextBar) is hidden for now (it read as part of the terminal tabs
  *  and the box; N still works). */
-function openPane(a, full) {
+function openPane(a, full, crew = null) {
   const { s, sid, foot } = a;
   return `<div class="active-pane ${s?.state === "working" || s?.compacting_ms ? "busy" : ""}">${sweep(sid, s)}
     ${activeHead(a)}
@@ -119,14 +120,15 @@ function openPane(a, full) {
     ${sid ? addOn.chatTop(sid) : ""}
     ${sid ? `<div class="ap-bar">${barLabels(sid)}${bar(sid)}${barKey(sid)}</div>` : ""}
     ${sessTabs(sid)}${sid ? statusPanel(a.it, s) : ""}
-    ${activeChat(a, full)}${extSlot(sid)}${diffSlot(sid)}${aboutSlot(sid)}${actSlot(sid)}${bgSlot(sid)}
-    ${termDock(sid)}${paneFoot(a, full)}${sid ? continueCover(sid) : ""}</div>`;
+    ${activeChat(a, full, crew)}${extSlot(sid)}${diffSlot(sid)}${aboutSlot(sid)}${actSlot(sid)}${bgSlot(sid)}
+    ${termDock(sid)}${paneFoot(a, full, crew)}${sid ? continueCover(sid) : ""}</div>`;
 }
 /** Under the chat: the full view's own foot, or the reply being read out, the crew's tray and the box (or the ask's
- *  card). The mini window shows this under its chat too (mini.js). */
-function paneFoot(a, full) {
+ *  card). On the crew's page (`crew`), its Needs you (`crew.needs`) in the tray's place: the list beside it has the
+ *  crew. The mini window shows this under its chat too (mini.js). */
+function paneFoot(a, full, crew = null) {
   const { sid, foot } = a;
-  return full ? full.foot : listenLine(sid) + (sid ? crewTray(sid) : "") + foot;
+  return full ? full.foot : listenLine(sid) + (crew ? crew.needs : sid ? crewTray(sid) : "") + foot;
 }
 /** What the pane draws for open card or session `cur` (current()): its item and session, its agent, project, whether
  *  it waits on you, the head's pill and the foot. The mini window draws the same chat from it (mini.js). */
@@ -141,12 +143,16 @@ function paneArgs(cur) {
   const foot = activeFoot(it, s, pending, harness, project, sid);
   return { it, s, sid, harness, project, pending, ch, pill, foot, onMachine: machTag(s?.machine || it?.machine) };
 }
-function activePane() {
-  if (quietOpen) return quietPane();
-  const pk = parkedActive();
+/** The Active pane for what's open. `crew` (the crew's page, team_page.js, the same pane on its left): { sid: its lead,
+ *  it: the item it stands on, extra: rows placed in its chat by time, needs: its Needs you, in the crew tray's place }:
+ *  the lead's pane whatever the Board has open (a Quiet or parked session, or nothing). */
+function activePane(crew = null) {
+  if (!crew && quietOpen) return quietPane();
+  const pk = !crew && parkedActive();
   if (pk) return parkedPane(pk);
-  const cur = current();
-  if (!cur) return emptyPane();
+  // The crew's page: its lead, standing on the item it gives (never a teammate's ask: those are in its Needs you).
+  const cur = crew ? { it: crew.it, s: sessionOf(crew.sid) } : current();
+  if (!cur || (crew && !cur.s)) return emptyPane();
   noteLooked(cur.s?.session_id || cur.it?.session_id);
   const a = paneArgs(cur);
   const { it, s, sid, harness, project, foot, onMachine } = a;
@@ -160,5 +166,5 @@ function activePane() {
   // A reply in the reader: the pane is the reader's (its bar names the session), the box out of the way.
   if (reading) return `<div class="active-pane reading ${s?.state === "working" || s?.compacting_ms ? "busy" : ""}">${sweep(sid, s)}
     ${full.bar + chatBox(full.forKey, full.body)}${extSlot(sid)}${diffSlot(sid)}${full.foot}${continueCover(sid)}</div>`;
-  return openPane(a, full);
+  return openPane(a, full, crew);
 }

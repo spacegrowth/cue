@@ -69,7 +69,7 @@ fn going_back_on_a_decision_tells_the_lead_once_and_marks_it() {
     let before = w.hosted.sent().len();
     let r = w.hub().crew_go_back(&sid, &id).unwrap();
     w.settle();
-    assert_eq!(r, "Asked its lead to go back on this");
+    assert_eq!(r, "Asked its lead to undo this");
     let sent = w.hosted.sent();
     assert_eq!(sent.len(), before + 1);
     assert_eq!(sent.last().unwrap(), &(sid.clone(), "Go back on this: rows: Reviewed: 1 should-fix. Sent back, fixed, committed to `crew/rows`. Undo it, then carry on: send it back as a fix if a teammate should redo it.".to_string()));

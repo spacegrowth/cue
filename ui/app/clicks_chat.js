@@ -45,7 +45,7 @@ const QUEUE_CLICKS = [
   // A queued message, sent now: stopping the turn (Esc) makes the agent read it straight away.
   rule("[data-act=send-now]", (sn) => sendQueuedNow(sn.dataset.sid)),
   rule("[data-act=unqueue-review]", (uq) => invoke("unqueue_review", { exec: uq.dataset.exec }).then(() => toast("Taken off the queue")).catch((e) => toast(`Couldn't: ${e}`))),
-  // Go back on a crew decision (team.js crewLogHtml): Cue tells the lead; the line says "going back…" at once.
+  // Undo a crew decision (team.js crewLogHtml): Cue tells the lead; the line says "undoing…" at once.
   rule("[data-act=crew-back]", (cb) => {
     const k = `${cb.dataset.sid}|${cb.dataset.id}`;
     crewBackAsked.add(k);

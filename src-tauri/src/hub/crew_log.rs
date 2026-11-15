@@ -50,14 +50,14 @@ impl Hub {
         self.crew_note(lead, d);
     }
 
-    /// Go back on this: lead `sid` is told to undo its decision `id` (through the normal send path: kept in Cue while
+    /// Undo this: lead `sid` is told to undo its decision `id` (through the normal send path: kept in Cue while
     /// it's busy), and the decision is marked so. What Cue did; Err for one it doesn't know or you went back on already.
     pub fn crew_go_back(&self, sid: &str, id: &str) -> Result<String, String> {
         let d = self.write(|st| st.sessions.crew_go_back(sid, id))?;
         self.changed();
         match self.send_to_session(sid, &go_back_words(&d), &[], false) {
-            Ok(said) if super::team::kept(&said) => Ok("Cue tells its lead to go back on this when its turn ends".into()),
-            Ok(_) => Ok("Asked its lead to go back on this".into()),
+            Ok(said) if super::team::kept(&said) => Ok("Cue tells its lead to undo this when its turn ends".into()),
+            Ok(_) => Ok("Asked its lead to undo this".into()),
             Err(e) => {
                 self.write(|st| st.sessions.crew_go_back_failed(sid, id));
                 self.changed();

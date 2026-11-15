@@ -1,12 +1,13 @@
 // ---------- a lead's crew on a page of its own (team.js has the drawer this grows from) ----------
 // "Open full ›" on the crew's tray line opens it across the window, in the board's and the chat's place (the top bar and
 // tabs stay): ‹ Back to the board (or Esc, or Open chat ›) goes back to the lead's chat. It fits the window: a head line;
-// the goal on one line (All of it › opens its four boxes in place); then the left reads and the right picks. Left: the
-// lead's chat itself (chat/pane.js chatBody, its replies folded as the chat folds them, what it decided on its own placed in it by time), Needs
-// you over its box (one row, "N more ›" for the rest) and the chat's own box (the same draft, so what you type carries
-// over). Right: The lead, then the crew's rows in the order the lead started them (a row never moves for its state), the
-// finished ones folded into "N done ›" (the drawer's fold). The optional add-on may add to it (core.js addOn.crewPage*):
-// its own head line, a band under it, rows under the goal, rows in Needs you and decisions in the chat.
+// the goal on one line (All of it › opens its four boxes in place); then the left reads and the right picks. Left, as
+// wide as on the board: the board's chat pane itself (chat/pane.js activePane: its title line, btw, its chat with the
+// waiting line, its box with the same draft), what the lead decided on its own placed in its chat by time, and Needs
+// you over its box (one row, "N more ›" for the rest) in the crew tray's place. Right, the rest of the width: The lead, then the crew's cards (one to a line) in the order the
+// lead started them (a card never moves for its state), the finished ones folded into "N done ›" (the drawer's fold).
+// The optional add-on may add to it (core.js addOn.crewPage*): its own head line, a band under The lead, rows under the
+// goal, rows in Needs you and decisions in the chat.
 
 /** The lead whose crew's page is open; null when none is. It closes when that session goes away, or another opens. */
 let crewPageSid = null;
@@ -78,19 +79,6 @@ function crewNext(sid, t) {
   if (mateOnLead(t)) return mateFixesKept(t) ? "fixes wait for the lead" : "its lead commits it";
   return "waits for you";
 }
-/** A member's state in a word, and its pill's look: "need" (red), "live" (dark: at work, or what Cue does next). */
-function crewStateWord(sid, t) {
-  if (mateAsk(sid, t)) return ["asks you", "need"];
-  if (mateNeeds(sid, t)) return ["needs you", "need"];
-  if (t.state === "working" && t.fix_rounds) return ["sent back", "live"];
-  const words = { working: ["working", "live"], queued: ["queued", ""], reviewing: ["reviewing", "live"], reviewed: ["reviewed", ""], committed: ["committed", ""], aside: ["set aside", ""], stopped: ["stopped", ""] };
-  return words[t.state] || ["done", ""];
-}
-
-/** The five stages of a lane's meter, in order. */
-const CREW_STAGES = ["working", "checking", "reviewed", "fixing", "committed"];
-/** A step of its own that checks its work: a test, lint, type check or build run. */
-const CREW_CHECKING = /^Running\b.*\b(test|tests|check|lint|clippy|tsc|build|pytest|jest|vitest|playwright)\b/i;
 /** A step's words with what it runs or edits as code: "Running: npm test" → "Running `npm test`", "Editing a/b.js" →
  *  "Editing `a/b.js`". */
 const crewStepCode = (step) => String(step || "").replace(/^Running:\s*(.+)$/, "Running `$1`").replace(/^(Editing|Writing|Reading|Creating) (\S+)$/, "$1 `$2`");
@@ -98,33 +86,27 @@ const crewStepCode = (step) => String(step || "").replace(/^Running:\s*(.+)$/, "
 const crewFindingText = (line) => String(line).replace(/^\d+\.\s*/, "").replace(FIX_KIND, " — ").replace(/^\s*—\s*/, "");
 /** What a lane says a member is doing now, all from its own data (its state, step, ask, findings, the crew's log),
  *  never more: `now` one plain sentence (`code` in backticks; `ask`: it waits on you), `sub` a dim line of context,
- *  `fix` the finding it's fixing (its kind, its words), and its meter: at stage `at` (CREW_STAGES), `look` "now" (on
- *  it), "need" (it waits on you there) or "done" (that far and stopped), `word` the stage in a word. */
+ *  `fix` the finding it's fixing (its kind, its words), and its word, colour and meter as team.js crewMark says. */
 function crewNow(sid, t) {
   const ask = mateAsk(sid, t), log = crewEntryOf(sid, t), last = log ? [log.head, ...(log.steps || [])].filter(Boolean).at(-1) : "";
   const logLine = last && log.at_ms ? `${last} at ${hhmm(log.at_ms)}` : "";
   const fixes = (t.findings || []).filter((l) => ["should-fix", "must-fix", "blocker"].includes(findingKind(l)));
   const working = t.state === "working", step = crewStepCode(t.step);
-  let at = 0, look = "done", word = crewStateWord(sid, t)[0], now = step || word, sub = "", fix = null;
+  const { at, look, word } = crewMark(sid, t);
+  let now = step || word, sub = "", fix = null;
   if (working) {
-    look = "now";
-    if (t.fix_rounds) { at = 3; word = "fixing"; }
-    else if (CREW_CHECKING.test(t.step || "")) { at = 1; word = "checking"; }
-    else word = "working";
     if (t.quiet === "stuck") now = `Quiet for ${mateQuietMins(t)}m — looks stuck`;
     else if (t.fix_rounds && fixes.length) { now = "Fixing what review found"; fix = [findingKind(fixes[0]), crewFindingText(fixes[0])]; }
     else if (!step) now = t.fix_rounds ? "Fixing what review found" : "Working";
     if (!fix) sub = logLine || (t.step && t.step_ms ? `on it since ${hhmm(t.step_ms)}` : "");
   } else if (["queued", "reviewing"].includes(t.state)) {
-    at = 2; look = "now"; word = t.state === "queued" ? "queued" : "reviewing";
     now = t.state === "queued" ? "Its review waits for the lead" : "Being reviewed";
     sub = logLine;
   } else if (t.state === "reviewed") {
-    at = 2; word = "reviewed"; now = `Reviewed: ${crewFound(t)}`;
+    now = `Reviewed: ${crewFound(t)}`;
     if (fixes.length) fix = [findingKind(fixes[0]), crewFindingText(fixes[0])];
     sub = crewNext(sid, t);
   } else if (t.state === "committed") {
-    at = 4; word = "committed";
     const said = log && [log.head, ...(log.steps || [])].filter(Boolean).find((x) => /^committed\b/i.test(x));
     now = [said ? said.replace(/^c/, "C") : "Committed", t.commit ? t.commit.slice(0, 7) : ""].filter(Boolean).join(" ");
     sub = [t.recommendation || (t.findings || []).length ? `review: ${crewFound(t)}` : "", t.ended_ms ? `ended ${hhmm(t.ended_ms)}` : ""].filter(Boolean).join(" · ");
@@ -133,8 +115,8 @@ function crewNow(sid, t) {
     now = { aside: "Set aside", stopped: "Stopped" }[t.state] || "Done";
     sub = t.summary || "";
   }
-  if (ask) { look = "need"; word = "asked you"; now = `${verb(ask).replace(/^./, (c) => c.toUpperCase())} \`${summary(ask)}\``; sub = logLine || (step && step !== `Running \`${summary(ask)}\`` ? step : ""); }
-  else if (t.needs) { look = "need"; word = "needs you"; now = t.needs; }
+  if (ask) { now = `${verb(ask).replace(/^./, (c) => c.toUpperCase())} \`${summary(ask)}\``; sub = logLine || (step && step !== `Running \`${summary(ask)}\`` ? step : ""); }
+  else if (t.needs) now = t.needs;
   return { now, sub, fix, at, look, word, ask: !!ask || !!t.needs };
 }
 /** The meter: five small bars, those before its stage done, its stage as `look` says; its stage in a word after. */
@@ -155,36 +137,65 @@ function crewGoalLine(sid, handles) {
   return `<div class="cp-goal"><span class="cp-lab">Goal</span><span class="cp-gt">${words}</span>${btn}</div>`;
 }
 
-/** One member's row in the list, the full form: its name with its stage in a word and its meter; what it was asked (one
- *  line); what it's doing now (red when it waits on you); a line of context, its files and how long. The row itself is
- *  one button: a click opens its menu (team.js mateMenuHtml: its steps, its review, its Diff). Under it, outside it, the
- *  one action the drawer's row has (team.js mateOneAct: Stop, Resume first when stuck, Skip while its review waits,
- *  else Diff), then what its menu opened. A committed or set-aside one is dimmed. */
+/** Its last steps, oldest first, up to three: from its own feed when the lead's chat has it (chat/helpers.js helpersOf:
+ *  each step's time and words, the one under way bold), else what it's on now. */
+function crewCardSteps(sid, t) {
+  const h = t.agent_id && typeof helpersOf === "function" ? helpersOf(sid).find((x) => x.id === t.agent_id) : null;
+  const steps = (h?.items || []).filter((x) => x.t === "step").slice(-3).map((x) => ({ at: x.at_ms, html: `${esc(x.verb || "")} ${x.subject ? (x.mono ? `<code>${esc(x.subject)}</code>` : esc(x.subject)) : ""}`.trim(), now: x.done === false }));
+  if (!steps.length && t.step) steps.push({ at: t.step_ms, html: crewCode(crewStepCode(t.step)), now: t.state === "working" });
+  return steps.map((x) => `<span class="cp-st ${x.now ? "now" : ""}"><span class="cp-t">${x.at ? esc(hhmm(x.at)) : ""}</span><span class="cp-sw">${x.html}</span></span>`).join("");
+}
+/** What its review found: a line per finding (its kind as a pill, its words), two at most and "N more"; "clean" when
+ *  it found nothing; "not yet" before it has one. */
+function crewCardReview(t) {
+  const f = t.findings || [];
+  if (!f.length) return `<span class="cp-dim">${t.recommendation || ["reviewed", "committed"].includes(t.state) ? "clean" : ["queued", "reviewing"].includes(t.state) ? "waiting for its review" : "not yet"}</span>`;
+  return f.slice(0, 2).map((l) => `<span class="cp-fl">${crewKind(findingKind(l))}${crewCode(crewFindingText(l))}</span>`).join("") + (f.length > 2 ? `<span class="cp-dim">${f.length - 2} more</span>` : "");
+}
+/** Its files on one line, each by its own name (the folder dropped), cut at the end; its size when Cue read it. */
+function crewCardFiles(t) {
+  const files = t.files || [];
+  if (!files.length) return "";
+  const names = files.map((f) => `<code>${esc(String(f).split("/").pop())}</code>`).join(" ");
+  return `<span class="cp-fn">${names}</span>${t.stat ? `<span class="cp-dim cp-stat">${esc(t.stat.replace(/^\d+ files? /, ""))}</span>` : ""}`;
+}
+/** A labelled part of a card: its label in small caps on the left, its lines on the right. */
+const crewCardPart = (label, html) => html ? `<div class="cp-part"><span class="cp-pl">${label}</span><span class="cp-pv">${html}</span></div>` : "";
+
+/** One member's card in the list: its name with its stage in a word and its meter; what it was asked (two lines);
+ *  what it's doing now (red when it waits on you) and a line of context; then its last steps, what its review found
+ *  and its files; at its foot how many files and how long, and the one action the drawer's row has (team.js
+ *  mateOneAct: Stop, Resume first when stuck, Skip while its review waits, else Diff). Its top is one button: a click
+ *  opens its menu (team.js mateMenuHtml: its steps, its review, its Diff), and what that opened shows under the card's
+ *  parts. A committed or set-aside one is dimmed. */
 function crewListRow(sid, t) {
   const n = crewNow(sid, t), k = mateKey(sid, t), past = ["committed", "aside"].includes(t.state), files = (t.files || []).length;
-  const sub = n.fix ? `${crewKind(n.fix[0])}${crewCode(n.fix[1])}` : crewCode(n.sub);
+  // The finding it's fixing is in its Review part: under what it's doing, who it waits on, if anyone.
+  const sub = crewCode(n.fix ? (t.state === "reviewed" ? crewNext(sid, t) : "") : n.sub);
   const size = [files ? plural(files, "file") : "", t.started_ms ? mateSpan(t) : ""].filter(Boolean).join(" · ");
   const act = mateOneAct(sid, t);
-  return `<button class="cp-row ${past ? "past" : ""} ${n.ask ? "q" : ""} ${mateMenu === k ? "on" : ""}" data-key="cp:${esc(k)}" data-mt-more="${esc(k)}" aria-expanded="${mateMenu === k}">`
+  const top = `<button class="cp-row" data-key="cp:${esc(k)}" data-mt-more="${esc(k)}" aria-expanded="${mateMenu === k}">`
     + `<span class="cp-l1"><span class="cp-nm">${esc(t.name)}</span>${crewMeter(n)}</span>`
     + `<span class="cp-ask1">${crewCode(t.asked || t.what || "")}</span>`
     + `<span class="cp-now ${n.ask ? "q" : ""}">${crewCode(n.now)}</span>`
-    + `<span class="cp-sub"><span class="cp-x">${sub}</span><span class="cp-r">${esc(size)}</span></span></button>`
-    + `${act ? `<div class="cp-acts ${past ? "past" : ""}">${act}</div>` : ""}${mateUnderHtml(sid, t)}`;
+    + `${sub ? `<span class="cp-x">${sub}</span>` : ""}</button>`;
+  const parts = crewCardPart("Steps", crewCardSteps(sid, t)) + crewCardPart("Review", crewCardReview(t)) + crewCardPart("Files", crewCardFiles(t));
+  return `<div class="cp-card ${past ? "past" : ""} ${n.ask ? "q" : ""} ${mateMenu === k ? "on" : ""}" data-key="cpc:${esc(k)}">${top}<div class="cp-parts">${parts}</div>`
+    + `<div class="cp-acts"><span class="cp-r">${esc(size)}</span>${act}</div>${mateUnderHtml(sid, t)}</div>`;
 }
 /** The finished members (committed, set aside) at the list's end: one line, "N done ›", folded until you click it (the
- *  drawer's fold, team.js mateDoneOpen, so it's open in both or neither); unfolded, their rows under it, dimmed, in the
+ *  drawer's fold, team.js mateDoneOpen, so it's open in both or neither); unfolded, their cards under it, dimmed, in the
  *  crew's order. Nothing above it moves. */
 function crewDoneRows(sid) {
   const past = (sessionOf(sid)?.team || []).filter((t) => ["committed", "aside"].includes(t.state));
   if (!past.length) return "";
   const open = mateDoneOpen.has(sid);
   const line = `<button class="mt-lk mt-done-line" data-mt-done="${esc(sid)}" aria-expanded="${open}">${past.length} done ${open ? "⌄" : "›"}</button>`;
-  return `<div class="cp-done ${open ? "open" : ""}" data-mt-for="done:${esc(sid)}">${line}${open ? past.map((t) => crewListRow(sid, t)).join("") : ""}</div>`;
+  return `<div class="cp-done ${open ? "open" : ""}" data-mt-for="done:${esc(sid)}">${line}${open ? `<div class="cp-cards">${past.map((t) => crewListRow(sid, t)).join("")}</div>` : ""}</div>`;
 }
-/** The crew's rows in the order the lead started them, whatever their state (a row never moves for it); the finished
- *  ones folded at the end. */
-const crewRowsHtml = (sid) => mateList(sid).map((t) => crewListRow(sid, t)).join("") + crewDoneRows(sid);
+/** The crew's cards in the order the lead started them, whatever their state (a card never moves for it), one to a
+ *  line; the finished ones folded at the end. */
+const crewRowsHtml = (sid) => `<div class="cp-cards">${mateList(sid).map((t) => crewListRow(sid, t)).join("")}</div>` + crewDoneRows(sid);
 /** The list's head: "The crew · 5", what needs you first (in red), then who's at work, in review and committed; Handle
  *  it / Ask me (team_send.js crewMode, its menu opening downward here). */
 function crewStatusLine(sid, needs) {
@@ -215,35 +226,43 @@ function crewNeedsBox(sid, rows, count = rows.length) {
   const more = rows.length > 1 ? `<button class="mt-lk cp-nmore" data-cp-needs="${esc(sid)}" aria-expanded="${all}">${all ? "Fewer ‹" : `${count - 1} more ›`}</button>` : "";
   return `<div class="cp-needs ${all ? "all" : ""}"><div class="cp-nh"><span class="mt-grp red">Needs you · ${count}</span><span class="grow"></span>${more}</div><div class="cp-nrows">${(all ? rows : rows.slice(0, 1)).join("")}</div></div>`;
 }
-/** The chat's box under the left: the lead's own ask's card when it asks you something (its teammates' asks are in
- *  Needs you), else the chat's box (the same draft, s:<sid>). */
-function crewPageFoot(sid) {
-  const s = sessionOf(sid), ask = crewLeadAsk(sid);
-  if (ask) return askFoot(ask, sid, s.harness);
-  return `<div class="foot">${box_(`s:${sid}`, "Message the lead… or @name a teammate", s.state === "working" ? "Queue" : "Send", `data-act="send-to" data-sid="${esc(sid)}"`)}</div>`;
-}
-/** The left: the lead's chat as the chat pane draws it (chat/pane.js chatBody: its replies and step groups, your
- *  messages, held, queued and send-at rows, its working or waiting line; the newest 3 replies whole, older long ones folded, as there), and what the lead (or Cue,
- *  or the add-on: `added`, addOn.crewPageDecided) decided on its own placed in it by time. A background agent or a
- *  reply opened in the reader fills it as it does the chat (chat/pane.js fullView). Then `needs` and the box. */
+/** The left: the board's chat pane itself, as the board draws it (chat/pane.js activePane: its title line with its ⋯
+ *  menu and btw, its folder, timeline and tabs, the chat with its waiting line, its box), with what the lead (or Cue,
+ *  or the add-on: `added`, addOn.crewPageDecided) decided on its own placed in its chat by time, and `needs` (Needs
+ *  you) in the crew tray's place. */
 function crewPageLeft(sid, added, needs) {
-  const s = sessionOf(sid), harness = s.harness;
-  // The item the chat stands on: its waiting card (the reply it stopped on), else the lead's own ask; never a
-  // teammate's (those are in Needs you).
-  const own = state.items.filter((i) => i.session_id === sid && !mateOfAsk(i));
-  const it = own.find((i) => i.kind === "waiting") || own[0] || null;
-  const { full } = fullView(sid, it, s, harness);
-  if (full) return full.bar + chatBox(full.forKey, full.body) + needs + full.foot;
+  const s = sessionOf(sid);
   // Each decision one keyed row of the chat (a row and what it opened under it), so the chat patches it in place.
   const row = (key, html) => `<div class="cp-dec" data-key="${esc(key)}">${html}</div>`;
   const decided = (s.crew_log || []).map((d) => ({ at: d.at_ms || 0, html: row(`cd:${d.id}`, crewLogRow(sid, d, true)) }));
   const theirs = added.items ? added.items.map((x, n) => ({ at: x.at_ms || 0, html: row(`ad:${n}:${x.at_ms || 0}`, x.html) }))
     : added.html ? [{ at: -Infinity, html: row("ad", added.html) }] : [];
-  return chatBox(`c|${sid}`, chatBody(it, s, harness, sid, { extra: decided.concat(theirs) })) + needs + crewPageFoot(sid);
+  // The item the chat stands on: its waiting card (the reply it stopped on), else the lead's own ask; never a
+  // teammate's (those are in Needs you).
+  const own = state.items.filter((i) => i.session_id === sid && !mateOfAsk(i));
+  const it = own.find((i) => i.kind === "waiting") || own[0] || null;
+  return activePane({ sid, it, extra: decided.concat(theirs), needs });
 }
 
-/** The page: its head (‹ Back to the board, the lead's name, Open chat ›), the add-on's band, the goal line and the
- *  add-on's rows; then the left (the lead's chat, Needs you, its box) beside the list (The lead, the crew's rows). */
+/** A plain crew's state in one word, for its head's pill: needs you (the lead or a member asks), working (the lead or a
+ *  member at work), else done. [word, look] as the add-on's head gives them. */
+function crewPill(sid) {
+  const s = sessionOf(sid), team = sessionOf(sid)?.team || [];
+  if (crewLeadAsk(sid) || team.some((t) => mateNeeds(sid, t))) return ["needs you", "need"];
+  if (s.state === "working" || team.some((t) => t.state === "working")) return ["working", "run"];
+  return ["done", "off"];
+}
+/** The head: ‹ Back, then the add-on's head line (`head`), else the lead's name, "Cue Crew" and the crew's state in a
+ *  word; Open chat › at its right. What the chat pane's own title line has (⋯, btw, Stop, the folder) isn't repeated. */
+function crewPageHead(sid, head) {
+  const s = sessionOf(sid), [word, look] = crewPill(sid), oc = `<button class="cp-oc" data-cp-chat>Open chat ›</button>`;
+  return `<div class="cp-head"><button class="cp-back" data-cp-back>‹ Back to ${esc(crewPageBack)}</button>${head ? head + oc
+    : `<span class="cp-name">${esc(nameOf(sid, s.project))}</span><span class="cp-kind">Cue Crew</span><span class="cp-pill ${look}">${word}</span><span class="grow"></span>${oc}`}</div>`;
+}
+
+/** The page: its head (crewPageHead), the goal line and the add-on's rows; then the
+ *  left (the lead's chat, Needs you, its box), as wide as the board's chat pane (board.js boardChatWidth), beside the
+ *  list, which has the rest: The lead, the add-on's band, the crew's cards. */
 function crewPageView(sid) {
   const s = sessionOf(sid), handles = crewHandles(sid), needs = crewNeedRows(sid, crewGroups(sid), true);
   // The add-on's part, each empty without it: its head line, its band, rows under the goal, rows in Needs you, decisions.
@@ -252,12 +271,11 @@ function crewPageView(sid) {
   // Needs you, a row each: the crew's, then the add-on's (its items; an add-on that still gives one piece of html, as one).
   const added = needsAdded.items ? needsAdded.items.map((x) => x.html) : needsAdded.count && needsAdded.html ? [needsAdded.html] : [];
   const needRows = needs.items.concat(added), needCount = needs.list.length + (needsAdded.items ? added.length : needsAdded.count || 0);
-  const name = nameOf(sid, s.project), oc = `<button class="cp-oc" data-cp-chat>Open chat ›</button>`;
   return `<div class="crew-page" data-crew-page="${esc(sid)}">
-    <div class="cp-head"><button class="cp-back" data-cp-back>‹ Back to ${esc(crewPageBack)}</button>${head ? head + oc : `<span class="cp-name">${esc(name)}</span><span class="grow"></span>${oc}${s.project && s.project !== name ? `<span class="cp-proj">${esc(s.project)}</span>` : ""}`}</div>
-    <div class="cp-upper" data-scroll-key="cpu:${esc(sid)}">${band}<div class="cp-top">${crewGoalLine(sid, handles)}${rowsAdded}</div></div>
-    <div class="cp-body"><div class="cp-left">${crewPageLeft(sid, decidedAdded, crewNeedsBox(sid, needRows, needCount))}</div>
-      <aside class="cp-list">${crewLeadRow(sid)}${crewStatusLine(sid, needCount)}<div class="cp-scroll" data-scroll-key="cpl:${esc(sid)}">${crewRowsHtml(sid)}</div></aside></div>
+    ${crewPageHead(sid, head)}
+    <div class="cp-upper" data-scroll-key="cpu:${esc(sid)}"><div class="cp-top">${crewGoalLine(sid, handles)}${rowsAdded}</div></div>
+    <div class="cp-body" style="--cp-chat-w:${typeof boardChatWidth === "function" ? boardChatWidth() : "50%"}"><div class="cp-left">${crewPageLeft(sid, decidedAdded, crewNeedsBox(sid, needRows, needCount))}</div>
+      <aside class="cp-list">${crewLeadRow(sid)}${band ? `<div class="cp-band" data-scroll-key="cpb:${esc(sid)}">${band}</div>` : ""}${crewStatusLine(sid, needCount)}<div class="cp-scroll" data-scroll-key="cpl:${esc(sid)}">${crewRowsHtml(sid)}</div></aside></div>
     ${mateMenuOf(sid)}</div>`;
 }
 
