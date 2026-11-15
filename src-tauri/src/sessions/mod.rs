@@ -171,6 +171,19 @@ pub struct Session {
     /// wherever Cue lists them.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub starred_ms: u64,
+    /// You pinned it to the top of the Inbox: since when; 0 = it isn't. Kept, like a star.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub pinned_ms: u64,
+    /// You snoozed it in the Inbox: hidden there until this time; 0 = it isn't.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub snooze_ms: u64,
+    /// When you snoozed it: anything it asks after this brings it back before its time.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub snoozed_at_ms: u64,
+    /// How full its context was at its last turn's end, 0–100 (steps::context_pct); 0 = not known, or
+    /// compacted since.
+    #[serde(default, skip_serializing_if = "is_zero_u8")]
+    pub context_pct: u8,
     /// What you sent while it was working, kept in Cue (not typed into its terminal) and sent when the
     /// turn ends: until then you can take it back into the box (Esc, Edit) or send it now. Its images
     /// are already saved (their paths).
@@ -206,6 +219,10 @@ pub struct Session {
 }
 
 fn is_zero(n: &u64) -> bool {
+    *n == 0
+}
+
+fn is_zero_u8(n: &u8) -> bool {
     *n == 0
 }
 
@@ -290,6 +307,10 @@ impl Session {
             watch_ms: 0,
             told_ms: 0,
             starred_ms: 0,
+            pinned_ms: 0,
+            snooze_ms: 0,
+            snoozed_at_ms: 0,
+            context_pct: 0,
             trust_ms: 0,
             enter_ms: 0,
             turn_base: None,

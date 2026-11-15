@@ -1,4 +1,4 @@
-/* ---------- Inbox (inbox.js): one line per session, then a session opened in the list's place ---------- */
+/* ---------- Inbox (inbox.js): two lines per session under Pinned, Needs you, Running, Done; a session opened in its place ---------- */
 /* "Inbox 3" in the header's switch: how many need you, on the button's one line. */
 .switch-view [data-view="inbox"] { flex: none; white-space: nowrap; }
 .switch-view .ib-count { margin-left: 6px; padding: 0 6px; border-radius: var(--pill-radius); background: var(--deny); color: #fff; font: 700 10.5px/16px var(--sans); display: inline-block; vertical-align: 1px; }
@@ -7,37 +7,107 @@
 .board.ib-board { grid-template-columns: minmax(0, 1fr); }
 .inbox, .inbox-page { grid-column: 1 / -1; min-width: 0; min-height: 0; margin: 0 0 4px; display: flex; flex-direction: column; background: var(--panel); color: var(--ink); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; font-size: 13px; }
 
-/* The list: its head, then the groups, scrolling inside. */
-.ib-top { flex: none; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+/* The list: its head (counts, the tabs), then the sections, scrolling inside. */
+.ib-top { flex: none; display: flex; align-items: center; gap: 12px; padding: 10px 14px 10px 16px; border-bottom: 1px solid var(--line); }
 .ib-top b { font-size: 14px; }
 .ib-counts { color: var(--muted); font-size: 12px; }
+.ib-tabs { margin-left: auto; display: flex; gap: 4px; }
+.ib-tab { padding: 3px 10px; border-radius: var(--pill-radius); font-size: 12px; color: var(--muted); }
+.ib-tab:hover { background: color-mix(in srgb, var(--ink) 5%, transparent); }
+.ib-tab.on { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); font-weight: 650; }
+.ib-tab span { font-variant-numeric: tabular-nums; }
 .ib-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 8px; }
-.ib-sect { padding: 12px 16px 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.ib-sect { display: flex; align-items: center; gap: 5px; padding: 10px 16px 3px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.ib-sect svg { width: 11px; height: 11px; }
 .ib-empty { padding: 28px 16px; color: var(--muted); text-align: center; }
 
-/* A line: dot, name, subject and snippet, time. */
-.ib-row { display: grid; grid-template-columns: 14px minmax(90px, 180px) minmax(0, 1fr) auto; gap: 12px; align-items: center; width: 100%; padding: 8px 16px; border-bottom: 1px solid var(--line); text-align: left; font-size: 12.5px; color: var(--ink); }
-.ib-row:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
+/* A row: dot | name, badges, subject / the useful line | time (a pin, a meter); its hover buttons over the right. */
+.ib-row { position: relative; display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; grid-template-rows: auto auto; gap: 2px 10px; align-items: baseline; width: 100%; padding: 8px 16px 9px; border-bottom: 1px solid var(--line); text-align: left; font-size: 12.5px; color: var(--ink); cursor: default; outline: none; }
+.ib-row:hover, .ib-row:focus-visible { background: color-mix(in srgb, var(--ink) 4%, transparent); }
 .ib-row.on { background: color-mix(in srgb, var(--sel) 45%, transparent); }
-.ib-dot { display: grid; place-items: center; }
+.ib-row.sinking { opacity: 0.6; animation: ib-sink 0.6s ease-out; }
+@keyframes ib-sink { from { transform: translateY(-6px); opacity: 0.3; } }
+.ib-dot { grid-row: 1; grid-column: 1; display: grid; place-items: center; align-self: center; }
 .ib-dot .hdot { width: 8px; height: 8px; }
+.ib-amber { width: 8px; height: 8px; border-radius: 50%; background: var(--amber); }
 .ib-still .pdot { opacity: 0.45; }
-.ib-who { min-width: 0; display: flex; align-items: center; gap: 4px; }
-.ib-name { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ib-what { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ib-subj { font-weight: 600; }
-.ib-snip { color: var(--muted); }
-.ib-time { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.ib-l1 { grid-row: 1; grid-column: 2; min-width: 0; display: flex; align-items: baseline; gap: 7px; }
+.ib-name { flex: none; max-width: 40%; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ib-subj { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ib-row.ask .ib-subj, .ib-row.turn .ib-subj, .ib-row.chore .ib-subj { font-weight: 600; }
+.ib-l2 { grid-row: 2; grid-column: 2; min-width: 0; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ib-l2:empty::before { content: "\00a0"; }
+.ib-side { grid-row: 1 / 3; grid-column: 3; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; align-self: center; color: var(--muted); font-size: 11px; white-space: nowrap; }
+.ib-pin { display: grid; color: var(--muted); }
+.ib-pin svg, .ib-act svg { width: 11px; height: 11px; }
 
-/* The open session: its head line, then the Board's chat pane filling the rest. */
-.ib-head { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-height: 48px; padding: 6px 16px 6px 10px; background: var(--sel); color: var(--on-sel); }
-.ib-back, .ib-next { height: 30px; padding: 0 10px; border-radius: 8px; font-size: 12.5px; font-weight: 650; color: var(--on-sel); }
-.ib-back:hover, .ib-next:hover { background: color-mix(in srgb, var(--on-sel) 10%, transparent); }
+/* Badges: "3 questions", an amber "context 71%", a small amber meter. */
+.ib-cnt, .ib-chore { flex: none; padding: 0 7px; border-radius: var(--pill-radius); font: 650 10.5px/17px var(--sans); white-space: nowrap; }
+.ib-cnt { background: var(--slab); color: var(--on-slab); }
+.ib-chore { background: color-mix(in srgb, var(--amber) 18%, var(--panel)); color: color-mix(in srgb, var(--amber) 70%, var(--ink)); }
+.ib-meter { display: inline-block; width: 46px; height: 5px; border-radius: 3px; background: color-mix(in srgb, var(--ink) 8%, transparent); overflow: hidden; }
+.ib-meter i { display: block; height: 100%; background: var(--amber); }
+.ib-meter.big { width: 220px; height: 8px; border-radius: 4px; }
+
+/* Pin, Later, Snooze: over the row's right end while the pointer's on it (or its Snooze menu is open). */
+.ib-acts { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); display: none; gap: 4px; padding-left: 12px; background: linear-gradient(90deg, transparent, var(--panel) 12px); }
+.ib-row:hover .ib-acts, .ib-row:focus-within .ib-acts, .ib-acts.open { display: flex; }
+.ib-row:has(.ib-acts.open) { z-index: 3; }   /* its Snooze menu over the rows below */
+.ib-act { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 9px; border: 1px solid var(--line); border-radius: var(--pill-radius); background: var(--panel); color: var(--ink); font-size: 11.5px; font-weight: 550; }
+.ib-act:hover { background: color-mix(in srgb, var(--ink) 6%, var(--panel)); }
+.ib-act.on { background: var(--sel); border-color: var(--sel); color: var(--on-sel); }
+.ib-snz-wrap { position: relative; display: inline-flex; }
+.ib-snz { position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; display: flex; flex-direction: column; min-width: 170px; padding: 4px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); box-shadow: var(--shadow); }
+.ib-snz button { padding: 6px 10px; border-radius: 7px; text-align: left; font-size: 12.5px; color: var(--ink); white-space: nowrap; }
+.ib-snz button:hover { background: color-mix(in srgb, var(--sel) 55%, transparent); }
+
+/* The bar along a working row's foot: a light moving along it; slower and fainter when quiet; amber and still when stuck. */
+.ib-bar { position: absolute; left: 16px; right: 16px; bottom: 0; height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--ink) 6%, transparent); overflow: hidden; pointer-events: none; }
+.ib-bar::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 30%; border-radius: 2px; background: linear-gradient(90deg, transparent, var(--pc, var(--accent)), transparent); animation: ib-run 1.6s linear infinite; animation-delay: var(--ib-d, 0s); }
+.ib-bar.slow::after { animation-duration: 3.2s; opacity: 0.5; }
+.ib-bar.stuck { background: color-mix(in srgb, var(--amber) 35%, transparent); }
+.ib-bar.stuck::after { display: none; }
+@keyframes ib-run { from { left: -30%; } to { left: 100%; } }
+@media (prefers-reduced-motion: reduce) { .ib-bar::after { animation: none; left: 35%; } .ib-row.sinking { animation: none; } }
+
+/* The open session: its head, then its facts and cards, its full chat as a link at the foot. */
+.ib-head { position: relative; flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-height: 48px; padding: 6px 12px 6px 8px; border-bottom: 1px solid var(--line); }
+.ib-back, .ib-next { height: 28px; padding: 0 10px; border-radius: var(--pill-radius); font-size: 12.5px; font-weight: 650; color: var(--ink); }
+.ib-back { border: 1px solid var(--line); }
+.ib-back:hover, .ib-next:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
 .ib-hname { min-width: 0; overflow-wrap: anywhere; font-size: 14px; font-weight: 700; }
-.ib-pill { flex: none; padding: 2px 9px; border-radius: var(--pill-radius); font: 650 11px/1.5 var(--mono); white-space: nowrap; background: color-mix(in srgb, var(--on-sel) 12%, transparent); color: var(--on-sel); }
-.ib-pill.run { background: var(--ink); color: var(--panel); }
-.ib-pill.need { background: var(--deny); color: #fff; }
-.ib-of { font-size: 12.5px; font-weight: 600; color: color-mix(in srgb, var(--on-sel) 72%, transparent); padding: 0 10px; }
-.ib-chat { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.ib-chat > .active-pane { border-radius: 0; box-shadow: none; }
-.ib-chat > .active-pane > .ap-chat { min-height: 84px; }
+.ib-hacts { display: flex; gap: 4px; }
+.ib-page-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 10px; padding: 14px 16px 12px; }
+.ib-page-body > * { max-width: 760px; width: 100%; }
+.ib-facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 14px; font-size: 12.5px; }
+.ib-k { color: var(--muted); }
+.ib-link { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; font-size: inherit; }
+
+/* A card: a question (the one to answer now lit), an ask, a finished turn, a full context. */
+.ib-card { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.ib-card.on { border-color: color-mix(in srgb, var(--amber) 45%, var(--line)); background: color-mix(in srgb, var(--amber) 6%, var(--panel)); }
+.ib-card.done { opacity: 0.6; }
+.ib-card[data-inbox-step] { cursor: default; }
+.ib-card[data-inbox-step]:hover { border-color: color-mix(in srgb, var(--ink) 25%, var(--line)); }
+.ib-qn { font-size: 10.5px; font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+.ib-qt { font-size: 14px; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+.ib-dim, .ib-why { color: var(--muted); font-weight: 400; font-size: 12.5px; }
+.ib-qa { font-size: 12.5px; }
+.ib-opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.ib-opt { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 1px; max-width: 100%; padding: 5px 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); color: var(--ink); text-align: left; font-size: 12.5px; }
+.ib-opt span { color: var(--muted); font-size: 11.5px; }
+.ib-opt:hover { border-color: color-mix(in srgb, var(--ink) 30%, var(--line)); }
+.ib-opt.on { background: var(--sel); border-color: var(--sel); color: var(--on-sel); }
+.ib-opt.on span { color: color-mix(in srgb, var(--on-sel) 70%, transparent); }
+.ib-full { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 12px; }
+.ib-card.run { padding-bottom: 12px; }
+.ib-card.run .ib-bar { left: 12px; right: 12px; bottom: 4px; }
+.ib-foot-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ib-card .row-btns, .ib-page-body > .row-btns { margin: 0; }
+
+/* A plain box to answer or reply in: the text, its button at the end. */
+.ib-box { display: flex; align-items: flex-end; gap: 8px; padding: 6px 6px 6px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.ib-box:focus-within { border-color: color-mix(in srgb, var(--ink) 35%, var(--line)); }
+.ib-box textarea { flex: 1; min-width: 0; min-height: 36px; max-height: 160px; resize: none; border: 0; outline: none; background: transparent; color: var(--ink); font: 13px/1.4 var(--sans); padding: 3px 0; }
+.ib-page-body > .ib-fullchat { width: auto; align-self: flex-start; margin-top: auto; padding: 4px 0; text-align: left; color: var(--muted); font-size: 12px; }
+.ib-fullchat:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }

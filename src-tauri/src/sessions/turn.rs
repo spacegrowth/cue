@@ -65,6 +65,7 @@ impl Sessions {
         if let Some(s) = self.0.get_mut(session_id) {
             s.compacting_ms = 0;
             s.compacted_ms = at_ms;
+            s.context_pct = 0; // its context is a summary now: known again at its next turn's end
         }
     }
 

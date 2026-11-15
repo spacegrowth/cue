@@ -183,6 +183,9 @@ impl Hub {
     /// What follows a turn's end: its card's numbers, what it changed, the status lists it was asked for, its
     /// About, and a review queued for it if it's a lead.
     fn after_turn_ended(&self, sid: &str, path: &str) {
+        // How full its context is now, for the Inbox's meter (read here, with the store let go).
+        let pct = (!path.is_empty()).then(|| crate::steps::context_pct(path)).flatten().unwrap_or(0);
+        self.write(|st| st.sessions.set_context(sid, pct));
         // Its card lands with its cache and context numbers, not at the next tick.
         self.cache_tick();
         self.changed();

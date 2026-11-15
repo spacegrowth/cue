@@ -98,7 +98,9 @@ function stepOf(it) {
   const first = qs.findIndex((q) => !isAnswered(it, q));
   return Math.min(qStep[it.id] ?? (first < 0 ? qs.length - 1 : first), qs.length - 1);
 }
-function pick(it, qi, oi) {
+/** Pick choice `oi` of question `qi`. One single-choice question: that's the answer, sent. Several: each is sent once
+ *  all have one, unless `hold` (the Inbox's cards wait for its Send). */
+function pick(it, qi, oi, hold = false) {
   const q = questions(it)[qi];
   const label = q?.options?.[oi]?.label;
   if (!label) return;
@@ -108,7 +110,7 @@ function pick(it, qi, oi) {
   // One single-choice question: the click is the answer.
   if (questions(it).length === 1 && !q.multiSelect) return respond(it, { behavior: "allow", answers: { [q.question]: label } });
   const a = answersFor(it);
-  if (a && questions(it).every((x) => !x.multiSelect)) return respond(it, { behavior: "allow", answers: a });
+  if (a && !hold && questions(it).every((x) => !x.multiSelect)) return respond(it, { behavior: "allow", answers: a });
   // Several questions: a single choice moves on to the next one still unanswered.
   if (!q.multiSelect) {
     const next = questions(it).findIndex((x, n) => n !== qi && !isAnswered(it, x));

@@ -24,6 +24,8 @@ const INVOKE_LANES = {
   set_later: (a) => `later:${a.sessionId}`,
   set_watch: (a) => `watch:${a.sessionId}`,
   set_starred: (a) => `star:${a.sessionId}`,
+  set_pinned: (a) => `pin:${a.sessionId}`,
+  set_snooze: (a) => `snooze:${a.sessionId}`,
   ext_enable: (a) => `ext:${a.name}`,
   ext_set: (a) => `ext-set:${a.id}`,
   // An extension's log lines, in the order its page wrote them.

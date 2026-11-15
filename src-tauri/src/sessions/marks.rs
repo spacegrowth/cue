@@ -30,6 +30,37 @@ impl Sessions {
         true
     }
 
+    /// Pin it to the top of the Inbox, or unpin it (`on` false). True if that changed anything.
+    pub fn set_pinned(&mut self, session_id: &str, on: bool) -> bool {
+        let Some(s) = self.0.get_mut(session_id) else { return false };
+        if (s.pinned_ms > 0) == on {
+            return false;
+        }
+        s.pinned_ms = if on { crate::model::now_ms() } else { 0 };
+        true
+    }
+
+    /// Snooze it in the Inbox until `until_ms`, or wake it (0). True if that changed anything.
+    pub fn set_snooze(&mut self, session_id: &str, until_ms: u64) -> bool {
+        let Some(s) = self.0.get_mut(session_id) else { return false };
+        if s.snooze_ms == until_ms {
+            return false;
+        }
+        s.snooze_ms = until_ms;
+        s.snoozed_at_ms = if until_ms > 0 { crate::model::now_ms() } else { 0 };
+        true
+    }
+
+    /// How full its context is now, 0–100 (0: not known). True if that changed anything.
+    pub fn set_context(&mut self, session_id: &str, pct: u8) -> bool {
+        let Some(s) = self.0.get_mut(session_id) else { return false };
+        if s.context_pct == pct {
+            return false;
+        }
+        s.context_pct = pct;
+        true
+    }
+
     /// "Tell me" on this turn, or off (`on` false). True if that changed anything.
     pub fn set_watch(&mut self, session_id: &str, on: bool) -> bool {
         let Some(s) = self.0.get_mut(session_id) else { return false };

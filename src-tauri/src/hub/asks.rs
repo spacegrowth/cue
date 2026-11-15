@@ -196,6 +196,22 @@ impl Hub {
         }
     }
 
+    /// Pin a session to the top of the Inbox, or unpin it. Kept with the session, like Later.
+    pub fn set_pinned(&self, session_id: &str, on: bool) {
+        let changed = self.write(|st| st.sessions.set_pinned(session_id, on));
+        if changed {
+            self.changed();
+        }
+    }
+
+    /// Snooze a session in the Inbox until `until_ms` (0: back now). Kept with the session, like Later.
+    pub fn set_snooze(&self, session_id: &str, until_ms: u64) {
+        let changed = self.write(|st| st.sessions.set_snooze(session_id, until_ms));
+        if changed {
+            self.changed();
+        }
+    }
+
     /// "Tell me": be told when this turn is done, or not (`on` false). Only while it's at it (working, or
     /// waiting on its background agents).
     pub fn set_watch(&self, session_id: &str, on: bool) {
@@ -688,6 +704,21 @@ mod tests {
         assert_eq!(starred_ms(&hub), at, "starring it again keeps when it was first starred");
         hub.set_starred("s2", false);
         assert_eq!(starred_ms(&hub), 0);
+        // The Inbox's pin and snooze: kept with the session the same way.
+        let marks = |h: &Hub| h.read(|st| st.sessions.all().iter().find(|s| s.origin.session_id == "s2").map(|s| (s.pinned_ms, s.snooze_ms)).unwrap());
+        hub.set_pinned("s2", true);
+        let (pinned, _) = marks(&hub);
+        assert!(pinned > 0);
+        hub.set_pinned("s2", true);
+        assert_eq!(marks(&hub).0, pinned, "pinning it again keeps when it was first pinned");
+        hub.set_snooze("s2", 1_900_000_000_000);
+        assert_eq!(marks(&hub), (pinned, 1_900_000_000_000));
+        let at = |h: &Hub| h.read(|st| st.sessions.all().iter().find(|s| s.origin.session_id == "s2").map(|s| s.snoozed_at_ms).unwrap());
+        assert!(at(&hub) > 0, "when it was snoozed is kept, so a new ask brings it back");
+        hub.set_pinned("s2", false);
+        hub.set_snooze("s2", 0);
+        assert_eq!(marks(&hub), (0, 0));
+        assert_eq!(at(&hub), 0);
         std::env::remove_var("CUE_HOME");
         let _ = std::fs::remove_dir_all(&dir);
     }
