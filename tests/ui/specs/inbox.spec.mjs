@@ -597,6 +597,8 @@ test("an earlier message shows two lines, with more when that cuts it; a click o
   expect(lines).toBe(2);
   await expect(cut.locator(".ib-msg-more")).toHaveText("more");
   await expect(short.locator(".ib-msg-more")).toHaveCount(0);
+  // What a click opens shows the hand, as everywhere else in Cue: the message, a row, a section's heading.
+  for (const el of [cut, page.locator(".ib-row").first(), page.locator("button.ib-sect").first()]) expect(await el.evaluate((x) => getComputedStyle(x).cursor)).toBe("pointer");
   await cut.click();
   await expect(cut.locator(".ib-msg-body")).toContainText("Sentence 11");
   await expect(cut.locator(".ib-msg-more")).toHaveText("less");
