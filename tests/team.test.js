@@ -203,6 +203,7 @@ for (const c of cases.said) {
 }
 assert.match(ctx.cueSaid("Review your teammate docs's work with a fork").html, /Cue asked for <b>docs<\/b>'s review/, "the name in bold");
 assert.equal(ctx.cueSaid("Review your teammate <img>'s work with a fork").html.includes("<img>"), false, "a name is escaped");
+assert.match(ctx.cueSaid("Review your teammate docs's work with a fresh agent").html, /Cue asked for <b>docs<\/b>'s review/, "today's ask folds too");
 // Drawn as Cue's bubble on the right: named Cue in its meta line, its words without "Cue", the text folded behind addedNote.
 ctx.addedNote = (key, label, line) => `<note ${key}|${label}|${line}>`;
 const bubble = ctx.cueSaidLine(ctx.cueSaid("Review your teammate docs's work with a fork"), "L:1", "Review your teammate docs's work with a fork", "2m ago");

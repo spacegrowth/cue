@@ -452,7 +452,7 @@ function mateChips(sid) {
 /** What Cue sends a lead, by how it starts: its few words for it (plain), from the crew member's name and,
  *  for a task handed out, the task's first line. The cases both windows are held to: tests/fixtures/crew-review.json. */
 const CUE_SAID = [
-  [/^Review your teammate (.+?)['’]s work with a fork/, (n) => `Cue asked for ${n}'s review`, "review"],
+  [/^Review your teammate (.+?)['’]s work with a (?:fork|fresh agent)/, (n) => `Cue asked for ${n}'s review`, "review"],
   [/^Send your teammate (.+?) its review['’]s findings with SendMessage/, (n) => `Cue sent ${n}'s findings back to it`],
   [/^Your teammate (.+?) \(carried over from the session before you\) can['’]t be messaged/, (n) => `Cue asked to start ${n} again with its fixes`],
   [/^Stop your teammate (.+?) now/, (n) => `Cue asked to stop ${n}`],

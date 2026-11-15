@@ -286,7 +286,8 @@ impl Hub {
         }
     }
 
-    /// Review: the lead reviews the teammate's work through a fork in the background, the ask sent when the lead is free
+    /// Review: the lead reviews the teammate's work through a fresh agent (never a fork: it would carry the lead's whole
+    /// context) in the background, the ask sent when the lead is free
     /// (Review's queue; queued, the member is marked so in the same step, hub/reviews.rs `take_review`). The lead says
     /// it started it and is free again at once; the fork's report, in the turn it starts, comes back as the teammate's
     /// review, named by its `Review of <name>:` line (`team_reply`).
@@ -309,15 +310,16 @@ impl Hub {
     }
 }
 
-/// The ask for member `name`'s review: a fork in the background, so the lead is free again at once, and a reply that
-/// names the member when the fork reports. Files Cue can't see in a git repository: the fork reads what it says it
+/// The ask for member `name`'s review: a fresh agent on a smaller model in the background (a fork would start with the
+/// lead's whole context, often 300K+ tokens, for a job that needs only the diff), so the lead is free again at once, and a reply that
+/// names the member when the fork reports. Files Cue can't see in a git repository: the reviewer reads what it says it
 /// changed.
 fn review_words(name: &str, worktree: &str, what: &str, files: &[String]) -> String {
     let place = if worktree.is_empty() { String::new() } else { format!(" in its worktree {worktree}") };
     let look = if files.is_empty() { "reads the files it says it changed".to_string() } else { format!("reads the diff of its files{place}") };
     let files = if files.is_empty() { "none Cue can see in a git repository".to_string() } else { files.join(", ") };
     format!(
-        "Review your teammate {name}'s work with a fork in the background: one Agent call with `run_in_background: true` and no `name` (it isn't a teammate), its prompt starting `Review your teammate {name}'s work`, then reply only `Reviewing {name} in the background.` and end your turn; don't wait for it. The fork {look} against what it was asked and runs its tests if it has any; it changes, commits and messages nothing. When it reports, reply with a first line `Review of {name}:`, then only findings that need a change, numbered (`1. file:line — should-fix — what`; no notes that something is fine), and a last line `Recommendation: commit` or `Recommendation: send fixes`.\nWhat it was asked: {what}\nIts files: {files}"
+        "Review your teammate {name}'s work with a fresh agent in the background: one Agent call with `subagent_type: \"general-purpose\"`, `model: \"sonnet\"`, `run_in_background: true` and no `name` (it isn't a teammate), never a fork (a fork carries your whole context; this needs none of it), its prompt starting `Review your teammate {name}'s work` and holding all it needs: what was asked, its files and where they are. Then reply only `Reviewing {name} in the background.` and end your turn; don't wait for it. The reviewer {look} against what it was asked and runs its tests if it has any; it changes, commits and messages nothing. When it reports, reply with a first line `Review of {name}:`, then only findings that need a change, numbered (`1. file:line — should-fix — what`; no notes that something is fine), and a last line `Recommendation: commit` or `Recommendation: send fixes`.\nWhat it was asked: {what}\nIts files: {files}"
     )
 }
 
@@ -497,13 +499,14 @@ mod tests {
     }
 
     #[test]
-    fn the_review_ask_runs_the_fork_in_the_background_and_asks_for_a_reply_that_names_the_member() {
+    fn the_review_ask_runs_a_fresh_reviewer_in_the_background_and_asks_for_a_reply_that_names_the_member() {
         let ask = review_words("rows", "", "Fix the rows", &["ui/rows.js".into()]);
         assert_eq!(review_ask_name(&ask).as_deref(), Some("rows"), "the window and the turn still read whose it is");
-        assert!(ask.starts_with("Review your teammate rows's work with a fork"), "the chat folds it as Cue's ask (ui/team.js)");
+        assert!(ask.starts_with("Review your teammate rows's work with a fresh agent"), "the chat folds it as Cue's ask (ui/team.js)");
+        assert!(ask.contains("never a fork") && ask.contains("`subagent_type: \"general-purpose\"`"), "a fresh reviewer, not the lead's whole context: {ask}");
         assert!(ask.contains("`run_in_background: true`") && ask.contains("`Review of rows:`") && ask.contains("Its files: ui/rows.js"));
         assert!(!ask.contains("not in the background"));
-        assert!(ask.contains("no `name`") && ask.contains("its prompt starting `Review your teammate rows's work`"), "the fork is no crew member (sessions/team.rs `started`): {ask}");
+        assert!(ask.contains("no `name`") && ask.contains("its prompt starting `Review your teammate rows's work`"), "the reviewer is no crew member (sessions/team.rs `started`): {ask}");
         let outside = review_words("mocks", "", "Draw 10 mocks", &[]);
         assert!(outside.contains("reads the files it says it changed") && !outside.contains("diff") && !outside.contains("(none yet)"), "{outside}");
     }

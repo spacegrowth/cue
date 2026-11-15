@@ -89,8 +89,8 @@ Mock: Cue Teams design canvas, https://claude.ai/artifact/AVfeQHx1NVTVqmDrrsKfyV
 
 ## 5. Review and commit
 
-- **Review** asks the lead to review that teammate's work through a fork (as `/relay:review` does today, without
-  relay): read the teammate's files' diff against what it was asked, run its tests, return numbered findings and a
+- **Review** asks the lead to review that teammate's work through a fresh agent on Sonnet, never a fork
+  (a fork starts with the lead's whole context, often 300K+ tokens; changed 2026-11-14): read the teammate's files' diff against what it was asked, run its tests, return numbered findings and a
   recommendation. Cue sends it only when the lead is free, one at a time (`Hub::review`'s queue, kept).
 - The findings come back as the lead's reply; Cue files them under the teammate (the reply to a Review request is
   its review) and the row turns **reviewed**.
@@ -118,6 +118,7 @@ You run inside Cue, which shows each teammate you start under you; the user look
 - One teammate per part, never two on the same files. Tell each what to do, which files are its own, and not to commit.
 - Don't set a `model`: teammates run on yours.
 - Then wait: you're told as each one finishes. When all have, say in plain words what each did. Don't commit their work.
+- Look over a teammate's work at most twice: once, and once more after its fixes. Do it with a fresh agent given a short brief, never a fork: a fork starts with your whole context.
 - One part that will take long (more than about 20 minutes of work): hand it to one teammate too, so you stay free to answer the user while it runs.
 - One short part, small quick changes, or parts that share files: do it yourself.
 - A message that ends with "(Team: on …)" or "(Team: off …)" is the user's choice for that message.

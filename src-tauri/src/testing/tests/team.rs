@@ -280,7 +280,7 @@ fn review_goes_to_the_free_lead_its_reply_is_the_teammates_review_and_send_fixes
     w.settle();
     let sent = w.hosted.sent();
     let review = &sent.last().unwrap().1;
-    assert!(review.starts_with("Review your teammate rows's work with a fork") && review.contains("Its files: a.txt"), "{review}");
+    assert!(review.starts_with("Review your teammate rows's work with a fresh agent") && review.contains("Its files: a.txt"), "{review}");
     assert_eq!(mate(&w, &sid, "rows")["state"], "reviewing");
     // A teammate finishing meanwhile starts a turn nothing of yours did: not the review.
     w.hosted_says(&sid, HostedEvent::Taken { text: review.clone() });
