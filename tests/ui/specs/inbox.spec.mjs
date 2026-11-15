@@ -1,5 +1,5 @@
 // The Inbox (ui/inbox.js): two lines a row under Pinned, Needs you, Running and Done; a finished turn that asks nothing
-// under Done; a row opened in the list's place as its facts and cards (never its full chat, which is a link); several
+// under Done; a row opened beside the list as its facts and cards (never its full chat, which is a link); several
 // questions stacked as cards with one Send; an answered row sinking to Running with its bar, and rising again; Pin, Later
 // and Snooze; a session half full of context up as housekeeping, with Compact and Hand off.
 import { test, expect } from "./cue.mjs";
@@ -58,6 +58,9 @@ test("opening a row shows its question as a card, not its chat; Full chat › go
   await page.locator('.ib-row[data-inbox-open="pipe"]').click();
   const pg = page.locator('.inbox-page[data-inbox-page="pipe"]');
   await expect(pg).toBeVisible();
+  // Beside the list, which stays, its row lit.
+  await expect(page.locator(".inbox .ib-row").first()).toBeVisible();
+  await expect(page.locator('.ib-row[data-inbox-open="pipe"]')).toHaveClass(/\bon\b/);
   await expect(pg.locator(".active-pane, [data-chat]")).toHaveCount(0);
   await expect(pg.locator(".ib-facts")).toContainText("Waiting on");
   await expect(pg.locator('[data-act="allow"][data-id="n4"]')).toBeVisible();
@@ -67,6 +70,8 @@ test("opening a row shows its question as a card, not its chat; Full chat › go
   await expect(page.locator(".inbox-page")).not.toHaveAttribute("data-inbox-page", "pipe");
   await page.locator("body").click({ position: { x: 5, y: 5 } });
   await page.keyboard.press("Escape");
+  await expect(page.locator(".inbox-page")).toHaveCount(0);
+  await expect(page.locator(".ib-idle")).toContainText("need you");
   await expect(page.locator(".inbox .ib-row").first()).toBeVisible();
   await page.locator('.ib-row[data-inbox-open="sec"]').click();
   await expect(page.locator(".inbox-page .ib-qt")).toContainText("next company?");
@@ -105,8 +110,8 @@ test("answered, a row sinks to Running with a moving bar; quiet it slows, stuck 
   await page.locator('.ib-row[data-inbox-open="sec"]').click();
   await page.locator('.inbox-page textarea[data-text="s:sec"]').fill("yes, run it");
   await page.locator('.inbox-page [data-act="send"]').click();
-  // Back to the list once it's at work again, its row under Running with its bar.
-  await expect(page.locator(".inbox-page")).toHaveCount(0);
+  // Once it's at work again the next that needs you opens beside the list; its row is under Running with its bar.
+  await expect(page.locator(".inbox-page")).not.toHaveAttribute("data-inbox-page", "sec");
   expect(await sectionSids(page, "Running")).toContain("sec");
   const row = page.locator('.ib-row[data-inbox-open="sec"]');
   await expect(row).toHaveClass(/\bsinking\b/);
@@ -176,7 +181,7 @@ test("Pin puts a row under Pinned (kept by Cue); Later and Snooze move it to the
   await page.locator('.ib-row[data-inbox-open="sec"]').click();
   await page.locator('.inbox-page textarea[data-text="s:sec"]').fill("yes, the third too");
   await page.locator('.inbox-page [data-act="send"]').click();
-  await expect(page.locator(".inbox-page")).toHaveCount(0);
+  await expect(page.locator(".inbox-page")).not.toHaveAttribute("data-inbox-page", "sec");
   expect(await sectionSids(page, "Running")).toContain("sec");
   await expect(page.locator('.ib-row[data-inbox-open="sec"] .ib-bar')).toBeVisible();
   // Snoozed again, it stays hidden until its time comes; then it's back.

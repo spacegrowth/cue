@@ -4,9 +4,9 @@
 // session whose context is half full or more comes up under Needs you to compact or hand off. Answer one and it sinks
 // to Running, a bar moving along its foot (slower when it's quiet, amber and still when it's stuck); it rises again
 // when it asks again or finishes. A row keeps its place while its state stays the same. Hovering a row shows Pin,
-// Later and Snooze (Later and Snoozed are tabs of their own). Opening a row shows it in the list's place: what it's
+// Later and Snooze (Later and Snoozed are tabs of their own). Opening a row shows it beside the list: what it's
 // doing and has done so far, then its question(s) as cards with their choices and a box to answer in. Its full chat
-// is a link at the foot. Esc or ‹ Inbox goes back. With a project picked in the header, only its sessions.
+// is a link at the foot. Esc or ✕ closes it; once answered and at work, the next that needs you opens. With a project picked in the header, only its sessions.
 
 /** The session open in the Inbox's place; null while the list shows. */
 let inboxSid = null;
@@ -214,7 +214,7 @@ function inboxRowHtml(r) {
   const sinking = kind === "run" && seat?.from === "need" && now() - seat.at < INBOX_SINK_MS;
   const under = inboxSnoozed(s) ? `Back ${inboxWhen(s.snooze_ms)}${line ? ` · ${line}` : ""}` : line;
   const side = `<span class="ib-time">${ago(r.at)}</span>${inboxPinned(s) ? `<span class="ib-pin">${PIN_ICON}</span>` : ""}${inboxFull(s) ? inboxMeter(s) : ""}`;
-  return `<div class="ib-row ${kind} ${sinking ? "sinking" : ""} ${inboxLast === sid ? "on" : ""}" role="button" tabindex="0" data-inbox-open="${esc(sid)}" style="${projStyle(r.project)}">`
+  return `<div class="ib-row ${kind} ${sinking ? "sinking" : ""} ${(inboxSid || inboxLast) === sid ? "on" : ""}" role="button" tabindex="0" data-inbox-open="${esc(sid)}" style="${projStyle(r.project)}">`
     + `<span class="ib-dot">${inboxDot(r)}</span><span class="ib-l1">${nameSpan(sid, r.project, "ib-name")}${inboxBadges(r)}<span class="ib-subj">${esc(subj)}</span></span>`
     + `<span class="ib-l2">${esc(under)}</span><span class="ib-side">${side}</span>`
     + `<span class="ib-acts ${inboxSnoozeAt === `row:${sid}` ? "open" : ""}">${inboxActs(sid, s, `row:${sid}`)}</span>${kind === "run" && s ? inboxBar(s) : ""}</div>`;
@@ -330,12 +330,12 @@ function inboxStep(sid) {
   const others = inboxNeedOrder().filter((x) => x !== sid);
   return others.length ? `<button class="ib-next" data-inbox-next>next ask ›</button>` : "";
 }
-/** The open session: its head (‹ Inbox, its name, Pin, Later, Snooze, next ask), its facts and cards, and its full
+/** The open session, beside the list: its head (its name, Pin, Later, Snooze, next ask), its facts and cards, and its full
  *  chat as a link at the foot. No hover text: a tooltip the reused parts carry is left out. */
 function inboxOpened(sid) {
   const r = inboxRowFor(sid), s = r.s;
-  const head = `<div class="ib-head"><button class="ib-back" data-inbox-back>‹ Inbox</button><span class="ib-hname">${esc(nameOf(sid, r.project))}</span>${inboxCtxPill(s)}<span class="grow"></span>`
-    + `<span class="ib-hacts">${inboxActs(sid, s, "head")}</span>${inboxStep(sid)}</div>`;
+  const head = `<div class="ib-head"><span class="ib-hname">${esc(nameOf(sid, r.project))}</span>${inboxCtxPill(s)}<span class="grow"></span>`
+    + `<span class="ib-hacts">${inboxActs(sid, s, "head")}</span>${inboxStep(sid)}<button class="ib-back" data-inbox-back aria-label="Close">✕</button></div>`;
   const body = `<div class="ib-page-body" data-scroll-key="inbox-page">${inboxFacts(r)}${inboxCards(r)}<button class="ib-fullchat" data-inbox-full="${esc(sid)}">Full chat ›</button></div>`;
   return `<div class="inbox-page" data-inbox-page="${esc(sid)}" data-kind="${r.kind}" style="${projStyle(r.project)}">${head}${body}</div>`.replace(/\stitle="[^"]*"/g, "");
 }
@@ -350,12 +350,25 @@ function inboxAnswered(sid) {
   const f = document.activeElement;
   return inboxAsked && !(f?.matches?.("textarea, input") && f.value);
 }
-/** The Inbox view: the open session, or the list. The open one closes when it goes away, or it needed you, was
- *  answered and works again. */
+/** The Inbox view: the list on the left, the open session beside it (or, with none open, how many need you). Once
+ *  the open one is answered and works again, the next that needs you opens in its place; it closes when it goes away. */
 function inboxView() {
   const sid = inboxSid;
-  if (sid && ((!sessionOf(sid) && !inboxItems().has(sid)) || inboxAnswered(sid))) { inboxSid = null; inboxAsked = false; }
-  return `<div class="board ib-board">${inboxSid ? inboxOpened(inboxSid) : inboxList()}</div>`;
+  if (sid && ((!sessionOf(sid) && !inboxItems().has(sid)) || inboxAnswered(sid))) inboxAdvance(sid);
+  return `<div class="board ib-board ${inboxSid ? "open" : ""}">${inboxList()}${inboxSid ? inboxOpened(inboxSid) : inboxIdle()}</div>`;
+}
+/** Past `sid` (answered, or gone): the next session that needs you is the open one, else none. Drawn as it is. */
+function inboxAdvance(sid) {
+  const next = inboxTab === "inbox" ? inboxNeedOrder().find((x) => x !== sid) : null;
+  inboxSid = inboxLast = next || null;
+  inboxAsked = false;
+  inboxSnoozeAt = "";
+  if (next) { active = { id: inboxItems().get(next)?.id || null, sid: next, exact: false }; seenSession(next); }
+}
+/** Beside the list with nothing open: how many need you, and how to start. */
+function inboxIdle() {
+  const n = inboxCount();
+  return `<div class="ib-idle"><b>${n ? `${n} need${n === 1 ? "s" : ""} you` : "Nothing needs you"}</b><span>${n ? "Pick one on the left, or press N for the first." : "Running sessions show their bar on the left."}</span></div>`;
 }
 /** The sessions that need you, in the list's order (Pinned first). */
 function inboxNeedOrder() {
@@ -450,8 +463,8 @@ function inboxPick(el) {
   if (it) pick(it, qi, oi, questions(it).length > 1);
 }
 
-/** Keys while the Inbox shows. The open session: Esc back to the list (a Snooze menu first), N or → the next that
- *  needs you, ← the one before, 1–9 a choice of the question lit. The list: the Board's card keys (A, D, G, R, 1–9)
+/** Keys while the Inbox shows. The open session: Esc closes it (a Snooze menu first), N or → the next that
+ *  needs you, ← the one before, 1–9 a choice of the question lit. None open: N opens the first that needs you; the list: the Board's card keys (A, D, G, R, 1–9)
  *  are kept from a card not on screen. Not while you type in a box with text in it, or something is open over it.
  *  True when it took the key. */
 function inboxKey(e) {
@@ -460,6 +473,7 @@ function inboxKey(e) {
   const f = document.activeElement, typing = f?.matches?.("textarea, input, select");
   if (e.key === "Escape" && inboxSnoozeAt) { inboxSnoozeAt = ""; renderMain(); return true; }
   if (!inboxSid && e.key === "Enter" && f?.matches?.(".ib-row")) { inboxOpen(f.dataset.inboxOpen); return true; }
+  if (!inboxSid && !typing && e.key === "n") { const first = inboxNeedOrder()[0]; if (first) inboxOpen(first); return true; }
   if (!inboxSid) return !typing && /^[adgr1-9]$/.test(e.key);
   if (e.key === "Escape" && !e.shiftKey) { if (typing && f.value) return false; f?.blur?.(); inboxClose(); return true; }
   if (typing) return false;
