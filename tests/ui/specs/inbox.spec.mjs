@@ -409,3 +409,29 @@ test("suggested replies, as mail's: Claude's suggestion goes into the box, a qui
   await pg.locator('.ib-sug[data-inbox-phrase="go ahead"]').click();
   await cue.called("reply", { text: "go ahead" });
 });
+
+test("more context: the conversation before its latest reply, a line a message (a click opens it), and the whole reply on asking", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  await cue.change((st) => {
+    const s = st.sessions.find((x) => x.session_id === "sec"), t0 = Date.now() - 3600000;
+    s.thread = Array.from({ length: 9 }, (_, n) => ({ role: n % 2 ? "agent" : "you", text: n % 2 ? `Reply ${n}: did part ${n}.\n\nMore detail on part ${n}.` : `Message ${n}`, at_ms: t0 + n * 60000 }));
+    const it = st.items.find((i) => i.session_id === "sec");
+    it.message = Array.from({ length: 6 }, (_, n) => `Paragraph ${n} of the latest reply, long enough to count as words that matter here.`).join("\n\n") + "\n\nWant me to run the next company?";
+  });
+  await page.locator('.switch-view [data-view="inbox"]').click();
+  await page.locator('.ib-row[data-inbox-open="sec"]').click();
+  const pg = page.locator('.inbox-page[data-inbox-page="sec"]');
+  // The latest six of the nine, folded; "Show 3 earlier" for the rest.
+  await expect(pg.locator(".ib-msg")).toHaveCount(6);
+  await expect(pg.locator(".ib-earlier-more")).toHaveText("Show 3 earlier");
+  await pg.locator(".ib-earlier-more").click();
+  await expect(pg.locator(".ib-msg")).toHaveCount(9);
+  const one = pg.locator(".ib-msg").nth(1);
+  await expect(one.locator(".ib-msg-line")).toContainText("Reply 1: did part 1.");
+  await one.click();
+  await expect(one.locator(".ib-msg-body")).toContainText("More detail on part 1.");
+  // Its latest reply: the last paragraphs, then all of it.
+  await expect(pg.locator(".ib-said .msg")).not.toContainText("Paragraph 0");
+  await pg.locator("[data-inbox-whole]").click();
+  await expect(pg.locator(".ib-said .msg")).toContainText("Paragraph 0");
+});

@@ -447,13 +447,40 @@ function inboxCrewHtml(sid) {
   if (!waits.length) return "";
   return `<div class="ib-crew"><div class="ib-k">Its crew · ${waits.length} need${waits.length === 1 ? "s" : ""} you</div>${waits.map((t) => (mateNeeds(sid, t) ? mateNeedRow(sid, t) : mateReadyRow(sid, t))).join("")}</div>`;
 }
+/** The sessions whose latest reply shows whole, not just its last paragraphs. */
+const inboxWhole = new Set();
+/** Earlier messages opened in full (`${sid}|${at_ms}|${role}`), and the sessions showing all their earlier ones. */
+const inboxMsgOpen = new Set(), inboxAllEarlier = new Set();
+/** How many earlier messages show (folded) before "Show N earlier". */
+const INBOX_EARLIER = 6;
+/** The conversation before its latest reply, as mail shows a thread: each message folded to a line (who, when, its
+ *  first words); a click opens it in full. Its latest reply (shown below as It says) is left out. */
+function inboxEarlier(r, words) {
+  const latest = plain(words || "").trim();
+  let msgs = (r.s?.thread || []).filter((e) => e.text?.trim());
+  const last = msgs.at(-1);
+  if (last && last.role !== "you" && (!latest || plain(last.text).trim() === latest || r.kind === "turn")) msgs = msgs.slice(0, -1);
+  if (!msgs.length) return "";
+  const all = inboxAllEarlier.has(r.sid), hidden = all ? 0 : Math.max(0, msgs.length - INBOX_EARLIER);
+  const more = hidden ? `<button class="ib-link ib-earlier-more" data-inbox-earlier="${esc(r.sid)}">Show ${hidden} earlier</button>` : "";
+  return `<div class="ib-earlier"><div class="ib-k">Earlier</div>${more}${msgs.slice(hidden).map((e) => inboxMsgHtml(r.sid, e)).join("")}</div>`;
+}
+/** One earlier message: folded to a line, or open in full. */
+function inboxMsgHtml(sid, e) {
+  const k = `${sid}|${e.at_ms}|${e.role}`, open = inboxMsgOpen.has(k), you = e.role === "you";
+  const who = `<span class="ib-msg-who">${you ? "You" : "It"}</span><span class="ib-msg-at">${e.at_ms ? ago(e.at_ms) : ""}</span>`;
+  const body = open ? `<div class="ib-msg-body ${you ? "" : "ib-md msg"}">${you ? esc(e.text).replace(/\n/g, "<br>") : md(e.text, { pathsOf: sid })}</div>` : `<span class="ib-msg-line">${esc(plain(e.text).replace(/\s+/g, " ").slice(0, 220))}</span>`;
+  return `<div class="ib-msg ${you ? "you" : "it"} ${open ? "open" : ""}" role="button" data-inbox-msg="${esc(k)}">${who}${body}</div>`;
+}
 /** The brief's main column: its words before the question, the question with its choices, what it plans next, then
  *  the box to answer in (at the foot). */
 function inboxMain(r) {
   const words = inboxWords(r), q = r.kind === "turn" && !r.it.interrupted ? inboxEndQuestion(words) : "";
   const then = r.kind === "run" ? "" : inboxThen(words), said = inboxSaid(words, [q, then]);
   const label = r.kind === "run" ? "It said last" : r.kind === "ask" || r.kind === "turn" ? "It says" : "It said";
-  const saidHtml = said ? `<div class="ib-said"><div class="ib-k">${label}</div><div class="ib-md msg">${md(said, { pathsOf: r.sid })}</div></div>` : "";
+  const whole = inboxWhole.has(r.sid), cut = plain(said).length < plain(words).length - 40;
+  const shown = whole ? words : said, more = cut ? `<button class="ib-link" data-inbox-whole="${esc(r.sid)}">${whole ? "Show less" : "Show the whole reply"}</button>` : "";
+  const saidHtml = shown ? `<div class="ib-said"><div class="ib-k">${label}</div><div class="ib-md msg">${md(shown, { pathsOf: r.sid })}</div>${more}</div>` : "";
   const thenHtml = then ? `<div class="ib-then">It plans next: <b>${esc(plain(then))}</b></div>` : "";
   const reply = (ph) => inboxReply(r.sid, `s:${r.sid}`, ph, "Send", r.it ? `data-act="send" data-id="${esc(r.it.id)}"` : `data-inbox-send="${esc(r.sid)}"`);
   let top = "", foot = "", acts = "";
@@ -465,7 +492,7 @@ function inboxMain(r) {
   else foot = reply("Tell it what's next…");
   const crew = inboxCrewHtml(r.sid);
   const first = r.kind === "run" || r.kind === "chore" || r.kind === "crew" ? `${crew}${top}${saidHtml}` : `${saidHtml}${top}${crew}`;
-  return `<div class="ib-page-body ib-main" data-scroll-key="inbox-main">${first}${thenHtml}<div class="ib-foot">${foot}${inboxHint(r, acts)}</div></div>`;
+  return `<div class="ib-page-body ib-main" data-scroll-key="inbox-main">${inboxEarlier(r, words)}${first}${thenHtml}<div class="ib-foot">${foot}${inboxHint(r, acts)}</div></div>`;
 }
 
 // ---------- the brief's side: you asked, it did, what changed, its context ----------
@@ -778,6 +805,9 @@ const INBOX_CLICKS = {
   inboxSend: (el) => sendTo(el.dataset.inboxSend),
   inboxFull: (el) => inboxFullChat(el.dataset.inboxFull),
   inboxPhrase: inboxSendPhrase,
+  inboxWhole: (el) => { const k = el.dataset.inboxWhole; if (!inboxWhole.delete(k)) inboxWhole.add(k); renderMain(); },
+  inboxMsg: (el) => { if (getSelection()?.toString()) return; const k = el.dataset.inboxMsg; if (!inboxMsgOpen.delete(k)) inboxMsgOpen.add(k); renderMain(); },
+  inboxEarlier: (el) => { inboxAllEarlier.add(el.dataset.inboxEarlier); renderMain(); },
   inboxSug: inboxTakeSuggestion,
   inboxDiff: (el) => inboxDiff(el.dataset.inboxDiff),
   inboxBack: () => inboxClose(),
