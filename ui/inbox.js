@@ -483,8 +483,10 @@ function inboxThread(r, words) {
   return { msgs, said, yours };
 }
 /** What you wrote after its latest message, whole, as your reply under it in a mail thread. */
+/** A message's head as mail's: who on the left, when on the right ("2:14pm · 5m ago"; nothing when not known). */
+const inboxHead = (who, ms) => `<div class="ib-mhead"><span class="ib-k">${who}</span>${ms ? `<span class="ib-when">${clockAt(ms)} · ${ago(ms)} ago</span>` : ""}</div>`;
 function inboxYours(sid, yours) {
-  return yours.map((e) => `<div class="ib-yours"><div class="ib-k">You${e.at_ms ? ` · ${ago(e.at_ms)}` : ""}</div><div class="ib-yours-text">${esc(e.text).replace(/\n/g, "<br>")}</div></div>`).join("");
+  return yours.map((e) => `<div class="ib-yours">${inboxHead("You", e.at_ms)}<div class="ib-yours-text">${esc(e.text).replace(/\n/g, "<br>")}</div></div>`).join("");
 }
 function inboxEarlier(r, msgs) {
   if (!msgs.length) return "";
@@ -524,7 +526,7 @@ function inboxMain(r) {
   const label = r.kind === "run" ? "It said last" : r.kind === "ask" || r.kind === "turn" ? "It says" : "It said";
   const whole = inboxWhole.has(r.sid), cut = said !== inboxSaid(words, [q, then], true);
   const shown = whole ? inboxSaid(words, [q, then], true) : said, more = cut ? `<button class="ib-link" data-inbox-whole="${esc(r.sid)}">${whole ? "Show less" : "Show the whole reply"}</button>` : "";
-  const saidHtml = shown ? `<div class="ib-said"><div class="ib-k">${label}</div><div class="ib-md msg">${md(shown, { pathsOf: r.sid })}</div>${localImages(shown)}${more}</div>` : "";
+  const saidHtml = shown ? `<div class="ib-said">${inboxHead(label, thread.said?.at_ms || r.it?.created_ms || 0)}<div class="ib-md msg">${md(shown, { pathsOf: r.sid })}</div>${localImages(shown)}${more}</div>` : "";
   const thenHtml = then ? `<div class="ib-then">It plans next: <b>${esc(plain(then))}</b></div>` : "";
   const reply = (ph) => inboxReply(r.sid, `s:${r.sid}`, ph, "Send", r.it ? `data-act="send" data-id="${esc(r.it.id)}"` : `data-inbox-send="${esc(r.sid)}"`);
   let top = "", foot = "", acts = "";

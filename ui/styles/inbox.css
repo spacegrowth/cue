@@ -113,7 +113,11 @@ button.ib-sect:hover { color: var(--ink); }
 .ib-link { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; font-size: inherit; text-align: left; }
 
 /* Its words before the question: its own markdown, the last paragraph or few. */
-.ib-said .ib-k { margin-bottom: 6px; }
+.ib-said .ib-mhead { margin-bottom: 6px; }
+/* A message's head: who on the left, when on the right, as in mail. */
+.ib-mhead { display: flex; align-items: baseline; gap: 10px; }
+.ib-mhead .ib-k { flex: 1; }
+.ib-when { color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ib-md { font-size: 13.5px; line-height: 1.6; overflow-wrap: anywhere; }
 .ib-md > :last-child { margin-bottom: 0; }
 .ib-md pre { max-height: 200px; overflow: auto; }
