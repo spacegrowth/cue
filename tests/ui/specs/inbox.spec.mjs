@@ -1,8 +1,8 @@
-// The Inbox (ui/inbox.js): two lines a row under Pinned, Needs you, Running, Done and a folded Parked; a finished turn
+// The Inbox (ui/inbox.js): two lines a row under Pinned, Needs you, Running, Done, and folded Later and Parked; a finished turn
 // that asks nothing under Done; the top ask opened by itself beside the list as a brief (never its full chat, which is a
 // link): its words, the question with each choice's meaning, what you asked, what it did, what this turn changed, its
 // context; several questions stacked as cards with one Send; Send opening the next at once, the answered row sinking to
-// Running with its bar, and rising again; Pin, Park and Snooze; with nothing needing you, what's running; a session half
+// Running with its bar, and rising again; Pin, Later and Snooze; with nothing needing you, what's running; a session half
 // full of context up as housekeeping, with Compact and Hand off.
 import { test, expect } from "./cue.mjs";
 
@@ -244,18 +244,23 @@ test("rows keep their place while their state stays: a redraw or a newer ask els
   expect(await sectionSids(page, "Needs you")).toEqual(before);
 });
 
-test("Parked lists the live sessions you parked, never closed or ended ones", async ({ cue, page }) => {
-  // The Board's PARKED · CLOSED drawer has a closed parked session (drift) and ended ones (lost1, lost2).
+test("Parked lists the Board's parked sessions (stopped and kept) with Resume; Later its put-off ones; never closed or ended ones", async ({ cue, page }) => {
+  // The Board's PARKED · CLOSED drawer has two parked sessions (drift, guide) and ended ones (lost1, lost2).
   await cue.open("parked-ended");
   await cue.change((st) => { st.sessions.find((x) => x.session_id === "eng").later_ms = st.now_ms; });
-  await page.evaluate(() => localStorage.setItem("cue.inboxParkedOpen", "1"));
+  await page.evaluate(() => { localStorage.setItem("cue.inboxFold.later", "1"); localStorage.setItem("cue.inboxFold.parked", "1"); });
   await openInbox(page);
-  expect(await sectionSids(page, "Parked 1")).toEqual(["eng"]);
+  expect(await sectionSids(page, "Later 1")).toEqual(["eng"]);
   expect(await sectionSids(page, "Running")).not.toContain("eng");
-  await expect(page.locator('[data-inbox-open="drift"], [data-inbox-open="lost1"], [data-inbox-open="lost2"]')).toHaveCount(0);
+  const parked = page.locator('.ib-row.parked[data-session="drift"]');
+  await expect(parked).toBeVisible();
+  await expect(page.locator('.ib-sect.fold[data-inbox-fold="parked"]')).toHaveText("▾Parked 2");
+  await parked.hover();
+  await expect(parked.locator("[data-wake]")).toHaveText("↺ Resume");
+  await expect(page.locator('[data-session="lost1"], [data-session="lost2"], [data-inbox-open="lost1"], [data-inbox-open="lost2"]')).toHaveCount(0);
 });
 
-test("Pin puts a row under Pinned (kept by Cue); Park folds it under Parked at the foot; Snooze moves it to its tab, and back", async ({ cue, page }) => {
+test("Pin puts a row under Pinned (kept by Cue); Later folds it under Later at the foot; Snooze moves it to its tab, and back", async ({ cue, page }) => {
   await cue.open("board-waiting");
   await openInbox(page);
   const row = page.locator('.ib-row[data-inbox-open="det"]');
@@ -264,27 +269,27 @@ test("Pin puts a row under Pinned (kept by Cue); Park folds it under Parked at t
   await cue.called("set_pinned", { sessionId: "det", on: true });
   expect(await sections(page)).toEqual(["Pinned", "Needs you", "Running"]);
   expect(await sectionSids(page, "Pinned")).toEqual(["det"]);
-  // Park: the Board's parked (its later mark). Under Parked at the foot, folded; not counted as needing you.
+  // Later: the Board's Later (its later mark). Under Later at the foot, folded; not counted as needing you.
   const needN = await page.locator('.switch-view [data-view="inbox"] .ib-count').textContent();
   await page.locator('.ib-row[data-inbox-open="web"]').hover();
-  await page.locator('.ib-row[data-inbox-open="web"] [data-inbox-park]').click();
+  await page.locator('.ib-row[data-inbox-open="web"] [data-inbox-later]').click();
   await cue.called("set_later", { sessionId: "web", on: true });
   await expect(page.locator('.ib-row[data-inbox-open="web"]')).toHaveCount(0);
-  await expect(page.locator(".ib-sect.park")).toHaveText("▸Parked 1");
+  await expect(page.locator('.ib-sect.fold[data-inbox-fold="later"]')).toHaveText("▸Later 1");
   await expect(page.locator('.switch-view [data-view="inbox"] .ib-count')).toHaveText(String(+needN - 1));
-  await page.locator(".ib-sect.park").click();
-  await expect(page.locator(".ib-sect.park")).toHaveAttribute("aria-expanded", "true");
-  await expect(page.locator('.ib-row.parked[data-inbox-open="web"]')).toBeVisible();
+  await page.locator('.ib-sect.fold[data-inbox-fold="later"]').click();
+  await expect(page.locator('.ib-sect.fold[data-inbox-fold="later"]')).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator('.ib-row.later[data-inbox-open="web"]')).toBeVisible();
   // Opened, it stays open (kept per window).
   await page.evaluate(() => renderMain());
-  await expect(page.locator('.ib-row.parked[data-inbox-open="web"]')).toBeVisible();
-  expect(await page.evaluate(() => localStorage.getItem("cue.inboxParkedOpen"))).toBe("1");
+  await expect(page.locator('.ib-row.later[data-inbox-open="web"]')).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem("cue.inboxFold.later"))).toBe("1");
   await page.locator('.ib-row[data-inbox-open="web"]').hover();
-  await expect(page.locator('.ib-row[data-inbox-open="web"] [data-inbox-park]')).toHaveText("Unpark");
-  await page.locator('.ib-row[data-inbox-open="web"] [data-inbox-park]').click();
+  await expect(page.locator('.ib-row[data-inbox-open="web"] [data-inbox-later]')).toHaveText("Not later");
+  await page.locator('.ib-row[data-inbox-open="web"] [data-inbox-later]').click();
   await cue.called("set_later", { sessionId: "web", on: false });
   expect(await sectionSids(page, "Needs you")).toContain("web");
-  await expect(page.locator(".ib-sect.park")).toHaveCount(0);
+  await expect(page.locator('.ib-sect.fold[data-inbox-fold="later"]')).toHaveCount(0);
   // Snooze: a menu of times; picked, it's under Snoozed until then.
   const sec = page.locator('.ib-row[data-inbox-open="sec"]');
   await sec.hover();
@@ -434,4 +439,51 @@ test("more context: the conversation before its latest reply, a line a message (
   await expect(pg.locator(".ib-said .msg")).not.toContainText("Paragraph 0");
   await pg.locator("[data-inbox-whole]").click();
   await expect(pg.locator(".ib-said .msg")).toContainText("Paragraph 0");
+});
+
+test("an open session can be closed from its head, as on the Board: Close, then Close?", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  await page.locator('.switch-view [data-view="inbox"]').click();
+  await page.locator('.ib-row[data-inbox-open="sec"]').click();
+  const close = page.locator('.inbox-page[data-inbox-page="sec"] .ib-head [data-sv="close"]');
+  await expect(close).toHaveText("Close");
+  await expect(close).not.toHaveAttribute("title", /.*/);
+  await close.click();
+  await expect(close).toHaveText("Close?");
+  await close.click();
+  await cue.called("close_session", { sessionId: "sec" });
+  // One that asks you something has no Close (you'd lose the question).
+  await page.locator('.ib-row[data-inbox-open="pipe"]').click();
+  await expect(page.locator('.inbox-page[data-inbox-page="pipe"] [data-sv="close"]')).toHaveCount(0);
+});
+
+test("what you sent that hasn't gone yet shows: queued on its row, and in its brief with Send now, as in its chat", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  await cue.change((st) => { const s = st.sessions.find((x) => x.session_id === "eng"); s.queued = { text: "also check the retry path", at_ms: Date.now(), images: [] }; });
+  await page.locator('.switch-view [data-view="inbox"]').click();
+  const row = page.locator('.ib-row[data-inbox-open="eng"]');
+  await expect(row.locator(".ib-l2")).toHaveText("Queued: “also check the retry path”");
+  await row.click();
+  const pend = page.locator('.inbox-page[data-inbox-page="eng"] .ib-pending');
+  await expect(pend).toContainText("also check the retry path");
+  await expect(pend).toContainText("Queued");
+  await pend.locator('[data-act="send-now"]').click();
+  await cue.called("send_queued_now", { sessionId: "eng" });
+});
+
+test("the reply talks and takes pictures, as the chat's box does: the mic, the picture button, and a picture pasted goes with it", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  await page.locator('.switch-view [data-view="inbox"]').click();
+  await page.locator('.ib-row[data-inbox-open="sec"]').click();
+  const box = page.locator('.inbox-page[data-inbox-page="sec"] .ib-box');
+  await expect(box.locator('[data-mic="s:sec"]')).toBeVisible();
+  await expect(box.locator('[data-attach="s:sec"]')).toBeVisible();
+  await expect(box).toHaveAttribute("data-drop", "s:sec");
+  await page.evaluate(() => { draft("s:sec").images.push({ name: "shot.png", mime: "image/png", data: "data:image/png;base64,iVBORw0KGgo=" }); renderMain(); });
+  await expect(box.locator(".chip")).toHaveCount(1);
+  // A question's answer is words only: the mic, no picture button.
+  await page.locator('.ib-row[data-inbox-open="api"]').click();
+  const q = page.locator('.inbox-page[data-inbox-page="api"] .ib-box');
+  await expect(q.locator("[data-mic]")).toBeVisible();
+  await expect(q.locator("[data-attach]")).toHaveCount(0);
 });
