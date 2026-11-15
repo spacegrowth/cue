@@ -151,7 +151,6 @@ test("Send opens the next that needs you at once, without waiting on the session
   await cue.override("reply", () => new Promise(() => {}));
   await openInbox(page);
   await page.locator('.ib-row[data-inbox-open="sec"]').click();
-  await page.locator('.inbox-page [data-inbox-reply="sec"]').click();
   await page.locator('.inbox-page textarea[data-text="s:sec"]').fill("yes, run it");
   await page.locator('.inbox-page [data-act="send"]').click();
   await expect(page.locator(".inbox-page")).not.toHaveAttribute("data-inbox-page", "sec");
@@ -211,7 +210,6 @@ test("answered, a row sinks to Running with a moving bar; quiet it slows, stuck 
   await cue.open("board-waiting");
   await openInbox(page);
   await page.locator('.ib-row[data-inbox-open="sec"]').click();
-  await page.locator('.inbox-page [data-inbox-reply="sec"]').click();
   await page.locator('.inbox-page textarea[data-text="s:sec"]').fill("yes, run it");
   await page.locator('.inbox-page [data-act="send"]').click();
   // Once it's at work again the next that needs you opens beside the list; its row is under Running with its bar.
@@ -309,7 +307,6 @@ test("Pin puts a row under Pinned (kept by Cue); Park folds it under Parked at t
   // Cue ends the snooze as the new ask comes in (hub new_item): answered, it stays up, under Running with its bar.
   await cue.change((st) => { st.sessions.find((x) => x.session_id === "sec").snooze_ms = 0; });
   await page.locator('.ib-row[data-inbox-open="sec"]').click();
-  await page.locator('.inbox-page [data-inbox-reply="sec"]').click();
   await page.locator('.inbox-page textarea[data-text="s:sec"]').fill("yes, the third too");
   await page.locator('.inbox-page [data-act="send"]').click();
   await expect(page.locator(".inbox-page")).not.toHaveAttribute("data-inbox-page", "sec");
@@ -359,25 +356,21 @@ test("a session half full of context comes up as housekeeping: its meter, Compac
   await cue.called("session_command", { sessionId: "relay", action: "compact" });
 });
 
-test("replying is as in mail: Reply (or R) opens the box, Esc shuts it empty; Open chat beside it", async ({ cue, page }) => {
+test("replying is as in mail: you write right under the message, Send under it, Open chat beside it; R puts you there", async ({ cue, page }) => {
   await cue.open("board-waiting");
   await page.locator('.switch-view [data-view="inbox"]').click();
   await page.locator('.ib-row[data-inbox-open="sec"]').click();
   const pg = page.locator('.inbox-page[data-inbox-page="sec"]');
-  // No box until you reply: Reply and Open chat in its place, R in the hints.
-  await expect(pg.locator(".ib-box")).toHaveCount(0);
-  await expect(pg.locator(".ib-replybar button")).toHaveText(["Reply", "Open chat"]);
-  await expect(pg.locator(".ib-hint")).toContainText("reply");
+  // No Reply button to press first: the box is there, Send and Open chat under it.
+  await expect(pg.locator("[data-inbox-reply]")).toHaveCount(0);
+  await expect(pg.locator(".ib-box textarea")).toBeVisible();
+  await expect(pg.locator(".ib-box-acts > .btn")).toHaveText(["Send", "Open chat"]);
   await page.locator("body").click({ position: { x: 5, y: 5 } });
   await page.keyboard.press("r");
   await expect(pg.locator(".ib-box textarea")).toBeFocused();
+  await expect(pg.locator(".ib-box textarea")).toHaveValue("");
   await page.keyboard.press("Escape");
-  await expect(pg.locator(".ib-box")).toHaveCount(0);
-  // Words in it keep it open, Esc or not.
-  await pg.locator('[data-inbox-reply="sec"]').click();
-  await pg.locator(".ib-box textarea").fill("half a thought");
-  await page.keyboard.press("Escape");
-  await expect(pg.locator(".ib-box textarea")).toHaveValue("half a thought");
+  await expect(pg.locator(".ib-box textarea")).not.toBeFocused();
 });
 
 test("a lead whose crew waits on you needs you: its crew's rows, with their own buttons, in its brief", async ({ cue, page }) => {
@@ -413,7 +406,6 @@ test("suggested replies, as mail's: Claude's suggestion goes into the box, a qui
   await pg.locator(".ib-sug.ai").click();
   await expect(pg.locator(".ib-box textarea")).toHaveValue("run the next company");
   await pg.locator(".ib-box textarea").fill("");
-  await page.keyboard.press("Escape");
   await pg.locator('.ib-sug[data-inbox-phrase="go ahead"]').click();
   await cue.called("reply", { text: "go ahead" });
 });

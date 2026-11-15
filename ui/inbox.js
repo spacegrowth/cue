@@ -20,8 +20,6 @@ let inboxOpenedAt = 0;
 let inboxAsked = false;
 /** The session last opened: its row stays lit, so you see where you were. */
 let inboxLast = null;
-/** The open session whose reply box is open (Reply, or R); null: a Reply button in its place, as in mail. */
-let inboxReplyOpen = null;
 /** The list's tab: "inbox" or "snoozed". */
 let inboxTab = "inbox";
 /** Where a Snooze menu is open: "row:<sid>", "head" or "card" (the open session's); "" when none is. */
@@ -342,13 +340,11 @@ function inboxLabel(label) {
   return m ? [m[1], true] : [label || "", false];
 }
 /** A plain box to write in, and its button. Enter sends too (app/keys.js, by its draft key). */
-const inboxBox = (key, placeholder, label, attrs) => `<div class="ib-box"><textarea rows="2" data-text="${esc(key)}" placeholder="${esc(placeholder)}" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off">${esc(draft(key).text)}</textarea><button class="btn primary" ${attrs}>${label}</button></div>`;
-/** The reply, as in mail: Reply (R) and Open chat; Reply opens the box (it stays open while it holds words). `quiet`:
- *  Reply isn't the main button (a question's choices are). */
-function inboxReply(sid, key, ph, label, attrs, quiet = false) {
-  const sugs = inboxSuggest(sid, key);
-  if (inboxReplyOpen === sid || draft(key).text) return `${sugs}${inboxBox(key, ph, label, attrs)}`;
-  return `${sugs}<div class="ib-replybar"><button class="btn ${quiet ? "" : "primary"}" data-inbox-reply="${esc(sid)}">Reply</button><button class="btn" data-inbox-full="${esc(sid)}">Open chat</button>${inboxActions(sid)}</div>`;
+const inboxBox = (key, placeholder, label, attrs, extra = "") => `<div class="ib-box"><textarea rows="2" data-text="${esc(key)}" placeholder="${esc(placeholder)}" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off">${esc(draft(key).text)}</textarea><div class="ib-box-acts"><button class="btn primary" ${attrs}>${label}</button>${extra}</div></div>`;
+/** The reply, as in mail: you write right under the message (no frame round it), Send under what you write, Open chat
+ *  and the project's actions beside it; suggested replies over it. */
+function inboxReply(sid, key, ph, label, attrs) {
+  return `${inboxSuggest(sid, key)}${inboxBox(key, ph, label, attrs, `<button class="btn" data-inbox-full="${esc(sid)}">Open chat</button>${inboxActions(sid)}`)}`;
 }
 /** Suggested replies, as mail suggests them: Claude's own suggestion (it goes into the box, to send as it is or
  *  change), then your quick phrases (Settings → Quick phrases: a click sends it, after anything in the box). */
@@ -368,11 +364,10 @@ function inboxSendPhrase(el) {
   const d = draft(el.dataset.key);
   d.text = withPhrase(d.text, el.dataset.inboxPhrase);
   saveDrafts();
-  inboxReplyOpen = el.dataset.sid;
   renderMain();
   document.querySelector(`.inbox-page .ib-box textarea[data-text="${CSS.escape(el.dataset.key)}"]`)?.closest(".ib-box")?.querySelector(".btn.primary")?.click();
 }
-/** Claude's suggestion clicked: into the box, which opens on it. */
+/** Claude's suggestion clicked: into the box, the cursor at its end. */
 function inboxTakeSuggestion(el) {
   draft(el.dataset.key).text = suggestionFor(el.dataset.sid);
   saveDrafts();
@@ -408,7 +403,7 @@ function inboxQuestions(it) {
   const qs = questions(it), n = qs.length, cur = stepOf(it), ready = !!answersFor(it);
   const cards = qs.map((q, qi) => inboxQuestionCard(it, q, qi, n, cur)).join("");
   const send = n > 1 || qs.some((q) => q.multiSelect) ? `<button class="btn primary" data-act="submit-answers" data-id="${esc(it.id)}" ${ready ? "" : "disabled"}>${ready ? `Send ${n > 1 ? `${n} answers` : "answer"}` : `${qs.filter((q) => isAnswered(it, q)).length} of ${n} answered`}</button>` : "";
-  const box = inboxReply(it.session_id, it.id, n > 1 ? `Your own answer to question ${cur + 1}…` : "Or say something else…", n > 1 ? "Answer" : "Send", `data-act="send" data-id="${esc(it.id)}"`, true);
+  const box = inboxReply(it.session_id, it.id, n > 1 ? `Your own answer to question ${cur + 1}…` : "Or say something else…", n > 1 ? "Answer" : "Send", `data-act="send" data-id="${esc(it.id)}"`);
   return [cards, box, `<button class="btn deny ib-decline" data-act="deny" data-id="${esc(it.id)}">Decline</button>${send}`];
 }
 /** Any other ask (a command to run, an edit, a plan, a form, its terminal's): the Board's own card body and buttons. */
@@ -442,7 +437,7 @@ const inboxCanReply = (r) => !!r && (r.kind === "turn" || r.kind === "crew" || r
  *  its end. */
 function inboxHint(r, acts = "") {
   const it = r.kind === "ask" && r.it.kind === "question" ? r.it : null, n = it ? Math.min(9, questions(it)[stepOf(it)]?.options?.length || 0) : 0;
-  const keys = [n ? `<span><span class="ib-kbd">1</span>–<span class="ib-kbd">${n}</span> pick</span>` : "", inboxCanReply(r) && inboxReplyOpen !== r.sid ? `<span><span class="ib-kbd">R</span> reply</span>` : "", inboxNeedOrder().some((x) => x !== r.sid) ? `<span><span class="ib-kbd">N</span> next ask</span>` : ""].filter(Boolean);
+  const keys = [n ? `<span><span class="ib-kbd">1</span>–<span class="ib-kbd">${n}</span> pick</span>` : "", inboxNeedOrder().some((x) => x !== r.sid) ? `<span><span class="ib-kbd">N</span> next ask</span>` : ""].filter(Boolean);
   return keys.length || acts ? `<div class="ib-hint">${keys.join("")}<span class="grow"></span>${acts}</div>` : "";
 }
 /** A lead's crew that waits on you, a row each with its own buttons, as on its crew's page (team.js): a teammate's ask
@@ -640,7 +635,6 @@ function inboxAdvance(sid) {
   const next = inboxTab === "inbox" ? inboxNeedOrder().find((x) => x !== sid) : null;
   if (!next && !sid) return;
   inboxSid = inboxLast = next || null;
-  inboxReplyOpen = null;
   inboxAsked = false;
   inboxOpenedAt = Date.now();
   inboxSnoozeAt = "";
@@ -659,23 +653,20 @@ function inboxOpen(sid) {
   view = "inbox";
   active = { id: it?.id || null, sid, exact: false };
   seenSession(sid);
-  if (inboxSid !== sid) inboxReplyOpen = null;
   inboxSid = inboxLast = sid;
   inboxAsked = false;
   inboxOpenedAt = Date.now();
   inboxSnoozeAt = "";
   renderMain();
 }
-/** Reply on the open session: its box opens, the cursor in it. */
+/** Write to the open session: the cursor into its box (R does it too). */
 function inboxReplyTo(sid) {
-  inboxReplyOpen = sid;
   renderMain();
-  document.querySelector(".inbox-page .ib-box textarea[data-text]")?.focus();
+  document.querySelector(`.inbox-page[data-inbox-page="${CSS.escape(sid)}"] .ib-box textarea[data-text]`)?.focus();
 }
 /** Back to the list (a narrow window shows one at a time). */
 function inboxClose() {
   inboxSid = null;
-  inboxReplyOpen = null;
   inboxAsked = false;
   inboxSnoozeAt = "";
   renderMain();
@@ -747,7 +738,7 @@ function inboxPick(el) {
 }
 
 /** Keys while the Inbox shows. The open session: Esc (a narrow window) back to the list, a Snooze menu first; N or →
- *  the next that needs you, ← the one before, 1–9 a choice of the question lit, R Reply (Esc shuts an empty box). None open: N opens the first that
+ *  the next that needs you, ← the one before, 1–9 a choice of the question lit, R into the reply (Esc out of an empty one). None open: N opens the first that
  *  needs you; the list: the Board's card keys (A, D, G, R, 1–9) are kept from a card not on screen. Not while you type
  *  in a box with text in it, or something is open over it. True when it took the key. */
 function inboxKey(e) {
@@ -758,10 +749,10 @@ function inboxKey(e) {
   if (!inboxSid && e.key === "Enter" && f?.matches?.(".ib-row, .ib-calm-card")) { inboxOpen(f.dataset.inboxOpen); return true; }
   if (!inboxSid && !typing && e.key === "n") { const first = inboxNeedOrder()[0]; if (first) inboxOpen(first); return true; }
   if (!inboxSid) return !typing && /^[adgr1-9]$/.test(e.key);
-  if (e.key === "Escape" && !e.shiftKey && inboxReplyOpen === inboxSid && !(typing && f.value)) { inboxReplyOpen = null; f?.blur?.(); renderMain(); return true; }
+  if (e.key === "Escape" && !e.shiftKey && typing && !f.value && f.closest?.(".inbox-page")) { f.blur(); return true; }
   if (e.key === "Escape" && !e.shiftKey) { if ((typing && f.value) || inboxWide()) return false; f?.blur?.(); inboxClose(); return true; }
   if (typing) return false;
-  if (e.key === "r" && inboxReplyOpen !== inboxSid && inboxCanReply(inboxRowFor(inboxSid))) { inboxReplyTo(inboxSid); return true; }
+  if (e.key === "r" && inboxCanReply(inboxRowFor(inboxSid))) { e.preventDefault(); inboxReplyTo(inboxSid); return true; }
   if (e.key === "n" || e.key === "ArrowRight") { inboxStepTo(1); return true; }
   if (e.key === "ArrowLeft") { inboxStepTo(-1); return true; }
   return inboxDigit(e.key);
@@ -786,7 +777,6 @@ const INBOX_CLICKS = {
   inboxStep: (el) => { const [id, n] = el.dataset.inboxStep.split(/:(?=\d+$)/); qStep[id] = +n; renderMain(); },
   inboxSend: (el) => sendTo(el.dataset.inboxSend),
   inboxFull: (el) => inboxFullChat(el.dataset.inboxFull),
-  inboxReply: (el) => inboxReplyTo(el.dataset.inboxReply),
   inboxPhrase: inboxSendPhrase,
   inboxSug: inboxTakeSuggestion,
   inboxDiff: (el) => inboxDiff(el.dataset.inboxDiff),
