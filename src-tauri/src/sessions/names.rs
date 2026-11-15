@@ -4,6 +4,16 @@ use super::Sessions;
 use crate::model::Origin;
 use std::collections::HashMap;
 
+/// A session's name in Claude Code's list of its running sessions.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Listed {
+    pub name: String,
+    /// The Claude Code process it runs in.
+    pub pid: i32,
+    /// One the process made up for itself ("cue-68", `nameSource: "derived"`), not one anybody gave it.
+    pub made_up: bool,
+}
+
 impl Sessions {
     /// Name a session in Cue. Returns what delivering it needs: (harness, state, where it is).
     /// You named it in Cue ("" clears the name). Shown at once; telling the agent is the caller's job,
@@ -41,54 +51,23 @@ impl Sessions {
     /// rename Cue typed (the name showed up: done; the time ran out: it failed, Cue keeps your name and
     /// says so), and follows a rename made in the agent itself (/rename in its terminal: the name there
     /// changed). A session Cue sees there for the first time takes the name it has there, if any (as the
-    /// window always showed it).
+    /// window always showed it). A name never replaces one Cue shows when it is made up (each process makes one up),
+    /// or when it comes from a new process (the session resumed: that process names itself again, and the name you
+    /// knew it by stays); a rename there after that is followed again.
     /// True when anything changed.
-    pub fn sync_agent_names(&mut self, listed: &HashMap<String, String>, now: u64) -> bool {
+    pub fn sync_agent_names(&mut self, listed: &HashMap<String, Listed>, now: u64) -> bool {
         let mut changed = false;
         for s in self.0.values_mut() {
             if s.origin.harness != "claude" || !s.origin.machine.is_empty() {
                 continue;
             }
-            let Some(there) = listed.get(&s.origin.session_id).map(|n| n.trim().to_string()) else { continue };
-            if let Some((want, by)) = s.rename_check.clone() {
-                if there == want {
-                    s.rename_check = None;
-                    s.rename_error.clear();
-                } else if now >= by {
-                    s.rename_check = None;
-                    s.rename_error = if there.is_empty() {
-                        "Claude Code didn't take the new name".into()
-                    } else {
-                        format!("Claude Code didn't take the new name: it still calls it “{there}”")
-                    };
-                } else {
-                    continue; // still on its way
-                }
-                s.claude_name = Some(there);
-                changed = true;
-                continue;
-            }
-            if s.rename_pending {
-                continue; // typed when its turn ends; until then the old name there is expected
-            }
-            match &s.claude_name {
-                None => {
-                    if !there.is_empty() {
-                        s.name = there.clone();
-                    }
-                    s.claude_name = Some(there);
-                    changed = true;
-                }
-                Some(was) if *was != there => {
-                    if !there.is_empty() {
-                        s.name = there.clone();
-                        s.rename_error.clear();
-                    }
-                    s.claude_name = Some(there);
-                    changed = true;
-                }
-                _ => {}
-            }
+            let Some(l) = listed.get(&s.origin.session_id) else { continue };
+            changed |= match s.rename_check.clone() {
+                Some(check) => settle_rename(s, l, check, now),
+                // Typed when its turn ends; until then the old name there is expected.
+                None if s.rename_pending => false,
+                None => follow_name(s, l),
+            };
         }
         changed
     }
@@ -105,4 +84,58 @@ impl Sessions {
         let s = self.0.get_mut(session_id)?;
         std::mem::take(&mut s.rename_pending).then(|| (s.name.clone(), s.origin.clone()))
     }
+}
+
+/// A rename Cue typed (`want`, due `by`), against what Claude Code's list shows (`l`) at `now`: settled once the name
+/// shows up; failed (Cue keeps your name and says so) once the time ran out. True when anything changed.
+fn settle_rename(s: &mut super::Session, l: &Listed, (want, by): (String, u64), now: u64) -> bool {
+    let there = l.name.trim().to_string();
+    if there == want {
+        s.rename_check = None;
+        s.rename_error.clear();
+    } else if now >= by {
+        s.rename_check = None;
+        s.rename_error = if there.is_empty() {
+            "Claude Code didn't take the new name".into()
+        } else {
+            format!("Claude Code didn't take the new name: it still calls it “{there}”")
+        };
+    } else {
+        return false; // still on its way
+    }
+    s.claude_name = Some(there);
+    if !l.made_up {
+        s.claude_pid = Some(l.pid);
+    }
+    true
+}
+
+/// Session `s` follows the name Claude Code's list shows for it (`l`), as `sync_agent_names` says. True when anything
+/// changed.
+fn follow_name(s: &mut super::Session, l: &Listed) -> bool {
+    let there = l.name.trim().to_string();
+    let same = s.claude_name.as_deref() == Some(there.as_str());
+    if l.made_up {
+        // Made up by the process: shown only while Cue has no name for it.
+        if same {
+            return false;
+        }
+        if s.name.is_empty() && !there.is_empty() {
+            s.name = there.clone();
+        }
+        s.claude_name = Some(there);
+        return true;
+    }
+    let resumed = s.claude_pid.is_some_and(|p| p != l.pid);
+    if same && !resumed {
+        s.claude_pid = Some(l.pid);
+        return false;
+    }
+    if !same && !there.is_empty() && (s.name.is_empty() || !resumed) {
+        s.name = there.clone();
+        s.rename_error.clear();
+    }
+    s.claude_name = Some(there);
+    s.claude_pid = Some(l.pid);
+    true
 }

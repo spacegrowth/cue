@@ -608,8 +608,8 @@ impl Hub {
 const WAITING_GRACE_MS: u64 = 4_000;
 
 /// Claude Code's list as names Cue follows (session id → name): a hosted session's made-up ones left out.
-fn names_to_follow(listed: Vec<crate::live::Quiet>, hosted: impl Fn(&str) -> bool) -> HashMap<String, String> {
-    listed.into_iter().filter(|q| !(q.generated && hosted(&q.session_id))).map(|q| (q.session_id, q.name)).collect()
+fn names_to_follow(listed: Vec<crate::live::Quiet>, hosted: impl Fn(&str) -> bool) -> HashMap<String, crate::sessions::names::Listed> {
+    listed.into_iter().filter(|q| !(q.generated && hosted(&q.session_id))).map(|q| (q.session_id, crate::sessions::names::Listed { name: q.name, pid: q.pid, made_up: q.generated })).collect()
 }
 
 #[cfg(test)]
@@ -931,8 +931,8 @@ mod tests {
         let hosted = |sid: &str| sid == "h";
         let got = super::names_to_follow(vec![q("h", "cue-68", true), q("t", "cue-e9", true)], hosted);
         assert_eq!(got.get("h"), None, "a new process's made-up name: a hosted session keeps the name it has");
-        assert_eq!(got.get("t").map(String::as_str), Some("cue-e9"), "a terminal session's process lasts: shown as before");
+        assert_eq!(got.get("t").map(|l| (l.name.as_str(), l.made_up)), Some(("cue-e9", true)), "a terminal session's: passed on as made up");
         let got = super::names_to_follow(vec![q("h", "login-fix", false)], hosted);
-        assert_eq!(got.get("h").map(String::as_str), Some("login-fix"), "a name it was given: followed");
+        assert_eq!(got.get("h").map(|l| l.name.as_str()), Some("login-fix"), "a name it was given: followed");
     }
 }

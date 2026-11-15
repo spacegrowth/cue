@@ -11,7 +11,7 @@ mod delivery;
 mod held;
 pub mod send_at;
 mod marks;
-mod names;
+pub(crate) mod names;
 pub(crate) mod shell_writes;
 pub mod quiet;
 pub mod team;
@@ -100,6 +100,10 @@ pub struct Session {
     /// is a rename made in its terminal (/rename), and Cue's name follows it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub claude_name: Option<String>,
+    /// The Claude Code process that last gave it a name (pid; None: none seen yet). A name from another process is a
+    /// resumed session's (each `claude --resume` is a new process that names itself again): Cue keeps the one it shows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claude_pid: Option<i32>,
     /// A rename Cue typed into Claude Code, until its list shows it: the name, and by when it must.
     #[serde(skip)]
     pub rename_check: Option<(String, u64)>,
@@ -295,6 +299,7 @@ impl Session {
             name: String::new(),
             rename_pending: false,
             claude_name: None,
+            claude_pid: None,
             rename_check: None,
             rename_error: String::new(),
             limit: None,

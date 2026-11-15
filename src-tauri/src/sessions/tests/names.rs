@@ -150,3 +150,34 @@ fn the_agent_name_and_rename_notice_survive_a_restart_but_a_check_in_flight_does
     let back: Session = serde_json::from_value(serde_json::to_value(get(&s, "a")).unwrap()).unwrap();
     assert_eq!((back.claude_name.as_deref(), back.rename_error.as_str(), back.rename_check.is_none()), (Some("there"), "nope", true));
 }
+
+#[test]
+fn a_resumed_session_keeps_its_name_but_a_rename_after_that_is_followed() {
+    let mut s = Sessions::default();
+    named(&mut s, "a", "claude", "");
+    s.sync_agent_names(&in_process(1, &[("a", "usage-burn")]), 0);
+    assert_eq!(get(&s, "a").name, "usage-burn");
+    // Resumed: a new process, which makes a name up, then names its work again.
+    let made_up = HashMap::from([("a".to_string(), crate::sessions::names::Listed { name: "cue-c7".into(), pid: 2, made_up: true })]);
+    s.sync_agent_names(&made_up, 1_000);
+    assert_eq!(get(&s, "a").name, "usage-burn", "a made-up name never replaces the one Cue shows");
+    assert!(s.sync_agent_names(&in_process(2, &[("a", "sessions-cost")]), 2_000));
+    assert_eq!(get(&s, "a").name, "usage-burn", "the resumed process's own name: Cue keeps the one you knew");
+    assert!(!s.sync_agent_names(&in_process(2, &[("a", "sessions-cost")]), 3_000));
+    // /rename in its terminal after that: followed.
+    assert!(s.sync_agent_names(&in_process(2, &[("a", "cost-fixes")]), 4_000));
+    assert_eq!(get(&s, "a").name, "cost-fixes");
+}
+
+#[test]
+fn a_made_up_name_shows_only_while_cue_has_none() {
+    let mut s = Sessions::default();
+    named(&mut s, "a", "claude", "");
+    let made_up = |name: &str, pid| HashMap::from([("a".to_string(), crate::sessions::names::Listed { name: name.into(), pid, made_up: true })]);
+    s.sync_agent_names(&made_up("cue-b3", 1), 0);
+    assert_eq!(get(&s, "a").name, "cue-b3", "first seen: as its window shows it");
+    s.sync_agent_names(&made_up("cue-c7", 2), 1_000);
+    assert_eq!(get(&s, "a").name, "cue-b3", "resumed: kept");
+    s.sync_agent_names(&in_process(2, &[("a", "login-fix")]), 2_000);
+    assert_eq!(get(&s, "a").name, "login-fix", "only made-up names before: the first given one is taken");
+}

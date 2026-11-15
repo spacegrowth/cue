@@ -10,8 +10,13 @@ fn named(sessions: &mut Sessions, sid: &str, harness: &str, machine: &str) {
     sessions.mark(&Origin { session_id: sid.into(), harness: harness.into(), cwd: "/x/cue".into(), machine: machine.into(), ..Default::default() }, "waiting", None);
 }
 
-fn listed(pairs: &[(&str, &str)]) -> HashMap<String, String> {
-    pairs.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect()
+fn listed(pairs: &[(&str, &str)]) -> HashMap<String, crate::sessions::names::Listed> {
+    in_process(1, pairs)
+}
+
+/// Claude Code's list with every session in process `pid`, under names given to it.
+fn in_process(pid: i32, pairs: &[(&str, &str)]) -> HashMap<String, crate::sessions::names::Listed> {
+    pairs.iter().map(|(a, b)| (a.to_string(), crate::sessions::names::Listed { name: b.to_string(), pid, made_up: false })).collect()
 }
 
 fn get<'a>(sessions: &'a Sessions, sid: &str) -> &'a Session {
