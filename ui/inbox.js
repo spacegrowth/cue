@@ -9,19 +9,11 @@
 // lit, where it is). Its main column has its own words before the question (the last paragraph or two), the question
 // with each choice and what it means, what it plans next when it says, and a box to answer in; its side column what
 // you asked it, what it did this turn (repeats folded: "Read 6 files"), what this turn changed (a peek of the biggest
-// change) and its context. Send opens the next that needs you at once. With nothing needing you, what's running and
+// change) and its context. After Send it stays open, as a sent email does; you move on. With nothing needing you, what's running and
 // what's done lately stand in. With a project picked in the header, only its sessions.
 
 /** The session open beside the list; null when none is (nothing needs you, or a narrow window shows the list). */
 let inboxSid = null;
-/** When the open session was opened (Date.now()): an answer or a message to it after that moves on to the next. */
-let inboxOpenedAt = 0;
-/** The open session needed you while it was open: once it's at work again, the next that needs you opens. */
-let inboxAsked = false;
-/** When you sent to the open session from here (Date.now()); it stays open INBOX_SEEN_MS after, so you see what you
- *  sent land before the next one opens. */
-let inboxWroteAt = 0;
-const INBOX_SEEN_MS = 2000;
 /** The session last opened: its row stays lit, so you see where you were. */
 let inboxLast = null;
 /** The list's tab: "inbox" or "snoozed". */
@@ -676,26 +668,13 @@ function inboxIdle() {
 
 // ---------- moving about ----------
 
-/** Whether you're done with the open session: you answered it or wrote to it here since it opened (from a row that
- *  needed you or was done; a working one keeps its brief), or it needed you while open and is at work again. Not
- *  while you type in its box (that would take the box from under you). */
-function inboxAnswered(sid) {
-  const r = inboxRowFor(sid), it = inboxItems().get(sid);
-  if (r && r.kind !== "run") { inboxAsked = true; return false; }
-  // Just sent from its box: the box still holds the words until this draw clears it.
-  const wrote = (it && (answering.get(it.id) || 0) >= inboxOpenedAt) || outbox.some((o) => o.sid === sid && o.at >= inboxOpenedAt + clockSkew);
-  if (wrote && inboxAsked && !inboxWroteAt) { inboxWroteAt = Date.now(); setTimeout(() => inboxSid === sid && renderMain(), INBOX_SEEN_MS + 50); }
-  if (inboxWroteAt) return Date.now() - inboxWroteAt >= INBOX_SEEN_MS;
-  const f = document.activeElement;
-  return inboxAsked && !(f?.matches?.("textarea, input") && f.value);
-}
 /** A window wide enough for the list and the brief side by side: there, something is always open. */
 const inboxWide = () => typeof matchMedia !== "function" || matchMedia("(min-width: 821px)").matches;
 /** The Inbox view: the list on the left, the open session beside it. With none open (a wide window), the top one that
- *  needs you opens by itself; once the open one is answered, the next that needs you opens in its place. */
+ *  needs you opens by itself. Answered, the open one stays open (you see what you sent, as in email); you move on. */
 function inboxView() {
   const sid = inboxSid;
-  if (sid && ((!sessionOf(sid) && !inboxItems().has(sid)) || inboxAnswered(sid))) inboxAdvance(sid);
+  if (sid && !sessionOf(sid) && !inboxItems().has(sid)) inboxAdvance(sid);
   else if (!sid && inboxWide()) inboxAdvance(null);
   return `<div class="board ib-board ${inboxSid ? "open" : ""}">${inboxList()}${inboxSid ? inboxOpened(inboxSid) : inboxIdle()}</div>`;
 }
@@ -705,9 +684,6 @@ function inboxAdvance(sid) {
   const next = inboxTab === "inbox" ? inboxNeedOrder().find((x) => x !== sid) : null;
   if (!next && !sid) return;
   inboxSid = inboxLast = next || null;
-  inboxAsked = false;
-  inboxOpenedAt = Date.now();
-  inboxWroteAt = 0;
   inboxSnoozeAt = "";
   if (next) { active = { id: inboxItems().get(next)?.id || null, sid: next, exact: false }; seenSession(next); }
 }
@@ -725,9 +701,6 @@ function inboxOpen(sid) {
   active = { id: it?.id || null, sid, exact: false };
   seenSession(sid);
   inboxSid = inboxLast = sid;
-  inboxAsked = false;
-  inboxOpenedAt = Date.now();
-  inboxWroteAt = 0;
   inboxSnoozeAt = "";
   renderMain();
 }
@@ -739,7 +712,6 @@ function inboxReplyTo(sid) {
 /** Back to the list (a narrow window shows one at a time). */
 function inboxClose() {
   inboxSid = null;
-  inboxAsked = false;
   inboxSnoozeAt = "";
   renderMain();
 }
@@ -753,7 +725,6 @@ function inboxStepTo(dir = 1) {
 /** Its full chat, on the Board. */
 function inboxFullChat(sid) {
   inboxSid = null;
-  inboxAsked = false;
   openSession(sid, inboxItems().get(sid)?.id || null);
 }
 /** What it changed, on the Board: its chat on its Diff tab. */
@@ -793,7 +764,7 @@ function inboxSetSnooze(sid, until) {
 }
 /** A session just parked or snoozed: if it was open, the next that needs you opens in its place. */
 function inboxGone(sid, gone) {
-  if (gone && inboxSid === sid) { inboxSid = null; inboxAsked = false; inboxAdvance(sid); }
+  if (gone && inboxSid === sid) { inboxSid = null; inboxAdvance(sid); }
   renderMain();
 }
 /** Snooze's button: its menu opens (or shuts) where it is; a snoozed one wakes. */

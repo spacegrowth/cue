@@ -1,7 +1,7 @@
 // The Inbox (ui/inbox.js): two lines a row under Pinned, Needs you, Running, Done, and folded Later and Parked; a finished turn
 // that asks nothing under Done; the top ask opened by itself beside the list as a brief (never its full chat, which is a
 // link): its words, the question with each choice's meaning, what you asked, what it did, what this turn changed, its
-// context; several questions stacked as cards with one Send; Send opening the next a moment later, the answered row sinking to
+// context; several questions stacked as cards with one Send; Send leaving it open (as a sent email), the answered row sinking to
 // Running with its bar, and rising again; Pin, Later and Snooze; with nothing needing you, what's running; a session half
 // full of context up as housekeeping, with Compact and Hand off.
 import { test, expect } from "./cue.mjs";
@@ -145,7 +145,7 @@ test("a question's choices show what each means and which it recommends; the sid
   await expect(pg.locator("[title]")).toHaveCount(0);
 });
 
-test("Send shows what you sent for a moment, then opens the next that needs you, without waiting on the session; the answered row sinks to Running", async ({ cue, page }) => {
+test("Send leaves it open with what you sent, as a sent email; the answered row sinks to Running; you move on yourself", async ({ cue, page }) => {
   await cue.open("board-waiting");
   // Cue never answers: the move can't be waiting on the session getting to work.
   await cue.override("reply", () => new Promise(() => {}));
@@ -153,10 +153,10 @@ test("Send shows what you sent for a moment, then opens the next that needs you,
   await page.locator('.ib-row[data-inbox-open="sec"]').click();
   await page.locator('.inbox-page textarea[data-text="s:sec"]').fill("yes, run it");
   await page.locator('.inbox-page [data-act="send"]').click();
-  // It stays open a moment so you see your words land, then moves on.
+  // It stays open with your words; it doesn't move on by itself.
   await expect(page.locator('.inbox-page[data-inbox-page="sec"]')).toContainText("yes, run it");
-  await expect(page.locator(".inbox-page")).not.toHaveAttribute("data-inbox-page", "sec");
-  await expect(page.locator(".inbox-page")).toHaveAttribute("data-inbox-page", (await sectionSids(page, "Needs you"))[0]);
+  await page.waitForTimeout(2500);
+  await expect(page.locator(".inbox-page")).toHaveAttribute("data-inbox-page", "sec");
   expect(await sectionSids(page, "Running")).toContain("sec");
   const row = page.locator('.ib-row[data-inbox-open="sec"]');
   await expect(row).toHaveClass(/\bsinking\b/);
@@ -166,7 +166,7 @@ test("Send shows what you sent for a moment, then opens the next that needs you,
   await page.locator('.ib-row[data-inbox-open="api"]').click();
   await page.locator('.inbox-page .ib-opt', { hasText: "Redis" }).click();
   await cue.called("respond", { id: "n6" });
-  await expect(page.locator(".inbox-page")).not.toHaveAttribute("data-inbox-page", "api");
+  await expect(page.locator(".inbox-page")).toHaveAttribute("data-inbox-page", "api");
 });
 
 test("nothing needing you: what's running and what's done lately stand in beside the list", async ({ cue, page }) => {
@@ -214,8 +214,8 @@ test("answered, a row sinks to Running with a moving bar; quiet it slows, stuck 
   await page.locator('.ib-row[data-inbox-open="sec"]').click();
   await page.locator('.inbox-page textarea[data-text="s:sec"]').fill("yes, run it");
   await page.locator('.inbox-page [data-act="send"]').click();
-  // Once it's at work again the next that needs you opens beside the list; its row is under Running with its bar.
-  await expect(page.locator(".inbox-page")).not.toHaveAttribute("data-inbox-page", "sec");
+  // At work again, it stays open; its row is under Running with its bar.
+  await expect(page.locator(".inbox-page")).toHaveAttribute("data-inbox-page", "sec");
   expect(await sectionSids(page, "Running")).toContain("sec");
   const row = page.locator('.ib-row[data-inbox-open="sec"]');
   await expect(row).toHaveClass(/\bsinking\b/);
@@ -316,10 +316,8 @@ test("Pin puts a row under Pinned (kept by Cue); Later folds it under Later at t
   await page.locator('.ib-row[data-inbox-open="sec"]').click();
   await page.locator('.inbox-page textarea[data-text="s:sec"]').fill("yes, the third too");
   await page.locator('.inbox-page [data-act="send"]').click();
-  // It stays open a moment so you see your words land, then moves on.
+  // It stays open with your words.
   await expect(page.locator('.inbox-page[data-inbox-page="sec"]')).toContainText("yes, the third too");
-  await page.clock.fastForward(2100);
-  await expect(page.locator(".inbox-page")).not.toHaveAttribute("data-inbox-page", "sec");
   expect(await sectionSids(page, "Running")).toContain("sec");
   await expect(page.locator('.ib-row[data-inbox-open="sec"] .ib-bar')).toBeVisible();
   // Snoozed again, it stays hidden until its time comes; then it's back.
