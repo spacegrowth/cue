@@ -14,7 +14,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 
 | What | Count |
 |---|---|
-| `#[tauri::command]` | 166 (3 sync) |
+| `#[tauri::command]` | 168 (3 sync) |
 | Lock declarations (static or field) | 111 |
 | Lock acquisitions | 264 |
 | Lock-graph edges | 51 |
