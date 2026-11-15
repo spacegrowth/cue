@@ -35,7 +35,8 @@ const INBOX_QUIET_MS = 2 * 60000;
 /** A row that came into Running this recently is still sinking: drawn faded. */
 const INBOX_SINK_MS = 8000;
 /** "It says": the last paragraphs of its words before the question, at most this many, this long in all (characters). */
-const INBOX_SAID_PARAS = 3, INBOX_SAID_MAX = 600;
+/** Its reply shows whole up to INBOX_SAID_LONG characters; a longer one shows its last paragraphs up to INBOX_SAID_MAX. */
+const INBOX_SAID_LONG = 2500, INBOX_SAID_MAX = 1200;
 /** "It did": this many lines at most (a folded run is one); the earlier ones are counted above them. */
 const INBOX_STEPS_MAX = 6;
 /** "Changed": this many files listed, and this many lines of the biggest change shown. */
@@ -314,14 +315,16 @@ function inboxThen(text) {
   const all = String(text || "").split("\n").flatMap((l) => l.split(/(?<=[.!?])\s+/));
   return all.filter((x) => { const p = plain(x); return p && !/\?["'”)]*$/.test(p) && INBOX_THEN.test(p); }).at(-1) || "";
 }
-/** Its words before the question, trimmed (markdown): `cut` (the question, the sentence on what's next) taken out,
- *  then its last paragraph or few, up to INBOX_SAID_MAX characters; one long paragraph is cut from its start. */
-function inboxSaid(text, cut = []) {
+/** Its words before the question (markdown), `cut` (the question, the sentence on what's next) taken out: whole, unless
+ *  it's very long (over INBOX_SAID_LONG; `all` keeps it whole anyway): then its last paragraphs up to INBOX_SAID_MAX
+ *  characters; one long paragraph is cut from its start. */
+function inboxSaid(text, cut = [], all = false) {
   let t = String(text || "");
   for (const c of cut) { const at = c ? t.lastIndexOf(c) : -1; if (at >= 0) t = t.slice(0, at) + t.slice(at + c.length); }
   const paras = inboxParas(t).filter((p) => plain(p)), out = [];
+  if (all || plain(t).length <= INBOX_SAID_LONG) return paras.join("\n\n").trim();
   for (const p of paras.reverse()) {
-    if (out.length && (out.length >= INBOX_SAID_PARAS || out.join("").length + p.length > INBOX_SAID_MAX)) break;
+    if (out.length && out.join("").length + p.length > INBOX_SAID_MAX) break;
     out.unshift(p);
   }
   const one = out[0] || "";
@@ -347,17 +350,17 @@ function inboxLabel(label) {
 }
 /** A plain box to write in (pictures pasted or dropped on it go with it), and its button. Enter sends too (app/keys.js,
  *  by its draft key). */
-const inboxBox = (key, placeholder, label, attrs, extra = "") => `<div class="ib-box" ${inboxPics(key) ? `data-drop="${esc(key)}"` : ""}>${inboxPics(key) ? draftChips(key) : ""}<textarea rows="2" data-text="${esc(key)}" placeholder="${esc(placeholder)}" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off">${esc(draft(key).text)}</textarea><div class="ib-box-acts"><button class="btn primary" ${attrs}>${label}</button>${inboxTalkBtns(key)}${extra}</div></div>`;
+const inboxBox = (key, placeholder, label, attrs, extra = "", sugs = "") => `<div class="ib-box" ${inboxPics(key) ? `data-drop="${esc(key)}"` : ""}>${inboxPics(key) ? draftChips(key) : ""}<textarea rows="2" data-text="${esc(key)}" placeholder="${esc(placeholder)}" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off">${esc(draft(key).text)}</textarea>${sugs}<div class="ib-box-acts"><button class="btn primary" ${attrs}>${label}</button>${inboxTalkBtns(key)}${extra}</div></div>`;
 /** Talk and pictures, as the chat's box has them (chat/compose.js): the mic types what you say into the box; the
  *  picture button adds one (⌘V pastes one, or drop it on the box). */
 const inboxTalkBtns = (key) => `<button class="icon-btn mic ${dictating?.key === key ? "on" : ""}" data-mic="${esc(key)}" aria-label="${dictating?.key === key ? "Stop dictating" : "Dictate"}">${MIC_ICON}</button>${inboxPics(key) ? `<button class="icon-btn" data-attach="${esc(key)}" aria-label="Add an image">${IMAGE_ICON}</button>` : ""}`;
 /** Whether pictures go with what's written in this box: a message to the session (its "s:" box) does; an answer to its
  *  question is words only. */
 const inboxPics = (key) => key.startsWith("s:");
-/** The reply, as in mail: you write right under the message (no frame round it), Send under what you write, Open chat
- *  and the project's actions beside it; suggested replies over it. */
+/** The reply, as in mail: you write right under the message (no frame or line round it), suggested replies under what
+ *  you write (they're yours, not its), then Send with Open chat and the project's actions beside it. */
 function inboxReply(sid, key, ph, label, attrs) {
-  return `${inboxSuggest(sid, key)}${inboxBox(key, ph, label, attrs, `<button class="btn" data-inbox-full="${esc(sid)}">Open chat</button>${inboxActions(sid)}`)}`;
+  return inboxBox(key, ph, label, attrs, `<button class="btn" data-inbox-full="${esc(sid)}">Open chat</button>${inboxActions(sid)}`, inboxSuggest(sid, key));
 }
 /** Suggested replies, as mail suggests them: Claude's own suggestion (it goes into the box, to send as it is or
  *  change), then your quick phrases (Settings → Quick phrases: a click sends it, after anything in the box). */
@@ -468,11 +471,22 @@ const inboxMsgOpen = new Set(), inboxAllEarlier = new Set();
 const INBOX_EARLIER = 6;
 /** The conversation before its latest reply, as mail shows a thread: each message folded to a line (who, when, its
  *  first words); a click opens it in full. Its latest reply (shown below as It says) is left out. */
-function inboxEarlier(r, words) {
-  const latest = plain(words || "").trim();
+/** Its thread as mail's: { msgs: the earlier ones, said: its latest message (shown whole; null when the thread hasn't
+ *  it), yours: what you wrote after that (at work: your reply, shown whole under it) }. */
+function inboxThread(r, words) {
+  const latest = plain(words || "").trim(), yours = [];
   let msgs = (r.s?.thread || []).filter((e) => e.text?.trim());
+  if (r.kind === "run") while (msgs.at(-1)?.role === "you") yours.unshift(msgs.at(-1)), msgs = msgs.slice(0, -1);
   const last = msgs.at(-1);
-  if (last && last.role !== "you" && (!latest || plain(last.text).trim() === latest || r.kind === "turn")) msgs = msgs.slice(0, -1);
+  let said = null;
+  if (last && last.role !== "you" && (r.kind === "run" ? yours.length || plain(last.text).trim() === latest : !latest || plain(last.text).trim() === latest || r.kind === "turn")) { said = last; msgs = msgs.slice(0, -1); }
+  return { msgs, said, yours };
+}
+/** What you wrote after its latest message, whole, as your reply under it in a mail thread. */
+function inboxYours(sid, yours) {
+  return yours.map((e) => `<div class="ib-yours"><div class="ib-k">You${e.at_ms ? ` · ${ago(e.at_ms)}` : ""}</div><div class="ib-yours-text">${esc(e.text).replace(/\n/g, "<br>")}</div></div>`).join("");
+}
+function inboxEarlier(r, msgs) {
   if (!msgs.length) return "";
   const all = inboxAllEarlier.has(r.sid), hidden = all ? 0 : Math.max(0, msgs.length - INBOX_EARLIER);
   const more = hidden ? `<button class="ib-link ib-earlier-more" data-inbox-earlier="${esc(r.sid)}">Show ${hidden} earlier</button>` : "";
@@ -482,7 +496,7 @@ function inboxEarlier(r, words) {
 function inboxMsgHtml(sid, e) {
   const k = `${sid}|${e.at_ms}|${e.role}`, open = inboxMsgOpen.has(k), you = e.role === "you";
   const who = `<span class="ib-msg-who">${you ? "You" : "It"}</span><span class="ib-msg-at">${e.at_ms ? ago(e.at_ms) : ""}</span>`;
-  const body = open ? `<div class="ib-msg-body ${you ? "" : "ib-md msg"}">${you ? esc(e.text).replace(/\n/g, "<br>") : md(e.text, { pathsOf: sid })}</div>` : `<span class="ib-msg-line">${esc(plain(e.text).replace(/\s+/g, " ").slice(0, 220))}</span>`;
+  const body = open ? `<div class="ib-msg-body ${you ? "" : "ib-md msg"}">${you ? esc(e.text).replace(/\n/g, "<br>") : md(e.text, { pathsOf: sid })}${you ? "" : localImages(e.text)}</div>` : `<span class="ib-msg-line">${esc(plain(e.text).replace(/\s+/g, " ").slice(0, 220))}</span>`;
   return `<div class="ib-msg ${you ? "you" : "it"} ${open ? "open" : ""}" role="button" data-inbox-msg="${esc(k)}">${who}${body}</div>`;
 }
 /** What you've written to it that hasn't reached it yet, as its chat shows it (chat/render.js): on its way, queued in
@@ -503,12 +517,14 @@ function inboxPendingLine(s) {
 /** The brief's main column: its words before the question, the question with its choices, what it plans next, then
  *  the box to answer in (at the foot). */
 function inboxMain(r) {
-  const words = inboxWords(r), q = r.kind === "turn" && !r.it.interrupted ? inboxEndQuestion(words) : "";
+  const thread = inboxThread(r, inboxWords(r));
+  // At work after your reply, its message is the one you answered (the thread's, or the ask's while it's still there).
+  const words = r.kind === "run" && thread.yours.length ? thread.said?.text || (r.it?.kind === "waiting" ? finishedText(r.it) : "") : inboxWords(r), q = r.kind === "turn" && !r.it.interrupted ? inboxEndQuestion(words) : "";
   const then = r.kind === "run" ? "" : inboxThen(words), said = inboxSaid(words, [q, then]);
   const label = r.kind === "run" ? "It said last" : r.kind === "ask" || r.kind === "turn" ? "It says" : "It said";
-  const whole = inboxWhole.has(r.sid), cut = plain(said).length < plain(words).length - 40;
-  const shown = whole ? words : said, more = cut ? `<button class="ib-link" data-inbox-whole="${esc(r.sid)}">${whole ? "Show less" : "Show the whole reply"}</button>` : "";
-  const saidHtml = shown ? `<div class="ib-said"><div class="ib-k">${label}</div><div class="ib-md msg">${md(shown, { pathsOf: r.sid })}</div>${more}</div>` : "";
+  const whole = inboxWhole.has(r.sid), cut = said !== inboxSaid(words, [q, then], true);
+  const shown = whole ? inboxSaid(words, [q, then], true) : said, more = cut ? `<button class="ib-link" data-inbox-whole="${esc(r.sid)}">${whole ? "Show less" : "Show the whole reply"}</button>` : "";
+  const saidHtml = shown ? `<div class="ib-said"><div class="ib-k">${label}</div><div class="ib-md msg">${md(shown, { pathsOf: r.sid })}</div>${localImages(shown)}${more}</div>` : "";
   const thenHtml = then ? `<div class="ib-then">It plans next: <b>${esc(plain(then))}</b></div>` : "";
   const reply = (ph) => inboxReply(r.sid, `s:${r.sid}`, ph, "Send", r.it ? `data-act="send" data-id="${esc(r.it.id)}"` : `data-inbox-send="${esc(r.sid)}"`);
   let top = "", foot = "", acts = "";
@@ -519,8 +535,12 @@ function inboxMain(r) {
   else if (r.kind === "run") { top = inboxRunCard(r); foot = reply("Tell it something (it reads it when it can)…"); }
   else foot = reply("Tell it what's next…");
   const crew = inboxCrewHtml(r.sid);
-  const first = r.kind === "run" || r.kind === "chore" || r.kind === "crew" ? `${crew}${top}${saidHtml}` : `${saidHtml}${top}${crew}`;
-  return `<div class="ib-page-body ib-main" data-scroll-key="inbox-main">${inboxEarlier(r, words)}${first}${thenHtml}${inboxPending(r)}<div class="ib-foot">${foot}${inboxHint(r, acts)}</div></div>`;
+  // Oldest at the top, newest at the foot, as a mail thread: earlier, its message, your reply, what waits to go, then
+  // what it's doing now, right over the box. (Housekeeping and a crew's asks lead with what they need of you.)
+  const earlier = inboxEarlier(r, thread.msgs);
+  if (r.kind === "run") return `<div class="ib-page-body ib-main" data-scroll-key="inbox-main">${earlier}${saidHtml}${inboxYours(r.sid, thread.yours)}${inboxPending(r)}${crew}${top}<div class="ib-foot">${foot}${inboxHint(r, acts)}</div></div>`;
+  const first = r.kind === "chore" || r.kind === "crew" ? `${crew}${top}${saidHtml}` : `${saidHtml}${top}${crew}`;
+  return `<div class="ib-page-body ib-main" data-scroll-key="inbox-main">${earlier}${first}${thenHtml}${inboxPending(r)}<div class="ib-foot">${foot}${inboxHint(r, acts)}</div></div>`;
 }
 
 // ---------- the brief's side: you asked, it did, what changed, its context ----------

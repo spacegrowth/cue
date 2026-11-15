@@ -522,6 +522,8 @@ function linkify(h, base = null) {
   let out = h.replace(/\[([^\]\n]+)\]\(((?:https?|file):\/\/[^\s)]+)\)/g, (_, label, u) => keep(a(u, label)))
     .replace(/(?:https?|file):\/\/[^\s<>"'\u0000]*[^\s<>"'.,;:!?)\]\u0000]/g, (u) => keep(a(u, u)));
   if (remote) return out.replace(/\u0000(\d+)\u0000/g, (_, n) => links[n]);
+  // A picture in markdown (![what](/a/shot.png)): its words as a link to it; the picture itself shows under the message.
+  out = out.replace(/!\[([^\]\n]*)\]\((\/[^\s)\u0000]+)\)/g, (_, alt, p) => keep(pa(p, alt || p)));
   out = out.replace(/(^|[^\w@/\\<.])(\/[\w.@~+-]+(?:\/[\w.@~+-]+)*\/?|~\/[^\s<>"'`\u0000]+)/g, (m, pre, raw) => {
     const t = trail(raw), p = raw.slice(0, raw.length - t.length);
     return pre + keep(pa(p, p)) + t;

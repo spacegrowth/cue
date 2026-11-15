@@ -418,7 +418,7 @@ test("suggested replies, as mail's: Claude's suggestion goes into the box, a qui
   await cue.called("reply", { text: "go ahead" });
 });
 
-test("more context: the conversation before its latest reply, a line a message (a click opens it), and the whole reply on asking", async ({ cue, page }) => {
+test("more context: the conversation before its latest reply, a line a message (a click opens it), a usual reply whole, a very long one folded to its end", async ({ cue, page }) => {
   await cue.open("board-waiting");
   await cue.change((st) => {
     const s = st.sessions.find((x) => x.session_id === "sec"), t0 = Date.now() - 3600000;
@@ -438,10 +438,16 @@ test("more context: the conversation before its latest reply, a line a message (
   await expect(one.locator(".ib-msg-line")).toContainText("Reply 1: did part 1.");
   await one.click();
   await expect(one.locator(".ib-msg-body")).toContainText("More detail on part 1.");
-  // Its latest reply: the last paragraphs, then all of it.
-  await expect(pg.locator(".ib-said .msg")).not.toContainText("Paragraph 0");
-  await pg.locator("[data-inbox-whole]").click();
+  // Its latest reply of a usual length: whole, with nothing to unfold.
   await expect(pg.locator(".ib-said .msg")).toContainText("Paragraph 0");
+  await expect(pg.locator(".ib-said .msg")).toContainText("Paragraph 5");
+  await expect(pg.locator("[data-inbox-whole]")).toHaveCount(0);
+  // A very long one: its last paragraphs, then all of it on asking.
+  await cue.change((st) => { st.items.find((i) => i.session_id === "sec").message = Array.from({ length: 40 }, (_, n) => `Paragraph ${n} of a very long reply, long enough to count as words that matter here.`).join("\n\n") + "\n\nWant me to run the next company?"; });
+  await expect(pg.locator(".ib-said .msg")).not.toContainText("Paragraph 0 ");
+  await expect(pg.locator(".ib-said .msg")).toContainText("Paragraph 39");
+  await pg.locator("[data-inbox-whole]").click();
+  await expect(pg.locator(".ib-said .msg")).toContainText("Paragraph 0 ");
 });
 
 test("an open session can be closed from its head, as on the Board: Close, then Close?", async ({ cue, page }) => {
@@ -489,4 +495,31 @@ test("the reply talks and takes pictures, as the chat's box does: the mic, the p
   const q = page.locator('.inbox-page[data-inbox-page="api"] .ib-box');
   await expect(q.locator("[data-mic]")).toBeVisible();
   await expect(q.locator("[data-attach]")).toHaveCount(0);
+});
+
+test("at work, it reads as a mail thread: earlier, its message whole, your reply under it, then what it's doing now over the box", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  await cue.change((st) => {
+    const s = st.sessions.find((x) => x.session_id === "eng"), t0 = Date.now() - 600000;
+    s.thread = [{ role: "you", text: "Refactor the order router", at_ms: t0 }, { role: "agent", text: "Split the router in two; partial fills next?", at_ms: t0 + 60000 }, { role: "you", text: "yes, partial fills too", at_ms: t0 + 120000 }];
+  });
+  await page.locator('.switch-view [data-view="inbox"]').click();
+  await page.locator('.ib-row[data-inbox-open="eng"]').click();
+  const pg = page.locator('.inbox-page[data-inbox-page="eng"]');
+  await expect(pg.locator(".ib-said .msg")).toContainText("Split the router in two");
+  await expect(pg.locator(".ib-yours")).toContainText("yes, partial fills too");
+  await expect(pg.locator(".ib-msg")).toHaveCount(1);
+  const order = await pg.locator(".ib-main").evaluate((m) => [".ib-earlier", ".ib-said", ".ib-yours", ".ib-card.run", ".ib-box"].map((q) => [...m.querySelectorAll("*")].indexOf(m.querySelector(q))));
+  expect(order.every((x, i) => x >= 0 && (i === 0 || x > order[i - 1]))).toBe(true);
+});
+
+test("a picture its reply points to shows under it, and ![words](path) reads as a link, not markdown", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  await cue.change((st) => { st.items.find((i) => i.session_id === "sec").message = "Here's how it looks now:\n\n![The reply area](/tmp/inbox-reply.png)\n\nWant me to run the next company?"; });
+  await page.locator('.switch-view [data-view="inbox"]').click();
+  await page.locator('.ib-row[data-inbox-open="sec"]').click();
+  const said = page.locator('.inbox-page[data-inbox-page="sec"] .ib-said');
+  await expect(said.locator('a[data-path="/tmp/inbox-reply.png"]')).toHaveText("The reply area");
+  await expect(said).not.toContainText("![");
+  await expect(said.locator(".thumbs.shots .thumb")).toHaveCount(1);
 });
