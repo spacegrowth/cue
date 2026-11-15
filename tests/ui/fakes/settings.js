@@ -21,10 +21,21 @@ CueBridge.area("settings", (w) => {
     }
   };
 
+  /** One-way here as config.rs effective gives it (one_way.rs view), for a scenario recorded before it had it: what
+   *  you set per project, the kinds with their words, the default. Once, the first time the state is read. */
+  const ONE_WAY_KINDS = [["main", "Merge or push to main"], ["push", "Push any branch"], ["release", "A release"], ["deploy", "Deploy"], ["data", "Delete data"], ["outside", "Files outside the project"]];
+  const oneWayFill = () => {
+    const p = w.state?.settings && (w.state.settings.project ||= {});
+    if (p && !p.oneway) p.oneway = { set: {}, kinds: ONE_WAY_KINDS.map(([key, label]) => ({ key, label })), default: ["main"] };
+  };
+  const plainSnapshot = w.snapshot;
+  w.snapshot = () => { oneWayFill(); return plainSnapshot(); };
+
   return {
-    // "a.b" sets settings.a.b, as config.rs set does for the keys the window saves.
+    // "a.b" sets settings.a.b, as config.rs set does for the keys the window saves; One-way here's map is its `set`.
     set_setting: ({ key, value }) => {
       const [a, b] = key.split(".");
+      if (key === "project.oneway") { oneWayFill(); w.state.settings.project.oneway.set = value; w.changed(10); return null; }
       if (b == null) w.state.settings[a] = value; else (w.state.settings[a] ||= {})[b] = value;
       if (key === "project.moves") moveProjects(value || {});
       w.changed(10);

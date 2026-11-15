@@ -229,11 +229,12 @@ test.describe("a hosted lead's crew on its own page", () => {
     await expect(page.locator(".cp-goal.open .cg-box")).toHaveCount(4);
     await page.locator("[data-cp-goal]").click();
     await expect(page.locator(".cp-goal .cg-box")).toHaveCount(0);
-    // The chat's rows in time order, each decision of the crew's log among them, with Undo this.
+    // The chat's rows in time order, each line of the crew's log among them; Undo this only on what can be undone.
     const chat = page.locator(".cp-left .active-pane > .ap-chat");
-    const decided = await page.evaluate(() => sessionOf("lead").crew_log?.length || 0);
-    await expect(chat.locator(".cp-dec .cd-row.big")).toHaveCount(decided);
-    if (decided) await expect(chat.locator(".cd-row.big [data-act=crew-back]").first()).toHaveText("Undo this");
+    const [lines, undoable] = await page.evaluate(() => { const l = sessionOf("lead").crew_log || []; return [l.length, l.filter((d) => Object.hasOwn(CREW_UNDO, d.kind)).length]; });
+    await expect(chat.locator(".cp-dec .cd-row.big")).toHaveCount(lines);
+    await expect(chat.locator(".cd-row.big [data-act=crew-back]")).toHaveCount(undoable);
+    await expect(chat.locator(".cd-row.big.step [data-act=crew-back]")).toHaveCount(0);
     const order = await chat.locator(":scope > *").evaluateAll((els) => els.map((e) => e.dataset.key || ""));
     const said = order.filter((k) => /^[ay]:\d+$/.test(k)).map((k) => +k.slice(2));
     expect(said.length, "the lead's replies and your messages").toBeGreaterThan(0);
@@ -282,22 +283,30 @@ test.describe("a hosted lead's crew on its own page", () => {
     await expect(page.locator(".cp-lead .cp-lr")).toHaveText(/^working · /);
   });
 
-  test("what the lead decided on its own sits in the chat at its time, with Undo this", async ({ cue, page }) => {
+  test("the lead's judgment call sits in the chat at its time, with Undo this; a step there has none", async ({ cue, page }) => {
     const chat = page.locator(".cp-left .active-pane > .ap-chat");
     await cue.change((st) => {
       const lead = st.sessions.find((s) => s.session_id === "lead"), t = lead.thread;
-      lead.crew_log = [{ id: "d1-0", at_ms: t[1].at_ms + 1, who: "handoff", call: "call-handoff", kind: "fixes", what: "Reviewed: 1 should-fix. Sent the fix back", why: "the list is cut at 8" }];
+      lead.crew_log = [
+        { id: "d1-0", at_ms: t[1].at_ms + 1, who: "handoff", call: "call-handoff", kind: "fixes", what: "Reviewed: 1 should-fix. Sent the fix back", why: "the list is cut at 8" },
+        { id: "d2-0", at_ms: t[1].at_ms + 2, who: "lead", kind: "decided", what: "Kept the list cut at 8", why: "the board has no room for more" },
+      ];
     });
-    const row = chat.locator('.cp-dec[data-key="cd:d1-0"]');
-    await expect(row.locator(".cd-what")).toHaveText("Reviewed: 1 should-fix. Sent the fix back");
-    await expect(row.locator("[data-act=crew-back]")).toHaveText("Undo this");
+    const step = chat.locator('.cp-dec[data-key="cd:d1-0"]'), call = chat.locator('.cp-dec[data-key="cd:d2-0"]');
+    await expect(step.locator(".cd-what")).toHaveText("Reviewed: 1 should-fix. Sent the fix back");
+    await expect(step.locator(".cd-row.step"), "fixes sent: a quiet step").toHaveCount(1);
+    await expect(step.locator("[data-act=crew-back]"), "nothing to undo").toHaveCount(0);
+    await expect(call.locator(".cd-kind")).toHaveText("Decided");
+    await expect(call.locator(".cd-what")).toHaveText("Kept the list cut at 8");
+    await expect(call.locator("[data-act=crew-back]")).toHaveText("Undo this");
     const keys = await chat.locator(":scope > *").evaluateAll((els) => els.map((e) => e.dataset.key || ""));
     const at = await page.evaluate(() => sessionOf("lead").thread.map((e) => e.at_ms));
     // Between Cue's review request for handoff (its review folded into it) and the next one, for docs.
     const i = keys.indexOf("cd:d1-0"), before = keys.indexOf(`y:${at[0]}`), after = keys.indexOf(`y:${at[2]}`);
     expect(before, "the row before it is drawn").toBeGreaterThanOrEqual(0);
     expect(before, "after what came before it").toBeLessThan(i);
-    expect(after, "before what came after it").toBeGreaterThan(i);
+    expect(after, "before what came after it").toBeGreaterThan(keys.indexOf("cd:d2-0"));
+    expect(keys.indexOf("cd:d2-0"), "in time order").toBe(i + 1);
   });
 
   test("replies fold as the chat folds them: the 3 newest whole however long, no Show all on them; an older long one folds with the chat's own button", async ({ cue, page }) => {
@@ -551,16 +560,20 @@ test.describe("a hosted lead's crew: the Crew switch, /crew, a task dropped on t
     await expect(page.locator(".crew-menu")).toHaveCount(0);
   });
 
-  // Handle it (the default): Cue sends fixes and commits by itself, so no Send fixes or Commit; what it decided is
-  // listed, each line with Undo this, which asks the lead and leaves the line saying "undoing…".
+  // Handle it (the default): Cue sends fixes and commits by itself, so no Send fixes or Commit; what it did and
+  // decided is listed, what can be undone with Undo this, which asks the lead and leaves the line saying "undoing…".
   test("Handle it: the goal on top, what it decided on its own, and Undo this", async ({ cue, page }) => {
     const tray = page.locator(".crew-tray");
     await expect(tray.locator(".crew-body")).toBeVisible();
-    await expect(tray.locator(".cg-box .cg-t")).toHaveText(["Build the team view: hand out hub, rows, skill and handoff", "Each part reviewed, with nothing blocking", "Review, send fixes, commit to crew/ branches", "Merge to main, real choices"]);
-    await expect(tray.locator(".mt-grp")).toHaveText(["Needs you · nothing now", "Decided on its own · 5", "Working"]);
+    await expect(tray.locator(".cg-box .cg-t")).toHaveText(["Build the team view: hand out hub, rows, skill and handoff", "Each part reviewed, with nothing blocking", "Review, send fixes, commit to crew/ branches", "Merge or push to main, real choices"]);
+    await expect(tray.locator(".mt-grp")).toHaveText(["Needs you · nothing now", "Decisions and steps · 6", "Working"]);
     await expect(tray.locator('[data-mt-act="fixes"], [data-mt-act="commit"]'), "Cue does those itself").toHaveCount(0);
     await expect(tray.locator(".mt-one", { hasText: "handoff" }).locator(".mt-line")).toContainText("reviewed · Cue sends its fixes back");
-    await expect(tray.locator(".cd-row .cd-who")).toHaveText(["docs", "handoff", "rows", "spike", "lead"]);
+    await expect(tray.locator(".cd-row .cd-who")).toHaveText(["docs", "handoff", "rows", "spike", "lead", "lead"]);
+    // Undo this on the commit, the set-aside and the lead's judgment call; the fixes sent, the hold and the teammate
+    // started are steps, with none.
+    const undo = await tray.locator(".cd-row").evaluateAll((rows) => rows.map((r) => !!r.querySelector("[data-act=crew-back]")));
+    expect(undo).toEqual([true, false, false, true, true, false]);
     const docs = tray.locator(".cd-row", { hasText: "docs" });
     await expect(docs.locator(".cd-what code")).toHaveText("crew/docs");
     // Its line opens in place: its review's findings, the commit and its Diff.
@@ -586,7 +599,7 @@ test.describe("a hosted lead's crew: the Crew switch, /crew, a task dropped on t
     await expect(tray.locator(".crew-body")).toBeVisible();
     await expect(tray.locator(".crew-head")).toHaveText(/^Cue Crew · 5 · 2 ready · 2 working\s*Open full ›\s*Ask me ▾\s*▾$/);
     await expect(tray.locator(".crew-head .dot-live"), "a live dot while any member works").toHaveCount(1);
-    await expect(tray.locator(".mt-grp")).toHaveText(["Needs you · nothing now", "Ready", "Decided on its own · 5", "Working"]);
+    await expect(tray.locator(".mt-grp")).toHaveText(["Needs you · nothing now", "Ready", "Decisions and steps · 6", "Working"]);
     const box = await page.locator(".foot .field").boundingBox(), t = await tray.boundingBox();
     expect(Math.abs(t.y + t.height - box.y), "it stands on the box's top edge").toBeLessThan(2);
     expect(Math.abs(t.x - box.x) + Math.abs(t.width - box.width), "the box's width").toBeLessThan(2);

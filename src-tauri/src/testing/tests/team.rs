@@ -418,7 +418,26 @@ fn a_prompt_you_append_yourself_gets_the_skill_merged_in_not_a_second_option() {
     let args = launched_args(&w);
     assert_eq!(args.iter().filter(|a| *a == "--append-system-prompt").count(), 1, "one option: {args:?}");
     let prompt = skill_in(&args).unwrap();
-    assert!(prompt.starts_with("Terse.\n\n") && prompt.ends_with(crate::hub::team_out::TEAM_SKILL), "yours, then the skill: {prompt}");
+    assert!(prompt.starts_with("Terse.\n\n") && prompt.ends_with(&crate::hub::team_out::skill_for(crate::one_way::DEFAULT)), "yours, then the skill: {prompt}");
+}
+
+#[test]
+fn a_lead_asks_first_before_what_its_project_counts_one_way() {
+    let w = World::new();
+    // Never set: a merge or push to main.
+    lead(&w, "one part");
+    let skill = skill_in(&launched_args(&w)).unwrap();
+    assert!(skill.ends_with("ask the user first, and end your turn, before a merge or push to main or master."), "{skill}");
+    // Set for the lead's project (Settings' One-way here): what it says, at the next start.
+    let project = crate::model::project_at(&w.home().to_string_lossy(), "");
+    crate::config::set("project.oneway", json!({ project.as_str(): ["deploy", "push"] })).unwrap();
+    lead(&w, "another part");
+    let skill = skill_in(&launched_args(&w)).unwrap();
+    assert!(skill.ends_with("before a push of any branch, or a deploy.") && !skill.contains("main or master"), "{skill}");
+    // Nothing one-way there: no such line.
+    crate::config::set("project.oneway", json!({ project.as_str(): [] })).unwrap();
+    lead(&w, "a third part");
+    assert_eq!(skill_in(&launched_args(&w)).as_deref(), Some(crate::hub::team_out::TEAM_SKILL));
 }
 
 #[test]

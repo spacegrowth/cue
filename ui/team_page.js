@@ -162,8 +162,8 @@ function crewCardFiles(t) {
 /** A labelled part of a card: its label in small caps on the left, its lines on the right. */
 const crewCardPart = (label, html) => html ? `<div class="cp-part"><span class="cp-pl">${label}</span><span class="cp-pv">${html}</span></div>` : "";
 
-/** One member's card in the list: its name with its stage in a word and its meter; what it was asked (two lines);
- *  what it's doing now (red when it waits on you) and a line of context; then its last steps, what its review found
+/** One member's row in the list (plain, a thin line between rows, no box): its name with its stage in a word and its
+ *  meter; what it was asked (two lines); what it's doing now (red when it waits on you) and a line of context; then its last steps, what its review found
  *  and its files; at its foot how many files and how long, and the one action the drawer's row has (team.js
  *  mateOneAct: Stop, Resume first when stuck, Skip while its review waits, else Diff). Its top is one button: a click
  *  opens its menu (team.js mateMenuHtml: its steps, its review, its Diff), and what that opened shows under the card's

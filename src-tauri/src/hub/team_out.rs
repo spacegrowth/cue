@@ -17,7 +17,8 @@ You run inside Cue, which shows each teammate you start under you as your crew; 
 - Then wait: you're told as each one finishes. When all have, say in plain words what each did. Don't commit their work.
 - One part that will take long (more than about 20 minutes of work): hand it to one teammate too, so you stay free to answer the user while it runs.
 - One short part, small quick changes, or parts that share files: do it yourself.
-- A message that ends with \"(Crew: on …)\" or \"(Crew: off …)\" is the user's choice for that message.")
+- A message that ends with \"(Crew: on …)\" or \"(Crew: off …)\" is the user's choice for that message.
+- When you make a judgment call the user didn't settle (one approach over another, skipping a should-fix, cutting scope, committing despite a note, not testing something), write it in your reply on a line of its own: `DECIDED: what you chose — why`. Cue shows the user each one, and they can ask you to undo it. Not for routine steps: starting a teammate, sending fixes back, a commit you were asked for. If your task asks you to write judgment calls another way (as `DECISION:` lines), write them only that way, never as DECIDED: too.")
     };
 }
 #[cfg(feature = "ext")]
@@ -38,8 +39,16 @@ pub(crate) const TEAM_SKILL: &str = team_skill!(more_rules!());
 const TEAM_ON: &str = "(Crew: on. Split this into its independent parts and hand each to its own named background teammate, as your team instructions say.)";
 const TEAM_OFF: &str = "(Crew: off. Do this yourself: start no teammates.)";
 
-/// `args` (yours) with the team skill added: Claude Code's only (Pi and Codex have no Agent tool).
-pub(super) fn with_skill(agent: crate::hosted::Agent, args: &[String]) -> Vec<String> {
+/// The team skill for a lead in a project whose One-way here is `kinds` (one_way.rs): the skill, then what the lead
+/// asks the user first before there (nothing more when nothing's one-way there).
+pub(crate) fn skill_for(kinds: &[&str]) -> String {
+    let ask = crate::one_way::ask_first(kinds);
+    if ask.is_empty() { TEAM_SKILL.to_string() } else { format!("{TEAM_SKILL}\n{ask}") }
+}
+
+/// `args` (yours) with the team skill added (`skill`, skill_for's): Claude Code's only (Pi and Codex have no Agent
+/// tool).
+pub(super) fn with_skill(agent: crate::hosted::Agent, args: &[String], skill: &str) -> Vec<String> {
     let mut out = args.to_vec();
     if agent != crate::hosted::Agent::Claude {
         return out;
@@ -52,17 +61,17 @@ pub(super) fn with_skill(agent: crate::hosted::Agent, args: &[String]) -> Vec<St
     }
     if let Some(i) = out.iter().position(|a| a == FLAG) {
         if let Some(yours) = out.get_mut(i + 1) {
-            *yours = format!("{yours}\n\n{TEAM_SKILL}");
+            *yours = format!("{yours}\n\n{skill}");
             return out;
         }
-        out.push(TEAM_SKILL.into());
+        out.push(skill.into());
         return out;
     }
     if let Some(yours) = out.iter_mut().find(|a| a.starts_with("--append-system-prompt=")) {
-        *yours = format!("{yours}\n\n{TEAM_SKILL}");
+        *yours = format!("{yours}\n\n{skill}");
         return out;
     }
-    out.extend([FLAG.to_string(), TEAM_SKILL.to_string()]);
+    out.extend([FLAG.to_string(), skill.to_string()]);
     out
 }
 
@@ -253,13 +262,29 @@ mod tests {
         use crate::hosted::Agent;
         let v = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         let flag = "--append-system-prompt";
-        assert_eq!(with_skill(Agent::Claude, &v(&["--verbose"])), v(&["--verbose", flag, TEAM_SKILL]));
+        assert_eq!(with_skill(Agent::Claude, &v(&["--verbose"]), TEAM_SKILL), v(&["--verbose", flag, TEAM_SKILL]));
         let mine = format!("Be terse.\n\n{TEAM_SKILL}");
-        assert_eq!(with_skill(Agent::Claude, &v(&[flag, "Be terse.", "--verbose"])), v(&[flag, &mine, "--verbose"]), "merged into yours, one option");
-        assert_eq!(with_skill(Agent::Claude, &v(&["--append-system-prompt=Be terse."])), v(&[&format!("--append-system-prompt=Be terse.\n\n{TEAM_SKILL}")]));
-        assert_eq!(with_skill(Agent::Claude, &v(&[flag])), v(&[flag, TEAM_SKILL]), "the option with no text yet");
-        assert_eq!(with_skill(Agent::Claude, &v(&["--append-system-prompt-file", "p.md"])), v(&["--append-system-prompt-file", "p.md"]), "a file: left as yours");
-        assert_eq!(with_skill(Agent::Codex, &v(&["-x"])), v(&["-x"]), "Claude only");
+        assert_eq!(with_skill(Agent::Claude, &v(&[flag, "Be terse.", "--verbose"]), TEAM_SKILL), v(&[flag, &mine, "--verbose"]), "merged into yours, one option");
+        assert_eq!(with_skill(Agent::Claude, &v(&["--append-system-prompt=Be terse."]), TEAM_SKILL), v(&[&format!("--append-system-prompt=Be terse.\n\n{TEAM_SKILL}")]));
+        assert_eq!(with_skill(Agent::Claude, &v(&[flag]), TEAM_SKILL), v(&[flag, TEAM_SKILL]), "the option with no text yet");
+        assert_eq!(with_skill(Agent::Claude, &v(&["--append-system-prompt-file", "p.md"]), TEAM_SKILL), v(&["--append-system-prompt-file", "p.md"]), "a file: left as yours");
+        assert_eq!(with_skill(Agent::Codex, &v(&["-x"]), TEAM_SKILL), v(&["-x"]), "Claude only");
+    }
+
+    #[test]
+    fn the_lead_says_its_judgment_calls_and_asks_first_before_what_its_project_counts_one_way() {
+        // When to write DECIDED:, and when not; in the form Cue reads (sessions/crew_log.rs calls_in).
+        assert!(TEAM_SKILL.contains("`DECIDED: what you chose — why`") && TEAM_SKILL.contains("Not for routine steps"), "{TEAM_SKILL}");
+        // A task that gives its own form for calls (the add-on's asks for `DECISION:` lines): that form only, never both.
+        assert!(TEAM_SKILL.contains("(as `DECISION:` lines), write them only that way, never as DECIDED: too."), "{TEAM_SKILL}");
+        let example = TEAM_SKILL.split('`').find(|s| s.starts_with("DECIDED:")).unwrap();
+        assert!(crate::sessions::crew_log::calls_in(example).is_empty(), "the instructions' own example, said back, isn't a call");
+        assert_eq!(crate::sessions::crew_log::calls_in(&example.replace("what you chose", "kept the cache")).len(), 1, "in the form Cue reads");
+        // Its project's One-way here after the skill: the default asks before a merge or push to main.
+        let default = skill_for(crate::one_way::DEFAULT);
+        assert!(default.starts_with(TEAM_SKILL) && default.ends_with("ask the user first, and end your turn, before a merge or push to main or master."), "{default}");
+        assert!(skill_for(&["deploy"]).ends_with("before a deploy."));
+        assert_eq!(skill_for(&[]), TEAM_SKILL, "nothing one-way there: the skill alone");
     }
 
     #[test]

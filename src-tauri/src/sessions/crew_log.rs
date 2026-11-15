@@ -1,17 +1,34 @@
-//! What a hosted lead's crew decided on its own (Cue, or the lead, without asking you): its job in one line, and a
-//! short log of each decision, kept on the lead's record (the crew tray's "Decided on its own"). Pure: no clock, no
-//! process. One member's review that goes on to fixes and a commit is one line that grows, not three.
+//! What a hosted lead's crew did and decided: its job in one line, and a short log, kept on the lead's record (the
+//! crew tray's list, the crew page's chat). Two sorts of line:
+//! - activity, Cue's own steps (`split`: started a teammate, `review`, `fixes`, `hold`): shown as quiet steps, with
+//!   nothing to undo. One member's review that goes on to fixes and a commit is one line that grows, not three.
+//! - what can be undone (`UNDO_KINDS`): a commit (`commit`, an old log's `merge`; undone with a revert), a member set
+//!   aside (`aside`; brought back), and the lead's own judgment calls (`decided`): each `DECIDED: what — why` line of
+//!   its replies (`calls_in`), which Undo this asks it to go back on.
+//!
+//! Pure: no clock, no process.
 
 use super::team::Teammate;
 use super::Sessions;
 use serde::{Deserialize, Serialize};
 
-/// The most decisions a lead keeps: older ones drop off.
+/// The most lines a lead keeps: older ones drop off.
 const KEEP: usize = 50;
-/// The most a decision's `what` and `why` say, and the crew's job.
+/// The most a step's `what` and `why` say, and the crew's job.
 const WHAT_MAX: usize = 110;
 const WHY_MAX: usize = 90;
 const JOB_MAX: usize = 140;
+/// The lead's judgment calls (`DECIDED:` lines): at most this many from one reply (more lines are passed over, so a
+/// reply that lists every step can't flood the log), each its choice cut to CALL_WHAT_MAX characters and its reason
+/// to CALL_WHY_MAX (longer than a step's: the reason is the point of one). The log's KEEP holds for them too.
+pub const CALLS_PER_REPLY: usize = 3;
+pub const CALL_WHAT_MAX: usize = 140;
+pub const CALL_WHY_MAX: usize = 160;
+/// The kinds a line can be undone as (Undo this, or Make a revert for a one-way commit); the window's team.js
+/// `CREW_UNDO` says the same. Every other kind is activity: a step, with nothing to undo.
+pub const UNDO_KINDS: &[&str] = &["commit", "merge", "aside", "decided"];
+/// The word that starts one of the lead's judgment calls.
+const CALL_MARK: &str = "decided";
 
 /// One thing the crew decided on its own.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -22,7 +39,8 @@ pub struct CrewDecision {
     pub at_ms: u64,
     /// The member it's about, or "lead".
     pub who: String,
-    /// review · fixes · commit · hold · split · merge · aside: what it is now (a review that went on to a commit is one).
+    /// What it is now (a review that went on to a commit is one). Activity: split · review · fixes · hold. Undoable
+    /// (UNDO_KINDS): commit · merge (old logs) · aside · decided (the lead's judgment call).
     pub kind: String,
     /// What was decided, in plain words: its `head`, then what came of it (`steps`).
     pub what: String,
@@ -86,6 +104,11 @@ fn clip(s: &str, max: usize) -> String {
 }
 
 impl CrewDecision {
+    /// Whether Undo this can go back on it (UNDO_KINDS); activity can't.
+    pub fn undoable(&self) -> bool {
+        UNDO_KINDS.contains(&self.kind.as_str())
+    }
+
     /// Still going: a step can grow it (not committed or set aside, not gone back on).
     fn open(&self) -> bool {
         !self.call.is_empty() && self.back.is_empty() && !matches!(self.kind.as_str(), "commit" | "aside" | "merge")
@@ -126,11 +149,7 @@ pub fn decided(log: &mut Vec<CrewDecision>, now: u64, d: Decided) -> String {
         e.render();
         return e.id.clone();
     }
-    // One past the highest of this ms's ids (some may have dropped off): never one in use.
-    let same = format!("d{now}-");
-    let n = log.iter().filter_map(|e| e.id.strip_prefix(&same)?.parse::<u32>().ok()).max().unwrap_or(0) + 1;
     let mut e = CrewDecision {
-        id: format!("d{now}-{n}"),
         at_ms: now,
         who: d.who.to_string(),
         kind: d.kind.to_string(),
@@ -142,6 +161,15 @@ pub fn decided(log: &mut Vec<CrewDecision>, now: u64, d: Decided) -> String {
         ..Default::default()
     };
     e.render();
+    push(log, e)
+}
+
+/// `e` added to `log` under a new id, the oldest dropped past KEEP. Its id.
+fn push(log: &mut Vec<CrewDecision>, mut e: CrewDecision) -> String {
+    // One past the highest of this ms's ids (some may have dropped off): never one in use.
+    let same = format!("d{}-", e.at_ms);
+    let n = log.iter().filter_map(|x| x.id.strip_prefix(&same)?.parse::<u32>().ok()).max().unwrap_or(0) + 1;
+    e.id = format!("d{}-{n}", e.at_ms);
     let id = e.id.clone();
     log.push(e);
     if log.len() > KEEP {
@@ -151,10 +179,66 @@ pub fn decided(log: &mut Vec<CrewDecision>, now: u64, d: Decided) -> String {
     id
 }
 
-/// What the lead is told when you go back on `d`.
+/// The lead's judgment calls in `text`: each line `DECIDED: what it chose — why` (any case; a list mark or bold around
+/// it is fine; the reason after an em or en dash, or " -- "; none is fine), as (what, why), uncut. The instructions'
+/// own placeholder, said back, isn't one; nor is a line in a code block (``` or ~~~ fences) or a `>` quote: those
+/// show or cite one, they don't make it.
+pub fn calls_in(text: &str) -> Vec<(String, String)> {
+    let mut fenced = false;
+    text.lines().filter_map(|line| {
+        let t = line.trim();
+        if t.starts_with("```") || t.starts_with("~~~") {
+            fenced = !fenced;
+            return None;
+        }
+        if fenced || t.starts_with('>') {
+            return None;
+        }
+        let l = t.trim_start_matches(['-', '*', '`', ' ']).trim();
+        let head = l.get(..CALL_MARK.len())?;
+        if !head.eq_ignore_ascii_case(CALL_MARK) {
+            return None;
+        }
+        let body = l[CALL_MARK.len()..].trim_start().strip_prefix(':')?.trim().trim_start_matches("**").trim().trim_end_matches(['*', '`']).trim();
+        let (what, why) = ["—", "–", " -- "].iter().find_map(|sep| body.split_once(sep)).unwrap_or((body, ""));
+        let (what, why) = (what.trim().trim_end_matches(['.', ',', ';']).trim(), why.trim());
+        let placeholder = what.starts_with('<') || ["what you chose", "what it chose"].iter().any(|p| what.eq_ignore_ascii_case(p));
+        (!what.is_empty() && !placeholder).then(|| (what.to_string(), why.to_string()))
+    }).collect()
+}
+
+/// The lead's judgment calls in its reply `text`, said at `at` (the reply's time), noted in `log`: at most
+/// CALLS_PER_REPLY of them, each cut (CALL_WHAT_MAX, CALL_WHY_MAX); one it noted already (the same choice, any case)
+/// isn't noted twice. How many it noted.
+pub fn calls_noted(log: &mut Vec<CrewDecision>, at: u64, text: &str) -> usize {
+    let same = |a: &str, b: &str| a.trim_end_matches('.').eq_ignore_ascii_case(b.trim_end_matches('.'));
+    let mut noted = 0;
+    for (what, why) in calls_in(text).into_iter().take(CALLS_PER_REPLY) {
+        let what = clip(&what, CALL_WHAT_MAX);
+        if log.iter().any(|d| d.kind == "decided" && same(&d.what, &what)) {
+            continue;
+        }
+        let e = CrewDecision { at_ms: at, who: "lead".into(), kind: "decided".into(), head: what.clone(), what, why: clip(&why, CALL_WHY_MAX), ..Default::default() };
+        push(log, e);
+        noted += 1;
+    }
+    noted
+}
+
+/// What the lead is told when you go back on `d` (one of UNDO_KINDS): a commit reverted (one-way: with a revert
+/// commit, never by rewriting what may be shared), a member set aside brought back, a judgment call taken back.
 pub fn go_back_words(d: &CrewDecision) -> String {
-    let then = if d.one_way { "It can't be undone; make a revert instead." } else { "Undo it, then carry on: send it back as a fix if a teammate should redo it." };
-    format!("Go back on this: {}: {}. {then}", d.who, d.what.trim_end_matches('.'))
+    let what = d.what.trim_end_matches('.');
+    let sha = if d.sha.is_empty() { String::new() } else { format!(" (`{}`)", d.sha) };
+    match d.kind.as_str() {
+        "decided" => {
+            let why = if d.why.is_empty() { String::new() } else { format!(" (your reason: {})", d.why.trim_end_matches('.')) };
+            format!("Go back on your call: you decided {what}{why}. Undo it and take the other way, then carry on; say what that changes.")
+        }
+        "aside" => format!("Bring {} back: it was set aside ({what}). Pick its part up again: start a teammate for it, from its worktree if its work is still there.", d.who),
+        _ if d.one_way => format!("Make a revert: {}: {what}{sha}. It can't be undone in place: make a revert commit, don't rewrite history.", d.who),
+        _ => format!("Undo this: {}: {what}{sha}. Revert that commit, then carry on: send it back as a fix if a teammate should redo it.", d.who),
+    }
 }
 
 /// The lead's first line of `text` (its prompt), as the crew's job.
@@ -174,11 +258,19 @@ impl Sessions {
         self.0.get(sid).is_some_and(|s| s.crew_log.iter().any(|d| d.call == call && d.open()))
     }
 
-    /// Lead `sid`'s decision `id`, marked gone back on ("asked"): it, as it was. Err when Cue doesn't know it or you
-    /// went back on it already.
+    /// Lead `sid`'s judgment calls in its reply `text`, said at `at` (`calls_noted`). How many it noted.
+    pub fn crew_calls(&mut self, sid: &str, at: u64, text: &str) -> usize {
+        self.0.get_mut(sid).map_or(0, |s| calls_noted(&mut s.crew_log, at, text))
+    }
+
+    /// Lead `sid`'s decision `id`, marked gone back on ("asked"): it, as it was. Err when Cue doesn't know it, it's
+    /// activity (nothing to undo), or you went back on it already.
     pub fn crew_go_back(&mut self, sid: &str, id: &str) -> Result<CrewDecision, String> {
         let s = self.0.get_mut(sid).ok_or("that session is gone")?;
         let d = s.crew_log.iter_mut().find(|d| d.id == id).ok_or("Cue doesn't know that decision")?;
+        if !d.undoable() {
+            return Err("That's a step it took: there's nothing to undo".into());
+        }
         if !d.back.is_empty() {
             return Err("You went back on this already".into());
         }
@@ -268,11 +360,63 @@ mod tests {
     }
 
     #[test]
-    fn going_back_says_whether_it_can_be_undone() {
-        let d = CrewDecision { who: "auth".into(), what: "Committed to `crew/auth`".into(), ..Default::default() };
-        assert_eq!(go_back_words(&d), "Go back on this: auth: Committed to `crew/auth`. Undo it, then carry on: send it back as a fix if a teammate should redo it.");
-        let d = CrewDecision { one_way: true, ..d };
-        assert!(go_back_words(&d).ends_with("It can't be undone; make a revert instead."));
+    fn going_back_says_what_undoing_it_means() {
+        let d = CrewDecision { who: "auth".into(), kind: "commit".into(), what: "Committed to `crew/auth`".into(), sha: "3f2a1c".into(), ..Default::default() };
+        assert_eq!(go_back_words(&d), "Undo this: auth: Committed to `crew/auth` (`3f2a1c`). Revert that commit, then carry on: send it back as a fix if a teammate should redo it.");
+        let one = CrewDecision { one_way: true, ..d.clone() };
+        assert!(go_back_words(&one).starts_with("Make a revert: auth:") && go_back_words(&one).ends_with("make a revert commit, don't rewrite history."));
+        let aside = CrewDecision { kind: "aside".into(), what: "Set aside: it stopped having written nothing".into(), ..d.clone() };
+        assert!(go_back_words(&aside).starts_with("Bring auth back: it was set aside (Set aside: it stopped having written nothing)."));
+        let call = CrewDecision { who: "lead".into(), kind: "decided".into(), what: "Kept the old cache".into(), why: "the new one needs a migration".into(), ..Default::default() };
+        assert_eq!(go_back_words(&call), "Go back on your call: you decided Kept the old cache (your reason: the new one needs a migration). Undo it and take the other way, then carry on; say what that changes.");
         assert_eq!(job_of("\n  Build the auth flow  \nand more"), "Build the auth flow");
+    }
+
+    #[test]
+    fn decided_lines_are_read_off_the_leads_reply() {
+        let text = "All three are in.\nDECIDED: Kept per-key limits over per-IP — keys are what the docs promise\n- **Decided: skipped the flaky date test -- it needs a fixed clock first**\nDecided: cut the CSV export\nWe decided: not at the line's start\nDECIDED: <what it chose> — <why>\nDECIDED:";
+        assert_eq!(calls_in(text), [
+            ("Kept per-key limits over per-IP".to_string(), "keys are what the docs promise".to_string()),
+            ("skipped the flaky date test".to_string(), "it needs a fixed clock first".to_string()),
+            ("cut the CSV export".to_string(), String::new()),
+        ]);
+        assert!(calls_in("DECISION: one-way | why: the add-on's").is_empty(), "the add-on's own DECISION lines aren't these");
+        // Shown in a code block or quoted: not made here. After the block, lines count again.
+        let shown = "The form is:\n```\nDECIDED: kept the cache — it's warm\n```\n~~~text\nDECIDED: in tildes — too\n~~~\n> DECIDED: quoted from the user — not mine\n>DECIDED: quoted tight — not mine either\nDECIDED: after the block — it counts";
+        assert_eq!(calls_in(shown), [("after the block".to_string(), "it counts".to_string())]);
+    }
+
+    #[test]
+    fn a_reply_notes_at_most_three_calls_each_cut_and_never_one_twice() {
+        let mut log = vec![];
+        let reply = (1..=5).map(|i| format!("DECIDED: choice {i} — reason {i}")).collect::<Vec<_>>().join("\n");
+        assert_eq!(calls_noted(&mut log, 100, &reply), CALLS_PER_REPLY);
+        assert_eq!(log.iter().map(|d| d.what.as_str()).collect::<Vec<_>>(), ["choice 1", "choice 2", "choice 3"]);
+        assert!(log.iter().all(|d| d.kind == "decided" && d.who == "lead" && d.at_ms == 100 && d.call.is_empty() && d.undoable()));
+        // Said again in a later reply: not twice; a new one is.
+        assert_eq!(calls_noted(&mut log, 200, "DECIDED: Choice 1. — still\nDECIDED: choice 6 — new"), 1);
+        assert_eq!((log.len(), log[3].what.as_str(), log[3].at_ms), (4, "choice 6", 200));
+        let long = format!("DECIDED: {} — {}", "w".repeat(400), "y".repeat(400));
+        calls_noted(&mut log, 300, &long);
+        let e = log.last().unwrap();
+        assert_eq!((e.what.chars().count(), e.why.chars().count()), (CALL_WHAT_MAX, CALL_WHY_MAX));
+    }
+
+    #[test]
+    fn only_commits_set_asides_and_judgment_calls_can_be_undone() {
+        let kind = |k: &str| CrewDecision { kind: k.into(), ..Default::default() }.undoable();
+        for k in ["commit", "merge", "aside", "decided"] {
+            assert!(kind(k), "{k} can be undone");
+        }
+        for k in ["split", "review", "fixes", "hold", ""] {
+            assert!(!kind(k), "{k} is activity");
+        }
+        // A review that grew into a commit is a commit now: it can be.
+        let mut log = vec![];
+        let t = rows();
+        decided(&mut log, 10, Decided::about(&t, "review", "reviewed: clean"));
+        assert!(!log[0].undoable());
+        decided(&mut log, 20, Decided::about(&t, "commit", "committed"));
+        assert!(log[0].undoable());
     }
 }

@@ -121,7 +121,18 @@ You run inside Cue, which shows each teammate you start under you; the user look
 - One part that will take long (more than about 20 minutes of work): hand it to one teammate too, so you stay free to answer the user while it runs.
 - One short part, small quick changes, or parts that share files: do it yourself.
 - A message that ends with "(Team: on …)" or "(Team: off …)" is the user's choice for that message.
+- When you make a judgment call the user didn't settle (one approach over another, skipping a should-fix, cutting scope, committing despite a note, not testing something), write it in your reply on a line of its own: `DECIDED: what you chose — why`. Cue shows the user each one, and they can ask you to undo it. Not for routine steps: starting a teammate, sending fixes back, a commit you were asked for. If your task asks you to write judgment calls another way (as `DECISION:` lines), write them only that way, never as DECIDED: too.
 ```
+
+After it, one line from the lead's project's One-way here (Settings → General; `one_way.rs`, config
+`project.oneway`), as the setting is when the lead starts: "One-way in this project, as the user set it: ask the user
+first, and end your turn, before …" with the kinds checked there (by default a merge or push to main or master); no
+line when none is. The same setting marks a crew commit one-way on its crew log (its Undo says Make a revert).
+
+Each `DECIDED:` line of a lead's turn is kept on its crew log (`sessions/crew_log.rs` `calls_noted`, read at turn end
+in `hub/hosted.rs`) at the reply's time: at most 3 a reply, the choice cut to 140 characters and the reason to 160,
+the same choice never twice. The log's other lines are Cue's own steps (a teammate started, a review, fixes sent, a
+hold), drawn quiet with nothing to undo; Undo this is only on a commit, a set-aside teammate and a judgment call.
 
 Two choices changed from the first plan: there is no model rubric (teammates inherit the lead's model and are never
 put on a cheaper one), and there is no fixed summary format (a plain-words summary only). The skill asks for

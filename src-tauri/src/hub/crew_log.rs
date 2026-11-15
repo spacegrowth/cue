@@ -1,5 +1,6 @@
-//! The crew's decisions noted on its lead's record (sessions/crew_log.rs) where Cue acts by itself (a review filed,
-//! fixes sent back, a commit made or held, a member set aside), and Go back on this: the lead told to undo one.
+//! The crew's log on its lead's record (sessions/crew_log.rs): Cue's own steps where it acts by itself (a review
+//! filed, fixes sent back, a commit made or held, a member set aside), the lead's judgment calls read off its replies
+//! (`DECIDED:` lines), and Undo this: the lead told to undo a commit, a set-aside or a call.
 
 use super::*;
 use crate::sessions::crew_log::{go_back_words, Decided};
@@ -37,8 +38,29 @@ impl Hub {
         let sha = self.crew_member(lead, &t.call).map(|m| m.commit).unwrap_or_default();
         let branch = branch_in(said);
         let step = branch.as_deref().map_or("committed".to_string(), |b| format!("committed to `{b}`"));
-        let one_way = branch.as_deref().is_some_and(|b| matches!(b, "main" | "master"));
+        // One-way as its project counts it (Settings' One-way here; by default a commit on main or master).
+        let one_way = branch.as_deref().is_some_and(|b| crate::one_way::commit_one_way(&crate::one_way::kinds(&self.project_shown(lead)), b));
         self.crew_note(lead, Decided { sha, one_way, ..Decided::about(t, "commit", &step) });
+    }
+
+    /// Lead `sid`'s turn ended with its reply (`all`: everything it wrote this turn): its `DECIDED:` judgment calls
+    /// noted on its crew log at the reply's time (the newest of its replies in its chat, so each sits right after it).
+    pub(super) fn crew_calls_noted(&self, sid: &str, all: &str) {
+        if !all.to_ascii_lowercase().contains("decided") {
+            return;
+        }
+        let noted = self.write(|st| {
+            let at = st.sessions.thread(sid).iter().rev().find(|e| e.role == "agent").map_or_else(now_ms, |e| e.at_ms);
+            st.sessions.crew_calls(sid, at, all)
+        });
+        if noted > 0 {
+            self.changed();
+        }
+    }
+
+    /// The project session `sid` shows under (`project_shown_for`); "" when Cue doesn't know it.
+    fn project_shown(&self, sid: &str) -> String {
+        self.read(|st| st.sessions.origin(sid)).map(|o| project_shown_for(&o)).unwrap_or_default()
     }
 
     /// Cue's commit of member `t` didn't go (`e`): held, as its row says.
@@ -51,7 +73,8 @@ impl Hub {
     }
 
     /// Undo this: lead `sid` is told to undo its decision `id` (through the normal send path: kept in Cue while
-    /// it's busy), and the decision is marked so. What Cue did; Err for one it doesn't know or you went back on already.
+    /// it's busy), and the decision is marked so. What Cue did; Err for one it doesn't know, one that's activity (a
+    /// step, nothing to undo), or one you went back on already.
     pub fn crew_go_back(&self, sid: &str, id: &str) -> Result<String, String> {
         let d = self.write(|st| st.sessions.crew_go_back(sid, id))?;
         self.changed();
@@ -64,6 +87,15 @@ impl Hub {
                 Err(e)
             }
         }
+    }
+}
+
+/// The project the session of origin `o` shows under, as the window has it (hub/mod.rs settle_projects): moved there
+/// in Cue, else its folder's (put in a project by you, or its repository's own).
+pub(super) fn project_shown_for(o: &Origin) -> String {
+    match crate::config::moved().remove(&o.session_id) {
+        Some(to) => to,
+        None => crate::model::project_at(&o.cwd, &o.machine),
     }
 }
 

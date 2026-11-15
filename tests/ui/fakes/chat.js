@@ -37,6 +37,7 @@ CueBridge.area("chat", (w) => {
    *  docs and handoff, held rows behind handoff, left spike out. Once, the first time the state is read. */
   const crewLog = (s, at) => [
     { id: `d${at - 40 * 60000}-0`, at_ms: at - 40 * 60000, who: "lead", kind: "split", what: "Split the job into 5: hub, rows, skill, handoff, spike", why: "", one_way: false, sha: "", back: "" },
+    { id: `d${at - 25 * 60000}-0`, at_ms: at - 25 * 60000, who: "lead", kind: "decided", what: "Kept rows in one file over a split per kind", why: "two files would both change `ui/core.js`", one_way: false, sha: "", back: "" },
     { id: `d${at - 18 * 60000}-0`, at_ms: at - 18 * 60000, who: "spike", kind: "aside", what: "Left out of the work: tried it, not worth it", why: "", one_way: false, sha: "", back: "" },
     { id: `d${at - 9 * 60000}-0`, at_ms: at - 9 * 60000, who: "rows", kind: "hold", what: "Held until handoff lands", why: "both change `ui/core.js`", one_way: false, sha: "", back: "" },
     { id: `d${at - 4 * 60000}-0`, at_ms: at - 4 * 60000, who: "handoff", kind: "fixes", what: "Reviewed: 1 should-fix, 1 note. Sent the fix back", why: "", one_way: false, sha: "", back: "", call: "call-handoff", head: "reviewed: 1 should-fix, 1 note", steps: ["sent back"] },

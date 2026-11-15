@@ -5,10 +5,12 @@ const vm = require("vm");
 
 const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const NOW = 1793984400000, M = 60000;
-const world = { sessions: {}, items: [] };
+// Settings as config.rs effective gives them: One-way here (one_way.rs view), nothing set, so the default.
+const ONE_WAY = { set: {}, default: ["main"], kinds: [["main", "Merge or push to main"], ["push", "Push any branch"], ["release", "A release"], ["deploy", "Deploy"], ["data", "Delete data"], ["outside", "Files outside the project"]].map(([key, label]) => ({ key, label })) };
+const world = { sessions: {}, items: [], settings: { project: { oneway: ONE_WAY } } };
 const ctx = {
   esc,
-  get state() { return { items: world.items }; },
+  get state() { return { items: world.items, settings: world.settings }; },
   document: { addEventListener() {} },
   sessionOf: (sid) => world.sessions[sid] || null,
   now: () => NOW,
@@ -293,7 +295,7 @@ assert.doesNotMatch(folded, /data-mt-act|data-crew-open|Open ›/, "no buttons i
   delete world.sessions.K;
 }
 
-// ---- Handle it, the goal and the decisions Cue made on its own (crewGoalHtml, crewLogHtml) ----
+// ---- Handle it, the goal, and the crew's decisions and steps (crewGoalHtml, crewLogHtml) ----
 {
   world.commit = "auto";
   world.sessions.H = { session_id: "H", project: "api", crew_job: "Rate limits on the public API, per key", team: [
@@ -305,6 +307,7 @@ assert.doesNotMatch(folded, /data-mt-act|data-crew-open|Open ›/, "no buttons i
     { id: "d2-0", at_ms: NOW - 4 * M, who: "docs", kind: "commit", what: "Reviewed: 1 note, left as is. Committed to `crew/docs`", why: "", one_way: false, sha: "3f2a1c", back: "" },
     { id: "d3-0", at_ms: NOW - M, who: "lead", kind: "merge", what: "Merged auth into main", why: "you said yes", one_way: true, sha: "", back: "" },
     { id: "d4-0", at_ms: NOW - 2 * M, who: "keys", kind: "hold", what: "Held until auth lands", why: "", one_way: false, sha: "", back: "asked" },
+    { id: "d5-0", at_ms: NOW - 20 * M, who: "lead", kind: "decided", what: "Kept per-key limits over per-IP", why: "keys are what the docs promise", one_way: false, sha: "", back: "" },
   ] };
   ctx.mateOpenLeads.add("H");
   let d = ctx.crewTray("H");
@@ -313,9 +316,25 @@ assert.doesNotMatch(folded, /data-mt-act|data-crew-open|Open ›/, "no buttons i
   assert.match(d, /Needs you · 1<\/div>.*>keys<\/button><i>1 finding · fixes go back, round 2<\/i>.*>Send fixes</s, "out of fix rounds: it needs you, with its button");
   assert.match(d, />auth<\/button><span class="mt-line">9m · reviewed · Cue sends its fixes back<\/span>/, "Cue handles auth: one line");
   assert.deepEqual(ctx.mateWaits("H").map((t) => t.name), ["keys"], "only keys waits on you");
-  assert.match(d, /Decided on its own · 4<\/div><div class="cd-row[^"]*"[^>]*><b class="cd-who">lead<\/b><span class="cd-what">Merged auth into main <span class="cd-why">· you said yes<\/span><\/span><span class="cd-at">1m<\/span><span class="cd-one">one-way ·<\/span><button class="mt-lk" data-act="crew-back" data-sid="H" data-id="d3-0">Make a revert<\/button>/, "newest first; one-way offers a revert");
+  assert.match(d, /Asks you first<\/div><div class="cg-t">Merge or push to main, real choices<\/div>/, "asks first: its project's one-way kinds (never set: the default)");
+  assert.match(d, /Needs you · 1<\/div>/);
+  assert.match(d, /Decisions and steps · 5<\/div><div class="cd-row[^"]*"[^>]*><b class="cd-who">lead<\/b><span class="cd-what">Merged auth into main <span class="cd-why">· you said yes<\/span><\/span><span class="cd-at">1m<\/span><span class="cd-one">one-way ·<\/span><button class="mt-lk" data-act="crew-back" data-sid="H" data-id="d3-0">Make a revert<\/button>/, "newest first; one-way offers a revert");
   assert.match(d, /Committed to <code>crew\/docs<\/code><\/span><span class="cd-at">4m<\/span><button class="mt-lk" data-act="crew-back" data-sid="H" data-id="d2-0">Undo this<\/button>/, "code in backticks; Undo this");
-  assert.match(d, /Held until auth lands<\/span><span class="cd-at">2m<\/span><span class="cd-going">undoing…<\/span>/, "asked: undoing…");
+  assert.match(d, /<div class="cd-row  step  can"[^>]*><b class="cd-who">keys<\/b><span class="cd-what">Held until auth lands<\/span><span class="cd-at">2m<\/span><\/div>/, "activity: a quiet step, no Undo (an old log's \"asked\" too)");
+  assert.match(d, /<div class="cd-row  step  "[^>]*><b class="cd-who">lead<\/b><span class="cd-what">Split the job into 3: auth, docs, keys<\/span><span class="cd-at">40m<\/span><\/div>/, "a teammate started: a step");
+  assert.match(d, /<div class="cd-row  kinded  "[^>]*><b class="cd-who">lead<\/b><span class="cd-what">Kept per-key limits over per-IP <span class="cd-why">· keys are what the docs promise<\/span><\/span><span class="cd-at">20m<\/span><button class="mt-lk" data-act="crew-back" data-sid="H" data-id="d5-0">Undo this<\/button>/, "a judgment call: Undo this");
+  assert.equal((d.match(/data-act="crew-back"/g) || []).length, 3, "Undo only on the commit, the merge and the call");
+  // On the crew's page: what can be undone is a card saying what it is; activity a quiet line.
+  const big = (id) => ctx.crewLogRow("H", world.sessions.H.crew_log.find((x) => x.id === id), true);
+  assert.match(big("d5-0"), /^<div class="cd-row big kinded  "[^>]*><span class="cd-kind">Decided<\/span><div class="cd-main"><div class="cd-what">Kept per-key limits over per-IP<\/div><div class="cd-sub"><span class="cd-tag">lead<\/span><span class="cd-why">keys are what the docs promise · 20m<\/span><\/div><\/div><button class="btn small cd-back"[^>]*>Undo this<\/button><\/div>$/);
+  assert.match(big("d2-0"), /<span class="cd-kind">Committed<\/span>.*>Undo this<\/button>/);
+  assert.equal(big("d1-0"), '<div class="cd-row big step  " data-key="cd:H|d1-0" ><span class="cd-who">lead</span><span class="cd-what">Split the job into 3: auth, docs, keys</span><span class="cd-why">40m</span></div>');
+  // A project that counts a push of any branch and a deploy one-way, and one that counts nothing.
+  world.settings.project.oneway = { ...ONE_WAY, set: { api: ["push", "deploy"] } };
+  assert.match(ctx.crewTray("H"), /Asks you first<\/div><div class="cg-t">Push any branch, deploy, real choices</);
+  world.settings.project.oneway = { ...ONE_WAY, set: { api: [] } };
+  assert.match(ctx.crewTray("H"), /Asks you first<\/div><div class="cg-t">Real choices</);
+  world.settings.project.oneway = ONE_WAY;
   assert.doesNotMatch(d, /data-crew-log="H\|d1-0"/, "the lead's line has no member to open");
   ctx.crewLogOpen.add("H|d2-0");
   d = ctx.crewTray("H");
@@ -325,7 +344,7 @@ assert.doesNotMatch(folded, /data-mt-act|data-crew-open|Open ›/, "no buttons i
   world.commit = "wait";
   d = ctx.crewTray("H");
   assert.match(d, /May do alone<\/div><div class="cg-t">Nothing: it asks you first/, "Ask me: it does nothing alone");
-  assert.match(d, /<div class="mt-grp ">Ready<\/div>.*data-mt-agent="id-auth"[^>]*>Send fixes<.*Decided on its own · 4/s, "Ask me: Ready with its buttons, then the decisions");
+  assert.match(d, /<div class="mt-grp ">Ready<\/div>.*data-mt-agent="id-auth"[^>]*>Send fixes<.*Decisions and steps · 5/s, "Ask me: Ready with its buttons, then the decisions");
   delete world.commit;
   delete world.sessions.H;
 }

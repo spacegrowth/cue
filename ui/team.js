@@ -299,8 +299,18 @@ function crewNeedRows(sid, groups, ready = crewHandles(sid)) {
   const items = list.map((t) => mateNeeds(sid, t) ? mateNeedRow(sid, t) : mateReadyRow(sid, t));
   return { list, items, rows: items.join("") };
 }
-/** Nothing needs you: what it would ask you about. */
-const CREW_NONE = "It asks here before anything one-way: merging to main, a new dependency, a choice only you can make.";
+/** What lead `sid`'s project counts one-way (Settings → General → One-way here; config one_way.rs): its kinds'
+ *  words, in Settings' order. A project never set has the default (a merge or push to main). */
+function crewOneWay(sid) {
+  const ow = state.settings?.project?.oneway || {}, s = sessionOf(sid) || {};
+  const keys = Array.isArray(ow.set?.[s.project]) ? ow.set[s.project] : ow.default || ["main"];
+  return (ow.kinds || []).filter((k) => keys.includes(k.key)).map((k) => k.label);
+}
+/** Nothing needs you: what it would ask you about (its project's one-way kinds, then a choice only you can make). */
+function crewNone(sid) {
+  const one = crewOneWay(sid).map((l) => l.toLowerCase());
+  return `It asks here before ${one.length ? `anything one-way (${one.join(", ")}) or ` : ""}a choice only you can make.`;
+}
 /** The open member's menu, when it's one of this lead's. */
 const mateMenuOf = (sid) => { const t = (sessionOf(sid)?.team || []).find((m) => mateKey(sid, m) === mateMenu); return t ? mateMenuHtml(sid, t) : ""; };
 
@@ -322,7 +332,7 @@ function crewTray(sid) {
   const handles = crewHandles(sid);
   const needs = crewNeedRows(sid, groups, handles), ready = handles ? [] : groups.ready;
   const body = crewGoalHtml(sid, handles)
-    + (needs.rows ? grp(`Needs you · ${needs.list.length}`, needs.rows, "red") : `<div class="mt-grp">Needs you · nothing now</div><div class="crew-none">${CREW_NONE}</div>`)
+    + (needs.rows ? grp(`Needs you · ${needs.list.length}`, needs.rows, "red") : `<div class="mt-grp">Needs you · nothing now</div><div class="crew-none">${esc(crewNone(sid))}</div>`)
     + grp("Ready", ready.map((t) => mateReadyRow(sid, t)).join(""))
     + crewLogHtml(sid)
     + grp("Waiting on the lead", groups.lead.map((t) => mateOneRow(sid, t)).join(""))
@@ -338,7 +348,7 @@ function crewGoalParts(sid, handles) {
   const job = s.crew_job || (typeof nameOf === "function" ? nameOf(sid, s.project) : s.project) || "";
   return [["The job", "", job], ["Done well when", "Done well when", "Each part reviewed, with nothing blocking"],
     ["May do alone", "Alone", handles ? "Review, send fixes, commit to crew/ branches" : "Nothing: it asks you first"],
-    ["Asks you first", "Asks first", handles ? "Merge to main, real choices" : "Every review, fix and commit"]];
+    ["Asks you first", "Asks first", handles ? [...crewOneWay(sid), "real choices"].join(", ").toLowerCase().replace(/^./, (c) => c.toUpperCase()) : "Every review, fix and commit"]];
 }
 /** The crew's goal on top of its open tray, four small boxes (crewGoalParts). */
 function crewGoalHtml(sid, handles) {
@@ -351,27 +361,36 @@ const crewLogOpen = new Set();
 const crewBackAsked = new Set();
 /** A decision's words: plain, `code` in backticks as code. */
 const crewCode = (text) => esc(text).replace(/`([^`]+)`/g, "<code>$1</code>");
-/** What the lead (or Cue) decided on its own, newest first: who · what · how long ago · Undo this (one-way:
- *  "one-way ·" and Make a revert), or "undoing…" once you did. A line whose member has a review or files opens in
- *  place on its review, what came of it and its Diff. "" when it decided nothing yet. */
+/** The kinds of the crew's log that can be undone, each with what its line is called on the crew's page: a commit
+ *  (a revert), a member set aside (brought back), the lead's judgment call (its `DECIDED:` line). The hub's
+ *  sessions/crew_log.rs UNDO_KINDS says the same. Every other kind (a teammate started, a review, fixes sent, a hold)
+ *  is activity: a quiet step, nothing to undo. */
+const CREW_UNDO = { decided: "Decided", commit: "Committed", merge: "Merged", aside: "Set aside" };
+/** What the crew did and decided, newest first: who · what · how long ago, and on what can be undone, Undo this
+ *  (one-way: "one-way ·" and Make a revert), or "undoing…" once you did; activity quiet, with no button. A line whose
+ *  member has a review or files opens in place on its review, what came of it and its Diff. "" when there's none. */
 function crewLogHtml(sid) {
   const log = (sessionOf(sid)?.crew_log || []).slice().reverse().sort((a, b) => (b.at_ms || 0) - (a.at_ms || 0));
-  return log.length ? `<div class="mt-grp">Decided on its own · ${log.length}</div>${log.map((d) => crewLogRow(sid, d)).join("")}` : "";
+  return log.length ? `<div class="mt-grp">Decisions and steps · ${log.length}</div>${log.map((d) => crewLogRow(sid, d)).join("")}` : "";
 }
-/** One decision of the crew's log, and what it opened under it. `big` (the crew's page, team_page.js): what was
- *  decided, then who, why and when, its button outlined. */
+/** One line of the crew's log, and what it opened under it. `big` (the crew's page, team_page.js): what it's
+ *  called (Decided, Committed…) or, for activity, a quiet step line; then what, who, why and when, its button
+ *  outlined. */
 function crewLogRow(sid, d, big = false) {
   const team = sessionOf(sid)?.team || [];
   const k = `${sid}|${d.id}`, t = team.find((m) => m.name === d.who), open = crewLogOpen.has(k);
   const has = !!t && !!(t.review || (t.findings || []).length || (t.files || []).length || t.worktree);
-  const going = d.back === "asked" || crewBackAsked.has(k);
-  const act = going ? `<span class="cd-going">undoing…</span>`
+  const undo = Object.hasOwn(CREW_UNDO, d.kind), going = undo && (d.back === "asked" || crewBackAsked.has(k));
+  const act = !undo ? "" : going ? `<span class="cd-going">undoing…</span>`
     : `<button class="${big ? "btn small cd-back" : "mt-lk"}" data-act="crew-back" data-sid="${esc(sid)}" data-id="${esc(d.id)}">${d.one_way ? "Make a revert" : "Undo this"}</button>`;
-  const attrs = `class="cd-row ${big ? "big" : ""} ${open ? "on" : ""} ${has ? "can" : ""}" data-key="cd:${esc(k)}" ${has ? `data-crew-log="${esc(k)}" aria-expanded="${open}"` : ""}`;
+  const attrs = `class="cd-row ${big ? "big" : ""} ${undo ? "kinded" : "step"} ${open ? "on" : ""} ${has ? "can" : ""}" data-key="cd:${esc(k)}" ${has ? `data-crew-log="${esc(k)}" aria-expanded="${open}"` : ""}`;
   const at = d.at_ms ? ago(d.at_ms) : "", one = d.one_way ? `<span class="cd-one">one-way ·</span>` : "";
-  const row = big
-    ? `<div ${attrs}><div class="cd-main"><div class="cd-what">${crewCode(d.what)}</div>`
-      + `<div class="cd-sub"><span class="cd-tag">${esc(d.who)}</span><span class="cd-why">${[d.why ? crewCode(d.why) : "", esc(at)].filter(Boolean).join(" · ")}</span></div></div>${one}${act}</div>`
+  const why = [d.why ? crewCode(d.why) : "", esc(at)].filter(Boolean).join(" · ");
+  const row = big && undo
+    ? `<div ${attrs}><span class="cd-kind">${CREW_UNDO[d.kind]}</span><div class="cd-main"><div class="cd-what">${crewCode(d.what)}</div>`
+      + `<div class="cd-sub"><span class="cd-tag">${esc(d.who)}</span><span class="cd-why">${why}</span></div></div>${one}${act}</div>`
+    : big
+    ? `<div ${attrs}><span class="cd-who">${esc(d.who)}</span><span class="cd-what">${crewCode(d.what)}</span><span class="cd-why">${why}</span></div>`
     : `<div ${attrs}><b class="cd-who">${esc(d.who)}</b><span class="cd-what">${crewCode(d.what)}${d.why ? ` <span class="cd-why">· ${crewCode(d.why)}</span>` : ""}</span>`
       + `<span class="cd-at">${at}</span>${one}${act}</div>`;
   return row + (open && has ? crewLogDetail(sid, t, d, k) : "");

@@ -29,8 +29,10 @@ impl Hub {
     /// Start (`Start::New`) or resume a hosted session's Claude: `origin` with the process it now runs as.
     pub(crate) fn run_hosted(&self, origin: &Origin, start: Start, with: &HostedStart) -> Result<Origin, String> {
         let agent = Agent::named(&origin.harness).ok_or("Cue can only host Claude Code, Pi and Codex")?;
-        // A Claude lead starts with the team skill (team_out.rs), new or resumed: merged into a prompt you append.
-        let args = super::team_out::with_skill(agent, &with.args);
+        // A Claude lead starts with the team skill (team_out.rs), new or resumed: merged into a prompt you append; with
+        // what its project counts one-way (Settings' One-way here, one_way.rs), as the setting is at this start.
+        let skill = super::team_out::skill_for(&crate::one_way::kinds(&super::crew_log::project_shown_for(origin)));
+        let args = super::team_out::with_skill(agent, &with.args, &skill);
         let spec = Spec { agent, cwd: origin.cwd.clone().into(), start, permissions: with.permissions.clone(), model: with.model.clone(), args, program: Program::Agent, machine: origin.machine.clone() };
         let base = self.session_cost(&origin.session_id).unwrap_or(0.0);
         let started: crate::hosted::Started = self.hosted().start(&spec, self.hosted_report(origin.clone(), base))?;
@@ -190,8 +192,12 @@ impl Hub {
                     self.failed(origin, "error", &text);
                 } else {
                     let turn = turn_parts(&origin.transcript_path, &text);
-                    self.team_reply(&origin.session_id, &super::team_review::LeadTurn::read(&origin.transcript_path, &turn, &text, unprompted));
+                    let lead_turn = super::team_review::LeadTurn::read(&origin.transcript_path, &turn, &text, unprompted);
+                    self.team_reply(&origin.session_id, &lead_turn);
+                    let (lead, all) = (origin.session_id.clone(), lead_turn.all);
                     self.event(origin, "stopped", text, turn, "");
+                    // Its judgment calls (DECIDED: lines) once its reply is in its chat, at the reply's time (crew_log.rs).
+                    self.crew_calls_noted(&lead, &all);
                 }
                 #[cfg(feature = "ext")]
                 self.ext_turn_ended(&sid, ended);

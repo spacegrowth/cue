@@ -89,8 +89,8 @@ button.mt-name:hover, .mt-name.on { text-decoration: underline; text-underline-o
 .m-chat .cg-t { -webkit-line-clamp: 1; }
 /* Nothing needs you: one quiet line under its label. */
 .crew-none { padding: 2px 12px 4px; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* Decided on its own (crewLogHtml): one line each, who · what, then how long ago and Undo this at its end. A line
-   with a review or files opens in place under it. */
+/* Decisions and steps (crewLogHtml): one line each, who · what, then how long ago and, on what can be undone, Undo
+   this at its end; activity (`.step`) quieter, with no button. A line with a review or files opens in place under it. */
 .cd-row { display: flex; align-items: baseline; gap: 8px; min-height: 24px; padding: 3px 12px; font-size: 12px; box-sizing: border-box; }
 .cd-row.can { cursor: pointer; }
 .cd-row.can:hover, .cd-row.on { background: var(--panel-2); }
@@ -101,6 +101,8 @@ button.mt-name:hover, .mt-name.on { text-decoration: underline; text-underline-o
 .cd-at { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
 .cd-one { flex: none; color: var(--muted); }
 .cd-going { flex: none; color: var(--muted); font-size: 12px; font-style: italic; }
+.cd-row.step .cd-who { font-weight: 600; color: var(--muted); }
+.cd-row.step .cd-what { color: var(--muted); }
 .mt-under.cd-under { margin: 0; padding: 2px 12px 8px; background: var(--panel-2); }
 .cd-under .mt-fx { margin: 0; }
 .cd-foot { display: flex; align-items: baseline; gap: 10px; margin-top: 4px; color: var(--muted); }
@@ -161,12 +163,21 @@ button.mt-name:hover, .mt-name.on { text-decoration: underline; text-underline-o
 /* A window too short for the pane's timeline as well (the page's head and goal take what the board gives the pane):
    the timeline gives way to the chat. */
 @media (max-height: 680px) { .cp-left > .active-pane > .ap-bar { display: none; } }
-/* A decision in the chat at its time (team.js crewLogRow, big; the add-on's alike): one card on one line, "Decided",
-   who, what, why and when, its button at the end. */
+/* A line of the crew's log in the chat at its time (team.js crewLogRow, big; the add-on's alike). What can be undone
+   (a judgment call, a commit, a set-aside): one card on one line, what it is ("Decided", "Committed"; the add-on's
+   rows say "Decided"), who, what, why and when, its button at the end. Activity (a teammate started, a review, fixes
+   sent, a hold): a quiet step line, no card, no button. */
 .cp-dec { display: flex; flex-direction: column; }
 .cp-dec .cd-row.big { display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 11px; border: 0; border-radius: 9px; background: var(--panel-2); }
 .cp-dec .cd-row.big.can:hover, .cp-dec .cd-row.big.on { box-shadow: inset 0 0 0 1px var(--line); }
-.cp-dec .cd-row.big::before { content: "Decided"; flex: none; font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.cp-dec .cd-row.big:not(.kinded):not(.step)::before { content: "Decided"; }
+.cp-dec .cd-row.big:not(.kinded):not(.step)::before, .cp-dec .cd-kind { flex: none; font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.cp-dec .cd-row.big.step { align-items: baseline; gap: 6px; min-height: 0; padding: 1px 11px; background: none; color: var(--muted); font-size: 12px; }
+.cp-dec .cd-row.big.step.can:hover, .cp-dec .cd-row.big.step.on { box-shadow: none; background: var(--panel-2); }
+.cp-dec .cd-row.big.step .cd-who { font-weight: 600; color: var(--muted); }
+.cp-dec .cd-row.big.step .cd-what { flex: 0 1 auto; color: var(--muted); font-size: 12px; }
+.cp-dec .cd-row.big.step .cd-why { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cp-dec .cd-row.big.step .cd-why:not(:empty)::before { content: "· "; }
 .cp-dec .cd-main { display: flex; align-items: center; gap: 10px; }
 .cp-dec .cd-row.big .cd-at, .cp-dec .cd-row.big .cd-back { align-self: center; }
 .cp-dec .cd-sub { display: contents; }
@@ -201,24 +212,25 @@ button.mt-name:hover, .mt-name.on { text-decoration: underline; text-underline-o
 .cp-q { color: var(--deny); font-weight: 700; }
 .cp-status .crew-menu { top: calc(100% + 6px); bottom: auto; }
 .cp-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 2px 0 8px; }
-/* A member's card, one to a line, the list's full width: its top (name, stage word and meter; what it was asked, two
-   lines; what it's doing now; a line of context) is the one button that opens its menu; then its steps, review and
-   files, a small-caps label on the left of each; its files' count and time with its one action at the foot. With room
-   (the list 560 wide or more), the top and the parts side by side, so a card takes fewer lines, and what it was asked
-   one line. An outline, no fill: lit (menu open) on panel-2; one that waits on you outlined red all round. */
-.cp-cards { display: flex; flex-direction: column; gap: 8px; }
-.cp-card { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); border-radius: 12px; box-shadow: inset 0 0 0 1px var(--line); }
+/* A member, one plain row to a line, the list's full width, a thin line between rows (no box, no frame): its top
+   (name, stage word and meter; what it was asked, two lines; what it's doing now; a line of context) is the one
+   button that opens its menu; then its steps, review and files, a small-caps label on the left of each; its files'
+   count and time with its one action at the foot. With room (the list 560 wide or more), the top and the parts side
+   by side, so a row takes fewer lines and what it was asked is one line. Every row lays out on the same columns, so
+   names, labels and the Steps / Review / Files lines start at the same left edge row after row. Lit (menu open, or
+   hovered) on panel-2; one that waits on you says so in red in its stage word and what it's doing, nothing more. */
+.cp-cards { display: flex; flex-direction: column; }
+.cp-card { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); border-top: 1px solid var(--line); }
+.cp-cards > .cp-card:first-child { border-top-color: transparent; }
 @container cpl (min-width: 560px) {
   .cp-card { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); }
-  .cp-card > .cp-row { border-radius: 12px 0 0 0; }
-  .cp-card > .cp-parts { padding-top: 10px; padding-left: 0; }
+  .cp-card > .cp-parts { padding-top: 8px; padding-left: 0; }
   .cp-card > .cp-acts, .cp-card > .mt-under { grid-column: 1 / -1; }
   .cp-card > .cp-row > .cp-ask1 { -webkit-line-clamp: 1; }
 }
 .cp-card.on { background: var(--panel-2); }
-.cp-card.q { box-shadow: inset 0 0 0 1.5px var(--deny); }
 .cp-card.past { opacity: 0.62; }
-.cp-row { display: block; width: 100%; padding: 9px 12px 4px; border-radius: 12px 12px 0 0; text-align: left; color: var(--ink); }
+.cp-row { display: block; width: 100%; padding: 7px 10px 2px; border-radius: 0; text-align: left; color: var(--ink); }
 .cp-row > span { display: block; }
 .cp-card:has(> .cp-row:hover) { background: var(--panel-2); }
 .cp-row .cp-l1 { display: flex; align-items: center; gap: 8px; }
@@ -228,12 +240,12 @@ button.mt-name:hover, .mt-name.on { text-decoration: underline; text-underline-o
 .cp-row > .cp-ask1 { margin-top: 2px; font-size: 12px; line-height: 1.4; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .cp-ask1 code { padding: 0; background: none; font: 11.5px var(--mono); }
 .cp-row .cp-now, .cp-x { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cp-row .cp-now { margin-top: 4px; font-size: 13px; font-weight: 600; }
+.cp-row .cp-now { margin-top: 3px; font-size: 13px; font-weight: 600; }
 .cp-row .cp-now.q { color: var(--deny); }
 .cp-row .cp-now code, .cp-x code { font: 11.5px var(--mono); }
 .cp-x { margin-top: 1px; font-size: 12px; color: var(--muted); }
 /* Its parts: Steps, Review, Files. */
-.cp-parts { display: flex; flex-direction: column; gap: 3px; padding: 4px 12px 2px; }
+.cp-parts { display: flex; flex-direction: column; gap: 2px; padding: 3px 10px 1px; }
 .cp-part { display: grid; grid-template-columns: 50px minmax(0, 1fr); gap: 8px; align-items: baseline; font-size: 12px; }
 .cp-pl { font-size: 9.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 .cp-pv { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
@@ -248,12 +260,13 @@ button.mt-name:hover, .mt-name.on { text-decoration: underline; text-underline-o
 .cp-stat { flex: none; font-variant-numeric: tabular-nums; }
 .cp-dim { color: var(--muted); }
 /* The foot: how many files and how long; the one action the drawer's row has (Stop, Resume, Skip, Diff) at its end. */
-.cp-acts { display: flex; align-items: center; gap: 12px; min-height: 26px; padding: 2px 12px 6px; }
+.cp-acts { display: flex; align-items: center; gap: 12px; min-height: 22px; padding: 0 10px 5px; }
 .cp-acts .cp-r { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .cp-r { flex: none; font-variant-numeric: tabular-nums; }
 .cp-list .mt-under { margin: 0 8px 8px; padding: 6px 10px; border-radius: 8px; background: var(--panel-2); }
 .cp-card.on .mt-under { background: var(--panel); }
-.cp-done > .mt-done-line { margin: 0; padding: 8px 2px; }
+.cp-done > .mt-done-line { margin: 0; padding: 8px 10px; }
+.cp-done.open > .cp-cards > .cp-card:first-child { border-top-color: var(--line); }
 /* The meter: five small bars (working, checking, reviewed, fixing, committed), its stage in a word beside them. */
 .cp-meter { display: inline-flex; align-items: center; gap: 6px; }
 .cp-m { display: inline-flex; gap: 2px; }
