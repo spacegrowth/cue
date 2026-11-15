@@ -22,6 +22,9 @@
 .cmd-foot button { font-size: 11px; font-weight: 600; color: var(--ink); padding: 2px 8px; border-radius: 6px; box-shadow: inset 0 0 0 1px var(--line); }
 .cmd-foot button:hover { background: var(--panel-2, rgba(0,0,0,.04)); }
 .cmd-row.on span, .cmd-row.on i { color: inherit; opacity: .85; box-shadow: none; }
+/* "@" in a lead's box: its crew, each with its state in a word; one that needs you says so in red. */
+.at-menu .cmd-row i.need { color: var(--deny); box-shadow: inset 0 0 0 1px currentColor; }
+.at-menu .cmd-row.on i.need { color: inherit; box-shadow: none; }
 .slash-hint button { color: var(--accent); font-weight: 650; text-decoration: underline; text-underline-offset: 2px; }
 
 /* Yours, but it never went through as a message (a typo'd "/command", or stuck in the box). */

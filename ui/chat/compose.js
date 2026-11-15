@@ -254,6 +254,8 @@ function argsOf(c) {
 }
 function cmdMatches(key) {
   if (cmdShut === key) return [];
+  const mates = atMatches(key);
+  if (mates.length) return mates;
   const list = cmdList(sidOfKey(key));
   const a = typingArg(draft(key).text);
   if (a) {
@@ -280,6 +282,7 @@ function cmdMenu(key) {
   // Pi's comes from its extension; Refresh asks it again. Codex's is Codex's own: nothing to refresh.
   const h = sessionOf(sidOfKey(key))?.harness;
   const foot = h === "claude" || h === "pi" ? `<div class="cmd-foot"><span>${h === "pi" ? "From Pi" : "Read once, kept a week"}</span><button data-cmd-refresh="${esc(key)}">Refresh</button></div>` : "";
+  if (m[0].mate) return `<div class="cmd-menu at-menu" role="listbox">${m.map((c, n) => `<button class="cmd-row ${n === cmdSel ? "on" : ""}" data-cmd-pick="${esc(key)}" data-cmd-name="${esc(c.name)}" role="option"><b>${esc(c.name)}</b><span></span><i class="${c.look}">${esc(c.word)}</i></button>`).join("")}</div>`;
   return `<div class="cmd-menu" role="listbox">${m.map((c, n) => `<button class="cmd-row ${n === cmdSel ? "on" : ""}" data-cmd-pick="${esc(key)}" data-cmd-name="${esc(c.name)}" role="option"><b>/${esc(c.name)}${after(c)}</b>${c.desc ? `<span>${esc(c.desc)}</span>` : ""}${c.kind === "skill" ? `<i>skill</i>` : c.kind === "terminal" ? `<i>in a terminal</i>` : c.kind === "cue" ? `<i>in Cue</i>` : c.kind === "unavailable" ? `<i>not hosted</i>` : ""}</button>`).join("")}${foot}</div>`;
 }
 /** The command a box's text runs ("/compact now" -> compact), from the session's list; undefined when
@@ -324,6 +327,7 @@ function refreshCmd(key) {
  *  values to pick (/model) never runs bare (that opens a picker in its terminal): it shows its values.
  *  A value ("model sonnet"): Tab or a click puts it in the box, Enter runs it. */
 function pickCmd(key, name, run) {
+  if (name.startsWith("@")) return atPick(key, name);
   const c = cmdList(sidOfKey(key)).find((x) => x.name === name);
   if (c?.args?.length) run = false;
   draft(key).text = `/${name}${run || name.includes(" ") ? "" : " "}`;
@@ -333,6 +337,43 @@ function pickCmd(key, name, run) {
   if (el) { el.value = draft(key).text; el.focus(); el.selectionStart = el.selectionEnd = el.value.length; }
   refreshCmd(key);
   if (run) el?.closest(".composer")?.querySelector(".btn.send")?.click();
+}
+// ---------- "@" in a lead's box: its crew to pick from, as "@name " (it goes to the lead, which passes it on) ----------
+/** The box's text field: the one you're typing in when it's this box's, else the first drawn. */
+const atField = (key) => document.activeElement?.dataset?.text === key ? document.activeElement : document.querySelector(`textarea[data-text="${CSS.escape(key)}"]`);
+/** "@na" just before the caret (at the start or after a space): where its "@" is, where the name ends, and what's
+ *  typed of it; else null. */
+function atTyped(key) {
+  const text = draft(key).text, el = atField(key);
+  const at = el && el.value === text ? el.selectionEnd : text.length;
+  const m = /(?:^|\s)@([\w.-]*)$/.exec(text.slice(0, at));
+  return m ? { from: at - m[1].length - 1, to: at, q: m[1].toLowerCase() } : null;
+}
+/** The lead's teammates for the "@" being typed: names that start with it first, then names that contain it; the
+ *  ones still in the crew before the committed and set-aside ones. None once a name is typed out in full. */
+function atMatches(key) {
+  const sid = sidOfKey(key), team = (sid && sessionOf(sid)?.team) || [];
+  const a = team.length ? atTyped(key) : null;
+  if (!a) return [];
+  const seen = new Set(), gone = (t) => t.state === "committed" || t.state === "aside";
+  const mates = [...team.filter((t) => !gone(t)), ...team.filter(gone)].filter((t) => t.name && !seen.has(t.name) && seen.add(t.name));
+  const starts = mates.filter((t) => t.name.toLowerCase().startsWith(a.q));
+  const hits = [...starts, ...mates.filter((t) => !starts.includes(t) && t.name.toLowerCase().includes(a.q))];
+  if (hits.length === 1 && hits[0].name.toLowerCase() === a.q) return [];
+  // Each one's word and look ("need": red) as team.js crewMark gives them everywhere else.
+  return hits.map((t) => { const { word, look } = crewMark(sid, t); return { name: `@${t.name}`, word, look, mate: true }; });
+}
+/** A teammate picked (Enter, Tab or a click): "@name " in place of the "@" being typed, the caret after it. */
+function atPick(key, name) {
+  const a = atTyped(key), d = draft(key);
+  if (!a) return;
+  const rest = d.text.slice(a.to).replace(/^\S*/, "").replace(/^ /, "");
+  d.text = `${d.text.slice(0, a.from)}${name} ${rest}`;
+  cmdSel = 0;
+  saveDrafts();
+  const el = atField(key);
+  if (el) { el.value = d.text; el.focus(); el.selectionStart = el.selectionEnd = a.from + name.length + 1; grow(el); }
+  refreshCmd(key);
 }
 /** Quick phrases (Settings → Quick phrases): chips that send their text, after anything typed in the box. */
 const phrases = () => state.settings?.quick?.phrases || [];
