@@ -136,23 +136,28 @@ async function dvLoad() {
       dvEdits(s, r.files || []);
       return;
     }
-    const top = await dvGit(s, "toplevel");
+    const got = await diffSince(s, dvBase(s, dv.scope));
     if (my !== dv.seq) return;
-    if (top.code !== 0) { dvShow(s, [], [], `<div class="dv-note">${esc(s.machine ? `Couldn't read git on ${s.machine}.` : "This folder isn't in a git repository.")}</div>`); return; }
-    const base = dvBase(s, dv.scope);
-    const [diff, others] = await Promise.all([dvGit(s, "diff", { against: base ? base.commit : "HEAD" }), dvGit(s, "untracked")]);
-    if (my !== dv.seq) return;
-    const before = new Set(base ? base.untracked : []);
-    const { single, bulk } = diffBulk(others.stdout.split("\n").filter((p) => p && !before.has(p)));
-    // New files git isn't tracking: their content (the first 20; the rest by name).
-    const shown = await Promise.all(single.slice(0, 20).map((p) => dvGit(s, "new_file", { path: p }).then((r) => r.stdout, () => "")));
-    if (my !== dv.seq) return;
-    const files = diffParse(diff.stdout + shown.join("")).files;
-    for (const p of single.slice(20)) files.push({ path: p, isNew: true, lines: [], add: 0, del: 0, unread: true });
-    dvShow(s, files, bulk);
+    if (!got) { dvShow(s, [], [], `<div class="dv-note">${esc(s.machine ? `Couldn't read git on ${s.machine}.` : "This folder isn't in a git repository.")}</div>`); return; }
+    dvShow(s, got.files, got.bulk);
   } catch (e) {
     if (my === dv.seq) dvNote(`<div class="dv-note">${esc(e?.message || e)}</div>`);
   }
+}
+
+/** What session `s`'s folder changed since `base` (a commit and the files git wasn't tracking then; none: since
+ *  HEAD), as { files, bulk }: new files git isn't tracking come with their content (the first 20; the rest by name).
+ *  Null when the folder isn't in a git repository (or its machine can't be reached). The Inbox reads a turn's this way. */
+async function diffSince(s, base) {
+  const top = await dvGit(s, "toplevel");
+  if (top.code !== 0) return null;
+  const [diff, others] = await Promise.all([dvGit(s, "diff", { against: base ? base.commit : "HEAD" }), dvGit(s, "untracked")]);
+  const before = new Set(base ? base.untracked : []);
+  const { single, bulk } = diffBulk(others.stdout.split("\n").filter((p) => p && !before.has(p)));
+  const shown = await Promise.all(single.slice(0, 20).map((p) => dvGit(s, "new_file", { path: p }).then((r) => r.stdout, () => "")));
+  const files = diffParse(diff.stdout + shown.join("")).files;
+  for (const p of single.slice(20)) files.push({ path: p, isNew: true, lines: [], add: 0, del: 0, unread: true });
+  return { files, bulk };
 }
 
 /** This session's edits: each file it edited, with its changes now; ones with nothing left uncommitted listed after.

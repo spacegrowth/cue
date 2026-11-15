@@ -1,7 +1,9 @@
-// The Inbox (ui/inbox.js): two lines a row under Pinned, Needs you, Running and Done; a finished turn that asks nothing
-// under Done; a row opened beside the list as its facts and cards (never its full chat, which is a link); several
-// questions stacked as cards with one Send; an answered row sinking to Running with its bar, and rising again; Pin, Later
-// and Snooze; a session half full of context up as housekeeping, with Compact and Hand off.
+// The Inbox (ui/inbox.js): two lines a row under Pinned, Needs you, Running, Done and a folded Parked; a finished turn
+// that asks nothing under Done; the top ask opened by itself beside the list as a brief (never its full chat, which is a
+// link): its words, the question with each choice's meaning, what you asked, what it did, what this turn changed, its
+// context; several questions stacked as cards with one Send; Send opening the next at once, the answered row sinking to
+// Running with its bar, and rising again; Pin, Park and Snooze; with nothing needing you, what's running; a session half
+// full of context up as housekeeping, with Compact and Hand off.
 import { test, expect } from "./cue.mjs";
 
 /** The Inbox open from the header, its list drawn. */
@@ -14,7 +16,7 @@ const sectionSids = (page, title) => page.evaluate((t) => {
   const out = [];
   let on = false;
   for (const el of document.querySelectorAll(".ib-scroll > *")) {
-    if (el.matches(".ib-sect")) on = el.textContent.trim().toLowerCase() === t.toLowerCase();
+    if (el.matches(".ib-sect")) on = el.textContent.replace(/[▸▾]/, "").trim().toLowerCase() === t.toLowerCase();
     else if (on && el.matches(".ib-row")) out.push(el.dataset.inboxOpen);
   }
   return out;
@@ -48,36 +50,136 @@ test("the list: a finished turn that asks nothing is under Done, one that asks b
   await expect(sec.locator(".ib-subj")).toHaveText("Want me to run the next company?");
   await expect(sec.locator(".ib-l2")).not.toBeEmpty();
   await expect(sec.locator(".ib-time")).toBeVisible();
-  // The tabs.
-  await expect(page.locator(".ib-tab")).toHaveText(["Inbox", "Later", "Snoozed"]);
+  // The tabs: Inbox and Snoozed (parked ones are under Parked, on the Inbox tab).
+  await expect(page.locator(".ib-tab")).toHaveText(["Inbox", "Snoozed"]);
 });
 
-test("opening a row shows its question as a card, not its chat; Full chat › goes to the Board's chat", async ({ cue, page }) => {
+test("the top ask opens by itself, its row lit in place; a row opened is a brief, not its chat; Full chat › goes to the Board's chat", async ({ cue, page }) => {
   await cue.open("board-waiting");
   await openInbox(page);
+  // Never an empty side: the first that needs you is open, its row lit where it was.
+  const need = await sectionSids(page, "Needs you");
+  await expect(page.locator(".inbox-page")).toHaveAttribute("data-inbox-page", need[0]);
+  await expect(page.locator(`.ib-row[data-inbox-open="${need[0]}"]`)).toHaveClass(/\bon\b/);
+  expect(await sectionSids(page, "Needs you")).toEqual(need);
+  await expect(page.locator(".ib-next")).toHaveText(`1 of ${need.length} ›`);
   await page.locator('.ib-row[data-inbox-open="pipe"]').click();
   const pg = page.locator('.inbox-page[data-inbox-page="pipe"]');
   await expect(pg).toBeVisible();
   // Beside the list, which stays, its row lit.
-  await expect(page.locator(".inbox .ib-row").first()).toBeVisible();
+  expect(await sectionSids(page, "Needs you")).toEqual(need);
   await expect(page.locator('.ib-row[data-inbox-open="pipe"]')).toHaveClass(/\bon\b/);
   await expect(pg.locator(".active-pane, [data-chat]")).toHaveCount(0);
-  await expect(pg.locator(".ib-facts")).toContainText("Waiting on");
+  // Its words before the ask, what it wants (the Board's own buttons), what you asked it.
+  await expect(pg.locator(".ib-said")).toContainText("Checking the fix didn't break other tests.");
   await expect(pg.locator('[data-act="allow"][data-id="n4"]')).toBeVisible();
+  await expect(pg.locator(".ib-aside")).toContainText("make the line detector survive data gaps");
   await expect(pg.locator("[title]")).toHaveCount(0);
-  await expect(page.locator(".ib-next")).toHaveText("next ask ›");
+  await expect(page.locator(".ib-next")).toHaveText(`${need.indexOf("pipe") + 1} of ${need.length} ›`);
   await page.locator(".ib-next").click();
   await expect(page.locator(".inbox-page")).not.toHaveAttribute("data-inbox-page", "pipe");
+  // A finished turn: its words, then the question it ends on.
+  await page.locator('.ib-row[data-inbox-open="det"]').click();
+  const det = page.locator('.inbox-page[data-inbox-page="det"]');
+  await expect(det.locator(".ib-card.on .ib-qt")).toHaveText("Go ahead, or review the report first?");
+  await expect(det.locator(".ib-said")).toContainText("Fills now use the next bar's open");
+  await expect(det.locator(".ib-said")).not.toContainText("review the report first?");
+  // What it plans next, lifted from its reply (and not said twice).
+  await expect(det.locator(".ib-then")).toHaveText("It plans next: Next I'd tune the stop distance.");
+  await expect(det.locator(".ib-said")).not.toContainText("tune the stop distance");
+  // Esc in a wide window keeps it open: the side is never empty.
   await page.locator("body").click({ position: { x: 5, y: 5 } });
   await page.keyboard.press("Escape");
-  await expect(page.locator(".inbox-page")).toHaveCount(0);
-  await expect(page.locator(".ib-idle")).toContainText("need you");
-  await expect(page.locator(".inbox .ib-row").first()).toBeVisible();
+  await expect(det).toBeVisible();
   await page.locator('.ib-row[data-inbox-open="sec"]').click();
   await expect(page.locator(".inbox-page .ib-qt")).toContainText("next company?");
-  await page.locator("[data-inbox-full]").click();
+  await page.locator(".inbox-page [data-inbox-full]").click();
   await expect(page.locator('.switch-view [data-view="board"]')).toHaveClass(/\bon\b/);
   await expect(page.locator(".active-pane")).toBeVisible();
+});
+
+test("a question's choices show what each means and which it recommends; the side says what you asked, what it did, what this turn changed and its context", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  await cue.change((st) => {
+    const s = st.sessions.find((x) => x.session_id === "api"), at = st.now_ms;
+    s.thread = [{ role: "you", text: "The quotes page feels slow. Find out why.", at_ms: at - 14 * 60000, images: [] }];
+    s.context_pct = 38;
+    // Cue's start of this turn: what it changed so far is read from git against it, mid-turn.
+    s.turn_from = { root: "/x/api-server", commit: "abc123", untracked: [] };
+    const it = st.items.find((i) => i.id === "n6");
+    it.context = [{ role: "assistant", text: "The pricing lookup is 71% of each request.\n\nThe API runs as 4 pods. Then I'll add the bench to CI." }];
+    it.tool_input.questions[0].options[0].label = "Redis (Recommended)";
+  });
+  await cue.override("session_steps", ({ sessionId }, at) => {
+    const step = (id, kind, verb, subject, result) => ({ t: "step", id, kind, verb, subject, mono: true, result, bad: false, done: true, at_ms: at - 60000 });
+    return sessionId !== "api" ? { version: 1, turns: [] } : { version: 1, turns: [{ at_ms: at - 14 * 60000, prompt: "", more: 0, items: [
+      step("r1", "read", "Read", "a.ts", "10 lines"), step("r2", "read", "Read", "b.ts", "10 lines"), step("r3", "read", "Read", "c.ts", "10 lines"),
+      step("b1", "run", "Ran", "npm run bench", "p95 182ms"), step("e1", "edit", "Edited", "cache.ts", "+3 −1"),
+    ] }] };
+  }, await page.evaluate(() => now()));
+  const diff = "diff --git a/cache.ts b/cache.ts\nindex 1..2 100644\n--- a/cache.ts\n+++ b/cache.ts\n@@ -1,3 +1,5 @@\n const key = sku;\n-return lookup(key);\n+const hit = cache.get(key);\n+if (hit) return hit;\n+return lookup(key);\n";
+  await cue.override("diff_git", ({ op, against }, d) => (op === "toplevel" ? { code: 0, stdout: "/x/api-server\n" } : op === "diff" ? { code: 0, stdout: against === "abc123" ? d : "" } : { code: 0, stdout: "" }), diff);
+  await openInbox(page);
+  await page.locator('.ib-row[data-inbox-open="api"]').click();
+  const pg = page.locator('.inbox-page[data-inbox-page="api"]');
+  // Each choice: its number, its label (the "(Recommended)" made a tag), what it means.
+  const opts = pg.locator(".ib-opt");
+  await expect(opts.locator("b")).toHaveText(["Redis", "In-process LRU", "No cache"]);
+  await expect(opts.nth(0).locator(".ib-rec")).toHaveText("Recommended");
+  await expect(opts.nth(1).locator(".ib-rec")).toHaveCount(0);
+  await expect(opts.locator(".ib-od")).toHaveText(["shared, 30s TTL", "fastest"]);
+  await expect(opts.locator(".ib-kbd")).toHaveText(["1", "2", "3"]);
+  // Its words, the plan lifted out of them.
+  await expect(pg.locator(".ib-said")).toContainText("The pricing lookup is 71% of each request.");
+  await expect(pg.locator(".ib-then")).toContainText("Then I'll add the bench to CI.");
+  // The side, in order: You asked, It did (three reads folded to one line), Changed this turn, Context.
+  const aside = pg.locator(".ib-aside");
+  await expect(aside.locator(".ib-blk > .ib-k")).toHaveText([/^You asked · 14m ago$/i, /^It did · 5 steps$/i, /^Changed this turn · 1 file/i, /^Context$/i]);
+  await expect(aside.locator(".ib-you")).toHaveText("The quotes page feels slow. Find out why.");
+  await expect(aside.locator(".ib-sv")).toHaveText(["Read 3 files", "Ran npm run bench", "Edited cache.ts"]);
+  await expect(aside.locator(".ib-file")).toContainText("cache.ts");
+  await expect(aside.locator(".ib-peek")).toContainText("const hit = cache.get(key);");
+  await expect(aside.locator(".ib-ctx")).toContainText("38%");
+  // Two columns side by side at this size.
+  const [m, a] = await Promise.all([pg.locator(".ib-main").boundingBox(), aside.boundingBox()]);
+  expect(a.x).toBeGreaterThan(m.x + m.width - 1);
+  await expect(pg.locator("[title]")).toHaveCount(0);
+});
+
+test("Send opens the next that needs you at once, without waiting on the session; the answered row sinks to Running", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  // Cue never answers: the move can't be waiting on the session getting to work.
+  await cue.override("reply", () => new Promise(() => {}));
+  await openInbox(page);
+  await page.locator('.ib-row[data-inbox-open="sec"]').click();
+  await page.locator('.inbox-page textarea[data-text="s:sec"]').fill("yes, run it");
+  await page.locator('.inbox-page [data-act="send"]').click();
+  await expect(page.locator(".inbox-page")).not.toHaveAttribute("data-inbox-page", "sec");
+  await expect(page.locator(".inbox-page")).toHaveAttribute("data-inbox-page", (await sectionSids(page, "Needs you"))[0]);
+  expect(await sectionSids(page, "Running")).toContain("sec");
+  const row = page.locator('.ib-row[data-inbox-open="sec"]');
+  await expect(row).toHaveClass(/\bsinking\b/);
+  await expect(row.locator(".ib-subj")).toHaveText("You: “yes, run it”");
+  await expect(row.locator(".ib-bar")).toBeVisible();
+  // A question picked: the same.
+  await page.locator('.ib-row[data-inbox-open="api"]').click();
+  await page.locator('.inbox-page .ib-opt', { hasText: "Redis" }).click();
+  await cue.called("respond", { id: "n6" });
+  await expect(page.locator(".inbox-page")).not.toHaveAttribute("data-inbox-page", "api");
+});
+
+test("nothing needing you: what's running and what's done lately stand in beside the list", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  await cue.change((st) => { st.items = st.items.filter((i) => i.id === "n1"); st.items[0].message = "Carried the spend over to the successor. Tests pass."; });
+  await openInbox(page);
+  await expect(page.locator(".inbox-page")).toHaveCount(0);
+  const calm = page.locator(".ib-calm");
+  await expect(calm.locator(".ib-calm-head b")).toHaveText("Nothing needs you");
+  await expect(calm.locator('.ib-calm-card.run[data-inbox-open="eng"]')).toContainText("Refactor the order router");
+  await expect(calm.locator('.ib-calm-card.run[data-inbox-open="eng"] .ib-bar')).toBeVisible();
+  await expect(calm.locator('.ib-calm-card.done[data-inbox-open="relay"]')).toContainText("Carried the spend over");
+  await calm.locator('[data-inbox-open="eng"]').click();
+  await expect(page.locator('.inbox-page[data-inbox-page="eng"] .ib-card.run')).toBeVisible();
 });
 
 test("several questions stack as cards: an answered one dims with its answer, the next is lit, one Send for all", async ({ cue, page }) => {
@@ -142,7 +244,18 @@ test("rows keep their place while their state stays: a redraw or a newer ask els
   expect(await sectionSids(page, "Needs you")).toEqual(before);
 });
 
-test("Pin puts a row under Pinned (kept by Cue); Later and Snooze move it to their tabs, and back", async ({ cue, page }) => {
+test("Parked lists the live sessions you parked, never closed or ended ones", async ({ cue, page }) => {
+  // The Board's PARKED · CLOSED drawer has a closed parked session (drift) and ended ones (lost1, lost2).
+  await cue.open("parked-ended");
+  await cue.change((st) => { st.sessions.find((x) => x.session_id === "eng").later_ms = st.now_ms; });
+  await page.evaluate(() => localStorage.setItem("cue.inboxParkedOpen", "1"));
+  await openInbox(page);
+  expect(await sectionSids(page, "Parked 1")).toEqual(["eng"]);
+  expect(await sectionSids(page, "Running")).not.toContain("eng");
+  await expect(page.locator('[data-inbox-open="drift"], [data-inbox-open="lost1"], [data-inbox-open="lost2"]')).toHaveCount(0);
+});
+
+test("Pin puts a row under Pinned (kept by Cue); Park folds it under Parked at the foot; Snooze moves it to its tab, and back", async ({ cue, page }) => {
   await cue.open("board-waiting");
   await openInbox(page);
   const row = page.locator('.ib-row[data-inbox-open="det"]');
@@ -151,12 +264,27 @@ test("Pin puts a row under Pinned (kept by Cue); Later and Snooze move it to the
   await cue.called("set_pinned", { sessionId: "det", on: true });
   expect(await sections(page)).toEqual(["Pinned", "Needs you", "Running"]);
   expect(await sectionSids(page, "Pinned")).toEqual(["det"]);
-  // Later: off the Inbox tab, under Later.
+  // Park: the Board's parked (its later mark). Under Parked at the foot, folded; not counted as needing you.
+  const needN = await page.locator('.switch-view [data-view="inbox"] .ib-count').textContent();
   await page.locator('.ib-row[data-inbox-open="web"]').hover();
-  await page.locator('.ib-row[data-inbox-open="web"] [data-inbox-later]').click();
+  await page.locator('.ib-row[data-inbox-open="web"] [data-inbox-park]').click();
   await cue.called("set_later", { sessionId: "web", on: true });
   await expect(page.locator('.ib-row[data-inbox-open="web"]')).toHaveCount(0);
-  await expect(page.locator('[data-inbox-tab="later"]')).toHaveText("Later 1");
+  await expect(page.locator(".ib-sect.park")).toHaveText("▸Parked 1");
+  await expect(page.locator('.switch-view [data-view="inbox"] .ib-count')).toHaveText(String(+needN - 1));
+  await page.locator(".ib-sect.park").click();
+  await expect(page.locator(".ib-sect.park")).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator('.ib-row.parked[data-inbox-open="web"]')).toBeVisible();
+  // Opened, it stays open (kept per window).
+  await page.evaluate(() => renderMain());
+  await expect(page.locator('.ib-row.parked[data-inbox-open="web"]')).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem("cue.inboxParkedOpen"))).toBe("1");
+  await page.locator('.ib-row[data-inbox-open="web"]').hover();
+  await expect(page.locator('.ib-row[data-inbox-open="web"] [data-inbox-park]')).toHaveText("Unpark");
+  await page.locator('.ib-row[data-inbox-open="web"] [data-inbox-park]').click();
+  await cue.called("set_later", { sessionId: "web", on: false });
+  expect(await sectionSids(page, "Needs you")).toContain("web");
+  await expect(page.locator(".ib-sect.park")).toHaveCount(0);
   // Snooze: a menu of times; picked, it's under Snoozed until then.
   const sec = page.locator('.ib-row[data-inbox-open="sec"]');
   await sec.hover();
