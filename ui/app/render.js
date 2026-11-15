@@ -67,9 +67,9 @@ function beforeDraw() {
 
 /** The header: the chips, the views (Board, Inbox, the add-on's, Read, Insights, Terminal), search, usage, the terminal and Settings. */
 function topBarHtml(counts) {
-  return `<div class="top" data-tauri-drag-region><span class="wordmark" data-tauri-drag-region role="img" aria-label="Cue">${CUE_MARK}</span><span class="hchips"><button class="hchip new-chip" data-lv="new" data-spot="1">+ New</button>${counts}${liveChip()}${projChip()}</span><span class="grow" data-tauri-drag-region></span>${updateCard()}<span class="grow" data-tauri-drag-region></span>
-      <button class="top-btn icon" data-act="open-search" aria-label="Find (⌘K)">${SEARCH_ICON}</button>
-      ${usageChip()}${shellsBtn()}${extPanelBtn()}
+  return `<div class="top" data-tauri-drag-region><span class="wordmark" data-tauri-drag-region role="img" aria-label="Cue">${CUE_MARK}</span><span class="hchips"><button class="hchip new-chip" data-lv="new" data-spot="1">+ New</button>${counts}${liveChip()}${projChip()}</span><span class="grow" data-tauri-drag-region></span>
+      <button class="top-btn icon top-find" data-act="open-search" aria-label="Find (⌘K)">${SEARCH_ICON}</button>
+      ${updateCard()}${usageChip()}${shellsBtn()}${extPanelBtn()}
       <div class="switch-view"><button class="${view === "board" ? "on" : ""}" data-view="board">Board</button>${inboxBtn()}${addOn.views.map((v) => `<button class="${view === v.id ? "on" : ""}" data-view="${v.id}">${v.label()}</button>`).join("")}<button class="${view === "read" ? "on" : ""}" data-view="read">Read</button><button class="${view === "insights" ? "on" : ""}" data-view="insights">Insights</button><button class="sv-term ${view === "terminal" ? "on" : ""}" data-view="terminal">Terminal<span class="sh-live ${shellsLive()}">${shellsLive() === "done" ? "✓" : ""}</span></button></div>
       <button class="top-btn icon" data-act="open-settings" title="Settings" aria-label="Settings">${GEAR_ICON}</button></div>`;
 }
