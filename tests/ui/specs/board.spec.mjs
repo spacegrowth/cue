@@ -95,9 +95,9 @@ test.describe("Settings", () => {
   });
 
   test("a tab's own setting saves under its key", async ({ cue, page }) => {
-    await page.locator('[data-act="set-tab"][data-tab="summaries"]').click();
-    await page.locator('.sheet [data-set="tasks.on"]').click();
-    await cue.called("set_setting", { key: "tasks.on", value: true });
+    await page.locator('[data-act="set-tab"][data-tab="insights"]').click();
+    await page.locator('.sheet [data-set="tips.on"]').click();
+    await cue.called("set_setting", { key: "tips.on", value: false });
   });
 
   test("Get beta builds is off at first, saves its setting and looks again on beta", async ({ cue, page }) => {
@@ -1055,4 +1055,14 @@ test.describe("a hosted lead's crew: the Crew switch, /crew, a task dropped on t
     await expect(page.locator(".ho")).toHaveCount(0);
     expect(await cue.calls("team_hand_out")).toHaveLength(0);
   });
+});
+
+test("a restart opens where you were: Desk and Read come back, not the Board", async ({ cue, page }) => {
+  await cue.open("world-team");
+  for (const v of ["desk", "read"]) {
+    await page.locator(`#app .switch-view [data-view="${v}"]`).click();
+    await expect(page.locator(`#app .switch-view [data-view="${v}"]`)).toHaveClass(/\bon\b/);
+    await page.reload();
+    await expect(page.locator(`#app .switch-view [data-view="${v}"]`), `${v} after a restart`).toHaveClass(/\bon\b/);
+  }
 });
