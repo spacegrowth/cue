@@ -244,6 +244,24 @@ function deskLineHtml(line, inline) {
   const why = find("why");
   return row(`<span class="dk-say-h"><span class="dk-say-w">Context</span> <span class="dk-say-to"><b>${esc(who)}</b> → ${esc(what)}</span></span>`, why ? inline(why) : "");
 }
+/** Cue's message to the lead as a small card, when it's one of Cue's own (new items, or a DONE it couldn't act on);
+ *  null for any other (chat/render.js chatHtml `you`). */
+const deskCueNote = (e) => deskNewItems(e) ?? deskDoneNotes(e);
+/** What Cue told the lead of a DONE it couldn't act on (hub/desk.rs lead_done: "#69 not closed: it waits on your
+ *  check", a line each, then its words for the lead, not shown): a card an item, its kind, number and title (a click
+ *  opens it) and why in a quiet line. null for any other message. */
+function deskDoneNotes(e) {
+  const lines = String(e.text || "").split("\n").map((l) => l.trim()).filter(Boolean);
+  if (lines.length < 2 || !/^Only the person closes an item that waits on their check/.test(lines[lines.length - 1])) return null;
+  const notes = lines.slice(0, -1).map((l) => /^#([^\s:]+) not closed: (.*)$/.exec(l));
+  if (notes.some((m) => !m)) return null;
+  const known = (x) => (state.desk?.projects || []).flatMap((d) => d.items).find((i) => deskIdIs(i, x));
+  return `<div class="dk-news">${notes.map(([, id, why]) => {
+    const it = known(id);
+    const head = it ? `${deskKindIcon(it)}<button class="dk-chk-a dk-new-t" data-desk-chk-item="${esc(it.id)}">${esc(`${deskNum(it)} · ${it.title}`)}</button>` : `<span class="dk-new-t">#${esc(id)}</span>`;
+    return `<div class="dk-new"><span class="dk-say-w">Not closed</span> ${head}<span class="dk-say-s"> · ${esc(why)}</span></div>`;
+  }).join("")}<div class="cv-meta">From Cue · ${ago(e.at_ms)} ago</div></div>`;
+}
 /** What Cue told the lead of new items (desk/mod.rs new_items_words: "New item #72 (bug): title | done when: … |
  *  pictures: … | from x", a line each, then its "Route it now…" words for the lead) as a small card an item: its kind,
  *  number and title (a click opens it), and done when, pictures and who it's from in a quiet line; the words for the

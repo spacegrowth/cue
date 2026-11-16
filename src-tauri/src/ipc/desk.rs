@@ -71,6 +71,17 @@ fn desk_message(summary: &str, text: &str) -> String {
     format!("{summary}\n\n{}", text.trim())
 }
 
+/// `project`'s lead handed off (hub/desk_handoff.rs): session `sid`, which carries on from its note, leads the Desk
+/// from now, and is sent it with how a lead works (kept in Cue while it reads the note).
+pub(crate) fn lead_carried_on(h: &Arc<Hub>, project: &str, sid: &str, name: &str) -> Result<(), String> {
+    h.desk_put_lead(project, sid, name);
+    let (summary, failed) = h.desk_summary(project, sid, true);
+    let words = format!("You run {project}'s Desk now, carrying on from the lead before you (its hand-off note is what you read first). Say so in one line, then carry on.");
+    h.send_to_session(sid, &desk_message(&summary, &words), &[], false)?;
+    h.desk_told(&failed);
+    Ok(())
+}
+
 /// What a lead is told when it takes the Desk on.
 fn hello(project: &str) -> String {
     format!("You run {project}'s Desk now. Say so in one line, then hand out anything not given out yet.")
@@ -301,6 +312,13 @@ pub(crate) async fn desk_item_act(hub: State<'_, Arc<Hub>>, id: String, act: Str
 #[tauri::command]
 pub(crate) async fn desk_looks_right(hub: State<'_, Arc<Hub>>, id: String) -> Result<serde_json::Value, String> {
     with_hub(&hub, move |h| h.desk_looks_right(&id)).await?
+}
+
+/// Item `id`'s Files changed as one diff: to check, what Looks right would commit; done, its commit (or what waits
+/// to be). { diff, machine } (hub/desk_diff.rs).
+#[tauri::command]
+pub(crate) async fn desk_item_diff(hub: State<'_, Arc<Hub>>, id: String) -> Result<serde_json::Value, String> {
+    with_hub(&hub, move |h| h.desk_item_diff(&id)).await?
 }
 
 /// Undo on Looks right's commit: taken back while it's the last one (its changes stay), the item ready to check again.

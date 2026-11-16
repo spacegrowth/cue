@@ -343,6 +343,14 @@
 .dk-about b { color: var(--ink); font-weight: 650; }
 .dk-about:hover b { color: var(--link, var(--accent)); }
 /* Looks right's moment to take it back (desk_commit.js): "Done · Undo" on the item, and Undo in the toast. */
+/* Looks right said: the row dims while Undo can still take it back, then folds away (deskLeaving) before it goes. */
+.dk-it.soon :is(.dk-i1, .dk-who, .dk-age, .dk-tag) { opacity: 0.45; }
+.dk-it.dk-leave { overflow: hidden; pointer-events: none; animation: dk-leave 0.28s ease-in forwards; }
+@keyframes dk-leave {
+  from { height: var(--h); opacity: 1; }
+  40% { opacity: 0; }
+  to { height: 0; padding-top: 0; padding-bottom: 0; margin-bottom: 0; opacity: 0; }
+}
 .dk-soon { flex: none; margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; }
 .toast.acts { pointer-events: auto; }
 .toast-undo { all: unset; color: var(--link, var(--accent)); font-weight: 600; cursor: pointer; }

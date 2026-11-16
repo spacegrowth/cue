@@ -1,5 +1,5 @@
 // Fakes for the Desk's commands (desk_set_lead, desk_start, desk_send, desk_add, desk_give, desk_member, desk_item_act,
-// desk_looks_right, desk_commit_undo, desk_done, desk_undo): `state.desk`,
+// desk_looks_right, desk_commit_undo, desk_item_diff, desk_done, desk_undo): `state.desk`,
 // one entry a project with its items, its lead, its sessions (members) and today's decisions. Times are seconds; a dropped item stays, as
 // "dropped". A lead is a session like any other: desk_set_lead names one (or starts "<project>-lead", hosted), and
 // desk_send hands it your message as a session takes one.
@@ -126,12 +126,23 @@ CueBridge.area("desk", (w) => {
       w.changed();
       return { commit, files: files.length, waiting: [] };
     },
+    // Files changed: a to-check or done item's files, each a small diff (+2 −1); a done item with no commit, none.
+    desk_item_diff: ({ id }) => {
+      const it = itemOf(id);
+      if (!it) throw "no such item";
+      const on = it.state === "to_check" || (it.state === "done" && (it.commit || it.commit_wait));
+      const diff = on ? (it.files || []).map((f) => `diff --git a/${f} b/${f}\n--- a/${f}\n+++ b/${f}\n@@ -1,2 +1,3 @@\n-old ${f}\n+new ${f}\n+more\n same\n`).join("") : "";
+      return { diff, machine: "" };
+    },
     desk_commit_undo: ({ id }) => {
       const it = itemOf(id);
       if (!it) throw "No such item";
-      if (it.state !== "done" || !(it.commit || it.commit_wait)) throw "Nothing to undo: it wasn't committed";
-      Object.assign(it, { state: "to_check", done_at: null, updated: secs(), commit: "", commit_wait: null });
-      for (const c of desk().projects.flatMap((d) => d.checks || [])) if (c.id === it.id) Object.assign(c, { state: "to_check", commit: "", commit_wait: null });
+      if (it.state !== "done") throw "It isn't done: nothing to undo";
+      // Back to check; its commit is taken back (the files stay as they are), or kept when `state.desk_commit_after`
+      // (another commit came after it). Never any code change.
+      const keep = it.commit && w.state.desk_commit_after, commit = keep ? it.commit : "";
+      Object.assign(it, { state: "to_check", done_at: null, updated: secs(), commit, commit_wait: null });
+      for (const c of desk().projects.flatMap((d) => d.checks || [])) if (c.id === it.id) Object.assign(c, { state: "to_check", commit, commit_wait: null });
       w.changed();
       return it;
     },

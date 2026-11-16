@@ -235,7 +235,7 @@ function newForm() {
   if ((newMachine ? remote?.tools : agentsAvail) && agents.length && !agents.includes(newAgent)) { newAgent = agents[0]; newPerm = savedPerm(newAgent); }
   const folders = nfFolders();
   const machines = machinesList || [];
-  const acts = `<div class="nf-acts">${nfFull ? "" : `<button class="btn" data-lv="nf-more">All options</button><span class="grow"></span>`}<button class="btn" data-lv="cancel">Cancel</button><button class="btn primary" data-lv="start">${bangTyped(draft("new-msg").text) ? "Run" : `Start ${esc(agentName(newAgent))}`}</button></div>`;
+  const acts = `<div class="nf-acts">${nfFull ? "" : `<button class="btn" data-lv="nf-more">All options</button><span class="grow"></span>`}<button class="btn" data-lv="cancel">Cancel</button><button class="btn" data-lv="desk-start">Start a Desk</button><button class="btn primary" data-lv="start">${bangTyped(draft("new-msg").text) ? "Run" : `Start ${esc(agentName(newAgent))}`}</button></div>`;
   const ran = (ranLog.get("new") || []).length ? `<div class="nf-ran">${(ranLog.get("new") || []).map((e, n) => ranCard("new", e, n)).join("")}</div>` : "";
   // The short form: a name, then what it should start on (images pasted, dropped or picked), both in the same large type.
   if (!nfFull) return `<div class="nf"><input class="nf-in nf-name" data-text="new-name" placeholder="Name it, or just press ↵" spellcheck="false" autocomplete="off" value="${esc(draft("new-name").text)}"/><div class="nf-msg nf-pmsg" data-drop="new-msg"><div class="nf-fwrap"><textarea class="nf-in nf-prompt" data-text="new-msg" rows="1" spellcheck="false" placeholder="What should it start on? (optional)">${esc(draft("new-msg").text)}</textarea><button class="icon-btn nf-attach" data-attach="new-msg" aria-label="Add image">${IMAGE_ICON}</button></div>${draftChips("new-msg")}</div>${nfRecentLine(folders)}<div class="nf-sum">${esc(nfSummary(false))}</div>${ran}</div>${acts}`;
@@ -409,6 +409,8 @@ const LV_ACTS = {
   "proj-new-off": () => { nfNewProj = ""; renderMain(); },
   cancel: () => { endDictation("new-msg"); liveOpen = newOpen = false; nfNewProj = ""; closeFolders(); renderMain(); },
   start: lvStart,
+  // Start a Desk: a lead in this folder, and its Desk open.
+  "desk-start": () => { const f = draft("new-cwd").text.trim(); if (!f) return toast("Pick a folder first."); liveOpen = newOpen = false; closeFolders(); deskStartIn(f); },
   "folder-quick": (d) => { draft("new-cwd").text = d.cwd; renderMain(); document.querySelector('[data-text="new-name"]')?.focus(); },
   "folder-more": () => { nfFull = true; closeFolders(); nfFolderOpen = true; renderMain(); document.querySelector('[data-text="new-cwd"]')?.focus(); },
   "nf-more": () => { nfFull = true; renderMain(); document.querySelector('[data-text="new-name"]')?.focus(); },

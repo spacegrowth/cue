@@ -860,6 +860,26 @@ test("Cue's New item note shows as a small card an item, without its Route words
   await expect(page.locator('.dk-it.on[data-desk-item="d2"]')).toHaveCount(1);
 });
 
+test("Cue's note on a lead's DONE it couldn't act on shows as a small card an item, without its words for the lead", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await page.evaluate(() => {
+    sessionOf("lead").thread.push({ at_ms: Date.now(), role: "you", text: '<desk project="cue">\n3 open\n</desk>\n\n' + [
+      "#d2 not closed: it waits on your check",
+      "#zz9 not closed: this Desk has no item #zz9",
+      "Only the person closes an item that waits on their check (Looks right). Don't say DONE for these again.",
+    ].join("\n") });
+    renderMain();
+  });
+  const notes = page.locator(".dk-chat .dk-news").last();
+  await expect(notes.locator(".dk-new")).toHaveCount(2);
+  await expect(notes.locator(".dk-new").nth(0)).toHaveText("Not closed Feature #d2 · Quick phrases at the right of Send · it waits on your check");
+  await expect(notes.locator(".dk-new").nth(1)).toHaveText("Not closed #zz9 · this Desk has no item #zz9");
+  await expect(page.locator(".dk-chat")).not.toContainText("Don't say DONE");
+  await notes.locator('[data-desk-chk-item="d2"]').click();
+  await expect(page.locator('.dk-it.on[data-desk-item="d2"]')).toHaveCount(1);
+});
+
 test("an item's pane: its words select and copy, its buttons don't", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
@@ -1184,9 +1204,38 @@ test("Looks right commits the item's files at once: no sheet; the row and a toas
   await expect(page.locator(".toast")).toContainText("Committed abc1234 · 2 files");
   const line = page.locator(".dk-cmt").first();
   await expect(line).toContainText("Committed abc1234 · 2 files");
+  await expect(line.locator('[data-desk-act="undo_commit"]')).toHaveText("Undo · back to check");
   await line.locator('[data-desk-act="undo_commit"]').click();
   await cue.called("desk_commit_undo", { id: "d2" });
+  await expect(page.locator(".toast").last()).toHaveText("Back to check · commit taken back, every change still in place");
   await expect(page.locator('[data-desk-item="d2"] .dk-ok')).toBeVisible();
+
+  // Another commit came after it: still back to check, its commit kept, said so; no code changed either way.
+  await cue.change((s) => { s.desk_commit_after = true; });
+  await page.locator('[data-desk-item="d2"] .dk-ok').click();
+  await cue.called("desk_looks_right", { id: "d2" });
+  await page.locator('.dk-cmt [data-desk-act="undo_commit"]').first().click();
+  await expect(page.locator(".toast").last()).toHaveText("Back to check · its commit stays (another came after it); no code changed");
+  await expect(page.locator('[data-desk-item="d2"] .dk-ok')).toBeVisible();
+});
+
+test("✓ on a row: it dims while Undo can take it back, then folds away (height to nothing) before it goes", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  const row = page.locator('.dk-items [data-desk-item="d2"]');
+  await row.locator(".dk-ok").click();
+  await expect(row).toHaveClass(/\bsoon\b/);
+  await expect(row.locator(".dk-i1")).toHaveCSS("opacity", "0.45");
+  // The fold lasts a moment: watched as it happens, its height then.
+  const h = await page.evaluate(() => new Promise((done) => {
+    const seen = () => { const el = document.querySelector('.dk-items .dk-it.dk-leave[data-desk-item="d2"]'); if (el) { obs.disconnect(); done(parseFloat(el.style.getPropertyValue("--h"))); } };
+    const obs = new MutationObserver(seen);
+    obs.observe(document.body, { subtree: true, childList: true, attributes: true });
+    seen();
+  }));
+  expect(h).toBeGreaterThan(20);
+  await cue.called("desk_looks_right", { id: "d2" });
+  await expect(page.locator('.dk-items .dk-it.dk-leave')).toHaveCount(0);
 });
 
 test("Looks right on an item whose file another session is editing: done at once, \"Commit waiting: <file> (<session> is editing it)\", then \"Committed <hash>\" with Undo once it's made; with no files just done", async ({ page, cue }) => {
@@ -1199,7 +1248,7 @@ test("Looks right on an item whose file another session is editing: done at once
   await page.locator('[data-desk-item="d2"] .dk-ok').click();
   await expect(page.locator(".toast")).toContainText("Done · commit waiting: ui/styles/send.css (tidier is editing it)");
   const line = page.locator(".dk-cmt").first();
-  await expect(line).toHaveText("Commit waiting: ui/styles/send.css (tidier is editing it) · Undo");
+  await expect(line).toHaveText("Commit waiting: ui/styles/send.css (tidier is editing it) · Undo · back to check");
   await expect(page.locator('[data-desk-item="d2"] .dk-ok')).toHaveCount(0);
 
   // Cue makes the commit once the tidier is done with the file: the same line says so, with Undo.
@@ -1215,6 +1264,13 @@ test("Looks right on an item whose file another session is editing: done at once
   await page.locator('[data-desk-item="d2"] .dk-ok').click();
   await expect(page.locator(".toast").last()).toContainText("Done");
   await expect(page.locator('[data-desk-item="d2"] .dk-cm')).toHaveCount(0);
+  // Done with nothing committed still has its Undo: back to check, no code changed.
+  await page.locator('[data-desk-item="d2"]').first().click();
+  const plain = page.locator('.dk-cmt:has-text("Looked right")').first();
+  await expect(plain).toHaveText("Looked right · Undo · back to check");
+  await plain.locator('[data-desk-act="undo_commit"]').click();
+  await cue.called("desk_commit_undo", { id: "d2" });
+  await expect(page.locator(".toast").last()).toHaveText("Back to check · no code changed");
 });
 
 /** A session of cue's that isn't on its Desk ("spare", holding nothing). */
@@ -1386,8 +1442,8 @@ test("Looks right waits a moment with \"Done · Undo\" on the item and in a toas
   await cue.open("desk");
   await openDesk(page);
   await page.locator('[data-desk-item="d2"] .dk-ok').click();
-  await expect(page.locator('[data-desk-item="d2"] .dk-soon')).toHaveText("Done · Undo");
-  await expect(page.locator(".toast")).toHaveText("Done · Undo");
+  await expect(page.locator('[data-desk-item="d2"] .dk-soon')).toHaveText("Done · Undo · back to check");
+  await expect(page.locator(".toast")).toHaveText("Done · Undo · back to check");
   await page.locator(".toast .toast-undo").click();
   await expect(page.locator(".toast")).toHaveText("Still to check");
   await expect(page.locator('[data-desk-item="d2"] .dk-ok')).toBeVisible();
