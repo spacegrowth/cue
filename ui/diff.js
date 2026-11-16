@@ -6,7 +6,8 @@
 //   Whole session         the session's folder since its first turn Cue saw began
 //   Uncommitted           everything not committed in the session's folder, whoever changed it
 // A crew member's Diff (team.js) opens it on that member's files only, its diff as the hub reads it (team_action
-// "diff"), a chip on top to go back to the whole diff.
+// "diff"), a chip on top to go back to the whole diff. A Desk item's Files changed (desk.js) opens it the same way on
+// that item's changes (desk_item_diff: what Looks right commits, or its commit), the file clicked open.
 // The page is one element kept across redraws (so a file you opened stays open and the list stays where you scrolled),
 // moved into its slot after each draw (placeDiff). It follows the open session whether it shows or not, so the tab
 // and its count show before it's opened.
@@ -19,7 +20,7 @@ const DIFF_OPEN_FIRST = 3;
 const DIFF_BULK = 20;
 const diffTabs = new Map();   // sid → { badge: "17 +880 −9", any: it has changes }
 /** What the page shows: the session, its scope, and a crew member's files when it's filtered to them. */
-const dv = { el: null, cur: null, scope: null, seq: 0, key: "", picked: false, noTools: false, files: [], top: 0, member: null };
+const dv = { el: null, cur: null, scope: null, seq: 0, key: "", picked: false, noTools: false, files: [], top: 0, member: null, item: null };
 
 const diffOn = (sid) => !!sid && extTabOf.get(sid) === DIFF_TAB;
 const dvBase = (s, sc) => (sc === "turn" ? s.turn_from : sc === "session" ? s.session_from : null);
@@ -105,10 +106,10 @@ const dvPart = (sel) => dvElement().querySelector(sel);
 const dvNote = (html) => { dvPart(".dv-body").innerHTML = html; };
 
 function dvDrawScope() {
-  const s = dv.cur, member = dvMemberOn();
-  dvPart(".dv-seg").hidden = !!member;
+  const s = dv.cur, member = dvMemberOn(), item = dvItemOn();
+  dvPart(".dv-seg").hidden = !!(member || item);
   dvPart(".dv-seg").innerHTML = DIFF_SCOPES.map(([k, label]) => `<button data-dv-scope="${k}" class="${k === dv.scope ? "on" : ""}" ${s && dvUsable(s, k) ? "" : "disabled"}>${label}</button>`).join("");
-  dvPart(".dv-chip-at").innerHTML = member ? `<span class="dv-chip">${esc(member.name)}'s ${dvPlural(member.n ?? 0, "file")}<button data-dv-all aria-label="The whole diff">✕</button></span>` : "";
+  dvPart(".dv-chip-at").innerHTML = member || item ? `<span class="dv-chip">${esc((member || item).name)}'s ${dvPlural((member || item).n ?? 0, "file")}<button data-dv-all aria-label="The whole diff">✕</button></span>` : "";
 }
 
 /** The tab's count and whether it shows: `badge` "" leaves the count off. Redraws when either changes. */
@@ -122,6 +123,7 @@ async function dvLoad() {
   const s = dv.cur, my = ++dv.seq;
   if (!s) { dvPart(".dv-sum").textContent = ""; dvNote(`<div class="dv-note">Open a session to see what it changed.</div>`); return; }
   if (dvMemberOn()) return dvLoadMember(my);
+  if (dvItemOn()) return dvLoadItem(my);
   if (!dv.scope || !dvUsable(s, dv.scope)) { dv.scope = "edits"; dv.picked = false; }
   dvDrawScope();
   dvNote(`<div class="dv-note">Reading git…</div>`);
@@ -220,9 +222,9 @@ const dvMemberOn = () => (dv.member && dv.cur && dv.member.sid === dv.cur.id ? d
 function diffShowMember(sid, agent, name) {
   actTabOn.delete(sid);
   bgTabOn.delete(sid);
-  aboutTabOn.delete(sid);
   extTabOf.set(sid, DIFF_TAB);
   dv.member = { sid, agent, name, n: null };
+  dv.item = null;
   if (dv.cur?.id === sid) dvLoad();
   renderMain();
 }
@@ -262,6 +264,45 @@ async function dvLoadMember(my) {
   dvNote(dvFilesHtml(files, [], quiet, spans));
 }
 
+// ---------- a Desk item's files ----------
+/** The Desk item the page is on, when it's for the session showing. */
+const dvItemOn = () => (dv.item && dv.cur && dv.item.sid === dv.cur.id ? dv.item : null);
+
+/** Desk item `id` (`name`: "Bug #86") in session `sid`'s Diff tab, its file `at` open and in view. */
+function diffShowItem(sid, id, name, at) {
+  actTabOn.delete(sid);
+  bgTabOn.delete(sid);
+  extTabOf.set(sid, DIFF_TAB);
+  dv.member = null;
+  dv.item = { sid, id, name, at, n: null };
+  dv.top = 0;
+  if (dv.cur?.id === sid) dvLoad();
+  renderMain();
+}
+
+async function dvLoadItem(my) {
+  const it = dv.item;
+  dvDrawScope();
+  dvPart(".dv-sum").textContent = "";
+  dvNote(`<div class="dv-note">Reading its diff…</div>`);
+  let r;
+  try { r = await invoke("desk_item_diff", { id: it.id }); }
+  catch (e) { if (my === dv.seq) dvNote(`<div class="dv-note">Couldn't read its diff: ${esc(e?.message || e)}</div>`); return; }
+  if (my !== dv.seq) return;
+  const { files } = diffParse(r?.diff || "");
+  it.n = files.length;
+  dvDrawScope();
+  const { add, del, count } = dvCounts(files);
+  dvPart(".dv-sum").innerHTML = count ? `<span class="dv-n"><span class="dv-add">+${add}</span> <span class="dv-del">−${del}</span></span>` : "";
+  if (!count) return dvNote(`<div class="dv-note">No changes.</div>`);
+  dvNote(dvFilesHtml(files));
+  // The file clicked open (its lines go in as it opens), the others shut, and it at the top.
+  const pick = it.at < files.length ? it.at : 0;
+  const all = dvPart(".dv-body").querySelectorAll("details.dv-file[data-i]");
+  all.forEach((d) => { d.open = +d.dataset.i === pick; });
+  requestAnimationFrame(() => all[pick]?.scrollIntoView({ block: "start" }));
+}
+
 // ---------- the tab, its slot, and following the open session ----------
 /** The tab's button, for a session with changes (or the tab open), with its count. */
 function diffTabBtn(sid) {
@@ -280,7 +321,7 @@ function dvFollow(sid) {
   const other = !dv.cur || !s || dv.cur.id !== s.id;
   dv.key = key;
   dv.cur = s;
-  if (other) { dv.scope = null; dv.noTools = false; dv.top = 0; if (dv.member && dv.member.sid !== s?.id) dv.member = null; }
+  if (other) { dv.scope = null; dv.noTools = false; dv.top = 0; if (dv.member && dv.member.sid !== s?.id) dv.member = null; if (dv.item && dv.item.sid !== s?.id) dv.item = null; }
   if (s) dvLoad();
 }
 
@@ -295,11 +336,11 @@ function placeDiff() {
 
 if (typeof document !== "undefined") document.addEventListener("click", (e) => {
   // The tab itself (extensions.js opens it): the whole diff, not a crew member's.
-  if (e.target.closest?.(`[data-stab="${DIFF_TAB}"]`) && dvMemberOn()) { dv.member = null; dv.top = 0; dvLoad(); return; }
+  if (e.target.closest?.(`[data-stab="${DIFF_TAB}"]`) && (dvMemberOn() || dvItemOn())) { dv.member = null; dv.item = null; dv.top = 0; dvLoad(); return; }
   const t = e.target.closest?.("[data-dv-scope], [data-dv-refresh], [data-dv-all]");
   if (!t) return;
   e.stopPropagation();
-  if (t.dataset.dvAll != null) { dv.member = null; dv.top = 0; return dvLoad(); }
+  if (t.dataset.dvAll != null) { dv.member = null; dv.item = null; dv.top = 0; return dvLoad(); }
   if (t.dataset.dvRefresh != null) return dvLoad();
   if (t.disabled) return;
   dv.scope = t.dataset.dvScope;
