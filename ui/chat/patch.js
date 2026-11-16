@@ -184,6 +184,9 @@ function scrollChat(chat, was, lifted, kept) {
 /** Text boxes grow with their content, up to ~8 lines, then scroll. */
 const BOX_MAX = 180;   // the text box's tallest (px); past it, it scrolls (styles/board.css says the same)
 function grow(el) {
+  // A one-line field (the Desk's Add an item…, a name) keeps the height its style gives it: measured, it shrank to its
+  // text's line, and changed as you typed.
+  if (el.tagName !== "TEXTAREA") return;
   // Already as tall as it gets and still overflowing: nothing to measure. (Measuring collapses it for a
   // moment, which moved what you were reading and jolted the chat above on every key in a long message.)
   if (el.clientHeight >= BOX_MAX - 1 && el.scrollHeight > el.clientHeight) {

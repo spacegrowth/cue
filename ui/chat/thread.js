@@ -226,10 +226,12 @@ function stepLine(sid, x, all, plain = false) {
 function followSteps() {
   const cur = current();
   const q = quietOpen && (state.live || []).find((x) => x.session_id === quietOpen);
-  const sid = q ? q.session_id : cur?.s?.session_id || cur?.it?.session_id;
+  // The Desk showing its lead's chat: the lead's steps (desk.js).
+  const desk = view === "desk" && typeof deskFollowSid === "function" ? deskFollowSid() : null;
+  const sid = desk || (q ? q.session_id : cur?.s?.session_id || cur?.it?.session_id);
   if (!sid || document.hidden) return;
   const f = stepFeeds.get(sid);
-  const working = q ? q.status === "busy" : cur?.s?.state === "working";
+  const working = desk ? sessionOf(desk)?.state === "working" : q ? q.status === "busy" : cur?.s?.state === "working";
   // Not "working" can still be working: a stop hook or a finished background task sends it back to
   // work without a new prompt. So it's checked every 2 s anyway (nothing new costs next to nothing).
   if (!f || working || Date.now() - f.at > 2000) loadSteps(sid);

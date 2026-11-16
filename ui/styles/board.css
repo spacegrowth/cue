@@ -128,7 +128,7 @@ body.col-sizing, body.col-sizing * { cursor: col-resize !important; user-select:
 .field .icon-btn { width: 30px; height: 30px; flex: none; border-radius: 8px; display: grid; place-items: center; color: var(--muted); }
 .field .icon-btn:hover { color: var(--accent); background: var(--panel-2); }
 /* Dictating: the mic glows and pulses until you click it again or send. */
-.field .icon-btn.mic.on { color: var(--on-accent); background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
+.field .icon-btn.mic.on, .dk-box .icon-btn.mic.on { color: var(--on-accent); background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
 /* Quick phrases: small chips along the top of a session's box. */
 .quick { display: flex; gap: 5px; flex-wrap: wrap; padding: 5px 0 1px; }
 .qp { height: 22px; padding: 0 9px; border-radius: 6px; font-size: 11.5px; font-weight: 600; color: var(--muted); background: var(--panel-2); }
