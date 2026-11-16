@@ -187,6 +187,11 @@
 .dk-pane h1 { margin: 8px 24px 4px; font-size: 19px; font-weight: 700; line-height: 1.3; }
 .dk-state { margin: 0 24px; color: var(--muted); font-size: 12.5px; }
 .dk-state b { color: var(--ink); font-weight: 650; }
+/* An item's designs (desk.js deskDesignsLink): one small link under its state, to its canvas. */
+.dk-dsg { margin: 10px 24px 0; }
+.dk-dsg a { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: 12.5px; font-weight: 600; color: var(--ink); text-decoration: none; }
+.dk-dsg a:hover { border-color: color-mix(in srgb, var(--ink) 30%, var(--line)); color: var(--link, var(--accent)); }
+.dk-dsg a svg:last-child { color: var(--muted); }
 .dk-sec { padding: 16px 24px 0; }
 .dk-sec h3 { margin: 0 0 8px; font: 700 11px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .dk-sec p { margin: 0 0 6px; line-height: 1.5; }
@@ -289,6 +294,16 @@
 .nd-l { margin-top: 8px; color: var(--muted); font-size: 12px; font-weight: 650; }
 .nd-f { box-sizing: border-box; width: 100%; height: 38px; padding: 0 12px; border: 1.5px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); font: 14px var(--sans); }
 .nd-f:focus { border-color: var(--ink); outline: none; }
+/* Project: Cue's own dropdown (New session's list), not the system's menu; the name first, its folder muted. */
+.nd-pickwrap { position: relative; }
+.nd-pick { display: flex; align-items: center; gap: 8px; text-align: left; cursor: pointer; }
+.nd-pn { flex: none; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.nd-pick .nd-pp, .nd-drop .nd-pp { flex: 1; min-width: 0; font-size: 12px; }
+.nd-car { flex: none; margin-left: auto; color: var(--muted); font-size: 14px; line-height: 1; }
+.nd-drop { max-height: 240px; border-radius: 10px; }
+.nd-drop .nf-dopt { display: flex; align-items: center; gap: 8px; padding: 7px 10px; font: 13.5px var(--sans); }
+.nd-drop .nf-dopt.on .nd-pp { color: inherit; opacity: .75; }
+.nd-drop .nf-dopt.on .pdot { box-shadow: 0 0 0 1.5px var(--on-accent); }   /* its dot stays seen on the lit row */
 .nd-hint { margin-top: 8px; color: var(--muted); font-size: 12.5px; }
 .nd-acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 /* The Sessions head: ‹ to every Desk, the Desk's name with ✎ on hover. */
@@ -375,9 +390,12 @@
 .dk-kic { flex: none; display: inline-block; vertical-align: -2px; margin-right: 5px; color: var(--accent); }
 .dk-srow.on .dk-kic { color: var(--on-sel); }
 .dk-i1 > .dk-kic { align-self: flex-start; margin-top: 3px; margin-right: -3px; }
-/* A hand-off (ROUTE) card: one bordered line, its kind's icon, number and title → who, then "Why ⌄"; open, the why
-   sits under it in a quiet box joined to the line. Lines all hand-offs drop the block's own border. */
+/* A hand-off (ROUTE) card: one bordered line, its kind's icon, number and title → who, then "Why ⌃"; the why sits
+   under it in a quiet box joined to the line (open until folded). Never a box in a box: lines all hand-offs drop the
+   block's own border; among other lines a hand-off drops its own. */
 .msg .own-lines:not(:has(> :not(.dk-route))) { padding: 0; border: 0; }
+.msg .own-lines:has(> :not(.dk-route)) .dk-rt-row { padding: 3px 0; border: 0; }
+.msg .own-lines:has(> :not(.dk-route)) .dk-rt-why-s { border-radius: 7px; border-top: 1px solid var(--line); }
 .dk-route { margin: 6px 0; }
 .dk-rt-row { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 12px; border: 1px solid var(--line); border-radius: 9px; font-size: 12.5px; }
 .dk-route.open .dk-rt-row { border-radius: 9px 9px 0 0; }

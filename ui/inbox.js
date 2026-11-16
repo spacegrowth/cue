@@ -148,11 +148,9 @@ function inboxSections() {
 
 // ---------- a row's words ----------
 
-/** What it did lately, in a line: its About's newest turn line (Settings → Summaries), else where it stands there,
- *  else the first line of its last reply. */
+/** What it did lately, in a line: the first line of its last reply. */
 function inboxSoFar(r) {
-  const t = aboutTracked(r.sid), turn = t?.turns?.at(-1)?.line || t?.now;
-  return plain(turn || firstLine(r.it?.kind === "waiting" ? finishedText(r.it) : lastSaid(r.s || {})));
+  return plain(firstLine(r.it?.kind === "waiting" ? finishedText(r.it) : lastSaid(r.s || {})));
 }
 /** What its last turn changed, in words ("3 files changed, +40 −2"); "" when nothing. */
 function inboxChanged(s) {
@@ -181,7 +179,7 @@ function inboxWhy(it) {
 function inboxRunLines(r, card = false) {
   const s = r.s, seat = inboxSeats.get(r.sid), sent = outbox.findLast((o) => o.sid === r.sid)?.text, said = plain(sent || s.prompt);
   const answered = r.it && answering.has(r.it.id) && !sent ? `You answered: ${r.it.kind === "waiting" ? inboxEndQuestion(finishedText(r.it)) || "its reply" : inboxAskSubject(r.it)}` : "";
-  const subj = answered || (said ? (sent || seat?.from === "need" ? `You: “${said}”` : said) : plain(aboutTracked(r.sid)?.about) || "Working");
+  const subj = answered || (said ? (sent || seat?.from === "need" ? `You: “${said}”` : said) : "Working");
   const stuck = s.stuck_ms && !s.compacting_ms ? `No new output for ${ago(s.stuck_ms)}` : "";
   const busy = s.state === "working" || s.state === "agent" || s.compacting_ms;
   const line = s.compacting_ms ? "Compacting…" : preStart(s) ? `Not started: ${preStart(s)}` : stuck || (card ? "" : inboxPendingLine(s)) || (!busy ? "Sent" : s.state === "agent" ? idleNote(s) : s.doing || "Thinking");
@@ -192,8 +190,7 @@ function inboxDoneLines(r) {
   const s = r.s, said = plain(firstLine(r.it ? finishedText(r.it) : lastSaid(s || {})));
   const ended = !r.it && s?.state === "stopped" ? "Stopped" : !r.it && s?.state === "limited" ? "Out of usage" : "";
   const subj = ended ? `${ended}${said ? `: ${said}` : ""}` : said || "Finished";
-  const about = aboutTracked(r.sid)?.turns?.at(-1)?.line;
-  return [subj, plain(about) || inboxChanged(s) || ""];
+  return [subj, inboxChanged(s) || ""];
 }
 /** A row's two lines: [subject, the useful line under it]. */
 function inboxLines(r) {
@@ -895,7 +892,6 @@ function inboxFullChat(sid) {
 function inboxDiff(sid) {
   actTabOn.delete(sid);
   bgTabOn.delete(sid);
-  aboutTabOn.delete(sid);
   extTabOf.set(sid, DIFF_TAB);
   inboxFullChat(sid);
 }
@@ -988,6 +984,7 @@ const INBOX_CLICKS = {
   inboxEarlier: (el) => { inboxAllEarlier.add(el.dataset.inboxEarlier); renderMain(); },
   inboxSug: inboxTakeSuggestion,
   inboxDiff: (el) => inboxDiff(el.dataset.inboxDiff),
+  inboxFile: (el) => inboxShowFile(el.dataset.inboxFile, +el.dataset.n),
   inboxDesk: (el) => openInDesk(el.dataset.inboxDesk, el.dataset.item),
   inboxAddDesk: (el) => inboxAddToDesk(el.dataset.inboxAddDesk),
   inboxBack: () => inboxClose(),

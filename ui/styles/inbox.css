@@ -253,6 +253,8 @@ button.ib-sect.ib-strip { padding: 8px 16px 6px; gap: 5px; }
 .ib-file { display: flex; justify-content: space-between; gap: 8px; }
 .ib-file code { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
 .ib-file > span { flex: none; font-variant-numeric: tabular-nums; }
+button.ib-file { width: calc(100% + 12px); padding: 1px 6px; margin: 0 -6px; box-sizing: border-box; border: 0; border-radius: 6px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+button.ib-file:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
 .ib-add { color: color-mix(in srgb, var(--accent) 80%, var(--ink)); font-variant-numeric: tabular-nums; }
 .ib-del { color: var(--deny); font-variant-numeric: tabular-nums; }
 .ib-k .ib-add, .ib-k .ib-del { letter-spacing: 0; }

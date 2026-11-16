@@ -69,9 +69,18 @@ function inboxChangedBlock(r) {
   const mid = r.kind === "ask" || r.kind === "run";
   if (!files.length) return d || !mid ? `<div class="ib-blk"><div class="ib-k">Changed this turn</div><div class="ib-dim">${mid ? "Nothing yet." : "No files changed."}</div></div>` : "";
   const add = files.reduce((n, f) => n + (f.add || 0), 0), del = files.reduce((n, f) => n + (f.del || 0), 0);
-  const row = (f) => `<div class="ib-file"><code>${esc(f.path)}</code><span>${f.isNew ? `<span class="ib-dim">new</span> ` : ""}<span class="ib-add">+${f.add || 0}</span> <span class="ib-del">−${f.del || 0}</span></span></div>`;
+  // With its lines read, a click on a file opens it over the page (diff_overlay.js), the list in this order.
+  if (d?.files) d.shown = files;
+  const nums = (f) => `<span>${f.isNew ? `<span class="ib-dim">new</span> ` : ""}<span class="ib-add">+${f.add || 0}</span> <span class="ib-del">−${f.del || 0}</span></span>`;
+  const row = (f, n) => (d?.files ? `<button class="ib-file" data-inbox-file="${sid}" data-n="${n}"><code>${esc(f.path)}</code>${nums(f)}</button>` : `<div class="ib-file"><code>${esc(f.path)}</code>${nums(f)}</div>`);
   const peek = files[0].lines?.length ? `<div class="ib-peek"><div class="ib-peek-h"><code>${esc(files[0].path)}</code></div><div class="dv-lines">${inboxPeek(files[0])}</div></div>` : "";
-  const rest = files.length > INBOX_FILES_MAX ? `<button class="ib-link" data-inbox-diff="${sid}">and ${files.length - INBOX_FILES_MAX} more files ›</button>` : "";
+  const rest = files.length > INBOX_FILES_MAX ? `<button class="ib-link" ${d?.files ? `data-inbox-file="${sid}" data-n="${INBOX_FILES_MAX}"` : `data-inbox-diff="${sid}"`}>and ${files.length - INBOX_FILES_MAX} more files ›</button>` : "";
   return `<div class="ib-blk"><div class="ib-k">Changed this turn · ${files.length} file${files.length === 1 ? "" : "s"} <span class="ib-add">+${add}</span> <span class="ib-del">−${del}</span></div>
     <div class="ib-files">${files.slice(0, INBOX_FILES_MAX).map(row).join("")}</div>${peek}${rest}</div>`;
+}
+
+/** A file in its Changed this turn, over the page: the turn's files on the left, file `n` open. */
+function inboxShowFile(sid, n) {
+  const d = inboxTurnDiffs.get(sid), name = nameOf(sid, sessionOf(sid)?.project || "");
+  diffOverlay(name ? `${name} · this turn` : "This turn", "Changed this turn", d?.shown || d?.files || [], n);
 }

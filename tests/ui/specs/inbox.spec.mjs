@@ -178,6 +178,13 @@ test("a question's choices show what each means and which it recommends; the sid
   await expect(aside.locator(".ib-sv")).toHaveText(["Read 3 files", "Ran npm run bench", "Edited cache.ts"]);
   await expect(aside.locator(".ib-file")).toContainText("cache.ts");
   await expect(aside.locator(".ib-peek")).toContainText("const hit = cache.get(key);");
+  // A file in it opens over the Inbox, its diff beside the turn's files; Esc closes it and the page is still there.
+  await aside.locator(".ib-file").click();
+  await expect(page.locator(".dov .dov-f.on .dov-p")).toHaveText("cache.ts");
+  await expect(page.locator(".dov .dov-lines .a").first()).toHaveText("+const hit = cache.get(key);");
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".dov")).toHaveCount(0);
+  await expect(pg).toBeVisible();
   await expect(aside.locator(".ib-ctx")).toContainText("38%");
   // Two columns side by side at this size.
   const [m, a] = await Promise.all([pg.locator(".ib-main").boundingBox(), aside.boundingBox()]);
