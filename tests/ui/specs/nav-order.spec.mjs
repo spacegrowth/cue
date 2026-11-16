@@ -2,12 +2,24 @@
 // button opens the full view on a click (held pressed), and ⌘J keeps to the small peek.
 import { test, expect } from "./cue.mjs";
 
-test("the switch reads Inbox, Board, Desk, Read, Insights, and no Terminal", async ({ cue, page }) => {
+test("the switch reads Inbox, Board, Desk, Read, and no Terminal or Insights", async ({ cue, page }) => {
   await cue.open("board-waiting");
   const views = await page.locator(".switch-view button").evaluateAll((bs) => bs.map((b) => b.dataset.view));
   expect(views.slice(0, 3)).toEqual(["inbox", "board", "desk"]);
-  expect(views).toEqual(expect.arrayContaining(["read", "insights"]));
+  expect(views).toContain("read");
   expect(views).not.toContain("terminal");
+  expect(views).not.toContain("insights");
+});
+
+test("Insights is the small icon just left of Settings: it opens Insights, held pressed", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  const next = await page.locator(".insights-btn").evaluate((b) => b.nextElementSibling?.dataset.act);
+  expect(next).toBe("open-settings");
+  await expect(page.locator(".insights-btn")).not.toHaveAttribute("title", /./);
+  await page.locator(".insights-btn").click();
+  await expect.poll(() => page.evaluate(() => view)).toBe("insights");
+  await expect(page.locator(".insights-btn")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".switch-view button.on")).toHaveCount(0);
 });
 
 test("a click on the terminal button opens the full view, pressed; again goes back", async ({ cue, page }) => {
