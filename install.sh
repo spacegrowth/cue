@@ -83,7 +83,8 @@ PY
 # carry on while Cue quits and the new Cue picks them up.
 wait_for_hosted_turns() {
   local limit="${CUE_INSTALL_WAIT:-600}" waited=0 busy
-  if [ -S "$CUE_HOME/host/host.sock" ]; then return 0; fi
+  # Each build of the host has a folder of its own (host/b-<build>/); any one of them up means cue-host runs them.
+  for s in "$CUE_HOME"/host/b-*/host.sock; do [ -S "$s" ] && return 0; done
   while [ "$waited" -lt "$limit" ]; do
     busy=$(hosted_turns)
     [ -z "$busy" ] && return 0

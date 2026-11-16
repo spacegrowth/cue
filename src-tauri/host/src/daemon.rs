@@ -2,8 +2,8 @@
 //! `~/.cue/host` on a machine) holds its socket, its pid, its lock and its log.
 //!
 //! `connect` connects to the socket; when nothing answers it takes the lock, checks again (another may have just
-//! started one), and starts `serve` on its own: in a session of its own, its input closed and its output to
-//! `host.log`, so nothing that started it (Cue, an SSH session) waits on it or takes it down with it. Then it
+//! started one), and starts `serve` on its own: in a session of its own (on a Mac, from Cue.app, a launchd job in your
+//! login's domain), its input closed and its output to `host.log`, so nothing that started it (Cue, an SSH session) waits on it or takes it down with it. Then it
 //! waits for the socket.
 
 use crate::server::{Host, IDLE};
@@ -55,9 +55,14 @@ pub fn connect(home: &Path, serve: &[String]) -> std::io::Result<UnixStream> {
     }
 }
 
-/// `serve`, on its own: a session of its own (setsid), its input closed, its output to host.log.
+/// `serve`, on its own: a session of its own (setsid), its input closed, its output to host.log. On a Mac, from Cue.app,
+/// a launchd job in your login's domain instead (`by_launchd`).
 fn start(home: &Path, serve: &[String]) -> std::io::Result<()> {
     let (program, args) = serve.split_first().ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "no host program"))?;
+    #[cfg(target_os = "macos")]
+    if program.contains(".app/Contents/MacOS/") && by_launchd(home, serve) {
+        return Ok(());
+    }
     let log = OpenOptions::new().create(true).append(true).open(home.join("host.log"))?;
     let mut c = Command::new(program);
     c.args(args).stdin(Stdio::null()).stdout(log.try_clone()?).stderr(log);
@@ -81,6 +86,65 @@ fn start(home: &Path, serve: &[String]) -> std::io::Result<()> {
     // The one forked in between exits at once.
     let _ = child.wait();
     Ok(())
+}
+
+/// `serve` as a launchd job in the login's domain (gui/<uid>), so the host and the sessions under it can reach the
+/// Mac's services (Launch Services, `open`, `pgrep`, `osascript`, user lookups) for as long as you're logged in.
+/// Forked off Cue instead, it would keep the launch context of the Cue that started it, and that context dies when
+/// that Cue quits, as every install does: `open` then fails (-10827), so an install run from a hosted session
+/// couldn't reopen Cue. One job per host home, run once (no KeepAlive) and leaving the agents it starts be when it
+/// goes (AbandonProcessGroup). False when launchd won't take it (no login session, an SSH session on a machine),
+/// or a host of that home still runs there: then it's forked as before.
+#[cfg(target_os = "macos")]
+fn by_launchd(home: &Path, serve: &[String]) -> bool {
+    let uid = unsafe { libc::getuid() };
+    let label = format!("dev.spacegrowth.cue.host.{}", home.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default());
+    let target = format!("gui/{uid}/{label}");
+    let launchctl = |args: &[&str]| Command::new("/bin/launchctl").args(args).stdin(Stdio::null()).stderr(Stdio::null()).output();
+    // A job of this label left loaded by an earlier host, now gone, is replaced; one still running isn't touched.
+    match launchctl(&["print", &target]) {
+        Ok(o) if o.status.success() => {
+            if String::from_utf8_lossy(&o.stdout).contains("state = running") {
+                return false;
+            }
+            let _ = launchctl(&["bootout", &target]);
+        }
+        _ => {}
+    }
+    let plist = home.join("host.plist");
+    let log = home.join("host.log").to_string_lossy().into_owned();
+    let strings = |xs: &mut String, items: &[String]| {
+        for s in items {
+            xs.push_str(&format!("<string>{}</string>", xml(s)));
+        }
+    };
+    let mut argv = String::new();
+    strings(&mut argv, serve);
+    let mut env = String::new();
+    // A value a plist can't carry (a control character) is left out rather than failing the whole job.
+    for (k, v) in std::env::vars().filter(|(k, v)| !format!("{k}{v}").chars().any(|c| c.is_control() && c != '\t' && c != '\n')) {
+        env.push_str(&format!("<key>{}</key><string>{}</string>", xml(&k), xml(&v)));
+    }
+    let body = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\"><dict>\
+<key>Label</key><string>{}</string><key>ProgramArguments</key><array>{argv}</array>\
+<key>EnvironmentVariables</key><dict>{env}</dict><key>WorkingDirectory</key><string>{}</string>\
+<key>StandardInPath</key><string>/dev/null</string><key>StandardOutPath</key><string>{l}</string><key>StandardErrorPath</key><string>{l}</string>\
+<key>RunAtLoad</key><true/><key>KeepAlive</key><false/><key>AbandonProcessGroup</key><true/></dict></plist>\n",
+        xml(&label),
+        xml(&home.to_string_lossy()),
+        l = xml(&log),
+    );
+    if std::fs::write(&plist, body).is_err() {
+        return false;
+    }
+    let plist = plist.to_string_lossy().into_owned();
+    matches!(launchctl(&["bootstrap", &format!("gui/{uid}"), &plist]), Ok(o) if o.status.success())
+}
+
+#[cfg(target_os = "macos")]
+fn xml(s: &str) -> String {
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
 }
 
 /// The host in `home`, serving until it's been idle for a while. Refuses to run beside another one that answers.
