@@ -273,3 +273,38 @@ fn a_prompt_open_in_a_quiet_sessions_terminal_is_a_card_until_it_moves_on() {
     w.settle();
     assert!(w.snapshot().cards().is_empty(), "answered there");
 }
+
+#[test]
+fn a_prompt_you_allowed_in_cue_still_listed_as_waiting_is_not_a_terminal_card() {
+    let w = World::new();
+    let q = w.session("q");
+    q.prompt("go");
+    crate::live::set_claude(vec![listed("q", "waiting", crate::clock::now_ms())]);
+    let ask = q.ask_bash("cargo build");
+    w.advance(3000);
+    w.answer(&ask.id, serde_json::json!({"behavior": "allow"}));
+    // The call you allowed runs a while; Claude Code's list still says waiting, from before your answer.
+    w.advance(20_000);
+    w.hub().sync_live();
+    w.settle();
+    assert!(w.snapshot().cards().is_empty(), "that's the prompt you answered in Cue");
+    // A prompt that opens after your answer, and that Cue never gets, still is one.
+    crate::live::set_claude(vec![listed("q", "waiting", crate::clock::now_ms())]);
+    w.advance(5000);
+    w.hub().sync_live();
+    w.settle();
+    assert_eq!(w.snapshot().card("q")["kind"], "terminal");
+}
+
+#[test]
+fn a_hosted_session_never_gets_a_terminal_card() {
+    let w = World::new();
+    let h = w.session("h").hosted();
+    h.prompt("go");
+    crate::live::set_claude(vec![listed("h", "waiting", crate::clock::now_ms())]);
+    w.advance(5000);
+    w.hub().sync_live();
+    h.terminal_ask("Claude needs your permission to use Bash");
+    w.settle();
+    assert!(w.snapshot().cards().is_empty(), "it has no terminal to answer in");
+}

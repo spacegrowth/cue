@@ -199,10 +199,12 @@ impl Hub {
                 .filter(|q| st.items.iter().any(|i| i.kind == "terminal" && i.origin.session_id == q.session_id && q.since_ms > i.created_ms))
                 .map(|q| q.session_id.clone()).collect();
             // Not one Cue has a card for, and not one you just answered in Cue (the list can lag a moment).
-            let answered_here = |sid: &str| st.history.iter().any(|i| i.origin.session_id == sid && i.resolved_ms.is_some_and(|r| now.saturating_sub(r) < 6_000));
+            // Also: its "waiting" began before your last answer in Cue, so it's the prompt you answered, still listed
+            // (the list can lag well past a few seconds while the call you allowed runs).
+            let answered_here = |q: &crate::live::Quiet| st.history.iter().any(|i| i.origin.session_id == q.session_id && i.resolved_ms.is_some_and(|r| now.saturating_sub(r) < 6_000 || r >= q.since_ms));
             let asking: Vec<(Origin, String)> = live.iter()
                 .filter(|q| q.status == "waiting" && now.saturating_sub(q.since_ms) > WAITING_GRACE_MS)
-                .filter(|q| !st.items.iter().any(|i| i.origin.session_id == q.session_id && i.kind != "waiting") && !answered_here(&q.session_id))
+                .filter(|q| !st.items.iter().any(|i| i.origin.session_id == q.session_id && i.kind != "waiting") && !answered_here(q))
                 .filter_map(|q| st.sessions.origin(&q.session_id).map(|o| (o, waiting_words(&q.waiting_for))))
                 .collect();
             (fresh, answered, asking)

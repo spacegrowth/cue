@@ -96,6 +96,10 @@ impl Hub {
     /// `sure`: the prompt is known to be there (Cue's own answer never reached the agent), so it's a card
     /// even when it names the call you just answered.
     pub(super) fn terminal_ask_with(&self, origin: Origin, message: String, notify: bool, dialog: Option<crate::dialog::Dialog>, sure: bool) {
+        // A hosted session has no terminal: what it asks comes through Cue, never as a card sending you to one.
+        if origin.hosted {
+            return;
+        }
         let sid = origin.session_id.clone();
         let path = origin.transcript_path.clone();
         let call = (!path.is_empty()).then(|| transcript::waiting_tool_use(&path)).flatten();
