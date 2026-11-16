@@ -65,11 +65,10 @@ function beforeDraw() {
   return was;
 }
 
-/** The header: the chips; search, usage, the terminal, Extensions and Settings; then the views (Inbox, Board, Desk, the add-on's, Read, Insights, Terminal) at the right edge. */
+/** The header: the chips; usage, search, the terminal, Extensions and Settings; then the views (Inbox, Board, Desk, the add-on's, Read, Insights, Terminal) at the right edge. */
 function topBarHtml(counts) {
   return `<div class="top" data-tauri-drag-region><span class="wordmark" data-tauri-drag-region role="img" aria-label="Cue">${CUE_MARK}</span><span class="hchips"><button class="hchip new-chip" data-lv="new" data-spot="1">+ New</button>${counts}${liveChip()}${projChip()}</span><span class="grow" data-tauri-drag-region></span>
-      <button class="top-btn icon top-find" data-act="open-search" aria-label="Find (⌘K)">${SEARCH_ICON}</button>
-      ${updateCard()}${usageChip()}${shellsBtn()}${extPanelBtn()}<button class="top-btn icon" data-act="open-settings" aria-label="Settings">${GEAR_ICON}</button>
+      ${updateCard()}${usageChip()}<button class="top-btn icon top-find" data-act="open-search" aria-label="Find (⌘K)">${SEARCH_ICON}</button>${shellsBtn()}${extPanelBtn()}<button class="top-btn icon" data-act="open-settings" aria-label="Settings">${GEAR_ICON}</button>
       <div class="switch-view">${inboxBtn()}<button class="${view === "board" ? "on" : ""}" data-view="board">Board</button><button class="${view === "desk" ? "on" : ""}" data-view="desk">Desk</button>${addOn.views.map((v) => `<button class="${view === v.id ? "on" : ""}" data-view="${v.id}">${v.label()}</button>`).join("")}<button class="${view === "read" ? "on" : ""}" data-view="read">Read</button><button class="${view === "insights" ? "on" : ""}" data-view="insights">Insights</button></div></div>`;
 }
 /** Inbox in the header's switch, with how many need you ("Inbox 3"). */
@@ -162,8 +161,6 @@ function replayMotion(was, kept) {
     document.querySelectorAll(sel).forEach((el) => { if (!liveChat?.contains(el)) el.style.animationDelay = phase; });
   }
   markMore();   // lists end on whole cards before anything measures where cards landed
-  statusPopPaint();   // an open status card stays where it was across the redraw
-  statusPanelFit();   // an open status list ends above the pane's bottom, scrolling past that
   if (view === "sessions") fitSvRest();
   flipPlay(was.flipFrom);
   // A card just answered: its ✓ row eases from the card's height down to its own.

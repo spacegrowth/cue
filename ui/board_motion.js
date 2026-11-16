@@ -39,11 +39,7 @@ const TOP_STEPS = ["tfit1", "tfit2", "tfit3", "tfit4"];
 function fitTop() {
   const h = document.querySelector(".app > .top");
   if (!h) return;
-  h.classList.remove(...TOP_STEPS, "find-inline");
-  // Search sits in the middle unless that would cover something either side; then it takes its place in the row.
-  const find = h.querySelector(".top-find"), fr = find?.getBoundingClientRect();
-  if (fr && [...h.children].some((c) => c !== find && !c.classList.contains("grow") && (({ left, right }) => left < fr.right + 8 && right > fr.left - 8)(c.getBoundingClientRect())))
-    h.classList.add("find-inline");
+  h.classList.remove(...TOP_STEPS);
   // Fits: Settings (the last button) ends inside the bar. Measured by it, so an open drop-down doesn't count.
   const fits = () => !h.lastElementChild || h.lastElementChild.getBoundingClientRect().right <= h.getBoundingClientRect().right + 1;
   for (const step of TOP_STEPS) {
