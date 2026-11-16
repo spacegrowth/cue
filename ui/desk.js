@@ -177,6 +177,54 @@ const deskHolderHead = (h, on) => `<div class="dk-holder ${on ? "on" : ""}" role
 /** The item a crew member is on (lit with it while its pane is open). */
 const deskCrewItem = (project, lead, agent) => { const t = deskMate(lead, agent); return deskOf(project).items.find((i) => i.state !== "done" && ((i.holder?.kind === "crew" && (i.holder.sid === agent || (t && i.holder.name === t.name))) || (t && i.crew && i.holder?.sid === lead && i.crew.toLowerCase() === (t.name || "").toLowerCase()))) || null; };
 
+/** Finished items the list loaded from Cue (desk_done) as you scrolled, a project each: { items, end (none older),
+ *  loading }; and how many finished items each project's list shows (10, then 10 more each time its end comes into
+ *  view). Today's come with the Desk's state; older ones only from here. */
+const deskDonePages = new Map(), deskDoneShown = new Map();
+const DESK_DONE_STEP = 10;
+const deskDoneKey = (i) => [deskMs(i.updated), i.id];
+/** A project's finished items, newest first: today's as the Desk's state has them, then those loaded; one that's open
+ *  again (in the state, not done) left out. */
+function deskDoneList(d) {
+  const byId = new Map();
+  for (const i of deskDonePages.get(d.project)?.items || []) byId.set(i.id, i);
+  for (const i of d.items) { if (i.state === "done") byId.set(i.id, i); else byId.delete(i.id); }
+  return [...byId.values()].sort((a, b) => deskMs(b.updated) - deskMs(a.updated) || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
+}
+/** The next finished items older than the list's last, a step ahead of what shows so the next ones are there as you
+ *  reach them. */
+async function deskDoneFetch(project) {
+  const pg = deskDonePages.get(project) || { items: [], end: false, loading: false };
+  deskDonePages.set(project, pg);
+  if (pg.end || pg.loading) return;
+  pg.loading = true;
+  const last = pg.items.at(-1);
+  try {
+    const got = await invoke("desk_done", { project, beforeMs: last ? deskMs(last.updated) : null, beforeId: last?.id ?? null, take: DESK_DONE_STEP * 2 });
+    pg.items.push(...got);
+    pg.end = got.length < DESK_DONE_STEP * 2;
+  } catch (e) { console.error(e); pg.end = true; }
+  pg.loading = false;
+  if (projFilter === project && view === "desk") renderMain();
+}
+/** The list's end came into view: 10 more finished items, and the next ones fetched ahead. */
+function deskDoneMore(project) {
+  const pg = deskDonePages.get(project);
+  const all = deskDoneList(deskOf(project)).length, n = deskDoneShown.get(project) || DESK_DONE_STEP;
+  if (all > n) { deskDoneShown.set(project, n + DESK_DONE_STEP); renderMain(); }
+  if (!pg?.end && all < n + DESK_DONE_STEP * 2) deskDoneFetch(project);
+}
+let deskDoneSeen = null;
+/** Watches the list's end (after each draw): in view, 10 more. */
+function deskDoneWatch() {
+  deskDoneSeen?.disconnect();
+  const end = document.querySelector(".dk-items [data-desk-done-more]"), box = end?.closest(".dk-scroll");
+  if (!end || typeof IntersectionObserver === "undefined") return;
+  const project = end.dataset.deskDoneMore;
+  deskDoneSeen = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { deskDoneSeen.disconnect(); deskDoneMore(project); } }, { root: box, rootMargin: "0px 0px 240px 0px" });
+  deskDoneSeen.observe(end);
+}
+
 function deskList(project) {
   const g = deskGroups(project);
   const o = deskOpen;
@@ -191,9 +239,14 @@ function deskList(project) {
   if (g.fresh.length) parts.push(`<div class="dk-gh">Not given out yet <span class="n">${g.fresh.length}</span></div>${g.fresh.map(row).join("")}`);
   for (const h of g.holders) parts.push(deskHolderHead(h, headOn(h.sid)) + h.items.map(row).join(""));
   for (const h of g.extra) parts.push(deskHolderHead({ ...h, addon: true, key: h.key || h.name }, o?.kind === "addon" && o.key === (h.key || h.name)) + (h.items || []).map(row).join(""));
-  if (g.done.length) {
-    parts.push(`<div class="dk-gh">Done today <span class="n">${g.done.length}</span></div>${g.done.map(row).join("")}`);
-  }
+  // Finished: the 10 newest, then 10 more each time the list's end comes into view (deskDoneWatch). Its end holds
+  // its place while the next ones load, so nothing jumps.
+  const pg = deskDonePages.get(project);
+  if (!pg) queueMicrotask(() => deskDoneFetch(project));
+  const done = deskDoneList(g.d), shown = done.slice(0, deskDoneShown.get(project) || DESK_DONE_STEP);
+  const more = done.length > shown.length || !pg?.end;
+  if (shown.length) parts.push(`<div class="dk-gh">Done</div>${shown.map(row).join("")}`);
+  if (more && (shown.length || pg?.loading || !pg)) parts.push(`<div class="dk-more" data-desk-done-more="${esc(project)}">${shown.length ? "Loading older…" : ""}</div>`);
   const body = parts.join("") || `<div class="dk-empty">No items yet.</div>`;
   return `<div class="dk-card dk-items"><div class="dk-ch"><b>Items</b>${deskRunBy(g.d)}</div>
     ${deskQuickAdd()}<div class="dk-scroll" data-scroll-key="desk-items:${esc(project)}">${body}</div></div>`;
@@ -354,15 +407,22 @@ function deskChat(d) {
 }
 /** A session's chat, opened from the sessions on the left: its name, Open its session, its messages and where it is
  *  now, as under any session's chat. */
-/** The type mark at the top right of a chat's header (Desk picks, mark A): a block in the type's color, its word in it.
- *  `kind` is "desk" (the Desk's lead), "lead", "task", "bug" or "feature"; "" for none. */
-const DESK_MARKS = { desk: "Desk lead", lead: "Lead", task: "Task", bug: "Bug", feature: "Feature" };
-const deskMark = (kind) => (DESK_MARKS[kind] ? `<span class="dk-mark ${kind}">${DESK_MARKS[kind]}</span>` : "");
-/** What session `sid`'s chat is: a lead (it has a crew), else the kind of the item it holds; "" for neither. */
+/** The mark at the top right of every chat on the Desk (Desk picks, mark A): one block in the theme's color with what
+ *  the chat is in it. `kind`: "desk" (the Desk's lead), "session", "crew", "lead", "task", "bug" or "feature"; "" for
+ *  none. `float`: over a pane with no header bar (an item's, a holder's, a crew member's), at the card's top right. */
+const DESK_MARKS = { desk: "Desk lead", session: "Session", crew: "Crew", lead: "Lead", task: "Task", bug: "Bug", feature: "Feature" };
+const deskMark = (kind, float = false) => (DESK_MARKS[kind] ? `<span class="dk-mark${float ? " float" : ""}" data-desk-mark="${kind}">${DESK_MARKS[kind]}</span>` : "");
+/** What session `s`'s chat is: a lead (it has a crew), else the kind of the item it holds, else a session. */
 function deskSessKind(s) {
-  const d = deskOf(s.project);
   if (deskCrew(s.session_id).length) return "lead";
-  return deskSessItem(d, s.session_id)?.kind || "";
+  return deskSessItem(deskOf(s.project), s.session_id)?.kind || "session";
+}
+/** The mark over what's open in the chat card: an item's kind, a holder's, a crew member's. */
+function deskPaneMark(o, d) {
+  if (o?.kind === "item") return deskMark(deskItem(d.project, o.id)?.kind, true);
+  if (o?.kind === "crew") return deskMark("crew", true);
+  if (o?.kind === "holder") { const s = sessionOf(o.sid); return deskMark(s ? deskSessKind(s) : "lead", true); }
+  return "";
 }
 function deskSessChat(sid) {
   const s = sessionOf(sid);
@@ -563,7 +623,7 @@ function deskRight(project) {
     body = h ? `<div class="dk-pane" data-scroll-key="addon:${esc(o.key)}">${deskBack(deskLeadName(d) || "Back")}${html || `<h1>${esc(h.name)}</h1><div class="dk-state">${esc(h.sub || "")}</div>`}</div>` : null;
   }
   if (o && !body) deskOpen = null;
-  if (deskOpen) return `<div class="dk-card dk-right">${body}${deskBox(d)}</div>`;
+  if (deskOpen) return `<div class="dk-card dk-right">${deskPaneMark(o, d)}${body}${deskBox(d)}</div>`;
   return deskRightChat(d);
 }
 /** The chat card with nothing open: who runs the Desk (no lead yet, or Change), else the lead's chat (or the line
@@ -623,6 +683,7 @@ function deskView() {
 }
 /** After the draw: the lead's chat at its end, as a chat opens (unless you'd scrolled up in it). */
 function deskSettle() {
+  deskDoneWatch();
   const c = document.querySelector(".dk-chat");
   // Earlier messages just went in above (chat/thread.js loadOlder): what you were reading stays put.
   if (c && holdChat != null) { c.scrollTop = c.scrollHeight - holdChat; holdChat = null; }

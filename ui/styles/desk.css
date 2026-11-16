@@ -50,6 +50,8 @@
 /* The Desk's lead, in its own spot above the session list (desk.js deskSessions). */
 .dk-leadspot { flex: 0 0 auto; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
 .dk-gh.you { color: var(--deny); }
+/* The finished items' end: holds a row's room while the next ones load, so nothing below or above jumps. */
+.dk-more { min-height: 44px; display: flex; align-items: center; padding: 0 20px; color: var(--muted); font-size: 12px; }
 .dk-gh .n { font-family: var(--mono); font-weight: 600; letter-spacing: 0; }
 
 /* A holder's head: its name, what it is, ›. */
@@ -150,15 +152,13 @@
 /* The chat card (left; class dk-right from when it sat on the right): tabs, the chat, the box. */
 .dk-right { position: relative; }
 .dk-tabs { gap: 18px; padding: 0 20px; align-items: stretch; }
-/* A chat's type mark (Desk picks, mark A): a solid block in the type's color filling the header's top-right corner,
-   its word in it; only its bottom-left corner is rounded (the card's own corner rounds the top right). */
-.dk-mark { flex: none; align-self: stretch; display: flex; align-items: center; margin: 0 -14px -1px 4px; padding: 0 18px; border-radius: 0 0 0 10px; background: var(--mk); color: var(--on-mk); font: 700 11px var(--mono); letter-spacing: .14em; text-transform: uppercase; white-space: nowrap; }
+/* A chat's mark (Desk picks, mark A): one solid block in the theme's color filling the header's top-right corner, what
+   the chat is in it; its bottom-left corner rounded, its top right the card's own corner. The card leaves that corner
+   unpainted so its white doesn't show as a thin curve along the mark's edge: the mark paints it. */
+.dk-mark { flex: none; align-self: stretch; display: flex; align-items: center; margin: 0 -14px -1px 4px; padding: 0 18px; border-radius: 0 14px 0 10px; background: var(--accent); color: var(--on-accent); font: 700 11px var(--mono); letter-spacing: .14em; text-transform: uppercase; white-space: nowrap; }
 .dk-tabs .dk-mark { margin-right: -20px; }
-.dk-mark.desk { --mk: var(--accent); --on-mk: var(--on-accent); }
-.dk-mark.lead { --mk: var(--work); --on-mk: var(--ink); }
-.dk-mark.task { --mk: var(--muted); --on-mk: var(--panel); }
-.dk-mark.bug { --mk: var(--deny); --on-mk: var(--panel); }
-.dk-mark.feature { --mk: var(--pcp7); --on-mk: var(--panel); }
+.dk-mark.float { position: absolute; top: 0; right: 0; height: 48px; margin: 0; z-index: 1; }
+.dk-card:has(.dk-mark) { background: linear-gradient(var(--panel), var(--panel)) left top / calc(100% - 14px) 14px no-repeat, linear-gradient(var(--panel), var(--panel)) left 14px / 100% calc(100% - 14px) no-repeat; }
 .dk-tab { display: flex; align-items: center; gap: 6px; padding: 0; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--muted); font-size: 13.5px; font-weight: 650; cursor: pointer; }
 .dk-tab.on { color: var(--ink); border-bottom-color: var(--ink); }
 .dk-tab .n { font-family: var(--mono); font-size: 11px; color: var(--muted); }
@@ -263,13 +263,13 @@
 
 .dk-cm { font-family: var(--mono); font-size: 11px; }
 /* A DONE in the lead's chat, ready to check (desk_commit.js deskCheckCard): a bordered card, no edge color. */
-.dk-chk { margin: 10px 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; display: flex; flex-direction: column; gap: 4px; }
+.dk-chk { margin: 10px 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; display: flex; flex-direction: column; gap: 4px; user-select: text; -webkit-user-select: text; cursor: text; }
+.dk-chk button { cursor: pointer; user-select: none; -webkit-user-select: none; }
+.dk-chk .dkc-dw { overflow-wrap: anywhere; }
 .dk-chk .dkc-l { margin-top: 8px; }
 .dk-chk-k { font-size: 11.5px; color: var(--muted); }
 .dk-chk-t { font-size: 14px; font-weight: 600; color: var(--ink); }
 .dk-chk-w, .dk-chk-in, .dk-chk-after { font-size: 12.5px; color: var(--muted); }
-.dk-chk-files { margin: 0; padding: 0; list-style: none; font-family: var(--mono); font-size: 12px; }
-.dk-chk-files li { padding: 1px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-chk .dk-acts { padding: 8px 0 0; display: flex; gap: 8px; }
 .dk-chk-after { padding-top: 6px; }
 .dk-chk .dkc-l { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
