@@ -34,7 +34,7 @@ test("the Desk is in the header after Board, and lists Waiting on you, then a gr
   const cells = (id) => page.locator(`[data-desk-item="${id}"]`).evaluate((el) => [".dk-tag", ".dk-id", ".dk-t", ".dk-who"].map((c) => el.querySelector(c)?.textContent));
   expect(await cells("d4")).toEqual(["next", "Bug #d4", "Rail dot blinks for a reply you didn't send", "web-lead"]);
   expect(await cells("d3")).toEqual(["now", "Feature #d3", "Search stays centred in the header", "web-lead → search-centre"]);
-  expect(await cells("d2")).toEqual(["landed", "Feature #d2", "Quick phrases at the right of Send", "web-lead"]);
+  expect(await cells("d2")).toEqual(["", "Feature #d2", "Quick phrases at the right of Send", "web-lead"]);
   await expect(page.locator(".dk-items .dk-h")).toHaveCount(1);
   await expect(page.locator('[data-desk-item="d1"] .dk-h')).toContainText("keep focus in the box");
   // Ready to check: Looks right on its row. Done today: each with the time it finished.
@@ -103,8 +103,15 @@ test("written about an open item, the box goes to the lead naming it", async ({ 
   await expect(page.locator(".dk-chat")).not.toContainText("3 open: 2 wait on you");
   await expect(page.locator(".dk-chat")).toContainText("Fine. And the canvas one?");
   // Only a block of the summary's shape goes: words of yours that start with <desk> stay.
-  const said = await page.evaluate(() => [deskSaid('<desk project="cue">\nx\n</desk>\n\nHi'), deskSaid("<desk> is a tag"), deskSaid("<desk>\nx\n</desk> then"), deskSaid("<desk>\nx\n</desk>\n\nHi")]);
-  expect(said).toEqual(["Hi", "<desk> is a tag", "<desk>\nx\n</desk> then", "<desk>\nx\n</desk>\n\nHi"]);
+  const said = await page.evaluate(() => [deskSaid('<desk project="cue">\nx\n</desk>\n\nHi'), deskSaid("<desk> is a tag"), deskSaid("<desk>\nx\n</desk> then"), deskSaid("<desk>\nx\n</desk>\n\nHi"),
+    // Only a picture sent: nothing after the block (the blank line too trimmed off), and none of it shows.
+    deskSaid('<desk project="cue">\nx\n</desk>'), deskSaid('<desk project="cue">\nx\n</desk>\n\n'), deskSaid('<desk project="cue">\nx\n</desk> then')]);
+  expect(said).toEqual(["Hi", "<desk> is a tag", "<desk>\nx\n</desk> then", "<desk>\nx\n</desk>\n\nHi", "", "", '<desk project="cue">\nx\n</desk> then']);
+  // A picture on its own: just the picture in the chat, none of the summary.
+  await page.route(/\/tmp\/a\.png$/, (r) => r.fulfill({ status: 200, contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64") }));
+  await page.evaluate(() => { sessionOf("lead").thread.push({ at_ms: Date.now(), role: "you", text: '<desk project="cue">\nItems:\n#9 task: a long line\n</desk>', images: ["/tmp/a.png"] }); renderMain(); });
+  await expect(page.locator(".dk-chat .cv-you").last()).not.toContainText("Items:");
+  await expect(page.locator(".dk-chat .cv-you").last().locator(".thumb img")).toHaveCount(1);
   // Typed so, it shows in the chat as typed.
   await page.evaluate(() => { sessionOf("lead").thread.push({ at_ms: Date.now(), role: "you", text: "<desk>\nmy own\n</desk>\n\nHi" }); renderMain(); });
   await expect(page.locator(".dk-chat .cv-you").last()).toContainText("my own");
@@ -924,14 +931,14 @@ test("an item back to check stands out until you open it; its pane links to what
   });
   const row = page.locator('.dk-items [data-desk-item="d2"]');
   await expect(row).toHaveClass(/landed/);
-  await expect(row.locator(".dk-tag")).toHaveText("landed");
+  await expect(row.locator(".dk-tag")).toHaveClass(/landed/);
   await row.locator(".dk-t").click();
   await expect(page.locator(".dk-pane .dk-sec", { hasText: "What it made" }).locator(".dk-made")).toHaveText(["Open the page ↗", "list.html ↗"]);
   await expect(row).not.toHaveClass(/landed/);
-  await expect(row.locator(".dk-tag")).toHaveText("check");
+  await expect(row.locator(".dk-tag")).toHaveClass(/check/);
 });
 
-test("a to-check item's page lists its Files changed, each with its counts; a click opens that file in Cue's Diff view", async ({ page, cue }) => {
+test("a to-check item's page lists its Files changed, each with its counts; a click opens that file over the Desk, Esc closes it", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await cue.change((st) => { st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d2").files = ["ui/chat/compose.js", "ui/styles/chat.css"]; });
@@ -946,13 +953,29 @@ test("a to-check item's page lists its Files changed, each with its counts; a cl
   await page.waitForTimeout(200);
   expect((await cue.calls("desk_item_diff")).length).toBe(1);
   await sec.locator(".dk-fc").nth(1).click();
-  // Its holder's Diff, on the item's files: the one clicked open, a chip back to the whole diff.
-  const dv = page.locator(".active-pane .dv");
-  await expect(dv.locator(".dv-chip")).toContainText("Feature #d2's 2 files");
-  await expect(dv.locator("details.dv-file[open] .dv-path")).toHaveText(["ui/styles/chat.css"]);
-  await expect(dv.locator("details.dv-file[open] .dv-lines .a").first()).toHaveText("+new ui/styles/chat.css");
-  await dv.locator("[data-dv-all]").click();
-  await expect(dv.locator(".dv-chip")).toHaveCount(0);
+  // Over the Desk: the item's files on the left, the one clicked picked, its diff on the right. The Desk stays put.
+  const ov = page.locator(".dov");
+  await expect(ov.locator(".dov-title")).toContainText("Feature #d2");
+  await expect(ov.locator(".dov-f .dov-p")).toHaveText(["ui/chat/compose.js", "ui/styles/chat.css"]);
+  await expect(ov.locator(".dov-f.on .dov-p")).toHaveText("ui/styles/chat.css");
+  await expect(ov.locator(".dov-fh .dov-p")).toHaveText("ui/styles/chat.css");
+  await expect(ov.locator(".dov-lines .a").first()).toHaveText("+new ui/styles/chat.css");
+  await expect(page.locator(".active-pane .dv")).toHaveCount(0);
+  // ↑ steps to the file above; a click on a file picks it.
+  await page.keyboard.press("ArrowUp");
+  await expect(ov.locator(".dov-fh .dov-p")).toHaveText("ui/chat/compose.js");
+  await ov.locator(".dov-f").nth(1).click();
+  await expect(ov.locator(".dov-fh .dov-p")).toHaveText("ui/styles/chat.css");
+  // Esc closes only it: the item's page is still open under it.
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".dov")).toHaveCount(0);
+  await expect(sec.locator(".dk-fc")).toHaveCount(2);
+  // A click outside it closes it too.
+  await sec.locator(".dk-fc").first().click();
+  await expect(page.locator(".dov")).toHaveCount(1);
+  await page.mouse.click(10, 10);
+  await expect(page.locator(".dov")).toHaveCount(0);
+  await expect(page.locator(".dov-scrim [title]")).toHaveCount(0);
 });
 
 /** The Desk run by host instead, so "lead" (with its crew) is a session in the list like any other. */
@@ -1353,7 +1376,8 @@ test("a DONE is a card in the lead's chat: item, who, what to test, files, insta
   await expect(card).toHaveCount(1);
   await expect(card.locator(".dk-chk-t")).toHaveText("Feature #d2 · Quick phrases at the right of Send");
   await expect(card.locator(".dk-chk-w")).toContainText("Done by web-lead");
-  await expect(card.locator(".dkc-dw")).toHaveText("Quick phrases sit at the right of Send; More opens the rest.");
+  // What to test: a short checklist, a point a line.
+  await expect(card.locator(".dkc-dw li")).toHaveText(["Quick phrases sit at the right of Send", "More opens the rest"]);
   await expect(card.locator(".dk-chk-w")).toContainText("ago · 2 files");
   await expect(card.locator(".dk-chk-files")).toHaveCount(0);
   // Its words can be selected (to copy), and a link in them opens.

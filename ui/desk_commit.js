@@ -124,7 +124,7 @@ function deskCheckCard(c, base = null, project = "") {
     : `<div class="dk-chk-after">${c.state === "done" ? (c.last ? deskCommitLine(c) : "Looked right") : "Sent back"}</div>`;
   return `<div class="dk-chk"><div class="dk-chk-k">Ready to check</div><div class="dk-chk-t">${deskKindIcon(c)}<button class="dk-chk-a" data-desk-chk-item="${esc(c.id)}">${esc(`${deskNum(c)} · ${c.title}`)}</button></div>
     <div class="dk-chk-w">Done by ${who} · ${ago(c.at)} ago${files}</div>
-    <div class="dkc-l">What to test</div><div class="dkc-dw">${c.done_when ? linkify(esc(c.done_when), base) : `<span class="dim">No "done when" was given</span>`}</div>
+    <div class="dkc-l">What to test</div><div class="dkc-dw">${deskDoneWhenHtml(c.done_when, base) || `<span class="dim">No "done when" was given</span>`}</div>
     ${installed ? `<div class="dkc-l">Installed</div><div class="dk-chk-in">${installed}</div>` : ""}${acts}</div>`;
 }
 /** A card sent back: "Sent back" and why, in your words (links and paths open), with how many pictures went too. */

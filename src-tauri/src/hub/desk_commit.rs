@@ -43,10 +43,11 @@ impl Hub {
                 None => todo.push((f.folder.clone(), vec![f.path.clone()])),
             }
         }
-        let sha = commit_files(&it.project, &machine, &todo, message)?;
+        let made = commit_files(&it.project, &machine, &todo, message)?;
         self.write(|st| {
             if let Some(i) = st.desk.item_mut(id) {
-                i.commit = sha;
+                i.commit = shas_of(&made);
+                i.commit_in = made;
             }
         });
         self.desk_item_act(id, "looks_right", "")
@@ -144,7 +145,7 @@ impl Hub {
                 (None, None)
             } else {
                 match commit_files(&it.project, &w.machine, &todo, &it.title) {
-                    Ok(sha) => (Some(sha), None),
+                    Ok(made) => (Some(made), None),
                     Err(e) => (None, Some(CommitWait { error: e, ..w.clone() })),
                 }
             }
@@ -153,7 +154,8 @@ impl Hub {
             let it = self.write(|st| {
                 let i = st.desk.item_mut(&it.id).filter(|i| i.commit_wait.is_some())?;
                 if let Some(sha) = &commit {
-                    i.commit = sha.clone();
+                    i.commit = shas_of(sha);
+                    i.commit_in = sha.clone();
                 }
                 i.commit_wait = wait;
                 Some(i.clone())
@@ -165,17 +167,19 @@ impl Hub {
         }
     }
 
-    /// Undo on a Looks right that committed: each of its commits taken back (`git reset --soft` one commit, then
-    /// its files unstaged; their changes stay in the folder), only while it's still the last commit there; the item
-    /// is ready to check again.
+    /// Undo on a Looks right: the item ready to check again, as it was before, and never a change to its code. A
+    /// commit Looks right made is taken back as a commit only (`git reset --soft` one commit, then its files
+    /// unstaged; every change stays in the folder), while it's still the last commit in each place it went; when
+    /// another came after it, the commit stays as it is (taking it back then would mean changing code) and the item
+    /// still goes back to check, its commit kept on it so the window can say so. A commit still waiting just stops
+    /// waiting; an item done with nothing to commit just goes back.
     pub(crate) fn desk_commit_undo(&self, id: &str) -> Result<DeskItem, String> {
         let it = self.read(|st| st.desk.item(id).cloned()).ok_or("no such item")?;
-        // Its commit still waiting: no more wait, and it's ready to check again.
-        if it.state == "done" && it.commit.is_empty() && it.commit_wait.is_some() {
-            return self.desk_reopen_checked(id, |i| i.commit_wait = None);
+        if it.state != "done" {
+            return Err("It isn't done: nothing to undo".into());
         }
-        if it.state != "done" || it.commit.is_empty() {
-            return Err("It has no commit to undo".into());
+        if it.commit.is_empty() {
+            return self.desk_reopen_checked(id, |i| i.commit_wait = None);
         }
         let (machine, folders) = self.read(|st| {
             let (m, src) = super::desk::item_sources(st, &it);
@@ -194,7 +198,7 @@ impl Hub {
         }
         let heads: Vec<String> = tops.iter().filter(|t| git(&machine, t, &[], &["rev-parse", "--short", "HEAD"]).is_some_and(|h| shas.contains(&h.trim()))).cloned().collect();
         if heads.len() != shas.len() {
-            return Err("Can't undo it: another commit came after it".into());
+            return self.desk_reopen_checked(id, |_| {});
         }
         for top in &heads {
             let paths = git(&machine, top, &[], &["diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"]).unwrap_or_default();
@@ -202,7 +206,7 @@ impl Hub {
             git(&machine, top, &[], &["reset", "-q", "--soft", "HEAD~1"]).ok_or("Can't undo it: git couldn't take the commit back")?;
             git(&machine, top, &[], &[&["reset", "-q", "--"][..], &p].concat());
         }
-        self.desk_reopen_checked(id, |i| i.commit = String::new())
+        self.desk_reopen_checked(id, |i| (i.commit, i.commit_in) = (String::new(), Vec::new()))
     }
 
     /// Item `id` ready to check again, with `f` done to it too; saved.
@@ -252,7 +256,7 @@ impl Hub {
 
 /// Each folder's `paths` committed with `message` once none of their added lines (nor a new file's name, nor the
 /// message) has one of `project`'s never-committed words: the commits, short, space apart.
-fn commit_files(project: &str, machine: &str, todo: &[(String, Vec<String>)], message: &str) -> Result<String, String> {
+fn commit_files(project: &str, machine: &str, todo: &[(String, Vec<String>)], message: &str) -> Result<Vec<(String, String)>, String> {
     let words = crate::config::never_words(project);
     if let Some(w) = words.iter().find(|w| message.to_lowercase().contains(&w.to_lowercase())) {
         return Err(format!("Not committed: \"{w}\" is in the message"));
@@ -262,24 +266,29 @@ fn commit_files(project: &str, machine: &str, todo: &[(String, Vec<String>)], me
             return Err(format!("Not committed: \"{w}\" is in {at}"));
         }
     }
-    let mut shas: Vec<String> = Vec::new();
+    let mut shas: Vec<(String, String)> = Vec::new();
     let mut done: Vec<String> = Vec::new();
     for (folder, paths) in todo {
         match commit_only(machine, folder, paths, message) {
             Ok(sha) => {
                 done.push(format!("{} ({sha})", crate::model::folder_of(folder)));
-                shas.push(sha);
+                shas.push((folder.clone(), sha));
             }
             // One repository's commit failed after another's was made: said with what was made.
             Err(e) if !done.is_empty() => return Err(format!("{e}. Committed already: {}", done.join(", "))),
             Err(e) => return Err(e),
         }
     }
-    Ok(shas.join(" "))
+    Ok(shas)
+}
+
+/// The commits, as an item keeps them: short, space apart.
+fn shas_of(made: &[(String, String)]) -> String {
+    made.iter().map(|(_, s)| s.as_str()).collect::<Vec<_>>().join(" ")
 }
 
 /// `files` ((folder, path)) by folder, in their order.
-fn by_folder(files: &[(String, String)]) -> Vec<(String, Vec<String>)> {
+pub(super) fn by_folder(files: &[(String, String)]) -> Vec<(String, Vec<String>)> {
     let mut todo: Vec<(String, Vec<String>)> = Vec::new();
     for (folder, path) in files {
         match todo.iter_mut().find(|(f, _)| f == folder) {
@@ -292,16 +301,16 @@ fn by_folder(files: &[(String, String)]) -> Vec<(String, Vec<String>)> {
 }
 
 /// Where a session's own changes for an item are read from: its log, its folder, and when it held the item (ms).
-struct OwnLog {
+pub(super) struct OwnLog {
     log: String,
-    folder: String,
+    pub(super) folder: String,
     from: u64,
     until: u64,
 }
 
 /// `it`'s holder's own log, when a session here holds it itself (not a crew member, nor a teammate it named) with a
 /// known start. A session on another machine has its log there: none (its crew's files still count).
-fn own_log(st: &Store, it: &DeskItem) -> Option<OwnLog> {
+pub(super) fn own_log(st: &Store, it: &DeskItem) -> Option<OwnLog> {
     let h = it.holder.as_ref().filter(|h| h.lead_sid.is_empty() && it.crew.is_empty())?;
     let s = st.sessions.get(&h.sid).filter(|s| s.origin.machine.is_empty() && !s.origin.transcript_path.is_empty())?;
     let (from, until) = super::desk::held_window(st, &h.sid, it)?;
@@ -339,14 +348,14 @@ fn add_sources(sources: &mut Vec<(String, Vec<String>)>, folder: &str, files: Ve
 
 /// git in `dir` on `machine` ("" here), with the repository's own filters off (safe_git.rs): its output, when it
 /// worked.
-fn git(machine: &str, dir: &str, env: &[(&str, &str)], args: &[&str]) -> Option<String> {
+pub(super) fn git(machine: &str, dir: &str, env: &[(&str, &str)], args: &[&str]) -> Option<String> {
     let filters = crate::safe_git::no_repo_filters(machine, dir);
     crate::safe_git::run_env(machine, dir, &filters, env, args).ok().filter(|(_, code)| *code == 0).map(|(o, _)| o)
 }
 
 /// Of `paths` (relative to `folder`), those git says changed: tracked with changes since HEAD, or new and not
 /// ignored. None when `folder` isn't in a repository git can read.
-fn changed_of(machine: &str, folder: &str, paths: &[String]) -> Option<Vec<String>> {
+pub(super) fn changed_of(machine: &str, folder: &str, paths: &[String]) -> Option<Vec<String>> {
     let p: Vec<&str> = paths.iter().map(String::as_str).collect();
     git(machine, folder, &[], &["rev-parse", "--show-toplevel"])?;
     let base = if git(machine, folder, &[], &["rev-parse", "-q", "--verify", "HEAD^{commit}"]).is_some() { "HEAD" } else { EMPTY_TREE };
@@ -359,6 +368,11 @@ fn changed_of(machine: &str, folder: &str, paths: &[String]) -> Option<Vec<Strin
 /// What committing `paths` would add, as a diff with no context: made in a scratch index (HEAD's tree with those
 /// files added), so your own index and files stay as they are.
 fn added_diff(machine: &str, folder: &str, paths: &[String]) -> Result<String, String> {
+    staged_diff(machine, folder, paths, &["-U0"])
+}
+
+/// The same, with `opts` for git diff (its context, prefixes, paths relative to `folder`).
+pub(super) fn staged_diff(machine: &str, folder: &str, paths: &[String], opts: &[&str]) -> Result<String, String> {
     let name = crate::model::folder_of(folder);
     let git_dir = git(machine, folder, &[], &["rev-parse", "--absolute-git-dir"]).ok_or_else(|| format!("Not committed: {name} isn't in a git repository"))?;
     let has_head = git(machine, folder, &[], &["rev-parse", "-q", "--verify", "HEAD^{commit}"]).is_some();
@@ -367,7 +381,7 @@ fn added_diff(machine: &str, folder: &str, paths: &[String]) -> Result<String, S
     let env = [("GIT_INDEX_FILE", index.as_str())];
     let p: Vec<&str> = paths.iter().map(String::as_str).collect();
     let add: Vec<&str> = [&["add", "-A", "--"][..], &p].concat();
-    let diff: Vec<&str> = [&["diff", "--cached", "-U0", "--no-color", "--no-ext-diff", "--no-textconv", base, "--"][..], &p].concat();
+    let diff: Vec<&str> = [&["diff", "--cached"][..], opts, &["--no-color", "--no-ext-diff", "--no-textconv", base, "--"][..], &p].concat();
     let read = if has_head { vec!["read-tree", "HEAD"] } else { vec!["read-tree", "--empty"] };
     let out = git(machine, folder, &env, &read).and_then(|_| git(machine, folder, &env, &add)).and_then(|_| git(machine, folder, &env, &diff));
     super::team::remove_file(machine, &index);

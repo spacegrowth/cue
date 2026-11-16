@@ -99,15 +99,13 @@ function deskFilesChanged(i) {
   const files = deskDiffs.get(i.id).files || [];
   return files.map((f, n) => `<button class="dk-fc" data-desk-diff-file="${esc(i.id)}" data-n="${n}"><span class="dk-fc-p">${esc(f.path)}</span>${f.isNew ? `<span class="dk-fc-new">new</span>` : ""}<span class="dv-n dv-add">+${f.add}</span><span class="dv-n dv-del">−${f.del}</span></button>`).join("");
 }
-/** Item `id`'s file `n` in Cue's Diff view: its holder's session (a crew member's: its lead's), or the Desk lead's
- *  once that has ended, on the item's changes, that file open. */
+/** Item `id`'s file `n`, over the Desk (diff_overlay.js): its Files changed on the left, that file's diff on the right.
+ *  You stay on the Desk; Esc closes it. */
 function deskShowFile(id, n) {
-  const i = (state.desk?.projects || []).flatMap((d) => d.items).find((x) => x.id === id), h = i?.holder;
-  const sid = [h?.kind === "crew" ? h.lead_sid : h?.sid, deskLead(deskOf(i?.project))?.sid].find((x) => x && sessionOf(x));
-  if (!sid) return toast("No session to show it in");
+  const i = (state.desk?.projects || []).flatMap((d) => d.items).find((x) => x.id === id);
+  if (!i) return;
   deskSeeItem(id);
-  openSession(sid);
-  diffShowItem(sid, id, deskNum(i), n);
+  diffOverlay(`${deskNum(i)} ${i.title || ""}`.trim(), "Files changed", deskDiffs.get(id)?.files || [], n);
 }
 const deskDoneToday = (i) => i.state === "done" && deskToday(i.done_at || i.updated);
 const deskMoving = (i) => i.state === "working" || i.state === "queued";
@@ -170,10 +168,11 @@ function deskGroups(project) {
 
 // ---------- the list ----------
 
-/** An item's state as its row's tag: [words, look]. Landed (back to check, not opened since) stands out. */
+/** An item's state as its row's tag: [words, look]. Back to check has no word (the Waiting on you head says it): a dot
+ *  while not opened since (landed, its title bold too), nothing once opened. */
 function deskTag(i) {
   if (i.state === "needs_you") return ["asks", "ask"];
-  if (i.state === "to_check") return deskLanded(i) ? ["landed", "landed"] : ["check", "check"];
+  if (i.state === "to_check") return deskLanded(i) ? ["", "landed"] : ["", "check"];
   if ((i.state === "new" || i.state === "queued") && i.route_failed) return ["stuck", "ask"];
   return { queued: ["next", ""], new: ["new", ""], done: ["done", "done"], working: ["now", "now"] }[i.state] || [i.state, ""];
 }
@@ -418,9 +417,10 @@ const DESK_UNDO_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="no
 const deskUndoLink = (c) => (c.undo === "can" ? `<button class="dk-undo-l" data-desk-undo="${esc(c.id)}" aria-label="Undo">${DESK_UNDO_ICON}</button>`
   : c.undo === "asked" ? `<span class="dk-u">Undo asked</span>` : "");
 /** What you wrote to the lead, without the summary of the Desk (and, the first time, its instructions) Cue puts before
- *  it: a block of exactly that shape (`<desk project="…" …>`, its lines, `</desk>`, a blank line), so words of yours
- *  that start with <desk> stay, even typed in that shape without the project. */
-const deskSaid = (t) => String(t ?? "").replace(/^<desk project="[^"]*"[^>\n]*>\n[\s\S]*?\n<\/desk>\n\n/, "");
+ *  it: a block of exactly that shape (`<desk project="…" …>`, its lines, `</desk>`, then a blank line before your
+ *  words, or nothing at all when you sent only a picture), so words of yours that start with <desk> stay, even typed in
+ *  that shape without the project. */
+const deskSaid = (t) => String(t ?? "").replace(/^<desk project="[^"]*"[^>\n]*>\n[\s\S]*?\n<\/desk>(?:\n\n|\s*$)/, "");
 /** Your words about an item ("About #69 (its title): …", as deskSendBox sends them): a head over them with its kind's
  *  icon, its kind and number and its title (a click opens it), and your words under it. null for any other words. */
 function deskAboutHead(e) {
@@ -521,6 +521,26 @@ function deskDecisions(d) {
   if (!calls.length) return `<div class="dk-empty">No judgment calls yet. Routes and hand-offs are on each item.</div>`;
   return `<div class="dk-pane" data-scroll-key="decisions:${esc(d.project)}"><div class="dk-sec">${deskLog(calls)}</div></div>`;
 }
+/** "Done when" as its points, one per line: its own lines (a "-", "*", "•" or "1." in front dropped), else its
+ *  sentences and "; " parts. "e.g." / "i.e." / "etc." don't end one; a point's last "." goes. */
+function deskDoneWhenPoints(t) {
+  const lines = String(t || "").split(/\n+/).map((l) => l.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, "").trim()).filter(Boolean);
+  const out = [];
+  for (const l of lines) {
+    let cur = "";
+    for (const part of l.split(/(?<=[.!?;]["”')]?)\s+/)) {
+      cur = cur ? `${cur} ${part}` : part;
+      if (!/\b(?:e\.g|i\.e|etc|vs)\.$|\b[A-Z]\.$/i.test(cur) || /[;!?]$/.test(cur)) { out.push(cur); cur = ""; }
+    }
+    if (cur) out.push(cur);
+  }
+  return out.map((p) => p.replace(/(?<!\.)[.;]$/, "").trim()).filter(Boolean);
+}
+/** "Done when" as a short checklist of what you'll see: a quiet ring, then the point, a line each. */
+const deskDoneWhenHtml = (t, base = null) => {
+  const pts = deskDoneWhenPoints(t);
+  return pts.length ? `<ul class="dk-dwl">${pts.map((p) => `<li><i aria-hidden="true"></i><span>${linkify(esc(p), base)}</span></li>`).join("")}</ul>` : "";
+};
 const deskSec = (title, html) => (html ? `<div class="dk-sec"><h3>${title}</h3>${html}</div>` : "");
 const deskBack = (label, to = "") => `<button class="dk-back" data-desk-back="${esc(to)}">‹ ${esc(label)}</button>`;
 
@@ -590,7 +610,7 @@ function deskItemPane(i, d) {
   return `<div class="dk-pane" data-scroll-key="item:${esc(i.id)}">${deskBack(deskLeadName(d) || "Back")}<h1>${esc(i.title)}</h1><div class="dk-state">${deskKindIcon(i)}${deskItemState(i)}</div>
     ${deskSec("Couldn't give it out", i.route_failed ? `<p>${esc(i.route_failed)}</p>` : "")}
     ${deskSec(i.state === "needs_you" ? "It asks you" : "What's holding it up", deskChain(i))}${deskSec("What it made", i.state === "to_check" || i.state === "done" ? deskMadeLinks(i) : "")}${deskItemActs(i)}
-    ${deskSec("Done when", i.done_when ? `<p>${esc(i.done_when)}</p>` : "")}
+    ${deskSec("Done when", deskDoneWhenHtml(i.done_when))}
     ${deskSec("Pictures", thumbs(i.images))}
     ${deskSec("Latest", i.latest && i.state !== "queued" ? `<div class="dk-md">${md(i.latest)}</div>` : "")}
     ${deskSec(changed ? "Files changed" : "Files", files)}
