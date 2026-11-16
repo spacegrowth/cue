@@ -957,3 +957,121 @@ test("no suggestion: no line in the box, and Tab leaves the empty box for the ne
   await expect(ta).toHaveValue("");
   await expect(ta).not.toBeFocused();
 });
+
+/** A thread where it asked to run a long command after its reply, and you allowed it (the hub notes both: hub/asks.rs). */
+const ASK_CMD = "cat >> notes.md <<'EOF'\n## Router\n- split in two\n- partial fills next\n- tests pass\nEOF";
+const askThread = (t0, cmd) => [
+  { role: "you", text: "Refactor the order router", at_ms: t0 },
+  { role: "agent", text: "Split the router in two; writing the notes now.", at_ms: t0 + 60000 },
+  { role: "agent", text: `Bash: ${cmd}`, at_ms: t0 + 70000 },
+  { role: "you", text: "allowed", at_ms: t0 + 80000 },
+];
+
+test("an ask it made reads as an ask, not its words: its reply stays what it said last, your allowed is no reply of yours", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  await cue.change((st, thread) => { st.sessions.find((x) => x.session_id === "eng").thread = thread; }, askThread(Date.now() - 600000, ASK_CMD));
+  await runOpen(page);
+  await page.locator('.switch-view [data-view="inbox"]').click();
+  await page.locator('.ib-row[data-inbox-open="eng"]').click();
+  const pg = page.locator('.inbox-page[data-inbox-page="eng"]');
+  // It said last: its real reply, not the ask line.
+  await expect(pg.locator(".ib-said .ib-k")).toHaveText("It said last");
+  await expect(pg.locator(".ib-said .msg")).toHaveText("Split the router in two; writing the notes now.");
+  await expect(pg.locator(".ib-said")).not.toContainText("cat >>");
+  // "allowed" is not your reply.
+  await expect(pg.locator(".ib-yours")).toHaveCount(0);
+  // The ask under it: one row, "Asked to run" with the command in code, and your answer.
+  const ask = pg.locator(".ib-asks .ib-msg.ask");
+  await expect(ask).toHaveCount(1);
+  await expect(ask.locator(".ib-ask-line")).toContainText("Asked to run");
+  await expect(ask.locator(".ib-ask-line code")).toContainText("cat >> notes.md");
+  await expect(ask.locator(".ib-ask-ans")).toHaveText("Allowed");
+  // Opened, the whole command in a code block.
+  await ask.click();
+  await expect(pg.locator(".ib-asks .ib-ask-code")).toHaveText(`$ ${ASK_CMD}`);
+  // Earlier: an ask and its answer before its reply fold into one row each; a denied one says so.
+  await cue.change((st, rest) => {
+    const t0 = rest[0].at_ms - 50000;
+    st.sessions.find((x) => x.session_id === "eng").thread = [
+      { role: "you", text: "Look at the router", at_ms: t0 },
+      { role: "agent", text: "Bash: rm -rf build", at_ms: t0 + 10000 },
+      { role: "you", text: "denied", at_ms: t0 + 20000 },
+      { role: "agent", text: "Edit: Edit /src/router.rs", at_ms: t0 + 30000 },
+      { role: "you", text: "allowed", at_ms: t0 + 40000 },
+      ...rest,
+    ];
+  }, askThread(Date.now() - 600000, ASK_CMD));
+  const earlier = pg.locator(".ib-earlier .ib-msg");
+  await expect(earlier).toHaveCount(4);
+  await expect(earlier.nth(1)).toContainText("Asked to run");
+  await expect(earlier.nth(1).locator("code")).toHaveText("rm -rf build");
+  await expect(earlier.nth(1).locator(".ib-ask-ans.no")).toHaveText("Denied");
+  await expect(earlier.nth(2)).toContainText("Asked to edit router.rs");
+  await expect(earlier.nth(2).locator(".ib-ask-ans")).toHaveText("Allowed");
+  await expect(earlier.nth(3)).toContainText("Refactor the order router");
+  await expect(pg.locator(".ib-said .msg")).toHaveText("Split the router in two; writing the notes now.");
+  await expect(pg.locator(".ib-yours")).toHaveCount(0);
+});
+
+test("a message you typed that starts with a decision word is still yours: your reply, and what you asked", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  await cue.change((st) => {
+    const t0 = Date.now() - 600000;
+    st.sessions.find((x) => x.session_id === "eng").thread = [
+      { role: "you", text: "Refactor the order router", at_ms: t0 },
+      { role: "agent", text: "Bash: cargo test", at_ms: t0 + 30000 },
+      { role: "agent", text: "Here's the plan: split the router in two. OK?", at_ms: t0 + 60000 },
+      { role: "you", text: "allowed the plan, go ahead", at_ms: t0 + 120000 },
+    ];
+  });
+  await runOpen(page);
+  await page.locator('.switch-view [data-view="inbox"]').click();
+  await page.locator('.ib-row[data-inbox-open="eng"]').click();
+  const pg = page.locator('.inbox-page[data-inbox-page="eng"]');
+  await expect(pg.locator(".ib-said .msg")).toContainText("Here's the plan");
+  await expect(pg.locator(".ib-yours")).toContainText("allowed the plan, go ahead");
+  await expect(pg.locator(".ib-aside .ib-you")).toHaveText("allowed the plan, go ahead");
+  // The ask before its message, unanswered, is an ask row in Earlier; no answer of yours paired with it.
+  const ask = pg.locator(".ib-earlier .ib-msg.ask");
+  await expect(ask).toHaveCount(1);
+  await expect(ask.locator(".ib-ask-ans")).toHaveCount(0);
+});
+
+test("a terminal dialog's choice (no ask before it) is a one-line row in Earlier, never your reply or what you asked", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  await cue.change((st) => {
+    const t0 = Date.now() - 600000;
+    st.sessions.find((x) => x.session_id === "eng").thread = [
+      { role: "you", text: "Refactor the order router", at_ms: t0 },
+      { role: "you", text: "chose 1. Opus", at_ms: t0 + 10000 },
+      { role: "agent", text: "Split the router in two.", at_ms: t0 + 60000 },
+    ];
+  });
+  await runOpen(page);
+  await page.locator('.switch-view [data-view="inbox"]').click();
+  await page.locator('.ib-row[data-inbox-open="eng"]').click();
+  const pg = page.locator('.inbox-page[data-inbox-page="eng"]');
+  await expect(pg.locator(".ib-said .msg")).toHaveText("Split the router in two.");
+  const rows = pg.locator(".ib-earlier .ib-msg");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(1)).toHaveClass(/\bdecided\b/);
+  await expect(rows.nth(1).locator(".ib-msg-who")).toHaveText("You");
+  await expect(rows.nth(1).locator(".ib-ask-ans")).toHaveText("Chose 1. Opus");
+  await expect(pg.locator(".ib-yours")).toHaveCount(0);
+  await expect(pg.locator(".ib-aside .ib-you")).toHaveText("Refactor the order router");
+});
+
+test("a parked row's preview is its last words, never an ask line the hub noted", async ({ cue, page }) => {
+  await cue.open("parked-ended");
+  await cue.change((st) => {
+    const p = st.parked.find((x) => x.session_id === "drift"), t0 = Date.now() - 600000;
+    p.thread = [
+      { role: "agent", text: "Drift report is ready.", at_ms: t0 },
+      { role: "agent", text: "Bash: cat >> drift.md <<'EOF'\nok\nEOF", at_ms: t0 + 10000 },
+      { role: "you", text: "allowed", at_ms: t0 + 20000 },
+    ];
+  });
+  await page.evaluate(() => localStorage.setItem("cue.inboxFold.parked", "1"));
+  await openInbox(page);
+  await expect(page.locator('.ib-row.parked[data-session="drift"] .ib-l2')).toHaveText("Drift report is ready.");
+});

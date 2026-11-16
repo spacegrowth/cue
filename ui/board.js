@@ -425,7 +425,7 @@ function parkedRow(p, on) {
  *  faded as if asleep; top right, how long it's been parked; Resume right after its last words. */
 function starParkedEntry(p, open) {
   const sid = p.session_id, w = waking.has(sid);
-  const last = [...(p.thread || [])].reverse().find((e) => e.role === "agent");
+  const last = [...(p.thread || [])].reverse().find(askLnSaid);
   return `<div class="tl star-tl parked ${w ? "waking" : ""} ${open ? "on" : ""}" style="${projStyle(p.project)}" data-session="${esc(sid)}">${P_SIGN}
     <div class="tl-top"><span class="tl-name">${esc(p.name || p.project)}</span>${oddAgent(p.harness)}${machTag(p.machine)}<span class="tl-parked">${w ? "resuming…" : `parked ${parkedAgo(p)}`}</span>${starBtn(sid)}</div>
     <div class="tl-title tl-said"><span>${esc(last ? plain(firstLine(last.text)) : homeless(p.cwd))}</span>${w ? "" : `<button class="tl-wake" data-wake="${esc(sid)}">↺ Resume</button>`}</div></div>`;

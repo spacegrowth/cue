@@ -198,7 +198,7 @@ function catchUpBar(sid, it, s) {
   const ex = conversation(it, s);
   if (ex.some((e) => e.role === "you" && e.at_ms > c.openedAt)) return "";
   const away = (at) => at > c.since && at <= c.openedAt;
-  const replies = ex.filter((e) => e.role === "agent" && away(e.at_ms)).length;
+  const replies = ex.filter((e) => askLnSaid(e) && away(e.at_ms)).length;
   if (!replies || c.openedAt - c.since < CATCH_UP_AFTER) return "";
   // What came in the meantime, from what Cue has already: its replies, and the steps read for the chat.
   const steps = (stepFeeds.get(sid)?.turns || []).flatMap((t) => t.items).filter((x) => x.t === "step" && away(x.at_ms));

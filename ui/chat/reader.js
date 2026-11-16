@@ -10,7 +10,7 @@ try { const n = localStorage.getItem("cue.readerSize"); if (n != null && READER_
 /** The session's replies the reader steps through, oldest first, keyed as in the chat. */
 function readerReplies(it, s) {
   const id = s?.session_id || it?.id;
-  return conversation(it, s).filter((e) => e.role === "agent" && e.text.trim()).map((e) => ({ key: `${id}:${e.at_ms}`, text: e.text, at_ms: e.at_ms }));
+  return conversation(it, s).filter((e) => askLnSaid(e) && e.text.trim()).map((e) => ({ key: `${id}:${e.at_ms}`, text: e.text, at_ms: e.at_ms }));
 }
 /** The reply open in this session's reader, with where it sits among the others; null when none (or it's gone). */
 function readerViewed(sid, it, s) {

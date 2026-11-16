@@ -276,7 +276,7 @@ const inboxParkedRows = () => (state.parked || []).filter((p) => inboxTab === "i
 /** A parked session: its name, what it said last, how long it's been parked, and Resume. A click opens it beside the
  *  list, as any row. */
 function inboxParkedHtml(p) {
-  const sid = p.session_id, w = waking.has(sid), last = [...(p.thread || [])].reverse().find((e) => e.role === "agent");
+  const sid = p.session_id, w = waking.has(sid), last = [...(p.thread || [])].reverse().find(askLnSaid);
   return `<div class="ib-row parked ${(inboxSid || inboxLast) === sid ? "on" : ""}" role="button" tabindex="0" data-inbox-open="${esc(sid)}" style="${projStyle(p.project)}"><span class="ib-dot">${P_SIGN}</span>`
     + `<span class="ib-l1"><span class="ib-name">${esc(p.name || baseName(p.cwd) || p.project || "session")}</span><span class="ib-subj">${w ? "Resuming…" : "Parked"}</span></span>`
     + `<span class="ib-l2">${esc(last ? plain(firstLine(last.text)) : "")}</span><span class="ib-side"><span class="ib-time">${p.parked_ms ? ago(p.parked_ms) : ""}</span></span>`
@@ -537,17 +537,29 @@ const INBOX_EARLIER = 6;
  *  first words); a click opens it in full. Its latest reply (shown below as It says) is left out. */
 /** Its thread as mail's: { msgs: the earlier ones, said: its latest message (shown whole; null when the thread hasn't
  *  it), yours: what you wrote after that (at work: your reply, shown whole under it) }. */
+/** `asks`: the asks it made after that message (an ask line the hub noted, with your answer: askLnPair), and decisions
+ *  with no ask before them, shown under it. An ask is never its message, and an answer ("allowed") never your reply. */
 function inboxThread(r, words) {
-  const latest = plain(words || "").trim(), yours = [];
-  let msgs = (r.s?.thread || []).filter((e) => e.text?.trim());
-  if (r.kind === "run") while (msgs.at(-1)?.role === "you") yours.unshift(msgs.at(-1)), msgs = msgs.slice(0, -1);
+  const latest = plain(words || "").trim(), yours = [], asks = [];
+  let msgs = askLnPair((r.s?.thread || []).filter((e) => e.text?.trim()));
+  // An ask still open is the card below: not again as a row.
+  if (r.kind === "ask" && msgs.at(-1)?.ask && !msgs.at(-1).answer) msgs = msgs.slice(0, -1);
+  for (;;) {
+    const e = msgs.at(-1);
+    if (e?.ask || e?.decided) asks.unshift(e);
+    else if (r.kind === "run" && e?.role === "you") yours.unshift(e);
+    else break;
+    msgs = msgs.slice(0, -1);
+  }
   // What you just sent and its thread doesn't show yet goes where it will land, after the rest of yours: from the
   // moment you click Send the page is the one it will be at work, and the real message takes its place as it arrives.
   if (r.kind === "run") yours.push(...inboxGoing(r.sid).map((o) => ({ role: "you", text: o.text, at_ms: o.at, sent: o.images })));
   const last = msgs.at(-1);
   let said = null;
   if (last && last.role !== "you" && (r.kind === "run" ? yours.length || plain(last.text).trim() === latest : !latest || plain(last.text).trim() === latest || r.kind === "turn")) { said = last; msgs = msgs.slice(0, -1); }
-  return { msgs, said, yours };
+  // Its message not the latest one (or none): the asks after it stay with the earlier ones, in time order.
+  else { msgs = msgs.concat(asks); asks.length = 0; }
+  return { msgs, said, yours, asks };
 }
 /** What you wrote after its latest message, whole, as your reply under it in a mail thread. */
 /** A message's head as mail's: who on the left, when on the right ("2:14pm · 5m ago"; nothing when not known). */
@@ -571,6 +583,9 @@ function inboxEarlier(r, msgs) {
 }
 /** One earlier message: folded to a line, or open in full. */
 function inboxMsgHtml(sid, e) {
+  if (e.ask) return inboxAskMsgHtml(sid, e);
+  // A decision with no ask before it (a terminal dialog's choice): one line, "You · Chose 1. Yes"; nothing to open.
+  if (e.decided) return `<div class="ib-msg you decided"><span class="ib-msg-who">You</span><span class="ib-msg-at">${e.at_ms ? ago(e.at_ms) : ""}</span><span class="ib-msg-line ib-ask-ans ${e.decided.no ? "no" : ""}">${esc(e.decided.text)}</span></div>`;
   const k = `${sid}|${e.at_ms}|${e.role}`, open = inboxMsgOpen.has(k), you = e.role === "you";
   const who = `<span class="ib-msg-who">${you ? "You" : "It"}</span><span class="ib-msg-at">${e.at_ms ? ago(e.at_ms) : ""}</span>`;
   // Folded: two lines of it, and "more" when that cuts it (a click opens it whole; "less" folds it again).
@@ -579,6 +594,20 @@ function inboxMsgHtml(sid, e) {
   const body = open ? `<div class="ib-msg-body ${you ? "" : "ib-md msg"}">${you ? esc(e.text).replace(/\n/g, "<br>") : md(e.text, { pathsOf: sid })}${thumbs(e.images)}${you ? "" : localImages(e.text)}${tag}</div>` : `<span class="ib-msg-fold"><span class="ib-msg-line">${esc(line.slice(0, 600))}</span>${thumbs(e.images)}${tag}</span>`;
   return `<div class="ib-msg ${you ? "you" : "it"} ${open ? "open" : ""}" role="button" data-inbox-msg="${esc(k)}">${who}${body}</div>`;
 }
+/** An ask it made and your answer, as one row: "It · Asked to run `cmd…` · Allowed"; opened, the command whole, in code. */
+function inboxAskMsgHtml(sid, e) {
+  const { ask, answer } = e, k = `${sid}|${e.at_ms}|ask`, open = inboxMsgOpen.has(k);
+  const line = ask.code || (ask.tool ? "" : ask.what), flat = line.replace(/\s+/g, " ").trim();
+  const ans = answer ? ` · <span class="ib-ask-ans ${answer.no ? "no" : ""}">${esc(answer.text)}</span>` : "";
+  const head = `${esc(ask.head)}${ask.tool ? "" : ":"}`;
+  const tag = flat.length > 60 || line.includes("\n") ? `<span class="ib-msg-more">${open ? "less" : "more"}</span>` : "";
+  const body = open
+    ? `<div class="ib-msg-body"><div class="ib-ask-line">${head}${ans}</div>${ask.code ? `<pre class="ib-ask-code"><code>${ask.tool === "Bash" ? "$ " : ""}${esc(ask.code)}</code></pre>` : line ? `<div>${esc(line)}</div>` : ""}${tag}</div>`
+    : `<span class="ib-msg-fold"><span class="ib-msg-line ib-ask-line">${head}${flat ? ` <code>${esc(flat.length > 60 ? `${flat.slice(0, 60)}…` : flat)}</code>` : ""}${ans}</span>${tag}</span>`;
+  return `<div class="ib-msg it ask ${open ? "open" : ""}" role="button" data-inbox-msg="${esc(k)}"><span class="ib-msg-who">It</span><span class="ib-msg-at">${e.at_ms ? ago(e.at_ms) : ""}</span>${body}</div>`;
+}
+/** The asks it made after its message (and how you answered), and your decisions, under it: a row each, as in Earlier. */
+const inboxAsksHtml = (sid, asks) => (asks.length ? `<div class="ib-asks">${asks.map((e) => inboxMsgHtml(sid, e)).join("")}</div>` : "");
 /** What you've written to it that hasn't reached it yet, as its chat shows it (chat/render.js): on its way, queued in
  *  it till its next step (Send now), kept in Cue till its turn ends (Edit, Send now), or to go at a time (Edit,
  *  Cancel, Send now). Empty when nothing waits. */
@@ -624,9 +653,9 @@ function inboxMain(r) {
   // Oldest at the top, newest at the foot, as a mail thread: earlier, its message, your reply, what waits to go, then
   // what it's doing now, right over the box. (Housekeeping and a crew's asks lead with what they need of you.) The
   // thread scrolls; the box is pinned to the foot of the pane, so nothing drawn above it ever moves it.
-  const earlier = inboxEarlier(r, thread.msgs);
-  const first = r.kind === "run" ? `${saidHtml}${inboxYours(r.sid, thread.yours)}${inboxPending(r)}${crew}${top}`
-    : `${r.kind === "chore" || r.kind === "crew" ? `${crew}${top}${saidHtml}` : `${saidHtml}${top}${crew}`}${thenHtml}${inboxPending(r)}`;
+  const earlier = inboxEarlier(r, thread.msgs), asksHtml = inboxAsksHtml(r.sid, thread.asks);
+  const first = r.kind === "run" ? `${saidHtml}${asksHtml}${inboxYours(r.sid, thread.yours)}${inboxPending(r)}${crew}${top}`
+    : `${r.kind === "chore" || r.kind === "crew" ? `${crew}${top}${saidHtml}${asksHtml}` : `${saidHtml}${asksHtml}${top}${crew}`}${thenHtml}${inboxPending(r)}`;
   return `<div class="ib-main"><div class="ib-page-body ib-thread" data-scroll-key="inbox-main" data-sid="${esc(r.sid)}" data-kind="${r.kind}">${earlier}${first}</div><div class="ib-foot">${foot}${inboxHint(r, acts)}</div></div>`;
 }
 /** Whether the open session's thread is at its newest (its foot) as it's drawn again: it stays there, unless you've
@@ -668,7 +697,7 @@ function inboxTurn(sid) {
 /** What you asked it last: your latest message in its thread, else its latest turn's prompt, else its prompt.
  *  { text, at } (at 0: not known); null when there's nothing. */
 function inboxYouAsked(r) {
-  const you = (r.s?.thread || []).filter((e) => e.role === "you").at(-1), turn = inboxTurn(r.sid);
+  const you = (r.s?.thread || []).filter((e) => e.role === "you" && !askLnAnswer(e)).at(-1), turn = inboxTurn(r.sid);
   if (you?.text) return { text: you.text, at: you.at_ms };
   if (turn?.prompt) return { text: turn.prompt, at: turn.at_ms };
   return r.s?.prompt ? { text: r.s.prompt, at: 0 } : null;

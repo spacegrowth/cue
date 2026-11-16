@@ -74,7 +74,7 @@ function withSteps(sid, s, ex, rows, extra = []) {
     .flatMap((t) => {
       const start = t.items[0]?.at_ms ?? t.at_ms, end = t.items.at(-1)?.at_ms ?? start;
       const next = turns[turns.indexOf(t) + 1]?.at_ms ?? Infinity;
-      const replied = ex.some((e) => e.role === "agent" && e.at_ms >= start && e.at_ms < next);
+      const replied = ex.some((e) => e.role === "agent" && !askLnOf(e) && e.at_ms >= start && e.at_ms < next);
       // Open: the newest turn, and while that one works, the one before it too: the turn you were just
       // reading doesn't fold the moment your next message starts another.
       const latest = t === lastTurn || (s?.state === "working" && t === turns.at(-2));
@@ -124,14 +124,20 @@ function reviewFolds(ex, team) {
  *  by time ({ at, html }, each keyed). It folds replies as the chat does. */
 function chatHtml(it, s, harness, paged = false, page = null) {
   const ex = conversation(it, s);
-  const lastAgent = ex.map((e) => e.role).lastIndexOf("agent");
-  const agentAt = ex.flatMap((e, n) => (e.role === "agent" ? [n] : []));
+  // An ask the hub noted ("Bash: …") is drawn as an ask with your answer beside it, not as its words (chatAsks).
+  const { asks, answers, decided } = chatAsks(ex);
+  const lastAgent = ex.findLastIndex((e, n) => e.role === "agent" && !asks.has(n));
+  const agentAt = ex.flatMap((e, n) => (e.role === "agent" && !asks.has(n) ? [n] : []));
   const recent = new Set(agentAt.slice(-OPEN_REPLIES));
   const project = s?.project || it?.project || "";
   const sid = s?.session_id || it?.session_id;
   // What you chose on a decision sits in the chat when you chose it (later steps come below it).
   const K = keyer();
-  const chose = it && !isPending(it) && it.resolved_ms ? [{ at: it.resolved_ms, html: keyed(resultLine(it), "chose") }] : [];
+  // …unless its ask line in the thread already shows that answer beside it. (An answer with no ask before it, a
+  // terminal dialog's "chose 1. …", is no ask's: the result line says it, and that answer isn't drawn again.)
+  const near = (at) => !!it?.resolved_ms && Math.abs(at - it.resolved_ms) < 5000;
+  const shown = [...asks.values()].some((a) => a.answer && near(a.answer.at_ms));
+  const chose = it && !isPending(it) && it.resolved_ms && !shown ? [{ at: it.resolved_ms, html: keyed(resultLine(it), "chose") }] : [];
   const ran = sid ? (ranLog.get(sid) || []).map((e, n) => ({ at: e.at, html: keyed(ranCard(sid, e, n), K(`ran:${e.at}`)) })) : [];
   const restarts = sid ? (state.restarted?.[sid] || []).map((r, n, all) => ({ at: r.at_ms, html: keyed(restartLine(sid, r, n === all.length - 1), K(`rs:${r.at_ms}`)) })) : [];
   // A tracked session you come back to: "Since you looked" where the new part starts (about.js), no call.
@@ -140,6 +146,9 @@ function chatHtml(it, s, harness, paged = false, page = null) {
   const { reviews, reviewAt } = reviewFolds(ex, s?.team || []);
   const rows = withSteps(sid, s, ex, ex.map((e, n) => keyed((() => {
     if (e.role === "peer") return peerBubble(e.from || "another agent", "", e.at_ms, e.text);
+    if (answers.has(n)) return "";
+    if (decided.has(n)) return chose.length && near(e.at_ms) ? "" : chatDecisionLine(decided.get(n), e.at_ms);
+    if (asks.has(n)) return chatAskHtml(`${s?.session_id || it?.id}:${e.at_ms}`, e, asks.get(n), harness, it?.machine || s?.machine);
     // What Cue sent the lead for its crew: Cue's bubble on the right, never yours (team.js).
     const cue = e.role === "you" && cueSaid(e.text);
     if (cue) return cueSaidLine(cue, `${sid}:${e.at_ms}`, e.text, `${ago(e.at_ms)} ago`, reviewAt.get(n));
@@ -235,7 +244,7 @@ function statusLine(it, s) {
 function latestStatus(it, s) {
   const sid = s?.session_id || it?.session_id, on = statusOn(sid);
   let last = null, status = { items: [], waiting: "" };
-  if (on) for (const e of conversation(it, s).filter((e) => e.role === "agent").reverse()) {
+  if (on) for (const e of conversation(it, s).filter(askLnSaid).reverse()) {
     const p = parseStatus(e.text);
     if (p.items.length) { last = e; status = p; break; }
   }
@@ -311,10 +320,45 @@ function whereNow(it, s) {
   if (!s && it && !isPending(it)) return `<div class="cv-status">This session has ended.</div>`;
   return "";
 }
+/** The ask lines in a chat's thread (askLnOf), each with the answer right after it: `asks` (index → { ask, answer },
+ *  the answer with its at_ms), `answers` (the indexes of those answers, not drawn on their own), `decided` (index →
+ *  answer: one with no ask before it, a terminal dialog's choice or one whose ask scrolled out, drawn as a decision
+ *  line, not as a message of yours). */
+function chatAsks(ex) {
+  const asks = new Map(), answers = new Set(), decided = new Map();
+  ex.forEach((e, n) => {
+    const ask = askLnOf(e);
+    if (!ask) {
+      const a = !answers.has(n) && askLnAnswer(e);
+      if (a) decided.set(n, a);
+      return;
+    }
+    const answer = askLnAnswer(ex[n + 1]);
+    asks.set(n, { ask, answer: answer ? { ...answer, at_ms: ex[n + 1].at_ms } : null });
+    if (answer) answers.add(n + 1);
+  });
+  return { asks, answers, decided };
+}
+/** A decision as a line in the chat, in the result line's look: "✓ Chose 1. Yes", "✕ Denied". */
+const chatDecisionLine = ({ text, no }, at, cls = no ? "no" : "") => `<div class="cv-result ${cls}"><span class="sent-check">${no ? "✕" : "✓"}</span><span>${esc(text)}</span><span class="grow"></span><span class="dim nowrap">${ago(at)} ago</span></div>`;
+/** Lines of a command shown before it folds; a longer one opens whole with "Show all" (openMsgs, as a long reply). */
+const CHAT_ASK_LINES = 4;
+/** An ask the agent made, as the chat draws it: "Asked to run" (or what it asked), the command in a code block (folded
+ *  to a few lines when long), and how you answered beside it, in the look of the result line (.cv-result). */
+function chatAskHtml(key, e, { ask, answer }, harness, machine) {
+  const lines = ask.code.split("\n"), long = lines.length > CHAT_ASK_LINES, open = openMsgs.has(key);
+  const shown = long && !open ? lines.slice(0, CHAT_ASK_LINES).join("\n") : ask.code;
+  const code = !ask.code ? "" : `<pre class="cv-ask-code ${long && !open ? "folded" : ""}"><code>${ask.tool === "Bash" ? `<span class="cv-ask-ps">$ </span>` : ""}${esc(shown)}</code></pre>`;
+  const more = long ? `<button class="cv-more" data-msg="${esc(key)}">${open ? "Fold" : `Show all ${lines.length} lines`}</button>` : "";
+  const what = ask.tool ? "" : `<span class="cv-ask-q">${esc(ask.what)}</span>`;
+  const ans = answer ? `<span class="cv-ask-ans ${answer.no ? "no" : ""}"><span class="sent-check">${answer.no ? "✕" : "✓"}</span>${esc(answer.text)}</span>` : "";
+  return `<div class="cv-ask"><div class="cv-meta">${esc(agentName(harness))}${machTag(machine)} · ${ago(e.at_ms)} ago</div>
+    <div class="cv-ask-row"><span class="cv-ask-head">${esc(ask.head)}${ask.tool ? "" : ":"}</span>${what}<span class="grow"></span>${ans}</div>${code}${more}</div>`;
+}
 /** After a decision: what you chose. Replies need no line, they're already in the chat. */
 function resultLine(it) {
   if (!it || isPending(it) || !it.resolved_ms || it.kind === "waiting") return "";
-  return `<div class="cv-result ${outcomeClass(it)}"><span class="sent-check">${outcomeClass(it) === "no" ? "✕" : "✓"}</span><span>${esc(outcomeText(it))}</span><span class="grow"></span><span class="dim nowrap">${ago(it.resolved_ms)} ago</span></div>`;
+  return chatDecisionLine({ text: outcomeText(it), no: outcomeClass(it) === "no" }, it.resolved_ms, outcomeClass(it));
 }
 function nextBar() {
   const n = nextUp();

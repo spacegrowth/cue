@@ -298,6 +298,16 @@ button.ib-sect.ib-strip { padding: 8px 16px 6px; gap: 5px; }
 .ib-msg:hover .ib-msg-more { text-decoration: underline; }
 .ib-msg-body .ib-msg-more { display: block; margin-top: 4px; }
 .ib-msg-body { grid-column: 3; min-width: 0; overflow-wrap: anywhere; line-height: 1.5; cursor: text; user-select: text; }
+/* An ask it made and your answer, one row (inbox.js inboxAskMsgHtml): the command in code, the answer after it. */
+.ib-ask-line code { font: 11.5px var(--mono); background: var(--panel-2); color: var(--ink); padding: 1px 5px; border-radius: 4px; }
+.ib-ask-ans { color: var(--ink); font-weight: 600; }
+.ib-ask-ans.no { color: var(--deny); }
+.ib-msg-body .ib-ask-line { margin-bottom: 6px; }
+.ib-msg-body .ib-ask-code { margin: 0; }
+.ib-asks { display: flex; flex-direction: column; margin-top: 8px; }
+/* A decision with no ask before it ("You · Chose 1. Yes"): one line, nothing to open. */
+.ib-msg.decided { cursor: default; }
+.ib-msg.decided:hover { background: none; }
 
 /* Close in the head: the Board's own button, the head's size. */
 .ib-hacts .sx-close { height: 24px; padding: 0 10px; font-size: 11.5px; }

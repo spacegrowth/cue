@@ -510,7 +510,7 @@ function reviewReplies(ex, review = () => "") {
     if (!asked?.review) return;
     const span = [];
     const ends = (y) => { if (y.role !== "you") return false; const c = cueSaid(y.text); return !c || c.review; };
-    for (let k = n + 1; k < ex.length && !ends(ex[k]); k++) if (ex[k].role === "agent") span.push(k);
+    for (let k = n + 1; k < ex.length && !ends(ex[k]); k++) if (askLnSaid(ex[k])) span.push(k);
     const saved = review(asked.name).trim();
     const hit = (saved ? span.find((k) => ex[k].text.trim() === saved) : undefined) ?? span.filter((k) => hasRecommendation(ex[k].text)).at(-1);
     if (hit != null) out.set(hit, asked.name);

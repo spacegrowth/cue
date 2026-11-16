@@ -137,7 +137,7 @@ function crewTalk(sid, name) {
 }
 /** Whether the lead said something since the left left its chat (its dot on The lead's row). */
 function crewLeadSaid(sid) {
-  const last = (sessionOf(sid)?.thread || []).filter((e) => e.role === "agent").at(-1);
+  const last = (sessionOf(sid)?.thread || []).filter(askLnSaid).at(-1);
   return !!crewLeftOf(sid) && crewLeftChatAt > 0 && !!last && last.at_ms > crewLeftChatAt;
 }
 

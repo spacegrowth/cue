@@ -203,7 +203,7 @@ function crewLeadRow(sid) {
   const s = sessionOf(sid), ask = crewLeadAsk(sid), on = !crewLeftOf(sid);
   const words = { waiting: "your turn", deciding: "deciding", agent: s.helpers ? "on its agents" : "on its lead", stopped: "stopped", limited: "out of usage" };
   const st = ask ? esc(`asked ${hhmm(ask.created_ms)}`) : s.state === "working" ? `working · <span data-ago="${s.since_ms}">${ago(s.since_ms)}</span>` : esc(words[s.state] || s.state || "");
-  const last = (s.thread || []).filter((e) => e.role === "agent").at(-1);
+  const last = (s.thread || []).filter(askLnSaid).at(-1);
   const said = on ? "the chat" : `“${esc(plain(firstLine(last?.text || "")))}”`;
   const dot = !on && crewLeadSaid(sid) ? `<i class="cp-said" role="img" aria-label="It said something since"></i>` : "";
   return `<button class="cp-lead ${on ? "on" : ""}" data-cp-lead="${esc(sid)}" aria-pressed="${on}"><span class="badge h-${esc(s.harness || "other")}">${agentLetter(s.harness)}</span><b>The lead</b><span class="cp-ld">${said}</span>${dot}<span class="cp-lr">${st}</span></button>`;

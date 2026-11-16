@@ -512,6 +512,17 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 /* Eases in once, when it lands (chat/patch.js patchKids marks it): never again on a redraw. */
 .cv-result.reveal { animation: sentIn 0.25s ease; }
 .cv-result.no .sent-check { background: var(--deny); }
+/* An ask the agent made (chat/render.js chatAskHtml): what it asked, your answer beside it, the command in a code block. */
+.cv-ask { font-size: 13px; }
+.cv-ask-row { display: flex; align-items: center; gap: 8px; min-width: 0; margin-bottom: 6px; }
+.cv-ask-head { font-weight: 650; white-space: nowrap; }
+.cv-ask-q { min-width: 0; overflow-wrap: anywhere; }
+.cv-ask-ans { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px 4px 5px; border-radius: 10px; background: var(--panel-2); font-weight: 600; white-space: nowrap; }
+.cv-ask-ans .sent-check { width: 18px; height: 18px; font-size: 10px; }
+.cv-ask-ans.no .sent-check { background: var(--deny); }
+.cv-ask-code, .ib-ask-code { margin: 0 0 4px; background: var(--slab); color: var(--on-slab); padding: 9px 12px; border-radius: 8px; font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.cv-ask-code.folded { -webkit-mask-image: linear-gradient(#000 60%, transparent); mask-image: linear-gradient(#000 60%, transparent); }
+.cv-ask-ps { opacity: 0.55; user-select: none; }
 /* Next: solid Moss, the one obvious thing to do after you act. */
 .next-bar { display: flex; align-items: center; gap: 8px; margin: 0 12px 10px; padding: 9px 10px 9px 12px; border-radius: 10px; background: var(--accent); color: var(--on-accent); font-size: 13px; text-align: left; min-width: 0; }
 .next-bar:hover { filter: brightness(1.1); }

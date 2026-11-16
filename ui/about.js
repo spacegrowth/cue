@@ -40,7 +40,7 @@ function aboutSince(sid, ex) {
   if (!t || !c || c.sid !== sid || !c.since || c.openedAt - c.since < CATCH_UP_AFTER) return null;
   if (ex.some((e) => e.role === "you" && e.at_ms > c.openedAt)) return null;
   const turns = (t.turns || []).filter((u) => u.at_ms > c.since && u.at_ms <= c.openedAt);
-  if (!turns.length && !ex.some((e) => e.role === "agent" && e.at_ms > c.since && e.at_ms <= c.openedAt)) return null;
+  if (!turns.length && !ex.some((e) => askLnSaid(e) && e.at_ms > c.since && e.at_ms <= c.openedAt)) return null;
   const rows = turns.map((u) => `<div class="tk-turn"><span class="tk-t">${esc(aboutClock(u.at_ms))}</span><span>${esc(u.line)}</span></div>`).join("");
   return { at: c.since + 1, html: `<div class="tk-since"><div class="tk-div"><i></i>${esc(ago(c.since).toUpperCase())} SINCE YOU LOOKED${turns.length ? ` · ${turns.length} TURN${turns.length === 1 ? "" : "S"}` : ""}<i></i></div>${rows}${rows ? `<div class="tk-div"><i></i></div>` : ""}</div>` };
 }

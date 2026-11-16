@@ -213,7 +213,73 @@ let agentsAvail = null;            // the agents installed on this Mac (asked on
 
 // ---------- Sessions view: every live session as a map of project tiles ----------
 const homeless = (p) => String(p || "").replace(/^\/Users\/[^/]+(?=\/|$)/, "~");
-const lastSaid = (s) => [...(s.thread || [])].reverse().find((e) => e.role === "agent")?.text || "";
+const lastSaid = (s) => [...(s.thread || [])].reverse().find(askLnSaid)?.text || "";
+
+// ---------- ask lines: what the hub notes in a thread when an agent asks permission (hub/asks.rs) ----------
+// "<Tool>: <summary>" (history.rs summary(): Bash its command; Edit, Write, MultiEdit and NotebookEdit "<Tool> <file>";
+// WebFetch "Fetch <url>"; any other tool just its name), or "asked: <question>". Your answer follows as yours
+// (sessions/thread.rs note_decision): "allowed", "allowed (always)", "denied", "denied: “…”", "answered: …",
+// "chose 2. …", or "<allow|deny> in the terminal" / "answered in the terminal" when it was answered there.
+/** Tools whose summary names a file ("Edit /src/a.rs"): the ask says which. */
+const ASKLN_FILE = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
+/** What a known tool's ask says; any other "<Tool>: <Tool>" is "Asked to use <Tool>". */
+const ASKLN_HEADS = { Read: "Asked to read a file", WebSearch: "Asked to search the web", Glob: "Asked to find files", Grep: "Asked to search files", Task: "Asked to start an agent", ExitPlanMode: "Asked to leave plan mode", BashOutput: "Asked to read a command's output", KillShell: "Asked to stop a command", SlashCommand: "Asked to run a command", Skill: "Asked to use a skill", TodoWrite: "Asked to update its to-do list", AskUserQuestion: "Asked you a question" };
+/** An agent entry that's an ask line, read: { tool, what, head, code } (`head`: "Asked to run"; `code`: what goes in a
+ *  code block, "" when none); null for anything it said itself. Bash and WebFetch by their tool alone (their summary is
+ *  the command, the URL); any other tool only as "<Tool>: <Tool>[ …]", the hub's own form, so a reply that merely starts
+ *  "Read: …" stays a reply. (The hub's line is trimmed: "Bash:" with no command.) */
+function askLnOf(e) {
+  if (!e || e.role !== "agent") return null;
+  const t = String(e.text || "");
+  const q = /^asked: ([\s\S]+)$/.exec(t);
+  if (q) return { tool: "", what: q[1].trim(), head: "Asked", code: "" };
+  const m = /^(mcp__[\w-]+|[A-Z][A-Za-z]+):(?: ([\s\S]*))?$/.exec(t);
+  if (!m) return null;
+  const [, tool, rest = ""] = m;
+  if (tool === "Bash") return { tool, what: rest, head: "Asked to run", code: rest };
+  if (tool === "WebFetch") return /^Fetch(?: |$)/.test(rest) ? { tool, what: rest.slice(6), head: "Asked to fetch", code: rest.slice(6) } : null;
+  if (rest !== tool && !rest.startsWith(`${tool} `)) return null;
+  const file = rest.slice(tool.length).trim();
+  if (ASKLN_FILE.has(tool)) return { tool, what: file, head: `Asked to ${tool === "Write" ? "write" : "edit"}${file ? ` ${file.split("/").pop()}` : ""}`, code: "" };
+  const mcp = /^mcp__(.+?)__(.+)$/.exec(tool);
+  if (mcp) return { tool, what: tool, head: `Asked to use ${mcp[2].replace(/_/g, " ")} (${mcp[1].replace(/_/g, " ")})`, code: "" };
+  return { tool, what: tool, head: ASKLN_HEADS[tool] || `Asked to use ${tool}`, code: "" };
+}
+/** An agent entry that's its own words, not an ask line the hub noted. */
+const askLnSaid = (e) => e?.role === "agent" && !askLnOf(e);
+/** How the hub words an answer, whole (asks.rs describe, answer_terminal; inbound.rs ask_ended): a message you typed
+ *  that only starts with one of these words ("allowed the new flow") is no answer. */
+const ASKLN_ANSWERS = [
+  /^(?:allowed(?: \(always\))?|denied|answered|replied)(?:: “[^\n]*”)?$/,
+  /^answered: [^\n]+$/,
+  /^chose \d+\. [^\n]+$/,
+  /^(?:allow|allow_always|deny|ask|answered) in the \w+$/,
+  /^in the terminal$/,
+];
+/** A "you" entry that's how you answered an ask (not a message you wrote): { text: "Allowed", no }; null otherwise.
+ *  Marked a decision by Cue, it is one; else only the hub's own wording, whole (ASKLN_ANSWERS). */
+function askLnAnswer(e) {
+  if (!e || e.role !== "you") return null;
+  const t = String(e.text || "").trim();
+  if (e.decision !== true && !ASKLN_ANSWERS.some((re) => re.test(t))) return null;
+  const word = t.replace(/^allowed \(always\)/, "allowed always").replace(/^allow_always\b/, "allowed always").replace(/^allow\b/, "allowed").replace(/^deny\b/, "denied");
+  return { text: word.replace(/^./, (c) => c.toUpperCase()), no: /^denied/i.test(word) };
+}
+/** A thread with each ask line paired with your answer right after it: the ask entry gets `ask` (askLnOf) and
+ *  `answer` ({ text, no, at_ms } or null), the answer entry itself is left out. An answer with no ask before it (a
+ *  terminal dialog's choice, or one whose ask scrolled out of the thread Cue keeps) gets `decided` ({ text, no }): a
+ *  decision, no message of yours. Other entries as they were. */
+function askLnPair(ex) {
+  const out = [];
+  for (let n = 0; n < ex.length; n++) {
+    const ask = askLnOf(ex[n]);
+    if (!ask) { const d = askLnAnswer(ex[n]); out.push(d ? { ...ex[n], decided: d } : ex[n]); continue; }
+    const a = askLnAnswer(ex[n + 1]);
+    out.push({ ...ex[n], ask, answer: a ? { ...a, at_ms: ex[n + 1].at_ms } : null });
+    if (a) n++;
+  }
+  return out;
+}
 
 /** Cue's mark (the app icon without its tile): an open C around a dot. */
 /** The mark at 14px, and a terminal (a prompt in a window), for the "Runs in" choice. */
