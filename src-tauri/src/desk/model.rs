@@ -33,6 +33,9 @@ impl Holder {
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct DeskItem {
     pub id: String,
+    /// The random tag it had before items were numbered ("d7k2"), so old lines and links that name it still find it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub alias: String,
     pub project: String,
     /// "bug" | "feature" | "task"
     pub kind: String,
@@ -44,6 +47,10 @@ pub struct DeskItem {
     pub state: String,
     #[serde(default)]
     pub holder: Option<Holder>,
+    /// The lead's teammate doing it, when the lead keeps it and says so (`ROUTE: #id -> me | crew: <name>`): the name
+    /// the lead gave it, matched to its teammate of that name once there is one (hub/desk.rs `shown`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub crew: String,
     /// The item it waits on (queued behind it), and why.
     #[serde(default)]
     pub after: Option<String>,
@@ -55,9 +62,23 @@ pub struct DeskItem {
     /// Its holder's open ask, when it waits on you: worked out as it's shown.
     #[serde(default)]
     pub ask: Option<Value>,
-    /// The files its holder is changing, as last seen.
+    /// The files changed for it, inside its holder's folder: worked out as it's shown (hub/desk.rs `item_files`).
     #[serde(default)]
     pub files: Vec<String>,
+    /// Pictures you attached as you added it: where Cue keeps them (uploads.rs `save_kept`), named to whoever takes it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<String>,
+    /// What its holder made, as it said DONE: the links and files that turn named (a page, a mock, a build), so the
+    /// Desk can link to them (parse.rs `made_in`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub made: Vec<String>,
+    /// The commit Looks right made of its files (short; one per repository, space apart), once it did
+    /// (hub/desk_commit.rs).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub commit: String,
+    /// Who it went to at work and when (ms): only work begun after that is its (stamped as it's saved: hub/desk.rs).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub held_from: Option<(String, u64)>,
     pub created: u64,
     pub updated: u64,
     #[serde(default)]
@@ -72,6 +93,25 @@ pub struct DeskItem {
     /// now; until the lead is told.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub after_refused: String,
+    /// A ROUTE to reopen it (with you to check) that Cue didn't act on, and why; until the lead is told.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub reopen_refused: String,
+    /// Each time its holder said DONE for it: kept, so the lead's chat shows a card for each, after a restart too
+    /// (hub/desk_checks.rs).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub checks: Vec<DeskCheck>,
+}
+
+/// A DONE for an item: when (ms), who did it, the files it touched (filled in a moment later, read from its logs:
+/// hub/desk_checks.rs), and whether it was made in the folder this Cue is built from.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct DeskCheck {
+    pub at: u64,
+    pub by: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub cue: bool,
 }
 
 /// A call someone made about the Desk's work: the lead's (a route, a DECIDED line), a holder's DECIDED line, or
@@ -92,6 +132,10 @@ pub struct DeskDecision {
     pub at: u64,
     /// "none" | "can" | "asked" | "one_way"
     pub undo: String,
+    /// A judgment call (a DECIDED line, the lead's or a holder's): the only kind the Decisions list shows. The rest
+    /// (routes, gives, sessions started, contexts kept, Cue's hand-off asks) are steps, shown on their item.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub call: bool,
 }
 
 /// Every project's Desk, as Cue holds it while it runs (saved as it changes: db/desk.rs).
@@ -112,6 +156,11 @@ pub struct Desk {
     /// decision, whether it was at work then). Cue asks no hand-off note of it for the idle stretch it was in then,
     /// or, said while it worked, the one after that turn (stamped as the turn ends: hub/desk.rs; hub/cache_tick.rs).
     pub keep: HashMap<String, (u64, String, bool)>,
+    /// The highest item number given since Cue started, so one dropped meanwhile isn't given again.
+    pub item_high: std::sync::atomic::AtomicU64,
+    /// Each project's sessions on its Desk, in the order they joined: the ones its lead may route to (saved:
+    /// db/desk.rs). You add and remove them; a session given an item joins, as does one you say yes to using.
+    pub members: HashMap<String, Vec<String>>,
 }
 
 /// The session that runs a project's Desk, and the name it went by when last seen (shown once it has ended).
@@ -142,17 +191,78 @@ impl Desk {
         self.lead.get(project).map(|l| l.sid.as_str())
     }
 
+    /// Whether session `sid` is on `project`'s Desk.
+    pub fn on_desk(&self, project: &str, sid: &str) -> bool {
+        self.members.get(project).is_some_and(|m| m.iter().any(|s| s == sid))
+    }
+
+    /// Session `sid` on `project`'s Desk from now: true when it wasn't before.
+    pub fn join(&mut self, project: &str, sid: &str) -> bool {
+        if sid.is_empty() || self.on_desk(project, sid) {
+            return false;
+        }
+        self.members.entry(project.to_string()).or_default().push(sid.to_string());
+        true
+    }
+
+    /// Session `sid` off `project`'s Desk: true when it was on it.
+    pub fn leave(&mut self, project: &str, sid: &str) -> bool {
+        let Some(m) = self.members.get_mut(project) else { return false };
+        let before = m.len();
+        m.retain(|s| s != sid);
+        before != m.len()
+    }
+
+    /// The item `id` names: by its number, or by the tag it had before (`alias`).
     pub fn item(&self, id: &str) -> Option<&DeskItem> {
-        self.items.iter().find(|i| i.id == id)
+        self.items.iter().find(|i| i.id == id).or_else(|| self.items.iter().find(|i| !i.alias.is_empty() && i.alias == id))
     }
 
     pub fn item_mut(&mut self, id: &str) -> Option<&mut DeskItem> {
-        self.items.iter_mut().find(|i| i.id == id)
+        let at = self.items.iter().position(|i| i.id == id).or_else(|| self.items.iter().position(|i| !i.alias.is_empty() && i.alias == id))?;
+        self.items.get_mut(at)
     }
 
-    /// A new item's id.
+    /// The id an item goes by now, for `id` as a line named it (an old tag gives its number); unknown ones as they are.
+    pub fn canon(&self, id: &str) -> String {
+        self.item(id).map_or_else(|| id.to_string(), |i| i.id.clone())
+    }
+
+    /// Items from before numbering (random tags) numbered now, oldest first, after the highest number there is; each
+    /// keeps its tag as its `alias`, and what named it (an item's `after`, a decision's item) names its number. The
+    /// (old, new) ids changed, to save.
+    pub fn number_old(&mut self) -> Vec<(String, String)> {
+        let mut old: Vec<usize> = (0..self.items.len()).filter(|&k| self.items[k].id.parse::<u64>().is_err()).collect();
+        old.sort_by_key(|&k| (self.items[k].created, k));
+        let mut high = super::next_number(self.items.iter().map(|i| i.id.as_str()), 0) - 1;
+        let mut changed = vec![];
+        for k in old {
+            high += 1;
+            let it = &mut self.items[k];
+            let was = std::mem::replace(&mut it.id, high.to_string());
+            if it.alias.is_empty() {
+                it.alias = was.clone();
+            }
+            changed.push((was, it.id.clone()));
+        }
+        for (was, now) in &changed {
+            for it in self.items.iter_mut().filter(|i| i.after.as_deref() == Some(was.as_str())) {
+                it.after = Some(now.clone());
+            }
+            for d in self.decisions.iter_mut().filter(|d| d.item_id.as_deref() == Some(was.as_str())) {
+                d.item_id = Some(now.clone());
+            }
+        }
+        changed
+    }
+
+    /// A new item's id: the next plain number ("12"), one past the highest any item has (any project's: ids are
+    /// shared, so "#12" is one item everywhere). Items from before had random ones ("d7k2"): `number_old` numbers them.
     pub fn new_id(&self) -> String {
-        super::new_id(|id| self.item(id).is_some())
+        use std::sync::atomic::Ordering;
+        let n = super::next_number(self.items.iter().map(|i| i.id.as_str()), self.item_high.load(Ordering::Relaxed));
+        self.item_high.fetch_max(n, Ordering::Relaxed);
+        n.to_string()
     }
 
     /// A new decision's id: "k<ms>-<n>".

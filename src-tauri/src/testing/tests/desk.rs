@@ -1,7 +1,7 @@
 //! The Desk (desk/, hub/desk.rs, hub/desk_lead.rs): a project's lead (a session you pick, or a new one Cue starts),
 //! the lines it and the project's sessions say at the end of a turn, and what `state.desk` shows.
 
-use super::team::lead;
+use super::team::{lead, says, writes};
 use crate::desk::parse::{lines, Line};
 use crate::hosted::HostedEvent;
 use crate::testing::World;
@@ -18,6 +18,8 @@ fn holder(w: &World) -> (String, String) {
     ends(w, &sid, "Hi.");
     let project = w.snapshot().session(&sid)["project"].as_str().unwrap().to_string();
     assert!(!project.is_empty());
+    // On the Desk, so its lead routes to it without asking you (desk_members.rs has the ones that aren't).
+    w.hub().desk_set_member(&project, &sid, true).unwrap();
     (sid, project)
 }
 
@@ -37,10 +39,12 @@ fn second(w: &World, name: &str) -> String {
     let sid = r["session_id"].as_str().unwrap().to_string();
     w.hosted_says(&sid, HostedEvent::Taken { text: "hi".into() });
     ends(w, &sid, "Hi.");
+    let project = w.snapshot().session(&sid)["project"].as_str().unwrap().to_string();
+    w.hub().desk_set_member(&project, &sid, true).unwrap();
     sid
 }
 
-fn desk(w: &World, project: &str) -> Value {
+pub(super) fn desk(w: &World, project: &str) -> Value {
     let snap = w.snapshot();
     snap.0["desk"]["projects"].as_array().unwrap().iter().find(|p| p["project"] == project).cloned().unwrap_or(Value::Null)
 }
@@ -65,7 +69,7 @@ fn lines_are_read_outside_code_and_quotes() {
         vec![
             Line::Item { kind: "feature".into(), title: "Dark mode".into(), done_when: "it follows the Mac".into() },
             Line::Item { kind: "task".into(), title: "Plain title".into(), done_when: String::new() },
-            Line::Route { id: "new".into(), to: "cue-teams".into(), after: Some("a1b2".into()), why: "it knows the header".into() },
+            Line::Route { id: "new".into(), to: "cue-teams".into(), after: Some("a1b2".into()), why: "it knows the header".into(), kind: None, crew: None },
             Line::Ask { question: "Which first?".into(), choices: vec!["A".into(), "B".into()] },
             Line::Done { ids: vec!["a1".into(), "b2".into()] },
         ]
@@ -160,29 +164,147 @@ fn an_item_routed_goes_to_its_holder_and_done_puts_it_to_check() {
     let id = it["id"].as_str().unwrap().to_string();
     assert!(desk_now["decisions"][0]["text"].as_str().unwrap().starts_with("Routed"), "{desk_now}");
     assert_eq!(desk_now["decisions"][0]["by"], format!("{project}-lead"));
+    assert!(desk_now["decisions"][0].get("call").is_none(), "a route is a step, not a call: {desk_now}");
     assert!(sent_to(&w, &h).iter().any(|t| t.contains(&format!("Say DONE: #{id}"))));
     ends(&w, &h, &format!("Fixed.\nDECIDED: kept the sticky header — it was asked for\nDONE: #{id}"));
     let desk_now = desk(&w, &project);
     assert_eq!(item(&desk_now, "Header jumps")["state"], "to_check");
     assert_eq!(desk_now["decisions"][0]["by"], "cue-teams");
     assert_eq!(desk_now["decisions"][0]["item_id"], id.as_str());
+    assert_eq!(desk_now["decisions"][0]["call"], true, "a DECIDED line is a call: {desk_now}");
+}
+
+/// An item's files are those changed for it: by its holder's crew started after it went to work, inside their
+/// folder. Work from before it, and files outside the folder, aren't its. The lead sees five, then a count.
+#[test]
+fn an_items_files_are_only_those_changed_for_it_inside_the_folder() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let dir = w.home().to_path_buf();
+    let outside = std::env::temp_dir().join(format!("cue-desk-outside-{}.txt", std::process::id())).to_string_lossy().to_string();
+    says(&w, &h, writes("toolu_A", "agentA", "earlier", &[dir.join("old.txt").to_string_lossy().to_string(), outside.clone()]));
+    let d = new_lead(&w, &project);
+    w.advance(1000);
+    ends(&w, &d, "ITEM: bug | Header jumps\nROUTE: #new -> cue-teams | why: it made the header");
+    assert!(item(&desk(&w, &project), "Header jumps")["files"].as_array().is_none_or(|f| f.is_empty()), "no work for it yet");
+    w.advance(1000);
+    let mut mine: Vec<String> = (1..=7).map(|n| dir.join(format!("f{n}.txt")).to_string_lossy().to_string()).collect();
+    // A name that starts with dots is a file inside; a "../" step is outside.
+    mine.push(dir.join("..foo").to_string_lossy().to_string());
+    mine.push(outside.clone());
+    says(&w, &h, writes("toolu_B", "agentB", "fixer", &mine));
+    let _ = std::fs::remove_file(&outside);
+    let files = item(&desk(&w, &project), "Header jumps")["files"].clone();
+    assert_eq!(files, json!(["f1.txt", "f2.txt", "f3.txt", "f4.txt", "f5.txt", "f6.txt", "f7.txt", "..foo"]));
+    let sum = summary(&w, &project);
+    assert!(sum.contains("| files: f1.txt, f2.txt, f3.txt, f4.txt, f5.txt +3 more"), "{sum}");
+    assert!(!sum.contains("old.txt") && !sum.contains(&outside), "{sum}");
 }
 
 #[test]
-fn route_to_me_keeps_the_item_with_the_lead() {
+fn a_route_to_new_or_to_the_lead_starts_a_session_that_gets_the_item() {
     let w = World::new();
     let (_, project) = holder(&w);
     let l = new_lead(&w, &project);
     let before = sent_to(&w, &l).len();
-    ends(&w, &l, "ITEM: Typo in the footer\nROUTE: #new -> me | why: one line");
+    let count = || w.snapshot().0["sessions"].as_array().map_or(0, |s| s.len());
+    let sessions = count();
+    ends(&w, &l, "ITEM: Typo in the footer\nROUTE: #new -> new | why: nobody's near it");
+    w.settle();
     let now = desk(&w, &project);
-    let it = item(&now, "Typo in the footer");
-    assert_eq!((it["state"].as_str(), it["holder"]["sid"].as_str()), (Some("working"), Some(l.as_str())), "{now}");
+    let it = item(&now, "Typo in the footer").clone();
     let id = it["id"].as_str().unwrap().to_string();
-    assert_eq!(now["decisions"][0]["text"], format!("Kept #{id} to do itself"));
-    assert_eq!(sent_to(&w, &l).len(), before, "it isn't sent its own item");
-    ends(&w, &l, &format!("Fixed it.\nDONE: #{id}"));
-    assert_eq!(item(&desk(&w, &project), "Typo in the footer")["state"], "to_check");
+    let name = format!("{project}-{id}");
+    let sid = it["holder"]["sid"].as_str().unwrap().to_string();
+    assert_eq!((it["state"].as_str(), it["holder"]["name"].as_str()), (Some("working"), Some(name.as_str())), "{now}");
+    assert_ne!(sid, l);
+    assert_eq!(count(), sessions + 1);
+    assert!(sent_to(&w, &sid).iter().any(|t| t.contains(&format!("#{id}")) && t.contains("nobody's near it")), "{:?}", sent_to(&w, &sid));
+    assert_eq!((now["decisions"][0]["text"].as_str(), now["decisions"][0]["sid"].as_str()), (Some(format!("Started {name} for #{id}").as_str()), Some(l.as_str())));
+    assert_eq!(sent_to(&w, &l).len(), before, "the lead isn't sent the item");
+    // Said again, or to the lead itself ("me", its own name), it isn't started twice: it's held.
+    ends(&w, &l, &format!("ROUTE: #{id} -> new | why: nobody's near it\nROUTE: #{id} -> me | why: small"));
+    w.settle();
+    assert_eq!(count(), sessions + 1);
+    // "me" on an item nobody holds starts one too: the lead never keeps work.
+    ends(&w, &l, "ITEM: Footer colour\nROUTE: #new -> me | why: small");
+    w.settle();
+    let it = item(&desk(&w, &project), "Footer colour").clone();
+    assert!(it["holder"]["sid"].as_str().is_some_and(|s| s != l), "{it}");
+    assert_eq!(count(), sessions + 2);
+}
+
+#[test]
+fn start_now_on_an_item_nobody_holds_starts_a_session_for_it() {
+    let w = World::new();
+    let (_, project) = holder(&w);
+    let it = w.hub().desk_add(&project, "", "Header", "", None).unwrap();
+    w.hub().desk_item_act(&it.id, "start_now", "").unwrap();
+    w.settle();
+    let it = item(&desk(&w, &project), "Header").clone();
+    assert_eq!((it["state"].as_str(), it["holder"]["name"].as_str()), (Some("working"), Some(format!("{project}-{}", it["id"].as_str().unwrap()).as_str())), "{it}");
+}
+
+/// A working item whose holder was cut off (a crash) before DONE: routed again to the same holder, or Restart
+/// (start_now), it's sent again. While the holder is mid-turn, neither sends it twice.
+#[test]
+fn a_working_item_whose_holder_stopped_is_sent_again_on_a_route_or_restart() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    ends(&w, &l, "ITEM: Header\nROUTE: #new -> cue-teams | why: it knows");
+    let id = item(&desk(&w, &project), "Header")["id"].as_str().unwrap().to_string();
+    let sent = || sent_to(&w, &h).iter().filter(|t| t.contains(&format!("Say DONE: #{id}"))).count();
+    assert_eq!(sent(), 1);
+    // Mid-turn on it: the same route said again sends nothing, and Restart is refused.
+    w.hosted_says(&h, HostedEvent::Taken { text: "Header".into() });
+    w.settle();
+    ends(&w, &l, &format!("ROUTE: #{id} -> cue-teams | why: it knows"));
+    assert_eq!(sent(), 1);
+    assert!(w.hub().desk_item_act(&id, "start_now", "").is_err());
+    // Cut off with no DONE: the item stays working, and a route to the same holder sends it again.
+    ends(&w, &h, "On it.");
+    assert_eq!(item(&desk(&w, &project), "Header")["state"], "working");
+    ends(&w, &l, &format!("ROUTE: #{id} -> cue-teams | why: it knows"));
+    w.settle();
+    assert_eq!(sent(), 2);
+    let now = desk(&w, &project);
+    assert_eq!(now["decisions"][0]["text"], format!("Sent #{id} to cue-teams again"), "{now}");
+    // Cut off again: Restart sends it once more.
+    ends(&w, &h, "On it.");
+    w.hub().desk_item_act(&id, "start_now", "").unwrap();
+    w.settle();
+    assert_eq!(sent(), 3);
+    assert_eq!(item(&desk(&w, &project), "Header")["state"], "working");
+}
+
+#[test]
+fn a_desk_lead_is_told_to_only_dispatch_with_no_crew_and_isnt_sent_reviews() {
+    let skill = crate::desk::LEAD_SKILL;
+    assert!(!skill.contains("-> me") && !skill.contains("crew") && skill.contains("ROUTE: #<id> -> new"), "{skill}");
+    let w = World::new();
+    let dir = super::team::repo(&w);
+    let (_, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    // Started with the Desk's instructions, not the crew lead's.
+    let args = w.hosted.launched().last().map(|l| l.args.clone()).unwrap_or_default();
+    let prompt = args.iter().position(|a| a == "--append-system-prompt").and_then(|i| args.get(i + 1)).cloned().unwrap_or_default();
+    assert!(prompt.starts_with("# Running this project's Desk") && !prompt.contains("crew lead"), "{prompt}");
+    assert!(!w.hub().desk_summary(&project, &l, false).0.contains("-> me"));
+    // A teammate it started anyway finishes: no review goes to it.
+    w.hub().set_crew_commit(&l, "wait").unwrap();
+    says(&w, &l, writes("toolu_A", "agentA", "rows", &[dir.join("a.txt").to_string_lossy().to_string()]));
+    ends(&w, &l, "started rows");
+    w.hub().drain_reviews();
+    w.settle();
+    assert!(!sent_to(&w, &l).iter().any(|t| t.starts_with("Review your teammate")), "{:?}", sent_to(&w, &l));
+}
+#[test]
+fn a_route_to_me_can_name_the_teammate_doing_it() {
+    assert_eq!(
+        lines("ROUTE: #a1 -> me | crew: `fixer` | why: two files"),
+        vec![Line::Route { id: "a1".into(), to: "me".into(), after: None, why: "two files".into(), kind: None, crew: Some("fixer".into()) }]
+    );
 }
 
 #[test]
@@ -198,7 +320,7 @@ fn an_item_line_from_any_session_is_the_projects_and_its_lead_is_told() {
     assert_eq!(sent_to(&w, &l).len(), before, "told a moment later");
     w.advance(1000);
     let told = sent_to(&w, &l).pop().unwrap();
-    assert!(told.contains(&format!("New item #{} (bug): Logo blurs", it["id"].as_str().unwrap())) && told.contains("from cue-teams") && told.ends_with("Route it now: ROUTE it to a session, or -> me."), "{told}");
+    assert!(told.contains(&format!("New item #{} (bug): Logo blurs", it["id"].as_str().unwrap())) && told.contains("from cue-teams") && told.ends_with("Route it now: ROUTE it to a session, or -> new."), "{told}");
     // Said again: no second item.
     ends(&w, &h, "ITEM: bug | Logo blurs");
     assert_eq!(desk(&w, &project)["items"].as_array().unwrap().len(), 1);
@@ -225,6 +347,45 @@ fn items_you_add_together_reach_the_lead_in_one_message() {
     w.advance(2000);
     assert_eq!(item(&desk(&w, "web"), "Menu")["state"], "new");
     assert!(!w.hosted.sent().iter().any(|(_, t)| t.contains(&format!("#{}", none.id))));
+}
+
+#[test]
+fn an_item_you_add_has_no_kind_till_the_lead_routes_it_with_one() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    let it = w.hub().desk_add(&project, "", "Logo blurs", "", None).unwrap();
+    assert_eq!(it.kind, "");
+    w.advance(1000);
+    let told = sent_to(&w, &l).pop().unwrap();
+    assert!(told.contains(&format!("New item #{}: Logo blurs", it.id)) && told.contains("no kind yet") && told.ends_with("| kind: bug, feature or task."), "{told}");
+    ends(&w, &l, &format!("ROUTE: #{} -> cue-teams | kind: Bug | why: it knows the header", it.id));
+    assert_eq!(item(&desk(&w, &project), "Logo blurs")["kind"], "bug");
+    assert!(sent_to(&w, &h).last().unwrap().contains(&format!("Desk item #{} (bug): Logo blurs", it.id)));
+    // A kind that isn't one leaves it as it was.
+    ends(&w, &l, &format!("ROUTE: #{} -> cue-teams | kind: chore", it.id));
+    assert_eq!(item(&desk(&w, &project), "Logo blurs")["kind"], "bug");
+}
+
+#[test]
+fn pictures_you_attach_are_kept_and_named_to_the_lead_and_to_whoever_takes_it() {
+    use base64::Engine;
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    let png = crate::model::Upload { name: "shot.png".into(), mime: "image/png".into(), data: format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(b"not really a png")) };
+    let it = w.hub().desk_add_with(&project, "", "Logo blurs", "", None, &[png]).unwrap();
+    assert_eq!(it.images.len(), 1);
+    let path = &it.images[0];
+    assert!(path.contains("/uploads/kept/") && std::fs::read(path).unwrap() == b"not really a png", "{path}");
+    w.advance(1000);
+    assert!(sent_to(&w, &l).pop().unwrap().contains(&format!("New item #{}: Logo blurs | pictures: `{path}`", it.id)));
+    ends(&w, &l, &format!("ROUTE: #{} -> cue-teams | kind: bug | why: it knows the header", it.id));
+    assert!(sent_to(&w, &h).last().unwrap().contains(&format!("\nPictures with it (open each to see it): `{path}`")));
+    // Not an image: nothing is added.
+    let txt = crate::model::Upload { name: "notes.txt".into(), mime: "text/plain".into(), data: "aGk=".into() };
+    assert!(w.hub().desk_add_with(&project, "", "Notes", "", None, &[txt]).is_err());
+    assert!(!desk(&w, &project)["items"].as_array().unwrap().iter().any(|i| i["title"] == "Notes"));
 }
 
 #[test]
@@ -411,7 +572,7 @@ fn a_message_held_while_the_lead_changes_reaches_the_new_one_as_it_sees_the_desk
     let got = sent_to(&w, &h);
     let (block, rest) = got.last().unwrap().split_once("</desk>\n\n").unwrap();
     assert_eq!(rest, "and the footer");
-    let routes = block.lines().find(|l| l.starts_with("Sessions you can route to:")).unwrap();
+    let routes = block.lines().find(|l| l.starts_with("Sessions on the Desk, you can route to:")).unwrap();
     assert!(!routes.contains(&id), "itself isn't a route: {routes}");
     assert!(routes.contains(&format!("{project}-lead")), "the last lead is: {routes}");
     assert!(block.contains("\nYou: cue-teams"), "{block}");
@@ -509,6 +670,10 @@ fn a_line_said_again_makes_no_second_item_or_send() {
     let said = "ITEM: Header\nROUTE: #new -> cue-teams | why: it knows";
     ends(&w, &d, said);
     let sends = sent_to(&w, &h).len();
+    // The holder took it and is at work on it (a holder that stopped short of DONE is sent it again: see
+    // a_working_item_whose_holder_stopped_is_sent_again_on_a_route_or_restart).
+    w.hosted_says(&h, HostedEvent::Taken { text: "Header".into() });
+    w.settle();
     ends(&w, &d, said);
     let now = desk(&w, &project);
     assert_eq!(now["items"].as_array().unwrap().len(), 1, "{now}");
@@ -544,6 +709,63 @@ fn a_route_said_again_leaves_an_item_to_check_with_you() {
     ends(&w, &d, &format!("ROUTE: #{id} -> cue-teams | why: it knows"));
     assert_eq!(item(&desk(&w, &project), "Header")["state"], "to_check");
     assert_eq!(sent_to(&w, &h).len(), sends);
+    // Nor queued again after another, nor handed to someone else: it stays with you.
+    ends(&w, &d, "ITEM: Footer\nROUTE: #new -> me | why: small");
+    let f = item(&desk(&w, &project), "Footer")["id"].as_str().unwrap().to_string();
+    ends(&w, &d, &format!("ROUTE: #{id} -> cue-teams | after: #{f} | why: same file\nROUTE: #{id} -> me | why: mine now"));
+    let now = desk(&w, &project);
+    assert_eq!((item(&now, "Header")["state"].as_str(), item(&now, "Header")["holder"]["name"].as_str()), (Some("to_check"), Some("cue-teams")), "{now}");
+    assert_eq!(sent_to(&w, &h).len(), sends);
+    // The lead is told why not, in its next <desk> block.
+    let s = summary(&w, &project);
+    assert!(s.contains(&format!("Cue didn't reopen #{id}")) && s.contains("only for cue-teams"), "{s}");
+}
+
+#[test]
+fn a_route_to_its_holder_reopens_an_item_to_check() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let d = new_lead(&w, &project);
+    ends(&w, &d, "ITEM: Header\nROUTE: #new -> cue-teams | why: it knows");
+    let id = item(&desk(&w, &project), "Header")["id"].as_str().unwrap().to_string();
+    ends(&w, &h, &format!("DONE: #{id}"));
+    assert_eq!(item(&desk(&w, &project), "Header")["state"], "to_check");
+    // The same route said again isn't a reopen: the lead is told how to make one, once.
+    ends(&w, &d, &format!("ROUTE: #{id} -> cue-teams | why: it knows"));
+    assert_eq!(item(&desk(&w, &project), "Header")["state"], "to_check");
+    let s = summary(&w, &project);
+    assert!(s.contains(&format!("Cue didn't reopen #{id}")) && s.contains("give a new why"), "{s}");
+    crate::ipc::desk_send_with(w.hub(), &project, "go on").unwrap();
+    w.settle();
+    assert!(!summary(&w, &project).contains("didn't reopen"));
+    // With a new why: back to work, and the holder is sent it again with the why.
+    let sends = sent_to(&w, &h).len();
+    ends(&w, &d, &format!("ROUTE: #{id} -> cue-teams | why: the footer still overlaps"));
+    let now = desk(&w, &project);
+    assert_eq!((item(&now, "Header")["state"].as_str(), item(&now, "Header")["holder"]["name"].as_str()), (Some("working"), Some("cue-teams")), "{now}");
+    let sent = sent_to(&w, &h);
+    assert_eq!(sent.len(), sends + 1, "{sent:?}");
+    let last = sent.last().unwrap();
+    assert!(last.contains(&format!("Desk item #{id}")) && last.contains("Why you: the footer still overlaps") && last.contains(&format!("Say DONE: #{id}")), "{last}");
+    assert!(!summary(&w, &project).contains("didn't reopen"));
+    // And its DONE puts it to check again.
+    ends(&w, &h, &format!("DONE: #{id}"));
+    assert_eq!(item(&desk(&w, &project), "Header")["state"], "to_check");
+}
+
+#[test]
+fn a_decided_line_in_the_turn_that_says_done_is_the_finished_items() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let d = new_lead(&w, &project);
+    ends(&w, &d, "ITEM: Header\nROUTE: #new -> cue-teams | why: first");
+    let a = item(&desk(&w, &project), "Header")["id"].as_str().unwrap().to_string();
+    ends(&w, &d, &format!("ITEM: Footer\nROUTE: #new -> cue-teams | after: #{a} | why: same file"));
+    ends(&w, &h, &format!("Moved it.\nDECIDED: kept the class name — renaming it touches the tests\nDONE: #{a}"));
+    let now = desk(&w, &project);
+    assert_eq!(item(&now, "Footer")["state"], "working", "the next one started");
+    let c = now["decisions"].as_array().unwrap().iter().find(|c| c["text"].as_str().unwrap().starts_with("kept the class name")).unwrap();
+    assert_eq!(c["item_id"].as_str(), Some(a.as_str()), "{now}");
 }
 
 #[test]
@@ -732,171 +954,77 @@ fn what_you_do_to_an_item() {
 }
 
 #[test]
-fn a_context_line_names_a_session_or_me_and_what_to_do() {
-    let text = "CONTEXT: web-ui -> keep | why: its next item needs the detail\n- **CONTEXT: me → Keep**\nCONTEXT: <session|me> -> keep | why: …\nCONTEXT: web-ui";
-    assert_eq!(
-        lines(text),
-        vec![
-            Line::Context { who: "web-ui".into(), what: "keep".into(), why: "its next item needs the detail".into() },
-            Line::Context { who: "me".into(), what: "keep".into(), why: String::new() },
-        ]
-    );
-}
-
-/// A hook session `sid` of project "shop" in tmux pane %`sid` (its box empty), its last reply `left_ms` before its
-/// hour's cache runs out with `context` tokens, at its prompt.
-fn shop_session(w: &World, sid: &str, left_ms: u64, context: u64) {
-    let a = w.session(sid).in_project("shop").in_tmux(&format!("%{sid}"));
-    a.transcript().cached_reply(3_600_000 - left_ms, context, 3600);
-    a.stop("Done.");
-    w.terminal.pane(sid, |p| p.screen = Some("────────\n❯ \n────────".into()));
-}
-
-/// "shop"'s lead (lead01) says `text` at its turn's end.
-fn shop_lead_says(w: &World, text: &str) {
-    w.session("lead01").in_project("shop").in_tmux("%lead01").stop(text);
-}
-
-/// The project "shop"'s sessions go under, with its lead (lead01) and an item held by webui1.
-fn shop_desk(w: &World) -> String {
-    let project = w.snapshot().session("lead01")["project"].as_str().unwrap().to_string();
-    w.hub().desk_put_lead(&project, "lead01", "lead");
-    w.hub().desk_add(&project, "bug", "Header", "", Some("webui1")).unwrap();
-    project
-}
-
-fn decisions(w: &World, project: &str) -> Vec<Value> {
-    desk(w, project)["decisions"].as_array().cloned().unwrap_or_default()
-}
-
-#[test]
-fn the_lead_sees_each_sessions_context_and_what_cue_will_do_and_can_say_keep() {
+fn an_item_line_said_again_while_its_item_is_to_check_makes_no_second_item() {
     let w = World::new();
-    shop_session(&w, "lead01", 20 * 60_000, 90_000);
-    shop_session(&w, "webui1", 12 * 60_000, 142_000);
-    shop_session(&w, "idle01", 30 * 60_000, 160_000);
-    let project = shop_desk(&w);
-    let lead_summary = || w.hub().desk_summary(&project, "lead01", false).0;
-    w.tick(true);
-    let s = lead_summary();
-    assert!(s.contains("sid:webui1, session, waiting, 142k, cache 12m → Cue will hand off at expiry)"), "{s}");
-    assert!(s.contains("sid:idle01, session, waiting, 160k, cache 30m)"), "holds nothing: Cue leaves it be: {s}");
-    assert!(s.contains(", 90k, cache 20m. ROUTE"), "the lead under 100k: left be: {s}");
+    let (h, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    ends(&w, &l, "ITEM: feature | Lead only dispatches\nROUTE: #new -> cue-teams | why: it built it");
+    let id = item(&desk(&w, &project), "Lead only dispatches")["id"].as_str().unwrap().to_string();
+    ends(&w, &h, &format!("Done.\nDONE: #{id}"));
+    assert_eq!(item(&desk(&w, &project), "Lead only dispatches")["state"], "to_check");
+    ends(&w, &l, "ITEM: feature | Lead only dispatches");
+    assert_eq!(desk(&w, &project)["items"].as_array().unwrap().len(), 1);
+}
 
-    // The lead says keep: Cue won't, and the lead's call can be undone.
-    shop_lead_says(&w, "Leave it.\nCONTEXT: webui1 -> keep | why: its next item needs the detail");
-    let d = decisions(&w, &project);
-    assert_eq!((d[0]["by"].as_str(), d[0]["text"].as_str(), d[0]["why"].as_str(), d[0]["undo"].as_str()), (Some("shop"), Some("Kept shop's context as it is"), Some("its next item needs the detail"), Some("can")), "{d:?}");
-    assert!(lead_summary().contains("142k, cache 12m)"), "{}", lead_summary());
-    w.hub().desk_undo(d[0]["id"].as_str().unwrap()).unwrap();
+/// What a holder made, named in the turn it says DONE (a page's link, a mock or a build by its full path), is kept
+/// on the item for the Desk to link to; a path that's only code (no kind made to be looked at) isn't.
+#[test]
+fn what_the_turn_that_says_done_made_is_kept_on_the_item() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let d = new_lead(&w, &project);
+    ends(&w, &d, "ITEM: task | Mocks for the list | done when: three mocks\nROUTE: #new -> cue-teams | why: it knows the list");
+    let id = item(&desk(&w, &project), "Mocks for the list")["id"].as_str().unwrap().to_string();
+    ends(&w, &h, &format!("Three mocks: [the page](https://claude.ai/artifact/abc123), and `/tmp/mocks/list.html`.\nChanged `/src/ui/desk.js` too.\nDONE: #{id}"));
+    let now = desk(&w, &project);
+    let it = item(&now, "Mocks for the list");
+    assert_eq!(it["state"], "to_check");
+    assert_eq!(it["made"], serde_json::json!(["https://claude.ai/artifact/abc123", "/tmp/mocks/list.html"]), "{it}");
+}
+
+/// The Desk's lead runs in fast mode: Cue turns it on as it starts the lead and as it resumes it. A session the lead
+/// starts for an item starts as any other.
+#[test]
+fn the_lead_starts_and_resumes_in_fast_mode_and_no_other_session_does() {
+    let fast = |args: &[String]| args.windows(2).any(|a| a[0] == "--settings" && a[1] == r#"{"fastMode":true}"#);
+    let w = World::new();
+    let (_, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    assert!(fast(&w.hosted.launched().last().unwrap().args), "started in fast mode");
+    ends(&w, &l, "ITEM: Typo in the footer\nROUTE: #new -> new | why: nobody's near it");
     w.settle();
-    assert!(lead_summary().contains("142k, cache 12m → Cue will hand off at expiry)"), "undone: Cue's rule again");
-
-    // Kept again while it waits: for this wait only; its next turn ends it.
-    shop_lead_says(&w, "CONTEXT: webui1 -> keep");
-    assert!(lead_summary().contains("142k, cache 12m)"), "{}", lead_summary());
-    w.advance(50 * 60_000); // (its reply is dated 48 minutes back: after the keep)
-    next_turn(&w, "webui1", "m2", 12 * 60_000, 142_000);
-    w.tick(true);
-    assert!(lead_summary().contains("142k, cache 12m → Cue will hand off at expiry)"), "{}", lead_summary());
-}
-
-/// Session `sid` works a turn and ends it with reply `id`, `left_ms` before its hour's cache runs out.
-fn next_turn(w: &World, sid: &str, id: &str, left_ms: u64, context: u64) {
-    let a = w.session(sid).in_project("shop").in_tmux(&format!("%{sid}"));
-    a.prompt("go on");
-    a.transcript().cached_reply_as(id, 3_600_000 - left_ms, context, 3600);
-    a.stop("Done.");
-}
-
-#[test]
-fn a_keep_said_while_a_session_works_covers_its_wait_after_that_turn() {
-    let w = World::new();
-    shop_session(&w, "lead01", 20 * 60_000, 90_000);
-    shop_session(&w, "webui1", 12 * 60_000, 142_000);
-    let project = shop_desk(&w);
-    let lead_summary = || w.hub().desk_summary(&project, "lead01", false).0;
-    w.session("webui1").in_project("shop").in_tmux("%webui1").prompt("go on");
-    w.advance(1_000);
-    shop_lead_says(&w, "CONTEXT: webui1 -> keep | why: next item builds on it");
-    assert_eq!(decisions(&w, &project)[0]["undo"], "can");
-    // Its turn ends after the keep: the wait that follows is the one kept.
-    w.advance(50 * 60_000); // (its reply is dated 48 minutes back: after the keep)
-    next_turn(&w, "webui1", "m2", 12 * 60_000, 142_000);
-    w.tick(true);
-    assert!(lead_summary().contains("sid:webui1, session, waiting, 142k, cache 12m)"), "{}", lead_summary());
-    // The turn after that ends it.
-    w.advance(50 * 60_000); // (its reply is dated 48 minutes back: after the keep)
-    next_turn(&w, "webui1", "m3", 12 * 60_000, 142_000);
-    w.tick(true);
-    assert!(lead_summary().contains("sid:webui1, session, waiting, 142k, cache 12m → Cue will hand off at expiry)"), "{}", lead_summary());
-}
-
-#[test]
-fn cue_asks_a_session_holding_an_item_for_its_note_and_its_desk_says_so() {
-    let w = World::new();
-    shop_session(&w, "lead01", 20 * 60_000, 90_000);
-    shop_session(&w, "webui1", 60_000, 142_000);
-    shop_session(&w, "idle01", 60_000, 160_000);
-    let project = shop_desk(&w);
-    w.tick(true);
-    let asked = |sid: &str| w.terminal.typed(sid).iter().any(|t| t.contains("Hand off: write a short note"));
-    // The ask is typed off the tick's thread.
-    let t0 = std::time::Instant::now();
-    while !asked("webui1") && t0.elapsed().as_secs() < 5 {
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
+    let started = w.hosted.launched().last().unwrap().args.clone();
+    assert!(!started.iter().any(|a| a.contains("You run this project's Desk in Cue")), "the item's session: {started:?}");
+    assert!(!fast(&started), "the item's session starts as it is");
+    w.hub().add_parked(w.hub().session_record(&l).unwrap());
+    crate::ipc::desk_send_with(w.hub(), &project, "back again").unwrap();
     w.settle();
-    assert!(asked("webui1"), "{:?}", w.terminal.typed("webui1"));
-    assert!(!asked("idle01"), "it holds nothing");
-    assert_eq!(crate::db::handoff("webui1").map(|k| k.ahead), Some(crate::ipc::AHEAD_DESK));
-    let by_cue = |w: &World| decisions(w, &project).into_iter().filter(|d| d["by"] == "Cue").collect::<Vec<_>>();
-    let cue = by_cue(&w);
-    assert_eq!(cue.len(), 1, "{cue:?}");
-    assert_eq!((cue[0]["text"].as_str(), cue[0]["why"].as_str(), cue[0]["undo"].as_str()), (Some("Asked shop for a hand-off note"), Some("142k, cache ending"), Some("none")));
-    w.tick(true);
-    assert_eq!(by_cue(&w).len(), 1, "once per idle stretch");
-    // Asked: its lead isn't told Cue will ask (again).
-    let s = w.hub().desk_summary(&project, "lead01", false).0;
-    assert!(!s.contains("→ Cue will"), "{s}");
+    assert!(fast(&w.hosted.launched().last().unwrap().args), "resumed in fast mode");
 }
 
+/// A picture pasted into the lead's box reaches the lead with your words, as a session chat's does: sent to it live
+/// (shown in its chat), or named by where it is when the lead is resumed with it.
 #[test]
-fn once_cue_has_tried_this_expiry_the_lead_is_not_told_it_will() {
+fn a_picture_in_the_leads_box_reaches_the_lead_live_or_resumed() {
+    use base64::Engine;
     let w = World::new();
-    shop_session(&w, "lead01", 20 * 60_000, 90_000);
-    shop_session(&w, "webui1", 60_000, 142_000);
-    let project = shop_desk(&w);
-    // A draft of yours in Cue's box for it: the ask is held, and not tried again before its cache runs out.
-    crate::db::set_draft("s:webui1", "half a thought", &json!([]));
-    w.tick(true);
+    let (_, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    let png = || crate::model::Upload { name: "shot.png".into(), mime: "image/png".into(), data: format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(b"a png")) };
+    crate::ipc::desk_send_images(w.hub(), &project, "This is cut off", &[png()]).unwrap();
+    let sent = sent_to(&w, &l).pop().unwrap();
+    assert!(sent.contains("This is cut off") && sent.contains("/uploads/") && sent.contains(".png"), "{sent}");
+    let thread = w.snapshot().find(&l).unwrap()["thread"].clone();
+    let yours = thread.as_array().unwrap().iter().rev().find(|e| e["role"] == "you").unwrap().clone();
+    assert_eq!(yours["images"].as_array().map(Vec::len), Some(1), "shown in its chat: {yours}");
+    // Only a picture, no words: it still goes.
+    crate::ipc::desk_send_images(w.hub(), &project, "", &[png()]).unwrap();
+    assert!(sent_to(&w, &l).pop().unwrap().contains(".png"));
+    assert!(crate::ipc::desk_send_images(w.hub(), &project, " ", &[]).is_err(), "nothing to send");
+    // Parked: resumed with the message, which names the picture.
+    w.hub().add_parked(w.hub().session_record(&l).unwrap());
+    crate::ipc::desk_send_images(w.hub(), &project, "And this one", &[png()]).unwrap();
     w.settle();
-    assert!(w.terminal.typed("webui1").is_empty());
-    let s = w.hub().desk_summary(&project, "lead01", false).0;
-    assert!(s.contains("sid:webui1, session, waiting, 142k, cache 1m)"), "{s}");
-}
-
-#[test]
-fn once_a_hand_off_was_sent_this_wait_the_lead_is_not_told_cue_will() {
-    let w = World::new();
-    shop_session(&w, "lead01", 20 * 60_000, 90_000);
-    shop_session(&w, "webui1", 12 * 60_000, 142_000);
-    let project = shop_desk(&w);
-    w.tick(true);
-    assert!(w.hub().desk_summary(&project, "lead01", false).0.contains("142k, cache 12m → Cue will"));
-    crate::db::handoff_sent("webui1", "", false, 0);
-    w.tick(true);
-    let s = w.hub().desk_summary(&project, "lead01", false).0;
-    assert!(s.contains("sid:webui1, session, waiting, 142k, cache 12m)"), "{s}");
-}
-
-#[test]
-fn without_a_lead_a_session_holding_an_item_is_left_as_before() {
-    let w = World::new();
-    shop_session(&w, "webui1", 60_000, 142_000);
-    let project = w.snapshot().session("webui1")["project"].as_str().unwrap().to_string();
-    w.hub().desk_add(&project, "bug", "Header", "", Some("webui1")).unwrap();
-    w.tick(true);
-    w.settle();
-    assert!(w.terminal.typed("webui1").is_empty() && crate::db::handoff("webui1").is_none());
+    let resumed = sent_to(&w, &l).pop().unwrap();
+    assert!(resumed.contains("And this one") && resumed.contains(".png"), "{resumed}");
 }

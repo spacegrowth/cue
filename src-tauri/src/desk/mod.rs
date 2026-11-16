@@ -13,12 +13,12 @@ pub use model::{Desk, DeskDecision, DeskItem, Holder, Lead, Waiting};
 /// sent inside the Desk block to a session you make the lead (a running session can't get a system prompt).
 pub const LEAD_SKILL: &str = "# Running this project's Desk (Cue)
 You run this project's Desk in Cue: its list of items (bugs, features, tasks). The user tells you what needs doing; \
-you do it or hand it out, and say why.
-- Hand work out by default (to your crew or to another session of this project), so you stay free to answer the user. \
-Do it yourself only when it's small, or when you are the only session.
+you hand it out to the project's sessions, and say why. You only dispatch, so you stay free to answer the user:
+- Never do an item's work yourself, start teammates or subagents, or run anything in the background.
+- Route each item to a session of this project; when none fits, to a new one (-> new), which Cue starts.
 - Say why in one line each time: who takes it and why them.
 - Route new work to a small or warm session over a big cold one.
-- Start a fresh teammate rather than messaging one that has finished its work.
+- The session that did an item reviews its own work; you don't.
 - Write CONTEXT: only to differ from what Cue says it will do with a session's context.
 
 Each message from Cue starts with a <desk> block: the items (#id, kind, title, state, who holds it, files) and the \
@@ -27,47 +27,37 @@ off at expiry\": Cue asks it for a hand-off note before its cache runs out). The
 
 Act by writing lines of their own, outside code blocks, exactly like this:
 ITEM: bug | <title> | done when: <how we'll know it's done>      (kind is bug, feature or task)
-ROUTE: #<id> -> <session or crew name> | why: <one short reason>
-ROUTE: #<id> -> me | why: <reason>      (you do it yourself)
+ROUTE: #<id> -> <session name> | kind: bug | why: <one short reason>      (kind is bug, feature or task; \
+give it when the item has none yet, as items the user adds don't)
+ROUTE: #<id> -> new | why: <reason>      (no session fits: Cue starts a new session of this project for it)
 ROUTE: #<id> -> <name> | after: #<other id> | why: <reason>   (it starts once #<other id> is done; use it when \
 both would change the same files)
 ASK: <question> | choices: <A> / <B> / <C>      (only when you can't decide without the user)
-DECIDED: <what you chose> — <why>      (a judgment call you made on your own)
-DONE: #<id>      (an item you did yourself is done)
+DECIDED: <what you chose> — <why>      (a judgment call you made on your own that the user may want to undo; not for routing, starting or giving work: Cue lists those itself)
+DONE: #<id>      (the user tells you an item is done)
 CONTEXT: <session or me> -> keep | why: <reason>      (Cue leaves that session's context as it is while it waits now, or, if it's at work, while it waits after this turn)
 
-In a ROUTE, #new means the ITEM you added in the same reply. Route only to a name the <desk> block lists, or to me; \
-never make one up. The session you route to is told the item and asked to say DONE: #<id> when it's done; Cue \
-then moves it to the user to check. When Cue tells you of new items, route each one now.
-Be short and plain: a line or two a busy person reads at a glance, no headings, no emoji.";
+In a ROUTE, #new means the ITEM you added in the same reply. Route to a session on the Desk (the <desk> block lists them), or to new; \
+never make one up. A ROUTE to another session of the project makes Cue ask the user first (don't ask it yourself): a yes \
+adds that session to the Desk and makes the route, a no leaves the item as it was. The session you route to is told the item and asked to say DONE: #<id> when it's done; Cue \
+then moves it to the user to check. To reopen one that's to check, route it again to the session holding it, \
+with what's left as the why. When Cue tells you of new items, route each one now.
+In your own words, name an item by its kind and number, as the user sees it: \"Bug #2\", \"Task #1\" (in the lines above, \
+keep #<id>). Be short and plain: a line or two a busy person reads at a glance, no headings, no emoji.";
 
-/// An id no item in `taken` has: a letter then three letters or digits ("d7k2").
-pub fn new_id(taken: impl Fn(&str) -> bool) -> String {
-    const ALL: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
-    let mut seed = crate::clock::now_ms() ^ (std::process::id() as u64).rotate_left(32);
-    loop {
-        // A small mix of the clock (splitmix64): ids look random, and the next try differs.
-        seed = seed.wrapping_add(0x9E37_79B9_7F4A_7C15);
-        let mut z = seed;
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        z ^= z >> 31;
-        let mut id = String::with_capacity(4);
-        id.push(ALL[(z % 26) as usize] as char);
-        for i in 1..4 {
-            id.push(ALL[((z >> (i * 8)) % 36) as usize] as char);
-        }
-        if !taken(&id) {
-            return id;
-        }
-    }
+/// The number after the highest of `ids` that are plain numbers, and after `high` (the highest given before).
+pub fn next_number<'a>(ids: impl Iterator<Item = &'a str>, high: u64) -> u64 {
+    ids.filter_map(|id| id.parse::<u64>().ok()).fold(high, u64::max) + 1
 }
 
 /// What the session holding `it` is told when it's handed the item.
 pub fn handed_words(it: &DeskItem, why: &str) -> String {
-    let mut out = format!("Desk item #{} ({}): {}", it.id, it.kind, it.title);
+    let mut out = format!("Desk item #{}{}: {}", it.id, kind_words(it), it.title);
     if !it.done_when.trim().is_empty() {
         out.push_str(&format!("\nDone when: {}", it.done_when.trim()));
+    }
+    if !it.images.is_empty() {
+        out.push_str(&format!("\nPictures with it (open each to see it): {}", pictures(it)));
     }
     if !why.trim().is_empty() {
         out.push_str(&format!("\nWhy you: {}", why.trim()));
@@ -83,17 +73,33 @@ pub fn handed_words(it: &DeskItem, why: &str) -> String {
 pub fn new_items_words(items: &[DeskItem]) -> String {
     let mut out = String::new();
     for it in items {
-        out.push_str(&format!("New item #{} ({}): {}", it.id, it.kind, it.title));
+        out.push_str(&format!("New item #{}{}: {}", it.id, kind_words(it), it.title));
         if !it.done_when.trim().is_empty() {
             out.push_str(&format!(" | done when: {}", it.done_when.trim()));
+        }
+        if !it.images.is_empty() {
+            out.push_str(&format!(" | pictures: {}", pictures(it)));
         }
         if it.from != "you" && !it.from.is_empty() {
             out.push_str(&format!(" | from {}", it.from));
         }
         out.push('\n');
     }
-    out.push_str(if items.len() == 1 { "Route it now: ROUTE it to a session, or -> me." } else { "Route each now: ROUTE it to a session, or -> me." });
+    out.push_str(if items.len() == 1 { "Route it now: ROUTE it to a session, or -> new." } else { "Route each now: ROUTE it to a session, or -> new." });
+    if items.iter().any(|i| i.kind.is_empty()) {
+        out.push_str(" Say what one without a kind is in its ROUTE line: | kind: bug, feature or task.");
+    }
     out
+}
+
+/// An item's pictures, each path in backticks (the window shows a path written so as the picture).
+fn pictures(it: &DeskItem) -> String {
+    it.images.iter().map(|p| format!("`{p}`")).collect::<Vec<_>>().join(" ")
+}
+
+/// " (bug)" for an item's kind, "" for one with none yet.
+pub fn kind_words(it: &DeskItem) -> String {
+    if it.kind.is_empty() { String::new() } else { format!(" ({})", it.kind) }
 }
 
 /// A decision's undo, in the words its decider is sent (as crew_log's `go_back_words` for a lead's own call).
