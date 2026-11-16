@@ -1,82 +1,167 @@
-//! The Desk's commands (desk/, hub/desk.rs): writing to a project's Dispatch, adding an item, what you do to an
-//! item, and undoing a decision.
+//! The Desk's commands (desk/, hub/desk.rs, hub/desk_lead.rs): picking a project's lead, writing to it, adding an
+//! item, giving one to a session, what you do to an item, and undoing a decision.
 
 use super::{with_hub, StartOpts};
 use crate::hub::{DeskClaim, Hub};
 use std::sync::Arc;
 use tauri::State;
 
-/// Write to `project`'s Dispatch: started (hosted Claude, in the project's folder) the first time, and each message
-/// sent after the Desk's summary. `trust`: you said you trust the folder, when Cue asked (as + New does).
-/// Returns { sid }.
+/// Write to `project`'s lead: each message sent after the Desk's summary; resumed with it when parked. An error
+/// ("no lead", "lead ended") when there's none to write to. Returns { sid }.
 #[tauri::command]
-pub(crate) async fn desk_send(hub: State<'_, Arc<Hub>>, project: String, text: String, trust: Option<bool>) -> Result<serde_json::Value, String> {
-    with_hub(&hub, move |h| desk_send_with(h, &project, &text, trust.unwrap_or(false))).await?
+pub(crate) async fn desk_send(hub: State<'_, Arc<Hub>>, project: String, text: String) -> Result<serde_json::Value, String> {
+    with_hub(&hub, move |h| desk_send_with(h, &project, &text)).await?
 }
 
-pub(crate) fn desk_send_with(h: &Arc<Hub>, project: &str, text: &str, trust: bool) -> Result<serde_json::Value, String> {
+pub(crate) fn desk_send_with(h: &Arc<Hub>, project: &str, text: &str) -> Result<serde_json::Value, String> {
     if text.trim().is_empty() {
         return Err("nothing to send".into());
     }
-    let (summary, failed) = h.desk_summary(project);
-    // Always exactly: the `<desk …>…</desk>` block, a blank line, then your words. The window strips that leading
-    // block from your messages in Dispatch's chat, so keep this shape.
-    let message = format!("{summary}\n\n{}", text.trim());
-    let lost = |e: String| format!("{project}'s Dispatch didn't start ({e}), so this wasn't sent: {}", text.trim());
-    let sid = match h.desk_claim(project, &message, &failed) {
-        DeskClaim::Send(sid) => {
-            h.send_to_session(&sid, &message, &[], false)?;
-            sid
-        }
-        // Another message is starting or resuming it: this one is sent by that call once it's up (which told
-        // Dispatch of its failed routes), or not, and you're told so.
-        DeskClaim::Wait(outcome) => {
-            let sid = outcome.recv().unwrap_or_else(|_| Err("it gave up".into())).map_err(lost)?;
-            return Ok(serde_json::json!({ "sid": sid }));
-        }
-        DeskClaim::Resume(sid) => {
-            let claim = DeskStart::new(h, project);
-            claim.done(resume(h, project, &sid, &message, trust)).map_err(lost)?
-        }
-        DeskClaim::Start => {
-            let claim = DeskStart::new(h, project);
-            claim.done(start(h, project, &message, trust, None)).map_err(lost)?
-        }
-    };
-    h.desk_dispatch_started(project, &sid);
-    // Told now: the failed routes it was told of are cleared.
-    h.desk_told(&failed);
+    let lost = |e: String| format!("{project}'s lead didn't come up ({e}), so this wasn't sent: {}", text.trim());
+    let sid = deliver(h, project, text, &lost)?;
     Ok(serde_json::json!({ "sid": sid }))
 }
 
-/// Parked Dispatch `sid` resumed with `message` (still the project's Dispatch, with its instructions); sent to it
-/// instead when it was running again already (Resume then only takes it off Parked). One that won't resume is left
-/// parked, and a new one started with `message`. Dispatch's id.
-fn resume(h: &Arc<Hub>, project: &str, sid: &str, message: &str, trust: bool) -> Result<String, String> {
-    // Its folder, for a new one when it's the project's only session (desk_folder passes over Dispatch's own).
-    let folder = h.parked(sid).map(|p| p.session.origin).filter(|o| o.machine.is_empty() && !o.cwd.is_empty()).map(|o| o.cwd);
+/// Your words (`text`) to `project`'s lead, however it's reached (`desk_claim`), after the Desk's summary as built
+/// for that lead: its id. `lost`: what you're told when it was waited for or resumed and didn't come up.
+fn deliver(h: &Arc<Hub>, project: &str, text: &str, lost: &dyn Fn(String) -> String) -> Result<String, String> {
+    let (sid, failed) = match h.desk_claim(project, text)? {
+        DeskClaim::Send(sid) => {
+            let (message, failed) = for_lead(h, project, &sid, text);
+            h.send_to_session(&sid, &message, &[], false)?;
+            (sid, failed)
+        }
+        // Another message is resuming it (or a lead is starting or changing): this one is sent by that call once
+        // it's done (with the summary for the lead it reaches), or not, and you're told so.
+        DeskClaim::Wait(outcome) => return outcome.recv().unwrap_or_else(|_| Err("it gave up".into())).map_err(lost),
+        DeskClaim::Resume(sid) => {
+            let (message, failed) = for_lead(h, project, &sid, text);
+            (DeskStart::new(h, project).done(resume(h, &sid, &message)).map_err(lost)?, failed)
+        }
+    };
+    // Told now: the failed routes it was told of are cleared.
+    h.desk_told(&failed);
+    Ok(sid)
+}
+
+/// Your words (`text`) as `project`'s lead `sid` is sent them: after the Desk's summary as it sees it (itself left
+/// out of the sessions it can route to). With the failed routes it's told of.
+fn for_lead(h: &Arc<Hub>, project: &str, sid: &str, text: &str) -> (String, Vec<(String, String)>) {
+    let (summary, failed) = h.desk_summary(project, sid, false);
+    (desk_message(&summary, text), failed)
+}
+
+/// Always exactly: the `<desk …>…</desk>` block, a blank line, then the words. The window strips that leading block
+/// from your messages in the lead's chat, so keep this shape.
+fn desk_message(summary: &str, text: &str) -> String {
+    format!("{summary}\n\n{}", text.trim())
+}
+
+/// What a lead is told when it takes the Desk on.
+fn hello(project: &str) -> String {
+    format!("You run {project}'s Desk now. Say so in one line, then hand out anything not given out yet.")
+}
+
+/// Pick `project`'s lead: session `sid` (of the project: live, parked or ended), or, without one, a new hosted
+/// Claude session in the project's folder named "<project>-lead". The lead is sent the Desk (with how a lead works,
+/// for a session that didn't start as one); a parked or ended one is resumed with it. The lead it replaces, still
+/// open, is told. `trust`: you said you trust the folder, when Cue asked (as + New does). Returns { sid }.
+#[tauri::command]
+pub(crate) async fn desk_set_lead(hub: State<'_, Arc<Hub>>, project: String, sid: Option<String>, trust: Option<bool>) -> Result<serde_json::Value, String> {
+    with_hub(&hub, move |h| desk_set_lead_with(h, &project, sid.as_deref().filter(|s| !s.is_empty()), trust.unwrap_or(false))).await?
+}
+
+pub(crate) fn desk_set_lead_with(h: &Arc<Hub>, project: &str, sid: Option<&str>, trust: bool) -> Result<serde_json::Value, String> {
+    if project.trim().is_empty() {
+        return Err("no project".into());
+    }
+    let picked = match sid {
+        None => None,
+        Some(sid) => {
+            let (name, state) = h.desk_lead_candidate(project, sid)?;
+            if h.desk_lead_sid(project).as_deref() == Some(sid) && state == "live" {
+                return Ok(serde_json::json!({ "sid": sid }));
+            }
+            Some((sid, name, state))
+        }
+    };
+    // Any change of lead claims the project first, and only then reads the lead it replaces: one change (or start,
+    // or resume) at a time, so a change that fails never puts back a lead another one has replaced since.
+    h.desk_claim_start(project)?;
+    let claim = DeskStart::new(h, project);
+    let before = h.desk_lead(project);
+    let made = match &picked {
+        None => {
+            let name = h.desk_lead_name(project);
+            start(h, project, &name, trust).map(|sid| (sid, name))
+        }
+        Some((sid, name, state)) => take_on(h, project, sid, name, state).map(|_| (sid.to_string(), name.clone())),
+    };
+    match &made {
+        Ok((sid, _)) => drop(claim.done(Ok(sid.clone()))),
+        // It didn't come up, or wasn't told: the Desk keeps the lead it had, and the messages held meanwhile go to it.
+        Err(_) => {
+            h.desk_put_back_lead(project, before.clone());
+            claim.back();
+        }
+    }
+    let (sid, name) = made?;
+    // The lead it replaces keeps what it holds, and is told it no longer runs the Desk.
+    if let Some(old) = before.map(|l| l.sid).filter(|old| *old != sid && h.session_origin(old).is_some()) {
+        let words = format!("You no longer run {project}'s Desk: {name} does now. Keep on with the items you hold.");
+        if let Err(e) = h.send_to_session(&old, &words, &[], false) {
+            eprintln!("cue: desk: {project}'s last lead wasn't told it was replaced: {e}");
+        }
+    }
+    Ok(serde_json::json!({ "sid": sid }))
+}
+
+/// Session `sid` (`name`, `state`: live, parked or ended) made `project`'s lead and sent the Desk with how a lead
+/// works; a parked or ended one is resumed with it.
+fn take_on(h: &Arc<Hub>, project: &str, sid: &str, name: &str, state: &str) -> Result<(), String> {
+    h.desk_put_lead(project, sid, name);
+    let (summary, failed) = h.desk_summary(project, sid, true);
+    let message = desk_message(&summary, &hello(project));
+    match state {
+        "live" => {
+            h.send_to_session(sid, &message, &[], false)?;
+        }
+        "parked" => {
+            resume(h, sid, &message)?;
+        }
+        _ => {
+            let record = super::closed_record(h, sid)?;
+            super::resume_record(h, record, &message)?;
+        }
+    }
+    h.desk_told(&failed);
+    Ok(())
+}
+
+/// Parked lead `sid` resumed with `message`; sent to it instead when it was running again already (Resume then only
+/// takes it off Parked). Its id.
+fn resume(h: &Arc<Hub>, sid: &str, message: &str) -> Result<String, String> {
     match super::resume_parked_session(h, sid, message) {
         Ok(r) if r == super::ALREADY_RUNNING => h.send_to_session(sid, message, &[], false).map(|_| sid.to_string()),
         Ok(_) => Ok(sid.to_string()),
-        Err(e) => {
-            eprintln!("cue: desk: {project}'s Dispatch didn't resume ({e}): starting a new one");
-            start(h, project, message, trust, folder)
-        }
+        Err(e) => Err(e),
     }
 }
 
-/// A new Dispatch for `project`, hosted Claude in the project's folder (else in `folder`), started with `message`:
-/// its id.
-fn start(h: &Arc<Hub>, project: &str, message: &str, trust: bool, folder: Option<String>) -> Result<String, String> {
-    let dir = h.desk_folder(project).or(folder).ok_or_else(|| format!("no folder known for {project}: start a session there first"))?;
-    let opts = StartOpts { trust, dispatch: project.to_string(), ..Default::default() };
-    let started = super::start_hosted(h, crate::hosted::Agent::Claude, &dir, message, &format!("{project} Dispatch"), &opts, &[])?;
+/// A new lead for `project` named `name`, hosted Claude in the project's folder, started with the Desk and a hello
+/// (its instructions come with its system prompt): its id.
+fn start(h: &Arc<Hub>, project: &str, name: &str, trust: bool) -> Result<String, String> {
+    let dir = h.desk_folder(project).ok_or_else(|| format!("no folder known for {project}: start a session there first"))?;
+    let (summary, _) = h.desk_summary(project, "", false);
+    let message = desk_message(&summary, &hello(project));
+    let opts = StartOpts { trust, desk_lead: project.to_string(), ..Default::default() };
+    let started = super::start_hosted(h, crate::hosted::Agent::Claude, &dir, &message, name, &opts, &[])?;
     started["session_id"].as_str().filter(|s| !s.is_empty()).map(str::to_string).ok_or_else(|| "it started without a session id".into())
 }
 
-/// A start or resume of `project`'s Dispatch that `desk_claim` allowed. The claim is let go once it's over
-/// (`done`), or, if it never got there (a panic, an early return), when this is dropped: the messages held
-/// meanwhile then hear they weren't sent, and later ones start it again.
+/// A start or resume of `project`'s lead that `desk_claim` (or `desk_claim_start`) allowed. The claim is let go once
+/// it's over (`done`), or, if it never got there (a panic, an early return), when this is dropped: the messages held
+/// meanwhile then hear they weren't sent.
 pub(crate) struct DeskStart<'a> {
     h: &'a Arc<Hub>,
     project: &'a str,
@@ -88,19 +173,34 @@ impl<'a> DeskStart<'a> {
         DeskStart { h, project, open: true }
     }
 
-    /// It's over (`up`: Dispatch's id, or why it didn't come up): the messages that came meanwhile are sent to it
-    /// now (kept in Cue while it was at work), and each sender hears how that went. `up` handed back.
+    /// It's over (`up`: the lead's id, or why it didn't come up): the messages that came meanwhile are sent to it
+    /// now (kept in Cue while it was at work), each after the Desk's summary as it sees it, and each sender hears
+    /// how that went. `up` handed back.
     pub(crate) fn done(mut self, up: Result<String, String>) -> Result<String, String> {
         self.open = false;
         for w in self.h.desk_claim_done(self.project) {
-            let sent = up.clone().and_then(|sid| self.h.send_to_session(&sid, &w.message, &[], false).map(|_| sid));
-            if sent.is_ok() {
-                self.h.desk_told(&w.failed);
-            }
+            let sent = up.clone().and_then(|sid| {
+                let (message, failed) = for_lead(self.h, self.project, &sid, &w.text);
+                self.h.send_to_session(&sid, &message, &[], false)?;
+                self.h.desk_told(&failed);
+                Ok(sid)
+            });
             // Its sender may have gone (the window closed): nothing more to tell then.
             let _ = w.reply.send(sent);
         }
         up
+    }
+
+    /// A change of lead that failed is over, and the lead it had is back: the messages that came meanwhile go to that
+    /// lead as any message would (resumed with it when parked; "no lead" when there was none), and each sender hears
+    /// how that went.
+    pub(crate) fn back(mut self) {
+        self.open = false;
+        for w in self.h.desk_claim_done(self.project) {
+            let sent = deliver(self.h, self.project, &w.text, &|e| e);
+            // Its sender may have gone (the window closed): nothing more to tell then.
+            let _ = w.reply.send(sent);
+        }
     }
 }
 
@@ -113,10 +213,16 @@ impl Drop for DeskStart<'_> {
     }
 }
 
-/// The "New item" button. Returns the item.
+/// The "New item" button, or "Add to Desk" on a session (`holder`: that session, which holds it). Returns the item.
 #[tauri::command]
-pub(crate) async fn desk_add(hub: State<'_, Arc<Hub>>, project: String, kind: String, title: String, done_when: Option<String>) -> Result<crate::desk::DeskItem, String> {
-    with_hub(&hub, move |h| h.desk_add(&project, &kind, &title, done_when.as_deref().unwrap_or(""))).await?
+pub(crate) async fn desk_add(hub: State<'_, Arc<Hub>>, project: String, kind: String, title: String, done_when: Option<String>, holder: Option<String>) -> Result<crate::desk::DeskItem, String> {
+    with_hub(&hub, move |h| h.desk_add(&project, &kind, &title, done_when.as_deref().unwrap_or(""), holder.as_deref().filter(|s| !s.is_empty()))).await?
+}
+
+/// "Give to…": item `id` to session `sid`, which is sent it. Returns the item as it is now.
+#[tauri::command]
+pub(crate) async fn desk_give(hub: State<'_, Arc<Hub>>, id: String, sid: String) -> Result<crate::desk::DeskItem, String> {
+    with_hub(&hub, move |h| h.desk_give(&id, &sid)).await?
 }
 
 /// What you did to an item: "looks_right" | "send_back" | "start_now" | "put_before" | "drop", with `text` for

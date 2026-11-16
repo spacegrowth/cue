@@ -325,7 +325,7 @@ fn end_and_close(h: &Hub, session_id: &str) -> Result<String, String> {
 /// opens in Active, ready to type into). Returns the id.
 #[tauri::command]
 pub(crate) async fn new_session(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, agent: String, cwd: String, message: String, name: String, tmux: Option<bool>, perm: Option<String>, extra: Option<String>, machine: Option<String>, mcp: Option<Vec<String>>, images: Option<Vec<model::Upload>>, hosted: Option<bool>, trust: Option<bool>) -> Result<serde_json::Value, String> {
-    let opts = StartOpts { tmux, perm: perm.unwrap_or_default(), extra: extra.unwrap_or_default(), machine: machine.unwrap_or_default(), mcp, images: images.unwrap_or_default(), hosted: hosted.unwrap_or(false), trust: trust.unwrap_or(false), dispatch: String::new() };
+    let opts = StartOpts { tmux, perm: perm.unwrap_or_default(), extra: extra.unwrap_or_default(), machine: machine.unwrap_or_default(), mcp, images: images.unwrap_or_default(), hosted: hosted.unwrap_or(false), trust: trust.unwrap_or(false), desk_lead: String::new() };
     let res = with_hub(&hub, move |h| start_session_with(&h, &agent, &cwd, &message, &name, &opts))
         .await?;
     // Cue stays in front: the terminal tab opened behind it.
@@ -360,8 +360,9 @@ pub(crate) struct StartOpts {
     pub hosted: bool,
     /// You said you trust the folder (Cue asked, as Claude Code's terminal would: ipc/hosted.rs `trusted`).
     pub trust: bool,
-    /// The project whose Dispatch it is (desk/): it starts with the Desk's instructions. "" for any other.
-    pub dispatch: String,
+    /// The project whose Desk it starts as the lead of (desk/): it starts with the Desk's instructions. "" for any
+    /// other.
+    pub desk_lead: String,
 }
 
 pub(crate) fn start_session_with(h: &Arc<Hub>, agent: &str, cwd: &str, message: &str, name: &str, opts: &StartOpts) -> Result<serde_json::Value, String> {

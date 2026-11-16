@@ -250,7 +250,7 @@ impl Hub {
 
     /// Answer from the window (or cue-ctl). False if the item is no longer pending.
     pub fn respond(&self, id: &str, d: Decision) -> bool {
-        // Dispatch's question (desk.rs): its answer goes to it as a message.
+        // A Desk lead's ASK (desk.rs): its answer goes to it as a message.
         if self.desk_answered(id, &d) {
             return true;
         }

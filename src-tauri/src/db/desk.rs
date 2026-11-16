@@ -1,4 +1,4 @@
-//! The Desk's items, decisions and each project's Dispatch session (desk/).
+//! The Desk's items, decisions and each project's lead (desk/).
 
 use super::with;
 use crate::desk::{DeskDecision, DeskItem};
@@ -40,14 +40,22 @@ pub fn desk_put_decision(d: &DeskDecision) {
     });
 }
 
-/// `project`'s Dispatch session.
-pub fn desk_put_dispatch(project: &str, session_id: &str, started_ms: u64) {
+/// `project`'s lead: session `session_id`, going by `name`.
+pub fn desk_put_lead(project: &str, session_id: &str, name: &str, set_ms: u64) {
     with(|c| {
         c.execute(
-            "INSERT INTO desk_dispatch (project, session_id, started_ms) VALUES (?1, ?2, ?3)
-             ON CONFLICT(project) DO UPDATE SET session_id = excluded.session_id, started_ms = excluded.started_ms",
-            params![project, session_id, started_ms as i64],
+            "INSERT INTO desk_lead (project, session_id, name, set_ms) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(project) DO UPDATE SET session_id = excluded.session_id, name = excluded.name, set_ms = excluded.set_ms",
+            params![project, session_id, name, set_ms as i64],
         )?;
+        Ok(())
+    });
+}
+
+/// `project`'s Desk has no lead (a change of lead that failed, where it had none before).
+pub fn desk_drop_lead(project: &str) {
+    with(|c| {
+        c.execute("DELETE FROM desk_lead WHERE project = ?1", params![project])?;
         Ok(())
     });
 }
@@ -63,8 +71,8 @@ fn desk_prune(now_ms: u64) {
 }
 
 /// What the Desk starts with: every item not done and those done lately, the recent decisions, and each
-/// project's Dispatch. Those done long ago are deleted first.
-pub fn desk_load(now_ms: u64) -> (Vec<DeskItem>, Vec<DeskDecision>, Vec<(String, String)>) {
+/// project's lead (project, session, name). Those done long ago are deleted first.
+pub fn desk_load(now_ms: u64) -> (Vec<DeskItem>, Vec<DeskDecision>, Vec<(String, String, String)>) {
     desk_prune(now_ms);
     let since = now_ms.saturating_sub(KEEP_DONE_MS) as i64;
     let items = with(|c| {
@@ -79,11 +87,11 @@ pub fn desk_load(now_ms: u64) -> (Vec<DeskItem>, Vec<DeskDecision>, Vec<(String,
         Ok(rows.flatten().filter_map(|d| serde_json::from_str(&d).ok()).collect())
     })
     .unwrap_or_default();
-    let dispatch = with(|c| {
-        let mut q = c.prepare("SELECT project, session_id FROM desk_dispatch")?;
-        let rows = q.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+    let leads = with(|c| {
+        let mut q = c.prepare("SELECT project, session_id, name FROM desk_lead")?;
+        let rows = q.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)))?;
         Ok(rows.flatten().collect())
     })
     .unwrap_or_default();
-    (items, decisions, dispatch)
+    (items, decisions, leads)
 }

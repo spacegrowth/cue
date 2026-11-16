@@ -14,7 +14,8 @@ mod asks;
 mod cache_tick;
 mod crew_log;
 mod desk;
-pub(crate) use desk::DeskClaim;
+mod desk_lead;
+pub(crate) use desk_lead::DeskClaim;
 mod events;
 mod hand_off;
 mod history;
@@ -157,7 +158,7 @@ struct Store {
     restarted: HashMap<String, Vec<Value>>,
     /// How many snapshots have been taken from the store (each takes the next number): their order (shown.rs).
     shown_seq: u64,
-    /// Each project's Desk: its items, decisions and Dispatch (desk.rs).
+    /// Each project's Desk: its items, decisions and lead (desk.rs, desk_lead.rs).
     desk: crate::desk::Desk,
 }
 
@@ -314,7 +315,7 @@ impl Hub {
             tool_use_id: None,
             request_id: None,
             scan_from: 0,
-            at_prompt: false, agent_id: String::new(), agent_name: String::new(), one_way: false, from_dispatch: false,
+            at_prompt: false, agent_id: String::new(), agent_name: String::new(), one_way: false, desk: false,
         }
     }
 

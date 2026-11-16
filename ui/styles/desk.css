@@ -1,4 +1,5 @@
-/* The Desk (desk.js): a project's items on the left, Dispatch (or what's open) on the right; with All projects, every
+/* The Desk (desk.js, desk_lead.js): a project's items on the left, its lead's chat (or who runs it, or what's open)
+   on the right; with All projects, every
    project's Desk as a card. Groups are plain labels over their rows; the open row lights in place. */
 .board.dk-board { grid-template-columns: minmax(340px, 540px) minmax(0, 1fr); }
 .board.dk-board.all { grid-template-columns: minmax(0, 1fr); }
@@ -43,13 +44,56 @@
 .dk-it.on, .dk-it.on .dk-k, .dk-it.on .dk-age, .dk-it.on .dk-h, .dk-it.on .dk-h b { color: var(--on-sel); }
 .dk-it.ask .dk-h::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; background: var(--deny); vertical-align: 1px; }
 
-/* New item. */
-.dk-new { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 12px 20px 14px; border-bottom: 1px solid var(--line); }
-.dk-kinds { display: flex; gap: 6px; }
-.dk-kind { height: 26px; padding: 0 10px; border-radius: var(--pill-radius); border: 1px solid var(--line); background: var(--panel); color: var(--ink); font-size: 12px; font-weight: 600; }
-.dk-kind.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
-.dk-in { height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); font: 13px var(--sans); outline: none; }
-.dk-in:focus { border-color: var(--muted); }
+/* Items' header: Run by <lead> · Change. */
+.dk-runby { color: var(--muted); font-size: 12.5px; }
+.dk-runby b { color: var(--ink); font-size: 12.5px; font-weight: 650; }
+.dk-link { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; font-weight: 650; cursor: pointer; }
+.dk-link:hover { text-decoration: underline; }
+
+/* The quick-add line at the top of Items: the title, the kind switch; Done when under it. */
+.dk-qa { flex: none; display: flex; flex-direction: column; gap: 6px; padding: 10px 14px 10px 20px; border-bottom: 1px solid var(--line); }
+.dk-qa-row { display: flex; align-items: center; gap: 8px; }
+.dk-qa-in { flex: 1; min-width: 0; height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); font: 13px var(--sans); outline: none; }
+.dk-qa-in:focus { border-color: var(--muted); }
+.dk-qa-done { flex: none; }
+.dk-qks { flex: none; display: inline-flex; padding: 2px; border-radius: 8px; background: var(--panel-2); }
+.dk-qk { height: 26px; padding: 0 9px; border: 0; border-radius: 6px; background: none; color: var(--muted); font-size: 12px; font-weight: 600; cursor: pointer; }
+.dk-qk.on { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px rgba(0, 0, 0, .08); }
+.dk-qa-more { align-self: flex-start; color: var(--muted); font-size: 12px; font-weight: 600; }
+.dk-qa-more:hover { color: var(--ink); }
+
+/* Give to…: a quiet link under a row (a button in the open item), its menu over what's below (rows stay put). */
+.dk-givewrap { position: relative; display: inline-block; }
+.dk-hg { position: relative; overflow: visible; }
+.dk-hg .dk-givewrap { position: static; }
+.dk-give { color: var(--muted); font-size: 12.5px; font-weight: 500; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
+.dk-give:hover { color: var(--ink); }
+.dk-it.on .dk-give { color: var(--on-sel); }
+.dk-givemenu { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; min-width: 220px; display: flex; flex-direction: column; padding: 4px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); box-shadow: var(--shadow); }
+.dk-givemenu button { display: flex; align-items: baseline; gap: 8px; padding: 7px 10px; border: 0; border-radius: 7px; background: none; color: var(--ink); font: 13px var(--sans); text-align: left; white-space: nowrap; cursor: pointer; }
+.dk-givemenu button:hover { background: var(--panel-2); }
+.dk-givemenu button > span:first-child { font-weight: 600; }
+.dk-givemenu button:last-child { margin-top: 2px; border-top: 1px solid var(--line); border-radius: 0 0 7px 7px; }
+
+/* Who runs this Desk? */
+.dk-pick { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; padding: 32px 56px; }
+.dk-pick h2 { margin: 0 0 10px; font-size: 19px; font-weight: 700; }
+.dk-pick > p { margin: 0 0 20px; color: var(--muted); font-size: 13.5px; line-height: 1.5; }
+.dk-pick .dk-acts { padding: 0; align-items: center; gap: 16px; }
+.dk-whos { align-self: stretch; margin-bottom: 18px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.dk-who { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; column-gap: 10px; align-items: center; padding: 10px 14px; }
+.dk-who + .dk-who { border-top: 1px solid var(--line); }
+.dk-who > i { align-self: start; width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: var(--work); }
+.dk-who > i.idle { background: none; box-shadow: inset 0 0 0 1.5px var(--work); }
+.dk-fresh { font-size: 13px; }
+.dk-keep { margin-top: 14px; color: var(--muted); font-size: 12.5px; }
+
+/* The lead's chat head: its name (a tab), Decisions, its crew; and the line when it has ended. */
+.dk-crewline { align-self: center; margin-left: -6px; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.dk-endlead { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 24px 32px; }
+.dk-endlead p { margin: 0; color: var(--muted); font-size: 13.5px; }
+.dk-endlead p b { color: var(--ink); font-weight: 650; }
+.dk-endlead .dk-acts { padding: 12px 0 0; }
 
 /* The right card: tabs, the chat, the box. */
 .dk-right { position: relative; }

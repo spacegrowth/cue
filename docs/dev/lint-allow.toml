@@ -111,7 +111,7 @@ reason = "saves.rs hand_in_parked_turn, only without a writer thread (tests, or 
 [[lock_order]]
 from = "desk saves"
 to = "DB"
-reason = "hub/desk.rs desk_done and desk_dispatch_starting: a Desk save reads what the store holds now and writes it under the desk save lock, so saves of one record reach the database in the order the store changed. It's taken with the store let go, never under the store or the database"
+reason = "hub/desk.rs desk_done and desk_lead_to: a Desk save reads (desk_lead_to: reads and changes) what the store holds now and writes it under the desk save lock, so saves of one record reach the database in the order the store changed. It's taken with the store let go, never under the store or the database"
 
 [[lock_order]]
 from = "desk saves"
@@ -121,7 +121,7 @@ reason = "db::open regroups projects by repo root (repos::repo_root) the first t
 [[lock_order]]
 from = "desk saves"
 to = "the hub's store"
-reason = "hub/desk.rs desk_done and desk_dispatch_starting: under the desk save lock the store is read (or changed) for what to write, then let go before the database. Nothing takes a save lock under the store or the database"
+reason = "hub/desk.rs desk_done and desk_lead_to: under the desk save lock the store is read (or changed) for what to write, then let go before the database. Nothing takes a save lock under the store or the database"
 
 [[lock_order]]
 from = "review queue saves"

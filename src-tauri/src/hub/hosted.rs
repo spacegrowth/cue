@@ -31,11 +31,11 @@ impl Hub {
         let agent = Agent::named(&origin.harness).ok_or("Cue can only host Claude Code, Pi and Codex")?;
         // A Claude lead starts with the team skill (team_out.rs), new or resumed: merged into a prompt you append; with
         // what its project counts one-way (Settings' One-way here, one_way.rs), as the setting is at this start.
-        // A project's Dispatch (desk.rs) starts with the Desk's instructions instead: it hands work out, it has no crew.
-        let skill = match self.desk_skill(&origin.session_id) {
-            Some(desk) => desk.to_string(),
-            None => super::team_out::skill_for(&crate::one_way::kinds(&super::crew_log::project_shown_for(origin))),
-        };
+        // A project's Desk lead (desk_lead.rs) has the Desk's instructions after it: it may form a crew too.
+        let mut skill = super::team_out::skill_for(&crate::one_way::kinds(&super::crew_log::project_shown_for(origin)));
+        if let Some(desk) = self.desk_skill(&origin.session_id) {
+            skill = format!("{skill}\n\n{desk}");
+        }
         let args = super::team_out::with_skill(agent, &with.args, &skill);
         let spec = Spec { agent, cwd: origin.cwd.clone().into(), start, permissions: with.permissions.clone(), model: with.model.clone(), args, program: Program::Agent, machine: origin.machine.clone() };
         let base = self.session_cost(&origin.session_id).unwrap_or(0.0);
@@ -202,7 +202,7 @@ impl Hub {
                     self.event(origin, "stopped", text, turn, "");
                     // Its judgment calls (DECIDED: lines) once its reply is in its chat, at the reply's time (crew_log.rs).
                     self.crew_calls_noted(&lead, &all);
-                    // Its Desk lines (desk.rs): Dispatch's, or a holder's.
+                    // Its Desk lines (desk.rs): a lead's, any session's ITEM lines, a holder's.
                     self.desk_turn_ended(&lead, &all);
                 }
                 #[cfg(feature = "ext")]

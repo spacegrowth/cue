@@ -132,8 +132,8 @@ function inboxSeated(sect, rows) {
   for (const r of fresh.reverse()) inboxSeats.set(r.sid, { sect, n: ++inboxSeq, at: now(), from: inboxSeats.get(r.sid)?.sect || "" });
   return rows.sort((a, b) => inboxSeats.get(b.sid).n - inboxSeats.get(a.sid).n);
 }
-/** The open tab's rows by section, in order: Running (the strip at the top), Pinned, Needs you (From Dispatch and From
- *  sessions when a Dispatch asks), Done, Later, Parked
+/** The open tab's rows by section, in order: Running (the strip at the top), Pinned, Needs you (a lead's Desk asks
+ *  among them, tagged), Done, Later, Parked
  *  (Pinned, Later and Parked on the Inbox tab only; the Snoozed tab lists its rows as they are). */
 function inboxSections() {
   const rows = inboxRows().filter((r) => inboxTabOf(r.s) === inboxTab).sort((a, b) => b.at - a.at);
@@ -143,9 +143,7 @@ function inboxSections() {
   const of = (k) => rest.filter((r) => (inboxLater(r.s) ? "need" : inboxSectOf(r)) === k);
   let quiet = 0;
   const done = of("done").filter((r) => r.it || inboxPinned(r.s) || !box || ++quiet <= INBOX_DONE_MAX);
-  // Needs you, split when Dispatch asks: From Dispatch on top, then From sessions (one seat order for both).
-  const need = inboxSeated("need", of("need")), disp = need.filter(inboxFromDispatch), own = need.filter((r) => !disp.includes(r));
-  return [["run", "Running", inboxSeated("run", of("run"))], ["pin", "Pinned", inboxSeated("pin", pinned)], ["dispatch", "From Dispatch", disp, true], ["need", disp.length ? "From sessions" : "Needs you", own, disp.length > 0], ["done", "Done", inboxSeated("done", done)], ["later", "Later", inboxSeated("later", parked)], ["parked", "Parked", inboxParkedRows()]];
+  return [["run", "Running", inboxSeated("run", of("run"))], ["pin", "Pinned", inboxSeated("pin", pinned)], ["need", "Needs you", inboxSeated("need", of("need"))], ["done", "Done", inboxSeated("done", done)], ["later", "Later", inboxSeated("later", parked)], ["parked", "Parked", inboxParkedRows()]];
 }
 
 // ---------- a row's words ----------
@@ -262,7 +260,7 @@ function inboxRowHtml(r) {
   const under = inboxSnoozed(s) ? `Back ${inboxWhen(s.snooze_ms)}${line ? ` · ${line}` : ""}` : line;
   const side = `<span class="ib-time">${ago(r.at)}</span>${inboxPinned(s) ? `<span class="ib-pin">${PIN_ICON}</span>` : ""}${inboxFull(s) ? inboxMeter(s) : ""}`;
   return `<div class="ib-row ${kind} ${inboxLater(s) ? "later" : ""} ${sinking ? "sinking" : ""} ${(inboxSid || inboxLast) === sid ? "on" : ""}" role="button" tabindex="0" data-inbox-open="${esc(sid)}" style="${projStyle(r.project)}${sinking ? `;animation-delay:-${now() - seat.at}ms` : ""}">`
-    + `<span class="ib-dot">${inboxDot(r)}</span><span class="ib-l1">${inboxNameHtml(r)}${inboxBadges(r)}<span class="ib-subj">${esc(subj)}</span></span>`
+    + `<span class="ib-dot">${inboxDot(r)}</span><span class="ib-l1">${nameSpan(r.sid, r.project, "ib-name")}${inboxBadges(r)}<span class="ib-subj">${esc(subj)}</span></span>`
     + `<span class="ib-l2">${esc(under)}</span>${inboxForHtml(r)}<span class="ib-side">${side}</span>`
     + `<span class="ib-acts ${inboxSnoozeAt === `row:${sid}` ? "open" : ""}">${inboxActs(sid, s, `row:${sid}`)}</span>${kind === "run" && s ? inboxBar(s) : ""}</div>`;
 }
@@ -291,16 +289,14 @@ function inboxStripBars(rows) {
   return `<span class="ib-strip-bars">${bars}${more > 0 ? `<span class="ib-strip-more">+${more}</span>` : ""}</span>`;
 }
 /** A heading and its rows; nothing when it has none. Running's is a thin strip at the top, "Running · 3" and its bars,
- *  that unfolds its rows; Later's and Parked's headings fold them, with their counts. `counted`: the heading shows its
- *  count too (From Dispatch and From sessions). */
-function inboxSection([key, title, rows, counted = false]) {
+ *  that unfolds its rows; Later's and Parked's headings fold them, with their counts. */
+function inboxSection([key, title, rows]) {
   if (!rows.length) return "";
   if (key === "run") {
     const open = inboxFoldOpen(key);
     return `<button class="ib-sect fold ib-strip" data-inbox-fold="run" aria-expanded="${open}"><span class="ib-fold">${open ? "▾" : "▸"}</span>${title} · <span class="ib-sect-n">${rows.length}</span>${inboxStripBars(rows)}</button>${open ? rows.map(inboxRowHtml).join("") : ""}`;
   }
-  const n = counted ? ` <span class="ib-sect-n">${rows.length}</span>` : "";
-  if (key !== "later" && key !== "parked") return `<div class="ib-sect ${key}">${key === "pin" ? PIN_ICON : ""}${title}${n}</div>${rows.map(inboxRowHtml).join("")}`;
+  if (key !== "later" && key !== "parked") return `<div class="ib-sect ${key}">${key === "pin" ? PIN_ICON : ""}${title}</div>${rows.map(inboxRowHtml).join("")}`;
   const open = inboxFoldOpen(key), draw = key === "parked" ? inboxParkedHtml : inboxRowHtml;
   return `<button class="ib-sect fold" data-inbox-fold="${key}" aria-expanded="${open}"><span class="ib-fold">${open ? "▾" : "▸"}</span>${title} <span class="ib-sect-n">${rows.length}</span></button>${open ? rows.map(draw).join("") : ""}`;
 }
@@ -315,7 +311,7 @@ const inboxEmpty = () => ({ inbox: "Nothing needs you, and nothing is working.",
 /** The list: its head (how many need you and run, the tabs), then the sections. */
 function inboxList() {
   const secs = inboxSections(), of = (k) => secs.find(([key]) => key === k)[2];
-  const need = of("pin").filter((r) => inboxSectOf(r) === "need").length + of("dispatch").length + of("need").length, run = of("run").length;
+  const need = of("pin").filter((r) => inboxSectOf(r) === "need").length + of("need").length, run = of("run").length;
   const counts = inboxTab === "inbox" ? [[need, "need you"], [run, "running"]].filter(([c]) => c).map(([c, w]) => `${c} ${w}`).join(" · ") : "";
   const body = secs.map(inboxSection).join("");
   return `<div class="inbox"><div class="ib-top"><b>Inbox</b><span class="ib-counts">${esc(counts)}</span>${inboxTabs()}</div>
@@ -746,9 +742,9 @@ function inboxOpened(sid) {
   if (p) return inboxParkedPage(p);
   const r = inboxRowFor(sid), s = r.s;
   inboxToEnd = inboxAtEnd(sid, r.kind);
-  const disp = inboxFromDispatch(r), name = disp ? `<span class="ib-dmark">D</span><span class="ib-hname">${esc(inboxDispatchName(r))}</span>` : `<span class="ib-hname">${esc(nameOf(sid, r.project))}</span>`;
+  const name = `<span class="ib-hname">${esc(nameOf(sid, r.project))}</span>`;
   const head = `<div class="ib-head"><button class="ib-back" data-inbox-back aria-label="Back to the list">‹</button><span class="ib-dot">${inboxDot(r)}</span>${name}<span class="ib-status">${esc(inboxStatus(r))}</span><span class="grow"></span>`
-    + `<span class="ib-hacts">${disp && inboxDispatchProject(r) ? inboxDeskBtn(inboxDispatchProject(r), "", `Open ${inboxDispatchProject(r)}'s Desk ›`) : ""}<button class="ib-act" data-inbox-full="${esc(sid)}">Open chat</button>${inboxActs(sid, s, "head")}${inboxCloseBtn(r)}</span>${inboxStep(sid)}</div>`;
+    + `<span class="ib-hacts">${inboxAddDeskBtn(r)}<button class="ib-act" data-inbox-full="${esc(sid)}">Open chat</button>${inboxActs(sid, s, "head")}${inboxCloseBtn(r)}</span>${inboxStep(sid)}</div>`;
   const body = `${inboxForBar(r)}<div class="ib-brief" data-scroll-key="inbox-brief">${inboxMain(r)}${inboxAside(r)}</div>`;
   return `<div class="inbox-page" data-inbox-page="${esc(sid)}" data-kind="${r.kind}" style="${projStyle(r.project)}">${head}${body}</div>`.replace(/\stitle="[^"]*"/g, "");
 }
@@ -815,12 +811,12 @@ function inboxAdvance(sid) {
   // Opened by itself (the Inbox shown, or what was open has gone): its box takes the cursor once it's drawn.
   if (next && typeof requestAnimationFrame === "function") requestAnimationFrame(inboxFocusReply);
 }
-/** The sessions that need you, in the list's order (Pinned first, then From Dispatch). */
+/** The sessions that need you, in the list's order (Pinned first). */
 function inboxNeedOrder() {
   const seat = (sid) => inboxSeats.get(sid), rows = inboxNeedRows();
   const pin = rows.filter((r) => inboxPinned(r.s)), rest = rows.filter((r) => !inboxPinned(r.s));
   const order = (xs) => xs.sort((a, b) => (seat(b.sid)?.n || 0) - (seat(a.sid)?.n || 0) || b.at - a.at).map((r) => r.sid);
-  return [...order(pin), ...order(rest.filter(inboxFromDispatch)), ...order(rest.filter((r) => !inboxFromDispatch(r)))];
+  return [...order(pin), ...order(rest)];
 }
 /** Open session `sid` beside the list, on what it asks (the Board's keys and buttons act on what's shown). */
 function inboxOpen(sid) {
@@ -964,6 +960,7 @@ const INBOX_CLICKS = {
   inboxSug: inboxTakeSuggestion,
   inboxDiff: (el) => inboxDiff(el.dataset.inboxDiff),
   inboxDesk: (el) => openInDesk(el.dataset.inboxDesk, el.dataset.item),
+  inboxAddDesk: (el) => inboxAddToDesk(el.dataset.inboxAddDesk),
   inboxBack: () => inboxClose(),
   inboxNext: () => inboxStepTo(1),
   inboxOpen: (el) => inboxOpen(el.dataset.inboxOpen),

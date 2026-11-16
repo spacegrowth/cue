@@ -320,9 +320,10 @@ pub struct Item {
     /// the crew page answers it only with a click, never a key.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub one_way: bool,
-    /// An ask from a project's Dispatch (desk/): the Inbox shows it under "From Dispatch".
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub from_dispatch: bool,
+    /// An ask a project's Desk lead wrote as an ASK: line (desk/): the Inbox tags it with its project's Desk, and
+    /// the answer goes back to the lead as a message.
+    #[serde(default, alias = "from_dispatch", skip_serializing_if = "std::ops::Not::not")]
+    pub desk: bool,
 }
 
 pub use crate::clock::now_ms;

@@ -62,27 +62,29 @@ pub struct DeskItem {
     pub updated: u64,
     #[serde(default)]
     pub done_at: Option<u64>,
-    /// "you" | "dispatch"
+    /// "you", or the name of the session whose ITEM: line added it (the lead's, or any session's of the project).
+    /// Rows from before leads say "dispatch".
     pub from: String,
-    /// A route Dispatch asked for that Cue couldn't make (no session by that name), until Dispatch is told.
+    /// A route the lead asked for that Cue couldn't make (no session by that name), until the lead is told.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub route_failed: String,
-    /// An `after` Dispatch asked for that Cue refused, and why (e.g. "#b, which waits on it"), so the item started
-    /// now; until Dispatch is told.
+    /// An `after` the lead asked for that Cue refused, and why (e.g. "#b, which waits on it"), so the item started
+    /// now; until the lead is told.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub after_refused: String,
 }
 
-/// A call someone made about the Desk's work: Dispatch's (a route, a DECIDED line) or a holder's DECIDED line.
+/// A call someone made about the Desk's work: the lead's (a route, a DECIDED line), a holder's DECIDED line, or
+/// yours (giving an item to a session).
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct DeskDecision {
     pub id: String,
     pub project: String,
     #[serde(default)]
     pub item_id: Option<String>,
-    /// "Dispatch" or the holder's name.
+    /// "You", the lead's name, or the holder's name.
     pub by: String,
-    /// Who made it, and is asked to undo it.
+    /// Who made it, and is asked to undo it ("" for yours).
     pub sid: String,
     pub text: String,
     #[serde(default)]
@@ -97,29 +99,43 @@ pub struct DeskDecision {
 pub struct Desk {
     pub items: Vec<DeskItem>,
     pub decisions: Vec<DeskDecision>,
-    /// Each project's Dispatch session.
-    pub dispatch: HashMap<String, String>,
+    /// Each project's lead.
+    pub lead: HashMap<String, Lead>,
     /// Decisions made since Cue started, for unique ids.
     pub next: u64,
-    /// Projects whose Dispatch is being started or resumed, with the messages that came meanwhile (each with the
-    /// failed routes it tells of), sent once it's up.
+    /// Projects whose lead is being started or resumed, with the messages that arrived while it was starting, sent
+    /// once it's up.
     pub starting: HashMap<String, Vec<Waiting>>,
+    /// Each project's new items its lead hasn't been told of yet: told in one message a moment after the first.
+    pub fresh: HashMap<String, Vec<String>>,
 }
 
-/// A message to Dispatch held while it starts, and where its outcome goes: Dispatch's id once it's sent, or why it
-/// wasn't (whoever sent it waits on that; dropped unanswered, it wasn't sent).
+/// The session that runs a project's Desk, and the name it went by when last seen (shown once it has ended).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Lead {
+    pub sid: String,
+    pub name: String,
+}
+
+/// A message to a lead held while it starts (or resumes, or changes), and where its outcome goes: the lead's id once
+/// it's sent, or why it wasn't (whoever sent it waits on that; dropped unanswered, it wasn't sent).
 #[derive(Debug)]
 pub struct Waiting {
-    pub message: String,
-    /// The failed routes it tells of.
-    pub failed: Vec<(String, String)>,
+    /// Your words: sent after the Desk's summary as built for the lead it reaches (which may not be the one there was
+    /// when you sent them).
+    pub text: String,
     pub reply: std::sync::mpsc::Sender<Result<String, String>>,
 }
 
 impl Desk {
-    /// The project whose Dispatch session `sid` is.
-    pub fn dispatch_of(&self, sid: &str) -> Option<String> {
-        self.dispatch.iter().find(|(_, s)| *s == sid).map(|(p, _)| p.clone())
+    /// The project whose Desk session `sid` leads.
+    pub fn lead_of(&self, sid: &str) -> Option<String> {
+        self.lead.iter().find(|(_, l)| l.sid == sid).map(|(p, _)| p.clone())
+    }
+
+    /// `project`'s lead's session.
+    pub fn lead_sid(&self, project: &str) -> Option<&str> {
+        self.lead.get(project).map(|l| l.sid.as_str())
     }
 
     pub fn item(&self, id: &str) -> Option<&DeskItem> {

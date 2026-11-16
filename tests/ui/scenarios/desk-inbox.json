@@ -34,7 +34,6 @@
   "projects": [
    {
     "decisions": [],
-    "dispatch": "dsp-cue",
     "items": [
      {
       "after": null,
@@ -46,7 +45,7 @@
       "files": [
        "ui/inbox.js"
       ],
-      "from": "dispatch",
+      "from": "cue-lead",
       "holder": {
        "kind": "lead",
        "name": "web-lead",
@@ -83,7 +82,12 @@
       "updated": 1793984400
      }
     ],
-    "project": "cue"
+    "project": "cue",
+    "lead": {
+     "sid": "cue-lead",
+     "name": "cue-lead",
+     "state": "live"
+    }
    }
   ]
  },
@@ -103,7 +107,6 @@
    "created_ms": 1793984280000,
    "cwd": "/work/cue",
    "followup": "",
-   "from_dispatch": true,
    "harness": "claude",
    "id": "n17939842800001",
    "images": [],
@@ -117,7 +120,7 @@
    "outcome": "",
    "project": "cue",
    "resolved_ms": null,
-   "session_id": "dsp-cue",
+   "session_id": "cue-lead",
    "status": "pending",
    "suggestions": null,
    "term_program": "",
@@ -139,9 +142,10 @@
     ]
    },
    "tool_name": "AskUserQuestion",
-   "transcript_path": "/Users/me/.claude/projects/-work/dsp-cue.jsonl",
+   "transcript_path": "/Users/me/.claude/projects/-work/cue-lead.jsonl",
    "tty": "",
-   "wezterm_pane": ""
+   "wezterm_pane": "",
+   "desk": true
   },
   {
    "agent_pid": null,
@@ -274,7 +278,7 @@
    "kitty_listen_on": "",
    "kitty_window_id": "",
    "machine": "",
-   "name": "Dispatch",
+   "name": "cue-lead",
    "project": "cue",
    "prompt": "Desk",
    "queued": null,
@@ -290,7 +294,7 @@
      "start_ms": 1793984280000
     }
    ],
-   "session_id": "dsp-cue",
+   "session_id": "cue-lead",
    "since_ms": 1793984280000,
    "state": "deciding",
    "term_program": "",
@@ -307,7 +311,7 @@
     }
    ],
    "tmux_pane": "",
-   "transcript_path": "/Users/me/.claude/projects/-work/dsp-cue.jsonl",
+   "transcript_path": "/Users/me/.claude/projects/-work/cue-lead.jsonl",
    "tty": "",
    "wezterm_pane": ""
   },

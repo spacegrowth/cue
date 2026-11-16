@@ -119,96 +119,6 @@
    "kitty_window_id": "",
    "machine": "",
    "project": "cue",
-   "prompt": "",
-   "queued": null,
-   "segments": [],
-   "session_id": "disp-cue",
-   "since_ms": 1793984280000,
-   "state": "idle",
-   "team": [],
-   "term_program": "",
-   "thread": [
-    {
-     "at_ms": 1793983080000,
-     "role": "you",
-     "text": "Two from today: the rail dot blinks for a reply I didn't send, and the reply box loses focus after Send."
-    },
-    {
-     "at_ms": 1793983140000,
-     "role": "agent",
-     "text": "Added both.\n\n**Reply box loses focus** went to web-lead now: it's in inbox.js, which web-lead already has open.\n\n**Rail dot blinks** waits for web-lead after **Search stays centred**, since both change header.js. About 10 minutes."
-    },
-    {
-     "at_ms": 1793983980000,
-     "role": "you",
-     "text": "<desk project=\"cue\">\n3 open: 2 wait on you, 1 with web-lead, 1 with host-lead.\n</desk>\n\nFine. And the canvas one?"
-    },
-    {
-     "at_ms": 1793984040000,
-     "role": "agent",
-     "text": "host-lead is on it, 6 minutes in. It chose an environment setting over a settings file; it's in Decisions if you want to undo it."
-    }
-   ],
-   "tmux_pane": "",
-   "transcript_path": "/Users/me/.claude/projects/-work/lead.jsonl",
-   "tty": "",
-   "wezterm_pane": "",
-   "name": "Dispatch"
-  },
-  {
-   "agent_pid": 9000001,
-   "agents": 0,
-   "background": 0,
-   "cwd": "/work/website",
-   "doing_ms": 0,
-   "driven_by": "",
-   "harness": "claude",
-   "hosted": true,
-   "iterm_session_id": "",
-   "kitty_listen_on": "",
-   "kitty_window_id": "",
-   "machine": "",
-   "project": "website",
-   "prompt": "",
-   "queued": null,
-   "segments": [],
-   "session_id": "disp-web",
-   "since_ms": 1793981400000,
-   "state": "idle",
-   "team": [],
-   "term_program": "",
-   "thread": [
-    {
-     "at_ms": 1793981280000,
-     "role": "you",
-     "text": "Draft the launch page."
-    },
-    {
-     "at_ms": 1793981340000,
-     "role": "agent",
-     "text": "Added it and gave it to site-lead."
-    }
-   ],
-   "tmux_pane": "",
-   "transcript_path": "/Users/me/.claude/projects/-work/lead.jsonl",
-   "tty": "",
-   "wezterm_pane": "",
-   "name": "Dispatch"
-  },
-  {
-   "agent_pid": 9000001,
-   "agents": 0,
-   "background": 0,
-   "cwd": "/work/cue",
-   "doing_ms": 0,
-   "driven_by": "",
-   "harness": "claude",
-   "hosted": true,
-   "iterm_session_id": "",
-   "kitty_listen_on": "",
-   "kitty_window_id": "",
-   "machine": "",
-   "project": "cue",
    "prompt": "Hosted sessions can't open the canvas",
    "queued": null,
    "segments": [],
@@ -307,14 +217,24 @@
    "term_program": "",
    "thread": [
     {
-     "at_ms": 1793983200000,
+     "at_ms": 1793983080000,
      "role": "you",
-     "text": "#d3 Search stays centred in the header. Done when: the field is centred unless it would cover a button."
+     "text": "Two from today: the rail dot blinks for a reply I didn't send, and the reply box loses focus after Send."
     },
     {
-     "at_ms": 1793983320000,
+     "at_ms": 1793983140000,
      "role": "agent",
-     "text": "Split the work: search-centre on header.js, focus-fix on inbox.js. No file shared."
+     "text": "Added both.\n\n**Reply box loses focus** went to focus-fix now: it's in inbox.js, which my crew already has open.\n\n**Rail dot blinks** waits after **Search stays centred**, since both change header.js. About 10 minutes."
+    },
+    {
+     "at_ms": 1793983980000,
+     "role": "you",
+     "text": "<desk project=\"cue\">\n3 open: 2 wait on you, 1 with web-lead, 1 with host-lead.\n</desk>\n\nFine. And the canvas one?"
+    },
+    {
+     "at_ms": 1793984040000,
+     "role": "agent",
+     "text": "host-lead is on it, 6 minutes in. It chose an environment setting over a settings file; it's in Decisions if you want to undo it."
     }
    ],
    "tmux_pane": "",
@@ -541,7 +461,6 @@
   "projects": [
    {
     "project": "cue",
-    "dispatch": "disp-cue",
     "items": [
      {
       "project": "cue",
@@ -562,7 +481,7 @@
        "ui/inbox.js"
       ],
       "done_at": null,
-      "from": "dispatch",
+      "from": "web-lead",
       "holder": {
        "kind": "crew",
        "sid": "id-focus",
@@ -610,7 +529,7 @@
        "ui/styles/header.css"
       ],
       "done_at": null,
-      "from": "dispatch",
+      "from": "web-lead",
       "holder": {
        "kind": "crew",
        "sid": "id-search",
@@ -655,7 +574,7 @@
       "ask": null,
       "files": [],
       "done_at": null,
-      "from": "dispatch",
+      "from": "web-lead",
       "holder": {
        "kind": "session",
        "sid": "host",
@@ -696,7 +615,7 @@
       "ask": null,
       "files": [],
       "done_at": 1793979000,
-      "from": "dispatch",
+      "from": "web-lead",
       "holder": {
        "kind": "lead",
        "sid": "lead",
@@ -718,7 +637,7 @@
       "ask": null,
       "files": [],
       "done_at": 1793977200,
-      "from": "dispatch",
+      "from": "web-lead",
       "holder": {
        "kind": "lead",
        "sid": "lead",
@@ -740,7 +659,7 @@
       "ask": null,
       "files": [],
       "done_at": 1793975400,
-      "from": "dispatch",
+      "from": "web-lead",
       "holder": {
        "kind": "session",
        "sid": "host",
@@ -801,16 +720,20 @@
       "why": "Both change header.js; one after the other avoids a clash.",
       "undo": "can",
       "id": "c3",
-      "by": "Dispatch",
-      "sid": "disp-cue",
+      "by": "web-lead",
+      "sid": "lead",
       "text": "Gave it to web-lead after Search, not a new session",
       "at": 1793983200
      }
-    ]
+    ],
+    "lead": {
+     "sid": "lead",
+     "name": "web-lead",
+     "state": "live"
+    }
    },
    {
     "project": "website",
-    "dispatch": "disp-web",
     "items": [
      {
       "project": "website",
@@ -821,7 +744,7 @@
       "ask": null,
       "files": [],
       "done_at": null,
-      "from": "dispatch",
+      "from": "you",
       "holder": {
        "kind": "session",
        "sid": "site",
@@ -843,7 +766,7 @@
       "ask": null,
       "files": [],
       "done_at": 1793978400,
-      "from": "dispatch",
+      "from": "you",
       "holder": {
        "kind": "session",
        "sid": "site",
@@ -869,7 +792,8 @@
       "text": "One hero image, not a carousel",
       "at": 1793982600
      }
-    ]
+    ],
+    "lead": null
    }
   ]
  }

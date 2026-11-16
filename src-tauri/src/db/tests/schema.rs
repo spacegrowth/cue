@@ -3,6 +3,52 @@
 use super::*;
 use crate::db::live::put_exchange;
 
+/// A Desk run by a Dispatch (version 9) keeps its items and decisions and has no lead; the old Dispatch session is a
+/// plain one from then on.
+#[test]
+fn a_desk_from_before_leads_keeps_its_items_and_has_no_lead() {
+    let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("cue-db-v9-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::env::set_var("CUE_HOME", &dir);
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
+    let it = crate::desk::DeskItem { id: "a1".into(), project: "web".into(), kind: "bug".into(), title: "Header".into(), state: "new".into(), from: "dispatch".into(), created: now / 1000, updated: now / 1000, ..Default::default() };
+    let d = crate::desk::DeskDecision { id: "d1".into(), project: "web".into(), by: "Dispatch".into(), text: "Routed #a1 to x".into(), at: now / 1000, undo: "can".into(), ..Default::default() };
+    {
+        let c = Connection::open(path()).unwrap();
+        c.execute_batch(
+            "CREATE TABLE desk_items (id TEXT PRIMARY KEY, project TEXT NOT NULL, state TEXT NOT NULL, updated_ms INTEGER NOT NULL, data TEXT NOT NULL);
+             CREATE TABLE desk_decisions (id TEXT PRIMARY KEY, project TEXT NOT NULL, item_id TEXT NOT NULL DEFAULT '', at_ms INTEGER NOT NULL, data TEXT NOT NULL);
+             CREATE TABLE desk_dispatch (project TEXT PRIMARY KEY, session_id TEXT NOT NULL, started_ms INTEGER NOT NULL);
+             CREATE TABLE parked (id TEXT PRIMARY KEY, parked_ms INTEGER NOT NULL, data TEXT NOT NULL);
+             INSERT INTO desk_dispatch VALUES ('web', 'disp', 1);",
+        )
+        .unwrap();
+        // The Dispatch, parked as version 9 kept it: a parked session with its `dispatch` key.
+        let mut parked = serde_json::to_value(crate::sessions::Parked { parked_ms: 1, session: super::session("disp", "") }).unwrap();
+        parked["dispatch"] = serde_json::json!("web");
+        c.execute("INSERT INTO parked VALUES ('disp', 1, ?1)", rusqlite::params![parked.to_string()]).unwrap();
+        c.execute("INSERT INTO desk_items VALUES ('a1', 'web', 'new', ?1, ?2)", rusqlite::params![now as i64, serde_json::to_string(&it).unwrap()]).unwrap();
+        c.execute("INSERT INTO desk_decisions VALUES ('d1', 'web', 'a1', ?1, ?2)", rusqlite::params![now as i64, serde_json::to_string(&d).unwrap()]).unwrap();
+        c.execute_batch("PRAGMA user_version = 9;").unwrap();
+    }
+    reset();
+    let (items, decisions, leads) = desk_load(now);
+    assert_eq!(items.iter().map(|i| i.title.as_str()).collect::<Vec<_>>(), vec!["Header"]);
+    assert_eq!(decisions.iter().map(|d| d.text.as_str()).collect::<Vec<_>>(), vec!["Routed #a1 to x"]);
+    assert!(leads.is_empty());
+    let gone: i64 = with(|c| c.query_row("SELECT count(*) FROM sqlite_master WHERE name = 'desk_dispatch'", [], |r| r.get(0))).unwrap();
+    assert_eq!(gone, 0);
+    // The old Dispatch session, parked, reads as a plain one (its `dispatch` key ignored).
+    assert_eq!(crate::db::live::parked().len(), 1);
+    desk_put_lead("web", "s2", "web-lead", now);
+    assert_eq!(desk_load(now).2, vec![("web".to_string(), "s2".to_string(), "web-lead".to_string())]);
+    std::env::remove_var("CUE_HOME");
+    reset();
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn a_database_from_before_notes_ahead_keeps_its_hand_offs() {
     let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
@@ -143,7 +189,7 @@ fn the_old_files_are_imported_once_and_kept_as_a_backup() {
     let it = Item {
         id: "h1".into(), kind: "permission".into(), origin: Origin { session_id: "s".into(), ..Default::default() }, project: "p".into(),
         tool_name: "Bash".into(), tool_input: json!({"command": "ls"}), suggestions: Value::Null, context: vec![], message: String::new(),
-        created_ms: 5, status: "answered".into(), outcome: "allowed".into(), resolved_ms: Some(6), thread: vec![], tool_use_id: None, request_id: None, scan_from: 0, at_prompt: false, agent_id: String::new(), agent_name: String::new(), one_way: false, from_dispatch: false, followup: String::new(), interrupted: false, back_ms: None, images: vec![],
+        created_ms: 5, status: "answered".into(), outcome: "allowed".into(), resolved_ms: Some(6), thread: vec![], tool_use_id: None, request_id: None, scan_from: 0, at_prompt: false, agent_id: String::new(), agent_name: String::new(), one_way: false, desk: false, followup: String::new(), interrupted: false, back_ms: None, images: vec![],
     };
     std::fs::write(dir.join("history.jsonl"), format!("{}\n", serde_json::to_string(&it).unwrap())).unwrap();
     let h = history(100);

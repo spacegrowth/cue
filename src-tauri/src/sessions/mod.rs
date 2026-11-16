@@ -220,9 +220,6 @@ pub struct Session {
     /// What the crew decided on its own, oldest first (crew_log.rs).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub crew_log: Vec<crew_log::CrewDecision>,
-    /// The project whose Dispatch this session is (desk/): "" for any other session.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub dispatch: String,
 }
 
 fn is_zero(n: &u64) -> bool {
@@ -335,7 +332,6 @@ impl Session {
             crew_review: String::new(),
             crew_job: String::new(),
             crew_log: vec![],
-            dispatch: String::new(),
         }
     }
 
@@ -507,13 +503,6 @@ impl Sessions {
     /// Every live session, without copying them.
     pub fn iter(&self) -> impl Iterator<Item = &Session> {
         self.0.values()
-    }
-
-    /// Mark the session as `project`'s Dispatch (desk/). Whether it changed.
-    pub fn set_dispatch(&mut self, session_id: &str, project: &str) -> bool {
-        let Some(s) = self.0.get_mut(session_id).filter(|s| s.dispatch != project) else { return false };
-        s.dispatch = project.to_string();
-        true
     }
 
     pub fn origin(&self, session_id: &str) -> Option<Origin> {

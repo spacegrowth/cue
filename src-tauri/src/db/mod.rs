@@ -29,7 +29,7 @@ pub(crate) mod ext;
 pub use self::ext::*;
 
 pub use self::commands::{commands, set_commands, all_commands, stale_commands};
-pub use self::desk::{desk_put_item, desk_drop_item, desk_put_decision, desk_put_dispatch, desk_load};
+pub use self::desk::{desk_put_item, desk_drop_item, desk_put_decision, desk_put_lead, desk_drop_lead, desk_load};
 pub use self::drafts::{draft_text, drafts, set_draft, review_queue, queue_review, unqueue_review};
 pub use self::handoffs::{handoff_sent, handoff_drop, ahead_watch, ahead_watched, handoff_noted, handoff_continued, Handoff, handoff, handoffs, handoff_counts};
 pub use self::insights::{insight_event, insight_counts, turns_read, TurnsOf, save_turns, StoredTurn, turns_since, turns_of, auto_compacts, start_contexts};

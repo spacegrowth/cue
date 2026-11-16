@@ -195,11 +195,12 @@ CREATE TABLE IF NOT EXISTS desk_decisions (
 );
 CREATE INDEX IF NOT EXISTS desk_decisions_at ON desk_decisions(project, at_ms);
 
--- Each project's Dispatch session.
-CREATE TABLE IF NOT EXISTS desk_dispatch (
+-- Each project's Desk lead: the session that runs its Desk, and the name it went by when last seen.
+CREATE TABLE IF NOT EXISTS desk_lead (
   project     TEXT PRIMARY KEY,
   session_id  TEXT NOT NULL,
-  started_ms  INTEGER NOT NULL
+  name        TEXT NOT NULL DEFAULT '',
+  set_ms      INTEGER NOT NULL
 );
 "#;
 
@@ -340,7 +341,18 @@ fn migrate(c: &Connection, version: i64) -> rusqlite::Result<()> {
     if version < 9 {
         c.pragma_update(None, "user_version", 9)?;
     }
+    if version < 10 {
+        drop_dispatch(c)?;
+    }
     Ok(())
+}
+
+/// Version 10: a Desk is run by a lead you pick, not a hidden Dispatch. Each Desk keeps its items and decisions and
+/// has no lead until you pick one, and an old Dispatch session is a plain session from here on (a session row's old
+/// `dispatch` key is ignored when it's read, and gone the next time it's saved).
+fn drop_dispatch(c: &Connection) -> rusqlite::Result<()> {
+    c.execute_batch("DROP TABLE IF EXISTS desk_dispatch;")?;
+    c.pragma_update(None, "user_version", 10)
 }
 
 /// Once: a project used to be its folder's name; now it's the folder's git repository, so a worktree's

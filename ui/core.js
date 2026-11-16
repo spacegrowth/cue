@@ -65,7 +65,7 @@ const addOn = {
   /** The Desk (desk.js) of `project`: its holders beside the leads and sessions, each a group in the list:
    *  [{ key, name, sub (what it is, a few words), items (Desk items it holds) }]. */
   deskHolders: (project) => [],
-  /** The pane for one of its holders (from deskHolders) when its head is clicked: HTML under "‹ Dispatch", or "" for
+  /** The pane for one of its holders (from deskHolders) when its head is clicked: HTML under "‹ <lead's name>", or "" for
    *  its name alone. */
   deskPane: (holder) => "",
   /** Click rules as app/delegate.js walks them ((target, event) → true when taken), tried before the Board's own. */

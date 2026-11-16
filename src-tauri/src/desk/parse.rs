@@ -1,4 +1,4 @@
-//! The Desk's lines in a reply, read at its turn's end (as crew_log's DECIDED lines are): Dispatch's ITEM, ROUTE and
+//! The Desk's lines in a reply, read at its turn's end (as crew_log's DECIDED lines are): the lead's ITEM, ROUTE and
 //! ASK, and a holder's DONE. Each is a line of its own, its word in capitals; a list mark or bold around it is fine;
 //! a line in a code block (``` or ~~~) or a `>` quote only shows one, so it's left alone. DECIDED lines are
 //! crew_log's `calls_in`.

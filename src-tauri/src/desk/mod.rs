@@ -1,34 +1,40 @@
 //! The Desk: each project's items (a bug, a feature, a task), who holds each one, what it waits on, and the
-//! decisions made about them. A project's Dispatch (one hosted Claude session) keeps the list: it writes lines
-//! Cue reads at its turn's end (parse.rs), and Cue tells it where things stand before each message (`summary`).
-//! The hub keeps the store and does the sending (hub/desk.rs); this module is the data and the words.
+//! decisions made about them. Each project's Desk is run by a lead: a session you pick (or Cue starts) that keeps
+//! the list. It writes lines Cue reads at its turn's end (parse.rs), and Cue tells it where things stand before each
+//! message (`summary`). The hub keeps the store and does the sending (hub/desk.rs, hub/desk_lead.rs); this module is
+//! the data and the words.
 
 pub mod model;
 pub mod parse;
 
-pub use model::{Desk, DeskDecision, DeskItem, Holder, Waiting};
+pub use model::{Desk, DeskDecision, DeskItem, Holder, Lead, Waiting};
 
-/// What a Dispatch session starts with, appended to Claude's system prompt (as the team skill is for a lead).
-pub const DISPATCH_SKILL: &str = "You are this project's Dispatch, on Cue's Desk. You don't do the work yourself: \
-you keep the project's list of items (bugs, features, tasks) and hand each one to a session that does it.
+/// How a project's Desk lead works: appended to the system prompt of a lead Cue starts (after the team skill), and
+/// sent inside the Desk block to a session you make the lead (a running session can't get a system prompt).
+pub const LEAD_SKILL: &str = "# Running this project's Desk (Cue)
+You run this project's Desk in Cue: its list of items (bugs, features, tasks). The user tells you what needs doing; \
+you do it or hand it out, and say why.
+- Hand work out by default (to your crew or to another session of this project), so you stay free to answer the user. \
+Do it yourself only when it's small, or when you are the only session.
+- Say why in one line each time: who takes it and why them.
 
-Each message from Cue starts with a <desk> block: the items (#id, kind, title, state, who holds it, files), the \
-sessions you can hand work to, and any route Cue couldn't make. The user's own words come after it.
+Each message from Cue starts with a <desk> block: the items (#id, kind, title, state, who holds it, files) and the \
+sessions you can hand work to. The user's own words come after it.
 
 Act by writing lines of their own, outside code blocks, exactly like this:
 ITEM: bug | <title> | done when: <how we'll know it's done>      (kind is bug, feature or task)
-ROUTE: #<id> -> <session name> | why: <one short reason>
-ROUTE: #<id> -> <session name> | after: #<other id> | why: <reason>   (it starts once #<other id> is done; use it \
-when both would change the same files)
+ROUTE: #<id> -> <session or crew name> | why: <one short reason>
+ROUTE: #<id> -> me | why: <reason>      (you do it yourself)
+ROUTE: #<id> -> <name> | after: #<other id> | why: <reason>   (it starts once #<other id> is done; use it when \
+both would change the same files)
 ASK: <question> | choices: <A> / <B> / <C>      (only when you can't decide without the user)
 DECIDED: <what you chose> — <why>      (a judgment call you made on your own)
+DONE: #<id>      (an item you did yourself is done)
 
-In a ROUTE, #new means the ITEM you added in the same reply. Route only to a name the <desk> block lists; never \
-make one up. If nothing fits, say so and ask. The session you route to is told the item and asked to say \
-DONE: #<id> when it's done; Cue moves it to the user to check.
-
-Don't edit files or run long commands here: the sessions do the work. Be short and plain: a line or two a busy \
-person reads at a glance, no headings, no emoji.";
+In a ROUTE, #new means the ITEM you added in the same reply. Route only to a name the <desk> block lists, or to me; \
+never make one up. The session you route to is told the item and asked to say DONE: #<id> when it's done; Cue \
+then moves it to the user to check. When Cue tells you of new items, route each one now.
+Be short and plain: a line or two a busy person reads at a glance, no headings, no emoji.";
 
 /// An id no item in `taken` has: a letter then three letters or digits ("d7k2").
 pub fn new_id(taken: impl Fn(&str) -> bool) -> String {
@@ -66,6 +72,23 @@ pub fn handed_words(it: &DeskItem, why: &str) -> String {
         Some(h) if h.kind == "crew" => format!("For your teammate {}: {out}", h.name),
         _ => out,
     }
+}
+
+/// What a lead is told of new items it hasn't routed yet (added by you, or by a session's ITEM: line).
+pub fn new_items_words(items: &[DeskItem]) -> String {
+    let mut out = String::new();
+    for it in items {
+        out.push_str(&format!("New item #{} ({}): {}", it.id, it.kind, it.title));
+        if !it.done_when.trim().is_empty() {
+            out.push_str(&format!(" | done when: {}", it.done_when.trim()));
+        }
+        if it.from != "you" && !it.from.is_empty() {
+            out.push_str(&format!(" | from {}", it.from));
+        }
+        out.push('\n');
+    }
+    out.push_str(if items.len() == 1 { "Route it now: ROUTE it to a session, or -> me." } else { "Route each now: ROUTE it to a session, or -> me." });
+    out
 }
 
 /// A decision's undo, in the words its decider is sent (as crew_log's `go_back_words` for a lead's own call).
