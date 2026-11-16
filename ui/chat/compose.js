@@ -207,13 +207,33 @@ const sidOfKey = (key) => (key.startsWith("s:") ? key.slice(2) : "");
 // ↓ on the last line comes forward again and ends on what you were typing. Typing, or sending, starts over.
 const RECALL = 10;
 let recall = null;   // { key, list, idx, typed, set }: where you are in the list, and the text the last step put in
+/** Is the caret on the box's first shown row (up) or its last (down)? Rows as wrapped on screen, not "\n"s:
+ *  a copy of the box, laid out the same, says which row the caret sits on. */
+function onEdgeRow(ta, up) {
+  const v = ta.value, at = up ? ta.selectionStart : ta.selectionEnd;
+  if (up ? at === 0 : at === v.length) return true;
+  if (up ? v.lastIndexOf("\n", at - 1) !== -1 : v.indexOf("\n", at) !== -1) return false;
+  const cs = getComputedStyle(ta), m = document.createElement("div");
+  for (const p of ["fontFamily", "fontSize", "fontWeight", "fontStyle", "letterSpacing", "wordSpacing", "lineHeight", "textTransform", "textIndent", "tabSize", "wordBreak", "overflowWrap"]) m.style[p] = cs[p];
+  const width = ta.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  Object.assign(m.style, { position: "absolute", visibility: "hidden", left: "-9999px", top: "0", boxSizing: "content-box", width: `${width}px`, padding: "0", border: "0", whiteSpace: "pre-wrap" });
+  const mark = () => { const s = document.createElement("span"); s.textContent = "​"; return s; };
+  const a = mark(), c = mark(), z = mark();
+  m.append(a, v.slice(0, at), c, v.slice(at), z);
+  document.body.appendChild(m);
+  const rowH = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.2;
+  const same = Math.abs((up ? a : z).offsetTop - c.offsetTop) < rowH / 2;
+  m.remove();
+  return same;
+}
 function recallSent(e) {
   const ta = e.target, key = ta.dataset.text, sid = sidOfKey(key);
   if (!sid) return false;
   const up = e.key === "ArrowUp";
-  const v = ta.value, at = ta.selectionStart;
-  // Only from the box's first line (↑) or last line (↓): elsewhere the arrows move the caret as usual.
-  if (up ? v.lastIndexOf("\n", at - 1) !== -1 : v.indexOf("\n", ta.selectionEnd) !== -1) return false;
+  const v = ta.value;
+  // Only from the box's first row (↑) or last row (↓), as you see them, wrapped lines too: elsewhere the
+  // arrows move the caret as usual.
+  if (!onEdgeRow(ta, up)) return false;
   if (!recall || recall.key !== key || recall.set !== v) {
     const cur = current();
     if ((cur?.s?.session_id || cur?.it?.session_id) !== sid) return false;

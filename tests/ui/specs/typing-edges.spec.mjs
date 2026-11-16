@@ -102,3 +102,22 @@ test("Cue's own kept crew message is Cue's bubble in the future tense, not yours
   await line.locator('button[data-act="held-now"]').click();
   await cue.called("send_held_now", { sessionId: "eng" });
 });
+
+test("↑ in a long wrapped message moves up a row first; only from the top row does it bring back what you sent", async ({ cue, page }) => {
+  await openCard(page, "n1");
+  const b = box(page, "relay");
+  const long = "check the retries on every queue ".repeat(12).trim();
+  await b.fill(long);
+  await b.evaluate((ta) => ta.setSelectionRange(ta.value.length, ta.value.length));
+  await b.press("ArrowUp");
+  await expect(b).toHaveValue(long);
+  expect(await b.evaluate((ta) => ta.selectionStart)).toBeLessThan(long.length);
+  await b.evaluate((ta) => ta.setSelectionRange(3, 3));
+  await b.press("ArrowUp");
+  await expect(b).not.toHaveValue(long);
+  await b.press("ArrowDown");
+  await expect(b).toHaveValue(long);
+  await b.evaluate((ta) => ta.setSelectionRange(ta.value.length - 3, ta.value.length - 3));
+  await b.press("ArrowDown");
+  await expect(b).toHaveValue(long);
+});
