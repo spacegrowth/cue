@@ -62,6 +62,12 @@ const addOn = {
    *  (crewPageRows; there is no goal line of the page's own), the left (crewPageLeft, which must give one; no box, no
    *  Needs you), and the list: the band (crewPageBand), then `mates` (html: its crew by name). */
   crewPageRecord: (key) => null,
+  /** The Desk (desk.js) of `project`: its holders beside the leads and sessions, each a group in the list:
+   *  [{ key, name, sub (what it is, a few words), items (Desk items it holds) }]. */
+  deskHolders: (project) => [],
+  /** The pane for one of its holders (from deskHolders) when its head is clicked: HTML under "‹ Dispatch", or "" for
+   *  its name alone. */
+  deskPane: (holder) => "",
   /** Click rules as app/delegate.js walks them ((target, event) → true when taken), tried before the Board's own. */
   clicks: [],
   /** The crew page opened, closed, or went to another lead (team_page.js crewPageSet): `sid` the lead's open now, or
