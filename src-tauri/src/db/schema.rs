@@ -175,6 +175,32 @@ CREATE TABLE IF NOT EXISTS drafts (
   images      TEXT NOT NULL DEFAULT '[]',
   updated_ms  INTEGER NOT NULL
 );
+-- The Desk (desk/): each project's items and the decisions made on them, as JSON with the columns
+-- they're looked up by. Done items and old decisions stay; loading takes the recent ones.
+CREATE TABLE IF NOT EXISTS desk_items (
+  id          TEXT PRIMARY KEY,
+  project     TEXT NOT NULL,
+  state       TEXT NOT NULL,
+  updated_ms  INTEGER NOT NULL,
+  data        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS desk_items_project ON desk_items(project, state);
+
+CREATE TABLE IF NOT EXISTS desk_decisions (
+  id          TEXT PRIMARY KEY,
+  project     TEXT NOT NULL,
+  item_id     TEXT NOT NULL DEFAULT '',
+  at_ms       INTEGER NOT NULL,
+  data        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS desk_decisions_at ON desk_decisions(project, at_ms);
+
+-- Each project's Dispatch session.
+CREATE TABLE IF NOT EXISTS desk_dispatch (
+  project     TEXT PRIMARY KEY,
+  session_id  TEXT NOT NULL,
+  started_ms  INTEGER NOT NULL
+);
 "#;
 
 /// The database, opened. One whose first read fails as not a database (or damaged there) is tried once more a
@@ -309,6 +335,10 @@ fn migrate(c: &Connection, version: i64) -> rusqlite::Result<()> {
     if version < 8 {
         let _ = c.execute("ALTER TABLE exchanges ADD COLUMN status_ask TEXT NOT NULL DEFAULT ''", []);
         c.pragma_update(None, "user_version", 8)?;
+    }
+    // The Desk's tables (in SCHEMA, so a database of any version has them by now): the version marks them.
+    if version < 9 {
+        c.pragma_update(None, "user_version", 9)?;
     }
     Ok(())
 }

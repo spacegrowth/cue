@@ -28,6 +28,8 @@ pub struct FakeHosted {
     closed: Mutex<Vec<String>>,
     ended: Mutex<Vec<i32>>,
     refusal: Mutex<Option<String>>,
+    /// The next start (only that one) fails with this.
+    refusal_once: Mutex<Option<String>>,
     /// Sessions run by cue-host (they go on when Cue quits); the rest are Cue's own children.
     in_host: Mutex<HashSet<String>>,
     /// Requests of Cue's to an agent itself: (session, request), in order.
@@ -82,6 +84,11 @@ impl FakeHosted {
         *crate::locking::lock(&self.refusal, "fake hosted refusal") = Some(why.to_string());
     }
 
+    /// The next start fails with `why`; those after it go through.
+    pub fn refuse_once(&self, why: &str) {
+        *crate::locking::lock(&self.refusal_once, "fake hosted refusal once") = Some(why.to_string());
+    }
+
     /// Starts go through again.
     pub fn accept(&self) {
         *crate::locking::lock(&self.refusal, "fake hosted refusal") = None;
@@ -106,6 +113,10 @@ impl Hosted for FakeHosted {
     /// Codex picks a new conversation's id: the stand-in's is `codex-<n>`, its rollout file named by it.
     fn start(&self, spec: &Spec, _report: Report) -> Result<Started, String> {
         if let Some(why) = crate::locking::lock(&self.refusal, "fake hosted refusal").clone() {
+            return Err(why);
+        }
+        let once = crate::locking::lock(&self.refusal_once, "fake hosted refusal once").take();
+        if let Some(why) = once {
             return Err(why);
         }
         let launch = HostedLaunch { agent: spec.agent, start: spec.start.clone(), cwd: spec.cwd.to_string_lossy().into_owned(), permissions: spec.permissions.clone(), args: spec.args.clone(), machine: spec.machine.clone() };

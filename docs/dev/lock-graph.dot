@@ -17,6 +17,9 @@ digraph locks {
   "copies" -> "machine tails: links";
   "db writer's marks" -> "DB";
   "db writer's marks" -> "folder facts";
+  "desk saves" -> "DB";
+  "desk saves" -> "folder facts";
+  "desk saves" -> "the hub's store";
   "hosts: a session's outbox" -> "cue-host link: out";
   "hosts: a session's outbox" -> "cue-host link: waiting";
   "open_terms" -> "pty master";
@@ -41,6 +44,7 @@ digraph locks {
   "typing gate" -> "copies";
   "typing gate" -> "db writer's marks";
   "typing gate" -> "db writes";
+  "typing gate" -> "desk saves";
   "typing gate" -> "folder facts";
   "typing gate" -> "machine tails";
   "typing gate" -> "machine tails: links";

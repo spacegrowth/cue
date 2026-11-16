@@ -38,6 +38,9 @@ pub(crate) fn start_hosted(h: &Arc<Hub>, agent: Agent, dir: &str, message: &str,
         trust(&opts.machine, &dir)?;
     }
     let origin = Origin { session_id: sid.clone(), harness: agent.program().into(), cwd: dir, transcript_path, hosted: true, machine: opts.machine.clone(), ..Default::default() };
+    if !opts.dispatch.is_empty() {
+        h.desk_dispatch_starting(&opts.dispatch, &sid);
+    }
     let origin = h.run_hosted(&origin, start, &HostedStart { permissions: opts.perm.clone(), args, model })?;
     let sid = origin.session_id.clone();
     let paths: Vec<String> = saved.iter().map(|s| s.path.clone()).collect();

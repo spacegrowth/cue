@@ -41,7 +41,7 @@ pub(super) fn next_change(now: u64) -> u64 {
 }
 
 /// The local midnight (or, `hour`, the start of the local hour) at or before `ms`.
-fn local_start(ms: u64, hour: bool) -> u64 {
+pub(super) fn local_start(ms: u64, hour: bool) -> u64 {
     let t = (ms / 1000) as libc::time_t;
     let mut tm: libc::tm = unsafe { std::mem::zeroed() };
     unsafe { libc::localtime_r(&t, &mut tm) };

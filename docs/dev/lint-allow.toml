@@ -109,6 +109,21 @@ to = "the hub's store"
 reason = "saves.rs hand_in_parked_turn, only without a writer thread (tests, or one that couldn't start): the job is written where it's handed in, under the parked save lock and then the db writer's marks, before the database. With the writer running, a parked save only hands its job in. Nothing takes a save lock under the store or the database"
 
 [[lock_order]]
+from = "desk saves"
+to = "DB"
+reason = "hub/desk.rs desk_done and desk_dispatch_starting: a Desk save reads what the store holds now and writes it under the desk save lock, so saves of one record reach the database in the order the store changed. It's taken with the store let go, never under the store or the database"
+
+[[lock_order]]
+from = "desk saves"
+to = "folder facts"
+reason = "db::open regroups projects by repo root (repos::repo_root) the first time the db is opened, under the save that opened it; folder facts is a leaf"
+
+[[lock_order]]
+from = "desk saves"
+to = "the hub's store"
+reason = "hub/desk.rs desk_done and desk_dispatch_starting: under the desk save lock the store is read (or changed) for what to write, then let go before the database. Nothing takes a save lock under the store or the database"
+
+[[lock_order]]
 from = "review queue saves"
 to = "DB"
 reason = "saves.rs hand_in_parked_turn, only without a writer thread (tests, or one that couldn't start): the job is written where it's handed in, under the parked save lock and then the db writer's marks, before the database. With the writer running, a parked save only hands its job in. Nothing takes a save lock under the store or the database"
@@ -182,6 +197,11 @@ reason = "the typing gate is taken first and held while a message is typed, by d
 from = "typing gate"
 to = "folder facts"
 reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, a folder's project included"
+
+[[lock_order]]
+from = "typing gate"
+to = "desk saves"
+reason = "the typing gate is taken first and held while a message is typed (hub/send.rs wait_turn); a hosted turn that ends under it saves the Desk lines it said (hub/desk.rs desk_done), the store and database after the save lock (gate before save lock, never the reverse)"
 
 [[lock_order]]
 from = "typing gate"
