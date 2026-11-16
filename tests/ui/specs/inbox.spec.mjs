@@ -296,12 +296,28 @@ test("Parked lists the Board's parked sessions (stopped and kept) with Resume; L
   await openInbox(page);
   expect(await sectionSids(page, "Later 1")).toEqual(["eng"]);
   expect(await sectionSids(page, "Running")).not.toContain("eng");
-  const parked = page.locator('.ib-row.parked[data-session="drift"]');
+  const parked = page.locator('.ib-row.parked[data-inbox-open="drift"]');
   await expect(parked).toBeVisible();
   await expect(page.locator('.ib-sect.fold[data-inbox-fold="parked"]')).toHaveText("▾Parked 2");
   await parked.hover();
   await expect(parked.locator("[data-wake]")).toHaveText("↺ Resume");
   await expect(page.locator('[data-session="lost1"], [data-session="lost2"], [data-inbox-open="lost1"], [data-inbox-open="lost2"]')).toHaveCount(0);
+});
+
+test("a parked row opens beside the list (what it said, Resume, a box that resumes it first), not the Board", async ({ cue, page }) => {
+  await cue.open("parked-ended");
+  await page.evaluate(() => localStorage.setItem("cue.inboxFold.parked", "1"));
+  await openInbox(page);
+  await page.locator('.ib-row.parked[data-inbox-open="drift"] .ib-name').click();
+  const pg = page.locator('.inbox-page[data-inbox-page="drift"]');
+  await expect(pg).toBeVisible();
+  await expect(page.locator('.switch-view [data-view="inbox"]')).toHaveClass(/on|active/);
+  await expect(page.locator('.ib-row.parked[data-inbox-open="drift"]')).toHaveClass(/\bon\b/);
+  await expect(pg.locator(".ib-status")).toContainText("parked");
+  await expect(pg.locator(".ib-hacts [data-wake]")).toHaveText("↺ Resume");
+  await expect(pg.locator("[data-wake-send]")).toHaveText("Resume & send");
+  await expect(pg.locator("[data-attach]")).toHaveCount(0);
+  await expect(pg.locator(".ib-said, .ib-dim").first()).toBeVisible();
 });
 
 test("Pin puts a row under Pinned (kept by Cue); Later folds it under Later at the foot; Snooze moves it to its tab, and back", async ({ cue, page }) => {
@@ -694,4 +710,19 @@ test("writing in the reply box, a click on a button in the Inbox leaves the curs
   await expect(box).toBeFocused();
   await page.keyboard.type("tten");
   await expect(box).toHaveValue("half written");
+});
+
+test("on a long page the reply stays in view at the foot of the pane, the words scrolling under it", async ({ cue, page }) => {
+  await page.setViewportSize({ width: 1300, height: 700 });
+  await cue.open("board-waiting");
+  await cue.change((st) => { st.items.find((i) => i.session_id === "sec").message = Array.from({ length: 30 }, (_, n) => `Paragraph ${n} of a long reply with enough words to fill a line or two here.`).join("\n\n") + "\n\nWant me to run the next company?"; });
+  await page.locator('.switch-view [data-view="inbox"]').click();
+  await page.locator('.ib-row[data-inbox-open="sec"]').click();
+  const main = page.locator('.inbox-page[data-inbox-page="sec"] .ib-main');
+  const send = main.locator('.ib-box [data-act="send"]');
+  const inView = async () => { const m = await main.boundingBox(), b = await send.boundingBox(); return b.y >= m.y && b.y + b.height <= m.y + m.height + 1; };
+  expect(await main.evaluate((m) => m.scrollHeight > m.clientHeight)).toBe(true);
+  expect(await inView()).toBe(true);
+  await main.evaluate((m) => { m.scrollTop = m.scrollHeight; });
+  expect(await inView()).toBe(true);
 });

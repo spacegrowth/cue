@@ -272,10 +272,11 @@ function inboxFold(key) {
 }
 /** The Board's Parked (stopped and kept, chat/parked.js), newest first, in the project picked. */
 const inboxParkedRows = () => (state.parked || []).filter((p) => inboxTab === "inbox" && inProj(p.project)).sort((a, b) => (b.parked_ms || 0) - (a.parked_ms || 0));
-/** A parked session: its name, what it said last, how long it's been parked, and Resume. A click opens its chat. */
+/** A parked session: its name, what it said last, how long it's been parked, and Resume. A click opens it beside the
+ *  list, as any row. */
 function inboxParkedHtml(p) {
   const sid = p.session_id, w = waking.has(sid), last = [...(p.thread || [])].reverse().find((e) => e.role === "agent");
-  return `<div class="ib-row parked" role="button" tabindex="0" data-session="${esc(sid)}" style="${projStyle(p.project)}"><span class="ib-dot">${P_SIGN}</span>`
+  return `<div class="ib-row parked ${(inboxSid || inboxLast) === sid ? "on" : ""}" role="button" tabindex="0" data-inbox-open="${esc(sid)}" style="${projStyle(p.project)}"><span class="ib-dot">${P_SIGN}</span>`
     + `<span class="ib-l1"><span class="ib-name">${esc(p.name || baseName(p.cwd) || p.project || "session")}</span><span class="ib-subj">${w ? "Resuming…" : "Parked"}</span></span>`
     + `<span class="ib-l2">${esc(last ? plain(firstLine(last.text)) : "")}</span><span class="ib-side"><span class="ib-time">${p.parked_ms ? ago(p.parked_ms) : ""}</span></span>`
     + `<span class="ib-acts"><button class="ib-act" data-wake="${esc(sid)}" ${w ? "disabled" : ""}>↺ Resume</button></span></div>`;
@@ -710,11 +711,33 @@ function inboxCloseBtn(r) {
 /** The open session beside the list: its head (its dot, name and what it's at; Pin, Later, Snooze; the next ask), then
  *  the brief in two columns (stacked when narrow). No hover text: a tooltip the reused parts carry is left out. */
 function inboxOpened(sid) {
+  const p = !sessionOf(sid) && inboxParkedOf(sid);
+  if (p) return inboxParkedPage(p);
   const r = inboxRowFor(sid), s = r.s;
   const head = `<div class="ib-head"><button class="ib-back" data-inbox-back aria-label="Back to the list">‹</button><span class="ib-dot">${inboxDot(r)}</span><span class="ib-hname">${esc(nameOf(sid, r.project))}</span><span class="ib-status">${esc(inboxStatus(r))}</span><span class="grow"></span>`
     + `<span class="ib-hacts"><button class="ib-act" data-inbox-full="${esc(sid)}">Open chat</button>${inboxActs(sid, s, "head")}${inboxCloseBtn(r)}</span>${inboxStep(sid)}</div>`;
   const body = `<div class="ib-brief" data-scroll-key="inbox-brief">${inboxMain(r)}${inboxAside(r)}</div>`;
   return `<div class="inbox-page" data-inbox-page="${esc(sid)}" data-kind="${r.kind}" style="${projStyle(r.project)}">${head}${body}</div>`.replace(/\stitle="[^"]*"/g, "");
+}
+/** The Board's parked session `sid` (not running again yet); null when it isn't one. */
+const inboxParkedOf = (sid) => (state.parked || []).find((p) => p.session_id === sid) || null;
+/** A parked session beside the list, as a mail thread: its earlier messages, what it said last (whole), then a box
+ *  whose Send resumes it first. Resume, Unpark and Open chat in its head. */
+function inboxParkedPage(p) {
+  const sid = p.session_id, w = waking.has(sid), name = p.name || baseName(p.cwd) || p.project || "session";
+  const r = { sid, s: { thread: p.thread || [] }, it: null, project: p.project, kind: "done" }, thread = inboxThread(r, "");
+  const said = thread.said, words = said ? said.text : "";
+  const whole = inboxWhole.has(sid), short = inboxSaid(words, []), all = inboxSaid(words, [], true), shown = whole ? all : short;
+  const more = short !== all ? `<button class="ib-link" data-inbox-whole="${esc(sid)}">${whole ? "Show less" : "Show the whole reply"}</button>` : "";
+  const saidHtml = shown ? `<div class="ib-said">${inboxHead("It said", said.at_ms || 0)}<div class="ib-md msg">${md(shown, { pathsOf: sid })}</div>${thumbs(said.images)}${localImages(shown)}${more}</div>` : "";
+  const empty = !thread.msgs.length && !saidHtml ? `<div class="ib-dim">Cue kept no messages from it.</div>` : "";
+  const foot = inboxBox(`s:${sid}`, "Write to it… sending resumes it first", w ? "Resuming…" : "Resume & send", `data-wake-send="${esc(sid)}" ${w ? "disabled" : ""}`, `<button class="btn" data-inbox-full="${esc(sid)}">Open chat</button>`)
+    .replace(/<button class="icon-btn" data-attach=[^>]*>[\s\S]*?<\/button>/, "");   // resuming sends words only
+  const status = w ? "resuming…" : p.parked_ms ? `parked · ${ago(p.parked_ms)}` : "parked";
+  const head = `<div class="ib-head"><button class="ib-back" data-inbox-back aria-label="Back to the list">‹</button><span class="ib-dot">${P_SIGN}</span><span class="ib-hname">${esc(name)}</span><span class="ib-status">${esc(status)}</span><span class="grow"></span>`
+    + `<span class="ib-hacts"><button class="ib-act" data-unpark="${esc(sid)}" ${w ? "disabled" : ""}>Unpark</button><button class="ib-act" data-wake="${esc(sid)}" ${w ? "disabled" : ""}>↺ Resume</button></span></div>`;
+  const body = `<div class="ib-brief one" data-scroll-key="inbox-brief"><div class="ib-page-body ib-main" data-scroll-key="inbox-main">${inboxEarlier(r, thread.msgs)}${saidHtml}${empty}<div class="ib-foot">${foot}</div></div></div>`;
+  return `<div class="inbox-page parked" data-inbox-page="${esc(sid)}" data-kind="parked" style="${projStyle(p.project)}">${head}${body}</div>`;
 }
 /** A session on the calm page: its name, what you asked and what it's on (a working one's bar along its foot), or
  *  what it said and changed. Opens it. */
@@ -743,7 +766,7 @@ const inboxWide = () => typeof matchMedia !== "function" || matchMedia("(min-wid
  *  needs you opens by itself. Answered, the open one stays open (you see what you sent, as in email); you move on. */
 function inboxView() {
   const sid = inboxSid;
-  if (sid && !sessionOf(sid) && !inboxItems().has(sid)) inboxAdvance(sid);
+  if (sid && !sessionOf(sid) && !inboxItems().has(sid) && !inboxParkedOf(sid)) inboxAdvance(sid);
   else if (!sid && inboxWide()) inboxAdvance(null);
   return `<div class="board ib-board ${inboxSid ? "open" : ""}">${inboxList()}${inboxSid ? inboxOpened(inboxSid) : inboxIdle()}</div>`;
 }

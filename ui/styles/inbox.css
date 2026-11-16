@@ -115,6 +115,7 @@ button.ib-sect.ib-strip { padding: 8px 16px 6px; gap: 5px; }
 .ib-aside { flex: none; gap: 14px; padding: 16px 18px; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--panel-2) 55%, var(--panel)); font-size: 12.5px; }
 @container (min-width: 700px) {
   .ib-brief { display: grid; grid-template-columns: minmax(0, 1fr) clamp(280px, 34%, 420px); overflow: hidden; }
+  .ib-brief.one { grid-template-columns: minmax(0, 1fr); }
   .ib-main, .ib-aside { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
   .ib-aside { border-top: 0; border-left: 1px solid var(--line); }
   .ib-main > * { width: 100%; max-width: 720px; }
@@ -171,6 +172,8 @@ button.ib-sect.ib-strip { padding: 8px 16px 6px; gap: 5px; }
 
 /* The foot of the main column: the box to answer in, its buttons, the keys that work. */
 .ib-foot { margin-top: 6px; display: flex; flex-direction: column; gap: 7px; padding-top: 4px; }
+/* The reply stays in view: on a long page it sits at the foot of the pane (never below it), the page scrolling under it. */
+.ib-main > .ib-foot { position: sticky; bottom: -16px; z-index: 2; margin-bottom: -16px; padding-bottom: 16px; background: var(--panel); }
 .ib-foot:empty { display: none; }
 /* The reply, as in mail: written right under the message, no frame or line round it; suggested replies under what you
    write (Claude's suggestion first, then your quick phrases), then Send with Open chat. */

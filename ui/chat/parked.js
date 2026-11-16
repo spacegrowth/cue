@@ -58,7 +58,8 @@ async function wakeParked(sid, message = "") {
     if (!parked) closedList = (closedList || []).filter((c) => c.session_id !== sid);
     if (message) { draft(`s:${sid}`).text = ""; saveDrafts(); }
     toast(`${p.name || p.project} is back: ${r.replace(/^Resumed/, "resumed")}`);
-    setActive(null, sid);
+    // From the Inbox it stays there, open on it (now live); elsewhere its chat opens.
+    if (view === "inbox") renderMain(); else setActive(null, sid);
   } catch (e) {
     toast(`Couldn't resume ${p.name || p.project}: ${e}`);
   } finally {
