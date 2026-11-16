@@ -7,7 +7,7 @@
 pub mod model;
 pub mod parse;
 
-pub use model::{Desk, DeskDecision, DeskItem, Holder, Lead, Waiting};
+pub use model::{BusyFile, CommitWait, Desk, DeskDecision, DeskItem, Holder, Lead, Waiting};
 
 /// How a project's Desk lead works: appended to the system prompt of a lead Cue starts (after the team skill), and
 /// sent inside the Desk block to a session you make the lead (a running session can't get a system prompt).

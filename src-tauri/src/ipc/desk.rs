@@ -86,6 +86,40 @@ pub(crate) async fn desk_set_lead(hub: State<'_, Arc<Hub>>, project: String, sid
 }
 
 pub(crate) fn desk_set_lead_with(h: &Arc<Hub>, project: &str, sid: Option<&str>, trust: bool) -> Result<serde_json::Value, String> {
+    set_lead(h, project, sid, trust, None)
+}
+
+/// A new Desk in `folder` (Desk home's + New Desk, + New's Start a Desk): the folder's project, its lead a new
+/// session Cue starts there. A project whose Desk already has a lead just keeps it. Returns { project, sid }.
+#[tauri::command]
+pub(crate) async fn desk_start(hub: State<'_, Arc<Hub>>, folder: String, trust: Option<bool>) -> Result<serde_json::Value, String> {
+    with_hub(&hub, move |h| desk_start_with(h, &folder, trust.unwrap_or(false))).await?
+}
+
+pub(crate) fn desk_start_with(h: &Arc<Hub>, folder: &str, trust: bool) -> Result<serde_json::Value, String> {
+    let dir = expand_home(folder);
+    if dir.is_empty() || !std::path::Path::new(&dir).is_dir() {
+        return Err(format!("no such folder: {}", folder.trim()));
+    }
+    let dir = crate::logs::repos::repo_root(&dir).map(|r| r.to_string_lossy().into_owned()).unwrap_or(dir);
+    let project = crate::model::project_at(&dir, "");
+    if let Some(sid) = h.desk_lead_sid(&project).filter(|sid| h.session_origin(sid).is_some()) {
+        return Ok(serde_json::json!({ "project": project, "sid": sid }));
+    }
+    let r = set_lead(h, &project, None, trust, Some(dir))?;
+    Ok(serde_json::json!({ "project": project, "sid": r["sid"] }))
+}
+
+fn expand_home(p: &str) -> String {
+    let p = p.trim().trim_end_matches('/');
+    match (p.strip_prefix('~'), std::env::var("HOME")) {
+        (Some(rest), Ok(home)) => format!("{home}{rest}"),
+        _ => p.to_string(),
+    }
+}
+
+/// `desk_set_lead_with`, a new lead started in `dir` when given (else in a folder of the project's sessions).
+fn set_lead(h: &Arc<Hub>, project: &str, sid: Option<&str>, trust: bool, dir: Option<String>) -> Result<serde_json::Value, String> {
     if project.trim().is_empty() {
         return Err("no project".into());
     }
@@ -107,7 +141,7 @@ pub(crate) fn desk_set_lead_with(h: &Arc<Hub>, project: &str, sid: Option<&str>,
     let made = match &picked {
         None => {
             let name = h.desk_lead_name(project);
-            start(h, project, &name, trust).map(|sid| (sid, name))
+            start(h, project, &name, trust, dir.clone()).map(|sid| (sid, name))
         }
         Some((sid, name, state)) => take_on(h, project, sid, name, state).map(|_| (sid.to_string(), name.clone())),
     };
@@ -164,8 +198,8 @@ fn resume(h: &Arc<Hub>, sid: &str, message: &str) -> Result<String, String> {
 
 /// A new lead for `project` named `name`, hosted Claude in the project's folder, started with the Desk and a hello
 /// (its instructions come with its system prompt): its id.
-fn start(h: &Arc<Hub>, project: &str, name: &str, trust: bool) -> Result<String, String> {
-    let dir = h.desk_folder(project).ok_or_else(|| format!("no folder known for {project}: start a session there first"))?;
+fn start(h: &Arc<Hub>, project: &str, name: &str, trust: bool, dir: Option<String>) -> Result<String, String> {
+    let dir = dir.or_else(|| h.desk_folder(project)).ok_or_else(|| format!("no folder known for {project}: start a session there first"))?;
     let (summary, _) = h.desk_summary(project, "", false);
     let message = desk_message(&summary, &hello(project));
     let opts = StartOpts { trust, desk_lead: project.to_string(), ..Default::default() };
@@ -248,12 +282,22 @@ pub(crate) async fn desk_member(hub: State<'_, Arc<Hub>>, project: String, sid: 
 /// What you did to an item: "looks_right" | "send_back" | "start_now" | "put_before" | "drop", with `text` for
 /// send_back. Returns the item as it is now (state "dropped" once dropped).
 #[tauri::command]
-pub(crate) async fn desk_item_act(hub: State<'_, Arc<Hub>>, id: String, act: String, text: Option<String>) -> Result<crate::desk::DeskItem, String> {
-    with_hub(&hub, move |h| h.desk_item_act(&id, &act, text.as_deref().unwrap_or(""))).await?
+pub(crate) async fn desk_item_act(hub: State<'_, Arc<Hub>>, id: String, act: String, text: Option<String>, images: Option<Vec<crate::model::Upload>>) -> Result<crate::desk::DeskItem, String> {
+    with_hub(&hub, move |h| {
+        // Pictures sent back with it: saved, and their paths go with your words, as an item's own pictures do.
+        let saved = crate::uploads::save(&images.unwrap_or_default())?;
+        let mut text = text.unwrap_or_default();
+        if !saved.is_empty() {
+            let paths: Vec<String> = saved.iter().map(|s| format!("`{}`", s.path)).collect();
+            text = format!("{}\nPictures with it (open each to see it): {}", text.trim(), paths.join(" "));
+        }
+        h.desk_item_act(&id, &act, &text)
+    })
+    .await?
 }
 
 /// Looks right on item `id`: its changed files committed at once (word check first, no push) and it's done; none, just
-/// done. { commit, files, skipped } (hub/desk_commit.rs).
+/// done; with files another session is editing, done and the commit waits. { commit, files, waiting } (hub/desk_commit.rs).
 #[tauri::command]
 pub(crate) async fn desk_looks_right(hub: State<'_, Arc<Hub>>, id: String) -> Result<serde_json::Value, String> {
     with_hub(&hub, move |h| h.desk_looks_right(&id)).await?

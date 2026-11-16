@@ -1,13 +1,14 @@
 // Cue UI desk_commit — Looks right on a Desk item commits its changed files at once (hub/desk_commit.rs: the word
-// check first, its title the message, never pushed) and the item is done; one with no files is just done. Files another
-// session at work is editing are left out, and said. "Committed <hash> · N files" shows with Undo, which takes the
-// commit back (its changes stay) while it's still the last one.
-// Each time a session says DONE for an item, the lead's chat shows a card for it (deskCheckRows): what to test, the
-// files it touched, whether the installed Cue has it, and Looks right / Send back while it waits on you. Kept by the hub
+// check first, its title the message, never pushed) and the item is done; one with no files is just done. When another
+// session at work is editing some of them, the item is done at once and the commit waits ("Commit waiting: <file>
+// (<session> is editing it)"), made on its own once they're free. "Committed <hash> · N files" shows with Undo, which
+// takes the commit back (its changes stay) while it's still the last one.
+// Each time a session says DONE for an item, the lead's chat shows a card for it (deskCheckRows): what to test, how
+// many files it touched, whether the installed Cue has it, and Looks right / Send back while it waits on you. Kept by the hub
 // (hub/desk_checks.rs), so they're there after a restart.
 // Commands: desk_looks_right, desk_commit_undo.
 
-/** What Looks right did, by item, since the window opened: { commit, files, skipped: [{ path, by }] }. */
+/** What Looks right did, by item, since the window opened: { commit, files, waiting: [{ path, by }] }. */
 const deskCommitted = new Map();
 
 /** Looks right on item `id`: committed (or just done), said in a toast and on its card and item. */
@@ -24,37 +25,55 @@ async function deskCommitUndo(id) {
   catch (e) { toast(String(e), 5000); }
   renderMain();
 }
-/** "Committed abc123 · 2 files · left out ui/x.js (web-lead is editing it)", or "" for no commit. */
+/** "Committed abc123 · 2 files", "Done · commit waiting: ui/x.js (web-lead is editing it)", or "" for no commit. */
 function deskCommitWords(r) {
+  if (r?.waiting?.length) return `Done · commit waiting: ${deskBusyWords(r.waiting)}`;
   if (!r?.commit) return "";
-  const n = r.files ? ` · ${r.files === 1 ? "1 file" : `${r.files} files`}` : "";
-  const out = (r.skipped || []).map((s) => `${s.path} (${s.by} is editing it)`);
-  return `Committed ${r.commit}${n}${out.length ? ` · left out ${out.join(", ")}` : ""}`;
+  return `Committed ${r.commit}${r.files ? ` · ${r.files === 1 ? "1 file" : `${r.files} files`}` : ""}`;
 }
-/** A done item's commit as a line with Undo (`i`: the item, or a card: { id, commit }). */
+/** "ui/x.js (web-lead is editing it), ui/y.js (…)". */
+const deskBusyWords = (busy) => busy.map((b) => `${b.path} (${b.by} is editing it)`).join(", ");
+/** Whether done item `i` (or its card) has a commit to show: made, or waiting. */
+const deskHasCommit = (i) => i.state === "done" && !!(i.commit || i.commit_wait);
+/** A done item's commit as a line with Undo (`i`: the item, or a card: { id, commit, commit_wait }): "Committed <hash>",
+ *  or while it waits "Commit waiting: <file> (<session> is editing it)", or why it wasn't made. */
 function deskCommitLine(i) {
+  const undo = `<button class="dk-undo-c" data-desk-act="undo_commit" data-id="${esc(i.id)}">Undo</button>`;
+  const w = !i.commit && i.commit_wait;
+  if (w?.error) return `<span class="dk-cmt">Commit not made: ${esc(w.error)} · ${undo}</span>`;
+  if (w) return `<span class="dk-cmt">Commit waiting: ${esc(deskBusyWords(w.busy || []) || "its files")} · ${undo}</span>`;
   const r = deskCommitted.get(i.id), files = r?.commit === i.commit ? r.files : 0;
-  const out = r?.commit === i.commit ? (r.skipped || []) : [];
-  return `<span class="dk-cmt">Committed <span class="dk-cm">${esc(i.commit)}</span>${files ? ` · ${files === 1 ? "1 file" : `${files} files`}` : ""} · <button class="dk-undo-c" data-desk-act="undo_commit" data-id="${esc(i.id)}">Undo</button></span>${out.length ? `<span class="dk-cmt-out">Left out: ${out.map((s) => `${esc(s.path)} (${esc(s.by)} is editing it)`).join(", ")}</span>` : ""}`;
+  return `<span class="dk-cmt">Committed <span class="dk-cm">${esc(i.commit)}</span>${files ? ` · ${files === 1 ? "1 file" : `${files} files`}` : ""} · ${undo}</span>`;
 }
 
-/** Project `d`'s cards for the lead's chat (chat/render.js chatHtml `extra`): one per DONE, at its time. */
+/** Project `d`'s cards for the lead's chat (chat/render.js chatHtml `extra`): one per DONE, at its time. Links and
+ *  paths in them open as in the lead's own replies (its folder for relative paths). */
 function deskCheckRows(d) {
-  return (d?.checks || []).map((c) => ({ at: c.at, html: keyed(deskCheckCard(c), `chk:${c.id}:${c.at}`) }));
+  const lead = deskLead(d), ses = lead ? sessionOf(lead.sid) : null;
+  const base = ses ? { cwd: ses.cwd, machine: ses.machine, sid: lead.sid } : null;
+  return (d?.checks || []).map((c) => ({ at: c.at, html: keyed(deskCheckCard(c, base, d.project), `chk:${c.id}:${c.at}`) }));
 }
-/** A DONE as a card: "Bug #57 · Up/Down arrows", who did it, what to test, its files, whether it's installed, and
- *  Looks right / Send back while it's the one to check (else what became of it). */
-function deskCheckCard(c) {
-  const files = c.files || [], many = files.length > 8;
-  const list = files.length ? `<ul class="dk-chk-files">${files.slice(0, 8).map((f) => `<li>${esc(f)}</li>`).join("")}${many ? `<li class="dim">and ${files.length - 8} more</li>` : ""}</ul>` : `<div class="dim">None Cue can tell of</div>`;
+/** A DONE as a card: "Bug #57 · Up/Down arrows" (a click opens the item), who did it (a click opens its chat) and how
+ *  many files, what to test, whether it's installed, and Looks right / Send back while it's the one to check (else
+ *  what became of it). Its words can be selected and copied; links and paths in them open. */
+function deskCheckCard(c, base = null, project = "") {
+  const by = c.by || "its session", ses = (state.sessions || []).find((s) => s.name === c.by && (!project || s.project === project));
+  const who = ses ? `<button class="dk-chk-a" data-desk-chat-of="${esc(ses.session_id)}">${esc(by)}</button>` : `<b>${esc(by)}</b>`;
+  const n = (c.files || []).length, files = n ? ` · ${n === 1 ? "1 file" : `${n} files`}` : "";
   const inst = state.desk?.installed_ms || 0;
   const installed = !c.cue ? "" : inst > c.at ? `In the installed Cue · installed ${esc(deskChkWhen(inst))}` : "Not installed yet";
   const open = c.last && c.state === "to_check";
-  const acts = open ? `<div class="dk-acts"><button class="btn small primary" data-desk-act="looks_right" data-id="${esc(c.id)}">Looks right</button><button class="btn small" data-desk-act="send_back" data-id="${esc(c.id)}">Send back</button></div>`
-    : `<div class="dk-chk-after">${c.state === "done" ? (c.last && c.commit ? deskCommitLine(c) : "Looked right") : "Sent back"}</div>`;
-  return `<div class="dk-chk"><div class="dk-chk-k">Ready to check</div><div class="dk-chk-t">${esc(`${deskNum(c)} · ${c.title}`)}</div>
-    <div class="dk-chk-w">Done by <b>${esc(c.by || "its session")}</b> · ${ago(c.at)} ago</div>
-    <div class="dkc-l">What to test</div><div class="dkc-dw">${c.done_when ? esc(c.done_when) : `<span class="dim">No "done when" was given</span>`}</div>
-    <div class="dkc-l">Files</div>${list}${installed ? `<div class="dkc-l">Installed</div><div class="dk-chk-in">${installed}</div>` : ""}${acts}</div>`;
+  const acts = open && deskBackFor === c.id ? deskBackHtml(c.id) : open ? `<div class="dk-acts"><button class="btn small primary" data-desk-act="looks_right" data-id="${esc(c.id)}">Looks right</button><button class="btn small" data-desk-act="send_back" data-id="${esc(c.id)}">Send back</button></div>`
+    : c.back || c.back_pics ? deskSentBack(c)
+    : `<div class="dk-chk-after">${c.state === "done" ? (c.last && deskHasCommit(c) ? deskCommitLine(c) : "Looked right") : "Sent back"}</div>`;
+  return `<div class="dk-chk"><div class="dk-chk-k">Ready to check</div><div class="dk-chk-t">${deskKindIcon(c)}<button class="dk-chk-a" data-desk-chk-item="${esc(c.id)}">${esc(`${deskNum(c)} · ${c.title}`)}</button></div>
+    <div class="dk-chk-w">Done by ${who} · ${ago(c.at)} ago${files}</div>
+    <div class="dkc-l">What to test</div><div class="dkc-dw">${c.done_when ? linkify(esc(c.done_when), base) : `<span class="dim">No "done when" was given</span>`}</div>
+    ${installed ? `<div class="dkc-l">Installed</div><div class="dk-chk-in">${installed}</div>` : ""}${acts}</div>`;
+}
+/** A card sent back: "Sent back" and why, in your words (links and paths open), with how many pictures went too. */
+function deskSentBack(c) {
+  const pics = c.back_pics ? `<span class="dim"> · ${c.back_pics === 1 ? "1 picture" : `${c.back_pics} pictures`}</span>` : "";
+  return `<div class="dkc-l">Sent back</div><div class="dkc-dw dk-chk-back">${c.back ? esc(c.back) : `<span class="dim">No words, just pictures</span>`}${pics}</div>`;
 }
 const deskChkWhen = (ms) => new Date(ms).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });

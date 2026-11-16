@@ -76,6 +76,10 @@ pub struct DeskItem {
     /// (hub/desk_commit.rs).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub commit: String,
+    /// Looks right's commit while it waits: some of its files were being edited by another session at work, so the
+    /// item is done and Cue commits them on its own once they're free (hub/desk_commit.rs `desk_commit_waiting`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commit_wait: Option<CommitWait>,
     /// Who it went to at work and when (ms): only work begun after that is its (stamped as it's saved: hub/desk.rs).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub held_from: Option<(String, u64)>,
@@ -102,6 +106,26 @@ pub struct DeskItem {
     pub checks: Vec<DeskCheck>,
 }
 
+/// A commit waiting for files another session is editing: the item's files to commit (its folder, the path there),
+/// the machine they're on ("" here), which of them are busy and who has them, and why it couldn't commit once free.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct CommitWait {
+    pub files: Vec<(String, String)>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub machine: String,
+    #[serde(default)]
+    pub busy: Vec<BusyFile>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub error: String,
+}
+
+/// A file another session at work is editing, and that session's name.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct BusyFile {
+    pub path: String,
+    pub by: String,
+}
+
 /// A DONE for an item: when (ms), who did it, the files it touched (filled in a moment later, read from its logs:
 /// hub/desk_checks.rs), and whether it was made in the folder this Cue is built from.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -112,6 +136,15 @@ pub struct DeskCheck {
     pub files: Vec<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub cue: bool,
+    /// Sent back after it: why, in your words, and how many pictures went with them.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub back: String,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub back_pics: usize,
+}
+
+fn is_zero(n: &usize) -> bool {
+    *n == 0
 }
 
 /// A call someone made about the Desk's work: the lead's (a route, a DECIDED line), a holder's DECIDED line, or

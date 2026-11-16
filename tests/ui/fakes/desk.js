@@ -1,4 +1,4 @@
-// Fakes for the Desk's commands (desk_set_lead, desk_send, desk_add, desk_give, desk_member, desk_item_act,
+// Fakes for the Desk's commands (desk_set_lead, desk_start, desk_send, desk_add, desk_give, desk_member, desk_item_act,
 // desk_looks_right, desk_commit_undo, desk_done, desk_undo): `state.desk`,
 // one entry a project with its items, its lead, its sessions (members) and today's decisions. Times are seconds; a dropped item stays, as
 // "dropped". A lead is a session like any other: desk_set_lead names one (or starts "<project>-lead", hosted), and
@@ -30,6 +30,19 @@ CueBridge.area("desk", (w) => {
       }
       w.changed();
       return d.lead;
+    },
+    // + New Desk: the folder's project (its last part, as a folder outside a repository is), and a lead started there.
+    desk_start: ({ folder }) => {
+      const cwd = String(folder || "").replace(/\/+$/, "");
+      if (!cwd) throw "no such folder";
+      const project = w.state.sessions.find((s) => s.cwd === cwd)?.project || cwd.split("/").pop();
+      const d = deskOf(project);
+      if (d.lead) return { project, sid: d.lead.sid };
+      const name = `${project}-lead`, id = `lead-${project}-${++n}`;
+      w.state.sessions.push({ session_id: id, name, project, cwd, harness: "claude", hosted: true, state: "idle", since_ms: w.now(), thread: [], team: [], segments: [], queued: null, prompt: "" });
+      d.lead = { sid: id, name, state: "live" };
+      w.changed();
+      return { project, sid: id };
     },
     desk_send: ({ project, text }) => {
       const d = deskOf(project);
@@ -70,12 +83,12 @@ CueBridge.area("desk", (w) => {
       w.changed();
       return null;
     },
-    desk_item_act: ({ id, act, text }) => {
+    desk_item_act: ({ id, act, text, images }) => {
       const it = itemOf(id);
       if (!it) throw "No such item";
       const t = secs();
       if (act === "looks_right") Object.assign(it, { state: "done", done_at: t });
-      else if (act === "send_back") Object.assign(it, { state: "working", latest: text ? `sent back: ${text}` : "sent back" });
+      else if (act === "send_back") { if (!text?.trim()) throw "Say what isn't right first: type it in the box, then Send back"; Object.assign(it, { state: "working", latest: `sent back: ${text}` }); }
       else if (act === "start_now") Object.assign(it, { state: "working", after: null, after_why: "", latest: "starting in a new session" });
       else if (act === "put_before") { const first = itemOf(it.after); if (first) Object.assign(first, { state: "queued", after: it.id, after_why: it.after_why }); Object.assign(it, { state: "working", after: null, after_why: "" }); }
       else if (act === "drop") it.state = "dropped";
@@ -83,18 +96,27 @@ CueBridge.area("desk", (w) => {
       it.updated = t;
       // Its cards in the lead's chat say where it is now, as the hub's view does.
       for (const c of desk().projects.flatMap((d) => d.checks || [])) if (c.id === it.id) c.state = it.state;
+      // Sent back: why, on its latest card, as the hub keeps it (pictures counted).
+      const last = act === "send_back" && desk().projects.flatMap((d) => d.checks || []).filter((c) => c.id === it.id && c.last).at(-1);
+      if (last) Object.assign(last, { back: text.trim(), back_pics: (images || []).length });
       w.changed();
       return null;
     },
-    // Looks right: every file of the item's counts as changed and is committed at once ("abc1234"), but those named in
-    // `state.desk_busy` ([{ path, by }]: another session at work is editing them); an item with no files is just done.
+    // Looks right: every file of the item's counts as changed and is committed at once ("abc1234"); when some are named
+    // in `state.desk_busy` ([{ path, by }]: another session at work is editing them) it's done and the commit waits
+    // (`commit_wait`); an item with no files is just done.
     desk_looks_right: ({ id }) => {
       const it = itemOf(id);
       if (!it) throw "No such item";
       if (it.state !== "to_check") throw "It isn't ready to check";
-      const busy = w.state.desk_busy || [], skipped = busy.filter((b) => it.files.includes(b.path));
-      const files = it.files.filter((f) => !busy.some((b) => b.path === f));
-      if (it.files.length && !files.length) throw `Not committed: ${skipped[0].by} is at work on its files now`;
+      const waiting = (w.state.desk_busy || []).filter((b) => it.files.includes(b.path)), files = it.files;
+      if (waiting.length) {
+        const commit_wait = { files: files.map((f) => ["/repo", f]), busy: waiting };
+        Object.assign(it, { state: "done", done_at: secs(), updated: secs(), commit: "", commit_wait });
+        for (const c of desk().projects.flatMap((d) => d.checks || [])) if (c.id === it.id) Object.assign(c, { state: "done", commit: "", commit_wait });
+        w.changed();
+        return { commit: "", files: files.length, waiting };
+      }
       const words = w.state.settings?.project?.never?.[it.project] || [];
       const hit = files.length && words.find((x) => it.title.toLowerCase().includes(x.toLowerCase()));
       if (hit) throw `Not committed: "${hit}" is in the message`;
@@ -102,14 +124,14 @@ CueBridge.area("desk", (w) => {
       Object.assign(it, { state: "done", done_at: secs(), updated: secs(), commit });
       for (const c of desk().projects.flatMap((d) => d.checks || [])) if (c.id === it.id) Object.assign(c, { state: "done", commit });
       w.changed();
-      return { commit, files: files.length, skipped };
+      return { commit, files: files.length, waiting: [] };
     },
     desk_commit_undo: ({ id }) => {
       const it = itemOf(id);
       if (!it) throw "No such item";
-      if (it.state !== "done" || !it.commit) throw "Nothing to undo: it wasn't committed";
-      Object.assign(it, { state: "to_check", done_at: null, updated: secs(), commit: "" });
-      for (const c of desk().projects.flatMap((d) => d.checks || [])) if (c.id === it.id) Object.assign(c, { state: "to_check", commit: "" });
+      if (it.state !== "done" || !(it.commit || it.commit_wait)) throw "Nothing to undo: it wasn't committed";
+      Object.assign(it, { state: "to_check", done_at: null, updated: secs(), commit: "", commit_wait: null });
+      for (const c of desk().projects.flatMap((d) => d.checks || [])) if (c.id === it.id) Object.assign(c, { state: "to_check", commit: "", commit_wait: null });
       w.changed();
       return it;
     },

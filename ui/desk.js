@@ -39,13 +39,16 @@ const deskOf = (p) => {
 const deskIdIs = (i, id) => i.id === id || (!!i.alias && i.alias === id);
 const deskItem = (p, id) => deskOf(p).items.find((i) => deskIdIs(i, id)) || null;
 /** An item as people name it: its kind and number, "Bug #2", "Task #1"; "#2" while it has no kind yet. */
-/** Line icons for an item's kind, in the one theme color (the "Type marks" pick): a checked box, a bug, a sparkle. */
+/** An item's kind as a small line icon in the one theme color (the "Type marks" pick): a checked box, a bug, a
+ *  sparkle. The one helper for it: every place an item's kind shows (the item list, the left list, the item page,
+ *  the lead's route and new-item cards, Ready to check) takes it from here, styled by .dk-kic. Takes an item or a
+ *  kind; "" for none. */
 const DESK_KIND_SVG = {
   task: '<rect x="4" y="4" width="16" height="16" rx="4"/><path d="m8.5 12.2 2.4 2.4 4.6-5"/>',
   bug: '<rect x="8" y="7" width="8" height="12" rx="4"/><path d="M12 11v8M8 12H4.5M19.5 12H16M8 16.5l-3 1.5M16 16.5l3 1.5M8.5 9 6 7M15.5 9 18 7M10 7a2 2 0 0 1 4 0"/>',
   feature: '<path d="M12 3.5 13.9 10.1 20.5 12 13.9 13.9 12 20.5 10.1 13.9 3.5 12 10.1 10.1Z"/>',
 };
-const deskKindIcon = (i) => (DESK_KIND_SVG[i?.kind] ? `<svg class="dk-kic" aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${DESK_KIND_SVG[i.kind]}</svg>` : "");
+const deskKindIcon = (i) => ((i = typeof i === "string" ? i : i?.kind), DESK_KIND_SVG[i] ? `<svg class="dk-kic" aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${DESK_KIND_SVG[i]}</svg>` : "");
 const deskNum = (i) => `${["bug", "feature", "task"].includes(i?.kind) ? `${i.kind[0].toUpperCase()}${i.kind.slice(1)} ` : ""}#${i?.id ?? ""}`;
 /** Since midnight, here. */
 const deskToday = (t) => deskMs(t) >= new Date(now()).setHours(0, 0, 0, 0);
@@ -286,7 +289,7 @@ function deskSessCache(sid) {
  *  data-ago): "Editing ui/desk.js · 4m". "" when it isn't working or says no step. */
 const deskStepLine = (working, step, at) => (working && step ? `<div class="dk-s3 dk-now">${esc(step)}${at ? ` · <span data-ago="${at}">${ago(at)}</span>` : ""}</div>` : "");
 function deskSessRow({ name, mark = "", dot, word, item, line, on, attrs, crew, step = "", size = "", loose = false, past = false, add = "" }) {
-  const what = `<span class="dk-w">${item ? `<span class="dk-id">${esc(deskNum(item))}</span> ${esc(item.title)}` : line ? esc(line) : `<span class="dk-none">nothing on the Desk</span>`}</span>`;
+  const what = `<span class="dk-w">${item ? `${deskKindIcon(item)}<span class="dk-id">${esc(deskNum(item))}</span> ${esc(item.title)}` : line ? esc(line) : `<span class="dk-none">nothing on the Desk</span>`}</span>`;
   return `<div class="dk-srow ${crew ? "crew" : ""} ${past ? "past" : ""} ${on ? "on" : ""}" role="button" tabindex="0" ${attrs}>${mark ? `<span class="dk-rmark">${mark}</span>` : ""}
     <div class="dk-s1"><span class="dk-nm">${esc(name)}</span><span class="dk-st"><i class="${dot}"></i><b>${word}</b></span></div>
     <div class="dk-s2">${what}${add}${loose ? `<span class="dk-pill loose">not committed</span>` : ""}</div>${step}${size}</div>`;
@@ -547,7 +550,7 @@ function deskItemPane(i, d) {
   const fileNames = deskFilesShort(i.files, " · ");
   const files = fileNames ? `<div class="dk-files">${esc(fileNames)}</div>` : "";
   const armed = deskDropArm === i.id;
-  return `<div class="dk-pane" data-scroll-key="item:${esc(i.id)}">${deskBack(deskLeadName(d) || "Back")}<h1>${esc(i.title)}</h1><div class="dk-state">${deskItemState(i)}</div>
+  return `<div class="dk-pane" data-scroll-key="item:${esc(i.id)}">${deskBack(deskLeadName(d) || "Back")}<h1>${esc(i.title)}</h1><div class="dk-state">${deskKindIcon(i)}${deskItemState(i)}</div>
     ${deskSec("Couldn't give it out", i.route_failed ? `<p>${esc(i.route_failed)}</p>` : "")}
     ${deskSec(i.state === "needs_you" ? "It asks you" : "What's holding it up", deskChain(i))}${deskSec("What it made", i.state === "to_check" || i.state === "done" ? deskMadeLinks(i) : "")}${deskItemActs(i)}
     ${deskSec("Done when", i.done_when ? `<p>${esc(i.done_when)}</p>` : "")}

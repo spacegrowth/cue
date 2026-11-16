@@ -79,7 +79,6 @@
 .dk-i2 .dk-ok { margin-left: auto; }
 .dk-it:hover { background: var(--panel-2); }
 .dk-it.on { background: var(--sel); }
-.dk-kic { flex: none; color: var(--accent); margin-right: -3px; align-self: center; }
 .dk-tag { min-width: 46px; padding: 2px 6px; white-space: nowrap; border-radius: 5px; background: var(--panel-2); color: var(--muted); font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; text-align: center; }
 .dk-tag.ask { background: var(--deny); color: var(--on-accent); }
 .dk-tag.landed { background: var(--accent); color: var(--on-accent); }
@@ -272,9 +271,6 @@ button.dk-undo-l:hover { text-decoration: underline; }
 .dk-say { padding: 3px 0; line-height: 1.45; overflow-wrap: anywhere; }
 .dk-say-h { color: var(--ink); }
 .dk-say-t { font-weight: 600; }
-.dk-say-k { padding: 1px 6px; border-radius: var(--pill-radius); font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); background: color-mix(in srgb, var(--muted) 14%, transparent); }
-.dk-say-k.bug { color: var(--deny); background: color-mix(in srgb, var(--deny) 13%, transparent); }
-.dk-say-k.feature { color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); }
 .dk-say-id { font-weight: 600; color: var(--ink); }
 .dk-say-s .dk-say-id { font-weight: 500; color: inherit; }
 .dk-say-to { color: var(--muted); }
@@ -321,3 +317,13 @@ button.dk-undo-l:hover { text-decoration: underline; }
 
 .dk-srow.on .dk-st > i:not(.ask):not(.idle) { background: var(--on-sel); }
 .dk-chk .dk-chk-back { white-space: pre-wrap; }
+
+/* An item's kind (deskKindIcon): one small line icon in the theme color, wherever an item's kind shows. */
+.dk-kic { flex: none; display: inline-block; vertical-align: -2px; margin-right: 5px; color: var(--accent); }
+.dk-srow.on .dk-kic { color: var(--on-sel); }
+.dk-i1 > .dk-kic { align-self: center; margin-right: -3px; }
+/* A ROUTE card on two lines: what goes where in bold, then why, plain. */
+.dk-route .dk-say-h { font-weight: 650; }
+.dk-route .dk-say-h .dk-say-to, .dk-route .dk-say-t { font-weight: inherit; color: var(--ink); }
+.dk-route { padding: 5px 0; }
+.dk-route > .dk-say-s { display: block; margin-top: 1px; }

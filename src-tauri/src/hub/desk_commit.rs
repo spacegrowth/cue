@@ -1,10 +1,12 @@
 //! Looks right, with a commit: the item's files that git says changed (not those another session at work is editing),
 //! each folder's in its own repository with `git commit --only`, its title the message, once none of their added
 //! lines (nor a new file's name, nor the message) has one of the project's words never committed. Never pushed. Then
-//! the item is done, with its commit; Undo takes the commit back while it's still the last one.
+//! the item is done, with its commit; Undo takes the commit back while it's still the last one. When another session
+//! at work is editing some of its files, the item is done at once and the commit waits (`DeskItem::commit_wait`, kept
+//! with the item, so across a restart too): Cue's tick makes it once they're free.
 
 use super::*;
-use crate::desk::DeskItem;
+use crate::desk::{BusyFile, CommitWait, DeskItem};
 
 /// One file of an item's to commit: the folder it was changed in, and its path there.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq)]
@@ -41,29 +43,7 @@ impl Hub {
                 None => todo.push((f.folder.clone(), vec![f.path.clone()])),
             }
         }
-        let words = crate::config::never_words(&it.project);
-        if let Some(w) = words.iter().find(|w| message.to_lowercase().contains(&w.to_lowercase())) {
-            return Err(format!("Not committed: \"{w}\" is in the message"));
-        }
-        for (folder, paths) in &todo {
-            if let Some((w, at)) = word_in(&added_diff(&machine, folder, paths)?, &words) {
-                return Err(format!("Not committed: \"{w}\" is in {at}"));
-            }
-        }
-        let mut shas: Vec<String> = Vec::new();
-        let mut done: Vec<String> = Vec::new();
-        for (folder, paths) in &todo {
-            match commit_only(&machine, folder, paths, message) {
-                Ok(sha) => {
-                    done.push(format!("{} ({sha})", crate::model::folder_of(folder)));
-                    shas.push(sha);
-                }
-                // One repository's commit failed after another's was made: said with what was made, the item stays.
-                Err(e) if !done.is_empty() => return Err(format!("{e}. Committed already: {}", done.join(", "))),
-                Err(e) => return Err(e),
-            }
-        }
-        let sha = shas.join(" ");
+        let sha = commit_files(&it.project, &machine, &todo, message)?;
         self.write(|st| {
             if let Some(i) = st.desk.item_mut(id) {
                 i.commit = sha;
@@ -96,28 +76,93 @@ impl Hub {
 
 impl Hub {
     /// Looks right on item `id`: its changed files committed at once (its title the message, after the word check,
-    /// never pushed) and the item done with the commit; with nothing to commit, just done. Files another session at
-    /// work now is editing are left out, and said: { commit, files, skipped: [{ path, by }] }.
+    /// never pushed) and the item done with the commit; with nothing to commit, just done. When another session at
+    /// work now is editing some of them, it's done at once and the commit waits for them (`desk_commit_waiting`):
+    /// { commit, files, waiting: [{ path, by }] }.
     pub(crate) fn desk_looks_right(&self, id: &str) -> Result<Value, String> {
         let (it, machine, sources) = self.desk_commit_sources(id)?;
         let busy = if machine.is_empty() { self.busy_files(&it) } else { Vec::new() };
         let mut files: Vec<DeskFile> = Vec::new();
-        let mut skipped: Vec<Value> = Vec::new();
+        let mut waiting: Vec<BusyFile> = Vec::new();
         for (folder, paths) in &sources {
             for p in changed_of(&machine, folder, paths).unwrap_or_default() {
                 let abs = format!("{}/{p}", folder.trim_end_matches('/'));
-                match busy.iter().find(|(f, _)| *f == abs) {
-                    Some((_, by)) => skipped.push(json!({ "path": p, "by": by })),
-                    None => files.push(DeskFile { folder: folder.clone(), path: p }),
+                if let Some((_, by)) = busy.iter().find(|(f, _)| *f == abs) {
+                    waiting.push(BusyFile { path: p.clone(), by: by.clone() });
                 }
+                files.push(DeskFile { folder: folder.clone(), path: p });
             }
         }
-        if files.is_empty() && !skipped.is_empty() {
-            let by: Vec<&str> = skipped.iter().filter_map(|s| s["by"].as_str()).collect();
-            return Err(format!("Not committed: {} at work on its files now", by.first().copied().unwrap_or("another session")));
+        if !waiting.is_empty() {
+            let wait = CommitWait { files: files.iter().map(|f| (f.folder.clone(), f.path.clone())).collect(), machine, busy: waiting.clone(), error: String::new() };
+            self.write(|st| {
+                if let Some(i) = st.desk.item_mut(id) {
+                    i.commit_wait = Some(wait);
+                }
+            });
+            self.desk_item_act(id, "looks_right", "")?;
+            return Ok(json!({ "commit": "", "files": files.len(), "waiting": waiting }));
         }
         let it = if files.is_empty() { self.desk_item_act(id, "looks_right", "")? } else { self.desk_commit(id, &files, &it.title)? };
-        Ok(json!({ "commit": it.commit, "files": files.len(), "skipped": skipped }))
+        Ok(json!({ "commit": it.commit, "files": files.len(), "waiting": [] }))
+    }
+
+    /// Each done item's waiting commit (`desk_looks_right`), made once none of its files is being edited by a session
+    /// at work: committed as Looks right would (the word check, never pushed), or why not kept on it. Run by Cue's
+    /// tick (every ~10 s and as a turn ends), so after a restart too; one run at a time.
+    pub(super) fn desk_commit_waiting(&self) {
+        static RUNNING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        let waits: Vec<DeskItem> = self.read(|st| st.desk.items.iter().filter(|i| i.state == "done" && i.commit_wait.as_ref().is_some_and(|w| w.error.is_empty())).cloned().collect());
+        if waits.is_empty() || RUNNING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            return;
+        }
+        for it in &waits {
+            self.desk_commit_wait(it);
+        }
+        RUNNING.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    fn desk_commit_wait(&self, it: &DeskItem) {
+        let Some(w) = it.commit_wait.clone() else { return };
+        let busy = if w.machine.is_empty() { self.busy_files(it) } else { Vec::new() };
+        let still: Vec<BusyFile> = w.files.iter().filter_map(|(folder, p)| {
+            let abs = format!("{}/{p}", folder.trim_end_matches('/'));
+            busy.iter().find(|(f, _)| *f == abs).map(|(_, by)| BusyFile { path: p.clone(), by: by.clone() })
+        }).collect();
+        let (commit, wait) = if !still.is_empty() {
+            if still == w.busy {
+                return;
+            }
+            (None, Some(CommitWait { busy: still, ..w.clone() }))
+        } else {
+            // Free: those of its files still changed, committed.
+            let todo: Vec<(String, Vec<String>)> = by_folder(&w.files).into_iter().filter_map(|(folder, paths)| {
+                let left = changed_of(&w.machine, &folder, &paths).unwrap_or_default();
+                (!left.is_empty()).then_some((folder, left))
+            }).collect();
+            if todo.is_empty() {
+                (None, None)
+            } else {
+                match commit_files(&it.project, &w.machine, &todo, &it.title) {
+                    Ok(sha) => (Some(sha), None),
+                    Err(e) => (None, Some(CommitWait { error: e, ..w.clone() })),
+                }
+            }
+        };
+        let saved = self.desk_saving(|| {
+            let it = self.write(|st| {
+                let i = st.desk.item_mut(&it.id).filter(|i| i.commit_wait.is_some())?;
+                if let Some(sha) = &commit {
+                    i.commit = sha.clone();
+                }
+                i.commit_wait = wait;
+                Some(i.clone())
+            });
+            it.inspect(crate::db::desk_put_item).is_some()
+        });
+        if saved {
+            self.changed();
+        }
     }
 
     /// Undo on a Looks right that committed: each of its commits taken back (`git reset --soft` one commit, then
@@ -125,6 +170,10 @@ impl Hub {
     /// is ready to check again.
     pub(crate) fn desk_commit_undo(&self, id: &str) -> Result<DeskItem, String> {
         let it = self.read(|st| st.desk.item(id).cloned()).ok_or("no such item")?;
+        // Its commit still waiting: no more wait, and it's ready to check again.
+        if it.state == "done" && it.commit.is_empty() && it.commit_wait.is_some() {
+            return self.desk_reopen_checked(id, |i| i.commit_wait = None);
+        }
         if it.state != "done" || it.commit.is_empty() {
             return Err("It has no commit to undo".into());
         }
@@ -153,10 +202,16 @@ impl Hub {
             git(&machine, top, &[], &["reset", "-q", "--soft", "HEAD~1"]).ok_or("Can't undo it: git couldn't take the commit back")?;
             git(&machine, top, &[], &[&["reset", "-q", "--"][..], &p].concat());
         }
+        self.desk_reopen_checked(id, |i| i.commit = String::new())
+    }
+
+    /// Item `id` ready to check again, with `f` done to it too; saved.
+    fn desk_reopen_checked(&self, id: &str, f: impl FnOnce(&mut DeskItem)) -> Result<DeskItem, String> {
         let it = self.desk_saving(|| {
             let it = self.write(|st| {
                 let i = st.desk.item_mut(id)?;
-                (i.state, i.commit, i.done_at, i.updated) = ("to_check".into(), String::new(), None, super::desk::secs(now_ms()));
+                (i.state, i.done_at, i.updated) = ("to_check".into(), None, super::desk::secs(now_ms()));
+                f(i);
                 Some(i.clone())
             });
             it.inspect(crate::db::desk_put_item)
@@ -193,6 +248,47 @@ impl Hub {
         }
         out
     }
+}
+
+/// Each folder's `paths` committed with `message` once none of their added lines (nor a new file's name, nor the
+/// message) has one of `project`'s never-committed words: the commits, short, space apart.
+fn commit_files(project: &str, machine: &str, todo: &[(String, Vec<String>)], message: &str) -> Result<String, String> {
+    let words = crate::config::never_words(project);
+    if let Some(w) = words.iter().find(|w| message.to_lowercase().contains(&w.to_lowercase())) {
+        return Err(format!("Not committed: \"{w}\" is in the message"));
+    }
+    for (folder, paths) in todo {
+        if let Some((w, at)) = word_in(&added_diff(machine, folder, paths)?, &words) {
+            return Err(format!("Not committed: \"{w}\" is in {at}"));
+        }
+    }
+    let mut shas: Vec<String> = Vec::new();
+    let mut done: Vec<String> = Vec::new();
+    for (folder, paths) in todo {
+        match commit_only(machine, folder, paths, message) {
+            Ok(sha) => {
+                done.push(format!("{} ({sha})", crate::model::folder_of(folder)));
+                shas.push(sha);
+            }
+            // One repository's commit failed after another's was made: said with what was made.
+            Err(e) if !done.is_empty() => return Err(format!("{e}. Committed already: {}", done.join(", "))),
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(shas.join(" "))
+}
+
+/// `files` ((folder, path)) by folder, in their order.
+fn by_folder(files: &[(String, String)]) -> Vec<(String, Vec<String>)> {
+    let mut todo: Vec<(String, Vec<String>)> = Vec::new();
+    for (folder, path) in files {
+        match todo.iter_mut().find(|(f, _)| f == folder) {
+            Some((_, paths)) if paths.contains(path) => {}
+            Some((_, paths)) => paths.push(path.clone()),
+            None => todo.push((folder.clone(), vec![path.clone()])),
+        }
+    }
+    todo
 }
 
 /// Where a session's own changes for an item are read from: its log, its folder, and when it held the item (ms).
@@ -317,7 +413,14 @@ fn word_in(diff: &str, words: &[String]) -> Option<(String, String)> {
 fn commit_only(machine: &str, folder: &str, paths: &[String], message: &str) -> Result<String, String> {
     let name = crate::model::folder_of(folder);
     let p: Vec<&str> = paths.iter().map(String::as_str).collect();
-    git(machine, folder, &[], &[&["add", "-A", "--"][..], &p].concat()).ok_or_else(|| format!("Not committed: git couldn't add the files in {name}"))?;
+    // Added: the ones in the index or new in the folder. A file already taken out with `git rm` is in neither, and
+    // `git add` stops on it ("did not match any files"); `commit --only` takes its removal in as it is.
+    let known = git(machine, folder, &[], &[&["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--"][..], &p].concat()).unwrap_or_default();
+    let known: Vec<&str> = known.split('\0').collect();
+    let addable: Vec<&str> = p.iter().copied().filter(|f| known.contains(f)).collect();
+    if !addable.is_empty() {
+        git(machine, folder, &[], &[&["add", "-A", "--"][..], &addable].concat()).ok_or_else(|| format!("Not committed: git couldn't add the files in {name}"))?;
+    }
     git(machine, folder, &[], &[&["commit", "--only", "-q", "-m", message, "--"][..], &p].concat()).ok_or_else(|| format!("Not committed: git didn't commit the files in {name} (its hooks, or nothing to commit)"))?;
     Ok(git(machine, folder, &[], &["rev-parse", "--short", "HEAD"]).map(|o| o.trim().to_string()).unwrap_or_default())
 }

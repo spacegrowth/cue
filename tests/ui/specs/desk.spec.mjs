@@ -39,7 +39,7 @@ test("the Desk is in the header after Board, and lists Waiting on you, then a gr
   await expect(page.locator('[data-desk-item="d1"] .dk-h')).toContainText("keep focus in the box");
   // Ready to check: Looks right on its row. Done today: each with the time it finished.
   await expect(page.locator(".dk-items .dk-ok")).toHaveCount(1);
-  await expect(page.locator('[data-desk-item="d2"] .dk-ok')).toHaveText("Looks right");
+  await expect(page.locator('[data-desk-item="d2"] .dk-ok')).toHaveAttribute("aria-label", "Looks right");
   await expect(page.locator('[data-desk-item="d7"] .dk-age')).toHaveText(/^\d{1,2}(:\d\d)?(am|pm)$/);
   // The lead's chat on the right, named for it, no crew beside it (a Desk's lead has none).
   await expect(page.locator(".dk-tab.on")).toHaveText("web-lead");
@@ -768,11 +768,14 @@ test("the lead's own Desk lines are drawn as lines in its chat, code blocks left
   });
   const said = page.locator(".dk-chat .cv-agent").last();
   await expect(said.locator(".own-lines .dk-say")).toHaveCount(4);
-  await expect(said.locator(".dk-say").nth(0).locator(".dk-say-k.bug")).toHaveText("bug");
+  await expect(said.locator(".dk-say").nth(0).locator("svg.dk-kic")).toHaveCount(1);
   await expect(said.locator(".dk-say").nth(0)).toContainText("Box loses focus");
   await expect(said.locator(".dk-say").nth(0).locator(".dk-say-s")).toHaveText(" · done when typing keeps focus");
   await expect(said.locator(".dk-say").nth(1)).toContainText("#d7k2 → web-lead");
-  await expect(said.locator(".dk-say").nth(1).locator(".dk-say-s")).toHaveText(" · after #a1 · it knows the box");
+  // A route on two lines: what goes where in bold, then why.
+  await expect(said.locator(".dk-say").nth(1).locator(".dk-say-h")).toHaveCSS("font-weight", "650");
+  await expect(said.locator(".dk-say").nth(1).locator(".dk-say-s")).toHaveText("after #a1 · it knows the box");
+  expect(await said.locator(".dk-say").nth(1).evaluate((el) => el.querySelector(".dk-say-s").getBoundingClientRect().top > el.querySelector(".dk-say-h").getBoundingClientRect().bottom - 2)).toBe(true);
   await expect(said.locator(".dk-say").nth(2)).toContainText(/^Done Feature #d3 · \S/);
   await expect(said.locator(".dk-say").nth(3)).toContainText("host-lead → keep");
   await expect(said.locator(".cv-text")).toContainText("Here's the plan.");
@@ -1258,7 +1261,9 @@ test("a DONE is a card in the lead's chat: item, who, what to test, files, insta
   await cue.called("desk_item_act", { id: "d2", act: "send_back", text: "The arrows still skip one" });
   await expect(lead).toHaveValue("a word for the lead");
   expect(await cue.calls("desk_send")).toEqual([]);
-  await expect(card.locator(".dk-chk-after")).toHaveText("Sent back");
+  // The card keeps why it went back.
+  await expect(card.locator(".dk-chk-back")).toHaveText("The arrows still skip one");
+  await expect(card.locator(".dkc-l").last()).toHaveText("Sent back");
   await expect(card.locator('[data-desk-act]')).toHaveCount(0);
 
   // Who did it opens its chat; the item's name opens the item.
