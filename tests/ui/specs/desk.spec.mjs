@@ -1,6 +1,7 @@
-// The Desk (ui/desk.js, ui/desk_lead.js): a project's items on the left (Waiting on you first, Not given out yet, then
-// a group a holder, Done today folded), its lead's chat on the right with Decisions beside it; an item, a holder or a
-// crew member opened on the right with ‹ back, its row lit where it is; the one box at the foot going to the lead;
+// The Desk (ui/desk.js, ui/desk_lead.js): the project's sessions on the left, its lead's chat in the middle with
+// Decisions beside it, its items on the right (Waiting on you first, Not given out yet, then a group a holder, Done
+// today folded); an item, a holder or a
+// crew member opened in the middle with ‹ back, its row lit where it is; the one box at the foot going to the lead;
 // who runs the Desk (picked, changed, ended); Give to…; the quick-add line; and with All projects, every project's
 // Desk as a card.
 import { test, expect } from "./cue.mjs";
@@ -17,7 +18,7 @@ const openDesk = async (page, p = "cue") => {
   await page.locator(".dk-items .dk-it").first().waitFor();
 };
 /** The list as it reads, top to bottom: group labels and holder heads as "# …", items by id. */
-const listOrder = (page) => page.locator(".dk-scroll > *").evaluateAll((els) => els.map((el) =>
+const listOrder = (page) => page.locator(".dk-items .dk-scroll > *").evaluateAll((els) => els.map((el) =>
   el.dataset.deskItem || (el.matches(".dk-holder") ? `# ${el.querySelector(".dk-nm").textContent}` : el.matches(".dk-gh") ? `# ${el.firstChild.textContent.trim()}` : null)).filter(Boolean));
 
 test("the Desk is in the header after Board, and lists Waiting on you, then a group a holder", async ({ page, cue }) => {
@@ -25,23 +26,30 @@ test("the Desk is in the header after Board, and lists Waiting on you, then a gr
   const views = await page.locator(".switch-view button").evaluateAll((els) => els.map((el) => el.dataset.view));
   expect(views.slice(0, 3)).toEqual(["inbox", "board", "desk"]);
   await openDesk(page);
-  expect(await listOrder(page)).toEqual(["# Waiting on you", "d1", "d2", "# Not given out yet", "d6", "# web-lead", "d4", "d3", "# host-lead", "d5", "# Done today"]);
-  await expect(page.locator(".dk-gh.you")).toContainText("2");
+  expect(await listOrder(page)).toEqual(["# Waiting on you", "d1", "d2", "# Not given out yet", "d6", "# web-lead", "d4", "d3", "# host-lead", "d5", "# Done today", "d7", "d8", "d9"]);
+  await expect(page.locator(".dk-items .dk-gh.you")).toContainText("2");
   await expect(page.locator('.dk-holder[data-desk-holder="lead"] .dk-s')).toHaveText("lead · crew of 2");
   await expect(page.locator('.dk-holder[data-desk-holder="host"] .dk-s')).toHaveText("on its own");
-  // What each waits on, or is on now.
-  await expect(page.locator('[data-desk-item="d4"] .dk-h')).toHaveText("next · after Search stays centred in the header (both change header.js)");
-  await expect(page.locator('[data-desk-item="d3"] .dk-h')).toHaveText("Now · search-centre, step 2 of 3");
+  // One row each: state, #id, title, who holds it, age; only the ask has a second line, its question.
+  const cells = (id) => page.locator(`[data-desk-item="${id}"]`).evaluate((el) => [".dk-tag", ".dk-id", ".dk-t", ".dk-who"].map((c) => el.querySelector(c)?.textContent));
+  expect(await cells("d4")).toEqual(["next", "Bug #d4", "Rail dot blinks for a reply you didn't send", "web-lead"]);
+  expect(await cells("d3")).toEqual(["now", "Feature #d3", "Search stays centred in the header", "web-lead → search-centre"]);
+  expect(await cells("d2")).toEqual(["landed", "Feature #d2", "Quick phrases at the right of Send", "web-lead"]);
+  await expect(page.locator(".dk-items .dk-h")).toHaveCount(1);
   await expect(page.locator('[data-desk-item="d1"] .dk-h')).toContainText("keep focus in the box");
-  // Done today folded to a line; a click unfolds it.
-  await expect(page.locator(".dk-folded")).toContainText("Header count as a tint · Inbox before Board");
-  await page.locator(".dk-folded").click();
-  await expect(page.locator('[data-desk-item="d7"]')).toBeVisible();
-  // The lead's chat on the right, named for it, its crew beside; Run by it over the items.
+  // Ready to check: Looks right on its row. Done today: each with the time it finished.
+  await expect(page.locator(".dk-items .dk-ok")).toHaveCount(1);
+  await expect(page.locator('[data-desk-item="d2"] .dk-ok')).toHaveText("Looks right");
+  await expect(page.locator('[data-desk-item="d7"] .dk-age')).toHaveText(/^\d{1,2}(:\d\d)?(am|pm)$/);
+  // The lead's chat on the right, named for it, no crew beside it (a Desk's lead has none); Run by it over the items.
   await expect(page.locator(".dk-tab.on")).toHaveText("web-lead");
-  await expect(page.locator(".dk-crewline")).toHaveText("crew: search-centre, focus-fix");
+  await expect(page.locator(".dk-tabs")).not.toContainText("crew");
+  // Its type mark at the header's top right: Desk lead, in a block of the Desk's color, its bottom-left corner rounded.
+  const mark = page.locator(".dk-tabs .dk-mark.desk");
+  await expect(mark).toHaveText("Desk lead");
+  expect(await mark.evaluate((e) => getComputedStyle(e).borderRadius)).toBe("0px 0px 0px 10px");
   await expect(page.locator(".dk-chat")).toContainText("host-lead is on it");
-  await expect(page.locator(".dk-runby")).toHaveText("Run by web-lead · Change");
+  await expect(page.locator(".dk-runby")).toHaveText("Run by web-lead✎ · Change");
   await expect(page.locator(".dk-box textarea")).toHaveAttribute("placeholder", "Tell web-lead: a bug, a feature, or a question…");
   await expect(page.locator("[data-desk-new]")).toHaveCount(0);
 });
@@ -94,6 +102,26 @@ test("written about an open item, the box goes to the lead naming it", async ({ 
   await expect(page.locator(".dk-chat .cv-you").last()).toContainText("<desk>");
 });
 
+test("the lead at work shows it in its chat: the working line and its steps, live, as any session's chat", async ({ page, cue }) => {
+  await cue.override("session_steps", ({ sessionId }, at) => (sessionId !== "lead" ? { version: 1, turns: [] } : { version: 1, turns: [{ at_ms: at - 30000, prompt: "", more: 0, items: [
+    { t: "step", id: "lr1", kind: "read", verb: "Read", subject: "header.js", mono: true, result: "40 lines", bad: false, done: true, at_ms: at - 20000 },
+  ] }] }), await page.evaluate(() => now()));
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.change((st) => {
+    const s = st.sessions.find((x) => x.session_id === "lead");
+    Object.assign(s, { state: "working", doing: "Reading header.js…", doing_ms: Date.now() - 5000, since_ms: Date.now() - 30000 });
+  });
+  const live = page.locator(".dk-chat .cv-status");
+  await expect(live).toContainText("Reading header.js");
+  await expect(live.locator(".dot-live")).toHaveCount(1);
+  // Its steps come in while it works (followSteps follows the Desk's lead).
+  await expect(page.locator(".dk-chat .stx-line", { hasText: "header.js" })).toBeVisible();
+  // Done: the working line goes.
+  await cue.change((st) => { Object.assign(st.sessions.find((x) => x.session_id === "lead"), { state: "idle", doing: "" }); });
+  await expect(page.locator(".dk-chat .dot-live")).toHaveCount(0);
+});
+
 test("a send from an item that doesn't go keeps the item open, and your words in its box", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
@@ -104,6 +132,33 @@ test("a send from an item that doesn't go keeps the item open, and your words in
   await expect(page.locator(".toast")).toContainText("offline");
   await expect(page.locator(".dk-right .dk-pane h1")).toHaveText("Quick phrases at the right of Send");
   await expect(page.locator(".dk-box textarea")).toHaveValue("The More menu is cut off");
+});
+
+test("the lead's own ASK stands in the box's place: its choices, Type answer…; answered, the box is back", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  // Typed to the lead before it asked: kept, and shown held under its card.
+  await page.locator(".dk-box textarea").fill("And the footer too");
+  await cue.change((st) => {
+    st.sessions.find((s) => s.session_id === "lead").state = "deciding";
+    st.items.push({ ...st.items[0], id: "n-lead-ask", agent_id: "", agent_name: "", desk: true, hosted: false,
+      tool_input: { questions: [{ question: "Add a rename right on the Desk's line?", header: "Desk", multiSelect: false, options: [{ label: "Yes, add it there", description: "" }, { label: "No, the chat's is enough", description: "" }] }] } });
+  });
+  const ask = page.locator(".dk-right .dk-ask");
+  await expect(ask).toContainText("Add a rename right on the Desk's line?");
+  await expect(page.locator(".dk-right .dk-box")).toHaveCount(0);
+  await expect(ask.locator(".foot.held textarea")).toHaveValue("And the footer too");
+  // Your own words: Type answer… opens a box for them.
+  await ask.locator('[data-act="redirect"]').click();
+  await expect(ask.locator("textarea")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await ask.locator("[data-pick]", { hasText: "Yes, add it there" }).click();
+  const call = await cue.called("respond");
+  expect(call.args.id).toBe("n-lead-ask");
+  await cue.change((st) => { st.sessions.find((s) => s.session_id === "lead").state = "working"; });
+  await expect(page.locator(".dk-right .dk-ask")).toHaveCount(0);
+  await expect(page.locator(".dk-box textarea")).toHaveAttribute("placeholder", "Tell web-lead: a bug, a feature, or a question…");
+  await expect(page.locator(".dk-box textarea")).toHaveValue("And the footer too");
 });
 
 test("a lead opens with its crew; a crew member with where it is, and the box goes to the lead", async ({ page, cue }) => {
@@ -129,13 +184,15 @@ test("a lead opens with its crew; a crew member with where it is, and the box go
   await expect(pane.locator("h1")).toHaveText("web-lead");
 });
 
-test("Decisions: who decided, what and why; Undo this asks", async ({ page, cue }) => {
+test("Decisions: only judgment calls, who decided, what and why; Undo this asks", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await page.locator('[data-desk-tab="decisions"]').click();
-  await expect(page.locator(".dk-tab.on")).toContainText("Decisions3");
+  // Two calls; "Gave it to web-lead after Search" is a step, not in the list.
+  await expect(page.locator(".dk-tab.on")).toContainText("Decisions2");
   const decs = page.locator(".dk-right .dk-dec");
-  await expect(decs).toHaveCount(3);
+  await expect(decs).toHaveCount(2);
+  await expect(page.locator(".dk-right")).not.toContainText("Gave it to web-lead after Search");
   await expect(decs.first()).toContainText("host-lead decided, 3m ago");
   await expect(decs.first()).toContainText("Hosted sessions don't read the settings file at start.");
   await decs.first().locator('[data-desk-undo="c1"]').click();
@@ -144,9 +201,19 @@ test("Decisions: who decided, what and why; Undo this asks", async ({ page, cue 
   await expect(decs.first()).toContainText("Undo asked");
 });
 
+test("a step (a route, a give) is a quiet line on its item, not a decision", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await page.locator('[data-desk-item="d4"]').click();
+  const step = page.locator(".dk-step");
+  await expect(step).toHaveCount(1);
+  await expect(step).toContainText("Gave it to web-lead after Search, not a new session");
+  await expect(step.locator('[data-desk-undo="c3"]')).toHaveText("Undo this");
+  await expect(page.locator(".dk-sec h3", { hasText: "Decisions" })).toHaveCount(0);
+});
+
 test("All projects: a Desk a project; a click opens that project's", async ({ page, cue }) => {
   await cue.open("desk");
-  await page.evaluate(() => localStorage.setItem("cue.deskKind", "task"));
   await page.locator('.switch-view [data-view="desk"]').click();
   const cards = page.locator(".dk-desks .dk-desk");
   await expect(cards).toHaveCount(2);
@@ -220,15 +287,15 @@ test("an item no one holds yet, or waiting on nothing, reads plain: next", async
   await cue.open("desk");
   const it = { kind: "bug", state: "queued", holder: null, after: null, from: "you", created: Date.now() / 1000 };
   expect(await page.evaluate((i) => deskItemState(i), it)).toMatch(/^Bug · next · added by you/);
-  expect(await page.evaluate((i) => deskItemLine(i), it)).toBe("next");
-  // One whose hand-off failed says so instead.
-  expect(await page.evaluate((i) => deskItemLine({ ...i, route_failed: "web-lead is gone" }), it)).toBe("Couldn't give it out: web-lead is gone");
+  expect(await page.evaluate((i) => deskTag(i), it)).toEqual(["next", ""]);
+  // One whose hand-off failed is tagged stuck instead.
+  expect(await page.evaluate((i) => deskTag({ ...i, route_failed: "web-lead is gone" }), it)).toEqual(["stuck", "ask"]);
 });
 
 test("an item that couldn't be given out says why; a dropped one is gone", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  await expect(page.locator('[data-desk-item="d9"]')).toHaveCount(0);
+  await expect(page.locator(".dk-it", { hasText: "Old idea, dropped" })).toHaveCount(0);
   // Nor is it counted on its project's card in All projects.
   const card = await page.evaluate(() => {
     state.desk.projects.push({ project: "zz", lead: null, decisions: [], items: [{ id: "z1", project: "zz", kind: "task", title: "Gone", state: "dropped", created: 1, updated: 1 }] });
@@ -236,7 +303,8 @@ test("an item that couldn't be given out says why; a dropped one is gone", async
   });
   expect(card).toContain("Quiet today</span>");
   expect(card).not.toContain("item open");
-  await expect(page.locator('[data-desk-item="d6"] .dk-h')).toHaveText("Couldn't give it out: No session in this project could take it. · Give to…");
+  await expect(page.locator('[data-desk-item="d6"] .dk-tag')).toHaveText("stuck");
+  await expect(page.locator('[data-desk-item="d6"] .dk-who')).toHaveText("Give to…");
   await page.locator('[data-desk-item="d6"]').click();
   await expect(page.locator(".dk-right .dk-pane")).toContainText("Couldn't give it out");
   await expect(page.locator(".dk-right .dk-pane")).toContainText("No session in this project could take it.");
@@ -289,7 +357,7 @@ test("no lead yet, one session: 'Let <name> run it', or start a new lead; picked
   await card.locator(".btn.primary").click();
   await cue.called("desk_set_lead", { project: "website", sid: "site" });
   await expect(page.locator(".dk-tab.on")).toHaveText("site-lead");
-  await expect(page.locator(".dk-runby")).toHaveText("Run by site-lead · Change");
+  await expect(page.locator(".dk-runby")).toHaveText("Run by site-lead✎ · Change");
   await expect(page.locator(".dk-box textarea")).toHaveAttribute("placeholder", "Tell site-lead: a bug, a feature, or a question…");
   expect(await page.locator(".dk-board [title]").count()).toBe(0);
 });
@@ -339,7 +407,37 @@ test("Change: the project's other sessions, each with Run it; Keep or Esc goes b
   await page.locator(".dk-runby [data-desk-change]").click();
   await card.locator('.dk-who [data-desk-lead="host"]').click();
   await cue.called("desk_set_lead", { project: "cue", sid: "host" });
-  await expect(page.locator(".dk-runby")).toHaveText("Run by host-lead · Change");
+  await expect(page.locator(".dk-runby")).toHaveText("Run by host-lead✎ · Change");
+});
+
+test("✎ by the lead's name renames its session in place: Enter keeps it, Esc or a click away doesn't", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  const runBy = page.locator(".dk-runby"), box = runBy.locator(".rename-in");
+  await expect(runBy.locator(".rename-btn")).toHaveAttribute("aria-label", "Rename the lead");
+  // Esc: the name as it was, nothing sent.
+  await runBy.locator(".rename-btn").click();
+  await expect(box).toBeFocused();
+  await expect(box).toHaveValue("web-lead");
+  await box.fill("not this");
+  await box.press("Escape");
+  await expect(box).toHaveCount(0);
+  await expect(runBy).toHaveText("Run by web-lead✎ · Change");
+  // A click away: the same.
+  await runBy.locator(".rename-btn").click();
+  await box.fill("nor this");
+  await page.locator(".dk-items .dk-ch > b").click();
+  await expect(box).toHaveCount(0);
+  await expect(runBy).toHaveText("Run by web-lead✎ · Change");
+  expect(await cue.calls("rename_session")).toEqual([]);
+  // Enter: the session's own rename, so the name shows everywhere.
+  await runBy.locator(".rename-btn").click();
+  await box.fill("desk-lead");
+  await box.press("Enter");
+  await cue.called("rename_session", { name: "desk-lead" });
+  await expect(runBy).toHaveText("Run by desk-lead✎ · Change");
+  await expect(page.locator(".dk-tab.on")).toHaveText("desk-lead");
+  expect(await page.locator(".dk-board [title]").count()).toBe(0);
 });
 
 test("several sessions and no lead: a row each, leads first (dot), plain ones hollow", async ({ page, cue }) => {
@@ -391,7 +489,7 @@ test("Give to… on a row: a menu of the project's sessions over the list (rows 
 test("Give to… in the open item; Esc closes the menu, not the item; New session starts one", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  await page.locator('[data-desk-item="d6"]').click();
+  await page.locator('[data-desk-item="d6"] .dk-t').click();
   const pane = page.locator(".dk-right .dk-pane");
   await pane.locator("[data-desk-give]").click();
   await expect(pane.locator(".dk-givemenu")).toBeVisible();
@@ -405,26 +503,36 @@ test("Give to… in the open item; Esc closes the menu, not the item; New sessio
 
 // ---------- the quick-add line ----------
 
-test("the quick-add line: Enter adds of the kind picked (remembered), the line keeps the cursor; no New item", async ({ page, cue }) => {
+test("the quick-add line keeps its height as you type (a one-line field doesn't grow or shrink)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  const line = page.locator('.dk-qa [data-qa="line"]');
+  const h = async () => (await line.boundingBox()).height;
+  const before = await h();
+  expect(before).toBe(32);
+  await line.pressSequentially("Logo blurs");
+  expect(await h()).toBe(before);
+  await line.fill("");
+  await line.pressSequentially("x");
+  expect(await h()).toBe(before);
+});
+
+test("the quick-add line: Enter adds an item of no kind (the lead says which), the line keeps the cursor; no New item, no kind switch", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await expect(page.locator("[data-desk-new]")).toHaveCount(0);
+  await expect(page.locator(".dk-qa button", { hasText: /^(Bug|Feature|Task)$/ })).toHaveCount(0);
   const line = page.locator('.dk-qa [data-qa="line"]');
   await expect(line).toHaveAttribute("placeholder", "Add an item…");
-  await expect(page.locator(".dk-qk.on")).toHaveText("Task");
-  await page.locator('[data-desk-kind="bug"]').click();
-  await expect(line).toBeFocused();
   await line.fill("Dark mode for the Desk");
   await line.press("Enter");
-  await cue.called("desk_add", { project: "cue", kind: "bug", title: "Dark mode for the Desk" });
+  await cue.called("desk_add", { project: "cue", kind: "", title: "Dark mode for the Desk" });
   await expect(line).toHaveValue("");
   await expect(line).toBeFocused();
-  await expect(page.locator(".dk-items")).toContainText("Dark mode for the Desk");
-  // The kind stays picked when the Desk is drawn again.
-  expect(await page.evaluate(() => deskQaKind())).toBe("bug");
-  await pick(page, "website");
-  await pick(page, "cue");
-  await expect(page.locator(".dk-qk.on")).toHaveText("Bug");
+  // No kind yet: the pane shows no kind before where it is.
+  const row = page.locator(".dk-items .dk-it", { hasText: "Dark mode for the Desk" });
+  await row.click();
+  await expect(page.locator(".dk-pane .dk-state")).toHaveText(/^Not given out yet · added by you/);
 });
 
 test("Done when is optional: ⇧Enter or + Done when opens it, Enter adds both; Esc closes an empty one", async ({ page, cue }) => {
@@ -441,7 +549,7 @@ test("Done when is optional: ⇧Enter or + Done when opens it, Enter adds both; 
   await page.locator("[data-desk-qa-done]").click();
   await done.fill("It reopens where it was");
   await done.press("Enter");
-  await cue.called("desk_add", { project: "cue", kind: "task", title: "Search keeps its place", doneWhen: "It reopens where it was" });
+  await cue.called("desk_add", { project: "cue", kind: "", title: "Search keeps its place", doneWhen: "It reopens where it was" });
   await expect(done).toHaveCount(0);
   await expect(line).toHaveValue("");
 });
@@ -471,6 +579,32 @@ test("what's half-typed in the quick-add line stays on its own project's Desk", 
   await expect(line).toHaveValue("");
   await pick(page, "cue");
   await expect(line).toHaveValue("Only for cue");
+});
+
+test("a picture dropped on the quick-add line (or picked with its button) goes with the item; its pane shows it", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  const qa = page.locator(".dk-qa");
+  await expect(qa.locator('[data-attach^="desk-qa:"]')).toHaveCount(1);
+  await page.evaluate(() => {
+    const dt = new DataTransfer();
+    dt.items.add(new File([new Uint8Array([137, 80, 78, 71])], "shot.png", { type: "image/png" }));
+    const el = document.querySelector('.dk-qa [data-qa="line"]');
+    for (const type of ["dragover", "drop"]) el.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt }));
+  });
+  await expect(qa.locator(".chip")).toHaveCount(1);
+  const line = qa.locator('[data-qa="line"]');
+  await line.fill("Logo blurs on the Desk");
+  await line.press("Enter");
+  const call = await cue.called("desk_add", { project: "cue", kind: "", title: "Logo blurs on the Desk" });
+  expect(call.args.images.map((i) => [i.name, i.mime])).toEqual([["shot.png", "image/png"]]);
+  await expect(qa.locator(".chip"), "the picture went with it").toHaveCount(0);
+  await expect(line).toBeFocused();
+  // The item, with its picture kept: the pane shows it under Pictures.
+  const id = await page.evaluate(() => deskOf("cue").items[0].id);
+  await cue.change((st, id) => { st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === id).images = ["data:image/png;base64,iVBORw0KGgo="]; }, id);
+  await page.locator(`[data-desk-item="${id}"]`).click();
+  await expect(page.locator(".dk-pane .thumbs .thumb")).toHaveCount(1);
 });
 
 test("pasted lines that don't go: the first back in the line, and how many failed", async ({ page, cue }) => {
@@ -537,4 +671,405 @@ test("the shots: the lead's Desk, Give to…, Change, the picker", async ({ page
   await pick(page, "website");
   await page.locator(".dk-pick").waitFor();
   await page.screenshot({ path: `${dir}/cue-desk-pick1.png` });
+});
+
+test("the lead's own Desk lines are drawn as lines in its chat, code blocks left as they are; no Actions row, no Send to…", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await page.evaluate(() => {
+    sessionOf("lead").thread.push({ at_ms: Date.now(), role: "agent", text: [
+      "Here's the plan.",
+      "",
+      "ITEM: bug | Box loses focus | done when: typing keeps focus",
+      "- **ROUTE:** #d7k2 -> web-lead | after: #a1 | why: it knows the box",
+      "DONE: #d3",
+      "CONTEXT: host-lead -> keep | why: more to come",
+      "",
+      "```",
+      "ITEM: task | an example | done when: never",
+      "```",
+    ].join("\n") });
+    renderMain();
+  });
+  const said = page.locator(".dk-chat .cv-agent").last();
+  await expect(said.locator(".own-lines .dk-say")).toHaveCount(4);
+  await expect(said.locator(".dk-say").nth(0).locator(".dk-say-k.bug")).toHaveText("bug");
+  await expect(said.locator(".dk-say").nth(0)).toContainText("Box loses focus");
+  await expect(said.locator(".dk-say").nth(0).locator(".dk-say-s")).toHaveText("Done when: typing keeps focus");
+  await expect(said.locator(".dk-say").nth(1)).toContainText("#d7k2→ web-lead");
+  await expect(said.locator(".dk-say").nth(1).locator(".dk-say-s")).toHaveText("after #a1 · it knows the box");
+  await expect(said.locator(".dk-say").nth(2)).toHaveText("DoneFeature #d3");
+  await expect(said.locator(".dk-say").nth(3)).toContainText("host-lead → keep");
+  await expect(said.locator(".cv-text")).toContainText("Here's the plan.");
+  await expect(said.locator("pre")).toContainText("ITEM: task | an example");
+  await expect(said).not.toContainText("ROUTE:");
+  await expect(page.locator(".dk-chat .ac-sugs")).toHaveCount(0);
+  await expect(page.locator(".dk-chat .cv-fwd")).toHaveCount(0);
+});
+
+test("a working item offers Restart only once its holder has stopped (a crash cut its turn short)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await page.locator('[data-desk-item="d5"]').click();
+  const pane = page.locator(".dk-right .dk-pane");
+  await expect(pane.locator('[data-desk-act="start_now"]')).toHaveCount(0);
+  await page.evaluate(() => { sessionOf("host").state = "waiting"; renderMain(); });
+  await pane.locator('[data-desk-act="start_now"]').click();
+  await cue.called("desk_item_act", { id: "d5", act: "start_now" });
+  // A crew member's item: Restart only when that teammate isn't at work.
+  await page.locator('[data-desk-item="d3"]').click();
+  await expect(pane.locator('[data-desk-act="start_now"]')).toHaveCount(0);
+  await page.evaluate(() => { sessionOf("lead").team.find((m) => m.agent_id === "id-search").state = "done"; renderMain(); });
+  await expect(pane.locator('[data-desk-act="start_now"]')).toHaveText("Restart");
+});
+
+test("an item back to check stands out until you open it; its pane links to what was made", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await page.evaluate(() => {
+    const d2 = state.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d2");
+    d2.made = ["https://claude.ai/artifact/abc123", "/tmp/mocks/list.html"];
+    d2.files = ["ui/send.js"];
+    renderMain();
+  });
+  const row = page.locator('.dk-items [data-desk-item="d2"]');
+  await expect(row).toHaveClass(/landed/);
+  await expect(row.locator(".dk-tag")).toHaveText("landed");
+  await row.locator(".dk-t").click();
+  await expect(page.locator(".dk-pane .dk-sec", { hasText: "What it made" }).locator(".dk-made")).toHaveText(["Open the page ↗", "list.html ↗", "Changes · 1 file"]);
+  await expect(row).not.toHaveClass(/landed/);
+  await expect(row.locator(".dk-tag")).toHaveText("check");
+});
+
+/** The Desk run by host instead, so "lead" (with its crew) is a session in the list like any other. */
+const crewNotLead = (cue) => cue.change((st) => { st.desk.projects.find((d) => d.project === "cue").lead = { sid: "host", name: "host-lead", state: "live" }; });
+
+test("three columns: the project's sessions on the left, the lead's chat in the middle, the items on the right", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  const cols = await page.locator(".dk-board > .dk-card").evaluateAll((els) => els.map((el) => [...el.classList].find((c) => ["dk-sessions", "dk-right", "dk-items"].includes(c))));
+  expect(cols).toEqual(["dk-sessions", "dk-right", "dk-items"]);
+  const xs = await page.locator(".dk-board > .dk-card").evaluateAll((els) => els.map((el) => el.getBoundingClientRect().x));
+  expect(xs[0] < xs[1] && xs[1] < xs[2]).toBe(true);
+  // A session in the project that holds nothing: Not on the Desk.
+  await cue.change((st) => st.sessions.push({ ...st.sessions.find((x) => x.session_id === "site"), session_id: "spare", project: "cue", name: "spare", thread: [] }));
+  // The Desk's lead in its own spot at the top, with no crew, not even old ones; the list under it: Working first
+  // (host-lead), then Not on the Desk.
+  await cue.change((st) => { const l = st.sessions.find((x) => x.session_id === "lead"); l.team.push({ ...l.team[0], agent_id: "id-old", call: "id-old", name: "old", state: "committed" }); });
+  const left = page.locator(".dk-sessions");
+  await expect(left.locator('.dk-leadspot [data-desk-lead-chat="lead"]')).toHaveCount(1);
+  await expect(left.locator('.dk-leadspot [data-desk-lead-chat="lead"] .dk-pill')).toHaveCount(0);
+  await expect(left.locator(".dk-srow.crew")).toHaveCount(0);
+  await expect(left.locator("[data-desk-done-fold]")).toHaveCount(0);
+  await expect(left.locator(".dk-ch")).toContainText("2 · 1 working");
+  const rows = await left.locator(".dk-scroll > *").evaluateAll((els) => els.map((el) => el.matches(".dk-gh") ? `# ${el.textContent.trim()}`
+    : `${el.matches(".crew") ? "  " : ""}${el.dataset.deskLeadChat || el.dataset.deskChatOf || el.dataset.deskCrew}${el.querySelector(".dk-pill") ? ` [${el.querySelector(".dk-pill").textContent}]` : ""}`));
+  expect(rows).toEqual(["# Working 1", "host", "# Not on the Desk 1", "spare"]);
+  await expect(left.locator('[data-desk-chat-of="host"] .dk-s2')).toContainText("#d5");
+  await expect(left.locator('[data-desk-chat-of="spare"] .dk-s2 .dk-w')).toHaveText("nothing on the Desk");
+  await expect(left.locator('[data-desk-chat-of="spare"] [data-desk-member]')).toHaveText("Add to Desk");
+  await expect(left.locator('[data-desk-chat-of="host"] [data-desk-member]')).toHaveCount(0);
+  // The lead's chat shows: its row is lit, alone.
+  await expect(left.locator(".dk-srow.on")).toHaveCount(1);
+  await expect(left.locator('[data-desk-lead-chat="lead"]')).toHaveClass(/\bon\b/);
+  // Another session: its chat in the middle, its row lit in place; Esc goes back to the lead's.
+  await left.locator('[data-desk-chat-of="host"]').click();
+  await expect(page.locator('.dk-right [data-desk-chat="host"]')).toHaveCount(1);
+  await expect(page.locator(".dk-right .dk-ch .dk-mark")).toHaveText(/^(Lead|Bug)$/);
+  await expect(left.locator(".dk-srow.on")).toHaveAttribute("data-desk-chat-of", "host");
+  await expect(page.locator(".dk-right .dk-box textarea")).toHaveAttribute("placeholder", /^Talk to /);
+  await page.keyboard.press("Escape");
+  await expect(left.locator('[data-desk-lead-chat="lead"]')).toHaveClass(/\bon\b/);
+  // Another session's crew sit under it; a crew row opens its pane, lit.
+  await crewNotLead(cue);
+  await expect(left.locator('[data-desk-crew="id-focus"] .dk-st')).toHaveText("waiting on you");
+  await left.locator('[data-desk-crew="id-search"]').click();
+  await expect(page.locator(".dk-right .dk-pane h1")).toHaveText("search-centre");
+  await expect(left.locator(".dk-srow.on")).toHaveAttribute("data-desk-crew", "id-search");
+  // + New session opens + New, in the project's folder.
+  await left.locator("[data-desk-new-session]").click();
+  await expect(page.locator('[data-text="new-name"]')).toBeVisible();
+});
+
+test("each session row says its size and cache: \"142k · cache 12m\", \"cold\", amber in its last 5 minutes", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  // No numbers yet: no line.
+  await expect(page.locator(".dk-sessions .dk-size")).toHaveCount(0);
+  await cue.change((st) => {
+    const t = Date.now();
+    st.insight = { lead: { tokens: 142000, until_ms: t + 12 * 60000 - 2000 }, host: { tokens: 88000, until_ms: t + 3 * 60000 } };
+    st.sessions.push({ ...st.sessions.find((x) => x.session_id === "site"), session_id: "spare", project: "cue", name: "spare", thread: [] });
+    st.insight.spare = { tokens: 51000, until_ms: t - 60000 };
+  });
+  const left = page.locator(".dk-sessions");
+  await expect(left.locator('[data-desk-lead-chat="lead"] .dk-size')).toHaveText("142k · cache 12m");
+  await expect(left.locator('[data-desk-lead-chat="lead"] .dk-size')).not.toHaveClass(/hot/);
+  await expect(left.locator('[data-desk-chat-of="host"] .dk-size')).toHaveText("88k · cache 3m");
+  await expect(left.locator('[data-desk-chat-of="host"] .dk-size')).toHaveClass(/hot/);
+  await expect(left.locator('[data-desk-chat-of="spare"] .dk-size')).toHaveText("51k · cold");
+  // Each with its state and what it's on.
+  await expect(left.locator('[data-desk-chat-of="host"] .dk-st')).toHaveText("working");
+  await expect(left.locator('[data-desk-chat-of="host"] .dk-s2')).toContainText("#d5");
+  await expect(left.locator('[data-desk-chat-of="spare"] .dk-st')).toHaveText("idle");
+});
+
+/** The animation the app's own styles give `el` (the test page turns every animation off, so not what it computes). */
+const blinkOf = (loc) => loc.evaluate((el) => [...document.styleSheets].flatMap((sh) => { try { return [...sh.cssRules]; } catch { return []; } })
+  .filter((r) => r.selectorText && !r.selectorText.startsWith("*") && el.matches(r.selectorText) && r.style?.animationName).map((r) => r.style.animationName).pop() || "none");
+test("a working session's dot blinks and its current step shows under its title, with its time, live", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.change((st) => {
+    const h = st.sessions.find((x) => x.session_id === "host");
+    h.doing = "Editing ui/desk.js"; h.doing_ms = Date.now() - 4 * 60000 - 5000;
+  });
+  const host = page.locator('.dk-sessions [data-desk-chat-of="host"]');
+  await expect(host.locator(".dk-now")).toHaveText("Editing ui/desk.js · 4m");
+  // The app's blink, never a spinner.
+  expect(await blinkOf(host.locator(".dk-st > i"))).toBe("pulse");
+  // A new step: the line follows.
+  await cue.change((st) => { const h = st.sessions.find((x) => x.session_id === "host"); h.doing = "Running tests"; h.doing_ms = Date.now(); });
+  await expect(host.locator(".dk-now")).toHaveText(/^Running tests · /);
+  // Stopped: no blink, no step.
+  await cue.change((st) => { const h = st.sessions.find((x) => x.session_id === "host"); h.state = "idle"; h.doing = ""; });
+  await expect(host.locator(".dk-now")).toHaveCount(0);
+  expect(await blinkOf(host.locator(".dk-st > i"))).toBe("none");
+  // A teammate at work: its step too.
+  await crewNotLead(cue);
+  const mate = page.locator('.dk-sessions [data-desk-crew="id-search"]');
+  expect(await blinkOf(mate.locator(".dk-st > i"))).toBe("pulse");
+});
+
+test("done teammates fold under their lead as \"N done · show\", opened in place; done but not committed stays out, tagged", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.change((st) => {
+    const lead = st.sessions.find((x) => x.session_id === "lead"), t = Date.now(), base = lead.team[0];
+    const mate = (agent_id, name, state) => ({ ...base, agent_id, call: agent_id, name, state, what: `${name}'s work`, step: "", ended_ms: t - 60000 });
+    lead.team.push({ ...mate("id-tidy", "tidy-copy", "done"), uncommitted: true }, mate("id-a", "old-a", "committed"), mate("id-b", "old-b", "committed"), mate("id-c", "old-c", "aside"));
+  });
+  await crewNotLead(cue);
+  const left = page.locator(".dk-sessions");
+  const crewNames = () => left.locator(".dk-srow.crew").evaluateAll((els) => els.map((el) => el.dataset.deskCrew));
+  // Folded: the three finished ones are one line; the one not committed stays, tagged.
+  const fold = left.locator('[data-desk-done-fold="lead"]');
+  await expect(fold).toHaveText("3 done · show");
+  expect(await crewNames()).toEqual(["id-search", "id-focus", "id-tidy"]);
+  await expect(left.locator('[data-desk-crew="id-tidy"] .dk-pill.loose')).toHaveText("not committed");
+  await expect(left.locator('[data-desk-crew="id-search"] .dk-pill.loose')).toHaveCount(0);
+  // Opened in place, under the line; nothing above it moves.
+  const above = await left.locator('[data-desk-crew="id-tidy"]').boundingBox();
+  await fold.click();
+  await expect(fold).toHaveText("3 done · hide");
+  await expect(fold).toHaveAttribute("aria-expanded", "true");
+  expect(await crewNames()).toEqual(["id-search", "id-focus", "id-tidy", "id-a", "id-b", "id-c"]);
+  await expect(left.locator('[data-desk-crew="id-c"] .dk-st')).toHaveText("set aside");
+  await expect(left.locator(".dk-srow.past")).toHaveCount(3);
+  expect((await left.locator('[data-desk-crew="id-tidy"]').boundingBox()).y).toBe(above.y);
+  expect((await left.locator('[data-desk-crew="id-a"]').boundingBox()).y).toBeGreaterThan(above.y);
+  await fold.click();
+  await expect(left.locator(".dk-srow.past")).toHaveCount(0);
+  // Git says its files are committed (Cue marks it): nothing of it left in play, it folds too.
+  await cue.change((st) => { st.sessions.find((x) => x.session_id === "lead").team.find((t) => t.agent_id === "id-tidy").uncommitted = false; });
+  await expect(fold).toHaveText("4 done · show");
+  expect(await crewNames()).toEqual(["id-search", "id-focus"]);
+  // Committed: still in the fold.
+  await cue.change((st) => { st.sessions.find((x) => x.session_id === "lead").team.find((t) => t.agent_id === "id-tidy").state = "committed"; });
+  await expect(fold).toHaveText("4 done · show");
+  // Opened, it stays open across a restart.
+  await fold.click();
+  await expect(fold).toHaveText("4 done · hide");
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.change((st) => { const lead = st.sessions.find((x) => x.session_id === "lead"); lead.team.push({ ...lead.team[0], agent_id: "id-a", call: "id-a", name: "old-a", state: "committed" }); });
+  await crewNotLead(cue);
+  await expect(left.locator('[data-desk-done-fold="lead"]')).toHaveAttribute("aria-expanded", "true");
+  await expect(left.locator('[data-desk-crew="id-a"]')).toBeVisible();
+});
+
+test("selecting a session lights the item it holds where it is, reading \"working · <session> · 4m\"", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  const items = page.locator(".dk-items");
+  const before = await listOrder(page);
+  const ys = () => items.locator("[data-desk-item]").evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().y)));
+  const top = await ys();
+  await expect(items.locator(".dk-it.on")).toHaveCount(0);
+  await page.locator('.dk-sessions [data-desk-chat-of="host"]').click();
+  // host-lead's item, lit alone, in its own row; nothing moved.
+  await expect(items.locator(".dk-it.on")).toHaveCount(1);
+  const d5 = items.locator('[data-desk-item="d5"]');
+  await expect(d5).toHaveClass(/\bon\b/);
+  await expect(d5.locator(".dk-who")).toHaveText(/^working · host-lead · \d+m$/);
+  expect(await listOrder(page)).toEqual(before);
+  expect(await ys()).toEqual(top);
+  // The lead's row lights the lead's item instead; back to nothing lit once something else is shown.
+  await page.locator('.dk-sessions [data-desk-lead-chat="lead"]').click();
+  await expect(d5).not.toHaveClass(/\bon\b/);
+  await expect(d5.locator(".dk-who")).toHaveText("host-lead");
+  expect(await ys()).toEqual(top);
+});
+
+test("the lead's box takes pictures and has the mic, as a session's chat box does", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  const box = page.locator(".dk-box");
+  const key = await box.locator("textarea").getAttribute("data-text");
+  await expect(box).toHaveAttribute("data-drop", key);
+  await expect(box.locator("[data-mic]")).toHaveAttribute("data-mic", key);
+  await expect(box.locator("[data-attach]")).toHaveAttribute("data-attach", key);
+  // A picture pasted (as the paste handler adds it): shown on the box, and sent with the words.
+  const png = "data:image/png;base64,iVBORw0KGgo=";
+  await page.evaluate(([k, data]) => { draft(k).images.push({ name: "pasted image", mime: "image/png", data }); renderMain(); }, [key, png]);
+  await expect(box.locator(".chips .chip")).toHaveCount(1);
+  await box.locator("textarea").fill("This is cut off");
+  await box.locator("textarea").press("Enter");
+  await cue.called("desk_send", { project: "cue", text: "This is cut off", images: [{ name: "pasted image", mime: "image/png", data: png }] });
+  await expect(page.locator(".dk-box .chips .chip")).toHaveCount(0);
+});
+
+test("working sessions show first in a Working group; a session moves when its state changes, never on a click", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.change((st) => st.sessions.push({ ...st.sessions.find((x) => x.session_id === "site"), session_id: "spare", project: "cue", name: "spare", state: "idle", thread: [] }));
+  const left = page.locator(".dk-sessions");
+  const order = () => left.locator(".dk-scroll > *").evaluateAll((els) => els.map((el) => el.matches(".dk-gh") ? `# ${el.firstChild.textContent.trim()}`
+    : `${el.matches(".crew") ? "  " : ""}${el.dataset.deskLeadChat || el.dataset.deskChatOf || el.dataset.deskCrew}`));
+  const before = ["# Working", "host", "# Not on the Desk", "spare"];
+  await expect.poll(order).toEqual(before);
+  // A click lights a row where it is.
+  await left.locator('[data-desk-chat-of="spare"]').click();
+  await expect(left.locator('[data-desk-chat-of="spare"]')).toHaveClass(/\bon\b/);
+  expect(await order()).toEqual(before);
+  // spare starts work: it moves up to Working, after host; host stops: it leaves Working for On the Desk.
+  await cue.change((st) => { st.sessions.find((x) => x.session_id === "spare").state = "working"; });
+  await expect.poll(order).toEqual(["# Working", "host", "spare"]);
+  await cue.change((st) => { st.sessions.find((x) => x.session_id === "host").state = "idle"; });
+  await expect.poll(order).toEqual(["# Working", "spare", "# On the Desk", "host"]);
+});
+
+test("Looks right commits the item's files at once: no sheet; the row and a toast say \"Committed <hash> · N files\" with Undo, which takes it back", async ({ page, cue }) => {
+  await cue.open("desk");
+  await cue.change((s) => { s.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d2").files = ["ui/send.js", "ui/styles/send.css"]; });
+  await openDesk(page);
+  await page.locator('[data-desk-item="d2"] .dk-ok').click();
+  await cue.called("desk_looks_right", { id: "d2" });
+  await expect(page.locator(".sheet")).toHaveCount(0);
+  await expect(page.locator(".toast")).toContainText("Committed abc1234 · 2 files");
+  const line = page.locator(".dk-cmt").first();
+  await expect(line).toContainText("Committed abc1234 · 2 files");
+  await line.locator('[data-desk-act="undo_commit"]').click();
+  await cue.called("desk_commit_undo", { id: "d2" });
+  await expect(page.locator('[data-desk-item="d2"] .dk-ok')).toBeVisible();
+});
+
+test("Looks right leaves out a file another session is editing, and says so; with no files the item is just done", async ({ page, cue }) => {
+  await cue.open("desk");
+  await cue.change((s) => {
+    s.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d2").files = ["ui/send.js", "ui/styles/send.css"];
+    s.desk_busy = [{ path: "ui/styles/send.css", by: "tidier" }];
+  });
+  await openDesk(page);
+  await page.locator('[data-desk-item="d2"] .dk-ok').click();
+  await expect(page.locator(".toast")).toContainText("Committed abc1234 · 1 file · left out ui/styles/send.css (tidier is editing it)");
+  await expect(page.locator(".dk-cmt-out").first()).toHaveText("Left out: ui/styles/send.css (tidier is editing it)");
+
+  await cue.change((s) => { const i = s.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d2"); Object.assign(i, { state: "to_check", commit: "", files: [] }); });
+  await page.locator('[data-desk-item="d2"] .dk-ok').click();
+  await expect(page.locator(".toast").last()).toContainText("Done");
+  await expect(page.locator('[data-desk-item="d2"] .dk-cm')).toHaveCount(0);
+});
+
+/** A session of cue's that isn't on its Desk ("spare", holding nothing). */
+const spare = (cue) => cue.change((st) => st.sessions.push({ ...st.sessions.find((x) => x.session_id === "site"), session_id: "spare", project: "cue", name: "spare", thread: [] }));
+/** The left card's groups and rows, as "# group" and session ids. */
+const leftRows = (page) => page.locator(".dk-sessions .dk-scroll > *").evaluateAll((els) => els.map((el) => el.matches(".dk-gh") ? `# ${el.firstChild.textContent.trim()}` : el.dataset.deskChatOf || el.dataset.deskCrew).filter(Boolean));
+
+test("Add to Desk on a session that isn't on it puts it on the Desk's own list, in place", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await spare(cue);
+  await expect.poll(() => leftRows(page)).toEqual(["# Working", "host", "# Not on the Desk", "spare"]);
+  await page.locator('.dk-sessions [data-desk-chat-of="spare"] [data-desk-member]').click();
+  expect((await cue.called("desk_member")).args).toEqual({ project: "cue", sid: "spare", on: true });
+  await expect.poll(() => leftRows(page)).toEqual(["# Working", "host", "# On the Desk", "spare"]);
+  await expect(page.locator(".dk-sessions [data-desk-member]")).toHaveCount(0);
+  // The click was the button's, not the row's: the lead's chat still shows.
+  await expect(page.locator('.dk-sessions [data-desk-lead-chat="lead"]')).toHaveClass(/\bon\b/);
+});
+
+test("a session's ⋯ menu adds it to its project's Desk, or takes it off", async ({ page, cue }) => {
+  await cue.open("board-waiting");
+  await page.locator('.nrow[data-big="n1"]').click();
+  const project = await page.evaluate(() => CueBridge.world.state.sessions.find((x) => x.session_id === "relay").project);
+  expect(project).toBeTruthy();
+  const item = page.locator('.more-menu [data-desk-member-set="relay"]');
+  await page.locator('.active-pane [data-more="relay"]').click();
+  await expect(item).toContainText("Add to Desk");
+  await item.click();
+  expect((await cue.called("desk_member")).args).toEqual({ project, sid: "relay", on: true });
+  await expect(page.locator(".more-menu")).toHaveCount(0);
+  await page.locator('.active-pane [data-more="relay"]').click();
+  await expect(item).toContainText("Remove from Desk");
+  await item.click();
+  expect((await cue.calls("desk_member")).at(-1).args).toEqual({ project, sid: "relay", on: false });
+  await page.locator('.active-pane [data-more="relay"]').click();
+  await expect(item).toContainText("Add to Desk");
+});
+
+test("after a restart the lead's chat has its past (Cue's log beyond its last few) and what you half typed", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await page.locator(".dk-box textarea").fill("half a thought about the");
+  await page.waitForTimeout(500);   // drafts are saved a moment after typing (window.js saveDrafts)
+  // Quit and reopen: a new window, Cue's state from scratch; drafts from cue.db.
+  await cue.open("desk");
+  await openDesk(page);
+  await expect(page.locator(".dk-box textarea")).toHaveValue("half a thought about the");
+  const chat = page.locator(".dk-chat");
+  await expect(chat).toContainText("Earlier message 75");
+  await expect(chat.locator(".cv-older button[data-act='load-older']")).toHaveText("Earlier messages");
+  await chat.locator(".cv-older button[data-act='load-older']").click();
+  await expect(chat).toContainText("Earlier message 45");
+});
+
+test("↑ in the lead's box brings back what you sent it (without the Desk's summary), ↓ goes forward to what you typed", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  expect(await page.evaluate(() => deskLead(deskOf(projFilter)).sid)).toBe("lead");
+  await cue.change((st) => {
+    const s = st.sessions.find((x) => x.session_id === "lead"), t = Date.now();
+    s.thread = [...(s.thread || []), { role: "you", text: '<desk project="cue">\nItems: none\n</desk>\n\nfirst ask', at_ms: t - 2000, images: [] },
+      { role: "agent", text: "ok", at_ms: t - 1500, images: [] }, { role: "you", text: "second ask", at_ms: t - 1000, images: [] }];
+  });
+  const box = page.locator(".dk-box textarea");
+  await box.fill("draft");
+  await box.press("ArrowUp");
+  await expect(box).toHaveValue("second ask");
+  await box.press("ArrowUp");
+  await expect(box).toHaveValue("first ask");
+  await box.press("ArrowDown");
+  await box.press("ArrowDown");
+  await expect(box).toHaveValue("draft");
+});
+
+test("a DONE is a card in the lead's chat: item, who, what to test, files, installed or not; Send back sends it back", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  const card = page.locator(".dk-chat .dk-chk");
+  await expect(card).toHaveCount(1);
+  await expect(card.locator(".dk-chk-t")).toHaveText("Feature #d2 · Quick phrases at the right of Send");
+  await expect(card.locator(".dk-chk-w")).toContainText("Done by web-lead");
+  await expect(card.locator(".dkc-dw")).toHaveText("Quick phrases sit at the right of Send; More opens the rest.");
+  await expect(card.locator(".dk-chk-files li")).toHaveText(["ui/chat/compose.js", "ui/styles/chat.css"]);
+  await expect(card.locator(".dk-chk-in")).toHaveText("Not installed yet");
+  // Installed after it was done: says so, with when.
+  await page.evaluate(() => { state.desk.installed_ms = 1793984280000 + 60000; renderMain(); });
+  await expect(card.locator(".dk-chk-in")).toContainText("In the installed Cue · installed ");
+
+  await card.locator('[data-desk-act="send_back"]').click();
+  await cue.called("desk_item_act", { id: "d2", act: "send_back" });
+  await expect(card.locator(".dk-chk-after")).toHaveText("Sent back");
+  await expect(card.locator('[data-desk-act]')).toHaveCount(0);
 });

@@ -9,8 +9,19 @@ use tauri::State;
 /// Write to `project`'s lead: each message sent after the Desk's summary; resumed with it when parked. An error
 /// ("no lead", "lead ended") when there's none to write to. Returns { sid }.
 #[tauri::command]
-pub(crate) async fn desk_send(hub: State<'_, Arc<Hub>>, project: String, text: String) -> Result<serde_json::Value, String> {
-    with_hub(&hub, move |h| desk_send_with(h, &project, &text)).await?
+pub(crate) async fn desk_send(hub: State<'_, Arc<Hub>>, project: String, text: String, images: Option<Vec<crate::model::Upload>>) -> Result<serde_json::Value, String> {
+    with_hub(&hub, move |h| desk_send_images(h, &project, &text, &images.unwrap_or_default())).await?
+}
+
+/// Your words and the pictures you pasted or dropped to `project`'s lead. Returns { sid }.
+pub(crate) fn desk_send_images(h: &Arc<Hub>, project: &str, text: &str, images: &[crate::model::Upload]) -> Result<serde_json::Value, String> {
+    if text.trim().is_empty() && images.is_empty() {
+        return Err("nothing to send".into());
+    }
+    let saved = crate::uploads::save(images)?;
+    let lost = |e: String| format!("{project}'s lead didn't come up ({e}), so this wasn't sent: {}", text.trim());
+    let sid = deliver(h, project, text, saved, &lost)?;
+    Ok(serde_json::json!({ "sid": sid }))
 }
 
 pub(crate) fn desk_send_with(h: &Arc<Hub>, project: &str, text: &str) -> Result<serde_json::Value, String> {
@@ -18,24 +29,27 @@ pub(crate) fn desk_send_with(h: &Arc<Hub>, project: &str, text: &str) -> Result<
         return Err("nothing to send".into());
     }
     let lost = |e: String| format!("{project}'s lead didn't come up ({e}), so this wasn't sent: {}", text.trim());
-    let sid = deliver(h, project, text, &lost)?;
+    let sid = deliver(h, project, text, vec![], &lost)?;
     Ok(serde_json::json!({ "sid": sid }))
 }
 
-/// Your words (`text`) to `project`'s lead, however it's reached (`desk_claim`), after the Desk's summary as built
-/// for that lead: its id. `lost`: what you're told when it was waited for or resumed and didn't come up.
-fn deliver(h: &Arc<Hub>, project: &str, text: &str, lost: &dyn Fn(String) -> String) -> Result<String, String> {
-    let (sid, failed) = match h.desk_claim(project, text)? {
+/// Your words (`text`) and pictures (`saved`) to `project`'s lead, however it's reached (`desk_claim`), after the
+/// Desk's summary as built for that lead: its id. Sent to it live, the pictures go as a session chat's do (shown in its
+/// chat); held while it starts or resumed with it, the message names them by where they are, as a hosted session is
+/// sent them. `lost`: what you're told when it was waited for or resumed and didn't come up.
+fn deliver(h: &Arc<Hub>, project: &str, text: &str, saved: Vec<crate::uploads::Saved>, lost: &dyn Fn(String) -> String) -> Result<String, String> {
+    let named = crate::uploads::with_paths(text, &saved);
+    let (sid, failed) = match h.desk_claim(project, &named)? {
         DeskClaim::Send(sid) => {
             let (message, failed) = for_lead(h, project, &sid, text);
-            h.send_to_session(&sid, &message, &[], false)?;
+            h.send_saved(&sid, &message, saved, false)?;
             (sid, failed)
         }
         // Another message is resuming it (or a lead is starting or changing): this one is sent by that call once
         // it's done (with the summary for the lead it reaches), or not, and you're told so.
         DeskClaim::Wait(outcome) => return outcome.recv().unwrap_or_else(|_| Err("it gave up".into())).map_err(lost),
         DeskClaim::Resume(sid) => {
-            let (message, failed) = for_lead(h, project, &sid, text);
+            let (message, failed) = for_lead(h, project, &sid, &named);
             (DeskStart::new(h, project).done(resume(h, &sid, &message)).map_err(lost)?, failed)
         }
     };
@@ -197,7 +211,7 @@ impl<'a> DeskStart<'a> {
     pub(crate) fn back(mut self) {
         self.open = false;
         for w in self.h.desk_claim_done(self.project) {
-            let sent = deliver(self.h, self.project, &w.text, &|e| e);
+            let sent = deliver(self.h, self.project, &w.text, vec![], &|e| e);
             // Its sender may have gone (the window closed): nothing more to tell then.
             let _ = w.reply.send(sent);
         }
@@ -215,8 +229,8 @@ impl Drop for DeskStart<'_> {
 
 /// The "New item" button, or "Add to Desk" on a session (`holder`: that session, which holds it). Returns the item.
 #[tauri::command]
-pub(crate) async fn desk_add(hub: State<'_, Arc<Hub>>, project: String, kind: String, title: String, done_when: Option<String>, holder: Option<String>) -> Result<crate::desk::DeskItem, String> {
-    with_hub(&hub, move |h| h.desk_add(&project, &kind, &title, done_when.as_deref().unwrap_or(""), holder.as_deref().filter(|s| !s.is_empty()))).await?
+pub(crate) async fn desk_add(hub: State<'_, Arc<Hub>>, project: String, kind: String, title: String, done_when: Option<String>, holder: Option<String>, images: Option<Vec<crate::model::Upload>>) -> Result<crate::desk::DeskItem, String> {
+    with_hub(&hub, move |h| h.desk_add_with(&project, &kind, &title, done_when.as_deref().unwrap_or(""), holder.as_deref().filter(|s| !s.is_empty()), &images.unwrap_or_default())).await?
 }
 
 /// "Give to…": item `id` to session `sid`, which is sent it. Returns the item as it is now.
@@ -225,11 +239,30 @@ pub(crate) async fn desk_give(hub: State<'_, Arc<Hub>>, id: String, sid: String)
     with_hub(&hub, move |h| h.desk_give(&id, &sid)).await?
 }
 
+/// Session `sid` on `project`'s Desk (`on`) or off it: the sessions its lead routes to without asking you.
+#[tauri::command]
+pub(crate) async fn desk_member(hub: State<'_, Arc<Hub>>, project: String, sid: String, on: bool) -> Result<(), String> {
+    with_hub(&hub, move |h| h.desk_set_member(&project, &sid, on)).await?
+}
+
 /// What you did to an item: "looks_right" | "send_back" | "start_now" | "put_before" | "drop", with `text` for
 /// send_back. Returns the item as it is now (state "dropped" once dropped).
 #[tauri::command]
 pub(crate) async fn desk_item_act(hub: State<'_, Arc<Hub>>, id: String, act: String, text: Option<String>) -> Result<crate::desk::DeskItem, String> {
     with_hub(&hub, move |h| h.desk_item_act(&id, &act, text.as_deref().unwrap_or(""))).await?
+}
+
+/// Looks right on item `id`: its changed files committed at once (word check first, no push) and it's done; none, just
+/// done. { commit, files, skipped } (hub/desk_commit.rs).
+#[tauri::command]
+pub(crate) async fn desk_looks_right(hub: State<'_, Arc<Hub>>, id: String) -> Result<serde_json::Value, String> {
+    with_hub(&hub, move |h| h.desk_looks_right(&id)).await?
+}
+
+/// Undo on Looks right's commit: taken back while it's the last one (its changes stay), the item ready to check again.
+#[tauri::command]
+pub(crate) async fn desk_commit_undo(hub: State<'_, Arc<Hub>>, id: String) -> Result<crate::desk::DeskItem, String> {
+    with_hub(&hub, move |h| h.desk_commit_undo(&id)).await?
 }
 
 /// Undo this: whoever made the decision is asked to undo it. What Cue did.
