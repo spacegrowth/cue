@@ -4,9 +4,6 @@
 .shells-btn[aria-pressed="true"] { opacity: 1; background: color-mix(in srgb, var(--on-bg) 16%, transparent); }
 .sh-live { font: 700 10px var(--sans); line-height: 1; }
 .shells-btn .sh-live { position: absolute; top: 3px; right: 2px; }
-/* The switch's Terminal: its live dot or ✓ after the word, while a shell runs something out of sight. */
-.sv-term { display: inline-flex; align-items: center; gap: 6px; }
-.sv-term .sh-live:empty:not(.run) { display: none; }
 /* The Terminal view: the shells fill it (the terminal over this place); this shows once the last one is closed. */
 .shell-view { flex: 1; display: grid; place-content: center; justify-items: center; gap: 12px; color: var(--on-bg); }
 /* In the Terminal view the terminal is the view: nothing to zoom, tuck, drag or resize. */

@@ -2,9 +2,10 @@
 /** A terminal of Cue's own, tied to no session: plain shells (your login shell, at home; shells.rs), one tab
  *  each, named "mac: ~" (the host, and the folder it's in now) until you rename one (double-click its tab).
  *  Two places show the same shells and tabs: the peek, dropping down under the terminal button in the header
- *  (point at the button for a look; click it, or ⌘J, to type in it; Esc, ⌘J again, ⇥ or a click anywhere else
- *  puts it away; Esc stays the shell's while vim, ssh or the like is in front), and the Terminal view in the header's switch, filling the window (syncShellView). While it's
- *  away the button (and the switch's Terminal) shows a live dot while a shell runs something, and ✓ once that
+ *  (point at the button for a look; ⌘J to type in it; Esc, ⌘J again, ⇥ or a click anywhere else puts it away;
+ *  Esc stays the shell's while vim, ssh or the like is in front), and the Terminal view, filling the window
+ *  (syncShellView): a click on the button opens it, the button held pressed, and a click again goes back to the
+ *  view you were on. While it's away the button shows a live dot while a shell runs something, and ✓ once that
  *  ends. + or ⌘T opens a new shell tab. With tmux, each tab's shell runs in a tmux session of its own:
  *  quitting or restarting Cue lets go of it, and the next Cue gives each its tab back (restoreShells), in
  *  order, with its name, the one on show the same. Its element lives outside the redraws (each puts it back
@@ -43,7 +44,7 @@ function shellsBtn() {
 /** The button and the tucked edge, updated in place (no redraw). */
 function markShells() {
   const live = shellsLive();
-  for (const el of document.querySelectorAll(".shells-btn .sh-live, .sv-term .sh-live")) {
+  for (const el of document.querySelectorAll(".shells-btn .sh-live")) {
     el.className = `sh-live ${live}`;
     el.textContent = live === "done" ? "✓" : "";
   }
@@ -69,7 +70,15 @@ function closeKey() {
 /** ⌘1–9 inside it: that tab (⌘9 the last, as in a terminal app). */
 const shellNumber = (n) => { const s = n === 9 ? shells.at(-1) : shells[n - 1]; if (s) showShell(s.id); };
 
-/** The button: a first shell (at home); else the peek, open to type in, or away again. ⌘J (`key`) first takes
+/** A click on the button: the Terminal view (a first shell if there's none), the button held pressed; a click
+ *  again goes back to the view you were on. */
+let shellBack = "board";
+function toggleShellView() {
+  if (view === "terminal") view = shellBack === "terminal" ? "board" : shellBack;
+  else { shellBack = view; view = "terminal"; }
+  renderMain();
+}
+/** ⌘J: a first shell (at home); else the peek, open to type in, or away again. ⌘J (`key`) first takes
  *  you into it when it's open but you're elsewhere in Cue; pressed again from inside, it puts it away. */
 function toggleShells(key = false) {
   if (!shells.length) return openShell("");
@@ -93,7 +102,7 @@ function ensurePip() {
     const t = e.target.closest("[data-shell]");
     if (t && !e.target.closest(".pip-rename")) return showShell(t.dataset.shell);
     if (e.target.closest(".pip-add")) return openShell("");
-    if (e.target.closest(".pip-view")) { setPeek(null); view = "terminal"; return renderMain(); }
+    if (e.target.closest(".pip-view")) { setPeek(null); return toggleShellView(); }
     if (e.target.closest(".pip-hide")) return setPeek(null);
   });
   // A look becomes the real thing as soon as you press or type in it (it stays when the pointer leaves).
@@ -337,7 +346,7 @@ function pipWhole() {
   return { left: px("paddingLeft", 20), right: innerWidth - px("paddingRight", 20), top: (document.querySelector(".top")?.getBoundingClientRect().bottom ?? 60) + 14, bottom: innerHeight - px("paddingBottom", 16) };
 }
 const GROW_ICON = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 2h4v4M6 14H2v-4M14 2 9.5 6.5M2 14l4.5-4.5"/></svg>`;
-/** The Terminal view (the header's switch, core.js `view`): the same shells, filling the window under the header,
+/** The Terminal view (the terminal button's click, core.js `view`): the same shells, filling the window under the header,
  *  the peek put away. Coming on, it brings the terminal out (a first shell if there's none); going, it puts it
  *  away. Its place under the shells (shellView) says how to open one when the last is closed. */
 function syncShellView() {

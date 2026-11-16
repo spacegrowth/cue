@@ -4,7 +4,7 @@ const T = window.__TAURI__;
 let state = { items: [], history: [], sessions: [], settings: {}, connections: {}, window_ms: 1800000, now_ms: Date.now() };
 let clockSkew = 0;          // backend clock − browser clock, so bars line up with the backend's timestamps
 let sheet = null;           // null | "settings"
-let view = "board";         // the switch in the header: "board" | "read" | "insights" | "terminal" (or one of addOn.views); "history" from All history →
+let view = "board";         // the switch in the header: "board" | "read" | "insights" (or one of addOn.views); "terminal" from the terminal button; "history" from All history →
 /** What the optional add-on adds to the window (addon.js, empty without it; a build with the add-on serves its own in
  *  that file's place). It sets these; as here, the window has none of it. */
 const addOn = {

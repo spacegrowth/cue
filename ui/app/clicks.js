@@ -11,7 +11,7 @@ const ACTS = {
   // "Not sent" for an agent's own screen (/login, /design-login): Cue's terminal, in its folder, running it.
   "run-here": (el) => openShell(el.dataset.cwd, { line: el.dataset.line }),
   "open-search": () => openFind(),
-  shells: () => toggleShells(),
+  shells: () => toggleShellView(),
   "load-older": (el) => loadOlder(el.dataset.sid),
   "load-transcript": (el) => loadOlder(el.dataset.sid, true),
   "open-settings": () => { sheet = sheet === "settings" ? null : "settings"; extSections = null; renderMain(); },
