@@ -17,6 +17,8 @@ let deskLeadLit = null;
 let deskTab = "lead";
 /** The item whose Drop was clicked once: it now reads "Drop it", and a second click drops it. */
 let deskDropArm = null;
+/** The item whose Send back is open: its own "Why send it back?" box in place of its buttons (deskBackHtml). */
+let deskBackFor = null;
 /** Where each box on the Desk sends, by its draft key: { project, item } (the lead, naming the item when there is
  *  one) or { sid, mate } (a session, naming its crew member). Kept beside the key, never read back out of it. */
 const deskBoxes = new Map();
@@ -37,6 +39,13 @@ const deskOf = (p) => {
 const deskIdIs = (i, id) => i.id === id || (!!i.alias && i.alias === id);
 const deskItem = (p, id) => deskOf(p).items.find((i) => deskIdIs(i, id)) || null;
 /** An item as people name it: its kind and number, "Bug #2", "Task #1"; "#2" while it has no kind yet. */
+/** Line icons for an item's kind, in the one theme color (the "Type marks" pick): a checked box, a bug, a sparkle. */
+const DESK_KIND_SVG = {
+  task: '<rect x="4" y="4" width="16" height="16" rx="4"/><path d="m8.5 12.2 2.4 2.4 4.6-5"/>',
+  bug: '<rect x="8" y="7" width="8" height="12" rx="4"/><path d="M12 11v8M8 12H4.5M19.5 12H16M8 16.5l-3 1.5M16 16.5l3 1.5M8.5 9 6 7M15.5 9 18 7M10 7a2 2 0 0 1 4 0"/>',
+  feature: '<path d="M12 3.5 13.9 10.1 20.5 12 13.9 13.9 12 20.5 10.1 13.9 3.5 12 10.1 10.1Z"/>',
+};
+const deskKindIcon = (i) => (DESK_KIND_SVG[i?.kind] ? `<svg class="dk-kic" aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${DESK_KIND_SVG[i.kind]}</svg>` : "");
 const deskNum = (i) => `${["bug", "feature", "task"].includes(i?.kind) ? `${i.kind[0].toUpperCase()}${i.kind.slice(1)} ` : ""}#${i?.id ?? ""}`;
 /** Since midnight, here. */
 const deskToday = (t) => deskMs(t) >= new Date(now()).setHours(0, 0, 0, 0);
@@ -80,7 +89,7 @@ function deskShowChanges(id) {
   deskSeeItem(id);
   openSession(sid);
   if (h.kind === "crew") return diffShowMember(sid, h.sid, h.name);
-  actTabOn.delete(sid); bgTabOn.delete(sid); aboutTabOn.delete(sid);
+  actTabOn.delete(sid); bgTabOn.delete(sid);
   extTabOf.set(sid, DIFF_TAB);
   dv.member = null;
   renderMain();
@@ -169,7 +178,7 @@ function deskItemRow(i, lit, held = false) {
   const ok = i.state === "to_check" ? `<button class="dk-ok" data-desk-act="looks_right" data-id="${esc(i.id)}">Looks right</button>` : "";
   const ask = i.state === "needs_you" ? `<div class="dk-h">${esc(i.ask?.text || `${i.holder?.name || "Its holder"} asks you something`)}</div>` : "";
   return `<div class="dk-it ${i.state === "needs_you" ? "ask" : ""} ${look === "landed" ? "landed" : ""} ${on ? "on" : ""}" role="button" tabindex="0" data-desk-item="${esc(i.id)}">
-    <span class="dk-tag ${look}">${tag}</span><div class="dk-i1"><span class="dk-id">${esc(deskNum(i))}</span><span class="dk-t">${esc(i.title)}</span></div>
+    <span class="dk-tag ${look}">${tag}</span><div class="dk-i1">${deskKindIcon(i)}<span class="dk-id">${esc(deskNum(i))}</span><span class="dk-t">${esc(i.title)}</span></div>
     <div class="dk-i2"><span class="dk-who${s ? " held" : ""}">${who}</span><span class="dk-age">${when}</span>${ok}</div>${ask}</div>`;
 }
 /** A holder's head: its name, what it is, › (it opens). */
@@ -248,7 +257,7 @@ function deskList(project) {
   if (shown.length) parts.push(`<div class="dk-gh">Done</div>${shown.map(row).join("")}`);
   if (more && (shown.length || pg?.loading || !pg)) parts.push(`<div class="dk-more" data-desk-done-more="${esc(project)}">${shown.length ? "Loading older…" : ""}</div>`);
   const body = parts.join("") || `<div class="dk-empty">No items yet.</div>`;
-  return `<div class="dk-card dk-items"><div class="dk-ch"><b>Items</b>${deskRunBy(g.d)}</div>
+  return `<div class="dk-card dk-items"><div class="dk-ch"><b>Items</b></div>
     ${deskQuickAdd()}<div class="dk-scroll" data-scroll-key="desk-items:${esc(project)}">${body}</div></div>`;
 }
 
@@ -276,10 +285,10 @@ function deskSessCache(sid) {
 /** A working session's (or teammate's) current step and how long it's been at it, kept live (window.js ticks
  *  data-ago): "Editing ui/desk.js · 4m". "" when it isn't working or says no step. */
 const deskStepLine = (working, step, at) => (working && step ? `<div class="dk-s3 dk-now">${esc(step)}${at ? ` · <span data-ago="${at}">${ago(at)}</span>` : ""}</div>` : "");
-function deskSessRow({ name, tag, dot, word, item, line, on, attrs, crew, step = "", size = "", loose = false, past = false, add = "" }) {
+function deskSessRow({ name, mark = "", dot, word, item, line, on, attrs, crew, step = "", size = "", loose = false, past = false, add = "" }) {
   const what = `<span class="dk-w">${item ? `<span class="dk-id">${esc(deskNum(item))}</span> ${esc(item.title)}` : line ? esc(line) : `<span class="dk-none">nothing on the Desk</span>`}</span>`;
-  return `<div class="dk-srow ${crew ? "crew" : ""} ${past ? "past" : ""} ${on ? "on" : ""}" role="button" tabindex="0" ${attrs}>
-    <div class="dk-s1"><span class="dk-nm">${esc(name)}</span>${tag ? `<span class="dk-pill ${tag}">${tag}</span>` : ""}<span class="grow"></span><span class="dk-st"><i class="${dot}"></i><b>${word}</b></span></div>
+  return `<div class="dk-srow ${crew ? "crew" : ""} ${past ? "past" : ""} ${on ? "on" : ""}" role="button" tabindex="0" ${attrs}>${mark ? `<span class="dk-rmark">${mark}</span>` : ""}
+    <div class="dk-s1"><span class="dk-nm">${esc(name)}</span><span class="dk-st"><i class="${dot}"></i><b>${word}</b></span></div>
     <div class="dk-s2">${what}${add}${loose ? `<span class="dk-pill loose">not committed</span>` : ""}</div>${step}${size}</div>`;
 }
 /** The left card: the Desk's lead on its own at the top (no crew), then the project's other sessions, "Working"
@@ -297,7 +306,7 @@ function deskSessions(project) {
     const mate = (t, past) => {
       const key = t.agent_id || t.call, it = past ? null : deskCrewItem(project, sid, key);
       const [cd, cw] = past ? ["idle", t.state === "aside" ? "set aside" : t.state] : mateNeeds(sid, t) ? ["ask", "waiting on you"] : deskMateBusy(t) ? ["", t.state] : ["idle", t.state];
-      return deskSessRow({ name: t.name, tag: "", dot: cd, word: cw, item: it, line: it ? "" : t.what, crew: true, past, loose: !past && !deskMateBusy(t) && !!t.uncommitted,
+      return deskSessRow({ name: t.name, mark: "Crew", dot: cd, word: cw, item: it, line: it ? "" : t.what, crew: true, past, loose: !past && !deskMateBusy(t) && !!t.uncommitted,
         step: past ? "" : deskStepLine(cd === "", t.step, t.step_ms || t.started_ms),
         on: o?.kind === "crew" && o.lead === sid && o.agent === key, attrs: `data-desk-crew="${esc(key)}" data-lead="${esc(sid)}"` });
     };
@@ -305,28 +314,40 @@ function deskSessions(project) {
     // (committed, set aside, or finished with nothing left to commit) fold into one "N done" line, opened in place and
     // kept the way you left it (deskFoldOpen).
     const team = sessionOf(sid)?.team || [];
-    const live = team.filter((t) => deskMateLive(sid, t)), done = team.filter((t) => !deskMateLive(sid, t)), open = deskFoldOpen.has(sid);
+    const rank = (t) => (deskMateBusy(t) ? 0 : mateNeeds(sid, t) ? 1 : 2);
+    const live = team.filter((t) => deskMateLive(sid, t)).sort((a, b) => rank(a) - rank(b)), done = team.filter((t) => !deskMateLive(sid, t)), open = deskFoldOpen.has(sid);
     const fold = done.length ? `<button class="dk-sfold" data-desk-done-fold="${esc(sid)}" aria-expanded="${open}">${done.length} done · ${open ? "hide" : "show"}</button>${open ? done.map((t) => mate(t, true)).join("") : ""}` : "";
     // The Desk's own lead shows no crew (it routes; any teammates it had, even old ones, aren't the Desk's).
     const crew = sid === leadSid ? "" : live.map((t) => mate(t, false)).join("") + fold;
     const add = onDesk(sid) ? "" : `<button class="btn small dk-sadd" data-desk-member="${esc(sid)}" data-project="${esc(project)}">Add to Desk</button>`;
-    return deskSessRow({ name: deskHolderName(sid), tag: lead && sid !== leadSid ? "lead" : "", dot, word, item: deskSessItem(d, sid), on: lit(sid), attrs, step: deskStepLine(dot === "", s.compacting_ms ? "Compacting…" : s.doing, s.compacting_ms || s.doing_ms), size: deskSessCache(sid), add }) + crew;
+    return deskSessRow({ name: deskHolderName(sid), mark: sid === leadSid ? "Desk lead" : lead ? "Lead" : "Session", dot, word, item: deskSessItem(d, sid), on: lit(sid), attrs, step: deskStepLine(dot === "", s.compacting_ms ? "Compacting…" : s.doing, s.compacting_ms || s.doing_ms), size: deskSessCache(sid), add }) + crew;
   };
   // The Desk's lead in a spot of its own at the top, never in the list. Then working ones first (a session moves only
   // when its state does, never on a click), then On the Desk, then Not on the Desk, each as Cue lists them. Crew stay
   // under their lead, wherever it is.
   const leadS = sessions.find((s) => s.session_id === leadSid), rest = sessions.filter((s) => s !== leadS);
-  const busy = (s) => deskSessState(s)[1] === "working";
+  // At work: the session itself, its background agents (state "agent" with helpers running), or any of its crew. A
+  // session idle while its crew works is listed with the working ones, so their rows never sit under idle sessions.
+  const busy = (s) => deskSessState(s)[1] === "working" || (s.state === "agent" && !!s.helpers)
+    || (sessionOf(s.session_id)?.team || []).some(deskMateBusy);
   const atWork = rest.filter(busy);
   const on = rest.filter((s) => !busy(s) && onDesk(s.session_id));
   const off = rest.filter((s) => !busy(s) && !onDesk(s.session_id));
-  const working = rest.filter((s) => s.state === "working").length;
+  const working = atWork.length;
   const group = (title, list) => (list.length ? `<div class="dk-gh">${title} <span class="n">${list.length}</span></div>${list.map(row).join("")}` : "");
-  const top = leadS ? `<div class="dk-leadspot"><div class="dk-gh">Runs this Desk</div>${row(leadS)}</div>` : "";
+  const top = leadS ? `<div class="dk-leadspot"><div class="dk-gh">Runs this Desk<span class="grow"></span><button class="dk-more-btn" data-desk-change aria-label="Hand this Desk to another session"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button></div>${row(leadS)}</div>` : "";
   const body = group("Working", atWork) + group("On the Desk", on) + group("Not on the Desk", off) || `<div class="dk-empty">No ${leadS ? "other " : ""}sessions in this project yet.</div>`;
-  return `<div class="dk-card dk-sessions"><div class="dk-ch"><b>Sessions</b><span class="dk-sub">${rest.length}${working ? ` · ${working} working` : ""}</span></div>
+  return `<div class="dk-card dk-sessions">${deskSessHead(project, rest.length, working)}
     ${top}<div class="dk-scroll" data-scroll-key="desk-sessions:${esc(project)}">${body}</div>
     <div class="dk-sfoot"><button class="btn small" data-desk-new-session="${esc(project)}">+ New session</button></div></div>`;
+}
+/** The Sessions card's head: ‹ back to every Desk, this Desk's name (✎ on hover renames it, as the projects list
+ *  does), then how many sessions and how many work. */
+function deskSessHead(project, n, working) {
+  const name = pjRenaming === project
+    ? `<input class="pj-name-in" data-text="pjname:${esc(project)}" maxlength="40" placeholder="${esc(project)}" aria-label="Rename this Desk" spellcheck="false" value="${esc(draft(`pjname:${project}`).text)}"/>`
+    : `<b>${esc(projLabel(project))}</b><button class="dk-ren" data-pjren="${esc(project)}" aria-label="Rename this Desk"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></svg></button>`;
+  return `<div class="dk-ch dk-sh"><button class="dk-home-btn" data-desk-home aria-label="All Desks">‹</button><div class="dk-shn"><div class="dk-shr">${name}</div><span class="dk-sub">${n} session${n === 1 ? "" : "s"}${working ? ` · ${working} working` : ""}</span></div></div>`;
 }
 /** + New, its folder that of a session in the project (else what + New would pick). */
 /** Session `sid` on `project`'s Desk (`on`) or off it: the sessions its lead routes to without asking you. */
@@ -351,12 +372,24 @@ function deskNewSession(project) {
 
 // ---------- the chat card: the lead's chat, Decisions, or what's open ----------
 
-/** A decision: who decided and when, what, why, and Undo this (or what became of it). `head`: the line above it. */
-function deskDecision(c, head = null) {
-  const undo = c.undo === "can" ? `<button class="btn small" data-desk-undo="${esc(c.id)}">Undo this</button>`
-    : c.undo === "asked" ? `<span class="dk-u">Undo asked</span>` : c.undo === "one_way" ? `<span class="dk-u">Can't be undone</span>` : "";
-  return `<div class="dk-dec"><div class="dk-w">${head ?? `<b>${esc(c.by)}</b> decided, ${ago(deskMs(c.at))} ago`}</div><div class="dk-d">${esc(c.text)}</div>${c.why ? `<div class="dk-y">${esc(c.why)}</div>` : ""}${undo ? `<div class="dk-undo">${undo}</div>` : ""}</div>`;
+/** Decisions or steps as one quiet table: when | what, with who and why muted under it | Undo (shown on hover). The
+ *  same line said again in a row is one row marked "×N" (its latest time and Undo). `about`: more for the muted line
+ *  (the item a lead's decision was on). */
+function deskLog(list, about = null) {
+  const rows = [];
+  for (const c of list) {
+    const last = rows[rows.length - 1];
+    if (last && last.c.text === c.text && (last.c.why || "") === (c.why || "") && last.c.call === c.call) { last.n++; if (deskMs(c.at) >= deskMs(last.c.at)) last.c = c; }
+    else rows.push({ c, n: 1 });
+  }
+  return `<div class="dk-log">${rows.map(({ c, n }) => {
+    const sub = [c.call && c.by ? `<b>${esc(c.by)}</b> decided` : "", about?.(c) || "", c.why ? esc(c.why) : ""].filter(Boolean).join(" · ");
+    return `<div class="dk-lr ${c.call ? "dk-dec" : "dk-step"}"><span class="dk-age">${ago(deskMs(c.at))} ago</span><div class="dk-lw"><div class="dk-d">${esc(c.text)}${n > 1 ? ` <span class="dk-x">×${n}</span>` : ""}</div>${sub ? `<div class="dk-w">${sub}</div>` : ""}</div>${c.undo === "one_way" && !c.call ? "" : deskUndoLink(c)}</div>`;
+  }).join("")}</div>`;
 }
+/** Undo on a decision or a step: a small text link shown on hover, or what became of it. */
+const deskUndoLink = (c) => (c.undo === "can" ? `<button class="dk-undo-l" data-desk-undo="${esc(c.id)}">Undo</button>`
+  : c.undo === "asked" ? `<span class="dk-u">Undo asked</span>` : c.undo === "one_way" ? `<span class="dk-u dk-undo-l">Can't be undone</span>` : "");
 /** What you wrote to the lead, without the summary of the Desk (and, the first time, its instructions) Cue puts before
  *  it: a block of exactly that shape (`<desk project="…" …>`, its lines, `</desk>`, a blank line), so words of yours
  *  that start with <desk> stay, even typed in that shape without the project. */
@@ -369,7 +402,7 @@ function deskChatRows(s, page) {
   const sid = s.session_id;
   if (!older.has(sid)) queueMicrotask(() => loadOlder(sid));
   const any = (s.thread || []).length || older.get(sid)?.msgs.length;
-  return any ? chatHtml(null, s, s.harness || "claude", true, { lines: deskLineHtml, noActs: true, ...page }) : "";
+  return any ? chatHtml(null, s, s.harness || "claude", true, { lines: deskLineHtml, you: deskNewItems, noActs: true, ...page }) : "";
 }
 /** For ↑ ↓ in a Desk's box (chat/compose.js recallSent): the session it goes to ({ s, said }: your words as its chat
  *  shows them), the lead's for the lead's box; null for a box of no session's. */
@@ -447,12 +480,7 @@ const deskCalls = (d) => d.decisions.filter((c) => c.call);
 function deskDecisions(d) {
   const calls = deskCalls(d);
   if (!calls.length) return `<div class="dk-empty">No judgment calls yet. Routes and hand-offs are on each item.</div>`;
-  return `<div class="dk-pane" data-scroll-key="decisions:${esc(d.project)}">${calls.map((c) => deskDecision(c)).join("")}</div>`;
-}
-/** A step on an item (a route, a give, a session started): one quiet line, with Undo this when it can be. */
-function deskStep(c) {
-  const undo = c.undo === "can" ? `<button class="btn small" data-desk-undo="${esc(c.id)}">Undo this</button>` : c.undo === "asked" ? `<span class="dk-u">Undo asked</span>` : "";
-  return `<div class="dk-step"><span class="dk-st">${esc(c.text)}${c.why ? ` · ${esc(c.why)}` : ""}</span><span class="dk-age">${ago(deskMs(c.at))} ago</span>${undo}</div>`;
+  return `<div class="dk-pane" data-scroll-key="decisions:${esc(d.project)}"><div class="dk-sec">${deskLog(calls)}</div></div>`;
 }
 const deskSec = (title, html) => (html ? `<div class="dk-sec"><h3>${title}</h3>${html}</div>` : "");
 const deskBack = (label, to = "") => `<button class="dk-back" data-desk-back="${esc(to)}">‹ ${esc(label)}</button>`;
@@ -496,12 +524,13 @@ function deskHolderIdle(h) {
 function deskItemActs(i) {
   const b = (act, label, look = "") => `<button class="btn small ${look}" data-desk-act="${act}" data-id="${esc(i.id)}">${esc(label)}</button>`;
   const first = i.after && deskItem(i.project, i.after);
+  if (i.state === "to_check" && deskBackFor === i.id) return deskBackHtml(i.id);
   const acts = i.state === "to_check" ? b("looks_right", "Looks right", "primary") + b("send_back", "Send back")
     : i.state === "queued" ? b("start_now", "Start it now in a new session") + (first ? b("put_before", `Put it before ${deskShort(first.title)}`) : "")
     : i.state === "new" ? b("start_now", "Start it now in a new session")
     // Its holder's turn cut off (a crash, a quit) leaves it "working" with nobody on it: sent to the holder again.
     : i.state === "working" && deskHolderIdle(i.holder) ? b("start_now", "Restart")
-    : i.state === "done" && i.commit ? `<div class="dk-chk-after">${deskCommitLine(i)}</div>` : "";
+    : deskHasCommit(i) ? `<div class="dk-chk-after">${deskCommitLine(i)}</div>` : "";
   const give = !i.holder && i.state !== "done" ? deskGive(i, "pane") : "";
   return acts || give ? `<div class="dk-acts">${give}${acts}</div>` : "";
 }
@@ -523,10 +552,10 @@ function deskItemPane(i, d) {
     ${deskSec(i.state === "needs_you" ? "It asks you" : "What's holding it up", deskChain(i))}${deskSec("What it made", i.state === "to_check" || i.state === "done" ? deskMadeLinks(i) : "")}${deskItemActs(i)}
     ${deskSec("Done when", i.done_when ? `<p>${esc(i.done_when)}</p>` : "")}
     ${deskSec("Pictures", thumbs(i.images))}
-    ${deskSec("Latest", i.latest && i.state !== "queued" ? `<p>${esc(i.latest)}</p>` : "")}
+    ${deskSec("Latest", i.latest && i.state !== "queued" ? `<div class="dk-md">${md(i.latest)}</div>` : "")}
     ${deskSec("Files", files)}
-    ${deskSec(`Decisions · ${decs.length}`, decs.map((c) => deskDecision(c)).join(""))}
-    ${deskSec("Steps", steps.map(deskStep).join(""))}
+    ${deskSec(`Decisions · ${decs.length}`, decs.length ? deskLog(decs) : "")}
+    ${deskSec("Steps", steps.length ? deskLog(steps) : "")}
     ${i.state !== "done" ? `<button class="dk-drop${armed ? " armed" : ""}" data-desk-act="drop" data-id="${esc(i.id)}">${armed ? "Drop it" : "Drop this item"}</button>` : ""}</div>`;
 }
 /** A session's latest words in a line. */
@@ -550,7 +579,7 @@ function deskHolderPane(sid, d) {
   const next = mine.find((i) => i.state === "queued");
   const nextLine = next ? `<p class="dk-note">Next for this ${lead ? "lead" : "session"}: ${esc(next.title)}${next.after ? `, after ${esc(deskItem(d.project, next.after)?.title || "")}` : ""}.</p>` : "";
   const decs = d.decisions.filter((c) => c.call && (c.sid === sid || c.by === name));
-  const decHtml = decs.map((c) => deskDecision(c, `${ago(deskMs(c.at))} ago${c.item_id && deskItem(d.project, c.item_id) ? ` · ${esc(deskItem(d.project, c.item_id).title)}` : ""}`)).join("");
+  const decHtml = decs.length ? deskLog(decs, (c) => (c.item_id && deskItem(d.project, c.item_id) ? esc(deskItem(d.project, c.item_id).title) : "")) : "";
   const latest = deskLatestOf(s);
   return `<div class="dk-pane" data-scroll-key="holder:${esc(sid)}">${deskBack(deskLeadName(d) || "Back")}<h1>${esc(name)}</h1><div class="dk-state">${esc(head)}</div>
     ${lead ? deskSec("Crew", crewRows ? `<div class="dk-crew">${crewRows}</div>` : `<p class="dk-note">No crew at work.</p>`) : ""}${nextLine}
@@ -572,7 +601,7 @@ function deskCrewPane(lead, agent, d) {
     <div class="dk-state">In <b>${esc(leadName)}</b>'s crew · ${t.state === "working" ? "working on" : esc(t.state)} <b>${esc(it?.title || t.what || "")}</b> · ${esc(mateSpan(t))}</div>
     ${deskSec("Where it is", `<p>${esc(mateNeeds(lead, t) ? "Stopped to ask you something." : t.step || mateLine(t))}</p>`)}
     ${deskSec("Files", files)}
-    ${deskSec("Latest", latest.map((l) => `<p class="dk-quiet">${esc(l)}</p>`).join(""))}
+    ${deskSec("Latest", latest.map((l) => `<div class="dk-md dk-quiet">${md(l)}</div>`).join(""))}
     <div class="dk-acts"><button class="btn small" data-desk-crew-open="${esc(t.agent_id || t.call)}" data-lead="${esc(lead)}">Open its session</button>${stop}</div>
     <p class="dk-note">To steer it, tell ${esc(leadName)} below; the lead passes it on. Open its session to talk to it straight.</p></div>`;
 }
@@ -646,26 +675,36 @@ function deskLeadAsk(d) {
 
 // ---------- All projects: every Desk ----------
 
+/** A Desk on the home list: one row, its name and lead, then what it holds today. Opens it. */
 function deskCardOf(d) {
-  const waits = d.items.filter(deskWaits), done = d.items.filter(deskDoneToday), moving = d.items.filter(deskMoving).length;
-  const decs = deskCalls(d).filter((c) => deskToday(c.at));
-  const name = `<span class="dk-pn">${projDot(d.project)}${esc(projLabel(d.project))}</span>`;
-  if (!waits.length && !done.length && !decs.length) {
-    const open = d.items.filter((i) => i.state !== "done").length;
-    return `<div class="dk-card dk-desk quiet" role="button" tabindex="0" data-desk-project="${esc(d.project)}">${name}<span class="dk-b">Quiet today${open ? ` · ${open} item${open === 1 ? "" : "s"} open` : ""}</span><span class="grow"></span><span class="dk-open">Open ›</span></div>`;
-  }
-  const b = [waits.length ? `<b>${waits.length} waiting on you</b>` : "", moving ? `${moving} moving` : ""].filter(Boolean).join(" · ") || "nothing waiting";
-  const col = (title, cls, rows) => `<div><h3 class="${cls}">${title}</h3>${rows || `<div class="dk-none">None</div>`}</div>`;
-  const waitRows = waits.map((i) => `<div class="dk-r ask">${esc(i.title)}<span class="s">${esc(i.state === "to_check" ? "ready to check" : i.ask?.text || "asks you")}</span></div>`).join("");
-  const doneRows = done.map((i) => `<div class="dk-r dn">${esc(i.title)}</div>`).join("");
-  const decRows = decs.map((c) => `<div class="dk-r"><b>${esc(c.by)}</b>: ${esc(c.text)}${c.undo === "can" ? `<button class="dk-ul" data-desk-undo="${esc(c.id)}">Undo</button>` : c.undo === "asked" ? `<span class="dk-u">undo asked</span>` : ""}</div>`).join("");
-  return `<div class="dk-card dk-desk" role="button" tabindex="0" data-desk-project="${esc(d.project)}"><div class="dk-dh">${name}<span class="dk-b">${b}</span><span class="grow"></span><span class="dk-open">Open ›</span></div>
-    <div class="dk-cols">${col("Waiting on you", waits.length ? "you" : "", waitRows)}${col(`Done today · ${done.length}`, "", doneRows)}${col(`Decided today · ${decs.length}`, "", decRows)}</div></div>`;
+  const waits = d.items.filter(deskWaits).length, done = d.items.filter(deskDoneToday).length, moving = d.items.filter(deskMoving).length;
+  const lead = deskLeadName(d), open = d.items.filter((i) => i.state !== "done").length;
+  const b = waits || moving || done
+    ? [waits ? `<b>${waits} waiting on you</b>` : "", moving ? `${moving} moving` : "", done ? `${done} done today` : ""].filter(Boolean).join(" · ")
+    : `Quiet${open ? ` · ${open} item${open === 1 ? "" : "s"} open` : ""}`;
+  return `<div class="dk-card dk-desk" role="button" tabindex="0" data-desk-project="${esc(d.project)}"><div class="dk-dn"><b>${esc(projLabel(d.project))}</b><span>${lead ? `run by ${esc(lead)}` : "no lead yet"}</span></div><span class="dk-b">${b}</span><span class="grow"></span><span class="dk-open">Open ›</span></div>`;
+}
+let deskStarting = false;   // + New Desk's Start, until Cue answers
+/** + New Desk: a folder (the ones you've worked in), then Start: Cue starts a lead there and opens its Desk. */
+function deskNewRow() {
+  const have = new Set((state.desk?.projects || []).map((x) => x.project));
+  const fs = recentFolders().filter((f) => !have.has(state.projects?.[f]?.own ?? ""));
+  const opts = fs.map((f) => `<option value="${esc(f)}">${esc(homeless(f))}</option>`).join("");
+  return `<div class="dk-card dk-newdesk"><b>+ New Desk</b>${fs.length ? `<select class="dk-fld" aria-label="Folder for the new Desk">${opts}</select><span class="dk-hint">Cue starts its lead.</span><span class="grow"></span><button class="btn small primary" data-desk-start ${deskStarting ? "disabled" : ""}>${deskStarting ? "Starting…" : "Start"}</button>` : `<span class="dk-hint">Start a session in a folder first (+ New).</span>`}</div>`;
+}
+/** Start a Desk in `folder`, then open it. */
+async function deskStartIn(folder) {
+  if (!folder || deskStarting) return;
+  deskStarting = true; renderMain();
+  try {
+    const r = await invoke("desk_start", { folder });
+    if (r?.project) { view = "desk"; setProjFilter(r.project); deskOpen = null; deskTab = "lead"; deskChatEnd = true; }
+  } catch (e) { toast(`Couldn't start the Desk: ${e}`); }
+  deskStarting = false; renderMain();
 }
 function deskAll() {
   const ds = (state.desk?.projects || []).map((x) => deskOf(x.project)).sort((a, b) => b.items.filter(deskWaits).length - a.items.filter(deskWaits).length || a.project.localeCompare(b.project));
-  const body = ds.length ? ds.map(deskCardOf).join("") : `<div class="dk-card dk-desk quiet"><span class="dk-b">No Desks yet. Pick a project in the header and choose who runs its Desk.</span></div>`;
-  return `<div class="board dk-board all"><div class="dk-desks" data-scroll-key="desks">${body}</div></div>`;
+  return `<div class="board dk-board all"><div class="dk-desks" data-scroll-key="desks"><div class="dk-hh">Desks</div>${ds.map(deskCardOf).join("")}${deskNewRow()}</div></div>`;
 }
 
 /** The Desk view: the project picked (its items, and its lead beside them), or with All projects every Desk. */
@@ -745,27 +784,41 @@ function deskOpenItem(id) {
   deskOpen = { kind: "item", id, project: projFilter, fresh: now() };
   deskDropArm = deskGiveFor = null;
 }
-async function deskAct(id, act) {
+async function deskAct(id, act, el = null) {
   // Looks right commits the item's files at once; Undo takes that commit back (desk_commit.js).
   if (act === "looks_right") return deskLooksRight(id);
   if (act === "undo_commit") return deskCommitUndo(id);
   // Drop takes two clicks: the first arms it.
   if (act === "drop" && deskDropArm !== id) { deskDropArm = id; return renderMain(); }
   deskDropArm = null;
-  let text, key;
-  if (act === "send_back") {
-    key = deskBoxKey({ project: projFilter, item: id });
-    text = draft(key).text.trim() || undefined;
+  // Send back opens the item's own box for why (deskBackHtml); its Send sends that, to the item's holder only.
+  if (act === "send_back") { deskBackFor = deskBackFor === id ? null : id; renderMain(); return deskBackFocus(id); }
+  if (act === "back_cancel") { endDictation(`back:${id}`); deskBackFor = null; return renderMain(); }
+  let text, key, images = [];
+  if (act === "back_go") {
+    act = "send_back";
+    key = `back:${id}`;
+    text = draft(key).text.trim();
+    images = draft(key).images.map(({ name, mime, data }) => ({ name, mime, data }));
+    if (!text && !images.length) { toast("Say why it goes back first", 4000); return deskBackFocus(id); }
+    endDictation(key);
   }
   try {
-    await invoke("desk_item_act", text ? { id, act, text } : { id, act });
+    const it = await invoke("desk_item_act", key ? { id, act, text, images } : { id, act });
     // What it was sent back with is gone from the box once it went (kept when it didn't).
-    if (text) { delete drafts[key]; saveDrafts(); }
+    if (key) { delete drafts[key]; saveDrafts(); deskBackFor = null; toast(`Sent back${it?.holder?.name ? ` to ${it.holder.name}` : ""}`); }
     if (act === "drop") deskOpen = null;
   }
-  catch (e) { toast(String(e)); }
+  catch (e) { toast(String(e), 5000); }
   renderMain();
 }
+/** Item `id`'s Send back, open: "Why send it back?" and Cancel over a box of its own (never the lead's), as the Desk's
+ *  boxes are: words, the mic, a picture, Send. Enter sends, ⇧Enter a new line, Esc closes it. */
+function deskBackHtml(id) {
+  const key = `back:${id}`, mic = dictating?.key === key;
+  return `<div class="dk-sb"><div class="dk-sb-h"><span class="dk-sb-l">Why send it back?</span><button class="dk-sb-x" data-desk-act="back_cancel" data-id="${esc(id)}">Cancel</button></div><div class="dk-box dk-sb-box" data-drop="${esc(key)}">${draftChips(key)}<div class="dk-box-row"><textarea rows="1" data-text="${esc(key)}" aria-label="Why send it back?" placeholder="What isn't right yet" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off">${esc(draft(key).text)}</textarea><button class="icon-btn mic ${mic ? "on" : ""}" data-mic="${esc(key)}" aria-label="${mic ? "Stop dictating" : "Dictate"}">${MIC_ICON}</button><button class="icon-btn" data-attach="${esc(key)}" aria-label="Add an image">${IMAGE_ICON}</button><button class="btn primary small" data-desk-act="back_go" data-id="${esc(id)}">Send</button></div></div></div>`;
+}
+const deskBackFocus = (id) => document.querySelector(`textarea[data-text="${CSS.escape(`back:${id}`)}"]`)?.focus();
 async function deskUndo(id) {
   try { toast((await invoke("desk_undo", { decisionId: id })) || "Asked to undo it"); }
   catch (e) { toast(String(e)); }
@@ -792,10 +845,11 @@ const DESK_CLICKS = {
   deskTab: (el) => { deskTab = el.dataset.deskTab; deskChatEnd = true; renderMain(); },
   ...DESK_LEAD_CLICKS,
   deskSend: (el) => deskSendBox(el.dataset.deskSend),
-  deskAct: (el) => { deskGiveFor = null; deskAct(el.dataset.id, el.dataset.deskAct); },
+  deskAct: (el) => { deskGiveFor = null; deskAct(el.dataset.id, el.dataset.deskAct, el); },
   deskUndo: (el) => deskUndo(el.dataset.deskUndo),
   deskSession: (el) => openSession(el.dataset.deskSession),
   deskLeadChat: () => { deskPick = null; deskTab = "lead"; deskShow(null); deskLeadLit = projFilter; renderMain(); },
+  deskChkItem: (el) => deskShow({ kind: "item", id: el.dataset.deskChkItem }),
   deskChatOf: (el) => { deskChatEnd = true; deskShow({ kind: "chat", sid: el.dataset.deskChatOf }); },
   deskNewSession: (el) => deskNewSession(el.dataset.deskNewSession),
   deskMember: (el) => deskMember(el.dataset.project, el.dataset.deskMember, true),
@@ -809,6 +863,8 @@ const DESK_CLICKS = {
   deskChanges: (el) => deskShowChanges(el.dataset.deskChanges),
   deskCrewOpen: (el) => deskOpenCrew(el.dataset.lead, el.dataset.deskCrewOpen),
   deskInbox: (el) => (typeof inboxOpen === "function" ? inboxOpen(el.dataset.deskInbox) : openSession(el.dataset.deskInbox)),
+  deskHome: () => { setProjFilter(""); deskOpen = null; deskPick = null; renderMain(); },
+  deskStart: (el) => deskStartIn(el.closest(".dk-newdesk")?.querySelector("select")?.value),
   deskProject: (el) => { setProjFilter(el.dataset.deskProject); deskOpen = null; deskTab = "lead"; deskChatEnd = true; renderMain(); },
 };
 /** A click rule's attribute: deskItem → data-desk-item. */
@@ -844,6 +900,8 @@ function deskKey(e) {
   if (e.metaKey && !e.shiftKey && !e.altKey && !e.ctrlKey && e.key?.toLowerCase() === "n" && projFilter && !sheet && !(crewPageSid && document.querySelector(".crew-page"))) return deskQaFocus();
   if (deskQaKey(e, key)) return true;
   if (e.key === "Enter" && !e.shiftKey && deskBoxes.has(key)) { deskSendBox(key); return true; }
+  if (e.key === "Enter" && !e.shiftKey && key.startsWith("back:")) { deskAct(key.slice(5), "back_go"); return true; }
+  if (e.key === "Escape" && key.startsWith("back:")) { deskAct(key.slice(5), "back_cancel"); return true; }
   // Esc: only when nothing over the Desk wants it (the crew page, a sheet, search and the live list, the projects
   // list, a menu, a rename), as the Inbox's keys do.
   const over = sheet || lightbox || liveOpen || deleteAsk || renaming || pjRenaming || pjOpen || pjNewOpen || colorFor || newProjFor || btwFor || menuFor || redirectFor || (typeof moreFor !== "undefined" && moreFor) || (crewPageSid && document.querySelector(".crew-page"));
