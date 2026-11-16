@@ -42,6 +42,9 @@ pub struct DeskItem {
     pub title: String,
     #[serde(default)]
     pub done_when: String,
+    /// Why it's its own item, when a session on another item added it (`ITEM: … | why: …`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub why: String,
     /// "new" | "queued" | "working" | "to_check" | "done" as kept; the window's "needs_you" is worked out as it's
     /// shown (its holder waits on you).
     pub state: String,
@@ -72,6 +75,9 @@ pub struct DeskItem {
     /// Desk can link to them (parse.rs `made_in`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub made: Vec<String>,
+    /// Its designs' canvas: the link a session gave last on a DESIGNS: line, shown as "Designs" on its page.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub designs: String,
     /// The commit Looks right made of its files (short; one per repository, space apart), once it did
     /// (hub/desk_commit.rs).
     #[serde(default, skip_serializing_if = "String::is_empty")]

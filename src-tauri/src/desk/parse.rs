@@ -6,13 +6,17 @@
 #[derive(Clone, Debug, PartialEq)]
 pub enum Line {
     /// A new item.
-    Item { kind: String, title: String, done_when: String },
-    /// Item `id` ("new": the reply's last ITEM) to the session named `to`, now or `after` another item.
-    Route { id: String, to: String, after: Option<String>, why: String },
+    Item { kind: String, title: String, done_when: String, why: String },
+    /// Item `id` ("new": the reply's last ITEM) to the session named `to`, now or `after` another item; `kind`, when
+    /// said: the lead's call on what it is ("bug" | "feature" | "task"; an item you add has none till then); `crew`,
+    /// when said: the lead's teammate doing it (with `to` "me").
+    Route { id: String, to: String, after: Option<String>, why: String, kind: Option<String>, crew: Option<String> },
     /// A question for you, with its choices (none: answered in words).
     Ask { question: String, choices: Vec<String> },
     /// Items done, as their holder says.
     Done { ids: Vec<String> },
+    /// Item `id`'s designs are at `url` (its canvas), as any session of its project says; a newer one replaces it.
+    Designs { id: String, url: String },
     /// What to do with session `who`'s context ("me": the lead's own): `what` is "keep" (others to come), lower case.
     Context { who: String, what: String, why: String },
 }
@@ -43,6 +47,7 @@ pub fn lines(text: &str) -> Vec<Line> {
                 "ASK" => ask(body),
                 "DONE" => done(body),
                 "CONTEXT" => context(body),
+                "DESIGNS" => designs(body),
                 _ => None,
             }
         })
@@ -73,9 +78,14 @@ fn item(body: &str) -> Option<Line> {
         "bug" | "feature" | "task" => (first.clone(), &p[1..]),
         _ => ("task".to_string(), &p[..]),
     };
-    let title = rest.iter().find(|s| labelled(s, "done when").is_none()).map(|s| s.to_string()).unwrap_or_default();
+    // "why:" with its colon, so a title that starts "Why …" stays the title.
+    fn why_of(s: &str) -> Option<&str> {
+        labelled(s, "why").filter(|_| s[3..].trim_start().starts_with(':'))
+    }
+    let title = rest.iter().find(|s| labelled(s, "done when").is_none() && why_of(s).is_none()).map(|s| s.to_string()).unwrap_or_default();
     let done_when = rest.iter().find_map(|s| labelled(s, "done when")).unwrap_or("").to_string();
-    (!title.is_empty()).then_some(Line::Item { kind, title, done_when })
+    let why = rest.iter().find_map(|s| why_of(s)).unwrap_or("").to_string();
+    (!title.is_empty()).then_some(Line::Item { kind, title, done_when, why })
 }
 
 fn route(body: &str) -> Option<Line> {
@@ -89,7 +99,9 @@ fn route(body: &str) -> Option<Line> {
     }
     let after = p[1..].iter().find_map(|s| labelled(s, "after")).and_then(id_of);
     let why = p[1..].iter().find_map(|s| labelled(s, "why")).unwrap_or("").to_string();
-    Some(Line::Route { id, to, after, why })
+    let kind = p[1..].iter().find_map(|s| labelled(s, "kind")).map(|k| k.trim_matches(['"', '`', '*', '.']).to_ascii_lowercase()).filter(|k| matches!(k.as_str(), "bug" | "feature" | "task"));
+    let crew = p[1..].iter().find_map(|s| labelled(s, "crew")).map(|c| c.trim_start_matches('@').trim_matches(['"', '`', '*']).trim().to_string()).filter(|c| !c.is_empty());
+    Some(Line::Route { id, to, after, why, kind, crew })
 }
 
 fn ask(body: &str) -> Option<Line> {
@@ -108,6 +120,19 @@ fn done(body: &str) -> Option<Line> {
     (!ids.is_empty()).then_some(Line::Done { ids })
 }
 
+/// "#107 https://…" (the link may be in <> or (), or a markdown link): the item and its first web link.
+fn designs(body: &str) -> Option<Line> {
+    let (id, rest) = body.split_once(char::is_whitespace)?;
+    if !id.starts_with('#') {
+        return None;
+    }
+    let id = id_of(id)?;
+    let at = rest.find("https://").or_else(|| rest.find("http://"))?;
+    let url: String = rest[at..].chars().take_while(|c| !c.is_whitespace() && !matches!(c, '>' | ')' | ']' | '"' | '`' | '*')).collect();
+    let url = url.trim_end_matches(['.', ',', ';']).to_string();
+    (url.len() > "https://".len()).then_some(Line::Designs { id, url })
+}
+
 fn context(body: &str) -> Option<Line> {
     let p = parts(body);
     let (who, what) = ["->", "→", "=>"].iter().find_map(|a| p.first()?.split_once(a))?;
@@ -118,4 +143,33 @@ fn context(body: &str) -> Option<Line> {
     }
     let why = p[1..].iter().find_map(|s| labelled(s, "why")).unwrap_or("").to_string();
     Some(Line::Context { who, what, why })
+}
+
+/// Kinds of file a holder makes to be looked at: a page or mock, a picture, a document, a build.
+const MADE: &[&str] = &["html", "htm", "pdf", "md", "png", "jpg", "jpeg", "gif", "svg", "webp", "mp4", "mov", "app", "dmg", "zip"];
+
+/// What a turn names that was made, in order, each once (four at most): its web links, and with `paths` (a session on
+/// this Mac: another machine's paths mean nothing here) the files it names by a full path (`/…` or `~/…`) whose kind
+/// is one made to be looked at. A markdown link counts by its address.
+pub fn made_in(text: &str, paths: bool) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let tail: &[char] = &[')', ']', '>', '.', ',', ';', ':', '!', '?', '\'', '"', '`', '*', '_'];
+    for word in text.split_whitespace() {
+        let found = match word.find("https://").or_else(|| word.find("http://")) {
+            Some(at) => Some(word[at..].trim_end_matches(tail)),
+            None if paths => {
+                let w = word.trim_start_matches(['(', '[', '<', '\'', '"', '`', '*', '_']).trim_end_matches(tail).trim_end_matches('/');
+                let kind = w.rsplit_once('.').map(|(_, k)| k.to_ascii_lowercase()).unwrap_or_default();
+                ((w.starts_with('/') || w.starts_with("~/")) && !w.contains("://") && MADE.contains(&kind.as_str())).then_some(w)
+            }
+            None => None,
+        };
+        if let Some(f) = found.filter(|f| f.len() > 8 && !out.iter().any(|o| o == f)) {
+            out.push(f.to_string());
+            if out.len() == 4 {
+                break;
+            }
+        }
+    }
+    out
 }

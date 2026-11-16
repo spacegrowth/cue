@@ -518,7 +518,7 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx
     let mut last_new: Option<String> = None;
     for line in parse::lines(text) {
         match line {
-            Line::Item { kind, title, done_when } => last_new = Some(item_said(st, project, &kind, &title, &done_when, &name, now, fx).0),
+            Line::Item { kind, title, done_when, .. } => last_new = Some(item_said(st, project, &kind, &title, &done_when, &name, now, fx).0),
             Line::Route { id, to, after, why, kind, .. } => {
                 // An old tag ("#d7k2") names the item by its number from now.
                 let id = if id == "new" { last_new.clone() } else { Some(st.desk.canon(&id)) };
@@ -535,7 +535,7 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx
             Line::Ask { question, choices } => fx.asks.push((lsid.to_string(), project.to_string(), question, choices)),
             Line::Context { who, what, why } if what == "keep" => keep(st, project, &by, &who, &why, now, fx),
             Line::Done { ids } => lead_done(st, project, lsid, &ids, fx),
-            Line::Context { .. } => {}
+            Line::Context { .. } | Line::Designs { .. } => {}
         }
     }
     for (what, why) in crate::sessions::crew_log::calls_in(text) {
@@ -605,18 +605,51 @@ fn keep(st: &mut Store, project: &str, by: &By, who: &str, why: &str, now: u64, 
 }
 
 /// Session `sid` (not its project's lead) said `text`: its ITEM: lines are new items of its project, from it, which
-/// the lead is told of to route.
+/// the lead is told of to route. A session on an item (at work on it, or it's to check) keeps its own fixes and next
+/// steps in that item: an ITEM: line from it without a `why:` (how it's separate) isn't added, and it's told so.
 fn session_items(st: &mut Store, sid: &str, text: &str, now: u64, fx: &mut Effects) {
     let Some((project, name)) = st.sessions.get(sid).map(|s| (s.project.clone(), shown_name(s))).filter(|(p, _)| !p.is_empty()) else { return };
     let told = st.desk.lead_sid(&project).is_some();
+    let on = |i: &&DeskItem| matches!(i.state.as_str(), "working" | "to_check") && i.holder.as_ref().is_some_and(|h| h.is(sid));
+    let mine = st.desk.items.iter().filter(on).max_by_key(|i| i.updated).map(|i| i.id.clone());
+    let mut kept = Vec::new();
     for line in parse::lines(text) {
-        let Line::Item { kind, title, done_when } = line else { continue };
+        let Line::Item { kind, title, done_when, why } = line else { continue };
+        if let Some(mine) = mine.as_ref().filter(|_| why.trim().is_empty()) {
+            kept.push(format!("Not added as a new item: {}. Its fix or next step stays in #{mine}, the item you're on: do it there, or say it in your reply.", title.trim()));
+            continue;
+        }
         let (id, fresh) = item_said(st, &project, &kind, &title, &done_when, &name, now, fx);
+        if fresh {
+            if let Some(it) = st.desk.item_mut(&id) {
+                it.why = why.trim().to_string();
+            }
+        }
         if fresh && told {
             fx.news.push((project.clone(), id));
         }
     }
+    if !kept.is_empty() {
+        kept.push(SEPARATE_ITEM_WORDS.into());
+        fx.sends.push((sid.to_string(), kept.join("\n")));
+    }
 }
+
+/// Session `sid` said where items' designs are (DESIGNS: #id <link>): each item of its project gets that link, a newer
+/// one replacing the last (designs moved).
+fn designs_said(st: &mut Store, sid: &str, text: &str, fx: &mut Effects) {
+    let Some(project) = st.sessions.get(sid).map(|s| s.project.clone()).filter(|p| !p.is_empty()).or_else(|| st.desk.lead_of(sid)) else { return };
+    for line in parse::lines(text) {
+        let Line::Designs { id, url } = line else { continue };
+        let id = st.desk.canon(&id);
+        let Some(it) = st.desk.item_mut(&id).filter(|i| i.project == project && i.designs != url) else { continue };
+        it.designs = url;
+        fx.items.push(id);
+    }
+}
+
+/// How a session on an item adds one that's truly separate (said after an ITEM: line Cue didn't add).
+const SEPARATE_ITEM_WORDS: &str = "Only something truly separate from it is a new item, with why in one line: ITEM: <bug|feature|task> | <title> | done when: <…> | why: <how it's separate>";
 
 /// Holder `sid` said `text` at its turn's end: items it says are done go to you to check (and what was queued after
 /// them starts), and (unless it's the lead, whose DECIDED lines are the lead's) its DECIDED lines are decisions on
@@ -685,7 +718,7 @@ fn desk_line_start(line: &str) -> bool {
     let l = line.trim().trim_start_matches(['-', '*', '+', '`', ' ']);
     let Some((word, _)) = l.split_once(':') else { return false };
     let word = word.trim_end_matches(['*', '`']).trim();
-    matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "CONTEXT") || word.eq_ignore_ascii_case("DECIDED")
+    matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "CONTEXT" | "DESIGNS") || word.eq_ignore_ascii_case("DECIDED")
 }
 
 /// What you did to item `id` ("looks_right" | "send_back" | "start_now" | "put_before" | "drop"), in the store.
@@ -714,7 +747,7 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
                 (c.back, c.back_pics) = (why.trim().to_string(), pics.matches('`').count() / 2);
             }
             let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
-            fx.sends.push((h.to().to_string(), format!("{crew}Desk item #{id} ({}) isn't done: {words}\nSay DONE: #{id} when it is.", it.title)));
+            fx.sends.push((h.to().to_string(), format!("{crew}Desk item #{id} ({}) isn't done: {words}\nIts fixes stay in #{id}; don't add new items for them. Say DONE: #{id} when it is.", it.title)));
         }
         // Nobody holds it yet: a new session of its project takes it (desk_start_new).
         "start_now" if holder.is_none() => {
@@ -977,6 +1010,7 @@ impl Hub {
         let now = now_ms();
         let fx = self.write(|st| {
             let mut fx = Effects::default();
+            designs_said(st, sid, text, &mut fx);
             let lead = st.desk.lead_of(sid);
             match &lead {
                 Some(project) => lead_said(st, project, sid, text, now, &mut fx),

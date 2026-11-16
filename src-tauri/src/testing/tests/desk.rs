@@ -67,8 +67,8 @@ fn lines_are_read_outside_code_and_quotes() {
     assert_eq!(
         lines(text),
         vec![
-            Line::Item { kind: "feature".into(), title: "Dark mode".into(), done_when: "it follows the Mac".into() },
-            Line::Item { kind: "task".into(), title: "Plain title".into(), done_when: String::new() },
+            Line::Item { kind: "feature".into(), title: "Dark mode".into(), done_when: "it follows the Mac".into(), why: String::new() },
+            Line::Item { kind: "task".into(), title: "Plain title".into(), done_when: String::new(), why: String::new() },
             Line::Route { id: "new".into(), to: "cue-teams".into(), after: Some("a1b2".into()), why: "it knows the header".into(), kind: None, crew: None },
             Line::Ask { question: "Which first?".into(), choices: vec!["A".into(), "B".into()] },
             Line::Done { ids: vec!["a1".into(), "b2".into()] },
@@ -1027,4 +1027,28 @@ fn a_picture_in_the_leads_box_reaches_the_lead_live_or_resumed() {
     w.settle();
     let resumed = sent_to(&w, &l).pop().unwrap();
     assert!(resumed.contains("And this one") && resumed.contains(".png"), "{resumed}");
+}
+
+/// DESIGNS: #id <link> from any session of the project sets the item's canvas link; a newer one replaces it (the
+/// designs moved), kept across a relaunch; one from a code block, or for another project's item, doesn't.
+#[test]
+fn a_designs_line_sets_the_items_canvas_link_and_a_newer_one_replaces_it() {
+    let mut w = World::new();
+    let (h, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    ends(&w, &l, "ITEM: feature | New board | done when: it shows\nROUTE: #new -> cue-teams | why: it made the board");
+    let id = item(&desk(&w, &project), "New board")["id"].as_str().unwrap().to_string();
+    assert!(sent_to(&w, &h).iter().any(|t| t.contains(&format!("say DESIGNS: #{id} <canvas link>"))));
+    assert!(item(&desk(&w, &project), "New board").get("designs").is_none());
+    ends(&w, &h, &format!("Mocks are up.\n- **DESIGNS:** #{id} <https://claude.ai/artifact/AAA>."));
+    assert_eq!(item(&desk(&w, &project), "New board")["designs"], "https://claude.ai/artifact/AAA");
+    ends(&w, &h, &format!("```\nDESIGNS: #{id} https://example.com/old\n```"));
+    assert_eq!(item(&desk(&w, &project), "New board")["designs"], "https://claude.ai/artifact/AAA");
+    // Moved: the lead (or any session of the project) says the new place.
+    ends(&w, &l, &format!("DESIGNS: #{id} [canvas](https://claude.ai/artifact/BBB)"));
+    assert_eq!(item(&desk(&w, &project), "New board")["designs"], "https://claude.ai/artifact/BBB");
+    w.relaunch();
+    assert_eq!(item(&desk(&w, &project), "New board")["designs"], "https://claude.ai/artifact/BBB");
+    assert_eq!(lines(&format!("DESIGNS: #{id} no link here")), vec![]);
+    assert_eq!(lines("DESIGNS: #a1 see http://x.io/c, then"), vec![Line::Designs { id: "a1".into(), url: "http://x.io/c".into() }]);
 }

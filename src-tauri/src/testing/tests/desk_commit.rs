@@ -116,6 +116,31 @@ fn the_leads_done_on_an_item_to_check_leaves_it_to_you_and_tells_the_lead_why_on
 }
 
 #[test]
+fn a_sessions_follow_up_stays_in_its_item_and_only_a_separate_one_with_a_why_is_added() {
+    let w = World::new();
+    let (_, project, id) = ready(&w);
+    let h = item(&w, &project, "Header jumps")["holder"]["sid"].as_str().unwrap().to_string();
+    let count = |w: &World| desk(w, &project)["items"].as_array().unwrap().len();
+    let before = count(&w);
+    ends(&w, &h, "Found one more spot.\nITEM: bug | Header jumps on narrow windows | done when: it stays put there too");
+    assert_eq!(count(&w), before, "a follow-up isn't a new item");
+    let told: Vec<String> = w.hosted.sent().into_iter().filter(|(s, t)| s == &h && t.contains("Not added")).map(|(_, t)| t).collect();
+    assert_eq!(told.len(), 1, "{told:?}");
+    assert!(told[0].contains(&format!("stays in #{id}")) && told[0].contains("| why:"), "{}", told[0]);
+    ends(&w, &h, "ITEM: feature | Export the board | why: a new ask, nothing to do with the header");
+    assert_eq!(count(&w), before + 1, "a separate one with a why is added");
+    assert_eq!(item(&w, &project, "Export the board")["why"], "a new ask, nothing to do with the header");
+}
+
+#[test]
+fn an_items_why_needs_its_colon_so_a_title_starting_why_stays_the_title() {
+    use crate::desk::parse::{lines, Line};
+    let got = lines("ITEM: bug | Why the header jumps | done when: it stays put | why: not the item I'm on");
+    let want = Line::Item { kind: "bug".into(), title: "Why the header jumps".into(), done_when: "it stays put".into(), why: "not the item I'm on".into() };
+    assert_eq!(got, vec![want]);
+}
+
+#[test]
 fn a_word_never_committed_stops_the_commit_and_says_where() {
     let w = World::new();
     let (dir, project, id) = ready(&w);
