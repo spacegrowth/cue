@@ -453,7 +453,7 @@ test("suggested replies, as mail's: Claude's suggestion goes into the box, a qui
   await openInbox(page);
   await page.locator('.ib-row[data-inbox-open="sec"]').click();
   const pg = page.locator('.inbox-page[data-inbox-page="sec"]');
-  await expect(pg.locator(".ib-sug")).toHaveText(["Suggestedrun the next company", "go ahead", "show me"]);
+  await expect(pg.locator(".ib-sug:visible")).toHaveText(["Suggestedrun the next company", "go ahead", "show me"]);
   await pg.locator(".ib-sug.ai").click();
   await expect(pg.locator(".ib-box textarea")).toHaveValue("run the next company");
   await pg.locator(".ib-box textarea").fill("");
@@ -629,18 +629,69 @@ test("pictures sent with a message show in the Inbox, as in the chat: in an earl
   await expect(page.locator(".lightbox")).toBeVisible();
 });
 
-test("at work, the quick phrases sit right under what it's doing now, over the box", async ({ cue, page }) => {
+test("quick phrases sit at the right of Send's row; those that don't fit open upward from More", async ({ cue, page }) => {
   await cue.open("board-waiting");
+  await cue.change((st) => { st.settings.quick = { phrases: ["go ahead", "show me", "run the tests and tell me what fails", "commit it", "explain that again more simply", "keep going"] }; });
   await page.locator('.switch-view [data-view="inbox"]').click();
   await page.locator('[data-inbox-fold="run"]').click();
   await page.locator('.ib-row[data-inbox-open="eng"]').click();
   const main = page.locator('.inbox-page[data-inbox-page="eng"] .ib-main');
-  await expect(main.locator(".ib-sugs .ib-sug").first()).toBeVisible();
-  const order = await main.evaluate((m) => [".ib-card.run", ".ib-sugs", ".ib-box textarea"].map((q) => [...m.querySelectorAll("*")].indexOf(m.querySelector(q))));
-  expect(order[0]).toBeLessThan(order[1]);
-  expect(order[1]).toBeLessThan(order[2]);
-  // A finished turn keeps them under what you write.
-  await page.locator('.ib-row[data-inbox-open="sec"]').click();
-  const box = page.locator('.inbox-page[data-inbox-page="sec"] .ib-box');
-  await expect(box.locator(".ib-sugs")).toHaveCount(1);
+  // At work too, they sit under the box, on the row with Send.
+  const acts = main.locator(".ib-box .ib-box-acts");
+  await expect(acts.locator('.ib-sug[data-inbox-phrase="go ahead"]')).toBeVisible();
+  const send = await acts.locator(".btn.primary").boundingBox(), first = await acts.locator('.ib-sug[data-inbox-phrase="go ahead"]').boundingBox();
+  expect(Math.abs(send.y - first.y)).toBeLessThan(6);
+  expect(first.x).toBeGreaterThan(send.x);
+  // Not all fit: More shows, and its menu (above it) lists just the hidden ones.
+  const more = acts.locator("[data-inbox-phr-more]");
+  await expect(more).toBeVisible();
+  const shown = await acts.locator(".ib-phr-row .ib-sug:visible").count();
+  expect(shown).toBeLessThan(6);
+  await more.click();
+  const menu = main.locator(".ib-phr-menu");
+  await expect(menu.locator("button:visible")).toHaveCount(6 - shown);
+  expect((await menu.boundingBox()).y + (await menu.boundingBox()).height).toBeLessThanOrEqual((await more.boundingBox()).y + 1);
+  await menu.locator("button:visible").last().click();
+  await cue.called("send_to_session", { sessionId: "eng", text: "keep going" });
+  await expect(menu).toHaveCount(0);
+});
+
+test("at work, Thinking counts its dots and its bar runs the full width", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  await page.locator('.switch-view [data-view="inbox"]').click();
+  await page.locator('[data-inbox-fold="run"]').click();
+  await page.locator('.ib-row[data-inbox-open="eng"]').click();
+  const card = page.locator('.inbox-page[data-inbox-page="eng"] .ib-card.run');
+  const bar = await card.locator(".ib-bar").boundingBox(), box = await card.boundingBox();
+  expect(Math.abs(bar.x - box.x)).toBeLessThan(1);
+  expect(Math.abs(bar.width - box.width)).toBeLessThan(1);
+});
+
+test("at work, what you wrote that waits shows in its own block, not as what it's doing now", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  await cue.change((st) => { const s = st.sessions.find((x) => x.session_id === "eng"); s.held = { text: "check the retry path" }; });
+  await page.locator('.switch-view [data-view="inbox"]').click();
+  await page.locator('[data-inbox-fold="run"]').click();
+  const row = page.locator('.ib-row[data-inbox-open="eng"]');
+  await expect(row.locator(".ib-l2")).toHaveText("Not sent yet: “check the retry path”");
+  await row.click();
+  const pg = page.locator('.inbox-page[data-inbox-page="eng"]');
+  await expect(pg.locator(".ib-card.run .ib-qt")).not.toContainText("Not sent yet");
+  await expect(pg.locator(".ib-pending")).toContainText("check the retry path");
+});
+
+test("writing in the reply box, a click on a button in the Inbox leaves the cursor in the box", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  await cue.change((st) => { st.settings.quick = { phrases: ["go ahead", "show me", "run the tests and tell me what fails", "commit it", "explain that again more simply", "keep going"] }; });
+  await page.locator('.switch-view [data-view="inbox"]').click();
+  await page.locator('[data-inbox-fold="run"]').click();
+  await page.locator('.ib-row[data-inbox-open="eng"]').click();
+  const box = page.locator('.inbox-page[data-inbox-page="eng"] .ib-box textarea');
+  await box.click();
+  await box.type("half wri");
+  await page.locator("[data-inbox-phr-more]").click();
+  await expect(page.locator(".ib-phr-menu")).toBeVisible();
+  await expect(box).toBeFocused();
+  await page.keyboard.type("tten");
+  await expect(box).toHaveValue("half written");
 });

@@ -177,13 +177,13 @@ function inboxWhy(it) {
 }
 /** A working row's lines: what you asked it (what you just sent, else its prompt), and what it's on now (or that it's
  *  quiet, or stuck). */
-function inboxRunLines(r) {
+function inboxRunLines(r, card = false) {
   const s = r.s, seat = inboxSeats.get(r.sid), sent = outbox.findLast((o) => o.sid === r.sid)?.text, said = plain(sent || s.prompt);
   const answered = r.it && answering.has(r.it.id) && !sent ? `You answered: ${r.it.kind === "waiting" ? inboxEndQuestion(finishedText(r.it)) || "its reply" : inboxAskSubject(r.it)}` : "";
   const subj = answered || (said ? (sent || seat?.from === "need" ? `You: “${said}”` : said) : plain(aboutTracked(r.sid)?.about) || "Working");
   const stuck = s.stuck_ms && !s.compacting_ms ? `No new output for ${ago(s.stuck_ms)}` : "";
   const busy = s.state === "working" || s.state === "agent" || s.compacting_ms;
-  const line = s.compacting_ms ? "Compacting…" : preStart(s) ? `Not started: ${preStart(s)}` : stuck || inboxPendingLine(s) || (!busy ? "Sent" : s.state === "agent" ? idleNote(s) : s.doing || "Thinking");
+  const line = s.compacting_ms ? "Compacting…" : preStart(s) ? `Not started: ${preStart(s)}` : stuck || (card ? "" : inboxPendingLine(s)) || (!busy ? "Sent" : s.state === "agent" ? idleNote(s) : s.doing || "Thinking");
   return [subj, line];
 }
 /** A finished row's lines: how it ended and what it said, then what it did. */
@@ -368,26 +368,52 @@ function inboxLabel(label) {
 }
 /** A plain box to write in (pictures pasted or dropped on it go with it), and its button. Enter sends too (app/keys.js,
  *  by its draft key). */
-const inboxBox = (key, placeholder, label, attrs, extra = "", sugs = "") => `<div class="ib-box" ${inboxPics(key) ? `data-drop="${esc(key)}"` : ""}>${inboxPics(key) ? draftChips(key) : ""}<textarea rows="2" data-text="${esc(key)}" placeholder="${esc(placeholder)}" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off">${esc(draft(key).text)}</textarea>${sugs}<div class="ib-box-acts"><button class="btn primary" ${attrs}>${label}</button>${inboxTalkBtns(key)}${extra}</div></div>`;
+const inboxBox = (key, placeholder, label, attrs, extra = "", sugs = "", phr = "") => `<div class="ib-box" ${inboxPics(key) ? `data-drop="${esc(key)}"` : ""}>${inboxPics(key) ? draftChips(key) : ""}<textarea rows="2" data-text="${esc(key)}" placeholder="${esc(placeholder)}" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off">${esc(draft(key).text)}</textarea>${sugs}<div class="ib-box-acts"><button class="btn primary" ${attrs}>${label}</button>${inboxTalkBtns(key)}${extra}${phr}</div></div>`;
 /** Talk and pictures, as the chat's box has them (chat/compose.js): the mic types what you say into the box; the
  *  picture button adds one (⌘V pastes one, or drop it on the box). */
 const inboxTalkBtns = (key) => `<button class="icon-btn mic ${dictating?.key === key ? "on" : ""}" data-mic="${esc(key)}" aria-label="${dictating?.key === key ? "Stop dictating" : "Dictate"}">${MIC_ICON}</button>${inboxPics(key) ? `<button class="icon-btn" data-attach="${esc(key)}" aria-label="Add an image">${IMAGE_ICON}</button>` : ""}`;
 /** Whether pictures go with what's written in this box: a message to the session (its "s:" box) does; an answer to its
  *  question is words only. */
 const inboxPics = (key) => key.startsWith("s:");
-/** The reply, as in mail: you write right under the message (no frame or line round it), suggested replies under what
- *  you write (they're yours, not its), then Send with Open chat beside it (no project actions here: those are the chat's). */
-function inboxReply(sid, key, ph, label, attrs, sugsFirst = false) {
-  const sugs = inboxSuggest(sid, key), box = inboxBox(key, ph, label, attrs, `<button class="btn" data-inbox-full="${esc(sid)}">Open chat</button>`, sugsFirst ? "" : sugs);
-  return sugsFirst ? `${sugs}${box}` : box;
+/** The reply, as in mail: you write right under the message (no frame or line round it), Claude's suggestion under what
+ *  you write, then one row: Send, talk, pictures and Open chat on the left, your quick phrases on the right (those that
+ *  don't fit go in a menu that opens upward). */
+function inboxReply(sid, key, ph, label, attrs) {
+  return inboxBox(key, ph, label, attrs, `<button class="btn" data-inbox-full="${esc(sid)}">Open chat</button>`, inboxSuggest(sid, key), inboxPhrases(sid, key));
 }
-/** Suggested replies, as mail suggests them: Claude's own suggestion (it goes into the box, to send as it is or
- *  change), then your quick phrases (Settings → Quick phrases: a click sends it, after anything in the box). */
+/** Claude's own suggested reply: a click puts it in the box, to send as it is or change. */
 function inboxSuggest(sid, key) {
-  const sug = suggestionFor(sid), ps = phrases();
-  if (!sug && !ps.length) return "";
-  const k = `data-key="${esc(key)}" data-sid="${esc(sid)}"`;
-  return `<div class="ib-sugs">${sug ? `<button class="ib-sug ai" data-inbox-sug ${k}><span class="ib-sug-k">Suggested</span>${esc(sug)}</button>` : ""}${ps.map((p) => `<button class="ib-sug" data-inbox-phrase="${esc(p)}" ${k}>${esc(p)}</button>`).join("")}</div>`;
+  const sug = suggestionFor(sid);
+  return sug ? `<div class="ib-sugs"><button class="ib-sug ai" data-inbox-sug data-key="${esc(key)}" data-sid="${esc(sid)}"><span class="ib-sug-k">Suggested</span>${esc(sug)}</button></div>` : "";
+}
+/** The quick phrase menu open, by its box's draft key ("" when none is). */
+let inboxPhrOpen = "";
+/** Your quick phrases (Settings → Quick phrases; a click sends it, after anything in the box) at the right of the
+ *  box's row; inboxFitPhrases hides those that don't fit and lists them in More's menu. */
+function inboxPhrases(sid, key) {
+  const ps = phrases();
+  if (!ps.length) return "";
+  const k = `data-key="${esc(key)}" data-sid="${esc(sid)}"`, open = inboxPhrOpen === key;
+  const chip = (p, i) => `<button class="ib-sug" data-inbox-phrase="${esc(p)}" data-i="${i}" ${k}>${esc(p)}</button>`;
+  return `<div class="ib-phr"><div class="ib-phr-row">${ps.map(chip).join("")}</div>`
+    + `<span class="ib-phr-more" hidden><button class="ib-sug" data-inbox-phr-more="${esc(key)}" aria-expanded="${open}">More<span class="ib-caret">▴</span></button>`
+    + `${open ? `<span class="ib-phr-menu" role="menu">${ps.map((p, i) => `<button role="menuitem" data-inbox-phrase="${esc(p)}" data-i="${i}" ${k}>${esc(p)}</button>`).join("")}</span>` : ""}</span></div>`;
+}
+/** After each draw: each phrase row shows the phrases that fit (in order), More shows when some don't, and its menu
+ *  lists just those. */
+function inboxFitPhrases() {
+  for (const w of document.querySelectorAll(".inbox-page .ib-phr")) {
+    const row = w.querySelector(".ib-phr-row"), more = w.querySelector(".ib-phr-more"), chips = [...row.children];
+    chips.forEach((c) => { c.hidden = false; });
+    more.hidden = true;
+    if (row.scrollWidth <= row.clientWidth + 1) continue;
+    more.hidden = false;
+    const end = row.getBoundingClientRect().right + 1, fits = (c) => c.getBoundingClientRect().right <= end;
+    let n = chips.findIndex((c) => !fits(c));
+    if (n < 0) n = chips.length;
+    chips.forEach((c, i) => { c.hidden = i >= n; });
+    w.querySelectorAll(".ib-phr-menu [data-i]").forEach((b) => { b.hidden = +b.dataset.i < n; });
+  }
 }
 /** A quick phrase clicked: added to what's in the box, and sent. */
 function inboxSendPhrase(el) {
@@ -456,9 +482,12 @@ function inboxChoreCard(r) {
     <div class="ib-foot-acts">${acts}</div></div>`;
 }
 /** A working session: what it's on now, and its bar. */
+/** Three dots that count 1, 2, 3 after a line still going ("Thinking"), in a fixed width so nothing moves. */
+const INBOX_DOTS = `<span class="ib-dots" aria-hidden="true"><i>.</i><i>.</i><i>.</i></span>`;
 function inboxRunCard(r) {
-  const [, line] = inboxRunLines(r);
-  return `<div class="ib-card run"><div class="ib-qn">Now</div><div class="ib-qt">${esc(line)}</div>${inboxBar(r.s)}</div>`;
+  const [, line] = inboxRunLines(r, true);   // what waits to go shows in its own block (inboxPending), not here
+  const m = /^(.*?)(?:…|\.\.\.)?$/.exec(line), dots = /(…|\.\.\.)$/.test(line) || line === "Thinking";
+  return `<div class="ib-card run"><div class="ib-qn">Now</div><div class="ib-qt">${esc(dots ? m[1] : line)}${dots ? INBOX_DOTS : ""}</div>${inboxBar(r.s)}</div>`;
 }
 /** Whether it takes a written reply here: a question, a finished turn, one at work or done (not a permission or the
  *  context row, which have their own buttons). */
@@ -545,13 +574,13 @@ function inboxMain(r) {
   const shown = whole ? inboxSaid(words, [q, then], true) : said, more = cut ? `<button class="ib-link" data-inbox-whole="${esc(r.sid)}">${whole ? "Show less" : "Show the whole reply"}</button>` : "";
   const saidHtml = shown ? `<div class="ib-said">${inboxHead(label, thread.said?.at_ms || r.it?.created_ms || 0)}<div class="ib-md msg">${md(shown, { pathsOf: r.sid })}</div>${thumbs(thread.said?.images)}${localImages(shown)}${more}</div>` : "";
   const thenHtml = then ? `<div class="ib-then">It plans next: <b>${esc(plain(then))}</b></div>` : "";
-  const reply = (ph, sugsFirst = false) => inboxReply(r.sid, `s:${r.sid}`, ph, "Send", r.it ? `data-act="send" data-id="${esc(r.it.id)}"` : `data-inbox-send="${esc(r.sid)}"`, sugsFirst);
+  const reply = (ph) => inboxReply(r.sid, `s:${r.sid}`, ph, "Send", r.it ? `data-act="send" data-id="${esc(r.it.id)}"` : `data-inbox-send="${esc(r.sid)}"`);
   let top = "", foot = "", acts = "";
   if (r.kind === "ask" && r.it.kind === "question") [top, foot, acts] = inboxQuestions(r.it);
   else if (r.kind === "ask") top = inboxAskCard(r.it);
   else if (r.kind === "turn") { top = q || r.it.interrupted ? inboxTurnCard(r, q) : ""; foot = reply("Reply…"); }
   else if (r.kind === "chore") top = inboxChoreCard(r);
-  else if (r.kind === "run") { top = inboxRunCard(r); foot = reply("Tell it something (it reads it when it can)…", true); }   // at work: the phrases right under its bar
+  else if (r.kind === "run") { top = inboxRunCard(r); foot = reply("Tell it something (it reads it when it can)…"); }
   else foot = reply("Tell it what's next…");
   const crew = inboxCrewHtml(r.sid);
   // Oldest at the top, newest at the foot, as a mail thread: earlier, its message, your reply, what waits to go, then
@@ -856,7 +885,8 @@ const INBOX_CLICKS = {
   inboxStep: (el) => { const [id, n] = el.dataset.inboxStep.split(/:(?=\d+$)/); qStep[id] = +n; renderMain(); },
   inboxSend: (el) => sendTo(el.dataset.inboxSend),
   inboxFull: (el) => inboxFullChat(el.dataset.inboxFull),
-  inboxPhrase: inboxSendPhrase,
+  inboxPhrase: (el) => { inboxPhrOpen = ""; inboxSendPhrase(el); },
+  inboxPhrMore: (el) => { const k = el.dataset.inboxPhrMore; inboxPhrOpen = inboxPhrOpen === k ? "" : k; renderMain(); },
   inboxWhole: (el) => { const k = el.dataset.inboxWhole; if (!inboxWhole.delete(k)) inboxWhole.add(k); renderMain(); },
   inboxMsg: (el) => { if (getSelection()?.toString()) return; const k = el.dataset.inboxMsg; if (!inboxMsgOpen.delete(k)) inboxMsgOpen.add(k); renderMain(); },
   inboxEarlier: (el) => { inboxAllEarlier.add(el.dataset.inboxEarlier); renderMain(); },
@@ -874,7 +904,10 @@ function inboxClick(e) {
   // the view).
   if (e.target.closest?.('[data-view="inbox"]')) { if (view === "inbox") inboxSid = null; return; }
   const el = e.target.closest?.(INBOX_SEL);
-  if (!el) { if (inboxSnoozeAt && !e.target.closest?.(".ib-snz")) { inboxSnoozeAt = ""; renderMain(); } return; }
+  if (!el) {
+    if ((inboxSnoozeAt && !e.target.closest?.(".ib-snz")) || inboxPhrOpen) { inboxSnoozeAt = ""; inboxPhrOpen = ""; renderMain(); }
+    return;
+  }
   e.stopPropagation();
   const key = Object.keys(INBOX_CLICKS).find((k) => k in el.dataset);
   INBOX_CLICKS[key](el);
@@ -883,4 +916,11 @@ function inboxClick(e) {
 if (typeof document !== "undefined") {
   document.addEventListener("keydown", (e) => { if (inboxKey(e)) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
   document.addEventListener("click", inboxClick, true);
+  // Writing in the reply box, a click on a button in the Inbox (Allow, a choice, a phrase) leaves the cursor in the box.
+  document.addEventListener("mousedown", (e) => {
+    const a = document.activeElement;
+    if (e.button === 0 && a?.matches?.(".inbox-page textarea[data-text]") && e.target.closest?.(".inbox-page button, .inbox-page [role=button]")) e.preventDefault();
+  }, true);
 }
+/** The cursor was in an Inbox reply box that's gone (Allow moved it on to the next): the box on screen now takes it. */
+const inboxRefocus = () => document.querySelector(".inbox-page .ib-box textarea[data-text]")?.focus();

@@ -165,7 +165,7 @@ button.ib-sect.ib-strip { padding: 8px 16px 6px; gap: 5px; }
 .ib-kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 5px; border: 1px solid var(--line); background: var(--panel-2); font: 600 10.5px/1 var(--sans); color: var(--muted); }
 .ib-full { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 12px; }
 .ib-card.run { padding-bottom: 16px; }
-.ib-card.run .ib-bar { left: 16px; right: 16px; bottom: 6px; }
+.ib-card.run .ib-bar { left: 0; right: 0; bottom: 6px; }
 .ib-foot-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .ib-card .row-btns, .ib-main > .row-btns { margin: 0; }
 
@@ -184,6 +184,23 @@ button.ib-sect.ib-strip { padding: 8px 16px 6px; gap: 5px; }
 .ib-box { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
 .ib-box textarea { width: 100%; min-height: 64px; max-height: 260px; resize: none; border: 0; outline: none; background: transparent; color: var(--ink); font: 13.5px/1.5 var(--sans); padding: 2px 0; }
 .ib-box-acts { display: flex; gap: 8px; align-items: center; min-width: 0; }
+/* Quick phrases at the right of Send's row; those that don't fit go in More's menu, which opens upward. */
+.ib-phr { flex: 1; min-width: 0; display: flex; justify-content: flex-end; align-items: center; gap: 6px; margin-left: 8px; }
+.ib-phr-row { flex: 0 1 auto; min-width: 0; display: flex; gap: 6px; overflow: hidden; }
+.ib-phr-row > .ib-sug { flex: none; }
+.ib-phr-more { position: relative; display: inline-flex; flex: none; }
+.ib-phr-more[hidden], .ib-phr-row > [hidden], .ib-phr-menu > [hidden] { display: none; }
+.ib-caret { margin-left: 4px; font-size: 11px; line-height: 1; color: var(--muted); }
+.ib-phr-menu { position: absolute; right: 0; bottom: calc(100% + 4px); z-index: 30; display: flex; flex-direction: column; min-width: 170px; max-width: 320px; padding: 4px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); box-shadow: var(--shadow); }
+.ib-phr-menu button { padding: 6px 10px; border-radius: 7px; text-align: left; font-size: 12.5px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ib-phr-menu button:hover { background: color-mix(in srgb, var(--sel) 55%, transparent); }
+/* "Thinking" with dots that count 1, 2, 3 (each dot keeps its place). */
+.ib-dots i { font-style: normal; }
+.ib-dots i:nth-child(2) { animation: ib-dot2 1.2s steps(1, end) infinite; }
+.ib-dots i:nth-child(3) { animation: ib-dot3 1.2s steps(1, end) infinite; }
+@keyframes ib-dot2 { 0% { opacity: 0; } 33% { opacity: 1; } }
+@keyframes ib-dot3 { 0% { opacity: 0; } 66% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .ib-dots i { animation: none !important; } }
 .ib-hint { display: flex; gap: 14px; align-items: center; color: var(--muted); font-size: 11.5px; }
 .ib-hint .ib-kbd { margin: 0 2px; }
 .ib-hint { gap: 14px 6px; }
