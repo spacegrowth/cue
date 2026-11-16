@@ -1,7 +1,8 @@
 /* ---------- Inbox (inbox.js): two lines per session under Pinned, Needs you, Running, Done; a session opened in its place ---------- */
 /* "Inbox 3" in the header's switch: how many need you, on the button's one line. */
 .switch-view [data-view="inbox"] { flex: none; white-space: nowrap; }
-.switch-view .ib-count { margin-left: 6px; padding: 0 6px; border-radius: var(--pill-radius); background: var(--deny); color: #fff; font: 700 10.5px/16px var(--sans); display: inline-block; vertical-align: 1px; }
+/* How many need you: a quiet count in the button's own colour (a tint of its text), not an alarm. */
+.switch-view .ib-count { margin-left: 6px; padding: 0 6px; border-radius: var(--pill-radius); background: color-mix(in srgb, currentColor 14%, transparent); color: inherit; font: 650 10.5px/16px var(--sans); display: inline-block; vertical-align: 1px; }
 
 /* The view takes the board's place: the list on the left, the open session (or what's running) beside it. A narrow
    window shows one at a time: the open session in the list's place, ‹ back to the list. */
