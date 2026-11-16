@@ -134,3 +134,30 @@ test("a terminal dialog's choice (no ask before it) is a decision line: what you
   const order = await chat.evaluate((c) => [...c.querySelectorAll(".cv-you, .cv-result")].map((el) => (el.matches(".cv-result") ? "decision" : el.textContent.includes("/model") ? "model" : "you")));
   expect(order).toEqual(["model", "decision", "you"]);
 });
+
+test("an answered question wraps as text with its answer under it, inside the pane, at narrow and wide widths", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  const q = "Should the Desk keep the lead apart from the sessions list at the top of the left column, or fold it in with the others?";
+  const a = "answered: Keep it apart at the top, and never show its crew there, not even the ones that finished and were committed long ago";
+  await cue.change((st, [q, a]) => {
+    const t0 = Date.now() - 600000;
+    st.sessions.find((x) => x.session_id === "eng").thread = [
+      { role: "you", text: "Lay out the Desk", at_ms: t0 },
+      { role: "agent", text: `asked: ${q}`, at_ms: t0 + 60000 },
+      { role: "you", text: a, at_ms: t0 + 70000 },
+    ];
+  }, [q, a]);
+  const chat = await openEngChat(page);
+  for (const width of [720, 1500]) {
+    await page.setViewportSize({ width, height: 900 });
+    const ask = chat.locator(".cv-ask");
+    await expect(ask.locator(".cv-ask-ans")).toContainText("Keep it apart");
+    const [box, qb, ab] = await Promise.all([ask.boundingBox(), ask.locator(".cv-ask-q").boundingBox(), ask.locator(".cv-ask-ans").boundingBox()]);
+    // The question as text, not a letter a line; the answer under it; both inside the ask's own width.
+    expect(qb.width).toBeGreaterThan(box.width / 2);
+    expect(ab.y).toBeGreaterThanOrEqual(qb.y + qb.height - 1);
+    expect(qb.x + qb.width).toBeLessThanOrEqual(box.x + box.width + 1);
+    expect(ab.x + ab.width).toBeLessThanOrEqual(box.x + box.width + 1);
+    expect(await chat.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+  }
+});

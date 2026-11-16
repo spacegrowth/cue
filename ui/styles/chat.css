@@ -514,10 +514,14 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .cv-result.no .sent-check { background: var(--deny); }
 /* An ask the agent made (chat/render.js chatAskHtml): what it asked, your answer beside it, the command in a code block. */
 .cv-ask { font-size: 13px; }
-.cv-ask-row { display: flex; align-items: center; gap: 8px; min-width: 0; margin-bottom: 6px; }
+/* The head and a question wrap as text; the answer wraps inside the pane, beside "Asked to run" or on its own line
+   under a question (render.js chatAskHtml). Nothing runs past the right edge. */
+.cv-ask-row { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; row-gap: 4px; min-width: 0; margin-bottom: 6px; }
 .cv-ask-head { font-weight: 650; white-space: nowrap; }
-.cv-ask-q { min-width: 0; overflow-wrap: anywhere; }
-.cv-ask-ans { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px 4px 5px; border-radius: 10px; background: var(--panel-2); font-weight: 600; white-space: nowrap; }
+.cv-ask-q { flex: 1 1 12em; min-width: 0; overflow-wrap: anywhere; }
+.cv-ask-ans { display: inline-flex; align-items: flex-start; gap: 7px; max-width: 100%; min-width: 0; box-sizing: border-box; padding: 4px 10px 4px 5px; border-radius: 10px; background: var(--panel-2); font-weight: 600; overflow-wrap: anywhere; }
+.cv-ask > .cv-ask-ans { margin-bottom: 6px; }
+.cv-ask-ans .sent-check { flex: none; }
 .cv-ask-ans .sent-check { width: 18px; height: 18px; font-size: 10px; }
 .cv-ask-ans.no .sent-check { background: var(--deny); }
 .cv-ask-code, .ib-ask-code { margin: 0 0 4px; background: var(--slab); color: var(--on-slab); padding: 9px 12px; border-radius: 8px; font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
