@@ -342,7 +342,7 @@ fn turn_start(entries: &[Value]) -> usize {
     for (i, e) in entries.iter().enumerate() {
         if entry_kind(e) == "user" {
             if let Some(t) = user_text(e) {
-                if !entry_flag(e, "isMeta") && !entry_flag(e, "isSidechain") && !t.starts_with('<') && !crate::logs::transcript::peer_text(&t) {
+                if !entry_flag(e, "isMeta") && !entry_flag(e, "isSidechain") && crate::logs::transcript::opens_a_turn(&t) {
                     start = i + 1;
                 }
             }
@@ -570,6 +570,21 @@ mod tests {
         assert!(!in_pane(&Some(String::new()), "/dev/ttys007"), "a pane long closed");
         assert!(in_pane(&None, "/dev/ttys007"), "tmux not answering: trusted");
         assert!(in_pane(&Some("/dev/ttys004".into()), ""), "no tty to compare: trusted");
+    }
+
+    /// A Desk lead's every message opens with Cue's `<desk>` block: each starts its own turn, so a line the lead
+    /// wrote turns ago (an ITEM:) isn't read again at the next turn's end. A command's tag still doesn't.
+    #[test]
+    fn a_desk_block_prompt_starts_a_turn_and_a_command_tag_does_not() {
+        let path = std::env::temp_dir().join(format!("cue-desk-turn-{}.jsonl", std::process::id()));
+        let user = |t: &str| json!({ "type": "user", "message": { "role": "user", "content": t } }).to_string();
+        let said = |t: &str| json!({ "type": "assistant", "message": { "role": "assistant", "content": [{ "type": "text", "text": t }] } }).to_string();
+        let lines = ["{}".to_string(), user("Add a footer item"), said("ITEM: feature | Footer"), user("<desk project=\"cue\">\nItems:\n</desk>\nhi"), said("Routed."), user("<command-name>/cost</command-name>"), said("Still here.")];
+        std::fs::write(&path, lines.join("\n") + "\n").unwrap();
+        let p = json!({ "transcript_path": path.to_string_lossy(), "last_assistant_message": "Still here." });
+        let texts: Vec<String> = final_turn(&p).iter().filter_map(|v| v["text"].as_str().map(str::to_string)).collect();
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(texts, ["Routed.", "Still here."]);
     }
 
     /// A fake clock on this thread, run ahead as each case says.

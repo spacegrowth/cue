@@ -1,7 +1,7 @@
 //! When a session's turn ended, was interrupted or finished compacting, by its transcript, and what
 //! the agent wrote in it.
 
-use super::{content_blocks, harness_text, is_stop_hook, lines, peer_text, read_from, stamp, yours_mid_turn};
+use super::{content_blocks, harness_text, is_stop_hook, lines, opens_a_turn, peer_text, read_from, stamp, yours_mid_turn};
 use crate::model::TurnPart;
 use serde_json::Value;
 
@@ -110,7 +110,7 @@ pub fn turn_ended_parts(path: &str) -> Option<(u64, String, Vec<TurnPart>)> {
                         // A teammate's message: not a turn of yours, the parts so far stay as they are.
                     } else if harness_text(&t) {
                         hooked = false;
-                    } else if !t.trim().is_empty() && !t.trim_start().starts_with('<') {
+                    } else if opens_a_turn(&t) {
                         parts.clear(); // your next prompt: a new turn
                         hooked = false;
                     }

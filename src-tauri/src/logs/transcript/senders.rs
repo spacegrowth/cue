@@ -107,6 +107,14 @@ pub fn harness_text(text: &str) -> bool {
     t.starts_with("<task-notification>") || t.starts_with(STOP_HOOK_MARK)
 }
 
+/// A prompt that is your own message, or Cue's on your behalf: it starts a turn. Text that opens with a tag is
+/// Claude Code's own (a command, its output, a notice), except a Desk lead's messages, which open with Cue's
+/// `<desk>` block: missing those made every lead turn reach back to the last plain prompt, re-reading old lines.
+pub fn opens_a_turn(text: &str) -> bool {
+    let t = text.trim_start();
+    !t.is_empty() && (!t.starts_with('<') || t.starts_with("<desk ") || t.starts_with("<desk>")) && !harness_text(t) && !peer_text(t)
+}
+
 /// A teammate's message to its lead (or its notice), as Claude Code writes it into the lead's log: from it, not
 /// you, so it's never your prompt and never starts a turn of yours.
 pub fn peer_text(text: &str) -> bool {
