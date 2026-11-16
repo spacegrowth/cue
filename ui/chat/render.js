@@ -142,16 +142,15 @@ function chatHtml(it, s, harness, paged = false, page = null) {
   const chose = it && !isPending(it) && it.resolved_ms && !shown ? [{ at: it.resolved_ms, html: keyed(resultLine(it), "chose") }] : [];
   const ran = sid ? (ranLog.get(sid) || []).map((e, n) => ({ at: e.at, html: keyed(ranCard(sid, e, n), K(`ran:${e.at}`)) })) : [];
   const restarts = sid ? (state.restarted?.[sid] || []).map((r, n, all) => ({ at: r.at_ms, html: keyed(restartLine(sid, r, n === all.length - 1), K(`rs:${r.at_ms}`)) })) : [];
-  // A tracked session you come back to: "Since you looked" where the new part starts (about.js), no call.
-  const since = sid ? aboutSince(sid, ex) : null;
-  if (since) restarts.push({ at: since.at, html: keyed(since.html, "since") });
   const { reviews, reviewAt } = reviewFolds(ex, s?.team || []);
   const rows = withSteps(sid, s, ex, ex.map((e, n) => keyed((() => {
     if (e.role === "peer") return peerBubble(e.from || "another agent", "", e.at_ms, e.text);
     if (answers.has(n)) return "";
     if (decided.has(n)) return chose.length && near(e.at_ms) ? "" : chatDecisionLine(decided.get(n), e.at_ms);
     if (asks.has(n)) return chatAskHtml(`${s?.session_id || it?.id}:${e.at_ms}`, e, asks.get(n), harness, it?.machine || s?.machine);
-    // What Cue sent the lead for its crew: Cue's bubble on the right, never yours (team.js).
+    // What Cue sent the lead for its crew: Cue's bubble on the right, never yours (team.js). A page's own drawing first.
+    const own = e.role === "you" && page?.you?.(e, n);
+    if (own) return own;
     const cue = e.role === "you" && cueSaid(e.text);
     if (cue) return cueSaidLine(cue, `${sid}:${e.at_ms}`, e.text, `${ago(e.at_ms)} ago`, reviewAt.get(n));
     if (reviews.has(n)) return "";
@@ -265,7 +264,7 @@ function statusPanel(it, s) {
   if (s?.harness !== "claude" || !statusShown()) return "";
   const { status, key, sw } = latestStatus(it, s);
   const own = state.status_spent?.sessions?.[sw.sid];
-  const spent = own?.replies ? `${own.usd < 0.01 ? "" : "about "}${aboutMoney(own.usd)} so far` : "";
+  const spent = own?.replies ? `${own.usd < 0.01 ? "" : "about "}${usdShort(own.usd)} so far` : "";
   const bg = backgroundOn(sw.sid), agents = agentsOf(sw.sid), live = agents.filter(agentLive).length;
   // The agents each step runs on, found by the step's words in the agent's description (status.js agentOfStep).
   const known = bg ? agents.map((a) => ({ text: [a.h?.desc, a.name].filter(Boolean), mark: agentMark(a), name: a.name })) : [];
