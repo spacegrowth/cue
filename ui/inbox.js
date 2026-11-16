@@ -125,6 +125,55 @@ const inboxNeedRows = () => inboxRows().filter((r) => inboxTabOf(r.s) === "inbox
 /** How many sessions need you, for the header's "Inbox 3". */
 const inboxCount = () => inboxNeedRows().length;
 
+// ---------- the Desk: asks from a project's Dispatch, and asks from a session that holds a Desk item ----------
+
+/** The Desk's projects (state.desk, from the hub); [] when there's none. */
+const inboxDeskProjects = () => state.desk?.projects || [];
+/** The Desk project entry whose Dispatch session `sid` is; null when it's none's (its name may be ""). */
+const inboxDispatchOf = (sid) => inboxDeskProjects().find((p) => p.dispatch && p.dispatch === sid) || null;
+/** A row from a Dispatch: its ask says so (`from_dispatch`), or its session is a project's Dispatch. */
+const inboxFromDispatch = (r) => !!r.it?.from_dispatch || !!inboxDispatchOf(r.sid);
+/** The project a Dispatch row is for; "" when none is named. */
+const inboxDispatchProject = (r) => (r.it?.from_dispatch && r.it.project) || inboxDispatchOf(r.sid)?.project || r.project || "";
+/** A Dispatch row's name: "<project> Dispatch". */
+const inboxDispatchName = (r) => (inboxDispatchProject(r) ? `${inboxDispatchProject(r)} Dispatch` : "Dispatch");
+/** The Desk item session `sid` holds (not done yet), or null. */
+function inboxHeldItem(sid) {
+  for (const p of inboxDeskProjects()) {
+    const it = (p.items || []).find((x) => x.holder?.sid === sid && x.state !== "done");
+    if (it) return { ...it, project: it.project || p.project };
+  }
+  return null;
+}
+/** A row's name: a Dispatch's dark D and "<project> Dispatch"; else the session's own. */
+const inboxNameHtml = (r) => (inboxFromDispatch(r) ? `<span class="ib-dmark">D</span><span class="ib-name">${esc(inboxDispatchName(r))}</span>` : nameSpan(r.sid, r.project, "ib-name"));
+/** "<PROJECT> · " before an item's title; "" for a project with no name. */
+const inboxPjHtml = (project) => (project ? `<span class="ib-pj">${esc(project)}</span> · ` : "");
+/** A third line on a row whose session holds a Desk item: "<PROJECT> · for <item title>". */
+function inboxForHtml(r) {
+  const it = inboxFromDispatch(r) ? null : inboxHeldItem(r.sid);
+  return it ? `<span class="ib-for">${inboxPjHtml(it.project)}for <b>${esc(it.title)}</b></span>` : "";
+}
+/** A button that opens `project`'s Desk (on item `id`, when given). */
+const inboxDeskBtn = (project, id, label) => `<button class="ib-act ib-desk" data-inbox-desk="${esc(project)}" data-item="${esc(id || "")}">${esc(label)}</button>`;
+/** Over the brief of a session that holds a Desk item: what it's for, and Open in Desk (not for a project with no
+ *  name: it has no Desk to open). */
+function inboxForBar(r) {
+  const it = inboxFromDispatch(r) ? null : inboxHeldItem(r.sid);
+  return it ? `<div class="ib-forbar"><span class="ib-forw">${inboxPjHtml(it.project)}for <b>${esc(it.title)}</b></span><span class="grow"></span>${it.project ? inboxDeskBtn(it.project, it.id, "Open in Desk ›") : ""}</div>` : "";
+}
+/** The Desk on `project` (the header's project picked), item `itemId` open when given. Nothing but a note when this
+ *  build has no Desk (ui/desk.js's deskOpenItem). */
+function openInDesk(project, itemId = "") {
+  if (typeof deskOpenItem !== "function") return toast("The Desk isn't in this build");
+  if (project && projFilter !== project) setProjFilter(project);
+  inboxSid = null;
+  inboxSnoozeAt = "";
+  view = "desk";
+  if (itemId) deskOpenItem(itemId);
+  renderMain();
+}
+
 /** `rows` (newest first) in the order they keep: one stays where it was while it stays in `sect`; one that came in
  *  goes on top. */
 function inboxSeated(sect, rows) {
@@ -132,7 +181,8 @@ function inboxSeated(sect, rows) {
   for (const r of fresh.reverse()) inboxSeats.set(r.sid, { sect, n: ++inboxSeq, at: now(), from: inboxSeats.get(r.sid)?.sect || "" });
   return rows.sort((a, b) => inboxSeats.get(b.sid).n - inboxSeats.get(a.sid).n);
 }
-/** The open tab's rows by section, in order: Running (the strip at the top), Pinned, Needs you, Done, Later, Parked
+/** The open tab's rows by section, in order: Running (the strip at the top), Pinned, Needs you (From Dispatch and From
+ *  sessions when a Dispatch asks), Done, Later, Parked
  *  (Pinned, Later and Parked on the Inbox tab only; the Snoozed tab lists its rows as they are). */
 function inboxSections() {
   const rows = inboxRows().filter((r) => inboxTabOf(r.s) === inboxTab).sort((a, b) => b.at - a.at);
@@ -142,7 +192,9 @@ function inboxSections() {
   const of = (k) => rest.filter((r) => (inboxLater(r.s) ? "need" : inboxSectOf(r)) === k);
   let quiet = 0;
   const done = of("done").filter((r) => r.it || inboxPinned(r.s) || !box || ++quiet <= INBOX_DONE_MAX);
-  return [["run", "Running", inboxSeated("run", of("run"))], ["pin", "Pinned", inboxSeated("pin", pinned)], ["need", "Needs you", inboxSeated("need", of("need"))], ["done", "Done", inboxSeated("done", done)], ["later", "Later", inboxSeated("later", parked)], ["parked", "Parked", inboxParkedRows()]];
+  // Needs you, split when Dispatch asks: From Dispatch on top, then From sessions (one seat order for both).
+  const need = inboxSeated("need", of("need")), disp = need.filter(inboxFromDispatch), own = need.filter((r) => !disp.includes(r));
+  return [["run", "Running", inboxSeated("run", of("run"))], ["pin", "Pinned", inboxSeated("pin", pinned)], ["dispatch", "From Dispatch", disp, true], ["need", disp.length ? "From sessions" : "Needs you", own, disp.length > 0], ["done", "Done", inboxSeated("done", done)], ["later", "Later", inboxSeated("later", parked)], ["parked", "Parked", inboxParkedRows()]];
 }
 
 // ---------- a row's words ----------
@@ -258,8 +310,8 @@ function inboxRowHtml(r) {
   const under = inboxSnoozed(s) ? `Back ${inboxWhen(s.snooze_ms)}${line ? ` · ${line}` : ""}` : line;
   const side = `<span class="ib-time">${ago(r.at)}</span>${inboxPinned(s) ? `<span class="ib-pin">${PIN_ICON}</span>` : ""}${inboxFull(s) ? inboxMeter(s) : ""}`;
   return `<div class="ib-row ${kind} ${inboxLater(s) ? "later" : ""} ${sinking ? "sinking" : ""} ${(inboxSid || inboxLast) === sid ? "on" : ""}" role="button" tabindex="0" data-inbox-open="${esc(sid)}" style="${projStyle(r.project)}">`
-    + `<span class="ib-dot">${inboxDot(r)}</span><span class="ib-l1">${nameSpan(sid, r.project, "ib-name")}${inboxBadges(r)}<span class="ib-subj">${esc(subj)}</span></span>`
-    + `<span class="ib-l2">${esc(under)}</span><span class="ib-side">${side}</span>`
+    + `<span class="ib-dot">${inboxDot(r)}</span><span class="ib-l1">${inboxNameHtml(r)}${inboxBadges(r)}<span class="ib-subj">${esc(subj)}</span></span>`
+    + `<span class="ib-l2">${esc(under)}</span>${inboxForHtml(r)}<span class="ib-side">${side}</span>`
     + `<span class="ib-acts ${inboxSnoozeAt === `row:${sid}` ? "open" : ""}">${inboxActs(sid, s, `row:${sid}`)}</span>${kind === "run" && s ? inboxBar(s) : ""}</div>`;
 }
 /** Whether Running, Later or Parked (`key`) is open (folded unless you opened it; remembered). */
@@ -286,14 +338,16 @@ function inboxStripBars(rows) {
   return `<span class="ib-strip-bars">${bars}${more > 0 ? `<span class="ib-strip-more">+${more}</span>` : ""}</span>`;
 }
 /** A heading and its rows; nothing when it has none. Running's is a thin strip at the top, "Running · 3" and its bars,
- *  that unfolds its rows; Later's and Parked's headings fold them, with their counts. */
-function inboxSection([key, title, rows]) {
+ *  that unfolds its rows; Later's and Parked's headings fold them, with their counts. `counted`: the heading shows its
+ *  count too (From Dispatch and From sessions). */
+function inboxSection([key, title, rows, counted = false]) {
   if (!rows.length) return "";
   if (key === "run") {
     const open = inboxFoldOpen(key);
     return `<button class="ib-sect fold ib-strip" data-inbox-fold="run" aria-expanded="${open}"><span class="ib-fold">${open ? "▾" : "▸"}</span>${title} · <span class="ib-sect-n">${rows.length}</span>${inboxStripBars(rows)}</button>${open ? rows.map(inboxRowHtml).join("") : ""}`;
   }
-  if (key !== "later" && key !== "parked") return `<div class="ib-sect ${key}">${key === "pin" ? PIN_ICON : ""}${title}</div>${rows.map(inboxRowHtml).join("")}`;
+  const n = counted ? ` <span class="ib-sect-n">${rows.length}</span>` : "";
+  if (key !== "later" && key !== "parked") return `<div class="ib-sect ${key}">${key === "pin" ? PIN_ICON : ""}${title}${n}</div>${rows.map(inboxRowHtml).join("")}`;
   const open = inboxFoldOpen(key), draw = key === "parked" ? inboxParkedHtml : inboxRowHtml;
   return `<button class="ib-sect fold" data-inbox-fold="${key}" aria-expanded="${open}"><span class="ib-fold">${open ? "▾" : "▸"}</span>${title} <span class="ib-sect-n">${rows.length}</span></button>${open ? rows.map(draw).join("") : ""}`;
 }
@@ -308,7 +362,7 @@ const inboxEmpty = () => ({ inbox: "Nothing needs you, and nothing is working.",
 /** The list: its head (how many need you and run, the tabs), then the sections. */
 function inboxList() {
   const secs = inboxSections(), of = (k) => secs.find(([key]) => key === k)[2];
-  const need = of("pin").filter((r) => inboxSectOf(r) === "need").length + of("need").length, run = of("run").length;
+  const need = of("pin").filter((r) => inboxSectOf(r) === "need").length + of("dispatch").length + of("need").length, run = of("run").length;
   const counts = inboxTab === "inbox" ? [[need, "need you"], [run, "running"]].filter(([c]) => c).map(([c, w]) => `${c} ${w}`).join(" · ") : "";
   const body = secs.map(inboxSection).join("");
   return `<div class="inbox"><div class="ib-top"><b>Inbox</b><span class="ib-counts">${esc(counts)}</span>${inboxTabs()}</div>
@@ -710,9 +764,10 @@ function inboxCloseBtn(r) {
  *  the brief in two columns (stacked when narrow). No hover text: a tooltip the reused parts carry is left out. */
 function inboxOpened(sid) {
   const r = inboxRowFor(sid), s = r.s;
-  const head = `<div class="ib-head"><button class="ib-back" data-inbox-back aria-label="Back to the list">‹</button><span class="ib-dot">${inboxDot(r)}</span><span class="ib-hname">${esc(nameOf(sid, r.project))}</span><span class="ib-status">${esc(inboxStatus(r))}</span><span class="grow"></span>`
-    + `<span class="ib-hacts"><button class="ib-act" data-inbox-full="${esc(sid)}">Open chat</button>${inboxActs(sid, s, "head")}${inboxCloseBtn(r)}</span>${inboxStep(sid)}</div>`;
-  const body = `<div class="ib-brief" data-scroll-key="inbox-brief">${inboxMain(r)}${inboxAside(r)}</div>`;
+  const disp = inboxFromDispatch(r), name = disp ? `<span class="ib-dmark">D</span><span class="ib-hname">${esc(inboxDispatchName(r))}</span>` : `<span class="ib-hname">${esc(nameOf(sid, r.project))}</span>`;
+  const head = `<div class="ib-head"><button class="ib-back" data-inbox-back aria-label="Back to the list">‹</button><span class="ib-dot">${inboxDot(r)}</span>${name}<span class="ib-status">${esc(inboxStatus(r))}</span><span class="grow"></span>`
+    + `<span class="ib-hacts">${disp && inboxDispatchProject(r) ? inboxDeskBtn(inboxDispatchProject(r), "", `Open ${inboxDispatchProject(r)}'s Desk ›`) : ""}<button class="ib-act" data-inbox-full="${esc(sid)}">Open chat</button>${inboxActs(sid, s, "head")}${inboxCloseBtn(r)}</span>${inboxStep(sid)}</div>`;
+  const body = `${inboxForBar(r)}<div class="ib-brief" data-scroll-key="inbox-brief">${inboxMain(r)}${inboxAside(r)}</div>`;
   return `<div class="inbox-page" data-inbox-page="${esc(sid)}" data-kind="${r.kind}" style="${projStyle(r.project)}">${head}${body}</div>`.replace(/\stitle="[^"]*"/g, "");
 }
 /** A session on the calm page: its name, what you asked and what it's on (a working one's bar along its foot), or
@@ -755,12 +810,12 @@ function inboxAdvance(sid) {
   inboxSnoozeAt = "";
   if (next) { active = { id: inboxItems().get(next)?.id || null, sid: next, exact: false }; seenSession(next); }
 }
-/** The sessions that need you, in the list's order (Pinned first). */
+/** The sessions that need you, in the list's order (Pinned first, then From Dispatch). */
 function inboxNeedOrder() {
   const seat = (sid) => inboxSeats.get(sid), rows = inboxNeedRows();
   const pin = rows.filter((r) => inboxPinned(r.s)), rest = rows.filter((r) => !inboxPinned(r.s));
   const order = (xs) => xs.sort((a, b) => (seat(b.sid)?.n || 0) - (seat(a.sid)?.n || 0) || b.at - a.at).map((r) => r.sid);
-  return [...order(pin), ...order(rest)];
+  return [...order(pin), ...order(rest.filter(inboxFromDispatch)), ...order(rest.filter((r) => !inboxFromDispatch(r)))];
 }
 /** Open session `sid` beside the list, on what it asks (the Board's keys and buttons act on what's shown). */
 function inboxOpen(sid) {
@@ -892,6 +947,7 @@ const INBOX_CLICKS = {
   inboxEarlier: (el) => { inboxAllEarlier.add(el.dataset.inboxEarlier); renderMain(); },
   inboxSug: inboxTakeSuggestion,
   inboxDiff: (el) => inboxDiff(el.dataset.inboxDiff),
+  inboxDesk: (el) => openInDesk(el.dataset.inboxDesk, el.dataset.item),
   inboxBack: () => inboxClose(),
   inboxNext: () => inboxStepTo(1),
   inboxOpen: (el) => inboxOpen(el.dataset.inboxOpen),
