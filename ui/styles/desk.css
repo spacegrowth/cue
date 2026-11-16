@@ -8,7 +8,7 @@
 
 /* The sessions: a row each (name, LEAD for a lead, its state; then the item it's on and "not committed"), crew indented under its lead. */
 .dk-srow { position: relative; margin: 0 8px 4px; padding: 13px 14px; border-radius: 10px; cursor: pointer; }
-/* What the row is (Desk lead, Lead, Session, Crew): the chat header's mark, small, in the row's top-right corner. */
+/* What the row is (Desk lead, Lead, Session, Crew): the chat header's mark, right after the name. */
 .dk-rmark { position: absolute; top: 0; right: 0; padding: 2px 8px 3px; border-radius: 0 10px 0 8px; background: var(--accent); color: var(--on-accent); font: 600 9.5px/1.3 var(--mono); letter-spacing: .14em; text-transform: uppercase; pointer-events: none; }
 .dk-srow:has(.dk-rmark) { padding-top: 16px; }
 .dk-srow:has(.dk-rmark) > .dk-s1 { padding-right: 76px; }
@@ -69,7 +69,7 @@
 
 /* An item in two rows: its state tag, #id and title; under them who holds it, its age (a done one's time) and Looks
    right when it's ready to check; an ask's question below. */
-.dk-it { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 10px; row-gap: 3px; margin: 0 8px 2px; padding: 9px 12px; border-radius: 10px; cursor: pointer; }
+.dk-it { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; column-gap: 10px; row-gap: 3px; margin: 0 8px 2px; padding: 9px 12px; border-radius: 10px; cursor: pointer; }
 .dk-i1 { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .dk-i2 { grid-column: 2; display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted); font-size: 12px; }
 .dk-i2 .dk-who { flex: 0 1 auto; min-width: 0; max-width: none; }
@@ -79,14 +79,19 @@
 .dk-i2 .dk-ok { margin-left: auto; }
 .dk-it:hover { background: var(--panel-2); }
 .dk-it.on { background: var(--sel); }
-.dk-tag { min-width: 46px; padding: 2px 6px; white-space: nowrap; border-radius: 5px; background: var(--panel-2); color: var(--muted); font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; text-align: center; }
+.dk-tag { min-width: 46px; margin-top: 1px; padding: 2px 6px; white-space: nowrap; border-radius: 5px; background: var(--panel-2); color: var(--muted); font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; text-align: center; }
 .dk-tag.ask { background: var(--deny); color: var(--on-accent); }
-.dk-tag.landed { background: var(--accent); color: var(--on-accent); }
-.dk-tag.check { color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: none; }
+/* A row with no tag words (all but an ask and a stuck one): no tag column, so the title takes the row's width. Back to
+   check and not opened since: a dot before it. */
+.dk-it.notag { grid-template-columns: minmax(0, 1fr); }
+.dk-it.notag > .dk-tag { display: none; }
+.dk-it.notag > :is(.dk-i2, .dk-h) { grid-column: 1; }
+.dk-it.landed .dk-i1::before { content: ""; flex: none; align-self: flex-start; width: 7px; height: 7px; margin-top: 6px; border-radius: 50%; background: var(--accent); }
 .dk-tag.now { color: var(--ink); }
 .dk-tag.done { background: none; }
 .dk-id { color: var(--muted); font: 11px var(--mono); }
-.dk-t { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The whole title, wrapping as long as it needs: never cut at "…". */
+.dk-t { flex: 1; min-width: 0; font-size: 13.5px; line-height: 1.4; font-weight: 600; overflow-wrap: anywhere; }
 .dk-who { max-width: 140px; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-who:has(.dk-givewrap) { overflow: visible; }
 .dk-it .dk-givemenu { left: auto; right: 0; }
@@ -154,13 +159,11 @@
 /* The chat card (left; class dk-right from when it sat on the right): tabs, the chat, the box. */
 .dk-right { position: relative; }
 .dk-tabs { gap: 18px; padding: 0 20px; align-items: stretch; }
-/* A chat's mark (Desk picks, mark A): one solid block in the theme's color filling the header's top-right corner, what
-   the chat is in it; its bottom-left corner rounded, its top right the card's own corner. The card leaves that corner
-   unpainted so its white doesn't show as a thin curve along the mark's edge: the mark paints it. */
-.dk-mark { flex: none; align-self: stretch; display: flex; align-items: center; margin: 0 -14px -1px 4px; padding: 0 18px; border-radius: 0 14px 0 10px; background: var(--accent); color: var(--on-accent); font: 700 11px var(--mono); letter-spacing: .14em; text-transform: uppercase; white-space: nowrap; }
-.dk-tabs .dk-mark { margin-right: -20px; }
-.dk-mark.float { position: absolute; top: 0; right: 0; height: 48px; margin: 0; z-index: 1; }
-.dk-card:has(.dk-mark) { background: linear-gradient(var(--panel), var(--panel)) left top / calc(100% - 14px) 14px no-repeat, linear-gradient(var(--panel), var(--panel)) left 14px / 100% calc(100% - 14px) no-repeat; }
+/* A chat's mark (Desk picks, mark B): its icon in the theme color and a small muted word, right after the chat's name. */
+.dk-mark { flex: none; align-self: center; display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font: 650 12px var(--sans); white-space: nowrap; }
+.dk-mark .dk-kic { margin: 0; }
+.dk-tabs .dk-mark { margin-left: -8px; }
+.dk-mark.float { position: absolute; top: 0; right: 20px; height: 48px; z-index: 1; }
 .dk-tab { display: flex; align-items: center; gap: 6px; padding: 0; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--muted); font-size: 13.5px; font-weight: 650; cursor: pointer; }
 .dk-tab.on { color: var(--ink); border-bottom-color: var(--ink); }
 .dk-tab .n { font-family: var(--mono); font-size: 11px; color: var(--muted); }
@@ -238,25 +241,59 @@
 .dk-md p { margin: 0 0 6px; line-height: 1.5; }
 .dk-md a { overflow-wrap: anywhere; }
 
-/* Desk home: a row a Desk, then + New Desk. */
-.dk-desks { width: 100%; max-width: 860px; margin: 0 auto; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; min-height: 0; padding-bottom: 8px; }
+/* Desk home (desk_home.js): one table, a row a Desk (name and what it's about · project and people · tasks · bugs ·
+   features · on it), + New Desk at its foot. */
+.dk-desks { width: 100%; max-width: 1340px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; min-height: 0; padding-bottom: 8px; }
 .dk-hh { margin: 6px 4px 2px; font: 700 12px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--on-bg); opacity: .8; }
-.dk-desk, .dk-newdesk { flex: none; display: flex; flex-direction: row; align-items: center; gap: 16px; padding: 14px 20px; overflow: visible; }
-.dk-desk { cursor: pointer; }
-.dk-dn { display: flex; flex-direction: column; gap: 2px; width: 190px; min-width: 0; }
-.dk-dn b { display: inline-flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700; }
-.dk-dn span { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dk-b { color: var(--muted); font-size: 13px; }
-.dk-b b { color: var(--ink); font-weight: 650; }
-.dk-open { color: var(--muted); font-size: 12.5px; font-weight: 650; }
-.dk-desk:hover .dk-open { color: var(--ink); }
-.dk-newdesk { background: transparent; border: 1px dashed color-mix(in srgb, var(--on-bg) 50%, transparent); box-shadow: none; color: var(--on-bg); }
-.dk-newdesk .dk-fld { max-width: 320px; padding: 5px 8px; border: 0; border-radius: 8px; background: var(--panel); color: var(--ink); font: 12px var(--mono); }
-.dk-newdesk .dk-hint { color: var(--on-bg-muted); font-size: 12.5px; }
-.dk-newdesk .btn.primary { background: var(--panel); color: var(--ink); }
+.dk-hh .dh-n { font-weight: 600; opacity: .8; }
+.dh-tbl { flex: none; background: var(--panel); color: var(--ink); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
+.dh-tr { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(120px, 150px) repeat(3, minmax(100px, 150px)) minmax(0, 1.1fr) 20px; align-items: center; gap: 12px; padding: 14px 18px; border-top: 1px solid var(--panel-2); }
+.dh-tr.dh-hd { border-top: 0; padding: 10px 18px; background: var(--panel-2); color: var(--muted); font: 700 10.5px var(--sans); letter-spacing: .08em; text-transform: uppercase; }
+.dh-tr.dk-desk { cursor: pointer; }
+.dh-tr.dk-desk:hover, .dh-tr.dk-desk:focus-visible { background: var(--panel-2); outline: none; }
+.dh-cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.dh-nm { font-size: 14px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dh-sm { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+.dh-sm.dh-ab { display: block; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; }
+.dh-pj { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dh-big { display: inline-flex; align-items: center; font-weight: 650; }
+.dh-big .dk-kic { margin-right: 6px; vertical-align: 0; }
+.dh-cell.z .dh-big { color: var(--muted); font-weight: 500; opacity: .7; }
+.dh-ck { display: inline-flex; align-items: center; height: 18px; padding: 0 7px; border-radius: 999px; background: var(--sel); color: var(--on-sel); font-weight: 650; }
+.dh-on { min-width: 0; color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dh-on b { color: var(--ink); font-weight: 650; }
+.dh-none { font-style: italic; }
+.dh-go { color: var(--muted); font-size: 16px; text-align: right; }
+.dh-empty { padding: 14px 18px; color: var(--muted); }
+.dh-add { all: unset; box-sizing: border-box; display: block; width: 100%; padding: 12px 18px; border-top: 1px solid var(--line); font-weight: 650; font-size: 13px; cursor: pointer; }
+.dh-add:hover, .dh-add:focus-visible { background: var(--panel-2); }
+/* A narrow window: the people and kinds fold under the name. */
+@media (max-width: 900px) {
+  .dh-tr { grid-template-columns: minmax(0, 1fr) 20px; }
+  .dh-tr.dh-hd { display: none; }
+  .dh-tr > :not(:first-child):not(.dh-go) { grid-column: 1; }
+  .dh-tr .dh-go { grid-row: 1; grid-column: 2; }
+}
+/* + New in the header: New session or New Desk. */
+.nw-wrap { position: relative; display: inline-flex; }
+.nw-pop { position: absolute; top: 34px; left: 0; z-index: 40; display: flex; flex-direction: column; min-width: 180px; padding: 5px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); }
+.nw-pop button { all: unset; display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.nw-pop button:hover, .nw-pop button:focus-visible { background: var(--panel-2); }
+.nw-pop kbd { margin-left: auto; color: var(--muted); font: 11px var(--sans); }
+/* New Desk: a project and a name. */
+.nd-scrim { z-index: 40; }
+.nd { width: min(460px, calc(100% - 40px)); gap: 6px; border-radius: 18px; padding: 20px 22px; }
+.nd-head { display: flex; align-items: center; margin-bottom: 8px; }
+.nd-head b { font-size: 16px; }
+.nd-x { all: unset; padding: 0 4px; color: var(--muted); font-size: 18px; cursor: pointer; }
+.nd-l { margin-top: 8px; color: var(--muted); font-size: 12px; font-weight: 650; }
+.nd-f { box-sizing: border-box; width: 100%; height: 38px; padding: 0 12px; border: 1.5px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); font: 14px var(--sans); }
+.nd-f:focus { border-color: var(--ink); outline: none; }
+.nd-hint { margin-top: 8px; color: var(--muted); font-size: 12.5px; }
+.nd-acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 /* The Sessions head: ‹ to every Desk, the Desk's name with ✎ on hover. */
 .dk-sh { padding-left: 8px; gap: 6px; }
-.dk-home-btn { all: unset; flex: none; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 7px; color: var(--muted); font-size: 20px; line-height: 1; cursor: pointer; }
+.dk-home-btn { all: unset; flex: none; height: 24px; padding: 0 8px 0 4px; display: inline-flex; align-items: center; border-radius: 6px; color: var(--muted); font-size: 12px; font-weight: 650; white-space: nowrap; cursor: pointer; }
 .dk-home-btn:hover, .dk-home-btn:focus-visible { background: var(--panel-2); color: var(--ink); }
 .dk-shn { display: flex; flex-direction: column; min-width: 0; padding: 6px 0; }
 .dk-shr { display: flex; align-items: center; gap: 6px; min-width: 0; }
@@ -321,6 +358,11 @@
 .dk-box.dk-sb-box:focus-within { border-color: color-mix(in srgb, var(--ink) 30%, var(--line)); }
 .dk-chk .dkc-l { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
 .dk-chk .dkc-dw { font-size: 13px; }
+/* "Done when" as a checklist (desk.js deskDoneWhenHtml): a point a line, small, room between; a quiet ring in front. */
+.dk-dwl { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-direction: column; gap: 7px; font-size: 12.5px; line-height: 1.45; color: var(--ink); }
+.dk-dwl li { display: flex; gap: 9px; align-items: baseline; }
+.dk-dwl li > i { flex: none; width: 9px; height: 9px; border: 1.5px solid color-mix(in srgb, var(--muted) 70%, transparent); border-radius: 50%; transform: translateY(1px); }
+.dk-dwl li > span { min-width: 0; overflow-wrap: anywhere; }
 /* "Committed abc123 · 2 files · Undo" (desk_commit.js deskCommitLine). */
 .dk-cmt { display: inline-flex; align-items: baseline; gap: 4px; flex-wrap: wrap; }
 .dk-undo-c { all: unset; cursor: pointer; color: var(--accent); }
@@ -332,12 +374,24 @@
 /* An item's kind (deskKindIcon): one small line icon in the theme color, wherever an item's kind shows. */
 .dk-kic { flex: none; display: inline-block; vertical-align: -2px; margin-right: 5px; color: var(--accent); }
 .dk-srow.on .dk-kic { color: var(--on-sel); }
-.dk-i1 > .dk-kic { align-self: center; margin-right: -3px; }
-/* A ROUTE card on two lines: what goes where in bold, then why, plain. */
-.dk-route .dk-say-h { font-weight: 650; }
-.dk-route .dk-say-h .dk-say-to, .dk-route .dk-say-t { font-weight: inherit; color: var(--ink); }
-.dk-route { padding: 5px 0; }
-.dk-route > .dk-say-s { display: block; margin-top: 1px; }
+.dk-i1 > .dk-kic { align-self: flex-start; margin-top: 3px; margin-right: -3px; }
+/* A hand-off (ROUTE) card: one bordered line, its kind's icon, number and title → who, then "Why ⌄"; open, the why
+   sits under it in a quiet box joined to the line. Lines all hand-offs drop the block's own border. */
+.msg .own-lines:not(:has(> :not(.dk-route))) { padding: 0; border: 0; }
+.dk-route { margin: 6px 0; }
+.dk-rt-row { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 12px; border: 1px solid var(--line); border-radius: 9px; font-size: 12.5px; }
+.dk-route.open .dk-rt-row { border-radius: 9px 9px 0 0; }
+.dk-rt-it { all: unset; flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; overflow: hidden; white-space: nowrap; }
+button.dk-rt-it { cursor: pointer; }
+.dk-rt-it .dk-kic { margin: 0; }
+.dk-rt-n { flex: none; font-weight: 650; color: var(--ink); }
+.dk-rt-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 500; color: var(--ink); }
+button.dk-rt-it:hover .dk-rt-t { text-decoration: underline; }
+.dk-rt-ar { flex: none; color: var(--muted); }
+.dk-rt-to { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 650; color: var(--ink); }
+.dk-rt-why { all: unset; flex: none; cursor: pointer; color: var(--muted); font-size: 12px; }
+.dk-rt-why:hover { color: var(--ink); }
+.dk-rt-why-s { padding: 6px 12px 7px; border: 1px solid var(--line); border-top: 0; border-radius: 0 0 9px 9px; background: var(--panel-2); color: var(--muted); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
 /* Your words about an item in the lead's chat (deskAboutHead): its kind, number and title over them, quiet. */
 .dk-about { all: unset; display: block; margin-bottom: 4px; font-size: 12px; color: var(--muted); cursor: pointer; overflow-wrap: anywhere; }
 .dk-about b { color: var(--ink); font-weight: 650; }
