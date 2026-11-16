@@ -61,7 +61,7 @@ pub(super) fn shown_name(s: &Session) -> String {
 }
 
 /// A crew holder's (lead session, agent id).
-fn crew_parts(h: &Holder) -> Option<(&str, &str)> {
+pub(super) fn crew_parts(h: &Holder) -> Option<(&str, &str)> {
     (h.kind == "crew" && !h.lead_sid.is_empty()).then_some((h.lead_sid.as_str(), h.sid.as_str()))
 }
 
@@ -291,7 +291,7 @@ fn waits_on(st: &Store, from: &str, id: &str) -> bool {
 
 /// A decision noted on `project`'s Desk: one that can be undone.
 #[allow(clippy::too_many_arguments)]
-fn decide(st: &mut Store, project: &str, item: Option<String>, by: &str, sid: &str, text: &str, why: &str, now: u64, fx: &mut Effects) {
+pub(super) fn decide(st: &mut Store, project: &str, item: Option<String>, by: &str, sid: &str, text: &str, why: &str, now: u64, fx: &mut Effects) {
     let id = st.desk.decision_id(now);
     st.desk.decisions.push(DeskDecision { id: id.clone(), project: project.into(), item_id: item, by: by.into(), sid: sid.into(), text: text.into(), why: why.into(), at: secs(now), undo: "can".into(), call: false });
     fx.decisions.push(id);
@@ -534,7 +534,8 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx
             }
             Line::Ask { question, choices } => fx.asks.push((lsid.to_string(), project.to_string(), question, choices)),
             Line::Context { who, what, why } if what == "keep" => keep(st, project, &by, &who, &why, now, fx),
-            Line::Context { .. } | Line::Done { .. } => {}
+            Line::Done { ids } => lead_done(st, project, lsid, &ids, fx),
+            Line::Context { .. } => {}
         }
     }
     for (what, why) in crate::sessions::crew_log::calls_in(text) {
@@ -542,6 +543,46 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx
         decide_call(st, project, item, &name, lsid, &what, &why, now, fx);
     }
 }
+
+/// The lead said DONE on `ids`. Its DONE sends to check only what it holds itself at work (holder_said); for any
+/// other item Cue tells it, in one short message shown in its chat, why the item stays as it is ("#69 not closed:
+/// it waits on your check"), so nothing it says is dropped without a word. Once while the item stays as it is.
+fn lead_done(st: &mut Store, project: &str, lsid: &str, ids: &[String], fx: &mut Effects) {
+    let mut notes = Vec::new();
+    for id in ids {
+        let id = st.desk.canon(id);
+        let Some(it) = st.desk.item(&id).filter(|i| i.project == project) else {
+            notes.push(format!("#{id} not closed: this Desk has no item #{id}"));
+            continue;
+        };
+        let mine = it.holder.as_ref().is_some_and(|h| h.is(lsid));
+        if mine && matches!(it.state.as_str(), "working" | "queued") {
+            continue;
+        }
+        // Told once while it stays as it is: a change to it (its state, a check, a route) lets the next DONE be told.
+        let seen = format!("{}@{}", it.state, it.updated);
+        if st.desk.done_told.get(&id) == Some(&seen) {
+            continue;
+        }
+        let holder = it.holder.as_ref().map(|h| h.name.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| "a session".into());
+        let why = match it.state.as_str() {
+            "to_check" => "it waits on your check".to_string(),
+            "done" => "it's done already".to_string(),
+            "working" | "queued" => format!("{holder} has it; its own DONE sends it to your check"),
+            _ => "no one has worked on it yet".to_string(),
+        };
+        st.desk.done_told.insert(id.clone(), seen);
+        notes.push(format!("#{id} not closed: {why}"));
+    }
+    if !notes.is_empty() {
+        notes.push(DONE_NOTE_FOR_LEAD.to_string());
+        fx.sends.push((lsid.to_string(), notes.join("\n")));
+    }
+}
+
+/// The last line of Cue's note on a lead's DONE it couldn't act on: for the lead, not shown in its chat
+/// (ui/desk_lead.js deskDoneNotes).
+const DONE_NOTE_FOR_LEAD: &str = "Only the person closes an item that waits on their check (Looks right). Don't say DONE for these again.";
 
 /// The lead said to keep session `who`'s context ("me": its own) as it is: Cue asks it for no hand-off note for the
 /// idle stretch it's in (cache_tick's Desk rule), until it next works; said while it works, for the idle stretch
@@ -662,9 +703,16 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
         }
         "send_back" => {
             let h = holder.ok_or("nobody holds it yet")?;
-            it.state = "working".into();
-            it.done_at = None;
-            let words = if text.trim().is_empty() { "Not done yet: have another look.".to_string() } else { text.trim().to_string() };
+            let words = text.trim().to_string();
+            if words.is_empty() {
+                return Err("Say what isn't right first: type it in the box, then Send back".into());
+            }
+            (it.state, it.done_at) = ("working".into(), None);
+            // Kept on the DONE it answers, so its card says why (the pictures, added by ipc desk_item_act, counted).
+            if let Some(c) = it.checks.last_mut() {
+                let (why, pics) = words.split_once("\nPictures with it").unwrap_or((&words, ""));
+                (c.back, c.back_pics) = (why.trim().to_string(), pics.matches('`').count() / 2);
+            }
             let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
             fx.sends.push((h.to().to_string(), format!("{crew}Desk item #{id} ({}) isn't done: {words}\nSay DONE: #{id} when it is.", it.title)));
         }
@@ -956,17 +1004,21 @@ impl Hub {
         });
     }
 
-    /// Cue asked session `sid` (`tokens` of context) for a hand-off note ahead of its cache running out, by the
-    /// Desk's rule (cache_tick): a decision on its project's Desk, by Cue, nothing to undo.
-    pub(super) fn desk_cue_asked(&self, sid: &str, tokens: u64) {
+    /// Cue asked session `sid` for a hand-off note (`why`: its context, and the reason: its cache ending, over the
+    /// Desk's mark, its compacting failed), by the Desk's rules (cache_tick): a step by Cue, nothing to undo, on each
+    /// item it holds (on its project's Desk when it holds none).
+    pub(super) fn desk_cue_asked(&self, sid: &str, why: &str) {
         let now = now_ms();
         let fx = self.write(|st| {
             let mut fx = Effects::default();
             let Some((project, name)) = st.sessions.get(sid).map(|s| (s.project.clone(), shown_name(s))) else { return fx };
-            let why = format!("{}, cache ending", super::desk_lead::context_k(tokens));
-            decide(st, &project, None, "Cue", "", &format!("Asked {name} for a hand-off note"), &why, now, &mut fx);
-            if let Some(d) = st.desk.decisions.last_mut() {
-                d.undo = "none".into();
+            let held: Vec<String> = st.desk.items.iter().filter(|i| i.project == project && i.state != "done" && i.holder.as_ref().is_some_and(|h| h.is(sid))).map(|i| i.id.clone()).collect();
+            let on: Vec<Option<String>> = if held.is_empty() { vec![None] } else { held.into_iter().map(Some).collect() };
+            for item in on {
+                decide(st, &project, item, "Cue", "", &format!("Asked {name} for a hand-off note"), why, now, &mut fx);
+                if let Some(d) = st.desk.decisions.last_mut() {
+                    d.undo = "none".into();
+                }
             }
             fx
         });

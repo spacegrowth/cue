@@ -80,6 +80,9 @@ pub struct DeskItem {
     /// item is done and Cue commits them on its own once they're free (hub/desk_commit.rs `desk_commit_waiting`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commit_wait: Option<CommitWait>,
+    /// Where each of its commits is: (folder, short hash), for its Files changed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub commit_in: Vec<(String, String)>,
     /// Who it went to at work and when (ms): only work begun after that is its (stamped as it's saved: hub/desk.rs).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub held_from: Option<(String, u64)>,
@@ -194,6 +197,12 @@ pub struct Desk {
     /// Each project's sessions on its Desk, in the order they joined: the ones its lead may route to (saved:
     /// db/desk.rs). You add and remove them; a session given an item joins, as does one you say yes to using.
     pub members: HashMap<String, Vec<String>>,
+    /// Sessions whose compacting failed (an error, or no end in 15 minutes), and when: a session on a Desk with a live
+    /// lead is asked for a hand-off note instead, and goes on fresh from it (hub/cache_tick.rs full_due). Not saved.
+    pub compact_failed: HashMap<String, u64>,
+    /// Items a lead said DONE on that its DONE couldn't close, and how each was ("state@updated") when Cue told it
+    /// why (hub/desk.rs lead_done): a lead saying it again of an unchanged item isn't answered again. Not saved.
+    pub done_told: HashMap<String, String>,
 }
 
 /// The session that runs a project's Desk, and the name it went by when last seen (shown once it has ended).

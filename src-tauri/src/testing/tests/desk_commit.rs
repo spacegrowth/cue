@@ -1,6 +1,7 @@
 //! Looks right with a commit (hub/desk_commit.rs): the item's files git says changed are committed at once (never
-//! pushed), not those another session at work is editing; a word never committed stops it; the item is done with its
-//! commit's short hash, and Undo takes the commit back.
+//! pushed); a word never committed stops it; the item is done with its commit's short hash, and Undo takes the commit
+//! back. When another session at work is editing some of them, the item is done at once and the commit waits, made on
+//! its own once they're free (across a restart too).
 
 use super::desk::desk;
 use super::team::{git, lead, repo, says, writes};
@@ -54,7 +55,7 @@ fn log(w: &World, sid: &str) -> crate::testing::transcript::Transcript {
     crate::testing::transcript::Transcript::at(w.hub().session_origin(sid).unwrap().transcript_path)
 }
 
-/// Looks right on `id`: { commit, files, skipped }.
+/// Looks right on `id`: { commit, files, waiting }.
 fn looks_right(w: &World, id: &str) -> Value {
     let r = w.hub().desk_looks_right(id).unwrap();
     w.settle();
@@ -66,12 +67,52 @@ fn looks_right_commits_the_items_changed_files_at_once_never_pushes_and_the_item
     let w = World::new();
     let (dir, project, id) = ready(&w);
     let r = looks_right(&w, &id);
-    assert_eq!((r["files"].as_u64(), r["skipped"].as_array().map(Vec::len)), (Some(2), Some(0)), "{r}");
+    assert_eq!((r["files"].as_u64(), r["waiting"].as_array().map(Vec::len)), (Some(2), Some(0)), "{r}");
     assert_eq!(git(&dir, &["show", "--name-only", "--format=%s", "HEAD"]).trim(), "Header jumps\n\na.txt\nb.txt", "its title the message");
     assert_eq!(r["commit"].as_str().unwrap(), git(&dir, &["rev-parse", "--short", "HEAD"]).trim());
     assert!(git(&dir, &["remote"]).trim().is_empty() && git(&dir, &["branch", "--format=%(upstream)"]).trim().is_empty(), "nothing to push to, nothing pushed");
     let shown = item(&w, &project, "Header jumps");
     assert_eq!((shown["state"].as_str(), shown["commit"].as_str()), (Some("done"), r["commit"].as_str()));
+}
+
+#[test]
+fn a_file_already_taken_out_with_git_rm_is_committed_as_removed() {
+    let w = World::new();
+    let (dir, _, id) = ready_with(
+        &w,
+        |_, _, dir| {
+            std::fs::write(dir.join("shared.txt"), "old\n").unwrap();
+            git(dir, &["add", "shared.txt"]);
+            git(dir, &["commit", "-q", "-m", "shared"]);
+        },
+        |w, h, dir| {
+            let f = |n: &str| dir.join(n).to_string_lossy().to_string();
+            says(w, h, writes("toolu_A", "agentA", "fixer", &[f("a.txt"), f("shared.txt")]));
+            git(dir, &["rm", "-q", "-f", "shared.txt"]);
+        },
+    );
+    let r = looks_right(&w, &id);
+    assert_eq!(r["files"].as_u64(), Some(2), "{r}");
+    assert_eq!(git(&dir, &["show", "--name-status", "--format=", "HEAD"]).trim(), "A\ta.txt\nD\tshared.txt", "the removal goes in with the rest");
+}
+
+#[test]
+fn the_leads_done_on_an_item_to_check_leaves_it_to_you_and_tells_the_lead_why_once() {
+    let w = World::new();
+    let (_, project, id) = ready(&w);
+    let lead = desk(&w, &project)["lead"]["sid"].as_str().unwrap().to_string();
+    let told = |w: &World| w.hosted.sent().into_iter().filter(|(s, t)| s == &lead && t.contains("not closed")).map(|(_, t)| t).collect::<Vec<_>>();
+    ends(&w, &lead, &format!("Checked it.\nDONE: #{id}, #zz9"));
+    w.settle();
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "to_check", "still yours to check");
+    let said = told(&w);
+    assert_eq!(said.len(), 1, "{said:?}");
+    assert!(said[0].starts_with(&format!("#{id} not closed: it waits on your check\n#zz9 not closed: this Desk has no item #zz9\n")), "{}", said[0]);
+    assert!(said[0].ends_with("Don't say DONE for these again."), "its words for the lead last");
+    // Said again of the same item, unchanged: not told again.
+    ends(&w, &lead, &format!("DONE: #{id}"));
+    w.settle();
+    assert_eq!(told(&w).len(), 1);
 }
 
 #[test]
@@ -96,22 +137,79 @@ fn an_item_with_no_changed_files_is_just_done() {
     assert_eq!(item(&w, &project, "Header jumps")["state"], "done");
 }
 
-#[test]
-fn a_file_another_session_at_work_is_editing_is_left_out_and_said() {
-    let w = World::new();
-    let (dir, _, id) = ready(&w);
+/// A session "tidier" at work editing b.txt in `dir`: its id.
+fn tidier_editing(w: &World, dir: &std::path::Path) -> String {
     let opts = StartOpts { hosted: true, perm: "auto".into(), ..Default::default() };
     let r = start_session_with(w.hub(), "claude", &w.home().to_string_lossy(), "tidy b", "tidier", &opts).unwrap();
     let o = r["session_id"].as_str().unwrap().to_string();
     w.hosted_says(&o, HostedEvent::Taken { text: "tidy b".into() });
     w.advance(1000);
-    log(&w, &o).tool_use("toolu_9", "Edit", json!({ "file_path": dir.join("b.txt") }));
+    log(w, &o).tool_use("toolu_9", "Edit", json!({ "file_path": dir.join("b.txt") }));
     w.settle();
+    o
+}
+
+#[test]
+fn a_file_another_session_is_editing_makes_it_done_at_once_and_the_commit_waits_till_its_free() {
+    let w = World::new();
+    let (dir, project, id) = ready(&w);
+    let o = tidier_editing(&w, &dir);
     let r = looks_right(&w, &id);
-    assert_eq!(r["files"], 1, "{r}");
-    assert_eq!(r["skipped"], json!([{ "path": "b.txt", "by": "tidier" }]));
-    assert_eq!(git(&dir, &["show", "--name-only", "--format=", "HEAD"]).trim(), "a.txt");
-    assert_eq!(git(&dir, &["status", "--porcelain"]).trim(), "?? b.txt", "left as it was");
+    assert_eq!((r["commit"].as_str(), r["files"].as_u64()), (Some(""), Some(2)), "{r}");
+    assert_eq!(r["waiting"], json!([{ "path": "b.txt", "by": "tidier" }]));
+    let shown = item(&w, &project, "Header jumps");
+    assert_eq!(shown["state"], "done", "done at once");
+    assert_eq!(shown["commit_wait"]["busy"], json!([{ "path": "b.txt", "by": "tidier" }]));
+    assert_eq!(git(&dir, &["rev-list", "--count", "HEAD"]).trim(), "1", "nothing committed yet");
+    w.tick(true);
+    w.advance(20_000);
+    assert_eq!(git(&dir, &["rev-list", "--count", "HEAD"]).trim(), "1", "still waiting while it's edited");
+
+    // The tidier's turn ends: its files are free, and the commit is made on its own.
+    ends(&w, &o, "Tidied.");
+    let shown = item(&w, &project, "Header jumps");
+    assert!(shown["commit_wait"].is_null(), "{shown}");
+    assert_eq!(shown["commit"].as_str().unwrap(), git(&dir, &["rev-parse", "--short", "HEAD"]).trim());
+    assert_eq!(git(&dir, &["show", "--name-only", "--format=%s", "HEAD"]).trim(), "Header jumps\n\na.txt\nb.txt");
+    assert!(git(&dir, &["remote"]).trim().is_empty(), "never pushed");
+
+    // Undo takes it back as any other.
+    let it = w.hub().desk_commit_undo(&id).unwrap();
+    assert_eq!((it.state.as_str(), it.commit.as_str()), ("to_check", ""));
+}
+
+#[test]
+fn a_waiting_commit_survives_a_restart_and_is_made_after_it() {
+    let mut w = World::new();
+    let (dir, project, id) = ready(&w);
+    tidier_editing(&w, &dir);
+    looks_right(&w, &id);
+    w.relaunch();
+    let shown = item(&w, &project, "Header jumps");
+    assert_eq!((shown["state"].as_str(), shown["commit_wait"]["busy"][0]["path"].as_str()), (Some("done"), Some("b.txt")), "{shown}");
+    // Its sessions ended with the restart: nobody edits b.txt now, so Cue's tick commits it.
+    w.tick(true);
+    w.advance(20_000);
+    let shown = item(&w, &project, "Header jumps");
+    assert!(shown["commit_wait"].is_null() && !shown["commit"].as_str().unwrap().is_empty(), "{shown}");
+    assert_eq!(git(&dir, &["rev-list", "--count", "HEAD"]).trim(), "2");
+}
+
+#[test]
+fn a_word_never_committed_keeps_a_waiting_commit_back_and_says_why() {
+    let w = World::new();
+    let (dir, project, id) = ready(&w);
+    let o = tidier_editing(&w, &dir);
+    looks_right(&w, &id);
+    w.hub().set_setting("project.never", json!({ project.clone(): ["Fixer"] })).unwrap();
+    ends(&w, &o, "Tidied.");
+    let shown = item(&w, &project, "Header jumps");
+    assert!(shown["commit_wait"]["error"].as_str().unwrap().contains("\"Fixer\""), "{shown}");
+    assert_eq!(git(&dir, &["rev-list", "--count", "HEAD"]).trim(), "1", "nothing committed");
+    // Undo while it waits: no commit to take back, the item is to check again.
+    let it = w.hub().desk_commit_undo(&id).unwrap();
+    assert_eq!(it.state, "to_check");
+    assert!(item(&w, &project, "Header jumps")["commit_wait"].is_null());
 }
 
 #[test]
@@ -128,11 +226,31 @@ fn undo_takes_the_commit_back_its_changes_stay_and_the_item_is_to_check_again() 
     assert_eq!(item(&w, &project, "Header jumps")["state"], "to_check");
     assert!(w.hub().desk_commit_undo(&id).is_err(), "nothing to undo now");
 
-    // Once another commit came after it: refused, nothing changed.
+    // Once another commit came after it: the item still goes back to check, its commit stays as it is (kept on it,
+    // so the window says so), and no file or commit changes.
     looks_right(&w, &id);
+    let sha = item(&w, &project, "Header jumps")["commit"].as_str().unwrap().to_string();
     git(&dir, &["commit", "-q", "-m", "yours"]);
-    assert_eq!(w.hub().desk_commit_undo(&id).unwrap_err(), "Can't undo it: another commit came after it");
+    let before = (git(&dir, &["status", "--porcelain"]), std::fs::read_to_string(dir.join("a.txt")).unwrap());
+    let it = w.hub().desk_commit_undo(&id).unwrap();
+    assert_eq!((it.state.as_str(), it.commit.as_str()), ("to_check", sha.as_str()));
     assert_eq!(git(&dir, &["rev-list", "--count", "HEAD"]).trim(), "3");
+    assert_eq!((git(&dir, &["status", "--porcelain"]), std::fs::read_to_string(dir.join("a.txt")).unwrap()), before, "code untouched");
+}
+
+#[test]
+fn undo_on_an_item_done_with_nothing_to_commit_puts_it_back_to_check() {
+    let w = World::new();
+    let (dir, project, id) = ready(&w);
+    git(&dir, &["add", "-A"]);
+    git(&dir, &["commit", "-q", "-m", "already in"]);
+    let r = looks_right(&w, &id);
+    assert_eq!(r["commit"].as_str(), Some(""), "{r}");
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "done");
+    let it = w.hub().desk_commit_undo(&id).unwrap();
+    assert_eq!(it.state, "to_check");
+    assert_eq!(git(&dir, &["rev-list", "--count", "HEAD"]).trim(), "2", "no commit touched");
+    assert!(w.hub().desk_commit_undo(&id).is_err(), "it isn't done now");
 }
 
 #[test]
@@ -183,4 +301,50 @@ fn each_done_leaves_a_card_for_the_lead_with_who_what_to_test_and_its_files_kept
     let all = cards(&w);
     assert_eq!(all.len(), 2, "{all:?}");
     assert_eq!((all[0]["last"].as_bool(), all[1]["last"].as_bool()), (Some(false), Some(true)));
+}
+
+#[test]
+fn send_back_takes_your_words_to_its_holder_and_puts_it_to_work_with_none_it_asks_for_a_reason() {
+    let w = World::new();
+    let (_, project, id) = ready(&w);
+    let e = w.hub().desk_item_act(&id, "send_back", "  ").unwrap_err();
+    assert!(e.contains("Say what isn't right"), "{e}");
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "to_check", "unchanged");
+
+    let it = w.hub().desk_item_act(&id, "send_back", "It still jumps on scroll").unwrap();
+    w.settle();
+    assert_eq!((it.state.as_str(), it.holder.as_ref().map(|h| h.name.as_str())), ("working", Some("cue-teams")));
+    let snap = w.snapshot();
+    let h = snap.session_ids().into_iter().find(|s| snap.session(s)["name"] == "cue-teams").unwrap();
+    let sent: Vec<String> = w.hosted.sent().into_iter().filter(|(s, _)| *s == h).map(|(_, t)| t).collect();
+    assert!(sent.iter().any(|t| t.contains("isn't done: It still jumps on scroll") && t.contains(&format!("DONE: #{id}"))), "{sent:?}");
+    assert!(!sent.iter().any(|t| t.contains("have another look")), "no made-up words");
+}
+
+#[test]
+fn a_card_sent_back_keeps_why_and_how_many_pictures_went_with_it_across_a_restart() {
+    let mut w = World::new();
+    let (_, project, id) = ready(&w);
+    w.hub().desk_item_act(&id, "send_back", "It still jumps\nPictures with it (open each to see it): `/u/a.png` `/u/b.png`").unwrap();
+    w.settle();
+    w.relaunch();
+    let card = desk(&w, &project)["checks"].as_array().unwrap().iter().find(|c| c["id"] == id.as_str()).cloned().unwrap();
+    assert_eq!((card["back"].as_str(), card["back_pics"].as_u64(), card["state"].as_str()), (Some("It still jumps"), Some(2), Some("working")), "{card}");
+}
+
+#[test]
+fn files_changed_to_check_is_what_looks_right_will_commit_and_done_its_commit() {
+    let mut w = World::new();
+    let (dir, _, id) = ready(&w);
+    std::fs::write(dir.join("yours.txt"), "not the item's\n").unwrap();
+    let files = |w: &World| -> Vec<String> {
+        let d = w.hub().desk_item_diff(&id).unwrap();
+        d["diff"].as_str().unwrap().lines().filter_map(|l| l.strip_prefix("+++ b/")).map(str::to_string).collect()
+    };
+    assert_eq!(files(&w), ["a.txt", "b.txt"], "its files, not yours");
+    assert!(git(&dir, &["diff", "--cached", "--name-only"]).trim().is_empty(), "your index untouched");
+    looks_right(&w, &id);
+    assert_eq!(files(&w), ["a.txt", "b.txt"], "done: its commit");
+    w.relaunch();
+    assert_eq!(files(&w), ["a.txt", "b.txt"], "after a restart too");
 }
