@@ -377,8 +377,9 @@ const inboxTalkBtns = (key) => `<button class="icon-btn mic ${dictating?.key ===
 const inboxPics = (key) => key.startsWith("s:");
 /** The reply, as in mail: you write right under the message (no frame or line round it), suggested replies under what
  *  you write (they're yours, not its), then Send with Open chat beside it (no project actions here: those are the chat's). */
-function inboxReply(sid, key, ph, label, attrs) {
-  return inboxBox(key, ph, label, attrs, `<button class="btn" data-inbox-full="${esc(sid)}">Open chat</button>`, inboxSuggest(sid, key));
+function inboxReply(sid, key, ph, label, attrs, sugsFirst = false) {
+  const sugs = inboxSuggest(sid, key), box = inboxBox(key, ph, label, attrs, `<button class="btn" data-inbox-full="${esc(sid)}">Open chat</button>`, sugsFirst ? "" : sugs);
+  return sugsFirst ? `${sugs}${box}` : box;
 }
 /** Suggested replies, as mail suggests them: Claude's own suggestion (it goes into the box, to send as it is or
  *  change), then your quick phrases (Settings → Quick phrases: a click sends it, after anything in the box). */
@@ -544,13 +545,13 @@ function inboxMain(r) {
   const shown = whole ? inboxSaid(words, [q, then], true) : said, more = cut ? `<button class="ib-link" data-inbox-whole="${esc(r.sid)}">${whole ? "Show less" : "Show the whole reply"}</button>` : "";
   const saidHtml = shown ? `<div class="ib-said">${inboxHead(label, thread.said?.at_ms || r.it?.created_ms || 0)}<div class="ib-md msg">${md(shown, { pathsOf: r.sid })}</div>${thumbs(thread.said?.images)}${localImages(shown)}${more}</div>` : "";
   const thenHtml = then ? `<div class="ib-then">It plans next: <b>${esc(plain(then))}</b></div>` : "";
-  const reply = (ph) => inboxReply(r.sid, `s:${r.sid}`, ph, "Send", r.it ? `data-act="send" data-id="${esc(r.it.id)}"` : `data-inbox-send="${esc(r.sid)}"`);
+  const reply = (ph, sugsFirst = false) => inboxReply(r.sid, `s:${r.sid}`, ph, "Send", r.it ? `data-act="send" data-id="${esc(r.it.id)}"` : `data-inbox-send="${esc(r.sid)}"`, sugsFirst);
   let top = "", foot = "", acts = "";
   if (r.kind === "ask" && r.it.kind === "question") [top, foot, acts] = inboxQuestions(r.it);
   else if (r.kind === "ask") top = inboxAskCard(r.it);
   else if (r.kind === "turn") { top = q || r.it.interrupted ? inboxTurnCard(r, q) : ""; foot = reply("Reply…"); }
   else if (r.kind === "chore") top = inboxChoreCard(r);
-  else if (r.kind === "run") { top = inboxRunCard(r); foot = reply("Tell it something (it reads it when it can)…"); }
+  else if (r.kind === "run") { top = inboxRunCard(r); foot = reply("Tell it something (it reads it when it can)…", true); }   // at work: the phrases right under its bar
   else foot = reply("Tell it what's next…");
   const crew = inboxCrewHtml(r.sid);
   // Oldest at the top, newest at the foot, as a mail thread: earlier, its message, your reply, what waits to go, then

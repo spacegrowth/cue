@@ -628,3 +628,19 @@ test("pictures sent with a message show in the Inbox, as in the chat: in an earl
   await expect(page.locator(".lightbox img")).toHaveAttribute("src", /c\.png/);
   await expect(page.locator(".lightbox")).toBeVisible();
 });
+
+test("at work, the quick phrases sit right under what it's doing now, over the box", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  await page.locator('.switch-view [data-view="inbox"]').click();
+  await page.locator('[data-inbox-fold="run"]').click();
+  await page.locator('.ib-row[data-inbox-open="eng"]').click();
+  const main = page.locator('.inbox-page[data-inbox-page="eng"] .ib-main');
+  await expect(main.locator(".ib-sugs .ib-sug").first()).toBeVisible();
+  const order = await main.evaluate((m) => [".ib-card.run", ".ib-sugs", ".ib-box textarea"].map((q) => [...m.querySelectorAll("*")].indexOf(m.querySelector(q))));
+  expect(order[0]).toBeLessThan(order[1]);
+  expect(order[1]).toBeLessThan(order[2]);
+  // A finished turn keeps them under what you write.
+  await page.locator('.ib-row[data-inbox-open="sec"]').click();
+  const box = page.locator('.inbox-page[data-inbox-page="sec"] .ib-box');
+  await expect(box.locator(".ib-sugs")).toHaveCount(1);
+});
