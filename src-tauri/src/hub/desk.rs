@@ -7,6 +7,7 @@ use super::*;
 use crate::desk::parse::{self, Line};
 use crate::desk::{DeskDecision, DeskItem, Holder};
 use crate::sessions::Session;
+use super::desk_members::{ask_first, join, may_route, UseAsk};
 
 /// What a change to the Desk leaves to do with the store let go.
 #[derive(Default)]
@@ -21,6 +22,24 @@ pub(super) struct Effects {
     pub(super) asks: Vec<(String, String, String, Vec<String>)>,
     /// New items for their project's lead to route: (project, item), told together a moment later.
     pub(super) news: Vec<(String, String)>,
+    /// Items a lead gave to a new session (`-> new`): each started a moment later (desk_lead.rs).
+    pub(super) starts: Vec<NewStart>,
+    /// Sessions that joined a Desk: (project, session), to save.
+    pub(super) joined: Vec<(String, String)>,
+    /// Routes to sessions not on the Desk: you're asked first, in the lead's name (`desk_ask`).
+    pub(super) uses: Vec<UseAsk>,
+    /// Items just said DONE: the files their check card shows, read a moment later (desk_checks.rs).
+    pub(super) checked: Vec<String>,
+}
+
+
+/// Item `id` of `project` to a new session, as the lead (`by`, `by_sid`) asked, with its why.
+pub(super) struct NewStart {
+    pub(super) project: String,
+    pub(super) id: String,
+    pub(super) why: String,
+    pub(super) by: String,
+    pub(super) by_sid: String,
 }
 
 /// How long new items wait for others before their lead is told of them, in one message.
@@ -83,6 +102,14 @@ fn resolve(st: &Store, project: &str, to: &str) -> Option<Holder> {
     })
 }
 
+/// Holder `h` at work: its session mid-turn (or asking, or driven by its agents), or for a crew member, that teammate.
+fn at_work(st: &Store, h: &Holder) -> bool {
+    match crew_parts(h) {
+        Some((lead, agent)) => st.sessions.get(lead).is_some_and(|s| s.team.iter().any(|t| (t.agent_id == agent || t.call == agent) && t.working())),
+        None => st.sessions.get(&h.sid).is_some_and(|s| matches!(s.state.as_str(), "working" | "deciding" | "agent")),
+    }
+}
+
 /// An open ask (not a "your turn" card) of the holder's: for a crew member, its own.
 fn ask_of<'a>(st: &'a Store, h: &Holder) -> Option<&'a Item> {
     let agent = crew_parts(h).map(|(_, a)| a);
@@ -114,19 +141,24 @@ pub(super) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
         if let Some(t) = st.sessions.get(lead).and_then(|s| s.team.iter().find(|t| t.agent_id == agent || t.call == agent)) {
             h.name = t.name.clone();
             out.latest = t.step.clone();
-            if !t.files.is_empty() {
-                out.files = t.files.clone();
-            }
+            out.files = inside(t.files.iter());
         }
     } else if let Some(s) = st.sessions.get(&h.sid) {
         h.name = shown_name(s);
         h.kind = if s.team.is_empty() { "session".into() } else { "lead".into() };
         out.latest = if s.doing.is_empty() { last_words(s) } else { s.doing.clone() };
-        let mut files: Vec<String> = s.team.iter().flat_map(|t| t.files.iter().cloned()).collect();
-        files.extend(s.changes.iter().flat_map(|c| c.files.iter().map(|f| f.path.clone())));
-        files.dedup();
-        if !files.is_empty() {
-            out.files = files;
+        // Given to a teammate of its (ROUTE: … -> me | crew: <name>): that teammate's own latest and files, once it's
+        // there (none till then: no guess by time).
+        if it.crew.is_empty() {
+            out.files = session_files(st, s, it);
+        } else if let Some(t) = crew_named(s, &it.crew) {
+            out.crew = t.name.clone();
+            if !t.step.is_empty() {
+                out.latest = t.step.clone();
+            }
+            out.files = inside(t.files.iter());
+        } else {
+            out.files = Vec::new();
         }
     }
     // Only the item at work: a queued one's holder asks about the item before it.
@@ -138,6 +170,96 @@ pub(super) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
     }
     out.holder = Some(h);
     out
+}
+
+/// Lead `s`'s teammate named `name` (any case): the latest started, when it named more than one so.
+fn crew_named<'a>(s: &'a Session, name: &str) -> Option<&'a crate::sessions::team::Teammate> {
+    s.team.iter().filter(|t| t.name.eq_ignore_ascii_case(name.trim())).max_by_key(|t| t.started_ms)
+}
+
+/// Of `files`, those inside the folder they were changed in (kept relative to it; one outside is absolute), each once.
+fn inside<'a>(files: impl Iterator<Item = &'a String>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for f in files.filter(|f| !f.is_empty() && !f.starts_with('/') && !f.starts_with('~') && !std::path::Path::new(f.as_str()).components().any(|c| c == std::path::Component::ParentDir)) {
+        if !out.contains(f) {
+            out.push(f.clone());
+        }
+    }
+    out
+}
+
+/// The files changed for `it` by its holder `s` (a plain session or a lead): its crew's own files, of members started
+/// after the item went to it and before its next item did, that hold no item of their own. Its own turns' changes
+/// aren't counted: git sees the whole folder, other sessions' edits too. None when another of its items was at work
+/// then as well (whose files they are can't be told), or the item has no start for this holder.
+fn session_files(st: &Store, s: &Session, it: &DeskItem) -> Vec<String> {
+    inside(session_mates(st, s, it).into_iter().flat_map(|t| t.files.iter()))
+}
+
+/// The crew members of holder `s` whose files are `it`'s (`session_files`).
+fn session_mates<'a>(st: &Store, s: &'a Session, it: &DeskItem) -> Vec<&'a crate::sessions::team::Teammate> {
+    let sid = &s.origin.session_id;
+    let Some((from, until)) = held_window(st, sid, it) else { return Vec::new() };
+    let holds = |t: &crate::sessions::team::Teammate| {
+        st.desk.items.iter().any(|o| {
+            // One named for an item not done (an old item's name may be given again).
+            let named = !o.crew.is_empty() && o.state != "done" && o.crew.eq_ignore_ascii_case(&t.name);
+            o.holder.as_ref().is_some_and(|h| crew_parts(h).is_some_and(|(_, a)| a == t.agent_id || a == t.call) || (h.sid == *sid && named))
+        })
+    };
+    s.team.iter().filter(|t| t.started_ms >= from && t.started_ms < until && !holds(t)).collect()
+}
+
+/// When `it` was session `sid`'s to work on (ms): from when it went to it until its next item did (u64::MAX while
+/// none has). None when another of its items was at work then as well (whose work is whose can't be told), or the
+/// item has no start for `sid`.
+pub(super) fn held_window(st: &Store, sid: &str, it: &DeskItem) -> Option<(u64, u64)> {
+    let (_, from) = it.held_from.as_ref().filter(|(by, _)| by == sid)?;
+    let mut until = u64::MAX;
+    for o in st.desk.items.iter().filter(|o| o.id != it.id) {
+        let Some((by, at)) = &o.held_from else { continue };
+        if by != sid {
+            continue;
+        }
+        if at > from {
+            until = until.min(*at);
+        } else if o.state == "working" && o.holder.as_ref().is_some_and(|h| h.sid == sid) {
+            return None;
+        }
+    }
+    Some((*from, until))
+}
+
+/// Where `it`'s files (as `shown` gives them) were changed: the machine, and each folder with its files in it (paths
+/// relative to that folder), for Looks right's commit (desk_commit.rs).
+pub(super) fn item_sources(st: &Store, it: &DeskItem) -> (String, Vec<(String, Vec<String>)>) {
+    let Some(h) = it.holder.as_ref() else { return (String::new(), Vec::new()) };
+    let lead = crew_parts(h).map_or(h.sid.as_str(), |(l, _)| l);
+    let Some(s) = st.sessions.get(lead) else { return (String::new(), Vec::new()) };
+    let mates: Vec<&crate::sessions::team::Teammate> = if let Some((_, agent)) = crew_parts(h) {
+        s.team.iter().filter(|t| t.agent_id == agent || t.call == agent).take(1).collect()
+    } else if it.crew.is_empty() {
+        session_mates(st, s, it)
+    } else {
+        crew_named(s, &it.crew).into_iter().collect()
+    };
+    let mut out: Vec<(String, Vec<String>)> = Vec::new();
+    for t in mates {
+        let folder = t.folder(&s.origin.cwd).to_string();
+        let files = inside(t.files.iter());
+        match out.iter_mut().find(|(f, _)| *f == folder) {
+            Some((_, have)) => {
+                for f in files {
+                    if !have.contains(&f) {
+                        have.push(f);
+                    }
+                }
+            }
+            None if !files.is_empty() => out.push((folder, files)),
+            None => {}
+        }
+    }
+    (s.origin.machine.clone(), out)
 }
 
 /// Items queued after `id` start now: each to its holder, with no reason (why it was queued isn't why it starts).
@@ -171,8 +293,17 @@ fn waits_on(st: &Store, from: &str, id: &str) -> bool {
 #[allow(clippy::too_many_arguments)]
 fn decide(st: &mut Store, project: &str, item: Option<String>, by: &str, sid: &str, text: &str, why: &str, now: u64, fx: &mut Effects) {
     let id = st.desk.decision_id(now);
-    st.desk.decisions.push(DeskDecision { id: id.clone(), project: project.into(), item_id: item, by: by.into(), sid: sid.into(), text: text.into(), why: why.into(), at: secs(now), undo: "can".into() });
+    st.desk.decisions.push(DeskDecision { id: id.clone(), project: project.into(), item_id: item, by: by.into(), sid: sid.into(), text: text.into(), why: why.into(), at: secs(now), undo: "can".into(), call: false });
     fx.decisions.push(id);
+}
+
+/// A judgment call (a DECIDED line) noted on `project`'s Desk: `decide`, shown in its Decisions list.
+#[allow(clippy::too_many_arguments)]
+fn decide_call(st: &mut Store, project: &str, item: Option<String>, by: &str, sid: &str, text: &str, why: &str, now: u64, fx: &mut Effects) {
+    decide(st, project, item, by, sid, text, why, now, fx);
+    if let Some(d) = st.desk.decisions.last_mut() {
+        d.call = true;
+    }
 }
 
 /// Why item `id` can't wait on item `a`, as the lead is told ("#a, which …"); None when it can. Not after an item
@@ -193,31 +324,38 @@ fn after_refused(st: &Store, a: &str, id: &str) -> Option<String> {
 }
 
 /// Who the lead is (its name and session), for what it decides.
-struct By<'a> {
-    name: &'a str,
-    sid: &'a str,
+pub(super) struct By<'a> {
+    pub(super) name: &'a str,
+    pub(super) sid: &'a str,
 }
 
-/// Item `id` to the session named `to` ("me": the lead itself), now or after another item, as the lead asked.
+/// Item `id` to the session named `to` ("new": one Cue starts for it), now or after another item, as the lead asked.
 #[allow(clippy::too_many_arguments)]
-fn route(st: &mut Store, project: &str, by: &By, id: &str, to: &str, after: Option<String>, why: &str, now: u64, fx: &mut Effects) {
-    let holder = if to.eq_ignore_ascii_case("me") { holder_of(st, by.sid) } else { resolve(st, project, to) };
+pub(super) fn route(st: &mut Store, project: &str, by: &By, id: &str, to: &str, after: Option<String>, why: &str, now: u64, fx: &mut Effects) {
+    let fresh = to.eq_ignore_ascii_case("new") || to.eq_ignore_ascii_case("me");
+    let holder = if fresh { None } else { resolve(st, project, to) };
+    if fresh || holder.as_ref().is_some_and(|h| h.sid == by.sid && h.lead_sid.is_empty()) {
+        return start_fresh(st, project, by, id, why, fx);
+    }
+    // A session not on the Desk: you're asked first, and the item stays.
+    if let Some(h) = holder.as_ref().filter(|h| !may_route(st, project, h, id)) {
+        return ask_first(st, &UseAsk { lead: by.sid.into(), project: project.into(), sid: h.to().into(), name: h.name.clone(), item: id.into(), to: to.into(), after, why: why.into() }, fx);
+    }
     let refused = after.as_deref().and_then(|a| after_refused(st, a, id)).unwrap_or_default();
     let waits = after.filter(|_| refused.is_empty());
+    // Its holder on it now (mid-turn, or asking you): a route to it again is a turn repeating itself. Not on it (its
+    // turn cut off by a crash or a quit, the item still "working"): the route sends it again.
+    let busy = holder.as_ref().is_some_and(|h| at_work(st, h) || ask_of(st, h).is_some());
+    // Done: not the lead's to route again. With you to check: routing it reopens it (back to work, sent again).
     let Some(it) = st.desk.item_mut(id).filter(|i| i.project == project && i.state != "done") else { return };
-    let Some(h) = holder else {
-        it.updated = secs(now);
-        it.route_failed = to.to_string();
-        fx.items.push(it.id.clone());
-        return;
-    };
+    let reopen = it.state == "to_check";
+    let Some(h) = holder else { return no_such_session(it, to, now, fx) };
     let before = it.holder.clone();
     let same = before.as_ref().is_some_and(|b| b.sid == h.sid && b.lead_sid == h.lead_sid);
     // The same route said again (a later turn repeating itself): nothing to do.
     let unchanged = match &waits {
         Some(a) => it.state == "queued" && it.after.as_deref() == Some(a.as_str()),
-        // At work, or done and with you to check (sending it back is yours to do: send_back).
-        None => matches!(it.state.as_str(), "working" | "to_check"),
+        None => it.state == "working" && busy,
     };
     if same && unchanged {
         // Though an `after` refused is still news to the lead (it meant this one to wait).
@@ -227,37 +365,81 @@ fn route(st: &mut Store, project: &str, by: &By, id: &str, to: &str, after: Opti
         }
         return;
     }
+    if let Some(note) = reopen.then(|| reopen_refusal(it, before.as_ref(), same && waits.is_none(), why)).flatten() {
+        if it.reopen_refused != note {
+            it.reopen_refused = note;
+            it.updated = secs(now);
+            fx.items.push(it.id.clone());
+        }
+        return;
+    }
+    let was_working = it.state == "working";
     // Moved from a holder at work on it: that one stops.
     if let Some(b) = before.filter(|_| !same && it.state == "working") {
         fx.sends.push(moved_words(&b, it, &h));
     }
-    // The lead keeping it: it isn't sent its own item.
-    let itself = h.sid == by.sid && h.lead_sid.is_empty();
-    it.updated = secs(now);
     fx.items.push(it.id.clone());
+    held_by(it, &h, refused, waits.clone(), why, now);
+    if waits.is_none() {
+        fx.sends.push((h.to().to_string(), crate::desk::handed_words(it, why)));
+    }
+    let text = routed_text(id, &h.name, waits.as_deref(), reopen && same, same && was_working);
+    decide(st, project, Some(id.to_string()), by.name, by.sid, &text, why, now, fx);
+}
+
+/// `it` held by `h` from now, at work (or queued after `waits`), as the lead routed it.
+fn held_by(it: &mut DeskItem, h: &Holder, refused: String, waits: Option<String>, why: &str, now: u64) {
+    it.updated = secs(now);
     it.route_failed.clear();
+    it.reopen_refused.clear();
     it.after_refused = refused;
     it.holder = Some(h.clone());
+    it.crew.clear();
     it.after_why = why.to_string();
-    let text = match &waits {
-        Some(a) => {
-            it.state = "queued".into();
-            it.after = Some(a.clone());
-            format!("Queued #{id} after #{a} for {}", h.name)
-        }
-        None if itself => {
-            it.state = "working".into();
-            it.after = None;
-            format!("Kept #{id} to do itself")
-        }
-        None => {
-            it.state = "working".into();
-            it.after = None;
-            fx.sends.push((h.to().to_string(), crate::desk::handed_words(it, why)));
-            format!("Routed #{id} to {}", h.name)
-        }
-    };
-    decide(st, project, Some(id.to_string()), by.name, by.sid, &text, why, now, fx);
+    it.done_at = None;
+    it.state = if waits.is_some() { "queued" } else { "working" }.into();
+    it.after = waits;
+}
+
+/// What a route did, as its decision says it: queued, reopened, sent again or routed.
+fn routed_text(id: &str, name: &str, waits: Option<&str>, reopened: bool, again: bool) -> String {
+    match waits {
+        Some(a) => format!("Queued #{id} after #{a} for {name}"),
+        None if reopened => format!("Reopened #{id} for {name}"),
+        None if again => format!("Sent #{id} to {name} again"),
+        None => format!("Routed #{id} to {name}"),
+    }
+}
+
+/// The lead routed `it` to `to`, a name no session of the project goes by: it stays as it is, and the lead is told.
+fn no_such_session(it: &mut DeskItem, to: &str, now: u64, fx: &mut Effects) {
+    it.updated = secs(now);
+    it.route_failed = to.to_string();
+    fx.items.push(it.id.clone());
+}
+
+/// No session fits ("new"), or the lead naming itself, which only hands work out: a new session of the project takes
+/// item `id` (desk_start_new). Only one nobody else holds, so the same line said again doesn't start another.
+fn start_fresh(st: &Store, project: &str, by: &By, id: &str, why: &str, fx: &mut Effects) {
+    let free = |i: &DeskItem| i.project == project && matches!(i.state.as_str(), "new" | "queued" | "working") && i.holder.as_ref().is_none_or(|h| h.sid == by.sid);
+    if st.desk.item(id).is_some_and(free) {
+        fx.starts.push(NewStart { project: project.into(), id: id.into(), why: why.into(), by: by.name.into(), by_sid: by.sid.into() });
+    }
+}
+
+/// Why item `it`, with you to check, isn't reopened by a route to its holder `before` (`to_it`: to that holder, now):
+/// only its holder takes it back (sending it elsewhere, or after another, is yours), and only for a new reason (the
+/// route it was given, said again by a later turn, isn't a reopen). None: it's reopened.
+fn reopen_refusal(it: &DeskItem, before: Option<&Holder>, to_it: bool, why: &str) -> Option<String> {
+    let held = before.map(|b| b.name.clone()).unwrap_or_default();
+    let id = &it.id;
+    if !to_it {
+        Some(format!("it's with the user to check; Cue reopens it only for {held}, now (ROUTE: #{id} -> {held} | why: what's left)"))
+    } else if why.trim().eq_ignore_ascii_case(it.after_why.trim()) {
+        Some(format!("that ROUTE is the one {held} was given before; to send it back, give a new why (what's left to do)"))
+    } else {
+        None
+    }
 }
 
 /// What holder `b`, at work on `it`, is told when it moves to `to`: (its session, the words).
@@ -269,6 +451,11 @@ fn moved_words(b: &Holder, it: &DeskItem, to: &Holder) -> (String, String) {
 /// You gave item `id` to live session `sid` (of its project): it holds it now, at work on it, and is sent it.
 /// Noted as your decision (nothing to undo: give it to another).
 fn give(st: &mut Store, id: &str, sid: &str, now: u64, fx: &mut Effects) -> Result<(), String> {
+    give_by(st, id, sid, ("You", "", ""), now, fx)
+}
+
+/// `give`, as `by` (name, session, why) decided: the lead, for a session started for it.
+pub(super) fn give_by(st: &mut Store, id: &str, sid: &str, by: (&str, &str, &str), now: u64, fx: &mut Effects) -> Result<(), String> {
     let h = holder_of(st, sid).ok_or("that session isn't open")?;
     let project = st.sessions.get(sid).map(|s| s.project.clone()).unwrap_or_default();
     let it = st.desk.item_mut(id).ok_or("no such item")?;
@@ -282,6 +469,7 @@ fn give(st: &mut Store, id: &str, sid: &str, now: u64, fx: &mut Effects) -> Resu
         fx.sends.push(moved_words(&b, it, &h));
     }
     it.holder = Some(h.clone());
+    it.crew.clear();
     it.state = "working".into();
     it.after = None;
     it.after_why.clear();
@@ -289,9 +477,13 @@ fn give(st: &mut Store, id: &str, sid: &str, now: u64, fx: &mut Effects) -> Resu
     it.after_refused.clear();
     it.done_at = None;
     it.updated = secs(now);
-    fx.sends.push((sid.to_string(), crate::desk::handed_words(it, "")));
+    it.after_why = by.2.to_string();
+    fx.sends.push((sid.to_string(), crate::desk::handed_words(it, by.2)));
     fx.items.push(id.to_string());
-    decide(st, &project, Some(id.to_string()), "You", "", &format!("Gave #{id} to {}", h.name), "", now, fx);
+    let text = if by.1.is_empty() { format!("Gave #{id} to {}", h.name) } else { format!("Started {} for #{id}", h.name) };
+    // Given an item, by you or as a new session for it: on the Desk from now.
+    join(st, &project, sid, fx);
+    decide(st, &project, Some(id.to_string()), by.0, by.1, &text, by.2, now, fx);
     if let Some(d) = st.desk.decisions.last_mut() {
         d.undo = "none".into();
     }
@@ -303,12 +495,12 @@ fn item_named(st: &Store, project: &str, text: &str) -> Option<String> {
     text.split(|c: char| !(c.is_ascii_alphanumeric() || c == '#')).filter_map(|w| w.strip_prefix('#')).map(str::to_ascii_lowercase).find(|id| st.desk.item(id).is_some_and(|i| i.project == project))
 }
 
-/// An ITEM: line said by session `by` (named `from`): a new item of `project`, or the open one of that kind and
-/// title (the line said again). The item's id, and whether it's new.
+/// An ITEM: line said by session `by` (named `from`): a new item of `project`, or the one of that kind and title
+/// not done yet, with you to check too (the line said again). The item's id, and whether it's new.
 #[allow(clippy::too_many_arguments)]
 fn item_said(st: &mut Store, project: &str, kind: &str, title: &str, done_when: &str, from: &str, now: u64, fx: &mut Effects) -> (String, bool) {
     let same_kind = kind_of(kind);
-    let open = |i: &&DeskItem| i.project == project && i.kind == same_kind && matches!(i.state.as_str(), "new" | "queued" | "working") && i.title.trim().eq_ignore_ascii_case(title.trim());
+    let open = |i: &&DeskItem| i.project == project && i.kind == same_kind && i.state != "done" && i.title.trim().eq_ignore_ascii_case(title.trim());
     if let Some(open) = st.desk.items.iter().find(open) {
         return (open.id.clone(), false);
     }
@@ -327,10 +519,16 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx
     for line in parse::lines(text) {
         match line {
             Line::Item { kind, title, done_when } => last_new = Some(item_said(st, project, &kind, &title, &done_when, &name, now, fx).0),
-            Line::Route { id, to, after, why } => {
-                let id = if id == "new" { last_new.clone() } else { Some(id) };
-                let after = if after.as_deref() == Some("new") { last_new.clone() } else { after };
+            Line::Route { id, to, after, why, kind, .. } => {
+                // An old tag ("#d7k2") names the item by its number from now.
+                let id = if id == "new" { last_new.clone() } else { Some(st.desk.canon(&id)) };
+                let after = if after.as_deref() == Some("new") { last_new.clone() } else { after.map(|a| st.desk.canon(&a)) };
                 if let Some(id) = id {
+                    // The lead says what it is as it routes it (before, so whoever takes it is told).
+                    if let (Some(k), Some(it)) = (kind, st.desk.item_mut(&id).filter(|i| i.project == project)) {
+                        it.kind = k;
+                        fx.items.push(id.clone());
+                    }
                     route(st, project, &by, &id, &to, after, &why, now, fx);
                 }
             }
@@ -341,7 +539,7 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx
     }
     for (what, why) in crate::sessions::crew_log::calls_in(text) {
         let item = item_named(st, project, &what).or_else(|| item_named(st, project, &why));
-        decide(st, project, item, &name, lsid, &what, &why, now, fx);
+        decide_call(st, project, item, &name, lsid, &what, &why, now, fx);
     }
 }
 
@@ -383,33 +581,45 @@ fn session_items(st: &mut Store, sid: &str, text: &str, now: u64, fx: &mut Effec
 /// them starts), and (unless it's the lead, whose DECIDED lines are the lead's) its DECIDED lines are decisions on
 /// the item it holds.
 fn holder_said(st: &mut Store, sid: &str, text: &str, decided: bool, now: u64, fx: &mut Effects) {
+    let mut finished: Option<String> = None;
+    // What this turn made, for the Desk to link to: its web links, and its files when the session is on this Mac.
+    let here = st.sessions.get(sid).is_some_and(|s| s.origin.machine.is_empty());
     for line in parse::lines(text) {
         let Line::Done { ids } = line else { continue };
         for id in ids {
+            let id = st.desk.canon(&id);
             let Some(it) = st.desk.item_mut(&id).filter(|i| i.holder.as_ref().is_some_and(|h| h.is(sid)) && matches!(i.state.as_str(), "working" | "queued")) else { continue };
+            it.made = parse::made_in(text, here);
+            let by = if it.crew.is_empty() { it.holder.as_ref().map(|h| h.name.clone()).unwrap_or_default() } else { it.crew.clone() };
+            it.checks.push(crate::desk::model::DeskCheck { at: now, by, ..Default::default() });
+            fx.checked.push(id.clone());
             it.state = "to_check".into();
             it.after = None;
             it.updated = secs(now);
             fx.items.push(id.clone());
             release(st, &id, now, fx);
+            finished = Some(id);
         }
     }
     let calls = crate::sessions::crew_log::calls_in(text);
     if calls.is_empty() || !decided {
         return;
     }
-    // The item it's at: the one it holds that changed last, at work before done.
+    // The item it's at: the one this turn said DONE (not the next, which that just started), else the one it holds
+    // that changed last, at work before done.
     let held = |i: &&DeskItem| i.holder.as_ref().is_some_and(|h| h.is(sid)) && i.state != "done";
-    let Some((id, project, by)) = st.desk.items.iter().filter(held).max_by_key(|i| (i.state == "working", i.updated)).map(|i| (i.id.clone(), i.project.clone(), i.holder.as_ref().map(|h| if h.sid == sid { h.name.clone() } else { String::new() }).unwrap_or_default())) else { return };
+    let at = |i: &&DeskItem| finished.as_ref().map_or(i.state == "working", |f| &i.id == f);
+    let Some((id, project, by)) = st.desk.items.iter().filter(held).max_by_key(|i| (at(i), i.updated)).map(|i| (i.id.clone(), i.project.clone(), i.holder.as_ref().map(|h| if h.sid == sid { h.name.clone() } else { String::new() }).unwrap_or_default())) else { return };
     let by = if by.is_empty() { st.sessions.get(sid).map(shown_name).unwrap_or_default() } else { by };
     for (what, why) in calls {
-        decide(st, &project, Some(id.clone()), &by, sid, &what, &why, now, fx);
+        decide_call(st, &project, Some(id.clone()), &by, sid, &what, &why, now, fx);
     }
 }
 
-/// An item's kind as kept: "bug" | "feature" | "task" (anything else is a task).
+/// An item's kind as kept: "bug" | "feature" | "task", or "" (one you added: the lead says what it is as it routes
+/// it); anything else is a task.
 fn kind_of(kind: &str) -> &str {
-    if matches!(kind, "bug" | "feature" | "task") { kind } else { "task" }
+    if matches!(kind, "bug" | "feature" | "task" | "") { kind } else { "task" }
 }
 
 pub(super) fn new_item(st: &Store, project: &str, kind: &str, title: &str, done_when: &str, from: &str, now: u64) -> DeskItem {
@@ -440,6 +650,7 @@ fn desk_line_start(line: &str) -> bool {
 /// What you did to item `id` ("looks_right" | "send_back" | "start_now" | "put_before" | "drop"), in the store.
 fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<Effects, String> {
     let mut fx = Effects::default();
+    let busy = st.desk.item(id).and_then(|i| i.holder.as_ref()).filter(|h| at_work(st, h)).map(|h| h.name.clone());
     let it = st.desk.item_mut(id).ok_or("no such item")?;
     let holder = it.holder.clone();
     match act {
@@ -457,8 +668,17 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
             let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
             fx.sends.push((h.to().to_string(), format!("{crew}Desk item #{id} ({}) isn't done: {words}\nSay DONE: #{id} when it is.", it.title)));
         }
+        // Nobody holds it yet: a new session of its project takes it (desk_start_new).
+        "start_now" if holder.is_none() => {
+            let s = NewStart { project: it.project.clone(), id: id.into(), why: String::new(), by: "You".into(), by_sid: String::new() };
+            fx.starts.push(s);
+        }
+        // Restart (an item at work whose holder isn't on it: cut off by a crash or a quit): sent to it again.
         "start_now" => {
             let h = holder.ok_or("nobody holds it yet")?;
+            if let Some(name) = busy.filter(|_| it.state == "working") {
+                return Err(format!("{name} is at work on it now"));
+            }
             it.after = None;
             it.state = "working".into();
             fx.sends.push((h.to().to_string(), crate::desk::handed_words(it, "")));
@@ -531,7 +751,14 @@ impl Hub {
         let (items, decisions, leads) = crate::db::desk_load(now_ms());
         st.desk.items = items;
         st.desk.decisions = decisions;
+        // Items from before numbering get their numbers once, saved under them.
+        let changed = st.desk.number_old();
+        crate::db::desk_put_numbered(&st.desk, &changed);
         st.desk.lead = leads.into_iter().map(|(p, sid, name)| (p, crate::desk::Lead { sid, name })).collect();
+        st.desk.members.clear();
+        for (p, sid) in crate::db::desk_members() {
+            st.desk.join(&p, &sid);
+        }
     }
 
     /// Session `sid` (going by `name`) leads `project`'s Desk from now: kept and saved.
@@ -548,12 +775,25 @@ impl Hub {
     fn desk_lead_to(&self, project: &str, lead: Option<crate::desk::Lead>) {
         {
             let _saving = crate::locking::lock(&self.saves.desk, "desk saves");
-            self.write(|st| match lead.clone() {
-                Some(l) => st.desk.lead.insert(project.to_string(), l),
-                None => st.desk.lead.remove(project),
+            // A lead is on its Desk, and stays on it once another runs it.
+            let joined = self.write(|st| match lead.clone() {
+                Some(l) => {
+                    let joined = st.desk.join(project, &l.sid);
+                    st.desk.lead.insert(project.to_string(), l);
+                    joined
+                }
+                None => {
+                    st.desk.lead.remove(project);
+                    false
+                }
             });
             match &lead {
-                Some(l) => crate::db::desk_put_lead(project, &l.sid, &l.name, now_ms()),
+                Some(l) => {
+                    crate::db::desk_put_lead(project, &l.sid, &l.name, now_ms());
+                    if joined {
+                        crate::db::desk_put_member(project, &l.sid, now_ms());
+                    }
+                }
                 None => crate::db::desk_drop_lead(project),
             }
         }
@@ -577,6 +817,9 @@ impl Hub {
                 } else if &it.after_refused == note {
                     it.after_refused.clear();
                     items.push(id.clone());
+                } else if &it.reopen_refused == note {
+                    it.reopen_refused.clear();
+                    items.push(id.clone());
                 }
             }
             items
@@ -587,12 +830,15 @@ impl Hub {
     /// An item of yours on `project`'s Desk. Held by live session `holder` (of the project) when given: at work on
     /// it, and sent nothing (it's already its work). Else new, and the lead (if any) told of it to route, with
     /// others added within a moment in the same message.
-    pub(crate) fn desk_add(&self, project: &str, kind: &str, title: &str, done_when: &str, holder: Option<&str>) -> Result<DeskItem, String> {
+    /// Pictures you attached are kept with the item (uploads.rs `save_kept`) and named to whoever takes it.
+    pub(crate) fn desk_add_with(&self, project: &str, kind: &str, title: &str, done_when: &str, holder: Option<&str>, images: &[crate::model::Upload]) -> Result<DeskItem, String> {
         if project.trim().is_empty() || title.trim().is_empty() {
             return Err("an item needs a project and a title".into());
         }
+        let images: Vec<String> = crate::uploads::save_kept(images)?.into_iter().map(|s| s.path).collect();
         let it = self.write(|st| -> Result<(DeskItem, Effects), String> {
             let mut it = new_item(st, project, kind, title, done_when, "you", now_ms());
+            it.images = images.clone();
             let mut fx = Effects { items: vec![it.id.clone()], ..Default::default() };
             match holder {
                 Some(sid) => {
@@ -602,6 +848,7 @@ impl Hub {
                     }
                     it.holder = Some(h);
                     it.state = "working".into();
+                    join(st, project, sid, &mut fx);
                 }
                 None if st.desk.lead_sid(project).is_some() => fx.news.push((project.to_string(), it.id.clone())),
                 None => {}
@@ -611,6 +858,12 @@ impl Hub {
         })?;
         self.desk_done(it.1);
         Ok(it.0)
+    }
+
+    /// The same with no pictures, as the tests add.
+    #[cfg(test)]
+    pub(crate) fn desk_add(&self, project: &str, kind: &str, title: &str, done_when: &str, holder: Option<&str>) -> Result<DeskItem, String> {
+        self.desk_add_with(project, kind, title, done_when, holder, &[])
     }
 
     /// You gave item `id` to session `sid`: see `give`. The item as it is now.
@@ -722,10 +975,14 @@ impl Hub {
 
     /// A lead asks you something: a question card of its session's in the Inbox, marked as its project's Desk's.
     /// Your answer goes back to it as a message (`desk_answered`).
-    fn desk_ask(&self, lsid: &str, project: &str, question: &str, choices: &[String]) {
+    /// `using`: a route waiting on your yes (`UseAsk`), kept on the card for `desk_answered`.
+    pub(super) fn desk_ask(&self, lsid: &str, project: &str, question: &str, choices: &[String], using: Option<&UseAsk>) {
         let Some(origin) = self.read(|st| st.sessions.origin(lsid)) else { return };
         let options: Vec<Value> = choices.iter().map(|c| json!({ "label": c, "description": "" })).collect();
-        let input = json!({ "questions": [{ "question": question, "header": "Desk", "options": options, "multiSelect": false }] });
+        let mut input = json!({ "questions": [{ "question": question, "header": "Desk", "options": options, "multiSelect": false }] });
+        if let Some(u) = using {
+            input["desk_use"] = json!(u);
+        }
         let ask = NewAsk { kind: "question".into(), tool_name: "AskUserQuestion".into(), tool_input: input, suggestions: Value::Null, context: vec![], agent_id: String::new() };
         // Nobody waits on the card: its answer is sent to the lead as a message (`desk_answered`).
         let (id, _) = self.add_ask(origin, ask);
@@ -742,12 +999,20 @@ impl Hub {
 
     /// Card `id` answered with `d`: a lead's ASK is filed and its answer sent to the lead. False for any other.
     pub(super) fn desk_answered(&self, id: &str, d: &Decision) -> bool {
-        let Some((sid, question)) = self.read(|st| st.items.iter().find(|i| i.id == id && i.desk).map(|i| (i.origin.session_id.clone(), i.tool_input.pointer("/questions/0/question").and_then(Value::as_str).unwrap_or("").to_string()))) else { return false };
+        let Some((sid, question, using)) = self.read(|st| {
+            st.items.iter().find(|i| i.id == id && i.desk).map(|i| {
+                let using = serde_json::from_value::<UseAsk>(i.tool_input["desk_use"].clone()).ok();
+                (i.origin.session_id.clone(), i.tool_input.pointer("/questions/0/question").and_then(Value::as_str).unwrap_or("").to_string(), using)
+            })
+        }) else { return false };
         let answer = d.answers.as_ref().and_then(|a| a.as_object()).and_then(|a| a.values().next()).map(|v| v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string()));
         let answer = answer.or_else(|| d.message.clone()).unwrap_or_else(|| if d.behavior == "deny" { "no".into() } else { "yes".into() });
         self.write(|st| st.waiters.remove(id));
         self.finish(id, "answered", &format!("answered: {answer}"));
-        let words = format!("Your ASK: {question}\nThe answer: {answer}");
+        let mut words = format!("Your ASK: {question}\nThe answer: {answer}");
+        if let Some(u) = using {
+            words = self.desk_use_answered(&u, d.behavior != "deny", &answer);
+        }
         self.later(0, move |h| {
             if let Err(e) = h.send_to_session(&sid, &words, &[], false) {
                 eprintln!("cue: desk: couldn't send the lead its answer: {e}");
@@ -756,16 +1021,32 @@ impl Hub {
         true
     }
 
+    /// `f` run while the Desk's saves wait for it (saves.rs: each writes what the store holds then, in order).
+    pub(super) fn desk_saving<T>(&self, f: impl FnOnce() -> T) -> T {
+        let _saving = crate::locking::lock(&self.saves.desk, "desk saves");
+        f()
+    }
+
     /// What a change left to do, with the store let go: its saves, then its messages and questions, and new items
     /// for their lead (told a moment later, with any others that came meanwhile).
     pub(super) fn desk_done(&self, fx: Effects) {
-        if fx.items.is_empty() && fx.dropped.is_empty() && fx.decisions.is_empty() && fx.sends.is_empty() && fx.asks.is_empty() && fx.news.is_empty() {
+        if fx.items.is_empty() && fx.dropped.is_empty() && fx.decisions.is_empty() && fx.sends.is_empty() && fx.asks.is_empty() && fx.news.is_empty() && fx.starts.is_empty() && fx.joined.is_empty() && fx.uses.is_empty() {
             return;
         }
         {
             // Each save writes what the store holds now (saves.rs), in the order the saves run.
             let _saving = crate::locking::lock(&self.saves.desk, "desk saves");
-            let (items, decisions) = self.read(|st| {
+            let now = now_ms();
+            let (items, decisions) = self.write(|st| {
+                // An item at work with a holder it wasn't stamped for: its work (and files) start now.
+                for id in &fx.items {
+                    if let Some(it) = st.desk.item_mut(id).filter(|i| i.state == "working") {
+                        let sid = it.holder.as_ref().map(|h| h.sid.clone()).unwrap_or_default();
+                        if !sid.is_empty() && it.held_from.as_ref().is_none_or(|(by, _)| *by != sid) {
+                            it.held_from = Some((sid, now));
+                        }
+                    }
+                }
                 let items: Vec<DeskItem> = fx.items.iter().filter_map(|id| st.desk.item(id).cloned()).collect();
                 let decisions: Vec<DeskDecision> = st.desk.decisions.iter().filter(|d| fx.decisions.contains(&d.id)).cloned().collect();
                 (items, decisions)
@@ -779,6 +1060,7 @@ impl Hub {
             for d in &decisions {
                 crate::db::desk_put_decision(d);
             }
+            fx.joined.iter().for_each(|(project, sid)| crate::db::desk_put_member(project, sid, now));
         }
         self.changed();
         for (sid, text) in fx.sends {
@@ -790,8 +1072,9 @@ impl Hub {
             });
         }
         for (lsid, project, q, choices) in fx.asks {
-            self.desk_ask(&lsid, &project, &q, &choices);
+            self.desk_ask(&lsid, &project, &q, &choices, None);
         }
+        self.desk_ask_first(fx.uses);
         for (project, id) in fx.news {
             let first = self.write(|st| {
                 let fresh = st.desk.fresh.entry(project.clone()).or_default();
@@ -802,13 +1085,14 @@ impl Hub {
                 self.later(NEWS_WAIT_MS, move |h| h.desk_tell_fresh(&project));
             }
         }
+        self.desk_later(fx.starts, fx.checked);
     }
 
     /// `state.desk`: each project with items or a lead, its lead ({ sid, name, state: live | parked | ended }), its
     /// items (not done, or done today) and today's decisions, newest first.
     pub(super) fn desk_view(st: &Store, now: u64) -> Value {
         let today = secs(super::today::local_start(now, false));
-        let mut projects: Vec<String> = st.desk.items.iter().map(|i| i.project.clone()).chain(st.desk.lead.keys().cloned()).collect();
+        let mut projects: Vec<String> = st.desk.items.iter().map(|i| i.project.clone()).chain(st.desk.lead.keys().cloned()).chain(st.desk.members.iter().filter(|(_, m)| !m.is_empty()).map(|(p, _)| p.clone())).collect();
         projects.sort();
         projects.dedup();
         let list: Vec<Value> = projects
@@ -816,9 +1100,10 @@ impl Hub {
             .map(|p| {
                 let items: Vec<DeskItem> = st.desk.items.iter().filter(|i| &i.project == p && (i.state != "done" || i.done_at.unwrap_or(i.updated) >= today)).map(|i| shown(st, i)).collect();
                 let decisions: Vec<&DeskDecision> = st.desk.decisions.iter().rev().filter(|d| &d.project == p && d.at >= today).collect();
-                json!({ "project": p, "lead": Self::desk_lead_view(st, p), "items": items, "decisions": decisions })
+                let members = st.desk.members.get(p).cloned().unwrap_or_default();
+                json!({ "project": p, "lead": Self::desk_lead_view(st, p), "items": items, "decisions": decisions, "members": members, "checks": super::desk_checks::checks_view(st, p) })
             })
             .collect();
-        json!({ "projects": list })
+        json!({ "projects": list, "installed_ms": super::desk_checks::installed_ms() })
     }
 }

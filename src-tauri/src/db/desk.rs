@@ -27,6 +27,21 @@ pub fn desk_drop_item(id: &str) {
     with(|c| c.execute("DELETE FROM desk_items WHERE id = ?1", params![id]).map(|_| ()));
 }
 
+/// Items `Desk::number_old` numbered (old id, new id) saved under their numbers (the old rows dropped), with the
+/// items and decisions that named them.
+pub fn desk_put_numbered(desk: &crate::desk::Desk, changed: &[(String, String)]) {
+    let named = |id: Option<&str>| changed.iter().any(|(_, n)| id == Some(n.as_str()));
+    for (was, _) in changed {
+        desk_drop_item(was);
+    }
+    for it in desk.items.iter().filter(|i| named(Some(&i.id)) || named(i.after.as_deref())) {
+        desk_put_item(it);
+    }
+    for d in desk.decisions.iter().filter(|d| named(d.item_id.as_deref())) {
+        desk_put_decision(d);
+    }
+}
+
 /// A decision saved as it is now.
 pub fn desk_put_decision(d: &DeskDecision) {
     let data = serde_json::to_string(d).unwrap_or_default();
@@ -50,6 +65,32 @@ pub fn desk_put_lead(project: &str, session_id: &str, name: &str, set_ms: u64) {
         )?;
         Ok(())
     });
+}
+
+/// Session `session_id` on `project`'s Desk.
+pub fn desk_put_member(project: &str, session_id: &str, added_ms: u64) {
+    with(|c| {
+        c.execute("INSERT OR IGNORE INTO desk_members (project, session_id, added_ms) VALUES (?1, ?2, ?3)", params![project, session_id, added_ms as i64])?;
+        Ok(())
+    });
+}
+
+/// Session `session_id` off `project`'s Desk.
+pub fn desk_drop_member(project: &str, session_id: &str) {
+    with(|c| {
+        c.execute("DELETE FROM desk_members WHERE project = ?1 AND session_id = ?2", params![project, session_id])?;
+        Ok(())
+    });
+}
+
+/// Each project's sessions on its Desk (project, session), in the order they joined.
+pub fn desk_members() -> Vec<(String, String)> {
+    with(|c| {
+        let mut q = c.prepare("SELECT project, session_id FROM desk_members ORDER BY added_ms, rowid")?;
+        let rows = q.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+        Ok(rows.flatten().collect())
+    })
+    .unwrap_or_default()
 }
 
 /// `project`'s Desk has no lead (a change of lead that failed, where it had none before).
