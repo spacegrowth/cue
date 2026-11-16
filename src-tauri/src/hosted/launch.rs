@@ -120,6 +120,12 @@ const HEADLESS: [&str; 11] = [
     "stdio",
 ];
 
+/// Claude Code turns its Artifact tools (read, edit and publish claude.ai artifacts) off when it runs headless
+/// ("off by default … when you run Claude Code with `-p`"); a terminal session has them. These turn them back on
+/// for a hosted Claude, without a browser tab opening for each artifact it makes. Not a documented switch: if
+/// Claude Code renames it, hosted sessions are simply without artifacts again. Your own values win.
+const ARTIFACT_ENV: [(&str, &str); 2] = [("CLAUDE_CODE_ARTIFACT", "1"), ("CLAUDE_CODE_ARTIFACT_AUTO_OPEN", "0")];
+
 /// The command for `spec`, its input and output piped, in a process group of its own (so closing it reaches
 /// everything it started), with the environment a hosted session needs.
 pub(super) fn command(spec: &Spec) -> Result<Command, String> {
@@ -201,6 +207,10 @@ pub(super) fn for_machine(spec: &Spec) -> Result<HostCommand, String> {
     if let Ok((Some((k, v)), _)) = crate::focus::permission_flags(spec.agent.program(), &spec.permissions) {
         env.push((k.to_string(), v.to_string()));
     }
+    // The machine's own `.cue/env.sh` is read after these, so it can still set them otherwise.
+    if spec.agent == Agent::Claude {
+        env.extend(ARTIFACT_ENV.iter().map(|(k, v)| (k.to_string(), v.to_string())));
+    }
     Ok(HostCommand { argv, env, cwd: "/".into() })
 }
 
@@ -251,6 +261,11 @@ fn environment(c: &mut Command, spec: &Spec) {
     c.env(super::HOSTED_ENV, "1").env("CUE_CWD", &spec.cwd).env("CUE_AGENT_PATH", crate::focus::AGENT_PATH).env("SHELL_SESSIONS_DISABLE", "1");
     if let Ok((Some((k, v)), _)) = crate::focus::permission_flags(spec.agent.program(), &spec.permissions) {
         c.env(k, v);
+    }
+    if spec.agent == Agent::Claude {
+        for (k, v) in ARTIFACT_ENV.iter().filter(|(k, _)| std::env::var_os(k).is_none()) {
+            c.env(k, v);
+        }
     }
 }
 
@@ -311,6 +326,22 @@ mod tests {
         assert_eq!(get(crate::hosted::HOSTED_ENV), Some("1"), "marked hosted");
         assert!(get("TMUX").is_none() && get("CLAUDECODE").is_none(), "nothing that would make it think it's inside another session");
         assert_eq!(get("HOME").map(str::to_string), std::env::var("HOME").ok(), "and the rest of Cue's own");
+    }
+
+    #[test]
+    fn a_hosted_claude_has_artifacts_as_a_terminal_one_does_and_pi_is_left_alone() {
+        let var = |c: &Command, k: &str| c.get_envs().find(|(n, _)| *n == k).and_then(|(_, v)| v.map(|v| v.to_string_lossy().into_owned()));
+        let c = command(&spec(Start::fresh())).unwrap();
+        for (k, v) in ARTIFACT_ENV {
+            // Set only where Cue's own environment doesn't already say (yours wins).
+            let want = if std::env::var_os(k).is_none() { Some(v.to_string()) } else { None };
+            assert_eq!(var(&c, k), want, "{k}");
+        }
+        let pi = command(&Spec { agent: Agent::Pi, ..spec(Start::fresh()) }).unwrap();
+        assert!(ARTIFACT_ENV.iter().all(|(k, _)| var(&pi, k).is_none()));
+        let on_machine = |agent| for_machine(&Spec { agent, ..spec(Start::fresh()) }).unwrap().env;
+        assert!(ARTIFACT_ENV.iter().all(|(k, v)| on_machine(Agent::Claude).contains(&(k.to_string(), v.to_string()))));
+        assert!(!on_machine(Agent::Pi).iter().any(|(k, _)| k.starts_with("CLAUDE_CODE_ARTIFACT")));
     }
 
     /// The command `for_machine` gives the host, run here with HOME at a scratch folder standing in for the machine
