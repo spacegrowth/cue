@@ -12,7 +12,7 @@ window.CueUI = (() => {
   const from = (rel) => (addon && rel === "addon.js" ? new URL("addon.js", addon) : addon && rel === "styles/addon.css" ? new URL("addon.css", addon) : new URL(rel, ui));
   /** The fakes, one file per area of src-tauri/src (tests/ui/fakes/<area>.js). commands.test.js checks this list
    *  names every file there. */
-  const FAKES = ["state", "chat", "steps", "mcp", "sessions", "terminal", "machines", "insights", "insights_tab", "settings", "extensions", "actions", "mini"];
+  const FAKES = ["state", "chat", "steps", "mcp", "sessions", "terminal", "machines", "insights", "insights_tab", "settings", "extensions", "actions", "mini", "desk"];
   /** A script, run in the order it was added among the others added this way (async = false). */
   const script = (src) => new Promise((ok, fail) => {
     const s = Object.assign(document.createElement("script"), { src, async: false, onload: ok, onerror: () => fail(new Error(`couldn't load ${src}`)) });

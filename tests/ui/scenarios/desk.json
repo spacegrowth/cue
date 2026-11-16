@@ -1,0 +1,876 @@
+{
+ "about": {},
+ "ahead_watch": [],
+ "branches": {
+  "/work/cue": ""
+ },
+ "connections": {
+  "claude": {
+   "events": [
+    "PermissionRequest",
+    "Stop",
+    "UserPromptSubmit",
+    "SessionEnd"
+   ],
+   "ok": true,
+   "present": true
+  },
+  "codex": {
+   "events": [
+    "PermissionRequest",
+    "Stop",
+    "UserPromptSubmit",
+    "SessionEnd"
+   ],
+   "ok": true,
+   "present": true
+  },
+  "pi": {
+   "ok": true,
+   "present": true
+  }
+ },
+ "ended": [],
+ "history": [],
+ "insight": {},
+ "items": [
+  {
+   "agent_id": "id-focus",
+   "agent_name": "focus-fix",
+   "agent_pid": 9000001,
+   "back_ms": null,
+   "context": [],
+   "created_ms": 1793984160000,
+   "cwd": "/work/cue",
+   "followup": "",
+   "harness": "claude",
+   "hosted": true,
+   "id": "n-focus-ask",
+   "images": [],
+   "interrupted": false,
+   "iterm_session_id": "",
+   "kind": "question",
+   "kitty_listen_on": "",
+   "kitty_window_id": "",
+   "machine": "",
+   "message": "",
+   "outcome": "",
+   "project": "cue",
+   "resolved_ms": null,
+   "session_id": "lead",
+   "status": "pending",
+   "suggestions": [],
+   "term_program": "",
+   "thread": [],
+   "tool_name": "AskUserQuestion",
+   "tool_input": {
+    "questions": [
+     {
+      "question": "Keep focus in the box, or move to the next item?",
+      "header": "Focus",
+      "multiSelect": false,
+      "options": [
+       {
+        "label": "Keep it in the box"
+       },
+       {
+        "label": "Move to the next item"
+       }
+      ]
+     }
+    ]
+   }
+  }
+ ],
+ "live": [],
+ "now_ms": 1793984400000,
+ "parked": [],
+ "projects": {
+  "/work/cue": {
+   "key": "/work/cue",
+   "name": "cue",
+   "own": "cue",
+   "root": "/work/cue",
+   "top": "/work/cue"
+  },
+  "/work/website": {
+   "key": "/work/website",
+   "name": "website",
+   "own": "website",
+   "root": "/work/website",
+   "top": "/work/website"
+  }
+ },
+ "restarted": {},
+ "restarting": {},
+ "review_queue": {},
+ "sessions": [
+  {
+   "agent_pid": 9000001,
+   "agents": 0,
+   "background": 0,
+   "cwd": "/work/cue",
+   "doing_ms": 0,
+   "driven_by": "",
+   "harness": "claude",
+   "hosted": true,
+   "iterm_session_id": "",
+   "kitty_listen_on": "",
+   "kitty_window_id": "",
+   "machine": "",
+   "project": "cue",
+   "prompt": "",
+   "queued": null,
+   "segments": [],
+   "session_id": "disp-cue",
+   "since_ms": 1793984280000,
+   "state": "idle",
+   "team": [],
+   "term_program": "",
+   "thread": [
+    {
+     "at_ms": 1793983080000,
+     "role": "you",
+     "text": "Two from today: the rail dot blinks for a reply I didn't send, and the reply box loses focus after Send."
+    },
+    {
+     "at_ms": 1793983140000,
+     "role": "agent",
+     "text": "Added both.\n\n**Reply box loses focus** went to web-lead now: it's in inbox.js, which web-lead already has open.\n\n**Rail dot blinks** waits for web-lead after **Search stays centred**, since both change header.js. About 10 minutes."
+    },
+    {
+     "at_ms": 1793983980000,
+     "role": "you",
+     "text": "<desk project=\"cue\">\n3 open: 2 wait on you, 1 with web-lead, 1 with host-lead.\n</desk>\n\nFine. And the canvas one?"
+    },
+    {
+     "at_ms": 1793984040000,
+     "role": "agent",
+     "text": "host-lead is on it, 6 minutes in. It chose an environment setting over a settings file; it's in Decisions if you want to undo it."
+    }
+   ],
+   "tmux_pane": "",
+   "transcript_path": "/Users/me/.claude/projects/-work/lead.jsonl",
+   "tty": "",
+   "wezterm_pane": "",
+   "name": "Dispatch"
+  },
+  {
+   "agent_pid": 9000001,
+   "agents": 0,
+   "background": 0,
+   "cwd": "/work/website",
+   "doing_ms": 0,
+   "driven_by": "",
+   "harness": "claude",
+   "hosted": true,
+   "iterm_session_id": "",
+   "kitty_listen_on": "",
+   "kitty_window_id": "",
+   "machine": "",
+   "project": "website",
+   "prompt": "",
+   "queued": null,
+   "segments": [],
+   "session_id": "disp-web",
+   "since_ms": 1793981400000,
+   "state": "idle",
+   "team": [],
+   "term_program": "",
+   "thread": [
+    {
+     "at_ms": 1793981280000,
+     "role": "you",
+     "text": "Draft the launch page."
+    },
+    {
+     "at_ms": 1793981340000,
+     "role": "agent",
+     "text": "Added it and gave it to site-lead."
+    }
+   ],
+   "tmux_pane": "",
+   "transcript_path": "/Users/me/.claude/projects/-work/lead.jsonl",
+   "tty": "",
+   "wezterm_pane": "",
+   "name": "Dispatch"
+  },
+  {
+   "agent_pid": 9000001,
+   "agents": 0,
+   "background": 0,
+   "cwd": "/work/cue",
+   "doing_ms": 0,
+   "driven_by": "",
+   "harness": "claude",
+   "hosted": true,
+   "iterm_session_id": "",
+   "kitty_listen_on": "",
+   "kitty_window_id": "",
+   "machine": "",
+   "project": "cue",
+   "prompt": "Hosted sessions can't open the canvas",
+   "queued": null,
+   "segments": [],
+   "session_id": "host",
+   "since_ms": 1793984040000,
+   "state": "working",
+   "team": [],
+   "term_program": "",
+   "thread": [
+    {
+     "at_ms": 1793984040000,
+     "role": "you",
+     "text": "#d5 Hosted sessions can't open the canvas."
+    },
+    {
+     "at_ms": 1793984220000,
+     "role": "agent",
+     "text": "Chose an environment setting over a settings file. Testing the fix now."
+    }
+   ],
+   "tmux_pane": "",
+   "transcript_path": "/Users/me/.claude/projects/-work/lead.jsonl",
+   "tty": "",
+   "wezterm_pane": "",
+   "name": "host-lead",
+   "doing": "Testing the fix"
+  },
+  {
+   "agent_pid": 9000001,
+   "agents": 0,
+   "background": 0,
+   "cwd": "/work/cue",
+   "doing_ms": 0,
+   "driven_by": "",
+   "harness": "claude",
+   "hosted": true,
+   "iterm_session_id": "",
+   "kitty_listen_on": "",
+   "kitty_window_id": "",
+   "machine": "",
+   "project": "cue",
+   "prompt": "Header and Inbox fixes from the Desk",
+   "queued": null,
+   "segments": [
+    {
+     "end_ms": 1793984400000,
+     "kind": "waiting",
+     "start_ms": 1793984390000
+    },
+    {
+     "end_ms": null,
+     "kind": "waiting",
+     "start_ms": 1793984400000
+    }
+   ],
+   "session_id": "lead",
+   "since_ms": 1793979600000,
+   "state": "working",
+   "team": [
+    {
+     "also": [],
+     "ended_ms": 0,
+     "files": [
+      "ui/header.js",
+      "ui/styles/header.css"
+     ],
+     "step": "Step 2 of 3: the field stays centred; next it checks it never covers the Inbox button",
+     "step_ms": 1793984280000,
+     "summary": "",
+     "state": "working",
+     "agent_id": "id-search",
+     "call": "call-search",
+     "name": "search-centre",
+     "what": "Search stays centred in the header",
+     "asked": "Keep the search field centred unless it would cover a button.",
+     "started_ms": 1793983560000
+    },
+    {
+     "also": [],
+     "ended_ms": 0,
+     "files": [
+      "ui/inbox.js"
+     ],
+     "step": "Asking which way focus goes",
+     "step_ms": 1793984280000,
+     "summary": "",
+     "state": "working",
+     "agent_id": "id-focus",
+     "call": "call-focus",
+     "name": "focus-fix",
+     "what": "Reply box loses focus after Send",
+     "asked": "The reply box keeps focus after Send.",
+     "started_ms": 1793984160000
+    }
+   ],
+   "term_program": "",
+   "thread": [
+    {
+     "at_ms": 1793983200000,
+     "role": "you",
+     "text": "#d3 Search stays centred in the header. Done when: the field is centred unless it would cover a button."
+    },
+    {
+     "at_ms": 1793983320000,
+     "role": "agent",
+     "text": "Split the work: search-centre on header.js, focus-fix on inbox.js. No file shared."
+    }
+   ],
+   "tmux_pane": "",
+   "transcript_path": "/Users/me/.claude/projects/-work/lead.jsonl",
+   "tty": "",
+   "wezterm_pane": "",
+   "name": "web-lead"
+  },
+  {
+   "agent_pid": 9000001,
+   "agents": 0,
+   "background": 0,
+   "cwd": "/work/website",
+   "doing_ms": 0,
+   "driven_by": "",
+   "harness": "claude",
+   "hosted": true,
+   "iterm_session_id": "",
+   "kitty_listen_on": "",
+   "kitty_window_id": "",
+   "machine": "",
+   "project": "website",
+   "prompt": "",
+   "queued": null,
+   "segments": [],
+   "session_id": "site",
+   "since_ms": 1793983860000,
+   "state": "idle",
+   "team": [],
+   "term_program": "",
+   "thread": [
+    {
+     "at_ms": 1793983860000,
+     "role": "agent",
+     "text": "The launch page draft is up. Ready for you to read."
+    }
+   ],
+   "tmux_pane": "",
+   "transcript_path": "/Users/me/.claude/projects/-work/lead.jsonl",
+   "tty": "",
+   "wezterm_pane": "",
+   "name": "site-lead"
+  }
+ ],
+ "settings": {
+  "actions": {
+   "default": "Look at this project and set up my Cue actions for it in {file} (Cue's own file, outside the repo). Read the notes at the top of the file first (its \"about\" list, which says how an action is written) and follow them. Keep the actions already there unless they're wrong. Then tell me what you added, changed or removed, and why.",
+   "prompt": "Look at this project and set up my Cue actions for it in {file} (Cue's own file, outside the repo). Read the notes at the top of the file first (its \"about\" list, which says how an action is written) and follow them. Keep the actions already there unless they're wrong. Then tell me what you added, changed or removed, and why."
+  },
+  "agents": {
+   "show_driven": false
+  },
+  "appearance": {
+   "mode": "system",
+   "project": false,
+   "zoom": 1
+  },
+  "background": {
+   "sessions": []
+  },
+  "context": {
+   "keep": 5
+  },
+  "history": {
+   "keep": 300
+  },
+  "hosted": {
+   "on": false
+  },
+  "insights": {
+   "ahead": false,
+   "cache": false,
+   "handoff": false,
+   "on": false,
+   "queue": false,
+   "skills": {},
+   "snooze": 0
+  },
+  "login": {
+   "open": false
+  },
+  "mini": {
+   "mode": "off"
+  },
+  "notify": {
+   "cold": true,
+   "decisions": true,
+   "finished": true,
+   "sound": "pluck"
+  },
+  "pi": {
+   "gate": "dangerous"
+  },
+  "project": {
+   "all": null,
+   "colors": {},
+   "folders": {},
+   "hue": null,
+   "made": [],
+   "moves": {},
+   "names": {},
+   "pins": []
+  },
+  "quick": {
+   "phrases": [
+    "Commit",
+    "Go ahead",
+    "Think hard"
+   ]
+  },
+  "sessions": {
+   "terminal": "Terminal",
+   "tmux": true,
+   "tmux_installed": true
+  },
+  "setup": {
+   "done": false
+  },
+  "status": {
+   "on": true,
+   "sessions": []
+  },
+  "steps": {
+   "mode": "line"
+  },
+  "tasks": {
+   "auto": false,
+   "on": false
+  },
+  "tips": {
+   "on": true
+  },
+  "turn": {
+   "mode": "answer"
+  },
+  "updates": {
+   "beta": false
+  },
+  "usage": {
+   "claude": true,
+   "file": "~/.cue/usage.csv"
+  },
+  "voice": {
+   "pick": ""
+  }
+ },
+ "skill_handoffs": {},
+ "status_spent": {
+  "replies": 0,
+  "sessions": {},
+  "tokens": 0,
+  "usd": 0
+ },
+ "tasks": {},
+ "tasks_spent": {
+  "calls": 0,
+  "tokens": 0,
+  "tracked": 0,
+  "usd": 0
+ },
+ "today": {
+  "allowed": 0,
+  "answered": 0,
+  "denied": 0,
+  "hours": [
+   {
+    "from_ms": 1793944800000,
+    "n": 0
+   },
+   {
+    "from_ms": 1793948400000,
+    "n": 0
+   },
+   {
+    "from_ms": 1793952000000,
+    "n": 0
+   },
+   {
+    "from_ms": 1793955600000,
+    "n": 0
+   },
+   {
+    "from_ms": 1793959200000,
+    "n": 0
+   },
+   {
+    "from_ms": 1793962800000,
+    "n": 0
+   },
+   {
+    "from_ms": 1793966400000,
+    "n": 0
+   },
+   {
+    "from_ms": 1793970000000,
+    "n": 0
+   },
+   {
+    "from_ms": 1793973600000,
+    "n": 0
+   },
+   {
+    "from_ms": 1793977200000,
+    "n": 0
+   },
+   {
+    "from_ms": 1793980800000,
+    "n": 0
+   },
+   {
+    "from_ms": 1793984400000,
+    "n": 0
+   }
+  ],
+  "longest": null,
+  "median_wait_ms": null,
+  "replied": 0
+ },
+ "unreachable": [],
+ "usage": null,
+ "usage_file": null,
+ "window_ms": 1800000,
+ "desk": {
+  "projects": [
+   {
+    "project": "cue",
+    "dispatch": "disp-cue",
+    "items": [
+     {
+      "project": "cue",
+      "done_when": "After Send the cursor is still in the reply box.",
+      "after": null,
+      "after_why": "",
+      "latest": "",
+      "ask": {
+       "item_id": "n-focus-ask",
+       "sid": "lead",
+       "text": "web-lead asks: keep focus in the box, or move to the next item?",
+       "choices": [
+        "Keep it in the box",
+        "Move to the next item"
+       ]
+      },
+      "files": [
+       "ui/inbox.js"
+      ],
+      "done_at": null,
+      "from": "dispatch",
+      "holder": {
+       "kind": "crew",
+       "sid": "id-focus",
+       "name": "focus-fix",
+       "lead_sid": "lead"
+      },
+      "id": "d1",
+      "kind": "bug",
+      "title": "Reply box loses focus after Send",
+      "state": "needs_you",
+      "created": 1793984160,
+      "updated": 1793984340
+     },
+     {
+      "project": "cue",
+      "done_when": "Quick phrases sit at the right of Send; More opens the rest.",
+      "after": null,
+      "after_why": "",
+      "latest": "Done: phrases at the right of Send, More opens upward.",
+      "ask": null,
+      "files": [],
+      "done_at": null,
+      "from": "you",
+      "holder": {
+       "kind": "lead",
+       "sid": "lead",
+       "name": "web-lead"
+      },
+      "id": "d2",
+      "kind": "feature",
+      "title": "Quick phrases at the right of Send",
+      "state": "to_check",
+      "created": 1793983680,
+      "updated": 1793984280
+     },
+     {
+      "project": "cue",
+      "done_when": "The field is centred unless it would cover a button.",
+      "after": null,
+      "after_why": "",
+      "latest": "step 2 of 3",
+      "ask": null,
+      "files": [
+       "ui/header.js",
+       "ui/styles/header.css"
+      ],
+      "done_at": null,
+      "from": "dispatch",
+      "holder": {
+       "kind": "crew",
+       "sid": "id-search",
+       "name": "search-centre",
+       "lead_sid": "lead"
+      },
+      "id": "d3",
+      "kind": "feature",
+      "title": "Search stays centred in the header",
+      "state": "working",
+      "created": 1793983560,
+      "updated": 1793984280
+     },
+     {
+      "project": "cue",
+      "done_when": "The rail's dot blinks only for a session you wrote to, once its reply comes back.",
+      "after": "d3",
+      "after_why": "both change header.js",
+      "latest": "",
+      "ask": null,
+      "files": [],
+      "done_at": null,
+      "from": "you",
+      "holder": {
+       "kind": "lead",
+       "sid": "lead",
+       "name": "web-lead"
+      },
+      "id": "d4",
+      "kind": "bug",
+      "title": "Rail dot blinks for a reply you didn't send",
+      "state": "queued",
+      "created": 1793983200,
+      "updated": 1793983200
+     },
+     {
+      "project": "cue",
+      "done_when": "A hosted session opens the canvas like any other.",
+      "after": null,
+      "after_why": "",
+      "latest": "testing the fix",
+      "ask": null,
+      "files": [],
+      "done_at": null,
+      "from": "dispatch",
+      "holder": {
+       "kind": "session",
+       "sid": "host",
+       "name": "host-lead"
+      },
+      "id": "d5",
+      "kind": "bug",
+      "title": "Hosted sessions can't open the canvas",
+      "state": "working",
+      "created": 1793984040,
+      "updated": 1793984220
+     },
+     {
+      "project": "cue",
+      "done_when": "",
+      "after": null,
+      "after_why": "",
+      "latest": "",
+      "ask": null,
+      "files": [],
+      "done_at": null,
+      "from": "you",
+      "holder": null,
+      "id": "d6",
+      "kind": "task",
+      "title": "Tidy the Settings copy",
+      "state": "new",
+      "created": 1793984280,
+      "updated": 1793984280,
+      "route_failed": "No session in this project could take it."
+     },
+     {
+      "project": "cue",
+      "done_when": "",
+      "after": null,
+      "after_why": "",
+      "latest": "",
+      "ask": null,
+      "files": [],
+      "done_at": 1793979000,
+      "from": "dispatch",
+      "holder": {
+       "kind": "lead",
+       "sid": "lead",
+       "name": "web-lead"
+      },
+      "id": "d7",
+      "kind": "task",
+      "title": "Header count as a tint",
+      "state": "done",
+      "created": 1793972400,
+      "updated": 1793979000
+     },
+     {
+      "project": "cue",
+      "done_when": "",
+      "after": null,
+      "after_why": "",
+      "latest": "",
+      "ask": null,
+      "files": [],
+      "done_at": 1793977200,
+      "from": "dispatch",
+      "holder": {
+       "kind": "lead",
+       "sid": "lead",
+       "name": "web-lead"
+      },
+      "id": "d8",
+      "kind": "task",
+      "title": "Inbox before Board",
+      "state": "done",
+      "created": 1793971200,
+      "updated": 1793977200
+     },
+     {
+      "project": "cue",
+      "done_when": "",
+      "after": null,
+      "after_why": "",
+      "latest": "",
+      "ask": null,
+      "files": [],
+      "done_at": 1793975400,
+      "from": "dispatch",
+      "holder": {
+       "kind": "session",
+       "sid": "host",
+       "name": "host-lead"
+      },
+      "id": "d9",
+      "kind": "bug",
+      "title": "No terminal card for hosted",
+      "state": "done",
+      "created": 1793970000,
+      "updated": 1793975400
+     },
+     {
+      "project": "cue",
+      "done_when": "",
+      "after": null,
+      "after_why": "",
+      "latest": "",
+      "ask": null,
+      "files": [],
+      "done_at": null,
+      "from": "you",
+      "holder": null,
+      "id": "d9",
+      "kind": "task",
+      "title": "Old idea, dropped",
+      "state": "dropped",
+      "created": 1793984280,
+      "updated": 1793984280
+     }
+    ],
+    "decisions": [
+     {
+      "project": "cue",
+      "item_id": "d5",
+      "why": "Hosted sessions don't read the settings file at start.",
+      "undo": "can",
+      "id": "c1",
+      "by": "host-lead",
+      "sid": "host",
+      "text": "An environment setting, not a settings file",
+      "at": 1793984220
+     },
+     {
+      "project": "cue",
+      "item_id": "d1",
+      "why": "A timer races the redraw.",
+      "undo": "can",
+      "id": "c2",
+      "by": "web-lead",
+      "sid": "lead",
+      "text": "Focus comes back through the box's own focus step, not a timer",
+      "at": 1793984040
+     },
+     {
+      "project": "cue",
+      "item_id": "d4",
+      "why": "Both change header.js; one after the other avoids a clash.",
+      "undo": "can",
+      "id": "c3",
+      "by": "Dispatch",
+      "sid": "disp-cue",
+      "text": "Gave it to web-lead after Search, not a new session",
+      "at": 1793983200
+     }
+    ]
+   },
+   {
+    "project": "website",
+    "dispatch": "disp-web",
+    "items": [
+     {
+      "project": "website",
+      "done_when": "",
+      "after": null,
+      "after_why": "",
+      "latest": "notes session replied",
+      "ask": null,
+      "files": [],
+      "done_at": null,
+      "from": "dispatch",
+      "holder": {
+       "kind": "session",
+       "sid": "site",
+       "name": "site-lead"
+      },
+      "id": "w1",
+      "kind": "task",
+      "title": "Launch page draft",
+      "state": "to_check",
+      "created": 1793981400,
+      "updated": 1793983860
+     },
+     {
+      "project": "website",
+      "done_when": "",
+      "after": null,
+      "after_why": "",
+      "latest": "",
+      "ask": null,
+      "files": [],
+      "done_at": 1793978400,
+      "from": "dispatch",
+      "holder": {
+       "kind": "session",
+       "sid": "site",
+       "name": "site-lead"
+      },
+      "id": "w2",
+      "kind": "feature",
+      "title": "Pricing table on small screens",
+      "state": "done",
+      "created": 1793966400,
+      "updated": 1793978400
+     }
+    ],
+    "decisions": [
+     {
+      "project": "website",
+      "item_id": "w1",
+      "why": "Faster to load and to read.",
+      "undo": "can",
+      "id": "w-c1",
+      "by": "site-lead",
+      "sid": "site",
+      "text": "One hero image, not a carousel",
+      "at": 1793982600
+     }
+    ]
+   }
+  ]
+ }
+}
