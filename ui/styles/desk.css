@@ -92,7 +92,10 @@
 .dk-who:has(.dk-givewrap) { overflow: visible; }
 .dk-it .dk-givemenu { left: auto; right: 0; }
 .dk-age { color: var(--muted); font-family: var(--mono); font-size: 11px; white-space: nowrap; }
-.dk-ok { padding: 3px 9px; border: 0; border-radius: 7px; background: var(--accent); color: var(--on-accent); font: 600 12px var(--sans); white-space: nowrap; cursor: pointer; }
+/* Looks right on a row: a quiet outlined ✓ that fills in when you hover the row (or focus it). */
+.dk-ok { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 1.5px solid var(--accent); border-radius: 50%; background: none; color: var(--accent); font: 700 12px var(--sans); cursor: pointer; }
+.dk-ok::before { content: "✓"; }
+.dk-it:hover .dk-ok, .dk-ok:focus-visible { background: var(--accent); color: var(--on-accent); }
 .dk-ok:hover { filter: brightness(1.15); }
 .dk-h { grid-column: 2; margin-top: 1px; color: var(--ink); font-size: 12.5px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Selected: its words in the selected ink, as the Board's selected card. */
@@ -317,3 +320,4 @@ button.dk-undo-l:hover { text-decoration: underline; }
 .dk-undo-c:hover { text-decoration: underline; }
 
 .dk-srow.on .dk-st > i:not(.ask):not(.idle) { background: var(--on-sel); }
+.dk-chk .dk-chk-back { white-space: pre-wrap; }

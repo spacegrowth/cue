@@ -165,7 +165,7 @@ function deskTag(i) {
 /** Who holds an item, in a few words: "web-lead → search-centre" for its crew member. */
 const deskHolderOf = (i) => (!i.holder ? "" : i.holder.kind === "crew" ? `${deskHolderName(i.holder.lead_sid)} → ${i.holder.name}` : i.crew ? `${i.holder.name} → ${i.crew}` : i.holder.name);
 /** One item in two rows: its state, #id and title; under them who holds it (Give to… when no one does), its age (a
- *  done one's time it finished), and Looks right when it's ready to check; an ask's question below that. Lit
+ *  done one's time it finished), and a quiet ✓ when it's ready to check (Looks right; it fills on hover); an ask's question below that. Lit
  *  when it's open, or its crew member is. */
 function deskItemRow(i, lit, held = false) {
   const on = lit || (deskOpen?.kind === "item" && deskOpen.id === i.id);
@@ -175,7 +175,7 @@ function deskItemRow(i, lit, held = false) {
   const at = s ? (s.state === "working" && s.since_ms) || deskMs(i.updated) : 0;
   const who = s ? `working · ${esc(deskHolderOf(i))} · <span data-ago="${at}">${ago(at)}</span>` : !i.holder && i.state !== "done" ? deskGive(i, "row") : esc(deskHolderOf(i));
   const when = s ? "" : i.state === "done" ? `${i.commit ? `<span class="dk-cm">committed ${esc(i.commit)}</span> · ` : ""}${clockAt(deskMs(i.done_at || i.updated))}` : ago(deskMs(i.created));
-  const ok = i.state === "to_check" ? `<button class="dk-ok" data-desk-act="looks_right" data-id="${esc(i.id)}">Looks right</button>` : "";
+  const ok = i.state === "to_check" ? `<button class="dk-ok" data-desk-act="looks_right" data-id="${esc(i.id)}" aria-label="Looks right"></button>` : "";
   const ask = i.state === "needs_you" ? `<div class="dk-h">${esc(i.ask?.text || `${i.holder?.name || "Its holder"} asks you something`)}</div>` : "";
   return `<div class="dk-it ${i.state === "needs_you" ? "ask" : ""} ${look === "landed" ? "landed" : ""} ${on ? "on" : ""}" role="button" tabindex="0" data-desk-item="${esc(i.id)}">
     <span class="dk-tag ${look}">${tag}</span><div class="dk-i1">${deskKindIcon(i)}<span class="dk-id">${esc(deskNum(i))}</span><span class="dk-t">${esc(i.title)}</span></div>
