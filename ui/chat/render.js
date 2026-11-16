@@ -124,7 +124,8 @@ function reviewFolds(ex, team) {
  *  by time ({ at, html }, each keyed). It folds replies as the chat does. The Desk's lead chat (desk.js deskChat):
  *  `lines`, md's hook that draws the lead's own ITEM/ROUTE/DONE/CONTEXT lines; `noActs`, no Actions under its reply and no Send to… on its messages (the Desk's lead hands work on by its own lines). */
 function chatHtml(it, s, harness, paged = false, page = null) {
-  const ex = conversation(it, s);
+  // A page's own reading of what was said (the Desk drops the summary it put before your words): `page.said`.
+  const ex = page?.said ? conversation(it, s).map(page.said) : conversation(it, s);
   // An ask the hub noted ("Bash: …") is drawn as an ask with your answer beside it, not as its words (chatAsks).
   const { asks, answers, decided } = chatAsks(ex);
   const lastAgent = ex.findLastIndex((e, n) => e.role === "agent" && !asks.has(n));
@@ -345,7 +346,8 @@ const chatDecisionLine = ({ text, no }, at, cls = no ? "no" : "") => `<div class
 /** Lines of a command shown before it folds; a longer one opens whole with "Show all" (openMsgs, as a long reply). */
 const CHAT_ASK_LINES = 4;
 /** An ask the agent made, as the chat draws it: "Asked to run" (or what it asked), the command in a code block (folded
- *  to a few lines when long), and how you answered beside it, in the look of the result line (.cv-result). */
+ *  to a few lines when long), and how you answered: beside "Asked to run", under a question (which wraps as text), in
+ *  the look of the result line (.cv-result). */
 function chatAskHtml(key, e, { ask, answer }, harness, machine) {
   const lines = ask.code.split("\n"), long = lines.length > CHAT_ASK_LINES, open = openMsgs.has(key);
   const shown = long && !open ? lines.slice(0, CHAT_ASK_LINES).join("\n") : ask.code;
@@ -354,7 +356,7 @@ function chatAskHtml(key, e, { ask, answer }, harness, machine) {
   const what = ask.tool ? "" : `<span class="cv-ask-q">${esc(ask.what)}</span>`;
   const ans = answer ? `<span class="cv-ask-ans ${answer.no ? "no" : ""}"><span class="sent-check">${answer.no ? "✕" : "✓"}</span>${esc(answer.text)}</span>` : "";
   return `<div class="cv-ask"><div class="cv-meta">${esc(agentName(harness))}${machTag(machine)} · ${ago(e.at_ms)} ago</div>
-    <div class="cv-ask-row"><span class="cv-ask-head">${esc(ask.head)}${ask.tool ? "" : ":"}</span>${what}<span class="grow"></span>${ans}</div>${code}${more}</div>`;
+    <div class="cv-ask-row"><span class="cv-ask-head">${esc(ask.head)}${ask.tool ? "" : ":"}</span>${what}${ask.tool ? `<span class="grow"></span>${ans}` : ""}</div>${ask.tool ? "" : ans}${code}${more}</div>`;
 }
 /** After a decision: what you chose. Replies need no line, they're already in the chat. */
 function resultLine(it) {
@@ -408,6 +410,7 @@ function moreMenu(sid, s, closable = false) {
       <button data-cmd="compact" data-sid="${esc(sid)}" ${busy ? "disabled" : ""}>Compact<span>${busy ? "When this turn ends" : "Summarize the conversation to free up context"}</span></button>
       ${tellItem(sid, s)}
       ${crewMoreItem(sid)}
+      ${typeof deskMemberItem === "function" ? deskMemberItem(sid, s) : ""}
       ${handoffMenu(sid, s)}
       ${addOn.chatMenu(sid, s)}
       <button data-move-ask="${esc(sid)}">Move to project…<span>Show its folder's sessions under another project in Cue; the agent stays in its folder</span></button>
