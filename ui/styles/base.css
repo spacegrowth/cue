@@ -115,6 +115,8 @@ a:focus-visible { outline: 2px solid var(--link, var(--accent)); outline-offset:
 .top { display: flex; align-items: center; gap: 12px; color: var(--on-bg); position: relative; }
 /* Search: always in the middle of the header, whatever sits either side. */
 .top-find { position: absolute; left: 50%; transform: translateX(-50%); }
+/* Too narrow for that (it would cover something): it takes its place in the row. */
+.top.find-inline .top-find { position: static; transform: none; }
 .wordmark { display: grid; place-items: center; color: var(--on-bg); }
 .wordmark svg { display: block; pointer-events: none; }
 /* Header chips: click to open the oldest of each kind (again for the next). */
