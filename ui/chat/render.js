@@ -115,7 +115,7 @@ function reviewFolds(ex, team) {
   const reviews = reviewReplies(ex, (name) => [...team].reverse().find((m) => m.name === name)?.review || "");
   const reviewAt = new Map();
   for (const [k, name] of reviews) {
-    for (let n = k - 1; n >= 0; n--) if (ex[n].role === "you" && cueSaid(ex[n].text)?.review) { reviewAt.set(n, { name, text: stripStatus(ex[k].text), team }); break; }
+    for (let n = k - 1; n >= 0; n--) if (ex[n].role === "you" && cueSaid(ex[n].text)?.review) { reviewAt.set(n, { name, text: ex[k].text, team }); break; }
   }
   return { reviews, reviewAt };
 }
@@ -167,17 +167,19 @@ function chatHtml(it, s, harness, paged = false, page = null) {
       const wait = !e.pending ? "" : Date.now() - e.at_ms > 30_000 ? " · Cue hasn't seen it take this yet" : " · waiting for it to take this";
       // Sent now right after the one above, before it answered: the agent got both as one (sessions.rs note_with).
       const joined = e.joined ? " · went to the agent with your message above, as one" : "";
-      return `<div class="cv-you ${e.unsent ? "unsent" : ""} ${e.pending ? "pending" : ""}">${yourBubble(e, `${sid}:${e.at_ms}`)}${thumbs(e.images)}<div class="cv-meta">You · ${ago(e.at_ms)} ago${via}${wait}${joined}</div>${unsent}</div>`;
+      // A page's own head on your words (the Desk: what item they're about), and the words without it.
+      const hd = page?.youHead?.(e);
+      return `<div class="cv-you ${e.unsent ? "unsent" : ""} ${e.pending ? "pending" : ""}">${yourBubble(hd ? { ...e, text: hd.text } : e, `${sid}:${e.at_ms}`, "", false, hd?.html || "")}${thumbs(e.images)}<div class="cv-meta">You · ${ago(e.at_ms)} ago${via}${wait}${joined}</div>${unsent}</div>`;
     }
     const key = `${s?.session_id || it?.id}:${e.at_ms}`;
     const long = e.text.length > 280 || e.text.split("\n").length > 4;
     const foldable = !recent.has(n) && long, folded = foldable && !openMsgs.has(key);
     const follow = it?.followup && e.text === it.message && !hookInChat(sid, ex.findLast((y) => y.role === "you" && y.at_ms < e.at_ms)?.at_ms ?? 0) ? followHtml(it) : "";
     fwdMsgs.set(key, { text: addOn.plain(e.text), from: project, fromSid: sid });
-    const said = addOn.reply(sid, stripStatus(e.text));
+    const said = addOn.reply(sid, e.text), prose = proseOf(said.text, page?.lines);
     return `<div class="cv-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}"><div class="cv-meta">${esc(agentName(harness))}${machTag(it?.machine || s?.machine)} · ${ago(e.at_ms)} ago${n === lastAgent ? toldMeta(s) : ""}</div>
       <div class="msg cv-text">${md(said.text, { runIn: s?.session_id, lines: page?.lines })}</div>${said.after}${thumbs(e.images)}${localImages(e.text)}
-      <div class="cv-acts">${sid ? listenBtn(key) : ""}${long && paged && sid ? `<button class="cv-pill" data-read="${esc(key)}">${BOOK_ICON}Read</button>` : ""}${foldable ? `<button class="cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}${n === lastAgent && !page?.noActs ? actReplyHtml(s, e.at_ms) : ""}${page?.noActs ? "" : `<button class="cv-fwd" data-fwd="${esc(key)}">↗ Send to…</button>`}</div>${follow}</div>`;
+      <div class="cv-acts">${sid && prose.words >= LISTEN_WORDS ? listenBtn(key) : ""}${prose.long && paged && sid ? `<button class="cv-pill" data-read="${esc(key)}">${BOOK_ICON}Read</button>` : ""}${foldable ? `<button class="cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}${n === lastAgent && !page?.noActs ? actReplyHtml(s, e.at_ms) : ""}${page?.noActs ? "" : `<button class="cv-fwd" data-fwd="${esc(key)}">↗ Send to…</button>`}</div>${follow}</div>`;
   })(), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran, restarts, page?.extra || []));
   for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(outboxRow(o, s, K(`out:${o.at}`)));
   // Sent while it worked: Cue keeps it until the turn ends. Yours to take back (Edit, Esc) or send now. (What Cue
@@ -238,37 +240,6 @@ function statusLine(it, s) {
   if (tray && s.state === "agent" && s.helpers && !s.compacting_ms && !s.compacted_ms) return tray;
   // A hand-off on its way, a note written ahead, a cache gone (insights.js): lines here, never a bar on the box.
   return (s?.session_id ? handoffStatus(s.session_id, s) : "") + whereNow(it, s) + tray;
-}
-/** A session's latest status list while it's on for the session: { status, key, sw } (`sw` as status.js takes it).
- *  The latest reply that has one: a reply without a list (a spoken answer, a short one with no tools, a note
- *  mid-turn) keeps the one before it in view. */
-function latestStatus(it, s) {
-  const sid = s?.session_id || it?.session_id, on = statusOn(sid);
-  let last = null, status = { items: [], waiting: "" };
-  if (on) for (const e of conversation(it, s).filter(askLnSaid).reverse()) {
-    const p = parseStatus(e.text);
-    if (p.items.length) { last = e; status = p; break; }
-  }
-  const key = status.items.length ? `${sid}:${last.at_ms}` : `${sid}:${on ? "on" : "off"}`;
-  return { status, key, sw: { sid, on, working: s?.state === "working" } };
-}
-/** A session's ring (status.js), in the box's row ahead of the mic: the panel's count and its put away / bring back,
- *  or (no list) its switch. */
-function statusChip(it, s) {
-  const { status, key, sw } = latestStatus(it, s);
-  return statusChipHtml(status, key, undefined, { ...sw, shown: !statusPanelView(sw.sid).away });
-}
-/** A Claude Code session's list above its chat, under its tabs (status_panel.js), while the status list is on; its
- *  switch says what the list has cost this session (statuslist.rs spent, the same estimate as Settings'). */
-function statusPanel(it, s) {
-  if (s?.harness !== "claude" || !statusShown()) return "";
-  const { status, key, sw } = latestStatus(it, s);
-  const own = state.status_spent?.sessions?.[sw.sid];
-  const spent = own?.replies ? `${own.usd < 0.01 ? "" : "about "}${usdShort(own.usd)} so far` : "";
-  const bg = backgroundOn(sw.sid), agents = agentsOf(sw.sid), live = agents.filter(agentLive).length;
-  // The agents each step runs on, found by the step's words in the agent's description (status.js agentOfStep).
-  const known = bg ? agents.map((a) => ({ text: [a.h?.desc, a.name].filter(Boolean), mark: agentMark(a), name: a.name })) : [];
-  return statusPanelHtml(status, { ...sw, spent, key, background: { on: bg, n: agentCount(sw.sid).n, live: live > 0 }, agents: known }, statusPanelView(sw.sid));
 }
 /** "Tell me" on the turn that just ended: on its reply's meta line (no line of its own under the chat), the
  *  tada and how long it took, until the next turn starts. While it runs, the tada in place of the title's dot
@@ -515,7 +486,17 @@ function quietTurn(sid, t, live, latest, harness = "claude") {
   // Its reply: the words after its last step (the steps leave a finished turn's last words to the chat).
   const tail = [];
   if (!live) for (let k = t.items.length - 1; k >= 0 && t.items[k].t === "say"; k--) tail.unshift(t.items[k]);
-  const said = tail.length ? addOn.reply(sid, stripStatus(tail.map((x) => x.text).join("\n\n"))) : null;
+  const said = tail.length ? addOn.reply(sid, tail.map((x) => x.text).join("\n\n")) : null;
   const reply = said ? `<div class="cv-agent" data-key="a:${t.at_ms}"><div class="cv-meta">${esc(agentName(harness))} · ${ago(tail.at(-1).at_ms)} ago</div><div class="msg cv-text">${md(said.text)}</div>${said.after}</div>` : "";
   return you + stepsBlock(sid, t, live, latest) + reply;
+}
+
+/** Fewer words than this to read out and a reply has no Listen: "Hi." or a line drawn as a card isn't worth it. */
+const LISTEN_WORDS = 20;
+/** A reply's own words, the lines a page draws as cards of its own (`lines`, as md's) left out: { words, long }, long
+ *  being worth the reader (over 280 characters or 4 lines). */
+function proseOf(text, lines) {
+  const kept = String(text || "").split("\n").filter((l) => l.trim() && !(lines && lines(l, (x) => x)));
+  const all = kept.join("\n");
+  return { words: all.split(/\s+/).filter((w) => /\w/.test(w)).length, long: all.length > 280 || kept.length > 4 };
 }

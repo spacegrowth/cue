@@ -111,11 +111,11 @@ function addedNote(key, label, line) {
 /** Your message's bubble. Said by voice: a mic beside it, and inside it the line Cue added for the agent (or will
  *  add, `later`: kept in Cue or queued, it hasn't gone yet). A status list asked for by a prompt hook (`status_ask`)
  *  gets its own note. Each + opens its text word for word (`key`). */
-function yourBubble(e, key, style = "", later = false) {
+function yourBubble(e, key, style = "", later = false, head = "") {
   const said = yourWords(e);
   const notes = (said.voice ? addedNote(key, `Cue ${later ? "will ask" : "asked"} for a short spoken answer`, VOICE_ASK_LINE) : "")
     + (e.status_ask ? addedNote(`${key}:status`, "Status list asked for", e.status_ask) : "");
-  const bubble = `<div class="cv-you-text"${style ? ` style="${style}"` : ""}>${linkify(esc(said.text)).replace(/\n/g, "<br>")}${notes}</div>`;
+  const bubble = `<div class="cv-you-text"${style ? ` style="${style}"` : ""}>${head}${linkify(esc(said.text)).replace(/\n/g, "<br>")}${notes}</div>`;
   return said.voice ? `<div class="cv-you-row"><span class="cv-mic" role="img" aria-label="Said by voice">${MIC_ICON}</span>${bubble}</div>` : bubble;
 }
 const fwdMsgs = new Map();  // chat key -> { text, from, fromSid }: what "Send to another session" sends
