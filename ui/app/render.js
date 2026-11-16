@@ -254,6 +254,7 @@ function fitAfterDraw(focused) {
   fitTop();
   placeColors();
   if (typeof inboxFitPhrases === "function") inboxFitPhrases();
+  if (typeof inboxKeepEnd === "function") inboxKeepEnd();   // the open Inbox thread at its newest, unless you scrolled up
 }
 addEventListener("resize", () => { fitHead(); fitTips(); fitTop(); markMore(); if (typeof inboxFitPhrases === "function") inboxFitPhrases(); });
 document.addEventListener("scroll", (e) => { if (e.target instanceof Element) moreWoke.add(e.target); if (!moreFrame) moreFrame = requestAnimationFrame(() => { moreFrame = 0; markMore(false); }); }, true);

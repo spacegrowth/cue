@@ -111,14 +111,21 @@ button.ib-sect.ib-strip { padding: 8px 16px 6px; gap: 5px; }
 /* The brief: stacked and scrolling as one when narrow; two columns, each scrolling, when there's room. */
 .ib-brief { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; }
 .ib-page-body { display: flex; flex-direction: column; }
-.ib-main { flex: 1 0 auto; gap: 14px; padding: 18px 22px 16px; }
+/* The main column: its thread scrolling, the box pinned to its foot (so nothing above ever moves the box). Stacked
+   (narrow), the box keeps to the foot of the pane while the thread is in view. */
+.ib-main { flex: 1 0 auto; display: flex; flex-direction: column; min-width: 0; }
+.ib-thread { flex: 1 0 auto; gap: 14px; padding: 18px 22px 8px; }
+.ib-main > .ib-foot { position: sticky; bottom: 0; z-index: 2; margin-top: 0; padding: 4px 22px 16px; background: var(--panel); }
 .ib-aside { flex: none; gap: 14px; padding: 16px 18px; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--panel-2) 55%, var(--panel)); font-size: 12.5px; }
 @container (min-width: 700px) {
   .ib-brief { display: grid; grid-template-columns: minmax(0, 1fr) clamp(280px, 34%, 420px); overflow: hidden; }
   .ib-brief.one { grid-template-columns: minmax(0, 1fr); }
-  .ib-main, .ib-aside { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .ib-main { min-height: 0; overflow: hidden; }
+  .ib-thread { flex: 1 1 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .ib-main > .ib-foot { position: static; flex: none; }
+  .ib-aside { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
   .ib-aside { border-top: 0; border-left: 1px solid var(--line); }
-  .ib-main > * { width: 100%; max-width: 720px; }
+  .ib-thread > *, .ib-foot > * { width: 100%; max-width: 720px; }
 }
 .ib-k { font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 .ib-link { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; font-size: inherit; text-align: left; }
@@ -139,7 +146,7 @@ button.ib-sect.ib-strip { padding: 8px 16px 6px; gap: 5px; }
    context, what a working session is on. */
 .ib-card { position: relative; display: flex; flex-direction: column; gap: 10px; padding: 14px 0 2px; border-top: 1px solid var(--line); }
 .ib-card.done, .ib-card.wait { gap: 4px; padding: 10px 0 2px; }
-.ib-main > .ib-card:first-child, .ib-main > .ib-crew:first-child { border-top: 0; padding-top: 0; }
+.ib-thread > .ib-card:first-child, .ib-thread > .ib-crew:first-child { border-top: 0; padding-top: 0; }
 .ib-card.done { opacity: 0.75; }
 .ib-card.wait { opacity: 0.6; }
 .ib-card[data-inbox-step] { cursor: pointer; }
@@ -167,24 +174,39 @@ button.ib-sect.ib-strip { padding: 8px 16px 6px; gap: 5px; }
 .ib-full { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 12px; }
 .ib-card.run { padding-bottom: 16px; }
 .ib-card.run .ib-bar { left: 0; right: 0; bottom: 6px; }
+/* At work, the card stays one size: what it's on in one line, then its latest steps in a space kept for them (and the
+   line folding the earlier ones), empty until the first. */
+.ib-card.run .ib-qt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ib-run-steps { --ib-step-h: 22px; height: calc(var(--ib-run-n) * var(--ib-step-h)); margin-top: -4px; overflow: hidden; }
+.ib-run-steps > .ib-step, .ib-run-steps > .ib-step-more { height: var(--ib-step-h); box-sizing: border-box; }
+.ib-run-steps > .ib-step-more { padding: 3px 0 0 22px; }
 .ib-foot-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.ib-card .row-btns, .ib-main > .row-btns { margin: 0; }
+.ib-card .row-btns, .ib-thread > .row-btns { margin: 0; }
 
 /* The foot of the main column: the box to answer in, its buttons, the keys that work. */
 .ib-foot { margin-top: 6px; display: flex; flex-direction: column; gap: 7px; padding-top: 4px; }
-/* The reply stays in view: on a long page it sits at the foot of the pane (never below it), the page scrolling under it. */
-.ib-main > .ib-foot { position: sticky; bottom: -16px; z-index: 2; margin-bottom: -16px; padding-bottom: 16px; background: var(--panel); }
 .ib-foot:empty { display: none; }
-/* The reply, as in mail: written right under the message, no frame or line round it; suggested replies under what you
-   write (Claude's suggestion first, then your quick phrases), then Send with Open chat. */
-.ib-sugs { display: flex; flex-wrap: wrap; gap: 6px; }
+/* The reply, as in mail: written right under the message, no frame or line round it; then Send with Open chat, your
+   quick phrases at the right. */
 .ib-sug { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; height: 28px; padding: 0 12px; border: 1px solid var(--line); border-radius: var(--pill-radius); background: var(--panel); color: var(--ink); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ib-sug:hover { background: color-mix(in srgb, var(--ink) 5%, var(--panel)); }
-.ib-sug.ai { border-color: color-mix(in srgb, var(--sel) 70%, var(--line)); background: color-mix(in srgb, var(--sel) 30%, var(--panel)); }
-.ib-sug-k { color: var(--muted); font-size: 11px; font-weight: 650; }
 /* Its crew's rows that wait on you (team.js's own rows, their own buttons). */
-.ib-crew { display: flex; flex-direction: column; gap: 4px; padding-top: 12px; border-top: 1px solid var(--line); }
+.ib-crew { position: relative; display: flex; flex-direction: column; gap: 4px; padding-top: 12px; border-top: 1px solid var(--line); }
+/* Its crew on the side: the drawer's one-line rows (team.css .mt-one), flush with the column, a long line cut. */
+.ib-mates { position: relative; }
+.ib-mates .mt-one { min-height: 20px; padding: 0; gap: 6px; }
+.ib-mates .mt-name { max-width: 40%; overflow: hidden; text-overflow: ellipsis; }
+.ib-mates .mt-done { margin-top: 2px; border-top: 0; }
+.ib-mates .mt-done-line { margin: 0; padding: 2px 0; }
+.ib-mates .mt-one + .mt-under { margin: 0 0 6px; }
+/* In Running now, its crew under its agents and scripts, then its finished ones folded. */
+.ib-live-crew { display: flex; flex-direction: column; gap: 4px; }
 .ib-box { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+/* Claude's suggestion in the empty box: the chat box's own line (board.css .sug-line), on this box's first line and
+   in its type; only as wide as its words, so a click on it takes it and a click beside it starts your own. */
+.ib-box .ta-wrap { flex: none; }
+.ib-box .sug-line { top: 2px; right: auto; max-width: 100%; font-size: 13.5px; line-height: 1.5; gap: 8px; pointer-events: auto; cursor: pointer; }
+.ib-box .sug-or { flex: none; color: var(--muted); font-size: 12px; }
 .ib-box textarea { width: 100%; min-height: 64px; max-height: 260px; resize: none; border: 0; outline: none; background: transparent; color: var(--ink); font: 13.5px/1.5 var(--sans); padding: 2px 0; }
 .ib-box-acts { display: flex; gap: 8px; align-items: center; min-width: 0; }
 /* Quick phrases at the right of Send's row; those that don't fit go in More's menu, which opens upward. */

@@ -107,7 +107,7 @@ button.mt-name:hover, .mt-name.on { text-decoration: underline; text-underline-o
 .cd-under .mt-fx { margin: 0; }
 .cd-foot { display: flex; align-items: baseline; gap: 10px; margin-top: 4px; color: var(--muted); }
 /* The menu a member's name opens, under its name (placeTeamRows). */
-.crew-tray .mt-menu, .crew-page .mt-menu { top: 0; left: 0; right: auto; min-width: 180px; z-index: 31; }
+.crew-tray .mt-menu, .crew-page .mt-menu, .ib-crew .mt-menu, .ib-mates .mt-menu { top: 0; left: 0; right: auto; min-width: 180px; z-index: 31; }
 /* Open full › on the tray's line: the crew's page (ui/team_page.js). */
 .crew-full { margin-right: 2px; }
 

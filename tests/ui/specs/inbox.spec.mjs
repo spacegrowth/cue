@@ -458,7 +458,73 @@ test("a lead whose crew waits on you needs you: its crew's rows, with their own 
   await expect(crew.locator(".mt-row")).toHaveCount(1);
 });
 
-test("suggested replies, as mail's: Claude's suggestion goes into the box, a quick phrase sends", async ({ cue, page }) => {
+test("the side lists its crew a line each, as its drawer: working with Stop, done folded into N done ›; one that needs you only in the main column; none without a crew", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  await cue.change((st) => {
+    st.items = st.items.filter((i) => i.session_id !== "eng");
+    const s = st.sessions.find((x) => x.session_id === "eng"), at = st.now_ms || 1793984400000;
+    s.team = [
+      { name: "w-loop", call: "c1", agent_id: "a1", state: "working", step: "Editing ui/inbox.js", files: ["ui/inbox.js"], started_ms: at - 9 * 60000, ended_ms: 0 },
+      { name: "d-loop", call: "c2", agent_id: "a2", state: "done", summary: "Added the side block", files: ["ui/team.js"], started_ms: at - 30 * 60000, ended_ms: at - 10 * 60000 },
+      { name: "n-loop", call: "c3", agent_id: "a3", state: "working", needs: "its lead didn't say it committed it", started_ms: at - 20 * 60000, ended_ms: 0 },
+    ];
+  });
+  await openInbox(page);
+  await page.locator('.ib-row[data-inbox-open="eng"]').click();
+  const pg = page.locator('.inbox-page[data-inbox-page="eng"]'), side = pg.locator(".ib-aside .ib-mates");
+  // Its crew is in Running now, at the top of the side: the session at work and its one teammate at work.
+  await expect(side.locator(".ib-k").first()).toHaveText("Running now · 2");
+  const order = await pg.locator(".ib-aside > .ib-blk > .ib-k").evaluateAll((els) => els.map((e) => e.textContent.split(" · ")[0]));
+  expect(order.slice(0, 2)).toEqual(["Running now", "You asked"]);
+  expect(order.indexOf("Running now")).toBeLessThan(order.indexOf("Changed this turn"));
+  await expect(pg.locator(".ib-aside .ib-mates")).toHaveCount(1);
+  await expect(side.locator(".mt-one")).toHaveCount(1);
+  const w = side.locator(".mt-one").first();
+  await expect(w.locator(".mt-name")).toHaveText("w-loop");
+  await expect(w.locator(".mt-line")).toHaveText("9m · Editing ui/inbox.js · 1 file so far");
+  await expect(w.locator('[data-mt-act="stop"]')).toHaveText("Stop");
+  // The one that needs you: in the main column only.
+  await expect(side).not.toContainText("n-loop");
+  await expect(pg.locator(".ib-main .ib-crew")).toContainText("n-loop");
+  // Done, folded; a click unfolds it, a line with its Diff.
+  await expect(side.locator(".mt-done-line")).toHaveText("1 done ›");
+  await side.locator(".mt-done-line").click();
+  await expect(side.locator(".mt-one")).toHaveCount(2);
+  await expect(side.locator(".mt-one").nth(1)).toContainText("d-loop");
+  await expect(side.locator(".mt-one").nth(1).locator('[data-mt-act="diff"]')).toHaveText("Diff");
+  // Its name opens its menu right under it, as in the drawer; the same in the main column's block.
+  const under = async (name, menu) => {
+    await name.click();
+    await expect(menu).toBeVisible();
+    await expect(menu).toContainText("What it was asked");
+    const n = await name.boundingBox(), m = await menu.boundingBox();
+    expect(Math.abs(m.x - n.x)).toBeLessThan(2);
+    expect(Math.abs(m.y - (n.y + n.height + 4))).toBeLessThan(2);
+  };
+  await under(w.locator(".mt-name"), side.locator(".mt-menu"));
+  await pg.locator(".ib-k").first().click();
+  await expect(side.locator(".mt-menu")).toHaveCount(0);
+  await under(pg.locator('.ib-main .ib-crew .mt-name:text-is("n-loop")'), pg.locator(".ib-main .ib-crew .mt-menu"));
+  await pg.locator(".ib-k").first().click();
+  await expect(pg.locator(".mt-menu")).toHaveCount(0);
+  // A long line is cut, not wrapped: each row stays one line high.
+  await cue.change((st) => { st.sessions.find((x) => x.session_id === "eng").team[0].step = "Editing a very long path that goes on and on ".repeat(6); });
+  expect(await side.locator(".mt-one").first().evaluate((el) => el.offsetHeight)).toBeLessThan(30);
+  // Stop goes to that teammate; Diff opens that teammate's files.
+  await w.locator('[data-mt-act="stop"]').click();
+  await expect.poll(() => page.evaluate(() => CueBridge.calls.filter((c) => c.cmd === "team_action").map((c) => c.args))).toContainEqual(expect.objectContaining({ sessionId: "eng", agent: "a1", action: "stop" }));
+  await side.locator(".mt-one").nth(1).locator('[data-mt-act="diff"]').click();
+  await expect.poll(() => page.evaluate(() => dv.member && [dv.member.sid, dv.member.agent, dv.member.name])).toEqual(["eng", "a2", "d-loop"]);
+  // No crew, no block.
+  await cue.change((st) => { st.sessions.find((x) => x.session_id === "eng").team = []; });
+  for (const sid of await sectionSids(page, "Needs you")) {
+    await page.locator(`.ib-row[data-inbox-open="${sid}"]`).click();
+    await expect(page.locator(`.inbox-page[data-inbox-page="${sid}"] .ib-aside`)).toBeVisible();
+    await expect(page.locator(".ib-mates")).toHaveCount(0);
+  }
+});
+
+test("suggested reply in the empty box: Tab or a click types it in, typing hides it, no pill; a quick phrase sends", async ({ cue, page }) => {
   await cue.open("board-waiting");
   await cue.change((st) => {
     st.settings.quick = { phrases: ["go ahead", "show me"] };
@@ -469,10 +535,34 @@ test("suggested replies, as mail's: Claude's suggestion goes into the box, a qui
   await openInbox(page);
   await page.locator('.ib-row[data-inbox-open="sec"]').click();
   const pg = page.locator('.inbox-page[data-inbox-page="sec"]');
-  await expect(pg.locator(".ib-sug:visible")).toHaveText(["Suggestedrun the next company", "go ahead", "show me"]);
-  await pg.locator(".ib-sug.ai").click();
-  await expect(pg.locator(".ib-box textarea")).toHaveValue("run the next company");
-  await pg.locator(".ib-box textarea").fill("");
+  const ta = pg.locator(".ib-box textarea"), ghost = pg.locator(".ib-box .sug-line");
+  // In the empty box's first line: Suggested, the text, a Tab key, "or write your own". Nothing else: only the quick
+  // phrases are pills.
+  await expect(ghost).toBeVisible();
+  await expect(ghost).toHaveText("Suggestedrun the next companyTabor write your own");
+  await expect(pg.locator(".ib-sug:visible")).toHaveText(["go ahead", "show me"]);
+  const [g, t] = [await ghost.boundingBox(), await ta.boundingBox()];
+  expect(g.y).toBeLessThan(t.y + 12);
+  // Tab types it in, the cursor at its end; the line goes.
+  await ta.focus();
+  await page.keyboard.press("Tab");
+  await expect(ta).toHaveValue("run the next company");
+  await expect(ta).toBeFocused();
+  expect(await ta.evaluate((el) => el.selectionStart)).toBe("run the next company".length);
+  await expect(ghost).toBeHidden();
+  // Emptied, it's back; a click on it types it in too.
+  await ta.fill("");
+  await expect(ghost).toBeVisible();
+  await ghost.click();
+  await expect(ta).toHaveValue("run the next company");
+  await expect(ta).toBeFocused();
+  // Typing anything hides it, and Tab then leaves your words alone.
+  await ta.fill("");
+  await ta.pressSequentially("n");
+  await expect(ghost).toBeHidden();
+  await page.keyboard.press("Tab");
+  await expect(ta).toHaveValue("n");
+  await ta.fill("");
   await pg.locator('.ib-sug[data-inbox-phrase="go ahead"]').click();
   await cue.called("reply", { text: "go ahead" });
 });
@@ -718,12 +808,15 @@ test("on a long page the reply stays in view at the foot of the pane, the words 
   await cue.change((st) => { st.items.find((i) => i.session_id === "sec").message = Array.from({ length: 30 }, (_, n) => `Paragraph ${n} of a long reply with enough words to fill a line or two here.`).join("\n\n") + "\n\nWant me to run the next company?"; });
   await page.locator('.switch-view [data-view="inbox"]').click();
   await page.locator('.ib-row[data-inbox-open="sec"]').click();
-  const main = page.locator('.inbox-page[data-inbox-page="sec"] .ib-main');
+  const main = page.locator('.inbox-page[data-inbox-page="sec"] .ib-main'), thread = main.locator(".ib-thread");
   const send = main.locator('.ib-box [data-act="send"]');
   const inView = async () => { const m = await main.boundingBox(), b = await send.boundingBox(); return b.y >= m.y && b.y + b.height <= m.y + m.height + 1; };
-  expect(await main.evaluate((m) => m.scrollHeight > m.clientHeight)).toBe(true);
+  // The words scroll in the thread above the box (the box is pinned under it, at the pane's foot).
+  expect(await thread.evaluate((m) => m.scrollHeight > m.clientHeight)).toBe(true);
   expect(await inView()).toBe(true);
-  await main.evaluate((m) => { m.scrollTop = m.scrollHeight; });
+  await thread.evaluate((m) => { m.scrollTop = 0; });
+  expect(await inView()).toBe(true);
+  await thread.evaluate((m) => { m.scrollTop = m.scrollHeight; });
   expect(await inView()).toBe(true);
 });
 
@@ -754,4 +847,113 @@ test("what's at work shows live at the top of the side: the session on its step,
   await live.locator('.ib-lv[data-inbox-helper="names|h1"]').click();
   await expect(page.locator(".inbox-page")).toHaveCount(0);
   await expect(page.locator(".active-pane")).toContainText("Backend: session name sources");
+});
+
+// With room the thread scrolls beside the side column; narrow, the brief scrolls as one (thread, then the side) and the
+// box keeps to the pane's foot. Either way the newest stays right over the box.
+for (const [shape, size] of [["with room", null], ["narrow", { width: 900, height: 600 }]]) test(`after Send the page settles in one step (${shape}): your reply and the run card from the click, the box never moves, the card stays one size`, async ({ cue, page }) => {
+  if (size) await page.setViewportSize(size);
+  await cue.open("board-waiting");
+  await cue.override("reply", () => new Promise((res) => { window.__res = res; }));
+  await cue.override("session_steps", () => window.__steps || { version: 0, turns: [] });
+  await page.locator('.switch-view [data-view="inbox"]').click();
+  await page.locator('.ib-row[data-inbox-open="det"]').click();
+  const pg = page.locator('.inbox-page[data-inbox-page="det"]');
+  const look = () => pg.evaluate((p) => {
+    const card = p.querySelector(".ib-card.run"), th = p.querySelector(".ib-thread");
+    return {
+      boxTop: Math.round(p.querySelector(".ib-box").getBoundingClientRect().top),
+      blocks: [...p.querySelectorAll(".ib-said, .ib-yours, .ib-pending, .ib-then, .ib-card")].map((e) => e.className.split(" ").slice(0, 2).join(".")).join(" | "),
+      card: card ? Math.round(card.getBoundingClientRect().height) : 0,
+      steps: card ? card.querySelectorAll(".ib-run-steps .ib-step").length : 0,
+      // At its newest: with room, the thread scrolled to its foot; narrow, the brief scrolled so the main column ends at
+      // the pane's foot (its last message over the box, the side below out of view), or not scrolled when it all fits.
+      atEnd: getComputedStyle(th).overflowY === "visible"
+        ? Math.abs(p.querySelector(".ib-main").getBoundingClientRect().bottom - p.querySelector(".ib-brief").getBoundingClientRect().bottom) < 2
+        : th.scrollHeight - th.scrollTop - th.clientHeight < 2,
+      scroller: getComputedStyle(th).overflowY === "visible" ? "brief" : "thread",
+      briefTop: p.querySelector(".ib-brief").scrollTop,
+    };
+  });
+  const before = await look();
+  expect(before.scroller).toBe(size ? "brief" : "thread");
+  expect(before.atEnd).toBe(true);
+  await pg.locator('textarea[data-text="s:det"]').fill("go ahead");
+  await pg.locator('[data-act="send"]').click();
+  const sent = await look();
+  // From the click it's the page at work: what it said, your reply, the run card; no question, no plans, no waiting block.
+  expect(sent.blocks).toBe("ib-said | ib-yours | ib-card.run");
+  expect(sent.boxTop).toBe(before.boxTop);
+  await expect(pg.locator(".ib-yours")).toContainText("go ahead");
+  await expect(pg.locator(".ib-card.run .ib-qt")).toHaveText("Starting...");
+  const T = await page.evaluate(() => CueBridge.world.now());
+  // Then the events arrive one by one, as from the Mac: the send returns, the ask leaves, it's at work, your message lands, its steps load.
+  const events = [
+    () => page.evaluate(() => window.__res("via tmux pane %1")),
+    () => cue.change((st) => { st.items = st.items.filter((i) => i.id !== "n2"); }),
+    () => cue.change((st) => { const s = st.sessions.find((x) => x.session_id === "det"); s.state = "working"; s.since_ms = st.now_ms; s.prompt = "go ahead"; }),
+    () => cue.change((st, T) => { const s = st.sessions.find((x) => x.session_id === "det"); s.thread = [{ role: "agent", text: "x", at_ms: T - 60000 }, { role: "you", text: "go ahead", at_ms: T }]; }, T),
+  ];
+  for (let n = 1; n <= 6; n++) events.push(async () => {
+    await page.evaluate(([n, T]) => { window.__steps = { version: n, turns: [{ at_ms: T, prompt: "go ahead", more: 0, items: Array.from({ length: n }, (_, i) => ({ t: "step", id: `s${i}`, kind: i % 2 ? "read" : "run", verb: i % 2 ? "Read" : "Ran", subject: `thing${i}`, mono: true, result: "", bad: false, done: i < n - 1, at_ms: T + i * 1000 })) }] }; }, [n, T]);
+    await page.clock.runFor(4500);
+  });
+  for (const event of events) {
+    await event();
+    await page.waitForTimeout(30);
+    const now = await look();
+    expect(now.blocks).toBe("ib-said | ib-yours | ib-card.run");
+    expect(now.boxTop).toBe(before.boxTop);
+    expect(now.card).toBe(sent.card);
+    expect(now.steps).toBeLessThanOrEqual(3);
+    expect(now.atEnd).toBe(true);
+  }
+  // Narrow, the brief really scrolled down to the thread's newest (the side under it is out of view).
+  if (size) expect((await look()).briefTop).toBeGreaterThan(0);
+  // Six steps: the latest three, the rest folded into one line.
+  await expect(pg.locator(".ib-run-steps .ib-step")).toHaveCount(3);
+  await expect(pg.locator(".ib-run-steps .ib-step-more")).toHaveText("3 earlier");
+  await expect(pg.locator(".ib-run-steps")).toContainText("thing5");
+});
+
+test("suggested reply in a question's own-answer box (its draft is the ask's, not the session's): Tab or a click types it in", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  await cue.change((st) => {
+    const s = st.sessions.find((x) => x.session_id === "api");
+    s.state = "waiting";
+    s.suggestion = "use Redis";
+  });
+  await openInbox(page);
+  await page.locator('.ib-row[data-inbox-open="api"]').click();
+  const pg = page.locator('.inbox-page[data-inbox-page="api"]');
+  const ta = pg.locator('.ib-box textarea[data-text="n6"]'), ghost = pg.locator(".ib-box .sug-line");
+  await expect(ghost).toHaveText("Suggesteduse RedisTabor write your own");
+  await ta.focus();
+  await page.keyboard.press("Tab");
+  await expect(ta).toHaveValue("use Redis");
+  await expect(ta).toBeFocused();
+  await expect(ghost).toBeHidden();
+  await ta.fill("");
+  await ghost.click();
+  await expect(ta).toHaveValue("use Redis");
+  await expect(ta).toBeFocused();
+});
+
+test("no suggestion: no line in the box, and Tab leaves the empty box for the next thing", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  await cue.change((st) => {
+    const s = st.sessions.find((x) => x.session_id === "sec");
+    s.state = "waiting";
+    s.suggestion = "";
+  });
+  await openInbox(page);
+  await page.locator('.ib-row[data-inbox-open="sec"]').click();
+  const pg = page.locator('.inbox-page[data-inbox-page="sec"]');
+  const ta = pg.locator(".ib-box textarea");
+  await expect(pg.locator(".ib-box .sug-line")).toBeHidden();
+  await expect(ta).toHaveAttribute("placeholder", "Reply…");
+  await ta.focus();
+  await page.keyboard.press("Tab");
+  await expect(ta).toHaveValue("");
+  await expect(ta).not.toBeFocused();
 });

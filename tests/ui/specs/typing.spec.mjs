@@ -20,6 +20,25 @@ test("Enter in a finished turn's box replies with what's typed", async ({ cue, p
   await expect(box(page, "relay")).toHaveValue("");
 });
 
+test("Claude's suggestion in the empty box: its line over the box, Tab types it in, gone once anything's typed", async ({ cue, page }) => {
+  await cue.change((st) => { st.sessions.find((s) => s.session_id === "relay").suggestion = "carry it over"; });
+  await openCard(page, "n1");
+  const ta = box(page, "relay"), line = page.locator(".active-pane .ta-wrap .sug-line");
+  await expect(line).toBeVisible();
+  await expect(line).toHaveText("Suggestedcarry it overTab");
+  await ta.focus();
+  await page.keyboard.press("Tab");
+  await expect(ta).toHaveValue("carry it over");
+  await expect(ta).toBeFocused();
+  await expect(line).toBeHidden();
+  await ta.fill("");
+  await expect(line).toBeVisible();
+  await ta.pressSequentially("k");
+  await expect(line).toBeHidden();
+  await page.keyboard.press("Tab");
+  await expect(ta).toHaveValue("k");
+});
+
 test("A finished turn's box says where the reply goes: typed into its terminal, or straight to a hosted session", async ({ cue, page }) => {
   await openCard(page, "n1");
   await expect(box(page, "relay")).toHaveAttribute("placeholder", "Reply to agent-relay (typed into its terminal)…");

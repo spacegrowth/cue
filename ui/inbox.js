@@ -374,25 +374,26 @@ function inboxLabel(label) {
   return m ? [m[1], true] : [label || "", false];
 }
 /** A plain box to write in (pictures pasted or dropped on it go with it), and its button. Enter sends too (app/keys.js,
- *  by its draft key). */
-const inboxBox = (key, placeholder, label, attrs, extra = "", sugs = "", phr = "") => `<div class="ib-box" ${inboxPics(key) ? `data-drop="${esc(key)}"` : ""}>${inboxPics(key) ? draftChips(key) : ""}<textarea rows="2" data-text="${esc(key)}" placeholder="${esc(placeholder)}" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off">${esc(draft(key).text)}</textarea>${sugs}<div class="ib-box-acts"><button class="btn primary" ${attrs}>${label}</button>${inboxTalkBtns(key)}${extra}${phr}</div></div>`;
+ *  by its draft key). With `sid`, Claude's suggestion for that session shows in the box while it's empty (inboxSuggest). */
+const inboxBox = (key, placeholder, label, attrs, extra = "", sid = "", phr = "") => {
+  const sug = sid ? suggestionFor(sid) : "";
+  return `<div class="ib-box" ${inboxPics(key) ? `data-drop="${esc(key)}"` : ""}>${inboxPics(key) ? draftChips(key) : ""}<div class="ta-wrap"><textarea rows="2" data-text="${esc(key)}"${sug ? ` class="sug" data-sug-sid="${esc(sid)}" aria-label="${esc(`Suggested: ${sug}. Tab types it in.`)}"` : ""} placeholder="${esc(sug ? " " : placeholder)}" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off">${esc(draft(key).text)}</textarea>${inboxSuggest(sug, key, sid)}</div><div class="ib-box-acts"><button class="btn primary" ${attrs}>${label}</button>${inboxTalkBtns(key)}${extra}${phr}</div></div>`;
+};
 /** Talk and pictures, as the chat's box has them (chat/compose.js): the mic types what you say into the box; the
  *  picture button adds one (⌘V pastes one, or drop it on the box). */
 const inboxTalkBtns = (key) => `<button class="icon-btn mic ${dictating?.key === key ? "on" : ""}" data-mic="${esc(key)}" aria-label="${dictating?.key === key ? "Stop dictating" : "Dictate"}">${MIC_ICON}</button>${inboxPics(key) ? `<button class="icon-btn" data-attach="${esc(key)}" aria-label="Add an image">${IMAGE_ICON}</button>` : ""}`;
 /** Whether pictures go with what's written in this box: a message to the session (its "s:" box) does; an answer to its
  *  question is words only. */
 const inboxPics = (key) => key.startsWith("s:");
-/** The reply, as in mail: you write right under the message (no frame or line round it), Claude's suggestion under what
- *  you write, then one row: Send, talk, pictures and Open chat on the left, your quick phrases on the right (those that
+/** The reply, as in mail: you write right under the message (no frame or line round it), Claude's suggestion in the
+ *  empty box, then one row: Send, talk, pictures and Open chat on the left, your quick phrases on the right (those that
  *  don't fit go in a menu that opens upward). */
 function inboxReply(sid, key, ph, label, attrs) {
-  return inboxBox(key, ph, label, attrs, `<button class="btn" data-inbox-full="${esc(sid)}">Open chat</button>`, inboxSuggest(sid, key), inboxPhrases(sid, key));
+  return inboxBox(key, ph, label, attrs, `<button class="btn" data-inbox-full="${esc(sid)}">Open chat</button>`, sid, inboxPhrases(sid, key));
 }
-/** Claude's own suggested reply: a click puts it in the box, to send as it is or change. */
-function inboxSuggest(sid, key) {
-  const sug = suggestionFor(sid);
-  return sug ? `<div class="ib-sugs"><button class="ib-sug ai" data-inbox-sug data-key="${esc(key)}" data-sid="${esc(sid)}"><span class="ib-sug-k">Suggested</span>${esc(sug)}</button></div>` : "";
-}
+/** Claude's own suggested reply, in the box's first line while it's empty (the chat box's own line, with "or write your
+ *  own"): Tab or a click puts it in the box, to send as it is or change; anything typed hides it (CSS). */
+const inboxSuggest = (sug, key, sid) => sugLineHtml(sug, `<span class="sug-or">or write your own</span>`, `data-inbox-sug data-key="${esc(key)}" data-sid="${esc(sid)}"`);
 /** The quick phrase menu open, by its box's draft key ("" when none is). */
 let inboxPhrOpen = "";
 /** Your quick phrases (Settings → Quick phrases; a click sends it, after anything in the box) at the right of the
@@ -430,11 +431,12 @@ function inboxSendPhrase(el) {
   renderMain();
   document.querySelector(`.inbox-page .ib-box textarea[data-text="${CSS.escape(el.dataset.key)}"]`)?.closest(".ib-box")?.querySelector(".btn.primary")?.click();
 }
-/** Claude's suggestion clicked: into the box, the cursor at its end. */
+/** Claude's suggestion clicked: into the box (as Tab does), the cursor at its end. */
 function inboxTakeSuggestion(el) {
-  draft(el.dataset.key).text = suggestionFor(el.dataset.sid);
-  saveDrafts();
-  inboxReplyTo(el.dataset.sid);
+  const ta = el.closest(".ta-wrap")?.querySelector("textarea");
+  if (!ta || !takeSuggestion(el.dataset.key, el.dataset.sid, ta)) return;
+  ta.focus();
+  ta.selectionStart = ta.selectionEnd = ta.value.length;
 }
 /** A question's choices, each with what it means and a "Recommended" tag; the one(s) picked lit; numbered on the
  *  question lit (its keys). A click picks (one question: that's the answer). */
@@ -488,14 +490,29 @@ function inboxChoreCard(r) {
     <div class="ib-why">Compact sums up its chat in place and keeps this session. A hand-off writes a note of where things stand and starts a fresh session from it; this one closes (Closed keeps it).</div>
     <div class="ib-foot-acts">${acts}</div></div>`;
 }
-/** A working session: what it's on now, and its bar. */
 /** Three dots that count 1, 2, 3 after a line still going ("Thinking"), in a fixed width so nothing moves. */
 const INBOX_DOTS = `<span class="ib-dots" aria-hidden="true"><i>.</i><i>.</i><i>.</i></span>`;
+/** A working session: what it's on now (one line), its latest steps, and its bar. The same size all along. */
 function inboxRunCard(r) {
-  const [, line] = inboxRunLines(r, true);   // what waits to go shows in its own block (inboxPending), not here
+  // What waits to go shows in its own block (inboxPending), not here; sent and not at work yet, it's starting.
+  const [, said] = inboxRunLines(r, true), line = said === "Sent" ? "Starting…" : said;
   const m = /^(.*?)(?:…|\.\.\.)?$/.exec(line), dots = /(…|\.\.\.)$/.test(line) || line === "Thinking";
   const { agents, scripts } = inboxLive(r), also = [agents.length && `${agents.length} agent${agents.length === 1 ? "" : "s"}`, scripts.length && `${scripts.length} script${scripts.length === 1 ? "" : "s"}`].filter(Boolean).join(" · ");
-  return `<div class="ib-card run"><div class="ib-qn">Now</div><div class="ib-qt">${esc(dots ? m[1] : line)}${dots ? INBOX_DOTS : ""}${also ? `<span class="ib-also">+ ${also} at work</span>` : ""}</div>${inboxBar(r.s)}</div>`;
+  return `<div class="ib-card run"><div class="ib-qn">Now</div><div class="ib-qt">${esc(dots ? m[1] : line)}${dots ? INBOX_DOTS : ""}${also ? `<span class="ib-also">+ ${also} at work</span>` : ""}</div>${inboxRunSteps(r)}${inboxBar(r.s)}</div>`;
+}
+/** The run card's step lines: the latest INBOX_RUN_STEPS of this turn, the ones before folded into one line above them,
+ *  in a space of that many lines and the fold's from the start (empty until its first step), so it never grows. */
+const INBOX_RUN_STEPS = 3;
+function inboxRunSteps(r) {
+  const steps = inboxTurnSteps(r), lines = inboxStepLines(steps), shown = lines.slice(-INBOX_RUN_STEPS), more = lines.length - shown.length;
+  const fold = more ? `<div class="ib-step-more">${more} earlier</div>` : "";
+  return `<div class="ib-steps ib-run-steps" style="--ib-run-n:${INBOX_RUN_STEPS + 1}">${fold}${shown.map(inboxStepHtml).join("")}</div>`;
+}
+/** Its steps in the turn it's on: none while the latest turn read is still the one before what you sent (its steps
+ *  feed is read every few seconds). */
+function inboxTurnSteps(r) {
+  const turn = inboxTurn(r.sid), sent = Math.max(inboxGoing(r.sid).at(-1)?.at || 0, (r.s?.thread || []).filter((e) => e.role === "you").at(-1)?.at_ms || 0);
+  return turn && (turn.at_ms || 0) >= sent - 5000 ? (turn.items || []).filter((x) => x.t === "step") : [];
 }
 /** Whether it takes a written reply here: a question, a finished turn, one at work or done (not a permission or the
  *  context row, which have their own buttons). */
@@ -512,7 +529,7 @@ function inboxHint(r, acts = "") {
 function inboxCrewHtml(sid) {
   const waits = typeof mateWaits === "function" ? mateWaits(sid) : [];
   if (!waits.length) return "";
-  return `<div class="ib-crew"><div class="ib-k">Its crew · ${waits.length} need${waits.length === 1 ? "s" : ""} you</div>${waits.map((t) => (mateNeeds(sid, t) ? mateNeedRow(sid, t) : mateReadyRow(sid, t))).join("")}</div>`;
+  return `<div class="ib-crew"><div class="ib-k">Its crew · ${waits.length} need${waits.length === 1 ? "s" : ""} you</div>${waits.map((t) => (mateNeeds(sid, t) ? mateNeedRow(sid, t) : mateReadyRow(sid, t))).join("")}${inboxMateMenu(sid, waits)}</div>`;
 }
 /** The sessions whose latest reply shows whole, not just its last paragraphs. */
 const inboxWhole = new Set();
@@ -528,6 +545,9 @@ function inboxThread(r, words) {
   const latest = plain(words || "").trim(), yours = [];
   let msgs = (r.s?.thread || []).filter((e) => e.text?.trim());
   if (r.kind === "run") while (msgs.at(-1)?.role === "you") yours.unshift(msgs.at(-1)), msgs = msgs.slice(0, -1);
+  // What you just sent and its thread doesn't show yet goes where it will land, after the rest of yours: from the
+  // moment you click Send the page is the one it will be at work, and the real message takes its place as it arrives.
+  if (r.kind === "run") yours.push(...inboxGoing(r.sid).map((o) => ({ role: "you", text: o.text, at_ms: o.at, sent: o.images })));
   const last = msgs.at(-1);
   let said = null;
   if (last && last.role !== "you" && (r.kind === "run" ? yours.length || plain(last.text).trim() === latest : !latest || plain(last.text).trim() === latest || r.kind === "turn")) { said = last; msgs = msgs.slice(0, -1); }
@@ -537,8 +557,16 @@ function inboxThread(r, words) {
 /** A message's head as mail's: who on the left, when on the right ("2:14pm · 5m ago"; nothing when not known). */
 const inboxHead = (who, ms) => `<div class="ib-mhead"><span class="ib-k">${who}</span>${ms ? `<span class="ib-when">${clockAt(ms)} · ${ago(ms)} ago</span>` : ""}</div>`;
 function inboxYours(sid, yours) {
-  return yours.map((e) => `<div class="ib-yours">${inboxHead("You", e.at_ms)}<div class="ib-yours-text">${esc(e.text).replace(/\n/g, "<br>")}</div>${thumbs(e.images)}</div>`).join("");
+  return yours.map((e) => `<div class="ib-yours">${inboxHead("You", e.at_ms)}<div class="ib-yours-text">${esc(e.text).replace(/\n/g, "<br>")}</div>${e.sent ? inboxSentPics(e.sent) : thumbs(e.images)}</div>`).join("");
 }
+/** The pictures of a message still on its way: what you picked, as they are (not files yet), as its chat shows them. */
+const inboxSentPics = (images) => (images.length ? `<div class="thumbs">${images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : "");
+/** What you sent it from Cue that its thread doesn't show yet and that goes now (not one kept till its turn ends, or one
+ *  that failed: those wait to go, in their own block). */
+const inboxGoing = (sid) => outbox.filter((o) => o.sid === sid && !landed(o) && !/^(kept in Cue|not sent)/.test(o.via || ""));
+/** sid → { text, at }: the reply you last answered here, kept for its brief at work once Cue has moved it off Waiting
+ *  (before its thread has it, it would otherwise go blank for a moment). */
+const inboxAnswered = new Map();
 function inboxEarlier(r, msgs) {
   if (!msgs.length) return "";
   const all = inboxAllEarlier.has(r.sid), hidden = all ? 0 : Math.max(0, msgs.length - INBOX_EARLIER);
@@ -559,7 +587,8 @@ function inboxMsgHtml(sid, e) {
  *  it till its next step (Send now), kept in Cue till its turn ends (Edit, Send now), or to go at a time (Edit,
  *  Cancel, Send now). Empty when nothing waits. */
 function inboxPending(r) {
-  const s = r.s, rows = outbox.filter((o) => o.sid === r.sid && !landed(o)).map((o) => outboxRow(o, s, `ib-out:${o.at}`));
+  const going = r.kind === "run" ? inboxGoing(r.sid) : [];   // at work, those show as yours in the thread
+  const s = r.s, rows = outbox.filter((o) => o.sid === r.sid && !landed(o) && !going.includes(o)).map((o) => outboxRow(o, s, `ib-out:${o.at}`));
   if (s?.held) rows.push(heldRow(s));
   if (s?.send_at) rows.push(sendAtRow(s));
   if (s?.queued) rows.push(queuedRow(s));
@@ -574,13 +603,18 @@ function inboxPendingLine(s) {
  *  the box to answer in (at the foot). */
 function inboxMain(r) {
   const thread = inboxThread(r, inboxWords(r));
-  // At work after your reply, its message is the one you answered (the thread's, or the ask's while it's still there).
-  const words = r.kind === "run" && thread.yours.length ? thread.said?.text || (r.it?.kind === "waiting" ? finishedText(r.it) : "") : inboxWords(r), q = r.kind === "turn" && !r.it.interrupted ? inboxEndQuestion(words) : "";
+  // At work after your reply, its message is the one you answered (the thread's, or the ask's while it's still there,
+  // or as it was when you answered it). That last is kept only until the thread has its message, or the session is
+  // no longer at work, so it can't stand in for a later turn's.
+  if (r.it?.kind === "waiting") inboxAnswered.set(r.sid, { text: finishedText(r.it), at: r.it.created_ms });
+  else if (r.kind !== "run" || thread.said) inboxAnswered.delete(r.sid);
+  const kept = inboxAnswered.get(r.sid);
+  const words = r.kind === "run" && thread.yours.length ? thread.said?.text || (r.it?.kind === "waiting" ? finishedText(r.it) : kept?.text || "") : inboxWords(r), q = r.kind === "turn" && !r.it.interrupted ? inboxEndQuestion(words) : "";
   const then = r.kind === "run" ? "" : inboxThen(words), said = inboxSaid(words, [q, then]);
   const label = r.kind === "run" ? "It said last" : r.kind === "ask" || r.kind === "turn" ? "It says" : "It said";
   const whole = inboxWhole.has(r.sid), cut = said !== inboxSaid(words, [q, then], true);
   const shown = whole ? inboxSaid(words, [q, then], true) : said, more = cut ? `<button class="ib-link" data-inbox-whole="${esc(r.sid)}">${whole ? "Show less" : "Show the whole reply"}</button>` : "";
-  const saidHtml = shown ? `<div class="ib-said">${inboxHead(label, thread.said?.at_ms || r.it?.created_ms || 0)}<div class="ib-md msg">${md(shown, { pathsOf: r.sid })}</div>${thumbs(thread.said?.images)}${localImages(shown)}${more}</div>` : "";
+  const saidHtml = shown ? `<div class="ib-said">${inboxHead(label, thread.said?.at_ms || r.it?.created_ms || (r.kind === "run" && kept?.text === words ? kept.at : 0))}<div class="ib-md msg">${md(shown, { pathsOf: r.sid })}</div>${thumbs(thread.said?.images)}${localImages(shown)}${more}</div>` : "";
   const thenHtml = then ? `<div class="ib-then">It plans next: <b>${esc(plain(then))}</b></div>` : "";
   const reply = (ph) => inboxReply(r.sid, `s:${r.sid}`, ph, "Send", r.it ? `data-act="send" data-id="${esc(r.it.id)}"` : `data-inbox-send="${esc(r.sid)}"`);
   let top = "", foot = "", acts = "";
@@ -592,11 +626,39 @@ function inboxMain(r) {
   else foot = reply("Tell it what's next…");
   const crew = inboxCrewHtml(r.sid);
   // Oldest at the top, newest at the foot, as a mail thread: earlier, its message, your reply, what waits to go, then
-  // what it's doing now, right over the box. (Housekeeping and a crew's asks lead with what they need of you.)
+  // what it's doing now, right over the box. (Housekeeping and a crew's asks lead with what they need of you.) The
+  // thread scrolls; the box is pinned to the foot of the pane, so nothing drawn above it ever moves it.
   const earlier = inboxEarlier(r, thread.msgs);
-  if (r.kind === "run") return `<div class="ib-page-body ib-main" data-scroll-key="inbox-main">${earlier}${saidHtml}${inboxYours(r.sid, thread.yours)}${inboxPending(r)}${crew}${top}<div class="ib-foot">${foot}${inboxHint(r, acts)}</div></div>`;
-  const first = r.kind === "chore" || r.kind === "crew" ? `${crew}${top}${saidHtml}` : `${saidHtml}${top}${crew}`;
-  return `<div class="ib-page-body ib-main" data-scroll-key="inbox-main">${earlier}${first}${thenHtml}${inboxPending(r)}<div class="ib-foot">${foot}${inboxHint(r, acts)}</div></div>`;
+  const first = r.kind === "run" ? `${saidHtml}${inboxYours(r.sid, thread.yours)}${inboxPending(r)}${crew}${top}`
+    : `${r.kind === "chore" || r.kind === "crew" ? `${crew}${top}${saidHtml}` : `${saidHtml}${top}${crew}`}${thenHtml}${inboxPending(r)}`;
+  return `<div class="ib-main"><div class="ib-page-body ib-thread" data-scroll-key="inbox-main" data-sid="${esc(r.sid)}" data-kind="${r.kind}">${earlier}${first}</div><div class="ib-foot">${foot}${inboxHint(r, acts)}</div></div>`;
+}
+/** Whether the open session's thread is at its newest (its foot) as it's drawn again: it stays there, unless you've
+ *  scrolled up. Read off the page before the draw replaces it; a session or shape new to the page (just opened, just
+ *  answered) and a message just sent start there too. */
+function inboxAtEnd(sid, kind) {
+  const el = document.querySelector(".inbox-page .ib-thread");
+  if (!el || el.dataset.sid !== sid || el.dataset.kind !== kind || (typeof chatToEnd !== "undefined" && chatToEnd)) return true;
+  const { box, end } = inboxThreadEnd(el);
+  return Math.abs(end - box.scrollTop) < 24;
+}
+/** What scrolls the open thread, and where it stands at its newest. With room, the thread scrolls itself and its newest
+ *  is its foot. Narrow, the whole brief scrolls (the thread, then the side under it), and the newest is where the main
+ *  column ends right at the pane's foot, its last message just over the box (not the brief's own foot, the side's). */
+function inboxThreadEnd(el) {
+  if (getComputedStyle(el).overflowY !== "visible") return { box: el, end: el.scrollHeight - el.clientHeight };
+  const box = el.closest(".ib-brief"), main = el.closest(".ib-main");
+  const end = main.getBoundingClientRect().bottom - box.getBoundingClientRect().top + box.scrollTop - box.clientHeight;
+  return { box, end: Math.max(0, end) };
+}
+/** Set as the brief is drawn: the thread goes to its newest after the draw (inboxKeepEnd). */
+let inboxToEnd = false;
+/** After each draw: the open thread at its newest, when it was there (or is new). */
+function inboxKeepEnd() {
+  const el = inboxToEnd && document.querySelector(".inbox-page .ib-thread");
+  if (!el) return;
+  const { box, end } = inboxThreadEnd(el);
+  box.scrollTop = end;
 }
 
 // ---------- the brief's side: you asked, it did, what changed, its context ----------
@@ -638,73 +700,11 @@ function inboxDid(r) {
   const steps = (inboxTurn(r.sid)?.items || []).filter((x) => x.t === "step");
   if (!steps.length) return "";
   const lines = inboxStepLines(steps), shown = lines.slice(-INBOX_STEPS_MAX), more = lines.length - shown.length;
-  const line = (l) => `<div class="ib-step ${l.bad ? "bad" : ""} ${l.live ? "now" : ""}"><i></i><span class="ib-sv">${l.what}</span><span class="ib-sr">${l.live ? "" : esc(l.result || "")}</span></div>`;
   const earlier = more ? `<div class="ib-step-more">${more} earlier</div>` : "";
-  return `<div class="ib-blk"><div class="ib-k">It did · ${steps.length} step${steps.length === 1 ? "" : "s"}</div><div class="ib-steps">${earlier}${shown.map(line).join("")}</div></div>`;
+  return `<div class="ib-blk"><div class="ib-k">It did · ${steps.length} step${steps.length === 1 ? "" : "s"}</div><div class="ib-steps">${earlier}${shown.map(inboxStepHtml).join("")}</div></div>`;
 }
-/** What its turn has changed so far, read from git against where the turn began: Cue clears a session's changes as a
- *  turn starts and counts them as it ends, so a question mid-turn would show none. Read once per turn and state
- *  (on open); null when Cue has no start for its turn. */
-function inboxTurnDiff(sid) {
-  const s = extSessionInfo(sid), key = s?.turn_from?.commit ? JSON.stringify([s.turn_from.commit, s.state]) : "";
-  const had = inboxTurnDiffs.get(sid);
-  if (!key) return null;
-  if (had?.key === key) return had;
-  const rec = { key, files: had?.files || null, bulk: had?.bulk || [] };
-  inboxTurnDiffs.set(sid, rec);
-  diffSince(s, s.turn_from).then((g) => { rec.files = g?.files || []; rec.bulk = g?.bulk || []; }, () => { rec.files = rec.files || []; })
-    .then(() => { if (inboxTurnDiffs.get(sid) === rec && view === "inbox") renderMain(); });
-  return rec;
-}
-/** The biggest change in a file: its largest hunk, from just before its first changed line, a few lines long. */
-function inboxPeek(f) {
-  const hunks = [];
-  for (const l of f.lines || []) { if (l[0] === "h" || !hunks.length) hunks.push([]); hunks.at(-1).push(l); }
-  const size = (h) => h.filter(([k]) => k === "a" || k === "d").length, big = hunks.sort((a, b) => size(b) - size(a))[0] || [];
-  const at = Math.max(0, big.findIndex(([k]) => k === "a" || k === "d") - 1), head = big[0]?.[0] === "h" ? [big[0]] : [];
-  const body = big.slice(Math.max(at, head.length), Math.max(at, head.length) + INBOX_PEEK_LINES);
-  return [...head, ...body].map(([k, l]) => `<div class="${k}">${esc(l)}</div>`).join("");
-}
-/** "Changed this turn": its files with +/−, a peek of the biggest change, and the rest on its Diff tab. */
-function inboxChangedBlock(r) {
-  const d = inboxTurnDiff(r.sid), sid = esc(r.sid);
-  const files = d?.files ? [...d.files].sort((a, b) => b.add + b.del - (a.add + a.del)) : (r.s?.changes?.files || []).map((f) => ({ ...f, lines: [] }));
-  if (d && !d.files) return `<div class="ib-blk"><div class="ib-k">Changed this turn</div><div class="ib-dim">Reading git…</div></div>`;
-  // Mid-turn with no start to read from, it can't be known: left out.
-  const mid = r.kind === "ask" || r.kind === "run";
-  if (!files.length) return d || !mid ? `<div class="ib-blk"><div class="ib-k">Changed this turn</div><div class="ib-dim">${mid ? "Nothing yet." : "No files changed."}</div></div>` : "";
-  const add = files.reduce((n, f) => n + (f.add || 0), 0), del = files.reduce((n, f) => n + (f.del || 0), 0);
-  const row = (f) => `<div class="ib-file"><code>${esc(f.path)}</code><span>${f.isNew ? `<span class="ib-dim">new</span> ` : ""}<span class="ib-add">+${f.add || 0}</span> <span class="ib-del">−${f.del || 0}</span></span></div>`;
-  const peek = files[0].lines?.length ? `<div class="ib-peek"><div class="ib-peek-h"><code>${esc(files[0].path)}</code></div><div class="dv-lines">${inboxPeek(files[0])}</div></div>` : "";
-  const rest = files.length > INBOX_FILES_MAX ? `<button class="ib-link" data-inbox-diff="${sid}">and ${files.length - INBOX_FILES_MAX} more files ›</button>` : "";
-  return `<div class="ib-blk"><div class="ib-k">Changed this turn · ${files.length} file${files.length === 1 ? "" : "s"} <span class="ib-add">+${add}</span> <span class="ib-del">−${del}</span></div>
-    <div class="ib-files">${files.slice(0, INBOX_FILES_MAX).map(row).join("")}</div>${peek}${rest}</div>`;
-}
-/** What's at work in it right now, live (the steps feed, read every half second while it works; app.js followSteps):
- *  the session itself, on its step now; then its background agents (those that need you first) and the scripts it
- *  runs in the background, each with its newest step, as its chat's tray shows them. A click on one opens it in full,
- *  in its chat. Its crew has its own rows. { html, agents, scripts }: html "" when nothing is at work. */
-function inboxLive(r) {
-  const sid = r.sid, s = r.s;
-  const mates = new Set((typeof mateList === "function" ? mateList(sid) : []).map((t) => t.agent_id));
-  const agents = agentsOf(sid).filter((a) => !mates.has(a.id) && (a.state === "needs" || agentLive(a)));
-  const scripts = helpersOf(sid).filter((h) => h.script && helperRunning(h)).sort((a, b) => a.started_ms - b.started_ms);
-  const working = !!s && (s.state === "working" || s.state === "agent" || !!s.compacting_ms);
-  if (!working && !agents.length && !scripts.length) return { html: "", agents, scripts };
-  const step = (inboxTurn(sid)?.items || []).filter((x) => x.t === "step" && !x.done).at(-1);
-  const main = working ? `<div class="ib-live-main"><span class="dot-live"></span><span class="ib-live-who">${esc(agentName(s.harness || "claude"))}</span><span class="ib-live-what">${step ? inboxStepRun([step]).what : esc(inboxRunLines(r, true)[1] || "Thinking")}</span></div>` : "";
-  const rows = [...agents.map((a) => (a.state === "needs" ? agentRow(a).replace(/data-helper="/g, 'data-inbox-helper="') : inboxLiveRow(sid, a.h, a.type))), ...scripts.map((h) => inboxLiveRow(sid, h, "script"))].join("");
-  const n = (working ? 1 : 0) + agents.length + scripts.length;
-  return { html: `<div class="ib-blk ib-live"><div class="ib-k">Running now · ${n}</div>${main}<div class="bg-rows">${rows}</div></div>`, agents, scripts };
-}
-/** An agent or script at work, in two lines for the narrow side: its mark, name, kind and how long (amber when it
- *  looks stuck), then its newest step. */
-function inboxLiveRow(sid, h, type) {
-  const span = `<span data-helper-span="${h.started_ms}">${helperSpan(h)}</span>`;
-  const quiet = helperStuck(h) ? ` · ${helperQuiet(h)}` : h.quiet === "tool" ? ` · ${helperLongRun(h)}` : "";
-  return `<button class="ib-lv ${helperStuck(h) ? "stuck" : ""}" data-inbox-helper="${esc(`${sid}|${h.id}`)}"><span class="ib-lv-top">${bgIcon(h)}<span class="ib-lv-name">${esc(bgName(h))}</span>${liveDot(h)}</span>`
-    + `<span class="ib-lv-meta">${esc(type)} · ${span}${quiet}</span><span class="ib-lv-step">${esc(bgLatest(h))}</span></button>`;
-}
+/** One line of its steps (a folded run is one): its dot (lit while it's on it), what, and how it went. */
+const inboxStepHtml = (l) => `<div class="ib-step ${l.bad ? "bad" : ""} ${l.live ? "now" : ""}"><i></i><span class="ib-sv">${l.what}</span><span class="ib-sr">${l.live ? "" : esc(l.result || "")}</span></div>`;
 /** The brief's side column, in the order that says why it asks: what's running now, You asked, It did, what changed,
  *  its context, and its full chat and diff as links. */
 function inboxAside(r) {
@@ -745,6 +745,7 @@ function inboxOpened(sid) {
   const p = !sessionOf(sid) && inboxParkedOf(sid);
   if (p) return inboxParkedPage(p);
   const r = inboxRowFor(sid), s = r.s;
+  inboxToEnd = inboxAtEnd(sid, r.kind);
   const disp = inboxFromDispatch(r), name = disp ? `<span class="ib-dmark">D</span><span class="ib-hname">${esc(inboxDispatchName(r))}</span>` : `<span class="ib-hname">${esc(nameOf(sid, r.project))}</span>`;
   const head = `<div class="ib-head"><button class="ib-back" data-inbox-back aria-label="Back to the list">‹</button><span class="ib-dot">${inboxDot(r)}</span>${name}<span class="ib-status">${esc(inboxStatus(r))}</span><span class="grow"></span>`
     + `<span class="ib-hacts">${disp && inboxDispatchProject(r) ? inboxDeskBtn(inboxDispatchProject(r), "", `Open ${inboxDispatchProject(r)}'s Desk ›`) : ""}<button class="ib-act" data-inbox-full="${esc(sid)}">Open chat</button>${inboxActs(sid, s, "head")}${inboxCloseBtn(r)}</span>${inboxStep(sid)}</div>`;
@@ -768,7 +769,7 @@ function inboxParkedPage(p) {
   const status = w ? "resuming…" : p.parked_ms ? `parked · ${ago(p.parked_ms)}` : "parked";
   const head = `<div class="ib-head"><button class="ib-back" data-inbox-back aria-label="Back to the list">‹</button><span class="ib-dot">${P_SIGN}</span><span class="ib-hname">${esc(name)}</span><span class="ib-status">${esc(status)}</span><span class="grow"></span>`
     + `<span class="ib-hacts"><button class="ib-act" data-unpark="${esc(sid)}" ${w ? "disabled" : ""}>Unpark</button><button class="ib-act" data-wake="${esc(sid)}" ${w ? "disabled" : ""}>↺ Resume</button></span></div>`;
-  const body = `<div class="ib-brief one" data-scroll-key="inbox-brief"><div class="ib-page-body ib-main" data-scroll-key="inbox-main">${inboxEarlier(r, thread.msgs)}${saidHtml}${empty}<div class="ib-foot">${foot}</div></div></div>`;
+  const body = `<div class="ib-brief one" data-scroll-key="inbox-brief"><div class="ib-main"><div class="ib-page-body ib-thread" data-scroll-key="inbox-main">${inboxEarlier(r, thread.msgs)}${saidHtml}${empty}</div><div class="ib-foot">${foot}</div></div></div>`;
   return `<div class="inbox-page parked" data-inbox-page="${esc(sid)}" data-kind="parked" style="${projStyle(p.project)}">${head}${body}</div>`;
 }
 /** A session on the calm page: its name, what you asked and what it's on (a working one's bar along its foot), or
@@ -798,6 +799,7 @@ const inboxWide = () => typeof matchMedia !== "function" || matchMedia("(min-wid
  *  needs you opens by itself. Answered, the open one stays open (you see what you sent, as in email); you move on. */
 function inboxView() {
   const sid = inboxSid;
+  inboxToEnd = false;
   if (sid && !sessionOf(sid) && !inboxItems().has(sid) && !inboxParkedOf(sid)) inboxAdvance(sid);
   else if (!sid && inboxWide()) inboxAdvance(null);
   return `<div class="board ib-board ${inboxSid ? "open" : ""}">${inboxList()}${inboxSid ? inboxOpened(inboxSid) : inboxIdle()}</div>`;

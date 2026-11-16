@@ -407,14 +407,18 @@ const quickRow = (attrs, sid = "") => {
   const place = placeTab(sid);
   return phrases().length || place ? `<div class="quick">${phrases().map((p) => `<button class="qp" ${attrs} data-phrase="${esc(p)}">${esc(p)}</button>`).join("")}${place}</div>` : "";
 };
-/** Tab in an empty box with a suggestion: the suggestion, typed in for you (Enter sends it, or edit it first). */
-function takeSuggestion(key) {
-  const sug = suggestionFor(sidOfKey(key));
+/** Claude's suggestion laid over an empty box's first line: "Suggested", the text, a Tab keycap and `tail` (the Inbox's
+ *  "or write your own"); `attrs` on the line (the Inbox's click takes it). Empty when there's none. */
+const sugLineHtml = (sug, tail = "", attrs = "") => `<div class="sug-line" ${attrs} aria-hidden="true">${sug ? `<span class="sug-k">Suggested</span><span class="sug-t">${esc(sug)}</span><kbd>Tab</kbd>${tail}` : ""}</div>`;
+/** Tab in an empty box with a suggestion: the suggestion, typed in for you (Enter sends it, or edit it first). `sid`
+ *  for a box whose draft isn't the session's own (an Inbox answer to a question); `el` that box, when it's known. */
+function takeSuggestion(key, sid = sidOfKey(key), el = null) {
+  const sug = suggestionFor(sid);
   const d = draft(key);
   if (!sug || d.text.trim()) return false;
   d.text = sug;
   saveDrafts();
-  const el = document.querySelector(`textarea[data-text="${CSS.escape(key)}"]`);
+  el ||= document.querySelector(`textarea[data-text="${CSS.escape(key)}"]`);
   if (el) { el.value = sug; el.selectionStart = el.selectionEnd = sug.length; el.dispatchEvent(new Event("input", { bubbles: true })); }
   return true;
 }
@@ -459,7 +463,7 @@ function box(key, placeholder, label, sendAttrs, images, alt = "", extra = "", q
   // can't style its parts) and hidden by CSS once anything's typed; Tab types it in. The wrapper and the line are
   // always drawn, so a redraw never swaps out the box you're typing in.
   const sug = images ? suggestionFor(sidOfKey(key)) : "";
-  const sugLine = `<div class="sug-line" aria-hidden="true">${sug ? `<span class="sug-k">Suggested</span><span class="sug-t">${esc(sug)}</span><kbd>Tab</kbd>` : ""}</div>`;
+  const sugLine = sugLineHtml(sug);
   // Send sits inside the box, at the end of its row, so the box spans the full width (as the terminal dock does).
   return `<div class="composer"><div class="field ${images ? "drop" : ""} ${bangTyped(d.text) ? "bang" : ""}" data-drop="${images ? esc(key) : ""}">${sidOfKey(key) ? `<div class="cmd-slot">${cmdMenu(key)}</div>` : ""}${images && quick ? quickRow(`data-quick="${esc(key)}"`, sidOfKey(key)) : ""}${chips}<div class="field-row">
     <div class="ta-wrap"><textarea rows="2" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" data-text="${esc(key)}"${sug ? ` class="sug" aria-label="${esc(`Suggested: ${sug}. Tab types it in.`)}"` : ""} placeholder="${esc(sug ? " " : placeholder)}">${esc(d.text)}</textarea>${sugLine}</div>
