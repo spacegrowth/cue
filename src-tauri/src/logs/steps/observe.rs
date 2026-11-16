@@ -28,6 +28,11 @@ impl Feed {
                 self.claude_usage(e, &msg, u);
             }
         }
+        // Fast mode: whether its latest request of its own (not a helper's or a side call's) asked for fast speed.
+        // What a reply was served at says less: fast mode on can still be served at standard speed.
+        if e.get("type").and_then(Value::as_str) == Some("api-request") && matches!(e.get("querySource").and_then(Value::as_str), Some("sdk" | "repl_main_thread")) {
+            self.meta.fast = e.pointer("/params/speed").and_then(Value::as_str) == Some("fast");
+        }
         // Compacted (by you or on its own): its context is what the compact left, now, not at its next
         // reply. Till then the insights went on as if it were still as big (a hand-off offered at once).
         if e.get("subtype").and_then(Value::as_str) == Some("compact_boundary") && e.get("isSidechain").and_then(Value::as_bool) != Some(true) {

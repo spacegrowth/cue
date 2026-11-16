@@ -247,10 +247,14 @@ impl Hub {
     }
 
     /// A crew member that just finished, reviewed by itself through its lead's review queue: only one that finished its
-    /// work (not stopped), and not a loop's (a loop reviews its own crew).
+    /// work (not stopped), and not a loop's (a loop reviews its own crew) or a Desk lead's.
     pub(super) fn review_on_finish(&self, lead: &str, origin: &Origin, call: &str) {
         #[cfg(feature = "ext")]
         if self.ext_leads_loop(lead) {
+            return;
+        }
+        // A Desk lead only hands work out: the session that did an item reviews its own work, so none is sent here.
+        if self.read(|st| st.desk.lead_of(lead).is_some()) {
             return;
         }
         let Some(t) = self.read(|st| st.sessions.team(lead)).into_iter().find(|t| t.call == call) else { return };

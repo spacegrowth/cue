@@ -479,7 +479,7 @@ function metaInline(sid) {
   // Its cache's countdown (insights.js cacheMeta): the ring and the minutes, amber in its last 5; "cache gone" after.
   const cache = freed ? "" : cacheMeta(sid);
   // On a tight line they give way from the right, the cost first.
-  const parts = [m.model ? `<b>${esc(prettyModel(m.model))}</b>` : "", ctx, grew ? `<span class="mi-grow">${Math.round(grew)}× its start</span>` : "", cache, m.cost != null ? money(m.cost) : ""].filter(Boolean);
+  const parts = [m.model ? `<b>${esc(prettyModel(m.model))}</b>${m.fast ? ` <span class="mi-fast">Fast</span>` : ""}` : "", ctx, grew ? `<span class="mi-grow">${Math.round(grew)}× its start</span>` : "", cache, m.cost != null ? money(m.cost) : ""].filter(Boolean);
   return `<span class="ap-meta">${parts.join(" · ")}</span>`;
 }
 /** The one thing to do now, on the chat's title row beside its state: Compact once its context is 80% full (not

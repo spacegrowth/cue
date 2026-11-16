@@ -194,4 +194,7 @@ pub struct Meta {
     /// (auto_compact_at; 0: not seen enough to say).
     #[serde(skip_serializing_if = "is_zero")]
     pub(super) auto_at: u64,
+    /// It runs in fast mode: its latest request asked for fast speed (Claude Code's `api-request` line).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub(super) fast: bool,
 }

@@ -21,6 +21,11 @@ pub struct HostedStart {
     pub model: Option<String>,
 }
 
+/// Claude Code's flag that starts it in fast mode.
+pub(crate) fn fast_mode() -> [String; 2] {
+    ["--settings".to_string(), r#"{"fastMode":true}"#.to_string()]
+}
+
 impl Hub {
     pub(crate) fn hosted(&self) -> &dyn crate::hosted::Hosted {
         &*self.ports.hosted
@@ -31,12 +36,18 @@ impl Hub {
         let agent = Agent::named(&origin.harness).ok_or("Cue can only host Claude Code, Pi and Codex")?;
         // A Claude lead starts with the team skill (team_out.rs), new or resumed: merged into a prompt you append; with
         // what its project counts one-way (Settings' One-way here, one_way.rs), as the setting is at this start.
-        // A project's Desk lead (desk_lead.rs) has the Desk's instructions after it: it may form a crew too.
-        let mut skill = super::team_out::skill_for(&crate::one_way::kinds(&super::crew_log::project_shown_for(origin)));
-        if let Some(desk) = self.desk_skill(&origin.session_id) {
-            skill = format!("{skill}\n\n{desk}");
+        // A project's Desk lead (desk_lead.rs) gets the Desk's instructions instead: it only hands work out, so no crew.
+        let kinds = crate::one_way::kinds(&super::crew_log::project_shown_for(origin));
+        let skill = match self.desk_skill(&origin.session_id) {
+            Some(desk) => [desk.to_string(), crate::one_way::ask_first(&kinds)].join("\n").trim_end().to_string(),
+            None => super::team_out::skill_for(&kinds),
+        };
+        let mut args = super::team_out::with_skill(agent, &with.args, &skill);
+        // A Desk lead runs in fast mode: turned on as it starts or resumes (hosted, Claude Code turns it on only when
+        // its settings say so), and left to it after that. Other sessions start as they are.
+        if agent == Agent::Claude && self.desk_skill(&origin.session_id).is_some() {
+            args.extend(fast_mode());
         }
-        let args = super::team_out::with_skill(agent, &with.args, &skill);
         let spec = Spec { agent, cwd: origin.cwd.clone().into(), start, permissions: with.permissions.clone(), model: with.model.clone(), args, program: Program::Agent, machine: origin.machine.clone() };
         let base = self.session_cost(&origin.session_id).unwrap_or(0.0);
         let started: crate::hosted::Started = self.hosted().start(&spec, self.hosted_report(origin.clone(), base))?;

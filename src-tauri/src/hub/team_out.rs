@@ -181,9 +181,9 @@ impl Hub {
     }
 
     /// What you typed to `sid`, from its box or its reply box: with its Team switch's words when it's a hosted Claude
-    /// lead (`with_team`), else as typed.
+    /// lead (`with_team`), else as typed. A Desk lead has no crew, so its messages go as typed.
     pub(crate) fn team_words(&self, sid: &str, text: &str) -> String {
-        let lead = self.read(|st| st.sessions.origin(sid)).filter(|o| o.hosted && o.harness == "claude");
+        let lead = self.read(|st| st.sessions.origin(sid).filter(|o| o.hosted && o.harness == "claude" && st.desk.lead_of(sid).is_none()));
         match lead {
             Some(_) => with_team(text, &self.read(|st| st.sessions.team_mode(sid))),
             None => text.to_string(),

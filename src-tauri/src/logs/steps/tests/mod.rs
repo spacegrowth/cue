@@ -142,3 +142,17 @@ const T: &str = r#"{"type":"user","timestamp":"2026-10-04T10:00:00.000Z","messag
 {"type":"user","timestamp":"2026-10-04T10:00:20.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"t3","is_error":true,"content":"Exit code 1\nTests: 3 failed"}]},"toolUseResult":"Error: Exit code 1"}
 {"type":"assistant","timestamp":"2026-10-04T10:00:22.000Z","isSidechain":true,"message":{"content":[{"type":"text","text":"a helper's words"}]}}
 {"type":"assistant","timestamp":"2026-10-04T10:00:25.000Z","message":{"content":[{"type":"tool_use","id":"t4","name":"Bash","input":{"command":"npm test"}}]}}"#;
+
+/// A session in fast mode says so on the chat's line (its own latest request asked for fast speed); a side call's
+/// request doesn't change it.
+#[test]
+fn fast_mode_is_read_from_the_sessions_own_requests() {
+    let mut f = Feed::blank("", Kind::Claude, 1, 0);
+    let req = |src: &str, speed: &str| serde_json::json!({ "type": "api-request", "querySource": src, "params": { "speed": speed } });
+    f.observe(&req("sdk", "fast"));
+    assert!(f.meta.fast);
+    f.observe(&req("side_question", "standard"));
+    assert!(f.meta.fast, "a side call's request leaves it as it is");
+    f.observe(&req("repl_main_thread", "standard"));
+    assert!(!f.meta.fast, "turned off");
+}
