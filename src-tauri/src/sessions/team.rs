@@ -74,6 +74,10 @@ pub struct Teammate {
     /// The other teammates (by name) with uncommitted changes in one of its files, in the same folder: Commit waits.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub also: Vec<String>,
+    /// Whether git says one of its files still has uncommitted changes (asked by the crew tidy, hub/team_tidy.rs
+    /// `uncommitted`): the Desk's "not committed" tag. False until asked, for one with no files, and on another machine.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub uncommitted: bool,
     /// The size of what it changed, read when it finished ("2 files +140 −0").
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub stat: String,
@@ -572,6 +576,25 @@ impl Sessions {
         s.team.extend(took.iter().cloned());
         mark_shared(&mut s.team);
         took
+    }
+
+    /// `sid`'s Claude process ended (it exited, or a new one starts on its conversation): its background teammates
+    /// ended with it, and one still at work never sends its finish, so it's stopped here (its files stay). Whether
+    /// any was.
+    pub fn team_process_ended(&mut self, sid: &str, now: u64) -> bool {
+        let Some(s) = self.0.get_mut(sid) else { return false };
+        let mut any = false;
+        for t in s.team.iter_mut().filter(|t| t.working()) {
+            t.state = "stopped".into();
+            t.step.clear();
+            t.ended_ms = now;
+            t.summary = "Stopped: it ended with its lead's Claude process; its files stay".into();
+            any = true;
+        }
+        if any {
+            mark_shared(&mut s.team);
+        }
+        any
     }
 
     /// The Team switch on `sid`'s box: "on", "off", or "" (auto: the lead decides).

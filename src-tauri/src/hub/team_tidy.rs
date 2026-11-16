@@ -2,7 +2,7 @@
 //! lead, or by you elsewhere) or thrown away leaves the crew by itself, so nobody has to set it aside. A member whose
 //! files Cue never saw is committed by its lead, asked by Cue; its reply says what it committed.
 
-use super::team::{first, free_branch, repos};
+use super::team::{first, free_branch, repos, worktree_gone};
 use super::*;
 use super::team_review::{didnt_come_back, LeadTurn};
 use crate::sessions::crew_log::Decided;
@@ -73,6 +73,23 @@ pub(super) fn settled(lead_cwd: &str, t: &Teammate) -> Option<Settled> {
     Some(newest.map_or(Settled::Gone, |(_, sha)| Settled::Committed(sha)))
 }
 
+/// Whether one of its files (on this Mac) still has uncommitted changes in git: ignored files and files in no
+/// repository left out, and none for one whose worktree is gone (its work went elsewhere or was thrown away).
+pub(super) fn uncommitted(lead_cwd: &str, t: &Teammate) -> bool {
+    if t.files.is_empty() || (!t.worktree.is_empty() && worktree_gone("", t)) {
+        return false;
+    }
+    repos("", lead_cwd, t, false).into_iter().filter(|r| !r.top.is_empty()).any(|r| {
+        let filters = crate::safe_git::no_repo_filters("", &r.top);
+        let git = |head: &[&str]| {
+            let args: Vec<&str> = head.iter().copied().chain(["--"]).chain(r.paths.iter().map(String::as_str)).collect();
+            crate::safe_git::run("", &r.top, &filters, &args).ok().filter(|(_, code)| *code == 0).map(|(out, _)| out)
+        };
+        // git status leaves ignored files out by itself; git that can't say isn't taken for uncommitted.
+        git(&["status", "--porcelain=v1", "--untracked-files=all"]).is_some_and(|o| !o.trim().is_empty())
+    })
+}
+
 impl Hub {
     /// At most every TIDY_MS, a tidy pass off the tick's thread (`team_tidy`).
     pub(super) fn team_tidy_tick(&self, now: u64) {
@@ -96,6 +113,8 @@ impl Hub {
     /// (`unstick`). Runs git: call it off the hub's threads. Whether it changed anything (drawn when it did).
     pub(crate) fn team_tidy(&self) -> bool {
         let mut changed = self.write(|st| unstick(st, now_ms()));
+        // The "not committed" marks (drawn as they change): not a tidy of the crew, so not in its return.
+        self.mark_uncommitted();
         let leads: Vec<(Origin, Vec<Teammate>)> = self.read(|st| {
             st.sessions.all().into_iter().filter(|s| s.team.iter().any(|t| matches!(t.state.as_str(), "done" | "reviewing" | "reviewed" | "stopped"))).map(|s| (s.origin.clone(), s.team.clone())).collect()
         });
@@ -130,6 +149,28 @@ impl Hub {
                     m.commit = sha;
                     m.step = why;
                 }));
+                changed = true;
+            }
+        }
+        if changed {
+            self.changed();
+        }
+        changed
+    }
+
+    /// Each finished member on this Mac (still in its crew) marked with whether git says its files still have
+    /// uncommitted changes (`uncommitted`). Runs git: off the hub's threads. Whether any mark changed.
+    pub(crate) fn mark_uncommitted(&self) -> bool {
+        let mates: Vec<(String, String, Teammate)> = self.read(|st| {
+            st.sessions.all().into_iter().filter(|s| s.origin.machine.is_empty())
+                .flat_map(|s| s.team.iter().filter(|t| t.in_team() && !t.working()).map(|t| (s.origin.session_id.clone(), s.origin.cwd.clone(), t.clone())).collect::<Vec<_>>())
+                .collect()
+        });
+        let mut changed = false;
+        for (lead, cwd, t) in mates {
+            let now = uncommitted(&cwd, &t);
+            if now != t.uncommitted {
+                self.write(|st| st.sessions.with_teammate(&lead, &t.call, |m| m.uncommitted = now));
                 changed = true;
             }
         }
