@@ -124,7 +124,7 @@ fn from_config(c: &Value) -> Value {
         "actions": { "prompt": crate::actions::prompt(), "default": crate::actions::PROMPT },
         "steps": { "mode": c.pointer("/steps/mode").and_then(Value::as_str).unwrap_or("line") },
         // A project's dot color, by folder name: the swatch you picked (0–7); unlisted folders hash to one.
-        "project": { "colors": c.pointer("/project/colors").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "all": c.pointer("/project/all").and_then(Value::as_u64).filter(|n| *n < 10), "hue": c.pointer("/project/hue").cloned().filter(own_hue), "pins": c.pointer("/project/pins").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])), "names": c.pointer("/project/names").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "moves": c.pointer("/project/moves").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "folders": c.pointer("/project/folders").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "made": c.pointer("/project/made").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])), "oneway": crate::one_way::view(c) },
+        "project": { "colors": c.pointer("/project/colors").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "all": c.pointer("/project/all").and_then(Value::as_u64).filter(|n| *n < 10), "hue": c.pointer("/project/hue").cloned().filter(own_hue), "pins": c.pointer("/project/pins").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])), "names": c.pointer("/project/names").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "moves": c.pointer("/project/moves").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "folders": c.pointer("/project/folders").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "made": c.pointer("/project/made").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])), "oneway": crate::one_way::view(c), "never": c.pointer("/project/never").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})) },
     })
 }
 
@@ -336,7 +336,7 @@ pub fn history_keep() -> usize {
 
 /// The settings the window may save. A key it saves that isn't here fails as "unknown setting" (the test
 /// below reads the window's scripts for every key they save).
-pub(crate) const ALLOWED: &[&str] = &["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "project.oneway", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "tips.on", "updates.beta", "actions.prompt", "voice.pick", "tasks.on", "tasks.auto", "status.on", "status.sessions", "background.sessions", "mini.mode", "hosted.on"];
+pub(crate) const ALLOWED: &[&str] = &["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "project.oneway", "project.never", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "tips.on", "updates.beta", "actions.prompt", "voice.pick", "tasks.on", "tasks.auto", "status.on", "status.sessions", "background.sessions", "mini.mode", "hosted.on"];
 
 /// Set one dotted key ("history.keep", "notify.finished", "pi.gate"), keeping everything else.
 pub fn set(key: &str, value: Value) -> Result<(), String> {
@@ -369,7 +369,7 @@ fn checked(key: &str, value: Value) -> Result<Value, String> {
     }
     match key {
         "pi.gate" | "appearance.mode" | "mini.mode" | "notify.sound" | "turn.mode" | "steps.mode" | "voice.pick" => checked_choice(key, &value),
-        "project.colors" | "project.all" | "project.hue" | "project.pins" | "project.made" | "project.names" | "project.moves" | "project.folders" | "project.oneway" => checked_project(key, value),
+        "project.colors" | "project.all" | "project.hue" | "project.pins" | "project.made" | "project.names" | "project.moves" | "project.folders" | "project.oneway" | "project.never" => checked_project(key, value),
         "insights.skills" | "status.sessions" | "background.sessions" | "quick.phrases" => checked_list(key, value),
         _ => checked_plain(key, value),
     }
@@ -433,8 +433,41 @@ fn checked_project(key: &str, value: Value) -> Result<Value, String> {
         "project.folders" => folders(&value)?,
         // One-way here, per project (one_way.rs).
         "project.oneway" => crate::one_way::checked(&value)?,
+        // Words never committed, per project (hub/desk_commit.rs).
+        "project.never" => never(&value)?,
         _ => return Err(format!("unknown setting {key}")),
     })
+}
+
+/// Words never committed, per project: project → its words (each trimmed, kept once, none empty; at most 50 of 60
+/// characters).
+fn never(value: &Value) -> Result<Value, String> {
+    let map = value.as_object().ok_or("words never committed must be project: [words]")?;
+    let mut out = serde_json::Map::new();
+    for (p, list) in map {
+        let list = list.as_array().ok_or("a project's words are a list")?;
+        let mut words: Vec<String> = Vec::new();
+        for w in list {
+            let w = w.as_str().ok_or("a word is text")?.trim();
+            if w.chars().count() > 60 {
+                return Err("a word is at most 60 characters".into());
+            }
+            if !w.is_empty() && !words.iter().any(|x| x.eq_ignore_ascii_case(w)) {
+                words.push(w.to_string());
+            }
+        }
+        if words.len() > 50 {
+            return Err("at most 50 words a project".into());
+        }
+        out.insert(p.clone(), json!(words));
+    }
+    Ok(Value::Object(out))
+}
+
+/// Project `project`'s words never committed, as config.json says now.
+pub(crate) fn never_words(project: &str) -> Vec<String> {
+    let c = load();
+    c.pointer("/project/never").and_then(|m| m.get(project)).and_then(Value::as_array).map(|l| l.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default()
 }
 
 /// A setting that's a list or a map: hand-off skills, the status list's sessions, quick phrases.

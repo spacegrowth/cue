@@ -265,6 +265,13 @@ pub(crate) async fn desk_commit_undo(hub: State<'_, Arc<Hub>>, id: String) -> Re
     with_hub(&hub, move |h| h.desk_commit_undo(&id)).await?
 }
 
+/// `project`'s done items, newest first, `take` of them after the one the list ends with (`before_ms`, `before_id`):
+/// the Desk's list loads them as you scroll.
+#[tauri::command]
+pub(crate) async fn desk_done(hub: State<'_, Arc<Hub>>, project: String, before_ms: Option<u64>, before_id: Option<String>, take: u32) -> Result<Vec<crate::desk::DeskItem>, String> {
+    with_hub(&hub, move |h| h.desk_done_page(&project, before_ms.zip(before_id.as_deref()), take)).await
+}
+
 /// Undo this: whoever made the decision is asked to undo it. What Cue did.
 #[tauri::command]
 pub(crate) async fn desk_undo(hub: State<'_, Arc<Hub>>, decision_id: String) -> Result<String, String> {

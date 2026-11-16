@@ -1,11 +1,14 @@
-// Fakes for the Desk's commands (desk_set_lead, desk_send, desk_add, desk_give, desk_item_act, desk_undo): `state.desk`,
-// one entry a project with its items, its lead and today's decisions. Times are seconds; a dropped item stays, as
+// Fakes for the Desk's commands (desk_set_lead, desk_send, desk_add, desk_give, desk_member, desk_item_act,
+// desk_looks_right, desk_commit_undo, desk_undo): `state.desk`,
+// one entry a project with its items, its lead, its sessions (members) and today's decisions. Times are seconds; a dropped item stays, as
 // "dropped". A lead is a session like any other: desk_set_lead names one (or starts "<project>-lead", hosted), and
 // desk_send hands it your message as a session takes one.
 CueBridge.area("desk", (w) => {
   const desk = () => (w.state.desk ||= { projects: [] });
   /** Project `p`'s Desk, made empty when it has none yet. */
-  const deskOf = (p) => desk().projects.find((d) => d.project === p) || (desk().projects.push({ project: p, lead: null, items: [], decisions: [] }), desk().projects.at(-1));
+  const deskOf = (p) => desk().projects.find((d) => d.project === p) || (desk().projects.push({ project: p, lead: null, items: [], decisions: [], members: [] }), desk().projects.at(-1));
+  /** Session `sid` on project `p`'s Desk, as the hub joins it. */
+  const join = (p, sid) => { const d = deskOf(p); d.members ||= []; if (!d.members.includes(sid)) d.members.push(sid); };
   const itemOf = (id) => desk().projects.flatMap((d) => d.items).find((i) => i.id === id);
   const secs = () => Math.floor(w.now() / 1000);
   let n = 0;
@@ -43,6 +46,7 @@ CueBridge.area("desk", (w) => {
       const t = secs(), s = holder && w.session(holder);
       const it = { id: `x${++n}`, project, kind, title, done_when: doneWhen || "", state: s ? "working" : "new", holder: s ? { sid: holder, name: s.name || holder, kind: "session" } : null, after: null, after_why: "", latest: "", ask: null, files: [], created: t, updated: t, done_at: null, from: "you" };
       deskOf(project).items.push(it);
+      if (s) join(project, holder);
       w.changed();
       return it;
     },
@@ -52,7 +56,17 @@ CueBridge.area("desk", (w) => {
       if (!s) throw "No such session";
       const t = secs();
       Object.assign(it, { state: "working", holder: { sid, name: s.name || sid, kind: "session" }, updated: t });
+      join(it.project, sid);
       deskOf(it.project).decisions.unshift({ id: `g${++n}`, project: it.project, item_id: id, by: "You", sid: "", text: `Gave it to ${s.name || sid}`, why: "", undo: "none", at: t });
+      w.changed();
+      return null;
+    },
+    desk_member: ({ project, sid, on }) => {
+      const s = w.session(sid);
+      if (on && !s) throw "no such session";
+      if (s && s.project !== project) throw `that session isn't of ${project}`;
+      if (on) join(project, sid);
+      else { const d = deskOf(project); d.members = (d.members || []).filter((m) => m !== sid); }
       w.changed();
       return null;
     },
@@ -67,8 +81,37 @@ CueBridge.area("desk", (w) => {
       else if (act === "drop") it.state = "dropped";
       else throw `Unknown act ${act}`;
       it.updated = t;
+      // Its cards in the lead's chat say where it is now, as the hub's view does.
+      for (const c of desk().projects.flatMap((d) => d.checks || [])) if (c.id === it.id) c.state = it.state;
       w.changed();
       return null;
+    },
+    // Looks right: every file of the item's counts as changed and is committed at once ("abc1234"), but those named in
+    // `state.desk_busy` ([{ path, by }]: another session at work is editing them); an item with no files is just done.
+    desk_looks_right: ({ id }) => {
+      const it = itemOf(id);
+      if (!it) throw "No such item";
+      if (it.state !== "to_check") throw "It isn't ready to check";
+      const busy = w.state.desk_busy || [], skipped = busy.filter((b) => it.files.includes(b.path));
+      const files = it.files.filter((f) => !busy.some((b) => b.path === f));
+      if (it.files.length && !files.length) throw `Not committed: ${skipped[0].by} is at work on its files now`;
+      const words = w.state.settings?.project?.never?.[it.project] || [];
+      const hit = files.length && words.find((x) => it.title.toLowerCase().includes(x.toLowerCase()));
+      if (hit) throw `Not committed: "${hit}" is in the message`;
+      const commit = files.length ? "abc1234" : "";
+      Object.assign(it, { state: "done", done_at: secs(), updated: secs(), commit });
+      for (const c of desk().projects.flatMap((d) => d.checks || [])) if (c.id === it.id) Object.assign(c, { state: "done", commit });
+      w.changed();
+      return { commit, files: files.length, skipped };
+    },
+    desk_commit_undo: ({ id }) => {
+      const it = itemOf(id);
+      if (!it) throw "No such item";
+      if (it.state !== "done" || !it.commit) throw "Nothing to undo: it wasn't committed";
+      Object.assign(it, { state: "to_check", done_at: null, updated: secs(), commit: "" });
+      for (const c of desk().projects.flatMap((d) => d.checks || [])) if (c.id === it.id) Object.assign(c, { state: "to_check", commit: "" });
+      w.changed();
+      return it;
     },
     desk_undo: ({ decisionId }) => {
       const dec = desk().projects.flatMap((d) => d.decisions).find((x) => x.id === decisionId);

@@ -499,7 +499,7 @@ fn commit_to_new_branch(m: &str, dir: &str, t: &Teammate, files: &[String], on: 
 }
 
 /// Remove `path` (a scratch file Cue made) here or on that machine; gone already is fine.
-fn remove_file(machine: &str, path: &str) {
+pub(super) fn remove_file(machine: &str, path: &str) {
     if machine.is_empty() {
         let _ = std::fs::remove_file(path);
     } else {
