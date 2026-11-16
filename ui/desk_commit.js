@@ -6,22 +6,76 @@
 // Each time a session says DONE for an item, the lead's chat shows a card for it (deskCheckRows): what to test, how
 // many files it touched, whether the installed Cue has it, and Looks right / Send back while it waits on you. Kept by the hub
 // (hub/desk_checks.rs), so they're there after a restart.
+// Looks right waits a moment first: "Done · Undo" for DESK_LOOKS_WAIT on the item and in a toast, and Undo in that
+// time leaves it to check with nothing committed (Cue hasn't told the hub yet). Then it goes as above.
 // Commands: desk_looks_right, desk_commit_undo.
 
 /** What Looks right did, by item, since the window opened: { commit, files, waiting: [{ path, by }] }. */
 const deskCommitted = new Map();
 
-/** Looks right on item `id`: committed (or just done), said in a toast and on its card and item. */
-async function deskLooksRight(id) {
+/** Items you said Looks right to in the last moment, not yet sent: id -> timer. */
+const deskLooksSoon = new Map();
+const DESK_LOOKS_WAIT = 3000;
+/** Looks right on item `id`: "Done · Undo" for a moment (on the item and in a toast), then it goes (deskLooksGo). */
+function deskLooksRight(id) {
+  if (deskLooksSoon.has(id)) return;
+  deskLooksSoon.set(id, setTimeout(() => { deskLooksSoon.delete(id); deskLooksGo(id); }, DESK_LOOKS_WAIT));
+  toast("Done", DESK_LOOKS_WAIT);
+  const t = document.querySelector(".toast"), u = document.createElement("button");
+  u.className = "toast-undo"; u.textContent = DESK_UNDO_WORDS; u.onclick = () => deskLooksUndo(id);
+  t?.append(" · ", u);
+  t?.classList.add("acts");
+  setTimeout(() => t?.classList.remove("acts"), DESK_LOOKS_WAIT);
+  renderMain();
+}
+/** Undo in that moment: it stays to check, nothing sent, nothing committed. */
+function deskLooksUndo(id) {
+  if (!deskLooksSoon.has(id)) return;
+  clearTimeout(deskLooksSoon.get(id));
+  deskLooksSoon.delete(id);
+  toast("Still to check");
+  renderMain();
+}
+/** What every Undo after Looks right says: it only puts the item back to check, never touches the code. */
+const DESK_UNDO_WORDS = "Undo · back to check";
+/** In place of Looks right while it waits: "Done · Undo · back to check". */
+const deskLooksSoonHtml = (id) => `<span class="dk-soon">Done · <button class="dk-undo-c" data-desk-act="looks_undo" data-id="${esc(id)}">${DESK_UNDO_WORDS}</button></span>`;
+/** Items folding away after their moment: id -> { at, h } (when it began, the row's height then). The row draws
+ *  with its fold already `now - at` in (a negative animation delay), so a redraw meanwhile doesn't start it again. */
+const deskLeaving = new Map();
+const DESK_LEAVE_MS = 280;
+/** The style a leaving row draws with, "" for any other. */
+function deskLeaveStyle(id) {
+  const l = deskLeaving.get(id);
+  return l ? ` dk-leave" style="--h:${l.h}px;animation-delay:-${Math.min(Date.now() - l.at, DESK_LEAVE_MS)}ms` : "";
+}
+/** Looks right sent: its row in the list folds away first, then it goes; committed (or just done), said in a toast
+ *  and on its card and item. */
+async function deskLooksGo(id) {
+  const row = document.querySelector(`.dk-items .dk-it[data-desk-item="${CSS.escape(id)}"]`);
+  if (row && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    deskLeaving.set(id, { at: Date.now(), h: row.offsetHeight });
+    renderMain();
+    await new Promise((r) => setTimeout(r, DESK_LEAVE_MS));
+  }
   try {
     const r = await invoke("desk_looks_right", { id });
     deskCommitted.set(id, r);
     toast(deskCommitWords(r) || "Done");
   } catch (e) { toast(String(e), 5000); }
+  deskLeaving.delete(id);
   renderMain();
 }
 async function deskCommitUndo(id) {
-  try { await invoke("desk_commit_undo", { id }); deskCommitted.delete(id); toast("Commit taken back: its changes are still there"); }
+  // Only the item goes back to check: a commit is taken back as a commit (its changes stay in place), or kept when
+  // another commit came after it. No code is ever reverted.
+  try {
+    const was = (state.desk?.projects || []).flatMap((d) => d.items || []).find((x) => x.id === id);
+    const it = await invoke("desk_commit_undo", { id });
+    deskCommitted.delete(id);
+    toast(it?.commit ? "Back to check · its commit stays (another came after it); no code changed"
+      : was?.commit ? "Back to check · commit taken back, every change still in place" : "Back to check · no code changed", 4000);
+  }
   catch (e) { toast(String(e), 5000); }
   renderMain();
 }
@@ -35,10 +89,12 @@ function deskCommitWords(r) {
 const deskBusyWords = (busy) => busy.map((b) => `${b.path} (${b.by} is editing it)`).join(", ");
 /** Whether done item `i` (or its card) has a commit to show: made, or waiting. */
 const deskHasCommit = (i) => i.state === "done" && !!(i.commit || i.commit_wait);
-/** A done item's commit as a line with Undo (`i`: the item, or a card: { id, commit, commit_wait }): "Committed <hash>",
- *  or while it waits "Commit waiting: <file> (<session> is editing it)", or why it wasn't made. */
+/** A done item's line with Undo · back to check (`i`: the item, or a card: { id, commit, commit_wait }): "Committed
+ *  <hash>", or while it waits "Commit waiting: <file> (<session> is editing it)", or why it wasn't made, or with no
+ *  commit "Looked right". */
 function deskCommitLine(i) {
-  const undo = `<button class="dk-undo-c" data-desk-act="undo_commit" data-id="${esc(i.id)}">Undo</button>`;
+  const undo = `<button class="dk-undo-c" data-desk-act="undo_commit" data-id="${esc(i.id)}">${DESK_UNDO_WORDS}</button>`;
+  if (!deskHasCommit(i)) return `<span class="dk-cmt">Looked right · ${undo}</span>`;
   const w = !i.commit && i.commit_wait;
   if (w?.error) return `<span class="dk-cmt">Commit not made: ${esc(w.error)} · ${undo}</span>`;
   if (w) return `<span class="dk-cmt">Commit waiting: ${esc(deskBusyWords(w.busy || []) || "its files")} · ${undo}</span>`;
@@ -63,9 +119,9 @@ function deskCheckCard(c, base = null, project = "") {
   const inst = state.desk?.installed_ms || 0;
   const installed = !c.cue ? "" : inst > c.at ? `In the installed Cue · installed ${esc(deskChkWhen(inst))}` : "Not installed yet";
   const open = c.last && c.state === "to_check";
-  const acts = open && deskBackFor === c.id ? deskBackHtml(c.id) : open ? `<div class="dk-acts"><button class="btn small primary" data-desk-act="looks_right" data-id="${esc(c.id)}">Looks right</button><button class="btn small" data-desk-act="send_back" data-id="${esc(c.id)}">Send back</button></div>`
+  const acts = open && deskLooksSoon.has(c.id) ? `<div class="dk-acts">${deskLooksSoonHtml(c.id)}</div>` : open && deskBackFor === c.id ? deskBackHtml(c.id) : open ? `<div class="dk-acts"><button class="btn small primary" data-desk-act="looks_right" data-id="${esc(c.id)}">Looks right</button><button class="btn small" data-desk-act="send_back" data-id="${esc(c.id)}">Send back</button></div>`
     : c.back || c.back_pics ? deskSentBack(c)
-    : `<div class="dk-chk-after">${c.state === "done" ? (c.last && deskHasCommit(c) ? deskCommitLine(c) : "Looked right") : "Sent back"}</div>`;
+    : `<div class="dk-chk-after">${c.state === "done" ? (c.last ? deskCommitLine(c) : "Looked right") : "Sent back"}</div>`;
   return `<div class="dk-chk"><div class="dk-chk-k">Ready to check</div><div class="dk-chk-t">${deskKindIcon(c)}<button class="dk-chk-a" data-desk-chk-item="${esc(c.id)}">${esc(`${deskNum(c)} · ${c.title}`)}</button></div>
     <div class="dk-chk-w">Done by ${who} · ${ago(c.at)} ago${files}</div>
     <div class="dkc-l">What to test</div><div class="dkc-dw">${c.done_when ? linkify(esc(c.done_when), base) : `<span class="dim">No "done when" was given</span>`}</div>
