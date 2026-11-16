@@ -13,6 +13,8 @@ mod activity;
 mod asks;
 mod cache_tick;
 mod crew_log;
+mod desk;
+pub(crate) use desk::DeskClaim;
 mod events;
 mod hand_off;
 mod history;
@@ -155,6 +157,8 @@ struct Store {
     restarted: HashMap<String, Vec<Value>>,
     /// How many snapshots have been taken from the store (each takes the next number): their order (shown.rs).
     shown_seq: u64,
+    /// Each project's Desk: its items, decisions and Dispatch (desk.rs).
+    desk: crate::desk::Desk,
 }
 
 /// The store's part of the window's state, copied out under its lock: the cards and sessions as they are,
@@ -245,6 +249,7 @@ impl Hub {
         st.sessions.restore(sessions);
         st.items = waiting;
         st.parked = crate::db::parked();
+        Self::desk_restore(&mut st);
         st.rates = crate::usage::saved_rates(now_ms());
         st.review_queue = crate::db::review_queue().into_iter().map(|(exec, lead, text, at_ms)| QueuedReview { exec, lead, text, at_ms }).collect();
         // Ids keep counting from the clock so they never collide with ids in saved history.
@@ -309,7 +314,7 @@ impl Hub {
             tool_use_id: None,
             request_id: None,
             scan_from: 0,
-            at_prompt: false, agent_id: String::new(), agent_name: String::new(), one_way: false,
+            at_prompt: false, agent_id: String::new(), agent_name: String::new(), one_way: false, from_dispatch: false,
         }
     }
 
@@ -480,6 +485,8 @@ impl Hub {
             "usage": st.rates,
             // Today's numbers (today.rs), not every answer of the day: those grow all day.
             "today": today::today(&st.answers, now),
+            // Each project's Desk (desk.rs).
+            "desk": Self::desk_view(st, now),
         });
         let items = st.items.clone();
         (seq, next, StoreParts { items, history: st.history.brief(), sessions, parked, small })

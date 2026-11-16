@@ -16,6 +16,7 @@ use super::*;
 pub(super) struct SaveLocks {
     review_queue: Mutex<()>,
     parked: Mutex<()>,
+    pub(super) desk: Mutex<()>,
     pub(super) live: Arc<super::live_writes::LiveWrites>,
 }
 

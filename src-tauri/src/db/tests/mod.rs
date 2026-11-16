@@ -156,7 +156,7 @@ fn live_sessions_cards_log_and_drafts_survive_a_reopen() {
     let card = Item {
         id: "w1".into(), kind: "waiting".into(), origin: Origin { session_id: "lead".into(), ..Default::default() }, project: "proj".into(),
         tool_name: String::new(), tool_input: Value::Null, suggestions: Value::Null, context: vec![], message: "done".into(),
-        created_ms: 1, status: "pending".into(), outcome: String::new(), resolved_ms: None, thread: vec![], tool_use_id: None, request_id: None, scan_from: 0, at_prompt: false, agent_id: String::new(), agent_name: String::new(), one_way: false, followup: String::new(), interrupted: false, back_ms: None, images: vec![],
+        created_ms: 1, status: "pending".into(), outcome: String::new(), resolved_ms: None, thread: vec![], tool_use_id: None, request_id: None, scan_from: 0, at_prompt: false, agent_id: String::new(), agent_name: String::new(), one_way: false, from_dispatch: false, followup: String::new(), interrupted: false, back_ms: None, images: vec![],
     };
     sync_live(&[session("lead", ""), session("exec", "its lead")], &[&card]);
     set_draft("s:lead", "half a thought", &json!([]));
@@ -180,4 +180,31 @@ fn live_sessions_cards_log_and_drafts_survive_a_reopen() {
     set_draft("s:lead", "", &json!([]));
     assert!(drafts().get("s:lead").is_none(), "an emptied draft is removed");
     std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn desk_items_done_long_ago_are_deleted_at_load() {
+    let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("cue-desk-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::env::set_var("CUE_HOME", &dir);
+    reset();
+    let now = now_ms();
+    let item = |id: &str, state: &str, days_ago: u64| crate::desk::DeskItem { id: id.into(), project: "web".into(), state: state.into(), updated: (now - days_ago * DAY_MS) / 1000, ..Default::default() };
+    desk_put_item(&item("old", "done", 40));
+    desk_put_item(&item("lately", "done", 10));
+    desk_put_item(&item("open", "working", 40));
+    let (loaded, _, _) = desk_load(now);
+    let rows: Vec<String> = with(|c| {
+        let mut q = c.prepare("SELECT id FROM desk_items ORDER BY id")?;
+        let ids = q.query_map([], |r| r.get::<_, String>(0))?;
+        Ok(ids.flatten().collect())
+    })
+    .unwrap();
+    std::env::remove_var("CUE_HOME");
+    reset();
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(rows, vec!["lately".to_string(), "open".to_string()], "the old done one is deleted; the rest kept");
+    assert_eq!(loaded.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(), vec!["open"], "only the open one loaded");
 }

@@ -94,6 +94,9 @@ pub(crate) async fn resume_parked(app: tauri::AppHandle, hub: State<'_, Arc<Hub>
     res
 }
 
+/// What Resume says when the session was running again already: it only left Parked, and `message` wasn't sent.
+pub(crate) const ALREADY_RUNNING: &str = "It's already running";
+
 pub(crate) fn resume_parked_session(h: &Arc<Hub>, session_id: &str, message: &str) -> Result<String, String> {
     let p = h.parked(session_id).ok_or("it isn't parked any more")?;
     // Running again already (you resumed it in a terminal yourself): a second agent would share its
@@ -102,7 +105,7 @@ pub(crate) fn resume_parked_session(h: &Arc<Hub>, session_id: &str, message: &st
     live::refresh();
     if p.session.origin.machine.is_empty() && live::claude().iter().any(|q| q.session_id == session_id) {
         h.take_parked(session_id);
-        return Ok("It's already running".into());
+        return Ok(ALREADY_RUNNING.into());
     }
     resume_record(h, p, message)
 }
@@ -322,7 +325,7 @@ fn end_and_close(h: &Hub, session_id: &str) -> Result<String, String> {
 /// opens in Active, ready to type into). Returns the id.
 #[tauri::command]
 pub(crate) async fn new_session(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, agent: String, cwd: String, message: String, name: String, tmux: Option<bool>, perm: Option<String>, extra: Option<String>, machine: Option<String>, mcp: Option<Vec<String>>, images: Option<Vec<model::Upload>>, hosted: Option<bool>, trust: Option<bool>) -> Result<serde_json::Value, String> {
-    let opts = StartOpts { tmux, perm: perm.unwrap_or_default(), extra: extra.unwrap_or_default(), machine: machine.unwrap_or_default(), mcp, images: images.unwrap_or_default(), hosted: hosted.unwrap_or(false), trust: trust.unwrap_or(false) };
+    let opts = StartOpts { tmux, perm: perm.unwrap_or_default(), extra: extra.unwrap_or_default(), machine: machine.unwrap_or_default(), mcp, images: images.unwrap_or_default(), hosted: hosted.unwrap_or(false), trust: trust.unwrap_or(false), dispatch: String::new() };
     let res = with_hub(&hub, move |h| start_session_with(&h, &agent, &cwd, &message, &name, &opts))
         .await?;
     // Cue stays in front: the terminal tab opened behind it.
@@ -357,6 +360,8 @@ pub(crate) struct StartOpts {
     pub hosted: bool,
     /// You said you trust the folder (Cue asked, as Claude Code's terminal would: ipc/hosted.rs `trusted`).
     pub trust: bool,
+    /// The project whose Dispatch it is (desk/): it starts with the Desk's instructions. "" for any other.
+    pub dispatch: String,
 }
 
 pub(crate) fn start_session_with(h: &Arc<Hub>, agent: &str, cwd: &str, message: &str, name: &str, opts: &StartOpts) -> Result<serde_json::Value, String> {

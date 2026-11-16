@@ -5,6 +5,7 @@ mod actions;
 mod awake;
 mod btw;
 mod db;
+mod desk;
 mod hook;
 mod hosted;
 mod changes;

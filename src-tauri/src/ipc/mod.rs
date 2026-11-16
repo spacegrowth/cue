@@ -5,6 +5,7 @@ use crate::hub::Hub;
 use std::sync::Arc;
 
 mod chat;
+mod desk;
 mod docs;
 mod hosted;
 mod insights;
@@ -21,6 +22,7 @@ mod terminal;
 mod updates;
 
 pub(crate) use chat::*;
+pub(crate) use desk::*;
 pub(crate) use docs::*;
 pub(crate) use hosted::*;
 pub(crate) use insights::*;

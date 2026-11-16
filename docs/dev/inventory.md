@@ -14,12 +14,12 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 
 | What | Count |
 |---|---|
-| `#[tauri::command]` | 168 (3 sync) |
-| Lock declarations (static or field) | 111 |
-| Lock acquisitions | 264 |
-| Lock-graph edges | 51 |
+| `#[tauri::command]` | 172 (3 sync) |
+| Lock declarations (static or field) | 112 |
+| Lock acquisitions | 266 |
+| Lock-graph edges | 55 |
 | Spawn sites | 91 |
-| External calls: fs / db / process / notify / login / socket | 363 / 142 / 48 / 4 / 1 / 4 |
+| External calls: fs / db / process / notify / login / socket | 363 / 156 / 48 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -85,6 +85,10 @@ Sync commands run on the main thread. "Hands work to": the threads or pools its 
 | `status_session` | async | `ipc/chat.rs::status_session` | ipc::with_hub |
 | `background_session` | async | `ipc/chat.rs::background_session` | ipc::with_hub |
 | `focus_session_id` | async | `ipc/chat.rs::focus_session_id` | ipc::with_hub |
+| `desk_send` | async | `ipc/desk.rs::desk_send` | ipc::with_hub |
+| `desk_add` | async | `ipc/desk.rs::desk_add` | ipc::with_hub |
+| `desk_item_act` | async | `ipc/desk.rs::desk_item_act` | ipc::with_hub |
+| `desk_undo` | async | `ipc/desk.rs::desk_undo` | ipc::with_hub |
 | `read_doc` | async | `ipc/docs.rs::read_doc` | ipc::blocking |
 | `recent_docs` | async | `ipc/docs.rs::recent_docs` | ipc::blocking |
 | `quit_check` | async | `ipc/hosted.rs::quit_check` | ipc::with_hub |
@@ -252,6 +256,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `hub/redraw.rs::Redraws.worker` | `OnceLock<()>` | — |
 | `hub/saves.rs::SaveLocks.review_queue` | `Mutex<()>` | "review queue saves" (1 sites) |
 | `hub/saves.rs::SaveLocks.parked` | `Mutex<()>` | "parked saves" (1 sites) |
+| `hub/saves.rs::SaveLocks.desk` | `Mutex<()>` | "desk saves" (2 sites) |
 | `hub/shown.rs::Shown.kept` | `RwLock<(u64,Option<Arc<Value>>)>` | "shown snapshot" (3 sites) |
 | `hub/shown.rs::Shown.timer` | `OnceLock<Sender<Option<Instant>>>` | — |
 | `hub/store_access.rs::StoreCell.0` | `Mutex<Store>` | "the hub's store" (2 sites) |
@@ -340,6 +345,9 @@ An edge A → B: B is taken (here or in something called) while A is held. Also 
 | "copies" | "machine tails: links" |  | `machines/logs.rs::local_copy` → `machines/logs.rs::start_after` → `machines/logs.rs::start` → `hosted/tails.rs::tail_start`, takes it |
 | "db writer's marks" | "DB" |  | `hub/live_writes.rs::LiveWrites::write` → `hub/live_writes.rs::save_live` → `db/live.rs::save_live` → `db/mod.rs::with` → `db/mod.rs::attempt`, takes it |
 | "db writer's marks" | "folder facts" |  | `hub/live_writes.rs::LiveWrites::write` → `hub/live_writes.rs::save_live` → `db/live.rs::save_live` → `db/mod.rs::with` → `db/mod.rs::attempt` → `db/schema.rs::open` → `db/schema.rs::set_up` → `db/schema.rs::migrate` → `db/schema.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
+| "desk saves" | "DB" |  | `hub/desk.rs::Hub::desk_dispatch_starting` → `db/desk.rs::desk_put_dispatch` → `db/mod.rs::with` → `db/mod.rs::attempt`, takes it |
+| "desk saves" | "folder facts" |  | `hub/desk.rs::Hub::desk_dispatch_starting` → `db/desk.rs::desk_put_dispatch` → `db/mod.rs::with` → `db/mod.rs::attempt` → `db/schema.rs::open` → `db/schema.rs::set_up` → `db/schema.rs::migrate` → `db/schema.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
+| "desk saves" | "the hub's store" |  | `hub/desk.rs::Hub::desk_dispatch_starting` → `hub/store_access.rs::Hub::write`, takes it |
 | "hosts: a session's outbox" | "cue-host link: out" |  | `hosted/remote.rs::Remote::put` → `hosted/remote.rs::Remote::flush_locked` → `hosted/host_link.rs::HostLink::try_request`, takes it |
 | "hosts: a session's outbox" | "cue-host link: waiting" |  | `hosted/remote.rs::Remote::put` → `hosted/remote.rs::Remote::flush_locked` → `hosted/host_link.rs::HostLink::try_request`, takes it |
 | "open_terms" | "pty master" |  | `terminal/term.rs::foreground`, takes it |
@@ -364,6 +372,7 @@ An edge A → B: B is taken (here or in something called) while A is held. Also 
 | "typing gate" | "copies" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `hub/hosted.rs::Hub::run_hosted` → `machines/logs.rs::local_copy`, takes it |
 | "typing gate" | "db writer's marks" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Hub::save_live` → `hub/saves.rs::Hub::hand_in_parked_turn` → `hub/saves.rs::Hub::hand_writes` → `hub/live_writes.rs::LiveWrites::hand` → `hub/live_writes.rs::LiveWrites::writer_runs` → `hub/live_writes.rs::LiveWrites::run` → `hub/live_writes.rs::LiveWrites::write_contained`, takes it |
 | "typing gate" | "db writes" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Hub::save_live` → `hub/saves.rs::Hub::hand_in_parked_turn` → `hub/saves.rs::Hub::hand_writes` → `hub/live_writes.rs::LiveWrites::hand` → `hub/live_writes.rs::LiveWrites::writer_runs` → `hub/live_writes.rs::LiveWrites::run`, takes it |
+| "typing gate" | "desk saves" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `hub/hosted.rs::Hub::run_hosted` → `hub/hosted.rs::Hub::hosted_report` → `hub/hosted.rs::Hub::on_hosted` → `hub/hosted.rs::Hub::hosted_turn_started` → `hub/hosted.rs::Hub::hosted_taken` → `hub/events.rs::Hub::event` → `hub/events.rs::Hub::event_in` → `hub/desk.rs::Hub::desk_turn_ended` → `hub/desk.rs::Hub::desk_done`, takes it |
 | "typing gate" | "folder facts" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Hub::save_live` → `hub/saves.rs::Hub::hand_in_parked_turn` → `hub/saves.rs::Hub::hand_writes` → `hub/live_writes.rs::LiveWrites::hand` → `hub/live_writes.rs::LiveWrites::write` → `hub/live_writes.rs::save_live` → `db/live.rs::save_live` → `db/mod.rs::with` → `db/mod.rs::attempt` → `db/schema.rs::open` → `db/schema.rs::set_up` → `db/schema.rs::migrate` → `db/schema.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
 | "typing gate" | "machine tails" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `hub/hosted.rs::Hub::run_hosted` → `machines/logs.rs::local_copy` → `machines/logs.rs::Copier::running` → `hosted/tails.rs::tail_running`, takes it |
 | "typing gate" | "machine tails: links" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `hub/hosted.rs::Hub::run_hosted` → `machines/logs.rs::local_copy` → `machines/logs.rs::start_after` → `machines/logs.rs::start` → `hosted/tails.rs::tail_start`, takes it |
@@ -805,7 +814,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `uploads.rs::prune` | remove_file | 1 |
 | `uploads.rs::save` | create_dir_all | 1 |
 
-### db (142)
+### db (156)
 
 | In | Call | Times |
 |---|---|---|
@@ -819,6 +828,13 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `db/commands.rs::commands` | db::with | 1 |
 | `db/commands.rs::set_commands` | db::with | 1 |
 | `db/commands.rs::stale_commands` | db::with | 1 |
+| `db/desk.rs::desk_drop_item` | db::with | 1 |
+| `db/desk.rs::desk_load` | db::desk_prune | 1 |
+| `db/desk.rs::desk_load` | db::with | 3 |
+| `db/desk.rs::desk_prune` | db::with | 1 |
+| `db/desk.rs::desk_put_decision` | db::with | 1 |
+| `db/desk.rs::desk_put_dispatch` | db::with | 1 |
+| `db/desk.rs::desk_put_item` | db::with | 1 |
 | `db/drafts.rs::draft_text` | db::with | 1 |
 | `db/drafts.rs::drafts` | db::with | 1 |
 | `db/drafts.rs::queue_review` | db::with | 1 |
@@ -888,6 +904,11 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hub/cache_tick.rs::ahead_wanted` | db::ahead_watched | 1 |
 | `hub/cache_tick.rs::ahead_wanted` | db::handoff | 1 |
 | `hub/cache_tick.rs::cold_soon` | db::handoff | 1 |
+| `hub/desk.rs::Hub::desk_dispatch_starting` | db::desk_put_dispatch | 1 |
+| `hub/desk.rs::Hub::desk_done` | db::desk_drop_item | 1 |
+| `hub/desk.rs::Hub::desk_done` | db::desk_put_decision | 1 |
+| `hub/desk.rs::Hub::desk_done` | db::desk_put_item | 1 |
+| `hub/desk.rs::Hub::desk_restore` | db::desk_load | 1 |
 | `hub/hand_off.rs::Hub::hand_off_ahead` | db::draft_text | 1 |
 | `hub/live_writes.rs::LiveWrites::write` | db::delete_session | 1 |
 | `hub/live_writes.rs::LiveWrites::write` | db::park | 1 |

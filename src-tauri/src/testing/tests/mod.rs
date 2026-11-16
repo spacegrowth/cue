@@ -7,6 +7,7 @@ mod bars;
 mod caches;
 mod db_faults;
 mod db_history;
+mod desk;
 mod db_open;
 mod handoffs;
 mod hosted;
