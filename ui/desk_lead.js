@@ -1,6 +1,6 @@
 // Cue UI desk_lead — who runs a Desk, and adding to it (ui/desk.js draws the rest). Each project's Desk has one lead:
 // a normal session you pick ("Who runs this Desk?") or a new one Cue starts; you tell it, it does the work or hands it
-// out. Here: the picker (zero, one or several sessions; "Keep <name>" when changing), "Run by <name> · Change", the
+// out. Here: the picker (zero, one or several sessions; "Keep <name>" when changing), ⋯ beside "Runs this Desk", the
 // ended lead's line, "Give to…" on an item no one holds, and the quick-add line at the top of Items (Enter adds; an
 // optional Done when; several pasted lines add one item a line; ⌘N focuses it). An item you add has no kind: the
 // lead says whether it's a bug, a feature or a task as it routes it. Commands: desk_set_lead, desk_add, desk_give.
@@ -43,18 +43,6 @@ function deskSessionsOf(project, d = deskOf(project)) {
     return { sid, name: deskHolderName(sid), lead, sub: !lead ? "session" : crew ? `lead, crew of ${crew}` : "lead, on its own" };
   });
   return rows.sort((a, b) => (b.lead ? 1 : 0) - (a.lead ? 1 : 0));
-}
-
-/** "Run by <name> ✎ · Change" in the Items header; nothing without a lead. ✎ (a live lead) renames its session as the
- *  chat's header does (data-rename, submitRename): the name turns into a box, Enter keeps it, Esc or leaving it doesn't. */
-function deskRunBy(d) {
-  const l = deskLead(d);
-  if (!l) return "";
-  const sid = esc(l.sid);
-  const name = renaming === l.sid
-    ? `<input class="rename-in" data-text="rename:${sid}" maxlength="60" placeholder="Name this session" aria-label="Rename the lead" spellcheck="false" value="${esc(draft(`rename:${l.sid}`).text)}"/>`
-    : `<b>${esc(deskLeadName(d))}</b>${sessionOf(l.sid) ? `<button class="rename-btn" data-rename="${sid}" aria-label="Rename the lead">✎</button>` : ""}`;
-  return `<span class="dk-runby">Run by ${name} · <button class="dk-link" data-desk-change>Change</button></span>`;
 }
 
 /** The chat card when no one runs the Desk yet, or when changing who does: "Who runs this Desk?", then a button
@@ -183,16 +171,14 @@ const DESK_LEAD_CLICKS = {
 };
 
 if (typeof document !== "undefined") {
-  // Leaving the lead's name box drops the rename (Enter has kept it already). Checked a moment later: a redraw puts
-  // the cursor back in the new box, and that isn't leaving it.
+  // Leaving the Desk's name box (its Sessions head) keeps what's in it, as Enter does; Esc has closed it already.
+  // Checked a moment later: a redraw puts the cursor back in the new box, and that isn't leaving it.
   document.addEventListener("focusout", (e) => {
-    if (!e.target?.matches?.(".dk-runby .rename-in")) return;
+    if (!e.target?.matches?.(".dk-sh .pj-name-in")) return;
     const key = e.target.dataset.text;
     setTimeout(() => {
-      if (!renaming || `rename:${renaming}` !== key || document.activeElement?.dataset?.text === key) return;
-      renaming = null;
-      delete drafts[key];
-      renderMain();
+      if (!pjRenaming || `pjname:${pjRenaming}` !== key || document.activeElement?.dataset?.text === key) return;
+      saveProjName(pjRenaming);
     }, 0);
   }, true);
   // Several lines pasted into the quick-add line: an item a line.
@@ -210,9 +196,9 @@ if (typeof document !== "undefined") {
  *  (deskLeadAsk) and DECIDED md's own block, so neither is here. */
 const DESK_SAY = /^[-*+ ]*(ITEM|ROUTE|DONE|CONTEXT)\**\s*:(.*)$/;
 const DESK_KINDS = ["bug", "feature", "task"];
-/** `line` of the lead's reply as a small line of the Desk's (md's `lines` hook): ITEM a kind chip and its title,
- *  Done when under it; ROUTE "#id → who", after and why under it; DONE "Done #id"; CONTEXT "who → keep", why under
- *  it. "" for any other line, or one parse.rs wouldn't act on (an empty or "<…>" body). */
+/** `line` of the lead's reply as one quiet line of the Desk's (md's `lines` hook): ITEM "New item · BUG title · done
+ *  when …"; ROUTE "Bug #2 title → who · after, why"; DONE "Done · Bug #2 title"; CONTEXT "who → keep · why". "" for
+ *  any other line, or one parse.rs wouldn't act on (an empty or "<…>" body). */
 function deskLineHtml(line, inline) {
   const m = DESK_SAY.exec(line.trim());
   if (!m) return "";
@@ -225,32 +211,55 @@ function deskLineHtml(line, inline) {
   const id = (s) => (/^#?([a-z0-9]+)/i.exec(s.trim())?.[1] || "").toLowerCase();
   const name = (s) => s.trim().replace(/^@/, "").replace(/^["`*]+|["`*]+$/g, "").trim();
   const arrow = (s) => { const a = /\s*(->|→|=>)\s*/.exec(s); return a ? [s.slice(0, a.index), s.slice(a.index + a[0].length)] : null; };
-  const chip = (k) => (DESK_KINDS.includes(k) ? `<span class="dk-say-k ${k}">${k}</span>` : "");
-  const row = (head, sub) => `<div class="dk-say">${head}${sub ? `<div class="dk-say-s">${sub}</div>` : ""}</div>`;
+  const row = (head, sub) => `<div class="dk-say">${head}${sub ? `<span class="dk-say-s"> · ${sub}</span>` : ""}</div>`;
   // An item named by kind and number ("Bug #2") when the Desk has it, as its row says it.
   const known = (x) => (state.desk?.projects || []).flatMap((d) => d.items).find((i) => deskIdIs(i, x));
-  const ref = (x) => `<span class="dk-say-id">${esc(known(x) ? deskNum(known(x)) : `#${x}`)}</span>`;
+  const ref = (x) => `<span class="dk-say-id">${deskKindIcon(known(x))}${esc(known(x) ? deskNum(known(x)) : `#${x}`)}</span>`;
+  // The same, with its title when the Desk has it.
+  const named = (x) => `${ref(x)}${known(x)?.title ? ` · <span class="dk-say-t">${esc(known(x).title)}</span>` : ""}`;
   if (m[1] === "ITEM") {
     const first = p[0].toLowerCase(), kind = DESK_KINDS.includes(first) ? first : "task";
     const rest = DESK_KINDS.includes(first) ? p.slice(1) : p;
     const title = rest.find((s) => lab(s, "done when") === null) || "";
     if (!title) return "";
     const done = rest.map((s) => lab(s, "done when")).find((v) => v !== null) || "";
-    return row(`<div class="dk-say-h">${chip(kind)}<span class="dk-say-t">${inline(title)}</span></div>`, done ? `Done when: ${inline(done)}` : "");
+    return row(`<span class="dk-say-h"><span class="dk-say-w">New item</span> ${deskKindIcon(kind)}<span class="dk-say-t">${inline(title)}</span></span>`, done ? `done when ${inline(done)}` : "");
   }
   if (m[1] === "ROUTE") {
     const ht = arrow(p[0]), at = ht && id(ht[0]), to = ht && name(ht[1]);
     if (!at || !to) return "";
     const after = id(find("after")), why = find("why"), crew = name(find("crew")), kind = find("kind").replace(/["`*.]/g, "").toLowerCase();
     const sub = [after ? `after ${ref(after)}` : "", why ? inline(why) : ""].filter(Boolean).join(" · ");
-    return row(`<div class="dk-say-h">${known(at)?.kind ? "" : chip(kind)}${at === "new" ? `<span class="dk-say-w">New item</span>` : ref(at)}<span class="dk-say-to">→ <b>${esc(to)}</b>${crew ? ` · ${esc(crew)}` : ""}</span></div>`, sub);
+    // Two lines: what goes where, in bold (its kind's icon, #id, title → who), then why, plain.
+    const it = known(at), head = at === "new" ? `${deskKindIcon(kind)}<span class="dk-say-w">New item</span>`
+      : `${deskKindIcon(it || kind)}<span class="dk-say-id">#${esc(it?.id ?? at)}</span>${it?.title ? ` <span class="dk-say-t">${esc(it.title)}</span>` : ""}`;
+    return `<div class="dk-say dk-route"><div class="dk-say-h">${head} <span class="dk-say-to">→ ${esc(to)}${crew ? ` · ${esc(crew)}` : ""}</span></div>${sub ? `<div class="dk-say-s">${sub}</div>` : ""}</div>`;
   }
   if (m[1] === "DONE") {
     const ids = body.split(/[, ]/).filter((w) => w.trim().startsWith("#")).map(id).filter(Boolean);
-    return ids.length ? row(`<div class="dk-say-h"><span class="dk-say-w">Done</span>${ids.map(ref).join(" ")}</div>`, "") : "";
+    return ids.length ? row(`<span class="dk-say-h"><span class="dk-say-w">Done</span> ${ids.map(named).join(", ")}</span>`, "") : "";
   }
   const ht = arrow(p[0]), who = ht && name(ht[0]), what = ht && (ht[1].trim().split(/\s+/)[0] || "").replace(/["`*.]/g, "").toLowerCase();
   if (!who || !what) return "";
   const why = find("why");
-  return row(`<div class="dk-say-h"><span class="dk-say-w">Context</span><span class="dk-say-to"><b>${esc(who)}</b> → ${esc(what)}</span></div>`, why ? inline(why) : "");
+  return row(`<span class="dk-say-h"><span class="dk-say-w">Context</span> <span class="dk-say-to"><b>${esc(who)}</b> → ${esc(what)}</span></span>`, why ? inline(why) : "");
+}
+/** What Cue told the lead of new items (desk/mod.rs new_items_words: "New item #72 (bug): title | done when: … |
+ *  pictures: … | from x", a line each, then its "Route it now…" words for the lead) as a small card an item: its kind,
+ *  number and title (a click opens it), and done when, pictures and who it's from in a quiet line; the words for the
+ *  lead aren't shown. null for any other message (chat/render.js chatHtml `you`). */
+function deskNewItems(e) {
+  const lines = String(e.text || "").split("\n").map((l) => l.trim()).filter(Boolean);
+  const said = lines.filter((l) => !/^Route (it|each) now:/.test(l));
+  const items = said.map((l) => /^New item #([^\s:(]+)(?: \((bug|feature|task)\))?: (.*)$/.exec(l));
+  if (!said.length || said.length === lines.length || items.some((m) => !m)) return null;
+  return `<div class="dk-news">${items.map(([, id, kind = "", rest]) => {
+    const p = rest.split(" | "), title = p[0], tail = p.slice(1).map((x) => {
+      const done = /^done when: (.*)$/.exec(x), pics = /^pictures: (.*)$/.exec(x);
+      if (done) return `done when ${esc(done[1])}`;
+      if (pics) { const n = pics[1].split("` `").length; return n === 1 ? "1 picture" : `${n} pictures`; }
+      return esc(x);
+    });
+    return `<div class="dk-new"><span class="dk-say-w">New item</span> ${deskKindIcon(kind)}<button class="dk-chk-a dk-new-t" data-desk-chk-item="${esc(id)}">${esc(`${deskNum({ id, kind })} · ${title}`)}</button>${tail.length ? `<span class="dk-say-s"> · ${tail.join(" · ")}</span>` : ""}</div>`;
+  }).join("")}<div class="cv-meta">From Cue · ${ago(e.at_ms)} ago</div></div>`;
 }
