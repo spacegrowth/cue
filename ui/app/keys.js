@@ -50,7 +50,8 @@ function keyInBox(e) {
   // names its session); otherwise Tab moves on as usual.
   const sugSid = mk?.startsWith("s:") ? sidOfKey(mk) : e.target.dataset?.sugSid;
   if (sugSid && e.key === "Tab" && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey && !e.isComposing && takeSuggestion(mk, sugSid, e.target)) { e.preventDefault(); return true; }
-  if (mk?.startsWith("s:") && (e.key === "ArrowUp" || e.key === "ArrowDown") && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey && !e.isComposing && recallSent(e)) { e.preventDefault(); return true; }
+  // ↑ ↓ bring back what you sent: in a session's box, and in the Desk's boxes (desk.js deskRecall).
+  if ((mk?.startsWith("s:") || mk?.startsWith("desk")) && (e.key === "ArrowUp" || e.key === "ArrowDown") && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey && !e.isComposing && recallSent(e)) { e.preventDefault(); return true; }
   return false;
 }
 

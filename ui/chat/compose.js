@@ -227,7 +227,10 @@ function onEdgeRow(ta, up) {
   return same;
 }
 function recallSent(e) {
-  const ta = e.target, key = ta.dataset.text, sid = sidOfKey(key);
+  const ta = e.target, key = ta.dataset.text;
+  // A Desk's box: what you sent to the session it goes to, as its chat shows it (desk.js deskRecall).
+  const desk = !sidOfKey(key) && typeof deskRecall === "function" ? deskRecall(key) : null;
+  const sid = sidOfKey(key) || desk?.s?.session_id;
   if (!sid) return false;
   const up = e.key === "ArrowUp";
   const v = ta.value;
@@ -235,10 +238,10 @@ function recallSent(e) {
   // arrows move the caret as usual.
   if (!onEdgeRow(ta, up)) return false;
   if (!recall || recall.key !== key || recall.set !== v) {
-    const cur = current();
+    const cur = desk ? { it: null, s: desk.s } : current();
     if ((cur?.s?.session_id || cur?.it?.session_id) !== sid) return false;
     const seen = new Set();
-    const list = conversation(cur.it, cur.s).filter((x) => x.role === "you" && !askLnAnswer(x) && x.text.trim()).map((x) => x.text).filter((t) => !seen.has(t) && seen.add(t)).slice(-RECALL);
+    const list = conversation(cur.it, cur.s).map(desk?.said || ((x) => x)).filter((x) => x.role === "you" && !askLnAnswer(x) && x.text.trim()).map((x) => x.text).filter((t) => !seen.has(t) && seen.add(t)).slice(-RECALL);
     if (!list.length) return false;
     recall = { key, list, idx: list.length, typed: v, set: v };
   }
