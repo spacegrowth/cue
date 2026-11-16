@@ -1,5 +1,5 @@
-//! The Desk's lines in a reply, read at its turn's end (as crew_log's DECIDED lines are): the lead's ITEM, ROUTE and
-//! ASK, and a holder's DONE. Each is a line of its own, its word in capitals; a list mark or bold around it is fine;
+//! The Desk's lines in a reply, read at its turn's end (as crew_log's DECIDED lines are): the lead's ITEM, ROUTE, ASK
+//! and CONTEXT, and a holder's DONE. Each is a line of its own, its word in capitals; a list mark or bold around it is fine;
 //! a line in a code block (``` or ~~~) or a `>` quote only shows one, so it's left alone. DECIDED lines are
 //! crew_log's `calls_in`.
 
@@ -13,6 +13,8 @@ pub enum Line {
     Ask { question: String, choices: Vec<String> },
     /// Items done, as their holder says.
     Done { ids: Vec<String> },
+    /// What to do with session `who`'s context ("me": the lead's own): `what` is "keep" (others to come), lower case.
+    Context { who: String, what: String, why: String },
 }
 
 /// The Desk lines in `text`, in order.
@@ -40,6 +42,7 @@ pub fn lines(text: &str) -> Vec<Line> {
                 "ROUTE" => route(body),
                 "ASK" => ask(body),
                 "DONE" => done(body),
+                "CONTEXT" => context(body),
                 _ => None,
             }
         })
@@ -103,4 +106,16 @@ fn ask(body: &str) -> Option<Line> {
 fn done(body: &str) -> Option<Line> {
     let ids: Vec<String> = body.split([',', ' ']).filter(|w| w.trim().starts_with('#')).filter_map(id_of).collect();
     (!ids.is_empty()).then_some(Line::Done { ids })
+}
+
+fn context(body: &str) -> Option<Line> {
+    let p = parts(body);
+    let (who, what) = ["->", "→", "=>"].iter().find_map(|a| p.first()?.split_once(a))?;
+    let who = who.trim().trim_start_matches('@').trim_matches(['"', '`', '*']).trim().to_string();
+    let what = what.split_whitespace().next().unwrap_or("").trim_matches(['"', '`', '*', '.']).to_ascii_lowercase();
+    if who.is_empty() || what.is_empty() {
+        return None;
+    }
+    let why = p[1..].iter().find_map(|s| labelled(s, "why")).unwrap_or("").to_string();
+    Some(Line::Context { who, what, why })
 }

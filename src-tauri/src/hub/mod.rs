@@ -22,6 +22,7 @@ mod history;
 mod hosted;
 mod kept_history;
 mod live_writes;
+mod open;
 pub(crate) mod ports;
 mod projects;
 mod quitting;
@@ -160,6 +161,12 @@ struct Store {
     shown_seq: u64,
     /// Each project's Desk: its items, decisions and lead (desk.rs, desk_lead.rs).
     desk: crate::desk::Desk,
+    /// What git last said of each crew folder on this Mac (open.rs), for the Inbox side's Open rows; when it was
+    /// last read, whether a read is under way, and whether another was asked for meanwhile.
+    open_git: HashMap<String, open::GitLook>,
+    open_scan_ms: u64,
+    open_scanning: bool,
+    open_again: bool,
 }
 
 /// The store's part of the window's state, copied out under its lock: the cards and sessions as they are,
@@ -488,6 +495,8 @@ impl Hub {
             "today": today::today(&st.answers, now),
             // Each project's Desk (desk.rs).
             "desk": Self::desk_view(st, now),
+            // Each lead's loose ends (open.rs): the Inbox side's Open rows.
+            "open": Self::open_view(st),
         });
         let items = st.items.clone();
         (seq, next, StoreParts { items, history: st.history.brief(), sessions, parked, small })

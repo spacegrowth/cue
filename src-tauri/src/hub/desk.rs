@@ -335,13 +335,34 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx
                 }
             }
             Line::Ask { question, choices } => fx.asks.push((lsid.to_string(), project.to_string(), question, choices)),
-            Line::Done { .. } => {}
+            Line::Context { who, what, why } if what == "keep" => keep(st, project, &by, &who, &why, now, fx),
+            Line::Context { .. } | Line::Done { .. } => {}
         }
     }
     for (what, why) in crate::sessions::crew_log::calls_in(text) {
         let item = item_named(st, project, &what).or_else(|| item_named(st, project, &why));
         decide(st, project, item, &name, lsid, &what, &why, now, fx);
     }
+}
+
+/// The lead said to keep session `who`'s context ("me": its own) as it is: Cue asks it for no hand-off note for the
+/// idle stretch it's in (cache_tick's Desk rule), until it next works; said while it works, for the idle stretch
+/// after this turn (the turn's end stamps it: `keep_from_now`). A decision of the lead's, which can be undone.
+#[allow(clippy::too_many_arguments)]
+fn keep(st: &mut Store, project: &str, by: &By, who: &str, why: &str, now: u64, fx: &mut Effects) {
+    let sid = if who.eq_ignore_ascii_case("me") {
+        Some(by.sid.to_string())
+    } else {
+        // A session, not one of a lead's crew: a crew member's context is its lead's.
+        resolve(st, project, who).filter(|h| h.kind != "crew").map(|h| h.sid)
+    };
+    let Some(sid) = sid else { return };
+    let name = if sid == by.sid { "its own".to_string() } else { st.sessions.get(&sid).map(|s| format!("{}'s", shown_name(s))).unwrap_or_default() };
+    decide(st, project, None, by.name, by.sid, &format!("Kept {name} context as it is"), why, now, fx);
+    let id = fx.decisions.last().cloned().unwrap_or_default();
+    // The lead's own turn is ending as it says so: its idle stretch starts now.
+    let working = sid != by.sid && st.sessions.get(&sid).is_some_and(|s| s.state == "working");
+    st.desk.keep.insert(sid, (now, id, working));
 }
 
 /// Session `sid` (not its project's lead) said `text`: its ITEM: lines are new items of its project, from it, which
@@ -407,13 +428,13 @@ pub(super) fn new_item(st: &Store, project: &str, kind: &str, title: &str, done_
     }
 }
 
-/// Whether `line` starts as one of the Desk's lines would (ITEM:, ROUTE:, ASK:, DONE:, DECIDED:), after list marks
+/// Whether `line` starts as one of the Desk's lines would (ITEM:, ROUTE:, ASK:, DONE:, CONTEXT:, DECIDED:), after list marks
 /// and bold: a cheap look before parsing.
 fn desk_line_start(line: &str) -> bool {
     let l = line.trim().trim_start_matches(['-', '*', '+', '`', ' ']);
     let Some((word, _)) = l.split_once(':') else { return false };
     let word = word.trim_end_matches(['*', '`']).trim();
-    matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE") || word.eq_ignore_ascii_case("DECIDED")
+    matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "CONTEXT") || word.eq_ignore_ascii_case("DECIDED")
 }
 
 /// What you did to item `id` ("looks_right" | "send_back" | "start_now" | "put_before" | "drop"), in the store.
@@ -628,7 +649,12 @@ impl Hub {
             Ok(d.clone())
         })?;
         self.desk_done(Effects { decisions: vec![id.to_string()], ..Default::default() });
-        match self.send_to_session(&d.sid, &crate::desk::undo_words(&d), &[], false) {
+        let sent = self.send_to_session(&d.sid, &crate::desk::undo_words(&d), &[], false);
+        if sent.is_ok() {
+            // A keep undone: Cue's own rule holds again for that session.
+            self.write(|st| st.desk.keep.retain(|_, k| k.1 != d.id));
+        }
+        match sent {
             Ok(said) if super::team::kept(&said) => Ok(format!("Cue tells {} to undo this when its turn ends", d.by)),
             Ok(_) => Ok(format!("Asked {} to undo this", d.by)),
             Err(e) => {
@@ -642,6 +668,7 @@ impl Hub {
     /// Session `sid`'s turn ended, saying `text`: a lead's lines (ITEM, ROUTE, ASK, DECIDED, and DONE for what it
     /// keeps), any session's ITEM lines, and a holder's (DONE, DECIDED) acted on.
     pub(super) fn desk_turn_ended(&self, sid: &str, text: &str) {
+        self.keep_from_now(sid);
         // Most turns say none of the Desk's lines: then the store isn't taken at all.
         if !text.lines().any(desk_line_start) {
             return;
@@ -656,6 +683,37 @@ impl Hub {
             }
             if st.desk.items.iter().any(|i| i.holder.as_ref().is_some_and(|h| h.is(sid))) {
                 holder_said(st, sid, text, lead.is_none(), now, &mut fx);
+            }
+            fx
+        });
+        self.desk_done(fx);
+    }
+
+    /// Session `sid`'s turn ended: a keep the lead said while it worked holds from now, for the idle stretch this
+    /// starts (until its next reply). Only read unless there's one.
+    fn keep_from_now(&self, sid: &str) {
+        if !self.read(|st| st.desk.keep.get(sid).is_some_and(|k| k.2)) {
+            return;
+        }
+        let now = now_ms();
+        self.write(|st| {
+            if let Some(k) = st.desk.keep.get_mut(sid).filter(|k| k.2) {
+                (k.0, k.2) = (now, false);
+            }
+        });
+    }
+
+    /// Cue asked session `sid` (`tokens` of context) for a hand-off note ahead of its cache running out, by the
+    /// Desk's rule (cache_tick): a decision on its project's Desk, by Cue, nothing to undo.
+    pub(super) fn desk_cue_asked(&self, sid: &str, tokens: u64) {
+        let now = now_ms();
+        let fx = self.write(|st| {
+            let mut fx = Effects::default();
+            let Some((project, name)) = st.sessions.get(sid).map(|s| (s.project.clone(), shown_name(s))) else { return fx };
+            let why = format!("{}, cache ending", super::desk_lead::context_k(tokens));
+            decide(st, &project, None, "Cue", "", &format!("Asked {name} for a hand-off note"), &why, now, &mut fx);
+            if let Some(d) = st.desk.decisions.last_mut() {
+                d.undo = "none".into();
             }
             fx
         });

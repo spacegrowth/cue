@@ -146,6 +146,7 @@ impl Hub {
     /// lead works, first (for a session just made the lead: it has no such system prompt).
     /// With the routes it couldn't make that it's told of: `desk_told` once the message has reached it.
     pub(crate) fn desk_summary(&self, project: &str, lead: &str, with_skill: bool) -> (String, Vec<(String, String)>) {
+        let now = now_ms();
         let (text, failed) = self.read(|st| {
             let mut out = format!("project=\"{}\">\n", project.replace('"', "'"));
             if with_skill {
@@ -171,14 +172,16 @@ impl Hub {
                     let crew: Vec<&str> = s.team.iter().map(|t| t.name.as_str()).collect();
                     let what = if crew.is_empty() { "session".to_string() } else { format!("lead, crew: {}", crew.join(", ")) };
                     let id: String = s.origin.session_id.chars().take(8).collect();
-                    format!("{} (sid:{id}, {what}, {})", shown_name(s), if s.state.is_empty() { "idle" } else { &s.state })
+                    let state = if s.state.is_empty() { "idle" } else { &s.state };
+                    format!("{} (sid:{id}, {what}, {state}{})", shown_name(s), context_note(st, &s.origin.session_id, now))
                 })
                 .collect();
             out.push_str(&format!("Sessions you can route to: {}\n", if names.is_empty() { "none open in this project but you".to_string() } else { names.join("; ") }));
             if let Some(me) = st.sessions.get(lead) {
                 let crew: Vec<&str> = me.team.iter().map(|t| t.name.as_str()).collect();
                 let crew = if crew.is_empty() { String::new() } else { format!(" (your crew: {})", crew.join(", ")) };
-                out.push_str(&format!("You: {}{crew}. ROUTE: #<id> -> me to keep one yourself.\n", shown_name(me)));
+                let context = context_note(st, lead, now);
+                out.push_str(&format!("You: {}{crew}{context}. ROUTE: #<id> -> me to keep one yourself.\n", shown_name(me)));
             }
             (out, failed)
         });
@@ -200,6 +203,33 @@ impl Hub {
             eprintln!("cue: desk: {project}'s lead wasn't told of its new items: {e}");
         }
     }
+}
+
+/// `tokens` of context as the Desk says it: "142k".
+pub(super) fn context_k(tokens: u64) -> String {
+    format!("{}k", (tokens + 500) / 1000)
+}
+
+/// Session `sid`'s context and cache as the lead's summary says them, from its card's numbers (cache_tick): ", 142k,
+/// cache 12m" or ", 142k, cold", and " → Cue will hand off at expiry" when the Desk's rule will ask it for a note.
+/// Nothing for a session with no card waiting (at work, or not on this Mac).
+fn context_note(st: &Store, sid: &str, now: u64) -> String {
+    let Some(v) = st.insight.get(sid) else { return String::new() };
+    let tokens = v["tokens"].as_u64().unwrap_or(0);
+    if tokens == 0 {
+        return String::new();
+    }
+    let until = v["until_ms"].as_u64().unwrap_or(0);
+    let mut out = format!(", {}", context_k(tokens));
+    if until > now {
+        out.push_str(&format!(", cache {}m", (until - now).div_ceil(60_000)));
+    } else if until > 0 {
+        out.push_str(", cold");
+    }
+    if super::cache_tick::desk_will_hand_off(st, sid, v, now) {
+        out.push_str(" → Cue will hand off at expiry");
+    }
+    out
 }
 
 /// Item `it`'s line in the Desk's summary (into `out`), with the routes it couldn't make (into `failed`) and what the

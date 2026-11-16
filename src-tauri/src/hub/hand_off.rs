@@ -30,8 +30,11 @@ impl Hub {
             Some(false) => return held("typed"),
             None => return held("unseen"),
         }
-        if let Err(e) = crate::ipc::handoff_cue_ahead(self, sid, by) {
-            held(&e);
+        match crate::ipc::handoff_cue_ahead(self, sid, by) {
+            Err(e) => held(&e),
+            // Asked by the Desk's rule: its Desk says so.
+            Ok(_) if by == crate::ipc::AHEAD_DESK => self.desk_cue_asked(sid, tokens),
+            Ok(_) => {}
         }
     }
 }
@@ -156,6 +159,107 @@ mod tests {
                 let _ = std::process::Command::new(crate::focus::tmux_bin()).args(["kill-session", "-t", &n]).output();
             }
         }
+        std::env::remove_var("CUE_HOME");
+        crate::db::reset();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn in_a_project_whose_desk_has_a_live_lead_cue_asks_by_context_and_what_a_session_holds() {
+        use crate::desk::{DeskItem, Holder};
+        let dir = std::env::temp_dir().join(format!("cue-ahead-desk-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("CUE_HOME", &dir);
+        crate::db::reset();
+        let hub = Hub::new(None);
+        let hour = 3_600_000;
+        // A session of folder `cwd` waiting on you, 60 s left of an hour's cache, `context` tokens.
+        let waiting = |sid: &str, cwd: &str, context: u64| -> Origin {
+            let path = dir.join(format!("{sid}.jsonl"));
+            cached_log(&path, hour - 60_000, context, 3600);
+            let o = Origin { session_id: sid.into(), harness: "claude".into(), cwd: cwd.into(), transcript_path: path.to_string_lossy().into(), ..Default::default() };
+            hub.event(o.clone(), "stopped", "Done.".into(), vec![], "");
+            o
+        };
+        let project = |sid: &str| hub.read(|st| st.sessions.get(sid).map(|s| s.project.clone())).unwrap();
+        // An item of `sid`'s project it holds, in `state`.
+        let holds = |sid: &str, state: &str| {
+            let it = DeskItem { id: format!("i{sid}"), project: project(sid), kind: "task".into(), title: sid.into(), state: state.into(), holder: Some(Holder { kind: "session".into(), sid: sid.into(), name: sid.into(), lead_sid: String::new() }), ..Default::default() };
+            hub.write(|st| st.desk.items.push(it));
+        };
+        let events = |sid: &str| crate::db::insight_events_of(sid).into_iter().filter(|(r, ..)| r == "ahead").map(|(_, a, d)| format!("{a}:{d}")).collect::<Vec<_>>();
+        // "held:unseen" below: the rule asked, and only Cue not seeing its box (no tmux pane) held it.
+        let asked = |sid: &str| events(sid) == ["held:unseen"];
+
+        let lead = waiting("dl", "/x/shop", 150_000);
+        let p = project("dl");
+        hub.desk_put_lead(&p, "dl", "shop-lead");
+        // 100k–200k: holding an item not done (at work, or with you to check), or the lead: asked.
+        waiting("d150w", "/x/shop", 150_000);
+        holds("d150w", "working");
+        waiting("d150c", "/x/shop", 150_000);
+        holds("d150c", "to_check");
+        // …holding nothing, or only what's done: not.
+        waiting("d150n", "/x/shop", 150_000);
+        waiting("d150d", "/x/shop", 150_000);
+        holds("d150d", "done");
+        // 50k–100k: only holding one at work.
+        waiting("d80w", "/x/shop", 80_000);
+        holds("d80w", "working");
+        waiting("d80q", "/x/shop", 80_000);
+        holds("d80q", "queued");
+        // Under 50k never; 200k and up is Claude Code's to compact.
+        waiting("d40w", "/x/shop", 40_000);
+        holds("d40w", "working");
+        waiting("d250w", "/x/shop", 250_000);
+        holds("d250w", "working");
+        // The lead said to keep this one's context: left be for this idle stretch.
+        waiting("dkeep", "/x/shop", 150_000);
+        holds("dkeep", "working");
+        hub.write(|st| st.desk.keep.insert("dkeep".into(), (now_ms(), "k1".into(), false)));
+        // Every hold still applies: busy, compacting, a message of yours kept for it, a draft, a note already asked.
+        let busy = waiting("dbusy", "/x/shop", 150_000);
+        holds("dbusy", "working");
+        hub.write(|st| st.sessions.mark(&busy, "deciding", None));
+        waiting("dcomp", "/x/shop", 150_000);
+        holds("dcomp", "working");
+        hub.write(|st| st.sessions.set_compacting("dcomp", now_ms()));
+        waiting("dheld", "/x/shop", 150_000);
+        holds("dheld", "working");
+        hub.write(|st| st.sessions.hold("dheld", "later, please", vec![]));
+        waiting("ddraft", "/x/shop", 150_000);
+        holds("ddraft", "working");
+        crate::db::set_draft("s:ddraft", "half a thought", &serde_json::json!([]));
+        waiting("dnote", "/x/shop", 150_000);
+        holds("dnote", "working");
+        crate::db::handoff_sent("dnote", crate::ipc::CUE_HANDOFF, false, crate::ipc::AHEAD_DESK);
+        // No lead in its project: as before (not ticked, Settings off: nothing).
+        waiting("dnolead", "/x/other", 150_000);
+        holds("dnolead", "working");
+        // A lead that has ended (not open, not parked): as if none.
+        waiting("dgone", "/x/gone", 150_000);
+        holds("dgone", "working");
+        hub.desk_put_lead(&project("dgone"), "nobody", "gone-lead");
+        hub.cache_tick();
+
+        for sid in ["dl", "d150w", "d150c", "d80w"] {
+            assert!(asked(sid), "{sid}: {:?}", events(sid));
+        }
+        for sid in ["d150n", "d150d", "d80q", "d40w", "d250w", "dkeep", "dnote", "dnolead", "dgone"] {
+            assert!(events(sid).is_empty(), "{sid}: {:?}", events(sid));
+        }
+        assert_eq!((events("dbusy"), events("dcomp"), events("dheld"), events("ddraft")), (vec!["held:busy".to_string()], vec!["held:busy".to_string()], vec!["held:busy".to_string()], vec!["held:draft".to_string()]));
+        hub.cache_tick();
+        assert!(asked("d80w"), "once per idle stretch: {:?}", events("d80w"));
+        assert!(hub.read(|st| st.desk.decisions.is_empty()), "nothing was asked for: no decision");
+        let _ = lead;
+
+        // Asked: its Desk notes it, by Cue, with nothing to undo.
+        hub.desk_cue_asked("d150w", 142_400);
+        let d = hub.read(|st| st.desk.decisions.last().cloned()).unwrap();
+        assert_eq!((d.by.as_str(), d.undo.as_str(), d.text.as_str(), d.why.as_str(), d.project.as_str()), ("Cue", "none", "Asked shop for a hand-off note", "142k, cache ending", p.as_str()));
         std::env::remove_var("CUE_HOME");
         crate::db::reset();
         let _ = std::fs::remove_dir_all(&dir);

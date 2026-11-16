@@ -190,11 +190,12 @@ pub(crate) fn handoff_cue_now(h: &Hub, session_id: &str) -> Result<String, Strin
 }
 
 /// Who asked for a note before the cache ran out (the handoffs table's `ahead`): you, a session's "Hand off if
-/// I don't come back", Settings.
+/// I don't come back", Settings, the Desk's rule for a project with a lead (hub/cache_tick.rs desk_due).
 pub(crate) const AHEAD_YOU: u8 = 1;
 pub(crate) const AHEAD_SESSION: u8 = 2;
 pub(crate) const AHEAD_ALL: u8 = 3;
-const AHEAD_BY: [&str; 4] = ["", "you", "session", "all"];
+pub(crate) const AHEAD_DESK: u8 = 4;
+const AHEAD_BY: [&str; 5] = ["", "you", "session", "all", "desk"];
 
 /// handoff_cue, with who asked ahead of its cache running out (0: not ahead).
 pub(crate) fn handoff_cue_ahead(h: &Hub, session_id: &str, ahead: u8) -> Result<String, String> {

@@ -737,7 +737,7 @@ function inboxAside(r) {
   const asked = you ? `<div class="ib-blk"><div class="ib-k">You asked${you.at ? ` · ${ago(you.at)} ago` : ""}</div><div class="ib-you">${esc(plain(you.text))}</div></div>` : "";
   const ctx = inboxCtx(r.s) ? `<div class="ib-blk"><div class="ib-k">Context</div><div class="ib-ctx">${inboxMeter(r.s, "wide")}<span>${inboxCtx(r.s)}%</span></div></div>` : "";
   const links = `<div class="ib-links"><button class="ib-link" data-inbox-diff="${sid}">Diff</button></div>`;
-  return `<aside class="ib-page-body ib-aside" data-scroll-key="inbox-aside">${inboxLive(r).html}${asked}${inboxDid(r)}${inboxChangedBlock(r)}${ctx}${links}</aside>`;
+  return `<aside class="ib-page-body ib-aside" data-scroll-key="inbox-aside">${inboxLive(r).html}${inboxOpenBlock()}${asked}${inboxDid(r)}${inboxChangedBlock(r)}${ctx}${links}</aside>`;
 }
 
 // ---------- the brief, put together ----------

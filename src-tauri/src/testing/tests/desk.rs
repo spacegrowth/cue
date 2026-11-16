@@ -730,3 +730,173 @@ fn what_you_do_to_an_item() {
     assert!(desk(&w, "web").is_null() || desk(&w, "web")["items"].as_array().unwrap().is_empty());
     assert!(w.hub().desk_item_act("nope", "drop", "").is_err());
 }
+
+#[test]
+fn a_context_line_names_a_session_or_me_and_what_to_do() {
+    let text = "CONTEXT: web-ui -> keep | why: its next item needs the detail\n- **CONTEXT: me → Keep**\nCONTEXT: <session|me> -> keep | why: …\nCONTEXT: web-ui";
+    assert_eq!(
+        lines(text),
+        vec![
+            Line::Context { who: "web-ui".into(), what: "keep".into(), why: "its next item needs the detail".into() },
+            Line::Context { who: "me".into(), what: "keep".into(), why: String::new() },
+        ]
+    );
+}
+
+/// A hook session `sid` of project "shop" in tmux pane %`sid` (its box empty), its last reply `left_ms` before its
+/// hour's cache runs out with `context` tokens, at its prompt.
+fn shop_session(w: &World, sid: &str, left_ms: u64, context: u64) {
+    let a = w.session(sid).in_project("shop").in_tmux(&format!("%{sid}"));
+    a.transcript().cached_reply(3_600_000 - left_ms, context, 3600);
+    a.stop("Done.");
+    w.terminal.pane(sid, |p| p.screen = Some("────────\n❯ \n────────".into()));
+}
+
+/// "shop"'s lead (lead01) says `text` at its turn's end.
+fn shop_lead_says(w: &World, text: &str) {
+    w.session("lead01").in_project("shop").in_tmux("%lead01").stop(text);
+}
+
+/// The project "shop"'s sessions go under, with its lead (lead01) and an item held by webui1.
+fn shop_desk(w: &World) -> String {
+    let project = w.snapshot().session("lead01")["project"].as_str().unwrap().to_string();
+    w.hub().desk_put_lead(&project, "lead01", "lead");
+    w.hub().desk_add(&project, "bug", "Header", "", Some("webui1")).unwrap();
+    project
+}
+
+fn decisions(w: &World, project: &str) -> Vec<Value> {
+    desk(w, project)["decisions"].as_array().cloned().unwrap_or_default()
+}
+
+#[test]
+fn the_lead_sees_each_sessions_context_and_what_cue_will_do_and_can_say_keep() {
+    let w = World::new();
+    shop_session(&w, "lead01", 20 * 60_000, 90_000);
+    shop_session(&w, "webui1", 12 * 60_000, 142_000);
+    shop_session(&w, "idle01", 30 * 60_000, 160_000);
+    let project = shop_desk(&w);
+    let lead_summary = || w.hub().desk_summary(&project, "lead01", false).0;
+    w.tick(true);
+    let s = lead_summary();
+    assert!(s.contains("sid:webui1, session, waiting, 142k, cache 12m → Cue will hand off at expiry)"), "{s}");
+    assert!(s.contains("sid:idle01, session, waiting, 160k, cache 30m)"), "holds nothing: Cue leaves it be: {s}");
+    assert!(s.contains(", 90k, cache 20m. ROUTE"), "the lead under 100k: left be: {s}");
+
+    // The lead says keep: Cue won't, and the lead's call can be undone.
+    shop_lead_says(&w, "Leave it.\nCONTEXT: webui1 -> keep | why: its next item needs the detail");
+    let d = decisions(&w, &project);
+    assert_eq!((d[0]["by"].as_str(), d[0]["text"].as_str(), d[0]["why"].as_str(), d[0]["undo"].as_str()), (Some("shop"), Some("Kept shop's context as it is"), Some("its next item needs the detail"), Some("can")), "{d:?}");
+    assert!(lead_summary().contains("142k, cache 12m)"), "{}", lead_summary());
+    w.hub().desk_undo(d[0]["id"].as_str().unwrap()).unwrap();
+    w.settle();
+    assert!(lead_summary().contains("142k, cache 12m → Cue will hand off at expiry)"), "undone: Cue's rule again");
+
+    // Kept again while it waits: for this wait only; its next turn ends it.
+    shop_lead_says(&w, "CONTEXT: webui1 -> keep");
+    assert!(lead_summary().contains("142k, cache 12m)"), "{}", lead_summary());
+    w.advance(50 * 60_000); // (its reply is dated 48 minutes back: after the keep)
+    next_turn(&w, "webui1", "m2", 12 * 60_000, 142_000);
+    w.tick(true);
+    assert!(lead_summary().contains("142k, cache 12m → Cue will hand off at expiry)"), "{}", lead_summary());
+}
+
+/// Session `sid` works a turn and ends it with reply `id`, `left_ms` before its hour's cache runs out.
+fn next_turn(w: &World, sid: &str, id: &str, left_ms: u64, context: u64) {
+    let a = w.session(sid).in_project("shop").in_tmux(&format!("%{sid}"));
+    a.prompt("go on");
+    a.transcript().cached_reply_as(id, 3_600_000 - left_ms, context, 3600);
+    a.stop("Done.");
+}
+
+#[test]
+fn a_keep_said_while_a_session_works_covers_its_wait_after_that_turn() {
+    let w = World::new();
+    shop_session(&w, "lead01", 20 * 60_000, 90_000);
+    shop_session(&w, "webui1", 12 * 60_000, 142_000);
+    let project = shop_desk(&w);
+    let lead_summary = || w.hub().desk_summary(&project, "lead01", false).0;
+    w.session("webui1").in_project("shop").in_tmux("%webui1").prompt("go on");
+    w.advance(1_000);
+    shop_lead_says(&w, "CONTEXT: webui1 -> keep | why: next item builds on it");
+    assert_eq!(decisions(&w, &project)[0]["undo"], "can");
+    // Its turn ends after the keep: the wait that follows is the one kept.
+    w.advance(50 * 60_000); // (its reply is dated 48 minutes back: after the keep)
+    next_turn(&w, "webui1", "m2", 12 * 60_000, 142_000);
+    w.tick(true);
+    assert!(lead_summary().contains("sid:webui1, session, waiting, 142k, cache 12m)"), "{}", lead_summary());
+    // The turn after that ends it.
+    w.advance(50 * 60_000); // (its reply is dated 48 minutes back: after the keep)
+    next_turn(&w, "webui1", "m3", 12 * 60_000, 142_000);
+    w.tick(true);
+    assert!(lead_summary().contains("sid:webui1, session, waiting, 142k, cache 12m → Cue will hand off at expiry)"), "{}", lead_summary());
+}
+
+#[test]
+fn cue_asks_a_session_holding_an_item_for_its_note_and_its_desk_says_so() {
+    let w = World::new();
+    shop_session(&w, "lead01", 20 * 60_000, 90_000);
+    shop_session(&w, "webui1", 60_000, 142_000);
+    shop_session(&w, "idle01", 60_000, 160_000);
+    let project = shop_desk(&w);
+    w.tick(true);
+    let asked = |sid: &str| w.terminal.typed(sid).iter().any(|t| t.contains("Hand off: write a short note"));
+    // The ask is typed off the tick's thread.
+    let t0 = std::time::Instant::now();
+    while !asked("webui1") && t0.elapsed().as_secs() < 5 {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    w.settle();
+    assert!(asked("webui1"), "{:?}", w.terminal.typed("webui1"));
+    assert!(!asked("idle01"), "it holds nothing");
+    assert_eq!(crate::db::handoff("webui1").map(|k| k.ahead), Some(crate::ipc::AHEAD_DESK));
+    let by_cue = |w: &World| decisions(w, &project).into_iter().filter(|d| d["by"] == "Cue").collect::<Vec<_>>();
+    let cue = by_cue(&w);
+    assert_eq!(cue.len(), 1, "{cue:?}");
+    assert_eq!((cue[0]["text"].as_str(), cue[0]["why"].as_str(), cue[0]["undo"].as_str()), (Some("Asked shop for a hand-off note"), Some("142k, cache ending"), Some("none")));
+    w.tick(true);
+    assert_eq!(by_cue(&w).len(), 1, "once per idle stretch");
+    // Asked: its lead isn't told Cue will ask (again).
+    let s = w.hub().desk_summary(&project, "lead01", false).0;
+    assert!(!s.contains("→ Cue will"), "{s}");
+}
+
+#[test]
+fn once_cue_has_tried_this_expiry_the_lead_is_not_told_it_will() {
+    let w = World::new();
+    shop_session(&w, "lead01", 20 * 60_000, 90_000);
+    shop_session(&w, "webui1", 60_000, 142_000);
+    let project = shop_desk(&w);
+    // A draft of yours in Cue's box for it: the ask is held, and not tried again before its cache runs out.
+    crate::db::set_draft("s:webui1", "half a thought", &json!([]));
+    w.tick(true);
+    w.settle();
+    assert!(w.terminal.typed("webui1").is_empty());
+    let s = w.hub().desk_summary(&project, "lead01", false).0;
+    assert!(s.contains("sid:webui1, session, waiting, 142k, cache 1m)"), "{s}");
+}
+
+#[test]
+fn once_a_hand_off_was_sent_this_wait_the_lead_is_not_told_cue_will() {
+    let w = World::new();
+    shop_session(&w, "lead01", 20 * 60_000, 90_000);
+    shop_session(&w, "webui1", 12 * 60_000, 142_000);
+    let project = shop_desk(&w);
+    w.tick(true);
+    assert!(w.hub().desk_summary(&project, "lead01", false).0.contains("142k, cache 12m → Cue will"));
+    crate::db::handoff_sent("webui1", "", false, 0);
+    w.tick(true);
+    let s = w.hub().desk_summary(&project, "lead01", false).0;
+    assert!(s.contains("sid:webui1, session, waiting, 142k, cache 12m)"), "{s}");
+}
+
+#[test]
+fn without_a_lead_a_session_holding_an_item_is_left_as_before() {
+    let w = World::new();
+    shop_session(&w, "webui1", 60_000, 142_000);
+    let project = w.snapshot().session("webui1")["project"].as_str().unwrap().to_string();
+    w.hub().desk_add(&project, "bug", "Header", "", Some("webui1")).unwrap();
+    w.tick(true);
+    w.settle();
+    assert!(w.terminal.typed("webui1").is_empty() && crate::db::handoff("webui1").is_none());
+}

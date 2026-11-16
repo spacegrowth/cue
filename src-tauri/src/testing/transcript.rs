@@ -38,12 +38,17 @@ impl Transcript {
     /// A turn that ended `ago_ms` ago, its reply's prompt cache `context` tokens held for `ttl_s` (3600: an
     /// hour's cache, else five minutes'), as Claude Code logs its usage: what a cache's countdown is read from.
     pub fn cached_reply(&self, ago_ms: u64, context: u64, ttl_s: u64) -> &Self {
+        self.cached_reply_as("m1", ago_ms, context, ttl_s)
+    }
+
+    /// `cached_reply` as message `id`: a later reply of the same session (one id is one reply, counted once).
+    pub fn cached_reply_as(&self, id: &str, ago_ms: u64, context: u64, ttl_s: u64) -> &Self {
         let at = crate::clock::now_ms() - ago_ms;
         let (h1, m5) = if ttl_s >= 3600 { (1000, 0) } else { (0, 1000) };
         let usage = json!({"input_tokens": 10, "cache_read_input_tokens": context - 1010, "cache_creation_input_tokens": 1000,
             "cache_creation": {"ephemeral_1h_input_tokens": h1, "ephemeral_5m_input_tokens": m5}, "output_tokens": 50});
         self.entry_at(json!({"type": "user", "message": {"content": "go on"}}), at - 5000);
-        self.entry_at(json!({"type": "assistant", "message": {"id": "m1", "model": "claude-opus-5-5", "content": [{"type": "text", "text": "Done."}], "usage": usage}}), at)
+        self.entry_at(json!({"type": "assistant", "message": {"id": id, "model": "claude-opus-5-5", "content": [{"type": "text", "text": "Done."}], "usage": usage}}), at)
     }
 
     /// Your prompt, as Claude Code logs it.

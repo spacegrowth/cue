@@ -22,6 +22,15 @@ CueBridge.area("chat", (w) => {
     skill("relay:spawn", "Start an executor on a packet"),
     skill("relay:verify", "Check an executor's report against what it staged"),
   ];
+  /** Send fixes (hub/team.rs): the teammate is back at work on its review's findings, so its "Review not sent" row
+   *  leaves Open (hub/open.rs). */
+  const sentFixes = (agent) => {
+    const t = (w.state.sessions || []).flatMap((s) => s.team || []).find((x) => x.agent_id === agent || x.call === agent);
+    if (t) t.state = "working";
+    for (const l of w.state.open || []) l.rows = l.rows.filter((r) => !(r.kind === "review" && r.agent === agent));
+    w.changed();
+    return `fixes: ${agent}`;
+  };
   /** A crew member's diff as hub/team.rs writes it: its own repo's files from its top, another repo's (its folder's
    *  first two levels) under that repo's name. */
   const mateDiff = (agent) => {
@@ -99,7 +108,7 @@ CueBridge.area("chat", (w) => {
     // A teammate's diff per file (ipc/team.rs team_diff_stat, team_diff), cut from the same fake diff.
     team_diff_stat: ({ agent }) => mateDiff(agent).split(/(?=^diff --git )/m).filter(Boolean).map((part) => ({ path: /^\+\+\+ b\/(.*)$/m.exec(part)?.[1] || "", add: part.split("\n").filter((l) => /^\+(?!\+\+)/.test(l)).length, del: part.split("\n").filter((l) => /^-(?!--)/.test(l)).length })),
     team_diff: ({ agent, path }) => mateDiff(agent).split(/(?=^diff --git )/m).find((part) => part.includes(`+++ b/${path}\n`)) || "",
-    team_action: ({ agent, action }) => action === "commit" ? Promise.reject("Not committed: its folder is on main. Cue commits a teammate's work only on a branch of its own: Make a branch and commit puts it on a new one") : action === "branch" ? `Committed 1 file to team/${agent} (c71e04b); your folder stays on main.` : action === "diff" ? mateDiff(agent) : `${action}: ${agent}`,
+    team_action: ({ agent, action }) => action === "commit" ? Promise.reject("Not committed: its folder is on main. Cue commits a teammate's work only on a branch of its own: Make a branch and commit puts it on a new one") : action === "branch" ? `Committed 1 file to team/${agent} (c71e04b); your folder stays on main.` : action === "diff" ? mateDiff(agent) : action === "fixes" ? sentFixes(agent) : `${action}: ${agent}`,
     // The Team switch, and a task dropped on a lead (ipc/team.rs): the files it names, those world-team's rows is
     // changing marked.
     team_mode: () => null,

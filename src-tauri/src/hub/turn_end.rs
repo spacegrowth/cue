@@ -190,6 +190,10 @@ impl Hub {
         self.cache_tick();
         self.changed();
         self.turn_changes(sid);
+        // A lead's crew folders read again for its Open rows (open.rs), off this thread.
+        if self.read(|st| st.sessions.get(sid).is_some_and(|s| !s.team.is_empty())) {
+            self.open_scan();
+        }
         if !path.is_empty() {
             self.status_asks_from(sid, path);
         }

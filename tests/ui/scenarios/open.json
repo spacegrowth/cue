@@ -1,0 +1,712 @@
+{
+ "about": {},
+ "ahead_watch": [],
+ "branches": {
+  "/work/data-pipeline": ""
+ },
+ "connections": {
+  "claude": {
+   "events": [
+    "PermissionRequest",
+    "Stop",
+    "UserPromptSubmit",
+    "SessionEnd"
+   ],
+   "ok": true,
+   "present": true
+  },
+  "codex": {
+   "events": [
+    "PermissionRequest",
+    "Stop",
+    "UserPromptSubmit",
+    "SessionEnd"
+   ],
+   "ok": true,
+   "present": true
+  },
+  "pi": {
+   "ok": true,
+   "present": true
+  }
+ },
+ "desk": {
+  "projects": [
+   {
+    "decisions": [],
+    "items": [
+     {
+      "after": null,
+      "after_why": "",
+      "ask": null,
+      "created": 1793983800,
+      "done_at": null,
+      "done_when": "",
+      "files": [
+       "ui/inbox.js"
+      ],
+      "from": "cue-lead",
+      "holder": {
+       "kind": "lead",
+       "name": "web-lead",
+       "sid": "web"
+      },
+      "id": "d7k2",
+      "kind": "bug",
+      "latest": "",
+      "project": "cue",
+      "state": "needs_you",
+      "title": "Reply box loses focus after Send",
+      "updated": 1793984400
+     },
+     {
+      "after": null,
+      "after_why": "",
+      "ask": null,
+      "created": 1793983500,
+      "done_at": 1793984400,
+      "done_when": "",
+      "files": [],
+      "from": "you",
+      "holder": {
+       "kind": "session",
+       "name": "notes",
+       "sid": "notes"
+      },
+      "id": "d7k3",
+      "kind": "bug",
+      "latest": "",
+      "project": "cue",
+      "state": "done",
+      "title": "Old finished thing",
+      "updated": 1793984400
+     }
+    ],
+    "project": "cue",
+    "lead": {
+     "sid": "cue-lead",
+     "name": "cue-lead",
+     "state": "live"
+    }
+   }
+  ]
+ },
+ "ended": [],
+ "history": [],
+ "insight": {},
+ "items": [
+  {
+   "agent_pid": null,
+   "back_ms": null,
+   "context": [
+    {
+     "role": "agent",
+     "text": "Search has about 10 minutes left."
+    }
+   ],
+   "created_ms": 1793984280000,
+   "cwd": "/work/cue",
+   "followup": "",
+   "harness": "claude",
+   "id": "n17939842800001",
+   "images": [],
+   "interrupted": false,
+   "iterm_session_id": "",
+   "kind": "question",
+   "kitty_listen_on": "",
+   "kitty_window_id": "",
+   "machine": "",
+   "message": "",
+   "outcome": "",
+   "project": "cue",
+   "resolved_ms": null,
+   "session_id": "cue-lead",
+   "status": "pending",
+   "suggestions": null,
+   "term_program": "",
+   "thread": [],
+   "tmux_pane": "",
+   "tool_input": {
+    "questions": [
+     {
+      "options": [
+       {
+        "label": "Wait for web-lead"
+       },
+       {
+        "label": "Start it now"
+       }
+      ],
+      "question": "Rail dot can start now in a new session, or wait 10m for web-lead. Which?"
+     }
+    ]
+   },
+   "tool_name": "AskUserQuestion",
+   "transcript_path": "/Users/me/.claude/projects/-work/cue-lead.jsonl",
+   "tty": "",
+   "wezterm_pane": "",
+   "desk": true
+  },
+  {
+   "agent_pid": null,
+   "back_ms": null,
+   "context": [
+    {
+     "role": "agent",
+     "text": "The box loses focus after Send."
+    }
+   ],
+   "created_ms": 1793984160000,
+   "cwd": "/work/cue",
+   "followup": "",
+   "harness": "claude",
+   "id": "n17939841600002",
+   "images": [],
+   "interrupted": false,
+   "iterm_session_id": "",
+   "kind": "question",
+   "kitty_listen_on": "",
+   "kitty_window_id": "",
+   "machine": "",
+   "message": "",
+   "outcome": "",
+   "project": "cue",
+   "resolved_ms": null,
+   "session_id": "web",
+   "status": "pending",
+   "suggestions": null,
+   "term_program": "",
+   "thread": [],
+   "tmux_pane": "",
+   "tool_input": {
+    "questions": [
+     {
+      "options": [
+       {
+        "label": "Keep focus"
+       },
+       {
+        "label": "Move on"
+       }
+      ],
+      "question": "Keep focus in the box after Send, or move to the next item?"
+     }
+    ]
+   },
+   "tool_name": "AskUserQuestion",
+   "transcript_path": "/Users/me/.claude/projects/-work/web.jsonl",
+   "tty": "",
+   "wezterm_pane": ""
+  },
+  {
+   "agent_pid": null,
+   "back_ms": null,
+   "context": [
+    {
+     "role": "agent",
+     "text": "The draft is in drafts/launch.md."
+    }
+   ],
+   "created_ms": 1793982540000,
+   "cwd": "/work/website",
+   "followup": "",
+   "harness": "claude",
+   "id": "n17939825400003",
+   "images": [],
+   "interrupted": false,
+   "iterm_session_id": "",
+   "kind": "question",
+   "kitty_listen_on": "",
+   "kitty_window_id": "",
+   "machine": "",
+   "message": "",
+   "outcome": "",
+   "project": "website",
+   "resolved_ms": null,
+   "session_id": "notes",
+   "status": "pending",
+   "suggestions": null,
+   "term_program": "",
+   "thread": [],
+   "tmux_pane": "",
+   "tool_input": {
+    "questions": [
+     {
+      "options": [
+       {
+        "label": "Publish"
+       },
+       {
+        "label": "Wait"
+       }
+      ],
+      "question": "Publish the draft now, or wait for review?"
+     }
+    ]
+   },
+   "tool_name": "AskUserQuestion",
+   "transcript_path": "/Users/me/.claude/projects/-work/notes.jsonl",
+   "tty": "",
+   "wezterm_pane": ""
+  }
+ ],
+ "live": [],
+ "now_ms": 1793984400000,
+ "parked": [],
+ "projects": {
+  "/work/data-pipeline": {
+   "key": "/work/data-pipeline",
+   "name": "data-pipeline",
+   "own": "data-pipeline",
+   "root": "/work/data-pipeline",
+   "top": "/work/data-pipeline"
+  }
+ },
+ "restarted": {},
+ "restarting": {},
+ "review_queue": {},
+ "sessions": [
+  {
+   "agent_pid": null,
+   "agents": 0,
+   "background": 0,
+   "cwd": "/work/cue",
+   "doing_ms": 0,
+   "driven_by": "",
+   "harness": "claude",
+   "iterm_session_id": "",
+   "kitty_listen_on": "",
+   "kitty_window_id": "",
+   "machine": "",
+   "name": "cue-lead",
+   "project": "cue",
+   "prompt": "Desk",
+   "queued": null,
+   "segments": [
+    {
+     "end_ms": 1793984280000,
+     "kind": "working",
+     "start_ms": 1793984260000
+    },
+    {
+     "end_ms": null,
+     "kind": "waiting",
+     "start_ms": 1793984280000
+    }
+   ],
+   "session_id": "cue-lead",
+   "since_ms": 1793984280000,
+   "state": "deciding",
+   "term_program": "",
+   "thread": [
+    {
+     "at_ms": 1793984260000,
+     "role": "you",
+     "text": "Desk"
+    },
+    {
+     "at_ms": 1793984280000,
+     "role": "agent",
+     "text": "Rail dot blinks is queued for web-lead after Search stays centred."
+    }
+   ],
+   "tmux_pane": "",
+   "transcript_path": "/Users/me/.claude/projects/-work/cue-lead.jsonl",
+   "tty": "",
+   "wezterm_pane": "",
+   "team": [
+    {
+     "agent_id": "id-merge",
+     "asked": "",
+     "call": "call-desk-merge",
+     "ended_ms": 1793984280000,
+     "files": [
+      "ui/inbox.js",
+      "ui/board.js",
+      "ui/desk.js"
+     ],
+     "name": "desk-merge",
+     "started_ms": 1793983500000,
+     "state": "done",
+     "step": "",
+     "step_ms": 1793984280000,
+     "summary": "",
+     "what": "desk-merge",
+     "worktree": "/work/cue-merge"
+    },
+    {
+     "agent_id": "id-ui",
+     "asked": "",
+     "call": "call-desk-ui",
+     "ended_ms": 1793984280000,
+     "files": [
+      "ui/a.js",
+      "ui/b.js",
+      "ui/c.js",
+      "ui/d.js",
+      "ui/e.js"
+     ],
+     "name": "desk-ui",
+     "started_ms": 1793983500000,
+     "state": "done",
+     "step": "",
+     "step_ms": 1793984280000,
+     "summary": "",
+     "what": "desk-ui"
+    },
+    {
+     "agent_id": "id-core",
+     "asked": "",
+     "call": "call-desk-core",
+     "ended_ms": 1793984280000,
+     "files": [
+      "desk/model.rs"
+     ],
+     "name": "desk-core",
+     "started_ms": 1793983500000,
+     "state": "reviewed",
+     "step": "",
+     "step_ms": 1793984280000,
+     "summary": "",
+     "what": "desk-core",
+     "findings": [
+      "1. desk/model.rs — should-fix — stale comment above Item"
+     ],
+     "recommendation": "Send fixes"
+    }
+   ]
+  },
+  {
+   "agent_pid": null,
+   "agents": 0,
+   "background": 0,
+   "cwd": "/work/website",
+   "doing_ms": 0,
+   "driven_by": "",
+   "harness": "claude",
+   "iterm_session_id": "",
+   "kitty_listen_on": "",
+   "kitty_window_id": "",
+   "machine": "",
+   "name": "notes session",
+   "project": "website",
+   "prompt": "Write the launch draft",
+   "queued": null,
+   "segments": [
+    {
+     "end_ms": 1793982540000,
+     "kind": "working",
+     "start_ms": 1793982520000
+    },
+    {
+     "end_ms": null,
+     "kind": "waiting",
+     "start_ms": 1793982540000
+    }
+   ],
+   "session_id": "notes",
+   "since_ms": 1793982540000,
+   "state": "deciding",
+   "term_program": "",
+   "thread": [
+    {
+     "at_ms": 1793982520000,
+     "role": "you",
+     "text": "Write the launch draft"
+    },
+    {
+     "at_ms": 1793982540000,
+     "role": "agent",
+     "text": "The draft is in drafts/launch.md."
+    }
+   ],
+   "tmux_pane": "",
+   "transcript_path": "/Users/me/.claude/projects/-work/notes.jsonl",
+   "tty": "",
+   "wezterm_pane": ""
+  },
+  {
+   "agent_pid": null,
+   "agents": 0,
+   "background": 0,
+   "cwd": "/work/cue",
+   "doing_ms": 0,
+   "driven_by": "",
+   "harness": "claude",
+   "iterm_session_id": "",
+   "kitty_listen_on": "",
+   "kitty_window_id": "",
+   "machine": "",
+   "name": "web-lead",
+   "project": "cue",
+   "prompt": "Fix the reply box focus",
+   "queued": null,
+   "segments": [
+    {
+     "end_ms": 1793984160000,
+     "kind": "working",
+     "start_ms": 1793984140000
+    },
+    {
+     "end_ms": null,
+     "kind": "waiting",
+     "start_ms": 1793984160000
+    }
+   ],
+   "session_id": "web",
+   "since_ms": 1793984160000,
+   "state": "deciding",
+   "term_program": "",
+   "thread": [
+    {
+     "at_ms": 1793984140000,
+     "role": "you",
+     "text": "Fix the reply box focus"
+    },
+    {
+     "at_ms": 1793984160000,
+     "role": "agent",
+     "text": "The box loses focus after Send."
+    }
+   ],
+   "tmux_pane": "",
+   "transcript_path": "/Users/me/.claude/projects/-work/web.jsonl",
+   "tty": "",
+   "wezterm_pane": ""
+  }
+ ],
+ "settings": {
+  "actions": {
+   "default": "Look at this project and set up my Cue actions for it in {file} (Cue's own file, outside the repo). Read the notes at the top of the file first (its \"about\" list, which says how an action is written) and follow them. Keep the actions already there unless they're wrong. Then tell me what you added, changed or removed, and why.",
+   "prompt": "Look at this project and set up my Cue actions for it in {file} (Cue's own file, outside the repo). Read the notes at the top of the file first (its \"about\" list, which says how an action is written) and follow them. Keep the actions already there unless they're wrong. Then tell me what you added, changed or removed, and why."
+  },
+  "agents": {
+   "show_driven": false
+  },
+  "appearance": {
+   "mode": "system",
+   "project": false,
+   "zoom": 1.0
+  },
+  "background": {
+   "sessions": []
+  },
+  "context": {
+   "keep": 5
+  },
+  "history": {
+   "keep": 300
+  },
+  "insights": {
+   "ahead": false,
+   "cache": false,
+   "handoff": false,
+   "on": false,
+   "queue": false,
+   "skills": {},
+   "snooze": 0
+  },
+  "login": {
+   "open": false
+  },
+  "notify": {
+   "cold": true,
+   "decisions": true,
+   "finished": true,
+   "sound": "pluck"
+  },
+  "pi": {
+   "gate": "dangerous"
+  },
+  "project": {
+   "all": null,
+   "colors": {},
+   "folders": {},
+   "hue": null,
+   "made": [],
+   "moves": {},
+   "names": {},
+   "pins": []
+  },
+  "quick": {
+   "phrases": [
+    "Commit",
+    "Go ahead",
+    "Think hard"
+   ]
+  },
+  "sessions": {
+   "terminal": "Terminal",
+   "tmux": true,
+   "tmux_installed": true
+  },
+  "setup": {
+   "done": false
+  },
+  "status": {
+   "on": true,
+   "sessions": []
+  },
+  "steps": {
+   "mode": "line"
+  },
+  "tasks": {
+   "auto": false,
+   "on": false
+  },
+  "tips": {
+   "on": true
+  },
+  "turn": {
+   "mode": "answer"
+  },
+  "usage": {
+   "claude": true,
+   "file": "~/.cue/usage.csv"
+  },
+  "voice": {
+   "pick": ""
+  }
+ },
+ "skill_handoffs": {},
+ "status_spent": {
+  "replies": 0,
+  "sessions": {},
+  "tokens": 0,
+  "usd": 0.0
+ },
+ "tasks": {},
+ "tasks_spent": {
+  "calls": 0,
+  "tokens": 0,
+  "tracked": 0,
+  "usd": 0.0
+ },
+ "today": {
+  "allowed": 0,
+  "answered": 0,
+  "denied": 0,
+  "hours": [
+   {
+    "from_ms": 1793944800000,
+    "n": 0
+   },
+   {
+    "from_ms": 1793948400000,
+    "n": 0
+   },
+   {
+    "from_ms": 1793952000000,
+    "n": 0
+   },
+   {
+    "from_ms": 1793955600000,
+    "n": 0
+   },
+   {
+    "from_ms": 1793959200000,
+    "n": 0
+   },
+   {
+    "from_ms": 1793962800000,
+    "n": 0
+   },
+   {
+    "from_ms": 1793966400000,
+    "n": 0
+   },
+   {
+    "from_ms": 1793970000000,
+    "n": 0
+   },
+   {
+    "from_ms": 1793973600000,
+    "n": 0
+   },
+   {
+    "from_ms": 1793977200000,
+    "n": 0
+   },
+   {
+    "from_ms": 1793980800000,
+    "n": 0
+   },
+   {
+    "from_ms": 1793984400000,
+    "n": 0
+   }
+  ],
+  "longest": null,
+  "median_wait_ms": null,
+  "replied": 0
+ },
+ "unreachable": [],
+ "usage": null,
+ "usage_file": null,
+ "window_ms": 1800000,
+ "open": [
+  {
+   "lead_sid": "cue-lead",
+   "lead": "cue-lead",
+   "project": "cue",
+   "rows": [
+    {
+     "key": "ask:n17939842800001",
+     "kind": "ask",
+     "title": "Rail dot can start now in a new session, or wait 10m for web-lead. Which?",
+     "who": "cue-lead · waiting on you",
+     "sid": "cue-lead",
+     "item": "n17939842800001",
+     "act": "reply",
+     "needs_you": true
+    },
+    {
+     "key": "merge:/work/cue-merge",
+     "kind": "merge",
+     "title": "Merge stopped at 3 conflicts",
+     "who": "desk-merge · in ui/inbox.js, ui/board.js +1",
+     "sid": "cue-lead",
+     "agent": "id-merge",
+     "act": "open",
+     "needs_you": false
+    },
+    {
+     "key": "uncommitted:cue-lead",
+     "kind": "uncommitted",
+     "title": "1 teammate done, not committed",
+     "who": "desk-ui 5 files",
+     "sid": "cue-lead",
+     "agent": "id-ui",
+     "act": "open",
+     "needs_you": false
+    },
+    {
+     "key": "review:cue-lead:id-core",
+     "kind": "review",
+     "title": "Review not sent: desk/model.rs — stale comment above Item",
+     "who": "review · for desk-core",
+     "sid": "cue-lead",
+     "agent": "id-core",
+     "act": "fixes",
+     "needs_you": false
+    }
+   ]
+  },
+  {
+   "lead_sid": "elsewhere",
+   "lead": "other-lead",
+   "project": "data-pipeline",
+   "rows": [
+    {
+     "key": "uncommitted:elsewhere",
+     "kind": "uncommitted",
+     "title": "2 teammates done, not committed",
+     "who": "a 1 file · b 2 files",
+     "sid": "elsewhere",
+     "act": "open",
+     "needs_you": false
+    }
+   ]
+  }
+ ]
+}

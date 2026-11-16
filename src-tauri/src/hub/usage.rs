@@ -142,6 +142,7 @@ impl Hub {
         self.note_retries();
         self.catch_dead_turns(stuck, now);
         self.cache_tick();
+        self.open_tick(now);
         self.tell_limits_back(&limited, now);
         self.send_at_tick();
         self.limit_probe_tick(now);
