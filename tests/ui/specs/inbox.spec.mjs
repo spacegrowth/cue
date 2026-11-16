@@ -1073,5 +1073,5 @@ test("a parked row's preview is its last words, never an ask line the hub noted"
   });
   await page.evaluate(() => localStorage.setItem("cue.inboxFold.parked", "1"));
   await openInbox(page);
-  await expect(page.locator('.ib-row.parked[data-session="drift"] .ib-l2')).toHaveText("Drift report is ready.");
+  await expect(page.locator('.ib-row.parked[data-inbox-open="drift"] .ib-l2')).toHaveText("Drift report is ready.");
 });
