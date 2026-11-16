@@ -459,9 +459,6 @@ function box(key, placeholder, label, sendAttrs, images, alt = "", extra = "", q
   const ready = d.text.trim() || (images && d.images.length);
   if (bangTyped(d.text) && !d.images.length) label = "Run";
   const chips = images ? draftChips(key) : "";
-  // A Claude Code session's box: its ring ahead of the mic (status.js), while the status list is on in Settings.
-  const sess = images && sidOfKey(key) && sessionOf(sidOfKey(key));
-  const status = sess?.harness === "claude" && statusShown() ? statusChip(null, sess) : "";
   // Claude's suggestion in the empty box: "Suggested", the text and a Tab keycap, laid over the box (a placeholder
   // can't style its parts) and hidden by CSS once anything's typed; Tab types it in. The wrapper and the line are
   // always drawn, so a redraw never swaps out the box you're typing in.
@@ -470,7 +467,7 @@ function box(key, placeholder, label, sendAttrs, images, alt = "", extra = "", q
   // Send sits inside the box, at the end of its row, so the box spans the full width (as the terminal dock does).
   return `<div class="composer"><div class="field ${images ? "drop" : ""} ${bangTyped(d.text) ? "bang" : ""}" data-drop="${images ? esc(key) : ""}">${sidOfKey(key) ? `<div class="cmd-slot">${cmdMenu(key)}</div>` : ""}${images && quick ? quickRow(`data-quick="${esc(key)}"`, sidOfKey(key)) : ""}${chips}<div class="field-row">
     <div class="ta-wrap"><textarea rows="2" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" data-text="${esc(key)}"${sug ? ` class="sug" aria-label="${esc(`Suggested: ${sug}. Tab types it in.`)}"` : ""} placeholder="${esc(sug ? " " : placeholder)}">${esc(d.text)}</textarea>${sugLine}</div>
-    ${status}<button class="icon-btn mic ${dictating?.key === key ? "on" : ""}" data-mic="${esc(key)}" title="${dictating?.key === key ? "Stop dictating" : "Dictate: talk and it types here"}" aria-label="Dictate">${MIC_ICON}</button>
+    <button class="icon-btn mic ${dictating?.key === key ? "on" : ""}" data-mic="${esc(key)}" title="${dictating?.key === key ? "Stop dictating" : "Dictate: talk and it types here"}" aria-label="Dictate">${MIC_ICON}</button>
     ${images ? `<button class="icon-btn" data-attach="${esc(key)}" title="Add an image (or paste one with ⌘V)" aria-label="Add image">${IMAGE_ICON}</button>` : ""}
     ${images && sidOfKey(key) ? `<button class="icon-btn ${sendAtFor === key ? "on" : ""}" data-send-at-open="${esc(key)}" aria-label="Send at a time">${CLOCK_ICON}</button>` : ""}
     ${extra}${ready ? alt : ""}<button class="btn primary send" ${sendAttrs} ${ready ? "" : "disabled"}>${label}</button></div>${sendAtFor === key ? sendAtBar(key) : ""}${slashHint(key)}</div></div>`;
