@@ -203,7 +203,10 @@ test("Decisions: only judgment calls, who decided, what and why; Undo (on hover)
   await expect(decs).toHaveCount(2);
   await expect(page.locator(".dk-right")).not.toContainText("Gave it to web-lead after Search");
   await expect(decs.first().locator(".dk-age")).toHaveText("3m ago");
-  await expect(decs.first().locator(".dk-w")).toContainText("host-lead decided");
+  // A table row: who, what was decided, why (muted), when; Undo a quiet icon at its end, there on hover.
+  await expect(decs.first().locator(".dk-lby")).toHaveText("host-lead");
+  expect(await decs.first().evaluate((el) => [...el.children].map((x) => x.className))).toEqual(["dk-lby", "dk-d", "dk-w", "dk-age", "dk-lu"]);
+  await decs.first().hover();
   await expect(decs.first()).toContainText("Hosted sessions don't read the settings file at start.");
   await decs.first().locator('[data-desk-undo="c1"]').click();
   await cue.called("desk_undo", { decisionId: "c1" });
@@ -218,7 +221,8 @@ test("a step (a route, a give) is a quiet line on its item, not a decision", asy
   const step = page.locator(".dk-step");
   await expect(step).toHaveCount(1);
   await expect(step).toContainText("Gave it to web-lead after Search, not a new session");
-  await expect(step.locator('[data-desk-undo="c3"]')).toHaveText("Undo");
+  await expect(step.locator('[data-desk-undo="c3"]')).toHaveAttribute("aria-label", "Undo");
+  await expect(step.locator('[data-desk-undo="c3"] svg')).toHaveCount(1);
   await expect(step.locator('[data-desk-undo="c3"]')).toHaveCSS("opacity", "0");
   await step.hover();
   await expect(step.locator('[data-desk-undo="c3"]')).toHaveCSS("opacity", "1");

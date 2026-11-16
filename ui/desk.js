@@ -386,13 +386,18 @@ function deskLog(list, about = null) {
     else rows.push({ c, n: 1 });
   }
   return `<div class="dk-log">${rows.map(({ c, n }) => {
-    const sub = [c.call && c.by ? `<b>${esc(c.by)}</b> decided` : "", about?.(c) || "", c.why ? esc(c.why) : ""].filter(Boolean).join(" · ");
-    return `<div class="dk-lr ${c.call ? "dk-dec" : "dk-step"}"><span class="dk-age">${ago(deskMs(c.at))} ago</span><div class="dk-lw"><div class="dk-d">${esc(c.text)}${n > 1 ? ` <span class="dk-x">×${n}</span>` : ""}</div>${sub ? `<div class="dk-w">${sub}</div>` : ""}</div>${c.undo === "one_way" && !c.call ? "" : deskUndoLink(c)}</div>`;
+    const on = deskLogOpen.has(c.id), what = about?.(c) || "";
+    return `<div class="dk-lr ${c.call ? "dk-dec" : "dk-step"}${on ? " open" : ""}" data-desk-log-row="${esc(c.id)}"><span class="dk-lby">${esc(c.by || "")}</span>`
+      + `<span class="dk-d">${esc(c.text)}${n > 1 ? ` <span class="dk-x">×${n}</span>` : ""}${what ? ` <span class="dk-la">· ${what}</span>` : ""}</span>`
+      + `<span class="dk-w">${c.why ? esc(c.why) : ""}</span><span class="dk-age">${ago(deskMs(c.at))} ago</span><span class="dk-lu">${deskUndoLink(c)}</span></div>`;
   }).join("")}</div>`;
 }
-/** Undo on a decision or a step: a small text link shown on hover, or what became of it. */
-const deskUndoLink = (c) => (c.undo === "can" ? `<button class="dk-undo-l" data-desk-undo="${esc(c.id)}">Undo</button>`
-  : c.undo === "asked" ? `<span class="dk-u">Undo asked</span>` : c.undo === "one_way" ? `<span class="dk-u dk-undo-l">Can't be undone</span>` : "");
+/** Rows of a Decisions or Steps table shown in full (a click on a row; long ones are cut at two lines). */
+const deskLogOpen = new Set();
+const DESK_UNDO_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>`;
+/** Undo at a row's end: a small quiet icon shown while the pointer is on the row; "asked" once it was. */
+const deskUndoLink = (c) => (c.undo === "can" ? `<button class="dk-undo-l" data-desk-undo="${esc(c.id)}" aria-label="Undo">${DESK_UNDO_ICON}</button>`
+  : c.undo === "asked" ? `<span class="dk-u">Undo asked</span>` : "");
 /** What you wrote to the lead, without the summary of the Desk (and, the first time, its instructions) Cue puts before
  *  it: a block of exactly that shape (`<desk project="…" …>`, its lines, `</desk>`, a blank line), so words of yours
  *  that start with <desk> stay, even typed in that shape without the project. */
@@ -850,6 +855,7 @@ const DESK_CLICKS = {
   deskSend: (el) => deskSendBox(el.dataset.deskSend),
   deskAct: (el) => { deskGiveFor = null; deskAct(el.dataset.id, el.dataset.deskAct, el); },
   deskUndo: (el) => deskUndo(el.dataset.deskUndo),
+  deskLogRow: (el) => { const id = el.dataset.deskLogRow; if (!deskLogOpen.delete(id)) deskLogOpen.add(id); renderMain(); },
   deskSession: (el) => openSession(el.dataset.deskSession),
   deskLeadChat: () => { deskPick = null; deskTab = "lead"; deskShow(null); deskLeadLit = projFilter; renderMain(); },
   deskChkItem: (el) => deskShow({ kind: "item", id: el.dataset.deskChkItem }),
