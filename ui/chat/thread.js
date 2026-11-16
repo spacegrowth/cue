@@ -4,12 +4,21 @@ const OLDER_PAGE = 30;
 const older = new Map();   // session id -> { msgs (oldest first), anchor (the thread's first message when they loaded), done, tdone, busy }
 /** The next page before the oldest message shown: from Cue's log as you scroll up; past its start, from
  *  the session's transcript, only when you click for it (`fromTranscript`: a heavier read). */
+/** The chat of session `sid` as it shows now ({ it, s }): Active's, or the Desk's (its lead's, or one opened there:
+ *  desk.js deskShownChat). Null when it doesn't show. */
+function shownChat(sid) {
+  const cur = current();
+  if (cur && (cur.s?.session_id || cur.it?.session_id) === sid) return cur;
+  const s = view === "desk" && typeof deskShownChat === "function" ? deskShownChat(sid) : null;
+  return s ? { it: null, s } : null;
+}
 async function loadOlder(sid, fromTranscript = false) {
   const o = older.get(sid) || { msgs: [], anchor: 0, done: false, tdone: false, busy: false };
   older.set(sid, o);
-  const cur = current();
-  if (o.busy || (fromTranscript ? !o.done || o.tdone : o.done) || !cur || (cur.s?.session_id || cur.it?.session_id) !== sid) return;
-  const first = conversation(cur.it, cur.s)[0]?.at_ms;
+  const cur = shownChat(sid);
+  if (o.busy || (fromTranscript ? !o.done || o.tdone : o.done) || !cur) return;
+  // On the Desk, a chat whose thread is empty (Cue lost it) loads from now back: what it said last.
+  const first = conversation(cur.it, cur.s)[0]?.at_ms ?? (!fromTranscript && !cur.it && view === "desk" ? Date.now() + 1 : 0);
   if (!first) return;
   o.busy = true;
   renderMain();
@@ -28,7 +37,7 @@ async function loadOlder(sid, fromTranscript = false) {
     o.tdone = Array.isArray(probe) && probe.every((e) => sameMessage(e, top));
   }
   o.busy = false;
-  const chat = document.querySelector("[data-chat]");
+  const chat = document.querySelector(view === "desk" ? ".dk-chat" : "[data-chat]");
   if (chat) holdChat = chat.scrollHeight - chat.scrollTop;
   renderMain();
 }
@@ -59,7 +68,7 @@ function conversation(it, s) {
   const sid = s?.session_id || it?.session_id, o = older.get(sid);
   // Its recent thread is empty (Cue lost track of it a while, and it came back with a turn that said nothing):
   // what it said last comes from Cue's log at once, as Earlier messages would, rather than a bare "Finished".
-  if (!ex.length && sid && !o && (current()?.s?.session_id || current()?.it?.session_id) === sid) queueMicrotask(() => loadOlder(sid));
+  if (!ex.length && sid && !o && shownChat(sid)) queueMicrotask(() => loadOlder(sid));
   if (o?.msgs.length) {
     const first = ex[0]?.at_ms ?? Infinity;
     if (first !== Infinity && first > o.anchor && !o.busy) { o.busy = true; queueMicrotask(() => fillOlderGap(s?.session_id || it?.session_id, o, first)); }

@@ -288,14 +288,14 @@ const CUE_MARK_SM = `<svg width="14" height="14" viewBox="200 200 624 624" aria-
 const RUN_ICON = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17l6-5-6-5M12 19h8"/></svg>`;
 const TERM_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="3"/><path d="M7 9.5l3 2.5-3 2.5M12.5 15H17"/></svg>`;
 const CUE_MARK = `<svg width="28" height="28" viewBox="200 200 624 624" aria-hidden="true"><circle cx="512" cy="512" r="250" fill="none" stroke="currentColor" stroke-width="92" stroke-dasharray="1180 400" stroke-linecap="round" transform="rotate(40 512 512)"/><circle cx="512" cy="512" r="84" fill="#B5C27A"/></svg>`;
-// Drafts survive a restart: each session's unsent text and images are saved in ~/.cue/cue.db.
+// Drafts survive a restart: each session's unsent text and images, and the Desk's boxes (desk…), are saved in cue.db.
 const savedDrafts = {};     // key -> what the database last got, so only changes are written
 let draftTimer = null;
 const draftJson = (d) => JSON.stringify({ text: d?.text || "", images: (d?.images || []).map(({ name, mime, data }) => ({ name, mime, data })) });
 function saveDrafts() {
   clearTimeout(draftTimer);
   draftTimer = setTimeout(() => {
-    const keys = new Set([...Object.keys(drafts), ...Object.keys(savedDrafts)].filter((k) => k.startsWith("s:")));
+    const keys = new Set([...Object.keys(drafts), ...Object.keys(savedDrafts)].filter((k) => k.startsWith("s:") || k.startsWith("desk")));
     for (const key of keys) {
       const now = draftJson(drafts[key]);
       if (now === (savedDrafts[key] ?? draftJson(null))) continue;
