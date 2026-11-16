@@ -1,5 +1,5 @@
 // Fakes for the Desk's commands (desk_set_lead, desk_send, desk_add, desk_give, desk_member, desk_item_act,
-// desk_looks_right, desk_commit_undo, desk_undo): `state.desk`,
+// desk_looks_right, desk_commit_undo, desk_done, desk_undo): `state.desk`,
 // one entry a project with its items, its lead, its sessions (members) and today's decisions. Times are seconds; a dropped item stays, as
 // "dropped". A lead is a session like any other: desk_set_lead names one (or starts "<project>-lead", hosted), and
 // desk_send hands it your message as a session takes one.
@@ -112,6 +112,15 @@ CueBridge.area("desk", (w) => {
       for (const c of desk().projects.flatMap((d) => d.checks || [])) if (c.id === it.id) Object.assign(c, { state: "to_check", commit: "" });
       w.changed();
       return it;
+    },
+    // A project's done items, newest first, `take` after (beforeMs, beforeId): today's as the state has them and the
+    // older ones kept only in Cue's database (`older`, a project each; never in the state).
+    desk_done: ({ project, beforeMs, beforeId, take }) => {
+      const d = deskOf(project);
+      const key = (i) => [i.updated * 1000, i.id];
+      const after = (i) => beforeMs == null || key(i)[0] < beforeMs || (key(i)[0] === beforeMs && i.id < beforeId);
+      return [...d.items.filter((i) => i.state === "done"), ...(d.older || [])].filter(after)
+        .sort((a, b) => b.updated - a.updated || (a.id < b.id ? 1 : -1)).slice(0, take);
     },
     desk_undo: ({ decisionId }) => {
       const dec = desk().projects.flatMap((d) => d.decisions).find((x) => x.id === decisionId);

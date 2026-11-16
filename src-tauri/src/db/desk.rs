@@ -111,6 +111,21 @@ fn desk_prune(now_ms: u64) {
     });
 }
 
+/// `project`'s done items, newest first (by when each last changed), up to `take` of them: after `before` (the last one
+/// the window has: its updated ms and id) when given, else from the newest. The Desk's list loads these as you scroll.
+pub fn desk_done_page(project: &str, before: Option<(u64, &str)>, take: u32) -> Vec<DeskItem> {
+    let (ms, id) = before.map_or((i64::MAX, ""), |(ms, id)| (ms as i64, id));
+    with(|c| {
+        let mut q = c.prepare(
+            "SELECT data FROM desk_items WHERE project = ?1 AND state = 'done' AND (updated_ms < ?2 OR (updated_ms = ?2 AND id < ?3))
+             ORDER BY updated_ms DESC, id DESC LIMIT ?4",
+        )?;
+        let rows = q.query_map(params![project, ms, id, take], |r| r.get::<_, String>(0))?;
+        Ok(rows.flatten().filter_map(|d| serde_json::from_str(&d).ok()).collect())
+    })
+    .unwrap_or_default()
+}
+
 /// What the Desk starts with: every item not done and those done lately, the recent decisions, and each
 /// project's lead (project, session, name). Those done long ago are deleted first.
 pub fn desk_load(now_ms: u64) -> (Vec<DeskItem>, Vec<DeskDecision>, Vec<(String, String, String)>) {

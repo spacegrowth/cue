@@ -185,6 +185,7 @@ CREATE TABLE IF NOT EXISTS desk_items (
   data        TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS desk_items_project ON desk_items(project, state);
+CREATE INDEX IF NOT EXISTS desk_items_done ON desk_items(project, state, updated_ms);
 
 CREATE TABLE IF NOT EXISTS desk_decisions (
   id          TEXT PRIMARY KEY,
@@ -201,6 +202,14 @@ CREATE TABLE IF NOT EXISTS desk_lead (
   session_id  TEXT NOT NULL,
   name        TEXT NOT NULL DEFAULT '',
   set_ms      INTEGER NOT NULL
+);
+
+-- Each project's sessions on its Desk: the ones its lead may route to.
+CREATE TABLE IF NOT EXISTS desk_members (
+  project     TEXT NOT NULL,
+  session_id  TEXT NOT NULL,
+  added_ms    INTEGER NOT NULL,
+  PRIMARY KEY (project, session_id)
 );
 "#;
 
@@ -344,7 +353,25 @@ fn migrate(c: &Connection, version: i64) -> rusqlite::Result<()> {
     if version < 10 {
         drop_dispatch(c)?;
     }
-    Ok(())
+    seed_desk_members(c, version)
+}
+
+/// Version 11 (a database older than that): each Desk keeps its own list of sessions. It starts with the sessions that hold its items now (not
+/// done; a crew member's lead for one its crew holds), and its lead.
+fn seed_desk_members(c: &Connection, version: i64) -> rusqlite::Result<()> {
+    if version >= 11 {
+        return Ok(());
+    }
+    c.execute_batch(
+        "INSERT OR IGNORE INTO desk_members (project, session_id, added_ms)
+         SELECT project, COALESCE(NULLIF(json_extract(data, '$.holder.lead_sid'), ''), json_extract(data, '$.holder.sid')), 0
+         FROM desk_items
+         WHERE state != 'done' AND COALESCE(NULLIF(json_extract(data, '$.holder.lead_sid'), ''), json_extract(data, '$.holder.sid'), '') != ''
+         GROUP BY 1, 2;
+         INSERT OR IGNORE INTO desk_members (project, session_id, added_ms)
+         SELECT project, session_id, 0 FROM desk_lead WHERE session_id != '';",
+    )?;
+    c.pragma_update(None, "user_version", 11)
 }
 
 /// Version 10: a Desk is run by a lead you pick, not a hidden Dispatch. Each Desk keeps its items and decisions and
@@ -413,5 +440,31 @@ fn import_old_files(c: &Connection) {
             let _ = put_item(c, &it);
         }
         let _ = std::fs::rename(&live, dir.join("live.json.imported"));
+    }
+}
+
+#[cfg(test)]
+mod desk_members_seed {
+    use super::*;
+
+    #[test]
+    fn a_desk_starts_with_the_sessions_holding_its_open_items_and_its_lead() {
+        let c = Connection::open_in_memory().unwrap();
+        c.execute_batch(SCHEMA).unwrap();
+        let item = |id: &str, project: &str, state: &str, holder: &str| {
+            c.execute("INSERT INTO desk_items (id, project, state, updated_ms, data) VALUES (?1, ?2, ?3, 0, ?4)", rusqlite::params![id, project, state, holder]).unwrap();
+        };
+        item("1", "cue", "working", r#"{"holder":{"kind":"session","sid":"term","name":"cue-terminal"}}"#);
+        item("2", "cue", "to_check", r#"{"holder":{"kind":"crew","sid":"agent9","name":"tests","lead_sid":"teams"}}"#);
+        item("3", "cue", "done", r#"{"holder":{"kind":"session","sid":"old","name":"old"}}"#);
+        item("4", "cue", "new", r#"{"holder":null}"#);
+        item("5", "cue", "queued", r#"{"holder":{"kind":"session","sid":"term","name":"cue-terminal"}}"#);
+        c.execute("INSERT INTO desk_lead (project, session_id, name, set_ms) VALUES ('cue', 'lead1', 'cue-lead', 0)", []).unwrap();
+        seed_desk_members(&c, 10).unwrap();
+        let mut q = c.prepare("SELECT project, session_id FROM desk_members ORDER BY session_id").unwrap();
+        let got: Vec<(String, String)> = q.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).unwrap().map(Result::unwrap).collect();
+        let want: Vec<(String, String)> = ["lead1", "teams", "term"].iter().map(|s| ("cue".to_string(), s.to_string())).collect();
+        assert_eq!(got, want, "an open item's holder (a crew member's lead), and the lead; not a done item's");
+        assert_eq!(c.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0)).unwrap(), 11);
     }
 }

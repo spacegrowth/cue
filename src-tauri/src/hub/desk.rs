@@ -1088,6 +1088,13 @@ impl Hub {
         self.desk_later(fx.starts, fx.checked);
     }
 
+    /// `project`'s done items older than `before` (updated ms, id), newest first, `take` of them, as the Desk shows
+    /// them: the ones Cue holds as it holds them, the rest as saved. The list loads them as you scroll.
+    pub(crate) fn desk_done_page(&self, project: &str, before: Option<(u64, &str)>, take: u32) -> Vec<DeskItem> {
+        let saved = crate::db::desk_done_page(project, before, take.min(100));
+        self.read(|st| saved.iter().map(|i| shown(st, st.desk.item(&i.id).filter(|x| x.state == "done").unwrap_or(i))).collect())
+    }
+
     /// `state.desk`: each project with items or a lead, its lead ({ sid, name, state: live | parked | ended }), its
     /// items (not done, or done today) and today's decisions, newest first.
     pub(super) fn desk_view(st: &Store, now: u64) -> Value {
