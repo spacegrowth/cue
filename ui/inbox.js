@@ -494,7 +494,8 @@ const INBOX_DOTS = `<span class="ib-dots" aria-hidden="true"><i>.</i><i>.</i><i>
 function inboxRunCard(r) {
   const [, line] = inboxRunLines(r, true);   // what waits to go shows in its own block (inboxPending), not here
   const m = /^(.*?)(?:…|\.\.\.)?$/.exec(line), dots = /(…|\.\.\.)$/.test(line) || line === "Thinking";
-  return `<div class="ib-card run"><div class="ib-qn">Now</div><div class="ib-qt">${esc(dots ? m[1] : line)}${dots ? INBOX_DOTS : ""}</div>${inboxBar(r.s)}</div>`;
+  const { agents, scripts } = inboxLive(r), also = [agents.length && `${agents.length} agent${agents.length === 1 ? "" : "s"}`, scripts.length && `${scripts.length} script${scripts.length === 1 ? "" : "s"}`].filter(Boolean).join(" · ");
+  return `<div class="ib-card run"><div class="ib-qn">Now</div><div class="ib-qt">${esc(dots ? m[1] : line)}${dots ? INBOX_DOTS : ""}${also ? `<span class="ib-also">+ ${also} at work</span>` : ""}</div>${inboxBar(r.s)}</div>`;
 }
 /** Whether it takes a written reply here: a question, a finished turn, one at work or done (not a permission or the
  *  context row, which have their own buttons). */
@@ -679,14 +680,39 @@ function inboxChangedBlock(r) {
   return `<div class="ib-blk"><div class="ib-k">Changed this turn · ${files.length} file${files.length === 1 ? "" : "s"} <span class="ib-add">+${add}</span> <span class="ib-del">−${del}</span></div>
     <div class="ib-files">${files.slice(0, INBOX_FILES_MAX).map(row).join("")}</div>${peek}${rest}</div>`;
 }
-/** The brief's side column, in the order that says why it asks: You asked, It did, what changed, its context, and
- *  its full chat and diff as links. */
+/** What's at work in it right now, live (the steps feed, read every half second while it works; app.js followSteps):
+ *  the session itself, on its step now; then its background agents (those that need you first) and the scripts it
+ *  runs in the background, each with its newest step, as its chat's tray shows them. A click on one opens it in full,
+ *  in its chat. Its crew has its own rows. { html, agents, scripts }: html "" when nothing is at work. */
+function inboxLive(r) {
+  const sid = r.sid, s = r.s;
+  const mates = new Set((typeof mateList === "function" ? mateList(sid) : []).map((t) => t.agent_id));
+  const agents = agentsOf(sid).filter((a) => !mates.has(a.id) && (a.state === "needs" || agentLive(a)));
+  const scripts = helpersOf(sid).filter((h) => h.script && helperRunning(h)).sort((a, b) => a.started_ms - b.started_ms);
+  const working = !!s && (s.state === "working" || s.state === "agent" || !!s.compacting_ms);
+  if (!working && !agents.length && !scripts.length) return { html: "", agents, scripts };
+  const step = (inboxTurn(sid)?.items || []).filter((x) => x.t === "step" && !x.done).at(-1);
+  const main = working ? `<div class="ib-live-main"><span class="dot-live"></span><span class="ib-live-who">${esc(agentName(s.harness || "claude"))}</span><span class="ib-live-what">${step ? inboxStepRun([step]).what : esc(inboxRunLines(r, true)[1] || "Thinking")}</span></div>` : "";
+  const rows = [...agents.map((a) => (a.state === "needs" ? agentRow(a).replace(/data-helper="/g, 'data-inbox-helper="') : inboxLiveRow(sid, a.h, a.type))), ...scripts.map((h) => inboxLiveRow(sid, h, "script"))].join("");
+  const n = (working ? 1 : 0) + agents.length + scripts.length;
+  return { html: `<div class="ib-blk ib-live"><div class="ib-k">Running now · ${n}</div>${main}<div class="bg-rows">${rows}</div></div>`, agents, scripts };
+}
+/** An agent or script at work, in two lines for the narrow side: its mark, name, kind and how long (amber when it
+ *  looks stuck), then its newest step. */
+function inboxLiveRow(sid, h, type) {
+  const span = `<span data-helper-span="${h.started_ms}">${helperSpan(h)}</span>`;
+  const quiet = helperStuck(h) ? ` · ${helperQuiet(h)}` : h.quiet === "tool" ? ` · ${helperLongRun(h)}` : "";
+  return `<button class="ib-lv ${helperStuck(h) ? "stuck" : ""}" data-inbox-helper="${esc(`${sid}|${h.id}`)}"><span class="ib-lv-top">${bgIcon(h)}<span class="ib-lv-name">${esc(bgName(h))}</span>${liveDot(h)}</span>`
+    + `<span class="ib-lv-meta">${esc(type)} · ${span}${quiet}</span><span class="ib-lv-step">${esc(bgLatest(h))}</span></button>`;
+}
+/** The brief's side column, in the order that says why it asks: what's running now, You asked, It did, what changed,
+ *  its context, and its full chat and diff as links. */
 function inboxAside(r) {
   const you = inboxYouAsked(r), sid = esc(r.sid);
   const asked = you ? `<div class="ib-blk"><div class="ib-k">You asked${you.at ? ` · ${ago(you.at)} ago` : ""}</div><div class="ib-you">${esc(plain(you.text))}</div></div>` : "";
   const ctx = inboxCtx(r.s) ? `<div class="ib-blk"><div class="ib-k">Context</div><div class="ib-ctx">${inboxMeter(r.s, "wide")}<span>${inboxCtx(r.s)}%</span></div></div>` : "";
   const links = `<div class="ib-links"><button class="ib-link" data-inbox-diff="${sid}">Diff</button></div>`;
-  return `<aside class="ib-page-body ib-aside" data-scroll-key="inbox-aside">${asked}${inboxDid(r)}${inboxChangedBlock(r)}${ctx}${links}</aside>`;
+  return `<aside class="ib-page-body ib-aside" data-scroll-key="inbox-aside">${inboxLive(r).html}${asked}${inboxDid(r)}${inboxChangedBlock(r)}${ctx}${links}</aside>`;
 }
 
 // ---------- the brief, put together ----------
@@ -784,6 +810,8 @@ function inboxAdvance(sid) {
   inboxSid = inboxLast = next || null;
   inboxSnoozeAt = "";
   if (next) { active = { id: inboxItems().get(next)?.id || null, sid: next, exact: false }; seenSession(next); }
+  // Opened by itself (the Inbox shown, or what was open has gone): its box takes the cursor once it's drawn.
+  if (next && typeof requestAnimationFrame === "function") requestAnimationFrame(inboxFocusReply);
 }
 /** The sessions that need you, in the list's order (Pinned first, then From Dispatch). */
 function inboxNeedOrder() {
@@ -801,6 +829,17 @@ function inboxOpen(sid) {
   inboxSid = inboxLast = sid;
   inboxSnoozeAt = "";
   renderMain();
+  inboxFocusReply();
+}
+/** The cursor into the open session's reply box, to write at once; not on a question or permission (its keys pick),
+ *  nor while you're writing somewhere else. */
+function inboxFocusReply() {
+  const a = document.activeElement;
+  if (a?.matches?.("textarea, input, select") && !a.closest(".inbox-page")) return;
+  const pg = inboxSid && document.querySelector(`.inbox-page[data-inbox-page="${CSS.escape(inboxSid)}"]`);
+  if (!pg || pg.dataset.kind === "ask") return;
+  const t = pg.querySelector(".ib-box textarea[data-text]");
+  if (t && document.activeElement !== t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); }
 }
 /** Write to the open session: the cursor into its box (R does it too). */
 function inboxReplyTo(sid) {
@@ -926,6 +965,7 @@ const INBOX_CLICKS = {
   inboxBack: () => inboxClose(),
   inboxNext: () => inboxStepTo(1),
   inboxOpen: (el) => inboxOpen(el.dataset.inboxOpen),
+  inboxHelper: (el) => { const [sid, id] = el.dataset.inboxHelper.split("|"); inboxFullChat(sid); helperView = { sid, id }; renderMain(); },
 };
 /** The attribute selector for each of INBOX_CLICKS ("inboxSnoozeTo" → "[data-inbox-snooze-to]"), innermost first. */
 const INBOX_SEL = Object.keys(INBOX_CLICKS).map((k) => `[data-${k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}]`).join(", ");

@@ -726,3 +726,32 @@ test("on a long page the reply stays in view at the foot of the pane, the words 
   await main.evaluate((m) => { m.scrollTop = m.scrollHeight; });
   expect(await inView()).toBe(true);
 });
+
+test("opened, its reply box has the cursor: you can write at once", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  await page.evaluate(() => localStorage.setItem("cue.inboxFold.run", "1"));
+  await openInbox(page);
+  await page.locator('.ib-row[data-inbox-open="names"]').click();
+  await expect.poll(() => page.evaluate(() => document.activeElement?.dataset?.text)).toBe("s:names");
+  await page.keyboard.type("hi");
+  await expect(page.locator('.inbox-page textarea[data-text="s:names"]')).toHaveValue("hi");
+});
+
+test("what's at work shows live at the top of the side: the session on its step, its agents and its scripts, each with its newest step; a click opens it in its chat", async ({ cue, page }) => {
+  await cue.open("board-waiting", { flags: "many=1&scripts=1" });
+  await page.evaluate(() => localStorage.setItem("cue.inboxFold.run", "1"));
+  await openInbox(page);
+  await page.locator('.ib-row[data-inbox-open="names"]').click();
+  const live = page.locator(".inbox-page .ib-aside .ib-live");
+  await expect(live.locator(".ib-k")).toHaveText("Running now · 7");
+  await expect(live.locator(".ib-live-main")).toContainText("Claude Code");
+  await expect(live.locator('.ib-lv[data-inbox-helper="names|h1"] .ib-lv-step')).toHaveText("Reading hub.rs");
+  await expect(live.locator('.ib-lv[data-inbox-helper="names|h4"]')).toHaveClass(/stuck/);
+  await expect(live.locator('.ib-lv[data-inbox-helper="names|b1"] .ib-lv-meta')).toContainText("script");
+  await expect(live.locator('[data-inbox-helper="names|h2"], [data-inbox-helper="names|b2"]')).toHaveCount(0);   // finished ones aren't at work
+  // The reply area says what else is at work beside it.
+  await expect(page.locator(".inbox-page .ib-card.run .ib-also")).toHaveText("+ 5 agents · 1 script at work");
+  await live.locator('.ib-lv[data-inbox-helper="names|h1"]').click();
+  await expect(page.locator(".inbox-page")).toHaveCount(0);
+  await expect(page.locator(".active-pane")).toContainText("Backend: session name sources");
+});
