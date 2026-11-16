@@ -190,6 +190,11 @@
 .dk-quiet { color: var(--muted); }
 .dk-note { margin: 14px 24px 0; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
 .dk-files { font-family: var(--mono); font-size: 12px; color: var(--ink); }
+.dk-fcs { display: flex; flex-direction: column; }
+.dk-fc { display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 3px 6px; margin: 0 -6px; border: 0; border-radius: 6px; background: none; color: var(--ink); font: 12px var(--mono); text-align: left; cursor: pointer; }
+.dk-fc:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.dk-fc-p { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-fc-new { font: 600 10px var(--sans); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
 .dk-acts { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 24px 0; }
 .dk-chain .dk-acts { padding: 8px 0 0; }
 .dk-drop { margin: 18px 0 0 18px; padding: 4px 6px; border: 0; background: none; color: var(--muted); font-size: 12px; cursor: pointer; border-radius: 8px; }
@@ -210,21 +215,23 @@
 .dk-lt { font-weight: 600; }
 .dk-ls { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
 
-/* Decisions and steps: one quiet table. When | what (who and why muted under it) | Undo on hover. */
-.dk-log { border-top: 1px solid var(--line); }
-.dk-lr { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; column-gap: 12px; align-items: baseline; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
-.dk-lr > .dk-age { color: var(--muted); font-size: 12px; white-space: nowrap; padding-top: 0; }
-.dk-lw { min-width: 0; }
-.dk-lr .dk-d { font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
-.dk-lr.dk-step .dk-d { font-weight: 500; }
+/* Decisions and steps: one compact table, a row each. Who | what was decided | why (muted) | when | Undo, a quiet
+   icon there only while the pointer is on the row. Long cells cut at two lines; a click on the row shows it all. */
+.dk-log { display: grid; grid-template-columns: fit-content(120px) minmax(0, 1.25fr) minmax(0, 1fr) max-content max-content; border-top: 1px solid var(--line); }
+.dk-lr { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; column-gap: 12px; align-items: baseline; padding: 7px 4px; border-bottom: 1px solid var(--line); font-size: 12.5px; line-height: 1.4; cursor: pointer; }
+.dk-lr:hover { background: var(--panel-2); }
+.dk-lby { color: var(--ink); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dk-lr .dk-d { color: var(--ink); font-weight: 500; }
+.dk-lr .dk-d, .dk-lr .dk-w { min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.dk-lr.open .dk-d, .dk-lr.open .dk-w { -webkit-line-clamp: unset; display: block; }
+.dk-lr .dk-w { color: var(--muted); }
+.dk-lr > .dk-age { color: var(--muted); font-size: 12px; white-space: nowrap; text-align: right; }
+.dk-la { color: var(--muted); }
 .dk-x { color: var(--muted); font: 600 11px var(--mono); }
-.dk-w { color: var(--muted); font-size: 12px; margin-top: 1px; line-height: 1.45; }
-.dk-w b { color: var(--ink); font-weight: 650; }
-.dk-u { flex: none; color: var(--muted); font-size: 12px; }
-/* Undo: a small text link, there only while the pointer is on its row (or it has focus). */
-.dk-undo-l { all: unset; flex: none; font-size: 12px; color: var(--accent); cursor: pointer; opacity: 0; }
-.dk-u.dk-undo-l { color: var(--muted); cursor: default; text-decoration: none; }
-button.dk-undo-l:hover { text-decoration: underline; }
+.dk-lu { align-self: center; display: flex; justify-content: flex-end; }
+.dk-u { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.dk-undo-l { all: unset; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 5px; color: var(--muted); cursor: pointer; opacity: 0; }
+.dk-undo-l:hover { color: var(--ink); background: var(--line); }
 .dk-lr:hover .dk-undo-l, .dk-undo-l:focus-visible { opacity: 1; }
 /* Latest, as written: bold, links that open on a click. */
 .dk-md > :first-child { margin-top: 0; }
@@ -258,6 +265,10 @@ button.dk-undo-l:hover { text-decoration: underline; }
 .dk-sh:hover .dk-ren, .dk-ren:focus-visible { opacity: 1; }
 .dk-ren:hover { background: var(--panel-2); color: var(--ink); }
 .dk-sh .pj-name-in { width: 180px; padding: 2px 7px; font-size: 13px; }
+/* ✎ beside a session's name (its row in Sessions, its chat's header): shown while the pointer is on it. */
+.dk-sren { width: 20px; height: 20px; margin-left: -6px; }
+.dk-srow:hover .dk-sren, .dk-sch:hover .dk-sren { opacity: 1; }
+.dk-ren-in { width: 190px; padding: 2px 7px; }
 .dk-leadspot .dk-gh { margin-right: 10px; }
 .dk-more-btn { all: unset; display: grid; place-items: center; width: 24px; height: 20px; border-radius: 6px; color: var(--muted); cursor: pointer; }
 .dk-more-btn:hover, .dk-more-btn:focus-visible { background: var(--panel-2); color: var(--ink); }
@@ -327,3 +338,12 @@ button.dk-undo-l:hover { text-decoration: underline; }
 .dk-route .dk-say-h .dk-say-to, .dk-route .dk-say-t { font-weight: inherit; color: var(--ink); }
 .dk-route { padding: 5px 0; }
 .dk-route > .dk-say-s { display: block; margin-top: 1px; }
+/* Your words about an item in the lead's chat (deskAboutHead): its kind, number and title over them, quiet. */
+.dk-about { all: unset; display: block; margin-bottom: 4px; font-size: 12px; color: var(--muted); cursor: pointer; overflow-wrap: anywhere; }
+.dk-about b { color: var(--ink); font-weight: 650; }
+.dk-about:hover b { color: var(--link, var(--accent)); }
+/* Looks right's moment to take it back (desk_commit.js): "Done · Undo" on the item, and Undo in the toast. */
+.dk-soon { flex: none; margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.toast.acts { pointer-events: auto; }
+.toast-undo { all: unset; color: var(--link, var(--accent)); font-weight: 600; cursor: pointer; }
+.toast-undo:hover { text-decoration: underline; }

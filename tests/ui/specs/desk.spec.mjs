@@ -498,6 +498,42 @@ test("⋯ by Runs this Desk: the project's other sessions, each with Run it; Kee
   await expect(page.locator(".dk-leadspot")).toContainText("host-lead");
 });
 
+test("✎ beside a session's name (its row, its chat's header) renames the session: Enter keeps it, Esc doesn't, the row doesn't open", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  const row = page.locator(".dk-sessions .dk-scroll .dk-srow:not(.crew)").first();
+  const pen = row.locator(".dk-sren"), box = row.locator(".rename-in");
+  await expect(pen).toHaveAttribute("aria-label", "Rename this session");
+  await expect(pen).toHaveCSS("opacity", "0");
+  await row.hover();
+  await expect(pen).toHaveCSS("opacity", "1");
+  const before = await row.locator(".dk-nm").textContent();
+  await pen.click();
+  await expect(box).toBeFocused();
+  await expect(box).toHaveValue(before);
+  await box.click();
+  await expect(page.locator(".dk-sch")).toHaveCount(0);
+  await box.fill("not this");
+  await box.press("Escape");
+  await expect(box).toHaveCount(0);
+  await expect(row.locator(".dk-nm")).toHaveText(before);
+  await row.hover();
+  await pen.click();
+  await box.fill("search-fix");
+  await box.press("Enter");
+  await expect(row.locator(".dk-nm")).toHaveText("search-fix");
+  // Its chat's header has the same ✎.
+  await row.click();
+  const head = page.locator(".dk-sch");
+  await expect(head.locator("b")).toHaveText("search-fix");
+  await head.hover();
+  await head.locator(".dk-sren").click();
+  await head.locator(".rename-in").fill("search-fix-2");
+  await head.locator(".rename-in").press("Enter");
+  await expect(head.locator("b")).toHaveText("search-fix-2");
+  expect(await page.locator(".dk-board [title]").count()).toBe(0);
+});
+
 test("✎ by the Desk's name: Esc keeps the name as it was; a click away keeps what you typed", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
@@ -870,9 +906,33 @@ test("an item back to check stands out until you open it; its pane links to what
   await expect(row).toHaveClass(/landed/);
   await expect(row.locator(".dk-tag")).toHaveText("landed");
   await row.locator(".dk-t").click();
-  await expect(page.locator(".dk-pane .dk-sec", { hasText: "What it made" }).locator(".dk-made")).toHaveText(["Open the page ↗", "list.html ↗", "Changes · 1 file"]);
+  await expect(page.locator(".dk-pane .dk-sec", { hasText: "What it made" }).locator(".dk-made")).toHaveText(["Open the page ↗", "list.html ↗"]);
   await expect(row).not.toHaveClass(/landed/);
   await expect(row.locator(".dk-tag")).toHaveText("check");
+});
+
+test("a to-check item's page lists its Files changed, each with its counts; a click opens that file in Cue's Diff view", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.change((st) => { st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d2").files = ["ui/chat/compose.js", "ui/styles/chat.css"]; });
+  await page.locator('.dk-items [data-desk-item="d2"] .dk-t').click();
+  // The files Looks right will commit, as the hub reads them.
+  await cue.called("desk_item_diff", { id: "d2" });
+  const sec = page.locator(".dk-pane .dk-sec", { hasText: "Files changed" });
+  await expect(sec.locator(".dk-fc-p")).toHaveText(["ui/chat/compose.js", "ui/styles/chat.css"]);
+  await expect(sec.locator(".dk-fc").first().locator(".dv-n")).toHaveText(["+2", "−1"]);
+  // Read once for the page, not again on each redraw.
+  await page.evaluate(() => { renderMain(); renderMain(); });
+  await page.waitForTimeout(200);
+  expect((await cue.calls("desk_item_diff")).length).toBe(1);
+  await sec.locator(".dk-fc").nth(1).click();
+  // Its holder's Diff, on the item's files: the one clicked open, a chip back to the whole diff.
+  const dv = page.locator(".active-pane .dv");
+  await expect(dv.locator(".dv-chip")).toContainText("Feature #d2's 2 files");
+  await expect(dv.locator("details.dv-file[open] .dv-path")).toHaveText(["ui/styles/chat.css"]);
+  await expect(dv.locator("details.dv-file[open] .dv-lines .a").first()).toHaveText("+new ui/styles/chat.css");
+  await dv.locator("[data-dv-all]").click();
+  await expect(dv.locator(".dv-chip")).toHaveCount(0);
 });
 
 /** The Desk run by host instead, so "lead" (with its crew) is a session in the list like any other. */
@@ -1308,4 +1368,36 @@ test("finished items: the 10 newest, then 10 more as the list's end comes into v
   await expect(list.locator('[data-desk-done-more]')).toHaveCount(0);
   const ms = await page.evaluate(() => { const t = performance.now(); for (let n = 0; n < 10; n++) deskList("cue"); return (performance.now() - t) / 10; });
   expect(ms).toBeLessThan(50);
+});
+
+test("your words about an item show its kind's icon, kind and number over them in the lead's chat; a click opens it", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await page.evaluate(() => { sessionOf("lead").thread.push({ at_ms: Date.now(), role: "you", text: "About #d1 (Reply box loses focus after Send): keep focus (in the box): please" }); renderMain(); });
+  const you = page.locator(".dk-chat .cv-you").last();
+  await expect(you.locator(".dk-about svg.dk-kic")).toHaveCount(1);
+  await expect(you.locator(".dk-about")).toHaveText("Bug #d1 · Reply box loses focus after Send");
+  await expect(you.locator(".cv-you-text")).toHaveText("Bug #d1 · Reply box loses focus after Sendkeep focus (in the box): please");
+  await you.locator(".dk-about").click();
+  await expect(page.locator(".dk-pane h1")).toHaveText("Reply box loses focus after Send");
+});
+
+test("Looks right waits a moment with \"Done · Undo\" on the item and in a toast; Undo then leaves it to check, nothing sent", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await page.locator('[data-desk-item="d2"] .dk-ok').click();
+  await expect(page.locator('[data-desk-item="d2"] .dk-soon')).toHaveText("Done · Undo");
+  await expect(page.locator(".toast")).toHaveText("Done · Undo");
+  await page.locator(".toast .toast-undo").click();
+  await expect(page.locator(".toast")).toHaveText("Still to check");
+  await expect(page.locator('[data-desk-item="d2"] .dk-ok')).toBeVisible();
+  await page.waitForTimeout(3300);
+  expect(await cue.calls("desk_looks_right")).toEqual([]);
+  // Undo on the item does the same; left alone, it goes.
+  await page.locator('[data-desk-item="d2"] .dk-ok').click();
+  await page.locator('[data-desk-item="d2"] .dk-soon [data-desk-act="looks_undo"]').click();
+  await expect(page.locator('[data-desk-item="d2"] .dk-ok')).toBeVisible();
+  await page.locator('[data-desk-item="d2"] .dk-ok').click();
+  expect(await cue.calls("desk_looks_right")).toEqual([]);
+  await cue.called("desk_looks_right", { id: "d2" });
 });
