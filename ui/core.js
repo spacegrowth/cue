@@ -469,7 +469,7 @@ const inProj = (project) => !projFilter || project === projFilter;
 const preStart = (s) => s?.trust_ms ? "asking whether you trust its folder" : s?.enter_ms ? "waiting for Enter in its terminal" : "";
 const finishedText = (it) => it.message || it.context?.at(-1)?.text || "Finished. Your turn.";
 /** The message as one plain line of prose, for previews (no markdown punctuation). */
-const plain = (s) => String(s ?? "").replace(/```[\s\S]*?```/g, " ").replace(/[`*#]/g, "").replace(/^\s*(>\s?)+/gm, "").replace(/^\s*[-•]\s+/gm, "").replace(/\s+/g, " ").trim();
+const plain = (s) => String(s ?? "").replace(/```[\s\S]*?```/g, " ").replace(/^(\s*(?:[-*•]\s+)?)DECIDED:/gm, "$1Decided:").replace(/[`*#]/g, "").replace(/^\s*(>\s?)+/gm, "").replace(/^\s*[-•]\s+/gm, "").replace(/\s+/g, " ").trim();
 
 function summary(it) {
   const i = it.tool_input || {};
@@ -596,7 +596,7 @@ function md(text, { runIn = null, pathsOf = null, doc = false } = {}) {
       // A paragraph can mix a heading line, text lines and list lines: split it into runs.
       const runs = [];
       for (const l of para.split("\n").filter((x) => x.trim())) {
-        const kind = QUOTE.test(l) ? "quote" : TABLE.test(l) ? "table" : LIST.test(l) ? "list" : /^#{1,4}\s/.test(l) || /^\*\*[^*]+\*\*:?$/.test(l.trim()) ? "head" : "text";
+        const kind = DECIDED_LINE.test(l) ? "decided" : QUOTE.test(l) ? "quote" : TABLE.test(l) ? "table" : LIST.test(l) ? "list" : /^#{1,4}\s/.test(l) || /^\*\*[^*]+\*\*:?$/.test(l.trim()) ? "head" : "text";
         const last = runs.at(-1);
         // In Read (doc), a wrapped line under a list item goes on with that item, as Markdown has it.
         if (doc && last?.kind === "list" && kind === "text") { last.lines[last.lines.length - 1] += ` ${l.trim()}`; continue; }
@@ -604,7 +604,9 @@ function md(text, { runIn = null, pathsOf = null, doc = false } = {}) {
         else runs.push({ kind, lines: [l] });
       }
       for (const r of runs) {
-        if (r.kind === "quote") {
+        if (r.kind === "decided") {
+          out.push(decidedHtml(r.lines, inline));
+        } else if (r.kind === "quote") {
           out.push(`<blockquote>${md(r.lines.map((l) => l.replace(QUOTE, "")).join("\n"))}</blockquote>`);
         } else if (r.kind === "table") {
           out.push(table(r.lines, inline));
@@ -622,6 +624,19 @@ function md(text, { runIn = null, pathsOf = null, doc = false } = {}) {
     }
   });
   return out.join("");
+}
+
+/** A judgment call an agent made on its own, as it writes it: `DECIDED: what — why` (a list mark before it is fine). */
+const DECIDED_LINE = /^\s*(?:[-*•]\s+)?DECIDED:\s*/;
+/** A run of DECIDED lines as one small block: "Decided on its own" and how many, then each call, its reason under it
+ *  in grey (what follows its first " — ", " – " or " -- "). */
+function decidedHtml(lines, inline) {
+  const item = (l) => {
+    const t = l.replace(DECIDED_LINE, ""), m = /\s+(?:—|–|--)\s+/.exec(t);
+    const what = m ? t.slice(0, m.index) : t, why = m ? t.slice(m.index + m[0].length) : "";
+    return `<li><span class="dec-what">${inline(what.replace(/[.;:]\s*$/, ""))}</span>${why ? `<span class="dec-why">${inline(why)}</span>` : ""}</li>`;
+  };
+  return `<div class="decided"><div class="dec-head">Decided on its own${lines.length > 1 ? ` · ${lines.length}` : ""}</div><ul>${lines.map(item).join("")}</ul></div>`;
 }
 
 /** List lines as a list: numbered from its first item's number when that's numbered. A line indented further

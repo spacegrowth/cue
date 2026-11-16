@@ -561,3 +561,13 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .send-at-bar { display: flex; align-items: center; gap: 8px; padding: 6px 10px 8px; font-size: 12.5px; border-top: 1px solid var(--line); }
 .send-at-bar input[type=time] { font: 12.5px var(--sans); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; background: var(--panel); color: var(--ink); }
 .send-at-bar .grow { flex: 1; }
+
+/* An agent's judgment calls (DECIDED: what — why lines; core.js decidedHtml): one quiet block, each call a line with its
+   reason under it in grey. */
+.msg .decided, .decided { margin: 8px 0; padding: 8px 12px 9px; border-radius: 8px; background: color-mix(in srgb, var(--panel-2) 70%, var(--panel)); border: 1px solid var(--line); }
+.decided .dec-head { font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+.decided ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.decided li { display: flex; flex-direction: column; gap: 1px; padding-left: 18px; position: relative; margin: 0; }
+.decided li::before { content: "✓"; position: absolute; left: 0; top: 0; font-size: 12px; color: var(--muted); }
+.decided .dec-what { color: var(--ink); }
+.decided .dec-why { font-size: 0.92em; color: var(--muted); }
