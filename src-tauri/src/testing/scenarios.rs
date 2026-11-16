@@ -12,7 +12,6 @@ const SCENARIOS: &[(&str, fn(&World))] = &[
     ("empty", |_| {}),
     ("one-ask", one_ask),
     ("many-sessions", many_sessions),
-    ("status-list", status_list),
     ("parked", parked),
     ("restarting", restarting),
     ("stalled-terminal", stalled_terminal),
@@ -94,14 +93,6 @@ fn team(w: &World) {
     says(E::ToolCall { id: "hub-test".into(), name: "Bash".into(), input: json!({ "command": "cd src-tauri && cargo test --features ext" }), agent: Some("call-hub".into()) });
     says(E::Ask(Ask { request_id: "r-hub".into(), kind: AskKind::Permission, tool_name: "Bash".into(), input: json!({ "command": "cd src-tauri && cargo test --features ext", "description": "Run the tests" }), suggestions: json!([]), agent_id: "id-hub".into(), tool_use_id: "hub-test".into(), server: String::new(), message: String::new(), form: Value::Null }));
     w.settle();
-}
-
-fn status_list(w: &World) {
-    let a = w.session("board").in_project("agent-board");
-    let ask = "End this reply with the status list: **Where we are**";
-    a.prompt("Ship the board");
-    a.transcript().prompt_with_status_ask("u1", "Ship the board", ask);
-    a.stop("Board shipped.\n\n**Where we are**\n✓ Spend column\n→ Footer totals\n○ Docs\nWaiting on you: nothing");
 }
 
 fn parked(w: &World) {

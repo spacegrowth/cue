@@ -71,20 +71,19 @@ const tick = () => new Promise((r) => setImmediate(r));
     await tick(); await tick();
     assert.deepStrictEqual(b.started.map((c) => c.cmd), ["term_open", "term_close", "shell_open", "term_open"]);
   }
-  // A setting switched twice: saved in that order (the last one wins); a session's status list and a direct save
-  // of the same setting share its lane.
+  // A setting switched twice: saved in that order (the last one wins); another setting has a lane of its own.
   {
     const b = bridge();
     const invoke = orderedInvoke(b.call);
     invoke("set_setting", { key: "tips.on", value: true });
     invoke("set_setting", { key: "tips.on", value: false });
-    invoke("status_session", { sessionId: "s1", on: true });
-    invoke("set_setting", { key: "status.sessions", value: [] });
+    invoke("set_setting", { key: "notify.sound", value: "chime" });
+    invoke("set_setting", { key: "notify.sound", value: "none" });
     await tick();
-    assert.deepStrictEqual(b.started.map((c) => c.cmd), ["set_setting", "status_session"]);
+    assert.deepStrictEqual(b.started.map((c) => c.args.key), ["tips.on", "notify.sound"]);
     b.answer(0); b.answer(0);
     await tick(); await tick();
-    assert.deepStrictEqual(b.started.map((c) => c.args.value ?? c.args.on), [true, true, false, []]);
+    assert.deepStrictEqual(b.started.map((c) => c.args.value), [true, "chime", false, "none"]);
   }
   // A hand-off continued and then kept, an extension's log lines: in order, per session and per extension.
   {

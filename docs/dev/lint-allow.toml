@@ -233,21 +233,6 @@ from = "typing gate"
 to = "the hub's store"
 reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
 
-[[lock_order]]
-from = "typing gate"
-to = "what About has cost"
-reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
-
-[[lock_order]]
-from = "typing gate"
-to = "what each session is about"
-reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
-
-[[lock_order]]
-from = "typing gate"
-to = "what the status list has cost"
-reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
-
 # External calls reachable while the hub's store is held ([[store_io]]): none. A new one fails the check.
 
 [[lock_order]]

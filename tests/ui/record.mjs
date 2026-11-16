@@ -27,14 +27,6 @@ function many(s) {
   return s;
 }
 
-/** agent-relay's last reply ends with its status list, and the list is on for it. */
-function statusList(s) {
-  const r = relayOf(s), last = r.thread.at(-1);
-  last.text += "\n\n**Where we are**\n✓ Spend column on the board\n✓ Footer total\n→ relay:list prints the same number\n○ ∥ Carry spend over on retire\n○ ∥ README section\nWaiting on you: carry spend over to the successor, or not?";
-  s.settings.status = { on: true, sessions: ["relay"] };
-  return s;
-}
-
 /** agent-relay runs in tmux, so its terminal opens in Cue. */
 function inTmux(s) {
   relayOf(s).tmux_pane = "%1";
@@ -46,7 +38,6 @@ const SCENARIOS = {
   "board-empty": () => Object.assign(world(), { sessions: [], items: [], history: [], parked: [], ended: [] }),
   "board-waiting": () => world(),
   "many-sessions": () => many(world()),
-  "status-list": () => statusList(world()),
   "terminal": () => inTmux(world()),
   "parked-ended": () => world("park=1&live=1"),
 };
