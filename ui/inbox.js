@@ -254,10 +254,11 @@ const inboxWhen = (ms) => new Date(ms).toLocaleString([], { weekday: "short", ho
  *  Snooze on hover; a working one's bar along its foot. */
 function inboxRowHtml(r) {
   const { sid, s, kind } = r, seat = inboxSeats.get(sid), [subj, line] = inboxLines(r);
+  // Its sink plays once, from when it came in: a redraw carries on from there rather than starting it over.
   const sinking = kind === "run" && seat?.from === "need" && now() - seat.at < INBOX_SINK_MS;
   const under = inboxSnoozed(s) ? `Back ${inboxWhen(s.snooze_ms)}${line ? ` · ${line}` : ""}` : line;
   const side = `<span class="ib-time">${ago(r.at)}</span>${inboxPinned(s) ? `<span class="ib-pin">${PIN_ICON}</span>` : ""}${inboxFull(s) ? inboxMeter(s) : ""}`;
-  return `<div class="ib-row ${kind} ${inboxLater(s) ? "later" : ""} ${sinking ? "sinking" : ""} ${(inboxSid || inboxLast) === sid ? "on" : ""}" role="button" tabindex="0" data-inbox-open="${esc(sid)}" style="${projStyle(r.project)}">`
+  return `<div class="ib-row ${kind} ${inboxLater(s) ? "later" : ""} ${sinking ? "sinking" : ""} ${(inboxSid || inboxLast) === sid ? "on" : ""}" role="button" tabindex="0" data-inbox-open="${esc(sid)}" style="${projStyle(r.project)}${sinking ? `;animation-delay:-${now() - seat.at}ms` : ""}">`
     + `<span class="ib-dot">${inboxDot(r)}</span><span class="ib-l1">${nameSpan(sid, r.project, "ib-name")}${inboxBadges(r)}<span class="ib-subj">${esc(subj)}</span></span>`
     + `<span class="ib-l2">${esc(under)}</span><span class="ib-side">${side}</span>`
     + `<span class="ib-acts ${inboxSnoozeAt === `row:${sid}` ? "open" : ""}">${inboxActs(sid, s, `row:${sid}`)}</span>${kind === "run" && s ? inboxBar(s) : ""}</div>`;

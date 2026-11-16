@@ -154,10 +154,14 @@ function restoreScrolls(was) {
 function replayMotion(was, kept) {
   // A redraw replaces every element, which would start each pulsing dot over: its phase comes from the
   // clock instead, so it carries on through the redraws that come every couple of seconds while steps
-  // land. Not the kept chat's dots: those elements live on, and their pulse with them.
-  const phase = `-${Date.now() % PULSE_MS}ms`;
+  // land (several a second just after a Send). Not the kept chat's dots: those elements live on, and
+  // their pulse with them. The Inbox's "Thinking" dots and its live step too.
   const liveChat = kept ? document.querySelector("[data-chat]") : null;
-  document.querySelectorAll(".dot-live").forEach((el) => { if (!liveChat?.contains(el)) el.style.animationDelay = phase; });
+  // Each looping animation a redraw would restart, and its length (as its CSS has it).
+  for (const [sel, ms] of [[".dot-live, .pdot.live, .lv-chip .hdot", PULSE_MS], [".ib-dots i", 1200], [".ib-step.now i", 1600]]) {
+    const phase = `-${Date.now() % ms}ms`;
+    document.querySelectorAll(sel).forEach((el) => { if (!liveChat?.contains(el)) el.style.animationDelay = phase; });
+  }
   markMore();   // lists end on whole cards before anything measures where cards landed
   statusPopPaint();   // an open status card stays where it was across the redraw
   statusPanelFit();   // an open status list ends above the pane's bottom, scrolling past that
