@@ -104,16 +104,6 @@ pub fn open(app: AppHandle, sid: &str, o: &crate::model::Origin, cols: u16, rows
     })
 }
 
-/// A detached tmux session of its own on machine `machine` (`tmux_session`: an action's run there): its
-/// terminal is a client attached to exactly that session. Opened, deduped and closed as `open`'s are (one per `sid`).
-pub fn open_attached(app: AppHandle, sid: &str, machine: &str, tmux_session: &str, cols: u16, rows: u16) -> Result<u64, String> {
-    let host = crate::machines::get(machine).ok_or(format!("{machine} isn't one of your machines any more (+ New → Machine)"))?.host;
-    let target = Target::Session(tmux_session);
-    once(sid, cols, rows, || launch(sid, &target, Some(&host), cols, rows, move |v| {
-        let _ = app.emit("term", v);
-    }))
-}
-
 /// A tmux session on this Mac (a shell of Cue's own: shells.rs), its terminal a client attached to
 /// exactly that session. Opened, deduped and closed as `open`'s are (one per `sid`).
 pub(crate) fn attach_local(sid: &str, tmux_session: &str, cols: u16, rows: u16, out: impl Fn(serde_json::Value) + Send + 'static) -> Result<u64, String> {

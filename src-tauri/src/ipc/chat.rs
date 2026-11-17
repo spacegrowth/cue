@@ -312,6 +312,29 @@ pub(crate) async fn folders_under(typed: String) -> Result<Vec<String>, String> 
     blocking(move || subfolders(&typed, &home, 12)).await
 }
 
+/// The project a folder belongs to (+ New's Project line): {name, own, how: "put"|"repo-says"|"repo"|
+/// "folder", key (where putting it in a project keeps it)}. On another machine, by the folders you put in alone.
+#[tauri::command]
+pub(crate) async fn project_for_folder(folder: String, machine: Option<String>) -> Result<serde_json::Value, String> {
+    blocking(move || {
+        let m = machine.unwrap_or_default();
+        let folder = folder.trim().trim_end_matches('/').to_string();
+        let folder = match (m.is_empty(), folder.strip_prefix('~'), std::env::var("HOME")) {
+            (true, Some(rest), Ok(home)) => format!("{home}{rest}"),
+            _ => folder,
+        };
+        if !folder.starts_with('/') {
+            return Err("that isn't a folder".to_string());
+        }
+        if m.is_empty() {
+            crate::logs::repos::first_look(&folder);
+        }
+        let (name, how) = crate::model::project_how(&folder, &m);
+        Ok(serde_json::json!({ "name": name, "own": crate::model::own_project(&folder, &m), "how": how, "key": crate::model::put_key(&folder, &m) }))
+    })
+    .await?
+}
+
 pub(crate) fn subfolders(typed: &str, home: &str, most: usize) -> Vec<String> {
     let typed = typed.trim();
     let Some(cut) = typed.rfind('/') else { return vec![] };
@@ -529,41 +552,6 @@ pub(crate) async fn btw(hub: State<'_, Arc<Hub>>, session_id: String, question: 
 #[tauri::command]
 pub(crate) async fn catch_up(hub: State<'_, Arc<Hub>>, session_id: String, seen_ms: u64) -> Result<crate::btw::CatchUp, String> {
     with_hub(&hub, move |h| h.catch_up(&session_id, seen_ms)).await?
-}
-
-/// The About tab: follow a session (tasks.rs). Its first read is asked for in the background; the window's state
-/// carries it as it comes.
-#[tauri::command]
-pub(crate) async fn tasks_start(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<(), String> {
-    with_hub(&hub, move |h| crate::tasks::start(h.clone(), &session_id)).await?
-}
-
-/// The About tab's Refresh: the whole chat read again.
-#[tauri::command]
-pub(crate) async fn tasks_refresh(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<(), String> {
-    with_hub(&hub, move |h| crate::tasks::refresh(h.clone(), &session_id)).await?
-}
-
-/// The About tab's Stop: what it kept for the session goes.
-#[tauri::command]
-pub(crate) async fn tasks_stop(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<(), String> {
-    with_hub(&hub, move |h| {
-        crate::tasks::stop(&session_id);
-        h.redraw();
-    })
-    .await
-}
-
-/// A session's ring → its switch: the status list on (or off again) for that session (statuslist.rs).
-#[tauri::command]
-pub(crate) async fn status_session(hub: State<'_, Arc<Hub>>, session_id: String, on: bool) -> Result<(), String> {
-    with_hub(&hub, move |h| h.update_setting("status.sessions", |c| Some(crate::statuslist::sessions_with(c, &session_id, on)))).await?
-}
-
-/// A session's status line → Start / Stop background agents: its ∥ steps run as agents while it's on (statuslist.rs).
-#[tauri::command]
-pub(crate) async fn background_session(hub: State<'_, Arc<Hub>>, session_id: String, on: bool) -> Result<(), String> {
-    with_hub(&hub, move |h| h.update_setting("background.sessions", |c| Some(crate::statuslist::background_with(c, &session_id, on)))).await?
 }
 
 /// "Go to tab" for a session that has no card (a working one).

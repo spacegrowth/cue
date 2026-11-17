@@ -317,7 +317,7 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 
 /* A real button (a tinted pill), not a text link, so it doesn't read as part of the message. */
 .cv-fwd { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: var(--pill-radius); font-size: 12px; font-weight: 650; color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, var(--panel)); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); opacity: 0; transition: opacity 0.12s, background 0.12s, color 0.12s; }
-/* Last in the row, at its right end: the reply's own buttons and its project's actions come first. */
+/* Last in the row, at its right end: the reply's own buttons come first. */
 .cv-fwd:hover { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 .cv-agent:hover .cv-fwd, .cv-agent.last .cv-fwd, .cv-fwd:focus-visible { opacity: 1; }
 /* A message from another session: who it's from, the message, and (for a forward) the original, quoted. */

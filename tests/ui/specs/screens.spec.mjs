@@ -6,7 +6,7 @@ import { pillProblems } from "./pills.mjs";
 
 // The smallest the window goes (tauri.conf.json minWidth; Cue has no phone layout of its own).
 const NARROWEST = { width: 900, height: 600 };
-const SETTINGS_TABS = ["general", "agents", "chat", "summaries", "voice", "insights", "actions", "usage"];
+const SETTINGS_TABS = ["general", "agents", "chat", "voice", "insights", "usage"];
 
 /** Opens a session's chat from its card in Waiting. */
 const openCard = (page, id) => page.locator(`.nrow[data-big="${id}"]`).click();
@@ -47,7 +47,6 @@ const SCREENS = {
   "board-empty": { scenario: "board-empty", done: (p) => p.locator(".switch-view").waitFor() },
   "board-waiting": { scenario: "board-waiting", done: (p) => p.locator('.nrow[data-big="n6"]').waitFor() },
   "many-sessions": { scenario: "many-sessions", done: (p) => p.locator('.nrow[data-big="mi0"]').waitFor() },
-  "status-list": { scenario: "status-list", setup: async (p) => { await openCard(p, "n1"); await p.locator('.active-pane .st-bar[data-sid="relay"]').click(); }, done: (p) => p.locator(".active-pane .st-drawer").waitFor() },
   "chat-long-thread": { scenario: "board-waiting", setup: (p) => openCard(p, "n1"), done: (p) => p.locator(".active-pane pre").first().waitFor() },
   "terminal-open": { scenario: "terminal", setup: openTerminal, done: (p) => p.evaluate(() => document.activeElement?.blur()) },
   "terminal-stalled": { scenario: "terminal", flags: "stalled=1", setup: async (p) => { await openTerminal(p); await p.keyboard.type("ls"); }, done: async (p) => { await p.locator(".term-stalled").waitFor(); await p.evaluate(() => document.activeElement?.blur()); } },

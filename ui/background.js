@@ -1,5 +1,5 @@
 // ---------- The Agents and Scripts tabs: a session's background work, all of it ----------
-// Beside Actions, each shown once the session has that kind of work: Agents (every agent of it, any kind: its
+// Beside Chat, each shown once the session has that kind of work: Agents (every agent of it, any kind: its
 // background agents and teammates, grouped Needs you / Working / Done: agents.js agentsPage)
 // and Scripts (the shell commands it ran in the background, one row each (chat/helpers.js bgRow), what's running first, then
 // what's over, newest first). The tab shows a live dot and how many work while any do. A click opens it in full
@@ -49,7 +49,7 @@ function bgPage(sid, tab) {
   const rows = k === "agents" ? agentsPage(sid, bgAll(sid)) : bgAll(sid).filter(is).sort(bgOrder).map((h) => bgRow(sid, h, true)).join("");
   const e = bgEarlier.get(sid);
   const more = e?.list ? "" : e?.loading ? `<div class="bg-more dim">Reading the session's transcript…</div>` : `<button class="bg-more" data-bg-earlier="${esc(sid)}">Show earlier</button>${e?.err ? `<span class="dim"> · couldn't read it: ${esc(e.err)}</span>` : ""}`;
-  return `<div class="bg-page">${rows || `<div class="ac-empty">No ${label.toLowerCase()} in this session yet.</div>`}${more}</div>`;
+  return `<div class="bg-page">${rows || `<div class="bg-empty">No ${label.toLowerCase()} in this session yet.</div>`}${more}</div>`;
 }
 
 /** An earlier one (not in the live feed) for its full view: read once, when it's opened. */
@@ -78,9 +78,7 @@ document.addEventListener("click", (e) => {
   if (tab) {
     e.stopPropagation();
     const sid = tab.dataset.sid;
-    actTabOn.delete(sid);
     extTabOf.delete(sid);
-    aboutTabOn.delete(sid);
     bgTabOn.set(sid, tab.dataset.bgTab);
     helperView = null;
     return renderMain();

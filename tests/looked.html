@@ -36,7 +36,6 @@
           if (cmd === "session_steps") return args.sessionId === "w1" && args.version !== FEED.version ? structuredClone(FEED) : { version: args.sessionId === "w1" ? FEED.version : 0, turns: args.sessionId === "w1" ? undefined : [] };
           if (cmd === "step_detail") return Object.fromEntries(args.ids.map((id) => [id, { full: "cargo test", output: ["ok"] }]));
           if (cmd === "session_log_page") return Array.from({ length: 30 }, (_, n) => ({ at_ms: args.beforeMs - (30 - n) * M, role: n % 2 ? "agent" : "you", text: `Earlier message ${n + 1}`, images: [] }));
-          if (cmd === "actions_list") return { actions: [], pending: [] };
           if (cmd === "transcript_page" || cmd === "closed_sessions" || cmd === "machines_list") return [];
           return null;
         } },

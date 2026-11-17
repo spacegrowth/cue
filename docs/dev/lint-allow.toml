@@ -49,16 +49,6 @@ to = "folder facts"
 reason = "db::open regroups projects by repo root (repos::repo_root) the first time the db is opened, under DB; folder facts is a leaf, read from memory"
 
 [[lock_order]]
-from = "actions STORE"
-to = "folder facts"
-reason = "actions key their state by repo root (repos::repo_root) under their own lock; folder facts is a leaf, read from memory"
-
-[[lock_order]]
-from = "actions WATCH"
-to = "folder facts"
-reason = "actions key their state by repo root (repos::repo_root) under their own lock; folder facts is a leaf, read from memory"
-
-[[lock_order]]
 from = "config file"
 to = "config in memory"
 reason = "a save or a refresh keeps what it wrote or read in memory under the file lock, so an older read can't land after a newer save; config in memory is a leaf"

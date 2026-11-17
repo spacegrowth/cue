@@ -890,7 +890,6 @@ function inboxFullChat(sid) {
 }
 /** What it changed, on the Board: its chat on its Diff tab. */
 function inboxDiff(sid) {
-  actTabOn.delete(sid);
   bgTabOn.delete(sid);
   extTabOf.set(sid, DIFF_TAB);
   inboxFullChat(sid);

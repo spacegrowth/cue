@@ -334,7 +334,7 @@ function listenNext() {
   const next = all[all.findIndex((r) => r.key === l.key) + 1];
   if (!next) return listenStop();
   if (readerView?.key === l.key) readerView = { sid, key: next.key };
-  listening = { ...l, key: next.key, i: 0, n: 0, html: md(addOn.plain(stripStatus(next.text))), follow: true };
+  listening = { ...l, key: next.key, i: 0, n: 0, html: md(addOn.plain(next.text)), follow: true };
   renderMain();
   listenSay();
 }
@@ -419,7 +419,7 @@ const PLAY_ICON = `<svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="
 const PAUSE_ICON = `<svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="M6 4h4v16H6zM14 4h4v16h-4z" fill="currentColor"/></svg>`;
 const BOOK_ICON = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2zM22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"/></svg>`;
 /** Listen under a reply: the speaker and Listen; while it reads this one, ‖ Pause; paused on it, ▶ Resume (the
- *  same marks as the line above the box). Actions beside it are >_, so its ▶ isn't taken for one. */
+ *  same marks as the line above the box). */
 function listenBtn(key) {
   const on = listening?.key === key;
   const [icon, label] = !on ? [SPEAKER_ICON, "Listen"] : listening.playing ? [PAUSE_ICON, "Pause"] : [PLAY_ICON, "Resume"];

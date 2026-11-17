@@ -70,5 +70,17 @@ CueBridge.area("sessions", (w) => {
     },
     move_to_cue: ({ sessionId }) => { const s = w.session(sessionId); if (s) s.tmux_pane = "%1"; w.changed(); return "Moved to Cue"; },
     move_to_terminal: ({ sessionId }) => { const s = w.session(sessionId); if (s) { s.hosted = false; s.term_program = "iTerm.app"; } w.changed(); return "Moved to iTerm"; },
+    // A folder's project: one you put it in, its repository's, or (scratch, Downloads) its own name.
+    project_for_folder: ({ folder }) => {
+      const f = folder.replace(/\/+$/, ""), name = f.split("/").pop(), put = w.state.settings.project?.folders?.[f];
+      if (put) return { name: put, own: name, how: "put", key: f };
+      return { name, own: name, how: /scratch|Downloads/.test(f) ? "folder" : "repo", key: f };
+    },
+    // + New's Folder field: the folders on "disk" under what's typed (a few made-up ones in ~/code).
+    folders_under: ({ typed }) => {
+      const cut = typed.lastIndexOf("/"), dir = typed.slice(0, cut + 1), part = typed.slice(cut + 1).toLowerCase();
+      const disk = { "~/code/": ["api-server", "api-tools", "docs-site", "web-app"], "~/code/api-tools/": ["cli", "lib"] };
+      return (disk[dir] || []).filter((n) => n.toLowerCase().startsWith(part)).map((n) => dir + n);
+    },
   };
 });

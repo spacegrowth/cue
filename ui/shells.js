@@ -122,14 +122,10 @@ function ensurePip() {
   window.addEventListener("resize", placePip);
 }
 
-/** A new shell in `cwd` (home when empty), its tab on show and the terminal out. `action` ({folder, machine, id}):
- *  instead of a shell, that action's own output, attached where it runs (its tab again if it's open); closing the
- *  tab leaves it running. `name`: its tab's. */
-function openShell(cwd, { name = "", action = null, line = "" } = {}) {
+/** A new shell in `cwd` (home when empty), its tab on show and the terminal out. `name`: its tab's. */
+function openShell(cwd, { name = "", line = "" } = {}) {
   ensurePip();
-  const open = action && shells.find((x) => x.action && x.action.id === action.id && x.action.folder === action.folder && x.action.machine === action.machine);
-  const sh = open || addShell({ id: `shell:${action ? "act-" : ""}${Date.now().toString(36)}${++shellSeq}`, cwd, name });
-  sh.action = action;
+  const sh = addShell({ id: `shell:${Date.now().toString(36)}${++shellSeq}`, cwd, name });
   sh.line = line;
   // Out before its terminal is made: it's sized from where it sits (the peek, open, or the Terminal view).
   if (!shellViewOn) peek = "open";
@@ -172,9 +168,7 @@ async function attachShell(sh) {
     drawShellTabs();
   });
   try {
-    const a = sh.action;
-    const r = a ? { gen: await invoke("actions_term_open", { folder: a.folder, machine: a.machine, id: a.id, sid: id, cols: term.cols, rows: term.rows }) }
-      : await invoke("shell_open", { id, cwd: sh.cwd, cols: term.cols, rows: term.rows });
+    const r = await invoke("shell_open", { id, cwd: sh.cwd, cols: term.cols, rows: term.rows });
     shellMac ||= r.host || "";
     if (shellOf(id)) { sh.gen = r.gen; sh.kept = !!r.kept; sh.mac ||= shellMac; drawShellTabs(); }
     // Opened to run something (`line`): typed in and run, once.

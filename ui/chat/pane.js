@@ -123,8 +123,8 @@ function openPane(a, full, crew = null) {
     ${subHead(s?.cwd || a.it?.cwd, sid)}
     ${sid ? addOn.chatTop(sid, { crew: !!crew }) : ""}
     ${sid ? `<div class="ap-bar">${barLabels(sid)}${bar(sid)}${barKey(sid)}</div>` : ""}
-    ${sessTabs(sid)}${sid ? statusPanel(a.it, s) : ""}
-    ${activeChat(a, full, crew)}${extSlot(sid)}${diffSlot(sid)}${aboutSlot(sid)}${actSlot(sid)}${bgSlot(sid)}
+    ${sessTabs(sid)}
+    ${activeChat(a, full, crew)}${extSlot(sid)}${diffSlot(sid)}${bgSlot(sid)}
     ${termDock(sid)}${paneFoot(a, full, crew)}${sid ? continueCover(sid) : ""}</div>`;
 }
 /** Under the chat: the full view's own foot, or the reply being read out, the crew's tray and the box (or the ask's

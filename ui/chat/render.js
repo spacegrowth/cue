@@ -122,7 +122,7 @@ function reviewFolds(ex, team) {
 
 /** `page`: a page that draws this chat as its own (the crew's page, team_page.js): `extra`, more rows of its own placed
  *  by time ({ at, html }, each keyed). It folds replies as the chat does. The Desk's lead chat (desk.js deskChat):
- *  `lines`, md's hook that draws the lead's own ITEM/ROUTE/DONE/CONTEXT lines; `noActs`, no Actions under its reply and no Send to… on its messages (the Desk's lead hands work on by its own lines). */
+ *  `lines`, md's hook that draws the lead's own ITEM/ROUTE/DONE/CONTEXT lines; `noActs`, no Send to… on its messages (the Desk's lead hands work on by its own lines). */
 function chatHtml(it, s, harness, paged = false, page = null) {
   // A page's own reading of what was said (the Desk drops the summary it put before your words): `page.said`.
   const ex = page?.said ? conversation(it, s).map(page.said) : conversation(it, s);
@@ -180,7 +180,7 @@ function chatHtml(it, s, harness, paged = false, page = null) {
     const said = addOn.reply(sid, e.text), listen = sid && proseWords(said.text, page?.lines) >= LISTEN_WORDS;
     return `<div class="cv-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}"><div class="cv-meta">${esc(agentName(harness))}${machTag(it?.machine || s?.machine)} · ${ago(e.at_ms)} ago${n === lastAgent ? toldMeta(s) : ""}</div>
       <div class="msg cv-text">${md(said.text, { runIn: s?.session_id, lines: page?.lines })}</div>${said.after}${thumbs(e.images)}${localImages(e.text)}
-      <div class="cv-acts">${listen ? listenBtn(key) : ""}${listen && paged ? `<button class="cv-pill" data-read="${esc(key)}">${BOOK_ICON}Read</button>` : ""}${foldable ? `<button class="cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}${n === lastAgent && !page?.noActs ? actReplyHtml(s, e.at_ms) : ""}${page?.noActs ? "" : `<button class="cv-fwd" data-fwd="${esc(key)}">↗ Send to…</button>`}</div>${follow}</div>`;
+      <div class="cv-acts">${listen ? listenBtn(key) : ""}${listen && paged ? `<button class="cv-pill" data-read="${esc(key)}">${BOOK_ICON}Read</button>` : ""}${foldable ? `<button class="cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}${page?.noActs ? "" : `<button class="cv-fwd" data-fwd="${esc(key)}">↗ Send to…</button>`}</div>${follow}</div>`;
   })(), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran, restarts, page?.extra || []));
   for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(outboxRow(o, s, K(`out:${o.at}`)));
   // Sent while it worked: Cue keeps it until the turn ends. Yours to take back (Edit, Esc) or send now. (What Cue

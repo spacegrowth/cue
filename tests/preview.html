@@ -126,33 +126,10 @@
         if (/reader=1/.test(q)) setTimeout(() => document.querySelector("[data-read]")?.click(), 600);
         // ?bg=1: the "2 bg" on the names card is clicked, opening that session onto its newest running agent.
         if (/bg=1/.test(q)) setTimeout(() => document.querySelector('[data-bg-open="names"]')?.click(), 600);
-        // Actions (ui/actions.js), on agent-relay: ?actions=1 its Actions tab; ?palette=1 ⌘E; ?trust=1 the tab, then its
-        // agent changes the file (the trust sheet opens on its own); ?editAction=1 ✎ on Install; ?actlog=1 Test's output;
-        // ?suggest=1 a finished turn that changed package.json, a migration and src (suggestions under the reply: one to
-        // run, one failed, one running); ?running=1 agent-relay pinned with two servers, its dots' popover open;
-        // ?ask=1 order-engine (working): ⌘E, ↵ on Install, which asks Run now / After this turn.
-        if (/suggest=1/.test(q)) { const r = state.sessions.find((x) => x.session_id === "relay"); r.changes = { files: [{ path: "package.json", add: 2, del: 1 }, { path: "migrations/0042_add_spend.sql", add: 14, del: 0 }, { path: "src/board.ts", add: 48, del: 3 }], add: 64, del: 4 }; }
-        if (/running=1/.test(q)) state.settings.project = { ...(state.settings.project || {}), pins: ["agent-relay"] };
-        if (/[?&](actions|palette|trust|editAction|actlog|suggest)=1/.test(q)) setTimeout(() => {
-          setActive(null, "relay");
-          if (/palette=1/.test(q)) return setTimeout(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "e", metaKey: true, bubbles: true })), 200);
-          if (/suggest=1/.test(q)) return;
-          setTimeout(() => {
-            document.querySelector('[data-ac="tab"]')?.click();
-            if (/trust=1/.test(q)) setTimeout(() => CueBridge.world.agentChangesActions(), 700);
-            if (/editAction=1/.test(q)) setTimeout(() => document.querySelector('[data-ac="edit"][data-id="shared:Install"]')?.click(), 400);
-            if (/actlog=1/.test(q)) setTimeout(() => document.querySelector('.ac-row [data-ac="log"][data-id="shared:Test"]')?.click(), 400);
-          }, 200);
-        }, 120);
         // ?newproj=1 + New in a plain folder: its Project line, its list open (Put in a project…).
         if (/newproj=1/.test(q)) setTimeout(() => {
           document.dispatchEvent(new KeyboardEvent("keydown", { key: "n", metaKey: true, bubbles: true }));
           setTimeout(() => { draft("new-cwd").text = "~/scratch/notes"; renderMain(); setTimeout(() => { document.querySelector('[data-lv="proj-open"]')?.click(); }, 200); }, 200);
-        }, 120);
-        if (/running=1/.test(q)) setTimeout(() => { setActive(null, "relay"); setTimeout(() => document.querySelector('.ac-dots[data-where="pin"]')?.click(), 500); }, 120);
-        if (/ask=1/.test(q)) setTimeout(() => {
-          setActive(null, "eng");
-          setTimeout(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "e", metaKey: true, bubbles: true })); setTimeout(() => document.querySelector('[data-text="ac-find"]')?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })), 500); }, 200);
         }, 120);
         // With ?ins=1: &inss=open opens agent-relay's fresh-session plan (its chip by the box), =busy is its button
         // just tapped (insights.js handoffChip).

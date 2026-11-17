@@ -682,18 +682,6 @@ test("a picture its reply points to shows under it, and ![words](path) reads as 
   await expect(said.locator(".thumbs.shots .thumb")).toHaveCount(1);
 });
 
-test("the project's action buttons stay in its chat, not in the Inbox reply", async ({ cue, page }) => {
-  await cue.open("board-waiting");
-  await page.locator('.switch-view [data-view="inbox"]').click();
-  await page.locator('[data-inbox-fold="run"]').click();
-  await page.locator('.ib-row[data-inbox-open="eng"]').click();
-  const pg = page.locator('.inbox-page[data-inbox-page="eng"]');
-  await expect(pg.locator(".ib-box textarea")).toBeVisible();
-  // Its project has actions (the chat shows them under its latest reply), and the Inbox leaves them out.
-  await expect.poll(() => page.evaluate(() => actReplyHtml(sessionOf("eng"), 0))).toContain("ac-sugs");
-  await expect(pg.locator(".ac-sugs")).toHaveCount(0);
-});
-
 test("an earlier message shows two lines, with more when that cuts it; a click opens it whole, with less", async ({ cue, page }) => {
   await cue.open("board-waiting");
   const long = Array.from({ length: 12 }, (_, n) => `Sentence ${n} of an earlier reply that runs on for a while.`).join(" ");

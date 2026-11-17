@@ -219,7 +219,6 @@ const dvMemberOn = () => (dv.member && dv.cur && dv.member.sid === dv.cur.id ? d
 
 /** A crew member's Diff (team.js): the session's Diff tab, on that member's files. */
 function diffShowMember(sid, agent, name) {
-  actTabOn.delete(sid);
   bgTabOn.delete(sid);
   extTabOf.set(sid, DIFF_TAB);
   dv.member = { sid, agent, name, n: null };
