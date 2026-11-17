@@ -88,6 +88,9 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     }
     // What was waiting before the restart: the Dock badge shows it now.
     hub.show_waiting();
+    // Up: the commit this Cue runs, for an install that started it to see it came up (self_install; else it puts
+    // the old Cue back).
+    crate::self_install::note_running();
     tickers::usage_file(&hub);
     if std::env::var_os("CUE_QUIET").is_none() {
         tickers::updates(app.handle());
