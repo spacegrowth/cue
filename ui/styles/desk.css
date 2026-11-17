@@ -17,7 +17,7 @@
 .dk-srow:hover { background: var(--panel-2); }
 .dk-srow.crew { margin-left: 22px; padding: 10px 14px; }
 .dk-srow.on { background: var(--sel); color: var(--on-sel); }
-.dk-s1 { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.dk-s1 { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .dk-s1 .dk-nm { flex: 0 1 auto; min-width: 0; font-size: 13.5px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-pill { flex: none; padding: 1px 6px; border-radius: var(--pill-radius); font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
 .dk-pill.lead { background: var(--accent); color: var(--on-accent); }
@@ -26,23 +26,35 @@
 .dk-srow.past { opacity: .6; }
 .dk-sfold { display: block; margin: 0 8px 8px 22px; padding: 4px 12px; border: 0; background: none; color: var(--muted); font: 600 12px var(--sans); cursor: pointer; }
 .dk-sfold:hover { color: var(--ink); }
-.dk-st { flex: 0 0 auto; max-width: 50%; min-width: 0; display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; }
+.dk-st { flex: 0 0 auto; max-width: 50%; min-width: 0; margin-left: auto; display: flex; align-items: center; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; }
 .dk-st > b { min-width: 0; font-weight: inherit; overflow: hidden; text-overflow: ellipsis; }
-.dk-st > i { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--work); }
-.dk-st > i.ask { background: var(--deny); }
-.dk-st > i:not(.ask):not(.idle) { background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
-.dk-st > i.idle { background: none; box-shadow: inset 0 0 0 1.5px var(--muted); }
+/* The state mark before a session's name (pick G): working, a ring whose arc turns once every 2.8s (paused under reduced
+   motion; the row itself never moves); waiting on you, a still red dot; idle, a hollow ring. */
+.dk-mk { flex: none; width: 12px; height: 12px; display: inline-grid; place-items: center; }
+.dk-mk > i { width: 8px; height: 8px; border-radius: 50%; }
+.dk-mk > i.ask { background: var(--deny); }
+.dk-mk > i.idle { box-shadow: inset 0 0 0 1.5px var(--muted); }
+.dk-ring { display: block; }
+.dk-ring-bg { stroke: var(--line); }
+.dk-ring-arc circle { stroke: var(--accent); }
+.dk-ring-arc { transform-origin: 6px 6px; transform-box: view-box; animation: dk-ring-turn 2.8s linear infinite; }
+@keyframes dk-ring-turn { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .dk-ring-arc { animation-play-state: paused; } }
+.dk-srow.on .dk-ring-bg { stroke: color-mix(in oklab, var(--on-sel) 25%, transparent); }
+.dk-srow.on .dk-ring-arc circle { stroke: var(--on-sel); }
+.dk-srow.on .dk-mk > i.idle { box-shadow: inset 0 0 0 1.5px var(--on-sel); }
 /* Narrow: a session's mark sits above its line, not beside it, so its name keeps the row's width; its state gives first. */
 @media (max-width: 1100px) {
   .dk-srow:has(.dk-rmark) { padding-top: 22px; }
   .dk-srow:has(.dk-rmark) > .dk-s1 { padding-right: 0; }
   .dk-s1 .dk-st { flex-shrink: 3; }
 }
-.dk-s2 { display: flex; align-items: center; gap: 8px; margin-top: 6px; color: var(--ink); font-size: 12.5px; white-space: nowrap; }
+/* What it holds and its step sit under its name, past the state mark. */
+.dk-s2 { display: flex; align-items: center; gap: 8px; margin: 6px 0 0 20px; color: var(--ink); font-size: 12.5px; white-space: nowrap; }
 .dk-s2 > .dk-w { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .dk-s2 .dk-none { color: var(--muted); }
 .dk-s2 > .dk-sadd { margin-left: auto; flex: none; }
-.dk-s3 { margin-top: 3px; color: var(--muted); font: 11px var(--mono); }
+.dk-s3 { margin: 3px 0 0 20px; color: var(--muted); font: 11px var(--mono); }
 .dk-s3.hot { color: var(--amber); font-weight: 600; }
 .dk-s3.dk-now { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-srow.on .dk-st, .dk-srow.on .dk-s2, .dk-srow.on .dk-s3:not(.hot), .dk-srow.on .dk-id, .dk-srow.on .dk-none { color: var(--on-sel); }
@@ -61,8 +73,6 @@
 
 /* Group labels: Waiting on you (red: it needs you), Not given out yet, Done today (folds). */
 .dk-gh { display: flex; align-items: center; gap: 6px; margin: 14px 8px 4px; padding: 0 12px; font: 700 11px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); background: none; border: 0; text-align: left; }
-/* The Desk's lead, in its own spot above the session list (desk.js deskSessions). */
-.dk-leadspot { flex: 0 0 auto; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
 .dk-gh.you:not(.none) { color: var(--deny); }
 /* The finished items' end: holds a row's room while the next ones load, so nothing below or above jumps. */
 .dk-more { min-height: 44px; display: flex; align-items: center; padding: 0 20px; color: var(--muted); font-size: 12px; }
@@ -406,13 +416,33 @@
 .nd-drop .nf-dopt.on .pdot { box-shadow: 0 0 0 1.5px var(--on-accent); }   /* its dot stays seen on the lit row */
 .nd-hint { margin-top: 8px; color: var(--muted); font-size: 12.5px; }
 .nd-acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
-/* The Sessions head: ‹ to every Desk, the Desk's name with ✎ on hover. */
-.dk-sh { padding-left: 8px; gap: 6px; }
-.dk-home-btn { all: unset; flex: none; height: 24px; padding: 0 8px 0 4px; display: inline-flex; align-items: center; border-radius: 6px; color: var(--muted); font-size: 12px; font-weight: 650; white-space: nowrap; cursor: pointer; }
-.dk-home-btn:hover, .dk-home-btn:focus-visible { background: var(--panel-2); color: var(--ink); }
-.dk-shn { display: flex; flex-direction: column; min-width: 0; padding: 6px 0; }
-.dk-shr { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.dk-shr b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The Sessions head (pick B2): one lime strip set 8px in from the card's sides, 12px round, so in light it never runs
+   into the window's dark green: ‹ Desks and ⋯ (hand the Desk on), the Desk's name with ✎ on hover, its meta line; then
+   the lead's card inside it. Light: the selected lime with dark text and a 1px inner edge; dark: the accent (the same
+   lime) with on-accent text. */
+.dk-strip { --dk-edge: color-mix(in oklab, var(--sel) 82%, var(--on-sel)); --dk-lead-out: var(--accent); --dk-lead-lift: 0 1px 2px color-mix(in oklab, var(--on-sel) 12%, transparent); flex: none; margin: 8px 8px 4px; padding: 8px 12px 12px; border-radius: 12px; background: var(--sel); color: var(--on-sel); box-shadow: inset 0 0 0 1px var(--dk-edge); }
+:root[data-theme="dark"] .dk-strip { --dk-edge: transparent; --dk-lead-out: var(--on-accent); --dk-lead-lift: none; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .dk-strip { --dk-edge: transparent; --dk-lead-out: var(--on-accent); --dk-lead-lift: none; } }
+.dk-sh { display: flex; flex-direction: column; min-width: 0; }
+.dk-stop { display: flex; align-items: center; margin-left: -4px; }
+.dk-home-btn { all: unset; flex: none; height: 24px; padding: 0 8px 0 4px; display: inline-flex; align-items: center; border-radius: 6px; color: inherit; opacity: .8; font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.dk-home-btn:hover, .dk-home-btn:focus-visible { opacity: 1; background: color-mix(in oklab, var(--on-sel) 10%, transparent); }
+.dk-shr { display: flex; align-items: center; gap: 6px; min-width: 0; margin-top: 4px; }
+.dk-shr b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; font-weight: 700; }
+.dk-strip .dk-sub { color: inherit; opacity: .75; font-size: 11px; }
+.dk-sh .dk-ren, .dk-strip .dk-more-btn { color: inherit; }
+.dk-sh .dk-ren:hover, .dk-strip .dk-more-btn:hover, .dk-strip .dk-more-btn:focus-visible { background: color-mix(in oklab, var(--on-sel) 10%, transparent); color: inherit; }
+/* The lead's card: white (dark: the panel) with a soft lift; while its chat shows, a 2px dark outline, never a fill. */
+.dk-lcard { margin-top: 10px; padding: 9px 11px; border-radius: 10px; background: var(--panel); color: var(--ink); box-shadow: var(--dk-lead-lift); cursor: pointer; }
+.dk-lcard.on { box-shadow: 0 0 0 2px var(--dk-lead-out); }
+.dk-lcard:focus-visible { outline: 2px solid var(--dk-lead-out); outline-offset: 2px; }
+.dk-lcard .dk-lk { flex: none; font: 700 10px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.dk-lcard .dk-s2, .dk-lcard .dk-s3 { margin-left: 0; }
+.dk-lcard .dk-s2 { font-size: 12px; }
+.dk-lcard:hover .dk-sren { opacity: 1; }
+/* Under the strip: the other sessions counted by state. */
+.dk-sum { flex: none; margin: 6px 20px 2px; color: var(--muted); font-size: 12px; }
+.dk-sum b { font-weight: 650; color: var(--ink); }
 .dk-ren { all: unset; flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; color: var(--muted); cursor: pointer; opacity: 0; }
 .dk-sh:hover .dk-ren, .dk-ren:focus-visible { opacity: 1; }
 .dk-ren:hover { background: var(--panel-2); color: var(--ink); }
@@ -421,7 +451,6 @@
 .dk-sren { width: 20px; height: 20px; margin-left: -6px; }
 .dk-srow:hover .dk-sren, .dk-sch:hover .dk-sren { opacity: 1; }
 .dk-ren-in { width: 190px; padding: 2px 7px; }
-.dk-leadspot .dk-gh { margin-right: 10px; }
 .dk-more-btn { all: unset; display: grid; place-items: center; width: 24px; height: 20px; border-radius: 6px; color: var(--muted); cursor: pointer; }
 .dk-more-btn:hover, .dk-more-btn:focus-visible { background: var(--panel-2); color: var(--ink); }
 .dk-none { color: var(--muted); font-size: 12.5px; }
@@ -483,7 +512,6 @@
 .dk-undo-c { all: unset; cursor: pointer; color: var(--accent); }
 .dk-undo-c:hover { text-decoration: underline; }
 
-.dk-srow.on .dk-st > i:not(.ask):not(.idle) { background: var(--on-sel); }
 .dk-chk .dk-chk-back { white-space: pre-wrap; }
 
 /* An item's kind (deskKindIcon): one small line icon in the theme color, wherever an item's kind shows. */

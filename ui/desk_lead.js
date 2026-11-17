@@ -1,6 +1,6 @@
 // Cue UI desk_lead — who runs a Desk, and adding to it (ui/desk.js draws the rest). Each project's Desk has one lead:
 // a normal session you pick ("Who runs this Desk?") or a new one Cue starts; you tell it, it does the work or hands it
-// out. Here: the picker (zero, one or several sessions; "Keep <name>" when changing), ⋯ beside "Runs this Desk", the
+// out. Here: the picker (zero, one or several sessions; "Keep <name>" when changing), ⋯ in the head strip, the
 // ended lead's line, "Give to…" on an item no one holds, and the quick-add line at the top of Items (Enter adds; an
 // optional Done when; several pasted lines add one item a line; ⌘N focuses it). An item you add has no kind: the
 // lead says whether it's a bug, a feature or a task as it routes it. Commands: desk_set_lead, desk_add, desk_give.
