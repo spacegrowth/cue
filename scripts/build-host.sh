@@ -28,9 +28,11 @@ while [ $# -gt 0 ]; do
 done
 mkdir -p "$OUT"
 cd "$ROOT/src-tauri"
+# Where cargo puts what it builds: its own folder, or the one a self-install points it at (CARGO_TARGET_DIR).
+TARGET="${CARGO_TARGET_DIR:-target}"
 
 cargo build -q -p cue-host --release
-BUILD="$(target/release/cue-host version | awk '{print $2}')"
+BUILD="$("$TARGET"/release/cue-host version | awk '{print $2}')"
 [ -n "$BUILD" ] || { echo "build-host: cue-host didn't say its build"; exit 1; }
 
 have() { [ -f "$OUT/BUILD" ] && [ "$(cat "$OUT/BUILD")" = "$BUILD" ] && [ -x "$OUT/$1" ]; }
@@ -41,7 +43,7 @@ if [ "$built" = 0 ]; then
   # Another build's files go first, so the folder never mixes builds.
   rm -f "$OUT"/cue-host-* "$OUT/SHA256SUMS" "$OUT/BUILD"
   for t in aarch64-apple-darwin x86_64-apple-darwin; do cargo build -q -p cue-host --release --target "$t"; done
-  lipo -create -output "$OUT/cue-host-darwin" target/aarch64-apple-darwin/release/cue-host target/x86_64-apple-darwin/release/cue-host
+  lipo -create -output "$OUT/cue-host-darwin" "$TARGET"/aarch64-apple-darwin/release/cue-host "$TARGET"/x86_64-apple-darwin/release/cue-host
   # Linux: musl's own C library and start files come with Rust's target (self-contained), linked by rust-lld, so
   # no C toolchain for Linux is needed here. The host's crates are all Rust.
   for arch in "${LINUX[@]}"; do
@@ -50,7 +52,7 @@ if [ "$built" = 0 ]; then
     # Added to RUSTFLAGS (a release sets it, and it would win over a per-target setting); with --target it reaches
     # only the program, never build scripts, which run here.
     RUSTFLAGS="${RUSTFLAGS:-} -C linker=rust-lld -C linker-flavor=ld.lld -C link-self-contained=yes" cargo build -q -p cue-host --release --target "$t"
-    cp "target/$t/release/cue-host" "$OUT/cue-host-linux-$arch"
+    cp "$TARGET/$t/release/cue-host" "$OUT/cue-host-linux-$arch"
   done
   chmod 755 "$OUT"/cue-host-*
 fi
