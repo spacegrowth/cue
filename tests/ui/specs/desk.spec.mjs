@@ -345,6 +345,10 @@ test("Desk home: one row a Desk with what it's about, its people, open tasks, bu
   for (let k = 0; k < 3; k++) await expect(cells.nth(k)).toHaveText(/^(–|\d+ open(\d+ working|none moving)?( · )?(\d+ to check)?)$/);
   await expect(cue1.locator(".dh-on b")).toHaveText("web-lead");
   await expect(page.locator(".dh-tbl [title]")).toHaveCount(0);
+  // A kind whose only open item is finishing (#181) is moving: "1 finishing", not "none moving".
+  await expect(cells.nth(0).locator(".dh-sm")).toHaveText("none moving");
+  await cue.change((st) => { Object.assign(st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d6"), { state: "finishing", finish: { step: "building" } }); });
+  await expect(cells.nth(0).locator(".dh-sm")).toHaveText("1 finishing");
   await rows.nth(1).click();
   await expect(page.locator(".dk-items .dk-it").first()).toHaveAttribute("data-desk-item", "w1");
   // ‹ Desks in the Sessions head: back to Desk home, then into another.
@@ -2780,4 +2784,117 @@ test("an item with mocks has \"Open the mocks\" in its header; waiting on a pick
   await expect(head.locator(".dk-pickl")).toHaveCount(0);
   await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5").designs = ""; });
   await expect(head.locator("a.dk-dlink")).toHaveCount(0);
+});
+
+// Done means it's in your app (#181): a DONE is committed, built and installed before it's yours to check.
+/** Item `id` of the cue Desk changed by `patch` (merged in). */
+const patchItem = (cue, id, patch) => cue.change((st, [k, p]) => { Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === k), p); }, [id, patch]);
+
+test("a finishing item: amber and steady, its step under its title, Install now only while it waits its turn; not waiting on you; its row stays put (#181)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  const before = await listOrder(page);
+  await patchItem(cue, "d5", { state: "finishing", finish: { step: "commit_wait", wait: "web-lead is editing ui/desk.js", at: Date.now() } });
+  const row = page.locator('.dk-items [data-desk-item="d5"]');
+  await expect(row).toHaveClass(/\bdk-fin\b/);
+  await expect(row.locator(".dk-who")).toHaveText("committing · waits: web-lead is editing ui/desk.js");
+  // Steady: no blinking dot; amber, not the red of an ask.
+  await expect(row.locator(".dk-si .dk-blink")).toHaveCount(0);
+  const amber = await page.evaluate(() => { const e = document.createElement("i"); e.style.color = "var(--amber)"; document.body.append(e); const c = getComputedStyle(e).color; e.remove(); return c; });
+  await expect(row.locator(".dk-fstep")).toHaveCSS("color", amber);
+  // Only its step: its title keeps the ink of any row.
+  await expect(row.locator(".dk-t")).not.toHaveCSS("color", amber);
+  await expect(row.locator(".dk-instnow")).toHaveCount(0);
+  // Not counted as waiting on you, and where it was in the list.
+  await expect(page.locator(".dk-items .dk-gh.you")).toContainText("2");
+  expect(await listOrder(page)).toEqual(before);
+
+  await patchItem(cue, "d5", { finish: { step: "queued", commit: "abc9999", at: Date.now() } });
+  await expect(row.locator(".dk-who")).toHaveText("committed · installs in a moment");
+  await expect(row.locator(".dk-instnow")).toHaveText("Install now");
+  await expect(row.locator(".dk-instnow")).not.toHaveAttribute("title", /.*/);
+  // Its page: the Finishing pill, the step in its line, Install now among its buttons.
+  await row.locator(".dk-t").click();
+  const pane = page.locator(".dk-right .dk-pane");
+  await expect(pane.locator(".dk-pill")).toHaveText("Finishing");
+  await expect(pane.locator(".dk-state")).toContainText("committed · installs in a moment");
+  await expect(pane.locator('.dk-acts [data-desk-act="install_now"]')).toHaveText("Install now");
+  await expect(pane.locator('[data-desk-act="looks_right"]')).toHaveCount(0);
+  await cue.override("desk_item_act", () => null);
+  await row.locator(".dk-instnow").click();
+  await cue.called("desk_item_act", { id: "d5", act: "install_now" });
+  // Clicking it doesn't close the page it's on.
+  await expect(pane.locator("h1")).toContainText("#d5");
+
+  await patchItem(cue, "d5", { finish: { step: "building", commit: "abc9999", at: Date.now() } });
+  await expect(row.locator(".dk-who")).toHaveText("building…");
+  await expect(page.locator('[data-desk-act="install_now"]')).toHaveCount(0);
+  await patchItem(cue, "d5", { finish: { step: "installing", commit: "abc9999", at: Date.now() } });
+  await expect(row.locator(".dk-who")).toHaveText("installing…");
+  expect(await listOrder(page)).toEqual(before);
+});
+
+test("a failed build waits on you with its question; its page has the log's last lines in mono, Show all opens the rest (#181)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  const log = Array.from({ length: 20 }, (_, n) => `line ${n + 1}`).join("\n");
+  await patchItem(cue, "d5", { state: "needs_you", latest: "The build failed", finish: { step: "failed", question: "The build failed", log, at: Date.now() } });
+  const row = page.locator('.dk-items [data-desk-item="d5"]');
+  await expect(row.locator(".dk-h")).toHaveText("The build failed");
+  await expect(page.locator(".dk-items .dk-gh.you")).toContainText("3");
+  await row.locator(".dk-t").click();
+  const pane = page.locator(".dk-right .dk-pane");
+  await expect(pane.locator(".dk-chain")).toContainText("The build failed");
+  const pre = pane.locator(".dk-flog");
+  await expect(pre).toHaveText(Array.from({ length: 6 }, (_, n) => `line ${n + 15}`).join("\n"));
+  await expect(pre).toHaveCSS("font-family", /mono|Menlo|Courier/i);
+  await pane.locator(".dk-flog-more").click();
+  await expect(pre).toHaveText(log);
+  await expect(pre).toHaveCSS("overflow-y", "auto");
+  await expect(pane.locator(".dk-flog-more")).toHaveText("Show less");  // Try again, once you've seen to it: finishing runs again (retry_finish).
+  await cue.override("desk_item_act", () => null);
+  await pane.locator('.dk-acts [data-desk-act="retry_finish"]').click();
+  await cue.called("desk_item_act", { id: "d5", act: "retry_finish" });
+});
+
+test("Looks right on an item committed as it finished only closes it: its commit in its state line, never \"waiting for install\" (#181)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await cue.change((s) => { s.desk.installed_ms = 1793984280000 - 60000; });
+  await openDesk(page);
+  await patchItem(cue, "d2", { files: ["ui/a.js"], commit: "abc9999", finish: { step: "installed", commit: "abc9999", at: Date.now() } });
+  const row = page.locator('.dk-items [data-desk-item="d2"]');
+  await expect(row.locator(".dk-who")).toHaveText("web-lead");
+  await expect(row.locator(".dk-ok")).toHaveCount(1);
+  await row.locator(".dk-t").click();
+  const pane = page.locator(".dk-right .dk-pane");
+  await expect(pane.locator(".dk-pill")).toHaveText("To check");
+  await expect(pane.locator(".dk-state")).toContainText("ready to check · from web-lead · committed abc9999");
+  await expect(pane.locator(".dk-chk-in")).toContainText("In the installed Cue");
+  await expect(pane.locator('[data-desk-act="looks_right"]')).toHaveCount(1);
+  // The hub only closes it (nothing more committed).
+  await cue.override("desk_looks_right", ({ id }) => {
+    const it = CueBridge.world.state.desk.projects[0].items.find((i) => i.id === id);
+    Object.assign(it, { state: "done", done_at: Math.floor(Date.now() / 1000) });
+    CueBridge.emit("state", CueBridge.world.snapshot());
+    return { commit: it.commit, files: 0, waiting: [] };
+  });
+  await pane.locator('[data-desk-act="looks_right"]').click();
+  await cue.called("desk_looks_right", { id: "d2" });
+  await expect(page.locator(".toast").last()).toHaveText("Committed abc9999");
+  await expect(row).toHaveClass(/\bdk-done\b/);
+});
+
+test("an item to check from before (files, no commit) keeps today's: waiting for install till Cue has it, and Looks right commits its files (#181)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await cue.change((s) => { s.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d2").files = ["ui/send.js", "ui/styles/send.css"]; s.desk.installed_ms = 1793984280000 - 60000; });
+  await openDesk(page);
+  const row = page.locator('.dk-items [data-desk-item="d2"]');
+  await expect(row.locator(".dk-who")).toContainText("waiting for install");
+  await expect(row.locator(".dk-ok")).toHaveCount(0);
+  await cue.change((s) => { s.desk.installed_ms = 1793984280000 + 60000; });
+  await expect(row.locator(".dk-ok")).toHaveCount(1);
+  await expect(row.locator(".dk-cm")).toHaveCount(0);
+  await row.locator(".dk-ok").click();
+  await cue.called("desk_looks_right", { id: "d2" });
+  await expect(page.locator(".toast").last()).toContainText("Committed abc1234 · 2 files");
 });

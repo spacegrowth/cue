@@ -98,13 +98,13 @@ function deskCommitLine(i, said = false) {
 
 /** Project `d`'s Ready to check lines for the lead's chat (chat/render.js chatHtml `extra`): one per DONE, at its time. */
 function deskCheckRows(d) {
-  return (d?.checks || []).map((c) => ({ at: c.at, html: keyed(deskCheckLine(c), `chk:${c.id}:${c.at}`) }));
+  return (d?.checks || []).map((c) => ({ at: c.at, html: keyed(deskCheckLine(c, d), `chk:${c.id}:${c.at}`) }));
 }
 /** A DONE as one line between thin rules while it's the one to check: "Ready to check: [task] Task #125 title… 12m
  *  Check it ›", the item and Check it › opening its page (what to test, Looks right and Send back are there). Once
  *  checked, a quiet centred line: "You · looked at [task] #124 and said it looks right" (or sent it back), the last
  *  one's commit and Undo · back to check after it. */
-function deskCheckLine(c) {
+function deskCheckLine(c, d) {
   const num = `${deskKindIcon(c)}<b class="dk-inum">#${esc(c.id)}</b>`;
   if (!(c.last && c.state === "to_check")) {
     const said = c.state === "done" ? `looked at ${num} and said it looks right` : `sent ${num} back`;
@@ -112,5 +112,5 @@ function deskCheckLine(c) {
     return `<div class="dk-chk-done dk-cl"><span class="dk-cl-t"><b>You</b> · ${said}${cmt}</span></div>`;
   }
   const open = `data-desk-chk-item="${esc(c.id)}"`;
-  return `<div class="dk-rchk"><span class="dk-rchk-w">${deskChkUninstalled(c) ? "Waiting for install:" : "Ready to check:"}</span><button class="dk-rchk-it" ${open}>${deskKindIcon(c)}<b class="dk-inum">${esc(deskNum(c))}</b><span class="dk-rchk-t">${esc(c.title || "")}</span></button><span class="dk-cl-age">${ago(c.at)}</span><button class="dk-rchk-go" ${open}>Check it ›</button></div>`;
+  return `<div class="dk-rchk"><span class="dk-rchk-w">${deskChkUninstalled(c) && !deskFinCommit(d && deskItem(d.project, c.id)) ? "Waiting for install:" : "Ready to check:"}</span><button class="dk-rchk-it" ${open}>${deskKindIcon(c)}<b class="dk-inum">${esc(deskNum(c))}</b><span class="dk-rchk-t">${esc(c.title || "")}</span></button><span class="dk-cl-age">${ago(c.at)}</span><button class="dk-rchk-go" ${open}>Check it ›</button></div>`;
 }

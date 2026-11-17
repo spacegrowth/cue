@@ -127,6 +127,13 @@
 .dk-ok::before { content: "✓"; }
 .dk-it:hover .dk-ok, .dk-ok:focus-visible { background: var(--accent); color: var(--on-accent); }
 .dk-ok:hover { filter: brightness(1.15); }
+/* Finishing (#181): Cue commits, builds and installs it. Its step in amber, steady: nothing waits on you. Install now
+   (only while it waits its turn) is a small outlined button at the row's right. */
+.dk-fstep { color: var(--amber); }
+.dk-it.on .dk-fstep { color: inherit; }
+.dk-instnow { flex: none; margin-left: auto; padding: 2px 8px; border: 1px solid var(--amber); border-radius: 999px; background: none; color: var(--amber); font: 600 11px var(--sans); white-space: nowrap; cursor: pointer; }
+.dk-instnow:hover, .dk-instnow:focus-visible { background: color-mix(in srgb, var(--amber) 14%, transparent); }
+.dk-it.on .dk-instnow { border-color: currentColor; color: var(--on-sel); }
 .dk-h { grid-column: 2; margin-top: 1px; color: var(--ink); font-size: 12.5px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Selected: its words in the selected ink, as the Board's selected card. */
 .dk-it.on .dk-id, .dk-it.on .dk-who, .dk-it.on .dk-age, .dk-it.on .dk-h { color: var(--on-sel); }
@@ -291,6 +298,12 @@
 .dk-pill-new i, .dk-pill-queued i { background: none; box-shadow: inset 0 0 0 1.5px var(--muted); }
 .dk-pill-needs_you i { background: var(--deny); }
 .dk-pill-done i { background: var(--muted); }
+.dk-pill-finishing i { background: var(--amber); }
+/* A failed build's or start's log tail on its page: mono, its last few lines till Show all, then it scrolls. */
+.dk-flog { margin: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); color: var(--ink); font: 11px/1.45 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.dk-flog.open { max-height: 320px; overflow: auto; }
+.dk-flog-more { all: unset; margin-top: 6px; color: var(--accent); font-size: 12px; font-weight: 600; cursor: pointer; }
+.dk-flog-more:hover, .dk-flog-more:focus-visible { text-decoration: underline; }
 /* Pick 4 (Item thread, 16 Nov 2026): under the header, Thread, Decisions and Steps tabs (Drop at their right); the
    open one below. Thread is a time line: each message's age, its dot on a line, who and what kind, then its words. */
 .dk-ititle { display: flex; align-items: flex-start; gap: 12px; padding-right: 24px; }

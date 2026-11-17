@@ -77,7 +77,21 @@ const deskToday = (t) => deskMs(t) >= new Date(now()).setHours(0, 0, 0, 0);
 const deskChkUninstalled = (c) => !!c?.cue && !/^https?:\/\//.test(c.designs || "") && !((state.desk?.installed_ms || 0) > (c.edited || c.at));
 /** Item `i` is done but changes the app, and the installed Cue doesn't have it yet: nothing to try, so it isn't to check
  *  yet; it says "waiting for install" till Cue is installed. */
-const deskInstallWait = (i) => i?.state === "to_check" && deskChkUninstalled((state.desk?.projects || []).find((x) => x.project === i.project)?.checks?.find((c) => c.id === i.id && c.last));
+const deskInstallWait = (i) => i?.state === "to_check" && !deskFinCommit(i) && deskChkUninstalled((state.desk?.projects || []).find((x) => x.project === i.project)?.checks?.find((c) => c.id === i.id && c.last));
+/** The commit Cue made for item `i` when its session said DONE (hub: commit, build, install, then to check), or "". An
+ *  item with one went through that, so it's in the installed Cue: never "waiting for install". */
+const deskFinCommit = (i) => (i?.finish ? i.finish.commit || i.commit || "" : "");
+/** Item `i`'s DONE on its way into the app: Cue commits, builds and installs it. Nothing for you to do yet. */
+const deskFinishing = (i) => i?.state === "finishing";
+/** Where a finishing item is, in a short line: "committing · waits: web-lead is editing ui/desk.js", "building…". */
+function deskFinStep(i) {
+  const f = i.finish || {};
+  if (f.step === "commit_wait") return `committing${f.wait ? ` · waits: ${f.wait}` : ""}`;
+  if (f.step === "queued") return "committed · installs in a moment";
+  return { building: "building…", installing: "installing…", starting: "starting…" }[f.step] || "committing…";
+}
+/** Install now on a finishing item that waits its turn (step "queued"): it skips the wait for the others. */
+const deskInstallNow = (i, cls) => (deskFinishing(i) && i.finish?.step === "queued" ? `<button class="${cls}" data-desk-act="install_now" data-id="${esc(i.id)}">Install now</button>` : "");
 const deskWaits = (i) => i.state === "needs_you" || (i.state === "to_check" && !deskInstallWait(i));
 /** Items you've opened since they came back to check: id → its `updated` then (kept across restarts).
  *  SHORTCUT: kept in this window only, so another window or device still shows them as landed; move to a `seen`
@@ -140,7 +154,7 @@ function deskShowFile(id, n) {
   diffOverlay(`${deskNum(i)} ${i.title || ""}`.trim(), "Files changed", deskDiffs.get(id)?.files || [], n);
 }
 const deskDoneToday = (i) => i.state === "done" && deskToday(i.done_at || i.updated);
-const deskMoving = (i) => i.state === "working" || i.state === "queued";
+const deskMoving = (i) => i.state === "working" || i.state === "queued" || deskFinishing(i);
 /** A title cut short for a button or a line ("Search stays centred"): its first few words. */
 const deskShort = (t) => { const w = String(t || "").split(/\s+/); return w.length > 3 ? w.slice(0, 3).join(" ") : t; };
 
@@ -177,7 +191,7 @@ function deskGroups(project) {
   // In progress: its holder is on it. One left working by a crash or quit (its holder idle) waits with the queued.
   const onIt = (i) => i.state === "working" && !deskHolderIdle(i.holder);
   // Waiting for install: still on its way to you, with what's in progress.
-  const going = (i) => onIt(i) || deskInstallWait(i);
+  const going = (i) => onIt(i) || deskInstallWait(i) || deskFinishing(i);
   return { d, waiting, working: rest.filter(going), queued: rest.filter((i) => !going(i)), extra, done, all: items };
 }
 
@@ -197,11 +211,13 @@ function deskTag(i) {
 }
 /** Where an item stands, as its row's icon: waiting on you (an ask, or back to check), in progress, queued (also
  *  one waiting for its install), done. */
-const deskStateOf = (i) => (i.state === "done" ? "done" : i.state === "working" ? "work" : (i.state === "needs_you" || i.state === "to_check") && !deskInstallWait(i) ? "you" : "q");
+const deskStateOf = (i) => (i.state === "done" ? "done" : i.state === "working" ? "work" : deskFinishing(i) ? "fin" : (i.state === "needs_you" || i.state === "to_check") && !deskInstallWait(i) ? "you" : "q");
 const DESK_STATE_SVG = {
   you: '<circle cx="7" cy="7" r="5.5" stroke="var(--muted)" stroke-width="1.6"/><path d="M7 4.2v3.4" stroke="var(--muted)" stroke-width="1.6"/><circle cx="7" cy="9.9" r=".9" fill="var(--muted)"/>',
   work: '<circle cx="7" cy="7" r="5.5" stroke="var(--accent)" stroke-width="1.5"/><circle class="dk-blink" cx="7" cy="7" r="2.2" fill="var(--accent)"/>',
   q: '<circle cx="7" cy="7" r="5.5" stroke="var(--muted)" stroke-width="1.5"/><path d="M7 4.3V7l1.9 1.3" stroke="var(--muted)" stroke-width="1.5"/>',
+  // Finishing: amber and steady (no blink), as nothing waits on you.
+  fin: '<circle cx="7" cy="7" r="5.5" stroke="var(--amber)" stroke-width="1.5"/><circle cx="7" cy="7" r="2.2" fill="var(--amber)"/>',
   done: '<path d="m2.8 7.4 2.8 2.8 5.6-6" stroke="var(--muted)" stroke-width="1.7"/>',
 };
 const deskStateIcon = (i) => `<svg class="dk-si" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${DESK_STATE_SVG[deskStateOf(i)]}</svg>`;
@@ -216,12 +232,14 @@ function deskItemRow(i, lit, held = false) {
   // Lit by its session (clicked on the left) and at work: "working · host-lead · 4m", how long its session has been at it.
   const s = held && i.state === "working" ? sessionOf(i.holder?.sid) : null;
   const at = s ? (s.state === "working" && s.since_ms) || deskMs(i.updated) : 0;
-  const who = s ? `working · ${esc(deskHolderOf(i))} · <span data-ago="${at}">${ago(at)}</span>` : !i.holder && i.state !== "done" ? deskGive(i, "row") : deskInstallWait(i) ? `waiting for install · ${esc(deskHolderOf(i))}` : esc(deskHolderOf(i));
-  const when = s ? "" : i.state === "done" ? `${i.commit ? `<span class="dk-cm">committed ${esc(i.commit)}</span> · ` : ""}${clockAt(deskMs(i.done_at || i.updated))}` : ago(deskMs(i.created));
-  const ok = deskInstallWait(i) ? "" : i.state === "to_check" && deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id) : i.state === "to_check" ? `<button class="dk-ok" data-desk-act="looks_right" data-id="${esc(i.id)}" aria-label="Looks right"></button>`
+  const who = s ? `working · ${esc(deskHolderOf(i))} · <span data-ago="${at}">${ago(at)}</span>` : !i.holder && i.state !== "done" ? deskGive(i, "row") : deskInstallWait(i) ? `waiting for install · ${esc(deskHolderOf(i))}` : deskFinishing(i) ? `<span class="dk-fstep">${esc(deskFinStep(i))}</span>` : esc(deskHolderOf(i));
+  // Finishing: no age, so its step has the room.
+  const when = s || deskFinishing(i) ? "" : i.state === "done" ? `${i.commit ? `<span class="dk-cm">committed ${esc(i.commit)}</span> · ` : ""}${clockAt(deskMs(i.done_at || i.updated))}` : ago(deskMs(i.created));
+  const ok = deskInstallWait(i) ? "" : deskFinishing(i) ? deskInstallNow(i, "dk-instnow") : i.state === "to_check" && deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id) : i.state === "to_check" ? `<button class="dk-ok" data-desk-act="looks_right" data-id="${esc(i.id)}" aria-label="Looks right"></button>`
     : i.state === "done" ? `<button class="dk-undo" data-desk-act="reopen" data-id="${esc(i.id)}">Undo</button>` : "";
   // Its holder's question under the row; a holder that just stopped (no question) leaves only the "needs you" state.
-  const ask = i.state === "needs_you" && i.ask ? `<div class="dk-h">${esc(i.ask.text)}</div>` : "";
+  const q = i.state === "needs_you" ? i.ask?.text || i.finish?.question || "" : "";
+  const ask = q ? `<div class="dk-h">${esc(q)}</div>` : "";
   return `<div class="dk-it ${i.state === "needs_you" ? "ask" : ""} ${look === "landed" ? "landed" : ""} dk-${deskStateOf(i)} ${on ? "on" : ""}${i.state === "to_check" && deskLooksSoon.has(i.id) ? " soon" : ""}${deskLeaveStyle(i.id)}" role="button" tabindex="0" data-desk-item="${esc(i.id)}">
     ${deskStateIcon(i)}<div class="dk-i1"><span class="dk-tag ${look}">${tag}</span><span class="dk-t">${esc(i.title)}</span></div>
     <div class="dk-i2"><span class="dk-kid">${deskKindIcon(i)}<span class="dk-id">${esc(deskNum(i))}</span></span><span class="dk-who${s ? " held" : ""}">${who}</span><span class="dk-age">${when}</span>${ok}</div>${ask}</div>`;
@@ -638,7 +656,7 @@ function deskCheckInfo(i, d) {
   const n = (c.files || []).length, files = n ? ` · ${n === 1 ? "1 file" : `${n} files`}` : "";
   // In it when Cue was installed after the work last changed (`edited`), not after the DONE: you install, then say DONE.
   const mocks = /^https?:\/\//.test(c.designs || "") ? `<a class="dk-dlink" href="#" data-href="${esc(c.designs)}">Open the mocks ↗</a>` : "";
-  const inst = mocks || !c.cue ? mocks : deskChkUninstalled(c) ? "Not installed yet: install Cue to try it" : `In the installed Cue · installed ${esc(deskChkWhen(state.desk?.installed_ms || 0))}`;
+  const inst = mocks || !c.cue ? mocks : deskChkUninstalled(c) && !deskFinCommit(i) ? "Not installed yet: install Cue to try it" : `In the installed Cue · installed ${esc(deskChkWhen(state.desk?.installed_ms || 0))}`;
   return `<div class="dk-chk-info"><div class="dk-chk-w">Done by ${who} · ${ago(c.at)} ago${files}</div>${inst ? `<div class="dk-chk-in">${inst}</div>` : ""}</div>`;
 }
 const deskChkWhen = (ms) => new Date(ms).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
@@ -659,6 +677,8 @@ function deskAnswered(it, decision) {
  *  words (all of it, not a line cut short; the hub's latest when its session isn't here). */
 function deskQuestion(i) {
   if (i.ask) return i.ask.text || "";
+  // Cue's own, while it finishes it ("The build failed"): not its holder's words.
+  if (i.finish?.question) return i.finish.question;
   const last = [...(sessionOf(i.holder?.sid)?.thread || [])].reverse().find((e) => e.role === "agent")?.text || "";
   // Its calls made on its own (DECIDED) and its Desk lines (DONE, ITEM…) aren't what it asks you: they're dropped.
   const asked = last.split("\n").filter((l) => !DECIDED_LINE.test(l) && !DESK_SAY.test(l.trim())).join("\n").trim();
@@ -721,6 +741,9 @@ function deskItemActs(i) {
     : i.state === "new" ? b("start_now", "Start it now in a new session")
     // Its holder's turn cut off (a crash, a quit) leaves it "working" with nobody on it: sent to the holder again.
     : i.state === "working" && deskHolderIdle(i.holder) ? b("start_now", "Restart")
+    // Finishing stopped on a question (a build that failed, a word, a conflict): try it again once you've seen to it.
+    : i.finish?.question ? b("retry_finish", "Try again")
+    : deskFinishing(i) ? deskInstallNow(i, "btn small")
     : i.state === "done" ? `<div class="dk-chk-after">${deskCommitLine(i)}</div>` : "";
   const give = !i.holder && i.state !== "done" ? deskGive(i, "pane") : "";
   return acts || give ? `<div class="dk-acts">${give}${acts}</div>` : "";
@@ -729,18 +752,31 @@ function deskItemActs(i) {
  *  few seconds to take it back there too. None while it waits for an install or you're writing why to send it back. */
 function deskLooksTop(i) {
   if (i.state !== "to_check" || deskInstallWait(i) || deskBackFor === i.id) return "";
+  // Committed when its session said DONE: Looks right only closes it (its state line says which commit).
   return deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id) : `<button class="btn small primary" data-desk-act="looks_right" data-id="${esc(i.id)}">Looks right</button>`;
+}
+const DESK_LOG_FOLD = 6;
+/** Which items' build logs are open in full (Show all), by id. */
+const deskFinLogOpen = new Set();
+/** A failed build's or start's log tail on its item's page: mono, folded to a few lines, Show all opens it (and it
+ *  scrolls). Its last lines show folded. */
+function deskFinLog(i) {
+  const log = i.state === "needs_you" ? (i.finish?.log || "").trimEnd() : "";
+  if (!log) return "";
+  // Folded: its last lines, where a build says what went wrong.
+  const lines = log.split("\n"), open = deskFinLogOpen.has(i.id), long = lines.length > DESK_LOG_FOLD;
+  return `<pre class="dk-flog${open ? " open" : ""}">${esc(open ? log : lines.slice(-DESK_LOG_FOLD).join("\n"))}</pre>${long ? `<button class="dk-flog-more" data-desk-act="log_all" data-id="${esc(i.id)}">${open ? "Show less" : "Show all"}</button>` : ""}`;
 }
 /** Where it stands in a line: "Bug · next for web-lead · added by you 20m ago". */
 function deskItemState(i) {
   const who = i.holder ? `<b>${esc(i.holder.name)}</b>${i.crew ? ` → <b>${esc(i.crew)}</b>` : ""}` : "";
   const by = (pre) => (who ? ` ${pre} ${who}` : "");
-  const where = { new: "not given out yet", queued: `next${by("for")}`, working: who ? `with ${who}` : "at work", needs_you: `waits on you${who ? ` · with ${who}` : ""}`, to_check: deskInstallWait(i) ? `waiting for install${by("· from")}` : `ready to check${by("· from")}`, done: `done${by("by")}${i.commit ? ` · committed <span class="dk-cm">${esc(i.commit)}</span>` : ""}` }[i.state] || "";
+  const where = { new: "not given out yet", queued: `next${by("for")}`, working: who ? `with ${who}` : "at work", finishing: `<span class="dk-fstep">${esc(deskFinStep(i))}</span>${by("· from")}`, needs_you: `waits on you${who ? ` · with ${who}` : ""}`, to_check: deskInstallWait(i) ? `waiting for install${by("· from")}` : `ready to check${by("· from")}${deskFinCommit(i) ? ` · committed <span class="dk-cm">${esc(deskFinCommit(i))}</span>` : ""}`, done: `done${by("by")}${i.commit ? ` · committed <span class="dk-cm">${esc(i.commit)}</span>` : ""}` }[i.state] || "";
   // Its kind is the mark in the pane's header, at the left as on every chat header (deskMark): the line starts with its number, then where it is.
   return `<span class="dk-id">#${esc(i.id)}</span> · ${where} · added by ${esc(deskFrom(i, deskOf(i.project)))} ${ago(deskMs(i.created))} ago`;
 }
 /** Its state as a short word, for the pill in the item page's header. */
-const DESK_PILL = { new: "Not given out", queued: "Next", working: "Working", needs_you: "Waits on you", to_check: "To check", done: "Done" };
+const DESK_PILL = { new: "Not given out", queued: "Next", working: "Working", needs_you: "Waits on you", finishing: "Finishing", to_check: "To check", done: "Done" };
 /** An item's decisions as sentences: what was decided (its age at the right), why under it, then who and Undo. The
  *  same decision said again in a row is one entry marked "×N"; a click shows a long one in full. */
 function deskDecList(list) {
@@ -841,7 +877,7 @@ function deskItemPane(i, d) {
   // (deskCheckInfo).
   const dw = deskDoneWhenHtml(i.done_when), info = deskCheckInfo(i, d);
   const at = `${deskSec(i.state === "to_check" ? "What to check" : "Done when", `${dw ? `<div class="dk-idw">${dw}</div>` : ""}${info}`)}${deskSec("Couldn't give it out", i.route_failed ? `<p>${esc(i.route_failed)}</p>` : "")}${deskSec("Couldn't start", !i.holder && i.start_failed ? `<p>Cue couldn't start a new session for it: ${esc(i.start_failed)}</p>` : "")}
-    ${deskSec(i.state === "needs_you" ? "It asks you" : deskAnswerOf(i) ? "It asked you" : "What's holding it up", deskChain(i))}${deskSec("What it made", i.state === "to_check" || i.state === "done" ? deskMadeLinks(i) : "")}${deskItemActs(i)}
+    ${deskSec(i.state === "needs_you" ? "It asks you" : deskAnswerOf(i) ? "It asked you" : "What's holding it up", deskChain(i))}${deskSec("Build log", deskFinLog(i))}${deskSec("What it made", i.state === "to_check" || i.state === "done" ? deskMadeLinks(i) : "")}${deskItemActs(i)}
     ${i.split_from ? `<p class="dk-split">Split from <a href="#" data-desk-item="${esc(i.split_from)}">#${esc(i.split_from)}</a></p>` : ""}`;
   const body = tab === "decisions" ? (decs.length ? deskDecList(decs) : `<p class="dk-note">No decisions on it yet.</p>`)
     : tab === "steps" ? (steps.length ? deskLog(steps) : `<p class="dk-note">No steps yet.</p>`)
@@ -1001,7 +1037,7 @@ function deskLeadNow(d) {
   const [dot, word] = s ? deskSessState(s) : ["idle", "idle"];
   const fresh = d.items.filter((i) => i.state === "new" && !i.holder);
   const routing = word === "working" && fresh.length === 1 ? fresh[0] : null;
-  const held = d.items.filter((i) => i.holder && (i.state === "working" || i.state === "queued") && deskGroupKey(i.holder) !== lead.sid).length;
+  const held = d.items.filter((i) => i.holder && (deskMoving(i)) && deskGroupKey(i.holder) !== lead.sid).length;
   const waits = d.items.filter(deskWaits);
   const num = (i) => `${deskKindIcon(i)}<b class="dk-inum">#${esc(i.id)}</b>`;
   const wy = !waits.length ? "" : `<button class="dk-wy" data-desk-chk-item="${esc(waits[0].id)}">${waits.length === 1 ? `${num(waits[0])} waits on you` : `${waits.length} wait on you`} ›</button>`;
@@ -1181,6 +1217,7 @@ async function deskAct(id, act, el = null) {
   if (act === "looks_right") return deskLooksRight(id);
   if (act === "looks_undo") return deskLooksUndo(id);
   if (act === "reopen") return deskReopen(id);
+  if (act === "log_all") { if (!deskFinLogOpen.delete(id)) deskFinLogOpen.add(id); return renderMain(); }
   // Drop takes two clicks: the first arms it.
   if (act === "drop" && deskDropArm !== id) { deskDropArm = id; return renderMain(); }
   deskDropArm = null;
