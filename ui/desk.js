@@ -333,14 +333,44 @@ const deskSessItem = (d, sid) => deskSessItems(d, sid)[0] || null;
 /** Every open item session `sid` holds, the one it's on now first (working, then waiting on you, then the newest). */
 const deskSessItems = (d, sid) => d.items.filter((i) => i.state !== "done" && i.holder && i.holder.kind !== "crew" && i.holder.sid === sid)
   .sort((a, b) => (b.state === "working") - (a.state === "working") || (b.state === "needs_you") - (a.state === "needs_you") || (b.updated ?? 0) - (a.updated ?? 0));
-/** A session's context and cache, as the lead's summary says them (hub/desk_lead.rs context_note): "142k · cache 12m",
- *  or "142k · cold"; amber with under 5 minutes left. From its card's numbers (insights.js insCache); "" without. */
-function deskSessCache(sid) {
+/** A session row's size and cache, as its card says them: "142k · cache 3m" (minutes its cache has left)
+ *  or "142k · cold"; amber with under 5 minutes left. With `when` (an idle row), when its latest reply came first:
+ *  "2h ago · 142k · cold". From its card's numbers (insights.js insCache), asked for here when no card brings them
+ *  (deskInsAsk); "" without. */
+function deskSessCache(sid, when = false) {
+  deskInsAsk(sid);
   const c = typeof insCache !== "undefined" ? insCache.get(sid) : null;
   if (!c?.tokens) return "";
   const left = (c.until_ms || 0) - now();
   const cache = left > 0 ? ` · cache ${Math.ceil(left / 60000)}m` : c.until_ms ? " · cold" : "";
-  return `<div class="dk-s3 dk-size${left > 0 && left < HOT_CACHE_MS ? " hot" : ""}">${esc(insTok(c.tokens))}${cache}</div>`;
+  const at = when && c.last_ms ? `<span data-ago="${c.last_ms}">${ago(c.last_ms)}</span> ago · ` : "";
+  return `<div class="dk-s3 dk-size${left > 0 && left < HOT_CACHE_MS ? " hot" : ""}">${at}${esc(insTok(c.tokens))}${cache}</div>`;
+}
+/** The first line of a session's latest reply, from the same numbers ("" until they're in). */
+const deskSessSaid = (sid) => (typeof insCache !== "undefined" && insCache.get(sid)?.said) || "";
+/** Sessions on a Desk whose numbers no card brings (an idle one with its card gone, #185): asked for together,
+ *  each again a minute after it was last asked, so its last reply, size and cache show and stay current. */
+const deskInsAt = new Map();
+let deskInsWant = null;
+function deskInsAsk(sid) {
+  if (!sid || typeof insCache === "undefined" || (state.items || []).some((i) => i.session_id === sid)) return;
+  if (now() - (deskInsAt.get(sid) || 0) < 60000) return;
+  deskInsAt.set(sid, now());
+  if (deskInsWant) return deskInsWant.add(sid);
+  deskInsWant = new Set([sid]);
+  setTimeout(async () => {
+    const sids = [...deskInsWant];
+    deskInsWant = null;
+    try {
+      const r = (await invoke("insight_state", { sessionIds: sids })) || {};
+      let changed = false;
+      for (const id of sids) {
+        const c = r[id], had = insCache.get(id);
+        if (c && (!had || (c.last_ms || 0) >= (had.last_ms || 0)) && JSON.stringify(c) !== JSON.stringify(had)) { insCache.set(id, c); changed = true; }
+      }
+      if (changed) renderMain();
+    } catch {}
+  }, 0);
 }
 /** A working session's (or teammate's) current step and how long it's been at it, kept live (window.js ticks
  *  data-ago): "Editing ui/desk.js · 4m". "" when it isn't working or says no step. */
@@ -391,7 +421,9 @@ function deskSessions(project) {
     const crew = sid === leadSid ? "" : live.map((t) => mate(t, false)).join("") + fold;
     const add = onDesk(sid) ? "" : `<button class="btn small dk-sadd" data-desk-member="${esc(sid)}" data-project="${esc(project)}">Add to Desk</button>`;
     if (card) return deskSessRow({ name: deskHolderName(sid), sid, cls: "dk-lcard", pre: "Run by", dot, word, item: deskSessItem(d, sid), on: lit(sid), attrs, step: deskStepLine(dot === "", s.compacting_ms ? "Compacting…" : s.doing, s.compacting_ms || s.doing_ms), size: deskSessCache(sid) });
-    return deskSessRow({ name: deskHolderName(sid), sid, mark: sid === leadSid ? DESK_MARKS.desk : lead ? "Lead" : "Session", dot, word, item: deskSessItem(d, sid), on: lit(sid), attrs, step: deskStepLine(dot === "", s.compacting_ms ? "Compacting…" : s.doing, s.compacting_ms || s.doing_ms), size: deskSessCache(sid), add }) + crew;
+    // On no item: the first line of its latest reply, and when it came beside its size (#185).
+    const item = deskSessItem(d, sid), idle = dot !== "" && !item;
+    return deskSessRow({ name: deskHolderName(sid), sid, mark: sid === leadSid ? DESK_MARKS.desk : lead ? "Lead" : "Session", dot, word, item, line: idle ? deskSessSaid(sid) : "", on: lit(sid), attrs, step: deskStepLine(dot === "", s.compacting_ms ? "Compacting…" : s.doing, s.compacting_ms || s.doing_ms), size: deskSessCache(sid, idle), add }) + crew;
   };
   // The Desk's lead in a spot of its own at the top, never in the list. Then working ones first (a session moves only
   // when its state does, never on a click), then On the Desk, then Not on the Desk, each as Cue lists them. Crew stay

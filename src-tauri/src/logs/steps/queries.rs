@@ -258,8 +258,16 @@ pub fn insight_state(path: &str) -> Option<InsightState> {
     caught_up(path, |feed, _| {
         let m = &feed.meta;
         let until = if m.cache_ttl_s > 0 && m.last_call_ms > 0 { m.last_call_ms + m.cache_ttl_s * 1000 } else { 0 };
-        (m.context > 0).then_some(InsightState { until_ms: until, tokens: m.context, start: m.start_context, window: m.window, last_ms: m.last_call_ms, cold_x: m.cold_x, cold_cents: m.cold_cents, auto_at: m.auto_at })
+        let said = feed.turns.iter().rev().find_map(|t| t.items.iter().rev().find_map(|i| match i { Item::Say { text, .. } => first_line(text), _ => None })).unwrap_or_default();
+        (m.context > 0).then_some(InsightState { until_ms: until, tokens: m.context, start: m.start_context, window: m.window, last_ms: m.last_call_ms, cold_x: m.cold_x, cold_cents: m.cold_cents, auto_at: m.auto_at, said })
     })
+}
+
+/// A reply's first line with words in it, without its markdown marks (#, >, -, *, `), at most 160 characters; None
+/// when it has none.
+fn first_line(text: &str) -> Option<String> {
+    let line = text.lines().map(|l| l.trim_start_matches(['#', '>', '-', '*', ' ']).replace(['*', '`'], "")).map(|l| l.trim().to_string()).find(|l| !l.is_empty())?;
+    Some(if line.chars().count() > 160 { format!("{}…", line.chars().take(159).collect::<String>().trim_end()) } else { line })
 }
 
 /// How full the session's context is (the latest reply's tokens, as a share of the model's window), 0–100.

@@ -13,12 +13,13 @@ CueBridge.area("insights", (w) => {
   };
 
   return {
-    // ?cost=cold|warm|soon: every session asked about has 600k of context; its cache gone, or 8 or 3 minutes left.
+    // ?cost=cold|warm|soon: every session asked about has 600k of context; its cache gone, or 8 or 3 minutes left; its
+    // latest reply 4 hours ago, its first line "Done: <sid>'s rows read as rows.".
     insight_state: ({ sessionIds }) => {
       const cost = w.q.get("cost");
       if (!cost) return {};
       const until = { warm: w.now() + 8 * M, soon: w.now() + 3 * M }[cost] || w.now() - 180 * M;
-      return Object.fromEntries(sessionIds.map((sid) => [sid, { until_ms: until, tokens: 600000, start: 45000, last_ms: w.now() - 240 * M }]));
+      return Object.fromEntries(sessionIds.map((sid) => [sid, { until_ms: until, tokens: 600000, start: 45000, last_ms: w.now() - 240 * M, said: `Done: ${sid}'s rows read as rows.` }]));
     },
     insight_host_skills: () => ({ hosts: { "": ["handoff", "relay:handoff"], "build-box": [], "gpu-1": null }, reading: false }),
     insight_log: () => null,

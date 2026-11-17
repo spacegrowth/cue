@@ -1325,6 +1325,16 @@ test("written about an item ready to check, it's sent back with your words: off 
   await expect(page.locator(".dk-right .dk-pane h1")).toHaveText("Bug #d1 · Reply box loses focus after Send");
 });
 
+test("a session on no item says the first line of its latest reply, when it came, its size and cache, though no card brings them (#185)", async ({ page, cue }) => {
+  await cue.open("desk", { flags: "cost=cold" });
+  await openDesk(page);
+  await cue.change((st) => st.sessions.push({ ...st.sessions.find((x) => x.session_id === "site"), session_id: "spare", project: "cue", name: "spare", thread: [] }));
+  const row = page.locator('.dk-sessions [data-desk-chat-of="spare"]');
+  await expect(row.locator(".dk-s2 .dk-w")).toHaveText("Done: spare's rows read as rows.");
+  await expect(row.locator(".dk-size")).toHaveText("4h ago · 600k · cold");
+  await expect(row.locator("[data-desk-member]")).toHaveText("Add to Desk");
+});
+
 /** The Desk run by host instead, so "lead" (with its crew) is a session in the list like any other. */
 const crewNotLead = (cue) => cue.change((st) => { st.desk.projects.find((d) => d.project === "cue").lead = { sid: "host", name: "host-lead", state: "live" }; });
 
