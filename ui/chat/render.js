@@ -152,6 +152,9 @@ function chatHtml(it, s, harness, paged = false, page = null) {
     // What Cue sent the lead for its crew: Cue's bubble on the right, never yours (team.js). A page's own drawing first.
     const own = e.role === "you" && page?.you?.(e, n);
     if (own) return own;
+    // The Desk's hand-off of an item: a card, Cue's standing words to the session left out (desk_lead.js).
+    const hand = e.role === "you" && typeof deskHandHtml === "function" && deskHandHtml(e);
+    if (hand) return hand;
     const cue = e.role === "you" && cueSaid(e.text);
     if (cue) return cueSaidLine(cue, `${sid}:${e.at_ms}`, e.text, `${ago(e.at_ms)} ago`, reviewAt.get(n));
     if (reviews.has(n)) return "";

@@ -369,3 +369,49 @@ function deskNewCard([, id, said = "", rest], known, at) {
 const deskItemRef = (id, kind, num, title) => `<button class="dk-chk-a dk-new-t" data-desk-chk-item="${esc(id)}">${deskKindIcon(kind)}<b class="dk-inum">${esc(num)}</b>${title ? ` <span class="dk-new-tt">${esc(title)}</span>` : ""}</button>`;
 /** One of Cue's own lines in the lead's chat, centred between thin rules: "Cue · <what> <age>". */
 const deskCueLine = (html, at) => `<div class="dk-new dk-cl"><span class="dk-cl-t"><b>Cue</b> · ${html} <span class="dk-cl-age">${ago(at)}</span></span></div>`;
+
+// ---------- the Desk's hand-off, as a card in the chat of the session it went to (#174) ----------
+/** The Desk's hand-off (desk/mod.rs handed_words: "Desk item #171 (task): title", then "Done when:", "Pictures with
+ *  it", "Why you:", then Cue's standing words to the session, not shown) as a card on the right: "From <the Desk's
+ *  lead> · Task #171" (its number opening the item), its title, Done when as short lines, Why. Lines before it (Cue's
+ *  "Done? Write DONE: #171…") stay as a quiet line over it. null for any other message. */
+function deskHandHtml(e) {
+  const text = String(e.text || "");
+  const at = /(?:^|\n)(?:For your teammate (.+?): )?Desk item #([^\s:(]+)(?: \((bug|feature|task)\))?: (.*)/.exec(text);
+  if (!at) return null;
+  const [, mate, id, kind = "", title] = at;
+  const pre = text.slice(0, at.index).trim();
+  const rest = text.slice(at.index + at[0].length).split("\n");
+  // Its labelled parts, each running to the next label; Cue's standing words end it.
+  const parts = {};
+  let cur = null;
+  for (const l of rest) {
+    const m = /^(Done when|Pictures with it \(open each to see it\)|Why you): ?(.*)$/.exec(l);
+    if (m) { cur = m[1][0]; parts[cur] = m[2]; continue; }
+    if (/^(Fixes and next steps for it stay in|If you put its designs on a canvas|Say DONE: #)/.test(l)) { cur = null; continue; }
+    if (cur) parts[cur] += `\n${l}`;
+  }
+  const projects = state.desk?.projects || [];
+  const d = projects.find((x) => x.items.some((i) => deskIdIs(i, id) && i.title === title)) || projects.find((x) => x.items.some((i) => deskIdIs(i, id)));
+  const it = d?.items.find((i) => deskIdIs(i, id));
+  const lead = d ? deskLeadName(d) : "";
+  const num = esc(deskNum({ id, kind: kind || it?.kind }));
+  const ref = d ? `<button class="dk-hand-n" data-desk-hand="${esc(d.project)}" data-id="${esc(it?.id ?? id)}">${num}</button>` : `<b>${num}</b>`;
+  const pics = (parts.P || "").split(",").map((x) => x.trim()).filter(Boolean).length;
+  return `<div class="cv-you dk-hand">${pre ? `<div class="dk-hand-pre">${esc(pre)}</div>` : ""}<div class="dk-hand-c">
+    <div class="dk-hand-h">${lead ? `From <b>${esc(lead)}</b> · ` : "From the Desk · "}${ref}${mate ? ` · for ${esc(mate)}` : ""}</div>
+    <div class="dk-hand-t">${esc(title)}</div>
+    ${parts.D?.trim() ? `<div class="dk-hand-l">Done when</div>${deskDoneWhenHtml(parts.D.trim())}` : ""}
+    ${pics ? `<div class="dk-hand-p">${pics} picture${pics === 1 ? "" : "s"} with it</div>` : ""}
+    ${parts.W?.trim() ? `<div class="dk-hand-l">Why</div><div class="dk-hand-w">${esc(parts.W.trim())}</div>` : ""}
+  </div><div class="cv-meta">Cue · ${ago(e.at_ms)} ago</div></div>`;
+}
+if (typeof document !== "undefined") {
+  // A hand-off's item number: that item on its Desk, from any chat.
+  document.addEventListener("click", (e) => {
+    const el = e.target.closest?.("[data-desk-hand]");
+    if (!el) return;
+    e.stopPropagation();
+    openInDesk(el.dataset.deskHand, el.dataset.id);
+  }, true);
+}

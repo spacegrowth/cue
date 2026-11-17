@@ -2683,3 +2683,40 @@ test("an item whose new session couldn't start says so, with why and Retry, not 
   // Held by a session once it starts: the words go.
   expect(await page.evaluate(() => deskTag({ state: "working", holder: { sid: "x" }, start_failed: "old" }))).toEqual(["", ""]);
 });
+
+test("the Desk's hand-off shows in the session's chat as a card: from the lead and the item, its title, Done when as lines, Why; Cue's standing words left out (#174)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await page.evaluate(() => {
+    const words = [
+      "Done? Write DONE: #d5, or say what's left",
+      "",
+      "Desk item #d5 (bug): Hosted sessions can't open the canvas",
+      "Done when: (1) the canvas opens from a hosted session (2) it says why when it can't; light and dark. Installed and committed.",
+      "Why you: you know the host side",
+      "Fixes and next steps for it stay in #d5: do them, or say them in your reply; don't add new items for them. Add one only for something truly separate, with why in one line: ITEM: <bug|feature|task> | <title> | done when: <…> | why: <how it's separate from #d5>",
+      "If you put its designs on a canvas, or move them, say DESIGNS: #d5 <canvas link> on a line of its own.",
+      "Say DONE: #d5 on a line of its own when it's done.",
+    ].join("\n");
+    sessionOf("host").thread.push({ at_ms: Date.now() - 60_000, role: "you", text: words });
+    deskShow({ kind: "chat", sid: "host" });
+  });
+  const card = page.locator('.dk-right [data-desk-chat="host"] .dk-hand');
+  await expect(card).toHaveCount(1);
+  await expect(card.locator(".dk-hand-h")).toHaveText("From web-lead · Bug #d5");
+  await expect(card.locator(".dk-hand-t")).toHaveText("Hosted sessions can't open the canvas");
+  await expect(card.locator(".dk-dwl li")).toHaveText(["the canvas opens from a hosted session", "it says why when it can't", "light and dark", "Installed and committed"]);
+  await expect(card.locator(".dk-hand-w")).toHaveText("you know the host side");
+  await expect(card.locator(".dk-hand-pre")).toHaveText("Done? Write DONE: #d5, or say what's left");
+  await expect(card).not.toContainText("Fixes and next steps");
+  await expect(card).not.toContainText("DESIGNS:");
+  await expect(card).not.toContainText("on a line of its own");
+  const dir = process.env.SHOT_DIR || process.env.TMPDIR || "/tmp";
+  await card.screenshot({ path: `${dir}/cue-desk-hand-light.png` });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await card.screenshot({ path: `${dir}/cue-desk-hand-dark.png` });
+  await page.emulateMedia({ colorScheme: "light" });
+  // Its number opens the item.
+  await card.locator(".dk-hand-n").click();
+  await expect.poll(() => page.evaluate(() => deskOpen && [deskOpen.kind, deskOpen.id])).toEqual(["item", "d5"]);
+});

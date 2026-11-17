@@ -633,3 +633,17 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
 .dk-chip > .dk-kic { margin: 0; flex: none; }
 .dk-chip-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .dk-chip-more { color: var(--muted); font-weight: 500; }
+/* The Desk's hand-off in the chat of the session it went to (desk_lead.js deskHandHtml): a card on the right, where
+   yours are: who gave it and the item's number, its title, Done when as short lines, Why. */
+.cv-you.dk-hand { align-self: flex-end; width: min(520px, 100%); }
+.dk-hand-pre { margin-bottom: 6px; font-size: 12px; color: var(--muted); text-align: right; }
+.dk-hand-c { align-self: stretch; display: flex; flex-direction: column; gap: 4px; padding: 10px 14px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); text-align: left; }
+.dk-hand-h { font-size: 12px; color: var(--muted); }
+.dk-hand-h b { font-weight: 600; color: var(--ink); }
+.dk-hand-n { all: unset; cursor: pointer; font-weight: 600; color: var(--ink); border-radius: 3px; }
+.dk-hand-n:hover { color: var(--link, var(--accent)); text-decoration: underline; }
+.dk-hand-n:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dk-hand-t { font-size: 14px; font-weight: 650; line-height: 1.35; color: var(--ink); overflow-wrap: anywhere; }
+.dk-hand-l { margin-top: 6px; font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.dk-hand-w, .dk-hand-p { font-size: 12.5px; line-height: 1.45; color: var(--ink); overflow-wrap: anywhere; }
+.dk-hand-p { color: var(--muted); }

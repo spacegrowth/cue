@@ -312,9 +312,9 @@ function deskSessState(s) {
 }
 /** The item a session holds (an ask before what's at work), or null. */
 const deskSessItem = (d, sid) => deskSessItems(d, sid)[0] || null;
-/** Every open item session `sid` holds, the one it's on now first (waiting on you, then working, then the newest). */
+/** Every open item session `sid` holds, the one it's on now first (working, then waiting on you, then the newest). */
 const deskSessItems = (d, sid) => d.items.filter((i) => i.state !== "done" && i.holder && i.holder.kind !== "crew" && i.holder.sid === sid)
-  .sort((a, b) => (b.state === "needs_you") - (a.state === "needs_you") || (b.state === "working") - (a.state === "working") || (b.updated ?? 0) - (a.updated ?? 0));
+  .sort((a, b) => (b.state === "working") - (a.state === "working") || (b.state === "needs_you") - (a.state === "needs_you") || (b.updated ?? 0) - (a.updated ?? 0));
 /** A session's context and cache, as the lead's summary says them (hub/desk_lead.rs context_note): "142k · cache 12m",
  *  or "142k · cold"; amber with under 5 minutes left. From its card's numbers (insights.js insCache); "" without. */
 function deskSessCache(sid) {
@@ -590,7 +590,8 @@ function deskDecisions(d) {
 /** "Done when" as its points, one per line: its own lines (a "-", "*", "•" or "1." in front dropped), else its
  *  sentences and "; " parts. "e.g." / "i.e." / "etc." don't end one; a point's last "." goes. */
 function deskDoneWhenPoints(t) {
-  const lines = String(t || "").split(/\n+/).map((l) => l.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, "").trim()).filter(Boolean);
+  // Numbered in a line ("(1) … (2) …"): a point each.
+  const lines = String(t || "").split(/\n+|\s*(?:^|\s)\(\d+\)\s+/).map((l) => l.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, "").trim()).filter(Boolean);
   const out = [];
   for (const l of lines) {
     let cur = "";
