@@ -559,9 +559,12 @@ function deskSessChat(sid, from, d) {
   const where = whereNow(null, s);
   const empty = !rows && !where ? `<div class="dk-empty">Nothing said yet.</div>` : "";
   const open = `<button class="btn small" data-desk-session="${esc(sid)}">Open its session</button>`;
-  // A plain session head (#170): back, its name (no chip), Open its session at the right; under it its state and,
-  // quiet, the items it holds ("Holds #171, #174", each opening its item), the one it's on now first.
-  const head = `<div class="dk-lh dk-shead"><div class="dk-ch dk-sch">${deskChatBack(from, d)}${deskSessName(sid, deskHolderName(sid), "dk-shn")}<span class="grow"></span>${open}</div>${deskSessNow(s, deskSessItems(d, sid))}</div>`;
+  // A plain session head (#170): back, its name with the same Lead / Session mark as its row on the left (no
+  // bug/feature/task-style chip), Open its session at the right; under it its state and, quiet, the items it holds
+  // ("Holds #171, #174", each opening its item), the one it's on now first.
+  const lead = sid === deskLead(d)?.sid || deskIsLead(sid, d.items.filter((i) => deskGroupKey(i.holder) === sid));
+  const mark = `<span class="dk-rmark dk-hmark">${lead ? "Lead" : "Session"}</span>`;
+  const head = `<div class="dk-lh dk-shead"><div class="dk-ch dk-sch">${deskChatBack(from, d)}${deskSessName(sid, deskHolderName(sid), "dk-shn")}${mark}<span class="grow"></span>${open}</div>${deskSessNow(s, deskSessItems(d, sid))}</div>`;
   return `${head}
     <div class="dk-chat" data-desk-chat="${esc(sid)}">${empty}${rows}${where}</div>`;
 }

@@ -1364,12 +1364,12 @@ test("three columns: the project's sessions on the left, the lead's chat in the 
   // A session's header (#170): back, its name, Open its session; no chip (no Lead, Session or an item's kind); under
   // it its state and, quiet, "Holds #d5", its number opening the item.
   await expect(page.locator(".dk-right .dk-shead [data-desk-mark], .dk-right .dk-shead .dk-lbl, .dk-right .dk-shead svg.dk-kic")).toHaveCount(0);
-  await expect(page.locator(".dk-right .dk-sch")).toHaveText(/^‹ .+host-leadOpen its session$/);
+  await expect(page.locator(".dk-right .dk-sch")).toHaveText(/^‹ .+host-leadSessionOpen its session$/);
   await expect(page.locator(".dk-right .dk-shead .dk-t2")).toHaveText(/^(Idle|Working|Waiting on you) · Holds #d5$/);
   // One with nothing on the Desk: back, its name, its state, Open its session.
   await left.locator('[data-desk-chat-of="spare"]').click();
   await expect(page.locator(".dk-right .dk-shead [data-desk-mark], .dk-right .dk-shead .dk-lbl")).toHaveCount(0);
-  await expect(page.locator(".dk-right .dk-sch")).toHaveText(/^‹ .+spareOpen its session$/);
+  await expect(page.locator(".dk-right .dk-sch")).toHaveText(/^‹ .+spareSessionOpen its session$/);
   await expect(page.locator(".dk-right .dk-shead .dk-t2")).toHaveText(/^(Idle|Working|Waiting on you)$/);
   if (process.env.SHOT_DIR) for (const c of ["light", "dark"]) { await page.emulateMedia({ colorScheme: c }); await page.locator(".dk-right .dk-shead").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-sess-head-${c}.png` }); }
   await page.emulateMedia({ colorScheme: "light" });
@@ -2542,6 +2542,10 @@ test("the chats' title areas: the lead's has a second line (its state, routing, 
   const sch = page.locator(".dk-shead");
   await expect(sch).toHaveCount(1);
   await expect(sch.locator(".dk-lbl, [data-desk-mark], svg.dk-kic")).toHaveCount(0);
+  // Its type mark, as its row on the left has, beside its name; the same look as the row's.
+  await expect(sch.locator(".dk-sch .dk-hmark")).toHaveText("Session");
+  const mk = (l) => l.evaluate((e) => { const c = getComputedStyle(e); return [c.backgroundColor, c.color, c.fontSize, c.textTransform]; });
+  expect(await mk(sch.locator(".dk-hmark"))).toEqual(await mk(page.locator('.dk-sessions .dk-srow:not(.crew) .dk-rmark').first()));
   await expect(sch.locator(".dk-sch .dk-shn")).toHaveText("host-lead");
   await expect(sch.locator(".dk-sch [data-desk-session]")).toHaveText("Open its session");
   await expect(sch.locator(".dk-t2")).toHaveText(/^(Working|Idle|Waiting on you) · Holds #d5$/);

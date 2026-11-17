@@ -12,6 +12,8 @@
 .dk-srow { position: relative; margin: 0 8px 4px; padding: 13px 14px; border-radius: 10px; cursor: pointer; }
 /* What the row is (Desk lead, Lead, Session, Crew): the chat header's mark, right after the name. */
 .dk-rmark { position: absolute; top: 0; right: 0; padding: 2px 8px 3px; border-radius: 0 10px 0 8px; background: var(--accent); color: var(--on-accent); font: 600 9.5px/1.3 var(--mono); letter-spacing: .14em; text-transform: uppercase; pointer-events: none; }
+/* The same mark beside a session's name in its chat's head (#170): in the line, not in a corner. */
+.dk-rmark.dk-hmark { position: static; flex: none; border-radius: 6px; margin-left: 2px; }
 .dk-srow:has(.dk-rmark) { padding-top: 16px; }
 .dk-srow:has(.dk-rmark) > .dk-s1 { padding-right: 76px; }
 .dk-srow:hover { background: var(--panel-2); }
