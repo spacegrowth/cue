@@ -1351,7 +1351,8 @@ test("three columns: the project's sessions on the left, the lead's chat in the 
     : `${el.matches(".crew") ? "  " : ""}${el.dataset.deskLeadChat || el.dataset.deskChatOf || el.dataset.deskCrew}${el.querySelector(".dk-pill") ? ` [${el.querySelector(".dk-pill").textContent}]` : ""}`));
   expect(rows).toEqual(["# Working 1", "host", "# Not on the Desk 1", "spare"]);
   await expect(left.locator('[data-desk-chat-of="host"] .dk-s2')).toContainText("#d5");
-  await expect(left.locator('[data-desk-chat-of="spare"] .dk-s2 .dk-w')).toHaveText("nothing on the Desk");
+  // On no item: no line for it, only its Add to Desk (#179).
+  await expect(left.locator('[data-desk-chat-of="spare"] .dk-w')).toHaveCount(0);
   await expect(left.locator('[data-desk-chat-of="spare"] [data-desk-member]')).toHaveText("Add to Desk");
   await expect(left.locator('[data-desk-chat-of="host"] [data-desk-member]')).toHaveCount(0);
   // The lead's chat shows: its card is lit, alone.

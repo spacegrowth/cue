@@ -334,13 +334,14 @@ function deskSessName(sid, name, cls) {
   if (renaming === sid) return `<input class="rename-in dk-ren-in" data-text="rename:${esc(sid)}" maxlength="60" placeholder="Name this session" aria-label="Rename this session" spellcheck="false" value="${esc(draft(`rename:${sid}`).text)}"/>`;
   return `<${cls === "b" ? "b" : `span class="${cls}"`}>${esc(name)}</${cls === "b" ? "b" : "span"}>${sessionOf(sid) ? `<button class="dk-ren dk-sren" data-desk-ren="${esc(sid)}" aria-label="Rename this session">${DESK_PEN}</button>` : ""}`;
 }
-/** One row: name, its corner mark (Lead, Session, Crew: Type marks pick 8), its state; then the item it's on, or nothing on the Desk; then its
- *  size and cache. `cls` is dk-srow; the lead's card in the head strip is dk-lcard, with `pre` "Run by" before its name. */
+/** One row: name, its corner mark (Lead, Session, Crew: Type marks pick 8), its state; then the item it's on (no line
+ *  when it's on none, #179); then its size and cache. `cls` is dk-srow; the lead's card in the head strip is dk-lcard, with `pre` "Run by" before its name. */
 function deskSessRow({ name, sid = "", mark = "", dot, word, item, line, on, attrs, crew, step = "", size = "", loose = false, past = false, add = "", cls = "dk-srow", pre = "" }) {
-  const what = `<span class="dk-w">${item ? `${deskKindIcon(item)}<span class="dk-id">${esc(deskNum(item))}</span> ${esc(item.title)}` : line ? esc(line) : `<span class="dk-none">nothing on the Desk</span>`}</span>`;
+  const what = item ? `<span class="dk-w">${deskKindIcon(item)}<span class="dk-id">${esc(deskNum(item))}</span> ${esc(item.title)}</span>` : line ? `<span class="dk-w">${esc(line)}</span>` : "";
+  const loosePill = loose ? `<span class="dk-pill loose">not committed</span>` : "";
   return `<div class="${cls} ${crew ? "crew" : ""} ${past ? "past" : ""} ${on ? "on" : ""}" role="button" tabindex="0" ${attrs}>${mark ? `<span class="dk-rmark">${mark}</span>` : ""}
     <div class="dk-s1">${pre ? `<span class="dk-lk">${pre}</span>` : ""}${sid ? deskSessName(sid, name, "dk-nm") : `<span class="dk-nm">${esc(name)}</span>`}<span class="dk-st"><i class="${dot}"></i><b>${word}</b></span></div>
-    <div class="dk-s2">${what}${add}${loose ? `<span class="dk-pill loose">not committed</span>` : ""}</div>${step}${size}</div>`;
+    ${what || add || loosePill ? `<div class="dk-s2">${what}${add}${loosePill}</div>` : ""}${step}${size}</div>`;
 }
 /** The left card: the head strip (pick B2: ‹ Desks, the Desk's name, its meta line, and the lead's "Run by" card in
  *  it, no crew), then the project's other sessions, "Working" first, then "On the Desk" (the Desk's own list: the ones its lead routes to, each with its crew under it) and
