@@ -91,6 +91,12 @@
 .dk-i2 .dk-kid + .dk-who:not(:empty)::before, .dk-i2 .dk-kid + .dk-who:empty + .dk-age::before { content: "· "; }
 .dk-i2 .dk-age:empty { display: none; }
 .dk-i2 .dk-ok { margin-left: auto; }
+/* Undo on a done row: back to waiting on you (nothing in the work changes). */
+/* Shown only while the row is hovered (or Undo has the keyboard's focus). */
+.dk-i2 .dk-undo { all: unset; margin-left: auto; flex: none; cursor: pointer; color: var(--accent); font-size: 12px; visibility: hidden; }
+.dk-it:hover .dk-undo, .dk-i2 .dk-undo:focus-visible { visibility: visible; }
+.dk-undo:hover { text-decoration: underline; }
+.dk-it.on .dk-undo { color: var(--on-sel); }
 .dk-it:hover { background: var(--panel-2); }
 .dk-it.on { background: var(--sel); }
 /* Its state as a small icon at the row's left: in progress (accent, its dot blinking); waiting on you, queued and
@@ -98,7 +104,7 @@
 .dk-si { margin-top: 2.5px; }
 .dk-si .dk-blink { animation: pulse 1.4s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .dk-si .dk-blink { animation: none; } }
-.dk-it.dk-done > :not(.dk-si) { opacity: .55; }
+.dk-it.dk-done > :not(.dk-si, .dk-i2), .dk-it.dk-done > .dk-i2 > :not(.dk-undo) { opacity: .55; }
 .dk-it.dk-done > .dk-si { opacity: .7; }
 /* A tag's words (only a stuck one has any) lead its title. */
 .dk-i1 > .dk-tag { display: inline-block; margin-right: 7px; vertical-align: 1px; }
@@ -235,8 +241,7 @@
 .dk-fc { display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 3px 6px; margin: 0 -6px; border: 0; border-radius: 6px; background: none; color: var(--ink); font: 12px var(--mono); text-align: left; cursor: pointer; }
 .dk-fc.wait { cursor: default; }
 .dk-fc:not(.wait):hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
-/* Its counts right after its name, as the file's diff shows them when it opens (#149), not off at the far right. */
-.dk-fc-p { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-fc-p { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-fc-new { font: 600 10px var(--sans); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
 .dk-acts { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 24px 0; }
 .dk-chain .dk-acts { padding: 8px 0 0; }
@@ -298,6 +303,10 @@
 .dk-inow .dk-acts { padding: 0 0 14px; }
 .dk-ibody > .dk-note { margin: 0; }
 .dk-ibody > .dk-sec { padding: 0; }   /* Files: in line with the tabs, as the thread is */
+/* Files: each file's counts at the right, apart from its name, as in the diff it opens (#149); the list kept narrow
+   enough that the counts stay by their file on a wide page. */
+.dk-ibody .dk-fcs { max-width: 560px; }
+.dk-ibody .dk-fc .dv-add { margin-left: 16px; }
 /* Its decisions as sentences: what (age at the right), why under it, by who and Undo. */
 .dk-decs { border-top: 1px solid var(--line); }
 .dk-lr.dk-dl { display: block; padding: 10px 4px; }

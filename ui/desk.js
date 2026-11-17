@@ -216,7 +216,8 @@ function deskItemRow(i, lit, held = false) {
   const at = s ? (s.state === "working" && s.since_ms) || deskMs(i.updated) : 0;
   const who = s ? `working · ${esc(deskHolderOf(i))} · <span data-ago="${at}">${ago(at)}</span>` : !i.holder && i.state !== "done" ? deskGive(i, "row") : deskInstallWait(i) ? `waiting for install · ${esc(deskHolderOf(i))}` : esc(deskHolderOf(i));
   const when = s ? "" : i.state === "done" ? `${i.commit ? `<span class="dk-cm">committed ${esc(i.commit)}</span> · ` : ""}${clockAt(deskMs(i.done_at || i.updated))}` : ago(deskMs(i.created));
-  const ok = deskInstallWait(i) ? "" : i.state === "to_check" && deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id) : i.state === "to_check" ? `<button class="dk-ok" data-desk-act="looks_right" data-id="${esc(i.id)}" aria-label="Looks right"></button>` : "";
+  const ok = deskInstallWait(i) ? "" : i.state === "to_check" && deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id) : i.state === "to_check" ? `<button class="dk-ok" data-desk-act="looks_right" data-id="${esc(i.id)}" aria-label="Looks right"></button>`
+    : i.state === "done" ? `<button class="dk-undo" data-desk-act="reopen" data-id="${esc(i.id)}">Undo</button>` : "";
   // Its holder's question under the row; a holder that just stopped (no question) leaves only the "needs you" state.
   const ask = i.state === "needs_you" && i.ask ? `<div class="dk-h">${esc(i.ask.text)}</div>` : "";
   return `<div class="dk-it ${i.state === "needs_you" ? "ask" : ""} ${look === "landed" ? "landed" : ""} dk-${deskStateOf(i)} ${on ? "on" : ""}${i.state === "to_check" && deskLooksSoon.has(i.id) ? " soon" : ""}${deskLeaveStyle(i.id)}" role="button" tabindex="0" data-desk-item="${esc(i.id)}">
@@ -732,14 +733,16 @@ function deskThread(i, d) {
   // Sent from here, not back as a step yet.
   const steps = new Set(mine.filter((c) => c.by === "You").map((c) => c.text.trim()));
   for (const p of deskPending.get(i.id) || []) if (!steps.has(p.text.trim())) rows.push({ at: p.at, by: "You", you: true, back: p.why === "back", tag: p.why === "back" ? "Sent back" : "", html: `<div class="dk-md">${md(p.text)}</div>` });
-  rows.sort((a, b) => a.at - b.at);
   const live = i.state === "working" && i.holder && !deskHolderIdle(i.holder);
-  // Its latest words when no reply holds them yet (items from before replies were kept), as its last message.
+  // Its latest words when no reply holds them yet (items from before replies were kept): after everything but what
+  // you wrote since, so a message you send is still last (#160).
   const lat = (i.latest || "").trim(), lat1 = firstLine(lat);
   if (!live && lat && !(i.said || []).some((r) => r.text.includes(lat1))) {
     const fin = i.state === "to_check" || i.state === "done";
-    rows.push({ at: Math.max(deskMs(i.updated), rows.length ? rows[rows.length - 1].at : 0), by: i.holder?.name || i.by || "It", tag: fin ? "Done" : "Reply", on: fin, html: `<div class="dk-md">${md(lat)}</div>` });
+    const theirs = rows.filter((r) => !r.you).reduce((m, r) => Math.max(m, r.at), 0);
+    rows.push({ at: Math.max(deskMs(i.updated), theirs), by: i.holder?.name || i.by || "It", tag: fin ? "Done" : "Reply", on: fin, html: `<div class="dk-md">${md(lat)}</div>` });
   }
+  rows.sort((a, b) => a.at - b.at);
   if (live) rows.push({ at: 0, by: i.holder.name, live: true, html: `<div class="dk-md dk-quiet">${lat ? md(lat1) : "Working…"}</div><div class="dk-tbar"></div>` });
   return rows;
 }
@@ -1053,10 +1056,10 @@ function deskOpenItem(id) {
   deskDropArm = deskGiveFor = null;
 }
 async function deskAct(id, act, el = null) {
-  // Looks right commits the item's files at once; Undo takes that commit back (desk_commit.js).
+  // Looks right commits the item's files at once; Undo on a done item only puts it back to check (desk_commit.js).
   if (act === "looks_right") return deskLooksRight(id);
   if (act === "looks_undo") return deskLooksUndo(id);
-  if (act === "undo_commit") return deskCommitUndo(id);
+  if (act === "reopen") return deskReopen(id);
   // Drop takes two clicks: the first arms it.
   if (act === "drop" && deskDropArm !== id) { deskDropArm = id; return renderMain(); }
   deskDropArm = null;
