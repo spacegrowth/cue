@@ -1445,19 +1445,34 @@ test("Looks right commits the item's files at once: no sheet; the row and a toas
   await expect(page.locator(".toast")).toContainText("Committed abc1234 · 2 files");
   const line = page.locator(".dk-cmt").first();
   await expect(line).toContainText("Committed abc1234 · 2 files");
-  await expect(line.locator('[data-desk-act="undo_commit"]')).toHaveText("Undo · back to check");
-  await line.locator('[data-desk-act="undo_commit"]').click();
-  await cue.called("desk_commit_undo", { id: "d2" });
-  await expect(page.locator(".toast").last()).toHaveText("Back to check · commit taken back, every change still in place");
+  await expect(line.locator('[data-desk-act="reopen"]')).toHaveText("Undo · back to check");
+  // Undo only puts it back to check: its commit stays, no code changes (#159).
+  await line.locator('[data-desk-act="reopen"]').click();
+  await cue.called("desk_item_act", { id: "d2", act: "reopen" });
+  await expect(page.locator(".toast").last()).toHaveText("Back to check · nothing in the work changed");
   await expect(page.locator('[data-desk-item="d2"] .dk-ok')).toBeVisible();
+  expect(await cue.calls("desk_commit_undo")).toHaveLength(0);
+});
 
-  // Another commit came after it: still back to check, its commit kept, said so; no code changed either way.
-  await cue.change((s) => { s.desk_commit_after = true; });
-  await page.locator('[data-desk-item="d2"] .dk-ok').click();
-  await cue.called("desk_looks_right", { id: "d2" });
-  await page.locator('.dk-cmt [data-desk-act="undo_commit"]').first().click();
-  await expect(page.locator(".toast").last()).toHaveText("Back to check · its commit stays (another came after it); no code changed");
-  await expect(page.locator('[data-desk-item="d2"] .dk-ok')).toBeVisible();
+test("Undo on a done row: back to waiting on you, its commit kept, nothing else; readable on the dimmed row; no hover text (#159)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await cue.change((s) => { Object.assign(s.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d2"), { state: "done", done_at: Math.floor(Date.now() / 1000), commit: "abc1234" }); });
+  await openDesk(page);
+  const row = page.locator('.dk-items [data-desk-item="d2"]');
+  await expect(row).toHaveClass(/\bdk-done\b/);
+  const undo = row.locator('.dk-undo[data-desk-act="reopen"]');
+  await expect(undo).toHaveText("Undo");
+  await expect(undo).not.toHaveAttribute("title", /.*/);
+  expect(await undo.evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
+  expect(await row.locator(".dk-t").evaluate((el) => getComputedStyle(el.parentElement).opacity)).toBe("0.55");
+  await undo.click();
+  await cue.called("desk_item_act", { id: "d2", act: "reopen" });
+  // Clicking Undo doesn't open the item; the row is waiting on you again, its ✓ back.
+  await expect(page.locator(".dk-right .dk-pane h1")).not.toContainText("#d2");
+  await expect(row).toHaveClass(/\bdk-you\b/);
+  await expect(row.locator(".dk-ok")).toBeVisible();
+  await expect(row.locator(".dk-undo")).toHaveCount(0);
+  expect(await cue.calls("desk_commit_undo")).toHaveLength(0);
 });
 
 test("✓ on a row: it dims while Undo can take it back, then folds away (height to nothing) before it goes", async ({ page, cue }) => {
@@ -1495,7 +1510,7 @@ test("Looks right on an item whose file another session is editing: done at once
   // Cue makes the commit once the tidier is done with the file: the same line says so, with Undo.
   await cue.change((s) => { const d = s.desk.projects.find((d) => d.project === "cue"); for (const i of [...d.items, ...(d.checks || [])].filter((i) => i.id === "d2")) Object.assign(i, { commit: "abc1234", commit_wait: null }); });
   await expect(line).toContainText("Committed abc1234");
-  await expect(line.locator('[data-desk-act="undo_commit"]')).toBeVisible();
+  await expect(line.locator('[data-desk-act="reopen"]')).toBeVisible();
 
   // Why it couldn't be made, when a word stopped it.
   await cue.change((s) => { const d = s.desk.projects.find((d) => d.project === "cue"); for (const i of [...d.items, ...(d.checks || [])].filter((i) => i.id === "d2")) Object.assign(i, { commit: "", commit_wait: { files: [], busy: [], error: 'Not committed: "x" is in ui/send.js' } }); });
@@ -1509,9 +1524,9 @@ test("Looks right on an item whose file another session is editing: done at once
   await page.locator('[data-desk-item="d2"]').first().click();
   const plain = page.locator('.dk-cmt:has-text("Looked right")').first();
   await expect(plain).toHaveText("Looked right · Undo · back to check");
-  await plain.locator('[data-desk-act="undo_commit"]').click();
-  await cue.called("desk_commit_undo", { id: "d2" });
-  await expect(page.locator(".toast").last()).toHaveText("Back to check · no code changed");
+  await plain.locator('[data-desk-act="reopen"]').click();
+  await cue.called("desk_item_act", { id: "d2", act: "reopen" });
+  await expect(page.locator(".toast").last()).toHaveText("Back to check · nothing in the work changed");
 });
 
 /** A session of cue's that isn't on its Desk ("spare", holding nothing). */
