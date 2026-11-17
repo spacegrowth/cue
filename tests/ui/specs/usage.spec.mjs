@@ -28,18 +28,25 @@ test("both providers have labels and separate popovers, and settings can hide Co
   await cue.open("board-waiting");
   await usage(cue);
   await expect(page.locator('.usage-provider')).toHaveText(['Claude', 'Codex']);
+  await expect(page.locator('[data-usage="meter"]')).toHaveText('Claude5h32%');
+  await expect(page.locator('[data-usage="codex"]')).toHaveText('Codex5h64%');
   await page.getByRole('button', { name: 'Codex usage', exact: true }).click();
   await expect(page.locator('.usage-pop')).toHaveCount(1);
   await expect(page.locator('.usage-pop')).toContainText('64%');
   await expect(page.locator('.usage-pop')).toContainText('resets');
+  await expect(page.locator('.usage-pop')).toContainText('Weekly');
+  await expect(page.locator('.usage-pop')).toContainText('28%');
   await page.getByRole('button', { name: 'Claude Code usage', exact: true }).click();
   await expect(page.locator('.usage-pop')).toHaveCount(1);
   await expect(page.locator('.usage-pop')).toContainText('32%');
+  await expect(page.locator('.usage-pop')).toContainText('Weekly');
+  await expect(page.locator('.usage-pop')).toContainText('18%');
   await page.locator('.top').click({ position: { x: 2, y: 2 } });
   await expect(page.locator('.usage-pop')).toHaveCount(0);
   await cue.change((s) => { s.settings.usage = { ...s.settings.usage, codex: false }; });
   await expect(page.locator('[data-usage="codex"]')).toHaveCount(0);
   await expect(page.locator('.usage-provider')).toHaveCount(0);
+  await expect(page.locator('[data-usage="meter"]')).toHaveText('5h32%wk18%');
 });
 
 test("expired Codex windows disappear and alternate durations keep their labels", async ({ cue, page }) => {

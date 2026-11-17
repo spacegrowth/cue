@@ -519,7 +519,8 @@ function usageChip() {
   const claude = claudeUsageChip();
   if (!windows.length) return claude;
   const label = claude ? '<span class="usage-provider">Codex</span>' : "";
-  const codex = `<span class="usage-wrap"><button class="usage-chip" data-usage="codex" aria-label="Codex usage" aria-expanded="${usageOpen === "codex"}">${label}${windows.map((w) => usageMeter(usageWindowName(w.minutes, true), w)).join("")}</button>${codexUsagePop(windows)}</span>`;
+  const headerWindows = claude ? windows.filter((w) => w.minutes === 300) : windows;
+  const codex = `<span class="usage-wrap"><button class="usage-chip" data-usage="codex" aria-label="Codex usage" aria-expanded="${usageOpen === "codex"}">${label}${headerWindows.map((w) => usageMeter(usageWindowName(w.minutes, true), w)).join("")}</button>${codexUsagePop(windows)}</span>`;
   return claude ? `<span class="usage-meters">${claude}${codex}</span>` : codex;
 }
 function codexUsagePop(windows) {
@@ -560,7 +561,7 @@ function claudeUsageChip() {
   const mine = meters.length ? `<span class="uf-first">${fileMeter(meters[0], true)}</span>` : "";
   const more = meters.length > 1 && !usageOpen ? `<span class="uf-more">${meters.map((m) => `<span class="uf-row">${fileMeter(m)}${m.resets_ms ? `<span class="uf-note">resets ${clockAt(m.resets_ms)}</span>` : ""}</span>`).join("")}</span>` : "";
   const broken = uf.error ? `<span class="ul uf-bad" title="${esc(uf.error)}">usage file ⚠</span>` : "";
-  return `<span class="usage-wrap"><button class="usage-chip" data-usage="meter" aria-label="${claude ? "Claude Code usage" : "Your usage"}" aria-expanded="${usageOpen === "claude"}">${claude && codexUsageWindows().length ? '<span class="usage-provider">Claude</span>' : ""}${claude ? meter("5h", u.five_hour) + meter("wk", u.seven_day) : ""}${mine}${broken}</button>${more}${usagePop()}</span>`;
+  return `<span class="usage-wrap"><button class="usage-chip" data-usage="meter" aria-label="${claude ? "Claude Code usage" : "Your usage"}" aria-expanded="${usageOpen === "claude"}">${claude && codexUsageWindows().length ? '<span class="usage-provider">Claude</span>' : ""}${claude ? meter("5h", u.five_hour) + (codexUsageWindows().length ? "" : meter("wk", u.seven_day)) : ""}${mine}${broken}</button>${more}${usagePop()}</span>`;
 }
 /** "$12.40/$50", "48/200 credits", "$3.10": an amount from your usage file, in its unit. */
 function spendText(m, long = false) {
