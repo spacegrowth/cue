@@ -47,7 +47,7 @@
 .dk-ch { flex: none; display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 14px 0 20px; border-bottom: 1px solid var(--line); }
 .dk-ch b { font-size: 14px; font-weight: 700; }
 .dk-sub { color: var(--muted); font-family: var(--mono); font-size: 11.5px; }
-.dk-scroll, .dk-chat, .dk-pane { flex: 1; min-height: 0; overflow-y: auto; }
+.dk-scroll, .dk-chat, .dk-pane, .dk-rd { flex: 1; min-height: 0; overflow-y: auto; }
 .dk-scroll { padding: 6px 0 14px; }
 .dk-empty { padding: 28px 24px; color: var(--muted); font-size: 13px; line-height: 1.5; }
 
@@ -71,7 +71,7 @@
 
 /* An item in two rows: its state tag, #id and title; under them who holds it, its age (a done one's time) and Looks
    right when it's ready to check; an ask's question below. */
-.dk-it { display: grid; grid-template-columns: 28px minmax(0, 1fr); align-items: start; column-gap: 10px; row-gap: 3px; margin: 0 8px 2px; padding: 9px 12px; border-radius: 10px; cursor: pointer; }
+.dk-it { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; column-gap: 10px; row-gap: 3px; margin: 0 8px 2px; padding: 9px 12px; border-radius: 10px; cursor: pointer; }
 /* One flow, not columns: the title's next lines run back under its icon and number, from the row's left edge. */
 .dk-i1 { min-width: 0; font-size: 13.5px; line-height: 1.4; overflow-wrap: anywhere; }
 .dk-i2 { grid-column: 2; display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted); font-size: 12px; }
@@ -90,18 +90,10 @@
 .dk-tag.ask { background: var(--deny); color: var(--on-accent); }
 /* A row with no tag words (all but an ask and a stuck one): no tag column, so the title takes the row's width. Back to
    check and not opened since: a dot before it. */
-/* #116: every row starts with its kind's badge (pick J's, smaller), so all titles share one left edge; the ask/stuck tag
-   leads the line under the title. */
-.dk-it > .dk-badge { grid-row: 1 / span 2; width: 28px; height: 28px; border-radius: 7px; margin-top: 1px; }
-.dk-it > .dk-badge .dk-kic { width: 15px; height: 15px; }
-.dk-it > .dk-badge:empty { background: var(--panel-2); }
+.dk-it.notag { grid-template-columns: minmax(0, 1fr); }
+.dk-it.notag > .dk-tag { display: none; }
+.dk-it.notag > :is(.dk-i2, .dk-h) { grid-column: 1; }
 .dk-it.on, .dk-it.on .dk-t { color: var(--on-sel); }
-.dk-it.on > .dk-badge { background: var(--on-sel); }
-.dk-it.on > .dk-badge .dk-kic { color: var(--sel); }
-.dk-i1 { grid-column: 2; }
-.dk-i2 .dk-tag { min-width: 0; margin: 0; padding: 1px 6px; }
-.dk-it.notag .dk-tag { display: none; }
-.dk-i2 .dk-tag + .dk-kid { margin-left: -2px; }
 .dk-it.landed .dk-i1::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 8px; vertical-align: 1px; border-radius: 50%; background: var(--accent); }
 .dk-tag.now { color: var(--ink); }
 .dk-tag.done { background: none; }
@@ -120,7 +112,8 @@
 .dk-h { grid-column: 2; margin-top: 1px; color: var(--ink); font-size: 12.5px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Selected: its words in the selected ink, as the Board's selected card. */
 .dk-it.on .dk-id, .dk-it.on .dk-who, .dk-it.on .dk-age, .dk-it.on .dk-h { color: var(--on-sel); }
-.dk-it.ask .dk-h::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; background: var(--deny); vertical-align: 1px; }
+/* An ask's question: in full, in a soft box of the deny hue under its title (no tag, no dot). */
+.dk-it.ask .dk-h { margin-top: 4px; padding: 6px 9px; border-radius: 8px; background: color-mix(in srgb, var(--deny) 10%, transparent); white-space: normal; overflow-wrap: anywhere; }
 /* Just landed (back to check, not opened since): the row stands out. */
 .dk-it.landed { background: var(--panel-2); }
 .dk-it.landed .dk-t { font-weight: 700; }
@@ -414,11 +407,11 @@
 .dk-srow.on .dk-kic { color: var(--on-sel); }
 .dk-kid > .dk-kic { margin-right: 5px; vertical-align: 0; }
 /* A hand-off (ROUTE) card: one bordered line, its kind's icon, number and title → who, then "Why ⌃"; the why sits
-   under it in a quiet box joined to the line (open until folded). Never a box in a box: lines all hand-offs drop the
+   under it, plain (no fill), inside the card's border (open until folded). Never a box in a box: lines all hand-offs drop the
    block's own border; among other lines a hand-off drops its own. */
 .msg .own-lines:not(:has(> :not(.dk-route))) { padding: 0; border: 0; }
 .msg .own-lines:has(> :not(.dk-route)) .dk-rt-row { padding: 3px 0; border: 0; }
-.msg .own-lines:has(> :not(.dk-route)) .dk-rt-why-s { border-radius: 7px; border-top: 1px solid var(--line); }
+.msg .own-lines:has(> :not(.dk-route)) .dk-rt-why-s { padding: 0 0 3px; border: 0; }
 .dk-route { margin: 6px 0; }
 .dk-rt-row { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 12px; border: 1px solid var(--line); border-radius: 9px; font-size: 12.5px; }
 .dk-route.open .dk-rt-row { border-radius: 9px 9px 0 0; }
@@ -432,14 +425,14 @@ button.dk-rt-it:hover .dk-rt-t { text-decoration: underline; }
 .dk-rt-to { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 650; color: var(--ink); }
 .dk-rt-why { all: unset; flex: none; cursor: pointer; color: var(--muted); font-size: 12px; }
 .dk-rt-why:hover { color: var(--ink); }
-.dk-rt-why-s { padding: 6px 12px 7px; border: 1px solid var(--line); border-top: 0; border-radius: 0 0 9px 9px; background: var(--panel-2); color: var(--muted); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+.dk-rt-why-s { padding: 6px 12px 7px; border: 1px solid var(--line); border-top: 0; border-radius: 0 0 9px 9px; color: var(--muted); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
 /* Your words about an item in the lead's chat (deskAboutHead): its kind, number and title over them, quiet. */
 .dk-about { all: unset; display: block; margin-bottom: 4px; font-size: 12px; color: var(--muted); cursor: pointer; overflow-wrap: anywhere; }
 .dk-about b { color: var(--ink); font-weight: 650; }
 .dk-about:hover b { color: var(--link, var(--accent)); }
 /* Looks right's moment to take it back (desk_commit.js): "Done · Undo" on the item, and Undo in the toast. */
 /* Looks right said: the row dims while Undo can still take it back, then folds away (deskLeaving) before it goes. */
-.dk-it.soon :is(.dk-badge, .dk-i1, .dk-kid, .dk-who, .dk-age, .dk-tag) { opacity: 0.45; }
+.dk-it.soon :is(.dk-i1, .dk-kid, .dk-who, .dk-age, .dk-tag) { opacity: 0.45; }
 .dk-it.dk-leave { overflow: hidden; pointer-events: none; animation: dk-leave 0.28s ease-in forwards; }
 @keyframes dk-leave {
   from { height: var(--h); opacity: 1; }
@@ -450,3 +443,8 @@ button.dk-rt-it:hover .dk-rt-t { text-decoration: underline; }
 .toast.acts { pointer-events: auto; }
 .toast-undo { all: unset; color: var(--link, var(--accent)); font-weight: 600; cursor: pointer; }
 .toast-undo:hover { text-decoration: underline; }
+/* Read on a Desk reply (desk.js deskReader): the card is narrow at larger text sizes, so the bar's Listen, Copy and
+   Reply wrap onto lines of their own rather than run past the card's edge. */
+.dk-right .rd-head { padding: 12px 16px 2px; }
+.dk-right .rd-listen { flex: 0 1 auto; flex-wrap: wrap; row-gap: 8px; min-width: 0; }
+.dk-right .rd { padding: 18px 20px 40px; }
