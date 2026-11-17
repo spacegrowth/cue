@@ -199,11 +199,13 @@ if (typeof document !== "undefined") {
 // ---------- the lead's own lines, drawn in its chat ----------
 /** A Desk line as desk/parse.rs reads it: its word in capitals, a list mark or bold around it; ASK has its own card
  *  (deskLeadAsk) and DECIDED md's own block, so neither is here. */
-const DESK_SAY = /^[-*+ ]*(ITEM|ROUTE|DONE|CONTEXT)\**\s*:(.*)$/;
+const DESK_SAY = /^[-*+ ]*(ITEM|ROUTE|DONE|CONTEXT|DESIGNS)\**\s*:(.*)$/;
 const DESK_KINDS = ["bug", "feature", "task"];
-/** `line` of the lead's reply as one quiet line of the Desk's (md's `lines` hook): ITEM "New item · BUG title · done
- *  when …"; ROUTE "Bug #2 title → who  Why ⌃", the why under it; DONE "Done · Bug #2 title"; CONTEXT "who → keep · why". "" for
- *  any other line, or one parse.rs wouldn't act on (an empty or "<…>" body). */
+/** `line` of a Desk chat's reply as one quiet centred line between thin rules (md's `lines` hook; Lead chats pick
+ *  1 + D: no chips, an item is its kind's icon and its number in bold): ITEM "added [bug] title · done when …"; ROUTE
+ *  "gave [bug] Bug #2 title to who · Why ⌃", the why under it; DONE "done [bug] Bug #2 · title"; CONTEXT "context who
+ *  → keep · why"; DESIGNS "Open the designs ↗", a link in the accent colour. "" for any other line, or one parse.rs
+ *  wouldn't act on (an empty or "<…>" body). */
 function deskLineHtml(line, inline) {
   const m = DESK_SAY.exec(line.trim());
   if (!m) return "";
@@ -216,10 +218,10 @@ function deskLineHtml(line, inline) {
   const id = (s) => (/^#?([a-z0-9]+)/i.exec(s.trim())?.[1] || "").toLowerCase();
   const name = (s) => s.trim().replace(/^@/, "").replace(/^["`*]+|["`*]+$/g, "").trim();
   const arrow = (s) => { const a = /\s*(->|→|=>)\s*/.exec(s); return a ? [s.slice(0, a.index), s.slice(a.index + a[0].length)] : null; };
-  const row = (head, sub) => `<div class="dk-say">${head}${sub ? `<span class="dk-say-s"> · ${sub}</span>` : ""}</div>`;
+  const row = (head, sub) => `<div class="dk-say dk-cl"><span class="dk-cl-t">${head}${sub ? `<span class="dk-say-s"> · ${sub}</span>` : ""}</span></div>`;
   // An item named by kind and number ("Bug #2") when the Desk has it, as its row says it.
   const known = (x) => (state.desk?.projects || []).flatMap((d) => d.items).find((i) => deskIdIs(i, x));
-  const ref = (x) => `<span class="dk-say-id">${deskKindIcon(known(x))}${esc(known(x) ? deskNum(known(x)) : `#${x}`)}</span>`;
+  const ref = (x) => `<b class="dk-say-id">${deskKindIcon(known(x))}${esc(known(x) ? deskNum(known(x)) : `#${x}`)}</b>`;
   // The same, with its title when the Desk has it.
   const named = (x) => `${ref(x)}${known(x)?.title ? ` · <span class="dk-say-t">${esc(known(x).title)}</span>` : ""}`;
   if (m[1] === "ITEM") {
@@ -229,7 +231,7 @@ function deskLineHtml(line, inline) {
     if (!title) return "";
     deskSaidItem = title;
     const done = rest.map((s) => lab(s, "done when")).find((v) => v !== null) || "";
-    return row(`<span class="dk-say-h"><span class="dk-say-w">New item</span> ${deskKindIcon(kind)}<span class="dk-say-t">${inline(title)}</span></span>`, done ? `done when ${inline(done)}` : "");
+    return row(`<span class="dk-say-h"><span class="dk-say-w">added</span> ${deskKindIcon(kind)}<b class="dk-say-t">${inline(title)}</b></span>`, done ? `done when ${inline(done)}` : "");
   }
   if (m[1] === "ROUTE") {
     const ht = arrow(p[0]), at = ht && id(ht[0]), to = ht && name(ht[1]);
@@ -240,30 +242,35 @@ function deskLineHtml(line, inline) {
     // "#new" is the ITEM just above it, once the Desk has it; "→ new" (or "me") the session Cue started for it, once there is one.
     const it = at === "new" ? deskNewlySaid(deskSaidItem) : known(at), key = `${at}>${to}`, open = !deskWhyShut.has(key);
     const fresh = /^(new|me)$/i.test(to) && it?.holder;
-    const who = fresh ? deskHolderName(it.holder.sid, it.holder.name) : to;
-    const what = at === "new" && !it ? `<span class="dk-rt-n">New item</span>`
-      : `<span class="dk-rt-n">${esc(it ? deskNum(it) : `#${at}`)}</span>${it?.title ? `<span class="dk-rt-t">${esc(it.title)}</span>` : ""}`;
+    const who = fresh ? deskHolderName(it.holder.sid, it.holder.name) : /^new$/i.test(to) ? "a new session" : to;
+    const what = at === "new" && !it ? `<b class="dk-rt-n">the new item</b>`
+      : `<b class="dk-rt-n">${esc(it ? deskNum(it) : `#${at}`)}</b>${it?.title ? ` <span class="dk-rt-t">${esc(it.title)}</span>` : ""}`;
     const head = it ? `<button class="dk-rt-it" data-desk-chk-item="${esc(it.id)}">${deskKindIcon(it)}${what}</button>` : `<span class="dk-rt-it">${deskKindIcon(kind)}${what}</span>`;
-    const fold = sub ? `<button class="dk-rt-why" data-desk-why="${esc(key)}">Why ${open ? "⌃" : "⌄"}</button>` : "";
-    return `<div class="dk-route${open ? " open" : ""}"><div class="dk-rt-row">${head}<span class="dk-rt-ar">→</span><span class="dk-rt-to">${esc(who)}${crew ? ` · ${esc(crew)}` : ""}</span>${fold}</div>${sub && open ? `<div class="dk-rt-why-s">${sub}</div>` : ""}</div>`;
+    const fold = sub ? ` · <button class="dk-rt-why" data-desk-why="${esc(key)}">Why ${open ? "⌃" : "⌄"}</button>` : "";
+    return `<div class="dk-route${open ? " open" : ""}"><div class="dk-rt-row dk-cl"><span class="dk-cl-t"><span class="dk-say-w">gave</span> ${head} <span class="dk-say-w">to</span> <b class="dk-rt-to">${esc(who)}${crew ? ` · ${esc(crew)}` : ""}</b>${fold}</span></div>${sub && open ? `<div class="dk-rt-why-s">${sub}</div>` : ""}</div>`;
   }
   if (m[1] === "DONE") {
     const ids = body.split(/[, ]/).filter((w) => w.trim().startsWith("#")).map(id).filter(Boolean);
-    return ids.length ? row(`<span class="dk-say-h"><span class="dk-say-w">Done</span> ${ids.map(named).join(", ")}</span>`, "") : "";
+    return ids.length ? row(`<span class="dk-say-h"><span class="dk-say-w">done</span> ${ids.map(named).join(", ")}</span>`, "") : "";
+  }
+  if (m[1] === "DESIGNS") {
+    // "#135 https://…" (as parse.rs designs): the link alone, under the words, as the item page has it.
+    const url = /^#\S+\s.*?(https?:\/\/[^\s>)\]"`*]+)/.exec(body)?.[1]?.replace(/[.,;]+$/, "");
+    return url ? `<div class="dk-say dk-dsay">${deskDesignsA(url)}</div>` : "";
   }
   const ht = arrow(p[0]), who = ht && name(ht[0]), what = ht && (ht[1].trim().split(/\s+/)[0] || "").replace(/["`*.]/g, "").toLowerCase();
   if (!who || !what) return "";
   const why = find("why");
-  return row(`<span class="dk-say-h"><span class="dk-say-w">Context</span> <span class="dk-say-to"><b>${esc(who)}</b> → ${esc(what)}</span></span>`, why ? inline(why) : "");
+  return row(`<span class="dk-say-h"><span class="dk-say-w">context</span> <span class="dk-say-to"><b>${esc(who)}</b> → ${esc(what)}</span></span>`, why ? inline(why) : "");
 }
 /** The newest item titled `title` (as the lead's ITEM line said it), or undefined. */
 const deskNewlySaid = (title) => (title ? (state.desk?.projects || []).flatMap((d) => d.items).filter((i) => i.title === title).sort((a, b) => (b.created ?? 0) - (a.created ?? 0))[0] : undefined);
-/** Cue's message to the lead as a small card, when it's one of Cue's own (new items, or a DONE it couldn't act on);
+/** Cue's message to the lead as quiet centred lines, when it's one of Cue's own (new items, or a DONE it couldn't act on);
  *  null for any other (chat/render.js chatHtml `you`). */
 const deskCueNote = (e) => deskNewItems(e) ?? deskDoneNotes(e);
 /** What Cue told the lead of a DONE it couldn't act on (hub/desk.rs lead_done: "#69 not closed: it waits on your
- *  check", a line each, then its words for the lead, not shown): a card an item, its kind, number and title (a click
- *  opens it) and why in a quiet line. null for any other message. */
+ *  check", a line each, then its words for the lead, not shown): a centred line an item, "Cue · not closed [task]
+ *  Task #69 title · why", its number and title opening it. null for any other message. */
 function deskDoneNotes(e) {
   const lines = String(e.text || "").split("\n").map((l) => l.trim()).filter(Boolean);
   if (lines.length < 2 || !/^Only the person closes an item that waits on their check/.test(lines[lines.length - 1])) return null;
@@ -272,26 +279,39 @@ function deskDoneNotes(e) {
   const known = (x) => (state.desk?.projects || []).flatMap((d) => d.items).find((i) => deskIdIs(i, x));
   return `<div class="dk-news">${notes.map(([, id, why]) => {
     const it = known(id);
-    const head = it ? `${deskKindIcon(it)}<button class="dk-chk-a dk-new-t" data-desk-chk-item="${esc(it.id)}">${esc(`${deskNum(it)} · ${it.title}`)}</button>` : `<span class="dk-new-t">#${esc(id)}</span>`;
-    return `<div class="dk-new"><span class="dk-say-w">Not closed</span> ${head}<span class="dk-say-s"> · ${esc(why)}</span></div>`;
-  }).join("")}<div class="cv-meta">From Cue · ${ago(e.at_ms)} ago</div></div>`;
+    const head = it ? deskItemRef(it.id, it.kind, deskNum(it), it.title) : `<b class="dk-new-t">#${esc(id)}</b>`;
+    return deskCueLine(`<span class="dk-say-w">not closed</span> ${head}<span class="dk-say-s"> · ${esc(why)}</span>`, e.at_ms);
+  }).join("")}</div>`;
 }
 /** What Cue told the lead of new items (desk/mod.rs new_items_words: "New item #72 (bug): title | done when: … |
- *  pictures: … | from x", a line each, then its "Route it now…" words for the lead) as a small card an item: its kind,
- *  number and title (a click opens it), and done when, pictures and who it's from in a quiet line; the words for the
- *  lead aren't shown. null for any other message (chat/render.js chatHtml `you`). */
+ *  pictures: `a.png` | from x", a line each, then one line of words for the lead, none of it shown: sometimes "If one
+ *  of yours holds two separate problems, SPLIT it first…", always "Route it now…" or "Route each now…", sometimes "Say
+ *  what one without a kind is…". Cue never sends new items without the Route words, so they mark the message) as a small
+ *  card an item: its kind's icon, number and title, a muted line under them (done when, who it's from), then its
+ *  pictures as thumbnails; a click on the card opens the item. null for any other message (chat/render.js chatHtml
+ *  `you`). */
 function deskNewItems(e) {
   const lines = String(e.text || "").split("\n").map((l) => l.trim()).filter(Boolean);
-  const said = lines.filter((l) => !/^Route (it|each) now:/.test(l));
-  const items = said.map((l) => /^New item #([^\s:(]+)(?: \((bug|feature|task)\))?: (.*)$/.exec(l));
-  if (!said.length || said.length === lines.length || items.some((m) => !m)) return null;
-  return `<div class="dk-news">${items.map(([, id, kind = "", rest]) => {
-    const p = rest.split(" | "), title = p[0], tail = p.slice(1).map((x) => {
-      const done = /^done when: (.*)$/.exec(x), pics = /^pictures: (.*)$/.exec(x);
-      if (done) return `done when ${esc(done[1])}`;
-      if (pics) { const n = pics[1].split("` `").length; return n === 1 ? "1 picture" : `${n} pictures`; }
-      return esc(x);
-    });
-    return `<div class="dk-new"><span class="dk-say-w">New item</span> ${deskKindIcon(kind)}<button class="dk-chk-a dk-new-t" data-desk-chk-item="${esc(id)}">${esc(`${deskNum({ id, kind })} · ${title}`)}</button>${tail.length ? `<span class="dk-say-s"> · ${tail.join(" · ")}</span>` : ""}</div>`;
-  }).join("")}<div class="cv-meta">From Cue · ${ago(e.at_ms)} ago</div></div>`;
+  const NEW = /^New item #([^\s:(]+)(?: \((bug|feature|task)\))?: (.*)$/;
+  const n = lines.findIndex((l) => !NEW.test(l));
+  // Cue's own: New item lines first, then its words for the lead, which always ask for a ROUTE.
+  if (n < 1 || !lines.slice(n).some((l) => /\bRoute (it|each) now:/.test(l)) || lines.slice(n).some((l) => NEW.test(l))) return null;
+  const known = (x) => (state.desk?.projects || []).flatMap((d) => d.items).find((i) => deskIdIs(i, x));
+  return `<div class="dk-news">${lines.slice(0, n).map((l) => deskNewCard(NEW.exec(l), known, e.at_ms)).join("")}</div>`;
 }
+/** One new item's card (deskNewItems): "[icon] Task #72 title  1h", "New item · done when … · from x", thumbnails. */
+function deskNewCard([, id, said = "", rest], known, at) {
+  const p = rest.split(" | "), it = known(id), kind = it?.kind || said;
+  let pics = [];
+  const sub = p.slice(1).flatMap((x) => {
+    const done = /^done when: (.*)$/.exec(x), pc = /^pictures: (.*)$/.exec(x);
+    if (pc) { pics = [...pc[1].matchAll(/`([^`]+)`/g)].map((m) => m[1]); return []; }
+    return [done ? `done when ${esc(done[1])}` : esc(x)];
+  });
+  return `<div class="dk-nc" role="button" tabindex="0" data-desk-chk-item="${esc(id)}"><div class="dk-nc1">${deskKindIcon(kind)}<b class="dk-inum">${esc(deskNum({ id, kind }))}</b><span class="dk-nc-t">${esc(p[0])}</span><span class="dk-cl-age">${ago(at)}</span></div>`
+    + `<div class="dk-nc2">${["New item", ...sub].join(" · ")}</div>${thumbs(pics)}</div>`;
+}
+/** An item in a Desk chat's line: its kind's icon and number in bold, then its title (a click on either opens it). */
+const deskItemRef = (id, kind, num, title) => `<button class="dk-chk-a dk-new-t" data-desk-chk-item="${esc(id)}">${deskKindIcon(kind)}<b class="dk-inum">${esc(num)}</b>${title ? ` <span class="dk-new-tt">${esc(title)}</span>` : ""}</button>`;
+/** One of Cue's own lines in the lead's chat, centred between thin rules: "Cue · <what> <age>". */
+const deskCueLine = (html, at) => `<div class="dk-new dk-cl"><span class="dk-cl-t"><b>Cue</b> · ${html} <span class="dk-cl-age">${ago(at)}</span></span></div>`;

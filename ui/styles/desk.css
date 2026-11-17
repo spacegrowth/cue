@@ -188,6 +188,29 @@
 .dk-tab { display: flex; align-items: center; gap: 6px; padding: 0; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--muted); font-size: 13.5px; font-weight: 650; cursor: pointer; }
 .dk-tab.on { color: var(--ink); border-bottom-color: var(--ink); }
 .dk-tab .n { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+/* The chat's title area (desk.js deskRightChat, deskSessChat): the title line, then a second line of what it's doing
+   (deskLeadNow, deskSessNow); one rule under both. In it the tabs show which is on by their ink, not an underline. */
+.dk-lh { flex: none; border-bottom: 1px solid var(--line); }
+.dk-lh > .dk-ch { border-bottom: 0; }
+.dk-lh .dk-tab, .dk-lh .dk-tab.on { border-bottom-color: transparent; }
+.dk-t2 { display: flex; align-items: baseline; gap: 6px; min-width: 0; padding: 0 14px 10px 20px; color: var(--muted); font-size: 12.5px; white-space: nowrap; }
+.dk-t2 b { color: var(--ink); font-weight: 650; }
+.dk-t2 .dk-st { align-self: center; max-width: none; }
+.dk-t2p { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.dk-t2 .dk-kic { vertical-align: -2px; margin-right: 3px; }
+.dk-wy { all: unset; flex: none; cursor: pointer; color: var(--ink); font-weight: 700; }
+.dk-wy .dk-inum { font-weight: 700; }
+.dk-wy:hover { color: var(--link, var(--accent)); }
+/* A session chat whose session holds an item: the item is its title, "[mark] #135 title", Open its session on the right. */
+.dk-ch.dk-sch-it { flex-direction: column; align-items: stretch; gap: 0; min-height: 0; padding: 10px 14px 0 20px; }
+.dk-sch1 { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 28px; }
+.dk-sch-t { all: unset; flex: 0 1 auto; min-width: 0; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-sch-t .dk-hnum { color: var(--muted); font-size: 14px; font-weight: 500; }
+.dk-sch-t b { font-size: 15px; font-weight: 700; color: var(--ink); }
+.dk-sch-t:hover b { color: var(--link, var(--accent)); }
+.dk-sch-it > .dk-t2 { padding: 3px 0 10px; }
+/* Its ✎ at the line's end, so the hidden pen leaves no gap after the name. */
+.dk-t2 .dk-sren { order: 1; align-self: center; margin-left: 0; }
 .dk-chat { display: flex; flex-direction: column; gap: 14px; padding: 14px 20px; }
 .dk-chat .cv-you.sending { opacity: .6; }
 .dk-box { flex: none; display: flex; flex-direction: column; gap: 6px; margin: 8px 16px 16px; padding: 8px 8px 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
@@ -200,7 +223,7 @@
 .dk-box-row:first-child > .dk-pre { margin-top: -8px; padding-top: 13px; border-radius: 11px 0 0 11px; }
 .dk-box .chips { margin: 0; }
 .dk-ask { flex: none; max-height: 55%; overflow-y: auto; padding: 0 20px 14px; }
-/* The lead's ASK: a bordered panel card in the chat's column, as a hand-off or check card (.dk-chk), not a tinted
+/* The lead's ASK: a bordered panel card in the chat's column, not a tinted
    band; its choices on the panel too, the accent only on the one you point at or picked. */
 .dk-ask .act-card { max-height: none; overflow: visible; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
 .dk-ask .act-card .opt { background: var(--panel); }
@@ -218,11 +241,11 @@
 .dk-pane h1 { margin: 8px 24px 4px; font-size: 19px; font-weight: 700; line-height: 1.3; }
 .dk-state { margin: 0 24px; color: var(--muted); font-size: 12.5px; }
 .dk-state b { color: var(--ink); font-weight: 650; }
-/* An item's designs (desk.js deskDesignsLink): one small link under its state, to its canvas. */
+/* An item's designs (desk.js deskDesignsLink): "Open the designs ↗" in the accent, plain words, no box. */
 .dk-dsg { margin: 10px 24px 0; }
-.dk-dsg a { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: 12.5px; font-weight: 600; color: var(--ink); text-decoration: none; }
-.dk-dsg a:hover { border-color: color-mix(in srgb, var(--ink) 30%, var(--line)); color: var(--link, var(--accent)); }
-.dk-dsg a svg:last-child { color: var(--muted); }
+.dk-dlink { font-size: 12.5px; font-weight: 600; color: var(--accent); text-decoration: none; }
+.dk-dlink:hover { text-decoration: underline; }
+.dk-say.dk-dsay { text-align: center; }
 .dk-sec { padding: 16px 24px 0; }
 .dk-sec h3 { margin: 0 0 8px; font: 700 11px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .dk-sec p { margin: 0 0 6px; line-height: 1.5; }
@@ -284,14 +307,21 @@
 .dk-tdot::after { content: ""; position: absolute; left: 6px; top: 18px; bottom: -14px; width: 2px; background: var(--line); }
 .dk-tm:last-child .dk-tdot::after { display: none; }
 .dk-tw { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
-.dk-ttag { padding: 1px 7px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font: 600 10px var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+/* Reply / Done / Sent back on a thread line: plain muted words after a dot, no box. */
+.dk-ttag { color: var(--muted); font-size: 12px; font-weight: 500; text-transform: lowercase; }
+.dk-ttag::before { content: "· "; }
 .dk-ttag.on { color: var(--ink); }
-.dk-ttag.back { color: var(--deny); border-color: color-mix(in oklab, var(--deny) 40%, var(--line)); }
+.dk-ttag.back { color: var(--deny); }
 .dk-tb { min-width: 0; }
 .dk-tb > .dk-md { margin-top: 3px; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
 /* Its Done when under the thread, the first thing by where it stands (#140): the checklist at the thread's size. */
 .dk-idw .dk-dwl { font-size: 13.5px; gap: 8px; }
 .dk-tpics { margin-top: 8px; }
+/* A send-back's pictures, counted under your words. */
+.dk-tpn { margin-top: 3px; font-size: 12px; color: var(--muted); }
+/* Under what to check (deskCheckInfo): who did it, when, how many files; installed or not, or its mocks. Quiet. */
+.dk-chk-info { margin-top: 8px; display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; color: var(--muted); }
+.dk-chk-info .dk-chk-a { color: var(--ink); font-weight: 600; }
 .dk-tbar { width: 160px; height: 6px; margin-top: 8px; border-radius: 3px; background: var(--work); }
 .dk-inow .dk-sec { padding: 4px 0 14px; }
 .dk-inow .dk-acts { padding: 0 0 14px; }
@@ -430,41 +460,69 @@
 .dk-more-btn:hover, .dk-more-btn:focus-visible { background: var(--panel-2); color: var(--ink); }
 .dk-none { color: var(--muted); font-size: 12.5px; }
 
-/* The lead's own lines in its chat (desk_lead.js deskLineHtml): ITEM, ROUTE, DONE, CONTEXT as small rows in one quiet
-   block; the kind's color is on its chip, never on an edge. */
-.msg .own-lines { margin: 10px 0; padding: 8px 14px; border-radius: 10px; border: 1px solid var(--line); font-size: 12.5px; user-select: text; -webkit-user-select: text; }
+/* The lead's own lines in its chat (desk_lead.js deskLineHtml): ITEM, ROUTE, DONE, CONTEXT, DESIGNS as quiet centred
+   lines, item numbers in bold with their kind's icon; no box, no chip, no edge color. */
+.msg .own-lines { margin: 8px 0; font-size: 12.5px; user-select: text; -webkit-user-select: text; }
 .dk-say { padding: 3px 0; line-height: 1.45; overflow-wrap: anywhere; }
+/* A centred line between thin rules (.dk-cl): the lead's lines, Cue's notes, a check you made. */
+.dk-cl { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+.dk-cl::before, .dk-cl::after { content: ""; flex: 1; min-width: 16px; height: 1px; background: var(--line); }
+.dk-cl-t { flex: 0 1 auto; max-width: 80%; text-align: center; overflow-wrap: anywhere; }
+.dk-cl-t b { color: var(--ink); font-weight: 650; }
+.dk-cl-age { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.dk-inum { font-weight: 650; color: var(--ink); }
 .dk-say-h { color: var(--ink); }
-.dk-say-t { font-weight: 600; }
+b.dk-say-t, .dk-say-t { font-weight: 650; color: var(--ink); }
 .dk-say-id { font-weight: 600; color: var(--ink); }
 .dk-say-s .dk-say-id { font-weight: 500; color: inherit; }
 .dk-say-to { color: var(--muted); }
 .dk-say-to b { font-weight: 650; color: var(--ink); }
-.dk-say-w { font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.dk-say-w { font-weight: 400; color: var(--muted); }
 .dk-say-s { color: var(--muted); }
-/* What Cue told the lead of new items (desk_lead.js deskNewItems): small cards on the right, where your words are. */
-.dk-news { margin: 10px 0 10px auto; max-width: 85%; display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
-.dk-new { padding: 8px 14px; border: 1px solid var(--line); border-radius: 10px; font-size: 12.5px; line-height: 1.45; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
+/* What Cue told the lead of new items or a DONE it couldn't close (desk_lead.js deskNewItems, deskDoneNotes): a
+   centred line an item, "Cue · added [kind] Task #72 title · …  1h". */
+.dk-news { margin: 8px 0; display: flex; flex-direction: column; gap: 6px; }
+.dk-new { user-select: text; -webkit-user-select: text; }
 .dk-new button { user-select: none; -webkit-user-select: none; }
-.dk-new-t { font-weight: 600; color: var(--ink); }
-.dk-new-t:hover { color: var(--link, var(--accent)); }
+.dk-new-t { color: var(--ink); }
+.dk-new-tt { color: var(--muted); }
+.dk-new-t:hover, .dk-new-t:hover .dk-new-tt { color: var(--link, var(--accent)); }
+/* A new item from Cue (deskNewItems): a small card, no fill, no edge color: its kind's icon, number in bold and title,
+   a muted line under them, then its pictures as small thumbnails; a click on it opens the item. */
+.dk-nc { align-self: center; width: min(100%, 460px); box-sizing: border-box; padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 12.5px; line-height: 1.45; color: var(--ink); cursor: pointer; }
+.dk-nc:hover { border-color: color-mix(in srgb, var(--ink) 25%, var(--line)); }
+.dk-nc1 { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.dk-nc1 .dk-kic { margin: 0; align-self: center; }
+.dk-nc1 .dk-inum { flex: none; }
+.dk-nc-t { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.dk-nc:hover .dk-nc-t { color: var(--link, var(--accent)); }
+.dk-nc1 .dk-cl-age { flex: none; }
+.dk-nc2 { margin-top: 2px; color: var(--muted); overflow-wrap: anywhere; }
+.dk-nc .thumbs { margin-top: 8px; }
+.dk-nc .thumb { width: 48px; height: 48px; box-sizing: border-box; border: 1px solid var(--line); border-radius: 8px; box-shadow: none; }
 
 .dk-cm { font-family: var(--mono); font-size: 11px; }
-/* A DONE in the lead's chat, ready to check (desk_commit.js deskCheckCard): a bordered card, no edge color. */
-.dk-chk { margin: 10px 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; display: flex; flex-direction: column; gap: 4px; user-select: text; -webkit-user-select: text; cursor: text; }
-.dk-chk button { cursor: pointer; user-select: none; -webkit-user-select: none; }
+/* A DONE in the lead's chat, ready to check (desk_commit.js deskCheckLine): one line between thin rules, "Ready to
+   check: [kind] Task #125 title…  12m  Check it ›"; Check it › opens the item's page, where the checks are. */
+.dk-rchk { margin: 8px 0; padding: 10px 0; display: flex; align-items: baseline; gap: 8px; min-width: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); font-size: 13px; color: var(--ink); }
+.dk-rchk-w { flex: none; color: var(--muted); }
+.dk-rchk-it { all: unset; flex: 0 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 5px; cursor: pointer; white-space: nowrap; overflow: hidden; }
+.dk-rchk-it .dk-kic { margin: 0; align-self: center; }
+.dk-rchk-it .dk-inum { flex: none; }
+.dk-rchk-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.dk-rchk-it:hover .dk-rchk-t { color: var(--link, var(--accent)); }
+.dk-rchk > .dk-cl-age { flex: none; margin-left: auto; padding-left: 6px; }
+.dk-rchk-go { all: unset; flex: none; cursor: pointer; font-weight: 700; color: var(--ink); }
+.dk-rchk-go:hover { color: var(--link, var(--accent)); }
+.dk-chk-done { margin: 8px 0; }
+/* Its item, a link in plain words (the page's done line, Cue's lines). */
 .dk-chk-a { all: unset; cursor: pointer; color: inherit; font-weight: inherit; }
-.dk-chk a, .dk-chk a:hover { text-decoration: none; }
-.dk-chk-a:hover, .dk-chk-w .dk-chk-a:hover { color: var(--link, var(--accent)); }
-.dk-chk-w .dk-chk-a { font-weight: 600; color: var(--ink); }
-.dk-chk-k { font-size: 11.5px; color: var(--muted); }
-/* Its kind's icon, then the title beside it: a long title wraps next to the icon, not under it on a line of its own. */
-.dk-chk-t { display: flex; align-items: flex-start; font-size: 14px; font-weight: 600; color: var(--ink); }
-.dk-chk-t > .dk-kic { margin-top: 3px; }
-.dk-chk-t > .dk-chk-a { min-width: 0; text-align: left; }
-.dk-chk-w, .dk-chk-in, .dk-chk-after { font-size: 12.5px; color: var(--muted); }
-.dk-chk .dk-acts { padding: 8px 0 0; display: flex; gap: 8px; }
-.dk-chk-after { padding-top: 6px; }
+.dk-chk-a:hover { color: var(--link, var(--accent)); }
+/* The Desk chats' unset buttons (a Ready to check line, a title, who did it, Check it ›, waits on you ›): a ring when
+   reached by keyboard, as the item page's tabs have. */
+.dk-wy:focus-visible, .dk-sch-t:focus-visible, .dk-rchk-it:focus-visible, .dk-rchk-go:focus-visible, .dk-chk-a:focus-visible, .dk-rt-why:focus-visible, .dk-undo-c:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.dk-nc:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dk-chk-after { padding-top: 6px; font-size: 12.5px; color: var(--muted); }
 /* Send back, open on its item (desk.js deskBackHtml): why, in a box like the Desk's own. */
 .dk-sb { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
 .dk-sb-h { display: flex; align-items: baseline; gap: 8px; }
@@ -474,9 +532,6 @@
 .dk-box.dk-sb-box { margin: 0; }
 .dk-pane .dk-sb { padding: 14px 24px 0; }
 .dk-box.dk-sb-box:focus-within { border-color: color-mix(in srgb, var(--ink) 30%, var(--line)); }
-/* Its labels read as the item page's section heads (.dk-sec h3). */
-.dk-chk .dkc-l { margin-top: 8px; font: 700 11px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-.dk-chk .dkc-dw { font-size: 13px; overflow-wrap: anywhere; }
 /* "Done when" as a checklist (desk.js deskDoneWhenHtml): a point a line, small, room between; a quiet ring in front. */
 .dk-dwl { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-direction: column; gap: 7px; font-size: 12.5px; line-height: 1.45; color: var(--ink); }
 .dk-dwl li { display: flex; gap: 9px; align-items: baseline; }
@@ -488,33 +543,25 @@
 .dk-undo-c:hover { text-decoration: underline; }
 
 .dk-srow.on .dk-st > i:not(.ask):not(.idle) { background: var(--on-sel); }
-.dk-chk .dk-chk-back { white-space: pre-wrap; }
 
 /* An item's kind (deskKindIcon): one small line icon in the theme color, wherever an item's kind shows. */
 .dk-kic { flex: none; display: inline-block; vertical-align: -2px; margin-right: 5px; color: var(--accent); }
 .dk-srow.on .dk-kic { color: var(--on-sel); }
 .dk-kid > .dk-kic { margin-right: 5px; vertical-align: 0; color: var(--muted); }
 .dk-it.on .dk-kid > .dk-kic { color: var(--on-sel); }
-/* A hand-off (ROUTE) card: one bordered line, its kind's icon, number and title → who, then "Why ⌃"; the why sits
-   under it, plain (no fill), inside the card's border (open until folded). Never a box in a box: lines all hand-offs drop the
-   block's own border; among other lines a hand-off drops its own. */
-.msg .own-lines:not(:has(> :not(.dk-route))) { padding: 0; border: 0; }
-.msg .own-lines:has(> :not(.dk-route)) .dk-rt-row { padding: 3px 0; border: 0; }
-.msg .own-lines:has(> :not(.dk-route)) .dk-rt-why-s { padding: 0 0 3px; border: 0; }
-.dk-route { margin: 6px 0; }
-.dk-rt-row { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 12px; border: 1px solid var(--line); border-radius: 9px; font-size: 12.5px; }
-.dk-route.open .dk-rt-row { border-radius: 9px 9px 0 0; }
-.dk-rt-it { all: unset; flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; overflow: hidden; white-space: nowrap; }
+/* A hand-off (ROUTE): a centred line, "gave [kind] #125 title to web-lead · Why ⌃"; the why under it, centred and
+   quiet (open until folded). No box. */
+.dk-route { margin: 3px 0; }
+.dk-rt-row { padding: 3px 0; }
+.dk-rt-it { all: unset; }
 button.dk-rt-it { cursor: pointer; }
-.dk-rt-it .dk-kic { margin: 0; }
-.dk-rt-n { flex: none; font-weight: 650; color: var(--ink); }
-.dk-rt-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 500; color: var(--ink); }
+.dk-rt-n { font-weight: 650; color: var(--ink); }
+.dk-rt-t { font-weight: 500; color: var(--ink); }
 button.dk-rt-it:hover .dk-rt-t { text-decoration: underline; }
-.dk-rt-ar { flex: none; color: var(--muted); }
-.dk-rt-to { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 650; color: var(--ink); }
-.dk-rt-why { all: unset; flex: none; cursor: pointer; color: var(--muted); font-size: 12px; }
+.dk-rt-to { font-weight: 650; color: var(--ink); }
+.dk-rt-why { all: unset; cursor: pointer; color: var(--muted); font-size: 12px; }
 .dk-rt-why:hover { color: var(--ink); }
-.dk-rt-why-s { padding: 6px 12px 7px; border: 1px solid var(--line); border-top: 0; border-radius: 0 0 9px 9px; color: var(--muted); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+.dk-rt-why-s { max-width: 80%; margin: 0 auto; padding: 0 0 3px; text-align: center; color: var(--muted); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
 /* Your words about an item in the lead's chat (deskAboutHead): its kind, number and title over them, quiet. */
 .dk-about { all: unset; display: block; margin-bottom: 4px; font-size: 12px; color: var(--muted); cursor: pointer; overflow-wrap: anywhere; }
 .dk-about b { color: var(--ink); font-weight: 650; }
