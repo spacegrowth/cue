@@ -19,13 +19,14 @@ function deskAbout(d) {
   if (!it) return "Nothing on it yet.";
   return `${it === at ? "On" : it === next ? "Next" : "Last done"}: ${deskNum(it)} ${it.title}`;
 }
-/** A kind's cell: "3 open", and under it how many are working and how many wait on your check (or "none moving"). */
+/** A kind's cell: "3 open", and under it how many are working, finishing and waiting on your check (or "none moving"). */
 function deskKindCell(d, kind) {
   const open = d.items.filter((i) => i.kind === kind && i.state !== "done");
   const icon = deskKindIcon(kind);
   if (!open.length) return `<span class="dh-cell z"><span class="dh-big">${icon}–</span></span>`;
-  const working = open.filter((i) => i.state === "working").length, check = open.filter(deskWaits).length;
-  const sub = [working ? `${working} working` : "", check ? `<span class="dh-ck">${check} to check</span>` : ""].filter(Boolean).join(" · ") || "none moving";
+  // Finishing (committed, being built and installed) is moving too, said apart from working.
+  const working = open.filter((i) => i.state === "working").length, fin = open.filter(deskFinishing).length, check = open.filter(deskWaits).length;
+  const sub = [working ? `${working} working` : "", fin ? `${fin} finishing` : "", check ? `<span class="dh-ck">${check} to check</span>` : ""].filter(Boolean).join(" · ") || "none moving";
   return `<span class="dh-cell"><span class="dh-big">${icon}${open.length} open</span><span class="dh-sm">${sub}</span></span>`;
 }
 /** Who's on a Desk: its lead, then the sessions and crew at work. */
