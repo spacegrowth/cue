@@ -72,7 +72,8 @@
 /* An item in two rows: its state tag, #id and title; under them who holds it, its age (a done one's time) and Looks
    right when it's ready to check; an ask's question below. */
 .dk-it { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; column-gap: 10px; row-gap: 3px; margin: 0 8px 2px; padding: 9px 12px; border-radius: 10px; cursor: pointer; }
-.dk-i1 { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+/* One flow, not columns: the title's next lines run back under its icon and number, from the row's left edge. */
+.dk-i1 { min-width: 0; font-size: 13.5px; line-height: 1.4; overflow-wrap: anywhere; }
 .dk-i2 { grid-column: 2; display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted); font-size: 12px; }
 .dk-i2 .dk-who { flex: 0 1 auto; min-width: 0; max-width: none; }
 .dk-i2 .dk-age::before { content: "· "; }
@@ -89,10 +90,11 @@
 .dk-it.notag { grid-template-columns: minmax(0, 1fr); }
 .dk-it.notag > .dk-tag { display: none; }
 .dk-it.notag > :is(.dk-i2, .dk-h) { grid-column: 1; }
-.dk-it.landed .dk-i1::before { content: ""; flex: none; align-self: flex-start; width: 7px; height: 7px; margin-top: 6px; border-radius: 50%; background: var(--accent); }
+.dk-it.landed .dk-i1::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 8px; vertical-align: 1px; border-radius: 50%; background: var(--accent); }
 .dk-tag.now { color: var(--ink); }
 .dk-tag.done { background: none; }
 .dk-id { color: var(--muted); font: 11px var(--mono); }
+.dk-i1 > .dk-id { margin-right: 8px; }
 /* The whole title, wrapping as long as it needs: never cut at "…". */
 .dk-t { flex: 1; min-width: 0; font-size: 13.5px; line-height: 1.4; font-weight: 600; overflow-wrap: anywhere; }
 .dk-who { max-width: 140px; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -161,10 +163,16 @@
 .dk-right { position: relative; }
 .dk-tabs { gap: 18px; padding: 0 20px; align-items: stretch; }
 /* A chat's mark (Desk picks, mark B): its icon in the theme color and a small muted word, right after the chat's name. */
-.dk-mark { flex: none; align-self: center; display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font: 650 12px var(--sans); white-space: nowrap; }
-.dk-mark .dk-kic { margin: 0; }
-.dk-tabs .dk-mark { margin-left: -8px; }
-.dk-mark.float { position: absolute; top: 0; right: 20px; height: 48px; z-index: 1; }
+/* The chat type mark (pick J): a tinted badge with the kind's icon before the name, the kind's word over it. */
+.dk-titled { flex: 0 1 auto; min-width: 0; align-self: center; display: flex; align-items: center; gap: 10px; }
+.dk-badge { flex: none; width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 14%, var(--panel)); color: var(--accent); }
+.dk-badge .dk-kic { width: 16px; height: 16px; margin: 0; }
+.dk-tstack { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; }
+.dk-tname { max-width: 100%; min-width: 0; display: flex; align-items: center; gap: 6px; }
+.dk-mw { color: var(--accent); font: 700 10.5px/1.25 var(--sans); letter-spacing: .04em; white-space: nowrap; }
+.dk-tname > .dk-tab { padding-bottom: 1px; }
+.dk-titled.float { position: absolute; top: 9px; right: 20px; z-index: 1; gap: 8px; }
+.dk-titled.float .dk-mw { font-size: 12px; }
 .dk-tab { display: flex; align-items: center; gap: 6px; padding: 0; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--muted); font-size: 13.5px; font-weight: 650; cursor: pointer; }
 .dk-tab.on { color: var(--ink); border-bottom-color: var(--ink); }
 .dk-tab .n { font-family: var(--mono); font-size: 11px; color: var(--muted); }
@@ -390,7 +398,7 @@
 
 /* An item's kind (deskKindIcon): one small line icon in the theme color, wherever an item's kind shows. */
 .dk-kic { flex: none; display: inline-block; vertical-align: -2px; margin-right: 5px; color: var(--accent); }
-.dk-i1 > .dk-kic { align-self: flex-start; margin-top: 3px; margin-right: -3px; }
+.dk-i1 > .dk-kic { margin-right: 5px; }
 /* A hand-off (ROUTE) card: one bordered line, its kind's icon, number and title → who, then "Why ⌃"; the why sits
    under it in a quiet box joined to the line (open until folded). Never a box in a box: lines all hand-offs drop the
    block's own border; among other lines a hand-off drops its own. */
