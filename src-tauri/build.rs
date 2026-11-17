@@ -27,7 +27,38 @@ fn main() {
     voice_helper(&target);
     // The optional add-on (`ext/`, built in with the `ext` feature): rebuild when it changes.
     println!("cargo:rerun-if-changed=ext");
+    stamp_commit();
     tauri_build::build()
+}
+
+/// CUE_COMMIT: the commit this source was checked out at (`git rev-parse HEAD`), empty when it isn't a git tree. A
+/// running Cue reads it to say whether a change is in it (self_install.rs). Rebuilt when HEAD moves: HEAD itself
+/// (a detached checkout keeps the commit there), the branch it names, and packed-refs, where that branch can be.
+/// Edits not committed yet aren't told apart: the self-install builds from a clean copy.
+fn stamp_commit() {
+    let git = |args: &[&str]| {
+        std::process::Command::new("git")
+            .args(args)
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .unwrap_or_default()
+    };
+    let commit = git(&["rev-parse", "HEAD"]);
+    println!("cargo:rustc-env=CUE_COMMIT={commit}");
+    if commit.is_empty() {
+        return;
+    }
+    let mut watched = vec![git(&["rev-parse", "--git-path", "HEAD"]), git(&["rev-parse", "--git-path", "packed-refs"])];
+    let branch = git(&["symbolic-ref", "-q", "HEAD"]);
+    if !branch.is_empty() {
+        watched.push(git(&["rev-parse", "--git-path", &branch]));
+    }
+    // A path that doesn't exist would rerun this script on every build: only the ones there are watched.
+    for path in watched.into_iter().filter(|p| !p.is_empty() && std::path::Path::new(p).exists()) {
+        println!("cargo:rerun-if-changed={path}");
+    }
 }
 
 /// cue-voice, talking to a session from anywhere on the Mac (voice/: NVIDIA's Parakeet through FluidAudio, a Swift
