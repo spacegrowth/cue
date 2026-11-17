@@ -140,6 +140,7 @@ pub(super) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
     let Some(h) = it.holder.as_ref() else { return out };
     let mut h = h.clone();
     if let Some((lead, agent)) = crew_parts(&h) {
+        out.now_on = it.state == "working";
         if let Some(t) = st.sessions.get(lead).and_then(|s| s.team.iter().find(|t| t.agent_id == agent || t.call == agent)) {
             h.name = t.name.clone();
             out.latest = t.step.clone();
@@ -148,7 +149,9 @@ pub(super) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
     } else if let Some(s) = st.sessions.get(&h.sid) {
         h.name = shown_name(s);
         h.kind = if s.team.is_empty() { "session".into() } else { "lead".into() };
-        out.latest = if s.doing.is_empty() { last_words(s) } else { s.doing.clone() };
+        // Its words and its work are the item's only while it's on this one (#176): it can hold several.
+        out.now_on = it.state == "working" && super::desk_stall::now_on(st, &h.sid).as_deref() == Some(it.id.as_str());
+        out.latest = if !out.now_on { String::new() } else if s.doing.is_empty() { last_words(s) } else { s.doing.clone() };
         // Given to a teammate of its (ROUTE: … -> me | crew: <name>): that teammate's own latest and files, once it's
         // there (none till then: no guess by time).
         if it.crew.is_empty() {
@@ -165,7 +168,7 @@ pub(super) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
     }
     // Only the item at work: a queued one's holder asks about the item before it. Waiting on you while its holder
     // asks, or while its holder's turn ended on it (with no DONE, or it would be to check): its last line then.
-    if it.state == "working" {
+    if it.state == "working" && out.now_on {
         if let Some(a) = ask_of(st, &h) {
             out.state = "needs_you".into();
             out.ask = Some(ask_view(a));
@@ -1179,7 +1182,9 @@ impl Hub {
         let fx = self.write(|st| {
             let mut fx = Effects::default();
             // What it was at work on as its turn ended: what this turn's DONE lines don't close stalled there.
+            // Only the items its words are about (#176): the one it's on now, and those its DONE lines name.
             let on = super::desk_stall::at_work_with(st, sid);
+            let on = super::desk_stall::about(st, text, &on, super::desk_stall::now_on(st, sid).as_deref());
             replied(st, text, &on, now, &mut fx);
             if !said {
                 super::desk_stall::stalls_asked(st, sid, text, &on, &mut fx);

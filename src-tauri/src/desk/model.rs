@@ -67,9 +67,12 @@ pub struct DeskItem {
     pub after: Option<String>,
     #[serde(default)]
     pub after_why: String,
-    /// Its holder's latest, in one line: worked out as it's shown.
+    /// Its holder's latest, in one line, while its holder is on it: worked out as it's shown.
     #[serde(default)]
     pub latest: String,
+    /// Its holder is at work on this one of the items it holds (hub/desk_stall.rs `now_on`): worked out as it's shown.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub now_on: bool,
     /// Its holder's open ask, when it waits on you: worked out as it's shown.
     #[serde(default)]
     pub ask: Option<Value>,

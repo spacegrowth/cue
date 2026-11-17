@@ -1396,3 +1396,40 @@ fn what_you_write_on_an_items_page_is_in_its_steps() {
     assert!(mine.contains(&("Keep the old colour", "to cue-teams")), "{mine:?}");
     assert_eq!(item(&now, "Header")["updated"], it["updated"]);
 }
+
+#[test]
+fn a_session_holding_two_items_answers_on_the_one_it_is_on_now() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let take = |id: &str| {
+        let words = sent_to(&w, &h).into_iter().rev().find(|t| t.contains(&format!("Desk item #{id}"))).unwrap();
+        w.hosted_says(&h, HostedEvent::Taken { text: words });
+    };
+    let a = w.hub().desk_add(&project, "bug", "First thing", "", None).unwrap();
+    w.hub().desk_give(&a.id, &h).unwrap();
+    w.settle();
+    take(&a.id);
+    ends(&w, &h, "Looking at the first thing.");
+    let b = w.hub().desk_add(&project, "bug", "Second thing", "", None).unwrap();
+    w.hub().desk_give(&b.id, &h).unwrap();
+    w.settle();
+    take(&b.id);
+    ends(&w, &h, "On the second thing now.");
+    let said = |d: &Value, t: &str| d["items"].as_array().unwrap().iter().find(|i| i["title"] == t).unwrap()["said"].as_array().map(|s| s.iter().map(|x| x["text"].as_str().unwrap().to_string()).collect::<Vec<_>>()).unwrap_or_default();
+    let d = desk(&w, &project);
+    assert_eq!(said(&d, "First thing"), vec!["Looking at the first thing."], "{d}");
+    assert_eq!(said(&d, "Second thing"), vec!["On the second thing now."], "{d}");
+    // Its latest words and its work show only on the one it's on.
+    assert_eq!((item(&d, "Second thing")["now_on"].as_bool(), item(&d, "Second thing")["latest"].as_str()), (Some(true), Some("On the second thing now.")));
+    assert_eq!((item(&d, "First thing")["now_on"].as_bool(), item(&d, "First thing")["latest"].as_str()), (None, Some("")));
+    // Written from the first one's page: about the first one, so is its answer.
+    let about = format!("About #{} (First thing): one more fix", a.id);
+    w.send_to(&h, &about);
+    w.hosted_says(&h, HostedEvent::Taken { text: about });
+    ends(&w, &h, "Fixed it in the first thing.");
+    let d = desk(&w, &project);
+    assert_eq!(said(&d, "First thing").last().map(String::as_str), Some("Fixed it in the first thing."));
+    assert_eq!(said(&d, "Second thing").len(), 1, "{d}");
+    assert_eq!(item(&d, "First thing")["now_on"].as_bool(), Some(true));
+    assert_eq!(item(&d, "Second thing")["now_on"].as_bool(), None);
+}

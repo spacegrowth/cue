@@ -2207,7 +2207,8 @@ test("an item's ask is answered at its page's foot: you stay on its page, which 
   await expect(box).toHaveAttribute("placeholder", "Reply box loses…");
   await box.fill("It stays put now");
   await page.locator(".dk-right [data-desk-send]").click();
-  await cue.called("send_to_session", { sessionId: "site", text: "It stays put now" });
+  // Sent as about this item, so its session answers on it (#176).
+  await cue.called("send_to_session", { sessionId: "site", text: "About #d1 (Reply box loses focus after Send): It stays put now" });
   await expect(chain).toContainText("You answered: It stays put now");
   expect(await page.evaluate(() => [view, deskOpen.kind])).toEqual(["desk", "item"]);
   // Its session at work again: the old ask and your answer leave the page.
@@ -2600,7 +2601,7 @@ test("a message you send on an item's page is its thread's last, under its holde
   await expect(rows.last()).toContainText("Check the narrow window too");
   await expect(rows.nth(-2)).toContainText("Moved the search into the header's middle.");
   // Its holder at work: its "now" is last, under your message, as it answers it (#165).
-  await cue.change((st) => { const it = st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d4"); const s = st.sessions.find((x) => x.session_id === it.holder.sid); it.state = "working"; if (s) s.state = "working"; });
+  await cue.change((st) => { const it = st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d4"); const s = st.sessions.find((x) => x.session_id === it.holder.sid); it.state = "working"; it.now_on = true; if (s) s.state = "working"; });
   await expect(page.locator(".dk-right .dk-ipane .dk-tm.live")).toHaveCount(1);
   await page.locator(".dk-right .dk-box textarea").fill("And the wide one");
   await page.locator(".dk-right [data-desk-send]").click();
@@ -2720,4 +2721,38 @@ test("the Desk's hand-off shows in the session's chat as a card: from the lead a
   // Its number opens the item.
   await card.locator(".dk-hand-n").click();
   await expect.poll(() => page.evaluate(() => deskOpen && [deskOpen.kind, deskOpen.id])).toEqual(["item", "d5"]);
+});
+
+test("an item's thread holds only its own messages: its session's words about another item, and its working row, stay off it (#176)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  // Its session at work on another item: its latest words are about that one, not this.
+  await cue.change((st) => {
+    const it = st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5");
+    const s = st.sessions.find((x) => x.session_id === it.holder.sid); if (s) s.state = "working";
+    // The hub leaves its latest empty when its session is on another item.
+    Object.assign(it, { state: "working", now_on: false, said: [], latest: "" });
+  });
+  await page.locator('[data-desk-item="d5"]').click();
+  const pane = page.locator(".dk-right .dk-ipane");
+  await expect(pane.locator(".dk-tm.live")).toHaveCount(0);
+  // Its session's turn ended on it: what you write on its page goes to its session as about it, and shows in its
+  // thread as you wrote it.
+  await cue.change((st) => {
+    const it = st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5");
+    st.sessions.find((x) => x.session_id === it.holder.sid).state = "waiting";
+    Object.assign(it, { state: "needs_you", now_on: true });
+  });
+  await page.locator(".dk-right .dk-box textarea").fill("Check the narrow window too");
+  await page.locator(".dk-right [data-desk-send]").click();
+  const sent = await cue.called("send_to_session");
+  expect(sent.args.text).toMatch(/^About #d5 \(.+\): Check the narrow window too$/);
+  await expect(pane.locator(".dk-thread .dk-tm").last()).toContainText("Check the narrow window too");
+  // Its session on it now: its working row comes back.
+  await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5").state = "working"; st.sessions.find((x) => x.session_id === "host").state = "working"; });
+  await expect(pane.locator(".dk-tm.live")).toHaveCount(1);
+  for (const theme of ["light", "dark"]) {
+    await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
+    if (process.env.SHOT_DIR) await page.locator(".dk-right").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-176-${theme}.png` });
+  }
 });

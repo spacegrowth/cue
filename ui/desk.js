@@ -776,7 +776,9 @@ function deskThread(i, d) {
   // Sent from here, not back as a step yet.
   const steps = new Set(mine.filter((c) => c.by === "You").map((c) => c.text.trim()));
   for (const p of deskPending.get(i.id) || []) if (!steps.has(p.text.trim())) rows.push({ at: p.at, by: "You", you: true, back: p.why === "back", tag: p.why === "back" ? "Sent back" : "", html: deskBackWords(p.text, p.pics) });
-  const live = i.state === "working" && i.holder && !deskHolderIdle(i.holder);
+  // At work on this one: its holder can hold several, and its work and latest words are only this one's while it's on
+  // it (#176).
+  const live = i.state === "working" && i.holder && i.now_on && !deskHolderIdle(i.holder);
   // Its latest words when no reply holds them yet (items from before replies were kept): after everything but what
   // you wrote since, so a message you send is still last (#160).
   const lat = (i.latest || "").trim(), lat1 = firstLine(lat);
@@ -1086,7 +1088,17 @@ async function deskSendBox(key) {
     // An answer from an item's page: the page says what you answered (deskChain).
     const it = to.item && deskItem(deskSelection(), to.item);
     if (it?.state === "needs_you" && sessionOf(to.sid)?.state !== "deciding" && !state.restarting?.[to.sid]) deskAnswers.set(it.id, { q: deskQuestion(it), a: text || "a picture", ask: it.ask?.item_id || "", at: now() });
-    if (!to.mate) await sendTo(to.sid, false, key);
+    // From an item's page: it goes as about that item, so the session answers about it and its reply is that item's (#176).
+    if (!to.mate && it && !/^[/!]/.test(text)) {
+      if (state.restarting?.[to.sid]) return toast("It's restarting. Send once it's back.");
+      if (sessionOf(to.sid)?.state === "deciding") return toast("It's asking you something first. Answer that, then send.");
+      await deliver(to.sid, key, (typed, images) => {
+        const said = typed ? `About #${it.id} (${it.title}): ${typed}` : `About #${it.id} (${it.title}): (a picture)`;
+        insSent(to.sid, said, false);
+        return invoke("send_to_session", { sessionId: to.sid, text: said, images, now: false });
+      });
+    }
+    else if (!to.mate) await sendTo(to.sid, false, key);
     else if (state.restarting?.[to.sid]) return toast("It's restarting. Send once it's back.");
     else if (sessionOf(to.sid)?.state === "deciding") return toast("It's asking you something first. Answer that, then send.");
     else await deliver(to.sid, key, (typed, images) => {
