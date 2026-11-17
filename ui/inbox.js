@@ -768,7 +768,7 @@ function inboxOpened(sid) {
   if (p) return inboxParkedPage(p);
   const r = inboxRowFor(sid), s = r.s;
   inboxToEnd = inboxAtEnd(sid, r.kind);
-  const name = `<span class="ib-hname">${esc(nameOf(sid, r.project))}</span>`;
+  const name = `${deskSessMark(sid)}<span class="ib-hname">${esc(nameOf(sid, r.project))}</span>`;
   const head = `<div class="ib-head"><button class="ib-back" data-inbox-back aria-label="Back to the list">‹</button><span class="ib-dot">${inboxDot(r)}</span>${name}<span class="ib-status">${esc(inboxStatus(r))}</span><span class="grow"></span>`
     + `<span class="ib-hacts">${inboxAddDeskBtn(r)}<button class="ib-act" data-inbox-full="${esc(sid)}">Open chat</button>${inboxActs(sid, s, "head")}${inboxCloseBtn(r)}</span>${inboxStep(sid)}</div>`;
   const body = `${inboxForBar(r)}<div class="ib-brief" data-scroll-key="inbox-brief">${inboxMain(r)}${inboxAside(r)}</div>`;

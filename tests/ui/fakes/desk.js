@@ -98,6 +98,8 @@ CueBridge.area("desk", (w) => {
         return it;
       }
       if (act === "looks_right") Object.assign(it, { state: "done", done_at: t });
+      // Undo on a done item: back to check, its commit kept, a waiting one not made (no code changes).
+      else if (act === "reopen") { if (it.state !== "done") throw "It isn't done: nothing to undo"; Object.assign(it, { state: "to_check", done_at: null, commit_wait: null }); }
       else if (act === "send_back") { if (!text?.trim()) throw "Say what isn't right first: type it in the box, then Send back"; Object.assign(it, { state: "working", latest: `sent back: ${text}` }); }
       else if (act === "start_now") Object.assign(it, { state: "working", after: null, after_why: "", latest: "starting in a new session" });
       else if (act === "put_before") { const first = itemOf(it.after); if (first) Object.assign(first, { state: "queued", after: it.id, after_why: it.after_why }); Object.assign(it, { state: "working", after: null, after_why: "" }); }
@@ -105,7 +107,7 @@ CueBridge.area("desk", (w) => {
       else throw `Unknown act ${act}`;
       it.updated = t;
       // Its cards in the lead's chat say where it is now, as the hub's view does.
-      for (const c of desk().projects.flatMap((d) => d.checks || [])) if (c.id === it.id) c.state = it.state;
+      for (const c of desk().projects.flatMap((d) => d.checks || [])) if (c.id === it.id) Object.assign(c, { state: it.state }, act === "reopen" ? { commit_wait: null } : {});
       // Sent back: why, on its latest card, as the hub keeps it (pictures counted).
       const last = act === "send_back" && desk().projects.flatMap((d) => d.checks || []).filter((c) => c.id === it.id && c.last).at(-1);
       if (last) Object.assign(last, { back: text.trim(), back_pics: (images || []).length });
@@ -140,7 +142,8 @@ CueBridge.area("desk", (w) => {
     desk_item_diff: ({ id }) => {
       const it = itemOf(id);
       if (!it) throw "no such item";
-      const on = it.state === "to_check" || (it.state === "done" && (it.commit || it.commit_wait));
+      // Still being worked on: what's changed so far (every file it's on, here), as the hub reads it (#149).
+      const on = it.state === "to_check" || (it.state === "done" && (it.commit || it.commit_wait)) || (it.state !== "done" && !it.unchanged);
       const diff = on ? (it.files || []).map((f) => `diff --git a/${f} b/${f}\n--- a/${f}\n+++ b/${f}\n@@ -1,2 +1,3 @@\n-old ${f}\n+new ${f}\n+more\n same\n`).join("") : "";
       return { diff, machine: "" };
     },

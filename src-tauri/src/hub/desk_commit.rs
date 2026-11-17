@@ -56,6 +56,16 @@ impl Hub {
     /// Item `id` (ready to check), and where its files were changed: its machine and each folder's files: its crew's
     /// (hub/desk.rs `item_sources`) and, held by a session itself, what that session changed while it held it.
     pub(super) fn desk_commit_sources(&self, id: &str) -> Result<(DeskItem, String, Vec<(String, Vec<String>)>), String> {
+        let found = self.desk_change_sources(id)?;
+        if found.0.state != "to_check" {
+            return Err("It isn't ready to check".into());
+        }
+        Ok(found)
+    }
+
+    /// Item `id` in any state, and where its files were changed so far, as `desk_commit_sources` (its page's Files
+    /// tab while it's being worked on: hub/desk_diff.rs).
+    pub(super) fn desk_change_sources(&self, id: &str) -> Result<(DeskItem, String, Vec<(String, Vec<String>)>), String> {
         let found = self.read(|st| {
             st.desk.item(id).map(|i| {
                 let (machine, sources) = super::desk::item_sources(st, i);
@@ -63,9 +73,6 @@ impl Hub {
             })
         });
         let (it, machine, mut sources, own) = found.ok_or("no such item")?;
-        if it.state != "to_check" {
-            return Err("It isn't ready to check".into());
-        }
         // Its log is read here, with the store let go.
         if let Some(o) = own {
             let files = in_folder(crate::logs::steps::edited_between(&o.log, o.from, o.until), &o.folder);

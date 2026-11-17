@@ -13,13 +13,32 @@ let deskLeadBusy = null;
 let deskGiveFor = null;
 /** The project whose quick-add line has its Done when open, or null. */
 let deskQaDone = null;
-/** The hand-off cards in the lead's chat whose why you folded ("id>who"); open by default, a redraw keeps them folded. */
-const deskWhyShut = new Set();
+/** The lead's lines in its chat you opened (their word and body): shut by default, a redraw keeps them open (#157). */
+const deskLnOpen = new Set();
 /** The title of the last ITEM line drawn: a ROUTE "#new" after it is that item (parse.rs reads it so). */
 let deskSaidItem = "";
 
 // ---------- the lead ----------
 
+/** Whether session `sid` works for a Desk: it runs one (its lead), or holds an item there not done yet (itself, or
+ *  through its crew). */
+const deskWorksFor = (sid) => !!sid && (state.desk?.projects || []).some((d) => d.lead?.sid === sid
+  || (d.items || []).some((i) => i.state !== "done" && i.state !== "dropped" && (i.holder?.sid === sid || i.holder?.lead_sid === sid)));
+/** The Desk's mark before such a session's name on the Board, as a loop's run shows its own there (#156). */
+const deskNameMark = (sid) => (deskWorksFor(sid) ? `<span class="dk-name-ic" role="img" aria-label="Desk">${deskKindIcon("desk")}</span>` : "");
+/** The line under such a session's name on its Board card, as a loop's run has its own there (#156): the Desk it runs,
+ *  or the item it holds ("+2" when more); a click opens it on the Desk. "" for a session not working for a Desk. */
+function deskCardLine(sid) {
+  if (!deskWorksFor(sid)) return "";
+  const desks = state.desk?.projects || [];
+  const lead = desks.find((d) => d.lead?.sid === sid);
+  const held = desks.flatMap((d) => (d.items || []).filter((i) => i.state !== "done" && i.state !== "dropped" && (i.holder?.sid === sid || i.holder?.lead_sid === sid)).map((i) => ({ d, i })));
+  const first = held[0];
+  const d = lead || first.d, name = d.name || d.project;
+  const what = lead ? `Runs ${name}` : `#${first.i.id} ${first.i.title || ""}`;
+  const more = held.length > (lead ? 0 : 1) ? `<span class="dk-chip-more">+${held.length - (lead ? 0 : 1)}</span>` : "";
+  return `<div class="dk-chip-line"><button class="dk-chip" data-inbox-desk="${esc(d.project)}" data-item="${lead ? "" : esc(first.i.id)}">${deskKindIcon("desk")}<span class="dk-chip-t">${esc(what)}</span>${more}<span>›</span></button></div>`;
+}
 /** Desk `d`'s lead ({ sid, name, state }), or null. */
 const deskLead = (d) => (d?.lead?.sid ? d.lead : null);
 /** The lead's name: one you just gave it (before the hub's next update has it), else what the hub named it, else its
@@ -92,8 +111,25 @@ function deskGive(i, at) {
   const open = deskGiveFor?.id === i.id && deskGiveFor.at === at;
   const rows = open ? deskSessionsOf(i.project).map((r) => `<button role="menuitem" data-desk-give-to="${esc(r.sid)}" data-id="${esc(i.id)}"><span>${esc(r.name)}</span><span class="dk-ls">${esc(r.sub)}</span></button>`).join("") : "";
   const menu = open ? `<span class="dk-givemenu" role="menu">${rows}<button role="menuitem" data-desk-act="start_now" data-id="${esc(i.id)}"><span>New session</span></button></span>` : "";
+  if (open) queueMicrotask(deskGivePlace);
   return `<span class="dk-givewrap"><button class="${at === "row" ? "dk-link dk-give" : "btn small"}" data-desk-give="${esc(i.id)}" data-at="${at}" aria-expanded="${open}">Give to…</button>${menu}</span>`;
 }
+/** The open menu, whole inside the window wherever its button sits (#152): under the button from its left edge, moved
+ *  left as far as it must, above it when there's more room there, and scrolling inside when even that is too short.
+ *  Fixed to the window so no column cuts it; it follows its button as the list scrolls or the window resizes. */
+function deskGivePlace() {
+  const m = document.querySelector(".dk-givemenu"), b = m?.previousElementSibling;
+  if (!m || !b) return;
+  const r = b.getBoundingClientRect(), pad = 8, W = innerWidth, H = innerHeight;
+  Object.assign(m.style, { position: "fixed", right: "auto", maxWidth: `${W - 2 * pad}px`, maxHeight: "", overflowY: "" });
+  const w = m.offsetWidth, h = m.scrollHeight, below = H - r.bottom - 4 - pad, above = r.top - 4 - pad;
+  const up = h > below && above > below, room = up ? above : below;
+  m.style.left = `${Math.max(pad, Math.min(r.left, W - pad - w))}px`;
+  if (h > room) Object.assign(m.style, { maxHeight: `${room}px`, overflowY: "auto" });
+  m.style.top = `${up ? r.top - 4 - Math.min(h, room) : r.bottom + 4}px`;
+}
+addEventListener("scroll", (e) => { if (deskGiveFor && !e.target?.closest?.(".dk-givemenu")) deskGivePlace(); }, true);
+addEventListener("resize", () => { if (deskGiveFor) deskGivePlace(); });
 async function deskGiveTo(id, sid) {
   deskGiveFor = null;
   try { await invoke("desk_give", { id, sid }); } catch (e) { toast(`Not given: ${e}`); }
@@ -171,7 +207,7 @@ const DESK_LEAD_CLICKS = {
   deskKeep: () => { deskPick = null; renderMain(); },
   deskGive: (el) => { const at = el.dataset.at; deskGiveFor = deskGiveFor?.id === el.dataset.deskGive && deskGiveFor.at === at ? null : { id: el.dataset.deskGive, at }; renderMain(); },
   deskGiveTo: (el) => deskGiveTo(el.dataset.id, el.dataset.deskGiveTo),
-  deskWhy: (el) => { const k = el.dataset.deskWhy; if (!deskWhyShut.delete(k)) deskWhyShut.add(k); renderMain(); },
+  deskWhy: (el) => { const k = el.dataset.deskWhy; if (!deskLnOpen.delete(k)) deskLnOpen.add(k); renderMain(); },
   deskQaDone: () => { deskQaDone = deskSelection(); renderMain(); deskQaFocusEl("done"); },
 };
 
@@ -199,11 +235,13 @@ if (typeof document !== "undefined") {
 // ---------- the lead's own lines, drawn in its chat ----------
 /** A Desk line as desk/parse.rs reads it: its word in capitals, a list mark or bold around it; ASK has its own card
  *  (deskLeadAsk) and DECIDED md's own block, so neither is here. */
-const DESK_SAY = /^[-*+ ]*(ITEM|ROUTE|DONE|CONTEXT)\**\s*:(.*)$/;
+const DESK_SAY = /^[-*+ ]*(ITEM|ROUTE|DONE|CONTEXT|DESIGNS|TITLE)\**\s*:(.*)$/;
 const DESK_KINDS = ["bug", "feature", "task"];
-/** `line` of the lead's reply as one quiet line of the Desk's (md's `lines` hook): ITEM "New item · BUG title · done
- *  when …"; ROUTE "Bug #2 title → who  Why ⌃", the why under it; DONE "Done · Bug #2 title"; CONTEXT "who → keep · why". "" for
- *  any other line, or one parse.rs wouldn't act on (an empty or "<…>" body). */
+/** `line` of a Desk chat's reply as one short quiet line at the left (md's `lines` hook; #157): ROUTE "[bug] #2 → who
+ *  · after #1"; ITEM "added [bug] title"; DONE "[bug] #2 done"; TITLE "[bug] #2 titled"; CONTEXT "who → keep"; DESIGNS
+ *  "Open the designs ↗", a link in the accent colour. What's longer (the item's title, why, done when) opens under it
+ *  on a click (deskLnOpen), its title opening the item. "" for any other line, or one parse.rs wouldn't act on (an
+ *  empty or "<…>" body). */
 function deskLineHtml(line, inline) {
   const m = DESK_SAY.exec(line.trim());
   if (!m) return "";
@@ -216,54 +254,68 @@ function deskLineHtml(line, inline) {
   const id = (s) => (/^#?([a-z0-9]+)/i.exec(s.trim())?.[1] || "").toLowerCase();
   const name = (s) => s.trim().replace(/^@/, "").replace(/^["`*]+|["`*]+$/g, "").trim();
   const arrow = (s) => { const a = /\s*(->|→|=>)\s*/.exec(s); return a ? [s.slice(0, a.index), s.slice(a.index + a[0].length)] : null; };
-  const row = (head, sub) => `<div class="dk-say">${head}${sub ? `<span class="dk-say-s"> · ${sub}</span>` : ""}</div>`;
-  // An item named by kind and number ("Bug #2") when the Desk has it, as its row says it.
   const known = (x) => (state.desk?.projects || []).flatMap((d) => d.items).find((i) => deskIdIs(i, x));
-  const ref = (x) => `<span class="dk-say-id">${deskKindIcon(known(x))}${esc(known(x) ? deskNum(known(x)) : `#${x}`)}</span>`;
-  // The same, with its title when the Desk has it.
-  const named = (x) => `${ref(x)}${known(x)?.title ? ` · <span class="dk-say-t">${esc(known(x).title)}</span>` : ""}`;
+  // An item as its number in bold ("#2": no kind's icon, not "Bug #2", to keep the line short).
+  const ref = (x, it = known(x)) => `<b class="dk-say-id">#${esc(it?.id ?? x)}</b>`;
+  // Its title under the line, a click opening it.
+  const titled = (it, t = it?.title) => (!t ? "" : it ? `<button class="dk-sl-it" data-desk-chk-item="${esc(it.id)}">${esc(t)}</button>` : `<span class="dk-sl-tt">${esc(t)}</span>`);
+  // The line, and what opens under it (none: a plain line).
+  const ln = (head, more) => {
+    const key = `${m[1]}:${body}`, open = !!more && deskLnOpen.has(key);
+    const row = more ? `<button class="dk-sl-r" data-desk-why="${esc(key)}" aria-expanded="${open}"><span class="dk-sl-h">${head}</span><span class="dk-sl-c" aria-hidden="true">${open ? "⌃" : "⌄"}</span></button>` : `<span class="dk-sl-r"><span class="dk-sl-h">${head}</span></span>`;
+    return `<div class="dk-say dk-sl${open ? " open" : ""}">${row}${open ? `<div class="dk-sl-d">${more}</div>` : ""}</div>`;
+  };
+  const w = (t) => `<span class="dk-say-w">${t}</span>`;
+  const dot = (xs) => xs.filter(Boolean).join(" · ");
   if (m[1] === "ITEM") {
-    const first = p[0].toLowerCase(), kind = DESK_KINDS.includes(first) ? first : "task";
+    const first = p[0].toLowerCase();
     const rest = DESK_KINDS.includes(first) ? p.slice(1) : p;
     const title = rest.find((s) => lab(s, "done when") === null) || "";
     if (!title) return "";
     deskSaidItem = title;
     const done = rest.map((s) => lab(s, "done when")).find((v) => v !== null) || "";
-    return row(`<span class="dk-say-h"><span class="dk-say-w">New item</span> ${deskKindIcon(kind)}<span class="dk-say-t">${inline(title)}</span></span>`, done ? `done when ${inline(done)}` : "");
+    const it = deskNewlySaid(title);
+    return ln(`${w("added")} ${it ? ref(it.id, it) : `<b class="dk-say-t">${inline(title)}</b>`}`, dot([it ? titled(it) : "", done ? `done when ${inline(done)}` : ""]));
   }
   if (m[1] === "ROUTE") {
     const ht = arrow(p[0]), at = ht && id(ht[0]), to = ht && name(ht[1]);
     if (!at || !to) return "";
-    const after = id(find("after")), why = find("why"), crew = name(find("crew")), kind = find("kind").replace(/["`*.]/g, "").toLowerCase();
-    const sub = [after ? `after ${ref(after)}` : "", why ? inline(why) : ""].filter(Boolean).join(" · ");
-    // One line: its kind's icon, number and title (opens the item) → who; why open under it, "Why ⌃" folds it.
+    const after = id(find("after")), why = find("why"), crew = name(find("crew"));
     // "#new" is the ITEM just above it, once the Desk has it; "→ new" (or "me") the session Cue started for it, once there is one.
-    const it = at === "new" ? deskNewlySaid(deskSaidItem) : known(at), key = `${at}>${to}`, open = !deskWhyShut.has(key);
+    const it = at === "new" ? deskNewlySaid(deskSaidItem) : known(at);
     const fresh = /^(new|me)$/i.test(to) && it?.holder;
-    const who = fresh ? deskHolderName(it.holder.sid, it.holder.name) : to;
-    const what = at === "new" && !it ? `<span class="dk-rt-n">New item</span>`
-      : `<span class="dk-rt-n">${esc(it ? deskNum(it) : `#${at}`)}</span>${it?.title ? `<span class="dk-rt-t">${esc(it.title)}</span>` : ""}`;
-    const head = it ? `<button class="dk-rt-it" data-desk-chk-item="${esc(it.id)}">${deskKindIcon(it)}${what}</button>` : `<span class="dk-rt-it">${deskKindIcon(kind)}${what}</span>`;
-    const fold = sub ? `<button class="dk-rt-why" data-desk-why="${esc(key)}">Why ${open ? "⌃" : "⌄"}</button>` : "";
-    return `<div class="dk-route${open ? " open" : ""}"><div class="dk-rt-row">${head}<span class="dk-rt-ar">→</span><span class="dk-rt-to">${esc(who)}${crew ? ` · ${esc(crew)}` : ""}</span>${fold}</div>${sub && open ? `<div class="dk-rt-why-s">${sub}</div>` : ""}</div>`;
+    const who = fresh ? deskHolderName(it.holder.sid, it.holder.name) : /^new$/i.test(to) ? "a new session" : to;
+    const what = at === "new" && !it ? `<b class="dk-say-id">the new item</b>` : ref(at, it);
+    const also = dot([crew ? esc(crew) : "", after ? `${w("after")} ${ref(after)}` : ""]);
+    const head = `${what} → <b class="dk-rt-to">${esc(who)}</b>${also ? ` · ${also}` : ""}`;
+    return ln(head, dot([titled(it, it?.title || (at === "new" ? deskSaidItem : "")), why ? inline(why) : ""]));
   }
   if (m[1] === "DONE") {
-    const ids = body.split(/[, ]/).filter((w) => w.trim().startsWith("#")).map(id).filter(Boolean);
-    return ids.length ? row(`<span class="dk-say-h"><span class="dk-say-w">Done</span> ${ids.map(named).join(", ")}</span>`, "") : "";
+    const ids = body.split(/[, ]/).filter((x) => x.trim().startsWith("#")).map(id).filter(Boolean);
+    return ids.length ? ln(`${ids.map((x) => ref(x)).join(", ")} ${w("done")}`, dot(ids.map((x) => titled(known(x))))) : "";
+  }
+  if (m[1] === "TITLE") {
+    const at = p[0].startsWith("#") && id(p[0]), t = (p[1] || "").replace(/^["`*]+|["`*]+$/g, "").trim();
+    return at && t ? ln(`${ref(at)} ${w("titled")}`, titled(known(at), t)) : "";
+  }
+  if (m[1] === "DESIGNS") {
+    // "#135 https://…" (as parse.rs designs): the link alone, under the words, as the item page has it.
+    const url = /^#\S+\s.*?(https?:\/\/[^\s>)\]"`*]+)/.exec(body)?.[1]?.replace(/[.,;]+$/, "");
+    return url ? `<div class="dk-say dk-dsay">${deskDesignsA(url)}</div>` : "";
   }
   const ht = arrow(p[0]), who = ht && name(ht[0]), what = ht && (ht[1].trim().split(/\s+/)[0] || "").replace(/["`*.]/g, "").toLowerCase();
   if (!who || !what) return "";
   const why = find("why");
-  return row(`<span class="dk-say-h"><span class="dk-say-w">Context</span> <span class="dk-say-to"><b>${esc(who)}</b> → ${esc(what)}</span></span>`, why ? inline(why) : "");
+  return ln(`<b class="dk-rt-to">${esc(who)}</b> → ${esc(what)}`, why ? inline(why) : "");
 }
 /** The newest item titled `title` (as the lead's ITEM line said it), or undefined. */
 const deskNewlySaid = (title) => (title ? (state.desk?.projects || []).flatMap((d) => d.items).filter((i) => i.title === title).sort((a, b) => (b.created ?? 0) - (a.created ?? 0))[0] : undefined);
-/** Cue's message to the lead as a small card, when it's one of Cue's own (new items, or a DONE it couldn't act on);
+/** Cue's message to the lead as quiet centred lines, when it's one of Cue's own (new items, or a DONE it couldn't act on);
  *  null for any other (chat/render.js chatHtml `you`). */
 const deskCueNote = (e) => deskNewItems(e) ?? deskDoneNotes(e);
 /** What Cue told the lead of a DONE it couldn't act on (hub/desk.rs lead_done: "#69 not closed: it waits on your
- *  check", a line each, then its words for the lead, not shown): a card an item, its kind, number and title (a click
- *  opens it) and why in a quiet line. null for any other message. */
+ *  check", a line each, then its words for the lead, not shown): a centred line an item, "Cue · not closed [task]
+ *  Task #69 title · why", its number and title opening it. null for any other message. */
 function deskDoneNotes(e) {
   const lines = String(e.text || "").split("\n").map((l) => l.trim()).filter(Boolean);
   if (lines.length < 2 || !/^Only the person closes an item that waits on their check/.test(lines[lines.length - 1])) return null;
@@ -272,26 +324,39 @@ function deskDoneNotes(e) {
   const known = (x) => (state.desk?.projects || []).flatMap((d) => d.items).find((i) => deskIdIs(i, x));
   return `<div class="dk-news">${notes.map(([, id, why]) => {
     const it = known(id);
-    const head = it ? `${deskKindIcon(it)}<button class="dk-chk-a dk-new-t" data-desk-chk-item="${esc(it.id)}">${esc(`${deskNum(it)} · ${it.title}`)}</button>` : `<span class="dk-new-t">#${esc(id)}</span>`;
-    return `<div class="dk-new"><span class="dk-say-w">Not closed</span> ${head}<span class="dk-say-s"> · ${esc(why)}</span></div>`;
-  }).join("")}<div class="cv-meta">From Cue · ${ago(e.at_ms)} ago</div></div>`;
+    const head = it ? deskItemRef(it.id, it.kind, deskNum(it), it.title) : `<b class="dk-new-t">#${esc(id)}</b>`;
+    return deskCueLine(`<span class="dk-say-w">not closed</span> ${head}<span class="dk-say-s"> · ${esc(why)}</span>`, e.at_ms);
+  }).join("")}</div>`;
 }
 /** What Cue told the lead of new items (desk/mod.rs new_items_words: "New item #72 (bug): title | done when: … |
- *  pictures: … | from x", a line each, then its "Route it now…" words for the lead) as a small card an item: its kind,
- *  number and title (a click opens it), and done when, pictures and who it's from in a quiet line; the words for the
- *  lead aren't shown. null for any other message (chat/render.js chatHtml `you`). */
+ *  pictures: `a.png` | from x", a line each, then one line of words for the lead, none of it shown: sometimes "If one
+ *  of yours holds two separate problems, SPLIT it first…", always "Route it now…" or "Route each now…", sometimes "Say
+ *  what one without a kind is…". Cue never sends new items without the Route words, so they mark the message) as a small
+ *  card an item: its kind's icon, number and title, a muted line under them (done when, who it's from), then its
+ *  pictures as thumbnails; a click on the card opens the item. null for any other message (chat/render.js chatHtml
+ *  `you`). */
 function deskNewItems(e) {
   const lines = String(e.text || "").split("\n").map((l) => l.trim()).filter(Boolean);
-  const said = lines.filter((l) => !/^Route (it|each) now:/.test(l));
-  const items = said.map((l) => /^New item #([^\s:(]+)(?: \((bug|feature|task)\))?: (.*)$/.exec(l));
-  if (!said.length || said.length === lines.length || items.some((m) => !m)) return null;
-  return `<div class="dk-news">${items.map(([, id, kind = "", rest]) => {
-    const p = rest.split(" | "), title = p[0], tail = p.slice(1).map((x) => {
-      const done = /^done when: (.*)$/.exec(x), pics = /^pictures: (.*)$/.exec(x);
-      if (done) return `done when ${esc(done[1])}`;
-      if (pics) { const n = pics[1].split("` `").length; return n === 1 ? "1 picture" : `${n} pictures`; }
-      return esc(x);
-    });
-    return `<div class="dk-new"><span class="dk-say-w">New item</span> ${deskKindIcon(kind)}<button class="dk-chk-a dk-new-t" data-desk-chk-item="${esc(id)}">${esc(`${deskNum({ id, kind })} · ${title}`)}</button>${tail.length ? `<span class="dk-say-s"> · ${tail.join(" · ")}</span>` : ""}</div>`;
-  }).join("")}<div class="cv-meta">From Cue · ${ago(e.at_ms)} ago</div></div>`;
+  const NEW = /^New item #([^\s:(]+)(?: \((bug|feature|task)\))?: (.*)$/;
+  const n = lines.findIndex((l) => !NEW.test(l));
+  // Cue's own: New item lines first, then its words for the lead, which always ask for a ROUTE.
+  if (n < 1 || !lines.slice(n).some((l) => /\bRoute (it|each) now:/.test(l)) || lines.slice(n).some((l) => NEW.test(l))) return null;
+  const known = (x) => (state.desk?.projects || []).flatMap((d) => d.items).find((i) => deskIdIs(i, x));
+  return `<div class="dk-news">${lines.slice(0, n).map((l) => deskNewCard(NEW.exec(l), known, e.at_ms)).join("")}</div>`;
 }
+/** One new item's card (deskNewItems): "[icon] Task #72 title  1h", "New item · done when … · from x", thumbnails. */
+function deskNewCard([, id, said = "", rest], known, at) {
+  const p = rest.split(" | "), it = known(id), kind = it?.kind || said;
+  let pics = [];
+  const sub = p.slice(1).flatMap((x) => {
+    const done = /^done when: (.*)$/.exec(x), pc = /^pictures: (.*)$/.exec(x);
+    if (pc) { pics = [...pc[1].matchAll(/`([^`]+)`/g)].map((m) => m[1]); return []; }
+    return [done ? `done when ${esc(done[1])}` : esc(x)];
+  });
+  return `<div class="dk-nc" role="button" tabindex="0" data-desk-chk-item="${esc(id)}"><div class="dk-nc1">${deskKindIcon(kind)}<b class="dk-inum">${esc(deskNum({ id, kind }))}</b><span class="dk-nc-t">${esc(p[0])}</span><span class="dk-cl-age">${ago(at)}</span></div>`
+    + `<div class="dk-nc2">${["New item", ...sub].join(" · ")}</div>${thumbs(pics)}</div>`;
+}
+/** An item in a Desk chat's line: its kind's icon and number in bold, then its title (a click on either opens it). */
+const deskItemRef = (id, kind, num, title) => `<button class="dk-chk-a dk-new-t" data-desk-chk-item="${esc(id)}">${deskKindIcon(kind)}<b class="dk-inum">${esc(num)}</b>${title ? ` <span class="dk-new-tt">${esc(title)}</span>` : ""}</button>`;
+/** One of Cue's own lines in the lead's chat, centred between thin rules: "Cue · <what> <age>". */
+const deskCueLine = (html, at) => `<div class="dk-new dk-cl"><span class="dk-cl-t"><b>Cue</b> · ${html} <span class="dk-cl-age">${ago(at)}</span></span></div>`;

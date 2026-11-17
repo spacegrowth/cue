@@ -223,6 +223,7 @@ function restoreFocus(was) {
   // has (at launch the first draw comes before the sessions do: no box yet, so the next draw tries again).
   const target = `${active?.id}|${active?.sid}`;
   if (target !== focusedTarget && !sheet && !focusKey && focusComposer()) focusedTarget = target;
+  if (view !== "desk" && typeof deskBoxShown !== "undefined") deskBoxShown = null;   // back on the Desk later, its open chat's box takes the cursor again (desk.js)
   saveDrafts();
   // preventScroll: the box is redrawn where it was, so nothing needs scrolling to show it. Without it
   // WebKit can scroll an ancestor (the Desk item card hides its overflow) to reveal the new box, and
