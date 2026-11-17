@@ -509,13 +509,19 @@ function deskPaneMark(o, d) {
   if (o?.kind === "holder") { const s = sessionOf(o.sid); return deskMark(s ? deskSessKind(s) : "lead"); }
   return "";
 }
-function deskSessChat(sid) {
+/** The way back from a session's chat: to what opened it (an item's page, a holder's), else to the lead's chat. */
+function deskChatBack(from, d) {
+  const i = from?.kind === "item" && deskItem(d.project, from.id);
+  const label = i ? deskNum(i) : from?.kind === "holder" ? deskHolderName(from.sid, d.items.find((x) => deskGroupKey(x.holder) === from.sid && x.state !== "done" && x.holder?.kind !== "crew")?.holder?.name) : deskLeadName(d) || "Back";
+  return `<button class="dk-back" data-desk-chat-back>‹ ${esc(label)}</button>`;
+}
+function deskSessChat(sid, from, d) {
   const s = sessionOf(sid);
   if (!s) return null;
   const rows = deskChatRows(s);
   const where = whereNow(null, s);
   const empty = !rows && !where ? `<div class="dk-empty">Nothing said yet.</div>` : "";
-  return `<div class="dk-ch dk-sch">${deskTitled(deskSessKind(s), deskSessName(sid, deskHolderName(sid), "b"))}<span class="dk-sub">${esc(deskSessState(s)[1])}</span><span class="grow"></span><button class="btn small" data-desk-session="${esc(sid)}">Open its session</button></div>
+  return `<div class="dk-ch dk-sch">${deskChatBack(from, d)}${deskTitled(deskSessKind(s), deskSessName(sid, deskHolderName(sid), "b"))}<span class="dk-sub">${esc(deskSessState(s)[1])}</span><span class="grow"></span><button class="btn small" data-desk-session="${esc(sid)}">Open its session</button></div>
     <div class="dk-chat" data-desk-chat="${esc(sid)}">${empty}${rows}${where}</div>`;
 }
 /** The session whose steps the Desk follows live (chat/thread.js followSteps): its lead's, while its chat shows, or
@@ -659,6 +665,9 @@ function deskDecList(list) {
     + (c.why ? `<div class="dk-w">${esc(c.why)}</div>` : "")
     + `<div class="dk-dl3">${c.by ? `<span class="dk-lby">by <b>${esc(c.by)}</b></span>` : ""}<span class="grow"></span><span class="dk-lu">${deskUndoLink(c)}</span></div></div>`).join("")}</div>`;
 }
+/** What opens session `sid`'s chat here on the Desk, as its row in the sessions on the left does: the lead's chat
+ *  for the Desk's lead, else that session's chat in the middle card. Never the board. */
+const deskChatAttrs = (sid, d) => (sid === deskLead(d)?.sid ? `data-desk-lead-chat="${esc(sid)}"` : `data-desk-chat-of="${esc(sid)}"`);
 /** The item page's right rail: who holds it, who runs that, when it was added; then its links and Drop. */
 function deskItemRail(i, d) {
   const blk = (head, html) => (html ? `<div class="dk-rb"><h4>${head}</h4>${html}</div>` : "");
@@ -669,7 +678,7 @@ function deskItemRail(i, d) {
   const armed = deskDropArm === i.id;
   return `<aside class="dk-rail">${blk("Holder", holder)}${blk("Run by", runBy ? `<div class="dk-rv">${esc(runBy)}</div>` : "")}`
     + blk("Added", `<div class="dk-rv">${esc(deskFrom(i, d))}</div><div class="dk-rs">${ago(deskMs(i.created))} ago</div>`)
-    + `<div class="dk-rl">${deskDesignsLink(i)}${s ? `<button class="btn small" data-desk-session="${esc(sid)}">Open ${esc(h.name)}</button>` : ""}</div>`
+    + `<div class="dk-rl">${deskDesignsLink(i)}${s ? `<button class="btn small" ${deskChatAttrs(sid, d)}>Open ${esc(h.name)}</button>` : ""}</div>`
     + (i.state !== "done" ? `<button class="dk-drop${armed ? " armed" : ""}" data-desk-act="drop" data-id="${esc(i.id)}">${armed ? "Drop it" : "Drop this item"}</button>` : "")
     + `</aside>`;
 }
@@ -680,7 +689,7 @@ function deskItemPane(i, d) {
   const files = changed ? `<div class="dk-fcs">${changed}</div>` : fileNames ? `<div class="dk-files">${esc(fileNames)}</div>` : "";
   // Option A (Desk picks, 16 Nov 2026): a tinted header (title, a state pill, where it stands), then the item in a
   // main column with a rail beside it (under it when the card is narrow).
-  return `<div class="dk-pane dk-ipane" data-scroll-key="item:${esc(i.id)}"><div class="dk-ihead">${deskBack(deskLeadName(d) || "Back")}<h1>${esc(i.title)}</h1>
+  return `<div class="dk-pane dk-ipane" data-scroll-key="item:${esc(i.id)}"><div class="dk-ihead">${deskBack(deskLeadName(d) || "Back")}<h1><span class="dk-hnum">${deskKindIcon(i)}${esc(deskNum(i))} · </span>${esc(i.title)}</h1>
     <div class="dk-ist"><span class="dk-pill dk-pill-${esc(i.state)}"><i aria-hidden="true"></i>${esc(deskInstallWait(i) ? "Waiting for install" : DESK_PILL[i.state] || i.state)}</span><div class="dk-state">${deskItemState(i)}</div></div></div>
     <div class="dk-ibody"><div class="dk-imain">
     ${deskSec("Couldn't give it out", i.route_failed ? `<p>${esc(i.route_failed)}</p>` : "")}
@@ -721,7 +730,7 @@ function deskHolderPane(sid, d) {
     ${lead ? deskSec("Crew", crewRows ? `<div class="dk-crew">${crewRows}</div>` : `<p class="dk-note">No crew at work.</p>`) : ""}${nextLine}
     ${deskSec(`Decided by ${esc(name)} · ${decs.length}`, decHtml)}
     ${deskSec(`Latest from ${esc(name)}`, latest ? `<p class="dk-quiet">${esc(latest)}</p>` : "")}
-    ${s ? `<div class="dk-acts"><button class="btn small" data-desk-session="${esc(sid)}">Open its session</button></div>` : ""}</div>`;
+    ${s ? `<div class="dk-acts"><button class="btn small" ${deskChatAttrs(sid, d)}>Open its session</button></div>` : ""}</div>`;
 }
 /** A crew member: where it is, its files, its latest, Open its session and Stop it. No box of its own: the box goes
  *  to its lead. */
@@ -802,7 +811,7 @@ function deskRight(project) {
     else if (o.fresh && now() - o.fresh < 5000) return deskRightChat(d);
   }
   else if (o?.kind === "holder") body = deskHolderPane(o.sid, d);
-  else if (o?.kind === "chat") { const rd = deskReader(sessionOf(o.sid)); reading = !!rd; body = rd || deskSessChat(o.sid); }
+  else if (o?.kind === "chat") { const rd = deskReader(sessionOf(o.sid)); reading = !!rd; body = rd || deskSessChat(o.sid, o.from, d); }
   else if (o?.kind === "crew") body = deskCrewPane(o.lead, o.agent, d);
   else if (o?.kind === "addon") {
     const h = deskGroups(project).extra.find((x) => (x.key || x.name) === o.key);
@@ -884,14 +893,17 @@ async function deskSendBox(key) {
     // An answer from an item's page: the page says what you answered (deskChain).
     const it = to.item && deskItem(projFilter, to.item);
     if (it?.state === "needs_you" && sessionOf(to.sid)?.state !== "deciding" && !state.restarting?.[to.sid]) deskAnswers.set(it.id, { q: deskQuestion(it), a: text || "a picture", ask: it.ask?.item_id || "", at: now() });
-    if (!to.mate) return sendTo(to.sid, false, key);
-    if (state.restarting?.[to.sid]) return toast("It's restarting. Send once it's back.");
-    if (sessionOf(to.sid)?.state === "deciding") return toast("It's asking you something first. Answer that, then send.");
-    return deliver(to.sid, key, (typed, images) => {
+    if (!to.mate) await sendTo(to.sid, false, key);
+    else if (state.restarting?.[to.sid]) return toast("It's restarting. Send once it's back.");
+    else if (sessionOf(to.sid)?.state === "deciding") return toast("It's asking you something first. Answer that, then send.");
+    else await deliver(to.sid, key, (typed, images) => {
       const said = `About ${to.mate}: ${typed}`;
       insSent(to.sid, said, false);
       return invoke("send_to_session", { sessionId: to.sid, text: said, images, now: false });
     });
+    // Went (the box emptied): on the item's page, in its Steps.
+    if (it && text && !draft(key).text.trim()) deskWrote(it.id, "wrote_holder", text);
+    return;
   }
   const { project, item: id } = to;
   const it = id && deskItem(project, id);
@@ -916,10 +928,12 @@ async function deskSendBox(key) {
   try {
     await invoke("desk_send", { project, text: said, images });
     mine.sent = now();
-    if (it) toast(`Sent to ${deskLeadName(deskOf(project)) || "the lead"}`);
+    if (it) { toast(`Sent to ${deskLeadName(deskOf(project)) || "the lead"}`); if (text) deskWrote(it.id, "wrote_lead", text); }
   }
   catch (e) { deskSent.set(project, (deskSent.get(project) || []).filter((p) => p !== mine)); Object.assign(draft(key), { text, images }); toast(`Not sent: ${e}`); renderMain(); }
 }
+/** What you wrote on item `id`'s page, sent (`act`: to its lead or its holder): kept in its Steps (hub/desk.rs act_on). */
+const deskWrote = (id, act, text) => invoke("desk_item_act", { id, act, text }).catch((e) => console.error(e));
 /** Item `id` sent back to its holder from box `key` with `text` and `images`: the box emptied once it went (kept when
  *  it didn't). Whether it went. */
 async function deskSendBack(id, key, text, images) {
@@ -1004,7 +1018,9 @@ const DESK_CLICKS = {
   deskLeadChat: () => { deskPick = null; deskTab = "lead"; deskShow(null); deskLeadLit = projFilter; renderMain(); },
   deskChkItem: (el) => deskShow({ kind: "item", id: el.dataset.deskChkItem }),
   deskRen: (el) => renameSession({ dataset: { rename: el.dataset.deskRen } }),
-  deskChatOf: (el) => { deskChatEnd = true; deskShow({ kind: "chat", sid: el.dataset.deskChatOf }); },
+  // Opened from an item's page or a holder's, it remembers that page so ‹ goes back to it (from the left list: the lead).
+  deskChatOf: (el) => { deskChatEnd = true; deskShow({ kind: "chat", sid: el.dataset.deskChatOf, from: ["item", "holder"].includes(deskOpen?.kind) ? { ...deskOpen } : null }); },
+  deskChatBack: () => deskShow(deskOpen?.from || null),
   deskNewSession: (el) => deskNewSession(el.dataset.deskNewSession),
   deskMember: (el) => deskMember(el.dataset.project, el.dataset.deskMember, true),
   deskDoneFold: (el) => {
@@ -1063,7 +1079,7 @@ function deskKey(e) {
     if (deskDropArm) { deskDropArm = null; renderMain(); return true; }
     if (deskGiveFor) { deskGiveFor = null; renderMain(); return true; }
     if (deskPick && deskLead(deskOf(projFilter))) { deskPick = null; renderMain(); return true; }
-    if (deskOpen && !(e.target.matches?.("textarea, input") && e.target.value)) { deskShow(deskOpen.kind === "crew" ? { kind: "holder", sid: deskOpen.lead } : null); return true; }
+    if (deskOpen && !(e.target.matches?.("textarea, input") && e.target.value)) { deskShow(deskOpen.kind === "crew" ? { kind: "holder", sid: deskOpen.lead } : deskOpen.kind === "chat" ? deskOpen.from || null : null); return true; }
   }
   return false;
 }
