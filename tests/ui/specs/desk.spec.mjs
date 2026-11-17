@@ -1335,6 +1335,20 @@ test("a session on no item says the first line of its latest reply, when it came
   await expect(row.locator("[data-desk-member]")).toHaveText("Add to Desk");
 });
 
+test("the sessions on the left: working first, then each group most recent first (#184)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.change((st) => {
+    const site = st.sessions.find((x) => x.session_id === "site");
+    for (const [sid, h] of [["older", 5], ["newest", 1], ["middle", 3]]) st.sessions.push({ ...site, session_id: sid, project: "cue", name: sid, state: "idle", since_ms: Date.now() - h * 3600000, thread: [] });
+  });
+  const ids = () => page.locator(".dk-sessions .dk-scroll > *").evaluateAll((els) => els.map((el) => el.matches(".dk-gh") ? `# ${el.firstChild.textContent.trim()}` : el.dataset.deskChatOf || el.dataset.deskCrew));
+  await expect.poll(ids).toEqual(["# Working", "host", "# Not on the Desk", "newest", "middle", "older"]);
+  // One comes back from its reply: it moves to the top of its group.
+  await cue.change((st) => { st.sessions.find((x) => x.session_id === "older").since_ms = Date.now(); });
+  await expect.poll(ids).toEqual(["# Working", "host", "# Not on the Desk", "older", "newest", "middle"]);
+});
+
 /** The Desk run by host instead, so "lead" (with its crew) is a session in the list like any other. */
 const crewNotLead = (cue) => cue.change((st) => { st.desk.projects.find((d) => d.project === "cue").lead = { sid: "host", name: "host-lead", state: "live" }; });
 
@@ -1814,6 +1828,21 @@ test("Looks right on an item whose file another session is editing: done at once
 const spare = (cue) => cue.change((st) => st.sessions.push({ ...st.sessions.find((x) => x.session_id === "site"), session_id: "spare", project: "cue", name: "spare", thread: [] }));
 /** The left card's groups and rows, as "# group" and session ids. */
 const leftRows = (page) => page.locator(".dk-sessions .dk-scroll > *").evaluateAll((els) => els.map((el) => el.matches(".dk-gh") ? `# ${el.firstChild.textContent.trim()}` : el.dataset.deskChatOf || el.dataset.deskCrew).filter(Boolean));
+
+test("Not on the Desk lists only free, recent sessions: none another Desk has, none stopped or idle for days (#189)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.change((st) => {
+    const base = st.sessions.find((x) => x.session_id === "site"), now = Date.now();
+    const add = (sid, more = {}) => st.sessions.push({ ...base, session_id: sid, project: "cue", name: sid, thread: [], state: "waiting", since_ms: now, ...more });
+    add("spare"); add("theirs", { state: "working" }); add("their-lead", { state: "working" }); add("holds"); add("crew-lead"); add("stopped", { state: "stopped" }); add("stale", { since_ms: now - 3 * 86400000 });
+    st.desk.projects.push({ project: "desk-other", id: "desk-other", independent: true, name: "Other", workspace_project: "cue", folder: "/x",
+      lead: { sid: "their-lead", name: "their-lead" }, members: ["theirs"], decisions: [],
+      items: [{ id: "o1", title: "theirs", state: "working", holder: { kind: "session", sid: "holds" }, created: 1, updated: 1 },
+        { id: "o2", title: "by crew", state: "working", holder: { kind: "crew", sid: "agent-x", lead_sid: "crew-lead", name: "x" }, created: 1, updated: 1 }] });
+  });
+  await expect.poll(() => leftRows(page)).toEqual(["# Working", "host", "# Not on the Desk", "spare"]);
+});
 
 test("Add to Desk on a session that isn't on it puts it on the Desk's own list, in place", async ({ page, cue }) => {
   await cue.open("desk");

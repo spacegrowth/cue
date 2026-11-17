@@ -391,9 +391,15 @@ function deskSessRow({ name, sid = "", mark = "", dot, word, item, line, on, att
     <div class="dk-s1">${pre ? `<span class="dk-lk">${pre}</span>` : ""}${sid ? deskSessName(sid, name, "dk-nm") : `<span class="dk-nm">${esc(name)}</span>`}<span class="dk-st"><i class="${dot}"></i><b>${word}</b></span></div>
     ${what || add || loosePill ? `<div class="dk-s2">${what}${add}${loosePill}</div>` : ""}${step}${size}</div>`;
 }
+/** Whether session `sid` belongs to a Desk other than `d`: it runs it, is on its list, or holds an item there not done. */
+const deskElsewhere = (sid, d) => (state.desk?.projects || []).some((o) => o.project !== d.project && (o.lead?.sid === sid
+  || (o.members || []).includes(sid) || (o.items || []).some((i) => i.state !== "done" && i.state !== "dropped" && (i.holder?.sid === sid || i.holder?.lead_sid === sid))));
+/** An old, finished session: stopped, or idle (not asking you) for over a day. */
+const DESK_OLD_MS = 24 * 3600 * 1000;
+const deskSessOld = (s) => s.state === "stopped" || (deskSessState(s)[0] === "idle" && !!s.since_ms && Date.now() - s.since_ms > DESK_OLD_MS);
 /** The left card: the head strip (pick B2: ‹ Desks, the Desk's name, its meta line, and the lead's "Run by" card in
  *  it, no crew), then the project's other sessions, "Working" first, then "On the Desk" (the Desk's own list: the ones its lead routes to, each with its crew under it) and
- *  "Not on the Desk" (each with Add to Desk); the one whose chat shows is lit; + New session at its foot. */
+ *  "Not on the Desk" (each with Add to Desk), each most recent first; the one whose chat shows is lit; + New session at its foot. */
 function deskSessions(project) {
   const d = deskOf(project), o = deskOpen, leadSid = deskLead(d)?.sid;
   const sessions = (state.sessions || []).filter((s) => s.project === deskWorkspace(d) && s.session_id);
@@ -428,14 +434,20 @@ function deskSessions(project) {
   // The Desk's lead in a spot of its own at the top, never in the list. Then working ones first (a session moves only
   // when its state does, never on a click), then On the Desk, then Not on the Desk, each as Cue lists them. Crew stay
   // under their lead, wherever it is.
-  const leadS = sessions.find((s) => s.session_id === leadSid), rest = sessions.filter((s) => s !== leadS);
+  // A session another Desk has (it, or its crew, on that Desk's work) is that Desk's: not listed here at all, working or
+  // not, unless it's on this Desk's list too (#189).
+  const leadS = sessions.find((s) => s.session_id === leadSid), rest = sessions.filter((s) => s !== leadS && (onDesk(s.session_id) || !deskElsewhere(s.session_id, d)));
   // At work: the session itself, its background agents (state "agent" with helpers running), or any of its crew. A
   // session idle while its crew works is listed with the working ones, so their rows never sit under idle sessions.
   const busy = (s) => deskSessState(s)[1] === "working" || (s.state === "agent" && !!s.helpers)
     || (sessionOf(s.session_id)?.team || []).some(deskMateBusy);
-  const atWork = rest.filter(busy);
-  const on = rest.filter((s) => !busy(s) && onDesk(s.session_id));
-  const off = rest.filter((s) => !busy(s) && !onDesk(s.session_id));
+  // Each group most recent first: the one whose state changed last on top (#184). A row moves only when its state
+  // does, never on a click.
+  const recent = (list) => list.sort((a, b) => (b.since_ms || 0) - (a.since_ms || 0));
+  const atWork = recent(rest.filter(busy));
+  const on = recent(rest.filter((s) => !busy(s) && onDesk(s.session_id)));
+  // Not on the Desk: only recent ones to add; one stopped, or idle over a day, is old (#189).
+  const off = recent(rest.filter((s) => !busy(s) && !onDesk(s.session_id) && !deskSessOld(s)));
   const group = (title, list) => (list.length ? `<div class="dk-gh">${title} <span class="n">${list.length}</span></div>${list.map((s) => row(s)).join("")}` : "");
   // The strip's meta line counts the working ones as their rows show them (deskSessState).
   const runs = rest.filter((s) => deskSessState(s)[0] === "").length;
