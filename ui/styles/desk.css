@@ -235,7 +235,8 @@
 .dk-fc { display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 3px 6px; margin: 0 -6px; border: 0; border-radius: 6px; background: none; color: var(--ink); font: 12px var(--mono); text-align: left; cursor: pointer; }
 .dk-fc.wait { cursor: default; }
 .dk-fc:not(.wait):hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
-.dk-fc-p { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Its counts right after its name, as the file's diff shows them when it opens (#149), not off at the far right. */
+.dk-fc-p { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-fc-new { font: 600 10px var(--sans); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
 .dk-acts { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 24px 0; }
 .dk-chain .dk-acts { padding: 8px 0 0; }
@@ -296,6 +297,7 @@
 .dk-inow .dk-sec { padding: 4px 0 14px; }
 .dk-inow .dk-acts { padding: 0 0 14px; }
 .dk-ibody > .dk-note { margin: 0; }
+.dk-ibody > .dk-sec { padding: 0; }   /* Files: in line with the tabs, as the thread is */
 /* Its decisions as sentences: what (age at the right), why under it, by who and Undo. */
 .dk-decs { border-top: 1px solid var(--line); }
 .dk-lr.dk-dl { display: block; padding: 10px 4px; }
@@ -537,3 +539,6 @@ button.dk-rt-it:hover .dk-rt-t { text-decoration: underline; }
 .dk-right .rd-head { padding: 12px 16px 2px; }
 .dk-right .rd-listen { flex: 0 1 auto; flex-wrap: wrap; row-gap: 8px; min-width: 0; }
 .dk-right .rd { padding: 18px 20px 40px; }
+/* The Desk's mark before a session's name on the Board when it works for a Desk (#156), sized and placed as a loop's. */
+.dk-name-ic { display: inline-flex; vertical-align: -2px; margin-right: 6px; color: var(--ink); }
+.dk-name-ic > .dk-kic { margin: 0; vertical-align: 0; color: inherit; }
