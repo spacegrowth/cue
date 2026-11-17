@@ -559,10 +559,11 @@ function deskSessChat(sid, from, d) {
   const empty = !rows && !where ? `<div class="dk-empty">Nothing said yet.</div>` : "";
   const open = `<button class="btn small" data-desk-session="${esc(sid)}">Open its session</button>`;
   const it = deskSessItem(d, sid);
-  // Holding an item (Lead chats pick 1 + D): the title is the item, its kind's mark, the muted number and its title
-  // (a click opens it); under it who holds it, what it is, its state and who gave it.
-  const head = it ? `<div class="dk-ch dk-sch dk-sch-it"><div class="dk-sch1">${deskChatBack(from, d)}${DESK_MARKS[it.kind] ? deskLabel(it.kind) : ""}<button class="dk-sch-t" data-desk-chk-item="${esc(it.id)}"><span class="dk-hnum">#${esc(it.id)}</span> <b>${esc(it.title)}</b></button><span class="grow"></span>${open}</div>${deskSessNow(s, it, d)}</div>`
-    : `<div class="dk-ch dk-sch">${deskChatBack(from, d)}${deskTitled(deskSessKind(s, d), deskSessName(sid, deskHolderName(sid), "b"))}<span class="dk-sub">${esc(deskSessState(s)[1])}</span><span class="grow"></span>${open}</div>`;
+  // No kind chip: the left is sessions, the right items; a session's header is plain (#170). Holding an item (Lead
+  // chats pick 1 + D): the title is the item, the muted number and its title (a click opens it); under it who holds
+  // it, what it is, its state and who gave it. Else: its name and state.
+  const head = it ? `<div class="dk-ch dk-sch dk-sch-it"><div class="dk-sch1">${deskChatBack(from, d)}<button class="dk-sch-t" data-desk-chk-item="${esc(it.id)}"><span class="dk-hnum">#${esc(it.id)}</span> <b>${esc(it.title)}</b></button><span class="grow"></span>${open}</div>${deskSessNow(s, it, d)}</div>`
+    : `<div class="dk-ch dk-sch">${deskChatBack(from, d)}<span class="dk-tname">${deskSessName(sid, deskHolderName(sid), "b")}</span><span class="dk-sub">${esc(deskSessState(s)[1])}</span><span class="grow"></span>${open}</div>`;
   return `${head}
     <div class="dk-chat" data-desk-chat="${esc(sid)}">${empty}${rows}${where}</div>`;
 }
