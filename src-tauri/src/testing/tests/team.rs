@@ -712,7 +712,7 @@ fn make_a_branch_and_commit_that_fails_leaves_no_branch() {
 }
 
 /// Lead `sid`'s teammate `name` (call `call`, agent `id`) started, in a worktree of its own when `worktree`.
-fn starts(w: &World, sid: &str, call: &str, id: &str, name: &str, worktree: bool) {
+pub(super) fn starts(w: &World, sid: &str, call: &str, id: &str, name: &str, worktree: bool) {
     let mut input = json!({ "name": name, "description": format!("{name}'s part"), "prompt": "do it", "run_in_background": true });
     if worktree {
         input["isolation"] = json!("worktree");
@@ -724,7 +724,7 @@ fn starts(w: &World, sid: &str, call: &str, id: &str, name: &str, worktree: bool
 }
 
 /// Its Bash call `n` runs `command` and ends.
-fn runs(w: &World, sid: &str, call: &str, n: u32, command: &str) {
+pub(super) fn runs(w: &World, sid: &str, call: &str, n: u32, command: &str) {
     let agent = Some(call.to_string());
     says(w, sid, [
         HostedEvent::ToolCall { id: format!("{call}-b{n}"), name: "Bash".into(), input: json!({ "command": command }), agent: agent.clone() },

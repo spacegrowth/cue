@@ -53,11 +53,11 @@ impl Hub {
         self.desk_item_act(id, "looks_right", "")
     }
 
-    /// Item `id` (ready to check), and where its files were changed: its machine and each folder's files: its crew's
+    /// Item `id` (ready to check, or finishing), and where its files were changed: its machine and each folder's files: its crew's
     /// (hub/desk.rs `item_sources`) and, held by a session itself, what that session changed while it held it.
     pub(super) fn desk_commit_sources(&self, id: &str) -> Result<(DeskItem, String, Vec<(String, Vec<String>)>), String> {
         let found = self.desk_change_sources(id)?;
-        if found.0.state != "to_check" {
+        if !matches!(found.0.state.as_str(), "to_check" | "finishing") {
             return Err("It isn't ready to check".into());
         }
         Ok(found)
@@ -87,8 +87,17 @@ impl Hub {
     /// never pushed) and the item done with the commit; with nothing to commit, just done. When another session at
     /// work now is editing some of them, it's done at once and the commit waits for them (`desk_commit_waiting`):
     /// { commit, files, waiting: [{ path, by }] }.
+    /// An item finished at its DONE here (desk_finish.rs: its commit made then) is only closed; a remote session's
+    /// work never closes uncommitted.
     pub(crate) fn desk_looks_right(&self, id: &str) -> Result<Value, String> {
         let (it, machine, sources) = self.desk_commit_sources(id)?;
+        if it.finish.is_some() && (machine.is_empty() || !it.commit_in.is_empty()) {
+            if it.state != "to_check" {
+                return Err("It isn't ready to check".into());
+            }
+            let it = self.desk_item_act(id, "looks_right", "")?;
+            return Ok(json!({ "commit": it.commit, "files": 0, "waiting": [] }));
+        }
         let busy = if machine.is_empty() { self.busy_files(&it) } else { Vec::new() };
         let mut files: Vec<DeskFile> = Vec::new();
         let mut waiting: Vec<BusyFile> = Vec::new();
@@ -120,6 +129,8 @@ impl Hub {
     /// tick (every ~10 s and as a turn ends), so after a restart too; one run at a time.
     pub(super) fn desk_commit_waiting(&self) {
         static RUNNING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        // Items finishing (desk_finish.rs): their commits and installs.
+        self.desk_finish_tick();
         let waits: Vec<DeskItem> = self.read(|st| st.desk.items.iter().filter(|i| i.state == "done" && i.commit_wait.as_ref().is_some_and(|w| w.error.is_empty())).cloned().collect());
         if waits.is_empty() || RUNNING.swap(true, std::sync::atomic::Ordering::SeqCst) {
             return;
@@ -185,7 +196,8 @@ impl Hub {
         if it.state != "done" {
             return Err("It isn't done: nothing to undo".into());
         }
-        if it.commit.is_empty() {
+        // Finished at its DONE (desk_finish.rs): its commit, made then, stays.
+        if it.commit.is_empty() || it.finish.is_some() {
             return self.desk_reopen_checked(id, |i| i.commit_wait = None);
         }
         let (machine, folders) = self.read(|st| {
@@ -233,7 +245,7 @@ impl Hub {
 
     /// Files sessions at work now are editing (absolute), and who: each session's own edits since its turn began
     /// (read from its log), and its working teammates'. Not the holder of `it`.
-    fn busy_files(&self, it: &DeskItem) -> Vec<(String, String)> {
+    pub(super) fn busy_files(&self, it: &DeskItem) -> Vec<(String, String)> {
         let holder = it.holder.as_ref().map(|h| h.to().to_string()).unwrap_or_default();
         let (logs, mut out) = self.read(|st| {
             let mut logs: Vec<(String, String, String, u64)> = Vec::new();
@@ -263,7 +275,16 @@ impl Hub {
 
 /// Each folder's `paths` committed with `message` once none of their added lines (nor a new file's name, nor the
 /// message) has one of `project`'s never-committed words: the commits, short, space apart.
-fn commit_files(project: &str, machine: &str, todo: &[(String, Vec<String>)], message: &str) -> Result<Vec<(String, String)>, String> {
+pub(super) fn commit_files(project: &str, machine: &str, todo: &[(String, Vec<String>)], message: &str) -> Result<Vec<(String, String)>, String> {
+    words_checked(project, machine, todo, message)?;
+    match commit_each(machine, todo, message) {
+        (made, None) => Ok(made),
+        (_, Some(e)) => Err(e),
+    }
+}
+
+/// Err when `message`, or a line `todo` adds, has one of `project`'s never-committed words.
+pub(super) fn words_checked(project: &str, machine: &str, todo: &[(String, Vec<String>)], message: &str) -> Result<(), String> {
     let words = crate::config::never_words(project);
     if let Some(w) = words.iter().find(|w| message.to_lowercase().contains(&w.to_lowercase())) {
         return Err(format!("Not committed: \"{w}\" is in the message"));
@@ -273,6 +294,12 @@ fn commit_files(project: &str, machine: &str, todo: &[(String, Vec<String>)], me
             return Err(format!("Not committed: \"{w}\" is in {at}"));
         }
     }
+    Ok(())
+}
+
+/// Each folder's `paths` committed (words already checked): the commits made, kept when a later one failed, and
+/// what stopped it.
+pub(super) fn commit_each(machine: &str, todo: &[(String, Vec<String>)], message: &str) -> (Vec<(String, String)>, Option<String>) {
     let mut shas: Vec<(String, String)> = Vec::new();
     let mut done: Vec<String> = Vec::new();
     for (folder, paths) in todo {
@@ -282,15 +309,15 @@ fn commit_files(project: &str, machine: &str, todo: &[(String, Vec<String>)], me
                 shas.push((folder.clone(), sha));
             }
             // One repository's commit failed after another's was made: said with what was made.
-            Err(e) if !done.is_empty() => return Err(format!("{e}. Committed already: {}", done.join(", "))),
-            Err(e) => return Err(e),
+            Err(e) if !done.is_empty() => return (shas, Some(format!("{e}. Committed already: {}", done.join(", ")))),
+            Err(e) => return (shas, Some(e)),
         }
     }
-    Ok(shas)
+    (shas, None)
 }
 
 /// The commits, as an item keeps them: short, space apart.
-fn shas_of(made: &[(String, String)]) -> String {
+pub(super) fn shas_of(made: &[(String, String)]) -> String {
     made.iter().map(|(_, s)| s.as_str()).collect::<Vec<_>>().join(" ")
 }
 
@@ -397,7 +424,7 @@ pub(super) fn staged_diff(machine: &str, folder: &str, paths: &[String], opts: &
 
 /// The first of `words` (any case) in `diff`'s added lines, or in the name of a file it adds: the word, and where
 /// ("path: the line").
-fn word_in(diff: &str, words: &[String]) -> Option<(String, String)> {
+pub(super) fn word_in(diff: &str, words: &[String]) -> Option<(String, String)> {
     let words: Vec<(String, String)> = words.iter().filter(|w| !w.trim().is_empty()).map(|w| (w.clone(), w.to_lowercase())).collect();
     let find = |text: &str| {
         let low = text.to_lowercase();

@@ -178,6 +178,11 @@ pub(super) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
             out.latest = super::desk_stall::last_line(s);
         }
     }
+    // Finishing and stopped on a question (a word, a conflict, a long wait, a failed install): it needs you.
+    if let Some(q) = it.finish.as_ref().map(|f| f.question.clone()).filter(|q| it.state == "finishing" && !q.is_empty()) {
+        out.state = "needs_you".into();
+        out.latest = q;
+    }
     out.holder = Some(h);
     out
 }
@@ -273,7 +278,7 @@ pub(super) fn item_sources(st: &Store, it: &DeskItem) -> (String, Vec<(String, V
 }
 
 /// Items queued after `id` start now: each to its holder, with no reason (why it was queued isn't why it starts).
-fn release(st: &mut Store, id: &str, now: u64, fx: &mut Effects) {
+pub(super) fn release(st: &mut Store, id: &str, now: u64, fx: &mut Effects) {
     for it in st.desk.items.iter_mut().filter(|i| i.after.as_deref() == Some(id) && i.state == "queued") {
         it.after = None;
         it.state = "working".into();
@@ -359,8 +364,9 @@ pub(super) fn route(st: &mut Store, project: &str, by: &By, id: &str, to: &str, 
     // Its holder on it now (mid-turn, or asking you): a route to it again is a turn repeating itself. Not on it (its
     // turn cut off by a crash or a quit, the item still "working"): the route sends it again.
     let busy = holder.as_ref().is_some_and(|h| at_work(st, h) || ask_of(st, h).is_some());
-    // Done: not the lead's to route again. With you to check: routing it reopens it (back to work, sent again).
-    let Some(it) = st.desk.item_mut(id).filter(|i| i.project == project && i.state != "done") else { return };
+    // Done, or finishing (its commit and install under way): not the lead's to route again. With you to check:
+    // routing it reopens it (back to work, sent again).
+    let Some(it) = st.desk.item_mut(id).filter(|i| i.project == project && !matches!(i.state.as_str(), "done" | "finishing")) else { return };
     let reopen = it.state == "to_check";
     let Some(h) = holder else { return no_such_session(it, to, now, fx) };
     let before = it.holder.clone();
@@ -658,6 +664,7 @@ fn lead_done(st: &mut Store, project: &str, lsid: &str, ids: &[String], fx: &mut
         let holder = it.holder.as_ref().map(|h| h.name.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| "a session".into());
         let why = match it.state.as_str() {
             "to_check" => "it waits on your check".to_string(),
+            "finishing" => "it's being committed and installed; then it waits on your check".to_string(),
             "done" => "it's done already".to_string(),
             "working" | "queued" => format!("{holder} has it; its own DONE sends it to your check"),
             _ => "no one has worked on it yet".to_string(),
@@ -709,7 +716,7 @@ fn session_items(st: &mut Store, sid: &str, text: &str, now: u64, fx: &mut Effec
     }
     let project = scopes[0].clone();
     let told = st.desk.lead_sid(&project).is_some();
-    let on = |i: &&DeskItem| matches!(i.state.as_str(), "working" | "to_check") && i.holder.as_ref().is_some_and(|h| h.is(sid));
+    let on = |i: &&DeskItem| matches!(i.state.as_str(), "working" | "finishing" | "to_check") && i.holder.as_ref().is_some_and(|h| h.is(sid));
     let mine = st.desk.items.iter().filter(on).max_by_key(|i| i.updated).map(|i| i.id.clone());
     let mut kept = Vec::new();
     for line in parse::lines(text) {
@@ -792,16 +799,19 @@ fn holder_said(st: &mut Store, sid: &str, text: &str, decided: bool, now: u64, f
         }
         for id in ids {
             let id = st.desk.canon(&id);
-            let Some(it) = st.desk.item_mut(&id).filter(|i| i.holder.as_ref().is_some_and(|h| h.is(sid)) && matches!(i.state.as_str(), "working" | "queued")) else { continue };
+            // At work, or finishing and stopped on a question (a word in it, a conflict, a failed build): finishing
+            // (again), its commit made a moment later (desk_finish.rs), and what waits on it started once it is.
+            let again = |i: &DeskItem| i.state == "finishing" && i.finish.as_ref().is_some_and(|f| !f.question.is_empty());
+            let Some(it) = st.desk.item_mut(&id).filter(|i| i.holder.as_ref().is_some_and(|h| h.is(sid)) && (matches!(i.state.as_str(), "working" | "queued") || again(i))) else { continue };
             it.made = parse::made_in(text, here);
             let by = if it.crew.is_empty() { it.holder.as_ref().map(|h| h.name.clone()).unwrap_or_default() } else { it.crew.clone() };
             it.checks.push(crate::desk::model::DeskCheck { at: now, by, ..Default::default() });
             fx.checked.push(id.clone());
-            it.state = "to_check".into();
+            it.state = "finishing".into();
+            it.finish = Some(super::desk_finish::begun(now, it.finish.as_ref()));
             it.after = None;
             it.updated = secs(now);
             fx.items.push(id.clone());
-            release(st, &id, now, fx);
             finished = Some(id);
         }
     }
@@ -878,7 +888,7 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
             if words.is_empty() {
                 return Err("Say what isn't right first: type it in the box, then Send back".into());
             }
-            (it.state, it.done_at) = ("working".into(), None);
+            (it.state, it.done_at, it.finish) = ("working".into(), None, None);
             // Kept on the DONE it answers, so its card says why (the pictures, added by ipc desk_item_act, counted).
             if let Some(c) = it.checks.last_mut() {
                 let (why, pics) = words.split_once("\nPictures with it").unwrap_or((&words, ""));
@@ -950,7 +960,7 @@ fn you_wrote(st: &mut Store, project: &str, id: &str, words: &str, whom: &str, n
 fn put_before(st: &mut Store, id: &str, holder: Option<&Holder>, now: u64, fx: &mut Effects) -> Result<(), String> {
     let (other, why) = st.desk.item(id).and_then(|it| it.after.clone().map(|a| (a, it.after_why.clone()))).ok_or("it isn't waiting on another item")?;
     // What that one waits on, if it's still to be done: this one waits on it in its place.
-    let open = |a: &String| st.desk.item(a).is_some_and(|w| !matches!(w.state.as_str(), "to_check" | "done"));
+    let open = |a: &String| st.desk.item(a).is_some_and(|w| !matches!(w.state.as_str(), "finishing" | "to_check" | "done"));
     let ahead = st.desk.item(&other).and_then(|o| o.after.clone()).filter(open);
     let o = st.desk.item_mut(&other).ok_or("the item it waited on is gone")?;
     if o.state == "working" && o.holder.is_some() {
@@ -958,7 +968,7 @@ fn put_before(st: &mut Store, id: &str, holder: Option<&Holder>, now: u64, fx: &
         return Err("the item it waits on is already being worked on".into());
     }
     let mut place = None;
-    if o.holder.is_some() && !matches!(o.state.as_str(), "to_check" | "done") {
+    if o.holder.is_some() && !matches!(o.state.as_str(), "finishing" | "to_check" | "done") {
         place = ahead.map(|a| (a, o.after_why.clone()));
         o.after = Some(id.to_string());
         o.after_why = why;
@@ -1127,8 +1137,15 @@ impl Hub {
     }
 
     /// What you did to an item: "looks_right" (done), "send_back" (to its holder again, with `text`), "start_now"
-    /// (not waiting on another any more), "put_before" (ahead of the item it waited on), "drop".
+    /// (not waiting on another any more), "put_before" (ahead of the item it waited on), "install_now" (its install
+    /// starts without waiting, desk_finish.rs), "retry_finish" (finishing again after its question, desk_finish.rs),
+    /// "drop".
     pub(crate) fn desk_item_act(&self, id: &str, act: &str, text: &str) -> Result<DeskItem, String> {
+        match act {
+            "install_now" => return self.desk_install_now(id),
+            "retry_finish" => return self.desk_retry_finish(id),
+            _ => {}
+        }
         let now = now_ms();
         let fx = self.write(|st| act_on(st, id, act, text, now))?;
         // As shown once its sends are stamped (desk_done).

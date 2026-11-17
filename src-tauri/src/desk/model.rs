@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Who holds an item: a live session (a plain one, or a lead with a crew), or one of a lead's crew.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -53,8 +53,8 @@ pub struct DeskItem {
     /// Why it's its own item, when a session on another item added it (`ITEM: … | why: …`).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub why: String,
-    /// "new" | "queued" | "working" | "to_check" | "done" as kept; the window's "needs_you" is worked out as it's
-    /// shown (its holder waits on you).
+    /// "new" | "queued" | "working" | "finishing" | "to_check" | "done" as kept; the window's "needs_you" is worked
+    /// out as it's shown (its holder waits on you, or its finishing stopped on a question).
     pub state: String,
     #[serde(default)]
     pub holder: Option<Holder>,
@@ -97,6 +97,10 @@ pub struct DeskItem {
     /// item is done and Cue commits them on its own once they're free (hub/desk_commit.rs `desk_commit_waiting`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commit_wait: Option<CommitWait>,
+    /// Its DONE being finished, saved so it survives the restart an install makes: its commit made, then this Cue
+    /// built and installed with it (hub/desk_finish.rs). Kept once it's to check, so Looks right only closes it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finish: Option<Finish>,
     /// Where each of its commits is: (folder, short hash), for its Files changed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub commit_in: Vec<(String, String)>,
@@ -160,6 +164,42 @@ pub struct CommitWait {
     pub busy: Vec<BusyFile>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub error: String,
+}
+
+/// Where an item's finishing is (hub/desk_finish.rs).
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct Finish {
+    /// "commit" (being made) | "commit_wait" (a file of its is being edited by another session) | "queued" (for
+    /// the next install) | "building" | "installing" | "starting" | "word" (the word check found one) | "conflict"
+    /// (the merge of its crew's branch) | "error" (git couldn't commit) | "failed" (the build) | "rolled_back" (the
+    /// new Cue didn't start) | "checked" (it went to check: nothing to install, or installed).
+    pub step: String,
+    /// When this step began (ms). For "queued", when it was queued: the install waits for the latest of those.
+    pub at: u64,
+    /// The commit on the main line that has its work (full), and the repository it's in: what the install builds
+    /// and what the installed Cue is asked to have. Empty while none is made (nothing to commit).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub commit: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub repo: String,
+    /// Who's editing which of its files while the commit waits ("web-lead is editing ui/desk.js").
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub wait: String,
+    /// When the commit began to wait (ms): past `desk_finish::WAIT_ASK_MS` it's asked of you.
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    pub wait_from: u64,
+    /// What it asks you, when it stopped: the window shows it as needing you.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub question: String,
+    /// The end of the install's log, when the build failed or the new Cue didn't start.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub log: String,
+    /// The install it's in (the tag Cue gave it), once one started.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub tag: String,
+    /// "Install now": the install starts without waiting for more items or for sessions mid-turn.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub now: bool,
 }
 
 /// A file another session at work is editing, and that session's name.
@@ -261,6 +301,43 @@ pub struct Desk {
     /// When Cue last sent each working item to its holder (item → (holder, ms)): a turn that ended before it isn't a
     /// stall on it. Not saved: after a restart, `held_from` stands in.
     pub sent_at: HashMap<String, (String, u64)>,
+    /// What builds and installs this Cue with a finished item's commit: the app's own (self_install.rs) unless a test
+    /// put another in. Not saved.
+    pub installer: InstallerSlot,
+    /// Finishing items whose commit is being made now, and "tick" while the finishing tick runs: one run of each at a
+    /// time (hub/desk_finish.rs). Not saved.
+    pub finish_claims: HashSet<String>,
+}
+
+/// How an install is going, as the installer says: its tag and commit, its step ("building" | "installing" |
+/// "starting" | "installed" | "failed" | "rolled_back"), its log's end, and when (ms).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct InstallStatus {
+    pub tag: String,
+    pub commit: String,
+    pub step: String,
+    pub log: String,
+    pub at: u64,
+}
+
+/// What builds this Cue from a commit and installs it (the app restarts into it), and says how that's going.
+pub trait Installer: Send + Sync {
+    /// Whether the running Cue was built from `commit` of `repo`, or from one that has it.
+    fn has(&self, repo: &str, commit: &str) -> bool;
+    /// An install of `commit` of `repo` begun, called `tag`.
+    fn start(&self, repo: &str, commit: &str, tag: &str) -> Result<(), String>;
+    /// The latest install's status, if there's been one.
+    fn status(&self) -> Option<InstallStatus>;
+}
+
+/// The installer a Desk uses: None for the app's own.
+#[derive(Clone, Default)]
+pub struct InstallerSlot(pub Option<std::sync::Arc<dyn Installer>>);
+
+impl std::fmt::Debug for InstallerSlot {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(if self.0.is_some() { "InstallerSlot(set)" } else { "InstallerSlot(app)" })
+    }
 }
 
 /// A Desk's identity and workspace, independent of its lead and items.

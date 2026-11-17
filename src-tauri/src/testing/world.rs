@@ -114,6 +114,12 @@ impl World {
     /// still open on it is cut off, as the restart cuts its connection.
     pub fn relaunch(&mut self) {
         self.settle();
+        self.relaunch_cut();
+    }
+
+    /// The same, Cue stopping before follow-up work already due ran (it quit, or the install restarted it, at that
+    /// moment): that work is lost.
+    pub fn relaunch_cut(&mut self) {
         self.client.hub.save_live();
         let later = Arc::new(Deferred::default());
         // Its hosted sessions' Claudes ended with it.
