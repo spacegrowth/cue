@@ -431,9 +431,8 @@ function deskSessions(project) {
     const item = deskSessItem(d, sid), idle = dot !== "" && !item;
     return deskSessRow({ name: deskHolderName(sid), sid, mark: sid === leadSid ? DESK_MARKS.desk : lead ? "Lead" : "Session", dot, word, item, line: idle ? deskSessSaid(sid) : "", on: lit(sid), attrs, step: deskStepLine(dot === "", s.compacting_ms ? "Compacting…" : s.doing, s.compacting_ms || s.doing_ms), size: deskSessCache(sid, idle), add }) + crew;
   };
-  // The Desk's lead in a spot of its own at the top, never in the list. Then working ones first (a session moves only
-  // when its state does, never on a click), then On the Desk, then Not on the Desk, each as Cue lists them. Crew stay
-  // under their lead, wherever it is.
+  // The Desk's lead in a spot of its own at the top, never in the list. Then this Desk's own (its working ones, then the
+  // rest of On the Desk), then Not on the Desk. Crew stay under their lead, wherever it is.
   // A session another Desk has (it, or its crew, on that Desk's work) is that Desk's: not listed here at all, working or
   // not, unless it's on this Desk's list too (#189).
   const leadS = sessions.find((s) => s.session_id === leadSid), rest = sessions.filter((s) => s !== leadS && (onDesk(s.session_id) || !deskElsewhere(s.session_id, d)));
@@ -444,15 +443,19 @@ function deskSessions(project) {
   // Each group most recent first: the one whose state changed last on top (#184). A row moves only when its state
   // does, never on a click.
   const recent = (list) => list.sort((a, b) => (b.since_ms || 0) - (a.since_ms || 0));
-  const atWork = recent(rest.filter(busy));
-  const on = recent(rest.filter((s) => !busy(s) && onDesk(s.session_id)));
+  // This Desk's sessions first, its working ones on top; then a light divider and everything else, working or not,
+  // which never counts as working here (#189).
+  const mine = rest.filter((s) => onDesk(s.session_id));
+  const atWork = recent(mine.filter(busy));
+  const on = recent(mine.filter((s) => !busy(s)));
   // Not on the Desk: only recent ones to add; one stopped, or idle over a day, is old (#189).
-  const off = recent(rest.filter((s) => !busy(s) && !onDesk(s.session_id) && !deskSessOld(s)));
+  const off = recent(rest.filter((s) => !onDesk(s.session_id) && (busy(s) || !deskSessOld(s))));
   const group = (title, list) => (list.length ? `<div class="dk-gh">${title} <span class="n">${list.length}</span></div>${list.map((s) => row(s)).join("")}` : "");
-  // The strip's meta line counts the working ones as their rows show them (deskSessState).
-  const runs = rest.filter((s) => deskSessState(s)[0] === "").length;
-  const body = group("Working", atWork) + group("On the Desk", on) + group("Not on the Desk", off) || `<div class="dk-empty">No ${leadS ? "other " : ""}sessions in this project yet.</div>`;
-  return `<div class="dk-card dk-sessions">${deskSessHead(project, rest.length, runs, leadS ? row(leadS, true) : "")}
+  // The strip's meta line counts this Desk's sessions, and the working ones as their rows show them (deskSessState).
+  const runs = mine.filter((s) => deskSessState(s)[0] === "").length;
+  const ours = group("Working", atWork) + group("On the Desk", on);
+  const body = ours + (ours && off.length ? `<div class="dk-sdiv" role="separator"></div>` : "") + group("Not on the Desk", off) || `<div class="dk-empty">No ${leadS ? "other " : ""}sessions in this project yet.</div>`;
+  return `<div class="dk-card dk-sessions">${deskSessHead(project, mine.length, runs, leadS ? row(leadS, true) : "")}
     <div class="dk-scroll" data-scroll-key="desk-sessions:${esc(project)}">${body}</div>
     <div class="dk-sfoot"><button class="btn small" data-desk-new-session="${esc(project)}">+ New session</button></div></div>`;
 }

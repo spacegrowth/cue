@@ -68,6 +68,8 @@
 /* The finished items' end: holds a row's room while the next ones load, so nothing below or above jumps. */
 .dk-more { min-height: 44px; display: flex; align-items: center; padding: 0 20px; color: var(--muted); font-size: 12px; }
 .dk-gh .n { font-family: var(--mono); font-weight: 600; letter-spacing: 0; }
+/* The light line between this Desk's sessions and the rest (#189). */
+.dk-sdiv { height: 1px; margin: 14px 20px 0; background: var(--line); }
 
 /* A holder's head: its name, what it is, ›. */
 .dk-holder { display: flex; align-items: baseline; gap: 8px; margin: 12px 8px 2px; padding: 6px 12px; border-radius: 10px; cursor: pointer; }
