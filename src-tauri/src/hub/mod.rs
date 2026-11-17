@@ -23,6 +23,7 @@ mod desk_handoff;
 mod desk_lead;
 mod desk_members;
 mod desk_stall;
+mod desk_theirs;
 pub(crate) use desk_lead::DeskClaim;
 mod events;
 mod hand_off;

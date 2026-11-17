@@ -45,14 +45,13 @@
 .dk-s2 { display: flex; align-items: center; gap: 8px; margin: 6px 0 0; color: var(--ink); font-size: 12.5px; white-space: nowrap; }
 .dk-s2 > .dk-w { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .dk-s2 .dk-none { color: var(--muted); }
+.dk-s2 > .dk-sadd { margin-left: auto; flex: none; }
 .dk-s3 { margin: 3px 0 0; color: var(--muted); font: 11px var(--mono); }
 .dk-s3.hot { color: var(--amber); font-weight: 600; }
 .dk-s3.dk-now { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-srow.on .dk-st, .dk-srow.on .dk-s2, .dk-srow.on .dk-s3:not(.hot), .dk-srow.on .dk-id, .dk-srow.on .dk-none { color: var(--on-sel); }
-.dk-sfoot { display: grid; gap: 6px; flex: none; padding: 10px 14px; border-top: 1px solid var(--line); }
+.dk-sfoot { flex: none; padding: 10px 14px; border-top: 1px solid var(--line); }
 .dk-sfoot .btn { width: 100%; }
-.dk-add-picker { display: grid; gap: 4px; max-height: 160px; overflow: auto; }
-.dk-add-picker .btn { text-align: left; overflow-wrap: anywhere; }
 
 /* overflow: clip, not hidden: a hidden box can still be scrolled (WebKit does, to show a focused or
    typed-in text box), and nothing scrolls it back, so an item's box moved off where it sat. */
@@ -70,6 +69,7 @@
 .dk-more { min-height: 44px; display: flex; align-items: center; padding: 0 20px; color: var(--muted); font-size: 12px; }
 .dk-gh .n { font-family: var(--mono); font-weight: 600; letter-spacing: 0; }
 /* The light line between this Desk's sessions and the rest (#189). */
+.dk-sdiv { height: 1px; margin: 14px 20px 0; background: var(--line); }
 
 /* A holder's head: its name, what it is, ›. */
 .dk-holder { display: flex; align-items: baseline; gap: 8px; margin: 12px 8px 2px; padding: 6px 12px; border-radius: 10px; cursor: pointer; }
@@ -241,12 +241,6 @@
 .dk-box-row:first-child > .dk-pre { margin-top: -8px; padding-top: 13px; border-radius: 11px 0 0 11px; }
 .dk-box .chips { margin: 0; }
 .dk-ask { flex: none; max-height: 55%; overflow-y: auto; padding: 0 20px 14px; }
-.dk-request { margin: 0 10px 12px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
-.dk-approvals { flex: none; max-height: 38%; overflow-y: auto; border-bottom: 1px solid var(--line); }
-.dk-requests-head { padding: 12px 20px; font-weight: 600; color: var(--ink); }
-.dk-request-who { font: inherit; font-weight: 600; text-align: left; color: var(--ink); }
-.dk-request pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 160px; overflow: auto; font-size: 12px; margin: 10px 0; }
-.dk-request p { margin: 10px 0; overflow-wrap: anywhere; }
 /* The lead's ASK: a bordered panel card in the chat's column, not a tinted
    band; its choices on the panel too, the accent only on the one you point at or picked. */
 .dk-ask .act-card { max-height: none; overflow: visible; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
@@ -430,7 +424,7 @@
 .dk-hh { margin: 6px 4px 2px; font: 700 12px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--on-bg); opacity: .8; }
 .dk-hh .dh-n { font-weight: 600; opacity: .8; }
 .dh-tbl { flex: none; background: var(--panel); color: var(--ink); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
-.dh-tr { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(120px, 150px) repeat(3, minmax(100px, 150px)) minmax(0, 1.1fr) auto; align-items: center; gap: 12px; padding: 14px 18px; border-top: 1px solid var(--panel-2); }
+.dh-tr { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(120px, 150px) repeat(3, minmax(100px, 150px)) minmax(0, 1.1fr) 20px; align-items: center; gap: 12px; padding: 14px 18px; border-top: 1px solid var(--panel-2); }
 .dh-tr.dh-hd { border-top: 0; padding: 10px 18px; background: var(--panel-2); color: var(--muted); font: 700 10.5px var(--sans); letter-spacing: .08em; text-transform: uppercase; }
 .dh-tr.dk-desk { cursor: pointer; }
 .dh-tr.dk-desk:hover, .dh-tr.dk-desk:focus-visible { background: var(--panel-2); outline: none; }
@@ -446,18 +440,13 @@
 .dh-on { min-width: 0; color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dh-on b { color: var(--ink); font-weight: 650; }
 .dh-none { font-style: italic; }
-.dh-go { color: var(--muted); text-align: right; }
-.dh-confirm { margin: 0; border-radius: 0; padding: 12px 18px; }
-.dh-close-title { font-size: 12.5px; font-weight: 650; }
-.dh-close-list { display: flex; flex-direction: column; gap: 7px; max-height: 180px; overflow-y: auto; }
-.dh-close-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-.dh-close-row .dim { font-size: 12px; }
+.dh-go { color: var(--muted); font-size: 16px; text-align: right; }
 .dh-empty { padding: 14px 18px; color: var(--muted); }
 .dh-add { all: unset; box-sizing: border-box; display: block; width: 100%; padding: 12px 18px; border-top: 1px solid var(--line); font-weight: 650; font-size: 13px; cursor: pointer; }
 .dh-add:hover, .dh-add:focus-visible { background: var(--panel-2); }
 /* A narrow window: the people and kinds fold under the name. */
 @media (max-width: 900px) {
-  .dh-tr { grid-template-columns: minmax(0, 1fr) auto; }
+  .dh-tr { grid-template-columns: minmax(0, 1fr) 20px; }
   .dh-tr.dh-hd { display: none; }
   .dh-tr > :not(:first-child):not(.dh-go) { grid-column: 1; }
   .dh-tr .dh-go { grid-row: 1; grid-column: 2; }
