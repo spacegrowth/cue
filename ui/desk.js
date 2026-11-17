@@ -560,26 +560,29 @@ function deskAnswered(it, decision) {
   const a = decision.behavior === "deny" ? (picked ? `Declined: ${picked}` : "Declined") : picked || (decision.behavior === "allow_always" ? "Always allowed" : "Allowed");
   deskAnswers.set(item.id, { q: item.ask.text, a, ask: it.id, at: now() });
 }
-/** What you last answered on item `i`'s page, while it's fresh and its holder isn't asking again; else null. */
+/** What item `i`'s holder asks you: its ask's question, or, for a turn that ended on it, the last paragraph of its last
+ *  words (all of it, not a line cut short; the hub's latest when its session isn't here). */
+function deskQuestion(i) {
+  if (i.ask) return i.ask.text || "";
+  const last = [...(sessionOf(i.holder?.sid)?.thread || [])].reverse().find((e) => e.role === "agent")?.text || "";
+  return last.trim().split(/\n\s*\n/).pop().trim() || i.latest || "";
+}
+/** What you last answered on item `i`'s page, while it's fresh and its holder isn't asking something new; else null. */
 function deskAnswerOf(i) {
   const said = deskAnswers.get(i.id);
   if (!said || now() - said.at > 600000 || (i.ask && i.ask.item_id !== said.ask)) return null;
+  if (i.state === "needs_you" && deskQuestion(i) !== said.q) return null;
   return said;
 }
-/** What holds an item up: the item it waits for, then this one; or its holder's question. */
+/** What holds an item up: the item it waits for, then this one; or what its holder asks you (only the question: it's
+ *  answered at the page's foot, deskItemFoot), then what you answered. */
 function deskChain(i) {
-  if (i.state === "needs_you" && i.ask) {
-    const it = i.ask.item_id && findItem(i.ask.item_id);
-    const qs = it?.kind === "question" ? questions(it) : [];
-    // Answered here, on the Desk: one question's choices as buttons; any other ask (several questions, a permission, a
-    // form) as its card, as under its chat; a turn that ended on it, its holder's chat beside the items, to reply.
-    if (it && it.kind !== "waiting" && !(qs.length === 1 && qs[0].options?.length)) return `<div class="dk-chain dk-chain-ask">${askFoot(it, it.session_id, it.harness || "claude", `dkask:${it.id}`)}</div>`;
-    const choices = qs.length === 1 ? qs[0].options.map((op, oi) => `<button class="btn small" data-pick="0:${oi}" data-id="${esc(it.id)}">${esc(op.label)}</button>`).join("")
-      : `<button class="btn small" data-desk-holder="${esc(i.ask.sid)}">Answer it</button>`;
-    return `<div class="dk-chain"><div class="dk-ln"><i class="ask"></i><div><div class="dk-lt">${esc(i.ask.text)}</div><div class="dk-acts">${choices}</div></div></div></div>`;
-  }
   const said = deskAnswerOf(i);
-  if (said) return `<div class="dk-chain"><div class="dk-ln"><i class="ok"></i><div><div class="dk-lt">${esc(said.q)}</div><div class="dk-ls dk-picked"><span class="sent-check">✓</span> You answered: ${esc(said.a)}</div></div></div></div>`;
+  if (said) return `<div class="dk-chain"><div class="dk-ln"><i class="ok"></i><div><div class="dk-lt dk-md">${md(said.q)}</div><div class="dk-ls dk-picked"><span class="sent-check">✓</span> You answered: ${esc(said.a)}</div></div></div></div>`;
+  if (i.state === "needs_you") {
+    const q = deskQuestion(i);
+    return q ? `<div class="dk-chain"><div class="dk-ln"><i class="ask"></i><div class="dk-lt dk-md">${md(q)}</div></div></div>` : "";
+  }
   if (i.state !== "queued" || !i.after) return "";
   const first = deskItem(i.project, i.after);
   if (!first) return "";
@@ -636,7 +639,7 @@ function deskItemPane(i, d) {
   const armed = deskDropArm === i.id;
   return `<div class="dk-pane" data-scroll-key="item:${esc(i.id)}">${deskBack(deskLeadName(d) || "Back")}<h1>${esc(i.title)}</h1><div class="dk-state">${deskItemState(i)}</div>${deskDesignsLink(i)}
     ${deskSec("Couldn't give it out", i.route_failed ? `<p>${esc(i.route_failed)}</p>` : "")}
-    ${deskSec(i.state === "needs_you" ? "It asks you" : "What's holding it up", deskChain(i))}${deskSec("What it made", i.state === "to_check" || i.state === "done" ? deskMadeLinks(i) : "")}${deskItemActs(i)}
+    ${deskSec(i.state === "needs_you" ? "It asks you" : deskAnswerOf(i) ? "It asked you" : "What's holding it up", deskChain(i))}${deskSec("What it made", i.state === "to_check" || i.state === "done" ? deskMadeLinks(i) : "")}${deskItemActs(i)}
     ${deskSec("Done when", deskDoneWhenHtml(i.done_when))}
     ${deskSec(i.from === "you" ? "Your words" : "Words it was added with", i.words ? `<p class="dk-words">${esc(i.words)}</p>${i.split_from ? `<p class="dk-split">Split from <a href="#" data-desk-item="${esc(i.split_from)}">#${esc(i.split_from)}</a></p>` : ""}` : "")}
     ${deskSec("Pictures", thumbs(i.images))}
@@ -696,7 +699,7 @@ function deskCrewPane(lead, agent, d) {
 
 /** The draft key of the box that sends to `to` ({ project, item } or { sid, mate }), noted with where it sends. */
 function deskBoxKey(to) {
-  const key = to.sid ? `desk-to:${JSON.stringify([to.sid, to.mate || ""])}` : `desk:${JSON.stringify([to.project, to.item || ""])}`;
+  const key = to.sid ? `desk-to:${JSON.stringify([to.sid, to.mate || "", ...(to.item ? [to.item] : [])])}` : `desk:${JSON.stringify([to.project, to.item || ""])}`;
   deskBoxes.set(key, to);
   return key;
 }
@@ -720,6 +723,18 @@ function deskBox(d) {
   const mic = dictating?.key === key;
   return `<div class="dk-box" data-drop="${esc(key)}">${draftChips(key)}<div class="dk-box-row"><textarea rows="1" data-text="${esc(key)}" placeholder="${esc(ph)}" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off">${esc(draft(key).text)}</textarea><button class="icon-btn mic ${mic ? "on" : ""}" data-mic="${esc(key)}" aria-label="${mic ? "Stop dictating" : "Dictate"}">${MIC_ICON}</button><button class="icon-btn" data-attach="${esc(key)}" aria-label="Add an image">${IMAGE_ICON}</button><button class="btn primary small" data-desk-send="${esc(key)}">Send</button></div></div>`;
 }
+/** An item page's foot: while its holder asks you, the answer goes there, so you stay on its page. Its ask's card
+ *  (choices, Decline, Type answer…) as under a chat; a turn that ended on it, a box to its holder. Else the box. */
+function deskItemFoot(i, d) {
+  if (i?.state !== "needs_you" || !i.holder) return deskBox(d);
+  const it = i.ask?.item_id && findItem(i.ask.item_id);
+  if (it && it.kind !== "waiting") return `<div class="dk-ask">${askFoot(it, it.session_id, it.harness || "claude", deskBoxKey({ project: d.project, item: i.id }))}</div>`;
+  const sid = i.ask?.sid || (i.holder.kind === "crew" ? i.holder.lead_sid : i.holder.sid);
+  if (!sessionOf(sid)) return `<div class="dk-ended">Its session has ended.</div>`;
+  const to = i.holder.kind === "crew" && !i.ask ? { sid, mate: i.holder.name, item: i.id } : { sid, item: i.id };
+  const key = deskBoxKey(to), mic = dictating?.key === key;
+  return `<div class="dk-box" data-drop="${esc(key)}">${draftChips(key)}<div class="dk-box-row"><textarea rows="1" data-text="${esc(key)}" placeholder="${esc(`Answer ${i.holder.name}…`)}" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off">${esc(draft(key).text)}</textarea><button class="icon-btn mic ${mic ? "on" : ""}" data-mic="${esc(key)}" aria-label="${mic ? "Stop dictating" : "Dictate"}">${MIC_ICON}</button><button class="icon-btn" data-attach="${esc(key)}" aria-label="Add an image">${IMAGE_ICON}</button><button class="btn primary small" data-desk-send="${esc(key)}">Send</button></div></div>`;
+}
 function deskRight(project) {
   const d = deskOf(project);
   const o = deskOpen;
@@ -741,7 +756,8 @@ function deskRight(project) {
   }
   if (o && !body) deskOpen = null;
   // A reply open in Read: read-only, as in a session's chat, so no box under it (Reply brings it back).
-  if (deskOpen) return `<div class="dk-card dk-right">${deskPaneMark(o, d)}${body}${reading ? "" : deskBox(d)}</div>`;
+  const foot = reading ? "" : o?.kind === "item" ? deskItemFoot(deskItem(project, o.id), d) : deskBox(d);
+  if (deskOpen) return `<div class="dk-card dk-right">${deskPaneMark(o, d)}${body}${foot}</div>`;
   return deskRightChat(d);
 }
 /** The chat card with nothing open: who runs the Desk (no lead yet, or Change), else the lead's chat (or the line
@@ -809,6 +825,9 @@ async function deskSendBox(key) {
   const images = draft(key).images.map(({ name, mime, data }) => ({ name, mime, data }));
   if (!to || (!text && !images.length)) return;
   if (to.sid) {
+    // An answer from an item's page: the page says what you answered (deskChain).
+    const it = to.item && deskItem(projFilter, to.item);
+    if (it?.state === "needs_you" && sessionOf(to.sid)?.state !== "deciding" && !state.restarting?.[to.sid]) deskAnswers.set(it.id, { q: deskQuestion(it), a: text || "a picture", ask: it.ask?.item_id || "", at: now() });
     if (!to.mate) return sendTo(to.sid, false, key);
     if (state.restarting?.[to.sid]) return toast("It's restarting. Send once it's back.");
     if (sessionOf(to.sid)?.state === "deciding") return toast("It's asking you something first. Answer that, then send.");
