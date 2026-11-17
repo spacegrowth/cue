@@ -13,6 +13,8 @@ let deskLeadBusy = null;
 let deskGiveFor = null;
 /** The project whose quick-add line has its Done when open, or null. */
 let deskQaDone = null;
+/** The hand-off cards in the lead's chat whose why you folded ("id>who"); open by default, a redraw keeps them folded. */
+const deskWhyShut = new Set();
 
 // ---------- the lead ----------
 
@@ -167,6 +169,7 @@ const DESK_LEAD_CLICKS = {
   deskKeep: () => { deskPick = null; renderMain(); },
   deskGive: (el) => { const at = el.dataset.at; deskGiveFor = deskGiveFor?.id === el.dataset.deskGive && deskGiveFor.at === at ? null : { id: el.dataset.deskGive, at }; renderMain(); },
   deskGiveTo: (el) => deskGiveTo(el.dataset.id, el.dataset.deskGiveTo),
+  deskWhy: (el) => { const k = el.dataset.deskWhy; if (!deskWhyShut.delete(k)) deskWhyShut.add(k); renderMain(); },
   deskQaDone: () => { deskQaDone = projFilter; renderMain(); deskQaFocusEl("done"); },
 };
 
@@ -197,7 +200,7 @@ if (typeof document !== "undefined") {
 const DESK_SAY = /^[-*+ ]*(ITEM|ROUTE|DONE|CONTEXT)\**\s*:(.*)$/;
 const DESK_KINDS = ["bug", "feature", "task"];
 /** `line` of the lead's reply as one quiet line of the Desk's (md's `lines` hook): ITEM "New item · BUG title · done
- *  when …"; ROUTE "Bug #2 title → who · after, why"; DONE "Done · Bug #2 title"; CONTEXT "who → keep · why". "" for
+ *  when …"; ROUTE "Bug #2 title → who  Why ⌃", the why under it; DONE "Done · Bug #2 title"; CONTEXT "who → keep · why". "" for
  *  any other line, or one parse.rs wouldn't act on (an empty or "<…>" body). */
 function deskLineHtml(line, inline) {
   const m = DESK_SAY.exec(line.trim());
@@ -230,10 +233,13 @@ function deskLineHtml(line, inline) {
     if (!at || !to) return "";
     const after = id(find("after")), why = find("why"), crew = name(find("crew")), kind = find("kind").replace(/["`*.]/g, "").toLowerCase();
     const sub = [after ? `after ${ref(after)}` : "", why ? inline(why) : ""].filter(Boolean).join(" · ");
-    // Two lines: what goes where, in bold (its kind's icon, #id, title → who), then why, plain.
-    const it = known(at), head = at === "new" ? `${deskKindIcon(kind)}<span class="dk-say-w">New item</span>`
-      : `${deskKindIcon(it || kind)}<span class="dk-say-id">#${esc(it?.id ?? at)}</span>${it?.title ? ` <span class="dk-say-t">${esc(it.title)}</span>` : ""}`;
-    return `<div class="dk-say dk-route"><div class="dk-say-h">${head} <span class="dk-say-to">→ ${esc(to)}${crew ? ` · ${esc(crew)}` : ""}</span></div>${sub ? `<div class="dk-say-s">${sub}</div>` : ""}</div>`;
+    // One line: its kind's icon, number and title (opens the item) → who; why open under it, "Why ⌃" folds it.
+    const it = known(at), key = `${at}>${to}`, open = !deskWhyShut.has(key);
+    const what = at === "new" ? `<span class="dk-rt-n">New item</span>`
+      : `<span class="dk-rt-n">${esc(it ? deskNum(it) : `#${at}`)}</span>${it?.title ? `<span class="dk-rt-t">${esc(it.title)}</span>` : ""}`;
+    const head = it ? `<button class="dk-rt-it" data-desk-chk-item="${esc(it.id)}">${deskKindIcon(it)}${what}</button>` : `<span class="dk-rt-it">${deskKindIcon(kind)}${what}</span>`;
+    const fold = sub ? `<button class="dk-rt-why" data-desk-why="${esc(key)}">Why ${open ? "⌃" : "⌄"}</button>` : "";
+    return `<div class="dk-route${open ? " open" : ""}"><div class="dk-rt-row">${head}<span class="dk-rt-ar">→</span><span class="dk-rt-to">${esc(to)}${crew ? ` · ${esc(crew)}` : ""}</span>${fold}</div>${sub && open ? `<div class="dk-rt-why-s">${sub}</div>` : ""}</div>`;
   }
   if (m[1] === "DONE") {
     const ids = body.split(/[, ]/).filter((w) => w.trim().startsWith("#")).map(id).filter(Boolean);
