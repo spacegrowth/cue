@@ -1726,7 +1726,7 @@ test("a DONE is one Ready to check line in the lead's chat: its item, its age, C
   await expect(info.locator(".dk-chk-in")).toContainText("In the installed Cue · installed ");
   // It sits under what to test, in the same section.
   expect(await pane.evaluate((el) => { const w = el.querySelector(".dk-idw"), i = el.querySelector(".dk-chk-info"); return w.parentElement === i.parentElement && !!(w.compareDocumentPosition(i) & Node.DOCUMENT_POSITION_FOLLOWING); })).toBe(true);
-  await expect(pane.locator('.dk-acts [data-desk-act="looks_right"]')).toHaveText("Looks right");
+  await expect(pane.locator('.dk-ihead [data-desk-act="looks_right"]')).toHaveText("Looks right");
   await expect(pane.locator('.dk-acts [data-desk-act="send_back"]')).toHaveText("Send back");
   // A design item's: its mocks in place of installed.
   await cue.change((s) => { s.desk.projects.find((d) => d.project === "cue").checks[0].designs = "https://claude.ai/artifact/mocks"; });
