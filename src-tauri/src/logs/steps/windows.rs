@@ -91,6 +91,9 @@ pub struct InsightState {
     pub cold_cents: u64,
     /// Where Claude Code has lately compacted sessions on its model on its own (auto_compact_at).
     pub auto_at: u64,
+    /// The first line of its latest reply, cut short ("" when it has none): the Desk's row for a session on
+    /// no item says it (#185).
+    pub said: String,
 }
 
 /// How many of the latest auto-compactions on a model auto_compact_at looks at, and the fewest it says anything from.
