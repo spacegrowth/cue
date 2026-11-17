@@ -780,7 +780,11 @@ function deskThread(i, d) {
     rows.push({ at: Math.max(deskMs(i.updated), theirs), by: i.holder?.name || i.by || "It", tag: fin ? "Done" : "Reply", on: fin, html: `<div class="dk-md">${md(lat)}</div>` });
   }
   rows.sort((a, b) => a.at - b.at);
-  if (live) rows.push({ at: 0, by: i.holder.name, live: true, html: `<div class="dk-md dk-quiet">${lat ? md(lat1) : "Working…"}</div><div class="dk-tbar"></div>` });
+  // Its holder at work: after what it and others said, but before what you wrote since, so your message is last (#160).
+  if (live) {
+    const after = rows.findLastIndex((r) => !r.you) + 1;
+    rows.splice(Math.max(after, 1), 0, { at: 0, by: i.holder.name, live: true, html: `<div class="dk-md dk-quiet">${lat ? md(lat1) : "Working…"}</div><div class="dk-tbar"></div>` });
+  }
   return rows;
 }
 /** What you wrote on a Thread, in your words; for a send-back, how many pictures went with it, quiet under them. */

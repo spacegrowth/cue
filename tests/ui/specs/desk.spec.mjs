@@ -2421,6 +2421,13 @@ test("a message you send on an item's page is its thread's last, under its holde
   await page.locator(".dk-right [data-desk-send]").click();
   await expect(rows.last()).toContainText("Check the narrow window too");
   await expect(rows.nth(-2)).toContainText("Moved the search into the header's middle.");
+  // Its holder at work: your message still comes last, under its "now".
+  await cue.change((st) => { const it = st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d4"); const s = st.sessions.find((x) => x.session_id === it.holder.sid); it.state = "working"; if (s) s.state = "working"; });
+  await expect(page.locator(".dk-right .dk-ipane .dk-tm.live")).toHaveCount(1);
+  await page.locator(".dk-right .dk-box textarea").fill("And the wide one");
+  await page.locator(".dk-right [data-desk-send]").click();
+  await expect(rows.last()).toContainText("And the wide one");
+  await expect(rows.nth(-3)).toHaveClass(/live/);
 });
 
 test("on the Board, a session working for a Desk has the Desk's mark before its name; one that isn't, none (#156)", async ({ page, cue }) => {
