@@ -1455,7 +1455,7 @@ test("the head is one strip in the accent, flush across the card's top: ‹ Desk
   expect(await page.locator(".dk-board [title]").count()).toBe(0);
 });
 
-test("the lead's card in the strip: Run by, its state and the item it holds; open, lit lime as any open row (dark: a deeper lime)", async ({ page, cue }) => {
+test("the lead's card in the strip: Run by, its state and the item it holds; open, lit lime as any open row, in both themes", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   const lead = page.locator('.dk-strip .dk-lcard[data-desk-lead-chat="lead"]');
@@ -1478,15 +1478,24 @@ test("the lead's card in the strip: Run by, its state and the item it holds; ope
   await lead.click();
   await expect(lead).toHaveClass(/\bon\b/);
   await expect(page.locator(".dk-tab.on")).toHaveText("web-lead");
-  // Dark: the strip is the accent with on-accent text; the open card a slightly deeper lime, no outline.
+  // Dark: the strip is a dark green with the ink, not lime, so the card lights exactly as an open row does.
   await page.emulateMedia({ colorScheme: "dark" });
   const strip = page.locator(".dk-strip");
   const [sbg, sink] = await cssOf(strip, "background-color", "color");
-  expect(sbg).toBe("rgb(181, 194, 122)");
-  expect(sink).toBe("rgb(21, 26, 8)");
-  [bg, ring] = await cssOf(lead, "background-color", "box-shadow");
-  expect(bg).toBe("oklab(0.729093 -0.0409094 0.0797046)");
-  expect(ring).toBe("none");
+  expect(sbg).not.toBe("rgb(181, 194, 122)");
+  expect(sink).not.toBe("rgb(21, 26, 8)");
+  const [onBg, onRing] = await cssOf(lead, "background-color", "box-shadow");
+  expect(onRing).toBe("none");
+  const host = page.locator('.dk-sessions [data-desk-chat-of="host"]');
+  await host.click();
+  await expect(lead).not.toHaveClass(/\bon\b/);
+  const [offBg] = await cssOf(lead, "background-color");
+  expect(offBg).not.toBe(onBg);
+  expect(offBg).not.toBe(sbg);
+  const [rowBg] = await cssOf(host, "background-color");
+  expect(rowBg).toBe(onBg);
+  await lead.click();
+  await expect(lead).toHaveClass(/\bon\b/);
   // At work, its blinking dot takes the card's ink, so it shows on the lime.
   await cue.change((st) => { st.sessions.find((x) => x.session_id === "lead").state = "working"; st.items = st.items.filter((i) => i.session_id !== "lead"); });
   const dot = lead.locator(".dk-st > i");
