@@ -177,19 +177,63 @@ const deskGroupKey = (h) => (!h ? "" : h.kind === "crew" ? h.lead_sid || h.sid :
 const deskHolderName = (sid, fallback = "") => fallback || (sessionOf(sid) ? nameOf(sid, sessionOf(sid).project) : sid);
 /** Whether session `sid` leads a crew, or is given items as a lead. */
 const deskIsLead = (sid, items) => deskCrew(sid).length > 0 || items.some((i) => i.holder?.kind === "lead" || i.holder?.kind === "crew");
+/** The items queued behind item `i` (after it, and those after them), not done, in order: what it unblocks. */
+function deskUnblocks(i, items) {
+  const out = [];
+  let front = [i.id];
+  while (front.length) {
+    const next = items.filter((x) => x.state !== "done" && x.after && front.includes(x.after) && x.id !== i.id && !out.includes(x.id)).map((x) => x.id);
+    out.push(...next);
+    front = next;
+  }
+  return out;
+}
+/** "unblocks #154, #157, #160 +2 more" under a waiting row, or "". */
+function deskUnblocksHtml(i) {
+  const ids = deskUnblocks(i, deskOf(i.project)?.items || []);
+  if (!ids.length) return "";
+  return `<div class="dk-ub">unblocks ${ids.slice(0, 3).map((x) => `#${esc(x)}`).join(", ")}${ids.length > 3 ? ` +${ids.length - 3} more` : ""}</div>`;
+}
+/** A question, an ask or a "done when" in one plain line: its line that asks (ends on "?"), else its first. */
+function deskOneLine(t) {
+  const lines = String(t || "").split(/\n+/).map((l) => plain(l)).filter(Boolean);
+  return lines.findLast((l) => /\?$/.test(l)) || lines[0] || "";
+}
+/** What an item waiting on you asks you to do, in one plain line (#182): [verb, words], or null when it doesn't wait
+ *  on you. Allow a tool, Pick one of its choices (or of its mocks), Answer its question; Try it once it's in the app
+ *  (its "done when"). */
+function deskVerb(i) {
+  if (i.state === "to_check" && !deskInstallWait(i)) return ["Try it", deskDoneWhenPoints(i.done_when || "")[0] || i.title];
+  if (i.state !== "needs_you") return null;
+  const a = i.ask;
+  if (a) return [a.kind && a.kind !== "question" ? "Allow" : (a.choices || []).length > 1 ? "Pick" : "Answer", deskOneLine(a.text)];
+  const pick = deskPickLine(i);
+  if (pick) return ["Pick", pick];
+  return ["Answer", deskOneLine(i.finish?.question || i.latest || deskQuestion(i))];
+}
+/** That line as HTML: "<b>Answer:</b> keep the old group?"; words that start with the verb ("Pick one for …") bold it. */
+function deskVerbHtml(i) {
+  const v = deskVerb(i);
+  if (!v || !v[1]) return "";
+  const [verb, words] = v;
+  const lead = words.match(new RegExp(`^${verb}\\b`, "i"));
+  return lead ? `<b class="dk-vb">${esc(words.slice(0, verb.length))}</b>${esc(words.slice(verb.length))}` : `<b class="dk-vb">${esc(verb)}:</b> ${esc(words)}`;
+}
 /** The list's groups by state: Waiting on you, In progress, Queued (given out or not), the add-on's, and Done today. An
  *  item is in one group only. Who holds an item is the small word under its title; the sessions are on the left. */
 function deskGroups(project) {
   const d = deskOf(project);
   const items = [...d.items].sort((a, b) => deskMs(a.created) - deskMs(b.created));
-  // What asks you something before what's ready to check.
-  const waiting = items.filter(deskWaits).sort((a, b) => (a.state === "needs_you" ? 0 : 1) - (b.state === "needs_you" ? 0 : 1));
+  // What asks you something before what's ready to check; then what unblocks the most first, then the oldest (#182).
+  const ub = new Map(items.map((i) => [i.id, deskUnblocks(i, items).length]));
+  const waiting = items.filter(deskWaits).sort((a, b) => (a.state === "needs_you" ? 0 : 1) - (b.state === "needs_you" ? 0 : 1) || ub.get(b.id) - ub.get(a.id));
   const done = items.filter(deskDoneToday).sort((a, b) => deskMs(b.done_at) - deskMs(a.done_at));
   const rest = items.filter((i) => !deskWaits(i) && i.state !== "done");
   let extra = [];
   try { extra = addOn.deskHolders?.(project) || []; } catch (e) { console.error(e); }
   // In progress: its holder is on it. One left working by a crash or quit (its holder idle) waits with the queued.
-  const onIt = (i) => i.state === "working" && !deskHolderIdle(i.holder);
+  // One whose holder stopped on it is in progress too: the Desk lead is settling it (#182).
+  const onIt = (i) => i.state === "working" && (!deskHolderIdle(i.holder) || i.stopped);
   // Waiting for install: still on its way to you, with what's in progress.
   const going = (i) => onIt(i) || deskInstallWait(i) || deskFinishing(i);
   return { d, waiting, working: rest.filter(going), queued: rest.filter((i) => !going(i)), extra, done, all: items };
@@ -211,7 +255,7 @@ function deskTag(i) {
 }
 /** Where an item stands, as its row's icon: waiting on you (an ask, or back to check), in progress, queued (also
  *  one waiting for its install), done. */
-const deskStateOf = (i) => (i.state === "done" ? "done" : i.state === "working" ? "work" : deskFinishing(i) ? "fin" : (i.state === "needs_you" || i.state === "to_check") && !deskInstallWait(i) ? "you" : "q");
+const deskStateOf = (i) => (i.state === "done" ? "done" : i.state === "working" ? (i.stopped ? "q" : "work") : deskFinishing(i) ? "fin" : (i.state === "needs_you" || i.state === "to_check") && !deskInstallWait(i) ? "you" : "q");
 const DESK_STATE_SVG = {
   you: '<circle cx="7" cy="7" r="5.5" stroke="var(--muted)" stroke-width="1.6"/><path d="M7 4.2v3.4" stroke="var(--muted)" stroke-width="1.6"/><circle cx="7" cy="9.9" r=".9" fill="var(--muted)"/>',
   work: '<circle cx="7" cy="7" r="5.5" stroke="var(--accent)" stroke-width="1.5"/><circle class="dk-blink" cx="7" cy="7" r="2.2" fill="var(--accent)"/>',
@@ -232,14 +276,14 @@ function deskItemRow(i, lit, held = false) {
   // Lit by its session (clicked on the left) and at work: "working · host-lead · 4m", how long its session has been at it.
   const s = held && i.state === "working" ? sessionOf(i.holder?.sid) : null;
   const at = s ? (s.state === "working" && s.since_ms) || deskMs(i.updated) : 0;
-  const who = s ? `working · ${esc(deskHolderOf(i))} · <span data-ago="${at}">${ago(at)}</span>` : !i.holder && i.state !== "done" ? deskGive(i, "row") : deskInstallWait(i) ? `waiting for install · ${esc(deskHolderOf(i))}` : deskFinishing(i) ? `<span class="dk-fstep">${esc(deskFinStep(i))}</span>` : esc(deskHolderOf(i));
+  const who = i.stopped && i.state === "working" ? `stopped · the Desk lead is on it` : s ? `working · ${esc(deskHolderOf(i))} · <span data-ago="${at}">${ago(at)}</span>` : !i.holder && i.state !== "done" ? deskGive(i, "row") : deskInstallWait(i) ? `waiting for install · ${esc(deskHolderOf(i))}` : deskFinishing(i) ? `<span class="dk-fstep">${esc(deskFinStep(i))}</span>` : esc(deskHolderOf(i));
   // Finishing: no age, so its step has the room.
   const when = s || deskFinishing(i) ? "" : i.state === "done" ? `${i.commit ? `<span class="dk-cm">committed ${esc(i.commit)}</span> · ` : ""}${clockAt(deskMs(i.done_at || i.updated))}` : ago(deskMs(i.created));
   const ok = deskInstallWait(i) ? "" : deskFinishing(i) ? deskInstallNow(i, "dk-instnow") : i.state === "to_check" && deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id) : i.state === "to_check" ? `<button class="dk-ok" data-desk-act="looks_right" data-id="${esc(i.id)}" aria-label="Looks right"></button>`
     : i.state === "done" ? `<button class="dk-undo" data-desk-act="reopen" data-id="${esc(i.id)}">Undo</button>` : "";
-  // Its holder's question under the row; a holder that just stopped (no question) leaves only the "needs you" state.
-  const q = i.state === "needs_you" ? i.ask?.text || i.finish?.question || "" : "";
-  const ask = q ? `<div class="dk-h">${esc(q)}</div>` : "";
+  // What it waits on you for, in one plain line (Answer, Pick, Allow, Try it), and what it unblocks (#182).
+  const vb = deskVerbHtml(i);
+  const ask = (vb ? `<div class="dk-h">${vb}</div>` : "") + (deskWaits(i) ? deskUnblocksHtml(i) : "");
   return `<div class="dk-it ${i.state === "needs_you" ? "ask" : ""} ${look === "landed" ? "landed" : ""} dk-${deskStateOf(i)} ${on ? "on" : ""}${i.state === "to_check" && deskLooksSoon.has(i.id) ? " soon" : ""}${deskLeaveStyle(i.id)}" role="button" tabindex="0" data-desk-item="${esc(i.id)}">
     ${deskStateIcon(i)}<div class="dk-i1"><span class="dk-tag ${look}">${tag}</span><span class="dk-t">${esc(i.title)}</span></div>
     <div class="dk-i2"><span class="dk-kid">${deskKindIcon(i)}<span class="dk-id">${esc(deskNum(i))}</span></span><span class="dk-who${s ? " held" : ""}">${who}</span><span class="dk-age">${when}</span>${ok}</div>${ask}</div>`;
@@ -810,7 +854,7 @@ function deskFinLog(i) {
 function deskItemState(i) {
   const who = i.holder ? `<b>${esc(i.holder.name)}</b>${i.crew ? ` → <b>${esc(i.crew)}</b>` : ""}` : "";
   const by = (pre) => (who ? ` ${pre} ${who}` : "");
-  const where = { new: "not given out yet", queued: `next${by("for")}`, working: who ? `with ${who}` : "at work", finishing: `<span class="dk-fstep">${esc(deskFinStep(i))}</span>${by("· from")}`, needs_you: `waits on you${who ? ` · with ${who}` : ""}`, to_check: deskInstallWait(i) ? `waiting for install${by("· from")}` : `ready to check${by("· from")}${deskFinCommit(i) ? ` · committed <span class="dk-cm">${esc(deskFinCommit(i))}</span>` : ""}`, done: `done${by("by")}${i.commit ? ` · committed <span class="dk-cm">${esc(i.commit)}</span>` : ""}` }[i.state] || "";
+  const where = { new: "not given out yet", queued: `next${by("for")}`, working: i.stopped ? `stopped${by("·")} · the Desk lead is on it` : who ? `with ${who}` : "at work", finishing: `<span class="dk-fstep">${esc(deskFinStep(i))}</span>${by("· from")}`, needs_you: `waits on you${who ? ` · with ${who}` : ""}`, to_check: deskInstallWait(i) ? `waiting for install${by("· from")}` : `ready to check${by("· from")}${deskFinCommit(i) ? ` · committed <span class="dk-cm">${esc(deskFinCommit(i))}</span>` : ""}`, done: `done${by("by")}${i.commit ? ` · committed <span class="dk-cm">${esc(i.commit)}</span>` : ""}` }[i.state] || "";
   // Its kind is the mark in the pane's header, at the left as on every chat header (deskLabel): the line starts with its number, then where it is.
   return `<span class="dk-id">#${esc(i.id)}</span> · ${where} · added by ${esc(deskFrom(i, deskOf(i.project)))} ${ago(deskMs(i.created))} ago`;
 }
@@ -916,7 +960,8 @@ function deskItemPane(i, d) {
   const files = changed ? `<div class="dk-fcs">${changed}</div>` : "";
   const thread = deskThread(i, d), tab = deskItemTabs.get(i.id) || "thread";
   const h = i.holder, sid = h ? (h.kind === "crew" ? h.lead_sid : h.sid) : null;
-  const armed = deskDropArm === i.id, pick = deskPickLine(i);
+  // What it waits on you for, in one plain line under the header (#182; a pick on its mocks, #178).
+  const armed = deskDropArm === i.id, pick = deskVerbHtml(i);
   const tabBtn = (k, label, n) => `<button class="dk-itab${tab === k ? " on" : ""}" role="tab" aria-selected="${tab === k}" data-desk-itab="${k}" data-id="${esc(i.id)}">${label}<span class="n">${n}</span></button>`;
   // Where it stands now, under the thread: first its Done when (what to check, once it's ready to: #140), so it's by
   // the newest message and the box, not lost in the first message; then what holds it up or what it asks, what it
@@ -934,7 +979,7 @@ function deskItemPane(i, d) {
   // in the open, not among the buttons (#178); what pick it waits on; then Thread, Decisions, Steps and Files tabs,
   // Thread open), then the open tab; the answer box is the card's foot.
   return `<div class="dk-pane dk-ipane" data-scroll-key="item:${esc(i.id)}"><div class="dk-ihead">${deskBack(deskLeadName(d) || "Back")}<div class="dk-ititle"><h1><span class="dk-hnum">${deskKindIcon(i)}${esc(deskNum(i))} · </span>${esc(i.title)}</h1><div class="dk-ilinks">${sid && sessionOf(sid) ? `<button class="btn small" ${deskChatAttrs(sid, d)}>Open ${esc(h.name)}</button>` : ""}${deskLooksTop(i)}</div></div>
-    <div class="dk-ist"><span class="dk-pill dk-pill-${esc(i.state)}"><i aria-hidden="true"></i>${esc(deskInstallWait(i) ? "Waiting for install" : DESK_PILL[i.state] || i.state)}</span><div class="dk-state">${deskItemState(i)}</div>${deskDesignsLink(i)}</div>${pick ? `<p class="dk-pickl">${esc(pick)}</p>` : ""}
+    <div class="dk-ist"><span class="dk-pill dk-pill-${esc(i.state)}"><i aria-hidden="true"></i>${esc(deskInstallWait(i) ? "Waiting for install" : i.stopped && i.state === "working" ? "Stopped" : DESK_PILL[i.state] || i.state)}</span><div class="dk-state">${deskItemState(i)}</div>${deskDesignsLink(i)}</div>${pick ? `<p class="dk-pickl">${pick}</p>${deskUnblocksHtml(i).replace("dk-ub", "dk-ub dk-iub")}` : ""}
     <div class="dk-itabs" role="tablist">${tabBtn("thread", "Thread", thread.length)}${tabBtn("decisions", "Decisions", decs.length)}${tabBtn("steps", "Steps", steps.length)}${tabBtn("files", "Files", nFiles)}<span class="grow"></span>${i.state !== "done" ? `<button class="dk-drop${armed ? " armed" : ""}" data-desk-act="drop" data-id="${esc(i.id)}">${armed ? "Drop it" : "Drop this item"}</button>` : ""}</div></div>
     <div class="dk-ibody dk-itab-${tab}">${body}</div></div>`;
 }
