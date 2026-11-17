@@ -148,8 +148,25 @@ fn id_and_titles(body: &str) -> Option<(String, Vec<String>)> {
         return None;
     }
     let id = id_of(head)?;
-    let titles = p[1..].iter().map(|t| t.trim_matches(['"', '`', '*']).trim().to_string()).filter(|t| !t.is_empty()).collect::<Vec<_>>();
+    let titles = p[1..].iter().map(|t| unwrapped(t).to_string()).filter(|t| !t.is_empty()).collect::<Vec<_>>();
     (!titles.is_empty()).then_some((id, titles))
+}
+
+/// `t` without the quotes, backticks or bold wrapped around the whole of it (`"a"`, `**a**`): a mark only at one end
+/// is the title's own (`"Looks right" is loud` keeps its opening quote). Bold may have lost its close already (lines()
+/// takes stars off the line's end), so opening stars go on their own.
+fn unwrapped(t: &str) -> &str {
+    let mut t = t.trim();
+    if !t.ends_with('*') {
+        t = t.trim_start_matches('*').trim();
+    }
+    loop {
+        let Some(c) = t.chars().next().filter(|c| matches!(c, '"' | '`' | '*')) else { return t };
+        if t.len() < 2 || !t.ends_with(c) {
+            return t;
+        }
+        t = t[1..t.len() - 1].trim();
+    }
 }
 
 /// "#107 https://…" (the link may be in <> or (), or a markdown link): the item and its first web link.

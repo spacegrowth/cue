@@ -262,9 +262,9 @@ fn a_working_item_whose_holder_stopped_is_sent_again_on_a_route_or_restart() {
     ends(&w, &l, &format!("ROUTE: #{id} -> cue-teams | why: it knows"));
     assert_eq!(sent(), 1);
     assert!(w.hub().desk_item_act(&id, "start_now", "").is_err());
-    // Cut off with no DONE: the item stays working, and a route to the same holder sends it again.
+    // Cut off with no DONE: the item waits on you, and a route to the same holder sends it again.
     ends(&w, &h, "On it.");
-    assert_eq!(item(&desk(&w, &project), "Header")["state"], "working");
+    assert_eq!(item(&desk(&w, &project), "Header")["state"], "needs_you");
     ends(&w, &l, &format!("ROUTE: #{id} -> cue-teams | why: it knows"));
     w.settle();
     assert_eq!(sent(), 2);
@@ -1063,6 +1063,14 @@ fn title_and_split_lines_are_read() {
             Line::Split { id: "12".into(), titles: vec!["Header jumps".into(), "Footer is cut off".into()] },
         ]
     );
+    // A quote that starts the title, not wrapped around it, is the title's own.
+    assert_eq!(
+        lines("TITLE: #12 | \"Looks right\" is too loud\nTITLE: #13 | **`Wrapped`**"),
+        vec![
+            Line::Title { id: "12".into(), title: "\"Looks right\" is too loud".into() },
+            Line::Title { id: "13".into(), title: "Wrapped".into() },
+        ]
+    );
 }
 
 #[test]
@@ -1120,4 +1128,46 @@ fn an_item_already_given_out_isnt_split() {
     ends(&w, &l, &format!("SPLIT: #{} | Header | Footer", it.id));
     assert_eq!(desk(&w, &project)["items"].as_array().unwrap().len(), 1);
     assert!(sent_to(&w, &l).last().unwrap().contains(&format!("#{} not split", it.id)));
+}
+
+/// A holder whose turn ends on its item with no DONE: the item waits on you with its last line (not "working"), and
+/// Cue asks it once if it's done. The turn that answers isn't asked again, nor one that ends on a question; a later
+/// stall is asked once more; DONE puts it to check.
+#[test]
+fn an_item_whose_holder_stops_without_done_waits_on_you_and_is_asked_once() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    ends(&w, &l, "ITEM: Header\nROUTE: #new -> cue-teams | why: it knows");
+    let id = item(&desk(&w, &project), "Header")["id"].as_str().unwrap().to_string();
+    let words = format!("Done? Write DONE: #{id}, or say what's left");
+    let asked = || sent_to(&w, &h).iter().filter(|t| **t == words).count();
+    let turn = |prompt: &str, reply: &str| {
+        w.advance(1000);
+        w.hosted_says(&h, HostedEvent::Taken { text: prompt.into() });
+        w.settle();
+        assert_eq!(item(&desk(&w, &project), "Header")["state"], "working", "at work on it");
+        w.advance(1000);
+        ends(&w, &h, reply);
+    };
+    turn("Header", "Looked at the header.\nThe sticky part is in place.");
+    let it = item(&desk(&w, &project), "Header").clone();
+    assert_eq!(it["state"], "needs_you", "{it}");
+    assert_eq!(it["latest"], "The sticky part is in place.");
+    assert_eq!(it["ask"]["text"], "The sticky part is in place.");
+    assert_eq!(asked(), 1, "asked once: {:?}", sent_to(&w, &h));
+    // Its answer: still no DONE, so it waits on you with what's left, and isn't asked again.
+    turn(&words, "The footer still overlaps it.");
+    assert_eq!(item(&desk(&w, &project), "Header")["state"], "needs_you");
+    assert_eq!(item(&desk(&w, &project), "Header")["latest"], "The footer still overlaps it.");
+    assert_eq!(asked(), 1);
+    // A turn that ends on a question for you isn't asked either.
+    turn("Go on", "Should the footer move too?");
+    assert_eq!(asked(), 1);
+    // A new stall later: asked once more.
+    turn("Yes, move it", "Moved some of it.");
+    assert_eq!(asked(), 2);
+    turn(&words, &format!("All done.\nDONE: #{id}"));
+    assert_eq!(item(&desk(&w, &project), "Header")["state"], "to_check");
+    assert_eq!(asked(), 2);
 }

@@ -15,6 +15,8 @@ let deskGiveFor = null;
 let deskQaDone = null;
 /** The hand-off cards in the lead's chat whose why you folded ("id>who"); open by default, a redraw keeps them folded. */
 const deskWhyShut = new Set();
+/** The title of the last ITEM line drawn: a ROUTE "#new" after it is that item (parse.rs reads it so). */
+let deskSaidItem = "";
 
 // ---------- the lead ----------
 
@@ -225,6 +227,7 @@ function deskLineHtml(line, inline) {
     const rest = DESK_KINDS.includes(first) ? p.slice(1) : p;
     const title = rest.find((s) => lab(s, "done when") === null) || "";
     if (!title) return "";
+    deskSaidItem = title;
     const done = rest.map((s) => lab(s, "done when")).find((v) => v !== null) || "";
     return row(`<span class="dk-say-h"><span class="dk-say-w">New item</span> ${deskKindIcon(kind)}<span class="dk-say-t">${inline(title)}</span></span>`, done ? `done when ${inline(done)}` : "");
   }
@@ -234,12 +237,15 @@ function deskLineHtml(line, inline) {
     const after = id(find("after")), why = find("why"), crew = name(find("crew")), kind = find("kind").replace(/["`*.]/g, "").toLowerCase();
     const sub = [after ? `after ${ref(after)}` : "", why ? inline(why) : ""].filter(Boolean).join(" · ");
     // One line: its kind's icon, number and title (opens the item) → who; why open under it, "Why ⌃" folds it.
-    const it = known(at), key = `${at}>${to}`, open = !deskWhyShut.has(key);
-    const what = at === "new" ? `<span class="dk-rt-n">New item</span>`
+    // "#new" is the ITEM just above it, once the Desk has it; "→ new" (or "me") the session Cue started for it, once there is one.
+    const it = at === "new" ? deskNewlySaid(deskSaidItem) : known(at), key = `${at}>${to}`, open = !deskWhyShut.has(key);
+    const fresh = /^(new|me)$/i.test(to) && it?.holder;
+    const who = fresh ? deskHolderName(it.holder.sid, it.holder.name) : to;
+    const what = at === "new" && !it ? `<span class="dk-rt-n">New item</span>`
       : `<span class="dk-rt-n">${esc(it ? deskNum(it) : `#${at}`)}</span>${it?.title ? `<span class="dk-rt-t">${esc(it.title)}</span>` : ""}`;
     const head = it ? `<button class="dk-rt-it" data-desk-chk-item="${esc(it.id)}">${deskKindIcon(it)}${what}</button>` : `<span class="dk-rt-it">${deskKindIcon(kind)}${what}</span>`;
     const fold = sub ? `<button class="dk-rt-why" data-desk-why="${esc(key)}">Why ${open ? "⌃" : "⌄"}</button>` : "";
-    return `<div class="dk-route${open ? " open" : ""}"><div class="dk-rt-row">${head}<span class="dk-rt-ar">→</span><span class="dk-rt-to">${esc(to)}${crew ? ` · ${esc(crew)}` : ""}</span>${fold}</div>${sub && open ? `<div class="dk-rt-why-s">${sub}</div>` : ""}</div>`;
+    return `<div class="dk-route${open ? " open" : ""}"><div class="dk-rt-row">${head}<span class="dk-rt-ar">→</span><span class="dk-rt-to">${esc(who)}${crew ? ` · ${esc(crew)}` : ""}</span>${fold}</div>${sub && open ? `<div class="dk-rt-why-s">${sub}</div>` : ""}</div>`;
   }
   if (m[1] === "DONE") {
     const ids = body.split(/[, ]/).filter((w) => w.trim().startsWith("#")).map(id).filter(Boolean);
@@ -250,6 +256,8 @@ function deskLineHtml(line, inline) {
   const why = find("why");
   return row(`<span class="dk-say-h"><span class="dk-say-w">Context</span> <span class="dk-say-to"><b>${esc(who)}</b> → ${esc(what)}</span></span>`, why ? inline(why) : "");
 }
+/** The newest item titled `title` (as the lead's ITEM line said it), or undefined. */
+const deskNewlySaid = (title) => (title ? (state.desk?.projects || []).flatMap((d) => d.items).filter((i) => i.title === title).sort((a, b) => (b.created ?? 0) - (a.created ?? 0))[0] : undefined);
 /** Cue's message to the lead as a small card, when it's one of Cue's own (new items, or a DONE it couldn't act on);
  *  null for any other (chat/render.js chatHtml `you`). */
 const deskCueNote = (e) => deskNewItems(e) ?? deskDoneNotes(e);
