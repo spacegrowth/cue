@@ -25,6 +25,13 @@ fn crew_at_work(s: &Session) -> bool {
     s.team.iter().any(|t| t.working())
 }
 
+/// Session `sid` (itself, not a crew member of it) is still at it as its turn ends: its background agents run on, or
+/// one of its crew is at work. A DONE it says then waits (the item stays at work), and it isn't asked if it's done.
+pub(super) fn still_at_it(st: &Store, sid: &str) -> bool {
+    let h = Holder { kind: "session".into(), sid: sid.to_string(), ..Default::default() };
+    at_work(st, &h) || st.sessions.get(sid).is_some_and(crew_at_work)
+}
+
 /// The last line of a session's last words.
 pub(super) fn last_line(s: &Session) -> String {
     s.thread.iter().rev().find(|e| e.role == "agent").and_then(|e| e.text.lines().map(str::trim).rfind(|l| !l.is_empty())).unwrap_or("").chars().take(160).collect()
@@ -71,7 +78,7 @@ pub(super) fn stalls_asked(st: &mut Store, sid: &str, text: &str, on: &[String],
         return;
     }
     let h = Holder { kind: "session".into(), sid: sid.to_string(), ..Default::default() };
-    let quiet = at_work(st, &h) || st.sessions.get(sid).is_some_and(crew_at_work) || ask_of(st, &h).is_some() || says_whats_left(text);
+    let quiet = still_at_it(st, sid) || ask_of(st, &h).is_some() || says_whats_left(text);
     let mut ask = Vec::new();
     for (id, updated) in still {
         // Asked of this stall already: this turn is its answer.
