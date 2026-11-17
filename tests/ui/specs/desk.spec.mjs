@@ -662,10 +662,10 @@ test("✎ beside a session's name (its row, its chat's header) renames the sessi
   await box.press("Enter");
   await expect(row.locator(".dk-nm")).toHaveText("search-fix");
   // Its chat's header has the same ✎.
-  // The session holds an item, so its name is on the header's second line.
+  // By its pill on the header's first line, as the Desk lead's name is (#170).
   await row.click();
-  const head = page.locator(".dk-sch");
-  const nm = head.locator(".dk-t2 > b");
+  const head = page.locator(".dk-shead");
+  const nm = head.locator(".dk-shn");
   await expect(nm).toHaveText("search-fix");
   await head.hover();
   await head.locator(".dk-sren").click();
@@ -1353,8 +1353,9 @@ test("three columns: the project's sessions on the left, the lead's chat in the 
   await expect(tmark).toHaveAttribute("data-desk-mark", "session");
   await expect(tmark.locator("svg.dk-kic")).toHaveCount(1);
   expect(await bg(tmark)).toBe(hostBg);
-  await expect(page.locator(".dk-right .dk-sch")).toHaveText(/^‹ .+Sessionspare(idle|working|waiting on you)Open its session$/);
-  if (process.env.SHOT_DIR) for (const c of ["light", "dark"]) { await page.emulateMedia({ colorScheme: c }); await page.locator(".dk-right .dk-sch").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-sess-head-${c}.png` }); }
+  await expect(page.locator(".dk-right .dk-sch")).toHaveText(/^‹ .+SessionspareOpen its session$/);
+  await expect(page.locator(".dk-right .dk-shead .dk-t2")).toHaveText(/^(Idle|Working|Waiting on you)$/);
+  if (process.env.SHOT_DIR) for (const c of ["light", "dark"]) { await page.emulateMedia({ colorScheme: c }); await page.locator(".dk-right .dk-shead").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-sess-head-${c}.png` }); }
   await page.emulateMedia({ colorScheme: "light" });
   await left.locator('[data-desk-chat-of="host"]').click();
   await expect(left.locator(".dk-srow.on")).toHaveAttribute("data-desk-chat-of", "host");
@@ -2490,6 +2491,8 @@ test("the chats' title areas: the lead's has a second line (its state, routing, 
   await expect(lh.locator(".dk-tabs .dk-tab.on")).toHaveText("web-lead");
   await expect(lh.locator(".dk-tabs")).toContainText("Decisions");
   const t2 = lh.locator(".dk-t2");
+  const leadName = await lh.locator(".dk-tabs .dk-tab.on").evaluate((e) => { const c = getComputedStyle(e); return [c.fontSize, c.fontWeight]; });
+  const leadRow = await lh.locator(".dk-tabs").evaluate((e) => e.getBoundingClientRect().height);
   await expect(t2.locator(".dk-st > i")).toHaveCount(1);
   await expect(t2.locator(".dk-t2w")).toHaveText(/^(Working|Idle|Waiting on you)$/);
   await expect(t2.locator(".dk-wy")).toHaveText("2 wait on you ›");
@@ -2522,18 +2525,23 @@ test("the chats' title areas: the lead's has a second line (its state, routing, 
   await page.evaluate(() => { const d = deskOf("cue"); d.items.find((i) => i.id === "d2").state = "done"; renderMain(); });
   await expect(t2.locator(".dk-wy")).toHaveCount(0);
 
-  // A session holding an item: its Lead or Session pill, not the item's kind (#170), the muted number and the title in bold, Open its session at the right;
-  // under it "<name> · Lead|Session · state · from <the Desk's lead>".
+  // A session holding an item: its head reads as the Desk lead's (#170). First line: its Lead or Session pill (never
+  // the item's kind) and its name, Open its session at the right; second: its state's dot and word, the item it's on
+  // and who gave it.
   await page.locator('.dk-sessions .dk-srow:not(.crew)', { hasText: "host-lead" }).first().click();
-  const sch = page.locator(".dk-sch.dk-sch-it");
+  const sch = page.locator(".dk-shead");
   await expect(sch).toHaveCount(1);
-  await expect(sch.locator(".dk-sch1 .dk-lbl")).toHaveText(/^(Lead|Session)$/);
-  await expect(sch.locator(".dk-sch-t .dk-hnum")).toHaveText(/^#d\d$/);
-  await expect(sch.locator(".dk-sch-t b")).toHaveCSS("font-weight", "700");
-  await expect(sch.locator(".dk-sch1 [data-desk-session]")).toHaveText("Open its session");
-  await expect(sch.locator(".dk-t2")).toHaveText(/^host-lead · (working|idle|waiting on you) · from web-lead$/);
-  if (process.env.SHOT_DIR) await sch.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-sess-held.png` });
-  expect(await sch.locator(".dk-hnum").evaluate((e) => getComputedStyle(e).color)).not.toBe(await sch.locator(".dk-sch-t b").evaluate((e) => getComputedStyle(e).color));
+  await expect(sch.locator(".dk-sch .dk-lbl")).toHaveText(/^(Lead|Session)$/);
+  await expect(sch.locator(".dk-sch .dk-shn")).toHaveText("host-lead");
+  await expect(sch.locator(".dk-sch [data-desk-session]")).toHaveText("Open its session");
+  await expect(sch.locator(".dk-t2")).toHaveText(/^(Working|Idle|Waiting on you) · on #d\d .+ · from web-lead$/);
+  await expect(sch.locator(".dk-t2 .dk-t2w")).toHaveCount(1);
+  // The same type and spacing as the lead's head: its name as the lead's, its second line as the lead's.
+  const font = (l) => l.evaluate((e) => { const c = getComputedStyle(e); return [c.fontSize, c.fontWeight]; });
+  expect(await font(sch.locator(".dk-shn"))).toEqual(leadName);
+  expect(await sch.locator(".dk-sch").evaluate((e) => e.getBoundingClientRect().height)).toBe(leadRow);
+  if (process.env.SHOT_DIR) for (const c of ["light", "dark"]) { await page.emulateMedia({ colorScheme: c }); await sch.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-sess-held-${c}.png` }); }
+  await page.emulateMedia({ colorScheme: "light" });
   await sch.locator(".dk-sch-t").click();
   await expect(page.locator(".dk-it.on")).toHaveCount(1);
   await page.locator('.dk-sessions .dk-srow:not(.crew)', { hasText: "host-lead" }).first().click();
@@ -2555,11 +2563,11 @@ test("on a named Desk, a session's chat is titled by the item it holds on that D
     deskSelect("nd1");
     deskShow({ kind: "chat", sid: "host" });
   });
-  const sch = page.locator(".dk-sch.dk-sch-it");
+  const sch = page.locator(".dk-shead");
   await expect(sch).toHaveCount(1);
-  await expect(sch.locator(".dk-sch-t .dk-hnum")).toHaveText("#n1");
-  await expect(sch.locator(".dk-sch-t b")).toHaveText("Only on Feature A");
-  await expect(sch.locator(".dk-sch1 .dk-lbl")).toHaveText(/^(Lead|Session)$/);
+  await expect(sch.locator(".dk-sch-t .dk-inum")).toHaveText("#n1");
+  await expect(sch.locator(".dk-sch-t")).toContainText("Only on Feature A");
+  await expect(sch.locator(".dk-sch .dk-lbl")).toHaveText(/^(Lead|Session)$/);
   await sch.locator(".dk-sch-t").click();
   await expect.poll(() => page.evaluate(() => deskOpen && [deskOpen.kind, deskOpen.id, deskOpen.project])).toEqual(["item", "n1", "nd1"]);
 });

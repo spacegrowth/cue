@@ -559,19 +559,20 @@ function deskSessChat(sid, from, d) {
   const empty = !rows && !where ? `<div class="dk-empty">Nothing said yet.</div>` : "";
   const open = `<button class="btn small" data-desk-session="${esc(sid)}">Open its session</button>`;
   const it = deskSessItem(d, sid);
-  // Its pill says what the session is (Lead or Session, as the Desk lead's says Desk lead), never the kind of an item it
-  // holds (#170). Holding an item (Lead chats pick 1 + D): the pill, then the item, its muted number and title (a click
-  // opens it); under it who holds it, its state and who gave it. Else: the pill, its name and state.
-  const head = it ? `<div class="dk-ch dk-sch dk-sch-it"><div class="dk-sch1">${deskChatBack(from, d)}${deskLabel(deskSessKind(sid, d))}<button class="dk-sch-t" data-desk-chk-item="${esc(it.id)}"><span class="dk-hnum">#${esc(it.id)}</span> <b>${esc(it.title)}</b></button><span class="grow"></span>${open}</div>${deskSessNow(s, it, d)}</div>`
-    : `<div class="dk-ch dk-sch">${deskChatBack(from, d)}${deskTitled(deskSessKind(sid, d), deskSessName(sid, deskHolderName(sid), "b"))}<span class="dk-sub">${esc(deskSessState(s)[1])}</span><span class="grow"></span>${open}</div>`;
+  // Its head reads as the Desk lead's (#170): its pill (Lead or Session, never the kind of an item it holds) and its
+  // name, Open its session at the right; under it its state's dot and word, the item it's on (a click opens it) and
+  // who gave it.
+  const head = `<div class="dk-lh dk-shead"><div class="dk-ch dk-sch">${deskChatBack(from, d)}${deskTitled(deskSessKind(sid, d), deskSessName(sid, deskHolderName(sid), "dk-shn"))}<span class="grow"></span>${open}</div>${deskSessNow(s, it, d)}</div>`;
   return `${head}
     <div class="dk-chat" data-desk-chat="${esc(sid)}">${empty}${rows}${where}</div>`;
 }
-/** Under a session's chat title while it holds item `it`: "cue-89 · working · from <the Desk's lead>". */
+/** Under a session's chat title, as under the lead's (deskLeadNow): its state's dot and word, then the item it's on
+ *  ("on #172 Routing … fails", a click opens it) and who gave it ("from <the Desk's lead>"). */
 function deskSessNow(s, it, d) {
-  const sid = s.session_id, lead = deskLead(d);
-  const from = lead && lead.sid !== sid ? ` · from ${esc(deskLeadName(d))}` : "";
-  return `<div class="dk-t2">${deskSessName(sid, deskHolderName(sid), "b")}<span class="dk-t2p"> · ${esc(deskSessState(s)[1])}${from}</span></div>`;
+  const sid = s.session_id, lead = deskLead(d), [dot, word] = deskSessState(s);
+  const on = it ? `<span class="dk-t2p"> · on <button class="dk-sch-t" data-desk-chk-item="${esc(it.id)}">${deskKindIcon(it)}<b class="dk-inum">#${esc(it.id)}</b> ${esc(it.title)}</button></span>` : "";
+  const from = it && lead && lead.sid !== sid ? `<span class="dk-t2p"> · from ${esc(deskLeadName(d))}</span>` : "";
+  return `<div class="dk-t2"><span class="dk-st"><i class="${dot}"></i></span><b class="dk-t2w">${esc(word[0].toUpperCase() + word.slice(1))}</b>${on}${from}</div>`;
 }
 /** The session whose steps the Desk follows live (chat/thread.js followSteps): its lead's, while its chat shows, or
  *  the session's whose chat is open. */
