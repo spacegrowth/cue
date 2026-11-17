@@ -88,7 +88,10 @@ test("an item opens on the right with its row lit in place; ‹ web-lead goes ba
   const ph = page.locator(".dk-right .dk-box textarea"), pre = page.locator(".dk-right .dk-box .dk-pre");
   await expect(pre).toHaveText("To web-lead · Bug #d4");
   await expect(ph).toHaveAttribute("placeholder", "Rail dot blinks…");
-  // Colored (#143): on a chip in the selected card's color, not plain text in the box's color.
+  // No quick phrases on an item's page; who gets it fills the box's left end, colored (#143).
+  await expect(page.locator(".dk-right .dk-box [data-quick]")).toHaveCount(0);
+  const boxL = (await page.locator(".dk-right .dk-box").boundingBox()).x;
+  expect(Math.abs((await pre.boundingBox()).x - boxL)).toBeLessThan(2);
   const sel = await page.evaluate(() => { const x = document.createElement("i"); x.style.color = "var(--sel)"; document.body.append(x); const c = getComputedStyle(x).color; x.remove(); return c; });
   expect(await pre.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(sel);
   expect(await pre.evaluate((e) => getComputedStyle(e).backgroundColor)).not.toBe(await page.locator(".dk-right .dk-box").evaluate((e) => getComputedStyle(e).backgroundColor));
@@ -735,6 +738,26 @@ test("Give to… on a row: a menu of the project's sessions over the list (rows 
   await expect(page.locator('[data-desk-item="d6"] [data-desk-give]')).toHaveCount(0);
 });
 
+test("Give to…'s menu opens whole inside the window, with each session's name in full, at any width (#152)", async ({ page, cue }) => {
+  await cue.open("desk");
+  for (const [w, h] of [[900, 700], [1300, 900], [1300, 420]]) {
+    await page.setViewportSize({ width: w, height: h });
+    await openDesk(page);
+    await page.locator('[data-desk-item="d6"] [data-desk-give]').click();
+    const menu = page.locator(".dk-givemenu");
+    await expect(menu).toBeVisible();
+    const box = await menu.boundingBox();
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(w);
+    expect(box.y + box.height).toBeLessThanOrEqual(h);
+    // Each name whole: none cut by its menu's edge.
+    expect(await menu.locator("button > span:first-child").evaluateAll((els) => els.every((el) => el.scrollWidth <= el.clientWidth + 1 && el.getBoundingClientRect().right <= el.closest(".dk-givemenu").getBoundingClientRect().right))).toBe(true);
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".dk-givemenu")).toHaveCount(0);
+  }
+});
+
 test("Give to… in the open item; Esc closes the menu, not the item; New session starts one", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
@@ -1110,6 +1133,11 @@ test("a to-check item's page lists its Files changed, each with its counts; a cl
   await page.locator('.dk-items [data-desk-item="d2"] .dk-t').click();
   // The files Looks right will commit, as the hub reads them.
   await cue.called("desk_item_diff", { id: "d2" });
+  // Under its Files tab (#149), counted there.
+  const ftab = page.locator('.dk-pane [data-desk-itab="files"]');
+  await expect(ftab).toHaveText("Files2");
+  await ftab.click();
+  await expect(page.locator(".dk-pane .dk-thread")).toHaveCount(0);
   const sec = page.locator(".dk-pane .dk-sec", { hasText: "Files changed" });
   await expect(sec.locator(".dk-fc-p")).toHaveText(["ui/chat/compose.js", "ui/styles/chat.css"]);
   await expect(sec.locator(".dk-fc").first().locator(".dv-n")).toHaveText(["+2", "−1"]);
@@ -1813,6 +1841,8 @@ test("an open item turning ready to check draws Files changed at once, never a F
   await openDesk(page);
   await page.locator('[data-desk-item="d3"]').click();
   await page.locator(".dk-pane h1").waitFor();
+  await page.locator('.dk-pane [data-desk-itab="files"]').click();
+  await expect(page.locator(".dk-pane .dk-sec h3")).toHaveText("Files it's on");
   // Every section heading the pane has drawn, from here on.
   await page.evaluate(() => {
     window.heads = new Set();
@@ -1822,7 +1852,26 @@ test("an open item turning ready to check draws Files changed at once, never a F
   await cue.change((st) => { const it = st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d3");
     Object.assign(it, { state: "to_check", updated: Math.floor(Date.now() / 1000), files: ["ui/a.js", "ui/b.css"] }); });
   await expect(page.locator(".dk-pane .dk-fc .dv-add")).toHaveCount(2);
-  expect([...await page.evaluate(() => [...window.heads])]).not.toContain("Files");
+  expect([...await page.evaluate(() => [...window.heads])]).not.toContain("Files it's on");
+});
+
+test("an item's Files tab: the files it's on in full, counted; none, a line saying so; not under the thread (#149)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await page.locator('[data-desk-item="d3"]').click();
+  const pane = page.locator(".dk-right .dk-ipane");
+  await expect(pane.locator(".dk-itab")).toHaveText([/^Thread/, /^Decisions/, /^Steps/, /^Files/]);
+  await expect(pane.locator(".dk-inow .dk-fc")).toHaveCount(0);
+  const n = await page.evaluate(() => state.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d3").files.length);
+  expect(n).toBeGreaterThan(0);
+  await expect(pane.locator('[data-desk-itab="files"] .n')).toHaveText(String(n));
+  await pane.locator('[data-desk-itab="files"]').click();
+  await expect(pane.locator(".dk-itab.on")).toHaveText(/^Files/);
+  await expect(pane.locator(".dk-fc-p")).toHaveCount(n);
+  await expect(pane.locator(".dk-fc-p").first()).toContainText("/");
+  await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d3").files = []; });
+  await expect(pane.locator(".dk-note")).toHaveText("No files on it yet.");
+  await expect(pane.locator('[data-desk-itab="files"] .n')).toHaveText("0");
 });
 
 test("the lead's box has the chat box's quick phrases and Claude's suggested reply", async ({ page, cue }) => {
@@ -1848,9 +1897,9 @@ test("the lead's box has the chat box's quick phrases and Claude's suggested rep
   // A phrase sends, to the lead.
   await box.locator('.qp[data-phrase="go ahead"]').click();
   await cue.called("desk_send", { project: "cue", text: "go ahead" });
-  // About an item: its phrases, but no suggestion (those words aren't the lead's own next prompt).
+  // About an item: no phrases (#143) and no suggestion (those words aren't the lead's own next prompt).
   await page.locator('[data-desk-item="d3"]').click();
-  await expect(page.locator(".dk-box .quick .qp")).toHaveCount(2);
+  await expect(page.locator(".dk-box .quick .qp")).toHaveCount(0);
   await expect(page.locator(".dk-box .sug-line")).toBeHidden();
 });
 
@@ -1918,7 +1967,7 @@ test("an item's page is a Thread under Thread, Decisions and Steps tabs: every m
   });
   await page.locator('[data-desk-item="d4"]').click();
   const pane = page.locator(".dk-right .dk-pane");
-  await expect(pane.locator(".dk-itab")).toHaveText([/^Thread/, /^Decisions/, /^Steps/]);
+  await expect(pane.locator(".dk-itab")).toHaveText([/^Thread/, /^Decisions/, /^Steps/, /^Files/]);
   await expect(pane.locator(".dk-itab.on")).toHaveText(/^Thread/);
   const msgs = pane.locator(".dk-thread .dk-tm");
   // Added first, its reply, then the send-back; the hand-off (a step) sits where its time puts it.
@@ -2004,6 +2053,7 @@ test("an item's thread scrolls to the newest message when one arrives or you sen
   const pane = page.locator(".dk-right .dk-ipane");
   const inView = async (loc) => {
     const r = await loc.boundingBox(), p = await pane.boundingBox(), h = await pane.locator(".dk-ihead").boundingBox();
+    if (!r || !p || !h) return false;   // mid-redraw
     return r.y >= h.y + h.height - 1 && r.y + r.height <= p.y + p.height + 1;
   };
   // Opening it doesn't jump: it starts at the top.

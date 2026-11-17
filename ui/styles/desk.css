@@ -113,7 +113,6 @@
 .dk-t { flex: 1; min-width: 0; font-size: 13.5px; line-height: 1.4; font-weight: 600; overflow-wrap: anywhere; }
 .dk-who { max-width: 140px; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-who:has(.dk-givewrap) { overflow: visible; }
-.dk-it .dk-givemenu { left: auto; right: 0; }
 .dk-age { color: var(--muted); font-family: var(--mono); font-size: 11px; white-space: nowrap; }
 /* Looks right on a row: a quiet outlined ✓ that fills in when you hover the row (or focus it). */
 .dk-ok { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 1.5px solid var(--accent); border-radius: 50%; background: none; color: var(--accent); font: 700 12px var(--sans); cursor: pointer; }
@@ -194,10 +193,11 @@
 .dk-box { flex: none; display: flex; flex-direction: column; gap: 6px; margin: 8px 16px 16px; padding: 8px 8px 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
 /* Its row: the words, the mic, a picture, Send; pictures added sit above it (draftChips). */
 .dk-box-row { display: flex; align-items: flex-end; gap: 6px; }
-/* Who gets it and which item, at the start of an item page's box: it stays as you type (#132), on a chip in the
-   selected card's color, so it reads as colored in light and dark and in every project's theme (#143: the theme's
-   own accent is near the ink in light). A click on it is a click in the box. */
-.dk-pre { flex: none; align-self: flex-start; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 3px 0 0; padding: 2px 8px; border-radius: 6px; background: var(--sel); color: var(--on-sel); font: 600 13px/1.4 var(--sans); cursor: text; user-select: none; }
+/* Who gets it and which item, at the start of an item page's box: it stays as you type (#132). It fills the box's
+   left end in the selected card's color, so it reads as colored in light and dark and in every project's theme
+   (#143: the theme's own accent is near the ink in light). A click on it is a click in the box. */
+.dk-pre { flex: none; align-self: stretch; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0 4px -8px -12px; padding: 5px 12px 0; border-radius: 0 0 0 11px; background: var(--sel); color: var(--on-sel); font: 600 13px/1.4 var(--sans); cursor: text; user-select: none; }
+.dk-box-row:first-child > .dk-pre { margin-top: -8px; padding-top: 13px; border-radius: 11px 0 0 11px; }
 .dk-box .chips { margin: 0; }
 .dk-ask { flex: none; max-height: 55%; overflow-y: auto; padding: 0 20px 14px; }
 /* The lead's ASK: a bordered panel card in the chat's column, as a hand-off or check card (.dk-chk), not a tinted
