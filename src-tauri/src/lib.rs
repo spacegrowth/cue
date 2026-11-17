@@ -1,4 +1,5 @@
 mod chaos;
+mod approval_trace;
 mod clock;
 mod config;
 mod awake;
