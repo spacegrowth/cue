@@ -168,16 +168,12 @@
 /* The chat card (left; class dk-right from when it sat on the right): tabs, the chat, the box. */
 .dk-right { position: relative; }
 .dk-tabs { gap: 18px; padding: 0 20px; align-items: stretch; }
-/* A chat's mark (Desk picks, mark B): its icon in the theme color and a small muted word, right after the chat's name. */
-/* The chat type mark (pick J): a tinted badge with the kind's icon before the name, the kind's word over it. */
+/* The chat type mark (pick O): one solid label in the theme color, the kind's icon and word, before the chat's name. */
 .dk-titled { flex: 0 1 auto; min-width: 0; align-self: center; display: flex; align-items: center; gap: 10px; }
-.dk-badge { flex: none; width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; background: var(--accent); color: var(--on-accent); }
-.dk-badge .dk-kic { width: 16px; height: 16px; margin: 0; color: var(--on-accent); }
-.dk-tstack { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; }
+.dk-lbl { flex: none; align-self: center; display: inline-flex; align-items: center; gap: 5px; height: 24px; box-sizing: border-box; padding: 0 9px 0 7px; border-radius: 6px; background: var(--accent); color: var(--on-accent); font: 700 11.5px var(--sans); letter-spacing: .02em; white-space: nowrap; }
+.dk-lbl .dk-kic { width: 13px; height: 13px; margin: 0; color: var(--on-accent); stroke-width: 2.4; }
 .dk-tname { max-width: 100%; min-width: 0; display: flex; align-items: center; gap: 6px; }
-.dk-mw { color: var(--accent); font: 700 10.5px/1.25 var(--sans); letter-spacing: .04em; white-space: nowrap; }
 .dk-tname > .dk-tab { padding-bottom: 1px; }
-.dk-markrow .dk-mw { font-size: 12px; }
 .dk-tab { display: flex; align-items: center; gap: 6px; padding: 0; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--muted); font-size: 13.5px; font-weight: 650; cursor: pointer; }
 .dk-tab.on { color: var(--ink); border-bottom-color: var(--ink); }
 .dk-tab .n { font-family: var(--mono); font-size: 11px; color: var(--muted); }
@@ -219,7 +215,8 @@
 .dk-files { font-family: var(--mono); font-size: 12px; color: var(--ink); }
 .dk-fcs { display: flex; flex-direction: column; }
 .dk-fc { display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 3px 6px; margin: 0 -6px; border: 0; border-radius: 6px; background: none; color: var(--ink); font: 12px var(--mono); text-align: left; cursor: pointer; }
-.dk-fc:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.dk-fc.wait { cursor: default; }
+.dk-fc:not(.wait):hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
 .dk-fc-p { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-fc-new { font: 600 10px var(--sans); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
 .dk-acts { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 24px 0; }
@@ -227,6 +224,44 @@
 .dk-drop { margin: 18px 0 0 18px; padding: 4px 6px; border: 0; background: none; color: var(--muted); font-size: 12px; cursor: pointer; border-radius: 8px; }
 .dk-drop:hover { color: var(--ink); background: var(--panel-2); }
 .dk-drop.armed { color: var(--deny); }
+/* The item page (pick A, 16 Nov 2026): a tinted header, then the item in a main column with a rail beside it; the
+   rail goes under the main column when the card is narrow. */
+.dk-ipane { container-type: inline-size; padding: 0 0 24px; }
+.dk-ihead { padding: 0 0 16px; background: var(--panel-2); border-bottom: 1px solid var(--line); }
+.dk-ipane .dk-ihead h1 { margin: 8px 24px 10px; max-width: 700px; font-size: 22px; letter-spacing: -.01em; }
+.dk-ist { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 0 24px; }
+.dk-ist .dk-state { margin: 0; }
+.dk-pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink); font: 600 10.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+.dk-pill i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.dk-pill-new i, .dk-pill-queued i { background: none; box-shadow: inset 0 0 0 1.5px var(--muted); }
+.dk-pill-needs_you i { background: var(--deny); }
+.dk-pill-done i { background: var(--muted); }
+.dk-ibody { display: grid; grid-template-columns: minmax(0, 1fr) 200px; gap: 0 8px; align-items: start; }
+.dk-imain { min-width: 0; padding-bottom: 4px; }
+.dk-imain .dk-sec { padding-top: 20px; }
+.dk-imain .dk-sec p.dk-words { font-size: 15px; line-height: 1.55; }
+.dk-rail { padding: 20px 24px 0 8px; display: flex; flex-direction: column; gap: 14px; }
+.dk-rb { border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+.dk-rb h4 { margin: 0 0 4px; font: 700 10.5px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.dk-rv { color: var(--ink); font-weight: 600; font-size: 13px; overflow-wrap: anywhere; }
+.dk-rs { color: var(--muted); font-size: 12px; }
+.dk-rl { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.dk-rl .dk-dsg { margin: 0; }
+.dk-rail .dk-drop { margin: 4px 0 0 -6px; align-self: flex-start; }
+@container (max-width: 560px) {
+  .dk-ibody { grid-template-columns: minmax(0, 1fr); }
+  .dk-rail { padding: 20px 24px 0; }
+}
+/* Its decisions as sentences: what (age at the right), why under it, by who and Undo. */
+.dk-decs { border-top: 1px solid var(--line); }
+.dk-lr.dk-dl { display: block; padding: 10px 4px; }
+.dk-dl1 { display: flex; align-items: baseline; gap: 12px; }
+.dk-dl1 .dk-d { flex: 1; font-size: 14px; font-weight: 600; }
+.dk-dl1 .dk-age { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.dk-lr.dk-dl > .dk-w { margin-top: 2px; font-size: 13px; }
+.dk-dl3 { display: flex; align-items: center; gap: 8px; margin-top: 4px; min-height: 18px; color: var(--muted); font-size: 12px; }
+.dk-dl3 .dk-lby { color: var(--muted); font-weight: 400; }
+.dk-dl3 .dk-lby b { color: var(--ink); font-weight: 600; }
 .dk-ended { flex: none; margin: 8px 16px 16px; padding: 10px 12px; color: var(--muted); font-size: 13px; }
 
 /* What holds it up, and a lead's crew: bordered lists with a dot a row. */
