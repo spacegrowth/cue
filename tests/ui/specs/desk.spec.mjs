@@ -1117,6 +1117,11 @@ test("a new item with a picture, no kind, and Cue's SPLIT words before its Route
   await expect(card.locator(".dk-inum")).toHaveText("#p1");
   await expect(card.locator(".dk-nc-t")).toHaveText("The rail's dot is off by a pixel");
   await expect(card.locator(".dk-nc2")).toHaveText("New item · done when it sits centred");
+  // At the right, where your messages are, as wide as what it says, not floating mid-chat (#167).
+  const cb = await card.boundingBox(), you = await page.locator(".dk-chat .cv-you-text").first().boundingBox();
+  expect(Math.abs((cb.x + cb.width) - (you.x + you.width))).toBeLessThan(2);
+  expect(cb.width).toBeLessThan(360);
+  if (process.env.SHOT_DIR) await page.locator(".dk-chat").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-new-card.png` });
   // Its picture as a thumbnail, about 48px tall, rounded, with a line round it; loaded, not a path.
   const img = card.locator(".thumb img");
   await expect(img).toHaveCount(1);

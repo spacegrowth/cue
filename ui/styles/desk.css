@@ -529,7 +529,7 @@ b.dk-say-t, .dk-say-t { font-weight: 650; color: var(--ink); }
 .dk-new-t:hover, .dk-new-t:hover .dk-new-tt { color: var(--link, var(--accent)); }
 /* A new item from Cue (deskNewItems): a small card, no fill, no edge color: its kind's icon, number in bold and title,
    a muted line under them, then its pictures as small thumbnails; a click on it opens the item. */
-.dk-nc { align-self: center; width: min(100%, 460px); box-sizing: border-box; padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 12.5px; line-height: 1.45; color: var(--ink); cursor: pointer; }
+.dk-nc { align-self: flex-end; width: fit-content; max-width: min(100%, 460px); box-sizing: border-box; padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 12.5px; line-height: 1.45; color: var(--ink); cursor: pointer; }
 .dk-nc:hover { border-color: color-mix(in srgb, var(--ink) 25%, var(--line)); }
 .dk-nc1 { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
 .dk-nc1 .dk-kic { margin: 0; align-self: center; }
