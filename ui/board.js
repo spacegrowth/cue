@@ -523,7 +523,7 @@ function usageChip() {
     const claudeFive = claudeRates.five_hour;
     const codexFive = windows.find((w) => w.minutes === 300);
     const percent = (w) => w ? `${Math.round(w.pct)}%` : "—";
-    return `<span class="usage-wrap"><button class="usage-chip usage-combined" data-usage="meter" aria-label="Usage" aria-expanded="${usageOpen === "claude"}"><span>5h</span><span class="usage-provider">Claude <span class="up">${percent(claudeFive)}</span></span><span class="usage-provider">Codex <span class="up">${percent(codexFive)}</span></span></button>${usagePop()}</span>`;
+    return `<span class="usage-wrap"><button class="usage-chip usage-combined" data-usage="meter" aria-label="Usage" aria-expanded="${usageOpen === "claude"}"><span class="usage-provider">Claude <span class="up">${percent(claudeFive)}</span></span><span class="usage-provider">Codex <span class="up">${percent(codexFive)}</span></span><span class="usage-window">5h</span></button>${usagePop()}</span>`;
   }
   const label = claude ? '<span class="usage-provider">Codex</span>' : "";
   const headerWindows = claude ? windows.filter((w) => w.minutes === 300) : windows;
