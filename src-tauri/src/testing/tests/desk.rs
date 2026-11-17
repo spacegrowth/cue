@@ -262,19 +262,32 @@ fn a_working_item_whose_holder_stopped_is_sent_again_on_a_route_or_restart() {
     ends(&w, &l, &format!("ROUTE: #{id} -> cue-teams | why: it knows"));
     assert_eq!(sent(), 1);
     assert!(w.hub().desk_item_act(&id, "start_now", "").is_err());
+    // Sent back while it's at work, with a new why: the item's Steps show it with its why, and it's sent that (after
+    // the turn it's on). That route said again isn't noted or sent twice.
+    for _ in 0..2 {
+        ends(&w, &l, &format!("ROUTE: #{id} -> cue-teams | why: the owner says it's still off"));
+        w.settle();
+    }
+    let now = desk(&w, &project);
+    let again: Vec<_> = now["decisions"].as_array().unwrap().iter().filter(|d| d["text"] == format!("Sent #{id} to cue-teams again")).collect();
+    assert_eq!(again.len(), 1, "{now}");
+    assert_eq!(again[0]["why"], "the owner says it's still off", "{now}");
     // Cut off with no DONE: the item waits on you, and a route to the same holder sends it again.
     ends(&w, &h, "On it.");
+    w.settle();
+    assert_eq!(sent(), 2);
+    assert!(sent_to(&w, &h).iter().any(|t| t.contains("Why you: the owner says it's still off")), "{:?}", sent_to(&w, &h));
     assert_eq!(item(&desk(&w, &project), "Header")["state"], "needs_you");
     ends(&w, &l, &format!("ROUTE: #{id} -> cue-teams | why: it knows"));
     w.settle();
-    assert_eq!(sent(), 2);
+    assert_eq!(sent(), 3);
     let now = desk(&w, &project);
     assert_eq!(now["decisions"][0]["text"], format!("Sent #{id} to cue-teams again"), "{now}");
     // Cut off again: Restart sends it once more.
     ends(&w, &h, "On it.");
     w.hub().desk_item_act(&id, "start_now", "").unwrap();
     w.settle();
-    assert_eq!(sent(), 3);
+    assert_eq!(sent(), 4);
     assert_eq!(item(&desk(&w, &project), "Header")["state"], "working");
 }
 

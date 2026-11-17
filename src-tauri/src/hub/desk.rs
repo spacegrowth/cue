@@ -357,10 +357,11 @@ pub(super) fn route(st: &mut Store, project: &str, by: &By, id: &str, to: &str, 
     let Some(h) = holder else { return no_such_session(it, to, now, fx) };
     let before = it.holder.clone();
     let same = before.as_ref().is_some_and(|b| b.sid == h.sid && b.lead_sid == h.lead_sid);
-    // The same route said again (a later turn repeating itself): nothing to do.
+    // The same route said again (a later turn repeating itself): nothing to do. Sent back to its holder at work with
+    // a new why (what's left, a correction): it's sent that, and its Steps show it.
     let unchanged = match &waits {
         Some(a) => it.state == "queued" && it.after.as_deref() == Some(a.as_str()),
-        None => it.state == "working" && busy,
+        None => it.state == "working" && busy && why.trim().eq_ignore_ascii_case(it.after_why.trim()),
     };
     if same && unchanged {
         // Though an `after` refused is still news to the lead (it meant this one to wait).
