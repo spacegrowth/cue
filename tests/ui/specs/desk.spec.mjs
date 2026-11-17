@@ -1850,6 +1850,25 @@ test("your words about an item show its kind's icon, kind and number over them i
   await expect(page.locator(".dk-pane h1")).toHaveText("Bug #d1 · Reply box loses focus after Send");
 });
 
+test("a chat opened on the Desk takes the cursor in its box: the lead's, an item's page; not from the keys on the list (#154)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  const box = page.locator(".dk-right .dk-box textarea[data-text]");
+  await expect(box).toBeFocused();
+  await page.locator('[data-desk-item="d2"]').click();
+  await expect(page.locator(".dk-right .dk-ipane")).toBeVisible();
+  await expect(box).toBeFocused();
+  // Back on the lead's chat, then off the Desk and back: its box again.
+  await page.locator(".dk-right .dk-back").first().click();
+  await expect(page.locator(".dk-right .dk-ipane")).toHaveCount(0);
+  await expect(box).toBeFocused();
+  // Enter on a row in the list opens it and leaves the keys on the list.
+  await page.locator('[data-desk-item="d4"]').focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".dk-right .dk-ipane")).toBeVisible();
+  await expect(page.locator('[data-desk-item="d4"]')).toBeFocused();
+});
+
 test("Looks right is in an item's title area, in reach however far its page is scrolled; Send back stays below (#163)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);

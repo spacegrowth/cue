@@ -1028,9 +1028,28 @@ function deskThreadFollow() {
 }
 /** After the draw: the lead's chat at its end, as a chat opens (unless you'd scrolled up in it); an item's Thread at
  *  a message that just came. */
+/** What's open on the Desk when its box last had the chance to take the cursor ("desk|{open}"), null off the Desk. */
+let deskBoxShown = null;
+/** When a key was last pressed: a row opened with Enter after it keeps the keys (pointedAt: the last click, chat/patch.js). */
+let deskKeyAt = 0;
+document.addEventListener("keydown", () => { deskKeyAt = Date.now(); }, true);
+/** A chat opened on the Desk (the Desk itself, the lead's chat, an item's page, a session's or a crew member's): its
+ *  text box takes the cursor, so you can just type (#154), as a chat on the Board does. Not over your choice: not
+ *  while you're writing in another box, a sheet is open, or you're moving through the list with the keys. */
+function deskFocusOpened() {
+  const k = view === "desk" ? `${deskSelection()}|${JSON.stringify(deskOpen)}` : null;
+  if (k === deskBoxShown) return;
+  deskBoxShown = k;
+  const box = k && document.querySelector(".dk-right .dk-box textarea[data-text]"), a = document.activeElement;
+  if (!box || sheet || a?.matches?.("input, textarea, select, [contenteditable]")) return;
+  if (a?.closest?.(".dk-board") && a.matches('[role="button"]') && deskKeyAt > pointedAt) return;   // keys, not a click
+  box.focus({ preventScroll: true });
+  box.setSelectionRange(box.value.length, box.value.length);
+}
 function deskSettle() {
   deskDoneWatch();
   deskThreadFollow();
+  deskFocusOpened();
   const c = document.querySelector(".dk-chat");
   // Earlier messages just went in above (chat/thread.js loadOlder): what you were reading stays put.
   if (c && holdChat != null) { c.scrollTop = c.scrollHeight - holdChat; holdChat = null; }
