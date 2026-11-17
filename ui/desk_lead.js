@@ -245,12 +245,12 @@ function deskLineHtml(line, inline) {
   // An item as its kind's icon and its number in bold ("#2": the Desk's number, not "Bug #2", to keep the line short).
   const ref = (x, it = known(x), kind) => `<b class="dk-say-id">${deskKindIcon(it || kind)}#${esc(it?.id ?? x)}</b>`;
   // Its title under the line, a click opening it.
-  const titled = (it, t = it?.title) => (!t ? "" : it ? `<button class="dk-ln-it" data-desk-chk-item="${esc(it.id)}">${esc(t)}</button>` : `<span class="dk-ln-tt">${esc(t)}</span>`);
+  const titled = (it, t = it?.title) => (!t ? "" : it ? `<button class="dk-sl-it" data-desk-chk-item="${esc(it.id)}">${esc(t)}</button>` : `<span class="dk-sl-tt">${esc(t)}</span>`);
   // The line, and what opens under it (none: a plain line).
   const ln = (head, more) => {
     const key = `${m[1]}:${body}`, open = !!more && deskLnOpen.has(key);
-    const row = more ? `<button class="dk-ln-r" data-desk-why="${esc(key)}" aria-expanded="${open}"><span class="dk-ln-h">${head}</span><span class="dk-ln-c" aria-hidden="true">${open ? "⌃" : "⌄"}</span></button>` : `<span class="dk-ln-r"><span class="dk-ln-h">${head}</span></span>`;
-    return `<div class="dk-say dk-ln${open ? " open" : ""}">${row}${open ? `<div class="dk-ln-d">${more}</div>` : ""}</div>`;
+    const row = more ? `<button class="dk-sl-r" data-desk-why="${esc(key)}" aria-expanded="${open}"><span class="dk-sl-h">${head}</span><span class="dk-sl-c" aria-hidden="true">${open ? "⌃" : "⌄"}</span></button>` : `<span class="dk-sl-r"><span class="dk-sl-h">${head}</span></span>`;
+    return `<div class="dk-say dk-sl${open ? " open" : ""}">${row}${open ? `<div class="dk-sl-d">${more}</div>` : ""}</div>`;
   };
   const w = (t) => `<span class="dk-say-w">${t}</span>`;
   const dot = (xs) => xs.filter(Boolean).join(" · ");
@@ -273,7 +273,8 @@ function deskLineHtml(line, inline) {
     const fresh = /^(new|me)$/i.test(to) && it?.holder;
     const who = fresh ? deskHolderName(it.holder.sid, it.holder.name) : /^new$/i.test(to) ? "a new session" : to;
     const what = at === "new" && !it ? `<b class="dk-say-id">${deskKindIcon(kind)}the new item</b>` : ref(at, it, kind);
-    const head = `${what} → <b class="dk-rt-to">${esc(who)}</b>${dot(["", crew ? esc(crew) : "", after ? `${w("after")} ${ref(after)}` : ""])}`;
+    const also = dot([crew ? esc(crew) : "", after ? `${w("after")} ${ref(after)}` : ""]);
+    const head = `${what} → <b class="dk-rt-to">${esc(who)}</b>${also ? ` · ${also}` : ""}`;
     return ln(head, dot([titled(it, it?.title || (at === "new" ? deskSaidItem : "")), why ? inline(why) : ""]));
   }
   if (m[1] === "DONE") {
