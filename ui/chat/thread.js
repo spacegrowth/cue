@@ -93,14 +93,18 @@ function conversation(it, s) {
 }
 /** What you forwarded from another session, as Cue typed it: an optional note, then the header and the message. */
 const FORWARDED = /^(?:([\s\S]*?)\n\n)?\[Forwarded from the (.+?) session\]\n([\s\S]*)$/;
+/** Cue's routing context uses either a project header or a named Desk header. Every such block goes, not only a
+ *  leading one: messages sent while the lead was busy reach it as one, joined by a newline, each with its block. */
+const deskSaid = (text) => String(text ?? "").replace(/(^|\n)<desk (?:id="[^"\n]*" name="[^"\n]*" )?project="[^"\n]*">\n[\s\S]*?\n<\/desk>(?:\n\n|\s*$)/g, "$1").replace(/\n+$/, "");
+const deskSaidE = (e) => e.role === "you" ? { ...e, text: deskSaid(e.text) } : e;
 /** The line Cue adds after what you said by voice for a session whose hook can't add it (talk.rs ASK). */
 const VOICE_ASK = /\n\n\(Voice: I'm listening, not reading\.[^\n]*\)$/;
 /** That line, word for word, as the agent got it (talk.rs ASK): shown when you open it under a voice message. */
 const VOICE_ASK_LINE = "(Voice: I'm listening, not reading. Answer in one or two short, plain sentences: no lists, code or file paths unless I ask for them. If there's a link I'll need, put it at the end: I'll see it on screen.)";
 /** A message of yours as the chat shows it: said by voice (Cue added a line for the agent), and its words. */
 function yourWords(e) {
-  const asked = VOICE_ASK.test(e.text);
-  return { voice: !!e.voice || asked, text: asked ? e.text.replace(VOICE_ASK, "") : e.text };
+  const text = deskSaid(e.text), asked = VOICE_ASK.test(text);
+  return { voice: !!e.voice || asked, text: asked ? text.replace(VOICE_ASK, "") : text };
 }
 /** A small note under your message: "+ <label>", which opens to `line`, what Cue (or a prompt hook) added for the
  *  agent, word for word. `key` says which note is open (openAsks). */
