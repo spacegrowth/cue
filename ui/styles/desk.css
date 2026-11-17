@@ -467,9 +467,7 @@
    into the window's dark green: ‹ Desks and ⋯ (hand the Desk on), the Desk's name with ✎ on hover, its meta line; then
    the lead's card inside it. Light: the selected lime with dark text and a 1px inner edge; dark: the accent (the same
    lime) with on-accent text. */
-.dk-strip { --dk-edge: color-mix(in oklab, var(--sel) 82%, var(--on-sel)); --dk-lead-out: var(--accent); --dk-lead-lift: 0 1px 2px color-mix(in oklab, var(--on-sel) 12%, transparent); flex: none; margin: 8px 8px 4px; padding: 8px 12px 12px; border-radius: 12px; background: var(--sel); color: var(--on-sel); box-shadow: inset 0 0 0 1px var(--dk-edge); }
-:root[data-theme="dark"] .dk-strip { --dk-edge: transparent; --dk-lead-out: var(--on-accent); --dk-lead-lift: none; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .dk-strip { --dk-edge: transparent; --dk-lead-out: var(--on-accent); --dk-lead-lift: none; } }
+.dk-strip { flex: none; margin: 8px 8px 4px; padding: 8px 12px 12px; border-radius: 12px; background: var(--accent); color: var(--on-accent); }
 .dk-sh { display: flex; flex-direction: column; min-width: 0; }
 .dk-stop { display: flex; align-items: center; margin-left: -4px; }
 .dk-home-btn { all: unset; flex: none; height: 24px; padding: 0 8px 0 4px; display: inline-flex; align-items: center; border-radius: 6px; color: inherit; opacity: .8; font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer; }
@@ -478,11 +476,14 @@
 .dk-shr b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; font-weight: 700; }
 .dk-strip .dk-sub { color: inherit; opacity: .75; font-size: 11px; }
 .dk-sh .dk-ren, .dk-strip .dk-more-btn { color: inherit; }
-.dk-sh .dk-ren:hover, .dk-strip .dk-more-btn:hover, .dk-strip .dk-more-btn:focus-visible { background: color-mix(in oklab, var(--on-sel) 10%, transparent); color: inherit; }
+.dk-sh .dk-ren:hover, .dk-strip .dk-more-btn:hover, .dk-strip .dk-more-btn:focus-visible { background: color-mix(in oklab, currentColor 14%, transparent); color: inherit; }
 /* The lead's card: white (dark: the panel) with a soft lift; while its chat shows, a 2px dark outline, never a fill. */
-.dk-lcard { margin-top: 10px; padding: 9px 11px; border-radius: 10px; background: var(--panel); color: var(--ink); box-shadow: var(--dk-lead-lift); cursor: pointer; }
-.dk-lcard.on { box-shadow: 0 0 0 2px var(--dk-lead-out); }
-.dk-lcard:focus-visible { outline: 2px solid var(--dk-lead-out); outline-offset: 2px; }
+.dk-lcard { margin-top: 10px; padding: 9px 11px; border-radius: 10px; background: var(--panel); color: var(--ink); cursor: pointer; }
+.dk-lcard.on { background: var(--sel); color: var(--on-sel); }
+.dk-lcard:focus-visible { outline: 2px solid var(--panel); outline-offset: 2px; }
+/* Dark: the strip is lime already, so the open lead card stays dark with a ring. */
+:root[data-theme="dark"] .dk-lcard.on { background: var(--panel); color: var(--ink); box-shadow: 0 0 0 2px var(--on-accent); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .dk-lcard.on { background: var(--panel); color: var(--ink); box-shadow: 0 0 0 2px var(--on-accent); } }
 .dk-lcard .dk-lk { flex: none; font: 700 10px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .dk-lcard .dk-s2, .dk-lcard .dk-s3 { margin-left: 0; }
 .dk-lcard .dk-s2 { font-size: 12px; }

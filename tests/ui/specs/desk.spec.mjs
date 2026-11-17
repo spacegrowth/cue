@@ -1417,7 +1417,7 @@ test("a working session's ring turns and its current step shows under its title,
 const cssOf = (loc, ...props) => loc.evaluate((el, ps) => { const c = getComputedStyle(el); return ps.map((p) => c.getPropertyValue(p)); }, props);
 const boxOf = (loc) => loc.evaluate((el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, right: r.right }; });
 
-test("the head is one lime strip set 8px in from the card's sides: ‹ Desks, the name, its meta, then the lead's card in it", async ({ page, cue }) => {
+test("the head is one strip in the accent, set 8px in from the card's sides: ‹ Desks, the name, its meta, then the lead's card in it", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   const left = page.locator(".dk-sessions"), strip = left.locator(".dk-strip");
@@ -1431,19 +1431,16 @@ test("the head is one lime strip set 8px in from the card's sides: ‹ Desks, th
   const card = await boxOf(left), s = await boxOf(strip);
   expect(Math.round(s.x - card.x)).toBe(8);
   expect(Math.round(card.right - s.right)).toBe(8);
-  // Light: lime with dark text and a 1px inner edge, so it stands out from the window's dark green.
+  // Light: the accent (the window's dark green) with on-accent text, no edge (#153, option B).
   const [bg, ink, edge, radius] = await cssOf(strip, "background-color", "color", "box-shadow", "border-top-left-radius");
-  expect(bg).toBe("rgb(210, 222, 150)");
-  expect(ink).toBe("rgb(30, 36, 16)");
-  // The edge is mixed from the theme's own lime and ink (so project themes get one too), a shade darker than the strip.
-  expect(edge).toMatch(/^oklab\(0\.7\d+ /);
-  expect(edge).toContain("1px");
-  expect(edge).toContain("inset");
+  expect(bg).toBe("rgb(63, 74, 34)");
+  expect(ink).toBe("rgb(255, 255, 255)");
+  expect(edge).toBe("none");
   expect(radius).toBe("12px");
   expect(await page.locator(".dk-board [title]").count()).toBe(0);
 });
 
-test("the lead's card in the strip: Run by, its state and the item it holds; open, a 2px dark outline, never a fill", async ({ page, cue }) => {
+test("the lead's card in the strip: Run by, its state and the item it holds; open, lit lime as any open row (dark: a ring)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   const lead = page.locator('.dk-strip .dk-lcard[data-desk-lead-chat="lead"]');
@@ -1453,27 +1450,25 @@ test("the lead's card in the strip: Run by, its state and the item it holds; ope
   await expect(lead.locator(".dk-mk > i.ask")).toHaveCount(1);
   await expect(lead.locator(".dk-s2 .dk-id")).toHaveText("Feature #d2");
   await expect(lead.locator(".dk-s2 svg.dk-kic")).toHaveCount(1);
-  // Its chat shows: lit by an outline in the window's dark green; the card stays white.
+  // Its chat shows: the card lights lime, as an open row does.
   await expect(lead).toHaveClass(/\bon\b/);
   let [bg, ring] = await cssOf(lead, "background-color", "box-shadow");
-  expect(bg).toBe("rgb(255, 255, 255)");
-  expect(ring).toMatch(/^rgb\(63, 74, 34\) 0px 0px 0px 2px$/);
-  // Another session's chat: the card loses its outline (a soft lift only), that row lights in place.
+  expect(bg).toBe("rgb(210, 222, 150)");
+  // Another session's chat: the card goes back to white, that row lights in place.
   await page.locator('.dk-sessions [data-desk-chat-of="host"]').click();
   await expect(lead).not.toHaveClass(/\bon\b/);
   [bg, ring] = await cssOf(lead, "background-color", "box-shadow");
   expect(bg).toBe("rgb(255, 255, 255)");
-  expect(ring).not.toContain("63, 74, 34");
+  expect(ring).toBe("none");
   await lead.click();
   await expect(lead).toHaveClass(/\bon\b/);
   await expect(page.locator(".dk-tab.on")).toHaveText("web-lead");
   // Dark: the strip is the accent with on-accent text; the open card the panel with a 2px dark outline.
   await page.emulateMedia({ colorScheme: "dark" });
   const strip = page.locator(".dk-strip");
-  const [sbg, sink, sedge] = await cssOf(strip, "background-color", "color", "box-shadow");
+  const [sbg, sink] = await cssOf(strip, "background-color", "color");
   expect(sbg).toBe("rgb(181, 194, 122)");
   expect(sink).toBe("rgb(21, 26, 8)");
-  expect(sedge).not.toContain("185, 199, 115");
   [bg, ring] = await cssOf(lead, "background-color", "box-shadow");
   expect(bg).toBe("rgb(29, 33, 19)");
   expect(ring).toMatch(/^rgb\(21, 26, 8\) 0px 0px 0px 2px$/);
