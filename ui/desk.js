@@ -654,7 +654,9 @@ function deskAnswered(it, decision) {
 function deskQuestion(i) {
   if (i.ask) return i.ask.text || "";
   const last = [...(sessionOf(i.holder?.sid)?.thread || [])].reverse().find((e) => e.role === "agent")?.text || "";
-  return last.trim().split(/\n\s*\n/).pop().trim() || i.latest || "";
+  // Its calls made on its own (DECIDED) and its Desk lines (DONE, ITEM…) aren't what it asks you: they're dropped.
+  const asked = last.split("\n").filter((l) => !DECIDED_LINE.test(l) && !DESK_SAY.test(l.trim())).join("\n").trim();
+  return asked.split(/\n\s*\n/).pop().trim() || (last.trim() ? "" : i.latest || "");
 }
 /** What you last answered on item `i`'s page, while it's fresh and its holder isn't asking something new; else null. */
 function deskAnswerOf(i) {
@@ -670,10 +672,10 @@ function deskAnswerOf(i) {
  *  answered at the page's foot, deskItemFoot), then what you answered. */
 function deskChain(i) {
   const said = deskAnswerOf(i);
-  if (said) return `<div class="dk-chain"><div class="dk-ln"><i class="ok"></i><div><div class="dk-lt dk-md">${md(said.q)}</div><div class="dk-ls dk-picked"><span class="sent-check">✓</span> You answered: ${esc(said.a)}</div></div></div></div>`;
+  if (said) return `<div class="dk-chain"><div class="dk-ln dk-q"><div><div class="dk-lt dk-md">${md(said.q)}</div><div class="dk-ls dk-picked"><span class="sent-check">✓</span> You answered: ${esc(said.a)}</div></div></div></div>`;
   if (i.state === "needs_you") {
     const q = deskQuestion(i);
-    return q ? `<div class="dk-chain"><div class="dk-ln"><i class="ask"></i><div class="dk-lt dk-md">${md(q)}</div></div></div>` : "";
+    return q ? `<div class="dk-chain"><div class="dk-ln dk-q"><div class="dk-lt dk-md">${md(q)}</div></div></div>` : "";
   }
   if (i.state !== "queued" || !i.after) return "";
   const first = deskItem(i.project, i.after);
@@ -790,11 +792,8 @@ function deskThread(i, d) {
     rows.push({ at: Math.max(deskMs(i.updated), theirs), by: i.holder?.name || i.by || "It", tag: fin ? "Done" : "Reply", on: fin, html: `<div class="dk-md">${md(lat)}</div>` });
   }
   rows.sort((a, b) => a.at - b.at);
-  // Its holder at work: after what it and others said, but before what you wrote since, so your message is last (#160).
-  if (live) {
-    const after = rows.findLastIndex((r) => !r.you) + 1;
-    rows.splice(Math.max(after, 1), 0, { at: 0, by: i.holder.name, live: true, html: `<div class="dk-md dk-quiet">${lat ? md(lat1) : "Working…"}</div><div class="dk-tbar"></div>` });
-  }
+  // Its holder at work: last, under what you wrote, as the answer to it comes (#165).
+  if (live) rows.push({ at: 0, by: i.holder.name, live: true, html: `<div class="dk-md dk-quiet">${lat ? md(lat1) : "Working…"}</div><div class="dk-tbar"></div>` });
   return rows;
 }
 /** What you wrote on a Thread, in your words; for a send-back, how many pictures went with it, quiet under them. */
