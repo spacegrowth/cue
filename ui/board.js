@@ -71,6 +71,7 @@ function answered(id, on = true) {
   renderMain();
 }
 async function respond(it, decision) {
+  if (typeof deskAnswered === "function") deskAnswered(it, decision);   // an item's page on the Desk says what you picked
   answered(it.id);
   const ok = await invoke("respond", { id: it.id, decision }).catch(() => false);
   if (!ok) { answered(it.id, false); toast("Already answered somewhere else"); }
@@ -443,7 +444,7 @@ function laterRow({ sid, s, it }) {
   return `<div class="nrow later ${on}" ${it ? `data-big="${esc(it.id)}"` : `data-session="${esc(sid)}"`}>
     ${cardTop(`${projDot(it?.project || s.project, s.state === "working")}${badge(it?.harness || s.harness)}${nameSpan(sid, it?.project || s.project)}${machTag(it?.machine || s.machine)}${what ? `<span class="dim">${what}</span>` : ""}${bgPill(s)}`,
       `<span class="age">${ago(it?.created_ms ?? s.since_ms)}</span>${starBtn(sid)}<button class="park-btn back" data-park="${esc(sid)}:0">↩ Waiting</button>`)}
-    ${aboutCardText(sid) || (text ? `<div class="nrow-text">${esc(text)}</div>` : "")}${insCardLine(sid)}</div>`;
+    ${text ? `<div class="nrow-text">${esc(text)}</div>` : ""}${insCardLine(sid)}</div>`;
 }
 const backBtn = (it) => `<button class="back-btn" data-act="back" data-id="${esc(it.id)}" aria-label="Move to bottom">↓</button>`;
 /** A compact row in Waiting: enough to recognise it, quick answers for the easy ones, click to open in Active. */
@@ -465,7 +466,7 @@ function needRow(it, ghost, open = false) {
     ${cardTop(`${projDot(it.project, sessionOf(it.session_id)?.state === "working")}${badge(it.harness)}${nameSpan(it.session_id, it.project)}${mateTitle(it)}${machTag(it.machine)}${it.kind !== "waiting" ? `<span class="dim">${esc(verb(it))}</span>` : it.interrupted ? `<span class="dim intr">interrupted</span>` : ""}${mateOfAsk(it) ? "" : bgPill(sessionOf(it.session_id))}`,
       `<span class="age">${ago(it.created_ms)}</span>${starBtn(it.session_id)}${it.kind === "waiting" ? backBtn(it) + parkBtn(it.session_id) : ""}${clearX(it)}`)}
     ${talkNote(it)}
-    ${(it.kind === "waiting" && aboutCardText(it.session_id)) || `<div class="nrow-text ${isBash(it) ? "mono" : ""}">${isBash(it) ? cmdWords(plain(summary(it))) : esc(plain(summary(it)))}</div>`}${insCardLine(it.session_id, it.kind !== "waiting")}${quick}</div>`;
+    <div class="nrow-text ${isBash(it) ? "mono" : ""}">${isBash(it) ? cmdWords(plain(summary(it))) : esc(plain(summary(it)))}</div>${insCardLine(it.session_id, it.kind !== "waiting")}${quick}</div>`;
 }
 /** Why a session is idle (shown under Sessions → Idle); "" when it's working. */
 // ---------- usage limits ----------
@@ -756,7 +757,7 @@ function sessionCard(s, open) {
   const doing = preStart(s) ? `Not started: ${preStart(s)}` : s.compacting_ms ? "Compacting…" : s.state === "working" && s.doing ? s.doing : "";
   return `<div class="working click ${idleNote(s) ? "on-agent" : ""} ${open ? "on" : ""}" ${go}>
       <div class="card-head">${projDot(s.project, (s.state === "working" || s.compacting_ms) && !cutOff(s) && !preStart(s))}${nameSpan(s.session_id, s.project)}${oddAgent(s.harness)}${machTag(s.machine)}${bgPill(s)}<span class="grow"></span><span class="age" style="color:inherit">${idleNote(s) && s.state !== "limited" && !state.items.some((x) => x.session_id === s.session_id) ? "idle " : ""}${ago(s.since_ms)}</span>${starBtn(s.session_id)}${isStarred(s.session_id) && !cutOff(s) ? "" : hideX(s)}</div>
-      ${addOn.cardLine(s.session_id)}${sessionNote(s) ? `<div class="agent-note">${esc(sessionNote(s))}</div>` : ""}${aboutCardText(s.session_id)}
+      ${addOn.cardLine(s.session_id)}${sessionNote(s) ? `<div class="agent-note">${esc(sessionNote(s))}</div>` : ""}
       ${s.queued || s.held ? ((q) => `<div class="queued-note">${s.held ? "Kept" : "Queued"}: “${esc(q.length > 80 ? q.slice(0, 80) + "…" : q)}”</div>`)((s.held || s.queued).text) : ""}
       ${bar(s.session_id)}${doing ? `<div class="doing">${esc(doing)}</div>` : ""}${s.prompt ? `<div class="prompt">› ${esc(s.prompt)}</div>` : ""}${handOutHtml(s)}</div>`;
 }
