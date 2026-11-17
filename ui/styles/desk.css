@@ -194,9 +194,10 @@
 .dk-box { flex: none; display: flex; flex-direction: column; gap: 6px; margin: 8px 16px 16px; padding: 8px 8px 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
 /* Its row: the words, the mic, a picture, Send; pictures added sit above it (draftChips). */
 .dk-box-row { display: flex; align-items: flex-end; gap: 6px; }
-/* Who gets it and which item, at the start of an item page's box: it stays as you type (#132), in the theme color
-   as an item's kind icon is (#143). A click on it is a click in the box. */
-.dk-pre { flex: none; align-self: flex-start; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 5px 0; color: var(--accent); font: 600 13.5px/1.4 var(--sans); cursor: text; user-select: none; }
+/* Who gets it and which item, at the start of an item page's box: it stays as you type (#132), on a chip in the
+   selected card's color, so it reads as colored in light and dark and in every project's theme (#143: the theme's
+   own accent is near the ink in light). A click on it is a click in the box. */
+.dk-pre { flex: none; align-self: flex-start; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 3px 0 0; padding: 2px 8px; border-radius: 6px; background: var(--sel); color: var(--on-sel); font: 600 13px/1.4 var(--sans); cursor: text; user-select: none; }
 .dk-box .chips { margin: 0; }
 .dk-ask { flex: none; max-height: 55%; overflow-y: auto; padding: 0 20px 14px; }
 /* The lead's ASK: a bordered panel card in the chat's column, as a hand-off or check card (.dk-chk), not a tinted

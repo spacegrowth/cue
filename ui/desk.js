@@ -712,8 +712,9 @@ const deskItemLog = (i, d) => [...(d.older || []), ...[...(d.decisions || [])].r
 function deskThread(i, d) {
   const mine = deskItemLog(i, d).filter((c) => !c.call);
   const you = (i.from || "you") === "you";
-  const dw = deskDoneWhenHtml(i.done_when), pics = thumbs(i.images);
-  const rows = [{ at: deskMs(i.created), by: you ? "You" : deskFrom(i, d), you, html: `<div class="dk-md">${md(i.words || i.title)}</div>${dw ? `<div class="dk-tdw"><b>Done when</b>${dw}</div>` : ""}${pics ? `<div class="dk-tpics">${pics}</div>` : ""}` }];
+  // Its Done when isn't in this first message: it's under the thread, by where it stands (deskItemPane).
+  const pics = thumbs(i.images);
+  const rows = [{ at: deskMs(i.created), by: you ? "You" : deskFrom(i, d), you, html: `<div class="dk-md">${md(i.words || i.title)}</div>${pics ? `<div class="dk-tpics">${pics}</div>` : ""}` }];
   for (const c of mine) {
     if (c.by === "You" && /^(to |sent back)/.test(c.why || "")) {
       const back = c.why.startsWith("sent back");
@@ -749,8 +750,11 @@ function deskItemPane(i, d) {
   const h = i.holder, sid = h ? (h.kind === "crew" ? h.lead_sid : h.sid) : null;
   const armed = deskDropArm === i.id;
   const tabBtn = (k, label, n) => `<button class="dk-itab${tab === k ? " on" : ""}" role="tab" aria-selected="${tab === k}" data-desk-itab="${k}" data-id="${esc(i.id)}">${label}<span class="n">${n}</span></button>`;
-  // Where it stands now, under the thread: what holds it up or what it asks, what it made, its buttons and files.
-  const at = `${deskSec("Couldn't give it out", i.route_failed ? `<p>${esc(i.route_failed)}</p>` : "")}
+  // Where it stands now, under the thread: first its Done when (what to check, once it's ready to: #140), so it's by
+  // the newest message and the box, not lost in the first message; then what holds it up or what it asks, what it
+  // made, its buttons and files.
+  const dw = deskDoneWhenHtml(i.done_when);
+  const at = `${deskSec(i.state === "to_check" ? "What to check" : "Done when", dw ? `<div class="dk-idw">${dw}</div>` : "")}${deskSec("Couldn't give it out", i.route_failed ? `<p>${esc(i.route_failed)}</p>` : "")}
     ${deskSec(i.state === "needs_you" ? "It asks you" : deskAnswerOf(i) ? "It asked you" : "What's holding it up", deskChain(i))}${deskSec("What it made", i.state === "to_check" || i.state === "done" ? deskMadeLinks(i) : "")}${deskItemActs(i)}
     ${i.split_from ? `<p class="dk-split">Split from <a href="#" data-desk-item="${esc(i.split_from)}">#${esc(i.split_from)}</a></p>` : ""}
     ${deskSec(changed ? "Files changed" : "Files", files)}`;
@@ -924,9 +928,26 @@ function deskView() {
   queueMicrotask(deskSettle);
   return `<div class="board dk-board">${deskSessions(deskSelection())}${deskRight(deskSelection())}${deskList(deskSelection())}</div>`;
 }
-/** After the draw: the lead's chat at its end, as a chat opens (unless you'd scrolled up in it). */
+/** How many messages each item's Thread showed when last drawn, by item: one more (it arrived, or you sent it) and
+ *  the page scrolls to show it (#145). */
+const deskThreadSeen = new Map();
+function deskThreadFollow() {
+  const pane = document.querySelector(".dk-ipane"), th = pane?.querySelector(".dk-thread");
+  if (!th) return;
+  const rows = th.querySelectorAll(":scope > .dk-tm"), key = pane.dataset.scrollKey, was = deskThreadSeen.get(key);
+  deskThreadSeen.set(key, rows.length);
+  if (was == null || rows.length <= was) return;
+  // Down until the newest is in full view under the pinned header; one taller than the page shows from its top.
+  const r = rows[rows.length - 1].getBoundingClientRect(), bottom = pane.getBoundingClientRect().bottom;
+  const head = pane.querySelector(".dk-ihead")?.getBoundingClientRect().bottom ?? pane.getBoundingClientRect().top;
+  const down = Math.min(r.bottom + 16 - bottom, r.top - head - 12);
+  if (down > 0) pane.scrollTop += down;
+}
+/** After the draw: the lead's chat at its end, as a chat opens (unless you'd scrolled up in it); an item's Thread at
+ *  a message that just came. */
 function deskSettle() {
   deskDoneWatch();
+  deskThreadFollow();
   const c = document.querySelector(".dk-chat");
   // Earlier messages just went in above (chat/thread.js loadOlder): what you were reading stays put.
   if (c && holdChat != null) { c.scrollTop = c.scrollHeight - holdChat; holdChat = null; }

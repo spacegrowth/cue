@@ -88,9 +88,10 @@ test("an item opens on the right with its row lit in place; ‹ web-lead goes ba
   const ph = page.locator(".dk-right .dk-box textarea"), pre = page.locator(".dk-right .dk-box .dk-pre");
   await expect(pre).toHaveText("To web-lead · Bug #d4");
   await expect(ph).toHaveAttribute("placeholder", "Rail dot blinks…");
-  // In the theme color (#143), not the box's text color.
-  expect(await pre.evaluate((e) => getComputedStyle(e).color)).toBe(await page.evaluate(() => { const x = document.createElement("i"); x.style.color = "var(--accent)"; document.body.append(x); const c = getComputedStyle(x).color; x.remove(); return c; }));
-  expect(await pre.evaluate((e) => getComputedStyle(e).color)).not.toBe(await ph.evaluate((e) => getComputedStyle(e).color));
+  // Colored (#143): on a chip in the selected card's color, not plain text in the box's color.
+  const sel = await page.evaluate(() => { const x = document.createElement("i"); x.style.color = "var(--sel)"; document.body.append(x); const c = getComputedStyle(x).color; x.remove(); return c; });
+  expect(await pre.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(sel);
+  expect(await pre.evaluate((e) => getComputedStyle(e).backgroundColor)).not.toBe(await page.locator(".dk-right .dk-box").evaluate((e) => getComputedStyle(e).backgroundColor));
   await ph.fill("still blinks");
   await expect(pre).toHaveText("To web-lead · Bug #d4");
   expect((await pre.boundingBox()).y).toBeLessThan((await ph.boundingBox()).y + 10);   // on the text's line, at its start
@@ -1690,12 +1691,12 @@ test("Looks right waits a moment with \"Done · Undo\" on the item and in a toas
   await cue.called("desk_looks_right", { id: "d2" });
 });
 
-test("Waiting on you stays at 0, not in red; an open item takes the solid highlight with its words in the highlight's ink", async ({ page, cue }) => {
+test("Waiting on you is never red, with items or at 0; an open item takes the solid highlight with its words in the highlight's ink", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   const you = page.locator(".dk-items .dk-gh.you");
   const deny = await page.evaluate(() => { const t = document.createElement("i"); t.style.color = "var(--deny)"; document.body.append(t); const c = getComputedStyle(t).color; t.remove(); return c; });
-  expect(await you.evaluate((e) => getComputedStyle(e).color)).toBe(deny);
+  expect(await you.evaluate((e) => getComputedStyle(e).color)).not.toBe(deny);
   await cue.change((st) => { for (const i of st.desk.projects.find((d) => d.project === "cue").items) if (["needs_you", "to_check"].includes(i.state)) i.state = "done"; });
   await expect(you).toHaveText(/Waiting on you\s*0/);
   expect(await you.evaluate((e) => getComputedStyle(e).color)).not.toBe(deny);
@@ -1975,4 +1976,54 @@ test("an item page's header (title, pill, tabs) stays at the top as its thread s
   const bg = (sel) => pane.locator(sel).evaluate((e) => getComputedStyle(e).backgroundColor);
   expect(await bg(".dk-ihead")).not.toBe("rgba(0, 0, 0, 0)");
   expect(await bg(".dk-ihead")).not.toBe(await bg(".dk-pill"));
+});
+
+test("an item's Done when sits under its thread, by where it stands; What to check once it's ready to (#140)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await page.locator('[data-desk-item="d4"]').click();
+  const pane = page.locator(".dk-right .dk-ipane");
+  // Not in the first message any more: its own section after the thread.
+  await expect(pane.locator(".dk-thread .dk-dwl")).toHaveCount(0);
+  const sec = pane.locator(".dk-inow .dk-sec").first();
+  await expect(sec.locator("h3")).toHaveText("Done when");
+  await expect(sec.locator(".dk-dwl li")).toContainText(["The rail's dot blinks only for a session you wrote to"]);
+  expect((await sec.boundingBox()).y).toBeGreaterThan((await pane.locator(".dk-thread").boundingBox()).y);
+  // Ready to check: the same list, as what to check.
+  await page.locator('[data-desk-item="d2"]').click();
+  const chk = pane.locator(".dk-inow .dk-sec").first();
+  await expect(chk.locator("h3")).toHaveText("What to check");
+  await expect(chk.locator(".dk-dwl li").first()).toContainText("Quick phrases sit at the right of Send");
+});
+
+test("an item's thread scrolls to the newest message when one arrives or you send one (#145)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d4").said = Array.from({ length: 30 }, (_, k) => ({ at: Date.now() - (60 - k) * 60000, by: "cue-117", text: `Step ${k} of the fix, written out at some length so it takes a line or two.` })); });
+  await page.locator('[data-desk-item="d4"]').click();
+  const pane = page.locator(".dk-right .dk-ipane");
+  const inView = async (loc) => {
+    const r = await loc.boundingBox(), p = await pane.boundingBox(), h = await pane.locator(".dk-ihead").boundingBox();
+    return r.y >= h.y + h.height - 1 && r.y + r.height <= p.y + p.height + 1;
+  };
+  // Opening it doesn't jump: it starts at the top.
+  expect(await pane.evaluate((e) => e.scrollTop)).toBe(0);
+  // One arrives: it's in view.
+  await cue.change((st) => { const it = st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d4"); it.said = [...it.said, { at: Date.now(), by: "cue-117", text: "A new reply just came in." }]; });
+  const arrived = pane.locator(".dk-thread .dk-tm", { hasText: "A new reply just came in." });
+  await expect(arrived).toHaveCount(1);
+  await expect.poll(() => inView(arrived)).toBe(true);
+  // Scrolled back up, you send one: it's in view too.
+  await pane.evaluate((e) => { e.scrollTop = 0; });
+  await cue.override("desk_item_act", () => new Promise((r) => { window.__release = r; }));
+  await page.locator(".dk-right .dk-box textarea").fill("Check the narrow window too");
+  await page.locator(".dk-right [data-desk-send]").click();
+  const sent = pane.locator(".dk-thread .dk-tm", { hasText: "Check the narrow window too" });
+  await expect(sent).toHaveCount(1);
+  await expect.poll(() => inView(sent)).toBe(true);
+  // A redraw with nothing new leaves where you scrolled alone.
+  await pane.evaluate((e) => { e.scrollTop = 0; });
+  await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d4").title += " "; });
+  await page.waitForTimeout(200);
+  expect(await pane.evaluate((e) => e.scrollTop)).toBe(0);
 });
