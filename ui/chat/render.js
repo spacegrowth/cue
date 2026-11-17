@@ -143,7 +143,8 @@ function chatHtml(it, s, harness, paged = false, page = null) {
   const ran = sid ? (ranLog.get(sid) || []).map((e, n) => ({ at: e.at, html: keyed(ranCard(sid, e, n), K(`ran:${e.at}`)) })) : [];
   const restarts = sid ? (state.restarted?.[sid] || []).map((r, n, all) => ({ at: r.at_ms, html: keyed(restartLine(sid, r, n === all.length - 1), K(`rs:${r.at_ms}`)) })) : [];
   const { reviews, reviewAt } = reviewFolds(ex, s?.team || []);
-  const rows = withSteps(sid, s, ex, ex.map((e, n) => keyed((() => {
+  // `page.noSteps`: a chat without its turns' steps (the Desk lead's: what it read to route is not yours to read).
+  const rows = withSteps(page?.noSteps ? null : sid, s, ex, ex.map((e, n) => keyed((() => {
     if (e.role === "peer") return peerBubble(e.from || "another agent", "", e.at_ms, e.text);
     if (answers.has(n)) return "";
     if (decided.has(n)) return chose.length && near(e.at_ms) ? "" : chatDecisionLine(decided.get(n), e.at_ms);

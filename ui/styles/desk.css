@@ -563,14 +563,13 @@ b.dk-say-t, .dk-say-t { font-weight: 650; color: var(--ink); }
 /* A hand-off (ROUTE): a centred line, "gave [kind] #125 title to web-lead · Why ⌃"; the why under it, centred and
    quiet (open until folded). No box. */
 /* The lead's lines (#157): one short quiet line at the left each, what's longer opening under it on a click. */
-.dk-sl { padding: 1px 0; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+.dk-say.dk-sl { padding: 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
 .dk-sl-r { display: inline-flex; align-items: baseline; gap: 6px; max-width: 100%; min-width: 0; white-space: nowrap; }
 button.dk-sl-r { all: unset; display: inline-flex; align-items: baseline; gap: 6px; max-width: 100%; white-space: nowrap; cursor: pointer; border-radius: 4px; }
 .dk-sl-h { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.dk-sl-h .dk-kic { vertical-align: -2px; margin-right: 3px; }
 .dk-sl-c { flex: none; font-size: 11px; color: var(--muted); }
 button.dk-sl-r:hover .dk-sl-c, button.dk-sl-r:hover .dk-say-w { color: var(--ink); }
-.dk-sl-d { padding: 2px 0 4px 18px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.dk-sl-d { padding: 0 0 3px 12px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
 .dk-sl-it { all: unset; cursor: pointer; color: var(--ink); font-weight: 500; }
 .dk-sl-it:hover { text-decoration: underline; }
 .dk-sl-tt { color: var(--ink); font-weight: 500; }

@@ -511,7 +511,7 @@ function deskChat(d) {
     && !thread.some((e) => e.role === "you" && e.at_ms >= p.at - 60000 && e.text.includes(p.text)));
   deskSent.set(d.project, pending);
   // The lead's own Desk lines drawn as lines, not raw text.
-  const rows = s ? deskChatRows(s, { said: deskSaidE, extra: deskCheckRows(d) }) : "";
+  const rows = s ? deskChatRows(s, { said: deskSaidE, extra: deskCheckRows(d), noSteps: true }) : "";
   const mine = pending.map((p) => { const hd = deskAboutHead(p); return `<div class="cv-you sending">${p.text ? `<div class="cv-you-text">${hd?.html || ""}${esc(hd ? hd.text : p.text).replace(/\n/g, "<br>")}</div>` : ""}${p.images?.length ? `<div class="thumbs">${p.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}<div class="cv-meta">Sending</div></div>`; }).join("");
   // Where the lead is now (working on what, its latest step, stuck, compacting), as under any session's chat.
   const where = s && sessionOf(s.session_id) ? whereNow(null, s) : "";

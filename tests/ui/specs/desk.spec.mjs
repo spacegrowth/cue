@@ -149,7 +149,7 @@ test("written about an item at work, the box goes to the lead naming it", async 
   await expect(page.locator(".dk-chat .cv-you").last()).toContainText("<desk>");
 });
 
-test("the lead at work shows it in its chat: the working line and its steps, live, as any session's chat", async ({ page, cue }) => {
+test("the lead at work shows it in its chat: the working line, live, but not its steps (what it read to route isn't yours to read, #157)", async ({ page, cue }) => {
   await cue.open("desk");
   await cue.override("session_steps", ({ sessionId }, at) => (sessionId !== "lead" ? { version: 1, turns: [] } : { version: 1, turns: [{ at_ms: at - 30000, prompt: "", more: 0, items: [
     { t: "step", id: "lr1", kind: "read", verb: "Read", subject: "header.js", mono: true, result: "40 lines", bad: false, done: true, at_ms: at - 20000 },
@@ -162,8 +162,8 @@ test("the lead at work shows it in its chat: the working line and its steps, liv
   const live = page.locator(".dk-chat .cv-status");
   await expect(live).toContainText("Reading header.js");
   await expect(live.locator(".dot-live")).toHaveCount(1);
-  // Its steps come in while it works (followSteps follows the Desk's lead).
-  await expect(page.locator(".dk-chat .stx-line", { hasText: "header.js" })).toBeVisible();
+  // Its steps stay out of its chat: no "1 step · Read header.js" box.
+  await expect(page.locator(".dk-chat .stx")).toHaveCount(0);
   // Done: the working line goes.
   await cue.change((st) => { Object.assign(st.sessions.find((x) => x.session_id === "lead"), { state: "idle", doing: "" }); });
   await expect(page.locator(".dk-chat .dot-live")).toHaveCount(0);
@@ -970,7 +970,7 @@ test("the lead's own Desk lines are drawn as lines in its chat, code blocks left
   const ln = said.locator(".own-lines .dk-sl");
   await expect(ln).toHaveCount(4);
   await expect(ln.nth(0)).toHaveText("added Box loses focus⌄");
-  await expect(ln.nth(0).locator("svg.dk-kic")).toHaveCount(1);
+  await expect(ln.nth(0).locator("svg.dk-kic")).toHaveCount(0);
   await expect(said.locator(".own-lines")).toHaveCSS("border-top-width", "0px");
   expect(await said.locator(".own-lines .dk-cl").count()).toBe(0);
   // A hand-off: "#d7k2 → web-lead · after #a1", at the left, one line, its why shut.
@@ -993,7 +993,7 @@ test("the lead's own Desk lines are drawn as lines in its chat, code blocks left
   await expect(said.locator(".dk-sl-d")).toHaveCount(0);
   // Done: its number and "done"; its title on a click, which opens the item.
   await expect(ln.nth(2).locator(".dk-sl-h")).toHaveText("#d3 done");
-  await expect(ln.nth(2).locator("b.dk-say-id svg.dk-kic")).toHaveCount(1);
+  await expect(ln.nth(2).locator("svg.dk-kic")).toHaveCount(0);
   await ln.nth(2).locator(".dk-sl-r").click();
   await expect(ln.nth(2).locator(".dk-sl-it")).toHaveCount(1);
   await expect(ln.nth(3).locator(".dk-sl-h")).toHaveText("host-lead → keep");
@@ -1031,6 +1031,11 @@ test("a reply of only routing lines is short lines at the left: TITLE and ROUTE,
   await expect(ln).toHaveCount(2);
   await expect(ln.nth(0).locator(".dk-sl-h")).toHaveText("#d2 titled");
   await expect(ln.nth(1).locator(".dk-sl-h")).toHaveText("#d2 → web-lead · after #d3");
+  // Stacked tight, no icon: the second starts right under the first.
+  const [a, b] = [await ln.nth(0).boundingBox(), await ln.nth(1).boundingBox()];
+  expect(b.y - (a.y + a.height)).toBeLessThan(2);
+  expect(a.height).toBeLessThan(21);
+  await expect(last.locator(".dk-sl svg")).toHaveCount(0);
   await expect(last.locator(".cv-text")).not.toContainText("TITLE:");
   for (const l of await ln.all()) expect(await l.evaluate((el) => el.getBoundingClientRect().height)).toBeLessThan(24);
   await ln.nth(1).locator(".dk-sl-r").click();
