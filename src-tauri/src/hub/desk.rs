@@ -402,6 +402,7 @@ pub(super) fn route(st: &mut Store, project: &str, by: &By, id: &str, to: &str, 
 fn held_by(it: &mut DeskItem, h: &Holder, refused: String, waits: Option<String>, why: &str, now: u64) {
     it.updated = secs(now);
     it.route_failed.clear();
+    it.start_failed.clear();
     it.reopen_refused.clear();
     it.after_refused = refused;
     it.holder = Some(h.clone());
@@ -467,6 +468,16 @@ fn give(st: &mut Store, id: &str, sid: &str, now: u64, fx: &mut Effects) -> Resu
 
 /// `give`, as `by` (name, session, why) decided: the lead, for a session started for it.
 pub(super) fn give_by(st: &mut Store, id: &str, sid: &str, by: (&str, &str, &str), now: u64, fx: &mut Effects) -> Result<(), String> {
+    give_to(st, id, sid, by, false, now, fx)
+}
+
+/// `give_by` to `sid`, a session Cue just started for the item in the Desk's own folder (desk_start_new): it's the
+/// Desk's whatever project its folder's repository is named for (a folder you put in the project, say).
+pub(super) fn give_started(st: &mut Store, id: &str, sid: &str, by: (&str, &str, &str), now: u64, fx: &mut Effects) -> Result<(), String> {
+    give_to(st, id, sid, by, true, now, fx)
+}
+
+fn give_to(st: &mut Store, id: &str, sid: &str, by: (&str, &str, &str), started: bool, now: u64, fx: &mut Effects) -> Result<(), String> {
     let h = holder_of(st, sid).ok_or("that session isn't open")?;
     let project = st.sessions.get(sid).map(|s| s.project.clone()).unwrap_or_default();
     let scope = st.desk.item(id).ok_or("no such item")?.project.clone();
@@ -475,7 +486,7 @@ pub(super) fn give_by(st: &mut Store, id: &str, sid: &str, by: (&str, &str, &str
         return Err("that session runs another Desk".into());
     }
     let it = st.desk.item_mut(id).ok_or("no such item")?;
-    if workspace != project {
+    if workspace != project && !started {
         return Err(format!("{} isn't a session of {}", h.name, workspace));
     }
     if it.state == "done" {
@@ -490,6 +501,7 @@ pub(super) fn give_by(st: &mut Store, id: &str, sid: &str, by: (&str, &str, &str
     it.after = None;
     it.after_why.clear();
     it.route_failed.clear();
+    it.start_failed.clear();
     it.after_refused.clear();
     it.done_at = None;
     it.updated = secs(now);
@@ -876,6 +888,8 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
         }
         // Nobody holds it yet: a new session of its project takes it (desk_start_new).
         "start_now" if holder.is_none() => {
+            // Tried again: "couldn't start" goes until this try says how it went.
+            it.start_failed.clear();
             let s = NewStart { project: it.project.clone(), id: id.into(), why: String::new(), by: "You".into(), by_sid: String::new() };
             fx.starts.push(s);
         }

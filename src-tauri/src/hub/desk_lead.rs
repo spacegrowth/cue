@@ -146,11 +146,9 @@ impl Hub {
         let now = now_ms();
         let fx = self.write(|st| {
             let mut fx = super::desk::Effects::default();
-            let given = sid.and_then(|sid| super::desk::give_by(st, &s.id, &sid, (&s.by, &s.by_sid, &s.why), now, &mut fx));
-            if let (Err(e), Some(it)) = (given, st.desk.item_mut(&s.id)) {
-                it.route_failed = format!("{NEW_SESSION} ({e})");
-                it.updated = super::desk::secs(now);
-                fx.items.push(s.id.clone());
+            let given = sid.and_then(|sid| super::desk::give_started(st, &s.id, &sid, (&s.by, &s.by_sid, &s.why), now, &mut fx));
+            if let Err(e) = given {
+                start_failed(st, &s, &e, now, &mut fx);
             }
             fx
         });
@@ -158,7 +156,8 @@ impl Hub {
     }
 
     /// The folder a new lead of `project` starts in: the repository of a session of the project on this Mac (live,
-    /// then parked).
+    /// then parked), the project's own repository first: a folder you put in the project is another repository,
+    /// whose sessions go by its own name.
     pub(crate) fn desk_folder(&self, project: &str) -> Option<String> {
         if let Some(folder) = self.read(|st| st.desk.spaces.get(project).map(|d| d.folder.clone())) {
             return Some(folder);
@@ -172,7 +171,7 @@ impl Hub {
         .filter(|o| super::crew_log::project_shown_for(o) == project)
         .map(|o| o.cwd)
         .collect();
-        let cwd = cwds.into_iter().next()?;
+        let cwd = folder_first(cwds, project)?;
         Some(crate::logs::repos::repo_root(&cwd).map(|r| r.to_string_lossy().into_owned()).unwrap_or(cwd))
     }
 
@@ -271,6 +270,26 @@ fn context_note(st: &Store, sid: &str, now: u64) -> String {
     out
 }
 
+/// Of the folders of a project's sessions (in order), the first in the repository named for `project`, else the first.
+pub(super) fn folder_first(cwds: Vec<String>, project: &str) -> Option<String> {
+    let own = cwds.iter().position(|c| crate::model::own_project(c, "") == project).unwrap_or(0);
+    cwds.into_iter().nth(own)
+}
+
+/// Cue couldn't start a session for item `s.id` (`e`, why): it shows "couldn't start" with a retry, and the Desk's
+/// lead is told now, not with your next message (it may be a while).
+pub(super) fn start_failed(st: &mut Store, s: &super::desk::NewStart, e: &str, now: u64, fx: &mut super::desk::Effects) {
+    let Some(it) = st.desk.item_mut(&s.id) else { return };
+    it.start_failed = e.to_string();
+    it.updated = super::desk::secs(now);
+    let words = format!("Cue couldn't start a new session for #{} ({}): {e}. It's still {}; ROUTE it to a session, or to new to try again.", it.id, it.title, it.state.replace('_', " "));
+    fx.items.push(s.id.clone());
+    let lead = if s.by_sid.is_empty() { st.desk.lead_sid(&s.project).unwrap_or_default().to_string() } else { s.by_sid.clone() };
+    if st.sessions.get(&lead).is_some() {
+        fx.sends.push((lead, words));
+    }
+}
+
 /// Item `it`'s line in the Desk's summary (into `out`), with the routes it couldn't make (into `failed`) and what the
 /// lead is told of them (into `told`).
 fn item_lines(it: &DeskItem, out: &mut String, failed: &mut Vec<(String, String)>, told: &mut Vec<String>) {
@@ -294,6 +313,9 @@ fn item_lines(it: &DeskItem, out: &mut String, failed: &mut Vec<(String, String)
         let more = if more > 0 { format!(" +{more} more") } else { String::new() };
         out.push_str(&format!(" | files: {}{more}", it.files.iter().take(5).cloned().collect::<Vec<_>>().join(", ")));
     }
+    if !it.start_failed.is_empty() {
+        out.push_str(&format!(" | couldn't start a new session: {}", it.start_failed));
+    }
     out.push('\n');
     if !it.route_failed.is_empty() {
         failed.push((it.id.clone(), it.route_failed.clone()));
@@ -315,5 +337,17 @@ fn item_lines(it: &DeskItem, out: &mut String, failed: &mut Vec<(String, String)
     if !it.reopen_refused.is_empty() {
         failed.push((it.id.clone(), it.reopen_refused.clone()));
         told.push(format!("Cue didn't reopen #{}: {}.\n", it.id, it.reopen_refused));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// The folder a new session of a project starts in: one in the project's own repository before one you put in it.
+    #[test]
+    fn a_new_session_starts_in_the_projects_own_folder_first() {
+        let pick = |c: &[&str], p| super::folder_first(c.iter().map(|s| s.to_string()).collect(), p);
+        assert_eq!(pick(&["/nowhere/elsewhere", "/nowhere/app"], "app").as_deref(), Some("/nowhere/app"));
+        assert_eq!(pick(&["/nowhere/elsewhere", "/nowhere/more"], "app").as_deref(), Some("/nowhere/elsewhere"));
+        assert_eq!(pick(&[], "app"), None);
     }
 }

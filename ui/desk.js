@@ -190,6 +190,8 @@ function deskTag(i) {
   if (i.state === "needs_you") return ["", "ask"];
   if (deskInstallWait(i)) return ["", ""];
   if (i.state === "to_check") return deskLanded(i) ? ["", "landed"] : ["", "check"];
+  // Its new session wouldn't start (#172): says so, its page has why and Retry.
+  if ((i.state === "new" || i.state === "queued") && !i.holder && i.start_failed) return ["couldn't start", "ask"];
   if ((i.state === "new" || i.state === "queued") && i.route_failed) return ["stuck", "ask"];
   return ["", i.state === "done" ? "done" : ""];
 }
@@ -701,6 +703,7 @@ function deskItemActs(i) {
   if (i.state === "to_check" && deskBackFor === i.id) return deskBackHtml(i.id);
   // Waiting for install: nothing to try yet, so no Looks right (Send back stays: what it says can be wrong already).
   const acts = deskInstallWait(i) ? b("send_back", "Send back") : i.state === "to_check" ? (deskLooksSoon.has(i.id) ? "" : b("send_back", "Send back"))
+    : (i.state === "new" || i.state === "queued") && !i.holder && i.start_failed ? b("start_now", "Retry")
     : i.state === "queued" ? b("start_now", "Start it now in a new session") + (first ? b("put_before", `Put it before ${deskShort(first.title)}`) : "")
     : i.state === "new" ? b("start_now", "Start it now in a new session")
     // Its holder's turn cut off (a crash, a quit) leaves it "working" with nobody on it: sent to the holder again.
@@ -822,7 +825,7 @@ function deskItemPane(i, d) {
   // made and its buttons (its files are under Files). Under what to check, who did it and whether it's installed
   // (deskCheckInfo).
   const dw = deskDoneWhenHtml(i.done_when), info = deskCheckInfo(i, d);
-  const at = `${deskSec(i.state === "to_check" ? "What to check" : "Done when", `${dw ? `<div class="dk-idw">${dw}</div>` : ""}${info}`)}${deskSec("Couldn't give it out", i.route_failed ? `<p>${esc(i.route_failed)}</p>` : "")}
+  const at = `${deskSec(i.state === "to_check" ? "What to check" : "Done when", `${dw ? `<div class="dk-idw">${dw}</div>` : ""}${info}`)}${deskSec("Couldn't give it out", i.route_failed ? `<p>${esc(i.route_failed)}</p>` : "")}${deskSec("Couldn't start", !i.holder && i.start_failed ? `<p>Cue couldn't start a new session for it: ${esc(i.start_failed)}</p>` : "")}
     ${deskSec(i.state === "needs_you" ? "It asks you" : deskAnswerOf(i) ? "It asked you" : "What's holding it up", deskChain(i))}${deskSec("What it made", i.state === "to_check" || i.state === "done" ? deskMadeLinks(i) : "")}${deskItemActs(i)}
     ${i.split_from ? `<p class="dk-split">Split from <a href="#" data-desk-item="${esc(i.split_from)}">#${esc(i.split_from)}</a></p>` : ""}`;
   const body = tab === "decisions" ? (decs.length ? deskDecList(decs) : `<p class="dk-note">No decisions on it yet.</p>`)
