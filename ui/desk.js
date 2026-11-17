@@ -733,6 +733,7 @@ function deskView() {
   if (deskDropArm && !deskItem(projFilter, deskDropArm)) deskDropArm = null;
   deskBoxes.clear();   // the boxes drawn now note theirs again
   if (!projFilter) return deskAll();
+  deskLastSet(projFilter);
   queueMicrotask(deskSettle);
   return `<div class="board dk-board">${deskSessions(projFilter)}${deskRight(projFilter)}${deskList(projFilter)}</div>`;
 }
