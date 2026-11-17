@@ -69,12 +69,12 @@ function deskSessionsOf(project, d = deskOf(project)) {
 }
 
 /** The chat card when no one runs the Desk yet, or when changing who does: "Who runs this Desk?", then a button
- *  (no sessions), "Let <name> run it" (one), or a row a session (several); "Start a new lead" under them. */
+ *  (no sessions), "Let <name> run it" (one), or a row a session (several); "Start a new dispatcher" under them. */
 function deskPicker(d) {
   const cur = deskLead(d), rows = deskSessionsOf(d.project, d).filter((r) => r.sid !== cur?.sid), busy = deskLeadBusy;
   const label = (sid, text) => (busy === sid ? "Starting…" : text);
   const dis = busy !== null ? "disabled" : "";
-  const fresh = (primary) => `<button class="${primary ? "btn primary" : "dk-link dk-fresh"}" data-desk-lead="" ${dis}>${label("", rows.length || cur ? "Start a new lead" : "Start a lead")}</button>`;
+  const fresh = (primary) => `<button class="${primary ? "btn primary" : "dk-link dk-fresh"}" data-desk-lead="" ${dis}>${label("", rows.length || cur ? "Start a new dispatcher" : "Start a dispatcher")}</button>`;
   let body;
   if (!rows.length) body = cur ? fresh(false) : fresh(true);
   else if (rows.length === 1 && !cur) body = `<div class="dk-acts dk-pick1"><button class="btn primary" data-desk-lead="${esc(rows[0].sid)}" ${dis}>${label(rows[0].sid, `Let ${esc(rows[0].name)} run it`)}</button>${fresh(false)}</div>`;
@@ -83,7 +83,7 @@ function deskPicker(d) {
     body = `<div class="dk-whos">${rows.map(row).join("")}</div>${fresh(false)}`;
   }
   const keep = cur ? `<button class="dk-link dk-keep" data-desk-keep>Keep ${esc(deskLeadName(d))}</button>` : "";
-  return `<div class="dk-card dk-right"><div class="dk-pick"><h2>Who runs this Desk?</h2><p>A lead takes what you bring here, does it or hands it out, and tells you why.</p>${body}${keep}</div></div>`;
+  return `<div class="dk-card dk-right"><div class="dk-pick"><h2>Who runs this Desk?</h2><p>A dispatcher takes what you bring here, hands each item to a session, and tells you why.</p>${body}${keep}</div></div>`;
 }
 /** The chat pane of a lead that has ended: one line, Resume it and Pick another. */
 const deskEndedLine = (d) => `<div class="dk-endlead"><p><b>${esc(deskLeadName(d))}</b> has ended. Items stay here.</p><div class="dk-acts"><button class="btn small primary" data-desk-lead="${esc(deskLead(d).sid)}" ${deskLeadBusy !== null ? "disabled" : ""}>${deskLeadBusy === deskLead(d).sid ? "Resuming…" : "Resume it"}</button><button class="btn small" data-desk-change>Pick another</button></div></div>`;
@@ -99,8 +99,8 @@ async function deskSetLead(project, sid) {
     deskPick = null;
     deskChatEnd = true;
   } catch (e) {
-    if (/no folder/i.test(String(e)) && typeof lvAct === "function") { toast("No folder known for this project yet: pick one for the new lead"); sheet = lightbox = null; liveSpot = true; lvAct("new", {}); }
-    else toast(`Couldn't set the lead: ${e}`);
+    if (/no folder/i.test(String(e)) && typeof lvAct === "function") { toast("No folder known for this project yet: pick one for the new dispatcher"); sheet = lightbox = null; liveSpot = true; lvAct("new", {}); }
+    else toast(`Couldn't set the dispatcher: ${e}`);
   } finally { deskLeadBusy = null; renderMain(); }
 }
 

@@ -44,9 +44,9 @@ test("the Desk is in the header after Board, and lists Waiting on you, then a gr
   // The lead's chat on the right, named for it, no crew beside it (a Desk's lead has none).
   await expect(page.locator(".dk-tab.on")).toHaveText("web-lead");
   await expect(page.locator(".dk-tabs")).not.toContainText("crew");
-  // Its mark (pick O): one solid label with the kind's icon and the word "Desk lead", before the name.
+  // Its mark (pick O): one solid label with the kind's icon and the word "Dispatcher", before the name.
   const mark = page.locator('.dk-tabs [data-desk-mark="desk"]');
-  await expect(mark).toHaveText("Desk lead");
+  await expect(mark).toHaveText("Dispatcher");
   expect(await mark.evaluate((e) => !!e.nextElementSibling?.querySelector(".dk-tab.on"))).toBe(true);
   const badge = page.locator(".dk-tabs .dk-titled > .dk-lbl");
   await expect(badge.locator("svg.dk-kic")).toHaveCount(1);
@@ -577,7 +577,7 @@ test("no lead yet, one session: 'Let <name> run it', or start a new lead; picked
   const card = page.locator(".dk-right .dk-pick");
   await expect(card.locator("h2")).toHaveText("Who runs this Desk?");
   await expect(card.locator(".btn.primary")).toHaveText("Let site-lead run it");
-  await expect(card.locator(".dk-fresh")).toHaveText("Start a new lead");
+  await expect(card.locator(".dk-fresh")).toHaveText("Start a new dispatcher");
   // No box to anyone, nothing runs it, till someone does.
   await expect(page.locator(".dk-box")).toHaveCount(0);
   await expect(page.locator(".dk-strip .dk-lcard")).toHaveCount(0);
@@ -597,7 +597,7 @@ test("no sessions in the project: one button, Start a lead; with no folder known
   await cue.change((st) => { st.sessions = st.sessions.filter((s) => s.project !== "website"); });
   const card = page.locator(".dk-right .dk-pick");
   await expect(card.locator("button")).toHaveCount(1);
-  await expect(card.locator("button")).toHaveText("Start a lead");
+  await expect(card.locator("button")).toHaveText("Start a dispatcher");
   await card.locator("button").click();
   await cue.called("desk_set_lead", { project: "website" });
   await expect(page.locator(".toast")).toContainText("No folder known");
@@ -623,7 +623,7 @@ test("⋯ in the head strip: the project's other sessions, each with Run it; Kee
   const rows = await card.locator(".dk-who").evaluateAll((els) => els.map((el) => [el.querySelector(".dk-lt").textContent, el.querySelector(".dk-ls").textContent]));
   expect(rows).toEqual([["host-lead", "session"]]);
   await expect(card.locator(".dk-who .btn")).toHaveText("Run it");
-  await expect(card.locator(".dk-fresh")).toHaveText("Start a new lead");
+  await expect(card.locator(".dk-fresh")).toHaveText("Start a new dispatcher");
   await expect(card.locator(".dk-keep")).toHaveText("Keep web-lead");
   await card.locator(".dk-keep").click();
   await expect(page.locator(".dk-pick")).toHaveCount(0);
