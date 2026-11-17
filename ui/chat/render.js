@@ -176,10 +176,11 @@ function chatHtml(it, s, harness, paged = false, page = null) {
     const foldable = !recent.has(n) && long, folded = foldable && !openMsgs.has(key);
     const follow = it?.followup && e.text === it.message && !hookInChat(sid, ex.findLast((y) => y.role === "you" && y.at_ms < e.at_ms)?.at_ms ?? 0) ? followHtml(it) : "";
     fwdMsgs.set(key, { text: addOn.plain(e.text), from: project, fromSid: sid });
-    const said = addOn.reply(sid, e.text), prose = proseOf(said.text, page?.lines);
+    // Listen and Read go together: a reply worth hearing is worth reading set larger (Read shows wherever Listen does).
+    const said = addOn.reply(sid, e.text), listen = sid && proseWords(said.text, page?.lines) >= LISTEN_WORDS;
     return `<div class="cv-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}"><div class="cv-meta">${esc(agentName(harness))}${machTag(it?.machine || s?.machine)} · ${ago(e.at_ms)} ago${n === lastAgent ? toldMeta(s) : ""}</div>
       <div class="msg cv-text">${md(said.text, { runIn: s?.session_id, lines: page?.lines })}</div>${said.after}${thumbs(e.images)}${localImages(e.text)}
-      <div class="cv-acts">${sid && prose.words >= LISTEN_WORDS ? listenBtn(key) : ""}${prose.long && paged && sid ? `<button class="cv-pill" data-read="${esc(key)}">${BOOK_ICON}Read</button>` : ""}${foldable ? `<button class="cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}${n === lastAgent && !page?.noActs ? actReplyHtml(s, e.at_ms) : ""}${page?.noActs ? "" : `<button class="cv-fwd" data-fwd="${esc(key)}">↗ Send to…</button>`}</div>${follow}</div>`;
+      <div class="cv-acts">${listen ? listenBtn(key) : ""}${listen && paged ? `<button class="cv-pill" data-read="${esc(key)}">${BOOK_ICON}Read</button>` : ""}${foldable ? `<button class="cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}${n === lastAgent && !page?.noActs ? actReplyHtml(s, e.at_ms) : ""}${page?.noActs ? "" : `<button class="cv-fwd" data-fwd="${esc(key)}">↗ Send to…</button>`}</div>${follow}</div>`;
   })(), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran, restarts, page?.extra || []));
   for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(outboxRow(o, s, K(`out:${o.at}`)));
   // Sent while it worked: Cue keeps it until the turn ends. Yours to take back (Edit, Esc) or send now. (What Cue
@@ -491,12 +492,10 @@ function quietTurn(sid, t, live, latest, harness = "claude") {
   return you + stepsBlock(sid, t, live, latest) + reply;
 }
 
-/** Fewer words than this to read out and a reply has no Listen: "Hi." or a line drawn as a card isn't worth it. */
+/** Fewer words than this to read out and a reply has no Listen or Read: "Hi." or a line drawn as a card isn't worth it. */
 const LISTEN_WORDS = 20;
-/** A reply's own words, the lines a page draws as cards of its own (`lines`, as md's) left out: { words, long }, long
- *  being worth the reader (over 280 characters or 4 lines). */
-function proseOf(text, lines) {
+/** How many words a reply has of its own, the lines a page draws as cards of its own (`lines`, as md's) left out. */
+function proseWords(text, lines) {
   const kept = String(text || "").split("\n").filter((l) => l.trim() && !(lines && lines(l, (x) => x)));
-  const all = kept.join("\n");
-  return { words: all.split(/\s+/).filter((w) => /\w/.test(w)).length, long: all.length > 280 || kept.length > 4 };
+  return kept.join("\n").split(/\s+/).filter((w) => /\w/.test(w)).length;
 }
