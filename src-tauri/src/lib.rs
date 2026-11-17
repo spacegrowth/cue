@@ -10,6 +10,7 @@ mod hosted;
 mod changes;
 mod safe_git;
 mod self_install;
+mod live_ui;
 mod commands;
 mod hub;
 mod ipc;

@@ -495,3 +495,62 @@ fn a_crew_merge_onto_a_file_with_your_uncommitted_changes_is_refused_and_leaves_
     assert!(!dir.join(".git/MERGE_HEAD").exists());
     assert!(!git(&dir, &["log", "-1", "--format=%s"]).starts_with("Merge"), "nothing merged");
 }
+
+/// An item done in this Cue's source, the running Cue built from its commit before the item's work, which writes
+/// `files` (paths in the repo): (fake, repo, project, id).
+fn done_since_running(w: &World, files: &'static [&'static str]) -> (Arc<Fake>, std::path::PathBuf, String, String) {
+    let fake = Arc::new(Fake::default());
+    w.hub().desk_set_installer(fake.clone());
+    let (dir, project, id) = done_with(
+        w,
+        |_, _, dir| {
+            as_this_cue(dir);
+            // The test repo ignores everything but a few files: let in the window's, the tests' and the app's.
+            let mut ignore = std::fs::read_to_string(dir.join(".gitignore")).unwrap();
+            ignore.push_str("!ui/\n!ui/**\n!tests/\n!tests/**\n!src-tauri/\n!src-tauri/desk.rs\n");
+            std::fs::write(dir.join(".gitignore"), ignore).unwrap();
+            std::fs::create_dir_all(dir.join("ui")).unwrap();
+            std::fs::write(dir.join("ui/index.html"), "<p>built in</p>\n").unwrap();
+            git(dir, &["add", "-A"]);
+            git(dir, &["commit", "-q", "-m", "the Cue that runs"]);
+            let running = git(dir, &["rev-parse", "HEAD"]).trim().to_string();
+            let install = crate::server::cue_dir().join("install");
+            std::fs::create_dir_all(&install).unwrap();
+            std::fs::write(install.join("running.json"), json!({ "commit": running }).to_string()).unwrap();
+        },
+        |w, h, dir| {
+            let paths: Vec<String> = files.iter().map(|f| dir.join(f).to_string_lossy().to_string()).collect();
+            for p in &paths {
+                std::fs::create_dir_all(std::path::Path::new(p).parent().unwrap()).unwrap();
+            }
+            says(w, h, writes("toolu_A", "agentA", "fixer", &paths));
+        },
+    );
+    (fake, dir, project, id)
+}
+
+#[test]
+fn an_item_that_changed_only_the_windows_files_is_served_in_place_and_to_check_with_no_install() {
+    let w = World::new();
+    let (fake, dir, project, _) = done_since_running(&w, &["ui/desk.js", "tests/ui/specs/desk.spec.mjs"]);
+    let head = git(&dir, &["rev-parse", "HEAD"]).trim().to_string();
+    let shown = item(&w, &project, "Header jumps");
+    assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str(), shown["finish"]["commit"].as_str()), (Some("to_check"), Some("checked"), Some(head.as_str())), "{shown}");
+    assert_eq!(w.window.heard("ui-reload"), vec![json!({ "commit": head })], "the window reloads");
+    let served = crate::server::cue_dir().join("live").join(&head);
+    assert_eq!(std::fs::read_to_string(served.join("desk.js")).unwrap(), "fixer wrote this\n", "from the item's commit");
+    assert_eq!(std::fs::read_to_string(served.join("index.html")).unwrap(), "<p>built in</p>\n");
+    w.advance(3 * 60_000);
+    assert!(fake.started().is_empty(), "no build, no restart");
+}
+
+#[test]
+fn an_item_that_changed_the_app_side_too_still_waits_for_an_install() {
+    let w = World::new();
+    let (fake, _, project, _) = done_since_running(&w, &["ui/desk.js", "src-tauri/desk.rs"]);
+    assert_eq!(step(&w, &project), "queued");
+    assert!(w.window.heard("ui-reload").is_empty());
+    w.advance(2 * 60_000);
+    assert_eq!(fake.started().len(), 1, "installed");
+    assert!(!crate::server::cue_dir().join("live").exists(), "nothing served in place");
+}

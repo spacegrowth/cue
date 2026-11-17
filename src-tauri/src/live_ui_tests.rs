@@ -1,0 +1,96 @@
+//! The window's files served in place, against a git repo and a folder of each test's own.
+
+use super::*;
+use std::process::Command;
+
+fn git(dir: &Path, args: &[&str]) -> String {
+    let out = Command::new("git").arg("-C").arg(dir).args(args).output().unwrap();
+    assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+fn put(dir: &Path, path: &str, text: &str) {
+    let p = dir.join(path);
+    std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+    std::fs::write(p, text).unwrap();
+}
+
+/// `path` written with `text` and committed: the new HEAD.
+fn commit(dir: &Path, path: &str, text: &str) -> String {
+    put(dir, path, text);
+    git(dir, &["add", "-A"]);
+    git(dir, &["commit", "-qm", path]);
+    git(dir, &["rev-parse", "HEAD"])
+}
+
+/// A repo with a window (ui/index.html) and an app side (src-tauri/main.rs): (its folder, the test's own, HEAD).
+fn repo(name: &str) -> (PathBuf, PathBuf, String) {
+    let root = std::env::temp_dir().join(format!("cue-live-ui-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let dir = root.join("repo");
+    std::fs::create_dir_all(&dir).unwrap();
+    git(&dir, &["init", "-q", "-b", "main"]);
+    git(&dir, &["config", "user.email", "t@example.com"]);
+    git(&dir, &["config", "user.name", "t"]);
+    put(&dir, "ui/index.html", "<p>one</p>");
+    let head = commit(&dir, "src-tauri/main.rs", "fn main() {}");
+    (dir, root, head)
+}
+
+fn s(p: &Path) -> String {
+    p.to_string_lossy().to_string()
+}
+
+#[test]
+fn only_the_windows_files_changed_reloads_anything_in_the_app_installs() {
+    let (dir, root, built) = repo("plan");
+    let ui = commit(&dir, "ui/desk.js", "x");
+    assert_eq!(plan(&s(&dir), &built, None, &ui), Plan::Reload);
+    let tests = commit(&dir, "tests/ui/specs/desk.spec.mjs", "t");
+    assert_eq!(plan(&s(&dir), &built, None, &tests), Plan::Reload, "tests don't go into the app");
+    assert_eq!(plan(&s(&dir), &built, Some(&ui), &tests), Plan::Nothing, "the window shows that commit's files already");
+    let app = commit(&dir, "src-tauri/main.rs", "fn main() { 1; }");
+    assert_eq!(plan(&s(&dir), &built, None, &app), Plan::Install);
+    let ui_after = commit(&dir, "ui/desk.js", "y");
+    assert_eq!(plan(&s(&dir), &built, None, &ui_after), Plan::Install, "the main line has an app change the running Cue lacks");
+    assert_eq!(plan(&s(&dir), &app, None, &ui_after), Plan::Reload, "a Cue built with it");
+    let script = commit(&dir, "scripts/self-install.sh", "#");
+    assert_eq!(plan(&s(&dir), &ui_after, None, &script), Plan::Install, "scripts go into the app");
+    let note = commit(&dir, "HANDOFF.md", "n");
+    assert_eq!(plan(&s(&dir), &script, None, &note), Plan::Nothing);
+    assert_eq!(plan(&s(&dir), "not-a-commit", None, &note), Plan::Install, "git can't say: install");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn a_copy_is_git_s_commit_never_the_checkout_s_unsaved_edits() {
+    let (dir, root, built) = repo("take");
+    let head = commit(&dir, "ui/styles/desk.css", "a{}");
+    put(&dir, "ui/index.html", "<p>unsaved</p>");
+    let live = root.join("live");
+    let to = take_in(&live, &s(&dir), &head, &built).unwrap();
+    assert_eq!(std::fs::read_to_string(to.join("index.html")).unwrap(), "<p>one</p>");
+    assert_eq!(file_in(&to, "/styles/desk.css").as_deref(), Some(&b"a{}"[..]));
+    assert_eq!(current_in(&live).map(|c| (c.commit, c.base)), Some((head.clone(), built.clone())));
+    assert_eq!(file_in(&to, "/../repo/ui/index.html"), None, "nothing outside the copy");
+    assert_eq!(file_in(&to, "/missing.js"), None, "Cue's own then");
+
+    // A newer one replaces it; the older copy is removed.
+    let next = commit(&dir, "ui/desk.js", "z");
+    let to2 = take_in(&live, &s(&dir), &next, &built).unwrap();
+    assert!(!to.exists() && to2.join("desk.js").is_file());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn a_copy_is_served_after_a_restart_of_the_same_cue_and_dropped_by_a_new_one() {
+    let (dir, root, built) = repo("start");
+    let head = commit(&dir, "ui/desk.js", "x");
+    let live = root.join("live");
+    let to = take_in(&live, &s(&dir), &head, &built).unwrap();
+    assert_eq!(kept_in(&live, Some(&built)), Some(to.clone()), "the same Cue restarted");
+    assert_eq!(kept_in(&live, Some(&head)), None, "a Cue built from another commit has its own files");
+    assert!(!live.exists(), "and the copy is gone");
+    assert_eq!(kept_in(&live, Some(&built)), None);
+    let _ = std::fs::remove_dir_all(root);
+}

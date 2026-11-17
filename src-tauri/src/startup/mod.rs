@@ -31,7 +31,8 @@ pub(crate) fn build() -> tauri::App {
     // The optional add-on (built in with the `ext` feature): its own commands, and its part of the window's files.
     #[cfg(feature = "ext")]
     let commands = crate::ext::handler(commands);
-    let context = tauri::generate_context!();
+    // The window's files: a copy taken from the main line in place of the built-in ones, when one is served (live_ui.rs).
+    let context = crate::live_ui::wrap(tauri::generate_context!());
     #[cfg(feature = "ext")]
     let context = crate::ext::with_ui(context);
     builder

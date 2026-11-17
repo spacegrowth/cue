@@ -271,6 +271,15 @@ impl Hub {
         let cue = tops.iter().find(|t| super::desk_checks::builds_this_cue(t));
         let top = cue.or(tops.first()).cloned().unwrap_or_default();
         let head = if top.is_empty() { String::new() } else { git("", &top, &[], &["rev-parse", "HEAD"]).map(|h| h.trim().to_string()).unwrap_or_default() };
+        // Only the window's files changed since the running Cue's build: they're served in place, no install.
+        if cue.is_some() && self.ui_in_place(&top, &head) {
+            self.finish_set(id, |i| {
+                if let Some(f) = i.finish.as_mut() {
+                    (f.repo, f.commit) = (top.clone(), head.clone());
+                }
+            });
+            return self.finish_checked(id);
+        }
         let queued = cue.is_some();
         self.finish_set(id, |i| {
             if let Some(f) = i.finish.as_mut() {
@@ -285,6 +294,33 @@ impl Hub {
             self.later(BATCH_MS, |h| h.desk_finish_tick());
         } else {
             self.finish_checked(id);
+        }
+    }
+
+    /// Whether `head` of `repo` is in the running Cue without an install: what changed since the commit it was built
+    /// from is only the window's files (then served from `head`, and the window told to reload: "ui-reload") or
+    /// nothing it shows. Not while an install is under way or queued: the main line then has more than the window's
+    /// files, or it soon will be in the app anyway.
+    fn ui_in_place(&self, repo: &str, head: &str) -> bool {
+        let Some(running) = crate::live_ui::running() else { return false };
+        let busy = self.read(|st| st.desk.items.iter().any(|i| i.state == "finishing" && i.finish.as_ref().is_some_and(|f| f.step == "queued" || installing(&f.step))));
+        if busy {
+            return false;
+        }
+        let served = crate::live_ui::current().filter(|c| c.base == running).map(|c| c.commit);
+        match crate::live_ui::plan(repo, &running, served.as_deref(), head) {
+            crate::live_ui::Plan::Install => false,
+            crate::live_ui::Plan::Nothing => true,
+            crate::live_ui::Plan::Reload => match crate::live_ui::take(repo, head, &running) {
+                Ok(()) => {
+                    self.ports.window.tell("ui-reload", serde_json::json!({ "commit": head }));
+                    true
+                }
+                Err(e) => {
+                    eprintln!("cue: desk: the window's files of {head} couldn't be served, installing instead: {e}");
+                    false
+                }
+            },
         }
     }
 

@@ -165,6 +165,11 @@ reason = "the typing gate is taken first and held while a message is typed, by d
 
 [[lock_order]]
 from = "typing gate"
+to = "live_ui.served"
+reason = "the typing gate is taken first and held while a message is sent, by design (hub/send.rs wait_turn); a turn's end can finish a Desk item whose work only touched the window's files, which sets the copy served in place (live_ui::take). live_ui.served is a leaf: held only to set or read one path, never while taking another lock"
+
+[[lock_order]]
+from = "typing gate"
 to = "config file"
 reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); a reply that redraws with no window (a test's hub) builds the snapshot on its own thread, which settles projects into the config file. Seen since the check follows a module's `use child::item` re-exports"
 
