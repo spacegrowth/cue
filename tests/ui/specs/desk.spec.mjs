@@ -74,7 +74,9 @@ test("an item opens on the right with its row lit in place; ‹ web-lead goes ba
   const pane = page.locator(".dk-right .dk-pane");
   // Its header names it as the Ready to check card does: kind and number, then the title (#134).
   await expect(pane.locator("h1")).toHaveText("Bug #d4 · Rail dot blinks for a reply you didn't send");
-  await expect(page.locator('.dk-right [data-desk-mark]')).toHaveText("Bug");   // a chat for an item: its kind
+  // No kind pill over an item's page: its header names the kind already (#144).
+  await expect(page.locator('.dk-right [data-desk-mark]')).toHaveCount(0);
+  await expect(page.locator(".dk-right .dk-markrow")).toHaveCount(0);
   await expect(pane.locator(".dk-state")).toContainText("#d4 · next for web-lead · added by you 20m ago");
   await expect(pane.locator(".dk-chain")).toContainText("Search stays centred in the header");
   await expect(pane.locator(".dk-chain")).toContainText("This one");
@@ -86,6 +88,9 @@ test("an item opens on the right with its row lit in place; ‹ web-lead goes ba
   const ph = page.locator(".dk-right .dk-box textarea"), pre = page.locator(".dk-right .dk-box .dk-pre");
   await expect(pre).toHaveText("To web-lead · Bug #d4");
   await expect(ph).toHaveAttribute("placeholder", "Rail dot blinks…");
+  // In the theme color (#143), not the box's text color.
+  expect(await pre.evaluate((e) => getComputedStyle(e).color)).toBe(await page.evaluate(() => { const x = document.createElement("i"); x.style.color = "var(--accent)"; document.body.append(x); const c = getComputedStyle(x).color; x.remove(); return c; }));
+  expect(await pre.evaluate((e) => getComputedStyle(e).color)).not.toBe(await ph.evaluate((e) => getComputedStyle(e).color));
   await ph.fill("still blinks");
   await expect(pre).toHaveText("To web-lead · Bug #d4");
   expect((await pre.boundingBox()).y).toBeLessThan((await ph.boundingBox()).y + 10);   // on the text's line, at its start

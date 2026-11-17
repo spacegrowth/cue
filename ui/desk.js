@@ -530,9 +530,9 @@ function deskSessKind(s) {
   if (deskCrew(s.session_id).length) return "lead";
   return deskSessItem(deskOf(s.project), s.session_id)?.kind || "session";
 }
-/** The mark over what's open in the chat card: an item's kind, a holder's, a crew member's. */
+/** The mark over what's open in the chat card: a holder's kind, a crew member's. None over an item's page: its header
+ *  already names its kind with its number, as "Feature #138" (#144). */
 function deskPaneMark(o, d) {
-  if (o?.kind === "item") return deskMark(deskItem(d.project, o.id)?.kind);
   if (o?.kind === "crew") return deskMark("crew");
   if (o?.kind === "holder") { const s = sessionOf(o.sid); return deskMark(s ? deskSessKind(s) : "lead"); }
   return "";
