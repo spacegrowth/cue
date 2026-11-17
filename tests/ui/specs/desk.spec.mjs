@@ -2326,6 +2326,37 @@ test("the lead's box has the chat box's quick phrases and Claude's suggested rep
   await expect(page.locator(".dk-box .sug-line")).toBeHidden();
 });
 
+test("a reply that asks for set words (Reply \"…\") offers them as the suggested reply: the lead's chat, an item's page; else Claude's own (#186)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await cue.change((st) => {
+    const s = st.sessions.find((x) => x.session_id === "lead");
+    s.state = "waiting"; s.suggestion = "take the next item";
+    s.thread = [...(s.thread || []), { role: "agent", text: 'It\'s built and its tests pass.\n\nReply "commit and install" and I\'ll finish it.', at_ms: Date.now(), images: [] }];
+  });
+  await openDesk(page);
+  const ta = page.locator(".dk-right .dk-box textarea"), ghost = page.locator(".dk-right .dk-box .sug-line");
+  await expect(ghost).toHaveText("Suggestedcommit and installTab");
+  await ta.focus();
+  await page.keyboard.press("Tab");
+  await expect(ta).toHaveValue("commit and install");
+  await ta.fill("");
+  // Its latest message without such a line: Claude's own, as before.
+  await cue.change((st) => { const s = st.sessions.find((x) => x.session_id === "lead"); s.thread = [...s.thread, { role: "agent", text: "Done.", at_ms: Date.now() + 1, images: [] }]; });
+  await expect(ghost).toHaveText("Suggestedtake the next itemTab");
+  // An item whose newest message asks (ready to check: it goes back to its holder) (curly quotes too): its words, Tab types them in, Enter sends.
+  await cue.change((st) => { const it = st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d2"); it.latest = ""; it.said = [{ at: Date.now() - 5000, by: "cue-new-idea", text: "#153 isn't done. What's left is putting it into main.\n\nReply “merge” and I'll finish it." }]; });
+  await page.locator('[data-desk-item="d2"]').click();
+  await expect(page.locator(".dk-right .dk-ipane")).toBeVisible();
+  await expect(ghost).toHaveText("SuggestedmergeTab");
+  await ta.focus();
+  await page.keyboard.press("Tab");
+  await expect(ta).toHaveValue("merge");
+  await page.keyboard.press("Enter");
+  await cue.called("desk_item_act", { id: "d2", act: "send_back", text: "merge" });
+  // Answered: no suggestion till it asks again.
+  await expect(ghost).toBeHidden();
+});
+
 test("what you write on an item's page shows in its Steps, with whom it went to (#136)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);

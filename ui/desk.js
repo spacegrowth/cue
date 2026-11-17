@@ -845,7 +845,7 @@ function deskThread(i, d) {
     }
     else if (DESK_HANDOFF.test(c.text)) rows.push({ at: deskMs(c.at), by: c.by, tag: "Hand-off", html: `<div class="dk-md">${esc(c.text)}${c.why ? `: ${esc(c.why)}` : ""}</div>` });
   }
-  for (const r of i.said || []) rows.push({ at: r.at, by: r.by, tag: r.done ? "Done" : "Reply", on: r.done, html: `<div class="dk-md">${md(r.text)}</div>` });
+  for (const r of i.said || []) rows.push({ at: r.at, by: r.by, tag: r.done ? "Done" : "Reply", on: r.done, text: r.text, html: `<div class="dk-md">${md(r.text)}</div>` });
   // Sent from here, not back as a step yet.
   const steps = new Set(mine.filter((c) => c.by === "You").map((c) => c.text.trim()));
   for (const p of deskPending.get(i.id) || []) if (!steps.has(p.text.trim())) rows.push({ at: p.at, by: "You", you: true, back: p.why === "back", tag: p.why === "back" ? "Sent back" : "", html: deskBackWords(p.text, p.pics) });
@@ -858,7 +858,7 @@ function deskThread(i, d) {
   if (!live && lat && !(i.said || []).some((r) => r.text.includes(lat1))) {
     const fin = i.state === "to_check" || i.state === "done";
     const theirs = rows.filter((r) => !r.you).reduce((m, r) => Math.max(m, r.at), 0);
-    rows.push({ at: Math.max(deskMs(i.updated), theirs), by: i.holder?.name || i.by || "It", tag: fin ? "Done" : "Reply", on: fin, html: `<div class="dk-md">${md(lat)}</div>` });
+    rows.push({ at: Math.max(deskMs(i.updated), theirs), by: i.holder?.name || i.by || "It", tag: fin ? "Done" : "Reply", on: fin, text: lat, html: `<div class="dk-md">${md(lat)}</div>` });
   }
   rows.sort((a, b) => a.at - b.at);
   // Its holder at work: last, under what you wrote, as the answer to it comes (#165).
@@ -880,6 +880,14 @@ function deskBackPics(i, d, log) {
   return out;
 }
 const deskBackWords = (text, pics = 0) => `<div class="dk-md">${md(text)}</div>${pics ? `<div class="dk-tpn">${pics === 1 ? "1 picture" : `${pics} pictures`}</div>` : ""}`;
+/** An item page's suggested reply (`key` "<project>|<id>"): the words its newest message asks you to reply with
+ *  (Reply "merge"), while nothing's at work on it and you haven't written since (#186). */
+function deskItemSuggestion(key) {
+  const [project, id] = [key.slice(0, key.lastIndexOf("|")), key.slice(key.lastIndexOf("|") + 1)];
+  const d = deskOf(project), i = d && deskItem(project, id);
+  const last = i && deskThread(i, d).at(-1);
+  return last && !last.you && !last.live ? replyAsked(last.text) : "";
+}
 /** A Thread as a time line: each message's age, a dot (yours and the live one in the accent colour, a send-back's
  *  red), who and what kind, then the words. */
 const deskThreadHtml = (rows) => `<div class="dk-thread">${rows.map((r) => `<div class="dk-tm${r.live ? " live" : ""}"><span class="dk-age">${r.live ? "now" : esc(ago(r.at))}</span><span class="dk-tdot${r.back ? " back" : r.you || r.live ? " on" : ""}"><i></i></span><div class="dk-tb"><div class="dk-tw"><b>${esc(r.by)}</b>${r.tag ? `<span class="dk-ttag${r.back ? " back" : r.on ? " on" : ""}">${esc(r.tag)}</span>` : ""}</div>${r.html}</div></div>`).join("")}</div>`;
@@ -998,7 +1006,7 @@ function deskBox(d) {
   // quick phrases over the text, and Claude's suggested reply in the empty box (Tab types it in) from the session it
   // talks to: the lead, or the open holder (not about an item, or a crew member: those words are Cue's, not its).
   const mic = dictating?.key === key;
-  const sugSid = to.mate || to.item ? "" : to.sid || deskLead(d)?.sid || "";
+  const sugSid = to.item ? `item:${d.project}|${to.item}` : to.mate ? "" : to.sid || deskLead(d)?.sid || "";
   const sug = suggestionFor(sugSid);
   // An item's page has no quick phrases: its box starts with who gets it, on its colored left end (#143).
   return `<div class="dk-box" data-drop="${esc(key)}">${o?.kind === "item" ? "" : quickRow(`data-quick="${esc(key)}"`)}${draftChips(key)}<div class="dk-box-row">${deskPreHtml(pre)}<div class="ta-wrap"><textarea rows="1" data-text="${esc(key)}"${sug ? ` class="sug" data-sug-sid="${esc(sugSid)}" aria-label="${esc(`Suggested: ${sug}. Tab types it in.`)}"` : ""} placeholder="${esc(sug ? " " : ph)}" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off">${esc(draft(key).text)}</textarea>${sugLineHtml(sug)}</div><button class="icon-btn mic ${mic ? "on" : ""}" data-mic="${esc(key)}" aria-label="${mic ? "Stop dictating" : "Dictate"}">${MIC_ICON}</button><button class="icon-btn" data-attach="${esc(key)}" aria-label="Add an image">${IMAGE_ICON}</button><button class="btn primary small" data-desk-send="${esc(key)}">Send</button></div></div>`;

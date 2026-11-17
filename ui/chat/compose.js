@@ -400,10 +400,19 @@ function atPick(key, name) {
 }
 /** Quick phrases (Settings → Quick phrases): chips that send their text, after anything typed in the box. */
 const phrases = () => state.settings?.quick?.phrases || [];
-/** What Claude suggests you type next (a hosted session's prompt suggestion), while it waits on you; "" when none. */
+/** The words a message asks you to reply with (Reply "commit and install", Reply “merge”): its last such line's, or "". */
+function replyAsked(text) {
+  const all = [...String(text || "").matchAll(/\breply\s+(?:with\s+)?["“]([^"”\n]{1,120})["”]/gi)];
+  return all.length ? all[all.length - 1][1].trim() : "";
+}
+/** The suggested reply in a session's empty box once its turn has ended: the words its latest message asks you to
+ *  reply with (#186), else Claude's own suggestion. `sid` "item:<project>|<id>": an item page's (desk.js). */
 const suggestionFor = (sid) => {
+  if (sid?.startsWith?.("item:")) return typeof deskItemSuggestion === "function" ? deskItemSuggestion(sid.slice(5)) : "";
   const s = sid && sessionOf(sid);
-  return s?.state === "waiting" ? s.suggestion || "" : "";
+  if (s?.state !== "waiting") return "";
+  const last = [...(s.thread || [])].reverse().find((e) => e.role === "agent" || e.role === "you");
+  return (last?.role === "agent" && replyAsked(last.text)) || s.suggestion || "";
 };
 /** The quick phrases, with (at the right) where the session runs when it's a terminal app's. */
 const quickRow = (attrs, sid = "") => {
