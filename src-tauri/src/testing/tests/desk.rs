@@ -1052,3 +1052,72 @@ fn a_designs_line_sets_the_items_canvas_link_and_a_newer_one_replaces_it() {
     assert_eq!(lines(&format!("DESIGNS: #{id} no link here")), vec![]);
     assert_eq!(lines("DESIGNS: #a1 see http://x.io/c, then"), vec![Line::Designs { id: "a1".into(), url: "http://x.io/c".into() }]);
 }
+
+#[test]
+fn title_and_split_lines_are_read() {
+    let text = "TITLE: #12 | Header jumps on scroll\nSPLIT: #12 | \"Header jumps\" | Footer is cut off\nSPLIT: #12 | only one\nTITLE: 12 | no hash";
+    assert_eq!(
+        lines(text),
+        vec![
+            Line::Title { id: "12".into(), title: "Header jumps on scroll".into() },
+            Line::Split { id: "12".into(), titles: vec!["Header jumps".into(), "Footer is cut off".into()] },
+        ]
+    );
+}
+
+#[test]
+fn the_lead_can_retitle_an_item_and_your_words_stay_on_it() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    let said = "when i scroll down the header kind of jumps around and its annoying";
+    let it = w.hub().desk_add(&project, "", said, "", None).unwrap();
+    w.advance(1000);
+    assert!(sent_to(&w, &l).pop().unwrap().contains("TITLE it"), "the lead is asked to title or split it");
+    ends(&w, &l, &format!("TITLE: #{} | Header jumps on scroll\nROUTE: #{} -> cue-teams | kind: bug | why: it knows the header", it.id, it.id));
+    let d = desk(&w, &project);
+    let got = item(&d, "Header jumps on scroll");
+    assert_eq!(got["words"], said);
+    assert!(sent_to(&w, &h).last().unwrap().contains(&format!("Desk item #{} (bug): Header jumps on scroll", it.id)));
+    // Retitled again: your words stay the first ones.
+    ends(&w, &l, &format!("TITLE: #{} | Header shakes", it.id));
+    assert_eq!(item(&desk(&w, &project), "Header shakes")["words"], said);
+}
+
+#[test]
+fn the_lead_can_split_an_item_with_two_problems_into_two() {
+    let w = World::new();
+    let (_, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    let said = "the header jumps when i scroll, also the footer text is cut off on small windows";
+    let it = w.hub().desk_add(&project, "", said, "both fixed", None).unwrap();
+    w.advance(1000);
+    let before = sent_to(&w, &l).len();
+    ends(&w, &l, &format!("SPLIT: #{} | Header jumps on scroll | Footer cut off on small windows", it.id));
+    let d = desk(&w, &project);
+    let items = d["items"].as_array().unwrap();
+    assert_eq!(items.len(), 2, "{d}");
+    let a = item(&d, "Header jumps on scroll");
+    let b = item(&d, "Footer cut off on small windows");
+    assert_eq!(a["id"], it.id.as_str());
+    assert_eq!((a["words"].as_str(), b["words"].as_str()), (Some(said), Some(said)));
+    assert_eq!((b["split_from"].as_str(), b["from"].as_str(), b["state"].as_str()), (Some(it.id.as_str()), Some("you"), Some("new")));
+    // The lead is told both, with their numbers, to route them.
+    w.advance(1000);
+    let told = sent_to(&w, &l);
+    assert_eq!(told.len(), before + 1, "{told:?}");
+    let last = told.last().unwrap();
+    assert!(last.contains(&format!("#{}: Header jumps on scroll", it.id)) && last.contains(&format!("#{}: Footer cut off on small windows | split from #{}", b["id"].as_str().unwrap(), it.id)), "{last}");
+    assert!(!last.contains("SPLIT it first"), "not asked to split them again: {last}");
+}
+
+#[test]
+fn an_item_already_given_out_isnt_split() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    let it = w.hub().desk_add(&project, "task", "Header and footer", "", Some(&h)).unwrap();
+    ends(&w, &l, &format!("SPLIT: #{} | Header | Footer", it.id));
+    assert_eq!(desk(&w, &project)["items"].as_array().unwrap().len(), 1);
+    assert!(sent_to(&w, &l).last().unwrap().contains(&format!("#{} not split", it.id)));
+}

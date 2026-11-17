@@ -535,12 +535,72 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx
             Line::Ask { question, choices } => fx.asks.push((lsid.to_string(), project.to_string(), question, choices)),
             Line::Context { who, what, why } if what == "keep" => keep(st, project, &by, &who, &why, now, fx),
             Line::Done { ids } => lead_done(st, project, lsid, &ids, fx),
+            Line::Title { id, title } => retitle(st, project, &by, &id, &title, now, fx),
+            Line::Split { id, titles } => split(st, project, &by, &id, &titles, now, fx),
             Line::Context { .. } | Line::Designs { .. } => {}
         }
     }
     for (what, why) in crate::sessions::crew_log::calls_in(text) {
         let item = item_named(st, project, &what).or_else(|| item_named(st, project, &why));
         decide_call(st, project, item, &name, lsid, &what, &why, now, fx);
+    }
+}
+
+/// The lead gave item `id` a short plain title (TITLE:): the words it was added with are kept (`words`), shown on its
+/// page. Not for a done item.
+fn retitle(st: &mut Store, project: &str, by: &By, id: &str, title: &str, now: u64, fx: &mut Effects) {
+    let id = st.desk.canon(id);
+    let Some(it) = st.desk.item_mut(&id).filter(|i| i.project == project && i.state != "done") else { return };
+    if it.title == title.trim() {
+        return;
+    }
+    if it.words.is_empty() {
+        it.words = it.title.clone();
+    }
+    it.title = title.trim().to_string();
+    it.updated = secs(now);
+    fx.items.push(id.clone());
+    decide(st, project, Some(id), by.name, by.sid, &format!("Named it \"{}\"", title.trim()), "", now, fx);
+}
+
+/// The lead split item `id` (SPLIT:): it takes the first title, and each of the rest becomes a new item of the same
+/// kind, with the same words and pictures, from whoever added it; the lead is told their numbers to route them. Only
+/// one not given out yet: work begun on it stays one item (the lead is told why).
+#[allow(clippy::too_many_arguments)]
+fn split(st: &mut Store, project: &str, by: &By, id: &str, titles: &[String], now: u64, fx: &mut Effects) {
+    let id = st.desk.canon(id);
+    let Some(it) = st.desk.item(&id).filter(|i| i.project == project).cloned() else {
+        fx.sends.push((by.sid.to_string(), format!("#{id} not split: this Desk has no item #{id}")));
+        return;
+    };
+    if it.holder.is_some() || it.state != "new" {
+        let who = it.holder.as_ref().map(|h| h.name.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| "a session".into());
+        let why = if it.state == "done" { "it's done already".to_string() } else { format!("{who} has it already; add the other part as an ITEM") };
+        fx.sends.push((by.sid.to_string(), format!("#{id} not split: {why}")));
+        return;
+    }
+    let words = if it.words.is_empty() { it.title.clone() } else { it.words.clone() };
+    let mut ids = vec![];
+    for t in &titles[1..] {
+        let mut n = new_item(st, project, &it.kind, t, "", &it.from, now);
+        n.words = words.clone();
+        n.images = it.images.clone();
+        n.split_from = id.clone();
+        ids.push(n.id.clone());
+        fx.items.push(n.id.clone());
+        fx.news.push((project.to_string(), n.id.clone()));
+        st.desk.items.push(n);
+    }
+    retitle(st, project, by, &id, &titles[0], now, fx);
+    if let Some(o) = st.desk.item_mut(&id) {
+        o.words = words;
+        // Told again with its new title (with the new ones), to route it with them.
+        fx.news.push((project.to_string(), id.clone()));
+    }
+    let list = ids.iter().map(|n| format!("#{n}")).collect::<Vec<_>>().join(", ");
+    decide(st, project, Some(id.clone()), by.name, by.sid, &format!("Split off {list}"), "", now, fx);
+    for n in &ids {
+        decide(st, project, Some(n.clone()), by.name, by.sid, &format!("Split from #{id}"), "", now, fx);
     }
 }
 
@@ -718,7 +778,7 @@ fn desk_line_start(line: &str) -> bool {
     let l = line.trim().trim_start_matches(['-', '*', '+', '`', ' ']);
     let Some((word, _)) = l.split_once(':') else { return false };
     let word = word.trim_end_matches(['*', '`']).trim();
-    matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "CONTEXT" | "DESIGNS") || word.eq_ignore_ascii_case("DECIDED")
+    matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "CONTEXT" | "DESIGNS" | "TITLE" | "SPLIT") || word.eq_ignore_ascii_case("DECIDED")
 }
 
 /// What you did to item `id` ("looks_right" | "send_back" | "start_now" | "put_before" | "drop"), in the store.

@@ -40,6 +40,13 @@ pub struct DeskItem {
     /// "bug" | "feature" | "task"
     pub kind: String,
     pub title: String,
+    /// The words it was added with, once the lead gave it a shorter title (TITLE:) or split it (SPLIT:): shown on its
+    /// page as "Your words". Empty while the title is still those words.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub words: String,
+    /// The item it was split from (SPLIT:), when it was.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub split_from: String,
     #[serde(default)]
     pub done_when: String,
     /// Why it's its own item, when a session on another item added it (`ITEM: … | why: …`).

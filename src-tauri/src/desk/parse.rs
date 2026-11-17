@@ -17,6 +17,11 @@ pub enum Line {
     Done { ids: Vec<String> },
     /// Item `id`'s designs are at `url` (its canvas), as any session of its project says; a newer one replaces it.
     Designs { id: String, url: String },
+    /// Item `id` retitled by the lead: a short plain `title` for the words it was added with.
+    Title { id: String, title: String },
+    /// Item `id` holds more than one problem: it takes the first of `titles`, and each of the rest becomes an item of
+    /// its own.
+    Split { id: String, titles: Vec<String> },
     /// What to do with session `who`'s context ("me": the lead's own): `what` is "keep" (others to come), lower case.
     Context { who: String, what: String, why: String },
 }
@@ -48,6 +53,8 @@ pub fn lines(text: &str) -> Vec<Line> {
                 "DONE" => done(body),
                 "CONTEXT" => context(body),
                 "DESIGNS" => designs(body),
+                "TITLE" => title(body),
+                "SPLIT" => split(body),
                 _ => None,
             }
         })
@@ -118,6 +125,31 @@ fn ask(body: &str) -> Option<Line> {
 fn done(body: &str) -> Option<Line> {
     let ids: Vec<String> = body.split([',', ' ']).filter(|w| w.trim().starts_with('#')).filter_map(id_of).collect();
     (!ids.is_empty()).then_some(Line::Done { ids })
+}
+
+/// "#111 | <title>": the item and its new title.
+fn title(body: &str) -> Option<Line> {
+    let (id, titles) = id_and_titles(body)?;
+    let title = titles.into_iter().next()?;
+    Some(Line::Title { id, title })
+}
+
+/// "#111 | <title> | <title> …": the item and the two or more titles it's split into.
+fn split(body: &str) -> Option<Line> {
+    let (id, titles) = id_and_titles(body)?;
+    (titles.len() >= 2).then_some(Line::Split { id, titles })
+}
+
+/// "#id | a | b": the id (it must start with #) and the non-empty parts after it, quotes and bold taken off.
+fn id_and_titles(body: &str) -> Option<(String, Vec<String>)> {
+    let p = parts(body);
+    let head = p.first()?;
+    if !head.starts_with('#') {
+        return None;
+    }
+    let id = id_of(head)?;
+    let titles = p[1..].iter().map(|t| t.trim_matches(['"', '`', '*']).trim().to_string()).filter(|t| !t.is_empty()).collect::<Vec<_>>();
+    (!titles.is_empty()).then_some((id, titles))
 }
 
 /// "#107 https://…" (the link may be in <> or (), or a markdown link): the item and its first web link.
