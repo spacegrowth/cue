@@ -255,8 +255,8 @@ function deskLineHtml(line, inline) {
   const name = (s) => s.trim().replace(/^@/, "").replace(/^["`*]+|["`*]+$/g, "").trim();
   const arrow = (s) => { const a = /\s*(->|→|=>)\s*/.exec(s); return a ? [s.slice(0, a.index), s.slice(a.index + a[0].length)] : null; };
   const known = (x) => (state.desk?.projects || []).flatMap((d) => d.items).find((i) => deskIdIs(i, x));
-  // An item as its kind's icon and its number in bold ("#2": the Desk's number, not "Bug #2", to keep the line short).
-  const ref = (x, it = known(x), kind) => `<b class="dk-say-id">${deskKindIcon(it || kind)}#${esc(it?.id ?? x)}</b>`;
+  // An item as its number in bold ("#2": no kind's icon, not "Bug #2", to keep the line short).
+  const ref = (x, it = known(x)) => `<b class="dk-say-id">#${esc(it?.id ?? x)}</b>`;
   // Its title under the line, a click opening it.
   const titled = (it, t = it?.title) => (!t ? "" : it ? `<button class="dk-sl-it" data-desk-chk-item="${esc(it.id)}">${esc(t)}</button>` : `<span class="dk-sl-tt">${esc(t)}</span>`);
   // The line, and what opens under it (none: a plain line).
@@ -268,24 +268,24 @@ function deskLineHtml(line, inline) {
   const w = (t) => `<span class="dk-say-w">${t}</span>`;
   const dot = (xs) => xs.filter(Boolean).join(" · ");
   if (m[1] === "ITEM") {
-    const first = p[0].toLowerCase(), kind = DESK_KINDS.includes(first) ? first : "task";
+    const first = p[0].toLowerCase();
     const rest = DESK_KINDS.includes(first) ? p.slice(1) : p;
     const title = rest.find((s) => lab(s, "done when") === null) || "";
     if (!title) return "";
     deskSaidItem = title;
     const done = rest.map((s) => lab(s, "done when")).find((v) => v !== null) || "";
     const it = deskNewlySaid(title);
-    return ln(`${w("added")} ${it ? ref(it.id, it) : `${deskKindIcon(kind)}<b class="dk-say-t">${inline(title)}</b>`}`, dot([it ? titled(it) : "", done ? `done when ${inline(done)}` : ""]));
+    return ln(`${w("added")} ${it ? ref(it.id, it) : `<b class="dk-say-t">${inline(title)}</b>`}`, dot([it ? titled(it) : "", done ? `done when ${inline(done)}` : ""]));
   }
   if (m[1] === "ROUTE") {
     const ht = arrow(p[0]), at = ht && id(ht[0]), to = ht && name(ht[1]);
     if (!at || !to) return "";
-    const after = id(find("after")), why = find("why"), crew = name(find("crew")), kind = find("kind").replace(/["`*.]/g, "").toLowerCase();
+    const after = id(find("after")), why = find("why"), crew = name(find("crew"));
     // "#new" is the ITEM just above it, once the Desk has it; "→ new" (or "me") the session Cue started for it, once there is one.
     const it = at === "new" ? deskNewlySaid(deskSaidItem) : known(at);
     const fresh = /^(new|me)$/i.test(to) && it?.holder;
     const who = fresh ? deskHolderName(it.holder.sid, it.holder.name) : /^new$/i.test(to) ? "a new session" : to;
-    const what = at === "new" && !it ? `<b class="dk-say-id">${deskKindIcon(kind)}the new item</b>` : ref(at, it, kind);
+    const what = at === "new" && !it ? `<b class="dk-say-id">the new item</b>` : ref(at, it);
     const also = dot([crew ? esc(crew) : "", after ? `${w("after")} ${ref(after)}` : ""]);
     const head = `${what} → <b class="dk-rt-to">${esc(who)}</b>${also ? ` · ${also}` : ""}`;
     return ln(head, dot([titled(it, it?.title || (at === "new" ? deskSaidItem : "")), why ? inline(why) : ""]));
