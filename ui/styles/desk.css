@@ -187,8 +187,11 @@
 /* Its row: the words, the mic, a picture, Send; pictures added sit above it (draftChips). */
 .dk-box-row { display: flex; align-items: flex-end; gap: 6px; }
 .dk-box .chips { margin: 0; }
-.dk-ask { flex: none; max-height: 55%; overflow-y: auto; }
-.dk-ask .act-card { max-height: none; overflow: visible; }
+.dk-ask { flex: none; max-height: 55%; overflow-y: auto; padding: 0 20px 14px; }
+/* The lead's ASK: a bordered panel card in the chat's column, as a hand-off or check card (.dk-chk), not a tinted
+   band; its choices on the panel too, the accent only on the one you point at or picked. */
+.dk-ask .act-card { max-height: none; overflow: visible; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.dk-ask .act-card .opt { background: var(--panel); }
 .dk-box textarea { flex: 1; min-height: 28px; max-height: 160px; padding: 5px 0; border: 0; outline: none; resize: none; background: none; color: var(--ink); font: 13.5px/1.4 var(--sans); field-sizing: content; }
 
 /* A pane: an item, a holder, a crew member. */
@@ -236,6 +239,12 @@
 .dk-ln > i, .dk-mb > i { width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: var(--work); }
 .dk-ln > i.wait, .dk-mb > i.idle { background: none; border: 1.5px solid var(--muted); width: 5px; height: 5px; }
 .dk-ln > i.ask, .dk-mb > i.ask { background: var(--deny); }
+.dk-ln > i.ok { background: var(--accent); }
+/* What you answered on an item's page: the ✓ small, as in a chat's answered ask. */
+.dk-picked { display: flex; align-items: center; gap: 6px; }
+.dk-picked .sent-check { width: 16px; height: 16px; font-size: 10px; }
+/* An ask answered on the item's page: its card, as under a chat, inside the chain's frame. */
+.dk-chain-ask .act-card { max-height: none; overflow: visible; border: 0; border-radius: 0; margin: 0; }
 .dk-lt { font-weight: 600; }
 .dk-ls { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
 
