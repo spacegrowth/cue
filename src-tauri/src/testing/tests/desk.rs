@@ -245,6 +245,58 @@ fn start_now_on_an_item_nobody_holds_starts_a_session_for_it() {
     assert_eq!((it["state"].as_str(), it["holder"]["name"].as_str()), (Some("working"), Some(format!("{project}-{}", it["id"].as_str().unwrap()).as_str())), "{it}");
 }
 
+/// A ROUTE to new whose session can't start: the lead is told why at once (not with your next message), the item
+/// says it couldn't start (not stuck in its queue), and Start now tries again; once it starts, that's gone.
+#[test]
+fn a_new_session_that_cant_start_tells_the_lead_at_once_and_can_be_tried_again() {
+    let w = World::new();
+    let (_, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    let before = sent_to(&w, &l).len();
+    w.hosted.refuse("the folder is gone");
+    ends(&w, &l, "ITEM: Typo in the footer\nROUTE: #new -> new | why: nobody's near it");
+    w.settle();
+    let it = item(&desk(&w, &project), "Typo in the footer").clone();
+    let id = it["id"].as_str().unwrap().to_string();
+    assert_eq!(it["state"], "new", "{it}");
+    assert!(it["holder"].is_null() && it["route_failed"].is_null(), "{it}");
+    assert!(it["start_failed"].as_str().is_some_and(|e| e.contains("the folder is gone")), "{it}");
+    let told = sent_to(&w, &l)[before..].to_vec();
+    assert!(told.iter().any(|t| t.contains(&format!("Cue couldn't start a new session for #{id}")) && t.contains("the folder is gone")), "{told:?}");
+    assert!(summary(&w, &project).contains("couldn't start a new session: "));
+    // Tried again (its page's Retry): it starts, and "couldn't start" goes.
+    w.hosted.accept();
+    w.hub().desk_item_act(&id, "start_now", "").unwrap();
+    w.settle();
+    let it = item(&desk(&w, &project), "Typo in the footer").clone();
+    assert_eq!((it["state"].as_str(), it["holder"]["name"].as_str()), (Some("working"), Some(format!("{project}-{id}").as_str())), "{it}");
+    assert!(it["start_failed"].is_null(), "{it}");
+}
+
+/// A Desk in a folder you put in a project (another repository, whose own name isn't the project's): a ROUTE to new
+/// starts a session in that folder and it's given the item, not refused as "isn't a session of" the project.
+#[test]
+fn a_route_to_new_from_a_folder_put_in_the_project_gets_the_item() {
+    let w = World::new();
+    let project = crate::model::project_at(&w.home().to_string_lossy(), "");
+    let other = w.home().join("elsewhere");
+    std::fs::create_dir_all(&other).unwrap();
+    let other = std::fs::canonicalize(&other).unwrap().to_string_lossy().to_string();
+    crate::config::set("project.folders", json!({ other.clone(): project.clone() })).unwrap();
+    assert_eq!(crate::model::project_at(&other, ""), project);
+    assert_ne!(crate::model::own_project(&other, ""), project);
+    let r = crate::ipc::desk_start_named(w.hub(), &other, true, Some("Put")).unwrap();
+    let (space, l) = (r["id"].as_str().unwrap().to_string(), r["sid"].as_str().unwrap().to_string());
+    w.hosted_says(&l, HostedEvent::Taken { text: "hello".into() });
+    ends(&w, &l, "ITEM: Typo in the footer\nROUTE: #new -> new | why: nobody's near it");
+    w.settle();
+    let it = item(&desk(&w, &space), "Typo in the footer").clone();
+    assert_eq!(it["state"], "working", "{it}");
+    assert!(it["start_failed"].is_null() && it["route_failed"].is_null(), "{it}");
+    let sid = it["holder"]["sid"].as_str().unwrap();
+    assert!(sent_to(&w, sid).iter().any(|t| t.contains(&format!("#{}", it["id"].as_str().unwrap()))));
+}
+
 /// A working item whose holder was cut off (a crash) before DONE: routed again to the same holder, or Restart
 /// (start_now), it's sent again. While the holder is mid-turn, neither sends it twice.
 #[test]

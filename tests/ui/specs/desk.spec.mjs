@@ -2637,3 +2637,23 @@ test("It asks you is one plain box: no dot, and its holder's calls made on its o
   await expect(chain.locator(".dk-ln > i")).toHaveCount(0);
   await expect(chain).not.toContainText("Decided");
 });
+
+test("an item whose new session couldn't start says so, with why and Retry, not stuck in its queue (#172)", async ({ page, cue }) => {
+  await cue.open("desk", { frozen: true });
+  await openDesk(page);
+  await page.evaluate(() => {
+    state.desk.projects.find((x) => x.project === "cue").items.push({ id: "f1", project: "cue", kind: "bug", title: "The footer overlaps", state: "new", created: Date.now(), updated: Date.now(), holder: null, from: "you", start_failed: "the folder is gone" });
+    renderMain();
+  });
+  await expect(page.locator('[data-desk-item="f1"] .dk-tag')).toHaveText("couldn't start");
+  await page.locator('[data-desk-item="f1"]').click();
+  const pane = page.locator(".dk-right .dk-pane");
+  await expect(pane).toContainText("Couldn't start");
+  await expect(pane).toContainText("Cue couldn't start a new session for it: the folder is gone");
+  await expect(pane.locator('[data-desk-act="start_now"]')).toHaveText("Retry");
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-start-failed.png` });
+  await pane.locator('[data-desk-act="start_now"]').click();
+  await cue.called("desk_item_act", { id: "f1", act: "start_now" });
+  // Held by a session once it starts: the words go.
+  expect(await page.evaluate(() => deskTag({ state: "working", holder: { sid: "x" }, start_failed: "old" }))).toEqual(["", ""]);
+});

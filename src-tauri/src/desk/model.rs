@@ -110,6 +110,10 @@ pub struct DeskItem {
     /// A route the lead asked for that Cue couldn't make (no session by that name), until the lead is told.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub route_failed: String,
+    /// Why Cue couldn't start a new session for it (a ROUTE to new, or your Start now): it shows "couldn't start"
+    /// with a retry until a session takes it or you start it again. The lead is told at once (hub/desk_lead.rs).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub start_failed: String,
     /// An `after` the lead asked for that Cue refused, and why (e.g. "#b, which waits on it"), so the item started
     /// now; until the lead is told.
     #[serde(default, skip_serializing_if = "String::is_empty")]
