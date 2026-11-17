@@ -41,9 +41,9 @@ function readRemember(path, sid) {
   try { localStorage.setItem("cue.readRecent", JSON.stringify(readRecent)); } catch {}
 }
 /** A file in Read: found from `cwd` when it's a session's (ipc/docs.rs read_doc: as written, from the folders up to
- *  its repo's top, or by name), remembered in Recent, its start in view. */
+ *  its repo's top, or by name; else in session `sid`'s scratch folder, or another's of that folder), remembered in Recent, its start in view. */
 function readOpen(path, sid = null, cwd = null, from = "") {
-  return invoke("read_doc", { path, cwd }).then((f) => {
+  return invoke("read_doc", { path, cwd, sid }).then((f) => {
     if (readDoc?.path !== f.path) readPicked = null, readAt = 0;
     readDoc = { ...f, sid, from };
     readRemember(f.path, sid);

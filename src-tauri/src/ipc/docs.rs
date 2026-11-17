@@ -1,7 +1,8 @@
 // A markdown file a reply names, read for Cue's reader (ui/chat/reader.js). Replies name files every which way:
 // relative to the session's folder, to the repo's top, or by name alone. This finds the one meant: the path as
 // given, then the same relative path from each folder above the session's up to its repo's top, then a search
-// of the repo for a file ending in that path (or with that name). Local sessions only: the UI never asks for a
+// of the repo for a file ending in that path (or with that name), then the agent's own scratch folders (a file it
+// wrote outside the repo: a plan, a hand-off, a copy of a page it published). Local sessions only: the UI never asks for a
 // session on another machine (its paths aren't on this Mac, and looking them up here can stall).
 use super::blocking;
 use std::path::{Path, PathBuf};
@@ -17,9 +18,10 @@ const MAX_ENTRIES: usize = 40_000;
 const SKIP_DIRS: &[&str] = &["node_modules", "target", "dist", "build", "vendor", "Pods", "DerivedData"];
 
 #[tauri::command]
-pub(crate) async fn read_doc(path: String, cwd: Option<String>) -> Result<serde_json::Value, String> {
+pub(crate) async fn read_doc(path: String, cwd: Option<String>, sid: Option<String>) -> Result<serde_json::Value, String> {
     blocking(move || {
-        let found = resolve_doc(&path, cwd.as_deref()).ok_or_else(|| format!("Couldn't find {}", shown(&path, cwd.as_deref())))?;
+        let found = resolve_doc(&path, cwd.as_deref())
+            .or_else(|| cwd.as_deref().and_then(|c| in_scratch(&path, c, sid.as_deref(), &scratch_root()))).ok_or_else(|| format!("Couldn't find {}", shown(&path, cwd.as_deref())))?;
         let meta = std::fs::metadata(&found).map_err(|e| e.to_string())?;
         if meta.len() > MAX_BYTES {
             return Err("It's too big to read here".into());
@@ -71,6 +73,32 @@ pub(crate) fn resolve_doc(path: &str, cwd: Option<&str>) -> Option<PathBuf> {
         }
     }
     search(&top, &rel)
+}
+
+/// Where Claude Code keeps its sessions' scratch folders on this Mac: `<tmp>/claude-<uid>`, one folder per project
+/// folder in it (its path with every other character a `-`), one per session in that, each with its `scratchpad`.
+fn scratch_root() -> PathBuf {
+    let tmp = std::env::var("CLAUDE_CODE_TMPDIR").ok().filter(|t| !t.is_empty()).unwrap_or_else(|| "/tmp".into());
+    // SAFETY: getuid has no preconditions and can't fail.
+    PathBuf::from(tmp).join(format!("claude-{}", unsafe { libc::getuid() }))
+}
+
+/// The file `path` names when it isn't in the repo: in a scratch folder of a session started in `cwd` under `root`
+/// (scratch_root), session `sid`'s own first, then any other's there. By name or a tail of its path, as the
+/// repo's search finds one.
+fn in_scratch(path: &str, cwd: &str, sid: Option<&str>, root: &Path) -> Option<PathBuf> {
+    if !is_doc(path) {
+        return None;
+    }
+    let cwd = cwd.trim_end_matches('/');
+    let p = Path::new(path);
+    let rel = p.strip_prefix(cwd).map(Path::to_path_buf).unwrap_or_else(|_| p.to_path_buf());
+    let rel = PathBuf::from(rel.to_string_lossy().trim_start_matches(['.', '/']));
+    let slug: String = cwd.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+    let project = root.join(slug);
+    let own = sid.filter(|s| !s.is_empty() && !s.contains('/')).map(|s| project.join(s));
+    let found = own.into_iter().chain([project]).filter(|d| d.is_dir()).find_map(|d| search(&d, &rel));
+    found
 }
 
 /// The markdown files made most recently in the repos of `folders` (each session's folder on this Mac; its repo's
@@ -222,6 +250,32 @@ mod tests {
         assert_eq!(resolve_doc("nope.md", Some(c)), None);
         assert_eq!(resolve_doc("x/README.md", Some(c)), None);
         std::fs::remove_dir_all(&top).ok();
+    }
+
+    #[test]
+    fn finds_a_doc_in_the_agents_scratch_folder() {
+        let top = tree();
+        let root = top.with_extension("scratch"); // beside the repo, not in it
+        let cwd = top.join("app/src");
+        let c = cwd.to_str().unwrap();
+        let slug: String = c.chars().map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' }).collect();
+        let mine = root.join(&slug).join("s1/scratchpad/files/project");
+        let theirs = root.join(&slug).join("s2/scratchpad");
+        std::fs::create_dir_all(&mine).unwrap();
+        std::fs::create_dir_all(&theirs).unwrap();
+        std::fs::write(mine.join("Plan-9.md"), "# Plan").unwrap();
+        std::fs::write(theirs.join("Notes.md"), "# Notes").unwrap();
+        // Not in the repo: by name, as the UI sends it (joined to the session's folder), in its own scratch folder.
+        assert_eq!(resolve_doc(&format!("{c}/Plan-9.md"), Some(c)), None);
+        assert_eq!(in_scratch(&format!("{c}/Plan-9.md"), c, Some("s1"), &root), Some(mine.join("Plan-9.md")));
+        // Another session's of the same folder, and with no session known.
+        assert_eq!(in_scratch("Notes.md", c, Some("s1"), &root), Some(theirs.join("Notes.md")));
+        assert_eq!(in_scratch("Plan-9.md", c, None, &root), Some(mine.join("Plan-9.md")));
+        // Another folder's sessions are never looked in; nor anything but a doc.
+        assert_eq!(in_scratch("Plan-9.md", top.to_str().unwrap(), Some("s1"), &root), None);
+        assert_eq!(in_scratch("main.rs", c, Some("s1"), &root), None);
+        std::fs::remove_dir_all(&top).ok();
+        std::fs::remove_dir_all(&root).ok();
     }
 
     #[test]
