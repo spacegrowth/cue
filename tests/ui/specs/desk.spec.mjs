@@ -1875,7 +1875,8 @@ test("Open on an item's page, or its holder's, opens that session's chat here on
   await expect(page.locator(".dk-sch .dk-back")).toHaveText(`‹ ${hname}`);
   await page.locator(".dk-sch .dk-back").click();
   await expect(page.locator(".dk-right .dk-pane h1")).toHaveText(hname);
-  // From the sessions on the left: back to the lead's chat.
+  // From the sessions on the left, with the lead's chat open: back to the lead's chat.
+  await page.evaluate(() => deskShow(null));
   await page.evaluate((s) => document.querySelector(`[data-desk-chat-of="${s}"]`).click(), sid);
   await expect(page.locator(".dk-sch .dk-back")).toHaveText("‹ web-lead");
   await page.locator(".dk-sch .dk-back").click();
