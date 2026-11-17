@@ -1438,6 +1438,9 @@ test("the head is one strip in the accent, flush across the card's top: ‹ Desk
   expect(edge).toBe("none");
   expect(radius).toBe("14px");
   expect(bottom).toBe("0px");
+  // Pick O: the column lifts off the window with a light hairline and a shadow; a 3px lime line closes the strip.
+  expect((await cssOf(left, "box-shadow"))[0]).toMatch(/0px 0px 0px 1px.*0px 10px 28px/);
+  expect(await cssOf(strip, "border-bottom-width", "border-bottom-color")).toEqual(["3px", "rgb(210, 222, 150)"]);
   expect(await page.locator(".dk-board [title]").count()).toBe(0);
 });
 
