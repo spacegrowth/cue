@@ -19,7 +19,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | Lock acquisitions | 246 |
 | Lock-graph edges | 50 |
 | Spawn sites | 87 |
-| External calls: fs / db / process / notify / login / socket | 349 / 183 / 45 / 4 / 1 / 4 |
+| External calls: fs / db / process / notify / login / socket | 352 / 183 / 45 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -457,7 +457,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (349)
+### fs (352)
 
 | In | Call | Times |
 |---|---|---|
@@ -536,6 +536,8 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hub/desk_checks.rs::Hub::desk_check_files` | metadata | 1 |
 | `hub/desk_checks.rs::builds_this_cue` | read_to_string | 1 |
 | `hub/desk_checks.rs::note_installed` | metadata | 1 |
+| `hub/desk_finish.rs::in_progress` | Path::exists | 1 |
+| `hub/desk_finish.rs::same_dir` | canonicalize | 2 |
 | `hub/hosted.rs::Hub::resume_hosted_as` | Path::is_file | 1 |
 | `hub/hosted.rs::written_on_machine` | metadata | 1 |
 | `hub/open.rs::look` | Path::is_dir | 1 |
@@ -1029,6 +1031,7 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `src-tauri/src/logs/steps/tests/agents.rs::a_background_agent_sent_a_message_after_it_finished_is_at_work_again_until_it_reports_again` | test |  |
 | `src-tauri/src/logs/steps/tests/agents.rs::a_background_agent_shows_at_work_under_its_step_until_its_session_hears_it_finished` | test |  |
 | `ui/chat/render.js::chatHtml` |  |  |
+| `ui/desk_lead.js::deskLineHtml` |  |  |
 
 Files over 1000 lines: `src-tauri/src/hub/desk.rs`, `src-tauri/src/testing/tests/desk.rs`, `ui/desk.js`, `ui/inbox.js`.
 

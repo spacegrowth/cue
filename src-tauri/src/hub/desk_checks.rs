@@ -17,7 +17,11 @@ impl Hub {
             self.later(0, move |h| h.desk_start_new(s));
         }
         for id in checked {
-            self.later(0, move |h| h.desk_check_files(&id));
+            // Its files read for its card before its commit (desk_finish.rs) takes them.
+            self.later(0, move |h| {
+                h.desk_check_files(&id);
+                h.desk_finish_commit(&id);
+            });
         }
     }
 
@@ -72,7 +76,7 @@ impl Hub {
 
 /// Whether `folder` (or a folder above it, a few up) holds the source this Cue is built from: its Tauri config names
 /// this app.
-fn builds_this_cue(folder: &str) -> bool {
+pub(super) fn builds_this_cue(folder: &str) -> bool {
     let mut at = std::path::Path::new(folder);
     for _ in 0..4 {
         if at.as_os_str().is_empty() {
@@ -112,7 +116,7 @@ pub(super) fn checks_view(st: &Store, project: &str) -> Vec<Value> {
         .skip(skip)
         .map(|(i, n)| {
             let c = &i.checks[n];
-            json!({ "id": i.id, "kind": i.kind, "title": i.title, "done_when": i.done_when, "state": i.state, "commit": i.commit, "commit_wait": i.commit_wait, "designs": i.designs,
+            json!({ "id": i.id, "kind": i.kind, "title": i.title, "done_when": i.done_when, "state": i.state, "commit": i.commit, "commit_wait": i.commit_wait, "finish": i.finish, "designs": i.designs,
                 "at": c.at, "by": c.by, "files": c.files, "cue": c.cue, "edited": c.edited, "back": c.back, "back_pics": c.back_pics, "last": n + 1 == i.checks.len() })
         })
         .collect()

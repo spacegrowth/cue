@@ -17,6 +17,7 @@ mod desk;
 mod desk_spaces;
 mod desk_checks;
 mod desk_commit;
+mod desk_finish;
 mod desk_diff;
 mod desk_handoff;
 mod desk_lead;
@@ -267,6 +268,7 @@ impl Hub {
         st.parked = crate::db::parked();
         Self::desk_restore(&mut st);
         desk_checks::note_installed();
+        desk_finish::note_running();
         st.rates = crate::usage::saved_rates(now_ms());
         st.review_queue = crate::db::review_queue().into_iter().map(|(exec, lead, text, at_ms)| QueuedReview { exec, lead, text, at_ms }).collect();
         // Ids keep counting from the clock so they never collide with ids in saved history.

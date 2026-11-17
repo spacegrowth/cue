@@ -513,6 +513,12 @@ impl Sessions {
         self.take(session_id).is_some()
     }
 
+    /// A session, to change it (a test's).
+    #[cfg(test)]
+    pub fn get_mut(&mut self, session_id: &str) -> Option<&mut Session> {
+        self.0.get_mut(session_id)
+    }
+
     /// Take a session out, keeping its record (what Closed shows for it, its name with it).
     pub fn take(&mut self, session_id: &str) -> Option<Session> {
         self.0.remove(session_id)

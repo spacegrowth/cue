@@ -12,6 +12,8 @@ impl Hub {
     pub(crate) fn desk_item_diff(&self, id: &str) -> Result<Value, String> {
         let it = self.read(|st| st.desk.item(id).cloned()).ok_or("no such item")?;
         let (machine, diff) = match (it.state.as_str(), &it.commit_wait) {
+            // Committed as its holder said DONE (desk_finish.rs): its commit.
+            ("to_check" | "finishing", _) if it.finish.is_some() && !it.commit.is_empty() => self.commit_diff(&it),
             ("to_check", _) => {
                 let (_, machine, sources) = self.desk_commit_sources(id)?;
                 let todo = still_changed(&machine, sources);
