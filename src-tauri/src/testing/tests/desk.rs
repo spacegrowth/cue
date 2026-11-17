@@ -1154,7 +1154,7 @@ fn an_item_whose_holder_stops_without_done_waits_on_you_and_is_asked_once() {
     let it = item(&desk(&w, &project), "Header").clone();
     assert_eq!(it["state"], "needs_you", "{it}");
     assert_eq!(it["latest"], "The sticky part is in place.");
-    assert_eq!(it["ask"]["text"], "The sticky part is in place.");
+    assert!(it["ask"].is_null(), "no ask box for a plain stop: {it}");
     assert_eq!(asked(), 1, "asked once: {:?}", sent_to(&w, &h));
     // Its answer: still no DONE, so it waits on you with what's left, and isn't asked again.
     turn(&words, "The footer still overlaps it.");
@@ -1170,4 +1170,82 @@ fn an_item_whose_holder_stops_without_done_waits_on_you_and_is_asked_once() {
     turn(&words, &format!("All done.\nDONE: #{id}"));
     assert_eq!(item(&desk(&w, &project), "Header")["state"], "to_check");
     assert_eq!(asked(), 2);
+}
+
+/// Not a stall: a holder whose crew is still at work as its turn ends, a crew member holding an item (its lead's
+/// turns aren't its own), and an item the Desk's lead holds (its turns are routing). No ask, and none waits on you;
+/// once the crew is done, the holder's next turn with no DONE is one.
+#[test]
+fn a_holder_with_crew_at_work_a_crew_member_or_the_desk_lead_isnt_asked_if_done() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    ends(&w, &l, "ITEM: Header\nROUTE: #new -> cue-teams | why: it knows");
+    let header = item(&desk(&w, &project), "Header")["id"].as_str().unwrap().to_string();
+    let asks = |sid: &str| sent_to(&w, sid).iter().filter(|t| t.starts_with("Done? Write DONE")).count();
+    let state = |title: &str| item(&desk(&w, &project), title)["state"].as_str().unwrap_or("").to_string();
+    // The holder hands the header to its crew, still at work as its turn ends.
+    w.advance(1000);
+    w.hosted_says(&h, HostedEvent::Taken { text: "Header".into() });
+    let mut started = writes("toolu_F", "agentF", "fixer", &[]);
+    let finished = started.pop().unwrap();
+    says(&w, &h, started);
+    w.advance(1000);
+    ends(&w, &h, "Handed the header to fixer.");
+    assert_eq!((state("Header"), asks(&h)), ("working".to_string(), 0), "its crew is on it");
+    // The Footer goes to that crew member: its lead's turns don't stall it.
+    ends(&w, &l, "ITEM: Footer\nROUTE: #new -> fixer | why: it's in there");
+    w.settle();
+    assert_eq!(item(&desk(&w, &project), "Footer")["holder"]["kind"], "crew");
+    w.advance(1000);
+    w.hosted_says(&h, HostedEvent::Taken { text: "Footer too".into() });
+    w.advance(1000);
+    ends(&w, &h, "Told fixer.");
+    assert_eq!((state("Footer"), asks(&h)), ("working".to_string(), 0));
+    // The crew is done: the holder's next turn with no DONE on the header is a stall, asked once.
+    says(&w, &h, [finished]);
+    w.advance(1000);
+    w.hosted_says(&h, HostedEvent::Taken { text: "fixer finished".into() });
+    w.advance(1000);
+    ends(&w, &h, "fixer finished its part.");
+    assert_eq!(state("Header"), "needs_you");
+    assert_eq!(sent_to(&w, &h).iter().filter(|t| **t == format!("Done? Write DONE: #{header}, or say what's left")).count(), 1);
+    // An item the Desk's lead holds: its routing turns aren't stalls.
+    let added = w.hub().desk_add(&project, "task", "Colours", "", None).unwrap();
+    w.hub().desk_give(&added.id, &l).unwrap();
+    w.settle();
+    w.advance(1000);
+    w.hosted_says(&l, HostedEvent::Taken { text: "route".into() });
+    w.advance(1000);
+    ends(&w, &l, "Nothing to route.");
+    assert_eq!((state("Colours"), asks(&l)), ("working".to_string(), 0));
+}
+
+/// A stalled item sent again (Restart, or a route to the same holder) is at work, not stalled, until that holder's
+/// next turn ends.
+#[test]
+fn a_stalled_item_sent_again_is_at_work_until_its_next_turn_ends() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    ends(&w, &l, "ITEM: Header\nROUTE: #new -> cue-teams | why: it knows");
+    let id = item(&desk(&w, &project), "Header")["id"].as_str().unwrap().to_string();
+    let state = || item(&desk(&w, &project), "Header")["state"].as_str().unwrap_or("").to_string();
+    let stall = || {
+        w.advance(1000);
+        w.hosted_says(&h, HostedEvent::Taken { text: "Header".into() });
+        w.advance(1000);
+        ends(&w, &h, "Part of it.");
+        assert_eq!(state(), "needs_you");
+    };
+    stall();
+    w.advance(1000);
+    let it = w.hub().desk_item_act(&id, "start_now", "").unwrap();
+    w.settle();
+    assert_eq!((it.state.as_str(), state()), ("working", "working".to_string()), "restarted");
+    stall();
+    w.advance(1000);
+    ends(&w, &l, &format!("ROUTE: #{id} -> cue-teams | why: it knows"));
+    w.settle();
+    assert_eq!(state(), "working", "routed to it again");
 }

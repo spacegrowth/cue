@@ -103,7 +103,7 @@ fn resolve(st: &Store, project: &str, to: &str) -> Option<Holder> {
 }
 
 /// Holder `h` at work: its session mid-turn (or asking, or driven by its agents), or for a crew member, that teammate.
-fn at_work(st: &Store, h: &Holder) -> bool {
+pub(super) fn at_work(st: &Store, h: &Holder) -> bool {
     match crew_parts(h) {
         Some((lead, agent)) => st.sessions.get(lead).is_some_and(|s| s.team.iter().any(|t| (t.agent_id == agent || t.call == agent) && t.working())),
         None => st.sessions.get(&h.sid).is_some_and(|s| matches!(s.state.as_str(), "working" | "deciding" | "agent")),
@@ -111,7 +111,7 @@ fn at_work(st: &Store, h: &Holder) -> bool {
 }
 
 /// An open ask (not a "your turn" card) of the holder's: for a crew member, its own.
-fn ask_of<'a>(st: &'a Store, h: &Holder) -> Option<&'a Item> {
+pub(super) fn ask_of<'a>(st: &'a Store, h: &Holder) -> Option<&'a Item> {
     let agent = crew_parts(h).map(|(_, a)| a);
     st.items.iter().find(|i| {
         i.status == "pending" && i.kind != "waiting" && i.origin.session_id == h.to() && agent.is_none_or(|a| i.agent_id == a)
@@ -161,11 +161,16 @@ pub(super) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
             out.files = Vec::new();
         }
     }
-    // Only the item at work: a queued one's holder asks about the item before it.
+    // Only the item at work: a queued one's holder asks about the item before it. Waiting on you while its holder
+    // asks, or while its holder's turn ended on it (with no DONE, or it would be to check): its last line then.
     if it.state == "working" {
         if let Some(a) = ask_of(st, &h) {
             out.state = "needs_you".into();
             out.ask = Some(ask_view(a));
+        } else if let Some(s) = super::desk_stall::stalled(st, it, &h) {
+            // No ask: its reply stays in its chat, the list shows only that it needs you.
+            out.state = "needs_you".into();
+            out.latest = super::desk_stall::last_line(s);
         }
     }
     out.holder = Some(h);
@@ -1014,8 +1019,9 @@ impl Hub {
             let mut fx = Effects::default();
             give(st, id, sid, now, &mut fx).map(|_| fx)
         })?;
-        let it = self.read(|st| st.desk.item(id).map(|i| shown(st, i)));
+        // As shown once its sends are stamped (desk_done).
         self.desk_done(fx);
+        let it = self.read(|st| st.desk.item(id).map(|i| shown(st, i)));
         it.ok_or_else(|| "no such item".into())
     }
 
@@ -1024,8 +1030,9 @@ impl Hub {
     pub(crate) fn desk_item_act(&self, id: &str, act: &str, text: &str) -> Result<DeskItem, String> {
         let now = now_ms();
         let fx = self.write(|st| act_on(st, id, act, text, now))?;
-        let it = self.read(|st| st.desk.item(id).map(|i| shown(st, i)));
+        // As shown once its sends are stamped (desk_done).
         self.desk_done(fx);
+        let it = self.read(|st| st.desk.item(id).map(|i| shown(st, i)));
         Ok(it.unwrap_or_else(|| DeskItem { id: id.to_string(), state: "dropped".into(), ..Default::default() }))
     }
 
@@ -1060,16 +1067,25 @@ impl Hub {
     }
 
     /// Session `sid`'s turn ended, saying `text`: a lead's lines (ITEM, ROUTE, ASK, DECIDED, and DONE for what it
-    /// keeps), any session's ITEM lines, and a holder's (DONE, DECIDED) acted on.
+    /// keeps), any session's ITEM lines, and a holder's (DONE, DECIDED) acted on; an item it ended on with no DONE
+    /// is asked about once (desk_stall.rs).
     pub(super) fn desk_turn_ended(&self, sid: &str, text: &str) {
         self.keep_from_now(sid);
-        // Most turns say none of the Desk's lines: then the store isn't taken at all.
-        if !text.lines().any(desk_line_start) {
+        // Most turns say none of the Desk's lines and end on no item at work: then the store is only read.
+        let said = text.lines().any(desk_line_start);
+        let on_none = self.read(|st| super::desk_stall::at_work_with(st, sid).is_empty());
+        if !said && on_none {
             return;
         }
         let now = now_ms();
         let fx = self.write(|st| {
             let mut fx = Effects::default();
+            // What it was at work on as its turn ended: what this turn's DONE lines don't close stalled there.
+            let on = super::desk_stall::at_work_with(st, sid);
+            if !said {
+                super::desk_stall::stalls_asked(st, sid, text, &on, &mut fx);
+                return fx;
+            }
             designs_said(st, sid, text, &mut fx);
             let lead = st.desk.lead_of(sid);
             match &lead {
@@ -1079,6 +1095,7 @@ impl Hub {
             if st.desk.items.iter().any(|i| i.holder.as_ref().is_some_and(|h| h.is(sid))) {
                 holder_said(st, sid, text, lead.is_none(), now, &mut fx);
             }
+            super::desk_stall::stalls_asked(st, sid, text, &on, &mut fx);
             fx
         });
         self.desk_done(fx);
@@ -1186,11 +1203,17 @@ impl Hub {
             let (items, decisions) = self.write(|st| {
                 // An item at work with a holder it wasn't stamped for: its work (and files) start now.
                 for id in &fx.items {
-                    if let Some(it) = st.desk.item_mut(id).filter(|i| i.state == "working") {
-                        let sid = it.holder.as_ref().map(|h| h.sid.clone()).unwrap_or_default();
-                        if !sid.is_empty() && it.held_from.as_ref().is_none_or(|(by, _)| *by != sid) {
-                            it.held_from = Some((sid, now));
-                        }
+                    let Some(it) = st.desk.item_mut(id).filter(|i| i.state == "working") else { continue };
+                    let sid = it.holder.as_ref().map(|h| h.sid.clone()).unwrap_or_default();
+                    if sid.is_empty() {
+                        continue;
+                    }
+                    if it.held_from.as_ref().is_none_or(|(by, _)| *by != sid) {
+                        it.held_from = Some((sid.clone(), now));
+                    }
+                    // Sent to its holder (again): a stall on it counts from here (desk_stall.rs).
+                    if fx.sends.iter().any(|(to, _)| *to == sid) {
+                        st.desk.sent_at.insert(id.clone(), (sid, now));
                     }
                 }
                 let items: Vec<DeskItem> = fx.items.iter().filter_map(|id| st.desk.item(id).cloned()).collect();
