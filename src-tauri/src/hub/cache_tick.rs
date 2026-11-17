@@ -98,13 +98,16 @@ pub(super) fn full_due(role: &DeskRole, tokens: u64, last: u64, mark: u64) -> bo
 /// and then the Desk changes nothing.
 pub(super) fn desk_role(st: &Store, sid: &str) -> Option<DeskRole> {
     let project = st.sessions.get(sid).map(|s| s.project.as_str()).filter(|p| !p.is_empty())?;
-    let lead = st.desk.lead_sid(project)?;
-    st.sessions.get(lead)?;
+    let scopes: Vec<String> = st.desk.scopes(sid, project).into_iter().filter(|id| st.desk.lead_sid(id).is_some_and(|lead| st.sessions.get(lead).is_some())).collect();
+    if scopes.is_empty() {
+        return None;
+    }
     let kept_at = st.desk.keep.get(sid).map_or(0, |k| if k.2 { u64::MAX } else { k.0 });
-    let member = st.desk.on_desk(project, sid);
+    let member = scopes.iter().any(|id| st.desk.on_desk(id, sid));
     let compact_failed = st.desk.compact_failed.contains_key(sid);
-    let mut role = DeskRole { lead: lead == sid, kept_at, member, compact_failed, ..Default::default() };
-    let held = |i: &&crate::desk::DeskItem| i.project == project && i.state != "done" && i.holder.as_ref().is_some_and(|h| h.is(sid));
+    let lead = scopes.iter().any(|id| st.desk.lead_sid(id) == Some(sid));
+    let mut role = DeskRole { lead, kept_at, member, compact_failed, ..Default::default() };
+    let held = |i: &&crate::desk::DeskItem| scopes.contains(&i.project) && i.state != "done" && i.holder.as_ref().is_some_and(|h| h.is(sid));
     for it in st.desk.items.iter().filter(held) {
         role.open = true;
         role.working |= it.state == "working";

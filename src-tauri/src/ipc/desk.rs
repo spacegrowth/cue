@@ -19,7 +19,7 @@ pub(crate) fn desk_send_images(h: &Arc<Hub>, project: &str, text: &str, images: 
         return Err("nothing to send".into());
     }
     let saved = crate::uploads::save(images)?;
-    let lost = |e: String| format!("{project}'s lead didn't come up ({e}), so this wasn't sent: {}", text.trim());
+    let lost = |e: String| format!("{}'s lead didn't come up ({e}), so this wasn't sent: {}", h.desk_name(project), text.trim());
     let sid = deliver(h, project, text, saved, &lost)?;
     Ok(serde_json::json!({ "sid": sid }))
 }
@@ -28,7 +28,7 @@ pub(crate) fn desk_send_with(h: &Arc<Hub>, project: &str, text: &str) -> Result<
     if text.trim().is_empty() {
         return Err("nothing to send".into());
     }
-    let lost = |e: String| format!("{project}'s lead didn't come up ({e}), so this wasn't sent: {}", text.trim());
+    let lost = |e: String| format!("{}'s lead didn't come up ({e}), so this wasn't sent: {}", h.desk_name(project), text.trim());
     let sid = deliver(h, project, text, vec![], &lost)?;
     Ok(serde_json::json!({ "sid": sid }))
 }
@@ -76,7 +76,7 @@ fn desk_message(summary: &str, text: &str) -> String {
 pub(crate) fn lead_carried_on(h: &Arc<Hub>, project: &str, sid: &str, name: &str) -> Result<(), String> {
     h.desk_put_lead(project, sid, name);
     let (summary, failed) = h.desk_summary(project, sid, true);
-    let words = format!("You run {project}'s Desk now, carrying on from the lead before you (its hand-off note is what you read first). Say so in one line, then carry on.");
+    let words = format!("You run {}'s Desk now, carrying on from the lead before you (its hand-off note is what you read first). Say so in one line, then carry on.", h.desk_name(project));
     h.send_to_session(sid, &desk_message(&summary, &words), &[], false)?;
     h.desk_told(&failed);
     Ok(())
@@ -101,24 +101,34 @@ pub(crate) fn desk_set_lead_with(h: &Arc<Hub>, project: &str, sid: Option<&str>,
 }
 
 /// A new Desk in `folder` (Desk home's + New Desk, + New's Start a Desk): the folder's project, its lead a new
-/// session Cue starts there. A project whose Desk already has a lead just keeps it. Returns { project, sid }.
+/// session Cue starts there. Every call creates an independent Desk. Returns { id, project: id, sid }.
 #[tauri::command]
-pub(crate) async fn desk_start(hub: State<'_, Arc<Hub>>, folder: String, trust: Option<bool>) -> Result<serde_json::Value, String> {
-    with_hub(&hub, move |h| desk_start_with(h, &folder, trust.unwrap_or(false))).await?
+pub(crate) async fn desk_start(hub: State<'_, Arc<Hub>>, folder: String, trust: Option<bool>, name: Option<String>) -> Result<serde_json::Value, String> {
+    with_hub(&hub, move |h| desk_start_named(h, &folder, trust.unwrap_or(false), name.as_deref())).await?
 }
 
-pub(crate) fn desk_start_with(h: &Arc<Hub>, folder: &str, trust: bool) -> Result<serde_json::Value, String> {
+pub(crate) fn desk_start_named(h: &Arc<Hub>, folder: &str, trust: bool, name: Option<&str>) -> Result<serde_json::Value, String> {
     let dir = expand_home(folder);
     if dir.is_empty() || !std::path::Path::new(&dir).is_dir() {
         return Err(format!("no such folder: {}", folder.trim()));
     }
-    let dir = crate::logs::repos::repo_root(&dir).map(|r| r.to_string_lossy().into_owned()).unwrap_or(dir);
-    let project = crate::model::project_at(&dir, "");
-    if let Some(sid) = h.desk_lead_sid(&project).filter(|sid| h.session_origin(sid).is_some()) {
-        return Ok(serde_json::json!({ "project": project, "sid": sid }));
+    let dir = std::fs::canonicalize(&dir).map_err(|e| e.to_string())?.to_string_lossy().into_owned();
+    let workspace = crate::model::project_at(&dir, "");
+    let name = name.unwrap_or(&workspace).split_whitespace().collect::<Vec<_>>().join(" ");
+    if name.is_empty() || name.chars().count() > 80 {
+        return Err("a Desk needs a name of 1–80 characters".into());
     }
-    let r = set_lead(h, &project, None, trust, Some(dir))?;
-    Ok(serde_json::json!({ "project": project, "sid": r["sid"] }))
+    let id = format!("desk-{}", crate::focus::new_session_id());
+    let space = crate::desk::model::DeskSpace { id: id.clone(), name, project: workspace, folder: dir.clone() };
+    h.desk_put_space(space)?;
+    let result = set_lead(h, &id, None, trust, Some(dir));
+    let r = result?;
+    Ok(serde_json::json!({ "id": id, "project": id, "sid": r["sid"] }))
+}
+
+#[tauri::command]
+pub(crate) async fn desk_rename(hub: State<'_, Arc<Hub>>, id: String, name: String) -> Result<(), String> {
+    with_hub(&hub, move |h| h.desk_rename(&id, &name)).await?
 }
 
 fn expand_home(p: &str) -> String {
@@ -148,6 +158,9 @@ fn set_lead(h: &Arc<Hub>, project: &str, sid: Option<&str>, trust: bool, dir: Op
     // or resume) at a time, so a change that fails never puts back a lead another one has replaced since.
     h.desk_claim_start(project)?;
     let claim = DeskStart::new(h, project);
+    if let Some((sid, _, _)) = &picked {
+        h.desk_claim_lead(project, sid)?;
+    }
     let before = h.desk_lead(project);
     let made = match &picked {
         None => {
@@ -167,7 +180,7 @@ fn set_lead(h: &Arc<Hub>, project: &str, sid: Option<&str>, trust: bool, dir: Op
     let (sid, name) = made?;
     // The lead it replaces keeps what it holds, and is told it no longer runs the Desk.
     if let Some(old) = before.map(|l| l.sid).filter(|old| *old != sid && h.session_origin(old).is_some()) {
-        let words = format!("You no longer run {project}'s Desk: {name} does now. Keep on with the items you hold.");
+        let words = format!("You no longer run {}'s Desk: {name} does now. Keep on with the items you hold.", h.desk_name(project));
         if let Err(e) = h.send_to_session(&old, &words, &[], false) {
             eprintln!("cue: desk: {project}'s last lead wasn't told it was replaced: {e}");
         }
@@ -180,7 +193,7 @@ fn set_lead(h: &Arc<Hub>, project: &str, sid: Option<&str>, trust: bool, dir: Op
 fn take_on(h: &Arc<Hub>, project: &str, sid: &str, name: &str, state: &str) -> Result<(), String> {
     h.desk_put_lead(project, sid, name);
     let (summary, failed) = h.desk_summary(project, sid, true);
-    let message = desk_message(&summary, &hello(project));
+    let message = desk_message(&summary, &hello(&h.desk_name(project)));
     match state {
         "live" => {
             h.send_to_session(sid, &message, &[], false)?;
@@ -212,7 +225,7 @@ fn resume(h: &Arc<Hub>, sid: &str, message: &str) -> Result<String, String> {
 fn start(h: &Arc<Hub>, project: &str, name: &str, trust: bool, dir: Option<String>) -> Result<String, String> {
     let dir = dir.or_else(|| h.desk_folder(project)).ok_or_else(|| format!("no folder known for {project}: start a session there first"))?;
     let (summary, _) = h.desk_summary(project, "", false);
-    let message = desk_message(&summary, &hello(project));
+    let message = desk_message(&summary, &hello(&h.desk_name(project)));
     let opts = StartOpts { trust, desk_lead: project.to_string(), ..Default::default() };
     let started = super::start_hosted(h, crate::hosted::Agent::Claude, &dir, &message, name, &opts, &[])?;
     started["session_id"].as_str().filter(|s| !s.is_empty()).map(str::to_string).ok_or_else(|| "it started without a session id".into())

@@ -13,7 +13,7 @@ CueBridge.area("desk", (w) => {
   const secs = () => Math.floor(w.now() / 1000);
   let n = 0;
   /** A project's folder: where a session of it runs (the fake knows none for a project with no session). */
-  const folderOf = (p) => w.state.sessions.find((s) => s.project === p && s.cwd)?.cwd || "";
+  const folderOf = (p) => deskOf(p).folder || w.state.sessions.find((s) => s.project === (deskOf(p).workspace_project || p) && s.cwd)?.cwd || "";
   return {
     desk_set_lead: ({ project, sid }) => {
       const d = deskOf(project);
@@ -32,17 +32,21 @@ CueBridge.area("desk", (w) => {
       return d.lead;
     },
     // + New Desk: the folder's project (its last part, as a folder outside a repository is), and a lead started there.
-    desk_start: ({ folder }) => {
+    desk_rename: ({ id, name }) => {
+      const d = deskOf(id); d.name = name.trim(); w.changed(); return null;
+    },
+    desk_start: ({ folder, name }) => {
       const cwd = String(folder || "").replace(/\/+$/, "");
       if (!cwd) throw "no such folder";
-      const project = w.state.sessions.find((s) => s.cwd === cwd)?.project || cwd.split("/").pop();
+      const workspace = w.state.sessions.find((s) => s.cwd === cwd)?.project || cwd.split("/").pop();
+      const project = `desk-${++n}`, sid = `lead-${project}`;
       const d = deskOf(project);
-      if (d.lead) return { project, sid: d.lead.sid };
-      const name = `${project}-lead`, id = `lead-${project}-${++n}`;
-      w.state.sessions.push({ session_id: id, name, project, cwd, harness: "claude", hosted: true, state: "idle", since_ms: w.now(), thread: [], team: [], segments: [], queued: null, prompt: "" });
-      d.lead = { sid: id, name, state: "live" };
+      d.id = project; d.independent = true; d.name = name || workspace; d.workspace_project = workspace; d.folder = cwd;
+      const leadName = `${d.name}-lead`;
+      w.state.sessions.push({ session_id: sid, name: leadName, project: workspace, cwd, harness: "claude", hosted: true, state: "idle", since_ms: w.now(), thread: [], team: [], segments: [], queued: null, prompt: "" });
+      d.lead = { sid, name: leadName, state: "live" }; join(project, sid);
       w.changed();
-      return { project, sid: id };
+      return { id: project, project, sid };
     },
     desk_send: ({ project, text }) => {
       const d = deskOf(project);

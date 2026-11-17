@@ -141,10 +141,10 @@ test("written about an item at work, the box goes to the lead naming it", async 
 });
 
 test("the lead at work shows it in its chat: the working line and its steps, live, as any session's chat", async ({ page, cue }) => {
+  await cue.open("desk");
   await cue.override("session_steps", ({ sessionId }, at) => (sessionId !== "lead" ? { version: 1, turns: [] } : { version: 1, turns: [{ at_ms: at - 30000, prompt: "", more: 0, items: [
     { t: "step", id: "lr1", kind: "read", verb: "Read", subject: "header.js", mono: true, result: "40 lines", bad: false, done: true, at_ms: at - 20000 },
   ] }] }), await page.evaluate(() => now()));
-  await cue.open("desk");
   await openDesk(page);
   await cue.change((st) => {
     const s = st.sessions.find((x) => x.session_id === "lead");
@@ -188,7 +188,7 @@ test("the lead's own ASK stands in the box's place: its choices, Type answer…;
   await expect(ask.locator(".foot.held textarea")).toHaveValue("And the footer too");
   // Your own words: Type answer… opens a box for them.
   await ask.locator('[data-act="redirect"]').click();
-  await expect(ask.locator("textarea")).toBeVisible();
+  await expect(ask.locator('textarea[data-text="n-lead-ask"]')).toBeVisible();
   await page.keyboard.press("Escape");
   await ask.locator("[data-pick]", { hasText: "Yes, add it there" }).click();
   const call = await cue.called("respond");
@@ -364,18 +364,18 @@ test("+ New is a menu: New session as before, New Desk asks a project and a name
   await expect(page.locator('[data-text="new-name"]')).toBeVisible();
   await expect(page.locator('[data-lv="desk-start"]')).toHaveCount(0);
   await page.keyboard.press("Escape");
-  // New Desk: only a project (one with no Desk yet) and a name, which follows the project.
+  // New Desk can reuse existing folders and also accepts a new folder.
   await chip.click();
   await page.locator(".nw-pop [data-desk-new-desk]").click();
   const sheet = page.locator(".nd");
-  await expect(sheet.locator(".nd-l")).toHaveText(["Project", "Name"]);
+  await expect(sheet.locator(".nd-l")).toHaveText(["Recent folders", "Folder", "Name"]);
   await expect(sheet.locator("#nd-name")).toBeFocused();
   // Project is Cue's own dropdown, no system menu: the name first, its folder muted beside it.
   await expect(sheet.locator("select")).toHaveCount(0);
   const pick = sheet.locator("#nd-proj"), opts = sheet.locator(".nd-drop [role=option]");
   await pick.click();
-  await expect(opts).toHaveCount(2);
-  expect((await opts.locator(".nd-pn").allInnerTexts()).sort()).toEqual(["blog", "notes"]);
+  await expect(opts.filter({ hasText: "/work/notes" })).toHaveCount(1);
+  await expect(opts.filter({ hasText: "/work/blog" })).toHaveCount(1);
   await opts.filter({ hasText: "/work/notes" }).click();
   await expect(sheet.locator(".nd-drop")).toHaveCount(0);
   await expect(pick.locator(".nd-pn")).toHaveText("notes");
@@ -385,7 +385,7 @@ test("+ New is a menu: New session as before, New Desk asks a project and a name
   // Keys: ↓ on it opens its list, Esc closes just the list, the sheet stays.
   await pick.focus();
   await page.keyboard.press("ArrowDown");
-  await expect(opts).toHaveCount(2);
+  await expect(opts.filter({ hasText: "/work/notes" })).toHaveCount(1);
   await page.keyboard.press("Escape");
   await expect(sheet.locator(".nd-drop")).toHaveCount(0);
   await expect(sheet).toHaveCount(1);
@@ -402,13 +402,13 @@ test("+ New is a menu: New session as before, New Desk asks a project and a name
   await cue.called("desk_start", { folder: "/work/notes" });
   await expect(sheet).toHaveCount(0);
   await expect(page.locator(".dk-sh b")).toHaveText("Notes app");
-  // Its project has a Desk now: New Desk has nothing left to offer.
+  // The same workspace stays available for another independent Desk.
   await page.locator("[data-desk-home]").click();
   await expect(page.locator(".dk-desks .dk-desk")).toHaveCount(3);
   await page.locator(".dh-add").click();
   await pick.click();
-  await expect(opts).toHaveCount(1);
-  await expect(opts).toContainText("blog");
+  await expect(opts.filter({ hasText: "/work/notes" })).toHaveCount(1);
+  await expect(opts.filter({ hasText: "/work/blog" })).toHaveCount(1);
   await sheet.locator(".btn[data-nd-close]").click();
   await expect(sheet).toHaveCount(0);
 });

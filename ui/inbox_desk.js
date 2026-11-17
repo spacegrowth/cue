@@ -7,7 +7,7 @@ const inboxDeskProjects = () => state.desk?.projects || [];
 /** A row asking about a project's Desk: its lead's ask says so (`desk`). Listed with the other asks. */
 const inboxDeskAsk = (r) => !!r.it?.desk;
 /** The project a Desk ask is about; "" when none is named. */
-const inboxDeskAskProject = (r) => (r.it?.desk && (r.it.project || r.project)) || "";
+const inboxDeskAskProject = (r) => (r.it?.desk && (r.it.tool_input?.desk_id || r.it.project || r.project)) || "";
 /** The Desk item session `sid` holds (not done yet), or null. */
 function inboxHeldItem(sid) {
   for (const p of inboxDeskProjects()) {
@@ -17,7 +17,10 @@ function inboxHeldItem(sid) {
   return null;
 }
 /** "<PROJECT> · " before an item's title; "" for a project with no name. */
-const inboxPjHtml = (project) => (project ? `<span class="ib-pj">${esc(project)}</span> · ` : "");
+const inboxPjHtml = (project) => {
+  const d = inboxDeskProjects().find((d) => d.project === project);
+  return project ? `<span class="ib-pj">${esc(d?.name || project)}</span> · ` : "";
+};
 /** What a row is for on the Desk: "<PROJECT> · Desk" (its lead asks about the Desk), "<PROJECT> · for <item title>"
  *  (it holds an item), or "". */
 function inboxForWords(r) {
@@ -44,17 +47,19 @@ function inboxForBar(r) {
 function inboxAddDeskBtn(r) {
   const it = r.it;
   if (!it || it.kind === "waiting" || !r.project || !r.s || inboxDeskAsk(r) || inboxHeldItem(r.sid)) return "";
-  return `<button class="ib-act ib-desk" data-inbox-add-desk="${esc(r.sid)}">Add to Desk</button>`;
+  const desks = inboxDeskProjects().filter((d) => (d.workspace_project || d.project) === r.project);
+  const targets = desks.length ? desks : [{ project: r.project }];
+  return targets.map((d) => `<button class="ib-act ib-desk" data-inbox-add-desk="${esc(r.sid)}" data-desk-id="${esc(d.project)}">Add to ${targets.length > 1 ? esc(d.name || d.project) : "Desk"}</button>`).join("");
 }
 /** Add session `sid`'s ask to its project's Desk: the ask's subject as the title, held by the session (nothing sent:
  *  it's already its work). */
-async function inboxAddToDesk(sid) {
+async function inboxAddToDesk(sid, deskId) {
   const r = inboxRowFor(sid);
   if (!r?.project) return;
   const title = (inboxLines(r)[0] || "").trim() || "Its question";
   try {
-    await invoke("desk_add", { project: r.project, kind: "task", title, holder: sid });
-    toast(`Added to ${r.project}'s Desk`);
+    await invoke("desk_add", { project: deskId || r.project, kind: "task", title, holder: sid });
+    toast(`Added to ${inboxDeskProjects().find((d) => d.project === deskId)?.name || r.project}'s Desk`);
   } catch (e) { toast(`Not added: ${e}`); }
   renderMain();
 }
@@ -62,7 +67,7 @@ async function inboxAddToDesk(sid) {
  *  build has no Desk (ui/desk.js's deskOpenItem). */
 function openInDesk(project, itemId = "") {
   if (typeof deskOpenItem !== "function") return toast("The Desk isn't in this build");
-  if (project && projFilter !== project) setProjFilter(project);
+  if (project) deskSelect(project);
   inboxSid = null;
   inboxSnoozeAt = "";
   view = "desk";

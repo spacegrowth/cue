@@ -1,4 +1,5 @@
-//! The Desk's items, decisions and each project's lead (desk/).
+//! Desk records. Historical SQL columns named `project` contain the Desk identity.
+//! desk_spaces stores each independent Desk's workspace project, name and folder.
 
 use super::with;
 use crate::desk::{DeskDecision, DeskItem};
@@ -8,6 +9,20 @@ use rusqlite::params;
 const KEEP_DONE_MS: u64 = 2 * super::DAY_MS;
 /// How long done items and decisions are kept at all: deleted after that, at the next start.
 const DROP_DONE_MS: u64 = 30 * super::DAY_MS;
+
+pub fn desk_put_space(desk: &crate::desk::model::DeskSpace) -> Result<(), String> {
+    let data = serde_json::to_string(desk).map_err(|e| e.to_string())?;
+    with(|c| c.execute("INSERT INTO desk_spaces (id, data) VALUES (?1, ?2) ON CONFLICT(id) DO UPDATE SET data = excluded.data", params![desk.id, data]))
+        .map(|_| ()).ok_or_else(|| "Couldn't save the Desk".to_string())
+}
+
+pub fn desk_spaces() -> Vec<crate::desk::model::DeskSpace> {
+    with(|c| {
+        let mut q = c.prepare("SELECT data FROM desk_spaces ORDER BY rowid")?;
+        let rows = q.query_map([], |r| r.get::<_, String>(0))?;
+        Ok(rows.flatten().filter_map(|data| serde_json::from_str(&data).ok()).collect())
+    }).unwrap_or_default()
+}
 
 /// An item saved as it is now.
 pub fn desk_put_item(it: &DeskItem) {

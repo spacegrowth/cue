@@ -6,7 +6,7 @@
 
 /** A Desk's sessions (its lead among them) and their crew still in play. */
 function deskPeople(d) {
-  const ss = (state.sessions || []).filter((s) => s.project === d.project && s.session_id);
+  const ss = (state.sessions || []).filter((s) => s.project === deskWorkspace(d) && s.session_id && (!d.independent || s.session_id === deskLead(d)?.sid || (d.members || []).includes(s.session_id)));
   const crew = ss.reduce((n, s) => n + (sessionOf(s.session_id)?.team || []).filter((t) => deskMateLive(s.session_id, t)).length, 0);
   return { sessions: ss, crew };
 }
@@ -39,12 +39,12 @@ function deskHomeRow(d) {
   const { sessions, crew } = deskPeople(d), n = sessions.length;
   const people = `${n} session${n === 1 ? "" : "s"} · ${crew ? `${crew} crew` : "no crew"}`;
   return `<div class="dh-tr dk-desk" role="button" tabindex="0" data-desk-project="${esc(d.project)}">
-    <span class="dh-cell"><b class="dh-nm">${esc(projLabel(d.project))}</b><span class="dh-sm dh-ab">${esc(deskAbout(d))}</span></span>
-    <span class="dh-cell"><span class="dh-pj">${projDot(d.project)}${esc(d.project)}</span><span class="dh-sm">${people}</span></span>
+    <span class="dh-cell"><b class="dh-nm">${esc(deskName(d))}</b><span class="dh-sm dh-ab">${esc(deskAbout(d))}</span></span>
+    <span class="dh-cell"><span class="dh-pj">${projDot(deskWorkspace(d))}${esc(projLabel(deskWorkspace(d)))}</span><span class="dh-sm">${people}</span></span>
     ${["task", "bug", "feature"].map((k) => deskKindCell(d, k)).join("")}<span class="dh-on">${deskOnIt(d, sessions)}</span><span class="dh-go" aria-hidden="true">›</span></div>`;
 }
 /** Every Desk, those with the most waiting on you first. */
-const deskSorted = () => (state.desk?.projects || []).map((x) => deskOf(x.project)).sort((a, b) => b.items.filter(deskWaits).length - a.items.filter(deskWaits).length || a.project.localeCompare(b.project));
+const deskSorted = () => (state.desk?.projects || []).map((x) => deskOf(x.project)).sort((a, b) => b.items.filter(deskWaits).length - a.items.filter(deskWaits).length || deskName(a).localeCompare(deskName(b)));
 function deskAll() {
   const ds = deskSorted();
   const head = `<div class="dh-tr dh-hd" aria-hidden="true"><span>Desk</span><span>Project · people</span><span>Tasks</span><span>Bugs</span><span>Features</span><span>On it</span><span></span></div>`;
@@ -63,10 +63,10 @@ function deskLastSet(p) {
 }
 /** The Desk tab with All projects picked: the Desk last open, else the first on Desk home; none yet, Desk home. */
 function deskTabOpen() {
-  if (projFilter) return;
+  if (deskSelection()) return;
   const ds = deskSorted(), p = ds.some((d) => d.project === deskLast) ? deskLast : ds[0]?.project;
   if (!p) return;
-  setProjFilter(p); deskOpen = null; deskTab = "lead"; deskChatEnd = true;
+  deskSelect(p); deskOpen = null; deskTab = "lead"; deskChatEnd = true;
 }
 
 // ---------- + New: New session or New Desk ----------
@@ -82,13 +82,13 @@ let ndEl = null, ndBusy = false, ndBack = null;
 /** The Project picker, Cue's own (not the system's menu): the choices, the one picked, whether its list is open and
  *  the row the arrow keys are on. */
 let ndCs = [], ndAt = 0, ndDrop = false, ndSel = 0;
-/** The folders a Desk can start in: the ones you've worked in whose project has no Desk yet, one a project. */
+/** Recent folders to reuse. A folder can have any number of Desks. */
 function ndChoices() {
-  const has = new Set((state.desk?.projects || []).map((d) => d.project)), seen = new Set(), out = [];
+  const seen = new Set(), out = [];
   for (const f of recentFolders()) {
     const p = projOf(f);
-    if (has.has(p) || seen.has(p)) continue;
-    seen.add(p); out.push({ folder: f, project: p });
+    if (seen.has(f)) continue;
+    seen.add(f); out.push({ folder: f, project: p });
   }
   return out;
 }
@@ -100,11 +100,11 @@ function deskNewOpen() {
   ndEl ||= Object.assign(document.createElement("div"), { className: "move-scrim nd-scrim" });
   ndEl.innerHTML = `<form class="move-dialog nd" role="dialog" aria-modal="true" aria-labelledby="nd-title">
     <div class="nd-head"><b id="nd-title">New Desk</b><span class="grow"></span><button type="button" class="nd-x" data-nd-close aria-label="Close">×</button></div>
-    ${cs.length ? `<label class="nd-l" for="nd-proj">Project</label><div class="nd-pickwrap">${ndPickHtml()}</div>
-    <label class="nd-l" for="nd-name">Name</label><input class="nd-f" id="nd-name" maxlength="40" spellcheck="false" autocomplete="off" value="${esc(projLabel(cs[0].project))}"/>
-    <div class="nd-hint">Cue starts a lead in its folder and opens the Desk.</div>`
-    : `<div class="nd-hint">Every project you've worked in has a Desk. Start a session in a new folder first (+ New → New session).</div>`}
-    <div class="nd-acts"><button type="button" class="btn" data-nd-close>Cancel</button>${cs.length ? `<button class="btn primary" type="submit">Start Desk</button>` : ""}</div></form>`;
+    ${cs.length ? `<label class="nd-l" for="nd-proj">Recent folders</label><div class="nd-pickwrap">${ndPickHtml()}</div>` : ""}
+    <label class="nd-l" for="nd-folder">Folder</label><input class="nd-f" id="nd-folder" required spellcheck="false" autocomplete="off" placeholder="~/path/to/folder" value="${esc(cs[0]?.folder || "")}"/>
+    <label class="nd-l" for="nd-name">Name</label><input class="nd-f" id="nd-name" required maxlength="80" spellcheck="false" autocomplete="off" value="${esc(cs[0] ? projLabel(cs[0].project) : "")}"/>
+    <div class="nd-hint">Cue starts a lead in this folder. Several Desks can share a folder.</div>
+    <div class="nd-acts"><button type="button" class="btn" data-nd-close>Cancel</button><button class="btn primary" type="submit">Start Desk</button></div></form>`;
   document.body.append(ndEl);
   renderMain();
   ndEl.querySelector("#nd-name")?.select();
@@ -129,6 +129,8 @@ function ndPick(i) {
   const name = ndEl?.querySelector("#nd-name");
   ndAt = ndSel = i; ndDrop = false;
   ndPickDraw();
+  const folder = ndEl?.querySelector("#nd-folder");
+  if (folder) folder.value = ndCs[i].folder;
   if (name && (!name.value.trim() || ndCs.some((c) => projLabel(c.project) === name.value))) name.value = projLabel(ndCs[i].project);
   ndEl?.querySelector("#nd-proj")?.focus();   // drawn afresh: the cursor goes back on it
 }
@@ -137,29 +139,28 @@ function deskNewClose() {
   ndEl.remove();
   if (ndBack?.isConnected) ndBack.focus({ preventScroll: true });
 }
-/** Start Desk: a lead in the folder, the project named as you typed (the Desk's name is its project's), the Desk open. */
+/** Start a separate named Desk in the chosen folder. */
 async function deskNewStart() {
-  const c = ndCs[ndAt], name = ndEl?.querySelector("#nd-name")?.value.trim().replace(/\s+/g, " ").slice(0, 40) || "";
-  if (!c || !ndEl?.querySelector("#nd-proj") || ndBusy) return;
-  const { folder, project } = c;
+  const name = ndEl?.querySelector("#nd-name")?.value.trim().replace(/\s+/g, " ").slice(0, 80) || "";
+  const folder = ndEl?.querySelector("#nd-folder")?.value.trim();
+  if (!folder || !name || ndBusy) return;
   ndBusy = true;
   ndEl.querySelector('[type="submit"]').textContent = "Starting…";
-  const r = await deskStartIn(folder);
+  const r = await deskStartIn(folder, name);
   ndBusy = false;
   if (!r) { const b = ndEl?.querySelector('[type="submit"]'); if (b) b.textContent = "Start Desk"; return; }
   deskNewClose();
-  const p = r.project || project;
-  if (name && name !== projLabel(p)) { draft(`pjname:${p}`).text = name; saveProjName(p); }
 }
+
 let deskStarting = false;   // a Desk starting, until Cue answers
 /** Start a Desk in `folder`, then open it. Cue's answer ({ project, sid }), or null when it couldn't. */
-async function deskStartIn(folder) {
+async function deskStartIn(folder, name = undefined) {
   if (!folder || deskStarting) return null;
   deskStarting = true;
   let r = null;
   try {
-    r = await invoke("desk_start", { folder });
-    if (r?.project) { view = "desk"; setProjFilter(r.project); deskOpen = null; deskTab = "lead"; deskChatEnd = true; }
+    r = await invoke("desk_start", { folder, ...(name && { name }) });
+    if (r?.project) { view = "desk"; deskSelect(r.id || r.project); deskOpen = null; deskTab = "lead"; deskChatEnd = true; }
   } catch (e) { toast(`Couldn't start the Desk: ${e}`); }
   deskStarting = false; renderMain();
   return r;

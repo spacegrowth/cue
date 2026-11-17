@@ -14,12 +14,12 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 
 | What | Count |
 |---|---|
-| `#[tauri::command]` | 162 (3 sync) |
+| `#[tauri::command]` | 163 (3 sync) |
 | Lock declarations (static or field) | 103 |
 | Lock acquisitions | 246 |
 | Lock-graph edges | 50 |
 | Spawn sites | 87 |
-| External calls: fs / db / process / notify / login / socket | 348 / 178 / 45 / 4 / 1 / 4 |
+| External calls: fs / db / process / notify / login / socket | 349 / 183 / 45 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -70,6 +70,7 @@ Sync commands run on the main thread. "Hands work to": the threads or pools its 
 | `desk_send` | async | `ipc/desk.rs::desk_send` | ipc::with_hub |
 | `desk_set_lead` | async | `ipc/desk.rs::desk_set_lead` | ipc::with_hub |
 | `desk_start` | async | `ipc/desk.rs::desk_start` | ipc::with_hub |
+| `desk_rename` | async | `ipc/desk.rs::desk_rename` | ipc::with_hub |
 | `desk_add` | async | `ipc/desk.rs::desk_add` | ipc::with_hub |
 | `desk_give` | async | `ipc/desk.rs::desk_give` | ipc::with_hub |
 | `desk_member` | async | `ipc/desk.rs::desk_member` | ipc::with_hub |
@@ -456,7 +457,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (348)
+### fs (349)
 
 | In | Call | Times |
 |---|---|---|
@@ -555,7 +556,8 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `ipc/chat.rs::pi_log` | read_dir | 2 |
 | `ipc/chat.rs::subfolders` | Path::is_dir | 1 |
 | `ipc/chat.rs::subfolders` | read_dir | 1 |
-| `ipc/desk.rs::desk_start_with` | Path::is_dir | 1 |
+| `ipc/desk.rs::desk_start_named` | Path::is_dir | 1 |
+| `ipc/desk.rs::desk_start_named` | canonicalize | 1 |
 | `ipc/docs.rs::read_doc` | metadata | 1 |
 | `ipc/docs.rs::read_doc` | read_to_string | 1 |
 | `ipc/docs.rs::recent_docs` | Path::exists | 1 |
@@ -766,7 +768,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `uploads.rs::save` | create_dir_all | 1 |
 | `uploads.rs::save_kept` | create_dir_all | 1 |
 
-### db (178)
+### db (183)
 
 | In | Call | Times |
 |---|---|---|
@@ -795,6 +797,8 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `db/desk.rs::desk_put_numbered` | db::desk_drop_item | 1 |
 | `db/desk.rs::desk_put_numbered` | db::desk_put_decision | 1 |
 | `db/desk.rs::desk_put_numbered` | db::desk_put_item | 1 |
+| `db/desk.rs::desk_put_space` | db::with | 1 |
+| `db/desk.rs::desk_spaces` | db::with | 1 |
 | `db/drafts.rs::draft_text` | db::with | 1 |
 | `db/drafts.rs::drafts` | db::with | 1 |
 | `db/drafts.rs::queue_review` | db::with | 1 |
@@ -878,11 +882,14 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hub/desk.rs::Hub::desk_restore` | db::desk_load | 1 |
 | `hub/desk.rs::Hub::desk_restore` | db::desk_members | 1 |
 | `hub/desk.rs::Hub::desk_restore` | db::desk_put_numbered | 1 |
+| `hub/desk.rs::Hub::desk_restore` | db::desk_spaces | 1 |
 | `hub/desk_handoff.rs::Hub::desk_hand_on` | db::handoff | 1 |
 | `hub/desk_handoff.rs::Hub::desk_hand_on_now` | db::handoff_continued | 1 |
 | `hub/desk_lead.rs::Hub::desk_lead_candidate` | db::ended_session | 1 |
 | `hub/desk_members.rs::Hub::desk_set_member` | db::desk_drop_member | 1 |
 | `hub/desk_members.rs::Hub::desk_set_member` | db::desk_put_member | 1 |
+| `hub/desk_spaces.rs::Hub::desk_put_space` | db::desk_put_space | 1 |
+| `hub/desk_spaces.rs::Hub::desk_rename` | db::desk_put_space | 1 |
 | `hub/hand_off.rs::Hub::hand_off_ahead` | db::draft_text | 1 |
 | `hub/live_writes.rs::LiveWrites::write` | db::delete_session | 1 |
 | `hub/live_writes.rs::LiveWrites::write` | db::park | 1 |

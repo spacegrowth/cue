@@ -73,7 +73,7 @@ test("Open in Desk picks the project, goes to the Desk and opens the item (when 
   await page.evaluate(() => { window.__opened = []; window.deskOpenItem = (id) => window.__opened.push(id); });
   await page.locator('.ib-row[data-inbox-open="web"]').click();
   await page.locator(".ib-forbar .ib-desk").click();
-  expect(await page.evaluate(() => [view, projFilter, window.__opened])).toEqual(["desk", "cue", ["d7k2"]]);
+  expect(await page.evaluate(() => [view, deskSelection(), window.__opened])).toEqual(["desk", "cue", ["d7k2"]]);
 });
 
 test("Open in Desk from the real Desk view opens the item on the right", async ({ cue, page }) => {

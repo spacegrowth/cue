@@ -36,6 +36,7 @@ pub struct DeskItem {
     /// The random tag it had before items were numbered ("d7k2"), so old lines and links that name it still find it.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub alias: String,
+    /// Desk identity. The historical field name is kept for saved records and IPC callers.
     pub project: String,
     /// "bug" | "feature" | "task"
     pub kind: String,
@@ -213,9 +214,13 @@ pub struct DeskDecision {
 /// Every project's Desk, as Cue holds it while it runs (saved as it changes: db/desk.rs).
 #[derive(Default, Debug)]
 pub struct Desk {
+    /// Independent Desks. Older project-keyed Desks resolve through the fallback in `project_of`.
+    pub spaces: HashMap<String, DeskSpace>,
+    /// Sessions being selected as leads, reserved across concurrent Desk changes.
+    pub lead_claims: HashMap<String, String>,
     pub items: Vec<DeskItem>,
     pub decisions: Vec<DeskDecision>,
-    /// Each project's lead.
+    /// Each Desk's lead, keyed by its identity.
     pub lead: HashMap<String, Lead>,
     /// Decisions made since Cue started, for unique ids.
     pub next: u64,
@@ -248,6 +253,15 @@ pub struct Desk {
     pub sent_at: HashMap<String, (String, u64)>,
 }
 
+/// A Desk's identity and workspace, independent of its lead and items.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct DeskSpace {
+    pub id: String,
+    pub name: String,
+    pub project: String,
+    pub folder: String,
+}
+
 /// The session that runs a project's Desk, and the name it went by when last seen (shown once it has ended).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Lead {
@@ -266,6 +280,30 @@ pub struct Waiting {
 }
 
 impl Desk {
+    pub fn project_of<'a>(&'a self, id: &'a str) -> &'a str {
+        self.spaces.get(id).map_or(id, |d| d.project.as_str())
+    }
+
+    pub fn name_of<'a>(&'a self, id: &'a str) -> &'a str {
+        self.spaces.get(id).map_or(id, |d| d.name.as_str())
+    }
+
+    /// Every Desk this session participates in, with its legacy project Desk as a fallback.
+    pub fn scopes(&self, sid: &str, project: &str) -> Vec<String> {
+        let mut ids: Vec<String> = self.members.iter().filter(|(_, m)| m.iter().any(|s| s == sid)).map(|(id, _)| id.clone())
+            .chain(self.lead_of(sid))
+            .chain(self.items.iter().filter(|i| i.state != "done" && i.holder.as_ref().is_some_and(|h| h.is(sid))).map(|i| i.project.clone())).collect();
+        if ids.is_empty() && !project.is_empty() {
+            ids.extend(self.spaces.values().filter(|d| d.project == project).map(|d| d.id.clone()));
+            let legacy = self.lead.contains_key(project) || self.members.get(project).is_some_and(|m| !m.is_empty()) || self.items.iter().any(|i| i.project == project);
+            if ids.is_empty() || legacy {
+                ids.push(project.to_string());
+            }
+        }
+        ids.sort();
+        ids.dedup();
+        ids
+    }
     /// The project whose Desk session `sid` leads.
     pub fn lead_of(&self, sid: &str) -> Option<String> {
         self.lead.iter().find(|(_, l)| l.sid == sid).map(|(p, _)| p.clone())

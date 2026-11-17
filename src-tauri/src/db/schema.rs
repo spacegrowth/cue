@@ -177,6 +177,11 @@ CREATE TABLE IF NOT EXISTS drafts (
 );
 -- The Desk (desk/): each project's items and the decisions made on them, as JSON with the columns
 -- they're looked up by. Done items and old decisions stay; loading takes the recent ones.
+CREATE TABLE IF NOT EXISTS desk_spaces (
+  id TEXT PRIMARY KEY,
+  data TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS desk_items (
   id          TEXT PRIMARY KEY,
   project     TEXT NOT NULL,

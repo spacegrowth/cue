@@ -362,6 +362,12 @@ function saveProjName(project) {
   const key = `pjname:${project}`, name = draft(key).text.trim().replace(/\s+/g, " ").slice(0, 40);
   pjRenaming = null;
   delete drafts[key];
+  const desk = (state.desk?.projects || []).find((d) => d.project === project && d.independent);
+  if (desk) {
+    invoke("desk_rename", { id: desk.id, name }).then(() => { desk.name = name; renderMain(); }, (e) => { toast(String(e)); renderMain(); });
+    renderMain();
+    return;
+  }
   const p = ((state.settings ||= {}).project ||= {});   // shown now; Cue's next update says the same
   const { [project]: _, ...rest } = p.names || {};
   p.names = name && name !== project ? { ...rest, [project]: name } : rest;
@@ -455,6 +461,7 @@ function setProjColor(project, idx) {
 let projFilter = (() => { try { return localStorage.getItem("cue.projFilter") || ""; } catch { return ""; } })();
 /** The window goes to project `p` ("" for All projects), remembered for the next launch. */
 function setProjFilter(p) {
+  if (typeof deskSelect === "function") deskSelect(null);
   projFilter = p;
   try { localStorage.setItem("cue.projFilter", p); } catch {}
 }

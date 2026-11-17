@@ -83,5 +83,4 @@ test("merged usage and its details fit the smallest window", async ({ cue, page 
   const pop = await page.locator('.usage-pop').boundingBox();
   expect(pop.x).toBeGreaterThanOrEqual(0);
   expect(pop.x + pop.width).toBeLessThanOrEqual(901);
-  await page.screenshot({ path: '/tmp/cue-codex-usage-narrow.png' });
 });

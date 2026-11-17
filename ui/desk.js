@@ -1,3 +1,18 @@
+// Desk IDs are independent of workspace projects. Legacy IPC fields named `project` still carry the Desk ID.
+let deskSelected = (() => { try { return localStorage.getItem("cue.deskSelected"); } catch { return null; } })();
+function deskSelection() {
+  if (deskSelected !== null) return deskSelected;
+  if (!projFilter) return "";
+  const matches = (state.desk?.projects || []).filter((d) => (d.workspace_project || d.project) === projFilter);
+  return matches.find((d) => d.project === projFilter)?.project || (matches.length === 1 ? matches[0].project : matches.length ? "" : projFilter);
+}
+function deskSelect(id) {
+  deskSelected = id;
+  try { if (id === null) localStorage.removeItem("cue.deskSelected"); else localStorage.setItem("cue.deskSelected", id); } catch {}
+}
+const deskWorkspace = (d) => d.workspace_project || d.project;
+const deskName = (d) => d.name || projLabel(d.project);
+
 // Cue UI desk — the Desk view: the project's sessions (on the Desk and not), one project's items (a bug, a feature, a task), who holds each (a lead and its crew, a
 // session on its own, or the add-on's), what each waits on, the chat with the project's lead (desk_lead.js: who runs
 // the Desk, Give to…, the quick-add line) and today's decisions. With All projects picked, every project's Desk as a
@@ -227,7 +242,7 @@ async function deskDoneFetch(project) {
     pg.end = got.length < DESK_DONE_STEP * 2;
   } catch (e) { console.error(e); pg.end = true; }
   pg.loading = false;
-  if (projFilter === project && view === "desk") renderMain();
+  if (deskSelection() === project && view === "desk") renderMain();
 }
 /** The list's end came into view: 10 more finished items, and the next ones fetched ahead. */
 function deskDoneMore(project) {
@@ -316,7 +331,7 @@ function deskSessRow({ name, sid = "", mark = "", dot, word, item, line, on, att
  *  "Not on the Desk" (each with Add to Desk); the one whose chat shows is lit; + New session at its foot. */
 function deskSessions(project) {
   const d = deskOf(project), o = deskOpen, leadSid = deskLead(d)?.sid;
-  const sessions = (state.sessions || []).filter((s) => s.project === project && s.session_id);
+  const sessions = (state.sessions || []).filter((s) => s.project === deskWorkspace(d) && s.session_id);
   const onDesk = (sid) => sid === leadSid || (d.members || []).includes(sid);
   const lit = (sid) => (sid === leadSid && !o && deskPick !== project) || ((o?.kind === "chat" || o?.kind === "holder") && o.sid === sid);
   const row = (s) => {
@@ -366,7 +381,7 @@ function deskSessions(project) {
 function deskSessHead(project, n, working) {
   const name = pjRenaming === project
     ? `<input class="pj-name-in" data-text="pjname:${esc(project)}" maxlength="40" placeholder="${esc(project)}" aria-label="Rename this Desk" spellcheck="false" value="${esc(draft(`pjname:${project}`).text)}"/>`
-    : `<b>${esc(projLabel(project))}</b><button class="dk-ren" data-pjren="${esc(project)}" aria-label="Rename this Desk"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></svg></button>`;
+    : `<b>${esc(deskName(deskOf(project)))}</b><button class="dk-ren" data-pjren="${esc(project)}" aria-label="Rename this Desk"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></svg></button>`;
   return `<div class="dk-ch dk-sh"><button class="dk-home-btn" data-desk-home>‹ Desks</button><div class="dk-shn"><div class="dk-shr">${name}</div><span class="dk-sub">${n} session${n === 1 ? "" : "s"}${working ? ` · ${working} working` : ""}</span></div></div>`;
 }
 /** + New, its folder that of a session in the project (else what + New would pick). */
@@ -377,17 +392,20 @@ async function deskMember(project, sid, on) {
 }
 /** ⋯ → Add to Desk / Remove from Desk, for a session of a project (not the Desk's lead, which is always on it). */
 function deskMemberItem(sid, s) {
-  const project = s?.project;
-  if (!project || !sid) return "";
-  const d = deskOf(project);
-  if (deskLead(d)?.sid === sid) return "";
-  const on = (d.members || []).includes(sid);
-  return on ? `<button data-desk-member-set="${esc(sid)}" data-project="${esc(project)}" data-on="0">Remove from Desk<span>Its Desk's lead asks you before giving it work again</span></button>`
-    : `<button data-desk-member-set="${esc(sid)}" data-project="${esc(project)}" data-on="1">Add to Desk<span>Its Desk's lead can give it work without asking you</span></button>`;
+  const workspace = s?.project;
+  if (!workspace || !sid) return "";
+  const matches = (state.desk?.projects || []).filter((d) => deskWorkspace(d) === workspace);
+  const targets = matches.length ? matches : [deskOf(workspace)];
+  return targets.filter((d) => deskLead(d)?.sid !== sid).map((d) => {
+    const on = (d.members || []).includes(sid);
+    const label = targets.length > 1 ? deskName(d) : "Desk";
+    return `<button data-desk-member-set="${esc(sid)}" data-project="${esc(d.project)}" data-on="${on ? "0" : "1"}">${on ? "Remove from" : "Add to"} ${esc(label)}<span>${on ? "Its lead asks before giving it work again" : "Its lead can give it work without asking you"}</span></button>`;
+  }).join("");
 }
 function deskNewSession(project) {
-  const s = (state.sessions || []).find((x) => x.project === project && x.cwd && !x.machine);
-  if (typeof lvAct === "function") lvAct("new", { spot: true, cwd: s?.cwd || "" });
+  const d = deskOf(project);
+  const s = (state.sessions || []).find((x) => x.project === deskWorkspace(d) && x.cwd && !x.machine);
+  if (typeof lvAct === "function") lvAct("new", { spot: true, cwd: d.folder || s?.cwd || "" });
 }
 
 // ---------- the chat card: the lead's chat, Decisions, or what's open ----------
@@ -454,10 +472,10 @@ function deskRecall(key) {
 /** The session whose chat the Desk shows, when it's `sid`: its lead's (a parked one's kept messages too), or the one
  *  opened from the sessions on the left. Null otherwise. */
 function deskShownChat(sid) {
-  if (!projFilter) return null;
-  if (deskOpen?.kind === "chat") return deskOpen.project === projFilter && deskOpen.sid === sid ? sessionOf(sid) : null;
-  if (deskOpen || deskTab !== "lead" || deskPick === projFilter) return null;
-  const d = deskOf(projFilter);
+  if (!deskSelection()) return null;
+  if (deskOpen?.kind === "chat") return deskOpen.project === deskSelection() && deskOpen.sid === sid ? sessionOf(sid) : null;
+  if (deskOpen || deskTab !== "lead" || deskPick === deskSelection()) return null;
+  const d = deskOf(deskSelection());
   return deskLead(d)?.sid === sid && !deskLeadEnded(d) ? deskLeadSession(d) : null;
 }
 /** Read on a reply in a Desk chat (chat/reader.js): the reader in the chat's place, its bar, the reply set larger at
@@ -527,9 +545,9 @@ function deskSessChat(sid, from, d) {
 /** The session whose steps the Desk follows live (chat/thread.js followSteps): its lead's, while its chat shows, or
  *  the session's whose chat is open. */
 function deskFollowSid() {
-  if (deskOpen?.kind === "chat" && deskOpen.project === projFilter) return sessionOf(deskOpen.sid) ? deskOpen.sid : null;
-  if (!projFilter || deskOpen || deskTab !== "lead" || deskPick === projFilter) return null;
-  const d = deskOf(projFilter), l = deskLead(d);
+  if (deskOpen?.kind === "chat" && deskOpen.project === deskSelection()) return sessionOf(deskOpen.sid) ? deskOpen.sid : null;
+  if (!deskSelection() || deskOpen || deskTab !== "lead" || deskPick === deskSelection()) return null;
+  const d = deskOf(deskSelection()), l = deskLead(d);
   return l && !deskLeadEnded(d) && sessionOf(l.sid) ? l.sid : null;
 }
 /** The Desk's judgment calls (DECIDED lines), the only decisions worth your look: routes, gives, sessions started,
@@ -885,16 +903,16 @@ function deskLeadAsk(d) {
 /** The Desk view: the project picked (its items, and its lead beside them), or with All projects every Desk. */
 function deskView() {
   // What was open belongs to the project it was opened in.
-  if (deskOpen && deskOpen.project !== projFilter) { deskOpen = null; deskChatEnd = true; }
-  if (deskPick && deskPick !== projFilter) deskPick = null;
-  const given = deskGiveFor && deskItem(projFilter, deskGiveFor.id);
+  if (deskOpen && deskOpen.project !== deskSelection()) { deskOpen = null; deskChatEnd = true; }
+  if (deskPick && deskPick !== deskSelection()) deskPick = null;
+  const given = deskGiveFor && deskItem(deskSelection(), deskGiveFor.id);
   if (deskGiveFor && (!given || given.holder)) deskGiveFor = null;
-  if (deskDropArm && !deskItem(projFilter, deskDropArm)) deskDropArm = null;
+  if (deskDropArm && !deskItem(deskSelection(), deskDropArm)) deskDropArm = null;
   deskBoxes.clear();   // the boxes drawn now note theirs again
-  if (!projFilter) return deskAll();
-  deskLastSet(projFilter);
+  if (!deskSelection()) return deskAll();
+  deskLastSet(deskSelection());
   queueMicrotask(deskSettle);
-  return `<div class="board dk-board">${deskSessions(projFilter)}${deskRight(projFilter)}${deskList(projFilter)}</div>`;
+  return `<div class="board dk-board">${deskSessions(deskSelection())}${deskRight(deskSelection())}${deskList(deskSelection())}</div>`;
 }
 /** After the draw: the lead's chat at its end, as a chat opens (unless you'd scrolled up in it). */
 function deskSettle() {
@@ -911,7 +929,7 @@ function deskSettle() {
 function deskShow(what) {
   deskLeadLit = null;
   if (what?.kind === "item") deskSeeItem(what.id);
-  deskOpen = what && { ...what, project: projFilter };
+  deskOpen = what && { ...what, project: deskSelection() };
   deskDropArm = null;
   deskGiveFor = null;
   if (!what) deskChatEnd = true;
@@ -926,7 +944,7 @@ async function deskSendBox(key) {
   if (!to || (!text && !images.length)) return;
   if (to.sid) {
     // An answer from an item's page: the page says what you answered (deskChain).
-    const it = to.item && deskItem(projFilter, to.item);
+    const it = to.item && deskItem(deskSelection(), to.item);
     if (it?.state === "needs_you" && sessionOf(to.sid)?.state !== "deciding" && !state.restarting?.[to.sid]) deskAnswers.set(it.id, { q: deskQuestion(it), a: text || "a picture", ask: it.ask?.item_id || "", at: now() });
     if (!to.mate) await sendTo(to.sid, false, key);
     else if (state.restarting?.[to.sid]) return toast("It's restarting. Send once it's back.");
@@ -989,7 +1007,7 @@ async function deskSendBack(id, key, text, images) {
 /** Item `id` of the project picked, open in the chat card (the Inbox's Open in Desk). */
 function deskOpenItem(id) {
   deskSeeItem(id);
-  deskOpen = { kind: "item", id, project: projFilter, fresh: now() };
+  deskOpen = { kind: "item", id, project: deskSelection(), fresh: now() };
   deskDropArm = deskGiveFor = null;
 }
 async function deskAct(id, act, el = null) {
@@ -1056,7 +1074,7 @@ const DESK_CLICKS = {
   deskUndo: (el) => deskUndo(el.dataset.deskUndo),
   deskLogRow: (el) => { const id = el.dataset.deskLogRow; if (!deskLogOpen.delete(id)) deskLogOpen.add(id); renderMain(); },
   deskSession: (el) => openSession(el.dataset.deskSession),
-  deskLeadChat: () => { deskPick = null; deskTab = "lead"; deskShow(null); deskLeadLit = projFilter; renderMain(); },
+  deskLeadChat: () => { deskPick = null; deskTab = "lead"; deskShow(null); deskLeadLit = deskSelection(); renderMain(); },
   deskChkItem: (el) => deskShow({ kind: "item", id: el.dataset.deskChkItem }),
   deskRen: (el) => renameSession({ dataset: { rename: el.dataset.deskRen } }),
   // Opened from an item's page or a holder's, it remembers that page so ‹ goes back to it (from the left list: the lead).
@@ -1073,8 +1091,8 @@ const DESK_CLICKS = {
   deskMade: (el) => { deskSeeItem(el.closest("[data-desk-item]")?.dataset.deskItem || deskOpen?.id); invoke("open_link", { url: el.dataset.deskMade }).catch((err) => toast(`Couldn't open: ${err}`)); renderMain(); },
   deskDiffFile: (el) => deskShowFile(el.dataset.deskDiffFile, +el.dataset.n),
   deskCrewOpen: (el) => deskOpenCrew(el.dataset.lead, el.dataset.deskCrewOpen),
-  deskHome: () => { setProjFilter(""); deskOpen = null; deskPick = null; renderMain(); },
-  deskProject: (el) => { setProjFilter(el.dataset.deskProject); deskOpen = null; deskTab = "lead"; deskChatEnd = true; renderMain(); },
+  deskHome: () => { deskSelect(""); deskOpen = null; deskPick = null; renderMain(); },
+  deskProject: (el) => { deskSelect(el.dataset.deskProject); deskOpen = null; deskTab = "lead"; deskChatEnd = true; renderMain(); },
 };
 /** A click rule's attribute: deskItem → data-desk-item. */
 const deskAttr = (k) => `data-${k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`;
@@ -1108,7 +1126,7 @@ function deskKey(e) {
     document.querySelector(`.dk-board ${sel}`)?.focus();
     return true;
   }
-  if (e.metaKey && !e.shiftKey && !e.altKey && !e.ctrlKey && e.key?.toLowerCase() === "n" && projFilter && !sheet && !(crewPageSid && document.querySelector(".crew-page"))) return deskQaFocus();
+  if (e.metaKey && !e.shiftKey && !e.altKey && !e.ctrlKey && e.key?.toLowerCase() === "n" && deskSelection() && !sheet && !(crewPageSid && document.querySelector(".crew-page"))) return deskQaFocus();
   if (deskQaKey(e, key)) return true;
   if (e.key === "Enter" && !e.shiftKey && deskBoxes.has(key)) { deskSendBox(key); return true; }
   if (e.key === "Enter" && !e.shiftKey && key.startsWith("back:")) { deskAct(key.slice(5), "back_go"); return true; }
@@ -1119,7 +1137,7 @@ function deskKey(e) {
   if (e.key === "Escape" && !e.metaKey && !e.ctrlKey && !e.altKey && !over) {
     if (deskDropArm) { deskDropArm = null; renderMain(); return true; }
     if (deskGiveFor) { deskGiveFor = null; renderMain(); return true; }
-    if (deskPick && deskLead(deskOf(projFilter))) { deskPick = null; renderMain(); return true; }
+    if (deskPick && deskLead(deskOf(deskSelection()))) { deskPick = null; renderMain(); return true; }
     if (deskOpen && !(e.target.matches?.("textarea, input") && e.target.value)) { deskShow(deskOpen.kind === "crew" ? { kind: "holder", sid: deskOpen.lead } : deskOpen.kind === "chat" ? deskOpen.from || null : null); return true; }
   }
   return false;

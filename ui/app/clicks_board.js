@@ -30,7 +30,7 @@ function pickProject(pj) {
 /** ✎ on a project in the list: its name in a box, selected. */
 function renameProject(renB) {
   pjRenaming = renB.dataset.pjren;
-  draft(`pjname:${pjRenaming}`).text = (state.settings?.project?.names || {})[pjRenaming] || "";
+  draft(`pjname:${pjRenaming}`).text = (state.desk?.projects || []).find((d) => d.project === pjRenaming && d.independent)?.name || (state.settings?.project?.names || {})[pjRenaming] || "";
   renderMain();
   const el = document.querySelector(".pj-name-in");
   el?.focus(); el?.select();

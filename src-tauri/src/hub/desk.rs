@@ -69,7 +69,7 @@ pub(super) fn crew_parts(h: &Holder) -> Option<(&str, &str)> {
 
 /// The sessions `project`'s items may go to: the project's own, live, oldest first.
 pub(super) fn routable<'a>(st: &'a Store, project: &str) -> Vec<&'a Session> {
-    let mut ours: Vec<&Session> = st.sessions.iter().filter(|s| s.project == project).collect();
+    let mut ours: Vec<&Session> = st.sessions.iter().filter(|s| s.project == st.desk.project_of(project) && st.desk.lead_of(&s.origin.session_id).is_none_or(|id| id == project)).collect();
     ours.sort_by_key(|s| s.since_ms);
     ours
 }
@@ -317,6 +317,9 @@ fn decide_call(st: &mut Store, project: &str, item: Option<String>, by: &str, si
 /// that's unknown or over, nor one that (through those it waits on) waits on this one: both would wait forever.
 /// The item then starts now.
 fn after_refused(st: &Store, a: &str, id: &str) -> Option<String> {
+    if st.desk.item(a).zip(st.desk.item(id)).is_some_and(|(a, i)| a.project != i.project) {
+        return Some(format!("#{a} belongs to another Desk"));
+    }
     if a == id {
         return Some(format!("#{a}, itself"));
     }
@@ -466,9 +469,14 @@ fn give(st: &mut Store, id: &str, sid: &str, now: u64, fx: &mut Effects) -> Resu
 pub(super) fn give_by(st: &mut Store, id: &str, sid: &str, by: (&str, &str, &str), now: u64, fx: &mut Effects) -> Result<(), String> {
     let h = holder_of(st, sid).ok_or("that session isn't open")?;
     let project = st.sessions.get(sid).map(|s| s.project.clone()).unwrap_or_default();
+    let scope = st.desk.item(id).ok_or("no such item")?.project.clone();
+    let workspace = st.desk.project_of(&scope).to_string();
+    if st.desk.lead_of(sid).is_some_and(|id| id != scope) {
+        return Err("that session runs another Desk".into());
+    }
     let it = st.desk.item_mut(id).ok_or("no such item")?;
-    if it.project != project {
-        return Err(format!("{} isn't a session of {}", h.name, it.project));
+    if workspace != project {
+        return Err(format!("{} isn't a session of {}", h.name, workspace));
     }
     if it.state == "done" {
         return Err("it's done".into());
@@ -490,8 +498,8 @@ pub(super) fn give_by(st: &mut Store, id: &str, sid: &str, by: (&str, &str, &str
     fx.items.push(id.to_string());
     let text = if by.1.is_empty() { format!("Gave #{id} to {}", h.name) } else { format!("Started {} for #{id}", h.name) };
     // Given an item, by you or as a new session for it: on the Desk from now.
-    join(st, &project, sid, fx);
-    decide(st, &project, Some(id.to_string()), by.0, by.1, &text, by.2, now, fx);
+    join(st, &scope, sid, fx);
+    decide(st, &scope, Some(id.to_string()), by.0, by.1, &text, by.2, now, fx);
     if let Some(d) = st.desk.decisions.last_mut() {
         d.undo = "none".into();
     }
@@ -677,6 +685,14 @@ fn keep(st: &mut Store, project: &str, by: &By, who: &str, why: &str, now: u64, 
 /// steps in that item: an ITEM: line from it without a `why:` (how it's separate) isn't added, and it's told so.
 fn session_items(st: &mut Store, sid: &str, text: &str, now: u64, fx: &mut Effects) {
     let Some((project, name)) = st.sessions.get(sid).map(|s| (s.project.clone(), shown_name(s))).filter(|(p, _)| !p.is_empty()) else { return };
+    let scopes = st.desk.scopes(sid, &project);
+    if scopes.len() != 1 {
+        if parse::lines(text).iter().any(|line| matches!(line, Line::Item { .. })) {
+            fx.sends.push((sid.to_string(), "Several Desks could receive this item. Add it through the intended Desk so it reaches the right lead.".into()));
+        }
+        return;
+    }
+    let project = scopes[0].clone();
     let told = st.desk.lead_sid(&project).is_some();
     let on = |i: &&DeskItem| matches!(i.state.as_str(), "working" | "to_check") && i.holder.as_ref().is_some_and(|h| h.is(sid));
     let mine = st.desk.items.iter().filter(on).max_by_key(|i| i.updated).map(|i| i.id.clone());
@@ -707,10 +723,11 @@ fn session_items(st: &mut Store, sid: &str, text: &str, now: u64, fx: &mut Effec
 /// one replacing the last (designs moved).
 fn designs_said(st: &mut Store, sid: &str, text: &str, fx: &mut Effects) {
     let Some(project) = st.sessions.get(sid).map(|s| s.project.clone()).filter(|p| !p.is_empty()).or_else(|| st.desk.lead_of(sid)) else { return };
+    let scopes = st.desk.scopes(sid, &project);
     for line in parse::lines(text) {
         let Line::Designs { id, url } = line else { continue };
         let id = st.desk.canon(&id);
-        let Some(it) = st.desk.item_mut(&id).filter(|i| i.project == project && i.designs != url) else { continue };
+        let Some(it) = st.desk.item_mut(&id).filter(|i| scopes.contains(&i.project) && i.designs != url) else { continue };
         it.designs = url;
         fx.items.push(id);
     }
@@ -944,6 +961,7 @@ impl Hub {
     /// The Desk as it was saved (with_ports).
     pub(super) fn desk_restore(st: &mut Store) {
         let (items, decisions, leads) = crate::db::desk_load(now_ms());
+        st.desk.spaces = crate::db::desk_spaces().into_iter().map(|d| (d.id.clone(), d)).collect();
         st.desk.items = items;
         st.desk.decisions = decisions;
         // Items from before numbering get their numbers once, saved under them.
@@ -1038,8 +1056,11 @@ impl Hub {
             match holder {
                 Some(sid) => {
                     let h = holder_of(st, sid).ok_or("that session isn't open")?;
-                    if st.sessions.get(sid).is_some_and(|s| s.project != project) {
-                        return Err(format!("{} isn't a session of {project}", h.name));
+                    if st.sessions.get(sid).is_some_and(|s| s.project != st.desk.project_of(project)) {
+                        return Err(format!("{} isn't a session of {}", h.name, st.desk.project_of(project)));
+                    }
+                    if st.desk.lead_of(sid).is_some_and(|id| id != project) {
+                        return Err("that session runs another Desk".into());
                     }
                     it.holder = Some(h);
                     it.state = "working".into();
@@ -1173,12 +1194,14 @@ impl Hub {
         let fx = self.write(|st| {
             let mut fx = Effects::default();
             let Some((project, name)) = st.sessions.get(sid).map(|s| (s.project.clone(), shown_name(s))) else { return fx };
-            let held: Vec<String> = st.desk.items.iter().filter(|i| i.project == project && i.state != "done" && i.holder.as_ref().is_some_and(|h| h.is(sid))).map(|i| i.id.clone()).collect();
-            let on: Vec<Option<String>> = if held.is_empty() { vec![None] } else { held.into_iter().map(Some).collect() };
-            for item in on {
-                decide(st, &project, item, "Cue", "", &format!("Asked {name} for a hand-off note"), why, now, &mut fx);
-                if let Some(d) = st.desk.decisions.last_mut() {
-                    d.undo = "none".into();
+            for project in st.desk.scopes(sid, &project) {
+                let held: Vec<String> = st.desk.items.iter().filter(|i| i.project == project && i.state != "done" && i.holder.as_ref().is_some_and(|h| h.is(sid))).map(|i| i.id.clone()).collect();
+                let on: Vec<Option<String>> = if held.is_empty() { vec![None] } else { held.into_iter().map(Some).collect() };
+                for item in on {
+                    decide(st, &project, item, "Cue", "", &format!("Asked {name} for a hand-off note"), why, now, &mut fx);
+                    if let Some(d) = st.desk.decisions.last_mut() {
+                        d.undo = "none".into();
+                    }
                 }
             }
             fx
@@ -1200,9 +1223,11 @@ impl Hub {
         // Nobody waits on the card: its answer is sent to the lead as a message (`desk_answered`).
         let (id, _) = self.add_ask(origin, ask);
         self.write(|st| {
+            let workspace = st.desk.project_of(project).to_string();
             if let Some(it) = st.items.iter_mut().find(|i| i.id == id) {
                 it.desk = true;
-                it.project = project.to_string();
+                it.project = workspace;
+                it.tool_input["desk_id"] = json!(project);
                 // Answered, the lead is at its prompt (not at work) until the answer reaches it.
                 it.at_prompt = true;
             }
@@ -1320,7 +1345,7 @@ impl Hub {
     /// items (not done, or done today) and today's decisions, newest first.
     pub(super) fn desk_view(st: &Store, now: u64) -> Value {
         let today = secs(super::today::local_start(now, false));
-        let mut projects: Vec<String> = st.desk.items.iter().map(|i| i.project.clone()).chain(st.desk.lead.keys().cloned()).chain(st.desk.members.iter().filter(|(_, m)| !m.is_empty()).map(|(p, _)| p.clone())).collect();
+        let mut projects: Vec<String> = st.desk.spaces.keys().cloned().chain(st.desk.items.iter().map(|i| i.project.clone())).chain(st.desk.lead.keys().cloned()).chain(st.desk.members.iter().filter(|(_, m)| !m.is_empty()).map(|(p, _)| p.clone())).collect();
         projects.sort();
         projects.dedup();
         let list: Vec<Value> = projects
@@ -1331,7 +1356,7 @@ impl Hub {
                 // Older steps and calls on the items shown, for their pages' Thread (today's are in `decisions`).
                 let older: Vec<&DeskDecision> = st.desk.decisions.iter().filter(|d| &d.project == p && d.at < today && d.item_id.as_ref().is_some_and(|i| items.iter().any(|it| &it.id == i))).collect();
                 let members = st.desk.members.get(p).cloned().unwrap_or_default();
-                json!({ "project": p, "lead": Self::desk_lead_view(st, p), "items": items, "decisions": decisions, "older": older, "members": members, "checks": super::desk_checks::checks_view(st, p) })
+                json!({ "id": p, "project": p, "name": st.desk.spaces.get(p).map(|d| &d.name), "independent": st.desk.spaces.contains_key(p), "workspace_project": st.desk.project_of(p), "folder": st.desk.spaces.get(p).map(|d| &d.folder), "lead": Self::desk_lead_view(st, p), "items": items, "decisions": decisions, "older": older, "members": members, "checks": super::desk_checks::checks_view(st, p) })
             })
             .collect();
         json!({ "projects": list, "installed_ms": super::desk_checks::installed_ms() })

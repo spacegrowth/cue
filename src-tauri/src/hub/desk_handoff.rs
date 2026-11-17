@@ -46,8 +46,10 @@ impl Hub {
             let mut fx = Effects::default();
             let Some((project, name)) = st.sessions.get(sid).map(|s| (s.project.clone(), shown_name(s))) else { return fx };
             let text = text.replace("{name}", &name);
-            for item in held_items(st, &project, sid) {
-                note(st, &project, item, &text, why, now, &mut fx);
+            for scope in st.desk.scopes(sid, &project) {
+                for item in held_items(st, &scope, sid) {
+                    note(st, &scope, item, &text, why, now, &mut fx);
+                }
             }
             fx
         });
@@ -66,34 +68,36 @@ impl Hub {
             let Some(s) = st.sessions.get(old) else { return (fx, None) };
             let (project, old_name) = (s.project.clone(), shown_name(s));
             let name = if name.is_empty() { st.sessions.get(new).map(shown_name).unwrap_or_else(|| new.chars().take(8).collect()) } else { name.to_string() };
-            let lead = (st.desk.lead_sid(&project) == Some(old)).then(|| (project.clone(), name.clone()));
-            let held = held_items(st, &project, old);
-            let on_desk = st.desk.on_desk(&project, old) || lead.is_some() || held.iter().any(Option::is_some);
-            if !on_desk {
-                return (fx, None);
-            }
-            super::desk_members::join(st, &project, new, &mut fx);
-            let text = format!("Handed {old_name} off to {name}");
-            let why = "a fresh session, from its hand-off";
-            for item in held {
-                if let Some(it) = item.as_deref().and_then(|id| st.desk.item_mut(id)) {
-                    if let Some(h) = it.holder.as_mut() {
-                        if h.lead_sid == old {
-                            h.lead_sid = new.to_string();
-                        } else if h.sid == old {
-                            (h.sid, h.name) = (new.to_string(), name.clone());
-                        }
-                    }
-                    // Its work so far counts for the one that carries on.
-                    if let Some((by, _)) = it.held_from.as_mut().filter(|(by, _)| by == old) {
-                        *by = new.to_string();
-                    }
-                    it.updated = secs(now);
-                    fx.items.push(it.id.clone());
+            let lead = st.desk.lead_of(old).map(|id| (id, name.clone()));
+            for project in st.desk.scopes(old, &project) {
+                let held = held_items(st, &project, old);
+                let on_desk = st.desk.on_desk(&project, old) || lead.is_some() || held.iter().any(Option::is_some);
+                if !on_desk {
+                    continue;
                 }
-                note(st, &project, item, &text, why, now, &mut fx);
-                if let Some(d) = st.desk.decisions.last_mut() {
-                    d.call = true;
+                super::desk_members::join(st, &project, new, &mut fx);
+                let text = format!("Handed {old_name} off to {name}");
+                let why = "a fresh session, from its hand-off";
+                for item in held {
+                    if let Some(it) = item.as_deref().and_then(|id| st.desk.item_mut(id)) {
+                        if let Some(h) = it.holder.as_mut() {
+                            if h.lead_sid == old {
+                                h.lead_sid = new.to_string();
+                            } else if h.sid == old {
+                                (h.sid, h.name) = (new.to_string(), name.clone());
+                            }
+                        }
+                        // Its work so far counts for the one that carries on.
+                        if let Some((by, _)) = it.held_from.as_mut().filter(|(by, _)| by == old) {
+                            *by = new.to_string();
+                        }
+                        it.updated = secs(now);
+                        fx.items.push(it.id.clone());
+                    }
+                    note(st, &project, item, &text, why, now, &mut fx);
+                    if let Some(d) = st.desk.decisions.last_mut() {
+                        d.call = true;
+                    }
                 }
             }
             (fx, lead)

@@ -65,7 +65,7 @@ impl Hub {
     pub(crate) fn desk_claim_start(&self, project: &str) -> Result<(), String> {
         self.write(|st| {
             if st.desk.starting.contains_key(project) {
-                return Err(format!("{project}'s lead is starting already"));
+                return Err(format!("{}'s lead is starting already", st.desk.name_of(project)));
             }
             st.desk.starting.insert(project.to_string(), vec![]);
             Ok(())
@@ -75,7 +75,10 @@ impl Hub {
     /// The start or resume `desk_claim` allowed is over: the project is let go, and the messages held meanwhile
     /// handed back to be sent.
     pub(crate) fn desk_claim_done(&self, project: &str) -> Vec<Waiting> {
-        self.write(|st| st.desk.starting.remove(project)).unwrap_or_default()
+        self.write(|st| {
+            st.desk.lead_claims.retain(|_, desk| desk != project);
+            st.desk.starting.remove(project)
+        }).unwrap_or_default()
     }
 
     /// How many messages wait on `project`'s lead starting.
@@ -111,18 +114,18 @@ impl Hub {
             Some(f) => f,
             None => crate::db::ended_session(sid).map(|(_, s)| (s.project.clone(), shown_name(&s), "ended")).ok_or("no such session")?,
         };
-        if of != project {
-            return Err(format!("{name} isn't a session of {project}"));
+        if of != self.read(|st| st.desk.project_of(project).to_string()) {
+            return Err(format!("{name} isn't a session of {}", self.desk_name(project)));
         }
         if let Some(other) = self.read(|st| st.desk.lead_of(sid)).filter(|p| p != project) {
-            return Err(format!("{name} already runs {other}'s Desk"));
+            return Err(format!("{name} already runs {}'s Desk", self.desk_name(&other)));
         }
         Ok((name, state))
     }
 
     /// A name for a new lead of `project` no open or parked session goes by: "<project>-lead", else "-lead-2"…
     pub(crate) fn desk_lead_name(&self, project: &str) -> String {
-        self.free_name(&format!("{project}-lead"))
+        self.free_name(&format!("{}-lead", self.read(|st| st.desk.name_of(project).to_string())))
     }
 
     /// `base`, else "<base>-2"…: the first no open or parked session goes by.
@@ -134,7 +137,7 @@ impl Hub {
     /// An item the lead gave to a new session (`ROUTE: #id -> new`): a hosted Claude started in the project's folder,
     /// named "<project>-<id>", that holds it and is sent it. If it can't start, the item says why (and the lead is told).
     pub(super) fn desk_start_new(self: &Arc<Self>, s: super::desk::NewStart) {
-        let name = self.free_name(&format!("{}-{}", s.project, s.id));
+        let name = self.free_name(&format!("{}-{}", self.read(|st| st.desk.name_of(&s.project).to_string()), s.id));
         let dir = self.desk_folder(&s.project).ok_or_else(|| format!("no folder known for {}", s.project));
         // Its folder is one a session of the project already works in: trusted, as you trust it there.
         let opts = crate::ipc::StartOpts { trust: true, ..Default::default() };
@@ -157,6 +160,9 @@ impl Hub {
     /// The folder a new lead of `project` starts in: the repository of a session of the project on this Mac (live,
     /// then parked).
     pub(crate) fn desk_folder(&self, project: &str) -> Option<String> {
+        if let Some(folder) = self.read(|st| st.desk.spaces.get(project).map(|d| d.folder.clone())) {
+            return Some(folder);
+        }
         let cwds: Vec<String> = self.read(|st| {
             let live = st.sessions.iter().map(|s| &s.origin);
             let parked = st.parked.iter().map(|p| &p.session.origin);
@@ -178,7 +184,10 @@ impl Hub {
     pub(crate) fn desk_summary(&self, project: &str, lead: &str, with_skill: bool) -> (String, Vec<(String, String)>) {
         let now = now_ms();
         let (text, failed) = self.read(|st| {
-            let mut out = format!("project=\"{}\">\n", project.replace('"', "'"));
+            let mut out = match st.desk.spaces.get(project) {
+                Some(d) => format!("id=\"{}\" name=\"{}\" project=\"{}\">\n", project, d.name.replace('"', "'"), d.project.replace('"', "'")),
+                None => format!("project=\"{}\">\n", project.replace('"', "'")),
+            };
             if with_skill {
                 out.push_str(crate::desk::LEAD_SKILL);
                 out.push_str("\n\n");

@@ -113,7 +113,7 @@ function deskCheckRows(d) {
  *  many files, what to test, whether it's installed, and Looks right / Send back while it's the one to check (else
  *  what became of it). Its words can be selected and copied; links and paths in them open. */
 function deskCheckCard(c, base = null, project = "") {
-  const by = c.by || "its session", ses = (state.sessions || []).find((s) => s.name === c.by && (!project || s.project === project));
+  const by = c.by || "its session", ses = (state.sessions || []).find((s) => s.name === c.by && (!project || s.project === deskWorkspace(deskOf(project))));
   const who = ses ? `<button class="dk-chk-a" data-desk-chat-of="${esc(ses.session_id)}">${esc(by)}</button>` : `<b>${esc(by)}</b>`;
   const n = (c.files || []).length, files = n ? ` · ${n === 1 ? "1 file" : `${n} files`}` : "";
   // In it when Cue was installed after the work last changed (`edited`), not after the DONE: you install, then say DONE.

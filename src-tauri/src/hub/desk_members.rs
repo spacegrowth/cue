@@ -58,7 +58,7 @@ impl Hub {
             // One that has ended can still be taken off.
             None if !on => {}
             None => return Err("no such session".into()),
-            Some(p) if p != project => return Err(format!("that session isn't of {project}")),
+            Some(p) if p != self.read(|st| st.desk.project_of(project).to_string()) => return Err(format!("that session isn't of {project}")),
             Some(_) => {}
         }
         self.desk_saving(|| {

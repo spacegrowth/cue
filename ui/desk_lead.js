@@ -41,7 +41,7 @@ const deskFrom = (i, d) => (i.from === "you" ? "you" : !i.from || i.from === "di
 
 /** The project's sessions to run its Desk or take an item, leads first: [{ sid, name, sub, lead }]. */
 function deskSessionsOf(project, d = deskOf(project)) {
-  const rows = (state.sessions || []).filter((s) => s.project === project && s.session_id).map((s) => {
+  const rows = (state.sessions || []).filter((s) => s.project === deskWorkspace(d) && s.session_id && !(state.desk?.projects || []).some((other) => other.project !== project && other.lead?.sid === s.session_id)).map((s) => {
     const sid = s.session_id, crew = deskCrew(sid).length;
     const lead = crew > 0 || deskLead(d)?.sid === sid || d.items.some((i) => i.holder?.kind === "lead" && i.holder.sid === sid);
     return { sid, name: deskHolderName(sid), lead, sub: !lead ? "session" : crew ? `lead, crew of ${crew}` : "lead, on its own" };
@@ -103,7 +103,7 @@ async function deskGiveTo(id, sid) {
 // ---------- the quick-add line ----------
 
 /** The quick-add line's draft keys, a pair a project (what you half-typed stays on its own project's Desk). */
-const deskQaKeys = (project = projFilter) => ({ line: `desk-qa:${project}`, done: `desk-qa-done:${project}` });
+const deskQaKeys = (project = deskSelection()) => ({ line: `desk-qa:${project}`, done: `desk-qa-done:${project}` });
 /** The line (or its Done when) on screen. */
 const deskQaEl = (which = "line") => document.querySelector(`.dk-board .dk-qa [data-qa="${which}"]`);
 const deskQaFocusEl = (which) => deskQaEl(which)?.focus();
@@ -112,14 +112,14 @@ const deskQaFocusEl = (which) => deskQaEl(which)?.focus();
  *  "+ Done when" (or its line, open). */
 function deskQuickAdd() {
   const k = deskQaKeys();
-  const done = deskQaDone === projFilter ? `<input class="dk-qa-in dk-qa-done" data-qa="done" data-text="${esc(k.done)}" placeholder="Done when… (optional)" spellcheck="false" value="${esc(draft(k.done).text)}"/>`
+  const done = deskQaDone === deskSelection() ? `<input class="dk-qa-in dk-qa-done" data-qa="done" data-text="${esc(k.done)}" placeholder="Done when… (optional)" spellcheck="false" value="${esc(draft(k.done).text)}"/>`
     : `<button class="dk-link dk-qa-more" data-desk-qa-done>+ Done when</button>`;
   return `<div class="dk-qa" data-drop="${esc(k.line)}"><div class="dk-qa-row"><input class="dk-qa-in" data-qa="line" data-text="${esc(k.line)}" placeholder="Add an item…" spellcheck="false" value="${esc(draft(k.line).text)}"/><button class="icon-btn" data-attach="${esc(k.line)}" aria-label="Add an image">${IMAGE_ICON}</button></div>${draftChips(k.line)}${done}</div>`;
 }
 /** Add what's in the line (or `titles`, pasted lines): one item each, of no kind (the lead says); Done when and the
  *  pictures go with a single one. The line keeps the cursor for the next. */
 async function deskQaAdd(titles = null) {
-  const project = projFilter, k = deskQaKeys(project);
+  const project = deskSelection(), k = deskQaKeys(project);
   const list = (titles || [draft(k.line).text]).map((t) => t.trim()).filter(Boolean);
   if (!list.length) return deskQaFocusEl("line");
   const kind = "", doneWhen = titles ? "" : draft(k.done).text.trim(), images = titles ? [] : draft(k.line).images;
@@ -150,7 +150,7 @@ async function deskQaAdd(titles = null) {
 function deskQaKey(e, key) {
   const k = deskQaKeys();
   if (key !== k.line && key !== k.done) return false;
-  if (e.key === "Enter" && e.shiftKey && key === k.line) { deskQaDone = projFilter; renderMain(); deskQaFocusEl("done"); return true; }
+  if (e.key === "Enter" && e.shiftKey && key === k.line) { deskQaDone = deskSelection(); renderMain(); deskQaFocusEl("done"); return true; }
   if (e.key === "Enter" && !e.shiftKey) { deskQaAdd(); return true; }
   if (e.key === "Escape" && deskQaDone && !draft(k.done).text) { deskQaDone = null; renderMain(); deskQaFocusEl("line"); return true; }
   return false;
@@ -165,14 +165,14 @@ function deskQaFocus() {
 
 /** The Desk's clicks for the lead and adding, merged into desk.js's. */
 const DESK_LEAD_CLICKS = {
-  deskLead: (el) => deskSetLead(projFilter, el.dataset.deskLead),
+  deskLead: (el) => deskSetLead(deskSelection(), el.dataset.deskLead),
   // The picker takes the chat card: whatever's open there closes.
-  deskChange: () => { deskPick = projFilter; deskGiveFor = null; deskOpen = null; deskDropArm = null; renderMain(); },
+  deskChange: () => { deskPick = deskSelection(); deskGiveFor = null; deskOpen = null; deskDropArm = null; renderMain(); },
   deskKeep: () => { deskPick = null; renderMain(); },
   deskGive: (el) => { const at = el.dataset.at; deskGiveFor = deskGiveFor?.id === el.dataset.deskGive && deskGiveFor.at === at ? null : { id: el.dataset.deskGive, at }; renderMain(); },
   deskGiveTo: (el) => deskGiveTo(el.dataset.id, el.dataset.deskGiveTo),
   deskWhy: (el) => { const k = el.dataset.deskWhy; if (!deskWhyShut.delete(k)) deskWhyShut.add(k); renderMain(); },
-  deskQaDone: () => { deskQaDone = projFilter; renderMain(); deskQaFocusEl("done"); },
+  deskQaDone: () => { deskQaDone = deskSelection(); renderMain(); deskQaFocusEl("done"); },
 };
 
 if (typeof document !== "undefined") {

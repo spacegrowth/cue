@@ -43,7 +43,7 @@ impl Hub {
                 None => todo.push((f.folder.clone(), vec![f.path.clone()])),
             }
         }
-        let made = commit_files(&it.project, &machine, &todo, message)?;
+        let made = commit_files(&self.read(|st| st.desk.project_of(&it.project).to_string()), &machine, &todo, message)?;
         self.write(|st| {
             if let Some(i) = st.desk.item_mut(id) {
                 i.commit = shas_of(&made);
@@ -144,7 +144,7 @@ impl Hub {
             if todo.is_empty() {
                 (None, None)
             } else {
-                match commit_files(&it.project, &w.machine, &todo, &it.title) {
+                match commit_files(&self.read(|st| st.desk.project_of(&it.project).to_string()), &w.machine, &todo, &it.title) {
                     Ok(made) => (Some(made), None),
                     Err(e) => (None, Some(CommitWait { error: e, ..w.clone() })),
                 }

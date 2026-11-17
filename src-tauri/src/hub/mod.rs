@@ -14,6 +14,7 @@ mod asks;
 mod cache_tick;
 mod crew_log;
 mod desk;
+mod desk_spaces;
 mod desk_checks;
 mod desk_commit;
 mod desk_diff;
