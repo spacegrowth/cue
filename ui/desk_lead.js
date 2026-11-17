@@ -237,11 +237,11 @@ if (typeof document !== "undefined") {
  *  (deskLeadAsk) and DECIDED md's own block, so neither is here. */
 const DESK_SAY = /^[-*+ ]*(ITEM|ROUTE|DONE|CONTEXT|DESIGNS|TITLE)\**\s*:(.*)$/;
 const DESK_KINDS = ["bug", "feature", "task"];
-/** `line` of a Desk chat's reply as one short quiet line at the left (md's `lines` hook; #157): ROUTE "[bug] #2 → who
- *  · after #1"; ITEM "added [bug] title"; DONE "[bug] #2 done"; TITLE "[bug] #2 titled"; CONTEXT "who → keep"; DESIGNS
- *  "Open the designs ↗", a link in the accent colour. What's longer (the item's title, why, done when) opens under it
- *  on a click (deskLnOpen), its title opening the item. "" for any other line, or one parse.rs wouldn't act on (an
- *  empty or "<…>" body). */
+/** `line` of a Desk chat's reply as one short plain sentence at the left (md's `lines` hook; #157, #173): ROUTE "Gave
+ *  Task #2 to who" (or "Task #2 waits on #1"); ITEM "Added Bug #2: title"; DONE "Bug #2 is done"; TITLE "Renamed Bug
+ *  #2"; CONTEXT "Kept who's context"; DESIGNS "Open the designs ↗", a link in the accent colour. An item's number is a
+ *  link that opens it; a click on the rest of the line opens what's longer under it (deskLnOpen: the title, why, done
+ *  when). No arrow, no chevron. "" for any other line, or one parse.rs wouldn't act on (an empty or "<…>" body). */
 function deskLineHtml(line, inline) {
   const m = DESK_SAY.exec(line.trim());
   if (!m) return "";
@@ -255,27 +255,33 @@ function deskLineHtml(line, inline) {
   const name = (s) => s.trim().replace(/^@/, "").replace(/^["`*]+|["`*]+$/g, "").trim();
   const arrow = (s) => { const a = /\s*(->|→|=>)\s*/.exec(s); return a ? [s.slice(0, a.index), s.slice(a.index + a[0].length)] : null; };
   const known = (x) => (state.desk?.projects || []).flatMap((d) => d.items).find((i) => deskIdIs(i, x));
-  // An item as its number in bold ("#2": no kind's icon, not "Bug #2", to keep the line short).
-  const ref = (x, it = known(x)) => `<b class="dk-say-id">#${esc(it?.id ?? x)}</b>`;
+  // An item as "Bug #2", a link that opens it (just "#2" when `bare`); plain until the Desk has it.
+  const ref = (x, it = known(x), bare) => {
+    const t = bare || !it ? `#${it?.id ?? x}` : deskNum(it);
+    return it ? `<button class="dk-say-id" data-desk-chk-item="${esc(it.id)}">${esc(t)}</button>` : `<b class="dk-say-id">${esc(t)}</b>`;
+  };
   // Its title under the line, a click opening it.
   const titled = (it, t = it?.title) => (!t ? "" : it ? `<button class="dk-sl-it" data-desk-chk-item="${esc(it.id)}">${esc(t)}</button>` : `<span class="dk-sl-tt">${esc(t)}</span>`);
-  // The line, and what opens under it (none: a plain line).
+  // The line, and what opens under it (none: a plain line). The line isn't a button: its item's number is one.
   const ln = (head, more) => {
     const key = `${m[1]}:${body}`, open = !!more && deskLnOpen.has(key);
-    const row = more ? `<button class="dk-sl-r" data-desk-why="${esc(key)}" aria-expanded="${open}"><span class="dk-sl-h">${head}</span><span class="dk-sl-c" aria-hidden="true">${open ? "⌃" : "⌄"}</span></button>` : `<span class="dk-sl-r"><span class="dk-sl-h">${head}</span></span>`;
+    const row = more ? `<div class="dk-sl-r why" role="button" tabindex="0" data-desk-why="${esc(key)}" aria-expanded="${open}"><span class="dk-sl-h">${head}</span></div>` : `<span class="dk-sl-r"><span class="dk-sl-h">${head}</span></span>`;
     return `<div class="dk-say dk-sl${open ? " open" : ""}">${row}${open ? `<div class="dk-sl-d">${more}</div>` : ""}</div>`;
   };
-  const w = (t) => `<span class="dk-say-w">${t}</span>`;
+  const who = (s) => `<b class="dk-rt-to">${esc(s)}</b>`;
   const dot = (xs) => xs.filter(Boolean).join(" · ");
+  const and = (xs) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
   if (m[1] === "ITEM") {
     const first = p[0].toLowerCase();
-    const rest = DESK_KINDS.includes(first) ? p.slice(1) : p;
+    const kind = DESK_KINDS.includes(first) ? first : "";
+    const rest = kind ? p.slice(1) : p;
     const title = rest.find((s) => lab(s, "done when") === null) || "";
     if (!title) return "";
     deskSaidItem = title;
     const done = rest.map((s) => lab(s, "done when")).find((v) => v !== null) || "";
     const it = deskNewlySaid(title);
-    return ln(`${w("added")} ${it ? ref(it.id, it) : `<b class="dk-say-t">${inline(title)}</b>`}`, dot([it ? titled(it) : "", done ? `done when ${inline(done)}` : ""]));
+    const what = it ? ref(it.id, it) : kind ? `a ${kind}` : "";
+    return ln(`Added ${what ? `${what}: ` : ""}<span class="dk-say-t">${inline(title)}</span>`, done ? `Done when ${inline(done)}` : "");
   }
   if (m[1] === "ROUTE") {
     const ht = arrow(p[0]), at = ht && id(ht[0]), to = ht && name(ht[1]);
@@ -284,29 +290,32 @@ function deskLineHtml(line, inline) {
     // "#new" is the ITEM just above it, once the Desk has it; "→ new" (or "me") the session Cue started for it, once there is one.
     const it = at === "new" ? deskNewlySaid(deskSaidItem) : known(at);
     const fresh = /^(new|me)$/i.test(to) && it?.holder;
-    const who = fresh ? deskHolderName(it.holder.sid, it.holder.name) : /^new$/i.test(to) ? "a new session" : to;
-    const what = at === "new" && !it ? `<b class="dk-say-id">the new item</b>` : ref(at, it);
-    const also = dot([crew ? esc(crew) : "", after ? `${w("after")} ${ref(after)}` : ""]);
-    const head = `${what} → <b class="dk-rt-to">${esc(who)}</b>${also ? ` · ${also}` : ""}`;
-    return ln(head, dot([titled(it, it?.title || (at === "new" ? deskSaidItem : "")), why ? inline(why) : ""]));
+    const to2 = fresh ? who(deskHolderName(it.holder.sid, it.holder.name)) : /^new$/i.test(to) ? "a new session" : who(to);
+    const to3 = crew ? `${esc(crew)} on ${to2}'s crew` : to2;
+    const what = at === "new" && !it ? "the new item" : ref(at, it);
+    const head = after ? `${what} waits on ${ref(after, undefined, true)}` : `Gave ${what} to ${to3}`;
+    const title = it?.title || (at === "new" ? deskSaidItem : "");
+    return ln(head, dot([titled(it, title), after ? `Then to ${to3}` : "", why ? inline(why) : ""]));
   }
   if (m[1] === "DONE") {
     const ids = body.split(/[, ]/).filter((x) => x.trim().startsWith("#")).map(id).filter(Boolean);
-    return ids.length ? ln(`${ids.map((x) => ref(x)).join(", ")} ${w("done")}`, dot(ids.map((x) => titled(known(x))))) : "";
+    return ids.length ? ln(`${and(ids.map((x) => ref(x)))} ${ids.length > 1 ? "are" : "is"} done`, dot(ids.map((x) => titled(known(x))))) : "";
   }
   if (m[1] === "TITLE") {
     const at = p[0].startsWith("#") && id(p[0]), t = (p[1] || "").replace(/^["`*]+|["`*]+$/g, "").trim();
-    return at && t ? ln(`${ref(at)} ${w("titled")}`, titled(known(at), t)) : "";
+    return at && t ? ln(`Renamed ${ref(at)}`, titled(known(at), t)) : "";
   }
   if (m[1] === "DESIGNS") {
     // "#135 https://…" (as parse.rs designs): the link alone, under the words, as the item page has it.
     const url = /^#\S+\s.*?(https?:\/\/[^\s>)\]"`*]+)/.exec(body)?.[1]?.replace(/[.,;]+$/, "");
     return url ? `<div class="dk-say dk-dsay">${deskDesignsA(url)}</div>` : "";
   }
-  const ht = arrow(p[0]), who = ht && name(ht[0]), what = ht && (ht[1].trim().split(/\s+/)[0] || "").replace(/["`*.]/g, "").toLowerCase();
-  if (!who || !what) return "";
+  const ht = arrow(p[0]), whom = ht && name(ht[0]), what = ht && (ht[1].trim().split(/\s+/)[0] || "").replace(/["`*.]/g, "").toLowerCase();
+  if (!whom || !what) return "";
   const why = find("why");
-  return ln(`<b class="dk-rt-to">${esc(who)}</b> → ${esc(what)}`, why ? inline(why) : "");
+  const said = /^(me|lead)$/i.test(whom) ? "my" : `${who(whom)}'s`;
+  const verb = { keep: "Kept", clear: "Cleared", drop: "Dropped", compact: "Compacted" }[what];
+  return ln(verb ? `${verb} ${said} context` : `${said === "my" ? "My" : said} context: ${esc(what)}`, why ? inline(why) : "");
 }
 /** The newest item titled `title` (as the lead's ITEM line said it), or undefined. */
 const deskNewlySaid = (title) => (title ? (state.desk?.projects || []).flatMap((d) => d.items).filter((i) => i.title === title).sort((a, b) => (b.created ?? 0) - (a.created ?? 0))[0] : undefined);

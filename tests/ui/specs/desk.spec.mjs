@@ -971,38 +971,58 @@ test("the lead's own Desk lines are drawn as lines in its chat, code blocks left
   // Each line one short quiet line at the left (#157): no rules, no box, no chip.
   const ln = said.locator(".own-lines .dk-sl");
   await expect(ln).toHaveCount(4);
-  await expect(ln.nth(0)).toHaveText("added Box loses focus⌄");
+  await expect(ln.nth(0)).toHaveText("Added a bug: Box loses focus");
   await expect(ln.nth(0).locator("svg.dk-kic")).toHaveCount(0);
   await expect(said.locator(".own-lines")).toHaveCSS("border-top-width", "0px");
   expect(await said.locator(".own-lines .dk-cl").count()).toBe(0);
-  // A hand-off: "#d7k2 → web-lead · after #a1", at the left, one line, its why shut.
+  // A hand-off that waits: "#d7k2 waits on #a1", a plain sentence at the left, one line, its why shut; no arrow, no chevron.
   const route = ln.nth(1);
-  await expect(route.locator(".dk-sl-h")).toHaveText("#d7k2 → web-lead · after #a1");
-  await expect(route.locator(".dk-rt-to")).toHaveCSS("font-weight", "650");
+  await expect(route.locator(".dk-sl-h")).toHaveText("#d7k2 waits on #a1");
+  await expect(said.locator(".own-lines")).not.toContainText("→");
+  await expect(said.locator(".own-lines")).not.toContainText("⌄");
   const lay = await route.evaluate((el) => { const r = el.getBoundingClientRect(), t = el.querySelector(".dk-sl-h").getBoundingClientRect(), m = el.closest(".cv-text").getBoundingClientRect(); return { left: t.left - m.left, h: r.height }; });
   expect(lay.left).toBeLessThan(4);
   expect(lay.h).toBeLessThan(24);
   await expect(route.locator(".dk-sl-d")).toHaveCount(0);
   await expect(route.locator(".dk-sl-r")).toHaveAttribute("aria-expanded", "false");
   // A click opens its why under it, plain (no fill, no box); it stays open through a redraw, and a click shuts it.
-  await route.locator(".dk-sl-r").click();
-  await expect(route.locator(".dk-sl-d")).toHaveText("it knows the box");
+  await route.locator(".dk-sl-r").dispatchEvent("click");
+  await expect(route.locator(".dk-sl-d")).toHaveText("Then to web-lead · it knows the box");
   await expect(route.locator(".dk-sl-d")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await expect(route.locator(".dk-sl-d")).toHaveCSS("border-top-width", "0px");
   await page.evaluate(() => renderMain());
   await expect(said.locator(".dk-sl").nth(1).locator(".dk-sl-d")).toHaveCount(1);
-  await said.locator(".dk-sl").nth(1).locator(".dk-sl-r").click();
+  await said.locator(".dk-sl").nth(1).locator(".dk-sl-r").dispatchEvent("click");
   await expect(said.locator(".dk-sl-d")).toHaveCount(0);
-  // Done: its number and "done"; its title on a click, which opens the item.
-  await expect(ln.nth(2).locator(".dk-sl-h")).toHaveText("#d3 done");
+  // Done: "Feature #d3 is done", its number a link; its title on a click, which opens the item.
+  await expect(ln.nth(2).locator(".dk-sl-h")).toHaveText("Feature #d3 is done");
+  await expect(ln.nth(2).locator("button.dk-say-id")).toHaveText("Feature #d3");
   await expect(ln.nth(2).locator("svg.dk-kic")).toHaveCount(0);
-  await ln.nth(2).locator(".dk-sl-r").click();
+  await ln.nth(2).locator(".dk-sl-r").dispatchEvent("click");
   await expect(ln.nth(2).locator(".dk-sl-it")).toHaveCount(1);
-  await expect(ln.nth(3).locator(".dk-sl-h")).toHaveText("host-lead → keep");
+  await expect(ln.nth(3).locator(".dk-sl-h")).toHaveText("Kept host-lead's context");
   await expect(said.locator(".cv-text")).toContainText("Here's the plan.");
   await expect(said.locator("pre")).toContainText("ITEM: task | an example");
   await expect(said).not.toContainText("ROUTE:");
   await expect(page.locator(".dk-chat .cv-fwd")).toHaveCount(0);
+  // The number is a link: it opens its item, not the line's why; Enter on the line opens the why.
+  await page.evaluate(() => deskLnOpen.clear());
+  await page.evaluate(() => renderMain());
+  await said.locator(".dk-sl").nth(1).locator(".dk-sl-r").focus();
+  await page.keyboard.press("Enter");
+  await expect(said.locator(".dk-sl").nth(1).locator(".dk-sl-d")).toHaveCount(1);
+  await said.locator(".dk-sl").nth(2).locator("button.dk-say-id").click();
+  await expect.poll(() => page.evaluate(() => deskOpen && [deskOpen.kind, deskOpen.id])).toEqual(["item", "d3"]);
+  await expect(page.locator(".dk-chat .dk-sl").nth(2).locator(".dk-sl-d")).toHaveCount(0);
+});
+
+test("a plain hand-off reads \"Gave Task #id to who\" (#173)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await page.evaluate(() => { sessionOf("lead").thread.push({ at_ms: Date.now(), role: "agent", text: "ROUTE: #d2 -> web-lead | why: warm" }); renderMain(); });
+  const l = page.locator(".dk-chat .cv-agent").last().locator(".dk-sl");
+  await expect(l.locator(".dk-sl-h")).toHaveText(/^Gave \w+ #d2 to web-lead$/);
+  await expect(l.locator(".dk-rt-to")).toHaveText("web-lead");
 });
 
 test("a hand-off to a new session names that session once Cue has started it, and #new is the item just above", async ({ page, cue }) => {
@@ -1011,15 +1031,15 @@ test("a hand-off to a new session names that session once Cue has started it, an
   const say = (text) => page.evaluate((t) => { sessionOf("lead").thread.push({ at_ms: Date.now(), role: "agent", text: t }); renderMain(); }, text);
   const last = page.locator(".dk-chat .cv-agent").last();
   await say(["ITEM: bug | \"Looks right\" is too loud | done when: it's quiet", "ROUTE: #new -> new | why: no one has the header"].join("\n"));
-  await expect(last.locator(".dk-sl").nth(1).locator(".dk-sl-h")).toHaveText("the new item → a new session");
+  await expect(last.locator(".dk-sl").nth(1).locator(".dk-sl-h")).toHaveText("Gave the new item to a new session");
   // Cue makes the item and starts a session for it: the card says both.
   await page.evaluate(() => {
     const d = state.desk.projects.find((p) => p.project === "cue");
     d.items.push({ id: "q9", project: "cue", kind: "bug", title: "\"Looks right\" is too loud", state: "working", created: Date.now(), updated: Date.now(), holder: { kind: "session", sid: "s-new", name: "cue-117" } });
     renderMain();
   });
-  await expect(last.locator(".dk-sl").nth(1).locator(".dk-sl-h")).toHaveText("#q9 → cue-117");
-  await expect(last.locator(".dk-sl").nth(0).locator(".dk-sl-h")).toHaveText("added #q9");
+  await expect(last.locator(".dk-sl").nth(1).locator(".dk-sl-h")).toHaveText("Gave Bug #q9 to cue-117");
+  await expect(last.locator(".dk-sl").nth(0).locator(".dk-sl-h")).toHaveText("Added Bug #q9: \"Looks right\" is too loud");
   // A named session stays as the lead named it.
   await say("ROUTE: #q9 -> web-lead | why: warm");
   await expect(last.locator(".dk-sl .dk-rt-to")).toHaveText("web-lead");
@@ -1031,8 +1051,8 @@ test("a reply of only routing lines is short lines at the left: TITLE and ROUTE,
   await page.evaluate(() => { sessionOf("lead").thread.push({ at_ms: Date.now(), role: "agent", text: "TITLE: #d2 | A longer title the lead gave it, long enough that it would wrap on a narrow chat\nROUTE: #d2 -> web-lead | kind: feature | after: #d3 | why: free and warm, and it knows the header code from the last change" }); renderMain(); });
   const last = page.locator(".dk-chat .cv-agent").last(), ln = last.locator(".dk-sl");
   await expect(ln).toHaveCount(2);
-  await expect(ln.nth(0).locator(".dk-sl-h")).toHaveText("#d2 titled");
-  await expect(ln.nth(1).locator(".dk-sl-h")).toHaveText("#d2 → web-lead · after #d3");
+  await expect(ln.nth(0).locator(".dk-sl-h")).toHaveText(/^Renamed \w+ #d2$/);
+  await expect(ln.nth(1).locator(".dk-sl-h")).toHaveText(/^\w+ #d2 waits on #d3$/);
   // Stacked tight, no icon: the second starts right under the first.
   const [a, b] = [await ln.nth(0).boundingBox(), await ln.nth(1).boundingBox()];
   expect(b.y - (a.y + a.height)).toBeLessThan(2);
@@ -1040,15 +1060,15 @@ test("a reply of only routing lines is short lines at the left: TITLE and ROUTE,
   await expect(last.locator(".dk-sl svg")).toHaveCount(0);
   await expect(last.locator(".cv-text")).not.toContainText("TITLE:");
   for (const l of await ln.all()) expect(await l.evaluate((el) => el.getBoundingClientRect().height)).toBeLessThan(24);
-  await ln.nth(1).locator(".dk-sl-r").click();
+  await ln.nth(1).locator(".dk-sl-r").dispatchEvent("click");
   await expect(ln.nth(1).locator(".dk-sl-d")).toContainText("free and warm");
   await expect(ln.nth(1).locator(".dk-sl-d .dk-sl-it")).toHaveCount(1);
-  await ln.nth(0).locator(".dk-sl-r").click();
+  await ln.nth(0).locator(".dk-sl-r").dispatchEvent("click");
   await expect(ln.nth(0).locator(".dk-sl-d")).toHaveText("A longer title the lead gave it, long enough that it would wrap on a narrow chat");
   const dir = process.env.SHOT_DIR || process.env.TMPDIR || "/tmp";
   await last.screenshot({ path: `${dir}/cue-desk-lead-lines-light.png` });
   await page.emulateMedia({ colorScheme: "dark" });
-  await expect(ln.nth(1).locator(".dk-rt-to")).not.toHaveCSS("color", "rgb(0, 0, 0)");
+  await expect(ln.nth(1).locator("button.dk-say-id").first()).not.toHaveCSS("color", "rgb(0, 0, 0)");
   await last.screenshot({ path: `${dir}/cue-desk-lead-lines-dark.png` });
   // Its title opens the item.
   await ln.nth(1).locator(".dk-sl-it").click();
