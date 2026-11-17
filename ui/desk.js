@@ -282,10 +282,8 @@ function deskList(project) {
   const g = deskGroups(project);
   const o = deskOpen;
   const crewLit = o?.kind === "crew" ? deskCrewItem(project, o.lead, o.agent)?.id : null;
-  // The session clicked on the left lights the item it holds, where it is (nothing moves).
-  const sessSid = o?.kind === "chat" || o?.kind === "holder" ? o.sid : !o && deskLeadLit === project ? deskLead(g.d)?.sid : null;
-  const held = sessSid ? deskSessItem(g.d, sessSid)?.id : null;
-  const row = (i) => deskItemRow(i, i.id === crewLit || i.id === held, i.id === held);
+  // A session clicked on the left lights nothing on the right (#170): it can hold several items.
+  const row = (i) => deskItemRow(i, i.id === crewLit, false);
   const parts = [];
   // Waiting on you stays at 0 (in red only while something waits), so you see there's nothing for you.
   parts.push(`<div class="dk-gh you${g.waiting.length ? "" : " none"}">Waiting on you <span class="n">${g.waiting.length}</span></div>${g.waiting.map(row).join("")}`);
@@ -313,8 +311,10 @@ function deskSessState(s) {
   return asks ? ["ask", "waiting on you"] : s.state === "working" ? ["", "working"] : ["idle", "idle"];
 }
 /** The item a session holds (an ask before what's at work), or null. */
-const deskSessItem = (d, sid) => d.items.filter((i) => i.state !== "done" && i.holder && i.holder.kind !== "crew" && i.holder.sid === sid)
-  .sort((a, b) => (b.state === "needs_you") - (a.state === "needs_you") || (b.state === "working") - (a.state === "working"))[0] || null;
+const deskSessItem = (d, sid) => deskSessItems(d, sid)[0] || null;
+/** Every open item session `sid` holds, the one it's on now first (waiting on you, then working, then the newest). */
+const deskSessItems = (d, sid) => d.items.filter((i) => i.state !== "done" && i.holder && i.holder.kind !== "crew" && i.holder.sid === sid)
+  .sort((a, b) => (b.state === "needs_you") - (a.state === "needs_you") || (b.state === "working") - (a.state === "working") || (b.updated ?? 0) - (a.updated ?? 0));
 /** A session's context and cache, as the lead's summary says them (hub/desk_lead.rs context_note): "142k · cache 12m",
  *  or "142k · cold"; amber with under 5 minutes left. From its card's numbers (insights.js insCache); "" without. */
 function deskSessCache(sid) {
@@ -558,21 +558,18 @@ function deskSessChat(sid, from, d) {
   const where = whereNow(null, s);
   const empty = !rows && !where ? `<div class="dk-empty">Nothing said yet.</div>` : "";
   const open = `<button class="btn small" data-desk-session="${esc(sid)}">Open its session</button>`;
-  const it = deskSessItem(d, sid);
-  // Its head reads as the Desk lead's (#170): its pill (Lead or Session, never the kind of an item it holds) and its
-  // name, Open its session at the right; under it its state's dot and word, the item it's on (a click opens it) and
-  // who gave it.
-  const head = `<div class="dk-lh dk-shead"><div class="dk-ch dk-sch">${deskChatBack(from, d)}${deskTitled(deskSessKind(sid, d), deskSessName(sid, deskHolderName(sid), "dk-shn"))}<span class="grow"></span>${open}</div>${deskSessNow(s, it, d)}</div>`;
+  // A plain session head (#170): back, its name (no chip), Open its session at the right; under it its state and,
+  // quiet, the items it holds ("Holds #171, #174", each opening its item), the one it's on now first.
+  const head = `<div class="dk-lh dk-shead"><div class="dk-ch dk-sch">${deskChatBack(from, d)}${deskSessName(sid, deskHolderName(sid), "dk-shn")}<span class="grow"></span>${open}</div>${deskSessNow(s, deskSessItems(d, sid))}</div>`;
   return `${head}
     <div class="dk-chat" data-desk-chat="${esc(sid)}">${empty}${rows}${where}</div>`;
 }
-/** Under a session's chat title, as under the lead's (deskLeadNow): its state's dot and word, then the item it's on
- *  ("on #172 Routing … fails", a click opens it) and who gave it ("from <the Desk's lead>"). */
-function deskSessNow(s, it, d) {
-  const sid = s.session_id, lead = deskLead(d), [dot, word] = deskSessState(s);
-  const on = it ? `<span class="dk-t2p"> · on <button class="dk-sch-t" data-desk-chk-item="${esc(it.id)}">${deskKindIcon(it)}<b class="dk-inum">#${esc(it.id)}</b> ${esc(it.title)}</button></span>` : "";
-  const from = it && lead && lead.sid !== sid ? `<span class="dk-t2p"> · from ${esc(deskLeadName(d))}</span>` : "";
-  return `<div class="dk-t2"><span class="dk-st"><i class="${dot}"></i></span><b class="dk-t2w">${esc(word[0].toUpperCase() + word.slice(1))}</b>${on}${from}</div>`;
+/** Under a session's chat title, as under the lead's (deskLeadNow): its state's dot and word, then quiet "Holds #171,
+ *  #174", each number opening its item. */
+function deskSessNow(s, its) {
+  const [dot, word] = deskSessState(s);
+  const holds = its.length ? `<span class="dk-t2p"> · Holds ${its.map((i) => `<button class="dk-sch-t" data-desk-chk-item="${esc(i.id)}">#${esc(i.id)}</button>`).join(", ")}</span>` : "";
+  return `<div class="dk-t2"><span class="dk-st"><i class="${dot}"></i></span><b class="dk-t2w">${esc(word[0].toUpperCase() + word.slice(1))}</b>${holds}</div>`;
 }
 /** The session whose steps the Desk follows live (chat/thread.js followSteps): its lead's, while its chat shows, or
  *  the session's whose chat is open. */

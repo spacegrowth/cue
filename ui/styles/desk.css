@@ -202,13 +202,13 @@
 .dk-lh .dk-tab, .dk-lh .dk-tab.on { border-bottom-color: transparent; }
 .dk-t2 { display: flex; align-items: baseline; gap: 6px; min-width: 0; padding: 0 14px 10px 20px; color: var(--muted); font-size: 12.5px; white-space: nowrap; }
 .dk-t2 b { color: var(--ink); font-weight: 650; }
-.dk-t2 .dk-st { align-self: center; max-width: none; }
+.dk-t2 .dk-st { align-self: center; max-width: none; margin-left: 0; }
 .dk-t2p { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .dk-t2 .dk-kic { vertical-align: -2px; margin-right: 3px; }
 .dk-wy { all: unset; flex: none; cursor: pointer; color: var(--ink); font-weight: 700; }
 .dk-wy .dk-inum { font-weight: 700; }
 .dk-wy:hover { color: var(--link, var(--accent)); }
-/* A session's chat head (deskSessChat): as the lead's, its pill and name, then its state and the item it's on. */
+/* A session's chat head (deskSessChat): back and its name, then its state and the items it holds (#170). */
 .dk-shead > .dk-ch.dk-sch { padding: 0 14px 0 20px; }
 .dk-shn { font-size: 13.5px; font-weight: 650; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-sch-t { all: unset; cursor: pointer; color: var(--muted); }
