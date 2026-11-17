@@ -18,6 +18,9 @@ export default defineConfig({
   testMatch: "*.spec.mjs",
   projects: [{ name: "cue", testDir: "specs" }, ...(existsSync(addon) ? [{ name: "addon", testDir: realpathSync(addon) }] : [])],
   fullyParallel: true,
+  // Two browsers at a time, not one per core: each browser that opens makes macOS check the permissions of the app
+  // that started the run, and many at once (above all next to a build) can stall the Mac's window server.
+  workers: +process.env.CUE_UI_WORKERS || 2,
   forbidOnly: true,
   retries: 0,
   reporter: [["list"]],
