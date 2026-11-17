@@ -33,7 +33,7 @@ function deskOnIt(d, ss) {
   const leadSid = deskLead(d)?.sid, lead = deskLeadName(d);
   const busy = ss.filter((s) => s.session_id !== leadSid && deskSessState(s)[1] === "working").map((s) => deskHolderName(s.session_id));
   for (const s of ss) for (const t of sessionOf(s.session_id)?.team || []) if (deskMateBusy(t)) busy.push(t.name);
-  return `${lead ? `<b>${esc(lead)}</b>` : `<span class="dh-none">no lead yet</span>`}${busy.length ? ` · ${esc(busy.join(", "))}` : ""}`;
+  return `${lead ? `<b>${esc(lead)}</b>` : `<span class="dh-none">no dispatcher yet</span>`}${busy.length ? ` · ${esc(busy.join(", "))}` : ""}`;
 }
 function deskHomeRow(d) {
   const { sessions, crew } = deskPeople(d), n = sessions.length;

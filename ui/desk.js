@@ -62,8 +62,8 @@ const DESK_KIND_SVG = {
   task: '<rect x="4" y="4" width="16" height="16" rx="4"/><path d="m8.5 12.2 2.4 2.4 4.6-5"/>',
   bug: '<rect x="8" y="7" width="8" height="12" rx="4"/><path d="M12 11v8M8 12H4.5M19.5 12H16M8 16.5l-3 1.5M16 16.5l3 1.5M8.5 9 6 7M15.5 9 18 7M10 7a2 2 0 0 1 4 0"/>',
   feature: '<path d="M12 3.5 13.9 10.1 20.5 12 13.9 13.9 12 20.5 10.1 13.9 3.5 12 10.1 10.1Z"/>',
-  // What a chat is (deskLabel): the Desk's lead, a session, a crew member, a lead.
-  desk: '<path d="M19 7.5A8 8 0 1 0 20 12"/><circle cx="12" cy="12" r="2.5"/>',
+  // What a chat is (deskLabel): the Desk's dispatcher (a signpost), a session, a crew member, a lead.
+  desk: '<path d="M12 3v18M9 21h6"/><path d="M12 5h6l2.5 2.5L18 10h-6"/><path d="M12 12H6l-2.5 2.5L6 17h6"/>',
   session: '<path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8l-5 4v-4H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/>',
   crew: '<circle cx="12" cy="8" r="4"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/>',
   lead: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/>',
@@ -373,7 +373,7 @@ function deskSessions(project) {
     const crew = sid === leadSid ? "" : live.map((t) => mate(t, false)).join("") + fold;
     const add = onDesk(sid) ? "" : `<button class="btn small dk-sadd" data-desk-member="${esc(sid)}" data-project="${esc(project)}">Add to Desk</button>`;
     if (card) return deskSessRow({ name: deskHolderName(sid), sid, cls: "dk-lcard", pre: "Run by", dot, word, item: deskSessItem(d, sid), on: lit(sid), attrs, step: deskStepLine(dot === "", s.compacting_ms ? "Compacting…" : s.doing, s.compacting_ms || s.doing_ms), size: deskSessCache(sid) });
-    return deskSessRow({ name: deskHolderName(sid), sid, mark: lead ? "Lead" : "Session", dot, word, item: deskSessItem(d, sid), on: lit(sid), attrs, step: deskStepLine(dot === "", s.compacting_ms ? "Compacting…" : s.doing, s.compacting_ms || s.doing_ms), size: deskSessCache(sid), add }) + crew;
+    return deskSessRow({ name: deskHolderName(sid), sid, mark: sid === leadSid ? DESK_MARKS.desk : lead ? "Lead" : "Session", dot, word, item: deskSessItem(d, sid), on: lit(sid), attrs, step: deskStepLine(dot === "", s.compacting_ms ? "Compacting…" : s.doing, s.compacting_ms || s.doing_ms), size: deskSessCache(sid), add }) + crew;
   };
   // The Desk's lead in a spot of its own at the top, never in the list. Then working ones first (a session moves only
   // when its state does, never on a click), then On the Desk, then Not on the Desk, each as Cue lists them. Crew stay
@@ -521,22 +521,22 @@ function deskChat(d) {
   const mine = pending.map((p) => { const hd = deskAboutHead(p); return `<div class="cv-you sending">${p.text ? `<div class="cv-you-text">${hd?.html || ""}${esc(hd ? hd.text : p.text).replace(/\n/g, "<br>")}</div>` : ""}${p.images?.length ? `<div class="thumbs">${p.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}<div class="cv-meta">Sending</div></div>`; }).join("");
   // Where the lead is now (working on what, its latest step, stuck, compacting), as under any session's chat.
   const where = s && sessionOf(s.session_id) ? whereNow(null, s) : "";
-  const empty = !rows && !mine && !where ? `<div class="dk-empty">Tell ${esc(deskLeadName(d))} about a bug, a feature or a task. It adds them here, does each or hands it out, and says why.</div>` : "";
+  const empty = !rows && !mine && !where ? `<div class="dk-empty">Tell ${esc(deskLeadName(d))} about a bug, a feature or a task. It adds them here, hands each to a session, and says why.</div>` : "";
   return `<div class="dk-chat" data-desk-chat="${esc(d.project)}">${empty}${rows}${mine}${where}</div>`;
 }
 /** A session's chat, opened from the sessions on the left: its name, Open its session, its messages and where it is
  *  now, as under any session's chat. */
 /** What every chat on the Desk is (chat type mark, pick O): one solid label in the theme color, the kind's icon (the
  *  same icon the item list and About bubbles use) and its word, at the left of the header before the chat's name.
- *  `kind`: "desk" (the Desk's lead), "session", "crew", "lead", "task", "bug" or "feature"; "" for none. `name`: the
- *  name's html. The same on every chat's head: the Desk lead's, a session's, a holder's and a crew member's pane (#170).
+ *  `kind`: "desk" (the Desk's dispatcher), "session", "crew", "lead", "task", "bug" or "feature"; "" for none. `name`: the
+ *  name's html. The same on every chat's head: the Dispatcher's, a session's, a holder's and a crew member's pane (#170).
  *  The left list keeps its own corner mark (Type marks pick 8, deskSessRow), not this one. */
-const DESK_MARKS = { desk: "Desk lead", session: "Session", crew: "Crew", lead: "Lead", task: "Task", bug: "Bug", feature: "Feature" };
+const DESK_MARKS = { desk: "Dispatcher", session: "Session", crew: "Crew", lead: "Lead", task: "Task", bug: "Bug", feature: "Feature" };
 const deskLabel = (kind) => `<span class="dk-lbl" data-desk-mark="${kind}">${deskKindIcon(kind)}${DESK_MARKS[kind]}</span>`;
 const deskTitled = (kind, name) => (DESK_MARKS[kind] ? `<span class="dk-titled">${deskLabel(kind)}<span class="dk-tname">${name}</span></span>` : name);
-/** What session `sid` is on Desk `d`, as the left list's corner mark says it: "lead" (the Desk gave it a lead's work or
- *  it has a crew), else "session". */
-const deskSessKind = (sid, d) => (sid === deskLead(d)?.sid || deskIsLead(sid, d.items.filter((i) => deskGroupKey(i.holder) === sid)) ? "lead" : "session");
+/** What session `sid` is on Desk `d`, as the left list's corner mark says it: "desk" (it runs the Desk: its
+ *  Dispatcher, one name wherever it shows), "lead" (the Desk gave it a lead's work or it has a crew), else "session". */
+const deskSessKind = (sid, d) => (sid === deskLead(d)?.sid ? "desk" : deskIsLead(sid, d.items.filter((i) => deskGroupKey(i.holder) === sid)) ? "lead" : "session");
 /** The way back from a session's chat: to what opened it (an item's page, a holder's), else to the lead's chat. */
 function deskChatBack(from, d) {
   const i = from?.kind === "item" && deskItem(d.project, from.id);
@@ -550,7 +550,7 @@ function deskSessChat(sid, from, d) {
   const where = whereNow(null, s);
   const empty = !rows && !where ? `<div class="dk-empty">Nothing said yet.</div>` : "";
   const open = `<button class="btn small" data-desk-session="${esc(sid)}">Open its session</button>`;
-  // A session's head as the Desk lead's (#170): back, then its chat type mark (pick O: "Lead" or "Session", what the
+  // A session's head as the Dispatcher's (#170): back, then its chat type mark (pick O: "Lead" or "Session", what the
   // session is, never an item's kind) before its name, Open its session at the right; under it its state and, quiet,
   // the items it holds ("Holds #171, #174", each opening its item), the one it's on now first.
   const head = `<div class="dk-lh dk-shead"><div class="dk-ch dk-sch">${deskChatBack(from, d)}${deskTitled(deskSessKind(sid, d), deskSessName(sid, deskHolderName(sid), "dk-shn"))}<span class="grow"></span>${open}</div>${deskSessNow(s, deskSessItems(d, sid))}</div>`;
@@ -870,7 +870,7 @@ function deskHolderPane(sid, d) {
   const decs = d.decisions.filter((c) => c.call && (c.sid === sid || c.by === name));
   const decHtml = decs.length ? deskLog(decs, (c) => (c.item_id && deskItem(d.project, c.item_id) ? esc(deskItem(d.project, c.item_id).title) : "")) : "";
   const latest = deskLatestOf(s);
-  return `<div class="dk-pane" data-scroll-key="holder:${esc(sid)}">${deskBack(deskLeadName(d) || "Back")}<h1>${deskTitled(lead ? "lead" : "session", esc(name))}</h1><div class="dk-state">${esc(head)}</div>
+  return `<div class="dk-pane" data-scroll-key="holder:${esc(sid)}">${deskBack(deskLeadName(d) || "Back")}<h1>${deskTitled(deskSessKind(sid, d), esc(name))}</h1><div class="dk-state">${esc(head)}</div>
     ${lead ? deskSec("Crew", crewRows ? `<div class="dk-crew">${crewRows}</div>` : `<p class="dk-note">No crew at work.</p>`) : ""}${nextLine}
     ${deskSec(`Decided by ${esc(name)} · ${decs.length}`, decHtml)}
     ${deskSec(`Latest from ${esc(name)}`, latest ? `<p class="dk-quiet">${esc(latest)}</p>` : "")}
