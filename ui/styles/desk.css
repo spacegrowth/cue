@@ -59,11 +59,10 @@
 .dk-scroll { padding: 6px 0 14px; }
 .dk-empty { padding: 28px 24px; color: var(--muted); font-size: 13px; line-height: 1.5; }
 
-/* Group labels: Waiting on you (red: it needs you), Not given out yet, Done today (folds). */
+/* Group labels: Waiting on you, In progress, Queued, Done; all grey, whatever their count. */
 .dk-gh { display: flex; align-items: center; gap: 6px; margin: 14px 8px 4px; padding: 0 12px; font: 700 11px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); background: none; border: 0; text-align: left; }
 /* The Desk's lead, in its own spot above the session list (desk.js deskSessions). */
 .dk-leadspot { flex: 0 0 auto; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
-.dk-gh.you:not(.none) { color: var(--deny); }
 /* The finished items' end: holds a row's room while the next ones load, so nothing below or above jumps. */
 .dk-more { min-height: 44px; display: flex; align-items: center; padding: 0 20px; color: var(--muted); font-size: 12px; }
 .dk-gh .n { font-family: var(--mono); font-weight: 600; letter-spacing: 0; }
@@ -126,9 +125,6 @@
 .dk-it.on .dk-id, .dk-it.on .dk-who, .dk-it.on .dk-age, .dk-it.on .dk-h { color: var(--on-sel); }
 /* An ask's question: in full, in a soft box of the deny hue under its title (no tag, no dot). */
 .dk-it.ask .dk-h { margin-top: 4px; padding: 6px 9px; border-radius: 8px; background: color-mix(in srgb, var(--deny) 10%, transparent); white-space: normal; overflow-wrap: anywhere; }
-/* Just landed (back to check, not opened since): the row stands out. */
-.dk-it.landed { background: var(--panel-2); }
-.dk-it.landed .dk-t { font-weight: 700; }
 /* Links to what an item's holder made, in its pane. */
 .dk-mades { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
 .dk-made { padding: 3px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink); font-size: 12px; cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -292,8 +288,8 @@
 .dk-ttag.back { color: var(--deny); border-color: color-mix(in oklab, var(--deny) 40%, var(--line)); }
 .dk-tb { min-width: 0; }
 .dk-tb > .dk-md { margin-top: 3px; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
-.dk-tdw { margin-top: 8px; font-size: 12.5px; }
-.dk-tdw > b { display: block; margin-bottom: 2px; color: var(--muted); font: 700 10.5px var(--sans); letter-spacing: .08em; text-transform: uppercase; }
+/* Its Done when under the thread, the first thing by where it stands (#140): the checklist at the thread's size. */
+.dk-idw .dk-dwl { font-size: 13.5px; gap: 8px; }
 .dk-tpics { margin-top: 8px; }
 .dk-tbar { width: 160px; height: 6px; margin-top: 8px; border-radius: 3px; background: var(--work); }
 .dk-inow .dk-sec { padding: 4px 0 14px; }
