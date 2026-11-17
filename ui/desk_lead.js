@@ -20,6 +20,12 @@ let deskSaidItem = "";
 
 // ---------- the lead ----------
 
+/** Whether session `sid` works for a Desk: it runs one (its lead), or holds an item there not done yet (itself, or
+ *  through its crew). */
+const deskWorksFor = (sid) => !!sid && (state.desk?.projects || []).some((d) => d.lead?.sid === sid
+  || (d.items || []).some((i) => i.state !== "done" && i.state !== "dropped" && (i.holder?.sid === sid || i.holder?.lead_sid === sid)));
+/** The Desk's mark before such a session's name on the Board, as a loop's run shows its own there (#156). */
+const deskNameMark = (sid) => (deskWorksFor(sid) ? `<span class="dk-name-ic" role="img" aria-label="Desk">${deskKindIcon("desk")}</span>` : "");
 /** Desk `d`'s lead ({ sid, name, state }), or null. */
 const deskLead = (d) => (d?.lead?.sid ? d.lead : null);
 /** The lead's name: one you just gave it (before the hub's next update has it), else what the hub named it, else its
@@ -92,8 +98,25 @@ function deskGive(i, at) {
   const open = deskGiveFor?.id === i.id && deskGiveFor.at === at;
   const rows = open ? deskSessionsOf(i.project).map((r) => `<button role="menuitem" data-desk-give-to="${esc(r.sid)}" data-id="${esc(i.id)}"><span>${esc(r.name)}</span><span class="dk-ls">${esc(r.sub)}</span></button>`).join("") : "";
   const menu = open ? `<span class="dk-givemenu" role="menu">${rows}<button role="menuitem" data-desk-act="start_now" data-id="${esc(i.id)}"><span>New session</span></button></span>` : "";
+  if (open) queueMicrotask(deskGivePlace);
   return `<span class="dk-givewrap"><button class="${at === "row" ? "dk-link dk-give" : "btn small"}" data-desk-give="${esc(i.id)}" data-at="${at}" aria-expanded="${open}">Give to…</button>${menu}</span>`;
 }
+/** The open menu, whole inside the window wherever its button sits (#152): under the button from its left edge, moved
+ *  left as far as it must, above it when there's more room there, and scrolling inside when even that is too short.
+ *  Fixed to the window so no column cuts it; it follows its button as the list scrolls or the window resizes. */
+function deskGivePlace() {
+  const m = document.querySelector(".dk-givemenu"), b = m?.previousElementSibling;
+  if (!m || !b) return;
+  const r = b.getBoundingClientRect(), pad = 8, W = innerWidth, H = innerHeight;
+  Object.assign(m.style, { position: "fixed", right: "auto", maxWidth: `${W - 2 * pad}px`, maxHeight: "", overflowY: "" });
+  const w = m.offsetWidth, h = m.scrollHeight, below = H - r.bottom - 4 - pad, above = r.top - 4 - pad;
+  const up = h > below && above > below, room = up ? above : below;
+  m.style.left = `${Math.max(pad, Math.min(r.left, W - pad - w))}px`;
+  if (h > room) Object.assign(m.style, { maxHeight: `${room}px`, overflowY: "auto" });
+  m.style.top = `${up ? r.top - 4 - Math.min(h, room) : r.bottom + 4}px`;
+}
+addEventListener("scroll", (e) => { if (deskGiveFor && !e.target?.closest?.(".dk-givemenu")) deskGivePlace(); }, true);
+addEventListener("resize", () => { if (deskGiveFor) deskGivePlace(); });
 async function deskGiveTo(id, sid) {
   deskGiveFor = null;
   try { await invoke("desk_give", { id, sid }); } catch (e) { toast(`Not given: ${e}`); }

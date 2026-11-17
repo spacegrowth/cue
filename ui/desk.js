@@ -114,7 +114,9 @@ function deskMadeLinks(i) {
 const deskDiffs = new Map();
 const deskDiffKey = (i) => [i.state, i.commit || "", i.updated || "", (i.files || []).length, (i.commit_wait?.files || []).length].join("|");
 function deskFilesChanged(i) {
-  if (i.state !== "to_check" && i.state !== "done") return "";
+  // Still being worked on: what's changed in its files so far (#149), once it's on some.
+  const checking = i.state === "to_check" || i.state === "done";
+  if (!checking && !(i.files || []).length) return "";
   // Read again each time its page is opened too: its files can change on disk with nothing else about it changing.
   const key = deskDiffKey(i), got = deskDiffs.get(i.id);
   if (got?.key !== key || got.page !== deskOpen) {
@@ -125,7 +127,8 @@ function deskFilesChanged(i) {
   const files = deskDiffs.get(i.id).files;
   // While its first read is on the way: the same rows from the files it says it changed, counts to come. Without them
   // the page drew "Files" as a line, then swapped it for these rows a moment later: it flickered as it turned to check.
-  if (!files) return (i.commit_wait?.files || i.files || []).map((f) => `<div class="dk-fc wait"><span class="dk-fc-p">${esc(f)}</span></div>`).join("");
+  // Being worked on with nothing changed in them yet (or not in git): the files it's on, as they are.
+  if (!files || (!checking && !files.length)) return (i.commit_wait?.files || i.files || []).map((f) => `<div class="dk-fc wait"><span class="dk-fc-p">${esc(f)}</span></div>`).join("");
   return files.map((f, n) => `<button class="dk-fc" data-desk-diff-file="${esc(i.id)}" data-n="${n}"><span class="dk-fc-p">${esc(f.path)}</span>${f.isNew ? `<span class="dk-fc-new">new</span>` : ""}<span class="dv-n dv-add">+${f.add}</span><span class="dv-n dv-del">−${f.del}</span></button>`).join("");
 }
 /** Item `id`'s file `n`, over the Desk (diff_overlay.js): its Files changed on the left, that file's diff on the right.
@@ -213,7 +216,8 @@ function deskItemRow(i, lit, held = false) {
   const at = s ? (s.state === "working" && s.since_ms) || deskMs(i.updated) : 0;
   const who = s ? `working · ${esc(deskHolderOf(i))} · <span data-ago="${at}">${ago(at)}</span>` : !i.holder && i.state !== "done" ? deskGive(i, "row") : deskInstallWait(i) ? `waiting for install · ${esc(deskHolderOf(i))}` : esc(deskHolderOf(i));
   const when = s ? "" : i.state === "done" ? `${i.commit ? `<span class="dk-cm">committed ${esc(i.commit)}</span> · ` : ""}${clockAt(deskMs(i.done_at || i.updated))}` : ago(deskMs(i.created));
-  const ok = deskInstallWait(i) ? "" : i.state === "to_check" && deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id) : i.state === "to_check" ? `<button class="dk-ok" data-desk-act="looks_right" data-id="${esc(i.id)}" aria-label="Looks right"></button>` : "";
+  const ok = deskInstallWait(i) ? "" : i.state === "to_check" && deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id) : i.state === "to_check" ? `<button class="dk-ok" data-desk-act="looks_right" data-id="${esc(i.id)}" aria-label="Looks right"></button>`
+    : i.state === "done" ? `<button class="dk-undo" data-desk-act="reopen" data-id="${esc(i.id)}">Undo</button>` : "";
   // Its holder's question under the row; a holder that just stopped (no question) leaves only the "needs you" state.
   const ask = i.state === "needs_you" && i.ask ? `<div class="dk-h">${esc(i.ask.text)}</div>` : "";
   return `<div class="dk-it ${i.state === "needs_you" ? "ask" : ""} ${look === "landed" ? "landed" : ""} dk-${deskStateOf(i)} ${on ? "on" : ""}${i.state === "to_check" && deskLooksSoon.has(i.id) ? " soon" : ""}${deskLeaveStyle(i.id)}" role="button" tabindex="0" data-desk-item="${esc(i.id)}">
@@ -625,7 +629,7 @@ const deskChkWhen = (ms) => new Date(ms).toLocaleString([], { weekday: "short", 
 const deskBack = (label, to = "") => `<button class="dk-back" data-desk-back="${esc(to)}">‹ ${esc(label)}</button>`;
 
 /** What you answered an item's holder on its page, by item: { q, a, ask, at }. Shown there until its holder asks again
- *  or ten minutes pass (board.js respond calls deskAnswered). */
+ *  goes back to work, or ten minutes pass (board.js respond calls deskAnswered). */
 const deskAnswers = new Map();
 /** Card `it` answered with `decision`: kept for the Desk item whose holder asked it, so its page says what you picked. */
 function deskAnswered(it, decision) {
@@ -647,6 +651,9 @@ function deskAnswerOf(i) {
   const said = deskAnswers.get(i.id);
   if (!said || now() - said.at > 600000 || (i.ask && i.ask.item_id !== said.ask)) return null;
   if (i.state === "needs_you" && deskQuestion(i) !== said.q) return null;
+  // Once its holder is at work again (your answer went through, or you sent it more), the old ask is gone.
+  const s = i.holder?.kind === "crew" ? null : sessionOf(i.holder?.sid);
+  if (i.state !== "needs_you" && s && ["working", "deciding", "agent"].includes(s.state)) return null;
   return said;
 }
 /** What holds an item up: the item it waits for, then this one; or what its holder asks you (only the question: it's
@@ -757,14 +764,16 @@ function deskThread(i, d) {
   // Sent from here, not back as a step yet.
   const steps = new Set(mine.filter((c) => c.by === "You").map((c) => c.text.trim()));
   for (const p of deskPending.get(i.id) || []) if (!steps.has(p.text.trim())) rows.push({ at: p.at, by: "You", you: true, back: p.why === "back", tag: p.why === "back" ? "Sent back" : "", html: deskBackWords(p.text, p.pics) });
-  rows.sort((a, b) => a.at - b.at);
   const live = i.state === "working" && i.holder && !deskHolderIdle(i.holder);
-  // Its latest words when no reply holds them yet (items from before replies were kept), as its last message.
+  // Its latest words when no reply holds them yet (items from before replies were kept): after everything but what
+  // you wrote since, so a message you send is still last (#160).
   const lat = (i.latest || "").trim(), lat1 = firstLine(lat);
   if (!live && lat && !(i.said || []).some((r) => r.text.includes(lat1))) {
     const fin = i.state === "to_check" || i.state === "done";
-    rows.push({ at: Math.max(deskMs(i.updated), rows.length ? rows[rows.length - 1].at : 0), by: i.holder?.name || i.by || "It", tag: fin ? "Done" : "Reply", on: fin, html: `<div class="dk-md">${md(lat)}</div>` });
+    const theirs = rows.filter((r) => !r.you).reduce((m, r) => Math.max(m, r.at), 0);
+    rows.push({ at: Math.max(deskMs(i.updated), theirs), by: i.holder?.name || i.by || "It", tag: fin ? "Done" : "Reply", on: fin, html: `<div class="dk-md">${md(lat)}</div>` });
   }
+  rows.sort((a, b) => a.at - b.at);
   if (live) rows.push({ at: 0, by: i.holder.name, live: true, html: `<div class="dk-md dk-quiet">${lat ? md(lat1) : "Working…"}</div><div class="dk-tbar"></div>` });
   return rows;
 }
@@ -789,29 +798,32 @@ const deskThreadHtml = (rows) => `<div class="dk-thread">${rows.map((r) => `<div
 function deskItemPane(i, d) {
   const all = deskItemLog(i, d).reverse();
   const decs = all.filter((c) => c.call), steps = all.filter((c) => !c.call);
-  // To check or done: each file it changed with its counts (a click opens its diff); otherwise the files it's on.
-  const changed = deskFilesChanged(i), fileNames = deskFilesShort(i.files, " · ");
-  const files = changed ? `<div class="dk-fcs">${changed}</div>` : fileNames ? `<div class="dk-files">${esc(fileNames)}</div>` : "";
+  // Its Files tab (#149): each file it changed with its counts, a click opening its diff; while it's worked on, what's
+  // changed so far (the files it's on, till they've changed).
+  const changed = deskFilesChanged(i), checking = i.state === "to_check" || i.state === "done";
+  const read = deskDiffs.get(i.id)?.files, nFiles = (checking ? read?.length : read?.length || null) ?? (i.commit_wait?.files || i.files || []).length;
+  const files = changed ? `<div class="dk-fcs">${changed}</div>` : "";
   const thread = deskThread(i, d), tab = deskItemTabs.get(i.id) || "thread";
   const h = i.holder, sid = h ? (h.kind === "crew" ? h.lead_sid : h.sid) : null;
   const armed = deskDropArm === i.id;
   const tabBtn = (k, label, n) => `<button class="dk-itab${tab === k ? " on" : ""}" role="tab" aria-selected="${tab === k}" data-desk-itab="${k}" data-id="${esc(i.id)}">${label}<span class="n">${n}</span></button>`;
   // Where it stands now, under the thread: first its Done when (what to check, once it's ready to: #140), so it's by
   // the newest message and the box, not lost in the first message; then what holds it up or what it asks, what it
-  // made, its buttons and files. Under what to check, who did it and whether it's installed (deskCheckInfo).
+  // made and its buttons (its files are under Files). Under what to check, who did it and whether it's installed
+  // (deskCheckInfo).
   const dw = deskDoneWhenHtml(i.done_when), info = deskCheckInfo(i, d);
   const at = `${deskSec(i.state === "to_check" ? "What to check" : "Done when", `${dw ? `<div class="dk-idw">${dw}</div>` : ""}${info}`)}${deskSec("Couldn't give it out", i.route_failed ? `<p>${esc(i.route_failed)}</p>` : "")}
     ${deskSec(i.state === "needs_you" ? "It asks you" : deskAnswerOf(i) ? "It asked you" : "What's holding it up", deskChain(i))}${deskSec("What it made", i.state === "to_check" || i.state === "done" ? deskMadeLinks(i) : "")}${deskItemActs(i)}
-    ${i.split_from ? `<p class="dk-split">Split from <a href="#" data-desk-item="${esc(i.split_from)}">#${esc(i.split_from)}</a></p>` : ""}
-    ${deskSec(changed ? "Files changed" : "Files", files)}`;
+    ${i.split_from ? `<p class="dk-split">Split from <a href="#" data-desk-item="${esc(i.split_from)}">#${esc(i.split_from)}</a></p>` : ""}`;
   const body = tab === "decisions" ? (decs.length ? deskDecList(decs) : `<p class="dk-note">No decisions on it yet.</p>`)
     : tab === "steps" ? (steps.length ? deskLog(steps) : `<p class="dk-note">No steps yet.</p>`)
+    : tab === "files" ? (files ? deskSec(checking ? "Files changed" : deskDiffs.get(i.id)?.files?.length ? "Changed so far" : "Files it's on", files) : `<p class="dk-note">No files on it yet.</p>`)
     : `${deskThreadHtml(thread)}<div class="dk-inow">${at}</div>`;
   // Pick 4 (Item thread, 16 Nov 2026): the header (number and title, Designs; a state pill and where it stands; then
-  // Thread, Decisions and Steps tabs, Thread open), then the open tab; the answer box is the card's foot.
+  // Thread, Decisions, Steps and Files tabs, Thread open), then the open tab; the answer box is the card's foot.
   return `<div class="dk-pane dk-ipane" data-scroll-key="item:${esc(i.id)}"><div class="dk-ihead">${deskBack(deskLeadName(d) || "Back")}<div class="dk-ititle"><h1><span class="dk-hnum">${deskKindIcon(i)}${esc(deskNum(i))} · </span>${esc(i.title)}</h1><div class="dk-ilinks">${deskDesignsLink(i)}${sid && sessionOf(sid) ? `<button class="btn small" ${deskChatAttrs(sid, d)}>Open ${esc(h.name)}</button>` : ""}</div></div>
     <div class="dk-ist"><span class="dk-pill dk-pill-${esc(i.state)}"><i aria-hidden="true"></i>${esc(deskInstallWait(i) ? "Waiting for install" : DESK_PILL[i.state] || i.state)}</span><div class="dk-state">${deskItemState(i)}</div></div>
-    <div class="dk-itabs" role="tablist">${tabBtn("thread", "Thread", thread.length)}${tabBtn("decisions", "Decisions", decs.length)}${tabBtn("steps", "Steps", steps.length)}<span class="grow"></span>${i.state !== "done" ? `<button class="dk-drop${armed ? " armed" : ""}" data-desk-act="drop" data-id="${esc(i.id)}">${armed ? "Drop it" : "Drop this item"}</button>` : ""}</div></div>
+    <div class="dk-itabs" role="tablist">${tabBtn("thread", "Thread", thread.length)}${tabBtn("decisions", "Decisions", decs.length)}${tabBtn("steps", "Steps", steps.length)}${tabBtn("files", "Files", nFiles)}<span class="grow"></span>${i.state !== "done" ? `<button class="dk-drop${armed ? " armed" : ""}" data-desk-act="drop" data-id="${esc(i.id)}">${armed ? "Drop it" : "Drop this item"}</button>` : ""}</div></div>
     <div class="dk-ibody dk-itab-${tab}">${body}</div></div>`;
 }
 /** A session's latest words in a line. */
@@ -899,7 +911,8 @@ function deskBox(d) {
   const mic = dictating?.key === key;
   const sugSid = to.mate || to.item ? "" : to.sid || deskLead(d)?.sid || "";
   const sug = suggestionFor(sugSid);
-  return `<div class="dk-box" data-drop="${esc(key)}">${quickRow(`data-quick="${esc(key)}"`)}${draftChips(key)}<div class="dk-box-row">${deskPreHtml(pre)}<div class="ta-wrap"><textarea rows="1" data-text="${esc(key)}"${sug ? ` class="sug" data-sug-sid="${esc(sugSid)}" aria-label="${esc(`Suggested: ${sug}. Tab types it in.`)}"` : ""} placeholder="${esc(sug ? " " : ph)}" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off">${esc(draft(key).text)}</textarea>${sugLineHtml(sug)}</div><button class="icon-btn mic ${mic ? "on" : ""}" data-mic="${esc(key)}" aria-label="${mic ? "Stop dictating" : "Dictate"}">${MIC_ICON}</button><button class="icon-btn" data-attach="${esc(key)}" aria-label="Add an image">${IMAGE_ICON}</button><button class="btn primary small" data-desk-send="${esc(key)}">Send</button></div></div>`;
+  // An item's page has no quick phrases: its box starts with who gets it, on its colored left end (#143).
+  return `<div class="dk-box" data-drop="${esc(key)}">${o?.kind === "item" ? "" : quickRow(`data-quick="${esc(key)}"`)}${draftChips(key)}<div class="dk-box-row">${deskPreHtml(pre)}<div class="ta-wrap"><textarea rows="1" data-text="${esc(key)}"${sug ? ` class="sug" data-sug-sid="${esc(sugSid)}" aria-label="${esc(`Suggested: ${sug}. Tab types it in.`)}"` : ""} placeholder="${esc(sug ? " " : ph)}" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off">${esc(draft(key).text)}</textarea>${sugLineHtml(sug)}</div><button class="icon-btn mic ${mic ? "on" : ""}" data-mic="${esc(key)}" aria-label="${mic ? "Stop dictating" : "Dictate"}">${MIC_ICON}</button><button class="icon-btn" data-attach="${esc(key)}" aria-label="Add an image">${IMAGE_ICON}</button><button class="btn primary small" data-desk-send="${esc(key)}">Send</button></div></div>`;
 }
 /** An item page's foot: while its holder asks you, the answer goes there, so you stay on its page. Its ask's card
  *  (choices, Decline, Type answer…) as under a chat; a turn that ended on it, a box to its holder. Else the box. */
@@ -990,15 +1003,17 @@ function deskView() {
   queueMicrotask(deskSettle);
   return `<div class="board dk-board">${deskSessions(deskSelection())}${deskRight(deskSelection())}${deskList(deskSelection())}</div>`;
 }
-/** How many messages each item's Thread showed when last drawn, by item: one more (it arrived, or you sent it) and
- *  the page scrolls to show it (#145). */
+/** How many messages each item's Thread showed when last drawn, and for which opening of its page, by item. The page
+ *  opens at its newest message, as a chat does; then one more (it arrived, or you sent it) scrolls to show it (#145). */
 const deskThreadSeen = new Map();
 function deskThreadFollow() {
   const pane = document.querySelector(".dk-ipane"), th = pane?.querySelector(".dk-thread");
   if (!th) return;
   const rows = th.querySelectorAll(":scope > .dk-tm"), key = pane.dataset.scrollKey, was = deskThreadSeen.get(key);
-  deskThreadSeen.set(key, rows.length);
-  if (was == null || rows.length <= was) return;
+  deskThreadSeen.set(key, { n: rows.length, open: deskOpen });
+  // Just opened: at its end, the newest message and where it stands (what to check) in view.
+  if (was?.open !== deskOpen) { pane.scrollTop = pane.scrollHeight; return; }
+  if (rows.length <= was.n) return;
   // Down until the newest is in full view under the pinned header; one taller than the page shows from its top.
   const r = rows[rows.length - 1].getBoundingClientRect(), bottom = pane.getBoundingClientRect().bottom;
   const head = pane.querySelector(".dk-ihead")?.getBoundingClientRect().bottom ?? pane.getBoundingClientRect().top;
@@ -1104,10 +1119,10 @@ function deskOpenItem(id) {
   deskDropArm = deskGiveFor = null;
 }
 async function deskAct(id, act, el = null) {
-  // Looks right commits the item's files at once; Undo takes that commit back (desk_commit.js).
+  // Looks right commits the item's files at once; Undo on a done item only puts it back to check (desk_commit.js).
   if (act === "looks_right") return deskLooksRight(id);
   if (act === "looks_undo") return deskLooksUndo(id);
-  if (act === "undo_commit") return deskCommitUndo(id);
+  if (act === "reopen") return deskReopen(id);
   // Drop takes two clicks: the first arms it.
   if (act === "drop" && deskDropArm !== id) { deskDropArm = id; return renderMain(); }
   deskDropArm = null;

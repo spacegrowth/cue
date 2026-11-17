@@ -1,5 +1,6 @@
 //! A Desk item's Files changed (its page, and Cue's Diff view on it): to check, what Looks right would commit (the
-//! same files, the same scratch index, so your own index stays as it is); done, its commit, or what waits to be.
+//! same files, the same scratch index, so your own index stays as it is); done, its commit, or what waits to be;
+//! still being worked on, what's changed so far.
 
 use super::desk_commit::{by_folder, changed_of, git, staged_diff};
 use crate::desk::DeskItem;
@@ -23,7 +24,15 @@ impl Hub {
                 (w.machine.clone(), diff)
             }
             ("done", _) if !it.commit.is_empty() => self.commit_diff(&it),
-            _ => (String::new(), String::new()),
+            ("done", _) => (String::new(), String::new()),
+            // Still being worked on (#149): what's changed in its files so far, as Looks right would read it then.
+            // Not in a git repository: no diff, and its page lists the files as they are.
+            _ => {
+                let (_, machine, sources) = self.desk_change_sources(id)?;
+                let todo = still_changed(&machine, sources);
+                let diff = folders_diff(&todo, |folder, paths, opts| staged_diff(&machine, folder, paths, opts)).unwrap_or_default();
+                (machine, diff)
+            }
         };
         Ok(json!({ "diff": diff, "machine": machine }))
     }

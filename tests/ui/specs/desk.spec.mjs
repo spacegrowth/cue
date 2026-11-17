@@ -1516,19 +1516,39 @@ test("Looks right commits the item's files at once: no sheet; the row and a toas
   await expect(page.locator(".toast")).toContainText("Committed abc1234 · 2 files");
   const line = page.locator(".dk-cmt").first();
   await expect(line).toContainText("Committed abc1234 · 2 files");
-  await expect(line.locator('[data-desk-act="undo_commit"]')).toHaveText("Undo · back to check");
-  await line.locator('[data-desk-act="undo_commit"]').click();
-  await cue.called("desk_commit_undo", { id: "d2" });
-  await expect(page.locator(".toast").last()).toHaveText("Back to check · commit taken back, every change still in place");
+  await expect(line.locator('[data-desk-act="reopen"]')).toHaveText("Undo · back to check");
+  // Undo only puts it back to check: its commit stays, no code changes (#159).
+  await line.locator('[data-desk-act="reopen"]').click();
+  await cue.called("desk_item_act", { id: "d2", act: "reopen" });
+  await expect(page.locator(".toast").last()).toHaveText("Back to check · nothing in the work changed");
   await expect(page.locator('[data-desk-item="d2"] .dk-ok')).toBeVisible();
+  expect(await cue.calls("desk_commit_undo")).toHaveLength(0);
+});
 
-  // Another commit came after it: still back to check, its commit kept, said so; no code changed either way.
-  await cue.change((s) => { s.desk_commit_after = true; });
-  await page.locator('[data-desk-item="d2"] .dk-ok').click();
-  await cue.called("desk_looks_right", { id: "d2" });
-  await page.locator('.dk-cmt [data-desk-act="undo_commit"]').first().click();
-  await expect(page.locator(".toast").last()).toHaveText("Back to check · its commit stays (another came after it); no code changed");
-  await expect(page.locator('[data-desk-item="d2"] .dk-ok')).toBeVisible();
+test("Undo on a done row: only on hover; back to waiting on you, its commit kept, nothing else; readable on the dimmed row; no hover text (#159)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await cue.change((s) => { Object.assign(s.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d2"), { state: "done", done_at: Math.floor(Date.now() / 1000), commit: "abc1234" }); });
+  await openDesk(page);
+  const row = page.locator('.dk-items [data-desk-item="d2"]');
+  await expect(row).toHaveClass(/\bdk-done\b/);
+  const undo = row.locator('.dk-undo[data-desk-act="reopen"]');
+  // Only on hover: hidden until the pointer is on the row.
+  await page.mouse.move(0, 0);
+  await expect(undo).toBeHidden();
+  await row.hover();
+  await expect(undo).toBeVisible();
+  await expect(undo).toHaveText("Undo");
+  await expect(undo).not.toHaveAttribute("title", /.*/);
+  expect(await undo.evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
+  expect(await row.locator(".dk-t").evaluate((el) => getComputedStyle(el.parentElement).opacity)).toBe("0.55");
+  await undo.click();
+  await cue.called("desk_item_act", { id: "d2", act: "reopen" });
+  // Clicking Undo doesn't open the item; the row is waiting on you again, its ✓ back.
+  await expect(page.locator('.dk-right .dk-pane h1:has-text("#d2")')).toHaveCount(0);
+  await expect(row).toHaveClass(/\bdk-you\b/);
+  await expect(row.locator(".dk-ok")).toBeVisible();
+  await expect(row.locator(".dk-undo")).toHaveCount(0);
+  expect(await cue.calls("desk_commit_undo")).toHaveLength(0);
 });
 
 test("✓ on a row: it dims while Undo can take it back, then folds away (height to nothing) before it goes", async ({ page, cue }) => {
@@ -1566,7 +1586,7 @@ test("Looks right on an item whose file another session is editing: done at once
   // Cue makes the commit once the tidier is done with the file: the same line says so, with Undo.
   await cue.change((s) => { const d = s.desk.projects.find((d) => d.project === "cue"); for (const i of [...d.items, ...(d.checks || [])].filter((i) => i.id === "d2")) Object.assign(i, { commit: "abc1234", commit_wait: null }); });
   await expect(line).toContainText("Committed abc1234");
-  await expect(line.locator('[data-desk-act="undo_commit"]')).toBeVisible();
+  await expect(line.locator('[data-desk-act="reopen"]')).toBeVisible();
 
   // Why it couldn't be made, when a word stopped it.
   await cue.change((s) => { const d = s.desk.projects.find((d) => d.project === "cue"); for (const i of [...d.items, ...(d.checks || [])].filter((i) => i.id === "d2")) Object.assign(i, { commit: "", commit_wait: { files: [], busy: [], error: 'Not committed: "x" is in ui/send.js' } }); });
@@ -1580,9 +1600,9 @@ test("Looks right on an item whose file another session is editing: done at once
   await page.locator('[data-desk-item="d2"]').first().click();
   const plain = page.locator('.dk-cmt:has-text("Looked right")').first();
   await expect(plain).toHaveText("Looked right · Undo · back to check");
-  await plain.locator('[data-desk-act="undo_commit"]').click();
-  await cue.called("desk_commit_undo", { id: "d2" });
-  await expect(page.locator(".toast").last()).toHaveText("Back to check · no code changed");
+  await plain.locator('[data-desk-act="reopen"]').click();
+  await cue.called("desk_item_act", { id: "d2", act: "reopen" });
+  await expect(page.locator(".toast").last()).toHaveText("Back to check · nothing in the work changed");
 });
 
 /** A session of cue's that isn't on its Desk ("spare", holding nothing). */
@@ -1965,6 +1985,13 @@ test("an item's ask is answered at its page's foot: you stay on its page, which 
   await cue.called("send_to_session", { sessionId: "site", text: "It stays put now" });
   await expect(chain).toContainText("You answered: It stays put now");
   expect(await page.evaluate(() => [view, deskOpen.kind])).toEqual(["desk", "item"]);
+  // Its session at work again: the old ask and your answer leave the page.
+  await cue.change((st) => {
+    st.sessions.find((x) => x.session_id === "site").state = "working";
+    st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d1").state = "working";
+  });
+  await expect(page.locator(".dk-pane")).not.toContainText("You answered");
+  await expect(page.locator(".dk-pane")).not.toContainText("It asked you");
 });
 
 test("an open item turning ready to check draws Files changed at once, never a Files line swapped out", async ({ page, cue }) => {
@@ -1973,7 +2000,7 @@ test("an open item turning ready to check draws Files changed at once, never a F
   await page.locator('[data-desk-item="d3"]').click();
   await page.locator(".dk-pane h1").waitFor();
   await page.locator('.dk-pane [data-desk-itab="files"]').click();
-  await expect(page.locator(".dk-pane .dk-sec h3")).toHaveText("Files it's on");
+  await expect(page.locator(".dk-pane .dk-sec h3")).toHaveText("Changed so far");
   // Every section heading the pane has drawn, from here on.
   await page.evaluate(() => {
     window.heads = new Set();
@@ -1984,22 +2011,43 @@ test("an open item turning ready to check draws Files changed at once, never a F
     Object.assign(it, { state: "to_check", updated: Math.floor(Date.now() / 1000), files: ["ui/a.js", "ui/b.css"] }); });
   await expect(page.locator(".dk-pane .dk-fc .dv-add")).toHaveCount(2);
   expect([...await page.evaluate(() => [...window.heads])]).not.toContain("Files it's on");
+  await expect(page.locator(".dk-pane .dk-sec h3")).toHaveText("Files changed");
 });
 
-test("an item's Files tab: the files it's on in full, counted; none, a line saying so; not under the thread (#149)", async ({ page, cue }) => {
+test("an item's Files tab: what's changed so far while it's worked on, with counts, a click opening the diff; none, a line saying so (#149)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await page.locator('[data-desk-item="d3"]').click();
   const pane = page.locator(".dk-right .dk-ipane");
   await expect(pane.locator(".dk-itab")).toHaveText([/^Thread/, /^Decisions/, /^Steps/, /^Files/]);
   await expect(pane.locator(".dk-inow .dk-fc")).toHaveCount(0);
+  await cue.called("desk_item_diff", { id: "d3" });
   const n = await page.evaluate(() => state.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d3").files.length);
   expect(n).toBeGreaterThan(0);
   await expect(pane.locator('[data-desk-itab="files"] .n')).toHaveText(String(n));
   await pane.locator('[data-desk-itab="files"]').click();
   await expect(pane.locator(".dk-itab.on")).toHaveText(/^Files/);
-  await expect(pane.locator(".dk-fc-p")).toHaveCount(n);
+  await expect(pane.locator(".dk-sec h3")).toHaveText("Changed so far");
+  await expect(pane.locator("button.dk-fc")).toHaveCount(n);
+  await expect(pane.locator("button.dk-fc").first().locator(".dv-n")).toHaveText(["+2", "−1"]);
   await expect(pane.locator(".dk-fc-p").first()).toContainText("/");
+  // Its counts at the right, apart from its name, as in the diff it opens.
+  const row = await pane.locator("button.dk-fc").first().boundingBox(), del = await pane.locator("button.dk-fc").first().locator(".dv-del").boundingBox();
+  expect(row.x + row.width - (del.x + del.width)).toBeLessThan(12);
+  // A click opens that file's diff over the Desk; Esc closes it.
+  await pane.locator("button.dk-fc").first().click();
+  await expect(page.locator(".dov .dov-lines .a").first()).toBeVisible();
+  const fh = await page.locator(".dov-fh").boundingBox(), fdel = await page.locator(".dov-fh .dv-del").boundingBox();
+  expect(fh.x + fh.width - (fdel.x + fdel.width)).toBeLessThan(24);
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".dov")).toHaveCount(0);
+  // Nothing changed in them yet: the files it's on, as they are.
+  await cue.change((st) => { const it = st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d3"); it.unchanged = true; it.updated = Math.floor(Date.now() / 1000); });
+  await page.locator('[data-desk-item="d2"]').click();
+  await page.locator('[data-desk-item="d3"]').click();
+  await pane.locator('[data-desk-itab="files"]').click();
+  await expect(pane.locator(".dk-sec h3")).toHaveText("Files it's on");
+  await expect(pane.locator(".dk-fc.wait")).toHaveCount(n);
   await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d3").files = []; });
   await expect(pane.locator(".dk-note")).toHaveText("No files on it yet.");
   await expect(pane.locator('[data-desk-itab="files"] .n')).toHaveText("0");
@@ -2187,8 +2235,11 @@ test("an item's thread scrolls to the newest message when one arrives or you sen
     if (!r || !p || !h) return false;   // mid-redraw
     return r.y >= h.y + h.height - 1 && r.y + r.height <= p.y + p.height + 1;
   };
-  // Opening it doesn't jump: it starts at the top.
-  expect(await pane.evaluate((e) => e.scrollTop)).toBe(0);
+  // It opens at its newest message, as a chat does.
+  await expect.poll(() => inView(pane.locator(".dk-thread .dk-tm").last())).toBe(true);
+  expect(await pane.evaluate((e) => e.scrollTop)).toBeGreaterThan(200);
+  // Scrolled up, it stays there till something comes.
+  await pane.evaluate((e) => { e.scrollTop = 0; });
   // One arrives: it's in view.
   await cue.change((st) => { const it = st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d4"); it.said = [...it.said, { at: Date.now(), by: "cue-117", text: "A new reply just came in." }]; });
   const arrived = pane.locator(".dk-thread .dk-tm", { hasText: "A new reply just came in." });
@@ -2296,4 +2347,48 @@ test("on a named Desk, a session's chat is titled by the item it holds on that D
   await expect(sch.locator(".dk-sch1 .dk-lbl")).toContainText("Task");
   await sch.locator(".dk-sch-t").click();
   await expect.poll(() => page.evaluate(() => deskOpen && [deskOpen.kind, deskOpen.id, deskOpen.project])).toEqual(["item", "n1", "nd1"]);
+});
+
+test("a message you send on an item's page is its thread's last, under its holder's latest words (#160)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  // Its holder between turns, its latest words not in a reply (kept from before replies were).
+  await cue.change((st) => {
+    const it = st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d4");
+    Object.assign(it, { said: [], latest: "Moved the search into the header's middle.", updated: Math.floor(Date.now() / 1000) - 60 });
+    const s = st.sessions.find((x) => x.session_id === it.holder.sid); if (s) s.state = "idle";
+  });
+  await page.locator('[data-desk-item="d4"]').click();
+  const rows = page.locator(".dk-right .dk-ipane .dk-thread .dk-tm");
+  await expect(rows.last()).toContainText("Moved the search into the header's middle.");
+  await cue.override("desk_item_act", () => new Promise((r) => { window.__release = r; }));
+  await page.locator(".dk-right .dk-box textarea").fill("Check the narrow window too");
+  await page.locator(".dk-right [data-desk-send]").click();
+  await expect(rows.last()).toContainText("Check the narrow window too");
+  await expect(rows.nth(-2)).toContainText("Moved the search into the header's middle.");
+});
+
+test("on the Board, a session working for a Desk has the Desk's mark before its name; one that isn't, none (#156)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await page.locator('.switch-view [data-view="board"]').click();
+  const card = (name) => page.locator("[data-session], [data-detail]").filter({ has: page.locator(`.proj, .tl-name`, { hasText: new RegExp(`^${name}$`) }) }).first();
+  await expect(card("host-lead").locator(".dk-name-ic svg.dk-kic")).toHaveCount(1);
+  await expect(card("site-lead").locator(".dk-name-ic")).toHaveCount(1);
+  // Its item done and no Desk run: no mark.
+  await cue.change((st) => { for (const d of st.desk.projects) { for (const i of d.items) if (i.holder?.sid === "site") i.state = "done"; if (d.lead?.sid === "site") d.lead = null; } });
+  await expect(card("site-lead").locator(".dk-name-ic")).toHaveCount(0);
+  await expect(card("host-lead").locator(".dk-name-ic")).toHaveCount(1);
+});
+
+test("the Desk's mark is on the session's chat title and its Inbox page head too, never twice on a card (#156)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await page.locator('.switch-view [data-view="board"]').click();
+  // Each card has it once (nameSpan carries it), never doubled.
+  for (const el of await page.locator(".tl-top, .card-head, .nrow-top, .nrow").all()) expect(await el.locator(":scope > .dk-name-ic, :scope > * > .dk-name-ic").count()).toBeLessThanOrEqual(1);
+  // Opened, its chat's title has it before the name.
+  await page.locator("[data-session], [data-detail]").filter({ has: page.locator(".proj, .tl-name", { hasText: /^host-lead$/ }) }).first().click();
+  const title = page.locator(".proj", { hasText: /^host-lead$/ }).last();
+  await expect(title.locator("xpath=preceding-sibling::*[1]")).toHaveClass(/dk-name-ic/);
+  expect(await page.evaluate(() => typeof deskSessMark === "function" && deskSessMark("host").includes("dk-name-ic"))).toBe(true);
+  expect(await page.evaluate(() => deskSessMark("nobody"))).toBe("");
 });
