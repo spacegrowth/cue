@@ -9,6 +9,10 @@ use std::time::{Duration, Instant};
 
 const SCRIPT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../scripts/self-install.sh");
 
+/// The waiter's source. With CUE_TEST_HELPER set it first starts that shell command as its child, the way Cue starts
+/// the helper from the Desk (the helper then has Cue among its ancestors).
+const WAITER: &str = "#include <stdlib.h>\n#include <unistd.h>\nint main(void) {\n  const char *h = getenv(\"CUE_TEST_HELPER\");\n  if (h && fork() == 0) { setsid(); execl(\"/bin/sh\", \"sh\", \"-c\", h, (char *)0); _exit(127); }\n  for (;;) pause();\n}\n";
+
 /// A program that waits until it's stopped, whatever its arguments: the fake apps' `Contents/MacOS/cue`. Compiled
 /// once (a copy of a system program is refused by macOS when run from elsewhere).
 fn waiter() -> &'static Path {
@@ -16,7 +20,7 @@ fn waiter() -> &'static Path {
     BIN.get_or_init(|| {
         let dir = std::env::temp_dir().join(format!("cue-self-install-waiter-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("w.c"), "#include <unistd.h>\nint main(void) { for (;;) pause(); }\n").unwrap();
+        std::fs::write(dir.join("w.c"), WAITER).unwrap();
         let ok = Command::new("cc").arg("-o").arg(dir.join("waiter")).arg(dir.join("w.c")).status().unwrap().success();
         assert!(ok, "cc");
         dir.join("waiter")
@@ -323,6 +327,31 @@ fn cue_is_quit_by_its_program_and_nothing_else_is_stopped() {
     assert!(!alive(cue), "Cue was quit before its app was replaced");
     assert!(alive(hook), "a hook is never stopped");
     assert!(alive(other), "a PID that isn't Cue's is never stopped");
+}
+
+#[test]
+fn the_cue_that_started_the_install_is_quit_though_it_is_the_helpers_parent() {
+    let mut f = Fixture::new("parent");
+    let old = commit(&f.repo, "old");
+    let new = commit(&f.repo, "new");
+    // As from the Desk: the running Cue starts the helper itself, so it is among the helper's ancestors.
+    let mut env = f.env(true, Launcher::Says);
+    let helper = format!("unset CUE_TEST_HELPER; exec /bin/bash '{SCRIPT}' '{}' {new} item-1 >/dev/null 2>&1", f.repo.display());
+    env.push(("CUE_TEST_HELPER".into(), helper));
+    let exe = f.exe();
+    let o = Command::new("/bin/sh").arg("-c").arg("\"$0\" </dev/null >/dev/null 2>&1 & echo $!").arg(&exe).envs(env.iter().map(|(k, v)| (k, v))).output().unwrap();
+    let cue: u32 = String::from_utf8_lossy(&o.stdout).trim().parse().unwrap();
+    f.started.push(cue as i32);
+    write_running(&f.home.join("install"), &old, cue, 1).unwrap();
+    let t = Instant::now();
+    while !status_in(&f.home.join("install")).is_some_and(|s| matches!(s.step.as_str(), "installed" | "rolled_back" | "failed")) {
+        assert!(t.elapsed() < Duration::from_secs(60), "the helper didn't finish: {}", read(&f.home.join("install/log")));
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    assert_eq!(f.status().step, "installed", "{}", read(&f.home.join("install/log")));
+    assert_eq!(f.calls(), vec!["build".to_string(), format!("quit {cue}"), "launch".to_string()]);
+    assert!(!alive(cue), "the Cue that started it was quit before its app was replaced");
+    assert_eq!(f.installed(), new);
 }
 
 #[test]

@@ -202,10 +202,11 @@ is_cue() {
 }
 
 # The PIDs running the installed app, whether or not running.json names them (a first install, an older Cue, one
-# that crashed). pgrep only finds the candidates; each is checked by is_cue.
+# that crashed). pgrep only finds the candidates; each is checked by is_cue. -a: pgrep leaves out its own ancestors,
+# and started by the Desk, Cue is this helper's parent (unquit, it kept running and the new app was never started).
 app_pids() {
   local p
-  for p in $(pgrep -f "$EXE" 2>/dev/null); do is_cue "$p" && echo "$p"; done
+  for p in $(pgrep -a -f "$EXE" 2>/dev/null); do is_cue "$p" && echo "$p"; done
   return 0
 }
 
