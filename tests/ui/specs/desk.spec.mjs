@@ -1952,3 +1952,22 @@ test("what you send on an item's page shows in its Thread at once, before it com
   await page.evaluate(() => window.__release?.(null));
   await expect(mine).toHaveCount(1);
 });
+
+test("an item page's header (title, pill, tabs) stays at the top as its thread scrolls, on its tinted band (#142)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  // A long thread, so the page scrolls.
+  await cue.change((st) => { const it = st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d4"); it.said = Array.from({ length: 30 }, (_, n) => ({ at: Date.now() - (30 - n) * 60000, by: "cue-117", text: `Step ${n} of the fix, written out at some length so it takes a line or two.` })); });
+  await page.locator('[data-desk-item="d4"]').click();
+  const pane = page.locator(".dk-right .dk-ipane"), head = pane.locator(".dk-ihead");
+  const before = await head.boundingBox(), tabs = await pane.locator(".dk-itabs").boundingBox(), pill = await pane.locator(".dk-pill").boundingBox();
+  await pane.evaluate((e) => { e.scrollTop = e.scrollHeight; });
+  expect(await pane.evaluate((e) => e.scrollTop)).toBeGreaterThan(200);
+  expect(await head.boundingBox()).toEqual(before);
+  expect(await pane.locator(".dk-itabs").boundingBox()).toEqual(tabs);
+  expect(await pane.locator(".dk-pill").boundingBox()).toEqual(pill);
+  // The thread goes under it, not over it; the band isn't the pill's own fill.
+  const bg = (sel) => pane.locator(sel).evaluate((e) => getComputedStyle(e).backgroundColor);
+  expect(await bg(".dk-ihead")).not.toBe("rgba(0, 0, 0, 0)");
+  expect(await bg(".dk-ihead")).not.toBe(await bg(".dk-pill"));
+});
