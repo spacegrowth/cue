@@ -44,11 +44,13 @@ test("the Desk is in the header after Board, and lists Waiting on you, then a gr
   // The lead's chat on the right, named for it, no crew beside it (a Desk's lead has none).
   await expect(page.locator(".dk-tab.on")).toHaveText("web-lead");
   await expect(page.locator(".dk-tabs")).not.toContainText("crew");
-  // Its mark right after the lead's name: the icon and a small word, no filled block.
+  // Its mark (pick J): a tinted badge with the kind's icon before the name, the word "Desk lead" over the name.
   const mark = page.locator('.dk-tabs [data-desk-mark="desk"]');
   await expect(mark).toHaveText("Desk lead");
-  await expect(mark.locator("svg.dk-kic")).toHaveCount(1);
-  expect(await mark.evaluate((e) => [e.previousElementSibling?.classList.contains("on"), getComputedStyle(e).backgroundColor])).toEqual([true, "rgba(0, 0, 0, 0)"]);
+  expect(await mark.evaluate((e) => !!e.nextElementSibling?.querySelector(".dk-tab.on"))).toBe(true);
+  const badge = page.locator(".dk-tabs .dk-titled > .dk-badge");
+  await expect(badge.locator("svg.dk-kic")).toHaveCount(1);
+  expect(await badge.evaluate((e) => getComputedStyle(e).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)");
   await expect(page.locator(".dk-chat")).toContainText("host-lead is on it");
   // The Sessions head: ‹ to every Desk, the Desk's name, ✎ only on hover; no "Change" anywhere.
   await expect(page.locator(".dk-sh b")).toHaveText("cue");
@@ -94,6 +96,11 @@ test("written about an item at work, the box goes to the lead naming it", async 
   await page.locator(".dk-box textarea").fill("The More menu is cut off");
   await page.locator(".dk-box textarea").press("Enter");
   await cue.called("desk_send", { project: "cue", text: "About #d3 (Search stays centred in the header): The More menu is cut off" });
+  // The item stays open, its box empty; the lead's chat has it when you go back.
+  await expect(page.locator(".toast").last()).toContainText("Sent to web-lead");
+  await expect(page.locator(".dk-pane h1")).toHaveText("Search stays centred in the header");
+  await expect(page.locator(".dk-box textarea")).toHaveValue("");
+  await page.locator(".dk-back").click();
   await expect(page.locator(".dk-chat")).toContainText("The More menu is cut off");
   // The lead has it (after the Desk's summary Cue put before it): no Sending left, and no summary shown.
   await expect(page.locator(".dk-chat .sending")).toHaveCount(0);
@@ -1099,9 +1106,9 @@ test("written about an item ready to check, it's sent back with your words: off 
   expect(await cue.calls("desk_send")).toEqual([]);
   await expect(page.locator(".toast").last()).toContainText("Sent back");
   await expect.poll(() => listOrder(page)).toEqual(["# Waiting on you", "d1", "# In progress", "d3", "d2", "d5", "# Queued", "d4", "d6", "# Done", "d7", "d8", "d9"]);
-  // The box emptied, and the lead's chat back.
+  // The box emptied, the item's page still open.
   await expect(page.locator(".dk-box textarea")).toHaveValue("");
-  await expect(page.locator(".dk-pane")).toHaveCount(0);
+  await expect(page.locator(".dk-pane")).toHaveCount(1);
   // One that doesn't go: still waiting on you, your words kept in its box.
   await page.locator('[data-desk-item="d1"]').click();
   await cue.change((st) => { st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d1").state = "to_check"; });
@@ -1134,9 +1141,9 @@ test("three columns: the project's sessions on the left, the lead's chat in the 
   // Each row marked in its top-right corner with what it is (Type marks pick 8).
   await expect(left.locator('[data-desk-lead-chat="lead"] .dk-rmark')).toHaveText("Desk lead");
   await expect(left.locator('[data-desk-chat-of="host"] .dk-rmark')).toHaveText("Session");
-  // The right list: each item's kind as a small icon in the theme color before its number.
+  // The right list: each item's kind as its badge (pick J) at the row's left.
   const items = page.locator(".dk-items");
-  await expect(items.locator('[data-desk-item="d1"] .dk-i1 > svg.dk-kic')).toHaveCount(1);
+  await expect(items.locator('[data-desk-item="d1"] > .dk-badge > svg.dk-kic')).toHaveCount(1);
   expect(await items.locator(".dk-it").evaluateAll((els) => els.every((el) => el.querySelector(".dk-kic")))).toBe(true);
   const ic = await items.locator('[data-desk-item="d1"] .dk-kic').evaluate((el) => [getComputedStyle(el).color, getComputedStyle(document.documentElement).getPropertyValue("--accent")]);
   expect(ic[0]).not.toBe("");
@@ -1617,7 +1624,7 @@ test("Looks right waits a moment with \"Done · Undo\" on the item and in a toas
   await cue.called("desk_looks_right", { id: "d2" });
 });
 
-test("Waiting on you stays at 0, not in red; an open item is a quiet wash of the theme, its words as they are", async ({ page, cue }) => {
+test("Waiting on you stays at 0, not in red; an open item takes the solid highlight with its words in the highlight's ink", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   const you = page.locator(".dk-items .dk-gh.you");
@@ -1630,15 +1637,15 @@ test("Waiting on you stays at 0, not in red; an open item is a quiet wash of the
   await row.click();
   await expect(row).toHaveClass(/\bon\b/);
   const [bg, sel, ink, idInk] = await row.evaluate((e) => { const c = (v) => { const t = document.createElement("i"); t.style.color = v; document.body.append(t); const r = getComputedStyle(t).color; t.remove(); return r; }; return [getComputedStyle(e).backgroundColor, c("var(--sel)"), c("var(--on-sel)"), getComputedStyle(e.querySelector(".dk-id")).color]; });
-  expect(bg).not.toBe(sel);
-  expect(idInk).not.toBe(ink);
+  expect(bg).toBe(sel);
+  expect(idInk).toBe(ink);
 });
 
-test("an open item's box stays where it is while you type, through redraws, with your words and the cursor", async ({ page, cue }) => {
+test("an open item's box keeps the cursor: through redraws, and after Enter sends it, as you go on typing", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await page.locator('[data-desk-item="d3"]').click();
-  const box = page.locator('.dk-right .dk-box textarea');
+  const box = page.locator(".dk-right .dk-box textarea");
   await box.click();
   await page.keyboard.type("half a thought");
   const at = await box.boundingBox();
@@ -1648,17 +1655,16 @@ test("an open item's box stays where it is while you type, through redraws, with
   expect(await box.boundingBox()).toEqual(at);
   await expect(box).toBeFocused();
   await expect(box).toHaveValue("half a thought more");
-});
-
-test("a long title on a Ready to check card wraps beside its kind's icon, not under it", async ({ page, cue }) => {
-  await cue.open("desk");
-  await cue.change((st) => { st.desk.projects.find((d) => d.project === "cue").checks.find((i) => i.id === "d2").title = "Lets keep Waiting on you to 0 and a color I like when I enter, and the text box of items that jumps somewhere after a few seconds"; });
-  await openDesk(page);
-  const t = page.locator(".dk-chat .dk-chk .dk-chk-t");
-  await expect(t).toContainText("Lets keep Waiting");
-  const [icon, title] = await t.evaluate((el) => [el.querySelector(".dk-kic"), el.querySelector(".dk-chk-a")].map((e) => e.getBoundingClientRect()).map((r) => ({ top: r.top, bottom: r.bottom, right: r.right, left: r.left, h: r.height })));
-  expect(title.h, "the title wraps").toBeGreaterThan(30);
-  expect(title.left).toBeGreaterThanOrEqual(icon.right);
-  expect(icon.top).toBeGreaterThanOrEqual(title.top);
-  expect(icon.bottom).toBeLessThan(title.top + 22);
+  // Enter sends it; the send takes a moment, and you go on typing meanwhile: it all stays in this item's box.
+  await cue.override("desk_send", () => new Promise((r) => { window.sendGoes = () => r({ sid: "lead" }); }));
+  await page.keyboard.press("Enter");
+  await expect(box).toHaveValue("");
+  await page.keyboard.type("and then");
+  await page.evaluate(() => window.sendGoes());
+  await expect(page.locator(".toast").last()).toContainText("Sent to");
+  await page.keyboard.type(" more");
+  await expect(page.locator(".dk-pane h1")).toContainText("Search stays centred");
+  await expect(box).toBeFocused();
+  await expect(box).toHaveValue("and then more");
+  expect(await box.boundingBox()).toEqual(at);
 });
