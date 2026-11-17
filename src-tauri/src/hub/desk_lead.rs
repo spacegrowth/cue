@@ -5,6 +5,9 @@ use super::desk::{routable, shown, shown_name};
 use super::*;
 use crate::desk::{DeskItem, Waiting};
 
+/// How a failed start of a new session for an item begins its `route_failed` (the error follows in brackets).
+const NEW_SESSION: &str = "a new session";
+
 /// How a message reaches a project's lead (`desk_claim`).
 pub(crate) enum DeskClaim {
     /// Live: sent to it.
@@ -119,9 +122,36 @@ impl Hub {
 
     /// A name for a new lead of `project` no open or parked session goes by: "<project>-lead", else "-lead-2"…
     pub(crate) fn desk_lead_name(&self, project: &str) -> String {
+        self.free_name(&format!("{project}-lead"))
+    }
+
+    /// `base`, else "<base>-2"…: the first no open or parked session goes by.
+    fn free_name(&self, base: &str) -> String {
         let taken: Vec<String> = self.read(|st| st.sessions.iter().chain(st.parked.iter().map(|p| &p.session)).map(shown_name).collect());
-        let base = format!("{project}-lead");
-        (1..).map(|n| if n == 1 { base.clone() } else { format!("{base}-{n}") }).find(|n| !taken.iter().any(|t| t.eq_ignore_ascii_case(n))).unwrap_or(base)
+        (1..).map(|n| if n == 1 { base.to_string() } else { format!("{base}-{n}") }).find(|n| !taken.iter().any(|t| t.eq_ignore_ascii_case(n))).unwrap_or(base.to_string())
+    }
+
+    /// An item the lead gave to a new session (`ROUTE: #id -> new`): a hosted Claude started in the project's folder,
+    /// named "<project>-<id>", that holds it and is sent it. If it can't start, the item says why (and the lead is told).
+    pub(super) fn desk_start_new(self: &Arc<Self>, s: super::desk::NewStart) {
+        let name = self.free_name(&format!("{}-{}", s.project, s.id));
+        let dir = self.desk_folder(&s.project).ok_or_else(|| format!("no folder known for {}", s.project));
+        // Its folder is one a session of the project already works in: trusted, as you trust it there.
+        let opts = crate::ipc::StartOpts { trust: true, ..Default::default() };
+        let started = dir.and_then(|dir| crate::ipc::start_hosted(self, crate::hosted::Agent::Claude, &dir, "", &name, &opts, &[]));
+        let sid = started.and_then(|v| v["session_id"].as_str().filter(|s| !s.is_empty()).map(str::to_string).ok_or_else(|| "it started without a session id".to_string()));
+        let now = now_ms();
+        let fx = self.write(|st| {
+            let mut fx = super::desk::Effects::default();
+            let given = sid.and_then(|sid| super::desk::give_by(st, &s.id, &sid, (&s.by, &s.by_sid, &s.why), now, &mut fx));
+            if let (Err(e), Some(it)) = (given, st.desk.item_mut(&s.id)) {
+                it.route_failed = format!("{NEW_SESSION} ({e})");
+                it.updated = super::desk::secs(now);
+                fx.items.push(s.id.clone());
+            }
+            fx
+        });
+        self.desk_done(fx);
     }
 
     /// The folder a new lead of `project` starts in: the repository of a session of the project on this Mac (live,
@@ -165,23 +195,23 @@ impl Hub {
             for line in told {
                 out.push_str(&line);
             }
-            let names: Vec<String> = routable(st, project)
-                .iter()
-                .filter(|s| s.origin.session_id != lead)
-                .map(|s| {
+            let (on, off): (Vec<&crate::sessions::Session>, Vec<&crate::sessions::Session>) = routable(st, project).into_iter().filter(|s| s.origin.session_id != lead).partition(|s| st.desk.on_desk(project, &s.origin.session_id));
+            let line = |s: &crate::sessions::Session| {
                     let crew: Vec<&str> = s.team.iter().map(|t| t.name.as_str()).collect();
                     let what = if crew.is_empty() { "session".to_string() } else { format!("lead, crew: {}", crew.join(", ")) };
                     let id: String = s.origin.session_id.chars().take(8).collect();
                     let state = if s.state.is_empty() { "idle" } else { &s.state };
                     format!("{} (sid:{id}, {what}, {state}{})", shown_name(s), context_note(st, &s.origin.session_id, now))
-                })
-                .collect();
-            out.push_str(&format!("Sessions you can route to: {}\n", if names.is_empty() { "none open in this project but you".to_string() } else { names.join("; ") }));
+            };
+            let names: Vec<String> = on.into_iter().map(line).collect();
+            out.push_str(&format!("Sessions on the Desk, you can route to: {}\n", if names.is_empty() { "none open but you: ROUTE: #<id> -> new".to_string() } else { names.join("; ") }));
+            if !off.is_empty() {
+                let names: Vec<String> = off.into_iter().map(|s| { let id: String = s.origin.session_id.chars().take(8).collect(); format!("{} (sid:{id})", shown_name(s)) }).collect();
+                out.push_str(&format!("Other sessions of this project, not on the Desk (a ROUTE to one asks the user first; a yes adds it): {}\n", names.join("; ")));
+            }
             if let Some(me) = st.sessions.get(lead) {
-                let crew: Vec<&str> = me.team.iter().map(|t| t.name.as_str()).collect();
-                let crew = if crew.is_empty() { String::new() } else { format!(" (your crew: {})", crew.join(", ")) };
                 let context = context_note(st, lead, now);
-                out.push_str(&format!("You: {}{crew}{context}. ROUTE: #<id> -> me to keep one yourself.\n", shown_name(me)));
+                out.push_str(&format!("You: {}{context}. You only hand work out: ROUTE: #<id> -> new when no session fits.\n", shown_name(me)));
             }
             (out, failed)
         });
@@ -235,9 +265,13 @@ fn context_note(st: &Store, sid: &str, now: u64) -> String {
 /// Item `it`'s line in the Desk's summary (into `out`), with the routes it couldn't make (into `failed`) and what the
 /// lead is told of them (into `told`).
 fn item_lines(it: &DeskItem, out: &mut String, failed: &mut Vec<(String, String)>, told: &mut Vec<String>) {
-    out.push_str(&format!("#{} {}: {} | {}", it.id, it.kind, it.title, it.state.replace('_', " ")));
+    let kind = if it.kind.is_empty() { "no kind yet" } else { &it.kind };
+    out.push_str(&format!("#{} {kind}: {} | {}", it.id, it.title, it.state.replace('_', " ")));
     if let Some(h) = &it.holder {
         out.push_str(&format!(" | held by {} ({})", h.name, h.kind));
+        if !it.crew.is_empty() {
+            out.push_str(&format!(" → {} (crew)", it.crew));
+        }
     }
     if let Some(a) = &it.after {
         out.push_str(&format!(" | after #{a}"));
@@ -246,7 +280,10 @@ fn item_lines(it: &DeskItem, out: &mut String, failed: &mut Vec<(String, String)
         out.push_str(&format!(" | done when: {}", it.done_when));
     }
     if !it.files.is_empty() {
-        out.push_str(&format!(" | files: {}", it.files.iter().take(8).cloned().collect::<Vec<_>>().join(", ")));
+        // Its own files only (hub/desk.rs), and a few of them: the rest as a count.
+        let more = it.files.len().saturating_sub(5);
+        let more = if more > 0 { format!(" +{more} more") } else { String::new() };
+        out.push_str(&format!(" | files: {}{more}", it.files.iter().take(5).cloned().collect::<Vec<_>>().join(", ")));
     }
     out.push('\n');
     if !it.route_failed.is_empty() {
@@ -256,10 +293,18 @@ fn item_lines(it: &DeskItem, out: &mut String, failed: &mut Vec<(String, String)
             Some(h) => format!("It stays with {}.", h.name),
             None => "It's still new.".to_string(),
         };
-        told.push(format!("Cue couldn't route #{} to \"{}\": no session of this project goes by that name. {stays}\n", it.id, it.route_failed));
+        let why = match it.route_failed.strip_prefix(NEW_SESSION) {
+            Some(e) => format!("Cue couldn't start a new session for #{}: {}. {stays}\n", it.id, e.trim().trim_start_matches('(').trim_end_matches(')')),
+            None => format!("Cue couldn't route #{} to \"{}\": no session of this project goes by that name. {stays}\n", it.id, it.route_failed),
+        };
+        told.push(why);
     }
     if !it.after_refused.is_empty() {
         failed.push((it.id.clone(), it.after_refused.clone()));
         told.push(format!("Cue couldn't queue #{} after {}: it started now. If the two would clash (the same files), say how to order them.\n", it.id, it.after_refused));
+    }
+    if !it.reopen_refused.is_empty() {
+        failed.push((it.id.clone(), it.reopen_refused.clone()));
+        told.push(format!("Cue didn't reopen #{}: {}.\n", it.id, it.reopen_refused));
     }
 }

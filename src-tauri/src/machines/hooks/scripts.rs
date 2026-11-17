@@ -15,33 +15,13 @@ id="$(date +%s)-$$"
 echo "$id $1 ${TMUX_PANE:-}" >>"$d/hook.log" 2>/dev/null
 # The event (a prompt, a command about to run) is yours alone: the file is readable by you only.
 input=$(cat)
-# A session cue-host runs for Cue (CUE_HOSTED): Cue hears all of it from the session directly, so only the status
-# list's part (below) runs for it, and only in a session with the list on.
-if [ -n "${CUE_HOSTED:-}" ]; then
-  case "$1" in prompt|stop) ;; *) exit 0 ;; esac
-  hsid=$(printf '%s' "$input" | tr -d '\n' | sed -n 's/.*"session_id" *: *"\([A-Za-z0-9-]*\)".*/\1/p')
-  [ -n "$hsid" ] && grep -qxF "$hsid" "$d/status-on" 2>/dev/null || exit 0
-fi
+# A session cue-host runs for Cue (CUE_HOSTED): Cue hears all of it from the session directly.
+[ -z "${CUE_HOSTED:-}" ] || exit 0
 ( umask 077; {
   printf '{"event":"%s","harness":"%s","pane":"%s","tmux":"%s","hosted":"%s","input":' "$1" "$2" "${TMUX_PANE:-}" "${TMUX:+1}" "${CUE_HOSTED:+1}"
   printf '%s' "$input"
   printf '}\n'
 } >"$d/in/$id.tmp" ) 2>/dev/null && mv "$d/in/$id.tmp" "$d/in/$id.json"
-# A message sent, or a reply ending, in a session with the status list on (~/.cue/status-on, kept by Cue): Cue's
-# answer (its list carried forward, or the reply sent back for one), waited for 3 seconds at most while Cue is
-# watching. Any other session never waits.
-if [ "$1" = prompt ] || [ "$1" = stop ]; then
-  sid=$(printf '%s' "$input" | tr -d '\n' | sed -n 's/.*"session_id" *: *"\([A-Za-z0-9-]*\)".*/\1/p')
-  [ -n "$sid" ] && grep -qxF "$sid" "$d/status-on" 2>/dev/null || exit 0
-  seen=$(cat "$d/watching" 2>/dev/null) || seen=0
-  [ $(( $(date +%s) - ${seen:-0} )) -lt 5 ] || exit 0
-  end=$(( $(date +%s) + 3 ))
-  while [ "$(date +%s)" -le "$end" ]; do
-    if [ -e "$d/out/$id.json" ]; then cat "$d/out/$id.json"; rm -f "$d/out/$id.json"; exit 0; fi
-    sleep 0.1 2>/dev/null || sleep 1
-  done
-  exit 0
-fi
 [ "$1" = permission ] || exit 0
 # A permission question: wait for the answer while Cue is watching (it stamps the time every second).
 # Not watching now: leave at once. Once it has the question, a dropped line (the Mac asleep, Wi-Fi)

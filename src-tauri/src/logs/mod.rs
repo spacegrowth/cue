@@ -3,6 +3,7 @@
 
 pub(crate) mod about;
 pub(crate) mod archive;
+pub(crate) mod codex_usage;
 pub(crate) mod live;
 pub(crate) mod mcp;
 pub(crate) mod prices;

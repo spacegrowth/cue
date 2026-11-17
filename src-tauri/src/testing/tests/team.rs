@@ -897,3 +897,30 @@ fn the_tidy_lets_work_committed_outside_cue_or_thrown_away_leave_the_crew_and_ke
     assert_eq!(mate(&w, &sid, "notes")["state"], "stopped", "an ignored file: git can't say whether its work was kept, so it stays");
     assert!(!w.hub().team_tidy(), "nothing more to tidy");
 }
+
+/// A lead's background teammates end with its Claude process. One still at work when that process exits, or when a
+/// new process starts on the lead's conversation (the old one went without a word), never sends its finish: it's
+/// stopped, not left at work for good.
+#[test]
+fn a_teammate_at_work_when_its_leads_process_ends_or_is_replaced_is_stopped_not_left_working() {
+    let w = World::new();
+    let sid = lead(&w, "start two workers");
+    let start = |call: &str, name: &str, id: &str| [
+        HostedEvent::ToolCall { id: call.into(), name: "Agent".into(), input: json!({ "name": name, "prompt": "do it", "run_in_background": true }), agent: None },
+        HostedEvent::Task { what: "task_started".into(), detail: json!({ "task_type": "local_agent", "tool_use_id": call, "task_id": id }) },
+    ];
+    says(&w, &sid, start("c1", "first", "a1"));
+    assert_eq!(mate(&w, &sid, "first")["state"], "working");
+    w.hosted.exits(&sid);
+    says(&w, &sid, [HostedEvent::Exited { code: Some(1), during_turn: false, last_words: String::new() }]);
+    assert_eq!(mate(&w, &sid, "first")["state"], "stopped", "its process ended with its lead's");
+    // Started again by your message; a teammate of that process, then the process gone with no Exited (Cue closed it).
+    w.send_to(&sid, "go on");
+    says(&w, &sid, start("c2", "second", "a2"));
+    assert_eq!(mate(&w, &sid, "second")["state"], "working");
+    w.hosted.exits(&sid);
+    w.send_to(&sid, "and again");
+    w.settle();
+    assert_eq!(mate(&w, &sid, "second")["state"], "stopped", "a new process: the old one's teammates are gone");
+    assert_eq!(mate(&w, &sid, "first")["state"], "stopped");
+}

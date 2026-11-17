@@ -13,6 +13,10 @@ pub(super) trait Protocol: Send {
     /// Your message: taken at once when it's idle, at its next step when it's at work. Nothing yet when its
     /// conversation isn't open: it goes once it is.
     fn message(&mut self, text: &str) -> Vec<String>;
+    /// A message with a model chosen by Cue, applied when the next turn starts.
+    fn message_with_model(&mut self, text: &str, _model: &str) -> Vec<String> {
+        self.message(text)
+    }
     /// Your answer to its request `request_id` (an `Ask`'s). Err when nothing waits for one under that id.
     fn answer(&mut self, request_id: &str, a: &Answer) -> Result<Vec<String>, String>;
     /// Stop what it's doing.

@@ -39,6 +39,16 @@ pub(crate) fn commands_of(hub: &Hub, session_id: &str, fresh: bool) -> serde_jso
         let claude = o.harness == "claude";
         for c in v["list"].as_array_mut().into_iter().flatten() {
             let name = c["name"].as_str().unwrap_or_default().to_string();
+            if name == "model" && o.harness == "codex" {
+                c["kind"] = "cue".into();
+                c["desc"] = "Choose the model for subsequent turns".into();
+                c["hint"] = "<model>".into();
+                match hub.codex_models(session_id) {
+                    Ok(models) => c["args"] = serde_json::json!(models),
+                    Err(e) => c["desc"] = format!("Couldn't load Codex models: {e}").into(),
+                }
+                continue;
+            }
             if name == "mcp" && claude {
                 // Cue's own MCP servers list (ui/chat/mcp_live.js), which headless Claude Code doesn't have.
                 c["kind"] = "cue".into();

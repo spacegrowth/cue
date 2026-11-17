@@ -89,12 +89,23 @@ impl Driver {
 
     /// One line of its output: its events reported, and the lines to write back at once.
     pub fn read(&self, line: &str) -> Vec<String> {
-        if let Some((id, said)) = super::wire::parse_reply(line) {
+        let rpc = || {
+            let v: Value = serde_json::from_str(line).ok()?;
+            if v.get("method").is_some() { return None; }
+            let id = v.get("id")?.as_u64()?.to_string();
+            let said = match v.get("error") {
+                Some(error) => Err(error["message"].as_str().unwrap_or("Codex refused the request").to_string()),
+                None => Ok(v.get("result")?.clone()),
+            };
+            Some((id, said))
+        };
+        // Apply protocol state before waking the caller that may send the next turn.
+        let (events, replies) = self.speak(|p| p.read(line));
+        if let Some((id, said)) = super::wire::parse_reply(line).or_else(rpc) {
             if let Some(tx) = crate::locking::lock(&self.asked, "hosted session: asked").remove(&id) {
                 let _ = tx.send(said);
             }
         }
-        let (events, replies) = self.speak(|p| p.read(line));
         let id = self.session_id();
         for e in events {
             (self.sink)(&id, e);
@@ -159,6 +170,10 @@ impl Driver {
 
     pub fn message(&self, text: &str) -> Vec<String> {
         self.speak(|p| p.message(text))
+    }
+
+    pub fn message_with_model(&self, text: &str, model: &str) -> Vec<String> {
+        self.speak(|p| p.message_with_model(text, model))
     }
 
     pub fn answer(&self, request_id: &str, a: &Answer) -> Result<Vec<String>, String> {

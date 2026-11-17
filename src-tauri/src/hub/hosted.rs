@@ -48,7 +48,9 @@ impl Hub {
         if agent == Agent::Claude && self.desk_skill(&origin.session_id).is_some() {
             args.extend(fast_mode());
         }
-        let spec = Spec { agent, cwd: origin.cwd.clone().into(), start, permissions: with.permissions.clone(), model: with.model.clone(), args, program: Program::Agent, machine: origin.machine.clone() };
+        let model = crate::config::load()["codex_models"][&origin.session_id].as_str()
+            .filter(|_| agent == Agent::Codex).map(str::to_string).or_else(|| with.model.clone());
+        let spec = Spec { agent, cwd: origin.cwd.clone().into(), start, permissions: with.permissions.clone(), model, args, program: Program::Agent, machine: origin.machine.clone() };
         let base = self.session_cost(&origin.session_id).unwrap_or(0.0);
         let started: crate::hosted::Started = self.hosted().start(&spec, self.hosted_report(origin.clone(), base))?;
         let transcript_path = match started.transcript {
@@ -105,7 +107,12 @@ impl Hub {
             self.wake_hosted(&o)?;
             // On a machine, its images copied there first, so the paths in the message open there.
             let there = crate::uploads::on_machine(&o.machine, saved, &|_, _| {})?;
-            self.hosted().send(sid, &crate::uploads::with_paths(typed, &there))
+            let message = crate::uploads::with_paths(typed, &there);
+            let config = crate::config::load();
+            match config["codex_models"][sid].as_str().filter(|_| o.harness == "codex") {
+                Some(model) => self.hosted().send_with_model(sid, &message, model),
+                None => self.hosted().send(sid, &message),
+            }
         });
         self.write(|st| match &handed {
             Ok(()) => st.sessions.note_delivery(sid, text, "handed to it directly"),

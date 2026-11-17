@@ -1,7 +1,6 @@
 mod chaos;
 mod clock;
 mod config;
-mod actions;
 mod awake;
 mod btw;
 mod db;
@@ -20,9 +19,7 @@ mod notify;
 mod one_way;
 mod quit;
 mod sounds;
-mod statuslist;
 mod talk;
-mod tasks;
 // An optional add-on, compiled in only with the `ext` feature: Rust in `src-tauri/ext/` (not part of
 // this repo). Without it there's nothing here.
 #[cfg(feature = "ext")]

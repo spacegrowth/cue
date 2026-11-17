@@ -709,7 +709,37 @@ fn pis_and_codexs_own_commands_never_reach_the_model_sign_in_says_what_to_run_an
     let codex = started_as(&w, "codex");
     assert!(w.send_to(&codex, "/login").to_string().contains("run codex login in a terminal"));
     assert_eq!(w.launcher.launched().len(), tabs, "Cue opens nothing");
-    assert!(w.send_to(&codex, "/model").to_string().contains("a hosted session doesn't have"));
+    w.hosted.answers_control("model/list", Ok(json!({ "data": [{ "model": "test-model", "displayName": "Test model" }], "nextCursor": null })));
+    assert!(w.send_to(&codex, "/model").to_string().contains("/model <model>"));
+}
+
+#[test]
+fn hosted_codex_models_are_picked_and_changed_without_sending_a_prompt() {
+    let w = World::new();
+    let sid = started_as(&w, "codex");
+    w.hosted.answers_control("model/list", Ok(json!({ "data": [
+        { "model": "test-model", "displayName": "Test model", "description": "Available model" },
+        { "model": "hidden-model", "hidden": true }
+    ], "nextCursor": null })));
+    let menu = crate::ipc::commands_of(w.hub(), &sid, false);
+    let model = menu["list"].as_array().unwrap().iter().find(|c| c["name"] == "model").unwrap();
+    assert_eq!(model["kind"], "cue");
+    assert_eq!(model["args"].as_array().unwrap().len(), 1);
+    assert_eq!(model["args"][0]["value"], "test-model");
+    let before = w.hosted.sent().len();
+    let changed = w.send_to(&sid, "/model test-model").to_string();
+    assert!(changed.contains("Model set to test-model"), "{changed}");
+    assert_eq!(crate::config::load()["codex_models"][&sid], "test-model");
+    let invalid = w.send_to(&sid, "/model unknown").to_string();
+    assert!(invalid.contains("hasn't offered"), "{invalid}");
+    w.hosted.answers_control("model/list", Err("model unavailable".into()));
+    assert!(w.send_to(&sid, "/model test-model").to_string().contains("model unavailable"));
+    assert_eq!(w.hosted.sent().len(), before);
+    w.send_to(&sid, "do the task");
+    assert_eq!(w.hosted.models().last(), Some(&(sid.clone(), "test-model".into())));
+    w.hosted.exits(&sid);
+    w.send_to(&sid, "carry on after restarting");
+    assert_eq!(w.hosted.models().last(), Some(&(sid, "test-model".into())));
 }
 
 #[test]

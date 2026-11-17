@@ -23,20 +23,9 @@ const CATCH_UP_CLICKS = [
   rule("[data-act=catch-up], [data-act=catch-up-got]", (cu) => cu.dataset.act === "catch-up" ? askCatchUp(cu.dataset.sid) : gotCatchUp(cu.dataset.sid)),
 ];
 
-const STATUS_CLICKS = [
+const WATCH_CLICKS = [
   // Tell me when it's done (the line under the chat, or ⋯: done with the menu too).
   rule("[data-act=watch]", (wt) => { moreFor = null; setWatch(wt.dataset.sid, wt.dataset.on === "1"); }),
-  // A session's ring → its switch: the status list on (or off again) for this session (statuslist.rs).
-  rule("[data-act=status-session]", (el) => invoke("status_session", { sessionId: el.dataset.sid, on: el.dataset.on === "1" }).catch((x) => toast(String(x)))),
-  // The list above the chat (status_panel.js): the ring puts its line away or brings it back, the line opens the
-  // list, and the line of an open list rolls it back up.
-  rule("[data-act=status-panel], [data-act=status-open]", (el) => {
-    if (el.dataset.act === "status-open" && statusPanelView(el.dataset.sid).open) return void statusPanelCloseAll();
-    statusPanelFlip(el.dataset.sid, el.dataset.act === "status-open" ? "open" : "away");
-    renderMain();
-  }),
-  // …and Start / Stop background agents (statuslist.rs): the ∥ steps run as agents while it's on.
-  rule("[data-act=status-background]", (el) => invoke("background_session", { sessionId: el.dataset.sid, on: !backgroundOn(el.dataset.sid) }).catch((x) => toast(String(x)))),
 ];
 
 const QUEUE_CLICKS = [
@@ -81,6 +70,7 @@ const MORE_MENU_CLICKS = [
   rule("[data-new-proj]", (np) => { newProjFor = np.dataset.newProj; newProjNote = ""; draft(`newproj:${newProjFor}`).text = ""; renderMain(); document.querySelector(".pm-new-in")?.focus(); }),
   rule("[data-move-proj]", (mvp) => { moreFor = null; movingProj = false; moveToProject(mvp.dataset.sid, mvp.dataset.moveProj); renderMain(); }),
   rule("[data-restart]", (rsb) => moreRestart(rsb.dataset.restart)),
+  rule(".more-menu [data-desk-member-set]", (dm) => { moreFor = null; renderMain(); deskMember(dm.dataset.project, dm.dataset.deskMemberSet, dm.dataset.on === "1"); }),
   rule("[data-cmd]", (mc) => moreCommand(mc.dataset.cmd, mc.dataset.sid)),
   (t) => { if (moreFor && !t.closest(".more-wrap")) { moreFor = newProjFor = null; movingProj = mcpPicking = false; renderMain(); } return false; },
   // Decide later: done with the menu too.

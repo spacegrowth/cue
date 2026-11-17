@@ -14,12 +14,12 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 
 | What | Count |
 |---|---|
-| `#[tauri::command]` | 174 (3 sync) |
-| Lock declarations (static or field) | 112 |
-| Lock acquisitions | 266 |
-| Lock-graph edges | 55 |
-| Spawn sites | 91 |
-| External calls: fs / db / process / notify / login / socket | 365 / 160 / 48 / 4 / 1 / 4 |
+| `#[tauri::command]` | 162 (3 sync) |
+| Lock declarations (static or field) | 103 |
+| Lock acquisitions | 246 |
+| Lock-graph edges | 50 |
+| Spawn sites | 87 |
+| External calls: fs / db / process / notify / login / socket | 348 / 178 / 45 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -30,20 +30,6 @@ Sync commands run on the main thread. "Hands work to": the threads or pools its 
 
 | Command | Kind | Item | Hands work to |
 |---|---|---|---|
-| `actions_list` | async | `actions/mod.rs::actions_list` | actions::off |
-| `actions_allow` | async | `actions/mod.rs::actions_allow` | actions::off |
-| `actions_run` | async | `actions/mod.rs::actions_run` | actions::off |
-| `actions_restart` | async | `actions/mod.rs::actions_restart` | actions::off |
-| `actions_stop` | async | `actions/mod.rs::actions_stop` | actions::off |
-| `actions_log` | async | `actions/mod.rs::actions_log` | actions::off |
-| `actions_attach_id` | async | `actions/mod.rs::actions_attach_id` | actions::off |
-| `actions_term_open` | async | `actions/mod.rs::actions_term_open` | actions::off, terminal::term::attach_local |
-| `actions_save` | async | `actions/mod.rs::actions_save` | actions::off |
-| `actions_file` | async | `actions/mod.rs::actions_file` | actions::off |
-| `actions_delete` | async | `actions/mod.rs::actions_delete` | actions::off |
-| `actions_running` | async | `actions/mod.rs::actions_running` | actions::off |
-| `project_for_folder` | async | `actions/mod.rs::project_for_folder` | actions::off |
-| `actions_prompt_set` | async | `actions/mod.rs::actions_prompt_set` | actions::off |
 | `diff_git` | async | `extensions.rs::diff_git` | ipc::blocking |
 | `ext_git` | async | `extensions.rs::ext_git` | ipc::blocking |
 | `ext_program` | async | `extensions.rs::ext_program` | ipc::blocking |
@@ -69,6 +55,7 @@ Sync commands run on the main thread. "Hands work to": the threads or pools its 
 | `mcp_for_folder` | async | `ipc/chat.rs::mcp_for_folder` | ipc::blocking |
 | `mcp_set_folder` | async | `ipc/chat.rs::mcp_set_folder` | ipc::blocking |
 | `folders_under` | async | `ipc/chat.rs::folders_under` | ipc::blocking |
+| `project_for_folder` | async | `ipc/chat.rs::project_for_folder` | ipc::blocking |
 | `mcp_restart` | async | `ipc/chat.rs::mcp_restart` | ipc::with_hub |
 | `restart_session` | async | `ipc/chat.rs::restart_session` | ipc::with_hub |
 | `mcp_apply` | async | `ipc/chat.rs::mcp_apply` | ipc::with_hub |
@@ -79,17 +66,18 @@ Sync commands run on the main thread. "Hands work to": the threads or pools its 
 | `focus_live` | async | `ipc/chat.rs::focus_live` | ipc::with_hub |
 | `btw` | async | `ipc/chat.rs::btw` | ipc::with_hub |
 | `catch_up` | async | `ipc/chat.rs::catch_up` | ipc::with_hub |
-| `tasks_start` | async | `ipc/chat.rs::tasks_start` | ipc::with_hub |
-| `tasks_refresh` | async | `ipc/chat.rs::tasks_refresh` | ipc::with_hub |
-| `tasks_stop` | async | `ipc/chat.rs::tasks_stop` | ipc::with_hub |
-| `status_session` | async | `ipc/chat.rs::status_session` | ipc::with_hub |
-| `background_session` | async | `ipc/chat.rs::background_session` | ipc::with_hub |
 | `focus_session_id` | async | `ipc/chat.rs::focus_session_id` | ipc::with_hub |
 | `desk_send` | async | `ipc/desk.rs::desk_send` | ipc::with_hub |
 | `desk_set_lead` | async | `ipc/desk.rs::desk_set_lead` | ipc::with_hub |
+| `desk_start` | async | `ipc/desk.rs::desk_start` | ipc::with_hub |
 | `desk_add` | async | `ipc/desk.rs::desk_add` | ipc::with_hub |
 | `desk_give` | async | `ipc/desk.rs::desk_give` | ipc::with_hub |
+| `desk_member` | async | `ipc/desk.rs::desk_member` | ipc::with_hub |
 | `desk_item_act` | async | `ipc/desk.rs::desk_item_act` | ipc::with_hub |
+| `desk_looks_right` | async | `ipc/desk.rs::desk_looks_right` | ipc::with_hub |
+| `desk_item_diff` | async | `ipc/desk.rs::desk_item_diff` | ipc::with_hub |
+| `desk_commit_undo` | async | `ipc/desk.rs::desk_commit_undo` | ipc::with_hub |
+| `desk_done` | async | `ipc/desk.rs::desk_done` | ipc::with_hub |
 | `desk_undo` | async | `ipc/desk.rs::desk_undo` | ipc::with_hub |
 | `read_doc` | async | `ipc/docs.rs::read_doc` | ipc::blocking |
 | `recent_docs` | async | `ipc/docs.rs::recent_docs` | ipc::blocking |
@@ -211,12 +199,6 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 
 | Declared | Type | Locked as |
 |---|---|---|
-| `actions/mod.rs::STORE` | `Mutex<()>` | "actions STORE" (2 sites) |
-| `actions/mod.rs::ONE` | `Mutex<()>` | "actions log" (1 sites) |
-| `actions/mod.rs::BUSY` | `Mutex<Option<HashSet<String>>>` | "actions BUSY" (2 sites) |
-| `actions/mod.rs::APP` | `OnceLock<AppHandle>` | — |
-| `actions/mod.rs::WATCH` | `Mutex<Option<HashMap<String,Watched>>>` | "actions WATCH" (6 sites) |
-| `actions/run.rs::PLAIN` | `Mutex<Option<HashMap<String,Plain>>>` | "PLAIN" (6 sites) |
 | `chaos/mod.rs::SET` | `OnceLock<Vec<(Knob,u64)>>` | — |
 | `clock.rs::START` | `std::sync::OnceLock<std::time::Instant>` | — |
 | `commands.rs::LISTS` | `Mutex<Option<HashMap<String,(u64,Vec<Cmd>)>>>` | "LISTS" (5 sites) |
@@ -258,7 +240,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `hub/redraw.rs::Redraws.worker` | `OnceLock<()>` | — |
 | `hub/saves.rs::SaveLocks.review_queue` | `Mutex<()>` | "review queue saves" (1 sites) |
 | `hub/saves.rs::SaveLocks.parked` | `Mutex<()>` | "parked saves" (1 sites) |
-| `hub/saves.rs::SaveLocks.desk` | `Mutex<()>` | "desk saves" (2 sites) |
+| `hub/saves.rs::SaveLocks.desk` | `Mutex<()>` | "desk saves" (3 sites) |
 | `hub/shown.rs::Shown.kept` | `RwLock<(u64,Option<Arc<Value>>)>` | "shown snapshot" (3 sites) |
 | `hub/shown.rs::Shown.timer` | `OnceLock<Sender<Option<Instant>>>` | — |
 | `hub/store_access.rs::StoreCell.0` | `Mutex<Store>` | "the hub's store" (2 sites) |
@@ -304,13 +286,10 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `notify.rs::BOUNCING` | `std::sync::Mutex<Vec<String>>` | "dock bounce" (5 sites) |
 | `notify.rs::APP` | `OnceLock<AppHandle>` | — |
 | `sounds.rs::PLAYING` | `std::sync::Mutex<Option<std::process::Child>>` | "PLAYING" (1 sites) |
-| `statuslist.rs::SEEN` | `Mutex<Option<(u64,Value)>>` | "what the status list has cost" (1 sites) |
 | `talk.rs::STATUS` | `Mutex<Value>` | "talk status" (2 sites) |
 | `talk.rs::RETELL` | `Mutex<Option<mpsc::UnboundedSender<Value>>>` | "talk retell" (4 sites) |
 | `talk.rs::LAUNCH` | `Mutex<Option<Launch>>` | "talk launch" (2 sites) |
 | `talk.rs::OWN` | `std::sync::Mutex<(f64,f64)>` | "talk own hue" (2 sites) |
-| `tasks.rs::TRACKS` | `Mutex<Option<HashMap<String,Track>>>` | "what each session is about" (1 sites) |
-| `tasks.rs::TOTAL` | `Mutex<Option<Total>>` | "what About has cost" (2 sites) |
 | `terminal/dictation.rs::Dictation.0` | `Mutex<Option<ChildStdin>>` | "dictation" (3 sites) |
 | `terminal/focus/agents.rs::FOUND` | `std::sync::OnceLock<Vec<String>>` | — |
 | `terminal/input.rs::START` | `OnceLock<Instant>` | — |
@@ -340,8 +319,6 @@ An edge A → B: B is taken (here or in something called) while A is held. Also 
 | "a session's feed" | "copies" |  | `logs/steps/queries.rs::catch_up_shared` → `logs/steps/reading.rs::Feed::apply` → `logs/steps/reading.rs::Feed::put` → `logs/steps/feed.rs::Feed::put_log` → `logs/steps/take.rs::Feed::take` → `logs/steps/take.rs::Feed::take_user` → `logs/steps/take.rs::Feed::finish` → `logs/steps/background.rs::Feed::add_helper` → `logs/steps/background.rs::Feed::add_agent` → `machines/logs.rs::copy_helper`, takes it |
 | "a session's feed" | "machine tails" |  | `logs/steps/queries.rs::catch_up_shared` → `logs/steps/reading.rs::Feed::apply` → `logs/steps/reading.rs::Feed::put` → `logs/steps/feed.rs::Feed::put_log` → `logs/steps/take.rs::Feed::take` → `logs/steps/take.rs::Feed::take_user` → `logs/steps/take.rs::Feed::finish` → `logs/steps/background.rs::Feed::add_helper` → `logs/steps/background.rs::Feed::add_agent` → `machines/logs.rs::copy_helper` → `machines/logs.rs::Copier::running` → `hosted/tails.rs::tail_running`, takes it |
 | "a session's feed" | "machine tails: links" |  | `logs/steps/queries.rs::catch_up_shared` → `logs/steps/reading.rs::Feed::apply` → `logs/steps/reading.rs::Feed::put` → `logs/steps/feed.rs::Feed::put_log` → `logs/steps/take.rs::Feed::take` → `logs/steps/take.rs::Feed::take_user` → `logs/steps/take.rs::Feed::finish` → `logs/steps/background.rs::Feed::add_helper` → `logs/steps/background.rs::Feed::add_agent` → `machines/logs.rs::copy_helper` → `machines/logs.rs::start_after` → `machines/logs.rs::start` → `hosted/tails.rs::tail_start`, takes it |
-| "actions STORE" | "folder facts" |  | `actions/mod.rs::record` → `actions/mod.rs::key` → `actions/mod.rs::mine_dir` → `logs/repos.rs::repo_root` → `logs/repos.rs::facts` → `logs/repos.rs::Folders::facts`, takes it |
-| "actions WATCH" | "folder facts" |  | `actions/mod.rs::watch` → `actions/mod.rs::key` → `actions/mod.rs::mine_dir` → `logs/repos.rs::repo_root` → `logs/repos.rs::facts` → `logs/repos.rs::Folders::facts`, takes it |
 | "config file" | "config in memory" |  | `config/cache.rs::refresh` → `config/cache.rs::kept_stamp`, takes it |
 | "copies" | "machine tails" |  | `machines/logs.rs::local_copy` → `machines/logs.rs::Copier::running` → `hosted/tails.rs::tail_running`, takes it |
 | "copies" | "machine tails: links" |  | `machines/logs.rs::local_copy` → `machines/logs.rs::start_after` → `machines/logs.rs::start` → `hosted/tails.rs::tail_start`, takes it |
@@ -363,30 +340,27 @@ An edge A → B: B is taken (here or in something called) while A is held. Also 
 | "review queue saves" | "the hub's store" |  | `hub/saves.rs::Hub::save_queued_review` → `hub/store_access.rs::Hub::read`, takes it |
 | "the hub's store" | "config in memory" |  | `hub/asks.rs::Hub::open_ask` in a closure hub::store_access::Hub::write runs holding the lock → `config.rs::context_keep` → `config.rs::load` → `config/cache.rs::current`, takes it |
 | "the hub's store" | "folder facts" |  | `hub/asks.rs::Hub::open_ask` in a closure hub::store_access::Hub::write runs holding the lock → `hub/mod.rs::Hub::new_item` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/repos.rs::repo_root` → `logs/repos.rs::facts` → `logs/repos.rs::Folders::facts`, takes it |
-| "typing gate" | "CLAUDE" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `hub/hosted.rs::Hub::run_hosted` → `hub/hosted.rs::Hub::hosted_report` → `hub/hosted.rs::Hub::on_hosted` → `hub/hosted.rs::Hub::hosted_turn_started` → `hub/hosted.rs::Hub::hosted_taken` → `hub/events.rs::Hub::event` → `hub/events.rs::Hub::event_in` → `hub/events.rs::Hub::on_event` → `hub/asks.rs::Hub::terminal_ask_with` → `terminal/keys.rs::Terminals::dialog_on` → `terminal/focus/screen.rs::dialog_on` → `terminal/focus/screen.rs::screen_of` → `terminal/focus/apps.rs::iterm_contents` → `terminal/focus/apps.rs::current_tty` → `logs/live.rs::claude`, takes it |
+| "typing gate" | "CLAUDE" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/terminal_only.rs::Hub::run_own_command` → `hub/terminal_only.rs::Hub::codex_model` → `hub/terminal_only.rs::Hub::codex_models` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `hub/hosted.rs::Hub::run_hosted` → `hub/hosted.rs::Hub::hosted_report` → `hub/hosted.rs::Hub::on_hosted` → `hub/hosted.rs::Hub::hosted_turn_started` → `hub/hosted.rs::Hub::hosted_taken` → `hub/events.rs::Hub::event` → `hub/events.rs::Hub::event_in` → `hub/events.rs::Hub::on_event` → `hub/asks.rs::Hub::terminal_ask_with` → `terminal/keys.rs::Terminals::dialog_on` → `terminal/focus/screen.rs::dialog_on` → `terminal/focus/screen.rs::screen_of` → `terminal/focus/apps.rs::iterm_contents` → `terminal/focus/apps.rs::current_tty` → `logs/live.rs::claude`, takes it |
 | "typing gate" | "DB" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Hub::save_live` → `hub/saves.rs::Hub::hand_in_parked_turn` → `hub/saves.rs::Hub::hand_writes` → `hub/live_writes.rs::LiveWrites::hand` → `hub/live_writes.rs::LiveWrites::write` → `hub/live_writes.rs::save_live` → `db/live.rs::save_live` → `db/mod.rs::with` → `db/mod.rs::attempt`, takes it |
-| "typing gate" | "FEEDS" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `terminal/focus/lines.rs::model_args` → `logs/steps/queries.rs::model_of` → `logs/steps/queries.rs::caught_up` → `logs/steps/queries.rs::open` → `logs/steps/queries.rs::find`, takes it |
-| "typing gate" | "WINDOWS" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `terminal/focus/lines.rs::model_args` → `logs/steps/queries.rs::model_of` → `logs/steps/queries.rs::caught_up` → `logs/steps/queries.rs::open` → `logs/steps/feed.rs::Feed::open` → `logs/steps/feed.rs::Head::read` → `logs/steps/feed.rs::start_of` → `logs/steps/observe.rs::Feed::observe` → `logs/steps/observe.rs::Feed::observe_claude` → `logs/steps/observe.rs::Feed::claude_usage` → `logs/steps/windows.rs::known_window`, takes it |
-| "typing gate" | "a session's feed" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `terminal/focus/lines.rs::model_args` → `logs/steps/queries.rs::model_of` → `logs/steps/queries.rs::caught_up` → `logs/steps/queries.rs::catch_up_shared`, takes it |
-| "typing gate" | "caches" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `hub/hosted.rs::Hub::run_hosted` → `hub/hosted.rs::Hub::hosted_report` → `hub/hosted.rs::Hub::on_hosted` → `hub/hosted.rs::Hub::hosted_turn_started` → `hub/hosted.rs::Hub::hosted_taken` → `hub/events.rs::Hub::event` → `hub/events.rs::Hub::event_in` → `hub/events.rs::Hub::on_event` → `hub/asks.rs::Hub::terminal_ask_with` → `terminal/keys.rs::Terminals::dialog_on` → `terminal/focus/screen.rs::dialog_on` → `terminal/focus/screen.rs::screen_of` → `terminal/focus/tmux.rs::session_screen` → `machines/mod.rs::tmux` → `machines/mod.rs::tmux_path`, takes it |
+| "typing gate" | "FEEDS" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/terminal_only.rs::Hub::run_own_command` → `hub/terminal_only.rs::Hub::codex_model` → `hub/terminal_only.rs::Hub::codex_models` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `terminal/focus/lines.rs::model_args` → `logs/steps/queries.rs::model_of` → `logs/steps/queries.rs::caught_up` → `logs/steps/queries.rs::open` → `logs/steps/queries.rs::find`, takes it |
+| "typing gate" | "WINDOWS" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/terminal_only.rs::Hub::run_own_command` → `hub/terminal_only.rs::Hub::codex_model` → `hub/terminal_only.rs::Hub::codex_models` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `terminal/focus/lines.rs::model_args` → `logs/steps/queries.rs::model_of` → `logs/steps/queries.rs::caught_up` → `logs/steps/queries.rs::open` → `logs/steps/feed.rs::Feed::open` → `logs/steps/feed.rs::Head::read` → `logs/steps/feed.rs::start_of` → `logs/steps/observe.rs::Feed::observe` → `logs/steps/observe.rs::Feed::observe_claude` → `logs/steps/observe.rs::Feed::claude_usage` → `logs/steps/windows.rs::known_window`, takes it |
+| "typing gate" | "a session's feed" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/terminal_only.rs::Hub::run_own_command` → `hub/terminal_only.rs::Hub::codex_model` → `hub/terminal_only.rs::Hub::codex_models` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `terminal/focus/lines.rs::model_args` → `logs/steps/queries.rs::model_of` → `logs/steps/queries.rs::caught_up` → `logs/steps/queries.rs::catch_up_shared`, takes it |
+| "typing gate" | "caches" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/terminal_only.rs::Hub::run_own_command` → `hub/terminal_only.rs::Hub::codex_model` → `hub/terminal_only.rs::Hub::codex_models` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `hub/hosted.rs::Hub::run_hosted` → `hub/hosted.rs::Hub::hosted_report` → `hub/hosted.rs::Hub::on_hosted` → `hub/hosted.rs::Hub::hosted_turn_started` → `hub/hosted.rs::Hub::hosted_taken` → `hub/events.rs::Hub::event` → `hub/events.rs::Hub::event_in` → `hub/events.rs::Hub::on_event` → `hub/asks.rs::Hub::terminal_ask_with` → `terminal/keys.rs::Terminals::dialog_on` → `terminal/focus/screen.rs::dialog_on` → `terminal/focus/screen.rs::screen_of` → `terminal/focus/tmux.rs::session_screen` → `machines/mod.rs::tmux` → `machines/mod.rs::tmux_path`, takes it |
 | "typing gate" | "config file" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `hub/mod.rs::settle_projects` → `config.rs::update` → `config/save.rs::update_with` → `config/save.rs::save` → `config/cache.rs::hold_file`, takes it |
 | "typing gate" | "config in memory" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `config.rs::folders_put` → `config.rs::load` → `config/cache.rs::current`, takes it |
-| "typing gate" | "copies" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `hub/hosted.rs::Hub::run_hosted` → `machines/logs.rs::local_copy`, takes it |
+| "typing gate" | "copies" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/terminal_only.rs::Hub::run_own_command` → `hub/terminal_only.rs::Hub::codex_model` → `hub/terminal_only.rs::Hub::codex_models` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `hub/hosted.rs::Hub::run_hosted` → `machines/logs.rs::local_copy`, takes it |
 | "typing gate" | "db writer's marks" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Hub::save_live` → `hub/saves.rs::Hub::hand_in_parked_turn` → `hub/saves.rs::Hub::hand_writes` → `hub/live_writes.rs::LiveWrites::hand` → `hub/live_writes.rs::LiveWrites::writer_runs` → `hub/live_writes.rs::LiveWrites::run` → `hub/live_writes.rs::LiveWrites::write_contained`, takes it |
 | "typing gate" | "db writes" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Hub::save_live` → `hub/saves.rs::Hub::hand_in_parked_turn` → `hub/saves.rs::Hub::hand_writes` → `hub/live_writes.rs::LiveWrites::hand` → `hub/live_writes.rs::LiveWrites::writer_runs` → `hub/live_writes.rs::LiveWrites::run`, takes it |
-| "typing gate" | "desk saves" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `hub/hosted.rs::Hub::run_hosted` → `hub/hosted.rs::Hub::hosted_report` → `hub/hosted.rs::Hub::on_hosted` → `hub/hosted.rs::Hub::hosted_turn_started` → `hub/hosted.rs::Hub::hosted_taken` → `hub/events.rs::Hub::event` → `hub/events.rs::Hub::event_in` → `hub/events.rs::Hub::on_event` → `hub/turn_end.rs::Hub::on_stopped` → `hub/turn_end.rs::Hub::stopped_for_you` → `hub/turn_end.rs::Hub::after_turn_ended` → `hub/cache_tick.rs::Hub::cache_tick` → `hub/cache_tick.rs::Hub::hand_off_due` → `hub/hand_off.rs::Hub::hand_off_ahead` → `hub/desk.rs::Hub::desk_cue_asked` → `hub/desk.rs::Hub::desk_done`, takes it |
+| "typing gate" | "desk saves" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/terminal_only.rs::Hub::run_own_command` → `hub/terminal_only.rs::Hub::codex_model` → `hub/terminal_only.rs::Hub::codex_models` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `hub/hosted.rs::Hub::run_hosted` → `hub/hosted.rs::Hub::hosted_report` → `hub/hosted.rs::Hub::on_hosted` → `hub/hosted.rs::Hub::hosted_turn_started` → `hub/hosted.rs::Hub::hosted_taken` → `hub/events.rs::Hub::event` → `hub/events.rs::Hub::event_in` → `hub/events.rs::Hub::on_event` → `hub/turn_end.rs::Hub::on_stopped` → `hub/turn_end.rs::Hub::stopped_for_you` → `hub/turn_end.rs::Hub::after_turn_ended` → `hub/cache_tick.rs::Hub::cache_tick` → `hub/cache_tick.rs::Hub::hand_off_due` → `hub/hand_off.rs::Hub::hand_off_ahead` → `hub/desk.rs::Hub::desk_cue_asked` → `hub/desk.rs::Hub::desk_done`, takes it |
 | "typing gate" | "folder facts" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Hub::save_live` → `hub/saves.rs::Hub::hand_in_parked_turn` → `hub/saves.rs::Hub::hand_writes` → `hub/live_writes.rs::LiveWrites::hand` → `hub/live_writes.rs::LiveWrites::write` → `hub/live_writes.rs::save_live` → `db/live.rs::save_live` → `db/mod.rs::with` → `db/mod.rs::attempt` → `db/schema.rs::open` → `db/schema.rs::set_up` → `db/schema.rs::migrate` → `db/schema.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
-| "typing gate" | "machine tails" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `hub/hosted.rs::Hub::run_hosted` → `machines/logs.rs::local_copy` → `machines/logs.rs::Copier::running` → `hosted/tails.rs::tail_running`, takes it |
-| "typing gate" | "machine tails: links" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `hub/hosted.rs::Hub::run_hosted` → `machines/logs.rs::local_copy` → `machines/logs.rs::start_after` → `machines/logs.rs::start` → `hosted/tails.rs::tail_start`, takes it |
-| "typing gate" | "mini reading" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `hub/hosted.rs::Hub::run_hosted` → `hub/hosted.rs::Hub::hosted_report` → `hub/hosted.rs::Hub::on_hosted` → `hub/hosted.rs::Hub::hosted_turn_started` → `hub/hosted.rs::Hub::hosted_taken` → `hub/events.rs::Hub::event` → `hub/events.rs::Hub::event_in` → `hub/events.rs::Hub::on_event` → `hub/asks.rs::Hub::terminal_ask_with` → `hub/mod.rs::Hub::notify` → `hub/mod.rs::Hub::notify_card` → `notify.rs::is_read`, takes it |
+| "typing gate" | "machine tails" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/terminal_only.rs::Hub::run_own_command` → `hub/terminal_only.rs::Hub::codex_model` → `hub/terminal_only.rs::Hub::codex_models` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `hub/hosted.rs::Hub::run_hosted` → `machines/logs.rs::local_copy` → `machines/logs.rs::Copier::running` → `hosted/tails.rs::tail_running`, takes it |
+| "typing gate" | "machine tails: links" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/terminal_only.rs::Hub::run_own_command` → `hub/terminal_only.rs::Hub::codex_model` → `hub/terminal_only.rs::Hub::codex_models` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `hub/hosted.rs::Hub::run_hosted` → `machines/logs.rs::local_copy` → `machines/logs.rs::start_after` → `machines/logs.rs::start` → `hosted/tails.rs::tail_start`, takes it |
+| "typing gate" | "mini reading" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/terminal_only.rs::Hub::run_own_command` → `hub/terminal_only.rs::Hub::codex_model` → `hub/terminal_only.rs::Hub::codex_models` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `hub/hosted.rs::Hub::run_hosted` → `hub/hosted.rs::Hub::hosted_report` → `hub/hosted.rs::Hub::on_hosted` → `hub/hosted.rs::Hub::hosted_turn_started` → `hub/hosted.rs::Hub::hosted_taken` → `hub/events.rs::Hub::event` → `hub/events.rs::Hub::event_in` → `hub/events.rs::Hub::on_event` → `hub/asks.rs::Hub::terminal_ask_with` → `hub/mod.rs::Hub::notify` → `hub/mod.rs::Hub::notify_card` → `notify.rs::is_read`, takes it |
 | "typing gate" | "parked saves" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Hub::save_live` → `hub/saves.rs::Hub::hand_in_parked_turn`, takes it |
-| "typing gate" | "quiet sessions" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `hub/hosted.rs::Hub::run_hosted` → `hub/hosted.rs::Hub::hosted_report` → `hub/hosted.rs::Hub::on_hosted` → `hub/hosted.rs::Hub::hosted_turn_started` → `hub/hosted.rs::Hub::hosted_taken` → `hub/events.rs::Hub::event` → `hub/events.rs::Hub::event_in` → `hub/events.rs::Hub::on_event` → `hub/asks.rs::Hub::terminal_ask_with` → `hub/mod.rs::Hub::notify` → `hub/mod.rs::Hub::notify_card` → `notify.rs::is_quiet`, takes it |
+| "typing gate" | "quiet sessions" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/terminal_only.rs::Hub::run_own_command` → `hub/terminal_only.rs::Hub::codex_model` → `hub/terminal_only.rs::Hub::codex_models` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `hub/hosted.rs::Hub::run_hosted` → `hub/hosted.rs::Hub::hosted_report` → `hub/hosted.rs::Hub::on_hosted` → `hub/hosted.rs::Hub::hosted_turn_started` → `hub/hosted.rs::Hub::hosted_taken` → `hub/events.rs::Hub::event` → `hub/events.rs::Hub::event_in` → `hub/events.rs::Hub::on_event` → `hub/asks.rs::Hub::terminal_ask_with` → `hub/mod.rs::Hub::notify` → `hub/mod.rs::Hub::notify_card` → `notify.rs::is_quiet`, takes it |
 | "typing gate" | "redraw wanted" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Redraws::mark`, takes it |
 | "typing gate" | "shown snapshot" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/mod.rs::Hub::unshown` → `hub/shown.rs::Shown::forget`, takes it |
 | "typing gate" | "the hub's store" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/store_access.rs::Hub::write`, takes it |
-| "typing gate" | "what About has cost" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `hub/mod.rs::apart_view` → `tasks.rs::spent`, takes it |
-| "typing gate" | "what each session is about" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `hub/mod.rs::apart_view` → `tasks.rs::view` → `tasks.rs::with`, takes it |
-| "typing gate" | "what the status list has cost" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `hub/mod.rs::apart_view` → `statuslist.rs::spent`, takes it |
 
 ## External calls under the hub's store
 
@@ -399,7 +373,6 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 | In | Spawn | Times |
 |---|---|---|
-| `actions/mod.rs::start` | thread::spawn | 1 |
 | `btw.rs::asked_for` | thread::spawn | 1 |
 | `chaos/db.rs::start` | Builder::spawn | 1 |
 | `chaos/ssh.rs::start` | Builder::spawn | 1 |
@@ -437,9 +410,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/steps/background.rs::Feed::close_scripts` | thread::spawn | 1 |
 | `logs/steps/background.rs::Feed::helper_finished` | thread::spawn | 1 |
 | `logs/turns.rs::start` | Builder::spawn | 1 |
-| `machines/hooks/events.rs::answer_status_list` | thread::spawn | 1 |
 | `machines/hooks/events.rs::handle` | thread::spawn | 1 |
-| `machines/hooks/setup.rs::push_status_on` | thread::spawn | 1 |
 | `machines/hooks/watch.rs::new_session_seen` | thread::spawn | 1 |
 | `machines/hooks/watch.rs::stream` | thread::spawn | 1 |
 | `machines/hooks/watch.rs::watch` | thread::spawn | 1 |
@@ -464,6 +435,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `startup/tickers.rs::serve_socket` | async_runtime::spawn | 1 |
 | `startup/tickers.rs::updates` | async_runtime::spawn | 1 |
 | `startup/tickers.rs::usage_file` | async_runtime::spawn | 1 |
+| `startup/tickers.rs::usage_file` | async_runtime::spawn_blocking | 1 |
 | `startup/watchers.rs::machines` | thread::spawn | 1 |
 | `talk.rs::Conversation::ask_by_the_way` | task::spawn_blocking | 1 |
 | `talk.rs::Conversation::ask_by_the_way` | tokio::spawn | 1 |
@@ -472,8 +444,6 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `talk.rs::launch` | async_runtime::spawn | 1 |
 | `talk.rs::launch` | thread::spawn | 1 |
 | `talk.rs::send` | task::spawn_blocking | 1 |
-| `tasks.rs::start` | thread::spawn | 1 |
-| `tasks.rs::turn_ended` | thread::spawn | 1 |
 | `terminal/dictation.rs::start` | thread::spawn | 1 |
 | `terminal/focus/exec.rs::capped` | thread::spawn | 2 |
 | `terminal/input.rs::Input::new` | Builder::spawn | 1 |
@@ -486,30 +456,10 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (365)
+### fs (348)
 
 | In | Call | Times |
 |---|---|---|
-| `actions/mod.rs::edit_record` | create_dir_all | 1 |
-| `actions/mod.rs::edit_record` | rename | 1 |
-| `actions/mod.rs::edit_record` | write | 1 |
-| `actions/mod.rs::log` | OpenOptions::new | 1 |
-| `actions/mod.rs::mine_dir` | Path::is_dir | 1 |
-| `actions/mod.rs::read_mine` | Path::is_dir | 1 |
-| `actions/mod.rs::read_mine` | read | 1 |
-| `actions/mod.rs::stamp` | metadata | 1 |
-| `actions/mod.rs::store` | read_to_string | 1 |
-| `actions/mod.rs::write_mine` | create_dir_all | 1 |
-| `actions/mod.rs::write_mine` | rename | 1 |
-| `actions/mod.rs::write_mine` | write | 1 |
-| `actions/run.rs::local_launcher` | OpenOptions::new | 1 |
-| `actions/run.rs::local_launcher` | create_dir_all | 1 |
-| `actions/run.rs::plain_log` | File::open | 1 |
-| `actions/run.rs::plain_log` | Path::metadata | 1 |
-| `actions/run.rs::plain_start` | File::create | 1 |
-| `actions/run.rs::plain_start` | Path::is_dir | 1 |
-| `actions/run.rs::plain_start` | create_dir_all | 1 |
-| `actions/run.rs::start` | Path::is_dir | 1 |
 | `changes.rs::since` | read | 1 |
 | `commands.rs::yours_changed_ms` | metadata | 1 |
 | `config.rs::add_hooks` | Path::exists | 1 |
@@ -582,6 +532,9 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hosted/tails.rs::write_at` | OpenOptions::new | 1 |
 | `hosted/tails.rs::write_at` | Path::metadata | 1 |
 | `hub/activity.rs::written_ms` | metadata | 1 |
+| `hub/desk_checks.rs::Hub::desk_check_files` | metadata | 1 |
+| `hub/desk_checks.rs::builds_this_cue` | read_to_string | 1 |
+| `hub/desk_checks.rs::note_installed` | metadata | 1 |
 | `hub/hosted.rs::Hub::resume_hosted_as` | Path::is_file | 1 |
 | `hub/hosted.rs::written_on_machine` | metadata | 1 |
 | `hub/open.rs::look` | Path::is_dir | 1 |
@@ -602,6 +555,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `ipc/chat.rs::pi_log` | read_dir | 2 |
 | `ipc/chat.rs::subfolders` | Path::is_dir | 1 |
 | `ipc/chat.rs::subfolders` | read_dir | 1 |
+| `ipc/desk.rs::desk_start_with` | Path::is_dir | 1 |
 | `ipc/docs.rs::read_doc` | metadata | 1 |
 | `ipc/docs.rs::read_doc` | read_to_string | 1 |
 | `ipc/docs.rs::recent_docs` | Path::exists | 1 |
@@ -640,6 +594,11 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/archive.rs::read_entry` | Path::metadata | 1 |
 | `logs/archive.rs::refresh` | Path::metadata | 1 |
 | `logs/archive.rs::refresh` | read_dir | 2 |
+| `logs/codex_usage.rs::Reader::read` | File::open | 1 |
+| `logs/codex_usage.rs::Reader::read` | Path::metadata | 1 |
+| `logs/codex_usage.rs::candidates` | Path::is_dir | 3 |
+| `logs/codex_usage.rs::candidates` | Path::metadata | 1 |
+| `logs/codex_usage.rs::candidates` | read_dir | 4 |
 | `logs/live.rs::claude_transcript` | Path::is_file | 1 |
 | `logs/live.rs::claude_transcript_path` | canonicalize | 1 |
 | `logs/live.rs::scan_claude` | read_dir | 1 |
@@ -674,6 +633,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/repos.rs::look_on_disk` | Path::exists | 1 |
 | `logs/steps/detail.rs::detail` | File::open | 1 |
 | `logs/steps/detail.rs::detail` | metadata | 1 |
+| `logs/steps/edits.rs::edited_between` | read_to_string | 1 |
 | `logs/steps/edits.rs::edited_files_by` | metadata | 1 |
 | `logs/steps/edits.rs::edited_files_by` | read_dir | 1 |
 | `logs/steps/edits.rs::edited_files_by` | read_to_string | 2 |
@@ -705,7 +665,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/transcript/queue.rs::queued_state` | metadata | 1 |
 | `logs/transcript/queue.rs::taken_mid_turn` | metadata | 1 |
 | `logs/transcript/senders.rs::about` | metadata | 1 |
-| `logs/transcript/turns.rs::compact_finished` | metadata | 1 |
+| `logs/transcript/turns.rs::compact_outcome` | metadata | 1 |
 | `logs/transcript/turns.rs::interrupted_at` | metadata | 1 |
 | `logs/transcript/turns.rs::turn_ended_parts` | metadata | 1 |
 | `logs/turns.rs::logs` | Path::is_dir | 5 |
@@ -765,10 +725,6 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `sounds.rs::install_in` | read_dir | 1 |
 | `sounds.rs::install_in` | remove_file | 1 |
 | `sounds.rs::install_in` | write | 1 |
-| `statuslist.rs::rows` | read_to_string | 1 |
-| `statuslist.rs::spend` | OpenOptions::new | 1 |
-| `statuslist.rs::spent` | metadata | 1 |
-| `statuslist.rs::spent` | read_to_string | 1 |
 | `talk.rs::helper` | Path::exists | 1 |
 | `talk.rs::hook_context_in` | rename | 1 |
 | `talk.rs::load` | read_to_string | 1 |
@@ -780,15 +736,6 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `talk.rs::said_in` | read_to_string | 1 |
 | `talk.rs::save` | write | 1 |
 | `talk.rs::set` | write | 1 |
-| `tasks.rs::save` | create_dir_all | 1 |
-| `tasks.rs::save` | rename | 1 |
-| `tasks.rs::save` | write | 1 |
-| `tasks.rs::spend` | read_to_string | 1 |
-| `tasks.rs::spend` | write | 1 |
-| `tasks.rs::spent` | read_to_string | 1 |
-| `tasks.rs::stop` | remove_file | 1 |
-| `tasks.rs::with` | read_dir | 1 |
-| `tasks.rs::with` | read_to_string | 1 |
 | `terminal/dictation.rs::helper` | Path::exists | 1 |
 | `terminal/focus/apps.rs::attach_in_new_window` | Path::exists | 1 |
 | `terminal/focus/apps.rs::open_tab_with` | Path::exists | 1 |
@@ -817,8 +764,9 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `uploads.rs::prune` | read_dir | 1 |
 | `uploads.rs::prune` | remove_file | 1 |
 | `uploads.rs::save` | create_dir_all | 1 |
+| `uploads.rs::save_kept` | create_dir_all | 1 |
 
-### db (160)
+### db (178)
 
 | In | Call | Times |
 |---|---|---|
@@ -832,14 +780,21 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `db/commands.rs::commands` | db::with | 1 |
 | `db/commands.rs::set_commands` | db::with | 1 |
 | `db/commands.rs::stale_commands` | db::with | 1 |
+| `db/desk.rs::desk_done_page` | db::with | 1 |
 | `db/desk.rs::desk_drop_item` | db::with | 1 |
 | `db/desk.rs::desk_drop_lead` | db::with | 1 |
+| `db/desk.rs::desk_drop_member` | db::with | 1 |
 | `db/desk.rs::desk_load` | db::desk_prune | 1 |
 | `db/desk.rs::desk_load` | db::with | 3 |
+| `db/desk.rs::desk_members` | db::with | 1 |
 | `db/desk.rs::desk_prune` | db::with | 1 |
 | `db/desk.rs::desk_put_decision` | db::with | 1 |
 | `db/desk.rs::desk_put_item` | db::with | 1 |
 | `db/desk.rs::desk_put_lead` | db::with | 1 |
+| `db/desk.rs::desk_put_member` | db::with | 1 |
+| `db/desk.rs::desk_put_numbered` | db::desk_drop_item | 1 |
+| `db/desk.rs::desk_put_numbered` | db::desk_put_decision | 1 |
+| `db/desk.rs::desk_put_numbered` | db::desk_put_item | 1 |
 | `db/drafts.rs::draft_text` | db::with | 1 |
 | `db/drafts.rs::drafts` | db::with | 1 |
 | `db/drafts.rs::queue_review` | db::with | 1 |
@@ -895,6 +850,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `db/schema.rs::import_old_files` | db::put_item | 2 |
 | `db/schema.rs::migrate` | db::drop_dispatch | 1 |
 | `db/schema.rs::migrate` | db::regroup_projects | 1 |
+| `db/schema.rs::migrate` | db::seed_desk_members | 1 |
 | `db/schema.rs::open` | db::first_read | 3 |
 | `db/schema.rs::open` | db::keep_aside | 1 |
 | `db/schema.rs::open` | db::path | 6 |
@@ -910,13 +866,23 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hub/cache_tick.rs::ahead_would` | db::ahead_watched | 1 |
 | `hub/cache_tick.rs::ahead_would` | db::handoff | 1 |
 | `hub/cache_tick.rs::cold_soon` | db::handoff | 1 |
+| `hub/cache_tick.rs::full_wanted` | db::handoff | 1 |
 | `hub/desk.rs::Hub::desk_done` | db::desk_drop_item | 1 |
 | `hub/desk.rs::Hub::desk_done` | db::desk_put_decision | 1 |
 | `hub/desk.rs::Hub::desk_done` | db::desk_put_item | 1 |
+| `hub/desk.rs::Hub::desk_done` | db::desk_put_member | 1 |
+| `hub/desk.rs::Hub::desk_done_page` | db::desk_done_page | 1 |
 | `hub/desk.rs::Hub::desk_lead_to` | db::desk_drop_lead | 1 |
 | `hub/desk.rs::Hub::desk_lead_to` | db::desk_put_lead | 1 |
+| `hub/desk.rs::Hub::desk_lead_to` | db::desk_put_member | 1 |
 | `hub/desk.rs::Hub::desk_restore` | db::desk_load | 1 |
+| `hub/desk.rs::Hub::desk_restore` | db::desk_members | 1 |
+| `hub/desk.rs::Hub::desk_restore` | db::desk_put_numbered | 1 |
+| `hub/desk_handoff.rs::Hub::desk_hand_on` | db::handoff | 1 |
+| `hub/desk_handoff.rs::Hub::desk_hand_on_now` | db::handoff_continued | 1 |
 | `hub/desk_lead.rs::Hub::desk_lead_candidate` | db::ended_session | 1 |
+| `hub/desk_members.rs::Hub::desk_set_member` | db::desk_drop_member | 1 |
+| `hub/desk_members.rs::Hub::desk_set_member` | db::desk_put_member | 1 |
 | `hub/hand_off.rs::Hub::hand_off_ahead` | db::draft_text | 1 |
 | `hub/live_writes.rs::LiveWrites::write` | db::delete_session | 1 |
 | `hub/live_writes.rs::LiveWrites::write` | db::park | 1 |
@@ -966,13 +932,10 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/turns.rs::read_so_far` | db::turns_read | 1 |
 | `startup/mod.rs::settle_folder_and_hooks` | db::rewrite_paths | 1 |
 
-### process (48)
+### process (45)
 
 | In | Call | Times |
 |---|---|---|
-| `actions/run.rs::plain_start` | (program computed) | 1 |
-| `actions/run.rs::stop` | /bin/sh | 1 |
-| `actions/run.rs::tmux_here` | (program computed) | 1 |
 | `btw.rs::asked_for` | /bin/kill | 1 |
 | `btw.rs::run_full` | (program computed) | 1 |
 | `chaos/ssh.rs::end_ssh_children` | /bin/ps | 1 |
@@ -1049,9 +1012,10 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 
 | Function |  |  |
 |---|---|---|
-| `src-tauri/src/actions/mod.rs::an_action_runs_in_tmux_and_is_stopped` | test |  |
 | `src-tauri/src/hosted/compat_tests.rs::compat_a_two_part_request_becomes_a_team_of_two_on_its_own_and_one_is_committed` | test |  |
 | `src-tauri/src/hosted/machine_tests.rs::live_on_a_real_machine_claude_code_asks_runs_a_command_past_a_dropped_connection_and_is_picked_up_after_a_restart` | test |  |
+| `src-tauri/src/hub/desk.rs::act_on` |  |  |
+| `src-tauri/src/hub/desk.rs::desk_done` |  |  |
 | `src-tauri/src/hub/hand_off.rs::a_hand_off_goes_ahead_only_where_you_turned_it_on_and_holds_where_typing_could_hurt` | test |  |
 | `src-tauri/src/hub/hand_off.rs::in_a_project_whose_desk_has_a_live_lead_cue_asks_by_context_and_what_a_session_holds` | test |  |
 | `src-tauri/src/hub/sessions.rs::a_parked_session_is_kept_through_a_restart_and_comes_back_whole` | test |  |
@@ -1059,7 +1023,7 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `src-tauri/src/logs/steps/tests/agents.rs::a_background_agent_shows_at_work_under_its_step_until_its_session_hears_it_finished` | test |  |
 | `ui/chat/render.js::chatHtml` |  |  |
 
-Files over 1000 lines: `ui/inbox.js`.
+Files over 1000 lines: `src-tauri/src/hub/desk.rs`, `src-tauri/src/testing/tests/desk.rs`, `ui/desk.js`, `ui/inbox.js`.
 
 ## What this can't see
 

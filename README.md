@@ -24,10 +24,6 @@ the card either way.
 
 ## Also in Cue
 
-- **Actions** — your project's own buttons (build, test, start a dev server) under the agent's latest
-  reply: click one instead of asking the agent to run it. Two or three per project, kept in Cue on
-  your Mac (never in the repository); a new or changed command runs only once you've allowed it. See
-  [docs/actions.md](docs/actions.md).
 - **Talk to it** — hold right ⇧ in any app, say what you want, and let go: it goes to the chat open in
   Cue (else the session that moved last). When the answer is back, Cue's island at the top of the screen
   says so, small, and waits for you: Listen reads it out, Read shows it there, Later puts it away. Live

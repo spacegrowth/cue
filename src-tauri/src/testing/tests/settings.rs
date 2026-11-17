@@ -45,13 +45,7 @@ fn round_trips() -> Vec<(&'static str, Value, Value)> {
         same("tips.on", json!(false)),
         same("hosted.on", json!(true)),
         same("updates.beta", json!(true)),
-        same("actions.prompt", json!("Set my actions up.")),
         same("voice.pick", json!("af_heart")),
-        same("tasks.on", json!(true)),
-        same("tasks.auto", json!(true)),
-        same("status.on", json!(false)),
-        same("status.sessions", json!(["s1"])),
-        same("background.sessions", json!(["s2"])),
     ]
 }
 
@@ -81,11 +75,7 @@ fn every_setting_the_window_saves_comes_back_as_saved() {
     assert!(unlisted.is_empty(), "settings the window may save with no round trip here: {unlisted:?}");
     for (key, sent, saved) in cases {
         assert_eq!(crate::config::set(key, sent.clone()), Ok(()), "{key} = {sent}");
-        let (memory, disk) = if key == "actions.prompt" {
-            (json!(crate::actions::prompt()), json!(crate::actions::prompt()))
-        } else {
-            (crate::config::load().pointer(&pointer(key)).cloned().unwrap_or(Value::Null), on_disk(&w).pointer(&pointer(key)).cloned().unwrap_or(Value::Null))
-        };
+        let (memory, disk) = (crate::config::load().pointer(&pointer(key)).cloned().unwrap_or(Value::Null), on_disk(&w).pointer(&pointer(key)).cloned().unwrap_or(Value::Null));
         assert_eq!(memory, saved, "{key}: in memory");
         assert_eq!(disk, saved, "{key}: in config.json");
         assert!(!crate::config::refresh(), "{key}: what's in memory is what the file says");
@@ -103,7 +93,7 @@ fn a_wrong_value_is_refused_and_nothing_is_written() {
         ("appearance.zoom", json!(2.0)), ("notify.sound", json!("klaxon")), ("context.keep", json!(-1)),
         ("quick.phrases", json!(["a", "b", "c", "d", "e"])), ("project.colors", json!({"web": 12})),
         ("project.hue", json!({"h": 400, "k": 0.5})), ("project.folders", json!({"relative/dir": "x"})),
-        ("insights.skills", json!({"no-bar": "handoff"})), ("status.sessions", json!("s1")),
+        ("insights.skills", json!({"no-bar": "handoff"})),
         ("voice.pick", json!("Not A Voice")), ("tips.on", json!("yes")), ("updates.beta", json!("yes")),
         ("made.up", json!(true)),
     ] {

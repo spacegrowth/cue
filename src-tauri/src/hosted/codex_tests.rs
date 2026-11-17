@@ -31,6 +31,47 @@ fn decision(behavior: &str) -> Answer {
 const NEW: &str = include_str!("fixtures/codex_new.jsonl");
 
 #[test]
+fn chosen_models_are_applied_to_turns_and_replayed() {
+    let (mut c, _) = run(NEW, Start::New("x".into()));
+    let lines = c.message_with_model("next task", "picked-model");
+    let sent: Value = serde_json::from_str(&lines[0]).unwrap();
+    assert_eq!(sent["method"], "turn/start");
+    assert_eq!(sent["params"]["model"], "picked-model");
+    assert_eq!(sent["params"]["input"][0]["text"], "next task");
+
+    let (mut replayed, _) = run(NEW, Start::New("x".into()));
+    replayed.wrote(&lines[0]);
+    let next: Value = serde_json::from_str(&replayed.message("another task")[0]).unwrap();
+    assert_eq!(next["params"]["model"], "picked-model");
+
+    c.read(&json!({ "method": "turn/started", "params": { "turn": { "id": "active" } } }).to_string());
+    let steer: Value = serde_json::from_str(&c.message_with_model("extra detail", "next-model")[0]).unwrap();
+    assert_eq!(steer["method"], "turn/steer");
+    assert!(steer["params"].get("model").is_none(), "steering takes no model override");
+    c.read(&json!({ "method": "turn/completed", "params": { "turn": { "id": "active", "status": "completed" } } }).to_string());
+    let next: Value = serde_json::from_str(&c.message("next task")[0]).unwrap();
+    assert_eq!(next["params"]["model"], "next-model");
+}
+
+#[test]
+fn codex_control_answers_reach_the_driver_caller() {
+    use super::driver::Driver;
+    use std::sync::Arc;
+    use std::time::Duration;
+    let driver = Driver::new(&spec(Start::New("x".into()), ""), Arc::new(|_, _| {}));
+    driver.opening();
+    for line in NEW.lines() { driver.read(line); }
+    for failed in [false, true] {
+        let asked = driver.control(json!({ "method": "model/list", "params": {} })).unwrap();
+        let sent: Value = serde_json::from_str(&asked.lines[0]).unwrap();
+        let result = json!({ "data": [{ "model": "picked-model" }] });
+        let reply = if failed { json!({ "id": sent["id"], "error": { "message": "offline" } }) } else { json!({ "id": sent["id"], "result": result }) };
+        driver.read(&reply.to_string());
+        assert_eq!(asked.answer(Duration::from_millis(50)), if failed { Err("offline".into()) } else { Ok(result) });
+    }
+}
+
+#[test]
 fn it_sets_up_then_opens_the_conversation_with_the_permissions_chosen() {
     let mut c = Codex::new(&spec(Start::New("ignored".into()), "skip"));
     let first: Value = serde_json::from_str(&c.opening()[0]).unwrap();

@@ -320,6 +320,9 @@ fn each_done_leaves_a_card_for_the_lead_with_who_what_to_test_and_its_files_kept
     // Sent back and done again: a second card; the first is no longer the one to act on.
     w.hub().desk_item_act(&id, "send_back", "It still jumps").unwrap();
     w.settle();
+    // In its Steps too, by you (#136).
+    let decs = w.snapshot().0["desk"]["projects"][0]["decisions"].clone();
+    assert!(decs.as_array().unwrap().iter().any(|d| d["by"] == "You" && d["text"] == "It still jumps" && d["why"] == "sent back to cue-teams"), "{decs}");
     let snap = w.snapshot();
     let h = snap.session_ids().into_iter().find(|s| snap.session(s)["name"] == "cue-teams").unwrap();
     ends(&w, &h, &format!("Fixed it properly.\nDONE: #{id}"));
@@ -372,4 +375,16 @@ fn files_changed_to_check_is_what_looks_right_will_commit_and_done_its_commit() 
     assert_eq!(files(&w), ["a.txt", "b.txt"], "done: its commit");
     w.relaunch();
     assert_eq!(files(&w), ["a.txt", "b.txt"], "after a restart too");
+}
+
+/// What the holder says as each turn on an item ends is kept on it, its Desk lines left out, the DONE one marked done:
+/// the item page's Thread shows them as its replies (#140).
+#[test]
+fn a_holders_words_at_each_turn_end_are_kept_on_its_item() {
+    let w = World::new();
+    let (_dir, project, id) = ready_with(&w, |_, _, _| {}, |w, h, _| ends(w, h, "Looking at **header.js** now."));
+    let said = item(&w, &project, "Header jumps")["said"].as_array().cloned().unwrap_or_default();
+    let got: Vec<(String, bool)> = said.iter().map(|r| (r["text"].as_str().unwrap().to_string(), r["done"].as_bool().unwrap_or(false))).collect();
+    assert_eq!(got, vec![("Looking at **header.js** now.".to_string(), false), ("Fixed.".to_string(), true)], "{said:?} on #{id}");
+    assert!(said.iter().all(|r| r["by"] == "cue-teams" && r["at"].as_u64().unwrap() > 0), "{said:?}");
 }

@@ -130,7 +130,7 @@ test("Read always has ‹ <session> chat, back to the chat you came from", async
 });
 
 test("Listen on a chat reply skips code and tables too, and marks each sentence it reads", async ({ cue, page }) => {
-  const REPLY = "Here is the fix.\n\n```\ncargo test --lib docs\n```\n\n| File | Change |\n| --- | --- |\n| docs.rs | new |\n\nIt is in `src-tauri/src/ipc/docs.rs` now.";
+  const REPLY = "Here is the fix for the reader, with the command that tests it.\n\n```\ncargo test --lib docs\n```\n\n| File | Change |\n| --- | --- |\n| docs.rs | new |\n\nIt is in `src-tauri/src/ipc/docs.rs` now.";
   await cue.open("board-waiting");
   await page.evaluate(() => { localStorage.removeItem("cue.listenPlain"); listenPlain = true; });
   await cue.change((s, t) => { s.sessions.find((x) => x.session_id === "relay").thread.at(-1).text = t; }, REPLY);
@@ -140,11 +140,11 @@ test("Listen on a chat reply skips code and tables too, and marks each sentence 
   await page.locator(".active-pane .cv-agent").last().locator("[data-listen]").click();
   const marked = () => page.evaluate(() => { const h = CSS.highlights.get("cue-say"); return h ? [...h].map((r) => r.toString()).join("") : ""; });
   await expect.poll(() => page.evaluate(() => window.__spoken.length)).toBe(1);
-  expect(await marked()).toBe("Here is the fix.");
+  expect(await marked()).toBe("Here is the fix for the reader, with the command that tests it.");
   await page.evaluate(() => window.__end());
   // The code block and the table are passed over: the next sentence read, and marked, is the last one.
   await expect.poll(() => page.evaluate(() => window.__spoken.length)).toBe(2);
-  expect(await page.evaluate(() => window.__spoken)).toEqual(["Here is the fix.", "It is in docs now."]);
+  expect(await page.evaluate(() => window.__spoken)).toEqual(["Here is the fix for the reader, with the command that tests it.", "It is in docs now."]);
   expect(await marked()).toBe("It is in src-tauri/src/ipc/docs.rs now.");
 });
 

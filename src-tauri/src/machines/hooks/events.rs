@@ -93,7 +93,6 @@ pub(crate) fn log_raw(machine: &str, line: &str) {
 pub(super) fn handle(m: &Machine, id: &str, ev: Value) {
     log(&m.name, id, &ev);
     let Some(mut msg) = to_cue(&m.name, &ev) else { return };
-    let event = ev["event"].as_str().unwrap_or_default().to_string();
     if let Some(sid) = msg["session_id"].as_str().filter(|s| !s.is_empty()) {
         new_session_seen(&m.name, sid);
     }
@@ -109,9 +108,8 @@ pub(super) fn handle(m: &Machine, id: &str, ev: Value) {
         };
         msg["transcript_path"] = json!(local);
     }
-    // A reply sent back for its status list isn't the end of the turn: Cue isn't told. Nor is anything of a session
-    // cue-host runs: Cue hears the rest from it directly.
-    if answer_status_list(m, id, &event, &ev, &msg) || ev["hosted"] == "1" {
+    // Nothing of a session cue-host runs: Cue hears it from the session directly.
+    if ev["hosted"] == "1" {
         return;
     }
     if msg["type"] != "ask" {
@@ -137,23 +135,6 @@ pub(super) fn handle(m: &Machine, id: &str, ev: Value) {
             not_delivered(msg);
         }
     });
-}
-
-/// The status list, for a session it's on for: Cue's answer for the hook waiting on the machine (it always gets one, if
-/// only an empty one, so it stops waiting). Whether a reply was sent back for its list.
-fn answer_status_list(m: &Machine, id: &str, event: &str, ev: &Value, msg: &Value) -> bool {
-    if !((event == "prompt" || event == "stop") && ev["harness"] == "claude" && msg["session_id"].as_str().is_some_and(|sid| crate::statuslist::on_for(&crate::config::load(), sid))) {
-        return false;
-    }
-    let mut p = ev["input"].clone();
-    p["transcript_path"] = msg["transcript_path"].clone();
-    let answer = crate::statuslist::remote_answer(event, &p);
-    let sent_back = event == "stop" && answer.is_some();
-    let (host, id, text) = (m.host.clone(), id.to_string(), answer.map(|a| a.to_string()).unwrap_or_default());
-    std::thread::spawn(move || {
-        let _ = machines::run_with_input(&host, &format!(r#"umask 077; cat >"$HOME/.cue/out/{id}.tmp" && mv "$HOME/.cue/out/{id}.tmp" "$HOME/.cue/out/{id}.json""#), &text);
-    });
-    sent_back
 }
 
 /// Did the hook on the machine take answer `id` (the file is gone) within a few seconds?

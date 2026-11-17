@@ -1,7 +1,7 @@
 //! The window's side of starting and running: its first setup, the menu bar, what closing it does, and
 //! what Cue does when it's reopened from the Dock or quits.
 
-use crate::{actions, hub, locking};
+use crate::{hub, locking};
 use std::sync::Arc;
 use tauri::{Manager, RunEvent, WindowEvent};
 
@@ -136,9 +136,7 @@ pub(crate) fn on_run_event(handle: &tauri::AppHandle, event: RunEvent) {
                 api.prevent_exit();
             }
         }
-        // Actions run without tmux are Cue's own children: they end with it.
         RunEvent::Exit => {
-            actions::end_plain();
             // What changed since the last draw is saved before Cue goes.
             if let Some(hub) = handle.try_state::<Arc<hub::Hub>>() {
                 hub.save_live_and_wait();

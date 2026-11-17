@@ -102,6 +102,10 @@ impl Remote {
         self.put(&self.driver.message(text), Some(text))
     }
 
+    pub(super) fn send_with_model(&self, text: &str, model: &str) -> Result<(), String> {
+        self.put(&self.driver.message_with_model(text, model), Some(text))
+    }
+
     /// `lines` after any still waiting, then as many sent as can be. Err when the host refused them (or can't be
     /// reached and won't be again): what was waiting before them is said not taken, and these are the caller's to say.
     fn put(&self, lines: &[String], text: Option<&str>) -> Result<(), String> {

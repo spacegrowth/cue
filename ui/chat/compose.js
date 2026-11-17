@@ -271,7 +271,7 @@ const typingArg = (text) => { const m = /^\/(\S+) (\S*)$/.exec(text); return m ?
  *  carries a bracket, or one the list names itself. */
 function argsOf(c) {
   const args = c?.args || [];
-  if (c?.name !== "model") return args;
+  if (c?.name !== "model" || c.kind === "cue") return args;
   const big = args.filter((v) => v.value !== "default" && !/\[.*\]$/.test(v.value) && !args.some((w) => w.value === `${v.value}[1m]`));
   return [...big.map((v) => ({ value: `${v.value}[1m]`, label: `${v.label || v.value}, 1M context`, desc: "" })), ...args];
 }
@@ -302,9 +302,9 @@ function cmdMenu(key) {
   // A command that takes a value: its hint ("[name]"); one with values to pick says so (→ shows them).
   const after = (c) => c.arg ? (c.label ? ` <em>${esc(c.label)}</em>` : "") : c.args?.length ? ` <em>…</em>` : c.hint ? ` <em>${esc(c.hint)}</em>` : "";
   // Under the rows: Claude Code's list is read once and kept; Refresh asks again (a new skill or plugin).
-  // Pi's comes from its extension; Refresh asks it again. Codex's is Codex's own: nothing to refresh.
+  // Pi's comes from its extension. Codex's model choices come from its app server.
   const h = sessionOf(sidOfKey(key))?.harness;
-  const foot = h === "claude" || h === "pi" ? `<div class="cmd-foot"><span>${h === "pi" ? "From Pi" : "Read once, kept a week"}</span><button data-cmd-refresh="${esc(key)}">Refresh</button></div>` : "";
+  const foot = ["claude", "pi", "codex"].includes(h) ? `<div class="cmd-foot"><span>${h === "codex" ? "From Codex" : h === "pi" ? "From Pi" : "Read once, kept a week"}</span><button data-cmd-refresh="${esc(key)}">Refresh</button></div>` : "";
   if (m[0].mate) return `<div class="cmd-menu at-menu" role="listbox">${m.map((c, n) => `<button class="cmd-row ${n === cmdSel ? "on" : ""}" data-cmd-pick="${esc(key)}" data-cmd-name="${esc(c.name)}" role="option"><b>${esc(c.name)}</b><span></span><i class="${c.look}">${esc(c.word)}</i></button>`).join("")}</div>`;
   return `<div class="cmd-menu" role="listbox">${m.map((c, n) => `<button class="cmd-row ${n === cmdSel ? "on" : ""}" data-cmd-pick="${esc(key)}" data-cmd-name="${esc(c.name)}" role="option"><b>/${esc(c.name)}${after(c)}</b>${c.desc ? `<span>${esc(c.desc)}</span>` : ""}${c.kind === "skill" ? `<i>skill</i>` : c.kind === "terminal" ? `<i>in a terminal</i>` : c.kind === "cue" ? `<i>in Cue</i>` : c.kind === "unavailable" ? `<i>not hosted</i>` : ""}</button>`).join("")}${foot}</div>`;
 }

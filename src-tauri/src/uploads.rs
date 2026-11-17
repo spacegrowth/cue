@@ -35,6 +35,22 @@ pub fn save(images: &[Upload]) -> Result<Vec<Saved>, String> {
     let d = dir();
     std::fs::create_dir_all(&d).map_err(|e| e.to_string())?;
     prune(&d);
+    save_in(&d, images)
+}
+
+/// The same, kept as long as what they belong to (a Desk item can wait for weeks): in uploads/kept, which the week's
+/// clearing doesn't reach. SHORTCUT: never cleared; fine for a few pictures an item, clear them with the item once
+/// done items are dropped in bulk (db/desk.rs).
+pub fn save_kept(images: &[Upload]) -> Result<Vec<Saved>, String> {
+    if images.is_empty() {
+        return Ok(vec![]);
+    }
+    let d = dir().join("kept");
+    std::fs::create_dir_all(&d).map_err(|e| e.to_string())?;
+    save_in(&d, images)
+}
+
+fn save_in(d: &std::path::Path, images: &[Upload]) -> Result<Vec<Saved>, String> {
     let stamp = now_ms();
     images
         .iter()

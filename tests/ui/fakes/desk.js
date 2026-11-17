@@ -87,6 +87,12 @@ CueBridge.area("desk", (w) => {
       const it = itemOf(id);
       if (!it) throw "No such item";
       const t = secs();
+      if (act === "wrote_lead" || act === "wrote_holder") {
+        const d = desk().projects.find((x) => x.project === it.project);
+        d.decisions.unshift({ id: `w${++n}`, project: it.project, item_id: it.id, by: "You", sid: "", text, why: act === "wrote_lead" ? `to ${d.lead?.name || ""}` : `to ${it.holder?.name || ""}`, at: secs(), undo: "none", call: false });
+        w.changed();
+        return it;
+      }
       if (act === "looks_right") Object.assign(it, { state: "done", done_at: t });
       else if (act === "send_back") { if (!text?.trim()) throw "Say what isn't right first: type it in the box, then Send back"; Object.assign(it, { state: "working", latest: `sent back: ${text}` }); }
       else if (act === "start_now") Object.assign(it, { state: "working", after: null, after_why: "", latest: "starting in a new session" });

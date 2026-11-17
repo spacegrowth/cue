@@ -61,6 +61,7 @@ fn swift_helper(target: &str, dir: &str, name: &str) {
     let out = format!("binaries/{name}-{target}");
     let ok = if target.starts_with("aarch64") {
         let scratch = swift_scratch(name);
+        prune_swift_scratch(&scratch);
         let built = || swiftpm_build(dir, &scratch);
         // A build folder the temp folder's cleanup half-emptied, or another build broke, fails the build (an
         // xcframework without its Info.plist, say): built again once from nothing before giving up.
@@ -92,6 +93,35 @@ fn swift_scratch(name: &str) -> std::path::PathBuf {
     let mut checkout = std::collections::hash_map::DefaultHasher::new();
     std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default().hash(&mut checkout);
     std::env::temp_dir().join(format!("cue-swift-{:016x}", checkout.finish())).join(name)
+}
+
+/// Other checkouts' SwiftPM build folders (1–2 GB each) that no build has written to in a day: removed, since every
+/// throwaway checkout leaves one behind and nothing else removes them. The temp folder's cleanup touches the folders
+/// as it empties them, so a folder's age is its newest file's.
+fn prune_swift_scratch(scratch: &std::path::Path) {
+    let day = std::time::Duration::from_secs(24 * 60 * 60);
+    let (Some(mine), Ok(entries)) = (scratch.parent(), std::fs::read_dir(std::env::temp_dir())) else { return };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path == mine || !entry.file_name().to_string_lossy().starts_with("cue-swift-") {
+            continue;
+        }
+        let stale = match newest_file(&path) {
+            Some(t) => t.elapsed().map_or(false, |age| age > day),
+            None => true,
+        };
+        if stale {
+            let _ = std::fs::remove_dir_all(&path);
+        }
+    }
+}
+
+/// When the newest file under `dir` was written (links not followed); None for a folder with no files.
+fn newest_file(dir: &std::path::Path) -> Option<std::time::SystemTime> {
+    std::fs::read_dir(dir).ok()?.flatten().filter_map(|e| {
+        let kind = e.file_type().ok()?;
+        if kind.is_dir() { newest_file(&e.path()) } else if kind.is_file() { e.metadata().ok()?.modified().ok() } else { None }
+    }).max()
 }
 
 /// `swift build` of the package in `dir`, release, into `scratch`, with this Mac's paths mapped out of it.

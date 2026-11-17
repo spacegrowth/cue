@@ -23,6 +23,7 @@ pub struct FakeHosted {
     launched: Mutex<Vec<HostedLaunch>>,
     running: Mutex<HashSet<String>>,
     sent: Mutex<Vec<(String, String)>>,
+    models: Mutex<Vec<(String, String)>>,
     answers: Mutex<Vec<(String, String, Answer)>>,
     interrupted: Mutex<Vec<String>>,
     closed: Mutex<Vec<String>>,
@@ -42,6 +43,9 @@ pub struct FakeHosted {
 const FIRST_PID: i32 = 9_000_000;
 
 impl FakeHosted {
+    pub fn models(&self) -> Vec<(String, String)> {
+        crate::locking::lock(&self.models, "fake hosted models").clone()
+    }
     /// Session `id` runs under cue-host: it doesn't end when Cue quits.
     pub fn under_host(&self, id: &str) {
         crate::locking::lock(&self.in_host, "fake hosted under the host").insert(id.into());
@@ -139,6 +143,12 @@ impl Hosted for FakeHosted {
         Ok(())
     }
 
+    fn send_with_model(&self, session_id: &str, text: &str, model: &str) -> Result<(), String> {
+        self.send(session_id, text)?;
+        crate::locking::lock(&self.models, "fake hosted models").push((session_id.into(), model.into()));
+        Ok(())
+    }
+
     fn answer(&self, session_id: &str, request_id: &str, answer: &Answer) -> Result<(), String> {
         self.live(session_id)?;
         crate::locking::lock(&self.answers, "fake hosted answers").push((session_id.into(), request_id.into(), answer.clone()));
@@ -153,7 +163,7 @@ impl Hosted for FakeHosted {
 
     fn control(&self, session_id: &str, body: serde_json::Value) -> Result<serde_json::Value, String> {
         self.live(session_id)?;
-        let subtype = body["subtype"].as_str().unwrap_or_default().to_string();
+        let subtype = body["subtype"].as_str().or_else(|| body["method"].as_str()).unwrap_or_default().to_string();
         crate::locking::lock(&self.controls, "fake hosted controls").push((session_id.into(), body));
         crate::locking::lock(&self.control_answers, "fake hosted control answers").get(&subtype).cloned().unwrap_or_else(|| Ok(serde_json::json!({})))
     }

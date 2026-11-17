@@ -62,38 +62,6 @@ function previewWorld(q, now) {
     ],
   };
   // ?usage=meter|out|fable|back&upop=1 — the usage pill and its panel.
-  // ?tasks=1: every session tracked, a list of what's left (tasks.js); ?tasks=busy: its first list being read;
-  // ?tasks=off: none tracked yet. The Tasks tab opens on the session shown.
-  state.tasks = {};
-  state.tasks_spent = q.get("tasks") === "1" ? { tokens: 412300, usd: 0.087, calls: 23, tracked: 2 } : {};
-  if (["1", "busy"].includes(q.get("tasks"))) {
-    const it = (id, group, text, st = "open", detail = "") => ({ id, group, text, state: st, at_ms: now - 30 * M, detail });
-    const list = q.get("tasks") === "busy" ? { items: [], busy: "listing", spent: { tokens: 0, usd: 0 } } : {
-      items: [
-        it("t1", "check", "Run the replay against yesterday's fills", "open", "The new router hasn't seen real traffic yet. Replaying yesterday's orders shows whether partial fills still land on the same broker session."),
-        it("t2", "check", "Watch one live partial fill in the log"),
-        it("t3", "build", "Drop the old session pool once nothing uses it"),
-        it("t4", "build", "A counter for reused sessions"),
-        it("t5", "decide", "Keep the old key valid for a day, or not", "open", "Brokers holding the old key keep working for a day if you say yes; say no and they reconnect at once."),
-        it("t6", "ok", "Retries stay at 3, as before"),
-        it("t7", "check", "The router reuses the broker session", "done"),
-        it("t8", "ok", "A second pool for slow brokers", "dropped"),
-      ],
-      next: 8, said: "1 done (you said the reuse works)", err: "", busy: "", spent: { tokens: 63120, usd: 0.0141 }, updated_ms: now - 2 * M,
-      about: "Order router: partial fills reuse one broker session",
-      now: "Tests pass on the new router. Waiting on you: keep the old key valid for a day?",
-      turns: [
-        { at_ms: now - 95 * M, line: "Reworked the router to reuse the session" },
-        { at_ms: now - 70 * M, line: "Ran the protocol tests: 41 passed" },
-        { at_ms: now - 28 * M, line: "Kept the old key valid behind a flag" },
-        { at_ms: now - 12 * M, line: "Listed what's left: 2 to check, 2 to build" },
-      ],
-    };
-    state.settings.tasks = { on: true, auto: false };
-    // Last looked at every session 40 minutes ago: "Since you looked" shows where that was.
-    prefs["cue.looked"] = Object.fromEntries(state.sessions.map((x) => [x.session_id, now - 40 * M]));
-    for (const s of state.sessions) state.tasks[s.session_id] = JSON.parse(JSON.stringify(list));
-  }
   if (q.has("usage")) {
     const u = q.get("usage"), H = 3600000;
     state.usage = { five_hour: { pct: u === "out" ? 100 : 62, resets_ms: now + 38 * M }, seven_day: { pct: 41, resets_ms: now + 4 * 24 * H }, models: [{ name: "Fable", pct: u === "fable" ? 100 : 88, resets_ms: now + 4 * 24 * H, fetched_ms: now - 3 * H }], at_ms: now - 20000 };

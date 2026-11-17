@@ -3,7 +3,7 @@
 
 use super::events::{handle, log_raw};
 use super::scripts::watch_script;
-use super::setup::{refresh_hook, status_on_to};
+use super::setup::refresh_hook;
 use crate::machines::{self, Machine};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -105,7 +105,6 @@ pub(super) fn new_session_seen(machine: &str, sid: &str) {
 /// One SSH stream: runs until the connection drops or the machine is removed.
 pub(crate) fn stream(m: &Machine, stop: &std::sync::atomic::AtomicBool) -> Result<(), String> {
     refresh_hook(m);
-    status_on_to(m);
     let mut child = machines::stream_command(&m.host, &watch_script()).stdout(Stdio::piped()).spawn().map_err(|e| e.to_string())?;
     let out = child.stdout.take().ok_or("no output")?;
     let mut reached = false;

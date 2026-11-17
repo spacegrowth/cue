@@ -1262,3 +1262,24 @@ fn a_stalled_item_sent_again_is_at_work_until_its_next_turn_ends() {
     w.settle();
     assert_eq!(state(), "working", "routed to it again");
 }
+
+/// What you write on an item's page, to its lead or its holder, and what you send back, are in its Steps: your words,
+/// by you, with whom they went to. Writing isn't news about the item (its `updated` stays).
+#[test]
+fn what_you_write_on_an_items_page_is_in_its_steps() {
+    let w = World::new();
+    let (_h, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    ends(&w, &l, "ITEM: Header\nROUTE: #new -> cue-teams | why: it knows");
+    let it = item(&desk(&w, &project), "Header").clone();
+    let id = it["id"].as_str().unwrap().to_string();
+    let lead_name = desk(&w, &project)["lead"]["name"].as_str().unwrap().to_string();
+    w.hub().desk_item_act(&id, "wrote_lead", "Make it sticky too").unwrap();
+    w.hub().desk_item_act(&id, "wrote_holder", " Keep the old colour ").unwrap();
+    assert!(w.hub().desk_item_act(&id, "wrote_lead", "  ").is_err());
+    let now = desk(&w, &project);
+    let mine: Vec<_> = now["decisions"].as_array().unwrap().iter().filter(|d| d["by"] == "You" && d["item_id"] == id.as_str()).map(|d| (d["text"].as_str().unwrap(), d["why"].as_str().unwrap())).collect();
+    assert!(mine.contains(&("Make it sticky too", format!("to {lead_name}").as_str())), "{mine:?}");
+    assert!(mine.contains(&("Keep the old colour", "to cue-teams")), "{mine:?}");
+    assert_eq!(item(&now, "Header")["updated"], it["updated"]);
+}

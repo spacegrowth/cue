@@ -114,8 +114,15 @@ pub(super) fn usage_file(hub: &Arc<Hub>) {
     let h = hub.clone();
     tauri::async_runtime::spawn(async move {
         let mut every = tokio::time::interval(std::time::Duration::from_secs(3));
+        let mut codex = logs::codex_usage::Reader::default();
         loop {
             every.tick().await;
+            let (reader, rates) = tauri::async_runtime::spawn_blocking(move || {
+                let rates = codex.read(&crate::ipc::codex_sessions_dir(), crate::model::now_ms());
+                (codex, rates)
+            }).await.unwrap_or_default();
+            codex = reader;
+            h.set_codex_rates(rates);
             if usage_file::changed() {
                 h.redraw();
             }

@@ -20,6 +20,7 @@ mod desk_diff;
 mod desk_handoff;
 mod desk_lead;
 mod desk_members;
+mod desk_stall;
 pub(crate) use desk_lead::DeskClaim;
 mod events;
 mod hand_off;
@@ -118,6 +119,7 @@ struct Store {
     terminal_only: HashMap<String, Vec<String>>,
     /// The plan's usage from the status line (None until a status line forwards it).
     rates: Option<crate::usage::Rates>,
+    codex_rates: Option<crate::logs::codex_usage::Rates>,
     /// Limits already announced (scope + reset), so each one notifies once going out and once coming back.
     told_out: HashSet<String>,
     told_back: HashSet<String>,
@@ -497,6 +499,7 @@ impl Hub {
             // The board's cards' cache and context numbers (cache_tick), so a card says them as it lands.
             "insight": st.insight,
             "usage": st.rates,
+            "codex_usage": st.codex_rates,
             // Today's numbers (today.rs), not every answer of the day: those grow all day.
             "today": today::today(&st.answers, now),
             // Each project's Desk (desk.rs).

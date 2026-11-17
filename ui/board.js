@@ -501,7 +501,33 @@ async function resend(sids) {
 }
 let usageOpen = false;
 /** Next to Board / History: the plan's usage, or loudly, that it's used up. */
+function usageMeter(label, w) {
+  return w ? `<span class="ul">${esc(label)}</span><span class="um ${w.pct >= 100 ? "full" : w.pct >= 85 ? "high" : ""}"><i style="width:${Math.min(100, w.pct)}%"></i></span><span class="up">${Math.round(w.pct)}%</span>` : "";
+}
+function codexUsageWindows() {
+  if (state.settings?.usage?.codex === false) return [];
+  return (state.codex_usage?.windows || []).filter((w) => !w.resets_ms || w.resets_ms > now());
+}
+function usageWindowName(minutes, short = false) {
+  if (minutes === 10080) return short ? "wk" : "Weekly";
+  if (minutes % 1440 === 0) return short ? `${minutes / 1440}d` : `${minutes / 1440} ${minutes === 1440 ? "day" : "days"}`;
+  if (minutes % 60 === 0) return short ? `${minutes / 60}h` : `${minutes / 60} ${minutes === 60 ? "hour" : "hours"}`;
+  return short ? `${minutes}m` : `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+}
 function usageChip() {
+  const windows = codexUsageWindows();
+  const claude = claudeUsageChip();
+  if (!windows.length) return claude;
+  const label = claude ? '<span class="usage-provider">Codex</span>' : "";
+  const codex = `<span class="usage-wrap"><button class="usage-chip" data-usage="codex" aria-label="Codex usage" aria-expanded="${usageOpen === "codex"}">${label}${windows.map((w) => usageMeter(usageWindowName(w.minutes, true), w)).join("")}</button>${codexUsagePop(windows)}</span>`;
+  return claude ? `<span class="usage-meters">${claude}${codex}</span>` : codex;
+}
+function codexUsagePop(windows) {
+  if (usageOpen !== "codex") return "";
+  const rates = state.codex_usage;
+  return `<div class="usage-pop"><div class="up-head">Codex usage<span class="dim">${ago(rates.at_ms)} ago</span></div>${windows.map((w) => `<div class="up-group"><div class="up-title">${usageWindowName(w.minutes)}${w.resets_ms ? `<span> · resets ${clockAt(w.resets_ms)}</span>` : ""}</div><div class="up-row ${w.pct >= 100 ? "full" : w.pct >= 85 ? "high" : ""}"><span class="up-name">Used</span><span class="up-bar"><i style="width:${Math.min(100, w.pct)}%"></i></span><span class="up-pct">${Math.round(w.pct)}%</span></div></div>`).join("")}<div class="up-foot">From local Codex sessions · updates as Codex reports usage.</div></div>`;
+}
+function claudeUsageChip() {
   const limited = limitedSessions();
   const out = limited.filter((s) => s.limit.scope === "all" && !lifted(s.limit));
   const back = limited.filter((s) => lifted(s.limit) && now() - s.limit.resets_ms < 5 * 60000);
@@ -521,7 +547,7 @@ function usageChip() {
   // Settings → Usage can hide Claude Code's limits (e.g. behind a proxy, where only your file matters).
   const claude = state.settings?.usage?.claude !== false && u && (u.five_hour || u.seven_day);
   if (!claude && !(uf.meters || []).length && !uf.error) return "";
-  const meter = (label, w) => w ? `<span class="ul">${label}</span><span class="um ${w.pct >= 100 ? "full" : w.pct >= 85 ? "high" : ""}"><i style="width:${Math.min(100, w.pct)}%"></i></span><span class="up">${Math.round(w.pct)}%</span>` : "";
+  const meter = usageMeter;
   // Your own meters (Settings → Usage file) sit beside Claude Code's, drawn the same way: the first
   // row in the bar, and all of them in a list of the same look that hovering it shows.
   const level = (pct) => pct === null ? "" : pct >= 100 ? "full" : pct >= 85 ? "high" : "";
@@ -534,7 +560,7 @@ function usageChip() {
   const mine = meters.length ? `<span class="uf-first">${fileMeter(meters[0], true)}</span>` : "";
   const more = meters.length > 1 && !usageOpen ? `<span class="uf-more">${meters.map((m) => `<span class="uf-row">${fileMeter(m)}${m.resets_ms ? `<span class="uf-note">resets ${clockAt(m.resets_ms)}</span>` : ""}</span>`).join("")}</span>` : "";
   const broken = uf.error ? `<span class="ul uf-bad" title="${esc(uf.error)}">usage file ⚠</span>` : "";
-  return `<span class="usage-wrap"><button class="usage-chip" data-usage="meter">${claude ? meter("5h", u.five_hour) + meter("wk", u.seven_day) : ""}${mine}${broken}</button>${more}${usagePop()}</span>`;
+  return `<span class="usage-wrap"><button class="usage-chip" data-usage="meter" aria-label="${claude ? "Claude Code usage" : "Your usage"}" aria-expanded="${usageOpen === "claude"}">${claude && codexUsageWindows().length ? '<span class="usage-provider">Claude</span>' : ""}${claude ? meter("5h", u.five_hour) + meter("wk", u.seven_day) : ""}${mine}${broken}</button>${more}${usagePop()}</span>`;
 }
 /** "$12.40/$50", "48/200 credits", "$3.10": an amount from your usage file, in its unit. */
 function spendText(m, long = false) {
@@ -547,7 +573,7 @@ function spendText(m, long = false) {
 function usagePop() {
   const u = state.usage;
   const uf = state.usage_file || {};
-  if (!usageOpen) return "";
+  if (usageOpen !== "claude") return "";
   // Your usage file: its meters with their details, or what's wrong with it.
   const fileSec = !(uf.meters || []).length && !uf.error ? "" : `<div class="up-group"><div class="up-title">${uf.error ? "Usage file" : "Your usage"}<span> · ${esc(uf.path || "")}${uf.as_of_ms ? `, as of ${clockAt(uf.as_of_ms)}` : ""}</span></div>
     ${uf.error ? `<div class="up-err">${esc(uf.error)}</div>` : uf.meters.map((m) => {
@@ -568,7 +594,7 @@ function usagePop() {
   }).join("");
   return `<div class="usage-pop"><div class="up-head">Claude Code usage<span class="dim">${ago(u.at_ms)} ago</span></div>
     ${group("Session", u.five_hour, row("5 hours", u.five_hour))}${group("Weekly", u.seven_day, row("All models", u.seven_day) + models)}
-    ${fileSec}<div class="up-foot">Claude Code's limits don't count Codex and Pi.</div></div>`;
+    ${fileSec}<div class="up-foot">Claude Code's limits apply to Claude Code sessions.</div></div>`;
 }
 /** Its machine couldn't be reached on Cue's last try: the card says so whatever it last showed, and × takes it out of Cue. */
 const cutOff = (s) => !!s.machine && (state.unreachable || []).includes(s.machine);

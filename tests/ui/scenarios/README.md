@@ -29,7 +29,6 @@ What the `world-*` files promise, so the screenshots taken from them don't chang
 | world-empty | nothing at all |
 | world-one-ask | one session asking to run a Bash command |
 | world-many-sessions | finished, working, asking a question, out of usage, driven by another agent, Pi, Codex |
-| world-status-list | a finished turn ending in a status list, its prompt carrying the status ask |
 | world-parked | one parked session and one under Closed |
 | world-restarting | a session restarting for its MCP servers (step "start") |
 | world-stalled-terminal | a message typed into a pane that never took it (ring on), and a prompt only its terminal can answer |

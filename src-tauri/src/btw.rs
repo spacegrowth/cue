@@ -63,14 +63,14 @@ pub fn ask_copy(origin: &crate::model::Origin, prompt: &str) -> Result<Answer, S
     reply_full(&out)
 }
 
-/// The small model that keeps a session's list of what's left (tasks.rs), with no tools, no hooks and nothing
+/// The small model (the limit probe, hub/send_at.rs), with no tools, no hooks and nothing
 /// saved, and its own system prompt, so it reads only what it's given.
-const TASKS_LINE: &str = r#"exec claude -p --model haiku --no-session-persistence --tools "" --settings '{"disableAllHooks":true}' --system-prompt "You keep the list of what is left to do in a coding agent's session, for its owner. Use only what you are given. Answer with only JSON." --output-format json"#;
+const SMALL_LINE: &str = r#"exec claude -p --model haiku --no-session-persistence --tools "" --settings '{"disableAllHooks":true}' --system-prompt "Use only what you are given." --output-format json"#;
 
-/// `prompt` to the small model that keeps the lists of what's left, about the session `session_id`: its answer
+/// `prompt` to the small model, about the session `session_id`: its answer
 /// and what it cost. Every call about one session goes under one fixed id (side_id), nothing saved.
 pub fn ask_small(prompt: &str, session_id: &str) -> Result<Answer, String> {
-    run_full(&format!("{TASKS_LINE} --session-id {}", side_id(&format!("tasks:{session_id}"))), &std::env::temp_dir(), prompt)
+    run_full(&format!("{SMALL_LINE} --session-id {}", side_id(&format!("tasks:{session_id}"))), &std::env::temp_dir(), prompt)
 }
 
 /// The session id Cue's small-model calls about one session go under, the same every time: a UUID worked out from

@@ -82,6 +82,10 @@ impl Session {
         self.shared.write_lines(&self.shared.driver.message(text))
     }
 
+    pub fn send_with_model(&self, text: &str, model: &str) -> Result<(), String> {
+        self.shared.write_lines(&self.shared.driver.message_with_model(text, model))
+    }
+
     /// Your answer to the request `request_id` (an `Ask`'s).
     pub fn answer(&self, request_id: &str, a: &Answer) -> Result<(), String> {
         self.shared.write_lines(&self.shared.driver.answer(request_id, a)?)

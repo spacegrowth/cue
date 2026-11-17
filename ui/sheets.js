@@ -607,8 +607,9 @@ function settingsSheet() {
     insights: insSettings(st) + tipsSettings(st),
     usage: `
     <div class="set-group">Usage</div>
-    ${setRow("Show Claude Code's limits", "The 5-hour and weekly meters from your Claude plan. Off: only your usage file's meters show.", toggle("usage.claude", st.usage?.claude ?? true))}
-    ${setRow("Usage file", `Your own meters beside Claude Code's: a CSV you keep up to date (a proxy's budget, credits, tokens). Header <code>label,spent,limit,unit,resets_at</code>, then up to 3 rows; only <code>spent</code> is required. Cue only reads it, whenever it changes.`, `<input class="path-in" id="usage-file" data-usage-file value="${esc(st.usage?.file || "~/.cue/usage.csv")}" spellcheck="false" aria-label="Usage file"/>`)}`,
+    ${setRow("Show Claude Code's limits", "The 5-hour and weekly meters from your Claude plan.", toggle("usage.claude", st.usage?.claude ?? true))}
+    ${setRow("Show Codex's limits", "Your Codex plan limits, read from local sessions. Updates when Codex reports usage.", toggle("usage.codex", st.usage?.codex ?? true))}
+    ${setRow("Usage file", `Your own meters beside your agents' limits: a CSV you keep up to date (a proxy's budget, credits, tokens). Header <code>label,spent,limit,unit,resets_at</code>, then up to 3 rows; only <code>spent</code> is required. Cue only reads it, whenever it changes.`, `<input class="path-in" id="usage-file" data-usage-file value="${esc(st.usage?.file || "~/.cue/usage.csv")}" spellcheck="false" aria-label="Usage file"/>`)}`,
   }[tab] ?? extRows(tab.slice(4));
   return `<div class="sheet"><div class="sheet-head"><h3>Settings</h3>${upd.current ? `<span class="set-ver">Cue ${esc(upd.current)}</span>` : ""}<span class="grow"></span><kbd>Esc</kbd></div><div class="set-tabs seg" role="tablist">${tabs.map(([k, l]) => `<button role="tab" class="${tab === k ? "on" : ""}" aria-selected="${tab === k}" data-act="set-tab" data-tab="${k}">${l}</button>`).join("")}</div><div class="sheet-body">
     ${pane}

@@ -106,14 +106,12 @@ fn from_config(c: &Value) -> Value {
         "updates": { "beta": beta_updates_in(c) },
         // The first-launch "Connect your agents" screen, closed with Done.
         "setup": { "done": b("/setup/done", false) },
-        "usage": { "file": usage_file(), "claude": b("/usage/claude", true) },
+        "usage": { "file": usage_file(), "claude": b("/usage/claude", true), "codex": b("/usage/codex", true) },
         "pi": { "gate": c.pointer("/pi/gate").and_then(Value::as_str).unwrap_or("dangerous") },
         "appearance": { "mode": c.pointer("/appearance/mode").and_then(Value::as_str).unwrap_or("system"), "zoom": zoom(), "project": c.pointer("/appearance/project").and_then(Value::as_bool).unwrap_or(false) },
         "context": { "keep": context_keep() },
         "turn": { "mode": turn_mode() },
         "quick": { "phrases": quick_phrases() },
-        // Settings → Actions: what "Ask the agent to set up actions" puts in the session's box.
-        "actions": { "prompt": crate::actions::prompt(), "default": crate::actions::PROMPT },
         "steps": { "mode": c.pointer("/steps/mode").and_then(Value::as_str).unwrap_or("line") },
         // A project's dot color, by folder name: the swatch you picked (0–7); unlisted folders hash to one.
         "project": { "colors": c.pointer("/project/colors").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "all": c.pointer("/project/all").and_then(Value::as_u64).filter(|n| *n < 10), "hue": c.pointer("/project/hue").cloned().filter(own_hue), "pins": c.pointer("/project/pins").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])), "names": c.pointer("/project/names").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "moves": c.pointer("/project/moves").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "folders": c.pointer("/project/folders").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "made": c.pointer("/project/made").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])), "oneway": crate::one_way::view(c), "never": c.pointer("/project/never").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})) },
@@ -334,13 +332,11 @@ pub fn history_keep() -> usize {
 
 /// The settings the window may save. A key it saves that isn't here fails as "unknown setting" (the test
 /// below reads the window's scripts for every key they save).
-pub(crate) const ALLOWED: &[&str] = &["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "project.oneway", "project.never", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "tips.on", "updates.beta", "actions.prompt", "voice.pick", "mini.mode", "hosted.on"];
+pub(crate) const ALLOWED: &[&str] = &["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "usage.codex", "sessions.tmux", "project.colors", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "project.oneway", "project.never", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "tips.on", "updates.beta", "voice.pick", "mini.mode", "hosted.on"];
 
 /// Set one dotted key ("history.keep", "notify.finished", "pi.gate"), keeping everything else.
 pub fn set(key: &str, value: Value) -> Result<(), String> {
     match key {
-        // Your actions prompt ("" is Cue's own again): kept with the actions (actions/), not here.
-        "actions.prompt" => crate::actions::set_prompt(value.as_str().ok_or("the prompt must be text")?).map(|_| ()),
         "login.open" => {
             let on = value.as_bool().ok_or("must be true or false")?;
             mac::switch_login(on)?;
@@ -352,7 +348,7 @@ pub fn set(key: &str, value: Value) -> Result<(), String> {
 
 /// A setting the window may save, changed from what it is now (`f`, given the whole config: None leaves it)
 /// with no other save between the read and the write (save.rs), the new value checked as `set` checks it.
-/// True when it wrote. Not for the settings that do more than save (actions.prompt, login.open).
+/// True when it wrote. Not for the settings that do more than save (login.open).
 pub fn update(key: &str, f: impl FnOnce(&Value) -> Option<Value>) -> Result<bool, String> {
     update_with(key, |c| match f(c) {
         Some(v) => Ok((Some(checked(key, v)?), true)),
@@ -510,7 +506,7 @@ fn checked_plain(key: &str, value: Value) -> Result<Value, String> {
         }
         // Insights hidden until this time (ms since 1970); 0 shows them again.
         "insights.snooze" => json!(value.as_u64().ok_or("snooze must be a time")?),
-        "actions.prompt" | "login.open" => return Err(format!("{key} is saved with config::set")),
+        "login.open" => return Err(format!("{key} is saved with config::set")),
         _ => json!(value.as_bool().ok_or("must be true or false")?),
     })
 }

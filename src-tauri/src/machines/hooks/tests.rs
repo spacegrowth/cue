@@ -283,43 +283,6 @@ fn the_hook_drops_each_event_for_cue_and_never_waits_when_cue_isnt_watching() {
 }
 
 #[test]
-fn a_message_or_reply_waits_for_its_status_list_only_in_a_session_its_on_for_while_cue_is_watching() {
-    let home = std::env::temp_dir().join(format!("cue-mh-status-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&home);
-    std::fs::create_dir_all(home.join(".cue/out")).unwrap();
-    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
-    std::fs::write(home.join(".cue/watching"), format!("{now}\n")).unwrap();
-    std::fs::write(home.join(".cue/status-on"), "s-on\nother").unwrap();
-    // Cue's side: answer whatever shows up, as handle() does.
-    let answer_next = |home: std::path::PathBuf| std::thread::spawn(move || {
-        for _ in 0..30 {
-            std::thread::sleep(Duration::from_millis(100));
-            let ev = std::fs::read_dir(home.join(".cue/in")).ok().into_iter().flatten().flatten().find(|e| !home.join(format!(".cue/out/{}.json", e.path().file_stem().unwrap().to_string_lossy())).exists() && std::fs::read_to_string(e.path()).is_ok_and(|t| t.contains("s-on")));
-            if let Some(f) = ev {
-                let id = f.path().file_stem().unwrap().to_string_lossy().to_string();
-                std::fs::write(home.join(format!(".cue/out/{id}.json")), r#"{"hookSpecificOutput":{"additionalContext":"list"}}"#).unwrap();
-                return;
-            }
-        }
-    });
-    // A session it isn't on for: no wait, nothing back (its event still goes to Cue).
-    let t = std::time::Instant::now();
-    assert_eq!(run_sh(SCRIPT, &home, &["prompt", "claude"], r#"{"session_id":"s-off","prompt":"hi"}"#), "");
-    assert!(t.elapsed() < Duration::from_secs(1), "never waits for a session it's off for");
-    assert_eq!(std::fs::read_dir(home.join(".cue/in")).unwrap().count(), 1);
-    // One it's on for: Cue's answer, handed to the agent.
-    let a = answer_next(home.clone());
-    assert_eq!(run_sh(SCRIPT, &home, &["prompt", "claude"], r#"{"session_id":"s-on","prompt":"hi"}"#), r#"{"hookSpecificOutput":{"additionalContext":"list"}}"#);
-    a.join().unwrap();
-    // Cue not watching: no wait at all.
-    std::fs::write(home.join(".cue/watching"), "0\n").unwrap();
-    let t = std::time::Instant::now();
-    assert_eq!(run_sh(SCRIPT, &home, &["stop", "claude"], r#"{"session_id":"s-on","last_assistant_message":"Done."}"#), "");
-    assert!(t.elapsed() < Duration::from_secs(1), "Cue away: never waits");
-    let _ = std::fs::remove_dir_all(&home);
-}
-
-#[test]
 fn a_permission_waits_for_cues_answer_while_cue_is_watching() {
     let home = std::env::temp_dir().join(format!("cue-mh2-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&home);
@@ -420,11 +383,12 @@ fn an_event_from_a_machine_reaches_cue_as_the_macs_hook_would_send_it_placed_on_
 }
 
 #[test]
-fn a_hosted_agents_events_stay_on_the_machine_except_the_status_lists() {
+fn a_hosted_agents_events_stay_on_the_machine() {
     let home = std::env::temp_dir().join(format!("cue-hook-hosted-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&home);
     std::fs::create_dir_all(home.join(".cue/in")).unwrap();
-    std::fs::write(home.join(".cue/status-on"), "s-on\n").unwrap();
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+    std::fs::write(home.join(".cue/watching"), format!("{now}\n")).unwrap();
     let hosted = |args: &[&str], input: &str| {
         let mut c = Command::new("/bin/sh").arg("-c").arg(SCRIPT).arg("cue-hook").args(args).env("HOME", &home).env("CUE_HOSTED", "1").stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
         c.stdin.take().unwrap().write_all(input.as_bytes()).unwrap();
@@ -432,20 +396,14 @@ fn a_hosted_agents_events_stay_on_the_machine_except_the_status_lists() {
         let out = String::from_utf8_lossy(&c.wait_with_output().unwrap().stdout).to_string();
         (out, t.elapsed())
     };
-    let written = || std::fs::read_dir(home.join(".cue/in")).unwrap().flatten().map(|f| std::fs::read_to_string(f.path()).unwrap()).collect::<Vec<_>>();
-    // A permission ask, a turn's end, a prompt in a session with no list: nothing for Cue, no wait (Cue asks it
+    // A permission ask, a turn's end, a prompt: nothing for Cue and no wait, even while Cue watches (Cue hears them
     // itself, over cue-host).
-    for (args, input) in [(&["permission", "claude"][..], r#"{"session_id":"s-on","tool_name":"Bash"}"#), (&["stop", "claude"][..], r#"{"session_id":"s-off"}"#), (&["prompt", "claude"][..], r#"{"session_id":"s-off","prompt":"hi"}"#)] {
+    for (args, input) in [(&["permission", "claude"][..], r#"{"session_id":"s1","tool_name":"Bash"}"#), (&["stop", "claude"][..], r#"{"session_id":"s1"}"#), (&["prompt", "claude"][..], r#"{"session_id":"s1","prompt":"hi"}"#)] {
         let (out, took) = hosted(args, input);
         assert_eq!(out, "");
         assert!(took < Duration::from_secs(1), "{args:?} never waits");
     }
-    assert!(written().is_empty(), "nothing handed to Cue: {:?}", written());
-    // A prompt in a session with the list on still goes, marked hosted (Cue answers only its list; not watching here,
-    // so no wait).
-    hosted(&["prompt", "claude"], r#"{"session_id":"s-on","prompt":"hi"}"#);
-    let w = written();
-    assert_eq!(w.len(), 1);
-    assert!(w[0].contains(r#""hosted":"1""#), "{}", w[0]);
+    let written = std::fs::read_dir(home.join(".cue/in")).unwrap().count();
+    assert_eq!(written, 0, "nothing handed to Cue");
     let _ = std::fs::remove_dir_all(&home);
 }

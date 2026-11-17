@@ -4,6 +4,15 @@
 use super::*;
 
 impl Hub {
+    pub fn set_codex_rates(&self, rates: Option<crate::logs::codex_usage::Rates>) {
+        let changed = self.write(|st| {
+            if st.codex_rates == rates { return false; }
+            st.codex_rates = rates;
+            true
+        });
+        if changed { self.changed(); }
+    }
+
     /// A turn ended on an API error. A usage limit leaves the session "limited" (no card: there's
     /// nothing to answer until it resets); any other error is a finished turn that needs you.
     pub fn failed(&self, origin: Origin, error_type: &str, details: &str) {

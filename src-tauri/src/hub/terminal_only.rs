@@ -7,7 +7,8 @@
 //! - Pi's sign-in and settings screens: run Pi in a terminal and type the command there (a command given to Pi as it
 //!   starts goes to the model, even in its terminal).
 //! - Codex signs in with `codex login` / `codex logout`, run in a terminal.
-//! - Pi's and Codex's other own commands act on the session itself, which a hosted one can't do from here: refused,
+//! - Codex's `/model` is handled by Cue's picker and saved for subsequent turn/start requests.
+//! - Pi's and Codex's remaining own commands act on the session itself, which a hosted one can't do from here: refused,
 //!   saying so, never sent to the model.
 //! `/mcp` isn't one of these: Cue shows its own MCP servers list for it (ui/chat/mcp.js).
 
@@ -50,6 +51,7 @@ pub(crate) fn own(harness: &str, name: &str, text: &str, terminal_only: &[String
         "pi" if PI_SCREENS.contains(&name) => Some(Own::Terminal { line: "pi --no-session".into(), then: format!("then type {} there", text.trim()) }),
         "pi" if crate::commands::pi_builtin(name) => Some(Own::NotHosted),
         "codex" if name == "login" || name == "logout" => Some(Own::Terminal { line: format!("codex {name}"), then: String::new() }),
+        "codex" if name == "model" => None,
         "codex" if crate::commands::codex_builtin(name) => Some(Own::NotHosted),
         _ => None,
     }
@@ -87,6 +89,9 @@ impl Hub {
         let name = text.trim().strip_prefix('/')?.split_whitespace().next()?.to_string();
         let o = self.hosted_origin(session_id)?;
         let agent = crate::hosted::Agent::named(&o.harness).map_or("the agent", |a| a.name());
+        if o.harness == "codex" && name == "model" {
+            return Some(self.codex_model(session_id, text));
+        }
         Some(match self.own_command(session_id, &name, text)? {
             Own::NotHosted => Err(format!("/{name} is one of {agent}'s own commands, which a hosted session doesn't have: Move to terminal to use it")),
             Own::Terminal { line, then } => {
@@ -95,6 +100,52 @@ impl Hub {
                 Ok(format!("not sent: /{name} is one of {agent}'s own screens, which only its terminal shows. To use it, run {line} in a terminal {}{then}", where_to_run(&o)))
             }
         })
+    }
+
+    /// Models from this session's Codex, including all picker-visible pages.
+    pub(crate) fn codex_models(&self, sid: &str) -> Result<Vec<crate::commands::Arg>, String> {
+        let origin = self.hosted_origin(sid).ok_or("that session is gone")?;
+        self.wake_hosted(&origin)?;
+        let mut models = vec![];
+        let mut cursor = Value::Null;
+        loop {
+            let page = self.hosted().control(sid, json!({ "method": "model/list", "params": { "limit": 100, "cursor": cursor, "includeHidden": false } }))?;
+            let data = page["data"].as_array().ok_or("Codex returned no model list")?;
+            for model in data {
+                if model["hidden"] == true {
+                    continue;
+                }
+                let Some(value) = model["model"].as_str().filter(|m| !m.is_empty()) else { continue };
+                models.push(crate::commands::Arg {
+                    value: value.into(),
+                    label: model["displayName"].as_str().unwrap_or(value).into(),
+                    desc: model["description"].as_str().unwrap_or_default().into(),
+                });
+            }
+            let next = page.get("nextCursor").cloned().unwrap_or(Value::Null);
+            if next.is_null() {
+                break;
+            }
+            if next == cursor {
+                return Err("Codex repeated its model-list cursor".into());
+            }
+            cursor = next;
+        }
+        Ok(models)
+    }
+
+    fn codex_model(&self, sid: &str, text: &str) -> Result<String, String> {
+        let words: Vec<&str> = text.split_whitespace().collect();
+        let models = self.codex_models(sid)?;
+        if words.len() != 2 {
+            return Err(format!("Choose a model with /model <model>. Available: {}", models.iter().map(|m| m.value.as_str()).collect::<Vec<_>>().join(", ")));
+        }
+        let model = words[1];
+        if !models.iter().any(|m| m.value == model) {
+            return Err(format!("Codex hasn't offered model {model}. Choose one from /model."));
+        }
+        crate::config::remember(&format!("codex_models.{sid}"), json!(model))?;
+        Ok(format!("not sent: Model set to {model} for subsequent turns"))
     }
 }
 
@@ -147,7 +198,7 @@ mod tests {
     fn codex_signs_in_with_its_own_program_and_its_session_commands_are_refused() {
         assert_eq!(own("codex", "login", "/login", &[]), terminal("codex login", ""));
         assert_eq!(own("codex", "logout", "/logout", &[]), terminal("codex logout", ""));
-        assert_eq!(own("codex", "model", "/model", &[]), Some(Own::NotHosted));
+        assert_eq!(own("codex", "model", "/model", &[]), None);
         assert_eq!(own("codex", "fix-tests", "/fix-tests", &[]), None);
     }
 }

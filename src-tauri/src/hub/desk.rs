@@ -14,6 +14,8 @@ use super::desk_members::{ask_first, join, may_route, UseAsk};
 pub(super) struct Effects {
     /// Items to save as they are now, and items dropped.
     pub(super) items: Vec<String>,
+    /// Items whose holder's words were only kept on them (replied): saved, never counted as sent or started.
+    pub(super) said: Vec<String>,
     pub(super) dropped: Vec<String>,
     pub(super) decisions: Vec<String>,
     /// Messages to sessions: (session, text).
@@ -714,6 +716,30 @@ fn designs_said(st: &mut Store, sid: &str, text: &str, fx: &mut Effects) {
     }
 }
 
+/// A holder ended a turn at work on items `on`, saying `text`: its words kept on each as a reply on its Thread
+/// (the Desk's own lines left out, cut to `SAID_CHARS`), marked done for one its DONE line names.
+fn replied(st: &mut Store, text: &str, on: &[String], now: u64, fx: &mut Effects) {
+    use crate::desk::model::{Said, SAID_CHARS, SAID_KEPT};
+    let words: Vec<&str> = text.lines().filter(|l| !desk_line_start(l)).collect();
+    let words = words.join("\n").trim().to_string();
+    if words.is_empty() || on.is_empty() {
+        return;
+    }
+    let words = match words.char_indices().nth(SAID_CHARS) {
+        Some((cut, _)) => format!("{}…", words[..cut].trim_end()),
+        None => words,
+    };
+    let done: Vec<String> = parse::lines(text).into_iter().filter_map(|l| if let Line::Done { ids } = l { Some(ids) } else { None }).flatten().map(|i| st.desk.canon(&i)).collect();
+    for id in on {
+        let Some(it) = st.desk.item_mut(id) else { continue };
+        let by = it.holder.as_ref().map(|h| h.name.clone()).unwrap_or_default();
+        it.said.push(Said { at: now, by, text: words.clone(), done: done.contains(id) });
+        let over = it.said.len().saturating_sub(SAID_KEPT);
+        it.said.drain(..over);
+        fx.said.push(id.clone());
+    }
+}
+
 /// How a session on an item adds one that's truly separate (said after an ITEM: line Cue didn't add).
 const SEPARATE_ITEM_WORDS: &str = "Only something truly separate from it is a new item, with why in one line: ITEM: <bug|feature|task> | <title> | done when: <…> | why: <how it's separate>";
 
@@ -813,7 +839,9 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
                 (c.back, c.back_pics) = (why.trim().to_string(), pics.matches('`').count() / 2);
             }
             let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
-            fx.sends.push((h.to().to_string(), format!("{crew}Desk item #{id} ({}) isn't done: {words}\nIts fixes stay in #{id}; don't add new items for them. Say DONE: #{id} when it is.", it.title)));
+            let (title, project) = (it.title.clone(), it.project.clone());
+            you_wrote(st, &project, id, words.split_once("\nPictures with it").map_or(words.as_str(), |(w, _)| w).trim(), &format!("sent back to {}", h.name), now, &mut fx);
+            fx.sends.push((h.to().to_string(), format!("{crew}Desk item #{id} ({title}) isn't done: {words}\nIts fixes stay in #{id}; don't add new items for them. Say DONE: #{id} when it is.")));
         }
         // Nobody holds it yet: a new session of its project takes it (desk_start_new).
         "start_now" if holder.is_none() => {
@@ -829,6 +857,18 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
             it.after = None;
             it.state = "working".into();
             fx.sends.push((h.to().to_string(), crate::desk::handed_words(it, "")));
+        }
+        // What you wrote on its page, to its lead or its holder (sent by the window): one of its Steps, with whom it
+        // went to. Nothing else about it changes (nor `updated`: it isn't news to you).
+        "wrote_lead" | "wrote_holder" => {
+            let words = text.trim().to_string();
+            if words.is_empty() {
+                return Err("nothing written".into());
+            }
+            let project = it.project.clone();
+            let to = if act == "wrote_lead" { st.desk.lead.get(&project).map(|l| l.name.clone()) } else { holder.map(|h| h.name) };
+            you_wrote(st, &project, id, &words, &to.map_or(String::new(), |n| format!("to {n}")), now, &mut fx);
+            return Ok(fx);
         }
         "put_before" => put_before(st, id, holder.as_ref(), now, &mut fx)?,
         "drop" => {
@@ -847,6 +887,14 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
     }
     fx.items.push(id.to_string());
     Ok(fx)
+}
+
+/// Your words about item `id`, as one of its Steps (`whom`: where they went), by you: nothing to undo.
+fn you_wrote(st: &mut Store, project: &str, id: &str, words: &str, whom: &str, now: u64, fx: &mut Effects) {
+    decide(st, project, Some(id.to_string()), "You", "", words, whom, now, fx);
+    if let Some(d) = st.desk.decisions.last_mut() {
+        d.undo = "none".into();
+    }
 }
 
 /// Item `id` put before the one it waits on, in the queue: it takes that one's place (starting now when that one
@@ -1083,6 +1131,7 @@ impl Hub {
             let mut fx = Effects::default();
             // What it was at work on as its turn ended: what this turn's DONE lines don't close stalled there.
             let on = super::desk_stall::at_work_with(st, sid);
+            replied(st, text, &on, now, &mut fx);
             if !said {
                 super::desk_stall::stalls_asked(st, sid, text, &on, &mut fx);
                 return fx;
@@ -1194,7 +1243,7 @@ impl Hub {
     /// What a change left to do, with the store let go: its saves, then its messages and questions, and new items
     /// for their lead (told a moment later, with any others that came meanwhile).
     pub(super) fn desk_done(&self, fx: Effects) {
-        if fx.items.is_empty() && fx.dropped.is_empty() && fx.decisions.is_empty() && fx.sends.is_empty() && fx.asks.is_empty() && fx.news.is_empty() && fx.starts.is_empty() && fx.joined.is_empty() && fx.uses.is_empty() {
+        if fx.items.is_empty() && fx.said.is_empty() && fx.dropped.is_empty() && fx.decisions.is_empty() && fx.sends.is_empty() && fx.asks.is_empty() && fx.news.is_empty() && fx.starts.is_empty() && fx.joined.is_empty() && fx.uses.is_empty() {
             return;
         }
         {
@@ -1217,7 +1266,9 @@ impl Hub {
                         st.desk.sent_at.insert(id.clone(), (sid, now));
                     }
                 }
-                let items: Vec<DeskItem> = fx.items.iter().filter_map(|id| st.desk.item(id).cloned()).collect();
+                let mut ids: Vec<&String> = fx.items.iter().collect();
+                ids.extend(fx.said.iter().filter(|id| !fx.items.contains(id)));
+                let items: Vec<DeskItem> = ids.into_iter().filter_map(|id| st.desk.item(id).cloned()).collect();
                 let decisions: Vec<DeskDecision> = st.desk.decisions.iter().filter(|d| fx.decisions.contains(&d.id)).cloned().collect();
                 (items, decisions)
             });
@@ -1277,8 +1328,10 @@ impl Hub {
             .map(|p| {
                 let items: Vec<DeskItem> = st.desk.items.iter().filter(|i| &i.project == p && (i.state != "done" || i.done_at.unwrap_or(i.updated) >= today)).map(|i| shown(st, i)).collect();
                 let decisions: Vec<&DeskDecision> = st.desk.decisions.iter().rev().filter(|d| &d.project == p && d.at >= today).collect();
+                // Older steps and calls on the items shown, for their pages' Thread (today's are in `decisions`).
+                let older: Vec<&DeskDecision> = st.desk.decisions.iter().filter(|d| &d.project == p && d.at < today && d.item_id.as_ref().is_some_and(|i| items.iter().any(|it| &it.id == i))).collect();
                 let members = st.desk.members.get(p).cloned().unwrap_or_default();
-                json!({ "project": p, "lead": Self::desk_lead_view(st, p), "items": items, "decisions": decisions, "members": members, "checks": super::desk_checks::checks_view(st, p) })
+                json!({ "project": p, "lead": Self::desk_lead_view(st, p), "items": items, "decisions": decisions, "older": older, "members": members, "checks": super::desk_checks::checks_view(st, p) })
             })
             .collect();
         json!({ "projects": list, "installed_ms": super::desk_checks::installed_ms() })

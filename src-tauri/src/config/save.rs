@@ -241,7 +241,7 @@ mod tests {
     #[test]
     fn cues_own_save_never_replaces_a_broken_config() {
         let h = Home::with("own", b"{\"tips\": {\"on\": fal");
-        let r = crate::config::remember("status.sessions", serde_json::json!(["s1"]));
+        let r = crate::config::remember("tips.on", serde_json::json!(true));
         assert!(r.as_ref().is_err_and(|e| e.contains("not saved until it's put right")), "{r:?}");
         assert_eq!(h.file(), b"{\"tips\": {\"on\": fal", "untouched");
         assert!(h.kept_aside().is_empty());
@@ -253,9 +253,9 @@ mod tests {
     fn a_save_catching_an_editor_mid_write_waits_for_the_whole_file() {
         let h = Home::with("midwrite", b"{\"tips\": {\"on\": fal");
         REREAD.set(Some(Box::new(|path| std::fs::write(path, "{\"tips\": {\"on\": false}, \"hand\": {\"kept\": true}}\n").unwrap())));
-        crate::config::remember("status.sessions", serde_json::json!(["s1"])).unwrap();
+        crate::config::remember("tips.on", serde_json::json!(true)).unwrap();
         let saved: serde_json::Value = serde_json::from_slice(&h.file()).unwrap();
-        assert_eq!((saved["hand"]["kept"].clone(), saved["status"]["sessions"].clone()), (serde_json::json!(true), serde_json::json!(["s1"])));
+        assert_eq!((saved["hand"]["kept"].clone(), saved["tips"]["on"].clone()), (serde_json::json!(true), serde_json::json!(true)));
         assert!(h.kept_aside().is_empty());
     }
 }

@@ -87,7 +87,8 @@ function usageClick(us) {
     const nx = list[(at + 1) % list.length];
     return nx && setActive(null, nx.session_id);
   }
-  usageOpen = !usageOpen;
+  const provider = k === "codex" ? "codex" : "claude";
+  usageOpen = usageOpen === provider ? false : provider;
   renderMain();
 }
 const USAGE_CLICKS = [

@@ -480,23 +480,10 @@ impl Hub {
         Ok(())
     }
 
-    /// Change one setting from what it is now (`f`, given the whole config; None leaves it), with no other
-    /// save between the read and the write (config::update): a list one session is added to or taken out of.
-    pub fn update_setting(&self, key: &str, f: impl FnOnce(&Value) -> Option<Value>) -> Result<(), String> {
-        if crate::config::update(key, f)? {
-            self.setting_changed(key);
-        }
-        Ok(())
-    }
-
     /// What follows a setting saved: the parts of Cue that keep it elsewhere learn it, and the window redraws.
     fn setting_changed(&self, key: &str) {
         if key == "quick.phrases" {
             crate::notify::set_phrases(&crate::config::quick_phrases());
-        }
-        // The status list's sessions (or the setting itself) changed: each machine's hook learns which to wait on.
-        if key.starts_with("status.") {
-            crate::machines::hooks::push_status_on();
         }
         if key == "history.keep" {
             let history = crate::db::history(crate::config::history_keep());

@@ -27,6 +27,10 @@ off at expiry\": Cue asks it for a hand-off note before its cache runs out). The
 
 Act by writing lines of their own, outside code blocks, exactly like this:
 ITEM: bug | <title> | done when: <how we'll know it's done>      (kind is bug, feature or task)
+TITLE: #<id> | <short plain title>      (an item whose title isn't short and plain, as the user's often aren't: \
+a few words saying what they'll see; Cue keeps their words on the item)
+SPLIT: #<id> | <title> | <title>      (an item that holds two or more separate problems, one plain title each: the \
+first stays #<id>, Cue numbers the rest and tells you them; route them all then, not before)
 ROUTE: #<id> -> <session name> | kind: bug | why: <one short reason>      (kind is bug, feature or task; \
 give it when the item has none yet, as items the user adds don't)
 ROUTE: #<id> -> new | why: <reason>      (no session fits: Cue starts a new session of this project for it)
@@ -35,13 +39,14 @@ both would change the same files)
 ASK: <question> | choices: <A> / <B> / <C>      (only when you can't decide without the user)
 DECIDED: <what you chose> — <why>      (a judgment call you made on your own that the user may want to undo; not for routing, starting or giving work: Cue lists those itself)
 DONE: #<id>      (the user tells you an item is done)
+DESIGNS: #<id> <canvas link>      (where an item's designs are; say it again when they move)
 CONTEXT: <session or me> -> keep | why: <reason>      (Cue leaves that session's context as it is while it waits now, or, if it's at work, while it waits after this turn)
 
 In a ROUTE, #new means the ITEM you added in the same reply. Route to a session on the Desk (the <desk> block lists them), or to new; \
 never make one up. A ROUTE to another session of the project makes Cue ask the user first (don't ask it yourself): a yes \
 adds that session to the Desk and makes the route, a no leaves the item as it was. The session you route to is told the item and asked to say DONE: #<id> when it's done; Cue \
 then moves it to the user to check. To reopen one that's to check, route it again to the session holding it, \
-with what's left as the why. When Cue tells you of new items, route each one now.
+with what's left as the why. When Cue tells you of new items, route each one now; first TITLE or SPLIT one that needs it.
 In your own words, name an item by its kind and number, as the user sees it: \"Bug #2\", \"Task #1\" (in the lines above, \
 keep #<id>). Be short and plain: a line or two a busy person reads at a glance, no headings, no emoji.";
 
@@ -62,6 +67,13 @@ pub fn handed_words(it: &DeskItem, why: &str) -> String {
     if !why.trim().is_empty() {
         out.push_str(&format!("\nWhy you: {}", why.trim()));
     }
+    out.push_str(&format!(
+        "\nFixes and next steps for it stay in #{0}: do them, or say them in your reply; don't add new items for them. \
+         Add one only for something truly separate, with why in one line: \
+         ITEM: <bug|feature|task> | <title> | done when: <…> | why: <how it's separate from #{0}>",
+        it.id
+    ));
+    out.push_str(&format!("\nIf you put its designs on a canvas, or move them, say DESIGNS: #{} <canvas link> on a line of its own.", it.id));
     out.push_str(&format!("\nSay DONE: #{} on a line of its own when it's done.", it.id));
     match &it.holder {
         Some(h) if h.kind == "crew" => format!("For your teammate {}: {out}", h.name),
@@ -83,7 +95,16 @@ pub fn new_items_words(items: &[DeskItem]) -> String {
         if it.from != "you" && !it.from.is_empty() {
             out.push_str(&format!(" | from {}", it.from));
         }
+        if !it.why.trim().is_empty() {
+            out.push_str(&format!(" | why separate: {}", it.why.trim()));
+        }
+        if !it.split_from.is_empty() {
+            out.push_str(&format!(" | split from #{}", it.split_from));
+        }
         out.push('\n');
+    }
+    if items.iter().any(|i| i.from == "you" && i.words.is_empty() && i.split_from.is_empty()) {
+        out.push_str("If one of yours holds two separate problems, SPLIT it first (Cue tells you the new numbers); if its title isn't short and plain, TITLE it. ");
     }
     out.push_str(if items.len() == 1 { "Route it now: ROUTE it to a session, or -> new." } else { "Route each now: ROUTE it to a session, or -> new." });
     if items.iter().any(|i| i.kind.is_empty()) {

@@ -1,5 +1,5 @@
 // Fakes for src-tauri/src/ipc/chat.rs, the part about messages: sending, the "/" menu, earlier messages, search,
-// by-the-way questions, tasks. (Steps are in steps.js, MCP servers in mcp.js.)
+// by-the-way questions. (Steps are in steps.js, MCP servers in mcp.js.)
 CueBridge.area("chat", (w) => {
   const H = 3600000;
   /** "/" menu entries of a Claude Code session (?ins=1: a hand-off skill too; ?ins=cue: no skill at all). */
@@ -67,15 +67,6 @@ CueBridge.area("chat", (w) => {
   /** `n` made-up messages, a minute apart from `from_ms`, alternating you and the agent. */
   const page = (n, from, label) => Array.from({ length: n }, (_, i) => ({ at_ms: from + i * 60000, role: i % 2 ? "agent" : "you", text: `${label} ${i + 1}`, images: [] }));
   const before = (all, { beforeMs, limit }) => all.filter((e) => e.at_ms < beforeMs).slice(-(limit || 50));
-  const tasksOf = (sid) => (w.state.tasks ||= {})[sid] ||= { items: [], busy: "", next: 0, spent: { tokens: 0, usd: 0 } };
-  /** The settings list `key` with `sid` put in or taken out (ipc/chat.rs status_session, background_session). */
-  const listSetting = (area) => ({ sessionId, on }) => {
-    const s = (w.state.settings[area] ||= {}), list = new Set(s.sessions || []);
-    if (on) list.add(sessionId); else list.delete(sessionId);
-    s.sessions = [...list];
-    w.changed();
-    return null;
-  };
 
   return {
     send_to_session: async ({ sessionId, text, images, now }) => {
@@ -131,11 +122,6 @@ CueBridge.area("chat", (w) => {
     // By the way: a side question, answered after a moment (the real one asks a copy of the conversation).
     btw: async () => { await w.wait(600); return "Because the CSV export is read by the **finance script**, which expects the old order. Changing it would break their import, so it only changed the board."; },
     catch_up: async () => { await w.wait(600); return { points: ["Finished the spend column; tests pass.", "Kept the CSV export's old column order."], needs: "Carry spend over to a successor, or not?" }; },
-    tasks_start: ({ sessionId }) => { tasksOf(sessionId).busy = "listing"; (w.state.settings.tasks ||= {}).on = true; w.changed(); return null; },
-    tasks_refresh: ({ sessionId }) => { tasksOf(sessionId).busy = "listing"; w.changed(); return null; },
-    tasks_stop: ({ sessionId }) => { delete w.state.tasks?.[sessionId]; w.changed(); return null; },
-    status_session: listSetting("status"),
-    background_session: listSetting("background"),
     restart_session: async ({ sessionId }) => { await w.wait(300); return `Restarted ${w.session(sessionId)?.project || "it"}`; },
   };
 });

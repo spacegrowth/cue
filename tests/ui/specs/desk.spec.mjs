@@ -78,12 +78,23 @@ test("an item opens on the right with its row lit in place; ‹ web-lead goes ba
   await expect(pane.locator(".dk-state")).toContainText("#d4 · next for web-lead · added by you 20m ago");
   await expect(pane.locator(".dk-chain")).toContainText("Search stays centred in the header");
   await expect(pane.locator(".dk-chain")).toContainText("This one");
+  await pane.locator('[data-desk-itab="steps"]').click();
   await expect(pane).toContainText("Gave it to web-lead after Search");
-  // The empty box says who gets it and the item; ready to check, it goes back to its holder, and the line follows it.
-  const ph = page.locator(".dk-right .dk-box textarea");
-  await expect(ph).toHaveAttribute("placeholder", "To web-lead · Bug #d4 Rail dot blinks…");
+  await pane.locator('[data-desk-itab="thread"]').click();
+  // The box starts with who gets it and the item, kept as you type (#132); ready to check, it goes back to its holder,
+  // and the prefix follows it. The empty box shows the item's short title.
+  const ph = page.locator(".dk-right .dk-box textarea"), pre = page.locator(".dk-right .dk-box .dk-pre");
+  await expect(pre).toHaveText("To web-lead · Bug #d4");
+  await expect(ph).toHaveAttribute("placeholder", "Rail dot blinks…");
+  await ph.fill("still blinks");
+  await expect(pre).toHaveText("To web-lead · Bug #d4");
+  expect((await pre.boundingBox()).y).toBeLessThan((await ph.boundingBox()).y + 10);   // on the text's line, at its start
+  expect((await pre.boundingBox()).x).toBeLessThan((await ph.boundingBox()).x);
+  await ph.fill("");
+  await pre.click();
+  await expect(ph).toBeFocused();
   await cue.change((st) => Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d4"), { state: "to_check", holder: { kind: "session", sid: "s-new", name: "cue-117" } }));
-  await expect(ph).toHaveAttribute("placeholder", "To cue-117 · Bug #d4 Rail dot blinks…");
+  await expect(pre).toHaveText("To cue-117 · Bug #d4");
   await cue.change((st) => Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d4"), { state: "queued", holder: { kind: "lead", sid: "lead", name: "web-lead" } }));
   // Put it before the one it waits on.
   await pane.locator('[data-desk-act="put_before"]').click();
@@ -234,6 +245,7 @@ test("a step (a route, a give) is a quiet line on its item, not a decision", asy
   await cue.open("desk");
   await openDesk(page);
   await page.locator('[data-desk-item="d4"]').click();
+  await page.locator('[data-desk-itab="steps"]').click();
   const step = page.locator(".dk-step");
   await expect(step).toHaveCount(1);
   await expect(step).toContainText("Gave it to web-lead after Search, not a new session");
@@ -254,7 +266,7 @@ test("an item's Latest shows as written: **bold** in bold, and a link that opens
   await openDesk(page);
   await cue.change((st) => { st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d2").latest = "**Done.** The mocks: https://claude.ai/artifact/abc123"; });
   await page.locator('[data-desk-item="d2"]').click();
-  const sec = page.locator(".dk-sec", { has: page.locator("h3", { hasText: "Latest" }) });
+  const sec = page.locator(".dk-thread .dk-tm").last();
   await expect(sec.locator("strong")).toHaveText("Done.");
   await expect(sec).not.toContainText("**");
   await sec.locator('a[data-href="https://claude.ai/artifact/abc123"]').click();
@@ -1781,7 +1793,8 @@ test("an item's ask is answered at its page's foot: you stay on its page, which 
   await expect(chain).toContainText("If it still jumps, tell me what you did just before.");
   await expect(chain).not.toContainText("Moved the box.");
   const box = page.locator(".dk-right .dk-box textarea");
-  await expect(box).toHaveAttribute("placeholder", "To site-lead · Bug #d1 Reply box loses…");
+  await expect(page.locator(".dk-right .dk-box .dk-pre")).toHaveText("To site-lead · Bug #d1");
+  await expect(box).toHaveAttribute("placeholder", "Reply box loses…");
   await box.fill("It stays put now");
   await page.locator(".dk-right [data-desk-send]").click();
   await cue.called("send_to_session", { sessionId: "site", text: "It stays put now" });
@@ -1843,6 +1856,7 @@ test("what you write on an item's page shows in its Steps, with whom it went to 
   await box.fill("Keep the search box centred on narrow windows too");
   await page.locator(".dk-right [data-desk-send]").click();
   await cue.called("desk_item_act", { id: "d3", act: "wrote_lead", text: "Keep the search box centred on narrow windows too" });
+  await page.locator('[data-desk-itab="steps"]').click();
   const step = page.locator(".dk-pane .dk-step", { hasText: "Keep the search box centred on narrow windows too" });
   await expect(step).toHaveCount(1);
   await expect(step.locator(".dk-lby")).toHaveText("You");
@@ -1856,14 +1870,14 @@ test("Open on an item's page, or its holder's, opens that session's chat here on
   const sid = await page.evaluate(() => state.sessions.find((s) => s.project === "cue" && s.session_id !== "lead").session_id);
   await cue.change((st, s) => Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d4"), { holder: { kind: "session", sid: s, name: "cue-117" } }), sid);
   await page.locator('[data-desk-item="d4"]').click();
-  await page.locator(".dk-rail .btn", { hasText: "Open cue-117" }).click();
+  await page.locator(".dk-ilinks .btn", { hasText: "Open cue-117" }).click();
   expect(await page.evaluate(() => view)).toBe("desk");
   await expect(page.locator(`.dk-right [data-desk-chat="${sid}"]`)).toBeVisible();
   // ‹ goes back to the item it was opened from; so does Esc.
   await expect(page.locator(".dk-sch .dk-back")).toHaveText("‹ Bug #d4");
   await page.locator(".dk-sch .dk-back").click();
   await expect(page.locator(".dk-right .dk-pane h1")).toContainText("Rail dot blinks");
-  await page.locator(".dk-rail .btn", { hasText: "Open cue-117" }).click();
+  await page.locator(".dk-ilinks .btn", { hasText: "Open cue-117" }).click();
   await page.keyboard.press("Escape");
   await expect(page.locator(".dk-right .dk-pane h1")).toContainText("Rail dot blinks");
   // The holder's page: the same.
@@ -1886,4 +1900,55 @@ test("Open on an item's page, or its holder's, opens that session's chat here on
   await page.locator(".dk-right .dk-acts .btn", { hasText: "Open its session" }).click();
   expect(await page.evaluate(() => view)).toBe("desk");
   await expect(page.locator('.dk-chat[data-desk-chat="cue"]')).toBeVisible();
+});
+
+test("an item's page is a Thread under Thread, Decisions and Steps tabs: every message in order, a send-back's dot red (#140)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.change((st) => {
+    const d = st.desk.projects.find((x) => x.project === "cue"), it = d.items.find((i) => i.id === "d4"), t = it.created < 1e12 ? it.created : it.created / 1000;
+    it.said = [{ at: (t + 120) * 1000, by: "cue-117", text: "Fixed: the dot checks **who sent** it.", done: true }];
+    d.decisions.push({ project: "cue", item_id: "d4", id: "y1", by: "You", sid: "", text: "Still blinks after a reply from someone else", why: "sent back to cue-117", at: t + 240 });
+  });
+  await page.locator('[data-desk-item="d4"]').click();
+  const pane = page.locator(".dk-right .dk-pane");
+  await expect(pane.locator(".dk-itab")).toHaveText([/^Thread/, /^Decisions/, /^Steps/]);
+  await expect(pane.locator(".dk-itab.on")).toHaveText(/^Thread/);
+  const msgs = pane.locator(".dk-thread .dk-tm");
+  // Added first, its reply, then the send-back; the hand-off (a step) sits where its time puts it.
+  const who = await msgs.locator(".dk-tw b").allTextContents();
+  expect(who.slice(-3)).toEqual(["You", "cue-117", "You"]);
+  await expect(msgs.nth(who.length - 2).locator(".dk-ttag")).toHaveText("Done");
+  await expect(msgs.nth(who.length - 2).locator("strong")).toHaveText("who sent");
+  const back = msgs.last();
+  await expect(back.locator(".dk-ttag.back")).toHaveText("Sent back");
+  await expect(back.locator(".dk-tdot.back")).toHaveCount(1);
+  expect(await back.locator(".dk-tdot i").evaluate((e) => getComputedStyle(e).backgroundColor)).not.toBe(await msgs.first().locator(".dk-tdot i").evaluate((e) => getComputedStyle(e).backgroundColor));
+  await expect(pane.locator(".dk-thread .dk-ttag", { hasText: "Hand-off" })).toHaveCount(0);   // "Gave it…" isn't a hand-off line
+  // The answer box is the pane's foot.
+  const foot = await page.locator(".dk-right .dk-box").boundingBox(), last = await back.boundingBox();
+  expect(foot.y).toBeGreaterThan(last.y);
+  // Steps and Decisions behind their tabs; the pick stays while the item's open.
+  await pane.locator('[data-desk-itab="steps"]').click();
+  await expect(pane.locator(".dk-itab.on")).toHaveText(/^Steps/);
+  await expect(pane.locator(".dk-thread")).toHaveCount(0);
+  await expect(pane.locator(".dk-step").first()).toBeVisible();
+  await pane.locator('[data-desk-itab="decisions"]').click();
+  await expect(pane).toContainText("No decisions on it yet.");
+});
+
+test("what you send on an item's page shows in its Thread at once, before it comes back as a step (#140)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await page.locator('[data-desk-item="d3"]').click();
+  await cue.override("desk_item_act", () => new Promise((r) => { window.__release = r; }));
+  await page.locator(".dk-right .dk-box textarea").fill("Narrow windows too");
+  await page.locator(".dk-right [data-desk-send]").click();
+  const mine = page.locator(".dk-thread .dk-tm", { hasText: "Narrow windows too" });
+  await expect(mine).toHaveCount(1);
+  await expect(mine.locator(".dk-tw b")).toHaveText("You");
+  // Back as a step: still one message.
+  await cue.change((st) => st.desk.projects.find((x) => x.project === "cue").decisions.push({ project: "cue", item_id: "d3", id: "y2", by: "You", sid: "", text: "Narrow windows too", why: "to web-lead", at: Math.floor(Date.now() / 1000) }));
+  await page.evaluate(() => window.__release?.(null));
+  await expect(mine).toHaveCount(1);
 });

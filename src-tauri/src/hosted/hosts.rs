@@ -360,6 +360,13 @@ impl Hosted for Hosts {
         }
     }
 
+    fn send_with_model(&self, session_id: &str, text: &str, model: &str) -> Result<(), String> {
+        match self.remote(session_id) {
+            Some(r) => r.send_with_model(text, model),
+            None => self.direct.send_with_model(session_id, text, model),
+        }
+    }
+
     fn interrupt(&self, session_id: &str) -> Result<(), String> {
         match self.remote(session_id) {
             Some(r) => r.write_lines(&r.driver.interrupt()),

@@ -10,8 +10,6 @@ digraph locks {
   "a session's feed" -> "copies";
   "a session's feed" -> "machine tails";
   "a session's feed" -> "machine tails: links";
-  "actions STORE" -> "folder facts";
-  "actions WATCH" -> "folder facts";
   "config file" -> "config in memory";
   "copies" -> "machine tails";
   "copies" -> "machine tails: links";
@@ -54,7 +52,4 @@ digraph locks {
   "typing gate" -> "redraw wanted";
   "typing gate" -> "shown snapshot";
   "typing gate" -> "the hub's store";
-  "typing gate" -> "what About has cost";
-  "typing gate" -> "what each session is about";
-  "typing gate" -> "what the status list has cost";
 }

@@ -1,4 +1,4 @@
-//! Setting Cue's hooks up on a machine, and keeping its hook and its status-list sessions up to date.
+//! Setting Cue's hooks up on a machine, and keeping its hook up to date.
 
 use super::scripts::{wrap_status_line, SCRIPT, STATUS};
 use crate::machines::{self, Machine};
@@ -42,18 +42,6 @@ pub fn setup(m: &Machine, tools: &Value) -> Result<Vec<String>, String> {
         did.push(format!("Set up Cue's {what} for {label} (~/{file}, backed up first)"));
     }
     Ok(did)
-}
-
-/// The sessions the status list is on for, onto every machine (~/.cue/status-on, one id a line): its hook waits for
-/// Cue's answer only for those. Whenever the list changes, and as a machine's stream starts.
-pub fn push_status_on() {
-    for m in machines::list() {
-        std::thread::spawn(move || status_on_to(&m));
-    }
-}
-pub(super) fn status_on_to(m: &Machine) {
-    let ids = crate::statuslist::sessions_on(&crate::config::load()).join("\n");
-    let _ = machines::run_with_input(&m.host, r#"d="$HOME/.cue"; mkdir -p "$d" && cat >"$d/status-on.new" && mv -f "$d/status-on.new" "$d/status-on""#, &ids);
 }
 
 /// The hook on the machine brought up to this Cue's, when it was set up there and has changed since

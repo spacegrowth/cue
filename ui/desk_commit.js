@@ -116,16 +116,19 @@ function deskCheckCard(c, base = null, project = "") {
   const by = c.by || "its session", ses = (state.sessions || []).find((s) => s.name === c.by && (!project || s.project === project));
   const who = ses ? `<button class="dk-chk-a" data-desk-chat-of="${esc(ses.session_id)}">${esc(by)}</button>` : `<b>${esc(by)}</b>`;
   const n = (c.files || []).length, files = n ? ` · ${n === 1 ? "1 file" : `${n} files`}` : "";
+  // In it when Cue was installed after the work last changed (`edited`), not after the DONE: you install, then say DONE.
   const inst = state.desk?.installed_ms || 0;
-  const installed = !c.cue ? "" : inst > c.at ? `In the installed Cue · installed ${esc(deskChkWhen(inst))}` : "Not installed yet";
-  const open = c.last && c.state === "to_check";
-  const acts = open && deskLooksSoon.has(c.id) ? `<div class="dk-acts">${deskLooksSoonHtml(c.id)}</div>` : open && deskBackFor === c.id ? deskBackHtml(c.id) : open ? `<div class="dk-acts"><button class="btn small primary" data-desk-act="looks_right" data-id="${esc(c.id)}">Looks right</button><button class="btn small" data-desk-act="send_back" data-id="${esc(c.id)}">Send back</button></div>`
+  const waits = deskChkUninstalled(c), mocks = /^https?:\/\//.test(c.designs || "");
+  const installed = !c.cue || mocks ? "" : waits ? "Not installed yet: install Cue to try it" : `In the installed Cue · installed ${esc(deskChkWhen(inst))}`;
+  // Waiting for install: nothing to try yet, so no Looks right (Send back stays).
+  const open = c.last && c.state === "to_check", early = open && waits;
+  const acts = open && deskLooksSoon.has(c.id) ? `<div class="dk-acts">${deskLooksSoonHtml(c.id)}</div>` : open && deskBackFor === c.id ? deskBackHtml(c.id) : open ? `<div class="dk-acts">${early ? "" : `<button class="btn small primary" data-desk-act="looks_right" data-id="${esc(c.id)}">Looks right</button>`}<button class="btn small" data-desk-act="send_back" data-id="${esc(c.id)}">Send back</button></div>`
     : c.back || c.back_pics ? deskSentBack(c)
     : `<div class="dk-chk-after">${c.state === "done" ? (c.last ? deskCommitLine(c) : "Looked right") : "Sent back"}</div>`;
-  return `<div class="dk-chk"><div class="dk-chk-k">Ready to check</div><div class="dk-chk-t">${deskKindIcon(c)}<button class="dk-chk-a" data-desk-chk-item="${esc(c.id)}">${esc(`${deskNum(c)} · ${c.title}`)}</button></div>
+  return `<div class="dk-chk"><div class="dk-chk-k">${early ? "Waiting for install" : "Ready to check"}</div><div class="dk-chk-t">${deskKindIcon(c)}<button class="dk-chk-a" data-desk-chk-item="${esc(c.id)}">${esc(`${deskNum(c)} · ${c.title}`)}</button></div>
     <div class="dk-chk-w">Done by ${who} · ${ago(c.at)} ago${files}</div>
     <div class="dkc-l">What to test</div><div class="dkc-dw">${deskDoneWhenHtml(c.done_when, base) || `<span class="dim">No "done when" was given</span>`}</div>
-    ${installed ? `<div class="dkc-l">Installed</div><div class="dk-chk-in">${installed}</div>` : ""}${acts}</div>`;
+    ${mocks ? `<div class="dkc-l">Mocks</div><div class="dk-chk-in"><a href="#" data-href="${esc(c.designs)}">Open the mocks ↗</a></div>` : installed ? `<div class="dkc-l">Installed</div><div class="dk-chk-in">${installed}</div>` : ""}${acts}</div>`;
 }
 /** A card sent back: "Sent back" and why, in your words (links and paths open), with how many pictures went too. */
 function deskSentBack(c) {

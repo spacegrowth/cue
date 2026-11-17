@@ -40,6 +40,8 @@ pub(super) struct Codex {
     asked: HashMap<u64, Asked>,
     next_request: u64,
     stopped: bool,
+    /// Explicit picker selection, also restored when replaying the host log.
+    model: Option<String>,
 }
 
 enum Asked {
@@ -70,7 +72,7 @@ impl Codex {
                 json!({ "method": "thread/resume", "params": params })
             }
         };
-        Codex { open, thread: None, transcript: None, turn: None, prompted: false, last_said: String::new(), changes: HashMap::new(), waiting: HashMap::new(), held: vec![], asked: HashMap::new(), next_request: 0, stopped: false }
+        Codex { open, thread: None, transcript: None, turn: None, prompted: false, last_said: String::new(), changes: HashMap::new(), waiting: HashMap::new(), held: vec![], asked: HashMap::new(), next_request: 0, stopped: false, model: spec.model.as_ref().filter(|m| !m.is_empty()).cloned() }
     }
 
     fn request(&mut self, method: &str, params: Value, what: Asked) -> String {
@@ -84,7 +86,13 @@ impl Codex {
         let input = json!([{ "type": "text", "text": text }]);
         match self.turn.clone() {
             Some(turn) => self.request("turn/steer", json!({ "threadId": thread, "expectedTurnId": turn, "input": input }), Asked::Message(text.into())),
-            None => self.request("turn/start", json!({ "threadId": thread, "input": input }), Asked::Message(text.into())),
+            None => {
+                let mut params = json!({ "threadId": thread, "input": input });
+                if let Some(model) = &self.model {
+                    params["model"] = json!(model);
+                }
+                self.request("turn/start", params, Asked::Message(text.into()))
+            }
         }
     }
 
@@ -285,7 +293,12 @@ impl Protocol for Codex {
                 let what = match method {
                     "initialize" => Asked::Setup,
                     "thread/start" | "thread/resume" => Asked::Open,
-                    "turn/start" | "turn/steer" => Asked::Message(v.pointer("/params/input/0/text").and_then(Value::as_str).unwrap_or_default().to_string()),
+                    "turn/start" | "turn/steer" => {
+                        if let Some(model) = v.pointer("/params/model").and_then(Value::as_str) {
+                            self.model = Some(model.to_string());
+                        }
+                        Asked::Message(v.pointer("/params/input/0/text").and_then(Value::as_str).unwrap_or_default().to_string())
+                    }
                     "turn/interrupt" => {
                         self.stopped = true;
                         Asked::Other
@@ -304,6 +317,21 @@ impl Protocol for Codex {
 
     fn waits_on(&self, request_id: &str) -> bool {
         self.waiting.contains_key(request_id)
+    }
+
+    fn message_with_model(&mut self, text: &str, model: &str) -> Vec<String> {
+        self.model = Some(model.to_string());
+        self.message(text)
+    }
+
+    fn control(&mut self, body: Value) -> Option<(String, Vec<String>)> {
+        let method = body["method"].as_str()?;
+        let params = body.get("params").cloned().unwrap_or_else(|| json!({}));
+        if method != "model/list" {
+            return None;
+        }
+        let line = self.request(method, params, Asked::Other);
+        Some((self.next_request.to_string(), vec![line]))
     }
 
     fn session_id(&self) -> Option<String> {

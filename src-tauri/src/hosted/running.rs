@@ -30,6 +30,9 @@ pub trait Hosted: Send + Sync {
     /// running under that id is closed first: two processes on one conversation would both write its transcript.
     fn start(&self, spec: &Spec, report: Report) -> Result<Started, String>;
     fn send(&self, session_id: &str, text: &str) -> Result<(), String>;
+    fn send_with_model(&self, session_id: &str, text: &str, _model: &str) -> Result<(), String> {
+        self.send(session_id, text)
+    }
     fn answer(&self, session_id: &str, request_id: &str, answer: &Answer) -> Result<(), String>;
     fn interrupt(&self, session_id: &str) -> Result<(), String>;
     /// A request of Cue's to its agent itself (Claude Code's control request: `{"subtype": "mcp_status"}`), and the
@@ -119,6 +122,10 @@ impl Hosted for Running {
 
     fn send(&self, session_id: &str, text: &str) -> Result<(), String> {
         self.get(session_id)?.session.send(text)
+    }
+
+    fn send_with_model(&self, session_id: &str, text: &str, model: &str) -> Result<(), String> {
+        self.get(session_id)?.session.send_with_model(text, model)
     }
 
     fn answer(&self, session_id: &str, request_id: &str, answer: &Answer) -> Result<(), String> {

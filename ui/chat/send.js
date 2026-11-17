@@ -194,7 +194,7 @@ window.addEventListener("focus", backInFront);
 /** Catch me up, at the end of the chat (under the latest reply, above the status line): never a bar on the box. */
 function catchUpBar(sid, it, s) {
   const c = catchUp;
-  if (!c || c.sid !== sid || c.gone || !c.since || aboutTracked(sid)) return "";
+  if (!c || c.sid !== sid || c.gone || !c.since) return "";
   const ex = conversation(it, s);
   if (ex.some((e) => e.role === "you" && e.at_ms > c.openedAt)) return "";
   const away = (at) => at > c.since && at <= c.openedAt;

@@ -120,6 +120,25 @@ pub struct DeskItem {
     /// (hub/desk_checks.rs).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub checks: Vec<DeskCheck>,
+    /// What its holder said as each turn ended while at work on it, oldest first (the last `SAID_KEPT`): the
+    /// session's replies on its page's Thread, between your words and the lead's hand-offs (its Steps).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub said: Vec<Said>,
+}
+
+/// How many of an item's replies it keeps, and how long each is at most (chars): a page's thread, not a transcript.
+pub const SAID_KEPT: usize = 20;
+pub const SAID_CHARS: usize = 1200;
+
+/// One reply on an item's Thread: when (ms), who said it, its words (the Desk's own lines left out), and whether it
+/// said DONE for the item.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct Said {
+    pub at: u64,
+    pub by: String,
+    pub text: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub done: bool,
 }
 
 /// A commit waiting for files another session is editing: the item's files to commit (its folder, the path there),
@@ -152,6 +171,10 @@ pub struct DeskCheck {
     pub files: Vec<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub cue: bool,
+    /// When its work last changed (ms): its newest file here, else when this round began. The installed Cue has it
+    /// when it was installed after this, not after the DONE (you install, then say DONE).
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    pub edited: u64,
     /// Sent back after it: why, in your words, and how many pictures went with them.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub back: String,
@@ -216,6 +239,13 @@ pub struct Desk {
     /// Items a lead said DONE on that its DONE couldn't close, and how each was ("state@updated") when Cue told it
     /// why (hub/desk.rs lead_done): a lead saying it again of an unchanged item isn't answered again. Not saved.
     pub done_told: HashMap<String, String>,
+    /// Items whose holder's turn ended on them with no DONE, and Cue asked it once ("Done? …"): item → (that holder,
+    /// the item's `updated` then). The turn that answers isn't asked again; the item changed since (sent again, routed)
+    /// is a new stall (hub/desk_stall.rs). Not saved.
+    pub nudged: HashMap<String, (String, u64)>,
+    /// When Cue last sent each working item to its holder (item → (holder, ms)): a turn that ended before it isn't a
+    /// stall on it. Not saved: after a restart, `held_from` stands in.
+    pub sent_at: HashMap<String, (String, u64)>,
 }
 
 /// The session that runs a project's Desk, and the name it went by when last seen (shown once it has ended).
@@ -325,4 +355,8 @@ impl Desk {
         self.next += 1;
         format!("k{now_ms}-{}", self.next)
     }
+}
+
+fn is_zero_u64(n: &u64) -> bool {
+    *n == 0
 }
