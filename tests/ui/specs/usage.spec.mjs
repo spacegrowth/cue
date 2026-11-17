@@ -24,29 +24,32 @@ test("a single provider keeps the existing meter layout", async ({ cue, page }) 
   await expect(page.locator('.usage-pop')).toContainText('64%');
 });
 
-test("both providers have labels and separate popovers, and settings can hide Codex", async ({ cue, page }) => {
+test("one usage button opens both providers and their weekly limits", async ({ cue, page }) => {
   await cue.open("board-waiting");
   await usage(cue);
-  await expect(page.locator('.usage-provider')).toHaveText(['Claude', 'Codex']);
-  await expect(page.locator('[data-usage="meter"]')).toHaveText('Claude5h32%');
-  await expect(page.locator('[data-usage="codex"]')).toHaveText('Codex5h64%');
-  await page.getByRole('button', { name: 'Codex usage', exact: true }).click();
-  await expect(page.locator('.usage-pop')).toHaveCount(1);
-  await expect(page.locator('.usage-pop')).toContainText('64%');
-  await expect(page.locator('.usage-pop')).toContainText('resets');
-  await expect(page.locator('.usage-pop')).toContainText('Weekly');
-  await expect(page.locator('.usage-pop')).toContainText('28%');
-  await page.getByRole('button', { name: 'Claude Code usage', exact: true }).click();
-  await expect(page.locator('.usage-pop')).toHaveCount(1);
-  await expect(page.locator('.usage-pop')).toContainText('32%');
-  await expect(page.locator('.usage-pop')).toContainText('Weekly');
-  await expect(page.locator('.usage-pop')).toContainText('18%');
+  await expect(page.locator('.usage-chip')).toHaveCount(1);
+  const button = page.getByRole('button', { name: 'Usage', exact: true });
+  await expect(button).toHaveText('Usage');
+  await button.click();
+  const popup = page.locator('.usage-pop');
+  await expect(popup).toHaveCount(1);
+  await expect(popup).toContainText('Claude Code usage');
+  await expect(popup).toContainText('Codex usage');
+  await expect(popup).toContainText('32%');
+  await expect(popup).toContainText('64%');
+  await expect(popup).toContainText('18%');
+  await expect(popup).toContainText('28%');
+  await expect(popup).toContainText('Weekly');
+  await expect(popup).toContainText('resets');
+  await button.click();
+  await expect(popup).toHaveCount(0);
+  await button.click();
   await page.locator('.top').click({ position: { x: 2, y: 2 } });
-  await expect(page.locator('.usage-pop')).toHaveCount(0);
+  await expect(popup).toHaveCount(0);
   await cue.change((s) => { s.settings.usage = { ...s.settings.usage, codex: false }; });
-  await expect(page.locator('[data-usage="codex"]')).toHaveCount(0);
-  await expect(page.locator('.usage-provider')).toHaveCount(0);
-  await expect(page.locator('[data-usage="meter"]')).toHaveText('5h32%wk18%');
+  await expect(page.locator('.usage-chip')).toHaveText('5h32%wk18%');
+  await page.getByRole('button', { name: 'Claude Code usage', exact: true }).click();
+  await expect(popup).not.toContainText('Codex usage');
 });
 
 test("expired Codex windows disappear and alternate durations keep their labels", async ({ cue, page }) => {
@@ -63,7 +66,7 @@ test("expired Codex windows disappear and alternate durations keep their labels"
   await expect(page.locator('[data-usage="codex"]')).toHaveCount(0);
 });
 
-test("two meters and their details fit the smallest window", async ({ cue, page }) => {
+test("merged usage and its details fit the smallest window", async ({ cue, page }) => {
   await page.setViewportSize({ width: 900, height: 600 });
   await cue.open("board-waiting");
   await usage(cue);
@@ -72,7 +75,7 @@ test("two meters and their details fit the smallest window", async ({ cue, page 
   await expect(settings).toBeVisible();
   expect((await settings.boundingBox()).x + (await settings.boundingBox()).width).toBeLessThanOrEqual(901);
   expect(await page.locator('.top > :last-child').evaluate((el) => el.getBoundingClientRect().right)).toBeLessThanOrEqual(901);
-  await page.getByRole('button', { name: 'Codex usage', exact: true }).click();
+  await page.getByRole('button', { name: 'Usage', exact: true }).click();
   const pop = await page.locator('.usage-pop').boundingBox();
   expect(pop.x).toBeGreaterThanOrEqual(0);
   expect(pop.x + pop.width).toBeLessThanOrEqual(901);

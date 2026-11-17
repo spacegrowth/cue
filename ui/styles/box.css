@@ -126,6 +126,7 @@
 .usage-back { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 4px 0 13px; border-radius: var(--pill-radius); font-size: 12.5px; font-weight: 650; background: var(--on-bg); color: var(--bg); white-space: nowrap; }
 .ub-dot { width: 8px; height: 8px; border-radius: 50%; background: #7fae5a; }
 .ub-btn { height: 22px; padding: 0 10px; border-radius: var(--pill-radius); border: 0; background: var(--bg); color: var(--on-bg); font: inherit; font-weight: 650; font-size: 12px; cursor: pointer; }
+.up-provider { border-top: 1px solid color-mix(in srgb, var(--ink) 12%, transparent); margin-top: 12px; padding-top: 12px; }
 .usage-pop { position: absolute; top: 38px; right: 0; z-index: 20; width: 300px; padding: 12px 14px 10px; border-radius: 14px; background: var(--panel); color: var(--ink); box-shadow: var(--shadow, 0 10px 30px rgba(0,0,0,.25)); }
 /* Your usage file's rows: the first sits in the bar; hovering it shows them all in a list that looks like the bar.
    A strip above the list bridges the gap so the pointer can reach it. */

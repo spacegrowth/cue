@@ -518,6 +518,9 @@ function usageChip() {
   const windows = codexUsageWindows();
   const claude = claudeUsageChip();
   if (!windows.length) return claude;
+  if (claude && !limitedSessions().length) {
+    return `<span class="usage-wrap"><button class="usage-chip" data-usage="meter" aria-label="Usage" aria-expanded="${usageOpen === "claude"}">Usage</button>${usagePop()}</span>`;
+  }
   const label = claude ? '<span class="usage-provider">Codex</span>' : "";
   const headerWindows = claude ? windows.filter((w) => w.minutes === 300) : windows;
   const codex = `<span class="usage-wrap"><button class="usage-chip" data-usage="codex" aria-label="Codex usage" aria-expanded="${usageOpen === "codex"}">${label}${headerWindows.map((w) => usageMeter(usageWindowName(w.minutes, true), w)).join("")}</button>${codexUsagePop(windows)}</span>`;
@@ -525,8 +528,12 @@ function usageChip() {
 }
 function codexUsagePop(windows) {
   if (usageOpen !== "codex") return "";
+  return `<div class="usage-pop">${codexUsageDetails(windows)}</div>`;
+}
+function codexUsageDetails(windows) {
+  if (!windows.length) return "";
   const rates = state.codex_usage;
-  return `<div class="usage-pop"><div class="up-head">Codex usage<span class="dim">${ago(rates.at_ms)} ago</span></div>${windows.map((w) => `<div class="up-group"><div class="up-title">${usageWindowName(w.minutes)}${w.resets_ms ? `<span> · resets ${clockAt(w.resets_ms)}</span>` : ""}</div><div class="up-row ${w.pct >= 100 ? "full" : w.pct >= 85 ? "high" : ""}"><span class="up-name">Used</span><span class="up-bar"><i style="width:${Math.min(100, w.pct)}%"></i></span><span class="up-pct">${Math.round(w.pct)}%</span></div></div>`).join("")}<div class="up-foot">From local Codex sessions · updates as Codex reports usage.</div></div>`;
+  return `<div class="up-head">Codex usage<span class="dim">${ago(rates.at_ms)} ago</span></div>${windows.map((w) => `<div class="up-group"><div class="up-title">${usageWindowName(w.minutes)}${w.resets_ms ? `<span> · resets ${clockAt(w.resets_ms)}</span>` : ""}</div><div class="up-row ${w.pct >= 100 ? "full" : w.pct >= 85 ? "high" : ""}"><span class="up-name">Used</span><span class="up-bar"><i style="width:${Math.min(100, w.pct)}%"></i></span><span class="up-pct">${Math.round(w.pct)}%</span></div></div>`).join("")}<div class="up-foot">From local Codex sessions · updates as Codex reports usage.</div>`;
 }
 function claudeUsageChip() {
   const limited = limitedSessions();
@@ -583,7 +590,8 @@ function usagePop() {
       return `<div class="up-row money ${lvl}"><span class="up-name">${esc(m.label || "Usage")}</span>${pct === null ? `<span class="up-bar none"></span>` : `<span class="up-bar"><i style="width:${Math.min(100, pct)}%"></i></span>`}<span class="up-pct">${esc(spendText(m, true))}</span>${m.resets_ms ? `<span class="up-note">resets ${clockAt(m.resets_ms)}</span>` : ""}</div>`;
     }).join("")}</div>`;
   const claude = state.settings?.usage?.claude !== false && u && (u.five_hour || u.seven_day);
-  if (!claude) return `<div class="usage-pop"><div class="up-head">Usage</div>${fileSec}</div>`;
+  const codexSec = codexUsageDetails(codexUsageWindows());
+  if (!claude) return `<div class="usage-pop">${codexSec || '<div class="up-head">Usage</div>'}${fileSec}</div>`;
   const lvl = (w) => (w.pct >= 100 ? "full" : w.pct >= 85 ? "high" : "");
   const row = (name, w, note = "") => w ? `<div class="up-row ${lvl(w)}"><span class="up-name">${esc(name)}</span><span class="up-bar"><i style="width:${Math.min(100, w.pct)}%"></i></span><span class="up-pct">${Math.round(w.pct)}%</span>${note ? `<span class="up-note">${esc(note)}</span>` : ""}</div>` : "";
   // Rows that reset together sit under one heading that says when, instead of repeating it per row.
@@ -595,7 +603,7 @@ function usagePop() {
   }).join("");
   return `<div class="usage-pop"><div class="up-head">Claude Code usage<span class="dim">${ago(u.at_ms)} ago</span></div>
     ${group("Session", u.five_hour, row("5 hours", u.five_hour))}${group("Weekly", u.seven_day, row("All models", u.seven_day) + models)}
-    ${fileSec}<div class="up-foot">Claude Code's limits apply to Claude Code sessions.</div></div>`;
+    ${codexSec ? `<div class="up-provider">${codexSec}</div>` : ""}${fileSec}</div>`;
 }
 /** Its machine couldn't be reached on Cue's last try: the card says so whatever it last showed, and × takes it out of Cue. */
 const cutOff = (s) => !!s.machine && (state.unreachable || []).includes(s.machine);
