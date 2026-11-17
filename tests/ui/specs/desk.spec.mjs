@@ -72,7 +72,7 @@ test("an item opens on the right with its row lit in place; ‹ web-lead goes ba
   const pane = page.locator(".dk-right .dk-pane");
   await expect(pane.locator("h1")).toHaveText("Rail dot blinks for a reply you didn't send");
   await expect(page.locator('.dk-right [data-desk-mark]')).toHaveText("Bug");   // a chat for an item: its kind
-  await expect(pane.locator(".dk-state")).toContainText("Bug · next for web-lead · added by you 20m ago");
+  await expect(pane.locator(".dk-state")).toContainText("#d4 · next for web-lead · added by you 20m ago");
   await expect(pane.locator(".dk-chain")).toContainText("Search stays centred in the header");
   await expect(pane.locator(".dk-chain")).toContainText("This one");
   await expect(pane).toContainText("Gave it to web-lead after Search");
@@ -732,7 +732,7 @@ test("the quick-add line: Enter adds an item of no kind (the lead says which), t
   // No kind yet: the pane shows no kind before where it is.
   const row = page.locator(".dk-items .dk-it", { hasText: "Dark mode for the Desk" });
   await row.click();
-  await expect(page.locator(".dk-pane .dk-state")).toHaveText(/^Not given out yet · added by you/);
+  await expect(page.locator(".dk-pane .dk-state")).toHaveText(/^#\w+ · not given out yet · added by you/);
 });
 
 test("Done when is optional: ⇧Enter or + Done when opens it, Enter adds both; Esc closes an empty one", async ({ page, cue }) => {
@@ -922,7 +922,7 @@ test("the lead's own Desk lines are drawn as lines in its chat, code blocks left
   await expect(page.locator(".dk-chat .cv-fwd")).toHaveCount(0);
 });
 
-test("a reply with little to read has no Listen or Read: a lone ROUTE line, a short answer; a longer one has Listen", async ({ page, cue }) => {
+test("a reply with little to read has no Listen or Read: a lone ROUTE line, a short answer; a longer one has both", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   const say = (text) => page.evaluate((t) => { sessionOf("lead").thread.push({ at_ms: Date.now(), role: "agent", text: t }); renderMain(); }, text);
@@ -936,7 +936,7 @@ test("a reply with little to read has no Listen or Read: a lone ROUTE line, a sh
   await expect(last.locator("[data-listen]")).toHaveCount(0);
   await say("Sent it to web-lead, who has the header code warm from the last change; it can start right away and should be done within the hour, then you check it.");
   await expect(last.locator("[data-listen]")).toHaveCount(1);
-  await expect(last.locator("[data-read]")).toHaveCount(0);
+  await expect(last.locator("[data-read]")).toHaveCount(1);
 });
 
 test("Cue's New item note shows as a small card an item, without its Route words for the lead", async ({ page, cue }) => {
@@ -1597,4 +1597,21 @@ test("Looks right waits a moment with \"Done · Undo\" on the item and in a toas
   await page.locator('[data-desk-item="d2"] .dk-ok').click();
   expect(await cue.calls("desk_looks_right")).toEqual([]);
   await cue.called("desk_looks_right", { id: "d2" });
+});
+
+test("Waiting on you stays at 0, not in red; an open item is a quiet wash of the theme, its words as they are", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  const you = page.locator(".dk-items .dk-gh.you");
+  const deny = await page.evaluate(() => { const t = document.createElement("i"); t.style.color = "var(--deny)"; document.body.append(t); const c = getComputedStyle(t).color; t.remove(); return c; });
+  expect(await you.evaluate((e) => getComputedStyle(e).color)).toBe(deny);
+  await cue.change((st) => { for (const i of st.desk.projects.find((d) => d.project === "cue").items) if (["needs_you", "to_check"].includes(i.state)) i.state = "done"; });
+  await expect(you).toHaveText(/Waiting on you\s*0/);
+  expect(await you.evaluate((e) => getComputedStyle(e).color)).not.toBe(deny);
+  const row = page.locator('[data-desk-item="d3"]');
+  await row.click();
+  await expect(row).toHaveClass(/\bon\b/);
+  const [bg, sel, ink, idInk] = await row.evaluate((e) => { const c = (v) => { const t = document.createElement("i"); t.style.color = v; document.body.append(t); const r = getComputedStyle(t).color; t.remove(); return r; }; return [getComputedStyle(e).backgroundColor, c("var(--sel)"), c("var(--on-sel)"), getComputedStyle(e.querySelector(".dk-id")).color]; });
+  expect(bg).not.toBe(sel);
+  expect(idInk).not.toBe(ink);
 });

@@ -116,7 +116,6 @@ const deskDoneToday = (i) => i.state === "done" && deskToday(i.done_at || i.upda
 const deskMoving = (i) => i.state === "working" || i.state === "queued";
 /** A title cut short for a button or a line ("Search stays centred"): its first few words. */
 const deskShort = (t) => { const w = String(t || "").split(/\s+/); return w.length > 3 ? w.slice(0, 3).join(" ") : t; };
-const deskCap = (s) => String(s || "").replace(/^./, (c) => c.toUpperCase());
 
 // ---------- holders: a lead (its crew from its team), a session on its own, or the add-on's ----------
 
@@ -190,7 +189,6 @@ const deskCrewItem = (project, lead, agent) => { const t = deskMate(lead, agent)
  *  view). Today's come with the Desk's state; older ones only from here. */
 const deskDonePages = new Map(), deskDoneShown = new Map();
 const DESK_DONE_STEP = 10;
-const deskDoneKey = (i) => [deskMs(i.updated), i.id];
 /** A project's finished items, newest first: today's as the Desk's state has them, then those loaded; one that's open
  *  again (in the state, not done) left out. */
 function deskDoneList(d) {
@@ -242,7 +240,8 @@ function deskList(project) {
   const held = sessSid ? deskSessItem(g.d, sessSid)?.id : null;
   const row = (i) => deskItemRow(i, i.id === crewLit || i.id === held, i.id === held);
   const parts = [];
-  if (g.waiting.length) parts.push(`<div class="dk-gh you">Waiting on you <span class="n">${g.waiting.length}</span></div>${g.waiting.map(row).join("")}`);
+  // Waiting on you stays at 0 (in red only while something waits), so you see there's nothing for you.
+  parts.push(`<div class="dk-gh you${g.waiting.length ? "" : " none"}">Waiting on you <span class="n">${g.waiting.length}</span></div>${g.waiting.map(row).join("")}`);
   if (g.working.length) parts.push(`<div class="dk-gh">In progress <span class="n">${g.working.length}</span></div>${g.working.map(row).join("")}`);
   if (g.queued.length) parts.push(`<div class="dk-gh">Queued <span class="n">${g.queued.length}</span></div>${g.queued.map(row).join("")}`);
   for (const h of g.extra) parts.push(deskHolderHead({ ...h, addon: true, key: h.key || h.name }, o?.kind === "addon" && o.key === (h.key || h.name)) + (h.items || []).map(row).join(""));
@@ -254,7 +253,7 @@ function deskList(project) {
   const more = done.length > shown.length || !pg?.end;
   if (shown.length) parts.push(`<div class="dk-gh">Done</div>${shown.map(row).join("")}`);
   if (more && (shown.length || pg?.loading || !pg)) parts.push(`<div class="dk-more" data-desk-done-more="${esc(project)}">${shown.length ? "Loading older…" : ""}</div>`);
-  const body = parts.join("") || `<div class="dk-empty">No items yet.</div>`;
+  const body = parts.join("") + (parts.length > 1 ? "" : `<div class="dk-empty">No items yet.</div>`);
   return `<div class="dk-card dk-items"><div class="dk-ch"><b>Items</b></div>
     ${deskQuickAdd()}<div class="dk-scroll" data-scroll-key="desk-items:${esc(project)}">${body}</div></div>`;
 }
@@ -377,7 +376,7 @@ function deskNewSession(project) {
 
 // ---------- the chat card: the lead's chat, Decisions, or what's open ----------
 
-/** Decisions or steps as one quiet table: when | what, with who and why muted under it | Undo (shown on hover). The
+/** Decisions or steps as one quiet table: who | what | why (muted) | when | Undo (a small icon, shown on hover). The
  *  same line said again in a row is one row marked "×N" (its latest time and Undo). `about`: more for the muted line
  *  (the item a lead's decision was on). */
 function deskLog(list, about = null) {
@@ -526,6 +525,9 @@ const deskDoneWhenHtml = (t, base = null) => {
   const pts = deskDoneWhenPoints(t);
   return pts.length ? `<ul class="dk-dwl">${pts.map((p) => `<li><i aria-hidden="true"></i><span>${linkify(esc(p), base)}</span></li>`).join("")}</ul>` : "";
 };
+/** Its designs' canvas (the last DESIGNS: link a session gave, hub/desk.rs designs_said): one "Designs" link. */
+const deskDesignsLink = (i) => /^https?:\/\//.test(i.designs || "")
+  ? `<div class="dk-dsg"><a href="#" data-href="${esc(i.designs)}"><svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>Designs<svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M8 7h9v9"/></svg></a></div>` : "";
 const deskSec = (title, html) => (html ? `<div class="dk-sec"><h3>${title}</h3>${html}</div>` : "");
 const deskBack = (label, to = "") => `<button class="dk-back" data-desk-back="${esc(to)}">‹ ${esc(label)}</button>`;
 
@@ -583,8 +585,8 @@ function deskItemState(i) {
   const who = i.holder ? `<b>${esc(i.holder.name)}</b>${i.crew ? ` → <b>${esc(i.crew)}</b>` : ""}` : "";
   const by = (pre) => (who ? ` ${pre} ${who}` : "");
   const where = { new: "not given out yet", queued: `next${by("for")}`, working: who ? `with ${who}` : "at work", needs_you: `waits on you${who ? ` · with ${who}` : ""}`, to_check: `ready to check${by("· from")}`, done: `done${by("by")}${i.commit ? ` · committed <span class="dk-cm">${esc(i.commit)}</span>` : ""}` }[i.state] || "";
-  // No kind yet (one you added, till the lead says): it starts with where it is.
-  return `${i.kind ? `${esc(deskCap(i.kind))} · ${where}` : deskCap(where)} · added by ${esc(deskFrom(i, deskOf(i.project)))} ${ago(deskMs(i.created))} ago`;
+  // Its kind is the mark at the pane's top right (deskMark): the line starts with its number, then where it is.
+  return `<span class="dk-id">#${esc(i.id)}</span> · ${where} · added by ${esc(deskFrom(i, deskOf(i.project)))} ${ago(deskMs(i.created))} ago`;
 }
 function deskItemPane(i, d) {
   const decs = d.decisions.filter((c) => c.item_id === i.id && c.call), steps = d.decisions.filter((c) => c.item_id === i.id && !c.call);
@@ -592,10 +594,11 @@ function deskItemPane(i, d) {
   const changed = deskFilesChanged(i), fileNames = deskFilesShort(i.files, " · ");
   const files = changed ? `<div class="dk-fcs">${changed}</div>` : fileNames ? `<div class="dk-files">${esc(fileNames)}</div>` : "";
   const armed = deskDropArm === i.id;
-  return `<div class="dk-pane" data-scroll-key="item:${esc(i.id)}">${deskBack(deskLeadName(d) || "Back")}<h1>${esc(i.title)}</h1><div class="dk-state">${deskKindIcon(i)}${deskItemState(i)}</div>
+  return `<div class="dk-pane" data-scroll-key="item:${esc(i.id)}">${deskBack(deskLeadName(d) || "Back")}<h1>${esc(i.title)}</h1><div class="dk-state">${deskItemState(i)}</div>${deskDesignsLink(i)}
     ${deskSec("Couldn't give it out", i.route_failed ? `<p>${esc(i.route_failed)}</p>` : "")}
     ${deskSec(i.state === "needs_you" ? "It asks you" : "What's holding it up", deskChain(i))}${deskSec("What it made", i.state === "to_check" || i.state === "done" ? deskMadeLinks(i) : "")}${deskItemActs(i)}
     ${deskSec("Done when", deskDoneWhenHtml(i.done_when))}
+    ${deskSec(i.from === "you" ? "Your words" : "Words it was added with", i.words ? `<p class="dk-words">${esc(i.words)}</p>${i.split_from ? `<p class="dk-split">Split from <a href="#" data-desk-item="${esc(i.split_from)}">#${esc(i.split_from)}</a></p>` : ""}` : "")}
     ${deskSec("Pictures", thumbs(i.images))}
     ${deskSec("Latest", i.latest && i.state !== "queued" ? `<div class="dk-md">${md(i.latest)}</div>` : "")}
     ${deskSec(changed ? "Files changed" : "Files", files)}
@@ -773,6 +776,12 @@ async function deskSendBox(key) {
   }
   const { project, item: id } = to;
   const it = id && deskItem(project, id);
+  // About an item ready to check: it's sent back with your words, to its holder, as Send back does (off Waiting on you).
+  if (it?.state === "to_check" && it.holder) {
+    // Its page closes for the lead's chat once it went, as after anything you write about an item.
+    if (await deskSendBack(id, key, text, images) && deskOpen?.kind === "item" && deskOpen.id === id) { deskOpen = null; deskTab = "lead"; deskChatEnd = true; }
+    return renderMain();
+  }
   const said = it ? `About #${it.id} (${it.title}): ${text}` : text;
   endDictation(key);
   delete drafts[key];
@@ -791,6 +800,19 @@ async function deskSendBox(key) {
   }
   catch (e) { deskSent.set(project, (deskSent.get(project) || []).filter((p) => p !== mine)); Object.assign(draft(key), { text, images }); toast(`Not sent: ${e}`); renderMain(); }
 }
+/** Item `id` sent back to its holder from box `key` with `text` and `images`: the box emptied once it went (kept when
+ *  it didn't). Whether it went. */
+async function deskSendBack(id, key, text, images) {
+  endDictation(key);
+  try {
+    const it = await invoke("desk_item_act", { id, act: "send_back", text, images });
+    delete drafts[key];
+    saveDrafts();
+    toast(`Sent back${it?.holder?.name ? ` to ${it.holder.name}` : ""}`);
+    return true;
+  }
+  catch (e) { toast(`Not sent: ${e}`, 5000); return false; }
+}
 /** Item `id` of the project picked, open in the chat card (the Inbox's Open in Desk). */
 function deskOpenItem(id) {
   deskSeeItem(id);
@@ -808,19 +830,15 @@ async function deskAct(id, act, el = null) {
   // Send back opens the item's own box for why (deskBackHtml); its Send sends that, to the item's holder only.
   if (act === "send_back") { deskBackFor = deskBackFor === id ? null : id; renderMain(); return deskBackFocus(id); }
   if (act === "back_cancel") { endDictation(`back:${id}`); deskBackFor = null; return renderMain(); }
-  let text, key, images = [];
   if (act === "back_go") {
-    act = "send_back";
-    key = `back:${id}`;
-    text = draft(key).text.trim();
-    images = draft(key).images.map(({ name, mime, data }) => ({ name, mime, data }));
+    const key = `back:${id}`, text = draft(key).text.trim();
+    const images = draft(key).images.map(({ name, mime, data }) => ({ name, mime, data }));
     if (!text && !images.length) { toast("Say why it goes back first", 4000); return deskBackFocus(id); }
-    endDictation(key);
+    if (await deskSendBack(id, key, text, images)) deskBackFor = null;
+    return renderMain();
   }
   try {
-    const it = await invoke("desk_item_act", key ? { id, act, text, images } : { id, act });
-    // What it was sent back with is gone from the box once it went (kept when it didn't).
-    if (key) { delete drafts[key]; saveDrafts(); deskBackFor = null; toast(`Sent back${it?.holder?.name ? ` to ${it.holder.name}` : ""}`); }
+    await invoke("desk_item_act", { id, act });
     if (act === "drop") deskOpen = null;
   }
   catch (e) { toast(String(e), 5000); }
