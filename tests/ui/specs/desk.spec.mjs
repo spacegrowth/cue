@@ -1730,3 +1730,42 @@ for (const z of [0.9, 1, 1.15, 1.3]) test(`Read on a Desk reply opens the reader
   await page.locator("[data-reader-reply]").click();
   await expect(page.locator(".dk-right .dk-box textarea")).toBeFocused();
 });
+
+test("an item's ask is answered on its page: you stay on the Desk and the page says what you picked", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await page.locator('[data-desk-item="d1"]').click();
+  const chain = page.locator(".dk-pane .dk-chain");
+  // One question: its choices are the answer; picked, the page says so, still on the Desk.
+  await chain.locator("[data-pick]", { hasText: "Keep it in the box" }).click();
+  await cue.called("respond");
+  await cue.change((st) => {
+    st.items = st.items.filter((i) => i.id !== "n-focus-ask");
+    const d1 = st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d1");
+    d1.state = "working"; d1.ask = null;
+  });
+  await expect(chain).toContainText("You answered: Keep it in the box");
+  expect(await page.evaluate(() => view)).toBe("desk");
+  await expect(page.locator(".dk-pane h1")).toHaveText("Reply box loses focus after Send");
+  // Two questions: its card, here, as under a chat (no Inbox); a finished turn: its holder's chat, on the Desk.
+  await cue.change((st) => {
+    st.items.push({ ...st.items[0], id: "n-two", kind: "question", session_id: "lead", agent_id: "", tool_input: { questions: [
+      { question: "Which box?", header: "Box", multiSelect: false, options: [{ label: "Top", description: "" }, { label: "Bottom", description: "" }] },
+      { question: "When?", header: "When", multiSelect: false, options: [{ label: "Now", description: "" }, { label: "Later", description: "" }] }] } });
+    const d1 = st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d1");
+    d1.state = "needs_you"; d1.ask = { item_id: "n-two", sid: "lead", text: "Which box?", choices: [] };
+  });
+  await expect(chain.locator(".act-card")).toContainText("Which box?");
+  await expect(chain.locator("[data-desk-inbox]")).toHaveCount(0);
+  await chain.locator("[data-pick]", { hasText: "Top" }).click();
+  await chain.locator("[data-pick]", { hasText: "Now" }).click();
+  await cue.called("respond");
+  expect(await page.evaluate(() => view)).toBe("desk");
+  await cue.change((st) => {
+    st.items = st.items.filter((i) => i.id !== "n-two");
+    st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d1").ask = { item_id: "", sid: "lead", text: "Its turn ended", choices: [] };
+  });
+  await chain.locator("button", { hasText: "Answer it" }).click();
+  expect(await page.evaluate(() => view)).toBe("desk");
+  expect(await page.evaluate(() => deskOpen)).toMatchObject({ kind: "holder", sid: "lead" });
+});

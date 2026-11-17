@@ -147,7 +147,9 @@ function deskGroups(project) {
   const rest = items.filter((i) => !deskWaits(i) && i.state !== "done");
   let extra = [];
   try { extra = addOn.deskHolders?.(project) || []; } catch (e) { console.error(e); }
-  return { d, waiting, working: rest.filter((i) => i.state === "working"), queued: rest.filter((i) => i.state !== "working"), extra, done, all: items };
+  // In progress: its holder is on it. One left working by a crash or quit (its holder idle) waits with the queued.
+  const onIt = (i) => i.state === "working" && !deskHolderIdle(i.holder);
+  return { d, waiting, working: rest.filter(onIt), queued: rest.filter((i) => !onIt(i)), extra, done, all: items };
 }
 
 // ---------- the list ----------
@@ -175,7 +177,8 @@ function deskItemRow(i, lit, held = false) {
   const who = s ? `working · ${esc(deskHolderOf(i))} · <span data-ago="${at}">${ago(at)}</span>` : !i.holder && i.state !== "done" ? deskGive(i, "row") : esc(deskHolderOf(i));
   const when = s ? "" : i.state === "done" ? `${i.commit ? `<span class="dk-cm">committed ${esc(i.commit)}</span> · ` : ""}${clockAt(deskMs(i.done_at || i.updated))}` : ago(deskMs(i.created));
   const ok = i.state === "to_check" && deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id) : i.state === "to_check" ? `<button class="dk-ok" data-desk-act="looks_right" data-id="${esc(i.id)}" aria-label="Looks right"></button>` : "";
-  const ask = i.state === "needs_you" ? `<div class="dk-h">${esc(i.ask?.text || `${i.holder?.name || "Its holder"} asks you something`)}</div>` : "";
+  // Its holder's question under the row; a holder that just stopped (no question) leaves only the "needs you" state.
+  const ask = i.state === "needs_you" && i.ask ? `<div class="dk-h">${esc(i.ask.text)}</div>` : "";
   return `<div class="dk-it ${i.state === "needs_you" ? "ask" : ""} ${look === "landed" ? "landed" : ""}${tag ? "" : " notag"} ${on ? "on" : ""}${i.state === "to_check" && deskLooksSoon.has(i.id) ? " soon" : ""}${deskLeaveStyle(i.id)}" role="button" tabindex="0" data-desk-item="${esc(i.id)}">
     <span class="dk-tag ${look}">${tag}</span><div class="dk-i1"><span class="dk-t">${esc(i.title)}</span></div>
     <div class="dk-i2"><span class="dk-kid">${deskKindIcon(i)}<span class="dk-id">${esc(deskNum(i))}</span></span><span class="dk-who${s ? " held" : ""}">${who}</span><span class="dk-age">${when}</span>${ok}</div>${ask}</div>`;
@@ -546,15 +549,37 @@ const deskDesignsLink = (i) => /^https?:\/\//.test(i.designs || "")
 const deskSec = (title, html) => (html ? `<div class="dk-sec"><h3>${title}</h3>${html}</div>` : "");
 const deskBack = (label, to = "") => `<button class="dk-back" data-desk-back="${esc(to)}">‹ ${esc(label)}</button>`;
 
+/** What you answered an item's holder on its page, by item: { q, a, ask, at }. Shown there until its holder asks again
+ *  or ten minutes pass (board.js respond calls deskAnswered). */
+const deskAnswers = new Map();
+/** Card `it` answered with `decision`: kept for the Desk item whose holder asked it, so its page says what you picked. */
+function deskAnswered(it, decision) {
+  const item = (state.desk?.projects || []).flatMap((p) => p.items || []).find((x) => x.ask?.item_id === it.id);
+  if (!item) return;
+  const picked = decision.answers ? Object.values(decision.answers).join("; ") : decision.message || "";
+  const a = decision.behavior === "deny" ? (picked ? `Declined: ${picked}` : "Declined") : picked || (decision.behavior === "allow_always" ? "Always allowed" : "Allowed");
+  deskAnswers.set(item.id, { q: item.ask.text, a, ask: it.id, at: now() });
+}
+/** What you last answered on item `i`'s page, while it's fresh and its holder isn't asking again; else null. */
+function deskAnswerOf(i) {
+  const said = deskAnswers.get(i.id);
+  if (!said || now() - said.at > 600000 || (i.ask && i.ask.item_id !== said.ask)) return null;
+  return said;
+}
 /** What holds an item up: the item it waits for, then this one; or its holder's question. */
 function deskChain(i) {
   if (i.state === "needs_you" && i.ask) {
     const it = i.ask.item_id && findItem(i.ask.item_id);
     const qs = it?.kind === "question" ? questions(it) : [];
-    const choices = qs.length === 1 ? (qs[0].options || []).map((op, oi) => `<button class="btn small" data-pick="0:${oi}" data-id="${esc(it.id)}">${esc(op.label)}</button>`).join("")
-      : `<button class="btn small" data-desk-inbox="${esc(i.ask.sid)}">Answer it</button>`;
+    // Answered here, on the Desk: one question's choices as buttons; any other ask (several questions, a permission, a
+    // form) as its card, as under its chat; a turn that ended on it, its holder's chat beside the items, to reply.
+    if (it && it.kind !== "waiting" && !(qs.length === 1 && qs[0].options?.length)) return `<div class="dk-chain dk-chain-ask">${askFoot(it, it.session_id, it.harness || "claude", `dkask:${it.id}`)}</div>`;
+    const choices = qs.length === 1 ? qs[0].options.map((op, oi) => `<button class="btn small" data-pick="0:${oi}" data-id="${esc(it.id)}">${esc(op.label)}</button>`).join("")
+      : `<button class="btn small" data-desk-holder="${esc(i.ask.sid)}">Answer it</button>`;
     return `<div class="dk-chain"><div class="dk-ln"><i class="ask"></i><div><div class="dk-lt">${esc(i.ask.text)}</div><div class="dk-acts">${choices}</div></div></div></div>`;
   }
+  const said = deskAnswerOf(i);
+  if (said) return `<div class="dk-chain"><div class="dk-ln"><i class="ok"></i><div><div class="dk-lt">${esc(said.q)}</div><div class="dk-ls dk-picked"><span class="sent-check">✓</span> You answered: ${esc(said.a)}</div></div></div></div>`;
   if (i.state !== "queued" || !i.after) return "";
   const first = deskItem(i.project, i.after);
   if (!first) return "";
@@ -916,7 +941,6 @@ const DESK_CLICKS = {
   deskMade: (el) => { deskSeeItem(el.closest("[data-desk-item]")?.dataset.deskItem || deskOpen?.id); invoke("open_link", { url: el.dataset.deskMade }).catch((err) => toast(`Couldn't open: ${err}`)); renderMain(); },
   deskDiffFile: (el) => deskShowFile(el.dataset.deskDiffFile, +el.dataset.n),
   deskCrewOpen: (el) => deskOpenCrew(el.dataset.lead, el.dataset.deskCrewOpen),
-  deskInbox: (el) => (typeof inboxOpen === "function" ? inboxOpen(el.dataset.deskInbox) : openSession(el.dataset.deskInbox)),
   deskHome: () => { setProjFilter(""); deskOpen = null; deskPick = null; renderMain(); },
   deskProject: (el) => { setProjFilter(el.dataset.deskProject); deskOpen = null; deskTab = "lead"; deskChatEnd = true; renderMain(); },
 };

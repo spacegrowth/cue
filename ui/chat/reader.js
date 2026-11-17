@@ -33,10 +33,20 @@ function openDoc(sid, path) {
   return readOpen(path, sid, sessionOf(sid)?.cwd || null);
 }
 const isDocPath = (p) => /\.(md|markdown)$/i.test(p);
+/** The session the reader shows, as readerViewed takes it: the open chat's (its ask too), or, on the Desk, whose chat
+ *  it's open in (the open chat there is another one, or none). */
+function readerOf() {
+  const sid = readerView?.sid, cur = current();
+  if (!sid) return {};
+  // As the Desk drew it (desk.js deskReader keeps what it drew from: a parked lead's kept messages, its own ask).
+  if (view === "desk" && readerView.drawn) return { sid, ...readerView.drawn };
+  if ((cur?.s?.session_id || cur?.it?.session_id) === sid) return { sid, it: cur.it, s: cur.s };
+  return { sid, it: null, s: sessionOf(sid) };
+}
 /** ‹ › (and ← →): the previous or next reply, if there is one. */
 function stepReader(dir) {
-  const cur = current(), sid = cur?.s?.session_id || cur?.it?.session_id;
-  const rv = sid && readerViewed(sid, cur.it, cur.s);
+  const { sid, it, s } = readerOf();
+  const rv = sid && readerViewed(sid, it, s);
   const next = rv && rv.all[rv.at + dir];
   if (!next) return;
   readerView = { sid, key: next.key };
@@ -53,6 +63,7 @@ function sizeReader(dir) {
 function closeReader() {
   const key = readerView?.key;
   readerView = null;
+  if (view === "desk") deskChatEnd = false;   // not the Desk's chat-end scroll (desk.js deskSettle) over it
   renderMain();
   const btn = key && document.querySelector(`[data-read="${CSS.escape(key)}"], [data-fwd="${CSS.escape(key)}"]`);
   btn?.closest(".cv-agent")?.scrollIntoView({ block: "start" });
@@ -60,12 +71,13 @@ function closeReader() {
 /** Reply: to the chat's own box, at the chat's end, the cursor in it. */
 function replyFromReader() {
   readerView = null;
+  if (view === "desk") { deskChatEnd = true; renderMain(); return document.querySelector(".dk-right .dk-box textarea[data-text]")?.focus(); }
   drawAtChatEnd();
   focusComposer();
 }
 function copyReader() {
-  const cur = current(), sid = cur?.s?.session_id || cur?.it?.session_id;
-  const rv = sid && readerViewed(sid, cur.it, cur.s);
+  const { sid, it, s } = readerOf();
+  const rv = sid && readerViewed(sid, it, s);
   if (rv) invoke("copy_text", { text: rv.all[rv.at].text }).then(() => toast("Copied"), () => toast("Couldn't copy"));
 }
 /** The reader, in place of the chat: a bar (‹ Chat, ‹ n of m ›, text size, Copy, Reply), the reply in one
@@ -81,7 +93,7 @@ function readerPane(sid, it, s, harness, rv) {
     <span class="rd-seg"><button data-reader-step="-1" aria-label="Previous reply" ${rv.at ? "" : "disabled"}>‹</button><span class="rd-of">${rv.at + 1} of ${n}</span><button data-reader-step="1" aria-label="Next reply" ${rv.at < n - 1 ? "" : "disabled"}>›</button></span>
     <span class="rd-seg"><button class="rd-a small" data-reader-size="-1" aria-label="Smaller text" ${readerSize ? "" : "disabled"}>A</button><button class="rd-a big" data-reader-size="1" aria-label="Larger text" ${readerSize < READER_SIZES.length - 1 ? "" : "disabled"}>A</button></span>
     <span class="rd-listen">${listenPlainBox()}${listening?.key === r.key ? "" : `<button class="btn ls-btn" data-listen="${esc(r.key)}" data-listen-reader="1">${SPEAKER_ICON}Listen</button>`}<button class="btn" data-reader-copy="1">Copy</button>${s ? `<button class="btn primary" data-reader-reply="1">Reply</button>` : ""}</span></div>`;
-  const body = `<div class="rd" data-key="rd:${esc(r.key)}:${readerSize}" data-rdkey="${esc(r.key)}" style="--rd-size: ${READER_SIZES[readerSize]}px"><div class="rd-by">${esc(agentName(harness))} · ${ago(r.at_ms)} ago · reply ${rv.at + 1} of ${n}</div><div class="msg">${md(addOn.plain(stripStatus(r.text)))}</div>${localImages(r.text)}</div>`;
+  const body = `<div class="rd" data-key="rd:${esc(r.key)}:${readerSize}" data-rdkey="${esc(r.key)}" style="--rd-size: ${READER_SIZES[readerSize]}px"><div class="rd-by">${esc(agentName(harness))} · ${ago(r.at_ms)} ago · reply ${rv.at + 1} of ${n}</div><div class="msg">${md(addOn.plain(r.text))}</div>${localImages(r.text)}</div>`;
   const asks = isPending(it) && it.kind !== "waiting";
   const foot = asks ? `<div class="foot rd-ask"><span class="rd-ask-dot"></span><span class="rd-ask-t"><b>${esc(nameOf(sid, it.project))} ${it.kind === "question" ? "is asking you" : "needs a decision"}</b>${it.kind === "question" ? "" : `<span class="dim"> · ${esc(verb(it))}</span>`}</span><span class="grow"></span><button class="btn primary" data-reader-back="1">Back to chat</button></div>` : "";
   return { bar, body, foot: listenPlayer(r.key) + foot };
