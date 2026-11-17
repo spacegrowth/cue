@@ -522,8 +522,8 @@ function usageChip() {
   if (claudeRates && (claudeRates.five_hour || claudeRates.seven_day) && !limitedSessions().length) {
     const claudeFive = claudeRates.five_hour;
     const codexFive = windows.find((w) => w.minutes === 300);
-    const percent = (w) => w ? `${Math.round(w.pct)}%` : "—";
-    return `<span class="usage-wrap"><button class="usage-chip usage-combined" data-usage="meter" aria-label="Usage" aria-expanded="${usageOpen === "claude"}"><span class="usage-provider">Claude <span class="up">${percent(claudeFive)}</span></span><span class="usage-provider">Codex <span class="up">${percent(codexFive)}</span></span><span class="usage-window">5h</span></button>${usagePop()}</span>`;
+    const provider = (name, w) => `<span class="uc-one"><span class="usage-provider">${name}</span>${w ? `<span class="um ${w.pct >= 100 ? "full" : w.pct >= 85 ? "high" : ""}"><i style="width:${Math.min(100, w.pct)}%"></i></span><span class="up">${Math.round(w.pct)}%</span>` : '<span class="up">—</span>'}</span>`;
+    return `<span class="usage-wrap"><button class="usage-chip usage-combined" data-usage="meter" aria-label="Usage" aria-expanded="${usageOpen === "claude"}">${provider("Claude", claudeFive)}${provider("Codex", codexFive)}<span class="usage-window">5h</span></button>${usagePop()}</span>`;
   }
   const label = claude ? '<span class="usage-provider">Codex</span>' : "";
   const headerWindows = claude ? windows.filter((w) => w.minutes === 300) : windows;
