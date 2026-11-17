@@ -62,7 +62,7 @@ const DESK_KIND_SVG = {
   task: '<rect x="4" y="4" width="16" height="16" rx="4"/><path d="m8.5 12.2 2.4 2.4 4.6-5"/>',
   bug: '<rect x="8" y="7" width="8" height="12" rx="4"/><path d="M12 11v8M8 12H4.5M19.5 12H16M8 16.5l-3 1.5M16 16.5l3 1.5M8.5 9 6 7M15.5 9 18 7M10 7a2 2 0 0 1 4 0"/>',
   feature: '<path d="M12 3.5 13.9 10.1 20.5 12 13.9 13.9 12 20.5 10.1 13.9 3.5 12 10.1 10.1Z"/>',
-  // What a chat is (deskMark): the Desk's lead, a session, a crew member, a lead.
+  // What a chat is (deskLabel): the Desk's lead, a session, a crew member, a lead.
   desk: '<path d="M19 7.5A8 8 0 1 0 20 12"/><circle cx="12" cy="12" r="2.5"/>',
   session: '<path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8l-5 4v-4H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/>',
   crew: '<circle cx="12" cy="8" r="4"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/>',
@@ -529,23 +529,14 @@ function deskChat(d) {
 /** What every chat on the Desk is (chat type mark, pick O): one solid label in the theme color, the kind's icon (the
  *  same icon the item list and About bubbles use) and its word, at the left of the header before the chat's name.
  *  `kind`: "desk" (the Desk's lead), "session", "crew", "lead", "task", "bug" or "feature"; "" for none. `name`: the
- *  name's html. The left list keeps its own corner mark (Type marks pick 8, deskSessRow), not this one. */
+ *  name's html. The same on every chat's head: the Desk lead's, a session's, a holder's and a crew member's pane (#170).
+ *  The left list keeps its own corner mark (Type marks pick 8, deskSessRow), not this one. */
 const DESK_MARKS = { desk: "Desk lead", session: "Session", crew: "Crew", lead: "Lead", task: "Task", bug: "Bug", feature: "Feature" };
 const deskLabel = (kind) => `<span class="dk-lbl" data-desk-mark="${kind}">${deskKindIcon(kind)}${DESK_MARKS[kind]}</span>`;
 const deskTitled = (kind, name) => (DESK_MARKS[kind] ? `<span class="dk-titled">${deskLabel(kind)}<span class="dk-tname">${name}</span></span>` : name);
-/** Over a pane with no header bar (a holder's, a crew member's): its pill alone, at the header's left. `kind`: "lead",
- *  "session" or "crew"; a session's pill says what the session is, never the kind of an item it holds (#170). */
-const deskMark = (kind) => `<div class="dk-ch dk-markrow">${deskLabel(kind)}</div>`;
 /** What session `sid` is on Desk `d`, as the left list's corner mark says it: "lead" (the Desk gave it a lead's work or
  *  it has a crew), else "session". */
 const deskSessKind = (sid, d) => (sid === deskLead(d)?.sid || deskIsLead(sid, d.items.filter((i) => deskGroupKey(i.holder) === sid)) ? "lead" : "session");
-/** The mark over what's open in the chat card: a holder's kind, a crew member's. None over an item's page: its header
- *  already names its kind with its number, as "Feature #138" (#144). */
-function deskPaneMark(o, d) {
-  if (o?.kind === "crew") return deskMark("crew");
-  if (o?.kind === "holder") return deskMark(deskSessKind(o.sid, d));
-  return "";
-}
 /** The way back from a session's chat: to what opened it (an item's page, a holder's), else to the lead's chat. */
 function deskChatBack(from, d) {
   const i = from?.kind === "item" && deskItem(d.project, from.id);
@@ -559,12 +550,10 @@ function deskSessChat(sid, from, d) {
   const where = whereNow(null, s);
   const empty = !rows && !where ? `<div class="dk-empty">Nothing said yet.</div>` : "";
   const open = `<button class="btn small" data-desk-session="${esc(sid)}">Open its session</button>`;
-  // A plain session head (#170): back, its name with the same Lead / Session mark as its row on the left (no
-  // bug/feature/task-style chip), Open its session at the right; under it its state and, quiet, the items it holds
-  // ("Holds #171, #174", each opening its item), the one it's on now first.
-  const lead = sid === deskLead(d)?.sid || deskIsLead(sid, d.items.filter((i) => deskGroupKey(i.holder) === sid));
-  const mark = `<span class="dk-rmark dk-hmark">${lead ? "Lead" : "Session"}</span>`;
-  const head = `<div class="dk-lh dk-shead"><div class="dk-ch dk-sch">${deskChatBack(from, d)}${deskSessName(sid, deskHolderName(sid), "dk-shn")}${mark}<span class="grow"></span>${open}</div>${deskSessNow(s, deskSessItems(d, sid))}</div>`;
+  // A session's head as the Desk lead's (#170): back, then its chat type mark (pick O: "Lead" or "Session", what the
+  // session is, never an item's kind) before its name, Open its session at the right; under it its state and, quiet,
+  // the items it holds ("Holds #171, #174", each opening its item), the one it's on now first.
+  const head = `<div class="dk-lh dk-shead"><div class="dk-ch dk-sch">${deskChatBack(from, d)}${deskTitled(deskSessKind(sid, d), deskSessName(sid, deskHolderName(sid), "dk-shn"))}<span class="grow"></span>${open}</div>${deskSessNow(s, deskSessItems(d, sid))}</div>`;
   return `${head}
     <div class="dk-chat" data-desk-chat="${esc(sid)}">${empty}${rows}${where}</div>`;
 }
@@ -739,7 +728,7 @@ function deskItemState(i) {
   const who = i.holder ? `<b>${esc(i.holder.name)}</b>${i.crew ? ` → <b>${esc(i.crew)}</b>` : ""}` : "";
   const by = (pre) => (who ? ` ${pre} ${who}` : "");
   const where = { new: "not given out yet", queued: `next${by("for")}`, working: who ? `with ${who}` : "at work", needs_you: `waits on you${who ? ` · with ${who}` : ""}`, to_check: deskInstallWait(i) ? `waiting for install${by("· from")}` : `ready to check${by("· from")}`, done: `done${by("by")}${i.commit ? ` · committed <span class="dk-cm">${esc(i.commit)}</span>` : ""}` }[i.state] || "";
-  // Its kind is the mark in the pane's header, at the left as on every chat header (deskMark): the line starts with its number, then where it is.
+  // Its kind is the mark in the pane's header, at the left as on every chat header (deskLabel): the line starts with its number, then where it is.
   return `<span class="dk-id">#${esc(i.id)}</span> · ${where} · added by ${esc(deskFrom(i, deskOf(i.project)))} ${ago(deskMs(i.created))} ago`;
 }
 /** Its state as a short word, for the pill in the item page's header. */
@@ -869,7 +858,7 @@ function deskHolderPane(sid, d) {
   const name = deskHolderName(sid, mine.find((i) => i.holder?.kind !== "crew")?.holder?.name);
   const crew = deskCrew(sid), lead = deskIsLead(sid, mine);
   const waits = mine.filter(deskWaits).length;
-  const head = [lead ? "Lead" : "Session", `${mine.length} item${mine.length === 1 ? "" : "s"}${waits ? `, ${waits} waiting on you` : ""}`, lead ? (crew.length ? `crew of ${crew.length}` : "on its own") : "", s?.since_ms ? `since ${clockAt(s.since_ms)}` : ""].filter(Boolean).join(" · ");
+  const head = [`${mine.length} item${mine.length === 1 ? "" : "s"}${waits ? `, ${waits} waiting on you` : ""}`, lead ? (crew.length ? `crew of ${crew.length}` : "on its own") : "", s?.since_ms ? `since ${clockAt(s.since_ms)}` : ""].filter(Boolean).join(" · ");
   const crewRows = crew.map((t) => {
     const it = deskCrewItem(d.project, sid, t.agent_id || t.call);
     const files = (t.files || []).map((f) => f.split("/").pop()).join(", ");
@@ -881,7 +870,7 @@ function deskHolderPane(sid, d) {
   const decs = d.decisions.filter((c) => c.call && (c.sid === sid || c.by === name));
   const decHtml = decs.length ? deskLog(decs, (c) => (c.item_id && deskItem(d.project, c.item_id) ? esc(deskItem(d.project, c.item_id).title) : "")) : "";
   const latest = deskLatestOf(s);
-  return `<div class="dk-pane" data-scroll-key="holder:${esc(sid)}">${deskBack(deskLeadName(d) || "Back")}<h1>${esc(name)}</h1><div class="dk-state">${esc(head)}</div>
+  return `<div class="dk-pane" data-scroll-key="holder:${esc(sid)}">${deskBack(deskLeadName(d) || "Back")}<h1>${deskTitled(lead ? "lead" : "session", esc(name))}</h1><div class="dk-state">${esc(head)}</div>
     ${lead ? deskSec("Crew", crewRows ? `<div class="dk-crew">${crewRows}</div>` : `<p class="dk-note">No crew at work.</p>`) : ""}${nextLine}
     ${deskSec(`Decided by ${esc(name)} · ${decs.length}`, decHtml)}
     ${deskSec(`Latest from ${esc(name)}`, latest ? `<p class="dk-quiet">${esc(latest)}</p>` : "")}
@@ -897,7 +886,7 @@ function deskCrewPane(lead, agent, d) {
   const files = (t.files || []).length ? `<div class="dk-files">${t.files.map(esc).join(" · ")}</div>` : "";
   const latest = [t.summary, it?.latest].filter(Boolean);
   const stop = t.state === "working" ? `<button class="btn small" data-mt-act="stop" data-mt-sid="${esc(lead)}" data-mt-agent="${esc(t.agent_id || t.call)}">Stop it</button>` : "";
-  return `<div class="dk-pane" data-scroll-key="${skey}">${deskBack(leadName, lead)}<h1>${esc(t.name)}</h1>
+  return `<div class="dk-pane" data-scroll-key="${skey}">${deskBack(leadName, lead)}<h1>${deskTitled("crew", esc(t.name))}</h1>
     <div class="dk-state">In <b>${esc(leadName)}</b>'s crew · ${t.state === "working" ? "working on" : esc(t.state)} <b>${esc(it?.title || t.what || "")}</b> · ${esc(mateSpan(t))}</div>
     ${deskSec("Where it is", `<p>${esc(mateNeeds(lead, t) ? "Stopped to ask you something." : t.step || mateLine(t))}</p>`)}
     ${deskSec("Files", files)}
@@ -980,7 +969,7 @@ function deskRight(project) {
   if (o && !body) deskOpen = null;
   // A reply open in Read: read-only, as in a session's chat, so no box under it (Reply brings it back).
   const foot = reading ? "" : o?.kind === "item" ? deskItemFoot(deskItem(project, o.id), d) : deskBox(d);
-  if (deskOpen) return `<div class="dk-card dk-right">${deskPaneMark(o, d)}${body}${foot}</div>`;
+  if (deskOpen) return `<div class="dk-card dk-right">${body}${foot}</div>`;
   return deskRightChat(d);
 }
 /** The chat card with nothing open: who runs the Desk (no lead yet, or Change), else the lead's chat (or the line
