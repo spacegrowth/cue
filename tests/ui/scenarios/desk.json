@@ -280,10 +280,6 @@
   }
  ],
  "settings": {
-  "actions": {
-   "default": "Look at this project and set up my Cue actions for it in {file} (Cue's own file, outside the repo). Read the notes at the top of the file first (its \"about\" list, which says how an action is written) and follow them. Keep the actions already there unless they're wrong. Then tell me what you added, changed or removed, and why.",
-   "prompt": "Look at this project and set up my Cue actions for it in {file} (Cue's own file, outside the repo). Read the notes at the top of the file first (its \"about\" list, which says how an action is written) and follow them. Keep the actions already there unless they're wrong. Then tell me what you added, changed or removed, and why."
-  },
   "agents": {
    "show_driven": false
   },
@@ -458,9 +454,13 @@
  "usage_file": null,
  "window_ms": 1800000,
  "desk": {
+  "installed_ms": 1793984400000,
   "projects": [
    {
     "project": "cue",
+    "checks": [
+     { "id": "d2", "kind": "feature", "title": "Quick phrases at the right of Send", "done_when": "Quick phrases sit at the right of Send; More opens the rest.", "state": "to_check", "commit": "", "at": 1793984280000, "by": "web-lead", "files": ["ui/chat/compose.js", "ui/styles/chat.css"], "cue": true, "last": true }
+    ],
     "items": [
      {
       "project": "cue",
@@ -698,6 +698,7 @@
       "why": "Hosted sessions don't read the settings file at start.",
       "undo": "can",
       "id": "c1",
+      "call": true,
       "by": "host-lead",
       "sid": "host",
       "text": "An environment setting, not a settings file",
@@ -709,6 +710,7 @@
       "why": "A timer races the redraw.",
       "undo": "can",
       "id": "c2",
+      "call": true,
       "by": "web-lead",
       "sid": "lead",
       "text": "Focus comes back through the box's own focus step, not a timer",
@@ -730,7 +732,11 @@
      "sid": "lead",
      "name": "web-lead",
      "state": "live"
-    }
+    },
+    "members": [
+     "lead",
+     "host"
+    ]
    },
    {
     "project": "website",
@@ -787,13 +793,17 @@
       "why": "Faster to load and to read.",
       "undo": "can",
       "id": "w-c1",
+      "call": true,
       "by": "site-lead",
       "sid": "site",
       "text": "One hero image, not a carousel",
       "at": 1793982600
      }
     ],
-    "lead": null
+    "lead": null,
+    "members": [
+     "site"
+    ]
    }
   ]
  }
