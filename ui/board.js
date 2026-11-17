@@ -903,7 +903,7 @@ function nameHead(sid, project) {
   if (sid && renaming === sid) return `<input class="rename-in" data-text="rename:${esc(sid)}" maxlength="60" placeholder="Name this session" spellcheck="false" value="${esc(draft(`rename:${sid}`).text)}"/>`;
   const name = sid ? nameOf(sid, project) : project;
   // Just the name: its folder's full path is on the line under it (subHead).
-  return `<span class="proj">${esc(name)}</span>${sid ? `<button class="rename-btn" data-rename="${esc(sid)}" title="Rename this session" aria-label="Rename">✎</button>` : ""}`;
+  return `${sid ? deskSessMark(sid) : ""}<span class="proj">${esc(name)}</span>${sid ? `<button class="rename-btn" data-rename="${esc(sid)}" title="Rename this session" aria-label="Rename">✎</button>` : ""}`;
 }
 /** Renames shown before Cue's next update has them: sid → { name, at }. */
 const renamedNow = new Map();
