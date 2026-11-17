@@ -15,11 +15,11 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | What | Count |
 |---|---|
 | `#[tauri::command]` | 163 (3 sync) |
-| Lock declarations (static or field) | 103 |
-| Lock acquisitions | 246 |
+| Lock declarations (static or field) | 104 |
+| Lock acquisitions | 247 |
 | Lock-graph edges | 50 |
-| Spawn sites | 87 |
-| External calls: fs / db / process / notify / login / socket | 352 / 183 / 45 / 4 / 1 / 4 |
+| Spawn sites | 88 |
+| External calls: fs / db / process / notify / login / socket | 363 / 183 / 46 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -286,6 +286,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `notify.rs::JOBS` | `std::sync::OnceLock<std::sync::mpsc::Sender<Job>>` | — |
 | `notify.rs::BOUNCING` | `std::sync::Mutex<Vec<String>>` | "dock bounce" (5 sites) |
 | `notify.rs::APP` | `OnceLock<AppHandle>` | — |
+| `self_install.rs::STARTING` | `Mutex<()>` | "self_install.starting" (1 sites) |
 | `sounds.rs::PLAYING` | `std::sync::Mutex<Option<std::process::Child>>` | "PLAYING" (1 sites) |
 | `talk.rs::STATUS` | `Mutex<Value>` | "talk status" (2 sites) |
 | `talk.rs::RETELL` | `Mutex<Option<mpsc::UnboundedSender<Value>>>` | "talk retell" (4 sites) |
@@ -425,6 +426,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `notify.rs::show` | thread::spawn | 1 |
 | `quit.rs::on_signals` | async_runtime::spawn | 2 |
 | `safe_git.rs::on_machine` | thread::spawn | 1 |
+| `self_install.rs::start_in` | thread::spawn | 1 |
 | `server/mod.rs::handle` | tokio::spawn | 1 |
 | `server/mod.rs::serve` | tokio::spawn | 1 |
 | `startup/mod.rs::setup` | async_runtime::spawn | 1 |
@@ -457,7 +459,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (352)
+### fs (363)
 
 | In | Call | Times |
 |---|---|---|
@@ -560,6 +562,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `ipc/chat.rs::subfolders` | read_dir | 1 |
 | `ipc/desk.rs::desk_start_named` | Path::is_dir | 1 |
 | `ipc/desk.rs::desk_start_named` | canonicalize | 1 |
+| `ipc/docs.rs::in_scratch` | Path::is_dir | 1 |
 | `ipc/docs.rs::read_doc` | metadata | 1 |
 | `ipc/docs.rs::read_doc` | read_to_string | 1 |
 | `ipc/docs.rs::recent_docs` | Path::exists | 1 |
@@ -714,6 +717,15 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `mini/mod.rs::set_place` | write | 1 |
 | `notify.rs::log` | OpenOptions::new | 1 |
 | `safe_git.rs::git_bin` | Path::is_file | 1 |
+| `self_install.rs::running_helper` | read_to_string | 1 |
+| `self_install.rs::start_in` | File::create | 1 |
+| `self_install.rs::start_in` | Path::exists | 1 |
+| `self_install.rs::start_in` | create_dir_all | 1 |
+| `self_install.rs::start_in` | write | 2 |
+| `self_install.rs::status_in` | read_to_string | 1 |
+| `self_install.rs::write_running` | create_dir_all | 1 |
+| `self_install.rs::write_running` | rename | 1 |
+| `self_install.rs::write_running` | write | 1 |
 | `server/mod.rs::move_from_old_folder` | Path::exists | 1 |
 | `server/mod.rs::move_from_old_folder` | Path::is_dir | 2 |
 | `server/mod.rs::move_from_old_folder` | create_dir_all | 1 |
@@ -941,7 +953,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/turns.rs::read_so_far` | db::turns_read | 1 |
 | `startup/mod.rs::settle_folder_and_hooks` | db::rewrite_paths | 1 |
 
-### process (45)
+### process (46)
 
 | In | Call | Times |
 |---|---|---|
@@ -967,6 +979,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `machines/mod.rs::end_streams` | /bin/ps | 1 |
 | `machines/mod.rs::ssh` | (program computed) | 1 |
 | `safe_git.rs::run_env` | (program computed) | 1 |
+| `self_install.rs::start_in` | /bin/bash | 1 |
 | `server/mod.rs::agent_behind` | /bin/ps | 1 |
 | `sounds.rs::preview` | /usr/bin/afplay | 1 |
 | `talk.rs::dictation` | (program computed) | 1 |

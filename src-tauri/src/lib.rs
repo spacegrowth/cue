@@ -20,9 +20,6 @@ mod notify;
 mod one_way;
 mod quit;
 mod sounds;
-// A stand-in with self_install.rs's interface until that file lands: then this line is `mod self_install;`.
-#[path = "self_install_stub.rs"]
-mod self_install;
 mod talk;
 // An optional add-on, compiled in only with the `ext` feature: Rust in `src-tauri/ext/` (not part of
 // this repo). Without it there's nothing here.

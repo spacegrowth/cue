@@ -277,6 +277,10 @@ wait_for_hosted_turns
 quit_cue || fail_relaunched "Cue didn't quit: the installed app is left as it was"
 
 mkdir -p "$APP_DIR" || fail_relaunched "couldn't make $APP_DIR"
+# A kept app with none installed (an earlier run stopped between its moves) is the only copy: put it back first.
+if [ ! -e "$APP" ] && [ -e "$PREV" ]; then
+  mv "$PREV" "$APP" || fail "no app is installed and the one kept as $PREV couldn't be put back"
+fi
 rm -rf "$PREV" 2>/dev/null
 [ -e "$PREV" ] && fail_relaunched "couldn't clear $PREV, where the installed app is kept"
 HAD_PREV=0
@@ -286,7 +290,9 @@ if [ -e "$APP" ]; then
 fi
 if ! cp -R "$BUILT_APP" "$APP"; then
   rm -rf "$APP"
-  [ "$HAD_PREV" = 1 ] && mv "$PREV" "$APP"
+  if [ "$HAD_PREV" = 1 ] && ! mv "$PREV" "$APP"; then
+    fail "couldn't copy the new app into $APP_DIR, nor put the old one back: it is kept as $PREV"
+  fi
   fail_relaunched "couldn't copy the new app into $APP_DIR"
 fi
 sign
@@ -321,7 +327,9 @@ if [ "$HAD_PREV" = 1 ]; then
   mv "$PREV" "$APP" || fail "couldn't put the old app back from $PREV: no Cue is installed"
   launch
 else
-  say "there was no app before this one to put back"
+  # No earlier app to put back: the new one is all there is, so it runs again and this is a failure, not a roll back.
+  launch
+  fail "the new Cue didn't say it was running $COMMIT, and there was no earlier app to put back: the new one is left installed"
 fi
 status rolled_back log
 exit 1
