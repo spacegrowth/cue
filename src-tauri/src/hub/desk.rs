@@ -1182,10 +1182,15 @@ impl Hub {
         let fx = self.write(|st| {
             let mut fx = Effects::default();
             // What it was at work on as its turn ended: what this turn's DONE lines don't close stalled there.
-            // Only the items its words are about (#176): the one it's on now, and those its DONE lines name.
-            let on = super::desk_stall::at_work_with(st, sid);
-            let on = super::desk_stall::about(st, text, &on, super::desk_stall::now_on(st, sid).as_deref());
+            // Its reply goes only to the items it's tagged with (#176): the one the message it answers names, and
+            // those its DONE lines name; untagged, to none. A turn that ends untagged with one item at work still
+            // stalls there: Cue's ask names the item, so the answer to it is tagged.
+            let held = super::desk_stall::at_work_with(st, sid);
+            let mut on = super::desk_stall::about(st, text, &held, super::desk_stall::now_on(st, sid).as_deref());
             replied(st, text, &on, now, &mut fx);
+            if on.is_empty() && held.len() == 1 {
+                on = held;
+            }
             if !said {
                 super::desk_stall::stalls_asked(st, sid, text, &on, &mut fx);
                 return fx;

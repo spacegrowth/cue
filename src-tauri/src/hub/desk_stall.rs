@@ -37,18 +37,14 @@ pub(super) fn last_line(s: &Session) -> String {
     s.thread.iter().rev().find(|e| e.role == "agent").and_then(|e| e.text.lines().map(str::trim).rfind(|l| !l.is_empty())).unwrap_or("").chars().take(160).collect()
 }
 
-/// The item session `sid` (itself, not a crew member of it) is on now, of the ones at work with it (#176): its only
-/// one; else the one the last message it was sent names first (its hand-off, what you wrote on its page "About #id
-/// (…)", "Done? Write DONE: #id"); else the one it was given last. None when it holds none at work.
+/// The item session `sid` (itself, not a crew member of it) is on now, of the ones at work with it (#176): the one the
+/// last message it was sent names first. None when that message names none of them.
 pub(super) fn now_on(st: &Store, sid: &str) -> Option<String> {
     let held: Vec<&DeskItem> = st.desk.items.iter().filter(|i| i.state == "working" && i.holder.as_ref().is_some_and(|h| h.sid == sid && h.lead_sid.is_empty())).collect();
-    if held.len() < 2 {
-        return held.first().map(|i| i.id.clone());
-    }
-    let named = st.sessions.get(sid).and_then(|s| {
-        s.thread.iter().rev().filter(|e| e.role == "you").find_map(|e| held.iter().filter_map(|i| names_at(&e.text, &i.id).map(|at| (at, i))).min_by_key(|(at, _)| *at).map(|(_, i)| i.id.clone()))
-    });
-    named.or_else(|| held.iter().max_by_key(|i| (i.held_from.as_ref().map_or(0, |(_, at)| *at), i.updated)).map(|i| i.id.clone()))
+    // The message it answers: the newest one to it. Its tag is the held item it names first (a hand-off, a message
+    // from an item's page, Cue's "Done? Write DONE: #id"); none named, untagged: on no item.
+    let last = st.sessions.get(sid)?.thread.iter().rev().find(|e| e.role == "you")?;
+    held.iter().filter_map(|i| names_at(&last.text, &i.id).map(|at| (at, i))).min_by_key(|(at, _)| *at).map(|(_, i)| i.id.clone())
 }
 
 /// Where `text` first names item `id` as "#id" (not the start of a longer number or name), if it does.
@@ -58,13 +54,12 @@ fn names_at(text: &str, id: &str) -> Option<usize> {
 }
 
 /// Of `on` (the items at work with session `sid` as its turn ended), the ones its words in `text` are about: the ones
-/// its DONE lines name, and the one it's on now (`now`, from before this turn's lines changed anything); its only one
-/// when neither is among them.
+/// its DONE lines name, and the one it's on now (`now`, from before this turn's lines changed anything). Untagged
+/// words are on none: they show only in the session's own chat.
 pub(super) fn about(st: &Store, text: &str, on: &[String], now: Option<&str>) -> Vec<String> {
     use crate::desk::parse::{self, Line};
     let done: Vec<String> = parse::lines(text).into_iter().filter_map(|l| if let Line::Done { ids } = l { Some(ids) } else { None }).flatten().map(|i| st.desk.canon(&i)).collect();
-    let out: Vec<String> = on.iter().filter(|id| done.contains(id) || now == Some(id.as_str())).cloned().collect();
-    if out.is_empty() && on.len() == 1 { on.to_vec() } else { out }
+    on.iter().filter(|id| done.contains(id) || now == Some(id.as_str())).cloned().collect()
 }
 
 /// The items at work with session `sid` itself (not a crew member of it) since before this turn's end: the ones its

@@ -1432,4 +1432,11 @@ fn a_session_holding_two_items_answers_on_the_one_it_is_on_now() {
     assert_eq!(said(&d, "Second thing").len(), 1, "{d}");
     assert_eq!(item(&d, "First thing")["now_on"].as_bool(), Some(true));
     assert_eq!(item(&d, "Second thing")["now_on"].as_bool(), None);
+    // Typed in its own chat, naming no item: untagged, so its answer is on no item's page.
+    w.send_to(&h, "what's the time?");
+    w.hosted_says(&h, HostedEvent::Taken { text: "what's the time?".into() });
+    ends(&w, &h, "Half past.");
+    let d = desk(&w, &project);
+    assert_eq!((said(&d, "First thing").len(), said(&d, "Second thing").len()), (2, 1), "{d}");
+    assert_eq!((item(&d, "First thing")["now_on"].as_bool(), item(&d, "Second thing")["now_on"].as_bool()), (None, None));
 }
