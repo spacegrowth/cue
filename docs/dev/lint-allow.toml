@@ -289,8 +289,3 @@ reason = "hosted::tails: starting or looking at a transcript copy over a machine
 from = "typing gate"
 to = "machine tails: links"
 reason = "hosted::tails: starting or looking at a transcript copy over a machine's cue-host connection (machines/logs.rs) reads and writes these two maps only; they are leaves (nothing is taken under them, and the request goes on a thread of its own)"
-
-[[lock_order]]
-from = "typing gate"
-to = "approval trace"
-reason = "An ask can arrive while a send holds the typing gate. Approval tracing holds only its file writer, releases it before any host operation, and never takes a typing gate or the hub store."
