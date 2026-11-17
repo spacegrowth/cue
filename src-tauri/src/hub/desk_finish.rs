@@ -9,6 +9,7 @@
 //! question for you, and its holder is sent the log.
 
 use super::desk_commit::{commit_each, git, shas_of, word_in, words_checked};
+use super::desk_theirs::Part;
 use super::*;
 use crate::desk::{DeskItem, Finish, InstallStatus, Installer};
 
@@ -172,18 +173,19 @@ impl Hub {
             });
             return;
         }
-        let (todo, waiting) = self.to_commit(&it, &sources);
+        let (todo, parts, waiting) = self.to_commit(&it, &sources);
         if !waiting.is_empty() {
             return self.finish_wait(id, &fin, waiting.join(", "));
         }
-        let Some(tops) = self.finish_land(&it, &todo) else { return };
+        let Some(tops) = self.finish_land(&it, &todo, &parts) else { return };
         self.finish_release(id);
         self.finish_after(id, &tops);
     }
 
-    /// Item `it`'s files git says changed, by folder (one not in a repository left out), and which of them a session
-    /// at work is editing now ("<who> is editing <path>").
-    fn to_commit(&self, it: &DeskItem, sources: &[(String, Vec<String>)]) -> (Vec<(String, Vec<String>)>, Vec<String>) {
+    /// Item `it`'s files git says changed, by folder (one not in a repository left out), with only its own part of a
+    /// file another session changed too (hub/desk_theirs.rs), and which of them it waits on: a session at work is
+    /// editing it now ("<who> is editing <path>"), or another's changes in it can't be told apart from the item's.
+    fn to_commit(&self, it: &DeskItem, sources: &[(String, Vec<String>)]) -> (Vec<(String, Vec<String>)>, Vec<Part>, Vec<String>) {
         let busy = self.busy_files(it);
         let mut todo: Vec<(String, Vec<String>)> = Vec::new();
         let mut waiting: Vec<String> = Vec::new();
@@ -199,7 +201,12 @@ impl Hub {
                 todo.push((folder.clone(), changed));
             }
         }
-        (todo, waiting)
+        if !waiting.is_empty() {
+            return (todo, Vec::new(), waiting);
+        }
+        let (todo, parts, mixed) = self.own_of(it, todo);
+        waiting.extend(mixed.into_iter().map(|(p, by)| format!("{by} also changed {p}")));
+        (todo, parts, waiting)
     }
 
     /// Item `id`'s commit waits on `wait`: kept so, with a question for you once it has waited 15 minutes.
@@ -224,17 +231,17 @@ impl Hub {
 
     /// Item `it`'s `todo` committed, and its crew's work on a branch of its own merged into the main checkout's
     /// branch: each main checkout its work went to. None when it stopped on a question (a word, a conflict).
-    fn finish_land(&self, it: &DeskItem, todo: &[(String, Vec<String>)]) -> Option<Vec<String>> {
+    fn finish_land(&self, it: &DeskItem, todo: &[(String, Vec<String>)], parts: &[Part]) -> Option<Vec<String>> {
         let project = self.read(|st| st.desk.project_of(&it.project).to_string());
         let crew: Vec<String> = self.read(|st| super::desk::item_sources(st, it).1.into_iter().map(|(f, _)| f).collect());
         if !todo.is_empty() {
-            if let Err(e) = words_checked(&project, "", todo, &it.title) {
+            if let Err(e) = words_checked(&project, "", todo, parts, &it.title) {
                 self.finish_ask(&it.id, if e.contains("\" is in ") { "word" } else { "error" }, &e, "");
                 return None;
             }
         }
         // Each commit made is kept, a later one failing or not (its card, diff and Undo have it).
-        let (made, failed) = commit_each("", todo, &it.title);
+        let (made, failed) = commit_each("", todo, parts, &it.title);
         self.save_made(&it.id, &made);
         if let Some(e) = failed {
             self.finish_ask(&it.id, "error", &e, "");

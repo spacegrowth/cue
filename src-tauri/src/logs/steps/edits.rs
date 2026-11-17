@@ -45,17 +45,9 @@ pub fn edited_files_by(path: &str) -> Vec<(String, String)> {
     };
     scan(&text, "", &mut out);
     if kind == Kind::Claude {
-        if let Some(folder) = path.strip_suffix(".jsonl") {
-            let mut logs: Vec<(std::time::SystemTime, std::path::PathBuf)> = std::fs::read_dir(std::path::Path::new(folder).join("subagents")).into_iter().flatten().flatten()
-                .map(|d| d.path())
-                .filter(|p| p.extension().is_some_and(|x| x == "jsonl") && p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("agent-")))
-                .map(|p| (std::fs::metadata(&p).and_then(|m| m.created().or_else(|_| m.modified())).unwrap_or(std::time::UNIX_EPOCH), p))
-                .collect();
-            logs.sort();
-            for (_, p) in logs {
-                if let Ok(t) = std::fs::read_to_string(&p) {
-                    scan(&t, &helper_name(&p), &mut out);
-                }
+        for p in agent_logs(path) {
+            if let Ok(t) = std::fs::read_to_string(&p) {
+                scan(&t, &helper_name(&p), &mut out);
             }
         }
     }
@@ -71,6 +63,19 @@ pub fn edited_files_by(path: &str) -> Vec<(String, String)> {
         }
     }
     out
+}
+
+/// A Claude Code session's background agents' logs (`<log without .jsonl>/subagents/agent-*.jsonl`), in the order
+/// the agents started.
+pub fn agent_logs(path: &str) -> Vec<std::path::PathBuf> {
+    let Some(folder) = path.strip_suffix(".jsonl") else { return vec![] };
+    let mut logs: Vec<(std::time::SystemTime, std::path::PathBuf)> = std::fs::read_dir(std::path::Path::new(folder).join("subagents")).into_iter().flatten().flatten()
+        .map(|d| d.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "jsonl") && p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("agent-")))
+        .map(|p| (std::fs::metadata(&p).and_then(|m| m.created().or_else(|_| m.modified())).unwrap_or(std::time::UNIX_EPOCH), p))
+        .collect();
+    logs.sort();
+    logs.into_iter().map(|(_, p)| p).collect()
 }
 
 /// The files the session itself changed from `from` until `until` (ms, by each log line's time): what its Edit,

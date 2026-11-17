@@ -6,6 +6,7 @@
 //! with the item, so across a restart too): Cue's tick makes it once they're free.
 
 use super::*;
+use super::desk_theirs::Part;
 use crate::desk::{BusyFile, CommitWait, DeskItem};
 
 /// One file of an item's to commit: the folder it was changed in, and its path there.
@@ -43,7 +44,12 @@ impl Hub {
                 None => todo.push((f.folder.clone(), vec![f.path.clone()])),
             }
         }
-        let made = commit_files(&self.read(|st| st.desk.project_of(&it.project).to_string()), &machine, &todo, message)?;
+        // Other sessions' changes in the same files stay out of it (hub/desk_theirs.rs).
+        let (todo, parts, mixed) = if machine.is_empty() { self.own_of(&it, todo) } else { (todo, Vec::new(), Vec::new()) };
+        if let Some((p, by)) = mixed.first() {
+            return Err(format!("Not committed: {by} also changed {p}, and its changes can't be told apart from this item's"));
+        }
+        let made = if todo.is_empty() { Vec::new() } else { commit_files(&self.read(|st| st.desk.project_of(&it.project).to_string()), &machine, &todo, &parts, message)? };
         self.write(|st| {
             if let Some(i) = st.desk.item_mut(id) {
                 i.commit = shas_of(&made);
@@ -110,6 +116,11 @@ impl Hub {
                 files.push(DeskFile { folder: folder.clone(), path: p });
             }
         }
+        if machine.is_empty() && waiting.is_empty() {
+            // Files another session has changed too, in a way that can't be told apart: they wait as well.
+            let (_, _, mixed) = self.own_of(&it, by_folder(&files.iter().map(|f| (f.folder.clone(), f.path.clone())).collect::<Vec<_>>()));
+            waiting.extend(mixed.into_iter().map(|(path, by)| BusyFile { path, by }));
+        }
         if !waiting.is_empty() {
             let wait = CommitWait { files: files.iter().map(|f| (f.folder.clone(), f.path.clone())).collect(), machine, busy: waiting.clone(), error: String::new() };
             self.write(|st| {
@@ -159,10 +170,17 @@ impl Hub {
                 let left = changed_of(&w.machine, &folder, &paths).unwrap_or_default();
                 (!left.is_empty()).then_some((folder, left))
             }).collect();
-            if todo.is_empty() {
+            let (todo, parts, mixed) = if w.machine.is_empty() { self.own_of(it, todo) } else { (todo, Vec::new(), Vec::new()) };
+            let mixed: Vec<BusyFile> = mixed.into_iter().map(|(path, by)| BusyFile { path, by }).collect();
+            if !mixed.is_empty() {
+                if mixed == w.busy {
+                    return;
+                }
+                (None, Some(CommitWait { busy: mixed, ..w.clone() }))
+            } else if todo.is_empty() {
                 (None, None)
             } else {
-                match commit_files(&self.read(|st| st.desk.project_of(&it.project).to_string()), &w.machine, &todo, &it.title) {
+                match commit_files(&self.read(|st| st.desk.project_of(&it.project).to_string()), &w.machine, &todo, &parts, &it.title) {
                     Ok(made) => (Some(made), None),
                     Err(e) => (None, Some(CommitWait { error: e, ..w.clone() })),
                 }
@@ -275,35 +293,38 @@ impl Hub {
 
 /// Each folder's `paths` committed with `message` once none of their added lines (nor a new file's name, nor the
 /// message) has one of `project`'s never-committed words: the commits, short, space apart.
-pub(super) fn commit_files(project: &str, machine: &str, todo: &[(String, Vec<String>)], message: &str) -> Result<Vec<(String, String)>, String> {
-    words_checked(project, machine, todo, message)?;
-    match commit_each(machine, todo, message) {
+pub(super) fn commit_files(project: &str, machine: &str, todo: &[(String, Vec<String>)], parts: &[Part], message: &str) -> Result<Vec<(String, String)>, String> {
+    words_checked(project, machine, todo, parts, message)?;
+    match commit_each(machine, todo, parts, message) {
         (made, None) => Ok(made),
         (_, Some(e)) => Err(e),
     }
 }
 
-/// Err when `message`, or a line `todo` adds, has one of `project`'s never-committed words.
-pub(super) fn words_checked(project: &str, machine: &str, todo: &[(String, Vec<String>)], message: &str) -> Result<(), String> {
+/// Err when `message`, or a line `todo` adds (a file in `parts`: its part only), has one of `project`'s
+/// never-committed words.
+pub(super) fn words_checked(project: &str, machine: &str, todo: &[(String, Vec<String>)], parts: &[Part], message: &str) -> Result<(), String> {
     let words = crate::config::never_words(project);
     if let Some(w) = words.iter().find(|w| message.to_lowercase().contains(&w.to_lowercase())) {
         return Err(format!("Not committed: \"{w}\" is in the message"));
     }
     for (folder, paths) in todo {
-        if let Some((w, at)) = word_in(&added_diff(machine, folder, paths)?, &words) {
+        if let Some((w, at)) = word_in(&added_diff(machine, folder, paths, parts)?, &words) {
             return Err(format!("Not committed: \"{w}\" is in {at}"));
         }
     }
     Ok(())
 }
 
-/// Each folder's `paths` committed (words already checked): the commits made, kept when a later one failed, and
-/// what stopped it.
-pub(super) fn commit_each(machine: &str, todo: &[(String, Vec<String>)], message: &str) -> (Vec<(String, String)>, Option<String>) {
+/// Each folder's `paths` committed (words already checked; a file in `parts` with its part only): the commits made,
+/// kept when a later one failed, and what stopped it.
+pub(super) fn commit_each(machine: &str, todo: &[(String, Vec<String>)], parts: &[Part], message: &str) -> (Vec<(String, String)>, Option<String>) {
     let mut shas: Vec<(String, String)> = Vec::new();
     let mut done: Vec<String> = Vec::new();
     for (folder, paths) in todo {
-        match commit_only(machine, folder, paths, message) {
+        let mine: Vec<&Part> = parts.iter().filter(|p| p.folder == *folder && paths.contains(&p.path)).collect();
+        let made = if mine.is_empty() { commit_only(machine, folder, paths, message) } else { commit_parts(folder, paths, &mine, message) };
+        match made {
             Ok(sha) => {
                 done.push(format!("{} ({sha})", crate::model::folder_of(folder)));
                 shas.push((folder.clone(), sha));
@@ -401,12 +422,18 @@ pub(super) fn changed_of(machine: &str, folder: &str, paths: &[String]) -> Optio
 
 /// What committing `paths` would add, as a diff with no context: made in a scratch index (HEAD's tree with those
 /// files added), so your own index and files stay as they are.
-fn added_diff(machine: &str, folder: &str, paths: &[String]) -> Result<String, String> {
-    staged_diff(machine, folder, paths, &["-U0"])
+fn added_diff(machine: &str, folder: &str, paths: &[String], parts: &[Part]) -> Result<String, String> {
+    let mine: Vec<&Part> = parts.iter().filter(|p| p.folder == folder).collect();
+    staged_diff_with(machine, folder, paths, &mine, &["-U0"])
 }
 
 /// The same, with `opts` for git diff (its context, prefixes, paths relative to `folder`).
 pub(super) fn staged_diff(machine: &str, folder: &str, paths: &[String], opts: &[&str]) -> Result<String, String> {
+    staged_diff_with(machine, folder, paths, &[], opts)
+}
+
+/// The same, a file in `parts` with its part only.
+fn staged_diff_with(machine: &str, folder: &str, paths: &[String], parts: &[&Part], opts: &[&str]) -> Result<String, String> {
     let name = crate::model::folder_of(folder);
     let git_dir = git(machine, folder, &[], &["rev-parse", "--absolute-git-dir"]).ok_or_else(|| format!("Not committed: {name} isn't in a git repository"))?;
     let has_head = git(machine, folder, &[], &["rev-parse", "-q", "--verify", "HEAD^{commit}"]).is_some();
@@ -417,7 +444,7 @@ pub(super) fn staged_diff(machine: &str, folder: &str, paths: &[String], opts: &
     let add: Vec<&str> = [&["add", "-A", "--"][..], &p].concat();
     let diff: Vec<&str> = [&["diff", "--cached"][..], opts, &["--no-color", "--no-ext-diff", "--no-textconv", base, "--"][..], &p].concat();
     let read = if has_head { vec!["read-tree", "HEAD"] } else { vec!["read-tree", "--empty"] };
-    let out = git(machine, folder, &env, &read).and_then(|_| git(machine, folder, &env, &add)).and_then(|_| git(machine, folder, &env, &diff));
+    let out = git(machine, folder, &env, &read).and_then(|_| git(machine, folder, &env, &add)).and_then(|_| put_parts(folder, &git_dir, &env, parts)).and_then(|_| git(machine, folder, &env, &diff));
     super::team::remove_file(machine, &index);
     out.ok_or_else(|| format!("Not committed: git couldn't read the changes in {name}"))
 }
@@ -471,6 +498,56 @@ fn commit_only(machine: &str, folder: &str, paths: &[String], message: &str) -> 
     }
     git(machine, folder, &[], &[&["commit", "--only", "-q", "-m", message, "--"][..], &p].concat()).ok_or_else(|| format!("Not committed: git didn't commit the files in {name} (its hooks, or nothing to commit)"))?;
     Ok(git(machine, folder, &[], &["rev-parse", "--short", "HEAD"]).map(|o| o.trim().to_string()).unwrap_or_default())
+}
+
+/// `parts` (files here) put in the index `env` names, as they're to be committed: each a blob of its own, the
+/// file's mode kept. Some(()) when all went in.
+fn put_parts(folder: &str, git_dir: &str, env: &[(&str, &str)], parts: &[&Part]) -> Option<()> {
+    for p in parts {
+        let tmp = format!("{}/cue-desk-part-{}", git_dir.trim().trim_end_matches('/'), crate::clock::now_ms());
+        std::fs::write(&tmp, &p.content).ok()?;
+        let blob = git("", folder, &[], &["hash-object", "-w", "--no-filters", &tmp]);
+        let _ = std::fs::remove_file(&tmp);
+        let blob = blob?.trim().to_string();
+        let exec = std::fs::metadata(format!("{}/{}", folder.trim_end_matches('/'), p.path)).is_ok_and(|m| {
+            use std::os::unix::fs::PermissionsExt;
+            m.permissions().mode() & 0o111 != 0
+        });
+        let mode = if exec { "100755" } else { "100644" };
+        git("", folder, env, &["update-index", "--add", "--cacheinfo", &format!("{mode},{blob},{}", p.path)])?;
+    }
+    Some(())
+}
+
+/// `paths` (relative to `folder`, here) committed with `parts` holding only the item's part of theirs: the commit is
+/// made from a scratch index (HEAD's tree, `paths` from the folder, `parts` as given), so the files stay as they are
+/// and what's not the item's stays uncommitted; your index then has those paths as committed. The commit, short.
+fn commit_parts(folder: &str, paths: &[String], parts: &[&Part], message: &str) -> Result<String, String> {
+    let name = crate::model::folder_of(folder);
+    let fail = |what: &str| format!("Not committed: git couldn't {what} in {name}");
+    let git_dir = git("", folder, &[], &["rev-parse", "--absolute-git-dir"]).ok_or_else(|| format!("Not committed: {name} isn't in a git repository"))?;
+    let head = git("", folder, &[], &["rev-parse", "-q", "--verify", "HEAD^{commit}"]).map(|h| h.trim().to_string());
+    let index = format!("{}/cue-desk-index-{}", git_dir.trim().trim_end_matches('/'), crate::clock::now_ms());
+    let env = [("GIT_INDEX_FILE", index.as_str())];
+    let read = if head.is_some() { vec!["read-tree", "HEAD"] } else { vec!["read-tree", "--empty"] };
+    let whole: Vec<&str> = paths.iter().filter(|p| !parts.iter().any(|x| x.path == **p)).map(String::as_str).collect();
+    let made = (|| {
+        git("", folder, &env, &read).ok_or_else(|| fail("read HEAD"))?;
+        if !whole.is_empty() {
+            git("", folder, &env, &[&["add", "-A", "--"][..], &whole].concat()).ok_or_else(|| fail("add the files"))?;
+        }
+        put_parts(folder, &git_dir, &env, parts).ok_or_else(|| fail("add the item's part of a file"))?;
+        // HEAD moved while it was made: its tree would undo that commit.
+        if git("", folder, &[], &["rev-parse", "-q", "--verify", "HEAD^{commit}"]).map(|h| h.trim().to_string()) != head {
+            return Err(format!("Not committed: {name} got a new commit meanwhile"));
+        }
+        git("", folder, &env, &["commit", "-q", "-m", message]).ok_or_else(|| format!("Not committed: git didn't commit the files in {name} (its hooks, or nothing to commit)"))
+    })();
+    let _ = std::fs::remove_file(&index);
+    made?;
+    let p: Vec<&str> = paths.iter().map(String::as_str).collect();
+    git("", folder, &[], &[&["reset", "-q", "--"][..], &p].concat());
+    Ok(git("", folder, &[], &["rev-parse", "--short", "HEAD"]).map(|o| o.trim().to_string()).unwrap_or_default())
 }
 
 #[cfg(test)]

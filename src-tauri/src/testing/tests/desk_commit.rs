@@ -398,3 +398,62 @@ fn a_holders_words_at_each_turn_end_are_kept_on_its_item() {
     assert_eq!(got, vec![("Looking at **header.js** now.".to_string(), false), ("Fixed.".to_string(), true)], "{said:?} on #{id}");
     assert!(said.iter().all(|r| r["by"] == "cue-teams" && r["at"].as_u64().unwrap() > 0), "{said:?}");
 }
+
+/// An item whose crew wrote a.txt and b.txt, then session "tidier" (its turn over, its change not committed)
+/// changed a.txt as `change` does to it and its log: (repo, project).
+fn done_after_tidier_changed(w: &World, change: impl Fn(&World, &str, &std::path::Path)) -> (std::path::PathBuf, String) {
+    let (dir, project, _) = done_with(w, |_, _, _| {}, |w, h, dir| {
+        let f = |n: &str| dir.join(n).to_string_lossy().to_string();
+        says(w, h, writes("toolu_A", "agentA", "fixer", &[f("a.txt"), f("b.txt")]));
+        let opts = StartOpts { hosted: true, perm: "auto".into(), ..Default::default() };
+        let r = start_session_with(w.hub(), "claude", &w.home().to_string_lossy(), "tidy a", "tidier", &opts).unwrap();
+        let o = r["session_id"].as_str().unwrap().to_string();
+        w.hosted_says(&o, HostedEvent::Taken { text: "tidy a".into() });
+        w.advance(1000);
+        change(w, &o, &dir.join("a.txt"));
+        ends(w, &o, "Tidied.");
+    });
+    (dir, project)
+}
+
+#[test]
+fn another_sessions_uncommitted_edit_in_the_same_file_stays_out_of_the_commit_and_in_the_file() {
+    let w = World::new();
+    let (dir, project) = done_after_tidier_changed(&w, |w, o, a| {
+        std::fs::write(a, "fixer wrote this\ntidier's line\n").unwrap();
+        log(w, o).tool_use("toolu_t1", "Edit", json!({ "file_path": a, "old_string": "fixer wrote this\n", "new_string": "fixer wrote this\ntidier's line\n" }));
+        w.settle();
+    });
+    let shown = item(&w, &project, "Header jumps");
+    assert_eq!(shown["state"], "to_check", "{shown}");
+    assert_eq!(git(&dir, &["show", "HEAD:a.txt"]), "fixer wrote this\n", "only the item's part is committed");
+    assert_eq!(git(&dir, &["show", "HEAD:b.txt"]), "fixer wrote this\n");
+    assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "fixer wrote this\ntidier's line\n", "the file stays as it is");
+    assert_eq!(git(&dir, &["status", "--porcelain", "--", "a.txt", "b.txt"]).trim(), "M a.txt", "tidier's line stays uncommitted");
+    assert_eq!(git(&dir, &["diff", "--cached", "--name-only"]).trim(), "", "nothing left staged");
+}
+
+#[test]
+fn another_sessions_change_that_cant_be_told_apart_holds_the_commit_and_says_who() {
+    let w = World::new();
+    let (dir, project) = done_after_tidier_changed(&w, |w, o, a| {
+        std::fs::write(a, "tidier rewrote it\n").unwrap();
+        log(w, o).tool_use("toolu_t1", "Write", json!({ "file_path": a, "content": "tidier rewrote it\n" }));
+        w.settle();
+    });
+    let shown = item(&w, &project, "Header jumps");
+    assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str(), shown["finish"]["wait"].as_str()), (Some("finishing"), Some("commit_wait"), Some("tidier also changed a.txt")), "{shown}");
+    assert_eq!(commits(&dir), "1", "nothing committed");
+    // Its change committed by itself: the item's commit is made.
+    git(&dir, &["add", "a.txt"]);
+    w.advance(1000);
+    // Dated by the World's clock, as its logs are.
+    let at = format!("@{} +0000", crate::clock::now_ms() / 1000);
+    let o = std::process::Command::new("git").arg("-C").arg(&dir).args(["commit", "-q", "-m", "tidy"]).env("GIT_COMMITTER_DATE", &at).env("GIT_AUTHOR_DATE", &at).output().unwrap();
+    assert!(o.status.success());
+    std::fs::write(dir.join("a.txt"), "tidier rewrote it\nfixer's line\n").unwrap();
+    tick(&w);
+    let shown = item(&w, &project, "Header jumps");
+    assert_eq!(shown["state"], "to_check", "{shown}");
+    assert_eq!(git(&dir, &["show", "--name-only", "--format=%s", "HEAD"]).trim(), "Header jumps\n\na.txt\nb.txt");
+}
