@@ -1719,6 +1719,25 @@ test("your words about an item show its kind's icon, kind and number over them i
   await expect(page.locator(".dk-pane h1")).toHaveText("Bug #d1 · Reply box loses focus after Send");
 });
 
+test("Looks right is in an item's title area, in reach however far its page is scrolled; Send back stays below (#163)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await page.evaluate(() => { state.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d2").said = Array.from({ length: 30 }, (_, k) => ({ at: Date.now() - (60 - k) * 60000, by: "cue-117", text: `Step ${k}, written out at some length so it takes a line or two.` })); });
+  await page.locator('[data-desk-item="d2"]').click();
+  const pane = page.locator(".dk-right .dk-ipane"), top = pane.locator('.dk-ihead [data-desk-act="looks_right"]');
+  await expect(top).toHaveText("Looks right");
+  await expect(pane.locator('.dk-inow [data-desk-act="looks_right"]')).toHaveCount(0);
+  await expect(pane.locator('.dk-inow [data-desk-act="send_back"]')).toBeVisible();
+  for (const y of [0, 600, 99999]) {
+    await pane.evaluate((e, y) => { e.scrollTop = y; }, y);
+    const b = await top.boundingBox(), h = await pane.locator(".dk-ihead").boundingBox();
+    expect(b.y).toBeGreaterThanOrEqual(h.y); expect(b.y + b.height).toBeLessThanOrEqual(h.y + h.height);
+  }
+  // Clicked there, its few seconds to take it back are there too.
+  await top.click();
+  await expect(pane.locator(".dk-ihead .dk-soon")).toHaveText("Done · Undo · back to check");
+});
+
 test("Looks right waits a moment with \"Done · Undo\" on the item and in a toast; Undo then leaves it to check, nothing sent", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);

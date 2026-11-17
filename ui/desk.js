@@ -667,7 +667,7 @@ function deskItemActs(i) {
   const first = i.after && deskItem(i.project, i.after);
   if (i.state === "to_check" && deskBackFor === i.id) return deskBackHtml(i.id);
   // Waiting for install: nothing to try yet, so no Looks right (Send back stays: what it says can be wrong already).
-  const acts = deskInstallWait(i) ? b("send_back", "Send back") : i.state === "to_check" && deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id) : i.state === "to_check" ? b("looks_right", "Looks right", "primary") + b("send_back", "Send back")
+  const acts = deskInstallWait(i) ? b("send_back", "Send back") : i.state === "to_check" ? (deskLooksSoon.has(i.id) ? "" : b("send_back", "Send back"))
     : i.state === "queued" ? b("start_now", "Start it now in a new session") + (first ? b("put_before", `Put it before ${deskShort(first.title)}`) : "")
     : i.state === "new" ? b("start_now", "Start it now in a new session")
     // Its holder's turn cut off (a crash, a quit) leaves it "working" with nobody on it: sent to the holder again.
@@ -675,6 +675,12 @@ function deskItemActs(i) {
     : i.state === "done" ? `<div class="dk-chk-after">${deskCommitLine(i)}</div>` : "";
   const give = !i.holder && i.state !== "done" ? deskGive(i, "pane") : "";
   return acts || give ? `<div class="dk-acts">${give}${acts}</div>` : "";
+}
+/** Looks right on an item's page: in its title area, always in reach however far its page is scrolled (#163); its
+ *  few seconds to take it back there too. None while it waits for an install or you're writing why to send it back. */
+function deskLooksTop(i) {
+  if (i.state !== "to_check" || deskInstallWait(i) || deskBackFor === i.id) return "";
+  return deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id) : `<button class="btn small primary" data-desk-act="looks_right" data-id="${esc(i.id)}">Looks right</button>`;
 }
 /** Where it stands in a line: "Bug · next for web-lead · added by you 20m ago". */
 function deskItemState(i) {
@@ -774,7 +780,7 @@ function deskItemPane(i, d) {
     : `${deskThreadHtml(thread)}<div class="dk-inow">${at}</div>`;
   // Pick 4 (Item thread, 16 Nov 2026): the header (number and title, Designs; a state pill and where it stands; then
   // Thread, Decisions, Steps and Files tabs, Thread open), then the open tab; the answer box is the card's foot.
-  return `<div class="dk-pane dk-ipane" data-scroll-key="item:${esc(i.id)}"><div class="dk-ihead">${deskBack(deskLeadName(d) || "Back")}<div class="dk-ititle"><h1><span class="dk-hnum">${deskKindIcon(i)}${esc(deskNum(i))} · </span>${esc(i.title)}</h1><div class="dk-ilinks">${deskDesignsLink(i)}${sid && sessionOf(sid) ? `<button class="btn small" ${deskChatAttrs(sid, d)}>Open ${esc(h.name)}</button>` : ""}</div></div>
+  return `<div class="dk-pane dk-ipane" data-scroll-key="item:${esc(i.id)}"><div class="dk-ihead">${deskBack(deskLeadName(d) || "Back")}<div class="dk-ititle"><h1><span class="dk-hnum">${deskKindIcon(i)}${esc(deskNum(i))} · </span>${esc(i.title)}</h1><div class="dk-ilinks">${deskDesignsLink(i)}${sid && sessionOf(sid) ? `<button class="btn small" ${deskChatAttrs(sid, d)}>Open ${esc(h.name)}</button>` : ""}${deskLooksTop(i)}</div></div>
     <div class="dk-ist"><span class="dk-pill dk-pill-${esc(i.state)}"><i aria-hidden="true"></i>${esc(deskInstallWait(i) ? "Waiting for install" : DESK_PILL[i.state] || i.state)}</span><div class="dk-state">${deskItemState(i)}</div></div>
     <div class="dk-itabs" role="tablist">${tabBtn("thread", "Thread", thread.length)}${tabBtn("decisions", "Decisions", decs.length)}${tabBtn("steps", "Steps", steps.length)}${tabBtn("files", "Files", nFiles)}<span class="grow"></span>${i.state !== "done" ? `<button class="dk-drop${armed ? " armed" : ""}" data-desk-act="drop" data-id="${esc(i.id)}">${armed ? "Drop it" : "Drop this item"}</button>` : ""}</div></div>
     <div class="dk-ibody dk-itab-${tab}">${body}</div></div>`;
