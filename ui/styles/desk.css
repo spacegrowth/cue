@@ -14,7 +14,7 @@
 .dk-srow:has(.dk-rmark) > .dk-s1 { padding-right: 76px; }
 .dk-srow:hover { background: var(--panel-2); }
 .dk-srow.crew { margin-left: 22px; padding: 10px 14px; }
-.dk-srow.on { background: var(--sel); color: var(--on-sel); }
+.dk-srow.on { background: var(--dk-on); }
 .dk-s1 { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .dk-s1 .dk-nm { flex: 0 1 auto; min-width: 0; font-size: 13.5px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-pill { flex: none; padding: 1px 6px; border-radius: var(--pill-radius); font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
@@ -37,11 +37,14 @@
 .dk-s3 { margin-top: 3px; color: var(--muted); font: 11px var(--mono); }
 .dk-s3.hot { color: var(--amber); font-weight: 600; }
 .dk-s3.dk-now { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dk-srow.on .dk-st, .dk-srow.on .dk-s2, .dk-srow.on .dk-s3:not(.hot), .dk-srow.on .dk-id, .dk-srow.on .dk-none { color: var(--on-sel); }
 .dk-sfoot { flex: none; padding: 10px 14px; border-top: 1px solid var(--line); }
 .dk-sfoot .btn { width: 100%; }
 
-.dk-card { min-width: 0; min-height: 0; margin: 0 0 4px; display: flex; flex-direction: column; background: var(--panel); color: var(--ink); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; font-size: 13px; }
+/* overflow: clip, not hidden: a hidden box can still be scrolled (WebKit does, to show a focused or
+   typed-in text box), and nothing scrolls it back, so an item's box moved off where it sat. */
+/* A row that's open on the Desk (an item, a session): the theme's hue, quietly, in light and dark. */
+.dk-card { --dk-on: color-mix(in srgb, var(--accent) 14%, var(--panel)); }
+.dk-card { min-width: 0; min-height: 0; margin: 0 0 4px; display: flex; flex-direction: column; background: var(--panel); color: var(--ink); border-radius: 14px; box-shadow: var(--shadow); overflow: clip; font-size: 13px; }
 .dk-ch { flex: none; display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 14px 0 20px; border-bottom: 1px solid var(--line); }
 .dk-ch b { font-size: 14px; font-weight: 700; }
 .dk-sub { color: var(--muted); font-family: var(--mono); font-size: 11.5px; }
@@ -53,7 +56,7 @@
 .dk-gh { display: flex; align-items: center; gap: 6px; margin: 14px 8px 4px; padding: 0 12px; font: 700 11px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); background: none; border: 0; text-align: left; }
 /* The Desk's lead, in its own spot above the session list (desk.js deskSessions). */
 .dk-leadspot { flex: 0 0 auto; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
-.dk-gh.you { color: var(--deny); }
+.dk-gh.you:not(.none) { color: var(--deny); }
 /* The finished items' end: holds a row's room while the next ones load, so nothing below or above jumps. */
 .dk-more { min-height: 44px; display: flex; align-items: center; padding: 0 20px; color: var(--muted); font-size: 12px; }
 .dk-gh .n { font-family: var(--mono); font-weight: 600; letter-spacing: 0; }
@@ -61,11 +64,10 @@
 /* A holder's head: its name, what it is, ›. */
 .dk-holder { display: flex; align-items: baseline; gap: 8px; margin: 12px 8px 2px; padding: 6px 12px; border-radius: 10px; cursor: pointer; }
 .dk-holder:hover { background: var(--panel-2); }
-.dk-holder.on { background: var(--sel); }
+.dk-holder.on { background: var(--dk-on); }
 .dk-holder .dk-nm { font-weight: 700; font-size: 13px; }
 .dk-holder .dk-s { color: var(--muted); font-size: 12px; }
 .dk-holder .dk-go { color: var(--muted); font-size: 15px; }
-.dk-holder.on, .dk-holder.on .dk-s, .dk-holder.on .dk-go { color: var(--on-sel); }
 
 /* An item in two rows: its state tag, #id and title; under them who holds it, its age (a done one's time) and Looks
    right when it's ready to check; an ask's question below. */
@@ -78,7 +80,8 @@
 .dk-i2 .dk-age:empty { display: none; }
 .dk-i2 .dk-ok { margin-left: auto; }
 .dk-it:hover { background: var(--panel-2); }
-.dk-it.on { background: var(--sel); }
+/* Open: a quiet wash of the theme's own hue, its words as they are (not the Board's lime). */
+.dk-it.on { background: var(--dk-on); }
 .dk-tag { min-width: 46px; margin-top: 1px; padding: 2px 6px; white-space: nowrap; border-radius: 5px; background: var(--panel-2); color: var(--muted); font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; text-align: center; }
 .dk-tag.ask { background: var(--deny); color: var(--on-accent); }
 /* A row with no tag words (all but an ask and a stuck one): no tag column, so the title takes the row's width. Back to
@@ -103,7 +106,6 @@
 .dk-ok:hover { filter: brightness(1.15); }
 .dk-h { grid-column: 2; margin-top: 1px; color: var(--ink); font-size: 12.5px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Selected: its words in the selected ink, as the Board's selected card. */
-.dk-it.on .dk-id, .dk-it.on .dk-who, .dk-it.on .dk-age, .dk-it.on .dk-h { color: var(--on-sel); }
 .dk-it.ask .dk-h::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; background: var(--deny); vertical-align: 1px; }
 /* Just landed (back to check, not opened since): the row stands out. */
 .dk-it.landed { background: var(--panel-2); }
@@ -130,7 +132,6 @@
 .dk-givewrap { position: relative; display: inline-block; }
 .dk-give { color: var(--muted); font-size: 12.5px; font-weight: 500; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
 .dk-give:hover { color: var(--ink); }
-.dk-it.on .dk-give { color: var(--on-sel); }
 .dk-givemenu { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; min-width: 220px; display: flex; flex-direction: column; padding: 4px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); box-shadow: var(--shadow); }
 .dk-givemenu button { display: flex; align-items: baseline; gap: 8px; padding: 7px 10px; border: 0; border-radius: 7px; background: none; color: var(--ink); font: 13px var(--sans); text-align: left; white-space: nowrap; cursor: pointer; }
 .dk-givemenu button:hover { background: var(--panel-2); }
@@ -195,6 +196,8 @@
 .dk-sec { padding: 16px 24px 0; }
 .dk-sec h3 { margin: 0 0 8px; font: 700 11px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .dk-sec p { margin: 0 0 6px; line-height: 1.5; }
+.dk-sec p.dk-words { white-space: pre-wrap; color: var(--ink-2, var(--ink)); }
+.dk-sec p.dk-split { color: var(--muted); font-size: 12.5px; }
 .dk-quiet { color: var(--muted); }
 .dk-note { margin: 14px 24px 0; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
 .dk-files { font-family: var(--mono); font-size: 12px; color: var(--ink); }
@@ -324,8 +327,6 @@
 .dk-leadspot .dk-gh { margin-right: 10px; }
 .dk-more-btn { all: unset; display: grid; place-items: center; width: 24px; height: 20px; border-radius: 6px; color: var(--muted); cursor: pointer; }
 .dk-more-btn:hover, .dk-more-btn:focus-visible { background: var(--panel-2); color: var(--ink); }
-.dk-ul { margin-left: 8px; padding: 0; border: 0; background: none; color: var(--muted); font-size: 12px; font-weight: 650; text-decoration: underline; cursor: pointer; }
-.dk-ul:hover { color: var(--ink); }
 .dk-none { color: var(--muted); font-size: 12.5px; }
 
 /* The lead's own lines in its chat (desk_lead.js deskLineHtml): ITEM, ROUTE, DONE, CONTEXT as small rows in one quiet
@@ -351,14 +352,15 @@
 /* A DONE in the lead's chat, ready to check (desk_commit.js deskCheckCard): a bordered card, no edge color. */
 .dk-chk { margin: 10px 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; display: flex; flex-direction: column; gap: 4px; user-select: text; -webkit-user-select: text; cursor: text; }
 .dk-chk button { cursor: pointer; user-select: none; -webkit-user-select: none; }
-.dk-chk .dkc-dw { overflow-wrap: anywhere; }
 .dk-chk-a { all: unset; cursor: pointer; color: inherit; font-weight: inherit; }
 .dk-chk a, .dk-chk a:hover { text-decoration: none; }
 .dk-chk-a:hover, .dk-chk-w .dk-chk-a:hover { color: var(--link, var(--accent)); }
 .dk-chk-w .dk-chk-a { font-weight: 600; color: var(--ink); }
-.dk-chk .dkc-l { margin-top: 8px; }
 .dk-chk-k { font-size: 11.5px; color: var(--muted); }
-.dk-chk-t { font-size: 14px; font-weight: 600; color: var(--ink); }
+/* Its kind's icon, then the title beside it: a long title wraps next to the icon, not under it on a line of its own. */
+.dk-chk-t { display: flex; align-items: flex-start; font-size: 14px; font-weight: 600; color: var(--ink); }
+.dk-chk-t > .dk-kic { margin-top: 3px; }
+.dk-chk-t > .dk-chk-a { min-width: 0; text-align: left; }
 .dk-chk-w, .dk-chk-in, .dk-chk-after { font-size: 12.5px; color: var(--muted); }
 .dk-chk .dk-acts { padding: 8px 0 0; display: flex; gap: 8px; }
 .dk-chk-after { padding-top: 6px; }
@@ -371,8 +373,9 @@
 .dk-box.dk-sb-box { margin: 0; }
 .dk-pane .dk-sb { padding: 14px 24px 0; }
 .dk-box.dk-sb-box:focus-within { border-color: color-mix(in srgb, var(--ink) 30%, var(--line)); }
-.dk-chk .dkc-l { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
-.dk-chk .dkc-dw { font-size: 13px; }
+/* Its labels read as the item page's section heads (.dk-sec h3). */
+.dk-chk .dkc-l { margin-top: 8px; font: 700 11px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.dk-chk .dkc-dw { font-size: 13px; overflow-wrap: anywhere; }
 /* "Done when" as a checklist (desk.js deskDoneWhenHtml): a point a line, small, room between; a quiet ring in front. */
 .dk-dwl { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-direction: column; gap: 7px; font-size: 12.5px; line-height: 1.45; color: var(--ink); }
 .dk-dwl li { display: flex; gap: 9px; align-items: baseline; }
@@ -383,12 +386,10 @@
 .dk-undo-c { all: unset; cursor: pointer; color: var(--accent); }
 .dk-undo-c:hover { text-decoration: underline; }
 
-.dk-srow.on .dk-st > i:not(.ask):not(.idle) { background: var(--on-sel); }
 .dk-chk .dk-chk-back { white-space: pre-wrap; }
 
 /* An item's kind (deskKindIcon): one small line icon in the theme color, wherever an item's kind shows. */
 .dk-kic { flex: none; display: inline-block; vertical-align: -2px; margin-right: 5px; color: var(--accent); }
-.dk-srow.on .dk-kic { color: var(--on-sel); }
 .dk-i1 > .dk-kic { align-self: flex-start; margin-top: 3px; margin-right: -3px; }
 /* A hand-off (ROUTE) card: one bordered line, its kind's icon, number and title → who, then "Why ⌃"; the why sits
    under it in a quiet box joined to the line (open until folded). Never a box in a box: lines all hand-offs drop the

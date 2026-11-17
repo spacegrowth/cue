@@ -273,9 +273,26 @@ test("a design item shows one \"Designs\" link to its canvas; a newer link repla
   await cue.called("open_link", { url: "https://claude.ai/artifact/BBB" });
 });
 
+test("the Desk tab opens a Desk, never the list: the one last open, else Desk home's first", async ({ page, cue }) => {
+  await cue.open("desk");
+  const tab = page.locator('.switch-view [data-view="desk"]'), board = page.locator('.switch-view [data-view="board"]');
+  await tab.click();
+  await expect(page.locator(".dk-desks")).toHaveCount(0);
+  await expect(page.locator("[data-desk-home]")).toHaveText("‹ Desks");
+  // Desk home, then into website; away to the Board with All projects, and the Desk tab is back on website.
+  await page.locator("[data-desk-home]").click();
+  await page.locator('.dk-desk[data-desk-project="website"]').click();
+  await page.locator("[data-desk-home]").click();
+  await board.click();
+  await tab.click();
+  await expect(page.locator(".dk-desks")).toHaveCount(0);
+  await expect(page.locator(".dk-items .dk-it").first()).toHaveAttribute("data-desk-item", "w1");
+});
+
 test("Desk home: one row a Desk with what it's about, its people, open tasks, bugs and features, and who's on it; a click opens it", async ({ page, cue }) => {
   await cue.open("desk");
   await page.locator('.switch-view [data-view="desk"]').click();
+  await page.locator("[data-desk-home]").click();
   await expect(page.locator(".dk-hh")).toHaveText("Desks · 2");
   await expect(page.locator(".dh-hd span")).toHaveText(["Desk", "Project · people", "Tasks", "Bugs", "Features", "On it", ""]);
   const rows = page.locator(".dk-desks .dk-desk");
@@ -308,6 +325,7 @@ test("Desk home: one row a Desk with what it's about, its people, open tasks, bu
 test("+ New is a menu: New session as before, New Desk asks a project and a name, starts its lead and opens it", async ({ page, cue }) => {
   await cue.open("desk");
   await page.locator('.switch-view [data-view="desk"]').click();
+  await page.locator("[data-desk-home]").click();
   await cue.change((st) => { st.history = [...(st.history || []), { cwd: "/work/notes", created_ms: Date.now() }, { cwd: "/work/blog", created_ms: Date.now() }]; });
   const chip = page.locator("[data-new-menu]");
   await chip.click();
@@ -442,7 +460,7 @@ test("Drop this item asks once more before it drops", async ({ page, cue }) => {
 test("an item no one holds yet, or waiting on nothing, reads plain: next", async ({ page, cue }) => {
   await cue.open("desk");
   const it = { kind: "bug", state: "queued", holder: null, after: null, from: "you", created: Date.now() / 1000 };
-  expect(await page.evaluate((i) => deskItemState(i), it)).toMatch(/^Bug · next · added by you/);
+  expect(await page.evaluate((i) => deskItemState(i), it)).toMatch(/^<span class="dk-id">#\w*<\/span> · next · added by you/);
   expect(await page.evaluate((i) => deskTag(i), it)).toEqual(["", ""]);
   // One whose hand-off failed is tagged stuck instead.
   expect(await page.evaluate((i) => deskTag({ ...i, route_failed: "web-lead is gone" }), it)).toEqual(["stuck", "ask"]);
@@ -1614,4 +1632,33 @@ test("Waiting on you stays at 0, not in red; an open item is a quiet wash of the
   const [bg, sel, ink, idInk] = await row.evaluate((e) => { const c = (v) => { const t = document.createElement("i"); t.style.color = v; document.body.append(t); const r = getComputedStyle(t).color; t.remove(); return r; }; return [getComputedStyle(e).backgroundColor, c("var(--sel)"), c("var(--on-sel)"), getComputedStyle(e.querySelector(".dk-id")).color]; });
   expect(bg).not.toBe(sel);
   expect(idInk).not.toBe(ink);
+});
+
+test("an open item's box stays where it is while you type, through redraws, with your words and the cursor", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await page.locator('[data-desk-item="d3"]').click();
+  const box = page.locator('.dk-right .dk-box textarea');
+  await box.click();
+  await page.keyboard.type("half a thought");
+  const at = await box.boundingBox();
+  for (let n = 0; n < 3; n++) await cue.change((st) => { st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d3").title += "."; });
+  await page.keyboard.type(" more");
+  expect(await page.locator(".dk-card.dk-right").evaluate((e) => getComputedStyle(e).overflow)).toBe("clip");   // can't be scrolled to show the box
+  expect(await box.boundingBox()).toEqual(at);
+  await expect(box).toBeFocused();
+  await expect(box).toHaveValue("half a thought more");
+});
+
+test("a long title on a Ready to check card wraps beside its kind's icon, not under it", async ({ page, cue }) => {
+  await cue.open("desk");
+  await cue.change((st) => { st.desk.projects.find((d) => d.project === "cue").checks.find((i) => i.id === "d2").title = "Lets keep Waiting on you to 0 and a color I like when I enter, and the text box of items that jumps somewhere after a few seconds"; });
+  await openDesk(page);
+  const t = page.locator(".dk-chat .dk-chk .dk-chk-t");
+  await expect(t).toContainText("Lets keep Waiting");
+  const [icon, title] = await t.evaluate((el) => [el.querySelector(".dk-kic"), el.querySelector(".dk-chk-a")].map((e) => e.getBoundingClientRect()).map((r) => ({ top: r.top, bottom: r.bottom, right: r.right, left: r.left, h: r.height })));
+  expect(title.h, "the title wraps").toBeGreaterThan(30);
+  expect(title.left).toBeGreaterThanOrEqual(icon.right);
+  expect(icon.top).toBeGreaterThanOrEqual(title.top);
+  expect(icon.bottom).toBeLessThan(title.top + 22);
 });
