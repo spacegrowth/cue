@@ -151,8 +151,10 @@ function usualAgent() {
  *  would repeat on every card), its mark for any other, so the odd one out is what you see. */
 const oddAgent = (h) => h && h !== usualAgent() ? `<span class="badge h-${esc(h)}" role="img" aria-label="${esc(agentName(h))}">${agentLetter(h)}</span>` : "";
 const draft = (id) => (drafts[id] ||= { text: "", choices: {}, images: [] });
-/** A session's name. */
-const nameSpan = (sid, project, cls = "proj") => `${addOn.nameMark(sid)}<span class="${cls}">${esc(nameOf(sid, project))}</span>${hearing(sid)}`;
+/** The Desk's mark before a session's name while it works for a Desk (desk_lead.js deskNameMark), "" without one. */
+const deskSessMark = (sid) => (typeof deskNameMark === "function" ? deskNameMark(sid) : "");
+/** A session's name: the Desk's mark and an add-on's before it. */
+const nameSpan = (sid, project, cls = "proj") => `${deskSessMark(sid)}${addOn.nameMark(sid)}<span class="${cls}">${esc(nameOf(sid, project))}</span>${hearing(sid)}`;
 /** Beside a session's name on any card while one of its replies is read out (Listen): a speaker, its waves
  *  moving while it reads, still while paused. */
 const hearing = (sid) => {

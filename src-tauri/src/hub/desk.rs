@@ -767,8 +767,14 @@ fn holder_said(st: &mut Store, sid: &str, text: &str, decided: bool, now: u64, f
     let mut finished: Option<String> = None;
     // What this turn made, for the Desk to link to: its web links, and its files when the session is on this Mac.
     let here = st.sessions.get(sid).is_some_and(|s| s.origin.machine.is_empty());
+    // Its crew or background agents still at work: not done yet, whatever it says. The item stays at work, and once
+    // they've finished, a turn of its with no DONE is asked if it's done (desk_stall).
+    let busy = super::desk_stall::still_at_it(st, sid);
     for line in parse::lines(text) {
         let Line::Done { ids } = line else { continue };
+        if busy {
+            continue;
+        }
         for id in ids {
             let id = st.desk.canon(&id);
             let Some(it) = st.desk.item_mut(&id).filter(|i| i.holder.as_ref().is_some_and(|h| h.is(sid)) && matches!(i.state.as_str(), "working" | "queued")) else { continue };
@@ -830,7 +836,7 @@ fn desk_line_start(line: &str) -> bool {
     matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "CONTEXT" | "DESIGNS" | "TITLE" | "SPLIT") || word.eq_ignore_ascii_case("DECIDED")
 }
 
-/// What you did to item `id` ("looks_right" | "send_back" | "start_now" | "put_before" | "drop"), in the store.
+/// What you did to item `id` ("looks_right" | "reopen" | "send_back" | "start_now" | "put_before" | "drop"), in the store.
 fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<Effects, String> {
     let mut fx = Effects::default();
     let busy = st.desk.item(id).and_then(|i| i.holder.as_ref()).filter(|h| at_work(st, h)).map(|h| h.name.clone());
@@ -842,6 +848,14 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
             it.after = None;
             it.done_at = Some(secs(now));
             release(st, id, now, &mut fx);
+        }
+        // Undo on a done item: back to waiting on you, nothing in the work touched (a commit made stays; one still
+        // waiting isn't made).
+        "reopen" => {
+            if it.state != "done" {
+                return Err("It isn't done: nothing to undo".into());
+            }
+            (it.state, it.done_at, it.commit_wait) = ("to_check".into(), None, None);
         }
         "send_back" => {
             let h = holder.ok_or("nobody holds it yet")?;

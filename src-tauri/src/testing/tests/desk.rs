@@ -961,6 +961,10 @@ fn what_you_do_to_an_item() {
     let it = w.hub().desk_add("web", "task", "Footer", "", None).unwrap();
     assert!(w.hub().desk_item_act(&it.id, "looks_right", "").is_ok());
     assert_eq!(item(&desk(&w, "web"), "Footer")["state"], "done");
+    // Undo on a done item: back to check, done_at gone; a second Undo has nothing to undo.
+    let back = w.hub().desk_item_act(&it.id, "reopen", "").unwrap();
+    assert_eq!((back.state.as_str(), back.done_at), ("to_check", None));
+    assert!(w.hub().desk_item_act(&it.id, "reopen", "").is_err());
     assert_eq!(w.hub().desk_item_act(&it.id, "drop", "").unwrap().state, "dropped");
     assert!(desk(&w, "web").is_null() || desk(&w, "web")["items"].as_array().unwrap().is_empty());
     assert!(w.hub().desk_item_act("nope", "drop", "").is_err());
@@ -1232,6 +1236,34 @@ fn a_holder_with_crew_at_work_a_crew_member_or_the_desk_lead_isnt_asked_if_done(
     w.advance(1000);
     ends(&w, &l, "Nothing to route.");
     assert_eq!((state("Colours"), asks(&l)), ("working".to_string(), 0));
+}
+
+/// A DONE said while the holder's crew is still at work waits: the item stays at work (not to check, so not waiting
+/// on you); once the crew has finished, the holder's DONE sends it to check.
+#[test]
+fn a_done_said_while_its_crew_still_works_keeps_the_item_at_work() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    ends(&w, &l, "ITEM: Header\nROUTE: #new -> cue-teams | why: it knows");
+    let header = item(&desk(&w, &project), "Header")["id"].as_str().unwrap().to_string();
+    let state = || item(&desk(&w, &project), "Header")["state"].as_str().unwrap_or("").to_string();
+    w.advance(1000);
+    w.hosted_says(&h, HostedEvent::Taken { text: "Header".into() });
+    let mut started = writes("toolu_R", "agentR", "reviewer", &[]);
+    let finished = started.pop().unwrap();
+    says(&w, &h, started);
+    w.advance(1000);
+    ends(&w, &h, &format!("Built it; the review is still running.\n\nDONE: #{header}"));
+    assert_eq!(state(), "working", "its reviewer is still at work");
+    assert_eq!(sent_to(&w, &h).iter().filter(|t| t.starts_with("Done? Write DONE")).count(), 0);
+    // The reviewer finishes: the holder's DONE now sends it to check.
+    says(&w, &h, [finished]);
+    w.advance(1000);
+    w.hosted_says(&h, HostedEvent::Taken { text: "reviewer finished".into() });
+    w.advance(1000);
+    ends(&w, &h, &format!("The review is clean.\n\nDONE: #{header}"));
+    assert_eq!(state(), "to_check");
 }
 
 /// A stalled item sent again (Restart, or a route to the same holder) is at work, not stalled, until that holder's
