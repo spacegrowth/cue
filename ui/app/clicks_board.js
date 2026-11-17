@@ -159,7 +159,7 @@ const BOARD_CLICKS = [
   // The add-on's first: a button of its on a session's card is its own, not the card's.
   ...addOn.clicks,
   rule("[data-session]", (ss) => openSession(ss.dataset.session)),
-  rule("[data-view]", (vb) => { view = vb.dataset.view; renderMain(); }),
+  rule("[data-view]", (vb) => { view = vb.dataset.view; if (view === "desk") deskTabOpen(); renderMain(); }),
   rule("[data-hfilter]", (hf) => { histFilter = hf.dataset.hfilter; histOpen = null; renderMain(); }),
   rule("[data-hgroup]", (hg) => { flipIn(histOpenGroups, hg.dataset.hgroup); renderMain(); }),
   rule("[data-hrow]", (hr) => { histOpen = histOpen === hr.dataset.hrow ? null : hr.dataset.hrow; renderMain(); }),

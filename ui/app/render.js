@@ -225,11 +225,14 @@ function restoreFocus(was) {
   const target = `${active?.id}|${active?.sid}`;
   if (target !== focusedTarget && !sheet && !focusKey && focusComposer()) focusedTarget = target;
   saveDrafts();
+  // preventScroll: the box is redrawn where it was, so nothing needs scrolling to show it. Without it
+  // WebKit can scroll an ancestor (the Desk item card hides its overflow) to reveal the new box, and
+  // nothing scrolls it back: the item's box moved at the first redraw after it opened.
   if (focusKey) {
     const el = document.querySelector(`[data-text="${CSS.escape(focusKey)}"]`);
-    if (el) { el.focus(); el.setSelectionRange(...caret); } else if (view === "inbox" && typeof inboxRefocus === "function") inboxRefocus();
+    if (el) { el.focus({ preventScroll: true }); el.setSelectionRange(...caret); } else if (view === "inbox" && typeof inboxRefocus === "function") inboxRefocus();
   }
-  else if (focusId) { const el = document.getElementById(focusId); if (el) { el.focus(); if (caret) el.setSelectionRange(...caret); } }
+  else if (focusId) { const el = document.getElementById(focusId); if (el) { el.focus({ preventScroll: true }); if (caret) el.setSelectionRange(...caret); } }
   // Where each box was scrolled, after the cursor is back (putting it back can scroll the box itself).
   document.querySelectorAll("textarea[data-text]").forEach((el) => { const top = was.boxTops.get(el.dataset.text); if (top != null) el.scrollTop = top; });
   // Something over the chat closed (Esc, a click outside, a pick): its text box takes the cursor back,
