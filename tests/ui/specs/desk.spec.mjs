@@ -1473,6 +1473,13 @@ test("the lead's card in the strip: Run by, its state and the item it holds; ope
   [bg, ring] = await cssOf(lead, "background-color", "box-shadow");
   expect(bg).toBe("oklab(0.729093 -0.0409094 0.0797046)");
   expect(ring).toBe("none");
+  // At work, its blinking dot takes the card's ink, so it shows on the lime.
+  await cue.change((st) => { st.sessions.find((x) => x.session_id === "lead").state = "working"; st.items = st.items.filter((i) => i.session_id !== "lead"); });
+  const dot = lead.locator(".dk-st > i");
+  await expect(dot).not.toHaveClass(/ask|idle/);
+  const [dbg, dink] = await cssOf(dot, "background-color", "color");
+  expect(dbg).toBe(dink);
+  expect(await blinkOf(dot)).toBe("pulse");
 });
 
 test("no line under the strip: the list starts right after it", async ({ page, cue }) => {
