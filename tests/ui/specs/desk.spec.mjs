@@ -2570,7 +2570,7 @@ test("on a named Desk, a session's chat is titled by the item it holds on that D
   await expect.poll(() => page.evaluate(() => deskOpen && [deskOpen.kind, deskOpen.id, deskOpen.project])).toEqual(["item", "n1", "nd1"]);
 });
 
-test("a message you send on an item's page is its thread's last, under its holder's latest words (#160)", async ({ page, cue }) => {
+test("a message you send on an item's page is its thread's last, under its holder's latest words (#160); with its holder at work, its now under it (#165)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   // Its holder between turns, its latest words not in a reply (kept from before replies were).
@@ -2587,13 +2587,13 @@ test("a message you send on an item's page is its thread's last, under its holde
   await page.locator(".dk-right [data-desk-send]").click();
   await expect(rows.last()).toContainText("Check the narrow window too");
   await expect(rows.nth(-2)).toContainText("Moved the search into the header's middle.");
-  // Its holder at work: your message still comes last, under its "now".
+  // Its holder at work: its "now" is last, under your message, as it answers it (#165).
   await cue.change((st) => { const it = st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d4"); const s = st.sessions.find((x) => x.session_id === it.holder.sid); it.state = "working"; if (s) s.state = "working"; });
   await expect(page.locator(".dk-right .dk-ipane .dk-tm.live")).toHaveCount(1);
   await page.locator(".dk-right .dk-box textarea").fill("And the wide one");
   await page.locator(".dk-right [data-desk-send]").click();
-  await expect(rows.last()).toContainText("And the wide one");
-  await expect(rows.nth(-3)).toHaveClass(/live/);
+  await expect(rows.last()).toHaveClass(/live/);
+  await expect(rows.nth(-2)).toContainText("And the wide one");
 });
 
 test("on the Board, a session working for a Desk has the Desk's mark before its name; one that isn't, none (#156)", async ({ page, cue }) => {
@@ -2634,4 +2634,21 @@ test("the Desk's mark is on the session's chat title and its Inbox page head too
   await expect(title.locator("xpath=preceding-sibling::*[1]")).toHaveClass(/dk-name-ic/);
   expect(await page.evaluate(() => typeof deskSessMark === "function" && deskSessMark("host").includes("dk-name-ic"))).toBe(true);
   expect(await page.evaluate(() => deskSessMark("nobody"))).toBe("");
+});
+
+test("It asks you is one plain box: no dot, and its holder's calls made on its own aren't what it asks (#166)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.change((st) => {
+    const s = st.sessions.find((x) => x.session_id === "site");
+    s.state = "waiting";
+    s.thread = [...(s.thread || []), { role: "agent", text: "Found it.\n\nWhich + did you mean?\n\nDECIDED: left the other files alone — another session edits them", at_ms: Date.now() }];
+    const d1 = st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d1");
+    d1.state = "needs_you"; d1.ask = null; d1.holder = { kind: "session", sid: "site", name: "site-lead" };
+  });
+  await page.locator('[data-desk-item="d1"]').click();
+  const chain = page.locator(".dk-pane .dk-chain");
+  await expect(chain).toHaveText("Which + did you mean?");
+  await expect(chain.locator(".dk-ln > i")).toHaveCount(0);
+  await expect(chain).not.toContainText("Decided");
 });

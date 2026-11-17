@@ -370,6 +370,8 @@
 .dk-ln > i.wait, .dk-mb > i.idle { background: none; border: 1.5px solid var(--muted); width: 5px; height: 5px; }
 .dk-ln > i.ask, .dk-mb > i.ask { background: var(--deny); }
 .dk-ln > i.ok { background: var(--accent); }
+/* What an item asks you (or asked): one plain box, no dot (#166). */
+.dk-ln.dk-q { grid-template-columns: minmax(0, 1fr); }
 /* What you answered on an item's page: the ✓ small, as in a chat's answered ask. */
 .dk-picked { display: flex; align-items: center; gap: 6px; }
 .dk-picked .sent-check { width: 16px; height: 16px; font-size: 10px; }
