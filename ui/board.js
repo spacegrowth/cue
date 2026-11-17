@@ -45,7 +45,7 @@ function projChip() {
   const del = (p) => !madeProject(p) ? "" : pjDelArm === p
     ? `<button class="pj-del armed" data-pjdel="${esc(p)}">Remove</button>`
     : `<button class="pj-del" data-pjdel="${esc(p)}" aria-label="Remove ${esc(projLabel(p))}">×</button>`;
-  const row = ([p, r]) => `<div class="pj-row ${projFilter === p ? "on" : ""}" role="button" data-pj="pick" data-project="${esc(p)}">${projBtn(p, "pj")}${label(p)}${actDots(p, "pj")}<span class="pj-n">${r.n ? `${r.n}${r.need ? ` · ${r.need} need${r.need === 1 ? "s" : ""} you` : ""}` : r.made ? "empty" : "history"}</span>${ren(p)}${del(p)}${pin(p)}</div>`;
+  const row = ([p, r]) => `<div class="pj-row ${projFilter === p ? "on" : ""}" role="button" data-pj="pick" data-project="${esc(p)}">${projBtn(p, "pj")}${label(p)}<span class="pj-n">${r.n ? `${r.n}${r.need ? ` · ${r.need} need${r.need === 1 ? "s" : ""} you` : ""}` : r.made ? "empty" : "history"}</span>${ren(p)}${del(p)}${pin(p)}</div>`;
   const add = pjNewOpen
     ? `<div class="pm-new"><input class="pm-new-in pj-new-in" data-text="pjnew" maxlength="40" placeholder="Name the new project" spellcheck="false" value="${esc(draft("pjnew").text)}"/>${pjNewNote ? `<div class="pm-note">${esc(pjNewNote)}</div>` : ""}</div>`
     : `<button class="pj-row pj-add" data-pj-new="1">+ New project…</button>`;
@@ -53,14 +53,14 @@ function projChip() {
   // A pinned project picked shows as its own chip, lit; the projects chip then reads All projects.
   const shown = projFilter && !pins.includes(projFilter) ? projFilter : "";
   // Its dot changes the color right here (the project shown, or all of them); its name opens the list.
-  const main = `<span class="pj-wrap"><span class="hchip pj-chip">${projBtn(shown || ALL_PROJ, "chip")}<button class="pj-open" data-pj="toggle">${shown ? esc(projLabel(shown)) : `<span class="hlbl">All projects</span>`}<span class="pj-car">▾</span></button>${actDots(shown, "chip")}</span>${pop}</span>`;
+  const main = `<span class="pj-wrap"><span class="hchip pj-chip">${projBtn(shown || ALL_PROJ, "chip")}<button class="pj-open" data-pj="toggle">${shown ? esc(projLabel(shown)) : `<span class="hlbl">All projects</span>`}<span class="pj-car">▾</span></button></span>${pop}</span>`;
   // Pinned: one click shows that project alone; again, all of them.
   // Its dot changes its color, as the projects chip's does.
   // Replies that just came back there, in a conversation you're having (In conversation's rule), while another project
   // is shown: what's been waiting a while you know about; with All projects, or on that one, it's on screen already.
   const backIn = (p) => projFilter && projFilter !== p ? state.items.filter((i) => i.project === p && !parkedIds().has(i.session_id) && talking(i)).length : 0;
   const waitN = (p) => { const n = backIn(p); return n ? `<span class="pj-wait" aria-label="${n} just replied">${n}</span>` : ""; };
-  const chips = pins.map((p) => `<span class="pj-wrap"><span class="hchip pj-chip pj-pinned ${projFilter === p ? "hot" : ""}">${projBtn(p, "pin")}<button class="pj-open" data-pj="pick" data-project="${projFilter === p ? "" : esc(p)}" aria-pressed="${projFilter === p}"><span class="pj-pn">${esc(projLabel(p))}</span>${waitN(p)}</button>${actDots(p, "pin")}</span></span>`).join("");
+  const chips = pins.map((p) => `<span class="pj-wrap"><span class="hchip pj-chip pj-pinned ${projFilter === p ? "hot" : ""}">${projBtn(p, "pin")}<button class="pj-open" data-pj="pick" data-project="${projFilter === p ? "" : esc(p)}" aria-pressed="${projFilter === p}"><span class="pj-pn">${esc(projLabel(p))}</span>${waitN(p)}</button></span></span>`).join("");
   return main + chips;
 }
 
@@ -892,10 +892,6 @@ let renameErrPrimed = false;
  *  (as ⌘K does); the best name match comes first. Then closed and older sessions by name, then what was
  *  said. A live session opens in Active; an ended one's message opens in place. */
 let searchResults = [], searchSeq = 0, searchTimer = 0;
-function liveChip() {
-  const rows = liveRows().filter((r) => inProj(r.project)), asks = rows.filter((r) => r.st === "asks").length, fresh = rows.filter((r) => isNewSession(r.sid)).length;
-  return `<span class="lv-wrap"><button class="hchip lv-chip ${liveOpen ? "on" : ""}" data-lv="toggle" title="Every live session (⌘K, ⌘L), and + New (⌘N)"><span class="hdot"></span>${rows.length}<span class="hlbl"> live</span>${asks ? ` <span class="hsub">· ${asks} asks</span>` : ""}${fresh ? ` <span class="hsub">· ${fresh} new</span>` : ""}</button>${liveOpen && !liveSpot ? livePop(rows) : ""}</span>`;
-}
 /** A newer Cue turned up in the background: a small card in the header's middle, until you choose. */
 const updateCard = () => !upd.offer ? "" : `<div class="upd-card"><div><b>Cue ${esc(upd.version)} is out</b>${upd.status === "installing" ? `<div class="dim">Installing… Cue restarts by itself.</div>` : upd.status.startsWith("error:") ? `<div class="dim">${esc(upd.status.slice(6))}</div>` : ""}</div>
   <button class="btn primary small" data-upd="install" ${upd.status === "installing" ? "disabled" : ""}>Update and restart</button><button class="btn small" data-upd="later">Later</button></div>`;

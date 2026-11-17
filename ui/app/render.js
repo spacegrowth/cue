@@ -67,7 +67,7 @@ function beforeDraw() {
 
 /** The header: the chips; usage, search, the terminal, Extensions, Insights and Settings; then the views (Inbox, Board, Desk, the add-on's, Read) at the right edge. */
 function topBarHtml(counts) {
-  return `<div class="top" data-tauri-drag-region><span class="wordmark" data-tauri-drag-region role="img" aria-label="Cue">${CUE_MARK}</span><span class="hchips">${newChip()}${counts}${liveChip()}${projChip()}</span><span class="grow" data-tauri-drag-region></span>
+  return `<div class="top" data-tauri-drag-region><span class="wordmark" data-tauri-drag-region role="img" aria-label="Cue">${CUE_MARK}</span><span class="hchips">${newChip()}${counts}${projChip()}</span><span class="grow" data-tauri-drag-region></span>
       ${updateCard()}${usageChip()}<button class="top-btn icon top-find" data-act="open-search" aria-label="Find (⌘K)">${SEARCH_ICON}</button>${shellsBtn()}${extPanelBtn()}<button class="top-btn icon insights-btn" data-view="insights" aria-pressed="${view === "insights"}" aria-label="Insights">${INSIGHTS_ICON}</button><button class="top-btn icon" data-act="open-settings" aria-label="Settings">${GEAR_ICON}</button>
       <div class="switch-view">${inboxBtn()}<button class="${view === "board" ? "on" : ""}" data-view="board">Board</button><button class="${view === "desk" ? "on" : ""}" data-view="desk">Desk</button>${addOn.views.map((v) => `<button class="${view === v.id ? "on" : ""}" data-view="${v.id}">${v.label()}</button>`).join("")}<button class="${view === "read" ? "on" : ""}" data-view="read">Read</button></div></div>`;
 }
@@ -77,9 +77,9 @@ const inboxBtn = () => { const n = inboxCount(); return `<button class="${view =
 // A lead's crew on its own page (team_page.js) takes the board's place while it's open.
 const viewHtml = () => (typeof crewPageShown === "function" && crewPageShown()) || (view === "history" ? historyView() : view === "inbox" ? inboxView() : view === "desk" ? deskView() : view === "insights" ? insightsTabView() : view === "sessions" ? sessionsView() : view === "read" ? readView() : view === "terminal" ? shellView() : addOn.views.find((v) => v.id === view)?.html() ?? boardView());
 /** What sits over the window: Move to Cue, a delete to confirm, a picture full size, Send to, a sheet, the live
- *  list in the middle of the window, an action's output. */
+ *  list in the middle of the window. */
 function overlaysHtml() {
-  return `${moving ? movingDialog() : ""}${deleteAsk ? deleteDialog() : ""}${quitAsk ? quitDialog() : ""}${lightboxHtml()}${sheet === "forward" && forward ? forwardPop() : ""}${sheet && sheet !== "forward" ? `<div class="scrim" data-act="close-sheet">${sheet === "convo" && convo ? convoSheet() : sheet === "setup" ? setupSheet() : actSheet()}</div>` : ""}${liveOpen && liveSpot ? `<div class="scrim spot-scrim"><span class="lv-wrap spot">${livePop(liveRows())}</span></div>` : ""}${actOverlay()}${trustAsk ? trustDialog() : ""}`;
+  return `${moving ? movingDialog() : ""}${deleteAsk ? deleteDialog() : ""}${quitAsk ? quitDialog() : ""}${lightboxHtml()}${sheet === "forward" && forward ? forwardPop() : ""}${sheet && sheet !== "forward" ? `<div class="scrim" data-act="close-sheet">${sheet === "convo" && convo ? convoSheet() : sheet === "setup" ? setupSheet() : settingsSheet()}</div>` : ""}${liveOpen ? `<div class="scrim spot-scrim"><span class="lv-wrap spot">${livePop(liveRows())}</span></div>` : ""}${trustAsk ? trustDialog() : ""}`;
 }
 /** The window drawn afresh, the open chat lifted out first so it can go back in (chat/patch.js liftChat). */
 function drawWindow() {
@@ -116,7 +116,6 @@ function placeFloating() {
   placePip();   // Cue's own terminal: under its button as the peek, or filling the Terminal view
   placeExt();   // the open session's extension tab, over the slot left for it
   placeDiff();  // the Diff tab's page in its slot (diff.js)
-  placeActs();  // a chip's actions popover under its dots
   placeTeamRows();   // a lead's open team: its scrolling box ends on a whole row
   crewListPlace();   // a crew page's list: its rows' form, the chip for an ask out of view (team_page.js)
   placeVoiceList();   // Settings → Voice: the open list under its picker

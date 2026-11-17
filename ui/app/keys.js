@@ -84,6 +84,7 @@ function keyCloseOpen(e) {
   else if (pjNewOpen) { pjNewOpen = false; pjNewNote = ""; }
   else if (pjOpen || colorFor) { pjOpen = false; colorFor = null; }
   else if (liveOpen) liveOpen = newOpen = false;
+  else if (waitOpen) waitOpen = false;
   else return false;
   renderMain();
   return true;
@@ -97,12 +98,10 @@ function keyCommands(e) {
   if (e.metaKey && e.key === ",") { e.preventDefault(); sheet = sheet === "settings" ? null : "settings"; renderMain(); return true; }
   // ⌘K: every live session in the middle of the window, like Spotlight.
   if (e.metaKey && k === "k") { e.preventDefault(); tipUsed("find"); openFind(); return true; }
-  // ⌘L: every live session (the drop-down by "N live").
-  if (e.metaKey && k === "l") { e.preventDefault(); lvAct("toggle", {}); return true; }
+  // ⌘L: the same, as it always opened every live session.
+  if (e.metaKey && k === "l") { e.preventDefault(); lvAct("toggle", { spot: true }); return true; }
   // ⌘N: + New session, in the middle of the window like ⌘K.
   if (e.metaKey && !e.shiftKey && !e.altKey && k === "n") { e.preventDefault(); tipUsed("new"); sheet = lightbox = null; liveSpot = true; lvAct("new", {}); return true; }
-  // ⌘E: the open project's actions, to run one (actions.js); ⌘⇧E runs the last one again.
-  if (e.metaKey && !e.altKey && !e.ctrlKey && k === "e") { e.preventDefault(); if (e.shiftKey) actAgain(); else actPalToggle(); return true; }
   return false;
 }
 
@@ -208,7 +207,7 @@ function keyBoard(e) {
   if (e.key === "/") { e.preventDefault(); tipUsed("find"); return openFind(); }   // like GitHub and Gmail (only when not typing)
   if (e.key === "h") { view = view === "history" ? "board" : "history"; return renderMain(); }
   // The list focuses its search box: the key that opened it mustn't land there as typed text.
-  if (e.key === "l") { e.preventDefault(); return lvAct("toggle", {}); }
+  if (e.key === "l") { e.preventDefault(); return lvAct("toggle", { spot: true }); }
   if (e.key === ",") { sheet = sheet === "settings" ? null : "settings"; return renderMain(); }
   if (sheet) return;
   if (e.key === "n") return goNext();

@@ -146,12 +146,13 @@ const moreShown = new Map();
 let moreFrame = 0;
 const moreWoke = new Set();
 
-// ---------- header chips: what's waiting, what's asking, what's going cold; click to open the oldest ----------
-/** Each chip's list, oldest first (going cold: soonest first): what a click steps through. */
+// ---------- header chips: what's waiting (its list), what's asking, what's going cold (open the oldest) ----------
+/** Each chip's list, what ‹ › step through: waiting newest first, as its list shows it; asking oldest first; going
+ *  cold soonest first. */
 function chipList(kind) {
   const { yours, decide } = groups();
-  // The add-on's that wait on you count here too, after yours.
-  if (kind === "waiting") return [...yours.map((i) => ({ id: i.id, sid: i.session_id, project: i.project, since: i.created_ms })), ...addOn.waitingChips()];
+  // The add-on's that wait on you count here too, in among yours by when each came back.
+  if (kind === "waiting") return [...yours.map((i) => ({ id: i.id, sid: i.session_id, project: i.project, since: i.created_ms })), ...addOn.waitingChips()].sort((a, b) => b.since - a.since);
   if (kind === "asking") return decide.map((i) => ({ id: i.id, sid: i.session_id, project: i.project, since: i.created_ms }));
   // Waiting on you with its cache counting down on its card (insights.js cacheWarn): the soonest to run out first.
   return [...yours, ...decide].map((i) => ({ id: i.id, sid: i.session_id, project: i.project, w: cacheWarn(i.session_id) }))
@@ -164,18 +165,44 @@ function headerChips() {
     if (!list.length) return "";
     // The chip you're stepping through: ‹ 2 of 3 waiting › (← → do the same).
     const at = chipNav === kind ? chipAt(list) : -1;
-    if (at >= 0 && list.length > 1) return `<span class="hchip nav ${cls}"><button class="hstep" data-chip-step="${kind}:-1" title="Previous (←)" aria-label="Previous">‹</button><button class="hnav" data-chip="${kind}"><span class="hdot ${dot}"></span>${at + 1} of ${list.length}<span class="hlbl"> ${label}</span></button><button class="hstep" data-chip-step="${kind}:1" title="Next (→)" aria-label="Next">›</button></span>`;
-    return `<button class="hchip ${cls}" data-chip="${kind}"><span class="hdot ${dot}"></span>${list.length}<span class="hlbl"> ${label}</span>${extra ? `<span class="hsub"> · ${extra}</span>` : ""}</button>`;
+    // Waiting opens its list (waitPop); the others open their oldest, then step.
+    const open = kind === "waiting" ? `data-chip-list="${kind}" aria-expanded="${waitOpen}"` : `data-chip="${kind}"`;
+    const html = at >= 0 && list.length > 1 ? `<span class="hchip nav ${cls}"><button class="hstep" data-chip-step="${kind}:-1" title="Previous (←)" aria-label="Previous">‹</button><button class="hnav" ${open}><span class="hdot ${dot}"></span>${at + 1} of ${list.length}<span class="hlbl"> ${label}</span></button><button class="hstep" data-chip-step="${kind}:1" title="Next (→)" aria-label="Next">›</button></span>`
+      : `<button class="hchip ${cls}" ${open}><span class="hdot ${dot}"></span>${list.length}<span class="hlbl"> ${label}</span>${extra ? `<span class="hsub"> · ${extra}</span>` : ""}</button>`;
+    return kind === "waiting" ? `<span class="lv-wrap wt-wrap">${html}${waitOpen ? waitPop(list) : ""}</span>` : html;
   };
   const waiting = chipList("waiting"), cold = chipList("cold");
   const first = waiting.reduce((o, x) => (!o || x.since < o.since ? x : o), null);
   const oldest = first ? now() - first.since : 0;
   // Stronger the longer the oldest has waited: soft under 5 minutes, then half, then solid at 15.
   const heat = oldest >= 15 * 60000 ? "hot" : oldest >= 5 * 60000 ? "warm" : "";
-  const html = chip("waiting", "waiting", first ? `oldest ${ago(first.since)}` : "", heat, "z")
+  // Its dot blinks while a session you wrote to has come back and waits, not yet open (the notch's and rail's rule,
+  // `talking`); steady otherwise.
+  const back = groups().yours.some((i) => talking(i) && i.session_id !== active?.sid);
+  const html = chip("waiting", "waiting", "", heat, back ? "z back" : "z")
     + chip("cold", "going cold", cold[0] ? `<span data-cold-in="${cold[0].since}">${coldIn(cold[0].since)}</span>` : "", "cold", "c")
     + chip("asking", "asking you", "", "", "ask");
   return html || `<span class="hall" data-tauri-drag-region>all clear</span>`;
+}
+/** Waiting's list, under its chip: each session that waits on you, newest first; a click opens it, and ‹ › on the chip
+ *  then step on from there. */
+function waitPop(list) {
+  const at = chipAt(list);
+  const row = (x, n) => {
+    const it = x.id && findItem(x.id), line = it ? plain(summary(it)) : "";
+    return `<div class="lv-row wt-row ${n === at ? "on" : ""}" role="button" data-chip-pick="${esc(x.id || x.sid)}">${projDot(x.project)}<span class="lv-name">${esc(x.sid ? nameOf(x.sid, x.project) : x.project || "")}</span><span class="wt-line">${esc(line)}</span><span class="wt-age">${ago(x.since)}</span></div>`;
+  };
+  return `<div class="lv-pop wt-pop"><div class="lv-list">${list.map(row).join("")}</div></div>`;
+}
+/** A row of Waiting's list clicked: that one opens, and the chip steps on from it. */
+function pickFromWaiting(key) {
+  const next = chipList("waiting").find((x) => (x.id || x.sid) === key);
+  waitOpen = false;
+  if (!next) return renderMain();
+  chipNav = "waiting";
+  slideDir = 1;
+  if (next.open) return next.open();
+  setActive(next.id, next.sid);
 }
 /** Where the Active pane sits in a chip's list (-1 when it's showing something else). */
 const chipAt = (list) => list.findIndex((x) => (x.shown ? x.shown() : x.id ? x.id === active?.id : x.sid === active?.sid && !isPending(findItem(active?.id))));
@@ -186,6 +213,7 @@ function openFromChip(kind, dir = 1) {
   const at = chipAt(list);
   const next = list[at < 0 ? (dir > 0 ? 0 : list.length - 1) : (at + dir + list.length) % list.length];
   chipNav = kind;
+  waitOpen = false;
   slideDir = dir;
   if (next.open) return next.open();
   setActive(next.id, next.sid);

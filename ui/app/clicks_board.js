@@ -95,6 +95,9 @@ const USAGE_CLICKS = [
   (t) => { if (usageOpen && !t.closest(".usage-pop")) { usageOpen = false; renderMain(); } return false; },
   rule("[data-chip-step]", (hs) => { const [kind, dir] = hs.dataset.chipStep.split(":"); openFromChip(kind, +dir); }),
   rule("[data-chip]", (hc) => openFromChip(hc.dataset.chip)),
+  rule("[data-chip-list]", () => { waitOpen = !waitOpen; renderMain(); }),
+  rule("[data-chip-pick]", (r) => pickFromWaiting(r.dataset.chipPick)),
+  (t) => { if (waitOpen && !t.closest(".wt-wrap")) { waitOpen = false; renderMain(); } return false; },
 ];
 
 const LIVE_CLICKS = [

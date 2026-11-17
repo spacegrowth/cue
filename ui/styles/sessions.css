@@ -123,12 +123,16 @@
 .cv-agent.cv-hit { background: color-mix(in srgb, var(--sel) 38%, transparent); border-radius: 10px; padding: 8px 12px; margin: 0 -12px; }
 .sr-last b { font-weight: 650; }
 
-/* ---------- "N live" in the header: every session one click away, and + New ---------- */
+/* ---------- every live session (⌘K, ⌘L), and + New; the header's "N waiting" list ---------- */
 .lv-wrap { position: relative; display: inline-flex; }
-/* A round pill like waiting / working beside it, with a live, blinking dot. */
-.lv-chip.on { background: color-mix(in srgb, var(--on-bg) 20%, transparent); }
-.lv-chip .hdot { animation: pulse 1.4s ease-in-out infinite; }
-@media (prefers-reduced-motion: reduce) { .lv-chip .hdot { animation: none; } }
+/* "N waiting": its sessions, oldest first, one line each. */
+.wt-pop { width: 420px; }
+.wt-pop .lv-list { padding: 6px 10px; }
+.wt-row .pdot { flex: none; }
+.wt-row .lv-name { flex: none; max-width: 45%; }
+.wt-row.on { background: var(--panel-2); }
+.wt-line { flex: 1; min-width: 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wt-age { flex: none; font-size: 11px; color: var(--muted); }
 .lv-pop { position: absolute; top: 38px; left: 0; z-index: 30; width: 460px; max-height: min(640px, calc(100vh - 80px)); display: flex; flex-direction: column; background: var(--panel); color: var(--ink); border-radius: 14px; box-shadow: 0 22px 50px -14px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--line); overflow: hidden; }
 /* ⌘K: the same list in the middle of the window, like Spotlight. */
 .spot-scrim { padding-top: 14vh; z-index: 30; }

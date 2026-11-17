@@ -137,6 +137,9 @@ a:focus-visible { outline: 2px solid var(--link, var(--accent)); outline-offset:
 .hdot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
 .hdot.z { background: repeating-linear-gradient(45deg, currentColor 0 2px, transparent 2px 4px); box-shadow: 0 0 0 1px currentColor; }
 .hdot.ask { background: var(--deny); }
+/* Waiting's dot: a session you wrote to came back and waits, not yet open. */
+.hdot.back { animation: pulse 1.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .hdot.back { animation: none; } }
 .hall { font-size: 13px; color: var(--on-bg-muted); }
 .grow { flex: 1; }
 .top-btn { height: 32px; padding: 0 12px; border-radius: 8px; background: var(--panel); color: var(--ink); font-size: 12px; font-weight: 600; }

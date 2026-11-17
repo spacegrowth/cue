@@ -203,6 +203,7 @@ function goNext() { const n = nextUp(); if (n) setActive(n.id, n.session_id); }
 /** History: everything you answered, newest first, by day. Click a row to read it in place. */
 // ---------- "N live" in the header: every live session, one click from any screen, and + New ----------
 let liveOpen = false;              // the drop-down is open
+let waitOpen = false;              // the header's "N waiting" list is open
 let liveSpot = false;              // …opened with ⌘K: in the middle of the window, like Spotlight
 let liveSel = 0;                   // the highlighted row (↑ ↓ move it, Enter opens it)
 let liveShown = [];                // the rows on screen, in order: [{ sid, act }]
