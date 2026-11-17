@@ -104,6 +104,7 @@
 .working .card-head > span:not(.proj) { white-space: nowrap; }
 
 /* Usage: a quiet meter next to Board / History; amber when Claude Code is out of usage. */
+.top.tfit4 .usage-combined { gap: 5px; padding: 0 10px; }
 .usage-meters { display: inline-flex; align-items: center; }
 .top.tfit4 .usage-meters { display: grid; gap: 2px; }
 .top.tfit4 .usage-meters .usage-chip { height: 17px; padding: 0 8px; gap: 4px; font-size: 11px; }

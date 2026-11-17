@@ -518,8 +518,12 @@ function usageChip() {
   const windows = codexUsageWindows();
   const claude = claudeUsageChip();
   if (!windows.length) return claude;
-  if (claude && !limitedSessions().length) {
-    return `<span class="usage-wrap"><button class="usage-chip" data-usage="meter" aria-label="Usage" aria-expanded="${usageOpen === "claude"}">Usage</button>${usagePop()}</span>`;
+  const claudeRates = state.settings?.usage?.claude !== false ? state.usage : null;
+  if (claudeRates && (claudeRates.five_hour || claudeRates.seven_day) && !limitedSessions().length) {
+    const claudeFive = claudeRates.five_hour;
+    const codexFive = windows.find((w) => w.minutes === 300);
+    const percent = (w) => w ? `${Math.round(w.pct)}%` : "—";
+    return `<span class="usage-wrap"><button class="usage-chip usage-combined" data-usage="meter" aria-label="Usage" aria-expanded="${usageOpen === "claude"}"><span>5h</span><span class="usage-provider">Claude <span class="up">${percent(claudeFive)}</span></span><span class="usage-provider">Codex <span class="up">${percent(codexFive)}</span></span></button>${usagePop()}</span>`;
   }
   const label = claude ? '<span class="usage-provider">Codex</span>' : "";
   const headerWindows = claude ? windows.filter((w) => w.minutes === 300) : windows;

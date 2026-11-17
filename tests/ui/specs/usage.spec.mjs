@@ -29,7 +29,10 @@ test("one usage button opens both providers and their weekly limits", async ({ c
   await usage(cue);
   await expect(page.locator('.usage-chip')).toHaveCount(1);
   const button = page.getByRole('button', { name: 'Usage', exact: true });
-  await expect(button).toHaveText('Usage');
+  await expect(button).toHaveText('5hClaude 32%Codex 64%');
+  await expect(button).not.toContainText('wk');
+  await expect(button).not.toContainText('18%');
+  await expect(button).not.toContainText('28%');
   await button.click();
   const popup = page.locator('.usage-pop');
   await expect(popup).toHaveCount(1);
