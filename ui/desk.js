@@ -609,10 +609,23 @@ const deskDoneWhenHtml = (t, base = null) => {
   const pts = deskDoneWhenPoints(t);
   return pts.length ? `<ul class="dk-dwl">${pts.map((p) => `<li><i aria-hidden="true"></i><span>${linkify(esc(p), base)}</span></li>`).join("")}</ul>` : "";
 };
-/** Its designs' canvas (the last DESIGNS: link a session gave, hub/desk.rs designs_said): "Open the designs ↗", a
- *  plain link in the accent colour (Lead chats pick 1 + D: no outlined button). */
+/** Its designs' canvas (the last DESIGNS: link a session gave, hub/desk.rs designs_said): "Open the mocks ↗", a
+ *  plain link in the accent colour (Lead chats pick 1 + D: no outlined button), in its page's header (#178). */
 const deskDesignsLink = (i) => /^https?:\/\//.test(i.designs || "") ? `<div class="dk-dsg">${deskDesignsA(i.designs)}</div>` : "";
-const deskDesignsA = (url) => `<a class="dk-dlink" href="#" data-href="${esc(url)}">Open the designs ↗</a>`;
+const deskDesignsA = (url) => `<a class="dk-dlink" href="#" data-href="${esc(url)}">Open the mocks ↗</a>`;
+/** An item with mocks waiting on you to pick one: the line of its holder's newest words that asks you to, plain, for
+ *  under its page's header ("Pick one for working items: D, E or F"). Its question first while it asks you, then its
+ *  replies, newest first. "" when none asks for a pick. */
+function deskPickLine(i) {
+  if (!/^https?:\/\//.test(i.designs || "") || (i.state !== "needs_you" && i.state !== "to_check")) return "";
+  const texts = [...(i.state === "needs_you" ? [deskQuestion(i)] : []), ...[...(i.said || [])].reverse().map((r) => r.text || "")];
+  for (const t of texts) {
+    const lines = plain(t).split(/\n+|(?<=[.?!])\s+/).map((x) => x.trim()).filter((x) => /\b(pick|choose)\b/i.test(x));
+    const line = lines.find((x) => /^(pick|choose|which)\b/i.test(x)) || lines[0];
+    if (line) return line.replace(/^(not done yet|still to do)\s*:\s*/i, "").replace(/^./, (c) => c.toUpperCase());
+  }
+  return "";
+}
 const deskSec = (title, html) => (html ? `<div class="dk-sec"><h3>${title}</h3>${html}</div>` : "");
 /** Item `i`'s latest DONE (`d.checks`), quiet, under What to check on its page: "Done by web-lead · 12m ago · 2 files"
  *  (a click on who opens its chat, as its row does), then whether the installed Cue has it ("In the installed Cue ·
@@ -820,7 +833,7 @@ function deskItemPane(i, d) {
   const files = changed ? `<div class="dk-fcs">${changed}</div>` : "";
   const thread = deskThread(i, d), tab = deskItemTabs.get(i.id) || "thread";
   const h = i.holder, sid = h ? (h.kind === "crew" ? h.lead_sid : h.sid) : null;
-  const armed = deskDropArm === i.id;
+  const armed = deskDropArm === i.id, pick = deskPickLine(i);
   const tabBtn = (k, label, n) => `<button class="dk-itab${tab === k ? " on" : ""}" role="tab" aria-selected="${tab === k}" data-desk-itab="${k}" data-id="${esc(i.id)}">${label}<span class="n">${n}</span></button>`;
   // Where it stands now, under the thread: first its Done when (what to check, once it's ready to: #140), so it's by
   // the newest message and the box, not lost in the first message; then what holds it up or what it asks, what it
@@ -834,10 +847,11 @@ function deskItemPane(i, d) {
     : tab === "steps" ? (steps.length ? deskLog(steps) : `<p class="dk-note">No steps yet.</p>`)
     : tab === "files" ? (files ? deskSec(checking ? "Files changed" : deskDiffs.get(i.id)?.files?.length ? "Changed so far" : "Files it's on", files) : `<p class="dk-note">No files on it yet.</p>`)
     : `${deskThreadHtml(thread)}<div class="dk-inow">${at}</div>`;
-  // Pick 4 (Item thread, 16 Nov 2026): the header (number and title, Designs; a state pill and where it stands; then
-  // Thread, Decisions, Steps and Files tabs, Thread open), then the open tab; the answer box is the card's foot.
-  return `<div class="dk-pane dk-ipane" data-scroll-key="item:${esc(i.id)}"><div class="dk-ihead">${deskBack(deskLeadName(d) || "Back")}<div class="dk-ititle"><h1><span class="dk-hnum">${deskKindIcon(i)}${esc(deskNum(i))} · </span>${esc(i.title)}</h1><div class="dk-ilinks">${deskDesignsLink(i)}${sid && sessionOf(sid) ? `<button class="btn small" ${deskChatAttrs(sid, d)}>Open ${esc(h.name)}</button>` : ""}${deskLooksTop(i)}</div></div>
-    <div class="dk-ist"><span class="dk-pill dk-pill-${esc(i.state)}"><i aria-hidden="true"></i>${esc(deskInstallWait(i) ? "Waiting for install" : DESK_PILL[i.state] || i.state)}</span><div class="dk-state">${deskItemState(i)}</div></div>
+  // Pick 4 (Item thread, 16 Nov 2026): the header (number and title; a state pill, where it stands and Open the mocks,
+  // in the open, not among the buttons (#178); what pick it waits on; then Thread, Decisions, Steps and Files tabs,
+  // Thread open), then the open tab; the answer box is the card's foot.
+  return `<div class="dk-pane dk-ipane" data-scroll-key="item:${esc(i.id)}"><div class="dk-ihead">${deskBack(deskLeadName(d) || "Back")}<div class="dk-ititle"><h1><span class="dk-hnum">${deskKindIcon(i)}${esc(deskNum(i))} · </span>${esc(i.title)}</h1><div class="dk-ilinks">${sid && sessionOf(sid) ? `<button class="btn small" ${deskChatAttrs(sid, d)}>Open ${esc(h.name)}</button>` : ""}${deskLooksTop(i)}</div></div>
+    <div class="dk-ist"><span class="dk-pill dk-pill-${esc(i.state)}"><i aria-hidden="true"></i>${esc(deskInstallWait(i) ? "Waiting for install" : DESK_PILL[i.state] || i.state)}</span><div class="dk-state">${deskItemState(i)}</div>${deskDesignsLink(i)}</div>${pick ? `<p class="dk-pickl">${esc(pick)}</p>` : ""}
     <div class="dk-itabs" role="tablist">${tabBtn("thread", "Thread", thread.length)}${tabBtn("decisions", "Decisions", decs.length)}${tabBtn("steps", "Steps", steps.length)}${tabBtn("files", "Files", nFiles)}<span class="grow"></span>${i.state !== "done" ? `<button class="dk-drop${armed ? " armed" : ""}" data-desk-act="drop" data-id="${esc(i.id)}">${armed ? "Drop it" : "Drop this item"}</button>` : ""}</div></div>
     <div class="dk-ibody dk-itab-${tab}">${body}</div></div>`;
 }

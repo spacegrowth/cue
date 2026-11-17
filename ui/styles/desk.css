@@ -248,7 +248,7 @@
 .dk-pane h1 { margin: 8px 24px 4px; font-size: 19px; font-weight: 700; line-height: 1.3; }
 .dk-state { margin: 0 24px; color: var(--muted); font-size: 12.5px; }
 .dk-state b { color: var(--ink); font-weight: 650; }
-/* An item's designs (desk.js deskDesignsLink): "Open the designs ↗" in the accent, plain words, no box. */
+/* An item's designs (desk.js deskDesignsLink): "Open the mocks ↗" in the accent, plain words, no box. */
 .dk-dsg { margin: 10px 24px 0; }
 .dk-dlink { font-size: 12.5px; font-weight: 600; color: var(--accent); text-decoration: none; }
 .dk-dlink:hover { text-decoration: underline; }
@@ -284,6 +284,8 @@
 .dk-ihead .dk-hnum svg { width: 18px; height: 18px; margin-right: 6px; vertical-align: -2px; pointer-events: none; }
 .dk-ist { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 0 24px; }
 .dk-ist .dk-state { margin: 0; }
+/* What pick it waits on (desk.js deskPickLine), one plain line under the state (#178). */
+.dk-pickl { margin: 8px 24px 0; font-size: 13px; color: var(--ink); }
 .dk-pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink); font: 600 10.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
 .dk-pill i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
 .dk-pill-new i, .dk-pill-queued i { background: none; box-shadow: inset 0 0 0 1.5px var(--muted); }
@@ -294,7 +296,7 @@
 .dk-ititle { display: flex; align-items: flex-start; gap: 12px; padding-right: 24px; }
 .dk-ititle h1 { flex: 1; min-width: 0; }
 .dk-ilinks { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 10px; }
-.dk-ilinks .dk-dsg { margin: 0; }
+.dk-ist .dk-dsg { margin: 0; }
 .dk-itabs { display: flex; align-items: center; gap: 4px; margin: 14px 0 0; padding: 0 24px; border-bottom: 1px solid var(--line); }
 .dk-itab { all: unset; padding: 7px 10px; margin-bottom: -1px; border-bottom: 2px solid transparent; color: var(--muted); font-size: 12.5px; font-weight: 600; cursor: pointer; user-select: none; -webkit-user-select: none; }
 .dk-itab:hover { color: var(--ink); }

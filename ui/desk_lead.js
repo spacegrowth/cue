@@ -239,7 +239,7 @@ const DESK_SAY = /^[-*+ ]*(ITEM|ROUTE|DONE|CONTEXT|DESIGNS|TITLE)\**\s*:(.*)$/;
 const DESK_KINDS = ["bug", "feature", "task"];
 /** `line` of a Desk chat's reply as one short plain sentence at the left (md's `lines` hook; #157, #173): ROUTE "Gave
  *  Task #2 to who" (or "Task #2 waits on #1"); ITEM "Added Bug #2: title"; DONE "Bug #2 is done"; TITLE "Renamed Bug
- *  #2"; CONTEXT "Kept who's context"; DESIGNS "Open the designs ↗", a link in the accent colour. An item's number is a
+ *  #2"; CONTEXT "Kept who's context"; DESIGNS "Open the mocks ↗", a link in the accent colour. An item's number is a
  *  link that opens it; a click on the rest of the line opens what's longer under it (deskLnOpen: the title, why, done
  *  when). No arrow, no chevron. "" for any other line, or one parse.rs wouldn't act on (an empty or "<…>" body). */
 function deskLineHtml(line, inline) {

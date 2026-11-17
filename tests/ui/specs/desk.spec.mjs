@@ -292,7 +292,7 @@ test("an item page's back link is one line above its title", async ({ page, cue 
   expect(back.y + back.height).toBeLessThanOrEqual(h1.y + 1);
 });
 
-test("a design item shows one \"Open the designs\" link to its canvas; a newer link replaces it; none without one", async ({ page, cue }) => {
+test("a design item shows one \"Open the mocks\" link to its canvas; a newer link replaces it; none without one", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await page.locator('[data-desk-item="d4"]').click();
@@ -301,7 +301,7 @@ test("a design item shows one \"Open the designs\" link to its canvas; a newer l
   await set("https://claude.ai/artifact/AAA");
   const link = page.locator(".dk-right .dk-dsg a");
   await expect(link).toHaveCount(1);
-  await expect(link).toHaveText("Open the designs ↗");
+  await expect(link).toHaveText("Open the mocks ↗");
   await set("https://claude.ai/artifact/BBB");
   await link.click();
   await cue.called("open_link", { url: "https://claude.ai/artifact/BBB" });
@@ -2755,4 +2755,29 @@ test("an item's thread holds only its own messages: its session's words about an
     await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
     if (process.env.SHOT_DIR) await page.locator(".dk-right").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-176-${theme}.png` });
   }
+});
+
+test("an item with mocks has \"Open the mocks\" in its header; waiting on a pick, a plain line under it says which (#178)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.change((st) => {
+    const it = st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5");
+    Object.assign(it, { state: "to_check", designs: "https://claude.ai/artifact/MOCKS", said: [{ at: Date.now(), by: "host-lead", text: "Put three ways to show **working** items on the canvas.\nPick one for working items: D, E or F." }] });
+  });
+  await page.locator('[data-desk-item="d5"]').click();
+  const head = page.locator(".dk-right .dk-ihead");
+  await expect(head.locator(".dk-ist a.dk-dlink")).toHaveText("Open the mocks ↗");
+  // Clear of the title, not under it.
+  const box = async (l) => l.evaluate((e) => { const r = e.getBoundingClientRect(); return [r.top, r.bottom]; });
+  expect((await box(head.locator("a.dk-dlink")))[0]).toBeGreaterThanOrEqual((await box(head.locator("h1")))[1]);
+  await expect(head.locator(".dk-pickl")).toHaveText("Pick one for working items: D, E or F.");
+  for (const theme of ["light", "dark"]) {
+    await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
+    if (process.env.SHOT_DIR) await page.locator(".dk-right").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-178-${theme}.png` });
+  }
+  // Picked (no reply asks for one): no line; no mocks: no link.
+  await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5").said = [{ at: Date.now(), by: "host-lead", text: "Built E. DONE: #d5" }]; });
+  await expect(head.locator(".dk-pickl")).toHaveCount(0);
+  await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5").designs = ""; });
+  await expect(head.locator("a.dk-dlink")).toHaveCount(0);
 });
