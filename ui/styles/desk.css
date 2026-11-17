@@ -28,33 +28,23 @@
 .dk-sfold:hover { color: var(--ink); }
 .dk-st { flex: 0 0 auto; max-width: 50%; min-width: 0; margin-left: auto; display: flex; align-items: center; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; }
 .dk-st > b { min-width: 0; font-weight: inherit; overflow: hidden; text-overflow: ellipsis; }
-/* The state mark before a session's name (pick G): working, a ring whose arc turns once every 2.8s (paused under reduced
-   motion; the row itself never moves); waiting on you, a still red dot; idle, a hollow ring. */
-.dk-mk { flex: none; width: 12px; height: 12px; display: inline-grid; place-items: center; }
-.dk-mk > i { width: 8px; height: 8px; border-radius: 50%; }
-.dk-mk > i.ask { background: var(--deny); }
-.dk-mk > i.idle { box-shadow: inset 0 0 0 1.5px var(--muted); }
-.dk-ring { display: block; }
-.dk-ring-bg { stroke: var(--line); }
-.dk-ring-arc circle { stroke: var(--accent); }
-.dk-ring-arc { transform-origin: 6px 6px; transform-box: view-box; animation: dk-ring-turn 2.8s linear infinite; }
-@keyframes dk-ring-turn { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .dk-ring-arc { animation-play-state: paused; } }
-.dk-srow.on .dk-ring-bg { stroke: color-mix(in oklab, var(--on-sel) 25%, transparent); }
-.dk-srow.on .dk-ring-arc circle { stroke: var(--on-sel); }
-.dk-srow.on .dk-mk > i.idle { box-shadow: inset 0 0 0 1.5px var(--on-sel); }
+.dk-st { gap: 6px; }
+.dk-st > i { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--work); }
+.dk-st > i.ask { background: var(--deny); }
+.dk-st > i:not(.ask):not(.idle) { background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
+.dk-st > i.idle { background: none; box-shadow: inset 0 0 0 1.5px var(--muted); }
+.dk-srow.on .dk-st > i:not(.ask):not(.idle) { background: var(--on-sel); }
 /* Narrow: a session's mark sits above its line, not beside it, so its name keeps the row's width; its state gives first. */
 @media (max-width: 1100px) {
   .dk-srow:has(.dk-rmark) { padding-top: 22px; }
   .dk-srow:has(.dk-rmark) > .dk-s1 { padding-right: 0; }
   .dk-s1 .dk-st { flex-shrink: 3; }
 }
-/* What it holds and its step sit under its name, past the state mark. */
-.dk-s2 { display: flex; align-items: center; gap: 8px; margin: 6px 0 0 20px; color: var(--ink); font-size: 12.5px; white-space: nowrap; }
+.dk-s2 { display: flex; align-items: center; gap: 8px; margin: 6px 0 0; color: var(--ink); font-size: 12.5px; white-space: nowrap; }
 .dk-s2 > .dk-w { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .dk-s2 .dk-none { color: var(--muted); }
 .dk-s2 > .dk-sadd { margin-left: auto; flex: none; }
-.dk-s3 { margin: 3px 0 0 20px; color: var(--muted); font: 11px var(--mono); }
+.dk-s3 { margin: 3px 0 0; color: var(--muted); font: 11px var(--mono); }
 .dk-s3.hot { color: var(--amber); font-weight: 600; }
 .dk-s3.dk-now { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-srow.on .dk-st, .dk-srow.on .dk-s2, .dk-srow.on .dk-s3:not(.hot), .dk-srow.on .dk-id, .dk-srow.on .dk-none { color: var(--on-sel); }
@@ -467,7 +457,7 @@
    into the window's dark green: ‹ Desks and ⋯ (hand the Desk on), the Desk's name with ✎ on hover, its meta line; then
    the lead's card inside it. Light: the selected lime with dark text and a 1px inner edge; dark: the accent (the same
    lime) with on-accent text. */
-.dk-strip { flex: none; margin: 8px 8px 4px; padding: 8px 12px 12px; border-radius: 12px; background: var(--accent); color: var(--on-accent); }
+.dk-strip { flex: none; margin: 0; padding: 10px 14px 14px; border-radius: 14px 14px 0 0; background: var(--accent); color: var(--on-accent); }
 .dk-sh { display: flex; flex-direction: column; min-width: 0; }
 .dk-stop { display: flex; align-items: center; margin-left: -4px; }
 .dk-home-btn { all: unset; flex: none; height: 24px; padding: 0 8px 0 4px; display: inline-flex; align-items: center; border-radius: 6px; color: inherit; opacity: .8; font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer; }
@@ -477,20 +467,19 @@
 .dk-strip .dk-sub { color: inherit; opacity: .75; font-size: 11px; }
 .dk-sh .dk-ren, .dk-strip .dk-more-btn { color: inherit; }
 .dk-sh .dk-ren:hover, .dk-strip .dk-more-btn:hover, .dk-strip .dk-more-btn:focus-visible { background: color-mix(in oklab, currentColor 14%, transparent); color: inherit; }
-/* The lead's card: white (dark: the panel) with a soft lift; while its chat shows, a 2px dark outline, never a fill. */
+/* The lead's card: white (dark: the panel); while its chat shows, lit lime as an open row is. */
 .dk-lcard { margin-top: 10px; padding: 9px 11px; border-radius: 10px; background: var(--panel); color: var(--ink); cursor: pointer; }
 .dk-lcard.on { background: var(--sel); color: var(--on-sel); }
 .dk-lcard:focus-visible { outline: 2px solid var(--panel); outline-offset: 2px; }
-/* Dark: the strip is lime already, so the open lead card stays dark with a ring. */
-:root[data-theme="dark"] .dk-lcard.on { background: var(--panel); color: var(--ink); box-shadow: 0 0 0 2px var(--on-accent); }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .dk-lcard.on { background: var(--panel); color: var(--ink); box-shadow: 0 0 0 2px var(--on-accent); } }
+/* Dark: the strip is lime already, so the open lead card is a slightly deeper lime in it (mock B). */
+:root[data-theme="dark"] .dk-lcard.on { background: color-mix(in oklab, var(--on-accent) 10%, var(--accent)); color: var(--on-accent); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .dk-lcard.on { background: color-mix(in oklab, var(--on-accent) 10%, var(--accent)); color: var(--on-accent); } }
+.dk-lcard.on :is(.dk-lk, .dk-st, .dk-s2, .dk-s3:not(.hot), .dk-id, .dk-none, .dk-kic) { color: inherit; }
+.dk-lcard.on :is(.dk-lk, .dk-st, .dk-id, .dk-s3:not(.hot)) { opacity: .75; }
 .dk-lcard .dk-lk { flex: none; font: 700 10px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .dk-lcard .dk-s2, .dk-lcard .dk-s3 { margin-left: 0; }
 .dk-lcard .dk-s2 { font-size: 12px; }
 .dk-lcard:hover .dk-sren { opacity: 1; }
-/* Under the strip: the other sessions counted by state. */
-.dk-sum { flex: none; margin: 6px 20px 2px; color: var(--muted); font-size: 12px; }
-.dk-sum b { font-weight: 650; color: var(--ink); }
 .dk-ren { all: unset; flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; color: var(--muted); cursor: pointer; opacity: 0; }
 .dk-sh:hover .dk-ren, .dk-ren:focus-visible { opacity: 1; }
 .dk-ren:hover { background: var(--panel-2); color: var(--ink); }

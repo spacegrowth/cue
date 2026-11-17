@@ -332,20 +332,16 @@ function deskSessName(sid, name, cls) {
   if (renaming === sid) return `<input class="rename-in dk-ren-in" data-text="rename:${esc(sid)}" maxlength="60" placeholder="Name this session" aria-label="Rename this session" spellcheck="false" value="${esc(draft(`rename:${sid}`).text)}"/>`;
   return `<${cls === "b" ? "b" : `span class="${cls}"`}>${esc(name)}</${cls === "b" ? "b" : "span"}>${sessionOf(sid) ? `<button class="dk-ren dk-sren" data-desk-ren="${esc(sid)}" aria-label="Rename this session">${DESK_PEN}</button>` : ""}`;
 }
-/** A session's state mark, before its name (pick G): an 11px ring whose arc turns while it works (still under reduced
- *  motion), a still red dot while it waits on you, a hollow ring when idle. */
-const DESK_RING = `<svg class="dk-ring" width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true"><circle class="dk-ring-bg" cx="6" cy="6" r="4.5" stroke-width="1.6"/><g class="dk-ring-arc"><circle cx="6" cy="6" r="4.5" stroke-width="1.8" stroke-linecap="round" stroke-dasharray="8 28.3"/></g></svg>`;
-const deskStateMark = (dot) => `<span class="dk-mk">${dot === "" ? DESK_RING : `<i class="${dot}"></i>`}</span>`;
-/** One row: its state mark, name, its corner mark (Lead, Session, Crew: Type marks pick 8), its state; then the item it's on, or nothing on the Desk; then its
+/** One row: name, its corner mark (Lead, Session, Crew: Type marks pick 8), its state; then the item it's on, or nothing on the Desk; then its
  *  size and cache. `cls` is dk-srow; the lead's card in the head strip is dk-lcard, with `pre` "Run by" before its name. */
 function deskSessRow({ name, sid = "", mark = "", dot, word, item, line, on, attrs, crew, step = "", size = "", loose = false, past = false, add = "", cls = "dk-srow", pre = "" }) {
   const what = `<span class="dk-w">${item ? `${deskKindIcon(item)}<span class="dk-id">${esc(deskNum(item))}</span> ${esc(item.title)}` : line ? esc(line) : `<span class="dk-none">nothing on the Desk</span>`}</span>`;
   return `<div class="${cls} ${crew ? "crew" : ""} ${past ? "past" : ""} ${on ? "on" : ""}" role="button" tabindex="0" ${attrs}>${mark ? `<span class="dk-rmark">${mark}</span>` : ""}
-    <div class="dk-s1">${pre ? `<span class="dk-lk">${pre}</span>` : ""}${deskStateMark(dot)}${sid ? deskSessName(sid, name, "dk-nm") : `<span class="dk-nm">${esc(name)}</span>`}<span class="dk-st"><b>${word}</b></span></div>
+    <div class="dk-s1">${pre ? `<span class="dk-lk">${pre}</span>` : ""}${sid ? deskSessName(sid, name, "dk-nm") : `<span class="dk-nm">${esc(name)}</span>`}<span class="dk-st"><i class="${dot}"></i><b>${word}</b></span></div>
     <div class="dk-s2">${what}${add}${loose ? `<span class="dk-pill loose">not committed</span>` : ""}</div>${step}${size}</div>`;
 }
 /** The left card: the head strip (pick B2: ‹ Desks, the Desk's name, its meta line, and the lead's "Run by" card in
- *  it, no crew), a line counting the rest by state, then the project's other sessions, "Working" first, then "On the Desk" (the Desk's own list: the ones its lead routes to, each with its crew under it) and
+ *  it, no crew), then the project's other sessions, "Working" first, then "On the Desk" (the Desk's own list: the ones its lead routes to, each with its crew under it) and
  *  "Not on the Desk" (each with Add to Desk); the one whose chat shows is lit; + New session at its foot. */
 function deskSessions(project) {
   const d = deskOf(project), o = deskOpen, leadSid = deskLead(d)?.sid;
@@ -388,14 +384,11 @@ function deskSessions(project) {
   const on = rest.filter((s) => !busy(s) && onDesk(s.session_id));
   const off = rest.filter((s) => !busy(s) && !onDesk(s.session_id));
   const group = (title, list) => (list.length ? `<div class="dk-gh">${title} <span class="n">${list.length}</span></div>${list.map((s) => row(s)).join("")}` : "");
-  // The strip's meta line and the line under it: the rest counted by the marks their rows show (deskSessState), so the line and the rows always
-  // agree ("4 working · 2 waiting on you · 1 idle"); a session busy only through its helpers or crew counts as idle.
-  const marks = rest.map((s) => deskSessState(s)[0]), count = (m) => marks.filter((x) => x === m).length;
-  const [runs, asks, idle] = [count(""), count("ask"), count("idle")];
-  const sum = [runs ? `<b>${runs} working</b>` : "", asks ? `<b>${asks} waiting on you</b>` : "", idle ? `${idle} idle` : ""].filter(Boolean).join(" · ");
+  // The strip's meta line counts the working ones as their rows show them (deskSessState).
+  const runs = rest.filter((s) => deskSessState(s)[0] === "").length;
   const body = group("Working", atWork) + group("On the Desk", on) + group("Not on the Desk", off) || `<div class="dk-empty">No ${leadS ? "other " : ""}sessions in this project yet.</div>`;
   return `<div class="dk-card dk-sessions">${deskSessHead(project, rest.length, runs, leadS ? row(leadS, true) : "")}
-    ${sum ? `<div class="dk-sum">${sum}</div>` : ""}<div class="dk-scroll" data-scroll-key="desk-sessions:${esc(project)}">${body}</div>
+    <div class="dk-scroll" data-scroll-key="desk-sessions:${esc(project)}">${body}</div>
     <div class="dk-sfoot"><button class="btn small" data-desk-new-session="${esc(project)}">+ New session</button></div></div>`;
 }
 /** The head strip (pick B2), set in from the card's sides so it never meets the window's own colour: ‹ Desks back to
