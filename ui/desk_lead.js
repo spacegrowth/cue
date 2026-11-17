@@ -26,6 +26,19 @@ const deskWorksFor = (sid) => !!sid && (state.desk?.projects || []).some((d) => 
   || (d.items || []).some((i) => i.state !== "done" && i.state !== "dropped" && (i.holder?.sid === sid || i.holder?.lead_sid === sid)));
 /** The Desk's mark before such a session's name on the Board, as a loop's run shows its own there (#156). */
 const deskNameMark = (sid) => (deskWorksFor(sid) ? `<span class="dk-name-ic" role="img" aria-label="Desk">${deskKindIcon("desk")}</span>` : "");
+/** The line under such a session's name on its Board card, as a loop's run has its own there (#156): the Desk it runs,
+ *  or the item it holds ("+2" when more); a click opens it on the Desk. "" for a session not working for a Desk. */
+function deskCardLine(sid) {
+  if (!deskWorksFor(sid)) return "";
+  const desks = state.desk?.projects || [];
+  const lead = desks.find((d) => d.lead?.sid === sid);
+  const held = desks.flatMap((d) => (d.items || []).filter((i) => i.state !== "done" && i.state !== "dropped" && (i.holder?.sid === sid || i.holder?.lead_sid === sid)).map((i) => ({ d, i })));
+  const first = held[0];
+  const d = lead || first.d, name = d.name || d.project;
+  const what = lead ? `Runs ${name}` : `#${first.i.id} ${first.i.title || ""}`;
+  const more = held.length > (lead ? 0 : 1) ? `<span class="dk-chip-more">+${held.length - (lead ? 0 : 1)}</span>` : "";
+  return `<div class="dk-chip-line"><button class="dk-chip" data-inbox-desk="${esc(d.project)}" data-item="${lead ? "" : esc(first.i.id)}">${deskKindIcon("desk")}<span class="dk-chip-t">${esc(what)}</span>${more}<span>›</span></button></div>`;
+}
 /** Desk `d`'s lead ({ sid, name, state }), or null. */
 const deskLead = (d) => (d?.lead?.sid ? d.lead : null);
 /** The lead's name: one you just gave it (before the hub's next update has it), else what the hub named it, else its

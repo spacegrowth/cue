@@ -598,3 +598,11 @@ button.dk-rt-it:hover .dk-rt-t { text-decoration: underline; }
 /* The Desk's mark before a session's name on the Board when it works for a Desk (#156), sized and placed as a loop's. */
 .dk-name-ic { display: inline-flex; vertical-align: -2px; margin-right: 6px; color: var(--ink); }
 .dk-name-ic > .dk-kic { margin: 0; vertical-align: 0; color: inherit; }
+/* Its line under the name on a Board card (deskCardLine), the shape of a loop's. */
+.dk-chip-line { display: flex; margin-top: 4px; min-width: 0; }
+.dk-chip { all: unset; display: inline-flex; align-items: center; gap: 5px; max-width: 100%; min-width: 0; box-sizing: border-box; cursor: pointer; font-size: 11.5px; font-weight: 600; line-height: 1.5; border: 1px solid var(--line); border-radius: var(--pill-radius); padding: 1px 8px 1px 6px; background: var(--panel-2); color: var(--ink); white-space: nowrap; }
+.dk-chip:hover { border-color: var(--muted); }
+.dk-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.dk-chip > .dk-kic { margin: 0; flex: none; }
+.dk-chip-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.dk-chip-more { color: var(--muted); font-weight: 500; }

@@ -2399,6 +2399,21 @@ test("on the Board, a session working for a Desk has the Desk's mark before its 
   await expect(card("host-lead").locator(".dk-name-ic")).toHaveCount(1);
 });
 
+test("a Board card working for a Desk has a line under its name, as a loop's does; it opens that on the Desk (#156)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await page.locator('.switch-view [data-view="board"]').click();
+  const card = (name) => page.locator("[data-session], [data-detail]").filter({ has: page.locator(".proj", { hasText: new RegExp(`^${name}$`) }) }).filter({ has: page.locator(".dk-chip") }).first();
+  const lead = card("host-lead").locator(".dk-chip");
+  await expect(lead).toHaveCount(1);
+  await expect(lead).toContainText("#d5 Hosted sessions can't open the canvas");
+  await expect(lead.locator("svg.dk-kic")).toHaveCount(1);
+  await expect(page.locator("[title]", { has: page.locator(".dk-chip") })).toHaveCount(0);
+  await expect(card("site-lead").locator(".dk-chip")).toContainText("#w1");
+  await lead.click();
+  await expect(page.locator('.switch-view [data-view="desk"]')).toHaveClass(/on/);
+  await expect(page.locator(".dk-pane")).toContainText("Hosted sessions can't open the canvas");
+});
+
 test("the Desk's mark is on the session's chat title and its Inbox page head too, never twice on a card (#156)", async ({ page, cue }) => {
   await cue.open("desk");
   await page.locator('.switch-view [data-view="board"]').click();
