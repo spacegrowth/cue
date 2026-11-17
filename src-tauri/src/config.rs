@@ -104,14 +104,6 @@ fn from_config(c: &Value) -> Value {
         "hosted": { "on": b("/hosted/on", false) },
         // Updates (ipc/updates.rs): from the beta channel when `beta` is on; off until you turn it on.
         "updates": { "beta": beta_updates_in(c) },
-        // About (tasks.rs, Settings → Summaries): `on` shows the About tab, a followed session's About and Now and its
-        // turns (off: none of it, and nothing is asked); `auto` follows every session from its next turn's end. Both off
-        // until you turn them on.
-        "tasks": { "on": b("/tasks/on", false), "auto": b("/tasks/on", false) && b("/tasks/auto", false) },
-        // The status list (statuslist.rs): on unless turned off, and the sessions turned on from their ring.
-        "status": { "on": b("/status/on", true), "sessions": c.pointer("/status/sessions").cloned().unwrap_or_else(|| json!([])) },
-        // Background agents (statuslist.rs): the sessions turned on from their status line (each starts off).
-        "background": { "sessions": c.pointer("/background/sessions").cloned().unwrap_or_else(|| json!([])) },
         // The first-launch "Connect your agents" screen, closed with Done.
         "setup": { "done": b("/setup/done", false) },
         "usage": { "file": usage_file(), "claude": b("/usage/claude", true) },
@@ -257,6 +249,12 @@ fn zoom_step(z: f64) -> Option<f64> {
 }
 
 /// How many earlier exchanges each session keeps for context (Settings → Context; default 5).
+/// The context (tokens) from which a session on a Desk with a live lead hands off to a fresh one instead of growing
+/// on (hub/cache_tick.rs full_due): config.json's desk.handoff_k, in thousands, 180 by default; 0 turns it off.
+pub fn desk_handoff_tokens() -> u64 {
+    load().pointer("/desk/handoff_k").and_then(Value::as_u64).unwrap_or(180).min(2_000) * 1000
+}
+
 pub fn context_keep() -> usize {
     load().pointer("/context/keep").and_then(Value::as_u64).unwrap_or(5).clamp(1, 50) as usize
 }
@@ -336,7 +334,7 @@ pub fn history_keep() -> usize {
 
 /// The settings the window may save. A key it saves that isn't here fails as "unknown setting" (the test
 /// below reads the window's scripts for every key they save).
-pub(crate) const ALLOWED: &[&str] = &["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "project.oneway", "project.never", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "tips.on", "updates.beta", "actions.prompt", "voice.pick", "tasks.on", "tasks.auto", "status.on", "status.sessions", "background.sessions", "mini.mode", "hosted.on"];
+pub(crate) const ALLOWED: &[&str] = &["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "project.oneway", "project.never", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "tips.on", "updates.beta", "actions.prompt", "voice.pick", "mini.mode", "hosted.on"];
 
 /// Set one dotted key ("history.keep", "notify.finished", "pi.gate"), keeping everything else.
 pub fn set(key: &str, value: Value) -> Result<(), String> {
@@ -370,7 +368,7 @@ fn checked(key: &str, value: Value) -> Result<Value, String> {
     match key {
         "pi.gate" | "appearance.mode" | "mini.mode" | "notify.sound" | "turn.mode" | "steps.mode" | "voice.pick" => checked_choice(key, &value),
         "project.colors" | "project.all" | "project.hue" | "project.pins" | "project.made" | "project.names" | "project.moves" | "project.folders" | "project.oneway" | "project.never" => checked_project(key, value),
-        "insights.skills" | "status.sessions" | "background.sessions" | "quick.phrases" => checked_list(key, value),
+        "insights.skills" | "quick.phrases" => checked_list(key, value),
         _ => checked_plain(key, value),
     }
 }
@@ -470,7 +468,7 @@ pub(crate) fn never_words(project: &str) -> Vec<String> {
     c.pointer("/project/never").and_then(|m| m.get(project)).and_then(Value::as_array).map(|l| l.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default()
 }
 
-/// A setting that's a list or a map: hand-off skills, the status list's sessions, quick phrases.
+/// A setting that's a list or a map: hand-off skills, quick phrases.
 fn checked_list(key: &str, value: Value) -> Result<Value, String> {
     Ok(match key {
         // The skill that hands a session off, per machine and agent ("build-box|claude", "|codex" for this
@@ -483,11 +481,6 @@ fn checked_list(key: &str, value: Value) -> Result<Value, String> {
             }
             value
         }
-        // The sessions the status list is on for: their ids (statuslist::sessions_with keeps the newest 500).
-        "status.sessions" | "background.sessions" => match value.as_array() {
-            Some(ids) if ids.len() <= 500 && ids.iter().all(|i| i.as_str().is_some_and(|s| !s.is_empty() && s.len() <= 100)) => value,
-            _ => return Err("the sessions are a list of session ids".into()),
-        },
         "quick.phrases" => {
             let list = value.as_array().ok_or("phrases must be a list")?;
             let phrases: Vec<String> = list.iter().filter_map(Value::as_str).map(|p| p.split_whitespace().collect::<Vec<_>>().join(" ")).filter(|p| !p.is_empty()).collect();
@@ -517,7 +510,6 @@ fn checked_plain(key: &str, value: Value) -> Result<Value, String> {
         }
         // Insights hidden until this time (ms since 1970); 0 shows them again.
         "insights.snooze" => json!(value.as_u64().ok_or("snooze must be a time")?),
-        "tasks.on" | "tasks.auto" | "status.on" => json!(value.as_bool().ok_or("must be on or off")?),
         "actions.prompt" | "login.open" => return Err(format!("{key} is saved with config::set")),
         _ => json!(value.as_bool().ok_or("must be true or false")?),
     })
@@ -865,7 +857,7 @@ mod tests {
         }
     }
 
-    /// Lists changed from what they are (a session's status list switched, a machine added) by many threads at
+    /// Lists changed from what they are (a hand-off skill set, a machine added) by many threads at
     /// once: each change is made to what the one before it saved, so none is lost.
     #[test]
     fn changes_made_from_the_saved_value_at_once_from_many_threads_all_stay() {
@@ -875,7 +867,16 @@ mod tests {
         std::env::set_var("CUE_HOME", &dir);
         std::fs::write(dir.join("config.json"), "{}").unwrap();
         let switches: Vec<_> = (0..16)
-            .map(|i| std::thread::spawn(move || update("status.sessions", |c| Some(crate::statuslist::sessions_with(c, &format!("s{i}"), true))).unwrap()))
+            .map(|i| {
+                std::thread::spawn(move || {
+                    update("insights.skills", |c| {
+                        let mut skills = c.pointer("/insights/skills").cloned().unwrap_or_else(|| json!({}));
+                        skills[format!("s{i}|claude")] = json!("handoff");
+                        Some(skills)
+                    })
+                    .unwrap()
+                })
+            })
             .collect();
         let machines: Vec<_> = (0..8).map(|i| std::thread::spawn(move || crate::machines::add(&format!("box{i}"), "").unwrap())).collect();
         for t in switches {
@@ -885,13 +886,13 @@ mod tests {
             t.join().unwrap();
         }
         let c = load();
-        let unchanged = update("status.sessions", |_| None).unwrap();
-        let refused = update("status.sessions", |_| Some(json!("not a list"))).is_err();
+        let unchanged = update("insights.skills", |_| None).unwrap();
+        let refused = update("insights.skills", |_| Some(json!("not a list"))).is_err();
         std::env::remove_var("CUE_HOME");
         std::fs::remove_dir_all(&dir).ok();
-        let on: Vec<&str> = c["status"]["sessions"].as_array().unwrap().iter().filter_map(Value::as_str).collect();
+        let on = c["insights"]["skills"].as_object().unwrap();
         for i in 0..16 {
-            assert!(on.contains(&format!("s{i}").as_str()), "s{i} lost to another switch: {on:?}");
+            assert!(on.contains_key(&format!("s{i}|claude")), "s{i} lost to another change: {on:?}");
         }
         assert_eq!(c["machines"]["list"].as_array().unwrap().len(), 8, "a machine lost to another add");
         assert!(!unchanged, "nothing to change: nothing written");

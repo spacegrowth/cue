@@ -25,26 +25,35 @@ pub fn interrupted_at(path: &str) -> Option<u64> {
 /// Whether a compaction started at `since_ms` has finished: Claude Code writes the command, then (when the
 /// summary is done, or it couldn't compact) a `<local-command-stdout>` / `-stderr` entry after it. One it
 /// started itself (context full) has no command: its `compact_boundary` marks the end.
+#[cfg(test)]
 pub fn compact_finished(path: &str, since_ms: u64) -> bool {
-    let Some(text) = std::fs::metadata(path).ok().and_then(|m| read_from(path, m.len().saturating_sub(256 * 1024))) else { return false };
+    compact_outcome(path, since_ms).is_some()
+}
+
+/// How a compaction started at `since_ms` ended (compact_finished): Some(true) compacted, Some(false) it couldn't
+/// (an error after the command: "Error during compaction", the context too long to summarize); None: not yet.
+pub fn compact_outcome(path: &str, since_ms: u64) -> Option<bool> {
+    let text = std::fs::metadata(path).ok().and_then(|m| read_from(path, m.len().saturating_sub(256 * 1024)))?;
     let mut typed = false;
     for e in lines(&text) {
         if stamp(&e) + 2000 < since_ms {
             continue;
         }
         match e.get("type").and_then(Value::as_str) {
-            Some("system") if e.get("subtype").and_then(Value::as_str) == Some("compact_boundary") => return true,
+            Some("system") if e.get("subtype").and_then(Value::as_str) == Some("compact_boundary") => return Some(true),
             Some("user") => {}
             _ => continue,
         }
         let said = content_blocks(&e).iter().filter_map(|b| b.get("text").and_then(Value::as_str).map(String::from)).collect::<String>();
         if said.contains("<command-name>/compact</command-name>") {
             typed = true;
-        } else if typed && (said.contains("<local-command-stdout>") || said.contains("<local-command-stderr>")) {
-            return true;
+        } else if typed && said.contains("<local-command-stderr>") {
+            return Some(false);
+        } else if typed && said.contains("<local-command-stdout>") {
+            return Some(!said.contains("Error during compaction"));
         }
     }
-    false
+    None
 }
 
 /// A command you ran in Claude Code itself (/login, /model, /resume…) or a note it adds (isMeta): written

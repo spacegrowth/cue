@@ -16,6 +16,8 @@ mod crew_log;
 mod desk;
 mod desk_checks;
 mod desk_commit;
+mod desk_diff;
+mod desk_handoff;
 mod desk_lead;
 mod desk_members;
 pub(crate) use desk_lead::DeskClaim;
@@ -630,15 +632,13 @@ fn folders_view(live: Vec<crate::live::Quiet>, transcripts: Vec<(String, String)
 }
 
 /// The snapshot's parts other parts of Cue keep, each behind its own lock (taken before the store's, never
-/// under it): a hand-off skill's pending hand-offs that offer "Continue in a new session", "Hand off if I don't come back", About and the status list's
-/// costs, and settings (kept in memory: config.rs).
+/// under it): a hand-off skill's pending hand-offs that offer "Continue in a new session", "Hand off if I don't come back", and
+/// settings (kept in memory: config.rs).
 fn apart_view() -> serde_json::Map<String, Value> {
     let (skill_handoffs, ahead_watch) = (crate::db::handoffs(), crate::db::ahead_watched());
-    let (tasks, tasks_spent, status_spent) = (crate::tasks::view(), crate::tasks::spent(), crate::statuslist::spent());
     let (settings, connections, usage_file) = (crate::config::effective(), crate::config::connections(), crate::usage_file::read());
     let view = json!({
         "skill_handoffs": skill_handoffs, "ahead_watch": ahead_watch,
-        "tasks": tasks, "tasks_spent": tasks_spent, "status_spent": status_spent,
         "window_ms": crate::sessions::WINDOW_MS, "now_ms": now_ms(),
         "settings": settings, "connections": connections, "usage_file": usage_file,
     });

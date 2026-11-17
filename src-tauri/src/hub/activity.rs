@@ -206,8 +206,12 @@ impl Hub {
     /// Compacting (from Cue, its terminal, or on its own) until its transcript says it's done; given up after 15 minutes.
     fn watch_compacting(&self, now: u64) {
         let compacting = self.read(|st| st.sessions.compacting());
-        let compacted: Vec<(String, bool)> = compacting.into_iter()
-            .filter_map(|(sid, path, at)| if transcript::compact_finished(&path, at) { Some((sid, true)) } else { (now.saturating_sub(at) > 15 * 60_000).then_some((sid, false)) })
+        // (session, whether it compacted, whether it failed: an error, or no end in 15 minutes)
+        let compacted: Vec<(String, bool, bool)> = compacting.into_iter()
+            .filter_map(|(sid, path, at)| match transcript::compact_outcome(&path, at) {
+                Some(ok) => Some((sid, true, !ok)),
+                None => (now.saturating_sub(at) > 15 * 60_000).then_some((sid, false, true)),
+            })
             .collect();
         if compacted.is_empty() {
             return;
@@ -215,7 +219,13 @@ impl Hub {
         // A compact at its prompt (no turn to end): a message kept for it meanwhile goes now it's done.
         let send_kept: Vec<String> = self.write(|st| {
             let mut send_kept = vec![];
-            for (sid, done) in &compacted {
+            for (sid, done, failed) in &compacted {
+                // Failed: a Desk session is handed off instead (cache_tick).
+                if *failed {
+                    st.desk.compact_failed.insert(sid.clone(), now);
+                } else {
+                    st.desk.compact_failed.remove(sid);
+                }
                 if *done {
                     st.sessions.set_compacted(sid, now);
                     if st.sessions.held(sid).is_some() && st.sessions.state(sid).as_deref() != Some("working") {

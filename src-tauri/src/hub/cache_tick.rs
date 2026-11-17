@@ -63,6 +63,9 @@ pub(super) struct DeskRole {
     pub(super) open: bool,
     pub(super) working: bool,
     pub(super) kept_at: u64,
+    /// On the Desk's own list of sessions (members), and its compacting failed since its turn last ended.
+    pub(super) member: bool,
+    pub(super) compact_failed: bool,
 }
 
 impl DeskRole {
@@ -81,6 +84,16 @@ pub(super) fn desk_due(role: &DeskRole, tokens: u64) -> bool {
     }
 }
 
+/// Whether the Desk hands a session off now, whatever its cache (`mark`: config::desk_handoff_tokens, 0: off): one
+/// with a part on it (the lead, holding an item, or on its list) whose compacting failed with enough context to be
+/// worth a note, or whose context reached the mark, unless the lead said to keep it for this idle stretch (`last`).
+pub(super) fn full_due(role: &DeskRole, tokens: u64, last: u64, mark: u64) -> bool {
+    let part = role.lead || role.open || role.member;
+    let failed = role.compact_failed && tokens >= DESK_HELD;
+    let over = mark > 0 && tokens >= mark && !role.kept(last);
+    part && (failed || over)
+}
+
 /// Session `sid`'s part on its project's Desk, when that Desk's lead is live (not parked, not ended); None else,
 /// and then the Desk changes nothing.
 pub(super) fn desk_role(st: &Store, sid: &str) -> Option<DeskRole> {
@@ -88,7 +101,9 @@ pub(super) fn desk_role(st: &Store, sid: &str) -> Option<DeskRole> {
     let lead = st.desk.lead_sid(project)?;
     st.sessions.get(lead)?;
     let kept_at = st.desk.keep.get(sid).map_or(0, |k| if k.2 { u64::MAX } else { k.0 });
-    let mut role = DeskRole { lead: lead == sid, kept_at, ..Default::default() };
+    let member = st.desk.on_desk(project, sid);
+    let compact_failed = st.desk.compact_failed.contains_key(sid);
+    let mut role = DeskRole { lead: lead == sid, kept_at, member, compact_failed, ..Default::default() };
     let held = |i: &&crate::desk::DeskItem| i.project == project && i.state != "done" && i.holder.as_ref().is_some_and(|h| h.is(sid));
     for it in st.desk.items.iter().filter(held) {
         role.open = true;
@@ -148,6 +163,8 @@ impl Hub {
         let (cold, ahead) = self.write(|st| Self::not_told_yet(st, scan, now));
         self.hand_off_due(ahead);
         self.warn_cold(cold, now);
+        // A Desk item's commit waiting for files a session was editing: made once they're free.
+        self.desk_commit_waiting();
     }
 
     /// The scan kept for the window, and of what it found, what wasn't told already: a heads-up once per expiry,
@@ -221,6 +238,11 @@ fn scan_caches(waiting: Vec<Waiting>, now: u64) -> CacheScan {
             numbers["ahead_by"] = ahead_would(&it, &state, Some(DeskRole { kept_at: 0, ..r }), now, &mut watched).unwrap_or(0).into();
         }
         scan.insight.insert(it.origin.session_id.clone(), numbers);
+        // Over its Desk's context mark, or its compacting failed: handed off now, not as its cache runs out.
+        if let Some(a) = desk.and_then(|r| full_wanted(&it, &state, &r, now)) {
+            scan.ahead.push(a);
+            continue;
+        }
         // Codex logs don't say how long they cache: no heads-up.
         if state.until_ms == 0 {
             continue;
@@ -233,6 +255,19 @@ fn scan_caches(waiting: Vec<Waiting>, now: u64) -> CacheScan {
         }
     }
     scan
+}
+
+/// The Desk's hand-off of this card's session now (full_due), if it's due: a waiting Claude Code card, no hand-off on
+/// its way or written this idle stretch. Tried once per idle stretch (its key, `until`, is its last reply's time plus
+/// a day: not_told_yet keeps it that long), so one held (a draft of yours, its box not empty) waits for its next turn.
+fn full_wanted(it: &Item, state: &InsightState, role: &DeskRole, now: u64) -> Option<Ahead> {
+    let sid = &it.origin.session_id;
+    if it.kind != "waiting" || it.origin.harness != "claude" || !full_due(role, state.tokens, state.last_ms, crate::config::desk_handoff_tokens()) {
+        return None;
+    }
+    let handing = crate::db::handoff(sid).is_some_and(|k| !k.next.is_empty() || k.ahead > 0 || k.sent_ms >= state.last_ms);
+    let until = state.last_ms.max(1) + 24 * 3_600_000;
+    (!handing && until > now).then(|| Ahead { origin: it.origin.clone(), until, tokens: state.tokens, by: crate::ipc::AHEAD_FULL })
 }
 
 /// Who a note ahead of this card's cache running out is due by, if one is. Put off for later too: leaving it for
@@ -324,5 +359,18 @@ mod tests {
         // A keep holds for the idle stretch it was said in: until the session's next reply.
         let kept = DeskRole { kept_at: 5_000, ..working };
         assert!(kept.kept(4_000) && kept.kept(5_000) && !kept.kept(6_000) && !working.kept(0));
+    }
+
+    #[test]
+    fn a_keep_holds_off_the_mark_but_a_failed_compaction_still_hands_off() {
+        use super::{full_due, DeskRole};
+        let role = |keep: bool, failed: bool| DeskRole { open: true, compact_failed: failed, kept_at: if keep { 20 } else { 0 }, ..Default::default() };
+        assert!(full_due(&role(false, false), 185_000, 10, 180_000));
+        assert!(!full_due(&role(false, false), 170_000, 10, 180_000));
+        assert!(!full_due(&role(false, false), 185_000, 10, 0), "0: no mark");
+        assert!(!full_due(&role(true, false), 185_000, 10, 180_000), "the lead said keep");
+        assert!(full_due(&role(true, true), 120_000, 10, 180_000), "its compacting failed: kept or not");
+        assert!(!full_due(&role(false, true), 20_000, 10, 180_000), "too small to matter");
+        assert!(!full_due(&DeskRole { compact_failed: true, ..Default::default() }, 185_000, 10, 180_000), "not on a Desk");
     }
 }

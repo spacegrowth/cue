@@ -190,12 +190,15 @@ pub(crate) fn handoff_cue_now(h: &Hub, session_id: &str) -> Result<String, Strin
 }
 
 /// Who asked for a note before the cache ran out (the handoffs table's `ahead`): you, a session's "Hand off if
-/// I don't come back", Settings, the Desk's rule for a project with a lead (hub/cache_tick.rs desk_due).
+/// I don't come back", Settings, the Desk's rule for a project with a lead (hub/cache_tick.rs desk_due); or, not
+/// for the cache, the Desk's hand-off of a session over its context mark or whose compacting failed (full_due),
+/// which goes on in a fresh session from the note as soon as it's written (hub/desk_handoff.rs).
 pub(crate) const AHEAD_YOU: u8 = 1;
 pub(crate) const AHEAD_SESSION: u8 = 2;
 pub(crate) const AHEAD_ALL: u8 = 3;
 pub(crate) const AHEAD_DESK: u8 = 4;
-const AHEAD_BY: [&str; 5] = ["", "you", "session", "all", "desk"];
+pub(crate) const AHEAD_FULL: u8 = 5;
+const AHEAD_BY: [&str; 6] = ["", "you", "session", "all", "desk", "full"];
 
 /// handoff_cue, with who asked ahead of its cache running out (0: not ahead).
 pub(crate) fn handoff_cue_ahead(h: &Hub, session_id: &str, ahead: u8) -> Result<String, String> {
@@ -265,6 +268,10 @@ fn start_after(h: &Arc<Hub>, session_id: &str, first: impl FnOnce(&str) -> Strin
     let new_id = started.get("session_id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
     crate::config::carry_move(session_id, &new_id);
     h.carry_team(session_id, &new_id);
+    // Its place on its project's Desk too: the lead, the items it holds, the Desk's list.
+    if !new_id.is_empty() {
+        h.desk_carry(session_id, &new_id, &name);
+    }
     Ok(new_id)
 }
 
@@ -300,7 +307,6 @@ pub(crate) fn handoff_continue_now(h: &Arc<Hub>, session_id: &str) -> Result<ser
     let started = start_after(h, session_id, |last| if takes_resume { format!("/{skill} resume") } else { resume_ask(last, true, &note, &note_file(session_id)) });
     if let Some(new_id) = started.as_ref().ok().filter(|id| !id.is_empty()) {
         db::handoff_continued(session_id, new_id);
-        crate::statuslist::carry_over(session_id, new_id);
     }
     {
         let mut guard = crate::locking::lock(&CONTINUING, "CONTINUING");
@@ -349,7 +355,6 @@ pub(crate) async fn handoff_fresh(hub: State<'_, Arc<Hub>>, session_id: String) 
 
 pub(crate) fn handoff_fresh_now(h: &Arc<Hub>, session_id: &str) -> Result<serde_json::Value, String> {
     let new_id = start_after(h, session_id, |last| resume_ask(last, false, "", ""))?;
-    crate::statuslist::carry_over(session_id, &new_id);
     let (closed, detail) = close_replaced(h, session_id, "Started fresh from its last reply");
     Ok(serde_json::json!({ "session_id": new_id, "closed": closed, "detail": detail }))
 }

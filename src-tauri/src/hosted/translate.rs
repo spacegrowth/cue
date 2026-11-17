@@ -149,14 +149,19 @@ fn task(v: &Value) -> Option<HostedEvent> {
     (what.starts_with("task_") || what == "background_tasks_changed").then(|| HostedEvent::Task { what, detail: v.clone() })
 }
 
-/// A `status` line about compacting: "compacting" as it starts; no status and a `compact_result` once it's done.
+/// A `status` line about compacting: "compacting" as it starts; no status and a `compact_result` once it's done
+/// ("success", else it failed).
 fn compacting(v: &Value) -> Option<HostedEvent> {
     if text(v, "subtype") != "status" {
         return None;
     }
     match v.get("status").and_then(Value::as_str) {
         Some("compacting") => Some(HostedEvent::Compacting { done: false }),
-        None if v.get("compact_result").is_some() => Some(HostedEvent::Compacting { done: true }),
+        None => match v.get("compact_result").map(|r| r.as_str() == Some("success")) {
+            Some(true) => Some(HostedEvent::Compacting { done: true }),
+            Some(false) => Some(HostedEvent::CompactFailed),
+            None => None,
+        },
         _ => None,
     }
 }

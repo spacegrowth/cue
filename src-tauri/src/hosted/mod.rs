@@ -96,6 +96,8 @@ pub enum HostedEvent {
     Task { what: String, detail: Value },
     /// It's summarizing the conversation (`/compact`, or its context filled up); `done`: finished.
     Compacting { done: bool },
+    /// Its compacting ended without a summary (a `compact_result` other than "success"): the Desk hands it off.
+    CompactFailed,
     /// The plan's usage, as the status line reports it (`five_hour` / `seven_day`, each with
     /// `used_percentage` and `resets_at` in seconds): a hosted session has no status line to say it.
     Rates(Value),

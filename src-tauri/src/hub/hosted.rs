@@ -126,7 +126,11 @@ impl Hub {
             return Ok(());
         }
         let woken = self.resume_hosted_as(origin)?;
-        self.write(|st| st.sessions.set_pid(sid, woken.agent_pid));
+        // A new process: teammates of the one before ended with it, however that one went.
+        self.write(|st| {
+            st.sessions.set_pid(sid, woken.agent_pid);
+            st.sessions.team_process_ended(sid, crate::clock::now_ms());
+        });
         self.changed();
         Ok(())
     }
@@ -184,7 +188,7 @@ impl Hub {
             HostedEvent::NotTaken { text, why } => self.hosted_not_taken(&origin, &text, &why),
             HostedEvent::Said { .. } | HostedEvent::ToolCall { .. } | HostedEvent::ToolResult { .. } | HostedEvent::Task { .. } => self.hosted_at_work(origin),
             HostedEvent::Rates(rl) => self.set_rates(&rl),
-            HostedEvent::Compacting { done } => self.hosted_compacting(&origin.session_id, done),
+            e @ (HostedEvent::Compacting { .. } | HostedEvent::CompactFailed) => self.hosted_compacted(&origin.session_id, &e),
             HostedEvent::Suggested { text } => self.hosted_suggested(&origin, &text),
             HostedEvent::Ask(a) => self.hosted_ask(origin, a),
             HostedEvent::TurnEnded { text, failed, cost_usd, unprompted } => {
@@ -231,6 +235,20 @@ impl Hub {
             HostedEvent::Refused { subtype, .. } => eprintln!("cue: hosted session {} asked for a “{subtype}”, which Cue can't answer: refused", o.session_id),
             HostedEvent::Started { terminal_only, .. } => self.note_terminal_only(&origin.session_id, terminal_only),
         }
+    }
+
+    /// It started compacting, or finished, or couldn't (CompactFailed: the Desk then hands it off, cache_tick.rs).
+    fn hosted_compacted(&self, sid: &str, e: &HostedEvent) {
+        let (done, failed) = match e {
+            HostedEvent::Compacting { done } => (*done, false),
+            _ => (true, true),
+        };
+        if failed {
+            self.write(|st| st.desk.compact_failed.insert(sid.to_string(), now_ms()));
+        } else if done {
+            self.write(|st| st.desk.compact_failed.remove(sid));
+        }
+        self.hosted_compacting(sid, done);
     }
 
     /// Claude didn't take a message: it shows as unsent, and nothing waits queued for it.
@@ -352,6 +370,7 @@ impl Hub {
         let paused = Origin { agent_pid: None, ..origin };
         self.write(|st| {
             st.sessions.set_pid(&sid, None);
+            st.sessions.team_process_ended(&sid, crate::clock::now_ms());
             st.sessions.unsend_pending(&sid, "Claude Code exited first");
             st.sessions.set_queued(&sid, None);
         });

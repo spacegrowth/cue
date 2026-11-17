@@ -306,8 +306,12 @@ fn compact_is_finished_once_claude_code_reports_it() {
     let p = write_transcript(&[typed.clone(), json!({"type":"system","subtype":"compact_boundary","timestamp":at("03:04.877")}), done]);
     assert!(compact_finished(&p.0, since));
     // It couldn't compact: that's the end of it too.
-    let p = write_transcript(&[typed, json!({"type":"user","timestamp":at("02:31.000"),"message":{"content":"<local-command-stderr>Error: Not enough messages to compact.</local-command-stderr>"}})]);
+    let p = write_transcript(&[typed.clone(), json!({"type":"user","timestamp":at("02:31.000"),"message":{"content":"<local-command-stderr>Error: Not enough messages to compact.</local-command-stderr>"}})]);
     assert!(compact_finished(&p.0, since));
+    assert_eq!(super::compact_outcome(&p.0, since), Some(false), "an error: it failed");
+    let p = write_transcript(&[typed, json!({"type":"user","timestamp":at("02:31.000"),"message":{"content":"<local-command-stdout>Error during compaction: Conversation too long.</local-command-stdout>"}})]);
+    assert_eq!(super::compact_outcome(&p.0, since), Some(false), "said on stdout: failed too");
+    assert_eq!(super::compact_outcome(&p2.0, since), Some(true));
 }
 
 // Tiny self-cleaning temp file so tests need no extra crate.

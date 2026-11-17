@@ -22,18 +22,27 @@ impl Hub {
         if !crate::db::draft_text(&format!("s:{sid}")).trim().is_empty() {
             return held("draft");
         }
-        if o.tmux_pane.is_empty() {
-            return held("unseen");
+        // A hosted session has no terminal box to land on: Cue's box (the draft) is all there is.
+        if !o.hosted {
+            if o.tmux_pane.is_empty() {
+                return held("unseen");
+            }
+            match self.keys().screen(o).ok().as_deref().and_then(crate::focus::box_empty) {
+                Some(true) => {}
+                Some(false) => return held("typed"),
+                None => return held("unseen"),
+            }
         }
-        match self.keys().screen(o).ok().as_deref().and_then(crate::focus::box_empty) {
-            Some(true) => {}
-            Some(false) => return held("typed"),
-            None => return held("unseen"),
-        }
+        let k = super::desk_lead::context_k(tokens);
         match crate::ipc::handoff_cue_ahead(self, sid, by) {
             Err(e) => held(&e),
-            // Asked by the Desk's rule: its Desk says so.
-            Ok(_) if by == crate::ipc::AHEAD_DESK => self.desk_cue_asked(sid, tokens),
+            // Asked by the Desk's rules: its Desk says so.
+            Ok(_) if by == crate::ipc::AHEAD_DESK => self.desk_cue_asked(sid, &format!("{k}, cache ending")),
+            Ok(_) if by == crate::ipc::AHEAD_FULL => {
+                let failed = self.read(|st| st.desk.compact_failed.contains_key(sid));
+                let why = if failed { format!("{k}, compacting failed") } else { format!("{k}, over the {}k mark", crate::config::desk_handoff_tokens() / 1000) };
+                self.desk_cue_asked(sid, &why);
+            }
             Ok(_) => {}
         }
     }
@@ -210,7 +219,7 @@ mod tests {
         holds("d80w", "working");
         waiting("d80q", "/x/shop", 80_000);
         holds("d80q", "queued");
-        // Under 50k never; 200k and up is Claude Code's to compact.
+        // Under 50k never; over the Desk's mark (180k) asked whatever its cache, to go on in a fresh session.
         waiting("d40w", "/x/shop", 40_000);
         holds("d40w", "working");
         waiting("d250w", "/x/shop", 250_000);
@@ -244,10 +253,10 @@ mod tests {
         hub.desk_put_lead(&project("dgone"), "nobody", "gone-lead");
         hub.cache_tick();
 
-        for sid in ["dl", "d150w", "d150c", "d80w"] {
+        for sid in ["dl", "d150w", "d150c", "d80w", "d250w"] {
             assert!(asked(sid), "{sid}: {:?}", events(sid));
         }
-        for sid in ["d150n", "d150d", "d80q", "d40w", "d250w", "dkeep", "dnote", "dnolead", "dgone"] {
+        for sid in ["d150n", "d150d", "d80q", "d40w", "dkeep", "dnote", "dnolead", "dgone"] {
             assert!(events(sid).is_empty(), "{sid}: {:?}", events(sid));
         }
         assert_eq!((events("dbusy"), events("dcomp"), events("dheld"), events("ddraft")), (vec!["held:busy".to_string()], vec!["held:busy".to_string()], vec!["held:busy".to_string()], vec!["held:draft".to_string()]));
@@ -257,7 +266,7 @@ mod tests {
         let _ = lead;
 
         // Asked: its Desk notes it, by Cue, with nothing to undo.
-        hub.desk_cue_asked("d150w", 142_400);
+        hub.desk_cue_asked("d150w", "142k, cache ending");
         let d = hub.read(|st| st.desk.decisions.last().cloned()).unwrap();
         assert_eq!((d.by.as_str(), d.undo.as_str(), d.text.as_str(), d.why.as_str(), d.project.as_str()), ("Cue", "none", "Asked shop for a hand-off note", "142k, cache ending", p.as_str()));
         std::env::remove_var("CUE_HOME");

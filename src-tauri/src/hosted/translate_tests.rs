@@ -160,6 +160,8 @@ fn compacting_is_said_as_it_starts_and_once_it_is_done() {
     let done = t.step(&wire::parse(r#"{"type":"system","subtype":"status","status":null,"compact_result":"success","session_id":"d1"}"#));
     assert_eq!(done, vec![HostedEvent::Compacting { done: true }]);
     assert_eq!(t.step(&wire::parse(r#"{"type":"system","subtype":"status","status":null,"session_id":"d1"}"#)), vec![], "another status says nothing");
+    let failed = t.step(&wire::parse(r#"{"type":"system","subtype":"status","status":null,"compact_result":"failed","session_id":"d1"}"#));
+    assert_eq!(failed, vec![HostedEvent::CompactFailed], "any other result: it failed");
 }
 
 #[test]

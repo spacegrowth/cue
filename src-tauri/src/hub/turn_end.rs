@@ -103,6 +103,10 @@ impl Hub {
         if crate::ipc::notice_handoff(self, &origin.session_id) {
             self.changed();
         }
+        // The note the Desk asked of a session grown too big: it goes on in a fresh session (desk_handoff.rs).
+        if let Some(log) = super::send::log_here(origin) {
+            self.desk_hand_on(&origin.session_id, log);
+        }
         unread
     }
 
@@ -196,15 +200,6 @@ impl Hub {
         }
         if !path.is_empty() {
             self.status_asks_from(sid, path);
-        }
-        // A followed session: its About reads this turn (tasks.rs). With Settings' "For every session" on, one
-        // that isn't followed yet starts now, from the chat so far. About off: neither.
-        if let Some(me) = self.shared().filter(|_| crate::tasks::on()) {
-            if crate::tasks::is_tracked(sid) {
-                crate::tasks::turn_ended(me, sid);
-            } else if crate::config::flag("/tasks/auto") {
-                let _ = crate::tasks::start(me, sid);
-            }
         }
         // A lead's turn ended: its next queued review, or its crew's commit asks that wait, go (after a moment, for its
         // hooks to settle, and for a message of yours kept for it to go first).
