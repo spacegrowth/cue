@@ -532,8 +532,8 @@ test("rows open from the keyboard: Enter or Space, and the focus stays on the ro
   await expect(page.locator('[data-desk-item="d4"]')).toBeFocused();
   await page.evaluate(() => deskShow({ kind: "holder", sid: "lead" }));
   await expect(page.locator(".dk-right .dk-pane h1 .dk-tname")).toHaveText("web-lead");
-  // A lead's pane: its mark before its name, where a crew member's is (#170).
-  await expect(page.locator('.dk-right .dk-pane h1 .dk-titled > [data-desk-mark="lead"]')).toHaveText("Lead");
+  // The Desk's runner's pane: its mark before its name, where a crew member's is (#170); one name wherever it shows (#175).
+  await expect(page.locator('.dk-right .dk-pane h1 .dk-titled > [data-desk-mark="desk"]')).toHaveText("Dispatcher");
   await expect(page.locator(".dk-right .dk-markrow")).toHaveCount(0);
   if (process.env.SHOT_DIR) await page.locator(".dk-right").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-lead-mark.png` });
   await page.locator('.dk-right [data-desk-crew="id-search"]').focus();
