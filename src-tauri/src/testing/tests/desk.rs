@@ -70,7 +70,7 @@ fn lines_are_read_outside_code_and_quotes() {
             Line::Item { kind: "feature".into(), title: "Dark mode".into(), done_when: "it follows the Mac".into(), why: String::new() },
             Line::Item { kind: "task".into(), title: "Plain title".into(), done_when: String::new(), why: String::new() },
             Line::Route { id: "new".into(), to: "cue-teams".into(), after: Some("a1b2".into()), why: "it knows the header".into(), kind: None, crew: None },
-            Line::Ask { question: "Which first?".into(), choices: vec!["A".into(), "B".into()] },
+            Line::Ask { question: "Which first?".into(), choices: vec!["A".into(), "B".into()], item: None },
             Line::Done { ids: vec!["a1".into(), "b2".into()] },
         ]
     );
@@ -329,7 +329,7 @@ fn a_working_item_whose_holder_stopped_is_sent_again_on_a_route_or_restart() {
     w.settle();
     assert_eq!(sent(), 2);
     assert!(sent_to(&w, &h).iter().any(|t| t.contains("Why you: the owner says it's still off")), "{:?}", sent_to(&w, &h));
-    assert_eq!(item(&desk(&w, &project), "Header")["state"], "needs_you");
+    assert_eq!(item(&desk(&w, &project), "Header")["stopped"].as_bool(), Some(true));
     ends(&w, &l, &format!("ROUTE: #{id} -> cue-teams | why: it knows"));
     w.settle();
     assert_eq!(sent(), 3);
@@ -1199,11 +1199,12 @@ fn an_item_already_given_out_isnt_split() {
     assert!(sent_to(&w, &l).last().unwrap().contains(&format!("#{} not split", it.id)));
 }
 
-/// A holder whose turn ends on its item with no DONE: the item waits on you with its last line (not "working"), and
-/// Cue asks it once if it's done. The turn that answers isn't asked again, nor one that ends on a question; a later
-/// stall is asked once more; DONE puts it to check.
+/// A holder whose turn ends on its item with no DONE and nothing to ask you: Cue asks it once if it's done, and the
+/// item is stopped, not waiting on you (#182). The turn that answers with still no DONE goes to the Desk lead to settle
+/// (told once); one that ends on a question waits on you with that question (Answer). A later stall is asked once more;
+/// DONE puts it to check.
 #[test]
-fn an_item_whose_holder_stops_without_done_waits_on_you_and_is_asked_once() {
+fn an_item_whose_holder_stops_without_done_is_asked_once_then_goes_to_the_desk_lead() {
     let w = World::new();
     let (h, project) = holder(&w);
     let l = new_lead(&w, &project);
@@ -1219,20 +1220,27 @@ fn an_item_whose_holder_stops_without_done_waits_on_you_and_is_asked_once() {
         w.advance(1000);
         ends(&w, &h, reply);
     };
+    let told = || sent_to(&w, &l).iter().filter(|t| t.starts_with(&format!("#{id} (Header) stopped:"))).count();
     turn("Header", "Looked at the header.\nThe sticky part is in place.");
     let it = item(&desk(&w, &project), "Header").clone();
-    assert_eq!(it["state"], "needs_you", "{it}");
+    assert_eq!((it["state"].as_str(), it["stopped"].as_bool()), (Some("working"), Some(true)), "stopped, not waiting on you: {it}");
     assert_eq!(it["latest"], "The sticky part is in place.");
     assert!(it["ask"].is_null(), "no ask box for a plain stop: {it}");
     assert_eq!(asked(), 1, "asked once: {:?}", sent_to(&w, &h));
-    // Its answer: still no DONE, so it waits on you with what's left, and isn't asked again.
+    assert_eq!(told(), 0, "Cue's own ask goes first");
+    // Its answer: still no DONE, so the Desk lead settles it (told once, with its last line); it isn't asked again.
     turn(&words, "The footer still overlaps it.");
-    assert_eq!(item(&desk(&w, &project), "Header")["state"], "needs_you");
-    assert_eq!(item(&desk(&w, &project), "Header")["latest"], "The footer still overlaps it.");
+    let it = item(&desk(&w, &project), "Header").clone();
+    assert_eq!((it["state"].as_str(), it["stopped"].as_bool(), it["latest"].as_str()), (Some("working"), Some(true), Some("The footer still overlaps it.")), "{it}");
     assert_eq!(asked(), 1);
-    // A turn that ends on a question for you isn't asked either.
-    turn("Go on", "Should the footer move too?");
-    assert_eq!(asked(), 1);
+    assert_eq!(told(), 1, "{:?}", sent_to(&w, &l));
+    let lead_words = sent_to(&w, &l).into_iter().find(|t| t.starts_with(&format!("#{id} (Header) stopped:"))).unwrap();
+    assert!(lead_words.contains("The footer still overlaps it.") && lead_words.contains(&format!("ASK: #{id} |")), "{lead_words}");
+    // A turn that ends on a question for you isn't asked: it waits on you with that question, in one line.
+    turn("Go on", "I moved the header.\n\nThe footer is close to it. Should the footer move too?");
+    let it = item(&desk(&w, &project), "Header").clone();
+    assert_eq!((it["state"].as_str(), it["latest"].as_str()), (Some("needs_you"), Some("Should the footer move too?")), "{it}");
+    assert_eq!((asked(), told()), (1, 1));
     // A new stall later: asked once more.
     turn("Yes, move it", "Moved some of it.");
     assert_eq!(asked(), 2);
@@ -1263,7 +1271,10 @@ fn a_holder_that_said_whats_left_or_who_it_waits_on_isnt_asked_again() {
     turn("ok", "Understood.");
     turn("ok", "Nothing changed here.");
     assert_eq!(asked(), 0, "{:?}", sent_to(&w, &h));
-    assert_eq!(item(&desk(&w, &project), "Header")["state"], "needs_you");
+    // Nothing to ask you: the Desk lead settles it, told once.
+    let it = item(&desk(&w, &project), "Header").clone();
+    assert_eq!((it["state"].as_str(), it["stopped"].as_bool()), (Some("working"), Some(true)), "{it}");
+    assert_eq!(sent_to(&w, &l).iter().filter(|t| t.contains(") stopped:")).count(), 1);
     // Sent again: a new stall, asked once.
     ends(&w, &l, &format!("ROUTE: #{id} -> {h} | why: back to it"));
     turn("Header again", "Looked again.");
@@ -1306,7 +1317,7 @@ fn a_holder_with_crew_at_work_a_crew_member_or_the_desk_lead_isnt_asked_if_done(
     w.hosted_says(&h, HostedEvent::Taken { text: "fixer finished".into() });
     w.advance(1000);
     ends(&w, &h, "fixer finished its part.");
-    assert_eq!(state("Header"), "needs_you");
+    assert_eq!((state("Header"), item(&desk(&w, &project), "Header")["stopped"].as_bool()), ("working".to_string(), Some(true)));
     assert_eq!(sent_to(&w, &h).iter().filter(|t| **t == format!("Done? Write DONE: #{header}, or say what's left")).count(), 1);
     // An item the Desk's lead holds: its routing turns aren't stalls.
     let added = w.hub().desk_add(&project, "task", "Colours", "", None).unwrap();
@@ -1362,7 +1373,7 @@ fn a_stalled_item_sent_again_is_at_work_until_its_next_turn_ends() {
         w.hosted_says(&h, HostedEvent::Taken { text: "Header".into() });
         w.advance(1000);
         ends(&w, &h, "Part of it.");
-        assert_eq!(state(), "needs_you");
+        assert_eq!(item(&desk(&w, &project), "Header")["stopped"].as_bool(), Some(true));
     };
     stall();
     w.advance(1000);
@@ -1419,8 +1430,8 @@ fn a_session_holding_two_items_answers_on_the_one_it_is_on_now() {
     let d = desk(&w, &project);
     assert_eq!(said(&d, "First thing"), vec!["Looking at the first thing."], "{d}");
     assert_eq!(said(&d, "Second thing"), vec!["On the second thing now."], "{d}");
-    // Its latest words and its work show only on the one it's on.
-    assert_eq!((item(&d, "Second thing")["now_on"].as_bool(), item(&d, "Second thing")["latest"].as_str()), (Some(true), Some("On the second thing now.")));
+    // Its work shows only on the one it's on. It stopped there with no lead to settle it: that's what waits on you (#182).
+    assert_eq!((item(&d, "Second thing")["now_on"].as_bool(), item(&d, "Second thing")["latest"].as_str()), (Some(true), Some("It stopped, and this Desk has no lead to settle it: say what's next")));
     assert_eq!((item(&d, "First thing")["now_on"].as_bool(), item(&d, "First thing")["latest"].as_str()), (None, Some("")));
     // Written from the first one's page: about the first one, so is its answer.
     let about = format!("About #{} (First thing): one more fix", a.id);
@@ -1439,4 +1450,60 @@ fn a_session_holding_two_items_answers_on_the_one_it_is_on_now() {
     let d = desk(&w, &project);
     assert_eq!((said(&d, "First thing").len(), said(&d, "Second thing").len()), (2, 1), "{d}");
     assert_eq!((item(&d, "First thing")["now_on"].as_bool(), item(&d, "Second thing")["now_on"].as_bool()), (None, None));
+}
+
+/// A turn's words told again with more after them (a turn that ended on a usage limit) are one reply on the item, the
+/// longer; different words after them are a reply of their own.
+#[test]
+fn the_same_reply_told_again_with_more_is_one_reply() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let a = w.hub().desk_add(&project, "bug", "First thing", "", None).unwrap();
+    w.hub().desk_give(&a.id, &h).unwrap();
+    w.settle();
+    let words = sent_to(&w, &h).into_iter().rev().find(|t| t.contains(&format!("Desk item #{}", a.id))).unwrap();
+    w.hosted_says(&h, HostedEvent::Taken { text: words });
+    ends(&w, &h, "None of it is done yet.");
+    ends(&w, &h, "None of it is done yet.\n\nYou've hit your limit");
+    let said = |d: &Value| item(d, "First thing")["said"].as_array().map(|s| s.iter().map(|x| x["text"].as_str().unwrap().to_string()).collect::<Vec<_>>()).unwrap_or_default();
+    let d = desk(&w, &project);
+    assert_eq!(said(&d), vec!["None of it is done yet.\n\nYou've hit your limit"], "{d}");
+    ends(&w, &h, "Now it's done.");
+    assert_eq!(said(&desk(&w, &project)).len(), 2);
+}
+
+/// A stop the Desk lead doesn't settle in 10 minutes waits on you, saying so; with no lead at hand it waits on you at
+/// once. The lead's ASK about the item (ASK: #id | …) shows on it as waiting on you, and its answer goes to the lead.
+#[test]
+fn a_stop_the_lead_cant_settle_waits_on_you_and_its_ask_shows_on_the_item() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    ends(&w, &l, "ITEM: Header\nROUTE: #new -> cue-teams | why: it knows");
+    let id = item(&desk(&w, &project), "Header")["id"].as_str().unwrap().to_string();
+    let turn = |prompt: &str, reply: &str| {
+        w.advance(1000);
+        w.hosted_says(&h, HostedEvent::Taken { text: prompt.into() });
+        w.advance(1000);
+        ends(&w, &h, reply);
+    };
+    turn("Header", "Part of it.");
+    turn(&format!("Done? Write DONE: #{id}, or say what's left"), "More of it.");
+    assert_eq!(item(&desk(&w, &project), "Header")["stopped"].as_bool(), Some(true));
+    // The lead asks you about it: it waits on you with that ask.
+    ends(&w, &l, &format!("ASK: #{id} | Keep the old header for a release? | choices: Yes / No"));
+    w.settle();
+    let it = item(&desk(&w, &project), "Header").clone();
+    assert_eq!((it["state"].as_str(), it["ask"]["text"].as_str(), it["stopped"].as_bool()), (Some("needs_you"), Some("Keep the old header for a release?"), None), "{it}");
+    let card = it["ask"]["item_id"].as_str().unwrap().to_string();
+    w.hub().respond(&card, crate::model::Decision { behavior: "allow".into(), answers: Some(serde_json::json!({ "q": "No" })), ..Default::default() });
+    w.settle();
+    w.advance(1000);
+    assert!(sent_to(&w, &l).iter().any(|t| t == &format!("Your ASK about #{id}: Keep the old header for a release?\nThe answer: No")), "{:?}", sent_to(&w, &l));
+    assert_eq!(item(&desk(&w, &project), "Header")["stopped"].as_bool(), Some(true), "the lead has it again");
+    // Not settled in 10 minutes: it waits on you, saying so.
+    w.advance(10 * 60 * 1000);
+    let it = item(&desk(&w, &project), "Header").clone();
+    assert_eq!(it["state"], "needs_you", "{it}");
+    assert!(it["latest"].as_str().unwrap().contains("couldn't settle it"), "{it}");
 }

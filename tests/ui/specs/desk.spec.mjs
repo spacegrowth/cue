@@ -35,8 +35,10 @@ test("the Desk is in the header after Board, and lists Waiting on you, then a gr
   expect(await cells("d4")).toEqual(["", "Bug #d4", "Rail dot blinks for a reply you didn't send", "web-lead"]);
   expect(await cells("d3")).toEqual(["", "Feature #d3", "Search stays centred in the header", "web-lead → search-centre"]);
   expect(await cells("d2")).toEqual(["", "Feature #d2", "Quick phrases at the right of Send", "web-lead"]);
-  await expect(page.locator(".dk-items .dk-h")).toHaveCount(1);
+  // Each waiting row says what to do, in one plain line (#182).
+  await expect(page.locator(".dk-items .dk-h")).toHaveCount(2);
   await expect(page.locator('[data-desk-item="d1"] .dk-h')).toContainText("keep focus in the box");
+  await expect(page.locator('[data-desk-item="d2"] .dk-h')).toHaveText(/^Try it: /);
   // Ready to check: Looks right on its row. Done today: each with the time it finished.
   await expect(page.locator(".dk-items .dk-ok")).toHaveCount(1);
   await expect(page.locator('[data-desk-item="d2"] .dk-ok')).toHaveAttribute("aria-label", "Looks right");
@@ -2946,9 +2948,9 @@ test("an item with mocks has \"Open the mocks\" in its header; waiting on a pick
     await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
     if (process.env.SHOT_DIR) await page.locator(".dk-right").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-178-${theme}.png` });
   }
-  // Picked (no reply asks for one): no line; no mocks: no link.
+  // Picked (no reply asks for one): no pick line, only Try it (#182); no mocks: no link.
   await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5").said = [{ at: Date.now(), by: "host-lead", text: "Built E. DONE: #d5" }]; });
-  await expect(head.locator(".dk-pickl")).toHaveCount(0);
+  await expect(head.locator(".dk-pickl")).toHaveText(/^Try it: /);
   await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5").designs = ""; });
   await expect(head.locator("a.dk-dlink")).toHaveCount(0);
 });
@@ -3015,7 +3017,7 @@ test("a failed build waits on you with its question; its page has the log's last
   const log = Array.from({ length: 20 }, (_, n) => `line ${n + 1}`).join("\n");
   await patchItem(cue, "d5", { state: "needs_you", latest: "The build failed", finish: { step: "failed", question: "The build failed", log, at: Date.now() } });
   const row = page.locator('.dk-items [data-desk-item="d5"]');
-  await expect(row.locator(".dk-h")).toHaveText("The build failed");
+  await expect(row.locator(".dk-h")).toHaveText("Answer: The build failed");
   await expect(page.locator(".dk-items .dk-gh.you")).toContainText("3");
   await row.locator(".dk-t").click();
   const pane = page.locator(".dk-right .dk-pane");
@@ -3072,4 +3074,43 @@ test("an item to check from before (files, no commit) keeps today's: waiting for
   await row.locator(".dk-ok").click();
   await cue.called("desk_looks_right", { id: "d2" });
   await expect(page.locator(".toast").last()).toContainText("Committed abc1234 · 2 files");
+});
+
+test("each waiting row says what to do in one line, and what it unblocks; the most-unblocking first; a stopped item waits on the lead, not on you (#182)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.change((st) => {
+    const items = st.desk.projects.find((x) => x.project === "cue").items;
+    const it = (id) => items.find((i) => i.id === id);
+    // d2 waits on a pick, and four items wait on it (one through another).
+    Object.assign(it("d2"), { state: "needs_you", ask: { item_id: "a2", sid: "web-lead", text: "Phrases left or right of Send?", choices: ["Left", "Right"], kind: "question" } });
+    Object.assign(it("d4"), { after: "d2" });
+    Object.assign(it("d6"), { after: "d4" });
+    items.push({ ...it("d6"), id: "d10", title: "Ten", after: "d2" }, { ...it("d6"), id: "d11", title: "Eleven", after: "d10" });
+    // d1's ask is a tool to allow.
+    Object.assign(it("d1").ask, { kind: "permission", text: "Run npm test", choices: [] });
+    // d3's holder stopped on it with no ask: the lead settles it.
+    Object.assign(it("d3"), { stopped: true });
+  });
+  const you = page.locator(".dk-items .dk-gh.you");
+  await expect(you).toContainText("2");
+  expect((await listOrder(page)).slice(0, 3)).toEqual(["# Waiting on you", "d2", "d1"]);
+  await expect(page.locator('[data-desk-item="d2"] .dk-h')).toHaveText("Pick: Phrases left or right of Send?");
+  await expect(page.locator('[data-desk-item="d2"] .dk-ub')).toHaveText("unblocks #d4, #d10, #d6 +1 more");
+  await expect(page.locator('[data-desk-item="d1"] .dk-h')).toHaveText("Allow: Run npm test");
+  await expect(page.locator('[data-desk-item="d1"] .dk-ub')).toHaveCount(0);
+  const d3 = page.locator('[data-desk-item="d3"]');
+  await expect(d3).toContainText("stopped · the Desk lead is on it");
+  await expect(d3.locator(".dk-h")).toHaveCount(0);
+  for (const theme of ["light", "dark"]) {
+    await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
+    if (process.env.SHOT_DIR) await page.locator(".dk-items").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-182-${theme}.png` });
+  }
+  // Its page: the same line, and what it unblocks.
+  await page.locator('[data-desk-item="d2"]').click();
+  const head = page.locator(".dk-right .dk-ihead");
+  await expect(head.locator(".dk-pickl")).toHaveText("Pick: Phrases left or right of Send?");
+  await expect(head.locator(".dk-iub")).toHaveText("unblocks #d4, #d10, #d6 +1 more");
+  await page.locator('[data-desk-item="d3"]').click();
+  await expect(head.locator(".dk-pill")).toHaveText("Stopped");
 });

@@ -211,10 +211,10 @@ function deskOneLine(t) {
  *  on you. Allow a tool, Pick one of its choices (or of its mocks), Answer its question; Try it once it's in the app
  *  (its "done when"). */
 function deskVerb(i) {
-  if (i.state === "to_check" && !deskInstallWait(i)) return ["Try it", deskDoneWhenPoints(i.done_when || "")[0] || i.title];
+  if (i.state === "to_check" && !deskInstallWait(i)) return deskPickLine(i) ? ["Pick", deskPickLine(i)] : ["Try it", deskDoneWhenPoints(i.done_when || "")[0] || i.title];
   if (i.state !== "needs_you") return null;
   const a = i.ask;
-  if (a) return [a.kind && a.kind !== "question" ? "Allow" : (a.choices || []).length > 1 ? "Pick" : "Answer", deskOneLine(a.text)];
+  if (a) return [a.kind === "permission" ? "Allow" : (a.choices || []).length > 1 ? "Pick" : "Answer", deskOneLine(a.text)];
   const pick = deskPickLine(i);
   if (pick) return ["Pick", pick];
   return ["Answer", deskOneLine(i.finish?.question || i.latest || deskQuestion(i))];

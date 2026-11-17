@@ -93,10 +93,69 @@ fn ends_on_a_question(text: &str) -> bool {
     text.lines().map(str::trim).rfind(|l| !l.is_empty()).is_some_and(|l| l.ends_with('?'))
 }
 
+/// How long the Desk lead has to settle a stop before it turns to you (#182).
+pub(super) const STOP_WAIT_MS: u64 = 10 * 60 * 1000;
+
+/// The question a turn ended on, in one plain line: the last sentence of its last line, when that ends on "?".
+pub(super) fn question_in(text: &str) -> Option<String> {
+    let line = text.lines().map(str::trim).rfind(|l| !l.is_empty())?;
+    let line = line.trim_start_matches(['-', '*', '>', ' ']).replace("**", "").replace('`', "");
+    let line = line.trim();
+    if !line.ends_with('?') {
+        return None;
+    }
+    // Its last sentence: after the last ". ", "! " or ": " before the question.
+    let body = &line[..line.len() - 1];
+    let from = [". ", "! ", "? "].iter().filter_map(|p| body.rfind(p).map(|at| at + p.len())).max().unwrap_or(0);
+    let q: String = line[from..].trim().chars().take(200).collect();
+    (q.len() > 1).then_some(q)
+}
+
+/// How a holder's stop on an item (its turn ended on it, no DONE, no ask) is shown.
+pub(super) enum Stop {
+    /// It waits on you with one plain line: the question its turn ended on, or that the lead couldn't settle it.
+    Asks(String),
+    /// The Desk lead is settling it: nothing for you yet.
+    Lead,
+}
+
+/// Stall `s` on `it` as it's shown at `now`: its turn ended on a question for you (Answer), or the lead has it, until
+/// its time is up or when the Desk has no lead at hand to settle it.
+pub(super) fn stop_shown(st: &Store, it: &DeskItem, s: &Session, now: u64) -> Stop {
+    let last = s.thread.iter().rev().find(|e| e.role == "agent").map(|e| e.text.as_str()).unwrap_or("");
+    if let Some(q) = question_in(last) {
+        return Stop::Asks(q);
+    }
+    if !lead_live(st, &it.project) {
+        return Stop::Asks("It stopped, and this Desk has no lead to settle it: say what's next".into());
+    }
+    match it.stop {
+        Some((updated, at)) if updated == it.updated && now.saturating_sub(at) >= STOP_WAIT_MS => Stop::Asks("It stopped, and the Desk lead couldn't settle it: say what's next".into()),
+        _ => Stop::Lead,
+    }
+}
+
+/// `project`'s Desk lead is running (not ended or parked).
+fn lead_live(st: &Store, project: &str) -> bool {
+    st.desk.lead_sid(project).and_then(|l| st.sessions.get(l)).is_some_and(|s| s.state != "stopped")
+}
+
+/// What the Desk lead is told of a stop on item `it` by `holder`, whose last words were `last`.
+fn stop_words(it: &DeskItem, holder: &str, last: &str) -> String {
+    format!(
+        "#{id} ({title}) stopped: {holder} ended its turn on it with no DONE and no question for the user. Its last line: {last}\n\
+         Settle it: ROUTE #{id} to {holder} again with what to do next as the why, or route it on; only if the user must \
+         decide, ASK: #{id} | <question> | choices: … Until then it isn't shown as waiting on the user.",
+        id = it.id,
+        title = it.title,
+    )
+}
+
 /// Session `sid`'s turn ended, saying `text`, with items `on` at work with it before: each still at work with it (no
 /// DONE for it) stalled there, and Cue asks it once, unless it's still at it (its agents or crew run on), it asks you, or the
-/// turn says what's left. A stall already asked of is answered by this turn: not asked again.
-pub(super) fn stalls_asked(st: &mut Store, sid: &str, text: &str, on: &[String], fx: &mut Effects) {
+/// turn says what's left. A stall already asked of is answered by this turn: not asked again. One its answer (or what's
+/// left) doesn't settle goes to the Desk lead (#182), unless it asks you.
+pub(super) fn stalls_asked(st: &mut Store, sid: &str, text: &str, on: &[String], now: u64, fx: &mut Effects) {
     let still: Vec<(String, u64)> = on
         .iter()
         .filter_map(|id| st.desk.item(id).filter(|i| i.state == "working" && i.holder.as_ref().is_some_and(|h| h.sid == sid && h.lead_sid.is_empty())).map(|i| (i.id.clone(), i.updated)))
@@ -109,7 +168,9 @@ pub(super) fn stalls_asked(st: &mut Store, sid: &str, text: &str, on: &[String],
     }
     let h = Holder { kind: "session".into(), sid: sid.to_string(), ..Default::default() };
     let left = says_whats_left(text);
-    let quiet = still_at_it(st, sid) || ask_of(st, &h).is_some() || ends_on_a_question(text);
+    let busy = still_at_it(st, sid);
+    let asks = ask_of(st, &h).is_some() || ends_on_a_question(text);
+    let quiet = busy || asks;
     let mut ask = Vec::new();
     for (id, updated) in still {
         // It said what's left of it, or what it waits on: quiet on it until the item changes (sent again, routed; #168).
@@ -119,11 +180,17 @@ pub(super) fn stalls_asked(st: &mut Store, sid: &str, text: &str, on: &[String],
         if left {
             st.desk.left_said.insert(id.clone(), (sid.to_string(), updated));
             st.desk.nudged.remove(&id);
+            if !quiet {
+                to_lead(st, sid, &id, now, fx);
+            }
             continue;
         }
-        // Asked of this stall already: this turn is its answer.
+        // Asked of this stall already: this turn is its answer. Still no DONE: the lead settles it.
         if st.desk.nudged.get(&id).is_some_and(|(_, at)| *at == updated) {
             st.desk.nudged.remove(&id);
+            if !quiet {
+                to_lead(st, sid, &id, now, fx);
+            }
             continue;
         }
         if quiet {
@@ -134,5 +201,26 @@ pub(super) fn stalls_asked(st: &mut Store, sid: &str, text: &str, on: &[String],
     }
     if !ask.is_empty() {
         fx.sends.push((sid.to_string(), ask.join("\n")));
+    }
+}
+
+/// Holder `sid`'s stop on item `id` to the Desk lead to settle, once while the item is unchanged; kept on the item
+/// (saved) so the row shows the lead has it, and turns to you when its time is up.
+fn to_lead(st: &mut Store, sid: &str, id: &str, now: u64, fx: &mut Effects) {
+    let Some(it) = st.desk.item(id) else { return };
+    if it.stop.is_some_and(|(u, _)| u == it.updated) {
+        return;
+    }
+    let project = it.project.clone();
+    let last = st.sessions.get(sid).map(last_line).unwrap_or_default();
+    let holder = st.sessions.get(sid).map(super::desk::shown_name).unwrap_or_else(|| sid.to_string());
+    let words = stop_words(it, &holder, &last);
+    let lead = st.desk.lead_sid(&project).filter(|_| lead_live(st, &project)).map(str::to_string);
+    let Some(it) = st.desk.item_mut(id) else { return };
+    it.stop = Some((it.updated, now));
+    fx.said.push(id.to_string());
+    fx.stopped.push(id.to_string());
+    if let Some(lead) = lead {
+        fx.sends.push((lead, words));
     }
 }

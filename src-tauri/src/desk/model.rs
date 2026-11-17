@@ -73,6 +73,13 @@ pub struct DeskItem {
     /// Its holder is at work on this one of the items it holds (hub/desk_stall.rs `now_on`): worked out as it's shown.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub now_on: bool,
+    /// Its holder stopped on it with no DONE and nothing to ask you, and Cue gave the stop to the Desk lead to settle:
+    /// (the item's `updated` then, when in ms). Saved, so a restart keeps it (hub/desk_stall.rs).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stop: Option<(u64, u64)>,
+    /// Its holder stopped on it and the Desk lead is settling it: nothing for you yet. Worked out as it's shown.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub stopped: bool,
     /// Its holder's open ask, when it waits on you: worked out as it's shown.
     #[serde(default)]
     pub ask: Option<Value>,

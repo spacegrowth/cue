@@ -12,7 +12,8 @@ pub enum Line {
     /// when said: the lead's teammate doing it (with `to` "me").
     Route { id: String, to: String, after: Option<String>, why: String, kind: Option<String>, crew: Option<String> },
     /// A question for you, with its choices (none: answered in words).
-    Ask { question: String, choices: Vec<String> },
+    /// `item`: the item it's about (`ASK: #<id> | <question> | …`), shown on that item as waiting on you.
+    Ask { question: String, choices: Vec<String>, item: Option<String> },
     /// Items done, as their holder says.
     Done { ids: Vec<String> },
     /// Item `id`'s designs are at `url` (its canvas), as any session of its project says; a newer one replaces it.
@@ -112,14 +113,19 @@ fn route(body: &str) -> Option<Line> {
 }
 
 fn ask(body: &str) -> Option<Line> {
-    let p = parts(body);
+    let mut p = parts(body);
+    // About one item: `ASK: #<id> | <question> | …`.
+    let item = p.first().filter(|f| p.len() > 1 && f.trim().starts_with('#') && f.trim().len() > 1 && !f.trim().contains(' ')).and_then(|f| id_of(f));
+    if item.is_some() {
+        p.remove(0);
+    }
     let question = p.first()?.to_string();
     let choices = p[1..]
         .iter()
         .find_map(|s| labelled(s, "choices"))
         .map(|c| c.split('/').map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect())
         .unwrap_or_default();
-    (!question.is_empty()).then_some(Line::Ask { question, choices })
+    (!question.is_empty()).then_some(Line::Ask { question, choices, item })
 }
 
 fn done(body: &str) -> Option<Line> {

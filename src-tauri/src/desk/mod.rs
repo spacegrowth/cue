@@ -34,9 +34,10 @@ first stays #<id>, Cue numbers the rest and tells you them; route them all then,
 ROUTE: #<id> -> <session name> | kind: bug | why: <one short reason>      (kind is bug, feature or task; \
 give it when the item has none yet, as items the user adds don't)
 ROUTE: #<id> -> new | why: <reason>      (no session fits: Cue starts a new session of this project for it)
-ROUTE: #<id> -> <name> | after: #<other id> | why: <reason>   (it starts once #<other id> is done; use it when \
-both would change the same files)
+ROUTE: #<id> -> <name> | after: #<other id> | why: <reason>   (it starts once #<other id> is done; use it whenever \
+an item really waits on another, as when both would change the same files: the Desk shows the user what each waiting item unblocks)
 ASK: <question> | choices: <A> / <B> / <C>      (only when you can't decide without the user)
+ASK: #<id> | <question> | choices: <A> / <B>      (the same, about one item: it shows on that item as waiting on the user)
 DECIDED: <what you chose> — <why>      (a judgment call you made on your own that the user may want to undo; not for routing, starting or giving work: Cue lists those itself)
 DONE: #<id>      (the user tells you an item is done)
 DESIGNS: #<id> <canvas link>      (where an item's designs are; say it again when they move)
@@ -47,6 +48,9 @@ never make one up. A ROUTE to another session of the project makes Cue ask the u
 adds that session to the Desk and makes the route, a no leaves the item as it was. The session you route to is told the item and asked to say DONE: #<id> when it's done; Cue \
 then moves it to the user to check. To reopen one that's to check, route it again to the session holding it, \
 with what's left as the why. When Cue tells you of new items, route each one now; first TITLE or SPLIT one that needs it.
+When Cue tells you an item stopped (its session ended its turn with no DONE and no question), settle it: ROUTE it \
+to that session again with what to do next as the why, or route it on. ASK: #<id> only if the user must decide; \
+until then the user doesn't see it as waiting on them.
 In your own words, name an item by its kind and number, as the user sees it: \"Bug #2\", \"Task #1\" (in the lines above, \
 keep #<id>). Be short and plain: a line or two a busy person reads at a glance, no headings, no emoji.";
 

@@ -20,8 +20,8 @@ pub(super) struct Effects {
     pub(super) decisions: Vec<String>,
     /// Messages to sessions: (session, text).
     pub(super) sends: Vec<(String, String)>,
-    /// A lead's questions for you: (its session, its project, question, choices).
-    pub(super) asks: Vec<(String, String, String, Vec<String>)>,
+    /// A lead's questions for you: (its session, its project, question, choices, the item it's about).
+    pub(super) asks: Vec<(String, String, String, Vec<String>, Option<String>)>,
     /// New items for their project's lead to route: (project, item), told together a moment later.
     pub(super) news: Vec<(String, String)>,
     /// Items a lead gave to a new session (`-> new`): each started a moment later (desk_lead.rs).
@@ -32,6 +32,8 @@ pub(super) struct Effects {
     pub(super) uses: Vec<UseAsk>,
     /// Items just said DONE: the files their check card shows, read a moment later (desk_checks.rs).
     pub(super) checked: Vec<String>,
+    /// Items whose stop just went to the Desk lead: shown again once the lead's time to settle it is up (desk_stall.rs).
+    pub(super) stopped: Vec<String>,
 }
 
 
@@ -125,7 +127,8 @@ fn ask_view(i: &Item) -> Value {
     let q = i.tool_input.pointer("/questions/0");
     let text = q.and_then(|q| q["question"].as_str()).map(str::to_string).unwrap_or_else(|| super::summary(i));
     let choices: Vec<String> = q.and_then(|q| q["options"].as_array()).map(|o| o.iter().filter_map(|x| x["label"].as_str().map(str::to_string)).collect()).unwrap_or_default();
-    json!({ "item_id": i.id, "sid": i.origin.session_id, "text": text, "choices": choices })
+    // Its kind: a question (Answer, or Pick from its choices), or a tool to allow (Allow).
+    json!({ "item_id": i.id, "sid": i.origin.session_id, "text": text, "choices": choices, "kind": i.kind })
 }
 
 /// The first line of a session's last words.
@@ -168,14 +171,32 @@ pub(super) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
     }
     // Only the item at work: a queued one's holder asks about the item before it. Waiting on you while its holder
     // asks, or while its holder's turn ended on it (with no DONE, or it would be to check): its last line then.
+    // Waiting on you only with one plain thing to do (#182): its ask (Answer, Pick, Allow), or the question its turn
+    // ended on (Answer). A stop with nothing to ask you goes to the Desk lead to settle: shown as stopped, not red,
+    // until the lead asks you about it (ASK: #id …) or its time is up (desk_stall.rs).
     if it.state == "working" && out.now_on {
         if let Some(a) = ask_of(st, &h) {
             out.state = "needs_you".into();
             out.ask = Some(ask_view(a));
         } else if let Some(s) = super::desk_stall::stalled(st, it, &h) {
-            // No ask: its reply stays in its chat, the list shows only that it needs you.
+            match super::desk_stall::stop_shown(st, it, s, now_ms()) {
+                super::desk_stall::Stop::Asks(q) => {
+                    out.state = "needs_you".into();
+                    out.latest = q;
+                }
+                super::desk_stall::Stop::Lead => {
+                    out.stopped = true;
+                    out.latest = super::desk_stall::last_line(s);
+                }
+            }
+        }
+    }
+    // The lead's ASK about this item: it waits on you with it.
+    if matches!(it.state.as_str(), "new" | "queued" | "working") && out.ask.is_none() {
+        if let Some(a) = st.items.iter().find(|i| i.desk && i.status == "pending" && i.tool_input["desk_item"].as_str() == Some(it.id.as_str())) {
             out.state = "needs_you".into();
-            out.latest = super::desk_stall::last_line(s);
+            out.stopped = false;
+            out.ask = Some(ask_view(a));
         }
     }
     // Finishing and stopped on a question (a word, a conflict, a long wait, a failed install): it needs you.
@@ -569,7 +590,11 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx
                     route(st, project, &by, &id, &to, after, &why, now, fx);
                 }
             }
-            Line::Ask { question, choices } => fx.asks.push((lsid.to_string(), project.to_string(), question, choices)),
+            Line::Ask { question, choices, item } => {
+                // About an item of this Desk's: it shows on that item as waiting on you (`shown`).
+                let item = item.map(|i| st.desk.canon(&i)).filter(|i| st.desk.item(i).is_some_and(|x| x.project == project));
+                fx.asks.push((lsid.to_string(), project.to_string(), question, choices, item))
+            }
             Line::Context { who, what, why } if what == "keep" => keep(st, project, &by, &who, &why, now, fx),
             Line::Done { ids } => lead_done(st, project, lsid, &ids, fx),
             Line::Title { id, title } => retitle(st, project, &by, &id, &title, now, fx),
@@ -1209,7 +1234,7 @@ impl Hub {
                 on = held;
             }
             if !said {
-                super::desk_stall::stalls_asked(st, sid, text, &on, &mut fx);
+                super::desk_stall::stalls_asked(st, sid, text, &on, now, &mut fx);
                 return fx;
             }
             designs_said(st, sid, text, &mut fx);
@@ -1221,7 +1246,7 @@ impl Hub {
             if st.desk.items.iter().any(|i| i.holder.as_ref().is_some_and(|h| h.is(sid))) {
                 holder_said(st, sid, text, lead.is_none(), now, &mut fx);
             }
-            super::desk_stall::stalls_asked(st, sid, text, &on, &mut fx);
+            super::desk_stall::stalls_asked(st, sid, text, &on, now, &mut fx);
             fx
         });
         self.desk_done(fx);
@@ -1267,12 +1292,16 @@ impl Hub {
     /// A lead asks you something: a question card of its session's in the Inbox, marked as its project's Desk's.
     /// Your answer goes back to it as a message (`desk_answered`).
     /// `using`: a route waiting on your yes (`UseAsk`), kept on the card for `desk_answered`.
-    pub(super) fn desk_ask(&self, lsid: &str, project: &str, question: &str, choices: &[String], using: Option<&UseAsk>) {
+    /// `item`: the item it's about (ASK: #id | …), which then waits on you with it.
+    pub(super) fn desk_ask(&self, lsid: &str, project: &str, question: &str, choices: &[String], using: Option<&UseAsk>, item: Option<&str>) {
         let Some(origin) = self.read(|st| st.sessions.origin(lsid)) else { return };
         let options: Vec<Value> = choices.iter().map(|c| json!({ "label": c, "description": "" })).collect();
         let mut input = json!({ "questions": [{ "question": question, "header": "Desk", "options": options, "multiSelect": false }] });
         if let Some(u) = using {
             input["desk_use"] = json!(u);
+        }
+        if let Some(id) = item {
+            input["desk_item"] = json!(id);
         }
         let ask = NewAsk { kind: "question".into(), tool_name: "AskUserQuestion".into(), tool_input: input, suggestions: Value::Null, context: vec![], agent_id: String::new() };
         // Nobody waits on the card: its answer is sent to the lead as a message (`desk_answered`).
@@ -1292,17 +1321,18 @@ impl Hub {
 
     /// Card `id` answered with `d`: a lead's ASK is filed and its answer sent to the lead. False for any other.
     pub(super) fn desk_answered(&self, id: &str, d: &Decision) -> bool {
-        let Some((sid, question, using)) = self.read(|st| {
+        let Some((sid, question, using, about)) = self.read(|st| {
             st.items.iter().find(|i| i.id == id && i.desk).map(|i| {
                 let using = serde_json::from_value::<UseAsk>(i.tool_input["desk_use"].clone()).ok();
-                (i.origin.session_id.clone(), i.tool_input.pointer("/questions/0/question").and_then(Value::as_str).unwrap_or("").to_string(), using)
+                let about = i.tool_input["desk_item"].as_str().map(|x| format!(" about #{x}")).unwrap_or_default();
+                (i.origin.session_id.clone(), i.tool_input.pointer("/questions/0/question").and_then(Value::as_str).unwrap_or("").to_string(), using, about)
             })
         }) else { return false };
         let answer = d.answers.as_ref().and_then(|a| a.as_object()).and_then(|a| a.values().next()).map(|v| v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string()));
         let answer = answer.or_else(|| d.message.clone()).unwrap_or_else(|| if d.behavior == "deny" { "no".into() } else { "yes".into() });
         self.write(|st| st.waiters.remove(id));
         self.finish(id, "answered", &format!("answered: {answer}"));
-        let mut words = format!("Your ASK: {question}\nThe answer: {answer}");
+        let mut words = format!("Your ASK{about}: {question}\nThe answer: {answer}");
         if let Some(u) = using {
             words = self.desk_use_answered(&u, d.behavior != "deny", &answer);
         }
@@ -1323,7 +1353,7 @@ impl Hub {
     /// What a change left to do, with the store let go: its saves, then its messages and questions, and new items
     /// for their lead (told a moment later, with any others that came meanwhile).
     pub(super) fn desk_done(&self, fx: Effects) {
-        if fx.items.is_empty() && fx.said.is_empty() && fx.dropped.is_empty() && fx.decisions.is_empty() && fx.sends.is_empty() && fx.asks.is_empty() && fx.news.is_empty() && fx.starts.is_empty() && fx.joined.is_empty() && fx.uses.is_empty() {
+        if fx.items.is_empty() && fx.said.is_empty() && fx.dropped.is_empty() && fx.decisions.is_empty() && fx.sends.is_empty() && fx.asks.is_empty() && fx.news.is_empty() && fx.starts.is_empty() && fx.joined.is_empty() && fx.uses.is_empty() && fx.stopped.is_empty() {
             return;
         }
         {
@@ -1372,8 +1402,12 @@ impl Hub {
                 }
             });
         }
-        for (lsid, project, q, choices) in fx.asks {
-            self.desk_ask(&lsid, &project, &q, &choices, None);
+        for (lsid, project, q, choices, item) in fx.asks {
+            self.desk_ask(&lsid, &project, &q, &choices, None, item.as_deref());
+        }
+        // A stop the lead hasn't settled turns red once its time is up: the Desk is shown again then.
+        if !fx.stopped.is_empty() {
+            self.later(super::desk_stall::STOP_WAIT_MS + 1000, |h| h.changed());
         }
         self.desk_ask_first(fx.uses);
         for (project, id) in fx.news {

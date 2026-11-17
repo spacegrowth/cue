@@ -102,7 +102,7 @@ impl Hub {
         for u in uses {
             let title = self.read(|st| st.desk.item(&u.item).map(|i| i.title.clone())).unwrap_or_default();
             let q = format!("Use {} for #{} {title}? It isn't on the Desk: yes adds it, and the item goes to it.", u.name, u.item);
-            self.desk_ask(&u.lead, &u.project, q.trim_end(), &[USE_YES.to_string(), "No".to_string()], Some(&u));
+            self.desk_ask(&u.lead, &u.project, q.trim_end(), &[USE_YES.to_string(), "No".to_string()], Some(&u), None);
         }
     }
 }
