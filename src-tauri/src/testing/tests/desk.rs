@@ -1189,6 +1189,35 @@ fn an_item_whose_holder_stops_without_done_waits_on_you_and_is_asked_once() {
     assert_eq!(asked(), 2);
 }
 
+/// A holder that said what's left, or who it waits on: its plain turns after that ("ok" → "Understood.") aren't asked
+/// "Done?" again while the item is unchanged (#168); sent the item again, a stall is asked once more.
+#[test]
+fn a_holder_that_said_whats_left_or_who_it_waits_on_isnt_asked_again() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    ends(&w, &l, "ITEM: Header\nROUTE: #new -> cue-teams | why: it knows");
+    let id = item(&desk(&w, &project), "Header")["id"].as_str().unwrap().to_string();
+    let asked = || sent_to(&w, &h).iter().filter(|t| t.starts_with("Done? Write DONE")).count();
+    let turn = |prompt: &str, reply: &str| {
+        w.advance(1000);
+        w.hosted_says(&h, HostedEvent::Taken { text: prompt.into() });
+        w.settle();
+        w.advance(1000);
+        ends(&w, &h, reply);
+    };
+    turn("Header", "It's in another session's files.\nWaiting on cue-161 to take it.");
+    assert_eq!(asked(), 0, "said who it waits on");
+    turn("ok", "Understood.");
+    turn("ok", "Nothing changed here.");
+    assert_eq!(asked(), 0, "{:?}", sent_to(&w, &h));
+    assert_eq!(item(&desk(&w, &project), "Header")["state"], "needs_you");
+    // Sent again: a new stall, asked once.
+    ends(&w, &l, &format!("ROUTE: #{id} -> {h} | why: back to it"));
+    turn("Header again", "Looked again.");
+    assert_eq!(asked(), 1, "{:?}", sent_to(&w, &h));
+}
+
 /// Not a stall: a holder whose crew is still at work as its turn ends, a crew member holding an item (its lead's
 /// turns aren't its own), and an item the Desk's lead holds (its turns are routing). No ask, and none waits on you;
 /// once the crew is done, the holder's next turn with no DONE is one.

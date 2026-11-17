@@ -1,6 +1,6 @@
 //! An item whose holder's turn ended on it with no DONE: it waits on you (shown with the holder's last line), and Cue
 //! asks the holder once, "Done? Write DONE: #N, or say what's left". The turn that answers isn't asked again, nor one
-//! that ends on an ask or already says what's left.
+//! that ends on an ask; once a turn says what's left or what it waits on, none is while the item is unchanged.
 
 use super::desk::{ask_of, at_work, crew_parts, Effects};
 use super::*;
@@ -57,11 +57,15 @@ pub(super) fn stall_words(id: &str) -> String {
     format!("Done? Write DONE: #{id}, or say what's left")
 }
 
-/// The turn already says what's left of its work, or ends on a question for you: nothing to ask it.
+/// The turn says what's left of its work, or what it waits on: nothing to ask it while its item is unchanged.
 fn says_whats_left(text: &str) -> bool {
     let t = text.to_lowercase().replace('\u{2019}', "'");
-    let last = t.lines().map(str::trim).rfind(|l| !l.is_empty()).unwrap_or("");
-    last.ends_with('?') || ["what's left", "left to do", "still to do", "remaining:", "not done yet", "blocked on"].iter().any(|w| t.contains(w))
+    ["what's left", "left to do", "still to do", "remaining:", "not done yet", "blocked on", "waiting on", "waits on", "waiting for", "waits for"].iter().any(|w| t.contains(w))
+}
+
+/// The turn ends on a question for you: nothing to ask it this time.
+fn ends_on_a_question(text: &str) -> bool {
+    text.lines().map(str::trim).rfind(|l| !l.is_empty()).is_some_and(|l| l.ends_with('?'))
 }
 
 /// Session `sid`'s turn ended, saying `text`, with items `on` at work with it before: each still at work with it (no
@@ -74,13 +78,24 @@ pub(super) fn stalls_asked(st: &mut Store, sid: &str, text: &str, on: &[String],
         .collect();
     // This holder's asks for items that aren't stalled with it now are over.
     st.desk.nudged.retain(|id, (by, _)| by != sid || still.iter().any(|(s, _)| s == id));
+    st.desk.left_said.retain(|id, (by, _)| by != sid || still.iter().any(|(s, _)| s == id));
     if still.is_empty() {
         return;
     }
     let h = Holder { kind: "session".into(), sid: sid.to_string(), ..Default::default() };
-    let quiet = still_at_it(st, sid) || ask_of(st, &h).is_some() || says_whats_left(text);
+    let left = says_whats_left(text);
+    let quiet = still_at_it(st, sid) || ask_of(st, &h).is_some() || ends_on_a_question(text);
     let mut ask = Vec::new();
     for (id, updated) in still {
+        // It said what's left of it, or what it waits on: quiet on it until the item changes (sent again, routed; #168).
+        if st.desk.left_said.get(&id).is_some_and(|(by, at)| by == sid && *at == updated) {
+            continue;
+        }
+        if left {
+            st.desk.left_said.insert(id.clone(), (sid.to_string(), updated));
+            st.desk.nudged.remove(&id);
+            continue;
+        }
         // Asked of this stall already: this turn is its answer.
         if st.desk.nudged.get(&id).is_some_and(|(_, at)| *at == updated) {
             st.desk.nudged.remove(&id);

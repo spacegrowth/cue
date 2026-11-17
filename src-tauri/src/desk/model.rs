@@ -248,6 +248,9 @@ pub struct Desk {
     /// the item's `updated` then). The turn that answers isn't asked again; the item changed since (sent again, routed)
     /// is a new stall (hub/desk_stall.rs). Not saved.
     pub nudged: HashMap<String, (String, u64)>,
+    /// Items whose holder said what's left of them, or what they wait on (item → (that holder, the item's `updated`
+    /// then)): not asked "Done?" again until the item changes (hub/desk_stall.rs). Not saved.
+    pub left_said: HashMap<String, (String, u64)>,
     /// When Cue last sent each working item to its holder (item → (holder, ms)): a turn that ended before it isn't a
     /// stall on it. Not saved: after a restart, `held_from` stands in.
     pub sent_at: HashMap<String, (String, u64)>,
