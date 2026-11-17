@@ -129,13 +129,15 @@
 .dk-ok::before { content: "✓"; }
 .dk-it:hover .dk-ok, .dk-ok:focus-visible { background: var(--accent); color: var(--on-accent); }
 .dk-ok:hover { filter: brightness(1.15); }
-/* Finishing (#181): Cue commits, builds and installs it. Its step in amber, steady: nothing waits on you. Install now
-   (only while it waits its turn) is a small outlined button at the row's right. */
+/* Finishing (#181): Cue commits, builds and installs it. Its step in amber, steady: nothing waits on you. While items
+   wait for the next install, the Items header says when, with Install now: a small outlined button at its right. */
 .dk-fstep { color: var(--amber); }
 .dk-it.on .dk-fstep { color: inherit; }
 .dk-instnow { flex: none; margin-left: auto; padding: 2px 8px; border: 1px solid var(--amber); border-radius: 999px; background: none; color: var(--amber); font: 600 11px var(--sans); white-space: nowrap; cursor: pointer; }
 .dk-instnow:hover, .dk-instnow:focus-visible { background: color-mix(in srgb, var(--amber) 14%, transparent); }
 .dk-it.on .dk-instnow { border-color: currentColor; color: var(--on-sel); }
+.dk-next { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dk-next + .dk-instnow { margin-left: 0; }
 .dk-h { grid-column: 2; margin-top: 1px; color: var(--ink); font-size: 12.5px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Selected: its words in the selected ink, as the Board's selected card. */
 .dk-it.on .dk-id, .dk-it.on .dk-who, .dk-it.on .dk-age, .dk-it.on .dk-h { color: var(--on-sel); }

@@ -1,5 +1,5 @@
 //! Done means it's in your app (hub/desk_finish.rs): an item that changed the Cue this app is built from, once its
-//! commit is made, waits for an install: two minutes after the latest such DONE (or at once on Install now), never
+//! commit is made, is in the next install: half an hour after the first DONE waiting (or at once on Install now), never
 //! while a session that ends with Cue is mid-turn, built from the main line's HEAD. Once the running Cue has its commit
 //! it's to check; a failed build, or a new Cue that didn't start, asks you and sends its holder the log. A crew's work
 //! on a branch of its own is merged into the main checkout's branch first, never forced.
@@ -85,16 +85,19 @@ fn step(w: &World, project: &str) -> String {
 }
 
 #[test]
-fn an_item_in_this_cue_is_committed_queued_built_from_head_after_two_minutes_and_to_check_once_cue_has_it() {
+fn an_item_in_this_cue_is_committed_in_the_next_install_built_from_head_after_half_an_hour_and_to_check_once_cue_has_it() {
     let mut w = World::new();
     let (fake, dir, project, id) = done_in_cue(&w);
     let shown = item(&w, &project, "Header jumps");
     let head = git(&dir, &["rev-parse", "HEAD"]).trim().to_string();
     assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str(), shown["finish"]["commit"].as_str()), (Some("finishing"), Some("queued"), Some(head.as_str())), "{shown}");
     assert_eq!(commits(&dir), "2", "committed at DONE");
+    let due = w.snapshot().0["desk"]["install_at"].as_u64().unwrap();
+    assert!(due > 0, "the Desk says when the next install is");
     tick(&w);
-    assert!(fake.started().is_empty(), "the batch waits two minutes");
-    w.advance(2 * 60_000);
+    w.advance(29 * 60_000);
+    assert!(fake.started().is_empty(), "the next install is half an hour after the first item waiting");
+    w.advance(60_000);
     let started = fake.started();
     assert_eq!(started.len(), 1, "{started:?}");
     let canon = |p: &str| std::fs::canonicalize(p).unwrap();
@@ -137,7 +140,7 @@ fn a_session_mid_turn_holds_the_install_back_and_install_now_starts_it_anyway() 
     let w = World::new();
     let (fake, _, project, id) = done_in_cue(&w);
     let o = mid_turn(&w);
-    w.advance(3 * 60_000);
+    w.advance(31 * 60_000);
     tick(&w);
     assert!(fake.started().is_empty(), "not while tidier is mid-turn");
     assert_eq!(step(&w, &project), "queued");
@@ -153,7 +156,7 @@ fn a_session_mid_turn_holds_the_install_back_and_install_now_starts_it_anyway() 
 }
 
 #[test]
-fn install_now_skips_the_two_minute_wait() {
+fn install_now_skips_the_half_hour_wait() {
     let w = World::new();
     let (fake, _, _, id) = done_in_cue(&w);
     w.hub().desk_item_act(&id, "install_now", "").unwrap();
@@ -195,12 +198,12 @@ fn a_new_cue_that_didnt_start_asks_you_the_old_one_is_back() {
 }
 
 #[test]
-fn items_done_close_together_go_in_one_install() {
+fn everything_waiting_goes_in_one_install_half_an_hour_after_the_first() {
     let w = World::new();
     let (fake, dir, project, id) = done_in_cue(&w);
     let h = item(&w, &project, "Header jumps")["holder"]["sid"].as_str().unwrap().to_string();
     let lead = super::desk::desk(&w, &project)["lead"]["sid"].as_str().unwrap().to_string();
-    w.advance(60_000);
+    w.advance(20 * 60_000);
     ends(&w, &lead, "ITEM: bug | Footer jumps | done when: it stays put\nROUTE: #new -> cue-teams | why: it made the footer");
     w.settle();
     let id2 = item(&w, &project, "Footer jumps")["id"].as_str().unwrap().to_string();
@@ -208,10 +211,12 @@ fn items_done_close_together_go_in_one_install() {
     super::desk_commit::log_edit(&w, &h, &dir.join("shared.txt"));
     ends(&w, &h, &format!("Fixed.\nDONE: #{id2}"));
     assert_eq!(item(&w, &project, "Footer jumps")["finish"]["step"], "queued");
-    w.advance(90_000);
-    assert!(fake.started().is_empty(), "two minutes after the latest");
-    w.advance(40_000);
+    let due = w.snapshot().0["desk"]["install_at"].as_u64().unwrap();
+    w.advance(9 * 60_000);
+    assert!(fake.started().is_empty(), "half an hour after the first, not the latest");
+    w.advance(60_000);
     tick(&w);
+    assert!(w.snapshot().0["desk"]["install_at"].as_u64() == Some(0) && due > 0, "nothing waits now");
     let started = fake.started();
     assert_eq!(started.len(), 1, "{started:?}");
     assert_eq!(started[0].1, git(&dir, &["rev-parse", "HEAD"]).trim(), "the latest HEAD");
@@ -247,7 +252,7 @@ fn a_finishing_item_survives_a_restart_where_it_was() {
     w.relaunch();
     w.hub().desk_set_installer(fake.clone());
     assert_eq!(step(&w, &project), "queued");
-    w.advance(3 * 60_000);
+    w.advance(31 * 60_000);
     tick(&w);
     assert_eq!(fake.started().len(), 1, "queued across the restart");
 }
@@ -333,7 +338,7 @@ fn try_again_on_a_failed_install_queues_it_again_with_no_holder_needed() {
     w.settle();
     assert_eq!(it.finish.as_ref().map(|f| (f.step.as_str(), f.question.as_str())), Some(("queued", "")), "{it:?}");
     assert_eq!(item(&w, &project, "Header jumps")["state"], "finishing");
-    w.advance(3 * 60_000);
+    w.advance(31 * 60_000);
     tick(&w);
     assert_eq!(fake.started().len(), 2, "its install begun again");
 }
@@ -434,7 +439,7 @@ fn a_restart_while_building_follows_the_install_or_queues_it_again_when_its_lost
     w.relaunch();
     w.hub().desk_set_installer(fake.clone());
     tick(&w);
-    w.advance(3 * 60_000);
+    w.advance(31 * 60_000);
     tick(&w);
     assert_eq!(fake.started().len(), 2, "{:?}", fake.started());
     assert_eq!(step(&w, &project), "building");
@@ -550,7 +555,7 @@ fn an_item_that_changed_the_app_side_too_still_waits_for_an_install() {
     let (fake, _, project, _) = done_since_running(&w, &["ui/desk.js", "src-tauri/desk.rs"]);
     assert_eq!(step(&w, &project), "queued");
     assert!(w.window.heard("ui-reload").is_empty());
-    w.advance(2 * 60_000);
+    w.advance(30 * 60_000);
     assert_eq!(fake.started().len(), 1, "installed");
     assert!(!crate::server::cue_dir().join("live").exists(), "nothing served in place");
 }

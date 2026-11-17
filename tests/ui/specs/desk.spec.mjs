@@ -2875,7 +2875,7 @@ test("an item with mocks has \"Open the mocks\" in its header; waiting on a pick
 /** Item `id` of the cue Desk changed by `patch` (merged in). */
 const patchItem = (cue, id, patch) => cue.change((st, [k, p]) => { Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === k), p); }, [id, patch]);
 
-test("a finishing item: amber and steady, its step under its title, Install now only while it waits its turn; not waiting on you; its row stays put (#181)", async ({ page, cue }) => {
+test("a finishing item: amber and steady, its step under its title; in the next install, the Items header says when with Install now; not waiting on you; its row stays put (#181, #190)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   const before = await listOrder(page);
@@ -2889,24 +2889,32 @@ test("a finishing item: amber and steady, its step under its title, Install now 
   await expect(row.locator(".dk-fstep")).toHaveCSS("color", amber);
   // Only its step: its title keeps the ink of any row.
   await expect(row.locator(".dk-t")).not.toHaveCSS("color", amber);
-  await expect(row.locator(".dk-instnow")).toHaveCount(0);
+  await expect(page.locator(".dk-items .dk-instnow")).toHaveCount(0);
+  await expect(page.locator(".dk-items .dk-next")).toHaveCount(0);
   // Not counted as waiting on you, and where it was in the list.
   await expect(page.locator(".dk-items .dk-gh.you")).toContainText("2");
   expect(await listOrder(page)).toEqual(before);
 
+  // In the next install (#190): its row says so and when; the Items header has the one Install now, for all of it.
+  const due = Date.now() + 30 * 60_000;
+  await cue.change((st, t) => { st.desk.install_at = t; }, due);
   await patchItem(cue, "d5", { finish: { step: "queued", commit: "abc9999", at: Date.now() } });
-  await expect(row.locator(".dk-who")).toHaveText("committed · installs in a moment");
-  await expect(row.locator(".dk-instnow")).toHaveText("Install now");
-  await expect(row.locator(".dk-instnow")).not.toHaveAttribute("title", /.*/);
+  const clock = await page.evaluate((t) => clockAt(t), due);
+  await expect(row.locator(".dk-who")).toHaveText(`in the next install · ${clock}`);
+  await expect(row.locator(".dk-instnow")).toHaveCount(0);
+  const head = page.locator(".dk-items .dk-ch");
+  await expect(head.locator(".dk-next")).toHaveText(`Next install ${clock} · 1 item`);
+  await expect(head.locator(".dk-instnow")).toHaveText("Install now");
+  await expect(head.locator(".dk-instnow")).not.toHaveAttribute("title", /.*/);
   // Its page: the Finishing pill, the step in its line, Install now among its buttons.
   await row.locator(".dk-t").click();
   const pane = page.locator(".dk-right .dk-pane");
   await expect(pane.locator(".dk-pill")).toHaveText("Finishing");
-  await expect(pane.locator(".dk-state")).toContainText("committed · installs in a moment");
+  await expect(pane.locator(".dk-state")).toContainText(`in the next install · ${clock}`);
   await expect(pane.locator('.dk-acts [data-desk-act="install_now"]')).toHaveText("Install now");
   await expect(pane.locator('[data-desk-act="looks_right"]')).toHaveCount(0);
   await cue.override("desk_item_act", () => null);
-  await row.locator(".dk-instnow").click();
+  await head.locator(".dk-instnow").click();
   await cue.called("desk_item_act", { id: "d5", act: "install_now" });
   // Clicking it doesn't close the page it's on.
   await expect(pane.locator("h1")).toContainText("#d5");

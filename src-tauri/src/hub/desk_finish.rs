@@ -2,8 +2,8 @@
 //! so across the restart an install makes too). Its files are committed at once (Looks right's commit code: only its
 //! files, the word check, a wait while another session at work edits one of them, never pushed); its crew's branch,
 //! when its work sits on one, is merged into the main checkout's branch, the merge word-checked too and never forced.
-//! An item that changed the Cue this app is built from is then queued for an install; any other goes to check.
-//! Installs run one at a time, for every item queued within a couple of minutes of the last, built from the main
+//! An item that changed the Cue this app is built from is then in the next install; any other goes to check.
+//! Installs run one at a time, once for everything waiting: half an hour after the first of it, built from the main
 //! line's HEAD, and not while a session that ends with Cue is mid-turn (unless you say Install now). Once the running
 //! Cue has an item's commit, the item is to check. A build that fails, or a new Cue that doesn't start, stops on a
 //! question for you, and its holder is sent the log.
@@ -14,8 +14,8 @@ use crate::desk::{DeskItem, Finish, InstallStatus, Installer};
 
 /// How long a commit waits on files another session is editing before you're asked about it.
 pub(super) const WAIT_ASK_MS: u64 = 15 * 60_000;
-/// How long an install waits after the latest item queued for it, so items done close together go in one build.
-pub(super) const BATCH_MS: u64 = 2 * 60_000;
+/// How long the first item waiting for an install waits, so everything done in that time goes in one build.
+pub(super) const INSTALL_EVERY_MS: u64 = 30 * 60_000;
 /// How much of an install's log an item keeps (lines, from its end).
 const LOG_LINES: usize = 40;
 
@@ -290,8 +290,8 @@ impl Hub {
             }
         });
         if queued {
-            // Due once the batch's wait is over; the tick looks too.
-            self.later(BATCH_MS, |h| h.desk_finish_tick());
+            // Due once the first waiting item's half hour is over; the tick looks too.
+            self.later(INSTALL_EVERY_MS, |h| h.desk_finish_tick());
         } else {
             self.finish_checked(id);
         }
@@ -398,17 +398,17 @@ impl Hub {
         }
     }
 
-    /// The next install, when items are queued and it's due: two minutes after the latest of them, and with no
-    /// session that ends with Cue mid-turn; at once for an item you said Install now on.
+    /// The next install, when items are queued and it's due: half an hour after the first of them, and with no
+    /// session that ends with Cue mid-turn; at once when you said Install now.
     fn finish_install_due(&self, now: u64) {
         let queued: Vec<DeskItem> = self.read(|st| st.desk.items.iter().filter(|i| i.state == "finishing" && i.finish.as_ref().is_some_and(|f| f.step == "queued")).cloned().collect());
         let Some(repo) = queued.iter().filter_map(|i| i.finish.as_ref()).map(|f| f.repo.clone()).find(|r| !r.is_empty()) else { return };
         let batch: Vec<&DeskItem> = queued.iter().filter(|i| i.finish.as_ref().is_some_and(|f| f.repo == repo)).collect();
         let fin = |i: &&DeskItem| i.finish.clone().unwrap_or_default();
         let now_said = batch.iter().any(|i| fin(i).now);
-        let latest = batch.iter().map(|i| fin(i).at).max().unwrap_or(0);
+        let first = batch.iter().map(|i| fin(i).at).min().unwrap_or(0);
         if !now_said {
-            if now.saturating_sub(latest) < BATCH_MS {
+            if now.saturating_sub(first) < INSTALL_EVERY_MS {
                 return;
             }
             if self.ends_with_cue().iter().any(|e| e.mid_turn) {
@@ -461,8 +461,8 @@ impl Hub {
         self.desk_done(fx);
     }
 
-    /// Install now on item `id`, queued for an install: it starts without waiting for more items or for sessions
-    /// mid-turn.
+    /// Install now (the Desk's, or on item `id`, in the next install): the install of everything waiting starts
+    /// without waiting for its half hour or for sessions mid-turn.
     pub(crate) fn desk_install_now(&self, id: &str) -> Result<DeskItem, String> {
         let queued = self.read(|st| st.desk.item(id).map(|i| i.state == "finishing" && i.finish.as_ref().is_some_and(|f| f.step == "queued"))).ok_or("no such item")?;
         if !queued {
@@ -507,6 +507,12 @@ impl Hub {
 
 /// A finishing item as it's said DONE (or retried): its commit to be made, the main line and commit of an earlier
 /// round (`before`) kept, so a round with nothing new still installs them.
+/// When the next install is due (ms), the first item waiting for it plus half an hour; 0 when none waits.
+pub(super) fn install_at(st: &Store) -> u64 {
+    let first = st.desk.items.iter().filter(|i| i.state == "finishing").filter_map(|i| i.finish.as_ref()).filter(|f| f.step == "queued").map(|f| f.at).min();
+    first.map_or(0, |at| at + INSTALL_EVERY_MS)
+}
+
 pub(super) fn begun(now: u64, before: Option<&Finish>) -> Finish {
     let (repo, commit) = before.map(|f| (f.repo.clone(), f.commit.clone())).unwrap_or_default();
     Finish { step: "commit".into(), at: now, repo, commit, ..Default::default() }

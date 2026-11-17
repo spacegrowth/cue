@@ -87,11 +87,19 @@ const deskFinishing = (i) => i?.state === "finishing";
 function deskFinStep(i) {
   const f = i.finish || {};
   if (f.step === "commit_wait") return `committing${f.wait ? ` · waits: ${f.wait}` : ""}`;
-  if (f.step === "queued") return "committed · installs in a moment";
+  if (f.step === "queued") return `in the next install${state.desk?.install_at ? ` · ${clockAt(state.desk.install_at)}` : ""}`;
   return { building: "building…", installing: "installing…", starting: "starting…" }[f.step] || "committing…";
 }
-/** Install now on a finishing item that waits its turn (step "queued"): it skips the wait for the others. */
+/** Install now on a finishing item in the next install (step "queued"): everything waiting installs at once. */
 const deskInstallNow = (i, cls) => (deskFinishing(i) && i.finish?.step === "queued" ? `<button class="${cls}" data-desk-act="install_now" data-id="${esc(i.id)}">Install now</button>` : "");
+/** The Desk's next install, in its Items header: "Next install 10:30 · 2 items" and Install now, while anything (on
+ *  any Desk: there's one Cue) waits for it. Cue installs it on its own half an hour after the first of them. */
+function deskNextInstall() {
+  const waiting = (state.desk?.projects || []).flatMap((p) => p.items || []).filter((i) => deskFinishing(i) && i.finish?.step === "queued");
+  if (!waiting.length) return "";
+  const at = state.desk?.install_at ? ` ${clockAt(state.desk.install_at)}` : "";
+  return `<span class="dk-next">Next install${at} · ${waiting.length} ${waiting.length === 1 ? "item" : "items"}</span>${deskInstallNow(waiting[0], "dk-instnow")}`;
+}
 const deskWaits = (i) => i.state === "needs_you" || (i.state === "to_check" && !deskInstallWait(i));
 /** Items you've opened since they came back to check: id → its `updated` then (kept across restarts).
  *  SHORTCUT: kept in this window only, so another window or device still shows them as landed; move to a `seen`
@@ -279,7 +287,7 @@ function deskItemRow(i, lit, held = false) {
   const who = i.stopped && i.state === "working" ? `stopped · the Desk lead is on it` : s ? `working · ${esc(deskHolderOf(i))} · <span data-ago="${at}">${ago(at)}</span>` : !i.holder && i.state !== "done" ? deskGive(i, "row") : deskInstallWait(i) ? `waiting for install · ${esc(deskHolderOf(i))}` : deskFinishing(i) ? `<span class="dk-fstep">${esc(deskFinStep(i))}</span>` : esc(deskHolderOf(i));
   // Finishing: no age, so its step has the room.
   const when = s || deskFinishing(i) ? "" : i.state === "done" ? `${i.commit ? `<span class="dk-cm">committed ${esc(i.commit)}</span> · ` : ""}${clockAt(deskMs(i.done_at || i.updated))}` : ago(deskMs(i.created));
-  const ok = deskInstallWait(i) ? "" : deskFinishing(i) ? deskInstallNow(i, "dk-instnow") : i.state === "to_check" && deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id) : i.state === "to_check" ? `<button class="dk-ok" data-desk-act="looks_right" data-id="${esc(i.id)}" aria-label="Looks right"></button>`
+  const ok = deskInstallWait(i) || deskFinishing(i) ? "" : i.state === "to_check" && deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id) : i.state === "to_check" ? `<button class="dk-ok" data-desk-act="looks_right" data-id="${esc(i.id)}" aria-label="Looks right"></button>`
     : i.state === "done" ? `<button class="dk-undo" data-desk-act="reopen" data-id="${esc(i.id)}">Undo</button>` : "";
   // What it waits on you for, in one plain line (Answer, Pick, Allow, Try it), and what it unblocks (#182).
   const vb = deskVerbHtml(i);
@@ -361,7 +369,7 @@ function deskList(project) {
   if (shown.length) parts.push(`<div class="dk-gh">Done</div>${shown.map(row).join("")}`);
   if (more && (shown.length || pg?.loading || !pg)) parts.push(`<div class="dk-more" data-desk-done-more="${esc(project)}">${shown.length ? "Loading older…" : ""}</div>`);
   const body = parts.join("") + (parts.length > 1 ? "" : `<div class="dk-empty">No items yet.</div>`);
-  return `<div class="dk-card dk-items"><div class="dk-ch"><b>Items</b></div>
+  return `<div class="dk-card dk-items"><div class="dk-ch"><b>Items</b>${deskNextInstall()}</div>
     ${deskQuickAdd()}<div class="dk-scroll" data-scroll-key="desk-items:${esc(project)}">${body}</div></div>`;
 }
 

@@ -1414,6 +1414,6 @@ impl Hub {
                 json!({ "id": p, "project": p, "name": st.desk.spaces.get(p).map(|d| &d.name), "independent": st.desk.spaces.contains_key(p), "workspace_project": st.desk.project_of(p), "folder": st.desk.spaces.get(p).map(|d| &d.folder), "lead": Self::desk_lead_view(st, p), "items": items, "decisions": decisions, "older": older, "members": members, "checks": super::desk_checks::checks_view(st, p) })
             })
             .collect();
-        json!({ "projects": list, "installed_ms": super::desk_checks::installed_ms() })
+        json!({ "projects": list, "installed_ms": super::desk_checks::installed_ms(), "install_at": super::desk_finish::install_at(st) })
     }
 }
