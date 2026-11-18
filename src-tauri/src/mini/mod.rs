@@ -496,16 +496,23 @@ pub(crate) async fn mini_reading(app: AppHandle, window: tauri::WebviewWindow, s
 }
 
 /// Cue's own window, on a session's chat (the mini window's ⤢) or as it was (Open Cue); with `doc`, a markdown
-/// file a reply named, open in its reader (a link clicked in the mini window).
+/// file a reply named, open in its reader (a link clicked in the mini window); with `desk`, that Desk (the Desk
+/// tab's ⤢ Open Desk), on its item `item` when given (a row of it clicked).
 #[tauri::command]
-pub(crate) async fn mini_open_in_cue(app: AppHandle, session_id: Option<String>, doc: Option<String>) -> Result<(), String> {
-    let sid = session_id.filter(|s| !s.is_empty());
-    let id = match (&sid, doc) {
-        (Some(s), Some(path)) => Some(format!("d:{}", serde_json::json!({ "sid": s, "path": path }))),
-        _ => sid.map(|s| format!("s:{s}")),
-    };
-    crate::show_main(&app, id);
+pub(crate) async fn mini_open_in_cue(app: AppHandle, session_id: Option<String>, doc: Option<String>, desk: Option<String>, item: Option<String>) -> Result<(), String> {
+    crate::show_main(&app, open_in_cue_select(session_id, doc, desk, item));
     Ok(())
+}
+
+/// What Cue's window is told to show (its "select" event): "k:{desk, item}" a Desk, "d:{sid, path}" a reply's
+/// file, "s:<session>" a chat; None, the window as it was.
+fn open_in_cue_select(session_id: Option<String>, doc: Option<String>, desk: Option<String>, item: Option<String>) -> Option<String> {
+    let sid = session_id.filter(|s| !s.is_empty());
+    match (desk.filter(|d| !d.is_empty()), &sid, doc) {
+        (Some(d), _, _) => Some(format!("k:{}", serde_json::json!({ "desk": d, "item": item.unwrap_or_default() }))),
+        (None, Some(s), Some(path)) => Some(format!("d:{}", serde_json::json!({ "sid": s, "path": path }))),
+        (None, _, _) => sid.map(|s| format!("s:{s}")),
+    }
 }
 
 /// Cue's own window came to the front (the rail on its display steps aside; the notch stays) or went back (every
@@ -535,6 +542,22 @@ mod tests {
     use super::*;
 
     const SCREEN: (f64, f64, f64, f64) = (0.0, 0.0, 1512.0, 982.0);
+
+    #[test]
+    fn open_in_cue_names_a_desk_a_file_or_a_chat() {
+        let s = |x: &str| Some(x.to_string());
+        // What it names, its kind and its words (their order in the line doesn't matter to Cue's window).
+        let named = |line: Option<String>| {
+            let line = line.expect("names something");
+            let (kind, rest) = line.split_once(':').unwrap();
+            (kind.to_string(), serde_json::from_str::<serde_json::Value>(rest).unwrap())
+        };
+        assert_eq!(named(open_in_cue_select(None, None, s("cue"), s("239"))), ("k".into(), serde_json::json!({ "desk": "cue", "item": "239" })));
+        assert_eq!(named(open_in_cue_select(s("a"), None, s("cue"), None)), ("k".into(), serde_json::json!({ "desk": "cue", "item": "" })), "a Desk comes first");
+        assert_eq!(named(open_in_cue_select(s("a"), s("x.md"), None, None)), ("d".into(), serde_json::json!({ "sid": "a", "path": "x.md" })));
+        assert_eq!(open_in_cue_select(s("a"), None, s(""), None).as_deref(), Some("s:a"));
+        assert_eq!(open_in_cue_select(None, None, None, None), None);
+    }
 
     #[test]
     fn the_setting_names_the_shape() {

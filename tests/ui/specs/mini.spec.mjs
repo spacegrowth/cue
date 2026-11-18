@@ -121,3 +121,166 @@ test("mini: a picker that closes without a word doesn't keep the chat open", asy
   await page.evaluate(() => { window.dispatchEvent(new Event("focus")); window.dispatchEvent(new Event("blur")); });
   await page.locator("#mini .m-tuck").waitFor();
 });
+
+// ---------- the Desk at the notch and on the rail (#239) ----------
+// desk.json's Desks, made fuller: the cue Desk named, a permission a session's item waits on, and on the website Desk
+// a question its holder ended its turn on; plus a session on no Desk, at work.
+function deskWorld(s) {
+  const cue = s.desk.projects.find((p) => p.project === "cue"), web = s.desk.projects.find((p) => p.project === "website");
+  cue.name = "Cue Desk";
+  const at = s.now_ms;
+  cue.items.push({ ...cue.items.find((i) => i.id === "d5"), id: "d11", state: "needs_you", title: "Run the test suite before merging", created: at - 300000, updated: at - 60000,
+    ask: { item_id: "n-perm", sid: "host", kind: "permission", text: "host-lead wants to run: npm test" } });
+  s.items.push({ ...s.items.find((i) => i.id === "n-focus-ask"), id: "n-perm", kind: "permission", session_id: "host", agent_id: "", agent_name: "", tool_name: "Bash", tool_input: { command: "npm test" }, created_ms: at - 60000 });
+  web.items.push({ ...web.items.find((i) => i.id === "w1"), id: "w3", state: "needs_you", title: "Logo on the launch page", created: at - 900000, updated: at - 120000 });
+  const site = s.sessions.find((x) => x.session_id === "site");
+  site.thread.push({ role: "agent", text: "Should the launch page keep the old logo until the new one is ready?", at_ms: at - 120000 });
+  s.sessions.push({ ...site, session_id: "notes", name: "release-notes", project: "notes", state: "working", since_ms: at - 240000, thread: [] });
+}
+async function openDesk(cue, page, shape, { frozen = false, dark } = {}) {
+  await page.setViewportSize(WINDOW[shape]);
+  await page.addInitScript((h) => Object.defineProperty(Screen.prototype, "height", { get: () => h }), SCREEN.height);
+  if (dark !== undefined) await page.emulateMedia({ colorScheme: dark ? "dark" : "light" });
+  await cue.openMini("desk", shape, { frozen });
+  await cue.change(deskWorld);
+}
+/** The pointer over the notch, or the rail's tab pressed: it opens on the Desk with the most waiting. */
+async function openDeskTab(page, shape) {
+  if (shape === "notch") await page.evaluate(() => document.body.dispatchEvent(new MouseEvent("mouseenter")));
+  else await page.locator("[data-out]").click();
+  await page.locator(".m-chat .m-dk").waitFor();
+}
+
+test("mini: the notch's island counts the Desk's items once, its tab first", async ({ cue, page }) => {
+  await openDesk(cue, page, "notch");
+  // Five wait on you across the Desks (d1, d2, d11 on Cue Desk; w1, w3 on website): the tray's count. Their sessions'
+  // own cards (n-focus-ask, n-perm) aren't counted again beside it.
+  const left = page.locator(".m-island .m-wing").first();
+  await expect(left.locator(".m-dk-n")).toHaveText("5");
+  await expect(left.locator(".m-n")).toHaveCount(1);
+  await expect(left.locator(".m-dk-n .dk-kic")).toHaveCount(1);
+  // The wing fits in the island: nothing runs past its edge.
+  const box = await page.locator(".m-island").boundingBox(), wing = await left.boundingBox();
+  expect(wing.x).toBeGreaterThanOrEqual(box.x);
+  // Hover opens on the Desk with the most waiting, its tab before the website's and the sessions'.
+  await openDeskTab(page, "notch");
+  const tabs = page.locator(".m-tabs .m-tab");
+  await expect(tabs.nth(0)).toHaveAttribute("data-mopen", "desk:cue");
+  await expect(tabs.nth(0)).toHaveClass(/\bon\b/);
+  await expect(tabs.nth(0)).toHaveText("Cue Desk3");
+  await expect(tabs.nth(1)).toHaveAttribute("data-mopen", "desk:website");
+  // A session on no Desk has a tab of its own, with no Desk mark.
+  await expect(page.locator('.m-tab[data-mopen="notes"]')).toHaveCount(1);
+  await expect(page.locator('.m-tab[data-mopen="notes"] .dk-kic')).toHaveCount(0);
+  await expect(page.locator(".m-chat-head .m-cnt")).toHaveText(["3", "2", "2"]);
+  // ⤢ Open Desk: the Desk in Cue's window.
+  await page.locator(".m-chat-head [data-mdesk]").click();
+  await cue.called("mini_open_in_cue", { desk: "cue" });
+});
+
+test("mini: a Desk's rows answer in place", async ({ cue, page }) => {
+  await openDesk(cue, page, "notch");
+  await openDeskTab(page, "notch");
+  const row = (id) => page.locator(`.m-dk-it[data-mdesk-item="${id}"]`);
+  await expect(page.locator(".m-dk-g")).toHaveText(["Waiting on you3", "In progress2"]);
+  // Its holder: the lead → its crew member.
+  await expect(row("d1").locator(".m-dk-who")).toHaveText("web-lead→focus-fix");
+  await expect(row("d1").locator(".m-dk-who .dk-kic")).toHaveCount(2);
+  // In progress: its rows, no ask under them; the queued one counted under them.
+  await expect(row("d3").locator(".m-dk-ask")).toHaveCount(0);
+  await expect(row("d5")).toHaveCount(1);
+  await expect(page.locator(".m-dk-rest")).toHaveText("2 queued");
+  // A question's own answer, typed: Answer opens a box in the row, Enter sends it as the card's answer.
+  await expect(row("d1").locator("[data-pick]")).toHaveText(["Keep it in the box", "Move to the next item"]);
+  await row("d1").locator("[data-mdk-answer]").click();
+  await row("d1").locator("textarea[data-mdk-box]").fill("Keep it, and select the text");
+  await page.keyboard.press("Enter");
+  await cue.called("respond", { id: "n-focus-ask", decision: { behavior: "allow", answers: { "Keep focus in the box, or move to the next item?": "Keep it, and select the text" } } });
+  await expect(row("d1").locator(".m-dk-said")).toHaveText("✓ You answered: Keep it, and select the text");
+  // A permission: Allow in the row.
+  await row("d11").locator('[data-desk-decision="allow"]').click();
+  await cue.called("respond", { id: "n-perm", decision: { behavior: "allow" } });
+  // Ready to check: Looks right in the row, "Done · Undo" for a moment, then it goes.
+  await row("d2").locator('[data-desk-act="looks_right"]').click();
+  await expect(row("d2").locator(".dk-soon")).toHaveCount(1);
+  await page.clock.runFor(3200);
+  await cue.called("desk_looks_right", { id: "d2" });
+  // A row opens its item on the Desk in Cue.
+  await row("d3").locator(".m-dk-t").click();
+  await cue.called("mini_open_in_cue", { desk: "cue", item: "d3" });
+});
+
+test("mini: a question its holder ended on, answered from the row", async ({ cue, page }) => {
+  await openDesk(cue, page, "notch");
+  await openDeskTab(page, "notch");
+  await page.locator('.m-tab[data-mopen="desk:website"]').click();
+  const row = page.locator('.m-dk-it[data-mdesk-item="w3"]');
+  await expect(row.locator(".m-dk-q")).toHaveText("Should the launch page keep the old logo until the new one is ready?");
+  // No choices: Answer only, then the box; Send sends to its session about the item, as from its page on the Desk.
+  await expect(row.locator(".m-dk-acts button")).toHaveText(["Answer"]);
+  await row.locator("[data-mdk-answer]").click();
+  await row.locator("textarea[data-mdk-box]").fill("Keep the old one for now");
+  await row.locator("[data-mdk-send]").click();
+  await cue.called("send_to_session", { sessionId: "site", text: "About #w3 (Logo on the launch page): Keep the old one for now" });
+  await expect(row.locator(".m-dk-said")).toHaveText("✓ You answered: Keep the old one for now");
+  // Send back on the one to check: its own box in the row, Enter sends it back.
+  const w1 = page.locator('.m-dk-it[data-mdesk-item="w1"]');
+  await w1.locator('[data-desk-act="send_back"]').click();
+  await w1.locator('textarea[data-text="back:w1"]').fill("The header is cut off");
+  await page.keyboard.press("Enter");
+  await cue.called("desk_item_act", { id: "w1", act: "send_back", text: "The header is cut off" });
+});
+
+// The rail wears Cue's theme: its Desk tab in light and in dark, the same rows.
+for (const dark of [false, true]) {
+  test(`mini: the rail's Desk tab, ${dark ? "dark" : "light"}`, async ({ cue, page }) => {
+    await openDesk(cue, page, "rail", { dark });
+    await openDeskTab(page, "rail");
+    await expect(page.locator(".m-bar .m-tab").first()).toHaveAttribute("data-mopen", "desk:cue");
+    await expect(page.locator(".m-dk-cnts .m-cnt")).toHaveText(["3", "2", "2"]);
+    const bg = await page.locator(".m-chat").evaluate((e) => getComputedStyle(e).backgroundColor);
+    const ink = await page.locator(".m-dk-t").first().evaluate((e) => getComputedStyle(e).color);
+    const lum = (c) => { const [r, g, b] = c.match(/[\d.]+/g).map(Number); return 0.3 * r + 0.59 * g + 0.11 * b; };
+    expect(dark ? lum(bg) < lum(ink) : lum(bg) > lum(ink), `${dark ? "dark" : "light"} panel, ink that reads on it`).toBe(true);
+    // Nothing runs past the panel's edge.
+    expect(await page.locator(".m-dk").evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
+  });
+}
+
+test("mini: the tabs are five at most, the Desks' first", async ({ cue, page }) => {
+  await openDesk(cue, page, "notch");
+  // Four more sessions at work, on no Desk: with the two Desks' tabs, more than five would want a tab.
+  await cue.change((s) => {
+    const notes = s.sessions.find((x) => x.session_id === "notes");
+    for (const n of [1, 2, 3, 4]) s.sessions.push({ ...notes, session_id: `more${n}`, name: `more-${n}`, since_ms: s.now_ms - n * 1000 });
+  });
+  await openDeskTab(page, "notch");
+  const tabs = page.locator(".m-tabs .m-tab");
+  await expect(tabs).toHaveCount(5);
+  await expect(tabs.nth(0)).toHaveAttribute("data-mopen", "desk:cue");
+  await expect(tabs.nth(1)).toHaveAttribute("data-mopen", "desk:website");
+});
+
+test("mini: a Desk with nothing waiting or at work has no tab; hover opens on a session", async ({ cue, page }) => {
+  await openDesk(cue, page, "notch");
+  // Every item on both Desks done: nothing there for the notch.
+  await cue.change((s) => { for (const p of s.desk.projects) for (const i of p.items) { i.state = "done"; delete i.ask; } });
+  await expect(page.locator(".m-island .m-dk-n")).toHaveCount(0);
+  await page.evaluate(() => document.body.dispatchEvent(new MouseEvent("mouseenter")));
+  await page.locator(".m-chat .m-tabs .m-tab.on").waitFor();
+  await expect(page.locator(".m-tabs .m-dtab")).toHaveCount(0);
+  await expect(page.locator(".m-tabs .m-tab.on")).not.toHaveAttribute("data-mopen", /^desk:/);
+  await expect(page.locator(".m-chat .m-dk")).toHaveCount(0);
+});
+
+test("mini: an open Desk tab that empties keeps its tab; one that goes away gives way to another", async ({ cue, page }) => {
+  await openDesk(cue, page, "notch");
+  await openDeskTab(page, "notch");
+  await page.locator('.m-tab[data-mopen="desk:website"]').click();
+  await cue.change((s) => { for (const i of s.desk.projects.find((p) => p.project === "website").items) { i.state = "done"; delete i.ask; } });
+  await expect(page.locator('.m-tab.on[data-mopen="desk:website"]')).toHaveCount(1);
+  await expect(page.locator(".m-dk-it")).toHaveCount(0);
+  await cue.change((s) => { s.desk.projects = s.desk.projects.filter((p) => p.project !== "website"); });
+  await expect(page.locator('.m-tab[data-mopen="desk:website"]')).toHaveCount(0);
+  await expect(page.locator(".m-tabs .m-tab.on")).toHaveCount(1);
+});

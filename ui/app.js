@@ -103,6 +103,8 @@ async function boot() {
     if (e.payload.startsWith("s:")) return setActive(null, e.payload.slice(2));
     // "d:{sid, path}": a markdown file a reply named, in that session's reader (a link in the mini window).
     if (e.payload.startsWith("d:")) { const d = JSON.parse(e.payload.slice(2)); return openDoc(d.sid, d.path); }
+    // "k:{desk, item}": a Desk, on its item when one is named (the mini window's Desk tab).
+    if (e.payload.startsWith("k:")) { const k = JSON.parse(e.payload.slice(2)); return openInDesk(k.desk, k.item || ""); }
     if (e.payload !== "usage") return setActive(e.payload);
     const s = limitedSessions().sort((a, b) => a.since_ms - b.since_ms)[0];
     if (s) setActive(null, s.session_id);

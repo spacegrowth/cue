@@ -41,14 +41,18 @@
     return !!you && it.created_ms - you.at_ms <= TALK_MS;
   }
   const newest = (a, b) => (!!a.back_ms - !!b.back_ms) || (a.back_ms ? a.back_ms - b.back_ms : b.created_ms - a.created_ms);
-  /** Conversations first (in the order they came back), then newest first; parked sessions' finished turns stay in Need to decide. */
+  /** Conversations first (in the order they came back), then newest first; parked sessions' finished turns stay in Need to decide.
+   *  What a Desk already counts (deskCovered) isn't here: it's in the Desk's tab. */
   function needs(most = MAX) {
-    const parked = new Set(state.sessions.filter((s) => s.later_ms).map((s) => s.session_id));
-    const all = state.items.filter((i) => i.kind !== "waiting" || !parked.has(i.session_id));
-    const talk = all.filter(talking).sort((a, b) => a.created_ms - b.created_ms);
-    const rest = all.filter((i) => !talking(i)).sort(newest);
-    const shown = [...talk, ...rest].slice(0, most);
-    return { shown };
+    const list = once("needs", () => {
+      const parked = new Set(state.sessions.filter((s) => s.later_ms).map((s) => s.session_id));
+      const covered = deskCovered();
+      const all = state.items.filter((i) => (i.kind !== "waiting" || !parked.has(i.session_id)) && !covered(i));
+      const talk = all.filter(talking).sort((a, b) => a.created_ms - b.created_ms);
+      const rest = all.filter((i) => !talking(i)).sort(newest);
+      return [...talk, ...rest];
+    });
+    return { shown: list.slice(0, most) };
   }
   /** Your last message to it, sent but not yet taken (the chat in Cue rings it): it counts as at work. */
   const onItsWay = (s) => { const you = (s?.thread || []).filter((e) => e.role === "you").pop(); return !!you?.pending && now() - you.at_ms <= TALK_MS; };
@@ -76,6 +80,57 @@
   const itemFor = (sid) => state.items.filter((i) => i.session_id === sid).sort((a, b) => asks(b) - asks(a))[0];
   const dotCls = (it) => asks(it) ? "ask" : "turn";
 
+  // ---------- the Desks (desk.js): what waits on you there, what's in progress ----------
+  /** What a paint works out once (the Desks, what waits on you), however many parts of it ask; outside a paint, afresh. */
+  let memo = null;
+  const once = (key, f) => (!memo ? f() : key in memo ? memo[key] : (memo[key] = f()));
+  /** A Desk's tab is open as "desk:<its id>" (m.open); a session's as its id. */
+  const DESK = "desk:";
+  const deskOpenId = (open = m.open) => (String(open || "").startsWith(DESK) ? open.slice(DESK.length) : null);
+  /** The Desks with something waiting on you or at work, the most waiting first: deskGroups' { d, waiting, working, queued… }.
+   *  The Desk whose tab is open keeps its tab while you're on it, even once nothing waits or works there. */
+  function desks() {
+    return once("desks", () => (state.desk?.projects || []).map((p) => deskGroups(p.project))
+      .filter((g) => g.waiting.length || g.working.length || `${DESK}${g.d.project}` === m.open)
+      // The open Desk first, so the five-tab cap never cuts the tab you're on.
+      .sort((a, b) => (`${DESK}${b.d.project}` === m.open) - (`${DESK}${a.d.project}` === m.open) || b.waiting.length - a.waiting.length || b.working.length - a.working.length));
+  }
+  /** Is the Desk named still there (it can go away while its tab is open)? */
+  const deskThere = (id) => (state.desk?.projects || []).some((p) => p.project === id);
+  const deskWaitN = () => desks().reduce((n, g) => n + g.waiting.length, 0);
+  /** The sessions' cards a Desk already counts: its waiting items' asks, and the turns of the sessions that hold them
+   *  (answered from the Desk's tab, so not counted twice). */
+  function deskCovered() {
+    return once("covered", () => {
+      const ids = new Set(), sids = new Set();
+      for (const g of desks()) for (const i of g.waiting) {
+        if (i.ask?.item_id) ids.add(i.ask.item_id);
+        if (i.ask?.sid) sids.add(i.ask.sid);
+        if (i.holder) sids.add(i.holder.kind === "crew" ? i.holder.lead_sid : i.holder.sid);
+      }
+      return (it) => ids.has(it.id) || sids.has(it.session_id);
+    });
+  }
+  /** What a session is on a Desk, as its tab's mark: the Desk's lead or a lead of a crew ("lead"), else a session; "" off any Desk. */
+  function deskMark(sid) {
+    for (const p of state.desk?.projects || []) {
+      const d = deskOf(p.project);
+      if (!deskHasSession(d, sid) && !d.items.some((i) => deskGroupKey(i.holder) === sid)) continue;
+      return deskSessKind(sid, d) === "session" ? "session" : "lead";
+    }
+    return "";
+  }
+  /** Item `i`'s pending ask in Cue's cards (a question or a permission), if any. */
+  const deskReq = (i) => (i.state === "needs_you" && i.ask?.item_id && state.items.find((x) => x.id === i.ask.item_id && x.status === "pending")) || null;
+  /** The box that answers item `i` in its row: a question card's own (its answer goes as the card's), else the box to
+   *  its holder, as its page's foot (desk.js deskItemFoot). */
+  function deskAnswerKey(i, req = deskReq(i)) {
+    if (req) return `mdk:${req.id}`;
+    const sid = i.ask?.sid || (i.holder?.kind === "crew" ? i.holder.lead_sid : i.holder?.sid);
+    return deskBoxKey(i.holder?.kind === "crew" && !i.ask ? { sid, mate: i.holder.name, item: i.id } : { sid, item: i.id });
+  }
+  const deskFind = (id) => { for (const p of state.desk?.projects || []) { const i = deskOf(p.project).items.find((x) => x.id === id); if (i) return i; } return null; };
+
   // ---------- drawing ----------
   const dot = (it, extra = "") => `<i class="m-dot ${dotCls(it)} ${extra}"></i>`;
 
@@ -83,21 +138,32 @@
    *  while one waits for your turn, breathing while sessions only work. */
   function tuckHtml() {
     const { shown } = needs(Infinity);
-    const cls = shown.find(asks) ? "ask" : shown.length ? "turn" : working().length ? "work" : "idle";
+    const cls = shown.find(asks) || deskWaitN() ? "ask" : shown.length ? "turn" : working().length || desks().length ? "work" : "idle";
     return `<button class="m-panel m-tuck ${cls} ${m.over ? "over" : ""}" data-out aria-label="Bring Cue out"><span aria-hidden="true">${pos.left ? "›" : "‹"}</span><i class="m-live"></i></button>`;
   }
-  /** The tabs across the chat's top (tabList's order): a dot that blinks while it works, full while it's your turn in
-   *  conversation, striped while it's your turn otherwise (mini.css). A click switches; each
-   *  keeps what you typed in it. */
+  /** The tabs across the chat's top: first a tab for each Desk with something waiting or at work (its tray, its name,
+   *  how many wait on you), then the sessions' in tabList's order, five in all. A session's dot blinks while it works,
+   *  is full while it's your turn in conversation, striped while it's your turn otherwise (mini.css); a session on a
+   *  Desk carries its mark (a lead, a session). A click switches; each keeps what you typed in it. */
   function tabsHtml() {
-    return tabList().map((t) => `<button class="m-tab ${t.sid === m.open ? "on" : ""} ${t.talk ? "talk" : ""}" data-mopen="${esc(t.sid)}"><i class="m-dot ${t.cls}"></i>${esc(nameOf(t.sid, t.project))}</button>`).join("");
+    const dk = desks().slice(0, MAX).map((g) => {
+      const id = `${DESK}${g.d.project}`, n = g.waiting.length;
+      return `<button class="m-tab m-dtab ${id === m.open ? "on" : ""}" data-mopen="${esc(id)}">${deskKindIcon("tray")}${esc(deskName(g.d))}${n ? `<span class="m-tn">${n}</span>` : ""}</button>`;
+    });
+    const ss = tabList().slice(0, MAX - dk.length).map((t) => {
+      const mark = deskMark(t.sid);
+      return `<button class="m-tab ${t.sid === m.open ? "on" : ""} ${t.talk ? "talk" : ""}" data-mopen="${esc(t.sid)}"><i class="m-dot ${t.cls}"></i>${mark ? deskKindIcon(mark) : ""}${esc(nameOf(t.sid, t.project))}</button>`;
+    });
+    return [...dk, ...ss].join("");
   }
   function islandHtml() {
-    // Left: what waits on you, counted, steady. Right: how many are at work, its dot blinking (a blink is always
-    // work, as in the tabs; your turn never blinks).
+    // Left: the Desks first (their tray, and how many of their items wait on you), then what else waits on you,
+    // counted, steady. Right: how many are at work, its dot blinking (a blink is always work, as in the tabs; your
+    // turn never blinks).
     const { shown } = needs();
-    const ask = shown.filter(asks).length, turn = shown.length - ask, busy = working().length;
-    const left = `${ask ? `<span class="m-n">${dot({ kind: "ask" })}${ask}</span>` : ""}${turn ? `<span class="m-n">${dot({ kind: "waiting" })}${turn}</span>` : ""}`;
+    const ask = shown.filter(asks).length, turn = shown.length - ask, busy = working().length, dn = deskWaitN();
+    const desk = dn ? `<span class="m-n m-dk-n">${deskKindIcon("tray")}${dot({ kind: "ask" })}${dn}</span>` : "";
+    const left = `${desk}${ask ? `<span class="m-n">${dot({ kind: "ask" })}${ask}</span>` : ""}${turn ? `<span class="m-n">${dot({ kind: "waiting" })}${turn}</span>` : ""}`;
     const right = busy ? `<span class="m-n m-quiet"><i class="m-dot work"></i>${busy}</span>` : "";
     // Nothing to show: just the notch (black on its black; on a display without one, Cue's own).
     if (!left && !right) return `<div class="m-panel m-island idle"></div>`;
@@ -108,13 +174,90 @@
   /** The head: at the notch the tabs, then the open session's state, ⤢ In Cue and ×; on the rail one bar (dragged
    *  by it) with the tabs, ⤢ and ⇥. */
   function headHtml(sid) {
+    if (deskOpenId(sid) !== null) return deskHeadHtml(deskOpenId(sid));
     const it = itemFor(sid), s = sessionOf(sid);
     if (!NOTCH) return `<div class="m-bar" data-bar><div class="m-tabs">${tabsHtml()}</div><button class="m-pipbtn" data-cue="${esc(sid)}" aria-label="Open in Cue">⤢</button><button class="m-pipbtn" data-close aria-label="Tuck it away">⇥</button></div>`;
     const tag = it ? `<span class="m-tag ${dotCls(it)}">${asks(it) ? "ASKING" : "YOUR TURN"}</span>` : s?.state === "working" ? `<span class="m-tag work">WORKING</span>` : "";
     return `<div class="m-tabs">${tabsHtml()}</div><div class="m-chat-head">${tag}<span class="g"></span><button class="m-link" data-cue="${esc(sid)}">⤢ In Cue</button><button class="m-link" data-close aria-label="Close">×</button></div>`;
   }
-  /** The open chat's panel: its head, and the pane drawPane fills. */
-  const panelHtml = () => `<div class="m-panel m-chat"><div class="m-head" data-head>${headHtml(m.open)}</div><div class="active-pane" data-pane></div></div>`;
+  /** The open chat's panel: its head, and the pane drawPane fills (a Desk's: its list). */
+  const panelHtml = () => `<div class="m-panel m-chat${deskOpenId() !== null ? " m-dkp" : ""}"><div class="m-head" data-head>${headHtml(m.open)}</div><div class="${deskOpenId() !== null ? "m-dk" : "active-pane"}" data-pane></div></div>`;
+
+  // ---------- a Desk's tab: what waits on you there, answered in its row; what's in progress ----------
+  /** The Desk's head: how many wait on you, are at work, are queued; ⤢ Open Desk and × (on the rail, ⤢ and ⇥ in its bar). */
+  function deskHeadHtml(id) {
+    const g = deskGroups(id), q = g.queued.length + g.resume.length;
+    if (!NOTCH) return `<div class="m-bar" data-bar><div class="m-tabs">${tabsHtml()}</div><button class="m-pipbtn" data-mdesk="${esc(id)}" aria-label="Open the Desk in Cue">⤢</button><button class="m-pipbtn" data-close aria-label="Tuck it away">⇥</button></div>${deskCountsHtml(g, q)}`;
+    return `<div class="m-tabs">${tabsHtml()}</div><div class="m-chat-head">${deskCountsHtml(g, q, true)}<span class="g"></span><button class="m-link" data-mdesk="${esc(id)}">⤢ Open Desk</button><button class="m-link" data-close aria-label="Close">×</button></div>`;
+  }
+  /** Red dot N waiting, the accent dot N at work, the clock N queued (each only when there are any). */
+  function deskCountsHtml(g, q, inHead = false) {
+    const c = [g.waiting.length ? `<span class="m-cnt">${dot({ kind: "ask" })}${g.waiting.length}</span>` : "",
+      g.working.length ? `<span class="m-cnt"><i class="m-dot acc"></i>${g.working.length}</span>` : "",
+      q ? `<span class="m-cnt">${deskStateIcon({ state: "queued" })}${q}</span>` : ""].join("");
+    return inHead ? c : `<div class="m-dk-cnts">${c}</div>`;
+  }
+  /** Who holds it: the lead's mark and name, → its crew member's; or the session's. */
+  function deskWhoHtml(i) {
+    const h = i.holder;
+    if (!h) return "";
+    if (h.kind === "crew") return `${deskKindIcon("lead")}<span>${esc(deskHolderName(h.lead_sid))}</span><span class="m-dk-to">→</span>${deskKindIcon("crew")}<span>${esc(h.name)}</span>`;
+    return `${deskKindIcon(h.kind === "lead" ? "lead" : "session")}<span>${esc(h.name || deskHolderName(h.sid))}</span>`;
+  }
+  /** What item `i` waits on you for, under its row, with its buttons in the row: a question's choices (and Answer, to
+   *  type one), Allow / No, Looks right / Send back, or Answer for a question its holder ended its turn on. Answer
+   *  opens a box in the row; once sent, the row says what you answered. */
+  function deskAskHtml(i) {
+    const said = deskAnswerOf(i);
+    if (said) return `<div class="m-dk-said"><span class="sent-check">✓</span> You answered: ${esc(said.a)}</div>`;
+    if (i.state === "to_check") {
+      if (deskBackFor === i.id) return `<div class="m-dk-ask">${deskBackHtml(i.id)}</div>`;
+      const line = deskVerb(i)?.[1] || "";
+      const acts = deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id)
+        : `<button class="btn small primary" data-desk-act="looks_right" data-id="${esc(i.id)}">Looks right</button><button class="btn small" data-desk-act="send_back" data-id="${esc(i.id)}">Send back</button>`;
+      return `<div class="m-dk-ask">${line ? `<div class="m-dk-q">${esc(line)}</div>` : ""}<div class="m-dk-acts">${acts}</div></div>`;
+    }
+    const req = deskReq(i);
+    const line = deskOneLine(req?.kind === "question" ? questions(req)[0]?.question || deskQuestion(i) : deskQuestion(i));
+    const off = req && answering.has(req.id) ? " disabled" : "";
+    let acts = "";
+    if (req?.kind === "permission") acts = `<button class="btn small primary" data-desk-decision="allow" data-id="${esc(req.id)}"${off}>Allow</button><button class="btn small" data-desk-decision="deny" data-id="${esc(req.id)}"${off}>No</button>`;
+    else {
+      const q = req ? questions(req) : [];
+      // One question, one choice: each choice is a button (Cue's own pick, board.js); Answer types your own.
+      const choices = q.length === 1 && !q[0].multiSelect ? (q[0].options || []).map((o, oi) => `<button class="btn small${oi ? "" : " primary"}" data-pick="0:${oi}" data-id="${esc(req.id)}"${off}>${esc(o.label)}</button>`).join("") : "";
+      acts = m.answer === i.id ? "" : `${choices}<button class="btn small" data-mdk-answer="${esc(i.id)}">Answer</button>`;
+    }
+    const key = m.answer === i.id ? deskAnswerKey(i, req) : "";
+    const box = key ? `<div class="m-dk-box"><textarea rows="1" data-text="${esc(key)}" data-mdk-box="${esc(i.id)}" aria-label="Your answer" placeholder="Your answer" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off">${esc(draft(key).text)}</textarea><button class="btn primary small" data-mdk-send="${esc(i.id)}">Send</button></div>` : "";
+    return `<div class="m-dk-ask">${line ? `<div class="m-dk-q">${esc(line)}</div>` : ""}${acts ? `<div class="m-dk-acts">${acts}</div>` : ""}${box}</div>`;
+  }
+  /** One item: its state, title and age; under them its kind and number, who holds it; then (waiting on you) its ask. */
+  function deskRowHtml(i, wait) {
+    const at = deskMs(i.state === "working" ? i.updated || i.created : i.created);
+    return `<div class="m-dk-it" role="button" tabindex="0" data-mdesk-item="${esc(i.id)}" data-project="${esc(i.project || "")}">
+      <div class="m-dk-1">${deskStateIcon(i)}<span class="m-dk-t">${esc(i.title)}</span><span class="m-dk-age" data-ago="${at}">${ago(at)}</span></div>
+      <div class="m-dk-2">${deskKindIcon(i)}<span class="m-dk-id">#${esc(i.id)}</span><span class="m-dk-who">${deskWhoHtml(i)}</span></div>${wait ? deskAskHtml(i) : ""}</div>`;
+  }
+  const IN_PROGRESS = 3;   // rows of what's in progress; the rest counted under them
+  /** The Desk's list: Waiting on you, then In progress, then a line counting the rest. */
+  function deskBodyHtml(id) {
+    const g = deskGroups(id);
+    const rows = (list, wait) => list.map((i) => deskRowHtml({ ...i, project: i.project || id }, wait)).join("");
+    const more = g.working.length - IN_PROGRESS, q = g.queued.length + g.resume.length;
+    const rest = more > 0 || q ? `<div class="m-dk-rest">${more > 0 ? `<span class="m-cnt"><i class="m-dot acc"></i>+${more} working</span>` : ""}${q ? `<span class="m-cnt">${deskStateIcon({ state: "queued" })}${q} queued</span>` : ""}</div>` : "";
+    const head = (words, n) => `<div class="m-dk-g">${words}<span class="m-dk-gn">${n}</span></div>`;
+    return `${g.waiting.length ? `${head("Waiting on you", g.waiting.length)}${rows(g.waiting, true)}` : `<div class="m-dk-none">Nothing waits on you here.</div>`}${g.working.length ? `${head("In progress", g.working.length)}${rows(g.working.slice(0, IN_PROGRESS), false)}` : ""}${rest}`;
+  }
+  /** The Desk's list drawn again: where it was scrolled and the box with the cursor kept. */
+  function drawDesk(id) {
+    const pane = root.querySelector("[data-pane]");
+    const caret = caretNow(), top = pane.scrollTop;
+    put(pane, deskBodyHtml(id));
+    pane.querySelectorAll("textarea[data-text]").forEach(grow);
+    pane.scrollTop = top;
+    caretBack(caret);
+  }
   /** What Cue's window shows in its pane for the open session (chat/pane.js openPane), but its head, tabs and
    *  terminal: the light along the top while it works, the chat (its steps, Cue's bubbles, a crew's reviews folded
    *  into them, what it's doing now, your held and queued messages), the reply being read out, the crew's tray and
@@ -141,6 +284,7 @@
   function drawPane() {
     const pane = root.querySelector("[data-pane]");
     if (!pane || !m.open) return;
+    if (deskOpenId() !== null) return drawDesk(deskOpenId());
     if (active?.sid !== m.open) active = { id: itemFor(m.open)?.id || null, sid: m.open };
     const cur = current(), old = document.querySelector("[data-chat]"), caret = caretNow();
     const was = { oldChat: old, chatPinned: !!old && old.scrollHeight - old.scrollTop - old.clientHeight < 24 };
@@ -169,9 +313,13 @@
     document.documentElement.style.setProperty("--chat-w", `${WIDTH.chat}px`);
     // The notch's island: the notch's own size with nothing to show (black on its black), wider with its shoulders
     // when something needs you; what drops from it is as wide as WIDTH says, its shoulders either side.
+    // Each wing as wide as its counts need (the Desk's tray and count make the left one longer), PEEK at least.
+    const wings = [...root.querySelectorAll(".m-island.peek .m-wing")].map((x) => x.getBoundingClientRect().width);
+    const peek = Math.max(PEEK, Math.ceil(Math.max(0, ...wings)) + 12 + 10);
+    document.documentElement.style.setProperty("--peek", `${peek}px`);
     const w = !NOTCH ? WIDTH[m.shape] || WIDTH.quiet
       : m.shape === "chat" ? WIDTH[m.shape] + 2 * SHOULDER
-      : root.querySelector(".m-island.peek") ? notch.w + 2 * (PEEK + SHOULDER) : notch.w;
+      : root.querySelector(".m-island.peek") ? notch.w + 2 * (peek + SHOULDER) : notch.w;
     // The chat is always its full height (it scrolls inside), so new text while a session works never resizes it.
     const h = m.shape === "chat" ? cap : !NOTCH ? TAB_H : p ? Math.ceil(p.getBoundingClientRect().height) : 30;
     const args = { w, h, show: true };
@@ -193,7 +341,6 @@
     const s = document.documentElement.style;
     s.setProperty("--nw", `${notch.w}px`);
     s.setProperty("--nh", `${notch.h}px`);
-    s.setProperty("--peek", `${PEEK}px`);
     s.setProperty("--sh", `${SHOULDER}px`);
     m.sized = "";
     drawn.delete(root);
@@ -230,6 +377,17 @@
   /** Draw what the shape shows. The same session's chat, drawn again: its head (only when that changed) and its pane
    *  (drawPane: the chat's element and the box's cursor live on). */
   function paint() {
+    memo = {};
+    try { paintNow(); } finally { memo = null; }
+  }
+  function paintNow() {
+    // The open Desk went away: the tab the window would open on instead (or it folds, with nothing left to show).
+    if (m.shape === "chat" && deskOpenId() !== null && !deskThere(deskOpenId())) {
+      m.answer = null;
+      m.open = first() || null;
+      if (!m.open) m.shape = "quiet";
+      memo = {};   // worked out for the Desk that went
+    }
     // A new shape slides in (mini.css .m-enter); a redraw of the same one doesn't move.
     // The notch's opens out of the notch instead: drawn shut (the notch's size), opened once the window has its
     // new size (fit: opened), so the shape grows in a window already big enough rather than jumping with it.
@@ -282,12 +440,24 @@
     const tabs = tabList();
     const lastAt = (sid) => (sessionOf(sid)?.thread || []).filter((e) => e.role === "you").pop()?.at_ms || 0;
     const recent = tabs.map((t) => ({ sid: t.sid, at: lastAt(t.sid) })).filter((t) => now() - t.at <= TALK_MS).sort((a, b) => b.at - a.at)[0];
-    return recent?.sid || needs(Infinity).shown.find(asks)?.session_id || tabs[0]?.sid;
+    // A Desk with something waiting on you: its tab (the first such Desk), before a session's ask.
+    const desk = desks().find((g) => g.waiting.length);
+    return recent?.sid || (desk && `${DESK}${desk.d.project}`) || needs(Infinity).shown.find(asks)?.session_id || tabs[0]?.sid || (desks()[0] && `${DESK}${desks()[0].d.project}`);
   }
   /** Open a session's chat with the cursor in its box, ready to type (this window comes forward alone, not Cue's
    *  main one; the keyboard goes back to the app you were in when it folds). */
   function openChat(sid) {
+    // A Desk's tab: its list, no session's chat (the keyboard comes once you click into a box: bind's focusin).
+    if (deskOpenId(sid) !== null) {
+      m.open = sid;
+      m.answer = null;
+      active = null;
+      invoke("mini_reading", { sessionId: null }).catch(() => {});
+      m.shape = "chat";
+      return paint();
+    }
     m.open = sid;
+    m.answer = null;
     active = { id: itemFor(sid)?.id || null, sid };
     invoke("mini_reading", { sessionId: sid }).catch(() => {});
     m.shape = "chat";
@@ -346,6 +516,49 @@
     window.addEventListener("pointerup", up, { once: true });
   }
   const inCue = (sid, doc) => invoke("mini_open_in_cue", { sessionId: sid || null, ...(doc ? { doc } : {}) }).catch(() => {});
+  /** The Desk in Cue's window, on item `item` when one is named. */
+  const deskInCue = (desk, item) => invoke("mini_open_in_cue", { sessionId: null, desk, ...(item ? { item } : {}) }).catch(() => {});
+  /** Answer in an item's row: the box opens there, the cursor in it. */
+  function deskAnswerOpen(id) {
+    m.answer = id;
+    paint();
+    root.querySelector(`textarea[data-mdk-box="${CSS.escape(id)}"]`)?.focus();
+  }
+  /** Send what's typed in item `id`'s row: a question card's answer goes as its answer (board.js respond); a question
+   *  its holder ended its turn on goes to the holder about the item, as from its page (desk.js deskSendBox). Either
+   *  way the row then says what you answered (desk.js deskAnswerOf). */
+  async function deskAnswerSend(id) {
+    const i = deskFind(id);
+    if (!i) return;
+    const req = deskReq(i), key = deskAnswerKey(i, req), text = draft(key).text.trim();
+    if (!text) return;
+    m.answer = null;
+    if (req) {
+      const q = questions(req)[0];
+      delete drafts[key];
+      saveDrafts();
+      return respond(req, q ? { behavior: "allow", answers: { [q.question]: text } } : { behavior: "deny", message: text });
+    }
+    // deskSendBox finds the item on the Desk picked in Cue's window: this item's, while it starts (it reads that
+    // before it first waits).
+    const was = deskSelected;
+    deskSelected = i.project;
+    let sent;
+    try { sent = deskSendBox(key); } finally { deskSelected = was; }
+    await sent;
+    renderMain();
+  }
+  /** Keys in a Desk row's box: Enter sends (⇧Enter a new line), Esc closes it. Send back's box the same (desk.js). */
+  function keyDesk(e) {
+    const t = e.target, back = /^back:/.test(t.dataset?.text || "") ? t.dataset.text.slice(5) : null, id = t.dataset?.mdkBox || back;
+    if (!id || e.isComposing) return false;
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); back ? deskAct(id, "back_go") : deskAnswerSend(id); return true; }
+    if (e.key !== "Escape") return false;
+    e.preventDefault();
+    if (back) deskAct(id, "back_cancel");
+    else { m.answer = null; paint(); }
+    return true;
+  }
   /** A link in the chat: a markdown file in Cue's reader, for the session that named it (as a click in Cue's own chat
    *  does); anything else where it opens. */
   function openLink(link, e) {
@@ -359,16 +572,26 @@
   const CLICKS_HERE = [
     rule("[data-out]", () => { clearTimeout(m.timer); const sid = first(); if (sid) openChat(sid); }),
     rule("[data-mopen]", (t) => openChat(t.dataset.mopen)),
+    // A Desk's tab: ⤢ Open Desk, the buttons in its rows (Desk's own: desk.js deskAct and DESK_CLICKS; a question's
+    // choices are Cue's pick, in CHAT_CLICKS), a row itself opening its item on the Desk in Cue.
+    rule("[data-mdesk]", (t) => deskInCue(t.dataset.mdesk)),
+    rule("[data-desk-act]", (t) => deskAct(t.dataset.id, t.dataset.deskAct, t)),
+    rule("[data-desk-decision]", (t) => DESK_CLICKS.deskDecision(t)),
+    rule("[data-mdk-answer]", (t) => deskAnswerOpen(t.dataset.mdkAnswer)),
+    rule("[data-mdk-send]", (t) => deskAnswerSend(t.dataset.mdkSend)),
+    rule("[data-mdesk-item]", (t) => deskInCue(t.dataset.project, t.dataset.mdeskItem), (_, x) => !x.closest("button, textarea, .m-dk-ask")),
     rule("[data-cue]", (t) => inCue(t.dataset.cue)),
     rule("[data-close]", () => closeChat()),
     rule("a[data-href], a[data-path]", openLink),
     rule("[data-act=term], [data-act=term-open], [data-act=term-card]", () => inCue(m.open)),
+    // The crew's Open full ›: its page is in Cue's window, on the lead's chat there.
+    rule("[data-cp-open]", (t) => inCue(t.dataset.cpOpen)),
     ...CHAT_CLICKS,
   ];
   /** Keys in the chat: its box's own ("/" menu, ↑ for what you sent, Enter sends, ⌘↵ sends what waits now), a picture
    *  shown full size, and Esc (escKey). The crew's tray takes its Esc first (team.js crewEsc). */
   function keyHere(e) {
-    if (keyInBox(e) || keyLightbox(e)) return;
+    if (keyDesk(e) || keyInBox(e) || keyLightbox(e)) return;
     if (e.key === "Escape") { e.preventDefault(); return escKey(); }
     if (keyTyping(e)) return;
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && m.open && sendWaitingNow(m.open)) e.preventDefault();
