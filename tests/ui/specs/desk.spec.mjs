@@ -3526,10 +3526,12 @@ test("a failed build waits on you with its question; its page has the log's last
   await pane.locator(".dk-flog-more").click();
   await expect(pre).toHaveText(log);
   await expect(pre).toHaveCSS("overflow-y", "auto");
-  await expect(pane.locator(".dk-flog-more")).toHaveText("Show less");  // Try again, once you've seen to it: finishing runs again (retry_finish).
-  await cue.override("desk_item_act", () => null);
-  await pane.locator('.dk-acts [data-desk-act="retry_finish"]').click();
-  await cue.called("desk_item_act", { id: "d5", act: "retry_finish" });
+  await expect(pane.locator(".dk-flog-more")).toHaveText("Show less");
+  // No "Try again": the waits box says what stopped it and offers Send back to fix, prefilled (#250).
+  await expect(pane.locator('[data-desk-act="retry_finish"]')).toHaveCount(0);
+  await expect(pane.locator(".dk-wo")).toContainText("The build failed");
+  await pane.locator('.dk-wo [data-desk-act="fix_back"]').click();
+  await expect(pane.locator('textarea[data-text="back:d5"]')).toHaveValue("The landing stopped: The build failed. Fix it, then say DONE again.");
 });
 
 test("Looks right on an item committed as it finished only closes it: its commit in its state line, never \"waiting for install\" (#181)", async ({ page, cue }) => {

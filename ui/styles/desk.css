@@ -869,3 +869,17 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
 .desk-fold:focus-visible { outline: 2px solid var(--on-bg); outline-offset: 2px; border-radius: 4px; }
 /* An item's kind icon wherever its number shows (#292): in the line's own colour, just before the number. */
 :is(.dh-ab, .dk-say-id, .dk-hand-n, .dk-sch-t, .dk-prs) > .dk-kic { color: inherit; margin-right: 4px; }
+/* Waits on (#250): what an item waits on, in a box, its buttons under it; a circle's tag red, its links each with Cut. */
+.dk-wo { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); font-size: 12.5px; line-height: 1.45; color: var(--ink); }
+.dk-wo + .dk-wo { margin-top: 8px; }
+.dk-wo-l { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 10.5px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; }
+.dk-wo-tag { padding: 1px 7px; border-radius: var(--pill-radius); background: var(--deny); color: var(--panel); font-size: 10.5px; letter-spacing: 0; text-transform: none; }
+.dk-wo-t { margin-top: 4px; }
+.dk-wo-t a { color: var(--ink); font-weight: 600; }
+.dk-wo-f { font-family: var(--mono); font-size: 11.5px; }
+.dk-wo-s { margin-top: 3px; color: var(--muted); font-size: 11.5px; }
+.dk-wo-loop { margin-top: 8px; padding: 6px 8px; border-radius: 6px; background: var(--panel); font: 11.5px/1.45 var(--mono); }
+.dk-wo-link { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.dk-wo-link > span { flex: 1; min-width: 0; }
+.dk-wo .dk-acts { padding: 8px 0 0; }
+.dk-wo-done { align-self: center; color: var(--muted); font-size: 12px; }

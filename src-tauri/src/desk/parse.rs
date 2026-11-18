@@ -25,6 +25,8 @@ pub enum Line {
     Split { id: String, titles: Vec<String> },
     /// What to do with session `who`'s context ("me": the lead's own): `what` is "keep" (others to come), lower case.
     Context { who: String, what: String, why: String },
+    /// The lead cut a link in a circle of waits: item `id` no longer waits on item `on` (#250).
+    Cut { id: String, on: String, why: String },
 }
 
 /// The Desk lines in `text`, in order.
@@ -56,6 +58,7 @@ pub fn lines(text: &str) -> Vec<Line> {
                 "DESIGNS" => designs(body),
                 "TITLE" => title(body),
                 "SPLIT" => split(body),
+                "CUT" => cut(body),
                 _ => None,
             }
         })
@@ -158,6 +161,19 @@ fn title(body: &str) -> Option<Line> {
 fn split(body: &str) -> Option<Line> {
     let (id, titles) = id_and_titles(body)?;
     (titles.len() >= 2).then_some(Line::Split { id, titles })
+}
+
+/// "#231 -> #228 | why: …": item 231 no longer waits on item 228.
+fn cut(body: &str) -> Option<Line> {
+    let p = parts(body);
+    let head = p.first()?;
+    let (a, b) = head.split_once("->").or_else(|| head.split_once('→'))?;
+    let (a, b) = (a.trim(), b.trim());
+    if !a.starts_with('#') || !b.starts_with('#') {
+        return None;
+    }
+    let why = p[1..].iter().find_map(|s| labelled(s, "why")).unwrap_or("").to_string();
+    Some(Line::Cut { id: id_of(a)?, on: id_of(b)?, why })
 }
 
 /// "#id | a | b": the id (it must start with #) and the non-empty parts after it, quotes and bold taken off.

@@ -381,12 +381,12 @@ fn a_done_with_nothing_new_after_a_failed_install_installs_the_earlier_commit() 
 }
 
 #[test]
-fn try_again_on_a_failed_install_queues_it_again_with_no_holder_needed() {
+fn rerun_on_a_failed_install_queues_it_again_with_no_holder_needed() {
     let w = World::new();
     let (fake, _, project, id) = done_in_cue(&w);
-    assert!(w.hub().desk_item_act(&id, "retry_finish", "").is_err(), "not stopped on a question");
+    assert!(w.hub().desk_item_act(&id, "rerun", "").is_err(), "not stopped on a question");
     install_goes(&w, &fake, &id, "rolled_back");
-    let it = w.hub().desk_item_act(&id, "retry_finish", "").unwrap();
+    let it = w.hub().desk_item_act(&id, "rerun", "").unwrap();
     w.settle();
     assert_eq!(it.finish.as_ref().map(|f| (f.step.as_str(), f.question.as_str())), Some(("queued", "")), "{it:?}");
     assert_eq!(item(&w, &project, "Header jumps")["state"], "finishing");
@@ -396,7 +396,7 @@ fn try_again_on_a_failed_install_queues_it_again_with_no_holder_needed() {
 }
 
 #[test]
-fn try_again_on_a_word_you_took_out_commits_it() {
+fn rerun_on_a_word_you_took_out_commits_it() {
     let w = World::new();
     let fake = Arc::new(Fake::default());
     w.hub().desk_set_installer(fake.clone());
@@ -411,7 +411,7 @@ fn try_again_on_a_word_you_took_out_commits_it() {
     });
     assert_eq!((step(&w, &project), commits(&dir)), ("word".to_string(), "1".to_string()));
     w.hub().set_setting("project.never", json!({})).unwrap();
-    w.hub().desk_item_act(&id, "retry_finish", "").unwrap();
+    w.hub().desk_item_act(&id, "rerun", "").unwrap();
     w.settle();
     assert_eq!((step(&w, &project), commits(&dir)), ("queued".to_string(), "2".to_string()));
 }
@@ -760,7 +760,7 @@ fn hook_says(dir: &std::path::Path, words: Option<&str>) {
 }
 
 #[test]
-fn a_commit_git_refuses_says_why_in_gits_words_and_try_again_says_it_again() {
+fn a_commit_git_refuses_says_why_in_gits_words_and_a_rerun_says_it_again() {
     let w = World::new();
     let (dir, project, id) = done_with(&w, |_, _, dir| hook_says(dir, Some("lint: a.txt has a tab")), writes_both);
     let shown = item(&w, &project, "Header jumps");
@@ -768,16 +768,16 @@ fn a_commit_git_refuses_says_why_in_gits_words_and_try_again_says_it_again() {
     let q = shown["finish"]["question"].as_str().unwrap();
     assert!(q.starts_with("Not committed: git didn't commit the files in") && q.ends_with(": lint: a.txt has a tab"), "{q}");
 
-    // Try again, stopped once more: what stopped it this time.
+    // Run the landing again, stopped once more: what stopped it this time.
     hook_says(&dir, Some("lint: b.txt is too long"));
-    let it = w.hub().desk_item_act(&id, "retry_finish", "").unwrap();
+    let it = w.hub().desk_item_act(&id, "rerun", "").unwrap();
     let it = serde_json::to_value(it).unwrap();
     assert!(it["finish"]["question"].as_str().unwrap().ends_with(": lint: b.txt is too long"), "{it}");
 
-    // The hook happy: Try again commits it.
+    // The hook happy: running the landing again commits it.
     let before = commits(&dir);
     hook_says(&dir, None);
-    w.hub().desk_item_act(&id, "retry_finish", "").unwrap();
+    w.hub().desk_item_act(&id, "rerun", "").unwrap();
     assert_ne!(commits(&dir), before, "committed");
     assert_eq!(item(&w, &project, "Header jumps")["state"], "to_check");
 }

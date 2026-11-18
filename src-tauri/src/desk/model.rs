@@ -241,6 +241,32 @@ pub struct Finish {
     /// "Install now": the install starts without waiting for more items or for sessions mid-turn.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub now: bool,
+    /// While the commit waits: each file it waits on and on whom (hub/desk_waits.rs reads these into the waits list).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files_wait: Vec<FileWait>,
+    /// Files you (or the lead, cutting a link) said to land without: left out of its commit (absolute paths).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub without: Vec<String>,
+    /// Sessions asked to commit a file its commit waits on ("Ask them to commit"), by session id.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub asked: Vec<String>,
+}
+
+/// A file a finishing item's commit waits on: another session is editing it, or changed it too and its changes can't
+/// be told apart from the item's. `by` and `sid` only when Cue knows whose edits they are ("" says "someone else":
+/// a shell command's write is a guess, never a name).
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct FileWait {
+    /// Absolute.
+    pub path: String,
+    /// Its path in its folder, as git names it.
+    pub name: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub by: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub sid: String,
+    /// "editing" (at work on it now) | "changed" (changed it too).
+    pub how: String,
 }
 
 /// A file another session at work is editing, and that session's name.
@@ -362,6 +388,9 @@ pub struct Desk {
     /// Each main checkout's HEAD as Cue last looked for a commit that takes a finished item's work back out
     /// (hub/desk_finish.rs `taken_out_tick`). Not saved: the first look after a start only notes it.
     pub seen_heads: HashMap<String, String>,
+    /// Circles in the waits list (hub/desk_waits.rs), by their key: when each was found, and whether the lead was told.
+    /// Dropped once the circle is gone. Not saved: after a restart a circle still standing is found and told again.
+    pub circles: HashMap<String, (u64, bool)>,
 }
 
 /// How an install is going, as the installer says: its tag and commit, its step ("building" | "installing" |

@@ -18,6 +18,15 @@ pub(super) struct TheirEdit {
     new: String,
     all: bool,
     blind: bool,
+    /// Read from a shell command, not named by an edit: whose it is is a guess, so it's never named (#250).
+    guess: bool,
+}
+
+impl TheirEdit {
+    /// Who made it, as a wait says it: its session's name, or "someone else" when that's a guess.
+    fn who(&self) -> String {
+        if self.guess { super::desk_commit::SOMEONE_ELSE.to_string() } else { self.by.clone() }
+    }
 }
 
 /// Other sessions' changes, by file (absolute).
@@ -158,7 +167,7 @@ fn read_edits(log: &str, cwd: &str, wanted: &[String]) -> Vec<(String, TheirEdit
 fn edits_in(line: &str, resolve: &dyn Fn(&str) -> String) -> Vec<(String, TheirEdit)> {
     let Ok(e) = serde_json::from_str::<Value>(line) else { return vec![] };
     let at = crate::logs::transcript::stamp(&e);
-    let edit = |old: &str, new: &str, all: bool, blind: bool| TheirEdit { at, by: String::new(), old: old.to_string(), new: new.to_string(), all, blind };
+    let edit = |old: &str, new: &str, all: bool, blind: bool| TheirEdit { at, by: String::new(), old: old.to_string(), new: new.to_string(), all, blind, guess: false };
     let mut found: Vec<(String, TheirEdit)> = Vec::new();
     for b in e.pointer("/message/content").and_then(Value::as_array).into_iter().flatten().filter(|b| b.get("type").and_then(Value::as_str) == Some("tool_use")) {
         let input = &b["input"];
@@ -177,7 +186,7 @@ fn edits_in(line: &str, resolve: &dyn Fn(&str) -> String) -> Vec<(String, TheirE
             "Write" | "NotebookEdit" => found.push((file, edit("", "", false, true))),
             "Bash" => {
                 let cmd = input.get("command").and_then(Value::as_str).unwrap_or("");
-                found.extend(crate::sessions::shell_writes::writes(cmd).iter().map(|f| (resolve(f), edit("", "", false, true))));
+                found.extend(crate::sessions::shell_writes::writes(cmd).iter().map(|f| (resolve(f), TheirEdit { guess: true, ..edit("", "", false, true) })));
             }
             _ => {}
         }
@@ -202,7 +211,7 @@ pub(super) fn own_part(theirs: &Theirs, folder: &str, path: &str) -> Own {
     let Ok(now) = std::fs::read_to_string(&abs) else {
         // Gone, or not text: theirs can't be taken out of it.
         return match edits.iter().find(|e| !e.blind || e.at >= committed) {
-            Some(e) => Own::Mixed(e.by.clone()),
+            Some(e) => Own::Mixed(e.who()),
             None => Own::Whole,
         };
     };
@@ -221,14 +230,14 @@ fn take_out(now: &str, head: &str, edits: &[&TheirEdit], committed: u64) -> Resu
     for e in edits {
         if e.blind {
             if e.at >= committed {
-                return Err(e.by.clone());
+                return Err(e.who());
             }
             continue;
         }
         if e.new.is_empty() {
             // A cut: where it was can't be found again. Still in effect when its old text is in HEAD more often.
             if !e.old.is_empty() && head.matches(e.old.as_str()).count() > text.matches(e.old.as_str()).count() {
-                return Err(e.by.clone());
+                return Err(e.who());
             }
             continue;
         }
@@ -241,7 +250,7 @@ fn take_out(now: &str, head: &str, edits: &[&TheirEdit], committed: u64) -> Resu
         } else if here == 1 {
             text = text.replacen(e.new.as_str(), &e.old, 1);
         } else {
-            return Err(e.by.clone());
+            return Err(e.who());
         }
         took = true;
     }
@@ -253,7 +262,7 @@ mod tests {
     use super::{read_edits, take_out, TheirEdit};
 
     fn edit(at: u64, old: &str, new: &str) -> TheirEdit {
-        TheirEdit { at, by: "tidier".into(), old: old.into(), new: new.into(), all: false, blind: false }
+        TheirEdit { at, by: "tidier".into(), old: old.into(), new: new.into(), all: false, blind: false, guess: false }
     }
 
     #[test]

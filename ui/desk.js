@@ -315,6 +315,8 @@ function deskGroups(project, taskApprovals) {
  *  group. Back to check: a dot before it while not opened since (landed, its title bold too), nothing once opened. */
 function deskTag(i) {
   // An ask carries no tag: its question, boxed under the title, says it.
+  // In a circle of waits (#250): none of it can move till a link is cut.
+  if (deskCircleOf(i)) return ["circle", "ask"];
   if (i.state === "needs_you") return ["", "ask"];
   if (deskInstallWait(i)) return ["", ""];
   if (i.state === "to_check") return deskLanded(i) ? ["", "landed"] : ["", "check"];
@@ -952,13 +954,62 @@ function deskFilesShort(files, sep = ", ") {
   const more = names.length > 3 ? ` +${names.length - 3} more` : "";
   return names.slice(0, 3).join(sep) + more;
 }
+/** Item `i`'s project as the hub sends it (its waits and circles in it). */
+const deskProjOf = (i) => (state.desk?.projects || []).find((p) => p.project === i.project || (p.items || []).some((x) => x.id === i.id));
+/** The circle item `i` is in, if any (hub/desk_waits.rs): its links in order, when it was found, whether its lead was told. */
+const deskCircleOf = (i) => (deskProjOf(i)?.circles || []).find((c) => c.items.includes(i.id)) || null;
+const deskSince = (ms) => (ms ? `Since ${clockAt(ms)} · ${ago(ms)}` : "");
+const DESK_NTH = ["no", "one", "two", "three", "four", "five"];
+/** What item `i` waits on, in a box, with the buttons that clear it (#250, the "How work lands" waits): a circle and
+ *  its links to cut; another session's file its commit waits on (Ask them to commit, Land without that file); or what
+ *  stopped its landing (Send back to fix, Show the output; Run the landing again only
+ *  when Cue can name nothing in its way). "" when it waits on nothing. */
+function deskWaitsOn(i) {
+  const btn = (act, label, look = "", extra = "") => `<button class="btn small ${look}" data-desk-act="${act}" data-id="${esc(i.id)}"${extra}>${esc(label)}</button>`;
+  const box = (text, sub, more = "", tag = "") => `<div class="dk-wo${tag ? " circle" : ""}"><div class="dk-wo-l">Waits on${tag ? `<span class="dk-wo-tag">${tag}</span>` : ""}</div><div class="dk-wo-t">${text}</div>${sub ? `<div class="dk-wo-s">${esc(sub)}</div>` : ""}${more}</div>`;
+  const ref = (id) => { const it = deskItem(i.project, id); return `<a href="#" data-desk-item="${esc(id)}">#${esc(id)}</a>${it ? ` ${esc(deskShort(it.title))}` : ""}`; };
+  const c = deskCircleOf(i);
+  if (c) {
+    const others = c.items.length - 1;
+    const links = c.links.map((l) => `<div class="dk-wo-link"><span>#${esc(l.item)} waits on #${esc(l.on)} · ${esc(l.why)}</span><button class="btn small" data-desk-act="cut" data-id="${esc(l.item)}" data-on="${esc(l.on)}">Cut this link</button></div>`).join("");
+    const found = c.at ? `Found at ${clockAt(c.at)} · ${c.told ? "the lead was told at once" : "no lead to tell: cut a link here"}` : "";
+    return box(`Itself, through ${DESK_NTH[others] || others} other${others === 1 ? "" : "s"}. None can move until one link is cut.`, found, `<div class="dk-wo-loop">${esc(c.words)}</div>${links}`, "Circle");
+  }
+  const files = (deskProjOf(i)?.waits || []).filter((w) => w.item === i.id && w.kind === "commit");
+  if (files.length) {
+    const asked = i.finish?.asked || [];
+    return files.map((w) => {
+      const who = w.by ? `<b>${esc(w.by)}</b>` : "Someone else";
+      const what = w.how === "editing" ? `${who} is editing <span class="dk-wo-f">${esc(w.name)}</span>` : `${who} also changed <span class="dk-wo-f">${esc(w.name)}</span>`;
+      const on = w.on ? ` · that's ${ref(w.on)}` : "";
+      const ask = !w.sid ? "" : asked.includes(w.sid) ? `<span class="dk-wo-done">Asked them to commit</span>` : btn("ask_commit", "Ask them to commit", "primary", ` data-path="${esc(w.path)}"`);
+      return box(`${what}${on}`, deskSince(w.since), `<div class="dk-acts">${ask}${btn("land_without", "Land without that file", "", ` data-path="${esc(w.path)}"`)}</div>`);
+    }).join("");
+  }
+  // Queued after another item: "What's holding it up" on its page says so, with Start it now / Put it before here.
+  const f = i.finish;
+  if (!f?.question) return "";
+  const q = esc(f.question);
+  // A check (the build, the new Cue starting) that failed: its holder fixes it; the output is its log.
+  if (f.step === "failed" || f.step === "rolled_back") {
+    const show = f.log ? btn("log_all", deskFinLogOpen.has(i.id) ? "Hide the output" : "Show the output") : "";
+    return box(q, deskSince(f.at), `<div class="dk-acts">${btn("fix_back", "Send back to fix", "primary")}${show}</div>`);
+  }
+  // A word that mustn't go in, a clash with the main line: its holder's to fix.
+  if (f.step === "word" || f.step === "conflict") return box(q, deskSince(f.at), `<div class="dk-acts">${btn("fix_back", "Send back to fix", "primary")}</div>`);
+  // Nothing Cue can name: a plain retry, said so.
+  return box(q, deskSince(f.at), `<div class="dk-acts">${btn("rerun", "Run the landing again")}</div><div class="dk-wo-s">A plain retry: nothing known is in its way.</div>`);
+}
 /** An item's buttons, by where it is. */
 const deskCanRestart = (i) => (i.state === "needs_resume" || i.stopped) && !!sessionOf(i.holder?.lead_sid || i.holder?.sid);
 
 function deskItemActs(i) {
   const b = (act, label, look = "") => `<button class="btn small ${look}" data-desk-act="${act}" data-id="${esc(i.id)}">${esc(label)}</button>`;
   const first = i.after && deskItem(i.project, i.after);
-  if (i.state === "to_check" && deskBackFor === i.id) return deskBackHtml(i.id);
+  if (deskBackFor === i.id) return deskBackHtml(i.id);
+  // What it waits on, and what clears that (#250): in place of a plain Try again.
+  const wo = deskWaitsOn(i);
+  if (wo) return wo;
   // Waiting for install: nothing to try yet, so no Looks right (Send back stays: what it says can be wrong already).
   const acts = deskInstallWait(i) ? b("send_back", "Send back") : i.state === "to_check" ? (deskLooksSoon.has(i.id) ? "" : b("send_back", "Send back"))
     : (i.state === "new" || i.state === "queued") && !i.holder && i.start_failed ? b("start_now", "Retry")
@@ -966,8 +1017,6 @@ function deskItemActs(i) {
     : i.state === "new" ? b("start_now", "Start it now in a new session")
     // Its holder's turn cut off (a crash, a quit) leaves it "working" with nobody on it: sent to the holder again.
     : deskCanRestart(i) ? b("start_now", "Restart")
-    // Finishing stopped on a question (a build that failed, a word, a conflict): try it again once you've seen to it.
-    : i.finish?.question ? b("retry_finish", "Try again")
     : deskFinishing(i) ? deskInstallNow(i, "btn small")
     : i.state === "done" ? `<div class="dk-chk-after">${deskCommitLine(i)}</div>` : "";
   const give = !i.holder && i.state !== "done" ? deskGive(i, "pane") : "";
@@ -1140,7 +1189,7 @@ function deskItemPane(i, d, foot = "") {
   const tabBtn = (k, label, n) => `<button class="dk-itab${tab === k ? " on" : ""}" role="tab" aria-selected="${tab === k}" data-desk-itab="${k}" data-id="${esc(i.id)}">${label}<span class="n">${n}</span></button>`;
   // Under the thread, by the newest message and the box: writing why to send it back, what held it up or what it
   // asks, a build log, what it made. Its state, Done when, buttons and who has it are in the panel (#200).
-  const backing = i.state === "to_check" && deskBackFor === i.id;
+  const backing = deskBackFor === i.id;
   const at = `${backing ? deskBackHtml(i.id) : ""}${deskSec("Couldn't give it out", i.route_failed ? `<p>${esc(i.route_failed)}</p>` : "")}${deskSec("Couldn't start", !i.holder && i.start_failed ? `<p>Cue couldn't start a new session for it: ${esc(i.start_failed)}</p>` : "")}
     ${i.state === "needs_you" ? deskChain(i) : deskSec(deskAnswerOf(i) ? "It asked you" : "What's holding it up", deskChain(i))}${deskSec("Build log", deskFinLog(i))}${deskSec("What it made", i.state === "to_check" || i.state === "done" ? deskMadeLinks(i) : "")}
     ${i.split_from ? `<p class="dk-split">Split from <a href="#" data-desk-item="${esc(i.split_from)}">#${esc(i.split_from)}</a></p>` : ""}`;
@@ -1581,6 +1630,12 @@ async function deskAct(id, act, el = null) {
   deskDropArm = null;
   // Send back opens the item's own box for why (deskBackHtml); its Send sends that, to the item's holder only.
   if (act === "send_back") { deskBackFor = deskBackFor === id ? null : id; renderMain(); return deskBackFocus(id); }
+  // Send back to fix (#250): the same box, its why started with what stopped the landing.
+  if (act === "fix_back") {
+    const it = (state.desk?.projects || []).flatMap((p) => p.items || []).find((x) => x.id === id), d = draft(`back:${id}`);
+    if (!d.text.trim() && it?.finish?.question) d.text = `The landing stopped: ${it.finish.question}. Fix it, then say DONE again.`;
+    deskBackFor = id; renderMain(); return deskBackFocus(id);
+  }
   if (act === "back_cancel") { endDictation(`back:${id}`); deskBackFor = null; return renderMain(); }
   if (act === "back_go") {
     const key = `back:${id}`, text = draft(key).text.trim();
@@ -1590,10 +1645,10 @@ async function deskAct(id, act, el = null) {
     return renderMain();
   }
   try {
-    const it = await invoke("desk_item_act", { id, act });
+    const it = await invoke("desk_item_act", { id, act, text: el?.dataset.on || el?.dataset.path || "" });
     if (act === "drop") deskOpen = null;
-    // Try again that stopped once more: what stopped it this time, in git's own words when it said any.
-    if (act === "retry_finish" && it?.finish?.question) toast(`Stopped again. ${it.finish.question}`, 8000);
+    // A plain retry that stopped once more: what stopped it this time, in git's own words when it said any.
+    if (act === "rerun" && it?.finish?.question) toast(`Stopped again. ${it.finish.question}`, 8000);
   }
   catch (e) { toast(String(e), 5000); }
   renderMain();

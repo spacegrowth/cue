@@ -262,34 +262,47 @@ impl Hub {
     }
 
     /// Files sessions at work now are editing (absolute), and who: each session's own edits since its turn began
-    /// (read from its log), and its working teammates'. Not the holder of `it`.
+    /// (read from its log), and its working teammates'. Not the holder of `it`. Who is "someone else" when Cue only
+    /// guesses it (a file read from a shell command, not named by an edit): never a name it doesn't know (#250).
     pub(super) fn busy_files(&self, it: &DeskItem) -> Vec<(String, String)> {
+        self.busy_by(it).into_iter().map(|(f, name, _)| (f, if name.is_empty() { SOMEONE_ELSE.to_string() } else { name })).collect()
+    }
+
+    /// `busy_files`, each with its session's name and id: both "" when Cue only guesses it.
+    pub(super) fn busy_by(&self, it: &DeskItem) -> Vec<(String, String, String)> {
         let holder = it.holder.as_ref().map(|h| h.to().to_string()).unwrap_or_default();
         let (logs, mut out) = self.read(|st| {
-            let mut logs: Vec<(String, String, String, u64)> = Vec::new();
-            let mut out: Vec<(String, String)> = Vec::new();
+            let mut logs: Vec<(String, String, String, String, u64)> = Vec::new();
+            let mut out: Vec<(String, String, String)> = Vec::new();
             for s in st.sessions.iter().filter(|s| s.origin.session_id != holder && s.origin.machine.is_empty()) {
                 let name = super::desk::shown_name(s);
+                let sid = s.origin.session_id.clone();
                 for t in s.team.iter().filter(|t| t.working()) {
                     let dir = t.folder(&s.origin.cwd).trim_end_matches('/').to_string();
-                    out.extend(t.files.iter().map(|f| (if f.starts_with('/') { f.clone() } else { format!("{dir}/{f}") }, name.clone())));
+                    out.extend(t.files.iter().map(|f| (if f.starts_with('/') { f.clone() } else { format!("{dir}/{f}") }, name.clone(), sid.clone())));
                 }
                 if matches!(s.state.as_str(), "working" | "deciding" | "agent") && !s.origin.transcript_path.is_empty() {
                     let asked = s.thread.iter().rev().find(|e| e.role == "you").map_or(s.since_ms, |e| e.at_ms.min(s.since_ms));
-                    logs.push((s.origin.transcript_path.clone(), s.origin.cwd.clone(), name, asked));
+                    logs.push((s.origin.transcript_path.clone(), s.origin.cwd.clone(), name, sid, asked));
                 }
             }
             (logs, out)
         });
-        for (log, cwd, name, from) in logs {
+        for (log, cwd, name, sid, from) in logs {
             let dir = cwd.trim_end_matches('/').to_string();
-            for f in crate::logs::steps::edited_between(&log, from, u64::MAX) {
-                out.push((if f.starts_with('/') { f } else { format!("{dir}/{f}") }, name.clone()));
+            for (f, named) in crate::logs::steps::edited_between_named(&log, from, u64::MAX) {
+                let (name, sid) = if named { (name.clone(), sid.clone()) } else { (String::new(), String::new()) };
+                out.push((if f.starts_with('/') { f } else { format!("{dir}/{f}") }, name, sid));
             }
         }
+        // A file both named and guessed: the name stands.
+        out.sort_by_key(|(_, name, _)| name.is_empty());
         out
     }
 }
+
+/// Who a wait names when Cue doesn't know whose edits they are (#250).
+pub(crate) const SOMEONE_ELSE: &str = "someone else";
 
 /// Each folder's `paths` committed with `message` once none of their added lines (nor a new file's name, nor the
 /// message) has one of `project`'s never-committed words: the commits, short, space apart.

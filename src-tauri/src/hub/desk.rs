@@ -81,7 +81,7 @@ pub(super) fn routable<'a>(st: &'a Store, project: &str) -> Vec<&'a Session> {
 
 /// Desk `scope`'s Ask me before line for the sessions it hands work to (one_way.rs; "" when nothing's set): its
 /// project's, so two Desks on one project share it.
-fn rule_of(st: &Store, scope: &str) -> String {
+pub(super) fn rule_of(st: &Store, scope: &str) -> String {
     crate::one_way::ask_first(&crate::one_way::kinds(st.desk.project_of(scope)))
 }
 
@@ -682,12 +682,34 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx
             Line::Done { ids } => lead_done(st, project, lsid, &ids, fx),
             Line::Title { id, title } => retitle(st, project, &by, &id, &title, now, fx),
             Line::Split { id, titles } => split(st, project, &by, &id, &titles, now, fx),
+            Line::Cut { id, on, why } => cut(st, project, &by, &id, &on, &why, now, fx),
             Line::Context { .. } | Line::Designs { .. } => {}
         }
     }
     for (what, why) in crate::sessions::crew_log::calls_in(text) {
         let item = item_named(st, project, &what).or_else(|| item_named(st, project, &why));
         decide_call(st, project, item, &name, lsid, &what, &why, now, fx);
+    }
+}
+
+/// The lead cut a link in a circle (CUT:): item `id` no longer waits on item `on` (desk_waits.rs). Its commit, when
+/// that's what waited, lands at the next finishing tick. Noted as its decision; the lead told when there's no such
+/// link.
+#[allow(clippy::too_many_arguments)]
+fn cut(st: &mut Store, project: &str, by: &By, id: &str, on: &str, why: &str, now: u64, fx: &mut Effects) {
+    let id = st.desk.canon(id);
+    if !st.desk.item(&id).is_some_and(|i| i.project == project) {
+        fx.sends.push((by.sid.to_string(), format!("#{id} not cut: this Desk has no item #{id}")));
+        return;
+    }
+    match super::desk_waits::cut_in(st, &id, on, now) {
+        Ok((done, _)) => {
+            fx.items.extend(done.items);
+            fx.sends.extend(done.sends);
+            fx.news.extend(done.news);
+            decide(st, project, Some(id.clone()), by.name, by.sid, &format!("Cut its wait on #{}", st.desk.canon(on)), why, now, fx);
+        }
+        Err(e) => fx.sends.push((by.sid.to_string(), format!("Not cut: {e}"))),
     }
 }
 
@@ -977,7 +999,7 @@ fn desk_line_start(line: &str) -> bool {
     let l = line.trim().trim_start_matches(['-', '*', '+', '`', ' ']);
     let Some((word, _)) = l.split_once(':') else { return false };
     let word = word.trim_end_matches(['*', '`']).trim();
-    matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "CONTEXT" | "DESIGNS" | "TITLE" | "SPLIT") || word.eq_ignore_ascii_case("DECIDED")
+    matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "CONTEXT" | "DESIGNS" | "TITLE" | "SPLIT" | "CUT") || word.eq_ignore_ascii_case("DECIDED")
 }
 
 /// What you did to item `id` ("looks_right" | "reopen" | "send_back" | "start_now" | "put_before" | "drop"), in the store.
@@ -1269,12 +1291,23 @@ impl Hub {
 
     /// What you did to an item: "looks_right" (done), "send_back" (to its holder again, with `text`), "start_now"
     /// (not waiting on another any more), "put_before" (ahead of the item it waited on), "install_now" (its install
-    /// starts without waiting, desk_finish.rs), "retry_finish" (finishing again after its question, desk_finish.rs),
-    /// "drop".
+    /// starts without waiting, desk_finish.rs), "rerun" (its landing run again: a plain retry, offered only when Cue
+    /// can name nothing in its way, desk_finish.rs), what clears a wait (desk_waits.rs): "cut" (no longer waits on
+    /// item `text`), "land_without" (its commit without file `text`), "ask_commit" (the session changing file `text`
+    /// asked to commit it), and "drop".
     pub(crate) fn desk_item_act(&self, id: &str, act: &str, text: &str) -> Result<DeskItem, String> {
         match act {
             "install_now" => return self.desk_install_now(id),
-            "retry_finish" => return self.desk_retry_finish(id),
+            "rerun" => return self.desk_rerun_landing(id),
+            "cut" | "land_without" | "ask_commit" => {
+                match act {
+                    "cut" => self.desk_cut(id, text)?,
+                    "land_without" => self.desk_land_without(id, text)?,
+                    _ => self.desk_ask_commit(id, text)?,
+                }
+                let it = self.read(|st| st.desk.item(id).map(|i| shown(st, i)));
+                return it.ok_or_else(|| "no such item".into());
+            }
             _ => {}
         }
         let now = now_ms();
@@ -1592,7 +1625,7 @@ impl Hub {
                 let older: Vec<&DeskDecision> = st.desk.decisions.iter().filter(|d| &d.project == p && d.at < today && d.item_id.as_ref().is_some_and(|i| items.iter().any(|it| &it.id == i))).collect();
                 let members = st.desk.members.get(p).cloned().unwrap_or_default();
                 let work_history = super::desk_members::work_history(st, p);
-                json!({ "work_history": work_history, "id": p, "project": p, "name": st.desk.spaces.get(p).map(|d| &d.name), "independent": st.desk.spaces.contains_key(p), "workspace_project": st.desk.project_of(p), "folder": st.desk.spaces.get(p).map(|d| &d.folder), "lead": Self::desk_lead_view(st, p), "items": items, "decisions": decisions, "older": older, "members": members, "checks": super::desk_checks::checks_view(st, p), "ask_before": crate::one_way::desk_view(st.desk.project_of(p)) })
+                json!({ "work_history": work_history, "id": p, "project": p, "name": st.desk.spaces.get(p).map(|d| &d.name), "independent": st.desk.spaces.contains_key(p), "workspace_project": st.desk.project_of(p), "folder": st.desk.spaces.get(p).map(|d| &d.folder), "lead": Self::desk_lead_view(st, p), "items": items, "decisions": decisions, "older": older, "members": members, "checks": super::desk_checks::checks_view(st, p), "waits": super::desk_waits::waits_view(st, p), "circles": super::desk_waits::circles_view(st, p), "ask_before": crate::one_way::desk_view(st.desk.project_of(p)) })
             })
             .collect();
         json!({ "projects": list, "installed_ms": super::desk_checks::installed_ms(), "install_at": super::desk_finish::install_at(st) })

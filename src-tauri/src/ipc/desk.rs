@@ -332,8 +332,9 @@ pub(crate) async fn desk_member(hub: State<'_, Arc<Hub>>, project: String, sid: 
     with_hub(&hub, move |h| h.desk_set_member(&project, &sid, on)).await?
 }
 
-/// What you did to an item: "looks_right" | "reopen" | "send_back" | "start_now" | "put_before" | "install_now" | "retry_finish"
-/// | "drop", with `text` for send_back. Returns the item as it is now (state "dropped" once dropped).
+/// What you did to an item: "looks_right" | "reopen" | "send_back" | "start_now" | "put_before" | "install_now" | "rerun"
+/// | "cut" | "land_without" | "ask_commit" | "drop", with `text` for send_back (your words), cut (the item it no longer
+/// waits on), land_without and ask_commit (the file). Returns the item as it is now (state "dropped" once dropped).
 #[tauri::command]
 pub(crate) async fn desk_item_act(hub: State<'_, Arc<Hub>>, id: String, act: String, text: Option<String>, images: Option<Vec<crate::model::Upload>>) -> Result<crate::desk::DeskItem, String> {
     with_hub(&hub, move |h| {

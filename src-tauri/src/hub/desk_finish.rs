@@ -14,7 +14,7 @@
 use super::desk_commit::{commit_each, git, git_said, shas_of, word_in, words_checked};
 use super::desk_theirs::Part;
 use super::*;
-use crate::desk::{DeskItem, Finish, InstallStatus, Installer};
+use crate::desk::{DeskItem, FileWait, Finish, InstallStatus, Installer};
 
 /// How long a commit waits on files another session is editing before you're asked about it.
 pub(super) const WAIT_ASK_MS: u64 = 15 * 60_000;
@@ -136,7 +136,7 @@ impl Hub {
             i.state = "to_check".into();
             i.updated = super::desk::secs(now);
             if let Some(f) = i.finish.as_mut() {
-                (f.step, f.at, f.question, f.wait) = ("checked".into(), now, String::new(), String::new());
+                (f.step, f.at, f.question, f.wait, f.files_wait) = ("checked".into(), now, String::new(), String::new(), Vec::new());
             }
         });
     }
@@ -185,7 +185,7 @@ impl Hub {
         }
         let (todo, parts, waiting) = self.to_commit(&it, &sources);
         if !waiting.is_empty() {
-            return self.finish_wait(id, &fin, waiting.join(", "));
+            return self.finish_wait(id, &fin, waiting);
         }
         let Some(tops) = self.finish_land(&it, &todo, &parts, &sources) else { return };
         self.finish_release(id);
@@ -213,19 +213,22 @@ impl Hub {
         sources.iter().flat_map(|(folder, paths)| super::desk_commit::changed_of("", folder, paths).unwrap_or_default()).collect()
     }
 
-    /// Item `it`'s files git says changed, by folder (one not in a repository left out), with only its own part of a
-    /// file another session changed too (hub/desk_theirs.rs), and which of them it waits on: a session at work is
-    /// editing it now ("<who> is editing <path>"), or another's changes in it can't be told apart from the item's.
-    fn to_commit(&self, it: &DeskItem, sources: &[(String, Vec<String>)]) -> (Vec<(String, Vec<String>)>, Vec<Part>, Vec<String>) {
-        let busy = self.busy_files(it);
+    /// Item `it`'s files git says changed, by folder (one not in a repository left out; one you said to land without
+    /// too), with only its own part of a file another session changed too (hub/desk_theirs.rs), and which of them it
+    /// waits on: a session at work is editing it now, or another's changes in it can't be told apart from the item's.
+    /// Each wait names its session only when Cue knows whose it is, else "someone else" (#250).
+    fn to_commit(&self, it: &DeskItem, sources: &[(String, Vec<String>)]) -> (Vec<(String, Vec<String>)>, Vec<Part>, Vec<FileWait>) {
+        let without: &[String] = it.finish.as_ref().map_or(&[], |f| &f.without);
+        let busy = self.busy_by(it);
         let mut todo: Vec<(String, Vec<String>)> = Vec::new();
-        let mut waiting: Vec<String> = Vec::new();
+        let mut waiting: Vec<FileWait> = Vec::new();
         for (folder, paths) in sources {
             let Some(changed) = super::desk_commit::changed_of("", folder, paths) else { continue };
+            let abs = |p: &str| format!("{}/{p}", folder.trim_end_matches('/'));
+            let changed: Vec<String> = changed.into_iter().filter(|p| !without.contains(&abs(p))).collect();
             for p in &changed {
-                let abs = format!("{}/{p}", folder.trim_end_matches('/'));
-                if let Some((_, by)) = busy.iter().find(|(f, _)| *f == abs) {
-                    waiting.push(format!("{by} is editing {p}"));
+                if let Some((path, by, sid)) = busy.iter().find(|(f, _, _)| *f == abs(p)) {
+                    waiting.push(FileWait { path: path.clone(), name: p.clone(), by: by.clone(), sid: sid.clone(), how: "editing".into() });
                 }
             }
             if !changed.is_empty() {
@@ -235,29 +238,48 @@ impl Hub {
         if !waiting.is_empty() {
             return (todo, Vec::new(), waiting);
         }
+        let folders: Vec<(String, String)> = todo.iter().flat_map(|(f, ps)| ps.iter().map(|p| (p.clone(), f.clone())).collect::<Vec<_>>()).collect();
         let (todo, parts, mixed) = self.own_of(it, todo);
-        waiting.extend(mixed.into_iter().map(|(p, by)| format!("{by} also changed {p}")));
+        for (p, by) in mixed {
+            let folder = folders.iter().find(|(q, _)| *q == p).map(|(_, f)| f.clone()).unwrap_or_default();
+            let (by, sid) = if by == super::desk_commit::SOMEONE_ELSE { (String::new(), String::new()) } else { (by.clone(), self.sid_named(&by)) };
+            waiting.push(FileWait { path: format!("{}/{p}", folder.trim_end_matches('/')), name: p, by, sid, how: "changed".into() });
+        }
         (todo, parts, waiting)
     }
 
-    /// Item `id`'s commit waits on `wait`: kept so, with a question for you once it has waited 15 minutes.
-    fn finish_wait(&self, id: &str, fin: &Finish, wait: String) {
+    /// The local session shown as `name`, when exactly one is.
+    fn sid_named(&self, name: &str) -> String {
+        self.read(|st| {
+            let mut found = st.sessions.iter().filter(|s| s.origin.machine.is_empty() && super::desk::shown_name(s) == name);
+            match (found.next(), found.next()) {
+                (Some(s), None) => s.origin.session_id.clone(),
+                _ => String::new(),
+            }
+        })
+    }
+
+    /// Item `id`'s commit waits on `files`: kept so (in the waits list, the circle check run on it), with a question
+    /// for you once it has waited 15 minutes.
+    fn finish_wait(&self, id: &str, fin: &Finish, files: Vec<FileWait>) {
         let now = now_ms();
+        let wait = files.iter().map(wait_words).collect::<Vec<_>>().join(", ");
         let from = if fin.wait_from > 0 { fin.wait_from } else { now };
         let ask = now.saturating_sub(from) >= WAIT_ASK_MS;
-        if fin.step == "commit_wait" && fin.wait == wait && ask != fin.question.is_empty() {
+        if fin.step == "commit_wait" && fin.wait == wait && fin.files_wait == files && ask != fin.question.is_empty() {
             return;
         }
         let first = fin.step != "commit_wait";
         self.finish_set(id, |i| {
             if let Some(f) = i.finish.as_mut() {
-                (f.step, f.wait, f.wait_from) = ("commit_wait".into(), wait.clone(), from);
+                (f.step, f.wait, f.wait_from, f.files_wait) = ("commit_wait".into(), wait.clone(), from, files);
                 f.question = if ask { format!("Its commit has waited 15 minutes: {wait}") } else { String::new() };
                 if first {
                     f.at = now;
                 }
             }
         });
+        self.circle_check();
     }
 
     /// Item `it`'s `todo` committed, and its work on a branch of its own (its crew's, or its holder's own worktree:
@@ -340,7 +362,7 @@ impl Hub {
             if let Some(f) = i.finish.as_mut() {
                 (f.repo, f.commit) = (top, head);
                 if queued {
-                    (f.step, f.at, f.wait, f.wait_from, f.question) = ("queued".into(), now, String::new(), 0, String::new());
+                    (f.step, f.at, f.wait, f.wait_from, f.question, f.files_wait) = ("queued".into(), now, String::new(), 0, String::new(), Vec::new());
                 }
             }
         });
@@ -457,6 +479,8 @@ impl Hub {
         let Some(_claim) = Claim::take(self, "tick") else { return };
         self.finish_tick();
         self.taken_out_tick();
+        // Circles the waits list has now told to their lead, gone ones let go (#250).
+        self.circle_check();
     }
 
     /// Commits new on a main line since Cue last looked, each checked against the finished items whose commits are
@@ -720,10 +744,10 @@ impl Hub {
 }
 
 impl Hub {
-    /// Try again on item `id`, stopped on a question while finishing (you fixed it by hand, or its holder is gone):
-    /// an install that failed is queued again; anything else (a word, a conflict, a commit that waited too long) is
-    /// committed again, what an earlier round made kept.
-    pub(crate) fn desk_retry_finish(&self, id: &str) -> Result<DeskItem, String> {
+    /// Run the landing again on item `id`, stopped on a question while finishing: a plain retry, offered only when
+    /// Cue can name nothing in its way (#250; what it can name has its own offer, desk_waits.rs): an install that
+    /// failed is queued again; anything else is committed again, what an earlier round made kept.
+    pub(crate) fn desk_rerun_landing(&self, id: &str) -> Result<DeskItem, String> {
         let at = self.read(|st| st.desk.item(id).map(|i| i.finish.clone().filter(|f| i.state == "finishing" && !f.question.is_empty()))).ok_or("no such item")?;
         let Some(fin) = at else { return Err("It isn't stopped on a question".into()) };
         let now = now_ms();
@@ -751,6 +775,15 @@ impl Hub {
 pub(super) fn install_at(st: &Store) -> u64 {
     let first = st.desk.items.iter().filter(|i| i.state == "finishing").filter_map(|i| i.finish.as_ref()).filter(|f| f.step == "queued").map(|f| f.at).min();
     first.map_or(0, |at| at + INSTALL_EVERY_MS)
+}
+
+/// A file wait as words: "<who> is editing <path>" or "<who> also changed <path>", who "someone else" when unknown.
+pub(super) fn wait_words(w: &FileWait) -> String {
+    let who = if w.by.is_empty() { super::desk_commit::SOMEONE_ELSE } else { w.by.as_str() };
+    match w.how.as_str() {
+        "editing" => format!("{who} is editing {}", w.name),
+        _ => format!("{who} also changed {}", w.name),
+    }
 }
 
 pub(super) fn begun(now: u64, before: Option<&Finish>) -> Finish {

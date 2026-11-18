@@ -24,6 +24,7 @@ mod desk_lead;
 mod desk_members;
 mod desk_stall;
 mod desk_theirs;
+mod desk_waits;
 pub(crate) use desk_lead::DeskClaim;
 mod events;
 mod guard;

@@ -76,7 +76,7 @@ pub(super) fn commits(dir: &std::path::Path) -> String {
 }
 
 /// Session `sid`'s log, as Claude Code writes it.
-fn log(w: &World, sid: &str) -> crate::testing::transcript::Transcript {
+pub(super) fn log(w: &World, sid: &str) -> crate::testing::transcript::Transcript {
     crate::testing::transcript::Transcript::at(w.hub().session_origin(sid).unwrap().transcript_path)
 }
 
@@ -209,7 +209,7 @@ fn an_item_with_no_changed_files_goes_to_check_with_no_commit_and_looks_right_cl
 }
 
 /// A session "tidier" at work editing b.txt in `dir`: its id.
-fn tidier_editing(w: &World, dir: &std::path::Path) -> String {
+pub(super) fn tidier_editing(w: &World, dir: &std::path::Path) -> String {
     let opts = StartOpts { hosted: true, perm: "auto".into(), ..Default::default() };
     let r = start_session_with(w.hub(), "claude", &w.home().to_string_lossy(), "tidy b", "tidier", &opts).unwrap();
     let o = r["session_id"].as_str().unwrap().to_string();
@@ -222,7 +222,7 @@ fn tidier_editing(w: &World, dir: &std::path::Path) -> String {
 
 /// An item whose crew wrote a.txt and b.txt, said DONE while "tidier" is at work editing b.txt: (repo, project,
 /// tidier).
-fn done_while_tidier_edits(w: &World) -> (std::path::PathBuf, String, String) {
+pub(super) fn done_while_tidier_edits(w: &World) -> (std::path::PathBuf, String, String) {
     let o = std::cell::RefCell::new(String::new());
     let (dir, project, _) = done_with(w, |_, _, _| {}, |w, h, dir| {
         let f = |n: &str| dir.join(n).to_string_lossy().to_string();

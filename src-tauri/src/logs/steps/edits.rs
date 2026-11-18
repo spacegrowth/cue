@@ -83,11 +83,17 @@ pub fn agent_logs(path: &str) -> Vec<std::path::PathBuf> {
 /// relative to its folder, or absolute). Its background agents' logs aren't read: those are its crew's files,
 /// counted as theirs (hub/desk.rs). A Claude Code log only (others: none).
 pub fn edited_between(path: &str, from: u64, until: u64) -> Vec<String> {
+    edited_between_named(path, from, until).into_iter().map(|(f, _)| f).collect()
+}
+
+/// `edited_between`, each file with whether the session's own tool call named it (Edit, MultiEdit, Write,
+/// NotebookEdit: true) or it's read from a shell command or script (a guess: false). Once named, a file stays so.
+pub fn edited_between_named(path: &str, from: u64, until: u64) -> Vec<(String, bool)> {
     if kind_of(path) != Kind::Claude {
         return vec![];
     }
     let Ok(text) = std::fs::read_to_string(path) else { return vec![] };
-    let mut out: Vec<String> = vec![];
+    let mut out: Vec<(String, bool)> = vec![];
     for line in text.lines() {
         let Ok(e) = serde_json::from_str::<Value>(line) else { continue };
         let at = crate::logs::transcript::stamp(&e);
@@ -96,14 +102,15 @@ pub fn edited_between(path: &str, from: u64, until: u64) -> Vec<String> {
         }
         for b in e.pointer("/message/content").and_then(Value::as_array).into_iter().flatten().filter(|b| b.get("type").and_then(Value::as_str) == Some("tool_use")) {
             let input = &b["input"];
-            let files = match b.get("name").and_then(Value::as_str).unwrap_or("") {
-                "Edit" | "MultiEdit" | "Write" | "NotebookEdit" => input.get("file_path").or_else(|| input.get("notebook_path")).and_then(Value::as_str).map(str::to_string).into_iter().collect(),
-                "Bash" => input.get("command").and_then(Value::as_str).map(|c| [crate::sessions::shell_writes::writes(c), script_writes(c)].concat()).unwrap_or_default(),
-                _ => vec![],
+            let (files, named) = match b.get("name").and_then(Value::as_str).unwrap_or("") {
+                "Edit" | "MultiEdit" | "Write" | "NotebookEdit" => (input.get("file_path").or_else(|| input.get("notebook_path")).and_then(Value::as_str).map(str::to_string).into_iter().collect(), true),
+                "Bash" => (input.get("command").and_then(Value::as_str).map(|c| [crate::sessions::shell_writes::writes(c), script_writes(c)].concat()).unwrap_or_default(), false),
+                _ => (vec![], false),
             };
             for f in files.into_iter().filter(|f| !f.trim().is_empty()) {
-                if !out.contains(&f) {
-                    out.push(f);
+                match out.iter_mut().find(|(o, _)| *o == f) {
+                    Some(o) => o.1 |= named,
+                    None => out.push((f, named)),
                 }
             }
         }
