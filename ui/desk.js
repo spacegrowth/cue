@@ -263,6 +263,30 @@ function deskUnblocksHtml(i) {
   if (!ids.length) return "";
   return `<div class="dk-ub">unblocks ${ids.slice(0, 3).map((x) => `#${esc(x)}`).join(", ")}${ids.length > 3 ? ` +${ids.length - 3} more` : ""}</div>`;
 }
+/** Markdown on the item page and in its thread, with each file or folder named in `code` as a file chip (#305): an
+ *  icon, its folder quiet (a long one by its last two) and its name in ink, at the words' size, as Slack shows a file. */
+const DESK_FILE_SVG = '<svg class="dk-fchip-i" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" aria-hidden="true"><path d="M3 1.5h4l2.5 2.5v6.5H3z"/><path d="M7 1.5V4h2.5"/></svg>';
+const DESK_DIR_SVG = '<svg class="dk-fchip-i" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 3h3.2l1 1.2h4.8v5.3h-9z"/></svg>';
+/** A `code` span that names a file or folder: a path with a slash (tests/ui, ~/x, ./a), or a file name with an
+ *  extension (desk.js). Not a command (spaces) or a site. */
+const deskIsPath = (t) => !/\s/.test(t) && t.length < 200 && !/^[a-z]+:\/\//i.test(t) && !/^[\w-]+(\.[\w-]+)+\//.test(t)
+  && (/^(?:~|\.{1,2})?\/?[\w.@+-]+(?:\/[\w.@+-]+)+\/?$/.test(t) || /^(?:~|\.{1,2})\/[\w.@+\/-]*$/.test(t) || /^[\w@+-][\w.@+-]*\.[A-Za-z][\w]{0,7}$/.test(t)) && !/^\d+(\.\d+)+$/.test(t);
+function deskMd(text) {
+  return md(text).replace(/<code>((?:(?!<\/?code>)[\s\S])*)<\/code>/g, (whole, inner) => {
+    const t = inner.replace(/<[^>]+>/g, "");
+    if (!deskIsPath(t.replace(/&amp;/g, "&"))) return whole;
+    const dir = /\/$/.test(t) || !/\.[A-Za-z][\w]{0,7}$/.test(t.split("/").pop());
+    const bare = t.replace(/\/$/, ""), cut = bare.lastIndexOf("/");
+    // A long folder keeps its last two: …/src/hub/desk.rs.
+    const parts = cut >= 0 ? bare.slice(0, cut + 1).split("/") : [];
+    const folder = parts.length > 3 ? `…/${parts.slice(-3).join("/")}` : parts.join("/");
+    const shown = `${folder ? `<span class="dk-fchip-d">${folder}</span>` : ""}<span class="dk-fchip-n">${bare.slice(cut + 1)}</span>`;
+    // A path md() linked keeps its link (a click opens it), now around the whole chip.
+    const link = /<a [^>]*data-path="[^"]*"[^>]*>/.exec(inner)?.[0];
+    const chip = `${dir ? DESK_DIR_SVG : DESK_FILE_SVG}${shown}`;
+    return link ? `${link.replace(/^<a /, '<a class="dk-fchip" ')}${chip}</a>` : `<span class="dk-fchip">${chip}</span>`;
+  });
+}
 /** A question, an ask or a "done when" in one plain line: its line that asks (ends on "?"), else its first. */
 function deskOneLine(t) {
   const lines = String(t || "").split(/\n+/).map((l) => plain(l)).filter(Boolean);
@@ -956,10 +980,10 @@ function deskAnswerOf(i) {
  *  answered at the page's foot, deskItemFoot), then what you answered. */
 function deskChain(i) {
   const said = deskAnswerOf(i);
-  if (said) return `<div class="dk-chain"><div class="dk-ln dk-q"><div><div class="dk-lt dk-md">${md(said.q)}</div><div class="dk-ls dk-picked"><span class="sent-check">✓</span> You answered: ${esc(said.a)}</div></div></div></div>`;
+  if (said) return `<div class="dk-chain"><div class="dk-ln dk-q"><div><div class="dk-lt dk-md">${deskMd(said.q)}</div><div class="dk-ls dk-picked"><span class="sent-check">✓</span> You answered: ${esc(said.a)}</div></div></div></div>`;
   if (i.state === "needs_you") {
     const q = deskQuestion(i);
-    return q ? `<div class="dk-chain"><div class="dk-ln dk-q"><div class="dk-lt dk-md">${md(q)}</div></div></div>` : "";
+    return q ? `<div class="dk-chain"><div class="dk-ln dk-q"><div class="dk-lt dk-md">${deskMd(q)}</div></div></div>` : "";
   }
   if (i.state !== "queued" || !i.after) return "";
   const first = deskItem(i.project, i.after);
@@ -1099,7 +1123,7 @@ function deskThread(i, d) {
   const you = (i.from || "you") === "you";
   // Its Done when isn't in this first message: it's under the thread, by where it stands (deskItemPane).
   const pics = thumbs(i.images);
-  const rows = [{ at: deskMs(i.created), by: you ? "You" : deskFrom(i, d), you, html: `<div class="dk-md">${md(i.words || i.title)}</div>${pics ? `<div class="dk-tpics">${pics}</div>` : ""}` }];
+  const rows = [{ at: deskMs(i.created), by: you ? "You" : deskFrom(i, d), you, html: `<div class="dk-md">${deskMd(i.words || i.title)}</div>${pics ? `<div class="dk-tpics">${pics}</div>` : ""}` }];
   const backPics = deskBackPics(i, d, mine);
   for (const c of mine) {
     if (c.by === "You" && /^(to |sent back)/.test(c.why || "")) {
@@ -1116,7 +1140,7 @@ function deskThread(i, d) {
   const said = (i.said || []).filter((r, n, all) => { const x = all[n + 1]; return !(x && x.by === r.by && x.text.startsWith(r.text.replace(/…$/, ""))); });
   // Each reply in full, with a link to that turn in its session; one that said DONE has a record line after it.
   for (const r of said) {
-    rows.push({ at: r.at, by: r.by, tag: "Reply", text: r.text, html: `<div class="dk-md">${md(r.text)}</div>${deskTurnLink(r)}` });
+    rows.push({ at: r.at, by: r.by, tag: "Reply", text: r.text, html: `<div class="dk-md">${deskMd(r.text)}</div>${deskTurnLink(r)}` });
     if (r.done) rows.push({ at: r.at + 1, rec: "Done", html: `${esc(r.by)} said ${esc(deskNum(i))} is done` });
   }
   // Sent from here, not back as a step yet.
@@ -1131,15 +1155,15 @@ function deskThread(i, d) {
   if (!live && lat && !(i.said || []).some((r) => r.text.includes(lat1))) {
     const fin = i.state === "to_check" || i.state === "done";
     const theirs = rows.filter((r) => !r.you).reduce((m, r) => Math.max(m, r.at), 0);
-    rows.push({ at: Math.max(deskMs(i.updated), theirs), by: i.holder?.name || i.by || "It", tag: fin ? "Done" : "Reply", on: fin, text: lat, html: `<div class="dk-md">${md(lat)}</div>` });
+    rows.push({ at: Math.max(deskMs(i.updated), theirs), by: i.holder?.name || i.by || "It", tag: fin ? "Done" : "Reply", on: fin, text: lat, html: `<div class="dk-md">${deskMd(lat)}</div>` });
   }
   rows.sort((a, b) => a.at - b.at);
   // Its holder at work: last, under what you wrote, as the answer to it comes (#165): the turn it's writing, in full,
   // as it writes it, with a line for its steps (#276); its latest line till its steps are read.
   if (live) {
     const turn = deskLiveTurn(i);
-    rows.push({ at: 0, by: i.holder.name, live: true, tag: turn?.words ? "Writing" : "", html: turn ? `${turn.steps ? `<div class="dk-stp">${esc(turn.steps)}</div>` : ""}${turn.words ? `<div class="dk-md">${md(turn.words)}</div>` : ""}<div class="dk-tbar"></div>`
-      : `<div class="dk-md dk-quiet">${lat ? md(lat1) : "Working…"}</div><div class="dk-tbar"></div>` });
+    rows.push({ at: 0, by: i.holder.name, live: true, tag: turn?.words ? "Writing" : "", html: turn ? `${turn.steps ? `<div class="dk-stp">${esc(turn.steps)}</div>` : ""}${turn.words ? `<div class="dk-md">${deskMd(turn.words)}</div>` : ""}<div class="dk-tbar"></div>`
+      : `<div class="dk-md dk-quiet">${lat ? deskMd(lat1) : "Working…"}</div><div class="dk-tbar"></div>` });
   }
   return rows;
 }
@@ -1185,7 +1209,7 @@ function deskBackPics(i, d, log) {
   });
   return out;
 }
-const deskBackWords = (text, pics = 0) => `<div class="dk-md">${md(text)}</div>${pics ? `<div class="dk-tpn">${pics === 1 ? "1 picture" : `${pics} pictures`}</div>` : ""}`;
+const deskBackWords = (text, pics = 0) => `<div class="dk-md">${deskMd(text)}</div>${pics ? `<div class="dk-tpn">${pics === 1 ? "1 picture" : `${pics} pictures`}</div>` : ""}`;
 /** An item page's suggested reply (`key` "<project>|<id>"): the words its newest message asks you to reply with
  *  (Reply "merge"), while nothing's at work on it and you haven't written since (#186). */
 function deskItemSuggestion(key) {
@@ -1321,7 +1345,7 @@ function deskCrewPane(lead, agent, d, foot = "") {
   const who = deskPsec("Who", deskPwho("Lead", leadBtn) + deskPwho("On", it ? deskItemLink(it) : "") + deskPwho("Files", shown.length ? `${shown.length} changed` : ""));
   const main = `<div class="dk-pane" data-scroll-key="${skey}">
     ${deskSec("Files", files)}
-    ${deskSec("Latest", latest.map((l) => `<div class="dk-md dk-quiet">${md(l)}</div>`).join(""))}
+    ${deskSec("Latest", latest.map((l) => `<div class="dk-md dk-quiet">${deskMd(l)}</div>`).join(""))}
     <p class="dk-note">To steer it, tell ${esc(leadName)} below; the lead passes it on. Open its session to talk to it straight.</p></div>`;
   return deskPage({ page: "crew", kind: "crew", back: deskBack(leadName, lead), mark: "Crew · ", title: esc(t.name),
     meta: `in <b>${esc(leadName)}</b>'s crew${it?.title || t.what ? ` · on <b>${esc(it?.title || t.what)}</b>` : ""} · ${esc(mateSpan(t))}`,

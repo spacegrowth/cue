@@ -2719,6 +2719,20 @@ test("an approval in Waiting on you says in a line or two what it wants; the who
   await expect(page.locator(".dk-ask")).toContainText("bodylistmac.txt headmac.txt footmac.txt");
 });
 
+test("files an item's words name are file chips at the words' size; a command or version stays code (#305)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await cue.change((s) => { s.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d2").latest = "Moved out of `tests/ui`, changed `ui/desk.js`, ran `npx playwright test`, read `/Users/me/dev/cue/src-tauri/src/hub/desk.rs`; `0.1.22` stays."; });
+  await openDesk(page);
+  await page.locator('[data-desk-item="d2"] .dk-t').click();
+  const chips = page.locator(".dk-ipane .dk-md .dk-fchip");
+  await expect(chips).toHaveText(["tests/ui", "ui/desk.js", "…/src/hub/desk.rs"]);
+  await expect(page.locator(".dk-ipane .dk-md code")).toHaveText(["npx playwright test", "0.1.22"]);
+  const size = (l) => l.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+  const words = await size(page.locator(".dk-ipane .dk-md").last());
+  for (const l of [chips.first(), page.locator(".dk-ipane .dk-md code").first()]) expect(await size(l)).toBeLessThan(words);
+  for (const box of await chips.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height))) expect(box).toBeLessThan(26);
+});
+
 test("an item's question opens at the page's foot and keeps the answer on its page; a one-question ask has its choices on the row", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);

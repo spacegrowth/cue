@@ -160,7 +160,8 @@
 .dk-h { min-width: 0; margin-top: 1px; color: var(--ink); font-size: 12.5px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Selected: its words in the selected ink, as the Board's selected card. */
 .dk-it.on .dk-id, .dk-it.on .dk-who, .dk-it.on .dk-age, .dk-it.on .dk-h { color: var(--on-sel); }
-.dk-it.ask .dk-h { white-space: normal; overflow-wrap: anywhere; }
+/* An ask in two lines at most (#298): what it wants, not the whole command; that is in the opened item. */
+.dk-it.ask .dk-h { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 /* Links to what an item's holder made, in its pane. */
 .dk-mades { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
 .dk-made { padding: 3px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink); font-size: 12px; cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -421,6 +422,14 @@
 .dk-md > :first-child { margin-top: 0; }
 .dk-md p { margin: 0 0 6px; line-height: 1.5; }
 .dk-md a { overflow-wrap: anywhere; }
+/* Code in an item's words: the mono a size under the words, as in a chat (#305); it had the browser's own size. */
+.dk-md code { font: .86em var(--mono); background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
+/* A file or folder it names: a file chip, as Slack shows one (#305). Its icon, its folder quiet, its name in ink. */
+.dk-md .dk-fchip { display: inline-block; max-width: 100%; box-sizing: border-box; padding: 0 6px; margin: 1px 1px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); color: var(--ink); font: 500 .9em/1.55 var(--sans); vertical-align: bottom; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-decoration: none; }
+.dk-md a.dk-fchip:hover { text-decoration: none; border-color: var(--muted); }
+.dk-fchip-i { margin-right: 4px; color: var(--muted); vertical-align: -1px; }
+.dk-fchip-d { color: var(--muted); font-weight: 400; }
+.dk-fchip-n { font-weight: 600; }
 
 /* Desk home (desk_home.js): one table, a row a Desk (name and what it's about · project and people · tasks · bugs ·
    features · on it), + New Desk at its foot. */
