@@ -1,27 +1,31 @@
 // Pending decisions belong to sessions, including when their current work has no item tag.
 function deskSessionRequests(sid, agent = "") {
-  return state.items.filter((it) => it.session_id === sid && it.status === "pending" && it.kind !== "waiting"
-    && !answering.has(it.id) && (agent ? it.agent_id === agent : !mateOfAsk(it)));
+  return state.items.filter((it) => it.session_id === sid && actionableRequest(it)
+    && (agent ? it.agent_id === agent : !mateOfAsk(it)));
 }
 
 /** Match a pending permission to its task, using the prompt saved when Cue received it. */
 function deskTaskApprovals(d) {
   const tasks = new Map();
   for (const request of state.items) {
-    if (request.status !== "pending" || request.kind !== "permission") continue;
+    if (!actionableRequest(request) || request.kind !== "permission") continue;
     const live = d.items.find((i) => i.ask?.item_id === request.id);
     const prompt = request.thread?.findLast((e) => e.role === "you" && !e.decision);
     const tag = /^(?:Desk item|About) #([a-z0-9_-]+)\b/i.exec(prompt?.text || "")?.[1];
-    const task = live || (tag && d.items.find((i) => deskIdIs(i, tag)
-      && (i.holder?.lead_sid || i.holder?.sid) === request.session_id));
+    const held = (i) => !["done", "dropped"].includes(i.state) && (i.holder?.lead_sid || i.holder?.sid) === request.session_id;
+    // A crew member's ask carries its brief, not "Desk item #id" (#299): its own item, else the one its session holds.
+    const crewOf = request.agent_id && d.items.filter((i) => held(i) && i.holder?.kind === "crew" && i.holder.sid === request.agent_id);
+    const only = d.items.filter(held);
+    const task = live || (tag && d.items.find((i) => deskIdIs(i, tag) && held(i)))
+      || (crewOf?.length === 1 && crewOf[0]) || (!tag && only.length === 1 && only[0]) || null;
     if (task && !["done", "dropped"].includes(task.state) && !tasks.has(task.id)) tasks.set(task.id, request);
   }
   return tasks;
 }
 
 function deskApprovals(d, taskApprovals) {
-  const placed = new Set([...taskApprovals.values()].map((request) => request.id));
-  const requests = state.items.filter((it) => !placed.has(it.id) && deskHasSession(d, it.session_id) && it.status === "pending" && it.kind !== "waiting" && !answering.has(it.id));
+  const placed = new Set(deskWaitingItems(d, taskApprovals).map((i) => i.ask?.item_id));
+  const requests = state.items.filter((it) => !placed.has(it.id) && deskHasSession(d, it.session_id) && actionableRequest(it));
   if (!requests.length) return "";
   return `<section class="dk-approvals" aria-label="Pending requests"><div class="dk-requests-head">Needs your decision <span class="n">${requests.length}</span></div>${requests.map((it) => {
     const who = deskHolderName(it.session_id), command = it.tool_input?.command;
