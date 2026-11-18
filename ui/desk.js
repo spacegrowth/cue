@@ -570,11 +570,6 @@ const DESK_UNDO_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="no
 /** Undo at a row's end: a small quiet icon shown while the pointer is on the row; "asked" once it was. */
 const deskUndoLink = (c) => (c.undo === "can" ? `<button class="dk-undo-l" data-desk-undo="${esc(c.id)}" aria-label="Undo">${DESK_UNDO_ICON}</button>`
   : c.undo === "asked" ? `<span class="dk-u">Undo asked</span>` : "");
-/** What you wrote to the lead, without the summary of the Desk (and, the first time, its instructions) Cue puts before
- *  it: a block of exactly that shape (`<desk project="…" …>`, its lines, `</desk>`, then a blank line before your
- *  words, or nothing at all when you sent only a picture), so words of yours that start with <desk> stay, even typed in
- *  that shape without the project. */
-const deskSaid = (t) => String(t ?? "").replace(/^<desk project="[^"]*"[^>\n]*>\n[\s\S]*?\n<\/desk>(?:\n\n|\s*$)/, "");
 /** Your words about an item ("About #69 (its title): …", as deskSendBox sends them): a head over them with its kind's
  *  icon, its kind and number and its title (a click opens it), and your words under it. null for any other words. */
 function deskAboutHead(e) {
@@ -587,8 +582,6 @@ function deskAboutHead(e) {
   const html = `<button class="dk-about" data-desk-chk-item="${esc(it?.id ?? m[1])}">${deskKindIcon(it)}<b>${esc(it ? deskNum(it) : `#${m[1]}`)}</b> · ${esc(title)}</button>`;
   return { html, text: rest.slice(title.length + 3) };
 }
-/** Your words as the lead's chat shows them (deskSaid). */
-const deskSaidE = (e) => (e.role === "you" ? { ...e, text: deskSaid(e.text) } : e);
 /** A chat the Desk shows: its earlier messages from Cue's log too (its thread keeps only the last few, all a restart
  *  starts with), loaded as it first shows, and Earlier messages above them, as in a session's chat (chat/thread.js). */
 function deskChatRows(s, page) {
