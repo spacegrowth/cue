@@ -171,12 +171,13 @@ impl DeskItem {
     }
 }
 
-/// How many of an item's replies it keeps, and how long each is at most (chars): a page's thread, not a transcript.
+/// How many of an item's replies it keeps, and how long each is at most (chars): each reply whole on its page (#276),
+/// the bound only so a runaway turn can't bloat the Desk's state.
 pub const SAID_KEPT: usize = 20;
-pub const SAID_CHARS: usize = 1200;
+pub const SAID_CHARS: usize = 20_000;
 
-/// One reply on an item's Thread: when (ms), who said it, its words (the Desk's own lines left out), and whether it
-/// said DONE for the item.
+/// One reply on an item's Thread: when (ms), who said it, its words (the Desk's own lines left out), whether it said
+/// DONE for the item, and the session it said it in (its page links to that turn there, #276).
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct Said {
     pub at: u64,
@@ -184,6 +185,8 @@ pub struct Said {
     pub text: String,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub done: bool,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub sid: String,
 }
 
 /// A commit waiting for files another session is editing: the item's files to commit (its folder, the path there),

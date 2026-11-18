@@ -342,6 +342,20 @@
 /* Under what to check (deskCheckInfo): who did it, when, how many files; installed or not, or its mocks. Quiet. */
 .dk-chk-info { margin-top: 8px; display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; color: var(--muted); }
 .dk-chk-info .dk-chk-a { color: var(--ink); font-weight: 600; }
+/* A record line (#276): a hand-off, a Done; one quiet line in the time line, not a message. */
+.dk-tm.rec { padding-bottom: 12px; }
+.dk-tm.rec .dk-tdot i { width: 6px; height: 6px; margin: 5px 4px 0; }
+.dk-tm.rec .dk-tb { font-size: 11.5px; line-height: 1.5; color: var(--muted); overflow-wrap: anywhere; }
+.dk-tm.rec .dk-tb b { color: var(--ink); font-weight: 600; }
+/* A turn's steps in a line, over its words (the live turn). */
+.dk-stp { margin-top: 3px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+/* Under a reply: the link to that turn in its session. */
+.dk-tl { margin-top: 6px; font-size: 12.5px; }
+.dk-tl .dk-tlink { padding: 0; border: 0; background: none; cursor: pointer; font: inherit; color: var(--ink); font-weight: 650; text-decoration: underline; text-underline-offset: 2px; }
+/* Under what you wrote its holder: whether it took it. */
+.dk-rc { margin-top: 5px; display: flex; gap: 6px; font-size: 12px; color: var(--muted); }
+.dk-rc b { color: var(--ink); font-weight: 600; }
+.dk-ck { color: var(--accent); font-weight: 700; }
 .dk-tbar { width: 160px; height: 6px; margin-top: 8px; border-radius: 3px; background: var(--work); }
 .dk-inow .dk-sec { padding: 4px 0 14px; }
 .dk-inow .dk-acts { padding: 0 0 14px; }

@@ -1563,6 +1563,25 @@ fn a_session_holding_two_items_answers_on_the_one_it_is_on_now() {
     assert_eq!((item(&d, "First thing")["now_on"].as_bool(), item(&d, "Second thing")["now_on"].as_bool()), (None, None));
 }
 
+/// A reply is kept whole on its item (no longer cut at 1,200 characters) and names the session it was said in, so the
+/// item's page shows it in full with a link to that turn (#276).
+#[test]
+fn a_long_reply_is_kept_whole_with_its_session() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let a = w.hub().desk_add(&project, "bug", "First thing", "", None).unwrap();
+    w.hub().desk_give(&a.id, &h).unwrap();
+    w.settle();
+    let words = sent_to(&w, &h).into_iter().rev().find(|t| t.contains(&format!("Desk item #{}", a.id))).unwrap();
+    w.hosted_says(&h, HostedEvent::Taken { text: words });
+    let long = format!("Here is what I found.\n\n{}", "Every line of it matters. ".repeat(200).trim_end());
+    ends(&w, &h, &long);
+    let d = desk(&w, &project);
+    let said = &item(&d, "First thing")["said"][0];
+    assert_eq!(said["text"].as_str(), Some(long.as_str()), "kept whole");
+    assert_eq!(said["sid"].as_str(), Some(h.as_str()));
+}
+
 /// A turn's words told again with more after them (a turn that ended on a usage limit) are one reply on the item, the
 /// longer; different words after them are a reply of their own.
 #[test]

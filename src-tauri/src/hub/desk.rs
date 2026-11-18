@@ -848,7 +848,7 @@ fn designs_said(st: &mut Store, sid: &str, text: &str, fx: &mut Effects) {
 
 /// A holder ended a turn at work on items `on`, saying `text`: its words kept on each as a reply on its Thread
 /// (the Desk's own lines left out, cut to `SAID_CHARS`), marked done for one its DONE line names.
-fn replied(st: &mut Store, text: &str, on: &[String], now: u64, fx: &mut Effects) {
+fn replied(st: &mut Store, sid: &str, text: &str, on: &[String], now: u64, fx: &mut Effects) {
     use crate::desk::model::{Said, SAID_CHARS, SAID_KEPT};
     let words: Vec<&str> = text.lines().filter(|l| !desk_line_start(l)).collect();
     let words = words.join("\n").trim().to_string();
@@ -870,10 +870,11 @@ fn replied(st: &mut Store, text: &str, on: &[String], now: u64, fx: &mut Effects
             s.text = words.clone();
             s.at = now;
             s.done |= done.contains(id);
+            s.sid = sid.to_string();
             fx.said.push(id.clone());
             continue;
         }
-        it.said.push(Said { at: now, by, text: words.clone(), done: done.contains(id) });
+        it.said.push(Said { at: now, by, text: words.clone(), done: done.contains(id), sid: sid.to_string() });
         let over = it.said.len().saturating_sub(SAID_KEPT);
         it.said.drain(..over);
         fx.said.push(id.clone());
@@ -1320,7 +1321,7 @@ impl Hub {
             // stalls there: Cue's ask names the item, so the answer to it is tagged.
             let held = super::desk_stall::at_work_with(st, sid);
             let mut on = super::desk_stall::about(st, text, &held, super::desk_stall::now_on(st, sid).as_deref());
-            replied(st, text, &on, now, &mut fx);
+            replied(st, sid, text, &on, now, &mut fx);
             if on.is_empty() && held.len() == 1 {
                 on = held;
             }

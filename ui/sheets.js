@@ -214,8 +214,12 @@ async function openConvo(r, hitAt, from = "search") {
 function convoSheet() {
   const c = convo, live = sessionOf(c.sid);
   const when = (ms) => new Date(ms).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  // The message found: the one at that moment, else (a Desk reply's turn, timed when the turn ended) the agent's
+  // message nearest it, within 2 minutes.
+  const exact = c.items.some((e) => e.at_ms === c.hitAt);
+  const near = !exact && c.hitAt ? c.items.filter((e) => e.role !== "you" && Math.abs(e.at_ms - c.hitAt) < 120_000).sort((x, y) => Math.abs(x.at_ms - c.hitAt) - Math.abs(y.at_ms - c.hitAt))[0] : null;
   const msgs = c.items.map((e) => {
-    const hit = e.at_ms === c.hitAt ? " cv-hit" : "";
+    const hit = e.at_ms === c.hitAt || e === near ? " cv-hit" : "";
     if (e.role === "you") return `<div class="cv-you${hit}"><div class="cv-you-text">${linkify(esc(e.text)).replace(/\n/g, "<br>")}</div>${thumbs(e.images)}<div class="cv-meta">You · ${when(e.at_ms)}</div></div>`;
     return `<div class="cv-agent${hit}"><div class="cv-meta">${esc(e.role === "peer" ? "Another session" : agentName(c.harness))}${e.role === "peer" ? "" : machTag(live?.machine)} · ${when(e.at_ms)}</div><div class="msg cv-text">${md(e.text)}</div></div>`;
   }).join("");

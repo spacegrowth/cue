@@ -61,7 +61,7 @@ test("what you write to a busy holder from its item page says Queued until it ta
     item.holder = { ...(item.holder || {}), name: "web-lead", sid: "lead" };
     const s = sessionOf("lead"), said = `About #${item.id} (${item.title}): sending again`;
     d.decisions.push({ id: "w1", item_id: item.id, by: "You", text: "sending again", why: "to web-lead", at: at / 1000 });
-    const tag = () => deskThread(item, d).find((r) => r.text === undefined && r.you && r.html.includes("sending again"))?.tag;
+    const tag = () => deskThread(item, d).find((r) => r.you && r.text === "sending again")?.tag;
     s.held = { text: said, at_ms: at - 5 };
     const waiting = tag();
     s.held = null; s.thread = [...(s.thread || []), { role: "you", text: said, at_ms: at + 5 }];

@@ -820,6 +820,11 @@ function deskSessChat(sid, from, d, foot = "") {
 /** The session whose steps the Desk follows live (chat/thread.js followSteps): its lead's, while its chat shows, or
  *  the session's whose chat is open. */
 function deskFollowSid() {
+  // An item's page while its holder works: its steps, for the turn it's writing (deskLiveTurn).
+  if (deskOpen?.kind === "item" && deskOpen.project === deskSelection()) {
+    const i = deskItem(deskOpen.project, deskOpen.id), sid = deskHolderSid(i), s = sid && sessionOf(sid);
+    if (s && i.holder.kind !== "crew" && s.state === "working") return sid;
+  }
   if (deskOpen?.kind === "chat" && deskOpen.project === deskSelection()) return sessionOf(deskOpen.sid) ? deskOpen.sid : null;
   if (!deskSelection() || deskOpen || deskTab !== "lead" || deskPick === deskSelection()) return null;
   const d = deskOf(deskSelection()), l = deskLead(d);
@@ -1028,17 +1033,24 @@ function deskThread(i, d) {
   for (const c of mine) {
     if (c.by === "You" && /^(to |sent back)/.test(c.why || "")) {
       const back = c.why.startsWith("sent back");
-      rows.push({ at: deskMs(c.at), by: "You", you: true, back, tag: back ? deskBackLabel(c, i) : deskHeldTag(c, i), html: deskBackWords(c.text, backPics.get(c) || 0) });
+      rows.push({ at: deskMs(c.at), by: "You", you: true, back, tag: back ? deskBackLabel(c, i) : deskHeldTag(c, i), text: c.text, html: deskBackWords(c.text, backPics.get(c) || 0) });
     }
-    else if (DESK_HANDOFF.test(c.text)) rows.push({ at: deskMs(c.at), by: c.by, tag: "Hand-off", html: `<div class="dk-md">${esc(c.text)}${c.why ? `: ${esc(c.why)}` : ""}</div>` });
+    // A hand-off is a record line, not a message (#276): one quiet line in the time line.
+    else if (DESK_HANDOFF.test(c.text)) rows.push({ at: deskMs(c.at), rec: "Hand-off", html: `${esc(c.by)}: ${esc(c.text)}${c.why ? `: ${esc(c.why)}` : ""}` });
   }
+  // What you wrote to its holder from here: under it, whether the holder took it yet (#276).
+  for (const r of rows) if (r.you && !r.back && r.text) r.html += deskTakenHtml(i, r);
   // A reply that's the one before it told again with more after it (a turn on a usage limit, saved twice before the
   // hub kept one): shown once, the longer.
   const said = (i.said || []).filter((r, n, all) => { const x = all[n + 1]; return !(x && x.by === r.by && x.text.startsWith(r.text.replace(/…$/, ""))); });
-  for (const r of said) rows.push({ at: r.at, by: r.by, tag: r.done ? "Done" : "Reply", on: r.done, text: r.text, html: `<div class="dk-md">${md(r.text)}</div>` });
+  // Each reply in full, with a link to that turn in its session; one that said DONE has a record line after it.
+  for (const r of said) {
+    rows.push({ at: r.at, by: r.by, tag: "Reply", text: r.text, html: `<div class="dk-md">${md(r.text)}</div>${deskTurnLink(r)}` });
+    if (r.done) rows.push({ at: r.at + 1, rec: "Done", html: `${esc(r.by)} said ${esc(deskNum(i))} is done` });
+  }
   // Sent from here, not back as a step yet.
   const recorded = (p) => mine.some((c) => c.by === "You" && c.text.trim() === p.text.trim() && (c.delivery?.at_ms || deskMs(c.at) + 999) >= p.at);
-  for (const p of deskPending.get(i.id) || []) if (!recorded(p)) rows.push({ at: p.at, by: "You", you: true, back: p.why === "back", tag: p.why === "back" ? "Sent back (queued)" : p.why === "holder" || p.why === "lead" ? deskHeldTag({ text: p.text, why: `to ${p.why === "lead" ? deskLead(d)?.name : i.holder?.name}`, at: p.at / 1000 }, i) : "", html: deskBackWords(p.text, p.pics) });
+  for (const p of deskPending.get(i.id) || []) if (!recorded(p)) rows.push({ at: p.at, by: "You", you: true, back: p.why === "back", tag: p.why === "back" ? "Sent back (queued)" : p.why === "holder" || p.why === "lead" ? deskHeldTag({ text: p.text, why: `to ${p.why === "lead" ? deskLead(d)?.name : i.holder?.name}`, at: p.at / 1000 }, i) : "", html: deskBackWords(p.text, p.pics) + (p.why === "holder" ? deskTakenHtml(i, { text: p.text, at: p.at }) : "") });
   // At work on this one: its holder can hold several, and its work and latest words are only this one's while it's on
   // it (#176).
   const live = i.state === "working" && i.holder && i.now_on && !i.stopped;
@@ -1051,10 +1063,43 @@ function deskThread(i, d) {
     rows.push({ at: Math.max(deskMs(i.updated), theirs), by: i.holder?.name || i.by || "It", tag: fin ? "Done" : "Reply", on: fin, text: lat, html: `<div class="dk-md">${md(lat)}</div>` });
   }
   rows.sort((a, b) => a.at - b.at);
-  // Its holder at work: last, under what you wrote, as the answer to it comes (#165).
-  if (live) rows.push({ at: 0, by: i.holder.name, live: true, html: `<div class="dk-md dk-quiet">${lat ? md(lat1) : "Working…"}</div><div class="dk-tbar"></div>` });
+  // Its holder at work: last, under what you wrote, as the answer to it comes (#165): the turn it's writing, in full,
+  // as it writes it, with a line for its steps (#276); its latest line till its steps are read.
+  if (live) {
+    const turn = deskLiveTurn(i);
+    rows.push({ at: 0, by: i.holder.name, live: true, tag: turn?.words ? "Writing" : "", html: turn ? `${turn.steps ? `<div class="dk-stp">${esc(turn.steps)}</div>` : ""}${turn.words ? `<div class="dk-md">${md(turn.words)}</div>` : ""}<div class="dk-tbar"></div>`
+      : `<div class="dk-md dk-quiet">${lat ? md(lat1) : "Working…"}</div><div class="dk-tbar"></div>` });
+  }
   return rows;
 }
+/** The session item `i`'s holder works in itself (a crew member's lead for a crew member), or "". */
+const deskHolderSid = (i) => (i?.holder ? (i.holder.kind === "crew" ? i.holder.lead_sid : i.holder.sid) : "");
+/** The turn item `i`'s holder is writing now, from its steps (chat/thread.js loadSteps; the Desk follows it while the
+ *  page is open, deskFollowSid): what it has said so far, whole, and its steps in a line ("read 3 files · 2 edits ·
+ *  now: Ran npm test"). Null till its steps are read, or when its newest turn isn't about this item. */
+function deskLiveTurn(i) {
+  const sid = deskHolderSid(i), turn = sid && i.holder.kind !== "crew" ? stepFeeds.get(sid)?.turns?.at(-1) : null;
+  if (!turn) return null;
+  // The turn started on a message naming this item (the hub's now_on is by the same rule), else it's another one's.
+  if (turn.prompt && !new RegExp(`#${i.id}(?![\\w-])`).test(turn.prompt)) return null;
+  const steps = turn.items.filter((x) => x.t === "step"), going = steps.filter((x) => !x.done).at(-1);
+  const done = turnSummary(steps.filter((x) => x.done));
+  const words = turn.items.filter((x) => x.t === "say").map((x) => x.text).join("\n\n").trim();
+  return { words, steps: [done, going ? `now: ${going.verb}${going.subject ? ` ${going.subject}` : ""}` : ""].filter(Boolean).join(" · ") };
+}
+/** Under what you wrote to item `i`'s holder (`r`: its words and when): "✓ cue-268 took it · 10:42" once its session
+ *  took it, "Waiting: it reads this after its current step" while it works on something before it, else nothing. */
+function deskTakenHtml(i, r) {
+  const sid = deskHolderSid(i), s = sid && sessionOf(sid);
+  if (!s) return "";
+  const words = String(r.text || "").trim().slice(0, 80);
+  const e = words && (s.thread || []).find((x) => x.role === "you" && x.at_ms >= r.at - 60000 && x.text.includes(`#${i.id}`) && x.text.includes(words));
+  const took = e?.delivery?.find((x) => x.what.startsWith("taken"));
+  if (took) return `<div class="dk-rc"><span class="dk-ck" aria-hidden="true">✓</span><span><b>${esc(i.holder.name)}</b> took it · ${esc(clockAt(took.at_ms))}</span></div>`;
+  return e && s.state === "working" ? `<div class="dk-rc">Waiting: it reads this after its current step</div>` : "";
+}
+/** Under a reply: a link to that turn in the session that said it, read where it is in its conversation (#276). */
+const deskTurnLink = (r) => (r.sid ? `<div class="dk-tl"><button class="dk-tlink" data-desk-turn="${esc(r.sid)}" data-at="${r.at}">This turn in ${esc(r.by || "its session")} ›</button></div>` : "");
 /** What you wrote on a Thread, in your words; for a send-back, how many pictures went with it, quiet under them. */
 /** Item `i`'s send-backs (steps in `log`) and how many pictures went with each. The hub counts them on the DONE a
  *  send-back answers (hub/desk.rs send_back: `back_pics` on the last DONE then), so by time, not words: a DONE's
@@ -1080,7 +1125,7 @@ function deskItemSuggestion(key) {
 }
 /** A Thread as a time line: each message's age, a dot (yours and the live one in the accent colour, a send-back's
  *  red), who and what kind, then the words. */
-const deskThreadHtml = (rows) => `<div class="dk-thread">${rows.map((r) => `<div class="dk-tm${r.live ? " live" : ""}"><span class="dk-age">${r.live ? "now" : esc(ago(r.at))}</span><span class="dk-tdot${r.back ? " back" : r.you || r.live ? " on" : ""}"><i></i></span><div class="dk-tb"><div class="dk-tw"><b>${esc(r.by)}</b>${r.tag ? `<span class="dk-ttag${r.back ? " back" : r.on ? " on" : ""}">${esc(r.tag)}</span>` : ""}</div>${r.html}</div></div>`).join("")}</div>`;
+const deskThreadHtml = (rows) => `<div class="dk-thread">${rows.map((r) => r.rec ? `<div class="dk-tm rec"><span class="dk-age">${esc(ago(r.at))}</span><span class="dk-tdot"><i></i></span><div class="dk-tb"><b>${esc(r.rec)}</b> · ${r.html}</div></div>` : `<div class="dk-tm${r.live ? " live" : ""}"><span class="dk-age">${r.live ? "now" : esc(ago(r.at))}</span><span class="dk-tdot${r.back ? " back" : r.you || r.live ? " on" : ""}"><i></i></span><div class="dk-tb"><div class="dk-tw"><b>${esc(r.by)}</b>${r.tag ? `<span class="dk-ttag${r.back ? " back" : r.on ? " on" : ""}">${esc(r.tag)}</span>` : ""}</div>${r.html}</div></div>`).join("")}</div>`;
 function deskItemPane(i, d, foot = "") {
   const all = deskItemLog(i, d).reverse();
   const decs = all.filter((c) => c.call), steps = all.filter((c) => !c.call);
@@ -1116,7 +1161,7 @@ function deskItemPane(i, d, foot = "") {
   const leadOf = h?.kind === "crew" ? deskChatLink(h.lead_sid, deskHolderName(h.lead_sid), d) : "";
   const whoSec = deskPsec("Who", deskPwho("Held by", who ? `${who}${i.crew ? ` → <b>${esc(i.crew)}</b>` : ""}` : "nobody yet") + deskPwho("Lead", leadOf) + deskPwho("Files", nFiles ? `${nFiles} ${checking ? "changed" : "on it"}` : ""));
   return deskPage({ page: "item", kind: i.kind, back: deskBack(deskLeadName(d) || "Back"),
-    acts: sid && sessionOf(sid) ? `<span class="dk-ilinks"><button class="btn small" ${deskChatAttrs(sid, d)}>Open ${esc(h.name)}</button></span>` : "",
+    acts: sid && sessionOf(sid) ? `<span class="dk-ilinks"><button class="btn small" ${deskChatAttrs(sid, d)}>Watch ${esc(h.name)}</button></span>` : "",
     mark: `${deskNum(i)} · `, title: esc(i.title), meta: `<span class="dk-state">${deskItemMeta(i, d)}</span>`,
     now: deskPnow({ ...deskItemNow(i), acts: `${deskLooksTop(i)}${backing ? "" : deskItemActs(i)}${deskDesignsLink(i)}`, fold: pts.length ? `${ticked} of ${pts.length} done` : "" }),
     panel: done + whoSec, main, foot });
@@ -1233,9 +1278,15 @@ function deskBox(d) {
   let to = { project: d.project }, ph = `Tell ${lead}: a bug, a feature, or a question…`, pre = "";
   if (o?.kind === "item") {
     to = { project: d.project, item: o.id };
-    // Who gets it, as deskSendBox sends it: ready to check, it goes back to its holder; else to the lead.
-    const it = deskItem(d.project, o.id);
-    ({ pre, ph } = deskToLine(it?.state === "to_check" && it.holder ? it.holder.name : lead, it));
+    // Who gets it, as deskSendBox sends it: ready to check, it goes back to its holder; begun by a live session, straight
+    // to it, sent as about the item, and the lead gets no copy (#276); else (no holder, not begun yet, or done) to the lead.
+    const it = deskItem(d.project, o.id), hs = deskHolderSid(it);
+    if (it && hs && sessionOf(hs) && !["to_check", "done", "queued", "new", "dropped"].includes(it.state)) {
+      to = it.holder.kind === "crew" ? { sid: hs, mate: it.holder.name, item: it.id } : { sid: hs, item: it.id };
+      pre = it.holder.kind === "crew" ? `To ${it.holder.name}, through ${deskHolderName(hs)} · sent as #${it.id}` : `To ${it.holder.name}, who has this item · sent as #${it.id}`;
+      ph = "Write to it here…";
+    }
+    else ({ pre, ph } = deskToLine(it?.state === "to_check" && it.holder ? it.holder.name : lead, it));
   }
   else if (o?.kind === "holder" || o?.kind === "crew" || o?.kind === "chat") {
     const sid = o.kind === "crew" ? o.lead : o.sid;
@@ -1459,7 +1510,7 @@ async function deskSendBox(key) {
     else if (state.restarting?.[to.sid]) return toast("It's restarting. Send once it's back.");
     else if (sessionOf(to.sid)?.state === "deciding") return toast("It's asking you something first. Answer that, then send.");
     else await deliver(to.sid, key, (typed, images) => {
-      const said = `About ${to.mate}: ${typed}`;
+      const said = it ? /* its item's number too, so the turn is that item's (#276) */ `About #${it.id} (${it.title}), for ${to.mate}: ${typed}` : `About ${to.mate}: ${typed}`;
       insSent(to.sid, said, false);
       return invoke("send_to_session", { sessionId: to.sid, text: said, images, now: false });
     });
@@ -1599,6 +1650,8 @@ const DESK_CLICKS = {
   },
   deskRen: (el) => renameSession({ dataset: { rename: el.dataset.deskRen } }),
   // Opened from an item's page or a holder's, it remembers that page so ‹ goes back to it (from the left list: the lead).
+  // A reply's "This turn in …": that turn where it is in its session's conversation, read-only (#276).
+  deskTurn: (el) => { const s = sessionOf(el.dataset.deskTurn) || {}; openConvo({ session_id: el.dataset.deskTurn, name: s.name, project: s.project, harness: s.harness || "claude" }, Number(el.dataset.at), "Desk"); },
   deskChatOf: (el) => { deskChatEnd = true; deskShow({ kind: "chat", sid: el.dataset.deskChatOf, from: ["item", "holder"].includes(deskOpen?.kind) ? { ...deskOpen } : null }); },
   deskChatBack: () => deskShow(deskOpen?.from || null),
   deskAddSession: (el) => {
