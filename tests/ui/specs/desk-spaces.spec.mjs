@@ -3,7 +3,7 @@ import { test, expect } from "./cue.mjs";
 test("two named Desks share a folder, keep separate items, and rename independently", async ({ cue, page }) => {
   await cue.open("desk");
   await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator("[data-desk-home]").click();
+  await page.locator("[data-desk-switch]").click(); await page.locator("[data-desk-home]").click();
   const workspaceFilter = await page.evaluate(() => projFilter);
   async function create(name) {
     await page.locator(".dh-add").click();
@@ -19,7 +19,7 @@ test("two named Desks share a folder, keep separate items, and rename independen
   await qa.fill("Only A");
   await qa.press("Enter");
   await expect(page.locator(".dk-items")).toContainText("Only A");
-  await page.locator("[data-desk-home]").click();
+  await page.locator("[data-desk-switch]").click(); await page.locator("[data-desk-home]").click();
   const b = await create("Feature B");
   expect(a).not.toBe(b);
   await expect(page.locator(".dk-items")).not.toContainText("Only A");
@@ -32,7 +32,7 @@ test("two named Desks share a folder, keep separate items, and rename independen
   await page.locator(".pj-name-in").press("Enter");
   await cue.called("desk_rename", { id: b, name: "Bob's feature" });
   await expect(page.locator(".dk-sh b")).toHaveText("Bob's feature");
-  await page.locator("[data-desk-home]").click();
+  await page.locator("[data-desk-switch]").click(); await page.locator("[data-desk-home]").click();
   await page.locator(`[data-desk-project="${a}"]`).click();
   await expect(page.locator(".dk-sh b")).toHaveText("Feature A");
   await expect(page.locator(".dk-items")).toContainText("Only A");
@@ -66,7 +66,7 @@ test("deleting a Desk confirms what is removed and keeps its sessions", async ({
   await expect(page.locator(".dk-sh b")).toHaveText("My Desk");
   // A Desk is deleted from Desks, not from its own header (#215).
   await expect(page.locator(".dk-strip [data-desk-delete]")).toHaveCount(0);
-  await page.locator("[data-desk-home]").click();
+  await page.locator("[data-desk-switch]").click(); await page.locator("[data-desk-home]").click();
   await expect(page.locator(".dh-nm")).toHaveText("My Desk");
   await page.locator('[data-desk-delete="desk-1"]').click();
   await expect(page.locator(".dh-confirm")).toContainText("Close these sessions");
@@ -97,7 +97,7 @@ test("deleting a Desk closes selected sessions and protects shared or working se
     d.members.push("keep", "shared", "busy");
     st.desk.projects.push({ project: "desk-other", independent: true, name: "Other", workspace_project: "project", items: [], decisions: [], members: ["shared"] });
   });
-  await page.locator("[data-desk-home]").click();
+  await page.locator("[data-desk-switch]").click(); await page.locator("[data-desk-home]").click();
   await page.locator('[data-desk-delete="desk-1"]').click();
   await expect(page.locator('[data-desk-close-session="lead-desk-1"]')).toBeChecked();
   await expect(page.locator('[data-desk-close-session="keep"]')).toBeChecked();
