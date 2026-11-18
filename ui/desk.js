@@ -1192,8 +1192,8 @@ function deskTakenHtml(i, r) {
   const words = String(r.text || "").trim().slice(0, 80);
   const e = words && (s.thread || []).find((x) => x.role === "you" && x.at_ms >= r.at - 60000 && x.text.includes(`#${i.id}`) && x.text.includes(words));
   const took = e?.delivery?.find((x) => x.what.startsWith("taken"));
-  if (took) return `<div class="dk-rc"><span class="dk-ck" aria-hidden="true">✓</span><span><b>${esc(i.holder.name)}</b> took it · ${esc(clockAt(took.at_ms))}</span></div>`;
-  return e && s.state === "working" ? `<div class="dk-rc">Waiting: it reads this after its current step</div>` : "";
+  if (took) return `<div class="dk-took"><span class="dk-ck" aria-hidden="true">✓</span><span><b>${esc(i.holder.name)}</b> took it · ${esc(clockAt(took.at_ms))}</span></div>`;
+  return e && s.state === "working" ? `<div class="dk-took">Waiting: it reads this after its current step</div>` : "";
 }
 /** Under a reply: what a Stop hook made its holder write after its answer (a checklist), folded as the chat folds it
  *  (chat/render.js hookFold), so it never reads as the reply (#310). "" when no hook sent it back. */

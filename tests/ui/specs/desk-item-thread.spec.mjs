@@ -85,7 +85,9 @@ test("the box on an item at work goes straight to its holder, sent as the item, 
     if (e) e.delivery = [{ at_ms: at, what: "taken" }];
     else (s.thread ||= []).push({ at_ms: at, role: "you", text, delivery: [{ at_ms: at, what: "taken" }] });
   }, sent.args.text);
-  await expect(page.locator(".dk-right .dk-thread .dk-rc").last()).toContainText("host-lead took it");
+  await expect(page.locator(".dk-right .dk-thread .dk-took").last()).toContainText("host-lead took it");
+  if (process.env.SHOT_DIR) await page.locator(".dk-right .dk-thread .dk-took").last().locator("xpath=..").screenshot({ path: `${process.env.SHOT_DIR}/took.png` });
+  expect(await page.locator(".dk-right .dk-thread .dk-took").last().evaluate((e) => { const c = getComputedStyle(e); return [c.borderTopWidth, c.backgroundColor, c.cursor, e.tagName]; })).toEqual(["0px", "rgba(0, 0, 0, 0)", "auto", "DIV"]);
 });
 
 test("while its holder works on it, the item shows the turn it's writing, whole, with its steps in a line", async ({ page, cue }) => {

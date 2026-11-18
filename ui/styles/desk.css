@@ -354,8 +354,8 @@
 .dk-tl { margin-top: 6px; font-size: 12.5px; }
 .dk-tl .dk-tlink { padding: 0; border: 0; background: none; cursor: pointer; font: inherit; color: var(--ink); font-weight: 650; text-decoration: underline; text-underline-offset: 2px; }
 /* Under what you wrote its holder: whether it took it. */
-.dk-rc { margin-top: 5px; display: flex; gap: 6px; font-size: 12px; color: var(--muted); }
-.dk-rc b { color: var(--ink); font-weight: 600; }
+.dk-took { margin-top: 5px; display: flex; gap: 6px; font-size: 12px; color: var(--muted); }
+.dk-took b { color: var(--ink); font-weight: 600; }
 .dk-ck { color: var(--accent); font-weight: 700; }
 .dk-tbar { width: 160px; height: 6px; margin-top: 8px; border-radius: 3px; background: var(--work); }
 .dk-inow .dk-sec { padding: 4px 0 14px; }
