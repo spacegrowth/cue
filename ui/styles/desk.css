@@ -893,3 +893,19 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
 .dk-wo-link > span { flex: 1; min-width: 0; }
 .dk-wo .dk-acts { padding: 8px 0 0; }
 .dk-wo-done { align-self: center; color: var(--muted); font-size: 12px; }
+/* A crew member's page (#303, pick A): Doing, Why, Result. */
+.dk-crewpg .dk-csp { margin-left: 6px; font-weight: 600; letter-spacing: 0; text-transform: none; }
+.dk-cnow { margin: 0 0 8px; font-size: 14.5px; font-weight: 600; line-height: 1.45; }
+.dk-cnow .dk-quiet { font-weight: 400; }
+.dk-csteps { list-style: none; margin: 0 0 4px; padding: 0; display: grid; gap: 4px; font-size: 12.5px; color: var(--muted); }
+.dk-csteps li { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.dk-csteps li > span { min-width: 0; overflow-wrap: anywhere; }
+.dk-csteps i { flex: none; width: 12px; font-style: normal; text-align: center; }
+.dk-csteps li.now { color: var(--ink); }
+.dk-csteps li.ask { color: var(--deny); }
+.dk-cwhy { margin: 0 0 8px; padding: 10px 12px; border-radius: 10px; background: var(--panel-2); }
+.dk-cwho { margin-bottom: 4px; font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.dk-cmore { position: relative; display: inline-flex; }
+.dk-cmenu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 20; display: grid; min-width: 160px; padding: 4px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); box-shadow: 0 6px 20px rgb(0 0 0 / .12); }
+.dk-cmenu button { all: unset; padding: 6px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.dk-cmenu button:hover, .dk-cmenu button:focus-visible { background: var(--panel-2); }
