@@ -531,9 +531,19 @@ function deskSessions(project, taskApprovals) {
       return `<label class="dk-add-option"><input type="checkbox" data-desk-member="${esc(r.sid)}" data-project="${esc(project)}"${member ? " checked" : ""}${locked ? " disabled" : ""}><span aria-hidden="true">${deskKindIcon(r.sid === leadSid ? "desk" : r.lead ? "lead" : "session")}</span><span>${esc(r.name)}${r.sid === leadSid ? " · Dispatcher" : ""}${locked ? '<small class="dim">Has work history</small>' : ""}</span></label>`;
     }).join("")
     : '<div class="dim">No project sessions available.</div>'}</div>` : "";
-  return `<div class="dk-card dk-sessions">${deskSessHead(project, mine.length, runs, leadS ? row(leadS, true) : "")}
+  return `<div class="dk-card dk-sessions">${deskSessHead(project, mine.length, runs, leadS ? row(leadS, true) : "")}${deskLeadBar(leadS)}
     ${deskApprovals(d, taskApprovals)}<div class="dk-scroll" data-scroll-key="desk-sessions:${esc(project)}">${body}</div>
     <div class="dk-sfoot"><div class="dk-add-anchor"><button class="btn small dk-add-button" data-desk-add-session="${esc(project)}" aria-label="Add session" aria-expanded="${picking}"${picking ? ' aria-controls="desk-add-picker"' : ""}><span aria-hidden="true">+</span></button>${picker}</div></div></div>`;
+}
+/** The line under the lead's card (#263): the same working light a chat shows along its top (.sweep, chat.css), moving
+ *  while the lead works (calmer after a quiet spell, still and amber when stuck, as sweep() in chat/thread.js), a plain
+ *  lime line while it's idle. No data-sweep: that one is the open chat's, carried over by patch.js. The desk redraws
+ *  often, so each new light starts where the clock says its pass is, never over from the left. */
+function deskLeadBar(s) {
+  if (!(s?.state === "working" || s?.compacting_ms)) return '<div class="dk-lbar"></div>';
+  if (s.stuck_ms && !s.compacting_ms) return '<div class="dk-lbar on"><i class="sweep stalled"></i></div>';
+  const calm = now() - Math.max(s.doing_ms || 0, s.compacting_ms || 0, s.since_ms || 0) > QUIET_MS, ms = calm ? CALM_MS : SWEEP_MS;
+  return `<div class="dk-lbar on"><i class="sweep${calm ? " calm" : ""}" style="animation-duration:${ms}ms;animation-delay:-${Date.now() % ms}ms"></i></div>`;
 }
 /** The head strip (pick B2), set in from the card's sides so it never meets the window's own colour: the Desk's name
  *  opens the switcher (every Desk, All Desks, + New Desk), ⋯ to hand the Desk to another session, this Desk's name (✎ on hover renames it, as the projects list

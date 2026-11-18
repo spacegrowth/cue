@@ -1750,9 +1750,10 @@ test("the head is one strip in the accent, flush across the card's top: the name
   expect(edge).toBe("none");
   expect(radius).toBe("14px");
   expect(bottom).toBe("0px");
-  // Pick O: the column lifts off the window with a light hairline and a shadow; a 3px lime line closes the strip.
+  // Pick O: the column lifts off the window with a light hairline and a shadow; a 3px lime line closes the strip (the
+  // lead's working line, #263: lime while it's idle, the chat's working light while it works; its own test below).
   expect((await cssOf(left, "box-shadow"))[0]).toMatch(/0px 0px 0px 1px.*0px 10px 28px/);
-  expect(await cssOf(strip, "border-bottom-width", "border-bottom-color")).toEqual(["3px", "rgb(210, 222, 150)"]);
+  expect(await cssOf(left.locator(".dk-strip + .dk-lbar"), "height")).toEqual(["3px"]);
   expect(await page.locator(".dk-board [title]").count()).toBe(0);
 });
 
@@ -1860,7 +1861,45 @@ test("no line under the strip: the list starts right after it", async ({ page, c
   await cue.open("desk");
   await openDesk(page);
   await expect(page.locator(".dk-sessions .dk-sum")).toHaveCount(0);
-  expect(await page.locator(".dk-sessions .dk-strip").evaluate((el) => el.nextElementSibling.classList.contains("dk-scroll"))).toBe(true);
+  // Only the lead's working line (#263) between them.
+  expect(await page.locator(".dk-sessions .dk-strip").evaluate((el) => el.nextElementSibling.classList.contains("dk-lbar"))).toBe(true);
+  expect(await page.locator(".dk-sessions .dk-lbar").evaluate((el) => el.nextElementSibling.classList.contains("dk-scroll"))).toBe(true);
+});
+
+test("the line under the Run by card is the chat's working light while the lead works, a plain lime line when idle (#263)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  const lead = await page.locator(".dk-strip .dk-lcard").getAttribute("data-desk-lead-chat");
+  const set = (state, extra = {}) => cue.change((st, a) => { Object.assign(st.sessions.find((x) => x.session_id === a.lead), { stuck_ms: 0, compacting_ms: 0, doing_ms: Date.now(), since_ms: Date.now(), ...a.v }); }, { lead, v: { state, ...extra } });
+  const bar = page.locator(".dk-sessions .dk-lbar");
+  const sel = () => page.evaluate(() => { const i = document.createElement("i"); i.style.background = "var(--sel)"; document.body.append(i); const c = getComputedStyle(i).backgroundColor; i.remove(); return c; });
+  for (const c of ["light", "dark"]) {
+    await page.emulateMedia({ colorScheme: c });
+    await set("working");
+    // The chat's own .sweep (chat.css), moving: same class, same keyframes, same height, at the line's top.
+    const sw = bar.locator("i.sweep");
+    await expect(sw).toHaveCount(1);
+    await expect(bar).toHaveClass(/\bon\b/);
+    // (The harness turns every animation off, so the rule the light matches is read instead.)
+    const st = await sw.evaluate((el) => {
+      const rules = [...document.styleSheets].flatMap((sh) => [...sh.cssRules]).filter((r) => r.selectorText && !r.selectorText.startsWith("*") && el.matches(r.selectorText) && r.style.animationName);
+      return { name: rules.at(-1)?.style.animationName, h: getComputedStyle(el).height, top: el.getBoundingClientRect().top - el.parentElement.getBoundingClientRect().top, chat: el.hasAttribute("data-sweep") };
+    });
+    expect(st).toEqual({ name: "sweep", h: "3px", top: 0, chat: false });
+    // It runs over the panel, as along a chat's top, not over the lime.
+    expect(await bar.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe(await sel());
+    if (process.env.SHOT_DIR) await page.locator(".dk-sessions").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-lead-bar-working-${c}.png` });
+    // Stuck: still and amber, as the chat's.
+    await set("working", { stuck_ms: Date.now() - 600000 });
+    await expect(bar.locator("i.sweep.stalled")).toHaveCount(1);
+    // Idle: no light, a plain lime line under the card.
+    await set("idle");
+    await expect(bar.locator("i")).toHaveCount(0);
+    await expect(bar).not.toHaveClass(/\bon\b/);
+    expect(await bar.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(await sel());
+    expect(await bar.evaluate((el) => el.getBoundingClientRect().height)).toBe(3);
+    if (process.env.SHOT_DIR) await page.locator(".dk-sessions").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-lead-bar-idle-${c}.png` });
+  }
 });
 
 test("a row's state dot sits after its name with its word: working blinks, waiting on you a still red dot, idle a hollow ring", async ({ page, cue }) => {

@@ -481,7 +481,10 @@
    closes it off from the sessions. Dark: the strip is a dark green, not lime, so the lead's card lights lime when open
    exactly as a row does, in both themes. */
 .dk-sessions { box-shadow: 0 0 0 1px color-mix(in oklab, white 28%, transparent), 0 10px 28px rgba(0, 0, 0, .35); }
-.dk-sessions .dk-strip { border-bottom: 3px solid var(--sel); }
+/* Under the lead's card (#263): a plain lime line while the lead is idle; while it works, the chat's own working light
+   (.sweep, chat.css) runs along it over the panel, exactly as along a chat's top. */
+.dk-lbar { position: relative; flex: none; height: 3px; overflow: hidden; background: var(--sel); }
+.dk-lbar.on { background: var(--panel); }
 :root[data-theme="dark"] .dk-sessions .dk-strip { background: color-mix(in oklab, var(--accent) 22%, var(--panel)); color: var(--ink); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .dk-sessions .dk-strip { background: color-mix(in oklab, var(--accent) 22%, var(--panel)); color: var(--ink); } }
 .dk-sh { display: flex; flex-direction: column; min-width: 0; }
