@@ -34,6 +34,11 @@ test("Open N sits under Running now: each row is one short line, what's open · 
   expect(lines.every(([h, t]) => h < 40 && t === "ellipsis")).toBe(true);
   expect((await page.locator(".ib-open .ib-op-act").allTextContents()).slice(0, 4)).toEqual(["Reply", "Open", "Open", "Send fixes"]);
   expect(await page.locator(".ib-open [title]").count()).toBe(0);
+  // Under the pointer a button lights up, so you know a click lands.
+  const btn = page.locator(".ib-open button.ib-op-act").nth(1), bg = () => btn.evaluate((el) => getComputedStyle(el).backgroundColor);
+  const still = await bg();
+  await btn.hover();
+  await expect.poll(bg).not.toBe(still);
 });
 
 test("only the row waiting on you is red", async ({ cue, page }) => {
