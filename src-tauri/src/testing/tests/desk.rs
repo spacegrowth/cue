@@ -77,6 +77,25 @@ fn lines_are_read_outside_code_and_quotes() {
 }
 
 #[test]
+fn an_ask_keeps_every_choice_however_they_are_separated() {
+    let want = vec!["Merge now".to_string(), "Wait for #12".into(), "Drop it".into()];
+    for text in [
+        "ASK: Merge? | choices: Merge now / Wait for #12 / Drop it",
+        "ASK: Merge? | choices: Merge now | Wait for #12 | Drop it",
+        "ASK: Merge? | choices: Merge now; Wait for #12; Drop it",
+        "ASK: Merge? | choices: Merge now, Wait for #12, Drop it",
+        "ASK: Merge? | choices: Merge now, Wait for #12 or Drop it",
+        "ASK: #a1 | Merge? | choices: \"Merge now\" | \"Wait for #12\" | \"Drop it\"",
+    ] {
+        let Some(Line::Ask { choices, .. }) = lines(text).pop() else { panic!("{text}") };
+        assert_eq!(choices, want, "{text}");
+    }
+    // A slash keeps commas inside a choice.
+    let Some(Line::Ask { choices, .. }) = lines("ASK: Which? | choices: Yes, merge it / No, wait").pop() else { panic!() };
+    assert_eq!(choices, vec!["Yes, merge it".to_string(), "No, wait".into()]);
+}
+
+#[test]
 fn an_item_you_add_is_kept_across_a_relaunch() {
     let mut w = World::new();
     let it = w.hub().desk_add("web", "bug", "Header jumps", "it stays put", None).unwrap();
@@ -491,6 +510,36 @@ fn an_item_you_give_goes_to_that_session_and_is_your_decision() {
     w.settle();
     assert!(sent_to(&w, &h).iter().any(|t| t.contains("has moved to second")));
     assert!(w.hub().desk_give("nope", &s).is_err());
+}
+
+#[test]
+fn the_dispatcher_sees_idle_routes_first_and_can_queue_overlapping_work_for_a_new_session() {
+    let w = World::new();
+    let (busy, project) = holder(&w);
+    let lead = new_lead(&w, &project);
+    let idle = second(&w, "idle-worker");
+    ends(&w, &lead, "ITEM: Header\nROUTE: #new -> cue-teams | why: owns header.js");
+    let head = item(&desk(&w, &project), "Header")["id"].as_str().unwrap().to_string();
+    w.hosted_says(&busy, HostedEvent::Taken { text: "Header".into() });
+    let block = w.hub().desk_summary(&project, &lead, false).0;
+    let (_, routes) = block.split_once("Desk routes (or use ROUTE: #<id> -> new):\n").unwrap();
+    assert!(routes.find("idle-worker (sid:").unwrap() < routes.find("cue-teams (sid:").unwrap(), "{routes}");
+    assert!(routes.contains(&format!("idle-worker (sid:{}, idle)", &idle[..8])), "{routes}");
+    assert!(block.contains(crate::desk::ROUTING_GUIDANCE), "{block}");
+
+    let launches = w.hosted.launched().len();
+    ends(&w, &lead, &format!(
+        "ITEM: Styles\nROUTE: #new -> idle-worker | why: independent stylesheet\nITEM: Header links\nROUTE: #new -> new | after: #{head} | why: also edits header.js"
+    ));
+    let view = desk(&w, &project);
+    assert_eq!(item(&view, "Styles")["holder"]["sid"], idle);
+    let links = item(&view, "Header links");
+    assert_eq!((links["state"].as_str(), links["after"].as_str()), (Some("queued"), Some(head.as_str())));
+    assert_eq!(w.hosted.launched().len(), launches);
+    ends(&w, &busy, &format!("DONE: #{head}"));
+    let view = desk(&w, &project);
+    assert_eq!(item(&view, "Header links")["state"], "working");
+    assert_eq!(w.hosted.launched().len(), launches + 1);
 }
 
 #[test]
@@ -1326,12 +1375,16 @@ fn a_holder_that_said_whats_left_or_who_it_waits_on_isnt_asked_again() {
     };
     turn("Header", "It's in another session's files.\nWaiting on cue-161 to take it.");
     assert_eq!(asked(), 0, "said who it waits on");
+    // Waiting isn't stopping (#249): shown as waiting on that, and the lead isn't told.
+    let it = item(&desk(&w, &project), "Header").clone();
+    assert_eq!((it["state"].as_str(), it["stopped"].as_bool(), it["waiting"].as_str()), (Some("working"), None, Some("Waiting on cue-161 to take it.")), "{it}");
+    assert_eq!(sent_to(&w, &l).iter().filter(|t| t.contains(") stopped:")).count(), 0);
     turn("ok", "Understood.");
     turn("ok", "Nothing changed here.");
     assert_eq!(asked(), 0, "{:?}", sent_to(&w, &h));
-    // Nothing to ask you: the Desk lead settles it, told once.
+    // A turn that no longer says it waits, with nothing to ask you: the Desk lead settles it, told once.
     let it = item(&desk(&w, &project), "Header").clone();
-    assert_eq!((it["state"].as_str(), it["stopped"].as_bool()), (Some("working"), Some(true)), "{it}");
+    assert_eq!((it["state"].as_str(), it["stopped"].as_bool(), it["waiting"].as_str()), (Some("working"), Some(true), None), "{it}");
     assert_eq!(sent_to(&w, &l).iter().filter(|t| t.contains(") stopped:")).count(), 1);
     // Sent again: a new stall, asked once.
     ends(&w, &l, &format!("ROUTE: #{id} -> {h} | why: back to it"));
