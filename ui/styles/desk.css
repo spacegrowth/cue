@@ -529,7 +529,10 @@
 .dk-sh .dk-ren:hover, .dk-strip .dk-more-btn:hover, .dk-strip .dk-more-btn:focus-visible { background: color-mix(in oklab, currentColor 14%, transparent); color: inherit; }
 /* The lead's card: white (dark: the panel); while its chat shows, lit lime as an open row is. */
 /* Edge to edge across the strip's foot, as the rows below are (#202), so it reads as a row you open, not a box. */
-.dk-lcard { margin: 12px -14px -14px; padding: 11px 20px 12px; background: var(--panel); color: var(--ink); cursor: pointer; }
+/* #269 (pick A): "Run by" is a head of its own over the card, as "Working" heads the rows below, and the card is
+   exactly a session row's size, so it reads as a row you open, not part of the strip. */
+.dk-lh { margin: 12px 0 6px; padding-left: 6px; font: 700 11px var(--sans); letter-spacing: .08em; text-transform: uppercase; opacity: .75; }
+.dk-lcard { margin: 0 -14px -14px; padding: 12px 20px; background: var(--panel); color: var(--ink); cursor: pointer; }
 .dk-lcard:hover { background: var(--panel-2); }
 .dk-lcard.on { background: var(--sel); color: var(--on-sel); }
 .dk-lcard:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
@@ -539,8 +542,7 @@
 .dk-lcard .badge { width: 16px; height: 16px; border-radius: 4px; font-size: 9px; }
 .dk-lcard.on .badge:not(.h-pi) { background: var(--on-sel); color: var(--sel); }
 .dk-lcard .dk-lk { flex: none; font: 700 10px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-.dk-lcard .dk-s2, .dk-lcard .dk-s3 { margin-left: 0; }
-.dk-lcard .dk-s2 { font-size: 12px; }
+.dk-lcard:has(.dk-ric) > :is(.dk-s2, .dk-s3) { margin-left: 22px; }
 .dk-lcard:hover .dk-sren { opacity: 1; }
 .dk-ren { all: unset; flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; color: var(--muted); cursor: pointer; opacity: 0; }
 .dk-sh:hover .dk-ren, .dk-ren:focus-visible { opacity: 1; }

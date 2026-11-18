@@ -1644,7 +1644,8 @@ test("three columns: the project's sessions on the left, the lead's chat in the 
   const left = page.locator(".dk-sessions");
   await expect(left.locator('.dk-strip .dk-lcard[data-desk-lead-chat="lead"]')).toHaveCount(1);
   await expect(left.locator('.dk-lcard .dk-pill')).toHaveCount(0);
-  await expect(left.locator(".dk-lcard .dk-lk")).toHaveText("Run by");
+  await expect(left.locator(".dk-strip .dk-lh + .dk-lcard")).toHaveCount(1);
+  await expect(left.locator(".dk-strip .dk-lh")).toHaveText("Run by");
   // What each row is as the chat headers' icon before its name, the Dispatcher's signpost on the lead's card (#202).
   await expect(left.locator('.dk-lcard .dk-s1 > .dk-ric[data-desk-type="desk"] svg.dk-kic')).toHaveCount(1);
   await expect(left.locator('[data-desk-chat-of="host"] .dk-ric')).toHaveAttribute("aria-label", "Session");
@@ -1842,7 +1843,10 @@ test("the lead's card in the strip: Run by, its state and the item it holds; ope
   await openDesk(page);
   const lead = page.locator('.dk-strip .dk-lcard[data-desk-lead-chat="lead"]');
   await expect(lead.locator(".dk-larrow")).toHaveText("›");   // open, so it has the › (#219)
-  await expect(lead.locator(".dk-lk")).toHaveText("Run by");
+  // "Run by" heads the card as a line of its own (#269), not a word inside it.
+  await expect(lead.locator(".dk-lk")).toHaveCount(0);
+  await expect(page.locator(".dk-strip .dk-lh")).toHaveText("Run by");
+  expect(await page.locator(".dk-strip .dk-lh").evaluate((el) => el.nextElementSibling.matches(".dk-lcard"))).toBe(true);
   await expect(lead.locator(".dk-nm")).toHaveText("web-lead");
   await expect(lead.locator(".dk-st")).toHaveText("waiting on you");
   await expect(lead.locator(".dk-st > i.ask")).toHaveCount(1);
@@ -1901,6 +1905,25 @@ test("no line under the strip: the list starts right after it", async ({ page, c
   await cue.change((st) => { st.items = st.items.filter((i) => i.status !== "pending"); });
   await expect(page.locator(".dk-sessions .dk-approvals")).toHaveCount(0);
   expect(await page.locator(".dk-sessions .dk-lbar").evaluate((el) => el.nextElementSibling.classList.contains("dk-scroll"))).toBe(true);
+});
+
+test("the Run by card is a session row's size: same padding, name, item line and indent, under a Run by head like Working (#269)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  const lead = page.locator(".dk-strip .dk-lcard"), row = page.locator(".dk-sessions .dk-scroll .dk-srow:not(.crew)").first();
+  const look = (loc) => loc.evaluate((el) => {
+    const c = getComputedStyle(el), nm = getComputedStyle(el.querySelector(".dk-nm")), s2 = el.querySelector(".dk-s2");
+    return { pad: c.padding, nm: `${nm.fontSize} ${nm.fontWeight}`, s2: s2 ? getComputedStyle(s2).fontSize : null,
+      indent: s2 ? Math.round(s2.getBoundingClientRect().left - el.getBoundingClientRect().left) : null };
+  });
+  const [a, b] = [await look(lead), await look(row)];
+  expect(a.pad).toBe(b.pad);
+  expect(a.nm).toBe(b.nm);
+  if (a.s2 && b.s2) { expect(a.s2).toBe(b.s2); expect(a.indent).toBe(b.indent); }
+  // The head reads as the list's group heads do: same face, size and spacing.
+  const font = (loc) => loc.evaluate((el) => { const c = getComputedStyle(el); return [c.fontSize, c.fontWeight, c.letterSpacing, c.textTransform].join(" "); });
+  expect(await font(page.locator(".dk-strip .dk-lh"))).toBe(await font(page.locator(".dk-sessions .dk-gh").first()));
+  if (process.env.SHOT_DIR) for (const c of ["light", "dark"]) { await page.emulateMedia({ colorScheme: c }); await page.waitForTimeout(150); await page.screenshot({ clip: await page.locator(".dk-sessions").boundingBox(), path: `${process.env.SHOT_DIR}/cue-desk-runby-${c}.png` }); }
 });
 
 test("the line under the Run by card is the chat's working light while the lead works, a plain lime line when idle (#263)", async ({ page, cue }) => {
