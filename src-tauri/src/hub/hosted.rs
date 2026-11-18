@@ -198,38 +198,10 @@ impl Hub {
             e @ (HostedEvent::Compacting { .. } | HostedEvent::CompactFailed) => self.hosted_compacted(&origin.session_id, &e),
             HostedEvent::Suggested { text } => self.hosted_suggested(&origin, &text),
             HostedEvent::Ask(a) => self.hosted_ask(origin, a),
-            HostedEvent::TurnEnded { text, failed, cost_usd, unprompted } => {
-                self.set_cost(&origin.session_id, base + cost_usd);
-                let stopped = self.write(|st| st.hosted_stopped.remove(&origin.session_id));
-                if failed && stopped.is_some() {
-                    // The turn Cue stopped, ending as Claude ends one ("[ede_diagnostic] …"): not an error. Stopped
-                    // by you, it stays stopped (a step it was on may have brought it back to work meanwhile).
-                    if stopped == Some(true) {
-                        self.write(|st| st.sessions.mark(&origin, "stopped", None));
-                        self.changed();
-                        #[cfg(feature = "ext")]
-                        self.ext_turn_ended(&origin.session_id, super::ext::TurnEnd::Stopped);
-                    }
-                    return;
-                }
-                #[cfg(feature = "ext")]
-                let (sid, ended) = (origin.session_id.clone(), if failed { super::ext::TurnEnd::Failed(text.clone()) } else { super::ext::TurnEnd::Done(text.clone()) });
-                if failed {
-                    self.failed(origin, "error", &text);
-                } else {
-                    let turn = turn_parts(&origin.transcript_path, &text);
-                    let lead_turn = super::team_review::LeadTurn::read(&origin.transcript_path, &turn, &text, unprompted);
-                    self.team_reply(&origin.session_id, &lead_turn);
-                    let (lead, all) = (origin.session_id.clone(), lead_turn.all);
-                    self.event(origin, "stopped", text, turn, "");
-                    // Its judgment calls (DECIDED: lines) once its reply is in its chat, at the reply's time (crew_log.rs).
-                    self.crew_calls_noted(&lead, &all);
-                    // Its Desk lines (desk.rs): a lead's, any session's ITEM lines, a holder's.
-                    self.desk_turn_ended(&lead, &all);
-                }
-                #[cfg(feature = "ext")]
-                self.ext_turn_ended(&sid, ended);
+            HostedEvent::ApiError { error, text } => {
+                self.write(|st| st.hosted_api_error.insert(origin.session_id.clone(), (error, text)));
             }
+            HostedEvent::TurnEnded { text, failed, cost_usd, unprompted } => self.hosted_turn_ended(origin, base + cost_usd, text, failed, unprompted),
             HostedEvent::Exited { code, during_turn, last_words } => {
                 #[cfg(feature = "ext")]
                 let sid = origin.session_id.clone();
@@ -242,6 +214,51 @@ impl Hub {
             HostedEvent::Refused { subtype, .. } => eprintln!("cue: hosted session {} asked for a “{subtype}”, which Cue can't answer: refused", o.session_id),
             HostedEvent::Started { terminal_only, .. } => self.note_terminal_only(&origin.session_id, terminal_only),
         }
+    }
+
+    /// A hosted turn is over (`cost`: the session's cost so far): its reply, the stop Cue made, or an API error (a
+    /// usage limit leaves it limited, with Cue's carry-on, as a terminal session's StopFailure does).
+    fn hosted_turn_ended(&self, origin: Origin, cost: f64, text: String, failed: bool, unprompted: bool) {
+        self.set_cost(&origin.session_id, cost);
+        let (stopped, api_error) = self.write(|st| (st.hosted_stopped.remove(&origin.session_id), st.hosted_api_error.remove(&origin.session_id)));
+        if let Some((error, said)) = api_error {
+            // Its turn ended on an API error (a usage limit, say): handled as a terminal session's StopFailure.
+            let said = if said.trim().is_empty() { text } else { said };
+            #[cfg(feature = "ext")]
+            let sid = origin.session_id.clone();
+            self.failed(origin, &error, &said);
+            #[cfg(feature = "ext")]
+            self.ext_turn_ended(&sid, super::ext::TurnEnd::Failed(said));
+            return;
+        }
+        if failed && stopped.is_some() {
+            // The turn Cue stopped, ending as Claude ends one ("[ede_diagnostic] …"): not an error. Stopped
+            // by you, it stays stopped (a step it was on may have brought it back to work meanwhile).
+            if stopped == Some(true) {
+                self.write(|st| st.sessions.mark(&origin, "stopped", None));
+                self.changed();
+                #[cfg(feature = "ext")]
+                self.ext_turn_ended(&origin.session_id, super::ext::TurnEnd::Stopped);
+            }
+            return;
+        }
+        #[cfg(feature = "ext")]
+        let (sid, ended) = (origin.session_id.clone(), if failed { super::ext::TurnEnd::Failed(text.clone()) } else { super::ext::TurnEnd::Done(text.clone()) });
+        if failed {
+            self.failed(origin, "error", &text);
+        } else {
+            let turn = turn_parts(&origin.transcript_path, &text);
+            let lead_turn = super::team_review::LeadTurn::read(&origin.transcript_path, &turn, &text, unprompted);
+            self.team_reply(&origin.session_id, &lead_turn);
+            let (lead, all) = (origin.session_id.clone(), lead_turn.all);
+            self.event(origin, "stopped", text, turn, "");
+            // Its judgment calls (DECIDED: lines) once its reply is in its chat, at the reply's time (crew_log.rs).
+            self.crew_calls_noted(&lead, &all);
+            // Its Desk lines (desk.rs): a lead's, any session's ITEM lines, a holder's.
+            self.desk_turn_ended(&lead, &all);
+        }
+        #[cfg(feature = "ext")]
+        self.ext_turn_ended(&sid, ended);
     }
 
     /// It started compacting, or finished, or couldn't (CompactFailed: the Desk then hands it off, cache_tick.rs).
@@ -319,6 +336,8 @@ impl Hub {
     /// one Cue sent, and the turn is about it.
     fn hosted_turn_started(&self, origin: Origin) {
         let sid = origin.session_id.clone();
+        // An API error from a turn whose end never came is that turn's, not this one's.
+        self.write(|st| st.hosted_api_error.remove(&sid));
         let (first, working) = self.read(|st| (st.sessions.first_pending(&sid), st.sessions.state(&sid).as_deref() == Some("working")));
         let Some(text) = first else { return };
         if !working {
