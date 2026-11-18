@@ -300,7 +300,7 @@ function deskItemRow(i, lit, held = false) {
   // Lit by its session (clicked on the left) and at work: "working · host-lead · 4m", how long its session has been at it.
   const s = held && i.state === "working" ? sessionOf(i.holder?.sid) : null;
   const at = s ? (s.state === "working" && s.since_ms) || deskMs(i.updated) : 0;
-  const who = i.state === "queued" && i.after ? [esc(deskHolderOf(i)), `after #${esc(i.after)}`].filter(Boolean).join(" · ") : i.stopped && i.state === "working" ? `stopped · the Desk lead is on it` : s ? `working · ${esc(deskHolderOf(i))} · <span data-ago="${at}">${ago(at)}</span>` : !i.holder && i.state !== "done" ? deskGive(i, "row") : deskInstallWait(i) ? `waiting for install · ${esc(deskHolderOf(i))}` : deskFinishing(i) ? `<span class="dk-fstep">${esc(deskFinStep(i))}</span>` : esc(deskHolderOf(i));
+  const who = i.state === "queued" && i.after ? [esc(deskHolderOf(i)), `after #${esc(i.after)}`].filter(Boolean).join(" · ") : i.waiting && i.state === "working" ? `waiting · ${esc(firstLine(i.waiting))}` : i.stopped && i.state === "working" ? `stopped · the Desk lead is on it` : s ? `working · ${esc(deskHolderOf(i))} · <span data-ago="${at}">${ago(at)}</span>` : !i.holder && i.state !== "done" ? deskGive(i, "row") : deskInstallWait(i) ? `waiting for install · ${esc(deskHolderOf(i))}` : deskFinishing(i) ? `<span class="dk-fstep">${esc(deskFinStep(i))}</span>` : esc(deskHolderOf(i));
   // Finishing: no age, so its step has the room.
   const when = s || deskFinishing(i) ? "" : i.state === "done" ? `${i.commit ? `<span class="dk-cm">committed ${esc(i.commit)}</span> · ` : ""}${clockAt(deskMs(i.done_at || i.updated))}` : ago(deskMs(i.created));
   const ok = deskInstallWait(i) || deskFinishing(i) ? "" : i.state === "to_check" && deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id) : i.state === "to_check" ? `<button class="dk-ok" data-desk-act="looks_right" data-id="${esc(i.id)}" aria-label="Looks right"></button>`
@@ -1069,6 +1069,7 @@ function deskItemNow(i) {
   const [dot, word, say] = i.state === "needs_you" ? ["ask", "Waiting on you", ""]
     : deskInstallWait(i) ? ["work", "Waiting for install", "Nothing to try till Cue is installed with it."]
     : i.state === "to_check" ? ["ask", "Ready to check", ""]
+    : i.waiting && i.state === "working" ? ["work", "Waiting", `${who} waits: ${esc(firstLine(i.waiting))}`]
     : i.stopped ? ["stop", "Stopped", "The Desk lead is on it."]
     : i.state === "needs_resume" ? ["stop", "Needs resume", deskCanRestart(i) ? "Restart sends the item to its holder again." : "Its session is closed."]
     : i.state === "working" ? ["work", "Working", `${who} is on it.${i.now_on && i.latest ? ` ${esc(firstLine(i.latest))}` : ""}`]
@@ -1180,8 +1181,8 @@ function deskBox(d) {
   const mic = dictating?.key === key;
   const sugSid = to.item ? `item:${d.project}|${to.item}` : to.mate ? "" : to.sid || deskLead(d)?.sid || "";
   const sug = suggestionFor(sugSid);
-  // An item's page shows its recipient and item above the input.
-  return `<div class="dk-box" data-drop="${esc(key)}">${o?.kind === "item" ? "" : quickRow(`data-quick="${esc(key)}"`)}${deskPreHtml(pre)}${draftChips(key)}<div class="dk-box-row"><div class="ta-wrap"><textarea rows="1" data-text="${esc(key)}"${sug ? ` class="sug" data-sug-sid="${esc(sugSid)}" aria-label="${esc(`Suggested: ${sug}. Tab types it in.`)}"` : ""} placeholder="${esc(sug ? " " : ph)}" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off">${esc(draft(key).text)}</textarea>${sugLineHtml(sug)}</div><button class="icon-btn mic ${mic ? "on" : ""}" data-mic="${esc(key)}" aria-label="${mic ? "Stop dictating" : "Dictate"}">${MIC_ICON}</button><button class="icon-btn" data-attach="${esc(key)}" aria-label="Add an image">${IMAGE_ICON}</button><button class="btn primary small" data-desk-send="${esc(key)}">Send</button></div></div>`;
+  // An item's page shows its recipient and item above the input; its quick phrases fill the box, they don't send.
+  return `<div class="dk-box" data-drop="${esc(key)}">${quickRow(`data-quick="${esc(key)}"`)}${deskPreHtml(pre)}${draftChips(key)}<div class="dk-box-row"><div class="ta-wrap"><textarea rows="1" data-text="${esc(key)}"${sug ? ` class="sug" data-sug-sid="${esc(sugSid)}" aria-label="${esc(`Suggested: ${sug}. Tab types it in.`)}"` : ""} placeholder="${esc(sug ? " " : ph)}" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off">${esc(draft(key).text)}</textarea>${sugLineHtml(sug)}</div><button class="icon-btn mic ${mic ? "on" : ""}" data-mic="${esc(key)}" aria-label="${mic ? "Stop dictating" : "Dictate"}">${MIC_ICON}</button><button class="icon-btn" data-attach="${esc(key)}" aria-label="Add an image">${IMAGE_ICON}</button><button class="btn primary small" data-desk-send="${esc(key)}">Send</button></div></div>`;
 }
 /** An item page's foot: while its holder asks you, the answer goes there, so you stay on its page. Its ask's card
  *  (choices, Decline, Type answer…) as under a chat; a turn that ended on it, a box to its holder. Else the box. */
@@ -1352,6 +1353,15 @@ function deskShow(what) {
   deskGiveFor = null;
   if (!what) deskChatEnd = true;
   renderMain();
+}
+/** A quick phrase picked on an item's page: it's in the box (sendPhrase added it), the cursor after it, nothing sent. */
+function deskPhraseIn(key) {
+  renderMain();
+  const el = document.querySelector(`textarea[data-text="${CSS.escape(key)}"]`);
+  if (!el) return;
+  el.focus();
+  el.selectionStart = el.selectionEnd = el.value.length;
+  el.dispatchEvent(new Event("input", { bubbles: true }));
 }
 /** Send what's in box `key`: to the lead (naming the open item), or to the lead (naming its crew member). Only what's
  *  sent is named: the box keeps what you typed if it doesn't go. */

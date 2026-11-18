@@ -92,7 +92,6 @@ test("an item opens on the right with its row lit in place; ‹ web-lead goes ba
   const ph = page.locator(".dk-right .dk-box textarea"), pre = page.locator(".dk-right .dk-box .dk-pre");
   await expect(pre).toHaveText("To web-lead · Bug #d4");
   await expect(ph).toHaveAttribute("placeholder", "Rail dot blinks…");
-  await expect(page.locator(".dk-right .dk-box [data-quick]")).toHaveCount(0);
   await expect(pre).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await ph.fill("still blinks");
   await expect(pre).toHaveText("To web-lead · Bug #d4");
@@ -2715,9 +2714,10 @@ test("the lead's box has the chat box's quick phrases and Claude's suggested rep
   // A phrase sends, to the lead.
   await box.locator('.qp[data-phrase="go ahead"]').click();
   await cue.called("desk_send", { project: "cue", text: "go ahead" });
-  // About an item: no phrases (#143) and no suggestion (those words aren't the lead's own next prompt).
+  // About an item: its phrases (#242: they fill the box, desk-quick.spec) but no suggestion (those words aren't the
+  // lead's own next prompt).
   await page.locator('[data-desk-item="d3"]').click();
-  await expect(page.locator(".dk-box .quick .qp")).toHaveCount(0);
+  await expect(page.locator(".dk-box .quick .qp")).toHaveCount(2);
   await expect(page.locator(".dk-box .sug-line")).toBeHidden();
 });
 
@@ -3440,6 +3440,22 @@ test("each waiting row says what to do in one line, and what it unblocks; the mo
   await expect(head.locator(".dk-iub")).toHaveText("unblocks #d4, #d10, #d6 +1 more");
   await page.locator('[data-desk-item="d3"]').click();
   await expect(head.locator(".dk-pword")).toHaveText("Stopped");
+});
+
+test("an item whose holder said what it waits on shows waiting on that, not stopped (#249)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.change((st) => {
+    const it = st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d3");
+    Object.assign(it, { state: "working", stopped: false, waiting: "I'm waiting on the test run.", latest: "I'm waiting on the test run." });
+  });
+  const d3 = page.locator('[data-desk-item="d3"]');
+  await expect(d3).toContainText("waiting · I'm waiting on the test run.");
+  await expect(d3).not.toContainText("stopped");
+  await d3.click();
+  const head = page.locator(".dk-right .dk-pnow");
+  await expect(head.locator(".dk-pword")).toHaveText("Waiting");
+  await expect(head).toContainText("waits: I'm waiting on the test run.");
 });
 
 test("Hide panel folds the panel for that kind of page and is remembered; a narrow card folds it on its own (#200)", async ({ page, cue }) => {
