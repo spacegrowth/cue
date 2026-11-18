@@ -80,6 +80,17 @@ pub struct DeskItem {
     /// (the item's `updated` then, when in ms). Saved, so a restart keeps it (hub/desk_stall.rs).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stop: Option<(u64, u64)>,
+    /// The Desk lead was told of a stop of it (the item's `updated` then): once per item, a later stop is yours (#249).
+    /// Saved (hub/desk_stall.rs).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub told: Option<u64>,
+    /// What its holder's last turn on it said it waits on (the item's `updated` then, the line): waiting, not
+    /// stopped, while the item is unchanged (#249, hub/desk_stall.rs). Saved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub waits: Option<(u64, String)>,
+    /// Its holder's turn ended on it saying what it waits on: that line. Worked out as it's shown.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub waiting: String,
     /// Its holder stopped on it and the Desk lead is settling it: nothing for you yet. Worked out as it's shown.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub stopped: bool,
