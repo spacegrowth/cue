@@ -1667,6 +1667,36 @@ test("Run by shows the current Dispatcher's accessible agent icon", async ({ pag
   await expect(runBy.getByRole("img", { name: "Dispatcher" })).toBeVisible();
 });
 
+test("Run by gives idle and its icons contrasting colors in both themes", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.change((st) => {
+    const lead = st.sessions.find((s) => s.session_id === "lead");
+    Object.assign(lead, { state: "idle", harness: "codex" });
+    st.items = st.items.filter((item) => item.session_id !== lead.session_id);
+  });
+  const card = page.locator(".dk-lcard");
+  const status = card.locator(".dk-st");
+  const dot = status.locator("i.idle");
+  const badge = card.getByRole("img", { name: "Codex" });
+  await expect(status).toHaveText("idle");
+  for (const colorScheme of ["light", "dark"]) {
+    await page.emulateMedia({ colorScheme });
+    await card.click();
+    await expect(card).toHaveClass(/\bon\b/);
+    const [surface, ink] = await cssOf(card, "background-color", "color");
+    expect(await cssOf(status, "color", "opacity")).toEqual([ink, "1"]);
+    expect((await cssOf(dot, "box-shadow"))[0]).toContain(ink);
+    expect(await cssOf(card.locator(".dk-ric svg"), "color")).toEqual([ink]);
+    expect(await cssOf(card.locator(".dk-sren"), "color")).toEqual([ink]);
+    expect(await cssOf(badge, "background-color", "color")).toEqual([ink, surface]);
+    await page.locator('.dk-sessions [data-desk-chat-of="host"]').click();
+    await expect(card).not.toHaveClass(/\bon\b/);
+    const [statusInk] = await cssOf(status, "color");
+    expect((await cssOf(dot, "box-shadow"))[0]).toContain(statusInk);
+  }
+});
+
 test("the lead's card in the strip: Run by, its state and the item it holds; open, lit lime as any open row, in both themes", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
@@ -1835,6 +1865,24 @@ test("selecting a session lights nothing on the right: it can hold several items
   expect(await ys()).toEqual(top);
   await page.locator('.dk-sessions [data-desk-lead-chat="lead"]').click();
   await expect(items.locator(".dk-it.on")).toHaveCount(0);
+});
+
+test("the dispatcher composer stays below the conversation and hides on Decisions", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  const dispatcher = page.locator('[data-desk-page="dispatcher"]');
+  const chat = dispatcher.locator(".dk-chat");
+  const box = dispatcher.locator(".dk-box");
+  await expect(chat.locator("xpath=following-sibling::*[1]")).toHaveClass(/dk-box/);
+  await box.locator("textarea").fill("Keep this draft");
+  await dispatcher.locator('[data-desk-tab="decisions"]').click();
+  await expect(box).toHaveCount(0);
+  await expect(chat).toHaveCount(0);
+  await dispatcher.locator('[data-desk-tab="lead"]').click();
+  await expect(chat).toBeVisible();
+  await expect(box.locator("textarea")).toHaveValue("Keep this draft");
+  const conversation = await chat.boundingBox(), composer = await box.boundingBox();
+  expect(conversation.y + conversation.height).toBeLessThanOrEqual(composer.y);
 });
 
 test("the lead's box takes pictures and has the mic, as a session's chat box does", async ({ page, cue }) => {
@@ -2179,6 +2227,7 @@ test("a DONE is one Ready to check line in the lead's chat: its item, its age, C
   await expect(back.locator(".dk-md")).toHaveText("The arrows still skip one");
   await cue.change((s) => {
     const d = s.desk.projects.find((x) => x.project === "cue");
+    d.decisions = d.decisions.filter((c) => !(c.item_id === "d2" && c.by === "You" && c.text === "The arrows still skip one"));
     d.decisions.unshift({ project: "cue", item_id: "d2", id: "sb1", by: "You", sid: "", text: "The arrows still skip one", why: "sent back to web-lead", at: Math.floor(Date.now() / 1000) });
     d.checks[0].back_pics = 2;
   });
@@ -2961,7 +3010,37 @@ test("the Desk's mark is on the session's chat title and its Inbox page head too
   expect(await page.evaluate(() => deskSessMark("nobody"))).toBe("");
 });
 
-test("It asks you is one plain box: no dot, and its holder's calls made on its own aren't what it asks (#166)", async ({ page, cue }) => {
+test("tasks, bugs and features show a short question and right-aligned choices", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.change((st) => {
+    const desk = st.desk.projects.find((d) => d.project === "cue");
+    for (const [id, kind] of [["d1", "bug"], ["d2", "feature"], ["d3", "task"]]) {
+      const item = desk.items.find((i) => i.id === id);
+      const question = "Which layout should we use?";
+      item.kind = kind;
+      item.state = "needs_you";
+      item.ask = { item_id: `layout-${id}`, kind: "question", text: question, choices: ["Compact", "Spacious"] };
+      st.items.push({ id: item.ask.item_id, session_id: "host", project: "cue", harness: "codex",
+        kind: "question", status: "pending", tool_input: { questions: [{ question, options: [{ label: "Compact" }, { label: "Spacious" }] }] }, created_ms: Date.now() });
+    }
+  });
+  const requests = page.locator(".dk-items .dk-ask-row").filter({ hasText: "Which layout should we use?" });
+  await expect(requests).toHaveCount(3);
+  for (const id of ["d1", "d2", "d3"]) {
+    const row = page.locator(`.dk-items [data-desk-item="${id}"] .dk-ask-row`);
+    await expect(row.locator(".dk-h")).toHaveText("Which layout should we use?");
+    await expect(row.getByRole("button")).toHaveText(["Compact", "Spacious"]);
+    await expect(row).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    const rowBounds = await row.boundingBox(), choices = await row.locator(".dk-row-decisions").boundingBox();
+    expect(Math.abs(rowBounds.x + rowBounds.width - choices.x - choices.width)).toBeLessThan(2);
+  }
+  await requests.first().getByRole("button", { name: "Compact", exact: true }).click();
+  const sent = await cue.called("respond");
+  expect(sent.args.decision).toEqual({ behavior: "allow", answers: { "Which layout should we use?": "Compact" } });
+});
+
+test("an open item shows the question without a heading or unrelated decisions", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await cue.change((st) => {
@@ -2976,6 +3055,7 @@ test("It asks you is one plain box: no dot, and its holder's calls made on its o
   await expect(chain).toHaveText("Which + did you mean?");
   await expect(chain.locator(".dk-ln > i")).toHaveCount(0);
   await expect(chain).not.toContainText("Decided");
+  await expect(page.locator(".dk-right")).not.toContainText("It asks you");
 });
 
 test("an item whose new session couldn't start says so, with why and Retry, not stuck in its queue (#172)", async ({ page, cue }) => {
@@ -3234,7 +3314,7 @@ test("each waiting row says what to do in one line, and what it unblocks; the mo
   const you = page.locator(".dk-items .dk-gh.you");
   await expect(you).toContainText("2");
   expect((await listOrder(page)).slice(0, 3)).toEqual(["# Waiting on you", "d2", "d1"]);
-  await expect(page.locator('[data-desk-item="d2"] .dk-h')).toHaveText("Pick: Phrases left or right of Send?");
+  await expect(page.locator('[data-desk-item="d2"] .dk-h')).toHaveText("Phrases left or right of Send?");
   await expect(page.locator('[data-desk-item="d2"] .dk-ub')).toHaveText("unblocks #d4, #d10, #d6 +1 more");
   await expect(page.locator('[data-desk-item="d1"] .dk-h')).toHaveText("Allow: Run npm test");
   await expect(page.locator('[data-desk-item="d1"] .dk-ub')).toHaveCount(0);
