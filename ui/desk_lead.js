@@ -20,24 +20,31 @@ let deskSaidItem = "";
 
 // ---------- the lead ----------
 
-/** Whether session `sid` works for a Desk: it runs one (its lead), or holds an item there not done yet (itself, or
- *  through its crew). */
-const deskWorksFor = (sid) => !!sid && (state.desk?.projects || []).some((d) => d.lead?.sid === sid
-  || (d.items || []).some((i) => i.state !== "done" && i.state !== "dropped" && (i.holder?.sid === sid || i.holder?.lead_sid === sid)));
-/** The Desk's mark before such a session's name on the Board, as a loop's run shows its own there (#156). */
-const deskNameMark = (sid) => (deskWorksFor(sid) ? `<span class="dk-name-ic" role="img" aria-label="Desk">${deskKindIcon("desk")}</span>` : "");
-/** The line under such a session's name on its Board card, as a loop's run has its own there (#156): the Desk it runs,
- *  or the item it holds ("+2" when more); a click opens it on the Desk. "" for a session not working for a Desk. */
-function deskCardLine(sid) {
-  if (!deskWorksFor(sid)) return "";
+/** Desks a session runs, has work on, or belongs to, in that order. */
+function deskForSession(sid) {
+  if (!sid) return null;
   const desks = state.desk?.projects || [];
-  const lead = desks.find((d) => d.lead?.sid === sid);
-  const held = desks.flatMap((d) => (d.items || []).filter((i) => i.state !== "done" && i.state !== "dropped" && (i.holder?.sid === sid || i.holder?.lead_sid === sid)).map((i) => ({ d, i })));
-  const first = held[0];
-  const d = lead || first.d, name = d.name || d.project;
-  const what = lead ? `Runs ${name}` : `#${first.i.id} ${first.i.title || ""}`;
+  const held = (d) => (d.items || []).some((i) => i.state !== "done" && i.state !== "dropped" && (i.holder?.sid === sid || i.holder?.lead_sid === sid));
+  return desks.find((d) => d.lead?.sid === sid) || desks.find(held) || desks.find((d) => (d.members || []).includes(sid)) || null;
+}
+const deskWorksFor = (sid) => !!deskForSession(sid);
+/** The session's actual Desk role, using the same type icons as the Desk. */
+function deskNameMark(sid) {
+  const d = deskForSession(sid);
+  if (!d) return "";
+  const kind = deskSessKind(sid, d), label = DESK_MARKS[kind], name = deskName(d);
+  return `<span class="dk-name-ic" role="img" data-desk-type="${kind}" aria-label="${esc(`${label} · ${name}`)}" title="${esc(`${label} · ${name}`)}">${deskKindIcon(kind)}</span>`;
+}
+/** The Desk and work under a session's name on its Board card. */
+function deskCardLine(sid) {
+  const d = deskForSession(sid);
+  if (!d) return "";
+  const lead = d.lead?.sid === sid;
+  const held = (d.items || []).filter((i) => i.state !== "done" && i.state !== "dropped" && (i.holder?.sid === sid || i.holder?.lead_sid === sid));
+  const first = held[0], kind = deskSessKind(sid, d), name = deskName(d);
+  const what = lead ? `Runs ${name}` : first ? `${name} · #${first.id} ${first.title || ""}` : name;
   const more = held.length > (lead ? 0 : 1) ? `<span class="dk-chip-more">+${held.length - (lead ? 0 : 1)}</span>` : "";
-  return `<div class="dk-chip-line"><button class="dk-chip" data-inbox-desk="${esc(d.project)}" data-item="${lead ? "" : esc(first.i.id)}">${deskKindIcon("desk")}<span class="dk-chip-t">${esc(what)}</span>${more}<span>›</span></button></div>`;
+  return `<div class="dk-chip-line"><button class="dk-chip" data-inbox-desk="${esc(d.project)}" data-item="${lead || !first ? "" : esc(first.id)}">${deskKindIcon(kind)}<span class="dk-chip-t">${esc(what)}</span>${more}<span>›</span></button></div>`;
 }
 /** Desk `d`'s lead ({ sid, name, state }), or null. */
 const deskLead = (d) => (d?.lead?.sid ? d.lead : null);
@@ -353,17 +360,22 @@ function deskNewItems(e) {
   const known = (x) => (state.desk?.projects || []).flatMap((d) => d.items).find((i) => deskIdIs(i, x));
   return `<div class="dk-news">${lines.slice(0, n).map((l) => deskNewCard(NEW.exec(l), known, e.at_ms)).join("")}</div>`;
 }
-/** One new item's card (deskNewItems): "[icon] Task #72 title  1h", "New item · done when … · from x", thumbnails. */
+/** One new item's card (deskNewItems), design B (#200, #203): "[icon] Feature #72  1h" on one line, the short title
+ *  under it, then the words it was added with, plain and lighter (once the lead gave it a shorter title), a quiet
+ *  line (who it's from, done when), and its pictures as a small row. */
 function deskNewCard([, id, said = "", rest], known, at) {
   const p = rest.split(" | "), it = known(id), kind = it?.kind || said;
+  // The line holds the title it was added with; the item may have a shorter one since (TITLE:), its words kept.
+  const title = it?.title || p[0], words = it?.words || (p[0] !== title ? p[0] : "");
   let pics = [];
   const sub = p.slice(1).flatMap((x) => {
     const done = /^done when: (.*)$/.exec(x), pc = /^pictures: (.*)$/.exec(x);
     if (pc) { pics = [...pc[1].matchAll(/`([^`]+)`/g)].map((m) => m[1]); return []; }
     return [done ? `done when ${esc(done[1])}` : esc(x)];
   });
-  return `<div class="dk-nc" role="button" tabindex="0" data-desk-chk-item="${esc(id)}"><div class="dk-nc1">${deskKindIcon(kind)}<b class="dk-inum">${esc(deskNum({ id, kind }))}</b><span class="dk-nc-t">${esc(p[0])}</span><span class="dk-cl-age">${ago(at)}</span></div>`
-    + `<div class="dk-nc2">${["New item", ...sub].join(" · ")}</div>${thumbs(pics)}</div>`;
+  return `<div class="dk-nc" role="button" tabindex="0" data-desk-chk-item="${esc(id)}"><div class="dk-nc1">${deskKindIcon(kind)}<b class="dk-inum">${esc(deskNum({ id, kind }))}</b><span class="dk-cl-age">${ago(at)}</span></div>`
+    + `<div class="dk-nc-t">${esc(title)}</div>${words ? `<div class="dk-nc-w">${esc(words)}</div>` : ""}`
+    + `${sub.length ? `<div class="dk-nc2">${sub.join(" · ")}</div>` : ""}${thumbs(pics)}</div>`;
 }
 /** An item in a Desk chat's line: its kind's icon and number in bold, then its title (a click on either opens it). */
 const deskItemRef = (id, kind, num, title) => `<button class="dk-chk-a dk-new-t" data-desk-chk-item="${esc(id)}">${deskKindIcon(kind)}<b class="dk-inum">${esc(num)}</b>${title ? ` <span class="dk-new-tt">${esc(title)}</span>` : ""}</button>`;
