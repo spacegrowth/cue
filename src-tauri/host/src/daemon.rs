@@ -149,6 +149,7 @@ fn xml(s: &str) -> String {
 
 /// The host in `home`, serving until it's been idle for a while. Refuses to run beside another one that answers.
 pub fn serve(home: &Path) -> std::io::Result<()> {
+    crate::more_open_files();
     make_home(home)?;
     let sock = socket(home);
     if UnixStream::connect(&sock).is_ok() {

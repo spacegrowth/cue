@@ -18,6 +18,24 @@ pub mod tail;
 
 use std::path::PathBuf;
 
+/// This process's open-files limit raised as far as the system lets it: macOS starts a program at 256, and a host
+/// running dozens of agents (three pipes each) with Cue's own files reached it (#287: "Too many open files" when a
+/// session started). macOS refuses a soft limit over OPEN_MAX (10240) even when the hard one is unlimited.
+pub fn more_open_files() {
+    // SAFETY: getrlimit/setrlimit only read and write the struct given.
+    unsafe {
+        let mut l: libc::rlimit = std::mem::zeroed();
+        if libc::getrlimit(libc::RLIMIT_NOFILE, &mut l) != 0 {
+            return;
+        }
+        let want = l.rlim_max.min(10240);
+        if l.rlim_cur < want {
+            l.rlim_cur = want;
+            libc::setrlimit(libc::RLIMIT_NOFILE, &l);
+        }
+    }
+}
+
 /// `cue-host serve|connect [--only-running]|version [--home DIR]` (Cue.app carries it; without it, Cue runs it as `cue host …`). `serve`: the program and arguments that
 /// run `serve`, for `connect` to start one. Returns the exit code.
 pub fn main_with(args: &[String], serve: impl Fn(&std::path::Path) -> Vec<String>) -> i32 {

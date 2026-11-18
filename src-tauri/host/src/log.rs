@@ -12,9 +12,10 @@ use std::path::{Path, PathBuf};
 /// How much one session's log keeps, at least: 50 MB.
 pub const LIMIT: u64 = 50 * 1024 * 1024;
 
+/// Its file is opened for each record and closed again, never held: a host keeps every session it ever ran (ended
+/// ones too, for a month), and one open file each ran it out of files (#287: "Too many open files" at a session's start).
 pub struct Log {
     dir: PathBuf,
-    file: File,
     size: u64,
     limit: u64,
     /// The first record kept (in the rolled-over file if there is one), the first in the current file, the last.
@@ -29,17 +30,16 @@ impl Log {
     pub fn open(dir: &Path, limit: u64) -> std::io::Result<Log> {
         std::fs::create_dir_all(dir)?;
         let path = dir.join("log.jsonl");
-        let mut file = OpenOptions::new().create(true).append(true).open(&path)?;
-        let mut size = file.metadata()?.len();
+        let mut size = OpenOptions::new().create(true).append(true).open(&path)?.metadata()?.len();
         if size > 0 && !ends_with_newline(&path)? {
-            file.write_all(b"\n")?;
+            append_to(&path, b"\n")?;
             size += 1;
         }
         let (old, current) = (read_file(&dir.join("log.1.jsonl")), read_file(&path));
         let first_current = current.first().map(|r| r.seq);
         let first = old.first().map(|r| r.seq).or(first_current);
         let last = current.last().or(old.last()).map(|r| r.seq);
-        Ok(Log { dir: dir.to_path_buf(), file, size, limit, first, first_current, last })
+        Ok(Log { dir: dir.to_path_buf(), size, limit, first, first_current, last })
     }
 
     /// The first record it still has, and the last.
@@ -55,7 +55,7 @@ impl Log {
     pub fn append(&mut self, r: &Record) -> std::io::Result<()> {
         let mut line = serde_json::to_string(r).unwrap_or_default();
         line.push('\n');
-        self.file.write_all(line.as_bytes())?;
+        append_to(&self.dir.join("log.jsonl"), line.as_bytes())?;
         if self.size == 0 {
             self.first_current = Some(r.seq);
         }
@@ -70,7 +70,6 @@ impl Log {
 
     fn roll(&mut self) -> std::io::Result<()> {
         std::fs::rename(self.dir.join("log.jsonl"), self.dir.join("log.1.jsonl"))?;
-        self.file = OpenOptions::new().create(true).append(true).open(self.dir.join("log.jsonl"))?;
         self.size = 0;
         // What was current is now the older file: the oldest kept starts there.
         self.first = self.first_current.take();
@@ -81,6 +80,11 @@ impl Log {
     pub fn records(&self) -> Vec<Record> {
         read_all(&self.dir)
     }
+}
+
+/// `bytes` at the end of `path` (made if new), the file closed again after.
+fn append_to(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    OpenOptions::new().create(true).append(true).open(path)?.write_all(bytes)
 }
 
 fn ends_with_newline(path: &Path) -> std::io::Result<bool> {
@@ -158,6 +162,43 @@ mod tests {
         assert_eq!((again.first(), again.last()), (log.first(), log.last()), "and finds them again when opened");
         assert!(seqs.first() > Some(&1), "the oldest went: {seqs:?}");
         assert!(seqs.windows(2).all(|w| w[1] == w[0] + 1), "what's kept has no holes: {seqs:?}");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// Files this process has open in `dir`.
+    fn open_in(dir: &Path) -> usize {
+        let dir = dir.canonicalize().unwrap();
+        (0..1024).filter_map(|fd| path_of(fd)).filter(|p| p.starts_with(&dir)).count()
+    }
+
+    #[cfg(target_os = "macos")]
+    fn path_of(fd: i32) -> Option<PathBuf> {
+        let mut buf = vec![0u8; libc::PATH_MAX as usize];
+        // SAFETY: F_GETPATH writes at most PATH_MAX bytes into `buf`; a closed fd fails and is skipped.
+        let ok = unsafe { libc::fcntl(fd, libc::F_GETPATH, buf.as_mut_ptr()) } == 0;
+        ok.then(|| PathBuf::from(String::from_utf8_lossy(&buf[..buf.iter().position(|b| *b == 0).unwrap_or(0)]).into_owned()))
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn path_of(fd: i32) -> Option<PathBuf> {
+        std::fs::read_link(format!("/proc/self/fd/{fd}")).ok()
+    }
+
+    /// Many sessions' logs, written to and kept, hold no file open (#287: one each ran the host out of files).
+    #[test]
+    fn a_log_holds_no_file_open_between_records() {
+        let d = dir("closed");
+        let logs: Vec<Log> = (0..50)
+            .map(|n| {
+                let mut log = Log::open(&d.join(n.to_string()), 100).unwrap();
+                for seq in 1..=12 {
+                    log.append(&out(seq, "0123456789")).unwrap();
+                }
+                log
+            })
+            .collect();
+        assert_eq!(open_in(&d), 0, "no log keeps its file open");
+        assert_eq!(logs[7].records().last().map(|r| r.seq), Some(12), "and each still has its records, rolled over too");
         let _ = std::fs::remove_dir_all(&d);
     }
 }

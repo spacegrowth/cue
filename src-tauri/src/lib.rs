@@ -139,6 +139,8 @@ fn inherited_agent_var(k: &str, other_provider: bool) -> bool {
 
 /// Open Cue: settings read and a clean environment, then the app built and run (startup/).
 pub fn run() {
+    // Room for every session's files: macOS starts an app at 256 open files.
+    cue_host::more_open_files();
     // Settings into memory before anything reads one (the window's size and zoom, below).
     config::refresh();
     // Opened from the Finder or the Dock, an app gets no locale, and tmux without UTF-8 rewrites what it
