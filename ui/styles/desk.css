@@ -86,7 +86,7 @@
 /* The light line between this Desk's sessions and the rest (#189). */
 
 /* A holder's head: its name, what it is, ›. */
-.dk-holder { display: flex; align-items: baseline; gap: 8px; margin: 12px 8px 2px; padding: 6px 12px; border-radius: 10px; cursor: pointer; }
+.dk-holder { display: flex; align-items: baseline; gap: 8px; margin: 12px 0 2px; padding: 6px 20px; cursor: pointer; }
 .dk-holder:hover { background: var(--panel-2); }
 .dk-holder.on { background: var(--sel); }
 .dk-holder .dk-nm { font-weight: 700; font-size: 13px; }
@@ -96,7 +96,12 @@
 
 /* An item in two rows: its state icon and title; under them its kind, #id, who holds it, its age (a done one's time)
    and Looks right when it's ready to check; an ask's question below. */
-.dk-it { display: grid; grid-template-columns: 14px minmax(0, 1fr); align-items: start; column-gap: 10px; row-gap: 3px; margin: 0 8px 2px; padding: 9px 12px; border-radius: 10px; cursor: pointer; }
+/* Edge to edge with square corners, as the sessions' rows on the left are, so the open item's lime and its › match an
+   open session's (#324). */
+.dk-it { position: relative; display: grid; grid-template-columns: 14px minmax(0, 1fr); align-items: start; column-gap: 10px; row-gap: 3px; margin: 0 0 2px; padding: 9px 20px; cursor: pointer; }
+/* Its › mirrors the left column's: at the row's left edge, pointing left, toward the middle where the item opens. It
+   sits in the row's left padding, so opening an item moves nothing. */
+.dk-it > .dk-larrow { position: absolute; top: 8px; left: 5px; }
 /* One flow, not columns: the title's next lines run back under its icon and number, from the row's left edge. */
 .dk-i1 { min-width: 0; font-size: 13.5px; line-height: 1.4; overflow-wrap: anywhere; }
 .dk-i2 { grid-column: 2; display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted); font-size: 12px; }
@@ -815,6 +820,8 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
 .dk-pword { font-weight: 650; color: var(--ink); white-space: nowrap; }
 .dk-pdot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
 .dk-pdot.ask { background: var(--deny); }
+/* Ready to check (#326): the design system's sage, calm; maroon stays for what asks you, amber for going cold. */
+.dk-pdot.check { background: var(--pcp5); }
 .dk-pdot.work { background: var(--accent); }
 .dk-pdot.stop { background: none; box-shadow: inset 0 0 0 1.5px var(--muted); }
 .dk-pfc { display: inline; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
