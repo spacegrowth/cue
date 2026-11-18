@@ -19,6 +19,9 @@ const addOn = {
   waiting: () => ({ html: "", count: 0 }),
   /** Its entries in the waiting chip's list, oldest first: { since, shown() → whether the window shows it now, open() }. */
   waitingChips: () => [],
+  /** A notification clicked, `id` its key (a card's id, or one the add-on posted) and `sid` the card's session (null
+   *  when it isn't a card): true when the add-on opened it in its own place, false to leave it to the window. */
+  openNotice: (id, sid) => false,
   /** A card at the top of a session's chat; `crew`: the chat drawn on its lead's crew page. */
   chatTop: (sid, { crew = false } = {}) => "",
   /** A reply of session `sid` as drawn: its text (the add-on may take a block of its own out of it) and anything it
