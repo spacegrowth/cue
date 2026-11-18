@@ -1165,11 +1165,18 @@ function deskThread(i, d) {
   // Its holder at work: last, under what you wrote, as the answer to it comes (#165): the turn it's writing, in full,
   // as it writes it, with a line for its steps (#276); its latest line till its steps are read.
   if (live) {
-    const turn = deskLiveTurn(i);
-    rows.push({ at: 0, by: i.holder.name, live: true, tag: turn?.words ? "Writing" : "", html: turn ? `${turn.steps ? `<div class="dk-stp">${esc(turn.steps)}</div>` : ""}${turn.words ? `<div class="dk-md">${deskMd(turn.words)}</div>` : ""}<div class="dk-tbar"></div>`
-      : `<div class="dk-md dk-quiet">${lat ? deskMd(lat1) : "Working…"}</div><div class="dk-tbar"></div>` });
+    const turn = deskLiveTurn(i), crew = deskCrewNow(i), crewHtml = crew ? `<div class="dk-stp dk-crewnow">Crew: ${esc(crew)}</div>` : "";
+    rows.push({ at: 0, by: i.holder.name, live: true, tag: turn?.words ? "Writing" : "", html: turn ? `${turn.steps ? `<div class="dk-stp">${esc(turn.steps)}</div>` : ""}${turn.words ? `<div class="dk-md">${deskMd(turn.words)}</div>` : ""}${crewHtml}<div class="dk-tbar"></div>`
+      : `<div class="dk-md dk-quiet">${lat ? deskMd(lat1) : "Working…"}</div>${crewHtml}<div class="dk-tbar"></div>` });
   }
   return rows;
+}
+/** What item `i`'s holder's crew at work are doing, in a line ("loops-tests editing app.js; ui-fix running npm test"),
+ *  while its holder is on this item; "" for a crew member's item or with none at work (#318). */
+function deskCrewNow(i) {
+  if (!i.holder || i.holder.kind === "crew" || !i.now_on || i.state !== "working") return "";
+  const doing = (t) => (t.state === "reviewing" ? "reviewing its diff" : t.step ? t.step.charAt(0).toLowerCase() + t.step.slice(1) : "working");
+  return deskCrew(i.holder.sid).filter(deskMateBusy).map((t) => `${t.name} ${doing(t)}`).join("; ");
 }
 /** The session item `i`'s holder works in itself (a crew member's lead for a crew member), or "". */
 const deskHolderSid = (i) => (i?.holder ? (i.holder.kind === "crew" ? i.holder.lead_sid : i.holder.sid) : "");
@@ -1292,7 +1299,7 @@ function deskItemNow(i) {
     : i.waiting && i.state === "working" ? ["work", "Waiting", `${who} waits: ${esc(firstLine(i.waiting))}`]
     : i.stopped ? ["stop", "Stopped", "The Desk lead is on it."]
     : i.state === "needs_resume" ? ["stop", "Needs resume", (i.restart ? `${esc(firstLine(i.restart))}. ` : "") + (deskCanRestart(i) ? "Restart sends the item to its holder again." : "Its session is closed.")]
-    : i.state === "working" ? ["work", "Working", `${who} is on it.${i.now_on && i.latest ? ` ${esc(firstLine(i.latest))}` : ""}`]
+    : i.state === "working" ? ["work", "Working", `${who} is on it.${i.now_on && i.latest ? ` ${esc(firstLine(i.latest))}` : ""}${deskCrewNow(i) ? `<span class="dk-crewnow">Crew: ${esc(deskCrewNow(i))}</span>` : ""}`]
     : deskFinishing(i) ? ["work", "Finishing", `<span class="dk-fstep">${esc(deskFinStep(i))}</span>`]
     : i.state === "queued" ? ["stop", "Next", first ? `Starts when ${esc(deskShort(first.title))} is done.` : i.holder ? `Next for ${who}.` : "Next up, not given to a session yet."]
     : i.state === "new" ? ["stop", "Not given out", "Not given to a session yet."]
