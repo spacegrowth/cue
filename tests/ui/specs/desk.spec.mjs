@@ -2697,6 +2697,28 @@ test("Desk row approvals send Allow and No for the pending request", async ({ pa
   }
 });
 
+test("an approval in Waiting on you says in a line or two what it wants; the whole command is in the opened item (#298)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  const long = "cd /private/tmp/scratch/l2-i && cat headmac.txt bodylistmac.txt footmac.txt > project/L2IListMac.dc.html && rm bodylistmac.txt headmac.txt footmac.txt && grep -c x-dc project/L2IListMac.dc.html";
+  const ask = async (input) => cue.change((st, [long, input]) => {
+    const item = st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d1");
+    Object.assign(item.ask, { item_id: "long-approval", kind: "permission", text: long });
+    st.items = st.items.filter((i) => i.id !== "long-approval");
+    st.items.push({ ...st.items.find((i) => i.id === "n-focus-ask"), id: "long-approval", kind: "permission", tool_name: "Bash", tool_input: { command: long, ...input } });
+  }, [long, input]);
+  const line = page.locator('[data-desk-item="d1"] .dk-h');
+  // Claude's own words for it, when it wrote some.
+  await ask({ description: "Join the list mock's parts into one page" });
+  await expect(line).toHaveText("Allow: Join the list mock's parts into one page");
+  // Else the programs it runs and where.
+  await ask({});
+  await expect(line).toHaveText("Allow: run cat, rm and grep in l2-i");
+  expect((await line.boundingBox()).height).toBeLessThan(40);
+  await page.locator('[data-desk-item="d1"] .dk-t').click();
+  await expect(page.locator(".dk-ask")).toContainText("bodylistmac.txt headmac.txt footmac.txt");
+});
+
 test("an item's question opens at the page's foot and keeps the answer on its page; a one-question ask has its choices on the row", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);

@@ -268,6 +268,28 @@ function deskOneLine(t) {
   const lines = String(t || "").split(/\n+/).map((l) => plain(l)).filter(Boolean);
   return lines.findLast((l) => /\?$/.test(l)) || lines[0] || "";
 }
+/** What a tool it waits to run wants to do, in plain words (#298): the line Claude wrote for it ("Find where approvals
+ *  render"); else a single command as it is (the row keeps it to two lines), and a chain of them as the programs it
+ *  runs and where ("run cat, rm and grep in l2-i"). The full command is in the opened item. */
+function deskAllowLine(i) {
+  const req = deskItemRequest(i), ti = req?.tool_input || {};
+  if (req?.kind !== "permission") return deskOneLine(i.ask?.text);
+  if (typeof ti.description === "string" && ti.description.trim()) return plain(ti.description);
+  if (typeof ti.command !== "string") return plain(summary(req));
+  // Split on && ; | outside quotes: blank the quoted words first so a quoted "a|b" stays one word.
+  const bare = ti.command.replace(/'[^']*'|"(?:\\.|[^"\\])*"/g, (q) => "_".repeat(q.length));
+  const parts = [];
+  let at = 0;
+  for (const m of bare.matchAll(/&&|\|\||;|\||\n/g)) { parts.push(ti.command.slice(at, m.index)); at = m.index + m[0].length; }
+  parts.push(ti.command.slice(at));
+  const steps = parts.map((p) => p.trim().replace(/^(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)+/, "")).filter(Boolean);
+  const cd = steps.find((p) => /^cd\s/.test(p)), work = steps.filter((p) => !/^cd\s/.test(p));
+  if (work.length <= 1) return plain(work[0] || ti.command);
+  const dir = cd?.replace(/^cd\s+/, "").replace(/["']/g, "").split("/").filter(Boolean).at(-1);
+  const progs = [...new Set(work.map((p) => p.split(/\s+/)[0].split("/").at(-1)))];
+  const list = progs.length > 4 ? `${progs.slice(0, 3).join(", ")} and ${progs.length - 3} more` : progs.length > 1 ? `${progs.slice(0, -1).join(", ")} and ${progs.at(-1)}` : progs[0];
+  return `run ${list}${dir ? ` in ${dir}` : ""}`;
+}
 /** What an item waiting on you asks you to do, in one plain line (#182): [verb, words], or null when it doesn't wait
  *  on you. Allow a tool, Pick one of its choices (or of its mocks), Answer its question; Try it once it's in the app
  *  (its "done when"). */
@@ -275,7 +297,7 @@ function deskVerb(i) {
   if (i.state === "to_check" && !deskInstallWait(i)) return deskPickLine(i) ? ["Pick", deskPickLine(i)] : ["Try it", deskDoneWhenPoints(i.done_when || "")[0] || i.title];
   if (i.state !== "needs_you") return null;
   const a = i.ask;
-  if (a) return [a.kind === "permission" ? "Allow" : (a.choices || []).length > 1 ? "Pick" : "Answer", deskOneLine(a.text)];
+  if (a) return [a.kind === "permission" ? "Allow" : (a.choices || []).length > 1 ? "Pick" : "Answer", a.kind === "permission" ? deskAllowLine(i) : deskOneLine(a.text)];
   const pick = deskPickLine(i);
   if (pick) return ["Pick", pick];
   return ["Answer", deskOneLine(i.finish?.question || i.latest || deskQuestion(i))];
