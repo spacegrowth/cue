@@ -4,7 +4,8 @@
 //! when its work sits on one, is merged into the main checkout's branch, the merge word-checked too and never forced.
 //! Its work must then be on main (the branch, not just the main checkout: "landing" while it isn't, saying where); an
 //! item that changed the Cue this app is built from is then in the next install; any other goes to check.
-//! Installs run one at a time, once for everything waiting: half an hour after the first of it, built from the main
+//! Installs run one at a time, once for everything waiting (an item waiting while one runs that has its commit goes
+//! with that one): half an hour after the first of it, built from the main
 //! line's HEAD, and not while a session that ends with Cue is mid-turn (unless you say Install now). Once the running
 //! Cue has an item's commit, the item is to check. A build that fails, or a new Cue that doesn't start, stops on a
 //! question for you, and its holder is sent the log. Work its holder committed itself waits for the app all the same,
@@ -45,6 +46,10 @@ impl Installer for AppInstaller {
 
     fn status(&self) -> Option<InstallStatus> {
         crate::self_install::status().map(|s| InstallStatus { tag: s.tag, commit: s.commit, step: s.step, log: s.log, at: s.at })
+    }
+
+    fn contains(&self, repo: &str, commit: &str, of: &str) -> bool {
+        crate::self_install::is_ancestor(repo, commit, of)
     }
 }
 
@@ -570,6 +575,9 @@ impl Hub {
                 self.finish_checked(&it.id);
                 continue;
             }
+            if running && f.step == "queued" && self.finish_join(&it.id, f, status.as_ref(), now) {
+                continue;
+            }
             if !installing(&f.step) {
                 continue;
             }
@@ -605,6 +613,23 @@ impl Hub {
         if !running {
             self.finish_install_due(now);
         }
+    }
+
+    /// Item `id`, waiting (`f`) while the install `status` runs, goes with that install when its commit has the item's
+    /// (the Desk's own, or one a session began): never waiting for it to end to start another. Whether it did.
+    fn finish_join(&self, id: &str, f: &Finish, status: Option<&InstallStatus>, now: u64) -> bool {
+        let Some(s) = status.filter(|s| installing(&s.step) && !f.commit.is_empty()) else { return false };
+        if !self.installer().contains(&f.repo, &f.commit, &s.commit) {
+            return false;
+        }
+        let tag = s.tag.clone();
+        let to = s.step.clone();
+        self.finish_set(id, |i| {
+            if let Some(f) = i.finish.as_mut() {
+                (f.step, f.at, f.tag, f.now) = (to, now, tag, false);
+            }
+        });
+        true
     }
 
     /// The next install, when items are queued and it's due: half an hour after the first of them, and with no

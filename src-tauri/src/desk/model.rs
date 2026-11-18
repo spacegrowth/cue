@@ -377,6 +377,8 @@ pub trait Installer: Send + Sync {
     fn start(&self, repo: &str, commit: &str, tag: &str) -> Result<(), String>;
     /// The latest install's status, if there's been one.
     fn status(&self) -> Option<InstallStatus>;
+    /// Whether `of` of `repo` has `commit`: it is that commit or one after it.
+    fn contains(&self, repo: &str, commit: &str, of: &str) -> bool;
 }
 
 /// The installer a Desk uses: None for the app's own.
