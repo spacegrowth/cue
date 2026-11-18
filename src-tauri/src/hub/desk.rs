@@ -320,17 +320,28 @@ pub(super) fn item_sources(st: &Store, it: &DeskItem) -> (String, Vec<(String, V
     (s.origin.machine.clone(), out)
 }
 
-/// Items queued after `id` start now: each to its holder, with no reason (why it was queued isn't why it starts).
+/// Items queued after `id` start now, with no reason (why it was queued isn't why it starts).
 pub(super) fn release(st: &mut Store, id: &str, now: u64, fx: &mut Effects) {
-    let rule = st.desk.item(id).map(|i| rule_of(st, &i.project)).unwrap_or_default();
+    let project = st.desk.item(id).map(|i| &i.project)
+        .or_else(|| st.desk.items.iter().find(|i| i.after.as_deref() == Some(id)).map(|i| &i.project));
+    let rule = project.map(|p| rule_of(st, p)).unwrap_or_default();
+    let lead = project.and_then(|p| st.desk.lead.get(p)).cloned();
     for it in st.desk.items.iter_mut().filter(|i| i.after.as_deref() == Some(id) && i.state == "queued") {
         it.after = None;
-        it.state = "working".into();
         it.updated = secs(now);
-        if let Some(h) = &it.holder {
-            fx.sends.push((h.to().to_string(), crate::desk::handed_words(it, "", &rule)));
-        }
+        start_released(it, &rule, lead.as_ref(), fx);
         fx.items.push(it.id.clone());
+    }
+}
+
+fn start_released(it: &mut DeskItem, rule: &str, lead: Option<&crate::desk::Lead>, fx: &mut Effects) {
+    if let Some(h) = &it.holder {
+        it.state = "working".into();
+        fx.sends.push((h.to().to_string(), crate::desk::handed_words(it, "", rule)));
+    } else {
+        it.state = "new".into();
+        let (by, by_sid) = lead.map_or(("Desk", ""), |l| (l.name.as_str(), l.sid.as_str()));
+        fx.starts.push(NewStart { project: it.project.clone(), id: it.id.clone(), why: String::new(), by: by.into(), by_sid: by_sid.into() });
     }
 }
 
@@ -398,7 +409,7 @@ pub(super) fn route(st: &mut Store, project: &str, by: &By, id: &str, to: &str, 
     let fresh = to.eq_ignore_ascii_case("new") || to.eq_ignore_ascii_case("me");
     let holder = if fresh { None } else { resolve(st, project, to) };
     if fresh || holder.as_ref().is_some_and(|h| h.sid == by.sid && h.lead_sid.is_empty()) {
-        return start_fresh(st, project, by, id, why, fx);
+        return start_fresh(st, project, by, id, after, why, now, fx);
     }
     // A session not on the Desk: you're asked first, and the item stays.
     if let Some(h) = holder.as_ref().filter(|h| !may_route(st, project, h, id)) {
@@ -489,9 +500,30 @@ fn no_such_session(it: &mut DeskItem, to: &str, now: u64, fx: &mut Effects) {
 
 /// No session fits ("new"), or the lead naming itself, which only hands work out: a new session of the project takes
 /// item `id` (desk_start_new). Only one nobody else holds, so the same line said again doesn't start another.
-fn start_fresh(st: &Store, project: &str, by: &By, id: &str, why: &str, fx: &mut Effects) {
+#[allow(clippy::too_many_arguments)]
+fn start_fresh(st: &mut Store, project: &str, by: &By, id: &str, after: Option<String>, why: &str, now: u64, fx: &mut Effects) {
     let free = |i: &DeskItem| i.project == project && matches!(i.state.as_str(), "new" | "queued" | "working") && i.holder.as_ref().is_none_or(|h| h.sid == by.sid);
-    if st.desk.item(id).is_some_and(free) {
+    let refused = after.as_deref().and_then(|a| after_refused(st, a, id)).unwrap_or_default();
+    let Some(it) = st.desk.item_mut(id).filter(|i| free(i)) else { return };
+    if let Some(after) = after.filter(|_| refused.is_empty()) {
+        if it.state == "queued" && it.after.as_ref() == Some(&after) && it.holder.is_none() {
+            return;
+        }
+        it.holder = None;
+        it.crew.clear();
+        it.state = "queued".into();
+        it.after = Some(after.clone());
+        it.after_why = why.to_string();
+        it.route_failed.clear();
+        it.start_failed.clear();
+        it.after_refused.clear();
+        it.updated = secs(now);
+        fx.items.push(id.into());
+        decide(st, project, Some(id.into()), by.name, by.sid, &format!("Queued #{id} after #{after} for a new session"), why, now, fx);
+    } else {
+        it.after = None;
+        it.after_refused = refused;
+        fx.items.push(id.into());
         fx.starts.push(NewStart { project: project.into(), id: id.into(), why: why.into(), by: by.name.into(), by_sid: by.sid.into() });
     }
 }
@@ -563,7 +595,10 @@ fn give_to(st: &mut Store, id: &str, sid: &str, by: (&str, &str, &str), started:
     it.after_why.clear();
     it.route_failed.clear();
     it.start_failed.clear();
-    it.after_refused.clear();
+    // A new session started for the lead's route keeps why Cue couldn't queue it: the lead hasn't heard yet.
+    if !started {
+        it.after_refused.clear();
+    }
     it.done_at = None;
     it.updated = secs(now);
     it.after_why = by.2.to_string();
@@ -974,6 +1009,7 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
         "start_now" if holder.is_none() => {
             // Tried again: "couldn't start" goes until this try says how it went.
             it.start_failed.clear();
+            it.after = None;
             let s = NewStart { project: it.project.clone(), id: id.into(), why: String::new(), by: "You".into(), by_sid: String::new() };
             fx.starts.push(s);
         }
@@ -999,7 +1035,7 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
             you_wrote(st, &project, id, &words, &to.map_or(String::new(), |n| format!("to {n}")), now, &mut fx);
             return Ok(fx);
         }
-        "put_before" => put_before(st, id, holder.as_ref(), now, &mut fx)?,
+        "put_before" => put_before(st, id, now, &mut fx)?,
         "drop" => {
             let gone = st.desk.items.iter().position(|i| i.id == id).map(|p| st.desk.items.remove(p));
             if let Some(h) = gone.as_ref().and_then(|g| g.holder.as_ref().filter(|_| g.state == "working")) {
@@ -1028,9 +1064,10 @@ fn you_wrote(st: &mut Store, project: &str, id: &str, words: &str, whom: &str, n
 
 /// Item `id` put before the one it waits on, in the queue: it takes that one's place (starting now when that one
 /// waited on nothing), that one waits on it, and what waited on `id` waits on that one instead.
-fn put_before(st: &mut Store, id: &str, holder: Option<&Holder>, now: u64, fx: &mut Effects) -> Result<(), String> {
+fn put_before(st: &mut Store, id: &str, now: u64, fx: &mut Effects) -> Result<(), String> {
     let (other, why) = st.desk.item(id).and_then(|it| it.after.clone().map(|a| (a, it.after_why.clone()))).ok_or("it isn't waiting on another item")?;
     let rule = st.desk.item(id).map(|i| rule_of(st, &i.project)).unwrap_or_default();
+    let lead = st.desk.item(id).and_then(|i| st.desk.lead.get(&i.project)).cloned();
     // What that one waits on, if it's still to be done: this one waits on it in its place.
     let open = |a: &String| st.desk.item(a).is_some_and(|w| !matches!(w.state.as_str(), "finishing" | "to_check" | "done"));
     let ahead = st.desk.item(&other).and_then(|o| o.after.clone()).filter(open);
@@ -1040,7 +1077,7 @@ fn put_before(st: &mut Store, id: &str, holder: Option<&Holder>, now: u64, fx: &
         return Err("the item it waits on is already being worked on".into());
     }
     let mut place = None;
-    if o.holder.is_some() && !matches!(o.state.as_str(), "finishing" | "to_check" | "done") {
+    if (o.holder.is_some() || o.state == "queued") && !matches!(o.state.as_str(), "finishing" | "to_check" | "done") {
         place = ahead.map(|a| (a, o.after_why.clone()));
         o.after = Some(id.to_string());
         o.after_why = why;
@@ -1063,8 +1100,7 @@ fn put_before(st: &mut Store, id: &str, holder: Option<&Holder>, now: u64, fx: &
         }
         None => {
             it.after = None;
-            it.state = "working".into();
-            fx.sends.extend(holder.map(|h| (h.to().to_string(), crate::desk::handed_words(it, "", &rule))));
+            start_released(it, &rule, lead.as_ref(), fx);
         }
     }
     Ok(())

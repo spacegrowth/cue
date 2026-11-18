@@ -138,7 +138,8 @@ impl Hub {
     /// An item the lead gave to a new session (`ROUTE: #id -> new`): a hosted Claude started in the project's folder,
     /// named "<project>-<id>", that holds it and is sent it. If it can't start, the item says why (and the lead is told).
     pub(super) fn desk_start_new(self: &Arc<Self>, s: super::desk::NewStart) {
-        if !self.read(|st| st.desk.item(&s.id).is_some_and(|i| i.project == s.project && i.state != "done")) { return; }
+        let ready = |st: &Store| st.desk.item(&s.id).is_some_and(|i| i.project == s.project && i.state != "done" && i.after.is_none());
+        if !self.read(ready) { return; }
         let name = self.free_name(&format!("{}-{}", self.read(|st| st.desk.name_of(&s.project).to_string()), s.id));
         let dir = self.desk_folder(&s.project).ok_or_else(|| format!("no folder known for {}", s.project));
         // Its folder is one a session of the project already works in: trusted, as you trust it there.
@@ -149,6 +150,7 @@ impl Hub {
         let now = now_ms();
         let fx = self.write(|st| {
             let mut fx = super::desk::Effects::default();
+            if !ready(st) { return fx; }
             let given = sid.and_then(|sid| super::desk::give_started(st, &s.id, &sid, (&s.by, &s.by_sid, &s.why), now, &mut fx));
             if let Err(e) = given {
                 start_failed(st, &s, &e, now, &mut fx);

@@ -524,6 +524,49 @@ fn a_queued_item_starts_when_the_one_before_it_is_done() {
 }
 
 #[test]
+fn a_route_to_a_new_session_after_another_waits_for_it_to_land() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let d = new_lead(&w, &project);
+    ends(&w, &d, "ITEM: Header\nROUTE: #new -> cue-teams | why: first");
+    let a = item(&desk(&w, &project), "Header")["id"].as_str().unwrap().to_string();
+    let launches = w.hosted.launched().len();
+    ends(&w, &d, &format!("ITEM: Footer\nROUTE: #new -> new | after: #{a} | why: same file"));
+    let b = item(&desk(&w, &project), "Footer")["id"].as_str().unwrap().to_string();
+    let view = desk(&w, &project);
+    assert_eq!((item(&view, "Footer")["state"].as_str(), item(&view, "Footer")["after"].as_str()), (Some("queued"), Some(a.as_str())), "{view}");
+    assert!(item(&view, "Footer")["holder"].is_null(), "{view}");
+    assert_eq!(w.hosted.launched().len(), launches, "no new session before #{a} lands");
+    let decided = view["decisions"].as_array().cloned().unwrap_or_default();
+    assert!(decided.iter().any(|x| x["text"] == format!("Queued #{b} after #{a} for a new session")), "{view}");
+    // Said again by a later turn: still one queued item, nothing started.
+    ends(&w, &d, &format!("ROUTE: #{b} -> new | after: #{a} | why: same file"));
+    assert_eq!(w.hosted.launched().len(), launches);
+    // #a lands: the new session starts now, and takes it.
+    ends(&w, &h, &format!("DONE: #{a}"));
+    let view = desk(&w, &project);
+    assert_eq!(item(&view, "Footer")["state"], "working", "{view}");
+    assert!(item(&view, "Footer")["after"].is_null(), "{view}");
+    assert_eq!(w.hosted.launched().len(), launches + 1);
+    assert!(!item(&view, "Footer")["holder"]["sid"].as_str().unwrap_or_default().is_empty(), "{view}");
+}
+
+#[test]
+fn a_route_to_a_new_session_cue_cant_queue_starts_now_and_the_lead_is_told() {
+    let w = World::new();
+    let (_, project) = holder(&w);
+    let d = new_lead(&w, &project);
+    let launches = w.hosted.launched().len();
+    ends(&w, &d, "ITEM: Footer\nROUTE: #new -> new | after: #zz99 | why: same file");
+    let b = item(&desk(&w, &project), "Footer")["id"].as_str().unwrap().to_string();
+    let view = desk(&w, &project);
+    assert_eq!(item(&view, "Footer")["state"], "working", "{view}");
+    assert_eq!(w.hosted.launched().len(), launches + 1);
+    let s = summary(&w, &project);
+    assert!(s.contains(&format!("Cue couldn't queue #{b} after #zz99, which isn't an item")), "{s}");
+}
+
+#[test]
 fn an_item_isnt_queued_after_one_that_waits_on_it() {
     let w = World::new();
     let (_, project) = holder(&w);
