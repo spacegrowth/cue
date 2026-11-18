@@ -194,6 +194,21 @@ mod tests {
         assert!(twice.is_empty(), "declared in two of the window's scripts:\n{}", twice.join("\n"));
     }
 
+    /// The window as committed (HEAD, not the folder, where another session's uncommitted edit can supply what the
+    /// commit lacks) passes scripts/check-window.mjs: every name its scripts use is declared by one of them, none
+    /// twice, and it loads. A desk.js committed without deskPhraseIn, which compose.js calls, kept main's window
+    /// from loading twice on 18 November 2026.
+    #[test]
+    fn the_committed_window_uses_only_names_its_scripts_declare_and_loads() {
+        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..").canonicalize().unwrap();
+        let repo = repo.to_string_lossy();
+        let out = std::process::Command::new("git").args(["-C", &repo, "rev-parse", "HEAD"]).output().unwrap();
+        let head = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if let Err(said) = crate::live_ui::check(&repo, &head) {
+            panic!("the window at HEAD doesn't pass its check:\n{said}");
+        }
+    }
+
     use super::*;
 
     #[test]
