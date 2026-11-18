@@ -47,6 +47,7 @@ digraph locks {
   "typing gate" -> "desk saves";
   "typing gate" -> "folder facts";
   "typing gate" -> "live_ui.served";
+  "typing gate" -> "logs read for their edits";
   "typing gate" -> "machine tails";
   "typing gate" -> "machine tails: links";
   "typing gate" -> "mini reading";

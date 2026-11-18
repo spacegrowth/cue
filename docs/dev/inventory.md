@@ -15,11 +15,11 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | What | Count |
 |---|---|
 | `#[tauri::command]` | 165 (3 sync) |
-| Lock declarations (static or field) | 106 |
-| Lock acquisitions | 251 |
-| Lock-graph edges | 53 |
+| Lock declarations (static or field) | 107 |
+| Lock acquisitions | 254 |
+| Lock-graph edges | 54 |
 | Spawn sites | 88 |
-| External calls: fs / db / process / notify / login / socket | 405 / 186 / 51 / 4 / 1 / 4 |
+| External calls: fs / db / process / notify / login / socket | 406 / 186 / 51 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 1 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -236,6 +236,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `hosted/session.rs::Shared.input` | `Mutex<Option<ChildStdin>>` | "hosted session: input" (2 sites) |
 | `hosted/tails.rs::L` | `OnceLock<Mutex<HashMap<String,Weak<HostLink>>>>` | — |
 | `hosted/tails.rs::T` | `OnceLock<Mutex<HashMap<String,Tail>>>` | — |
+| `hub/desk_theirs.rs::SO_FAR` | `std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String,SoFar>>>` | — |
 | `hub/live_writes.rs::LiveWrites.queue` | `Mutex<Queue>` | "db writes" (4 sites) |
 | `hub/live_writes.rs::LiveWrites.written` | `Mutex<Written>` | "db writer's marks" (2 sites) |
 | `hub/live_writes.rs::LiveWrites.worker` | `OnceLock<bool>` | — |
@@ -309,7 +310,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `terminal/term.rs::M` | `OnceLock<Mutex<Terms>>` | — |
 | `terminal/term.rs::P` | `OnceLock<String>` | — |
 
-Lock names not matched to a declaration: "FOUND" (4 sites), "agent checks passed" (2 sites), "btw: asked" (2 sites), "caches" (5 sites), "command list reader" (2 sites), "copies" (7 sites), "hosts: a session's queue" (2 sites), "hosts: older hosts" (8 sites), "hosts: sessions" (7 sites), "machine hosts placed" (2 sites), "machine tails" (5 sites), "music: Listen's holds" (1 sites), "open_terms" (8 sites), "remote poll schedule" (2 sites), "shell line: done" (2 sites), "shell line: timed out" (2 sites), "typing gate" (3 sites), "watchers" (2 sites).
+Lock names not matched to a declaration: "FOUND" (4 sites), "agent checks passed" (2 sites), "btw: asked" (2 sites), "caches" (5 sites), "command list reader" (2 sites), "copies" (7 sites), "hosts: a session's queue" (2 sites), "hosts: older hosts" (8 sites), "hosts: sessions" (7 sites), "logs read for their edits" (3 sites), "machine hosts placed" (2 sites), "machine tails" (5 sites), "music: Listen's holds" (1 sites), "open_terms" (8 sites), "remote poll schedule" (2 sites), "shell line: done" (2 sites), "shell line: timed out" (2 sites), "typing gate" (3 sites), "watchers" (2 sites).
 
 ## Lock graph
 
@@ -362,6 +363,7 @@ An edge A → B: B is taken (here or in something called) while A is held. Also 
 | "typing gate" | "desk saves" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/terminal_only.rs::Hub::run_own_command` → `hub/terminal_only.rs::Hub::codex_model` → `hub/terminal_only.rs::Hub::codex_models` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `hub/hosted.rs::Hub::run_hosted` → `hub/hosted.rs::Hub::hosted_report` → `hub/hosted.rs::Hub::on_hosted` → `hub/hosted.rs::Hub::hosted_turn_started` → `hub/hosted.rs::Hub::hosted_taken` → `hub/events.rs::Hub::event` → `hub/events.rs::Hub::event_in` → `hub/events.rs::Hub::on_event` → `hub/turn_end.rs::Hub::on_stopped` → `hub/turn_end.rs::Hub::stopped_for_you` → `hub/turn_end.rs::Hub::after_turn_ended` → `hub/cache_tick.rs::Hub::cache_tick` → `hub/cache_tick.rs::Hub::hand_off_due` → `hub/hand_off.rs::Hub::hand_off_ahead` → `hub/desk.rs::Hub::desk_cue_asked` → `hub/desk.rs::Hub::desk_done`, takes it |
 | "typing gate" | "folder facts" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Hub::save_live` → `hub/saves.rs::Hub::hand_in_parked_turn` → `hub/saves.rs::Hub::hand_writes` → `hub/live_writes.rs::LiveWrites::hand` → `hub/live_writes.rs::LiveWrites::write` → `hub/live_writes.rs::save_live` → `db/live.rs::save_live` → `db/mod.rs::with` → `db/mod.rs::attempt` → `db/schema.rs::open` → `db/schema.rs::set_up` → `db/schema.rs::migrate` → `db/schema.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
 | "typing gate" | "live_ui.served" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/terminal_only.rs::Hub::run_own_command` → `hub/terminal_only.rs::Hub::codex_model` → `hub/terminal_only.rs::Hub::codex_models` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `hub/hosted.rs::Hub::run_hosted` → `hub/hosted.rs::Hub::hosted_report` → `hub/hosted.rs::Hub::on_hosted` → `hub/hosted.rs::Hub::hosted_turn_started` → `hub/hosted.rs::Hub::hosted_taken` → `hub/events.rs::Hub::event` → `hub/events.rs::Hub::event_in` → `hub/events.rs::Hub::on_event` → `hub/turn_end.rs::Hub::on_stopped` → `hub/turn_end.rs::Hub::stopped_for_you` → `hub/turn_end.rs::Hub::after_turn_ended` → `hub/cache_tick.rs::Hub::cache_tick` → `hub/desk_commit.rs::Hub::desk_commit_waiting` → `hub/desk_finish.rs::Hub::desk_finish_tick` → `hub/desk_finish.rs::Hub::finish_tick` → `hub/desk_finish.rs::Hub::desk_finish_commit` → `hub/desk_finish.rs::Hub::finish_commit` → `hub/desk_finish.rs::Hub::finish_after` → `hub/desk_finish.rs::Hub::ui_in_place` → `live_ui.rs::take`, takes it |
+| "typing gate" | "logs read for their edits" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/terminal_only.rs::Hub::run_own_command` → `hub/terminal_only.rs::Hub::codex_model` → `hub/terminal_only.rs::Hub::codex_models` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `hub/hosted.rs::Hub::run_hosted` → `hub/hosted.rs::Hub::hosted_report` → `hub/hosted.rs::Hub::on_hosted` → `hub/hosted.rs::Hub::hosted_turn_started` → `hub/hosted.rs::Hub::hosted_taken` → `hub/events.rs::Hub::event` → `hub/events.rs::Hub::event_in` → `hub/events.rs::Hub::on_event` → `hub/turn_end.rs::Hub::on_stopped` → `hub/turn_end.rs::Hub::stopped_for_you` → `hub/turn_end.rs::Hub::after_turn_ended` → `hub/cache_tick.rs::Hub::cache_tick` → `hub/desk_commit.rs::Hub::desk_commit_waiting` → `hub/desk_finish.rs::Hub::desk_finish_tick` → `hub/desk_finish.rs::Hub::finish_tick` → `hub/desk_finish.rs::Hub::desk_finish_commit` → `hub/desk_finish.rs::Hub::finish_commit` → `hub/desk_finish.rs::Hub::to_commit` → `hub/desk_theirs.rs::Hub::own_of` → `hub/desk_theirs.rs::Hub::theirs` → `hub/desk_theirs.rs::read_edits`, takes it |
 | "typing gate" | "machine tails" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/terminal_only.rs::Hub::run_own_command` → `hub/terminal_only.rs::Hub::codex_model` → `hub/terminal_only.rs::Hub::codex_models` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `hub/hosted.rs::Hub::run_hosted` → `machines/logs.rs::local_copy` → `machines/logs.rs::Copier::running` → `hosted/tails.rs::tail_running`, takes it |
 | "typing gate" | "machine tails: links" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/terminal_only.rs::Hub::run_own_command` → `hub/terminal_only.rs::Hub::codex_model` → `hub/terminal_only.rs::Hub::codex_models` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `hub/hosted.rs::Hub::run_hosted` → `machines/logs.rs::local_copy` → `machines/logs.rs::start_after` → `machines/logs.rs::start` → `hosted/tails.rs::tail_start`, takes it |
 | "typing gate" | "mini reading" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/terminal_only.rs::Hub::run_own_command` → `hub/terminal_only.rs::Hub::codex_model` → `hub/terminal_only.rs::Hub::codex_models` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `hub/hosted.rs::Hub::run_hosted` → `hub/hosted.rs::Hub::hosted_report` → `hub/hosted.rs::Hub::on_hosted` → `hub/hosted.rs::Hub::hosted_turn_started` → `hub/hosted.rs::Hub::hosted_taken` → `hub/events.rs::Hub::event` → `hub/events.rs::Hub::event_in` → `hub/events.rs::Hub::on_event` → `hub/asks.rs::Hub::terminal_ask_with` → `hub/mod.rs::Hub::notify` → `hub/mod.rs::Hub::notify_card` → `notify.rs::is_read`, takes it |
@@ -467,7 +469,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (405)
+### fs (406)
 
 | In | Call | Times |
 |---|---|---|
@@ -559,7 +561,8 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hub/desk_finish.rs::in_progress` | Path::exists | 1 |
 | `hub/desk_finish.rs::same_dir` | canonicalize | 2 |
 | `hub/desk_theirs.rs::own_part` | read_to_string | 1 |
-| `hub/desk_theirs.rs::read_edits` | read_to_string | 1 |
+| `hub/desk_theirs.rs::read_edits` | File::open | 1 |
+| `hub/desk_theirs.rs::read_edits` | Path::metadata | 1 |
 | `hub/hosted.rs::Hub::resume_hosted_as` | Path::is_file | 1 |
 | `hub/hosted.rs::written_on_machine` | metadata | 1 |
 | `hub/open.rs::look` | Path::is_dir | 1 |

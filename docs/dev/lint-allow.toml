@@ -160,6 +160,11 @@ reason = "the typing gate is taken first and held while a message is sent, by de
 
 [[lock_order]]
 from = "typing gate"
+to = "logs read for their edits"
+reason = "a turn's end can reach the Desk's finish check (hub/desk_theirs.rs read_edits); that lock only guards how far each log was read, is held for a lookup or an insert, and takes no other lock"
+
+[[lock_order]]
+from = "typing gate"
 to = "CLAUDE"
 reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); typing into iTerm reads Claude Code's running list for the agent's tty (focus/apps.rs current_tty). Seen since the hub types through terminal::keys, which the check follows"
 
