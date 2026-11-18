@@ -1919,6 +1919,12 @@ test("the Run by card is a session row's size: same padding, name, item line and
   expect(a.pad).toBe(b.pad);
   expect(a.nm).toBe(b.nm);
   if (a.s2 && b.s2) { expect(a.s2).toBe(b.s2); expect(a.indent).toBe(b.indent); }
+  // Like every row, the card has a second line, even idle and on no item: its latest reply, else its open items.
+  const leadSid = await lead.getAttribute("data-desk-lead-chat");
+  await cue.change((st, sid) => { const s = st.sessions.find((x) => x.session_id === sid); s.state = "idle"; s.doing = ""; for (const i of st.desk.projects.find((x) => x.project === "cue").items) if (i.holder?.sid === sid) i.holder = null; }, leadSid);
+  await expect(lead.locator(".dk-s2 .dk-id")).toHaveCount(0);
+  await expect(lead.locator(".dk-s2")).toHaveCount(1);
+  await expect(lead.locator(".dk-s2")).not.toHaveText("");
   // The head reads as the list's group heads do: same face, size and spacing.
   const font = (loc) => loc.evaluate((el) => { const c = getComputedStyle(el); return [c.fontSize, c.fontWeight, c.letterSpacing, c.textTransform].join(" "); });
   expect(await font(page.locator(".dk-strip .dk-lh"))).toBe(await font(page.locator(".dk-sessions .dk-gh").first()));
