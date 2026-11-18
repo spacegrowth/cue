@@ -4,8 +4,24 @@ function deskSessionRequests(sid, agent = "") {
     && !answering.has(it.id) && (agent ? it.agent_id === agent : !mateOfAsk(it)));
 }
 
-function deskApprovals(d) {
-  const requests = state.items.filter((it) => deskHasSession(d, it.session_id) && it.status === "pending" && it.kind !== "waiting" && !answering.has(it.id));
+/** Match a pending permission to its task, using the prompt saved when Cue received it. */
+function deskTaskApprovals(d) {
+  const tasks = new Map();
+  for (const request of state.items) {
+    if (request.status !== "pending" || request.kind !== "permission") continue;
+    const live = d.items.find((i) => i.ask?.item_id === request.id);
+    const prompt = request.thread?.findLast((e) => e.role === "you" && !e.decision);
+    const tag = /^(?:Desk item|About) #([a-z0-9_-]+)\b/i.exec(prompt?.text || "")?.[1];
+    const task = live || (tag && d.items.find((i) => deskIdIs(i, tag)
+      && (i.holder?.lead_sid || i.holder?.sid) === request.session_id));
+    if (task && !["done", "dropped"].includes(task.state) && !tasks.has(task.id)) tasks.set(task.id, request);
+  }
+  return tasks;
+}
+
+function deskApprovals(d, taskApprovals) {
+  const placed = new Set([...taskApprovals.values()].map((request) => request.id));
+  const requests = state.items.filter((it) => !placed.has(it.id) && deskHasSession(d, it.session_id) && it.status === "pending" && it.kind !== "waiting" && !answering.has(it.id));
   if (!requests.length) return "";
   return `<section class="dk-approvals" aria-label="Pending requests"><div class="dk-requests-head">Needs your decision <span class="n">${requests.length}</span></div>${requests.map((it) => {
     const who = deskHolderName(it.session_id), command = it.tool_input?.command;
