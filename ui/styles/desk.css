@@ -487,12 +487,31 @@
 .dk-sh { display: flex; flex-direction: column; min-width: 0; }
 /* The strip's top line (‹ Desks … ⋯). Not .dk-stop: a stopped item's row is .dk-it.dk-stop and took this flex (#218). */
 .dk-shtop { display: flex; align-items: center; margin-left: -4px; }
-.dk-home-btn { all: unset; flex: none; height: 24px; padding: 0 8px 0 4px; display: inline-flex; align-items: center; border-radius: 6px; color: inherit; opacity: .8; font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer; }
-.dk-home-btn:hover, .dk-home-btn:focus-visible { opacity: 1; background: color-mix(in oklab, var(--on-sel) 10%, transparent); }
-.dk-shr { display: flex; align-items: center; gap: 6px; min-width: 0; margin-top: 4px; }
+/* The switcher (pick A, #240): the Desk's name is a button with ▾; its menu drops under it, over the sessions. */
+.dk-sw-anchor { position: relative; display: inline-flex; min-width: 0; }
+.dk-sw-btn { all: unset; display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 28px; margin-left: -6px; padding: 0 8px 0 6px; border-radius: 8px; color: inherit; cursor: pointer; }
+.dk-sw-btn:hover, .dk-sw-btn:focus-visible, .dk-sw-btn[aria-expanded="true"] { background: color-mix(in oklab, currentColor 12%, transparent); }
+.dk-sw-caret { flex: none; opacity: .75; }
+.dk-sw-menu { position: absolute; z-index: 40; top: calc(100% + 6px); left: -6px; width: 300px; max-width: calc(100vw - 32px); padding: 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); box-shadow: 0 12px 32px rgba(0, 0, 0, .28); font-size: 13px; font-weight: 400; }
+.dk-sw-find { box-sizing: border-box; width: 100%; height: 30px; margin-bottom: 4px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2, var(--panel)); color: var(--ink); font: inherit; outline: none; }
+.dk-sw-find:focus { border-color: var(--sel); }
+.dk-sw-list { max-height: 320px; overflow-y: auto; }
+.dk-sw-row { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px; border-radius: 8px; cursor: pointer; }
+.dk-sw-row.at, .dk-sw-row:hover { background: color-mix(in oklab, var(--sel) 22%, transparent); }
+.dk-sw-tick { flex: none; width: 12px; color: var(--sel); font-weight: 700; }
+.dk-sw-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.dk-sw-row.on .dk-sw-nm { font-weight: 700; }
+.dk-sw-pj { flex: none; display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 12px; }
+.dk-sw-need { flex: none; margin-left: auto; color: var(--deny); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.dk-sw-none { padding: 8px; color: var(--muted); }
+.dk-sw-foot { display: flex; gap: 4px; margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--line); }
+.dk-sw-act { all: unset; flex: none; height: 30px; padding: 0 10px; display: inline-flex; align-items: center; border-radius: 8px; font-weight: 600; cursor: pointer; }
+.dk-sw-act:hover, .dk-sw-act:focus-visible { background: color-mix(in oklab, var(--sel) 22%, transparent); }
+.dk-sw-keys { padding: 6px 8px 2px; color: var(--muted); font-size: 11px; }
+.dk-shr { display: flex; align-items: center; gap: 6px; min-width: 0; }
 /* The Desk's mark takes the strip's text colour: in --accent it would vanish into the light strip. */
 .dk-strip .dk-shr :is(.dk-ric, .dk-kic) { color: inherit; }
-.dk-shr b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; font-weight: 700; }
+.dk-shr b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; font-weight: 700; }
 .dk-strip .dk-sub { color: inherit; opacity: .75; font-size: 11px; }
 /* Ask me before, under the Desk's counts: its kinds, and Change as a plain underlined link in the strip's own ink. */
 .dk-strip .dk-ab { display: block; margin-top: 2px; font-family: var(--mono); font-size: 11px; opacity: .75; }

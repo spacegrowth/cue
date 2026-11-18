@@ -346,11 +346,11 @@ test("the Desk tab opens a Desk, never the list: the one last open, else Desk ho
   const tab = page.locator('.switch-view [data-view="desk"]'), board = page.locator('.switch-view [data-view="board"]');
   await tab.click();
   await expect(page.locator(".dk-desks")).toHaveCount(0);
-  await expect(page.locator("[data-desk-home]")).toHaveText("‹ Desks");
+  await expect(page.locator("[data-desk-switch]")).toHaveCount(1);
   // Desk home, then into website; away to the Board with All projects, and the Desk tab is back on website.
-  await page.locator("[data-desk-home]").click();
+  await page.locator("[data-desk-switch]").click(); await page.locator("[data-desk-home]").click();
   await page.locator('.dk-desk[data-desk-project="website"]').click();
-  await page.locator("[data-desk-home]").click();
+  await page.locator("[data-desk-switch]").click(); await page.locator("[data-desk-home]").click();
   await board.click();
   await tab.click();
   await expect(page.locator(".dk-desks")).toHaveCount(0);
@@ -360,7 +360,7 @@ test("the Desk tab opens a Desk, never the list: the one last open, else Desk ho
 test("Desk home: one row a Desk with what it's about, its people, open tasks, bugs and features, and who's on it; a click opens it", async ({ page, cue }) => {
   await cue.open("desk");
   await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator("[data-desk-home]").click();
+  await page.locator("[data-desk-switch]").click(); await page.locator("[data-desk-home]").click();
   await expect(page.locator(".dk-hh")).toHaveText("Desks · 2");
   await expect(page.locator(".dh-hd span")).toHaveText(["Desk", "Project · people", "Tasks", "Bugs", "Features", "On it", ""]);
   const rows = page.locator(".dk-desks .dk-desk");
@@ -385,19 +385,70 @@ test("Desk home: one row a Desk with what it's about, its people, open tasks, bu
   await expect(cells.nth(0).locator(".dh-sm")).toHaveText("1 finishing");
   await rows.nth(1).click();
   await expect(page.locator(".dk-items .dk-it").first()).toHaveAttribute("data-desk-item", "w1");
-  // ‹ Desks in the Sessions head: back to Desk home, then into another.
-  await expect(page.locator("[data-desk-home]")).toHaveText("‹ Desks");
-  await page.locator("[data-desk-home]").click();
+  // The name in the Sessions head → All Desks: back to Desk home, then into another.
+  await expect(page.locator("[data-desk-switch]")).toHaveCount(1);
+  await page.locator("[data-desk-switch]").click(); await page.locator("[data-desk-home]").click();
   await expect(rows).toHaveCount(2);
   await rows.first().click();
   await expect(page.locator(".dk-sh b")).toHaveText("cue");
   await expect(page.locator(".dk-sh button:not(.dk-ab-change)", { hasText: "Change" })).toHaveCount(0);
 });
 
+test("the Desk's name is a switcher: every Desk with who needs you, typed to find, ↑ ↓ ↵ to open, All Desks and + New Desk (#240)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await page.locator('.switch-view [data-view="desk"]').click();
+  await page.locator("[data-desk-switch]").click(); await page.locator("[data-desk-home]").click();
+  await page.locator('.dk-desk[data-desk-project="website"]').click();
+  const btn = page.locator("[data-desk-switch]"), menu = page.locator(".dk-sw-menu");
+  await expect(btn).toHaveAttribute("aria-expanded", "false");
+  await expect(menu).toHaveCount(0);
+  await btn.click();
+  await expect(btn).toHaveAttribute("aria-expanded", "true");
+  const rows = menu.locator(".dk-sw-row");
+  await expect(rows).toHaveCount(2);
+  await expect(menu.locator(".dk-sw-row.on")).toHaveAttribute("data-desk-go", "website");
+  await expect(menu.locator(".dk-sw-row.on .dk-sw-tick")).toHaveText("✓");
+  await expect(menu.locator(".dk-sw-find")).toBeFocused();
+  await expect(menu.locator(".dk-sw-foot button")).toHaveText(["All Desks", "+ New Desk"]);
+  expect(await page.locator(".dk-sw-menu [title]").count()).toBe(0);
+  // Typing finds; the box keeps the cursor through the redraw.
+  await page.keyboard.type("cu");
+  await expect(rows).toHaveCount(1);
+  await expect(menu.locator(".dk-sw-find")).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(menu).toHaveCount(0);
+  await expect(page.locator(".dk-sh b")).toHaveText("cue");
+  // ↓ ↵ from the current Desk opens the next; Esc closes and gives the button the keyboard.
+  await btn.click();
+  await expect(menu.locator(".dk-sw-find")).toHaveValue("");
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await expect(btn).toBeFocused();
+  await btn.click();
+  const lit = await menu.locator(".dk-sw-row.at").getAttribute("data-desk-go");
+  await page.keyboard.press("ArrowDown");
+  await expect(menu.locator(".dk-sw-row.at")).not.toHaveAttribute("data-desk-go", lit);
+  const next = await menu.locator(".dk-sw-row.at").getAttribute("data-desk-go");
+  await page.keyboard.press("Enter");
+  expect(await page.evaluate(() => deskSelection())).toBe(next);
+  // A click outside closes it; a click on a row opens that Desk.
+  await btn.click();
+  await page.locator(".dk-items").click({ position: { x: 4, y: 4 } });
+  await expect(menu).toHaveCount(0);
+  await btn.click();
+  await menu.locator('.dk-sw-row[data-desk-go="cue"]').click();
+  await expect(page.locator(".dk-sh b")).toHaveText("cue");
+  // + New Desk opens its sheet, the menu closed.
+  await btn.click();
+  await menu.locator("[data-desk-new-desk]").click();
+  await expect(menu).toHaveCount(0);
+  await expect(page.locator(".nd")).toHaveCount(1);
+});
+
 test("+ New is a menu: New session as before, New Desk asks a project and a name, starts its lead and opens it", async ({ page, cue }) => {
   await cue.open("desk");
   await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator("[data-desk-home]").click();
+  await page.locator("[data-desk-switch]").click(); await page.locator("[data-desk-home]").click();
   await cue.change((st) => { st.history = [...(st.history || []), { cwd: "/work/notes", created_ms: Date.now() }, { cwd: "/work/blog", created_ms: Date.now() }]; });
   const chip = page.locator("[data-new-menu]");
   await chip.click();
@@ -454,7 +505,7 @@ test("+ New is a menu: New session as before, New Desk asks a project and a name
   await expect(sheet).toHaveCount(0);
   await expect(page.locator(".dk-sh b")).toHaveText("Notes app");
   // The same workspace stays available for another independent Desk.
-  await page.locator("[data-desk-home]").click();
+  await page.locator("[data-desk-switch]").click(); await page.locator("[data-desk-home]").click();
   await expect(page.locator(".dk-desks .dk-desk")).toHaveCount(3);
   await page.locator(".dh-add").click();
   await pick.click();
@@ -1621,12 +1672,12 @@ test("a working session's dot blinks and its current step shows under its title,
 const cssOf = (loc, ...props) => loc.evaluate((el, ps) => { const c = getComputedStyle(el); return ps.map((p) => c.getPropertyValue(p)); }, props);
 const boxOf = (loc) => loc.evaluate((el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, right: r.right }; });
 
-test("the head is one strip in the accent, flush across the card's top: ‹ Desks, the name, its meta, then the lead's card in it", async ({ page, cue }) => {
+test("the head is one strip in the accent, flush across the card's top: the name (a switcher), its meta, then the lead's card in it", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   const left = page.locator(".dk-sessions"), strip = left.locator(".dk-strip");
   await expect(strip).toHaveCount(1);
-  await expect(strip.locator("[data-desk-home]")).toHaveText("‹ Desks");
+  await expect(strip.locator("[data-desk-switch]")).toHaveCount(1);
   await expect(strip.locator(".dk-sh b")).toHaveText("cue");
   await expect(strip.locator(".dk-sub")).toHaveText("1 session · 1 working");
   await expect(strip.locator("[data-desk-change]")).toHaveCount(1);
