@@ -2,8 +2,10 @@
 
 This is a review of the cost-aware strategy from #187 (docs/desk-token-strategy.md) by the
 session that wrote the routing rules for #180 (docs/desk-routing-rules.md). It says what holds
-up, what to change, where the two disagree, and then gives one set of rules. Neither of those
-two files has been changed. Nothing in Cue has been changed. You pick.
+up, what to change, where the two disagree, and then gives one set of rules. The strategy file
+has not been changed. The #180 rules file has had small fixes from its reviews, the last one
+being what the lead can see; its ten rules still say 150 thousand and nothing from this merge
+has been put into it. Nothing in Cue has been changed for this. You pick.
 
 ## Do its numbers hold up?
 
@@ -39,9 +41,11 @@ against 64 cents). Those depend on how it sorted messages, which I did not redo.
 ## What I would change, and why
 
 1. **The 110 thousand limit is right for new work, but not for a send-back or a small
-   follow-on.** By its own numbers, knowing the area saves about a dollar ten per item. A cold
-   wake costs that much only at about 140 thousand. So a session should keep its own send-backs
-   and direct follow-ons up to 140 thousand, and take no new work over 110.
+   follow-on.** By its own numbers, knowing the area saves about a dollar ten per item. That is
+   the 1 dollar 74 against 64 cents above, which I did not check, so the dollar ten is unchecked
+   too. A cold wake costs that much only at about 140 thousand; that part is Cue's price list. So
+   a session should keep its own send-backs and direct follow-ons up to 140 thousand, and take
+   no new work over 110. If the dollar ten turns out smaller, 140 comes down with it.
 
 2. **The biggest saving rests on something not yet seen working.** 18 dollars a day assumes a
    fresh session with a note does as well as the session that was there. The strategy itself
@@ -59,9 +63,15 @@ against 64 cents). Those depend on how it sorted messages, which I did not redo.
 5. **Drop the "50 thousand smaller wins" step in the tie-break.** It saves under a dollar a day
    and makes the pick harder to predict. Keep one fixed order.
 
-6. **Its build order starts with the limits.** I would start with what the lead sees: open
-   items per session, idle time, and each session's finished items. Every rule in both files
-   leans on that.
+6. **Its build order starts with the limits.** I would start with what the lead sees: each
+   session's size, always, its open items, its idle time, and its finished items. Today the lead
+   sees a session's size only while a hand-off is pending for it. Every rule in both files
+   leans on these.
+
+7. **Its rule 13 needs to be fitted to the other sizes.** It keeps Cue's hand-off when a cache
+   runs out, from 100 thousand, for a session holding an item. Read alone, that hands off a
+   session at 100 that rule 4 would keep for a send-back up to 140, and one that rule 3 would
+   still give new work up to 110. Merged rule 17 says which comes first.
 
 ## Where it conflicts with the #180 rules
 
@@ -91,7 +101,7 @@ The lead picks among sessions on the Desk. For any other session, Cue asks you f
 5. A session over 110 thousand finishes its item, writes a note, and a fresh session with that
    note takes the next item in that area.
 6. A session holds at most two open items: one at work, one waiting. If the best fit has two,
-   take the next session with a record.
+   take the next session with a record. Cue refuses a third and tells the lead to route it again.
 7. Start a new session when no session passes rules 1 to 6, when you ask, or when the work
    needs fresh eyes. Never wake a cold session for work it has no record in.
 8. When the match is unsure, the lead says so in its why line.
@@ -101,8 +111,9 @@ The lead picks among sessions on the Desk. For any other session, Cue asks you f
 9. If the session picked has an item at work, the new one waits behind it.
 10. If the item would change the same files as an open item in another session, it waits behind
     that item, and still goes to the session picked. If both waits apply, it waits behind the
-    one that will finish later. If the clash is with an item waiting for your check, the lead
-    names it in the why line, or asks you.
+    one that will finish later. If the clash is with an item waiting for your check, the item
+    starts and the lead names the clash in the why line. It asks you first only if the two
+    would plainly undo each other.
 11. If the item ahead has been open over 30 minutes, the lead asks you: wait, or start a smaller
     piece on other files. With no answer, it waits.
 12. The why line names the record and the size. For example: "cue-125: built 160 and 165 on the
@@ -117,18 +128,26 @@ The lead picks among sessions on the Desk. For any other session, Cue asks you f
     send-back, a crew report. The lead hands itself off at 80 thousand, once its list shows the
     record.
 15. One review and one re-check per crew, then it comes to you. "Done?" is sent once per item.
-    No second crew for work a crew already holds.
+    No second crew for work a crew already holds. A Fable review only when you ask for one.
 16. Cue pings a session to keep it warm only when work is promised to it: an item queued behind
-    another session's item, or an item waiting for your check. Up to four times. Never during a
-    limit stop.
+    another session's item, or an item waiting for your check. Only if the session is over 60
+    thousand and idle. Up to four times. Never during a limit stop.
+17. The sizes, in one place. Under 100 thousand, nothing happens: wake it, cold or warm. From
+    100, if a session holds an item and its cache runs out, Cue asks it for a note and a fresh
+    session takes over with its record, as today; a ping from rule 16 puts that off, and Cue
+    never asks during a limit stop. A session still warm takes new work up to 110. Over 110 it
+    takes only its own send-backs and follow-ons, and hands off when its item is done. At 140
+    Cue hands it off whatever it is doing. So rule 4 holds only while the session is still
+    there; once it is handed off, the send-back goes to the session that took over.
 
 ## Build order
 
-1. Rewrite the lead's instructions to these rules, and show it each session's open items, idle
-   time and finished items with their files.
+1. Rewrite the lead's instructions to these rules, and show it each session's size, always, its
+   open items, idle time and finished items with their files. Cue refuses a third open item.
 2. The 110 thousand limit, the hand-off between items, and Cue's hand-off mark moved to 140.
-   Watch the first ten items after a hand-off.
+   The hand-off at cache expiry from 100 stays, with no ask during a limit stop. Watch the first
+   ten items after a hand-off.
 3. The quieter lead, then its own hand-off at 80 thousand.
 4. Show the lead how much of the usage limit is used, and the 90 percent rule.
-5. "Done?" once, review rounds, no second crew.
-6. Keep-warm pings.
+5. "Done?" once, review rounds, no second crew, a Fable review only when asked.
+6. Keep-warm pings, only for a session over 60 thousand and idle with work promised to it.

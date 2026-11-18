@@ -68,15 +68,17 @@ doesn't count. (The idle sessions in the review were all on the Desk.)
 
 ## What Cue would need to change
 
-- **The lead's instructions.** Today they say "Route new work to a small or warm session over a
-  big cold one" (`src-tauri/src/desk/mod.rs`, `LEAD_SKILL`). That is the opposite of rules 1 and
-  3, so the line must be rewritten to these rules.
+- **The lead's instructions.** At the time of the review they said "Route new work to a small or
+  warm session over a big cold one". That is the opposite of rules 1 and 3, and the lead mostly
+  can't see size anyway (see below). The instructions must give these rules instead.
 - **Keep an item's files when it is finished.** Today finished items carry no files, and the lead's
   list leaves finished items out. Rule 1 has nothing to read until Cue stores the files (from the
   item's commit) and shows each session's last few finished items.
-- **Show two things the lead can't see today:** each session's open-item count and its idle time.
-  It already sees each item's holder, what it waits behind and up to 5 files, and each session's
-  state (idle or working), size and cache ("142k, cache 12m" or "cold").
+- **Show three things the lead can't see today:** each session's size, always; its open-item
+  count; and its idle time. Today the lead sees a session's size and cache only while a hand-off
+  is pending for it ("142k, cache 12m → Cue will hand off at expiry"; `context_note` in
+  `src-tauri/src/hub/desk_lead.rs`). Rules 2, 3 and 4 all need the size. It already sees each
+  item's holder, what it waits behind and up to 5 files, and when a session is working.
 - **Refuse a third open item.** Cue tells the lead why and to route it again, as it does after a
   failed route, so the item doesn't sit as new.
 - **Fit with the context bands.** 150k sits between Cue's existing marks: a hand-off note from
