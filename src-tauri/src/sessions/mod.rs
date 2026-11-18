@@ -582,7 +582,3 @@ impl Sessions {
 
 #[cfg(test)]
 mod tests;
-
-fn is_zero_u8(n: &u8) -> bool {
-    *n == 0
-}
