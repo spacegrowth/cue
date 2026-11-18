@@ -305,17 +305,24 @@ function crewNeedRows(sid, groups, ready = crewHandles(sid)) {
   const items = list.map((t) => mateNeeds(sid, t) ? mateNeedRow(sid, t) : mateReadyRow(sid, t));
   return { list, items, rows: items.join("") };
 }
-/** What lead `sid`'s project counts one-way (Settings → General → One-way here; config one_way.rs): its kinds'
- *  words, in Settings' order. A project never set has the default (a merge or push to main). */
+/** What lead `sid`'s project asks you first about (Ask me before, config one_way.rs): its kinds' words, in their
+ *  order. A project never set has the default (a push to main). */
 function crewOneWay(sid) {
   const ow = state.settings?.project?.oneway || {}, s = sessionOf(sid) || {};
   const keys = Array.isArray(ow.set?.[s.project]) ? ow.set[s.project] : ow.default || ["main"];
   return (ow.kinds || []).filter((k) => keys.includes(k.key)).map((k) => k.label);
 }
-/** Nothing needs you: what it would ask you about (its project's one-way kinds, then a choice only you can make). */
+/** Nothing needs you: what it would ask you about (its project's Ask me before, then a choice only you can make). */
 function crewNone(sid) {
   const one = crewOneWay(sid).map((l) => l.toLowerCase());
-  return `It asks here before ${one.length ? `anything one-way (${one.join(", ")}) or ` : ""}a choice only you can make.`;
+  return `It asks here before ${one.length ? `${one.join(", ")} or ` : ""}a choice only you can make.`;
+}
+/** The same as HTML, with Change on a project no Desk runs (a Desk changes it from its own header). Main window only. */
+function crewNoneHtml(sid) {
+  const p = sessionOf(sid)?.project || "";
+  const desk = (state.desk?.projects || []).some((d) => d.lead && d.ask_before?.project === p);
+  const change = p && !desk && typeof askBeforeChange === "function" ? ` <button class="mt-lk" data-ab-change="${esc(p)}">Change</button>` : "";
+  return `${esc(crewNone(sid))}${change}`;
 }
 /** The open member's menu, when it's one of this lead's. */
 const mateMenuOf = (sid) => { const t = (sessionOf(sid)?.team || []).find((m) => mateKey(sid, m) === mateMenu); return t ? mateMenuHtml(sid, t) : ""; };
@@ -338,7 +345,7 @@ function crewTray(sid) {
   const handles = crewHandles(sid);
   const needs = crewNeedRows(sid, groups, handles), ready = handles ? [] : groups.ready;
   const body = crewGoalHtml(sid, handles)
-    + (needs.rows ? grp(`Needs you · ${needs.list.length}`, needs.rows, "red") : `<div class="mt-grp">Needs you · nothing now</div><div class="crew-none">${esc(crewNone(sid))}</div>`)
+    + (needs.rows ? grp(`Needs you · ${needs.list.length}`, needs.rows, "red") : `<div class="mt-grp">Needs you · nothing now</div><div class="crew-none">${crewNoneHtml(sid)}</div>`)
     + grp("Ready", ready.map((t) => mateReadyRow(sid, t)).join(""))
     + crewLogHtml(sid)
     + grp("Waiting on the lead", groups.lead.map((t) => mateOneRow(sid, t)).join(""))

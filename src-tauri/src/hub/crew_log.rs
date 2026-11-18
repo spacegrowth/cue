@@ -38,7 +38,7 @@ impl Hub {
         let sha = self.crew_member(lead, &t.call).map(|m| m.commit).unwrap_or_default();
         let branch = branch_in(said);
         let step = branch.as_deref().map_or("committed".to_string(), |b| format!("committed to `{b}`"));
-        // One-way as its project counts it (Settings' One-way here; by default a commit on main or master).
+        // One-way as its project counts it (Ask me before; by default a commit on main or master).
         let one_way = branch.as_deref().is_some_and(|b| crate::one_way::commit_one_way(&crate::one_way::kinds(&self.project_shown(lead)), b));
         self.crew_note(lead, Decided { sha, one_way, ..Decided::about(t, "commit", &step) });
     }

@@ -184,6 +184,17 @@ impl<'w> Agent<'w> {
         self.open_ask(json!({"type": "ask", "kind": "question", "tool_name": "AskUserQuestion", "tool_input": input}))
     }
 
+    /// Its PreToolUse hook checking a Bash `command` for Ask me before (hook.rs `guard`), on `branch`: the card it
+    /// waits on, or None when it passes.
+    pub fn guard_bash(&self, command: &str, branch: &str) -> Option<Ask> {
+        let fields = json!({"type": "guard", "tool_name": "Bash", "tool_input": {"command": command}, "branch": branch});
+        match self.world.drive(self.message(fields)) {
+            Outcome::Asked { id, answer } => Some(Ask { id, answer: Mutex::new(answer) }),
+            Outcome::Say(v) if v["type"] == "pass" => None,
+            _ => panic!("a guard passes or waits"),
+        }
+    }
+
     fn open_ask(&self, fields: Value) -> Ask {
         self.answer_after_thinking();
         match self.world.drive(self.message(fields)) {

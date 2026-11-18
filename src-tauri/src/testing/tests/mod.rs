@@ -1,5 +1,6 @@
 //! Integration cases over the World (stability plan §4), by area.
 
+mod ask_before;
 mod asks;
 mod asks_closing;
 mod asks_edges;

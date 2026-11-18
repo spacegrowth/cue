@@ -145,6 +145,9 @@ pub enum AskKind {
     Network,
     /// An MCP server asking you to fill in a form.
     Input,
+    /// Ask me before (hub/guard.rs): a tool call checked before it runs (Pi's extension), its branch in `message`.
+    /// Answered "pass" at once when its project's Desk doesn't ask first about it.
+    Guard,
 }
 
 /// Your answer to an `Ask`.

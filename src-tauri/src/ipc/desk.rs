@@ -134,6 +134,12 @@ pub(crate) fn desk_start_with_agent(h: &Arc<Hub>, folder: &str, trust: bool, nam
     Ok(serde_json::json!({ "id": id, "project": id, "sid": r["sid"] }))
 }
 
+/// Your answer to Ask me before for `project` (a workspace project): `kinds` ticked, or None for "Not now".
+#[tauri::command]
+pub(crate) async fn ask_before_set(hub: State<'_, Arc<Hub>>, project: String, kinds: Option<Vec<String>>) -> Result<Vec<&'static str>, String> {
+    with_hub(&hub, move |h| h.ask_before_set(&project, kinds.as_deref())).await?
+}
+
 #[tauri::command]
 pub(crate) async fn desk_delete(hub: State<'_, Arc<Hub>>, id: String, close_sessions: Option<Vec<String>>) -> Result<serde_json::Value, String> {
     with_hub(&hub, move |h| {

@@ -125,10 +125,23 @@ You run inside Cue, which shows each teammate you start under you; the user look
 - When you make a judgment call the user didn't settle (one approach over another, skipping a should-fix, cutting scope, committing despite a note, not testing something), write it in your reply on a line of its own: `DECIDED: what you chose — why`. Cue shows the user each one, and they can ask you to undo it. Not for routine steps: starting a teammate, sending fixes back, a commit you were asked for. If your task asks you to write judgment calls another way (as `DECISION:` lines), write them only that way, never as DECIDED: too.
 ```
 
-After it, one line from the lead's project's One-way here (Settings → General; `one_way.rs`, config
-`project.oneway`), as the setting is when the lead starts: "One-way in this project, as the user set it: ask the user
-first, and end your turn, before …" with the kinds checked there (by default a merge or push to main or master); no
+After it, one line from the lead's project's Ask me before (`one_way.rs`, config `project.oneway`), as the setting is
+when the lead starts: "Ask me before, as the user set it for this project: ask the user first, and end your turn,
+before …" with the kinds ticked there (by default a push to main or master: a local commit or merge isn't one); no
 line when none is. The same setting marks a crew commit one-way on its crew log (its Undo says Make a revert).
+
+Ask me before is asked once per project, as a Desk on it gets its first lead (`ui/ask_before.js`; ticked: a push to
+main, a release, deleting files, or what One-way here had). Every session on the project's Desks gets the same line
+with each item handed to it, and the new rule when it changes. The kinds Cue can see in a tool call are also checked
+before it runs (`hub/guard.rs`): the PreToolUse hook (`cue-hook guard`, Claude Code and Codex) and Pi's extension send a
+call that is one of them to Cue, which opens a one-way card and holds the call until you answer. A card closed without
+a click, or Cue lost mid-wait and not back within 15 minutes, stops the call; only a Cue that was never reached leaves
+it to the agent's own flow (so a Mac without Cue running isn't blocked). The check reads the command's own words
+(`one_way.rs` `hits`): a push, tag or delete inside a script isn't seen, nor a move to `/dev/null`, a tag pushed by a name that isn't a version
+counts as a plain push, and a push with no branch named on an unknown branch (a detached head) counts as one to main.
+`gh pr merge` counts as a push to main; `git branch -D` as deleting. A deploy and files outside the project aren't
+offered: a command's words can't tell them apart. A session on another machine is told, not stopped (its hook doesn't
+read tool calls).
 
 Each `DECIDED:` line of a lead's turn is kept on its crew log (`sessions/crew_log.rs` `calls_noted`, read at turn end
 in `hub/hosted.rs`) at the reply's time: at most 3 a reply, the choice cut to 140 characters and the reason to 160,

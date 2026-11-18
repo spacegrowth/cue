@@ -79,7 +79,7 @@ const viewHtml = () => (typeof crewPageShown === "function" && crewPageShown()) 
 /** What sits over the window: Move to Cue, a delete to confirm, a picture full size, Send to, a sheet, the live
  *  list in the middle of the window. */
 function overlaysHtml() {
-  return `${moving ? movingDialog() : ""}${deleteAsk ? deleteDialog() : ""}${quitAsk ? quitDialog() : ""}${lightboxHtml()}${sheet === "forward" && forward ? forwardPop() : ""}${sheet && sheet !== "forward" ? `<div class="scrim" data-act="close-sheet">${sheet === "convo" && convo ? convoSheet() : sheet === "setup" ? setupSheet() : settingsSheet()}</div>` : ""}${liveOpen ? `<div class="scrim spot-scrim"><span class="lv-wrap spot">${livePop(liveRows())}</span></div>` : ""}${trustAsk ? trustDialog() : ""}`;
+  return `${moving ? movingDialog() : ""}${deleteAsk ? deleteDialog() : ""}${quitAsk ? quitDialog() : ""}${lightboxHtml()}${sheet === "forward" && forward ? forwardPop() : ""}${sheet && sheet !== "forward" ? `<div class="scrim" data-act="close-sheet">${sheet === "convo" && convo ? convoSheet() : sheet === "setup" ? setupSheet() : settingsSheet()}</div>` : ""}${liveOpen ? `<div class="scrim spot-scrim"><span class="lv-wrap spot">${livePop(liveRows())}</span></div>` : ""}${trustAsk ? trustDialog() : ""}${askBeforeHtml()}`;
 }
 /** The window drawn afresh, the open chat lifted out first so it can go back in (chat/patch.js liftChat). */
 function drawWindow() {

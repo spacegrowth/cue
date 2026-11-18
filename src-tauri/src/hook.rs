@@ -10,6 +10,7 @@
 //!   compact     PreCompact         -> tell Cue it's compacting (Claude Code)
 //!   notice      Notification       -> a prompt is showing in its terminal that never reached Cue (Claude Code)
 //!   start       SessionStart       -> Cue's tmux guard first on the session's PATH (Claude Code, this Mac)
+//!   guard       PreToolUse         -> Ask me before: a push, a release or deleting files waits on your yes (this Mac)
 //!
 //! Never gets in the agent's way: if Cue isn't running or anything goes wrong, it exits 0 with no
 //! output and the agent carries on with its normal terminal prompt.
@@ -44,6 +45,12 @@ pub fn main(args: &[String]) {
     let voice = voice_ask.is_some();
     if let Some(context) = voice_ask {
         println!("{}", json!({ "hookSpecificOutput": { "hookEventName": "UserPromptSubmit", "additionalContext": context } }));
+    }
+    // Ask me before: checked on every session, hosted ones too (a hosted session's own asks never see a call its
+    // permission rules already allow).
+    if event == "guard" {
+        let _ = guard(&p, harness);
+        return;
     }
     // A session Cue started itself (hosted/): Cue hears all of this from the session directly, its asks
     // included, so telling it here too would show everything twice. What's above (a voice message's context) is
@@ -425,12 +432,102 @@ fn ask(p: &Value, harness: &str) -> Option<()> {
     msg.insert("suggestions".into(), p.get("permission_suggestions").cloned().unwrap_or(json!([])));
     // Asked from within one of its agents (a background agent or teammate): which one, so Cue shows it on that agent.
     msg.insert("agent_id".into(), json!(s(p, "agent_id")));
-    let line = format!("{}\n", Value::Object(msg));
+    let Answer::Said(m) = wait_for_answer(&Value::Object(msg)) else { return None };
+    print!("{}", to_claude(&m, p));
+    let _ = std::io::stdout().flush();
+    Some(())
+}
+
+/// Ask me before (one_way.rs): a tool call about to run, checked first. One that's none of the steps Cue can
+/// see (most) ends here, with nothing said and Cue never reached. One that is (a push, a release, deleting
+/// files) goes to Cue, which says whether its project's Desk asks first about it: "pass" leaves the call to the
+/// agent's own flow; else it waits on your answer like a permission ask, and a no stops the call. A card closed
+/// without a click, or Cue lost mid-wait and not back in time, stops it too; only a Cue never reached leaves the
+/// call to the agent's own flow.
+fn guard(p: &Value, harness: &str) -> Option<()> {
+    let input = p.get("tool_input").cloned().unwrap_or(json!({}));
+    let cwd = s(p, "cwd");
+    let branch = |dir: Option<&str>| branch_in(&cwd, dir);
+    let hits = crate::one_way::call_hits(&input, &branch);
+    if hits.is_empty() {
+        return None;
+    }
+    let mut msg = origin(p, harness);
+    msg.insert("type".into(), json!("guard"));
+    msg.insert("tool_name".into(), json!(s(p, "tool_name")));
+    msg.insert("tool_input".into(), input);
+    msg.insert("hits".into(), json!(hits));
+    msg.insert("agent_id".into(), json!(s(p, "agent_id")));
+    let m = match wait_for_answer(&Value::Object(msg)) {
+        Answer::Said(m) => m,
+        Answer::Pass | Answer::Never => return None,
+        Answer::Closed => json!({"behavior": "deny", "message": CLOSED}),
+        Answer::Lost => json!({"behavior": "deny", "message": LOST}),
+    };
+    if let Some(out) = guard_output(&m, harness) {
+        print!("{out}");
+        let _ = std::io::stdout().flush();
+    }
+    Some(())
+}
+
+/// Why a checked call stopped with no answer from you: its card closed without a click, or Cue went mid-wait.
+const CLOSED: &str = "Cue closed this ask without an answer from the user (Ask me before), so it didn't run. Ask the user again.";
+const LOST: &str = "Cue went away while this waited on the user (Ask me before), so it didn't run. Ask the user again.";
+
+/// Your answer to a stopped tool call as the PreToolUse output: Claude Code runs it on a yes (you've said yes to
+/// this very call) and stops it on a no; Codex takes only a no from this hook, so a yes says nothing and leaves
+/// the call to its own flow.
+pub(crate) fn guard_output(d: &Value, harness: &str) -> Option<Value> {
+    let yes = matches!(d.get("behavior").and_then(Value::as_str), Some("allow" | "allow_always"));
+    let why = d.get("message").and_then(Value::as_str).filter(|m| !m.is_empty()).unwrap_or("The user said no in Cue (Ask me before).");
+    match (yes, harness) {
+        (true, "codex") => None,
+        (true, _) => Some(json!({ "hookSpecificOutput": { "hookEventName": "PreToolUse", "permissionDecision": "allow", "permissionDecisionReason": "The user said yes in Cue (Ask me before)." } })),
+        (false, _) => Some(json!({ "hookSpecificOutput": { "hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": why } })),
+    }
+}
+
+/// The branch checked out in the session's folder `cwd` (or `dir` in it, `git -C dir`): only ever this Mac's own
+/// folder, the hook running beside the agent. None when git can't say (a detached head counts as none); one_way.rs
+/// reads an unknown branch as main.
+fn branch_in(cwd: &str, dir: Option<&str>) -> Option<String> {
+    let at = match dir {
+        Some(d) if d.starts_with('/') => d.to_string(),
+        Some(d) => format!("{cwd}/{d}"),
+        None => cwd.to_string(),
+    };
+    if at.is_empty() {
+        return None;
+    }
+    let out = Command::new("git").args(["-C", &at, "rev-parse", "--abbrev-ref", "HEAD"]).stderr(std::process::Stdio::null()).output().ok()?;
+    let b = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    (out.status.success() && !b.is_empty() && b != "HEAD").then_some(b)
+}
+
+/// How a wait on Cue ended.
+enum Answer {
+    /// Your decision (`{"type": "decision", …}`).
+    Said(Value),
+    /// Cue's "pass" (Ask me before: nothing to ask).
+    Pass,
+    /// The card closed without a click ("cancel": answered elsewhere, or dismissed), or Cue refused it ("error").
+    Closed,
+    /// Cue wasn't running at the first try.
+    Never,
+    /// Cue was reached, then went and wasn't back within reconnect_for_ms().
+    Lost,
+}
+
+/// `msg` sent to Cue and the answer waited for. If Cue restarts mid-wait, asked again when it's back (for up to
+/// 15 minutes).
+fn wait_for_answer(msg: &Value) -> Answer {
+    let line = format!("{msg}\n");
     let mut reach = Reconnect::default();
     loop {
         let Some(mut sock) = connect(Duration::from_secs(1)) else {
             if !reach.unreachable() {
-                return None;
+                return if reach.reached { Answer::Lost } else { Answer::Never };
             }
             crate::clock::sleep_ms(RETRY_MS);
             continue;
@@ -446,12 +543,9 @@ fn ask(p: &Value, harness: &str) -> Option<()> {
             let Ok(l) = l else { break };
             let Ok(m) = serde_json::from_str::<Value>(&l) else { continue };
             match m.get("type").and_then(Value::as_str) {
-                Some("decision") => {
-                    print!("{}", to_claude(&m, p));
-                    let _ = std::io::stdout().flush();
-                    return Some(());
-                }
-                Some("cancel") | Some("error") => return None, // answered elsewhere: let the agent's own flow win
+                Some("decision") => return Answer::Said(m),
+                Some("pass") => return Answer::Pass,
+                Some("cancel") | Some("error") => return Answer::Closed,
                 _ => {}
             }
         }
@@ -534,6 +628,26 @@ pub(crate) fn put_executable(path: &std::path::Path, body: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Ask me before's answer as the agent's PreToolUse hook says it: a yes lets Claude run it (Codex takes silence),
+    /// a no stops it with your words or a plain why.
+    #[test]
+    fn a_guard_answer_allows_or_stops_the_tool_call() {
+        let decision = |o: Option<Value>| o.map(|v| v["hookSpecificOutput"]["permissionDecision"].as_str().unwrap().to_string());
+        assert_eq!(decision(guard_output(&json!({"behavior": "allow"}), "claude")).as_deref(), Some("allow"));
+        assert_eq!(guard_output(&json!({"behavior": "allow"}), "codex"), None);
+        for harness in ["claude", "codex"] {
+            let no = guard_output(&json!({"behavior": "deny", "message": "not yet"}), harness).unwrap();
+            assert_eq!((no["hookSpecificOutput"]["permissionDecision"].as_str(), no["hookSpecificOutput"]["permissionDecisionReason"].as_str()), (Some("deny"), Some("not yet")));
+        }
+        // No click (the card closed, or Cue lost mid-wait): stopped all the same, for either agent.
+        for (why, harness) in [(CLOSED, "claude"), (LOST, "codex")] {
+            let no = guard_output(&json!({"behavior": "deny", "message": why}), harness).unwrap();
+            assert_eq!(no["hookSpecificOutput"]["permissionDecision"], "deny");
+        }
+        let plain = guard_output(&json!({"behavior": "deny"}), "claude").unwrap();
+        assert_eq!(plain["hookSpecificOutput"]["permissionDecisionReason"], "The user said no in Cue (Ask me before).");
+    }
 
     /// A tmux that doesn't answer holds the hook up for the cap at most, and counts as "can't be asked".
     #[test]

@@ -125,7 +125,7 @@ function crewNeedsPage(sid) {
     if (x.mate) return `<div class="cpn-row" tabindex="-1">${mateNeeds(sid, x.mate) ? mateNeedRow(sid, x.mate) : mateReadyRow(sid, x.mate)}</div>`;
     return `<div class="cpn-row" tabindex="-1">${x.html || `<div class="mt-row"><div class="mt-n"><b>${esc(x.who)}</b> <i>${esc(x.what)}</i></div><div class="mt-btns">${x.buttons}</div></div>`}</div>`;
   };
-  const body = list.length ? list.map(row).join("") : `<div class="cpn-none">${esc(crewNone(sid))}</div>`;
+  const body = list.length ? list.map(row).join("") : `<div class="cpn-none">${crewNoneHtml(sid)}</div>`;
   return `<div class="cp-view cpn" data-cp-view="needs">${crewViewHead(sid, `<b class="cpv-name">Needs you</b><span class="cpv-n">${list.length || "nothing now"}</span>`)}<div class="cpv-scroll" data-scroll-key="cpn:${esc(sid)}">${body}</div></div>`;
 }
 

@@ -76,6 +76,12 @@ pub(super) fn routable<'a>(st: &'a Store, project: &str) -> Vec<&'a Session> {
     ours
 }
 
+/// Desk `scope`'s Ask me before line for the sessions it hands work to (one_way.rs; "" when nothing's set): its
+/// project's, so two Desks on one project share it.
+fn rule_of(st: &Store, scope: &str) -> String {
+    crate::one_way::ask_first(&crate::one_way::kinds(st.desk.project_of(scope)))
+}
+
 /// Live session `sid` as a holder: a lead when it has a crew.
 fn holder_of(st: &Store, sid: &str) -> Option<Holder> {
     st.sessions.get(sid).map(|s| Holder { kind: if s.team.is_empty() { "session".into() } else { "lead".into() }, sid: sid.to_string(), name: shown_name(s), lead_sid: String::new() })
@@ -316,12 +322,13 @@ pub(super) fn item_sources(st: &Store, it: &DeskItem) -> (String, Vec<(String, V
 
 /// Items queued after `id` start now: each to its holder, with no reason (why it was queued isn't why it starts).
 pub(super) fn release(st: &mut Store, id: &str, now: u64, fx: &mut Effects) {
+    let rule = st.desk.item(id).map(|i| rule_of(st, &i.project)).unwrap_or_default();
     for it in st.desk.items.iter_mut().filter(|i| i.after.as_deref() == Some(id) && i.state == "queued") {
         it.after = None;
         it.state = "working".into();
         it.updated = secs(now);
         if let Some(h) = &it.holder {
-            fx.sends.push((h.to().to_string(), crate::desk::handed_words(it, "")));
+            fx.sends.push((h.to().to_string(), crate::desk::handed_words(it, "", &rule)));
         }
         fx.items.push(it.id.clone());
     }
@@ -387,6 +394,7 @@ pub(super) struct By<'a> {
 /// Item `id` to the session named `to` ("new": one Cue starts for it), now or after another item, as the lead asked.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn route(st: &mut Store, project: &str, by: &By, id: &str, to: &str, after: Option<String>, why: &str, now: u64, fx: &mut Effects) {
+    let rule = rule_of(st, project);
     let fresh = to.eq_ignore_ascii_case("new") || to.eq_ignore_ascii_case("me");
     let holder = if fresh { None } else { resolve(st, project, to) };
     if fresh || holder.as_ref().is_some_and(|h| h.sid == by.sid && h.lead_sid.is_empty()) {
@@ -438,7 +446,7 @@ pub(super) fn route(st: &mut Store, project: &str, by: &By, id: &str, to: &str, 
     fx.items.push(it.id.clone());
     held_by(it, &h, refused, waits.clone(), why, now);
     if waits.is_none() {
-        fx.sends.push((h.to().to_string(), crate::desk::handed_words(it, why)));
+        fx.sends.push((h.to().to_string(), crate::desk::handed_words(it, why, &rule)));
     }
     let text = routed_text(id, &h.name, waits.as_deref(), reopen && same, same && was_working);
     decide(st, project, Some(id.to_string()), by.name, by.sid, &text, why, now, fx);
@@ -531,6 +539,7 @@ fn give_to(st: &mut Store, id: &str, sid: &str, by: (&str, &str, &str), started:
     let project = st.sessions.get(sid).map(|s| s.project.clone()).unwrap_or_default();
     let scope = st.desk.item(id).ok_or("no such item")?.project.clone();
     let workspace = st.desk.project_of(&scope).to_string();
+    let rule = rule_of(st, &scope);
     if st.desk.lead_of(sid).is_some_and(|id| id != scope) {
         return Err("that session runs another Desk".into());
     }
@@ -558,7 +567,7 @@ fn give_to(st: &mut Store, id: &str, sid: &str, by: (&str, &str, &str), started:
     it.done_at = None;
     it.updated = secs(now);
     it.after_why = by.2.to_string();
-    fx.sends.push((sid.to_string(), crate::desk::handed_words(it, by.2)));
+    fx.sends.push((sid.to_string(), crate::desk::handed_words(it, by.2, &rule)));
     fx.items.push(id.to_string());
     let text = if by.1.is_empty() { format!("Gave #{id} to {}", h.name) } else { format!("Started {} for #{id}", h.name) };
     // Given an item, by you or as a new session for it: on the Desk from now.
@@ -922,6 +931,7 @@ fn desk_line_start(line: &str) -> bool {
 fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<Effects, String> {
     let mut fx = Effects::default();
     let busy = st.desk.item(id).and_then(|i| i.holder.as_ref()).filter(|h| at_work(st, h)).map(|h| h.name.clone());
+    let rule = st.desk.item(id).map(|i| rule_of(st, &i.project)).unwrap_or_default();
     let it = st.desk.item_mut(id).ok_or("no such item")?;
     let holder = it.holder.clone();
     match act {
@@ -971,7 +981,7 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
             }
             it.after = None;
             it.state = "working".into();
-            fx.sends.push((h.to().to_string(), crate::desk::handed_words(it, "")));
+            fx.sends.push((h.to().to_string(), crate::desk::handed_words(it, "", &rule)));
         }
         // What you wrote on its page, to its lead or its holder (sent by the window): one of its Steps, with whom it
         // went to. Nothing else about it changes (nor `updated`: it isn't news to you).
@@ -1016,6 +1026,7 @@ fn you_wrote(st: &mut Store, project: &str, id: &str, words: &str, whom: &str, n
 /// waited on nothing), that one waits on it, and what waited on `id` waits on that one instead.
 fn put_before(st: &mut Store, id: &str, holder: Option<&Holder>, now: u64, fx: &mut Effects) -> Result<(), String> {
     let (other, why) = st.desk.item(id).and_then(|it| it.after.clone().map(|a| (a, it.after_why.clone()))).ok_or("it isn't waiting on another item")?;
+    let rule = st.desk.item(id).map(|i| rule_of(st, &i.project)).unwrap_or_default();
     // What that one waits on, if it's still to be done: this one waits on it in its place.
     let open = |a: &String| st.desk.item(a).is_some_and(|w| !matches!(w.state.as_str(), "finishing" | "to_check" | "done"));
     let ahead = st.desk.item(&other).and_then(|o| o.after.clone()).filter(open);
@@ -1049,7 +1060,7 @@ fn put_before(st: &mut Store, id: &str, holder: Option<&Holder>, now: u64, fx: &
         None => {
             it.after = None;
             it.state = "working".into();
-            fx.sends.extend(holder.map(|h| (h.to().to_string(), crate::desk::handed_words(it, ""))));
+            fx.sends.extend(holder.map(|h| (h.to().to_string(), crate::desk::handed_words(it, "", &rule))));
         }
     }
     Ok(())
@@ -1487,7 +1498,7 @@ impl Hub {
                 let older: Vec<&DeskDecision> = st.desk.decisions.iter().filter(|d| &d.project == p && d.at < today && d.item_id.as_ref().is_some_and(|i| items.iter().any(|it| &it.id == i))).collect();
                 let members = st.desk.members.get(p).cloned().unwrap_or_default();
                 let work_history = super::desk_members::work_history(st, p);
-                json!({ "work_history": work_history, "id": p, "project": p, "name": st.desk.spaces.get(p).map(|d| &d.name), "independent": st.desk.spaces.contains_key(p), "workspace_project": st.desk.project_of(p), "folder": st.desk.spaces.get(p).map(|d| &d.folder), "lead": Self::desk_lead_view(st, p), "items": items, "decisions": decisions, "older": older, "members": members, "checks": super::desk_checks::checks_view(st, p) })
+                json!({ "work_history": work_history, "id": p, "project": p, "name": st.desk.spaces.get(p).map(|d| &d.name), "independent": st.desk.spaces.contains_key(p), "workspace_project": st.desk.project_of(p), "folder": st.desk.spaces.get(p).map(|d| &d.folder), "lead": Self::desk_lead_view(st, p), "items": items, "decisions": decisions, "older": older, "members": members, "checks": super::desk_checks::checks_view(st, p), "ask_before": crate::one_way::desk_view(st.desk.project_of(p)) })
             })
             .collect();
         json!({ "projects": list, "installed_ms": super::desk_checks::installed_ms(), "install_at": super::desk_finish::install_at(st) })

@@ -22,16 +22,21 @@ pub struct NewAsk {
 impl Hub {
     /// A blocking request arrived. Returns its id and the receiver the connection waits on.
     pub fn add_ask(&self, origin: Origin, ask: NewAsk) -> (String, oneshot::Receiver<Reply>) {
-        self.open_ask(origin, ask, None).expect("an ask with no request id always opens a card")
+        self.open_ask(origin, ask, None, false).expect("an ask with no request id always opens a card")
     }
 
     /// The same, for an ask the agent names with its own `request_id` (a hosted session's): none when a card for
     /// that request is already open (the same lines read again), so it's never asked twice.
     pub(super) fn add_keyed_ask(&self, origin: Origin, request_id: &str, ask: NewAsk) -> Option<(String, oneshot::Receiver<Reply>)> {
-        self.open_ask(origin, ask, Some(request_id))
+        self.open_ask(origin, ask, Some(request_id), false)
     }
 
-    fn open_ask(&self, origin: Origin, ask: NewAsk, request_id: Option<&str>) -> Option<(String, oneshot::Receiver<Reply>)> {
+    /// A tool call Ask me before stopped (guard.rs): one-way, so answered only with a click.
+    pub(super) fn add_guard_ask(&self, origin: Origin, request_id: Option<&str>, ask: NewAsk) -> Option<(String, oneshot::Receiver<Reply>)> {
+        self.open_ask(origin, ask, request_id, true)
+    }
+
+    fn open_ask(&self, origin: Origin, ask: NewAsk, request_id: Option<&str>, stopped: bool) -> Option<(String, oneshot::Receiver<Reply>)> {
         let NewAsk { kind, tool_name, tool_input, suggestions, mut context, agent_id } = ask;
         // One of its agents asks: what it goes by, from the session's steps feed (read before the lock is taken).
         let agent_name = if agent_id.is_empty() || origin.transcript_path.is_empty() { String::new() } else { crate::steps::agent_name(&origin.transcript_path, &agent_id) };
@@ -40,8 +45,11 @@ impl Hub {
         }
         let scan_from = if origin.transcript_path.is_empty() { 0 } else { transcript::tail_offset(&origin.transcript_path) };
         // A command its project counts one-way (a push to main, say): answered only with a click on the crew page.
-        let command = (kind == "permission").then(|| tool_input.get("command").and_then(Value::as_str)).flatten();
-        let one_way = command.is_some_and(|c| crate::one_way::command_one_way(&crate::one_way::kinds(&super::crew_log::project_shown_for(&origin)), c));
+        // Read from its words alone (its command, or a patch deleting a file), the branch unknown here.
+        let one_way = stopped || kind == "permission" && {
+            let kinds = crate::one_way::kinds(&super::crew_log::project_shown_for(&origin));
+            crate::one_way::call_hits(&tool_input, &|_| None).iter().any(|k| kinds.contains(k))
+        };
         let (tx, rx) = oneshot::channel();
         let (id, title) = self.write(|st| {
             let sid = origin.session_id.clone();

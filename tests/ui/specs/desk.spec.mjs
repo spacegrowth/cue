@@ -58,7 +58,9 @@ test("the Desk is in the header after Board, and lists Waiting on you, then a gr
   await expect(page.locator(".dk-sh .dk-ren")).toHaveCSS("opacity", "0");
   await page.locator(".dk-sh").hover();
   await expect(page.locator(".dk-sh .dk-ren")).toHaveCSS("opacity", "1");
-  await expect(page.locator(".dk-board")).not.toContainText("Change");
+  // No Change for the lead (⋯ hands it over); the only Change is Ask me before's, in the strip's line.
+  await expect(page.locator(".dk-board button:not(.dk-ab-change)", { hasText: "Change" })).toHaveCount(0);
+  await expect(page.locator(".dk-strip .dk-ab")).toHaveText("Asks before: push to main · Change");
   await expect(page.locator(".dk-box textarea")).toHaveAttribute("placeholder", "Tell web-lead: a bug, a feature, or a question…");
   await expect(page.locator("[data-desk-new]")).toHaveCount(0);
 });
@@ -389,7 +391,7 @@ test("Desk home: one row a Desk with what it's about, its people, open tasks, bu
   await expect(rows).toHaveCount(2);
   await rows.first().click();
   await expect(page.locator(".dk-sh b")).toHaveText("cue Desk");
-  await expect(page.locator(".dk-sh")).not.toContainText("Change");
+  await expect(page.locator(".dk-sh button:not(.dk-ab-change)", { hasText: "Change" })).toHaveCount(0);
 });
 
 test("+ New is a menu: New session as before, New Desk asks a project and a name, starts its lead and opens it", async ({ page, cue }) => {
