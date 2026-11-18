@@ -108,3 +108,27 @@ test("while its holder works on it, the item shows the turn it's writing, whole,
     if (process.env.SHOT_DIR) await page.locator(".dk-right").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-276-${theme}.png` });
   }
 });
+
+test("an item at work shows its holder's latest reply and what each of its crew at work is doing (#318)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await cue.change((st) => {
+    const at = Date.now();
+    Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5"), { state: "working", now_on: true, said: [], latest: "G built. Waiting for the test helper." });
+    const host = st.sessions.find((x) => x.session_id === "host");
+    host.state = "waiting";
+    host.team = [
+      { agent_id: "a1", name: "loops-tests", state: "working", step: "Rewriting the old tests", started_ms: at - 60000, step_ms: at - 5000 },
+      { agent_id: "a2", name: "loops-g", state: "done", step: "", started_ms: at - 600000, summary: "Built G" },
+    ];
+  });
+  await openItem(page, cue, "d5");
+  const now = page.locator(".dk-right .dk-pnow .dk-psay");
+  await expect(now).toContainText("host-lead is on it. G built. Waiting for the test helper.");
+  await expect(now.locator(".dk-crewnow")).toHaveText("Crew: loops-tests rewriting the old tests");
+  const live = page.locator(".dk-right .dk-tm.live");
+  await expect(live).toContainText("G built. Waiting for the test helper.");
+  await expect(live.locator(".dk-crewnow")).toHaveText("Crew: loops-tests rewriting the old tests");
+  // On another of its items now: neither its words nor its crew show here.
+  await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5").now_on = false; });
+  await expect(page.locator(".dk-right .dk-crewnow")).toHaveCount(0);
+});
