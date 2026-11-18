@@ -218,11 +218,10 @@
 .dk-box { flex: none; display: flex; flex-direction: column; gap: 6px; margin: 8px 16px 16px; padding: 8px 8px 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
 /* Its row: the words, the mic, a picture, Send; pictures added sit above it (draftChips). */
 .dk-box-row { display: flex; align-items: flex-end; gap: 6px; }
-/* Who gets it and which item, at the start of an item page's box: it stays as you type (#132). It fills the box's
-   left end in the selected card's color, so it reads as colored in light and dark and in every project's theme
-   (#143: the theme's own accent is near the ink in light). A click on it is a click in the box. */
-.dk-pre { flex: none; align-self: stretch; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0 4px -8px -12px; padding: 5px 12px 0; border-radius: 0 0 0 11px; background: var(--sel); color: var(--on-sel); font: 600 13px/1.4 var(--sans); cursor: text; user-select: none; }
-.dk-box-row:first-child > .dk-pre { margin-top: -8px; padding-top: 13px; border-radius: 11px 0 0 11px; }
+/* Item context sits above the input, with controls on their own line. */
+.dk-pre { align-self: flex-start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font: 600 12px/1.4 var(--sans); cursor: text; user-select: none; }
+.dk-box:has(> .dk-pre) .dk-box-row { flex-wrap: wrap; justify-content: flex-end; }
+.dk-box:has(> .dk-pre) .dk-box-row > :is(.ta-wrap, textarea) { flex: 1 0 100%; min-width: 0; }
 .dk-box .chips { margin: 0; }
 .dk-ask { flex: none; max-height: 55%; overflow-y: auto; padding: 0 20px 14px; }
 .dk-request { margin: 0 10px 12px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
@@ -231,6 +230,8 @@
 .dk-request-who { font: inherit; font-weight: 600; text-align: left; color: var(--ink); }
 .dk-request pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 160px; overflow: auto; font-size: 12px; margin: 10px 0; }
 .dk-request p { margin: 10px 0; overflow-wrap: anywhere; }
+.dk-request .row-btns, .dk-ask .row-btns { justify-content: flex-end; }
+.dk-request .row-btns > .btn.flex, .dk-ask .row-btns > .btn.flex { flex: 0 0 auto; min-width: 76px; }
 /* The lead's ASK: a bordered panel card in the chat's column, not a tinted
    band; its choices on the panel too, the accent only on the one you point at or picked. */
 .dk-ask .act-card { max-height: none; overflow: visible; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
@@ -486,6 +487,7 @@
 .dk-lcard:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .dk-lcard.on :is(.dk-lk, .dk-st, .dk-s2, .dk-s3:not(.hot), .dk-id, .dk-none, .dk-kic) { color: inherit; }
 .dk-lcard.on :is(.dk-lk, .dk-st, .dk-id, .dk-s3:not(.hot)) { opacity: .75; }
+.dk-larrow { flex: none; font: 600 19px/1 var(--sans); }
 .dk-lcard .dk-lk { flex: none; font: 700 10px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .dk-lcard .dk-s2, .dk-lcard .dk-s3 { margin-left: 0; }
 .dk-lcard .dk-s2 { font-size: 12px; }
