@@ -33,7 +33,7 @@
 #                            switches when it's there              (cue-host, then npx tauri build --bundles app)
 #   CUE_INSTALL_BUILT_APP    the app the build makes               ($CUE_INSTALL_TARGET_DIR/release/bundle/macos/Cue.app)
 #   CUE_INSTALL_QUIT         quits the running Cue; $CUE_INSTALL_PIDS are the PIDs running the installed app's
-#                            program (osascript asks the app to quit; then only those PIDs are stopped)
+#                            program (SIGTERM to those PIDs: Cue quits on it as on its own Quit, src-tauri/src/quit.rs)
 #   CUE_INSTALL_LAUNCH       starts $CUE_INSTALL_APP               (open, with a clean environment)
 #   CUE_INSTALL_SIGN         signs $CUE_INSTALL_APP, the built app, before Cue is quit; ":" for none
 #                            (your Developer ID, when this Mac has one)
@@ -218,14 +218,21 @@ still_cue() {
   return 0
 }
 
-# Wait up to $1 tenths of a second for these PIDs ($2…) to be gone (or no longer Cue).
+# Wait up to $1 seconds, by the clock, for these PIDs ($2…) to be gone (or no longer Cue). Each look runs ps, which
+# takes a while itself: counted in looks, "30 s" was near a minute.
 gone() {
-  local n=$1; shift
-  for _ in $(seq 1 "$n"); do [ -z "$(still_cue "$@")" ] && return 0; sleep 0.1; done
-  return 1
+  local until=$((SECONDS + $1)); shift
+  while :; do
+    [ -z "$(still_cue "$@")" ] && return 0
+    [ "$SECONDS" -ge "$until" ] && return 1
+    sleep 0.1
+  done
 }
 
 # Quit the installed Cue and wait until nothing runs its program: asked first, then only those exact PIDs are stopped.
+# Asked with SIGTERM to those PIDs, which Cue takes as its own Quit (saves, then goes; quit.rs ends it anyway after a
+# few seconds). Not `osascript quit app`: that finds the app by its path through Launch Services, and in installs the
+# running Cue was seen to ignore it until it was stopped 30 s (really ~50 s) later. A signal reaches that exact PID.
 # Fails when one is still there.
 quit_cue() {
   local pids; pids="$(app_pids | tr '\n' ' ')"
@@ -235,14 +242,12 @@ quit_cue() {
   if [ -n "${CUE_INSTALL_QUIT:-}" ]; then
     eval "$CUE_INSTALL_QUIT" >> "$LOG" 2>&1 || true
   else
-    osascript -e "quit app \"$APP\"" >> "$LOG" 2>&1 || true
+    kill $pids 2>/dev/null || true
   fi
-  gone 300 $pids && return 0
+  if gone 30 $pids; then say "Cue quit"; return 0; fi
   say "Cue didn't quit in 30 s: stopping PID $(still_cue $pids | tr '\n' ' ')"
-  kill $(still_cue $pids) 2>/dev/null || true
-  gone 50 $pids && return 0
   kill -9 $(still_cue $pids) 2>/dev/null || true
-  gone 20 $pids && [ -z "$(app_pids)" ]
+  gone 5 $pids && [ -z "$(app_pids)" ]
 }
 
 launch() {
