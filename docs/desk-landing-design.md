@@ -22,7 +22,7 @@ One block per project. Six parts, each with a small set of choices.
 | --- | --- | --- |
 | Where an item works | shared folder, own worktree, branch | own worktree |
 | How it lands | Desk squash, merge, PR, owner commits | Desk squash |
-| Check before landing | a command, or none | none, and the item says so |
+| Check before landing | none, or one or more steps in order, each marked "each landing" or "before going live" | none, and the item says so |
 | After landing | nothing, a command (install, deploy, serve) | nothing |
 | Push | never, ask each time, after each landing | ask each time |
 | Items at once | a number | three |
@@ -293,7 +293,9 @@ that was not.
 - Check, each landing, in order: build; the Rust tests; the window loaded from the clean copy,
   failing on any name that is missing or declared twice. These three would have caught all six breaks
   of 17 November (review 1).
-- Check, before going live: the window tests, once before each install.
+- Check, before going live: the window tests. They run once before each install, and also before
+  each in-place serve, since serving in place is going live (part 4). Window-only landings that are
+  waiting together are tested and served as one.
 - After landing: window-only changes are served in place, after the check. Others join the half-hourly
   install, as now.
 - Push: ask each time.
@@ -347,7 +349,7 @@ comes last.
    landing them.
 4. **A long check is split.** Fast steps run on each landing. Slow steps run once before going live.
    For Cue: build, Rust tests and the window load on each landing, the window tests before each
-   install. The first three catch every break of that day, and the install is already batched.
+   install or in-place serve. The first three catch every break of that day, and the install is already batched.
 5. **One worktree per item, shared by the holder and its helpers.** The holder already splits its
    helpers' work by file, and one copy means one build and one landing.
 6. **An item in two repos gets a worktree in each, and lands in all or none.** Every repo is checked
@@ -371,7 +373,7 @@ comes last.
 - **Ask each time, as now (recommended).** The repo is public, and the check is new and unproven. The
   ask names the commits.
 - **Ask once per install.** One ask covers every item in that install. Fewer asks, same control.
-- **After each checked landing, without asking.** Fastest. Only worth it once the check has held for
+- **After each landing, without asking.** Fastest. Only worth it once the check has held for
   some weeks.
 
 "Ask once per install" is not one of the setting's push choices today. If the owner picks it, it is
