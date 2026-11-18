@@ -132,6 +132,29 @@ const viewHtml = () => (typeof crewPageShown === "function" && crewPageShown()) 
 function overlaysHtml() {
   return `${moving ? movingDialog() : ""}${deleteAsk ? deleteDialog() : ""}${quitAsk ? quitDialog() : ""}${lightboxHtml()}${sheet === "forward" && forward ? forwardPop() : ""}${sheet && sheet !== "forward" ? `<div class="scrim" data-act="close-sheet">${sheet === "convo" && convo ? convoSheet() : sheet === "setup" ? setupSheet() : settingsSheet()}</div>` : ""}${liveOpen ? `<div class="scrim spot-scrim"><span class="lv-wrap spot">${livePop(liveRows())}</span></div>` : ""}${trustAsk ? trustDialog() : ""}${askBeforeHtml()}`;
 }
+// Each text box with its words kept through a redraw, not built afresh: its undo stays with it (chat/patch.js moveTo,
+// morphAttrs). Matched by its draft key, so another draft's undo never carries over.
+function liftDraftEditors(root) {
+  const editors = new Map();
+  for (const el of root.querySelectorAll("textarea[data-text]")) {
+    const key = el.dataset.text;
+    if (!editors.has(key)) editors.set(key, []);
+    editors.get(key).push(el);
+    moveTo(document.body, el);
+  }
+  return editors;
+}
+function settleDraftEditors(root, editors) {
+  for (const fresh of root.querySelectorAll("textarea[data-text]")) {
+    const old = editors.get(fresh.dataset.text)?.shift();
+    if (!old) continue;
+    morphAttrs(old, fresh);
+    if (old.value !== fresh.value) old.value = fresh.value;
+    moveTo(fresh.parentNode, old, fresh);
+    fresh.remove();
+  }
+  for (const remaining of editors.values()) for (const el of remaining) el.remove();
+}
 /** The window drawn afresh, the open chat lifted out first so it can go back in (chat/patch.js liftChat). */
 function drawWindow() {
   const counts = headerChips();
