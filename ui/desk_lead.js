@@ -323,7 +323,31 @@ function deskLineHtml(line, inline) {
 const deskNewlySaid = (title) => (title ? (state.desk?.projects || []).flatMap((d) => d.items).filter((i) => i.title === title).sort((a, b) => (b.created ?? 0) - (a.created ?? 0))[0] : undefined);
 /** Cue's message to the lead as quiet centred lines, when it's one of Cue's own (new items, or a DONE it couldn't act on);
  *  null for any other (chat/render.js chatHtml `you`). */
-const deskCueNote = (e) => deskNewItems(e) ?? deskDoneNotes(e);
+const deskCueNote = (e) => deskNewItems(e) ?? deskDoneNotes(e) ?? deskStopNote(e);
+/** What Cue told the lead of an item that stopped (hub/desk_stall.rs stop_words: "#224 (title) stopped[, not committed]:
+ *  holder ended its turn on it with no DONE…(files)… Its last line: …", then its words for the lead from "Settle it:
+ *  ROUTE", not shown) or that it couldn't start a session for (hub/desk_lead.rs start_failed), as a card from Cue (#244):
+ *  what happened, the item's icon, number and title (a click opens it), its holder and one plain line, its last line, and
+ *  the files not committed folded. null for any other message. */
+function deskStopNote(e) {
+  const text = String(e.text || "").replace(/^\s*<desk\b[\s\S]*?<\/desk>\s*/, "").trim();
+  const stop = /^#(\S+) \(([\s\S]*)\) stopped(, not committed)?: ([\s\S]+?) ended its turn on it with no DONE(?:, and its work isn't committed \(([\s\S]*)\), so it isn't in the user's app| and no question for the user)\. Its last line: ([\s\S]*?)\nSettle it: ROUTE #\1 /.exec(text);
+  const fail = !stop && /^Cue couldn't start a new session for #(\S+) \(([\s\S]*)\): ([\s\S]*)\. It's still [^;\n]*; ROUTE it to a session, or to new to try again\.$/.exec(text);
+  if (!stop && !fail) return null;
+  const [, id, said] = stop || fail;
+  const it = (state.desk?.projects || []).flatMap((d) => d.items).find((i) => deskIdIs(i, id));
+  const loose = !!stop?.[3], files = loose ? stop[5].split(", ").filter(Boolean) : [];
+  const what = fail ? "Couldn't start" : loose ? "Stopped, not committed" : "Stopped";
+  const plain = fail ? `Cue couldn't start a session for it: ${esc(fail[3])}.`
+    : `<b class="dk-sn-who">${esc(stop[4])}</b> · Ended its turn with no DONE${loose ? ", and its work isn't in your app yet." : " and no question for you."}`;
+  const last = stop?.[6]?.trim();
+  return `<div class="dk-news"><div class="dk-sn"><div class="dk-sn1"><span class="dk-sn-cue"><i></i>Cue</span><span>·</span><span class="dk-sn-w${fail || loose ? " red" : ""}">${what}</span><span class="dk-cl-age">${ago(e.at_ms)}</span></div>`
+    + `<div class="dk-sn2">${deskItemRef(id, it?.kind || "", deskNum(it || { id }), it?.title || said)}</div>`
+    + `<div class="dk-sn3">${plain}</div>`
+    + (last ? `<div class="dk-sn-last">Its last line: <span>${esc(last)}</span></div>` : "")
+    + (files.length ? `<details class="dk-sn-f"><summary>${files.length} file${files.length > 1 ? "s" : ""} not committed</summary><div class="dk-sn-fl">${files.map(esc).join("<br>")}</div></details>` : "")
+    + `</div></div>`;
+}
 /** What Cue told the lead of a DONE it couldn't act on (hub/desk.rs lead_done: "#69 not closed: it waits on your
  *  check", a line each, then its words for the lead, not shown): a centred line an item, "Cue · not closed [task]
  *  Task #69 title · why", its number and title opening it. null for any other message. */

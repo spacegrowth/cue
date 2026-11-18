@@ -1227,6 +1227,44 @@ test("Cue's New item note shows as a small card an item, without its words for t
   await expect(page.locator('.dk-it.on[data-desk-item="d2"]')).toHaveCount(1);
 });
 
+test("Cue's word on a stopped item is a card from Cue, not a message from You; its words for the lead stay hidden (#244)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  // As hub/desk_stall.rs stop_words and hub/desk_lead.rs start_failed say them.
+  await page.evaluate(() => {
+    const t = Date.now(), lead = sessionOf("lead");
+    lead.thread.push({ at_ms: t, role: "you", text: "#d2 (Quick phrases) stopped, not committed: desk-ui ended its turn on it with no DONE, and its work isn't committed (ui/desk.js, ui/styles/desk.css), so it isn't in the user's app. Its last line: The row keeps its seat; tests next.\nSettle it: ROUTE #d2 to desk-ui again with what's left as the why (Cue commits its work when it says DONE: #d2), or route it on; only if the user must decide, ASK: #d2 | <question> | choices: … Until then it isn't shown as waiting on the user." });
+    lead.thread.push({ at_ms: t, role: "you", text: "#d9 (Something new) stopped: web-lead ended its turn on it with no DONE and no question for the user. Its last line: Checking the box next.\nSettle it: ROUTE #d9 to web-lead again with what to do next as the why, or route it on; only if the user must decide, ASK: #d9 | <question> | choices: … Until then it isn't shown as waiting on the user." });
+    lead.thread.push({ at_ms: t, role: "you", text: "Cue couldn't start a new session for #d9 (Something new): no folder for cue. It's still new; ROUTE it to a session, or to new to try again." });
+    renderMain();
+  });
+  const cards = page.locator(".dk-chat .dk-sn");
+  await expect(cards).toHaveCount(3);
+  await expect(cards.nth(0).locator(".dk-sn-w")).toHaveText("Stopped, not committed");
+  await expect(cards.nth(0).locator(".dk-sn2")).toHaveText("Feature #d2 Quick phrases at the right of Send");
+  await expect(cards.nth(0).locator(".dk-sn3")).toHaveText("desk-ui · Ended its turn with no DONE, and its work isn't in your app yet.");
+  await expect(cards.nth(0).locator(".dk-sn-last")).toHaveText("Its last line: The row keeps its seat; tests next.");
+  // The files folded: a count, the paths only once opened.
+  const fold = cards.nth(0).locator(".dk-sn-f");
+  await expect(fold.locator("summary")).toHaveText("2 files not committed");
+  await expect(fold.locator(".dk-sn-fl")).toBeHidden();
+  await fold.locator("summary").click();
+  await expect(fold.locator(".dk-sn-fl")).toHaveText("ui/desk.jsui/styles/desk.css");
+  await expect(cards.nth(1).locator(".dk-sn-w")).toHaveText("Stopped");
+  await expect(cards.nth(1).locator(".dk-sn3")).toHaveText("web-lead · Ended its turn with no DONE and no question for you.");
+  await expect(cards.nth(1).locator(".dk-sn-f")).toHaveCount(0);
+  await expect(cards.nth(2).locator(".dk-sn-w")).toHaveText("Couldn't start");
+  await expect(cards.nth(2).locator(".dk-sn3")).toHaveText("Cue couldn't start a session for it: no folder for cue.");
+  // Not from You, and none of Cue's words for the lead.
+  const chat = page.locator(".dk-chat");
+  await expect(chat).not.toContainText("Settle it");
+  await expect(chat).not.toContainText("ROUTE it to a session");
+  await expect(chat.locator(".dk-sn [title]")).toHaveCount(0);
+  if (process.env.SHOT_DIR) await chat.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-stop-card.png` });
+  await cards.nth(1).locator("[data-desk-chk-item]").click();
+  await expect(page.locator('.dk-it.on[data-desk-item="d9"]')).toHaveCount(1);
+});
+
 test("a new item with a picture, no kind, and Cue's SPLIT words before its Route words: a card with a thumbnail; no path, no words for the lead (#147)", async ({ page, cue }) => {
   await cue.open("desk", { frozen: true });
   await openDesk(page);

@@ -611,6 +611,24 @@ b.dk-say-t, .dk-say-t { font-weight: 650; color: var(--ink); }
    reached by keyboard, as the item page's tabs have. */
 .dk-sch-t:focus-visible, .dk-rchk-it:focus-visible, .dk-rchk-go:focus-visible, .dk-chk-a:focus-visible, .dk-sl-r:focus-visible, .dk-sl-it:focus-visible, button.dk-say-id:focus-visible, .dk-undo-c:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 .dk-nc:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Cue's word on an item that stopped (desk_lead.js deskStopNote, #244): a card from Cue mid-chat, not a message from You. */
+.dk-sn { align-self: center; width: min(560px, 92%); box-sizing: border-box; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; font-size: 12.5px; line-height: 1.45; color: var(--ink); user-select: text; -webkit-user-select: text; }
+.dk-sn1 { display: flex; align-items: center; gap: 7px; color: var(--muted); }
+.dk-sn1 .dk-cl-age { margin-left: auto; }
+.dk-sn-cue { display: inline-flex; align-items: center; gap: 5px; font-weight: 650; color: var(--ink); }
+.dk-sn-cue i { width: 11px; height: 11px; box-sizing: border-box; border: 2.2px solid currentColor; border-radius: 50%; }
+.dk-sn-w { font-weight: 650; color: var(--ink); }
+.dk-sn-w.red { color: var(--deny); }
+.dk-sn2 { margin-top: 6px; }
+.dk-sn2 .dk-new-tt { color: var(--ink); }
+.dk-sn3 { margin-top: 5px; overflow-wrap: anywhere; }
+.dk-sn-who { font-weight: 650; }
+.dk-sn-last { margin-top: 6px; padding: 6px 10px; border-radius: 8px; background: var(--panel-2); color: var(--muted); overflow-wrap: anywhere; }
+.dk-sn-last span { color: var(--ink); }
+.dk-sn-f { margin-top: 7px; font-size: 12px; color: var(--muted); }
+.dk-sn-f summary { cursor: pointer; font-weight: 650; width: fit-content; user-select: none; -webkit-user-select: none; }
+.dk-sn-f summary:hover { color: var(--ink); }
+.dk-sn-fl { margin: 4px 0 0 14px; font-family: var(--mono); font-size: 11.5px; line-height: 1.6; overflow-wrap: anywhere; }
 .dk-chk-after { padding-top: 6px; font-size: 12.5px; color: var(--muted); }
 /* Send back, open on its item (desk.js deskBackHtml): why, in a box like the Desk's own. */
 .dk-sb { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
