@@ -161,14 +161,15 @@ A session looks like this:
 {
   "id": "…", "name": "api-refactor", "folder": "/Users/me/code/api", "machine": "",
   "state": "waiting", "agent": "claude",
-  "turn_from": { "root": "/Users/me/code/api", "commit": "3f9a1c2…", "untracked": ["notes.md"] },
+  "turn_from": { "root": "/Users/me/code/api", "commit": "3f9a1c2…", "untracked": ["notes.md", "build/"] },
   "session_from": { "root": "/Users/me/code/api", "commit": "8b04e7d…", "untracked": [] }
 }
 ```
 
 `machine` is empty for a session on this Mac. `turn_from` is where the latest turn began and
 `session_from` where its first turn began: a git snapshot of the folder then (diff against `commit`;
-`untracked` were the untracked files), or `null` outside a git repository.
+`untracked` were the untracked files, a folder untracked as a whole as one entry ending in `/`, as `git status`
+shows it), or `null` outside a git repository.
 
 ### Trying it out
 

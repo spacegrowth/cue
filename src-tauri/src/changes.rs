@@ -13,14 +13,39 @@ use crate::safe_git;
 pub(crate) mod ext;
 
 /// Where a turn started from: the folder's root, a snapshot of it, and its untracked files (extensions see it too).
+/// A folder git doesn't track at all is one entry ending in "/" (as `git status` shows it), never its every file:
+/// a build folder nobody ignored held ten thousand, sent with every session's state to the window several times a
+/// second, and typing lagged while the app's main thread passed it on (#270).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Base {
     root: String,
     commit: String,
+    #[serde(deserialize_with = "saved_untracked")]
     untracked: Vec<String>,
     /// The machine the folder is on; empty: this Mac. Its git runs there, over Cue's SSH.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     machine: String,
+}
+
+/// Untracked files listed with each wholly untracked folder as one "dir/" entry.
+const UNTRACKED_AT_BASE: [&str; 5] = ["ls-files", "--others", "--exclude-standard", "--directory", "--no-empty-directory"];
+/// A saved list longer than this is from before folders were one entry: it's dropped (`saved_untracked`).
+const OLD_LIST_MAX: usize = 2000;
+
+/// A saved base's untracked files. One from before folders were one entry can hold thousands of a build folder's
+/// files; it's dropped rather than kept. All it costs: a session started before that may show files that were
+/// already there in its whole-session changes.
+fn saved_untracked<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Error> {
+    let list = Vec::<String>::deserialize(d)?;
+    Ok(if list.len() > OLD_LIST_MAX { vec![] } else { list })
+}
+
+impl Base {
+    /// `path` (from the repo's top) was untracked already when this base was noted: listed, or inside a folder
+    /// that was untracked as a whole.
+    pub fn had(&self, path: &str) -> bool {
+        self.untracked.iter().any(|u| u == path || (u.ends_with('/') && path.starts_with(u.as_str())))
+    }
 }
 
 /// The folder's state now, on one of Cue's machines: git runs there, and the folder is never looked
@@ -43,7 +68,7 @@ pub fn base_on(machine: &str, cwd: &str) -> Option<Base> {
         g(&["stash", "create"]),
         g(&["rev-parse", "HEAD"]),
         safe_git::sh_quote(&root),
-        g(&["ls-files", "--others", "--exclude-standard"])
+        g(&UNTRACKED_AT_BASE)
     );
     let out = safe_git::on_machine(machine, &script).ok()?;
     let mut lines = out.lines();
@@ -77,7 +102,7 @@ fn since_on(base: &Base) -> Option<Changes> {
         .collect();
     for l in new.lines() {
         let Some((n, path)) = l.split_once('\t') else { continue };
-        if !base.untracked.iter().any(|u| u == path) {
+        if !base.had(path) {
             files.push(File { path: path.to_string(), add: n.parse().unwrap_or(0), del: 0 });
         }
     }
@@ -121,7 +146,8 @@ pub fn base(cwd: &str) -> Option<Base> {
     let root = git(cwd, &["rev-parse", "--show-toplevel"])?.trim().to_string();
     let snap = git(&root, &["stash", "create"]).map(|s| s.trim().to_string()).unwrap_or_default();
     let commit = if snap.is_empty() { git(&root, &["rev-parse", "HEAD"])?.trim().to_string() } else { snap };
-    Some(Base { untracked: untracked(&root), root, commit, machine: String::new() })
+    let untracked = git(&root, &UNTRACKED_AT_BASE).map(|s| s.lines().map(String::from).collect()).unwrap_or_default();
+    Some(Base { untracked, root, commit, machine: String::new() })
 }
 
 /// What changed since `base`: edited tracked files, and files that are new and not ignored. None: nothing.
@@ -141,7 +167,7 @@ pub fn since(base: &Base) -> Option<Changes> {
         .collect();
     // SHORTCUT: a new file's lines are counted by reading it whole; fine for source files, slow for a big
     // new binary or data file. Upgrade: skip files over a size limit (count them as changed, no lines).
-    for path in untracked(&base.root).into_iter().filter(|p| !base.untracked.contains(p)) {
+    for path in untracked(&base.root).into_iter().filter(|p| !base.had(p)) {
         let lines = std::fs::read(std::path::Path::new(&base.root).join(&path)).map(|b| b.iter().filter(|c| **c == b'\n').count() as u64).unwrap_or(0);
         files.push(File { path, add: lines, del: 0 });
     }
@@ -187,6 +213,31 @@ mod tests {
         // The snapshot didn't touch the folder or the stash list.
         assert_eq!(git(&dir, &["stash", "list"]).unwrap(), "");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_folder_nobody_tracks_is_one_entry_and_its_files_were_there_before() {
+        let dir = repo();
+        std::fs::create_dir_all(format!("{dir}/build/deep")).unwrap();
+        for i in 0..50 {
+            std::fs::write(format!("{dir}/build/deep/f{i}.o"), "x\n").unwrap();
+        }
+        let b = base(&dir).unwrap();
+        assert_eq!(b.untracked, vec!["build/".to_string()], "the folder, not its fifty files");
+        assert!(b.had("build/deep/f3.o") && !b.had("builder.txt"));
+        std::fs::write(format!("{dir}/new.txt"), "1\n").unwrap();
+        let c = since(&b).unwrap();
+        assert_eq!(c.files, vec![File { path: "new.txt".into(), add: 1, del: 0 }], "the build folder's files aren't the turn's");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_saved_list_of_thousands_of_files_is_dropped_on_load() {
+        let many: Vec<String> = (0..=OLD_LIST_MAX).map(|i| format!("target-wt/f{i}")).collect();
+        let b: Base = serde_json::from_value(serde_json::json!({ "root": "/r", "commit": "c", "untracked": many })).unwrap();
+        assert!(b.untracked.is_empty());
+        let b: Base = serde_json::from_value(serde_json::json!({ "root": "/r", "commit": "c", "untracked": ["notes.md", "out/"] })).unwrap();
+        assert_eq!(b.untracked, vec!["notes.md".to_string(), "out/".to_string()]);
     }
 
     #[test]

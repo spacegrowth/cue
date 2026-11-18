@@ -153,8 +153,10 @@ async function diffSince(s, base) {
   const top = await dvGit(s, "toplevel");
   if (top.code !== 0) return null;
   const [diff, others] = await Promise.all([dvGit(s, "diff", { against: base ? base.commit : "HEAD" }), dvGit(s, "untracked")]);
-  const before = new Set(base ? base.untracked : []);
-  const { single, bulk } = diffBulk(others.stdout.split("\n").filter((p) => p && !before.has(p)));
+  // Untracked before: listed, or inside a folder untracked as a whole (an entry ending in "/", changes.rs Base).
+  const before = new Set(base ? base.untracked : []), dirs = [...before].filter((u) => u.endsWith("/"));
+  const had = (p) => before.has(p) || dirs.some((d) => p.startsWith(d));
+  const { single, bulk } = diffBulk(others.stdout.split("\n").filter((p) => p && !had(p)));
   const shown = await Promise.all(single.slice(0, 20).map((p) => dvGit(s, "new_file", { path: p }).then((r) => r.stdout, () => "")));
   const files = diffParse(diff.stdout + shown.join("")).files;
   for (const p of single.slice(20)) files.push({ path: p, isNew: true, lines: [], add: 0, del: 0, unread: true });
