@@ -61,7 +61,7 @@ pub fn has(repo: &str, commit: &str) -> bool {
     running_commit().is_some_and(|running| is_ancestor(repo, commit, &running))
 }
 
-fn is_ancestor(repo: &str, commit: &str, of: &str) -> bool {
+pub fn is_ancestor(repo: &str, commit: &str, of: &str) -> bool {
     if !looks_like_commit(commit) || !looks_like_commit(of) {
         return false;
     }
