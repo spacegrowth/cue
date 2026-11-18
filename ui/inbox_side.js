@@ -48,7 +48,7 @@ function inboxTurnDiff(sid) {
   const rec = { key, files: had?.files || null, bulk: had?.bulk || [] };
   inboxTurnDiffs.set(sid, rec);
   diffSince(s, s.turn_from).then((g) => { rec.files = g?.files || []; rec.bulk = g?.bulk || []; }, () => { rec.files = rec.files || []; })
-    .then(() => { if (inboxTurnDiffs.get(sid) === rec && view === "inbox") renderMain(); });
+    .then(() => { if (inboxTurnDiffs.get(sid) === rec && (view === "inbox" || view === "desk")) renderMain(); });
   return rec;
 }
 /** The biggest change in a file: its largest hunk, from just before its first changed line, a few lines long. */
@@ -71,12 +71,11 @@ function inboxChangedBlock(r) {
   const add = files.reduce((n, f) => n + (f.add || 0), 0), del = files.reduce((n, f) => n + (f.del || 0), 0);
   // With its lines read, a click on a file opens it over the page (diff_overlay.js), the list in this order.
   if (d?.files) d.shown = files;
-  const nums = (f) => `<span>${f.isNew ? `<span class="ib-dim">new</span> ` : ""}<span class="ib-add">+${f.add || 0}</span> <span class="ib-del">−${f.del || 0}</span></span>`;
-  const row = (f, n) => (d?.files ? `<button class="ib-file" data-inbox-file="${sid}" data-n="${n}"><code>${esc(f.path)}</code>${nums(f)}</button>` : `<div class="ib-file"><code>${esc(f.path)}</code>${nums(f)}</div>`);
+  const at = (n) => (d?.files ? `data-inbox-file="${sid}" data-n="${n}"` : "");
+  const list = fileListHtml(files.map((f) => ({ ...f, add: f.add || 0 })), { attrs: at, more: d?.files ? at(INBOX_FILES_MAX) : `data-inbox-diff="${sid}"`, max: INBOX_FILES_MAX });
   const peek = files[0].lines?.length ? `<div class="ib-peek"><div class="ib-peek-h"><code>${esc(files[0].path)}</code></div><div class="dv-lines">${inboxPeek(files[0])}</div></div>` : "";
-  const rest = files.length > INBOX_FILES_MAX ? `<button class="ib-link" ${d?.files ? `data-inbox-file="${sid}" data-n="${INBOX_FILES_MAX}"` : `data-inbox-diff="${sid}"`}>and ${files.length - INBOX_FILES_MAX} more files ›</button>` : "";
   return `<div class="ib-blk"><div class="ib-k">Changed this turn · ${files.length} file${files.length === 1 ? "" : "s"} <span class="ib-add">+${add}</span> <span class="ib-del">−${del}</span></div>
-    <div class="ib-files">${files.slice(0, INBOX_FILES_MAX).map(row).join("")}</div>${peek}${rest}</div>`;
+    ${list}${peek}</div>`;
 }
 
 /** A file in its Changed this turn, over the page: the turn's files on the left, file `n` open. */

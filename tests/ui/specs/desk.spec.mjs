@@ -226,6 +226,15 @@ test("a lead opens with its crew; a crew member with where it is, and the box go
   await expect(pane.locator(".dk-files")).toHaveText("ui/header.js · ui/styles/header.css");
   await expect(page.locator('[data-desk-item="d3"]')).toHaveClass(/\bon\b/);
   await expect(pane.locator('[data-mt-act="stop"]')).toBeVisible();
+  // Its page (#303, pick A): Doing, Why, Result; Open its session waits behind ⋯ and a click outside closes it.
+  await expect(pane.locator(".dk-crewpg .dk-sec h3")).toHaveText([/^Doing/, "Why", "Result"]);
+  await expect(pane.locator(".dk-crewpg .dk-sec").nth(1)).toContainText("Keep the search field centred unless it would cover a button.");
+  await expect(pane.locator(".dk-crewpg .dk-sec").nth(2)).toContainText("Not back yet.");
+  await expect(pane.locator("[data-desk-crew-open]")).toHaveCount(0);
+  await pane.locator("[data-desk-crew-more]").click();
+  await expect(pane.locator('[data-desk-crew-open="id-search"]')).toBeVisible();
+  await pane.locator("h1 .dk-tname").click();
+  await expect(pane.locator("[data-desk-crew-open]")).toHaveCount(0);
   await page.locator(".dk-box textarea").fill("Leave the Inbox button alone");
   await page.locator(".dk-box textarea").press("Enter");
   await cue.called("send_to_session", { sessionId: "lead", text: "About search-centre: Leave the Inbox button alone" });
@@ -579,6 +588,7 @@ test("a crew member's session opens its lead's crew page on the Desk; Esc and �
   const toCrewPage = async () => {
     await page.evaluate(() => deskShow({ kind: "holder", sid: "lead" }));
     await page.locator('.dk-right [data-desk-crew="id-search"]').click();
+    await page.locator(".dk-right [data-desk-crew-more]").click();
     await page.locator('.dk-right [data-desk-crew-open="id-search"]').click();
     await expect(page.locator(".crew-page")).toBeVisible();
     await expect(page.locator(".crew-page .cp-back")).toHaveText("‹ Back to the Desk");
@@ -1577,6 +1587,46 @@ test("a to-check item's page lists its Files changed, each with its counts; a cl
   await page.mouse.click(10, 10);
   await expect(page.locator(".dov")).toHaveCount(0);
   await expect(page.locator(".dov-scrim [title]")).toHaveCount(0);
+});
+
+test("the panel lists the files an item and a crew member changed, three then the rest, a click opening its diff (#313)", async ({ page, cue }) => {
+  // A window wide enough for the panel to show beside the thread (#200).
+  await page.setViewportSize({ width: 1512, height: 945 });
+  await cue.open("desk");
+  await openDesk(page);
+  const files = ["ui/a.js", "ui/b.js", "ui/c.js", "ui/d.js", "ui/e.css"];
+  await cue.change((st) => { st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d2").files = ["ui/a.js", "ui/b.js", "ui/c.js", "ui/d.js", "ui/e.css"]; });
+  await page.locator('.dk-items [data-desk-item="d2"] .dk-t').click();
+  const sec = page.locator(".dk-panel .dk-pfiles");
+  await expect(sec.locator("h4")).toHaveText("Files changed · 5");
+  await expect(sec.locator(".ib-file code")).toHaveText(files.slice(0, 3));
+  await expect(sec.locator(".ib-file").first()).toContainText("+2");
+  // Said once: no Files line under Who as well.
+  await expect(page.locator(".dk-panel .dk-pw", { hasText: "Files" })).toHaveCount(0);
+  await sec.locator(".ib-file").nth(1).click();
+  await expect(page.locator(".dov-fh .dov-p")).toHaveText("ui/b.js");
+  await page.keyboard.press("Escape");
+  await sec.locator(".ib-link").click();
+  await expect(sec.locator(".ib-link")).toHaveCount(1);
+  await expect(page.locator(".dov-fh .dov-p")).toHaveText("ui/d.js");
+  await expect(page.locator(".dov-f")).toHaveCount(5);
+  await page.keyboard.press("Escape");
+  // A crew member: its diff so far, as its Diff reads it.
+  await page.evaluate(() => deskShow({ kind: "holder", sid: "lead" }));
+  await page.locator('.dk-right [data-desk-crew="id-search"]').click();
+  await expect(sec.locator(".ib-file code")).toHaveText(["ui/header.js", "ui/styles/header.css"]);
+  await sec.locator(".ib-file").nth(1).click();
+  await expect(page.locator(".dov-fh .dov-p")).toHaveText("ui/styles/header.css");
+  await expect(page.locator(".dov-title")).toHaveText("search-centre");
+  await page.keyboard.press("Escape");
+  // A session: what its turn changed, as Inbox's Changed this turn.
+  const diff = "diff --git a/cache.ts b/cache.ts\n--- a/cache.ts\n+++ b/cache.ts\n@@ -1,2 +1,3 @@\n const key = sku;\n+const hit = cache.get(key);\n";
+  await cue.override("diff_git", ({ op, against }, d) => (op === "toplevel" ? { code: 0, stdout: "/x\n" } : op === "diff" ? { code: 0, stdout: against === "abc123" ? d : "" } : { code: 0, stdout: "" }), diff);
+  await cue.change((st) => { st.sessions.find((x) => x.session_id === "lead").turn_from = { root: "/x", commit: "abc123", untracked: [] }; });
+  await page.evaluate(() => deskShow({ kind: "chat", sid: "lead" }));
+  await expect(sec.locator("h4")).toHaveText("Changed this turn · 1");
+  await sec.locator(".ib-file").click();
+  await expect(page.locator(".dov-fh .dov-p")).toHaveText("cache.ts");
 });
 
 test("written about an item ready to check, it's sent back with your words: off Waiting on you, to its session", async ({ page, cue }) => {
