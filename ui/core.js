@@ -68,6 +68,9 @@ const addOn = {
   /** The pane for one of its holders (from deskHolders) when its head is clicked: HTML under "‹ <lead's name>", or "" for
    *  its name alone. */
   deskPane: (holder) => "",
+  /** A live session found with ⌘K while one of its views is shown: opened there, true; false to show its conversation
+   *  in a pop-up over the view (sheets.js openFound). */
+  openFound: (sid) => false,
   /** Click rules as app/delegate.js walks them ((target, event) → true when taken), tried before the Board's own. */
   clicks: [],
   /** The crew page opened, closed, or went to another lead (team_page.js crewPageSet): `sid` the lead's open now, or
@@ -523,6 +526,8 @@ function table(lines, inline) {
   return `<div class="md-table"><table>${head ? `<thead>${row(head, "th")}</thead>` : ""}<tbody>${body.map((cs) => row(cs, "td")).join("")}</tbody></table></div>`;
 }
 
+/** What linkify links paths from: session `sid`'s folder, its machine and itself; null with no such session. */
+const sessBase = (sid) => { const s = sid ? sessionOf(sid) : null; return s ? { cwd: s.cwd, machine: s.machine, sid } : null; };
 /** Clickable links in already-escaped text: [label](url) and bare URLs, and paths (all opened by open_link on a
  *  click). `base` is the session the text came from: a path relative to its folder (src/main.rs, ./notes.md)
  *  links too, joined to that folder; on another machine no path links at all (it isn't on this Mac, and
@@ -589,8 +594,7 @@ function md(text, { runIn = null, pathsOf = null, doc = false, lines = null } = 
   const out = [];
   // Its folder for relative paths, its machine (another: no paths): the session it runs in, or (pathsOf) only
   // whose paths these are, with no Run on its commands (the mini window).
-  const sid = runIn || pathsOf, ses = sid ? sessionOf(sid) : null;
-  const base = ses ? { cwd: ses.cwd, machine: ses.machine, sid } : null;
+  const base = sessBase(runIn || pathsOf);
   const inline = (s) => linkify(esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>"), base);
   const blocks = String(text ?? "").replace(/\r/g, "").split(/```/);
   blocks.forEach((chunk, i) => {

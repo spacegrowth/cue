@@ -183,20 +183,41 @@ function pickResult(i) {
   const r = searchResults[i];
   if (!r) return;
   liveOpen = newOpen = false;
-  if (r.kind === "session" && r.live && r.quiet) { sheet = null; return svAct("quiet", r.session_id); }
-  if (r.kind === "session" && sessionOf(r.session_id)) { sheet = null; return openSession(r.session_id); }
+  if (r.kind === "session" && r.live && r.quiet) return openFound(r.session_id, "quiet");
+  if (r.kind === "session" && sessionOf(r.session_id)) return openFound(r.session_id);
   if (r.kind === "older") return resumeOlder(r);
   openConvo(r, r.kind === "message" ? r.at_ms : null);
 }
+/** A live session found with ⌘K (a result, or a row of its list), opened on the page you searched from (#316): on the
+ *  Desk in its middle, as a name on its left opens it; on a view of the add-on's (Loops), as it says (addOn.openFound),
+ *  else its conversation in the pop-up over that view. Anywhere else, its chat on the Board. `act`: "open", or
+ *  "quiet" (a session Cue hasn't heard from: taken in first, as svAct does). */
+async function openFound(sid, act = "open") {
+  liveOpen = newOpen = false;
+  sheet = null;
+  const here = view === "desk" && typeof deskOpenFound === "function" ? deskOpenFound
+    : addOn.views.some((v) => v.id === view) ? addOn.openFound : null;
+  if (!here) return svAct(act, sid);
+  const live = (state.live || []).find((x) => x.session_id === sid);
+  if (act === "quiet" && !sessionOf(sid) && live?.harness === "claude") {
+    try { await invoke("adopt_session", { sessionId: sid }); setState(await invoke("get_state")); }
+    catch (e) { toast(`Couldn't open it here: ${e}`); }
+  }
+  if (sessionOf(sid) && here(sid)) return;
+  const s = sessionOf(sid) || live || {};
+  return openConvo({ session_id: sid, name: s.name, project: s.project, harness: s.harness || "claude" }, null);
+}
 /** An older Claude Code session: `claude --resume` in a terminal tab behind Cue, and the session
- *  opens here in Active (with its last few messages), ready to type into. */
+ *  opens here in Active (with its last few messages), ready to type into; searched from the Desk or Loops, there. */
 async function resumeOlder(r) {
   sheet = null;
   renderMain();
   try {
     const res = await invoke("resume_session", { sessionId: r.session_id });
     toast(`${res.detail}: ${r.name || r.project}`);
-    setActive(null, res.session_id);
+    if (view === "board") return setActive(null, res.session_id);
+    setState(await invoke("get_state"));
+    openFound(res.session_id);
   } catch (e) { toast(`Couldn't resume it: ${e}`); }
 }
 let convo = null, convoScrolled = false;  // the conversation opened from search, and whether it's been scrolled to its hit
