@@ -4,7 +4,7 @@
 use super::team::{lead, says, writes};
 use crate::desk::parse::{lines, Line};
 use crate::hosted::HostedEvent;
-use crate::testing::World;
+use crate::testing::{Transcript, World};
 use serde_json::{json, Value};
 
 pub(super) fn ends(w: &World, sid: &str, text: &str) {
@@ -1605,6 +1605,34 @@ fn the_same_reply_told_again_with_more_is_one_reply() {
     assert_eq!(said(&desk(&w, &project)).len(), 2);
 }
 
+/// A Stop hook sent the holder back to work after its answer (a checklist): the item's reply is the answer, the
+/// hook's follow-up kept apart to fold under it as the chat does (#310); a turn no hook sent back has nothing apart.
+#[test]
+fn a_stop_hooks_follow_up_is_kept_apart_from_the_reply() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let a = w.hub().desk_add(&project, "bug", "First thing", "", None).unwrap();
+    w.hub().desk_give(&a.id, &h).unwrap();
+    w.settle();
+    let words = sent_to(&w, &h).into_iter().rev().find(|t| t.contains(&format!("Desk item #{}", a.id))).unwrap();
+    w.hosted_says(&h, HostedEvent::Taken { text: words.clone() });
+    Transcript::at(w.hub().session_origin(&h).unwrap().transcript_path)
+        .prompt(&words)
+        .assistant("Fixed the header.")
+        .entry(json!({ "type": "system", "subtype": "stop_hook_summary", "hookCount": 1 }))
+        .entry(json!({ "type": "user", "isMeta": true, "message": { "role": "user", "content": "Stop hook feedback:\nUnaudited edits this turn." } }))
+        .assistant("1. SHAPE: fine.");
+    ends(&w, &h, "1. SHAPE: fine.");
+    let said = item(&desk(&w, &project), "First thing")["said"][0].clone();
+    assert_eq!((said["text"].as_str(), said["after"].as_str()), (Some("Fixed the header."), Some("1. SHAPE: fine.")), "{said}");
+    let next = format!("About #{}: the footer too", a.id);
+    w.hosted_says(&h, HostedEvent::Taken { text: next.clone() });
+    Transcript::at(w.hub().session_origin(&h).unwrap().transcript_path).prompt(&next).assistant("And the footer too.");
+    ends(&w, &h, "And the footer too.");
+    let said = item(&desk(&w, &project), "First thing")["said"][1].clone();
+    assert_eq!((said["text"].as_str(), said.get("after")), (Some("And the footer too."), None), "{said}");
+}
+
 /// A stop the Desk lead doesn't settle in 10 minutes waits on you, saying so; with no lead at hand it waits on you at
 /// once. The lead's ASK about the item (ASK: #id | …) shows on it as waiting on you, and its answer goes to the lead.
 #[test]
@@ -1704,4 +1732,46 @@ fn a_holder_that_wrote_just_now_is_never_shown_stopped() {
     w.tick(false);
     assert_eq!(w.snapshot().session(&h)["state"], "working");
     assert_eq!(item(&desk(&w, &project), "Header")["state"], "working");
+}
+
+#[test]
+fn merge_lines_are_read() {
+    assert_eq!(
+        lines("MERGE: #320 into #319 | why: same ask\n- **MERGE:** #5 -> #4\nMERGE: #3 into #3\nMERGE: 3 into #2"),
+        vec![Line::Merge { id: "320".into(), into: "319".into(), why: "same ask".into() }, Line::Merge { id: "5".into(), into: "4".into(), why: "".into() }]
+    );
+}
+
+/// MERGE: #copy into #first (#321): the copy leaves the list, its words and pictures go to the first (whose holder,
+/// at work on it, hears them), what waited on the copy waits on the first, and no session is started for the copy.
+#[test]
+fn the_lead_can_fold_a_repeated_ask_into_the_item_it_repeats() {
+    use base64::Engine;
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    let count = || w.snapshot().0["sessions"].as_array().map_or(0, |s| s.len());
+    ends(&w, &l, "ITEM: bug | Header jumps on scroll | done when: it stays\nROUTE: #new -> cue-teams | why: it knows the header");
+    let first = item(&desk(&w, &project), "Header jumps on scroll")["id"].as_str().unwrap().to_string();
+    let png = crate::model::Upload { name: "shot.png".into(), mime: "image/png".into(), data: format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(b"png")) };
+    let copy = w.hub().desk_add_with(&project, "", "the header still jumps when scrolling fast", "", None, &[png]).unwrap();
+    let later = w.hub().desk_add(&project, "", "Footer cut off", "", None).unwrap();
+    ends(&w, &l, &format!("ROUTE: #{} -> cue-teams | after: #{} | why: same area", later.id, copy.id));
+    w.settle();
+    let sessions = count();
+    ends(&w, &l, &format!("MERGE: #{} into #{first} | why: same ask", copy.id));
+    w.settle();
+    let d = desk(&w, &project);
+    assert!(d["items"].as_array().unwrap().iter().all(|i| i["id"] != copy.id.as_str()), "the copy is gone: {d} {:?}", sent_to(&w, &l).last());
+    let f = item(&d, "Header jumps on scroll");
+    assert!(f["words"].as_str().unwrap().contains(&format!("From #{}: the header still jumps when scrolling fast", copy.id)), "{f}");
+    assert_eq!(f["images"].as_array().map(Vec::len), Some(1));
+    assert_eq!(item(&d, "Footer cut off")["after"], first.as_str(), "what waited on the copy waits on the first");
+    assert_eq!(count(), sessions, "no session started for the copy");
+    assert!(sent_to(&w, &h).last().unwrap().contains(&format!("#{} was folded into #{first}", copy.id)));
+    assert!(d["decisions"].as_array().unwrap().iter().any(|x| x["text"] == format!("Folded #{} into it", copy.id).as_str()));
+    // One begun can't be folded: the lead is told why.
+    ends(&w, &l, &format!("MERGE: #{first} into #{}", later.id));
+    assert!(sent_to(&w, &l).last().unwrap().contains(&format!("#{first} not merged: ")));
+    assert!(desk(&w, &project)["items"].as_array().unwrap().iter().any(|i| i["id"] == first.as_str()));
 }

@@ -3632,6 +3632,11 @@ test("Looks right on an item committed as it finished only closes it: its commit
   const pane = page.locator(".dk-right .dk-pg");
   await expect(pane.locator(".dk-pnow .dk-pword")).toHaveText("Ready to check");
   await expect(pane.locator(".dk-state")).toContainText("with web-lead · committed abc9999");
+  // Ready to check is a calm sage dot, not the maroon of an ask (#326).
+  const dot = pane.locator(".dk-pnow .dk-pdot");
+  await expect(dot).toHaveClass(/\bcheck\b/);
+  const [bg, deny] = await dot.evaluate((e) => { const p = document.createElement("i"); p.style.background = "var(--deny)"; e.after(p); const r = [getComputedStyle(e).backgroundColor, getComputedStyle(p).backgroundColor]; p.remove(); return r; });
+  expect(bg).not.toBe(deny);
   await expect(pane.locator(".dk-chk-in")).toContainText("In the installed Cue");
   await expect(pane.locator('[data-desk-act="looks_right"]')).toHaveCount(1);
   // The hub only closes it (nothing more committed).
@@ -3888,4 +3893,38 @@ test("an item shows ready only once its work is on main: until then it says wher
   await expect(now.locator(".dk-pword")).toHaveText("Ready to check");
   await expect(now.locator('[data-desk-act="looks_right"]')).toHaveText("Looks right");
   await expect(d2.locator(".dk-ok")).toHaveCount(1);
+});
+
+test("the lead's MERGE line reads as a short line: the copy folded into the item it repeats (#321)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await page.evaluate(() => { sessionOf("lead").thread.push({ at_ms: Date.now(), role: "agent", text: "MERGE: #x9 into #d2 | why: the same ask again" }); renderMain(); });
+  const ln = page.locator(".dk-chat .cv-agent").last().locator(".dk-sl");
+  await expect(ln).toHaveCount(1);
+  await expect(ln.locator(".dk-sl-h")).toHaveText(/^Folded #x9 into \w+ #d2$/);
+  await ln.locator(".dk-sl-r").click();
+  await expect(ln.locator(".dk-sl-d")).toContainText("the same ask again");
+});
+
+test("the open item on the right looks like an open session on the left: edge to edge, square corners, the same chevron at its left edge, pointing left to the middle (#324)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  const sess = page.locator('.dk-strip .dk-lcard[data-desk-lead-chat="lead"]');   // open at the start
+  const font = (l) => l.evaluate((el) => getComputedStyle(el).font);
+  const bg = (l) => l.evaluate((el) => getComputedStyle(el).backgroundColor);
+  const [arrowFont, lime] = [await font(sess.locator(".dk-larrow")), await bg(sess)];
+  const row = page.locator('.dk-items [data-desk-item="d2"]');
+  await expect(row.locator(".dk-larrow")).toHaveCount(0);
+  await row.click();
+  await expect(row).toHaveClass(/\bon\b/);
+  await expect(row.locator(".dk-larrow")).toHaveText("‹");
+  // At the row's left edge, before its state icon, and opening it moves nothing.
+  const arrow = await boxOf(row.locator(".dk-larrow")), icon = await boxOf(row.locator(".dk-si"));
+  expect(arrow.right).toBeLessThanOrEqual(icon.x);
+  const col = await boxOf(page.locator(".dk-items .dk-scroll")), box = await boxOf(row);
+  expect(Math.abs(box.x - col.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(box.right - col.right)).toBeLessThanOrEqual(16);   // up to the scrollbar
+  expect(await row.evaluate((el) => getComputedStyle(el).borderTopLeftRadius)).toBe("0px");
+  expect(await font(row.locator(".dk-larrow"))).toBe(arrowFont);
+  expect(await bg(row)).toBe(lime);
 });

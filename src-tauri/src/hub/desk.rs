@@ -685,6 +685,7 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx
             Line::Title { id, title } => retitle(st, project, &by, &id, &title, now, fx),
             Line::Split { id, titles } => split(st, project, &by, &id, &titles, now, fx),
             Line::Cut { id, on, why } => cut(st, project, &by, &id, &on, &why, now, fx),
+            Line::Merge { id, into, why } => merge(st, project, &by, &id, &into, &why, now, fx),
             Line::Context { .. } | Line::Designs { .. } => {}
         }
     }
@@ -712,6 +713,57 @@ fn cut(st: &mut Store, project: &str, by: &By, id: &str, on: &str, why: &str, no
             decide(st, project, Some(id.clone()), by.name, by.sid, &format!("Cut its wait on #{}", st.desk.canon(on)), why, now, fx);
         }
         Err(e) => fx.sends.push((by.sid.to_string(), format!("Not cut: {e}"))),
+    }
+}
+
+/// The lead folded item `id`, a repeat of item `into`, into it (MERGE:): its words and pictures are added to `into`'s
+/// (its holder, at work on it, told them), anything queued after it waits on `into` instead, and it leaves the list.
+/// Only one not begun: no session is started for it (one at work on it, or to check, stays; the lead is told why).
+#[allow(clippy::too_many_arguments)]
+fn merge(st: &mut Store, project: &str, by: &By, id: &str, into: &str, why: &str, now: u64, fx: &mut Effects) {
+    let (id, into) = (st.desk.canon(id), st.desk.canon(into));
+    let note = |fx: &mut Effects, why: String| fx.sends.push((by.sid.to_string(), format!("#{id} not merged: {why}")));
+    if id == into {
+        return;
+    }
+    let Some(copy) = st.desk.item(&id).filter(|i| i.project == project).cloned() else { return note(fx, format!("this Desk has no item #{id}")) };
+    let Some(target) = st.desk.item(&into).filter(|i| i.project == project).cloned() else { return note(fx, format!("this Desk has no item #{into}")) };
+    if !matches!(copy.state.as_str(), "new" | "queued") {
+        let who = copy.holder.as_ref().map(|h| h.name.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| "a session".into());
+        return note(fx, if copy.state == "done" { "it's done already".into() } else { format!("{who} has begun it already") });
+    }
+    if target.state == "done" {
+        return note(fx, format!("#{into} is done; route #{id} instead"));
+    }
+    if waits_on(st, &into, &id) {
+        return note(fx, format!("#{into} waits on it; CUT that wait first"));
+    }
+    let said = if copy.words.is_empty() { copy.title.clone() } else { copy.words.clone() };
+    let added: Vec<String> = copy.images.iter().filter(|p| !target.images.contains(p)).cloned().collect();
+    if let Some(t) = st.desk.item_mut(&into) {
+        if t.words.is_empty() {
+            t.words = t.title.clone();
+        }
+        t.words = format!("{}\n\nFrom #{id}: {said}", t.words.trim_end());
+        t.images.extend(added.iter().cloned());
+        t.updated = secs(now);
+    }
+    // Its holder at work on it hears what came with the repeat.
+    if let Some(h) = target.holder.as_ref().filter(|_| target.state == "working") {
+        let pics = added.iter().map(|p| format!(" `{p}`")).collect::<String>();
+        fx.sends.push((h.to().to_string(), format!("Desk item #{id} was folded into #{into}, which you have. It said: {said}{}", if pics.is_empty() { String::new() } else { format!("\nPictures:{pics}") })));
+    }
+    for it in st.desk.items.iter_mut().filter(|i| i.after.as_deref() == Some(id.as_str())) {
+        it.after = Some(into.clone());
+        it.updated = secs(now);
+        fx.items.push(it.id.clone());
+    }
+    st.desk.items.retain(|i| i.id != id);
+    fx.dropped.push(id.clone());
+    fx.items.push(into.clone());
+    decide(st, project, Some(into.clone()), by.name, by.sid, &format!("Folded #{id} into it"), why, now, fx);
+    if let Some(d) = st.desk.decisions.last_mut() {
+        d.undo = "none".into();
     }
 }
 
@@ -887,19 +939,28 @@ fn designs_said(st: &mut Store, sid: &str, text: &str, fx: &mut Effects) {
     }
 }
 
-/// A holder ended a turn at work on items `on`, saying `text`: its words kept on each as a reply on its Thread
-/// (the Desk's own lines left out, cut to `SAID_CHARS`), marked done for one its DONE line names.
-fn replied(st: &mut Store, sid: &str, text: &str, on: &[String], now: u64, fx: &mut Effects) {
-    use crate::desk::model::{Said, SAID_CHARS, SAID_KEPT};
+/// A turn's words as a reply keeps them: the Desk's own lines left out, cut to `SAID_CHARS`.
+fn said_words(text: &str) -> String {
     let words: Vec<&str> = text.lines().filter(|l| !desk_line_start(l)).collect();
     let words = words.join("\n").trim().to_string();
+    match words.char_indices().nth(crate::desk::model::SAID_CHARS) {
+        Some((cut, _)) => format!("{}…", words[..cut].trim_end()),
+        None => words,
+    }
+}
+
+/// A holder ended a turn at work on items `on`, saying `text` (in parts, `turn`): its words kept on each as a reply
+/// on its Thread, marked done for one its DONE line names. What a Stop hook made it write after its answer is kept
+/// apart, folded under the reply (#310); a turn no hook sent back is its words whole.
+fn replied(st: &mut Store, sid: &str, text: &str, turn: &[crate::model::TurnPart], on: &[String], now: u64, fx: &mut Effects) {
+    use crate::desk::model::{Said, SAID_KEPT};
+    let part = |hooked: bool| turn.iter().filter(|p| p.hooked == hooked).map(|p| p.text.trim()).filter(|t| !t.is_empty()).collect::<Vec<_>>().join("\n\n");
+    let (words, after) = if turn.iter().any(|p| p.hooked) { (said_words(&part(false)), said_words(&part(true))) } else { (said_words(text), String::new()) };
+    // Nothing before the hook (a turn that was all follow-up): what it wrote is the reply.
+    let (words, after) = if words.is_empty() { (after, String::new()) } else { (words, after) };
     if words.is_empty() || on.is_empty() {
         return;
     }
-    let words = match words.char_indices().nth(SAID_CHARS) {
-        Some((cut, _)) => format!("{}…", words[..cut].trim_end()),
-        None => words,
-    };
     let done: Vec<String> = parse::lines(text).into_iter().filter_map(|l| if let Line::Done { ids } = l { Some(ids) } else { None }).flatten().map(|i| st.desk.canon(&i)).collect();
     for id in on {
         let Some(it) = st.desk.item_mut(id) else { continue };
@@ -909,13 +970,14 @@ fn replied(st: &mut Store, sid: &str, text: &str, on: &[String], now: u64, fx: &
         let again = it.said.last_mut().filter(|s| s.by == by && words.starts_with(s.text.trim_end_matches('…')));
         if let Some(s) = again {
             s.text = words.clone();
+            s.after = after.clone();
             s.at = now;
             s.done |= done.contains(id);
             s.sid = sid.to_string();
             fx.said.push(id.clone());
             continue;
         }
-        it.said.push(Said { at: now, by, text: words.clone(), done: done.contains(id), sid: sid.to_string() });
+        it.said.push(Said { at: now, by, text: words.clone(), after: after.clone(), done: done.contains(id), sid: sid.to_string() });
         let over = it.said.len().saturating_sub(SAID_KEPT);
         it.said.drain(..over);
         fx.said.push(id.clone());
@@ -1001,7 +1063,7 @@ fn desk_line_start(line: &str) -> bool {
     let l = line.trim().trim_start_matches(['-', '*', '+', '`', ' ']);
     let Some((word, _)) = l.split_once(':') else { return false };
     let word = word.trim_end_matches(['*', '`']).trim();
-    matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "CONTEXT" | "DESIGNS" | "TITLE" | "SPLIT" | "CUT") || word.eq_ignore_ascii_case("DECIDED")
+    matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "CONTEXT" | "DESIGNS" | "TITLE" | "SPLIT" | "CUT" | "MERGE") || word.eq_ignore_ascii_case("DECIDED")
 }
 
 /// What you did to item `id` ("looks_right" | "reopen" | "send_back" | "start_now" | "put_before" | "drop"), in the store.
@@ -1354,7 +1416,8 @@ impl Hub {
     /// Session `sid`'s turn ended, saying `text`: a lead's lines (ITEM, ROUTE, ASK, DECIDED, and DONE for what it
     /// keeps), any session's ITEM lines, and a holder's (DONE, DECIDED) acted on; an item it ended on with no DONE
     /// is asked about once (desk_stall.rs).
-    pub(super) fn desk_turn_ended(&self, sid: &str, text: &str) {
+    /// `turn`: its parts, so a reply keeps what a Stop hook made it write apart from its answer.
+    pub(super) fn desk_turn_ended(&self, sid: &str, text: &str, turn: &[crate::model::TurnPart]) {
         self.keep_from_now(sid);
         // Most turns say none of the Desk's lines and end on no item at work: then the store is only read.
         let said = text.lines().any(desk_line_start);
@@ -1378,7 +1441,7 @@ impl Hub {
             // stalls there: Cue's ask names the item, so the answer to it is tagged.
             let held = super::desk_stall::at_work_with(st, sid);
             let mut on = super::desk_stall::about(st, text, &held, super::desk_stall::now_on(st, sid).as_deref());
-            replied(st, sid, text, &on, now, &mut fx);
+            replied(st, sid, text, turn, &on, now, &mut fx);
             if on.is_empty() && held.len() == 1 {
                 on = held;
             }

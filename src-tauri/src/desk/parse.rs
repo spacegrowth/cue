@@ -27,6 +27,8 @@ pub enum Line {
     Context { who: String, what: String, why: String },
     /// The lead cut a link in a circle of waits: item `id` no longer waits on item `on` (#250).
     Cut { id: String, on: String, why: String },
+    /// The lead folded item `id`, a repeat of item `into`, into it: its words and pictures go to `into`, and it goes.
+    Merge { id: String, into: String, why: String },
 }
 
 /// The Desk lines in `text`, in order.
@@ -59,6 +61,7 @@ pub fn lines(text: &str) -> Vec<Line> {
                 "TITLE" => title(body),
                 "SPLIT" => split(body),
                 "CUT" => cut(body),
+                "MERGE" => merge(body),
                 _ => None,
             }
         })
@@ -174,6 +177,20 @@ fn cut(body: &str) -> Option<Line> {
     }
     let why = p[1..].iter().find_map(|s| labelled(s, "why")).unwrap_or("").to_string();
     Some(Line::Cut { id: id_of(a)?, on: id_of(b)?, why })
+}
+
+/// "#320 into #319 | why: …" (or "#320 -> #319"): item 320 folded into item 319.
+fn merge(body: &str) -> Option<Line> {
+    let p = parts(body);
+    let head = p.first()?;
+    let (a, b) = [" into ", "->", "→", "=>"].iter().find_map(|sep| head.split_once(sep))?;
+    let (a, b) = (a.trim(), b.trim());
+    if !a.starts_with('#') || !b.starts_with('#') {
+        return None;
+    }
+    let (id, into) = (id_of(a)?, id_of(b)?);
+    let why = p[1..].iter().find_map(|s| labelled(s, "why")).unwrap_or("").to_string();
+    (id != into).then_some(Line::Merge { id, into, why })
 }
 
 /// "#id | a | b": the id (it must start with #) and the non-empty parts after it, quotes and bold taken off.

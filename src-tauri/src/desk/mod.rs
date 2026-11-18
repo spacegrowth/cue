@@ -41,6 +41,8 @@ TITLE: #<id> | <short plain title>      (an item whose title isn't short and pla
 a few words saying what they'll see; Cue keeps their words on the item)
 SPLIT: #<id> | <title> | <title>      (an item that holds two or more separate problems, one plain title each: the \
 first stays #<id>, Cue numbers the rest and tells you them; route them all then, not before)
+MERGE: #<id> into #<other id> | why: <reason>      (an item that asks again for what #<other id> already asks: \
+Cue adds its words and pictures to #<other id> and takes it off the list; no session is started for it)
 ROUTE: #<id> -> <session name> | kind: bug | why: <one short reason>      (kind is bug, feature or task; \
 give it when the item has none yet, as items the user adds don't)
 ROUTE: #<id> -> new | why: <reason>      (no session fits: Cue starts a new session of this project for it)
@@ -57,7 +59,7 @@ In a ROUTE, #new means the ITEM you added in the same reply. Route to a session 
 never make one up. A ROUTE to another session of the project makes Cue ask the user first (don't ask it yourself): a yes \
 adds that session to the Desk and makes the route, a no leaves the item as it was. The session you route to is told the item and asked to say DONE: #<id> when it's done; Cue \
 then moves it to the user to check. To reopen one that's to check, route it again to the session holding it, \
-with what's left as the why. When Cue tells you of new items, route each one now; first TITLE or SPLIT one that needs it.
+with what's left as the why. When Cue tells you of new items, route each one now; first TITLE or SPLIT one that needs it, and MERGE one that repeats another.
 When Cue tells you an item stopped (its session ended its turn with no DONE and no question), settle it: ROUTE it \
 to that session again with what to do next as the why, or route it on. ASK: #<id> only if the user must decide; \
 until then the user doesn't see it as waiting on them.

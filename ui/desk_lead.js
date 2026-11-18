@@ -122,13 +122,14 @@ function deskGive(i, at) {
 function deskGivePlace() {
   const m = document.querySelector(".dk-givemenu"), b = m?.previousElementSibling;
   if (!m || !b) return;
-  const r = b.getBoundingClientRect(), pad = 8, W = innerWidth, H = innerHeight;
+  const r = b.getBoundingClientRect(), pad = 8, W = innerWidth, H = innerHeight, top = m.scrollTop;
   Object.assign(m.style, { position: "fixed", right: "auto", maxWidth: `${W - 2 * pad}px`, maxHeight: "", overflowY: "" });
   const w = m.offsetWidth, h = m.scrollHeight, below = H - r.bottom - 4 - pad, above = r.top - 4 - pad;
   const up = h > below && above > below, room = up ? above : below;
   m.style.left = `${Math.max(pad, Math.min(r.left, W - pad - w))}px`;
   if (h > room) Object.assign(m.style, { maxHeight: `${room}px`, overflowY: "auto" });
   m.style.top = `${up ? r.top - 4 - Math.min(h, room) : r.bottom + 4}px`;
+  m.scrollTop = top;   // measuring it unscrolled dropped where you'd scrolled it to (#308)
 }
 addEventListener("scroll", (e) => { if (deskGiveFor && !e.target?.closest?.(".dk-givemenu")) deskGivePlace(); }, true);
 addEventListener("resize", () => { if (deskGiveFor) deskGivePlace(); });
@@ -237,11 +238,11 @@ if (typeof document !== "undefined") {
 // ---------- the lead's own lines, drawn in its chat ----------
 /** A Desk line as desk/parse.rs reads it: its word in capitals, a list mark or bold around it; ASK has its own card
  *  (deskLeadAsk) and DECIDED md's own block, so neither is here. */
-const DESK_SAY = /^[-*+ ]*(ITEM|ROUTE|DONE|CONTEXT|DESIGNS|TITLE)\**\s*:(.*)$/;
+const DESK_SAY = /^[-*+ ]*(ITEM|ROUTE|DONE|CONTEXT|DESIGNS|TITLE|MERGE)\**\s*:(.*)$/;
 const DESK_KINDS = ["bug", "feature", "task"];
 /** `line` of a Desk chat's reply as one short plain sentence at the left (md's `lines` hook; #157, #173): ROUTE "Gave
  *  Task #2 to who" (or "Task #2 waits on #1"); ITEM "Added Bug #2: title"; DONE "Bug #2 is done"; TITLE "Renamed Bug
- *  #2"; CONTEXT "Kept who's context"; DESIGNS "Open the mocks ↗", a link in the accent colour. An item's number is a
+ *  #2"; MERGE "Folded #3 into Bug #2"; CONTEXT "Kept who's context"; DESIGNS "Open the mocks ↗", a link in the accent colour. An item's number is a
  *  link that opens it; a click on the rest of the line opens what's longer under it (deskLnOpen: the title, why, done
  *  when). No arrow, no chevron. "" for any other line, or one parse.rs wouldn't act on (an empty or "<…>" body). */
 function deskLineHtml(line, inline) {
@@ -306,6 +307,13 @@ function deskLineHtml(line, inline) {
   if (m[1] === "TITLE") {
     const at = p[0].startsWith("#") && id(p[0]), t = (p[1] || "").replace(/^["`*]+|["`*]+$/g, "").trim();
     return at && t ? ln(`Renamed ${ref(at)}`, titled(known(at), t)) : "";
+  }
+  if (m[1] === "MERGE") {
+    // "#320 into #319" (or an arrow), as parse.rs merge: the copy is gone once Cue folds it, so it's its number alone.
+    const pr = /^(#\S+)\s+(?:into|->|→|=>)\s+(#\S+)/i.exec(p[0]), from = pr && id(pr[1]), to = pr && id(pr[2]);
+    if (!from || !to || from === to) return "";
+    const why = find("why");
+    return ln(`Folded ${ref(from, undefined, true)} into ${ref(to)}`, dot([titled(known(to)), why ? inline(why) : ""]));
   }
   if (m[1] === "DESIGNS") {
     // "#135 https://…" (as parse.rs designs): the link alone, under the words, as the item page has it.
