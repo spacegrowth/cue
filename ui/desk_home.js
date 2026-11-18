@@ -21,13 +21,14 @@ function deskAbout(d) {
 }
 /** A kind's cell: "3 open", and under it how many are working, finishing and waiting on your check (or "none moving"). */
 function deskKindCell(d, kind) {
-  const open = d.items.filter((i) => i.kind === kind && i.state !== "done");
+  const open = deskItemsWithRequests(d).filter((i) => i.kind === kind && i.state !== "done");
   const icon = deskKindIcon(kind);
   if (!open.length) return `<span class="dh-cell z"><span class="dh-big">${icon}–</span></span>`;
   // Finishing (committed, being built and installed) is moving too, said apart from working.
-  const working = open.filter((i) => i.state === "working" && !i.stopped).length, fin = open.filter(deskFinishing).length, check = open.filter(deskWaits).length;
+  const working = open.filter((i) => i.state === "working" && !i.stopped).length, fin = open.filter(deskFinishing).length;
+  const need = open.filter(deskWaits).length, review = open.filter((i) => deskReadyToReview(i) && !deskWaits(i)).length;
   const resume = open.filter((i) => i.state === "needs_resume").length;
-  const sub = [working ? `${working} working` : "", resume ? `${resume} to resume` : "", fin ? `${fin} finishing` : "", check ? `<span class="dh-ck">${check} to check</span>` : ""].filter(Boolean).join(" · ") || "none moving";
+  const sub = [working ? `${working} working` : "", resume ? `${resume} to resume` : "", fin ? `${fin} finishing` : "", need ? `<span class="dh-ck">${need} need you</span>` : "", review ? `${review} to review` : ""].filter(Boolean).join(" · ") || "none moving";
   return `<span class="dh-cell"><span class="dh-big">${icon}${open.length} open</span><span class="dh-sm">${sub}</span></span>`;
 }
 /** Who's on a Desk: its lead, then the sessions and crew at work. */
@@ -62,7 +63,10 @@ function deskHomeRow(d) {
     ${["task", "bug", "feature"].map((k) => deskKindCell(d, k)).join("")}<span class="dh-on">${deskOnIt(d, sessions)}</span><span class="dh-go"><button class="btn small" data-desk-delete="${esc(d.project)}" aria-label="Delete ${esc(deskName(d))}">Delete…</button></span></div>${deskDeleteConfirmation(d)}`;
 }
 /** Every Desk, those with the most waiting on you first. */
-const deskSorted = () => (state.desk?.projects || []).map((x) => deskOf(x.project)).sort((a, b) => b.items.filter(deskWaits).length - a.items.filter(deskWaits).length || deskName(a).localeCompare(deskName(b)));
+const deskSorted = () => (state.desk?.projects || []).map((x) => {
+  const d = deskOf(x.project);
+  return { d, need: deskWaitingItems(d).length };
+}).sort((a, b) => b.need - a.need || deskName(a.d).localeCompare(deskName(b.d))).map(({ d }) => d);
 function deskAll() {
   const ds = deskSorted();
   const head = `<div class="dh-tr dh-hd" aria-hidden="true"><span>Desk</span><span>Project · people</span><span>Tasks</span><span>Bugs</span><span>Features</span><span>On it</span><span></span></div>`;
