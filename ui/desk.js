@@ -1425,6 +1425,15 @@ function deskShow(what) {
   if (!what) deskChatEnd = true;
   renderMain();
 }
+/** A quick phrase picked on an item's page: it's in the box (sendPhrase added it), the cursor after it, nothing sent. */
+function deskPhraseIn(key) {
+  renderMain();
+  const el = document.querySelector(`textarea[data-text="${CSS.escape(key)}"]`);
+  if (!el) return;
+  el.focus();
+  el.selectionStart = el.selectionEnd = el.value.length;
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+}
 /** Send what's in box `key`: to the lead (naming the open item), or to the lead (naming its crew member). Only what's
  *  sent is named: the box keeps what you typed if it doesn't go. */
 async function deskSendBox(key) {
