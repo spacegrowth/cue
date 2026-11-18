@@ -1094,3 +1094,22 @@ test("a restart opens where you were: Desk and Read come back, not the Board", a
     await expect(page.locator(`#app .switch-view [data-view="${v}"]`), `${v} after a restart`).toHaveClass(/\bon\b/);
   }
 });
+
+// #259: a card's leading marks each in a color of their own, in both themes: the project's dot, then the Desk's
+// session or crew mark (accent on a card, on-bg on a Working card on the ground), never the name's color.
+for (const scheme of ["light", "dark"]) {
+  test(`a card's dot and its Desk mark have colors of their own (${scheme})`, async ({ cue, page }) => {
+    await page.emulateMedia({ colorScheme: scheme });
+    await cue.open("desk");
+    const marks = await page.evaluate(() => [...document.querySelectorAll(".working .card-head")].map((h) => {
+      const c = (e) => getComputedStyle(e)[e.matches(".pdot") ? "backgroundColor" : "color"];
+      return { dot: c(h.querySelector(".pdot")), mark: c(h.querySelector(".dk-name-ic")), name: c(h.querySelector(".proj")) };
+    }));
+    expect(marks.length).toBeGreaterThan(0);
+    const onBg = await page.evaluate(() => { const e = document.createElement("i"); e.style.color = "var(--on-bg)"; document.body.append(e); const c = getComputedStyle(e).color; e.remove(); return c; });
+    for (const m of marks) {
+      expect(m.mark).toBe(onBg);
+      expect(m.mark).not.toBe(m.dot);
+    }
+  });
+}

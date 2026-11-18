@@ -699,8 +699,16 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
 .dk-right .rd-head { padding: 12px 16px 2px; }
 .dk-right .rd-listen { flex: 0 1 auto; flex-wrap: wrap; row-gap: 8px; min-width: 0; }
 .dk-right .rd { padding: 18px 20px 40px; }
-/* The Desk's mark before a session's name on the Board when it works for a Desk (#156), sized and placed as a loop's. */
-.dk-name-ic { display: inline-flex; vertical-align: -2px; margin-right: 6px; color: var(--ink); }
+/* The Desk's mark before a session's name on the Board when it works for a Desk (#156), sized and placed as a loop's.
+   Its own color, not the name's ink (#259): accent on a card, so the project's dot, the agent's letter and this mark
+   each read apart; ink after a Moss dot (swatch 0 is the accent); on the window's ground (a Working card) on-bg; on a
+   lit card the card's own text color, as the rest of it. */
+.dk-name-ic { display: inline-flex; vertical-align: -2px; margin-right: 6px; color: var(--accent); }
+.pdot[style*="var(--pc0)"] ~ .dk-name-ic { color: var(--ink); }
+.working .card-head .dk-name-ic { color: var(--on-bg); }
+:is(.nrow, .tl, .working, .ib-row, .dk-srow, .dk-lcard).on .dk-name-ic { color: inherit; }
+/* The project's dot on a lit card: a ring of the card's text color, or a dot as light as the lime (dark) is lost on it. */
+:is(.nrow, .ib-row).on .pdot { box-shadow: 0 0 0 1.5px var(--on-sel); }
 .dk-name-ic > .dk-kic { margin: 0; vertical-align: 0; color: inherit; }
 /* Its line under the name on a Board card (deskCardLine), the shape of a loop's. */
 .dk-chip-line { display: flex; margin-top: 4px; min-width: 0; }
