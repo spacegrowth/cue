@@ -43,6 +43,10 @@ impl Installer for Fake {
     fn status(&self) -> Option<InstallStatus> {
         crate::locking::lock(&self.status, "fake installer status").clone()
     }
+
+    fn contains(&self, _repo: &str, commit: &str, of: &str) -> bool {
+        commit == of
+    }
 }
 
 impl Fake {
