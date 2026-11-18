@@ -5,8 +5,8 @@ const vm = require("vm");
 
 const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const NOW = 1793984400000, M = 60000;
-// Settings as config.rs effective gives them: One-way here (one_way.rs view), nothing set, so the default.
-const ONE_WAY = { set: {}, default: ["main"], kinds: [["main", "Merge or push to main"], ["push", "Push any branch"], ["release", "A release"], ["deploy", "Deploy"], ["data", "Delete data"], ["outside", "Files outside the project"]].map(([key, label]) => ({ key, label })) };
+// Settings as config.rs effective gives them: Ask me before (one_way.rs view), nothing set, so the default.
+const ONE_WAY = { set: {}, asked: [], default: ["main"], ask_default: ["main", "release", "data"], kinds: [["main", "Pushing to main", true], ["push", "Pushing any branch", true], ["release", "Releasing", true], ["deploy", "Deploying", false], ["data", "Deleting files", true], ["outside", "Files outside the project", false]].map(([key, label, offered]) => ({ key, label, offered, why: offered ? "" : "Cue can't check it" })) };
 const world = { sessions: {}, items: [], settings: { project: { oneway: ONE_WAY } } };
 const ctx = {
   esc,
@@ -321,7 +321,7 @@ assert.doesNotMatch(folded, /data-mt-act|data-crew-open|Open ›/, "no buttons i
   assert.match(d, /Needs you · 1<\/div>.*>keys<\/button><i>1 finding · fixes go back, round 2<\/i>.*>Send fixes</s, "out of fix rounds: it needs you, with its button");
   assert.match(d, />auth<\/button><span class="mt-line">9m · reviewed · Cue sends its fixes back<\/span>/, "Cue handles auth: one line");
   assert.deepEqual(ctx.mateWaits("H").map((t) => t.name), ["keys"], "only keys waits on you");
-  assert.match(d, /Asks you first<\/div><div class="cg-t">Merge or push to main, real choices<\/div>/, "asks first: its project's one-way kinds (never set: the default)");
+  assert.match(d, /Asks you first<\/div><div class="cg-t">Pushing to main, real choices<\/div>/, "asks first: its project's one-way kinds (never set: the default)");
   assert.match(d, /Needs you · 1<\/div>/);
   assert.match(d, /Decisions and steps · 5<\/div><div class="cd-row[^"]*"[^>]*><b class="cd-who">lead<\/b><span class="cd-what">Merged auth into main <span class="cd-why">· you said yes<\/span><\/span><span class="cd-at">1m<\/span><span class="cd-one">one-way ·<\/span><button class="mt-lk" data-act="crew-back" data-sid="H" data-id="d3-0">Make a revert<\/button>/, "newest first; one-way offers a revert");
   assert.match(d, /Committed to <code>crew\/docs<\/code><\/span><span class="cd-at">4m<\/span><button class="mt-lk" data-act="crew-back" data-sid="H" data-id="d2-0">Undo this<\/button>/, "code in backticks; Undo this");
@@ -336,7 +336,7 @@ assert.doesNotMatch(folded, /data-mt-act|data-crew-open|Open ›/, "no buttons i
   assert.equal(big("d1-0"), '<div class="cd-row big step  " data-key="cd:H|d1-0" ><span class="cd-who">lead</span><span class="cd-what">Split the job into 3: auth, docs, keys</span><span class="cd-why">40m</span></div>');
   // A project that counts a push of any branch and a deploy one-way, and one that counts nothing.
   world.settings.project.oneway = { ...ONE_WAY, set: { api: ["push", "deploy"] } };
-  assert.match(ctx.crewTray("H"), /Asks you first<\/div><div class="cg-t">Push any branch, deploy, real choices</);
+  assert.match(ctx.crewTray("H"), /Asks you first<\/div><div class="cg-t">Pushing any branch, deploying, real choices</);
   world.settings.project.oneway = { ...ONE_WAY, set: { api: [] } };
   assert.match(ctx.crewTray("H"), /Asks you first<\/div><div class="cg-t">Real choices</);
   world.settings.project.oneway = ONE_WAY;

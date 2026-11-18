@@ -40,6 +40,7 @@ fn round_trips() -> Vec<(&'static str, Value, Value)> {
         ("project.made", json!([" new ", "new"]), json!(["new"])),
         ("project.never", json!({"api": [" secret ", "Secret", "token", ""], "web": []}), json!({"api": ["secret", "token"], "web": []})),
         ("project.oneway", json!({"api": ["deploy", "main", "deploy"], "web": []}), json!({"api": ["main", "deploy"], "web": []})),
+        ("project.asked", json!(["api", "api", ""]), json!(["api"])),
         same("insights.on", json!(true)),
         same("insights.queue", json!(false)),
         same("insights.snooze", json!(1_800_000_000_000u64)),

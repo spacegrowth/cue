@@ -841,7 +841,7 @@ test.describe("a hosted lead's crew: the Crew switch, /crew, a task dropped on t
   test("Handle it: the goal on top, what it decided on its own, and Undo this", async ({ cue, page }) => {
     const tray = page.locator(".crew-tray");
     await expect(tray.locator(".crew-body")).toBeVisible();
-    await expect(tray.locator(".cg-box .cg-t")).toHaveText(["Build the team view: hand out hub, rows, skill and handoff", "Each part reviewed, with nothing blocking", "Review, send fixes, commit to crew/ branches", "Merge or push to main, real choices"]);
+    await expect(tray.locator(".cg-box .cg-t")).toHaveText(["Build the team view: hand out hub, rows, skill and handoff", "Each part reviewed, with nothing blocking", "Review, send fixes, commit to crew/ branches", "Pushing to main, real choices"]);
     await expect(tray.locator(".mt-grp")).toHaveText(["Needs you · nothing now", "Decisions and steps · 6", "Working"]);
     await expect(tray.locator('[data-mt-act="fixes"], [data-mt-act="commit"]'), "Cue does those itself").toHaveCount(0);
     await expect(tray.locator(".mt-one", { hasText: "handoff" }).locator(".mt-line")).toContainText("reviewed · Cue sends its fixes back");

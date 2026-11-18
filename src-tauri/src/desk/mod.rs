@@ -59,8 +59,9 @@ pub fn next_number<'a>(ids: impl Iterator<Item = &'a str>, high: u64) -> u64 {
     ids.filter_map(|id| id.parse::<u64>().ok()).fold(high, u64::max) + 1
 }
 
-/// What the session holding `it` is told when it's handed the item.
-pub fn handed_words(it: &DeskItem, why: &str) -> String {
+/// What the session holding `it` is told when it's handed the item. `rule`: its Desk's Ask me before line
+/// (one_way::ask_first; "" when nothing's set), so every session that works on the Desk has it.
+pub fn handed_words(it: &DeskItem, why: &str, rule: &str) -> String {
     let mut out = format!("Desk item #{}{}: {}", it.id, kind_words(it), it.title);
     if !it.done_when.trim().is_empty() {
         out.push_str(&format!("\nDone when: {}", it.done_when.trim()));
@@ -79,6 +80,9 @@ pub fn handed_words(it: &DeskItem, why: &str) -> String {
     ));
     out.push_str(&format!("\nIf you put its designs on a canvas, or move them, say DESIGNS: #{} <canvas link> on a line of its own.", it.id));
     out.push_str(&format!("\nSay DONE: #{} on a line of its own when it's done.", it.id));
+    if !rule.is_empty() {
+        out.push_str(&format!("\n{}", rule.trim_start_matches("- ")));
+    }
     match &it.holder {
         Some(h) if h.kind == "crew" => format!("For your teammate {}: {out}", h.name),
         _ => out,

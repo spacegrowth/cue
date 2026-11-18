@@ -14,12 +14,12 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 
 | What | Count |
 |---|---|
-| `#[tauri::command]` | 163 (3 sync) |
+| `#[tauri::command]` | 164 (3 sync) |
 | Lock declarations (static or field) | 105 |
 | Lock acquisitions | 250 |
 | Lock-graph edges | 51 |
 | Spawn sites | 88 |
-| External calls: fs / db / process / notify / login / socket | 384 / 183 / 47 / 4 / 1 / 4 |
+| External calls: fs / db / process / notify / login / socket | 390 / 183 / 48 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -70,6 +70,7 @@ Sync commands run on the main thread. "Hands work to": the threads or pools its 
 | `desk_send` | async | `ipc/desk.rs::desk_send` | ipc::with_hub |
 | `desk_set_lead` | async | `ipc/desk.rs::desk_set_lead` | ipc::with_hub |
 | `desk_start` | async | `ipc/desk.rs::desk_start` | ipc::with_hub |
+| `ask_before_set` | async | `ipc/desk.rs::ask_before_set` | ipc::with_hub |
 | `desk_rename` | async | `ipc/desk.rs::desk_rename` | ipc::with_hub |
 | `desk_add` | async | `ipc/desk.rs::desk_add` | ipc::with_hub |
 | `desk_give` | async | `ipc/desk.rs::desk_give` | ipc::with_hub |
@@ -398,7 +399,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hosted/tails.rs::tail_start` | thread::spawn | 1 |
 | `hosted/tails.rs::tail_stop` | thread::spawn | 1 |
 | `hub/cache_tick.rs::Hub::hand_off_due` | thread::spawn | 1 |
-| `hub/hosted.rs::Hub::hosted_ask` | thread::spawn | 1 |
+| `hub/hosted.rs::Hub::answer_hosted_when_given` | thread::spawn | 1 |
 | `hub/live_writes.rs::spawn_writer` | Builder::spawn | 1 |
 | `hub/mod.rs::Hub::later` | thread::spawn | 1 |
 | `hub/redraw.rs::Hub::draw_on_worker` | Builder::spawn | 1 |
@@ -461,7 +462,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (384)
+### fs (390)
 
 | In | Call | Times |
 |---|---|---|
@@ -540,8 +541,14 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hub/desk_checks.rs::Hub::desk_check_files` | metadata | 1 |
 | `hub/desk_checks.rs::builds_this_cue` | read_to_string | 1 |
 | `hub/desk_checks.rs::note_installed` | metadata | 1 |
+| `hub/desk_commit.rs::commit_parts` | remove_file | 1 |
+| `hub/desk_commit.rs::put_parts` | metadata | 1 |
+| `hub/desk_commit.rs::put_parts` | remove_file | 1 |
+| `hub/desk_commit.rs::put_parts` | write | 1 |
 | `hub/desk_finish.rs::in_progress` | Path::exists | 1 |
 | `hub/desk_finish.rs::same_dir` | canonicalize | 2 |
+| `hub/desk_theirs.rs::own_part` | read_to_string | 1 |
+| `hub/desk_theirs.rs::read_edits` | read_to_string | 1 |
 | `hub/hosted.rs::Hub::resume_hosted_as` | Path::is_file | 1 |
 | `hub/hosted.rs::written_on_machine` | metadata | 1 |
 | `hub/open.rs::look` | Path::is_dir | 1 |
@@ -657,9 +664,9 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/repos.rs::look_on_disk` | Path::exists | 1 |
 | `logs/steps/detail.rs::detail` | File::open | 1 |
 | `logs/steps/detail.rs::detail` | metadata | 1 |
+| `logs/steps/edits.rs::agent_logs` | metadata | 1 |
+| `logs/steps/edits.rs::agent_logs` | read_dir | 1 |
 | `logs/steps/edits.rs::edited_between` | read_to_string | 1 |
-| `logs/steps/edits.rs::edited_files_by` | metadata | 1 |
-| `logs/steps/edits.rs::edited_files_by` | read_dir | 1 |
 | `logs/steps/edits.rs::edited_files_by` | read_to_string | 2 |
 | `logs/steps/feed.rs::Head::read` | metadata | 1 |
 | `logs/steps/feed.rs::start_of` | File::open | 1 |
@@ -970,7 +977,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/turns.rs::read_so_far` | db::turns_read | 1 |
 | `startup/mod.rs::settle_folder_and_hooks` | db::rewrite_paths | 1 |
 
-### process (47)
+### process (48)
 
 | In | Call | Times |
 |---|---|---|
@@ -982,6 +989,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `extensions.rs::ext_reveal` | /usr/bin/open | 1 |
 | `extensions.rs::run_program` | (program computed) | 1 |
 | `extensions.rs::run_program` | /bin/kill | 1 |
+| `hook.rs::branch_in` | git | 1 |
 | `hook.rs::ps` | /bin/ps | 1 |
 | `hook.rs::tty_of_pane` | (program computed) | 1 |
 | `hosted/launch.rs::command` | (program computed) | 1 |
@@ -1056,6 +1064,7 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `src-tauri/src/hosted/machine_tests.rs::live_on_a_real_machine_claude_code_asks_runs_a_command_past_a_dropped_connection_and_is_picked_up_after_a_restart` | test |  |
 | `src-tauri/src/hub/desk.rs::act_on` |  |  |
 | `src-tauri/src/hub/desk.rs::desk_done` |  |  |
+| `src-tauri/src/hub/desk.rs::shown` |  |  |
 | `src-tauri/src/hub/hand_off.rs::a_hand_off_goes_ahead_only_where_you_turned_it_on_and_holds_where_typing_could_hurt` | test |  |
 | `src-tauri/src/hub/hand_off.rs::in_a_project_whose_desk_has_a_live_lead_cue_asks_by_context_and_what_a_session_holds` | test |  |
 | `src-tauri/src/hub/sessions.rs::a_parked_session_is_kept_through_a_restart_and_comes_back_whole` | test |  |

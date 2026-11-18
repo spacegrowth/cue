@@ -199,10 +199,13 @@ fn cue_ask(id: &str, v: &Value) -> Option<Ask> {
     let kind = match str_of(&ask, "kind")?.as_str() {
         "permission" => AskKind::Permission,
         "question" => AskKind::Question,
+        "guard" => AskKind::Guard,
         _ => return None,
     };
     let input = ask.get("tool_input").cloned().unwrap_or(Value::Null);
-    Some(Ask { request_id: id.into(), kind, tool_name: str_of(&ask, "tool_name")?, input, suggestions: json!([]), agent_id: String::new(), tool_use_id: String::new(), server: String::new(), message: String::new(), form: Value::Null })
+    // A guard's branch: the one checked out in the session's folder, for a plain `git push`.
+    let message = if kind == AskKind::Guard { str_of(&ask, "branch").unwrap_or_default() } else { String::new() };
+    Some(Ask { request_id: id.into(), kind, tool_name: str_of(&ask, "tool_name")?, input, suggestions: json!([]), agent_id: String::new(), tool_use_id: String::new(), server: String::new(), message, form: Value::Null })
 }
 
 /// Your answer to Cue's extension: the decision as JSON (it reads anything else as a denial).

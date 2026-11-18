@@ -40,7 +40,7 @@ pub struct Prompt {
 /// is refused to any other process than the session's own).
 pub fn apply(hub: &Hub, msg: ClientMsg, peer: Option<i32>) -> Outcome {
     // A session's folder, seen before the hub records it with its project (logs::repos::first_look).
-    if let ClientMsg::Ask { origin, .. } | ClientMsg::Event { origin, .. } = &msg {
+    if let ClientMsg::Ask { origin, .. } | ClientMsg::Event { origin, .. } | ClientMsg::Guard { origin, .. } = &msg {
         if origin.machine.is_empty() {
             crate::logs::repos::first_look(&origin.cwd);
         }
@@ -50,6 +50,10 @@ pub fn apply(hub: &Hub, msg: ClientMsg, peer: Option<i32>) -> Outcome {
             let (id, answer) = hub.add_ask(origin, NewAsk { kind, tool_name, tool_input, suggestions, context, agent_id });
             Outcome::Asked { id, answer }
         }
+        ClientMsg::Guard { origin, tool_name, tool_input, hits, branch, agent_id } => match hub.guard(origin, tool_name, tool_input, &hits, &branch, agent_id) {
+            Some((id, answer)) => Outcome::Asked { id, answer },
+            None => Outcome::Say(json!({"type": "pass"})),
+        },
         ClientMsg::Event { origin, event, message, turn, driven_by, prompt_id, error_type, voice } => {
             if event == "failed" {
                 hub.failed(origin, &error_type, &message);

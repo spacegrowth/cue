@@ -121,6 +121,26 @@ pub enum ClientMsg {
         #[serde(default)]
         agent_id: String,
     },
+    /// Ask me before (one_way.rs): a tool call about to run that is one of the steps Cue checks. Cue answers
+    /// {"type":"pass"} when its project's Desk doesn't ask first about it; else it's an ask like `Ask`, and the
+    /// connection stays open until answered.
+    Guard {
+        #[serde(flatten)]
+        origin: Origin,
+        #[serde(default)]
+        tool_name: String,
+        #[serde(default)]
+        tool_input: Value,
+        /// The kinds the sender saw (the hook, which can read the session's branch); empty: Cue reads them from
+        /// `tool_input` itself, with `branch`.
+        #[serde(default)]
+        hits: Vec<String>,
+        /// The branch checked out in the session's folder, when the sender knows it (Pi).
+        #[serde(default)]
+        branch: String,
+        #[serde(default)]
+        agent_id: String,
+    },
     /// Fire-and-forget lifecycle event: stopped (waiting for you), active, ended.
     Event {
         #[serde(flatten)]
@@ -316,7 +336,7 @@ pub struct Item {
     pub agent_id: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub agent_name: String,
-    /// A permission to run something its project counts one-way (one_way.rs command_one_way: a push to main, say):
+    /// A permission to run something its project counts one-way (one_way.rs call_hits: a push to main, say), or one Ask me before stopped (hub/guard.rs):
     /// the crew page answers it only with a click, never a key.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub one_way: bool,

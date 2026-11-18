@@ -194,6 +194,69 @@ function askCue(ask: object) {
 const never = new Promise<never>(() => {});
 
 /**
+ * Ask me before (Cue's hub/guard.rs): a command that may be one of the steps its project's Desk asks first about (a
+ * push, a release, deleting files) goes to Cue before it runs, with the branch checked out here. Cue answers
+ * "pass" at once when it isn't asked about; else its card waits for your click. A yes skips the usual gate (you
+ * already said yes); a no blocks. Its card closed without a click, or Cue gone once reached, blocks too; only a Cue
+ * never reached leaves it to the usual gate.
+ */
+const MAYBE_GUARDED = /\b(git|rm|rmdir|unlink|shred|trash|srm|find|gh|npm|pnpm|yarn|cargo|twine|gem|poetry|flit|release\.sh|drop|truncate|delete)\b/i;
+
+function branchHere(cwd: string): string {
+	try {
+		const b = execFileSync("git", ["-C", cwd, "rev-parse", "--abbrev-ref", "HEAD"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 2000 }).trim();
+		return b === "HEAD" ? "" : b;
+	} catch {
+		return "";
+	}
+}
+
+function guardCue(guard: object): Promise<CueAnswer> {
+	const pass: CueAnswer = { behavior: "pass" };
+	const closed: CueAnswer = { behavior: "deny", message: "Cue closed this ask without an answer from the user (Ask me before), so it didn't run. Ask the user again." };
+	const lost: CueAnswer = { behavior: "deny", message: "Cue went away while this waited on the user (Ask me before), so it didn't run. Ask the user again." };
+	return new Promise((resolve) => {
+		let done = false;
+		let reached = false;
+		let s: net.Socket | undefined;
+		const finish = (d: CueAnswer) => {
+			if (done) return;
+			done = true;
+			resolve(d);
+			s?.destroy();
+		};
+		try {
+			s = net.createConnection(SOCK);
+		} catch {
+			return finish(pass);
+		}
+		s.on("error", () => finish(reached ? lost : pass));
+		s.on("close", () => finish(reached ? lost : pass));
+		s.on("connect", () => {
+			reached = true;
+			s?.write(JSON.stringify({ type: "guard", ...guard }) + "\n");
+		});
+		const lines = readline.createInterface({ input: s });
+		lines.on("error", () => {});
+		lines.on("line", (line) => {
+			try {
+				const m = JSON.parse(line);
+				if (m.type === "decision") finish(m);
+				else if (m.type === "pass") finish(pass);
+				else if (m.type === "cancel" || m.type === "error") finish(closed);
+			} catch {}
+		});
+	});
+}
+
+async function guarded(event: any, ctx: ExtensionContext): Promise<CueAnswer> {
+	if (event.toolName !== "bash" || !MAYBE_GUARDED.test(String(event.input?.command ?? ""))) return { behavior: "pass" };
+	const call = { tool_name: event.toolName, tool_input: event.input, branch: branchHere(ctx.cwd) };
+	if (HOSTED) return askHosted(ctx, { kind: "guard", ...call });
+	return guardCue({ ...call, ...origin(ctx) });
+}
+
+/**
  * Hosted, Cue reads Pi's dialogs from its RPC output, so an ask goes as one of them, never over Cue's socket (a
  * Pi on another machine can't reach it): an `input` dialog titled CUE_ASK with the ask as JSON in its
  * placeholder. Cue answers with its decision as JSON; a dialog cancelled (or answered with anything else) is a
@@ -322,6 +385,9 @@ export default function (pi: ExtensionAPI) {
 	pi.on("tool_call", async (event, ctx) => {
 		// What it's doing right now, shown on its card and in Cue's Active pane ("Running: cargo test").
 		sendEvent(ctx, "doing", describeTool(event.toolName, event.input as any));
+		const g = await guarded(event, ctx);
+		if (g.behavior === "deny") return { block: true, reason: g.message || "The user said no in Cue (Ask me before)." };
+		if (g.behavior !== "pass") return undefined;
 		if (!needsGate(event.toolName, event.input, gateMode())) return undefined;
 
 		// Hosted: Cue is the only one to ask, and its card waits for you.

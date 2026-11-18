@@ -7,13 +7,13 @@ use crate::hosted::HostedEvent;
 use crate::testing::World;
 use serde_json::{json, Value};
 
-fn ends(w: &World, sid: &str, text: &str) {
+pub(super) fn ends(w: &World, sid: &str, text: &str) {
     w.hosted_says(sid, HostedEvent::TurnEnded { text: text.into(), failed: false, cost_usd: 0.0, unprompted: false });
     w.settle();
 }
 
 /// A holder ("cue-teams", at its prompt) and the project it's in.
-fn holder(w: &World) -> (String, String) {
+pub(super) fn holder(w: &World) -> (String, String) {
     let sid = lead(w, "hello");
     ends(w, &sid, "Hi.");
     let project = w.snapshot().session(&sid)["project"].as_str().unwrap().to_string();
@@ -24,7 +24,7 @@ fn holder(w: &World) -> (String, String) {
 }
 
 /// A new lead for `project`, started by Cue (desk_set_lead without a session), at its prompt: its id.
-fn new_lead(w: &World, project: &str) -> String {
+pub(super) fn new_lead(w: &World, project: &str) -> String {
     let r = crate::ipc::desk_set_lead_with(w.hub(), project, None, true).unwrap();
     let sid = r["sid"].as_str().unwrap().to_string();
     w.hosted_says(&sid, HostedEvent::Taken { text: "hello".into() });
@@ -49,11 +49,11 @@ pub(super) fn desk(w: &World, project: &str) -> Value {
     snap.0["desk"]["projects"].as_array().unwrap().iter().find(|p| p["project"] == project).cloned().unwrap_or(Value::Null)
 }
 
-fn item<'a>(d: &'a Value, title: &str) -> &'a Value {
+pub(super) fn item<'a>(d: &'a Value, title: &str) -> &'a Value {
     d["items"].as_array().unwrap().iter().find(|i| i["title"] == title).unwrap_or_else(|| panic!("no item {title}: {d}"))
 }
 
-fn sent_to(w: &World, sid: &str) -> Vec<String> {
+pub(super) fn sent_to(w: &World, sid: &str) -> Vec<String> {
     w.hosted.sent().into_iter().filter(|(s, _)| s == sid).map(|(_, t)| t).collect()
 }
 

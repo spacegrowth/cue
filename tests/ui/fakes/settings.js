@@ -21,18 +21,20 @@ CueBridge.area("settings", (w) => {
     }
   };
 
-  /** One-way here as config.rs effective gives it (one_way.rs view), for a scenario recorded before it had it: what
-   *  you set per project, the kinds with their words, the default. Once, the first time the state is read. */
-  const ONE_WAY_KINDS = [["main", "Merge or push to main"], ["push", "Push any branch"], ["release", "A release"], ["deploy", "Deploy"], ["data", "Delete data"], ["outside", "Files outside the project"]];
+  /** Ask me before as config.rs effective gives it (one_way.rs view), for a scenario recorded before it had it: what
+   *  you set per project, the projects asked, the kinds with their words, the defaults. Once, the first time the state is read. */
+  const ONE_WAY_KINDS = [["main", "Pushing to main", true], ["push", "Pushing any branch", true], ["release", "Releasing", true], ["deploy", "Deploying", false], ["data", "Deleting files", true], ["outside", "Files outside the project", false]];
   const oneWayFill = () => {
     const p = w.state?.settings && (w.state.settings.project ||= {});
-    if (p && !p.oneway) p.oneway = { set: {}, kinds: ONE_WAY_KINDS.map(([key, label]) => ({ key, label })), default: ["main"] };
+    // A Desk's own view of it (one_way.rs desk_view), for a scenario recorded before Desks had it: already asked.
+    for (const d of w.state?.desk?.projects || []) d.ask_before ||= { project: d.workspace_project || d.project, kinds: [{ key: "main", label: "Pushing to main" }], asked: true, ticks: ["main"] };
+    if (p && !p.oneway) p.oneway ={ set: {}, asked: [], kinds: ONE_WAY_KINDS.map(([key, label, offered]) => ({ key, label, offered, why: offered ? "" : "Cue can't check it" })), default: ["main"], ask_default: ["main", "release", "data"] };
   };
   const plainSnapshot = w.snapshot;
   w.snapshot = () => { oneWayFill(); return plainSnapshot(); };
 
   return {
-    // "a.b" sets settings.a.b, as config.rs set does for the keys the window saves; One-way here's map is its `set`.
+    // "a.b" sets settings.a.b, as config.rs set does for the keys the window saves; Ask me before's map is its `set`.
     set_setting: ({ key, value }) => {
       const [a, b] = key.split(".");
       if (key === "project.oneway") { oneWayFill(); w.state.settings.project.oneway.set = value; w.changed(10); return null; }
@@ -40,6 +42,16 @@ CueBridge.area("settings", (w) => {
       if (key === "project.moves") moveProjects(value || {});
       w.changed(10);
       return null;
+    },
+    // Ask me before (hub/guard.rs ask_before_set): the kinds saved, the project asked; null keeps them.
+    ask_before_set: ({ project, kinds }) => {
+      oneWayFill();
+      const ow = w.state.settings.project.oneway;
+      if (kinds) ow.set = { ...ow.set, [project]: kinds };
+      if (!ow.asked.includes(project)) ow.asked = [...ow.asked, project];
+      for (const d of w.state.desk?.projects || []) if (d.ask_before?.project === project) d.ask_before.asked = true;
+      w.changed(10);
+      return Array.isArray(ow.set[project]) ? ow.set[project] : ow.default;
     },
     get_drafts: () => drafts(),
     set_draft: ({ key, text, images }) => {

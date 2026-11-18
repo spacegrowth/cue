@@ -35,7 +35,7 @@ impl Hub {
     pub(crate) fn run_hosted(&self, origin: &Origin, start: Start, with: &HostedStart) -> Result<Origin, String> {
         let agent = Agent::named(&origin.harness).ok_or("Cue can only host Claude Code, Pi and Codex")?;
         // A Claude lead starts with the team skill (team_out.rs), new or resumed: merged into a prompt you append; with
-        // what its project counts one-way (Settings' One-way here, one_way.rs), as the setting is at this start.
+        // what its project counts one-way (Ask me before, one_way.rs), as the setting is at this start.
         // A project's Desk lead (desk_lead.rs) gets the Desk's instructions instead: it only hands work out, so no crew.
         let kinds = crate::one_way::kinds(&super::crew_log::project_shown_for(origin));
         let skill = match self.desk_skill(&origin.session_id) {
@@ -345,17 +345,34 @@ impl Hub {
     /// back to the session once you give it (or that it's gone, if the card goes unanswered).
     fn hosted_ask(&self, origin: Origin, a: Ask) {
         let input = a.kind == AskKind::Input;
+        let sid = origin.session_id.clone();
         let (kind, tool_name, tool_input) = match a.kind {
             AskKind::Permission | AskKind::Network => ("permission", a.tool_name, a.input),
             AskKind::Question => ("question", a.tool_name, a.input),
             AskKind::Input => ("input", a.server.clone(), json!({ "server": a.server, "message": a.message, "form": a.form })),
+            // Ask me before (guard.rs): a card when its Desk asks first about it, else "pass" at once.
+            AskKind::Guard => {
+                let card = self.hosted_guard(origin, &a.request_id, a.tool_name, a.input, &a.message);
+                let Some(card) = card else {
+                    let pass = Given::Decision(Decision { behavior: "pass".into(), ..Default::default() });
+                    if let Err(e) = self.ports.hosted.answer(&sid, &a.request_id, &pass) {
+                        eprintln!("cue: couldn't answer hosted session {sid}: {e}");
+                    }
+                    return;
+                };
+                let Some((_, answer)) = card else { return };
+                return self.answer_hosted_when_given(sid, a.request_id, false, answer);
+            }
         };
-        let sid = origin.session_id.clone();
         let ask = NewAsk { kind: kind.into(), tool_name, tool_input, suggestions: a.suggestions, context: vec![], agent_id: a.agent_id };
         // Its card is already open: the one waiting answers it.
         let Some((_, answer)) = self.add_keyed_ask(origin, &a.request_id, ask) else { return };
+        self.answer_hosted_when_given(sid, a.request_id, input, answer);
+    }
+
+    /// Hosted session `sid`'s request answered once you answer its card.
+    fn answer_hosted_when_given(&self, sid: String, request_id: String, input: bool, answer: oneshot::Receiver<Reply>) {
         let hosted = self.ports.hosted.clone();
-        let request_id = a.request_id;
         // Waiting for your answer is the card's to do, not the session's: its next lines keep coming meanwhile.
         std::thread::spawn(move || {
             let given = given(input, answer.blocking_recv());

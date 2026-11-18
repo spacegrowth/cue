@@ -26,6 +26,7 @@ mod desk_stall;
 mod desk_theirs;
 pub(crate) use desk_lead::DeskClaim;
 mod events;
+mod guard;
 mod hand_off;
 mod history;
 mod hosted;

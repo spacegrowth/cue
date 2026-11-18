@@ -528,32 +528,6 @@ document.addEventListener("click", (e) => {
   projResetAsk = v === "ask";
   renderMain();
 }, true);
-/** Settings → General → One-way here: per project, the kinds of step a crew lead asks you first before, and that
- *  mark a crew commit one-way (its Undo makes a revert): config's project.oneway (one_way.rs), its kinds and words
- *  from there. Each project in the list, and any you set; one never set shows the default (a merge or push to main). */
-function oneWayRows() {
-  const ow = state.settings?.project?.oneway || {}, set = ow.set || {}, kinds = ow.kinds || [];
-  if (!kinds.length) return "";
-  const projects = [...new Set([...projectsKnown().map(([p]) => p), ...Object.keys(set)])].filter(Boolean).sort((a, b) => projLabel(a).localeCompare(projLabel(b)));
-  const rows = projects.map((p) => {
-    const on = Array.isArray(set[p]) ? set[p] : ow.default || [];
-    const sub = !Array.isArray(set[p]) ? "Not set: Cue's default" : on.length ? "" : "Nothing: the lead asks only for real choices";
-    const chips = kinds.map((k) => `<button class="${on.includes(k.key) ? "on" : ""}" data-ow="${esc(p)}" data-ow-kind="${esc(k.key)}" aria-pressed="${on.includes(k.key)}">${esc(k.label)}</button>`).join("");
-    return setRow(esc(projLabel(p)), sub, `<div class="ow-chips">${chips}</div>`);
-  }).join("");
-  return `<div class="set-group">One-way here</div><div class="set-sub ow-note">What a crew lead asks you before in each project, and which of its commits Undo this makes a revert. A change reaches a lead when it next starts.</div>${rows}`;
-}
-document.addEventListener("click", (e) => {
-  const b = e.target.closest?.("[data-ow]");
-  if (!b) return;
-  e.stopPropagation();
-  const ow = (((state.settings ||= {}).project ||= {}).oneway ||= {});   // shown now; Cue's next update says the same
-  const p = b.dataset.ow, k = b.dataset.owKind, had = Array.isArray(ow.set?.[p]) ? ow.set[p] : ow.default || [];
-  const next = had.includes(k) ? had.filter((x) => x !== k) : [...had, k];
-  ow.set = { ...(ow.set || {}), [p]: (ow.kinds || []).map((x) => x.key).filter((x) => next.includes(x)) };
-  setSetting("project.oneway", ow.set);
-  renderMain();
-}, true);
 const SET_TABS = [["general", "General"], ["agents", "Agents"], ["chat", "Chat"], ["voice", "Voice"], ["insights", "Insights"], ["usage", "Usage"]];
 let setTab = (() => { try { return localStorage.getItem("cue.setTab") || "general"; } catch { return "general"; } })();
 function settingsSheet() {
@@ -582,7 +556,7 @@ function settingsSheet() {
     ${setRow("Mini window", "Cue at the edge of your screen while you work in another app: what needs you, newest first, and its whole chat with a box to answer it. It steps aside while this window is in front.", seg("mini.mode", st.mini?.mode ?? "off", [["off", "Off"], ["rail", "Right edge"], ["notch", "Notch"]]))}
     ${setRow("Open at login", "Start Cue when you log in to your Mac. It's listed under System Settings → General → Login Items.", toggle("login.open", st.login?.open ?? false))}
     <div class="set-group">Projects</div>
-    ${projResetRows()}${oneWayRows()}`,
+    ${projResetRows()}`,
     agents: `
     <div class="set-group">Connected agents</div>
     ${agentRows()}

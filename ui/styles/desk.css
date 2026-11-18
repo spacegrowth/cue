@@ -497,6 +497,9 @@
 .dk-shr { display: flex; align-items: center; gap: 6px; min-width: 0; margin-top: 4px; }
 .dk-shr b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; font-weight: 700; }
 .dk-strip .dk-sub { color: inherit; opacity: .75; font-size: 11px; }
+/* Ask me before, under the Desk's counts: its kinds, and Change as a plain underlined link in the strip's own ink. */
+.dk-strip .dk-ab { display: block; margin-top: 2px; font-family: var(--mono); font-size: 11px; opacity: .75; }
+.dk-ab-change { padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 .dk-sh .dk-ren, .dk-strip .dk-more-btn { color: inherit; }
 .dk-sh .dk-ren:hover, .dk-strip .dk-more-btn:hover, .dk-strip .dk-more-btn:focus-visible { background: color-mix(in oklab, currentColor 14%, transparent); color: inherit; }
 /* The lead's card: white (dark: the panel); while its chat shows, lit lime as an open row is. */

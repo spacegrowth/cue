@@ -332,7 +332,7 @@ pub fn history_keep() -> usize {
 
 /// The settings the window may save. A key it saves that isn't here fails as "unknown setting" (the test
 /// below reads the window's scripts for every key they save).
-pub(crate) const ALLOWED: &[&str] = &["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "usage.codex", "sessions.tmux", "project.colors", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "project.oneway", "project.never", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "tips.on", "updates.beta", "voice.pick", "mini.mode", "hosted.on"];
+pub(crate) const ALLOWED: &[&str] = &["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "usage.codex", "sessions.tmux", "project.colors", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "project.oneway", "project.asked", "project.never", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "tips.on", "updates.beta", "voice.pick", "mini.mode", "hosted.on"];
 
 /// Set one dotted key ("history.keep", "notify.finished", "pi.gate"), keeping everything else.
 pub fn set(key: &str, value: Value) -> Result<(), String> {
@@ -363,7 +363,7 @@ fn checked(key: &str, value: Value) -> Result<Value, String> {
     }
     match key {
         "pi.gate" | "appearance.mode" | "mini.mode" | "notify.sound" | "turn.mode" | "steps.mode" | "voice.pick" => checked_choice(key, &value),
-        "project.colors" | "project.all" | "project.hue" | "project.pins" | "project.made" | "project.names" | "project.moves" | "project.folders" | "project.oneway" | "project.never" => checked_project(key, value),
+        "project.colors" | "project.all" | "project.hue" | "project.pins" | "project.made" | "project.names" | "project.moves" | "project.folders" | "project.oneway" | "project.asked" | "project.never" => checked_project(key, value),
         "insights.skills" | "quick.phrases" => checked_list(key, value),
         _ => checked_plain(key, value),
     }
@@ -425,8 +425,9 @@ fn checked_project(key: &str, value: Value) -> Result<Value, String> {
         "project.names" => names(&value)?,
         "project.moves" => moves(&value)?,
         "project.folders" => folders(&value)?,
-        // One-way here, per project (one_way.rs).
+        // Ask me before, per project, and the projects it was asked for (one_way.rs).
         "project.oneway" => crate::one_way::checked(&value)?,
+        "project.asked" => crate::one_way::checked_asked(&value)?,
         // Words never committed, per project (hub/desk_commit.rs).
         "project.never" => never(&value)?,
         _ => return Err(format!("unknown setting {key}")),
@@ -636,6 +637,12 @@ fn wanted(hook: &str, harness: &str, on_mac: bool) -> Vec<(&'static str, Value)>
         ("UserPromptSubmit", json!({ "hooks": [{ "type": "command", "command": cmd("prompt"), "timeout": 5 }] })),
         ("SessionEnd", json!({ "hooks": [{ "type": "command", "command": cmd("end"), "timeout": 3 }] })),
     ];
+    // Ask me before (one_way.rs): a tool call checked before it runs, and stopped to ask you when it's a step its
+    // project's Desk asks first about. On this Mac only: a machine's hook script reads no tool calls. Claude Code
+    // runs its commands through Bash; Codex names its shell tools in more ways, and deletes with a patch.
+    if on_mac {
+        want.push(("PreToolUse", json!({ "matcher": if harness == "claude" { "Bash" } else { "*" }, "hooks": [{ "type": "command", "command": cmd("guard"), "timeout": wait }] })));
+    }
     if harness == "claude" {
         // A turn that ends on an API error (a usage limit) fires this, not Stop.
         want.push(("StopFailure", json!({ "hooks": [{ "type": "command", "command": cmd("failure"), "timeout": 5 }] })));
@@ -817,8 +824,9 @@ mod tests {
             assert!(v["hooks"][e].to_string().contains("/new/bin/cue-hook"), "{e}");
         }
         // The tmux guard is on this Mac only: a machine's settings get no SessionStart.
+        assert!(v["hooks"]["PreToolUse"][1].to_string().contains("guard claude"), "Ask me before's check, after yours");
         let machine = merge_hooks(json!({}), "$HOME/.cue/cue-hook", "claude", false).unwrap();
-        assert!(machine["hooks"]["SessionStart"].is_null() && !machine["hooks"]["Stop"].is_null());
+        assert!(machine["hooks"]["SessionStart"].is_null() && machine["hooks"]["PreToolUse"].is_null() && !machine["hooks"]["Stop"].is_null());
         // Connecting again doesn't add a second copy.
         add_hooks(&path, "/new/bin/cue-hook", "claude").unwrap();
         let again: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
