@@ -11,7 +11,7 @@ const openLead = async (page) => {
 const rows = (page) => page.locator(".ib-open .ib-op");
 const titles = (page) => page.locator(".ib-open .ib-op-w").allTextContents();
 
-test("Open N sits under Running now: each row says what's open, whose it is and one button", async ({ cue, page }) => {
+test("Open N sits under Running now: each row is one short line, what's open · whose it is, and one button", async ({ cue, page }) => {
   await cue.open("open");
   await openLead(page);
   const side = page.locator(".ib-aside");
@@ -24,11 +24,14 @@ test("Open N sits under Running now: each row says what's open, whose it is and 
     "Rail dot can start now in a new session, or wait 10m for web-lead. Which?",
     "Merge stopped at 3 conflicts",
     "1 teammate done, not committed",
-    "Review not sent: desk/model.rs — stale comment above Item",
+    "Review not sent",
   ]);
-  expect(await page.locator(".ib-open .ib-op-o").allTextContents()).toEqual(expect.arrayContaining([
-    "cue-lead · waiting on you", "desk-merge · in ui/inbox.js, ui/board.js +1", "desk-ui 5 files", "review · for desk-core",
-  ]));
+  // #220: whose it is is a name, no files or lines; the review's note waits for Open or Send fixes.
+  expect((await page.locator(".ib-open .ib-op-o").allTextContents()).slice(0, 4)).toEqual(["cue-lead", "desk-merge", "desk-ui", "desk-core"]);
+  // One line each, however long: what doesn't fit ends in an ellipsis.
+  await page.evaluate(() => { state.open[0].rows[0].title = "A very long question ".repeat(12); state.open[0].rows[0].item = ""; renderMain(); });
+  const lines = await rows(page).evaluateAll((els) => els.map((el) => [el.getBoundingClientRect().height, getComputedStyle(el.querySelector(".ib-op-w")).textOverflow]));
+  expect(lines.every(([h, t]) => h < 40 && t === "ellipsis")).toBe(true);
   expect((await page.locator(".ib-open .ib-op-act").allTextContents()).slice(0, 4)).toEqual(["Reply", "Open", "Open", "Send fixes"]);
   expect(await page.locator(".ib-open [title]").count()).toBe(0);
 });
@@ -61,12 +64,12 @@ test("Send fixes runs the review act and the row stays in its seat as Sent; rows
   await cue.called("team_action", { sessionId: "cue-lead", agent: "id-core", action: "fixes" });
   const sent = page.locator(".ib-open .ib-op.sent");
   await expect(sent).toHaveCount(1);
-  await expect(sent.locator(".ib-op-w")).toHaveText("Sent to desk-core: desk/model.rs — stale comment above Item");
-  await expect(sent.locator(".ib-op-o")).toHaveText("review · for desk-core · just now");
+  await expect(sent.locator(".ib-op-w")).toHaveText("Fixes sent");
+  await expect(sent.locator(".ib-op-o")).toHaveText("desk-core · just now");
   await expect(sent.locator(".ib-op-act")).toHaveText("Sent");
   const after = await titles(page);
   expect(after.length).toBe(before.length);
-  expect(after.indexOf("Sent to desk-core: desk/model.rs — stale comment above Item")).toBe(before.indexOf("Review not sent: desk/model.rs — stale comment above Item"));
+  expect(after.indexOf("Fixes sent")).toBe(before.indexOf("Review not sent"));
   // A new row joins at the bottom; the others keep their seats.
   await page.evaluate(() => {
     state.open[0].rows.unshift({ key: "merge:/work/cue", kind: "merge", title: "Merge not finished", who: "cue-lead · in ui/a.js", sid: "cue-lead", act: "open", needs_you: false });

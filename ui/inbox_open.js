@@ -20,20 +20,33 @@ function openRows() {
   return all.filter((r) => openSeats.has(r.key)).sort((a, b) => openSeats.get(a.key) - openSeats.get(b.key));
 }
 
-/** An ask's row says what it asks, as its card does, when the ask is still there. */
+/** A row's few words (#220): what kind of loose end it is, never the review's note, files or lines (Open or Send
+ *  fixes shows those); an ask says what it asks, as its card does, when the ask is still there. */
 function openTitle(r) {
-  if (r.kind !== "ask" || !r.item) return r.title;
+  if (r.kind === "review") return "Review not sent";
+  if (r.kind !== "ask" || !r.item) return firstLine(r.title);
   const it = (state.items || []).find((x) => x.id === r.item);
-  return it ? inboxAskSubject(it) : r.title;
+  return firstLine(it ? inboxAskSubject(it) : r.title);
+}
+/** Whose it is, a name: the teammate it's about, else the name the hub put first, else its lead. */
+function openName(r) {
+  const mate = r.agent && (sessionOf(r.sid)?.team || []).find((t) => (t.agent_id || t.call) === r.agent)?.name;
+  if (mate) return mate;
+  if (r.kind === "review") return r.who.replace(/^review · for /, "");
+  if (r.kind === "uncommitted") return (state.open || []).find((l) => l.lead_sid === r.sid)?.lead || "";
+  return (r.who || "").split(" · ")[0];
 }
 
 const OPEN_ACT = { open: "Open", reply: "Reply", fixes: "Send fixes" };
 
+/** One line: its few words · whose it is, each cut with an ellipsis when long; one button. */
 function openRowHtml(r) {
+  const name = (n) => (n ? `<span class="ib-op-o">${esc(n)}</span>` : "");
   if (r.sent) {
-    return `<div class="ib-op sent"><div class="ib-op-w">${esc(r.sent.title)}</div><div class="ib-op-o">${esc(r.sent.who)} · ${r.sent.at > now() - 60000 ? "just now" : `${ago(r.sent.at)} ago`}</div><span class="ib-op-act done">Sent</span></div>`;
+    const when = r.sent.at > now() - 60000 ? "just now" : `${ago(r.sent.at)} ago`;
+    return `<div class="ib-op sent"><span class="ib-op-l"><span class="ib-op-w">${esc(r.sent.title)}</span>${name(`${r.sent.who} · ${when}`)}</span><span class="ib-op-act done">Sent</span></div>`;
   }
-  return `<div class="ib-op${r.needs_you ? " you" : ""}" data-open-key="${esc(r.key)}"><div class="ib-op-w">${esc(openTitle(r))}</div><div class="ib-op-o">${esc(r.who)}</div>`
+  return `<div class="ib-op${r.needs_you ? " you" : ""}" data-open-key="${esc(r.key)}"><span class="ib-op-l"><span class="ib-op-w">${esc(openTitle(r))}</span>${name(openName(r))}</span>`
     + `<button class="ib-op-act" data-open-act="${esc(r.key)}">${OPEN_ACT[r.act] || "Open"}</button></div>`;
 }
 
@@ -59,7 +72,7 @@ async function openAct(r) {
     openSending.add(r.key);
     try { await mateAct(r.sid, r.agent, "fixes"); } finally { openSending.delete(r.key); }
     if (mateNotes.has(`${r.sid}|${r.agent}`)) return;
-    openSent.set(r.key, { title: `Sent to ${name}: ${r.title.replace(/^Review not sent: /, "")}`, who: r.who, at: now() });
+    openSent.set(r.key, { title: "Fixes sent", who: name, at: now() });
     return renderMain();
   }
   // Open: the teammate's row in its lead's chat, else the lead's chat.

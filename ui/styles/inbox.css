@@ -352,11 +352,16 @@ button.ib-file:hover { background: color-mix(in srgb, var(--ink) 6%, transparent
 /* Open: what a crew left open (inbox_open.js). Only a row waiting on you is red. */
 .ib-open { gap: 0; }
 .ib-open > .ib-k { margin-bottom: 2px; }
-.ib-op { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); }
-.ib-op-w { font-weight: 600; min-width: 0; overflow-wrap: anywhere; line-height: 1.35; }
-.ib-op-o { grid-column: 1; font-size: 11.5px; color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ib-op-act { grid-column: 2; grid-row: 1 / span 2; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 8px; border: 1px solid var(--line); background: none; color: var(--ink); white-space: nowrap; cursor: pointer; }
+/* An Open row is one line (#220): its words, then whose it is after a dot, each cut with an ellipsis; its button. */
+.ib-op { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid var(--line); white-space: nowrap; }
+/* Its words keep their room (up to all but a bit of the name); the name gives way first. */
+.ib-op-l { flex: 1; min-width: 0; display: flex; align-items: baseline; }
+.ib-op-w { flex: none; max-width: calc(100% - 2.6em); overflow: hidden; text-overflow: ellipsis; font-weight: 600; line-height: 1.35; }
+.ib-op-w:last-child { max-width: 100%; }
+.ib-op-o { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 11.5px; color: var(--muted); }
+.ib-op-o::before { content: "·"; padding: 0 6px; }
+.ib-op-act { flex: none; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 8px; border: 1px solid var(--line); background: none; color: var(--ink); white-space: nowrap; cursor: pointer; }
 .ib-op-act.done { color: var(--muted); cursor: default; }
-.ib-op.you .ib-op-w::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--deny); margin-right: 6px; vertical-align: 1px; }
+.ib-op.you .ib-op-l::before { content: ""; flex: none; align-self: center; width: 7px; height: 7px; border-radius: 50%; background: var(--deny); margin-right: 6px; }
 .ib-op.you .ib-op-o { color: var(--deny); }
 .ib-op.sent .ib-op-w { font-weight: 500; color: var(--muted); }
