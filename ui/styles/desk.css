@@ -316,7 +316,7 @@
 .dk-itab .n { margin-left: 5px; font: 600 10.5px var(--mono); color: var(--muted); }
 .dk-itabs .dk-drop { margin: 0; font-weight: 500; white-space: nowrap; flex: none; }
 .dk-ibody { padding: 18px 24px 0; min-width: 0; }
-.dk-ibody > .dk-decs, .dk-ibody > .dk-log { margin: 0 -24px; }
+.dk-ibody > .dk-log { margin: 0 -24px; }
 .dk-thread { display: flex; flex-direction: column; }
 .dk-tm { display: grid; grid-template-columns: 40px 14px minmax(0, 1fr); column-gap: 12px; padding-bottom: 18px; }
 .dk-tm > .dk-age { text-align: right; padding-top: 2px; font: 11px var(--mono); }
@@ -365,14 +365,18 @@
    enough that the counts stay by their file on a wide page. */
 .dk-ibody .dk-fcs { max-width: 560px; }
 .dk-ibody .dk-fc .dv-add { margin-left: 16px; }
-/* Its decisions as sentences: what (age at the right), why under it, by who and Undo. */
-.dk-decs { border-top: 1px solid var(--line); }
-.dk-lr.dk-dl { display: block; padding: 10px 4px; }
+/* Its decisions as sentences: what (age at the right), why under it, by who and Undo. In line with the Thread tab
+   (the body's own padding, no rule above the first): each decision a group, its three lines close (card-gap), the
+   groups apart, with no rule between them, as the thread has none. A row's hover reaches a little past its words
+   (card-pad-x). (#297) */
+.dk-decs { display: flex; flex-direction: column; }
+.dk-lr.dk-dl { display: block; margin: 0 -12px; padding: 14px 12px; border-bottom: 0; border-radius: 8px; }
+.dk-lr.dk-dl:first-child { padding-top: 6px; }
 .dk-dl1 { display: flex; align-items: baseline; gap: 12px; }
 .dk-dl1 .dk-d { flex: 1; font-size: 14px; font-weight: 600; }
 .dk-dl1 .dk-age { color: var(--muted); font-size: 12px; white-space: nowrap; }
-.dk-lr.dk-dl > .dk-w { margin-top: 2px; font-size: 13px; }
-.dk-dl3 { display: flex; align-items: center; gap: 8px; margin-top: 4px; min-height: 18px; color: var(--muted); font-size: 12px; }
+.dk-lr.dk-dl > .dk-w { margin-top: 4px; font-size: 13px; line-height: 1.45; }
+.dk-dl3 { display: flex; align-items: center; gap: 8px; margin-top: 6px; min-height: 18px; color: var(--muted); font-size: 12px; }
 .dk-dl3 .dk-lby { color: var(--muted); font-weight: 400; }
 .dk-dl3 .dk-lby b { color: var(--ink); font-weight: 600; }
 .dk-ended { flex: none; margin: 8px 16px 16px; padding: 10px 12px; color: var(--muted); font-size: 13px; }
@@ -791,7 +795,7 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
 .dk-pg .dk-itab { padding: 9px 8px; flex: none; }
 .dk-pg .dk-itab .n { margin-left: 4px; }
 .dk-pg .dk-ibody { padding: 16px 20px 0; }
-.dk-pg .dk-ibody > .dk-decs, .dk-pg .dk-ibody > .dk-log { margin: 0 -20px; }
+.dk-pg .dk-ibody > .dk-log { margin: 0 -20px; }
 .dk-pg .dk-pane > .dk-sec:first-child, .dk-pg .dk-pane > .dk-sec { padding: 16px 20px 0; }
 .dk-pg .dk-note { margin: 14px 20px 0; }
 .dk-pg .dk-inow .dk-sb { padding: 0 0 14px; }
