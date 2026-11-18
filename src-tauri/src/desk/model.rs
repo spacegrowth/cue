@@ -146,6 +146,9 @@ pub struct DeskItem {
     /// with a retry until a session takes it or you start it again. The lead is told at once (hub/desk_lead.rs).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub start_failed: String,
+    /// Your last Restart of it (#291): where it went, or why it couldn't ("couldn't reach cue-251: …"). Saved.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub restart: String,
     /// An `after` the lead asked for that Cue refused, and why (e.g. "#b, which waits on it"), so the item started
     /// now; until the lead is told.
     #[serde(default, skip_serializing_if = "String::is_empty")]

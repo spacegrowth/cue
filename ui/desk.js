@@ -1185,7 +1185,7 @@ function deskItemNow(i) {
     : i.state === "to_check" ? ["ask", "Ready to check", ""]
     : i.waiting && i.state === "working" ? ["work", "Waiting", `${who} waits: ${esc(firstLine(i.waiting))}`]
     : i.stopped ? ["stop", "Stopped", "The Desk lead is on it."]
-    : i.state === "needs_resume" ? ["stop", "Needs resume", deskCanRestart(i) ? "Restart sends the item to its holder again." : "Its session is closed."]
+    : i.state === "needs_resume" ? ["stop", "Needs resume", (i.restart ? `${esc(firstLine(i.restart))}. ` : "") + (deskCanRestart(i) ? "Restart sends the item to its holder again." : "Its session is closed.")]
     : i.state === "working" ? ["work", "Working", `${who} is on it.${i.now_on && i.latest ? ` ${esc(firstLine(i.latest))}` : ""}`]
     : deskFinishing(i) ? ["work", "Finishing", `<span class="dk-fstep">${esc(deskFinStep(i))}</span>`]
     : i.state === "queued" ? ["stop", "Next", first ? `Starts when ${esc(deskShort(first.title))} is done.` : i.holder ? `Next for ${who}.` : "Next up, not given to a session yet."]
