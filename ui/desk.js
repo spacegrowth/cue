@@ -533,14 +533,12 @@ function deskSessions(project) {
 let deskDeleteAsk = null, deskDeleting = false, deskCloseSelected = new Set();
 function deskSessHead(project, n, working, lead = "") {
   const d = deskOf(project);
-  const canDelete = (state.desk?.projects || []).some((row) => row.project === project);
-  const label = deskName(d);
-  const title = /(?:^|\s)desk$/i.test(label) ? label : `${label} Desk`;
+  const title = deskName(d);
   const name = pjRenaming === project
     ? `<input class="pj-name-in" data-text="pjname:${esc(project)}" maxlength="40" placeholder="${esc(project)}" aria-label="Rename this Desk" spellcheck="false" value="${esc(draft(`pjname:${project}`).text)}"/>`
     : `<b>${esc(title)}</b><button class="dk-ren" data-pjren="${esc(project)}" aria-label="Rename this Desk"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></svg></button>`;
   const more = lead ? `<button class="dk-more-btn" data-desk-change aria-label="Hand this Desk to another session"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>` : "";
-  return `<div class="dk-strip"><div class="dk-sh"><div class="dk-stop"><button class="dk-home-btn" data-desk-home>‹ Desks</button><span class="grow"></span>${canDelete ? `<button class="dk-home-btn" data-desk-delete="${esc(project)}" aria-label="Delete Desk">Delete Desk…</button>` : ""}${more}</div><div class="dk-shr"><span class="dk-ric" aria-hidden="true">${deskKindIcon("desk")}</span>${name}</div><span class="dk-sub">${n} session${n === 1 ? "" : "s"}${working ? ` · ${working} working` : ""}</span>${lead && typeof askBeforeLine === "function" ? askBeforeLine(deskOf(project)) : ""}</div>${lead}${canDelete ? deskDeleteConfirmation(d) : ""}</div>`;
+  return `<div class="dk-strip"><div class="dk-sh"><div class="dk-stop"><button class="dk-home-btn" data-desk-home>‹ Desks</button><span class="grow"></span>${more}</div><div class="dk-shr"><span class="dk-ric" aria-hidden="true">${deskKindIcon("desk")}</span>${name}</div><span class="dk-sub">${n} session${n === 1 ? "" : "s"}${working ? ` · ${working} working` : ""}</span>${lead && typeof askBeforeLine === "function" ? askBeforeLine(deskOf(project)) : ""}</div>${lead}</div>`;
 }
 /** Session `sid` on `project`'s Desk (`on`) or off it: the sessions its lead routes to without asking you. */
 async function deskMember(project, sid, on) {

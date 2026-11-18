@@ -54,7 +54,7 @@ test("the Desk is in the header after Board, and lists Waiting on you, then a gr
   await expect(page.locator(".dk-right .dk-lbl")).toHaveCount(0);
   await expect(page.locator(".dk-chat")).toContainText("host-lead is on it");
   // The Sessions head: ‹ to every Desk, the Desk's name, ✎ only on hover; no "Change" anywhere.
-  await expect(page.locator(".dk-sh b")).toHaveText("cue Desk");
+  await expect(page.locator(".dk-sh b")).toHaveText("cue");
   await expect(page.locator(".dk-sh .dk-ren")).toHaveCSS("opacity", "0");
   await page.locator(".dk-sh").hover();
   await expect(page.locator(".dk-sh .dk-ren")).toHaveCSS("opacity", "1");
@@ -390,7 +390,7 @@ test("Desk home: one row a Desk with what it's about, its people, open tasks, bu
   await page.locator("[data-desk-home]").click();
   await expect(rows).toHaveCount(2);
   await rows.first().click();
-  await expect(page.locator(".dk-sh b")).toHaveText("cue Desk");
+  await expect(page.locator(".dk-sh b")).toHaveText("cue");
   await expect(page.locator(".dk-sh button:not(.dk-ab-change)", { hasText: "Change" })).toHaveCount(0);
 });
 
@@ -452,7 +452,7 @@ test("+ New is a menu: New session as before, New Desk asks a project and a name
   await sheet.locator("#nd-name").press("Enter");
   await cue.called("desk_start", { folder: "/work/notes", agent: "codex" });
   await expect(sheet).toHaveCount(0);
-  await expect(page.locator(".dk-sh b")).toHaveText("Notes app Desk");
+  await expect(page.locator(".dk-sh b")).toHaveText("Notes app");
   // The same workspace stays available for another independent Desk.
   await page.locator("[data-desk-home]").click();
   await expect(page.locator(".dk-desks .dk-desk")).toHaveCount(3);
@@ -472,7 +472,7 @@ test("the Desk's name renames from its Sessions head", async ({ page, cue }) => 
   const box = page.locator(".dk-sh .pj-name-in");
   await box.fill("Cue app");
   await box.press("Enter");
-  await expect(page.locator(".dk-sh b")).toHaveText("Cue app Desk");
+  await expect(page.locator(".dk-sh b")).toHaveText("Cue app");
 });
 
 test("a crew member's session opens its lead's crew page on the Desk; Esc and ‹ Back to the Desk come back", async ({ page, cue }) => {
@@ -1627,7 +1627,7 @@ test("the head is one strip in the accent, flush across the card's top: ‹ Desk
   const left = page.locator(".dk-sessions"), strip = left.locator(".dk-strip");
   await expect(strip).toHaveCount(1);
   await expect(strip.locator("[data-desk-home]")).toHaveText("‹ Desks");
-  await expect(strip.locator(".dk-sh b")).toHaveText("cue Desk");
+  await expect(strip.locator(".dk-sh b")).toHaveText("cue");
   await expect(strip.locator(".dk-sub")).toHaveText("1 session · 1 working");
   await expect(strip.locator("[data-desk-change]")).toHaveCount(1);
   // The strip comes first in the card, flush to its top and sides, round only at the top as the card is.
