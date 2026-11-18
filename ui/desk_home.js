@@ -36,6 +36,22 @@ function deskOnIt(d, ss) {
   for (const s of ss) for (const t of sessionOf(s.session_id)?.team || []) if (deskMateBusy(t)) busy.push(t.name);
   return `${lead ? `<b>${esc(lead)}</b>` : `<span class="dh-none">no dispatcher yet</span>`}${busy.length ? ` · ${esc(busy.join(", "))}` : ""}`;
 }
+/** Live sessions explicitly on this Desk, with shared and busy ones kept open. */
+function deskDeleteSessions(d) {
+  const belongs = (desk, sid) => desk.lead?.sid === sid || (desk.members || []).includes(sid) || (desk.items || []).some((i) => i.state !== "done" && i.state !== "dropped" && (i.holder?.sid === sid || i.holder?.lead_sid === sid));
+  return (state.sessions || []).filter((s) => belongs(d, s.session_id)).map((s) => {
+    const sid = s.session_id;
+    const shared = (state.desk?.projects || []).some((other) => other.project !== d.project && belongs(other, sid));
+    const busy = ["working", "deciding", "agent"].includes(s.state) || (state.items || []).some((i) => i.session_id === sid && i.status === "pending" && i.kind !== "waiting");
+    return { sid, name: deskHolderName(sid), shared, busy };
+  });
+}
+function deskDeleteConfirmation(d) {
+  if (deskDeleteAsk !== d.project) return "";
+  const closeRows = deskDeleteSessions(d);
+  const closeHtml = closeRows.map((s) => `<label class="dh-close-row"><input type="checkbox" data-desk-close-session="${esc(s.sid)}" ${deskCloseSelected.has(s.sid) && !s.shared && !s.busy ? "checked" : ""} ${s.shared || s.busy || deskDeleting ? "disabled" : ""}><span>${esc(s.name)}</span>${s.shared ? `<span class="dim">Shared with another Desk · stays open</span>` : s.busy ? `<span class="dim">Working or needs you · stays open</span>` : ""}</label>`).join("");
+  return `<div class="set-confirm dh-confirm"><div class="end-text">Delete ${esc(deskName(d))} and its items and decisions permanently? Conversations and files stay.</div>${closeHtml ? `<div class="dh-close-title">Close these sessions <span class="dim">· uncheck any to keep open</span></div><div class="dh-close-list">${closeHtml}</div>` : ""}<div class="row-btns"><span class="grow"></span><button class="btn small" data-desk-delete-cancel ${deskDeleting ? "disabled" : ""}>Cancel</button><button class="btn small deny" data-desk-delete-confirm ${deskDeleting ? "disabled" : ""}>${deskDeleting ? "Deleting…" : "Delete Desk"}</button></div></div>`;
+}
 function deskHomeRow(d) {
   const { sessions, crew } = deskPeople(d), n = sessions.length;
   const people = `${n} session${n === 1 ? "" : "s"} · ${crew ? `${crew} crew` : "no crew"}`;
