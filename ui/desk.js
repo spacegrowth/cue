@@ -864,7 +864,7 @@ function deskSessChat(sid, from, d, foot = "") {
   return deskPage({ page: kind === "desk" ? "dispatcher" : kind === "lead" ? "lead" : "session", kind, back: deskChatBack(from, d), acts: open,
     mark: `${DESK_MARKS[kind]} · `, title: deskSessName(sid, deskHolderName(sid), "dk-shn"), meta,
     now: deskPnow({ dot, word, say, acts: stop, fold: on ? `on #${esc(on.id)}` : "" }),
-    panel: deskPsec("Who", deskPwho("On", its.length ? its.map(deskItemLink).join(", ") : "nothing yet")),
+    panel: deskPsec("Who", deskPwho("On", its.length ? its.map(deskItemLink).join(", ") : "nothing yet")) + deskSessFiles(sid),
     main: `<div class="dk-chat" data-desk-chat="${esc(sid)}">${empty}${rows}${where}</div>`, foot });
 }
 /** The session whose steps the Desk follows live (chat/thread.js followSteps): its lead's, while its chat shows, or
@@ -876,6 +876,8 @@ function deskFollowSid() {
     if (s && i.holder.kind !== "crew" && s.state === "working") return sid;
   }
   if (deskOpen?.kind === "chat" && deskOpen.project === deskSelection()) return sessionOf(deskOpen.sid) ? deskOpen.sid : null;
+  // A crew member's page: its lead's steps, where its own steps are (deskCrewPane's Doing).
+  if (deskOpen?.kind === "crew" && deskOpen.project === deskSelection()) return sessionOf(deskOpen.lead) ? deskOpen.lead : null;
   if (!deskSelection() || deskOpen || deskTab !== "lead" || deskPick === deskSelection()) return null;
   const d = deskOf(deskSelection()), l = deskLead(d);
   return l && !deskLeadEnded(d) && sessionOf(l.sid) ? l.sid : null;
@@ -1259,16 +1261,16 @@ function deskItemPane(i, d, foot = "") {
   // holder reports each point met, and each tick follows that.
   const pts = deskDoneWhenPoints(i.done_when), ticked = checking ? pts.length : 0;
   const tk = (y) => `<i class="dk-tk${y ? " y" : ""}" aria-hidden="true">${y ? `<svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>` : ""}</i>`;
-  const dw = pts.length ? `<div class="dk-idw"><ul class="dk-ptk">${pts.map((p) => `<li${checking ? ` class="y"` : ""}>${tk(checking)}<span>${linkify(esc(p), null)}</span></li>`).join("")}</ul></div>` : "";
+  const dw = pts.length ? `<div class="dk-idw"><ul class="dk-ptk">${pts.map((p) => `<li${checking ? ` class="y"` : ""}>${tk(checking)}<span>${linkify(esc(p), sessBase(sid))}</span></li>`).join("")}</ul></div>` : "";
   const done = deskPsec(`Done when${pts.length ? ` · ${ticked} of ${pts.length}` : ""}`, `${dw}${deskCheckInfo(i, d)}`, "dk-pdw");
   const who = h ? (h.kind === "crew" ? `<b>${esc(h.name)}</b>` : deskChatLink(h.sid, h.name, d)) : "";
   const leadOf = h?.kind === "crew" ? deskChatLink(h.lead_sid, deskHolderName(h.lead_sid), d) : "";
-  const whoSec = deskPsec("Who", deskPwho("Held by", who ? `${who}${i.crew ? ` → <b>${esc(i.crew)}</b>` : ""}` : "nobody yet") + deskPwho("Lead", leadOf) + deskPwho("Files", nFiles ? `${nFiles} ${checking ? "changed" : "on it"}` : ""));
+  const whoSec = deskPsec("Who", deskPwho("Held by", who ? `${who}${i.crew ? ` → <b>${esc(i.crew)}</b>` : ""}` : "nobody yet") + deskPwho("Lead", leadOf));
   return deskPage({ page: "item", kind: i.kind, back: deskBack(deskLeadName(d) || "Back"),
     acts: sid && sessionOf(sid) ? `<span class="dk-ilinks"><button class="btn small" ${deskChatAttrs(sid, d)}>Watch ${esc(h.name)}</button></span>` : "",
     mark: `${deskNum(i)} · `, title: esc(i.title), meta: `<span class="dk-state">${deskItemMeta(i, d)}</span>`,
     now: deskPnow({ ...deskItemNow(i), acts: `${deskLooksTop(i)}${backing ? "" : deskItemActs(i)}${deskDesignsLink(i)}`, fold: pts.length ? `${ticked} of ${pts.length} done` : "" }),
-    panel: done + whoSec, main, foot });
+    panel: done + whoSec + deskItemFiles(i), main, foot });
 }
 /** An item's quiet line under its title (#200): who has it, its commit, who added it and when; its state is the
  *  panel's, said once there. */
@@ -1335,31 +1337,53 @@ function deskHolderPane(sid, d, foot = "") {
     ${deskSec(`Decided by ${esc(name)} · ${decs.length}`, decHtml)}
     ${deskSec(`Latest from ${esc(name)}`, latest ? `<p class="dk-quiet">${esc(latest)}</p>` : "")}</div>`;
   return deskPage({ page: kind === "lead" ? "lead" : kind === "desk" ? "dispatcher" : "session", kind, back: deskBack(deskLeadName(d) || "Back"),
-    acts: s ? `<button class="btn small" ${deskChatAttrs(sid, d)}>Open its chat</button>` : "", mark: `${DESK_MARKS[kind]} · `, title: esc(name), meta: esc(head), now, panel: who, main, foot });
+    acts: s ? `<button class="btn small" ${deskChatAttrs(sid, d)}>Open its chat</button>` : "", mark: `${DESK_MARKS[kind]} · `, title: esc(name), meta: esc(head), now, panel: who + deskSessFiles(sid), main, foot });
 }
-/** A crew member: where it is, its files, its latest, Open its session and Stop it. No box of its own: the box goes
- *  to its lead. */
+/** The crew member whose ⋯ menu is open on its page ("lead|agent"), so a redraw while it works keeps it open. */
+let deskCrewMenu = "";
+/** A crew member (#303, pick A): three heads in its own column, Doing (its step and the last few before it, from the
+ *  lead's feed when it's read, team_mate.js crewMateSteps), Why (what the lead asked it, and the item it's for) and
+ *  Result (its answer once back; till then what it changed so far, with its Diff). Stop it and ⋯ (Open its session)
+ *  in the panel. No box of its own: the box goes to its lead. */
 function deskCrewPane(lead, agent, d, foot = "") {
   const t = deskMate(lead, agent);
   const leadName = deskHolderName(lead), skey = `crew:${esc(lead)}:${esc(agent)}`;
   if (!t) return `<div class="dk-pane" data-scroll-key="${skey}">${deskBack(leadName, lead)}<div class="dk-empty">It isn't in ${esc(leadName)}'s crew any more.</div></div>${foot}`;
-  const it = deskCrewItem(d.project, lead, agent);
-  const shown = mateShownFiles(t), files = shown.length ? `<div class="dk-files">${shown.map(esc).join(" · ")}</div>` : "";
-  const latest = [t.summary, it?.latest].filter(Boolean);
-  const stop = t.state === "working" ? `<button class="btn small" data-mt-act="stop" data-mt-sid="${esc(lead)}" data-mt-agent="${esc(t.agent_id || t.call)}">Stop it</button>` : "";
+  const it = deskCrewItem(d.project, lead, agent), key = t.agent_id || t.call;
+  const shown = mateShownFiles(t), working = t.state === "working";
+  const stop = working ? `<button class="btn small" data-mt-act="stop" data-mt-sid="${esc(lead)}" data-mt-agent="${esc(key)}">Stop it</button>` : "";
   const asks = mateNeeds(lead, t);
-  const [dot, word] = asks ? ["ask", "Waiting on you"] : t.state === "working" ? ["work", "Working"] : [t.state === "done" ? "done" : "stop", t.state ? t.state[0].toUpperCase() + t.state.slice(1) : "Stopped"];
-  const say = asks ? "Stopped to ask you something." : t.step ? esc(t.step) : mateLine(t);
+  const [dot, word] = asks ? ["ask", "Waiting on you"] : working ? ["work", "Working"] : [t.state === "done" ? "done" : "stop", t.state ? t.state[0].toUpperCase() + t.state.slice(1) : "Stopped"];
+  const say = asks ? "Stopped to ask you something." : t.step ? crewCode(crewStepCode(t.step)) : mateLine(t);
+  const mk = `${lead}|${key}`, menuOpen = deskCrewMenu === mk;
+  const more = `<span class="dk-cmore"><button class="btn small" data-desk-crew-more="${esc(mk)}" aria-expanded="${menuOpen}" aria-label="More">⋯</button>`
+    + (menuOpen ? `<span class="dk-cmenu" role="menu"><button role="menuitem" data-desk-crew-open="${esc(key)}" data-lead="${esc(lead)}">Open its session</button></span>` : "") + `</span>`;
   const leadBtn = deskChatLink(lead, leadName, d);
-  const who = deskPsec("Who", deskPwho("Lead", leadBtn) + deskPwho("On", it ? deskItemLink(it) : "") + deskPwho("Files", shown.length ? `${shown.length} changed` : ""));
-  const main = `<div class="dk-pane" data-scroll-key="${skey}">
-    ${deskSec("Files", files)}
-    ${deskSec("Latest", latest.map((l) => `<div class="dk-md dk-quiet">${deskMd(l)}</div>`).join(""))}
-    <p class="dk-note">To steer it, tell ${esc(leadName)} below; the lead passes it on. Open its session to talk to it straight.</p></div>`;
+  const who = deskPsec("Who", deskPwho("Lead", leadBtn) + deskPwho("On", it ? deskItemLink(it) : ""));
+  // Doing: what it's on now in words and how long, then the last few steps (✓ done, ● now, ? its ask).
+  const steps = crewMateSteps(lead, t).slice(-5);
+  const head = asks ? "Stopped to ask you something" : working ? (t.step ? crewCode(crewStepCode(t.step)) : "At work") : esc(word);
+  const age = working && t.step_ms ? ` <span class="dk-quiet">· ${esc(ago(t.step_ms))}</span>` : "";
+  const list = steps.length > 1 || (steps.length && !working) ? `<ol class="dk-csteps">${steps.map((x) => `<li class="${x.ask ? "ask" : x.now ? "now" : ""}"><i aria-hidden="true">${x.ask ? "?" : x.now ? "●" : "✓"}</i><span>${x.html}</span></li>`).join("")}</ol>` : "";
+  const doing = `<p class="dk-cnow">${head}${age}</p>${list}`;
+  // Why: the lead's own words to it, quoted, and the item it's for.
+  const asked = (t.asked || t.what || "").trim();
+  const why = (asked ? `<blockquote class="dk-cwhy"><div class="dk-cwho">${esc(leadName)} asked it</div><div class="dk-md">${deskMd(asked)}</div></blockquote>` : "")
+    + (it ? `<p class="dk-quiet">For ${deskItemLink(it)} ${esc(it.title || "")}</p>` : "");
+  // Result: its answer once back; till then what it changed so far.
+  const diff = mateBtn(lead, t, "diff", "Diff", "link");
+  const size = t.stat || (shown.length ? plural(shown.length, "file") : ""), files = shown.length ? `<div class="dk-files">${shown.map(esc).join(" · ")}</div>` : "";
+  const sofar = [size, diff].filter(Boolean).join(" · ");
+  const result = t.summary ? `<div class="dk-md">${deskMd(t.summary)}</div>${sofar ? `<p class="dk-quiet">${sofar}</p>` : ""}${files}`
+    : `<p class="dk-quiet">${working ? "Not back yet." : "Nothing came back."}${sofar ? ` So far: ${sofar}` : ""}</p>${files}`;
+  const main = `<div class="dk-pane dk-crewpg" data-scroll-key="${skey}">
+    ${deskSec(`Doing${t.started_ms ? ` <span class="dk-csp">${esc(mateSpan(t))}</span>` : ""}`, doing)}
+    ${deskSec("Why", why)}
+    ${deskSec("Result", result)}</div>`;
   return deskPage({ page: "crew", kind: "crew", back: deskBack(leadName, lead), mark: "Crew · ", title: esc(t.name),
     meta: `in <b>${esc(leadName)}</b>'s crew${it?.title || t.what ? ` · on <b>${esc(it?.title || t.what)}</b>` : ""} · ${esc(mateSpan(t))}`,
-    now: deskPnow({ dot, word, say, acts: `<button class="btn small" data-desk-crew-open="${esc(t.agent_id || t.call)}" data-lead="${esc(lead)}">Open its session</button>${stop}`, fold: `in ${esc(leadName)}'s crew` }),
-    panel: who, main, foot });
+    now: deskPnow({ dot, word, say, acts: `${stop}${more}`, fold: `in ${esc(leadName)}'s crew` }),
+    panel: who + deskCrewFiles(lead, t), main, foot });
 }
 
 /** The draft key of the box that sends to `to` ({ project, item } or { sid, mate }), noted with where it sends. */
@@ -1729,6 +1753,19 @@ async function deskUndo(id) {
   catch (e) { toast(String(e)); }
   renderMain();
 }
+/** A live session found with ⌘K on the Desk (#316): its chat in the middle, as its name on the left opens it (‹ back to
+ *  the item or holder open). With All Desks shown, on the first Desk it's in. False when there's no Desk to show it on. */
+function deskOpenFound(sid) {
+  if (!sessionOf(sid)) return false;
+  if (!deskSelection()) {
+    const d = (state.desk?.projects || []).find((x) => deskHasSession(x, sid));
+    if (!d) return false;
+    deskSelect(d.project);
+  }
+  deskChatEnd = true;
+  deskShow({ kind: "chat", sid, from: ["item", "holder"].includes(deskOpen?.kind) && deskOpen.project === deskSelection() ? { ...deskOpen } : null });
+  return true;
+}
 /** A crew member's own session: its lead's crew page, on that member. */
 function deskOpenCrew(lead, agent) {
   const t = deskMate(lead, agent);
@@ -1790,9 +1827,18 @@ const DESK_CLICKS = {
     try { localStorage.setItem("cue.deskFold", JSON.stringify([...deskFoldOpen])); } catch { /* kept for this window only */ }
     renderMain();
   },
-  deskMade: (el) => { deskSeeItem(el.closest("[data-desk-item]")?.dataset.deskItem || deskOpen?.id); invoke("open_link", { url: el.dataset.deskMade }).catch((err) => toast(`Couldn't open: ${err}`)); renderMain(); },
+  deskMade: (el) => {
+    const id = el.closest("[data-desk-item]")?.dataset.deskItem || deskOpen?.id;
+    deskSeeItem(id);
+    openPathOrDoc(el.dataset.deskMade, deskHolderSid(deskItem(deskSelection(), id)) || null);
+    renderMain();
+  },
   deskDiffFile: (el) => deskShowFile(el.dataset.deskDiffFile, +el.dataset.n),
-  deskCrewOpen: (el) => deskOpenCrew(el.dataset.lead, el.dataset.deskCrewOpen),
+  deskTurnFile: (el) => deskShowTurnFile(el.dataset.deskTurnFile, +el.dataset.n),
+  deskMateFile: (el) => deskShowMateFile(el.dataset.deskMateFile, +el.dataset.n),
+  deskSessDiff: (el) => { extTabOf.set(el.dataset.deskSessDiff, DIFF_TAB); openSession(el.dataset.deskSessDiff); },
+  deskCrewOpen: (el) => { deskCrewMenu = ""; deskOpenCrew(el.dataset.lead, el.dataset.deskCrewOpen); },
+  deskCrewMore: (el) => { deskCrewMenu = deskCrewMenu === el.dataset.deskCrewMore ? "" : el.dataset.deskCrewMore; renderMain(); },
   deskDelete: (el) => { deskDeleteAsk = el.dataset.deskDelete; deskCloseSelected = new Set(deskDeleteSessions(deskOf(deskDeleteAsk)).filter((s) => !s.shared && !s.busy).map((s) => s.sid)); renderMain(); },
   deskDeleteCancel: () => { deskDeleteAsk = null; renderMain(); },
   deskDeleteConfirm: async () => {
@@ -1842,6 +1888,8 @@ function deskClick(e) {
     queueMicrotask(renderMain);
     if (!e.target.closest?.("[data-desk-new-desk]")) return;
   }
+  // A crew member's ⋯ menu closes on a click outside it.
+  if (deskCrewMenu && !e.target.closest?.(".dk-cmore")) { deskCrewMenu = ""; queueMicrotask(renderMain); }
   // In a session's name box (✎ on its row): the click stays in the box, it doesn't open the row.
   if (e.target.closest?.(".dk-board .rename-in")) { e.stopPropagation(); return; }
   if (deskTake(e.target.closest?.(DESK_SEL))) e.stopPropagation();
