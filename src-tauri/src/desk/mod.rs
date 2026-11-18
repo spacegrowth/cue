@@ -9,8 +9,15 @@ pub mod parse;
 
 pub use model::{BusyFile, CommitWait, Desk, DeskDecision, DeskItem, Finish, Holder, InstallStatus, Installer, Lead, Waiting};
 
-/// How a project's Desk lead works: appended to the system prompt of a lead Cue starts (after the team skill), and
-/// sent inside the Desk block to a session you make the lead (a running session can't get a system prompt).
+/// Routing policy in every Desk summary, including for already-running leads.
+pub(crate) const ROUTING_GUIDANCE: &str = concat!(
+    "For independent work, prefer a suitable idle Desk session over a busy one. ",
+    "When routing several items together, count a session you just assigned as busy. ",
+    "If items would change the same files, sequence them with after: #<id>, even when another session is idle. ",
+    "For several overlapping items, chain each one after the previous item in that sequence.",
+);
+
+/// How a project's Desk lead works: appended to the system prompt or sent inside the Desk block.
 pub const LEAD_SKILL: &str = "# Running this project's Desk (Cue)
 You run this project's Desk in Cue: its list of items (bugs, features, tasks). The user tells you what needs doing; \
 you hand it out to the project's sessions, and say why. You only dispatch, so you stay free to answer the user:

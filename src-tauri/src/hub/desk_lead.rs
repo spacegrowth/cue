@@ -220,19 +220,25 @@ impl Hub {
                 out.push_str(&line);
             }
 
-            let on: Vec<_> = routable(st, project).into_iter()
+            let mut on: Vec<_> = routable(st, project).into_iter()
                 .filter(|s| s.origin.session_id != lead && st.desk.on_desk(project, &s.origin.session_id))
+                .map(|s| (idle_route(st, s), s))
                 .collect();
+            on.sort_by_key(|(idle, _)| !idle);
             if on.is_empty() {
                 out.push_str("\nNo Desk sessions available. Use ROUTE: #<id> -> new for a new session.\n");
             } else {
                 out.push_str("\nDesk routes (or use ROUTE: #<id> -> new):\n");
             }
-            for s in on {
+            for (idle, s) in on {
                 let sid = &s.origin.session_id;
                 let id: String = sid.chars().take(8).collect();
                 out.push_str(&format!("- {} (sid:{id}", shown_name(s)));
-                if !matches!(s.state.as_str(), "" | "idle" | "waiting") {
+                if idle {
+                    out.push_str(", idle");
+                } else if matches!(s.state.as_str(), "" | "idle" | "waiting") {
+                    out.push_str(", work pending");
+                } else {
                     out.push_str(&format!(", {}", s.state));
                 }
                 if !s.team.is_empty() {
@@ -243,6 +249,9 @@ impl Hub {
                 out.push_str(")\n");
             }
             // Running leads get this too, even if their original system prompt is older.
+            out.push('\n');
+            out.push_str(crate::desk::ROUTING_GUIDANCE);
+            out.push('\n');
             out.push_str("\nAnswer the user's question or request directly in plain language before any Desk command lines.\n");
             if with_skill {
                 out.push('\n');
@@ -302,6 +311,15 @@ impl Hub {
     }
 }
 
+fn idle_route(st: &Store, s: &crate::sessions::Session) -> bool {
+    matches!(s.state.as_str(), "" | "idle" | "waiting")
+        && !super::desk_stall::still_at_it(st, &s.origin.session_id)
+        && s.compacting_ms == 0
+        && s.held.is_none()
+        && s.queued.is_none()
+        && !s.thread.last().is_some_and(|e| e.role == "you" && e.pending)
+}
+
 /// `tokens` of context as the Desk says it: "142k".
 pub(super) fn context_k(tokens: u64) -> String {
     format!("{}k", (tokens + 500) / 1000)
@@ -354,6 +372,7 @@ fn item_lines(it: &DeskItem, out: &mut String, failed: &mut Vec<(String, String)
     let status = match (it.stopped, it.loose.is_empty()) {
         (true, false) => "stopped, not committed".into(),
         (true, true) => "stopped".into(),
+        _ if !it.waiting.is_empty() => format!("waiting: {}", it.waiting),
         _ => it.state.replace('_', " "),
     };
     out.push_str(&format!("- #{} {kind}: {} | {status}", it.id, it.title));
