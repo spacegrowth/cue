@@ -838,3 +838,8 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
 /* Items list (#201): a light line over each group after the first, so the groups read apart. */
 .dk-items .dk-scroll > .dk-gh:not(:first-child), .dk-items .dk-scroll > .dk-holder { position: relative; margin-top: 22px; }
 .dk-items .dk-scroll > .dk-gh:not(:first-child)::before, .dk-items .dk-scroll > .dk-holder::before { content: ""; position: absolute; left: 4px; right: 4px; top: -11px; border-top: 1px solid var(--line); pointer-events: none; }
+/* Sessions' Desk group: its fold line, tray icon in the line's own colour. */
+.desk-fold { display: flex; align-items: center; gap: 6px; margin-top: 6px; cursor: pointer; }
+.desk-fold > .dk-kic { margin: 0; flex: none; color: inherit; width: 12px; height: 12px; }
+.desk-fold .desk-fold-n { font-weight: 500; letter-spacing: 0; }
+.desk-fold:focus-visible { outline: 2px solid var(--on-bg); outline-offset: 2px; border-radius: 4px; }

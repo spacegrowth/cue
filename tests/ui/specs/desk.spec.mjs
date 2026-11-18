@@ -3109,6 +3109,33 @@ test("the Board Desk link uses the tray and omits repeated task details", async 
   await expect(page.locator(".dk-sh b")).toHaveText("Feature Desk");
 });
 
+test("Board Sessions: Desk sessions sit under their own fold line at the foot, open until you fold it (#262)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await page.evaluate(() => { try { localStorage.removeItem("cue.deskShut"); } catch {} });
+  await page.locator('.switch-view [data-view="board"]').click();
+  const col = page.locator(".sec-sessions .sec-body");
+  const fold = col.locator("[data-fold-desk]");
+  await expect(fold).toHaveCount(1);
+  const deskSids = await col.evaluate((el) => [...el.querySelectorAll("[data-session]")].map((n) => n.dataset.session).filter((sid) => deskWorksFor(sid)));
+  expect(deskSids.length).toBeGreaterThan(0);
+  await expect(fold).toHaveCount(1);
+  await expect(fold).toContainText(`DESK SESSIONS · ${deskSids.length}`);
+  await expect(fold).toHaveAttribute("aria-expanded", "true");
+  await expect(fold.locator("svg.dk-kic")).toHaveCount(1);
+  // Open: every Desk session's card comes after the fold line, none above it.
+  const order = await col.evaluate((el) => [...el.querySelectorAll("[data-fold-desk], [data-session]")].map((n) => n.dataset.session || "FOLD"));
+  const at = order.indexOf("FOLD");
+  for (const sid of deskSids) expect(order.indexOf(sid)).toBeGreaterThan(at);
+  // Fold: their cards leave, the line stays, and it's remembered.
+  await fold.click();
+  await expect(fold).toHaveAttribute("aria-expanded", "false");
+  for (const sid of deskSids) await expect(col.locator(`[data-session="${sid}"]`)).toHaveCount(0);
+  expect(await page.evaluate(() => localStorage.getItem("cue.deskShut"))).toBe("1");
+  await expect(page.locator("[title]", { has: fold })).toHaveCount(0);
+  await fold.click();
+  for (const sid of deskSids) await expect(col.locator(`[data-session="${sid}"]`)).toHaveCount(1);
+});
+
 test("the Desk's mark is on the session's chat title and its Inbox page head too, never twice on a card (#156)", async ({ page, cue }) => {
   await cue.open("desk");
   await page.locator('.switch-view [data-view="board"]').click();

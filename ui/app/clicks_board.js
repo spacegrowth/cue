@@ -58,6 +58,7 @@ const PROJECT_CLICKS = [
 const DRAWER_CLICKS = [
   rule("[data-fold]", (fd) => foldDrawer(fd.dataset.fold)),
   rule("[data-fold-newest]", () => foldNewest()),
+  rule("[data-fold-desk]", () => foldDesk()),
 ];
 
 /** ✎ on a session: its name in a box, selected. */

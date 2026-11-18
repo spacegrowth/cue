@@ -804,13 +804,28 @@ function sessionCard(s, open) {
       ${bar(s.session_id)}${doing ? `<div class="doing">${esc(doing)}</div>` : ""}${preview ? `<div class="prompt">› ${esc(preview)}</div>` : ""}${handOutHtml(s)}</div>`;
 }
 /** Sessions' cards: working, then out of usage, then idle, each under its heading. */
-function workColumn(shown, isOpen) {
+function workColumn(all, isOpen) {
   const card = (s) => sessionCard(s, isOpen(s.session_id));
+  // Desk work sits at the foot under its own fold line (out of usage stays up top: that one needs you).
+  const desk = all.filter((s) => s.state !== "limited" && deskWorksFor(s.session_id)), shown = all.filter((s) => !desk.includes(s));
   const busy = shown.filter((s) => !idleNote(s)), idle = shown.filter((s) => idleNote(s) && s.state !== "limited"), outs = shown.filter((s) => s.state === "limited");
   return (busy.length ? `<div class="col-sub">WORKING · ${busy.length}</div>${busy.map(card).join("")}` : "")
     + (outs.length ? `<div class="col-sub lim">${outs.every((s) => lifted(s.limit)) ? "READY TO RESEND" : "OUT OF USAGE"} · ${outs.length}</div>${outs.map(card).join("")}` : "")
     + (idle.length ? `<div class="col-sub">IDLE · ${idle.length}</div>${idle.map(card).join("")}` : "")
+    + deskFold(desk, card)
     || `<div class="col-sub">NO OTHER SESSIONS</div>`;
+}
+/** Sessions' Desk group: one fold line (open until you fold it, remembered), then the Desks' cards, working first. */
+const deskShut = () => { try { return localStorage.getItem("cue.deskShut") === "1"; } catch { return false; } };
+function foldDesk() {
+  try { localStorage.setItem("cue.deskShut", deskShut() ? "0" : "1"); } catch {}
+  renderMain();
+}
+function deskFold(desk, card) {
+  if (!desk.length) return "";
+  const busy = desk.filter((s) => !idleNote(s)), shut = deskShut();
+  return `<button class="col-sub fold-head sub-fold desk-fold" data-fold-desk aria-expanded="${!shut}"><span class="fold-arrow">${shut ? "▸" : "▾"}</span> ${deskKindIcon("tray")}DESK SESSIONS · ${desk.length}${busy.length ? `<span class="desk-fold-n">· ${busy.length} working</span>` : ""}</button>`
+    + (shut ? "" : [...busy, ...desk.filter((s) => idleNote(s))].map(card).join(""));
 }
 
 /** A drawer under Sessions or Waiting: its heading folds it; `body()` is drawn only while it's open. */
