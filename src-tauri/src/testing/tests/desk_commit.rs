@@ -76,7 +76,7 @@ pub(super) fn commits(dir: &std::path::Path) -> String {
 }
 
 /// Session `sid`'s log, as Claude Code writes it.
-fn log(w: &World, sid: &str) -> crate::testing::transcript::Transcript {
+pub(super) fn log(w: &World, sid: &str) -> crate::testing::transcript::Transcript {
     crate::testing::transcript::Transcript::at(w.hub().session_origin(sid).unwrap().transcript_path)
 }
 
@@ -402,7 +402,7 @@ fn a_holders_words_at_each_turn_end_are_kept_on_its_item() {
 
 /// An item whose crew wrote a.txt and b.txt, then session "tidier" (its turn over, its change not committed)
 /// changed a.txt as `change` does to it and its log: (repo, project).
-fn done_after_tidier_changed(w: &World, change: impl Fn(&World, &str, &std::path::Path)) -> (std::path::PathBuf, String) {
+pub(super) fn done_after_tidier_changed(w: &World, change: impl Fn(&World, &str, &std::path::Path)) -> (std::path::PathBuf, String) {
     let (dir, project, _) = done_with(w, |_, _, _| {}, |w, h, dir| {
         let f = |n: &str| dir.join(n).to_string_lossy().to_string();
         says(w, h, writes("toolu_A", "agentA", "fixer", &[f("a.txt"), f("b.txt")]));

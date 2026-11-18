@@ -13,6 +13,7 @@ mod desk_delivery;
 mod desk_approvals;
 mod desk_spaces;
 mod desk_commit;
+mod desk_theirs;
 mod desk_finish;
 mod desk_context;
 mod desk_members;
