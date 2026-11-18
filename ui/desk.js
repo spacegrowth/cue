@@ -510,13 +510,12 @@ function deskSessions(project) {
     ? candidates.map((r) => `<button class="btn small" data-desk-member="${esc(r.sid)}" data-project="${esc(project)}">${esc(r.name)}</button>`).join("")
     : '<div class="dim">No other sessions available.</div>'}</div>` : "";
   return `<div class="dk-card dk-sessions">${deskSessHead(project, mine.length, runs, leadS ? row(leadS, true) : "")}
-    ${deskApprovals(d)}<div class="dk-scroll" data-scroll-key="desk-sessions:${esc(project)}">${body}</div>
+    <div class="dk-scroll" data-scroll-key="desk-sessions:${esc(project)}">${body}</div>
     <div class="dk-sfoot"><button class="btn small" data-desk-add-session="${esc(project)}" aria-expanded="${picking}">Add session</button>${picker}<button class="btn small" data-desk-new-session="${esc(project)}">+ New session</button></div></div>`;
 }
 /** The head strip (pick B2), set in from the card's sides so it never meets the window's own colour: ‹ Desks back to
  *  Desk home, ⋯ to hand the Desk to another session, this Desk's name (✎ on hover renames it, as the projects list
  *  does), how many sessions and how many work; then the lead's card (`lead`), outlined while its chat shows. */
-let deskDeleteAsk = null, deskDeleting = false, deskCloseSelected = new Set();
 function deskSessHead(project, n, working, lead = "") {
   const name = pjRenaming === project
     ? `<input class="pj-name-in" data-text="pjname:${esc(project)}" maxlength="40" placeholder="${esc(project)}" aria-label="Rename this Desk" spellcheck="false" value="${esc(draft(`pjname:${project}`).text)}"/>`
@@ -1065,7 +1064,7 @@ function deskHolderPane(sid, d, foot = "") {
   const head = [`${mine.length} item${mine.length === 1 ? "" : "s"}${waits ? `, ${waits} waiting on you` : ""}`, lead ? (crew.length ? `crew of ${crew.length}` : "on its own") : "", s?.since_ms ? `since ${clockAt(s.since_ms)}` : ""].filter(Boolean).join(" · ");
   const crewRows = crew.map((t) => {
     const it = deskCrewItem(d.project, sid, t.agent_id || t.call);
-    const files = mateShownFiles(t).map((f) => f.split("/").pop()).join(", ");
+    const files = (t.files || []).map((f) => f.split("/").pop()).join(", ");
     const line = [it ? it.title : t.what, mateNeeds(sid, t) ? "stopped to ask you" : t.step, files].filter(Boolean).join(" · ");
     return `<div class="dk-mb" role="button" tabindex="0" data-desk-crew="${esc(t.agent_id || t.call)}" data-lead="${esc(sid)}"><i class="${deskMateDot(sid, t)}"></i><div class="dk-lt">${esc(t.name)}</div><span class="dk-age">${esc(mateSpan(t))}</span><div class="dk-ls">${esc(line)}</div></div>`;
   }).join("");
@@ -1097,7 +1096,7 @@ function deskCrewPane(lead, agent, d, foot = "") {
   const leadName = deskHolderName(lead), skey = `crew:${esc(lead)}:${esc(agent)}`;
   if (!t) return `<div class="dk-pane" data-scroll-key="${skey}">${deskBack(leadName, lead)}<div class="dk-empty">It isn't in ${esc(leadName)}'s crew any more.</div></div>${foot}`;
   const it = deskCrewItem(d.project, lead, agent);
-  const shown = mateShownFiles(t), files = shown.length ? `<div class="dk-files">${shown.map(esc).join(" · ")}</div>` : "";
+  const shown = (t.files || []), files = shown.length ? `<div class="dk-files">${shown.map(esc).join(" · ")}</div>` : "";
   const latest = [t.summary, it?.latest].filter(Boolean);
   const stop = t.state === "working" ? `<button class="btn small" data-mt-act="stop" data-mt-sid="${esc(lead)}" data-mt-agent="${esc(t.agent_id || t.call)}">Stop it</button>` : "";
   const asks = mateNeeds(lead, t);
@@ -1172,7 +1171,7 @@ function deskRight(project) {
   const o = deskOpen;
   let body;
   // Each page takes its foot, the box under its own column (#200); the add-on's pane has it under the whole card.
-  const foot = () => (o?.kind === "item" ? deskItemFoot(deskItem(project, o.id), d) : deskSessionRequestFoot(d, o));
+  const foot = () => (o?.kind === "item" ? deskItemFoot(deskItem(project, o.id), d) : deskBox(d));
   let tail = "";
   if (o?.kind === "item") {
     const i = deskItem(project, o.id);
@@ -1495,20 +1494,6 @@ const DESK_CLICKS = {
   deskMade: (el) => { deskSeeItem(el.closest("[data-desk-item]")?.dataset.deskItem || deskOpen?.id); invoke("open_link", { url: el.dataset.deskMade }).catch((err) => toast(`Couldn't open: ${err}`)); renderMain(); },
   deskDiffFile: (el) => deskShowFile(el.dataset.deskDiffFile, +el.dataset.n),
   deskCrewOpen: (el) => deskOpenCrew(el.dataset.lead, el.dataset.deskCrewOpen),
-  deskDelete: (el) => { deskDeleteAsk = el.dataset.deskDelete; deskCloseSelected = new Set(deskDeleteSessions(deskOf(deskDeleteAsk)).filter((s) => !s.shared && !s.busy).map((s) => s.sid)); renderMain(); },
-  deskDeleteCancel: () => { deskDeleteAsk = null; renderMain(); },
-  deskDeleteConfirm: async () => {
-    if (deskDeleting || !deskDeleteAsk) return;
-    const id = deskDeleteAsk; deskDeleting = true; renderMain();
-    try {
-      const closeSessions = deskDeleteSessions(deskOf(id)).filter((s) => deskCloseSelected.has(s.sid) && !s.shared && !s.busy).map((s) => s.sid);
-      const result = await invoke("desk_delete", { id, closeSessions });
-      if (result?.kept?.length) toast(`Desk deleted. Couldn't close: ${result.kept.map((x) => `${deskHolderName(x.sid)} (${x.reason})`).join(", ")}`, 10000);
-      deskDeleteAsk = null;
-      if (deskSelection() === id) { deskSelect(""); deskOpen = null; deskPick = null; }
-    } catch (e) { toast(`Couldn't delete the Desk: ${e}`); }
-    deskDeleting = false; renderMain();
-  },
   deskHome: () => { deskSelect(""); deskOpen = null; deskPick = null; renderMain(); },
   deskProject: (el) => { deskSelect(el.dataset.deskProject); deskOpen = null; deskTab = "lead"; deskChatEnd = true; renderMain(); },
 };
