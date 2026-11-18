@@ -120,12 +120,26 @@ fn ask(body: &str) -> Option<Line> {
         p.remove(0);
     }
     let question = p.first()?.to_string();
-    let choices = p[1..]
-        .iter()
-        .find_map(|s| labelled(s, "choices"))
-        .map(|c| c.split('/').map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect())
-        .unwrap_or_default();
-    (!question.is_empty()).then_some(Line::Ask { question, choices, item })
+    // "choices: A / B", and as leads also write them: "A | B" (the parts after it), "A; B", "A, B", "A or B".
+    let choices = p[1..].iter().position(|s| labelled(s, "choices").is_some()).map(|at| {
+        let first = labelled(p[1 + at], "choices").unwrap_or("");
+        std::iter::once(first).chain(p[2 + at..].iter().copied()).flat_map(split_choices).collect()
+    });
+    (!question.is_empty()).then_some(Line::Ask { question, choices: choices.unwrap_or_default(), item })
+}
+
+/// One part of an ASK's choices, split on `/` or `;`; with neither, on commas or " or ".
+fn split_choices(part: &str) -> Vec<String> {
+    let clean = |x: &str| x.trim().trim_matches(['"', '`', '*', '.']).trim().to_string();
+    let by = |seps: &[&str]| -> Vec<String> {
+        let mut out = vec![part.to_string()];
+        for sep in seps {
+            out = out.iter().flat_map(|x| x.split(sep).map(str::to_string).collect::<Vec<_>>()).collect();
+        }
+        out.iter().map(|x| clean(x)).filter(|x| !x.is_empty()).collect()
+    };
+    let main = by(&["/", ";"]);
+    if main.len() > 1 { main } else { by(&[",", " or "]) }
 }
 
 fn done(body: &str) -> Option<Line> {
