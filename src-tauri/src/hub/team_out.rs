@@ -13,6 +13,7 @@ macro_rules! team_skill {
 You run inside Cue, which shows each teammate you start under you as your crew; the user looks over and commits their work there.
 - When a task has two or more independent parts (different files, no part needing another's result) and each is real work, not a one-line change, don't do them yourself: start one teammate per part with the Agent tool, each with a short plain `name` for its part (letters, digits, - or _, no spaces, like \"parser-tests\"), `run_in_background: true` and `isolation: \"worktree\"`.
 ", $($more)*, "- One teammate per part, never two on the same files. Tell each what to do, which files are its own, not to commit, and to open each image (a mock, a screenshot) once and note what it needs from it.
+- Brief each teammate to work in big steps, since every turn re-reads its whole context: read what it needs in one command, not one file or grep per turn; run tests once at the end, not after each edit; past about 80k of context, end the step there, so the next step goes to a fresh teammate. A design teammate reads only the canvas page it changes, not the whole artifact.
 - Don't set a `model`: teammates run on yours.
 - Then wait: you're told as each one finishes. When all have, say in plain words what each did. Don't commit their work.
 - Look over a teammate's work at most twice: once, and once more after its fixes. Do it with a fresh agent given a short brief, never a fork: a fork starts with your whole context.

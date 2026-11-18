@@ -251,3 +251,26 @@ fn a_lead_over_the_mark_hands_its_desk_to_the_session_it_goes_on_in() {
     assert_eq!(desk(&w, &project)["lead"]["sid"], next.as_str(), "{}", desk(&w, &project)["lead"]);
 }
 
+
+/// A session whose cache ran out over 60k is marked so the lead gives it no new work; a cold small one and a warm big
+/// one (webui1, its hand-off pending) are not (docs/desk-routing-merged.md, rule 17).
+#[test]
+fn a_big_cold_session_is_marked_for_no_new_work() {
+    let w = World::new();
+    shop_session(&w, "lead01", 20 * 60_000, 90_000);
+    shop_session(&w, "webui1", 30 * 60_000, 142_000);
+    let d = shop_dir(&w);
+    for (sid, context) in [("idle01", 95_000), ("small1", 40_000)] {
+        let a = w.session(sid).in_folder(&d).in_tmux(&format!("%{sid}"));
+        a.transcript().cached_reply(2 * 3_600_000, context, 3600);
+        a.stop("Done.");
+        w.terminal.pane(sid, |p| p.screen = Some("────────\n❯ \n────────".into()));
+    }
+    let project = shop_desk(&w);
+    w.hub().desk_set_member(&project, "small1", true).unwrap();
+    w.tick(true);
+    let s = w.hub().desk_summary(&project, "lead01", false).0;
+    assert!(s.contains("sid:idle01, 95k, cold: no new work)"), "{s}");
+    assert!(s.contains("sid:small1)") && !s.contains("142k, cold"), "a small cold one and a warm one aren't marked: {s}");
+    assert!(crate::desk::LEAD_SKILL.contains("A session marked cold takes no new work"), "the lead's rules say what the mark means");
+}

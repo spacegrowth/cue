@@ -196,7 +196,7 @@ impl Hub {
                 let name = st.sessions.get(lead).map(shown_name)
                     .or_else(|| st.desk.lead.get(project).filter(|l| l.sid == lead).map(|l| l.name.clone()))
                     .unwrap_or_else(|| lead.chars().take(8).collect());
-                out.push_str(&format!("Desk lead: {name} (you){}\n\n", context_note(st, lead, now)));
+                out.push_str(&format!("Desk lead: {name} (you){}\n\n", context_note(st, lead, false, now)));
             }
             let (mut failed, mut told) = (vec![], vec![]);
             let (ready, open): (Vec<_>, Vec<_>) = st.desk.items.iter()
@@ -239,7 +239,7 @@ impl Hub {
                     let crew: Vec<_> = s.team.iter().map(|t| t.name.as_str()).collect();
                     out.push_str(&format!(", crew: {}", crew.join(", ")));
                 }
-                out.push_str(&context_note(st, sid, now));
+                out.push_str(&context_note(st, sid, true, now));
                 out.push_str(")\n");
             }
             // Running leads get this too, even if their original system prompt is older.
@@ -307,14 +307,24 @@ pub(super) fn context_k(tokens: u64) -> String {
     format!("{}k", (tokens + 500) / 1000)
 }
 
-/// Show cache details when a pending hand-off could affect a routing decision.
-fn context_note(st: &Store, sid: &str, now: u64) -> String {
-    let Some(v) = st.insight.get(sid).filter(|v| super::cache_tick::desk_will_hand_off(st, sid, v, now)) else {
+/// A session whose cache ran out takes no new work from this size up (docs/desk-routing-merged.md, rule 17): waking it
+/// writes its whole context to the cache again.
+pub(super) const COLD_NEW_WORK_MAX: u64 = 60_000;
+
+/// Show cache details when a pending hand-off could affect a routing decision, or (`route`: a session the lead routes
+/// to) when it is too big to wake cold for new work.
+fn context_note(st: &Store, sid: &str, route: bool, now: u64) -> String {
+    let Some(v) = st.insight.get(sid) else { return String::new() };
+    let (tokens, until) = (v["tokens"].as_u64().unwrap_or(0), v["until_ms"].as_u64().unwrap_or(0));
+    if !super::cache_tick::desk_will_hand_off(st, sid, v, now) {
+        // Codex logs say no cache time (0): never called cold.
+        if route && until > 0 && until <= now && tokens >= COLD_NEW_WORK_MAX {
+            return format!(", {}, cold: no new work", context_k(tokens));
+        }
         return String::new();
-    };
-    let until = v["until_ms"].as_u64().unwrap_or(now);
+    }
     let minutes = until.saturating_sub(now).div_ceil(60_000);
-    format!(", {}, cache {minutes}m → Cue will hand off at expiry", context_k(v["tokens"].as_u64().unwrap_or(0)))
+    format!(", {}, cache {minutes}m → Cue will hand off at expiry", context_k(tokens))
 }
 
 /// Of the folders of a project's sessions (in order), the first in the repository named for `project`, else the first.
