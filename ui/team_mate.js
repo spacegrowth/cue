@@ -2,7 +2,7 @@
 // A row in the list picks its teammate: it lights, and the left shows it in the chat's place, the Needs you bar and the
 // box staying under it; the page gives the left all but a narrow list (team_page.js). One head line (‹ The lead's chat,
 // its name and state, what it's doing now, Talk, Stop); what it was asked on one line with its size and time; its files
-// as chips; then the reading area, the left's whole width, with three tabs: Diff so far, Full review, Full task. Its
+// as chips (a click opens that file's whole diff over the page, as the Inbox does: diff_overlay.js); then the reading area, the left's whole width, with three tabs: Diff so far, Full review, Full task. Its
 // steps and what its review found unfold under its own card in the list (crewMateExp). Esc, ‹ The lead's chat or The
 // lead's row go back to the chat where you left it.
 
@@ -91,15 +91,26 @@ function crewMateFiles(sid, t) {
   const d = (t.files || []).length || t.worktree ? crewDiffOf(sid, t) : null;
   return d?.files || (t.files || []).map((path) => ({ path }));
 }
-/** Diff so far: the lit file's part (the first file's until one is picked), a button to the whole in the Diff view. */
+/** Diff so far: the lit file's part (the first file's until one is picked); its chip opens it whole over the page. */
 function crewMateDiff(sid, t, left) {
   if (!(t.files || []).length && !t.worktree) return `<div class="cpm-nodiff"><span class="cp-dim">Cue hasn't seen it change a file yet.</span></div>`;
-  const d = crewDiffOf(sid, t), all = mateBtn(sid, t, "diff", "Whole diff in the Diff view", "link");
-  if (d.err) return `<div class="cpm-nodiff"><span class="cp-dim">Couldn't read its diff: ${esc(d.err)}</span>${all}</div>`;
+  const d = crewDiffOf(sid, t);
+  if (d.err) return `<div class="cpm-nodiff"><span class="cp-dim">Couldn't read its diff: ${esc(d.err)}</span></div>`;
   if (!d.files) return `<div class="cpm-nodiff"><span class="cp-dim">Reading its diff…</span></div>`;
   if (!d.files.length) return `<div class="cpm-nodiff"><span class="cp-dim">Nothing changed so far.</span></div>`;
   const path = crewMateLitFile(sid, t, left), text = crewDiffText(sid, t, d, path);
-  return (text == null ? `<div class="cpm-nodiff"><span class="cp-dim">Reading ${esc(path)}…</span></div>` : crewDiffHtml(text)) + `<div class="cpm-all">${all}</div>`;
+  return (text == null ? `<div class="cpm-nodiff"><span class="cp-dim">Reading ${esc(path)}…</span></div>` : crewDiffHtml(text));
+}
+/** Its file `path` over the page (diff_overlay.js), its other files in the list beside it: each file's part of its
+ *  diff read once per reading of the diff (crewDiffText's), then the overlay opens. */
+async function crewMateShowFile(sid, key, path) {
+  const t = crewMateOf(sid, key), d = t && crewDiffOf(sid, t);
+  if (!d?.files?.length) return;
+  const agent = t.agent_id || t.call;
+  const read = (p) => d.text.get(p) ?? invoke("team_diff", { sessionId: sid, agent, path: p }).then((x) => (d.text.set(p, x), x), () => "");
+  const texts = await Promise.all(d.files.map((f) => read(f.path)));
+  const files = d.files.map((f, i) => ({ lines: [], isNew: false, ...diffParse(texts[i]).files[0], path: f.path, add: f.add, del: f.del }));
+  diffOverlay(t.name, "Diff so far", files, Math.max(0, d.files.findIndex((f) => f.path === path)));
 }
 /** The file the reading area shows: the one picked, else the first. */
 function crewMateLitFile(sid, t, left) {
@@ -125,7 +136,8 @@ function crewMateExp(sid, t) {
   return `<div class="cp-exp" data-scroll-key="cpe:${esc(k)}">${part("Steps", more + (steps || `<div class="cp-dim">None yet.</div>`))}${part("Review found", review)}</div>`;
 }
 /** Its files as chips over the reading area: each its name (the path's last part, its folder too when two share a
- *  name) and +/−, the one whose diff shows lit; a click shows that file's diff. "" with no files. */
+ *  name) and +/−, the one whose diff shows lit; a click lights it and opens its whole diff over the page. "" with no
+ *  files. */
 function crewMateChips(sid, t, left) {
   const files = crewMateFiles(sid, t), lit = left.tab === "diff" ? crewMateLitFile(sid, t, left) : "";
   if (!files.length) return "";
@@ -178,7 +190,7 @@ if (typeof document !== "undefined") {
     if (d.cpSteps) { if (!crewStepsAll.delete(d.cpSteps)) crewStepsAll.add(d.cpSteps); return renderMain(); }
     if (left?.kind !== "mate") return;
     if (d.cpTab) left.tab = d.cpTab;
-    if (d.cpFile != null) { left.file = d.cpFile; left.tab = "diff"; }
+    if (d.cpFile != null) { left.file = d.cpFile; left.tab = "diff"; renderMain(); return crewMateShowFile(sid, left.key, d.cpFile); }
     renderMain();
   }, true);
 }

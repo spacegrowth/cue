@@ -606,7 +606,19 @@ test.describe("a hosted lead's crew on its own page", () => {
     expect(nums.length, "every line under a hunk's head numbered").toBeGreaterThan(0);
     expect(nums.every(([o, n]) => o || n)).toBe(true);
     await expect(v.locator(".cpm-lit")).toHaveText("src-tauri/src/hub/handoff.rs");
+    await expect(v.getByText("Whole diff in the Diff view"), "no way out to the Diff view").toHaveCount(0);
+    // A chip clicked: its whole diff over the page, as the Inbox opens one (diff_overlay.js), its files listed beside
+    // it; ↑ the one before; Esc and the teammate is where it was, that chip lit.
     await v.locator('.cpm-chip[data-cp-file="ui/core.js"]').click();
+    const ov = page.locator(".dov");
+    await expect(ov.locator(".dov-title")).toHaveText("handoff");
+    await expect(ov.locator(".dov-f .dov-p")).toHaveText(["src-tauri/src/hub/handoff.rs", "ui/core.js"]);
+    await expect(ov.locator(".dov-f.on .dov-p")).toHaveText("ui/core.js");
+    await expect(ov.locator(".dov-lines .a").first()).toHaveText("+# core.js");
+    await page.keyboard.press("ArrowUp");
+    await expect(ov.locator(".dov-lines .a")).toHaveText(["+# handoff.rs", "+handoff wrote this"]);
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".dov")).toHaveCount(0);
     await expect(v.locator(".cpm-diff .add").first()).toHaveText("+# core.js");
     await expect(v.locator(".cpm-chip.on .cpm-fp")).toHaveText("core.js");
     await expect(v.locator(".cpm-tabs button:visible")).toHaveText(["Diff so far", "Full review", "Full task"]);
@@ -732,11 +744,17 @@ test.describe("a hosted lead's crew on its own page", () => {
     await expect(page.locator(".cp-exp .cpm-st").filter({ hasText: "Started" })).toBeVisible();
     await v.locator('[data-cp-tab="task"]').click();
     await v.locator('.cpm-chip[data-cp-file="ui/core.js"]').click();
+    // Its whole diff over the page, wider than the left.
+    const lines = page.locator(".dov-lines");
+    await expect(lines.locator(".a").first()).toHaveText("+# core.js");
+    const wide = await lines.evaluate((el) => el.clientWidth);
+    await page.keyboard.press("Escape");
     await expect(v.locator('.cpm-tabs [data-cp-tab="diff"]'), "a file picked: its diff").toHaveClass(/\bon\b/);
     await expect(v.locator(".cpm-diff .add").first()).toHaveText("+# core.js");
     // The diff has the left's width less its margins, not a side column's share.
     const [left, diff] = await Promise.all([page.locator(".cp-left").evaluate((el) => el.clientWidth), v.locator(".cpm-diff").evaluate((el) => el.clientWidth)]);
     expect(left - diff).toBeLessThan(40);
+    expect(wide).toBeGreaterThan(left);
   });
 
   // Keys (SPEC §4): a bare letter is always text here; ⌘⇧A / ⌘⇧D answer the ask the bar shows, never a one-way one.
