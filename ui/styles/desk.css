@@ -20,9 +20,7 @@
 .dk-srow.on { background: var(--sel); color: var(--on-sel); }
 .dk-s1 { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .dk-s1 .dk-nm { flex: 0 1 auto; min-width: 0; font-size: 13.5px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dk-pill { flex: none; padding: 1px 6px; border-radius: var(--pill-radius); font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
-.dk-pill.lead { background: var(--accent); color: var(--on-accent); }
-.dk-pill.crew { color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
+.dk-pill { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink); font: 600 10.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
 .dk-pill.loose { color: var(--amber); box-shadow: inset 0 0 0 1px var(--amber); text-transform: none; letter-spacing: 0; }
 .dk-srow.past { opacity: .6; }
 .dk-sfold { display: block; margin: 0 8px 8px 22px; padding: 4px 12px; border: 0; background: none; color: var(--muted); font: 600 12px var(--sans); cursor: pointer; }
@@ -194,41 +192,21 @@
 /* The chat card (left; class dk-right from when it sat on the right): tabs, the chat, the box. */
 .dk-right { position: relative; }
 .dk-tabs { gap: 18px; padding: 0 20px; align-items: stretch; }
-/* The chat type mark (pick O): one solid label in the theme color, the kind's icon and word, before the chat's name. */
-.dk-titled { flex: 0 1 auto; min-width: 0; align-self: center; display: flex; align-items: center; gap: 10px; }
-.dk-lbl { flex: none; align-self: center; display: inline-flex; align-items: center; gap: 5px; height: 24px; box-sizing: border-box; padding: 0 9px 0 7px; border-radius: 6px; background: var(--accent); color: var(--on-accent); font: 700 11.5px var(--sans); letter-spacing: .02em; white-space: nowrap; }
-.dk-lbl .dk-kic { width: 13px; height: 13px; margin: 0; color: var(--on-accent); stroke-width: 2.4; }
 .dk-tname { max-width: 100%; min-width: 0; display: flex; align-items: center; gap: 6px; }
 .dk-tname > .dk-tab { padding-bottom: 1px; }
 /* In the chat card's tabs the lead's name is a tab too: its block runs to the header's bottom, so its underline sits
    on the same line as Decisions'. */
-.dk-tabs > .dk-titled, .dk-tabs .dk-tname, .dk-tabs .dk-tname > .dk-tab { align-self: stretch; }
+.dk-tabs .dk-tname, .dk-tabs .dk-tname > .dk-tab { align-self: stretch; }
 .dk-tabs .dk-tname > .dk-tab { padding-bottom: 0; }
 .dk-tab { display: flex; align-items: center; gap: 6px; padding: 0; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--muted); font-size: 13.5px; font-weight: 650; cursor: pointer; }
 .dk-tab.on { color: var(--ink); border-bottom-color: var(--ink); }
 .dk-tab .n { font-family: var(--mono); font-size: 11px; color: var(--muted); }
-/* The chat's title area (desk.js deskRightChat, deskSessChat): the title line, then a second line of what it's doing
-   (deskLeadNow, deskSessNow); one rule under both. In it the tabs show which is on by their ink, not an underline. */
-.dk-lh { flex: none; border-bottom: 1px solid var(--line); }
-.dk-lh > .dk-ch { border-bottom: 0; }
-.dk-lh .dk-tab, .dk-lh .dk-tab.on { border-bottom-color: transparent; }
-.dk-t2 { display: flex; align-items: baseline; gap: 6px; min-width: 0; padding: 0 14px 10px 20px; color: var(--muted); font-size: 12.5px; white-space: nowrap; }
-.dk-t2 b { color: var(--ink); font-weight: 650; }
-.dk-t2 .dk-st { align-self: center; max-width: none; margin-left: 0; }
-.dk-t2p { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.dk-t2 .dk-kic { vertical-align: -2px; margin-right: 3px; }
-.dk-wy { all: unset; flex: none; cursor: pointer; color: var(--ink); font-weight: 700; }
-.dk-wy .dk-inum { font-weight: 700; }
-.dk-wy:hover { color: var(--link, var(--accent)); }
-/* A session's chat head (deskSessChat): back and its name, then its state and the items it holds (#170). */
-.dk-shead > .dk-ch.dk-sch { padding: 0 14px 0 20px; }
+/* A session's name and the items it holds (#170). */
 .dk-shn { font-size: 13.5px; font-weight: 650; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-sch-t { all: unset; cursor: pointer; color: var(--muted); }
 .dk-sch-t b { color: var(--ink); }
 .dk-sch-t:hover, .dk-sch-t:hover b { color: var(--link, var(--accent)); }
 .dk-sch-t:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
-/* Its ✎ at the line's end, so the hidden pen leaves no gap after the name. */
-.dk-t2 .dk-sren { order: 1; align-self: center; margin-left: 0; }
 .dk-chat { display: flex; flex-direction: column; gap: 14px; padding: 14px 20px; }
 .dk-chat .cv-you.sending { opacity: .6; }
 .dk-box { flex: none; display: flex; flex-direction: column; gap: 6px; margin: 8px 16px 16px; padding: 8px 8px 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
@@ -250,12 +228,10 @@
 /* A pane: an item, a holder, a crew member. */
 .dk-pane { padding: 0 0 18px; }
 /* An item's (or a session's) pane: its words select and copy; its buttons and rows still click. */
-.dk-pane { user-select: text; -webkit-user-select: text; }
-.dk-pane button, .dk-pane [role="button"], .dk-pane .btn { user-select: none; -webkit-user-select: none; }
+.dk-pane, .dk-ph { user-select: text; -webkit-user-select: text; }
+.dk-pane button, .dk-pane [role="button"], .dk-pane .btn, .dk-ph button, .dk-ph .btn { user-select: none; -webkit-user-select: none; }
 .dk-back { margin: 14px 0 0 18px; padding: 4px 6px; border: 0; border-radius: 8px; background: none; color: var(--muted); font-size: 12.5px; font-weight: 650; cursor: pointer; }
 .dk-back:hover { color: var(--ink); background: var(--panel-2); }
-/* In a session chat's header bar: before its label, on the bar's line. */
-.dk-sch .dk-back { margin: 0 2px 0 -6px; flex: none; }
 .dk-pane h1 { margin: 8px 24px 4px; font-size: 19px; font-weight: 700; line-height: 1.3; }
 .dk-state { margin: 0 24px; color: var(--muted); font-size: 12.5px; }
 .dk-state b { color: var(--ink); font-weight: 650; }
@@ -290,11 +266,6 @@
    so the pill stands out on it (#142); the tabs' line is its bottom edge. */
 .dk-ipane > .dk-ihead { position: sticky; top: 0; z-index: 2; background: var(--panel-2); }
 .dk-ipane .dk-ihead h1 { margin: 6px 0 8px 24px; max-width: 700px; font-size: 20px; letter-spacing: -.01em; }
-/* Its number before the title, "Task #131 · ", as the Ready to check card names items. */
-.dk-ihead .dk-hnum { color: var(--muted); font-weight: 600; white-space: nowrap; }
-.dk-ihead .dk-hnum svg { width: 18px; height: 18px; margin-right: 6px; vertical-align: -2px; pointer-events: none; }
-.dk-ist { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 0 24px; }
-.dk-ist .dk-state { margin: 0; }
 /* What pick it waits on (desk.js deskPickLine), one plain line under the state (#178). */
 .dk-pickl { margin: 8px 24px 0; font-size: 13px; color: var(--ink); }
 /* What a waiting item asks you to do (#182): its verb bold; what it unblocks, quiet, under it. */
@@ -302,12 +273,6 @@
 .dk-ub { grid-column: 2; margin-top: 3px; color: var(--muted); font: 11.5px var(--mono); }
 .dk-it.on .dk-ub { color: var(--on-sel); }
 .dk-iub { margin: 3px 24px 0; }
-.dk-pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink); font: 600 10.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
-.dk-pill i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
-.dk-pill-new i, .dk-pill-queued i { background: none; box-shadow: inset 0 0 0 1.5px var(--muted); }
-.dk-pill-needs_you i { background: var(--deny); }
-.dk-pill-done i { background: var(--muted); }
-.dk-pill-finishing i { background: var(--amber); }
 /* A failed build's or start's log tail on its page: mono, its last few lines till Show all, then it scrolls. */
 .dk-flog { margin: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); color: var(--ink); font: 11px/1.45 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 .dk-flog.open { max-height: 320px; overflow: auto; }
@@ -315,17 +280,14 @@
 .dk-flog-more:hover, .dk-flog-more:focus-visible { text-decoration: underline; }
 /* Pick 4 (Item thread, 16 Nov 2026): under the header, Thread, Decisions and Steps tabs (Drop at their right); the
    open one below. Thread is a time line: each message's age, its dot on a line, who and what kind, then its words. */
-.dk-ititle { display: flex; align-items: flex-start; gap: 12px; padding-right: 24px; }
-.dk-ititle h1 { flex: 1; min-width: 0; }
 .dk-ilinks { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 10px; }
-.dk-ist .dk-dsg { margin: 0; }
 .dk-itabs { display: flex; align-items: center; gap: 4px; margin: 14px 0 0; padding: 0 24px; border-bottom: 1px solid var(--line); }
 .dk-itab { all: unset; padding: 7px 10px; margin-bottom: -1px; border-bottom: 2px solid transparent; color: var(--muted); font-size: 12.5px; font-weight: 600; cursor: pointer; user-select: none; -webkit-user-select: none; }
 .dk-itab:hover { color: var(--ink); }
 .dk-itab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 6px 6px 0 0; }
 .dk-itab.on { color: var(--ink); border-color: var(--ink); }
 .dk-itab .n { margin-left: 5px; font: 600 10.5px var(--mono); color: var(--muted); }
-.dk-itabs .dk-drop { margin: 0; font-weight: 500; }
+.dk-itabs .dk-drop { margin: 0; font-weight: 500; white-space: nowrap; flex: none; }
 .dk-ibody { padding: 18px 24px 0; min-width: 0; }
 .dk-ibody > .dk-decs, .dk-ibody > .dk-log { margin: 0 -24px; }
 .dk-thread { display: flex; flex-direction: column; }
@@ -516,7 +478,7 @@
 .dk-sh .pj-name-in { width: 180px; padding: 2px 7px; font-size: 13px; }
 /* ✎ beside a session's name (its row in Sessions, its chat's header): shown while the pointer is on it. */
 .dk-sren { width: 20px; height: 20px; margin-left: -6px; }
-.dk-srow:hover .dk-sren, .dk-sch:hover .dk-sren { opacity: 1; }
+.dk-srow:hover .dk-sren { opacity: 1; }
 .dk-ren-in { width: 190px; padding: 2px 7px; }
 .dk-more-btn { all: unset; display: grid; place-items: center; width: 24px; height: 20px; border-radius: 6px; color: var(--muted); cursor: pointer; }
 .dk-more-btn:hover, .dk-more-btn:focus-visible { background: var(--panel-2); color: var(--ink); }
@@ -582,7 +544,7 @@ b.dk-say-t, .dk-say-t { font-weight: 650; color: var(--ink); }
 .dk-chk-a:hover { color: var(--link, var(--accent)); }
 /* The Desk chats' unset buttons (a Ready to check line, a title, who did it, Check it ›, waits on you ›): a ring when
    reached by keyboard, as the item page's tabs have. */
-.dk-wy:focus-visible, .dk-sch-t:focus-visible, .dk-rchk-it:focus-visible, .dk-rchk-go:focus-visible, .dk-chk-a:focus-visible, .dk-sl-r:focus-visible, .dk-sl-it:focus-visible, button.dk-say-id:focus-visible, .dk-undo-c:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.dk-sch-t:focus-visible, .dk-rchk-it:focus-visible, .dk-rchk-go:focus-visible, .dk-chk-a:focus-visible, .dk-sl-r:focus-visible, .dk-sl-it:focus-visible, button.dk-say-id:focus-visible, .dk-undo-c:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 .dk-nc:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .dk-chk-after { padding-top: 6px; font-size: 12.5px; color: var(--muted); }
 /* Send back, open on its item (desk.js deskBackHtml): why, in a box like the Desk's own. */
@@ -673,3 +635,105 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
 .dk-hand-l { margin-top: 6px; font-size: 11.5px; font-weight: 600; color: var(--muted); }
 .dk-hand-w, .dk-hand-p { font-size: 12.5px; line-height: 1.45; color: var(--ink); overflow-wrap: anywhere; }
 .dk-hand-p { color: var(--muted); }
+/* Desk screens, one pattern (#200, pick B; desk.js deskPage): one header (back and the page's buttons, then its kind's
+   icon, "Bug #197 · " and its name, then a quiet line), its own column at the left with the box under it, and a panel
+   at the right on the tinted ground: NOW, then DONE WHEN, WHO… Hide panel (or a card under 640px) folds the panel
+   into one line under the header: its NOW's dot, word, counts and buttons. */
+.dk-card.dk-right { container: dkcard / inline-size; }
+.dk-pg { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); grid-template-areas: "head" "panel" "main"; }
+.dk-ph { grid-area: head; min-width: 0; display: flex; flex-direction: column; gap: 8px; padding: 14px 20px 10px; }
+.dk-ph1 { display: flex; align-items: center; gap: 8px; min-height: 28px; }
+.dk-ph1 .dk-back { margin: 0 0 0 -6px; font-size: 12px; font-weight: 600; }
+.dk-ph1 .dk-ilinks { margin: 0; }
+.dk-back.dk-here { cursor: default; }
+.dk-back.dk-here:hover { background: none; color: var(--muted); }
+.dk-ptog { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.dk-ptog:hover { color: var(--ink); }
+.dk-ptog svg { flex: none; }
+.dk-ph2 { margin: 0; font: 700 19px/1.22 var(--sans); letter-spacing: -.01em; color: var(--ink); overflow-wrap: anywhere; }
+.dk-ph2 .dk-hk > .dk-kic { width: 18px; height: 18px; margin-right: 7px; color: var(--muted); vertical-align: -2px; }
+.dk-hk, .dk-hsep { color: var(--muted); font-weight: 600; white-space: nowrap; }
+.dk-ph2 .dk-tname { display: inline; }
+.dk-ph2 .dk-shn { font: inherit; overflow: visible; white-space: normal; }
+.dk-ph2 .dk-sren { display: inline-grid; vertical-align: -3px; margin-left: 4px; }
+.dk-ph2:hover .dk-sren { opacity: 1; }
+.dk-ph3 { color: var(--muted); font-size: 12px; line-height: 1.45; }
+.dk-ph3 b { color: var(--ink); font-weight: 600; }
+.dk-ph3 .dk-sch-t { color: var(--ink); font-weight: 600; }
+/* Its own column: the chat or the thread (it scrolls), then the box. */
+.dk-pgm { grid-area: main; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.dk-ptabs { flex: none; display: flex; align-items: stretch; min-height: 38px; border-bottom: 1px solid var(--line); }
+.dk-ptabs .dk-tab { font-size: 12.5px; }
+.dk-pg .dk-ipane > .dk-ihead { background: var(--panel); }
+.dk-pg .dk-itabs { margin: 0; padding: 0 12px; gap: 0; }
+.dk-pg .dk-itab { padding: 9px 8px; flex: none; }
+.dk-pg .dk-itab .n { margin-left: 4px; }
+.dk-pg .dk-ibody { padding: 16px 20px 0; }
+.dk-pg .dk-ibody > .dk-decs, .dk-pg .dk-ibody > .dk-log { margin: 0 -20px; }
+.dk-pg .dk-pane > .dk-sec:first-child, .dk-pg .dk-pane > .dk-sec { padding: 16px 20px 0; }
+.dk-pg .dk-note { margin: 14px 20px 0; }
+.dk-pg .dk-inow .dk-sb { padding: 0 0 14px; }
+/* The panel. */
+.dk-panel { grid-area: panel; min-width: 0; padding: 0 20px 12px; border-bottom: 1px solid var(--line); user-select: text; -webkit-user-select: text; }
+.dk-panel button { user-select: none; -webkit-user-select: none; }
+.dk-psh { margin: 0 0 8px; font: 700 10.5px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.dk-pnr { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 12.5px; }
+.dk-pword { font-weight: 650; color: var(--ink); white-space: nowrap; }
+.dk-pdot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.dk-pdot.ask { background: var(--deny); }
+.dk-pdot.work { background: var(--accent); }
+.dk-pdot.stop { background: none; box-shadow: inset 0 0 0 1.5px var(--muted); }
+.dk-pfc { display: inline; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.dk-psay { margin-top: 6px; font-size: 12px; line-height: 1.45; color: var(--ink); overflow-wrap: anywhere; }
+.dk-psay .dk-pickl { margin: 0; font-size: 12px; }
+.dk-psay .dk-iub { margin: 3px 0 0; }
+.dk-psay .dk-kic { width: 12px; height: 12px; margin-right: 3px; vertical-align: -2px; color: var(--muted); }
+.dk-pacts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; }
+.dk-pacts .dk-acts { flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; padding: 0; }
+.dk-pacts .dk-givewrap { display: block; }
+.dk-pacts .dk-dsg { margin: 2px 0 0; }
+.dk-pacts .dk-chk-after { font-size: 12px; color: var(--muted); }
+/* Done when as ticks: a ring each, filled in the accent once it's to check or done. */
+.dk-ptk { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; font-size: 12px; line-height: 1.4; color: var(--ink); }
+.dk-ptk li { display: grid; grid-template-columns: 14px minmax(0, 1fr); column-gap: 8px; align-items: start; }
+.dk-tk { width: 14px; height: 14px; margin-top: 1px; box-sizing: border-box; display: grid; place-items: center; border: 1.6px solid var(--muted); border-radius: 50%; }
+.dk-tk.y { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.dk-pdw .dk-chk-info { margin-top: 10px; font-size: 11.5px; }
+/* WHO: a quiet label, then its value. */
+.dk-pw { display: flex; align-items: baseline; gap: 8px; padding: 2px 0; font-size: 12px; }
+.dk-pwl { flex: none; width: 52px; color: var(--muted); }
+.dk-pwv { min-width: 0; color: var(--ink); font-weight: 650; overflow-wrap: anywhere; }
+.dk-pwv .dk-sch-t { color: var(--ink); }
+.dk-pwa { all: unset; cursor: pointer; color: var(--ink); font-weight: 650; }
+.dk-pwa:hover { color: var(--link, var(--accent)); }
+.dk-pwa:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+/* The Dispatcher's rows: what waits on you, the sessions at work. */
+.dk-prows { display: flex; flex-direction: column; margin: 0 -8px; }
+.dk-prow { all: unset; display: grid; grid-template-columns: 8px minmax(0, 1fr); column-gap: 9px; row-gap: 1px; align-items: center; padding: 6px 8px; border-radius: 8px; cursor: pointer; font-size: 12.5px; color: var(--ink); }
+.dk-prow:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.dk-prow:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.dk-prt { min-width: 0; display: flex; align-items: center; gap: 6px; overflow: hidden; white-space: nowrap; }
+.dk-prt b { font-weight: 650; overflow: hidden; text-overflow: ellipsis; }
+.dk-prt .dk-kic { flex: none; color: var(--muted); }
+.dk-prow > .dk-prs { grid-column: 2; }
+.dk-prs { color: var(--muted); font-size: 12px; font-weight: 400; }
+/* Folded is how the rules above draw it: the panel one line under the header, its NOW's dot, word, counts and
+   buttons. Hidden by you, or on a card too narrow for both, it stays so; else the two columns. */
+.dk-psec:not(.dk-pnow), .dk-pnow > .dk-psh, .dk-psay { display: none; }
+.dk-pnow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 8px 12px; border-radius: 10px; background: var(--panel-2); }
+.dk-pnr { flex: 1 1 160px; }
+@container dkcard (min-width: 641px) {
+  .dk-pg:not(.hid) { grid-template-columns: minmax(0, 1fr) 272px; grid-template-rows: auto minmax(0, 1fr); grid-template-areas: "head head" "main panel"; }
+  .dk-pg:not(.hid) > .dk-ph { padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+  .dk-pg:not(.hid) > .dk-panel { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; padding: 14px; background: var(--panel-2); border-left: 1px solid var(--line); border-bottom: 0; }
+  .dk-pg:not(.hid) :is(.dk-psec, .dk-pnow > .dk-psh, .dk-psay) { display: block; }
+  .dk-pg:not(.hid) .dk-pnow { padding: 0; border-radius: 0; background: none; }
+  .dk-pg:not(.hid) .dk-pfc { display: none; }
+  .dk-pg:not(.hid) :is(.dk-pacts, .dk-pacts .dk-acts) { flex-direction: column; flex-wrap: nowrap; align-items: stretch; }
+  .dk-pg:not(.hid) .dk-pacts { margin-top: 10px; }
+  .dk-pg:not(.hid) .dk-pacts :is(.btn, .dk-givewrap > .btn) { width: 100%; }
+}
+@container dkcard (max-width: 640px) { .dk-ptog { display: none; } }
+/* Items list (#201): a light line over each group after the first, so the groups read apart. */
+.dk-items .dk-scroll > .dk-gh:not(:first-child), .dk-items .dk-scroll > .dk-holder { position: relative; margin-top: 22px; }
+.dk-items .dk-scroll > .dk-gh:not(:first-child)::before, .dk-items .dk-scroll > .dk-holder::before { content: ""; position: absolute; left: 4px; right: 4px; top: -11px; border-top: 1px solid var(--line); pointer-events: none; }
