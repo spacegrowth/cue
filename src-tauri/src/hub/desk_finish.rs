@@ -14,9 +14,9 @@
 use super::desk_commit::{commit_each, git, git_said, shas_of, word_in, words_checked};
 use super::desk_theirs::Part;
 use super::*;
-use crate::desk::{DeskItem, FileWait, Finish, InstallStatus, Installer};
+use crate::desk::{DeskItem, Finish, InstallStatus, Installer};
 
-/// How long a commit waits on files another session is editing before you're asked about it.
+/// How long an item waits for its work to be on main before you're asked about it.
 pub(super) const WAIT_ASK_MS: u64 = 15 * 60_000;
 /// How long the first item waiting for an install waits, so everything done in that time goes in one build.
 pub(super) const INSTALL_EVERY_MS: u64 = 30 * 60_000;
@@ -51,6 +51,12 @@ impl Installer for AppInstaller {
     fn contains(&self, repo: &str, commit: &str, of: &str) -> bool {
         crate::self_install::is_ancestor(repo, commit, of)
     }
+
+    /// Cue's own repository is checked before a landing (the step 1 check, docs/desk-landing-design.md part 7): its
+    /// window loaded from a clean copy of the commit, failing on a name missing or declared twice. Others have none.
+    fn check(&self, repo: &str, commit: &str) -> Option<Result<(), String>> {
+        super::desk_checks::builds_this_cue(repo).then(|| crate::live_ui::check(repo, commit))
+    }
 }
 
 /// Notes which Cue is running, once, as the hub starts (the app's only: a test's hub has its own installer).
@@ -60,14 +66,14 @@ pub(super) fn note_running() {
 }
 
 /// One run of `key`'s finishing work on a hub (an item's commit, or "tick"), let go as it ends, a panic in it too.
-struct Claim<'a> {
+pub(super) struct Claim<'a> {
     hub: &'a Hub,
     key: String,
 }
 
 impl<'a> Claim<'a> {
     /// The claim, unless a run of `key` holds it now.
-    fn take(hub: &'a Hub, key: &str) -> Option<Self> {
+    pub(super) fn take(hub: &'a Hub, key: &str) -> Option<Self> {
         let claimed = hub.write(|st| st.desk.finish_claims.insert(key.to_string()));
         claimed.then(|| Claim { hub, key: key.to_string() })
     }
@@ -93,7 +99,7 @@ fn tail(log: &str) -> String {
 
 impl Hub {
     /// The installer this hub's Desk uses.
-    fn installer(&self) -> std::sync::Arc<dyn Installer> {
+    pub(super) fn installer(&self) -> std::sync::Arc<dyn Installer> {
         self.read(|st| st.desk.installer.0.clone()).unwrap_or_else(|| std::sync::Arc::new(AppInstaller))
     }
 
@@ -136,13 +142,28 @@ impl Hub {
             i.state = "to_check".into();
             i.updated = super::desk::secs(now);
             if let Some(f) = i.finish.as_mut() {
-                (f.step, f.at, f.question, f.wait, f.files_wait) = ("checked".into(), now, String::new(), String::new(), Vec::new());
+                (f.step, f.at, f.question, f.wait) = ("checked".into(), now, String::new(), String::new());
             }
         });
     }
 
+    /// `f` done to item `id`'s `finish` while it's still finishing, saved.
+    pub(super) fn finish_fin(&self, id: &str, f: impl FnOnce(&mut Finish)) {
+        self.finish_set(id, |i| {
+            if let Some(fin) = i.finish.as_mut() {
+                f(fin);
+            }
+        });
+    }
+
+    /// Item `id` at finishing step `step` from now.
+    pub(super) fn finish_step(&self, id: &str, step: &str) {
+        let now = now_ms();
+        self.finish_fin(id, |f| (f.step, f.at, f.wait) = (step.to_string(), now, String::new()));
+    }
+
     /// Item `id` stopped on `question` at `step`: shown as needing you.
-    fn finish_ask(&self, id: &str, step: &str, question: &str, log: &str) {
+    pub(super) fn finish_ask(&self, id: &str, step: &str, question: &str, log: &str) {
         let now = now_ms();
         self.finish_set(id, |i| {
             i.updated = super::desk::secs(now);
@@ -153,7 +174,7 @@ impl Hub {
     }
 
     /// Items queued after `id` start now (its commit is made, or there was none to make).
-    fn finish_release(&self, id: &str) {
+    pub(super) fn finish_release(&self, id: &str) {
         let now = now_ms();
         let fx = self.write(|st| {
             let mut fx = super::desk::Effects::default();
@@ -163,7 +184,7 @@ impl Hub {
         self.desk_done(fx);
     }
 
-    /// Item `id` just said DONE (or its commit waits): its commit made (with its crew's branch merged), then queued
+    /// Item `id` just said DONE: in its own copy, it joins the landing line (hub/desk_trees.rs); else its commit made (with its crew's branch merged), then queued
     /// for an install when it changed this Cue, else to check. One run per item at a time.
     pub(super) fn desk_finish_commit(&self, id: &str) {
         let Some(_claim) = Claim::take(self, id) else { return };
@@ -171,8 +192,18 @@ impl Hub {
     }
 
     fn finish_commit(&self, id: &str) {
+        // In its own copy: it lands through the landing line, one item at a time.
+        if self.read(|st| st.desk.item(id).is_some_and(|i| i.tree.is_some())) {
+            return self.desk_land_line();
+        }
+        self.desk_finish_shared(id);
+    }
+
+    /// Item `id`, worked on in its holder's own folder (no copy of its own): its files there committed (those
+    /// another session is editing or changed too left out, in the folder for that session), its crew's branch merged.
+    pub(super) fn desk_finish_shared(&self, id: &str) {
         let Ok((it, machine, sources)) = self.desk_change_sources(id) else { return };
-        let Some(fin) = it.finish.clone().filter(|f| it.state == "finishing" && matches!(f.step.as_str(), "commit" | "commit_wait")) else { return };
+        let Some(_fin) = it.finish.clone().filter(|f| it.state == "finishing" && f.step == "commit") else { return };
         // A session on another machine: nothing to install here, and its work never closes uncommitted: to check with
         // no `finish`, so Looks right commits it there and Undo takes that back, as before.
         if !machine.is_empty() {
@@ -183,9 +214,15 @@ impl Hub {
             });
             return;
         }
-        let (todo, parts, waiting) = self.to_commit(&it, &sources);
-        if !waiting.is_empty() {
-            return self.finish_wait(id, &fin, waiting);
+        let (todo, parts, left) = self.to_commit(&it, &sources);
+        if !left.is_empty() {
+            self.finish_fin(id, |f| {
+                for p in left {
+                    if !f.without.contains(&p) {
+                        f.without.push(p);
+                    }
+                }
+            });
         }
         let Some(tops) = self.finish_land(&it, &todo, &parts, &sources) else { return };
         self.finish_release(id);
@@ -213,73 +250,30 @@ impl Hub {
         sources.iter().flat_map(|(folder, paths)| super::desk_commit::changed_of("", folder, paths).unwrap_or_default()).collect()
     }
 
-    /// Item `it`'s files git says changed, by folder (one not in a repository left out; one you said to land without
-    /// too), with only its own part of a file another session changed too (hub/desk_theirs.rs), and which of them it
-    /// waits on: a session at work is editing it now, or another's changes in it can't be told apart from the item's.
-    /// Each wait names its session only when Cue knows whose it is, else "someone else" (#250).
-    fn to_commit(&self, it: &DeskItem, sources: &[(String, Vec<String>)]) -> (Vec<(String, Vec<String>)>, Vec<Part>, Vec<FileWait>) {
-        let without: &[String] = it.finish.as_ref().map_or(&[], |f| &f.without);
+    /// Item `it`'s files git says changed, by folder (one not in a repository left out), with only its own part of a
+    /// file another session changed too (hub/desk_theirs.rs), and the files left out (absolute): a session at work is
+    /// editing it now, or another's changes in it can't be told apart from the item's. They stay in the folder,
+    /// uncommitted, for that session: an item's commit never waits on another's.
+    fn to_commit(&self, it: &DeskItem, sources: &[(String, Vec<String>)]) -> (Vec<(String, Vec<String>)>, Vec<Part>, Vec<String>) {
         let busy = self.busy_by(it);
         let mut todo: Vec<(String, Vec<String>)> = Vec::new();
-        let mut waiting: Vec<FileWait> = Vec::new();
+        let mut left: Vec<String> = Vec::new();
         for (folder, paths) in sources {
             let Some(changed) = super::desk_commit::changed_of("", folder, paths) else { continue };
             let abs = |p: &str| format!("{}/{p}", folder.trim_end_matches('/'));
-            let changed: Vec<String> = changed.into_iter().filter(|p| !without.contains(&abs(p))).collect();
-            for p in &changed {
-                if let Some((path, by, sid)) = busy.iter().find(|(f, _, _)| *f == abs(p)) {
-                    waiting.push(FileWait { path: path.clone(), name: p.clone(), by: by.clone(), sid: sid.clone(), how: "editing".into() });
-                }
-            }
+            let (editing, changed): (Vec<String>, Vec<String>) = changed.into_iter().partition(|p| busy.iter().any(|(f, _, _)| *f == abs(p)));
+            left.extend(editing.iter().map(|p| abs(p)));
             if !changed.is_empty() {
                 todo.push((folder.clone(), changed));
             }
         }
-        if !waiting.is_empty() {
-            return (todo, Vec::new(), waiting);
-        }
         let folders: Vec<(String, String)> = todo.iter().flat_map(|(f, ps)| ps.iter().map(|p| (p.clone(), f.clone())).collect::<Vec<_>>()).collect();
         let (todo, parts, mixed) = self.own_of(it, todo);
-        for (p, by) in mixed {
+        for (p, _) in mixed {
             let folder = folders.iter().find(|(q, _)| *q == p).map(|(_, f)| f.clone()).unwrap_or_default();
-            let (by, sid) = if by == super::desk_commit::SOMEONE_ELSE { (String::new(), String::new()) } else { (by.clone(), self.sid_named(&by)) };
-            waiting.push(FileWait { path: format!("{}/{p}", folder.trim_end_matches('/')), name: p, by, sid, how: "changed".into() });
+            left.push(format!("{}/{p}", folder.trim_end_matches('/')));
         }
-        (todo, parts, waiting)
-    }
-
-    /// The local session shown as `name`, when exactly one is.
-    fn sid_named(&self, name: &str) -> String {
-        self.read(|st| {
-            let mut found = st.sessions.iter().filter(|s| s.origin.machine.is_empty() && super::desk::shown_name(s) == name);
-            match (found.next(), found.next()) {
-                (Some(s), None) => s.origin.session_id.clone(),
-                _ => String::new(),
-            }
-        })
-    }
-
-    /// Item `id`'s commit waits on `files`: kept so (in the waits list, the circle check run on it), with a question
-    /// for you once it has waited 15 minutes.
-    fn finish_wait(&self, id: &str, fin: &Finish, files: Vec<FileWait>) {
-        let now = now_ms();
-        let wait = files.iter().map(wait_words).collect::<Vec<_>>().join(", ");
-        let from = if fin.wait_from > 0 { fin.wait_from } else { now };
-        let ask = now.saturating_sub(from) >= WAIT_ASK_MS;
-        if fin.step == "commit_wait" && fin.wait == wait && fin.files_wait == files && ask != fin.question.is_empty() {
-            return;
-        }
-        let first = fin.step != "commit_wait";
-        self.finish_set(id, |i| {
-            if let Some(f) = i.finish.as_mut() {
-                (f.step, f.wait, f.wait_from, f.files_wait) = ("commit_wait".into(), wait.clone(), from, files);
-                f.question = if ask { format!("Its commit has waited 15 minutes: {wait}") } else { String::new() };
-                if first {
-                    f.at = now;
-                }
-            }
-        });
-        self.circle_check();
+        (todo, parts, left)
     }
 
     /// Item `it`'s `todo` committed, and its work on a branch of its own (its crew's, or its holder's own worktree:
@@ -324,7 +318,7 @@ impl Hub {
 
     /// Item `id`, its work on the main line in `tops`: queued for an install when one of them is this Cue's source,
     /// else to check.
-    fn finish_after(&self, id: &str, tops: &[String]) {
+    pub(super) fn finish_after(&self, id: &str, tops: &[String]) {
         let now = now_ms();
         // Nothing new this round (its fix after a failed install was already committed): the main line it went to
         // before, so it's installed all the same.
@@ -362,7 +356,7 @@ impl Hub {
             if let Some(f) = i.finish.as_mut() {
                 (f.repo, f.commit) = (top, head);
                 if queued {
-                    (f.step, f.at, f.wait, f.wait_from, f.question, f.files_wait) = ("queued".into(), now, String::new(), 0, String::new(), Vec::new());
+                    (f.step, f.at, f.wait, f.wait_from, f.question) = ("queued".into(), now, String::new(), 0, String::new());
                 }
             }
         });
@@ -410,7 +404,7 @@ impl Hub {
     }
 
     /// Item `id` waits for its work to be on main (`at` says where it is), with the main line's `top` and `head` kept;
-    /// asked of you once it has waited 15 minutes, as a commit's wait is.
+    /// asked of you once it has waited `WAIT_ASK_MS`.
     fn finish_landing(&self, id: &str, top: &str, head: &str, at: String) {
         let now = now_ms();
         let Some(fin) = self.read(|st| st.desk.item(id).and_then(|i| i.finish.clone())) else { return };
@@ -462,7 +456,7 @@ impl Hub {
     }
 
     /// The commits made for item `id`, added to those it has (one per repository and round).
-    fn save_made(&self, id: &str, made: &[(String, String)]) {
+    pub(super) fn save_made(&self, id: &str, made: &[(String, String)]) {
         if made.is_empty() {
             return;
         }
@@ -576,6 +570,11 @@ impl Hub {
     }
 
     fn finish_tick(&self) {
+        // An older Cue's commit wait (gone): committed as any item said DONE.
+        let old: Vec<String> = self.read(|st| st.desk.items.iter().filter(|i| i.state == "finishing" && i.finish.as_ref().is_some_and(|f| f.step == "commit_wait")).map(|i| i.id.clone()).collect());
+        for id in old {
+            self.finish_fin(&id, |f| (f.step, f.wait) = ("commit".into(), String::new()));
+        }
         let items: Vec<DeskItem> = self.read(|st| st.desk.items.iter().filter(|i| i.state == "finishing" && i.finish.is_some()).cloned().collect());
         if items.is_empty() {
             return;
@@ -583,11 +582,16 @@ impl Hub {
         let step = |i: &DeskItem| i.finish.as_ref().map(|f| f.step.clone()).unwrap_or_default();
         for it in &items {
             match step(it).as_str() {
-                "commit" | "commit_wait" => self.desk_finish_commit(&it.id),
+                "commit" if it.tree.is_none() => self.desk_finish_commit(&it.id),
+                // In its own copy: the landing line takes it (below).
+                "commit" | "line" | "checking" => {}
                 // Waiting to be on main: on its way once it is (its main line as it is now).
                 "landing" => drop(Claim::take(self, &it.id).map(|_claim| self.finish_after(&it.id, &[]))),
                 _ => {}
             }
+        }
+        if items.iter().any(|i| i.tree.is_some() && matches!(step(i).as_str(), "commit" | "line" | "checking")) {
+            self.desk_land_line();
         }
         let inst = self.installer();
         let status = inst.status();
@@ -699,7 +703,7 @@ impl Hub {
 
     /// Item `it`'s install failed (`step`): it stops on `question` with the log's end kept, and goes back to its
     /// holder with the log, as Send back does (its next DONE finishes it again).
-    fn finish_failed(&self, it: &DeskItem, question: &str, step: &str, log: &str) {
+    pub(super) fn finish_failed(&self, it: &DeskItem, question: &str, step: &str, log: &str) {
         self.finish_ask(&it.id, step, question, log);
         let Some(h) = it.holder.clone() else { return };
         let now = now_ms();
@@ -756,6 +760,8 @@ impl Hub {
             i.updated = super::desk::secs(now);
             i.finish = Some(match install {
                 true => Finish { step: "queued".into(), at: now, ..begun(now, Some(&fin)) },
+                // A failed check retried: back in the landing line in its place.
+                false if i.tree.is_some() && fin.step == "check_failed" => Finish { step: "line".into(), at: fin.at, ..begun(now, Some(&fin)) },
                 false => begun(now, Some(&fin)),
             });
         });
@@ -777,15 +783,6 @@ pub(super) fn install_at(st: &Store) -> u64 {
     first.map_or(0, |at| at + INSTALL_EVERY_MS)
 }
 
-/// A file wait as words: "<who> is editing <path>" or "<who> also changed <path>", who "someone else" when unknown.
-pub(super) fn wait_words(w: &FileWait) -> String {
-    let who = if w.by.is_empty() { super::desk_commit::SOMEONE_ELSE } else { w.by.as_str() };
-    match w.how.as_str() {
-        "editing" => format!("{who} is editing {}", w.name),
-        _ => format!("{who} also changed {}", w.name),
-    }
-}
-
 pub(super) fn begun(now: u64, before: Option<&Finish>) -> Finish {
     let (repo, commit) = before.map(|f| (f.repo.clone(), f.commit.clone())).unwrap_or_default();
     Finish { step: "commit".into(), at: now, repo, commit, ..Default::default() }
@@ -803,7 +800,7 @@ fn main_ref(top: &str) -> Option<String> {
 }
 
 /// `folder`'s repository's main checkout (its first worktree) and the branch it's on ("" for a detached HEAD).
-fn main_checkout(folder: &str) -> Option<(String, String)> {
+pub(super) fn main_checkout(folder: &str) -> Option<(String, String)> {
     let list = git("", folder, &[], &["worktree", "list", "--porcelain"])?;
     let mut lines = list.lines();
     let top = lines.next()?.strip_prefix("worktree ")?.to_string();
@@ -930,7 +927,7 @@ fn taken_out_by(top: &str, head: &str, it: &DeskItem, new: &[&str]) -> Option<St
 }
 
 /// What `main`'s checkout is in the middle of, when it is: a merge, a rebase, a cherry-pick or a revert.
-fn in_progress(main: &str) -> Option<&'static str> {
+pub(super) fn in_progress(main: &str) -> Option<&'static str> {
     let path = |p: &str| -> Option<std::path::PathBuf> {
         let at = git("", main, &[], &["rev-parse", "--git-path", p])?.trim().to_string();
         let at = std::path::PathBuf::from(at);
@@ -941,7 +938,7 @@ fn in_progress(main: &str) -> Option<&'static str> {
 }
 
 /// Whether two folders are the same, once their links are followed.
-fn same_dir(a: &str, b: &str) -> bool {
+pub(super) fn same_dir(a: &str, b: &str) -> bool {
     let canon = |p: &str| std::fs::canonicalize(p).map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|_| p.trim_end_matches('/').to_string());
     canon(a) == canon(b)
 }

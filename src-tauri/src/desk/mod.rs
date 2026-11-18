@@ -7,7 +7,7 @@
 pub mod model;
 pub mod parse;
 
-pub use model::{BusyFile, CommitWait, Desk, DeskDecision, DeskItem, FileWait, Finish, Holder, InstallStatus, Installer, Lead, Waiting};
+pub use model::{BusyFile, CommitWait, Desk, DeskDecision, DeskItem, Finish, Holder, InstallStatus, Installer, ItemTree, KeptTree, Lead, Waiting};
 
 /// Routing policy in every Desk summary, including for already-running leads.
 pub(crate) const ROUTING_GUIDANCE: &str = concat!(
@@ -90,6 +90,9 @@ pub fn handed_words(it: &DeskItem, why: &str, rule: &str) -> String {
     ));
     out.push_str(&format!("\nIf you put its designs on a canvas, or move them, say DESIGNS: #{} <canvas link> on a line of its own.", it.id));
     out.push_str(&format!("\nSay DONE: #{} on a line of its own when it's done.", it.id));
+    if let Some(t) = &it.tree {
+        out.push_str(&format!("\n{}", crate::hub::tree_line(t)));
+    }
     if !rule.is_empty() {
         out.push_str(&format!("\n{}", rule.trim_start_matches("- ")));
     }

@@ -1,6 +1,7 @@
 # How a Desk item lands and gets checked
 
-A design, for any project a Desk runs. Not built yet. Nothing in Cue has been changed for it.
+A design, for any project a Desk runs. Status: step 6 (parts 1 to 3, for Cue's fixed setup) is built and not yet
+merged, in #251. The per-project setting (step 7) and PR landing (step 8) are not built.
 
 It follows from the review of 17 November 2026, `docs/desk-fable-review-2026-11-17.md`. Where a choice
 here rests on that day, I point to the section there as "review 1" to "review 8".
@@ -37,6 +38,10 @@ part 8).
 ---
 
 ## 1. Where an item works
+
+**Status:** built for "own worktree, a pool of three" (#251). An item past three waits for a free copy and
+says so. A dropped item's copy with work in it is kept and listed under "Kept copies", with a two-click Remove;
+the seven-day ask is not built. The other choices wait for step 7.
 
 Three choices.
 
@@ -83,6 +88,10 @@ copies by hand. Those are the ones that caught the breaks (review, last section)
 
 ## 2. How it lands
 
+**Status:** Desk squash and the landing line are built (#251): one item at a time, oldest DONE first, a
+fast-forward of main. The item shows "in the landing line" and what it waits on. The commit wait is gone. Merge
+and PR landing are not built.
+
 Four choices.
 
 **Desk squash.** The Desk takes the item's branch and puts it on main as one commit. The message is
@@ -117,6 +126,10 @@ as it will be after it lands. Two items can never land on top of each other unch
 - "Never" is there for projects with no remote, or where the owner pushes by hand.
 
 ## 3. The check before landing
+
+**Status:** built for Cue (#251): the check runs before landing, shown as "checking…". A failure shows "check
+failed" and goes back to its holder with the output. A repository with no check lands as "landed, not checked".
+The split into "each landing" and "before going live" is not built yet.
 
 **What it is.** One command per project, run by the Desk, not by the item's session. It runs in a
 clean copy holding main plus the item's change. Exit code zero passes. Anything else fails.
@@ -327,6 +340,11 @@ that was not.
    a worktree in each repo for an item that spans two, landed in all or none, the check split into
    "each landing" and "before going live", "Undo it" or "Fix it" on Send back, and the seven-day ask
    for a dropped item's worktree.
+   **Status:** built in #251, not yet merged: the pool of three with the wait for a free copy, Desk squash, the
+   landing line, the check before landing, "landed, not checked", and kept copies with Remove. The commit wait
+   is gone. Still to come: the seven-day ask for a kept copy, the check split, an item that spans two
+   repositories landed in all or none, "Undo it" or "Fix it" on Send back, "Land this first", and "Send back
+   to bring up to date".
 7. **The per-project setting itself, with its defaults.** Until here, Cue runs on its own fixed
    setup. This step opens it to other projects. The check is set in the Desk's
    settings only, and a project with none lands as "landed, not checked". Medium.

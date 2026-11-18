@@ -209,6 +209,13 @@ CREATE TABLE IF NOT EXISTS desk_lead (
   set_ms      INTEGER NOT NULL
 );
 
+-- Dropped Desk items' own copies that had work in them, kept and listed on their Desk (desk/model.rs KeptTree).
+CREATE TABLE IF NOT EXISTS desk_kept (
+  id          TEXT PRIMARY KEY,
+  project     TEXT NOT NULL,
+  data        TEXT NOT NULL
+);
+
 -- Each project's sessions on its Desk: the ones its lead may route to.
 CREATE TABLE IF NOT EXISTS desk_members (
   project     TEXT NOT NULL,

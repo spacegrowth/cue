@@ -911,3 +911,9 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
 .dk-cmenu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 20; display: grid; min-width: 160px; padding: 4px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); box-shadow: 0 6px 20px rgb(0 0 0 / .12); }
 .dk-cmenu button { all: unset; padding: 6px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; white-space: nowrap; }
 .dk-cmenu button:hover, .dk-cmenu button:focus-visible { background: var(--panel-2); }
+
+/* A dropped item's kept copy (hub/desk_trees.rs): its title and where it is, Remove at its end (red once armed). */
+.dk-it.dk-kept { display: flex; align-items: center; gap: 8px; cursor: default; }
+.dk-kept-t { flex: 1; min-width: 0; }
+.dk-kept-s { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-kept .btn.armed { color: var(--deny); }

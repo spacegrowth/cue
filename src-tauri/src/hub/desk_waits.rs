@@ -1,8 +1,7 @@
 //! The Desk's one list of waits (#250): who waits on whom, on what, since when. Today it holds an item queued after
-//! another and a finishing item whose commit waits on another session's file. Each time it changes Cue walks it for
+//! another. Each time it changes Cue walks it for
 //! a circle (items each waiting on the next, none able to move): one is kept in `st.desk.circles`, shown on its
-//! items, and its project's lead is told once, with the links it may cut. A cut link: a queued item starts, or a
-//! commit lands without the files it waited on (they stay in the folder, uncommitted, for their session).
+//! items, and its project's lead is told once, with the links it may cut. A cut link: a queued item starts.
 
 use super::*;
 use crate::desk::DeskItem;
@@ -12,7 +11,7 @@ use serde_json::{json, Value};
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Wait {
     pub(crate) item: String,
-    /// "queued" (after item `on`) | "commit" (its commit waits on a file `by` is editing or changed too)
+    /// "queued" (after item `on`)
     pub(crate) kind: &'static str,
     pub(crate) on: String,
     /// The session behind it ("": someone else, Cue doesn't know who), its id, the file (absolute) and its git path.
@@ -27,11 +26,11 @@ pub(crate) struct Wait {
 }
 
 impl Wait {
-    /// What the link is, as a circle's row says it: "queued after it", "needs its file committed".
+    /// What the link is, as a circle's row says it: "queued after it".
     pub(crate) fn why(&self) -> String {
         match self.kind {
             "queued" => "queued after it".into(),
-            _ => format!("needs {} committed", if self.name.is_empty() { "its file".to_string() } else { self.name.clone() }),
+            _ => "waits on it".into(),
         }
     }
 }
@@ -44,19 +43,8 @@ pub(crate) fn waits(st: &Store, project: Option<&str>) -> Vec<Wait> {
         if let Some(a) = it.after.as_ref().filter(|_| it.state == "queued") {
             out.push(Wait { item: it.id.clone(), kind: "queued", on: a.clone(), by: String::new(), sid: String::new(), path: String::new(), name: String::new(), how: String::new(), since: it.updated * 1000 });
         }
-        let Some(f) = it.finish.as_ref().filter(|f| it.state == "finishing" && f.step == "commit_wait") else { continue };
-        for w in &f.files_wait {
-            let on = if w.sid.is_empty() { String::new() } else { held_by(st, &w.sid, &it.id) };
-            out.push(Wait { item: it.id.clone(), kind: "commit", on, by: w.by.clone(), sid: w.sid.clone(), path: w.path.clone(), name: w.name.clone(), how: w.how.clone(), since: f.wait_from });
-        }
     }
     out
-}
-
-/// The item session `sid` has at work (not `not`, nor one done): the one it's working on first.
-fn held_by(st: &Store, sid: &str, not: &str) -> String {
-    let held: Vec<&DeskItem> = st.desk.items.iter().filter(|i| i.id != not && i.state != "done" && i.holder.as_ref().is_some_and(|h| h.is(sid))).collect();
-    held.iter().find(|i| i.state == "working").or(held.first()).map(|i| i.id.clone()).unwrap_or_default()
 }
 
 /// The circles in `waits`: each as its links in order (each link's item waits on the next's), starting from its
@@ -117,8 +105,8 @@ fn circle_note(c: &[Wait]) -> String {
     let (a, b) = c.first().map(|w| (w.item.clone(), w.on.clone())).unwrap_or_default();
     format!(
         "Circle on the Desk: {}. None of them can move until one link is cut.\n{}\n\
-         Cut the link that costs least: CUT: #{a} -> #{b} | why: <reason> (a queued item then starts now; a commit \
-         lands without the file it waited on, left in the folder for its session). Only if the user must choose, ASK.",
+         Cut the link that costs least: CUT: #{a} -> #{b} | why: <reason> (a queued item then starts now). \
+         Only if the user must choose, ASK.",
         circle_words(c),
         links.join("\n"),
     )
@@ -181,79 +169,15 @@ impl Hub {
     /// now; its commit waiting on `on`'s session's files, it lands without them. Err when it doesn't wait on `on`.
     pub(crate) fn desk_cut(&self, id: &str, on: &str) -> Result<(), String> {
         let now = now_ms();
-        let (fx, commit) = self.write(|st| cut_in(st, id, on, now))?;
+        let fx = self.write(|st| cut_in(st, id, on, now))?;
         self.desk_done(fx);
-        if commit {
-            self.desk_finish_commit(id);
-        }
         self.circle_check();
         Ok(())
     }
-
-    /// Item `id`'s commit lands without file `path` (absolute): left in its folder, uncommitted, for whoever is
-    /// changing it too.
-    pub(crate) fn desk_land_without(&self, id: &str, path: &str) -> Result<(), String> {
-        let ok = self.write(|st| {
-            let Some(f) = st.desk.item_mut(id).filter(|i| i.state == "finishing").and_then(|i| i.finish.as_mut()).filter(|f| f.step == "commit_wait") else { return false };
-            if !f.files_wait.iter().any(|w| w.path == path) {
-                return false;
-            }
-            without(f, &[path.to_string()]);
-            true
-        });
-        if !ok {
-            return Err("Its commit doesn't wait on that file".into());
-        }
-        self.desk_saved(id);
-        self.desk_finish_commit(id);
-        self.circle_check();
-        Ok(())
-    }
-
-    /// The session behind item `id`'s commit wait on `path` asked to commit its own change to it (once).
-    pub(crate) fn desk_ask_commit(&self, id: &str, path: &str) -> Result<(), String> {
-        let asked = self.write(|st| {
-            let it = st.desk.item_mut(id).filter(|i| i.state == "finishing")?;
-            let (iid, title) = (it.id.clone(), it.title.clone());
-            let f = it.finish.as_mut().filter(|f| f.step == "commit_wait")?;
-            let w = f.files_wait.iter().find(|w| w.path == path && !w.sid.is_empty())?.clone();
-            if !f.asked.contains(&w.sid) {
-                f.asked.push(w.sid.clone());
-            }
-            Some((w.sid, format!(
-                "Please commit your own change to {name} when you can (only your part of it, nothing else). Desk item #{iid} \
-                 ({title}) is done and waits to land, and its commit waits on your change to that file.",
-                name = w.name,
-            )))
-        });
-        let Some((sid, words)) = asked else { return Err("Cue doesn't know whose change that is".into()) };
-        self.desk_saved(id);
-        let fx = super::desk::Effects { sends: vec![(sid, words)], ..Default::default() };
-        self.desk_done(fx);
-        Ok(())
-    }
-
-    /// Item `id` saved as it is now, and the window told.
-    fn desk_saved(&self, id: &str) {
-        let it = self.desk_saving(|| self.read(|st| st.desk.item(id).cloned()).inspect(crate::db::desk_put_item));
-        if it.is_some() {
-            self.changed();
-        }
-    }
 }
 
-/// `paths` left out of `f`'s commit: no longer waited on.
-fn without(f: &mut crate::desk::Finish, paths: &[String]) {
-    for p in paths {
-        if !f.without.contains(p) {
-            f.without.push(p.clone());
-        }
-    }
-    f.files_wait.retain(|w| !paths.contains(&w.path));
-}
-
-/// `cut` under the store's lock: what to do with it let go, and whether the item's commit is to be tried again.
-pub(super) fn cut_in(st: &mut Store, id: &str, on: &str, now: u64) -> Result<(super::desk::Effects, bool), String> {
+/// `cut` under the store's lock: what to do with it let go.
+pub(super) fn cut_in(st: &mut Store, id: &str, on: &str, now: u64) -> Result<super::desk::Effects, String> {
     let mut fx = super::desk::Effects::default();
     let id = st.desk.canon(id);
     let on = st.desk.canon(on);
@@ -262,7 +186,6 @@ pub(super) fn cut_in(st: &mut Store, id: &str, on: &str, now: u64) -> Result<(su
         return Err(format!("#{id} doesn't wait on #{on}"));
     }
     let rule = st.desk.item(&id).map(|i| super::desk::rule_of(st, &i.project)).unwrap_or_default();
-    let mut commit = false;
     if let Some(it) = st.desk.item_mut(&id) {
         if links.iter().any(|w| w.kind == "queued") {
             it.after = None;
@@ -275,12 +198,20 @@ pub(super) fn cut_in(st: &mut Store, id: &str, on: &str, now: u64) -> Result<(su
                 fx.news.push((it.project.clone(), id.clone()));
             }
         }
-        let paths: Vec<String> = links.iter().filter(|w| w.kind == "commit").map(|w| w.path.clone()).collect();
-        if let Some(f) = it.finish.as_mut().filter(|_| !paths.is_empty()) {
-            without(f, &paths);
-            commit = true;
-        }
         fx.items.push(id.clone());
     }
-    Ok((fx, commit))
+    Ok(fx)
+}
+
+#[cfg(test)]
+impl Hub {
+    /// Item `id` queued after item `on` with no check that `on` doesn't already wait on it, as a Desk saved before
+    /// that check could load: the one way two items' queue links make a circle now.
+    pub(crate) fn desk_queue_after_unchecked(&self, id: &str, on: &str) {
+        self.write(|st| {
+            if let Some(it) = st.desk.item_mut(id) {
+                (it.after, it.state) = (Some(on.to_string()), "queued".into());
+            }
+        });
+    }
 }

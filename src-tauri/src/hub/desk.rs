@@ -37,6 +37,8 @@ pub(super) struct Effects {
     /// Your Restarts (#291): (item, the session it goes to, its name), sent like `sends`, and how each went noted
     /// on the item and its step.
     pub(super) restarts: Vec<(String, String, String)>,
+    /// Dropped items that had their own copy: kept or removed (desk_trees.rs).
+    pub(super) trees_gone: Vec<DeskItem>,
 }
 
 
@@ -703,7 +705,7 @@ fn cut(st: &mut Store, project: &str, by: &By, id: &str, on: &str, why: &str, no
         return;
     }
     match super::desk_waits::cut_in(st, &id, on, now) {
-        Ok((done, _)) => {
+        Ok(done) => {
             fx.items.extend(done.items);
             fx.sends.extend(done.sends);
             fx.news.extend(done.news);
@@ -1085,6 +1087,7 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
             if let Some(h) = gone.as_ref().and_then(|g| g.holder.as_ref().filter(|_| g.state == "working")) {
                 fx.sends.push((h.to().to_string(), format!("Desk item #{id} was dropped: stop work on it.")));
             }
+            fx.trees_gone.extend(gone.filter(|g| g.tree.is_some()));
             fx.dropped.push(id.to_string());
             release(st, id, now, &mut fx);
             return Ok(fx);
@@ -1157,6 +1160,7 @@ impl Hub {
         st.desk.spaces = crate::db::desk_spaces().into_iter().map(|d| (d.id.clone(), d)).collect();
         st.desk.items = items;
         st.desk.decisions = decisions;
+        st.desk.kept = crate::db::desk_kept();
         // Items from before numbering get their numbers once, saved under them.
         let changed = st.desk.number_old();
         crate::db::desk_put_numbered(&st.desk, &changed);
@@ -1293,18 +1297,17 @@ impl Hub {
     /// (not waiting on another any more), "put_before" (ahead of the item it waited on), "install_now" (its install
     /// starts without waiting, desk_finish.rs), "rerun" (its landing run again: a plain retry, offered only when Cue
     /// can name nothing in its way, desk_finish.rs), what clears a wait (desk_waits.rs): "cut" (no longer waits on
-    /// item `text`), "land_without" (its commit without file `text`), "ask_commit" (the session changing file `text`
-    /// asked to commit it), and "drop".
+    /// item `text`), "drop", and "remove_kept" (a dropped item's kept copy deleted, desk_trees.rs: `id` is that item's).
     pub(crate) fn desk_item_act(&self, id: &str, act: &str, text: &str) -> Result<DeskItem, String> {
         match act {
             "install_now" => return self.desk_install_now(id),
             "rerun" => return self.desk_rerun_landing(id),
-            "cut" | "land_without" | "ask_commit" => {
-                match act {
-                    "cut" => self.desk_cut(id, text)?,
-                    "land_without" => self.desk_land_without(id, text)?,
-                    _ => self.desk_ask_commit(id, text)?,
-                }
+            "remove_kept" => {
+                self.desk_kept_remove(id)?;
+                return Ok(DeskItem { id: id.to_string(), state: "dropped".into(), ..Default::default() });
+            }
+            "cut" => {
+                self.desk_cut(id, text)?;
                 let it = self.read(|st| st.desk.item(id).map(|i| shown(st, i)));
                 return it.ok_or_else(|| "no such item".into());
             }
@@ -1498,10 +1501,12 @@ impl Hub {
 
     /// What a change left to do, with the store let go: its saves, then its messages and questions, and new items
     /// for their lead (told a moment later, with any others that came meanwhile).
-    pub(super) fn desk_done(&self, fx: Effects) {
-        if fx.items.is_empty() && fx.said.is_empty() && fx.dropped.is_empty() && fx.decisions.is_empty() && fx.sends.is_empty() && fx.asks.is_empty() && fx.news.is_empty() && fx.starts.is_empty() && fx.joined.is_empty() && fx.uses.is_empty() && fx.stopped.is_empty() {
+    pub(super) fn desk_done(&self, mut fx: Effects) {
+        if fx.items.is_empty() && fx.said.is_empty() && fx.dropped.is_empty() && fx.decisions.is_empty() && fx.sends.is_empty() && fx.asks.is_empty() && fx.news.is_empty() && fx.starts.is_empty() && fx.joined.is_empty() && fx.uses.is_empty() && fx.stopped.is_empty() && fx.trees_gone.is_empty() {
             return;
         }
+        // Items going to work get their own copies (or wait for one), before their messages are saved and sent.
+        self.desk_trees(&mut fx);
         {
             // Each save writes what the store holds now (saves.rs), in the order the saves run.
             let _saving = crate::locking::lock(&self.saves.desk, "desk saves");
@@ -1625,7 +1630,7 @@ impl Hub {
                 let older: Vec<&DeskDecision> = st.desk.decisions.iter().filter(|d| &d.project == p && d.at < today && d.item_id.as_ref().is_some_and(|i| items.iter().any(|it| &it.id == i))).collect();
                 let members = st.desk.members.get(p).cloned().unwrap_or_default();
                 let work_history = super::desk_members::work_history(st, p);
-                json!({ "work_history": work_history, "id": p, "project": p, "name": st.desk.spaces.get(p).map(|d| &d.name), "independent": st.desk.spaces.contains_key(p), "workspace_project": st.desk.project_of(p), "folder": st.desk.spaces.get(p).map(|d| &d.folder), "lead": Self::desk_lead_view(st, p), "items": items, "decisions": decisions, "older": older, "members": members, "checks": super::desk_checks::checks_view(st, p), "waits": super::desk_waits::waits_view(st, p), "circles": super::desk_waits::circles_view(st, p), "ask_before": crate::one_way::desk_view(st.desk.project_of(p)) })
+                json!({ "work_history": work_history, "id": p, "project": p, "name": st.desk.spaces.get(p).map(|d| &d.name), "independent": st.desk.spaces.contains_key(p), "workspace_project": st.desk.project_of(p), "folder": st.desk.spaces.get(p).map(|d| &d.folder), "lead": Self::desk_lead_view(st, p), "items": items, "decisions": decisions, "older": older, "members": members, "checks": super::desk_checks::checks_view(st, p), "kept": st.desk.kept.iter().filter(|k| &k.project == p).collect::<Vec<_>>(), "waits": super::desk_waits::waits_view(st, p), "circles": super::desk_waits::circles_view(st, p), "ask_before": crate::one_way::desk_view(st.desk.project_of(p)) })
             })
             .collect();
         json!({ "projects": list, "installed_ms": super::desk_checks::installed_ms(), "install_at": super::desk_finish::install_at(st) })

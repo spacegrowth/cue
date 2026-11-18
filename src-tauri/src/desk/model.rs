@@ -126,6 +126,16 @@ pub struct DeskItem {
     /// built and installed with it (hub/desk_finish.rs). Kept once it's to check, so Looks right only closes it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub finish: Option<Finish>,
+    /// Its own copy of its repository to work in (a git worktree on a branch of its own, from the main line as its
+    /// holder started), while it has one: landed as one squash commit at its DONE (hub/desk_trees.rs).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tree: Option<ItemTree>,
+    /// Queued for a copy of its own: all of its repository's copies are in use, so it starts once one is free.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub tree_wait: bool,
+    /// The repository whose copy it's queued for (with `tree_wait`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub tree_wait_repo: String,
     /// Where each of its commits is: (folder, short hash), for its Files changed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub commit_in: Vec<(String, String)>,
@@ -208,7 +218,8 @@ pub struct CommitWait {
 /// Where an item's finishing is (hub/desk_finish.rs).
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct Finish {
-    /// "commit" (being made) | "commit_wait" (a file of its is being edited by another session) | "landing" (made,
+    /// "commit" (being made) | "line" (in its own copy, waiting in the landing line: `wait` says on what) |
+    /// "checking" (its check runs before it lands) | "check_failed" | "landing" (made,
     /// and not on main yet: `wait` says where it is) | "queued" (for
     /// the next install) | "building" | "installing" | "starting" | "word" (the word check found one) | "conflict"
     /// (the merge of its crew's branch) | "error" (git couldn't commit) | "failed" (the build) | "rolled_back" (the
@@ -222,11 +233,11 @@ pub struct Finish {
     pub commit: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub repo: String,
-    /// Who's editing which of its files while the commit waits ("web-lead is editing ui/desk.js"), or where its work
+    /// What it waits on in the landing line ("the main checkout is in the middle of a merge"), or where its work
     /// is while it isn't on main ("on fix-header, not main").
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub wait: String,
-    /// When the commit began to wait (ms): past `desk_finish::WAIT_ASK_MS` it's asked of you.
+    /// When it began to wait for its work to be on main (ms): past `desk_finish::WAIT_ASK_MS` it's asked of you.
     #[serde(default, skip_serializing_if = "is_zero_u64")]
     pub wait_from: u64,
     /// What it asks you, when it stopped: the window shows it as needing you.
@@ -241,32 +252,42 @@ pub struct Finish {
     /// "Install now": the install starts without waiting for more items or for sessions mid-turn.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub now: bool,
-    /// While the commit waits: each file it waits on and on whom (hub/desk_waits.rs reads these into the waits list).
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub files_wait: Vec<FileWait>,
-    /// Files you (or the lead, cutting a link) said to land without: left out of its commit (absolute paths).
+    /// Files left out of its commit in a shared folder (absolute paths): another session was editing them, or changed
+    /// them too in a way that can't be told apart from the item's. They stay in the folder, uncommitted.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub without: Vec<String>,
-    /// Sessions asked to commit a file its commit waits on ("Ask them to commit"), by session id.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub asked: Vec<String>,
+    /// The tree its check last passed on (or ran with none to run): a wait in the landing line doesn't check it again.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub checked: String,
+    /// Landed with no check to run (its repository has none): shown as "landed, not checked".
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub unchecked: bool,
 }
 
-/// A file a finishing item's commit waits on: another session is editing it, or changed it too and its changes can't
-/// be told apart from the item's. `by` and `sid` only when Cue knows whose edits they are ("" says "someone else":
-/// a shell command's write is a guess, never a name).
+/// An item's own copy of its repository (hub/desk_trees.rs): the main checkout it's from, the copy's folder, its
+/// branch ("desk/<item>"), the main line's commit it started from, and which of the repository's copies it is (1..).
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
-pub struct FileWait {
-    /// Absolute.
+pub struct ItemTree {
+    pub repo: String,
     pub path: String,
-    /// Its path in its folder, as git names it.
-    pub name: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub by: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub sid: String,
-    /// "editing" (at work on it now) | "changed" (changed it too).
-    pub how: String,
+    pub branch: String,
+    #[serde(default)]
+    pub base: String,
+    #[serde(default)]
+    pub slot: u32,
+}
+
+/// A dropped item's copy that had work in it, kept (moved aside, its branch kept) and listed on its Desk until you
+/// remove it: its item, title and Desk, the copy, and when it was dropped (ms).
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct KeptTree {
+    pub id: String,
+    pub title: String,
+    pub project: String,
+    pub repo: String,
+    pub path: String,
+    pub branch: String,
+    pub at: u64,
 }
 
 /// A file another session at work is editing, and that session's name.
@@ -388,6 +409,8 @@ pub struct Desk {
     /// Each main checkout's HEAD as Cue last looked for a commit that takes a finished item's work back out
     /// (hub/desk_finish.rs `taken_out_tick`). Not saved: the first look after a start only notes it.
     pub seen_heads: HashMap<String, String>,
+    /// Dropped items' copies kept with their work, listed on their Desk (saved: db/desk.rs).
+    pub kept: Vec<KeptTree>,
     /// Circles in the waits list (hub/desk_waits.rs), by their key: when each was found, and whether the lead was told.
     /// Dropped once the circle is gone. Not saved: after a restart a circle still standing is found and told again.
     pub circles: HashMap<String, (u64, bool)>,
@@ -412,6 +435,11 @@ pub trait Installer: Send + Sync {
     fn start(&self, repo: &str, commit: &str, tag: &str) -> Result<(), String>;
     /// The latest install's status, if there's been one.
     fn status(&self) -> Option<InstallStatus>;
+    /// The check `commit` of `repo` has to pass before it lands on the main line: None when the repository has no
+    /// check, else what it said (an error with the end of its output when it failed).
+    fn check(&self, _repo: &str, _commit: &str) -> Option<Result<(), String>> {
+        None
+    }
     /// Whether `of` of `repo` has `commit`: it is that commit or one after it.
     fn contains(&self, repo: &str, commit: &str, of: &str) -> bool;
 }

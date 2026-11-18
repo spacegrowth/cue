@@ -233,45 +233,14 @@ pub(super) fn done_while_tidier_edits(w: &World) -> (std::path::PathBuf, String,
 }
 
 #[test]
-fn a_file_another_session_is_editing_holds_the_commit_till_its_free_and_asks_you_after_15_minutes() {
+fn a_file_another_session_is_editing_is_left_out_and_the_rest_lands_at_once() {
     let w = World::new();
-    let (dir, project, o) = done_while_tidier_edits(&w);
-    let shown = item(&w, &project, "Header jumps");
-    assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str(), shown["finish"]["wait"].as_str()), (Some("finishing"), Some("commit_wait"), Some("tidier is editing b.txt")), "{shown}");
-    assert_eq!(commits(&dir), "1", "nothing committed yet");
-    tick(&w);
-    assert_eq!(commits(&dir), "1", "still waiting while it's edited");
-    assert_eq!(item(&w, &project, "Header jumps")["state"], "finishing");
-
-    // Past 15 minutes: it asks you.
-    w.advance(15 * 60_000);
-    tick(&w);
-    let shown = item(&w, &project, "Header jumps");
-    assert_eq!(shown["state"], "needs_you", "{shown}");
-    assert!(shown["latest"].as_str().unwrap().contains("tidier is editing b.txt"), "{shown}");
-
-    // The tidier's turn ends: its files are free, and the commit is made on its own.
-    ends(&w, &o, "Tidied.");
-    let shown = item(&w, &project, "Header jumps");
-    assert_eq!(shown["state"], "to_check", "{shown}");
-    assert_eq!(shown["commit"].as_str().unwrap(), git(&dir, &["rev-parse", "--short", "HEAD"]).trim());
-    assert_eq!(git(&dir, &["show", "--name-only", "--format=%s", "HEAD"]).trim(), "Header jumps\n\na.txt\nb.txt");
-    assert!(git(&dir, &["remote"]).trim().is_empty(), "never pushed");
-}
-
-#[test]
-fn a_waiting_commit_survives_a_restart_and_is_made_after_it() {
-    let mut w = World::new();
     let (dir, project, _) = done_while_tidier_edits(&w);
-    w.relaunch();
     let shown = item(&w, &project, "Header jumps");
-    assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str()), (Some("finishing"), Some("commit_wait")), "{shown}");
-    // Its sessions ended with the restart: nobody edits b.txt now, so Cue's tick commits it.
-    tick(&w);
-    let shown = item(&w, &project, "Header jumps");
-    assert_eq!(shown["state"], "to_check", "{shown}");
-    assert!(!shown["commit"].as_str().unwrap().is_empty(), "{shown}");
-    assert_eq!(commits(&dir), "2");
+    assert_eq!(shown["state"], "to_check", "the commit never waits on another session: {shown}");
+    assert_eq!(git(&dir, &["show", "--name-only", "--format=%s", "HEAD"]).trim(), "Header jumps\n\na.txt");
+    assert!(git(&dir, &["status", "--porcelain"]).contains("b.txt"), "b.txt stays in the folder, uncommitted");
+    assert!(shown["finish"]["without"].as_array().unwrap().iter().any(|p| p.as_str().unwrap().ends_with("b.txt")), "{shown}");
 }
 
 #[test]
@@ -435,7 +404,7 @@ fn another_sessions_uncommitted_edit_in_the_same_file_stays_out_of_the_commit_an
 }
 
 #[test]
-fn another_sessions_change_that_cant_be_told_apart_holds_the_commit_and_says_who() {
+fn another_sessions_change_that_cant_be_told_apart_is_left_out_of_the_commit() {
     let w = World::new();
     let (dir, project) = done_after_tidier_changed(&w, |w, o, a| {
         std::fs::write(a, "tidier rewrote it\n").unwrap();
@@ -443,18 +412,8 @@ fn another_sessions_change_that_cant_be_told_apart_holds_the_commit_and_says_who
         w.settle();
     });
     let shown = item(&w, &project, "Header jumps");
-    assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str(), shown["finish"]["wait"].as_str()), (Some("finishing"), Some("commit_wait"), Some("tidier also changed a.txt")), "{shown}");
-    assert_eq!(commits(&dir), "1", "nothing committed");
-    // Its change committed by itself: the item's commit is made.
-    git(&dir, &["add", "a.txt"]);
-    w.advance(1000);
-    // Dated by the World's clock, as its logs are.
-    let at = format!("@{} +0000", crate::clock::now_ms() / 1000);
-    let o = std::process::Command::new("git").arg("-C").arg(&dir).args(["commit", "-q", "-m", "tidy"]).env("GIT_COMMITTER_DATE", &at).env("GIT_AUTHOR_DATE", &at).output().unwrap();
-    assert!(o.status.success());
-    std::fs::write(dir.join("a.txt"), "tidier rewrote it\nfixer's line\n").unwrap();
-    tick(&w);
-    let shown = item(&w, &project, "Header jumps");
     assert_eq!(shown["state"], "to_check", "{shown}");
-    assert_eq!(git(&dir, &["show", "--name-only", "--format=%s", "HEAD"]).trim(), "Header jumps\n\na.txt\nb.txt");
+    assert_eq!(git(&dir, &["show", "--name-only", "--format=%s", "HEAD"]).trim(), "Header jumps\n\nb.txt");
+    assert!(shown["finish"]["without"].as_array().unwrap().iter().any(|p| p.as_str().unwrap().ends_with("a.txt")), "{shown}");
+
 }

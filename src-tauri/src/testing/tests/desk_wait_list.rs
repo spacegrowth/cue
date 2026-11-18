@@ -1,94 +1,31 @@
-//! The Desk's one list of waits (#250, hub/desk_waits.rs): a queued item and a commit waiting on another session's
-//! file are in it, each saying who it waits on (a name only when Cue knows whose edit it is, else "someone else"); a
-//! circle in it is found, shown and told to the lead once; and each wait has what clears it in place of a plain
-//! "Try again": cut a link, ask the session to commit, land without the file.
+//! The Desk's one list of waits (#250, hub/desk_waits.rs): a queued item is in it, saying what it waits on; a circle
+//! in it is found, shown and told to the lead once; and a wait is cleared by cutting its link, in place of a plain
+//! "Try again".
 
 use super::desk::{desk, sent_to};
-use super::desk_commit::{commits, done_while_tidier_edits, ends, item, log, tick};
-use super::team::{git, says, writes};
+use super::desk_commit::{done_while_tidier_edits, ends, item, routed_with, tick, tidier_editing};
+use super::team::says;
 use crate::hosted::HostedEvent;
-use crate::ipc::{start_session_with, StartOpts};
 use crate::testing::World;
-use serde_json::{json, Value};
-
-fn waits(w: &World, project: &str) -> Vec<Value> {
-    desk(w, project)["waits"].as_array().cloned().unwrap_or_default()
-}
 
 fn id_of(w: &World, project: &str, title: &str) -> String {
     item(w, project, title)["id"].as_str().unwrap().to_string()
 }
 
-#[test]
-fn a_commit_wait_is_in_the_list_naming_the_session_and_ask_them_to_commit_reaches_it() {
-    let w = World::new();
-    let (dir, project, o) = done_while_tidier_edits(&w);
-    let id = id_of(&w, &project, "Header jumps");
-    let list = waits(&w, &project);
-    assert_eq!(list.len(), 1, "{list:?}");
-    let b = dir.join("b.txt").to_string_lossy().to_string();
-    let got = |k: &str| list[0][k].as_str().unwrap_or("").to_string();
-    assert_eq!((got("item"), got("kind"), got("by"), got("sid"), got("name"), got("how"), got("path")), (id.clone(), "commit".into(), "tidier".into(), o.clone(), "b.txt".into(), "editing".into(), b.clone()));
-    assert!(list[0]["since"].as_u64().unwrap() > 0);
-
-    w.hub().desk_item_act(&id, "ask_commit", &b).unwrap();
-    w.settle();
-    assert_eq!(item(&w, &project, "Header jumps")["finish"]["asked"], json!([o]));
-    assert_eq!(commits(&dir), "1", "nothing committed by asking");
-    // It's mid-turn, so Cue keeps the message for it and it goes as that turn ends.
-    ends(&w, &o, "Still on the footer.");
-    assert!(sent_to(&w, &o).iter().any(|t| t.contains("commit your own change to b.txt") && t.contains(&format!("#{id}"))), "{:?}", sent_to(&w, &o));
-}
-
-#[test]
-fn land_without_that_file_commits_the_rest_and_leaves_it_uncommitted_in_the_folder() {
-    let w = World::new();
-    let (dir, project, _) = done_while_tidier_edits(&w);
-    let id = id_of(&w, &project, "Header jumps");
-    assert!(w.hub().desk_item_act(&id, "land_without", "/not/waited/on.txt").is_err(), "only a file it waits on");
-    w.hub().desk_item_act(&id, "land_without", &dir.join("b.txt").to_string_lossy()).unwrap();
-    w.settle();
-    let shown = item(&w, &project, "Header jumps");
-    assert_eq!(shown["state"], "to_check", "{shown}");
-    assert_eq!(git(&dir, &["show", "--name-only", "--format=%s", "HEAD"]).trim(), "Header jumps\n\na.txt");
-    assert!(git(&dir, &["status", "--porcelain", "--", "b.txt"]).contains("b.txt"), "b.txt left as it is, uncommitted");
-    assert!(waits(&w, &project).is_empty());
-}
-
-#[test]
-fn a_file_only_a_shell_command_wrote_is_someone_else_never_a_guessed_name() {
-    let w = World::new();
-    let (dir, project, _) = super::desk_commit::done_with(&w, |_, _, _| {}, |w, h, dir| {
-        let f = |n: &str| dir.join(n).to_string_lossy().to_string();
-        says(w, h, writes("toolu_A", "agentA", "fixer", &[f("a.txt"), f("b.txt")]));
-        let opts = StartOpts { hosted: true, perm: "auto".into(), ..Default::default() };
-        let r = start_session_with(w.hub(), "claude", &w.home().to_string_lossy(), "tidy b", "tidier", &opts).unwrap();
-        let o = r["session_id"].as_str().unwrap().to_string();
-        w.hosted_says(&o, HostedEvent::Taken { text: "tidy b".into() });
-        w.advance(1000);
-        log(w, &o).tool_use("toolu_9", "Bash", json!({ "command": format!("echo hi > {}", dir.join("b.txt").display()) }));
-        w.settle();
-    });
-    let shown = item(&w, &project, "Header jumps");
-    assert_eq!((shown["finish"]["step"].as_str(), shown["finish"]["wait"].as_str()), (Some("commit_wait"), Some("someone else is editing b.txt")), "{shown}");
-    let list = waits(&w, &project);
-    assert_eq!((list[0]["by"].as_str(), list[0]["sid"].as_str()), (Some(""), Some("")), "{list:?}");
-    let id = id_of(&w, &project, "Header jumps");
-    assert!(w.hub().desk_item_act(&id, "ask_commit", &dir.join("b.txt").to_string_lossy()).is_err(), "no one to ask");
-    assert_eq!(commits(&dir), "1");
-}
-
-/// The item waiting on tidier's b.txt, and a second item tidier is given after it: a circle. (repo, project, the
-/// first item, the second, tidier, the lead.)
+/// Two items queued after each other: "Header jumps" (a) at work with cue-teams, "Tidy the footer" (b) routed to
+/// "tidier" after it, then a put back in the queue after b (as a Desk saved before the guard against it could
+/// load: a lead's ROUTE can't make one). (repo, project, a, b, tidier, lead)
 fn circle(w: &World) -> (std::path::PathBuf, String, String, String, String, String) {
-    let (dir, project, o) = done_while_tidier_edits(w);
-    let a = id_of(w, &project, "Header jumps");
+    let o = std::cell::RefCell::new(String::new());
+    let (dir, project, a, _) = routed_with(w, |_, _, _| {}, |w, _, dir| *o.borrow_mut() = tidier_editing(w, dir));
+    let o = o.into_inner();
     let lead = desk(w, &project)["lead"]["sid"].as_str().unwrap().to_string();
     w.hub().desk_set_member(&project, &o, true).unwrap();
     ends(w, &lead, &format!("ITEM: task | Tidy the footer | done when: it's tidy\nROUTE: #new -> tidier | after: #{a} | why: it knows the files"));
     let b = id_of(w, &project, "Tidy the footer");
     let it = item(w, &project, "Tidy the footer");
     assert_eq!((it["state"].as_str(), it["after"].as_str()), (Some("queued"), Some(a.as_str())), "{it}");
+    w.hub().desk_queue_after_unchecked(&a, &b);
     tick(w);
     (dir, project, a, b, o, lead)
 }
@@ -108,7 +45,7 @@ fn a_circle_is_found_shown_and_told_to_the_lead_once() {
     assert_eq!(circles[0]["told"], true);
     assert!(circles[0]["at"].as_u64().unwrap() > 0);
     let links = circles[0]["links"].as_array().unwrap();
-    assert!(links.iter().any(|l| l["item"] == a.as_str() && l["on"] == b.as_str() && l["why"] == "needs b.txt committed"), "{links:?}");
+    assert!(links.iter().any(|l| l["item"] == a.as_str() && l["on"] == b.as_str() && l["why"] == "queued after it"), "{links:?}");
     assert!(links.iter().any(|l| l["item"] == b.as_str() && l["on"] == a.as_str() && l["why"] == "queued after it"), "{links:?}");
     let told = |w: &World| sent_to(w, &lead).into_iter().filter(|t| t.starts_with("Circle on the Desk")).collect::<Vec<_>>();
     let notes = told(&w);
@@ -137,19 +74,6 @@ fn the_lead_cuts_a_queue_link_and_the_queued_item_starts() {
     says(&w, &lead, [HostedEvent::TurnStarted]);
     ends(&w, &lead, &format!("CUT: #{b} -> #{a} | why: again"));
     assert!(sent_to(&w, &lead).iter().any(|t| t.starts_with("Not cut:")), "{:?}", sent_to(&w, &lead));
-}
-
-#[test]
-fn cutting_a_commit_link_from_the_window_lands_it_without_that_file_and_starts_the_queued_one() {
-    let w = World::new();
-    let (dir, project, a, b, _, _) = circle(&w);
-    w.hub().desk_item_act(&a, "cut", &b).unwrap();
-    w.settle();
-    assert_eq!(item(&w, &project, "Header jumps")["state"], "to_check");
-    assert_eq!(git(&dir, &["show", "--name-only", "--format=", "HEAD"]).trim(), "a.txt");
-    assert_eq!(item(&w, &project, "Tidy the footer")["state"], "working", "released as the first one's commit was made");
-    tick(&w);
-    assert!(desk(&w, &project)["circles"].as_array().unwrap().is_empty());
 }
 
 #[test]

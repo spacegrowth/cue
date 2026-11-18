@@ -49,6 +49,33 @@ pub fn desk_put_item(it: &DeskItem) {
     });
 }
 
+/// A dropped item's kept copy, saved.
+pub fn desk_put_kept(k: &crate::desk::KeptTree) {
+    let data = serde_json::to_string(k).unwrap_or_default();
+    with(|c| {
+        c.execute(
+            "INSERT INTO desk_kept (id, project, data) VALUES (?1, ?2, ?3) ON CONFLICT(id) DO UPDATE SET project = excluded.project, data = excluded.data",
+            params![k.id, k.project, data],
+        )?;
+        Ok(())
+    });
+}
+
+/// A kept copy removed from the list.
+pub fn desk_drop_kept(id: &str) {
+    with(|c| c.execute("DELETE FROM desk_kept WHERE id = ?1", params![id]).map(|_| ()));
+}
+
+/// Every kept copy, oldest first.
+pub fn desk_kept() -> Vec<crate::desk::KeptTree> {
+    with(|c| {
+        let mut q = c.prepare("SELECT data FROM desk_kept ORDER BY rowid")?;
+        let rows = q.query_map([], |r| r.get::<_, String>(0))?;
+        Ok(rows.flatten().filter_map(|d| serde_json::from_str(&d).ok()).collect())
+    })
+    .unwrap_or_default()
+}
+
 /// An item dropped.
 pub fn desk_drop_item(id: &str) {
     with(|c| c.execute("DELETE FROM desk_items WHERE id = ?1", params![id]).map(|_| ()));

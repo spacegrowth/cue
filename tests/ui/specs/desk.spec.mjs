@@ -3547,10 +3547,10 @@ test("a finishing item: amber and steady, its step under its title; in the next 
   await cue.open("desk");
   await openDesk(page);
   const before = await listOrder(page);
-  await patchItem(cue, "d5", { state: "finishing", finish: { step: "commit_wait", wait: "web-lead is editing ui/desk.js", at: Date.now() } });
+  await patchItem(cue, "d5", { state: "finishing", finish: { step: "line", wait: "The main checkout is in the middle of a merge", at: Date.now() } });
   const row = page.locator('.dk-items [data-desk-item="d5"]');
   await expect(row).toHaveClass(/\bdk-fin\b/);
-  await expect(row.locator(".dk-who")).toHaveText("committing · waits: web-lead is editing ui/desk.js");
+  await expect(row.locator(".dk-who")).toHaveText("in the landing line · waits: The main checkout is in the middle of a merge");
   // Steady: no blinking dot; amber, not the red of an ask.
   await expect(row.locator(".dk-si .dk-blink")).toHaveCount(0);
   const amber = await page.evaluate(() => { const e = document.createElement("i"); e.style.color = "var(--amber)"; document.body.append(e); const c = getComputedStyle(e).color; e.remove(); return c; });

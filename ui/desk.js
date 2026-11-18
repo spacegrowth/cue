@@ -117,14 +117,23 @@ const deskFinCommit = (i) => (i?.finish ? i.finish.commit || i.commit || "" : ""
 const deskUncommitted = (i) => i?.state === "to_check" && !i.finish && !i.commit && (i.files || []).length > 0;
 /** Item `i`'s DONE on its way into the app: Cue commits, builds and installs it. Nothing for you to do yet. */
 const deskFinishing = (i) => i?.state === "finishing";
-/** Where a finishing item is, in a short line: "committing · waits: web-lead is editing ui/desk.js", "building…". */
+/** Where a finishing item is, in a short line: "in the landing line · waits: …", "checking…", "building…". */
 function deskFinStep(i) {
   const f = i.finish || {};
-  if (f.step === "commit_wait") return `committing${f.wait ? ` · waits: ${f.wait}` : ""}`;
+  // In its own copy, waiting its turn to land (hub/desk_trees.rs): one item lands at a time.
+  if (f.step === "line") return `in the landing line${f.wait ? ` · waits: ${f.wait}` : ""}`;
   // Committed, and not on main yet: where it is ("on side, not main").
   if (f.step === "landing") return `not on main yet${f.wait ? ` · ${f.wait}` : ""}`;
   if (f.step === "queued") return `in the next install${state.desk?.install_at ? ` · ${clockAt(state.desk.install_at)}` : ""}`;
-  return { building: "building…", installing: "installing…", starting: "starting…" }[f.step] || "committing…";
+  return { checking: "checking…", check_failed: "check failed", building: "building…", installing: "installing…", starting: "starting…" }[f.step] || "committing…";
+}
+/** How many copies of one repository Desk items work in at once (hub/desk_trees.rs). */
+const DESK_COPIES = 3;
+/** A dropped item's copy that had work in it (`k`: { id, title, path, branch, at }), kept on disk until you Remove it.
+ *  Remove takes two clicks: it deletes the copy and its branch. */
+function deskKeptRow(k) {
+  const armed = deskDropArm === k.id;
+  return `<div class="dk-it dk-kept" data-kept="${esc(k.id)}"><div class="dk-kept-t"><b>#${esc(k.id)}</b> ${esc(k.title)}<div class="dk-kept-s">${esc(k.path)} · ${esc(k.branch)} · dropped ${ago(k.at)} ago</div></div><button class="btn small${armed ? " armed" : ""}" data-desk-act="remove_kept" data-id="${esc(k.id)}">${armed ? "Remove it and its work" : "Remove"}</button></div>`;
 }
 /** Install now on a finishing item in the next install (step "queued"): everything waiting installs at once. */
 const deskInstallNow = (i, cls) => (deskFinishing(i) && i.finish?.step === "queued" ? `<button class="${cls}" data-desk-act="install_now" data-id="${esc(i.id)}">Install now</button>` : "");
@@ -397,7 +406,7 @@ function deskItemRow(i, lit, held = false) {
   // Lit by its session (clicked on the left) and at work: "working · host-lead · 4m", how long its session has been at it.
   const s = held && i.state === "working" ? sessionOf(i.holder?.sid) : null;
   const at = s ? (s.state === "working" && s.since_ms) || deskMs(i.updated) : 0;
-  const who = i.state === "queued" && i.after ? [esc(deskHolderOf(i)), `after #${esc(i.after)}`].filter(Boolean).join(" · ") : i.waiting && i.state === "working" ? `waiting · ${esc(firstLine(i.waiting))}` : i.stopped && i.state === "working" ? `stopped · the Desk lead is on it` : s ? `working · ${esc(deskHolderOf(i))} · <span data-ago="${at}">${ago(at)}</span>` : !i.holder && i.state !== "done" ? deskGive(i, "row") : deskInstallWait(i) ? `waiting for install · ${esc(deskHolderOf(i))}` : deskFinishing(i) ? `<span class="dk-fstep">${esc(deskFinStep(i))}</span>` : esc(deskHolderOf(i));
+  const who = i.state === "queued" && i.tree_wait ? [esc(deskHolderOf(i)), "waiting for a free copy"].filter(Boolean).join(" · ") : i.state === "queued" && i.after ? [esc(deskHolderOf(i)), `after #${esc(i.after)}`].filter(Boolean).join(" · ") : i.waiting && i.state === "working" ? `waiting · ${esc(firstLine(i.waiting))}` : i.stopped && i.state === "working" ? `stopped · the Desk lead is on it` : s ? `working · ${esc(deskHolderOf(i))} · <span data-ago="${at}">${ago(at)}</span>` : !i.holder && i.state !== "done" ? deskGive(i, "row") : deskInstallWait(i) ? `waiting for install · ${esc(deskHolderOf(i))}` : deskFinishing(i) ? `<span class="dk-fstep">${esc(deskFinStep(i))}</span>` : esc(deskHolderOf(i));
   // Finishing: no age, so its step has the room.
   const when = s || deskFinishing(i) ? "" : i.state === "done" ? `${i.commit ? `<span class="dk-cm">committed ${esc(i.commit)}</span> · ` : ""}${clockAt(deskMs(i.done_at || i.updated))}` : ago(deskMs(i.created));
   const ok = deskInstallWait(i) || deskFinishing(i) || deskUncommitted(i) ? "" : i.state === "to_check" && deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id) : i.state === "to_check" ? `<button class="dk-ok" data-desk-act="looks_right" data-id="${esc(i.id)}" aria-label="Looks right"></button>`
@@ -490,6 +499,9 @@ function deskList(project, taskApprovals) {
   if (!pg) queueMicrotask(() => deskDoneFetch(project));
   const done = deskDoneList(g.d), shown = done.slice(0, deskDoneShown.get(project) || DESK_DONE_STEP);
   const more = done.length > shown.length || !pg?.end;
+  // Dropped items' copies kept with their work, till you remove them (hub/desk_trees.rs).
+  const kept = g.d?.kept || [];
+  if (kept.length) parts.push(`<div class="dk-gh">Kept copies <span class="n">${kept.length}</span></div>${kept.map(deskKeptRow).join("")}`);
   if (shown.length) parts.push(`<div class="dk-gh">Done</div>${shown.map(row).join("")}`);
   if (more && (shown.length || pg?.loading || !pg)) parts.push(`<div class="dk-more" data-desk-done-more="${esc(project)}">${shown.length ? "Loading older…" : ""}</div>`);
   const body = parts.join("") + (parts.length > 1 ? "" : `<div class="dk-empty">No items yet.</div>`);
@@ -1011,8 +1023,7 @@ const deskCircleOf = (i) => (deskProjOf(i)?.circles || []).find((c) => c.items.i
 const deskSince = (ms) => (ms ? `Since ${clockAt(ms)} · ${ago(ms)}` : "");
 const DESK_NTH = ["no", "one", "two", "three", "four", "five"];
 /** What item `i` waits on, in a box, with the buttons that clear it (#250, the "How work lands" waits): a circle and
- *  its links to cut; another session's file its commit waits on (Ask them to commit, Land without that file); or what
- *  stopped its landing (Send back to fix, Show the output; Run the landing again only
+ *  its links to cut; or what stopped its landing, a failed check among them (Send back to fix, Show the output; Run the landing again only
  *  when Cue can name nothing in its way). "" when it waits on nothing. */
 function deskWaitsOn(i) {
   const btn = (act, label, look = "", extra = "") => `<button class="btn small ${look}" data-desk-act="${act}" data-id="${esc(i.id)}"${extra}>${esc(label)}</button>`;
@@ -1025,23 +1036,12 @@ function deskWaitsOn(i) {
     const found = c.at ? `Found at ${clockAt(c.at)} · ${c.told ? "the lead was told at once" : "no lead to tell: cut a link here"}` : "";
     return box(`Itself, through ${DESK_NTH[others] || others} other${others === 1 ? "" : "s"}. None can move until one link is cut.`, found, `<div class="dk-wo-loop">${esc(c.words)}</div>${links}`, "Circle");
   }
-  const files = (deskProjOf(i)?.waits || []).filter((w) => w.item === i.id && w.kind === "commit");
-  if (files.length) {
-    const asked = i.finish?.asked || [];
-    return files.map((w) => {
-      const who = w.by ? `<b>${esc(w.by)}</b>` : "Someone else";
-      const what = w.how === "editing" ? `${who} is editing <span class="dk-wo-f">${esc(w.name)}</span>` : `${who} also changed <span class="dk-wo-f">${esc(w.name)}</span>`;
-      const on = w.on ? ` · that's ${ref(w.on)}` : "";
-      const ask = !w.sid ? "" : asked.includes(w.sid) ? `<span class="dk-wo-done">Asked them to commit</span>` : btn("ask_commit", "Ask them to commit", "primary", ` data-path="${esc(w.path)}"`);
-      return box(`${what}${on}`, deskSince(w.since), `<div class="dk-acts">${ask}${btn("land_without", "Land without that file", "", ` data-path="${esc(w.path)}"`)}</div>`);
-    }).join("");
-  }
   // Queued after another item: "What's holding it up" on its page says so, with Start it now / Put it before here.
   const f = i.finish;
   if (!f?.question) return "";
   const q = esc(f.question);
   // A check (the build, the new Cue starting) that failed: its holder fixes it; the output is its log.
-  if (f.step === "failed" || f.step === "rolled_back") {
+  if (f.step === "failed" || f.step === "rolled_back" || f.step === "check_failed") {
     const show = f.log ? btn("log_all", deskFinLogOpen.has(i.id) ? "Hide the output" : "Show the output") : "";
     return box(q, deskSince(f.at), `<div class="dk-acts">${btn("fix_back", "Send back to fix", "primary")}${show}</div>`);
   }
@@ -1294,7 +1294,10 @@ function deskItemPane(i, d, foot = "") {
 function deskItemMeta(i, d) {
   const who = i.holder ? `<b>${esc(i.holder.name)}</b>${i.crew ? ` → <b>${esc(i.crew)}</b>` : ""}` : "";
   const cm = i.state === "done" ? i.commit : i.state === "to_check" ? deskFinCommit(i) : "";
-  return [who ? `${i.state === "queued" ? "next for" : i.state === "done" ? "by" : "with"} ${who}` : "", cm ? `committed <span class="dk-cm">${esc(cm)}</span>` : "",
+  // Landed with no check to run (its repository has none).
+  const unchecked = cm && i.finish?.unchecked ? " · landed, not checked" : "";
+  return [who ? `${i.state === "queued" ? "next for" : i.state === "done" ? "by" : "with"} ${who}` : "", cm ? `committed <span class="dk-cm">${esc(cm)}</span>${unchecked}` : "",
+    i.tree && i.state !== "done" ? `in its own copy <span class="dk-cm">${esc(i.tree.branch)}</span>` : "",
     `added by ${esc(deskFrom(i, d))}`, `${ago(deskMs(i.created))} ago`].filter(Boolean).join(" · ");
 }
 /** An item's NOW (#200): its state's dot and word, and one plain sentence: what it waits on you for (#182; a pick on
@@ -1311,6 +1314,7 @@ function deskItemNow(i) {
     : i.state === "needs_resume" ? ["stop", "Needs resume", (i.restart ? `${esc(firstLine(i.restart))}. ` : "") + (deskCanRestart(i) ? "Restart sends the item to its holder again." : "Its session is closed.")]
     : i.state === "working" ? ["work", "Working", `${who} is on it.${i.now_on && i.latest ? ` ${esc(firstLine(i.latest))}` : ""}${deskCrewNow(i) ? `<span class="dk-crewnow">Crew: ${esc(deskCrewNow(i))}</span>` : ""}`]
     : deskFinishing(i) ? ["work", "Finishing", `<span class="dk-fstep">${esc(deskFinStep(i))}</span>`]
+    : i.state === "queued" && i.tree_wait ? ["stop", "Next", `Starts when one of its repository's ${DESK_COPIES} copies is free.`]
     : i.state === "queued" ? ["stop", "Next", first ? `Starts when ${esc(deskShort(first.title))} is done.` : i.holder ? `Next for ${who}.` : "Next up, not given to a session yet."]
     : i.state === "new" ? ["stop", "Not given out", "Not given to a session yet."]
     : i.state === "done" ? ["done", "Done", ""] : ["stop", i.state, ""];
@@ -1554,7 +1558,7 @@ function deskView() {
   if (deskPick && deskPick !== deskSelection()) deskPick = null;
   const given = deskGiveFor && deskItem(deskSelection(), deskGiveFor.id);
   if (deskGiveFor && (!given || given.holder)) deskGiveFor = null;
-  if (deskDropArm && !deskItem(deskSelection(), deskDropArm)) deskDropArm = null;
+  if (deskDropArm && !deskItem(deskSelection(), deskDropArm) && !(deskProjOf({ project: deskSelection() })?.kept || []).some((k) => k.id === deskDropArm)) deskDropArm = null;
   deskBoxes.clear();   // the boxes drawn now note theirs again
   if (!deskSelection()) return deskAll();
   deskLastSet(deskSelection());
@@ -1730,8 +1734,8 @@ async function deskAct(id, act, el = null) {
   if (act === "looks_undo") return deskLooksUndo(id);
   if (act === "reopen") return deskReopen(id);
   if (act === "log_all") { if (!deskFinLogOpen.delete(id)) deskFinLogOpen.add(id); return renderMain(); }
-  // Drop takes two clicks: the first arms it.
-  if (act === "drop" && deskDropArm !== id) { deskDropArm = id; return renderMain(); }
+  // Drop, and Remove on a kept copy, take two clicks: the first arms it.
+  if ((act === "drop" || act === "remove_kept") && deskDropArm !== id) { deskDropArm = id; return renderMain(); }
   deskDropArm = null;
   // Send back opens the item's own box for why (deskBackHtml); its Send sends that, to the item's holder only.
   if (act === "send_back") { deskBackFor = deskBackFor === id ? null : id; renderMain(); return deskBackFocus(id); }
@@ -1887,7 +1891,7 @@ const DESK_SEL = Object.keys(DESK_CLICKS).map((k) => `[${deskAttr(k)}]`).join(",
 /** Element `el` (one with a Desk attribute, or null) clicked or pressed: an armed Drop disarms on anything else (as
  *  Remove does in the projects list); then `el` does its thing. True when it was the Desk's. */
 function deskTake(el) {
-  if (deskDropArm && !(el?.dataset.deskAct === "drop" && el.dataset.id === deskDropArm)) { deskDropArm = null; if (!el) renderMain(); }
+  if (deskDropArm && !((el?.dataset.deskAct === "drop" || el?.dataset.deskAct === "remove_kept") && el.dataset.id === deskDropArm)) { deskDropArm = null; if (!el) renderMain(); }
   if (!el || !el.closest(".dk-board")) return false;
   DESK_CLICKS[Object.keys(DESK_CLICKS).find((k) => k in el.dataset)](el);
   return true;
