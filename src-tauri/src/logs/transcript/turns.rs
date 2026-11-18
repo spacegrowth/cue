@@ -22,6 +22,27 @@ pub fn interrupted_at(path: &str) -> Option<u64> {
     at
 }
 
+/// Whether its log ends mid-turn: its last entry of the conversation (not a helper's) is a tool call of the agent's
+/// or something it hasn't answered yet (a tool's result, a message), and not an interrupt. A turn that ended has the
+/// agent's words last. For a session picked up again after Cue restarted (#291): a host that couldn't replay what it
+/// read meanwhile mustn't make one at work look stopped.
+pub fn mid_turn(path: &str) -> bool {
+    let Some(len) = std::fs::metadata(path).ok().map(|m| m.len()) else { return false };
+    let Some(text) = read_from(path, len.saturating_sub(64 * 1024)) else { return false };
+    let mut last = None;
+    for e in lines(&text) {
+        if matches!(e.get("type").and_then(Value::as_str), Some("user" | "assistant")) && e.get("isSidechain").and_then(Value::as_bool) != Some(true) {
+            last = Some(e);
+        }
+    }
+    let Some(e) = last else { return false };
+    let blocks = content_blocks(&e);
+    match e.get("type").and_then(Value::as_str) {
+        Some("assistant") => blocks.iter().any(|b| b.get("type").and_then(Value::as_str) == Some("tool_use")),
+        _ => !blocks.iter().any(|b| b.get("text").and_then(Value::as_str).is_some_and(|t| t.starts_with("[Request interrupted by user"))),
+    }
+}
+
 /// Whether a compaction started at `since_ms` has finished: Claude Code writes the command, then (when the
 /// summary is done, or it couldn't compact) a `<local-command-stdout>` / `-stderr` entry after it. One it
 /// started itself (context full) has no command: its `compact_boundary` marks the end.

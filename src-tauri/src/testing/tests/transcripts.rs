@@ -194,3 +194,25 @@ fn a_stalled_transcript_doesnt_hold_up_the_tick_finding_a_stuck_session() {
         assert!(stuck > 0, "b found stuck");
     });
 }
+
+/// Mid-turn by its transcript (#291): its last word a tool call, or your message it hasn't answered; not once it
+/// answered, or you stopped it.
+#[test]
+fn mid_turn_reads_whether_a_transcript_ends_inside_a_turn() {
+    let dir = std::env::temp_dir().join(format!("cue-mid-turn-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let case = |name: &str, lines: &[serde_json::Value]| {
+        let p = dir.join(format!("{name}.jsonl"));
+        std::fs::write(&p, lines.iter().map(|l| format!("{l}\n")).collect::<String>()).unwrap();
+        crate::transcript::mid_turn(&p.to_string_lossy())
+    };
+    let you = |t: &str| serde_json::json!({"type": "user", "message": {"role": "user", "content": t}});
+    let says = |t: &str| serde_json::json!({"type": "assistant", "message": {"content": [{"type": "text", "text": t}]}});
+    let runs = serde_json::json!({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "t1", "name": "Bash", "input": {}}]}});
+    assert!(case("tool", &[you("go"), runs.clone()]));
+    assert!(case("asked", &[you("go"), says("ok"), you("more")]));
+    assert!(!case("answered", &[you("go"), runs, says("done")]));
+    assert!(!case("stopped", &[you("go"), you("[Request interrupted by user]")]));
+    assert!(!case("none", &[]));
+    assert!(!crate::transcript::mid_turn(&dir.join("missing.jsonl").to_string_lossy()));
+}

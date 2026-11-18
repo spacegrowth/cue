@@ -186,7 +186,7 @@ impl Hosts {
         r.pid.store(info.pid.unwrap_or(0), Ordering::SeqCst);
         self.listen(&r, link);
         crate::locking::lock(&self.remotes, "hosts: sessions").insert(sid.clone(), r.clone());
-        let started = info.running.then(|| Started { pid: info.pid.unwrap_or(0), session_id: r.driver.session_id(), transcript: r.driver.transcript(), in_turn: r.driver.in_turn() });
+        let started = info.running.then(|| Started { pid: info.pid.unwrap_or(0), session_id: r.driver.session_id(), transcript: r.driver.transcript(), in_turn: r.driver.in_turn() || mid_turn_here(spec, &r) });
         let go = Box::new(move || {
             r.driver.ask_again(waiting);
             if let Err(e) = r.attach() {
@@ -234,6 +234,13 @@ impl Hosts {
             }
         });
     }
+}
+
+/// Mid-turn by its own log, for a session on this Mac: what the host replayed may be short of where it is (a host out
+/// of open files reads nothing back, #291), and one at work must not come back looking stopped. A machine's log is
+/// never read from here.
+fn mid_turn_here(spec: &Spec, r: &Remote) -> bool {
+    spec.machine.is_empty() && r.driver.transcript().is_some_and(|t| crate::transcript::mid_turn(&t))
 }
 
 /// The sessions on `link`.

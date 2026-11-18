@@ -34,6 +34,9 @@ pub(super) struct Effects {
     pub(super) checked: Vec<String>,
     /// Items whose stop just went to the Desk lead: shown again once the lead's time to settle it is up (desk_stall.rs).
     pub(super) stopped: Vec<String>,
+    /// Your Restarts (#291): (item, the session it goes to, its name), sent like `sends`, and how each went noted
+    /// on the item and its step.
+    pub(super) restarts: Vec<(String, String, String)>,
 }
 
 
@@ -226,12 +229,22 @@ pub(super) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
                 s.state != "stopped" && s.thread.last().is_some_and(|e| e.role == "you" && e.pending)
             }))
         };
-        if !active {
+        if !active && !wrote_just_now(st, &h) {
             out.state = "needs_resume".into();
+            if !it.restart.is_empty() {
+                out.latest = it.restart.clone();
+            }
         }
     }
     out.holder = Some(h);
     out
+}
+
+/// Holder `h`, a session on this Mac, wrote to its conversation within the last minute: at work, whatever its state
+/// says (#291).
+fn wrote_just_now(st: &Store, h: &Holder) -> bool {
+    st.sessions.get(&h.sid).filter(|s| s.origin.machine.is_empty() && !s.origin.transcript_path.is_empty())
+        .and_then(|s| super::activity::written_ms(&s.origin.transcript_path)).is_some_and(|at| super::activity::wrote_lately(at, now_ms()))
 }
 
 /// Lead `s`'s teammate named `name` (any case): the latest started, when it named more than one so.
@@ -1026,7 +1039,11 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
             }
             it.after = None;
             it.state = "working".into();
-            fx.sends.push((h.to().to_string(), crate::desk::handed_words(it, "", &rule)));
+            it.restart = format!("Restart: sending it to {}", h.name);
+            let (words, project) = (crate::desk::handed_words(it, "", &rule), it.project.clone());
+            you_wrote(st, &project, id, "Restart", &format!("to {}", h.name), now, &mut fx);
+            fx.restarts.push((id.to_string(), h.to().to_string(), h.name.clone()));
+            fx.sends.push((h.to().to_string(), words));
         }
         // What you wrote on its page, to its lead or its holder (sent by the window): one of its Steps, with whom it
         // went to. Nothing else about it changes (nor `updated`: it isn't news to you).
@@ -1491,10 +1508,16 @@ impl Hub {
         }
         self.changed();
         for (sid, text) in fx.sends {
+            // A Restart's send says how it went, on its item (#291).
+            let restart = fx.restarts.iter().find(|(_, to, _)| *to == sid).map(|(id, _, name)| (id.clone(), name.clone()));
             // Off this thread: typing into a terminal session waits for it to take the message.
             self.later(0, move |h| {
-                if let Err(e) = h.send_to_session(&sid, &text, &[], false) {
+                let sent = h.send_to_session(&sid, &text, &[], false);
+                if let Err(e) = &sent {
                     eprintln!("cue: desk: couldn't send {sid} its item: {e}");
+                }
+                if let Some((id, name)) = restart {
+                    h.desk_restart_went(&id, &name, sent);
                 }
             });
         }
@@ -1518,6 +1541,32 @@ impl Hub {
             }
         }
         self.desk_later(fx.starts, fx.checked);
+    }
+
+    /// How your Restart of item `id` went, sent to its holder `name`: on the item (shown while it needs resume) and
+    /// on its Restart step, saved.
+    fn desk_restart_went(&self, id: &str, name: &str, sent: Result<String, String>) {
+        let note = match &sent {
+            Ok(_) => format!("Restart went to {name}"),
+            Err(e) => format!("Restart couldn't reach {name}: {e}"),
+        };
+        let saved = self.write(|st| {
+            let it = st.desk.item_mut(id)?;
+            it.restart = note.clone();
+            let it = it.clone();
+            let step = st.desk.decisions.iter_mut().rev().find(|d| d.item_id.as_deref() == Some(id) && d.by == "You" && d.text == "Restart").map(|d| {
+                d.why = if sent.is_ok() { format!("to {name}") } else { format!("to {name}, couldn't reach it: {}", sent.as_ref().err().map_or("", |e| e.as_str())) };
+                d.clone()
+            });
+            Some((it, step))
+        });
+        if let Some((it, step)) = saved {
+            crate::db::desk_put_item(&it);
+            if let Some(d) = step {
+                crate::db::desk_put_decision(&d);
+            }
+        }
+        self.changed();
     }
 
     /// `project`'s done items older than `before` (updated ms, id), newest first, `take` of them, as the Desk shows

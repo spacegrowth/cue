@@ -127,6 +127,8 @@ impl World {
         let fakes = Fakes { terminal: self.terminal.clone(), launcher: self.launcher.clone(), hosted: self.hosted.clone(), notes: self.notes.clone(), window: self.window.clone() };
         self.client.hub = Arc::new(Hub::with_ports(None, fakes.ports(&later)));
         self.later = later;
+        // As at launch: what cue-host kept running is picked up again.
+        self.client.hub.reattach_hosted();
         self.agents_take_what_is_typed();
     }
 

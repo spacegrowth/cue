@@ -353,7 +353,7 @@ impl Hub {
 
     /// It's doing something: at work, if nothing of yours started that (a background task that finished
     /// can start a turn of its own). Not while it waits on you: an ask's answer puts it back to work.
-    fn hosted_at_work(&self, origin: Origin) {
+    pub(super) fn hosted_at_work(&self, origin: Origin) {
         let idle = self.read(|st| matches!(st.sessions.state(&origin.session_id).as_deref(), Some("waiting" | "stopped")));
         if idle {
             self.event(origin, "active", String::new(), vec![], "");

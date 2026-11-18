@@ -187,8 +187,20 @@ impl Hosted for FakeHosted {
         crate::locking::lock(&self.running, "fake hosted running").iter().filter(|s| !host.contains(*s)).cloned().collect()
     }
 
+    /// Those cue-host runs (`under_host`) go on.
     fn close_all(&self) {
-        let all: Vec<String> = crate::locking::lock(&self.running, "fake hosted running").drain().collect();
+        let host = crate::locking::lock(&self.in_host, "fake hosted under the host").clone();
+        let mut running = crate::locking::lock(&self.running, "fake hosted running");
+        let all: Vec<String> = running.iter().filter(|s| !host.contains(*s)).cloned().collect();
+        running.retain(|s| host.contains(s));
+        drop(running);
         crate::locking::lock(&self.closed, "fake hosted closes").extend(all);
+    }
+
+    /// A session cue-host kept running, picked up again at its prompt.
+    fn reattach(&self, spec: &Spec, _report: Report) -> Option<crate::hosted::Reattached> {
+        let sid = spec.start.session_id().to_string();
+        let kept = crate::locking::lock(&self.in_host, "fake hosted under the host").contains(&sid) && self.running(&sid);
+        kept.then(|| crate::hosted::Reattached { started: Some(Started { pid: FIRST_PID - 1, session_id: sid, transcript: None, in_turn: false }), go: Box::new(|| {}) })
     }
 }

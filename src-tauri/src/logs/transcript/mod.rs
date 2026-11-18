@@ -24,7 +24,7 @@ pub use senders::{about, harness_text, is_stop_hook, opens_a_turn, peer_text, pl
 pub use tools::{command_count, find_tool_use_id, has_result, waiting_tool_use};
 #[cfg(test)]
 pub use turns::compact_finished;
-pub use turns::{compact_outcome, interrupted_at, turn_ended_parts};
+pub use turns::{compact_outcome, interrupted_at, mid_turn, turn_ended_parts};
 
 use serde_json::Value;
 use std::fs::File;

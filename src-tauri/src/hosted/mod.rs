@@ -64,7 +64,7 @@ pub(crate) fn fixture_events(lines: &str) -> Vec<Vec<HostedEvent>> {
 
 pub use launch::{Agent, Program, Spec, Start};
 pub use hosts::Hosts;
-pub use running::{end_leftovers, Hosted, Report, Running, Started};
+pub use running::{end_leftovers, Hosted, Reattached, Report, Running, Started};
 pub use tails::{tail_running, tail_start, tail_stop};
 pub use session::Session;
 

@@ -557,6 +557,8 @@ fn a_queued_item_starts_when_the_one_before_it_is_done() {
     // An idle assignment with no finished reply (for example, a crash) needs to resume.
     let resumed = w.hub().desk_add(&project, "task", "Sidebar", "", Some(&h)).unwrap();
     w.settle();
+    // Idle a while (one that wrote in the last minute is at work, #291), then cut off.
+    w.advance(61_000);
     w.hub().mark_state(&w.hub().session_origin(&h).unwrap(), "stopped");
     let view = desk(&w, &project);
     assert_eq!(item(&view, "Sidebar")["state"], "needs_resume");
@@ -1636,4 +1638,69 @@ fn a_stop_the_lead_cant_settle_waits_on_you_and_its_ask_shows_on_the_item() {
     let it = item(&desk(&w, &project), "Header").clone();
     assert_eq!(it["state"], "needs_you", "{it}");
     assert!(it["latest"].as_str().unwrap().contains("couldn't settle it"), "{it}");
+}
+
+/// Restart on an item whose holder can't be reached (its host refuses to start it) says why on the item and in its
+/// Steps; once the holder can start, Restart sends it and says it went (#291).
+#[test]
+fn restart_says_whether_it_reached_the_holder() {
+    let mut w = World::new();
+    let (h, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    ends(&w, &l, "ITEM: Header\nROUTE: #new -> cue-teams | why: it knows");
+    let id = item(&desk(&w, &project), "Header")["id"].as_str().unwrap().to_string();
+    w.hosted_says(&h, HostedEvent::Taken { text: "Header".into() });
+    w.settle();
+    // Cue restarted mid-turn: the holder comes back paused, and its host can't start it.
+    w.relaunch();
+    // Its conversation last written over a minute ago.
+    w.advance(61_000);
+    assert_eq!(item(&desk(&w, &project), "Header")["state"], "needs_resume");
+    w.hosted.refuse("Too many open files (os error 24)");
+    let sent = || sent_to(&w, &h).iter().filter(|t| t.contains(&format!("Say DONE: #{id}"))).count();
+    let before = sent();
+    w.hub().desk_item_act(&id, "start_now", "").unwrap();
+    w.settle();
+    let now = desk(&w, &project);
+    let it = item(&now, "Header");
+    assert_eq!(sent(), before, "{now}");
+    assert!(it["restart"].as_str().is_some_and(|r| r.starts_with("Restart couldn't reach cue-teams") && r.contains("Too many open files")), "{now}");
+    let step = now["decisions"].as_array().unwrap().iter().find(|d| d["text"] == "Restart" && d["item_id"] == id.as_str()).cloned().unwrap_or_default();
+    assert!(step["why"].as_str().is_some_and(|w| w.contains("couldn't reach it") && w.contains("Too many open files")), "{now}");
+    // It can start again: Restart sends it, and says so.
+    w.hosted.accept();
+    w.hub().desk_item_act(&id, "start_now", "").unwrap();
+    w.settle();
+    assert_eq!(sent(), before + 1);
+    w.hosted_says(&h, HostedEvent::Taken { text: "Header".into() });
+    w.settle();
+    let now = desk(&w, &project);
+    assert_eq!(item(&now, "Header")["restart"], "Restart went to cue-teams", "{now}");
+    assert_eq!(item(&now, "Header")["state"], "working", "{now}");
+}
+
+/// A holder whose conversation was written in the last minute is at work, even when a restart showed it stopped: its
+/// item doesn't need resuming, and the session shows as working (#291).
+#[test]
+fn a_holder_that_wrote_just_now_is_never_shown_stopped() {
+    let mut w = World::new();
+    let (h, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    ends(&w, &l, "ITEM: Header\nROUTE: #new -> cue-teams | why: it knows");
+    w.hosted_says(&h, HostedEvent::Taken { text: "Header".into() });
+    w.settle();
+    // cue-host keeps it running through Cue's restart, but can't say it's mid-turn.
+    w.hosted.under_host(&h);
+    w.relaunch();
+    // Its conversation last written over a minute ago.
+    w.advance(61_000);
+    assert_eq!(item(&desk(&w, &project), "Header")["state"], "needs_resume");
+    assert_eq!(w.snapshot().session(&h)["state"], "stopped");
+    // Its host kept it running: its conversation is written to now.
+    let path = w.snapshot().session(&h)["transcript_path"].as_str().unwrap().to_string();
+    let f = std::fs::OpenOptions::new().append(true).create(true).open(&path).unwrap();
+    f.set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_millis(crate::clock::now_ms())).unwrap();
+    w.tick(false);
+    assert_eq!(w.snapshot().session(&h)["state"], "working");
+    assert_eq!(item(&desk(&w, &project), "Header")["state"], "working");
 }

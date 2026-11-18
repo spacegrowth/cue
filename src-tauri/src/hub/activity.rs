@@ -49,6 +49,7 @@ impl Hub {
         let now = now_ms();
         self.catch_interrupted(now);
         self.catch_stuck(now);
+        self.catch_cut_but_writing(now);
         self.watch_helpers();
         self.note_task_failures();
         self.watch_compacting(now);
@@ -106,6 +107,19 @@ impl Hub {
                 }
             });
             self.changed();
+        }
+    }
+
+    /// A hosted session on this Mac that a restart showed as stopped, still running under its host (picked up again),
+    /// whose conversation was written in the last minute: it is at work, so it shows so (#291).
+    fn catch_cut_but_writing(&self, now: u64) {
+        let cut: Vec<crate::model::Origin> = self.read(|st| {
+            st.sessions.all().into_iter().filter(|s| s.cut_by_restart && s.state == "stopped" && s.origin.agent_pid.is_some() && s.origin.machine.is_empty() && !s.origin.transcript_path.is_empty()).map(|s| s.origin).collect()
+        });
+        for o in cut {
+            if written_ms(&o.transcript_path).is_some_and(|at| wrote_lately(at, now)) {
+                self.hosted_at_work(o);
+            }
         }
     }
 
@@ -315,6 +329,11 @@ impl Hub {
             self.changed();
         }
     }
+}
+
+/// Written at `at` within the last minute before `now`: a session that did isn't stopped (#291).
+pub(super) fn wrote_lately(at: u64, now: u64) -> bool {
+    now.saturating_sub(at) < 60_000
 }
 
 /// When the file at `path` was last written (ms since 1970), if it's there.
