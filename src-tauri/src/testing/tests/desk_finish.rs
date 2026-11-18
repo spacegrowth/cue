@@ -62,6 +62,11 @@ impl Fake {
         }
     }
 
+    /// An install of `commit` begun outside the Desk (a session ran the helper itself), called `tag`, building.
+    fn begun_elsewhere(&self, tag: &str, commit: &str) {
+        *crate::locking::lock(&self.status, "fake installer status") = Some(InstallStatus { tag: tag.into(), commit: commit.into(), step: "building".into(), ..Default::default() });
+    }
+
     /// The running Cue has `commit` now.
     fn runs(&self, commit: &str) {
         crate::locking::lock(&self.has, "fake installer has").push(commit.into());
@@ -167,6 +172,48 @@ fn install_now_skips_the_half_hour_wait() {
     w.hub().desk_item_act(&id, "install_now", "").unwrap();
     w.settle();
     assert_eq!(fake.started().len(), 1);
+}
+
+/// An item waiting while an install runs that already has its commit (one a session began itself) goes with that
+/// install: no second one is started.
+#[test]
+fn a_waiting_item_goes_with_a_running_install_that_has_its_commit() {
+    let mut w = World::new();
+    let (fake, dir, project, _) = done_in_cue(&w);
+    let head = git(&dir, &["rev-parse", "HEAD"]).trim().to_string();
+    fake.begun_elsewhere("desk-283", &head);
+    tick(&w);
+    let shown = item(&w, &project, "Header jumps");
+    assert_eq!((shown["finish"]["step"].as_str(), shown["finish"]["tag"].as_str()), (Some("building"), Some("desk-283")), "{shown}");
+    assert!(fake.started().is_empty(), "no second install");
+    fake.goes("installed", "");
+    tick(&w);
+    assert_eq!(step(&w, &project), "starting");
+    w.relaunch();
+    fake.runs(&head);
+    w.hub().desk_set_installer(fake.clone());
+    tick(&w);
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "to_check");
+    assert!(fake.started().is_empty(), "it went in the other install");
+}
+
+/// Install now while an install runs that doesn't have its commit: one at a time, its own starts the moment that
+/// one ends.
+#[test]
+fn install_now_while_an_install_without_its_commit_runs_starts_the_moment_that_one_ends() {
+    let w = World::new();
+    let (fake, dir, project, id) = done_in_cue(&w);
+    let head = git(&dir, &["rev-parse", "HEAD"]).trim().to_string();
+    fake.begun_elsewhere("desk-older", "0123456789abcdef");
+    w.hub().desk_item_act(&id, "install_now", "").unwrap();
+    w.settle();
+    assert_eq!(step(&w, &project), "queued", "that install doesn't have it");
+    assert!(fake.started().is_empty(), "one at a time");
+    fake.goes("installed", "");
+    tick(&w);
+    let started = fake.started();
+    assert_eq!((started.len(), started.first().map(|s| s.1.as_str())), (1, Some(head.as_str())), "started the moment the other ended");
+    assert_eq!(step(&w, &project), "building");
 }
 
 #[test]

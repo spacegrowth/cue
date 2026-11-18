@@ -35,8 +35,11 @@
 #   CUE_INSTALL_QUIT         quits the running Cue; $CUE_INSTALL_PIDS are the PIDs running the installed app's
 #                            program (osascript asks the app to quit; then only those PIDs are stopped)
 #   CUE_INSTALL_LAUNCH       starts $CUE_INSTALL_APP               (open, with a clean environment)
-#   CUE_INSTALL_SIGN         signs $CUE_INSTALL_APP; ":" for none  (your Developer ID, when this Mac has one)
-#   CUE_INSTALL_WAIT         seconds to wait for hosted sessions' turns before quitting (600; 0 for none)
+#   CUE_INSTALL_SIGN         signs $CUE_INSTALL_APP, the built app, before Cue is quit; ":" for none
+#                            (your Developer ID, when this Mac has one)
+#
+# It never waits for sessions' turns: Cue starts it when it's time (the Desk waits on sessions that end with Cue, unless
+# you say Install now), and the sessions cue-host runs carry on while Cue quits.
 #   CUE_INSTALL_START_WAIT   seconds the new Cue has to say it's running (90)
 set -uo pipefail
 
@@ -188,33 +191,6 @@ fi
 # ---- installing ------------------------------------------------------------------------------------------------
 status installing
 
-# The hosted sessions mid-turn (asked over Cue's socket), as install.sh waits for them: quitting Cue ends them.
-# Not when cue-host runs them: they carry on while Cue quits.
-hosted_turns() {
-  /usr/bin/python3 -I - "$CUE_HOME/cue.sock" <<'PY' 2>/dev/null || true
-import json, socket, sys
-s = socket.socket(socket.AF_UNIX); s.settimeout(3); s.connect(sys.argv[1]); s.sendall(b'{"type":"list"}\n')
-buf = b""
-while b"\n" not in buf:
-    chunk = s.recv(65536)
-    if not chunk: break
-    buf += chunk
-for x in json.loads(buf.split(b"\n")[0]).get("sessions", []):
-    if x.get("hosted") and x.get("agent_pid") and x.get("state") == "working":
-        print(x["session_id"])
-PY
-}
-wait_for_hosted_turns() {
-  local limit="${CUE_INSTALL_WAIT:-600}" waited=0
-  for s in "$CUE_HOME"/host/b-*/host.sock; do [ -S "$s" ] && return 0; done
-  while [ "$waited" -lt "$limit" ]; do
-    [ -z "$(hosted_turns)" ] && return 0
-    [ "$waited" -eq 0 ] && say "waiting for hosted sessions' turns to end"
-    sleep 3; waited=$((waited + 3))
-  done
-  say "still mid-turn after ${limit}s: installing anyway"
-}
-
 # The installed app's program, as a process shows it (doubled slashes made one).
 EXE="$(printf '%s' "$APP/Contents/MacOS/cue" | tr -s /)"
 
@@ -284,22 +260,25 @@ launch() {
   fi
 }
 
+# The built app signed where it was built, before Cue is quit: signing it once it's in $APP_DIR is refused there to
+# anything without App Management ("Operation not permitted" on a helper inside it), and half signed it won't start.
+# A signature that fails leaves the running Cue alone.
 sign() {
-  export CUE_INSTALL_APP="$APP"
+  export CUE_INSTALL_APP="$BUILT_APP"
   if [ -n "${CUE_INSTALL_SIGN:-}" ]; then
-    eval "$CUE_INSTALL_SIGN" >> "$LOG" 2>&1 || true
+    (eval "$CUE_INSTALL_SIGN") >> "$LOG" 2>&1
     return
   fi
   local id
   id="$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p' | head -1)"
   [ -n "$id" ] || return 0
-  codesign --force --deep --options runtime --entitlements "$TREE/src-tauri/entitlements.plist" --sign "$id" "$APP" >> "$LOG" 2>&1 || say "not signed: codesign failed"
+  codesign --force --deep --options runtime --entitlements "$TREE/src-tauri/entitlements.plist" --sign "$id" "$BUILT_APP" >> "$LOG" 2>&1
 }
 
 # Cue was quit and the installed app is as it was: start it again, then fail. Never left with no Cue running.
 fail_relaunched() { launch; fail "$1"; }
 
-wait_for_hosted_turns
+sign || fail "couldn't sign $BUILT_APP (above: why). The running Cue is left alone."
 quit_cue || fail_relaunched "Cue didn't quit: the installed app is left as it was"
 
 mkdir -p "$APP_DIR" || fail_relaunched "couldn't make $APP_DIR"
@@ -321,7 +300,6 @@ if ! cp -R "$BUILT_APP" "$APP"; then
   fi
   fail_relaunched "couldn't copy the new app into $APP_DIR"
 fi
-sign
 
 # ---- starting --------------------------------------------------------------------------------------------------
 status starting

@@ -581,37 +581,43 @@ impl Hub {
             if !installing(&f.step) {
                 continue;
             }
-            match status.as_ref().filter(|s| s.tag == f.tag) {
-                Some(s) if s.step == "failed" && s.log.contains("refused: the window") => self.finish_failed(it, WINDOW_BROKEN, "failed", &s.log),
-                Some(s) if s.step == "failed" => self.finish_failed(it, BUILD_FAILED, "failed", &s.log),
-                Some(s) if s.step == "rolled_back" => self.finish_failed(it, ROLLED_BACK, "rolled_back", &s.log),
-                // Installed, and this Cue doesn't have it yet: the new one is starting.
-                Some(s) => {
-                    let to = if s.step == "installed" { "starting" } else { s.step.as_str() };
-                    if f.step != to {
-                        let to = to.to_string();
-                        self.finish_set(&it.id, |i| {
-                            if let Some(f) = i.finish.as_mut() {
-                                (f.step, f.at) = (to, now);
-                            }
-                        });
-                    }
-                }
-                // The installer has no word of its install (it was lost, or another began since): queued again.
-                None if !running => {
-                    self.finish_set(&it.id, |i| {
-                        if let Some(f) = i.finish.as_mut() {
-                            (f.step, f.tag) = ("queued".into(), String::new());
-                        }
-                    });
-                }
-                None => {}
-            }
+            self.finish_follow(it, f, status.as_ref(), running, now);
         }
         // Still building one of ours (or anything): the next waits for it.
         running = running || self.read(|st| st.desk.items.iter().any(|i| i.state == "finishing" && i.finish.as_ref().is_some_and(|f| installing(&f.step))));
         if !running {
             self.finish_install_due(now);
+        }
+    }
+
+    /// Item `it`, in an install (`f`): its step as the installer says it (`status`), stopping on a question when it
+    /// failed; queued again when the installer has no word of it and nothing is `running`.
+    fn finish_follow(&self, it: &DeskItem, f: &Finish, status: Option<&InstallStatus>, running: bool, now: u64) {
+        match status.filter(|s| s.tag == f.tag) {
+            Some(s) if s.step == "failed" && s.log.contains("refused: the window") => self.finish_failed(it, WINDOW_BROKEN, "failed", &s.log),
+            Some(s) if s.step == "failed" => self.finish_failed(it, BUILD_FAILED, "failed", &s.log),
+            Some(s) if s.step == "rolled_back" => self.finish_failed(it, ROLLED_BACK, "rolled_back", &s.log),
+            // Installed, and this Cue doesn't have it yet: the new one is starting.
+            Some(s) => {
+                let to = if s.step == "installed" { "starting" } else { s.step.as_str() };
+                if f.step != to {
+                    let to = to.to_string();
+                    self.finish_set(&it.id, |i| {
+                        if let Some(f) = i.finish.as_mut() {
+                            (f.step, f.at) = (to, now);
+                        }
+                    });
+                }
+            }
+            // The installer has no word of its install (it was lost, or another began since): queued again.
+            None if !running => {
+                self.finish_set(&it.id, |i| {
+                    if let Some(f) = i.finish.as_mut() {
+                        (f.step, f.tag) = ("queued".into(), String::new());
+                    }
+                });
+            }
+            None => {}
         }
     }
 

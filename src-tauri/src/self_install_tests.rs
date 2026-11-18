@@ -158,7 +158,6 @@ impl Fixture {
             ("CUE_INSTALL_LAUNCH", launch),
             ("CUE_INSTALL_QUIT", format!("echo \"quit $CUE_INSTALL_PIDS\" >> '{l}'; kill $CUE_INSTALL_PIDS")),
             ("CUE_INSTALL_SIGN", ":".to_string()),
-            ("CUE_INSTALL_WAIT", "0".to_string()),
             ("CUE_INSTALL_START_WAIT", "2".to_string()),
         ]
         .into_iter()
@@ -384,6 +383,40 @@ fn a_failed_build_leaves_the_running_cue_alone() {
     assert_eq!(f.installed(), "old");
     assert!(!f.apps.join("Cue.prev.app").exists());
     assert_eq!(f.calls(), vec!["build"], "never quit nor launched");
+    assert!(alive(old_pid));
+}
+
+/// The built app is signed where it was built, before Cue is quit (signing it in place once installed is refused to
+/// anything without App Management); a signature that fails leaves the running Cue and the installed app alone.
+#[test]
+fn the_built_app_is_signed_before_cue_is_quit_and_a_failed_signature_installs_nothing() {
+    let mut f = Fixture::new("sign");
+    let old = commit(&f.repo, "old");
+    let new = commit(&f.repo, "new");
+    f.old_cue_running(&old, true);
+    let signs = |f: &Fixture, fails: &str| format!("echo \"sign $CUE_INSTALL_APP\" >> '{}'{fails}", f.root.join("calls").display());
+    let mut env = f.env(true, Launcher::Says);
+    env.retain(|(k, _)| k != "CUE_INSTALL_SIGN");
+    env.push(("CUE_INSTALL_SIGN".into(), signs(&f, "")));
+    assert_eq!(f.run(&new, &env), 0);
+    assert_eq!(f.status().step, "installed");
+    let calls_of = |f: &Fixture| f.calls().into_iter().map(|c| c.split(' ').next().unwrap_or("").to_string()).collect::<Vec<_>>();
+    assert_eq!(calls_of(&f)[..3], ["build", "sign", "quit"], "signed before Cue is quit");
+    assert_eq!(f.calls()[1], format!("sign {}", f.built.display()), "the built app, not the installed one");
+
+    let mut f = Fixture::new("sign-fails");
+    let old = commit(&f.repo, "old");
+    let new = commit(&f.repo, "new");
+    let old_pid = f.old_cue_running(&old, true);
+    let mut env = f.env(true, Launcher::Says);
+    env.retain(|(k, _)| k != "CUE_INSTALL_SIGN");
+    env.push(("CUE_INSTALL_SIGN".into(), signs(&f, "; echo 'Operation not permitted'; exit 1")));
+    assert_eq!(f.run(&new, &env), 1);
+    let s = f.status();
+    assert_eq!(s.step, "failed");
+    assert!(s.log.contains("Operation not permitted") && s.log.contains("couldn't sign"), "{}", s.log);
+    assert_eq!(f.installed(), "old");
+    assert_eq!(calls_of(&f), ["build", "sign"], "never quit nor launched");
     assert!(alive(old_pid));
 }
 
