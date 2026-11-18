@@ -715,7 +715,6 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
 /* Not a pill (#260, picked C): one quiet line on the card's own ground, the tray and "Desk" in on-bg-muted, the Desk's
    name in on-bg, then ›. A light-grey pill was the one bright block on a see-through Working card. */
 .dk-chip { all: unset; display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; box-sizing: border-box; cursor: pointer; font-size: 12px; font-weight: 500; line-height: 1.5; padding: 1px 0; color: var(--on-bg-muted); white-space: nowrap; }
-.dk-chip:hover .dk-chip-t { text-decoration: underline; text-underline-offset: 2px; }
 .dk-chip:focus-visible { outline: 2px solid var(--on-bg); outline-offset: 2px; border-radius: 4px; }
 .dk-chip > .dk-kic { margin: 0; flex: none; color: inherit; }
 .dk-chip-k { flex: none; }
