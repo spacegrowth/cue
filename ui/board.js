@@ -775,16 +775,26 @@ function waitingRows(b) {
   const rows = [...needs, ...ghostRows.filter((g) => !talkSids.has(g.session_id))].sort(newestFirst);
   const inTalk = (i) => talking(i);
   const draw = (list) => list.map((i) => needRow(i, i._ghost, isOpen(i.session_id))).join("");
-  const talks = rows.filter(inTalk).sort((a, c) => a.created_ms - c.created_ms), rest = rows.filter((i) => !inTalk(i)), count = (list) => list.filter((i) => !i._ghost).length;
+  // A Desk session's "your turn" is the lead's to pick up: it goes under Desk's fold at the foot (asks stay here).
+  const deskTurn = (i) => i.kind === "waiting" && deskWorksFor(i.session_id);
+  const talks = rows.filter(inTalk).sort((a, c) => a.created_ms - c.created_ms), others = rows.filter((i) => !inTalk(i)), count = (list) => list.filter((i) => !i._ghost).length;
+  const rest = others.filter((i) => !deskTurn(i)), deskRest = others.filter(deskTurn);
   // The add-on's rows that wait on you sit in Waiting with the rest.
   const more = addOn.waiting();
   const restRows = rest.length || more.count ? `<button class="col-sub fold-head sub-fold" data-fold-newest aria-expanded="${!newestShut()}"><span class="fold-arrow">${newestShut() ? "▸" : "▾"}</span> NEWEST FIRST · ${count(rest) + more.count}</button>${newestShut() ? "" : more.html + draw(rest)}` : "";
   const html = (talks.length || talkWork.length
     ? `<div class="col-sub">IN CONVERSATION · LAST ${TALK_MS / 60000} MIN${count(talks) + talkWork.length ? ` · ${count(talks) + talkWork.length}` : ""}</div>${draw(talks)}${talkWork.map((x) => talkWorkRow(x, isOpen(x.session_id))).join("")}`
-    : "") + restRows;
-  return { html, count: count(talks) + talkWork.length + count(rest) + more.count + later.filter((l) => !needs.some((i) => i.session_id === l.sid)).length };
+    : "") + restRows + deskWaitFold(deskRest, draw, count);
+  return { html, count: count(talks) + talkWork.length + count(rest) + count(deskRest) + more.count + later.filter((l) => !needs.some((i) => i.session_id === l.sid)).length };
 }
 
+/** Waiting's Desk fold: Desk sessions whose turn it is, under one line that folds with Sessions' Desk line. */
+function deskWaitFold(list, draw, count) {
+  if (!list.length) return "";
+  const shut = deskShut();
+  return `<button class="col-sub fold-head sub-fold desk-fold" data-fold-desk aria-expanded="${!shut}"><span class="fold-arrow">${shut ? "▸" : "▾"}</span> ${deskKindIcon("tray")}DESK SESSIONS · ${count(list)}<span class="desk-fold-n">· your turn</span></button>`
+    + (shut ? "" : draw(list));
+}
 /** What a Sessions card says under its name: its card's ask, a start that needs its terminal, or why it's idle. */
 function sessionNote(s) {
   const i = state.items.find((x) => x.session_id === s.session_id);

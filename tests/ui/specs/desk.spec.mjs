@@ -3186,6 +3186,32 @@ test("Board Sessions: Desk sessions sit under their own fold line at the foot, o
   for (const sid of deskSids) await expect(col.locator(`[data-session="${sid}"]`)).toHaveCount(1);
 });
 
+test("Board Waiting: a Desk session's your-turn row folds with Desk at the foot; its asks stay in the list (#262)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await page.evaluate(() => { try { localStorage.removeItem("cue.deskShut"); } catch {} });
+  await cue.change((st) => {
+    const ask = st.items.find((i) => i.session_id === "lead");
+    st.items.push({ ...ask, id: "n-site-turn", kind: "waiting", session_id: "site", tool_name: "", tool_input: {}, message: "Done: the link works." });
+  });
+  await page.locator('.switch-view [data-view="board"]').click();
+  const col = page.locator(".sec-waiting .sec-body");
+  const fold = col.locator("[data-fold-desk]");
+  await expect(fold).toHaveCount(1);
+  await expect(fold).toContainText("DESK SESSIONS · 1");
+  await expect(fold).toContainText("your turn");
+  const order = await col.evaluate((el) => [...el.querySelectorAll("[data-fold-desk], .nrow")].map((n) => n.matches("[data-fold-desk]") ? "FOLD" : n.textContent.includes("site-lead") || n.querySelector("[data-session='site'], [data-id='n-site-turn']") ? "SITE" : "OTHER"));
+  expect(order.indexOf("FOLD")).toBeLessThan(order.lastIndexOf("SITE"));
+  expect(order.indexOf("OTHER")).toBeLessThan(order.indexOf("FOLD"));   // the lead's ask stays up in the list
+  // One fold for both columns: folding here folds Sessions' Desk line too.
+  await fold.click();
+  await expect(fold).toHaveAttribute("aria-expanded", "false");
+  await expect(page.locator(".sec-sessions [data-fold-desk]")).toHaveAttribute("aria-expanded", "false");
+  expect(await col.evaluate((el) => el.textContent.includes("Done: the link works."))).toBe(false);
+  await expect(col.locator(".nrow").first()).toBeVisible();
+  await fold.click();
+  await expect(fold).toHaveAttribute("aria-expanded", "true");
+});
+
 test("the Desk's mark is on the session's chat title and its Inbox page head too, never twice on a card (#156)", async ({ page, cue }) => {
   await cue.open("desk");
   await page.locator('.switch-view [data-view="board"]').click();
