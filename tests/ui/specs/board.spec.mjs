@@ -570,8 +570,9 @@ test.describe("a hosted lead's crew on its own page", () => {
     expect(await cue.calls("send_to_session"), "nothing sent to the lead").toHaveLength(0);
   });
 
-  // A teammate on the left (ui/team_mate.js): its head line, Asked, its steps, review and files beside the reading area.
-  test("a picked teammate on the left: its head line, what it was asked, steps, review found, files and three tabs; Talk, the bar's ask, The lead's dot", async ({ cue, page }) => {
+  // A teammate on the left (ui/team_mate.js): its head line, Asked, its files as chips over the reading area; its steps
+  // and review under its card in the list; the left takes all but a narrow list.
+  test("a picked teammate on the left: its head line, what it was asked, file chips, a numbered diff and three tabs; steps and review under its card; Talk, the bar's ask, The lead's dot", async ({ cue, page }) => {
     // btw open on the chat: picking a teammate closes it with the pane's head.
     await page.locator(".cp-left .ap-head [data-act=btw]").click();
     await expect(page.locator(".btw-pop")).toBeVisible();
@@ -585,19 +586,29 @@ test.describe("a hosted lead's crew on its own page", () => {
     await expect(v.locator(".cpm-now")).toHaveText("Reviewed: 1 should-fix, 1 note");
     await expect(v.locator(".cpm-at")).toHaveText("Carry the team over a handoff. Don't commit; finish with a summary.");
     await expect(v.locator(".cpm-size")).toHaveText(/^2 files · .*, since \d\d:\d\d$/);
-    await expect(v.locator(".cpm-part").first().locator(".cpm-pl")).toHaveText("Steps");
-    await expect(v.locator(".cpm-st").filter({ hasText: "Started" }), "no feed of its own: what Cue keeps, by time").toHaveCount(1);
-    await expect(v.locator(".cpm-fl")).toHaveCount(2);
-    await expect(v.locator(".cpm-fl .cp-f.fix")).toHaveText("should-fix");
-    // Its files with their numbers (team_diff_stat), the first lit and its diff drawn (team_diff); another file picked.
-    await expect(v.locator(".cpm-file .cpm-fp")).toHaveText(["src-tauri/src/hub/handoff.rs", "ui/core.js"]);
-    await expect(v.locator(".cpm-file .cpm-n")).toHaveText(["+2", "+2"]);
-    await expect(v.locator(".cpm-file.on .cpm-fp")).toHaveText("src-tauri/src/hub/handoff.rs");
+    // The left takes all but the list's 330.
+    expect(await page.locator(".crew-page .cp-list").evaluate((el) => Math.round(el.getBoundingClientRect().width))).toBe(330);
+    // No side column: its steps and review unfold under its card in the list, and only its.
+    await expect(v.locator(".cpm-st, .cpm-fl"), "not on the left").toHaveCount(0);
+    const exp = page.locator('.cp-card[data-key="cpc:lead|id-handoff"] .cp-exp');
+    await expect(page.locator(".cp-exp")).toHaveCount(1);
+    await expect(exp.locator(".cpm-pl")).toHaveText(["Steps", "Review found"]);
+    await expect(exp.locator(".cpm-st").filter({ hasText: "Started" }), "no feed of its own: what Cue keeps, by time").toHaveCount(1);
+    await expect(exp.locator(".cpm-fl")).toHaveCount(2);
+    await expect(exp.locator(".cpm-fl .cp-f.fix")).toHaveText("should-fix");
+    // Its files as chips with their numbers (team_diff_stat), the first lit and its diff drawn (team_diff), each line
+    // numbered; another file picked.
+    await expect(v.locator(".cpm-chip .cpm-fp")).toHaveText(["handoff.rs", "core.js"]);
+    await expect(v.locator(".cpm-chip .cpm-n")).toHaveText(["+2", "+2"]);
+    await expect(v.locator(".cpm-chip.on .cpm-fp")).toHaveText("handoff.rs");
     await expect(v.locator(".cpm-diff .add")).toHaveText(["+# handoff.rs", "+handoff wrote this"]);
+    const nums = await v.locator(".cpm-diff .ln").evaluateAll((els) => els.map((el) => [el.dataset.o, el.dataset.n]));
+    expect(nums.length, "every line under a hunk's head numbered").toBeGreaterThan(0);
+    expect(nums.every(([o, n]) => o || n)).toBe(true);
     await expect(v.locator(".cpm-lit")).toHaveText("src-tauri/src/hub/handoff.rs");
-    await v.locator('.cpm-file[data-cp-file="ui/core.js"]').click();
+    await v.locator('.cpm-chip[data-cp-file="ui/core.js"]').click();
     await expect(v.locator(".cpm-diff .add").first()).toHaveText("+# core.js");
-    await expect(v.locator(".cpm-file.on .cpm-fp")).toHaveText("ui/core.js");
+    await expect(v.locator(".cpm-chip.on .cpm-fp")).toHaveText("core.js");
     await expect(v.locator(".cpm-tabs button:visible")).toHaveText(["Diff so far", "Full review", "Full task"]);
     await v.locator('[data-cp-tab="task"]').click();
     await expect(v.locator(".cpm-body")).toContainText("Carry the team over a handoff.");
@@ -618,12 +629,14 @@ test.describe("a hosted lead's crew on its own page", () => {
     // A teammate that asks: the bar shows its ask when it's picked.
     await page.locator('.cp-row[data-cp-mate="lead|id-hub"]').click();
     await expect(page.locator(".cpm .cpv-name")).toHaveText("hub");
-    await expect(page.locator(".cpm .cpm-st.ask")).toContainText("Wants to run cd src-tauri");
+    await expect(page.locator('.cp-card[data-key="cpc:lead|id-hub"] .cp-exp .cpm-st.ask')).toContainText("Wants to run cd src-tauri");
     await expect(page.locator(".cp-bar .cpb-who")).toHaveText("hub");
     // The lead's row: back to the chat.
     await lead.click();
     await expect(page.locator(".cp-left .cpm")).toHaveCount(0);
     await expect(lead).toHaveClass(/\bon\b/);
+    await expect(page.locator(".cp-exp"), "nothing unfolded under a card").toHaveCount(0);
+    expect(await page.locator(".crew-page .cp-list").evaluate((el) => Math.round(el.getBoundingClientRect().width)), "the halves back").toBeGreaterThan(330);
   });
 
   // The add-on's slots on the page (core.js addOn.crewPage*): its page shares the one left with a teammate.
@@ -708,25 +721,22 @@ test.describe("a hosted lead's crew on its own page", () => {
     await expect(page.locator(".cp-lead")).toBeFocused();
   });
 
-  // Narrow (SPEC §13): at the smallest window a teammate's side column becomes tabs; the bar keeps the command.
-  test("at the smallest window: a teammate's steps, review and files are tabs before the reading area's; the bar drops its keys and reason, not the command", async ({ page }) => {
+  // Narrow (SPEC §13): at the smallest window a teammate keeps its chips and three tabs; the bar keeps the command.
+  test("at the smallest window: a teammate's files stay chips over its three tabs, its steps under its card; the bar drops its keys and reason, not the command", async ({ page }) => {
     await page.setViewportSize({ width: 900, height: 600 });
     await expect(page.locator(".cp-bar .cpb-keys")).toBeHidden();
     await expect(page.locator(".cp-bar .cpb-cmd")).toBeVisible();
     await page.locator('.cp-row[data-cp-mate="lead|id-handoff"]').click();
     const v = page.locator(".cpm");
-    await expect(v.locator(".cpm-side")).toBeHidden();
-    await expect(v.locator(".cpm-tabs button:visible")).toHaveText(["Steps", "Review found", "Files", "Diff so far", "Full review", "Full task"]);
-    await v.locator('[data-cp-tab="steps"]').click();
-    await expect(v.locator(".cpm-body .cpm-st").filter({ hasText: "Started" })).toHaveCount(1);
-    await v.locator('[data-cp-tab="files"]').click();
-    await v.locator('.cpm-body [data-cp-file="ui/core.js"]').click();
+    await expect(v.locator(".cpm-tabs button:visible")).toHaveText(["Diff so far", "Full review", "Full task"]);
+    await expect(page.locator(".cp-exp .cpm-st").filter({ hasText: "Started" })).toBeVisible();
+    await v.locator('[data-cp-tab="task"]').click();
+    await v.locator('.cpm-chip[data-cp-file="ui/core.js"]').click();
     await expect(v.locator('.cpm-tabs [data-cp-tab="diff"]'), "a file picked: its diff").toHaveClass(/\bon\b/);
     await expect(v.locator(".cpm-diff .add").first()).toHaveText("+# core.js");
-    // Wide again: the side column, its tabs gone.
-    await page.setViewportSize({ width: 1600, height: 1000 });
-    await expect(v.locator(".cpm-side")).toBeVisible();
-    await expect(v.locator('.cpm-tabs [data-cp-tab="steps"]')).toBeHidden();
+    // The diff has the left's width less its margins, not a side column's share.
+    const [left, diff] = await Promise.all([page.locator(".cp-left").evaluate((el) => el.clientWidth), v.locator(".cpm-diff").evaluate((el) => el.clientWidth)]);
+    expect(left - diff).toBeLessThan(40);
   });
 
   // Keys (SPEC §4): a bare letter is always text here; ⌘⇧A / ⌘⇧D answer the ask the bar shows, never a one-way one.

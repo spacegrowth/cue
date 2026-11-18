@@ -1,9 +1,10 @@
 // ---------- a teammate on the crew page's left (team_page.js has the page) ----------
 // A row in the list picks its teammate: it lights, and the left shows it in the chat's place, the Needs you bar and the
-// box staying under it. One head line (‹ The lead's chat, its name and state, what it's doing now, Talk, Stop); what it
-// was asked on one line with its size and time; then its steps, what its review found and its files in a side column,
-// beside a reading area with three tabs: Diff so far, Full review, Full task. Esc, ‹ The lead's chat or The lead's row
-// go back to the chat where you left it.
+// box staying under it; the page gives the left all but a narrow list (team_page.js). One head line (‹ The lead's chat,
+// its name and state, what it's doing now, Talk, Stop); what it was asked on one line with its size and time; its files
+// as chips; then the reading area, the left's whole width, with three tabs: Diff so far, Full review, Full task. Its
+// steps and what its review found unfold under its own card in the list (crewMateExp). Esc, ‹ The lead's chat or The
+// lead's row go back to the chat where you left it.
 
 /** The teammate of lead `sid` by its key (team.js mateKey), still in the crew or finished. */
 const crewMateOf = (sid, key) => (sessionOf(sid)?.team || []).find((t) => mateKey(sid, t) === key) || null;
@@ -67,11 +68,23 @@ function crewDiffText(sid, t, d, path) {
   return null;
 }
 /** A file's diff drawn: its hunks' heads, the lines added and removed on their tints, the rest plain; git's own header
- *  lines left out. */
+ *  lines left out. Each line after a hunk's head has its old and new line numbers (from the head's "-a,b +c,d") in a
+ *  gutter that stays put as long lines scroll sideways; drawn by the styles from data-o / data-n, so they're not in the
+ *  text you copy. */
 function crewDiffHtml(text) {
   const lines = String(text).split("\n"), at = lines.findIndex((l) => l.startsWith("@@"));
   const body = (at < 0 ? lines.filter((l) => !/^(diff --git|index |--- |\+\+\+ |new file|deleted file|similarity|rename )/.test(l)) : lines.slice(at)).filter((l, n, a) => l || n < a.length - 1);
-  return `<pre class="cpm-diff">${body.map((l) => `<span class="${l.startsWith("@@") ? "h" : l.startsWith("+") ? "add" : l.startsWith("-") ? "del" : ""}">${esc(l) || " "}</span>`).join("")}</pre>`;
+  let o = 0, n = 0, top = 0;
+  const rows = body.map((l) => {
+    const h = l.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)/);
+    if (h) { o = +h[1]; n = +h[2]; return `<span class="h">${esc(l)}</span>`; }
+    if (l.startsWith("\\")) return `<span class="h">${esc(l)}</span>`;
+    const kind = l.startsWith("+") ? "add" : l.startsWith("-") ? "del" : "";
+    const old = kind === "add" || !o ? "" : o++, now = kind === "del" || !n ? "" : n++;
+    top = Math.max(top, +old || 0, +now || 0);
+    return `<span class="${kind}"><i class="ln" data-o="${old}" data-n="${now}"></i>${esc(l) || " "}</span>`;
+  });
+  return `<pre class="cpm-diff" style="--ln:${String(top || 1).length}ch">${rows.join("")}</pre>`;
 }
 /** Its files: as its diff counts them once read (each { path, add, del }), until then as Cue saw them written. */
 function crewMateFiles(sid, t) {
@@ -93,29 +106,41 @@ function crewMateLitFile(sid, t, left) {
   const files = crewMateFiles(sid, t);
   return files.some((f) => f.path === left.file) ? left.file : files[0]?.path || "";
 }
-/** The side column's three parts, each [tab, label, html]: Steps, Review found, Files (one lit: the reading area shows
- *  its diff). Files only when it has some. */
-function crewMateParts(sid, t, left) {
-  const steps = crewMateSteps(sid, t).map((x) => `<div class="cpm-st ${x.now ? "now" : ""} ${x.ask ? "ask" : ""}"><span class="cp-t">${x.at ? esc(hhmm(x.at)) : ""}</span><i class="cpm-dot"></i><span class="cpm-sw">${x.html}</span></div>`).join("");
+/** The steps shown under a picked card before "N earlier ›": its latest ones. */
+const CREW_STEPS_SHOWN = 8;
+/** The teammates (by key) whose earlier steps are unfolded under their card. */
+const crewStepsAll = new Set();
+/** What unfolds under the picked teammate's card in the list (team_page.js crewListRow): its steps, its latest
+ *  CREW_STEPS_SHOWN with "N earlier ›" before them, and what its review found. "" for any other card. */
+function crewMateExp(sid, t) {
+  const left = crewLeftOf(sid), k = mateKey(sid, t);
+  if (left?.kind !== "mate" || left.key !== k) return "";
+  const all = crewMateSteps(sid, t), open = crewStepsAll.has(k), cut = open ? 0 : Math.max(0, all.length - CREW_STEPS_SHOWN);
+  const more = cut ? `<button class="mt-lk cpm-more" data-cp-steps="${esc(k)}">${cut} earlier ›</button>` : open && all.length > CREW_STEPS_SHOWN ? `<button class="mt-lk cpm-more" data-cp-steps="${esc(k)}">Fewer ‹</button>` : "";
+  const steps = all.slice(cut).map((x) => `<div class="cpm-st ${x.now ? "now" : ""} ${x.ask ? "ask" : ""}"><span class="cp-t">${x.at ? esc(hhmm(x.at)) : ""}</span><i class="cpm-dot"></i><span class="cpm-sw">${x.html}</span></div>`).join("");
   const f = t.findings || [];
   const review = f.length ? f.map((l) => `<div class="cpm-fl">${crewKind(findingKind(l))}<span>${crewCode(crewFindingText(l))}</span></div>`).join("")
     : `<div class="cp-dim">${t.recommendation || ["reviewed", "committed"].includes(t.state) ? "Clean: nothing found." : ["queued", "reviewing"].includes(t.state) ? "Its review is under way." : t.state === "working" ? "Not reviewed yet: it's still working." : "Not reviewed."}</div>`;
-  const files = crewMateFiles(sid, t), lit = left.tab === "diff" ? crewMateLitFile(sid, t, left) : "";
-  const fileRows = files.map((x) => `<button class="cpm-file ${lit === x.path ? "on" : ""}" data-cp-file="${esc(x.path)}"><span class="cpm-fp">${esc(x.path)}</span>${x.add != null ? `<span class="cpm-n"><b class="add">+${x.add}</b>${x.del ? ` <b class="del">−${x.del}</b>` : ""}</span>` : ""}</button>`).join("");
-  return [["steps", "Steps", steps || `<div class="cp-dim">None yet.</div>`], ["found", "Review found", review], ...(files.length ? [["files", `Files · ${files.length}`, fileRows]] : [])];
+  const part = (label, html) => `<div class="cpm-part"><div class="cpm-pl">${label}</div>${html}</div>`;
+  return `<div class="cp-exp" data-scroll-key="cpe:${esc(k)}">${part("Steps", more + (steps || `<div class="cp-dim">None yet.</div>`))}${part("Review found", review)}</div>`;
 }
-/** The side column: its parts one under another. */
-const crewMateSide = (parts) => parts.map(([, label, html]) => `<div class="cpm-part"><div class="cpm-pl">${label}</div>${html}</div>`).join("");
-/** The reading area's tabs and what the lit one shows: Diff so far (the lit file's diff, crewMateDiff), Full review
- *  (the reviewer's words), Full task (what it was asked, whole). In a narrow left (styles: under 600 wide) the side
- *  column's parts are tabs before them, so the reading area has the full width; they're hidden when it's wide. */
-function crewMateRead(sid, t, left, parts) {
-  const tabs = [...parts.map(([k, label]) => [k, label.replace(/ · \d+$/, ""), "side"]), ["diff", "Diff so far"], ["review", "Full review"], ["task", "Full task"]];
-  const lit = left.tab === "diff" ? crewMateLitFile(sid, t, left) : "", side = parts.find(([k]) => k === left.tab);
-  const bar = `<div class="cpm-tabs" role="tablist">${tabs.map(([k, w, c]) => `<button role="tab" class="${left.tab === k ? "on" : ""} ${c || ""}" data-cp-tab="${k}" aria-selected="${left.tab === k}">${w}</button>`).join("")}<span class="grow"></span>${lit ? `<span class="cpm-lit">${esc(lit)}</span>` : ""}</div>`;
+/** Its files as chips over the reading area: each its name (the path's last part, its folder too when two share a
+ *  name) and +/−, the one whose diff shows lit; a click shows that file's diff. "" with no files. */
+function crewMateChips(sid, t, left) {
+  const files = crewMateFiles(sid, t), lit = left.tab === "diff" ? crewMateLitFile(sid, t, left) : "";
+  if (!files.length) return "";
+  const base = (p) => p.split("/").pop(), twice = (p) => files.filter((x) => base(x.path) === base(p)).length > 1;
+  const name = (p) => (twice(p) ? p.split("/").slice(-2).join("/") : base(p));
+  return `<div class="cpm-chips">${files.map((x) => `<button class="cpm-chip ${lit === x.path ? "on" : ""}" data-cp-file="${esc(x.path)}" aria-pressed="${lit === x.path}"><span class="cpm-fp">${esc(name(x.path))}</span>${x.add != null ? `<span class="cpm-n"><b class="add">+${x.add}</b>${x.del ? `<b class="del">−${x.del}</b>` : ""}</span>` : ""}</button>`).join("")}</div>`;
+}
+/** The reading area's tabs and what the lit one shows: Diff so far (the lit file's diff, crewMateDiff; its whole path
+ *  at the bar's right), Full review (the reviewer's words), Full task (what it was asked, whole). */
+function crewMateRead(sid, t, left) {
+  const tabs = [["diff", "Diff so far"], ["review", "Full review"], ["task", "Full task"]];
+  const lit = left.tab === "diff" ? crewMateLitFile(sid, t, left) : "";
+  const bar = `<div class="cpm-tabs" role="tablist">${tabs.map(([k, w]) => `<button role="tab" class="${left.tab === k ? "on" : ""}" data-cp-tab="${k}" aria-selected="${left.tab === k}">${w}</button>`).join("")}<span class="grow"></span>${lit ? `<span class="cpm-lit">${esc(lit)}</span>` : ""}</div>`;
   let body;
-  if (side) body = `<div class="cpm-side-tab">${side[2]}</div>`;
-  else if (left.tab === "review") body = t.review ? `<div class="msg">${md(t.review)}</div>` : (t.findings || []).length ? `<ol class="mt-fx">${t.findings.map(mateFinding).join("")}</ol>` : `<div class="cp-dim">${["working", "queued", "reviewing"].includes(t.state) ? "No review yet." : "Its review found nothing."}</div>`;
+  if (left.tab === "review") body = t.review ? `<div class="msg">${md(t.review)}</div>` : (t.findings || []).length ? `<ol class="mt-fx">${t.findings.map(mateFinding).join("")}</ol>` : `<div class="cp-dim">${["working", "queued", "reviewing"].includes(t.state) ? "No review yet." : "Its review found nothing."}</div>`;
   else if (left.tab === "task") body = `<div class="msg cpm-task">${md(t.asked || t.what || "")}</div>`;
   else body = crewMateDiff(sid, t, left);
   return `<div class="cpm-read">${bar}<div class="cpm-body" data-scroll-key="cpm:${esc(left.key)}:${left.tab}">${body}</div></div>`;
@@ -124,11 +149,11 @@ function crewMateRead(sid, t, left, parts) {
 function crewMateView(sid, left) {
   const t = crewMateOf(sid, left.key);
   if (!t) return "";
-  const n = crewNow(sid, t), parts = crewMateParts(sid, t, left);
+  const n = crewNow(sid, t);
   const acts = `<button class="mt-lk" data-cp-talk="${esc(t.name)}">Talk</button>${t.state === "working" ? mateBtn(sid, t, "stop", "Stop", "link") : ""}`;
   const head = crewViewHead(sid, `<b class="cpv-name">${esc(t.name)}</b>${crewMatePill(sid, t)}<span class="cpm-now ${n.ask ? "q" : ""}">${crewCode(n.now)}</span><span class="cpm-acts">${acts}</span>`);
   const asked = `<div class="cpm-asked"><span class="cpm-al">Asked</span><span class="cpm-at">${crewCode(t.asked || t.what || "")}</span><span class="cpm-size">${esc(crewMateSize(t))}</span></div>`;
-  return `<div class="cp-view cpm" data-cp-view="mate:${esc(left.key)}">${head}${asked}<div class="cpm-split"><div class="cpm-side" data-scroll-key="cpms:${esc(left.key)}">${crewMateSide(parts)}</div>${crewMateRead(sid, t, left, parts)}</div>${mateUnderHtml(sid, t)}</div>`;
+  return `<div class="cp-view cpm" data-cp-view="mate:${esc(left.key)}">${head}${asked}${crewMateChips(sid, t, left)}${crewMateRead(sid, t, left)}${mateUnderHtml(sid, t)}</div>`;
 }
 /** Talk: "@name " at the start of the box (in place of another @name there), the cursor after it. */
 function crewTalk(sid, name) {
@@ -144,12 +169,13 @@ function crewLeadSaid(sid) {
 if (typeof document !== "undefined") {
   document.addEventListener("click", (e) => {
     const sid = typeof crewPageSid !== "undefined" ? crewPageSid : null;
-    const el = sid && e.target.closest?.(".crew-page [data-cp-mate], .crew-page [data-cp-tab], .crew-page [data-cp-file], .crew-page [data-cp-talk]");
+    const el = sid && e.target.closest?.(".crew-page [data-cp-mate], .crew-page [data-cp-tab], .crew-page [data-cp-file], .crew-page [data-cp-talk], .crew-page [data-cp-steps]");
     if (!el) return;
     e.stopImmediatePropagation();
     const d = el.dataset, left = crewLeftOf(sid);
     if (d.cpMate) return crewMatePick(sid, d.cpMate);
     if (d.cpTalk) return crewTalk(sid, d.cpTalk);
+    if (d.cpSteps) { if (!crewStepsAll.delete(d.cpSteps)) crewStepsAll.add(d.cpSteps); return renderMain(); }
     if (left?.kind !== "mate") return;
     if (d.cpTab) left.tab = d.cpTab;
     if (d.cpFile != null) { left.file = d.cpFile; left.tab = "diff"; }

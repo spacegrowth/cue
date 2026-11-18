@@ -163,14 +163,15 @@ function crewRowSays(sid, t, n = crewNow(sid, t)) {
  *  word and its meter, how long, and the one action the drawer's row has at the right (team.js mateOneAct: Stop,
  *  Resume first when stuck, Skip while its review waits, else Diff). Line 2: one sentence (crewRowSays), red when it
  *  needs you. The row is one button: a click picks it, and the left shows it whole (team_mate.js: what it was asked,
- *  its steps, its review, its files), its row lit. What its last button said shows under it; a committed or set-aside
- *  one is dimmed. */
+ *  its files and their diff), its row lit, its steps and what its review found unfolding under it (crewMateExp). What
+ *  its last button said shows under it; a committed or set-aside one is dimmed. */
 function crewListRow(sid, t) {
   const n = crewNow(sid, t), k = mateKey(sid, t), past = ["committed", "aside"].includes(t.state), lit = crewMateLit(sid, k);
   const top = `<button class="cp-row" data-key="cp:${esc(k)}" data-cp-mate="${esc(k)}" aria-pressed="${lit}">`
     + `<span class="cp-l1"><span class="cp-nm">${esc(t.name)}</span>${crewMeter(n)}<span class="cp-tm">${t.started_ms ? esc(mateSpan(t)) : ""}</span></span>`
     + `<span class="cp-now ${n.ask ? "q" : ""}">${crewCode(crewRowSays(sid, t, n))}</span></button>`;
-  return `<div class="cp-card ${past ? "past" : ""} ${n.ask ? "q" : ""} ${lit ? "on" : ""}" data-key="cpc:${esc(k)}">${top}<span class="cp-act">${mateOneAct(sid, t)}</span>${mateUnderHtml(sid, t)}</div>`;
+  const exp = lit && typeof crewMateExp === "function" ? crewMateExp(sid, t) : "";
+  return `<div class="cp-card ${past ? "past" : ""} ${n.ask ? "q" : ""} ${lit ? "on" : ""}" data-key="cpc:${esc(k)}">${top}<span class="cp-act">${mateOneAct(sid, t)}</span>${mateUnderHtml(sid, t)}${exp}</div>`;
 }
 /** The finished members (committed, set aside) at the list's end: one line, "N done ›", folded until you click it (the
  *  drawer's fold, team.js mateDoneOpen, so it's open in both or neither); unfolded, their cards under it, dimmed, in the
@@ -292,17 +293,19 @@ function crewPageHead(sid, head) {
 
 /** The page: its head (crewPageHead), the goal line and the add-on's rows; then the
  *  left (the lead's chat, Needs you, its box), as wide as the board's chat pane (board.js boardChatWidth), beside the
- *  list, which has the rest: The lead, the add-on's band, the crew's cards. */
+ *  list, which has the rest: The lead, the add-on's band, the crew's cards. While the left shows a teammate (`mate`),
+ *  the left takes all but a narrow list, so its diff has the room. */
 function crewPageView(sid) {
   const handles = crewHandles(sid), needCount = crewAsks(sid).filter((x) => !x.lead).length;
   // The add-on's part, each empty without it: its head line, its band, rows under the goal, decisions (its asks are in
   // the bar's list, team_bar.js crewAsks).
   const head = addOn.crewPageHead?.(sid) || "", band = addOn.crewPageBand?.(sid) || "", rowsAdded = addOn.crewPageRows?.(sid) || "";
   const decidedAdded = addOn.crewPageDecided?.(sid) || { html: "", count: 0 };
+  const mate = crewLeftOf(sid)?.kind === "mate";
   return `<div class="crew-page" data-crew-page="${esc(sid)}">
     ${crewPageHead(sid, head)}
     <div class="cp-upper" data-scroll-key="cpu:${esc(sid)}"><div class="cp-top">${addOn.crewPageGoal?.(sid) ?? crewGoalLine(sid, handles)}${rowsAdded}</div></div>
-    <div class="cp-body" style="--cp-chat-w:${typeof boardChatWidth === "function" ? boardChatWidth() : "50%"}"><div class="cp-left">${crewPageLeft(sid, decidedAdded, crewBarHtml(sid))}</div>
+    <div class="cp-body ${mate ? "mate" : ""}" style="--cp-chat-w:${typeof boardChatWidth === "function" ? boardChatWidth() : "50%"}"><div class="cp-left">${crewPageLeft(sid, decidedAdded, crewBarHtml(sid))}</div>
       <aside class="cp-list">${crewLeadRow(sid)}${band ? `<div class="cp-band" data-scroll-key="cpb:${esc(sid)}">${band}</div>` : ""}${crewStatusLine(sid, needCount)}<div class="cp-scroll" data-fit data-scroll-key="cpl:${esc(sid)}">${crewRowsHtml(sid)}</div><button class="cp-jump" data-cp-jump="" hidden></button></aside></div>
     ${mateMenuOf(sid)}</div>`;
 }
