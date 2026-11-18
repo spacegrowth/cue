@@ -17,12 +17,13 @@ const dragSelecting = () => mouseDown && !getSelection().isCollapsed && getSelec
 // work). It waits until the click has gone through.
 let onPress = false;
 addEventListener("mousedown", (e) => { mouseDown = e.button === 0 && !inField(e.target); onPress = mouseDown && !!e.target.closest?.("a[data-href], a[data-path], button, [role=button]"); selBefore = getSelection().toString(); }, true);
+// The click has its target now. Its handlers may redraw, for example to enable Send after a quick phrase.
+addEventListener("click", () => { onPress = false; }, true);
 addEventListener("mouseup", () => {
   if (!mouseDown) return;
   const sel = getSelection(), text = sel.toString(), fresh = dragSelecting();
   mouseDown = false;
   const wasPress = onPress;
-  onPress = false;
   // Selected text in the window (not in a box you type in, where ⌘C works as ever): on your clipboard now.
   if (fresh && text.trim() && !inField(sel.anchorNode)) {
     if (!document.execCommand("copy")) navigator.clipboard?.writeText(text);
@@ -30,7 +31,13 @@ addEventListener("mouseup", () => {
     if (!heldDraw && !showCopied()) toast("Copied");
   }
   // Pressed on a link or a button: after the click (it fires after this), so it's still there for it.
-  if (heldDraw) { heldDraw = false; wasPress ? setTimeout(renderMain) : renderMain(); }
+  if (wasPress) {
+    setTimeout(() => {
+      if (mouseDown) return;   // another press began before this one's click settled
+      onPress = false;
+      if (heldDraw) { heldDraw = false; renderMain(); }
+    });
+  } else if (heldDraw) { heldDraw = false; renderMain(); }
 }, true);
 // Let go outside the window (no mouseup here): the held redraw happens anyway.
 addEventListener("blur", () => { mouseDown = onPress = false; if (heldDraw) { heldDraw = false; renderMain(); } });

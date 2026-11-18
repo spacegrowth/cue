@@ -53,11 +53,14 @@ pub struct DeskItem {
     /// Why it's its own item, when a session on another item added it (`ITEM: … | why: …`).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub why: String,
-    /// "new" | "queued" | "working" | "finishing" | "to_check" | "done" as kept; the window's "needs_you" is worked
-    /// out as it's shown (its holder waits on you, or its finishing stopped on a question).
+    /// "new" | "queued" | "working" | "finishing" | "to_check" | "done" as kept.
+    /// The displayed "needs_you" and "needs_resume" states are derived from live conditions.
     pub state: String,
     #[serde(default)]
     pub holder: Option<Holder>,
+    /// Sessions that held this item before its current holder.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub former_holders: Vec<String>,
     /// The lead's teammate doing it, when the lead keeps it and says so (`ROUTE: #id -> me | crew: <name>`): the name
     /// the lead gave it, matched to its teammate of that name once there is one (hub/desk.rs `shown`).
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -80,6 +83,10 @@ pub struct DeskItem {
     /// Its holder stopped on it and the Desk lead is settling it: nothing for you yet. Worked out as it's shown.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub stopped: bool,
+    /// Its work git said wasn't committed as its holder's turn last ended on it (paths in their folders): a stop then
+    /// is the Desk lead's, shown as "not committed", never waiting on you (#213, hub/desk_stall.rs). Saved.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub loose: Vec<String>,
     /// Its holder's open ask, when it waits on you: worked out as it's shown.
     #[serde(default)]
     pub ask: Option<Value>,
@@ -143,6 +150,14 @@ pub struct DeskItem {
     /// session's replies on its page's Thread, between your words and the lead's hand-offs (its Steps).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub said: Vec<Said>,
+}
+
+impl DeskItem {
+    pub(crate) fn remember_holder(&mut self) {
+        if let Some(sid) = self.holder.as_ref().map(Holder::to).filter(|sid| !self.former_holders.iter().any(|old| old == sid)) {
+            self.former_holders.push(sid.to_string());
+        }
+    }
 }
 
 /// How many of an item's replies it keeps, and how long each is at most (chars): a page's thread, not a transcript.
@@ -314,6 +329,9 @@ pub struct Desk {
     /// Finishing items whose commit is being made now, and "tick" while the finishing tick runs: one run of each at a
     /// time (hub/desk_finish.rs). Not saved.
     pub finish_claims: HashSet<String>,
+    /// Each main checkout's HEAD as Cue last looked for a commit that takes a finished item's work back out
+    /// (hub/desk_finish.rs `taken_out_tick`). Not saved: the first look after a start only notes it.
+    pub seen_heads: HashMap<String, String>,
 }
 
 /// How an install is going, as the installer says: its tag and commit, its step ("building" | "installing" |

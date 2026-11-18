@@ -15,6 +15,19 @@ test("Allow on a permission card allows it", async ({ cue, page }) => {
   await expect(card(page, "n5")).toHaveCount(0);
 });
 
+test("Allow survives a state redraw between releasing the mouse and dispatching the click", async ({ cue, page }) => {
+  const button = card(page, "n5").locator('[data-act="allow"]');
+  await button.hover();
+  await page.mouse.down();
+  await page.evaluate(() => {
+    window.addEventListener("mouseup", () => queueMicrotask(() => renderMain()), { capture: true, once: true });
+  });
+  await page.mouse.up();
+  await expect.poll(() => cue.calls("respond"), { timeout: 1500 }).toHaveLength(1);
+  expect((await cue.calls("respond"))[0].args).toEqual({ id: "n5", decision: { behavior: "allow" } });
+  await expect(card(page, "n5")).toHaveCount(0);
+});
+
 test("Deny on a permission card denies it", async ({ cue, page }) => {
   await card(page, "n4").locator('[data-act="deny"]').click();
   expect((await cue.called("respond", { id: "n4" })).args.decision).toEqual({ behavior: "deny" });

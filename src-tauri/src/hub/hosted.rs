@@ -353,14 +353,18 @@ impl Hub {
         let sid = origin.session_id.clone();
         let ask = NewAsk { kind: kind.into(), tool_name, tool_input, suggestions: a.suggestions, context: vec![], agent_id: a.agent_id };
         // Its card is already open: the one waiting answers it.
-        let Some((_, answer)) = self.add_keyed_ask(origin, &a.request_id, ask) else { return };
+        let Some((card, answer)) = self.add_keyed_ask(origin, &a.request_id, ask) else { return };
+        crate::approval_trace::record(&sid, &a.request_id, &card, "requested");
         let hosted = self.ports.hosted.clone();
         let request_id = a.request_id;
         // Waiting for your answer is the card's to do, not the session's: its next lines keep coming meanwhile.
         std::thread::spawn(move || {
             let given = given(input, answer.blocking_recv());
             if let Err(e) = hosted.answer(&sid, &request_id, &given) {
+                crate::approval_trace::record(&sid, &request_id, &card, "write_failed");
                 eprintln!("cue: couldn't answer hosted session {sid}: {e}");
+            } else {
+                crate::approval_trace::record(&sid, &request_id, &card, "handed_to_transport");
             }
         });
     }

@@ -98,7 +98,7 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 /** A working (or finished) member's line after its name: "9m · Editing app.js · 3 files so far", what the hub says it
  *  needs, or its summary. */
 function mateLine(t) {
-  const files = (t.files || []).length, parts = [mateSpan(t)];
+  const files = mateShownFiles(t).length, parts = [mateSpan(t)];
   // Files known only from reading its shell commands (in the lead's folder) say so.
   const shell = (t.via_shell || []).length, via = shell ? ` (${shell === files ? (files === 1 ? "" : "all ") : `${shell} `}via shell)` : "";
   if (t.needs) parts.push(t.needs);

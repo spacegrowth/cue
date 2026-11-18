@@ -32,6 +32,14 @@ CueBridge.area("desk", (w) => {
       return d.lead;
     },
     // + New Desk: the folder's project (its last part, as a folder outside a repository is), and a lead started there.
+    desk_delete: ({ id, closeSessions = [] }) => {
+      desk().projects = desk().projects.filter((d) => d.project !== id);
+      for (const sid of closeSessions) {
+        const i = w.state.sessions.findIndex((s) => s.session_id === sid);
+        if (i >= 0) (w.state.ended ||= []).unshift(...w.state.sessions.splice(i, 1));
+      }
+      w.changed(); return { kept: [] };
+    },
     desk_rename: ({ id, name }) => {
       const d = deskOf(id); d.name = name.trim(); w.changed(); return null;
     },
@@ -81,9 +89,9 @@ CueBridge.area("desk", (w) => {
     desk_member: ({ project, sid, on }) => {
       const s = w.session(sid);
       if (on && !s) throw "no such session";
-      if (s && s.project !== project) throw `that session isn't of ${project}`;
+      if (s && s.project !== (deskOf(project).workspace_project || project)) throw `that session isn't of ${project}`;
       if (on) join(project, sid);
-      else { const d = deskOf(project); d.members = (d.members || []).filter((m) => m !== sid); }
+      else { const d = deskOf(project); d.members = (d.members || []).filter((m) => m !== sid); if (d.lead?.sid === sid) d.lead = null; }
       w.changed();
       return null;
     },

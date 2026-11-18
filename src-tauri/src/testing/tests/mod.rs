@@ -8,6 +8,7 @@ mod caches;
 mod db_faults;
 mod db_history;
 mod desk;
+mod desk_approvals;
 mod desk_spaces;
 mod desk_commit;
 mod desk_finish;

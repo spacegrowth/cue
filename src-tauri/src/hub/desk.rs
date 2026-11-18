@@ -186,7 +186,10 @@ pub(super) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
                 }
                 super::desk_stall::Stop::Lead => {
                     out.stopped = true;
-                    out.latest = super::desk_stall::last_line(s);
+                    out.latest = match it.loose.is_empty() {
+                        true => super::desk_stall::last_line(s),
+                        false => super::desk_stall::not_committed(&it.loose),
+                    };
                 }
             }
         }
@@ -203,6 +206,19 @@ pub(super) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
     if let Some(q) = it.finish.as_ref().map(|f| f.question.clone()).filter(|q| it.state == "finishing" && !q.is_empty()) {
         out.state = "needs_you".into();
         out.latest = q;
+    }
+    if out.state == "working" && !out.stopped {
+        // Work handed to a live session is under way while it takes the message, or while its crew finishes.
+        let active = if crew_parts(&h).is_some() {
+            at_work(st, &h)
+        } else {
+            super::desk_stall::still_at_it(st, &h.sid) || (out.now_on && st.sessions.get(&h.sid).is_some_and(|s| {
+                s.state != "stopped" && s.thread.last().is_some_and(|e| e.role == "you" && e.pending)
+            }))
+        };
+        if !active {
+            out.state = "needs_resume".into();
+        }
     }
     out.holder = Some(h);
     out
@@ -435,6 +451,9 @@ fn held_by(it: &mut DeskItem, h: &Holder, refused: String, waits: Option<String>
     it.start_failed.clear();
     it.reopen_refused.clear();
     it.after_refused = refused;
+    if it.holder.as_ref().is_some_and(|old| old.to() != h.to()) {
+        it.remember_holder();
+    }
     it.holder = Some(h.clone());
     it.crew.clear();
     it.after_why = why.to_string();
@@ -524,6 +543,9 @@ fn give_to(st: &mut Store, id: &str, sid: &str, by: (&str, &str, &str), started:
     }
     if let Some(b) = it.holder.clone().filter(|b| it.state == "working" && !(b.sid == h.sid && b.lead_sid.is_empty())) {
         fx.sends.push(moved_words(&b, it, &h));
+    }
+    if it.holder.as_ref().is_some_and(|old| old.to() != h.to()) {
+        it.remember_holder();
     }
     it.holder = Some(h.clone());
     it.crew.clear();
@@ -797,6 +819,16 @@ fn replied(st: &mut Store, text: &str, on: &[String], now: u64, fx: &mut Effects
     for id in on {
         let Some(it) = st.desk.item_mut(id) else { continue };
         let by = it.holder.as_ref().map(|h| h.name.clone()).unwrap_or_default();
+        // The same turn's words again, with more after them (a turn that ended on a usage limit is told twice): one
+        // reply, the longer words.
+        let again = it.said.last_mut().filter(|s| s.by == by && words.starts_with(s.text.trim_end_matches('…')));
+        if let Some(s) = again {
+            s.text = words.clone();
+            s.at = now;
+            s.done |= done.contains(id);
+            fx.said.push(id.clone());
+            continue;
+        }
         it.said.push(Said { at: now, by, text: words.clone(), done: done.contains(id) });
         let over = it.said.len().saturating_sub(SAID_KEPT);
         it.said.drain(..over);
@@ -1116,6 +1148,7 @@ impl Hub {
         }
         let images: Vec<String> = crate::uploads::save_kept(images)?.into_iter().map(|s| s.path).collect();
         let it = self.write(|st| -> Result<(DeskItem, Effects), String> {
+            if project.starts_with("desk-") && !st.desk.spaces.contains_key(project) { return Err("no such Desk".into()); }
             let mut it = new_item(st, project, kind, title, done_when, "you", now_ms());
             it.images = images.clone();
             let mut fx = Effects { items: vec![it.id.clone()], ..Default::default() };
@@ -1216,13 +1249,20 @@ impl Hub {
         self.keep_from_now(sid);
         // Most turns say none of the Desk's lines and end on no item at work: then the store is only read.
         let said = text.lines().any(desk_line_start);
-        let on_none = self.read(|st| super::desk_stall::at_work_with(st, sid).is_empty());
-        if !said && on_none {
+        let held = self.read(|st| super::desk_stall::at_work_with(st, sid));
+        if !said && held.is_empty() {
             return;
         }
+        // Each item at work with it: its work git says isn't committed yet, asked with the store let go (#213).
+        let loose: Vec<(String, Vec<String>)> = held.iter().map(|id| (id.clone(), self.desk_uncommitted(id))).collect();
         let now = now_ms();
         let fx = self.write(|st| {
             let mut fx = Effects::default();
+            for (id, files) in &loose {
+                if let Some(it) = st.desk.item_mut(id) {
+                    it.loose = files.clone();
+                }
+            }
             // What it was at work on as its turn ended: what this turn's DONE lines don't close stalled there.
             // Its reply goes only to the items it's tagged with (#176): the one the message it answers names, and
             // those its DONE lines name; untagged, to none. A turn that ends untagged with one item at work still
@@ -1391,7 +1431,7 @@ impl Hub {
             for d in &decisions {
                 crate::db::desk_put_decision(d);
             }
-            fx.joined.iter().for_each(|(project, sid)| crate::db::desk_put_member(project, sid, now));
+            fx.joined.iter().filter(|(project, _)| !project.starts_with("desk-") || self.read(|st| st.desk.spaces.contains_key(project))).for_each(|(project, sid)| crate::db::desk_put_member(project, sid, now));
         }
         self.changed();
         for (sid, text) in fx.sends {
@@ -1412,6 +1452,7 @@ impl Hub {
         self.desk_ask_first(fx.uses);
         for (project, id) in fx.news {
             let first = self.write(|st| {
+                if !st.desk.item(&id).is_some_and(|i| i.project == project) { return false; }
                 let fresh = st.desk.fresh.entry(project.clone()).or_default();
                 fresh.push(id);
                 fresh.len() == 1
@@ -1445,7 +1486,8 @@ impl Hub {
                 // Older steps and calls on the items shown, for their pages' Thread (today's are in `decisions`).
                 let older: Vec<&DeskDecision> = st.desk.decisions.iter().filter(|d| &d.project == p && d.at < today && d.item_id.as_ref().is_some_and(|i| items.iter().any(|it| &it.id == i))).collect();
                 let members = st.desk.members.get(p).cloned().unwrap_or_default();
-                json!({ "id": p, "project": p, "name": st.desk.spaces.get(p).map(|d| &d.name), "independent": st.desk.spaces.contains_key(p), "workspace_project": st.desk.project_of(p), "folder": st.desk.spaces.get(p).map(|d| &d.folder), "lead": Self::desk_lead_view(st, p), "items": items, "decisions": decisions, "older": older, "members": members, "checks": super::desk_checks::checks_view(st, p) })
+                let work_history = super::desk_members::work_history(st, p);
+                json!({ "work_history": work_history, "id": p, "project": p, "name": st.desk.spaces.get(p).map(|d| &d.name), "independent": st.desk.spaces.contains_key(p), "workspace_project": st.desk.project_of(p), "folder": st.desk.spaces.get(p).map(|d| &d.folder), "lead": Self::desk_lead_view(st, p), "items": items, "decisions": decisions, "older": older, "members": members, "checks": super::desk_checks::checks_view(st, p) })
             })
             .collect();
         json!({ "projects": list, "installed_ms": super::desk_checks::installed_ms(), "install_at": super::desk_finish::install_at(st) })

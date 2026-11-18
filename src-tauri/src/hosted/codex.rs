@@ -83,7 +83,17 @@ impl Codex {
 
     /// Your message as Codex takes it now: a new turn, or more for the one running.
     fn send(&mut self, thread: &str, text: &str) -> String {
-        let input = json!([{ "type": "text", "text": text }]);
+        let mut input = json!([{ "type": "text", "text": text }]);
+        // Codex can display a placeholder for a byte range while retaining its contents in the prompt.
+        if text.starts_with("<desk project=\"") || text.starts_with("<desk id=\"") {
+            const END: &str = "\n</desk>\n\n";
+            if let Some((context, _)) = text.split_once(END) {
+                input[0]["text_elements"] = json!([{
+                    "byteRange": { "start": 0, "end": context.len() + END.len() },
+                    "placeholder": "",
+                }]);
+            }
+        }
         match self.turn.clone() {
             Some(turn) => self.request("turn/steer", json!({ "threadId": thread, "expectedTurnId": turn, "input": input }), Asked::Message(text.into())),
             None => {

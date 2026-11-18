@@ -105,7 +105,8 @@ fn a_new_lead_starts_with_the_lead_skill_and_the_summary_and_gets_each_message()
     w.settle();
     let last = sent_to(&w, &l).pop().unwrap();
     assert!(last.starts_with("<desk") && last.contains("cue-teams") && last.ends_with("and the footer"), "{last}");
-    assert!(last.contains(&format!("You: {project}-lead")), "{last}");
+    assert!(last.contains(&format!("Desk lead: {project}-lead (you)")), "{last}");
+    assert!(last.contains("Answer the user's question or request directly in plain language before any Desk command lines."), "{last}");
     // A second new lead takes the next free name, and the first is told it's replaced.
     let l2 = new_lead(&w, &project);
     assert_eq!(desk(&w, &project)["lead"]["name"], format!("{project}-lead-2"));
@@ -126,7 +127,10 @@ fn a_session_you_make_the_lead_is_sent_the_lead_skill_in_the_block() {
     let told = sent_to(&w, &h);
     assert_eq!(told.len(), before + 1, "one message");
     let (block, rest) = told.last().unwrap().split_once("</desk>\n\n").unwrap();
-    assert!(block.contains("You run this project's Desk in Cue") && block.contains("Footer"), "{block}");
+    let (_, summary) = block.split_once(">\n").unwrap();
+    assert!(summary.starts_with("Desk lead: cue-teams (you)\n\nNeeds routing:\n"), "{block}");
+    assert!(summary.lines().nth(3).unwrap().contains("Footer"), "{block}");
+    assert!(block.contains("You run this project's Desk in Cue"), "{block}");
     assert!(rest.starts_with(&format!("You run {project}'s Desk now")), "{rest}");
     assert_eq!(desk(&w, &project)["lead"], json!({ "sid": h, "name": "cue-teams", "state": "live" }));
     // Picked again while live: nothing more is sent.
@@ -474,7 +478,8 @@ fn an_item_you_give_goes_to_that_session_and_is_your_decision() {
     let it = w.hub().desk_add(&project, "bug", "Header", "it stays put", None).unwrap();
     let given = w.hub().desk_give(&it.id, &h).unwrap();
     w.settle();
-    assert_eq!((given.state.as_str(), given.holder.as_ref().map(|x| x.name.as_str())), ("working", Some("cue-teams")));
+    assert_eq!(given.holder.as_ref().map(|x| x.name.as_str()), Some("cue-teams"));
+    assert_eq!(item(&desk(&w, &project), "Header")["state"], "working");
     let to_h = sent_to(&w, &h);
     assert!(to_h.iter().any(|t| t.contains(&format!("Desk item #{}", it.id)) && t.contains("it stays put") && t.contains(&format!("Say DONE: #{}", it.id))), "{to_h:?}");
     let dec = desk(&w, &project)["decisions"][0].clone();
@@ -500,6 +505,16 @@ fn a_queued_item_starts_when_the_one_before_it_is_done() {
     let b = item(&desk(&w, &project), "Footer")["id"].as_str().unwrap().to_string();
     assert_eq!(item(&desk(&w, &project), "Footer")["state"], "queued");
     assert!(!sent_to(&w, &h).iter().any(|t| t.contains(&format!("#{b}"))));
+    // An idle assignment with no finished reply (for example, a crash) needs to resume.
+    let resumed = w.hub().desk_add(&project, "task", "Sidebar", "", Some(&h)).unwrap();
+    w.settle();
+    w.hub().mark_state(&w.hub().session_origin(&h).unwrap(), "stopped");
+    let view = desk(&w, &project);
+    assert_eq!(item(&view, "Sidebar")["state"], "needs_resume");
+    assert_eq!(item(&view, "Footer")["state"], "queued");
+    let block = summary(&w, &project);
+    assert!(block.contains(&format!("- #{} task: Sidebar | needs resume", resumed.id)), "{block}");
+    assert!(block.lines().any(|line| line.starts_with(&format!("- #{b} task: Footer | queued")) && line.contains(&format!(" | after #{a}"))), "{block}");
     ends(&w, &h, &format!("DONE: #{a}"));
     let now = desk(&w, &project);
     assert_eq!(item(&now, "Header")["state"], "to_check");
@@ -637,10 +652,10 @@ fn a_message_held_while_the_lead_changes_reaches_the_new_one_as_it_sees_the_desk
     let got = sent_to(&w, &h);
     let (block, rest) = got.last().unwrap().split_once("</desk>\n\n").unwrap();
     assert_eq!(rest, "and the footer");
-    let routes = block.lines().find(|l| l.starts_with("Sessions on the Desk, you can route to:")).unwrap();
+    let (_, routes) = block.split_once("\nDesk routes (or use ROUTE: #<id> -> new):\n").unwrap();
     assert!(!routes.contains(&id), "itself isn't a route: {routes}");
     assert!(routes.contains(&format!("{project}-lead")), "the last lead is: {routes}");
-    assert!(block.contains("\nYou: cue-teams"), "{block}");
+    assert!(block.contains("\nDesk lead: cue-teams (you)"), "{block}");
     assert!(!sent_to(&w, &l).iter().any(|m| m.contains("and the footer")));
 }
 
@@ -1327,7 +1342,7 @@ fn a_holder_with_crew_at_work_a_crew_member_or_the_desk_lead_isnt_asked_if_done(
     w.hosted_says(&l, HostedEvent::Taken { text: "route".into() });
     w.advance(1000);
     ends(&w, &l, "Nothing to route.");
-    assert_eq!((state("Colours"), asks(&l)), ("working".to_string(), 0));
+    assert_eq!((state("Colours"), asks(&l)), ("needs_resume".to_string(), 0));
 }
 
 /// A DONE said while the holder's crew is still at work waits: the item stays at work (not to check, so not waiting

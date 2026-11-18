@@ -408,6 +408,17 @@ pub(super) fn git(machine: &str, dir: &str, env: &[(&str, &str)], args: &[&str])
     crate::safe_git::run_env(machine, dir, &filters, env, args).ok().filter(|(_, code)| *code == 0).map(|(o, _)| o)
 }
 
+/// `git`, and when it fails, why in git's own words ("" when it said nothing): for a step whose failure you're shown.
+pub(super) fn git_said(machine: &str, dir: &str, env: &[(&str, &str)], args: &[&str]) -> Result<String, String> {
+    let filters = crate::safe_git::no_repo_filters(machine, dir);
+    crate::safe_git::run_said(machine, dir, &filters, env, args)
+}
+
+/// `what` failed, and git's own words for it after a colon when it said any.
+pub(super) fn because(what: String, said: &str) -> String {
+    if said.is_empty() { what } else { format!("{what}: {said}") }
+}
+
 /// Of `paths` (relative to `folder`), those git says changed: tracked with changes since HEAD, or new and not
 /// ignored. None when `folder` isn't in a repository git can read.
 pub(super) fn changed_of(machine: &str, folder: &str, paths: &[String]) -> Option<Vec<String>> {
@@ -494,9 +505,9 @@ fn commit_only(machine: &str, folder: &str, paths: &[String], message: &str) -> 
     let known: Vec<&str> = known.split('\0').collect();
     let addable: Vec<&str> = p.iter().copied().filter(|f| known.contains(f)).collect();
     if !addable.is_empty() {
-        git(machine, folder, &[], &[&["add", "-A", "--"][..], &addable].concat()).ok_or_else(|| format!("Not committed: git couldn't add the files in {name}"))?;
+        git_said(machine, folder, &[], &[&["add", "-A", "--"][..], &addable].concat()).map_err(|why| because(format!("Not committed: git couldn't add the files in {name}"), &why))?;
     }
-    git(machine, folder, &[], &[&["commit", "--only", "-q", "-m", message, "--"][..], &p].concat()).ok_or_else(|| format!("Not committed: git didn't commit the files in {name} (its hooks, or nothing to commit)"))?;
+    git_said(machine, folder, &[], &[&["commit", "--only", "-q", "-m", message, "--"][..], &p].concat()).map_err(|why| because(format!("Not committed: git didn't commit the files in {name}"), &why))?;
     Ok(git(machine, folder, &[], &["rev-parse", "--short", "HEAD"]).map(|o| o.trim().to_string()).unwrap_or_default())
 }
 
@@ -541,7 +552,7 @@ fn commit_parts(folder: &str, paths: &[String], parts: &[&Part], message: &str) 
         if git("", folder, &[], &["rev-parse", "-q", "--verify", "HEAD^{commit}"]).map(|h| h.trim().to_string()) != head {
             return Err(format!("Not committed: {name} got a new commit meanwhile"));
         }
-        git("", folder, &env, &["commit", "-q", "-m", message]).ok_or_else(|| format!("Not committed: git didn't commit the files in {name} (its hooks, or nothing to commit)"))
+        git_said("", folder, &env, &["commit", "-q", "-m", message]).map_err(|why| because(format!("Not committed: git didn't commit the files in {name}"), &why))
     })();
     let _ = std::fs::remove_file(&index);
     made?;

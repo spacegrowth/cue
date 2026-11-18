@@ -11,7 +11,7 @@ test("two named Desks share a folder, keep separate items, and rename independen
     await page.locator("#nd-name").fill(name);
     await page.locator('.nd [type="submit"]').click();
     await expect(page.locator(".nd")).toHaveCount(0);
-    await expect(page.locator(".dk-sh b")).toHaveText(name);
+    await expect(page.locator(".dk-sh b")).toHaveText(`${name} Desk`);
     return page.evaluate(() => deskSelection());
   }
   const a = await create("Feature A");
@@ -31,10 +31,10 @@ test("two named Desks share a folder, keep separate items, and rename independen
   await page.locator(".pj-name-in").fill("Bob's feature");
   await page.locator(".pj-name-in").press("Enter");
   await cue.called("desk_rename", { id: b, name: "Bob's feature" });
-  await expect(page.locator(".dk-sh b")).toHaveText("Bob's feature");
+  await expect(page.locator(".dk-sh b")).toHaveText("Bob's feature Desk");
   await page.locator("[data-desk-home]").click();
   await page.locator(`[data-desk-project="${a}"]`).click();
-  await expect(page.locator(".dk-sh b")).toHaveText("Feature A");
+  await expect(page.locator(".dk-sh b")).toHaveText("Feature A Desk");
   await expect(page.locator(".dk-items")).toContainText("Only A");
   await expect(page.locator(".dk-items")).not.toContainText("Only B");
   expect(await page.evaluate(() => projFilter)).toBe(workspaceFilter);
@@ -46,8 +46,64 @@ test("a Desk can start in a folder with no recent project", async ({ cue, page }
   await page.locator("[data-new-menu]").click();
   await page.locator(".nw-pop [data-desk-new-desk]").click();
   await page.locator("#nd-folder").fill("/work/brand-new");
-  await page.locator("#nd-name").fill("New workspace");
+  await page.locator("#nd-name").fill("codex-cue-desk-feature");
   await page.locator('.nd [type="submit"]').click();
-  await cue.called("desk_start", { folder: "/work/brand-new", name: "New workspace" });
-  await expect(page.locator(".dk-sh b")).toHaveText("New workspace");
+  await cue.called("desk_start", { folder: "/work/brand-new", name: "codex-cue-desk-feature" });
+  await expect(page.locator(".dk-sh b")).toHaveText("codex-cue-desk-feature Desk");
+  await expect(page.locator(".dk-shr .dk-ric svg.dk-kic")).toBeVisible();
+});
+
+test("deleting a Desk confirms what is removed and keeps its sessions", async ({ cue, page }) => {
+  await cue.open("world-empty");
+  await page.locator("[data-new-menu]").click();
+  await page.locator("[data-desk-new-desk]").click();
+  await page.locator("#nd-folder").fill("/work/project");
+  await page.locator("#nd-name").fill("My Desk");
+  await page.locator('.nd [type="submit"]').click();
+  await expect(page.locator(".dk-sh b")).toHaveText("My Desk");
+  await page.getByRole("button", { name: "Delete Desk", exact: true }).click();
+  await expect(page.locator(".dh-confirm")).toContainText("Close these sessions");
+  await expect(page.locator('[data-desk-close-session="lead-desk-1"]')).toBeChecked();
+  await page.locator("[data-desk-delete-cancel]").click();
+  await expect(page.locator(".dk-sh b")).toHaveText("My Desk");
+  await expect(page.locator(".dh-confirm")).toHaveCount(0);
+  await expect.poll(() => cue.calls("desk_delete")).toEqual([]);
+  await page.locator("[data-desk-home]").click();
+  await expect(page.locator(".dh-nm")).toHaveText("My Desk");
+  await page.locator('[data-desk-delete="desk-1"]').click();
+  await page.locator('[data-desk-close-session="lead-desk-1"]').uncheck();
+  await page.locator("[data-desk-delete-confirm]").click();
+  await cue.called("desk_delete", { id: "desk-1", closeSessions: [] });
+  await expect(page.locator(".dh-empty")).toHaveText("No Desks yet.");
+  expect(await page.evaluate(() => state.sessions.some((s) => s.session_id === "lead-desk-1"))).toBe(true);
+});
+
+
+test("deleting a Desk closes selected sessions and protects shared or working sessions", async ({ cue, page }) => {
+  await cue.open("world-empty");
+  await page.locator("[data-new-menu]").click();
+  await page.locator("[data-desk-new-desk]").click();
+  await page.locator("#nd-folder").fill("/work/project");
+  await page.locator("#nd-name").fill("My Desk");
+  await page.locator('.nd [type="submit"]').click();
+  await cue.change((st) => {
+    const d = st.desk.projects.find((x) => x.project === "desk-1");
+    const base = st.sessions.find((x) => x.session_id === "lead-desk-1");
+    for (const [id, state] of [["keep", "idle"], ["shared", "idle"], ["busy", "working"]]) st.sessions.push({ ...base, session_id: id, name: id, state });
+    d.members.push("keep", "shared", "busy");
+    st.desk.projects.push({ project: "desk-other", independent: true, name: "Other", workspace_project: "project", items: [], decisions: [], members: ["shared"] });
+  });
+  await page.locator("[data-desk-home]").click();
+  await page.locator('[data-desk-delete="desk-1"]').click();
+  await expect(page.locator('[data-desk-close-session="lead-desk-1"]')).toBeChecked();
+  await expect(page.locator('[data-desk-close-session="keep"]')).toBeChecked();
+  await expect(page.locator('[data-desk-close-session="shared"]')).toBeDisabled();
+  await expect(page.locator('[data-desk-close-session="busy"]')).toBeDisabled();
+  await page.locator('[data-desk-close-session="keep"]').uncheck();
+  await page.locator("[data-desk-delete-confirm]").click();
+  await cue.called("desk_delete", { id: "desk-1", closeSessions: ["lead-desk-1"] });
+  await expect(page.locator(".dh-nm")).toHaveText("Other");
+  const ids = await page.evaluate(() => state.sessions.map((s) => s.session_id));
+  expect(ids).toEqual(expect.arrayContaining(["keep", "shared", "busy"]));
+  expect(ids).not.toContain("lead-desk-1");
 });

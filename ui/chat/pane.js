@@ -43,9 +43,9 @@ function activePill(it, s, pending, ch) {
  *  sandboxed command needs network access"), then the call it's about. You were typing to this session when it
  *  asked: your box stays (cursor and text intact), and sending waits until you've answered, so nothing gets typed
  *  into its prompt. `key`: the box that holds what you were typing (the Desk's own box, desk.js). */
-function askFoot(it, sid, harness, key = `s:${sid}`) {
+function askFoot(it, sid, harness, key = `s:${sid}`, denyLabel = "Deny") {
   const head = (inTerminal(it) ? esc(it.message || `${agentName(harness)} ${verb(it)}`) : `${esc(agentName(harness))} ${esc(verb(it))}`) + machTag(it.machine);
-  let foot = `<div class="act-card"><div class="act-head">${head}</div>${inTerminal(it) && !it.tool_name ? "" : requestBody(it)}${it.kind !== "question" ? whyLine(it) : ""}${decisionButtons(it)}</div>`;
+  let foot = `<div class="act-card"><div class="act-head">${head}</div>${inTerminal(it) && !it.tool_name ? "" : requestBody(it)}${it.kind !== "question" ? whyLine(it) : ""}${decisionButtons(it, denyLabel)}</div>`;
   if (document.activeElement?.dataset?.text === key || draft(key).text.trim() || draft(key).images.length) {
     foot += `<div class="foot held">${box_(key, "Answer above first; your message waits here…", "Answer first", `data-held="1" disabled`)}</div>`;
   }

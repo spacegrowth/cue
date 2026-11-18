@@ -262,7 +262,7 @@
    *  drag out a selection, press a button or type through an input method, as Cue's window holds its own
    *  (app/render.js renderMain; window.js lets it go). */
   globalThis.renderMain = globalThis.render = () => {
-    if (dragSelecting() || (mouseDown && onPress) || composing) { heldDraw = true; return; }
+    if (dragSelecting() || onPress || composing) { heldDraw = true; return; }
     paint();
   };
   /** The end of the chat: what it's doing now, under its last reply. Again on the next frame, once the window

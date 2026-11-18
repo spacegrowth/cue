@@ -31,6 +31,20 @@ fn decision(behavior: &str) -> Answer {
 const NEW: &str = include_str!("fixtures/codex_new.jsonl");
 
 #[test]
+fn desk_context_travels_with_a_display_placeholder() {
+    let (mut c, _) = run(NEW, Start::New("x".into()));
+    let context = "<desk id=\"d1\" name=\"Café\" project=\"cue\">\nOther session (sid:abcdef, 142k)\n</desk>\n\n";
+    let note = "Successor now runs Café's Desk. Please route Fix the header.";
+    let text = format!("{context}{note}");
+    let sent: Value = serde_json::from_str(&c.message(&text)[0]).unwrap();
+    let input = &sent["params"]["input"][0];
+    assert_eq!(input["text"], text);
+    assert_eq!(input["text_elements"], json!([{ "byteRange": { "start": 0, "end": context.len() }, "placeholder": "" }]));
+    let plain: Value = serde_json::from_str(&c.message(note)[0]).unwrap();
+    assert!(plain["params"]["input"][0].get("text_elements").is_none());
+}
+
+#[test]
 fn chosen_models_are_applied_to_turns_and_replayed() {
     let (mut c, _) = run(NEW, Start::New("x".into()));
     let lines = c.message_with_model("next task", "picked-model");

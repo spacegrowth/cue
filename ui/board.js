@@ -303,7 +303,7 @@ function dialogHtml(it) {
   if (!d?.options?.length) return "";
   return `${d.detail ? `<div class="qtext">${esc(d.detail)}</div>` : ""}<div class="opts">${d.options.map((o, n) => `<button class="opt ${n === d.selected ? "on" : ""}" data-tpick="${n + 1}" data-id="${esc(it.id)}">${n + 1} · ${esc(o)}</button>`).join("")}</div>`;
 }
-function decisionButtons(it) {
+function decisionButtons(it, denyLabel = "Deny") {
   if (inTerminal(it) && inTmux(it.session_id) && termSid === it.session_id) return `<div class="row-btns"><span class="dim">Answer it in the terminal above.</span></div>`;
   if (inTerminal(it) && it.tool_input?.dialog?.options?.length) return `${dialogHtml(it)}<div class="row-btns"><span class="dim">Or answer it in its terminal.</span><span class="grow"></span>${inTmux(it.session_id) ? `<button class="btn" data-act="term-open" data-sid="${esc(it.session_id)}">Open terminal</button>` : `<button class="btn" data-act="go" data-id="${esc(it.id)}">${openInLabel(sessionOf(it.session_id))}</button>`}</div>`;
   if (inTerminal(it) && inTmux(it.session_id)) return `<div class="row-btns"><span class="dim">It's waiting in its terminal: answer it there.</span><span class="grow"></span><button class="btn primary" data-act="term-open" data-sid="${esc(it.session_id)}">Answer in terminal</button></div>`;
@@ -314,7 +314,7 @@ function decisionButtons(it) {
   const sugg = it.suggestions || [];
   const menu = menuFor === it.id && sugg.length ? `<div class="menu">${sugg.map((s, n) => { const x = describeSuggestion(s); return `<button data-always="${n}" data-id="${esc(it.id)}"><div>${esc(x.title)}</div><div class="sub">${esc(x.where)}</div></button>`; }).join("")}</div>` : "";
   const plan = tool(it) === "exitplanmode";
-  return `<div class="row-btns"><button class="btn deny flex" data-act="deny" data-id="${esc(it.id)}">${plan ? "Keep planning" : "Deny"}</button>
+  return `<div class="row-btns"><button class="btn deny flex" data-act="deny" data-id="${esc(it.id)}">${plan ? "Keep planning" : esc(denyLabel)}</button>
     ${sugg.length ? `<span class="always">${menu}<button class="btn" data-act="menu" data-id="${esc(it.id)}">Always…</button></span>` : ""}
     <button class="btn" data-act="redirect" data-id="${esc(it.id)}">↪</button>
     <button class="btn primary flex" data-act="allow" data-id="${esc(it.id)}">${plan ? "Approve plan" : "Allow"}</button></div>`;

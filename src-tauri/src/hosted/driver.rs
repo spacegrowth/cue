@@ -89,6 +89,15 @@ impl Driver {
 
     /// One line of its output: its events reported, and the lines to write back at once.
     pub fn read(&self, line: &str) -> Vec<String> {
+        if line.contains("\"serverRequest/resolved\"") {
+            if let Ok(value) = serde_json::from_str::<Value>(line) {
+                if value["method"] == "serverRequest/resolved" {
+                    if let (Some(sid), Some(request)) = (value["params"]["threadId"].as_str(), value["params"].get("requestId")) {
+                        crate::approval_trace::record(sid, &request.to_string(), "", "codex_resolved");
+                    }
+                }
+            }
+        }
         let rpc = || {
             let v: Value = serde_json::from_str(line).ok()?;
             if v.get("method").is_some() { return None; }

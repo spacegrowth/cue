@@ -50,3 +50,27 @@ fn a_script_that_only_runs_a_command_reads_as_that_command() {
     assert_eq!(super::script_command(r#"const r = await tools.exec_command({"cmd":"git status --short","yield_time_ms":1000}); text(r);"#).as_deref(), Some("git status --short"));
     assert_eq!(super::script_command("const m = ALL_TOOLS.filter(x => x); text(m);"), None);
 }
+
+#[test]
+fn current_codex_user_message_starts_a_turn_with_working_steps() {
+    let entries = [
+        r#"{"timestamp":"2026-11-17T10:00:00Z","type":"session_meta","payload":{"id":"x"}}"#,
+        r#"{"timestamp":"2026-11-17T10:00:01Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"system instructions"}]}}"#,
+        r#"{"timestamp":"2026-11-17T10:00:02Z","type":"event_msg","payload":{"type":"item_completed","item":{"type":"UserMessage","content":[{"type":"text","text":"fix the menu"}]}}}"#,
+        r#"{"timestamp":"2026-11-17T10:00:03Z","type":"response_item","payload":{"type":"function_call","name":"exec_command","arguments":"{\"cmd\":\"rg menu\"}","call_id":"c1"}}"#,
+        r#"{"timestamp":"2026-11-17T10:00:04Z","type":"event_msg","payload":{"type":"item_completed","item":{"type":"CommandExecution"}}}"#,
+        r#"{"timestamp":"2026-11-17T10:00:05Z","type":"response_item","payload":{"type":"function_call_output","call_id":"c1","output":"Exit code: 0\nOutput:\nfound"}}"#,
+        r#"{"timestamp":"2026-11-17T10:00:06Z","type":"event_msg","payload":{"type":"item_completed","item":{"type":"UserMessage","content":[{"type":"text","text":"next change"}]}}}"#,
+    ];
+    let dir = std::env::temp_dir().join(format!("cue-steps-codex-current-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("rollout.jsonl");
+    std::fs::write(&path, entries.join("\n") + "\n").unwrap();
+    let mut feed = Feed::open(path.to_str().unwrap(), 1);
+    feed.catch_up();
+    assert_eq!(feed.turns.len(), 2);
+    assert_eq!(feed.turns[0].prompt, "fix the menu");
+    assert!(matches!(&feed.turns[0].items[0], Item::Step { verb, done: true, .. } if verb == "Ran"));
+    assert_eq!(feed.turns[1].prompt, "next change");
+    std::fs::remove_dir_all(dir).ok();
+}

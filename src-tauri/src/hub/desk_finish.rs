@@ -6,9 +6,10 @@
 //! Installs run one at a time, once for everything waiting: half an hour after the first of it, built from the main
 //! line's HEAD, and not while a session that ends with Cue is mid-turn (unless you say Install now). Once the running
 //! Cue has an item's commit, the item is to check. A build that fails, or a new Cue that doesn't start, stops on a
-//! question for you, and its holder is sent the log.
+//! question for you, and its holder is sent the log. Work its holder committed itself waits for the app all the same,
+//! and a later commit on the main line that takes a finished item's work back out sends it back to its holder (#213).
 
-use super::desk_commit::{commit_each, git, shas_of, word_in, words_checked};
+use super::desk_commit::{commit_each, git, git_said, shas_of, word_in, words_checked};
 use super::desk_theirs::Part;
 use super::*;
 use crate::desk::{DeskItem, Finish, InstallStatus, Installer};
@@ -177,9 +178,19 @@ impl Hub {
         if !waiting.is_empty() {
             return self.finish_wait(id, &fin, waiting.join(", "));
         }
-        let Some(tops) = self.finish_land(&it, &todo, &parts) else { return };
+        let Some(tops) = self.finish_land(&it, &todo, &parts, &sources) else { return };
         self.finish_release(id);
         self.finish_after(id, &tops);
+    }
+
+    /// Item `id`'s work git says isn't committed (each path in the folder it was changed in), asked as its holder's
+    /// turn ends on it (#213). None on another machine: its folders aren't looked at here.
+    pub(super) fn desk_uncommitted(&self, id: &str) -> Vec<String> {
+        let Ok((_, machine, sources)) = self.desk_change_sources(id) else { return Vec::new() };
+        if !machine.is_empty() {
+            return Vec::new();
+        }
+        sources.iter().flat_map(|(folder, paths)| super::desk_commit::changed_of("", folder, paths).unwrap_or_default()).collect()
     }
 
     /// Item `it`'s files git says changed, by folder (one not in a repository left out), with only its own part of a
@@ -229,11 +240,17 @@ impl Hub {
         });
     }
 
-    /// Item `it`'s `todo` committed, and its crew's work on a branch of its own merged into the main checkout's
-    /// branch: each main checkout its work went to. None when it stopped on a question (a word, a conflict).
-    fn finish_land(&self, it: &DeskItem, todo: &[(String, Vec<String>)], parts: &[Part]) -> Option<Vec<String>> {
+    /// Item `it`'s `todo` committed, and its work on a branch of its own (its crew's, or its holder's own worktree:
+    /// each folder of `sources`) merged into the main checkout's branch: each main checkout its work is on, those of
+    /// work its holder committed itself too (#213). None when it stopped on a question (a word, a conflict).
+    fn finish_land(&self, it: &DeskItem, todo: &[(String, Vec<String>)], parts: &[Part], sources: &[(String, Vec<String>)]) -> Option<Vec<String>> {
         let project = self.read(|st| st.desk.project_of(&it.project).to_string());
-        let crew: Vec<String> = self.read(|st| super::desk::item_sources(st, it).1.into_iter().map(|(f, _)| f).collect());
+        let mut crew: Vec<String> = self.read(|st| super::desk::item_sources(st, it).1.into_iter().map(|(f, _)| f).collect());
+        for (f, _) in sources {
+            if !crew.contains(f) {
+                crew.push(f.clone());
+            }
+        }
         if !todo.is_empty() {
             if let Err(e) = words_checked(&project, "", todo, parts, &it.title) {
                 self.finish_ask(&it.id, if e.contains("\" is in ") { "word" } else { "error" }, &e, "");
@@ -259,7 +276,8 @@ impl Hub {
             }
         }
         let mut tops: Vec<String> = Vec::new();
-        for folder in made.iter().map(|(f, _)| f.clone()).chain(merged) {
+        // Its own folders last: work its holder committed there itself is on their main line all the same.
+        for folder in made.iter().map(|(f, _)| f.clone()).chain(merged).chain(crew) {
             if let Some((main, _)) = main_checkout(&folder).filter(|(m, _)| !tops.contains(m)) {
                 tops.push(main);
             }
@@ -348,6 +366,99 @@ impl Hub {
     pub(super) fn desk_finish_tick(&self) {
         let Some(_claim) = Claim::take(self, "tick") else { return };
         self.finish_tick();
+        self.taken_out_tick();
+    }
+
+    /// Commits new on a main line since Cue last looked, each checked against the finished items whose commits are
+    /// on it (to check, finishing, or done this week): one that takes most of an item's added lines back out (a
+    /// revert, a file put back as it was) sends the item back to its holder, saying which commit did (#213).
+    fn taken_out_tick(&self) {
+        let now = now_ms();
+        let week_ago = super::desk::secs(now).saturating_sub(7 * 24 * 3600);
+        // Only items finished here at a DONE (`finish`): their commits are in this Mac's folders.
+        let items: Vec<DeskItem> = self.read(|st| {
+            let open = |i: &DeskItem| matches!(i.state.as_str(), "to_check" | "finishing") || (i.state == "done" && i.done_at.is_some_and(|d| d >= week_ago));
+            st.desk.items.iter().filter(|i| i.finish.is_some() && !i.commit_in.is_empty() && open(i)).cloned().collect()
+        });
+        if items.is_empty() {
+            return;
+        }
+        // Each item's main checkouts, and each main checkout's HEAD now.
+        let mut tops: Vec<(String, String)> = Vec::new();
+        let mut of_folder: Vec<(String, Option<String>)> = Vec::new();
+        let mut of_item: Vec<(&DeskItem, Vec<String>)> = Vec::new();
+        for it in &items {
+            let mut mine: Vec<String> = Vec::new();
+            for (folder, _) in &it.commit_in {
+                if !of_folder.iter().any(|(f, _)| f == folder) {
+                    of_folder.push((folder.clone(), main_checkout(folder).map(|(t, _)| t)));
+                }
+                let Some(top) = of_folder.iter().find(|(f, _)| f == folder).and_then(|(_, t)| t.clone()) else { continue };
+                if !tops.iter().any(|(t, _)| *t == top) {
+                    let Some(head) = git("", &top, &[], &["rev-parse", "HEAD"]).map(|h| h.trim().to_string()) else { continue };
+                    tops.push((top.clone(), head));
+                }
+                if !mine.contains(&top) {
+                    mine.push(top);
+                }
+            }
+            of_item.push((it, mine));
+        }
+        let seen: Vec<(String, String, Option<String>)> = self.write(|st| {
+            tops.iter().map(|(top, head)| (top.clone(), head.clone(), st.desk.seen_heads.insert(top.clone(), head.clone()))).collect()
+        });
+        let mut taken: Vec<(String, String)> = Vec::new();
+        for (top, head, before) in seen {
+            let Some(before) = before.filter(|b| *b != head) else { continue };
+            let list = git("", &top, &[], &["rev-list", "--no-merges", "--reverse", "--max-count=50", &format!("{before}..{head}")]).unwrap_or_default();
+            let new: Vec<&str> = list.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+            if new.is_empty() {
+                continue;
+            }
+            for (it, _) in of_item.iter().filter(|(_, m)| m.contains(&top)) {
+                if taken.iter().any(|(id, _)| *id == it.id) {
+                    continue;
+                }
+                if let Some(by) = taken_out_by(&top, &head, it, &new) {
+                    taken.push((it.id.clone(), by));
+                }
+            }
+        }
+        for (id, by) in taken {
+            self.desk_taken_out(&id, &by);
+        }
+    }
+
+    /// Item `id`'s work was taken back out by commit `by` ("<short> (<its subject>)"): sent back to its holder, as
+    /// Send back does, saying so on its page and to its holder.
+    fn desk_taken_out(&self, id: &str, by: &str) {
+        let now = now_ms();
+        let fx = self.write(|st| {
+            let mut fx = super::desk::Effects::default();
+            let Some(i) = st.desk.item_mut(id) else { return fx };
+            let h = i.holder.clone();
+            let what = format!("Commit {by} took its work back out");
+            (i.state, i.done_at, i.finish, i.updated) = (if h.is_some() { "working" } else { "new" }.into(), None, None, super::desk::secs(now));
+            if let Some(c) = i.checks.last_mut() {
+                c.back = what.clone();
+            }
+            let (title, project) = (i.title.clone(), i.project.clone());
+            let whom = match &h {
+                Some(h) => {
+                    let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
+                    fx.sends.push((h.to().to_string(), format!("{crew}Desk item #{id} ({title}) is open again: {what}. Put it back, then say DONE: #{id}.\nIts fixes stay in #{id}; don't add new items for them.")));
+                    format!("sent back to {}", h.name)
+                }
+                None => "open again".to_string(),
+            };
+            super::desk::decide(st, &project, Some(id.to_string()), "Cue", "", &what, &whom, now, &mut fx);
+            if let Some(d) = st.desk.decisions.last_mut() {
+                d.undo = "none".into();
+            }
+            fx.items.push(id.to_string());
+            fx
+        });
+        self.desk_done(fx);
     }
 
     fn finish_tick(&self) {
@@ -570,15 +681,86 @@ fn merge_to_main(project: &str, folder: &str, title: &str) -> Result<Option<Stri
     if let Some(what) = in_progress(&main) {
         return Err(("conflict", format!("Not merged: the main checkout is in the middle of {what}; finish it there first")));
     }
-    if git("", &main, &[], &["merge", "--no-ff", "--no-edit", "-q", "-m", &message, &sha]).is_none() {
-        // Refused before it began (a file there with changes of its own), or stopped: left as it was. Only this
-        // merge is undone (none was in progress before it).
+    if let Err(why) = git_said("", &main, &[], &["merge", "--no-ff", "--no-edit", "-q", "-m", &message, &sha]) {
+        // Refused before it began (a file there with changes of its own, a hook), or stopped: left as it was. Only
+        // this merge is undone (none was in progress before it). git's own words say which.
         if in_progress(&main).is_some() {
             git("", &main, &[], &["merge", "--abort"]);
         }
-        return Err(("conflict", format!("Not merged: git wouldn't merge {branch} into {onto} in the main checkout (a file it changes has changes of its own there)")));
+        let what = format!("Not merged: git wouldn't merge {branch} into {onto} in the main checkout");
+        return Err(("conflict", super::desk_commit::because(what, &why)));
     }
     Ok(Some(main))
+}
+
+/// Lines worth matching in a diff: with a letter or digit, four characters or more once trimmed (not a lone brace).
+fn counts(line: &str) -> bool {
+    let t = line.trim();
+    t.chars().count() >= 4 && t.chars().any(char::is_alphanumeric)
+}
+
+/// Commit `sha`'s added ('+') or removed ('-') lines, by file (its path after the change), trimmed.
+fn lines_of(top: &str, sha: &str, sign: char) -> Vec<(String, String)> {
+    let diff = git("", top, &[], &["show", "-U0", "--format=", "--no-color", "--no-ext-diff", "--no-textconv", "--no-renames", sha]).unwrap_or_default();
+    let mut file = String::new();
+    let mut out: Vec<(String, String)> = Vec::new();
+    for l in diff.lines() {
+        if let Some(rest) = l.strip_prefix("diff --git ") {
+            file = rest.rsplit_once(" b/").map(|(_, b)| b.to_string()).unwrap_or_default();
+        } else if l.starts_with("+++ ") || l.starts_with("--- ") {
+            continue;
+        } else if let Some(body) = l.strip_prefix(sign) {
+            if counts(body) {
+                out.push((file.clone(), body.trim().to_string()));
+            }
+        }
+    }
+    out
+}
+
+/// The first of `new` (commits on `top`'s main line, oldest first; `head` the newest) that takes item `it`'s work
+/// back out: made after it, not its own, removing at least half its added lines, which `head` no longer has.
+/// "<short> (<subject>)", when one does.
+fn taken_out_by(top: &str, head: &str, it: &DeskItem, new: &[&str]) -> Option<String> {
+    let shas: Vec<&str> = it.commit_in.iter().map(|(_, s)| s.as_str()).collect();
+    let is_ancestor = |a: &str, b: &str| matches!(crate::safe_git::run("", top, &[], &["merge-base", "--is-ancestor", a, b]), Ok((_, 0)));
+    // Its commits on this main line (a commit taken back by Undo, or in another repository, isn't).
+    let on: Vec<&str> = shas.iter().copied().filter(|s| is_ancestor(s, head)).collect();
+    if on.is_empty() {
+        return None;
+    }
+    let added: Vec<(String, String)> = on.iter().flat_map(|s| lines_of(top, s, '+')).collect();
+    if added.is_empty() {
+        return None;
+    }
+    for c in new {
+        if shas.iter().any(|s| c.starts_with(s)) || !on.iter().all(|s| is_ancestor(s, c)) {
+            continue;
+        }
+        let removed = lines_of(top, c, '-');
+        if removed.is_empty() {
+            continue;
+        }
+        let mut now_in: Vec<(String, Vec<String>)> = Vec::new();
+        let mut gone = 0;
+        for (file, line) in &added {
+            if !removed.iter().any(|(f, l)| f == file && l == line) {
+                continue;
+            }
+            if !now_in.iter().any(|(f, _)| f == file) {
+                let text = git("", top, &[], &["show", &format!("{head}:{file}")]).unwrap_or_default();
+                now_in.push((file.clone(), text.lines().map(|l| l.trim().to_string()).collect()));
+            }
+            if now_in.iter().find(|(f, _)| f == file).is_some_and(|(_, ls)| !ls.contains(line)) {
+                gone += 1;
+            }
+        }
+        if gone > 0 && gone * 2 >= added.len() {
+            let short = git("", top, &[], &["log", "-1", "--format=%h (%s)", c]).map(|l| l.trim().to_string()).unwrap_or_else(|| c[..c.len().min(8)].to_string());
+            return Some(short);
+        }
+    }
+    None
 }
 
 /// What `main`'s checkout is in the middle of, when it is: a merge, a rebase, a cherry-pick or a revert.

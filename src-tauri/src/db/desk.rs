@@ -16,6 +16,18 @@ pub fn desk_put_space(desk: &crate::desk::model::DeskSpace) -> Result<(), String
         .map(|_| ()).ok_or_else(|| "Couldn't save the Desk".to_string())
 }
 
+/// Delete a Desk and all of its persisted records atomically.
+pub fn desk_delete(id: &str) -> Result<(), String> {
+    with(|c| {
+        let tx = c.unchecked_transaction()?;
+        for table in ["desk_items", "desk_decisions", "desk_lead", "desk_members"] {
+            tx.execute(&format!("DELETE FROM {table} WHERE project = ?1"), params![id])?;
+        }
+        tx.execute("DELETE FROM desk_spaces WHERE id = ?1", params![id])?;
+        tx.commit()
+    }).ok_or_else(|| "Couldn't delete the Desk".to_string())
+}
+
 pub fn desk_spaces() -> Vec<crate::desk::model::DeskSpace> {
     with(|c| {
         let mut q = c.prepare("SELECT data FROM desk_spaces ORDER BY rowid")?;

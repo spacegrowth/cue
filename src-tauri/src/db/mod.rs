@@ -12,7 +12,7 @@
 
 mod commands;
 mod desk;
-pub use self::desk::{desk_put_space, desk_spaces};
+pub use self::desk::{desk_put_space, desk_spaces, desk_delete};
 mod drafts;
 mod handoffs;
 mod insights;

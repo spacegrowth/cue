@@ -26,7 +26,7 @@ function renderMain() {
   projTheme();
   retheme();
   // You're dragging out a selection: a redraw would wipe it. It waits until you let go.
-  if (dragSelecting() || folding || (mouseDown && onPress) || composing) { heldDraw = true; return; }
+  if (dragSelecting() || folding || onPress || composing) { heldDraw = true; return; }
   const was = beforeDraw();
   const lifted = drawWindow();
   const kept = settleChat(lifted);   // the same chat still open: its element is back in place, patched

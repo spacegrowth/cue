@@ -64,6 +64,7 @@ impl Hub {
     /// An error when one is starting or resuming already.
     pub(crate) fn desk_claim_start(&self, project: &str) -> Result<(), String> {
         self.write(|st| {
+            if project.starts_with("desk-") && !st.desk.spaces.contains_key(project) { return Err("no such Desk".into()); }
             if st.desk.starting.contains_key(project) {
                 return Err(format!("{}'s lead is starting already", st.desk.name_of(project)));
             }
@@ -137,11 +138,13 @@ impl Hub {
     /// An item the lead gave to a new session (`ROUTE: #id -> new`): a hosted Claude started in the project's folder,
     /// named "<project>-<id>", that holds it and is sent it. If it can't start, the item says why (and the lead is told).
     pub(super) fn desk_start_new(self: &Arc<Self>, s: super::desk::NewStart) {
+        if !self.read(|st| st.desk.item(&s.id).is_some_and(|i| i.project == s.project && i.state != "done")) { return; }
         let name = self.free_name(&format!("{}-{}", self.read(|st| st.desk.name_of(&s.project).to_string()), s.id));
         let dir = self.desk_folder(&s.project).ok_or_else(|| format!("no folder known for {}", s.project));
         // Its folder is one a session of the project already works in: trusted, as you trust it there.
         let opts = crate::ipc::StartOpts { trust: true, ..Default::default() };
-        let started = dir.and_then(|dir| crate::ipc::start_hosted(self, crate::hosted::Agent::Claude, &dir, "", &name, &opts, &[]));
+        let agent = self.session_origin(&s.by_sid).and_then(|o| crate::hosted::Agent::named(&o.harness)).unwrap_or(crate::hosted::Agent::Claude);
+        let started = dir.and_then(|dir| crate::ipc::start_hosted(self, agent, &dir, "", &name, &opts, &[]));
         let sid = started.and_then(|v| v["session_id"].as_str().filter(|s| !s.is_empty()).map(str::to_string).ok_or_else(|| "it started without a session id".to_string()));
         let now = now_ms();
         let fx = self.write(|st| {
@@ -178,7 +181,7 @@ impl Hub {
     /// What the lead is told before each message of yours: the project's items, who holds them, and the sessions it
     /// can hand work to, in one `<desk …>…</desk>` block (no `</desk>` inside it: the window strips the block by it).
     /// `lead`: the session told (left out of the sessions listed; "" for one not started yet). `with_skill`: how a
-    /// lead works, first (for a session just made the lead: it has no such system prompt).
+    /// lead works (for a session just made the lead: it has no such system prompt).
     /// With the routes it couldn't make that it's told of: `desk_told` once the message has reached it.
     pub(crate) fn desk_summary(&self, project: &str, lead: &str, with_skill: bool) -> (String, Vec<(String, String)>) {
         let now = now_ms();
@@ -187,44 +190,98 @@ impl Hub {
                 Some(d) => format!("id=\"{}\" name=\"{}\" project=\"{}\">\n", project, d.name.replace('"', "'"), d.project.replace('"', "'")),
                 None => format!("project=\"{}\">\n", project.replace('"', "'")),
             };
-            if with_skill {
-                out.push_str(crate::desk::LEAD_SKILL);
-                out.push_str("\n\n");
+            if !lead.is_empty() {
+                let name = st.sessions.get(lead).map(shown_name)
+                    .or_else(|| st.desk.lead.get(project).filter(|l| l.sid == lead).map(|l| l.name.clone()))
+                    .unwrap_or_else(|| lead.chars().take(8).collect());
+                out.push_str(&format!("Desk lead: {name} (you){}\n\n", context_note(st, lead, now)));
             }
-            out.push_str("Items:\n");
             let (mut failed, mut told) = (vec![], vec![]);
-            let items: Vec<DeskItem> = st.desk.items.iter().filter(|i| i.project == project && i.state != "done").map(|i| shown(st, i)).collect();
-            if items.is_empty() {
-                out.push_str("(none yet)\n");
+            let (ready, open): (Vec<_>, Vec<_>) = st.desk.items.iter()
+                .filter(|i| i.project == project && i.state != "done")
+                .map(|i| shown(st, i))
+                .partition(|i| i.state == "new" && i.holder.is_none());
+            out.push_str("Needs routing:\n");
+            if ready.is_empty() {
+                out.push_str("None.\n");
             }
-            for it in &items {
+            for it in &ready {
                 item_lines(it, &mut out, &mut failed, &mut told);
+            }
+            if !open.is_empty() {
+                out.push_str("\nOther open items:\n");
+                for it in &open {
+                    item_lines(it, &mut out, &mut failed, &mut told);
+                }
             }
             for line in told {
                 out.push_str(&line);
             }
-            let (on, off): (Vec<&crate::sessions::Session>, Vec<&crate::sessions::Session>) = routable(st, project).into_iter().filter(|s| s.origin.session_id != lead).partition(|s| st.desk.on_desk(project, &s.origin.session_id));
-            let line = |s: &crate::sessions::Session| {
-                    let crew: Vec<&str> = s.team.iter().map(|t| t.name.as_str()).collect();
-                    let what = if crew.is_empty() { "session".to_string() } else { format!("lead, crew: {}", crew.join(", ")) };
-                    let id: String = s.origin.session_id.chars().take(8).collect();
-                    let state = if s.state.is_empty() { "idle" } else { &s.state };
-                    format!("{} (sid:{id}, {what}, {state}{})", shown_name(s), context_note(st, &s.origin.session_id, now))
-            };
-            let names: Vec<String> = on.into_iter().map(line).collect();
-            out.push_str(&format!("Sessions on the Desk, you can route to: {}\n", if names.is_empty() { "none open but you: ROUTE: #<id> -> new".to_string() } else { names.join("; ") }));
-            if !off.is_empty() {
-                let names: Vec<String> = off.into_iter().map(|s| { let id: String = s.origin.session_id.chars().take(8).collect(); format!("{} (sid:{id})", shown_name(s)) }).collect();
-                out.push_str(&format!("Other sessions of this project, not on the Desk (a ROUTE to one asks the user first; a yes adds it): {}\n", names.join("; ")));
+
+            let on: Vec<_> = routable(st, project).into_iter()
+                .filter(|s| s.origin.session_id != lead && st.desk.on_desk(project, &s.origin.session_id))
+                .collect();
+            if on.is_empty() {
+                out.push_str("\nNo Desk sessions available. Use ROUTE: #<id> -> new for a new session.\n");
+            } else {
+                out.push_str("\nDesk routes (or use ROUTE: #<id> -> new):\n");
             }
-            if let Some(me) = st.sessions.get(lead) {
-                let context = context_note(st, lead, now);
-                out.push_str(&format!("You: {}{context}. You only hand work out: ROUTE: #<id> -> new when no session fits.\n", shown_name(me)));
+            for s in on {
+                let sid = &s.origin.session_id;
+                let id: String = sid.chars().take(8).collect();
+                out.push_str(&format!("- {} (sid:{id}", shown_name(s)));
+                if !matches!(s.state.as_str(), "" | "idle" | "waiting") {
+                    out.push_str(&format!(", {}", s.state));
+                }
+                if !s.team.is_empty() {
+                    let crew: Vec<_> = s.team.iter().map(|t| t.name.as_str()).collect();
+                    out.push_str(&format!(", crew: {}", crew.join(", ")));
+                }
+                out.push_str(&context_note(st, sid, now));
+                out.push_str(")\n");
+            }
+            // Running leads get this too, even if their original system prompt is older.
+            out.push_str("\nAnswer the user's question or request directly in plain language before any Desk command lines.\n");
+            if with_skill {
+                out.push('\n');
+                out.push_str(crate::desk::LEAD_SKILL);
+                out.push('\n');
             }
             (out, failed)
         });
         // Titles and names are anyone's words: none of them may close the block early.
         (format!("<desk {}</desk>", text.replace("</desk", "</ desk")), failed)
+    }
+
+    /// The short, visible hand-off for the successor. The full routing context travels separately in the Desk block.
+    pub(crate) fn desk_handoff_words(&self, project: &str, sid: &str, name: &str) -> String {
+        self.read(|st| {
+            let desk = st.desk.name_of(project);
+            let lead = st.sessions.get(sid).map(shown_name).filter(|s| !s.is_empty()).unwrap_or_else(|| name.to_string());
+            let intro = format!("{lead} now runs {desk}'s Desk.");
+            let mut needing_route = st.desk.items.iter()
+                .filter(|i| i.project == project && i.state == "new" && i.holder.is_none());
+            let titles: Vec<_> = needing_route.by_ref().take(3)
+                .map(|i| i.title.split_whitespace().collect::<Vec<_>>().join(" "))
+                .map(|title| {
+                    let mut chars = title.chars();
+                    let mut short: String = chars.by_ref().take(64).collect();
+                    if chars.next().is_some() {
+                        short.push('…');
+                    }
+                    short
+                })
+                .collect();
+            if titles.is_empty() {
+                return format!("{intro} Nothing needs routing.");
+            }
+            let more = needing_route.count();
+            let mut words = format!("{intro} Please route {}.", titles.join(", "));
+            if more > 0 {
+                words.push_str(&format!(" {more} more to route."));
+            }
+            words
+        })
     }
 
     /// `project`'s new items, waited on for a moment (`desk_done`): its lead is told of those still new and held by
@@ -248,26 +305,14 @@ pub(super) fn context_k(tokens: u64) -> String {
     format!("{}k", (tokens + 500) / 1000)
 }
 
-/// Session `sid`'s context and cache as the lead's summary says them, from its card's numbers (cache_tick): ", 142k,
-/// cache 12m" or ", 142k, cold", and " → Cue will hand off at expiry" when the Desk's rule will ask it for a note.
-/// Nothing for a session with no card waiting (at work, or not on this Mac).
+/// Show cache details when a pending hand-off could affect a routing decision.
 fn context_note(st: &Store, sid: &str, now: u64) -> String {
-    let Some(v) = st.insight.get(sid) else { return String::new() };
-    let tokens = v["tokens"].as_u64().unwrap_or(0);
-    if tokens == 0 {
+    let Some(v) = st.insight.get(sid).filter(|v| super::cache_tick::desk_will_hand_off(st, sid, v, now)) else {
         return String::new();
-    }
-    let until = v["until_ms"].as_u64().unwrap_or(0);
-    let mut out = format!(", {}", context_k(tokens));
-    if until > now {
-        out.push_str(&format!(", cache {}m", (until - now).div_ceil(60_000)));
-    } else if until > 0 {
-        out.push_str(", cold");
-    }
-    if super::cache_tick::desk_will_hand_off(st, sid, v, now) {
-        out.push_str(" → Cue will hand off at expiry");
-    }
-    out
+    };
+    let until = v["until_ms"].as_u64().unwrap_or(now);
+    let minutes = until.saturating_sub(now).div_ceil(60_000);
+    format!(", {}, cache {minutes}m → Cue will hand off at expiry", context_k(v["tokens"].as_u64().unwrap_or(0)))
 }
 
 /// Of the folders of a project's sessions (in order), the first in the repository named for `project`, else the first.
@@ -294,7 +339,12 @@ pub(super) fn start_failed(st: &mut Store, s: &super::desk::NewStart, e: &str, n
 /// lead is told of them (into `told`).
 fn item_lines(it: &DeskItem, out: &mut String, failed: &mut Vec<(String, String)>, told: &mut Vec<String>) {
     let kind = if it.kind.is_empty() { "no kind yet" } else { &it.kind };
-    out.push_str(&format!("#{} {kind}: {} | {}", it.id, it.title, it.state.replace('_', " ")));
+    let status = match (it.stopped, it.loose.is_empty()) {
+        (true, false) => "stopped, not committed".into(),
+        (true, true) => "stopped".into(),
+        _ => it.state.replace('_', " "),
+    };
+    out.push_str(&format!("- #{} {kind}: {} | {status}", it.id, it.title));
     if let Some(h) = &it.holder {
         out.push_str(&format!(" | held by {} ({})", h.name, h.kind));
         if !it.crew.is_empty() {

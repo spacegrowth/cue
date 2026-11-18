@@ -12,8 +12,15 @@ pub(super) fn from_codex(e: &Value, patches: &mut HashMap<String, String>) -> Ve
     let p = e.get("payload").cloned().unwrap_or(Value::Null);
     let ptype = p.get("type").and_then(Value::as_str).unwrap_or("");
     match (e.get("type").and_then(Value::as_str), ptype) {
-        (Some("event_msg"), "user_message") => {
-            let text = p.get("message").and_then(Value::as_str).unwrap_or("").trim().to_string();
+        (Some("event_msg"), "user_message" | "item_completed") => {
+            let text = if ptype == "user_message" {
+                p.get("message").and_then(Value::as_str).unwrap_or("").to_string()
+            } else if p.pointer("/item/type").and_then(Value::as_str) == Some("UserMessage") {
+                p.pointer("/item/content").and_then(Value::as_array).into_iter().flatten()
+                    .filter(|b| b.get("type").and_then(Value::as_str) == Some("text"))
+                    .filter_map(|b| b.get("text").and_then(Value::as_str)).collect::<Vec<_>>().join("\n")
+            } else { return vec![] };
+            let text = text.trim().to_string();
             if text.is_empty() || text.starts_with('<') {
                 return vec![];
             }

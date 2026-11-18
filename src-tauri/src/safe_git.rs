@@ -72,6 +72,38 @@ pub fn run_env(machine: &str, dir: &str, extra: &[String], env: &[(&str, &str)],
     })
 }
 
+/// `run_env` that says why a run failed: its stdout when git exits 0, else git's own last words (its error, a hook's
+/// output, "nothing to commit"), a few lines at most; "" when it said nothing. On a machine, only what it printed.
+pub fn run_said(machine: &str, dir: &str, extra: &[String], env: &[(&str, &str)], rest: &[&str]) -> Result<String, String> {
+    if !machine.is_empty() {
+        let (out, code) = run_env(machine, dir, extra, env, rest)?;
+        return if code == 0 { Ok(out) } else { Err(last_words(&out)) };
+    }
+    let w = words(dir, extra, rest);
+    let mut cmd = Command::new(git_bin());
+    cmd.args(&w[1..]).stdin(Stdio::null());
+    for (k, v) in env {
+        cmd.env(k, v);
+    }
+    let out = cmd.output().map_err(|e| e.to_string())?;
+    let stdout = String::from_utf8_lossy(&out.stdout[..out.stdout.len().min(OUT_LIMIT)]).to_string();
+    if out.status.success() {
+        return Ok(stdout);
+    }
+    let stderr = String::from_utf8_lossy(&out.stderr[..out.stderr.len().min(OUT_LIMIT)]).to_string();
+    Err(last_words(&format!("{stderr}\n{stdout}")))
+}
+
+/// The last few lines of what git printed, without "hint:" lines, cut to a sentence's length.
+pub fn last_words(said: &str) -> String {
+    let lines: Vec<&str> = said.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with("hint:")).collect();
+    let kept = lines[lines.len().saturating_sub(3)..].join(" / ");
+    match kept.char_indices().nth(300) {
+        Some((i, _)) => format!("{}…", &kept[..i]),
+        None => kept,
+    }
+}
+
 /// A script on one of Cue's machines, at most LIMIT: what it printed.
 pub fn on_machine(machine: &str, script: &str) -> Result<String, String> {
     let host = crate::machines::get(machine).ok_or_else(|| format!("Cue doesn't know a machine called {machine}"))?.host;

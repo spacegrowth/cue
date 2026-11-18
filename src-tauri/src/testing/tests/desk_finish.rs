@@ -4,7 +4,8 @@
 //! it's to check; a failed build, or a new Cue that didn't start, asks you and sends its holder the log. A crew's work
 //! on a branch of its own is merged into the main checkout's branch first, never forced.
 
-use super::desk_commit::{commits, done_with, ends, item, tick};
+use super::desk::desk;
+use super::desk_commit::{commits, done_with, ends, item, routed_with, tick};
 use super::team::{git, runs, says, starts, writes};
 use crate::desk::{InstallStatus, Installer};
 use crate::hosted::HostedEvent;
@@ -558,4 +559,149 @@ fn an_item_that_changed_the_app_side_too_still_waits_for_an_install() {
     w.advance(30 * 60_000);
     assert_eq!(fake.started().len(), 1, "installed");
     assert!(!crate::server::cue_dir().join("live").exists(), "nothing served in place");
+}
+
+/// What was sent to session `sid`.
+fn sent_to(w: &World, sid: &str) -> Vec<String> {
+    w.hosted.sent().into_iter().filter(|(s, _)| s == sid).map(|(_, t)| t).collect()
+}
+
+/// The item's crew writes a.txt and b.txt in the repository.
+fn writes_both(w: &World, h: &str, dir: &std::path::Path) {
+    let f = |n: &str| dir.join(n).to_string_lossy().to_string();
+    says(w, h, writes("toolu_A", "agentA", "fixer", &[f("a.txt"), f("b.txt")]));
+}
+
+#[test]
+fn a_holder_that_stops_with_its_work_uncommitted_goes_to_the_lead_as_not_committed_never_to_you() {
+    let w = World::new();
+    // Its holder edits the files itself (no crew: a crew's finish asks it for a review).
+    let (dir, project, id, h) = routed_with(&w, |_, _, _| {}, |w, h, dir| {
+        for n in ["a.txt", "b.txt"] {
+            std::fs::write(dir.join(n), "its holder wrote this\n").unwrap();
+            super::desk_commit::log_edit(w, h, &dir.join(n));
+        }
+    });
+    let lead = desk(&w, &project)["lead"]["sid"].as_str().unwrap().to_string();
+    let before = commits(&dir);
+    w.advance(1000);
+    ends(&w, &h, "Both files are written.\nShall I commit them?");
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!((it["state"].as_str(), it["stopped"].as_bool(), it["latest"].as_str()), (Some("working"), Some(true), Some("Not committed: a.txt, b.txt")), "the lead's, not yours: {it}");
+    assert!(it["ask"].is_null(), "{it}");
+    let told: Vec<String> = sent_to(&w, &lead).into_iter().filter(|t| t.starts_with(&format!("#{id} (Header jumps) stopped, not committed:"))).collect();
+    assert_eq!(told.len(), 1, "{:?}", sent_to(&w, &lead));
+    assert!(told[0].contains("a.txt, b.txt"), "{}", told[0]);
+    // Its time to settle runs out: still the lead's while its work isn't committed.
+    w.advance(11 * 60_000);
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!((it["state"].as_str(), it["stopped"].as_bool()), (Some("working"), Some(true)), "{it}");
+    assert_eq!(commits(&dir), before, "Cue commits nothing without a DONE");
+
+    // Committed now: a question its next turn ends on is yours.
+    git(&dir, &["add", "a.txt", "b.txt"]);
+    git(&dir, &["commit", "-q", "-m", "Header jumps"]);
+    w.advance(1000);
+    w.hosted_says(&h, HostedEvent::Taken { text: format!("#{id}: go on") });
+    w.settle();
+    w.advance(1000);
+    ends(&w, &h, "Committed.\nShall I fix the footer too?");
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!((it["state"].as_str(), it["latest"].as_str()), (Some("needs_you"), Some("Shall I fix the footer too?")), "{it}");
+}
+
+#[test]
+fn work_its_holder_committed_itself_still_waits_until_the_running_cue_has_it() {
+    let w = World::new();
+    let fake = Arc::new(Fake::default());
+    w.hub().desk_set_installer(fake.clone());
+    let (dir, project, id, h) = routed_with(&w, |_, _, dir| as_this_cue(dir), |w, h, dir| {
+        writes_both(w, h, dir);
+        git(dir, &["add", "a.txt", "b.txt"]);
+        git(dir, &["commit", "-q", "-m", "Header jumps, by its holder"]);
+    });
+    ends(&w, &h, &format!("Fixed and committed.\nDONE: #{id}"));
+    let head = git(&dir, &["rev-parse", "HEAD"]).trim().to_string();
+    let shown = item(&w, &project, "Header jumps");
+    assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str(), shown["finish"]["commit"].as_str()), (Some("finishing"), Some("queued"), Some(head.as_str())), "not to check before the app has it: {shown}");
+    fake.runs(&head);
+    tick(&w);
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "to_check");
+}
+
+#[test]
+fn a_commit_that_takes_an_items_work_back_out_reopens_it_and_says_so() {
+    let w = World::new();
+    let (dir, project, id) = done_with(&w, |_, _, _| {}, writes_both);
+    let h = item(&w, &project, "Header jumps")["holder"]["sid"].as_str().unwrap().to_string();
+    w.hub().desk_looks_right(&id).unwrap();
+    w.settle();
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "done");
+    tick(&w);
+    // A commit that leaves its work alone: nothing reopens.
+    std::fs::write(dir.join("a.txt"), "fixer wrote this\nand one more line here\n").unwrap();
+    git(&dir, &["commit", "-q", "-am", "One more line"]);
+    tick(&w);
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "done");
+
+    // One that takes it back out.
+    std::fs::write(dir.join("a.txt"), "and one more line here\n").unwrap();
+    std::fs::remove_file(dir.join("b.txt")).unwrap();
+    git(&dir, &["commit", "-q", "-am", "Back to how it was"]);
+    let sha = git(&dir, &["rev-parse", "--short", "HEAD"]).trim().to_string();
+    tick(&w);
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!((it["state"].as_str(), it["finish"].is_null()), (Some("working"), true), "{it}");
+    let why = format!("Commit {sha} (Back to how it was) took its work back out");
+    let told: Vec<String> = sent_to(&w, &h).into_iter().filter(|t| t.starts_with(&format!("Desk item #{id} (Header jumps) is open again: {why}"))).collect();
+    assert_eq!(told.len(), 1, "its holder is told: {:?}", sent_to(&w, &h));
+    let steps = desk(&w, &project)["decisions"].as_array().cloned().unwrap_or_default();
+    assert!(steps.iter().any(|d| d["text"].as_str() == Some(why.as_str()) && d["item_id"].as_str() == Some(id.as_str())), "its page says so: {steps:?}");
+    tick(&w);
+    assert_eq!(sent_to(&w, &h).iter().filter(|t| t.contains("took its work back out")).count(), 1, "once");
+}
+
+/// `dir`'s pre-commit hook: refuses every commit saying `words` (none: it's taken out).
+fn hook_says(dir: &std::path::Path, words: Option<&str>) {
+    let hook = dir.join(".git/hooks/pre-commit");
+    match words {
+        Some(w) => {
+            std::fs::create_dir_all(hook.parent().unwrap()).unwrap();
+            std::fs::write(&hook, format!("#!/bin/sh\necho '{w}' >&2\nexit 1\n")).unwrap();
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        None => std::fs::remove_file(&hook).unwrap(),
+    }
+}
+
+#[test]
+fn a_commit_git_refuses_says_why_in_gits_words_and_try_again_says_it_again() {
+    let w = World::new();
+    let (dir, project, id) = done_with(&w, |_, _, dir| hook_says(dir, Some("lint: a.txt has a tab")), writes_both);
+    let shown = item(&w, &project, "Header jumps");
+    assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str()), (Some("needs_you"), Some("error")), "{shown}");
+    let q = shown["finish"]["question"].as_str().unwrap();
+    assert!(q.starts_with("Not committed: git didn't commit the files in") && q.ends_with(": lint: a.txt has a tab"), "{q}");
+
+    // Try again, stopped once more: what stopped it this time.
+    hook_says(&dir, Some("lint: b.txt is too long"));
+    let it = w.hub().desk_item_act(&id, "retry_finish", "").unwrap();
+    let it = serde_json::to_value(it).unwrap();
+    assert!(it["finish"]["question"].as_str().unwrap().ends_with(": lint: b.txt is too long"), "{it}");
+
+    // The hook happy: Try again commits it.
+    let before = commits(&dir);
+    hook_says(&dir, None);
+    w.hub().desk_item_act(&id, "retry_finish", "").unwrap();
+    assert_ne!(commits(&dir), before, "committed");
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "to_check");
+}
+
+#[test]
+fn gits_last_words_drop_hints_and_keep_the_last_three_lines() {
+    let said = "error: one\nhint: do this\n\nerror: two\nerror: three\nfatal: four\n";
+    assert_eq!(crate::safe_git::last_words(said), "error: two / error: three / fatal: four");
+    assert_eq!(crate::safe_git::last_words(""), "");
+    assert!(crate::safe_git::last_words(&"x".repeat(400)).ends_with('…'));
 }

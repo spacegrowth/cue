@@ -49,6 +49,13 @@ pub(super) fn ask_first(st: &Store, u: &UseAsk, fx: &mut Effects) {
     fx.uses.push(UseAsk { name, ..u.clone() });
 }
 
+/// Session IDs with retained assignments on this Desk, including completed and reassigned items.
+pub(super) fn work_history(st: &Store, project: &str) -> std::collections::BTreeSet<String> {
+    st.desk.items.iter().filter(|i| i.project == project).flat_map(|i| {
+        i.former_holders.iter().map(String::as_str).chain(i.holder.as_ref().map(Holder::to))
+    }).filter(|sid| !sid.is_empty()).map(str::to_string).collect()
+}
+
 impl Hub {
     /// Session `sid` on `project`'s Desk (`on`) or off it, as you said (a session's menu, or Add to Desk). One added must
     /// be a live session of the project; one that has ended can still be taken off.
@@ -61,14 +68,38 @@ impl Hub {
             Some(p) if p != self.read(|st| st.desk.project_of(project).to_string()) => return Err(format!("that session isn't of {project}")),
             Some(_) => {}
         }
-        self.desk_saving(|| {
-            let changed = self.write(|st| if on { st.desk.join(project, sid) } else { st.desk.leave(project, sid) });
+        let removed_lead = self.desk_saving(|| -> Result<bool, String> {
+            let (changed, removed_lead) = self.write(|st| {
+                if project.starts_with("desk-") && !st.desk.spaces.contains_key(project) { return Err("no such Desk".to_string()); }
+                if !on && work_history(st, project).contains(sid) {
+                    return Err("This session has work history on this Desk.".into());
+                }
+                let removed_lead = !on && st.desk.lead_sid(project) == Some(sid);
+                if removed_lead {
+                    if st.desk.starting.contains_key(project) {
+                        return Err("the Dispatcher is changing. Try again when it is ready.".into());
+                    }
+                    st.desk.lead.remove(project);
+                }
+                let changed = if on { st.desk.join(project, sid) } else { st.desk.leave(project, sid) };
+                Ok((changed, removed_lead))
+            })?;
+            if removed_lead {
+                crate::db::desk_drop_lead(project);
+            }
             match (changed, on) {
                 (false, _) => {}
                 (true, true) => crate::db::desk_put_member(project, sid, now_ms()),
                 (true, false) => crate::db::desk_drop_member(project, sid),
             }
-        });
+            Ok(removed_lead)
+        })?;
+        if removed_lead && self.session_origin(sid).is_some() {
+            let words = format!("You no longer run {}'s Desk. Keep on with the items you hold.", self.desk_name(project));
+            if let Err(e) = self.send_to_session(sid, &words, &[], false) {
+                eprintln!("cue: desk: {project}'s last lead wasn't told it was removed: {e}");
+            }
+        }
         self.changed();
         Ok(())
     }
@@ -88,6 +119,7 @@ impl Hub {
         let now = now_ms();
         let fx = self.write(|st| {
             let mut fx = Effects::default();
+            if !st.desk.item(&u.item).is_some_and(|i| i.project == u.project && i.state != "done") { return fx; }
             join(st, &u.project, &u.sid, &mut fx);
             let name = st.desk.lead.get(&u.project).filter(|l| l.sid == u.lead).map(|l| l.name.clone()).or_else(|| st.sessions.get(&u.lead).map(shown_name)).unwrap_or_default();
             route(st, &u.project, &By { name: &name, sid: &u.lead }, &u.item, &u.to, u.after.clone(), &u.why, now, &mut fx);

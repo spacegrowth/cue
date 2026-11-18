@@ -241,7 +241,7 @@ function recallSent(e) {
     const cur = desk ? { it: null, s: desk.s } : current();
     if ((cur?.s?.session_id || cur?.it?.session_id) !== sid) return false;
     const seen = new Set();
-    const list = conversation(cur.it, cur.s).map(desk?.said || ((x) => x)).filter((x) => x.role === "you" && !askLnAnswer(x) && x.text.trim()).map((x) => x.text).filter((t) => !seen.has(t) && seen.add(t)).slice(-RECALL);
+    const list = conversation(cur.it, cur.s).map(deskSaidE).filter((x) => x.role === "you" && !askLnAnswer(x) && x.text.trim()).map((x) => x.text).filter((t) => !seen.has(t) && seen.add(t)).slice(-RECALL);
     if (!list.length) return false;
     recall = { key, list, idx: list.length, typed: v, set: v };
   }

@@ -41,7 +41,20 @@ pub(crate) fn start_hosted(h: &Arc<Hub>, agent: Agent, dir: &str, message: &str,
     if !opts.desk_lead.is_empty() {
         h.desk_lead_starting(&opts.desk_lead, &sid, name);
     }
-    let origin = h.run_hosted(&origin, start, &HostedStart { permissions: opts.perm.clone(), args, model })?;
+    let started = h.run_hosted(&origin, start, &HostedStart { permissions: opts.perm.clone(), args, model });
+    let origin = match started {
+        Ok(origin) => origin,
+        Err(e) => {
+            if !opts.desk_lead.is_empty() { let _ = h.desk_set_member(&opts.desk_lead, &sid, false); }
+            return Err(e);
+        }
+    };
+    if !opts.desk_lead.is_empty() && origin.session_id != sid {
+        // Codex assigns its own ID when the thread opens. Replace the provisional lead and membership before
+        // recording or messaging the session, so the Desk points to the session that actually exists.
+        h.desk_put_lead(&opts.desk_lead, &origin.session_id, name);
+        h.desk_set_member(&opts.desk_lead, &sid, false)?;
+    }
     let sid = origin.session_id.clone();
     let paths: Vec<String> = saved.iter().map(|s| s.path.clone()).collect();
     h.started(origin, "", &[], false);

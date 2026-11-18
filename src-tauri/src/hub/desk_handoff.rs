@@ -80,6 +80,7 @@ impl Hub {
                 let why = "a fresh session, from its hand-off";
                 for item in held {
                     if let Some(it) = item.as_deref().and_then(|id| st.desk.item_mut(id)) {
+                        it.remember_holder();
                         if let Some(h) = it.holder.as_mut() {
                             if h.lead_sid == old {
                                 h.lead_sid = new.to_string();

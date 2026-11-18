@@ -43,7 +43,7 @@ pub(super) fn now_on(st: &Store, sid: &str) -> Option<String> {
     let held: Vec<&DeskItem> = st.desk.items.iter().filter(|i| i.state == "working" && i.holder.as_ref().is_some_and(|h| h.sid == sid && h.lead_sid.is_empty())).collect();
     // The message it answers: the newest one to it. Its tag is the held item it names first (a hand-off, a message
     // from an item's page, Cue's "Done? Write DONE: #id"); none named, untagged: on no item.
-    let last = st.sessions.get(sid)?.thread.iter().rev().find(|e| e.role == "you")?;
+    let last = st.sessions.get(sid)?.thread.iter().rev().find(|e| e.role == "you" && !e.decision)?;
     held.iter().filter_map(|i| names_at(&last.text, &i.id).map(|at| (at, i))).min_by_key(|(at, _)| *at).map(|(_, i)| i.id.clone())
 }
 
@@ -122,6 +122,13 @@ pub(super) enum Stop {
 /// Stall `s` on `it` as it's shown at `now`: its turn ended on a question for you (Answer), or the lead has it, until
 /// its time is up or when the Desk has no lead at hand to settle it.
 pub(super) fn stop_shown(st: &Store, it: &DeskItem, s: &Session, now: u64) -> Stop {
+    // Its work isn't committed: it isn't in your app, so it isn't yours yet. The lead has it, its question too (#213).
+    if !it.loose.is_empty() {
+        return match lead_live(st, &it.project) {
+            true => Stop::Lead,
+            false => Stop::Asks(format!("{}, and this Desk has no lead to settle it: say what's next", not_committed(&it.loose))),
+        };
+    }
     let last = s.thread.iter().rev().find(|e| e.role == "agent").map(|e| e.text.as_str()).unwrap_or("");
     if let Some(q) = question_in(last) {
         return Stop::Asks(q);
@@ -140,8 +147,27 @@ fn lead_live(st: &Store, project: &str) -> bool {
     st.desk.lead_sid(project).and_then(|l| st.sessions.get(l)).is_some_and(|s| s.state != "stopped")
 }
 
+/// "Not committed: <its files>", as a stop with work git says isn't committed is shown (#213).
+pub(super) fn not_committed(files: &[String]) -> String {
+    let names: Vec<&str> = files.iter().take(3).map(|f| f.rsplit('/').next().unwrap_or(f)).collect();
+    let more = if files.len() > 3 { format!(" and {} more", files.len() - 3) } else { String::new() };
+    format!("Not committed: {}{more}", names.join(", "))
+}
+
 /// What the Desk lead is told of a stop on item `it` by `holder`, whose last words were `last`.
 fn stop_words(it: &DeskItem, holder: &str, last: &str) -> String {
+    if !it.loose.is_empty() {
+        return format!(
+            "#{id} ({title}) stopped, not committed: {holder} ended its turn on it with no DONE, and its work isn't \
+             committed ({files}), so it isn't in the user's app. Its last line: {last}\n\
+             Settle it: ROUTE #{id} to {holder} again with what's left as the why (Cue commits its work when it says \
+             DONE: #{id}), or route it on; only if the user must decide, ASK: #{id} | <question> | choices: … Until \
+             then it isn't shown as waiting on the user.",
+            id = it.id,
+            title = it.title,
+            files = it.loose.join(", "),
+        );
+    }
     format!(
         "#{id} ({title}) stopped: {holder} ended its turn on it with no DONE and no question for the user. Its last line: {last}\n\
          Settle it: ROUTE #{id} to {holder} again with what to do next as the why, or route it on; only if the user must \
@@ -170,9 +196,16 @@ pub(super) fn stalls_asked(st: &mut Store, sid: &str, text: &str, on: &[String],
     let left = says_whats_left(text);
     let busy = still_at_it(st, sid);
     let asks = ask_of(st, &h).is_some() || ends_on_a_question(text);
-    let quiet = busy || asks;
     let mut ask = Vec::new();
     for (id, updated) in still {
+        // A question its turn ended on, with its work not committed, is the lead's to settle, not yours (#213).
+        let loose = st.desk.item(&id).is_some_and(|i| !i.loose.is_empty());
+        if loose && !busy && ask_of(st, &h).is_none() && ends_on_a_question(text) {
+            st.desk.nudged.remove(&id);
+            to_lead(st, sid, &id, now, fx);
+            continue;
+        }
+        let quiet = busy || asks;
         // It said what's left of it, or what it waits on: quiet on it until the item changes (sent again, routed; #168).
         if st.desk.left_said.get(&id).is_some_and(|(by, at)| by == sid && *at == updated) {
             continue;

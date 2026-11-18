@@ -124,8 +124,8 @@ function reviewFolds(ex, team) {
  *  by time ({ at, html }, each keyed). It folds replies as the chat does. The Desk's lead chat (desk.js deskChat):
  *  `lines`, md's hook that draws the lead's own ITEM/ROUTE/DONE/CONTEXT lines; `noActs`, no Send to… on its messages (the Desk's lead hands work on by its own lines). */
 function chatHtml(it, s, harness, paged = false, page = null) {
-  // A page's own reading of what was said (the Desk drops the summary it put before your words): `page.said`.
-  const ex = page?.said ? conversation(it, s).map(page.said) : conversation(it, s);
+  const original = conversation(it, s);
+  const ex = original.map(deskSaidE);
   // An ask the hub noted ("Bash: …") is drawn as an ask with your answer beside it, not as its words (chatAsks).
   const { asks, answers, decided } = chatAsks(ex);
   const lastAgent = ex.findLastIndex((e, n) => e.role === "agent" && !asks.has(n));
@@ -165,7 +165,7 @@ function chatHtml(it, s, harness, paged = false, page = null) {
       // "queued via iTerm session: it reads this…" read as "via queued via…": say it plainly.
       const via = !how ? "" : /^queued/.test(how) ? " · queued, it reads this at its next step" : ` · via ${esc(how)}`;
       // Typed into its terminal, but it never became a message: say so where you'll see it.
-      const unsent = e.unsent ? `<div class="cv-unsent">⚠ This didn't go through as a message. It may have run as a command, or still be in its box.${sid ? ` <button data-act="resend" data-sid="${esc(sid)}" data-resend="${esc(e.text)}">Send again</button>` : ""}</div>` : "";
+      const unsent = e.unsent ? `<div class="cv-unsent">⚠ This didn't go through as a message. It may have run as a command, or still be in its box.${sid ? ` <button data-act="resend" data-sid="${esc(sid)}" data-resend="${esc(original[n].text)}">Send again</button>` : ""}</div>` : "";
       // Typed, and Cue hasn't yet seen it take it: a ring until it does (or until Cue can say it didn't).
       // Past half a minute it's no longer "any moment now": say what Cue knows, which is nothing yet.
       const wait = !e.pending ? "" : Date.now() - e.at_ms > 30_000 ? " · Cue hasn't seen it take this yet" : " · waiting for it to take this";
@@ -277,14 +277,15 @@ function whereNow(it, s) {
   if (s?.state === "working" && s.doing) return `<div class="cv-status"><span class="dot-live"></span><span class="cv-what">${esc(s.doing)}</span><span class="dim"> · <span data-ago="${s.doing_ms}">${ago(s.doing_ms)}</span></span>${tipFor(it, s, "working")}</div>`;
   // Nothing in its transcript yet (it's thinking; Claude Code writes a message once it's whole): a live
   // count since the turn started, so a long think doesn't look stuck.
-  if (s?.state === "working") return `<div class="cv-status"><span class="dot-live"></span><span class="cv-what">Working${s.prompt ? ` on: ${esc(s.prompt.length > 120 ? s.prompt.slice(0, 120) + "…" : s.prompt)}` : ""}</span><span class="dim"> · <span data-ago="${s.since_ms}">${ago(s.since_ms)}</span></span>${tipFor(it, s, "working")}</div>`;
+  const prompt = deskSaid(s?.prompt);
+  if (s?.state === "working") return `<div class="cv-status"><span class="dot-live"></span><span class="cv-what">Working${prompt ? ` on: ${esc(prompt.length > 120 ? prompt.slice(0, 120) + "…" : prompt)}` : ""}</span><span class="dim"> · <span data-ago="${s.since_ms}">${ago(s.since_ms)}</span></span>${tipFor(it, s, "working")}</div>`;
   if (s?.state === "waiting" || s?.state === "deciding") return `<div class="cv-status"><i class="sw z live"></i>Waiting on you · ${ago(s.since_ms)}${tipFor(it, s, "waiting")}</div>`;
   // A lead whose teammates wait on you, or that waits on teammates at work: named, not "1 background agent".
   const crew = s?.state === "agent" && s.session_id ? crewWaitLine(s.session_id) : "";
   if (crew) return `<div class="cv-status">${/^<span class="cv-what">Waiting on you/.test(crew) ? `<i class="sw z live"></i>` : ""}${crew}${tipFor(it, s, "working")}</div>`;
   if (s?.state === "agent") return `<div class="cv-status">${s.helpers ? `<span class="dot-live"></span><span class="cv-what">Waiting on ${esc(s.driven_by)}</span>` : `<span class="cv-what">Idle, waiting on ${esc(s.driven_by || "another agent")}</span>`}${tipFor(it, s, "working")}</div>`;
   if (s?.state === "limited" && s.limit) {
-    const l = s.limit, what = s.prompt ? `“${esc(s.prompt.length > 80 ? s.prompt.slice(0, 80) + "…" : s.prompt)}”` : "Your last message";
+    const l = s.limit, what = prompt ? `“${esc(prompt.length > 80 ? prompt.slice(0, 80) + "…" : prompt)}”` : "Your last message";
     if (lifted(l)) return `<div class="cv-status limit"><span class="lim-dot back"></span><span><b>${esc(scopeName(l))} is back.</b> ${what} didn't run.</span><button class="btn small" data-usage="resend-one" data-sid="${esc(s.session_id)}">Resend</button></div>`;
     const when = l.resets_ms ? ` · resets ${clockAt(l.resets_ms)}${l.resets_ms - now() < 20 * 3600000 ? `, in ${untilText(l.resets_ms - now())}` : ""}` : "";
     const head = l.scope === "all" ? "Out of usage" : `${esc(l.scope)} used up`;

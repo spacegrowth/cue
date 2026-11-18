@@ -44,4 +44,47 @@ impl Hub {
         self.changed();
         Ok(())
     }
+    /// Delete a Desk; its sessions and files remain untouched.
+    pub(crate) fn desk_delete(&self, id: &str) -> Result<(), String> {
+        self.desk_delete_selected(id, &[]).map(|_| ())
+    }
+
+    /// Atomically select only this Desk's unshared sessions while removing its records.
+    pub(crate) fn desk_delete_selected(&self, id: &str, selected: &[String]) -> Result<Vec<String>, String> {
+        let eligible = self.desk_saving(|| -> Result<Vec<String>, String> {
+            self.write(|st| {
+                if !st.desk.spaces.contains_key(id) && !st.desk.lead.contains_key(id) && !st.desk.items.iter().any(|i| i.project == id) && !st.desk.members.contains_key(id) { return Err("no such Desk".to_string()); }
+                if st.desk.starting.contains_key(id) || st.desk.items.iter().any(|i| i.project == id && st.desk.finish_claims.contains(&i.id)) {
+                    return Err("The Desk is starting or finishing work. Try again when it finishes.".to_string());
+                }
+                let belongs = |desk: &str, sid: &str| st.desk.lead.get(desk).is_some_and(|l| l.sid == sid)
+                    || st.desk.members.get(desk).is_some_and(|m| m.iter().any(|s| s == sid))
+                    || st.desk.items.iter().any(|i| i.project == desk && i.state != "done" && i.holder.as_ref().is_some_and(|h| h.is(sid)));
+                let eligible: Vec<String> = selected.iter().filter(|sid| belongs(id, sid) && !st.desk.spaces.keys().chain(st.desk.lead.keys()).chain(st.desk.members.keys()).chain(st.desk.items.iter().map(|i| &i.project)).any(|other| other != id && belongs(other, sid))).cloned().collect();
+                crate::db::desk_delete(id)?;
+                let ids: Vec<String> = st.desk.items.iter().filter(|i| i.project == id).map(|i| i.id.clone()).collect();
+                st.desk.spaces.remove(id);
+                st.desk.items.retain(|i| i.project != id);
+                st.desk.decisions.retain(|d| d.project != id);
+                st.desk.lead.remove(id);
+                st.desk.members.remove(id);
+                st.desk.fresh.remove(id);
+                st.desk.lead_claims.retain(|_, desk| desk != id);
+                for item in ids {
+                    st.desk.done_told.remove(&item);
+                    st.desk.nudged.remove(&item);
+                    st.desk.left_said.remove(&item);
+                    st.desk.sent_at.remove(&item);
+                }
+                Ok(eligible)
+            })
+        })?;
+        self.changed();
+        Ok(eligible)
+    }
+
+    pub(crate) fn desk_session_shared(&self, sid: &str) -> bool {
+        self.read(|st| st.desk.lead.values().any(|l| l.sid == sid) || st.desk.members.values().any(|m| m.iter().any(|s| s == sid)) || st.desk.items.iter().any(|i| i.state != "done" && i.holder.as_ref().is_some_and(|h| h.is(sid))))
+    }
+
 }

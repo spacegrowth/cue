@@ -250,6 +250,11 @@ impl Hub {
 
     /// Answer from the window (or cue-ctl). False if the item is no longer pending.
     pub fn respond(&self, id: &str, d: Decision) -> bool {
+        let traced = self.read(|st| st.items.iter().find(|i| i.id == id && i.origin.hosted)
+            .and_then(|i| i.request_id.clone().map(|request| (i.origin.session_id.clone(), request))));
+        if let Some((sid, request)) = &traced {
+            crate::approval_trace::record(sid, request, id, "received");
+        }
         // A Desk lead's ASK (desk.rs): its answer goes to it as a message.
         if self.desk_answered(id, &d) {
             return true;
@@ -259,10 +264,18 @@ impl Hub {
         match tx {
             Some(tx) => {
                 let delivered = tx.send(Reply::Decision(d)).is_ok();
+                if let Some((sid, request)) = &traced {
+                    crate::approval_trace::record(sid, request, id, if delivered { "waiter_received" } else { "waiter_closed" });
+                }
                 self.finish(id, if delivered { "answered" } else { "gone" }, &if delivered { outcome } else { "agent had already stopped waiting".into() });
                 delivered
             }
-            None => false,
+            None => {
+                if let Some((sid, request)) = &traced {
+                    crate::approval_trace::record(sid, request, id, "no_waiter");
+                }
+                false
+            }
         }
     }
 

@@ -33,7 +33,10 @@ function formValues(it) {
   return out;
 }
 
-const formButtons = (it) => `<div class="row-btns"><button class="btn deny flex" data-act="deny" data-id="${esc(it.id)}">Decline</button><button class="btn primary flex" data-act="form-send" data-id="${esc(it.id)}">Send</button></div>`;
+const formButtons = (it) => {
+  const confirmation = formFields(it).length === 0;
+  return `<div class="row-btns"><button class="btn deny flex" data-act="deny" data-id="${esc(it.id)}">${confirmation ? "No" : "Decline"}</button><button class="btn primary flex" data-act="form-send" data-id="${esc(it.id)}">${confirmation ? "Allow" : "Send"}</button></div>`;
+};
 
 /** Send: accepted with what you filled in (the hosted session hands it to the server), its drafts let go. */
 function formSend(it) {

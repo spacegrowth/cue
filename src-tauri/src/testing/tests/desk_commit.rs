@@ -350,7 +350,8 @@ fn send_back_takes_your_words_to_its_holder_and_puts_it_to_work_with_none_it_ask
 
     let it = w.hub().desk_item_act(&id, "send_back", "It still jumps on scroll").unwrap();
     w.settle();
-    assert_eq!((it.state.as_str(), it.holder.as_ref().map(|h| h.name.as_str())), ("working", Some("cue-teams")));
+    assert_eq!(it.holder.as_ref().map(|h| h.name.as_str()), Some("cue-teams"));
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "working");
     assert!(it.finish.is_none(), "its next DONE finishes it again");
     let snap = w.snapshot();
     let h = snap.session_ids().into_iter().find(|s| snap.session(s)["name"] == "cue-teams").unwrap();

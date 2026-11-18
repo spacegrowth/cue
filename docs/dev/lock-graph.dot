@@ -29,6 +29,7 @@ digraph locks {
   "review queue saves" -> "DB";
   "review queue saves" -> "folder facts";
   "review queue saves" -> "the hub's store";
+  "the hub's store" -> "DB";
   "the hub's store" -> "config in memory";
   "the hub's store" -> "folder facts";
   "typing gate" -> "CLAUDE";
@@ -36,6 +37,7 @@ digraph locks {
   "typing gate" -> "FEEDS";
   "typing gate" -> "WINDOWS";
   "typing gate" -> "a session's feed";
+  "typing gate" -> "approval trace";
   "typing gate" -> "caches";
   "typing gate" -> "config file";
   "typing gate" -> "config in memory";

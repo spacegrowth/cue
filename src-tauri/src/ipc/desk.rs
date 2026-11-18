@@ -76,7 +76,7 @@ fn desk_message(summary: &str, text: &str) -> String {
 pub(crate) fn lead_carried_on(h: &Arc<Hub>, project: &str, sid: &str, name: &str) -> Result<(), String> {
     h.desk_put_lead(project, sid, name);
     let (summary, failed) = h.desk_summary(project, sid, true);
-    let words = format!("You run {}'s Desk now, carrying on from the lead before you (its hand-off note is what you read first). Say so in one line, then carry on.", h.desk_name(project));
+    let words = h.desk_handoff_words(project, sid, name);
     h.send_to_session(sid, &desk_message(&summary, &words), &[], false)?;
     h.desk_told(&failed);
     Ok(())
@@ -97,17 +97,25 @@ pub(crate) async fn desk_set_lead(hub: State<'_, Arc<Hub>>, project: String, sid
 }
 
 pub(crate) fn desk_set_lead_with(h: &Arc<Hub>, project: &str, sid: Option<&str>, trust: bool) -> Result<serde_json::Value, String> {
-    set_lead(h, project, sid, trust, None)
+    set_lead(h, project, sid, trust, None, crate::hosted::Agent::Claude)
 }
 
 /// A new Desk in `folder` (Desk home's + New Desk, + New's Start a Desk): the folder's project, its lead a new
 /// session Cue starts there. Every call creates an independent Desk. Returns { id, project: id, sid }.
 #[tauri::command]
-pub(crate) async fn desk_start(hub: State<'_, Arc<Hub>>, folder: String, trust: Option<bool>, name: Option<String>) -> Result<serde_json::Value, String> {
-    with_hub(&hub, move |h| desk_start_named(h, &folder, trust.unwrap_or(false), name.as_deref())).await?
+pub(crate) async fn desk_start(hub: State<'_, Arc<Hub>>, folder: String, trust: Option<bool>, name: Option<String>, agent: Option<String>) -> Result<serde_json::Value, String> {
+    let agent = match agent.as_deref() {
+        None => crate::hosted::Agent::Claude,
+        Some(a) => crate::hosted::Agent::named(a).ok_or_else(|| format!("unknown agent: {a}"))?,
+    };
+    with_hub(&hub, move |h| desk_start_with_agent(h, &folder, trust.unwrap_or(false), name.as_deref(), agent)).await?
 }
 
 pub(crate) fn desk_start_named(h: &Arc<Hub>, folder: &str, trust: bool, name: Option<&str>) -> Result<serde_json::Value, String> {
+    desk_start_with_agent(h, folder, trust, name, crate::hosted::Agent::Claude)
+}
+
+pub(crate) fn desk_start_with_agent(h: &Arc<Hub>, folder: &str, trust: bool, name: Option<&str>, agent: crate::hosted::Agent) -> Result<serde_json::Value, String> {
     let dir = expand_home(folder);
     if dir.is_empty() || !std::path::Path::new(&dir).is_dir() {
         return Err(format!("no such folder: {}", folder.trim()));
@@ -121,9 +129,23 @@ pub(crate) fn desk_start_named(h: &Arc<Hub>, folder: &str, trust: bool, name: Op
     let id = format!("desk-{}", crate::focus::new_session_id());
     let space = crate::desk::model::DeskSpace { id: id.clone(), name, project: workspace, folder: dir.clone() };
     h.desk_put_space(space)?;
-    let result = set_lead(h, &id, None, trust, Some(dir));
+    let result = set_lead(h, &id, None, trust, Some(dir), agent);
     let r = result?;
     Ok(serde_json::json!({ "id": id, "project": id, "sid": r["sid"] }))
+}
+
+#[tauri::command]
+pub(crate) async fn desk_delete(hub: State<'_, Arc<Hub>>, id: String, close_sessions: Option<Vec<String>>) -> Result<serde_json::Value, String> {
+    with_hub(&hub, move |h| {
+        let requested = close_sessions.unwrap_or_default();
+        let eligible = h.desk_delete_selected(&id, &requested)?;
+        let mut kept = Vec::new();
+        for sid in &requested {
+            if !eligible.contains(sid) || h.desk_session_shared(sid) { kept.push(serde_json::json!({ "sid": sid, "reason": "shared with another Desk or no longer on this Desk" })); continue; }
+            if let Err(e) = super::sessions::end_session(h, sid) { kept.push(serde_json::json!({ "sid": sid, "reason": e })); }
+        }
+        Ok(serde_json::json!({ "kept": kept }))
+    }).await?
 }
 
 #[tauri::command]
@@ -140,7 +162,7 @@ fn expand_home(p: &str) -> String {
 }
 
 /// `desk_set_lead_with`, a new lead started in `dir` when given (else in a folder of the project's sessions).
-fn set_lead(h: &Arc<Hub>, project: &str, sid: Option<&str>, trust: bool, dir: Option<String>) -> Result<serde_json::Value, String> {
+fn set_lead(h: &Arc<Hub>, project: &str, sid: Option<&str>, trust: bool, dir: Option<String>, agent: crate::hosted::Agent) -> Result<serde_json::Value, String> {
     if project.trim().is_empty() {
         return Err("no project".into());
     }
@@ -165,7 +187,7 @@ fn set_lead(h: &Arc<Hub>, project: &str, sid: Option<&str>, trust: bool, dir: Op
     let made = match &picked {
         None => {
             let name = h.desk_lead_name(project);
-            start(h, project, &name, trust, dir.clone()).map(|sid| (sid, name))
+            start(h, project, &name, trust, dir.clone(), agent).map(|sid| (sid, name))
         }
         Some((sid, name, state)) => take_on(h, project, sid, name, state).map(|_| (sid.to_string(), name.clone())),
     };
@@ -220,14 +242,15 @@ fn resume(h: &Arc<Hub>, sid: &str, message: &str) -> Result<String, String> {
     }
 }
 
-/// A new lead for `project` named `name`, hosted Claude in the project's folder, started with the Desk and a hello
+/// A new hosted lead for `project` named `name`, started in the project's folder with the Desk and a hello
 /// (its instructions come with its system prompt): its id.
-fn start(h: &Arc<Hub>, project: &str, name: &str, trust: bool, dir: Option<String>) -> Result<String, String> {
+fn start(h: &Arc<Hub>, project: &str, name: &str, trust: bool, dir: Option<String>, agent: crate::hosted::Agent) -> Result<String, String> {
     let dir = dir.or_else(|| h.desk_folder(project)).ok_or_else(|| format!("no folder known for {project}: start a session there first"))?;
-    let (summary, _) = h.desk_summary(project, "", false);
+    // Claude receives the Desk instructions as a system prompt; other agents need them in the first message.
+    let (summary, _) = h.desk_summary(project, "", agent != crate::hosted::Agent::Claude);
     let message = desk_message(&summary, &hello(&h.desk_name(project)));
     let opts = StartOpts { trust, desk_lead: project.to_string(), ..Default::default() };
-    let started = super::start_hosted(h, crate::hosted::Agent::Claude, &dir, &message, name, &opts, &[])?;
+    let started = super::start_hosted(h, agent, &dir, &message, name, &opts, &[])?;
     started["session_id"].as_str().filter(|s| !s.is_empty()).map(str::to_string).ok_or_else(|| "it started without a session id".into())
 }
 

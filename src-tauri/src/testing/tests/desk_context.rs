@@ -56,7 +56,7 @@ fn decisions(w: &World, project: &str) -> Vec<Value> {
 }
 
 #[test]
-fn the_lead_sees_each_sessions_context_and_what_cue_will_do_and_can_say_keep() {
+fn the_lead_sees_context_for_pending_handoffs_and_can_say_keep() {
     let w = World::new();
     shop_session(&w, "lead01", 20 * 60_000, 90_000);
     shop_session(&w, "webui1", 12 * 60_000, 142_000);
@@ -65,22 +65,22 @@ fn the_lead_sees_each_sessions_context_and_what_cue_will_do_and_can_say_keep() {
     let lead_summary = || w.hub().desk_summary(&project, "lead01", false).0;
     w.tick(true);
     let s = lead_summary();
-    assert!(s.contains("sid:webui1, session, waiting, 142k, cache 12m → Cue will hand off at expiry)"), "{s}");
-    assert!(s.contains("sid:idle01, session, waiting, 160k, cache 30m)"), "holds nothing: Cue leaves it be: {s}");
-    assert!(s.contains(", 90k, cache 20m. You only hand work out"), "the lead under 100k: left be: {s}");
+    assert!(s.contains("sid:webui1, 142k, cache 12m → Cue will hand off at expiry)"), "{s}");
+    assert!(s.contains("sid:idle01)") && !s.contains("160k"), "{s}");
+    assert!(!s.contains("90k"), "{s}");
 
     // The lead says keep: Cue won't, and the lead's call can be undone.
     shop_lead_says(&w, "Leave it.\nCONTEXT: webui1 -> keep | why: its next item needs the detail");
     let d = decisions(&w, &project);
     assert_eq!((d[0]["by"].as_str(), d[0]["text"].as_str(), d[0]["why"].as_str(), d[0]["undo"].as_str()), (Some("shop"), Some("Kept shop's context as it is"), Some("its next item needs the detail"), Some("can")), "{d:?}");
-    assert!(lead_summary().contains("142k, cache 12m)"), "{}", lead_summary());
+    assert!(lead_summary().contains("sid:webui1)") && !lead_summary().contains("142k"), "{}", lead_summary());
     w.hub().desk_undo(d[0]["id"].as_str().unwrap()).unwrap();
     w.settle();
     assert!(lead_summary().contains("142k, cache 12m → Cue will hand off at expiry)"), "undone: Cue's rule again");
 
     // Kept again while it waits: for this wait only; its next turn ends it.
     shop_lead_says(&w, "CONTEXT: webui1 -> keep");
-    assert!(lead_summary().contains("142k, cache 12m)"), "{}", lead_summary());
+    assert!(lead_summary().contains("sid:webui1)") && !lead_summary().contains("142k"), "{}", lead_summary());
     w.advance(50 * 60_000); // (its reply is dated 48 minutes back: after the keep)
     next_turn(&w, "webui1", "m2", 12 * 60_000, 142_000);
     w.tick(true);
@@ -110,12 +110,12 @@ fn a_keep_said_while_a_session_works_covers_its_wait_after_that_turn() {
     w.advance(50 * 60_000); // (its reply is dated 48 minutes back: after the keep)
     next_turn(&w, "webui1", "m2", 12 * 60_000, 142_000);
     w.tick(true);
-    assert!(lead_summary().contains("sid:webui1, session, waiting, 142k, cache 12m)"), "{}", lead_summary());
+    assert!(lead_summary().contains("sid:webui1)") && !lead_summary().contains("142k"), "{}", lead_summary());
     // The turn after that ends it.
     w.advance(50 * 60_000); // (its reply is dated 48 minutes back: after the keep)
     next_turn(&w, "webui1", "m3", 12 * 60_000, 142_000);
     w.tick(true);
-    assert!(lead_summary().contains("sid:webui1, session, waiting, 142k, cache 12m → Cue will hand off at expiry)"), "{}", lead_summary());
+    assert!(lead_summary().contains("sid:webui1, 142k, cache 12m → Cue will hand off at expiry)"), "{}", lead_summary());
 }
 
 #[test]
@@ -159,7 +159,7 @@ fn once_cue_has_tried_this_expiry_the_lead_is_not_told_it_will() {
     w.settle();
     assert!(w.terminal.typed("webui1").is_empty());
     let s = w.hub().desk_summary(&project, "lead01", false).0;
-    assert!(s.contains("sid:webui1, session, waiting, 142k, cache 1m)"), "{s}");
+    assert!(s.contains("sid:webui1)") && !s.contains("142k"), "{s}");
 }
 
 #[test]
@@ -173,7 +173,7 @@ fn once_a_hand_off_was_sent_this_wait_the_lead_is_not_told_cue_will() {
     crate::db::handoff_sent("webui1", "", false, 0);
     w.tick(true);
     let s = w.hub().desk_summary(&project, "lead01", false).0;
-    assert!(s.contains("sid:webui1, session, waiting, 142k, cache 12m)"), "{s}");
+    assert!(s.contains("sid:webui1)") && !s.contains("142k"), "{s}");
 }
 
 #[test]

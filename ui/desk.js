@@ -939,7 +939,10 @@ function deskThread(i, d) {
     }
     else if (DESK_HANDOFF.test(c.text)) rows.push({ at: deskMs(c.at), by: c.by, tag: "Hand-off", html: `<div class="dk-md">${esc(c.text)}${c.why ? `: ${esc(c.why)}` : ""}</div>` });
   }
-  for (const r of i.said || []) rows.push({ at: r.at, by: r.by, tag: r.done ? "Done" : "Reply", on: r.done, text: r.text, html: `<div class="dk-md">${md(r.text)}</div>` });
+  // A reply that's the one before it told again with more after it (a turn on a usage limit, saved twice before the
+  // hub kept one): shown once, the longer.
+  const said = (i.said || []).filter((r, n, all) => { const x = all[n + 1]; return !(x && x.by === r.by && x.text.startsWith(r.text.replace(/…$/, ""))); });
+  for (const r of said) rows.push({ at: r.at, by: r.by, tag: r.done ? "Done" : "Reply", on: r.done, text: r.text, html: `<div class="dk-md">${md(r.text)}</div>` });
   // Sent from here, not back as a step yet.
   const steps = new Set(mine.filter((c) => c.by === "You").map((c) => c.text.trim()));
   for (const p of deskPending.get(i.id) || []) if (!steps.has(p.text.trim())) rows.push({ at: p.at, by: "You", you: true, back: p.why === "back", tag: p.why === "back" ? "Sent back" : "", html: deskBackWords(p.text, p.pics) });
@@ -1428,8 +1431,10 @@ async function deskAct(id, act, el = null) {
     return renderMain();
   }
   try {
-    await invoke("desk_item_act", { id, act });
+    const it = await invoke("desk_item_act", { id, act });
     if (act === "drop") deskOpen = null;
+    // Try again that stopped once more: what stopped it this time, in git's own words when it said any.
+    if (act === "retry_finish" && it?.finish?.question) toast(`Stopped again. ${it.finish.question}`, 8000);
   }
   catch (e) { toast(String(e), 5000); }
   renderMain();

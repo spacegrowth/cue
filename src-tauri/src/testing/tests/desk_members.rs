@@ -89,26 +89,24 @@ fn no_leaves_the_item_and_the_desk_as_they_were() {
 }
 
 #[test]
-fn the_lead_sees_the_desks_sessions_as_routes_and_the_rest_as_ask_first() {
+fn the_lead_sees_only_the_desks_sessions_as_routes() {
     let w = World::new();
     let (h, project, d) = off_desk(&w);
     let id: String = h.chars().take(8).collect();
     let block = w.hub().desk_summary(&project, &d, false).0;
-    let on = block.lines().find(|l| l.starts_with("Sessions on the Desk, you can route to:")).unwrap();
-    assert!(on.contains("none open but you") && !on.contains(&id), "{on}");
-    let off = block.lines().find(|l| l.starts_with("Other sessions of this project, not on the Desk")).unwrap();
-    assert!(off.contains(&format!("cue-teams (sid:{id})")) && off.contains("asks the user first"), "{off}");
+    assert!(block.contains("No Desk sessions available."), "{block}");
+    assert!(!block.contains(&format!("sid:{id}")), "{block}");
 
     w.hub().desk_set_member(&project, &h, true).unwrap();
     let block = w.hub().desk_summary(&project, &d, false).0;
-    let on = block.lines().find(|l| l.starts_with("Sessions on the Desk, you can route to:")).unwrap();
-    assert!(on.contains(&format!("cue-teams (sid:{id}")), "{on}");
-    assert!(!block.contains("Other sessions of this project"), "{block}");
+    let (_, on) = block.split_once("Desk routes (or use ROUTE: #<id> -> new):\n").unwrap();
+    assert!(on.contains(&format!("cue-teams (sid:{id})")), "{on}");
+    assert!(!block.contains("Off the Desk"), "{block}");
 }
 
 #[test]
 fn you_add_and_remove_sessions_and_one_you_give_an_item_joins() {
-    let w = World::new();
+    let mut w = World::new();
     let (h, project, d) = off_desk(&w);
     assert_eq!(w.hub().desk_set_member("elsewhere", &h, true).unwrap_err(), "that session isn't of elsewhere");
     w.hub().desk_set_member(&project, &h, true).unwrap();
@@ -122,4 +120,25 @@ fn you_add_and_remove_sessions_and_one_you_give_an_item_joins() {
     let it = w.hub().desk_add(&project, "bug", "Header jumps", "", None).unwrap();
     w.hub().desk_give(&it.id, &h).unwrap();
     assert_eq!(members(&w, &project), vec![d.clone(), h.clone()]);
+    assert!(w.hub().desk_set_member(&project, &h, false).unwrap_err().contains("work history"));
+    assert!(desk(&w, &project)["work_history"].as_array().unwrap().iter().any(|sid| sid == h.as_str()));
+    let reassigned = w.hub().desk_give(&it.id, &d).unwrap();
+    assert_eq!(reassigned.holder.unwrap().to(), d.as_str());
+    w.relaunch();
+    assert!(desk(&w, &project)["work_history"].as_array().unwrap().iter().any(|sid| sid == h.as_str()));
+    assert!(w.hub().desk_set_member(&project, &h, false).unwrap_err().contains("work history"));
+}
+
+#[test]
+fn removing_the_dispatcher_keeps_its_session_and_persists() {
+    let mut w = World::new();
+    let (_, project, lead) = off_desk(&w);
+    w.hub().desk_add(&project, "task", "Keep this item", "", None).unwrap();
+    w.hub().desk_set_member(&project, &lead, false).unwrap();
+    let d = desk(&w, &project);
+    assert!(d["lead"].is_null());
+    assert!(!d["members"].as_array().unwrap().iter().any(|sid| sid == lead.as_str()));
+    assert!(w.hub().session_origin(&lead).is_some());
+    w.relaunch();
+    assert!(desk(&w, &project)["lead"].is_null());
 }
