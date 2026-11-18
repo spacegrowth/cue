@@ -38,13 +38,19 @@ the item.
 nobody has the item yet. The box says who, in words: "To cue-268, who has this item".
 
 - The session is for watching. Its button says "Watch cue-268", not "Open".
-- If you do write in the session, and it is working on this item, those words show on the item's thread as well. So
-  the item stays the whole story either way.
+- A message from the item page carries the item's number, so Cue knows the turn that answers it belongs to this item.
+- If you write in the session instead, the answer shows on the item only when your words name the item ("#268").
+  Without the number it stays in the session's chat.
 - Send back is a button only. Typing while the item is ready asks a question and keeps it ready.
 
 Why: one place to talk is the only rule you never have to think about. Cost: small to medium. Sending to the holder
-already works for questions. Copying session words onto the item is the new part. The lead no longer sees every message
-on a held item; Cue would tell it in its next Desk summary.
+already works for questions and for send-backs.
+
+**Decided: straight to the session, no copy to the lead.** The lead does not need the words. It is never sent what you
+or a session say; each time, it gets a fresh list of the Desk's items, built from where each item stands. So nothing it
+knows goes wrong when you talk to the session. "Waiting on you" is worked out by Cue from the session's own question,
+not by the lead. The one thing the lead can miss is that you changed what an item is about. An optional small fix: one
+line on that item in the lead's next list, "you wrote to it since".
 
 ## 3. What to test when it is ready
 
@@ -86,16 +92,44 @@ lead's crew list).
 - **Changes**: its files, and what changed in the picked file, readable while it works.
 - **Asked to do**: its task in full. Its review shows in the side panel once there is one.
 - The box says the truth: "To button-builder, through cue-268". A crew member can only be reached through its lead.
-- Ties: the item it is on is one click away, and its replies show on that item's thread like any holder's. The item
-  page names both: "button-builder, in cue-268's crew". The lead's crew page stays the place to see the whole crew.
+- Ties: the item it is on is one click away. For now its replies show on its own page, not on the item's thread.
+  The item page names both: "button-builder, in cue-268's crew". The lead's crew page stays the place to see the
+  whole crew.
 
 Why: you open a thing to see that thing. Cost: medium. The changes view exists on the lead's crew page and can be
 shown here. Keeping each member's replies over time is new.
 
-## The options in the mocks
+## Picked: the middle option (18 Nov)
 
-The mocks are on the ideas canvas, page "Item page: sending and testing". Each option is drawn next to today's page,
-in light and dark, at two moments: just after Send, and ready to try.
+The item keeps its own thread, shown properly.
+
+- The thread holds only this item's turns, plus record lines: hand-offs, send-backs, each Done, the lead's question.
+- Each reply shows in full, not cut, and live with its steps while the session writes it.
+- Each reply has a link to that turn in the session.
+- The box sends straight to whoever has the item, with the item's number on it. The lead gets no copy.
+- When ready, a Try it card ends the thread, with Looks right on it (topic 3).
+
+**Why.** One session often works on two or three items. Under C, all of that session's chat would show on each item's
+page; that mixing is the reason the item has its own thread. Cue can tell which item a turn belongs to, but only per
+turn: by the item number in the last message the session was sent, plus any item its Done line names. A C cut down to
+this item's turns would use that same rule, and the thread already uses it. So a filtered C is the item's thread; the
+work is to show it well. It gives what C was liked for, the real reply, live, on the page, without the mixing. It is A
+with the cut replies fixed and a way to the turn itself.
+
+Cost: medium. Send to the holder with the number; keep replies and steps as they come, not at the end of the turn;
+remember where each turn is in the session; have the session give try-it steps with Done.
+
+**Loose ends.**
+
+- Words typed in the session with no item number belong to no item. They stay in the session only, as today.
+- One turn that works on two items shows on the one named first. The other sees it only if the Done line names it.
+- A crew member's turns are not tied to items by this rule. Until they are, its replies show on its own page
+  (topic 4), not on the item's thread.
+
+## The options considered
+
+The mocks are on the ideas canvas, page "Item page: sending and testing". The middle option and each of A, B and C are
+drawn next to today's page, in light and dark, at two moments: just after Send, and ready to try.
 
 - **A. The thread answers.** The page stays as it is. Under your message: who took it. The reply lands below it. When
   ready, a Try it card ends the thread, with Looks right on it. Cost: medium.
@@ -104,15 +138,15 @@ in light and dark, at two moments: just after Send, and ready to try.
   than A. The panel is narrow and can be hidden.
 - **C. The page is the chat.** The item page shows the session's own conversation. Writing here is writing there.
   The thread becomes a Record tab. When ready, the Try it card takes the box's place. Cost: large.
-- **Crew member page.** A row of its own. It goes with any of the three. With A or B it is as drawn; with C its
-  Work tab would be its chat.
+  Not picked: one session holds several items, so its chat would mix them on each item's page.
+- **Crew member page.** A row of its own. It goes with the middle option as drawn; with C its Work tab would have
+  been its chat.
 
-**My pick: A**, with the crew member page. It puts the answer right under what you sent, and what to try right above
-the two buttons that close the item. It keeps the item's record on the page, and it is the smallest change.
+A was the first suggestion. The middle option keeps what A does and adds the full, live reply and the link.
 
 ## For the owner to decide
 
-1. Should a message on an item that is being worked on go straight to the session, past the lead?
-2. Must a session give try-it steps before its "done" counts, or is the card just left out when it gives none?
-3. Should the steps be tickable, and must they be ticked before Looks right? (A says no; B draws ticks.)
-4. Should a message to a crew member always go through its lead, shown as such? (Today there is no other way.)
+1. Must a session give try-it steps before its "done" counts, or is the card just left out when it gives none?
+2. Should the steps be tickable, and must they be ticked before Looks right? (The middle option and A say no; B draws
+   ticks.)
+3. Should a message to a crew member always go through its lead, shown as such? (Today there is no other way.)
