@@ -190,6 +190,10 @@ pub(super) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
                     out.state = "needs_you".into();
                     out.latest = q;
                 }
+                super::desk_stall::Stop::Waits(w) => {
+                    out.waiting = w.clone();
+                    out.latest = w;
+                }
                 super::desk_stall::Stop::Lead => {
                     out.stopped = true;
                     out.latest = match it.loose.is_empty() {
@@ -213,7 +217,7 @@ pub(super) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
         out.state = "needs_you".into();
         out.latest = q;
     }
-    if out.state == "working" && !out.stopped {
+    if out.state == "working" && !out.stopped && out.waiting.is_empty() {
         // Work handed to a live session is under way while it takes the message, or while its crew finishes.
         let active = if crew_parts(&h).is_some() {
             at_work(st, &h)

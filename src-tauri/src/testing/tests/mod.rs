@@ -17,6 +17,7 @@ mod desk_finish;
 mod desk_context;
 mod desk_members;
 mod desk_numbers;
+mod desk_waits;
 mod db_open;
 mod handoffs;
 mod hosted;

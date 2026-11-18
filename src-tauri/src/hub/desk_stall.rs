@@ -1,6 +1,9 @@
 //! An item whose holder's turn ended on it with no DONE: it waits on you (shown with the holder's last line), and Cue
 //! asks the holder once, "Done? Write DONE: #N, or say what's left". The turn that answers isn't asked again, nor one
 //! that ends on an ask; once a turn says what's left or what it waits on, none is while the item is unchanged.
+//! Waiting isn't stopping (#249): a turn that ends saying it waits (on a build, tests, a helper, another commit) shows
+//! the item as waiting on that, and the Desk lead isn't told. The lead is told of an item's stop once at most; a later
+//! stop of it waits on you.
 
 use super::desk::{ask_of, at_work, crew_parts, Effects};
 use super::*;
@@ -88,6 +91,24 @@ fn says_whats_left(text: &str) -> bool {
     ["what's left", "left to do", "still to do", "remaining:", "not done yet", "blocked on", "waiting on", "waits on", "waiting for", "waits for"].iter().any(|w| t.contains(w))
 }
 
+/// What the turn ends saying it waits on, in one line (#249): a line near its end that waits on something ("Waiting
+/// on the test run"), or says work it started runs on ("still compiling", "The build for 57d72d4e has started").
+pub(super) fn waits_line(text: &str) -> Option<String> {
+    const WAITS: [&str; 8] = ["waiting on", "waits on", "waiting for", "waits for", "wait for", "blocked on", "blocked by", "once the"];
+    const WORK: [&str; 10] = ["build", "test", "compil", "check", "install", "helper", "agent", "teammate", "review", "commit"];
+    const RUNS: [&str; 13] = ["started", "is running", "are running", "still running", "in progress", "under way", "underway", "kicked off", "compiling", "still building", "to finish", "finishes", "lands"];
+    let lines: Vec<&str> = text
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !["DONE:", "ITEM:", "DESIGNS:", "DECIDED:", "DECISION:", "ROUTE:", "ASK:"].iter().any(|p| l.starts_with(p)))
+        .collect();
+    lines.iter().rev().take(3).find_map(|l| {
+        let t = l.to_lowercase().replace('\u{2019}', "'");
+        let waits = WAITS.iter().any(|w| t.contains(w)) || (WORK.iter().any(|w| t.contains(w)) && RUNS.iter().any(|w| t.contains(w)));
+        waits.then(|| l.trim_start_matches(['-', '*', '>', ' ']).replace("**", "").replace('`', "").trim().chars().take(160).collect())
+    })
+}
+
 /// The turn ends on a question for you: nothing to ask it this time.
 fn ends_on_a_question(text: &str) -> bool {
     text.lines().map(str::trim).rfind(|l| !l.is_empty()).is_some_and(|l| l.ends_with('?'))
@@ -113,6 +134,8 @@ pub(super) fn question_in(text: &str) -> Option<String> {
 
 /// How a holder's stop on an item (its turn ended on it, no DONE, no ask) is shown.
 pub(super) enum Stop {
+    /// Its turn ended saying what it waits on (#249): shown as waiting on that, nothing for you or the lead.
+    Waits(String),
     /// It waits on you with one plain line: the question its turn ended on, or that the lead couldn't settle it.
     Asks(String),
     /// The Desk lead is settling it: nothing for you yet.
@@ -122,6 +145,11 @@ pub(super) enum Stop {
 /// Stall `s` on `it` as it's shown at `now`: its turn ended on a question for you (Answer), or the lead has it, until
 /// its time is up or when the Desk has no lead at hand to settle it.
 pub(super) fn stop_shown(st: &Store, it: &DeskItem, s: &Session, now: u64) -> Stop {
+    let last = s.thread.iter().rev().find(|e| e.role == "agent").map(|e| e.text.as_str()).unwrap_or("");
+    // It said what it waits on: waiting, not stopped, its work committed or not (#249).
+    if let Some((_, w)) = it.waits.as_ref().filter(|(u, _)| *u == it.updated && question_in(last).is_none()) {
+        return Stop::Waits(w.clone());
+    }
     // Its work isn't committed: it isn't in your app, so it isn't yours yet. The lead has it, its question too (#213).
     if !it.loose.is_empty() {
         return match lead_live(st, &it.project) {
@@ -129,7 +157,6 @@ pub(super) fn stop_shown(st: &Store, it: &DeskItem, s: &Session, now: u64) -> St
             false => Stop::Asks(format!("{}, and this Desk has no lead to settle it: say what's next", not_committed(&it.loose))),
         };
     }
-    let last = s.thread.iter().rev().find(|e| e.role == "agent").map(|e| e.text.as_str()).unwrap_or("");
     if let Some(q) = question_in(last) {
         return Stop::Asks(q);
     }
@@ -137,6 +164,8 @@ pub(super) fn stop_shown(st: &Store, it: &DeskItem, s: &Session, now: u64) -> St
         return Stop::Asks("It stopped, and this Desk has no lead to settle it: say what's next".into());
     }
     match it.stop {
+        // The lead was told of an earlier stop of it: one notice per item, so this one is yours at once (#249).
+        Some((updated, _)) if updated == it.updated && it.told.is_some_and(|t| t != updated) => Stop::Asks("It stopped again after the Desk lead had it once: say what's next".into()),
         Some((updated, at)) if updated == it.updated && now.saturating_sub(at) >= STOP_WAIT_MS => Stop::Asks("It stopped, and the Desk lead couldn't settle it: say what's next".into()),
         _ => Stop::Lead,
     }
@@ -179,7 +208,8 @@ fn stop_words(it: &DeskItem, holder: &str, last: &str) -> String {
 
 /// Session `sid`'s turn ended, saying `text`, with items `on` at work with it before: each still at work with it (no
 /// DONE for it) stalled there, and Cue asks it once, unless it's still at it (its agents or crew run on), it asks you, or the
-/// turn says what's left. A stall already asked of is answered by this turn: not asked again. One its answer (or what's
+/// turn says what's left. A turn that says what it waits on isn't a stop: the item shows it, no ask, no notice (#249).
+/// A stall already asked of is answered by this turn: not asked again. One its answer (or what's
 /// left) doesn't settle goes to the Desk lead (#182), unless it asks you.
 pub(super) fn stalls_asked(st: &mut Store, sid: &str, text: &str, on: &[String], now: u64, fx: &mut Effects) {
     let still: Vec<(String, u64)> = on
@@ -196,8 +226,13 @@ pub(super) fn stalls_asked(st: &mut Store, sid: &str, text: &str, on: &[String],
     let left = says_whats_left(text);
     let busy = still_at_it(st, sid);
     let asks = ask_of(st, &h).is_some() || ends_on_a_question(text);
+    let waits = waits_line(text);
     let mut ask = Vec::new();
     for (id, updated) in still {
+        // What this turn says it waits on, if anything: the item shows it until it changes or a turn says otherwise.
+        if let Some(it) = st.desk.item_mut(&id) {
+            it.waits = waits.clone().map(|w| (updated, w));
+        }
         // A question its turn ended on, with its work not committed, is the lead's to settle, not yours (#213).
         let loose = st.desk.item(&id).is_some_and(|i| !i.loose.is_empty());
         if loose && !busy && ask_of(st, &h).is_none() && ends_on_a_question(text) {
@@ -206,8 +241,18 @@ pub(super) fn stalls_asked(st: &mut Store, sid: &str, text: &str, on: &[String],
             continue;
         }
         let quiet = busy || asks;
-        // It said what's left of it, or what it waits on: quiet on it until the item changes (sent again, routed; #168).
+        // Waiting isn't stopping: not asked "Done?", and the lead isn't told (#249).
+        if waits.is_some() {
+            st.desk.left_said.insert(id.clone(), (sid.to_string(), updated));
+            st.desk.nudged.remove(&id);
+            continue;
+        }
+        // It said what's left of it, or what it waited on: not asked "Done?" until the item changes (sent again, routed;
+        // #168). A turn that no longer waits is a stop the lead hears of; told already (what's left), this is a no-op.
         if st.desk.left_said.get(&id).is_some_and(|(by, at)| by == sid && *at == updated) {
+            if !quiet {
+                to_lead(st, sid, &id, now, fx);
+            }
             continue;
         }
         if left {
@@ -238,7 +283,8 @@ pub(super) fn stalls_asked(st: &mut Store, sid: &str, text: &str, on: &[String],
 }
 
 /// Holder `sid`'s stop on item `id` to the Desk lead to settle, once while the item is unchanged; kept on the item
-/// (saved) so the row shows the lead has it, and turns to you when its time is up.
+/// (saved) so the row shows the lead has it, and turns to you when its time is up. The lead is told once per item
+/// (#249): a later stop of it is yours at once, with no notice.
 fn to_lead(st: &mut Store, sid: &str, id: &str, now: u64, fx: &mut Effects) {
     let Some(it) = st.desk.item(id) else { return };
     if it.stop.is_some_and(|(u, _)| u == it.updated) {
@@ -252,8 +298,12 @@ fn to_lead(st: &mut Store, sid: &str, id: &str, now: u64, fx: &mut Effects) {
     let Some(it) = st.desk.item_mut(id) else { return };
     it.stop = Some((it.updated, now));
     fx.said.push(id.to_string());
+    if it.told.is_some() {
+        return;
+    }
     fx.stopped.push(id.to_string());
     if let Some(lead) = lead {
+        it.told = Some(it.updated);
         fx.sends.push((lead, words));
     }
 }
