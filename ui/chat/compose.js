@@ -451,7 +451,9 @@ function sendPhrase(key, phrase) {
   const d = draft(key);
   d.text = withPhrase(d.text, phrase);
   saveDrafts();
-  // A Desk box sends its own way (desk.js deskSendBox).
+  // On a Desk item's page the phrase only goes in the box, to say more before Send; another Desk box sends its own
+  // way (desk.js deskSendBox).
+  if (deskBoxes.get(key)?.item && !deskBoxes.get(key).sid) return deskPhraseIn(key);
   if (deskBoxes.has(key)) return deskSendBox(key);
   renderMain();
   document.querySelector(`textarea[data-text="${CSS.escape(key)}"]`)?.closest(".composer")?.querySelector(".btn.send")?.click();
