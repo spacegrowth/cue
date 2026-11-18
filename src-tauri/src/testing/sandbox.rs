@@ -19,6 +19,13 @@ extern "C" fn sandbox_home() {
     let _ = real_home();
     let home = std::env::temp_dir().join(format!("cue-test-home-{}", std::process::id()));
     let _ = std::fs::create_dir_all(&home);
+    // The window check (scripts/check-window.mjs) runs Playwright's Chromium, which it finds under $HOME: read only.
+    if std::env::var_os("PLAYWRIGHT_BROWSERS_PATH").is_none() {
+        let cache = real_home().join("Library/Caches/ms-playwright");
+        if cache.is_dir() {
+            std::env::set_var("PLAYWRIGHT_BROWSERS_PATH", cache);
+        }
+    }
     std::env::set_var("HOME", &home);
 }
 

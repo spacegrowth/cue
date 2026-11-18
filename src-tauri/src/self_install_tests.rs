@@ -387,6 +387,47 @@ fn a_failed_build_leaves_the_running_cue_alone() {
     assert!(alive(old_pid));
 }
 
+/// A commit whose window calls a function no committed script declares (it sat uncommitted in the folder): refused
+/// by the window's check before anything is built, the running Cue left alone, and the log names the function.
+#[test]
+fn a_commit_calling_an_uncommitted_function_is_refused_before_the_build() {
+    let mut f = Fixture::new("window");
+    let cue = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    std::os::unix::fs::symlink(cue.join("node_modules"), f.repo.join("node_modules")).unwrap();
+    let repo = f.repo.clone();
+    let put = |path: &str, text: &str| {
+        let p = repo.join(path);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(p, text).unwrap();
+        git(&repo, &["add", path]);
+    };
+    put("scripts/check-window.mjs", &std::fs::read_to_string(cue.join("scripts/check-window.mjs")).unwrap());
+    put("ui/index.html", "<div id=\"app\"></div>\n<script src=\"core.js\"></script>\n<script src=\"desk.js\"></script>\n");
+    put("ui/core.js", "function helper() { return 1; }\n");
+    put("ui/desk.js", "function openDesk() { return helper(); }\n");
+    let old = commit(&f.repo, "old");
+    put("ui/desk.js", "function openDesk() { return helper() + deskApprovals().length; }\n");
+    let new = commit(&f.repo, "new");
+    // Where it was written, uncommitted: the folder's own window would load.
+    std::fs::write(f.repo.join("ui/core.js"), "function helper() { return 1; }\nfunction deskApprovals() { return []; }\n").unwrap();
+    let old_pid = f.old_cue_running(&old, true);
+    let env = f.env(true, Launcher::Says);
+    assert_eq!(f.run(&new, &env), 1);
+    let s = f.status();
+    assert_eq!(s.step, "failed");
+    assert!(s.log.contains("missing: deskApprovals, used in ui/desk.js:1"), "{}", s.log);
+    assert!(s.log.contains("refused: the window"), "{}", s.log);
+    assert_eq!(f.installed(), "old");
+    assert!(f.calls().is_empty(), "never built, quit nor launched: {:?}", f.calls());
+    assert!(alive(old_pid));
+
+    // The same window with the function committed: built and installed.
+    put("ui/core.js", "function helper() { return 1; }\nfunction deskApprovals() { return []; }\n");
+    let fixed = commit(&f.repo, "fixed");
+    assert_eq!(f.run(&fixed, &env), 0);
+    assert_eq!(f.installed(), fixed);
+}
+
 #[test]
 fn an_app_that_cant_be_swapped_after_quitting_is_started_again() {
     let mut f = Fixture::new("noswap");

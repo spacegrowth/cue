@@ -94,3 +94,66 @@ fn a_copy_is_served_after_a_restart_of_the_same_cue_and_dropped_by_a_new_one() {
     assert_eq!(kept_in(&live, Some(&built)), None);
     let _ = std::fs::remove_dir_all(root);
 }
+
+/// Cue's own window check, committed into a test repo with Cue's node_modules linked in (git ignores the link), and a
+/// window of two scripts: core.js declares `helper`, desk.js calls it.
+fn repo_with_check(name: &str) -> (PathBuf, PathBuf, String) {
+    let (dir, root, _) = repo(name);
+    let cue = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    std::os::unix::fs::symlink(cue.join("node_modules"), dir.join("node_modules")).unwrap();
+    put(&dir, ".gitignore", "node_modules\n");
+    put(&dir, "scripts/check-window.mjs", &std::fs::read_to_string(cue.join("scripts/check-window.mjs")).unwrap());
+    put(&dir, "ui/index.html", "<div id=\"app\"></div>\n<script src=\"core.js\"></script>\n<script src=\"desk.js\"></script>\n");
+    put(&dir, "ui/core.js", "function helper() { return 1; }\n");
+    let head = commit(&dir, "ui/desk.js", "function openDesk() { return helper() + Math.max(1, 2); }\n");
+    (dir, root, head)
+}
+
+#[test]
+fn a_window_whose_names_are_all_declared_passes_its_check() {
+    let (dir, root, head) = repo_with_check("check-ok");
+    assert_eq!(check_in(&root.join("live"), &s(&dir), &head), Ok(()));
+    assert!(!root.join("live").join(format!("{head}.check")).exists(), "its copy is removed");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn a_commit_calling_a_function_that_is_only_in_the_folder_uncommitted_is_refused() {
+    let (dir, root, _) = repo_with_check("check-missing");
+    // desk.js calls deskApprovals, committed; the file that declares it sits in the folder, never committed. The
+    // folder's own window would load, so tests run there pass: the commit's doesn't.
+    put(&dir, "ui/index.html", "<div id=\"app\"></div>\n<script src=\"core.js\"></script>\n<script src=\"desk.js\"></script>\n<script src=\"desk_approvals.js\"></script>\n");
+    put(&dir, "ui/desk_approvals.js", "function deskApprovals() { return []; }\n");
+    put(&dir, "ui/desk.js", "function openDesk() { return helper() + deskApprovals().length; }\n");
+    git(&dir, &["add", "ui/index.html", "ui/desk.js"]);
+    git(&dir, &["commit", "-qm", "desk.js"]);
+    let head = git(&dir, &["rev-parse", "HEAD"]);
+    let said = check_in(&root.join("live"), &s(&dir), &head).unwrap_err();
+    assert!(said.contains("missing file: ui/index.html loads ui/desk_approvals.js"), "{said}");
+
+    // With the file committed but its function only in the folder: the name is what's missing.
+    put(&dir, "ui/desk_approvals.js", "function deskOther() { return []; }\n");
+    git(&dir, &["add", "ui/desk_approvals.js"]);
+    let head = commit(&dir, "ui/core.js", "function helper() { return 1; }\n// two\n");
+    put(&dir, "ui/desk_approvals.js", "function deskOther() { return []; }\nfunction deskApprovals() { return []; }\n");
+    let said = check_in(&root.join("live"), &s(&dir), &head).unwrap_err();
+    assert!(said.contains("missing: deskApprovals, used in ui/desk.js:1"), "{said}");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn a_name_declared_in_two_of_the_windows_scripts_is_refused() {
+    let (dir, root, _) = repo_with_check("check-twice");
+    let head = commit(&dir, "ui/desk.js", "function openDesk() { return helper(); }\nconst helper = () => 2;\n");
+    let said = check_in(&root.join("live"), &s(&dir), &head).unwrap_err();
+    assert!(said.contains("declared twice: helper, in ui/core.js:1 and ui/desk.js:2"), "{said}");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn a_commit_from_before_the_check_has_none_to_run() {
+    let (dir, root, _) = repo("check-none");
+    let head = commit(&dir, "ui/desk.js", "missing();\n");
+    assert_eq!(check_in(&root.join("live"), &s(&dir), &head), Ok(()));
+    let _ = std::fs::remove_dir_all(root);
+}

@@ -14,6 +14,10 @@
 # beside it (Cue.prev.app) and put back, and started again, when the new one doesn't say it's running this commit
 # (install/running.json) within CUE_INSTALL_START_WAIT seconds: "rolled_back".
 #
+# Before the build, the window is checked in that copy (scripts/check-window.mjs): a commit whose window scripts call a
+# name none of them declares, or declare one twice, would install a window that doesn't open. It is refused, "failed",
+# and its log says which names.
+#
 # "failed" says why in its log. A build that fails leaves the running Cue alone. Once Cue was quit, a failure to swap
 # the apps starts the installed one again; a failure while rolling back (the new Cue won't quit, the old app can't be
 # put back) leaves things as the log says, and may leave no Cue running.
@@ -23,6 +27,8 @@
 #   CUE_INSTALL_APP_DIR      where Cue.app is installed            ($HOME/Applications)
 #   CUE_INSTALL_TREE         the clean copy it builds in           ($CUE_HOME/install/tree)
 #   CUE_INSTALL_TARGET_DIR   the cargo target folder               (<repo>/src-tauri/target)
+#   CUE_INSTALL_CHECK        the window's check, a shell command run in the copy before the build; ":" for none
+#                            (node scripts/check-window.mjs ., when the commit has it)
 #   CUE_INSTALL_BUILD        the build, a shell command run in the copy; $CUE_INSTALL_EXT_ARGS holds the add-on's
 #                            switches when it's there              (cue-host, then npx tauri build --bundles app)
 #   CUE_INSTALL_BUILT_APP    the app the build makes               ($CUE_INSTALL_TARGET_DIR/release/bundle/macos/Cue.app)
@@ -141,15 +147,34 @@ if [ -f "$REPO/src-tauri/host-builds/BUILD" ] && ! cmp -s "$REPO/src-tauri/host-
   cp -Rp "$REPO/src-tauri/host-builds/." "$TREE/src-tauri/host-builds/"
 fi
 
-# An app started from Finder has a short PATH: the build gets the login shell's (cargo, npm, swiftc).
-default_build() {
+# An app started from Finder has a short PATH: the check and the build get the login shell's (node, cargo, npm, swiftc).
+login_path() {
   local login; login="$("${SHELL:-/bin/zsh}" -lc 'printf %s "$PATH"' 2>/dev/null </dev/null || true)"
   export PATH="${login:+$login:}$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+}
+
+# The window checked in the copy: its scripts' names, then the window loaded (scripts/check-window.mjs says how). A
+# commit from before the check has none to run.
+default_check() {
+  [ -f scripts/check-window.mjs ] || { echo "no window check at this commit"; return 0; }
+  login_path
+  node scripts/check-window.mjs .
+}
+
+default_build() {
+  login_path
   scripts/build-host.sh || return 1
   # Its error about update signatures at the end (no release signing key) comes after the app is made: the app is
   # what's judged.
   npx tauri build --bundles app $CUE_INSTALL_EXT_ARGS || true
 }
+
+say "checking the window in $TREE"
+if [ -n "${CUE_INSTALL_CHECK:-}" ]; then
+  (cd "$TREE" && eval "$CUE_INSTALL_CHECK") >> "$LOG" 2>&1
+else
+  (cd "$TREE" && default_check) >> "$LOG" 2>&1
+fi || fail "refused: the window at $COMMIT doesn't load (above: which names). Nothing was built or installed."
 
 say "building in $TREE (target $CARGO_TARGET_DIR) ${EXT_ARGS:+with the add-on}"
 rm -rf "$BUILT_APP"

@@ -23,6 +23,9 @@ const LOG_LINES: usize = 40;
 
 /// The questions a finishing item can stop on.
 pub(crate) const BUILD_FAILED: &str = "The build failed";
+/// The window's check (scripts/check-window.mjs) refused the commit: its scripts call a name none declares, or
+/// declare one twice. Nothing was installed or served.
+pub(crate) const WINDOW_BROKEN: &str = "The window doesn't load at this commit, so it wasn't installed or served";
 pub(crate) const ROLLED_BACK: &str = "The new Cue didn't start; the old one is back";
 /// The installer wouldn't begin (it can't install this Cue, or another install is running), its reason after it.
 pub(crate) const NOT_STARTED: &str = "The install didn't start";
@@ -297,12 +300,20 @@ impl Hub {
         let top = cue.or(tops.first()).cloned().unwrap_or_default();
         let head = if top.is_empty() { String::new() } else { git("", &top, &[], &["rev-parse", "HEAD"]).map(|h| h.trim().to_string()).unwrap_or_default() };
         // Only the window's files changed since the running Cue's build: they're served in place, no install.
-        if cue.is_some() && self.ui_in_place(&top, &head) {
+        let in_place = if cue.is_some() { self.ui_in_place(&top, &head) } else { Ok(false) };
+        if !matches!(in_place, Ok(false)) {
             self.finish_set(id, |i| {
                 if let Some(f) = i.finish.as_mut() {
                     (f.repo, f.commit) = (top.clone(), head.clone());
                 }
             });
+            // Its window doesn't load: back to its holder with what's wrong, as a failed install is.
+            if let Err(said) = in_place {
+                if let Some(it) = self.read(|st| st.desk.item(id).cloned()) {
+                    self.finish_failed(&it, WINDOW_BROKEN, "failed", &said);
+                }
+                return;
+            }
             return self.finish_checked(id);
         }
         let queued = cue.is_some();
@@ -325,27 +336,31 @@ impl Hub {
     /// Whether `head` of `repo` is in the running Cue without an install: what changed since the commit it was built
     /// from is only the window's files (then served from `head`, and the window told to reload: "ui-reload") or
     /// nothing it shows. Not while an install is under way or queued: the main line then has more than the window's
-    /// files, or it soon will be in the app anyway.
-    fn ui_in_place(&self, repo: &str, head: &str) -> bool {
-        let Some(running) = crate::live_ui::running() else { return false };
+    /// files, or it soon will be in the app anyway. Err: the window at `head` doesn't pass its check
+    /// (live_ui::check), what's wrong said; nothing is served.
+    fn ui_in_place(&self, repo: &str, head: &str) -> Result<bool, String> {
+        let Some(running) = crate::live_ui::running() else { return Ok(false) };
         let busy = self.read(|st| st.desk.items.iter().any(|i| i.state == "finishing" && i.finish.as_ref().is_some_and(|f| f.step == "queued" || installing(&f.step))));
         if busy {
-            return false;
+            return Ok(false);
         }
         let served = crate::live_ui::current().filter(|c| c.base == running).map(|c| c.commit);
         match crate::live_ui::plan(repo, &running, served.as_deref(), head) {
-            crate::live_ui::Plan::Install => false,
-            crate::live_ui::Plan::Nothing => true,
-            crate::live_ui::Plan::Reload => match crate::live_ui::take(repo, head, &running) {
-                Ok(()) => {
-                    self.ports.window.tell("ui-reload", serde_json::json!({ "commit": head }));
-                    true
+            crate::live_ui::Plan::Install => Ok(false),
+            crate::live_ui::Plan::Nothing => Ok(true),
+            crate::live_ui::Plan::Reload => {
+                crate::live_ui::check(repo, head)?;
+                match crate::live_ui::take(repo, head, &running) {
+                    Ok(()) => {
+                        self.ports.window.tell("ui-reload", serde_json::json!({ "commit": head }));
+                        Ok(true)
+                    }
+                    Err(e) => {
+                        eprintln!("cue: desk: the window's files of {head} couldn't be served, installing instead: {e}");
+                        Ok(false)
+                    }
                 }
-                Err(e) => {
-                    eprintln!("cue: desk: the window's files of {head} couldn't be served, installing instead: {e}");
-                    false
-                }
-            },
+            }
         }
     }
 
@@ -484,6 +499,7 @@ impl Hub {
                 continue;
             }
             match status.as_ref().filter(|s| s.tag == f.tag) {
+                Some(s) if s.step == "failed" && s.log.contains("refused: the window") => self.finish_failed(it, WINDOW_BROKEN, "failed", &s.log),
                 Some(s) if s.step == "failed" => self.finish_failed(it, BUILD_FAILED, "failed", &s.log),
                 Some(s) if s.step == "rolled_back" => self.finish_failed(it, ROLLED_BACK, "rolled_back", &s.log),
                 // Installed, and this Cue doesn't have it yet: the new one is starting.

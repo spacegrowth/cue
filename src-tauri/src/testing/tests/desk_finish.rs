@@ -505,6 +505,12 @@ fn a_crew_merge_onto_a_file_with_your_uncommitted_changes_is_refused_and_leaves_
 /// An item done in this Cue's source, the running Cue built from its commit before the item's work, which writes
 /// `files` (paths in the repo): (fake, repo, project, id).
 fn done_since_running(w: &World, files: &'static [&'static str]) -> (Arc<Fake>, std::path::PathBuf, String, String) {
+    done_since_running_with(w, files, false)
+}
+
+/// `done_since_running`, with Cue's window check (scripts/check-window.mjs) committed in the repo when `checked`, its
+/// window loading ui/desk.js, and Cue's node_modules linked in.
+fn done_since_running_with(w: &World, files: &'static [&'static str], checked: bool) -> (Arc<Fake>, std::path::PathBuf, String, String) {
     let fake = Arc::new(Fake::default());
     w.hub().desk_set_installer(fake.clone());
     let (dir, project, id) = done_with(
@@ -514,9 +520,17 @@ fn done_since_running(w: &World, files: &'static [&'static str]) -> (Arc<Fake>, 
             // The test repo ignores everything but a few files: let in the window's, the tests' and the app's.
             let mut ignore = std::fs::read_to_string(dir.join(".gitignore")).unwrap();
             ignore.push_str("!ui/\n!ui/**\n!tests/\n!tests/**\n!src-tauri/\n!src-tauri/desk.rs\n");
-            std::fs::write(dir.join(".gitignore"), ignore).unwrap();
+            std::fs::write(dir.join(".gitignore"), &ignore).unwrap();
             std::fs::create_dir_all(dir.join("ui")).unwrap();
             std::fs::write(dir.join("ui/index.html"), "<p>built in</p>\n").unwrap();
+            if checked {
+                let cue = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+                std::fs::write(dir.join(".gitignore"), format!("{ignore}!scripts/\n!scripts/**\n")).unwrap();
+                std::fs::create_dir_all(dir.join("scripts")).unwrap();
+                std::fs::copy(cue.join("scripts/check-window.mjs"), dir.join("scripts/check-window.mjs")).unwrap();
+                std::os::unix::fs::symlink(cue.join("node_modules"), dir.join("node_modules")).unwrap();
+                std::fs::write(dir.join("ui/index.html"), "<div id=\"app\"></div>\n<script src=\"desk.js\"></script>\n").unwrap();
+            }
             git(dir, &["add", "-A"]);
             git(dir, &["commit", "-q", "-m", "the Cue that runs"]);
             let running = git(dir, &["rev-parse", "HEAD"]).trim().to_string();
@@ -548,6 +562,25 @@ fn an_item_that_changed_only_the_windows_files_is_served_in_place_and_to_check_w
     assert_eq!(std::fs::read_to_string(served.join("index.html")).unwrap(), "<p>built in</p>\n");
     w.advance(3 * 60_000);
     assert!(fake.started().is_empty(), "no build, no restart");
+}
+
+/// An item whose window doesn't load at its commit (here desk.js isn't even JavaScript): not served, no install
+/// queued, and back to its holder saying why.
+#[test]
+fn an_item_whose_window_doesnt_load_is_not_served_and_goes_back_to_its_holder() {
+    let w = World::new();
+    let (fake, _, project, id) = done_since_running_with(&w, &["ui/desk.js"], true);
+    let shown = item(&w, &project, "Header jumps");
+    let broken = "The window doesn't load at this commit, so it wasn't installed or served";
+    assert_eq!((shown["state"].as_str(), shown["latest"].as_str(), shown["finish"]["step"].as_str()), (Some("needs_you"), Some(broken), Some("failed")), "{shown}");
+    assert!(shown["finish"]["log"].as_str().unwrap_or("").contains("doesn't parse: ui/desk.js"), "{shown}");
+    let h = shown["holder"]["sid"].as_str().unwrap().to_string();
+    let sent = sent_to(&w, &h);
+    assert!(sent.iter().any(|t| t.contains(&format!("isn't done: {broken}")) && t.contains("doesn't parse: ui/desk.js") && t.contains(&format!("DONE: #{id}"))), "{sent:?}");
+    assert!(w.window.heard("ui-reload").is_empty(), "nothing served");
+    assert!(!crate::server::cue_dir().join("live/current.json").exists());
+    w.advance(30 * 60_000);
+    assert!(fake.started().is_empty(), "nor installed");
 }
 
 #[test]

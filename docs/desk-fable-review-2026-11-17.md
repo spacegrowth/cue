@@ -211,7 +211,7 @@ or a yes from the owner. Last lines of those turns: "I'm waiting on the test run
   so far was just 'still building'".
 - Decision at 20:36: a standing yes on "send fixes", to stop that kind of stop.
 - `src-tauri/src/hub/desk_stall.rs` lines 86 to 89 already spot phrases like "waiting on" and "waiting
-  for". But about lines 213 to 218 still send the lead a notice in that case.
+  for". But `desk_stall.rs` lines 213 to 218 still send the lead a notice in that case.
 
 **Fix.**
 

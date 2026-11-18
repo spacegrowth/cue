@@ -100,6 +100,79 @@ fn current_in(dir: &Path) -> Option<Current> {
     dir.join(&c.commit).is_dir().then_some(c)
 }
 
+/// The window at `head` of `repo` checked before it's served: scripts/check-window.mjs run on a clean copy of that
+/// commit (its ui/, tests/ui/ and the check, with `repo`'s node_modules and add-on linked in). Err says what's wrong
+/// (a name its scripts call that none declares, one declared twice, a page that doesn't load). A commit from before
+/// the check has none to run: Ok.
+pub fn check(repo: &str, head: &str) -> Result<(), String> {
+    check_in(&live_dir(), repo, head)
+}
+
+/// `check`, its copy made in `dir` and removed after.
+fn check_in(dir: &Path, repo: &str, head: &str) -> Result<(), String> {
+    if !looks_like_commit(head) {
+        return Err(format!("not a commit: {head}"));
+    }
+    let has = crate::safe_git::run("", repo, &[], &["cat-file", "-e", &format!("{head}:scripts/check-window.mjs")]);
+    if !matches!(has, Ok((_, 0))) {
+        return Ok(());
+    }
+    let work = dir.join(format!("{head}.check"));
+    let _ = std::fs::remove_dir_all(&work);
+    std::fs::create_dir_all(&work).map_err(|e| e.to_string())?;
+    let result = check_copy(&work, repo, head);
+    let _ = std::fs::remove_dir_all(&work);
+    result
+}
+
+fn check_copy(work: &Path, repo: &str, head: &str) -> Result<(), String> {
+    let tar = work.join("copy.tar");
+    let tar_s = tar.to_string_lossy().to_string();
+    let filters = crate::safe_git::no_repo_filters("", repo);
+    let mut args = vec!["archive", "--format=tar", "-o", &tar_s, head, "ui", "scripts/check-window.mjs"];
+    // The UI tests' harness, for the load: when the commit has it.
+    let harness = crate::safe_git::run("", repo, &[], &["cat-file", "-e", &format!("{head}:tests/ui")]);
+    if matches!(harness, Ok((_, 0))) {
+        args.push("tests/ui");
+    }
+    if !matches!(crate::safe_git::run("", repo, &filters, &args), Ok((_, 0))) {
+        return Err(format!("git couldn't copy {head} to check its window"));
+    }
+    let out = std::process::Command::new("/usr/bin/tar").arg("-xf").arg(&tar).arg("-C").arg(work).output();
+    let _ = std::fs::remove_file(&tar);
+    if !out.is_ok_and(|o| o.status.success()) {
+        return Err(format!("couldn't unpack {head} to check its window"));
+    }
+    let repo = Path::new(repo);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::symlink;
+        if repo.join("node_modules").exists() {
+            symlink(repo.join("node_modules"), work.join("node_modules")).map_err(|e| e.to_string())?;
+        }
+        // The window as the running Cue has it: with the optional add-on's part when it's built in.
+        if let Ok(ext) = std::fs::canonicalize(repo.join("src-tauri/ext")) {
+            std::fs::create_dir_all(work.join("src-tauri")).map_err(|e| e.to_string())?;
+            symlink(ext, work.join("src-tauri/ext")).map_err(|e| e.to_string())?;
+        }
+    }
+    // Started from the Finder, Cue has a short PATH: node is found on the login shell's.
+    let shell = std::env::var("SHELL").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "/bin/zsh".into());
+    let out = std::process::Command::new(shell)
+        .arg("-lc")
+        .arg("exec node scripts/check-window.mjs .")
+        .current_dir(work)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .map_err(|e| format!("couldn't run the window's check: {e}"))?;
+    if out.status.success() {
+        return Ok(());
+    }
+    let said = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+    Err(if said.is_empty() { err } else { said })
+}
+
 /// `head`'s ui/ from `repo`, served from now on in place of what's served, for the Cue built from `base`.
 pub fn take(repo: &str, head: &str, base: &str) -> Result<(), String> {
     let to = take_in(&live_dir(), repo, head, base)?;
