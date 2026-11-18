@@ -33,7 +33,7 @@ function deskNameMark(sid) {
   const d = deskForSession(sid);
   if (!d) return "";
   const kind = deskSessKind(sid, d), label = DESK_MARKS[kind], name = deskName(d);
-  return `<span class="dk-name-ic" role="img" data-desk-type="${kind}" aria-label="${esc(`${label} · ${name}`)}" title="${esc(`${label} · ${name}`)}">${deskKindIcon(kind)}</span>`;
+  return `<span class="dk-name-ic" role="img" data-desk-type="${kind}" aria-label="${esc(`${label} · ${name}`)}">${deskKindIcon(kind)}</span>`;
 }
 /** The Desk and work under a session's name on its Board card. */
 function deskCardLine(sid) {

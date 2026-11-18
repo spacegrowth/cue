@@ -132,8 +132,8 @@ function inboxSeated(sect, rows) {
   for (const r of fresh.reverse()) inboxSeats.set(r.sid, { sect, n: ++inboxSeq, at: now(), from: inboxSeats.get(r.sid)?.sect || "" });
   return rows.sort((a, b) => inboxSeats.get(b.sid).n - inboxSeats.get(a.sid).n);
 }
-/** The open tab's rows by section, in order: Running (the strip at the top), Pinned, Needs you (a lead's Desk asks
- *  among them, tagged), Done, Later, Parked
+/** The open tab's rows by section, in order: Running (the strip at the top), Pinned, one section a Desk (its asks and
+ *  done, inboxByDesk), then Needs you and Done on no Desk, Later, Parked
  *  (Pinned, Later and Parked on the Inbox tab only; the Snoozed tab lists its rows as they are). */
 function inboxSections() {
   const rows = inboxRows().filter((r) => inboxTabOf(r.s) === inboxTab).sort((a, b) => b.at - a.at);
@@ -143,7 +143,18 @@ function inboxSections() {
   const of = (k) => rest.filter((r) => (inboxLater(r.s) ? "need" : inboxSectOf(r)) === k);
   let quiet = 0;
   const done = of("done").filter((r) => r.it || inboxPinned(r.s) || !box || ++quiet <= INBOX_DONE_MAX);
-  return [["run", "Running", inboxSeated("run", of("run"))], ["pin", "Pinned", inboxSeated("pin", pinned)], ["need", "Needs you", inboxSeated("need", of("need"))], ["done", "Done", inboxSeated("done", done)], ["later", "Later", inboxSeated("later", parked)], ["parked", "Parked", inboxParkedRows()]];
+  const [desks, need, loose] = inboxByDesk(box ? of("need") : [], box ? done : []);
+  return [["run", "Running", inboxSeated("run", of("run"))], ["pin", "Pinned", inboxSeated("pin", pinned)], ...desks, ["need", "Needs you", inboxSeated("need", box ? need : of("need"))], ["done", "Done", inboxSeated("done", box ? loose : done)], ["later", "Later", inboxSeated("later", parked)], ["parked", "Parked", inboxParkedRows()]];
+}
+/** Needs you and Done split by Desk (deskForSession: the Desk it leads, holds work on, or belongs to): a section a
+ *  Desk, its asks first then its done, the Desks with the most asking first; and what's on no Desk. */
+function inboxByDesk(need, done) {
+  const by = new Map(), desk = (r) => deskForSession(r.sid);
+  const put = (r, k) => { const d = desk(r); if (!d) return true; if (!by.has(d.project)) by.set(d.project, { d, need: [], done: [] }); by.get(d.project)[k].push(r); return false; };
+  const looseNeed = need.filter((r) => put(r, "need")), looseDone = done.filter((r) => put(r, "done"));
+  const groups = [...by.values()].sort((a, b) => b.need.length - a.need.length || deskName(a.d).localeCompare(deskName(b.d)));
+  const secs = groups.map((g) => ["desk", deskName(g.d), [...inboxSeated(`desk:${g.d.project}:need`, g.need), ...inboxSeated(`desk:${g.d.project}:done`, g.done)], g.need.length]);
+  return [secs, looseNeed, looseDone];
 }
 
 // ---------- a row's words ----------
@@ -287,12 +298,13 @@ function inboxStripBars(rows) {
 }
 /** A heading and its rows; nothing when it has none. Running's is a thin strip at the top, "Running · 3" and its bars,
  *  that unfolds its rows; Later's and Parked's headings fold them, with their counts. */
-function inboxSection([key, title, rows]) {
+function inboxSection([key, title, rows, asking]) {
   if (!rows.length) return "";
   if (key === "run") {
     const open = inboxFoldOpen(key);
     return `<button class="ib-sect fold ib-strip" data-inbox-fold="run" aria-expanded="${open}"><span class="ib-fold">${open ? "▾" : "▸"}</span>${title} · <span class="ib-sect-n">${rows.length}</span>${inboxStripBars(rows)}</button>${open ? rows.map(inboxRowHtml).join("") : ""}`;
   }
+  if (key === "desk") return `<div class="ib-sect ib-dg">${deskKindIcon("desk")}<span class="ib-dg-name">${esc(title)}</span><span class="ib-sect-n">${rows.length}</span>${asking ? `<span class="ib-dg-need">· ${asking} ${asking === 1 ? "needs" : "need"} you</span>` : ""}</div>${rows.map(inboxRowHtml).join("")}`;
   if (key !== "later" && key !== "parked") return `<div class="ib-sect ${key}">${key === "pin" ? PIN_ICON : ""}${title}</div>${rows.map(inboxRowHtml).join("")}`;
   const open = inboxFoldOpen(key), draw = key === "parked" ? inboxParkedHtml : inboxRowHtml;
   return `<button class="ib-sect fold" data-inbox-fold="${key}" aria-expanded="${open}"><span class="ib-fold">${open ? "▾" : "▸"}</span>${title} <span class="ib-sect-n">${rows.length}</span></button>${open ? rows.map(draw).join("") : ""}`;
@@ -308,9 +320,11 @@ const inboxEmpty = () => ({ inbox: "Nothing needs you, and nothing is working.",
 /** The list: its head (how many need you and run, the tabs), then the sections. */
 function inboxList() {
   const secs = inboxSections(), of = (k) => secs.find(([key]) => key === k)[2];
-  const need = of("pin").filter((r) => inboxSectOf(r) === "need").length + of("need").length, run = of("run").length;
+  const need = of("pin").filter((r) => inboxSectOf(r) === "need").length + of("need").length + secs.reduce((n, [k, , , a]) => n + (k === "desk" ? a : 0), 0), run = of("run").length;
   const counts = inboxTab === "inbox" ? [[need, "need you"], [run, "running"]].filter(([c]) => c).map(([c, w]) => `${c} ${w}`).join(" · ") : "";
-  const body = secs.map(inboxSection).join("");
+  // With Desks above, what's on none sits under its own heading.
+  const loose = secs.some(([k]) => k === "desk") && (of("need").length || of("done").length) ? `<div class="ib-sect ib-loose">Not on a Desk</div>` : "";
+  const body = secs.map((sec) => (sec[0] === "need" && sec[2].length ? loose : "") + (sec[0] === "done" && !of("need").length ? loose : "") + inboxSection(sec)).join("");
   return `<div class="inbox"><div class="ib-top"><b>Inbox</b><span class="ib-counts">${esc(counts)}</span>${inboxTabs()}</div>
     <div class="ib-scroll" data-scroll-key="inbox">${body || `<div class="ib-empty">${inboxEmpty()}</div>`}</div></div>`;
 }

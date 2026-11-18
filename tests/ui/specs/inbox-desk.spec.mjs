@@ -1,5 +1,5 @@
-// The Inbox and the Desk (ui/inbox_desk.js): a project lead's ask about its Desk sits among the other asks under Needs
-// you, tagged "<PROJECT> · Desk"; a session holding a Desk item shows "<PROJECT> · for <title>" on its row and, opened,
+// The Inbox and the Desk (ui/inbox_desk.js): a project lead's ask about its Desk sits under that Desk's heading (#217),
+// tagged "<PROJECT> · Desk"; a session holding a Desk item shows "<PROJECT> · for <title>" on its row and, opened,
 // a bar with Open in Desk; a session's own ask can be added to its project's Desk. Scenario: desk-inbox.
 import { test, expect } from "./cue.mjs";
 
@@ -17,12 +17,15 @@ const layout = (page) => page.evaluate(() => {
   return out;
 });
 
-test("a lead's Desk ask is one of the asks under Needs you, tagged '<PROJECT> · Desk'; no From Dispatch", async ({ cue, page }) => {
+test("a lead's Desk ask sits under its Desk's heading, tagged '<PROJECT> · Desk'; no From Dispatch", async ({ cue, page }) => {
   await cue.open("desk-inbox");
   await openInbox(page);
   const groups = await layout(page);
-  expect(groups.map(([t]) => t)).toEqual(["Needs you"]);
-  expect([...groups[0][1]].sort()).toEqual(["cue-lead", "notes", "web"]);
+  // #217: the Desk's sessions sit under its name (desk icon, count, how many need you); the rest under Not on a Desk.
+  expect(groups.map(([t]) => t)).toEqual(["cue2· 2 need you", "Not on a Desk", "Needs you"]);
+  expect([...groups[0][1]].sort()).toEqual(["cue-lead", "web"]);
+  expect(groups[2][1]).toEqual(["notes"]);
+  await expect(page.locator(".ib-sect.ib-dg svg")).toHaveCount(1);
   const lead = page.locator('.ib-row[data-inbox-open="cue-lead"]');
   await expect(lead.locator(".ib-name")).toHaveText("cue-lead");
   await expect(lead.locator(".ib-for")).toHaveText("cue · Desk");
