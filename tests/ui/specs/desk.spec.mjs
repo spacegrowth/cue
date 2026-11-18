@@ -2922,6 +2922,14 @@ test("Board Desk markers show dispatcher, lead, and session roles", async ({ pag
 
 test("the Board Desk link uses the tray and omits repeated task details", async ({ page, cue }) => {
   await cue.open("desk");
+  await cue.change((st) => {
+    const desk = st.desk.projects.find((d) => d.project === "cue");
+    Object.assign(desk, { project: "desk-feature", workspace_project: "cue", name: "Feature Desk" });
+    for (const item of desk.items) item.project = desk.project;
+    st.sessions.find((session) => session.session_id === "host").prompt = "Desk item #d5 (bug): Hosted sessions can't open the canvas";
+    st.sessions.find((session) => session.session_id === "site").prompt = "About #w1 (Keep this task name): Check the link";
+  });
+  await page.evaluate(() => deskSelect("web"));
   await page.locator('.switch-view [data-view="board"]').click();
   const card = (name) => page.locator("[data-session], [data-detail]").filter({ has: page.locator(".proj", { hasText: new RegExp(`^${name}$`) }) }).filter({ has: page.locator(".dk-chip") }).first();
   const lead = card("host-lead").locator(".dk-chip");
@@ -2945,14 +2953,6 @@ test("the Desk's mark is on the session's chat title and its Inbox page head too
   await page.locator('.switch-view [data-view="board"]').click();
   // Each card has it once (nameSpan carries it), never doubled.
   for (const el of await page.locator(".tl-top, .card-head, .nrow-top, .nrow").all()) expect(await el.locator(":scope > .dk-name-ic, :scope > * > .dk-name-ic").count()).toBeLessThanOrEqual(1);
-  await cue.change((st) => {
-    const desk = st.desk.projects.find((d) => d.project === "cue");
-    Object.assign(desk, { project: "desk-feature", workspace_project: "cue", name: "Feature Desk" });
-    for (const item of desk.items) item.project = desk.project;
-    st.sessions.find((session) => session.session_id === "host").prompt = "Desk item #d5 (bug): Hosted sessions can't open the canvas";
-    st.sessions.find((session) => session.session_id === "site").prompt = "About #w1 (Keep this task name): Check the link";
-  });
-  await page.evaluate(() => deskSelect("web"));
   // Opened, its chat's title has it before the name.
   await page.locator("[data-session], [data-detail]").filter({ has: page.locator(".proj, .tl-name", { hasText: /^host-lead$/ }) }).first().click();
   const title = page.locator(".proj", { hasText: /^host-lead$/ }).last();
