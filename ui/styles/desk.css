@@ -662,7 +662,6 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
 .dk-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .dk-chip > .dk-kic { margin: 0; flex: none; }
 .dk-chip-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.dk-chip-more { color: var(--muted); font-weight: 500; }
 /* The Desk's hand-off in the chat of the session it went to (desk_lead.js deskHandHtml): a card on the right, where
    yours are: who gave it and the item's number, its title, Done when as short lines, Why. */
 .cv-you.dk-hand { align-self: flex-end; width: min(520px, 100%); }

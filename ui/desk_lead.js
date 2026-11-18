@@ -35,16 +35,11 @@ function deskNameMark(sid) {
   const kind = deskSessKind(sid, d), label = DESK_MARKS[kind], name = deskName(d);
   return `<span class="dk-name-ic" role="img" data-desk-type="${kind}" aria-label="${esc(`${label} · ${name}`)}">${deskKindIcon(kind)}</span>`;
 }
-/** The Desk and work under a session's name on its Board card. */
+/** The Desk link under a session's name on the Board. */
 function deskCardLine(sid) {
   const d = deskForSession(sid);
   if (!d) return "";
-  const lead = d.lead?.sid === sid;
-  const held = (d.items || []).filter((i) => i.state !== "done" && i.state !== "dropped" && (i.holder?.sid === sid || i.holder?.lead_sid === sid));
-  const first = held[0], kind = deskSessKind(sid, d), name = deskName(d);
-  const what = lead ? `Runs ${name}` : first ? `${name} · #${first.id} ${first.title || ""}` : name;
-  const more = held.length > (lead ? 0 : 1) ? `<span class="dk-chip-more">+${held.length - (lead ? 0 : 1)}</span>` : "";
-  return `<div class="dk-chip-line"><button class="dk-chip" data-inbox-desk="${esc(d.project)}" data-item="${lead || !first ? "" : esc(first.id)}">${deskKindIcon(kind)}<span class="dk-chip-t">${esc(what)}</span>${more}<span>›</span></button></div>`;
+  return `<div class="dk-chip-line"><button class="dk-chip" data-inbox-desk="${esc(d.project)}">${deskKindIcon("tray")}<span class="dk-chip-t">${esc(deskName(d))}</span><span aria-hidden="true">›</span></button></div>`;
 }
 /** Desk `d`'s lead ({ sid, name, state }), or null. */
 const deskLead = (d) => (d?.lead?.sid ? d.lead : null);

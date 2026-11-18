@@ -2920,19 +2920,24 @@ test("Board Desk markers show dispatcher, lead, and session roles", async ({ pag
   expect(types[2]).toContain('data-desk-type="session"');
 });
 
-test("a Board card working for a Desk has a line under its name, as a loop's does; it opens that on the Desk (#156)", async ({ page, cue }) => {
+test("the Board Desk link uses the tray and omits repeated task details", async ({ page, cue }) => {
   await cue.open("desk");
   await page.locator('.switch-view [data-view="board"]').click();
   const card = (name) => page.locator("[data-session], [data-detail]").filter({ has: page.locator(".proj", { hasText: new RegExp(`^${name}$`) }) }).filter({ has: page.locator(".dk-chip") }).first();
   const lead = card("host-lead").locator(".dk-chip");
   await expect(lead).toHaveCount(1);
-  await expect(lead).toContainText("#d5 Hosted sessions can't open the canvas");
+  await expect(lead).toHaveText("Feature Desk›");
+  await expect(lead).toHaveAttribute("data-inbox-desk", "desk-feature");
+  await expect(lead.locator("svg path").first()).toHaveAttribute("d", /^M4 13l3-7/);
+  await expect(card("host-lead")).not.toContainText("Hosted sessions can't open the canvas");
   await expect(lead.locator("svg.dk-kic")).toHaveCount(1);
   await expect(page.locator("[title]", { has: page.locator(".dk-chip") })).toHaveCount(0);
-  await expect(card("site-lead").locator(".dk-chip")).toContainText("#w1");
+  await expect(card("site-lead")).toContainText("Check the link");
+  await expect(card("site-lead")).not.toContainText("Keep this task name");
   await lead.click();
   await expect(page.locator('.switch-view [data-view="desk"]')).toHaveClass(/on/);
-  await expect(page.locator(".dk-pane")).toContainText("Hosted sessions can't open the canvas");
+  await expect(page.locator('.dk-right [data-desk-page="dispatcher"] [data-desk-chat="desk-feature"]')).toBeVisible();
+  await expect(page.locator(".dk-sh b")).toHaveText("Feature Desk");
 });
 
 test("the Desk's mark is on the session's chat title and its Inbox page head too, never twice on a card (#156)", async ({ page, cue }) => {
@@ -2940,6 +2945,14 @@ test("the Desk's mark is on the session's chat title and its Inbox page head too
   await page.locator('.switch-view [data-view="board"]').click();
   // Each card has it once (nameSpan carries it), never doubled.
   for (const el of await page.locator(".tl-top, .card-head, .nrow-top, .nrow").all()) expect(await el.locator(":scope > .dk-name-ic, :scope > * > .dk-name-ic").count()).toBeLessThanOrEqual(1);
+  await cue.change((st) => {
+    const desk = st.desk.projects.find((d) => d.project === "cue");
+    Object.assign(desk, { project: "desk-feature", workspace_project: "cue", name: "Feature Desk" });
+    for (const item of desk.items) item.project = desk.project;
+    st.sessions.find((session) => session.session_id === "host").prompt = "Desk item #d5 (bug): Hosted sessions can't open the canvas";
+    st.sessions.find((session) => session.session_id === "site").prompt = "About #w1 (Keep this task name): Check the link";
+  });
+  await page.evaluate(() => deskSelect("web"));
   // Opened, its chat's title has it before the name.
   await page.locator("[data-session], [data-detail]").filter({ has: page.locator(".proj, .tl-name", { hasText: /^host-lead$/ }) }).first().click();
   const title = page.locator(".proj", { hasText: /^host-lead$/ }).last();
