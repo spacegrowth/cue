@@ -868,11 +868,14 @@ test("Give to…'s menu opens whole inside the window, with each session's name 
     await page.locator('[data-desk-item="d6"] [data-desk-give]').click();
     const menu = page.locator(".dk-givemenu");
     await expect(menu).toBeVisible();
-    const box = await menu.boundingBox();
-    expect(box.x).toBeGreaterThanOrEqual(0);
-    expect(box.y).toBeGreaterThanOrEqual(0);
-    expect(box.x + box.width).toBeLessThanOrEqual(w);
-    expect(box.y + box.height).toBeLessThanOrEqual(h);
+    // Measured again if a redraw swaps the menu between finding it and measuring it.
+    await expect(async () => {
+      const box = await menu.boundingBox();
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.y).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(w);
+      expect(box.y + box.height).toBeLessThanOrEqual(h);
+    }).toPass();
     // Each name whole: none cut by its menu's edge.
     expect(await menu.locator("button > span:first-child").evaluateAll((els) => els.every((el) => el.scrollWidth <= el.clientWidth + 1 && el.getBoundingClientRect().right <= el.closest(".dk-givemenu").getBoundingClientRect().right))).toBe(true);
     await page.keyboard.press("Escape");
@@ -1286,7 +1289,7 @@ test("Cue's word on a stopped item is a card from Cue, not a message from You; i
 test("a new item with a picture, no kind, and Cue's SPLIT words before its Route words: a card with a thumbnail; no path, no words for the lead (#147)", async ({ page, cue }) => {
   await cue.open("desk", { frozen: true });
   await openDesk(page);
-  const pic = "/tests/ui/shots/board-waiting.png";
+  const pic = "/site/shots/board.png";   // a picture in the repo: tests/ui/shots is git-ignored, so a clean copy has none
   await page.evaluate((pic) => {
     // Into the Desk's own items (deskOf gives a copy).
     state.desk.projects.find((x) => x.project === "cue").items.push({ id: "p1", project: "cue", kind: "", title: "The rail's dot is off by a pixel", state: "new", created: Date.now(), updated: Date.now(), holder: null, from: "you", images: [pic] });
@@ -1863,6 +1866,10 @@ test("no line under the strip: the list starts right after it", async ({ page, c
   await expect(page.locator(".dk-sessions .dk-sum")).toHaveCount(0);
   // Only the lead's working line (#263) between them.
   expect(await page.locator(".dk-sessions .dk-strip").evaluate((el) => el.nextElementSibling.classList.contains("dk-lbar"))).toBe(true);
+  // Then "Needs your decision" while a request waits (e6869d92); with none, the list right under the line.
+  expect(await page.locator(".dk-sessions .dk-lbar").evaluate((el) => el.nextElementSibling.classList.contains("dk-approvals"))).toBe(true);
+  await cue.change((st) => { st.items = st.items.filter((i) => i.status !== "pending"); });
+  await expect(page.locator(".dk-sessions .dk-approvals")).toHaveCount(0);
   expect(await page.locator(".dk-sessions .dk-lbar").evaluate((el) => el.nextElementSibling.classList.contains("dk-scroll"))).toBe(true);
 });
 
@@ -2260,7 +2267,8 @@ test("after a restart the lead's chat has its past (Cue's log beyond its last fe
   await cue.open("desk");
   await openDesk(page);
   await page.locator(".dk-box textarea").fill("half a thought about the");
-  await page.waitForTimeout(500);   // drafts are saved a moment after typing (window.js saveDrafts)
+  // Drafts are saved a moment after typing (window.js saveDrafts): wait for that save, not a fixed time.
+  await expect.poll(async () => (await cue.calls("set_draft")).some((c) => c.args?.text === "half a thought about the")).toBe(true);
   // Quit and reopen: a new window, Cue's state from scratch; drafts from cue.db.
   await cue.open("desk");
   await openDesk(page);
@@ -2607,7 +2615,8 @@ test("Desk row approvals send Allow and No for the pending request", async ({ pa
   await cue.open("desk");
   await openDesk(page);
   const row = page.locator('[data-desk-item="d1"]');
-  const questionRight = (await row.getByRole("button", { name: "Answer", exact: true }).boundingBox());
+  // A one-question ask shows its choices on the row (6917a17a); a permission's No ends where they end.
+  const questionRight = (await row.locator(".dk-row-decisions .btn").last().boundingBox());
   for (const [index, [label, behavior]] of [["Allow", "allow"], ["No", "deny"]].entries()) {
     const id = `row-approval-${index}`;
     await cue.change((st, id) => {
@@ -2623,10 +2632,12 @@ test("Desk row approvals send Allow and No for the pending request", async ({ pa
   }
 });
 
-test("an item's Answer opens its question at the page's foot and keeps the answer on its page", async ({ page, cue }) => {
+test("an item's question opens at the page's foot and keeps the answer on its page; a one-question ask has its choices on the row", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  await page.locator('[data-desk-item="d1"]').getByRole("button", { name: "Answer", exact: true }).click();
+  // A one-question ask has its choices on the row (6917a17a) in place of Answer; opening the item brings its foot.
+  await expect(page.locator('[data-desk-item="d1"] [data-desk-question-pick]')).toHaveText(["Keep it in the box", "Move to the next item"]);
+  await page.locator('[data-desk-item="d1"] .dk-t').click();
   const chain = page.locator(".dk-pane .dk-chain"), foot = page.locator(".dk-right .dk-ask");
   // The page's section shows only the question; its card is the foot, in the box's place.
   await expect(chain).toContainText(await page.evaluate(() => deskItem("cue", "d1").ask.text));
