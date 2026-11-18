@@ -411,6 +411,25 @@ test("the Desk's name is a switcher: every Desk with who needs you, typed to fin
   await expect(menu.locator(".dk-sw-find")).toBeFocused();
   await expect(menu.locator(".dk-sw-foot button")).toHaveText(["All Desks", "+ New Desk"]);
   expect(await page.locator(".dk-sw-menu [title]").count()).toBe(0);
+  // A row is the name and what needs you: no project or dispatcher name beside it.
+  await expect(rows.first().locator(".pdot")).toHaveCount(0);
+  await expect(rows.first()).toHaveText(/^✓?(cue|website)(\d+ needs? you)?$/);
+  // A name too long for its room ends before the count, faded, and slides only while its row is lit.
+  await cue.change((st) => { st.desk.projects.find((d) => d.project === "cue").name = "A very long Desk name that runs on and on past the count"; });
+  const long = menu.locator('.dk-sw-row[data-desk-go="cue"]');
+  const fit = await long.evaluate((r) => { const nm = r.querySelector(".dk-sw-nm"), need = r.querySelector(".dk-sw-need"); return { right: nm.getBoundingClientRect().right, need: need.getBoundingClientRect().left, over: nm.firstElementChild.scrollWidth > nm.clientWidth, mask: getComputedStyle(nm).webkitMaskImage }; });
+  expect(fit.right).toBeLessThanOrEqual(fit.need);
+  expect(fit.over).toBe(true);
+  expect(fit.mask).toContain("gradient");
+  // (Tests run with animations off, so: the slide's rule takes the name while its row is lit, and only then.)
+  expect(await page.evaluate(() => [...document.styleSheets].some((sh) => { try { return [...sh.cssRules].some((r) => r.cssText?.includes("dk-sw-slide") && r.selectorText?.includes(".at")); } catch { return false; } }))).toBe(true);
+  const slides = () => long.locator(".dk-sw-nm > span").evaluate((el) => el.matches(".dk-sw-row:is(.at, :hover) .dk-sw-nm > span"));
+  await page.mouse.move(0, 0);
+  expect(await slides()).toBe(await long.evaluate((r) => r.classList.contains("at")));
+  await long.hover();
+  expect(await slides()).toBe(true);
+  await cue.change((st) => { st.desk.projects.find((d) => d.project === "cue").name = undefined; });
+  await menu.locator(".dk-sw-find").focus();
   // Typing finds; the box keeps the cursor through the redraw.
   await page.keyboard.type("cu");
   await expect(rows).toHaveCount(1);

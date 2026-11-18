@@ -550,17 +550,18 @@ function deskSessHead(project, n, working, lead = "") {
   return `<div class="dk-strip"><div class="dk-sh"><div class="dk-shr">${sw}<span class="grow"></span>${more}</div><span class="dk-sub">${n} session${n === 1 ? "" : "s"}${working ? ` · ${working} working` : ""}</span>${lead && typeof askBeforeLine === "function" ? askBeforeLine(deskOf(project)) : ""}</div>${lead}</div>`;
 }
 /** The switcher (pick A, #240): the Desk's name opens a menu of every Desk, those waiting on you first, found by typing,
- *  ↑ ↓ ↵ to pick; All Desks and + New Desk under them. Open while `deskSwitchOpen`; `deskSwitchAt` is the lit row. */
+ *  ↑ ↓ ↵ to pick; All Desks and + New Desk under them. A row is the Desk's name and what needs you, nothing else: a
+ *  name too long for its room fades at its end and, while its row is lit, slides to show the rest (desk.css). Open while `deskSwitchOpen`; `deskSwitchAt` is the lit row. */
 let deskSwitchOpen = false, deskSwitchAt = 0;
 function deskSwitchList() {
   const q = (draft("desk-find").text || "").trim().toLowerCase();
-  return deskSorted().filter((d) => !q || `${deskName(d)} ${projLabel(deskWorkspace(d))}`.toLowerCase().includes(q));
+  return deskSorted().filter((d) => !q || deskName(d).toLowerCase().includes(q));
 }
 function deskSwitchMenu(project) {
   const ds = deskSwitchList(), at = Math.min(deskSwitchAt, ds.length - 1);
   const rows = ds.map((d, k) => {
     const n = d.items.filter(deskWaits).length;
-    return `<div class="dk-sw-row${k === at ? " at" : ""}${d.project === project ? " on" : ""}" role="menuitem" tabindex="-1" data-desk-go="${esc(d.project)}"><span class="dk-sw-tick" aria-hidden="true">${d.project === project ? "✓" : ""}</span><span class="dk-sw-nm">${esc(deskName(d))}</span><span class="dk-sw-pj">${projDot(deskWorkspace(d))}${esc(projLabel(deskWorkspace(d)))}</span>${n ? `<span class="dk-sw-need">${n} need${n === 1 ? "s" : ""} you</span>` : ""}</div>`;
+    return `<div class="dk-sw-row${k === at ? " at" : ""}${d.project === project ? " on" : ""}" role="menuitem" tabindex="-1" data-desk-go="${esc(d.project)}"><span class="dk-sw-tick" aria-hidden="true">${d.project === project ? "✓" : ""}</span><span class="dk-sw-nm"><span>${esc(deskName(d))}</span></span>${n ? `<span class="dk-sw-need">${n} need${n === 1 ? "s" : ""} you</span>` : ""}</div>`;
   }).join("");
   return `<div class="dk-sw-menu" role="menu"><input class="dk-sw-find" data-text="desk-find" placeholder="Find a Desk…" aria-label="Find a Desk" spellcheck="false" autocomplete="off" value="${esc(draft("desk-find").text || "")}"/><div class="dk-sw-list">${rows || `<div class="dk-sw-none">No Desk matches.</div>`}</div><div class="dk-sw-foot"><button class="dk-sw-act" data-desk-home>All Desks</button><button class="dk-sw-act" data-desk-new-desk>+ New Desk</button></div><div class="dk-sw-keys">↑ ↓ move · ↵ open · Esc close</div></div>`;
 }

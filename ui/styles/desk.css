@@ -499,9 +499,15 @@
 .dk-sw-row { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px; border-radius: 8px; cursor: pointer; }
 .dk-sw-row.at, .dk-sw-row:hover { background: color-mix(in oklab, var(--sel) 22%, transparent); }
 .dk-sw-tick { flex: none; width: 12px; color: var(--sel); font-weight: 700; }
-.dk-sw-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+/* The name takes the row's room up to the count, never over it. Too long: its end fades (the fade lies over 18px of
+   padding, so a name that fits is never faded), and while its row is lit (keys or pointer) it slides left to show its
+   end, back and forth; unlit, it's back at its start. 100cqw is the room, 100% the name's own width. */
+.dk-sw-nm { flex: 1 1 auto; min-width: 0; overflow: hidden; container-type: inline-size; white-space: nowrap; font-weight: 600; -webkit-mask-image: linear-gradient(to left, transparent, #000 18px); mask-image: linear-gradient(to left, transparent, #000 18px); }
+.dk-sw-nm > span { display: inline-block; padding-right: 18px; }
+.dk-sw-row:is(.at, :hover) .dk-sw-nm > span { animation: dk-sw-slide 5s ease-in-out .6s infinite alternate; }
+@keyframes dk-sw-slide { 0%, 15% { transform: none; } 85%, 100% { transform: translateX(min(0px, calc(100cqw - 100%))); } }
+@media (prefers-reduced-motion: reduce) { .dk-sw-row:is(.at, :hover) .dk-sw-nm > span { animation: none; } }
 .dk-sw-row.on .dk-sw-nm { font-weight: 700; }
-.dk-sw-pj { flex: none; display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 12px; }
 .dk-sw-need { flex: none; margin-left: auto; color: var(--deny); font-size: 12px; font-weight: 600; white-space: nowrap; }
 .dk-sw-none { padding: 8px; color: var(--muted); }
 .dk-sw-foot { display: flex; gap: 4px; margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--line); }
