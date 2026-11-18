@@ -100,10 +100,12 @@ const deskNum = (i) => `${["bug", "feature", "task"].includes(i?.kind) ? `${i.ki
 const deskToday = (t) => deskMs(t) >= new Date(now()).setHours(0, 0, 0, 0);
 /** A DONE's (`d.checks`) Cue work not in the installed Cue yet: Cue was installed before its work last changed
  *  (`edited`). A design item's (one with a canvas) is its mocks, nothing to install. */
-const deskChkUninstalled = (c) => !!c?.cue && !/^https?:\/\//.test(c.designs || "") && !((state.desk?.installed_ms || 0) > (c.edited || c.at));
+const deskChkUninstalled = (c) => !!c?.cue && c.finish?.step !== "checked" && !/^https?:\/\//.test(c.designs || "") && !((state.desk?.installed_ms || 0) > (c.edited || c.at));
+const deskLatestCheck = (i) => i?.checks?.at(-1) || (state.desk?.projects || []).find((d) => d.project === i?.project)?.checks?.find((c) => c.id === i.id && c.last);
 /** Item `i` is done but changes the app, and the installed Cue doesn't have it yet: nothing to try, so it isn't to check
  *  yet; it says "waiting for install" till Cue is installed. */
-const deskInstallWait = (i) => i?.state === "to_check" && !deskFinCommit(i) && deskChkUninstalled((state.desk?.projects || []).find((x) => x.project === i.project)?.checks?.find((c) => c.id === i.id && c.last));
+const deskInstallWait = (i) => i?.state === "to_check" && i.finish?.step !== "checked"
+  && !deskFinCommit(i) && !/^https?:\/\//.test(i.designs || "") && deskChkUninstalled(deskLatestCheck(i));
 /** The commit Cue made for item `i` when its session said DONE (hub: commit, build, install, then to check), or "". An
  *  item with one went through that, so it's in the installed Cue: never "waiting for install". */
 const deskFinCommit = (i) => (i?.finish ? i.finish.commit || i.commit || "" : "");
@@ -132,7 +134,24 @@ function deskNextInstall() {
   const at = state.desk?.install_at ? ` ${clockAt(state.desk.install_at)}` : "";
   return `<span class="dk-next">Next install${at} · ${waiting.length} ${waiting.length === 1 ? "item" : "items"}</span>${deskInstallNow(waiting[0], "dk-instnow")}`;
 }
-const deskWaits = (i) => i.state === "needs_you" || (i.state === "to_check" && !deskInstallWait(i));
+const deskItemRequest = (i) => i?.ask?.item_id && state.items.find((it) => it.id === i.ask.item_id && actionableRequest(it));
+const deskReadyToReview = (i) => i.state === "to_check" && !deskInstallWait(i);
+/** The managed finish flow released a Cue change with a user-facing check. Older review cards can still be optional. */
+const deskNeedsVerification = (i) => deskReadyToReview(i) && !deskLooksSoon.has(i.id)
+  && i.finish?.step === "checked" && !!deskLatestCheck(i)?.cue && !!i.done_when?.trim() && !i.designs;
+const deskWaits = (i) => i.state === "needs_you" && (!i.ask?.item_id || !!deskItemRequest(i))
+  || deskNeedsVerification(i) || (deskReadyToReview(i) && !deskLooksSoon.has(i.id) && !!deskPickLine(i));
+
+/** Use the same current request on the list, the item page, and the Desk's counts. */
+function deskItemsWithRequests(d, taskApprovals = deskTaskApprovals(d)) {
+  return d.items.map((i) => {
+    if (deskItemRequest(i)) return i;
+    const request = taskApprovals.get(i.id);
+    if (request) return { ...i, state: "needs_you", ask: { item_id: request.id, sid: request.session_id, kind: request.kind, text: summary(request) } };
+    return i.state === "needs_you" && i.ask?.item_id ? { ...i, state: "working", ask: null } : i;
+  });
+}
+const deskWaitingItems = (d, taskApprovals) => deskItemsWithRequests(d, taskApprovals).filter(deskWaits);
 /** Items you've opened since they came back to check: id → its `updated` then (kept across restarts).
  *  SHORTCUT: kept in this window only, so another window or device still shows them as landed; move to a `seen`
  *  stamp on the item (hub/desk.rs, a desk_seen command) when the Desk is shown anywhere else. */
@@ -269,26 +288,25 @@ function deskVerbHtml(i) {
   const lead = words.match(new RegExp(`^${verb}\\b`, "i"));
   return lead ? `<b class="dk-vb">${esc(words.slice(0, verb.length))}</b>${esc(words.slice(verb.length))}` : `<b class="dk-vb">${esc(verb)}:</b> ${esc(words)}`;
 }
-/** The list's groups by state: Waiting on you, In progress, Queued (given out or not), the add-on's, and Done today. An
+/** The list's groups by state, with optional reviews in their own group. An
  *  item is in one group only. Who holds an item is the small word under its title; the sessions are on the left. */
 function deskGroups(project, taskApprovals) {
   const d = deskOf(project);
-  const items = d.items.map((i) => {
-    const request = taskApprovals?.get(i.id);
-    return request ? { ...i, state: "needs_you", ask: { item_id: request.id, kind: request.kind, text: summary(request) } } : i;
-  }).sort((a, b) => deskMs(a.created) - deskMs(b.created));
+  const items = deskItemsWithRequests(d, taskApprovals).sort((a, b) => deskMs(a.created) - deskMs(b.created));
   // What asks you something before what's ready to check; then what unblocks the most first, then the oldest (#182).
-  const ub = new Map(items.map((i) => [i.id, deskUnblocks(i, items).length]));
-  const waiting = items.filter(deskWaits).sort((a, b) => (a.state === "needs_you" ? 0 : 1) - (b.state === "needs_you" ? 0 : 1) || ub.get(b.id) - ub.get(a.id));
+  const waiting = items.filter(deskWaits);
+  const ub = new Map(waiting.map((i) => [i.id, deskUnblocks(i, items).length]));
+  waiting.sort((a, b) => (a.state === "needs_you" ? 0 : 1) - (b.state === "needs_you" ? 0 : 1) || ub.get(b.id) - ub.get(a.id));
+  const review = items.filter((i) => deskReadyToReview(i) && !deskWaits(i));
   const done = items.filter(deskDoneToday).sort((a, b) => deskMs(b.done_at) - deskMs(a.done_at));
-  const rest = items.filter((i) => !deskWaits(i) && i.state !== "done");
+  const rest = items.filter((i) => !deskWaits(i) && !deskReadyToReview(i) && i.state !== "done");
   let extra = [];
   try { extra = addOn.deskHolders?.(project) || []; } catch (e) { console.error(e); }
   // A stop the Desk lead is settling and an install in progress stay with the active work.
   const going = (i) => i.state === "working" || deskInstallWait(i) || deskFinishing(i);
   const resume = rest.filter((i) => i.state === "needs_resume");
   const queued = rest.filter((i) => i.state !== "needs_resume" && !going(i));
-  return { d, waiting, working: rest.filter(going), resume, queued, extra, done, all: items };
+  return { d, waiting, review, working: rest.filter(going), resume, queued, extra, done, all: items };
 }
 
 // ---------- the list ----------
@@ -335,7 +353,7 @@ function deskItemRow(i, lit, held = false) {
   const ok = deskInstallWait(i) || deskFinishing(i) || deskUncommitted(i) ? "" : i.state === "to_check" && deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id) : i.state === "to_check" ? `<button class="dk-ok" data-desk-act="looks_right" data-id="${esc(i.id)}" aria-label="Looks right"></button>`
     : i.state === "done" ? `<button class="dk-undo" data-desk-act="reopen" data-id="${esc(i.id)}">Undo</button>` : "";
   // What it waits on you for, in one plain line (Answer, Pick, Allow, Try it), and what it unblocks (#182).
-  const request = i.state === "needs_you" && state.items.find((item) => item.id === i.ask?.item_id && item.status === "pending");
+  const request = i.state === "needs_you" && deskItemRequest(i);
   const [question, ...more] = request?.kind === "question" ? questions(request) : [];
   const options = question && !more.length && !question.multiSelect ? question.options || [] : [];
   const isQuestion = i.state === "needs_you" && (i.ask?.kind === "question" || (!i.ask && !i.finish?.question && !deskPickLine(i)));
@@ -410,6 +428,8 @@ function deskList(project, taskApprovals) {
   const parts = [];
   // Waiting on you stays at 0 (in red only while something waits), so you see there's nothing for you.
   parts.push(`<div class="dk-gh you${g.waiting.length ? "" : " none"}">Waiting on you <span class="n">${g.waiting.length}</span></div>${g.waiting.map(row).join("")}`);
+  // Ready to review sits right under Waiting on you (#275): both are yours to look at.
+  if (g.review.length) parts.push(`<div class="dk-gh">Ready to review <span class="n">${g.review.length}</span></div>${g.review.map(row).join("")}`);
   if (g.working.length) parts.push(`<div class="dk-gh">In progress <span class="n">${g.working.length}</span></div>${g.working.map(row).join("")}`);
   if (g.resume.length) parts.push(`<div class="dk-gh">Needs resume <span class="n">${g.resume.length}</span></div>${g.resume.map(row).join("")}`);
   if (g.queued.length) parts.push(`<div class="dk-gh">Queued <span class="n">${g.queued.length}</span></div>${g.queued.map(row).join("")}`);
@@ -431,7 +451,7 @@ function deskList(project, taskApprovals) {
 
 /** A session's state, for its row: [dot, words]. Waiting on you when it asks you something. */
 function deskSessState(s) {
-  const asks = s.state === "deciding" || state.items.some((i) => i.session_id === s.session_id && i.status === "pending" && i.kind !== "waiting");
+  const asks = state.items.some((i) => i.session_id === s.session_id && actionableRequest(i));
   return asks ? ["ask", "waiting on you"] : s.state === "working" ? ["", "working"] : ["idle", "idle"];
 }
 /** The item a session holds (an ask before what's at work), or null. */
@@ -600,7 +620,7 @@ function deskSwitchList() {
 function deskSwitchMenu(project) {
   const ds = deskSwitchList(), at = Math.min(deskSwitchAt, ds.length - 1);
   const rows = ds.map((d, k) => {
-    const n = d.items.filter(deskWaits).length;
+    const n = deskWaitingItems(d).length;
     return `<div class="dk-sw-row${k === at ? " at" : ""}${d.project === project ? " on" : ""}" role="menuitem" tabindex="-1" data-desk-go="${esc(d.project)}"><span class="dk-sw-tick" aria-hidden="true">${d.project === project ? "✓" : ""}</span><span class="dk-sw-nm"><span>${esc(deskName(d))}</span></span>${n ? `<span class="dk-sw-need">${n} need${n === 1 ? "s" : ""} you</span>` : ""}</div>`;
   }).join("");
   return `<div class="dk-sw-menu" role="menu"><input class="dk-sw-find" data-text="desk-find" placeholder="Find a Desk…" aria-label="Find a Desk" spellcheck="false" autocomplete="off" value="${esc(draft("desk-find").text || "")}"/><div class="dk-sw-list">${rows || `<div class="dk-sw-none">No Desk matches.</div>`}</div><div class="dk-sw-foot"><button class="dk-sw-act" data-desk-home>All Desks</button><button class="dk-sw-act" data-desk-new-desk>+ New Desk</button></div><div class="dk-sw-keys">↑ ↓ move · ↵ open · Esc close</div></div>`;
@@ -835,10 +855,10 @@ const deskDesignsLink = (i) => /^https?:\/\//.test(i.designs || "") ? `<div clas
 const deskDesignsA = (url) => `<a class="dk-dlink" href="#" data-href="${esc(url)}">Open the mocks ↗</a>`;
 /** An item with mocks waiting on you to pick one: the line of its holder's newest words that asks you to, plain, for
  *  under its page's header ("Pick one for working items: D, E or F"). Its question first while it asks you, then its
- *  replies, newest first. "" when none asks for a pick. */
+ *  latest reply. An earlier pick can already have been answered. */
 function deskPickLine(i) {
   if (!/^https?:\/\//.test(i.designs || "") || (i.state !== "needs_you" && i.state !== "to_check")) return "";
-  const texts = [...(i.state === "needs_you" ? [deskQuestion(i)] : []), ...[...(i.said || [])].reverse().map((r) => r.text || "")];
+  const texts = [i.state === "needs_you" ? deskQuestion(i) : "", i.said?.at(-1)?.text || ""];
   for (const t of texts) {
     const lines = plain(t).split(/\n+|(?<=[.?!])\s+/).map((x) => x.trim()).filter((x) => /\b(pick|choose)\b/i.test(x));
     const line = lines.find((x) => /^(pick|choose|which)\b/i.test(x)) || lines[0];
@@ -858,7 +878,9 @@ function deskCheckInfo(i, d) {
   const n = (c.files || []).length, files = n ? ` · ${n === 1 ? "1 file" : `${n} files`}` : "";
   // In it when Cue was installed after the work last changed (`edited`), not after the DONE: you install, then say DONE.
   const mocks = /^https?:\/\//.test(c.designs || "") ? `<a class="dk-dlink" href="#" data-href="${esc(c.designs)}">Open the mocks ↗</a>` : "";
-  const inst = mocks || !c.cue ? mocks : deskChkUninstalled(c) && !deskFinCommit(i) ? "Not installed yet: install Cue to try it" : `In the installed Cue · installed ${esc(deskChkWhen(state.desk?.installed_ms || 0))}`;
+  const inst = mocks || !c.cue ? mocks : deskInstallWait({ ...i, state: "to_check" }) ? "Not installed yet: install Cue to try it"
+    : i.finish?.step === "checked" ? "Ready to verify in Cue"
+    : `In the installed Cue · installed ${esc(deskChkWhen(state.desk?.installed_ms || 0))}`;
   return `<div class="dk-chk-info"><div class="dk-chk-w">Done by ${who} · ${ago(c.at)} ago${files}</div>${inst ? `<div class="dk-chk-in">${inst}</div>` : ""}</div>`;
 }
 const deskChkWhen = (ms) => new Date(ms).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
@@ -1129,7 +1151,7 @@ const deskMateDot = (lead, t) => (mateNeeds(lead, t) ? "ask" : t.state === "work
 /** A lead (its crew, what's next, what it decided, its latest) or a session on its own. */
 function deskHolderPane(sid, d, foot = "") {
   const s = sessionOf(sid);
-  const mine = d.items.filter((i) => deskGroupKey(i.holder) === sid && i.state !== "done");
+  const mine = deskItemsWithRequests(d).filter((i) => deskGroupKey(i.holder) === sid && i.state !== "done");
   const name = deskHolderName(sid, mine.find((i) => i.holder?.kind !== "crew")?.holder?.name);
   const crew = deskCrew(sid), lead = deskIsLead(sid, mine);
   const waits = mine.filter(deskWaits).length;
@@ -1223,33 +1245,35 @@ function deskBox(d) {
   const mic = dictating?.key === key;
   const sugSid = to.item ? `item:${d.project}|${to.item}` : to.mate ? "" : to.sid || deskLead(d)?.sid || "";
   const sug = suggestionFor(sugSid);
-  // An item's page shows its recipient and item above the input; its quick phrases fill the box, they don't send.
+  // An item's page shows its recipient and item above the input; quick phrases use its normal send flow.
   return `<div class="dk-box" data-drop="${esc(key)}">${quickRow(`data-quick="${esc(key)}"`)}${deskPreHtml(pre)}${draftChips(key)}<div class="dk-box-row"><div class="ta-wrap"><textarea rows="1" data-text="${esc(key)}"${sug ? ` class="sug" data-sug-sid="${esc(sugSid)}" aria-label="${esc(`Suggested: ${sug}. Tab types it in.`)}"` : ""} placeholder="${esc(sug ? " " : ph)}" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off">${esc(draft(key).text)}</textarea>${sugLineHtml(sug)}</div><button class="icon-btn mic ${mic ? "on" : ""}" data-mic="${esc(key)}" aria-label="${mic ? "Stop dictating" : "Dictate"}">${MIC_ICON}</button><button class="icon-btn" data-attach="${esc(key)}" aria-label="Add an image">${IMAGE_ICON}</button><button class="btn primary small" data-desk-send="${esc(key)}">Send</button></div></div>`;
 }
 /** An item page's foot: while its holder asks you, the answer goes there, so you stay on its page. Its ask's card
  *  (choices, Decline, Type answer…) as under a chat; a turn that ended on it, a box to its holder. Else the box. */
 function deskItemFoot(i, d) {
-  if (i?.state !== "needs_you" || !i.holder) return deskBox(d);
-  const it = i.ask?.item_id && findItem(i.ask.item_id);
-  if (it && it.kind !== "waiting") return `<div class="dk-ask">${askFoot(it, it.session_id, it.harness || "claude", deskBoxKey({ project: d.project, item: i.id }))}</div>`;
+  if (i?.state !== "needs_you") return deskBox(d);
+  const it = deskItemRequest(i);
+  if (it) return `<div class="dk-ask">${askFoot(it, it.session_id, it.harness || "claude", deskBoxKey({ project: d.project, item: i.id }))}</div>`;
+  if (!i.holder) return deskBox(d);
   const sid = i.ask?.sid || (i.holder.kind === "crew" ? i.holder.lead_sid : i.holder.sid);
   if (!sessionOf(sid)) return `<div class="dk-ended">Its session has ended.</div>`;
   const to = i.holder.kind === "crew" && !i.ask ? { sid, mate: i.holder.name, item: i.id } : { sid, item: i.id };
   const key = deskBoxKey(to), mic = dictating?.key === key, line = deskToLine(i.holder.name, i);
   return `<div class="dk-box" data-drop="${esc(key)}">${deskPreHtml(line.pre)}${draftChips(key)}<div class="dk-box-row"><textarea rows="1" data-text="${esc(key)}" placeholder="${esc(line.ph)}" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off">${esc(draft(key).text)}</textarea><button class="icon-btn mic ${mic ? "on" : ""}" data-mic="${esc(key)}" aria-label="${mic ? "Stop dictating" : "Dictate"}">${MIC_ICON}</button><button class="icon-btn" data-attach="${esc(key)}" aria-label="Add an image">${IMAGE_ICON}</button><button class="btn primary small" data-desk-send="${esc(key)}">Send</button></div></div>`;
 }
-function deskRight(project) {
+function deskRight(project, taskApprovals) {
   const d = deskOf(project);
   const o = deskOpen;
   let body;
   // Each page takes its foot, the box under its own column (#200); the add-on's pane has it under the whole card.
-  const foot = () => (o?.kind === "item" ? deskItemFoot(deskItem(project, o.id), d) : deskSessionRequestFoot(d, o));
+  const item = o?.kind === "item" ? deskItemsWithRequests(d, taskApprovals).find((i) => deskIdIs(i, o.id)) || deskItem(project, o.id) : null;
+  const foot = () => (o?.kind === "item" ? deskItemFoot(item, d) : deskSessionRequestFoot(d, o));
   let tail = "";
   if (o?.kind === "item") {
-    const i = deskItem(project, o.id);
+    const i = item;
     if (i) { delete o.fresh; body = deskItemPane(i, d, foot()); }
     // Just added: it opens once Cue's state has it (the chat shows till then); not there in a few seconds, it won't.
-    else if (o.fresh && now() - o.fresh < 5000) return deskRightChat(d);
+    else if (o.fresh && now() - o.fresh < 5000) return deskRightChat(d, taskApprovals);
   }
   else if (o?.kind === "holder") body = deskHolderPane(o.sid, d, foot());
   // A reply open in Read: read-only, as in a session's chat, so no box under it (Reply brings it back).
@@ -1264,11 +1288,11 @@ function deskRight(project) {
   }
   if (o && !body) deskOpen = null;
   if (deskOpen) return `<div class="dk-card dk-right">${body}${tail}</div>`;
-  return deskRightChat(d);
+  return deskRightChat(d, taskApprovals);
 }
 /** The chat card with nothing open: who runs the Desk (no lead yet, or Change), else the lead's chat (or the line
  *  saying it ended), or Decisions. */
-function deskRightChat(d) {
+function deskRightChat(d, taskApprovals) {
   if (!deskLead(d) || deskPick === d.project) return deskPicker(d);
   const tab = (t, label, n) => `<button class="dk-tab ${deskTab === t ? "on" : ""}" data-desk-tab="${t}" aria-pressed="${deskTab === t}">${label}${n ? `<span class="n">${n}</span>` : ""}</button>`;
   const ask = deskLeadEnded(d) ? null : deskLeadAsk(d);
@@ -1282,7 +1306,7 @@ function deskRightChat(d) {
   const open = d.items.filter((i) => i.state !== "done" && i.state !== "dropped").length;
   const working = deskWorkingFor(d);
   const meta = ["The Desk lead", `${open} ${open === 1 ? "item" : "items"}`, working.length ? `${working.length} ${working.length === 1 ? "session" : "sessions"} working for it` : ""].filter(Boolean).join(" · ");
-  const waits = d.items.filter(deskWaits);
+  const waits = deskWaitingItems(d, taskApprovals);
   const why = (i) => (i.state === "needs_you" ? (i.ask?.kind === "permission" ? "Asks to use a tool" : "Asks you something") : "Ready to check");
   const waitRows = waits.map((i) => `<button class="dk-prow" data-desk-chk-item="${esc(i.id)}"><i class="dk-pdot ask" aria-hidden="true"></i><span class="dk-prt">${deskKindIcon(i)}<b>${esc(deskNum(i))}</b></span><span class="dk-prs">${esc(why(i))} · ${ago(deskMs(i.updated))}</span></button>`).join("");
   const workRows = working.map(({ sid, name, on }) => `<button class="dk-prow" ${deskChatAttrs(sid, d)}><i class="dk-pdot work" aria-hidden="true"></i><span class="dk-prt"><b>${esc(name)}</b>${on ? ` <span class="dk-prs">on #${esc(on.id)}</span>` : ""}</span></button>`).join("");
@@ -1317,7 +1341,7 @@ function deskLeadNow(d, waits, working) {
  *  in the box's place, as under a session's chat. Null when none. */
 function deskLeadAsk(d) {
   const sid = deskLead(d)?.sid;
-  return (sid && state.items.find((i) => i.session_id === sid && i.kind !== "waiting" && !mateOfAsk(i))) || null;
+  return (sid && deskSessionRequests(sid)[0]) || null;
 }
 
 // ---------- All projects: every Desk (desk_home.js) ----------
@@ -1336,7 +1360,7 @@ function deskView() {
   queueMicrotask(deskSettle);
   const project = deskSelection();
   const taskApprovals = deskTaskApprovals(deskOf(project));
-  return `<div class="board dk-board">${deskSessions(project, taskApprovals)}${deskRight(project)}${deskList(project, taskApprovals)}</div>`;
+  return `<div class="board dk-board">${deskSessions(project, taskApprovals)}${deskRight(project, taskApprovals)}${deskList(project, taskApprovals)}</div>`;
 }
 /** How many messages each item's Thread showed when last drawn, and for which opening of its page, by item. The page
  *  opens at its newest message, as a chat does; then one more (it arrived, or you sent it) scrolls to show it (#145). */
@@ -1395,15 +1419,6 @@ function deskShow(what) {
   deskGiveFor = null;
   if (!what) deskChatEnd = true;
   renderMain();
-}
-/** A quick phrase picked on an item's page: it's in the box (sendPhrase added it), the cursor after it, nothing sent. */
-function deskPhraseIn(key) {
-  renderMain();
-  const el = document.querySelector(`textarea[data-text="${CSS.escape(key)}"]`);
-  if (!el) return;
-  el.focus();
-  el.selectionStart = el.selectionEnd = el.value.length;
-  el.dispatchEvent(new Event("input", { bubbles: true }));
 }
 /** Send what's in box `key`: to the lead (naming the open item), or to the lead (naming its crew member). Only what's
  *  sent is named: the box keeps what you typed if it doesn't go. */
