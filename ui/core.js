@@ -89,6 +89,9 @@ const cleared = new Set();  // finished turns you cleared here (their fading row
 const ghosts = new Map();   // id -> { it, at, h }: just-answered rows that linger in Waiting (h: the card's height before)
 let folding = false;        // a ✓ row is folding away: redraws wait, or they'd pop it back mid-fold
 const answering = new Map(); // id -> when you answered it here: it fades at once, and folds LINGER_MS after that
+const unresolvedCard = (it) => it?.status === "pending" && !answering.has(it.id);
+/** A live decision can be answered now. Finished-turn cards are evaluated separately. */
+const actionableRequest = (it) => unresolvedCard(it) && it.kind !== "waiting";
 const openMsgs = new Set(); // older agent messages unfolded in the Active chat
 const openAsks = new Set(); // messages whose added note (voice line, status ask) is open, word for word
 const openFollow = new Set();  // cards whose "After a stop hook" is expanded

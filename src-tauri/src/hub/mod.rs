@@ -96,9 +96,6 @@ struct Store {
     /// Claude ends a stopped turn as an error, which is the stop, not something that went wrong. `true`: you
     /// stopped it (it's left stopped); `false`: Cue did, to send your queued message now.
     hosted_stopped: HashMap<String, bool>,
-    /// A hosted turn's reply that was an API error (its kind, its words), until that turn's end comes back: the
-    /// end is then that error (a usage limit: stopped on the limit, with Cue's carry-on), not a reply.
-    hosted_api_error: HashMap<String, (String, String)>,
     /// Every live session and its recent activity (the Working column and the 30-minute bars).
     sessions: crate::sessions::Sessions,
     /// Sessions you deleted while Cue ran, and when: an answer of theirs from before then, still on its way to

@@ -70,7 +70,7 @@ impl Translator {
             Inbound::System(v) => task(v).or_else(|| compacting(v)).into_iter().collect(),
             Inbound::Assistant(v) => {
                 self.in_turn = true;
-                api_error(v).into_iter().chain(assistant(v)).collect()
+                assistant(v)
             }
             Inbound::User(v) => self.user(v),
             Inbound::Result(v) => vec![self.turn_ended(v)],
@@ -141,19 +141,6 @@ fn assistant(v: &Value) -> Vec<HostedEvent> {
             _ => None,
         })
         .collect()
-}
-
-/// An assistant line Claude wrote for an API error instead of a reply: its typed `error` beside the message (the
-/// transcript's `isApiErrorMessage` line). Only the session's own, not an agent's inside it. A real reply can carry an
-/// `error` too (cut off at its output limit): only one marked as an API error's, or a usage one, counts.
-fn api_error(v: &Value) -> Option<HostedEvent> {
-    let error = v.get("error").and_then(Value::as_str).filter(|e| !e.is_empty())?;
-    let marked = v.get("is_api_error_message").and_then(Value::as_bool) == Some(true);
-    if parent(v).is_some() || !(marked || matches!(error, "rate_limit" | "billing_error")) {
-        return None;
-    }
-    let text = plain_text(v.pointer("/message/content").unwrap_or(&Value::Null));
-    Some(HostedEvent::ApiError { error: error.to_string(), text })
 }
 
 /// A background agent's or task's own event (`task_started`, `task_progress`, …), kept whole.

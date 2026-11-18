@@ -547,12 +547,7 @@ function deskSessions(project, taskApprovals) {
     const fold = done.length ? `<button class="dk-sfold" data-desk-done-fold="${esc(sid)}" aria-expanded="${open}">${done.length} done · ${open ? "hide" : "show"}</button>${open ? done.map((t) => mate(t, true)).join("") : ""}` : "";
     // The Desk's own lead shows no crew (it routes; any teammates it had, even old ones, aren't the Desk's).
     const crew = sid === leadSid ? "" : live.map((t) => mate(t, false)).join("") + fold;
-    // The card always carries a second line, as every row under it does (#269): the item it's on, else the first line
-    // of its latest reply, else how many items it has open; a one-line card read as the strip's header.
-    if (card) {
-      const cItem = deskSessItem(d, sid), open = d.items.filter((i) => i.state !== "done").length;
-      return deskSessRow({ name: deskHolderName(sid), sid, cls: "dk-lcard", mark: "desk", harness: s.harness, dot, word, item: cItem, line: cItem ? "" : deskSessSaid(sid) || (open ? `${open} open item${open === 1 ? "" : "s"} on this Desk` : "No open items on this Desk"), on: lit(sid), attrs, step: deskStepLine(dot === "", s.compacting_ms ? "Compacting…" : s.doing, s.compacting_ms || s.doing_ms), size: deskSessCache(sid, !cItem && dot !== "") });
-    }
+    if (card) return deskSessRow({ name: deskHolderName(sid), sid, cls: "dk-lcard", mark: "desk", harness: s.harness, dot, word, item: deskSessItem(d, sid), on: lit(sid), attrs, step: deskStepLine(dot === "", s.compacting_ms ? "Compacting…" : s.doing, s.compacting_ms || s.doing_ms), size: deskSessCache(sid) });
     // On no item: the first line of its latest reply, and when it came beside its size (#185).
     const item = deskSessItem(d, sid), idle = dot !== "" && !item;
     return deskSessRow({ name: deskHolderName(sid), sid, mark: sid === leadSid ? "desk" : lead ? "lead" : "session", dot, word, item, line: idle ? deskSessSaid(sid) : "", on: lit(sid), attrs, step: deskStepLine(dot === "", s.compacting_ms ? "Compacting…" : s.doing, s.compacting_ms || s.doing_ms), size: deskSessCache(sid, idle) }) + crew;
@@ -1424,6 +1419,15 @@ function deskShow(what) {
   deskGiveFor = null;
   if (!what) deskChatEnd = true;
   renderMain();
+}
+/** A quick phrase picked on an item's page: it's in the box (sendPhrase added it), the cursor after it, nothing sent. */
+function deskPhraseIn(key) {
+  renderMain();
+  const el = document.querySelector(`textarea[data-text="${CSS.escape(key)}"]`);
+  if (!el) return;
+  el.focus();
+  el.selectionStart = el.selectionEnd = el.value.length;
+  el.dispatchEvent(new Event("input", { bubbles: true }));
 }
 /** Send what's in box `key`: to the lead (naming the open item), or to the lead (naming its crew member). Only what's
  *  sent is named: the box keeps what you typed if it doesn't go. */

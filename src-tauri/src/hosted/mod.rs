@@ -105,9 +105,6 @@ pub enum HostedEvent {
     Suggested { text: String },
     /// It needs an answer from you before it goes on (`Session::answer`).
     Ask(Ask),
-    /// Its reply is an API error Claude made up for it (`error`: "rate_limit", "billing_error", …), saying `text`
-    /// ("You've hit your limit · resets 3pm (…)"). Its turn ends right after, on that error.
-    ApiError { error: String, text: String },
     /// A turn is over. `unprompted`: nothing of yours started it (a background task that finished did).
     TurnEnded { text: String, failed: bool, cost_usd: f64, unprompted: bool },
     /// A request of a kind this code doesn't know, refused at once so the session isn't left waiting on it.
