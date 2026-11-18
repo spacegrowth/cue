@@ -117,7 +117,11 @@ fn check_in(dir: &Path, repo: &str, head: &str) -> Result<(), String> {
     if !matches!(has, Ok((_, 0))) {
         return Ok(());
     }
-    let work = dir.join(format!("{head}.check"));
+    // A folder of its own: two items done at the same commit are checked at once, and one removing a shared
+    // "{head}.check" as it ended took the other's files from under it (#318).
+    static RUN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let run = RUN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let work = dir.join(format!("{head}.{}-{run}.check", std::process::id()));
     let _ = std::fs::remove_dir_all(&work);
     std::fs::create_dir_all(&work).map_err(|e| e.to_string())?;
     let result = check_copy(&work, repo, head);
@@ -217,12 +221,12 @@ fn take_in(dir: &Path, repo: &str, head: &str, base: &str) -> Result<PathBuf, St
     Ok(to)
 }
 
-/// Every copy but `keep` removed.
+/// Every copy but `keep` removed; a window check at work (its "….check" folder, removed by its own end) left alone.
 fn tidy(dir: &Path, keep: &str) {
     let Ok(rd) = std::fs::read_dir(dir) else { return };
     for e in rd.flatten() {
         let name = e.file_name().to_string_lossy().to_string();
-        if e.path().is_dir() && name != keep {
+        if e.path().is_dir() && name != keep && !name.ends_with(".check") {
             let _ = std::fs::remove_dir_all(e.path());
         }
     }

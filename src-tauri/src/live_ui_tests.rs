@@ -113,7 +113,7 @@ fn repo_with_check(name: &str) -> (PathBuf, PathBuf, String) {
 fn a_window_whose_names_are_all_declared_passes_its_check() {
     let (dir, root, head) = repo_with_check("check-ok");
     assert_eq!(check_in(&root.join("live"), &s(&dir), &head), Ok(()));
-    assert!(!root.join("live").join(format!("{head}.check")).exists(), "its copy is removed");
+    assert_eq!(checks(&root.join("live")), 0, "its copy is removed");
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -155,5 +155,35 @@ fn a_commit_from_before_the_check_has_none_to_run() {
     let (dir, root, _) = repo("check-none");
     let head = commit(&dir, "ui/desk.js", "missing();\n");
     assert_eq!(check_in(&root.join("live"), &s(&dir), &head), Ok(()));
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// The window checks' folders in `live`.
+fn checks(live: &Path) -> usize {
+    std::fs::read_dir(live).map(|rd| rd.flatten().filter(|e| e.file_name().to_string_lossy().ends_with(".check")).count()).unwrap_or(0)
+}
+
+#[test]
+fn two_checks_of_one_commit_at_once_each_have_their_own_copy() {
+    // Two items done at the same commit are checked at once: one ending took the other's copy from under it (#318).
+    let (dir, root, head) = repo_with_check("check-at-once");
+    let live = root.join("live");
+    let runs: Vec<_> = (0..2).map(|_| { let (live, repo, head) = (live.clone(), s(&dir), head.clone()); std::thread::spawn(move || check_in(&live, &repo, &head)) }).collect();
+    for r in runs {
+        assert_eq!(r.join().unwrap(), Ok(()));
+    }
+    assert_eq!(checks(&live), 0);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn serving_a_copy_leaves_a_check_at_work_alone() {
+    let (dir, root, built) = repo("check-tidy");
+    let head = commit(&dir, "ui/desk.js", "x");
+    let live = root.join("live");
+    let at_work = live.join(format!("{head}.1-0.check"));
+    std::fs::create_dir_all(&at_work).unwrap();
+    take_in(&live, &s(&dir), &head, &built).unwrap();
+    assert!(at_work.is_dir(), "a check at work keeps its copy");
     let _ = std::fs::remove_dir_all(root);
 }
