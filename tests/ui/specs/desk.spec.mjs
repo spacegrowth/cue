@@ -1653,7 +1653,7 @@ test("the lead's card in the strip: Run by, its state and the item it holds; ope
   await cue.open("desk");
   await openDesk(page);
   const lead = page.locator('.dk-strip .dk-lcard[data-desk-lead-chat="lead"]');
-  await expect(lead.locator(".dk-larrow")).toHaveText("›");
+  await expect(lead.locator(".dk-larrow")).toHaveText("›");   // open, so it has the › (#219)
   await expect(lead.locator(".dk-lk")).toHaveText("Run by");
   await expect(lead.locator(".dk-nm")).toHaveText("web-lead");
   await expect(lead.locator(".dk-st")).toHaveText("waiting on you");
@@ -3268,4 +3268,27 @@ test("a stopped item's row, open or not, keeps its full-size icon and its kind, 
   await row.click();
   await expect(row).toHaveClass(/\bon\b/);
   expect(await shape()).toEqual({ icon: [14, 14], lines: 3, under: true, sameLeft: true });
+});
+
+test("the Desk list's › sits only on the open row or card and moves with it, in both themes (#219)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  const left = page.locator(".dk-sessions");
+  const arrows = left.locator(".dk-larrow, .dk-go");
+  const owner = () => arrows.evaluateAll((els) => els.map((el) => { const r = el.closest(".dk-srow, .dk-lcard, .dk-holder"); return [r.dataset.deskLeadChat || r.dataset.deskChatOf || r.dataset.deskHolder || r.dataset.deskAddon, r.classList.contains("on")]; }));
+  for (const scheme of ["light", "dark"]) {
+    await page.emulateMedia({ colorScheme: scheme });
+    // The lead's chat shows: the Run by card alone has it.
+    await expect(left.locator('[data-desk-lead-chat="lead"]')).toHaveClass(/\bon\b/);
+    expect(await owner()).toEqual([["lead", true]]);
+    // Open another session: the › goes with it, none on the Run by card.
+    await left.locator('[data-desk-chat-of="host"]').click();
+    await expect(left.locator('[data-desk-chat-of="host"]')).toHaveClass(/\bon\b/);
+    expect(await owner()).toEqual([["host", true]]);
+    await expect(left.locator('[data-desk-lead-chat="lead"] .dk-larrow')).toHaveCount(0);
+    // Back to the lead's: back on its card.
+    await page.keyboard.press("Escape");
+    await expect(left.locator('[data-desk-lead-chat="lead"]')).toHaveClass(/\bon\b/);
+    expect(await owner()).toEqual([["lead", true]]);
+  }
 });
