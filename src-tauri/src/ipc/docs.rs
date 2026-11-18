@@ -72,6 +72,14 @@ pub(crate) fn resolve_doc(path: &str, cwd: Option<&str>) -> Option<PathBuf> {
             break;
         }
     }
+    // A path into a folder beside the repo (another repo next to it, as `other-repo/docs/x.md`), when the repo has
+    // no folder of that name itself.
+    if let (Some(first), Some(beside)) = (rel.components().next(), top.parent()) {
+        let there = beside.join(&rel);
+        if rel.components().count() > 1 && !top.join(first).exists() && there.is_file() {
+            return Some(there);
+        }
+    }
     search(&top, &rel)
 }
 
@@ -227,7 +235,12 @@ mod tests {
         std::fs::write(top.join("node_modules/x/README.md"), "no").unwrap();
         top
     }
-    fn rand_id() -> u128 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos() }
+    // The clock alone can repeat across tests running at once (one would delete the other's folder): add a count.
+    fn rand_id() -> String {
+        static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        format!("{}-{n}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos())
+    }
 
     #[test]
     fn finds_what_a_reply_meant() {
@@ -250,6 +263,25 @@ mod tests {
         assert_eq!(resolve_doc("nope.md", Some(c)), None);
         assert_eq!(resolve_doc("x/README.md", Some(c)), None);
         std::fs::remove_dir_all(&top).ok();
+    }
+
+    #[test]
+    fn finds_a_doc_in_a_repo_beside_this_one() {
+        let top = tree();
+        let other = top.with_extension("other");
+        std::fs::create_dir_all(other.join("mac/docs")).unwrap();
+        std::fs::write(other.join("mac/docs/review.md"), "# Review").unwrap();
+        let c = top.join("app/src");
+        let c = c.to_str().unwrap();
+        let name = other.file_name().unwrap().to_str().unwrap();
+        let want = other.join("mac/docs/review.md");
+        // Written relative to the folder that holds both repos, as is, or joined to the session's folder by the UI.
+        assert_eq!(resolve_doc(&format!("{name}/mac/docs/review.md"), Some(c)), Some(want.clone()));
+        assert_eq!(resolve_doc(&format!("{c}/{name}/mac/docs/review.md"), Some(c)), Some(want));
+        // A folder of this repo's own with that name wins: no reaching out beside it.
+        assert_eq!(resolve_doc(&format!("docs/{name}.md"), Some(c)), None);
+        std::fs::remove_dir_all(&top).ok();
+        std::fs::remove_dir_all(&other).ok();
     }
 
     #[test]
