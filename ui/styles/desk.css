@@ -53,10 +53,18 @@
 .dk-s3.hot { color: var(--amber); font-weight: 600; }
 .dk-s3.dk-now { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-srow.on .dk-st, .dk-srow.on .dk-s2, .dk-srow.on .dk-s3:not(.hot), .dk-srow.on .dk-id, .dk-srow.on .dk-none { color: var(--on-sel); }
-.dk-sfoot { display: grid; gap: 6px; flex: none; padding: 10px 14px; border-top: 1px solid var(--line); }
-.dk-sfoot .btn { width: 100%; }
-.dk-add-picker { display: grid; gap: 4px; max-height: 160px; overflow: auto; }
-.dk-add-picker .btn { text-align: left; overflow-wrap: anywhere; }
+.dk-sfoot { display: flex; align-items: center; flex: none; padding: 10px 14px; border-top: 1px solid var(--line); }
+.dk-add-anchor { position: relative; flex: none; z-index: 1; }
+.dk-add-button.btn { display: grid; place-items: center; width: 27px; height: 27px; padding: 0; font: 600 17px/1 var(--sans); }
+.dk-add-picker { position: absolute; bottom: calc(100% + 5px); left: 0; width: 172px; max-height: min(180px, 38vh); overflow: auto; padding: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: var(--shadow); }
+.dk-add-picker > .dim { padding: 5px 6px; font-size: 12px; }
+.dk-add-option { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 24px; padding: 3px 6px; border: 0; border-radius: 4px; background: none; color: var(--ink); text-align: left; font: 12px var(--sans); overflow-wrap: anywhere; cursor: pointer; }
+.dk-add-option small { display: block; }
+.dk-add-option:has(input:disabled) { cursor: default; }
+.dk-add-option:hover, .dk-add-option:focus-within { background: var(--panel-2); }
+.dk-add-option > :is(input, span[aria-hidden]) { flex: none; display: grid; place-items: center; }
+.dk-add-option input { appearance: auto; width: 13px; height: 13px; margin: 0; accent-color: var(--accent); }
+.dk-add-option svg { width: 12px; height: 12px; }
 
 /* overflow: clip, not hidden: a hidden box can still be scrolled (WebKit does, to show a focused or
    typed-in text box), and nothing scrolls it back, so an item's box moved off where it sat. */
@@ -142,11 +150,12 @@
 .dk-it.on .dk-instnow { border-color: currentColor; color: var(--on-sel); }
 .dk-next { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dk-next + .dk-instnow { margin-left: 0; }
-.dk-h { grid-column: 2; margin-top: 1px; color: var(--ink); font-size: 12.5px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-ask-row { grid-column: 2; min-width: 0; display: flex; align-items: center; gap: 8px; }
+.dk-row-decisions { display: flex; flex: none; gap: 4px; margin-left: auto; }
+.dk-h { min-width: 0; margin-top: 1px; color: var(--ink); font-size: 12.5px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Selected: its words in the selected ink, as the Board's selected card. */
 .dk-it.on .dk-id, .dk-it.on .dk-who, .dk-it.on .dk-age, .dk-it.on .dk-h { color: var(--on-sel); }
-/* An ask's question: in full, in a soft box of the deny hue under its title (no tag, no dot). */
-.dk-it.ask .dk-h { margin-top: 4px; padding: 6px 9px; border-radius: 8px; background: color-mix(in srgb, var(--deny) 10%, transparent); white-space: normal; overflow-wrap: anywhere; }
+.dk-it.ask .dk-h { white-space: normal; overflow-wrap: anywhere; }
 /* Links to what an item's holder made, in its pane. */
 .dk-mades { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
 .dk-made { padding: 3px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink); font-size: 12px; cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
