@@ -827,3 +827,34 @@ fn move_to_terminal_waits_while_it_works() {
     assert!(why.contains("working"), "{why}");
     assert!(w.hosted.closed().is_empty(), "left running");
 }
+
+/// A turn that ends on the usage limit (Claude's reply an API error typed "rate_limit", then its end) is stopped on
+/// the limit, with its reset time, and gets Cue's carry-on a minute after the reset, as a terminal session does.
+#[test]
+fn a_turn_that_ends_on_the_usage_limit_is_limited_and_carries_on_after_the_reset() {
+    let w = World::new();
+    let sid = running(&w, "do it all");
+    let said = "You've hit your limit · resets 4:10am (America/Los_Angeles)";
+    let lines = [
+        json!({ "type": "assistant", "message": { "model": "<synthetic>", "role": "assistant", "content": [{ "type": "text", "text": said }] }, "parent_tool_use_id": null, "session_id": sid, "error": "rate_limit", "is_api_error_message": true }),
+        json!({ "type": "result", "subtype": "success", "is_error": true, "result": said, "session_id": sid, "total_cost_usd": 0.0 }),
+    ];
+    let text = lines.iter().map(Value::to_string).collect::<Vec<_>>().join("\n");
+    for e in crate::hosted::fixture_events(&text).into_iter().flatten() {
+        w.hosted_says(&sid, e);
+    }
+    w.settle();
+    let snap = w.snapshot();
+    let s = snap.session(&sid);
+    assert_eq!(snap.state(&sid), "limited", "{s}");
+    assert!(s["limit"]["resets_ms"].as_u64().is_some(), "with its reset time: {s}");
+    assert_eq!((s["send_at"]["text"].as_str(), s["send_at"]["at_ms"].as_u64()), (Some(crate::sessions::send_at::CARRY_ON), Some(0)), "{s}");
+    let before = w.hosted.sent().len();
+    w.hub().usage_tick();
+    w.settle();
+    assert_eq!(w.hosted.sent().len(), before, "not before the reset");
+    w.advance(25 * 3600 * 1000);
+    w.hub().usage_tick();
+    w.settle();
+    assert_eq!(w.hosted.sent().last(), Some(&(sid.clone(), crate::sessions::send_at::CARRY_ON.to_string())));
+}

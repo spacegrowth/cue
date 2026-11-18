@@ -26,8 +26,8 @@ test("the Desk is in the header after Board, and lists Waiting on you, then a gr
   const views = await page.locator(".switch-view button").evaluateAll((els) => els.map((el) => el.dataset.view));
   expect(views.slice(0, 3)).toEqual(["inbox", "board", "desk"]);
   await openDesk(page);
-  expect(await listOrder(page)).toEqual(["# Waiting on you", "d1", "d2", "# In progress", "d3", "d5", "# Queued", "d4", "d6", "# Done", "d7", "d8", "d9"]);
-  await expect(page.locator(".dk-items .dk-gh.you")).toContainText("2");
+  expect(await listOrder(page)).toEqual(["# Waiting on you", "d1", "# Ready to review", "d2", "# In progress", "d3", "d5", "# Queued", "d4", "d6", "# Done", "d7", "d8", "d9"]);
+  await expect(page.locator(".dk-items .dk-gh.you .n")).toHaveText("1");
   // Grouped by state only: no head a session (the sessions are on the left).
   await expect(page.locator(".dk-items .dk-holder")).toHaveCount(0);
   // One row each: state, #id, title, who holds it, age; only the ask has a second line, its question.
@@ -375,7 +375,7 @@ test("Desk home: one row a Desk with what it's about, its people, open tasks, bu
   await expect(cells).toHaveCount(3);
   await expect(cells.nth(0).locator(".dk-kic")).toHaveCount(1);
   expect(await cells.nth(0).locator(".dh-big").innerHTML()).toContain('d="m8.5 12.2');   // the task mark under Tasks
-  for (let k = 0; k < 3; k++) await expect(cells.nth(k)).toHaveText(/^(–|\d+ open(\d+ working|none moving)?( · )?(\d+ to check)?)$/);
+  for (let k = 0; k < 3; k++) await expect(cells.nth(k)).toHaveText(/^(–|\d+ open(\d+ working|none moving)?( · )?(\d+ need you)?( · )?(\d+ to review)?)$/);
   await expect(cue1.locator(".dh-on b")).toHaveText("web-lead");
   await expect(page.locator(".dh-tbl [title]")).toHaveCount(0);
   // A kind whose only open item is finishing (#181) is moving: "1 finishing", not "none moving".
@@ -875,6 +875,8 @@ test("Give to… on a row: a menu of the project's sessions over the list (rows 
   await cue.open("desk");
   await openDesk(page);
   const before = await listOrder(page);
+  // In view first, so the click itself doesn't scroll the list (Ready to review sits above Queued since #275).
+  await page.locator('[data-desk-item="d6"] [data-desk-give]').scrollIntoViewIfNeeded();
   const below = await page.locator('[data-desk-item="d4"]').boundingBox();
   await page.locator('[data-desk-item="d6"] [data-desk-give]').click();
   const menu = page.locator('[data-desk-item="d6"] .dk-givemenu');
@@ -1900,6 +1902,7 @@ test("no line under the strip: the list starts right after it", async ({ page, c
   // Only the lead's working line (#263) between them.
   expect(await page.locator(".dk-sessions .dk-strip").evaluate((el) => el.nextElementSibling.classList.contains("dk-lbar"))).toBe(true);
   // Then "Needs your decision" while a request waits (e6869d92); with none, the list right under the line.
+  await cue.change((st) => { st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d1").ask = null; });
   expect(await page.locator(".dk-sessions .dk-lbar").evaluate((el) => el.nextElementSibling.classList.contains("dk-approvals"))).toBe(true);
   await cue.change((st) => { st.items = st.items.filter((i) => i.status !== "pending"); });
   await expect(page.locator(".dk-sessions .dk-approvals")).toHaveCount(0);
@@ -1919,6 +1922,12 @@ test("the Run by card is a session row's size: same padding, name, item line and
   expect(a.pad).toBe(b.pad);
   expect(a.nm).toBe(b.nm);
   if (a.s2 && b.s2) { expect(a.s2).toBe(b.s2); expect(a.indent).toBe(b.indent); }
+  // Like every row, the card has a second line, even idle and on no item: its latest reply, else its open items.
+  const leadSid = await lead.getAttribute("data-desk-lead-chat");
+  await cue.change((st, sid) => { const s = st.sessions.find((x) => x.session_id === sid); s.state = "idle"; s.doing = ""; for (const i of st.desk.projects.find((x) => x.project === "cue").items) if (i.holder?.sid === sid) i.holder = null; }, leadSid);
+  await expect(lead.locator(".dk-s2 .dk-id")).toHaveCount(0);
+  await expect(lead.locator(".dk-s2")).toHaveCount(1);
+  await expect(lead.locator(".dk-s2")).not.toHaveText("");
   // The head reads as the list's group heads do: same face, size and spacing.
   const font = (loc) => loc.evaluate((el) => { const c = getComputedStyle(el); return [c.fontSize, c.fontWeight, c.letterSpacing, c.textTransform].join(" "); });
   expect(await font(page.locator(".dk-strip .dk-lh"))).toBe(await font(page.locator(".dk-sessions .dk-gh").first()));
@@ -1968,6 +1977,7 @@ test("a row's state dot sits after its name with its word: working blinks, waiti
     const site = st.sessions.find((x) => x.session_id === "site");
     st.sessions.push({ ...site, session_id: "spare", project: "cue", name: "spare", state: "idle", thread: [] },
       { ...site, session_id: "asker", project: "cue", name: "asker", state: "deciding", thread: [] });
+    st.items.push({ ...st.items.find((i) => i.id === "n-focus-ask"), id: "n-asker", session_id: "asker" });
     st.desk.projects.find((d) => d.project === "cue").members.push("spare", "asker");
   });
   // The test page stills every animation; take that off to see the dot's own.
@@ -2816,7 +2826,7 @@ test("the lead's box has the chat box's quick phrases and Claude's suggested rep
   // A phrase sends, to the lead.
   await box.locator('.qp[data-phrase="go ahead"]').click();
   await cue.called("desk_send", { project: "cue", text: "go ahead" });
-  // About an item: its phrases (#242: they fill the box, desk-quick.spec) but no suggestion (those words aren't the
+  // About an item: its phrases (sent by its normal flow, desk-quick.spec) but no suggestion (those words aren't the
   // lead's own next prompt).
   await page.locator('[data-desk-item="d3"]').click();
   await expect(page.locator(".dk-box .quick .qp")).toHaveCount(2);
@@ -3050,28 +3060,25 @@ test("the chats' pages: the Dispatcher's NOW (its state, routing, with sessions,
   const now = pg.locator(".dk-pnow");
   await expect(now.locator(".dk-pdot")).toHaveCount(1);
   await expect(now.locator(".dk-pword")).toHaveText(/^(Working|Idle|Waiting on you)$/);
-  await expect(now.locator(".dk-psay")).toContainText("2 items wait on you.");
+  await expect(now.locator(".dk-psay")).toContainText("#d1 waits on you.");
   await expect(now.locator(".dk-pgo")).toHaveText("Check #d1");
   const waitsSec = pg.locator(".dk-panel .dk-psec", { has: page.locator("h4", { hasText: "Waits on you" }) });
-  await expect(waitsSec.locator("h4")).toHaveText("Waits on you · 2");
-  await expect(waitsSec.locator(".dk-prow")).toHaveCount(2);
+  await expect(waitsSec.locator("h4")).toHaveText("Waits on you · 1");
+  await expect(waitsSec.locator(".dk-prow")).toHaveCount(1);
   await page.screenshot({ path: `${dir}/cue-desk-lead-chat-light.png` });
   await page.emulateMedia({ colorScheme: "dark" });
   await page.screenshot({ path: `${dir}/cue-desk-lead-chat-dark.png` });
   await page.emulateMedia({ colorScheme: "light" });
 
-  // One waits: its kind's icon and number in the sentence; Check #d2 opens it.
-  await page.evaluate(() => { const d = deskOf("cue"); d.items.find((i) => i.id === "d1").state = "working"; renderMain(); });
-  await expect(now.locator(".dk-psay")).toContainText("#d2 waits on you.");
-  await expect(now.locator(".dk-psay svg.dk-kic")).toHaveCount(1);
+  // The review stays available, and clearing the question removes the waiting action.
+  await page.evaluate(() => { state.items = state.items.filter((i) => i.id !== "n-focus-ask"); renderMain(); });
+  await expect(now.locator(".dk-pgo")).toHaveCount(0);
   // Working (its ask answered) with one new item no one has: "Routing #d6"; how many are with sessions.
   await page.evaluate(() => { sessionOf("lead").state = "working"; state.items = state.items.filter((i) => i.session_id !== "lead"); renderMain(); });
   await expect(now.locator(".dk-pword")).toHaveText("Working");
   await expect(now.locator(".dk-psay")).toContainText("Routing #d6 to a session.");
   await expect(now.locator(".dk-psay")).toContainText(/\d+ items? (is|are) with sessions/);
-  await now.locator(".dk-pgo").click();
-  await expect(page.locator('.dk-it.on[data-desk-item="d2"]')).toBeVisible();
-  await page.evaluate(() => deskShow(null));
+  await expect(page.locator('[data-desk-item="d2"] .dk-ok')).toBeVisible();
   // None waits: no Check button, and WAITS ON YOU · 0.
   await page.evaluate(() => { const d = deskOf("cue"); d.items.find((i) => i.id === "d2").state = "done"; renderMain(); });
   await expect(now.locator(".dk-pgo")).toHaveCount(0);
@@ -3462,7 +3469,7 @@ test("a finishing item: amber and steady, its step under its title; in the next 
   await expect(page.locator(".dk-items .dk-instnow")).toHaveCount(0);
   await expect(page.locator(".dk-items .dk-next")).toHaveCount(0);
   // Not counted as waiting on you, and where it was in the list.
-  await expect(page.locator(".dk-items .dk-gh.you")).toContainText("2");
+  await expect(page.locator(".dk-items .dk-gh.you .n")).toHaveText("1");
   expect(await listOrder(page)).toEqual(before);
 
   // In the next install (#190): its row says so and when; the Items header has the one Install now, for all of it.
@@ -3504,7 +3511,7 @@ test("a failed build waits on you with its question; its page has the log's last
   await patchItem(cue, "d5", { state: "needs_you", latest: "The build failed", finish: { step: "failed", question: "The build failed", log, at: Date.now() } });
   const row = page.locator('.dk-items [data-desk-item="d5"]');
   await expect(row.locator(".dk-h")).toHaveText("Answer: The build failed");
-  await expect(page.locator(".dk-items .dk-gh.you")).toContainText("3");
+  await expect(page.locator(".dk-items .dk-gh.you .n")).toHaveText("2");
   await row.locator(".dk-t").click();
   const pane = page.locator(".dk-right .dk-pg");
   await expect(pane.locator(".dk-chain")).toContainText("The build failed");
@@ -3570,6 +3577,7 @@ test("each waiting row says what to do in one line, and what it unblocks; the mo
     const it = (id) => items.find((i) => i.id === id);
     // d2 waits on a pick, and four items wait on it (one through another).
     Object.assign(it("d2"), { state: "needs_you", ask: { item_id: "a2", sid: "web-lead", text: "Phrases left or right of Send?", choices: ["Left", "Right"], kind: "question" } });
+    st.items.push({ ...st.items.find((i) => i.id === "n-focus-ask"), id: "a2", tool_input: { questions: [{ question: "Phrases left or right of Send?", options: [{ label: "Left" }, { label: "Right" }] }] } });
     Object.assign(it("d4"), { after: "d2" });
     Object.assign(it("d6"), { after: "d4" });
     items.push({ ...it("d6"), id: "d10", title: "Ten", after: "d2" }, { ...it("d6"), id: "d11", title: "Eleven", after: "d10" });
