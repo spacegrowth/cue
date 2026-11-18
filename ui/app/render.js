@@ -12,7 +12,7 @@ let chatOpenTold;
 // The lists a redraw puts back where they were scrolled (the chat keeps its element across draws, chat/patch.js liftChat /
 // settleChat, so its scroll is its own). Each is known by its kind and its place among that kind, or by its
 // data-scroll-key: a list new in this draw (a lead's review rows) is never handed another list's place.
-const SCROLLERS = [".col", ".cp-scroll", ".cpv-scroll", ".cpm-body", ".ib-scroll", ".ib-brief", ".ib-page-body", ".lv-list", ".sv-scroll", ".sheet-body", ".sec-body", ".card.recent", ".hist", ".hdetail", ".itab", ".vp-list", ".rdv-scroll", ".rdv-list", ".rdv-toc", ".dk-scroll", ".dk-pane", ".dk-chat", ".dk-rd", ".dk-desks"];
+const SCROLLERS = [".col", ".cp-scroll", ".cpv-scroll", ".cpm-body", ".ib-scroll", ".ib-brief", ".ib-page-body", ".lv-list", ".sv-scroll", ".sheet-body", ".sec-body", ".card.recent", ".hist", ".hdetail", ".itab", ".vp-list", ".rdv-scroll", ".rdv-list", ".rdv-toc", ".dk-scroll", ".dk-pane", ".dk-chat", ".dk-rd", ".dk-desks", ".dk-givemenu"];
 function scrollerKeys() {
   const seen = {};
   return [...document.querySelectorAll(SCROLLERS.join(", "))].map((el) => {
@@ -20,6 +20,56 @@ function scrollerKeys() {
     seen[kind] = (seen[kind] ?? -1) + 1;
     return [el.dataset.scrollKey ? `${kind}:${el.dataset.scrollKey}` : `${kind}#${seen[kind]}`, el];
   });
+}
+
+// Every other box that scrolls (#309): SCROLLERS above are the ones with their own rules, and anything not on it was
+// built afresh at its start on every update (a Desk picker, an ask, the Inbox's side, a menu, a wide table scrolled
+// sideways). Each element is noted as it scrolls and put back by where it sits: each step down from #app named by its
+// tag, first class and data-* attributes (a different item's or session's box is a different place), and its count
+// among like siblings. What's noted here is put back first; the lists with their own rules then have the last word.
+const scrolledEls = new Set();
+document.addEventListener("scroll", (e) => { if (e.target instanceof Element) scrolledEls.add(e.target); }, true);
+/** Each child of `parent` with its step: tag, first class, data-* attributes, its count among children alike. */
+function placeSteps(parent) {
+  const seen = {};
+  return [...parent.children].map((n) => {
+    const data = Object.entries(n.dataset).sort().map(([k, v]) => `${k}=${v}`).join(",");
+    const sig = `${n.tagName}.${n.classList[0] || ""}[${data}]`;
+    seen[sig] = (seen[sig] ?? -1) + 1;
+    return [`${sig}:${seen[sig]}`, n];
+  });
+}
+/** Where an element sits in the window, as steps down from #app; null when it's outside it or is one with its own rule. */
+function placeOf(el) {
+  const root = document.getElementById("app");
+  if (!root?.contains(el) || el === root || el.matches("[data-chat], textarea[data-text], input[data-text]")) return null;
+  const steps = [];
+  for (let n = el; n !== root; n = n.parentElement) steps.push(placeSteps(n.parentElement).find(([, c]) => c === n)[0]);
+  return steps.reverse();
+}
+function atPlace(steps) {
+  let n = document.getElementById("app");
+  for (const step of steps) { n = n && placeSteps(n).find(([s]) => s === step)?.[1]; if (!n) return null; }
+  return n;
+}
+function notePlaces() {
+  const out = [];
+  for (const el of scrolledEls) {
+    if (!el.isConnected) { scrolledEls.delete(el); continue; }
+    if (!el.scrollTop && !el.scrollLeft) continue;
+    const steps = placeOf(el);
+    if (steps) out.push([steps, el.scrollTop, el.scrollLeft]);
+  }
+  return out;
+}
+function putPlacesBack(noted) {
+  for (const [steps, top, left] of noted) {
+    const el = atPlace(steps);
+    if (!el) continue;
+    el.scrollTop = top;
+    el.scrollLeft = left;
+    scrolledEls.add(el);   // its own scroll event comes a frame later: a draw before then still knows it
+  }
 }
 
 function renderMain() {
@@ -43,6 +93,9 @@ function beforeDraw() {
   was.caret = focusKey || (focusId && focused.setSelectionRange) ? [focused.selectionStart, focused.selectionEnd] : null;
   // Each text box is built afresh too, scrolled to its top: a long message would jump there on every redraw.
   was.boxTops = new Map([...document.querySelectorAll("textarea[data-text]")].map((el) => [el.dataset.text, el.scrollTop]));
+  // A one-line box is scrolled sideways once its words run past its end: built afresh it shows their start (#308).
+  was.lineLefts = new Map([...document.querySelectorAll("input[data-text]")].map((el) => [el.dataset.text, el.scrollLeft]));
+  was.places = notePlaces();
   was.scrolls = new Map(scrollerKeys().map(([key, el]) => [key, el.scrollTop]));
   was.mcpTops = new Map([...document.querySelectorAll(".mcp-list[data-mcp-key]")].map((el) => [el.dataset.mcpKey, el.scrollTop]));   // the MCP picker, redrawn on every tick
   // A background script's output in its full view (chat/helpers.js scriptPane): where you were, or at its newest.
@@ -87,10 +140,14 @@ function drawWindow() {
   const lifted = liftChat();
   const focusMode = focus && view === "board";
   const topBar = focusMode ? "" : topBarHtml(counts);
-  document.getElementById("app").innerHTML = `${focusMode ? "" : `<div class="dragbar" data-tauri-drag-region></div>`}<div class="app ${focusMode ? "focus" : ""}">
+  const html = `${focusMode ? "" : `<div class="dragbar" data-tauri-drag-region></div>`}<div class="app ${focusMode ? "focus" : ""}">
     ${topBar}
     ${viewHtml()}
   </div>${overlaysHtml()}`;
+  const root = document.getElementById("app");
+  const editors = liftDraftEditors(root);
+  root.innerHTML = html;
+  settleDraftEditors(root, editors);
   return lifted;
 }
 
@@ -119,6 +176,7 @@ function placeFloating() {
   placeTeamRows();   // a lead's open team: its scrolling box ends on a whole row
   crewListPlace();   // a crew page's list: its rows' form, the chip for an ask out of view (team_page.js)
   placeVoiceList();   // Settings → Voice: the open list under its picker
+  if (typeof deskGivePlace === "function") deskGivePlace();   // Give to…'s menu sized before its scroll is put back (#308)
   const lc = current();
   listenKeep(lc?.s?.session_id || lc?.it?.session_id);   // a reply read out: its marks back on the redrawn chat
 }
@@ -137,6 +195,7 @@ function keepSessionsTop(anchor) {
 /** Every list where it was scrolled, the Waiting card under the pointer where it was, the MCP picker and a
  *  background script's output where they were. */
 function restoreScrolls(was) {
+  putPlacesBack(was.places);
   scrollerKeys().forEach(([key, el]) => { if (was.scrolls.has(key)) el.scrollTop = was.scrolls.get(key); });
   if (was.waitAnchor) {
     const el = [...document.querySelectorAll(".sec-waiting .sec-body .nrow[data-big]")].find((x) => x.dataset.big === was.waitAnchor.id);
@@ -235,6 +294,7 @@ function restoreFocus(was) {
   else if (focusId) { const el = document.getElementById(focusId); if (el) { el.focus({ preventScroll: true }); if (caret) el.setSelectionRange(...caret); } }
   // Where each box was scrolled, after the cursor is back (putting it back can scroll the box itself).
   document.querySelectorAll("textarea[data-text]").forEach((el) => { const top = was.boxTops.get(el.dataset.text); if (top != null) el.scrollTop = top; });
+  document.querySelectorAll("input[data-text]").forEach((el) => { const left = was.lineLefts.get(el.dataset.text); if (left) el.scrollLeft = left; });
   // Something over the chat closed (Esc, a click outside, a pick): its text box takes the cursor back,
   // unless you closed it by clicking into another box.
   const over = !!(sheet || lightbox || liveOpen || menuFor || redirectFor || renaming || btwFor || deleteAsk);
