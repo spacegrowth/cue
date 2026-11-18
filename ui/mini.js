@@ -121,7 +121,7 @@
     return "";
   }
   /** Item `i`'s pending ask in Cue's cards (a question or a permission), if any. */
-  const deskReq = (i) => (i.state === "needs_you" && i.ask?.item_id && state.items.find((x) => x.id === i.ask.item_id && x.status === "pending")) || null;
+  const deskReq = (i) => i.state === "needs_you" ? deskItemRequest(i) : null;
   /** The box that answers item `i` in its row: a question card's own (its answer goes as the card's), else the box to
    *  its holder, as its page's foot (desk.js deskItemFoot). */
   function deskAnswerKey(i, req = deskReq(i)) {
@@ -129,7 +129,7 @@
     const sid = i.ask?.sid || (i.holder?.kind === "crew" ? i.holder.lead_sid : i.holder?.sid);
     return deskBoxKey(i.holder?.kind === "crew" && !i.ask ? { sid, mate: i.holder.name, item: i.id } : { sid, item: i.id });
   }
-  const deskFind = (id) => { for (const p of state.desk?.projects || []) { const i = deskOf(p.project).items.find((x) => x.id === id); if (i) return i; } return null; };
+  const deskFind = (id) => { for (const p of state.desk?.projects || []) { const i = deskItemsWithRequests(deskOf(p.project)).find((x) => x.id === id); if (i) return i; } return null; };
 
   // ---------- drawing ----------
   const dot = (it, extra = "") => `<i class="m-dot ${dotCls(it)} ${extra}"></i>`;
@@ -207,9 +207,10 @@
   /** What item `i` waits on you for, under its row, with its buttons in the row: a question's choices (and Answer, to
    *  type one), Allow / No, Looks right / Send back, or Answer for a question its holder ended its turn on. Answer
    *  opens a box in the row; once sent, the row says what you answered. */
-  function deskAskHtml(i) {
-    const said = deskAnswerOf(i);
+  function deskAskHtml(i, showActions) {
+    const said = deskAnswerOf(deskItem(i.project, i.id) || i);
     if (said) return `<div class="m-dk-said"><span class="sent-check">✓</span> You answered: ${esc(said.a)}</div>`;
+    if (!showActions) return "";
     if (i.state === "to_check") {
       if (deskBackFor === i.id) return `<div class="m-dk-ask">${deskBackHtml(i.id)}</div>`;
       const line = deskVerb(i)?.[1] || "";
@@ -237,7 +238,7 @@
     const at = deskMs(i.state === "working" ? i.updated || i.created : i.created);
     return `<div class="m-dk-it" role="button" tabindex="0" data-mdesk-item="${esc(i.id)}" data-project="${esc(i.project || "")}">
       <div class="m-dk-1">${deskStateIcon(i)}<span class="m-dk-t">${esc(i.title)}</span><span class="m-dk-age" data-ago="${at}">${ago(at)}</span></div>
-      <div class="m-dk-2">${deskKindIcon(i)}<span class="m-dk-id">#${esc(i.id)}</span><span class="m-dk-who">${deskWhoHtml(i)}</span></div>${wait ? deskAskHtml(i) : ""}</div>`;
+      <div class="m-dk-2">${deskKindIcon(i)}<span class="m-dk-id">#${esc(i.id)}</span><span class="m-dk-who">${deskWhoHtml(i)}</span></div>${deskAskHtml(i, wait)}</div>`;
   }
   const IN_PROGRESS = 3;   // rows of what's in progress; the rest counted under them
   /** The Desk's list: Waiting on you, then In progress, then a line counting the rest. */
@@ -247,7 +248,7 @@
     const more = g.working.length - IN_PROGRESS, q = g.queued.length + g.resume.length;
     const rest = more > 0 || q ? `<div class="m-dk-rest">${more > 0 ? `<span class="m-cnt"><i class="m-dot acc"></i>+${more} working</span>` : ""}${q ? `<span class="m-cnt">${deskStateIcon({ state: "queued" })}${q} queued</span>` : ""}</div>` : "";
     const head = (words, n) => `<div class="m-dk-g">${words}<span class="m-dk-gn">${n}</span></div>`;
-    return `${g.waiting.length ? `${head("Waiting on you", g.waiting.length)}${rows(g.waiting, true)}` : `<div class="m-dk-none">Nothing waits on you here.</div>`}${g.working.length ? `${head("In progress", g.working.length)}${rows(g.working.slice(0, IN_PROGRESS), false)}` : ""}${rest}`;
+    return `${g.waiting.length ? `${head("Waiting on you", g.waiting.length)}${rows(g.waiting, true)}` : `<div class="m-dk-none">Nothing waits on you here.</div>`}${g.review.length ? `${head("Ready to review", g.review.length)}${rows(g.review, true)}` : ""}${g.working.length ? `${head("In progress", g.working.length)}${rows(g.working.slice(0, IN_PROGRESS), false)}` : ""}${rest}`;
   }
   /** The Desk's list drawn again: where it was scrolled and the box with the cursor kept. */
   function drawDesk(id) {
@@ -584,8 +585,6 @@
     rule("[data-close]", () => closeChat()),
     rule("a[data-href], a[data-path]", openLink),
     rule("[data-act=term], [data-act=term-open], [data-act=term-card]", () => inCue(m.open)),
-    // The crew's Open full ›: its page is in Cue's window, on the lead's chat there.
-    rule("[data-cp-open]", (t) => inCue(t.dataset.cpOpen)),
     ...CHAT_CLICKS,
   ];
   /** Keys in the chat: its box's own ("/" menu, ↑ for what you sent, Enter sends, ⌘↵ sends what waits now), a picture

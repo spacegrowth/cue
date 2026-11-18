@@ -153,10 +153,10 @@ async function openDeskTab(page, shape) {
 
 test("mini: the notch's island counts the Desk's items once, its tab first", async ({ cue, page }) => {
   await openDesk(cue, page, "notch");
-  // Five wait on you across the Desks (d1, d2, d11 on Cue Desk; w1, w3 on website): the tray's count. Their sessions'
+  // Three wait on you across the Desks (d1, d11 on Cue Desk; w3 on website). The reviews stay out. Their sessions'
   // own cards (n-focus-ask, n-perm) aren't counted again beside it.
   const left = page.locator(".m-island .m-wing").first();
-  await expect(left.locator(".m-dk-n")).toHaveText("5");
+  await expect(left.locator(".m-dk-n")).toHaveText("3");
   await expect(left.locator(".m-n")).toHaveCount(1);
   await expect(left.locator(".m-dk-n .dk-kic")).toHaveCount(1);
   // The wing fits in the island: nothing runs past its edge.
@@ -167,12 +167,12 @@ test("mini: the notch's island counts the Desk's items once, its tab first", asy
   const tabs = page.locator(".m-tabs .m-tab");
   await expect(tabs.nth(0)).toHaveAttribute("data-mopen", "desk:cue");
   await expect(tabs.nth(0)).toHaveClass(/\bon\b/);
-  await expect(tabs.nth(0)).toHaveText("Cue Desk3");
+  await expect(tabs.nth(0)).toHaveText("Cue Desk2");
   await expect(tabs.nth(1)).toHaveAttribute("data-mopen", "desk:website");
   // A session on no Desk has a tab of its own, with no Desk mark.
   await expect(page.locator('.m-tab[data-mopen="notes"]')).toHaveCount(1);
   await expect(page.locator('.m-tab[data-mopen="notes"] .dk-kic')).toHaveCount(0);
-  await expect(page.locator(".m-chat-head .m-cnt")).toHaveText(["3", "2", "2"]);
+  await expect(page.locator(".m-chat-head .m-cnt")).toHaveText(["2", "2", "2"]);
   // ⤢ Open Desk: the Desk in Cue's window.
   await page.locator(".m-chat-head [data-mdesk]").click();
   await cue.called("mini_open_in_cue", { desk: "cue" });
@@ -182,7 +182,7 @@ test("mini: a Desk's rows answer in place", async ({ cue, page }) => {
   await openDesk(cue, page, "notch");
   await openDeskTab(page, "notch");
   const row = (id) => page.locator(`.m-dk-it[data-mdesk-item="${id}"]`);
-  await expect(page.locator(".m-dk-g")).toHaveText(["Waiting on you3", "In progress2"]);
+  await expect(page.locator(".m-dk-g")).toHaveText(["Waiting on you2", "Ready to review1", "In progress2"]);
   // Its holder: the lead → its crew member.
   await expect(row("d1").locator(".m-dk-who")).toHaveText("web-lead→focus-fix");
   await expect(row("d1").locator(".m-dk-who .dk-kic")).toHaveCount(2);
@@ -237,7 +237,7 @@ for (const dark of [false, true]) {
     await openDesk(cue, page, "rail", { dark });
     await openDeskTab(page, "rail");
     await expect(page.locator(".m-bar .m-tab").first()).toHaveAttribute("data-mopen", "desk:cue");
-    await expect(page.locator(".m-dk-cnts .m-cnt")).toHaveText(["3", "2", "2"]);
+    await expect(page.locator(".m-dk-cnts .m-cnt")).toHaveText(["2", "2", "2"]);
     const bg = await page.locator(".m-chat").evaluate((e) => getComputedStyle(e).backgroundColor);
     const ink = await page.locator(".m-dk-t").first().evaluate((e) => getComputedStyle(e).color);
     const lum = (c) => { const [r, g, b] = c.match(/[\d.]+/g).map(Number); return 0.3 * r + 0.59 * g + 0.11 * b; };
