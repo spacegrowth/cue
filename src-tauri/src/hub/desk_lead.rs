@@ -5,6 +5,9 @@ use super::desk::{routable, shown, shown_name};
 use super::*;
 use crate::desk::{DeskItem, Waiting};
 
+/// How `desk_summary` names a project's held route answers (`routes_held`, #248) for `desk_told`: this, then the project.
+pub(super) const ROUTES_HELD: &str = "routes:";
+
 /// How a failed start of a new session for an item begins its `route_failed` (the error follows in brackets).
 const NEW_SESSION: &str = "a new session";
 
@@ -218,6 +221,11 @@ impl Hub {
             }
             for line in told {
                 out.push_str(&line);
+            }
+            // Its routes Cue couldn't make that it couldn't be told of then, as it was asking the user something (#248).
+            if let Some(held) = st.desk.routes_held.get(project).filter(|h| !h.is_empty()) {
+                out.push_str(held);
+                failed.push((format!("{ROUTES_HELD}{project}"), held.clone()));
             }
 
             let mut on: Vec<_> = routable(st, project).into_iter()

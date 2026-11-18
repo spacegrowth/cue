@@ -337,6 +337,10 @@ pub struct Desk {
     /// Items a lead said DONE on that its DONE couldn't close, and how each was ("state@updated") when Cue told it
     /// why (hub/desk.rs lead_done): a lead saying it again of an unchanged item isn't answered again. Not saved.
     pub done_told: HashMap<String, String>,
+    /// What a project's lead is to be told of its routes Cue couldn't make (hub/desk.rs `route_answers`, #248) when it
+    /// couldn't be sent then, as the lead was asking the user something: told in its next Desk block instead, and
+    /// cleared once that reaches it (`desk_told`). Not saved.
+    pub routes_held: HashMap<String, String>,
     /// Items whose holder's turn ended on them with no DONE, and Cue asked it once ("Done? …"): item → (that holder,
     /// the item's `updated` then). The turn that answers isn't asked again; the item changed since (sent again, routed)
     /// is a new stall (hub/desk_stall.rs). Not saved.

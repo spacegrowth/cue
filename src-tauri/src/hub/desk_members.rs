@@ -114,19 +114,25 @@ impl Hub {
     }
 
     /// You said yes to the lead's route of an item to a session not on the Desk: it joins, and the route is made as the
-    /// lead asked. What the lead is told.
+    /// lead asked. What the lead is told: the route's own answer when it couldn't be made (#248: the item done since,
+    /// its finish under way, …), so it never hears a route worked that didn't.
     fn desk_use(&self, u: &UseAsk) -> String {
         let now = now_ms();
-        let fx = self.write(|st| {
+        let (fx, said) = self.write(|st| {
             let mut fx = Effects::default();
-            if !st.desk.item(&u.item).is_some_and(|i| i.project == u.project && i.state != "done") { return fx; }
+            if !st.desk.item(&u.item).is_some_and(|i| i.project == u.project && i.state != "done") {
+                return (fx, Some(format!("Refused: #{} is done or gone. You can add a new ITEM for what's left.", u.item)));
+            }
             join(st, &u.project, &u.sid, &mut fx);
             let name = st.desk.lead.get(&u.project).filter(|l| l.sid == u.lead).map(|l| l.name.clone()).or_else(|| st.sessions.get(&u.lead).map(shown_name)).unwrap_or_default();
-            route(st, &u.project, &By { name: &name, sid: &u.lead }, &u.item, &u.to, u.after.clone(), &u.why, now, &mut fx);
-            fx
+            let said = route(st, &u.project, &By { name: &name, sid: &u.lead }, &u.item, &u.to, u.after.clone(), &u.why, now, &mut fx);
+            (fx, said)
         });
         self.desk_done(fx);
-        format!("The user said yes: {} is on the Desk now, and Cue routed #{} to it as you asked.", u.name, u.item)
+        match said.filter(|s| !s.starts_with("Taken:")) {
+            Some(no) => format!("The user said yes, but Cue couldn't route #{} to {}. {no}", u.item, u.name),
+            None => format!("The user said yes: {} is on the Desk now, and Cue routed #{} to it as you asked.", u.name, u.item),
+        }
     }
 
     /// Routes waiting on your yes, each asked as a card of its lead's (`desk_ask`, with the route kept on it).

@@ -225,6 +225,7 @@ fn a_route_to_new_or_to_the_lead_starts_a_session_that_gets_the_item() {
     assert_eq!(count(), sessions + 1);
     assert!(sent_to(&w, &sid).iter().any(|t| t.contains(&format!("#{id}")) && t.contains("nobody's near it")), "{:?}", sent_to(&w, &sid));
     assert_eq!((now["decisions"][0]["text"].as_str(), now["decisions"][0]["sid"].as_str()), (Some(format!("Started {name} for #{id}").as_str()), Some(l.as_str())));
+    // The lead isn't sent the item, nor told of a route made (#248).
     assert_eq!(sent_to(&w, &l).len(), before, "the lead isn't sent the item");
     // Said again, or to the lead itself ("me", its own name), it isn't started twice: it's held.
     ends(&w, &l, &format!("ROUTE: #{id} -> new | why: nobody's near it\nROUTE: #{id} -> me | why: small"));

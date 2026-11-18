@@ -403,33 +403,57 @@ pub(super) struct By<'a> {
 }
 
 /// Item `id` to the session named `to` ("new": one Cue starts for it), now or after another item, as the lead asked.
+/// What the lead is told of it (#248): "Taken: …" and "Asked: …" (neither sent after its turn: the user's card asks), or
+/// "Refused: …" with the reason and what it can do instead. None
+/// when Cue tells it another way: a name no session goes by, or an `after` or a reopen refused (with its next message,
+/// from the Desk block); a new session that can't start (at once, from desk_lead.rs).
 #[allow(clippy::too_many_arguments)]
-pub(super) fn route(st: &mut Store, project: &str, by: &By, id: &str, to: &str, after: Option<String>, why: &str, now: u64, fx: &mut Effects) {
+pub(super) fn route(st: &mut Store, project: &str, by: &By, id: &str, to: &str, after: Option<String>, why: &str, now: u64, fx: &mut Effects) -> Option<String> {
     let rule = rule_of(st, project);
+    if let Some(no) = unroutable(st, project, id) {
+        return Some(no);
+    }
     let fresh = to.eq_ignore_ascii_case("new") || to.eq_ignore_ascii_case("me");
     let holder = if fresh { None } else { resolve(st, project, to) };
-    if fresh || holder.as_ref().is_some_and(|h| h.sid == by.sid && h.lead_sid.is_empty()) {
-        return start_fresh(st, project, by, id, after, why, now, fx);
+    let to_new = fresh || holder.as_ref().is_some_and(|h| h.sid == by.sid && h.lead_sid.is_empty());
+    // Finishing (its commit and install): the lead may take it off its finish only once it stopped on a question;
+    // while its commit or install is under way, it's refused before anything else (the user isn't asked either).
+    if let Some(busy) = super::desk_finish::under_way(st, id) {
+        return Some(format!("Refused: #{id} {busy}. You can wait for it, or ask the user (ASK: #{id} | …)."));
     }
     // A session not on the Desk: you're asked first, and the item stays.
-    if let Some(h) = holder.as_ref().filter(|h| !may_route(st, project, h, id)) {
-        return ask_first(st, &UseAsk { lead: by.sid.into(), project: project.into(), sid: h.to().into(), name: h.name.clone(), item: id.into(), to: to.into(), after, why: why.into() }, fx);
+    if let Some(h) = holder.as_ref().filter(|h| !to_new && !may_route(st, project, h, id)) {
+        ask_first(st, &UseAsk { lead: by.sid.into(), project: project.into(), sid: h.to().into(), name: h.name.clone(), item: id.into(), to: to.into(), after, why: why.into() }, fx);
+        return Some(format!("Asked: #{id} goes to {0} once the user says yes ({0} isn't on the Desk).", h.name));
+    }
+    let finishing = st.desk.item(id).is_some_and(|i| i.state == "finishing");
+    let unfinished = finishing && (to_new || holder.is_some());
+    if unfinished {
+        // To the lead itself ("me", its own name): a new session, so nobody holds it till that starts.
+        if let Err(no) = unfinish(st, id, holder.as_ref().filter(|_| !to_new), why, now) {
+            return Some(no);
+        }
+    }
+    if to_new {
+        return start_fresh(st, project, by, id, after, why, now, fx);
     }
     let refused = after.as_deref().and_then(|a| after_refused(st, a, id)).unwrap_or_default();
     let waits = after.filter(|_| refused.is_empty());
     // Its holder on it now (mid-turn, or asking you): a route to it again is a turn repeating itself. Not on it (its
     // turn cut off by a crash or a quit, the item still "working"): the route sends it again.
     let busy = holder.as_ref().is_some_and(|h| at_work(st, h) || ask_of(st, h).is_some());
-    // Done, or finishing (its commit and install under way): not the lead's to route again. With you to check:
-    // routing it reopens it (back to work, sent again).
-    let Some(it) = st.desk.item_mut(id).filter(|i| i.project == project && !matches!(i.state.as_str(), "done" | "finishing")) else { return };
+    // With you to check: routing it reopens it (back to work, sent again).
+    let it = st.desk.item_mut(id)?;
     let reopen = it.state == "to_check";
-    let Some(h) = holder else { return no_such_session(it, to, now, fx) };
+    let Some(h) = holder else {
+        no_such_session(it, to, now, fx);
+        return None;
+    };
     let before = it.holder.clone();
     let same = before.as_ref().is_some_and(|b| b.sid == h.sid && b.lead_sid == h.lead_sid);
     // The same route said again (a later turn repeating itself): nothing to do. Sent back to its holder at work with
     // a new why (what's left, a correction): it's sent that, and its Steps show it.
-    let unchanged = match &waits {
+    let unchanged = !unfinished && match &waits {
         Some(a) => it.state == "queued" && it.after.as_deref() == Some(a.as_str()),
         None => it.state == "working" && busy && why.trim().eq_ignore_ascii_case(it.after_why.trim()),
     };
@@ -439,7 +463,7 @@ pub(super) fn route(st: &mut Store, project: &str, by: &By, id: &str, to: &str, 
             it.after_refused = refused;
             fx.items.push(it.id.clone());
         }
-        return;
+        return Some(taken(id, &h.name, waits.as_deref()));
     }
     if let Some(note) = reopen.then(|| reopen_refusal(it, before.as_ref(), same && waits.is_none(), why)).flatten() {
         if it.reopen_refused != note {
@@ -447,9 +471,9 @@ pub(super) fn route(st: &mut Store, project: &str, by: &By, id: &str, to: &str, 
             it.updated = secs(now);
             fx.items.push(it.id.clone());
         }
-        return;
+        return None;
     }
-    let was_working = it.state == "working";
+    let was_working = it.state == "working" && !unfinished;
     // Moved from a holder at work on it: that one stops.
     if let Some(b) = before.filter(|_| !same && it.state == "working") {
         fx.sends.push(moved_words(&b, it, &h));
@@ -459,8 +483,57 @@ pub(super) fn route(st: &mut Store, project: &str, by: &By, id: &str, to: &str, 
     if waits.is_none() {
         fx.sends.push((h.to().to_string(), crate::desk::handed_words(it, why, &rule)));
     }
-    let text = routed_text(id, &h.name, waits.as_deref(), reopen && same, same && was_working);
+    let text = routed_text(id, &h.name, waits.as_deref(), (reopen || unfinished) && same, same && was_working);
     decide(st, project, Some(id.to_string()), by.name, by.sid, &text, why, now, fx);
+    Some(taken(id, &h.name, waits.as_deref()))
+}
+
+/// "Taken: #12 to web." (after `waits`, when it's queued): what the lead is told of a route made (#248).
+fn taken(id: &str, name: &str, waits: Option<&str>) -> String {
+    match waits {
+        Some(a) => format!("Taken: #{id} to {name}, after #{a}."),
+        None => format!("Taken: #{id} to {name}."),
+    }
+}
+
+/// Why the lead can't route item `id` at all, as it's told (#248): Cue has no such open item, it's another Desk's, or
+/// it's done. None: it can (the rest is `route`'s).
+fn unroutable(st: &Store, project: &str, id: &str) -> Option<String> {
+    match st.desk.item(id) {
+        None => Some(format!("Refused: #{id} isn't an open item on this Desk. You can route an item the Desk block lists, or add it first with ITEM:.")),
+        Some(i) if i.project != project => Some(format!("Refused: #{id} belongs to another Desk. You can route only this Desk's items.")),
+        Some(i) if i.state == "done" => Some(format!("Refused: #{id} is done. You can ask the user to reopen it (ASK: #{id} | …), or add a new ITEM for what's left.")),
+        _ => None,
+    }
+}
+
+/// The lead's route of finishing item `id` (#248), to holder `h` (None: a new session): once it stopped on a question
+/// (a word, a clash, a long wait, a failed install), its finish is let go and it's back at work: sent back to its
+/// holder (with a why: what to fix), or handed on. Nothing of the finish is left to refer to it: no commit is being
+/// made, and it's out of the install line (`under_way`); commits it made stay, as Send back leaves them.
+/// Err: what the lead is told when it can't: it's sent back to its holder with no why (`route` refuses one whose
+/// finish is under way before this).
+fn unfinish(st: &mut Store, id: &str, h: Option<&Holder>, why: &str, now: u64) -> Result<(), String> {
+    let it = st.desk.item_mut(id).ok_or_else(|| format!("Refused: #{id} isn't an open item on this Desk."))?;
+    let question = it.finish.as_ref().map(|f| f.question.clone()).unwrap_or_default();
+    let back = h.filter(|h| it.holder.as_ref().is_some_and(|b| b.sid == h.sid && b.lead_sid == h.lead_sid));
+    if let Some(b) = back.filter(|_| why.trim().is_empty()) {
+        let name = &b.name;
+        return Err(format!("Refused: #{id} stopped while finishing ({question}), and sending it back to {name} needs a why. You can send it back with one (ROUTE: #{id} -> {name} | why: what to fix), hand it to another session, or ask the user (ASK: #{id} | …)."));
+    }
+    // Kept on the DONE it answers, as Send back keeps yours: its card says why it went back.
+    if let Some(c) = it.checks.last_mut() {
+        c.back = if why.trim().is_empty() { question } else { why.trim().to_string() };
+    }
+    (it.state, it.done_at, it.finish) = ("working".into(), None, None);
+    // To a new session: nobody holds it till it starts (start_fresh takes only an item nobody holds).
+    if h.is_none() {
+        it.remember_holder();
+        (it.holder, it.state) = (None, "new".into());
+        it.crew.clear();
+    }
+    it.updated = secs(now);
+    Ok(())
 }
 
 /// `it` held by `h` from now, at work (or queued after `waits`), as the lead routed it.
@@ -500,14 +573,22 @@ fn no_such_session(it: &mut DeskItem, to: &str, now: u64, fx: &mut Effects) {
 
 /// No session fits ("new"), or the lead naming itself, which only hands work out: a new session of the project takes
 /// item `id` (desk_start_new). Only one nobody else holds, so the same line said again doesn't start another.
+/// What the lead is told (`route`).
 #[allow(clippy::too_many_arguments)]
-fn start_fresh(st: &mut Store, project: &str, by: &By, id: &str, after: Option<String>, why: &str, now: u64, fx: &mut Effects) {
+fn start_fresh(st: &mut Store, project: &str, by: &By, id: &str, after: Option<String>, why: &str, now: u64, fx: &mut Effects) -> Option<String> {
     let free = |i: &DeskItem| i.project == project && matches!(i.state.as_str(), "new" | "queued" | "working") && i.holder.as_ref().is_none_or(|h| h.sid == by.sid);
     let refused = after.as_deref().and_then(|a| after_refused(st, a, id)).unwrap_or_default();
-    let Some(it) = st.desk.item_mut(id).filter(|i| free(i)) else { return };
+    let it = st.desk.item_mut(id)?;
+    if !free(it) {
+        return Some(match (&it.holder, it.state.as_str()) {
+            (Some(h), "to_check") => format!("Refused: #{id} is with the user to check. You can send it back to {0} with what's left (ROUTE: #{id} -> {0} | why: …), or ask the user (ASK: #{id} | …).", h.name),
+            (Some(h), _) => format!("Refused: #{id} is held by {0}, and -> new only starts a session for an item nobody holds. You can route it to another session by name, or send it back to {0} with a why.", h.name),
+            (None, state) => format!("Refused: #{id} is {}. You can ask the user (ASK: #{id} | …).", state.replace('_', " ")),
+        });
+    }
     if let Some(after) = after.filter(|_| refused.is_empty()) {
         if it.state == "queued" && it.after.as_ref() == Some(&after) && it.holder.is_none() {
-            return;
+            return Some(format!("Taken: #{id} to a new session, after #{after}."));
         }
         it.holder = None;
         it.crew.clear();
@@ -520,11 +601,13 @@ fn start_fresh(st: &mut Store, project: &str, by: &By, id: &str, after: Option<S
         it.updated = secs(now);
         fx.items.push(id.into());
         decide(st, project, Some(id.into()), by.name, by.sid, &format!("Queued #{id} after #{after} for a new session"), why, now, fx);
+        Some(format!("Taken: #{id} to a new session, after #{after}."))
     } else {
         it.after = None;
         it.after_refused = refused;
         fx.items.push(id.into());
         fx.starts.push(NewStart { project: project.into(), id: id.into(), why: why.into(), by: by.name.into(), by_sid: by.sid.into() });
+        Some(format!("Taken: #{id} to a new session (Cue is starting it)."))
     }
 }
 
@@ -640,6 +723,8 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx
     let name = st.sessions.get(lsid).map(shown_name).or_else(|| st.desk.lead.get(project).map(|l| l.name.clone())).unwrap_or_default();
     let by = By { name: &name, sid: lsid };
     let mut last_new: Option<String> = None;
+    // What the lead is told of its routes, in one message once its lines are read (#248).
+    let mut answers: Vec<String> = Vec::new();
     for line in parse::lines(text) {
         match line {
             Line::Item { kind, title, done_when, .. } => last_new = Some(item_said(st, project, &kind, &title, &done_when, &name, now, fx).0),
@@ -647,13 +732,18 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx
                 // An old tag ("#d7k2") names the item by its number from now.
                 let id = if id == "new" { last_new.clone() } else { Some(st.desk.canon(&id)) };
                 let after = if after.as_deref() == Some("new") { last_new.clone() } else { after.map(|a| st.desk.canon(&a)) };
-                if let Some(id) = id {
-                    // The lead says what it is as it routes it (before, so whoever takes it is told).
-                    if let (Some(k), Some(it)) = (kind, st.desk.item_mut(&id).filter(|i| i.project == project)) {
-                        it.kind = k;
-                        fx.items.push(id.clone());
-                    }
-                    route(st, project, &by, &id, &to, after, &why, now, fx);
+                let Some(id) = id else {
+                    answers.push("Refused: ROUTE #new has no ITEM line before it in this reply. You can add the ITEM: line first, or route the item by its number.".into());
+                    continue;
+                };
+                // The lead says what it is as it routes it (before, so whoever takes it is told).
+                if let (Some(k), Some(it)) = (kind, st.desk.item_mut(&id).filter(|i| i.project == project)) {
+                    it.kind = k;
+                    fx.items.push(id.clone());
+                }
+                // A route made isn't answered: the lead knows what it said, and each answer costs it a turn.
+                if let Some(said) = route(st, project, &by, &id, &to, after, &why, now, fx).filter(|s| !s.starts_with("Taken:")) {
+                    answers.push(said);
                 }
             }
             Line::Ask { question, choices, item } => {
@@ -668,9 +758,42 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx
             Line::Context { .. } | Line::Designs { .. } => {}
         }
     }
+    for line in parse::unread_routes(text) {
+        answers.push(format!("Couldn't read this line as a route: {line}\nWrite it as ROUTE: #<id> -> <session> | why: <reason> ({}).", parse::route_fix(&line)));
+    }
+    route_answers(st, project, lsid, answers, fx);
     for (what, why) in crate::sessions::crew_log::calls_in(text) {
         let item = item_named(st, project, &what).or_else(|| item_named(st, project, &why));
         decide_call(st, project, item, &name, lsid, &what, &why, now, fx);
+    }
+}
+
+/// What lead `lsid` of `project` is told of the routes of the turn that just ended (#248), in one message: each
+/// refused route, and each line Cue couldn't read (once, when said twice). A repeat said again later is answered
+/// again: the lead is never left thinking a refused route was made. Not "Asked:" (the user's card is in the lead's
+/// name, and it hears the answer). With the lead asking the user something (a card from this turn, or before), a
+/// message can't reach it: it's told in its next Desk block instead (`routes_held`).
+fn route_answers(st: &mut Store, project: &str, lsid: &str, answers: Vec<String>, fx: &mut Effects) {
+    let mut out: Vec<String> = Vec::new();
+    for said in answers.into_iter().filter(|s| !s.starts_with("Asked:")) {
+        if !out.contains(&said) {
+            out.push(said);
+        }
+    }
+    if out.is_empty() || st.sessions.get(lsid).is_none() {
+        return;
+    }
+    let asking = fx.uses.iter().any(|u| u.lead == lsid)
+        || fx.asks.iter().any(|a| a.0 == lsid)
+        || st.sessions.state(lsid).as_deref() == Some("deciding");
+    if asking {
+        let held = st.desk.routes_held.entry(project.to_string()).or_default();
+        for line in out {
+            held.push_str(&line);
+            held.push('\n');
+        }
+    } else {
+        fx.sends.push((lsid.to_string(), out.join("\n")));
     }
 }
 
@@ -956,7 +1079,7 @@ pub(super) fn new_item(st: &Store, project: &str, kind: &str, title: &str, done_
 /// Whether `line` starts as one of the Desk's lines would (ITEM:, ROUTE:, ASK:, DONE:, CONTEXT:, DECIDED:), after list marks
 /// and bold: a cheap look before parsing.
 fn desk_line_start(line: &str) -> bool {
-    let l = line.trim().trim_start_matches(['-', '*', '+', '`', ' ']);
+    let l = parse::unmarked(line.trim().trim_start_matches('`')).trim_start_matches('`');
     let Some((word, _)) = l.split_once(':') else { return false };
     let word = word.trim_end_matches(['*', '`']).trim();
     matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "CONTEXT" | "DESIGNS" | "TITLE" | "SPLIT") || word.eq_ignore_ascii_case("DECIDED")
@@ -1172,6 +1295,13 @@ impl Hub {
             let mut items = vec![];
             // Each (item, what it was told of): a failed route's name, or a refused `after`.
             for (id, note) in failed {
+                // Route answers held for the lead's next Desk block (#248): cleared once told, unless more came since.
+                if let Some(project) = id.strip_prefix(super::desk_lead::ROUTES_HELD) {
+                    if st.desk.routes_held.get(project) == Some(note) {
+                        st.desk.routes_held.remove(project);
+                    }
+                    continue;
+                }
                 let Some(it) = st.desk.item_mut(id) else { continue };
                 if &it.route_failed == note {
                     it.route_failed.clear();
@@ -1299,7 +1429,8 @@ impl Hub {
     pub(super) fn desk_turn_ended(&self, sid: &str, text: &str) {
         self.keep_from_now(sid);
         // Most turns say none of the Desk's lines and end on no item at work: then the store is only read.
-        let said = text.lines().any(desk_line_start);
+        // A route in the wrong form counts too: the lead is told it couldn't be read (#248).
+        let said = text.lines().any(|l| desk_line_start(l) || parse::route_like(l));
         let held = self.read(|st| super::desk_stall::at_work_with(st, sid));
         if !said && held.is_empty() {
             return;

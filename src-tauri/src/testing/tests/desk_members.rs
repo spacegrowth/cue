@@ -76,6 +76,41 @@ fn a_route_to_a_session_off_the_desk_asks_first_and_yes_adds_it_and_routes() {
     assert!(crate::db::desk_members().contains(&(project.clone(), h.clone())), "saved");
 }
 
+/// A yes to a route that can't be made any more (here the item was dropped meanwhile): the lead is told why, not
+/// that it was routed (#248).
+#[test]
+fn yes_to_a_route_that_cant_be_made_now_tells_the_lead_why() {
+    let w = World::new();
+    let (h, project, d) = off_desk(&w);
+    ends(&w, &d, "ITEM: bug | Header jumps | done when: it stays put\nROUTE: #new -> cue-teams | why: it made the header");
+    assert!(!sent_to(&w, &d).iter().any(|t| t.starts_with("Asked:")), "the card asks; the lead isn't told so too");
+    let id = header(&w, &project)["id"].as_str().unwrap().to_string();
+    let (card, q) = asks(&w, &d).remove(0);
+    w.hub().desk_item_act(&id, "drop", "").unwrap();
+    w.settle();
+    answer(&w, &card, &q, "Yes, add it to the Desk");
+    let told = sent_to(&w, &d);
+    assert!(told.iter().any(|t| t.contains(&format!("The user said yes, but Cue couldn't route #{id} to cue-teams. Refused: #{id}"))), "{told:?}");
+    assert!(!told.iter().any(|t| t.contains("Cue routed")), "{told:?}");
+    assert!(!sent_to(&w, &h).iter().any(|t| t.contains("Header jumps")), "nothing sent");
+}
+
+#[test]
+fn a_refused_route_said_while_the_lead_asks_you_something_comes_in_its_next_desk_block() {
+    let w = World::new();
+    let (_h, project, d) = off_desk(&w);
+    let before = sent_to(&w, &d).len();
+    // One route opens a card in the lead's name (cue-teams isn't on the Desk); the other is refused.
+    ends(&w, &d, "ITEM: bug | Header jumps | done when: it stays put\nROUTE: #new -> cue-teams | why: it made the header\nROUTE: #99 -> cue-teams");
+    assert_eq!(asks(&w, &d).len(), 1);
+    assert_eq!(sent_to(&w, &d).len(), before, "it can't be sent while the card is up: {:?}", sent_to(&w, &d));
+    let (block, failed) = w.hub().desk_summary(&project, &d, false);
+    assert!(block.contains("Refused: #99 isn't an open item on this Desk."), "{block}");
+    // Told once it reaches the lead: gone from the next block.
+    w.hub().desk_told(&failed);
+    assert!(!w.hub().desk_summary(&project, &d, false).0.contains("Refused: #99"));
+}
+
 #[test]
 fn no_leaves_the_item_and_the_desk_as_they_were() {
     let w = World::new();
