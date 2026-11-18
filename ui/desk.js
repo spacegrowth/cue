@@ -960,7 +960,7 @@ function deskThread(i, d) {
   for (const c of mine) {
     if (c.by === "You" && /^(to |sent back)/.test(c.why || "")) {
       const back = c.why.startsWith("sent back");
-      rows.push({ at: deskMs(c.at), by: "You", you: true, back, tag: back ? deskBackLabel(c, i) : "", html: deskBackWords(c.text, backPics.get(c) || 0) });
+      rows.push({ at: deskMs(c.at), by: "You", you: true, back, tag: back ? deskBackLabel(c, i) : deskHeldTag(c, i), html: deskBackWords(c.text, backPics.get(c) || 0) });
     }
     else if (DESK_HANDOFF.test(c.text)) rows.push({ at: deskMs(c.at), by: c.by, tag: "Hand-off", html: `<div class="dk-md">${esc(c.text)}${c.why ? `: ${esc(c.why)}` : ""}</div>` });
   }
@@ -970,7 +970,7 @@ function deskThread(i, d) {
   for (const r of said) rows.push({ at: r.at, by: r.by, tag: r.done ? "Done" : "Reply", on: r.done, text: r.text, html: `<div class="dk-md">${md(r.text)}</div>` });
   // Sent from here, not back as a step yet.
   const recorded = (p) => mine.some((c) => c.by === "You" && c.text.trim() === p.text.trim() && (c.delivery?.at_ms || deskMs(c.at) + 999) >= p.at);
-  for (const p of deskPending.get(i.id) || []) if (!recorded(p)) rows.push({ at: p.at, by: "You", you: true, back: p.why === "back", tag: p.why === "back" ? "Sent back (queued)" : "", html: deskBackWords(p.text, p.pics) });
+  for (const p of deskPending.get(i.id) || []) if (!recorded(p)) rows.push({ at: p.at, by: "You", you: true, back: p.why === "back", tag: p.why === "back" ? "Sent back (queued)" : p.why === "holder" || p.why === "lead" ? deskHeldTag({ text: p.text, why: `to ${p.why === "lead" ? deskLead(d)?.name : i.holder?.name}`, at: p.at / 1000 }, i) : "", html: deskBackWords(p.text, p.pics) });
   // At work on this one: its holder can hold several, and its work and latest words are only this one's while it's on
   // it (#176).
   const live = i.state === "working" && i.holder && i.now_on && !i.stopped;

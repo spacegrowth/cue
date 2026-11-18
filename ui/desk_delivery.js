@@ -1,6 +1,6 @@
 // A send-back uses the same held, queued and pending message state as the recipient's session.
-function deskBackLabel(step, item) {
-  const sid = step.delivery?.session_id || item.holder?.lead_sid || item.holder?.sid;
+function deskBackLabel(step, item, to) {
+  const sid = step.delivery?.session_id || to || item.holder?.lead_sid || item.holder?.sid;
   const session = sid && (sessionOf(sid) || parkedOf(sid));
   if (!session) return "Sent back";
   const normalize = (text) => String(text || "").replace(/\s+/g, " ").trim();
@@ -20,4 +20,11 @@ function deskBackLabel(step, item) {
   const held = [session.held, session.queued].some((e) => matches(e) && (e.at_ms || start) < before);
   const pending = history.some((e) => e.pending || e.unsent);
   return held || pending ? "Sent back (queued)" : "Sent back";
+}
+/** What you wrote on item `item`'s page (step `step`, why "to <name>"), to its holder or its Desk's lead: "Queued"
+ *  while that session holds it for after its turn, as a send-back says "(queued)"; nothing once it took it. */
+function deskHeldTag(step, item) {
+  const h = item.holder, lead = deskLead(deskOf(item.project));
+  const to = h && step.why === `to ${h.name}` ? h.lead_sid || h.sid : lead && step.why === `to ${lead.name}` ? lead.sid : "";
+  return to && deskBackLabel(step, item, to) === "Sent back (queued)" ? "Queued" : "";
 }

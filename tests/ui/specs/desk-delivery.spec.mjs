@@ -53,3 +53,35 @@ test("an identical optimistic send-back stays visible while waiting for its save
   });
   expect(tags).toEqual(["Sent back", "Sent back (queued)"]);
 });
+
+test("what you write to a busy holder from its item page says Queued until it takes it", async ({ cue, page }) => {
+  await cue.open("desk");
+  const tags = await page.evaluate(() => {
+    const d = state.desk.projects[0], item = d.items.find((i) => i.id === "d2"), at = Date.now();
+    item.holder = { ...(item.holder || {}), name: "web-lead", sid: "lead" };
+    const s = sessionOf("lead"), said = `About #${item.id} (${item.title}): sending again`;
+    d.decisions.push({ id: "w1", item_id: item.id, by: "You", text: "sending again", why: "to web-lead", at: at / 1000 });
+    const tag = () => deskThread(item, d).find((r) => r.text === undefined && r.you && r.html.includes("sending again"))?.tag;
+    s.held = { text: said, at_ms: at - 5 };
+    const waiting = tag();
+    s.held = null; s.thread = [...(s.thread || []), { role: "you", text: said, at_ms: at + 5 }];
+    return [waiting, tag()];
+  });
+  expect(tags).toEqual(["Queued", ""]);
+});
+
+test("what you write to a busy Desk lead from an item page says Queued until it takes it", async ({ cue, page }) => {
+  await cue.open("desk");
+  const tags = await page.evaluate(() => {
+    const d = state.desk.projects[0], item = d.items.find((i) => i.id === "d2"), at = Date.now();
+    d.lead = { ...(d.lead || {}), sid: "lead", name: "desk-lead" };
+    const s = sessionOf("lead"), said = `<desk project="cue">…</desk>\n\nAbout #${item.id} (${item.title}): to see if queued`;
+    d.decisions.push({ id: "w2", item_id: item.id, by: "You", text: "to see if queued", why: "to desk-lead", at: at / 1000 });
+    const tag = () => deskThread(item, d).find((r) => r.you && r.html.includes("to see if queued"))?.tag;
+    s.queued = { text: said, at_ms: at - 5 };
+    const waiting = tag();
+    s.queued = null; s.thread = [...(s.thread || []), { role: "you", text: said, at_ms: at + 5 }];
+    return [waiting, tag()];
+  });
+  expect(tags).toEqual(["Queued", ""]);
+});
