@@ -24,11 +24,11 @@ function scrollerKeys() {
 
 // Every other box that scrolls (#309): SCROLLERS above are the ones with their own rules, and anything not on it was
 // built afresh at its start on every update (a Desk picker, an ask, the Inbox's side, a menu, a wide table scrolled
-// sideways). Each element is noted as it scrolls and put back by where it sits: each step down from #app named by its
-// tag, first class and data-* attributes (a different item's or session's box is a different place), and its count
-// among like siblings. What's noted here is put back first; the lists with their own rules then have the last word.
-const scrolledEls = new Set();
-document.addEventListener("scroll", (e) => { if (e.target instanceof Element) scrolledEls.add(e.target); }, true);
+// sideways). Before each draw every element in the window that's scrolled is noted (a few hundred reads, well under
+// a millisecond; a scroll event comes a frame late, and an update in between would miss it), and put back by where it
+// sits: each step down from #app named by its tag, first class and data-* attributes (a different item's or session's
+// box is a different place), and its count among like siblings. What's noted here is put back first; the lists with
+// their own rules then have the last word.
 /** Each child of `parent` with its step: tag, first class, data-* attributes, its count among children alike. */
 function placeSteps(parent) {
   const seen = {};
@@ -54,8 +54,7 @@ function atPlace(steps) {
 }
 function notePlaces() {
   const out = [];
-  for (const el of scrolledEls) {
-    if (!el.isConnected) { scrolledEls.delete(el); continue; }
+  for (const el of document.getElementById("app")?.getElementsByTagName("*") ?? []) {
     if (!el.scrollTop && !el.scrollLeft) continue;
     const steps = placeOf(el);
     if (steps) out.push([steps, el.scrollTop, el.scrollLeft]);
@@ -68,7 +67,6 @@ function putPlacesBack(noted) {
     if (!el) continue;
     el.scrollTop = top;
     el.scrollLeft = left;
-    scrolledEls.add(el);   // its own scroll event comes a frame later: a draw before then still knows it
   }
 }
 
