@@ -3528,3 +3528,45 @@ test("the Desk's session list: one hairline above each session but a group's fir
   // No line closing the list: the last row draws none under it.
   expect(await left.locator(".dk-scroll > :last-child").evaluate((el) => [getComputedStyle(el).borderBottomWidth, getComputedStyle(el).boxShadow.includes("-1px")])).toEqual(["0px", false]);
 });
+
+test("the Desk panel's buttons are sized to their words; Stop is small and quiet, right under the Now line, and still stops it, in both themes (#245)", async ({ page, cue }) => {
+  await page.setViewportSize({ width: 1512, height: 900 });
+  await cue.open("desk", { frozen: true });
+  await openDesk(page);
+  const dir = process.env.SHOT_DIR || process.env.TMPDIR || "/tmp";
+  await page.evaluate(() => { state.sessions.find((s) => s.name === "host-lead").state = "working"; renderMain(); });
+  await page.locator('.dk-sessions .dk-srow:not(.crew)', { hasText: "host-lead" }).first().click();
+  const sp = page.locator('.dk-right .dk-pg[data-desk-page="session"]');
+  const now = sp.locator(".dk-pnow");
+  await expect(now.locator(".dk-pword")).toHaveText("Working");
+  const stop = now.locator('[data-act="interrupt"]');
+  await expect(stop).toHaveText("Stop");
+  for (const scheme of ["light", "dark"]) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await expect(async () => {
+      const m = await stop.evaluate((b) => {
+        const c = getComputedStyle(b), r = b.getBoundingClientRect(), p = b.closest(".dk-panel").getBoundingClientRect();
+        const say = b.closest(".dk-pnow").querySelector(".dk-psay").getBoundingClientRect();
+        return { w: r.width, pw: p.width, h: r.height, bg: c.backgroundColor, border: c.borderTopColor, gap: r.top - say.bottom };
+      });
+      expect(m.w).toBeLessThan(m.pw / 3);                        // sized to its word, no full-width bar
+      expect(m.h).toBeLessThanOrEqual(24);
+      expect(m.bg).toBe("rgba(0, 0, 0, 0)");                    // no fill, no border: quiet
+      expect(m.border).toBe("rgba(0, 0, 0, 0)");
+      expect(m.gap).toBeGreaterThanOrEqual(0);                  // right under the Thinking line
+      expect(m.gap).toBeLessThan(14);
+    }).toPass();
+    await page.screenshot({ path: `${dir}/cue-desk-stop-${scheme}.png`, clip: await page.locator(".dk-right").boundingBox() });
+  }
+  await page.emulateMedia({ colorScheme: "light" });
+  // Every panel button is sized to its words: none spans the panel.
+  const wide = await page.locator(".dk-right .dk-panel .dk-pacts .btn").evaluateAll((bs) => bs.filter((b) => b.getBoundingClientRect().width > b.closest(".dk-panel").clientWidth * 0.8).length);
+  expect(wide).toBe(0);
+  // Folded (a narrow card): Stop sits on the Now line itself.
+  await page.setViewportSize({ width: 900, height: 800 });
+  const [r1, r2] = await Promise.all([now.locator(".dk-pnr").boundingBox(), stop.boundingBox()]);
+  expect(Math.abs((r1.y + r1.height / 2) - (r2.y + r2.height / 2))).toBeLessThan(4);
+  expect(r2.width).toBeLessThan(80);
+  await stop.click();
+  await expect.poll(() => cue.calls("interrupt_session")).toHaveLength(1);
+});

@@ -811,10 +811,13 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
   .dk-pg:not(.hid) :is(.dk-psec, .dk-pnow > .dk-psh, .dk-psay) { display: block; }
   .dk-pg:not(.hid) .dk-pnow { padding: 0; border-radius: 0; background: none; }
   .dk-pg:not(.hid) .dk-pfc { display: none; }
-  .dk-pg:not(.hid) :is(.dk-pacts, .dk-pacts .dk-acts) { flex-direction: column; flex-wrap: nowrap; align-items: stretch; }
-  .dk-pg:not(.hid) .dk-pacts { margin-top: 10px; }
-  .dk-pg:not(.hid) .dk-pacts :is(.btn, .dk-givewrap > .btn) { width: 100%; }
+  .dk-pg:not(.hid) .dk-pacts { margin-top: 8px; }
 }
+/* The panel's buttons are sized to their words, never a full-width bar (#245); Stop is the quietest of them: no fill,
+   no border, muted until you point at it, right under the Now line. */
+.dk-pacts [data-act="interrupt"] { height: 24px; padding: 0 8px; border-color: transparent; background: none; color: var(--muted); font-weight: 600; }
+.dk-pacts [data-act="interrupt"]:hover { border-color: var(--line); color: var(--ink); }
+.dk-pg:not(.hid) .dk-pacts [data-act="interrupt"] { margin-left: -8px; }
 @container dkcard (max-width: 640px) { .dk-ptog { display: none; } }
 /* Items list (#201): a light line over each group after the first, so the groups read apart. */
 .dk-items .dk-scroll > .dk-gh:not(:first-child), .dk-items .dk-scroll > .dk-holder { position: relative; margin-top: 22px; }
