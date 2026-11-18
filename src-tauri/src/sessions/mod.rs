@@ -197,6 +197,10 @@ pub struct Session {
     /// (send_at.rs).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub send_at: Option<send_at::SendAt>,
+    /// Cue's carry-ons sent since this session last ended a turn on its own: each one that bounced off the limit
+    /// again is tried a minute later, up to send_at::CARRY_ON_TRIES, then it waits for you.
+    #[serde(default, skip_serializing_if = "is_zero_u8")]
+    pub carry_tries: u8,
     /// A hosted lead's teammates (team.rs), from its stream: kept with its record, since a resumed lead's stream
     /// never says them again.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -326,6 +330,7 @@ impl Session {
             stuck_ms: 0,
             held: None,
             send_at: None,
+            carry_tries: 0,
             team: vec![],
             team_mode: String::new(),
             crew_commit: String::new(),
@@ -577,3 +582,7 @@ impl Sessions {
 
 #[cfg(test)]
 mod tests;
+
+fn is_zero_u8(n: &u8) -> bool {
+    *n == 0
+}

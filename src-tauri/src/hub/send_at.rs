@@ -44,7 +44,14 @@ impl Hub {
     pub(super) fn send_at_tick(&self) {
         let due: Vec<(String, SendAt)> = self.write(|st| {
             let ids = st.sessions.send_at_due(now_ms());
-            ids.into_iter().filter_map(|sid| st.sessions.take_send_at(&sid).map(|l| (sid, l))).collect()
+            let due: Vec<(String, SendAt)> =
+                ids.into_iter().filter_map(|sid| st.sessions.take_send_at(&sid).map(|l| (sid, l))).collect();
+            for (sid, l) in &due {
+                if l.at_ms == 0 {
+                    st.sessions.carry_on_sent(sid);
+                }
+            }
+            due
         });
         for (sid, l) in due {
             self.later(0, move |h| {
