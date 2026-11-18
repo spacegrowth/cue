@@ -167,7 +167,8 @@ impl Hosts {
     fn pick_up(&self, link: &Arc<HostLink>, info: SessionInfo, spec: &Spec, report: Report) -> Option<Reattached> {
         let sid = spec.start.session_id().to_string();
         let host_id = info.session.clone();
-        let cursor = Cursor::find(&self.seen, &sid).map_or(0, |(_, c)| c);
+        // Where Cue read this run to: only a cursor kept for this run (another one of the conversation's is no measure).
+        let cursor = Cursor::find(&self.seen, &sid).filter(|(h, _)| *h == host_id).map_or(0, |(_, c)| c);
         if !info.running && cursor >= info.last_seq {
             return None;
         }
@@ -340,10 +341,16 @@ impl Hosted for Hosts {
             }
             return self.start_hosted(&link, spec, report);
         }
-        match self.link() {
-            Some(link) => self.start_hosted(&link, spec, report),
-            None => self.direct.start(spec, report),
+        let Some(link) = self.link() else { return self.direct.start(spec, report) };
+        // A host here already runs it (Cue lost sight of it: picked up from the wrong place at launch): picked up,
+        // as on a machine, not refused as already running.
+        let id = spec.start.session_id();
+        if let Some((l, info)) = self.links().into_iter().find_map(|l| running_there(&l, id).map(|i| (l, i))) {
+            let back = self.pick_up(&l, info, spec, report).ok_or("it runs here, but Cue couldn't pick it up")?;
+            (back.go)();
+            return back.started.ok_or_else(|| "it ended as Cue picked it up".to_string());
         }
+        self.start_hosted(&link, spec, report)
     }
 
     fn send(&self, session_id: &str, text: &str) -> Result<(), String> {

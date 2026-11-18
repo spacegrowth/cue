@@ -85,6 +85,7 @@ impl Remote {
         let mut c = crate::locking::lock(&self.cursor, "hosts: a session's cursor");
         c.session = session_id.to_string();
         c.save();
+        c.forget_others();
     }
 
     /// Its records after what's been read, from the host, as they come.
@@ -253,11 +254,38 @@ impl Cursor {
     }
 
     /// The host's id for conversation `session` and the last record read, from what's kept in `dir`.
+    /// More than one can claim it: a Codex session is started under an id of Cue's and named once Codex picks its
+    /// own, so resumed later (under that own id) it has a second, and the first's run is over. The one under the
+    /// conversation's own id wins, then the one written last.
     pub(super) fn find(dir: &Path, session: &str) -> Option<(String, u64)> {
-        std::fs::read_dir(dir).ok()?.flatten().find_map(|f| {
-            let v: Value = serde_json::from_slice(&std::fs::read(f.path()).ok()?).ok()?;
-            let host_id = f.path().file_stem()?.to_string_lossy().into_owned();
-            (v["session"].as_str() == Some(session)).then(|| (host_id, v["seq"].as_u64().unwrap_or(0)))
-        })
+        Self::claiming(dir, session)
+            .into_iter()
+            .max_by_key(|(host_id, _, written)| (host_id == session, *written))
+            .map(|(host_id, seq, _)| (host_id, seq))
+    }
+
+    /// Every file in `dir` that claims conversation `session`: its host id, where it was read to, when written.
+    fn claiming(dir: &Path, session: &str) -> Vec<(String, u64, std::time::SystemTime)> {
+        let Ok(files) = std::fs::read_dir(dir) else { return vec![] };
+        files
+            .flatten()
+            .filter(|f| f.path().extension().is_some_and(|e| e == "json"))
+            .filter_map(|f| {
+                let v: Value = serde_json::from_slice(&std::fs::read(f.path()).ok()?).ok()?;
+                let host_id = f.path().file_stem()?.to_string_lossy().into_owned();
+                let written = f.metadata().and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH);
+                (v["session"].as_str() == Some(session)).then(|| (host_id, v["seq"].as_u64().unwrap_or(0), written))
+            })
+            .collect()
+    }
+
+    /// The others that claim this one's conversation, dropped: its run under them is over (one conversation runs
+    /// once), and left there one could be found instead of this one.
+    fn forget_others(&self) {
+        let (Some(dir), Some(own)) = (self.path.parent(), self.path.file_stem()) else { return };
+        let own = own.to_string_lossy();
+        for (host_id, _, _) in Self::claiming(dir, &self.session).into_iter().filter(|(h, _, _)| *h != own) {
+            let _ = std::fs::remove_file(dir.join(format!("{host_id}.json")));
+        }
     }
 }

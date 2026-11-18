@@ -395,3 +395,61 @@ fn a_host_that_comes_back_without_the_session_pauses_it_and_says_what_was_held_w
     assert!(!hosts.running(&sid), "paused: a message starts it again");
     assert_eq!(heard_times(&fake, "go"), 0);
 }
+
+/// A Codex session started new is kept under an id of Cue's, then named; resumed later it runs under its own id, so
+/// two files claim it, and the first one's run is over. A Cue that starts again picks up the one that runs.
+#[test]
+fn a_session_resumed_under_its_own_id_is_picked_up_not_an_earlier_run_of_it() {
+    let p = host("twice");
+    let start = Start::fresh();
+    let sid = start.session_id().to_string();
+    let fake = FakeClaude::new().wait_for("go").say(init(&sid)).say(echo("go")).say(bash_ask("r1")).wait_for("control_response").say(result("done"));
+    let s = spec(&fake, start);
+    let first = cue(&p);
+    let (r, rx) = report();
+    first.start(&s, r).unwrap();
+    first.send(&sid, "go").unwrap();
+    until_event(&rx, |e| matches!(e, HostedEvent::Ask(_)));
+    first.close_all();
+    drop(first);
+    // The earlier run's file: read further than this run has gone, and written after it (the order a folder lists
+    // its files in is no guide either).
+    std::fs::write(p.seen.join("0-earlier-run.json"), json!({ "session": sid, "seq": 99_999 }).to_string()).unwrap();
+    let again = cue(&p);
+    let (r2, rx2) = report();
+    let back = again.reattach(&Spec { start: Start::Resume(sid.clone()), ..s.clone() }, r2).expect("the run that's going on");
+    assert!(back.started.as_ref().is_some_and(|st| st.in_turn), "mid-turn");
+    (back.go)();
+    let Some(HostedEvent::Ask(a)) = rx2.recv_timeout(Duration::from_secs(5)).ok() else { panic!("the ask, again") };
+    assert_eq!(a.request_id, "r1");
+    assert!(!p.seen.join("0-earlier-run.json").exists(), "the earlier run's file goes once this one is picked up");
+    again.close(&sid);
+}
+
+/// Cue lost sight of a session the host still runs (a launch that couldn't pick it up): a message starts it, and
+/// that picks it up rather than being refused as already running.
+#[test]
+fn starting_a_session_the_host_still_runs_picks_it_up() {
+    let p = host("lost-sight");
+    let start = Start::fresh();
+    let sid = start.session_id().to_string();
+    let fake = FakeClaude::new().wait_for("go").say(init(&sid)).say(echo("go")).wait_for("more").say(said("got more")).say(result("done"));
+    let s = spec(&fake, start);
+    let first = cue(&p);
+    let (r, rx) = report();
+    first.start(&s, r).unwrap();
+    first.send(&sid, "go").unwrap();
+    until_event(&rx, |e| matches!(e, HostedEvent::Taken { .. }));
+    first.close_all();
+    drop(first);
+    let again = cue(&p);
+    let (r2, rx2) = report();
+    let started = again.start(&Spec { start: Start::Resume(sid.clone()), ..s }, r2).expect("picked up, not refused");
+    assert_eq!(started.session_id, sid);
+    assert!(again.running(&sid));
+    again.send(&sid, "more").unwrap();
+    let seen = until_event(&rx2, |e| matches!(e, HostedEvent::TurnEnded { .. }));
+    assert!(seen.contains(&HostedEvent::Said { text: "got more".into(), agent: None }), "{seen:?}");
+    assert_eq!(heard_times(&fake, "go"), 1, "the same run: not started a second time");
+    again.close(&sid);
+}
