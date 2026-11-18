@@ -3249,3 +3249,23 @@ test("Hide panel folds the panel for that kind of page and is remembered; a narr
   await expect(pg.locator(".dk-ptog")).toBeHidden();
   await expect(pg.locator(".dk-pnow button, .dk-pnow .btn").first()).toBeVisible();
 });
+
+test("a stopped item's row, open or not, keeps its full-size icon and its kind, number and age under the title (#218)", async ({ cue, page }) => {
+  await cue.open("desk");
+  await page.locator('.switch-view [data-view="desk"]').click();
+  await expect(page.locator('.dk-items [data-desk-item="d3"]')).toBeVisible();
+  await page.evaluate(() => {
+    for (const d of state.desk?.projects || []) for (const i of d.items || []) if (i.id === "d3") { i.stopped = true; i.title = 'Desk header: drop "Delete Desk…", show the desk icon instead of the word "Desk", line up the name and sessions line'; }
+    renderMain();
+  });
+  const row = page.locator('.dk-items [data-desk-item="d3"]');
+  const shape = () => row.evaluate((el) => {
+    const si = el.querySelector(".dk-si").getBoundingClientRect(), i1 = el.querySelector(".dk-i1").getBoundingClientRect(), i2 = el.querySelector(".dk-i2").getBoundingClientRect();
+    return { icon: [si.width, si.height], lines: Math.round(i1.height / parseFloat(getComputedStyle(el.querySelector(".dk-i1")).lineHeight)), under: i2.top >= i1.bottom - 1, sameLeft: Math.abs(i2.left - i1.left) < 1 };
+  });
+  await expect(row).toHaveClass(/dk-stop/);
+  expect(await shape()).toEqual({ icon: [14, 14], lines: 3, under: true, sameLeft: true });
+  await row.click();
+  await expect(row).toHaveClass(/\bon\b/);
+  expect(await shape()).toEqual({ icon: [14, 14], lines: 3, under: true, sameLeft: true });
+});

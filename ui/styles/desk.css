@@ -118,6 +118,9 @@
 /* Its state as a small icon at the row's left: in progress (accent, its dot blinking); waiting on you, queued and
    done (muted). A done row is dimmed, not crossed out. */
 .dk-si { margin-top: 2.5px; }
+/* On an open row the state icon takes the row's colour, as its other marks do: muted or amber on --sel is faint. */
+.dk-it.on .dk-si [stroke] { stroke: currentColor; }
+.dk-it.on .dk-si [fill]:not([fill="none"]) { fill: currentColor; }
 .dk-si .dk-blink { animation: pulse 1.4s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .dk-si .dk-blink { animation: none; } }
 .dk-it.dk-done > :not(.dk-si, .dk-i2), .dk-it.dk-done > .dk-i2 > :not(.dk-undo) { opacity: .55; }
@@ -480,7 +483,8 @@
 :root[data-theme="dark"] .dk-sessions .dk-strip { background: color-mix(in oklab, var(--accent) 22%, var(--panel)); color: var(--ink); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .dk-sessions .dk-strip { background: color-mix(in oklab, var(--accent) 22%, var(--panel)); color: var(--ink); } }
 .dk-sh { display: flex; flex-direction: column; min-width: 0; }
-.dk-stop { display: flex; align-items: center; margin-left: -4px; }
+/* The strip's top line (‹ Desks … ⋯). Not .dk-stop: a stopped item's row is .dk-it.dk-stop and took this flex (#218). */
+.dk-shtop { display: flex; align-items: center; margin-left: -4px; }
 .dk-home-btn { all: unset; flex: none; height: 24px; padding: 0 8px 0 4px; display: inline-flex; align-items: center; border-radius: 6px; color: inherit; opacity: .8; font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer; }
 .dk-home-btn:hover, .dk-home-btn:focus-visible { opacity: 1; background: color-mix(in oklab, var(--on-sel) 10%, transparent); }
 .dk-shr { display: flex; align-items: center; gap: 6px; min-width: 0; margin-top: 4px; }
