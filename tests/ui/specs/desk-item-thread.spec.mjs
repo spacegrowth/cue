@@ -24,10 +24,46 @@ test("an item's replies show whole, each with a link to its turn, and a Done is 
   await expect(reply).toContainText("The last line.");
   await expect(reply.locator("[data-desk-turn]")).toHaveText("This turn in host-lead ›");
   await expect(pane.locator(".dk-tm.rec").last()).toHaveText(/Done · host-lead said Feature #d5 is done|Done · host-lead said .*#d5 is done/);
-  // The link opens that turn in its session's conversation.
+  // The link opens that session here, as its name on the left does, with no pop-up (#306); ‹ goes back to the item.
   await reply.locator("[data-desk-turn]").click();
-  await expect(page.locator(".convo-sheet")).toBeVisible();
-  await expect(page.locator(".convo-sheet .sheet-head")).toContainText("← Desk");
+  await expect(page.locator(".convo-sheet")).toHaveCount(0);
+  await expect(page.locator(".dk-chat")).toBeVisible();
+  await page.locator("[data-desk-chat-back]").click();
+  await expect(page.locator(".dk-right .dk-ipane")).toBeVisible();
+});
+
+test("what a stop hook made it write after its reply folds under the reply, as the chat folds it (#310)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await cue.change((st) => {
+    Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5"), { state: "to_check", now_on: false, latest: "", said: [{ at: Date.now() - 60000, by: "host-lead", text: "Fixed the header.", after: "1. SHAPE: the checklist answer.", sid: "host" }] });
+    st.sessions.find((x) => x.session_id === "host").state = "waiting";
+  });
+  await openItem(page, cue, "d5");
+  const reply = page.locator(".dk-right .dk-ipane .dk-tm:not(.rec)").filter({ hasText: "Fixed the header." });
+  const fold = reply.locator(".follow [data-follow]");
+  await expect(fold).toHaveText("After a stop hook ▾");
+  await expect(reply).not.toContainText("the checklist answer");
+  await fold.click();
+  await expect(reply.locator(".follow-body ol li")).toHaveText("SHAPE: the checklist answer.");   // its markdown, a numbered list
+  await expect(fold).toHaveText("After a stop hook ▴");
+  // One with no hook has no fold.
+  await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5").said[0].after = undefined; });
+  await expect(page.locator(".dk-right .dk-ipane .follow")).toHaveCount(0);
+});
+
+test("This turn in … opens its session at that reply, not at the end (#306)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await cue.change((st) => {
+    const at = Date.now() - 3600000, s = st.sessions.find((x) => x.session_id === "host");
+    s.thread = Array.from({ length: 40 }, (_, n) => ({ at_ms: at + n * 60000, role: n % 2 ? "agent" : "you", text: n === 21 ? "THE TURN: the fix is in." : `Message ${n}. ${"More words here. ".repeat(12)}` }));
+    Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5"), { state: "to_check", now_on: false, latest: "", said: [{ at: at + 21 * 60000 + 2000, by: "host-lead", text: "THE TURN: the fix is in.", sid: "host", done: true }] });
+    s.state = "waiting";
+  });
+  await openItem(page, cue, "d5");
+  await page.locator(".dk-right .dk-ipane [data-desk-turn]").click();
+  const chat = page.locator(".dk-chat"), turn = chat.locator(".cv-agent", { hasText: "THE TURN" });
+  await expect(turn).toBeVisible();
+  await expect.poll(async () => { const [c, t] = [await chat.boundingBox(), await turn.boundingBox()]; return t.y >= c.y - 1 && t.y < c.y + 80; }).toBe(true);
 });
 
 test("the box on an item at work goes straight to its holder, sent as the item, and says when it took it", async ({ page, cue }) => {

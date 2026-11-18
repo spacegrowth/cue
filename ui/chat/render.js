@@ -182,7 +182,7 @@ function chatHtml(it, s, harness, paged = false, page = null) {
     fwdMsgs.set(key, { text: addOn.plain(e.text), from: project, fromSid: sid });
     // Listen and Read go together: a reply worth hearing is worth reading set larger (Read shows wherever Listen does).
     const said = addOn.reply(sid, e.text), listen = sid && proseWords(said.text, page?.lines) >= LISTEN_WORDS;
-    return `<div class="cv-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}"><div class="cv-meta">${esc(agentName(harness))}${machTag(it?.machine || s?.machine)} · ${ago(e.at_ms)} ago${n === lastAgent ? toldMeta(s) : ""}</div>
+    return `<div class="cv-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}" data-at="${e.at_ms}"><div class="cv-meta">${esc(agentName(harness))}${machTag(it?.machine || s?.machine)} · ${ago(e.at_ms)} ago${n === lastAgent ? toldMeta(s) : ""}</div>
       <div class="msg cv-text">${md(said.text, { runIn: s?.session_id, lines: page?.lines })}</div>${said.after}${thumbs(e.images)}${localImages(e.text)}
       <div class="cv-acts">${listen ? listenBtn(key) : ""}${listen && paged ? `<button class="cv-pill" data-read="${esc(key)}">${BOOK_ICON}Read</button>` : ""}${foldable ? `<button class="cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}${page?.noActs ? "" : `<button class="cv-fwd" data-fwd="${esc(key)}">↗ Send to…</button>`}</div>${follow}</div>`;
   })(), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran, restarts, page?.extra || []));

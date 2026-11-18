@@ -67,6 +67,8 @@ const deskBoxes = new Map();
 const deskSent = new Map();
 /** The lead's chat was at its end before the draw (it stays there as new messages come). */
 let deskChatEnd = true;
+/** A reply's "This turn in …" opened its session here (#306): the time of the reply to bring into view, once. */
+let deskTurnAt = 0;
 
 /** Seconds or ms, as the hub stamps them, in ms. */
 const deskMs = (t) => (!t ? 0 : t < 1e12 ? t * 1000 : t);
@@ -1140,7 +1142,7 @@ function deskThread(i, d) {
   const said = (i.said || []).filter((r, n, all) => { const x = all[n + 1]; return !(x && x.by === r.by && x.text.startsWith(r.text.replace(/…$/, ""))); });
   // Each reply in full, with a link to that turn in its session; one that said DONE has a record line after it.
   for (const r of said) {
-    rows.push({ at: r.at, by: r.by, tag: "Reply", text: r.text, html: `<div class="dk-md">${deskMd(r.text)}</div>${deskTurnLink(r)}` });
+    rows.push({ at: r.at, by: r.by, tag: "Reply", text: r.text, html: `<div class="dk-md">${deskMd(r.text)}</div>${deskHookFold(i, r)}${deskTurnLink(r)}` });
     if (r.done) rows.push({ at: r.at + 1, rec: "Done", html: `${esc(r.by)} said ${esc(deskNum(i))} is done` });
   }
   // Sent from here, not back as a step yet.
@@ -1152,7 +1154,7 @@ function deskThread(i, d) {
   // Its latest words when no reply holds them yet (items from before replies were kept): after everything but what
   // you wrote since, so a message you send is still last (#160).
   const lat = (i.latest || "").trim(), lat1 = firstLine(lat);
-  if (!live && lat && !(i.said || []).some((r) => r.text.includes(lat1))) {
+  if (!live && lat && !(i.said || []).some((r) => r.text.includes(lat1) || r.after?.includes(lat1))) {
     const fin = i.state === "to_check" || i.state === "done";
     const theirs = rows.filter((r) => !r.you).reduce((m, r) => Math.max(m, r.at), 0);
     rows.push({ at: Math.max(deskMs(i.updated), theirs), by: i.holder?.name || i.by || "It", tag: fin ? "Done" : "Reply", on: fin, text: lat, html: `<div class="dk-md">${deskMd(lat)}</div>` });
@@ -1192,6 +1194,13 @@ function deskTakenHtml(i, r) {
   const took = e?.delivery?.find((x) => x.what.startsWith("taken"));
   if (took) return `<div class="dk-rc"><span class="dk-ck" aria-hidden="true">✓</span><span><b>${esc(i.holder.name)}</b> took it · ${esc(clockAt(took.at_ms))}</span></div>`;
   return e && s.state === "working" ? `<div class="dk-rc">Waiting: it reads this after its current step</div>` : "";
+}
+/** Under a reply: what a Stop hook made its holder write after its answer (a checklist), folded as the chat folds it
+ *  (chat/render.js hookFold), so it never reads as the reply (#310). "" when no hook sent it back. */
+function deskHookFold(i, r) {
+  if (!r.after) return "";
+  const key = `said:${i.id}:${r.at}`, open = openFollow.has(key);
+  return `<div class="follow"><button class="thread-toggle" data-follow="${esc(key)}">After a stop hook ${open ? "▴" : "▾"}</button>${open ? `<div class="follow-body dk-md">${deskMd(r.after)}</div>` : ""}</div>`;
 }
 /** Under a reply: a link to that turn in the session that said it, read where it is in its conversation (#276). */
 const deskTurnLink = (r) => (r.sid ? `<div class="dk-tl"><button class="dk-tlink" data-desk-turn="${esc(r.sid)}" data-at="${r.at}">This turn in ${esc(r.by || "its session")} ›</button></div>` : "");
@@ -1557,6 +1566,14 @@ function deskSettle() {
   const c = document.querySelector(".dk-chat");
   // Earlier messages just went in above (chat/thread.js loadOlder): what you were reading stays put.
   if (c && holdChat != null) { c.scrollTop = c.scrollHeight - holdChat; holdChat = null; }
+  else if (c && deskTurnAt && c.querySelector(".cv-agent[data-at]")) {
+    // The reply "This turn in …" was on: its session's last reply at or before that time (the reply's own time can
+    // come a moment after its message); not in what's loaded, the end. Its messages not drawn yet: on the next draw.
+    const at = deskTurnAt, msgs = [...c.querySelectorAll(".cv-agent[data-at]")];
+    const hit = msgs.filter((m) => Number(m.dataset.at) <= at + 5_000).at(-1);
+    deskTurnAt = 0;
+    if (hit) { c.scrollTop += hit.getBoundingClientRect().top - c.getBoundingClientRect().top - 12; deskChatEnd = false; } else c.scrollTop = c.scrollHeight;
+  }
   else if (c && deskChatEnd) c.scrollTop = c.scrollHeight;
 }
 
@@ -1566,6 +1583,7 @@ function deskSettle() {
 function deskShow(what) {
   if (what?.kind === "item") deskSeeItem(what.id);
   deskOpen = what && { ...what, project: deskSelection() };
+  if (what?.kind !== "chat") deskTurnAt = 0;
   deskDropArm = null;
   deskGiveFor = null;
   if (!what) deskChatEnd = true;
@@ -1751,8 +1769,13 @@ const DESK_CLICKS = {
   },
   deskRen: (el) => renameSession({ dataset: { rename: el.dataset.deskRen } }),
   // Opened from an item's page or a holder's, it remembers that page so ‹ goes back to it (from the left list: the lead).
-  // A reply's "This turn in …": that turn where it is in its session's conversation, read-only (#276).
-  deskTurn: (el) => { const s = sessionOf(el.dataset.deskTurn) || {}; openConvo({ session_id: el.dataset.deskTurn, name: s.name, project: s.project, harness: s.harness || "claude" }, Number(el.dataset.at), "Desk"); },
+  // A reply's "This turn in …": that session, here in the middle as its name on the left opens it (#306; it was a
+  // read-only pop-up, #276), at that reply; ‹ goes back to the item.
+  deskTurn: (el) => {
+    deskTurnAt = Number(el.dataset.at) || 0;
+    deskChatEnd = !deskTurnAt;
+    deskShow({ kind: "chat", sid: el.dataset.deskTurn, from: ["item", "holder"].includes(deskOpen?.kind) ? { ...deskOpen } : null });
+  },
   deskChatOf: (el) => { deskChatEnd = true; deskShow({ kind: "chat", sid: el.dataset.deskChatOf, from: ["item", "holder"].includes(deskOpen?.kind) ? { ...deskOpen } : null }); },
   deskChatBack: () => deskShow(deskOpen?.from || null),
   deskAddSession: (el) => {
