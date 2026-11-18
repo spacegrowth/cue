@@ -3292,3 +3292,39 @@ test("the Desk list's › sits only on the open row or card and moves with it, i
     expect(await owner()).toEqual([["lead", true]]);
   }
 });
+
+test("the Desk's session list: one hairline above each session but a group's first; crew and N done stay in its block; none at the end, open or not (#225)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.change((st) => {
+    const base = st.sessions.find((x) => x.session_id === "site");
+    const m = (name, state, extra = {}) => ({ also: [], ended_ms: 0, files: [], summary: "", state, agent_id: `id-${name}`, call: `c-${name}`, name, what: "Check the build", asked: "", started_ms: 1793983560000, ...extra });
+    const add = (id, team, since) => st.sessions.push({ ...base, session_id: id, name: id, project: "cue", thread: [], state: "idle", doing: "", team, since_ms: since });
+    add("s-a", [m("a1", "committed")], 9);
+    add("s-b", [], 8);
+    add("s-c", [m("c-live", "reviewed", { uncommitted: true })], 7);
+    add("s-d", [m("d-live", "reviewed", { uncommitted: true }), m("d1", "committed"), m("d2", "committed")], 6);
+    add("s-e", [], 5);
+    st.desk.projects.find((d) => d.project === "cue").members.push("s-a", "s-b", "s-c", "s-d", "s-e");
+  });
+  const left = page.locator(".dk-sessions");
+  await expect(left.locator('[data-desk-chat-of="s-e"]')).toHaveCount(1);
+  // Each child of the list: what it is, and whether a line is drawn on it (above it).
+  const lines = () => left.locator(".dk-scroll > *").evaluateAll((els) => els.map((el) => {
+    const what = el.matches(".dk-gh") ? "#" : el.matches(".dk-sfold") ? "fold" : el.matches(".crew") ? "crew" : el.dataset.deskChatOf;
+    const cs = getComputedStyle(el), line = cs.boxShadow !== "none" || parseFloat(cs.borderTopWidth) > 0 || parseFloat(cs.borderBottomWidth) > 0;
+    return `${what}${line ? " —" : ""}`;
+  }));
+  const want = ["#", "host", "#", "s-a", "fold", "s-b —", "s-c —", "crew", "s-d —", "crew", "fold", "s-e —"];
+  for (const scheme of ["light", "dark"]) {
+    await page.emulateMedia({ colorScheme: scheme });
+    expect(await lines()).toEqual(want);
+    // Opening a session leaves the lines as they were, above it and under it.
+    await left.locator('[data-desk-chat-of="s-c"]').click();
+    await expect(left.locator('[data-desk-chat-of="s-c"]')).toHaveClass(/\bon\b/);
+    expect(await lines()).toEqual(want);
+    await page.keyboard.press("Escape");
+  }
+  // No line closing the list: the last row draws none under it.
+  expect(await left.locator(".dk-scroll > :last-child").evaluate((el) => [getComputedStyle(el).borderBottomWidth, getComputedStyle(el).boxShadow.includes("-1px")])).toEqual(["0px", false]);
+});
