@@ -6,7 +6,7 @@
 
 /** A Desk's sessions (its lead among them) and their crew still in play. */
 function deskPeople(d) {
-  const ss = (state.sessions || []).filter((s) => s.project === deskWorkspace(d) && s.session_id && (!d.independent || s.session_id === deskLead(d)?.sid || (d.members || []).includes(s.session_id)));
+  const ss = (state.sessions || []).filter((s) => s.project === deskWorkspace(d) && deskHasSession(d, s.session_id));
   const crew = ss.reduce((n, s) => n + (sessionOf(s.session_id)?.team || []).filter((t) => deskMateLive(s.session_id, t)).length, 0);
   return { sessions: ss, crew };
 }
@@ -25,8 +25,9 @@ function deskKindCell(d, kind) {
   const icon = deskKindIcon(kind);
   if (!open.length) return `<span class="dh-cell z"><span class="dh-big">${icon}–</span></span>`;
   // Finishing (committed, being built and installed) is moving too, said apart from working.
-  const working = open.filter((i) => i.state === "working").length, fin = open.filter(deskFinishing).length, check = open.filter(deskWaits).length;
-  const sub = [working ? `${working} working` : "", fin ? `${fin} finishing` : "", check ? `<span class="dh-ck">${check} to check</span>` : ""].filter(Boolean).join(" · ") || "none moving";
+  const working = open.filter((i) => i.state === "working" && !i.stopped).length, fin = open.filter(deskFinishing).length, check = open.filter(deskWaits).length;
+  const resume = open.filter((i) => i.state === "needs_resume").length;
+  const sub = [working ? `${working} working` : "", resume ? `${resume} to resume` : "", fin ? `${fin} finishing` : "", check ? `<span class="dh-ck">${check} to check</span>` : ""].filter(Boolean).join(" · ") || "none moving";
   return `<span class="dh-cell"><span class="dh-big">${icon}${open.length} open</span><span class="dh-sm">${sub}</span></span>`;
 }
 /** Who's on a Desk: its lead, then the sessions and crew at work. */
@@ -58,7 +59,7 @@ function deskHomeRow(d) {
   return `<div class="dh-tr dk-desk" role="button" tabindex="0" data-desk-project="${esc(d.project)}">
     <span class="dh-cell"><b class="dh-nm">${esc(deskName(d))}</b><span class="dh-sm dh-ab">${esc(deskAbout(d))}</span></span>
     <span class="dh-cell"><span class="dh-pj">${projDot(deskWorkspace(d))}${esc(projLabel(deskWorkspace(d)))}</span><span class="dh-sm">${people}</span></span>
-    ${["task", "bug", "feature"].map((k) => deskKindCell(d, k)).join("")}<span class="dh-on">${deskOnIt(d, sessions)}</span><span class="dh-go" aria-hidden="true">›</span></div>`;
+    ${["task", "bug", "feature"].map((k) => deskKindCell(d, k)).join("")}<span class="dh-on">${deskOnIt(d, sessions)}</span><span class="dh-go"><button class="btn small" data-desk-delete="${esc(d.project)}" aria-label="Delete ${esc(deskName(d))}">Delete…</button></span></div>${deskDeleteConfirmation(d)}`;
 }
 /** Every Desk, those with the most waiting on you first. */
 const deskSorted = () => (state.desk?.projects || []).map((x) => deskOf(x.project)).sort((a, b) => b.items.filter(deskWaits).length - a.items.filter(deskWaits).length || deskName(a).localeCompare(deskName(b)));
@@ -95,7 +96,7 @@ const newChip = () => `<span class="nw-wrap"><button class="hchip new-chip ${new
 
 // ---------- New Desk: a project and a name ----------
 
-let ndEl = null, ndBusy = false, ndBack = null;
+let ndEl = null, ndBusy = false, ndBack = null, ndAgent = "claude";
 /** The Project picker, Cue's own (not the system's menu): the choices, the one picked, whether its list is open and
  *  the row the arrow keys are on. */
 let ndCs = [], ndAt = 0, ndDrop = false, ndSel = 0;
@@ -113,6 +114,7 @@ function deskNewOpen() {
   newMenuOpen = false;
   const cs = ndCs = ndChoices();
   ndAt = ndSel = 0; ndDrop = false;
+  ndAgent = newAgent;
   ndBack = document.activeElement;
   ndEl ||= Object.assign(document.createElement("div"), { className: "move-scrim nd-scrim" });
   ndEl.innerHTML = `<form class="move-dialog nd" role="dialog" aria-modal="true" aria-labelledby="nd-title">
@@ -120,12 +122,22 @@ function deskNewOpen() {
     ${cs.length ? `<label class="nd-l" for="nd-proj">Recent folders</label><div class="nd-pickwrap">${ndPickHtml()}</div>` : ""}
     <label class="nd-l" for="nd-folder">Folder</label><input class="nd-f" id="nd-folder" required spellcheck="false" autocomplete="off" placeholder="~/path/to/folder" value="${esc(cs[0]?.folder || "")}"/>
     <label class="nd-l" for="nd-name">Name</label><input class="nd-f" id="nd-name" required maxlength="80" spellcheck="false" autocomplete="off" value="${esc(cs[0] ? projLabel(cs[0].project) : "")}"/>
+    <span class="nd-l" id="nd-agent-label">Agent</span><div class="nd-agent" role="group" aria-labelledby="nd-agent-label"></div>
     <div class="nd-hint">Cue starts a lead in this folder. Several Desks can share a folder.</div>
     <div class="nd-acts"><button type="button" class="btn" data-nd-close>Cancel</button><button class="btn primary" type="submit">Start Desk</button></div></form>`;
   document.body.append(ndEl);
+  ndAgentDraw();
+  if (!agentsAvail) invoke("agents_installed").then((a) => { agentsAvail = a?.length ? a : ["claude"]; if (ndEl?.isConnected) ndAgentDraw(); }, () => {});
   renderMain();
   ndEl.querySelector("#nd-name")?.select();
   ndEl.querySelector("#nd-name")?.focus();
+}
+/** The same installed-agent choices and segmented control as New session. */
+function ndAgentDraw() {
+  const agents = agentsAvail || [ndAgent];
+  if (!agents.includes(ndAgent)) ndAgent = agents[0];
+  const row = ndEl?.querySelector(".nd-agent");
+  if (row) row.innerHTML = `<div class="seg">${agents.map((a) => `<button type="button" class="${ndAgent === a ? "on" : ""}" data-nd-agent="${esc(a)}" aria-pressed="${ndAgent === a}">${esc(agentName(a))}</button>`).join("")}</div>`;
 }
 /** A project's line: its dot and name, then its folder, muted. */
 const ndOpt = (c) => `${projDot(c.project)}<span class="nd-pn">${esc(projLabel(c.project))}</span><span class="nf-hint nd-pp">${esc(homeless(c.folder))}</span>`;
@@ -163,7 +175,7 @@ async function deskNewStart() {
   if (!folder || !name || ndBusy) return;
   ndBusy = true;
   ndEl.querySelector('[type="submit"]').textContent = "Starting…";
-  const r = await deskStartIn(folder, name);
+  const r = await deskStartIn(folder, name, ndAgent);
   ndBusy = false;
   if (!r) { const b = ndEl?.querySelector('[type="submit"]'); if (b) b.textContent = "Start Desk"; return; }
   deskNewClose();
@@ -171,12 +183,12 @@ async function deskNewStart() {
 
 let deskStarting = false;   // a Desk starting, until Cue answers
 /** Start a Desk in `folder`, then open it. Cue's answer ({ project, sid }), or null when it couldn't. */
-async function deskStartIn(folder, name = undefined) {
+async function deskStartIn(folder, name = undefined, agent = undefined) {
   if (!folder || deskStarting) return null;
   deskStarting = true;
   let r = null;
   try {
-    r = await invoke("desk_start", { folder, ...(name && { name }) });
+    r = await invoke("desk_start", { folder, ...(name && { name }), ...(agent && { agent }) });
     if (r?.project) { view = "desk"; deskSelect(r.id || r.project); deskOpen = null; deskTab = "lead"; deskChatEnd = true; }
   } catch (e) { toast(`Couldn't start the Desk: ${e}`); }
   deskStarting = false; renderMain();
@@ -191,6 +203,8 @@ if (typeof window !== "undefined") {
     if (ndEl?.isConnected && ndEl.contains(e.target)) {
       e.stopPropagation();
       if (e.target === ndEl || e.target.closest("[data-nd-close]")) return deskNewClose();
+      const agent = e.target.closest("[data-nd-agent]");
+      if (agent) { ndAgent = agent.dataset.ndAgent; ndAgentDraw(); return; }
       const at = e.target.closest("[data-nd-at]");
       if (at) return ndPick(+at.dataset.ndAt);
       if (e.target.closest("[data-nd-pick]")) { ndDrop = !ndDrop; ndSel = ndAt; ndPickDraw(); return ndEl.querySelector("#nd-proj")?.focus(); }
@@ -200,6 +214,11 @@ if (typeof window !== "undefined") {
     // Anything else (New session too) closes the menu, then does what it does.
     if (newMenuOpen) { newMenuOpen = false; queueMicrotask(renderMain); }
   }, true);
+  document.addEventListener("change", (e) => {
+    const input = e.target.closest?.("[data-desk-close-session]");
+    if (!input) return;
+    if (input.checked) deskCloseSelected.add(input.dataset.deskCloseSession); else deskCloseSelected.delete(input.dataset.deskCloseSession);
+  });
   document.addEventListener("submit", (e) => { if (ndEl?.contains(e.target)) { e.preventDefault(); deskNewStart(); } }, true);
   window.addEventListener("keydown", (e) => {
     if (ndEl?.isConnected) {
