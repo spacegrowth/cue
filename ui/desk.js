@@ -413,7 +413,7 @@ function deskItemRow(i, lit, held = false) {
     : options.length ? options.map((o, index) => `<button class="btn small" data-desk-question-pick="${index}" data-id="${esc(request.id)}"${answering.has(request.id) ? " disabled" : ""}>${esc(o.label)}</button>`).join("")
     : i.state === "needs_you" && i.ask?.kind !== "permission" ? `<button class="btn small" data-desk-chk-item="${esc(i.id)}">Answer</button>` : "";
   const ask = vb || decision ? `<div class="dk-ask-row">${vb ? `<div class="dk-h">${vb}</div>` : ""}${decision ? `<div class="dk-row-decisions">${decision}</div>` : ""}</div>` : "";
-  return `<div class="dk-it ${i.state === "needs_you" ? "ask" : ""} ${look === "landed" ? "landed" : ""} dk-${deskStateOf(i)} ${on ? "on" : ""}${i.state === "to_check" && deskLooksSoon.has(i.id) ? " soon" : ""}${deskLeaveStyle(i.id)}" role="button" tabindex="0" data-desk-item="${esc(i.id)}">
+  return `<div class="dk-it ${i.state === "needs_you" ? "ask" : ""} ${look === "landed" ? "landed" : ""} dk-${deskStateOf(i)} ${on ? "on" : ""}${i.state === "to_check" && deskLooksSoon.has(i.id) ? " soon" : ""}${deskLeaveStyle(i.id)}" role="button" tabindex="0" data-desk-item="${esc(i.id)}">${on ? '<span class="dk-larrow" aria-hidden="true">›</span>' : ""}
     ${deskStateIcon(i)}<div class="dk-i1"><span class="dk-tag ${look}">${tag}</span><span class="dk-t">${esc(i.title)}</span></div>
     <div class="dk-i2"><span class="dk-kid">${deskKindIcon(i)}<span class="dk-id">${esc(deskNum(i))}</span></span><span class="dk-who${s ? " held" : ""}">${who}</span><span class="dk-age">${when}</span>${ok}</div>${ask}${deskWaits(i) ? deskUnblocksHtml(i) : ""}</div>`;
 }
@@ -1143,8 +1143,9 @@ function deskThread(i, d) {
   // hub kept one): shown once, the longer.
   const said = (i.said || []).filter((r, n, all) => { const x = all[n + 1]; return !(x && x.by === r.by && x.text.startsWith(r.text.replace(/…$/, ""))); });
   // Each reply in full, with a link to that turn in its session; one that said DONE has a record line after it.
-  for (const r of said) {
-    rows.push({ at: r.at, by: r.by, tag: "Reply", text: r.text, html: `<div class="dk-md">${deskMd(r.text)}</div>${deskHookFold(i, r)}${deskTurnLink(r)}` });
+  for (const r0 of said) {
+    const r = deskHookSplit(r0);
+    rows.push({ at: r.at, by: r.by, tag: "Reply", text: r.text, html: `${r.text ? `<div class="dk-md">${deskMd(r.text)}</div>` : ""}${deskHookFold(i, r)}${deskTurnLink(r)}` });
     if (r.done) rows.push({ at: r.at + 1, rec: "Done", html: `${esc(r.by)} said ${esc(deskNum(i))} is done` });
   }
   // Sent from here, not back as a step yet.
@@ -1206,6 +1207,15 @@ function deskTakenHtml(i, r) {
 }
 /** Under a reply: what a Stop hook made its holder write after its answer (a checklist), folded as the chat folds it
  *  (chat/render.js hookFold), so it never reads as the reply (#310). "" when no hook sent it back. */
+/** Reply `r` with the stop hook's checklist ("1. SHAPE: …", "2. ASSUMPTIONS: …", the numbered lines after) as its
+ *  `after`: the hub keeps it apart from replies since #310, but one it read in a single part, and every reply saved
+ *  before, has it in its words (#325). */
+function deskHookSplit(r) {
+  if (r.after) return r;
+  const at = String(r.text || "").search(/^[ \t]*1\.[ \t]*\**SHAPE\b/m);
+  if (at < 0 || !/^[ \t]*2\.[ \t]*\**ASSUMPTIONS\b/m.test(r.text.slice(at))) return r;
+  return { ...r, text: r.text.slice(0, at).trim(), after: r.text.slice(at).trim() };
+}
 function deskHookFold(i, r) {
   if (!r.after) return "";
   const key = `said:${i.id}:${r.at}`, open = openFollow.has(key);

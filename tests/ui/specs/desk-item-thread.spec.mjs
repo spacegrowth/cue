@@ -132,3 +132,26 @@ test("an item at work shows its holder's latest reply and what each of its crew 
   await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5").now_on = false; });
   await expect(page.locator(".dk-right .dk-crewnow")).toHaveCount(0);
 });
+
+test("a reply with the stop hook's checklist in its own words, saved before the hub kept it apart, folds it too (#325)", async ({ page, cue }) => {
+  await cue.open("desk");
+  const text = "Loops tests pass (42/42); the other helper is still on the crew-page tests.\n\n1. SHAPE: Edits this turn:\n   - `addon.js`: a line.\n2. ASSUMPTIONS:\n   - the fake's count, UNVERIFIED.\n3. VERIFY E2E: loops.spec passes.\n4, 6, 7, 11, 12 — N/A.\n10. TESTS: each failure root-caused.";
+  const plain = "1. Read the header.\n2. Fixed its width.";
+  await cue.change((st, [text, plain]) => {
+    const at = Date.now();
+    Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5"), { state: "to_check", now_on: false, latest: "", said: [
+      { at: at - 120000, by: "host-lead", text: plain, sid: "host" },
+      { at: at - 60000, by: "host-lead", text, sid: "host" }] });
+  }, [text, plain]);
+  await openItem(page, cue, "d5");
+  const pane = page.locator(".dk-right .dk-ipane");
+  const reply = pane.locator(".dk-tm:not(.rec)").filter({ hasText: "Loops tests pass (42/42)" });
+  await expect(reply.locator(".dk-md").first()).toHaveText("Loops tests pass (42/42); the other helper is still on the crew-page tests.");
+  await expect(reply).not.toContainText("SHAPE");
+  await reply.locator("[data-follow]").click();
+  await expect(reply.locator(".follow-body")).toContainText("SHAPE: Edits this turn");
+  await expect(reply.locator(".follow-body")).toContainText("TESTS: each failure root-caused.");
+  // A numbered list that isn't the checklist stays as it is.
+  const other = pane.locator(".dk-tm:not(.rec)").filter({ hasText: "Read the header." });
+  await expect(other.locator("[data-follow]")).toHaveCount(0);
+});
