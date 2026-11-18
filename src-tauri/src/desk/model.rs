@@ -190,12 +190,15 @@ pub const SAID_KEPT: usize = 20;
 pub const SAID_CHARS: usize = 20_000;
 
 /// One reply on an item's Thread: when (ms), who said it, its words (the Desk's own lines left out), whether it said
-/// DONE for the item, and the session it said it in (its page links to that turn there, #276).
+/// DONE for the item, and the session it said it in (its page links to that turn there, #276). What a Stop hook made
+/// it write after its answer (a checklist) is `after`, folded under the reply as the chat folds it (#310).
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct Said {
     pub at: u64,
     pub by: String,
     pub text: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub after: String,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub done: bool,
     #[serde(default, skip_serializing_if = "String::is_empty")]
