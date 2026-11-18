@@ -44,7 +44,8 @@ impl<'a> LeadTurn<'a> {
     pub fn read(transcript: &str, parts: &'a [crate::model::TurnPart], last: &'a str, unprompted: bool) -> Self {
         let answer = crate::sessions::team::answer_in(parts.iter().map(|p| p.text.as_str()), last);
         let mut texts: Vec<&str> = parts.iter().map(|p| p.text.as_str()).collect();
-        if !texts.contains(&last) {
+        // A part is kept trimmed: the last message with a space or line after it is the same text, not one more.
+        if !texts.iter().any(|t| t.trim() == last.trim()) {
             texts.push(last);
         }
         let (asks, said) = crate::hook::said_to(transcript);

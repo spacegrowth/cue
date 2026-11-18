@@ -1576,11 +1576,12 @@ fn a_long_reply_is_kept_whole_with_its_session() {
     w.settle();
     let words = sent_to(&w, &h).into_iter().rev().find(|t| t.contains(&format!("Desk item #{}", a.id))).unwrap();
     w.hosted_says(&h, HostedEvent::Taken { text: words });
-    let long = format!("Here is what I found.\n\n{}", "Every line of it matters. ".repeat(200).trim_end());
+    let long = format!("Here is what I found.\n\n{}", "Every line of it matters. ".repeat(200));
     ends(&w, &h, &long);
     let d = desk(&w, &project);
     let said = &item(&d, "First thing")["said"][0];
-    assert_eq!(said["text"].as_str(), Some(long.as_str()), "kept whole");
+    // Once, not twice: the turn's text is kept trimmed, and the last message (with its space) is that same text.
+    assert_eq!(said["text"].as_str(), Some(long.trim_end()), "kept whole, once");
     assert_eq!(said["sid"].as_str(), Some(h.as_str()));
 }
 
