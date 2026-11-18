@@ -125,8 +125,8 @@ A project can list more than one step: build, tests, open the window. They run i
 the first failure. Each has a time limit.
 
 Each step is marked "each landing" or "before going live". The first kind runs for every item, before
-it lands. The second kind runs once on main before an install or deploy, covering every item landed
-since the last one. It is for steps too slow to run per item. If a "before going live" step fails,
+it lands. The second kind runs once on main before an install, deploy or in-place serve, covering
+every item landed since the last one. It is for steps too slow to run per item. If a "before going live" step fails,
 nothing goes live, the items stay at "On main", and the lead is told which landings came since the
 last good run. A project with no Live step can only use "each landing".
 
@@ -349,7 +349,8 @@ comes last.
    landing them.
 4. **A long check is split.** Fast steps run on each landing. Slow steps run once before going live.
    For Cue: build, Rust tests and the window load on each landing, the window tests before each
-   install or in-place serve. The first three catch every break of that day, and the install is already batched.
+   install or in-place serve. The first three catch every break of that day, and the install is
+   already batched.
 5. **One worktree per item, shared by the holder and its helpers.** The holder already splits its
    helpers' work by file, and one copy means one build and one landing.
 6. **An item in two repos gets a worktree in each, and lands in all or none.** Every repo is checked
