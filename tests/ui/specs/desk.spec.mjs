@@ -1649,6 +1649,24 @@ test("the head is one strip in the accent, flush across the card's top: ‹ Desk
   expect(await page.locator(".dk-board [title]").count()).toBe(0);
 });
 
+test("Run by shows the current Dispatcher's accessible agent icon", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  const runBy = page.locator(".dk-lcard");
+  await expect(runBy.getByRole("img", { name: "Claude Code" })).toBeVisible();
+  await cue.change((st) => {
+    const d = st.desk.projects.find((x) => x.project === "cue");
+    const s = st.sessions.find((x) => x.session_id === "host");
+    s.harness = "codex";
+    d.lead = { sid: s.session_id, name: s.name, state: "live" };
+  });
+  await expect(runBy.getByRole("img", { name: "Codex" })).toHaveText("X");
+  await expect(runBy.getByRole("img", { name: "Claude Code" })).toHaveCount(0);
+  await cue.change((st) => { st.sessions.find((x) => x.session_id === "host").harness = "pi"; });
+  await expect(runBy.getByRole("img", { name: "Pi" })).toHaveText("π");
+  await expect(runBy.getByRole("img", { name: "Dispatcher" })).toBeVisible();
+});
+
 test("the lead's card in the strip: Run by, its state and the item it holds; open, lit lime as any open row, in both themes", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);

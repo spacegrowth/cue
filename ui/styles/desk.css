@@ -507,6 +507,7 @@
 .dk-lcard.on :is(.dk-lk, .dk-st, .dk-s2, .dk-s3:not(.hot), .dk-id, .dk-none, .dk-kic) { color: inherit; }
 .dk-lcard.on :is(.dk-lk, .dk-st, .dk-id, .dk-s3:not(.hot)) { opacity: .75; }
 .dk-larrow { flex: none; font: 600 19px/1 var(--sans); }
+.dk-lcard .badge { width: 16px; height: 16px; border-radius: 4px; font-size: 9px; }
 .dk-lcard .dk-lk { flex: none; font: 700 10px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .dk-lcard .dk-s2, .dk-lcard .dk-s3 { margin-left: 0; }
 .dk-lcard .dk-s2 { font-size: 12px; }

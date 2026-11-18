@@ -141,6 +141,7 @@ const agentName = (h) => ({ claude: "Claude Code", codex: "Codex", pi: "Pi" }[h]
 /** The agent's mark: a letter in its own colour (Claude's orange, Pi's black), so you can tell them apart at a glance. */
 const agentLetter = (h) => h === "pi" ? "π" : h === "codex" ? "X" : esc((h || "?")[0].toUpperCase());
 const badge = (h) => `<span class="badge h-${esc(h || "other")}" title="${esc(agentName(h))}">${agentLetter(h)}</span>`;
+const agentBadge = (h) => `<span class="badge h-${esc(h)}" role="img" aria-label="${esc(agentName(h))}">${agentLetter(h)}</span>`;
 /** The agent most of your sessions run (live, parked, closed). */
 function usualAgent() {
   const n = {};
@@ -149,7 +150,7 @@ function usualAgent() {
 }
 /** A card's agent, on the board's cards and the Parked drawer's rows: nothing for your usual one (it
  *  would repeat on every card), its mark for any other, so the odd one out is what you see. */
-const oddAgent = (h) => h && h !== usualAgent() ? `<span class="badge h-${esc(h)}" role="img" aria-label="${esc(agentName(h))}">${agentLetter(h)}</span>` : "";
+const oddAgent = (h) => h && h !== usualAgent() ? agentBadge(h) : "";
 const draft = (id) => (drafts[id] ||= { text: "", choices: {}, images: [] });
 /** The Desk's mark before a session's name while it works for a Desk (desk_lead.js deskNameMark), "" without one. */
 const deskSessMark = (sid) => (typeof deskNameMark === "function" ? deskNameMark(sid) : "");

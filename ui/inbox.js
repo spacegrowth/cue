@@ -304,7 +304,7 @@ function inboxSection([key, title, rows, asking]) {
     const open = inboxFoldOpen(key);
     return `<button class="ib-sect fold ib-strip" data-inbox-fold="run" aria-expanded="${open}"><span class="ib-fold">${open ? "▾" : "▸"}</span>${title} · <span class="ib-sect-n">${rows.length}</span>${inboxStripBars(rows)}</button>${open ? rows.map(inboxRowHtml).join("") : ""}`;
   }
-  if (key === "desk") return `<div class="ib-sect ib-dg">${deskKindIcon("desk")}<span class="ib-dg-name">${esc(title)}</span><span class="ib-sect-n">${rows.length}</span>${asking ? `<span class="ib-dg-need">· ${asking} ${asking === 1 ? "needs" : "need"} you</span>` : ""}</div>${rows.map(inboxRowHtml).join("")}`;
+  if (key === "desk") return `<div class="ib-sect ib-dg">${deskKindIcon("tray")}<span class="ib-dg-name">${esc(title)}</span><span class="ib-sect-n">${rows.length}</span>${asking ? `<span class="ib-dg-need">· ${asking} ${asking === 1 ? "needs" : "need"} you</span>` : ""}</div>${rows.map(inboxRowHtml).join("")}`;
   if (key !== "later" && key !== "parked") return `<div class="ib-sect ${key}">${key === "pin" ? PIN_ICON : ""}${title}</div>${rows.map(inboxRowHtml).join("")}`;
   const open = inboxFoldOpen(key), draw = key === "parked" ? inboxParkedHtml : inboxRowHtml;
   return `<button class="ib-sect fold" data-inbox-fold="${key}" aria-expanded="${open}"><span class="ib-fold">${open ? "▾" : "▸"}</span>${title} <span class="ib-sect-n">${rows.length}</span></button>${open ? rows.map(draw).join("") : ""}`;

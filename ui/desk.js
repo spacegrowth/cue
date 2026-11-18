@@ -64,6 +64,7 @@ const DESK_KIND_SVG = {
   task: '<rect x="4" y="4" width="16" height="16" rx="4"/><path d="m8.5 12.2 2.4 2.4 4.6-5"/>',
   bug: '<rect x="8" y="7" width="8" height="12" rx="4"/><path d="M12 11v8M8 12H4.5M19.5 12H16M8 16.5l-3 1.5M16 16.5l3 1.5M8.5 9 6 7M15.5 9 18 7M10 7a2 2 0 0 1 4 0"/>',
   feature: '<path d="M12 3.5 13.9 10.1 20.5 12 13.9 13.9 12 20.5 10.1 13.9 3.5 12 10.1 10.1Z"/>',
+  tray: '<path d="M4 13l3-7h10l3 7v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M4 13h4l2 3h4l2-3h4"/>',
   // What a chat is (deskLabel): the Desk's dispatcher (a signpost), a session, a crew member, a lead.
   desk: '<path d="M12 3v18M9 21h6"/><path d="M12 5h6l2.5 2.5L18 10h-6"/><path d="M12 12H6l-2.5 2.5L6 17h6"/>',
   session: '<path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8l-5 4v-4H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/>',
@@ -456,13 +457,13 @@ function deskSessName(sid, name, cls) {
  *  #202), its name, its state; then the item it's on (no line when it's on none, #179); then its size and cache. `cls`
  *  is dk-srow; the lead's card in the head strip is dk-lcard, with `pre` "Run by" before its icon. Rows run edge to
  *  edge, so their hover and their lime reach both sides of the column. */
-function deskSessRow({ name, sid = "", mark = "", dot, word, item, line, on, attrs, crew, step = "", size = "", loose = false, past = false, cls = "dk-srow", pre = "" }) {
+function deskSessRow({ name, sid = "", mark = "", dot, word, item, line, on, attrs, crew, step = "", size = "", loose = false, past = false, cls = "dk-srow", pre = "", harness = "" }) {
   const what = item ? `<span class="dk-w">${deskKindIcon(item)}<span class="dk-id">${esc(deskNum(item))}</span> ${esc(item.title)}</span>` : line ? `<span class="dk-w">${esc(line)}</span>` : "";
   const arrow = on ? '<span class="dk-larrow" aria-hidden="true">›</span>' : "";   // only on the open row or card (#219)
   const loosePill = loose ? `<span class="dk-pill loose">not committed</span>` : "";
   const ic = DESK_MARKS[mark] ? `<span class="dk-ric" role="img" data-desk-type="${mark}" aria-label="${DESK_MARKS[mark]}">${deskKindIcon(mark)}</span>` : "";
   return `<div class="${cls} ${crew ? "crew" : ""} ${past ? "past" : ""} ${on ? "on" : ""}" role="button" tabindex="0" ${attrs}>
-    <div class="dk-s1">${pre ? `<span class="dk-lk">${pre}</span>` : ""}${ic}${sid ? deskSessName(sid, name, "dk-nm") : `<span class="dk-nm">${esc(name)}</span>`}<span class="dk-st"><i class="${dot}"></i><b>${word}</b></span>${arrow}</div>
+    <div class="dk-s1">${pre ? `<span class="dk-lk">${pre}</span>` : ""}${ic}${sid ? deskSessName(sid, name, "dk-nm") : `<span class="dk-nm">${esc(name)}</span>`}${harness ? agentBadge(harness) : ""}<span class="dk-st"><i class="${dot}"></i><b>${word}</b></span>${arrow}</div>
     ${what || loosePill ? `<div class="dk-s2">${what}${loosePill}</div>` : ""}${step}${size}</div>`;
 }
 /** The lead and the sessions already on this Desk, with their crew. */
@@ -490,7 +491,7 @@ function deskSessions(project) {
     const fold = done.length ? `<button class="dk-sfold" data-desk-done-fold="${esc(sid)}" aria-expanded="${open}">${done.length} done · ${open ? "hide" : "show"}</button>${open ? done.map((t) => mate(t, true)).join("") : ""}` : "";
     // The Desk's own lead shows no crew (it routes; any teammates it had, even old ones, aren't the Desk's).
     const crew = sid === leadSid ? "" : live.map((t) => mate(t, false)).join("") + fold;
-    if (card) return deskSessRow({ name: deskHolderName(sid), sid, cls: "dk-lcard", pre: "Run by", mark: "desk", dot, word, item: deskSessItem(d, sid), on: lit(sid), attrs, step: deskStepLine(dot === "", s.compacting_ms ? "Compacting…" : s.doing, s.compacting_ms || s.doing_ms), size: deskSessCache(sid) });
+    if (card) return deskSessRow({ name: deskHolderName(sid), sid, cls: "dk-lcard", pre: "Run by", mark: "desk", harness: s.harness, dot, word, item: deskSessItem(d, sid), on: lit(sid), attrs, step: deskStepLine(dot === "", s.compacting_ms ? "Compacting…" : s.doing, s.compacting_ms || s.doing_ms), size: deskSessCache(sid) });
     // On no item: the first line of its latest reply, and when it came beside its size (#185).
     const item = deskSessItem(d, sid), idle = dot !== "" && !item;
     return deskSessRow({ name: deskHolderName(sid), sid, mark: sid === leadSid ? "desk" : lead ? "lead" : "session", dot, word, item, line: idle ? deskSessSaid(sid) : "", on: lit(sid), attrs, step: deskStepLine(dot === "", s.compacting_ms ? "Compacting…" : s.doing, s.compacting_ms || s.doing_ms), size: deskSessCache(sid, idle) }) + crew;
@@ -538,7 +539,7 @@ function deskSessHead(project, n, working, lead = "") {
     ? `<input class="pj-name-in" data-text="pjname:${esc(project)}" maxlength="40" placeholder="${esc(project)}" aria-label="Rename this Desk" spellcheck="false" value="${esc(draft(`pjname:${project}`).text)}"/>`
     : `<b>${esc(title)}</b><button class="dk-ren" data-pjren="${esc(project)}" aria-label="Rename this Desk"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></svg></button>`;
   const more = lead ? `<button class="dk-more-btn" data-desk-change aria-label="Hand this Desk to another session"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>` : "";
-  return `<div class="dk-strip"><div class="dk-sh"><div class="dk-shtop"><button class="dk-home-btn" data-desk-home>‹ Desks</button><span class="grow"></span>${more}</div><div class="dk-shr"><span class="dk-ric" aria-hidden="true">${deskKindIcon("desk")}</span>${name}</div><span class="dk-sub">${n} session${n === 1 ? "" : "s"}${working ? ` · ${working} working` : ""}</span>${lead && typeof askBeforeLine === "function" ? askBeforeLine(deskOf(project)) : ""}</div>${lead}</div>`;
+  return `<div class="dk-strip"><div class="dk-sh"><div class="dk-shtop"><button class="dk-home-btn" data-desk-home>‹ Desks</button><span class="grow"></span>${more}</div><div class="dk-shr"><span class="dk-ric" aria-hidden="true">${deskKindIcon("tray")}</span>${name}</div><span class="dk-sub">${n} session${n === 1 ? "" : "s"}${working ? ` · ${working} working` : ""}</span>${lead && typeof askBeforeLine === "function" ? askBeforeLine(deskOf(project)) : ""}</div>${lead}</div>`;
 }
 /** Session `sid` on `project`'s Desk (`on`) or off it: the sessions its lead routes to without asking you. */
 async function deskMember(project, sid, on) {

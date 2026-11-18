@@ -50,7 +50,10 @@ test("a Desk can start in a folder with no recent project", async ({ cue, page }
   await page.locator('.nd [type="submit"]').click();
   await cue.called("desk_start", { folder: "/work/brand-new", name: "codex-cue-desk-feature" });
   await expect(page.locator(".dk-sh b")).toHaveText("codex-cue-desk-feature");
-  await expect(page.locator(".dk-shr .dk-ric svg.dk-kic")).toBeVisible();
+  const tray = page.locator(".dk-shr .dk-ric svg.dk-kic");
+  await expect(tray).toBeVisible();
+  await expect(tray.locator("path").first()).toHaveAttribute("d", /^M4 13l3-7/);
+  await expect(page.locator(".dk-lcard .dk-ric svg path").first()).toHaveAttribute("d", "M12 3v18M9 21h6");
 });
 
 test("deleting a Desk confirms what is removed and keeps its sessions", async ({ cue, page }) => {
