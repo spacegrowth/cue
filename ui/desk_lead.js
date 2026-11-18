@@ -260,7 +260,7 @@ function deskLineHtml(line, inline) {
   // An item as "Bug #2", a link that opens it (just "#2" when `bare`); plain until the Desk has it.
   const ref = (x, it = known(x), bare) => {
     const t = bare || !it ? `#${it?.id ?? x}` : deskNum(it);
-    return it ? `<button class="dk-say-id" data-desk-chk-item="${esc(it.id)}">${esc(t)}</button>` : `<b class="dk-say-id">${esc(t)}</b>`;
+    return it ? `<button class="dk-say-id" data-desk-chk-item="${esc(it.id)}">${bare ? "" : deskKindIcon(it)}${esc(t)}</button>` : `<b class="dk-say-id">${esc(t)}</b>`;
   };
   // Its title under the line, a click opening it.
   const titled = (it, t = it?.title) => (!t ? "" : it ? `<button class="dk-sl-it" data-desk-chk-item="${esc(it.id)}">${esc(t)}</button>` : `<span class="dk-sl-tt">${esc(t)}</span>`);
@@ -426,7 +426,7 @@ function deskHandHtml(e) {
   const d = projects.find((x) => x.items.some((i) => deskIdIs(i, id) && i.title === title)) || projects.find((x) => x.items.some((i) => deskIdIs(i, id)));
   const it = d?.items.find((i) => deskIdIs(i, id));
   const lead = d ? deskLeadName(d) : "";
-  const num = esc(deskNum({ id, kind: kind || it?.kind }));
+  const num = deskKindIcon(kind || it?.kind) + esc(deskNum({ id, kind: kind || it?.kind }));
   const ref = d ? `<button class="dk-hand-n" data-desk-hand="${esc(d.project)}" data-id="${esc(it?.id ?? id)}">${num}</button>` : `<b>${num}</b>`;
   const pics = (parts.P || "").split(",").map((x) => x.trim()).filter(Boolean).length;
   return `<div class="cv-you dk-hand">${pre ? `<div class="dk-hand-pre">${esc(pre)}</div>` : ""}<div class="dk-hand-c">

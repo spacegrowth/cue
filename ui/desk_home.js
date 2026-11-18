@@ -17,7 +17,7 @@ function deskAbout(d) {
   const last = d.items.filter((i) => i.state === "done").sort((a, b) => deskMs(b.done_at || b.updated) - deskMs(a.done_at || a.updated))[0];
   const it = at || next || last;
   if (!it) return "Nothing on it yet.";
-  return `${it === at ? "On" : it === next ? "Next" : "Last done"}: ${deskNum(it)} ${it.title}`;
+  return `${it === at ? "On" : it === next ? "Next" : "Last done"}: ${deskKindIcon(it)}${esc(deskNum(it))} ${esc(it.title)}`;
 }
 /** A kind's cell: "3 open", and under it how many are working, finishing and waiting on your check (or "none moving"). */
 function deskKindCell(d, kind) {
@@ -57,7 +57,7 @@ function deskHomeRow(d) {
   const { sessions, crew } = deskPeople(d), n = sessions.length;
   const people = `${n} session${n === 1 ? "" : "s"} · ${crew ? `${crew} crew` : "no crew"}`;
   return `<div class="dh-tr dk-desk" role="button" tabindex="0" data-desk-project="${esc(d.project)}">
-    <span class="dh-cell"><b class="dh-nm">${esc(deskName(d))}</b><span class="dh-sm dh-ab">${esc(deskAbout(d))}</span></span>
+    <span class="dh-cell"><b class="dh-nm">${esc(deskName(d))}</b><span class="dh-sm dh-ab">${deskAbout(d)}</span></span>
     <span class="dh-cell"><span class="dh-pj">${projDot(deskWorkspace(d))}${esc(projLabel(deskWorkspace(d)))}</span><span class="dh-sm">${people}</span></span>
     ${["task", "bug", "feature"].map((k) => deskKindCell(d, k)).join("")}<span class="dh-on">${deskOnIt(d, sessions)}</span><span class="dh-go"><button class="btn small" data-desk-delete="${esc(d.project)}" aria-label="Delete ${esc(deskName(d))}">Delete…</button></span></div>${deskDeleteConfirmation(d)}`;
 }

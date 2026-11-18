@@ -1150,7 +1150,8 @@ test("the lead's own Desk lines are drawn as lines in its chat, code blocks left
   // Done: "Feature #d3 is done", its number a link; its title on a click, which opens the item.
   await expect(ln.nth(2).locator(".dk-sl-h")).toHaveText("Feature #d3 is done");
   await expect(ln.nth(2).locator("button.dk-say-id")).toHaveText("Feature #d3");
-  await expect(ln.nth(2).locator("svg.dk-kic")).toHaveCount(0);
+  // Its kind's icon before its number, as on every item line (#292).
+  await expect(ln.nth(2).locator("button.dk-say-id svg.dk-kic")).toHaveCount(1);
   await ln.nth(2).locator(".dk-sl-r").dispatchEvent("click");
   await expect(ln.nth(2).locator(".dk-sl-it")).toHaveCount(1);
   await expect(ln.nth(3).locator(".dk-sl-h")).toHaveText("Kept host-lead's context");
@@ -1208,11 +1209,13 @@ test("a reply of only routing lines is short lines at the left: TITLE and ROUTE,
   await expect(ln).toHaveCount(2);
   await expect(ln.nth(0).locator(".dk-sl-h")).toHaveText(/^Renamed \w+ #d2$/);
   await expect(ln.nth(1).locator(".dk-sl-h")).toHaveText(/^\w+ #d2 waits on #d3$/);
-  // Stacked tight, no icon: the second starts right under the first.
+  // Stacked tight: the second starts right under the first.
   const [a, b] = [await ln.nth(0).boundingBox(), await ln.nth(1).boundingBox()];
   expect(b.y - (a.y + a.height)).toBeLessThan(2);
   expect(a.height).toBeLessThan(21);
-  await expect(last.locator(".dk-sl svg")).toHaveCount(0);
+  // Only the item numbers carry an icon, their kind's (#292); the lines themselves have none.
+  await expect(last.locator(".dk-sl svg")).toHaveCount(2);
+  await expect(last.locator(".dk-sl button.dk-say-id > svg.dk-kic")).toHaveCount(2);
   await expect(last.locator(".cv-text")).not.toContainText("TITLE:");
   for (const l of await ln.all()) expect(await l.evaluate((el) => el.getBoundingClientRect().height)).toBeLessThan(24);
   await ln.nth(1).locator(".dk-sl-r").dispatchEvent("click");
