@@ -3091,7 +3091,11 @@ test("the Board Desk link uses the tray and omits repeated task details", async 
   const card = (name) => page.locator("[data-session], [data-detail]").filter({ has: page.locator(".proj", { hasText: new RegExp(`^${name}$`) }) }).filter({ has: page.locator(".dk-chip") }).first();
   const lead = card("host-lead").locator(".dk-chip");
   await expect(lead).toHaveCount(1);
-  await expect(lead).toHaveText("Feature Desk›");
+  await expect(lead).toHaveText("DeskFeature Desk›");
+  // A quiet line on the card's own ground, not a light pill (#260): no fill, no border, the name in on-bg.
+  const look = await lead.evaluate((el) => { const cs = getComputedStyle(el); return { bg: cs.backgroundColor, bw: cs.borderTopWidth }; });
+  expect(look.bg).toBe("rgba(0, 0, 0, 0)");
+  expect(look.bw).toBe("0px");
   await expect(lead).toHaveAttribute("data-inbox-desk", "desk-feature");
   await expect(lead.locator("svg path").first()).toHaveAttribute("d", /^M4 13l3-7/);
   await expect(card("host-lead")).not.toContainText("Hosted sessions can't open the canvas");

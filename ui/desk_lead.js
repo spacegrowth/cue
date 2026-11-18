@@ -35,11 +35,11 @@ function deskNameMark(sid) {
   const kind = deskSessKind(sid, d), label = DESK_MARKS[kind], name = deskName(d);
   return `<span class="dk-name-ic" role="img" data-desk-type="${kind}" aria-label="${esc(`${label} · ${name}`)}">${deskKindIcon(kind)}</span>`;
 }
-/** The Desk link under a session's name on the Board. */
+/** The Desk link under a session's name on the Board: one quiet line, the tray, "Desk", its name, › (#260). */
 function deskCardLine(sid) {
   const d = deskForSession(sid);
   if (!d) return "";
-  return `<div class="dk-chip-line"><button class="dk-chip" data-inbox-desk="${esc(d.project)}">${deskKindIcon("tray")}<span class="dk-chip-t">${esc(deskName(d))}</span><span aria-hidden="true">›</span></button></div>`;
+  return `<div class="dk-chip-line"><button class="dk-chip" data-inbox-desk="${esc(d.project)}">${deskKindIcon("tray")}<span class="dk-chip-k">Desk</span><span class="dk-chip-t">${esc(deskName(d))}</span><span aria-hidden="true">›</span></button></div>`;
 }
 /** Desk `d`'s lead ({ sid, name, state }), or null. */
 const deskLead = (d) => (d?.lead?.sid ? d.lead : null);

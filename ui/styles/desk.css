@@ -712,11 +712,14 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
 .dk-name-ic > .dk-kic { margin: 0; vertical-align: 0; color: inherit; }
 /* Its line under the name on a Board card (deskCardLine), the shape of a loop's. */
 .dk-chip-line { display: flex; margin-top: 4px; min-width: 0; }
-.dk-chip { all: unset; display: inline-flex; align-items: center; gap: 5px; max-width: 100%; min-width: 0; box-sizing: border-box; cursor: pointer; font-size: 11.5px; font-weight: 600; line-height: 1.5; border: 1px solid var(--line); border-radius: var(--pill-radius); padding: 1px 8px 1px 6px; background: var(--panel-2); color: var(--ink); white-space: nowrap; }
-.dk-chip:hover { border-color: var(--muted); }
-.dk-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.dk-chip > .dk-kic { margin: 0; flex: none; }
-.dk-chip-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* Not a pill (#260, picked C): one quiet line on the card's own ground, the tray and "Desk" in on-bg-muted, the Desk's
+   name in on-bg, then ›. A light-grey pill was the one bright block on a see-through Working card. */
+.dk-chip { all: unset; display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; box-sizing: border-box; cursor: pointer; font-size: 12px; font-weight: 500; line-height: 1.5; padding: 1px 0; color: var(--on-bg-muted); white-space: nowrap; }
+.dk-chip:hover .dk-chip-t { text-decoration: underline; text-underline-offset: 2px; }
+.dk-chip:focus-visible { outline: 2px solid var(--on-bg); outline-offset: 2px; border-radius: 4px; }
+.dk-chip > .dk-kic { margin: 0; flex: none; color: inherit; }
+.dk-chip-k { flex: none; }
+.dk-chip-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--on-bg); font-weight: 650; }
 /* The Desk's hand-off in the chat of the session it went to (desk_lead.js deskHandHtml): a card on the right, where
    yours are: who gave it and the item's number, its title, Done when as short lines, Why. */
 .cv-you.dk-hand { align-self: flex-end; width: min(520px, 100%); }
