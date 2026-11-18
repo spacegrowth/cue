@@ -352,7 +352,7 @@ fn waits_on(st: &Store, from: &str, id: &str) -> bool {
 #[allow(clippy::too_many_arguments)]
 pub(super) fn decide(st: &mut Store, project: &str, item: Option<String>, by: &str, sid: &str, text: &str, why: &str, now: u64, fx: &mut Effects) {
     let id = st.desk.decision_id(now);
-    st.desk.decisions.push(DeskDecision { id: id.clone(), project: project.into(), item_id: item, by: by.into(), sid: sid.into(), text: text.into(), why: why.into(), at: secs(now), undo: "can".into(), call: false });
+    st.desk.decisions.push(DeskDecision { id: id.clone(), project: project.into(), item_id: item, by: by.into(), sid: sid.into(), text: text.into(), why: why.into(), at: secs(now), undo: "can".into(), call: false, delivery: None });
     fx.decisions.push(id);
 }
 
@@ -964,7 +964,11 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
             let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
             let (title, project) = (it.title.clone(), it.project.clone());
             you_wrote(st, &project, id, words.split_once("\nPictures with it").map_or(words.as_str(), |(w, _)| w).trim(), &format!("sent back to {}", h.name), now, &mut fx);
-            fx.sends.push((h.to().to_string(), format!("{crew}Desk item #{id} ({title}) isn't done: {words}\nIts fixes stay in #{id}; don't add new items for them. Say DONE: #{id} when it is.")));
+            let message = format!("{crew}Desk item #{id} ({title}) isn't done: {words}\nIts fixes stay in #{id}; don't add new items for them. Say DONE: #{id} when it is.");
+            if let Some(step) = st.desk.decisions.last_mut() {
+                step.delivery = Some(crate::desk::model::DeskDelivery { session_id: h.to().to_string(), text: message.clone(), at_ms: now });
+            }
+            fx.sends.push((h.to().to_string(), message));
         }
         // Nobody holds it yet: a new session of its project takes it (desk_start_new).
         "start_now" if holder.is_none() => {

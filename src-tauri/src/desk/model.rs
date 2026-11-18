@@ -278,6 +278,17 @@ pub struct DeskDecision {
     /// (routes, gives, sessions started, contexts kept, Cue's hand-off asks) are steps, shown on their item.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub call: bool,
+    /// The message associated with this step, for showing its existing session delivery state.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery: Option<DeskDelivery>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct DeskDelivery {
+    pub session_id: String,
+    pub text: String,
+    #[serde(default)]
+    pub at_ms: u64,
 }
 
 /// Every project's Desk, as Cue holds it while it runs (saved as it changes: db/desk.rs).

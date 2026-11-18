@@ -108,7 +108,16 @@ CueBridge.area("desk", (w) => {
       if (act === "looks_right") Object.assign(it, { state: "done", done_at: t });
       // Undo on a done item: back to check, its commit kept, a waiting one not made (no code changes).
       else if (act === "reopen") { if (it.state !== "done") throw "It isn't done: nothing to undo"; Object.assign(it, { state: "to_check", done_at: null, commit_wait: null }); }
-      else if (act === "send_back") { if (!text?.trim()) throw "Say what isn't right first: type it in the box, then Send back"; Object.assign(it, { state: "working", latest: `sent back: ${text}` }); }
+      else if (act === "send_back") {
+        if (!text?.trim()) throw "Say what isn't right first: type it in the box, then Send back";
+        Object.assign(it, { state: "working", latest: `sent back: ${text}` });
+        const sid = it.holder?.lead_sid || it.holder?.sid, s = sid && w.session(sid);
+        const prefix = it.holder?.kind === "crew" ? `For your teammate ${it.holder.name}: ` : "";
+        const message = `${prefix}Desk item #${id} (${it.title}) isn't done: ${text}\nIts fixes stay in #${id}; don't add new items for them. Say DONE: #${id} when it is.`;
+        deskOf(it.project).decisions.unshift({ id: `back${++n}`, project: it.project, item_id: id, by: "You", sid: "", text: text.trim(), why: `sent back to ${it.holder?.name}`, at: secs(), undo: "none", delivery: { session_id: sid, text: message, at_ms: w.now() } });
+        if (s?.state === "working") s.held = { role: "you", text: s.held ? `${s.held.text}\n\n${message}` : message, at_ms: s.held?.at_ms || w.now() };
+        else if (s) w.working(s, message, images);
+      }
       else if (act === "start_now") Object.assign(it, { state: "working", after: null, after_why: "", latest: "starting in a new session" });
       else if (act === "put_before") { const first = itemOf(it.after); if (first) Object.assign(first, { state: "queued", after: it.id, after_why: it.after_why }); Object.assign(it, { state: "working", after: null, after_why: "" }); }
       else if (act === "drop") it.state = "dropped";
