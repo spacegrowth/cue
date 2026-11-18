@@ -278,7 +278,7 @@ fn crew_work_on_a_branch_of_its_own_is_merged_into_the_main_checkout_never_pushe
     });
     let shown = item(&w, &project, "Header jumps");
     assert_eq!(shown["state"], "to_check", "{shown}");
-    assert_eq!(git(&dir, &["branch", "--show-current"]).trim(), "team-work");
+    assert_eq!(git(&dir, &["branch", "--show-current"]).trim(), "main");
     assert!(git(&dir, &["log", "-1", "--format=%s"]).trim().starts_with("Merge worktree-agent-agentW"), "{}", git(&dir, &["log", "-3", "--format=%s"]));
     assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "builder's\n", "in the main checkout");
     assert!(git(&dir, &["remote"]).trim().is_empty(), "never pushed");
@@ -475,7 +475,7 @@ fn a_main_checkout_mid_merge_is_left_alone_and_asks_you() {
         std::fs::write(dir.join("shared.txt"), "yours\n").unwrap();
         git(dir, &["add", "shared.txt"]);
         git(dir, &["commit", "-q", "-m", "yours"]);
-        git(dir, &["switch", "-q", "team-work"]);
+        git(dir, &["switch", "-q", "main"]);
         std::fs::write(dir.join("shared.txt"), "mine\n").unwrap();
         git(dir, &["add", "shared.txt"]);
         git(dir, &["commit", "-q", "-m", "mine"]);
@@ -737,4 +737,59 @@ fn gits_last_words_drop_hints_and_keep_the_last_three_lines() {
     assert_eq!(crate::safe_git::last_words(said), "error: two / error: three / fatal: four");
     assert_eq!(crate::safe_git::last_words(""), "");
     assert!(crate::safe_git::last_words(&"x".repeat(400)).ends_with('…'));
+}
+
+/// How work lands, step 2 (#247): an item is to check, with Looks right, only once its commit is on main. Its main
+/// checkout on another branch, it waits at "landing" saying where its work is: not to check, not in an install, no
+/// Looks right. Once main has it, it goes on (here into the next install, then to check once Cue has it).
+#[test]
+fn an_item_shows_ready_only_once_its_commit_is_on_main_and_says_where_it_is_till_then() {
+    let w = World::new();
+    let fake = Arc::new(Fake::default());
+    w.hub().desk_set_installer(fake.clone());
+    let (dir, project, id) = done_with(&w, |_, _, dir| {
+        as_this_cue(dir);
+        git(dir, &["checkout", "-q", "-b", "side"]);
+    }, |w, h, dir| {
+        let f = |n: &str| dir.join(n).to_string_lossy().to_string();
+        says(w, h, writes("toolu_A", "agentA", "fixer", &[f("a.txt"), f("b.txt")]));
+    });
+    let side = git(&dir, &["rev-parse", "HEAD"]).trim().to_string();
+    let shown = item(&w, &project, "Header jumps");
+    assert_eq!(commits(&dir), "2", "committed at DONE, on the branch the main checkout is on");
+    assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str(), shown["finish"]["wait"].as_str()), (Some("finishing"), Some("landing"), Some("on side, not main")), "{shown}");
+    assert!(w.hub().desk_looks_right(&id).is_err(), "no Looks right before it's on main");
+    w.advance(31 * 60_000);
+    tick(&w);
+    assert!(fake.started().is_empty(), "nothing installed that isn't on main");
+    let shown = item(&w, &project, "Header jumps");
+    assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str()), (Some("needs_you"), Some("landing")), "asked after 15 minutes: {shown}");
+    assert!(shown["finish"]["question"].as_str().unwrap().contains("on side, not main"), "{shown}");
+
+    // Main gets it: on its way into the app, then to check once Cue has it.
+    git(&dir, &["checkout", "-q", "main"]);
+    git(&dir, &["merge", "-q", "--ff-only", "side"]);
+    tick(&w);
+    let shown = item(&w, &project, "Header jumps");
+    assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str(), shown["finish"]["commit"].as_str()), (Some("finishing"), Some("queued"), Some(side.as_str())), "{shown}");
+    assert!(w.hub().desk_looks_right(&id).is_err(), "no Looks right before it's installed");
+    fake.runs(&side);
+    tick(&w);
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "to_check");
+    w.hub().desk_looks_right(&id).unwrap();
+}
+
+/// A project that installs nothing: on main is the last step, and the item is to check as soon as it lands there.
+#[test]
+fn an_item_in_a_project_with_no_install_is_to_check_once_its_commit_is_on_main() {
+    let w = World::new();
+    let (dir, project, _) = done_with(&w, |_, _, dir| { git(dir, &["checkout", "-q", "-b", "side"]); }, |w, h, dir| {
+        let f = |n: &str| dir.join(n).to_string_lossy().to_string();
+        says(w, h, writes("toolu_A", "agentA", "fixer", &[f("a.txt")]));
+    });
+    assert_eq!(item(&w, &project, "Header jumps")["finish"]["step"], "landing");
+    git(&dir, &["checkout", "-q", "main"]);
+    git(&dir, &["merge", "-q", "--ff-only", "side"]);
+    tick(&w);
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "to_check");
 }

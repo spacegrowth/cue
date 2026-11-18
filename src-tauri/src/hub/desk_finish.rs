@@ -2,7 +2,8 @@
 //! so across the restart an install makes too). Its files are committed at once (Looks right's commit code: only its
 //! files, the word check, a wait while another session at work edits one of them, never pushed); its crew's branch,
 //! when its work sits on one, is merged into the main checkout's branch, the merge word-checked too and never forced.
-//! An item that changed the Cue this app is built from is then in the next install; any other goes to check.
+//! Its work must then be on main (the branch, not just the main checkout: "landing" while it isn't, saying where); an
+//! item that changed the Cue this app is built from is then in the next install; any other goes to check.
 //! Installs run one at a time, once for everything waiting: half an hour after the first of it, built from the main
 //! line's HEAD, and not while a session that ends with Cue is mid-turn (unless you say Install now). Once the running
 //! Cue has an item's commit, the item is to check. A build that fails, or a new Cue that doesn't start, stops on a
@@ -186,6 +187,17 @@ impl Hub {
         self.finish_after(id, &tops);
     }
 
+    /// Item `it`'s folders on this Mac: its crew's (hub/desk.rs `item_sources`), then each folder of `sources`.
+    fn item_folders(&self, it: &DeskItem, sources: &[(String, Vec<String>)]) -> Vec<String> {
+        let mut out: Vec<String> = self.read(|st| super::desk::item_sources(st, it).1.into_iter().map(|(f, _)| f).collect());
+        for (f, _) in sources {
+            if !out.contains(f) {
+                out.push(f.clone());
+            }
+        }
+        out
+    }
+
     /// Item `id`'s work git says isn't committed (each path in the folder it was changed in), asked as its holder's
     /// turn ends on it (#213). None on another machine: its folders aren't looked at here.
     pub(super) fn desk_uncommitted(&self, id: &str) -> Vec<String> {
@@ -248,12 +260,7 @@ impl Hub {
     /// work its holder committed itself too (#213). None when it stopped on a question (a word, a conflict).
     fn finish_land(&self, it: &DeskItem, todo: &[(String, Vec<String>)], parts: &[Part], sources: &[(String, Vec<String>)]) -> Option<Vec<String>> {
         let project = self.read(|st| st.desk.project_of(&it.project).to_string());
-        let mut crew: Vec<String> = self.read(|st| super::desk::item_sources(st, it).1.into_iter().map(|(f, _)| f).collect());
-        for (f, _) in sources {
-            if !crew.contains(f) {
-                crew.push(f.clone());
-            }
-        }
+        let crew = self.item_folders(it, sources);
         if !todo.is_empty() {
             if let Err(e) = words_checked(&project, "", todo, parts, &it.title) {
                 self.finish_ask(&it.id, if e.contains("\" is in ") { "word" } else { "error" }, &e, "");
@@ -299,6 +306,13 @@ impl Hub {
         let cue = tops.iter().find(|t| super::desk_checks::builds_this_cue(t));
         let top = cue.or(tops.first()).cloned().unwrap_or_default();
         let head = if top.is_empty() { String::new() } else { git("", &top, &[], &["rev-parse", "HEAD"]).map(|h| h.trim().to_string()).unwrap_or_default() };
+        // Not on main yet (the main checkout is on another branch, or a worktree's work wasn't merged): it waits
+        // there, saying where, and goes on once it is (the tick looks again). Never to check, nor served, before.
+        if !top.is_empty() {
+            if let Some(at) = self.not_on_main(id, &top, &head) {
+                return self.finish_landing(id, &top, &head, at);
+            }
+        }
         // Only the window's files changed since the running Cue's build: they're served in place, no install.
         let in_place = if cue.is_some() { self.ui_in_place(&top, &head) } else { Ok(false) };
         if !matches!(in_place, Ok(false)) {
@@ -331,6 +345,62 @@ impl Hub {
         } else {
             self.finish_checked(id);
         }
+    }
+
+    /// Where item `id`'s work is, when it isn't all on `top`'s main yet ("on fix-header, not main"): the main line's
+    /// `head`, each commit Cue made for it in that repository, and the HEAD of each other worktree of it the item
+    /// worked in (merged into the main checkout as it finished). None once all are on main, or when the repository
+    /// has no main to look at (no main or master branch, and its main checkout on none).
+    fn not_on_main(&self, id: &str, top: &str, head: &str) -> Option<String> {
+        let main = main_ref(top)?;
+        let Ok((it, _, sources)) = self.desk_change_sources(id) else { return None };
+        let mut shas: Vec<String> = Vec::new();
+        for (folder, sha) in &it.commit_in {
+            if main_checkout(folder).is_some_and(|(m, _)| same_dir(&m, top)) {
+                shas.push(sha.clone());
+            }
+        }
+        for folder in self.item_folders(&it, &sources) {
+            let Some((m, _)) = main_checkout(&folder).filter(|(m, _)| same_dir(m, top)) else { continue };
+            let own = git("", &folder, &[], &["rev-parse", "--show-toplevel"]).map(|t| t.trim().to_string()).unwrap_or_default();
+            if own.is_empty() || same_dir(&own, &m) {
+                continue;
+            }
+            if let Some(h) = git("", &own, &[], &["rev-parse", "HEAD"]).map(|h| h.trim().to_string()) {
+                shas.push(h);
+            }
+        }
+        if !head.is_empty() {
+            shas.push(head.to_string());
+        }
+        let off = shas.iter().find(|s| !matches!(crate::safe_git::run("", top, &[], &["merge-base", "--is-ancestor", s, &main]), Ok((_, 0))))?;
+        let on = git("", top, &[], &["branch", "--contains", off, "--format=%(refname:short)"]).unwrap_or_default();
+        let branch = on.lines().map(str::trim).find(|b| !b.is_empty() && *b != main).map(str::to_string);
+        Some(match branch {
+            Some(b) => format!("on {b}, not {main}"),
+            None => format!("not on {main} or any branch"),
+        })
+    }
+
+    /// Item `id` waits for its work to be on main (`at` says where it is), with the main line's `top` and `head` kept;
+    /// asked of you once it has waited 15 minutes, as a commit's wait is.
+    fn finish_landing(&self, id: &str, top: &str, head: &str, at: String) {
+        let now = now_ms();
+        let Some(fin) = self.read(|st| st.desk.item(id).and_then(|i| i.finish.clone())) else { return };
+        let from = if fin.step == "landing" && fin.wait_from > 0 { fin.wait_from } else { now };
+        let ask = now.saturating_sub(from) >= WAIT_ASK_MS;
+        let question = if ask { format!("Its work isn't on main after 15 minutes: it's {at}") } else { String::new() };
+        if fin.step == "landing" && fin.wait == at && fin.question == question && fin.commit == head {
+            return;
+        }
+        self.finish_set(id, |i| {
+            if let Some(f) = i.finish.as_mut() {
+                if f.step != "landing" {
+                    f.at = now;
+                }
+                (f.step, f.repo, f.commit, f.wait, f.wait_from, f.question) = ("landing".into(), top.into(), head.into(), at, from, question);
+            }
+        });
     }
 
     /// Whether `head` of `repo` is in the running Cue without an install: what changed since the commit it was built
@@ -482,8 +552,13 @@ impl Hub {
             return;
         }
         let step = |i: &DeskItem| i.finish.as_ref().map(|f| f.step.clone()).unwrap_or_default();
-        for it in items.iter().filter(|i| matches!(step(i).as_str(), "commit" | "commit_wait")) {
-            self.desk_finish_commit(&it.id);
+        for it in &items {
+            match step(it).as_str() {
+                "commit" | "commit_wait" => self.desk_finish_commit(&it.id),
+                // Waiting to be on main: on its way once it is (its main line as it is now).
+                "landing" => drop(Claim::take(self, &it.id).map(|_claim| self.finish_after(&it.id, &[]))),
+                _ => {}
+            }
         }
         let inst = self.installer();
         let status = inst.status();
@@ -650,6 +725,17 @@ pub(super) fn install_at(st: &Store) -> u64 {
 pub(super) fn begun(now: u64, before: Option<&Finish>) -> Finish {
     let (repo, commit) = before.map(|f| (f.repo.clone(), f.commit.clone())).unwrap_or_default();
     Finish { step: "commit".into(), at: now, repo, commit, ..Default::default() }
+}
+
+/// The branch that is main in `top`'s repository: "main", else "master", else the branch its main checkout is on.
+/// None when there's none of those (a detached main checkout in a repository with neither).
+fn main_ref(top: &str) -> Option<String> {
+    for b in ["main", "master"] {
+        if git("", top, &[], &["rev-parse", "--verify", "-q", &format!("refs/heads/{b}")]).is_some() {
+            return Some(b.to_string());
+        }
+    }
+    main_checkout(top).map(|(_, b)| b).filter(|b| !b.is_empty())
 }
 
 /// `folder`'s repository's main checkout (its first worktree) and the branch it's on ("" for a detached HEAD).

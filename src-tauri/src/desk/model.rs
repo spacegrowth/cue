@@ -191,7 +191,8 @@ pub struct CommitWait {
 /// Where an item's finishing is (hub/desk_finish.rs).
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct Finish {
-    /// "commit" (being made) | "commit_wait" (a file of its is being edited by another session) | "queued" (for
+    /// "commit" (being made) | "commit_wait" (a file of its is being edited by another session) | "landing" (made,
+    /// and not on main yet: `wait` says where it is) | "queued" (for
     /// the next install) | "building" | "installing" | "starting" | "word" (the word check found one) | "conflict"
     /// (the merge of its crew's branch) | "error" (git couldn't commit) | "failed" (the build) | "rolled_back" (the
     /// new Cue didn't start) | "checked" (it went to check: nothing to install, or installed).
@@ -204,7 +205,8 @@ pub struct Finish {
     pub commit: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub repo: String,
-    /// Who's editing which of its files while the commit waits ("web-lead is editing ui/desk.js").
+    /// Who's editing which of its files while the commit waits ("web-lead is editing ui/desk.js"), or where its work
+    /// is while it isn't on main ("on fix-header, not main").
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub wait: String,
     /// When the commit began to wait (ms): past `desk_finish::WAIT_ASK_MS` it's asked of you.

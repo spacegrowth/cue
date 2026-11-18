@@ -19,7 +19,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | Lock acquisitions | 251 |
 | Lock-graph edges | 53 |
 | Spawn sites | 88 |
-| External calls: fs / db / process / notify / login / socket | 396 / 186 / 49 / 4 / 1 / 4 |
+| External calls: fs / db / process / notify / login / socket | 405 / 186 / 51 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 1 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -467,7 +467,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (396)
+### fs (405)
 
 | In | Call | Times |
 |---|---|---|
@@ -534,8 +534,10 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hosted/old_hosts.rs::find` | Path::exists | 1 |
 | `hosted/old_hosts.rs::find` | Path::is_dir | 1 |
 | `hosted/old_hosts.rs::find` | read_dir | 1 |
-| `hosted/remote.rs::Cursor::find` | read | 1 |
-| `hosted/remote.rs::Cursor::find` | read_dir | 1 |
+| `hosted/remote.rs::Cursor::claiming` | Path::metadata | 1 |
+| `hosted/remote.rs::Cursor::claiming` | read | 1 |
+| `hosted/remote.rs::Cursor::claiming` | read_dir | 1 |
+| `hosted/remote.rs::Cursor::forget_others` | remove_file | 1 |
 | `hosted/remote.rs::Cursor::prune` | Path::metadata | 1 |
 | `hosted/remote.rs::Cursor::prune` | read_dir | 1 |
 | `hosted/remote.rs::Cursor::prune` | remove_file | 1 |
@@ -610,6 +612,12 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `ipc/settings.rs::image_data` | read | 1 |
 | `ipc/settings.rs::link_target` | Path::exists | 1 |
 | `lib.rs::connect_main` | Path::exists | 1 |
+| `live_ui.rs::check_copy` | Path::exists | 1 |
+| `live_ui.rs::check_copy` | canonicalize | 1 |
+| `live_ui.rs::check_copy` | create_dir_all | 1 |
+| `live_ui.rs::check_copy` | remove_file | 1 |
+| `live_ui.rs::check_in` | create_dir_all | 1 |
+| `live_ui.rs::check_in` | remove_dir_all | 2 |
 | `live_ui.rs::current_in` | Path::is_dir | 1 |
 | `live_ui.rs::current_in` | read_to_string | 1 |
 | `live_ui.rs::file_in` | read | 1 |
@@ -989,7 +997,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/turns.rs::read_so_far` | db::turns_read | 1 |
 | `startup/mod.rs::settle_folder_and_hooks` | db::rewrite_paths | 1 |
 
-### process (49)
+### process (51)
 
 | In | Call | Times |
 |---|---|---|
@@ -1010,6 +1018,8 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `ipc/settings.rs::copy_text` | /usr/bin/pbcopy | 1 |
 | `ipc/settings.rs::open_link` | /usr/bin/open | 1 |
 | `lib.rs::activate_app` | open | 1 |
+| `live_ui.rs::check_copy` | (program computed) | 1 |
+| `live_ui.rs::check_copy` | /usr/bin/tar | 1 |
 | `live_ui.rs::take_in` | /usr/bin/tar | 1 |
 | `logs/live.rs::origin_of` | /bin/ps | 1 |
 | `logs/live.rs::throwaway` | /bin/ps | 1 |

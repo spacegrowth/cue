@@ -3712,3 +3712,27 @@ test("the Desk panel's buttons are sized to their words; Stop is small and quiet
   await stop.click();
   await expect.poll(() => cue.calls("interrupt_session")).toHaveLength(1);
 });
+
+test("an item shows ready only once its work is on main: until then it says where it is, and uncommitted work says Commit to main, never Looks right (#247)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  // Committed, and not on main yet: its row says where, with no ✓.
+  await patchItem(cue, "d5", { state: "finishing", finish: { step: "landing", wait: "on side, not main", at: Date.now() } });
+  const d5 = page.locator('.dk-items [data-desk-item="d5"]');
+  await expect(d5.locator(".dk-who")).toHaveText("not on main yet · on side, not main");
+  await expect(d5.locator(".dk-ok")).toHaveCount(0);
+  // To check with its files uncommitted (its session on another machine): no ✓ on its row; its page says it isn't on
+  // main and its button commits it there.
+  await patchItem(cue, "d2", { files: ["ui/chat/compose.js"] });
+  const d2 = page.locator('.dk-items [data-desk-item="d2"]');
+  await expect(d2.locator(".dk-ok")).toHaveCount(0);
+  await d2.click();
+  const now = page.locator(".dk-right .dk-pnow");
+  await expect(now.locator(".dk-pword")).toHaveText("Not on main yet");
+  await expect(now.locator('[data-desk-act="looks_right"]')).toHaveText("Commit to main");
+  // Committed at its DONE and on main: Looks right, as ever.
+  await patchItem(cue, "d2", { finish: { step: "checked", commit: "abc1234", at: Date.now() }, commit: "abc1234" });
+  await expect(now.locator(".dk-pword")).toHaveText("Ready to check");
+  await expect(now.locator('[data-desk-act="looks_right"]')).toHaveText("Looks right");
+  await expect(d2.locator(".dk-ok")).toHaveCount(1);
+});

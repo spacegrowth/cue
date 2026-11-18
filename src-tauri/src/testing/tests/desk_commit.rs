@@ -5,7 +5,7 @@
 //! restart too), and you're asked once it has waited 15 minutes.
 
 use super::desk::desk;
-use super::team::{git, lead, repo, says, writes};
+use super::team::{git, lead, says, writes};
 use crate::hosted::HostedEvent;
 use crate::ipc::{start_session_with, StartOpts};
 use crate::testing::World;
@@ -38,7 +38,7 @@ pub(super) fn done_with(w: &World, before: impl Fn(&World, &str, &std::path::Pat
 
 /// `done_with` up to its holder's DONE: (repo, project, item id, holder).
 pub(super) fn routed_with(w: &World, before: impl Fn(&World, &str, &std::path::Path), work: impl Fn(&World, &str, &std::path::Path)) -> (std::path::PathBuf, String, String, String) {
-    let dir = repo(w);
+    let dir = super::team::main_repo(w);
     let h = lead(w, "hello");
     ends(w, &h, "Hi.");
     before(w, &h, &dir);

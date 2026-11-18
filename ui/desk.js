@@ -84,12 +84,18 @@ const deskInstallWait = (i) => i?.state === "to_check" && !deskFinCommit(i) && d
 /** The commit Cue made for item `i` when its session said DONE (hub: commit, build, install, then to check), or "". An
  *  item with one went through that, so it's in the installed Cue: never "waiting for install". */
 const deskFinCommit = (i) => (i?.finish ? i.finish.commit || i.commit || "" : "");
+/** Item `i` to check with its files not committed (its session is on another machine, or Undo put it back): not on
+ *  main yet, so no Looks right. Its button commits them to main and closes it (hub/desk_commit.rs, Looks right's
+ *  commit). One with no files changed has nothing to land: Looks right as ever. */
+const deskUncommitted = (i) => i?.state === "to_check" && !i.finish && !i.commit && (i.files || []).length > 0;
 /** Item `i`'s DONE on its way into the app: Cue commits, builds and installs it. Nothing for you to do yet. */
 const deskFinishing = (i) => i?.state === "finishing";
 /** Where a finishing item is, in a short line: "committing · waits: web-lead is editing ui/desk.js", "building…". */
 function deskFinStep(i) {
   const f = i.finish || {};
   if (f.step === "commit_wait") return `committing${f.wait ? ` · waits: ${f.wait}` : ""}`;
+  // Committed, and not on main yet: where it is ("on side, not main").
+  if (f.step === "landing") return `not on main yet${f.wait ? ` · ${f.wait}` : ""}`;
   if (f.step === "queued") return `in the next install${state.desk?.install_at ? ` · ${clockAt(state.desk.install_at)}` : ""}`;
   return { building: "building…", installing: "installing…", starting: "starting…" }[f.step] || "committing…";
 }
@@ -303,7 +309,7 @@ function deskItemRow(i, lit, held = false) {
   const who = i.state === "queued" && i.after ? [esc(deskHolderOf(i)), `after #${esc(i.after)}`].filter(Boolean).join(" · ") : i.waiting && i.state === "working" ? `waiting · ${esc(firstLine(i.waiting))}` : i.stopped && i.state === "working" ? `stopped · the Desk lead is on it` : s ? `working · ${esc(deskHolderOf(i))} · <span data-ago="${at}">${ago(at)}</span>` : !i.holder && i.state !== "done" ? deskGive(i, "row") : deskInstallWait(i) ? `waiting for install · ${esc(deskHolderOf(i))}` : deskFinishing(i) ? `<span class="dk-fstep">${esc(deskFinStep(i))}</span>` : esc(deskHolderOf(i));
   // Finishing: no age, so its step has the room.
   const when = s || deskFinishing(i) ? "" : i.state === "done" ? `${i.commit ? `<span class="dk-cm">committed ${esc(i.commit)}</span> · ` : ""}${clockAt(deskMs(i.done_at || i.updated))}` : ago(deskMs(i.created));
-  const ok = deskInstallWait(i) || deskFinishing(i) ? "" : i.state === "to_check" && deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id) : i.state === "to_check" ? `<button class="dk-ok" data-desk-act="looks_right" data-id="${esc(i.id)}" aria-label="Looks right"></button>`
+  const ok = deskInstallWait(i) || deskFinishing(i) || deskUncommitted(i) ? "" : i.state === "to_check" && deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id) : i.state === "to_check" ? `<button class="dk-ok" data-desk-act="looks_right" data-id="${esc(i.id)}" aria-label="Looks right"></button>`
     : i.state === "done" ? `<button class="dk-undo" data-desk-act="reopen" data-id="${esc(i.id)}">Undo</button>` : "";
   // What it waits on you for, in one plain line (Answer, Pick, Allow, Try it), and what it unblocks (#182).
   const request = i.state === "needs_you" && state.items.find((item) => item.id === i.ask?.item_id && item.status === "pending");
@@ -915,8 +921,9 @@ function deskItemActs(i) {
  *  few seconds to take it back there too. None while it waits for an install or you're writing why to send it back. */
 function deskLooksTop(i) {
   if (i.state !== "to_check" || deskInstallWait(i) || deskBackFor === i.id) return "";
-  // Committed when its session said DONE: Looks right only closes it (its state line says which commit).
-  return deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id) : `<button class="btn small primary" data-desk-act="looks_right" data-id="${esc(i.id)}">Looks right</button>`;
+  // Committed when its session said DONE: Looks right only closes it (its state line says which commit). Not
+  // committed yet: the same button commits it to main first, and says so.
+  return deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id) : `<button class="btn small primary" data-desk-act="looks_right" data-id="${esc(i.id)}">${deskUncommitted(i) ? "Commit to main" : "Looks right"}</button>`;
 }
 const DESK_LOG_FOLD = 6;
 /** Which items' build logs are open in full (Show all), by id. */
@@ -1078,6 +1085,7 @@ function deskItemNow(i) {
   const who = esc(i.holder?.name || "Its session"), first = i.after && deskItem(i.project, i.after);
   const [dot, word, say] = i.state === "needs_you" ? ["ask", "Waiting on you", ""]
     : deskInstallWait(i) ? ["work", "Waiting for install", "Nothing to try till Cue is installed with it."]
+    : deskUncommitted(i) ? ["ask", "Not on main yet", "Its files aren't committed. Commit to main puts them there and closes it."]
     : i.state === "to_check" ? ["ask", "Ready to check", ""]
     : i.waiting && i.state === "working" ? ["work", "Waiting", `${who} waits: ${esc(firstLine(i.waiting))}`]
     : i.stopped ? ["stop", "Stopped", "The Desk lead is on it."]
