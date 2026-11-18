@@ -85,6 +85,12 @@ function mateSpan(t) {
   return s < 60 ? "<1m" : s < 3600 ? `${Math.floor(s / 60)}m` : `${Math.floor(s / 3600)}h`;
 }
 
+/** A member's files worth showing: not a scratch file in a temp folder (an edit outside the project, kept as an
+ *  absolute path) nor anything in node_modules (a link to the dependencies a shell command made). Its files as the
+ *  hub keeps them stay whole: commits and "which files" still go by them. */
+const MATE_SCRATCH = /^(\/private)?\/(tmp|var\/folders)\//, MATE_DEPS = /(^|\/)node_modules(\/|$)/;
+const mateShownFiles = (t) => (t.files || []).filter((f) => !MATE_SCRATCH.test(f) && !MATE_DEPS.test(f));
+
 /** Minutes since a teammate's last line. */
 const mateQuietMins = (t) => Math.max(1, Math.floor((now() - (t.step_ms || t.started_ms)) / 60000));
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;

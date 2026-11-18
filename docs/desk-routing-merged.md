@@ -4,8 +4,9 @@ This is a review of the cost-aware strategy from #187 (docs/desk-token-strategy.
 session that wrote the routing rules for #180 (docs/desk-routing-rules.md). It says what holds
 up, what to change, where the two disagree, and then gives one set of rules. The strategy file
 has not been changed. The #180 rules file has had small fixes from its reviews, the last one
-being what the lead can see; its ten rules still say 150 thousand and nothing from this merge
-has been put into it. Nothing in Cue has been changed for this. You pick.
+being what the lead can see. It now carries a pointer at the top to rule 17 here for the
+sizes, but its ten rules are unchanged and still say 150 thousand. Nothing in Cue has been
+changed for this. You pick.
 
 ## Do its numbers hold up?
 
@@ -95,7 +96,9 @@ The lead picks among sessions on the Desk. For any other session, Cue asks you f
    from memory. If that session was handed off, the session that took over has its record.
 2. When two sessions both have a record: the one with nothing open; then the one that finished
    there most recently; then a warm one over a cold one; then the smaller one.
-3. A session takes new work only under 110 thousand. Cold or idle doesn't matter under that.
+3. A session takes new work only under 110 thousand. Cold or idle doesn't matter under that,
+   with one exception: a session Cue handed off (rule 17) is not woken.
+   The session that took over has its record and takes the work.
 4. A send-back, or a direct follow-on to an item it just finished, stays with the session up to
    140 thousand.
 5. A session over 110 thousand finishes its item, writes a note, and a fresh session with that
@@ -132,10 +135,14 @@ The lead picks among sessions on the Desk. For any other session, Cue asks you f
 16. Cue pings a session to keep it warm only when work is promised to it: an item queued behind
     another session's item, or an item waiting for your check. Only if the session is over 60
     thousand and idle. Up to four times. Never during a limit stop.
-17. The sizes, in one place. Under 100 thousand, nothing happens: wake it, cold or warm. From
-    100, if a session holds an item and its cache runs out, Cue asks it for a note and a fresh
-    session takes over with its record, as today; a ping from rule 16 puts that off, and Cue
-    never asks during a limit stop. A session still warm takes new work up to 110. Over 110 it
+17. The sizes, in one place. Under 50 thousand, nothing happens: wake it, cold or warm. From
+    50 to 100, Cue asks for a hand-off note when the cache runs out only if the session has an
+    item at work; that is how Cue works today. From 100 up to 200, it asks if the session
+    holds any item not done, one waiting for your check included, or is the lead, which is
+    asked even holding no item. From 200 Cue asks for no note: the session compacts on its own.
+    When a note is written, a fresh session takes over with
+    its record; a ping from rule 16 puts that off, and Cue never asks during a limit stop. A
+    session that was not handed off takes new work up to 110, cold or warm. Over 110 it
     takes only its own send-backs and follow-ons, and hands off when its item is done. At 140
     Cue hands it off whatever it is doing. So rule 4 holds only while the session is still
     there; once it is handed off, the send-back goes to the session that took over.

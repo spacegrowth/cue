@@ -4,6 +4,10 @@ How the Desk's lead should pick a session for each item. These are proposals fro
 day of Desk records. Nothing here is built yet. The 150k and 30-minute figures are new; neither
 is a Cue setting today.
 
+**The sizes here are superseded.** The 150k limit and the 180k hand-off in rules 3 and 4 and in
+"Fit with the context bands" are replaced by the sizes in docs/desk-routing-merged.md (its
+rule 17). Sessions compact on their own at about 166k, so the 180k hand-off never acts.
+
 **Open** means at work or waiting in line. An item waiting for your check does not count toward
 the cap of two below: Cue won't queue anything behind it either. If you send it back, it is at
 work again and counts. This is narrower than Cue's hand-off note from 100k, which counts every
