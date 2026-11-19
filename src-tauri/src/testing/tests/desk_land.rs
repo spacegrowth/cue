@@ -196,6 +196,25 @@ fn a_fourth_item_waits_for_a_free_copy_and_starts_in_it_once_one_is_free() {
 }
 
 #[test]
+fn an_item_waiting_for_a_copy_but_started_now_forgets_that_wait_once_it_has_one() {
+    let w = World::new();
+    let top = |w: &World| {
+        let out = String::from_utf8(std::process::Command::new("git").arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
+        out.lines().next().and_then(|l| l.strip_prefix("worktree ")).unwrap().to_string()
+    };
+    let (_, project, id, _) = routed_with(&w, |w, _, _| w.hub().desk_hold_copies(&top(w), &[1, 2, 3]), |_, _, _| {});
+    assert_eq!(item(&w, &project, "Header jumps")["tree_wait"].as_bool(), Some(true));
+    w.hub().desk_let_go_copy_quietly(2);
+    w.hub().desk_item_act(&id, "start_now", "").unwrap();
+    w.settle();
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!((it["state"].as_str(), it["tree"]["slot"].as_u64()), (Some("working"), Some(2)), "{it}");
+    // Otherwise a later queue (after another item) would read as waiting for a copy, and a freed copy would start it.
+    assert_ne!(it["tree_wait"].as_bool(), Some(true), "{it}");
+    assert!(it["tree_wait_repo"].as_str().unwrap_or("").is_empty(), "{it}");
+}
+
+#[test]
 fn a_dropped_items_copy_with_work_is_kept_and_listed_and_one_without_is_removed() {
     let w = World::new();
     let (dir, project, id, _, path) = routed(&w);

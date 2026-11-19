@@ -82,6 +82,9 @@ impl Hub {
                     Some(n) => {
                         let t = ItemTree { repo: main.clone(), path: format!("{main}/{TREES}/desk-{n}"), branch: format!("desk/{id}"), base: String::new(), slot: n };
                         it.tree = Some(t.clone());
+                        // Started another way (Start it now, or freed by its `after`) while it waited for a copy: that wait is over.
+                        it.tree_wait = false;
+                        it.tree_wait_repo.clear();
                         Some(Some(t))
                     }
                     None => {
@@ -538,6 +541,11 @@ impl Hub {
     }
 
     /// The copy held as `slot` let go (its item done elsewhere): the next item waiting for one starts.
+    /// A copy held by `desk_hold_copies` let go of without handing it to a waiting item (as when Start it now gets there first).
+    pub(crate) fn desk_let_go_copy_quietly(&self, slot: u32) {
+        self.write(|st| st.desk.items.retain(|i| i.id != format!("held{slot}")));
+    }
+
     pub(crate) fn desk_let_go_copy(&self, repo: &str, slot: u32) {
         self.write(|st| st.desk.items.retain(|i| i.id != format!("held{slot}")));
         self.desk_trees_free(repo);
