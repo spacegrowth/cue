@@ -1,9 +1,9 @@
 // Cue UI desk_lead — who runs a Desk, and adding to it (ui/desk.js draws the rest). Each project's Desk has one lead:
 // a normal session you pick ("Who runs this Desk?") or a new one Cue starts; you tell it, it does the work or hands it
 // out. Here: the picker (zero, one or several sessions; "Keep <name>" when changing), ⋯ in the head strip, the
-// ended lead's line, "Give to…" on an item no one holds, and the quick-add line at the top of Items (Enter adds; an
-// optional You'll see (#382); several pasted lines add one item a line; ⌘N focuses it). An item you add has no kind: the
-// lead says whether it's a bug, a feature or a task as it routes it. Commands: desk_set_lead, desk_add, desk_give.
+// ended lead's line, "Give to…" on an item no one holds, and the quick-add line at the top of Items (Enter adds;
+// several pasted lines add one item a line; ⌘N focuses it). An item you add has no kind: the lead says whether it's
+// a bug, a feature or a task as it routes it, and writes its You'll see (#382, #400). Commands: desk_set_lead, desk_add, desk_give.
 
 /** The project whose lead is being changed (the picker shows over the lead's chat, with Keep), or null. */
 let deskPick = null;
@@ -11,8 +11,6 @@ let deskPick = null;
 let deskLeadBusy = null;
 /** The item whose "Give to…" menu is open: { id, at: "row" | "pane" }, or null. */
 let deskGiveFor = null;
-/** The project whose quick-add line has its You'll see open (what you'll see when it's done, #382), or null. */
-let deskQaDone = null;
 /** The lead's lines in its chat you opened (their word and body): shut by default, a redraw keeps them open (#157). */
 const deskLnOpen = new Set();
 /** The title of the last ITEM line drawn: a ROUTE "#new" after it is that item (parse.rs reads it so). */
@@ -156,34 +154,32 @@ async function deskGiveTo(id, sid) {
 
 // ---------- the quick-add line ----------
 
-/** The quick-add line's draft keys, a pair a project (what you half-typed stays on its own project's Desk). */
-const deskQaKeys = (project = deskSelection()) => ({ line: `desk-qa:${project}`, done: `desk-qa-done:${project}` });
-/** The line (or its You'll see) on screen. */
+/** The quick-add line's draft key, one a project (what you half-typed stays on its own project's Desk). */
+const deskQaKeys = (project = deskSelection()) => ({ line: `desk-qa:${project}` });
+/** The line on screen. */
 const deskQaEl = (which = "line") => document.querySelector(`.dk-board .dk-qa [data-qa="${which}"]`);
 const deskQaFocusEl = (which) => deskQaEl(which)?.focus();
 
-/** At the top of Items: "Add an item…" with its picture button (or paste or drop one on it), the pictures added,
- *  "+ You'll see" (or its line, open). The lead adds its technical check for the session (#382). */
+/** At the top of Items: "Add an item…" with its picture button (or paste or drop one on it), and the pictures added.
+ *  Nothing more: the lead writes what you'll see, and the session's check (#382, #400). */
 function deskQuickAdd() {
   const k = deskQaKeys();
-  const done = deskQaDone === deskSelection() ? `<input class="dk-qa-in dk-qa-done" data-qa="done" data-text="${esc(k.done)}" placeholder="You'll see… (optional)" spellcheck="false" value="${esc(draft(k.done).text)}"/>`
-    : `<button class="dk-link dk-qa-more" data-desk-qa-done>+ You'll see</button>`;
-  return `<div class="dk-qa" data-drop="${esc(k.line)}"><div class="dk-qa-row"><input class="dk-qa-in" data-qa="line" data-text="${esc(k.line)}" placeholder="Add an item…" spellcheck="false" value="${esc(draft(k.line).text)}"/><button class="icon-btn" data-attach="${esc(k.line)}" aria-label="Add an image">${IMAGE_ICON}</button></div>${draftChips(k.line)}${done}</div>`;
+  return `<div class="dk-qa" data-drop="${esc(k.line)}"><div class="dk-qa-row"><input class="dk-qa-in" data-qa="line" data-text="${esc(k.line)}" placeholder="Add an item…" spellcheck="false" value="${esc(draft(k.line).text)}"/><button class="icon-btn" data-attach="${esc(k.line)}" aria-label="Add an image">${IMAGE_ICON}</button></div>${draftChips(k.line)}</div>`;
 }
-/** Add what's in the line (or `titles`, pasted lines): one item each, of no kind (the lead says); You'll see and the
- *  pictures go with a single one. The line keeps the cursor for the next. */
+/** Add what's in the line (or `titles`, pasted lines): one item each, of no kind (the lead says); the pictures go
+ *  with a single one. The line keeps the cursor for the next. */
 async function deskQaAdd(titles = null) {
   const project = deskSelection(), k = deskQaKeys(project);
   const list = (titles || [draft(k.line).text]).map((t) => t.trim()).filter(Boolean);
   if (!list.length) return deskQaFocusEl("line");
-  const kind = "", see = titles ? "" : draft(k.done).text.trim(), images = titles ? [] : draft(k.line).images;
-  if (!titles) { delete drafts[k.line]; delete drafts[k.done]; deskQaDone = null; saveDrafts(); }
+  const kind = "", images = titles ? [] : draft(k.line).images;
+  if (!titles) { delete drafts[k.line]; saveDrafts(); }
   renderMain();
   deskQaFocusEl("line");
   const failed = [];
   let why = "";
   for (const title of list) {
-    try { await invoke("desk_add", { project, kind, title, ...(see && { see }), ...(images.length && { images }) }); }
+    try { await invoke("desk_add", { project, kind, title, ...(images.length && { images }) }); }
     catch (e) { failed.push(title); why = String(e); }
   }
   // What didn't go: the first back in the line (when it's empty), and how many.
@@ -192,21 +188,16 @@ async function deskQaAdd(titles = null) {
     if (!draft(k.line).text) {
       draft(k.line).text = failed[0];
       if (images.length && !draft(k.line).images.length) draft(k.line).images = images;
-      // A single one's You'll see comes back with it, its line open.
-      if (see && !draft(k.done).text) { draft(k.done).text = see; deskQaDone = project; }
       saveDrafts();
     }
   }
   renderMain();
   deskQaFocusEl("line");
 }
-/** Keys in the quick-add line: Enter adds, ⇧Enter opens You'll see, Esc closes it. True when it was the line's. */
+/** Keys in the quick-add line: Enter adds. True when it was the line's. */
 function deskQaKey(e, key) {
-  const k = deskQaKeys();
-  if (key !== k.line && key !== k.done) return false;
-  if (e.key === "Enter" && e.shiftKey && key === k.line) { deskQaDone = deskSelection(); renderMain(); deskQaFocusEl("done"); return true; }
-  if (e.key === "Enter" && !e.shiftKey) { deskQaAdd(); return true; }
-  if (e.key === "Escape" && deskQaDone && !draft(k.done).text) { deskQaDone = null; renderMain(); deskQaFocusEl("line"); return true; }
+  if (key !== deskQaKeys().line) return false;
+  if (e.key === "Enter") { deskQaAdd(); return true; }
   return false;
 }
 /** ⌘N on a project's Desk: the quick-add line. */
@@ -226,7 +217,6 @@ const DESK_LEAD_CLICKS = {
   deskGive: (el) => { const at = el.dataset.at; deskGiveFor = deskGiveFor?.id === el.dataset.deskGive && deskGiveFor.at === at ? null : { id: el.dataset.deskGive, at }; renderMain(); },
   deskGiveTo: (el) => deskGiveTo(el.dataset.id, el.dataset.deskGiveTo),
   deskWhy: (el) => { const k = el.dataset.deskWhy; if (!deskLnOpen.delete(k)) deskLnOpen.add(k); renderMain(); },
-  deskQaDone: () => { deskQaDone = deskSelection(); renderMain(); deskQaFocusEl("done"); },
 };
 
 if (typeof document !== "undefined") {

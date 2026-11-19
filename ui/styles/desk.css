@@ -211,9 +211,6 @@
 .dk-qa-row { display: flex; align-items: center; gap: 8px; }
 .dk-qa-in { flex: 1; min-width: 0; height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); font: 13px var(--sans); outline: none; }
 .dk-qa-in:focus { border-color: var(--muted); }
-.dk-qa-done { flex: none; }
-.dk-qa-more { align-self: flex-start; color: var(--muted); font-size: 12px; font-weight: 600; }
-.dk-qa-more:hover { color: var(--ink); }
 
 /* Give to…: a quiet link in a row's holder place (a button in the open item), its menu over what's below (rows stay put). */
 .dk-givewrap { position: relative; display: inline-block; }

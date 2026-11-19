@@ -500,14 +500,15 @@ test("a long Desk name shows in full and many recent Desks scroll sideways, at a
     await page.setViewportSize({ width, height: 800 });
     const name = page.locator(".dk-sw-btn b");
     await expect(name).toHaveText(long);
-    const cut = await name.evaluate((el) => { const s = el.closest(".dk-strip").getBoundingClientRect(), b = el.getBoundingClientRect(); return el.scrollWidth > el.clientWidth + 1 || b.right > s.right || b.left < s.left; });
-    expect(cut).toBe(false);
+    await expect.poll(() => name.evaluate((el) => { const s = el.closest(".dk-strip")?.getBoundingClientRect(), b = el.getBoundingClientRect(); return !s || el.scrollWidth > el.clientWidth + 1 || b.right > s.right || b.left < s.left; })).toBe(false);
     // Every recent Desk is there (none dropped), on one row that scrolls sideways when they don't fit.
     const row = page.locator(".dk-rcs");
     await expect(row.locator(".dk-rc")).toHaveCount(6);
-    const r = await row.evaluate((el) => ({ wraps: new Set([...el.children].map((c) => c.offsetTop)).size, over: el.scrollWidth > el.clientWidth, x: getComputedStyle(el).overflowX }));
+    // Read in one go, again if a redraw swapped the row out meanwhile (a detached row has no style).
+    const read = () => row.evaluate((el) => ({ wraps: new Set([...el.children].map((c) => c.offsetTop)).size, over: el.scrollWidth > el.clientWidth, x: getComputedStyle(el).overflowX }));
+    await expect.poll(async () => (await read()).x).toBe("auto");
+    const r = await read();
     expect(r.wraps).toBe(1);
-    expect(r.x).toBe("auto");
     if (width < 1000) expect(r.over).toBe(true);
     if (r.over) {
       await row.hover();
@@ -1068,23 +1069,20 @@ test("the quick-add line: Enter adds an item of no kind (the lead says which), t
   await expect(page.locator(".dk-pg .dk-pnow .dk-pword")).toHaveText("Not given out");
 });
 
-test("You'll see is optional: ⇧Enter or + You'll see opens it, Enter adds both; Esc closes an empty one (#382)", async ({ page, cue }) => {
+test("Add an item is one box and the picture button: no You'll see box; the lead writes it (#400)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  const line = page.locator('.dk-qa [data-qa="line"]'), done = page.locator('.dk-qa [data-qa="done"]');
-  await expect(done).toHaveCount(0);
+  const qa = page.locator(".dk-qa"), line = qa.locator('[data-qa="line"]');
+  await expect(qa.locator("input")).toHaveCount(1);
+  await expect(qa.locator('[data-qa="done"], [data-desk-qa-done]')).toHaveCount(0);
+  await expect(qa).not.toContainText("You'll see");
+  await expect(qa.locator("[data-attach]")).toBeVisible();
   await line.fill("Search keeps its place");
   await line.press("Shift+Enter");
-  await expect(done).toBeFocused();
-  await done.press("Escape");
-  await expect(done).toHaveCount(0);
-  await expect(line).toHaveValue("Search keeps its place");
-  await page.locator("[data-desk-qa-done]").click();
-  await done.fill("It reopens where it was");
-  await done.press("Enter");
-  await cue.called("desk_add", { project: "cue", kind: "", title: "Search keeps its place", see: "It reopens where it was" });
-  await expect(done).toHaveCount(0);
+  const c = await cue.called("desk_add", { project: "cue", kind: "", title: "Search keeps its place" });
+  expect(c.args.see).toBeUndefined();
   await expect(line).toHaveValue("");
+  await expect(qa.locator("input")).toHaveCount(1);
 });
 
 test("several lines pasted: an item a line (bullets dropped); one line pastes as text", async ({ page, cue }) => {
@@ -1149,18 +1147,15 @@ test("pasted lines that don't go: the first back in the line, and how many faile
   await expect(page.locator('.dk-qa [data-qa="line"]')).toHaveValue("One");
 });
 
-test("one item with You'll see that doesn't go: both come back, You'll see open", async ({ page, cue }) => {
+test("one item that doesn't go comes back in the line", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await cue.override("desk_add", () => { throw "offline"; });
   const line = page.locator('.dk-qa [data-qa="line"]');
   await line.fill("Search keeps its place");
-  await line.press("Shift+Enter");
-  await page.locator('.dk-qa [data-qa="done"]').fill("It reopens where it was");
-  await page.locator('.dk-qa [data-qa="done"]').press("Enter");
+  await line.press("Enter");
   await expect(page.locator(".toast")).toContainText("Not added: offline");
   await expect(line).toHaveValue("Search keeps its place");
-  await expect(page.locator('.dk-qa [data-qa="done"]')).toHaveValue("It reopens where it was");
 });
 
 test("⋯ in the head strip with an item open: the open pane closes and the picker shows", async ({ page, cue }) => {
