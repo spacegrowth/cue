@@ -94,6 +94,10 @@ pub struct DeskItem {
     /// Its holder stopped on it and the Desk lead is settling it: nothing for you yet. Worked out as it's shown.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub stopped: bool,
+    /// What its holder did last while at work on it, and when (#285): its row says so, and reads "Stalled" once that
+    /// is `QUIET_MS` old. Worked out as it's shown (hub/desk_stall.rs `act_of`); None when it isn't at work on it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub act: Option<Act>,
     /// Its work git said wasn't committed as its holder's turn last ended on it (paths in their folders): a stop then
     /// is the Desk lead's, shown as "not committed", never waiting on you (#213, hub/desk_stall.rs). Saved.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -184,6 +188,26 @@ pub struct DeskItem {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub said: Vec<Said>,
 }
+
+/// What an item's holder did last while at work on it (#285), as its row shows it.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct Act {
+    /// When it last did anything (ms): its latest step, its turn's start, its last words, its crew's latest step.
+    pub at_ms: u64,
+    /// What it's doing, as the row says it while it moves: "Editing desk.rs".
+    pub now: String,
+    /// The same once it has stalled: "last read model.rs".
+    pub was: String,
+    /// When it reads "Stalled" if it does nothing more (ms): `QUIET_MS` after `at_ms`. 0 while its helpers are at it
+    /// (it handed work to an agent that runs on): never stalled meanwhile. The window reads it stalled from then on by
+    /// its own clock (desk.js `deskStalled`), so the row turns without the hub saying anything new.
+    #[serde(default)]
+    pub stalls_at: u64,
+}
+
+/// How long an item's holder may do nothing while at work on it before the item reads "Stalled" (#285): the one
+/// threshold (the window gets `Act::stalls_at`).
+pub const QUIET_MS: u64 = 10 * 60 * 1000;
 
 /// How many earlier stints an item keeps (`held_before`).
 pub const HELD_KEPT: usize = 8;

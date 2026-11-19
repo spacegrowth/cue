@@ -149,6 +149,17 @@
 .dk-who { max-width: 140px; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-who:has(.dk-givewrap) { overflow: visible; }
 .dk-age { color: var(--muted); font-family: var(--mono); font-size: 11px; white-space: nowrap; }
+/* At work (#285): what its holder is doing now, and how long since, in ink after its name; one line, cut at "…" so the
+   row keeps its height. Stalled: the word in bold, the rest and the title muted. A word and a tone, never a stripe. */
+.dk-doing { flex: 0 1 auto; min-width: 0; color: var(--ink); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-doing::before { content: "· "; color: var(--muted); }
+.dk-doing [data-ago] { color: var(--muted); font: 11px var(--mono); }
+.dk-it.stalled:not(.on) .dk-t, .dk-it.stalled:not(.on) .dk-doing { color: var(--muted); }
+.dk-stw { font-weight: 700; color: var(--ink); }
+.dk-it.on .dk-doing, .dk-it.on .dk-doing [data-ago], .dk-it.on .dk-stw { color: var(--on-sel); }
+/* "6 moving · 3 stalled" at the right of In progress (#285). */
+.dk-gh .dk-split { margin-left: auto; font-weight: 600; letter-spacing: 0; text-transform: none; font-size: 12px; }
+.dk-gh .dk-split .n { font-size: 11px; }
 /* Looks right on a row: a quiet outlined ✓ that fills in when you hover the row (or focus it). */
 .dk-ok { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 1.5px solid var(--accent); border-radius: 50%; background: none; color: var(--accent); font: 700 12px var(--sans); cursor: pointer; }
 .dk-ok::before { content: "✓"; }

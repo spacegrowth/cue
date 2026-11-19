@@ -5,6 +5,7 @@
 // who runs the Desk (picked, changed, ended); Give to…; the quick-add line; and with All projects, every project's
 // Desk as a card.
 import { test, expect } from "./cue.mjs";
+import { NOW } from "./clock.mjs";
 
 /** Project `p` picked in the header (All projects with ""). */
 const pick = async (page, p) => {
@@ -3966,4 +3967,44 @@ test("the open item's long title keeps its full width beside the ‹, not one le
   expect(lines).toBeLessThanOrEqual(4);
   const arrow = await boxOf(row.locator(".dk-larrow"));
   expect(arrow.right).toBeLessThanOrEqual(icon.x);   // still at the row's left edge
+});
+
+test("a working row says what its holder does and since when; quiet 10 minutes, it reads Stalled (#285)", async ({ page, cue }) => {
+  await cue.open("desk", { frozen: true });
+  await openDesk(page);
+  const order = await listOrder(page);
+  const heights = () => page.locator(".dk-items .dk-it").evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height));
+  const before = await heights();
+  const set = (acts) => cue.change((st, acts) => {
+    const items = st.desk.projects.find((x) => x.project === "cue").items;
+    for (const [id, act] of Object.entries(acts)) items.find((i) => i.id === id).act = act;
+  }, acts);
+  const MIN = 60000;
+  const act = (ago, now, was, quiet = 10) => ({ at_ms: NOW - ago * MIN, now, was, stalls_at: NOW - ago * MIN + quiet * MIN });
+  // d3 one minute in, d5 fourteen quiet minutes; d1 waits on you, however old its last step.
+  await set({ d3: act(1, "Editing desk.rs", "last edited desk.rs"), d5: act(14, "Reading model.rs", "last read model.rs"), d1: act(30, "Running cargo test", "last ran cargo test") });
+  await expect(page.locator('[data-desk-item="d3"] .dk-doing')).toHaveText("Editing desk.rs · 1m");
+  await expect(page.locator('[data-desk-item="d5"] .dk-doing')).toHaveText("Stalled · last read model.rs · 14m ago");
+  await expect(page.locator('[data-desk-item="d5"]')).toHaveClass(/stalled/);
+  await expect(page.locator('[data-desk-item="d3"]')).not.toHaveClass(/stalled/);
+  const color = (sel) => page.locator(sel).evaluate((el) => getComputedStyle(el).color);
+  expect(await color('[data-desk-item="d5"] .dk-t')).not.toEqual(await color('[data-desk-item="d3"] .dk-t'));
+  expect(await page.locator('[data-desk-item="d5"]').evaluate((el) => getComputedStyle(el).borderLeftWidth)).toBe("0px");
+  await expect(page.locator(".dk-items .dk-gh .dk-split")).toHaveText("1 moving · 1 stalled");
+  // Waiting on you is never stalled, nor counted.
+  await expect(page.locator('[data-desk-item="d1"] .dk-doing')).toHaveCount(0);
+  await expect(page.locator(".dk-items .dk-gh .dk-split")).toHaveCount(1);
+  // The boundary: a second before its tenth quiet minute it's moving; at it, stalled.
+  await set({ d5: { at_ms: NOW - 9 * MIN, now: "Reading model.rs", was: "last read model.rs", stalls_at: NOW + 1000 }, d3: { at_ms: NOW - 10 * MIN, now: "Editing desk.rs", was: "last edited desk.rs", stalls_at: NOW } });
+  await expect(page.locator('[data-desk-item="d5"] .dk-doing')).toHaveText("Reading model.rs · 9m");
+  await expect(page.locator('[data-desk-item="d3"] .dk-doing')).toHaveText("Stalled · last edited desk.rs · 10m ago");
+  await expect(page.locator(".dk-items .dk-gh .dk-split")).toHaveText("1 moving · 1 stalled");
+  // Same rows, same heights, same order.
+  expect(await heights()).toEqual(before);
+  expect(await listOrder(page)).toEqual(order);
+  // With nothing new from the hub, the clock alone turns it: d5's quiet time runs out and it reads Stalled.
+  await page.clock.setFixedTime(NOW + 2000);
+  await page.clock.runFor(1000);
+  await expect(page.locator('[data-desk-item="d5"] .dk-doing')).toHaveText(/^Stalled · last read model.rs · /);
+  await expect(page.locator(".dk-items .dk-gh .dk-split")).toHaveText("0 moving · 2 stalled");
 });

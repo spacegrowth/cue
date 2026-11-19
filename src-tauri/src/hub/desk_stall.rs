@@ -315,3 +315,101 @@ fn to_lead(st: &mut Store, sid: &str, id: &str, now: u64, fx: &mut Effects) {
         fx.sends.push((lead, words));
     }
 }
+
+/// What holder `h` did last while at work on its item, and when (#285): its latest step, else its last words; for a
+/// crew member, its own latest step. None for a holder that asks you something (waiting on you, never stalled), or a
+/// crew member not at work.
+pub(super) fn act_of(st: &Store, h: &Holder) -> Option<crate::desk::Act> {
+    if let Some((lead, agent)) = crew_parts(h) {
+        let t = st.sessions.get(lead)?.team.iter().find(|t| (t.agent_id == agent || t.call == agent) && t.working())?;
+        return Some(act_words(&t.step, t.step_ms.max(t.started_ms), false));
+    }
+    let s = st.sessions.get(&h.sid)?;
+    // Deciding: it asks you (a permission, a question): waiting on you, never stalled.
+    if s.state == "deciding" {
+        return None;
+    }
+    let doing = if s.state == "working" { s.doing.as_str() } else { "" };
+    // Its last sign of life: its latest step, its turn's start (its state's), its last words, its crew's latest steps.
+    // A message sent to it isn't: Cue's own "Done?" would read as work.
+    let said = s.thread.iter().rev().find(|e| e.role == "agent").map_or(0, |e| e.at_ms);
+    let crew = s.team.iter().filter(|t| t.working()).map(|t| t.step_ms.max(t.started_ms)).max().unwrap_or(0);
+    let at = s.since_ms.max(if doing.is_empty() { 0 } else { s.doing_ms }).max(said).max(crew);
+    // Handed to agents that run on (an Agent call under way, or background agents Cue can't read): theirs is the
+    // work, as for being stuck (activity.rs). Its crew's steps are read, so a quiet crew stalls it.
+    let helped = crew == 0 && (doing.starts_with("Delegating") || s.state == "agent");
+    if doing.is_empty() {
+        let words = last_line(s);
+        let now = match s.state.as_str() {
+            "agent" if !s.driven_by.is_empty() => format!("Waiting on {}", s.driven_by),
+            _ if !words.is_empty() => words.clone(),
+            _ => "Starting".into(),
+        };
+        let was = if words.is_empty() { "nothing said yet".into() } else { format!("last said: {words}") };
+        return Some(crate::desk::Act { at_ms: at, now, was, stalls_at: stalls_at(at, helped) });
+    }
+    Some(act_words(doing, at, helped))
+}
+
+/// A step ("Reading model.rs", "Running: cargo test", "Thinking…") as an item's row says it: now, and once stalled.
+pub(super) fn act_words(step: &str, at: u64, helped: bool) -> crate::desk::Act {
+    let step = step.trim();
+    let (now, was) = if let Some(rest) = step.strip_prefix("Running: ") {
+        (format!("Running {rest}"), format!("last ran {rest}"))
+    } else if let Some(rest) = step.strip_prefix("Searching the web: ") {
+        (format!("Searching the web for {rest}"), format!("last searched the web for {rest}"))
+    } else if let Some(rest) = step.strip_prefix("Searching: ") {
+        (format!("Searching for {rest}"), format!("last searched for {rest}"))
+    } else if let Some(rest) = step.strip_prefix("Finding files: ") {
+        (format!("Finding files: {rest}"), format!("last looked for {rest}"))
+    } else if let Some(rest) = step.strip_prefix("Delegating: ") {
+        (format!("Handed off: {rest}"), format!("last handed off {rest}"))
+    } else if let Some(rest) = step.strip_prefix("Editing ") {
+        (step.to_string(), format!("last edited {rest}"))
+    } else if let Some(rest) = step.strip_prefix("Reading ") {
+        (step.to_string(), format!("last read {rest}"))
+    } else if let Some(rest) = step.strip_prefix("Updating ") {
+        (step.to_string(), format!("last updated {rest}"))
+    } else if let Some(rest) = step.strip_prefix("Using ") {
+        (step.to_string(), format!("last used {rest}"))
+    } else if step.starts_with("Thinking") {
+        ("Thinking".to_string(), "thinking".to_string())
+    } else if step.starts_with("Writing") {
+        ("Writing its reply".to_string(), "writing its reply".to_string())
+    } else if step.is_empty() {
+        ("Starting".to_string(), "nothing done yet".to_string())
+    } else {
+        (step.trim_end_matches('…').to_string(), format!("last: {}", step.trim_end_matches('…')))
+    };
+    crate::desk::Act { at_ms: at, now, was, stalls_at: stalls_at(at, helped) }
+}
+
+/// When an item whose holder last did anything at `at` reads "Stalled": `QUIET_MS` on; never (0) while its helpers
+/// are at it.
+fn stalls_at(at: u64, helped: bool) -> u64 {
+    if helped { 0 } else { at + crate::desk::model::QUIET_MS }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::act_words;
+    use crate::desk::model::QUIET_MS;
+
+    #[test]
+    fn a_step_reads_as_what_it_does_now_and_what_it_did_last() {
+        let words = |step: &str| { let a = act_words(step, 1000, false); (a.now, a.was) };
+        assert_eq!(words("Editing desk.rs"), ("Editing desk.rs".into(), "last edited desk.rs".into()));
+        assert_eq!(words("Reading model.rs"), ("Reading model.rs".into(), "last read model.rs".into()));
+        assert_eq!(words("Running: cargo test"), ("Running cargo test".into(), "last ran cargo test".into()));
+        assert_eq!(words("Searching: fn shown"), ("Searching for fn shown".into(), "last searched for fn shown".into()));
+        assert_eq!(words("Thinking…"), ("Thinking".into(), "thinking".into()));
+        assert_eq!(words("Writing…"), ("Writing its reply".into(), "writing its reply".into()));
+    }
+
+    #[test]
+    fn it_stalls_ten_quiet_minutes_after_its_last_step_unless_helpers_are_at_it() {
+        assert_eq!(QUIET_MS, 10 * 60 * 1000);
+        assert_eq!(act_words("Editing desk.rs", 5000, false).stalls_at, 5000 + QUIET_MS);
+        assert_eq!(act_words("Delegating: review", 5000, true).stalls_at, 0, "helpers at work never stall");
+    }
+}

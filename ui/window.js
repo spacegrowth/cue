@@ -351,6 +351,8 @@ function tickAges() {
   document.querySelectorAll("[data-cold-in]").forEach((el) => { if (+el.dataset.coldIn <= now()) coldDone = true; else el.textContent = coldIn(+el.dataset.coldIn); });
   // A countdown (a finishing item's next install, #339): redraws once it's due, to say what it waits on then.
   document.querySelectorAll("[data-until]").forEach((el) => { if (+el.dataset.until <= now()) coldDone = true; else el.textContent = untilIn(+el.dataset.until); });
+  // A working Desk row that goes quiet (#285): redraws once its quiet time is up, so it reads Stalled.
+  document.querySelectorAll("[data-stalls]").forEach((el) => { if (+el.dataset.stalls <= now()) coldDone = true; });
   if (coldDone) renderMain();
   document.querySelectorAll("[data-helper-span]").forEach((el) => { el.textContent = helperSpan({ started_ms: +el.dataset.helperSpan }); });
 }

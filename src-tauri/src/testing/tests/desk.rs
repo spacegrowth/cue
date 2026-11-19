@@ -1784,3 +1784,35 @@ fn the_lead_can_fold_a_repeated_ask_into_the_item_it_repeats() {
     assert!(sent_to(&w, &l).last().unwrap().contains(&format!("#{first} not merged: ")));
     assert!(desk(&w, &project)["items"].as_array().unwrap().iter().any(|i| i["id"] == first.as_str()));
 }
+
+/// A working item's holder: what it does now and when (`act`), stalling 10 quiet minutes later; an open ask is
+/// waiting on you, never stalled (#285).
+#[test]
+fn a_working_item_says_what_its_holder_does_and_when_it_stalls() {
+    let w = World::new();
+    let a = w.session("pi-1").pi().in_project("web");
+    a.started();
+    w.hub().desk_set_member("web", "pi-1", true).unwrap();
+    let id = w.hub().desk_add("web", "task", "Footer", "", Some("pi-1")).unwrap().id;
+    a.prompt(&format!("Work on #{id}"));
+    a.doing("Reading model.rs");
+    w.settle();
+    let it = item(&desk(&w, "web"), "Footer").clone();
+    assert_eq!(it["state"], "working", "{it}");
+    let act = &it["act"];
+    assert_eq!((act["now"].as_str(), act["was"].as_str()), (Some("Reading model.rs"), Some("last read model.rs")), "{it}");
+    let at = act["at_ms"].as_u64().unwrap();
+    assert_eq!(act["stalls_at"].as_u64().unwrap() - at, crate::desk::model::QUIET_MS, "one 10-minute threshold");
+    // A newer step moves it on.
+    w.advance(60_000);
+    a.doing("Editing desk.rs");
+    w.settle();
+    let act = item(&desk(&w, "web"), "Footer")["act"].clone();
+    assert_eq!(act["now"], "Editing desk.rs");
+    assert!(act["at_ms"].as_u64().unwrap() >= at + 60_000, "{act}");
+    // An open ask: waiting on you, so no act (the window counts it neither moving nor stalled).
+    let _ask = a.ask_bash("rm -rf build");
+    let it = item(&desk(&w, "web"), "Footer").clone();
+    assert_eq!(it["state"], "needs_you", "{it}");
+    assert!(it["act"].is_null(), "{it}");
+}

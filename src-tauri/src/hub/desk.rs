@@ -251,6 +251,10 @@ pub(super) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
             }
         }
     }
+    // At work on it: what its holder did last, and when, so its row shows whether it's moving or stalled (#285).
+    if out.state == "working" && out.now_on && !out.stopped && out.waiting.is_empty() && out.ask.is_none() {
+        out.act = super::desk_stall::act_of(st, &h);
+    }
     out.holder = Some(h);
     out
 }
