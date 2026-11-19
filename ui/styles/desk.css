@@ -979,6 +979,9 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
 .dk-kept-t { flex: 1; min-width: 0; }
 .dk-kept-s { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-kept .btn.armed { color: var(--deny); }
+.dk-old { align-items: flex-start; }
+.dk-old-list { max-height: 160px; overflow-y: auto; margin-top: 4px; }
+.dk-old-b { display: flex; flex-direction: column; gap: 6px; }
 
 /* Away (#361, #373 pick C): a switch in the Items head (with until when and the spend while on), its rules card, and
    each call the lead made while away as a quiet line under the item it changed. */

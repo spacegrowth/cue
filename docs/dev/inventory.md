@@ -14,12 +14,12 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 
 | What | Count |
 |---|---|
-| `#[tauri::command]` | 171 (3 sync) |
+| `#[tauri::command]` | 172 (3 sync) |
 | Lock declarations (static or field) | 110 |
 | Lock acquisitions | 261 |
 | Lock-graph edges | 59 |
 | Spawn sites | 88 |
-| External calls: fs / db / process / notify / login / socket | 454 / 208 / 52 / 4 / 1 / 4 |
+| External calls: fs / db / process / notify / login / socket | 462 / 208 / 53 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 12 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -71,6 +71,7 @@ Sync commands run on the main thread. "Hands work to": the threads or pools its 
 | `desk_start` | async | `ipc/desk.rs::desk_start` | ipc::with_hub |
 | `ask_before_set` | async | `ipc/desk.rs::ask_before_set` | ipc::with_hub |
 | `desk_lands_set` | async | `ipc/desk.rs::desk_lands_set` | ipc::with_hub |
+| `desk_old_copies` | async | `ipc/desk.rs::desk_old_copies` | ipc::with_hub |
 | `desk_away_set` | async | `ipc/desk.rs::desk_away_set` | ipc::with_hub |
 | `desk_pause` | async | `ipc/desk.rs::desk_pause` | ipc::with_hub |
 | `desk_away_sweep` | async | `ipc/desk.rs::desk_away_sweep` | ipc::with_hub |
@@ -494,7 +495,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (454)
+### fs (462)
 
 | In | Call | Times |
 |---|---|---|
@@ -583,6 +584,13 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hub/desk_commit.rs::put_parts` | metadata | 1 |
 | `hub/desk_commit.rs::put_parts` | remove_file | 1 |
 | `hub/desk_commit.rs::put_parts` | write | 1 |
+| `hub/desk_copies.rs::Hub::desk_clear_helpers` | Path::exists | 1 |
+| `hub/desk_copies.rs::Hub::desk_clear_helpers` | Path::is_dir | 1 |
+| `hub/desk_copies.rs::Hub::desk_old_copies_answer` | Path::exists | 1 |
+| `hub/desk_copies.rs::Hub::desk_old_copies_find` | canonicalize | 1 |
+| `hub/desk_copies.rs::copies_of` | Path::is_dir | 1 |
+| `hub/desk_copies.rs::within` | canonicalize | 2 |
+| `hub/desk_copies.rs::work_on_main` | Path::exists | 1 |
 | `hub/desk_finish.rs::in_progress` | Path::exists | 1 |
 | `hub/desk_finish.rs::same_dir` | canonicalize | 2 |
 | `hub/desk_theirs.rs::own_part` | read_to_string | 1 |
@@ -1080,7 +1088,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/turns.rs::read_so_far` | db::turns_read | 1 |
 | `startup/mod.rs::settle_folder_and_hooks` | db::rewrite_paths | 1 |
 
-### process (52)
+### process (53)
 
 | In | Call | Times |
 |---|---|---|
@@ -1098,6 +1106,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hosted/launch.rs::command` | (program computed) | 1 |
 | `hosted/running.rs::Running::end_left` | /bin/ps | 1 |
 | `hosted/running.rs::end_leftovers` | /bin/ps | 1 |
+| `hub/desk_copies.rs::size_kb` | du | 1 |
 | `ipc/settings.rs::copy_text` | /usr/bin/pbcopy | 1 |
 | `ipc/settings.rs::open_link` | /usr/bin/open | 1 |
 | `lib.rs::activate_app` | open | 1 |

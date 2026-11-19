@@ -275,6 +275,10 @@ impl Hub {
             });
         }
         let Some(tops) = self.finish_land(&it, &todo, &parts, &sources) else { return };
+        // Its helpers' copies whose work is on the main line now (#376).
+        for top in &tops {
+            self.desk_clear_helpers(id, top, None);
+        }
         self.finish_release(id);
         self.finish_after(id, &tops);
     }
@@ -530,6 +534,7 @@ impl Hub {
         let Some(_claim) = Claim::take(self, "tick") else { return };
         self.finish_tick();
         self.desk_trees_catch_up();
+        self.desk_old_copies_tick();
         self.taken_out_tick();
         // Circles the waits list has now told to their lead, gone ones let go (#250).
         self.circle_check();

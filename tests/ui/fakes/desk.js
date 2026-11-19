@@ -40,6 +40,11 @@ CueBridge.area("desk", (w) => {
       }
       w.changed(); return { kept: [] };
     },
+    // Old copies (desk_copies.rs): yes removes the listed ones, no hides the list; either way it goes.
+    desk_old_copies: ({ desk: id, yes }) => {
+      const d = deskOf(id), o = d.old_copies; d.old_copies = null; w.changed();
+      return yes ? { removed: o?.copies?.length || 0, kb: o?.kb || 0, kept: [] } : { removed: 0, kb: 0, kept: [] };
+    },
     desk_rename: ({ id, name }) => {
       const d = deskOf(id); d.name = name.trim(); w.changed(); return null;
     },

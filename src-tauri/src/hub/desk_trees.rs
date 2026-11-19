@@ -23,7 +23,7 @@ use super::*;
 use crate::desk::{DeskItem, ItemTree, KeptTree};
 
 /// Where a repository's copies are, under its main checkout.
-const TREES: &str = ".claude/worktrees";
+pub(super) const TREES: &str = ".claude/worktrees";
 /// The build folder Cue's copies share, under `TREES`.
 const SHARED_TARGET: &str = "desk-target";
 
@@ -367,6 +367,8 @@ impl Hub {
     fn finish_landed(&self, id: &str, t: &ItemTree, short: &str) {
         let made = vec![(t.repo.clone(), short.to_string())];
         self.save_made(id, &made);
+        // Its helpers' copies whose work is on the main line now go too; any other is moved out of its copy (#376).
+        self.desk_clear_helpers(id, &t.repo, Some(&t.path));
         remove(t);
         self.write(|st| {
             if let Some(i) = st.desk.item_mut(id) {

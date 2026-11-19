@@ -34,6 +34,8 @@ mod desk_cleanup;
 mod desk_commit;
 mod desk_finish;
 mod desk_trees;
+mod desk_copies;
+pub(crate) use desk_copies::OldCopies;
 mod desk_unstick;
 mod desk_diff;
 mod desk_handoff;

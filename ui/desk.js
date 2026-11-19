@@ -148,6 +148,32 @@ function deskKeptRow(k) {
   const armed = deskDropArm === k.id;
   return `<div class="dk-it dk-kept" data-kept="${esc(k.id)}"><div class="dk-kept-t"><b>#${esc(k.id)}</b> ${esc(k.title)}<div class="dk-kept-s">${esc(k.path)} · ${esc(k.branch)} · dropped ${ago(k.at)} ago</div></div><button class="btn small${armed ? " armed" : ""}" data-desk-act="remove_kept" data-id="${esc(k.id)}">${armed ? "Remove it and its work" : "Remove"}</button></div>`;
 }
+/** A size given in KB, as people say it. */
+const deskKb = (kb) => (kb >= 1048576 ? `${(kb / 1048576).toFixed(1)} GB` : kb >= 1024 ? `${Math.round(kb / 1024)} MB` : `${kb || 0} KB`);
+/** Desk `desk`'s copies whose work is already in the app (#376, hub/desk_copies.rs): found once a launch, listed with
+ *  their sizes, removed only once you say so (two clicks); Not now hides them till Cue starts again. */
+function deskOldCopiesHtml(desk, o) {
+  if (!o?.copies?.length) return "";
+  const armed = deskDropArm === "old-copies", n = o.copies.length;
+  const rows = o.copies.map((c) => `<div class="dk-kept-s">${esc(c.path)}${c.branch ? ` · ${esc(c.branch)}` : ""} · ${deskKb(c.kb)}</div>`).join("");
+  return `<div class="dk-gh">Old copies <span class="n">${n}</span><span class="dk-split">${deskKb(o.kb)}</span></div>
+    <div class="dk-it dk-kept dk-old"><div class="dk-kept-t">Copies of this project whose work is already in the app, and that nothing is using.<div class="dk-old-list">${rows}</div></div>
+    <div class="dk-old-b"><button class="btn small${armed ? " armed" : ""}" data-desk-old="remove" data-desk="${esc(desk)}">${armed ? `Remove ${n} (${deskKb(o.kb)})` : "Remove them"}</button><button class="btn small" data-desk-old="later" data-desk="${esc(desk)}">Not now</button></div></div>`;
+}
+/** Your answer to the old copies list: Remove (armed first) or Not now. */
+async function deskOldCopiesAnswer(el) {
+  const yes = el.dataset.deskOld === "remove";
+  if (yes && deskDropArm !== "old-copies") { deskDropArm = "old-copies"; return renderMain(); }
+  deskDropArm = null;
+  if (yes) toast("Removing the old copies…", 4000);
+  try {
+    const r = await invoke("desk_old_copies", { desk: el.dataset.desk, yes });
+    const kept = r.kept?.length ? ` · ${r.kept.length} kept: ${r.kept[0].why}` : "";
+    if (yes) toast(`Removed ${r.removed} ${r.removed === 1 ? "copy" : "copies"} · ${deskKb(r.kb)} freed${kept}`, 8000);
+  }
+  catch (e) { toast(String(e), 5000); }
+  renderMain();
+}
 /** Install now on a finishing item in the next install (step "queued"): everything waiting installs at once. */
 const deskInstallNow = (i, cls) => (deskFinishing(i) && i.finish?.step === "queued" ? `<button class="${cls}" data-desk-act="install_now" data-id="${esc(i.id)}">Install now</button>` : "");
 /** Which lane a finished item waits in (#346, option B of docs/desk-install-lane-plan.md): "landing" from its DONE till

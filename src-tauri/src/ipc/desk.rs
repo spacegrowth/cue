@@ -146,6 +146,13 @@ pub(crate) async fn desk_lands_set(hub: State<'_, Arc<Hub>>, desk: String, lands
     with_hub(&hub, move |h| h.desk_lands_set(&desk, &lands)).await?
 }
 
+/// Your answer to Desk `desk`'s list of copies whose work is already in the app (#376): `yes` removes them (each
+/// looked at again first), no hides the list till Cue starts again. Returns what was removed and what stayed.
+#[tauri::command]
+pub(crate) async fn desk_old_copies(hub: State<'_, Arc<Hub>>, desk: String, yes: bool) -> Result<serde_json::Value, String> {
+    with_hub(&hub, move |h| h.desk_old_copies_answer(&desk, yes)).await?
+}
+
 /// Away mode for Desk `desk` (`away`: { on, until, budget, rules }): saved, its lead told. Returns its view.
 #[tauri::command]
 pub(crate) async fn desk_away_set(hub: State<'_, Arc<Hub>>, desk: String, away: serde_json::Value) -> Result<serde_json::Value, String> {

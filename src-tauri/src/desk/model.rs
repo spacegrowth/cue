@@ -519,6 +519,9 @@ pub struct Desk {
     pub circles: HashMap<String, (u64, bool)>,
     /// When each Desk's list of what its lead moved (#374) was last cleared (ms; saved: db/desk.rs).
     pub moves_cleared: HashMap<String, u64>,
+    /// Each repository's copies whose work is already on its main line, found once a launch for you to remove
+    /// (hub/desk_copies.rs, #376). Not saved.
+    pub old_copies: HashMap<String, crate::hub::OldCopies>,
 }
 
 /// How an install is going, as the installer says: its tag and commit, its step ("building" | "installing" |
