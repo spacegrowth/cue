@@ -161,9 +161,7 @@ function openPath(pl, e) {
   const sel = getSelection();
   if (!sel.isCollapsed && pl.contains(sel.anchorNode)) return;
   // A markdown file: in the reader, for its session (one on this Mac; another's paths aren't linked at all).
-  const path = pl.dataset.path, sid = pl.dataset.sid || current()?.s?.session_id;
-  if (isDocPath(path) && sid && !sessionOf(sid)?.machine) return openDoc(sid, path);
-  return invoke("open_link", { url: path }).catch((err) => toast(`Couldn't open: ${err}`));
+  return openPathOrDoc(pl.dataset.path, pl.dataset.sid || current()?.s?.session_id);
 }
 /** Screenshots a message points at, full size: the ones Cue could read. */
 function openLocalImages(llb) {
@@ -177,7 +175,7 @@ const MESSAGE_CLICKS = [
   rule("[data-act='send-forward']", () => sendForward()),
   rule("[data-act='cancel-forward']", () => { sheet = forward = null; renderMain(); }),
   rule("a[data-path]", openPath),
-  rule("a[data-href]", (link, e) => { e.preventDefault(); invoke("open_link", { url: link.dataset.href }).catch((err) => toast(`Couldn't open: ${err}`)); }),
+  rule("a[data-href]", (link, e) => { e.preventDefault(); openPathOrDoc(link.dataset.href); }),
   rule("[data-local-lb]", openLocalImages),
   rule("[data-lightbox]", (lb) => { lightbox = JSON.parse(lb.dataset.lightbox); renderMain(); }),
   rule("[data-draft-lightbox]", (dlb) => { const [key, n] = dlb.dataset.draftLightbox.split(/:(?=\d+$)/); lightbox = { srcs: draft(key).images.map((im) => im.data), i: +n }; renderMain(); }),
