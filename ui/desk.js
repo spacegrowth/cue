@@ -1143,6 +1143,11 @@ function deskThread(i, d) {
       const back = c.why.startsWith("sent back");
       rows.push({ at: deskMs(c.at), by: "You", you: true, back, tag: back ? deskBackLabel(c, i) : deskHeldTag(c, i), text: c.text, html: deskBackWords(c.text, backPics.get(c) || 0) });
     }
+    // The lead's note to its holder (#338: NOTE:, at any stage): a message from the lead, with whether it was taken.
+    else if (/^note to /.test(c.why || "")) {
+      const at = deskMs(c.at);
+      rows.push({ at, by: c.by, tag: `Note to ${c.why.slice(8)}`, text: c.text, html: `<div class="dk-md">${deskMd(c.text)}</div>${deskTakenHtml(i, { text: c.text, at })}` });
+    }
     // A hand-off is a record line, not a message (#276): one quiet line in the time line.
     else if (DESK_HANDOFF.test(c.text)) rows.push({ at: deskMs(c.at), rec: "Hand-off", html: `${esc(c.by)}: ${esc(c.text)}${c.why ? `: ${esc(c.why)}` : ""}` });
   }

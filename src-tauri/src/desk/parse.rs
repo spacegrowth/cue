@@ -29,6 +29,8 @@ pub enum Line {
     Cut { id: String, on: String, why: String },
     /// The lead folded item `id`, a repeat of item `into`, into it: its words and pictures go to `into`, and it goes.
     Merge { id: String, into: String, why: String },
+    /// The lead's note to whoever holds item `id`, at any stage (#338): `NOTE: #<id> | <words>`.
+    Note { id: String, text: String },
 }
 
 /// The Desk lines in `text`, in order.
@@ -122,6 +124,7 @@ fn one(t: &str) -> Option<Line> {
         "SPLIT" => split(body),
         "CUT" => cut(body),
         "MERGE" => merge(body),
+        "NOTE" => note(body),
         _ => None,
     }
 }
@@ -238,6 +241,17 @@ fn cut(body: &str) -> Option<Line> {
 }
 
 /// "#320 into #319 | why: …" (or "#320 -> #319"): item 320 folded into item 319.
+/// `NOTE: #<id> | <words>` (the words may hold `|` too): Line::Note.
+fn note(body: &str) -> Option<Line> {
+    let (head, text) = body.split_once('|')?;
+    let head = head.trim();
+    if !head.starts_with('#') || head.contains(' ') {
+        return None;
+    }
+    let text = text.trim().to_string();
+    (!text.is_empty()).then_some(Line::Note { id: id_of(head)?, text })
+}
+
 fn merge(body: &str) -> Option<Line> {
     let p = parts(body);
     let head = p.first()?;

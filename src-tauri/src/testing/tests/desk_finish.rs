@@ -369,14 +369,20 @@ fn lead_of(w: &World, project: &str) -> String {
     desk(w, project)["lead"]["sid"].as_str().unwrap().to_string()
 }
 
+/// A route back to its holder while its finish is under way: it stays in the install, and the why goes to its holder
+/// as a note (#338), the lead told so; with no why, it's refused.
 #[test]
-fn a_route_of_a_finishing_item_under_way_is_refused_with_why_and_it_stays_in_the_install() {
+fn a_route_of_a_finishing_item_under_way_goes_to_its_holder_as_a_note_and_it_stays_in_the_install() {
     let w = World::new();
     let (_fake, _dir, project, id) = done_in_cue(&w);
-    let d = lead_of(&w, &project);
+    let (h, d) = (holder(&w, &project), lead_of(&w, &project));
     ends(&w, &d, &format!("ROUTE: #{id} -> cue-teams | why: one more thing"));
     let told = sent_to(&w, &d).last().cloned().unwrap();
-    assert_eq!(told, format!("Refused: #{id} is committed and waiting for the next install. You can wait for it, or ask the user (ASK: #{id} | …)."));
+    assert_eq!(told, format!("Noted: #{id} is committed and waiting for the next install, so it stays as it is; your why went to cue-teams as a note."));
+    assert!(sent_to(&w, &h).last().unwrap().ends_with(": one more thing"), "{:?}", sent_to(&w, &h));
+    ends(&w, &d, &format!("ROUTE: #{id} -> cue-teams"));
+    let told = sent_to(&w, &d).last().cloned().unwrap();
+    assert_eq!(told, format!("Refused: #{id} is committed and waiting for the next install. You can wait for it, tell its holder something (NOTE: #{id} | …), or ask the user (ASK: #{id} | …)."));
     let shown = item(&w, &project, "Header jumps");
     assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str()), (Some("finishing"), Some("queued")), "{shown}");
 }
@@ -435,7 +441,7 @@ fn a_finishing_item_under_way_routed_off_the_desk_is_refused_without_asking_you(
     let o = mid_turn(&w);
     assert_eq!(w.snapshot().session(&o)["project"].as_str(), Some(project.as_str()), "a session of the project, off its Desk");
     ends(&w, &d, &format!("ROUTE: #{id} -> tidier | why: it knows the build"));
-    assert_eq!(sent_to(&w, &d).last().unwrap(), &format!("Refused: #{id} is committed and waiting for the next install. You can wait for it, or ask the user (ASK: #{id} | …)."));
+    assert_eq!(sent_to(&w, &d).last().unwrap(), &format!("Refused: #{id} is committed and waiting for the next install. You can wait for it, tell its holder something (NOTE: #{id} | …), or ask the user (ASK: #{id} | …)."));
     let snap = w.snapshot();
     let asked: Vec<_> = snap.cards_of(&d).into_iter().filter(|c| !c["tool_input"]["desk_use"].is_null()).collect();
     assert!(asked.is_empty(), "the user isn't asked to add tidier: {asked:?}");
@@ -936,6 +942,48 @@ fn the_leads_done_on_a_finishing_item_closes_it_once_installed() {
     let shown = item(&w, &project, "Header jumps");
     assert_eq!(shown["state"], "done", "closed once Cue has it: {shown}");
     assert_eq!(commits(&dir), "2", "no second commit");
+}
+
+/// #338: the lead's NOTE reaches whoever holds an item while it's finishing, shows on its Thread (a step with its
+/// delivery), and leaves it finishing; a route back to its holder with a why, while its install waits, goes to it as a
+/// note too (never dropped), and the lead is told so. An item nobody holds: the lead is told why.
+#[test]
+fn the_lead_can_send_a_note_to_the_holder_of_a_finishing_item() {
+    let w = World::new();
+    let fake = Arc::new(Fake::default());
+    w.hub().desk_set_installer(fake.clone());
+    let (_, project, id) = done_with(&w, |_, _, dir| as_this_cue(dir), |w, h, dir| {
+        let f = |n: &str| dir.join(n).to_string_lossy().to_string();
+        says(w, h, writes("toolu_A", "agentA", "fixer", &[f("a.txt")]));
+    });
+    let shown = item(&w, &project, "Header jumps");
+    assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str()), (Some("finishing"), Some("queued")), "{shown}");
+    let (holder, name) = (shown["holder"]["sid"].as_str().unwrap().to_string(), shown["holder"]["name"].as_str().unwrap().to_string());
+    let lead = desk(&w, &project)["lead"]["sid"].as_str().unwrap().to_string();
+    let to = |w: &World, sid: &str, has: &str| w.hosted.sent().into_iter().filter(|(s, t)| s == sid && t.contains(has)).map(|(_, t)| t).collect::<Vec<_>>();
+    ends(&w, &lead, &format!("Telling it.\nNOTE: #{id} | check the header on a small window | too\nNOTE: #zz9 | hello"));
+    w.settle();
+    let got = to(&w, &holder, "Note from the Desk lead");
+    assert_eq!(got.len(), 1, "{got:?}");
+    assert_eq!(got[0], format!("Note from the Desk lead on Desk item #{id} (Header jumps, finishing): check the header on a small window | too"));
+    let shown = item(&w, &project, "Header jumps");
+    assert_eq!(shown["state"], "finishing", "it stays as it is: {shown}");
+    let decs = desk(&w, &project)["decisions"].clone();
+    let step = decs.as_array().unwrap().iter().find(|d| d["why"] == format!("note to {name}")).cloned().unwrap_or_else(|| panic!("a step on its Thread: {decs}"));
+    assert_eq!((step["item_id"].as_str(), step["text"].as_str()), (Some(id.as_str()), Some("check the header on a small window | too")));
+    assert_eq!(step["delivery"]["session_id"], holder.as_str());
+    let told = to(&w, &lead, "#zz9 note not sent");
+    assert_eq!(told.len(), 1, "{told:?}");
+    // A route back to it while it waits for its install: not refused, not dropped: its why goes to it as a note.
+    ends(&w, &lead, &format!("ROUTE: #{id} -> {name} | why: also the footer"));
+    w.settle();
+    let got = to(&w, &holder, "also the footer");
+    assert_eq!(got.len(), 1, "{got:?}");
+    assert!(got[0].starts_with(&format!("Note from the Desk lead on Desk item #{id}")), "{}", got[0]);
+    let told = to(&w, &lead, &format!("Noted: #{id}"));
+    assert_eq!(told.len(), 1, "{told:?}");
+    assert!(told[0].contains(&format!("went to {name} as a note")), "{}", told[0]);
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "finishing");
 }
 
 /// A project that installs nothing: on main is the last step, and the item is to check as soon as it lands there.

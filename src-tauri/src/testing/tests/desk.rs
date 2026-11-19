@@ -1743,6 +1743,14 @@ fn merge_lines_are_read() {
     );
 }
 
+#[test]
+fn note_lines_are_read() {
+    assert_eq!(
+        lines("NOTE: #338 | look at the footer | too\n- **NOTE:** #5 | hi\nNOTE: #3\nNOTE: 3 | no hash\nNOTE: #4 |  "),
+        vec![Line::Note { id: "338".into(), text: "look at the footer | too".into() }, Line::Note { id: "5".into(), text: "hi".into() }]
+    );
+}
+
 /// MERGE: #copy into #first (#321): the copy leaves the list, its words and pictures go to the first (whose holder,
 /// at work on it, hears them), what waited on the copy waits on the first, and no session is started for the copy.
 #[test]

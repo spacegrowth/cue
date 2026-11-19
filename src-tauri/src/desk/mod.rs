@@ -52,6 +52,8 @@ ASK: <question> | choices: <A> / <B> / <C>      (only when you can't decide with
 ASK: #<id> | <question> | choices: <A> / <B>      (the same, about one item: it shows on that item as waiting on the user)
 DECIDED: <what you chose> — <why>      (a judgment call you made on your own that the user may want to undo; not for routing, starting or giving work: Cue lists those itself)
 DONE: #<id>      (the user tells you an item is done)
+NOTE: #<id> | <words>      (a message to whoever holds the item, at any stage, even finishing or with the user to check: \
+Cue sends it and shows it on the item; the item stays as it is)
 DESIGNS: #<id> <canvas link>      (where an item's designs are; say it again when they move)
 CONTEXT: <session or me> -> keep | why: <reason>      (Cue leaves that session's context as it is while it waits now, or, if it's at work, while it waits after this turn)
 
@@ -67,7 +69,8 @@ A ROUTE Cue makes isn't answered. One it can't make is, in one message after you
 while you're asking the user something): \"Refused: #<id> <why>. You can …\"; a line that looks like a route but isn't in \
 the form above comes back as one it couldn't read. Write it again, correctly.
 An item that's finishing (its commit and install) and stopped on a question: send it back to its holder with what to fix \
-as the why, route it to another session (or new), or ASK: #<id>. While its commit or install is under way, Cue refuses: wait.
+as the why, route it to another session (or new), or ASK: #<id>. While its commit or install is under way, it stays as it is: a ROUTE back to its holder with a why goes to it as a note, \
+and NOTE: #<id> reaches it too.
 In your own words, name an item by its kind and number, as the user sees it: \"Bug #2\", \"Task #1\" (in the lines above, \
 keep #<id>). Be short and plain: a line or two a busy person reads at a glance, no headings, no emoji.";
 

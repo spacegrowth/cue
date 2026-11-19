@@ -445,8 +445,17 @@ pub(super) fn route(st: &mut Store, project: &str, by: &By, id: &str, to: &str, 
     let to_new = fresh || holder.as_ref().is_some_and(|h| h.sid == by.sid && h.lead_sid.is_empty());
     // Finishing (its commit and install): the lead may take it off its finish only once it stopped on a question;
     // while its commit or install is under way, it's refused before anything else (the user isn't asked either).
+    // A route back to its holder with a why is never dropped (#338): the why goes to it as a note, the item as it is.
     if let Some(busy) = super::desk_finish::under_way(st, id) {
-        return Some(format!("Refused: #{id} {busy}. You can wait for it, or ask the user (ASK: #{id} | …)."));
+        let held = st.desk.item(id).and_then(|i| i.holder.clone());
+        let back = held.filter(|b| holder.as_ref().is_some_and(|h| h.sid == b.sid && h.lead_sid == b.lead_sid));
+        if let Some(b) = back.filter(|_| !why.trim().is_empty()) {
+            return Some(match note(st, project, by, id, why, now, fx) {
+                Ok(()) => format!("Noted: #{id} {busy}, so it stays as it is; your why went to {} as a note.", b.name),
+                Err(no) => no,
+            });
+        }
+        return Some(format!("Refused: #{id} {busy}. You can wait for it, tell its holder something (NOTE: #{id} | …), or ask the user (ASK: #{id} | …)."));
     }
     // A session not on the Desk: you're asked first, and the item stays.
     if let Some(h) = holder.as_ref().filter(|h| !to_new && !may_route(st, project, h, id)) {
@@ -513,6 +522,35 @@ pub(super) fn route(st: &mut Store, project: &str, by: &By, id: &str, to: &str, 
     let text = routed_text(id, &h.name, waits.as_deref(), (reopen || unfinished) && same, same && was_working);
     decide(st, project, Some(id.to_string()), by.name, by.sid, &text, why, now, fx);
     Some(taken(id, &h.name, waits.as_deref()))
+}
+
+/// The lead's note on item `id` of `project` (NOTE:, or a route back to its holder while its finish is under way),
+/// sent to whoever holds it, at any stage (#338): at work, queued, finishing, in the landing line or with you to check.
+/// The item stays as it is; the note is one of its Steps, shown on its Thread, with how it was delivered.
+/// Err: what the lead is told when there's no one to send it to.
+pub(super) fn note(st: &mut Store, project: &str, by: &By, id: &str, words: &str, now: u64, fx: &mut Effects) -> Result<(), String> {
+    let words = words.trim();
+    let it = st.desk.item(id).filter(|i| i.project == project).ok_or_else(|| format!("#{id} note not sent: this Desk has no item #{id}"))?;
+    let h = it.holder.clone().ok_or_else(|| format!("#{id} note not sent: nobody holds it yet; route it first"))?;
+    let stage = match it.state.as_str() {
+        "finishing" => match it.finish.as_ref().map(|f| f.step.as_str()) {
+            Some("landing") => ", in the landing line",
+            _ => ", finishing",
+        },
+        "to_check" => ", with the user to check",
+        "queued" => ", queued",
+        "done" => ", done",
+        _ => "",
+    };
+    let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
+    let message = format!("{crew}Note from the Desk lead on Desk item #{id} ({}{stage}): {words}", it.title);
+    decide(st, project, Some(id.to_string()), by.name, by.sid, words, &format!("note to {}", h.name), now, fx);
+    if let Some(step) = st.desk.decisions.last_mut() {
+        step.undo = "none".into();
+        step.delivery = Some(crate::desk::model::DeskDelivery { session_id: h.to().to_string(), text: message.clone(), at_ms: now });
+    }
+    fx.sends.push((h.to().to_string(), message));
+    Ok(())
 }
 
 /// "Taken: #12 to web." (after `waits`, when it's queued): what the lead is told of a route made (#248).
@@ -784,6 +822,12 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx
             Line::Split { id, titles } => split(st, project, &by, &id, &titles, now, fx),
             Line::Cut { id, on, why } => cut(st, project, &by, &id, &on, &why, now, fx),
             Line::Merge { id, into, why } => merge(st, project, &by, &id, &into, &why, now, fx),
+            Line::Note { id, text } => {
+                let id = st.desk.canon(&id);
+                if let Err(no) = note(st, project, &by, &id, &text, now, fx) {
+                    answers.push(no);
+                }
+            }
             Line::Context { .. } | Line::Designs { .. } => {}
         }
     }
@@ -1202,7 +1246,7 @@ fn desk_line_start(line: &str) -> bool {
     let l = parse::unmarked(line.trim().trim_start_matches('`')).trim_start_matches('`');
     let Some((word, _)) = l.split_once(':') else { return false };
     let word = word.trim_end_matches(['*', '`']).trim();
-    matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "CONTEXT" | "DESIGNS" | "TITLE" | "SPLIT" | "CUT" | "MERGE") || word.eq_ignore_ascii_case("DECIDED")
+    matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "CONTEXT" | "DESIGNS" | "TITLE" | "SPLIT" | "CUT" | "MERGE" | "NOTE") || word.eq_ignore_ascii_case("DECIDED")
 }
 
 /// What you did to item `id` ("looks_right" | "reopen" | "send_back" | "start_now" | "put_before" | "drop"), in the store.
