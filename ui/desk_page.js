@@ -343,12 +343,14 @@ function deskWaitsOn(i) {
   const btn = (act, label, look = "", extra = "") => `<button class="btn small ${look}" data-desk-act="${act}" data-id="${esc(i.id)}"${extra}>${esc(label)}</button>`;
   const box = (text, sub, more = "", tag = "") => `<div class="dk-wo${tag ? " circle" : ""}"><div class="dk-wo-l">Waits on${tag ? `<span class="dk-wo-tag">${tag}</span>` : ""}</div><div class="dk-wo-t">${text}</div>${sub ? `<div class="dk-wo-s">${esc(sub)}</div>` : ""}${more}</div>`;
   const ref = (id) => { const it = deskItem(i.project, id); return `<a href="#" data-desk-item="${esc(id)}">#${esc(id)}</a>${it ? ` ${esc(deskShort(it.title))}` : ""}`; };
+  // Send back, your words to its holder, on every box it waits on you in (#371); "Send back to fix" is the same.
+  const back = i.holder ? btn("send_back", "Send back") : "";
   const c = deskCircleOf(i);
   if (c) {
     const others = c.items.length - 1;
     const links = c.links.map((l) => `<div class="dk-wo-link"><span>#${esc(l.item)} waits on #${esc(l.on)} · ${esc(l.why)}</span><button class="btn small" data-desk-act="cut" data-id="${esc(l.item)}" data-on="${esc(l.on)}">Cut this link</button></div>`).join("");
     const found = c.at ? `Found at ${clockAt(c.at)} · ${c.told ? "the lead was told at once" : "no lead to tell: cut a link here"}` : "";
-    return box(`Itself, through ${DESK_NTH[others] || others} other${others === 1 ? "" : "s"}. None can move until one link is cut.`, found, `<div class="dk-wo-loop">${esc(c.words)}</div>${links}`, "Circle");
+    return box(`Itself, through ${DESK_NTH[others] || others} other${others === 1 ? "" : "s"}. None can move until one link is cut.`, found, `<div class="dk-wo-loop">${esc(c.words)}</div>${links}${back ? `<div class="dk-acts">${back}</div>` : ""}`, "Circle");
   }
   // Queued after another item: "What's holding it up" on its page says so, with Start it now / Put it before here.
   const f = i.finish;
@@ -363,7 +365,7 @@ function deskWaitsOn(i) {
   // A word that mustn't go in, a clash with the main line: its holder's to fix.
   if (f.step === "word" || f.step === "conflict") return box(q, deskSince(f.at), `<div class="dk-acts">${btn("fix_back", "Send back to fix", "primary")}</div>`);
   // Nothing Cue can name: a plain retry, said so.
-  return box(q, deskSince(f.at), `<div class="dk-acts">${btn("rerun", "Run the landing again")}</div><div class="dk-wo-s">A plain retry: nothing known is in its way.</div>`);
+  return box(q, deskSince(f.at), `<div class="dk-acts">${btn("rerun", "Run the landing again")}${back}</div><div class="dk-wo-s">A plain retry: nothing known is in its way.</div>`);
 }
 /** An item's buttons, by where it is. */
 const deskCanRestart = (i) => (i.state === "needs_resume" || i.stopped) && !!sessionOf(i.holder?.lead_sid || i.holder?.sid);
@@ -382,6 +384,8 @@ function deskItemActs(i) {
     : i.state === "new" ? b("start_now", "Start it now in a new session")
     // Its holder's turn cut off (a crash, a quit) leaves it "working" with nobody on it: sent to the holder again.
     : deskCanRestart(i) ? b("start_now", "Restart")
+    // Waiting on you for an answer (#371): Send back is always there too, your words to its holder.
+    : i.state === "needs_you" && i.holder ? b("send_back", "Send back")
     : deskFinishing(i) ? deskInstallNow(i, "btn small")
     // Done by your pick on its mocks (#281): its build item says where it went (deskBuiltLink), nothing to undo here.
     : i.state === "done" && !i.picked ? `<div class="dk-chk-after">${deskCommitLine(i)}</div>` : "";

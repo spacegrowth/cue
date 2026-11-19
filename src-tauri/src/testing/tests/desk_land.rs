@@ -124,6 +124,7 @@ fn a_main_line_that_moved_meanwhile_is_brought_up_to_and_landed_on_top_of() {
 
 #[test]
 fn a_clash_with_the_main_line_goes_back_to_its_holder_and_nothing_lands() {
+    // #371: handed back to the session that did it, at work again: nothing about it waits on you.
     let w = World::new();
     let (dir, project, id, h, path) = routed(&w);
     std::fs::write(dir.join("README"), "main's\n").unwrap();
@@ -133,10 +134,10 @@ fn a_clash_with_the_main_line_goes_back_to_its_holder_and_nothing_lands() {
     ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
     assert_eq!(git(&dir, &["rev-parse", "HEAD"]), main, "nothing landed");
     let it = item(&w, &project, "Header jumps");
-    assert_eq!(it["finish"]["step"], "conflict", "{it}");
-    let q = it["finish"]["question"].as_str().unwrap();
-    assert!(q.contains("README") && q.contains(&path.to_string_lossy().to_string()), "{q}");
-    assert!(w.hosted.sent().iter().any(|(s, t)| *s == h && t.contains("isn't done") && t.contains("README")), "its holder is told");
+    assert_eq!(it["state"], "working", "{it}");
+    assert!(it["finish"].is_null(), "nothing waits on you: {it}");
+    let p = path.to_string_lossy().to_string();
+    assert!(w.hosted.sent().iter().any(|(s, t)| *s == h && t.contains("isn't done") && t.contains("README") && t.contains(&p) && t.contains("merge main into")), "its holder is told what clashed and how to settle it");
     assert!(path.exists() && !tree_of(&w, &project).is_null(), "its copy stays for the fix");
 }
 

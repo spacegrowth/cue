@@ -350,6 +350,11 @@ impl Hub {
             match merge_to_main(&project, folder, &it.title) {
                 Ok(Some(main)) => merged.push(main),
                 Ok(None) => {}
+                // A clash in its work: back to the session that did it (#371); git refusing or a word: waits on you.
+                Err(("clash", question)) => {
+                    self.finish_clash(it, &question);
+                    return None;
+                }
                 Err((step, question)) => {
                     self.finish_ask(&it.id, step, &question, "");
                     return None;
@@ -764,6 +769,17 @@ impl Hub {
     /// Item `it`'s install failed (`step`): it stops on `question` with the log's end kept, and goes back to its
     /// holder with the log, as Send back does (its next DONE finishes it again).
     pub(super) fn finish_failed(&self, it: &DeskItem, question: &str, step: &str, log: &str) {
+        self.finish_back(it, question, step, log, false);
+    }
+
+    /// A clash with the main line in item `it`'s work (#371): handed back to the session that did it, with what
+    /// clashed and how to settle it: at work again, nothing waiting on you. Without a holder it waits on you.
+    pub(super) fn finish_clash(&self, it: &DeskItem, question: &str) {
+        self.finish_back(it, question, "conflict", "", true);
+    }
+
+    /// `finish_failed`, and with `hand_back` the item at work again (as Send back leaves it) instead of waiting on you.
+    fn finish_back(&self, it: &DeskItem, question: &str, step: &str, log: &str, hand_back: bool) {
         self.finish_ask(&it.id, step, question, log);
         let Some(h) = it.holder.clone() else { return };
         let now = now_ms();
@@ -774,6 +790,9 @@ impl Hub {
             let Some(i) = st.desk.item_mut(&id) else { return fx };
             if let Some(c) = i.checks.last_mut() {
                 c.back = question.to_string();
+            }
+            if hand_back {
+                (i.state, i.done_at, i.finish, i.close_on_check) = ("working".into(), None, None, false);
             }
             let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
             let log = if log.is_empty() { String::new() } else { format!("\nThe end of its log:\n{log}") };
@@ -871,7 +890,8 @@ pub(super) fn main_checkout(folder: &str) -> Option<(String, String)> {
 /// `folder`'s work merged into its repository's main checkout, when it's another worktree on a branch with commits
 /// the main checkout's branch doesn't have: tried first without touching any file (`git merge-tree`), its added
 /// lines word-checked, then merged there (`--no-ff`). The main checkout, when merged; None when there was nothing
-/// to merge; else the step and question to stop on (a conflict, a word, or git refusing: nothing merged).
+/// to merge; else the step and question to stop on ("clash": its work clashes with the main line, back to its
+/// session; a word, or git refusing: nothing merged).
 fn merge_to_main(project: &str, folder: &str, title: &str) -> Result<Option<String>, (&'static str, String)> {
     let Some(top) = git("", folder, &[], &["rev-parse", "--show-toplevel"]).map(|t| t.trim().to_string()) else { return Ok(None) };
     let Some((main, onto)) = main_checkout(folder) else { return Ok(None) };
@@ -889,7 +909,7 @@ fn merge_to_main(project: &str, folder: &str, title: &str) -> Result<Option<Stri
     let (out, code) = tried.map_err(|e| ("conflict", format!("Not merged: git couldn't try the merge of {branch} into {onto}: {e}")))?;
     if code != 0 {
         let files: Vec<&str> = out.lines().skip(1).take_while(|l| !l.is_empty()).collect();
-        return Err(("conflict", format!("Not merged: {branch} conflicts with {onto} in {}", files.join(", "))));
+        return Err(("clash", format!("Its work clashes with {onto} in {}: in {top}, merge {onto} into {branch}, settle the clash there, and say DONE again", files.join(", "))));
     }
     let tree = out.lines().next().unwrap_or("").trim().to_string();
     let diff = git("", &main, &[], &["diff", "-U0", "--no-color", "--no-ext-diff", "--no-textconv", &onto, &tree]).ok_or(("conflict", format!("Not merged: git couldn't read the merge of {branch}")))?;

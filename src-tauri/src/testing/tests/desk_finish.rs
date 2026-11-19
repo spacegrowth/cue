@@ -336,7 +336,7 @@ fn crew_work_on_a_branch_of_its_own_is_merged_into_the_main_checkout_never_pushe
 }
 
 #[test]
-fn a_merge_that_conflicts_asks_you_and_leaves_the_main_checkout_as_it_was() {
+fn a_merge_that_conflicts_goes_back_to_its_holder_and_leaves_the_main_checkout_as_it_was() {
     let w = World::new();
     let (dir, project, _) = done_with(&w, |_, _, _| {}, |w, h, dir| {
         crew_in_worktree(w, h, dir, "a.txt");
@@ -345,8 +345,11 @@ fn a_merge_that_conflicts_asks_you_and_leaves_the_main_checkout_as_it_was() {
         git(dir, &["commit", "-q", "-m", "yours"]);
     });
     let shown = item(&w, &project, "Header jumps");
-    assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str()), (Some("needs_you"), Some("conflict")), "{shown}");
-    assert!(shown["latest"].as_str().unwrap().contains("a.txt"), "{shown}");
+    // #371: a clash in its work goes back to the session that did it, not to you.
+    assert_eq!(shown["state"], "working", "{shown}");
+    assert!(shown["finish"].is_null(), "{shown}");
+    let h = holder(&w, &project);
+    assert!(w.hosted.sent().iter().any(|(s, t)| *s == h && t.contains("isn't done") && t.contains("a.txt") && t.contains("settle the clash")), "its holder is told what clashed");
     assert_eq!(git(&dir, &["log", "-1", "--format=%s"]).trim(), "yours", "nothing merged");
     assert!(git(&dir, &["status", "--porcelain"]).trim().is_empty(), "nothing left half-merged");
 }

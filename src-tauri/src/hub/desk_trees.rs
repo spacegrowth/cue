@@ -293,7 +293,7 @@ impl Hub {
                         t.path,
                         t.branch
                     );
-                    self.desk_land_back(&it, &q, "conflict", "");
+                    self.finish_clash(&it, &q);
                     return Landed::Done;
                 }
                 out.lines().next().unwrap_or("").trim().to_string()
