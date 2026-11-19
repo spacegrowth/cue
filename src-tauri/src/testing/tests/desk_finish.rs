@@ -908,6 +908,36 @@ fn an_item_shows_ready_only_once_its_commit_is_on_main_and_says_where_it_is_till
     w.hub().desk_looks_right(&id).unwrap();
 }
 
+/// #337: you tell the lead an item that's still finishing is done: its commit and install go on, and it closes as
+/// Looks right would once Cue has it, never waiting on your check.
+#[test]
+fn the_leads_done_on_a_finishing_item_closes_it_once_installed() {
+    let w = World::new();
+    let fake = Arc::new(Fake::default());
+    w.hub().desk_set_installer(fake.clone());
+    let (dir, project, id) = done_with(&w, |_, _, dir| as_this_cue(dir), |w, h, dir| {
+        let f = |n: &str| dir.join(n).to_string_lossy().to_string();
+        says(w, h, writes("toolu_A", "agentA", "fixer", &[f("a.txt"), f("b.txt")]));
+    });
+    let head = git(&dir, &["rev-parse", "HEAD"]).trim().to_string();
+    let shown = item(&w, &project, "Header jumps");
+    assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str()), (Some("finishing"), Some("queued")), "{shown}");
+    let lead = desk(&w, &project)["lead"]["sid"].as_str().unwrap().to_string();
+    ends(&w, &lead, &format!("The user says it's done.\nDONE: #{id}"));
+    w.settle();
+    let shown = item(&w, &project, "Header jumps");
+    assert_eq!((shown["state"].as_str(), shown["close_on_check"].as_bool()), (Some("finishing"), Some(true)), "still finishing, to close once checked: {shown}");
+    assert!(!w.hosted.sent().into_iter().any(|(s, t)| s == lead && t.contains("not closed")), "nothing to tell the lead");
+    w.advance(31 * 60_000);
+    tick(&w);
+    assert_eq!(fake.started().len(), 1, "its install still made");
+    fake.runs(&head);
+    tick(&w);
+    let shown = item(&w, &project, "Header jumps");
+    assert_eq!(shown["state"], "done", "closed once Cue has it: {shown}");
+    assert_eq!(commits(&dir), "2", "no second commit");
+}
+
 /// A project that installs nothing: on main is the last step, and the item is to check as soon as it lands there.
 #[test]
 fn an_item_in_a_project_with_no_install_is_to_check_once_its_commit_is_on_main() {

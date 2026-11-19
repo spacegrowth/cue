@@ -126,6 +126,11 @@ pub struct DeskItem {
     /// built and installed with it (hub/desk_finish.rs). Kept once it's to check, so Looks right only closes it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub finish: Option<Finish>,
+    /// The Desk lead said DONE on it for you (you told it it's done) while it was finishing or to check: closed as
+    /// Looks right would, at once when it's to check, else as soon as its finishing brings it there (hub/desk.rs
+    /// lead_done, #337). Saved, so an install's restart keeps it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub close_on_check: bool,
     /// Its own copy of its repository to work in (a git worktree on a branch of its own, from the main line as its
     /// holder started), while it has one: landed as one squash commit at its DONE (hub/desk_trees.rs).
     #[serde(default, skip_serializing_if = "Option::is_none")]

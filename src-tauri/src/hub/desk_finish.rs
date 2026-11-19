@@ -158,7 +158,7 @@ impl Hub {
         it
     }
 
-    /// Item `id` to check: nothing (more) to install for it.
+    /// Item `id` to check: nothing (more) to install for it. Closed then when the lead said DONE on it for you.
     fn finish_checked(&self, id: &str) {
         let now = now_ms();
         self.finish_set(id, |i| {
@@ -168,6 +168,18 @@ impl Hub {
                 (f.step, f.at, f.question, f.wait) = ("checked".into(), now, String::new(), String::new());
             }
         });
+        self.desk_close_on_check(id);
+    }
+
+    /// Item `id`, to check, closed as Looks right would when the Desk lead said DONE on it for you (#337,
+    /// `DeskItem::close_on_check`); one still finishing waits for `finish_checked`.
+    pub(super) fn desk_close_on_check(&self, id: &str) {
+        if !self.read(|st| st.desk.item(id).is_some_and(|i| i.close_on_check && i.state == "to_check")) {
+            return;
+        }
+        if let Err(e) = self.desk_looks_right(id) {
+            eprintln!("cue: desk: #{id}: the lead's DONE couldn't close it: {e}");
+        }
     }
 
     /// `f` done to item `id`'s `finish` while it's still finishing, saved.
@@ -235,6 +247,7 @@ impl Hub {
             self.finish_set(id, |i| {
                 (i.state, i.finish, i.updated) = ("to_check".into(), None, super::desk::secs(now));
             });
+            self.desk_close_on_check(id);
             return;
         }
         let (todo, parts, left) = self.to_commit(&it, &sources);

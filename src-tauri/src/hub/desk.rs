@@ -39,6 +39,8 @@ pub(super) struct Effects {
     pub(super) restarts: Vec<(String, String, String)>,
     /// Dropped items that had their own copy: kept or removed (desk_trees.rs).
     pub(super) trees_gone: Vec<DeskItem>,
+    /// Items the lead said DONE on for you (`DeskItem::close_on_check`): closed as Looks right would once to check.
+    pub(super) closes: Vec<String>,
 }
 
 
@@ -954,9 +956,11 @@ fn split(st: &mut Store, project: &str, by: &By, id: &str, titles: &[String], no
     }
 }
 
-/// The lead said DONE on `ids`. Its DONE sends to check only what it holds itself at work (holder_said); for any
-/// other item Cue tells it, in one short message shown in its chat, why the item stays as it is ("#69 not closed:
-/// it waits on your check"), so nothing it says is dropped without a word. Once while the item stays as it is.
+/// The lead said DONE on `ids`. Its DONE sends to check what it holds itself at work (holder_said), and closes for
+/// you, as Looks right would, an item finishing or to check (#337: you told it it's done): at once when it's to check,
+/// else once its finishing brings it there, its commit and install still made. For any other item Cue tells it, in
+/// one short message shown in its chat, why the item stays as it is ("#69 not closed: Ann has it"), so nothing it
+/// says is dropped without a word. Once while the item stays as it is.
 fn lead_done(st: &mut Store, project: &str, lsid: &str, ids: &[String], fx: &mut Effects) {
     let mut notes = Vec::new();
     for id in ids {
@@ -969,6 +973,14 @@ fn lead_done(st: &mut Store, project: &str, lsid: &str, ids: &[String], fx: &mut
         if mine && matches!(it.state.as_str(), "working" | "queued") {
             continue;
         }
+        if matches!(it.state.as_str(), "to_check" | "finishing") {
+            if let Some(it) = st.desk.item_mut(&id) {
+                it.close_on_check = true;
+            }
+            fx.items.push(id.clone());
+            fx.closes.push(id);
+            continue;
+        }
         // Told once while it stays as it is: a change to it (its state, a check, a route) lets the next DONE be told.
         let seen = format!("{}@{}", it.state, it.updated);
         if st.desk.done_told.get(&id) == Some(&seen) {
@@ -976,8 +988,6 @@ fn lead_done(st: &mut Store, project: &str, lsid: &str, ids: &[String], fx: &mut
         }
         let holder = it.holder.as_ref().map(|h| h.name.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| "a session".into());
         let why = match it.state.as_str() {
-            "to_check" => "it waits on your check".to_string(),
-            "finishing" => "it's being committed and installed; then it waits on your check".to_string(),
             "done" => "it's done already".to_string(),
             "working" | "queued" => format!("{holder} has it; its own DONE sends it to your check"),
             _ => "no one has worked on it yet".to_string(),
@@ -993,7 +1003,7 @@ fn lead_done(st: &mut Store, project: &str, lsid: &str, ids: &[String], fx: &mut
 
 /// The last line of Cue's note on a lead's DONE it couldn't act on: for the lead, not shown in its chat
 /// (ui/desk_lead.js deskDoneNotes).
-const DONE_NOTE_FOR_LEAD: &str = "Only the person closes an item that waits on their check (Looks right). Don't say DONE for these again.";
+const DONE_NOTE_FOR_LEAD: &str = "Say DONE for an item only once it's finishing or waiting on the user's check. Don't say DONE for these again.";
 
 /// The lead said to keep session `who`'s context ("me": its own) as it is: Cue asks it for no hand-off note for the
 /// idle stretch it's in (cache_tick's Desk rule), until it next works; said while it works, for the idle stretch
@@ -1206,6 +1216,7 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
         "looks_right" => {
             it.state = "done".into();
             it.after = None;
+            it.close_on_check = false;
             it.done_at = Some(secs(now));
             release(st, id, now, &mut fx);
         }
@@ -1223,7 +1234,7 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
             if words.is_empty() {
                 return Err("Say what isn't right first: type it in the box, then Send back".into());
             }
-            (it.state, it.done_at, it.finish) = ("working".into(), None, None);
+            (it.state, it.done_at, it.finish, it.close_on_check) = ("working".into(), None, None, false);
             // Kept on the DONE it answers, so its card says why (the pictures, added by ipc desk_item_act, counted).
             if let Some(c) = it.checks.last_mut() {
                 let (why, pics) = words.split_once("\nPictures with it").unwrap_or((&words, ""));
@@ -1702,7 +1713,7 @@ impl Hub {
     /// What a change left to do, with the store let go: its saves, then its messages and questions, and new items
     /// for their lead (told a moment later, with any others that came meanwhile).
     pub(super) fn desk_done(&self, mut fx: Effects) {
-        if fx.items.is_empty() && fx.said.is_empty() && fx.dropped.is_empty() && fx.decisions.is_empty() && fx.sends.is_empty() && fx.asks.is_empty() && fx.news.is_empty() && fx.starts.is_empty() && fx.joined.is_empty() && fx.uses.is_empty() && fx.stopped.is_empty() && fx.trees_gone.is_empty() {
+        if fx.items.is_empty() && fx.said.is_empty() && fx.dropped.is_empty() && fx.decisions.is_empty() && fx.sends.is_empty() && fx.asks.is_empty() && fx.news.is_empty() && fx.starts.is_empty() && fx.joined.is_empty() && fx.uses.is_empty() && fx.stopped.is_empty() && fx.trees_gone.is_empty() && fx.closes.is_empty() {
             return;
         }
         // Items going to work get their own copies (or wait for one), before their messages are saved and sent.
@@ -1779,6 +1790,9 @@ impl Hub {
             }
         }
         self.desk_later(fx.starts, fx.checked);
+        for id in fx.closes {
+            self.later(0, move |h| h.desk_close_on_check(&id));
+        }
     }
 
     /// How your Restart of item `id` went, sent to its holder `name`: on the item (shown while it needs resume) and

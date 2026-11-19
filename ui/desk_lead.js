@@ -356,12 +356,13 @@ function deskStopNote(e) {
     + (files.length ? `<details class="dk-sn-f"><summary>${files.length} file${files.length > 1 ? "s" : ""} not committed</summary><div class="dk-sn-fl">${files.map(esc).join("<br>")}</div></details>` : "")
     + `</div></div>`;
 }
-/** What Cue told the lead of a DONE it couldn't act on (hub/desk.rs lead_done: "#69 not closed: it waits on your
- *  check", a line each, then its words for the lead, not shown): a centred line an item, "Cue · not closed [task]
- *  Task #69 title · why", its number and title opening it. null for any other message. */
+/** What Cue told the lead of a DONE it couldn't act on (hub/desk.rs lead_done: "#69 not closed: it's done already",
+ *  a line each, then its words for the lead, not shown, ending "Don't say DONE for these again." as older notes did):
+ *  a centred line an item, "Cue · not closed [task] Task #69 title · why", its number and title opening it. null for
+ *  any other message. */
 function deskDoneNotes(e) {
   const lines = String(e.text || "").split("\n").map((l) => l.trim()).filter(Boolean);
-  if (lines.length < 2 || !/^Only the person closes an item that waits on their check/.test(lines[lines.length - 1])) return null;
+  if (lines.length < 2 || !/Don't say DONE for these again\.$/.test(lines[lines.length - 1])) return null;
   const notes = lines.slice(0, -1).map((l) => /^#([^\s:]+) not closed: (.*)$/.exec(l));
   if (notes.some((m) => !m)) return null;
   const known = (x) => (state.desk?.projects || []).flatMap((d) => d.items).find((i) => deskIdIs(i, x));

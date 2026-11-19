@@ -127,23 +127,30 @@ fn a_file_already_taken_out_with_git_rm_is_committed_as_removed() {
     assert_eq!(git(&dir, &["show", "--name-status", "--format=", "HEAD"]).trim(), "A\ta.txt\nD\tshared.txt", "the removal goes in with the rest");
 }
 
+/// #337: you tell the lead an item is done, and its DONE closes it as Looks right would; one it can't close (no such
+/// item) it's told why, once.
 #[test]
-fn the_leads_done_on_an_item_to_check_leaves_it_to_you_and_tells_the_lead_why_once() {
+fn the_leads_done_on_an_item_to_check_closes_it_and_tells_the_lead_why_not_once_for_one_it_cant() {
     let w = World::new();
-    let (_, project, id) = ready(&w);
+    let (dir, project, id) = ready(&w);
     let lead = desk(&w, &project)["lead"]["sid"].as_str().unwrap().to_string();
     let told = |w: &World| w.hosted.sent().into_iter().filter(|(s, t)| s == &lead && t.contains("not closed")).map(|(_, t)| t).collect::<Vec<_>>();
-    ends(&w, &lead, &format!("Checked it.\nDONE: #{id}, #zz9"));
+    ends(&w, &lead, &format!("The user checked it.\nDONE: #{id}, #zz9"));
     w.settle();
-    assert_eq!(item(&w, &project, "Header jumps")["state"], "to_check", "still yours to check");
+    let shown = item(&w, &project, "Header jumps");
+    assert_eq!(shown["state"], "done", "closed as Looks right would: {shown}");
+    assert!(shown.get("close_on_check").is_none_or(|v| v == false), "nothing left to close: {shown}");
+    assert_eq!(commits(&dir), "2", "its DONE's commit, no second one");
     let said = told(&w);
     assert_eq!(said.len(), 1, "{said:?}");
-    assert!(said[0].starts_with(&format!("#{id} not closed: it waits on your check\n#zz9 not closed: this Desk has no item #zz9\n")), "{}", said[0]);
+    assert!(said[0].starts_with("#zz9 not closed: this Desk has no item #zz9\n"), "{}", said[0]);
     assert!(said[0].ends_with("Don't say DONE for these again."), "its words for the lead last");
-    // Said again of the same item, unchanged: not told again.
-    ends(&w, &lead, &format!("DONE: #{id}"));
+    // Said again: the item is done (told once), #zz9 unchanged (not told again).
+    ends(&w, &lead, &format!("DONE: #{id}, #zz9"));
     w.settle();
-    assert_eq!(told(&w).len(), 1);
+    let said = told(&w);
+    assert_eq!(said.len(), 2, "{said:?}");
+    assert_eq!(said[1].lines().next(), Some(format!("#{id} not closed: it's done already").as_str()));
 }
 
 #[test]
