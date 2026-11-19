@@ -637,23 +637,36 @@ function deskAwayCard(d, taskApprovals) {
     <div class="dk-scroll" data-scroll-key="desk-away:${esc(d.project)}">${body}</div></div>`;
 }
 
-/** The rules card, open: { project, desk, on, until "HH:MM", budget "10", rules, busy, shown: the keys "Before you
- *  go" holds, fixed once the lead's sweep is over }. */
+/** The rules card, open: { project (the Desk it was opened on), on (Away is on there), until "HH:MM", budget "10",
+ *  rules, busy, desks: every Desk as { project, desk, was (Away on as it opened), on (its switch), swept (its lead's
+ *  sweep was sent, or it needs none) }, shown: the keys "Before you go" holds, fixed once every sweep is over }.
+ *  One switch for every Desk: Done sets Away on each Desk switched on, off on each switched off. */
 let deskAwayEdit = null;
 const DESK_AWAY_FIRST = 5;
+const deskAwayDesks = () => (state.desk?.projects || []);
 function deskAwayOpen(project) {
   const d = deskOf(project), a = deskAwayOf(d);
-  deskAwayEdit = { project, desk: d.id || d.project, on: !!a.on, until: a.on ? (a.until ? deskHm(a.until) : "") : "07:00",
-    budget: a.on ? (a.budget != null ? String(a.budget) : "") : "10", rules: { ...DESK_AWAY_DEFAULTS, ...(a.rules || {}) }, busy: false, shown: null, swept: !!a.on };
-  // From off: the lead goes through every open item first and settles what it can (sweeping till its turn ends).
-  // "Before you go" is fixed only once the sweep was sent: what the sweep leaves is what it shows.
-  if (!a.on) {
-    // Sent means the hub now has it sweeping (desk_away_sweep sets it before it returns): kept here too, so a state
-    // that hasn't caught up yet doesn't fix the list before the lead has gone through it.
-    const e = deskAwayEdit, sent = (on) => { if (deskAwayEdit !== e) return; const dd = (state.desk?.projects || []).find((x) => x.project === e.project); if (on && dd) dd.away = { ...deskAwayOf(dd), sweeping: true }; e.swept = true; renderMain(); };
-    invoke("desk_away_sweep", { desk: e.desk, rules: { ...e.rules } }).then(() => sent(true), (err) => { toast(`The lead couldn't go through the items: ${err}`); sent(false); });
-  }
+  const desks = deskAwayDesks().map((x) => { const was = !!deskAwayOf(x).on; return { project: x.project, desk: x.id || x.project, was, on: a.on ? was : true, swept: was }; });
+  deskAwayEdit = { project, on: !!a.on, until: a.on ? (a.until ? deskHm(a.until) : "") : "07:00",
+    budget: a.on ? (a.budget != null ? String(a.budget) : "") : "10", rules: { ...DESK_AWAY_DEFAULTS, ...(a.rules || {}) }, busy: false, shown: null, desks };
+  // Each Desk going from off to on: its lead goes through every open item first and settles what it can.
+  for (const r of desks) if (r.on && !r.swept) deskAwaySweep(r);
   renderMain();
+}
+/** Ask Desk row `r`'s lead to sort its items out before Away. "Before you go" is fixed only once every sweep was sent:
+ *  what the sweeps leave is what it shows. Sent means the hub now has it sweeping (desk_away_sweep sets it before it
+ *  returns): kept here too, so a state that hasn't caught up yet doesn't fix the list before the lead has gone through. */
+function deskAwaySweep(r) {
+  const e = deskAwayEdit;
+  r.swept = false;
+  const sent = (on) => {
+    if (deskAwayEdit !== e) return;
+    const dd = deskAwayDesks().find((x) => x.project === r.project);
+    if (on && dd) dd.away = { ...deskAwayOf(dd), sweeping: true };
+    r.swept = true;
+    renderMain();
+  };
+  invoke("desk_away_sweep", { desk: r.desk, rules: { ...e.rules } }).then(() => sent(true), (err) => { toast(`${deskName(deskOf(r.project))}'s lead couldn't go through the items: ${err}`); sent(false); });
 }
 function deskAwayHtml() {
   const e = deskAwayEdit;
@@ -662,13 +675,16 @@ function deskAwayHtml() {
   const row = (k, label, on) => `<button class="dk-aw-row" role="switch" aria-checked="${on}" data-away-rule="${k}"><span class="grow">${esc(label)}</span>${tg(on)}</button>`;
   // Turning it on: the lead goes through the open items first (desk_away_sweep); then up to 5 that truly need you,
   // answered in place. Those shown hold Done; the rest wait in the Away column.
-  const d = deskOf(e.project);
+  // The Desks going from off to on: their leads sweep, then "Before you go" holds what they left, across all of them.
+  const going = e.desks.filter((r) => r.on && !r.was), many = e.desks.length > 1;
+  const sweeping = going.filter((r) => !r.swept || deskOf(r.project)?.away?.sweeping);
   let first = "", block = 0;
-  if (!e.on && (!e.swept || d?.away?.sweeping)) {
-    first = `<div class="dk-aw-sweep"><i class="dk-aw-spin" aria-hidden="true"></i>The lead is going through the open items…</div>`;
+  if (sweeping.length) {
+    const who = many ? `${sweeping.length === 1 ? `${deskName(deskOf(sweeping[0].project))}'s lead is` : `${sweeping.length} leads are`}` : "The lead is";
+    first = `<div class="dk-aw-sweep"><i class="dk-aw-spin" aria-hidden="true"></i>${esc(who)} going through the open items…</div>`;
     block = 1;
-  } else if (!e.on && d) {
-    const list = deskAwayFirstList(d);
+  } else if (going.length) {
+    const seen = new Set(), list = going.flatMap((r) => { const d = deskOf(r.project); return d ? deskAwayFirstList(d) : []; }).filter((x) => !seen.has(x.key) && seen.add(x.key));
     if (!e.shown) e.shown = list.slice(0, DESK_AWAY_FIRST).map((x) => x.key);
     const shown = list.filter((x) => e.shown.includes(x.key)), more = list.length - shown.length;
     block = shown.length;
@@ -676,16 +692,17 @@ function deskAwayHtml() {
       + (more ? `<div class="dk-aw-more">${more} more will wait in the Away column</div>` : "");
   }
   const may = DESK_AWAY_RULES.map(([k, l]) => row(k, l, !!e.rules[k])).join("");
+  const desks = many ? `<div class="dk-aw-h">Desks</div><div class="dk-aw-rows">${e.desks.map((r) => `<button class="dk-aw-row" role="switch" aria-checked="${r.on}" data-away-desk="${esc(r.project)}"><span class="grow">${esc(deskName(deskOf(r.project)))}</span>${tg(r.on)}</button>`).join("")}</div>` : "";
   const lock = DESK_AWAY_LOCKED.map((l) => `<div class="dk-aw-row locked"><span class="grow">${esc(l)}</span><span class="dk-aw-lock">${DESK_LOCK}</span></div>`).join("")
     + DESK_AWAY_WAITS.map(([k, l]) => row(k, l, !e.rules[k])).join("");
   return `<div class="move-scrim dk-aw-scrim" data-away="scrim"><div class="move-dialog dk-aw-dialog" role="dialog" aria-labelledby="dk-aw-title">
     <div class="move-title" id="dk-aw-title">Away</div>
-    <div class="end-text">The lead keeps this Desk moving while you're away.</div>${first}
+    <div class="end-text">${many ? "Each Desk's lead keeps it moving while you're away." : "The lead keeps this Desk moving while you're away."}</div>${first}
     <div class="dk-aw-flds"><label>Until<input type="time" data-away-field="until" value="${esc(e.until)}"/></label><label>Budget ($)<input type="number" min="0" step="1" data-away-field="budget" value="${esc(e.budget)}" placeholder="No limit"/></label></div>
-    <div class="dk-aw-h">The lead may decide</div><div class="dk-aw-rows">${may}</div>
+    ${desks}<div class="dk-aw-h">The lead may decide</div><div class="dk-aw-rows">${may}</div>
     <div class="dk-aw-h">Always waits for you</div><div class="dk-aw-rows">${lock}</div>
     <div class="dk-aw-foot">One notification only when nothing can move without you.</div>
-    <div class="row-btns">${e.on ? `<button class="btn" data-away="off"${e.busy ? " disabled" : ""}>Turn Away off</button>` : `<button class="btn" data-away="cancel">Cancel</button>`}<span class="grow"></span><button class="btn primary" data-away="done"${e.busy || block ? " disabled" : ""}>${block && !d?.away?.sweeping ? "Answer these first" : "Done"}</button></div>
+    <div class="row-btns">${e.on ? `<button class="btn" data-away="off"${e.busy ? " disabled" : ""}>Turn Away off</button>` : `<button class="btn" data-away="cancel">Cancel</button>`}<span class="grow"></span><button class="btn primary" data-away="done"${e.busy || block ? " disabled" : ""}>${block && !sweeping.length ? "Answer these first" : "Done"}</button></div>
   </div></div>`;
 }
 async function deskAwaySave(on) {
@@ -693,15 +710,23 @@ async function deskAwaySave(on) {
   if (!e || e.busy) return;
   const b = String(e.budget).trim(), budget = b === "" ? null : Number(b);
   if (budget != null && !(budget >= 0)) return toast("The budget is a number of dollars");
-  const away = { on, until: deskNextAt(e.until), budget, rules: { ...e.rules } };
+  const until = deskNextAt(e.until);
   e.busy = true;
   renderMain();
-  try {
-    const view = await invoke("desk_away_set", { desk: e.desk, away });
-    const d = (state.desk?.projects || []).find((x) => x.project === e.project);
-    if (view && typeof view === "object" && d) d.away = view;
-    if (deskAwayEdit === e) deskAwayEdit = null;
-  } catch (err) { e.busy = false; toast(`Couldn't change Away: ${err}`); }
+  // Every Desk switched on gets these settings; one switched off (or all, for Turn Away off) goes off; one that was
+  // off and stays off isn't touched.
+  const failed = [];
+  for (const r of e.desks) {
+    const now = on && r.on;
+    if (!now && !r.was) continue;
+    try {
+      const view = await invoke("desk_away_set", { desk: r.desk, away: { on: now, until, budget, rules: { ...e.rules } } });
+      const d = deskAwayDesks().find((x) => x.project === r.project);
+      if (view && typeof view === "object" && d) d.away = view;
+    } catch (err) { failed.push(`${deskName(deskOf(r.project))}: ${err}`); }
+  }
+  if (failed.length) { e.busy = false; toast(`Couldn't change Away on ${failed.join("; ")}`); }
+  else if (deskAwayEdit === e) deskAwayEdit = null;
   renderMain();
 }
 /** The Desk's own buttons in the rules card (an item's Allow / No, a choice, Looks right): as on the Desk. One that
@@ -719,8 +744,17 @@ document.addEventListener("click", (ev) => {
     return;
   }
   const r = ev.target.closest?.("[data-away-rule]"), b = ev.target.closest?.("[data-away]:not([data-away=scrim])") || (ev.target.dataset?.away === "scrim" ? ev.target : null);
-  if (!r && !b) return;
+  const dk = ev.target.closest?.("[data-away-desk]");
+  if (!r && !b && !dk) return;
   ev.stopPropagation();
+  if (dk) {
+    const row = deskAwayEdit.desks.find((x) => x.project === dk.dataset.awayDesk);
+    if (!row) return;
+    row.on = !row.on;
+    // Switched on from off: its lead sweeps too, and "Before you go" waits for it.
+    if (row.on && !row.was && !row.swept) { deskAwayEdit.shown = null; deskAwaySweep(row); }
+    return renderMain();
+  }
   if (r) {
     const k = r.dataset.awayRule;
     deskAwayEdit.rules[k] = !deskAwayEdit.rules[k];
