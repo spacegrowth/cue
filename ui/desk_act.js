@@ -233,6 +233,9 @@ const DESK_CLICKS = {
   },
   deskAway: (el) => deskAwayOpen(el.dataset.deskAway),
   deskPause: (el) => deskPauseToggle(el.dataset.deskPause),
+  // Items as a List or as Progress (#409, desk_progress.js); a Progress row opens its item's page.
+  deskItemsView: (el) => deskItemsViewSet(el.dataset.deskItemsView),
+  deskProgOpen: (el) => deskProgOpen(el.dataset.deskProgOpen),
   deskLogRow: (el) => { const id = el.dataset.deskLogRow; if (!deskLogOpen.delete(id)) deskLogOpen.add(id); renderMain(); },
   deskSession: (el) => openSession(el.dataset.deskSession),
   deskLeadChat: () => { deskPick = null; deskTab = "lead"; readerView = null; deskShow(null); },

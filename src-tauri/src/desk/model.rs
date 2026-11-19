@@ -236,7 +236,10 @@ pub struct DeskItem {
     /// What its holder said as each turn ended while at work on it, oldest first (the last `SAID_KEPT`): the
     /// session's replies on its page's Thread, between your words and the lead's hand-offs (its Steps).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub said: Vec<Said>,
+    pub said: Vec<Said>,    /// When it first reached each of its six steps (ms; 0: not yet): picked up, building, tests, commit, landing, to
+    /// check (#409, hub/desk_steps.rs). The Desk's Progress view shows them, and how long each took. Saved.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub steps: Vec<u64>,
 }
 
 /// What an item's holder did last while at work on it (#285), as its row shows it.
