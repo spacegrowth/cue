@@ -211,6 +211,17 @@ pub(super) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
             }
         }
     }
+    // Queued, but its holder is on it anyway (#342): its ask, or the question its turn ended on, waits on you here
+    // too, not only in its own chat. A stop with no question stays the lead's (it's queued, not stalled).
+    if it.state == "queued" && crew_parts(&h).is_none() && super::desk_stall::on_queued(st, &h.sid, &it.id) {
+        if let Some(a) = ask_of(st, &h) {
+            out.state = "needs_you".into();
+            out.ask = Some(ask_view(a));
+        } else if let Some(q) = super::desk_stall::stalled(st, it, &h).and_then(|s| s.thread.iter().rev().find(|e| e.role == "agent")).and_then(|e| super::desk_stall::question_in(&e.text)) {
+            out.state = "needs_you".into();
+            out.latest = q;
+        }
+    }
     // The lead's ASK about this item: it waits on you with it.
     if matches!(it.state.as_str(), "new" | "queued" | "working") && out.ask.is_none() {
         if let Some(a) = st.items.iter().find(|i| i.desk && i.status == "pending" && i.tool_input["desk_item"].as_str() == Some(it.id.as_str())) {

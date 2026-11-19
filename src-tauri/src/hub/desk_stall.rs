@@ -50,6 +50,14 @@ pub(super) fn now_on(st: &Store, sid: &str) -> Option<String> {
     held.iter().filter_map(|i| names_at(&last.text, &i.id).map(|at| (at, i))).min_by_key(|(at, _)| *at).map(|(_, i)| i.id.clone())
 }
 
+/// Item `id`, queued, is the one session `sid` (itself) is on anyway (#342): it's on no item at work, and the last
+/// message it was sent names `id` (the lead or you started it while it waited for a copy or for the item before).
+pub(super) fn on_queued(st: &Store, sid: &str, id: &str) -> bool {
+    st.desk.lead_of(sid).is_none()
+        && now_on(st, sid).is_none()
+        && st.sessions.get(sid).and_then(|s| s.thread.iter().rev().find(|e| e.role == "you" && !e.decision)).is_some_and(|e| names_at(&e.text, id).is_some())
+}
+
 /// Where `text` first names item `id` as "#id" (not the start of a longer number or name), if it does.
 fn names_at(text: &str, id: &str) -> Option<usize> {
     let want = format!("#{id}");

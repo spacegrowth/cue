@@ -196,6 +196,38 @@ fn a_fourth_item_waits_for_a_free_copy_and_starts_in_it_once_one_is_free() {
 }
 
 #[test]
+fn a_queued_item_whose_holder_is_on_it_anyway_shows_its_question_and_its_ask() {
+    let w = World::new();
+    let top = |w: &World| {
+        let out = String::from_utf8(std::process::Command::new("git").arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
+        out.lines().next().and_then(|l| l.strip_prefix("worktree ")).unwrap().to_string()
+    };
+    let (_, project, id, h) = routed_with(&w, |w, _, _| w.hub().desk_hold_copies(&top(w), &[1, 2, 3]), |_, _, _| {});
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "queued");
+    // Started anyway (the lead's message, while it waits for a copy), and its turn ends asking you something.
+    w.send_to(&h, &format!("From the Desk lead: please start #{id} now"));
+    w.advance(1000);
+    ends(&w, &h, "I have a fix ready.\n\nShall I rewrite main's history now?");
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!((it["state"].as_str(), it["latest"].as_str()), (Some("needs_you"), Some("Shall I rewrite main's history now?")), "{it}");
+    // Answered (in its own chat or from the item's page): it goes on, queued, nothing waiting on you.
+    w.send_to(&h, "yes");
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!(it["state"], "queued", "{it}");
+    // Its ask (a question card) waits on you on the item too, while it's on it.
+    w.send_to(&h, &format!("About #{id} (Header jumps): go on"));
+    let input = serde_json::json!({ "questions": [{ "question": "Keep it sticky?", "header": "Header", "options": [{ "label": "Yes", "description": "" }], "multiSelect": false }] });
+    w.hub().add_ask(w.hub().session_origin(&h).unwrap(), crate::hub::NewAsk { kind: "question".into(), tool_name: "AskUserQuestion".into(), tool_input: input, suggestions: Value::Null, context: vec![], agent_id: String::new() });
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!((it["state"].as_str(), it["ask"]["text"].as_str()), (Some("needs_you"), Some("Keep it sticky?")), "{it}");
+    // Its answer reaches the session.
+    w.answer(it["ask"]["item_id"].as_str().unwrap(), serde_json::json!({ "behavior": "allow", "answers": { "Keep it sticky?": "Yes" } }));
+    w.settle();
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "queued");
+    assert!(w.snapshot().cards_of(&h).is_empty(), "answered");
+}
+
+#[test]
 fn an_item_waiting_for_a_copy_but_started_now_forgets_that_wait_once_it_has_one() {
     let w = World::new();
     let top = |w: &World| {
