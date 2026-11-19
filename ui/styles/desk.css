@@ -687,7 +687,7 @@ b.dk-say-t, .dk-say-t { font-weight: 650; color: var(--ink); }
 .dk-act-it { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 3px; color: var(--ink); }
 .dk-act-it:hover .dk-inum { text-decoration: underline; }
 .dk-act-why { color: var(--muted); }
-/* What the lead moved (#374): a list of its own moves, newest first: time, then its words and why. */
+/* Dispatcher Actions (#374, named #390): a list of its own moves, newest first: time, then its words and why. */
 .dk-moves { padding: 8px 16px 16px; }
 .dk-mv-h { display: flex; align-items: center; gap: 8px; padding: 6px 0 10px; }
 .dk-mv-t { font: 700 11px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }

@@ -1,4 +1,4 @@
-// What the lead moved (#374): the Dispatcher's Moves tab lists every move the lead made on its own, newest first, each
+// What the lead moved (#374): the Dispatcher's "Dispatcher Actions" tab (named so in #390) lists every move the lead made on its own, newest first, each
 // with its item, why and time; older ones load from Cue as you scroll; Clear asks once, then empties it.
 import { test, expect } from "./cue.mjs";
 import { NOW } from "./clock.mjs";
@@ -28,10 +28,13 @@ test("the lead's own moves stay in a list, newest first, older ones load as you 
     d.decisions.push(...today);
     d.moves = older;
   }, { today, older });
-  // "All moves" under the panel's Just did opens it.
+  // Its tab and the link under the panel's Just did say "Dispatcher Actions" (#390), never "Moves".
+  await expect(page.locator('.dk-right .dk-tab[data-desk-tab="moves"]')).toHaveText("Dispatcher Actions");
+  await expect(page.locator('.dk-right .dk-pall[data-desk-tab="moves"]')).toHaveText("All Dispatcher Actions");
   await page.locator('.dk-right .dk-pall[data-desk-tab="moves"]').click();
   const list = page.locator(".dk-moves");
-  await expect(list.locator(".dk-mv-t")).toHaveText("What the lead moved");
+  await expect(list.locator(".dk-mv-t")).toHaveText("Dispatcher Actions");
+  expect(await page.locator(".dk-right").innerText()).not.toMatch(/\bmoves\b/i);
   const rows = list.locator(".dk-mv");
   await expect(rows.first()).toContainText("Sent #d3 to web again · the header still jumps");
   await expect(rows.nth(1)).toContainText("Started #d4 now");

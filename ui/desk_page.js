@@ -147,7 +147,7 @@ const deskActRows = (d) => deskActs(d).map((x) => ({ at: x.at * 1000, html: keye
 /** How long the lead's last moves stay in the Dispatcher's panel, and how many. */
 const DESK_JUST_DID_MS = 30 * 60 * 1000, DESK_JUST_DID = 3;
 const deskJustDid = (d) => deskActs(d).filter((x) => now() - x.at * 1000 < DESK_JUST_DID_MS).slice(0, DESK_JUST_DID);
-/** "What the lead moved" (#374): every move the lead made on its own, kept until you clear it. Today's come with the
+/** "Dispatcher Actions" (#374, named #390): every move the lead made on its own, kept until you clear it. Today's come with the
  *  Desk's state; older ones load from Cue (desk_moves) as you scroll: { items, end, loading } a Desk each. */
 const deskMovePages = new Map(), deskMovesShown = new Map();
 const DESK_MOVES_STEP = 30;
@@ -199,15 +199,15 @@ async function deskMovesClear(project) {
   deskMovesShown.delete(project);
   renderMain();
 }
-/** The Moves tab: what the lead did on its own, newest first: when, its words with the item's number, and why. */
+/** The Dispatcher Actions tab: what the lead did on its own, newest first: when, its words with the item's number, and why. */
 function deskMoves(d) {
   if (!deskMovePages.has(d.project)) deskMovesFetch(d.project);
   const all = deskMovesList(d), n = deskMovesShown.get(d.project) || DESK_MOVES_STEP, pg = deskMovePages.get(d.project);
   const asking = deskMovesClearing === d.project;
   const clear = all.length ? (asking ? `<span class="dk-mv-ask">Clear the whole list?</span><button class="btn small" data-desk-moves-keep>Keep</button><button class="btn small primary" data-desk-moves-clear="${esc(d.project)}">Clear</button>` : `<button class="btn small" data-desk-moves-clear="${esc(d.project)}">Clear</button>`) : "";
-  const head = `<div class="dk-mv-h"><span class="dk-mv-t">What the lead moved</span><span class="grow"></span>${clear}</div>`;
+  const head = `<div class="dk-mv-h"><span class="dk-mv-t">Dispatcher Actions</span><span class="grow"></span>${clear}</div>`;
   const rows = all.slice(0, n).map((x) => `<div class="dk-mv" data-key="mv:${esc(x.id)}"><span class="dk-mv-at">${esc(deskMoveWhen(x.at * 1000))}</span><span class="dk-mv-line">${deskActLine(x, d)}</span></div>`).join("");
-  const more = all.length > n || (pg && !pg.end) ? `<div class="dk-mv-more" data-desk-moves-more="${esc(d.project)}">${pg?.loading ? "Loading older moves…" : ""}</div>` : "";
+  const more = all.length > n || (pg && !pg.end) ? `<div class="dk-mv-more" data-desk-moves-more="${esc(d.project)}">${pg?.loading ? "Loading older actions…" : ""}</div>` : "";
   const empty = !all.length && !pg?.loading ? `<div class="dk-empty">Nothing yet. When ${esc(deskLeadName(d) || "the lead")} closes, starts, sends back or moves up an item on its own, takes back a copy or answers a session, it's listed here and stays until you clear it.</div>` : "";
   return `<div class="dk-pane dk-moves" data-scroll-key="moves:${esc(d.project)}">${head}${empty}${rows}${more}</div>`;
 }
