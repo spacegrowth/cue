@@ -402,6 +402,9 @@ fn item_lines(st: &Store, it: &DeskItem, out: &mut String, failed: &mut Vec<(Str
     if let Some(a) = &it.after {
         out.push_str(&format!(" | after #{a}"));
     }
+    if let Some((_, why)) = it.paused.as_ref().filter(|_| it.state == "paused") {
+        out.push_str(&if why.is_empty() { " | RESUME it when it should go on".to_string() } else { format!(" | paused: {why}") });
+    }
     // Its own wait, said (#340): with nothing else shown it read as free to start, and was nudged by hand.
     if it.state == "queued" && it.tree_wait {
         out.push_str(&format!(" | {}", super::desk_trees::copy_wait(st, &it.project, &it.tree_wait_repo)));

@@ -43,6 +43,8 @@ pub(super) struct Effects {
     /// Your Restarts (#291): (item, the session it goes to, its name), sent like `sends`, and how each went noted
     /// on the item and its step.
     pub(super) restarts: Vec<(String, String, String)>,
+    /// Sessions whose `sends` go now, mid-turn (a Pause, #365): handed over as Send now does, so it reads it at once.
+    pub(super) now: Vec<String>,
     /// Dropped items that had their own copy: kept or removed (desk_trees.rs).
     pub(super) trees_gone: Vec<DeskItem>,
     /// Items the lead said DONE on for you (`DeskItem::close_on_check`): closed as Looks right would once to check.
@@ -431,9 +433,10 @@ impl Hub {
         for (sid, text) in fx.sends {
             // A Restart's send says how it went, on its item (#291).
             let restart = fx.restarts.iter().find(|(_, to, _)| *to == sid).map(|(id, _, name)| (id.clone(), name.clone()));
+            let now = fx.now.contains(&sid);
             // Off this thread: typing into a terminal session waits for it to take the message.
             self.later(0, move |h| {
-                let sent = h.send_to_session(&sid, &text, &[], false);
+                let sent = h.send_to_session(&sid, &text, &[], now);
                 if let Err(e) = &sent {
                     eprintln!("cue: desk: couldn't send {sid} its item: {e}");
                 }

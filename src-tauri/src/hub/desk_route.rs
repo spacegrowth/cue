@@ -300,6 +300,8 @@ fn held_by(it: &mut DeskItem, h: &Holder, refused: String, waits: Option<String>
     it.holder = Some(h.clone());
     it.moved_from = None;
     it.crew.clear();
+    // Routed or given (again): no longer paused (#365).
+    it.paused = None;
     it.after_why = why.to_string();
     it.done_at = None;
     it.state = if waits.is_some() { "queued" } else { "working" }.into();
@@ -450,6 +452,8 @@ fn give_to(st: &mut Store, id: &str, sid: &str, by: (&str, &str, &str), started:
     it.holder = Some(h.clone());
     it.moved_from = None;
     it.crew.clear();
+    // Routed or given (again): no longer paused (#365).
+    it.paused = None;
     it.state = "working".into();
     it.after = None;
     it.after_why.clear();

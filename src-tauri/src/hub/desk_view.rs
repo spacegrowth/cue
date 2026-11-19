@@ -92,6 +92,13 @@ pub(super) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
         out.state = "needs_you".into();
         out.latest = q;
     }
+    // Paused by the lead (#365): it keeps its place, its holder stopped (or stopping) at a clean point; not stopped,
+    // waiting or to resume, and nothing for you unless something asks you (its holder's ask, the lead's ASK).
+    if it.state == "working" && it.paused.is_some() && out.ask.is_none() {
+        out.state = "paused".into();
+        out.stopped = false;
+        out.waiting.clear();
+    }
     if out.state == "working" && !out.stopped && out.waiting.is_empty() {
         // Work handed to a live session is under way while it takes the message, or while its crew finishes.
         let active = if crew_parts(&h).is_some() {

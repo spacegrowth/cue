@@ -65,6 +65,9 @@ TAKE COPY: #<id> | why: <reason>      (take back the copy of a stuck or finished
 the item waiting longest for a copy gets it, and a stuck item is new again for you to route)
 LAND FIRST: #<id> | why: <reason>      (move an item waiting in the landing line up, so it lands next)
 START: #<id> | why: <reason>      (start a waiting item now: not after the item it waits on, nor for a free copy)
+PAUSE: #<id> | why: <reason>      (an item at work stops at a clean point and keeps its place and copy, e.g. to save \
+tokens for an urgent item; it shows as paused and its holder isn't asked if it's done)
+RESUME: #<id> | why: <reason>      (a paused item carries on where it stopped)
 DESIGNS: #<id> <canvas link>      (where an item's designs are; say it again when they move)
 CONTEXT: <session or me> -> keep | why: <reason>      (Cue leaves that session's context as it is while it waits now, or, if it's at work, while it waits after this turn)
 

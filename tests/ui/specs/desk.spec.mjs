@@ -1559,6 +1559,26 @@ test("an interrupted assignment needs resume while a dependency stays queued", a
   await expect(pane.locator('[data-desk-act="start_now"]')).toHaveText("Restart");
 });
 
+test("an item the lead paused shows as paused and keeps its holder (#365)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.change((st) => {
+    st.sessions.find((s) => s.session_id === "host").state = "waiting";
+    const d5 = st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d5");
+    d5.state = "paused";
+    d5.paused = [Math.floor(Date.now() / 1000), "#9 is urgent"];
+  });
+  const rows = page.locator(".dk-items");
+  await expect(rows.locator(".dk-gh", { hasText: "Paused" }).locator("+ [data-desk-item='d5']")).toBeVisible();
+  await rows.locator('[data-desk-item="d5"]').click();
+  const pane = page.locator(".dk-right .dk-pg");
+  await expect(pane).toContainText("Paused");
+  await expect(pane).toContainText("keeps its place. The Desk lead paused it: #9 is urgent.");
+  await expect(pane.locator('[data-desk-act="start_now"]')).toHaveCount(0);
+  await pane.locator(".dk-ph [data-desk-back]").click();
+  await expect(page.locator('[data-desk-page="dispatcher"] .dk-psay')).toContainText("1 item is paused.");
+});
+
 test("an item back to check stands out until you open it; its pane links to what was made", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);

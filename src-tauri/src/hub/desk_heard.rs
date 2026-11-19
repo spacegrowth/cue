@@ -135,6 +135,7 @@ pub(super) fn holder_said(st: &mut Store, sid: &str, text: &str, decided: bool, 
             it.checks.push(crate::desk::model::DeskCheck { at: now, by, ..Default::default() });
             fx.checked.push(id.clone());
             it.state = "finishing".into();
+            it.paused = None;
             it.finish = Some(super::desk_finish::begun(now, it.finish.as_ref()));
             it.after = None;
             it.updated = secs(now);
@@ -185,5 +186,5 @@ pub(super) fn desk_line_start(line: &str) -> bool {
     let l = parse::unmarked(line.trim().trim_start_matches('`')).trim_start_matches('`');
     let Some((word, _)) = l.split_once(':') else { return false };
     let word = word.trim_end_matches(['*', '`']).trim();
-    matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "CONTEXT" | "DESIGNS" | "TITLE" | "SPLIT" | "CUT" | "MERGE" | "NOTE" | "CLOSE" | "TAKE COPY" | "LAND FIRST" | "START" | "ANSWER" | "PASS") || word.eq_ignore_ascii_case("DECIDED")
+    matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "CONTEXT" | "DESIGNS" | "TITLE" | "SPLIT" | "CUT" | "MERGE" | "NOTE" | "CLOSE" | "TAKE COPY" | "LAND FIRST" | "START" | "PAUSE" | "RESUME" | "ANSWER" | "PASS") || word.eq_ignore_ascii_case("DECIDED")
 }

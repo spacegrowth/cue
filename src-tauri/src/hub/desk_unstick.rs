@@ -1,6 +1,6 @@
 //! The Desk lead unsticking its Desk itself (#347): lines that close an item whose work is already on main (CLOSE),
 //! take back a copy from a stuck or finished item (TAKE COPY), move an item up in the landing line (LAND FIRST) and
-//! start a waiting item now (START). Each is one of the item's Steps, shown on its Thread; what can't be done is told
+//! start a waiting item now (START), and pause an item at work and resume it later (PAUSE, RESUME, #365). Each is one of the item's Steps, shown on its Thread; what can't be done is told
 //! to the lead with why.
 
 use super::desk::{at_work, decide, release, rule_of, secs, By, Effects, NewStart};
@@ -28,6 +28,8 @@ pub(super) fn unstick(st: &mut Store, project: &str, by: &By, what: &str, id: &s
         "close" => "not closed",
         "take_copy" => "copy not taken back",
         "land_first" => "not moved up",
+        "pause" => "not paused",
+        "resume" => "not resumed",
         _ => "not started",
     };
     let it = st.desk.item(id).filter(|i| i.project == project).ok_or_else(|| format!("#{id} {line}: this Desk has no item #{id}"))?;
@@ -38,6 +40,8 @@ pub(super) fn unstick(st: &mut Store, project: &str, by: &By, what: &str, id: &s
         "close" => close(st, project, by, id, commit, why, fx),
         "take_copy" => take_copy(st, project, by, id, why, now, fx),
         "land_first" => land_first(st, project, by, id, why, now, fx),
+        "pause" => pause(st, project, by, id, why, now, fx),
+        "resume" => resume(st, project, by, id, why, now, fx),
         _ => start(st, project, by, id, why, now, fx),
     }
 }
@@ -87,6 +91,7 @@ fn take_copy(st: &mut Store, project: &str, by: &By, id: &str, why: &str, now: u
             fx.sends.push((h.to().to_string(), format!("Desk item #{id}: the Desk lead took back its copy ({}). Its work, if any, is kept on branch {}. Stop work on it until it's routed to you again.", t.path, t.branch)));
         }
         (it.state, it.after, it.finish, it.tree_wait) = ("new".into(), None, None, false);
+        it.paused = None;
         it.tree_wait_repo.clear();
     }
     it.updated = secs(now);
@@ -140,11 +145,71 @@ fn start(st: &mut Store, project: &str, by: &By, id: &str, why: &str, now: u64, 
     Ok(())
 }
 
+/// PAUSE (#365): an item at work stops at a clean point and keeps its place, e.g. to save tokens for an urgent one.
+/// Its holder keeps it (and its copy), and is told to stop once the step it's in leaves the files sound, note where
+/// it is, and end its turn; one not at work now isn't sent anything (a message would wake it). While it's paused its
+/// holder isn't asked "Done?" and the lead isn't told it stopped.
+fn pause(st: &mut Store, project: &str, by: &By, id: &str, why: &str, now: u64, fx: &mut Effects) -> Result<(), String> {
+    let was = shown_state(st, id);
+    let it = st.desk.item(id).ok_or_else(|| format!("#{id} not paused: this Desk has no item #{id}"))?;
+    if it.state != "working" || it.holder.is_none() {
+        return Err(format!("#{id} not paused: only an item at work can be paused (it's {was})"));
+    }
+    if it.paused.is_some() {
+        return Err(format!("#{id} not paused: it's paused already. RESUME: #{id} | why: … starts it again"));
+    }
+    let h = it.holder.clone().ok_or("no holder")?;
+    let busy = at_work(st, &h);
+    let it = st.desk.item_mut(id).ok_or("gone")?;
+    it.paused = Some((secs(now), why.trim().to_string()));
+    it.updated = secs(now);
+    if busy {
+        // Now, not after its turn: a direct holder reads it at once; a teammate's lead gets it when its turn ends.
+        if h.kind != "crew" {
+            fx.now.push(h.to().to_string());
+        }
+        fx.sends.push((h.to().to_string(), pause_words(id, &h, why)));
+    }
+    st.desk.nudged.remove(id);
+    fx.items.push(id.to_string());
+    step(st, project, by, "pause", id, &format!("Paused #{id}"), why, now, fx);
+    Ok(())
+}
+
+/// What a holder at work on item `id` is told as the lead pauses it.
+pub(crate) fn pause_words(id: &str, h: &crate::desk::Holder, why: &str) -> String {
+    let why = if why.trim().is_empty() { String::new() } else { format!(" ({})", why.trim().trim_end_matches('.')) };
+    let who = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
+    format!(
+        "{who}Desk item #{id} is paused by the Desk lead{why}. Stop at the next clean point: finish or undo the edit you're in so the files make sense, don't start anything new on it, write in a few lines where you are and what's next, and end your turn. Keep it: Cue tells you when to resume."
+    )
+}
+
+/// RESUME (#365): a paused item carries on. Its holder is told to pick up where it stopped.
+fn resume(st: &mut Store, project: &str, by: &By, id: &str, why: &str, now: u64, fx: &mut Effects) -> Result<(), String> {
+    let was = shown_state(st, id);
+    let it = st.desk.item_mut(id).ok_or_else(|| format!("#{id} not resumed: this Desk has no item #{id}"))?;
+    if it.paused.is_none() || it.state != "working" {
+        return Err(format!("#{id} not resumed: it isn't paused (it's {was})"));
+    }
+    it.paused = None;
+    it.updated = secs(now);
+    if let Some(h) = it.holder.clone() {
+        let why = if why.trim().is_empty() { String::new() } else { format!(" ({})", why.trim().trim_end_matches('.')) };
+        let who = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
+        fx.sends.push((h.to().to_string(), format!("{who}Desk item #{id} is resumed{why}: carry on from where you stopped. Say DONE: #{id} on a line of its own when it's done.")));
+    }
+    fx.items.push(id.to_string());
+    step(st, project, by, "resume", id, &format!("Resumed #{id}"), why, now, fx);
+    Ok(())
+}
+
 /// Item `id`'s state as the lead is told it.
 fn shown_state(st: &Store, id: &str) -> String {
     st.desk.item(id).map_or("gone".into(), |i| match i.state.as_str() {
         "to_check" => "with the user to check".into(),
         "finishing" => i.finish.as_ref().map_or("finishing".into(), |f| format!("finishing: {}", f.step)),
+        "working" if i.paused.is_some() => "paused".into(),
         s => s.into(),
     })
 }
@@ -210,6 +275,7 @@ impl Hub {
                 }
             }
             it.state = "done".into();
+            it.paused = None;
             (it.after, it.close_on_check, it.finish, it.tree_wait, it.no_copy_wait) = (None, false, None, false, false);
             it.tree_wait_repo.clear();
             it.done_at = Some(secs(now));

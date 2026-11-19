@@ -186,7 +186,7 @@
   // ---------- a Desk's tab: what waits on you there, answered in its row; what's in progress ----------
   /** The Desk's head: how many wait on you, are at work, are queued; ⤢ Open Desk and × (on the rail, ⤢ and ⇥ in its bar). */
   function deskHeadHtml(id) {
-    const g = deskGroups(id), q = g.queued.length + g.resume.length;
+    const g = deskGroups(id), q = g.queued.length + g.resume.length + g.paused.length;
     if (!NOTCH) return `<div class="m-bar" data-bar><div class="m-tabs">${tabsHtml()}</div><button class="m-pipbtn" data-mdesk="${esc(id)}" aria-label="Open the Desk in Cue">⤢</button><button class="m-pipbtn" data-close aria-label="Tuck it away">⇥</button></div>${deskCountsHtml(g, q)}`;
     return `<div class="m-tabs">${tabsHtml()}</div><div class="m-chat-head">${deskCountsHtml(g, q, true)}<span class="g"></span><button class="m-link" data-mdesk="${esc(id)}">⤢ Open Desk</button><button class="m-link" data-close aria-label="Close">×</button></div>`;
   }
@@ -245,7 +245,7 @@
   function deskBodyHtml(id) {
     const g = deskGroups(id);
     const rows = (list, wait) => list.map((i) => deskRowHtml({ ...i, project: i.project || id }, wait)).join("");
-    const more = g.working.length - IN_PROGRESS, q = g.queued.length + g.resume.length;
+    const more = g.working.length - IN_PROGRESS, q = g.queued.length + g.resume.length + g.paused.length;
     const rest = more > 0 || q ? `<div class="m-dk-rest">${more > 0 ? `<span class="m-cnt"><i class="m-dot acc"></i>+${more} working</span>` : ""}${q ? `<span class="m-cnt">${deskStateIcon({ state: "queued" })}${q} queued</span>` : ""}</div>` : "";
     const head = (words, n) => `<div class="m-dk-g">${words}<span class="m-dk-gn">${n}</span></div>`;
     return `${g.waiting.length ? `${head("Waiting on you", g.waiting.length)}${rows(g.waiting, true)}` : `<div class="m-dk-none">Nothing waits on you here.</div>`}${g.review.length ? `${head("Ready to review", g.review.length)}${rows(g.review, true)}` : ""}${g.working.length ? `${head("In progress", g.working.length)}${rows(g.working.slice(0, IN_PROGRESS), false)}` : ""}${rest}`;

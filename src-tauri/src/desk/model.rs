@@ -54,7 +54,7 @@ pub struct DeskItem {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub why: String,
     /// "new" | "queued" | "working" | "finishing" | "to_check" | "done" as kept.
-    /// The displayed "needs_you" and "needs_resume" states are derived from live conditions.
+    /// The displayed "needs_you", "needs_resume" and "paused" states are derived from live conditions.
     pub state: String,
     #[serde(default)]
     pub holder: Option<Holder>,
@@ -186,6 +186,11 @@ pub struct DeskItem {
     /// with a retry until a session takes it or you start it again. The lead is told at once (hub/desk_lead.rs).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub start_failed: String,
+    /// The Desk lead paused it (#365, PAUSE:): when (secs) and why. Its holder keeps it and its place, stopped at a
+    /// clean point; it isn't asked "Done?" and the lead isn't told it stopped, until RESUME: (or a new route, or its
+    /// DONE) clears it. Shown as "paused" while it's at work (hub/desk.rs `shown`). Saved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paused: Option<(u64, String)>,
     /// Your last Restart of it (#291): where it went, or why it couldn't ("couldn't reach cue-251: …"). Saved.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub restart: String,

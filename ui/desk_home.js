@@ -27,8 +27,8 @@ function deskKindCell(d, kind) {
   // Finishing (committed, being built and installed) is moving too, said apart from working.
   const working = open.filter((i) => i.state === "working" && !i.stopped).length, fin = open.filter(deskFinishing).length;
   const need = open.filter(deskWaits).length, review = open.filter((i) => deskReadyToReview(i) && !deskWaits(i)).length;
-  const resume = open.filter((i) => i.state === "needs_resume").length;
-  const sub = [working ? `${working} working` : "", resume ? `${resume} to resume` : "", fin ? `${fin} finishing` : "", need ? `<span class="dh-ck">${need} need you</span>` : "", review ? `${review} to review` : ""].filter(Boolean).join(" · ") || "none moving";
+  const resume = open.filter((i) => i.state === "needs_resume").length, paused = open.filter((i) => i.state === "paused").length;
+  const sub = [working ? `${working} working` : "", resume ? `${resume} to resume` : "", paused ? `${paused} paused` : "", fin ? `${fin} finishing` : "", need ? `<span class="dh-ck">${need} need you</span>` : "", review ? `${review} to review` : ""].filter(Boolean).join(" · ") || "none moving";
   return `<span class="dh-cell"><span class="dh-big">${icon}${open.length} open</span><span class="dh-sm">${sub}</span></span>`;
 }
 /** Who's on a Desk: its lead, then the sessions and crew at work. */

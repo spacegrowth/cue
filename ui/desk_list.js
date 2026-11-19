@@ -138,8 +138,10 @@ function deskGroups(project, taskApprovals) {
   const install = rest.filter((i) => deskLane(i) === "install").sort((a, b) => (a.finish?.at || deskMs(a.updated)) - (b.finish?.at || deskMs(b.updated)));
   const going = (i) => !deskLane(i) && (i.state === "working" || deskFinishing(i));
   const resume = rest.filter((i) => i.state === "needs_resume");
-  const queued = rest.filter((i) => i.state !== "needs_resume" && !going(i) && !deskLane(i));
-  return { d, waiting, review, working: rest.filter(going), landing, install, resume, queued, extra, done, all: items };
+  // Paused by the lead (#365): kept apart, so it doesn't read as stuck or next up.
+  const paused = rest.filter((i) => i.state === "paused");
+  const queued = rest.filter((i) => i.state !== "needs_resume" && i.state !== "paused" && !going(i) && !deskLane(i));
+  return { d, waiting, review, working: rest.filter(going), landing, install, resume, paused, queued, extra, done, all: items };
 }
 
 // ---------- the list ----------
@@ -160,7 +162,7 @@ function deskTag(i) {
 }
 /** Where an item stands, as its row's icon: waiting on you (an ask, or back to check), in progress, queued (also
  *  one waiting for its install), done. */
-const deskStateOf = (i) => (i.state === "done" ? "done" : i.state === "needs_resume" || i.stopped ? "stop" : i.state === "working" && deskStalled(i) ? "idle" : i.state === "working" ? "work" : deskFinishing(i) || deskLane(i) ? "fin" : (i.state === "needs_you" || i.state === "to_check") && !deskInstallWait(i) ? "you" : "q");
+const deskStateOf = (i) => (i.state === "done" ? "done" : i.state === "needs_resume" || i.state === "paused" || i.stopped ? "stop" : i.state === "working" && deskStalled(i) ? "idle" : i.state === "working" ? "work" : deskFinishing(i) || deskLane(i) ? "fin" : (i.state === "needs_you" || i.state === "to_check") && !deskInstallWait(i) ? "you" : "q");
 const DESK_STATE_SVG = {
   you: '<circle cx="7" cy="7" r="5.5" stroke="var(--muted)" stroke-width="1.6"/><path d="M7 4.2v3.4" stroke="var(--muted)" stroke-width="1.6"/><circle cx="7" cy="9.9" r=".9" fill="var(--muted)"/>',
   work: '<circle cx="7" cy="7" r="5.5" stroke="var(--accent)" stroke-width="1.5"/><circle class="dk-blink" cx="7" cy="7" r="2.2" fill="var(--accent)"/>',
@@ -281,6 +283,7 @@ function deskList(project, taskApprovals) {
   if (g.landing.length) parts.push(`<div class="dk-gh dk-lane" data-lane="landing">Landing <span class="n">${g.landing.length}</span><span class="dk-split">one at a time</span></div>${g.landing.map((i, k) => deskItemRow(i, i.id === crewLit, false, { n: k + 1, ahead: g.landing[k - 1] })).join("")}`);
   if (g.install.length) parts.push(`<div class="dk-gh dk-lane" data-lane="install">Waiting to install <span class="n">${g.install.length}</span>${deskInstallHead(g.install)}</div>${g.install.map((i) => deskItemRow(i, i.id === crewLit, false, {})).join("")}`);
   if (g.resume.length) parts.push(`<div class="dk-gh">Needs resume <span class="n">${g.resume.length}</span></div>${g.resume.map(row).join("")}`);
+  if (g.paused.length) parts.push(`<div class="dk-gh">Paused <span class="n">${g.paused.length}</span></div>${g.paused.map(row).join("")}`);
   if (g.queued.length) parts.push(`<div class="dk-gh">Queued <span class="n">${g.queued.length}</span></div>${g.queued.map(row).join("")}`);
   for (const h of g.extra) parts.push(deskHolderHead({ ...h, addon: true, key: h.key || h.name }, o?.kind === "addon" && o.key === (h.key || h.name)) + (h.items || []).map(row).join(""));
   // Finished: the 10 newest, then 10 more each time the list's end comes into view (deskDoneWatch). Its end holds

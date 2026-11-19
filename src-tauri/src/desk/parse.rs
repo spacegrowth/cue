@@ -34,7 +34,8 @@ pub enum Line {
     /// The lead unsticking item `id` itself (#347): `what` is "close" (`CLOSE: #<id> | commit: <sha> | why: …`: its
     /// work is already on main; `commit` when said), "take_copy" (`TAKE COPY: #<id> | why: …`: its copy back from a
     /// stuck or finished item), "land_first" (`LAND FIRST: #<id> | why: …`: up in the landing line) or "start"
-    /// (`START: #<id> | why: …`: a waiting item, now).
+    /// (`START: #<id> | why: …`: a waiting item, now), "pause" (`PAUSE: #<id> | why: …`: an item at work stops at a
+    /// clean point and keeps its place, #365) or "resume" (`RESUME: #<id> | why: …`: a paused one carries on).
     Unstick { what: String, id: String, commit: String, why: String },
     /// The lead's answer to the landing clean-up question item `id`'s holder asked it (#349): `ANSWER: #<id> | <words>`.
     Answer { id: String, text: String },
@@ -143,6 +144,8 @@ fn one(t: &str) -> Option<Line> {
         "TAKE COPY" => unstick("take_copy", body),
         "LAND FIRST" => unstick("land_first", body),
         "START" => unstick("start", body),
+        "PAUSE" => unstick("pause", body),
+        "RESUME" => unstick("resume", body),
         _ => None,
     }
 }

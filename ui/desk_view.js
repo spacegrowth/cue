@@ -124,18 +124,19 @@ const deskWorkingFor = (d) => deskSessionsOf(d.project, d).filter((r) => deskHas
  *  routes ("Routing #125"), what waits on you, how many items are with sessions; Check #131 opening the first that
  *  waits on you. Folded: "· 4 items · 6 sessions working". */
 function deskLeadNow(d, waits, working, ask = null) {
-  const resume = d.items.filter((i) => i.state === "needs_resume").length;
+  const resume = d.items.filter((i) => i.state === "needs_resume").length, paused = d.items.filter((i) => i.state === "paused").length;
   const last = deskJustDid(d)[0];
-  const fold = `${waits.length + (ask ? 1 : 0)} waiting · ${working.length} ${working.length === 1 ? "session" : "sessions"} working${resume ? ` · ${resume} to resume` : ""}${last ? ` · Just did: ${esc(last.text)}, ${ago(last.at * 1000)}` : ""}`;
+  const fold = `${waits.length + (ask ? 1 : 0)} waiting · ${working.length} ${working.length === 1 ? "session" : "sessions"} working${resume ? ` · ${resume} to resume` : ""}${paused ? ` · ${paused} paused` : ""}${last ? ` · Just did: ${esc(last.text)}, ${ago(last.at * 1000)}` : ""}`;
   if (deskLeadEnded(d)) return deskPnow({ dot: "stop", word: "Ended", say: "Items stay here: resume it or pick another.", fold });
   const lead = deskLead(d), s = sessionOf(lead.sid);
   const [dot, word] = deskPstate(s);
   const fresh = d.items.filter((i) => i.state === "new" && !i.holder);
   const routing = word === "Working" && fresh.length === 1 ? fresh[0] : null;
-  const held = d.items.filter((i) => i.holder && (deskMoving(i) || i.stopped || i.state === "queued" || i.state === "needs_resume") && deskGroupKey(i.holder) !== lead.sid).length;
+  const held = d.items.filter((i) => i.holder && (deskMoving(i) || i.stopped || i.state === "queued" || i.state === "needs_resume" || i.state === "paused") && deskGroupKey(i.holder) !== lead.sid).length;
   const num = (i) => `${deskKindIcon(i)}<b class="dk-inum">#${esc(i.id)}</b>`;
   const say = [ask ? "It asks you something: its question is under its chat." : "", routing ? `Routing ${num(routing)} to a session.` : "", waits.length === 1 ? `${num(waits[0])} waits on you.` : waits.length ? `${waits.length} items wait on you.` : "",
     resume ? `${resume} ${resume === 1 ? "item needs" : "items need"} to resume.` : "",
+    paused ? `${paused} ${paused === 1 ? "item is" : "items are"} paused.` : "",
     held ? `${held} ${held === 1 ? "item is" : "items are"} with sessions.` : ""].filter(Boolean).join(" ") || "Nothing to route right now.";
   const check = waits.length ? `<button class="btn small primary dk-pgo" data-desk-chk-item="${esc(waits[0].id)}">Check #${esc(waits[0].id)}</button>` : "";
   return deskPnow({ dot, word, say, acts: check, fold });
