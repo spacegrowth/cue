@@ -24,10 +24,10 @@ impl Hub {
             return;
         }
         // A terminal session's turn end, for the Desk (a hosted one's is read whole where it ends: hosted.rs).
-        let desk = (event == "stopped" && !origin.hosted).then(|| message.clone());
+        let desk = (event == "stopped" && !origin.hosted).then(|| (message.clone(), turn.clone()));
         self.on_event(origin, event, message, turn, driven_by, from_you);
-        if let Some(text) = desk {
-            self.desk_turn_ended(&sid, &text);
+        if let Some((text, turn)) = desk {
+            self.desk_turn_ended(&sid, &text, &turn);
         }
         // Its turn is over: the message you kept for it (sent while it worked) goes now. Looked for once the stop
         // is noted, not before: one kept while it was being handled (it still read as working) goes too, and one

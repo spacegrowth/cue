@@ -250,12 +250,12 @@ impl Hub {
             let turn = turn_parts(&origin.transcript_path, &text);
             let lead_turn = super::team_review::LeadTurn::read(&origin.transcript_path, &turn, &text, unprompted);
             self.team_reply(&origin.session_id, &lead_turn);
-            let (lead, all) = (origin.session_id.clone(), lead_turn.all);
+            let (lead, all, parts) = (origin.session_id.clone(), lead_turn.all, turn.clone());
             self.event(origin, "stopped", text, turn, "");
             // Its judgment calls (DECIDED: lines) once its reply is in its chat, at the reply's time (crew_log.rs).
             self.crew_calls_noted(&lead, &all);
             // Its Desk lines (desk.rs): a lead's, any session's ITEM lines, a holder's.
-            self.desk_turn_ended(&lead, &all);
+            self.desk_turn_ended(&lead, &all, &parts);
         }
         #[cfg(feature = "ext")]
         self.ext_turn_ended(&sid, ended);
