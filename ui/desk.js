@@ -191,7 +191,7 @@ const deskItemRequest = (i) => i?.ask?.item_id && state.items.find((it) => it.id
 const deskReadyToReview = (i) => i.state === "to_check" && !deskInstallWait(i);
 /** The managed finish flow released a Cue change with a user-facing check. Older review cards can still be optional. */
 const deskNeedsVerification = (i) => deskReadyToReview(i) && !deskLooksSoon.has(i.id)
-  && i.finish?.step === "checked" && !!deskLatestCheck(i)?.cue && !!i.done_when?.trim() && !i.designs;
+  && i.finish?.step === "checked" && !!deskLatestCheck(i)?.cue && !!(i.see || i.done_when)?.trim() && !i.designs;
 const deskWaits = (i) => i.state === "needs_you" && (!i.ask?.item_id || !!deskItemRequest(i))
   || deskNeedsVerification(i) || (deskReadyToReview(i) && !deskLooksSoon.has(i.id) && !!deskPickLine(i));
 

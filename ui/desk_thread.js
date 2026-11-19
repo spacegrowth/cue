@@ -168,7 +168,7 @@ function deskItemPane(i, d, foot = "") {
   const armed = deskDropArm === i.id;
   const tabBtn = (k, label, n) => `<button class="dk-itab${tab === k ? " on" : ""}" role="tab" aria-selected="${tab === k}" data-desk-itab="${k}" data-id="${esc(i.id)}">${label}<span class="n">${n}</span></button>`;
   // Under the thread, by the newest message and the box: writing why to send it back, what held it up or what it
-  // asks, a build log, what it made. Its state, Done when, buttons and who has it are in the panel (#200).
+  // asks, a build log, what it made. Its state, what you'll see, buttons and who has it are in the panel (#200).
   const backing = deskBackFor === i.id;
   const at = `${backing ? deskBackHtml(i.id) : ""}${deskSec("Couldn't give it out", i.route_failed ? `<p>${esc(i.route_failed)}</p>` : "")}${deskSec("Couldn't start", !i.holder && i.start_failed ? `<p>Cue couldn't start a new session for it: ${esc(i.start_failed)}</p>` : "")}
     ${i.state === "needs_you" ? deskChain(i) : deskSec(deskAnswerOf(i) ? "It asked you" : "What's holding it up", deskChain(i))}${deskSec("Build log", deskFinLog(i))}${deskSec("What it made", i.state === "to_check" || i.state === "done" ? deskMadeLinks(i) : "")}
@@ -179,13 +179,14 @@ function deskItemPane(i, d, foot = "") {
     : `${deskThreadHtml(thread)}<div class="dk-inow">${at}</div>`;
   const main = `<div class="dk-pane dk-ipane" data-scroll-key="item:${esc(i.id)}"><div class="dk-ihead"><div class="dk-itabs" role="tablist">${tabBtn("thread", "Thread", thread.length)}${tabBtn("decisions", "Decisions", decs.filter((c) => !c.minor).length)}${tabBtn("steps", "Steps", steps.length)}${tabBtn("files", "Files", nFiles)}<span class="grow"></span>${i.state !== "done" ? `<button class="dk-drop${armed ? " armed" : ""}" data-desk-act="drop" data-id="${esc(i.id)}">${armed ? "Drop it" : "Drop this item"}</button>` : ""}</div></div>
     <div class="dk-ibody dk-itab-${tab}">${body}</div></div>`;
-  // Done when as ticks: all ticked once it's to check or done (its session said DONE), none before; "n of m".
+  // What you'll see as ticks (#382: its Done when is the session's check, not shown here): all ticked once it's to
+  // check or done (its session said DONE), none before; "n of m".
   // SHORTCUT: the ticks come from the item's state, so they're all or none: Cue has no status per point. Upgrade: its
   // holder reports each point met, and each tick follows that.
-  const pts = deskDoneWhenPoints(i.done_when), ticked = checking ? pts.length : 0;
+  const pts = deskDoneWhenPoints(i.see), ticked = checking ? pts.length : 0;
   const tk = (y) => `<i class="dk-tk${y ? " y" : ""}" aria-hidden="true">${y ? `<svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>` : ""}</i>`;
   const dw = pts.length ? `<div class="dk-idw"><ul class="dk-ptk">${pts.map((p) => `<li${checking ? ` class="y"` : ""}>${tk(checking)}<span>${linkify(esc(p), sessBase(sid))}</span></li>`).join("")}</ul></div>` : "";
-  const done = deskPsec(`Done when${pts.length ? ` · ${ticked} of ${pts.length}` : ""}`, `${dw}${deskCheckInfo(i, d)}`, "dk-pdw");
+  const done = deskPsec(`You'll see${pts.length > 1 ? ` · ${ticked} of ${pts.length}` : ""}`, `${dw || (i.state === "done" ? "" : `<p class="dk-note">The lead hasn't said yet.</p>`)}${deskCheckInfo(i, d)}`, "dk-pdw");
   const who = h ? (h.kind === "crew" ? `<b>${esc(h.name)}</b>` : deskChatLink(h.sid, h.name, d)) : "";
   const leadOf = h?.kind === "crew" ? deskChatLink(h.lead_sid, deskHolderName(h.lead_sid), d) : "";
   const whoSec = deskPsec("Who", deskPwho("Held by", who ? `${who}${i.crew ? ` → <b>${esc(i.crew)}</b>` : ""}` : "nobody yet") + deskPwho("Lead", leadOf));

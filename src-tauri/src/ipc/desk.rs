@@ -348,8 +348,8 @@ impl Drop for DeskStart<'_> {
 
 /// The "New item" button, or "Add to Desk" on a session (`holder`: that session, which holds it). Returns the item.
 #[tauri::command]
-pub(crate) async fn desk_add(hub: State<'_, Arc<Hub>>, project: String, kind: String, title: String, done_when: Option<String>, holder: Option<String>, images: Option<Vec<crate::model::Upload>>) -> Result<crate::desk::DeskItem, String> {
-    with_hub(&hub, move |h| h.desk_add_with(&project, &kind, &title, done_when.as_deref().unwrap_or(""), holder.as_deref().filter(|s| !s.is_empty()), &images.unwrap_or_default())).await?
+pub(crate) async fn desk_add(hub: State<'_, Arc<Hub>>, project: String, kind: String, title: String, see: Option<String>, done_when: Option<String>, holder: Option<String>, images: Option<Vec<crate::model::Upload>>) -> Result<crate::desk::DeskItem, String> {
+    with_hub(&hub, move |h| h.desk_add_with(&project, &kind, &title, see.as_deref().unwrap_or(""), done_when.as_deref().unwrap_or(""), holder.as_deref().filter(|s| !s.is_empty()), &images.unwrap_or_default())).await?
 }
 
 /// "Give to…": item `id` to session `sid`, which is sent it. Returns the item as it is now.

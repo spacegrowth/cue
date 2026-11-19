@@ -29,6 +29,9 @@ you hand it out to the project's sessions, and say why. You only dispatch, so yo
 new work to a warm or smaller session, or to new; its own send-backs and follow-ons can still go to it.
 - The session that did an item reviews its own work; you don't.
 - Write CONTEXT: only to differ from what Cue says it will do with a session's context.
+- Every item has two lines. You'll see: one line in the user's plain words, what they'll see on screen when it's \
+done (\"the header stays put when you scroll\"), no code, file or function names. Done when: the technical check, \
+for the session doing it only (tests, files, commands). Give an item missing either one both with SEE:.
 
 Each message from Cue starts with a <desk> block. It shows who runs the Desk, what needs routing, other open items, \
 and the sessions that can take work. A pending hand-off shows the session's context size and cache time. \
@@ -36,7 +39,9 @@ An item marked needs resume is still assigned and its holder is idle. A queued i
 The user's own words come after the block.
 
 Act by writing lines of their own, outside code blocks, exactly like this:
-ITEM: bug | <title> | done when: <how we'll know it's done>      (kind is bug, feature or task)
+ITEM: bug | <title> | you'll see: <what the user sees when it's done> | done when: <the check>      (kind is bug, feature or task)
+SEE: #<id> | <what the user sees when it's done> | done when: <the check>      (an item missing either line, as \
+the user's often are: Cue shows the first, not the second)
 TITLE: #<id> | <short plain title>      (an item whose title isn't short and plain, as the user's often aren't: \
 a few words saying what they'll see; Cue keeps their words on the item)
 SPLIT: #<id> | <title> | <title>      (an item that holds two or more separate problems, one plain title each: the \
@@ -101,6 +106,9 @@ pub fn next_number<'a>(ids: impl Iterator<Item = &'a str>, high: u64) -> u64 {
 /// (one_way::ask_first; "" when nothing's set), so every session that works on the Desk has it.
 pub fn handed_words(it: &DeskItem, why: &str, rule: &str) -> String {
     let mut out = format!("Desk item #{}{}: {}", it.id, kind_words(it), it.title);
+    if !it.see.trim().is_empty() {
+        out.push_str(&format!("\nYou'll see: {}", it.see.trim()));
+    }
     if !it.done_when.trim().is_empty() {
         out.push_str(&format!("\nDone when: {}", it.done_when.trim()));
     }
@@ -116,7 +124,7 @@ pub fn handed_words(it: &DeskItem, why: &str, rule: &str) -> String {
     out.push_str(&format!(
         "\nFixes and next steps for it stay in #{0}: do them, or say them in your reply; don't add new items for them. \
          Add one only for something truly separate, with why in one line: \
-         ITEM: <bug|feature|task> | <title> | done when: <…> | why: <how it's separate from #{0}>",
+         ITEM: <bug|feature|task> | <title> | you'll see: <…> | done when: <…> | why: <how it's separate from #{0}>",
         it.id
     ));
     out.push_str(&format!("\nIf you put its designs on a canvas, or move them, say DESIGNS: #{} <canvas link> on a line of its own.", it.id));
@@ -138,6 +146,9 @@ pub fn new_items_words(items: &[DeskItem]) -> String {
     let mut out = String::new();
     for it in items {
         out.push_str(&format!("New item #{}{}: {}", it.id, kind_words(it), it.title));
+        if !it.see.trim().is_empty() {
+            out.push_str(&format!(" | you'll see: {}", it.see.trim()));
+        }
         if !it.done_when.trim().is_empty() {
             out.push_str(&format!(" | done when: {}", it.done_when.trim()));
         }
@@ -159,6 +170,9 @@ pub fn new_items_words(items: &[DeskItem]) -> String {
     }
     if items.iter().any(|i| i.from == "you" && i.words.is_empty() && i.split_from.is_empty()) {
         out.push_str("If one of yours holds two separate problems, SPLIT it first (Cue tells you the new numbers); if its title isn't short and plain, TITLE it. ");
+    }
+    if items.iter().any(|i| i.see.trim().is_empty() || i.done_when.trim().is_empty()) {
+        out.push_str("Give one missing its two lines both first: SEE: #<id> | <what the user sees when it's done> | done when: <the check>. ");
     }
     out.push_str(if items.len() == 1 { "Route it now: ROUTE it to a session, or -> new." } else { "Route each now: ROUTE it to a session, or -> new." });
     if items.iter().any(|i| i.kind.is_empty()) {

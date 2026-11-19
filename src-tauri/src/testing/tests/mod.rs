@@ -31,6 +31,7 @@ mod desk_waits;
 mod desk_routes;
 mod desk_pick;
 mod desk_items;
+mod desk_see;
 mod desk_lead;
 mod desk_routing;
 mod desk_queue;

@@ -107,6 +107,9 @@
 .dk-it .dk-i1 > .dk-larrow { position: absolute; top: 8px; left: 5px; }
 /* One flow, not columns: the title's next lines run back under its icon and number, from the row's left edge. */
 .dk-i1 { min-width: 0; font-size: 13.5px; line-height: 1.4; overflow-wrap: anywhere; }
+/* What you'll see when it's done (#382): one quiet line under the title. */
+.dk-see { grid-column: 2; min-width: 0; margin: 1px 0 2px; color: var(--muted); font-size: 12px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dk-it.on .dk-see { color: inherit; opacity: .8; }
 .dk-i2 { grid-column: 2; display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted); font-size: 12px; }
 .dk-i2 .dk-who { flex: 0 1 auto; min-width: 0; max-width: none; }
 .dk-i2 .dk-age::before { content: "· "; }
@@ -771,7 +774,7 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
 .dk-about:hover b { color: var(--link, var(--accent)); }
 /* Looks right's moment to take it back (desk_commit.js): "Done · Undo" on the item, and Undo in the toast. */
 /* Looks right said: the row dims while Undo can still take it back, then folds away (deskLeaving) before it goes. */
-.dk-it.soon :is(.dk-i1, .dk-kid, .dk-who, .dk-age, .dk-tag) { opacity: 0.45; }
+.dk-it.soon :is(.dk-i1, .dk-see, .dk-kid, .dk-who, .dk-age, .dk-tag) { opacity: 0.45; }
 .dk-it.dk-leave { overflow: hidden; pointer-events: none; animation: dk-leave 0.28s ease-in forwards; }
 @keyframes dk-leave {
   from { height: var(--h); opacity: 1; }

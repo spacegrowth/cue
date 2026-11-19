@@ -16,13 +16,14 @@ fn item_named(st: &Store, project: &str, text: &str) -> Option<String> {
 /// An ITEM: line said by session `by` (named `from`): a new item of `project`, or the one of that kind and title
 /// not done yet, with you to check too (the line said again). The item's id, and whether it's new.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn item_said(st: &mut Store, project: &str, kind: &str, title: &str, done_when: &str, from: &str, now: u64, fx: &mut Effects) -> (String, bool) {
+pub(super) fn item_said(st: &mut Store, project: &str, kind: &str, title: &str, see: &str, done_when: &str, from: &str, now: u64, fx: &mut Effects) -> (String, bool) {
     let same_kind = kind_of(kind);
     let open = |i: &&DeskItem| i.project == project && i.kind == same_kind && i.state != "done" && i.title.trim().eq_ignore_ascii_case(title.trim());
     if let Some(open) = st.desk.items.iter().find(open) {
         return (open.id.clone(), false);
     }
-    let it = new_item(st, project, kind, title, done_when, from, now);
+    let mut it = new_item(st, project, kind, title, done_when, from, now);
+    it.see = see.trim().into();
     let id = it.id.clone();
     fx.items.push(id.clone());
     st.desk.items.push(it);
@@ -38,7 +39,7 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx
     let mut answers: Vec<String> = Vec::new();
     for line in parse::lines(text) {
         match line {
-            Line::Item { kind, title, done_when, .. } => last_new = Some(item_said(st, project, &kind, &title, &done_when, &name, now, fx).0),
+            Line::Item { kind, title, see, done_when, .. } => last_new = Some(item_said(st, project, &kind, &title, &see, &done_when, &name, now, fx).0),
             Line::Route { id, to, after, why, kind, .. } => {
                 // An old tag ("#d7k2") names the item by its number from now.
                 let id = if id == "new" { last_new.clone() } else { Some(st.desk.canon(&id)) };
@@ -65,6 +66,12 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx
             Line::Context { who, what, why } if what == "keep" => keep(st, project, &by, &who, &why, now, fx),
             Line::Done { ids } => lead_done(st, project, lsid, &ids, fx),
             Line::Title { id, title } => retitle(st, project, &by, &id, &title, now, fx),
+            Line::See { id, see, done_when } => {
+                let id = st.desk.canon(&id);
+                if let Err(no) = see_said(st, project, &id, &see, &done_when, now, fx) {
+                    answers.push(no);
+                }
+            }
             Line::Split { id, titles } => split(st, project, &by, &id, &titles, now, fx),
             Line::Cut { id, on, why } => cut(st, project, &by, &id, &on, &why, now, fx),
             Line::Merge { id, into, why } => merge(st, project, &by, &id, &into, &why, now, fx),
@@ -232,6 +239,27 @@ fn retitle(st: &mut Store, project: &str, by: &By, id: &str, title: &str, now: u
     it.updated = secs(now);
     fx.items.push(id.clone());
     decide(st, project, Some(id), by.name, by.sid, &format!("Named it \"{}\"", title.trim()), "", now, fx);
+}
+
+/// The lead gave item `id` its two lines (SEE:, #382): what you'll see when it's done, and the check its session runs.
+/// Either may be left out to keep what it has. Told when there's no such item.
+fn see_said(st: &mut Store, project: &str, id: &str, see: &str, done_when: &str, now: u64, fx: &mut Effects) -> Result<(), String> {
+    let it = st.desk.item_mut(id).filter(|i| i.project == project).ok_or_else(|| format!("Refused: SEE #{id}: this Desk has no item #{id}."))?;
+    let (see, done_when) = (see.trim(), done_when.trim());
+    let mut changed = false;
+    if !see.is_empty() && it.see != see {
+        it.see = see.into();
+        changed = true;
+    }
+    if !done_when.is_empty() && it.done_when != done_when {
+        it.done_when = done_when.into();
+        changed = true;
+    }
+    if changed {
+        it.updated = secs(now);
+        fx.items.push(id.to_string());
+    }
+    Ok(())
 }
 
 /// The lead split item `id` (SPLIT:): it takes the first title, and each of the rest becomes a new item of the same

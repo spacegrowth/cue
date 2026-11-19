@@ -26,12 +26,12 @@ pub(super) fn session_items(st: &mut Store, sid: &str, text: &str, now: u64, fx:
     let mine = st.desk.items.iter().filter(on).max_by_key(|i| i.updated).map(|i| i.id.clone());
     let mut kept = Vec::new();
     for line in parse::lines(text) {
-        let Line::Item { kind, title, done_when, why } = line else { continue };
+        let Line::Item { kind, title, see, done_when, why } = line else { continue };
         if let Some(mine) = mine.as_ref().filter(|_| why.trim().is_empty()) {
             kept.push(format!("Not added as a new item: {}. Its fix or next step stays in #{mine}, the item you're on: do it there, or say it in your reply.", title.trim()));
             continue;
         }
-        let (id, fresh) = item_said(st, &project, &kind, &title, &done_when, &name, now, fx);
+        let (id, fresh) = item_said(st, &project, &kind, &title, &see, &done_when, &name, now, fx);
         if fresh {
             if let Some(it) = st.desk.item_mut(&id) {
                 it.why = why.trim().to_string();
@@ -107,7 +107,7 @@ pub(super) fn replied(st: &mut Store, sid: &str, text: &str, turn: &[crate::mode
 }
 
 /// How a session on an item adds one that's truly separate (said after an ITEM: line Cue didn't add).
-const SEPARATE_ITEM_WORDS: &str = "Only something truly separate from it is a new item, with why in one line: ITEM: <bug|feature|task> | <title> | done when: <…> | why: <how it's separate>";
+const SEPARATE_ITEM_WORDS: &str = "Only something truly separate from it is a new item, with why in one line: ITEM: <bug|feature|task> | <title> | you'll see: <what the user sees when it's done, plain words> | done when: <the check> | why: <how it's separate>";
 
 /// Holder `sid` said `text` at its turn's end: items it says are done go to you to check (and what was queued after
 /// them starts), and (unless it's the lead, whose DECIDED lines are the lead's) its DECIDED lines are decisions on
@@ -186,5 +186,5 @@ pub(super) fn desk_line_start(line: &str) -> bool {
     let l = parse::unmarked(line.trim().trim_start_matches('`')).trim_start_matches('`');
     let Some((word, _)) = l.split_once(':') else { return false };
     let word = word.trim_end_matches(['*', '`']).trim();
-    matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "CONTEXT" | "DESIGNS" | "TITLE" | "SPLIT" | "CUT" | "MERGE" | "NOTE" | "CLOSE" | "TAKE COPY" | "LAND FIRST" | "START" | "PAUSE" | "RESUME" | "ANSWER" | "PASS") || word.eq_ignore_ascii_case("DECIDED")
+    matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "CONTEXT" | "DESIGNS" | "TITLE" | "SEE" | "SPLIT" | "CUT" | "MERGE" | "NOTE" | "CLOSE" | "TAKE COPY" | "LAND FIRST" | "START" | "PAUSE" | "RESUME" | "ANSWER" | "PASS") || word.eq_ignore_ascii_case("DECIDED")
 }

@@ -459,12 +459,13 @@
    {
     "project": "cue",
     "checks": [
-     { "id": "d2", "kind": "feature", "title": "Quick phrases at the right of Send", "done_when": "Quick phrases sit at the right of Send; More opens the rest.", "state": "to_check", "commit": "", "at": 1793984280000, "by": "web-lead", "files": ["ui/chat/compose.js", "ui/styles/chat.css"], "cue": true, "last": true }
+     { "id": "d2", "kind": "feature", "title": "Quick phrases at the right of Send", "see": "Quick phrases sit at the right of Send; More opens the rest.", "done_when": "Quick phrases sit at the right of Send; More opens the rest.", "state": "to_check", "commit": "", "at": 1793984280000, "by": "web-lead", "files": ["ui/chat/compose.js", "ui/styles/chat.css"], "cue": true, "last": true }
     ],
     "items": [
      {
       "project": "cue",
-      "done_when": "After Send the cursor is still in the reply box.",
+      "see": "After Send the cursor is still in the reply box.",
+      "done_when": "desk.spec checks it: After Send the cursor is still in the reply box.",
       "after": null,
       "after_why": "",
       "latest": "",
@@ -497,7 +498,8 @@
      },
      {
       "project": "cue",
-      "done_when": "Quick phrases sit at the right of Send; More opens the rest.",
+      "see": "Quick phrases sit at the right of Send; More opens the rest.",
+      "done_when": "desk.spec checks it: Quick phrases sit at the right of Send; More opens the rest.",
       "after": null,
       "after_why": "",
       "latest": "Done: phrases at the right of Send, More opens upward.",
@@ -519,7 +521,8 @@
      },
      {
       "project": "cue",
-      "done_when": "The field is centred unless it would cover a button.",
+      "see": "The field is centred unless it would cover a button.",
+      "done_when": "desk.spec checks it: The field is centred unless it would cover a button.",
       "after": null,
       "after_why": "",
       "latest": "step 2 of 3",
@@ -545,7 +548,8 @@
      },
      {
       "project": "cue",
-      "done_when": "The rail's dot blinks only for a session you wrote to, once its reply comes back.",
+      "see": "The rail's dot blinks only for a session you wrote to, once its reply comes back.",
+      "done_when": "desk.spec checks it: The rail's dot blinks only for a session you wrote to, once its reply comes back.",
       "after": "d3",
       "after_why": "both change header.js",
       "latest": "",
@@ -567,7 +571,8 @@
      },
      {
       "project": "cue",
-      "done_when": "A hosted session opens the canvas like any other.",
+      "see": "A hosted session opens the canvas like any other.",
+      "done_when": "desk.spec checks it: A hosted session opens the canvas like any other.",
       "after": null,
       "after_why": "",
       "latest": "testing the fix",

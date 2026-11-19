@@ -6,7 +6,7 @@
 #[derive(Clone, Debug, PartialEq)]
 pub enum Line {
     /// A new item.
-    Item { kind: String, title: String, done_when: String, why: String },
+    Item { kind: String, title: String, see: String, done_when: String, why: String },
     /// Item `id` ("new": the reply's last ITEM) to the session named `to`, now or `after` another item; `kind`, when
     /// said: the lead's call on what it is ("bug" | "feature" | "task"; an item you add has none till then); `crew`,
     /// when said: the lead's teammate doing it (with `to` "me").
@@ -18,6 +18,9 @@ pub enum Line {
     Done { ids: Vec<String> },
     /// Item `id`'s designs are at `url` (its canvas), as any session of its project says; a newer one replaces it.
     Designs { id: String, url: String },
+    /// Item `id`'s two lines, from the lead (#382): what you'll see when it's done, in plain words, and (when said)
+    /// the technical check its session runs: `SEE: #<id> | <what you'll see> | done when: <check>`.
+    See { id: String, see: String, done_when: String },
     /// Item `id` retitled by the lead: a short plain `title` for the words it was added with.
     Title { id: String, title: String },
     /// Item `id` holds more than one problem: it takes the first of `titles`, and each of the rest becomes an item of
@@ -131,6 +134,7 @@ fn one(t: &str) -> Option<Line> {
         "CONTEXT" => context(body),
         "DESIGNS" => designs(body),
         "TITLE" => title(body),
+        "SEE" => see(body),
         "SPLIT" => split(body),
         "CUT" => cut(body),
         "MERGE" => merge(body),
@@ -201,10 +205,38 @@ fn item(body: &str) -> Option<Line> {
     fn why_of(s: &str) -> Option<&str> {
         labelled(s, "why").filter(|_| s[3..].trim_start().starts_with(':'))
     }
-    let title = rest.iter().find(|s| labelled(s, "done when").is_none() && why_of(s).is_none()).map(|s| s.to_string()).unwrap_or_default();
+    let title = rest.iter().find(|s| labelled(s, "done when").is_none() && why_of(s).is_none() && see_of(s).is_none()).map(|s| s.to_string()).unwrap_or_default();
+    let see = rest.iter().find_map(|s| see_of(s)).unwrap_or("").to_string();
     let done_when = rest.iter().find_map(|s| labelled(s, "done when")).unwrap_or("").to_string();
     let why = rest.iter().find_map(|s| why_of(s)).unwrap_or("").to_string();
-    (!title.is_empty()).then_some(Line::Item { kind, title, done_when, why })
+    (!title.is_empty()).then_some(Line::Item { kind, title, see, done_when, why })
+}
+
+/// `part` without its "you'll see:" label (or "you will see:", "see:"; a curly quote too), with its colon, so a
+/// title that starts "See …" stays the title (#382).
+fn see_of(part: &str) -> Option<&str> {
+    let p = part.replace('’', "'");
+    ["you'll see", "you will see", "see"].iter().find_map(|l| {
+        let rest = p.get(..l.len()).filter(|h| h.eq_ignore_ascii_case(l)).map(|_| &p[l.len()..])?;
+        rest.trim_start().starts_with(':').then(|| {
+            // The same cut in `part` itself: the curly quote is 3 bytes to the straight one's 1.
+            let skip = part.len() - rest.len();
+            part[skip..].trim_start().trim_start_matches(':').trim()
+        })
+    })
+}
+
+/// "#111 | <what you'll see> | done when: <check>": item 111's two lines (#382). Its see may be labelled or not.
+fn see(body: &str) -> Option<Line> {
+    let p = parts(body);
+    let head = p.first()?;
+    if !head.starts_with('#') {
+        return None;
+    }
+    let id = id_of(head)?;
+    let done_when = p[1..].iter().find_map(|s| labelled(s, "done when")).unwrap_or("").to_string();
+    let see = p[1..].iter().find_map(|s| see_of(s)).or_else(|| p[1..].iter().copied().find(|s| labelled(s, "done when").is_none())).map(|s| unwrapped(s).to_string()).unwrap_or_default();
+    (!see.is_empty() || !done_when.is_empty()).then_some(Line::See { id, see, done_when })
 }
 
 fn route(body: &str) -> Option<Line> {

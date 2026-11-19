@@ -99,9 +99,9 @@ function deskAllowLine(i) {
 }
 /** What an item waiting on you asks you to do, in one plain line (#182): [verb, words], or null when it doesn't wait
  *  on you. Allow a tool, Pick one of its choices (or of its mocks), Answer its question; Try it once it's in the app
- *  (its "done when"). */
+ *  (what you'll see, #382: its "done when" is the session's). */
 function deskVerb(i) {
-  if (i.state === "to_check" && !deskInstallWait(i)) return deskPickLine(i) ? ["Pick", deskPickLine(i)] : ["Try it", deskDoneWhenPoints(i.done_when || "")[0] || i.title];
+  if (i.state === "to_check" && !deskInstallWait(i)) return deskPickLine(i) ? ["Pick", deskPickLine(i)] : ["Try it", deskOneLine(i.see) || i.title];
   if (i.state !== "needs_you") return null;
   const a = i.ask;
   if (a) return [a.kind === "permission" ? "Allow" : (a.choices || []).length > 1 ? "Pick" : "Answer", a.kind === "permission" ? deskAllowLine(i) : deskOneLine(a.text)];
@@ -178,7 +178,7 @@ const DESK_STATE_SVG = {
 const deskStateIcon = (i) => `<svg class="dk-si" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${DESK_STATE_SVG[deskStateOf(i)]}</svg>`;
 /** Who holds an item, in a few words: "web-lead → search-centre" for its crew member. */
 const deskHolderOf = (i) => (!i.holder ? "" : i.holder.kind === "crew" ? `${deskHolderName(i.holder.lead_sid)} → ${i.holder.name}` : i.crew ? `${i.holder.name} → ${i.crew}` : i.holder.name);
-/** One item in two rows: its state, #id and title; under them who holds it (Give to… when no one does), its age (a
+/** One item in two rows: its state, #id and title (what you'll see when it's done under it, a quiet line, #382); under them who holds it (Give to… when no one does), its age (a
  *  done one's time it finished), and a quiet ✓ when it's ready to check (Looks right; it fills on hover); an ask's question below that. Lit
  *  when it's open, or its crew member is. */
 function deskItemRow(i, lit, held = false, lane = null) {
@@ -212,7 +212,7 @@ function deskItemRow(i, lit, held = false, lane = null) {
   const ask = vb || decision ? `<div class="dk-ask-row">${vb ? `<div class="dk-h">${vb}</div>` : ""}${decision ? `<div class="dk-row-decisions">${decision}</div>` : ""}</div>` : "";
   return `<div class="dk-it ${i.state === "needs_you" ? "ask" : ""} ${look === "landed" ? "landed" : ""} dk-${deskStateOf(i)} ${on ? "on" : ""}${stalled ? " stalled" : ""}${i.state === "to_check" && deskLooksSoon.has(i.id) ? " soon" : ""}${deskLeaveStyle(i.id)}" role="button" tabindex="0" data-desk-item="${esc(i.id)}">
     ${deskStateIcon(i)}<div class="dk-i1">${on ? '<span class="dk-larrow" aria-hidden="true">‹</span>' : ""}<span class="dk-tag ${look}">${tag}</span>${lane?.n ? `<span class="dk-rn">${lane.n}</span>` : ""}<span class="dk-t">${esc(i.title)}</span></div>
-    <div class="dk-i2"><span class="dk-kid">${deskKindIcon(i)}<span class="dk-id">${esc(deskNum(i))}</span></span><span class="dk-who${s ? " held" : ""}">${who}</span>${doing}<span class="dk-age">${when}</span>${ok}</div>${ask}${deskWaits(i) ? deskUnblocksHtml(i) : ""}</div>`;
+    ${i.see && deskVerb(i)?.[0] !== "Try it" ? `<div class="dk-see">You'll see: ${esc(deskOneLine(i.see))}</div>` : ""}<div class="dk-i2"><span class="dk-kid">${deskKindIcon(i)}<span class="dk-id">${esc(deskNum(i))}</span></span><span class="dk-who${s ? " held" : ""}">${who}</span>${doing}<span class="dk-age">${when}</span>${ok}</div>${ask}${deskWaits(i) ? deskUnblocksHtml(i) : ""}</div>`;
 }
 /** An add-on's head: its name, what it is, › while it's open (#219). */
 const deskHolderHead = (h, on) => `<div class="dk-holder ${on ? "on" : ""}" role="button" tabindex="0" ${h.addon ? `data-desk-addon="${esc(h.key)}"` : `data-desk-holder="${esc(h.sid)}"`}><span class="dk-nm">${esc(h.name)}</span><span class="dk-s">${esc(h.sub || "")}</span><span class="grow"></span>${on ? '<span class="dk-go">›</span>' : ""}</div>`;

@@ -67,9 +67,9 @@ CueBridge.area("desk", (w) => {
       w.changed();
       return { sid: s.session_id };
     },
-    desk_add: ({ project, kind, title, doneWhen, holder }) => {
+    desk_add: ({ project, kind, title, see, doneWhen, holder }) => {
       const t = secs(), s = holder && w.session(holder);
-      const it = { id: `x${++n}`, project, kind, title, done_when: doneWhen || "", state: s ? "working" : "new", holder: s ? { sid: holder, name: s.name || holder, kind: "session" } : null, after: null, after_why: "", latest: "", ask: null, files: [], created: t, updated: t, done_at: null, from: "you" };
+      const it = { id: `x${++n}`, project, kind, title, see: see || "", done_when: doneWhen || "", state: s ? "working" : "new", holder: s ? { sid: holder, name: s.name || holder, kind: "session" } : null, after: null, after_why: "", latest: "", ask: null, files: [], created: t, updated: t, done_at: null, from: "you" };
       deskOf(project).items.push(it);
       if (s) join(project, holder);
       w.changed();

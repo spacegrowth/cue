@@ -2,7 +2,7 @@
 // a normal session you pick ("Who runs this Desk?") or a new one Cue starts; you tell it, it does the work or hands it
 // out. Here: the picker (zero, one or several sessions; "Keep <name>" when changing), ⋯ in the head strip, the
 // ended lead's line, "Give to…" on an item no one holds, and the quick-add line at the top of Items (Enter adds; an
-// optional Done when; several pasted lines add one item a line; ⌘N focuses it). An item you add has no kind: the
+// optional You'll see (#382); several pasted lines add one item a line; ⌘N focuses it). An item you add has no kind: the
 // lead says whether it's a bug, a feature or a task as it routes it. Commands: desk_set_lead, desk_add, desk_give.
 
 /** The project whose lead is being changed (the picker shows over the lead's chat, with Keep), or null. */
@@ -11,7 +11,7 @@ let deskPick = null;
 let deskLeadBusy = null;
 /** The item whose "Give to…" menu is open: { id, at: "row" | "pane" }, or null. */
 let deskGiveFor = null;
-/** The project whose quick-add line has its Done when open, or null. */
+/** The project whose quick-add line has its You'll see open (what you'll see when it's done, #382), or null. */
 let deskQaDone = null;
 /** The lead's lines in its chat you opened (their word and body): shut by default, a redraw keeps them open (#157). */
 const deskLnOpen = new Set();
@@ -158,32 +158,32 @@ async function deskGiveTo(id, sid) {
 
 /** The quick-add line's draft keys, a pair a project (what you half-typed stays on its own project's Desk). */
 const deskQaKeys = (project = deskSelection()) => ({ line: `desk-qa:${project}`, done: `desk-qa-done:${project}` });
-/** The line (or its Done when) on screen. */
+/** The line (or its You'll see) on screen. */
 const deskQaEl = (which = "line") => document.querySelector(`.dk-board .dk-qa [data-qa="${which}"]`);
 const deskQaFocusEl = (which) => deskQaEl(which)?.focus();
 
 /** At the top of Items: "Add an item…" with its picture button (or paste or drop one on it), the pictures added,
- *  "+ Done when" (or its line, open). */
+ *  "+ You'll see" (or its line, open). The lead adds its technical check for the session (#382). */
 function deskQuickAdd() {
   const k = deskQaKeys();
-  const done = deskQaDone === deskSelection() ? `<input class="dk-qa-in dk-qa-done" data-qa="done" data-text="${esc(k.done)}" placeholder="Done when… (optional)" spellcheck="false" value="${esc(draft(k.done).text)}"/>`
-    : `<button class="dk-link dk-qa-more" data-desk-qa-done>+ Done when</button>`;
+  const done = deskQaDone === deskSelection() ? `<input class="dk-qa-in dk-qa-done" data-qa="done" data-text="${esc(k.done)}" placeholder="You'll see… (optional)" spellcheck="false" value="${esc(draft(k.done).text)}"/>`
+    : `<button class="dk-link dk-qa-more" data-desk-qa-done>+ You'll see</button>`;
   return `<div class="dk-qa" data-drop="${esc(k.line)}"><div class="dk-qa-row"><input class="dk-qa-in" data-qa="line" data-text="${esc(k.line)}" placeholder="Add an item…" spellcheck="false" value="${esc(draft(k.line).text)}"/><button class="icon-btn" data-attach="${esc(k.line)}" aria-label="Add an image">${IMAGE_ICON}</button></div>${draftChips(k.line)}${done}</div>`;
 }
-/** Add what's in the line (or `titles`, pasted lines): one item each, of no kind (the lead says); Done when and the
+/** Add what's in the line (or `titles`, pasted lines): one item each, of no kind (the lead says); You'll see and the
  *  pictures go with a single one. The line keeps the cursor for the next. */
 async function deskQaAdd(titles = null) {
   const project = deskSelection(), k = deskQaKeys(project);
   const list = (titles || [draft(k.line).text]).map((t) => t.trim()).filter(Boolean);
   if (!list.length) return deskQaFocusEl("line");
-  const kind = "", doneWhen = titles ? "" : draft(k.done).text.trim(), images = titles ? [] : draft(k.line).images;
+  const kind = "", see = titles ? "" : draft(k.done).text.trim(), images = titles ? [] : draft(k.line).images;
   if (!titles) { delete drafts[k.line]; delete drafts[k.done]; deskQaDone = null; saveDrafts(); }
   renderMain();
   deskQaFocusEl("line");
   const failed = [];
   let why = "";
   for (const title of list) {
-    try { await invoke("desk_add", { project, kind, title, ...(doneWhen && { doneWhen }), ...(images.length && { images }) }); }
+    try { await invoke("desk_add", { project, kind, title, ...(see && { see }), ...(images.length && { images }) }); }
     catch (e) { failed.push(title); why = String(e); }
   }
   // What didn't go: the first back in the line (when it's empty), and how many.
@@ -192,15 +192,15 @@ async function deskQaAdd(titles = null) {
     if (!draft(k.line).text) {
       draft(k.line).text = failed[0];
       if (images.length && !draft(k.line).images.length) draft(k.line).images = images;
-      // A single one's Done when comes back with it, its line open.
-      if (doneWhen && !draft(k.done).text) { draft(k.done).text = doneWhen; deskQaDone = project; }
+      // A single one's You'll see comes back with it, its line open.
+      if (see && !draft(k.done).text) { draft(k.done).text = see; deskQaDone = project; }
       saveDrafts();
     }
   }
   renderMain();
   deskQaFocusEl("line");
 }
-/** Keys in the quick-add line: Enter adds, ⇧Enter opens Done when, Esc closes it. True when it was the line's. */
+/** Keys in the quick-add line: Enter adds, ⇧Enter opens You'll see, Esc closes it. True when it was the line's. */
 function deskQaKey(e, key) {
   const k = deskQaKeys();
   if (key !== k.line && key !== k.done) return false;
@@ -253,7 +253,7 @@ if (typeof document !== "undefined") {
 // ---------- the lead's own lines, drawn in its chat ----------
 /** A Desk line as desk/parse.rs reads it: its word in capitals, a list mark or bold around it; ASK has its own card
  *  (deskLeadAsk) and DECIDED md's own block, so neither is here. */
-const DESK_SAY = /^[-*+ ]*(ITEM|ROUTE|DONE|CONTEXT|DESIGNS|TITLE|MERGE)\**\s*:(.*)$/;
+const DESK_SAY = /^[-*+ ]*(ITEM|ROUTE|DONE|CONTEXT|DESIGNS|TITLE|SEE|MERGE)\**\s*:(.*)$/;
 const DESK_KINDS = ["bug", "feature", "task"];
 /** `line` of a Desk chat's reply as one short plain sentence at the left (md's `lines` hook; #157, #173): ROUTE "Gave
  *  Task #2 to who" (or "Task #2 waits on #1"); ITEM "Added Bug #2: title"; DONE "Bug #2 is done"; TITLE "Renamed Bug
@@ -293,13 +293,21 @@ function deskLineHtml(line, inline) {
     const first = p[0].toLowerCase();
     const kind = DESK_KINDS.includes(first) ? first : "";
     const rest = kind ? p.slice(1) : p;
-    const title = rest.find((s) => lab(s, "done when") === null) || "";
+    const title = rest.find((s) => lab(s, "done when") === null && deskSeeOf(s) === null && !/^why\s*:/i.test(s)) || "";
     if (!title) return "";
     deskSaidItem = title;
-    const done = rest.map((s) => lab(s, "done when")).find((v) => v !== null) || "";
+    // What you'll see (#382); its done when is the session's check, not shown.
+    const see = rest.map(deskSeeOf).find((v) => v !== null) || "";
     const it = deskNewlySaid(title);
     const what = it ? ref(it.id, it) : kind ? `a ${kind}` : "";
-    return ln(`Added ${what ? `${what}: ` : ""}<span class="dk-say-t">${inline(title)}</span>`, done ? `Done when ${inline(done)}` : "");
+    return ln(`Added ${what ? `${what}: ` : ""}<span class="dk-say-t">${inline(title)}</span>`, see ? `You'll see ${inline(see)}` : "");
+  }
+  if (m[1] === "SEE") {
+    // "SEE: #12 | <what you'll see> | done when: <check>" (#382): "Said what you'll see for Bug #12", the words under it.
+    if (!p[0].startsWith("#")) return "";
+    const it = known(id(p[0]));
+    const see = p.slice(1).map((s) => deskSeeOf(s) ?? (lab(s, "done when") === null ? s : null)).find((v) => v) || "";
+    return ln(`Said what you'll see for ${ref(id(p[0]), it)}`, see ? `You'll see ${inline(see)}` : "");
   }
   if (m[1] === "ROUTE") {
     const ht = arrow(p[0]), at = ht && id(ht[0]), to = ht && name(ht[1]);
@@ -387,11 +395,16 @@ function deskDoneNotes(e) {
     return deskCueLine(`<span class="dk-say-w">not closed</span> ${head}<span class="dk-say-s"> · ${esc(why)}</span>`, e.at_ms);
   }).join("")}</div>`;
 }
+/** `part` without its "you'll see:" label (or "you will see:", "see:"), as parse.rs see_of(); null without it. */
+function deskSeeOf(part) {
+  const m = /^(?:you['’]ll see|you will see|see)\s*:(.*)$/i.exec(String(part).trim());
+  return m ? m[1].trim() : null;
+}
 /** What Cue told the lead of new items (desk/mod.rs new_items_words: "New item #72 (bug): title | done when: … |
  *  pictures: `a.png` | from x", a line each, then one line of words for the lead, none of it shown: sometimes "If one
  *  of yours holds two separate problems, SPLIT it first…", always "Route it now…" or "Route each now…", sometimes "Say
  *  what one without a kind is…". Cue never sends new items without the Route words, so they mark the message) as a small
- *  card an item: its kind's icon, number and title, a muted line under them (done when, who it's from), then its
+ *  card an item: its kind's icon, number and title, a muted line under them (you'll see, who it's from), then its
  *  pictures as thumbnails; a click on the card opens the item. null for any other message (chat/render.js chatHtml
  *  `you`). */
 function deskNewItems(e) {
@@ -405,16 +418,18 @@ function deskNewItems(e) {
 }
 /** One new item's card (deskNewItems), design B (#200, #203): "[icon] Feature #72  1h" on one line, the short title
  *  under it, then the words it was added with, plain and lighter (once the lead gave it a shorter title), a quiet
- *  line (who it's from, done when), and its pictures as a small row. */
+ *  line (what you'll see, who it's from: not its done when, the session's check, #382), and its pictures as a small row. */
 function deskNewCard([, id, said = "", rest], known, at) {
   const p = rest.split(" | "), it = known(id), kind = it?.kind || said;
   // The line holds the title it was added with; the item may have a shorter one since (TITLE:), its words kept.
   const title = it?.title || p[0], words = it?.words || (p[0] !== title ? p[0] : "");
   let pics = [];
   const sub = p.slice(1).flatMap((x) => {
-    const done = /^done when: (.*)$/.exec(x), pc = /^pictures: (.*)$/.exec(x);
+    const see = /^you'll see: (.*)$/.exec(x), pc = /^pictures: (.*)$/.exec(x);
     if (pc) { pics = [...pc[1].matchAll(/`([^`]+)`/g)].map((m) => m[1]); return []; }
-    return [done ? `done when ${esc(done[1])}` : esc(x)];
+    // Its done when is the session's check (#382): not on the card.
+    if (/^done when: /.test(x)) return [];
+    return [see ? `you'll see ${esc(see[1])}` : esc(x)];
   });
   return `<div class="dk-nc" role="button" tabindex="0" data-desk-chk-item="${esc(id)}"><div class="dk-nc1">${deskKindIcon(kind)}<b class="dk-inum">${esc(deskNum({ id, kind }))}</b><span class="dk-cl-age">${ago(at)}</span></div>`
     + `<div class="dk-nc-t">${esc(title)}</div>${words ? `<div class="dk-nc-w">${esc(words)}</div>` : ""}`
@@ -426,9 +441,10 @@ const deskItemRef = (id, kind, num, title) => `<button class="dk-chk-a dk-new-t"
 const deskCueLine = (html, at) => `<div class="dk-new dk-cl"><span class="dk-cl-t"><b>Cue</b> · ${html} <span class="dk-cl-age">${ago(at)}</span></span></div>`;
 
 // ---------- the Desk's hand-off, as a card in the chat of the session it went to (#174) ----------
-/** The Desk's hand-off (desk/mod.rs handed_words: "Desk item #171 (task): title", then "Done when:", "Pictures with
+/** The Desk's hand-off (desk/mod.rs handed_words: "Desk item #171 (task): title", then "You'll see:", "Done when:", "Pictures with
  *  it", "Why you:", then Cue's standing words to the session, not shown) as a card on the right: "From <the Desk's
- *  lead> · Task #171" (its number opening the item), its title, Done when as short lines, Why. Lines before it (Cue's
+ *  lead> · Task #171" (its number opening the item), its title, You'll see as short lines (not its Done when: the
+ *  session's check is in its message, #382), Why. Lines before it (Cue's
  *  "Done? Write DONE: #171…") stay as a quiet line over it. null for any other message. */
 function deskHandHtml(e, meta) {
   const text = String(e.text || "");
@@ -441,8 +457,8 @@ function deskHandHtml(e, meta) {
   const parts = {};
   let cur = null;
   for (const l of rest) {
-    const m = /^(Done when|Pictures with it \(open each to see it\)|Why you): ?(.*)$/.exec(l);
-    if (m) { cur = m[1][0]; parts[cur] = m[2]; continue; }
+    const m = /^(You'll see|Done when|Pictures with it \(open each to see it\)|Why you): ?(.*)$/.exec(l);
+    if (m) { cur = m[1] === "You'll see" ? "S" : m[1][0]; parts[cur] = m[2]; continue; }
     if (/^(Fixes and next steps for it stay in|If you put its designs on a canvas|Say DONE: #)/.test(l)) { cur = null; continue; }
     if (cur) parts[cur] += `\n${l}`;
   }
@@ -456,7 +472,7 @@ function deskHandHtml(e, meta) {
   return `<div class="cv-you dk-hand">${pre ? `<div class="dk-hand-pre">${esc(pre)}</div>` : ""}<div class="dk-hand-c">
     <div class="dk-hand-h">${lead ? `From <b>${esc(lead)}</b> · ` : "From the Desk · "}${ref}${mate ? ` · for ${esc(mate)}` : ""}</div>
     <div class="dk-hand-t">${esc(title)}</div>
-    ${parts.D?.trim() ? `<div class="dk-hand-l">Done when</div>${deskDoneWhenHtml(parts.D.trim())}` : ""}
+    ${parts.S?.trim() ? `<div class="dk-hand-l">You'll see</div>${deskDoneWhenHtml(parts.S.trim())}` : ""}
     ${pics ? `<div class="dk-hand-p">${pics} picture${pics === 1 ? "" : "s"} with it</div>` : ""}
     ${parts.W?.trim() ? `<div class="dk-hand-l">Why</div><div class="dk-hand-w">${esc(parts.W.trim())}</div>` : ""}
   </div><div class="cv-meta">${meta ?? `Cue · ${ago(e.at_ms)} ago`}</div></div>`;

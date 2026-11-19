@@ -70,6 +70,8 @@ test("an item opens on the right with its row lit in place; ‹ web-lead goes ba
   await cue.open("desk");
   await openDesk(page);
   const before = await listOrder(page);
+  // In view first: a row partly under the window's edge is scrolled into view as it opens.
+  await page.locator('[data-desk-item="d4"]').scrollIntoViewIfNeeded();
   const top = await page.locator('[data-desk-item="d4"]').boundingBox();
   await page.locator('[data-desk-item="d4"]').click();
   await expect(page.locator('[data-desk-item="d4"]')).toHaveClass(/\bon\b/);
@@ -1013,7 +1015,7 @@ test("the quick-add line: Enter adds an item of no kind (the lead says which), t
   await expect(page.locator(".dk-pg .dk-pnow .dk-pword")).toHaveText("Not given out");
 });
 
-test("Done when is optional: ⇧Enter or + Done when opens it, Enter adds both; Esc closes an empty one", async ({ page, cue }) => {
+test("You'll see is optional: ⇧Enter or + You'll see opens it, Enter adds both; Esc closes an empty one (#382)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   const line = page.locator('.dk-qa [data-qa="line"]'), done = page.locator('.dk-qa [data-qa="done"]');
@@ -1027,7 +1029,7 @@ test("Done when is optional: ⇧Enter or + Done when opens it, Enter adds both; 
   await page.locator("[data-desk-qa-done]").click();
   await done.fill("It reopens where it was");
   await done.press("Enter");
-  await cue.called("desk_add", { project: "cue", kind: "", title: "Search keeps its place", doneWhen: "It reopens where it was" });
+  await cue.called("desk_add", { project: "cue", kind: "", title: "Search keeps its place", see: "It reopens where it was" });
   await expect(done).toHaveCount(0);
   await expect(line).toHaveValue("");
 });
@@ -1043,7 +1045,7 @@ test("several lines pasted: an item a line (bullets dropped); one line pastes as
   }, text);
   expect(await paste("- First thing\n\n2. Second thing\n* Third thing")).toBe(false);
   await expect.poll(async () => (await cue.calls("desk_add")).map((c) => c.args.title)).toEqual(["First thing", "Second thing", "Third thing"]);
-  expect((await cue.calls("desk_add")).every((c) => !("doneWhen" in c.args))).toBe(true);
+  expect((await cue.calls("desk_add")).every((c) => !("see" in c.args) && !("doneWhen" in c.args))).toBe(true);
   expect(await paste("Just one")).toBe(true);
   expect((await cue.calls("desk_add")).length).toBe(3);
 });
@@ -1094,7 +1096,7 @@ test("pasted lines that don't go: the first back in the line, and how many faile
   await expect(page.locator('.dk-qa [data-qa="line"]')).toHaveValue("One");
 });
 
-test("one item with Done when that doesn't go: both come back, Done when open", async ({ page, cue }) => {
+test("one item with You'll see that doesn't go: both come back, You'll see open", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await cue.override("desk_add", () => { throw "offline"; });
@@ -1158,7 +1160,7 @@ test("the lead's own Desk lines are drawn as lines in its chat, code blocks left
     sessionOf("lead").thread.push({ at_ms: Date.now(), role: "agent", text: [
       "Here's the plan.",
       "",
-      "ITEM: bug | Box loses focus | done when: typing keeps focus",
+      "ITEM: bug | Box loses focus | you'll see: typing keeps focus | done when: focus.spec passes",
       "- **ROUTE:** #d7k2 -> web-lead | after: #a1 | why: it knows the box",
       "DONE: #d3",
       "CONTEXT: host-lead -> keep | why: more to come",
@@ -1305,7 +1307,7 @@ test("Cue's New item note shows as a small card an item, without its words for t
   await openDesk(page);
   await page.evaluate(() => {
     sessionOf("lead").thread.push({ at_ms: Date.now(), role: "you", text: '<desk project="cue">\n3 open\n</desk>\n\n' + [
-      "New item #d2 (feature): Quick phrases | done when: they sit by Send | from web-lead",
+      "New item #d2 (feature): Quick phrases | you'll see: they sit by Send | done when: compose.spec passes | from web-lead",
       "New item #d9: Something new",
       "Route each now: ROUTE it to a session, or -> new. Say what one without a kind is in its ROUTE line: | kind: bug, feature or task.",
     ].join("\n") });
@@ -1319,7 +1321,8 @@ test("Cue's New item note shows as a small card an item, without its words for t
   // The Desk's title for it now leads; the words it came with sit under it, lighter.
   await expect(cards.nth(0).locator(".dk-nc-t")).toHaveText("Quick phrases at the right of Send");
   await expect(cards.nth(0).locator(".dk-nc-w")).toHaveText("Quick phrases");
-  await expect(cards.nth(0).locator(".dk-nc2")).toHaveText("done when they sit by Send · from web-lead");
+  // What you'll see, not its done when: that's the session's check (#382).
+  await expect(cards.nth(0).locator(".dk-nc2")).toHaveText("you'll see they sit by Send · from web-lead");
   await expect(cards.nth(0).locator("svg.dk-kic")).toHaveCount(1);
   // Said without a kind, but the Desk has it as a bug by now: the card shows what it is now.
   await expect(cards.nth(1).locator(".dk-nc1")).toHaveText(/^Bug #d9\d+s$/);
@@ -1378,7 +1381,7 @@ test("a new item with a picture, no kind, and Cue's SPLIT words before its Route
     state.desk.projects.find((x) => x.project === "cue").items.push({ id: "p1", project: "cue", kind: "", title: "The rail's dot is off by a pixel", state: "new", created: Date.now(), updated: Date.now(), holder: null, from: "you", images: [pic] });
     // As desk/mod.rs new_items_words says it: the SPLIT words on the Route line, and the kind words after it.
     sessionOf("lead").thread.push({ at_ms: Date.now(), role: "you", text: '<desk project="cue">\n4 open\n</desk>\n\n' + [
-      `New item #p1: The rail's dot is off by a pixel | done when: it sits centred | pictures: \`${pic}\``,
+      `New item #p1: The rail's dot is off by a pixel | you'll see: it sits centred | pictures: \`${pic}\``,
       "If one of yours holds two separate problems, SPLIT it first (Cue tells you the new numbers); if its title isn't short and plain, TITLE it. Route it now: ROUTE it to a session, or -> new. Say what one without a kind is in its ROUTE line: | kind: bug, feature or task.",
     ].join("\n") });
     renderMain();
@@ -1389,8 +1392,8 @@ test("a new item with a picture, no kind, and Cue's SPLIT words before its Route
   await expect(card.locator("svg.dk-kic")).toHaveCount(0);
   await expect(card.locator(".dk-inum")).toHaveText("#p1");
   await expect(card.locator(".dk-nc-t")).toHaveText("The rail's dot is off by a pixel");
-  // No "New item" line (#203): just done when, quiet, under the title.
-  await expect(card.locator(".dk-nc2")).toHaveText("done when it sits centred");
+  // No "New item" line (#203): just what you'll see, quiet, under the title.
+  await expect(card.locator(".dk-nc2")).toHaveText("you'll see it sits centred");
   await expect(card).not.toContainText("New item");
   // At the right, where your messages are, as wide as what it says, not floating mid-chat (#167).
   const cb = await card.boundingBox(), you = await page.locator(".dk-chat .cv-you-text").first().boundingBox();
@@ -2594,7 +2597,7 @@ test("a DONE is one Ready to check line in the lead's chat: its item, its age, C
   await cue.change((s) => { s.desk.projects.find((d) => d.project === "cue").checks[0].designs = ""; });
   await expect(info.locator(".dk-chk-in")).toContainText("In the installed Cue · installed ");
   // A link in what to test opens.
-  await cue.change((s) => { s.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d2").done_when = "See https://example.com/spec for it"; });
+  await cue.change((s) => { s.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d2").see = "See https://example.com/spec for it"; });
   await pane.locator('.dk-ptk a[data-href="https://example.com/spec"]').click();
   await cue.called("open_link", { url: "https://example.com/spec" });
 
@@ -3217,7 +3220,7 @@ test("an item page's header (title, tabs) stays at the top as its thread scrolls
   expect(await head.evaluate((e) => getComputedStyle(e).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)");
 });
 
-test("an item's Done when is in its panel: n of m, ticked once it's ready to check, none before (#140, #200)", async ({ page, cue }) => {
+test("an item's You'll see is in its panel, ticked once it's ready to check, none before; its Done when isn't shown (#140, #200, #382)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await page.locator('[data-desk-item="d4"]').click();
@@ -3225,12 +3228,13 @@ test("an item's Done when is in its panel: n of m, ticked once it's ready to che
   // Not in the thread: the panel's own section.
   await expect(pane.locator(".dk-dwl, .dk-ptk")).toHaveCount(0);
   const sec = page.locator(".dk-right .dk-panel .dk-pdw");
-  await expect(sec.locator("h4")).toHaveText("Done when · 0 of 1");
+  await expect(sec.locator("h4")).toHaveText("You'll see");
+  await expect(page.locator(".dk-right")).not.toContainText("desk.spec checks it");
   await expect(sec.locator(".dk-ptk li")).toContainText(["The rail's dot blinks only for a session you wrote to"]);
   await expect(sec.locator(".dk-tk.y")).toHaveCount(0);
   // Ready to check: all ticked.
   await page.locator('[data-desk-item="d2"]').click();
-  await expect(sec.locator("h4")).toHaveText("Done when · 2 of 2");
+  await expect(sec.locator("h4")).toHaveText("You'll see · 2 of 2");
   await expect(sec.locator(".dk-ptk li").first()).toContainText("Quick phrases sit at the right of Send");
   await expect(sec.locator(".dk-tk.y")).toHaveCount(2);
 });
@@ -3591,7 +3595,8 @@ test("the Desk's hand-off shows in the session's chat as a card: from the lead a
       "Done? Write DONE: #d5, or say what's left",
       "",
       "Desk item #d5 (bug): Hosted sessions can't open the canvas",
-      "Done when: (1) the canvas opens from a hosted session (2) it says why when it can't; light and dark. Installed and committed.",
+      "You'll see: (1) the canvas opens from a hosted session (2) it says why when it can't; light and dark. Installed and committed.",
+      "Done when: host.spec canvas test passes",
       "Why you: you know the host side",
       "Fixes and next steps for it stay in #d5: do them, or say them in your reply; don't add new items for them. Add one only for something truly separate, with why in one line: ITEM: <bug|feature|task> | <title> | done when: <…> | why: <how it's separate from #d5>",
       "If you put its designs on a canvas, or move them, say DESIGNS: #d5 <canvas link> on a line of its own.",
@@ -3606,6 +3611,8 @@ test("the Desk's hand-off shows in the session's chat as a card: from the lead a
   await expect(card.locator(".dk-hand-t")).toHaveText("Hosted sessions can't open the canvas");
   await expect(card.locator(".dk-dwl li")).toHaveText(["the canvas opens from a hosted session", "it says why when it can't", "light and dark", "Installed and committed"]);
   await expect(card.locator(".dk-hand-w")).toHaveText("you know the host side");
+  // Its Done when is the session's check, in its message only (#382).
+  await expect(card).not.toContainText("host.spec");
   await expect(card.locator(".dk-hand-pre")).toHaveText("Done? Write DONE: #d5, or say what's left");
   await expect(card).not.toContainText("Fixes and next steps");
   await expect(card).not.toContainText("DESIGNS:");
@@ -4213,4 +4220,24 @@ test("a working row says what its holder does and since when; quiet 10 minutes, 
   await page.clock.runFor(1000);
   await expect(page.locator('[data-desk-item="d5"] .dk-doing')).toHaveText(/^Stalled · last read model.rs · /);
   await expect(page.locator(".dk-items .dk-gh .dk-split")).toHaveText("0 moving · 2 stalled");
+});
+
+test("each item shows what you'll see in plain words under its title; its Done when stays the session's; the lead's SEE line reads as one (#382)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  const row = page.locator('.dk-items [data-desk-item="d4"]');
+  await expect(row.locator(".dk-see")).toHaveText("You'll see: The rail's dot blinks only for a session you wrote to, once its reply comes back.");
+  await expect(page.locator(".dk-items")).not.toContainText("desk.spec checks it");
+  // One without it yet: no empty line.
+  await expect(page.locator(".dk-items .dk-it:not(:has(.dk-see))").first()).toBeVisible();
+  await page.evaluate(() => {
+    sessionOf("lead").thread.push({ at_ms: Date.now(), role: "agent", text: "SEE: #d4 | the dot blinks only for you | done when: rail.spec passes" });
+    renderMain();
+  });
+  const ln = page.locator(".dk-chat .cv-agent").last().locator(".own-lines .dk-sl");
+  await expect(ln).toHaveCount(1);
+  await expect(ln.locator(".dk-sl-h")).toContainText("Said what you'll see for");
+  await ln.locator(".dk-sl-r").click();
+  await expect(ln.locator(".dk-sl-d")).toHaveText("You'll see the dot blinks only for you");
+  await expect(ln).not.toContainText("rail.spec");
 });

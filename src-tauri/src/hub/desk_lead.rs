@@ -423,6 +423,15 @@ fn item_lines(st: &Store, it: &DeskItem, out: &mut String, failed: &mut Vec<(Str
     if !it.done_when.is_empty() {
         out.push_str(&format!(" | done when: {}", it.done_when));
     }
+    // Its plain line for the user (#382); an open one without it, or without its check, is said so, for the lead to SEE: it.
+    if !it.see.is_empty() {
+        out.push_str(&format!(" | you'll see: {}", it.see));
+    } else if it.state != "done" {
+        out.push_str(" | no you'll see yet");
+    }
+    if it.done_when.is_empty() && it.state != "done" {
+        out.push_str(" | no done when yet");
+    }
     if !it.files.is_empty() {
         // Its own files only (hub/desk.rs), and a few of them: the rest as a count.
         let more = it.files.len().saturating_sub(5);

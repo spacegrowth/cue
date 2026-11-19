@@ -48,6 +48,10 @@ pub struct DeskItem {
     /// The item it was split from (SPLIT:), when it was.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub split_from: String,
+    /// What you'll see when it's done, in plain words: the one line about it shown to you (#382).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub see: String,
+    /// The technical check of it being done: told only to the session doing it (#382), not shown to you.
     #[serde(default)]
     pub done_when: String,
     /// Why it's its own item, when a session on another item added it (`ITEM: … | why: …`).

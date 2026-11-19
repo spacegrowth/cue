@@ -319,7 +319,7 @@ impl Hub {
     /// it, and sent nothing (it's already its work). Else new, and the lead (if any) told of it to route, with
     /// others added within a moment in the same message.
     /// Pictures you attached are kept with the item (uploads.rs `save_kept`) and named to whoever takes it.
-    pub(crate) fn desk_add_with(&self, project: &str, kind: &str, title: &str, done_when: &str, holder: Option<&str>, images: &[crate::model::Upload]) -> Result<DeskItem, String> {
+    pub(crate) fn desk_add_with(&self, project: &str, kind: &str, title: &str, see: &str, done_when: &str, holder: Option<&str>, images: &[crate::model::Upload]) -> Result<DeskItem, String> {
         if project.trim().is_empty() || title.trim().is_empty() {
             return Err("an item needs a project and a title".into());
         }
@@ -327,6 +327,7 @@ impl Hub {
         let it = self.write(|st| -> Result<(DeskItem, Effects), String> {
             if project.starts_with("desk-") && !st.desk.spaces.contains_key(project) { return Err("no such Desk".into()); }
             let mut it = new_item(st, project, kind, title, done_when, "you", now_ms());
+            it.see = see.trim().into();
             it.images = images.clone();
             let mut fx = Effects { items: vec![it.id.clone()], ..Default::default() };
             match holder {
@@ -355,7 +356,7 @@ impl Hub {
     /// The same with no pictures, as the tests add.
     #[cfg(test)]
     pub(crate) fn desk_add(&self, project: &str, kind: &str, title: &str, done_when: &str, holder: Option<&str>) -> Result<DeskItem, String> {
-        self.desk_add_with(project, kind, title, done_when, holder, &[])
+        self.desk_add_with(project, kind, title, "", done_when, holder, &[])
     }
 
     /// You gave item `id` to session `sid`: see `give`. The item as it is now.

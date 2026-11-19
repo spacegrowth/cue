@@ -85,7 +85,7 @@ fn pictures_you_attach_are_kept_and_named_to_the_lead_and_to_whoever_takes_it() 
     let (h, project) = holder(&w);
     let l = new_lead(&w, &project);
     let png = crate::model::Upload { name: "shot.png".into(), mime: "image/png".into(), data: format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(b"not really a png")) };
-    let it = w.hub().desk_add_with(&project, "", "Logo blurs", "", None, &[png]).unwrap();
+    let it = w.hub().desk_add_with(&project, "", "Logo blurs", "", "", None, &[png]).unwrap();
     assert_eq!(it.images.len(), 1);
     let path = &it.images[0];
     assert!(path.contains("/uploads/kept/") && std::fs::read(path).unwrap() == b"not really a png", "{path}");
@@ -95,7 +95,7 @@ fn pictures_you_attach_are_kept_and_named_to_the_lead_and_to_whoever_takes_it() 
     assert!(sent_to(&w, &h).last().unwrap().contains(&format!("\nPictures with it (open each to see it): `{path}`")));
     // Not an image: nothing is added.
     let txt = crate::model::Upload { name: "notes.txt".into(), mime: "text/plain".into(), data: "aGk=".into() };
-    assert!(w.hub().desk_add_with(&project, "", "Notes", "", None, &[txt]).is_err());
+    assert!(w.hub().desk_add_with(&project, "", "Notes", "", "", None, &[txt]).is_err());
     assert!(!desk(&w, &project)["items"].as_array().unwrap().iter().any(|i| i["title"] == "Notes"));
 }
 
@@ -320,7 +320,7 @@ fn the_lead_can_fold_a_repeated_ask_into_the_item_it_repeats() {
     ends(&w, &l, "ITEM: bug | Header jumps on scroll | done when: it stays\nROUTE: #new -> cue-teams | why: it knows the header");
     let first = item(&desk(&w, &project), "Header jumps on scroll")["id"].as_str().unwrap().to_string();
     let png = crate::model::Upload { name: "shot.png".into(), mime: "image/png".into(), data: format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(b"png")) };
-    let copy = w.hub().desk_add_with(&project, "", "the header still jumps when scrolling fast", "", None, &[png]).unwrap();
+    let copy = w.hub().desk_add_with(&project, "", "the header still jumps when scrolling fast", "", "", None, &[png]).unwrap();
     let later = w.hub().desk_add(&project, "", "Footer cut off", "", None).unwrap();
     ends(&w, &l, &format!("ROUTE: #{} -> cue-teams | after: #{} | why: same area", later.id, copy.id));
     w.settle();
