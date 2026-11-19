@@ -1213,7 +1213,8 @@ function deskThread(i, d) {
   if (!live && lat && !(i.said || []).some((r) => r.text.includes(lat1) || r.after?.includes(lat1))) {
     const fin = i.state === "to_check" || i.state === "done";
     const theirs = rows.filter((r) => !r.you).reduce((m, r) => Math.max(m, r.at), 0);
-    rows.push({ at: Math.max(deskMs(i.updated), theirs), by: i.holder?.name || i.by || "It", tag: fin ? "Done" : "Reply", on: fin, text: lat, html: `<div class="dk-md">${deskMd(lat)}</div>` });
+    const at = Math.max(deskMs(i.updated), theirs), r = deskHookSplit({ at, text: lat });
+    rows.push({ at, by: i.holder?.name || i.by || "It", tag: fin ? "Done" : "Reply", on: fin, text: r.text, html: `${r.text ? `<div class="dk-md">${deskMd(r.text)}</div>` : ""}${deskHookFold(i, r)}` });
   }
   rows.sort((a, b) => a.at - b.at);
   // Its holder at work: last, under what you wrote, as the answer to it comes (#165): the turn it's writing, in full,
@@ -1258,17 +1259,19 @@ function deskTakenHtml(i, r) {
   if (took) return `<div class="dk-took"><span class="dk-ck" aria-hidden="true">✓</span><span><b>${esc(i.holder.name)}</b> took it · ${esc(clockAt(took.at_ms))}</span></div>`;
   return e && s.state === "working" ? `<div class="dk-took">Waiting: it reads this after its current step</div>` : "";
 }
-/** Under a reply: what a Stop hook made its holder write after its answer (a checklist), folded as the chat folds it
- *  (chat/render.js hookFold), so it never reads as the reply (#310). "" when no hook sent it back. */
+// Its first line, however it's written: "1. SHAPE:", "1. Shape:", "1. **Shape:**", "1 — Shape was…" (#353).
+const DESK_HOOK_START = /^[ \t]*1[.)]?[ \t]*(?:[—–-][ \t]*)?\**[ \t]*shape\b/im;
 /** Reply `r` with the stop hook's checklist ("1. SHAPE: …", "2. ASSUMPTIONS: …", the numbered lines after) as its
  *  `after`: the hub keeps it apart from replies since #310, but one it read in a single part, and every reply saved
  *  before, has it in its words (#325). */
 function deskHookSplit(r) {
   if (r.after) return r;
-  const at = String(r.text || "").search(/^[ \t]*1\.[ \t]*\**SHAPE\b/m);
-  if (at < 0 || !/^[ \t]*2\.[ \t]*\**ASSUMPTIONS\b/m.test(r.text.slice(at))) return r;
+  const at = String(r.text || "").search(DESK_HOOK_START);
+  if (at < 0) return r;
   return { ...r, text: r.text.slice(0, at).trim(), after: r.text.slice(at).trim() };
 }
+/** Under a reply: what a Stop hook made its holder write after its answer (a checklist), folded as the chat folds it
+ *  (chat/render.js hookFold), so it never reads as the reply (#310). "" when no hook sent it back. */
 function deskHookFold(i, r) {
   if (!r.after) return "";
   const key = `said:${i.id}:${r.at}`, open = openFollow.has(key);

@@ -155,3 +155,43 @@ test("a reply with the stop hook's checklist in its own words, saved before the 
   const other = pane.locator(".dk-tm:not(.rec)").filter({ hasText: "Read the header." });
   await expect(other.locator("[data-follow]")).toHaveCount(0);
 });
+
+test("a reply's stop-hook answer folds however its holder wrote it: Shape, **Shape:**, 1 — Shape (#353)", async ({ page, cue }) => {
+  await cue.open("desk");
+  const forms = [
+    "Fixed the header.\n\n1. Shape: one CSS rule in `ui/styles/inbox.css`.\n2. Assumptions:\n   - none UNVERIFIED.\n4, 5, 6: N/A",
+    "Wrote the doc.\n\n1. **Shape:** one new file, `docs/x.md`.\n2. **Assumptions:** checked against the code.",
+    "Drew the page.\n\n1 — Shape was set before any edit: a ne…",
+  ];
+  await cue.change((st, forms) => {
+    const at = Date.now();
+    Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5"), { state: "to_check", now_on: false, latest: "",
+      said: forms.map((text, n) => ({ at: at - 300000 + n * 60000, by: "host-lead", text, sid: "host" })) });
+  }, forms);
+  await openItem(page, cue, "d5");
+  const pane = page.locator(".dk-right .dk-ipane");
+  for (const words of ["Fixed the header.", "Wrote the doc.", "Drew the page."]) {
+    const reply = pane.locator(".dk-tm:not(.rec)").filter({ hasText: words });
+    await expect(reply.locator(".dk-md").first()).toHaveText(words);
+    await expect(reply).not.toContainText(/shape/i);
+    await expect(reply.locator("[data-follow]")).toHaveText("After a stop hook ▾");
+  }
+  // Revealed with a click, and folded again.
+  const first = pane.locator(".dk-tm:not(.rec)").filter({ hasText: "Fixed the header." });
+  await first.locator("[data-follow]").click();
+  await expect(first.locator(".follow-body")).toContainText("Shape: one CSS rule");
+  await first.locator("[data-follow]").click();
+  await expect(first.locator(".follow-body")).toHaveCount(0);
+});
+
+test("an item's latest words that are only the stop-hook answer stay folded (#353)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await cue.change((st) => {
+    Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5"), { state: "to_check", now_on: false, said: [],
+      latest: "Header fixed.\n\n1. Shape: one rule.\n2. Assumptions: none." });
+  });
+  await openItem(page, cue, "d5");
+  const reply = page.locator(".dk-right .dk-ipane .dk-tm:not(.rec)").filter({ hasText: "Header fixed." });
+  await expect(reply).not.toContainText("one rule");
+  await expect(reply.locator("[data-follow]")).toHaveText("After a stop hook ▾");
+});
