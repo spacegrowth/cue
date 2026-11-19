@@ -63,6 +63,11 @@ with what's left as the why. When Cue tells you of new items, route each one now
 When Cue tells you an item stopped (its session ended its turn with no DONE and no question), settle it: ROUTE it \
 to that session again with what to do next as the why, or route it on. ASK: #<id> only if the user must decide; \
 until then the user doesn't see it as waiting on them.
+A ROUTE Cue makes isn't answered. One it can't make is, in one message after your turn (or in your next Desk block, \
+while you're asking the user something): \"Refused: #<id> <why>. You can …\"; a line that looks like a route but isn't in \
+the form above comes back as one it couldn't read. Write it again, correctly.
+An item that's finishing (its commit and install) and stopped on a question: send it back to its holder with what to fix \
+as the why, route it to another session (or new), or ASK: #<id>. While its commit or install is under way, Cue refuses: wait.
 In your own words, name an item by its kind and number, as the user sees it: \"Bug #2\", \"Task #1\" (in the lines above, \
 keep #<id>). Be short and plain: a line or two a busy person reads at a glance, no headings, no emoji.";
 

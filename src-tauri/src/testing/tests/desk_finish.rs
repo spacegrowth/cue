@@ -364,6 +364,84 @@ fn install_goes(w: &World, fake: &Fake, id: &str, step: &str) {
     tick(w);
 }
 
+/// The Desk's lead (#248).
+fn lead_of(w: &World, project: &str) -> String {
+    desk(w, project)["lead"]["sid"].as_str().unwrap().to_string()
+}
+
+#[test]
+fn a_route_of_a_finishing_item_under_way_is_refused_with_why_and_it_stays_in_the_install() {
+    let w = World::new();
+    let (_fake, _dir, project, id) = done_in_cue(&w);
+    let d = lead_of(&w, &project);
+    ends(&w, &d, &format!("ROUTE: #{id} -> cue-teams | why: one more thing"));
+    let told = sent_to(&w, &d).last().cloned().unwrap();
+    assert_eq!(told, format!("Refused: #{id} is committed and waiting for the next install. You can wait for it, or ask the user (ASK: #{id} | …)."));
+    let shown = item(&w, &project, "Header jumps");
+    assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str()), (Some("finishing"), Some("queued")), "{shown}");
+}
+
+#[test]
+fn a_finishing_item_stopped_on_a_failed_install_goes_back_to_its_holder_with_a_why_and_needs_one() {
+    let w = World::new();
+    let (fake, _dir, project, id) = done_in_cue(&w);
+    install_goes(&w, &fake, &id, "failed");
+    let (h, d) = (holder(&w, &project), lead_of(&w, &project));
+    ends(&w, &d, &format!("ROUTE: #{id} -> cue-teams"));
+    let told = sent_to(&w, &d).last().cloned().unwrap();
+    assert!(told.starts_with(&format!("Refused: #{id} stopped while finishing (")) && told.contains("needs a why"), "{told}");
+    assert_eq!(step(&w, &project), "failed", "left as it was");
+
+    let n = sent_to(&w, &d).len();
+    ends(&w, &d, &format!("ROUTE: #{id} -> cue-teams | why: fix the build error"));
+    assert_eq!(sent_to(&w, &d).len(), n, "a route made isn't answered");
+    let shown = item(&w, &project, "Header jumps");
+    assert_eq!((shown["state"].as_str(), shown["holder"]["sid"].as_str()), (Some("working"), Some(h.as_str())), "{shown}");
+    assert!(shown["finish"].is_null(), "off its finish: {shown}");
+    let sent = sent_to(&w, &h);
+    assert!(sent.last().unwrap().contains("Why you: fix the build error"), "{sent:?}");
+    w.advance(31 * 60_000);
+    tick(&w);
+    assert_eq!(fake.started().len(), 1, "out of the install line");
+}
+
+/// To new, or to the lead itself ("me", which only hands work out): off its finish, nobody holds it, and Cue starts
+/// a session for it (#248).
+#[test]
+fn a_finishing_item_stopped_on_a_failed_install_can_go_to_a_new_session_or_me() {
+    for to in ["new", "me"] {
+        let w = World::new();
+        let (fake, _dir, project, id) = done_in_cue(&w);
+        install_goes(&w, &fake, &id, "failed");
+        let (h, d) = (holder(&w, &project), lead_of(&w, &project));
+        let n = sent_to(&w, &d).len();
+        ends(&w, &d, &format!("ROUTE: #{id} -> {to} | why: fresh eyes on the build"));
+        assert_eq!(sent_to(&w, &d).len(), n, "{to}: a route made isn't answered: {:?}", sent_to(&w, &d));
+        let shown = item(&w, &project, "Header jumps");
+        assert_eq!(shown["state"], "working", "{to}: {shown}");
+        assert!(shown["finish"].is_null(), "{to}: {shown}");
+        let s = shown["holder"]["sid"].as_str().unwrap_or_else(|| panic!("{to}: a new session holds it: {shown}")).to_string();
+        assert!(s != h && s != d, "{to}: not its old holder, nor the lead: {shown}");
+        assert!(sent_to(&w, &s).iter().any(|t| t.contains(&format!("#{id}")) && t.contains("fresh eyes on the build")), "{to}: {:?}", sent_to(&w, &s));
+    }
+}
+
+/// Its finish under way, a route to a session off the Desk is refused at once: the user isn't asked (#248).
+#[test]
+fn a_finishing_item_under_way_routed_off_the_desk_is_refused_without_asking_you() {
+    let w = World::new();
+    let (_fake, _dir, project, id) = done_in_cue(&w);
+    let d = lead_of(&w, &project);
+    let o = mid_turn(&w);
+    assert_eq!(w.snapshot().session(&o)["project"].as_str(), Some(project.as_str()), "a session of the project, off its Desk");
+    ends(&w, &d, &format!("ROUTE: #{id} -> tidier | why: it knows the build"));
+    assert_eq!(sent_to(&w, &d).last().unwrap(), &format!("Refused: #{id} is committed and waiting for the next install. You can wait for it, or ask the user (ASK: #{id} | …)."));
+    let snap = w.snapshot();
+    let asked: Vec<_> = snap.cards_of(&d).into_iter().filter(|c| !c["tool_input"]["desk_use"].is_null()).collect();
+    assert!(asked.is_empty(), "the user isn't asked to add tidier: {asked:?}");
+    assert_eq!(step(&w, &project), "queued");
+}
+
 #[test]
 fn a_done_with_nothing_new_after_a_failed_install_installs_the_earlier_commit() {
     let w = World::new();

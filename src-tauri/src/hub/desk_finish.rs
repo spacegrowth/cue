@@ -91,6 +91,29 @@ fn installing(step: &str) -> bool {
     matches!(step, "building" | "installing" | "starting")
 }
 
+/// Why finishing item `id` can't be taken off its finish now, as the lead is told (#248): its commit is being made,
+/// it waits on files or on main, or it waits for or is in an install. None when it stopped on a question: nothing of
+/// its finish is under way then (a merge that clashed was aborted; commits it made stay, as Send back leaves them), so
+/// it can go back to work. A commit that waited long enough to ask is still tried each tick: under way while it runs.
+pub(super) fn under_way(st: &Store, id: &str) -> Option<String> {
+    let it = st.desk.item(id).filter(|i| i.state == "finishing")?;
+    let f = it.finish.as_ref()?;
+    if st.desk.finish_claims.contains(id) {
+        return Some("is being committed now".to_string());
+    }
+    if !f.question.is_empty() {
+        return None;
+    }
+    Some(match f.step.as_str() {
+        "commit" => "is being committed now".to_string(),
+        "commit_wait" => format!("is waiting to be committed ({})", f.wait),
+        "landing" => format!("is committed and waiting to be on main ({})", f.wait),
+        "queued" => "is committed and waiting for the next install".to_string(),
+        s if installing(s) => "is being installed now".to_string(),
+        _ => "is finishing".to_string(),
+    })
+}
+
 /// The last `LOG_LINES` lines of `log`.
 fn tail(log: &str) -> String {
     let lines: Vec<&str> = log.trim_end().lines().collect();

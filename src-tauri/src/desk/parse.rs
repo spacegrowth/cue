@@ -33,39 +33,97 @@ pub enum Line {
 
 /// The Desk lines in `text`, in order.
 pub fn lines(text: &str) -> Vec<Line> {
+    read(text).filter_map(one).collect()
+}
+
+/// The lines of `text` that look like a ROUTE but don't read as one, as written (#248): "ROUTE #12 -> web" (no
+/// colon), "ROUTE: #12 — web", "route: #12 to web", "ROUTE:". The lead is told Cue couldn't read them, so a route in
+/// the wrong form never just does nothing.
+pub fn unread_routes(text: &str) -> Vec<String> {
+    read(text).filter(|t| route_like(t) && !matches!(one(t), Some(Line::Route { .. }))).map(str::to_string).collect()
+}
+
+/// Whether `line` is meant as a route (#248): its first word is "route" (any case), then a colon, or an item (#…)
+/// and an arrow, a dash or "to" ("ROUTE #12 -> web", "route #12 to web"). Prose that starts so ("Route #3 is
+/// blocked") isn't; nor one in backticks, nor the form shown with its blanks (`ROUTE: #<id> -> …`).
+pub fn route_like(line: &str) -> bool {
+    let Some(rest) = after_route(line) else { return false };
+    if let Some(body) = rest.strip_prefix(':') {
+        let body = body.trim().trim_start_matches('*').trim();
+        return !(body.starts_with('<') || body.trim_start_matches('#').starts_with('<'));
+    }
+    let Some(r) = rest.strip_prefix('#') else { return false };
+    let r = r.trim_start_matches(|c: char| c.is_ascii_alphanumeric()).trim_start();
+    ["->", "→", "=>", "—", "–", "to "].iter().any(|a| r.get(..a.len()).is_some_and(|h| h.eq_ignore_ascii_case(a)))
+}
+
+/// What's wrong with `line`, a route Cue couldn't read (`unread_routes`), as the lead is told to fix it (#248).
+pub fn route_fix(line: &str) -> &'static str {
+    let rest = after_route(line).unwrap_or("");
+    if !unmarked(line).trim_start_matches('*').starts_with("ROUTE") {
+        return "write ROUTE in capitals";
+    }
+    match rest.strip_prefix(':') {
+        None => "put a colon after ROUTE",
+        Some(body) if !["->", "→", "=>"].iter().any(|a| body.contains(a)) => "put -> between the item and the session",
+        Some(_) => "give the item as #<id> and the session's name after ->",
+    }
+}
+
+/// What follows `line`'s first word when it's "route" (any case, bold or not), trimmed at its start.
+fn after_route(line: &str) -> Option<&str> {
+    let l = unmarked(line);
+    let end = l.find(|c: char| !c.is_ascii_alphabetic()).unwrap_or(l.len());
+    let (word, rest) = l.split_at(end);
+    word.eq_ignore_ascii_case("route").then(|| rest.trim_start_matches('*').trim_start())
+}
+
+/// `line` without its list mark ("- ", "* ", "1. ", "2) ") or leading bold, trimmed (#248).
+pub fn unmarked(line: &str) -> &str {
+    let l = line.trim().trim_start_matches(['-', '*', '+', ' ']).trim();
+    let digits = l.find(|c: char| !c.is_ascii_digit()).unwrap_or(l.len());
+    match l[digits..].strip_prefix(['.', ')']).filter(|r| digits > 0 && r.starts_with(char::is_whitespace)) {
+        Some(r) => r.trim_start_matches(['-', '*', '+', ' ']).trim(),
+        None => l,
+    }
+}
+
+/// The lines of `text` the Desk reads, trimmed: not those in a code block (``` or ~~~) or a `>` quote.
+fn read(text: &str) -> impl Iterator<Item = &str> {
     let mut fenced = false;
-    text.lines()
-        .filter_map(|line| {
-            let t = line.trim();
-            if t.starts_with("```") || t.starts_with("~~~") {
-                fenced = !fenced;
-                return None;
-            }
-            if fenced || t.starts_with('>') {
-                return None;
-            }
-            // List marks and bold only: a line in backticks (`ITEM: …`) is an example, not a line to act on.
-            let l = t.trim_start_matches(['-', '*', '+', ' ']).trim();
-            let (word, body) = l.split_once(':')?;
-            let body = body.trim().trim_start_matches("**").trim().trim_end_matches('*').trim();
-            if body.is_empty() || body.starts_with('<') {
-                return None;
-            }
-            match word.trim_end_matches('*').trim() {
-                "ITEM" => item(body),
-                "ROUTE" => route(body),
-                "ASK" => ask(body),
-                "DONE" => done(body),
-                "CONTEXT" => context(body),
-                "DESIGNS" => designs(body),
-                "TITLE" => title(body),
-                "SPLIT" => split(body),
-                "CUT" => cut(body),
-                "MERGE" => merge(body),
-                _ => None,
-            }
-        })
-        .collect()
+    text.lines().filter_map(move |line| {
+        let t = line.trim();
+        if t.starts_with("```") || t.starts_with("~~~") {
+            fenced = !fenced;
+            return None;
+        }
+        (!fenced && !t.starts_with('>')).then_some(t)
+    })
+}
+
+/// One line the Desk reads (trimmed), as a Desk line if it is one.
+fn one(t: &str) -> Option<Line> {
+    // List marks (numbered too) and bold only: a line in backticks (`ITEM: …`) is an example, not a line to act on.
+    let l = unmarked(t);
+    let (word, body) = l.split_once(':')?;
+    let body = body.trim().trim_start_matches("**").trim().trim_end_matches('*').trim();
+    if body.is_empty() || body.starts_with('<') {
+        return None;
+    }
+    match word.trim_end_matches('*').trim() {
+        "ITEM" => item(body),
+        // A route in any case ("Route: #3 -> web"): its #id and arrow say it's one (#248).
+        "ROUTE" => route(body),
+        "ASK" => ask(body),
+        "DONE" => done(body),
+        "CONTEXT" => context(body),
+        "DESIGNS" => designs(body),
+        "TITLE" => title(body),
+        "SPLIT" => split(body),
+        "CUT" => cut(body),
+        "MERGE" => merge(body),
+        _ => None,
+    }
 }
 
 /// The parts of `body` between `|`, trimmed.
