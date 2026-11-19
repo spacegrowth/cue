@@ -190,21 +190,39 @@ function chatHtml(it, s, harness, paged = false, page = null) {
   // Sent while it worked: Cue keeps it until the turn ends. Yours to take back (Edit, Esc) or send now. (What Cue
   // itself will send its crew's lead once it's free waits on the member's row in the crew tray, team.js: the chat
   // shows only what was sent.)
-  if (s?.held) rows.push(heldRow(s));
+  if (s?.held) rows.push(heldRow(s, page));
   if (s?.send_at) rows.push(sendAtRow(s));
-  if (s?.queued) rows.push(queuedRow(s));
+  if (s?.queued) rows.push(queuedRow(s, page));
   return rows.length ? (paged && sid ? keyed(olderRow(sid, harness), "older") : "") + rows.join("") : ran.length ? ran.map((r) => r.html).join("") : `<div class="dim cv-empty" data-key="empty">No messages yet in this session.</div>`;
 }
 /** A message you sent that its thread doesn't show yet: sending, sent and how, kept in Cue till its turn ends, or not
  *  sent and why. `key`: its row's key in the chat. */
 const outboxRow = (o, s, key) => `<div class="cv-you ${o.via ? "" : "sending"}" data-key="${esc(key)}"><div class="cv-you-text">${esc(o.text).replace(/\n/g, "<br>")}</div>${o.images.length ? `<div class="thumbs">${o.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}<div class="cv-meta" data-sid="${esc(o.sid)}">${/^kept in Cue/.test(o.via || "") ? "Not sent yet · it goes when this turn ends" : /^not sent: Model set to /.test(o.via || "") ? esc(o.via.slice(10)) : /^not sent: /.test(o.via || "") ? `Not sent · ${esc(o.via.slice(10))}${runHereBtn(o.via, s)}` : o.via ? `Sent · via ${esc(o.via)}` : esc(sendingMeta(o.sid))}</div></div>`;
+/** Not gone yet, but drawn as its page's own card once sent (the Desk lead's new-item note, an item's hand-off): the
+ *  same card now, only the line under it saying it hasn't gone (#370). "" for any other message. */
+function laterOwn(e, page, key, meta) {
+  e = deskSaidE(e);
+  const hand = typeof deskHandHtml === "function" && deskHandHtml(e, meta);
+  if (hand) return hand.replace(/^<div class="cv-you dk-hand"/, `<div class="cv-you dk-hand" data-key="${key}"`);
+  const own = page?.you?.(e);
+  return own ? `<div class="cv-later" data-key="${key}">${own}<div class="cv-meta">${meta}</div></div>` : "";
+}
 /** A message queued in its agent, read at its next step, with Send now. */
-const queuedRow = (s) => `<div class="cv-you queued" data-key="queued">${yourBubble(s.queued, `${s.session_id}:queued`, "", true)}${thumbs(s.queued.images)}<div class="cv-meta">Queued · it reads this when it finishes the current step · <button class="q-now" data-act="send-now" data-sid="${esc(s.session_id)}">Send now <kbd>⌘↵</kbd></button></div></div>`;
+function queuedRow(s, page) {
+  const sid = esc(s.session_id), now = `<button class="q-now" data-act="send-now" data-sid="${sid}">Send now <kbd>⌘↵</kbd></button>`;
+  const own = laterOwn(s.queued, page, "queued", `Queued · it reads this when it finishes the current step · ${now}`);
+  if (own) return own;
+  const cue = cueSaid(s.queued.text);
+  if (cue) return cueSaidLine({ ...cue, html: cueWill(cue.html) }, `${s.session_id}:queued`, s.queued.text, `queued · it reads this when it finishes the current step · ${now}`);
+  return `<div class="cv-you queued" data-key="queued">${yourBubble(s.queued, `${s.session_id}:queued`, "", true)}${thumbs(s.queued.images)}<div class="cv-meta">Queued · it reads this when it finishes the current step · ${now}</div></div>`;
+}
 /** A message kept for a session at work, to go when its turn ends: Cue's own crew message as Cue's bubble in the
  *  future tense (never one that looks like yours), yours as not sent yet; one that couldn't be sent says why. */
-function heldRow(s) {
+function heldRow(s, page) {
   const heldWhy = s.held.unsent ? (s.held.delivery || []).map((d) => d.what).filter((w) => w.startsWith("couldn't send: ")).pop() : "";
   const sid = esc(s.session_id), now = `<button class="q-now" data-act="held-now" data-sid="${sid}">Send now <kbd>⌘↵</kbd></button>`;
+  const own = !heldWhy && laterOwn(s.held, page, "held", `Not sent yet · it goes when this turn ends · <button class="q-now" data-act="held-edit" data-sid="${sid}">Edit</button> · ${now}`);
+  if (own) return own;
   const cue = cueSaid(s.held.text);
   if (cue && !heldWhy) return cueSaidLine({ ...cue, html: cueWill(cue.html) }, `${s.session_id}:held`, s.held.text, `not sent yet · it goes when this turn ends · ${now}`);
   return `<div class="cv-you queued held" data-key="held">${yourBubble(s.held, `${s.session_id}:held`, "", true)}${thumbs(s.held.images)}<div class="cv-meta">${heldWhy ? `Couldn't send it: ${esc(heldWhy.slice(15))}` : "Not sent yet · it goes when this turn ends"} · <button class="q-now" data-act="held-edit" data-sid="${sid}">Edit</button> · ${now}</div></div>`;

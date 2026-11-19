@@ -415,7 +415,7 @@ const deskCueLine = (html, at) => `<div class="dk-new dk-cl"><span class="dk-cl-
  *  it", "Why you:", then Cue's standing words to the session, not shown) as a card on the right: "From <the Desk's
  *  lead> · Task #171" (its number opening the item), its title, Done when as short lines, Why. Lines before it (Cue's
  *  "Done? Write DONE: #171…") stay as a quiet line over it. null for any other message. */
-function deskHandHtml(e) {
+function deskHandHtml(e, meta) {
   const text = String(e.text || "");
   const at = /(?:^|\n)(?:For your teammate (.+?): )?Desk item #([^\s:(]+)(?: \((bug|feature|task)\))?: (.*)/.exec(text);
   if (!at) return null;
@@ -444,7 +444,7 @@ function deskHandHtml(e) {
     ${parts.D?.trim() ? `<div class="dk-hand-l">Done when</div>${deskDoneWhenHtml(parts.D.trim())}` : ""}
     ${pics ? `<div class="dk-hand-p">${pics} picture${pics === 1 ? "" : "s"} with it</div>` : ""}
     ${parts.W?.trim() ? `<div class="dk-hand-l">Why</div><div class="dk-hand-w">${esc(parts.W.trim())}</div>` : ""}
-  </div><div class="cv-meta">Cue · ${ago(e.at_ms)} ago</div></div>`;
+  </div><div class="cv-meta">${meta ?? `Cue · ${ago(e.at_ms)} ago`}</div></div>`;
 }
 if (typeof document !== "undefined") {
   // A hand-off's item number: that item on its Desk, from any chat.

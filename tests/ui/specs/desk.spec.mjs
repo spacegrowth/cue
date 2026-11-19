@@ -1422,6 +1422,38 @@ test("a new item the lead gave a short title: its number on one line, the short 
   }
 });
 
+test("Cue's new-item note waiting to go to the lead: the same card as once it's sent, only the line under it says so (#370)", async ({ page, cue }) => {
+  await cue.open("desk", { frozen: true });
+  await openDesk(page);
+  const note = (id, t) => '<desk project="cue">\n4 open\n</desk>\n\n' + [`New item #${id} (feature): ${t} | done when: it works`, "Route it now: ROUTE it to a session, or -> new."].join("\n");
+  await page.evaluate((args) => {
+    const [a, b] = args;
+    const d = state.desk.projects.find((x) => x.project === "cue");
+    for (const [id, title] of [["h1", "One Away switch"], ["h2", "Another switch"], ["h3", "A third switch"]]) d.items.push({ id, project: "cue", kind: "feature", title, state: "new", created: Date.now(), updated: Date.now(), holder: null, from: "you" });
+    const lead = sessionOf("lead");
+    lead.thread.push({ at_ms: Date.now() - 5000, role: "you", text: a });
+    lead.state = "working";
+    lead.held = { role: "you", text: b, at_ms: Date.now(), images: [] };
+    renderMain();
+  }, [note("h1", "One Away switch"), note("h2", "Another switch")]);
+  const chat = page.locator(".dk-chat");
+  const sent = chat.locator('.dk-nc[data-desk-chk-item="h1"]'), held = chat.locator('[data-key="held"] .dk-nc[data-desk-chk-item="h2"]');
+  await expect(held).toHaveCount(1);
+  await expect(chat.locator(".cv-you.held")).toHaveCount(0);
+  await expect(chat.locator('[data-key="held"] > .cv-meta')).toContainText("Not sent yet · it goes when this turn ends");
+  await expect(chat).not.toContainText("Route it now");
+  const look = (l) => l.evaluate((el) => { const c = getComputedStyle(el); return [el.className, c.backgroundColor, c.borderTopColor, c.boxShadow, Math.round(el.getBoundingClientRect().right)]; });
+  expect(await look(held), "waiting looks like sent").toEqual(await look(sent));
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-held-note.png`, animations: "disabled" });
+  // Queued in the agent: the same.
+  await page.evaluate((c) => { const lead = sessionOf("lead"); delete lead.held; lead.queued = { role: "you", text: c, at_ms: Date.now(), images: [] }; renderMain(); }, note("h3", "A third switch"));
+  const queued = chat.locator('[data-key="queued"] .dk-nc[data-desk-chk-item="h3"]');
+  await expect(queued).toHaveCount(1);
+  await expect(chat.locator('[data-key="queued"] > .cv-meta')).toContainText("Queued");
+  expect(await look(queued)).toEqual(await look(sent));
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-queued-note.png`, animations: "disabled" });
+});
+
 test("Desk handoff shows only the routing note in Desk and session chat", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);

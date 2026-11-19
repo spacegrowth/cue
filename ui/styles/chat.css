@@ -351,6 +351,9 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .cv-voice-line { margin-top: 5px; color: var(--muted); line-height: 1.45; }
 .cv-you.sending { opacity: 0.6; }
 /* Queued, kept in Cue, sent later or not yet taken: the same bubble as a sent message; the line under it says it hasn't gone yet. */
+/* One a page draws as its own card once sent (the Desk lead's new-item note): that card now, the same line under it. */
+.cv-later { display: flex; flex-direction: column; }
+.cv-later > .cv-meta { align-self: flex-end; margin: 3px 2px 0; }
 .cv-empty { text-align: center; margin: 18px 0; }
 .cv-status { align-self: center; font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 7px; padding: 2px 0; }
 /* flex: none: beside a long line ("Running: …") it keeps its size instead of being squeezed. */
