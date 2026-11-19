@@ -700,7 +700,8 @@ b.dk-say-t, .dk-say-t { font-weight: 650; color: var(--ink); }
 .dk-pall:hover { color: var(--ink); text-decoration: underline; }
 .dk-prow.dk-pdid { cursor: default; }
 .dk-prow.dk-pdid:hover { background: none; }
-.dk-pdid .dk-prs { white-space: normal; line-height: 1.4; }
+.dk-pdid .dk-pdt { grid-column: 2; line-height: 1.4; overflow-wrap: anywhere; }
+.dk-pdid .dk-prs { line-height: 1.4; overflow-wrap: anywhere; }
 /* Its item, a link in plain words (the page's done line, Cue's lines). */
 .dk-chk-a { all: unset; cursor: pointer; color: inherit; font-weight: inherit; }
 .dk-chk-a:hover { color: var(--link, var(--accent)); }
@@ -1062,11 +1063,11 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
 .dk-it.pc.dk-done .dk-i1 { color: var(--muted); font-weight: 500; }
 /* On its page: the bar in the line under the title, longer. */
 .dk-fp.big .dk-pbar { width: 160px; height: 5px; }
-/* Its Pieces tab. */
-.dk-prs { display: flex; flex-direction: column; gap: 2px; padding: 8px 0; }
-.dk-pr { display: grid; grid-template-columns: 14px minmax(0, 1fr); column-gap: 10px; row-gap: 2px; padding: 8px 12px; border-radius: 8px; cursor: pointer; }
-.dk-pr:hover { background: var(--panel-2); }
-.dk-pr .dk-si { grid-row: span 2; }
-.dk-prt { font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
-.dk-pr.done .dk-prt { color: var(--muted); }
-.dk-prm { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+/* Its Pieces tab (own names: .dk-prs/.dk-prt are the side panel's rows). */
+.dk-pcl { display: flex; flex-direction: column; gap: 2px; padding: 8px 0; }
+.dk-pc { display: grid; grid-template-columns: 14px minmax(0, 1fr); column-gap: 10px; row-gap: 2px; padding: 8px 12px; border-radius: 8px; cursor: pointer; }
+.dk-pc:hover { background: var(--panel-2); }
+.dk-pc .dk-si { grid-row: span 2; }
+.dk-pc-t { font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
+.dk-pc.done .dk-pc-t { color: var(--muted); }
+.dk-pc-m { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }

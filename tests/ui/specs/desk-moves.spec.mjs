@@ -28,9 +28,9 @@ test("the lead's own moves stay in a list, newest first, older ones load as you 
     d.decisions.push(...today);
     d.moves = older;
   }, { today, older });
-  // Its tab and the link under the panel's Just did say "Dispatcher Actions" (#390), never "Moves".
+  // Its tab and the list's title say "Dispatcher Actions" (#390), the link under the panel's Just did "More" (#392), never "Moves".
   await expect(page.locator('.dk-right .dk-tab[data-desk-tab="moves"]')).toHaveText("Dispatcher Actions");
-  await expect(page.locator('.dk-right .dk-pall[data-desk-tab="moves"]')).toHaveText("All Dispatcher Actions");
+  await expect(page.locator('.dk-right .dk-pall[data-desk-tab="moves"]')).toHaveText("More");
   await page.locator('.dk-right .dk-pall[data-desk-tab="moves"]').click();
   const list = page.locator(".dk-moves");
   await expect(list.locator(".dk-mv-t")).toHaveText("Dispatcher Actions");

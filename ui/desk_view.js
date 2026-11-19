@@ -110,9 +110,10 @@ function deskRightChat(d, taskApprovals) {
   const workRows = working.map(({ sid, name, on }) => `<button class="dk-prow" ${deskChatAttrs(sid, d)}><i class="dk-pdot work" aria-hidden="true"></i><span class="dk-prt"><b>${esc(name)}</b>${on ? ` <span class="dk-prs">on ${deskKindIcon(on)}#${esc(on.id)}</span>` : ""}</span></button>`).join("");
   // The lead's own ask waits on you too, at the top, until it's answered (its card is under its chat).
   const leadAsk = ask ? `<button class="dk-prow" data-desk-tab="lead"><i class="dk-pdot ask" aria-hidden="true"></i><span class="dk-prt"><b>${esc(deskLeadName(d))}</b></span><span class="dk-prs">${esc(summary(ask) || "Asks you something")} · ${ago(ask.created_ms || now())}</span></button>` : "";
-  const did = deskJustDid(d).map((x) => `<div class="dk-prow dk-pdid"><span class="dk-prs">${deskActLine(x, d)} · ${ago(x.at * 1000)}</span></div>`).join("");
+  // Just did (#392): what it did on the first line, why and when under it.
+  const did = deskJustDid(d).map((x) => `<div class="dk-prow dk-pdid"><span class="dk-pdt">${deskActLine(x, d, true)}</span><span class="dk-prs">${[x.why ? esc(x.why) : "", ago(x.at * 1000)].filter(Boolean).join(" · ")}</span></div>`).join("");
   const panel = deskPsec(`Waits on you · ${waits.length + (ask ? 1 : 0)}`, leadAsk || waitRows ? `<div class="dk-prows">${leadAsk}${waitRows}</div>` : "")
-    + deskPsec("Just did", did ? `<div class="dk-prows">${did}<button class="dk-pall" data-desk-tab="moves">All Dispatcher Actions</button></div>` : "")
+    + deskPsec("Just did", did ? `<div class="dk-prows">${did}<button class="dk-pall" data-desk-tab="moves">More</button></div>` : "")
     + deskPsec(`Working · ${working.length}`, workRows ? `<div class="dk-prows">${workRows}</div>` : "");
   const foot = ended || deskTab !== "lead" ? "" : ask ? `<div class="dk-ask">${askFoot(ask, ask.session_id, ask.harness || "claude", deskBoxKey({ project: d.project }))}</div>` : deskBox(d);
   return `<div class="dk-card dk-right">${deskPage({ page: "dispatcher", kind: "desk", back: `<span class="dk-back dk-here">${esc(deskName(d))}</span>`, mark: "Dispatcher · ", title: esc(deskLeadName(d)), meta: esc(meta),

@@ -34,7 +34,7 @@ test("the How work lands steps show as one feature with its pieces under it (#28
   await expect(feat).toHaveClass(/\bon\b/);
   await expect(page.locator(".dk-pcs .dk-it.pc .dk-t")).toHaveText(["How work lands 1", "How work lands 2", "How work lands 3", "How work lands 4", "How work lands 5", "How work lands 8"]);
   await expect(page.locator('.dk-itab[data-desk-itab="pieces"]')).toHaveClass(/\bon\b/);
-  await expect(page.locator(".dk-prs .dk-pr")).toHaveCount(6);
+  await expect(page.locator(".dk-pcl .dk-pc")).toHaveCount(6);
   await expect(page.locator(".dk-state .dk-fp.big")).toContainText("5 of 6 done");
   // A piece opened (an old done one too): the feature's list stays open, the piece lit in place, and it says what it's part of.
   await page.locator('.dk-pcs .dk-it.pc[data-desk-item="247"]').click();

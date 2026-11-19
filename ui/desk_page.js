@@ -135,12 +135,12 @@ function deskChat(d) {
 }
 /** What the lead did on its own (#360: closed, started, sent back, moved up, took back a copy, answered a session), newest first. */
 const deskActs = (d) => (d?.decisions || []).filter((x) => x.act && x.sid === deskLead(d)?.sid).sort((a, b) => b.at - a.at);
-/** One of those as a line: its words, the item's number opening its page, and why. */
-function deskActLine(x, d) {
+/** One of those as a line: its words, the item's number opening its page, and why (left out with `bare`). */
+function deskActLine(x, d, bare) {
   const id = x.item_id || "", it = id && deskItem(d.project, id), at = x.text.indexOf(`#${id}`);
   const num = `<button class="dk-act-it" data-desk-chk-item="${esc(id)}">${it ? deskKindIcon(it) : ""}<b class="dk-inum">#${esc(id)}</b></button>`;
   const text = id && at >= 0 ? `${esc(x.text.slice(0, at))}${num}${esc(x.text.slice(at + id.length + 1))}` : esc(x.text);
-  return `${text}${x.why ? `<span class="dk-act-why"> · ${esc(x.why)}</span>` : ""}`;
+  return bare ? text : `${text}${x.why ? `<span class="dk-act-why"> · ${esc(x.why)}</span>` : ""}`;
 }
 /** Those lines for the lead's chat (chat/render.js chatHtml `extra`), each at its time. */
 const deskActRows = (d) => deskActs(d).map((x) => ({ at: x.at * 1000, html: keyed(`<div class="dk-act dk-cl"><span class="dk-cl-t"><b>${esc(x.by)}</b> · ${deskActLine(x, d)} <span class="dk-cl-age">· ${ago(x.at * 1000)}</span></span></div>`, `act:${x.id}`) }));

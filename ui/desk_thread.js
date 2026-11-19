@@ -176,8 +176,8 @@ function deskItemPane(i, d, foot = "") {
     ${i.part_of ? `<p class="dk-split">Part of <a href="#" data-desk-item="${esc(i.part_of)}">${esc(deskItem(i.project, i.part_of)?.title || `#${i.part_of}`)}</a></p>` : ""}
     ${i.split_from ? `<p class="dk-split">Split from <a href="#" data-desk-item="${esc(i.split_from)}">#${esc(i.split_from)}</a></p>` : ""}`;
   // Its pieces, oldest first (#282): each its state, title, and kind, number, who and age; a click opens it.
-  const pieceRow = (p) => `<div class="dk-pr${p.state === "done" ? " done" : ""}" role="button" tabindex="0" data-desk-item="${esc(p.id)}">${deskStateIcon(p)}<div class="dk-prt">${esc(p.title)}</div><div class="dk-prm">${deskKindIcon(p)}<span>${[esc(deskNum(p)), esc(deskHolderOf(p)), `${ago(deskMs(p.state === "done" ? p.done_at || p.updated : p.created))} ago`].filter(Boolean).join(" · ")}</span></div></div>`;
-  const body = tab === "pieces" && feat ? `<div class="dk-prs">${i.pieces.map(pieceRow).join("")}</div>`
+  const pieceRow = (p) => `<div class="dk-pc${p.state === "done" ? " done" : ""}" role="button" tabindex="0" data-desk-item="${esc(p.id)}">${deskStateIcon(p)}<div class="dk-pc-t">${esc(p.title)}</div><div class="dk-pc-m">${deskKindIcon(p)}<span>${[esc(deskNum(p)), esc(deskHolderOf(p)), `${ago(deskMs(p.state === "done" ? p.done_at || p.updated : p.created))} ago`].filter(Boolean).join(" · ")}</span></div></div>`;
+  const body = tab === "pieces" && feat ? `<div class="dk-pcl">${i.pieces.map(pieceRow).join("")}</div>`
     : tab === "decisions" ? deskCallsBox(decs, `item:${i.id}`, deskDecList, `<p class="dk-note">No decisions on it yet.</p>`)
     : tab === "steps" ? (steps.length ? deskLog(steps) : `<p class="dk-note">No steps yet.</p>`)
     : tab === "files" ? (files ? deskSec(checking ? "Files changed" : deskDiffs.get(i.id)?.files?.length ? "Changed so far" : "Files it's on", files) : `<p class="dk-note">No files on it yet.</p>`)
