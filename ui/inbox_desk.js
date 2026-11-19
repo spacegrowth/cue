@@ -4,6 +4,13 @@
 
 /** The Desk's projects (state.desk, from the hub); [] when there's none. */
 const inboxDeskProjects = () => state.desk?.projects || [];
+/** A required Desk verification belongs to the item, even when its session has ended. */
+const inboxDeskVerifications = () => inboxDeskProjects().flatMap((p) =>
+  inProj(deskWorkspace(p)) ? deskWaitingItems(deskOf(p.project)).filter(deskNeedsVerification) : []);
+
+function inboxVerificationRows(items) {
+  return items.map((i) => `<button type="button" class="ib-row" data-inbox-desk="${esc(i.project)}" data-item="${esc(i.id)}"><span class="ib-dot">${deskKindIcon("tray")}</span><span class="ib-l1"><span class="ib-name">${esc(deskName(deskOf(i.project)))}</span><span class="ib-subj">${esc(deskNum(i))} · ${esc(i.title)}</span></span><span class="ib-l2">${esc(deskOneLine(i.done_when))}</span></button>`).join("");
+}
 /** A row asking about a project's Desk: its lead's ask says so (`desk`). Listed with the other asks. */
 const inboxDeskAsk = (r) => !!r.it?.desk;
 /** The project a Desk ask is about; "" when none is named. */

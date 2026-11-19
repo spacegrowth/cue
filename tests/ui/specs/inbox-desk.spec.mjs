@@ -22,7 +22,7 @@ test("a lead's Desk ask sits under its Desk's heading, tagged '<PROJECT> · Desk
   await openInbox(page);
   const groups = await layout(page);
   // #217: the Desk's sessions sit under its name (desk icon, count, how many need you); the rest under Not on a Desk.
-  expect(groups.map(([t]) => t)).toEqual(["cue2· 2 need you", "Not on a Desk", "Needs you"]);
+  expect(groups.map(([t]) => t)).toEqual(["cue· 2 need you", "Not on a Desk", "Needs you"]);
   expect([...groups[0][1]].sort()).toEqual(["cue-lead", "web"]);
   expect(groups[2][1]).toEqual(["notes"]);
   await expect(page.locator(".ib-sect.ib-dg svg")).toHaveCount(1);
