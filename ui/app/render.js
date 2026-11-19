@@ -167,8 +167,10 @@ function drawWindow() {
   </div>${overlaysHtml()}`;
   const root = document.getElementById("app");
   const editors = liftDraftEditors(root);
+  const thread = typeof deskThreadLift === "function" ? deskThreadLift() : null;   // an item's Thread, kept (desk_view.js)
   root.innerHTML = html;
   settleDraftEditors(root, editors);
+  if (thread) deskThreadSettle(thread);
   return lifted;
 }
 

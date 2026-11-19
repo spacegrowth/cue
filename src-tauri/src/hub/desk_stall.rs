@@ -41,13 +41,20 @@ pub(super) fn last_line(s: &Session) -> String {
 }
 
 /// The item session `sid` (itself, not a crew member of it) is on now, of the ones at work with it (#176): the one the
-/// last message it was sent names first. None when that message names none of them.
+/// last message it was sent names first. A message naming no item at all, to a session at work on just one: that one
+/// (#395: typed in its own chat, it can only be about it). Else none.
 pub(super) fn now_on(st: &Store, sid: &str) -> Option<String> {
     let held: Vec<&DeskItem> = st.desk.items.iter().filter(|i| i.state == "working" && i.holder.as_ref().is_some_and(|h| h.sid == sid && h.lead_sid.is_empty())).collect();
     // The message it answers: the newest one to it. Its tag is the held item it names first (a hand-off, a message
-    // from an item's page, Cue's "Done? Write DONE: #id"); none named, untagged: on no item.
+    // from an item's page, Cue's "Done? Write DONE: #id"); none named, untagged.
     let last = st.sessions.get(sid)?.thread.iter().rev().find(|e| e.role == "you" && !e.decision)?;
-    held.iter().filter_map(|i| names_at(&last.text, &i.id).map(|at| (at, i))).min_by_key(|(at, _)| *at).map(|(_, i)| i.id.clone())
+    let named = held.iter().filter_map(|i| names_at(&last.text, &i.id).map(|at| (at, i))).min_by_key(|(at, _)| *at).map(|(_, i)| i.id.clone());
+    if named.is_some() || held.len() != 1 || st.desk.lead_of(sid).is_some() {
+        return named;
+    }
+    // Untagged: on the one it holds, unless the message names another item (one queued for it, say).
+    let other = st.desk.items.iter().any(|i| names_at(&last.text, &i.id).is_some());
+    (!other).then(|| held[0].id.clone())
 }
 
 /// Item `id`, queued, is the one session `sid` (itself) is on anyway (#342): it's on no item at work, and the last

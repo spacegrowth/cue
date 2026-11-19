@@ -36,11 +36,18 @@ async function deskSendBox(key) {
     if (!to.mate && it && !/^[/!]/.test(text)) {
       if (state.restarting?.[to.sid]) return toast("It's restarting. Send once it's back.");
       if (sessionOf(to.sid)?.state === "deciding") return toast("It's asking you something first. Answer that, then send.");
+      // On its Thread at once, as a message to the lead is (#395); taken off again if it didn't go.
+      const p = deskPend(it.id, text, "holder", images.length);
+      renderMain();
       await deliver(to.sid, key, (typed, images) => {
         const said = typed ? `About #${it.id} (${it.title}): ${typed}` : `About #${it.id} (${it.title}): (a picture)`;
         insSent(to.sid, said, false);
         return invoke("send_to_session", { sessionId: to.sid, text: said, images, now: false });
       });
+      const back = draft(key);
+      if (back.text.trim() || back.images.length) { deskUnpend(it.id, p); return renderMain(); }
+      if (text) deskWrote(it.id, "wrote_holder", text);
+      return renderMain();
     }
     else if (!to.mate) await sendTo(to.sid, false, key);
     else if (state.restarting?.[to.sid]) return toast("It's restarting. Send once it's back.");

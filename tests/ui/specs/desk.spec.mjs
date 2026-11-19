@@ -3289,13 +3289,18 @@ test("an item's thread scrolls to the newest message when one arrives or you sen
   // It opens at its newest message, as a chat does.
   await expect.poll(() => inView(pane.locator(".dk-thread .dk-tm").last())).toBe(true);
   expect(await pane.evaluate((e) => e.scrollTop)).toBeGreaterThan(200);
-  // Scrolled up, it stays there till something comes.
-  await pane.evaluate((e) => { e.scrollTop = 0; });
-  // One arrives: it's in view.
-  await cue.change((st) => { const it = st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d4"); it.said = [...it.said, { at: Date.now(), by: "cue-117", text: "A new reply just came in." }]; });
+  // At its end, one arrives: it's in view (#395 option A: the page follows only while you're at its end).
+  const reply = (text) => cue.change((st, text) => { const it = st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d4"); it.said = [...it.said, { at: Date.now(), by: "cue-117", text }]; }, text);
+  await reply("A new reply just came in.");
   const arrived = pane.locator(".dk-thread .dk-tm", { hasText: "A new reply just came in." });
   await expect(arrived).toHaveCount(1);
   await expect.poll(() => inView(arrived)).toBe(true);
+  // Scrolled up to read, another arrives: the page stays where you are.
+  await pane.evaluate((e) => { e.scrollTop = 0; });
+  await reply("Another reply while you read.");
+  await expect(pane.locator(".dk-thread .dk-tm", { hasText: "Another reply while you read." })).toHaveCount(1);
+  await page.waitForTimeout(200);
+  expect(await pane.evaluate((e) => e.scrollTop)).toBe(0);
   // Scrolled back up, you send one: it's in view too.
   await pane.evaluate((e) => { e.scrollTop = 0; });
   await cue.override("desk_item_act", () => new Promise((r) => { window.__release = r; }));

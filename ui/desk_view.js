@@ -161,6 +161,9 @@ function deskView() {
   if (deskGiveFor && (!given || given.holder)) deskGiveFor = null;
   if (deskDropArm && deskDropArm !== "old-copies" && !deskItem(deskSelection(), deskDropArm) && !(deskProjOf({ project: deskSelection() })?.kept || []).some((k) => k.id === deskDropArm)) deskDropArm = null;
   deskBoxes.clear();   // the boxes drawn now note theirs again
+  // An item's page at its end as this draw starts: it stays there as its chat grows (deskThreadFollow).
+  const ip = document.querySelector(".dk-ipane");
+  deskThreadPinned = !ip || ip.scrollHeight - ip.scrollTop - ip.clientHeight < 24;
   if (!deskSelection()) return deskAll();
   deskLastSet(deskSelection());
   queueMicrotask(deskSettle);
@@ -169,21 +172,53 @@ function deskView() {
   return `<div class="board dk-board">${deskSessions(project, taskApprovals)}${deskRight(project, taskApprovals)}${deskList(project, taskApprovals)}</div>${deskAwayHtml()}`;
 }
 /** How many messages each item's Thread showed when last drawn, and for which opening of its page, by item. The page
- *  opens at its newest message, as a chat does; then one more (it arrived, or you sent it) scrolls to show it (#145). */
+ *  opens at its newest message, as a chat does (#145). After that it follows its chat only while you're at its end,
+ *  as a session's chat does (#395): the reply being written stays in view as it grows, and a page you'd scrolled up
+ *  stays where you were. */
 const deskThreadSeen = new Map();
+/** The open item page was at its end when this draw began (deskView). */
+let deskThreadPinned = true;
+/** You just wrote on an item's page (deskPend): it goes to its end to show what you sent. */
+let deskThreadToEnd = false;
 function deskThreadFollow() {
   const pane = document.querySelector(".dk-ipane"), th = pane?.querySelector(".dk-thread");
   if (!th) return;
   const rows = th.querySelectorAll(":scope > .dk-tm"), key = pane.dataset.scrollKey, was = deskThreadSeen.get(key);
   deskThreadSeen.set(key, { n: rows.length, open: deskOpen });
+  const toEnd = () => { pane.scrollTop = pane.scrollHeight; };
   // Just opened: at its end, the newest message and where it stands (what to check) in view.
-  if (was?.open !== deskOpen) { pane.scrollTop = pane.scrollHeight; return; }
-  if (rows.length <= was.n) return;
-  // Down until the newest is in full view under the pinned header; one taller than the page shows from its top.
-  const r = rows[rows.length - 1].getBoundingClientRect(), bottom = pane.getBoundingClientRect().bottom;
-  const head = pane.querySelector(".dk-ihead")?.getBoundingClientRect().bottom ?? pane.getBoundingClientRect().top;
-  const down = Math.min(r.bottom + 16 - bottom, r.top - head - 12);
+  if (was?.open !== deskOpen || deskThreadToEnd) { deskThreadToEnd = false; return toEnd(); }
+  if (!deskThreadPinned) return;
+  // At its end, it stays there; but a whole new message taller than the page shows from its top, under the pinned
+  // header (one written as you watched has grown in view already).
+  let down = pane.scrollHeight - pane.clientHeight - pane.scrollTop;
+  const last = rows[rows.length - 1];
+  if (rows.length > was.n && last && !last.classList.contains("live")) {
+    const head = pane.querySelector(".dk-ihead")?.getBoundingClientRect().bottom ?? pane.getBoundingClientRect().top;
+    down = Math.min(down, last.getBoundingClientRect().top - head - 12);
+  }
   if (down > 0) pane.scrollTop += down;
+}
+/** An item's open Thread across a draw (#395): the element itself is kept, and only its messages that changed are
+ *  touched (chat/patch.js patchKids, by each message's key), as a session's chat is kept. So the words being written
+ *  grow in place, and what you'd selected in it stays. Lifted before the window's HTML is set, back after. */
+function deskThreadLift() {
+  const el = document.querySelector(".dk-thread[data-thread-for]");
+  if (!el) return null;
+  const sel = getSelection();
+  const picked = sel.rangeCount && !sel.isCollapsed && el.contains(sel.getRangeAt(0).commonAncestorContainer) ? [sel.anchorNode, sel.anchorOffset, sel.focusNode, sel.focusOffset] : null;
+  moveTo(document.body, el);
+  return { el, picked };
+}
+function deskThreadSettle(lifted) {
+  if (!lifted) return;
+  const { el, picked } = lifted, fresh = [...document.querySelectorAll(".dk-thread[data-thread-for]")].find((x) => x.dataset.threadFor === el.dataset.threadFor);
+  if (!fresh) return el.remove();
+  patchKids(el, fresh, false);
+  morphAttrs(el, fresh);
+  moveTo(fresh.parentNode, el, fresh);
+  fresh.remove();
+  if (picked && picked[0].isConnected && picked[2].isConnected) try { getSelection().setBaseAndExtent(...picked); } catch {}
 }
 /** After the draw: the lead's chat at its end, as a chat opens (unless you'd scrolled up in it); an item's Thread at
  *  a message that just came. */

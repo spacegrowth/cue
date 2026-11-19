@@ -212,6 +212,35 @@ fn a_session_holding_two_items_answers_on_the_one_it_is_on_now() {
     assert_eq!((item(&d, "First thing")["now_on"].as_bool(), item(&d, "Second thing")["now_on"].as_bool()), (None, None));
 }
 
+/// A session at work on just one item: what you type in its own chat, naming no item, is about that one, so its
+/// work and its answer show on the item's page (#395). Naming another item, it isn't.
+#[test]
+fn a_session_holding_one_item_answers_there_untagged() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let a = w.hub().desk_add(&project, "bug", "First thing", "", None).unwrap();
+    w.hub().desk_give(&a.id, &h).unwrap();
+    w.settle();
+    let words = sent_to(&w, &h).into_iter().rev().find(|t| t.contains(&format!("Desk item #{}", a.id))).unwrap();
+    w.hosted_says(&h, HostedEvent::Taken { text: words });
+    ends(&w, &h, "Looking at it.");
+    let said = |d: &Value| item(d, "First thing")["said"].as_array().map(|s| s.iter().map(|x| x["text"].as_str().unwrap().to_string()).collect::<Vec<_>>()).unwrap_or_default();
+    w.send_to(&h, "also check the footer");
+    w.hosted_says(&h, HostedEvent::Taken { text: "also check the footer".into() });
+    let d = desk(&w, &project);
+    assert_eq!(item(&d, "First thing")["now_on"].as_bool(), Some(true), "{d}");
+    ends(&w, &h, "The footer is fine too.");
+    let d = desk(&w, &project);
+    assert_eq!(said(&d).last().map(String::as_str), Some("The footer is fine too."), "{d}");
+    let b = w.hub().desk_add(&project, "bug", "Other thing", "", None).unwrap();
+    let other = format!("look at #{} instead", b.id);
+    w.send_to(&h, &other);
+    w.hosted_says(&h, HostedEvent::Taken { text: other });
+    ends(&w, &h, "Looked at the other one.");
+    let d = desk(&w, &project);
+    assert_eq!(said(&d).len(), 2, "{d}");
+}
+
 /// A reply is kept whole on its item (no longer cut at 1,200 characters) and names the session it was said in, so the
 /// item's page shows it in full with a link to that turn (#276).
 #[test]
