@@ -258,6 +258,10 @@ button.ib-sect.ib-strip { padding: 8px 16px 6px; gap: 5px; }
 .ib-file { display: flex; justify-content: space-between; gap: 8px; }
 .ib-file code { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
 .ib-file > span { flex: none; font-variant-numeric: tabular-nums; }
+/* The counts in one column (#394): right-aligned at the row's end, each a fixed width; "new" by the path. */
+.ib-file > .ib-nums { margin-left: auto; }
+.ib-nums > span { display: inline-block; min-width: 3.5ch; text-align: right; }
+.ib-file > .ib-new { color: var(--muted); font-size: 11px; }
 button.ib-file { width: calc(100% + 12px); padding: 1px 6px; margin: 0 -6px; box-sizing: border-box; border: 0; border-radius: 6px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 button.ib-file:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
 .ib-add { color: color-mix(in srgb, var(--accent) 80%, var(--ink)); font-variant-numeric: tabular-nums; }

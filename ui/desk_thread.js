@@ -198,8 +198,14 @@ function deskItemPane(i, d, foot = "") {
   return deskPage({ page: "item", kind: i.kind, back: deskBack(deskLeadName(d) || "Back"),
     acts: sid && sessionOf(sid) ? `<span class="dk-ilinks"><button class="btn small" ${deskChatAttrs(sid, d)}>Watch ${esc(h.name)}</button></span>` : "",
     mark: `${deskNum(i)} · `, title: esc(i.title), meta: `<span class="dk-state">${deskItemMeta(i, d)}</span>`,
-    now: deskPnow({ ...deskItemNow(i), acts: `${deskLooksTop(i)}${backing ? "" : deskPickBtns(i) + deskItemActs(i)}${deskBuiltLink(i)}${deskDesignsLink(i)}`, fold: pts.length ? `${ticked} of ${pts.length} done` : "" }),
+    now: deskPnow({ ...deskItemNow(i), acts: `${backing ? deskBackActs(i) : deskLooksTop(i) + deskPickBtns(i) + deskItemActs(i)}${deskBuiltLink(i)}${deskDesignsLink(i)}`, fold: pts.length ? `${ticked} of ${pts.length} done` : "" }),
     panel: done + whoSec + deskItemFiles(i), main, foot });
+}
+/** The panel's buttons while you write why to send item `i` back (#394): the same ones in the same place, so nothing
+ *  jumps: Looks right greyed, Send back pressed (pressing it again closes the box). */
+function deskBackActs(i) {
+  const looks = i.state === "to_check" && !deskInstallWait(i) ? `<button class="btn small primary" disabled>${deskUncommitted(i) ? "Commit to main" : "Looks right"}</button>` : "";
+  return `${looks}<div class="dk-acts"><button class="btn small" data-desk-act="send_back" data-id="${esc(i.id)}" aria-pressed="true">Send back</button></div>`;
 }
 /** An item's quiet line under its title (#200): who has it, its commit, who added it and when; its state is the
  *  panel's, said once there. */

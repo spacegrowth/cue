@@ -78,8 +78,10 @@ if (typeof window !== "undefined") {
  *  `attrs(n)`: the click attributes that open file n's diff, "" for a plain row; `more`: the "more" link's ("" leaves
  *  it out). */
 function fileListHtml(files, { attrs = () => "", more = "", max = 3 } = {}) {
-  const nums = (f) => (f.add == null ? "" : `<span>${f.isNew ? `<span class="ib-dim">new</span> ` : ""}<span class="ib-add">+${f.add || 0}</span> <span class="ib-del">−${f.del || 0}</span></span>`);
-  const row = (f, n) => { const a = attrs(n); return a ? `<button class="ib-file" ${a}><code>${esc(f.path)}</code>${nums(f)}</button>` : `<div class="ib-file"><code>${esc(f.path)}</code>${nums(f)}</div>`; };
+  // "new" sits by its path, so the counts stay in one column whatever's new (#394).
+  const nums = (f) => (f.add == null ? "" : `<span class="ib-nums"><span class="ib-add">+${f.add || 0}</span> <span class="ib-del">−${f.del || 0}</span></span>`);
+  const cells = (f) => `<code>${esc(f.path)}</code>${f.isNew && f.add != null ? `<span class="ib-new">new</span>` : ""}${nums(f)}`;
+  const row = (f, n) => { const a = attrs(n); return a ? `<button class="ib-file" ${a}>${cells(f)}</button>` : `<div class="ib-file">${cells(f)}</div>`; };
   const rest = files.length > max && more ? `<button class="ib-link" ${more}>and ${files.length - max} more files ›</button>` : "";
   return `<div class="ib-files">${files.slice(0, max).map(row).join("")}</div>${rest}`;
 }
