@@ -169,6 +169,8 @@ function deskView() {
   queueMicrotask(deskSettle);
   const project = deskSelection();
   const taskApprovals = deskTaskApprovals(deskOf(project));
+  // Items as Progress (#409): the whole Desk, the table of every open item's steps.
+  if (deskItemsView === "progress") return `<div class="board dk-board dk-progb">${deskProgress(project, taskApprovals)}</div>${deskAwayHtml()}`;
   return `<div class="board dk-board">${deskSessions(project, taskApprovals)}${deskRight(project, taskApprovals)}${deskList(project, taskApprovals)}</div>${deskAwayHtml()}`;
 }
 /** How many messages each item's Thread showed when last drawn, and for which opening of its page, by item. The page

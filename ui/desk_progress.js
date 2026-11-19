@@ -62,18 +62,18 @@ function deskProgButton(i) {
   return `<button class="btn small primary" data-desk-prog-open="${esc(i.id)}">Answer</button>`;
 }
 
-/** A step's mark: filled with a tick once done, lit while it's the one it's at, an empty square ahead. */
+/** A step's mark, a circle: filled with a tick once done, lit while it's the one it's at, an empty circle ahead. */
 function deskProgMark(state, look) {
-  if (state === "done") return '<svg class="dk-grm" width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><rect x="1" y="1" width="14" height="14" rx="4" fill="var(--accent)"/><path d="m4.6 8.2 2.2 2.2 4.6-4.8" fill="none" stroke="var(--on-accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-  if (state === "todo") return '<svg class="dk-grm" width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="1.5" width="13" height="13" rx="4" fill="var(--panel)" stroke="var(--line)" stroke-width="1.4"/></svg>';
+  if (state === "done") return '<svg class="dk-grm" width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="var(--accent)"/><path d="m4.6 8.2 2.2 2.2 4.6-4.8" fill="none" stroke="var(--on-accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  if (state === "todo") return '<svg class="dk-grm" width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="var(--panel)" stroke="var(--line)" stroke-width="1.4"/></svg>';
   const c = look === "work" ? "var(--accent)" : look === "wait" ? "var(--muted)" : "var(--deny)";
   const inner = {
-    work: `<rect class="dk-blink" x="5" y="5" width="6" height="6" rx="1.5" fill="${c}"/>`,
+    work: `<circle class="dk-blink" cx="8" cy="8" r="3" fill="${c}"/>`,
     wait: `<path d="M8 4.8V8l2 1.4" fill="none" stroke="${c}" stroke-width="1.6" stroke-linecap="round"/>`,
     you: `<path d="M8 4.4v4.2" stroke="${c}" stroke-width="1.7" stroke-linecap="round"/><circle cx="8" cy="11.2" r="1" fill="${c}"/>`,
     fail: `<path d="m5.4 5.4 5.2 5.2M10.6 5.4l-5.2 5.2" stroke="${c}" stroke-width="1.7" stroke-linecap="round"/>`,
   }[look];
-  return `<svg class="dk-grm" width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="1.5" width="13" height="13" rx="4" fill="var(--panel)" stroke="${c}" stroke-width="1.8"/>${inner}</svg>`;
+  return `<svg class="dk-grm" width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="var(--panel)" stroke="${c}" stroke-width="1.8"/>${inner}</svg>`;
 }
 
 /** One item's row: its title, kind and number, who holds it; a cell per step; what it's doing now. */

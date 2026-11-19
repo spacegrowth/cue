@@ -43,6 +43,7 @@ mod desk_handoff;
 mod desk_lead;
 mod desk_members;
 mod desk_stall;
+mod desk_steps;
 mod desk_theirs;
 mod desk_waits;
 mod land_keep;
@@ -512,6 +513,8 @@ impl Hub {
         let seq = st.shown_seq;
         let now = now_ms();
         Self::prune_reviews(st, now);
+        // Each open item's step as Cue hears it (#409): stamped as the change that brings it is shown.
+        desk_steps::stamp(st, now);
         let next = Self::next_change(st, now);
         // A session restarting stays in its place: its record from before while its agent is down, and
         // not on Parked on the way.

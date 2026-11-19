@@ -1092,3 +1092,41 @@ body.dk-dragging, body.dk-dragging * { cursor: grabbing !important; user-select:
 .dk-pc-t { font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
 .dk-pc.done .dk-pc-t { color: var(--muted); }
 .dk-pc-m { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+
+/* Items as Progress (#409, desk_progress.js; mock J2 of the "Live progress" canvas page): the whole Desk, one row per open
+   item, the six steps as columns named once, each row's marks joined by a line with how long each step took. */
+.board.dk-board.dk-progb { grid-template-columns: minmax(0, 1fr); }
+.dk-seg { display: inline-flex; gap: 2px; margin-left: 12px; padding: 2px; border-radius: 8px; background: var(--panel-2); }
+.dk-seg > button { all: unset; padding: 3px 10px; border-radius: 6px; color: var(--muted); font: 650 12px var(--sans); cursor: pointer; }
+.dk-seg > button:hover { color: var(--ink); }
+.dk-seg > button.on { background: var(--panel); color: var(--ink); box-shadow: var(--shadow); }
+.dk-seg > button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.dk-grcount { margin-left: 12px; color: var(--muted); font: 12px var(--sans); }
+.dk-prog .dk-scroll { padding-top: 0; overflow-x: auto; }
+.dk-gr { display: grid; grid-template-columns: minmax(220px, 300px) repeat(6, 96px) minmax(220px, 1fr); align-items: start; padding: 12px 24px; border-top: 1px solid var(--line); cursor: pointer; }
+.dk-gr:not(.dk-grh):hover { background: var(--panel-2); }
+.dk-gr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.dk-gr.dk-grh { position: sticky; top: 0; z-index: 1; padding-top: 10px; padding-bottom: 8px; border-top: 0; background: var(--panel); color: var(--muted); font: 700 10.5px var(--sans); letter-spacing: .04em; text-transform: uppercase; cursor: default; }
+.dk-grhc { text-align: center; }
+.dk-grn { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding-right: 14px; }
+.dk-grtl { overflow: hidden; color: var(--ink); font: 600 13px/1.3 var(--sans); text-overflow: ellipsis; white-space: nowrap; }
+.dk-grmeta { display: flex; align-items: center; gap: 5px; overflow: hidden; color: var(--muted); font: 11.5px var(--sans); white-space: nowrap; }
+.dk-grmono { font: 11px var(--mono); }
+.dk-grc { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.dk-grl, .dk-grr { position: absolute; top: 9px; width: 50%; height: 2px; background: var(--line); }
+.dk-grl { left: 0; }
+.dk-grr { right: 0; }
+.dk-grl.on, .dk-grr.on { background: var(--accent); }
+.dk-grm { position: relative; display: block; }
+.dk-grm .dk-blink { animation: pulse 1.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .dk-grm .dk-blink { animation: none; } }
+.dk-grt { min-height: 13px; color: var(--muted); font: 10px var(--mono); }
+.dk-grt.cur { font-weight: 700; }
+.dk-grt.cur.work { color: var(--accent); }
+.dk-grt.cur.wait { color: var(--ink); }
+.dk-grt.cur:is(.you, .fail) { color: var(--deny); }
+.dk-grnow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; padding-left: 14px; }
+.dk-grw { min-width: 0; color: var(--ink); font: 12.5px/1.4 var(--sans); }
+.dk-grw.wait { color: var(--muted); }
+.dk-grw:is(.you, .fail) { color: var(--deny); font-weight: 600; }
+.dk-grb { display: inline-flex; gap: 6px; }
