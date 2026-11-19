@@ -422,8 +422,8 @@ function deskItemRow(i, lit, held = false) {
     : options.length ? options.map((o, index) => `<button class="btn small" data-desk-question-pick="${index}" data-id="${esc(request.id)}"${answering.has(request.id) ? " disabled" : ""}>${esc(o.label)}</button>`).join("")
     : i.state === "needs_you" && i.ask?.kind !== "permission" ? `<button class="btn small" data-desk-chk-item="${esc(i.id)}">Answer</button>` : "";
   const ask = vb || decision ? `<div class="dk-ask-row">${vb ? `<div class="dk-h">${vb}</div>` : ""}${decision ? `<div class="dk-row-decisions">${decision}</div>` : ""}</div>` : "";
-  return `<div class="dk-it ${i.state === "needs_you" ? "ask" : ""} ${look === "landed" ? "landed" : ""} dk-${deskStateOf(i)} ${on ? "on" : ""}${i.state === "to_check" && deskLooksSoon.has(i.id) ? " soon" : ""}${deskLeaveStyle(i.id)}" role="button" tabindex="0" data-desk-item="${esc(i.id)}">${on ? '<span class="dk-larrow" aria-hidden="true">‹</span>' : ""}
-    ${deskStateIcon(i)}<div class="dk-i1"><span class="dk-tag ${look}">${tag}</span><span class="dk-t">${esc(i.title)}</span></div>
+  return `<div class="dk-it ${i.state === "needs_you" ? "ask" : ""} ${look === "landed" ? "landed" : ""} dk-${deskStateOf(i)} ${on ? "on" : ""}${i.state === "to_check" && deskLooksSoon.has(i.id) ? " soon" : ""}${deskLeaveStyle(i.id)}" role="button" tabindex="0" data-desk-item="${esc(i.id)}">
+    ${deskStateIcon(i)}<div class="dk-i1">${on ? '<span class="dk-larrow" aria-hidden="true">‹</span>' : ""}<span class="dk-tag ${look}">${tag}</span><span class="dk-t">${esc(i.title)}</span></div>
     <div class="dk-i2"><span class="dk-kid">${deskKindIcon(i)}<span class="dk-id">${esc(deskNum(i))}</span></span><span class="dk-who${s ? " held" : ""}">${who}</span><span class="dk-age">${when}</span>${ok}</div>${ask}${deskWaits(i) ? deskUnblocksHtml(i) : ""}</div>`;
 }
 /** An add-on's head: its name, what it is, › while it's open (#219). */

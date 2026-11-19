@@ -3928,3 +3928,19 @@ test("the open item on the right looks like an open session on the left: edge to
   expect(await font(row.locator(".dk-larrow"))).toBe(arrowFont);
   expect(await bg(row)).toBe(lime);
 });
+
+test("the open item's long title keeps its full width beside the ‹, not one letter per line (#327)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await cue.change((s) => { s.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d2").title = "Loops on the Mac look and work like option G, with the open loop and the Loops list matching the design"; });
+  await openDesk(page);
+  const row = page.locator('.dk-items [data-desk-item="d2"]');
+  await row.click();
+  await expect(row.locator(".dk-larrow")).toHaveText("‹");
+  const title = await boxOf(row.locator(".dk-i1")), icon = await boxOf(row.locator(".dk-si")), r = await boxOf(row);
+  expect(title.x).toBeGreaterThan(icon.right);   // beside its icon, as a closed row's
+  expect(title.w).toBeGreaterThan(r.w * 0.6);
+  const lines = await row.locator(".dk-t").evaluate((el) => Math.round(el.getBoundingClientRect().height / parseFloat(getComputedStyle(el).lineHeight || 18)));
+  expect(lines).toBeLessThanOrEqual(4);
+  const arrow = await boxOf(row.locator(".dk-larrow"));
+  expect(arrow.right).toBeLessThanOrEqual(icon.x);   // still at the row's left edge
+});

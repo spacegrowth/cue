@@ -100,8 +100,9 @@
    open session's (#324). */
 .dk-it { position: relative; display: grid; grid-template-columns: 14px minmax(0, 1fr); align-items: start; column-gap: 10px; row-gap: 3px; margin: 0 0 2px; padding: 9px 20px; cursor: pointer; }
 /* Its › mirrors the left column's: at the row's left edge, pointing left, toward the middle where the item opens. It
-   sits in the row's left padding, so opening an item moves nothing. */
-.dk-it > .dk-larrow { position: absolute; top: 8px; left: 5px; }
+   sits in the row's left padding, so opening an item moves nothing. It is drawn inside the title's line, not as a cell
+   of the row's grid, so it can never take the title's column (#327). */
+.dk-it .dk-i1 > .dk-larrow { position: absolute; top: 8px; left: 5px; }
 /* One flow, not columns: the title's next lines run back under its icon and number, from the row's left edge. */
 .dk-i1 { min-width: 0; font-size: 13.5px; line-height: 1.4; overflow-wrap: anywhere; }
 .dk-i2 { grid-column: 2; display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted); font-size: 12px; }
