@@ -95,6 +95,44 @@ fn a_route_to_new_or_to_the_lead_starts_a_session_that_gets_the_item() {
     assert_eq!(count(), sessions + 2);
 }
 
+/// #364: the lead moves an item a session holds to a new session (its holder too full, say, with a hand-off written):
+/// the holder is told to stop, the new session holds it and is sent the holder's hand-off note with it (its last reply
+/// when Cue saw no note written since it took the item).
+#[test]
+fn a_held_item_routed_to_new_moves_to_a_new_session_with_its_holders_hand_off() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    let moved = |title: &str, why: &str| -> (String, String) {
+        ends(&w, &l, &format!("ITEM: {title}\nROUTE: #new -> cue-teams | why: it knows the footer"));
+        let id = item(&desk(&w, &project), title)["id"].as_str().unwrap().to_string();
+        assert_eq!(item(&desk(&w, &project), title)["holder"]["sid"], h.as_str());
+        if why.contains("note") {
+            crate::db::handoff_noted(&h, crate::ipc::CUE_HANDOFF, "/r/HANDOFF-full.md", crate::model::now_ms() + 1, true);
+        }
+        ends(&w, &l, &format!("ROUTE: #{id} -> new | why: {why}"));
+        w.settle();
+        let it = item(&desk(&w, &project), title).clone();
+        let new = it["holder"]["sid"].as_str().unwrap_or_default().to_string();
+        assert_eq!((it["state"].as_str(), it["holder"]["name"].as_str()), (Some("working"), Some(format!("{project}-{id}").as_str())), "{it}");
+        assert_ne!(new, h);
+        assert!(sent_to(&w, &h).last().is_some_and(|t| t.contains(&format!("#{id}")) && t.contains("has moved to a new session: stop work on it")), "{:?}", sent_to(&w, &h));
+        let first = sent_to(&w, &new).into_iter().find(|t| t.contains(&format!("Desk item #{id}"))).unwrap_or_default();
+        (id, first)
+    };
+    // No note: its last reply goes with it.
+    let (id, first) = moved("Footer", "cue-teams is full");
+    assert!(first.contains(&format!("Hand-off: #{id} was with cue-teams before you")) && first.contains("It left no hand-off note Cue saw") && first.contains("Why you: cue-teams is full"), "{first}");
+    // A note written: the new session is pointed at it.
+    let (id, first) = moved("Header", "cue-teams is full and wrote a note");
+    assert!(first.contains(&format!("Hand-off: #{id} was with cue-teams before you")) && first.contains("Read its hand-off note at /r/HANDOFF-full.md first"), "{first}");
+    // Said again by a later turn (the same why), it isn't moved again.
+    let sessions = w.snapshot().0["sessions"].as_array().map_or(0, |s| s.len());
+    ends(&w, &l, &format!("ROUTE: #{id} -> new | why: cue-teams is full and wrote a note"));
+    w.settle();
+    assert_eq!(w.snapshot().0["sessions"].as_array().map_or(0, |s| s.len()), sessions);
+}
+
 #[test]
 fn start_now_on_an_item_nobody_holds_starts_a_session_for_it() {
     let w = World::new();

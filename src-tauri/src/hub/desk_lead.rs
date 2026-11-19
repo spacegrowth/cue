@@ -149,12 +149,17 @@ impl Hub {
         let opts = crate::ipc::StartOpts { trust: true, ..Default::default() };
         let agent = self.session_origin(&s.by_sid).and_then(|o| crate::hosted::Agent::named(&o.harness)).unwrap_or(crate::hosted::Agent::Claude);
         let started = dir.and_then(|dir| crate::ipc::start_hosted(self, agent, &dir, "", &name, &opts, &[]));
+        // Moved off a holder (#364): its hand-off note goes with it, one written since it took the item.
+        let moved = self.read(|st| st.desk.item(&s.id).and_then(|it| super::desk::moved_from_of(st, it)));
+        let note = moved.as_ref().and_then(|(sid, from, _)| sid.as_deref().and_then(crate::db::handoff).filter(|k| !k.note.is_empty() && k.note_ms >= *from)).map(|k| k.note).unwrap_or_default();
+        let last = moved.map(|(_, _, last)| last).unwrap_or_default();
         let sid = started.and_then(|v| v["session_id"].as_str().filter(|s| !s.is_empty()).map(str::to_string).ok_or_else(|| "it started without a session id".to_string()));
         let now = now_ms();
         let fx = self.write(|st| {
             let mut fx = super::desk::Effects::default();
             if !ready(st) { return fx; }
-            let given = sid.and_then(|sid| super::desk::give_started(st, &s.id, &sid, (&s.by, &s.by_sid, &s.why), now, &mut fx));
+            let handoff = st.desk.item(&s.id).map(|it| super::desk::handoff_words(it, &note, &last)).unwrap_or_default();
+            let given = sid.and_then(|sid| super::desk::give_started(st, &s.id, &sid, (&s.by, &s.by_sid, &s.why), &handoff, now, &mut fx));
             if let Err(e) = given {
                 start_failed(st, &s, &e, now, &mut fx);
             }

@@ -130,6 +130,9 @@ pub(super) fn route(st: &mut Store, project: &str, by: &By, id: &str, to: &str, 
         }
     }
     if to_new {
+        if to.eq_ignore_ascii_case("new") {
+            move_off(st, by, id, why, now, fx);
+        }
         return start_fresh(st, project, by, id, after, why, now, fx);
     }
     let refused = after.as_deref().and_then(|a| after_refused(st, a, id)).unwrap_or_default();
@@ -253,11 +256,35 @@ fn unfinish(st: &mut Store, id: &str, h: Option<&Holder>, why: &str, now: u64) -
     // To a new session: nobody holds it till it starts (start_fresh takes only an item nobody holds).
     if h.is_none() {
         it.remember_holder();
+        it.moved_from = it.holder.clone();
         (it.holder, it.state) = (None, "new".into());
         it.crew.clear();
     }
     it.updated = secs(now);
     Ok(())
+}
+
+/// The lead routed item `id` to a new session while another session (or a teammate) holds it, at work or queued
+/// (#364): it moves off that holder, which is told to stop when at work on it, and nobody holds it till the new session
+/// starts (start_fresh). The holder is kept (`moved_from`) so the new session is sent its hand-off note. An item the
+/// lead itself holds, with the user to check, finishing or done is left to start_fresh and unfinish; so is the route it
+/// was given said again (the same why: a later turn repeating itself, which starts nothing).
+fn move_off(st: &mut Store, by: &By, id: &str, why: &str, now: u64, fx: &mut Effects) {
+    let Some(it) = st.desk.item_mut(id) else { return };
+    let Some(b) = it.holder.clone().filter(|b| !(b.sid == by.sid && b.lead_sid.is_empty())) else { return };
+    if !matches!(it.state.as_str(), "new" | "queued" | "working") || why.trim().eq_ignore_ascii_case(it.after_why.trim()) {
+        return;
+    }
+    if it.state == "working" {
+        let to = Holder { kind: "session".into(), sid: String::new(), name: "a new session".into(), lead_sid: String::new() };
+        fx.sends.push(moved_words(&b, it, &to));
+    }
+    it.remember_holder();
+    it.moved_from = Some(b);
+    (it.holder, it.state, it.after) = (None, "new".into(), None);
+    it.crew.clear();
+    it.updated = secs(now);
+    fx.items.push(id.to_string());
 }
 
 /// `it` held by `h` from now, at work (or queued after `waits`), as the lead routed it.
@@ -271,6 +298,7 @@ fn held_by(it: &mut DeskItem, h: &Holder, refused: String, waits: Option<String>
         it.remember_holder();
     }
     it.holder = Some(h.clone());
+    it.moved_from = None;
     it.crew.clear();
     it.after_why = why.to_string();
     it.done_at = None;
@@ -369,8 +397,32 @@ pub(super) fn give_by(st: &mut Store, id: &str, sid: &str, by: (&str, &str, &str
 
 /// `give_by` to `sid`, a session Cue just started for the item in the Desk's own folder (desk_start_new): it's the
 /// Desk's whatever project its folder's repository is named for (a folder you put in the project, say).
-pub(super) fn give_started(st: &mut Store, id: &str, sid: &str, by: (&str, &str, &str), now: u64, fx: &mut Effects) -> Result<(), String> {
-    give_to(st, id, sid, by, true, now, fx)
+/// `handoff`: the hand-off of the holder it moved off (#364, `handoff_words`), sent with it ("" for none).
+pub(super) fn give_started(st: &mut Store, id: &str, sid: &str, by: (&str, &str, &str), handoff: &str, now: u64, fx: &mut Effects) -> Result<(), String> {
+    give_to(st, id, sid, by, true, now, fx)?;
+    if let Some(sent) = fx.sends.iter_mut().rev().find(|(to, _)| to == sid).filter(|_| !handoff.trim().is_empty()) {
+        sent.1.push_str("\n\n");
+        sent.1.push_str(handoff.trim());
+    }
+    Ok(())
+}
+
+/// What a new session is told of the holder item `it` moved off when the lead routed it to new (#364): its hand-off
+/// note (`note`: its path as its log names it, "" when Cue saw none written), else its last reply (`last`).
+pub(super) fn handoff_words(it: &DeskItem, note: &str, last: &str) -> String {
+    let Some(b) = it.moved_from.as_ref() else { return String::new() };
+    let who = if b.kind == "crew" { format!("teammate {}", b.name) } else { b.name.clone() };
+    let mut out = format!("Hand-off: #{} was with {who} before you, and the Desk lead moved it to you.", it.id);
+    if !note.trim().is_empty() {
+        out.push_str(&format!(" Read its hand-off note at {} first. Check it against git status and the files it names, then carry on from its next step.", note.trim()));
+    } else {
+        let last: String = last.trim().chars().take(1500).collect();
+        if !last.is_empty() {
+            out.push_str(&format!(" It left no hand-off note Cue saw; its last reply:\n\n{}", last.lines().map(|l| format!("> {l}")).collect::<Vec<_>>().join("\n")));
+        }
+        out.push_str("\nCheck git status and the files it names before you carry on.");
+    }
+    out
 }
 
 fn give_to(st: &mut Store, id: &str, sid: &str, by: (&str, &str, &str), started: bool, now: u64, fx: &mut Effects) -> Result<(), String> {
@@ -396,6 +448,7 @@ fn give_to(st: &mut Store, id: &str, sid: &str, by: (&str, &str, &str), started:
         it.remember_holder();
     }
     it.holder = Some(h.clone());
+    it.moved_from = None;
     it.crew.clear();
     it.state = "working".into();
     it.after = None;
@@ -419,4 +472,15 @@ fn give_to(st: &mut Store, id: &str, sid: &str, by: (&str, &str, &str), started:
         d.undo = "none".into();
     }
     Ok(())
+}
+
+/// The holder item `it` moved off (#364, `moved_from`), as its hand-off is looked up: its session (None for a teammate,
+/// which writes no note of its own), when its stint on the item began (ms, 0: not known), and its last reply.
+pub(super) fn moved_from_of(st: &Store, it: &DeskItem) -> Option<(Option<String>, u64, String)> {
+    let b = it.moved_from.as_ref()?;
+    let from = it.held_from.as_ref().filter(|(by, _)| *by == b.sid).map(|(_, at)| *at)
+        .or_else(|| it.held_before.iter().rev().find(|(by, _, _)| *by == b.sid).map(|(_, at, _)| *at))
+        .unwrap_or(0);
+    let last = st.sessions.get(b.to()).filter(|_| b.kind != "crew").and_then(|s| s.thread.iter().rev().find(|e| e.role == "agent")).map(|e| e.text.clone()).unwrap_or_default();
+    Some(((b.kind != "crew").then(|| b.sid.clone()), from, last))
 }

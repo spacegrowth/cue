@@ -8,7 +8,7 @@ use super::*;
 use crate::desk::{DeskDecision, DeskItem, Holder};
 use crate::sessions::Session;
 use super::desk_members::UseAsk;
-pub(super) use super::desk_route::{By, decide, give_started, release, route};
+pub(super) use super::desk_route::{By, decide, give_started, handoff_words, moved_from_of, release, route};
 pub(super) use super::desk_view::{held_window, item_sources, shown};
 use super::desk_act::{letter_of, pick, pick_letters};
 

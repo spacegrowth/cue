@@ -45,7 +45,9 @@ MERGE: #<id> into #<other id> | why: <reason>      (an item that asks again for 
 Cue adds its words and pictures to #<other id> and takes it off the list; no session is started for it)
 ROUTE: #<id> -> <session name> | kind: bug | why: <one short reason>      (kind is bug, feature or task; \
 give it when the item has none yet, as items the user adds don't)
-ROUTE: #<id> -> new | why: <reason>      (no session fits: Cue starts a new session of this project for it)
+ROUTE: #<id> -> new | why: <reason>      (no session fits: Cue starts a new session of this project for it; \
+an item a session already holds moves to it, as when its holder is too full and wrote a hand-off: the old holder \
+stops, and the new session is sent the item with that hand-off note)
 ROUTE: #<id> -> <name> | after: #<other id> | why: <reason>   (it starts once #<other id> is done; use it whenever \
 an item really waits on another, as when both would change the same files: the Desk shows the user what each waiting item unblocks)
 ASK: <question> | choices: <A> / <B> / <C>      (only when you can't decide without the user)

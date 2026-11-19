@@ -61,6 +61,10 @@ pub struct DeskItem {
     /// Sessions that held this item before its current holder.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub former_holders: Vec<String>,
+    /// The holder it moved off when the lead routed it to a new session (`ROUTE: #id -> new` on a held item, #364),
+    /// until a session takes it: the new one is sent that holder's hand-off note with it (hub/desk_lead.rs).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub moved_from: Option<Holder>,
     /// The lead's teammate doing it, when the lead keeps it and says so (`ROUTE: #id -> me | crew: <name>`): the name
     /// the lead gave it, matched to its teammate of that name once there is one (hub/desk_view.rs `shown`).
     #[serde(default, skip_serializing_if = "String::is_empty")]
