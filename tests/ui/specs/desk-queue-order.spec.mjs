@@ -43,3 +43,32 @@ test("Queued items drag into your order; one can't go above the item it waits on
   // A running item isn't in Queued: nothing to drag.
   await expect(page.locator('[data-desk-item="d3"][data-desk-qg]')).toHaveCount(0);
 });
+
+test("a dropped item stays where you let it go, selects no text, and the list scrolls when you hold it at an edge", async ({ page, cue }) => {
+  await cue.open("desk");
+  // Twelve queued, more than the list shows at once.
+  await cue.change((st) => {
+    const d = st.desk.projects.find((x) => x.project === "cue"), d6 = d.items.find((i) => i.id === "d6"), t = Math.max(...d.items.map((i) => i.created));
+    for (let k = 1; k <= 10; k++) d.items.push({ ...d6, id: `q${k}`, title: `Queued thing ${k}`, created: t + k });
+  });
+  await page.setViewportSize({ width: 1280, height: 560 });
+  await openDesk(page);
+  // Cue is slow to save it: a change that comes in meanwhile still shows your order.
+  await cue.override("desk_item_act", () => new Promise(() => {}));
+  await drag(page, "d6", "d4");
+  await cue.change(() => {});
+  await expect.poll(() => order(page)).toEqual(["d6", "d4", ...Array.from({ length: 10 }, (_, k) => `q${k + 1}`)]);
+  expect(await page.evaluate(() => getSelection().toString())).toBe("");
+  // The last one, held at the list's top edge: the list scrolls up and it goes to the top.
+  const last = page.locator('.dk-items [data-desk-item="q10"]');
+  await last.scrollIntoViewIfNeeded();
+  const a = await last.boundingBox(), box = await page.locator(".dk-items .dk-scroll").boundingBox();
+  await page.mouse.move(a.x + 60, a.y + a.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(a.x + 60, a.y + a.height / 2 - 10, { steps: 2 });
+  await page.mouse.move(a.x + 60, box.y + 4, { steps: 8 });
+  await expect.poll(() => page.locator(".dk-items .dk-scroll").evaluate((el) => el.scrollTop), { timeout: 5000 }).toBe(0);
+  await page.waitForTimeout(300);
+  await page.mouse.up();
+  await expect.poll(async () => (await order(page))[0]).toBe("q10");
+});
