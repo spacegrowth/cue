@@ -1700,7 +1700,7 @@ test("three columns: the project's sessions on the left, the lead's chat in the 
   const left = page.locator(".dk-sessions");
   await expect(left.locator('.dk-strip .dk-lcard[data-desk-lead-chat="lead"]')).toHaveCount(1);
   await expect(left.locator('.dk-lcard .dk-pill')).toHaveCount(0);
-  await expect(left.locator(".dk-strip .dk-lh + .dk-lcard")).toHaveCount(1);
+  await expect(left.locator(".dk-strip .dk-lh + .dk-lbar + .dk-lcard")).toHaveCount(1);
   await expect(left.locator(".dk-strip .dk-lh")).toHaveText("Run by");
   // What each row is as the chat headers' icon before its name, the Dispatcher's signpost on the lead's card (#202).
   await expect(left.locator('.dk-lcard .dk-s1 > .dk-ric[data-desk-type="desk"] svg.dk-kic')).toHaveCount(1);
@@ -1842,7 +1842,7 @@ test("the head is one strip in the accent, flush across the card's top: the name
   // Pick O: the column lifts off the window with a light hairline and a shadow; a 3px lime line closes the strip (the
   // lead's working line, #263: lime while it's idle, the chat's working light while it works; its own test below).
   expect((await cssOf(left, "box-shadow"))[0]).toMatch(/0px 0px 0px 1px.*0px 10px 28px/);
-  expect(await cssOf(left.locator(".dk-strip + .dk-lbar"), "height")).toEqual(["3px"]);
+  expect(await cssOf(left.locator(".dk-strip .dk-lh + .dk-lbar"), "height")).toEqual(["3px"]);
   expect(await page.locator(".dk-board [title]").count()).toBe(0);
 });
 
@@ -1902,7 +1902,12 @@ test("the lead's card in the strip: Run by, its state and the item it holds; ope
   // "Run by" heads the card as a line of its own (#269), not a word inside it.
   await expect(lead.locator(".dk-lk")).toHaveCount(0);
   await expect(page.locator(".dk-strip .dk-lh")).toHaveText("Run by");
-  expect(await page.locator(".dk-strip .dk-lh").evaluate((el) => el.nextElementSibling.matches(".dk-lcard"))).toBe(true);
+  // The line sits right under "Run by", over the card, not under the card (#359); it runs the strip's full width.
+  expect(await page.locator(".dk-strip .dk-lh").evaluate((el) => el.nextElementSibling.matches(".dk-lbar") && el.nextElementSibling.nextElementSibling.matches(".dk-lcard"))).toBe(true);
+  const [sb, lb, cb] = await page.evaluate(() => [".dk-sessions .dk-strip", ".dk-strip .dk-lbar", ".dk-strip .dk-lcard"].map((q) => document.querySelector(q).getBoundingClientRect()));
+  expect(Math.round(lb.bottom)).toBe(Math.round(cb.top));
+  expect([Math.round(lb.left), Math.round(lb.right)]).toEqual([Math.round(sb.left), Math.round(sb.right)]);
+  expect(Math.round(cb.bottom)).toBe(Math.round(sb.bottom));
   await expect(lead.locator(".dk-nm")).toHaveText("web-lead");
   await expect(lead.locator(".dk-st")).toHaveText("waiting on you");
   await expect(lead.locator(".dk-st > i.ask")).toHaveCount(1);
@@ -1953,14 +1958,13 @@ test("no line under the strip: the list starts right after it", async ({ page, c
   await cue.open("desk");
   await openDesk(page);
   await expect(page.locator(".dk-sessions .dk-sum")).toHaveCount(0);
-  // Only the lead's working line (#263) between them.
-  expect(await page.locator(".dk-sessions .dk-strip").evaluate((el) => el.nextElementSibling.classList.contains("dk-lbar"))).toBe(true);
-  // Then "Needs your decision" while a request waits (e6869d92); with none, the list right under the line.
+  // The lead's working line (#263) is inside the strip, under "Run by" (#359): nothing between the strip and the list.
+  // "Needs your decision" right under the strip while a request waits (e6869d92); with none, the list.
   await cue.change((st) => { st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d1").ask = null; });
-  expect(await page.locator(".dk-sessions .dk-lbar").evaluate((el) => el.nextElementSibling.classList.contains("dk-approvals"))).toBe(true);
+  expect(await page.locator(".dk-sessions .dk-strip").evaluate((el) => el.nextElementSibling.classList.contains("dk-approvals"))).toBe(true);
   await cue.change((st) => { st.items = st.items.filter((i) => i.status !== "pending"); });
   await expect(page.locator(".dk-sessions .dk-approvals")).toHaveCount(0);
-  expect(await page.locator(".dk-sessions .dk-lbar").evaluate((el) => el.nextElementSibling.classList.contains("dk-scroll"))).toBe(true);
+  expect(await page.locator(".dk-sessions .dk-strip").evaluate((el) => el.nextElementSibling.classList.contains("dk-scroll"))).toBe(true);
 });
 
 test("the Run by card is a session row's size: same padding, name, item line and indent, under a Run by head like Working (#269)", async ({ page, cue }) => {
@@ -1988,7 +1992,7 @@ test("the Run by card is a session row's size: same padding, name, item line and
   if (process.env.SHOT_DIR) for (const c of ["light", "dark"]) { await page.emulateMedia({ colorScheme: c }); await page.waitForTimeout(150); await page.screenshot({ clip: await page.locator(".dk-sessions").boundingBox(), path: `${process.env.SHOT_DIR}/cue-desk-runby-${c}.png` }); }
 });
 
-test("the line under the Run by card is the chat's working light while the lead works, a plain lime line when idle (#263)", async ({ page, cue }) => {
+test("the line under Run by is the chat's working light while the lead works, a plain lime line when idle (#263)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   const lead = await page.locator(".dk-strip .dk-lcard").getAttribute("data-desk-lead-chat");

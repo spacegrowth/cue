@@ -880,11 +880,11 @@ function deskSessions(project, taskApprovals) {
       return `<label class="dk-add-option"><input type="checkbox" data-desk-member="${esc(r.sid)}" data-project="${esc(project)}"${member ? " checked" : ""}${locked ? " disabled" : ""}><span aria-hidden="true">${deskKindIcon(r.sid === leadSid ? "desk" : r.lead ? "lead" : "session")}</span><span>${esc(r.name)}${r.sid === leadSid ? " · Dispatcher" : ""}${locked ? '<small class="dim">Has work history</small>' : ""}</span></label>`;
     }).join("")
     : '<div class="dim">No project sessions available.</div>'}</div>` : "";
-  return `<div class="dk-card dk-sessions">${deskSessHead(project, mine.length, runs, leadS ? row(leadS, true) : "")}${deskLeadBar(leadS)}
+  return `<div class="dk-card dk-sessions">${deskSessHead(project, mine.length, runs, leadS ? row(leadS, true) : "", deskLeadBar(leadS))}${leadS ? "" : deskLeadBar(leadS)}
     ${deskApprovals(d, taskApprovals)}<div class="dk-scroll" data-scroll-key="desk-sessions:${esc(project)}">${body}</div>
     <div class="dk-sfoot"><div class="dk-add-anchor"><button class="btn small dk-add-button" data-desk-add-session="${esc(project)}" aria-label="Add session" aria-expanded="${picking}"${picking ? ' aria-controls="desk-add-picker"' : ""}><span aria-hidden="true">+</span></button>${picker}</div></div></div>`;
 }
-/** The line under the lead's card (#263): the same working light a chat shows along its top (.sweep, chat.css), moving
+/** The line under "Run by", over the lead's card (#263, #359): the same working light a chat shows along its top (.sweep, chat.css), moving
  *  while the lead works (calmer after a quiet spell, still and amber when stuck, as sweep() in chat/thread.js), a plain
  *  lime line while it's idle. No data-sweep: that one is the open chat's, carried over by patch.js. The desk redraws
  *  often, so each new light starts where the clock says its pass is, never over from the left. */
@@ -896,9 +896,10 @@ function deskLeadBar(s) {
 }
 /** The head strip (pick B2), set in from the card's sides so it never meets the window's own colour: the Desk's name
  *  opens the switcher (every Desk, All Desks, + New Desk), ⋯ to hand the Desk to another session, this Desk's name (✎ on hover renames it, as the projects list
- *  does), how many sessions and how many work; then the lead's card (`lead`), outlined while its chat shows. */
+ *  does), how many sessions and how many work; then "Run by", its line (`bar`, #263) right under it (#359), and the
+ *  lead's card (`lead`), outlined while its chat shows. */
 let deskDeleteAsk = null, deskDeleting = false, deskCloseSelected = new Set();
-function deskSessHead(project, n, working, lead = "") {
+function deskSessHead(project, n, working, lead = "", bar = "") {
   if (deskRecent[0] !== project) deskRecentPut(project);
   const d = deskOf(project);
   const title = deskName(d);
@@ -907,7 +908,7 @@ function deskSessHead(project, n, working, lead = "") {
     : `<b>${esc(title)}</b><button class="dk-ren" data-pjren="${esc(project)}" aria-label="Rename this Desk"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></svg></button>`;
   const more = lead ? `<button class="dk-more-btn" data-desk-change aria-label="Hand this Desk to another session"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>` : "";
   const sw = pjRenaming === project ? `<span class="dk-ric" aria-hidden="true">${deskKindIcon("tray")}</span>${name}` : `<span class="dk-sw-anchor"><button class="dk-sw-btn" data-desk-switch aria-haspopup="menu" aria-expanded="${deskSwitchOpen}"><span class="dk-ric" aria-hidden="true">${deskKindIcon("tray")}</span><b>${esc(title)}</b><svg class="dk-sw-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>${deskSwitchOpen ? deskSwitchMenu(project) : ""}</span>${name.slice(name.indexOf("<button"))}${deskRecentChips(project)}`;
-  return `<div class="dk-strip"><div class="dk-sh"><div class="dk-shr">${sw}<span class="grow"></span>${more}</div><span class="dk-sub">${n} session${n === 1 ? "" : "s"}${working ? ` · ${working} working` : ""}</span>${lead && typeof askBeforeLine === "function" ? askBeforeLine(deskOf(project)) : ""}</div>${lead ? `<div class="dk-lh">Run by</div>${lead}` : ""}</div>`;
+  return `<div class="dk-strip"><div class="dk-sh"><div class="dk-shr">${sw}<span class="grow"></span>${more}</div><span class="dk-sub">${n} session${n === 1 ? "" : "s"}${working ? ` · ${working} working` : ""}</span>${lead && typeof askBeforeLine === "function" ? askBeforeLine(deskOf(project)) : ""}</div>${lead ? `<div class="dk-lh">Run by</div>${bar}${lead}` : ""}</div>`;
 }
 /** The switcher (pick A, #240): the Desk's name opens a menu of every Desk, those waiting on you first, found by typing,
  *  ↑ ↓ ↵ to pick; All Desks and + New Desk under them. A row is the Desk's name and what needs you, nothing else: a
