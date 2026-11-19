@@ -197,18 +197,24 @@ function setActive(id, sid, exact = false) {
   // Picked a session (any list, a chip, the live list's Enter): ready to type to it.
   focusComposer();
 }
-/** A notification clicked (`id`: its card's id, or a key the add-on posted): its session where it lives (#317). A
- *  loop's is the add-on's to open; a Desk's opens on that Desk (its lead's chat for the lead, else that session's
- *  page); any other session's on the Board, as before. */
-function openNotice(id) {
-  const sid = findItem(id)?.session_id || null;
+/** A notification clicked (`id`: its card's id, or a key the add-on posted; `about`: the session it's about, when Cue
+ *  posted it for one): its session where it lives (#317). A loop's is the add-on's to open; a Desk's opens on that Desk:
+ *  its lead's chat for the lead, else the item the session is on, else that session's chat (#388: never its page, whose
+ *  summary can be hours old); any other session's on the Board. A card gone by now (answered, or replaced by the
+ *  session's next turn) opens its session, never the top of Waiting, which is some other session's. */
+function openNotice(id, about = null) {
+  const card = findItem(id);
+  const sid = card?.session_id || about || null;
   try { if (addOn.openNotice(id, sid)) return; } catch (e) { console.error(e); }
   const d = sid && typeof deskForSession === "function" ? deskForSession(sid) : null;
-  if (!d) return setActive(id);
+  if (!d) return card || !sid ? setActive(id) : setActive(null, sid);
   seenSession(sid);
   openInDesk(d.project);
-  if (deskLead(d)?.sid === sid) { deskPick = null; deskTab = "lead"; deskShow(null); }
-  else deskShow({ kind: "holder", sid });
+  if (deskLead(d)?.sid === sid) { deskPick = null; deskTab = "lead"; deskShow(null); return; }
+  const item = deskSessItem(d, sid);
+  if (item) return deskShow({ kind: "item", id: item.id });
+  deskChatEnd = true;   // at its newest
+  deskShow({ kind: "chat", sid });
 }
 /** Another project picked (or All projects): the chat opens on the top of its Waiting (or none), and the
  *  terminal open closes with what was there. */

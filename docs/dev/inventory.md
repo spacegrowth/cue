@@ -15,8 +15,8 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | What | Count |
 |---|---|
 | `#[tauri::command]` | 172 (3 sync) |
-| Lock declarations (static or field) | 110 |
-| Lock acquisitions | 261 |
+| Lock declarations (static or field) | 111 |
+| Lock acquisitions | 263 |
 | Lock-graph edges | 59 |
 | Spawn sites | 88 |
 | External calls: fs / db / process / notify / login / socket | 462 / 208 / 53 / 4 / 1 / 4 |
@@ -299,6 +299,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `notify.rs::QUIET` | `std::sync::Mutex<Vec<String>>` | "quiet sessions" (2 sites) |
 | `notify.rs::READING` | `std::sync::Mutex<Vec<(String,String)>>` | "mini reading" (2 sites) |
 | `notify.rs::JOBS` | `std::sync::OnceLock<std::sync::mpsc::Sender<Job>>` | — |
+| `notify.rs::ABOUT` | `std::sync::Mutex<Vec<(String,String)>>` | "notification sessions" (2 sites) |
 | `notify.rs::BOUNCING` | `std::sync::Mutex<Vec<String>>` | "dock bounce" (5 sites) |
 | `notify.rs::APP` | `OnceLock<AppHandle>` | — |
 | `self_install.rs::STARTING` | `Mutex<()>` | "self_install.starting" (1 sites) |

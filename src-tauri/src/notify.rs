@@ -61,10 +61,37 @@ pub fn later(job: impl FnOnce() + Send + 'static) {
 /// about (shown even with Cue in front, with its own sound).
 pub struct Note {
     pub id: String,
+    /// The session it's about ("" for none): a click opens that session's item or chat, even once the card is gone.
+    pub session_id: String,
     pub title: String,
     pub body: String,
     pub category: String,
     pub watched: bool,
+}
+
+/// Each notification's session, by notification id (the newest few hundred): a click asks for it by id, and the card
+/// it was posted for may be gone by then (answered, or replaced by the session's next turn).
+static ABOUT: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(Vec::new());
+const ABOUT_KEEP: usize = 500;
+
+fn note_about(id: &str, sid: &str) {
+    let mut a = crate::locking::lock(&ABOUT, "notification sessions");
+    a.retain(|(i, _)| i != id);
+    if !sid.is_empty() {
+        a.push((id.to_string(), sid.to_string()));
+    }
+    let over = a.len().saturating_sub(ABOUT_KEEP);
+    a.drain(..over);
+}
+
+/// What a click on notification `id` asks the window to open (app.js "select"): "c:{id, sid}" when its session is
+/// known, so the window opens that session's item or chat even if the card is gone; else the bare id, as before.
+pub fn select_for(id: &str) -> String {
+    let sid = crate::locking::lock(&ABOUT, "notification sessions").iter().rev().find(|(i, _)| i == id).map(|(_, s)| s.clone());
+    match sid {
+        Some(sid) => format!("c:{}", serde_json::json!({ "id": id, "sid": sid })),
+        None => id.to_string(),
+    }
 }
 
 /// How long Cue waits before something new goes to Notification Center: answered (or Cue brought forward)
@@ -87,6 +114,7 @@ fn in_front(app: &tauri::AppHandle) -> bool {
 /// you asked to be told about is posted at once, even with Cue in front. An unbundled dev binary gets the
 /// plugin's plain notification instead, which Cue can't take back.
 pub fn show(app: tauri::AppHandle, note: Note) {
+    note_about(&note.id, &note.session_id);
     if note.watched {
         return later(move || post_now(&app, note));
     }
@@ -123,7 +151,7 @@ pub fn show(app: tauri::AppHandle, note: Note) {
 
 fn post_now(app: &tauri::AppHandle, note: Note) {
     use tauri_plugin_notification::NotificationExt;
-    let Note { id, title, body, category, watched } = note;
+    let Note { id, title, body, category, watched, .. } = note;
     let sound = if watched { crate::sounds::TADA.to_string() } else { crate::sounds::choice() };
     if !post_sound(&id, &title, &body, &category, &sound) {
         let _ = app.notification().builder().title(&title).body(&body).show();
@@ -199,7 +227,7 @@ mod mac {
                 match (text, APP.get()) {
                     (Some(text), Some(app)) => send(app.clone(), id, text),
                     (None, Some(app)) if action == "compact" => compact(app.clone(), id),
-                    (None, Some(app)) => crate::show_main(app, Some(id)),
+                    (None, Some(app)) => crate::show_main(app, Some(crate::notify::select_for(&id))),
                     _ => {}
                 }
                 handler.call(());
@@ -359,6 +387,19 @@ pub fn remove(_ids: &[String]) {}
 mod tests {
     use std::sync::mpsc::channel;
     use std::time::Duration;
+
+    /// A click on a notification names its session, so the window opens what it's about even once its card is gone
+    /// (#388); one about no session (usage) stays the bare id; posting the same id again for another session follows it.
+    #[test]
+    fn a_notification_click_names_its_session() {
+        super::note_about("n-388-a", "sess-a");
+        super::note_about("usage-388", "");
+        assert_eq!(super::select_for("n-388-a"), r#"c:{"id":"n-388-a","sid":"sess-a"}"#);
+        assert_eq!(super::select_for("usage-388"), "usage-388");
+        assert_eq!(super::select_for("never-posted-388"), "never-posted-388");
+        super::note_about("n-388-a", "sess-b");
+        assert_eq!(super::select_for("n-388-a"), r#"c:{"id":"n-388-a","sid":"sess-b"}"#);
+    }
 
     #[test]
     fn notification_jobs_run_in_order_off_the_callers_thread_and_survive_a_panic() {

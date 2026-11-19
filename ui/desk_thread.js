@@ -241,6 +241,22 @@ function deskItemNow(i) {
 
 /** A session's latest words in a line. */
 const deskLatestOf = (s) => plain(firstLine([...(s?.thread || [])].reverse().find((e) => e.role === "agent")?.text || ""));
+/** What a session's page says of it now (#388): at work, the step it's on (its last reply is from before this turn);
+ *  else the first line of its latest reply as its row says it (read from its log, deskSessSaid), and how long ago.
+ *  { text, at, now } ({ text: "" } when there's nothing to say). */
+function deskLatestNow(s) {
+  if (!s) return { text: "" };
+  if (deskPstate(s)[0] === "work") return { text: s.compacting_ms ? "Compacting…" : s.doing || "Working on its reply…", at: s.compacting_ms || s.doing_ms || 0, now: true };
+  if (typeof deskInsAsk === "function") deskInsAsk(s.session_id);   // its log's numbers, asked for when no card brings them
+  const said = deskSessSaid(s.session_id), last = [...(s.thread || [])].reverse().find((e) => e.role === "agent");
+  const c = typeof insCache !== "undefined" ? insCache.get(s.session_id) : null;
+  // Whichever is newer: its log's numbers are asked for once a minute, its thread moves as each turn ends.
+  const fromLog = { text: said, at: c?.last_ms || 0 }, fromThread = { text: deskLatestOf(s), at: last?.at_ms || 0 };
+  return said && (!fromThread.text || fromLog.at >= fromThread.at) ? fromLog : fromThread;
+}
+/** `deskLatestNow` as a line: its words, then how long it's been on that step ("· 3m") or when it replied ("· 2h ago"),
+ *  kept current by data-ago. */
+const deskLatestHtml = (l) => (l.text ? `${esc(l.text)}${l.at ? ` · <span data-ago="${l.at}">${ago(l.at)}</span>${l.now ? "" : " ago"}` : ""}` : "");
 /** A crew member's dot: red when it asks you, filled at work, hollow otherwise. */
 const deskMateDot = (lead, t) => (mateNeeds(lead, t) ? "ask" : t.state === "working" ? "" : "idle");
 /** A lead (its crew, what's next, what it decided, its latest) or a session on its own. */
@@ -261,20 +277,20 @@ function deskHolderPane(sid, d, foot = "") {
   const nextLine = next ? `<p class="dk-note">Next for this ${lead ? "lead" : "session"}: ${esc(next.title)}${next.after ? `, after ${esc(deskItem(d.project, next.after)?.title || "")}` : ""}.</p>` : "";
   const decs = d.decisions.filter((c) => c.call && (c.sid === sid || c.by === name));
   const decHtml = decs.length ? deskLog(decs, (c) => (c.item_id && deskItem(d.project, c.item_id) ? esc(deskItem(d.project, c.item_id).title) : "")) : "";
-  const latest = deskLatestOf(s);
+  const latest = deskLatestHtml(deskLatestNow(s));
   // One page (#200): its crew, what's next, its calls and latest at the left; in the panel, what of it waits on you
   // (Open #190), else its state, and its crew and items counted.
   const kind = deskSessKind(sid, d), wait = mine.find(deskWaits);
   const [dot, word] = deskPstate(s);
   const now = wait ? deskPnow({ dot: "ask", word: "Waiting on you", say: `${deskKindIcon(wait)}<b>${esc(deskNum(wait))}</b> ${deskVerbHtml(wait) || esc(wait.title)}`, acts: `<button class="btn small primary" data-desk-chk-item="${esc(wait.id)}">Open #${esc(wait.id)}</button>`, fold: esc(head) })
-    : deskPnow({ dot, word, say: latest ? esc(latest) : "", fold: esc(head) });
+    : deskPnow({ dot, word, say: latest, fold: esc(head) });
   const by = (f) => crew.filter(f).length;
   const counts = [[by((t) => mateNeeds(sid, t)), "ask you"], [by((t) => !mateNeeds(sid, t) && t.state === "working"), "working"], [by((t) => !mateNeeds(sid, t) && t.state !== "working" && t.state !== "done"), "stopped"], [by((t) => t.state === "done"), "done"]].filter(([n]) => n).map(([n, w]) => `${n} ${w}`).join(" · ");
   const who = deskPsec("Who", deskPwho("Crew", lead ? counts || "none at work" : "") + deskPwho("Items", `${mine.length} open${waits ? ` · ${waits} ${waits === 1 ? "waits" : "wait"} on you` : ""}`));
   const main = `<div class="dk-pane" data-scroll-key="holder:${esc(sid)}">
     ${lead ? deskSec("Crew", crewRows ? `<div class="dk-crew">${crewRows}</div>` : `<p class="dk-note">No crew at work.</p>`) : ""}${nextLine}
     ${deskSec(`Decided by ${esc(name)} · ${decs.length}`, decHtml)}
-    ${deskSec(`Latest from ${esc(name)}`, latest ? `<p class="dk-quiet">${esc(latest)}</p>` : "")}</div>`;
+    ${deskSec(`Latest from ${esc(name)}`, latest ? `<p class="dk-quiet">${latest}</p>` : "")}</div>`;
   return deskPage({ page: kind === "lead" ? "lead" : kind === "desk" ? "dispatcher" : "session", kind, back: deskBack(deskLeadName(d) || "Back"),
     acts: s ? `<button class="btn small" ${deskChatAttrs(sid, d)}>Open its chat</button>` : "", mark: `${DESK_MARKS[kind]} · `, title: esc(name), meta: esc(head), now, panel: who + deskSessFiles(sid), main, foot });
 }

@@ -106,6 +106,8 @@ async function boot() {
     if (e.payload.startsWith("d:")) { const d = JSON.parse(e.payload.slice(2)); return isDocPath(d.path) ? openDoc(d.sid || null, d.path) : fileView(d.path, d.sid || null); }
     // "k:{desk, item}": a Desk, on its item when one is named (the mini window's Desk tab).
     if (e.payload.startsWith("k:")) { const k = JSON.parse(e.payload.slice(2)); return openInDesk(k.desk, k.item || ""); }
+    // "c:{id, sid}": a notification clicked, with the session it's about (its card may be gone by now, #388).
+    if (e.payload.startsWith("c:")) { const c = JSON.parse(e.payload.slice(2)); return openNotice(c.id, c.sid); }
     if (e.payload !== "usage") return openNotice(e.payload);
     const s = limitedSessions().sort((a, b) => a.since_ms - b.since_ms)[0];
     if (s) setActive(null, s.session_id);

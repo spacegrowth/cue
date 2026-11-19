@@ -627,7 +627,12 @@ impl Hub {
     /// A notification about something that isn't a card (a session gone quiet, a failed task, a usage limit),
     /// under `key`: never taken back with the cards; whoever posted it takes it back when that's over.
     pub(super) fn notify_about(&self, key: &str, title: &str, body: &str) {
-        self.ports.notes.show(crate::notify::Note { id: key.to_string(), title: title.to_string(), body: body.to_string(), category: String::new(), watched: false });
+        self.notify_about_session(key, "", title, body);
+    }
+
+    /// `notify_about` for session `sid`: a click opens that session's item or chat.
+    pub(super) fn notify_about_session(&self, key: &str, sid: &str, title: &str, body: &str) {
+        self.ports.notes.show(crate::notify::Note { id: key.to_string(), session_id: sid.to_string(), title: title.to_string(), body: body.to_string(), category: String::new(), watched: false });
     }
 
     /// Notification Center's part (is Cue in front, the post itself) runs on its own thread (notify::show):
@@ -643,7 +648,7 @@ impl Hub {
         if sid.as_deref().is_some_and(crate::notify::is_read) {
             return;
         }
-        let note = crate::notify::Note { id: id.to_string(), title: title.to_string(), body: body.to_string(), category: category.to_string(), watched };
+        let note = crate::notify::Note { id: id.to_string(), session_id: sid.clone().unwrap_or_default(), title: title.to_string(), body: body.to_string(), category: category.to_string(), watched };
         // Noted as notified with the post handed in, under one lock: a draw either sees neither, or sees it
         // and hands in its taking back after the post. (Taking back one that never went up costs nothing.)
         self.write(|st| {
