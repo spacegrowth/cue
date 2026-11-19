@@ -30,8 +30,45 @@ CueBridge.area("settings", (w) => {
     for (const d of w.state?.desk?.projects || []) d.ask_before ||= { project: d.workspace_project || d.project, kinds: [{ key: "main", label: "Pushing to main" }], asked: true, ticks: ["main"] };
     if (p && !p.oneway) p.oneway ={ set: {}, asked: [], kinds: ONE_WAY_KINDS.map(([key, label, offered]) => ({ key, label, offered, why: offered ? "" : "Cue can't check it" })), default: ["main"], ask_default: ["main", "release", "data"] };
   };
+  /** How work lands as lands.rs desk_view gives it, for `place` (cue, repo or folder) and what's saved. */
+  const LANDS_PARTS = [
+    ["where", "Where an item works", [["shared", "Shared folder", "Every session works in the project's own folder."], ["copy", "Own copy", "Each item gets its own copy of the project."], ["branch", "A branch"]]],
+    ["how", "How it lands", [["squash", "One commit per item", "The Desk puts each item on main as one commit, named after the item. One at a time."], ["merge", "Merge"], ["pr", "Pull request"], ["owner", "You commit", "The Desk commits nothing."]]],
+    ["check", "Check before landing", [["none", "None", "Nothing is run."], ["cue", "Cue's own check", "Run in a clean copy of main plus the item, in order."], ["command", "A command"]]],
+    ["after", "After landing", [["nothing", "Nothing", "Landed is the last step."], ["install", "Install or serve Cue", "Window-only changes are served in place, after the check."], ["command", "A command"]]],
+    ["push", "Push to main", [["never", "Never", "Nothing is pushed."], ["ask", "Ask each time", "A push to main asks you first."], ["after", "After each landing"]]],
+  ];
+  const LANDS_DEFAULT = {
+    cue: { where: "copy", how: "squash", check: "cue", after: "install", push: "ask", at_once: 3 },
+    repo: { where: "copy", how: "squash", check: "none", after: "nothing", push: "ask", at_once: 3 },
+    folder: { where: "shared", how: "owner", check: "none", after: "nothing", push: "ask", at_once: 3 },
+  };
+  const landsWhy = (part, key, place) => {
+    const hint = LANDS_PARTS.find((p) => p[0] === part)[2].find((c) => c[0] === key);
+    if (!hint[2]) return "not yet";
+    if ((part === "check" && key === "cue") || (part === "after" && key === "install")) return place === "cue" ? "" : "only for Cue's own project";
+    if (place === "folder" && ((part === "where" && key === "copy") || (part === "how" && key === "squash"))) return "needs a git repository";
+    return "";
+  };
+  const landsView = (project, place, saved) => {
+    const set = { ...LANDS_DEFAULT[place], ...saved };
+    const short = { shared: "shared folder", copy: "own copy", squash: "one commit per item", owner: "you commit" };
+    return {
+      project, place, set, summary: `${short[set.where]}, ${set.check === "none" ? "not checked" : "checked"}, ${short[set.how]}`,
+      parts: LANDS_PARTS.map(([key, label, cs]) => ({ key, label, now: set[key], choices: cs.map(([k, l, hint]) => { const why = landsWhy(key, k, place); return { key: k, label: l, hint: hint || "", ok: !why, why }; }) })),
+      at_once: { min: 1, max: 9 },
+      steps: [{ label: "Build", hint: "the app built from a clean copy" }, { label: "Rust tests", hint: "the hub's own tests" }, { label: "Window loads", hint: "from the clean copy, failing on a name missing or declared twice" }],
+      why: place === "folder" ? "This folder isn't a git repository, so items work in it directly, nothing is checked, and you commit their work yourself." : "",
+    };
+  };
+  const landsFill = () => {
+    for (const d of w.state?.desk?.projects || []) {
+      const project = d.workspace_project || d.project;
+      d.lands ||= landsView(project, project === "cue" ? "cue" : "repo", {});
+    }
+  };
   const plainSnapshot = w.snapshot;
-  w.snapshot = () => { oneWayFill(); return plainSnapshot(); };
+  w.snapshot = () => { oneWayFill(); landsFill(); return plainSnapshot(); };
 
   return {
     // "a.b" sets settings.a.b, as config.rs set does for the keys the window saves; Ask me before's map is its `set`.
@@ -52,6 +89,18 @@ CueBridge.area("settings", (w) => {
       for (const d of w.state.desk?.projects || []) if (d.ask_before?.project === project) d.ask_before.asked = true;
       w.changed(10);
       return Array.isArray(ow.set[project]) ? ow.set[project] : ow.default;
+    },
+    // How work lands (hub/desk.rs desk_lands_set): saved for the Desk's project, refusing a choice not built yet.
+    desk_lands_set: ({ desk, lands }) => {
+      landsFill();
+      const d = (w.state.desk?.projects || []).find((x) => x.id === desk || x.project === desk);
+      if (!d) throw "no such Desk";
+      const place = d.lands.place;
+      for (const [part] of LANDS_PARTS) if (lands[part] && landsWhy(part, lands[part], place)) throw `${part}: ${lands[part]} can't be picked (${landsWhy(part, lands[part], place)})`;
+      const view = landsView(d.lands.project, place, lands);
+      for (const x of w.state.desk.projects) if ((x.workspace_project || x.project) === d.lands.project) x.lands = view;
+      w.changed(10);
+      return view;
     },
     get_drafts: () => drafts(),
     set_draft: ({ key, text, images }) => {

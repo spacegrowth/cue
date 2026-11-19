@@ -32,6 +32,7 @@ mod desk_theirs;
 mod desk_waits;
 mod land_keep;
 pub(crate) use desk_lead::DeskClaim;
+pub(crate) use desk_checks::builds_this_cue;
 pub(crate) use desk_trees::tree_line;
 mod events;
 mod guard;

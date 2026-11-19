@@ -17,6 +17,7 @@ mod desk_cleanup;
 mod desk_commit;
 mod desk_copy_wait;
 mod desk_land;
+mod desk_lands;
 mod desk_land_moved;
 mod desk_unstick;
 mod desk_theirs;

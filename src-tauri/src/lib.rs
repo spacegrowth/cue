@@ -19,6 +19,7 @@ mod locking;
 mod logs;
 mod model;
 mod notify;
+mod lands;
 mod one_way;
 mod quit;
 mod sounds;

@@ -61,6 +61,24 @@ kbd { font: 600 10.5px var(--mono); padding: 2px 6px; border-radius: 5px; backgr
 .ab-more { align-self: flex-start; padding: 6px 4px; font-size: 12.5px; color: var(--muted); text-align: left; }
 .ab-more:hover { color: var(--ink); }
 .ab-note { padding: 4px 4px 0; font-size: 12px; line-height: 1.45; color: var(--muted); }
+/* How work lands (lands.js): a label column, then each part's choices, the picked one's words under them. A choice not
+   built yet is shown greyed, saying so. */
+.ld-dialog { width: min(640px, calc(100vw - 32px)); }
+.ld-rows { display: flex; flex-direction: column; gap: 14px; margin: 6px 0 10px; }
+.ld-row { display: grid; grid-template-columns: 150px 1fr; gap: 12px; align-items: start; }
+.ld-label { padding-top: 6px; font-size: 13px; font-weight: 650; color: var(--ink); }
+.ld-body { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.ld-seg { flex-wrap: wrap; align-self: flex-start; }
+.ld-seg button:disabled { opacity: .55; cursor: default; }
+.ld-not { font-weight: 500; font-size: 11px; }
+.ld-hint, .ld-why { font-size: 12px; line-height: 1.45; color: var(--muted); }
+.ld-why { margin: 2px 0 4px; color: var(--ink); }
+.ld-steps { margin: 0; padding-left: 20px; font-size: 12.5px; line-height: 1.6; color: var(--ink); }
+.ld-steps span { color: var(--muted); }
+.ld-step { display: inline-flex; align-items: center; gap: 10px; align-self: flex-start; }
+.ld-step .btn { min-width: 30px; padding: 4px 8px; }
+.ld-n { min-width: 14px; text-align: center; font-size: 14px; }
+@media (max-width: 560px) { .ld-row { grid-template-columns: 1fr; gap: 6px; } .ld-label { padding-top: 0; } }
 /* An add-on row's choice of many (sheets.js extPick): a button, and the choices listed under its row. */
 .xp-btn { flex: none; display: inline-flex; align-items: center; gap: 8px; max-width: 280px; padding: 6px 10px; border-radius: 9px; background: var(--panel-2); color: var(--ink); font-size: 12.5px; font-weight: 650; }
 .xp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

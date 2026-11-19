@@ -140,6 +140,12 @@ pub(crate) async fn ask_before_set(hub: State<'_, Arc<Hub>>, project: String, ki
     with_hub(&hub, move |h| h.ask_before_set(&project, kinds.as_deref())).await?
 }
 
+/// How work lands on Desk `desk`'s project, from its setting: each part's choice, and `at_once`.
+#[tauri::command]
+pub(crate) async fn desk_lands_set(hub: State<'_, Arc<Hub>>, desk: String, lands: serde_json::Value) -> Result<serde_json::Value, String> {
+    with_hub(&hub, move |h| h.desk_lands_set(&desk, &lands)).await?
+}
+
 /// Away mode for Desk `desk` (`away`: { on, until, budget, rules }): saved, its lead told. Returns its view.
 #[tauri::command]
 pub(crate) async fn desk_away_set(hub: State<'_, Arc<Hub>>, desk: String, away: serde_json::Value) -> Result<serde_json::Value, String> {

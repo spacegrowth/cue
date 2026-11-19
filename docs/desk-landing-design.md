@@ -1,7 +1,10 @@
 # How a Desk item lands and gets checked
 
 A design, for any project a Desk runs. Status: step 6 (parts 1 to 3, for Cue's fixed setup) is built and not yet
-merged, in #251. The per-project setting (step 7) and PR landing (step 8) are not built.
+merged, in #251. Step 7, the per-project setting with its defaults, is built and not yet merged, in #252: the Desk's
+header shows it and Change opens it; the engine honours the shared folder or an own copy, items at once, one commit
+per item or you commit, and no check or Cue's own. A branch, merge, a pull request, a command of your own and a push
+after each landing are shown as "not yet". PR landing and the push choices (step 8, #253) are not built.
 
 It follows from the review of 17 November 2026, `docs/desk-fable-review-2026-11-17.md`. Where a choice
 here rests on that day, I point to the section there as "review 1" to "review 8".

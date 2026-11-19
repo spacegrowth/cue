@@ -240,8 +240,9 @@ impl Hub {
         let Ok((it, machine, sources)) = self.desk_change_sources(id) else { return };
         let Some(_fin) = it.finish.clone().filter(|f| it.state == "finishing" && f.step == "commit") else { return };
         // A session on another machine: nothing to install here, and its work never closes uncommitted: to check with
-        // no `finish`, so Looks right commits it there and Undo takes that back, as before.
-        if !machine.is_empty() {
+        // no `finish`, so Looks right commits it there and Undo takes that back, as before. A project whose work you
+        // commit yourself (lands.rs) goes the same way, and Looks right then commits nothing.
+        if !machine.is_empty() || self.item_lands(&it).how == "owner" {
             self.finish_release(id);
             let now = now_ms();
             self.finish_set(id, |i| {
@@ -360,7 +361,9 @@ impl Hub {
         // before, so it's installed all the same.
         let before = self.read(|st| st.desk.item(id).and_then(|i| i.finish.as_ref()).map(|f| f.repo.clone())).unwrap_or_default();
         let tops: Vec<String> = if tops.is_empty() && !before.is_empty() { vec![before] } else { tops.to_vec() };
-        let cue = tops.iter().find(|t| super::desk_checks::builds_this_cue(t));
+        // Its project set to nothing after landing (lands.rs): Cue's own work isn't installed or served.
+        let project = self.read(|st| st.desk.item(id).map(|i| i.project.clone())).unwrap_or_default();
+        let cue = tops.iter().find(|t| super::desk_checks::builds_this_cue(t) && crate::lands::lands_of(&project, t).after != "nothing");
         let top = cue.or(tops.first()).cloned().unwrap_or_default();
         let head = if top.is_empty() { String::new() } else { git("", &top, &[], &["rev-parse", "HEAD"]).map(|h| h.trim().to_string()).unwrap_or_default() };
         // Not on main yet (the main checkout is on another branch, or a worktree's work wasn't merged): it waits

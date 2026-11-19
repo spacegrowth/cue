@@ -22,8 +22,6 @@ use super::desk_finish::{in_progress, main_checkout, same_dir, Claim};
 use super::*;
 use crate::desk::{DeskItem, ItemTree, KeptTree};
 
-/// How many items of one repository have a copy at once.
-pub(crate) const SLOTS: u32 = 3;
 /// Where a repository's copies are, under its main checkout.
 const TREES: &str = ".claude/worktrees";
 /// The build folder Cue's copies share, under `TREES`.
@@ -61,26 +59,28 @@ impl Hub {
         if fx.items.is_empty() {
             return;
         }
-        // (item, the holder's folder, whom its message goes to)
-        let wanted: Vec<(String, String, String)> = self.read(|st| {
+        // (item, the holder's folder, whom its message goes to, how many of its project's items have copies at once).
+        // A project set to the shared folder, or to commit its work yourself, gets none (lands.rs).
+        let wanted: Vec<(String, String, String, u32)> = self.read(|st| {
             fx.items
                 .iter()
                 .filter_map(|id| {
                     let it = st.desk.item(id).filter(|i| i.state == "working" && i.tree.is_none())?;
                     let h = it.holder.as_ref()?;
-                    let s = st.sessions.get(h.to())?;
-                    (s.origin.machine.is_empty() && !s.origin.cwd.is_empty()).then(|| (id.clone(), s.origin.cwd.clone(), h.to().to_string()))
+                    let s = st.sessions.get(h.to()).filter(|s| s.origin.machine.is_empty() && !s.origin.cwd.is_empty())?;
+                    let l = crate::lands::lands_of(&it.project, &s.origin.cwd);
+                    (l.at == "copy").then(|| (id.clone(), s.origin.cwd.clone(), h.to().to_string(), l.at_once))
                 })
                 .collect()
         });
-        for (id, folder, to) in wanted {
+        for (id, folder, to, at_once) in wanted {
             let Some(main) = tree_repo(&folder) else { continue };
             let claimed = self.write(|st| {
                 let used: Vec<u32> = st.desk.items.iter().filter_map(|i| i.tree.as_ref()).filter(|t| t.repo == main).map(|t| t.slot).collect();
                 // Its copy taken back earlier (TAKE COPY, #347) is kept on its branch: this one's is another.
                 let again = if st.desk.kept.iter().any(|k| k.id == id) { "-again" } else { "" };
                 let it = st.desk.item_mut(&id).filter(|i| i.state == "working" && i.tree.is_none())?;
-                match (1..=SLOTS).find(|n| !used.contains(n)) {
+                match (1..=at_once).find(|n| !used.contains(n)) {
                     Some(n) => {
                         let t = ItemTree { repo: main.clone(), path: format!("{main}/{TREES}/desk-{n}"), branch: format!("desk/{id}{again}"), base: String::new(), slot: n };
                         it.tree = Some(t.clone());
@@ -168,12 +168,11 @@ impl Hub {
         let now = now_ms();
         let fx = self.write(|st| {
             let mut fx = Effects::default();
+            // The oldest waiting whose own project's pool (lands.rs) has room among the repository's copies.
             let used = st.desk.items.iter().filter(|i| i.tree.as_ref().is_some_and(|t| t.repo == repo)).count() as u32;
-            if used >= SLOTS {
-                return fx;
-            }
-            let next = st.desk.items.iter().filter(|i| i.tree_wait && i.state == "queued" && i.tree_wait_repo == repo).min_by_key(|i| i.updated).map(|i| i.id.clone());
-            let Some(id) = next else { return fx };
+            let mut waiting: Vec<&DeskItem> = st.desk.items.iter().filter(|i| i.tree_wait && i.state == "queued" && i.tree_wait_repo == repo).collect();
+            waiting.sort_by_key(|i| i.updated);
+            let Some(id) = waiting.into_iter().find(|i| used < crate::lands::lands_of(&i.project, repo).at_once).map(|i| i.id.clone()) else { return fx };
             let rule = st.desk.item(&id).map(|i| super::desk::rule_of(st, &i.project)).unwrap_or_default();
             let Some(it) = st.desk.item_mut(&id) else { return fx };
             (it.state, it.tree_wait, it.updated) = ("working".into(), false, super::desk::secs(now));
@@ -313,7 +312,9 @@ impl Hub {
             if checked != merged {
                 // Its `at` kept: cut short, it's back in the line in its place.
                 self.finish_fin(id, |f| (f.step, f.wait) = ("checking".into(), String::new()));
-                match self.installer().check(&t.repo, &squash) {
+                // Its project set to no check: it lands "not checked" (lands.rs).
+                let check = if crate::lands::check_off(&it.project, &t.repo) { None } else { self.installer().check(&t.repo, &squash) };
+                match check {
                     None => unchecked = true,
                     Some(Ok(())) => {}
                     Some(Err(log)) => {
@@ -380,12 +381,13 @@ impl Hub {
     }
 }
 
-/// What an item queued for one of `repo`'s copies waits on, as the Desk lead's summary says it (#340).
-pub(super) fn copy_wait(st: &Store, repo: &str) -> String {
+/// What an item of `project` queued for one of `repo`'s copies waits on, as the Desk lead's summary says it (#340).
+pub(super) fn copy_wait(st: &Store, project: &str, repo: &str) -> String {
     let mut held: Vec<String> = st.desk.items.iter().filter(|i| i.tree.as_ref().is_some_and(|t| t.repo == repo)).map(|i| format!("#{}", i.id)).collect();
     held.sort();
+    let at_once = crate::lands::lands_of(project, repo).at_once;
     format!(
-        "waiting for a free copy of its repository ({} of {SLOTS} held, by {}): it starts by itself once one lands or is dropped",
+        "waiting for a free copy of its repository ({} of {at_once} held, by {}): it starts by itself once one lands or is dropped",
         held.len(),
         if held.is_empty() { "none".to_string() } else { held.join(", ") }
     )

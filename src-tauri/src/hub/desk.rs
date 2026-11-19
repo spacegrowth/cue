@@ -2133,6 +2133,15 @@ impl Hub {
         self.changed();
     }
 
+    /// How work lands on Desk `desk`'s project, saved from the window's setting (lands.rs), for the folder the Desk
+    /// works in. Returns it as the Desk shows it.
+    pub(crate) fn desk_lands_set(&self, desk: &str, lands: &Value) -> Result<Value, String> {
+        let (project, folder) = self.read(|st| (st.desk.project_of(desk).to_string(), desk_folder(st, desk)));
+        crate::lands::save(&project, crate::lands::place_of(&folder), lands)?;
+        self.changed();
+        Ok(crate::lands::desk_view(&project, &folder))
+    }
+
     /// `project`'s done items older than `before` (updated ms, id), newest first, `take` of them, as the Desk shows
     /// them: the ones Cue holds as it holds them, the rest as saved. The list loads them as you scroll.
     pub(crate) fn desk_done_page(&self, project: &str, before: Option<(u64, &str)>, take: u32) -> Vec<DeskItem> {
@@ -2158,9 +2167,34 @@ impl Hub {
                 let older: Vec<&DeskDecision> = st.desk.decisions.iter().filter(|d| &d.project == p && d.at < from && d.item_id.as_ref().is_some_and(|i| items.iter().any(|it| &it.id == i))).collect();
                 let members = st.desk.members.get(p).cloned().unwrap_or_default();
                 let work_history = super::desk_members::work_history(st, p);
-                json!({ "work_history": work_history, "id": p, "project": p, "name": st.desk.spaces.get(p).map(|d| &d.name), "independent": st.desk.spaces.contains_key(p), "workspace_project": st.desk.project_of(p), "folder": st.desk.spaces.get(p).map(|d| &d.folder), "lead": Self::desk_lead_view(st, p), "items": items, "decisions": decisions, "older": older, "members": members, "checks": super::desk_checks::checks_view(st, p), "kept": st.desk.kept.iter().filter(|k| &k.project == p).collect::<Vec<_>>(), "waits": super::desk_waits::waits_view(st, p), "circles": super::desk_waits::circles_view(st, p), "ask_before": crate::one_way::desk_view(st.desk.project_of(p)), "away": super::desk_away::away_view(st, p, now) })
+                json!({ "work_history": work_history, "id": p, "project": p, "name": st.desk.spaces.get(p).map(|d| &d.name), "independent": st.desk.spaces.contains_key(p), "workspace_project": st.desk.project_of(p), "folder": st.desk.spaces.get(p).map(|d| &d.folder), "lead": Self::desk_lead_view(st, p), "items": items, "decisions": decisions, "older": older, "members": members, "checks": super::desk_checks::checks_view(st, p), "kept": st.desk.kept.iter().filter(|k| &k.project == p).collect::<Vec<_>>(), "waits": super::desk_waits::waits_view(st, p), "circles": super::desk_waits::circles_view(st, p), "ask_before": crate::one_way::desk_view(st.desk.project_of(p)), "away": super::desk_away::away_view(st, p, now), "lands": crate::lands::desk_view(st.desk.project_of(p), &desk_folder(st, p)) })
             })
             .collect();
         json!({ "projects": list, "installed_ms": super::desk_checks::installed_ms(), "install_at": super::desk_finish::install_at(st) })
+    }
+}
+
+/// The folder Desk `desk` works in: its own (an independent Desk), else its lead's. "" for a lead on another
+/// machine: its folder is never looked at here.
+pub(super) fn desk_folder(st: &Store, desk: &str) -> String {
+    if let Some(d) = st.desk.spaces.get(desk) {
+        return d.folder.clone();
+    }
+    st.desk.lead.get(desk).and_then(|l| st.sessions.get(&l.sid)).filter(|s| s.origin.machine.is_empty()).map(|s| s.origin.cwd.clone()).unwrap_or_default()
+}
+
+/// The folder item `it`'s holder works in on this Mac ("" for none, or one on another machine), for how its work
+/// lands (lands.rs).
+pub(super) fn holder_folder(st: &Store, it: &DeskItem) -> String {
+    it.holder.as_ref().and_then(|h| st.sessions.get(h.to())).filter(|s| s.origin.machine.is_empty()).map(|s| s.origin.cwd.clone()).unwrap_or_default()
+}
+
+impl Hub {
+    /// How work lands for item `it`, its holder's folder looked at first if Cue hasn't yet (a short wait, once).
+    /// Call with no lock held.
+    pub(super) fn item_lands(&self, it: &DeskItem) -> crate::lands::Lands {
+        let folder = self.read(|st| holder_folder(st, it));
+        crate::logs::repos::first_look(&folder);
+        crate::lands::lands_of(&it.project, &folder)
     }
 }

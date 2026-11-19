@@ -227,8 +227,13 @@ function onKey(e) {
 }
 /** While Cue asks whether to delete a session: Esc is no, Enter yes, before a terminal under it takes the key. While
  *  it asks whether to quit when that ends sessions: Esc keeps it open (quitting takes a click). Esc says no to trusting a folder,
- *  and Not now to Ask me before (the mini window has no such dialog). */
+ *  Not now to Ask me before, and Cancel to How work lands (the mini window has no such dialog). */
 function keyDeleteAsk(e) {
+  if (e.key === "Escape" && typeof landsEscape === "function" && landsEscape()) {
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
   if (e.key === "Escape" && typeof askBeforeEscape === "function" && askBeforeEscape()) {
     e.preventDefault();
     e.stopPropagation();

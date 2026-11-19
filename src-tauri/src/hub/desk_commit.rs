@@ -104,6 +104,11 @@ impl Hub {
             let it = self.desk_item_act(id, "looks_right", "")?;
             return Ok(json!({ "commit": it.commit, "files": 0, "waiting": [] }));
         }
+        // Its project's work is yours to commit (lands.rs): checked, it's done, its files left as they are.
+        if self.item_lands(&it).how == "owner" {
+            let it = self.desk_item_act(id, "looks_right", "")?;
+            return Ok(json!({ "commit": it.commit, "files": 0, "waiting": [] }));
+        }
         let busy = if machine.is_empty() { self.busy_files(&it) } else { Vec::new() };
         let mut files: Vec<DeskFile> = Vec::new();
         let mut waiting: Vec<BusyFile> = Vec::new();

@@ -59,9 +59,9 @@ test("the Desk is in the header after Board, and lists Waiting on you, then a gr
   await expect(page.locator(".dk-sh .dk-ren")).toHaveCSS("opacity", "0");
   await page.locator(".dk-sh").hover();
   await expect(page.locator(".dk-sh .dk-ren")).toHaveCSS("opacity", "1");
-  // No Change for the lead (⋯ hands it over); the only Change is Ask me before's, in the strip's line.
+  // No Change for the lead (⋯ hands it over); the only Changes are Ask me before's and How work lands', in the strip's lines.
   await expect(page.locator(".dk-board button:not(.dk-ab-change)", { hasText: "Change" })).toHaveCount(0);
-  await expect(page.locator(".dk-strip .dk-ab")).toHaveText("Asks before: push to main · Change");
+  await expect(page.locator(".dk-strip .dk-ab").first()).toHaveText("Asks before: push to main · Change");
   await expect(page.locator(".dk-box textarea")).toHaveAttribute("placeholder", "Tell web-lead: a bug, a feature, or a question…");
   await expect(page.locator("[data-desk-new]")).toHaveCount(0);
 });

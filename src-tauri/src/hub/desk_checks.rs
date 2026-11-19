@@ -76,7 +76,7 @@ impl Hub {
 
 /// Whether `folder` (or a folder above it, a few up) holds the source this Cue is built from: its Tauri config names
 /// this app.
-pub(super) fn builds_this_cue(folder: &str) -> bool {
+pub(crate) fn builds_this_cue(folder: &str) -> bool {
     let mut at = std::path::Path::new(folder);
     for _ in 0..4 {
         if at.as_os_str().is_empty() {
