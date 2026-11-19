@@ -69,7 +69,7 @@ function deskThread(i, d) {
   // you wrote since, so a message you send is still last (#160).
   const lat = (i.latest || "").trim(), lat1 = firstLine(lat);
   if (keep) rows.push({ key: "live", at: kept.seen, by: kept.by, tag: "Reply", text: kept.text, html: `${kept.text ? `<div class="dk-md">${deskMd(kept.text)}</div>` : ""}${deskHookFold(i, { ...kept, at: kept.from })}` });
-  else if (!live && lat && !(i.said || []).some((r) => r.text.includes(lat1) || r.after?.includes(lat1))) {
+  else if (!live && lat && !deskSaidHas(i, lat1)) {
     const fin = i.state === "to_check" || i.state === "done";
     const theirs = rows.filter((r) => !r.you).reduce((m, r) => Math.max(m, r.at), 0);
     const at = Math.max(deskMs(i.updated), theirs), r = deskHookSplit({ at, text: lat });
@@ -82,7 +82,7 @@ function deskThread(i, d) {
     const turn = deskLiveTurn(i), crew = deskCrewNow(i), crewHtml = crew ? `<div class="dk-stp dk-crewnow">Crew: ${esc(crew)}</div>` : "";
     if (turn?.words) deskLiveKept.set(i.id, { by: i.holder.name, text: turn.words, after: turn.after, from: turn.from, seen: Date.now() });
     rows.push({ key: "live", at: 0, by: i.holder.name, live: true, tag: turn?.words ? "Writing" : "", html: turn ? `${turn.steps ? `<div class="dk-stp">${esc(turn.steps)}</div>` : ""}${turn.words ? `<div class="dk-md">${deskMd(turn.words)}</div>` : ""}${crewHtml}<div class="dk-tbar"></div>`
-      : `<div class="dk-md dk-quiet">${lat ? deskMd(lat1) : "Working…"}</div>${crewHtml}<div class="dk-tbar"></div>` });
+      : `<div class="dk-md dk-quiet">${lat && !deskSaidHas(i, lat1) ? deskMd(lat1) : "Working…"}</div>${crewHtml}<div class="dk-tbar"></div>` });
   }
   return rows;
 }
@@ -104,6 +104,9 @@ function deskLiveTurn(i) {
   // The turn started on a message naming this item (the hub's now_on is by the same rule), else it's another one's;
   // one naming no item at all is this one's when the hub says it's on it (it holds only this one, #395).
   if (turn.prompt && !deskNames(turn.prompt, i.id) && !(i.now_on && !(deskOf(i.project)?.items || []).some((x) => deskNames(turn.prompt, x.id)))) return null;
+  // A turn whose reply is saved on the item is over: at work again (on what you just sent), its new turn isn't read yet
+  // (#407).
+  if ((i.said || []).some((r) => r.at >= (turn.at_ms || 0))) return null;
   const steps = turn.items.filter((x) => x.t === "step"), going = steps.filter((x) => !x.done).at(-1);
   const done = turnSummary(steps.filter((x) => x.done));
   // Its words as the saved reply will have them (hub/desk_heard.rs replied): the Desk's own lines left out, what a
@@ -113,6 +116,8 @@ function deskLiveTurn(i) {
   if (!words) [words, after] = [after, ""];
   return { words, after, from: turn.at_ms || 0, steps: [done, going ? `now: ${going.verb}${going.subject ? ` ${going.subject}` : ""}` : ""].filter(Boolean).join(" · ") };
 }
+/** Whether a reply saved on item `i` has `line` in it (its latest words, already shown as that reply). */
+const deskSaidHas = (i, line) => (i.said || []).some((r) => r.text.includes(line) || r.after?.includes(line));
 /** Whether `text` names item `id` as "#id" (not the start of a longer number or name), as the hub reads it. */
 const deskNames = (text, id) => new RegExp(`#${String(id).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w-])`).test(text || "");
 /** The lines that are the Desk's (DONE:, ITEM:, DECIDED: …), as the hub knows them (hub/desk_heard.rs desk_line_start). */
