@@ -1000,3 +1000,71 @@ fn an_item_in_a_project_with_no_install_is_to_check_once_its_commit_is_on_main()
     tick(&w);
     assert_eq!(item(&w, &project, "Header jumps")["state"], "to_check");
 }
+
+/// #343: main was what broke an item's build. A commit fixing main, and the item's landing run again: built from main
+/// as it is now (never the commit that failed), and to check once the running Cue has that.
+#[test]
+fn rerun_after_main_is_fixed_builds_main_as_it_is_now_and_lands() {
+    let w = World::new();
+    let (fake, dir, project, id) = done_in_cue(&w);
+    let old = git(&dir, &["rev-parse", "HEAD"]).trim().to_string();
+    install_goes(&w, &fake, &id, "failed");
+    assert_eq!(step(&w, &project), "failed");
+    std::fs::write(dir.join("fix.txt"), "main fixed\n").unwrap();
+    git(&dir, &["add", "-f", "fix.txt"]);
+    git(&dir, &["commit", "-qm", "Fix main's build"]);
+    let fixed = git(&dir, &["rev-parse", "HEAD"]).trim().to_string();
+    assert_ne!(old, fixed);
+    w.hub().desk_item_act(&id, "rerun", "").unwrap();
+    w.hub().desk_item_act(&id, "install_now", "").unwrap();
+    w.settle();
+    let started = fake.started();
+    assert_eq!((started.len(), started.last().map(|s| s.1.as_str())), (2, Some(fixed.as_str())), "built from main as it is now: {started:?}");
+    fake.goes("installed", "");
+    fake.runs(&fixed);
+    tick(&w);
+    let shown = item(&w, &project, "Header jumps");
+    assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str()), (Some("to_check"), Some("checked")), "{shown}");
+}
+
+/// #343: an item stopped on a failed install whose work a later install brought into the running Cue (main fixed and
+/// installed by another item, or by hand) has nothing left to install: to check, never stuck on the old failure.
+#[test]
+fn a_failed_install_whose_work_a_later_install_has_goes_to_check() {
+    let w = World::new();
+    let (fake, dir, project, id) = done_in_cue(&w);
+    let head = git(&dir, &["rev-parse", "HEAD"]).trim().to_string();
+    install_goes(&w, &fake, &id, "failed");
+    tick(&w);
+    assert_eq!(step(&w, &project), "failed", "stays stopped while the running Cue hasn't its work");
+    fake.runs(&head);
+    tick(&w);
+    let shown = item(&w, &project, "Header jumps");
+    assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str()), (Some("to_check"), Some("checked")), "{shown}");
+    assert_eq!(fake.started().len(), 1, "nothing built again");
+}
+
+/// #343: the lead's DONE on an item stopped on a failed install runs its landing again on main as it is now, and
+/// closes it once the running Cue has that.
+#[test]
+fn the_leads_done_on_a_failed_install_runs_it_again_and_closes_it_once_installed() {
+    let w = World::new();
+    let (fake, dir, project, id) = done_in_cue(&w);
+    install_goes(&w, &fake, &id, "failed");
+    std::fs::write(dir.join("fix.txt"), "main fixed\n").unwrap();
+    git(&dir, &["add", "-f", "fix.txt"]);
+    git(&dir, &["commit", "-qm", "Fix main's build"]);
+    let fixed = git(&dir, &["rev-parse", "HEAD"]).trim().to_string();
+    let lead = lead_of(&w, &project);
+    ends(&w, &lead, &format!("Its work is on main.\nDONE: #{id}"));
+    w.settle();
+    let shown = item(&w, &project, "Header jumps");
+    assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str()), (Some("finishing"), Some("queued")), "{shown}");
+    w.hub().desk_item_act(&id, "install_now", "").unwrap();
+    w.settle();
+    assert_eq!(fake.started().last().map(|s| s.1.clone()), Some(fixed.clone()));
+    fake.goes("installed", "");
+    fake.runs(&fixed);
+    tick(&w);
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "done");
+}

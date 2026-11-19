@@ -39,7 +39,8 @@ test("the landing line's steps on a finishing item: in the line with what it wai
   await expect(box).toContainText("Its check failed");
   await expect(box.locator('[data-desk-act="fix_back"]')).toHaveCount(1);
   await expect(box.locator('[data-desk-act="log_all"]')).toHaveText("Show the output");
-  await expect(pane.locator('[data-desk-act="rerun"]')).toHaveCount(0);
+  // Main may have been what broke it: run again on main as it is now (#343).
+  await expect(box.locator('[data-desk-act="rerun"]')).toHaveText("Run the landing again");
 });
 
 test("an item in its own copy says so with its branch; one queued for a copy waits for a free one; one landed with no check says so", async ({ page, cue }) => {

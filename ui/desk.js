@@ -1303,10 +1303,11 @@ function deskWaitsOn(i) {
   const f = i.finish;
   if (!f?.question) return "";
   const q = esc(f.question);
-  // A check (the build, the new Cue starting) that failed: its holder fixes it; the output is its log.
+  // A check (the build, the new Cue starting) that failed: its holder fixes it; the output is its log. Or, when main
+  // was what broke it and is fixed now, run again on main as it is (#343).
   if (f.step === "failed" || f.step === "rolled_back" || f.step === "check_failed") {
     const show = f.log ? btn("log_all", deskFinLogOpen.has(i.id) ? "Hide the output" : "Show the output") : "";
-    return box(q, deskSince(f.at), `<div class="dk-acts">${btn("fix_back", "Send back to fix", "primary")}${show}</div>`);
+    return box(q, deskSince(f.at), `<div class="dk-acts">${btn("fix_back", "Send back to fix", "primary")}${btn("rerun", "Run the landing again")}${show}</div>`);
   }
   // A word that mustn't go in, a clash with the main line: its holder's to fix.
   if (f.step === "word" || f.step === "conflict") return box(q, deskSince(f.at), `<div class="dk-acts">${btn("fix_back", "Send back to fix", "primary")}</div>`);

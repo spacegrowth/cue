@@ -91,6 +91,11 @@ fn installing(step: &str) -> bool {
     matches!(step, "building" | "installing" | "starting")
 }
 
+/// A finishing step stopped on its install: the build failed, or the new Cue didn't start.
+fn stopped_install(step: &str) -> bool {
+    matches!(step, "failed" | "rolled_back")
+}
+
 /// Why finishing item `id` can't be taken off its finish now, as the lead is told (#248): its commit is being made,
 /// it waits on files or on main, or it waits for or is in an install. None when it stopped on a question: nothing of
 /// its finish is under way then (a merge that clashed was aborted; commits it made stay, as Send back leaves them), so
@@ -174,6 +179,14 @@ impl Hub {
     /// Item `id`, to check, closed as Looks right would when the Desk lead said DONE on it for you (#337,
     /// `DeskItem::close_on_check`); one still finishing waits for `finish_checked`.
     pub(super) fn desk_close_on_check(&self, id: &str) {
+        // Stopped on a failed install: its landing run again on the main line as it is now (#343), closed once that's in.
+        let stopped = self.read(|st| st.desk.item(id).is_some_and(|i| i.close_on_check && i.state == "finishing" && i.finish.as_ref().is_some_and(|f| stopped_install(&f.step) && !f.repo.is_empty())));
+        if stopped {
+            if let Err(e) = self.desk_rerun_landing(id) {
+                eprintln!("cue: desk: #{id}: the lead's DONE couldn't run its landing again: {e}");
+            }
+            return;
+        }
         if !self.read(|st| st.desk.item(id).is_some_and(|i| i.close_on_check && i.state == "to_check")) {
             return;
         }
@@ -638,9 +651,14 @@ impl Hub {
         let now = now_ms();
         let mut running = status.as_ref().is_some_and(|s| installing(&s.step));
         for it in &items {
-            let Some(f) = it.finish.as_ref().filter(|f| f.step == "queued" || installing(&f.step)) else { continue };
+            // Stopped on a failed install too: a later install (main fixed, another item's) brought its work into the
+            // running Cue, so nothing of its is left to install (#343).
+            let Some(f) = it.finish.as_ref().filter(|f| f.step == "queued" || installing(&f.step) || stopped_install(&f.step)) else { continue };
             if !f.commit.is_empty() && inst.has(&f.repo, &f.commit) {
                 self.finish_checked(&it.id);
+                continue;
+            }
+            if stopped_install(&f.step) {
                 continue;
             }
             if running && f.step == "queued" && self.finish_join(&it.id, f, status.as_ref(), now) {
@@ -730,9 +748,11 @@ impl Hub {
             match &started {
                 Ok(()) => {
                     let tag = tag.clone();
+                    let head = head.clone();
+                    // The commit built is the item's now: main as it is, a fix made since it last failed in it (#343).
                     self.finish_set(&it.id, |i| {
                         if let Some(f) = i.finish.as_mut() {
-                            (f.step, f.at, f.tag, f.now) = ("building".into(), now, tag, false);
+                            (f.step, f.at, f.tag, f.now, f.commit) = ("building".into(), now, tag, false, head);
                         }
                     });
                 }
@@ -795,7 +815,7 @@ impl Hub {
         let at = self.read(|st| st.desk.item(id).map(|i| i.finish.clone().filter(|f| i.state == "finishing" && !f.question.is_empty()))).ok_or("no such item")?;
         let Some(fin) = at else { return Err("It isn't stopped on a question".into()) };
         let now = now_ms();
-        let install = matches!(fin.step.as_str(), "failed" | "rolled_back") && !fin.repo.is_empty();
+        let install = stopped_install(&fin.step) && !fin.repo.is_empty();
         self.finish_set(id, |i| {
             i.updated = super::desk::secs(now);
             i.finish = Some(match install {
