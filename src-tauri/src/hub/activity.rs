@@ -183,6 +183,7 @@ impl Hub {
                         me.changed();
                     }
                 }
+                me.desk_helpers_done(&sid);
             });
         }
     }

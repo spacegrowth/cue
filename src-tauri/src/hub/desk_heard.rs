@@ -113,17 +113,37 @@ const SEPARATE_ITEM_WORDS: &str = "Only something truly separate from it is a ne
 /// them starts), and (unless it's the lead, whose DECIDED lines are the lead's) its DECIDED lines are decisions on
 /// the item it holds.
 pub(super) fn holder_said(st: &mut Store, sid: &str, text: &str, decided: bool, now: u64, fx: &mut Effects) {
+    // Its crew or background agents still at work: not done yet, whatever it says. The item stays at work; a DONE
+    // said meanwhile is held, and acted on once they've finished (`held_done`), so it needn't be said again (#393).
+    let finished = if super::desk_stall::still_at_it(st, sid) {
+        let held = |i: &DeskItem| i.holder.as_ref().is_some_and(|h| h.is(sid)) && matches!(i.state.as_str(), "working" | "queued");
+        let names_held = parse::lines(text).into_iter().any(|l| matches!(l, Line::Done { ref ids } if ids.iter().any(|id| st.desk.item(&st.desk.canon(id)).is_some_and(held))));
+        if names_held {
+            st.desk.done_held.insert(sid.to_string(), text.to_string());
+        }
+        None
+    } else {
+        dones(st, sid, text, now, fx)
+    };
+    after_dones(st, sid, text, decided, finished, now, fx);
+}
+
+/// Holder `sid`'s turn that said DONE while its crew or background agents were at work (`done_held`): once they've
+/// finished, that DONE goes ahead (what it named still at work with it goes to you to check). Before then, nothing.
+pub(super) fn held_done(st: &mut Store, sid: &str, now: u64, fx: &mut Effects) {
+    if !st.desk.done_held.contains_key(sid) || super::desk_stall::still_at_it(st, sid) {
+        return;
+    }
+    let Some(text) = st.desk.done_held.remove(sid) else { return };
+    dones(st, sid, &text, now, fx);
+}
+
+/// The items holder `sid`'s DONE lines in `text` name go to you to check: the last one, if any.
+fn dones(st: &mut Store, sid: &str, text: &str, now: u64, fx: &mut Effects) -> Option<String> {
     let mut finished: Option<String> = None;
-    // What this turn made, for the Desk to link to: its web links, and its files when the session is on this Mac.
     let here = st.sessions.get(sid).is_some_and(|s| s.origin.machine.is_empty());
-    // Its crew or background agents still at work: not done yet, whatever it says. The item stays at work, and once
-    // they've finished, a turn of its with no DONE is asked if it's done (desk_stall).
-    let busy = super::desk_stall::still_at_it(st, sid);
     for line in parse::lines(text) {
         let Line::Done { ids } = line else { continue };
-        if busy {
-            continue;
-        }
         for id in ids {
             let id = st.desk.canon(&id);
             // At work, or finishing and stopped on a question (a word in it, a conflict, a failed build): finishing
@@ -143,6 +163,11 @@ pub(super) fn holder_said(st: &mut Store, sid: &str, text: &str, decided: bool, 
             finished = Some(id);
         }
     }
+    finished
+}
+
+/// Its DECIDED lines, as decisions on the item it's at (`finished`: the one this turn said DONE for).
+fn after_dones(st: &mut Store, sid: &str, text: &str, decided: bool, finished: Option<String>, now: u64, fx: &mut Effects) {
     let calls = crate::sessions::crew_log::calls_marked(text);
     if calls.is_empty() || !decided {
         return;

@@ -119,7 +119,7 @@ fn a_holder_with_crew_at_work_a_crew_member_or_the_desk_lead_isnt_asked_if_done(
 }
 
 /// A DONE said while the holder's crew is still at work waits: the item stays at work (not to check, so not waiting
-/// on you); once the crew has finished, the holder's DONE sends it to check.
+/// on you); once the crew has finished, the DONE it said sends it to check, without saying it again (#393).
 #[test]
 fn a_done_said_while_its_crew_still_works_keeps_the_item_at_work() {
     let w = World::new();
@@ -137,13 +137,14 @@ fn a_done_said_while_its_crew_still_works_keeps_the_item_at_work() {
     ends(&w, &h, &format!("Built it; the review is still running.\n\nDONE: #{header}"));
     assert_eq!(state(), "working", "its reviewer is still at work");
     assert_eq!(sent_to(&w, &h).iter().filter(|t| t.starts_with("Done? Write DONE")).count(), 0);
-    // The reviewer finishes: the holder's DONE now sends it to check.
+    // The reviewer finishes: the DONE it said goes ahead (#393), with no need to say it again and no "Done?" ask.
     says(&w, &h, [finished]);
     w.advance(1000);
     w.hosted_says(&h, HostedEvent::Taken { text: "reviewer finished".into() });
     w.advance(1000);
-    ends(&w, &h, &format!("The review is clean.\n\nDONE: #{header}"));
+    ends(&w, &h, "The review is clean.");
     assert_eq!(state(), "to_check");
+    assert_eq!(sent_to(&w, &h).iter().filter(|t| t.starts_with("Done? Write DONE")).count(), 0);
 }
 
 /// What you write on an item's page, to its lead or its holder, and what you send back, are in its Steps: your words,

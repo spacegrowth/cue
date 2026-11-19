@@ -392,7 +392,8 @@ impl Hub {
         // A route in the wrong form counts too: the lead is told it couldn't be read (#248).
         let said = text.lines().any(|l| desk_line_start(l) || parse::route_like(l));
         let held = self.read(|st| super::desk_stall::at_work_with(st, sid));
-        if !said && held.is_empty() {
+        let done_held = self.read(|st| st.desk.done_held.contains_key(sid));
+        if !said && held.is_empty() && !done_held {
             return;
         }
         // Each item at work with it: its work git says isn't committed yet, asked with the store let go (#213).
@@ -402,6 +403,8 @@ impl Hub {
         let fx = self.write(|st| {
             super::desk_features::bring_back(st, from_disk);
             let mut fx = Effects::default();
+            // A DONE it said while its crew or agents worked: they're done now, so it goes ahead (#393).
+            super::desk_heard::held_done(st, sid, now, &mut fx);
             for (id, files) in &loose {
                 if let Some(it) = st.desk.item_mut(id) {
                     it.loose = files.clone();
@@ -431,6 +434,21 @@ impl Hub {
                 holder_said(st, sid, text, lead.is_none(), now, &mut fx);
             }
             super::desk_stall::stalls_asked(st, sid, text, &on, now, &mut fx);
+            fx
+        });
+        self.desk_done(fx);
+    }
+
+    /// Session `sid`'s background agents have finished and it's at its prompt: a DONE it said while they worked goes
+    /// ahead now (#393). Only read unless there's one.
+    pub(super) fn desk_helpers_done(&self, sid: &str) {
+        if !self.read(|st| st.desk.done_held.contains_key(sid)) {
+            return;
+        }
+        let now = now_ms();
+        let fx = self.write(|st| {
+            let mut fx = Effects::default();
+            super::desk_heard::held_done(st, sid, now, &mut fx);
             fx
         });
         self.desk_done(fx);

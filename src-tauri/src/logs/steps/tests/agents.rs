@@ -155,6 +155,42 @@ fn a_background_agent_waiting_on_its_own_background_work_is_still_at_work() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// #393: an agent that hands its report back through a tool (Claude Code's SubagentHandback, its result marked
+/// `toolEndsTurn`) has finished, even when its session's only notice said it was waiting on its own background work.
+#[test]
+fn a_background_agent_that_hands_back_its_report_has_finished() {
+    let dir = std::env::temp_dir().join(format!("cue-steps-handback-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let sub = dir.join("s1").join("subagents");
+    std::fs::create_dir_all(&sub).unwrap();
+    std::fs::write(sub.join("agent-a1.jsonl"), [
+        r#"{"type":"user","isSidechain":true,"agentId":"a1","timestamp":"2026-10-04T10:00:03.000Z","message":{"role":"user","content":"push it"}}"#,
+        r#"{"type":"assistant","isSidechain":true,"agentId":"a1","timestamp":"2026-10-04T10:00:04.000Z","message":{"content":[{"type":"tool_use","id":"h1","name":"Bash","input":{"command":"gh pr checks --watch","run_in_background":true}}]}}"#,
+        r#"{"type":"user","isSidechain":true,"agentId":"a1","timestamp":"2026-10-04T10:00:05.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"h1","content":"Command running in background with ID: b9."}]},"toolUseResult":{"backgroundTaskId":"b9"}}"#,
+        r#"{"type":"assistant","isSidechain":true,"agentId":"a1","timestamp":"2026-10-04T10:00:06.000Z","message":{"stop_reason":"end_turn","content":[{"type":"text","text":"Waiting for the checks."}]}}"#,
+    ].join("\n") + "\n").unwrap();
+    let path = dir.join("s1.jsonl");
+    std::fs::write(&path, [
+        r#"{"type":"user","timestamp":"2026-10-04T10:00:00.000Z","message":{"content":"push the branch"}}"#,
+        r#"{"type":"assistant","timestamp":"2026-10-04T10:00:02.000Z","message":{"content":[{"type":"tool_use","id":"t1","name":"Agent","input":{"description":"Push","prompt":"push it","run_in_background":true}}]}}"#,
+        r#"{"type":"user","timestamp":"2026-10-04T10:00:03.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"Async agent launched"}]},"toolUseResult":{"isAsync":true,"status":"async_launched","agentId":"a1","description":"Push"}}"#,
+        r#"{"type":"user","timestamp":"2026-10-04T10:00:07.000Z","message":{"content":"<task-notification>\n<task-id>a1</task-id>\n<status>completed</status>\n<summary>Agent \"Push\" is waiting on its own background work</summary>\n<note>This agent stopped with background work of its own still running.</note>\n</task-notification>"}}"#,
+    ].join("\n") + "\n").unwrap();
+    let p = path.to_str().unwrap();
+    let mut f = Feed::open(p, 1);
+    f.catch_up();
+    assert!(f.helpers[0].running());
+    // Its checks end; it hands its report back, and no second notice comes.
+    let mut log = std::fs::OpenOptions::new().append(true).open(sub.join("agent-a1.jsonl")).unwrap();
+    std::io::Write::write_all(&mut log, concat!(r#"{"type":"user","isSidechain":true,"agentId":"a1","timestamp":"2026-10-04T10:02:00.000Z","message":{"content":"<task-notification>\n<task-id>b9</task-id>\n<status>completed</status>\n</task-notification>"}}"#, "\n",
+        r#"{"type":"assistant","isSidechain":true,"agentId":"a1","timestamp":"2026-10-04T10:02:01.000Z","message":{"stop_reason":"tool_use","content":[{"type":"tool_use","id":"h2","name":"SubagentHandback","input":{"report":"Pushed; checks green."}}]}}"#, "\n",
+        r#"{"type":"user","isSidechain":true,"agentId":"a1","timestamp":"2026-10-04T10:02:02.000Z","toolEndsTurn":true,"message":{"content":[{"type":"tool_result","tool_use_id":"h2","content":"Report handed back."}]}}"#, "\n").as_bytes()).unwrap();
+    f.catch_up();
+    assert!(!f.helpers[0].running(), "its handback ended it");
+    assert_eq!(running_helpers(p).len(), 0);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn a_message_to_an_agent_cue_has_no_log_of_doesnt_leave_the_session_at_work() {
     let dir = std::env::temp_dir().join(format!("cue-steps-ghost-{}", std::process::id()));

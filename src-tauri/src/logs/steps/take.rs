@@ -19,8 +19,11 @@ impl Feed {
         let at = stamp(e);
         if self.helper {
             // Its answer ended: its report is written. A new message to it (its session can send one) puts it back to work.
+            // A report handed back by a tool (Claude Code's SubagentHandback: the result says `toolEndsTurn`) ends it too.
+            let handback = ends_turn(e);
             match e.get("type").and_then(Value::as_str) {
                 Some("assistant") if e.pointer("/message/stop_reason").and_then(Value::as_str) == Some("end_turn") => self.ended_ms = at.max(1),
+                Some("user") if handback => self.ended_ms = at.max(1),
                 Some("user") if !content_blocks(e).iter().any(|b| b.get("type").and_then(Value::as_str) == Some("tool_result")) => self.ended_ms = 0,
                 _ => {}
             }
@@ -29,6 +32,8 @@ impl Feed {
             let last = match e.get("type").and_then(Value::as_str) {
                 Some("assistant") if content_blocks(e).iter().any(|b| b.get("type").and_then(Value::as_str) == Some("tool_use")) => Some(crate::sessions::quiet::Last::Call),
                 Some("assistant") if content_blocks(e).iter().any(|b| b.get("type").and_then(Value::as_str) == Some("text")) => Some(crate::sessions::quiet::Last::Said),
+                // Its report, handed back: its own words, as an answer is.
+                Some("user") if handback => Some(crate::sessions::quiet::Last::Said),
                 Some("user") => Some(crate::sessions::quiet::Last::Result),
                 _ => None,
             };
@@ -190,4 +195,10 @@ impl Feed {
         false
     }
 
+}
+
+/// A tool result that ended its agent's turn: Claude Code marks it `toolEndsTurn` (SubagentHandback, the report
+/// delivered to its caller).
+fn ends_turn(e: &Value) -> bool {
+    e.get("toolEndsTurn").and_then(Value::as_bool) == Some(true) && content_blocks(e).iter().any(|b| b.get("type").and_then(Value::as_str) == Some("tool_result"))
 }
