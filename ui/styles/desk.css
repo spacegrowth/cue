@@ -176,6 +176,12 @@
 .dk-it.on .dk-instnow { border-color: currentColor; color: var(--on-sel); }
 .dk-next { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dk-next + .dk-instnow { margin-left: 0; }
+/* The finished lanes' heads (#346): Landing's "one at a time", Waiting to install's time and Install now, in plain case. */
+.dk-gh .dk-next { font-weight: 600; letter-spacing: 0; text-transform: none; }
+.dk-gh .dk-instnow { letter-spacing: 0; text-transform: none; }
+/* A row's place in the landing line. */
+.dk-rn { display: inline-grid; place-items: center; flex: none; min-width: 16px; height: 16px; margin-right: 6px; border-radius: 5px; background: var(--panel-2); color: var(--muted); font: 600 10px var(--mono); vertical-align: 1px; }
+.dk-it.on .dk-rn { background: color-mix(in srgb, currentColor 18%, transparent); color: inherit; }
 .dk-ask-row { grid-column: 2; min-width: 0; display: flex; align-items: center; gap: 8px; }
 .dk-row-decisions { display: flex; flex-wrap: wrap; justify-content: flex-end; flex: 0 1 auto; max-width: 70%; gap: 4px; margin-left: auto; }
 .dk-h { min-width: 0; margin-top: 1px; color: var(--ink); font-size: 12.5px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

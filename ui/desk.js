@@ -146,13 +146,46 @@ function deskKeptRow(k) {
 }
 /** Install now on a finishing item in the next install (step "queued"): everything waiting installs at once. */
 const deskInstallNow = (i, cls) => (deskFinishing(i) && i.finish?.step === "queued" ? `<button class="${cls}" data-desk-act="install_now" data-id="${esc(i.id)}">Install now</button>` : "");
-/** The Desk's next install, in its Items header: "Next install 10:30 · 2 items" and Install now, while anything (on
- *  any Desk: there's one Cue) waits for it. Cue installs it on its own half an hour after the first of them. */
-function deskNextInstall() {
-  const waiting = (state.desk?.projects || []).flatMap((p) => p.items || []).filter((i) => deskFinishing(i) && i.finish?.step === "queued");
-  if (!waiting.length) return "";
-  const at = state.desk?.install_at ? ` ${clockAt(state.desk.install_at)}` : "";
-  return `<span class="dk-next">Next install${at} · ${waiting.length} ${waiting.length === 1 ? "item" : "items"}</span>${deskInstallNow(waiting[0], "dk-instnow")}`;
+/** Which lane a finished item waits in (#346, option B of docs/desk-install-lane-plan.md): "landing" from its DONE till
+ *  it's on main (committed, in the landing line, checked); "install" once it's on main and waits for the next install
+ *  (or is in it); "" for everything else. One that stopped on a question (its check failed, a clash) isn't moving on
+ *  its own: it stays with the work, In progress, or Waiting on you. */
+const DESK_LANDING_STEPS = ["commit", "commit_wait", "line", "checking", "landing"], DESK_INSTALL_STEPS = ["queued", "building", "installing", "starting"];
+function deskLane(i) {
+  if (deskInstallWait(i)) return "install";
+  if (!deskFinishing(i) || i.finish?.question) return "";
+  const step = i.finish?.step || "commit";
+  return DESK_INSTALL_STEPS.includes(step) ? "install" : DESK_LANDING_STEPS.includes(step) ? "landing" : "";
+}
+/** The landing line's order (hub/desk_trees.rs desk_land_line): the one being checked first; then those the lead moved
+ *  up (LAND FIRST), the latest moved first; then the oldest DONE first. Committed and waiting to be on main from a
+ *  shared folder (step "landing", no copy) after them. */
+const deskLandRank = (i) => ({ checking: 0, landing: 2 })[i.finish?.step] ?? 1;
+const deskLandOrder = (a, b) => deskLandRank(a) - deskLandRank(b) || (!a.finish?.first) - (!b.finish?.first)
+  || (b.finish?.first || 0) - (a.finish?.first || 0) || (a.finish?.at || 0) - (b.finish?.at || 0);
+/** A lane row's step, short, after its holder (HTML): "Checking · 6m", "Waits on #301", "Next to land", "On main ·
+ *  c71e0b4". `ahead`: the item before it in the landing line. The item page keeps the long line (deskFinStep). */
+function deskLaneStep(i, ahead) {
+  const f = i.finish || {};
+  const age = f.at ? ` · <span data-ago="${f.at}">${ago(f.at)}</span>` : "";
+  if (deskInstallWait(i)) return "waiting for install";
+  if (f.step === "checking") return `Checking${age}`;
+  if (f.step === "line") return f.wait ? `Waits: ${esc(f.wait)}${age}` : ahead ? `Waits on #${esc(ahead.id)}${age}` : `Next to land${age}`;
+  if (f.step === "landing") return `Not on main yet${f.wait ? ` · ${esc(f.wait)}` : ""}${age}`;
+  if (f.step === "commit_wait") return `Waits to be committed${f.wait ? ` · ${esc(f.wait)}` : ""}${age}`;
+  const c = (f.commit || i.commit || "").slice(0, 7);
+  if (f.step === "queued") return `On main${c ? ` · ${esc(c)}` : ""}`;
+  return { building: "Building Cue", installing: "Installing Cue", starting: "Cue is restarting" }[f.step] || `Committing${age}`;
+}
+/** The Waiting to install lane's head, right side: when the next install is, counting down ("9:05pm · in 12m"), and
+ *  Install now while anything waits for it. Cue installs on its own half an hour after the first of them, once no
+ *  session is mid-turn (hub/desk_finish.rs). The install is Cue's, one for every Desk. */
+function deskInstallHead(items) {
+  const waiting = items.find((i) => deskFinishing(i) && i.finish?.step === "queued");
+  if (!waiting) return "";
+  const due = state.desk?.install_at || 0;
+  const when = !due ? "at the next install" : due > now() ? `${clockAt(due)} · <span data-until="${due}">${untilIn(due)}</span>` : "once no session is mid-turn";
+  return `<span class="dk-next">${when}</span>${deskInstallNow(waiting, "dk-instnow")}`;
 }
 const deskItemRequest = (i) => i?.ask?.item_id && state.items.find((it) => it.id === i.ask.item_id && actionableRequest(it));
 const deskReadyToReview = (i) => i.state === "to_check" && !deskInstallWait(i);
