@@ -96,10 +96,10 @@ function activeHead(a) {
       ${s?.state === "working" ? `<button class="btn deny" data-act="interrupt" data-sid="${esc(sid)}" title="Stop it mid-turn (Esc twice)">Stop</button>` : ""}
       ${closable ? closeBtn(sid) : ""}${focus && s?.state !== "working" ? `<span class="esc-hint">esc</span>` : ""}</div>`;
 }
-/** The chat's body: its messages (chatHtml, `page` as it takes it), the rename notice, Catch me up and its status line.
+/** The chat's body: its messages (chatHtml, `page` as it takes it), the rename notice and its status line.
  *  The crew's page draws the same body on its left (team_page.js). */
 function chatBody(it, s, harness, sid, page = null) {
-  return chatHtml(it, s, harness, true, page) + keyed(renameNotice(s), "rename") + (sid && s ? catchUpBar(sid, it, s) : "") + keyed(statusLine(it, s), "status");
+  return chatHtml(it, s, harness, true, page) + keyed(renameNotice(s), "rename") + keyed(statusLine(it, s), "status");
 }
 /** The chat area: the full view in its place, or the chat's body (with `crew.extra`, the crew's page's rows placed in
  *  it by time: chatHtml's `page`). */
@@ -158,7 +158,6 @@ function activePane(crew = null) {
   // A teammate or Needs you on its left: the box under it without the chat's quick phrases (they belong to the chat).
   const cur = crew ? { it: crew.it, s: sessionOf(crew.sid), quick: !crew.view } : current();
   if (!cur || (crew && !cur.s)) return emptyPane();
-  noteLooked(cur.s?.session_id || cur.it?.session_id);
   const a = paneArgs(cur);
   // The crew's page's own foot, when it has one (its box held while the lead asks, or with ↪'s chip).
   if (crew?.foot) a.foot = crew.foot;

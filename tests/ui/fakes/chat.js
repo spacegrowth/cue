@@ -121,7 +121,6 @@ CueBridge.area("chat", (w) => {
     team_hand_out: () => "Handed to cue as a new teammate",
     // By the way: a side question, answered after a moment (the real one asks a copy of the conversation).
     btw: async () => { await w.wait(600); return "Because the CSV export is read by the **finance script**, which expects the old order. Changing it would break their import, so it only changed the board."; },
-    catch_up: async () => { await w.wait(600); return { points: ["Finished the spend column; tests pass.", "Kept the CSV export's old column order."], needs: "Carry spend over to a successor, or not?" }; },
     restart_session: async ({ sessionId }) => { await w.wait(300); return `Restarted ${w.session(sessionId)?.project || "it"}`; },
   };
 });

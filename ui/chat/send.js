@@ -1,4 +1,4 @@
-// Cue UI chat — sending a message, "!" shell lines, by-the-way questions, and Catch me up.
+// Cue UI chat — sending a message, "!" shell lines, and by-the-way questions.
 /**
  * Send from a text box: your message shows in the chat right away ("Sending…"), the box clears,
  * and it settles to "Sent · via …" once delivered. On failure the text goes back in the box.
@@ -159,77 +159,4 @@ function btwPanel(sid) {
     <div class="btw-head">${lead ? "BY THE WAY · ASKS THE LEAD, NOT PART OF ITS CHAT" : "BY THE WAY · NOT PART OF THE CHAT"}${log.length ? `<button class="btw-clear" data-act="btw-clear" data-sid="${esc(sid)}">Clear</button>` : ""}<button class="btw-x" data-act="btw-close" aria-label="Close">×</button></div>
     <div class="btw-ask"><textarea data-text="btw:${esc(sid)}" rows="1" placeholder="${lead ? "Ask the lead without interrupting it…  ↵" : "Ask without interrupting it…  ↵"}" spellcheck="false">${esc(draft(`btw:${sid}`).text)}</textarea></div>
     <div class="btw-body">${rows || `<div class="dim btw-empty">${lead ? "A copy of the lead's conversation answers, so neither the lead nor its crew sees it." : "A copy of this conversation answers, so the session never sees it."} Each question costs about one turn.</div>`}</div></div>`;
-}
-// ---------- Catch me up: what it did while you weren't looking, above its box ----------
-// Cue notes when this window last showed each session's chat (kept across restarts). Open one you last looked at
-// 15 minutes or more ago, with replies since, and a bar takes the insights' place above the box: how long, what
-// came in the meantime, and Catch me up. Nothing is asked until you click: then a small model reads only those
-// messages (btw.rs catch_up) and the bar fills with the answer, Listen and Got it. Got it folds it away, and the
-// insights come back, until you've been away again.
-const LOOKED = "cue.looked";
-const CATCH_UP_AFTER = 15 * 60000;
-let looked = {};   // sid -> when this window last showed its chat (while in front)
-try { looked = JSON.parse(localStorage.getItem(LOOKED) || "{}") || {}; } catch {}
-let lookedSid = null;   // the session whose chat the last draw showed
-let catchUp = null;     // this opening's strip: { sid, since, asking, got, err, gone }
-/** The chat for `sid` is on screen: the first draw after opening it sets up its strip from when it was last
- *  looked at; every draw while the window is in front notes the time. Hidden, or behind another app, it isn't being
- *  looked at (a session's replies still redraw it). */
-function noteLooked(sid) {
-  if (!sid || document.hidden || !document.hasFocus()) return;
-  if (sid !== lookedSid) { lookedSid = sid; catchUp = { sid, since: looked[sid] || 0, openedAt: now() }; }
-  looked[sid] = now();
-  const keys = Object.keys(looked);
-  if (keys.length > 50) for (const k of keys.sort((a, b) => looked[a] - looked[b]).slice(0, keys.length - 50)) delete looked[k];
-  try { localStorage.setItem(LOOKED, JSON.stringify(looked)); } catch {}
-}
-// Back in front (shown again, or back from another app): the chat open counts as opened again, looked at last
-// when the window went away.
-const backInFront = () => { if (!document.hidden && document.hasFocus()) { lookedSid = null; renderMain(); } };
-document.addEventListener("visibilitychange", backInFront);
-window.addEventListener("focus", backInFront);
-/** The bar for the open chat, or "": only for a session you last looked at 15 minutes or more ago that had
- *  replied by the time you opened it. What comes in while it's open isn't "while you were away", and once you
- *  write to it you're caught up: the bar goes. */
-/** Catch me up, at the end of the chat (under the latest reply, above the status line): never a bar on the box. */
-function catchUpBar(sid, it, s) {
-  const c = catchUp;
-  if (!c || c.sid !== sid || c.gone || !c.since) return "";
-  const ex = conversation(it, s);
-  if (ex.some((e) => e.role === "you" && e.at_ms > c.openedAt)) return "";
-  const away = (at) => at > c.since && at <= c.openedAt;
-  const replies = ex.filter((e) => askLnSaid(e) && away(e.at_ms)).length;
-  if (!replies || c.openedAt - c.since < CATCH_UP_AFTER) return "";
-  // What came in the meantime, from what Cue has already: its replies, and the steps read for the chat.
-  const steps = (stepFeeds.get(sid)?.turns || []).flatMap((t) => t.items).filter((x) => x.t === "step" && away(x.at_ms));
-  const commands = steps.filter((x) => x.kind === "run").length, files = new Set(steps.filter((x) => x.kind === "edit").map((x) => x.subject)).size;
-  const n = (k, one, many) => (k ? `${k} ${k === 1 ? one : many}` : "");
-  const counts = [n(replies, "reply", "replies"), n(commands, "command", "commands"), n(files, "file", "files")].filter(Boolean).join(" · ");
-  const tag = `<span class="cu-tag mono">${esc(ago(c.since).toUpperCase())} SINCE YOU LOOKED</span>`;
-  if (!c.got && !c.err) {
-    const act = c.asking ? `<span class="cu-busy"><span class="dot-live"></span>Catching up…</span>` : `<button class="btn primary" data-act="catch-up" data-sid="${esc(sid)}">Catch me up</button>`;
-    return `<div class="cu-strip" data-key="catchup"><div class="cu-row">${tag}<span class="dim">${esc(counts)}</span><span class="grow"></span>${act}</div></div>`;
-  }
-  const key = `${sid}:catchup`, on = listening?.key === key;
-  const listen = c.got ? `<button class="btn ${on ? "on" : ""}" data-listen="${esc(key)}">${!on ? SPEAKER_ICON + "Listen" : listening.playing ? PAUSE_ICON + "Pause" : PLAY_ICON + "Resume"}</button>` : "";
-  const body = c.err ? `<div class="cu-err">Couldn't catch you up: ${esc(c.err)}</div>`
-    : `<div class="msg cu-msg"><ul>${c.got.points.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>${c.got.needs ? `<p class="cu-need"><b>Needs you: ${esc(c.got.needs)}</b></p>` : ""}</div>`;
-  return `<div class="cu-strip" data-key="catchup"><div class="cu-row">${tag}<span class="grow"></span><span class="dim">${esc(counts)}</span></div>${body}
-    <div class="cu-row cu-acts"><span class="grow"></span>${listen}<button class="btn" data-act="catch-up-got" data-sid="${esc(sid)}">Got it</button></div></div>`;
-}
-/** The click: asks once (a second click does nothing while it's on its way); the answer, or why there's none, fills the strip. */
-async function askCatchUp(sid) {
-  const c = catchUp;
-  if (!c || c.sid !== sid || c.asking || c.got) return;
-  c.asking = true;
-  renderMain();
-  try { const got = await invoke("catch_up", { sessionId: sid, seenMs: c.since }); if (catchUp === c) c.got = got; }
-  catch (x) { if (catchUp === c) c.err = String(x); }
-  if (catchUp === c) { c.asking = false; renderMain(); }
-}
-/** Got it: the strip goes, for this look at the chat (if it was being read out, that stops). */
-function gotCatchUp(sid) {
-  if (catchUp?.sid === sid) catchUp.gone = true;
-  if (listening?.key === `${sid}:catchup`) listenStop();
-  renderMain();
 }

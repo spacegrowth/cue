@@ -85,10 +85,10 @@ pub fn side_id(key: &str) -> String {
     format!("{}-{}-4{}-a{}-{}", &x[0..8], &x[8..12], &x[13..16], &x[17..20], &x[20..32])
 }
 
-/// "Catch me up": what happened since you last looked, from only those messages (`since`, oldest first), read
+/// A summary of what happened since you last looked (the window has none: kept for the add-on's Hub::catch_up), from only those messages (`since`, oldest first), read
 /// by a small model with no conversation behind it. A few cents however long the session is: forking the whole
 /// conversation would re-read all of it, at the session's own model's price, its cache long gone by then.
-/// `seen`: the opening of the last reply you read, so it knows where you left off. Asked only when you click (or say) it.
+/// `seen`: the opening of the last reply you read, so it knows where you left off.
 pub fn catch_up(seen: Option<&str>, since: &[crate::model::Exchange], session_id: &str) -> Result<CatchUp, String> {
     let line = format!("{CATCH_UP_LINE} --session-id {}", side_id(&format!("catch-up:{session_id}")));
     run(&line, &std::env::temp_dir(), &catch_up_prompt(seen, since)).map(|a| CatchUp::from_answer(&a))

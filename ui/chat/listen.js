@@ -50,7 +50,7 @@ const LISTEN_BLOCKS = "p, li, h1, h2, h3, h4, h5, h6, pre, tr, blockquote";
 /** The reply `key` as shown: in the reader when it's open on it, else its bubble in the chat. */
 function listenRoot(key) {
   return [...document.querySelectorAll(".rd[data-rdkey] .msg")].find((m) => m.closest(".rd").dataset.rdkey === key)
-    || [...document.querySelectorAll("[data-listen]")].find((b) => b.dataset.listen === key)?.closest(".cv-agent, .cu-strip")?.querySelector(".msg") || null;
+    || [...document.querySelectorAll("[data-listen]")].find((b) => b.dataset.listen === key)?.closest(".cv-agent")?.querySelector(".msg") || null;
 }
 /** What it reads from: the reply on screen, else (its session not open) a copy of it as it was last shown. */
 function listenSource(l) {

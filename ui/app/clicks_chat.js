@@ -18,10 +18,6 @@ const TERM_CLICKS = [
   }),
   rule("[data-act=btw], [data-act=btw-close]", (bw) => { if (bw.dataset.act === "btw" && btwFor !== bw.dataset.sid) { tipUsed("btw"); return openBtw(bw.dataset.sid); } btwFor = null; renderMain(); }),
 ];
-const CATCH_UP_CLICKS = [
-  // Catch me up above the box: asks once; Got it folds it away.
-  rule("[data-act=catch-up], [data-act=catch-up-got]", (cu) => cu.dataset.act === "catch-up" ? askCatchUp(cu.dataset.sid) : gotCatchUp(cu.dataset.sid)),
-];
 
 const WATCH_CLICKS = [
   // Tell me when it's done (the line under the chat, or ⋯: done with the menu too).

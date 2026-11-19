@@ -557,13 +557,6 @@ pub(crate) async fn btw(hub: State<'_, Arc<Hub>>, session_id: String, question: 
     with_hub(&hub, move |h| crate::btw::ask_about(&h.session_origin(&session_id).ok_or("that session is gone")?, &question)).await?
 }
 
-/// "Catch me up": what the session did since you last looked at its chat (`seen_ms`), a few lines and what it
-/// needs from you. Read from those messages alone by a small model (btw.rs); the session never sees it. Only when you click.
-#[tauri::command]
-pub(crate) async fn catch_up(hub: State<'_, Arc<Hub>>, session_id: String, seen_ms: u64) -> Result<crate::btw::CatchUp, String> {
-    with_hub(&hub, move |h| h.catch_up(&session_id, seen_ms)).await?
-}
-
 /// "Go to tab" for a session that has no card (a working one).
 #[tauri::command]
 pub(crate) async fn focus_session_id(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {

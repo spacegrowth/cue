@@ -21,7 +21,7 @@ impl Hub {
         self.read(|st| st.sessions.origin(session_id))
     }
 
-    /// "Catch me up" on a session, for a window or an add-on that last saw its chat at `seen_ms`: from the
+    /// A summary of a session (the window has none: kept for the add-on), for one that last saw its chat at `seen_ms`: from the
     /// messages after then (Cue's log, with the live thread for what isn't saved yet). Any agent, any machine.
     pub fn catch_up(&self, session_id: &str, seen_ms: u64) -> Result<crate::btw::CatchUp, String> {
         let (before, since): (Vec<Exchange>, Vec<Exchange>) = self.chat_log(session_id).into_iter().partition(|e| e.at_ms <= seen_ms);
