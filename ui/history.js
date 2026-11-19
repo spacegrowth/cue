@@ -6,7 +6,7 @@ function histDetail(i) {
   const yours = reply ? `<div class="cv-you hreply"><div class="cv-you-text">${esc(reply).replace(/\n/g, "<br>")}</div>${thumbs(i.images)}<div class="cv-meta">You replied · ${ago(i.resolved_ms)} ago</div></div>` : "";
   const chat = (i.thread || []).length || i.kind === "waiting" ? `<div class="hdetail">${chatHtml(i, null, i.harness)}${yours}</div>` : "";
   let ask = "";
-  if (i.kind === "question") ask = questions(i).map((q) => `<div class="qtext">${esc(q.question)}</div><ul class="hopts">${(q.options || []).map((o) => `<li>${esc(o.label)}${o.description ? `<span class="dim">: ${esc(o.description)}</span>` : ""}</li>`).join("")}</ul>`).join("");
+  if (i.kind === "question") ask = questions(i).map((q) => `<div class="qtext">${linkify(esc(q.question), sessBase(i.session_id))}</div><ul class="hopts">${(q.options || []).map((o) => `<li>${esc(o.label)}${o.description ? `<span class="dim">: ${esc(o.description)}</span>` : ""}</li>`).join("")}</ul>`).join("");
   else if (i.kind !== "waiting" && !(inTerminal(i) && !i.tool_name)) ask = requestBody(i);
   return chat + (ask ? `<div class="hask"><div class="act-head">${esc(agentName(i.harness))} ${esc(verb(i))}${machTag(i.machine)}</div>${ask}</div>` : "");
 }

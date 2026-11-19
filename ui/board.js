@@ -263,7 +263,7 @@ function requestBody(it) {
       const on = q.multiSelect ? d.choices[q.question]?.has?.(o.label) : d.choices[q.question] === o.label;
       return `<button class="opt ${on ? "on" : ""}" data-pick="${qi}:${oi}" data-id="${esc(it.id)}">${oi + 1} · ${esc(o.label)}${o.description ? `<span class="d">: ${esc(o.description)}</span>` : ""}</button>`;
     }).join("")}</div>`;
-    if (qs.length === 1) return `<div class="qtext">${esc(qs[0].question)}</div>${opts(qs[0], 0)}${qs[0].multiSelect ? submitAnswers(it) : ""}`;
+    if (qs.length === 1) return `<div class="qtext">${linkify(esc(qs[0].question), sessBase(it.session_id))}</div>${opts(qs[0], 0)}${qs[0].multiSelect ? submitAnswers(it) : ""}`;
     // Several questions: one at a time, with tabs to move between them (like Claude Code's own prompt).
     const cur = stepOf(it);
     const tabs = qs.map((q, n) => `<button class="qtab ${n === cur ? "on" : ""} ${isAnswered(it, q) ? "done" : ""}" data-qstep="${esc(it.id)}:${n}">${isAnswered(it, q) ? "✓ " : ""}${esc(q.header || `Question ${n + 1}`)}</button>`).join("");
@@ -272,7 +272,7 @@ function requestBody(it) {
     // An answer you typed yourself (not one of the options) shows under the question.
     const typed = [...(q.multiSelect ? d.choices[q.question] || [] : [d.choices[q.question]].filter(Boolean))].filter((c) => !(q.options || []).some((o) => o.label === c));
     const yours = typed.length ? `<div class="typed-answer">Your answer: “${esc(typed.join(", "))}”</div>` : "";
-    return `<div class="qtabs">${tabs}<span class="qcount">${cur + 1} of ${qs.length}</span></div><div class="qtext">${esc(q.question)}${q.multiSelect ? `<span class="dim"> · pick any</span>` : ""}</div>${opts(q, cur)}${yours}<div class="row-btns">${nav}${submitAnswers(it)}</div>`;
+    return `<div class="qtabs">${tabs}<span class="qcount">${cur + 1} of ${qs.length}</span></div><div class="qtext">${linkify(esc(q.question), sessBase(it.session_id))}${q.multiSelect ? `<span class="dim"> · pick any</span>` : ""}</div>${opts(q, cur)}${yours}<div class="row-btns">${nav}${submitAnswers(it)}</div>`;
   }
   if (it.kind === "input") return formBody(it);
   if (t === "bash") return `<div class="code-wrap"><pre class="slab"><span class="ps">$ </span>${esc(i.command)}</pre>${COPY_BTN}</div>`;
@@ -301,7 +301,7 @@ function whyLine(it) {
 function dialogHtml(it) {
   const d = it.tool_input?.dialog;
   if (!d?.options?.length) return "";
-  return `${d.detail ? `<div class="qtext">${esc(d.detail)}</div>` : ""}<div class="opts">${d.options.map((o, n) => `<button class="opt ${n === d.selected ? "on" : ""}" data-tpick="${n + 1}" data-id="${esc(it.id)}">${n + 1} · ${esc(o)}</button>`).join("")}</div>`;
+  return `${d.detail ? `<div class="qtext">${linkify(esc(d.detail), sessBase(it.session_id))}</div>` : ""}<div class="opts">${d.options.map((o, n) => `<button class="opt ${n === d.selected ? "on" : ""}" data-tpick="${n + 1}" data-id="${esc(it.id)}">${n + 1} · ${esc(o)}</button>`).join("")}</div>`;
 }
 function decisionButtons(it, denyLabel = "Deny") {
   if (inTerminal(it) && inTmux(it.session_id) && termSid === it.session_id) return `<div class="row-btns"><span class="dim">Answer it in the terminal above.</span></div>`;
