@@ -335,7 +335,8 @@ impl Hub {
             if let Some(what) = in_progress(&t.repo) {
                 return self.land_wait(id, &format!("The main checkout is in the middle of {what}"));
             }
-            if let Err(why) = git_said("", &t.repo, &[], &["merge", "--ff-only", "-q", &squash]) {
+            // Others' unsaved edits in the main checkout stay as they are, the item's changes merged into them (#350).
+            if let Err(why) = super::land_keep::fast_forward_keeping_edits(&t.repo, &main, &squash) {
                 return self.land_wait(id, &super::desk_commit::because(format!("git wouldn't move {onto} in the main checkout"), &why));
             }
             let short = git("", &t.repo, &[], &["rev-parse", "--short", &squash]).map(|s| s.trim().to_string()).unwrap_or_default();

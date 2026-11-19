@@ -19,7 +19,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | Lock acquisitions | 256 |
 | Lock-graph edges | 55 |
 | Spawn sites | 88 |
-| External calls: fs / db / process / notify / login / socket | 431 / 196 / 52 / 4 / 1 / 4 |
+| External calls: fs / db / process / notify / login / socket | 448 / 196 / 52 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 8 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -479,7 +479,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (431)
+### fs (448)
 
 | In | Call | Times |
 |---|---|---|
@@ -592,6 +592,14 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hub/desk_trees.rs::unlink_shared` | symlink_metadata | 1 |
 | `hub/hosted.rs::Hub::resume_hosted_as` | Path::is_file | 1 |
 | `hub/hosted.rs::written_on_machine` | metadata | 1 |
+| `hub/land_keep.rs::edits_in_the_way` | read | 2 |
+| `hub/land_keep.rs::fast_forward_keeping_edits` | Path::exists | 1 |
+| `hub/land_keep.rs::fast_forward_keeping_edits` | read | 2 |
+| `hub/land_keep.rs::fast_forward_keeping_edits` | remove_file | 1 |
+| `hub/land_keep.rs::fast_forward_keeping_edits` | write | 6 |
+| `hub/land_keep.rs::merge` | create_dir_all | 1 |
+| `hub/land_keep.rs::merge` | remove_dir_all | 1 |
+| `hub/land_keep.rs::merge` | write | 3 |
 | `hub/open.rs::look` | Path::is_dir | 1 |
 | `hub/open.rs::look` | Path::is_file | 1 |
 | `hub/ports.rs::hosts` | Path::is_file | 1 |
@@ -1143,7 +1151,6 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `src-tauri/src/hub/desk_unstick.rs::desk_close_on_main` |  |  |
 | `src-tauri/src/hub/hand_off.rs::a_hand_off_goes_ahead_only_where_you_turned_it_on_and_holds_where_typing_could_hurt` | test |  |
 | `src-tauri/src/hub/hand_off.rs::in_a_project_whose_desk_has_a_live_lead_cue_asks_by_context_and_what_a_session_holds` | test |  |
-| `src-tauri/src/hub/land_keep.rs::fast_forward_keeping_edits` |  |  |
 | `src-tauri/src/hub/sessions.rs::a_parked_session_is_kept_through_a_restart_and_comes_back_whole` | test |  |
 | `src-tauri/src/logs/steps/tests/agents.rs::a_background_agent_sent_a_message_after_it_finished_is_at_work_again_until_it_reports_again` | test |  |
 | `src-tauri/src/logs/steps/tests/agents.rs::a_background_agent_shows_at_work_under_its_step_until_its_session_hears_it_finished` | test |  |

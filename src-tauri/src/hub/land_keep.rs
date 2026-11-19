@@ -22,37 +22,7 @@ pub(super) fn fast_forward_keeping_edits(repo: &str, main: &str, squash: &str) -
     extra.push("--literal-pathspecs".into());
     let changed = text(repo, &extra, &["diff", "--name-only", "--no-renames", "-z", main, squash])?;
     let changed: Vec<&str> = changed.split('\0').filter(|p| !p.is_empty()).collect();
-    let mut kept: Vec<Kept> = vec![];
-    let mut in_the_way: Vec<String> = vec![];
-    if !changed.is_empty() {
-        let mut args = vec!["status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames", "--"];
-        args.extend(changed.iter().copied());
-        let status = text(repo, &extra, &args)?;
-        for entry in status.split('\0').filter(|e| e.len() > 3) {
-            let (xy, path) = entry.split_at(3);
-            let (x, y) = (xy.as_bytes()[0], xy.as_bytes()[1]);
-            let at = std::path::Path::new(repo).join(path);
-            let theirs = blob(repo, &filters, squash, path);
-            if (x, y) == (b'?', b'?') {
-                // A new file of yours where the item adds one: fine when it's the same file, else a clash.
-                if theirs.as_deref().is_some_and(|t| std::fs::read(&at).ok().as_deref() == Some(t)) {
-                    in_the_way.push(path.to_string());
-                    continue;
-                }
-                return Err(format!("{path} is new in the main checkout, not committed, and the item adds it too"));
-            }
-            if x != b' ' {
-                return Err(format!("{path} has changes staged in the main checkout"));
-            }
-            if y != b'M' {
-                return Err(format!("{path} is changed in the main checkout and not committed"));
-            }
-            let Some(theirs) = theirs else { return Err(format!("the item deletes {path}, which has unsaved edits in the main checkout")) };
-            let ours = std::fs::read(&at).map_err(|e| format!("Cue can't read {path}: {e}"))?;
-            let merged = if ours == theirs { theirs } else { merge(repo, &filters, main, path, &ours, &theirs)? };
-            kept.push(Kept { path: path.to_string(), ours, merged });
-        }
-    }
+    let (kept, in_the_way) = edits_in_the_way(repo, &filters, &extra, main, squash, &changed)?;
     if kept.is_empty() && in_the_way.is_empty() {
         return safe_git::run_said("", repo, &filters, &[], &["merge", "--ff-only", "-q", squash]).map(|_| ());
     }
@@ -96,6 +66,44 @@ pub(super) fn fast_forward_keeping_edits(repo: &str, main: &str, squash: &str) -
         }
     }
     Ok(())
+}
+
+/// The checkout's edits to files the item changed (`changed`): those kept (their merge with the item's change made
+/// now), and new files the same as the item's (in the way, removed for the move). Err: one that clashes.
+fn edits_in_the_way(repo: &str, filters: &[String], extra: &[String], main: &str, squash: &str, changed: &[&str]) -> Result<(Vec<Kept>, Vec<String>), String> {
+    let mut kept: Vec<Kept> = vec![];
+    let mut in_the_way: Vec<String> = vec![];
+    if changed.is_empty() {
+        return Ok((kept, in_the_way));
+    }
+    let mut args = vec!["status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames", "--"];
+    args.extend(changed.iter().copied());
+    let status = text(repo, extra, &args)?;
+    for entry in status.split('\0').filter(|e| e.len() > 3) {
+        let (xy, path) = entry.split_at(3);
+        let (x, y) = (xy.as_bytes()[0], xy.as_bytes()[1]);
+        let at = std::path::Path::new(repo).join(path);
+        let theirs = blob(repo, filters, squash, path);
+        if (x, y) == (b'?', b'?') {
+            // A new file of yours where the item adds one: fine when it's the same file, else a clash.
+            if theirs.as_deref().is_some_and(|t| std::fs::read(&at).ok().as_deref() == Some(t)) {
+                in_the_way.push(path.to_string());
+                continue;
+            }
+            return Err(format!("{path} is new in the main checkout, not committed, and the item adds it too"));
+        }
+        if x != b' ' {
+            return Err(format!("{path} has changes staged in the main checkout"));
+        }
+        if y != b'M' {
+            return Err(format!("{path} is changed in the main checkout and not committed"));
+        }
+        let Some(theirs) = theirs else { return Err(format!("the item deletes {path}, which has unsaved edits in the main checkout")) };
+        let ours = std::fs::read(&at).map_err(|e| format!("Cue can't read {path}: {e}"))?;
+        let merged = if ours == theirs { theirs } else { merge(repo, filters, main, path, &ours, &theirs)? };
+        kept.push(Kept { path: path.to_string(), ours, merged });
+    }
+    Ok((kept, in_the_way))
 }
 
 /// git's output as text, or why it failed.
