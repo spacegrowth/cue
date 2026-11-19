@@ -124,8 +124,9 @@ function deskSessions(project, taskApprovals) {
   // recent item, fold into one "N older" line, shut by default (#363).
   const on = recent(mine.filter((s) => !busy(s))).map((s) => ({ s, work: deskHasWork(d, s.session_id) }));
   const group = (title, list) => (list.length ? `<div class="dk-gh">${title} <span class="n">${list.length}</span></div>${list.map((s) => row(s)).join("")}` : "");
-  // The strip's meta line counts this Desk's sessions, and the working ones as their rows show them (deskSessState).
-  const runs = mine.filter((s) => deskSessState(s)[0] === "").length;
+  // The strip's meta line counts this Desk's sessions, and the working ones as the Working group lists them: working
+  // itself, or its helpers ("agent") or crew at work; working means working (#402).
+  const runs = atWork.length;
   const onGroup = on.length ? `<div class="dk-gh">On the Desk <span class="n">${on.length}</span></div>${deskWithOlder(`side:${project}`, on, (r) => row(r.s))}` : "";
   const body = group("Working", atWork) + onGroup || '<div class="dk-empty">No other sessions on this Desk.</div>';
   const picking = deskAddingSession === project;

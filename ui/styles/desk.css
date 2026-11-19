@@ -78,6 +78,8 @@
 .dk-sub { color: var(--muted); font-family: var(--mono); font-size: 11.5px; }
 .dk-scroll, .dk-chat, .dk-pane, .dk-rd { flex: 1; min-height: 0; overflow-y: auto; }
 .dk-scroll { padding: 6px 0 14px; }
+/* The item list scrolls up and down only: nothing in it can slide it sideways and cut off its left edge (#405). */
+.dk-items .dk-scroll { overflow-x: hidden; }
 .dk-empty { padding: 28px 24px; color: var(--muted); font-size: 13px; line-height: 1.5; }
 
 /* Group labels: Waiting on you, In progress, Queued, Done; all grey, whatever their count. */
@@ -119,6 +121,9 @@
 .dk-i2 .dk-kid + .dk-who:empty { display: none; }
 .dk-i2 .dk-kid + .dk-who:not(:empty)::before, .dk-i2 .dk-kid + .dk-who:empty + .dk-age::before { content: "· "; }
 .dk-i2 .dk-age:empty { display: none; }
+/* A long age ("committed 2f2448c7 ef66ab27 · Thu 9:45pm") gives way, cut at "…", so Undo stays on the row and the list
+   never grows wider than its pane (#405). */
+.dk-i2 .dk-age { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .dk-i2 .dk-ok { margin-left: auto; }
 /* Install now on a finishing row in the next install (#339). */
 .dk-i2 .dk-rinst { margin-left: auto; flex: none; }

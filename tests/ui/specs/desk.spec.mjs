@@ -465,6 +465,25 @@ test("the Desks you opened last are one-click buttons on their own row under the
   await expect(page.locator(".dk-sw-menu")).toHaveCount(0);
 });
 
+test("the head's \"N working\" counts a session whose helpers are working (\"agent\"), as the Working group lists it (#402)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await page.locator('.switch-view [data-view="desk"]').click();
+  await page.locator("[data-desk-switch]").click(); await page.locator("[data-desk-home]").click();
+  await page.locator('.dk-desk[data-desk-project="cue"]').click();
+  const sub = page.locator(".dk-strip .dk-sub");
+  const count = async () => Number(((await sub.textContent()).match(/(\d+) working/) || [0, 0])[1]);
+  const before = await count();
+  // A new session on this Desk, idle itself, with background helpers at work (state "agent").
+  await cue.change((st) => {
+    st.sessions.push({ session_id: "s-agent", name: "cue-250", project: "cue", cwd: "/Users/me/cue", state: "agent", helpers: 2, since_ms: Date.now() });
+    st.desk.projects.find((x) => x.project === "cue").members.push("s-agent");
+  });
+  const sid = "s-agent";
+  expect(sid).toBeTruthy();
+  await expect.poll(count).toBe(before + 1);
+  await expect(page.locator(".dk-gh", { hasText: "Working" }).locator(".n")).toHaveText(String(before + 1));
+});
+
 test("a long Desk name shows in full and many recent Desks scroll sideways, at a narrow width too, ⋯ still reachable (#402)", async ({ page, cue }) => {
   await cue.open("desk");
   await page.locator('.switch-view [data-view="desk"]').click();
@@ -2371,9 +2390,10 @@ test("an idle session whose crew is at work is listed under Working, its working
   const order = () => left.locator(".dk-scroll > *").evaluateAll((els) => els.map((el) => el.matches(".dk-sdiv") ? "—" : el.matches(".dk-gh") ? `# ${el.firstChild.textContent.trim()}`
     : el.matches(".dk-sfold") ? null : `${el.matches(".crew") ? "  " : ""}${el.dataset.deskLeadChat || el.dataset.deskChatOf || el.dataset.deskCrew}`).filter(Boolean));
   await expect.poll(order).toEqual(["# Working", "spare", "  m2", "  m1", "# On the Desk", "host"]);
-  // Its row shows the idle mark, so the strip's meta line doesn't count it as working.
+  // Its row shows the idle mark, but its crew works, so the strip's meta line counts it as working: working means
+  // working (#402).
   await expect(left.locator('[data-desk-chat-of="spare"] .dk-st > i.idle')).toHaveCount(1);
-  await expect(left.locator(".dk-strip .dk-sub")).toHaveText("2 sessions");
+  await expect(left.locator(".dk-strip .dk-sub")).toHaveText("2 sessions · 1 working");
 });
 
 test("Commit to main commits the item's files at once: no sheet; the row and a toast say \"Committed <hash> · N files\" with Undo, which takes it back", async ({ page, cue }) => {
