@@ -496,8 +496,9 @@ function deskItemActs(i) {
     : (i.state === "new" || i.state === "queued") && !i.holder && i.start_failed ? b("start_now", "Retry")
     : i.state === "queued" ? b("start_now", "Start it now in a new session") + (first ? b("put_before", `Put it before ${deskShort(first.title)}`) : "")
     : i.state === "new" ? b("start_now", "Start it now in a new session")
-    // Its holder's turn cut off (a crash, a quit) leaves it "working" with nobody on it: sent to the holder again.
-    : deskCanRestart(i) ? b("start_now", "Restart")
+    // Its holder's turn cut off (a crash, a quit) leaves it "working" with nobody on it: Resume wakes that same
+    // session where it left off (#375).
+    : deskCanRestart(i) ? b("start_now", "Resume")
     // Waiting on you for an answer (#371): Send back is always there too, your words to its holder.
     : i.state === "needs_you" && i.holder ? b("send_back", "Send back")
     : deskFinishing(i) ? deskInstallNow(i, "btn small")

@@ -1588,16 +1588,18 @@ test("an interrupted assignment needs resume while a dependency stays queued", a
   await expect(page.locator('[data-desk-page="dispatcher"] .dk-psay')).toContainText("1 item needs to resume.");
   await expect(page.locator('[data-desk-page="dispatcher"] .dk-pfc')).toContainText("1 to resume");
   await rows.locator('[data-desk-item="d5"]').click();
+  await expect(pane.locator('[data-desk-act="start_now"]')).toHaveText("Resume");
+  await expect(pane).toContainText("Resume wakes its session where it left off.");
   await pane.locator('[data-desk-act="start_now"]').click();
   await cue.called("desk_item_act", { id: "d5", act: "start_now" });
-  // A crew member's item: Restart only when that teammate isn't at work.
+  // A crew member's item: Resume only when that teammate isn't at work.
   await page.locator('[data-desk-item="d3"]').click();
   await expect(pane.locator('[data-desk-act="start_now"]')).toHaveCount(0);
   await cue.change((st) => {
     st.sessions.find((s) => s.session_id === "lead").team.find((m) => m.agent_id === "id-search").state = "done";
     st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d3").state = "needs_resume";
   });
-  await expect(pane.locator('[data-desk-act="start_now"]')).toHaveText("Restart");
+  await expect(pane.locator('[data-desk-act="start_now"]')).toHaveText("Resume");
 });
 
 test("an item the lead paused shows as paused and keeps its holder (#365)", async ({ page, cue }) => {

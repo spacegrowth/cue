@@ -432,7 +432,7 @@ impl Hub {
             }
         }
         for (sid, text) in fx.sends {
-            // A Restart's send says how it went, on its item (#291).
+            // A Resume's send says how it went, on its item (#291).
             let restart = fx.restarts.iter().find(|(_, to, _)| *to == sid).map(|(id, _, name)| (id.clone(), name.clone()));
             let now = fx.now.contains(&sid);
             // Off this thread: typing into a terminal session waits for it to take the message.
@@ -483,18 +483,18 @@ impl Hub {
         }
     }
 
-    /// How your Restart of item `id` went, sent to its holder `name`: on the item (shown while it needs resume) and
-    /// on its Restart step, saved.
+    /// How your Resume of item `id` went, sent to its holder `name`: on the item (shown while it needs resume) and
+    /// on its Resume step, saved.
     fn desk_restart_went(&self, id: &str, name: &str, sent: Result<String, String>) {
         let note = match &sent {
-            Ok(_) => format!("Restart went to {name}"),
-            Err(e) => format!("Restart couldn't reach {name}: {e}"),
+            Ok(_) => format!("Resume went to {name}"),
+            Err(e) => format!("Resume couldn't reach {name}: {e}"),
         };
         let saved = self.write(|st| {
             let it = st.desk.item_mut(id)?;
             it.restart = note.clone();
             let it = it.clone();
-            let step = st.desk.decisions.iter_mut().rev().find(|d| d.item_id.as_deref() == Some(id) && d.by == "You" && d.text == "Restart").map(|d| {
+            let step = st.desk.decisions.iter_mut().rev().find(|d| d.item_id.as_deref() == Some(id) && d.by == "You" && d.text == "Resume").map(|d| {
                 d.why = if sent.is_ok() { format!("to {name}") } else { format!("to {name}, couldn't reach it: {}", sent.as_ref().err().map_or("", |e| e.as_str())) };
                 d.clone()
             });

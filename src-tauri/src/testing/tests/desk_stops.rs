@@ -209,10 +209,10 @@ fn restart_says_whether_it_reached_the_holder() {
     let now = desk(&w, &project);
     let it = item(&now, "Header");
     assert_eq!(sent(), before, "{now}");
-    assert!(it["restart"].as_str().is_some_and(|r| r.starts_with("Restart couldn't reach cue-teams") && r.contains("Too many open files")), "{now}");
-    let step = now["decisions"].as_array().unwrap().iter().find(|d| d["text"] == "Restart" && d["item_id"] == id.as_str()).cloned().unwrap_or_default();
+    assert!(it["restart"].as_str().is_some_and(|r| r.starts_with("Resume couldn't reach cue-teams") && r.contains("Too many open files")), "{now}");
+    let step = now["decisions"].as_array().unwrap().iter().find(|d| d["text"] == "Resume" && d["item_id"] == id.as_str()).cloned().unwrap_or_default();
     assert!(step["why"].as_str().is_some_and(|w| w.contains("couldn't reach it") && w.contains("Too many open files")), "{now}");
-    // It can start again: Restart sends it, and says so.
+    // It can start again: Resume sends it, and says so.
     w.hosted.accept();
     w.hub().desk_item_act(&id, "start_now", "").unwrap();
     w.settle();
@@ -220,7 +220,7 @@ fn restart_says_whether_it_reached_the_holder() {
     w.hosted_says(&h, HostedEvent::Taken { text: "Header".into() });
     w.settle();
     let now = desk(&w, &project);
-    assert_eq!(item(&now, "Header")["restart"], "Restart went to cue-teams", "{now}");
+    assert_eq!(item(&now, "Header")["restart"], "Resume went to cue-teams", "{now}");
     assert_eq!(item(&now, "Header")["state"], "working", "{now}");
 }
 

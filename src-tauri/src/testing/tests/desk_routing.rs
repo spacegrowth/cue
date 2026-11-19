@@ -196,7 +196,7 @@ fn a_route_to_new_from_a_folder_put_in_the_project_gets_the_item() {
     assert!(sent_to(&w, sid).iter().any(|t| t.contains(&format!("#{}", it["id"].as_str().unwrap()))));
 }
 
-/// A working item whose holder was cut off (a crash) before DONE: routed again to the same holder, or Restart
+/// A working item whose holder was cut off (a crash) before DONE: routed again to the same holder, or Resume
 /// (start_now), it's sent again. While the holder is mid-turn, neither sends it twice.
 #[test]
 fn a_working_item_whose_holder_stopped_is_sent_again_on_a_route_or_restart() {
@@ -207,7 +207,7 @@ fn a_working_item_whose_holder_stopped_is_sent_again_on_a_route_or_restart() {
     let id = item(&desk(&w, &project), "Header")["id"].as_str().unwrap().to_string();
     let sent = || sent_to(&w, &h).iter().filter(|t| t.contains(&format!("Say DONE: #{id}"))).count();
     assert_eq!(sent(), 1);
-    // Mid-turn on it: the same route said again sends nothing, and Restart is refused.
+    // Mid-turn on it: the same route said again sends nothing, and Resume is refused.
     w.hosted_says(&h, HostedEvent::Taken { text: "Header".into() });
     w.settle();
     ends(&w, &l, &format!("ROUTE: #{id} -> cue-teams | why: it knows"));
@@ -234,11 +234,14 @@ fn a_working_item_whose_holder_stopped_is_sent_again_on_a_route_or_restart() {
     assert_eq!(sent(), 3);
     let now = desk(&w, &project);
     assert_eq!(now["decisions"][0]["text"], format!("Sent #{id} to cue-teams again"), "{now}");
-    // Cut off again: Restart sends it once more.
+    // Cut off again: Resume wakes the same session once more, to pick up where it left off (#375), not the item
+    // handed afresh.
     ends(&w, &h, "On it.");
     w.hub().desk_item_act(&id, "start_now", "").unwrap();
     w.settle();
     assert_eq!(sent(), 4);
+    let last = sent_to(&w, &h).last().cloned().unwrap_or_default();
+    assert!(last.contains("Pick up where you left off") && !last.contains("Fixes and next steps"), "{last}");
     assert_eq!(item(&desk(&w, &project), "Header")["state"], "working");
 }
 

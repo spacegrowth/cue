@@ -16,7 +16,6 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
     }
     let mut fx = Effects::default();
     let busy = st.desk.item(id).and_then(|i| i.holder.as_ref()).filter(|h| at_work(st, h)).map(|h| h.name.clone());
-    let rule = st.desk.item(id).map(|i| rule_of(st, &i.project)).unwrap_or_default();
     // Picked, but its build item dropped since: it can be undone, and picked again.
     let build_gone = st.desk.item(id).is_some_and(|i| !i.built_as.is_empty() && st.desk.item(&i.built_as).is_none());
     let it = st.desk.item_mut(id).ok_or("no such item")?;
@@ -71,7 +70,8 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
             let s = NewStart { project: it.project.clone(), id: id.into(), why: String::new(), by: "You".into(), by_sid: String::new() };
             fx.starts.push(s);
         }
-        // Restart (an item at work whose holder isn't on it: cut off by a crash or a quit): sent to it again.
+        // Resume (an item at work whose holder isn't on it: cut off by a crash, a quit, or a turn that ended short of
+        // DONE): its holder's own session is woken to pick up where it left off (#375), not handed the item afresh.
         "start_now" => {
             let h = holder.ok_or("nobody holds it yet")?;
             if let Some(name) = busy.filter(|_| it.state == "working") {
@@ -79,9 +79,11 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
             }
             it.after = None;
             it.state = "working".into();
-            it.restart = format!("Restart: sending it to {}", h.name);
-            let (words, project) = (crate::desk::handed_words(it, "", &rule), it.project.clone());
-            you_wrote(st, &project, id, "Restart", &format!("to {}", h.name), now, &mut fx);
+            it.restart = format!("Resume: waking {}", h.name);
+            let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
+            let words = format!("{crew}Desk item #{id} ({}): you stopped before it was done. Pick up where you left off.\nSay DONE: #{id} on a line of its own when it's done.", it.title);
+            let project = it.project.clone();
+            you_wrote(st, &project, id, "Resume", &format!("to {}", h.name), now, &mut fx);
             fx.restarts.push((id.to_string(), h.to().to_string(), h.name.clone()));
             fx.sends.push((h.to().to_string(), words));
         }

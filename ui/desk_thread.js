@@ -219,7 +219,7 @@ function deskItemNow(i) {
     : i.waiting && i.state === "working" ? ["work", "Waiting", `${who} waits: ${esc(firstLine(i.waiting))}`]
     : i.stopped ? ["stop", "Stopped", "The Desk lead is on it."]
     : i.state === "paused" ? ["stop", "Paused", `${sessionOf(i.holder?.sid)?.state === "working" ? `${who} is stopping at a clean point. ` : `${who} keeps its place. `}The Desk lead paused it${i.paused?.[1] ? `: ${esc(firstLine(i.paused[1]))}` : ""}.`]
-    : i.state === "needs_resume" ? ["stop", "Needs resume", (i.restart ? `${esc(firstLine(i.restart))}. ` : "") + (deskCanRestart(i) ? "Restart sends the item to its holder again." : "Its session is closed.")]
+    : i.state === "needs_resume" ? ["stop", "Needs resume", (i.restart ? `${esc(firstLine(i.restart))}. ` : "") + (deskCanRestart(i) ? "Resume wakes its session where it left off." : "Its session is closed.")]
     : i.state === "working" ? ["work", "Working", `${who} is on it.${i.now_on && i.latest ? ` ${esc(firstLine(i.latest))}` : ""}${deskCrewNow(i) ? `<span class="dk-crewnow">Crew: ${esc(deskCrewNow(i))}</span>` : ""}`]
     : deskFinishing(i) ? ["work", "Finishing", `<span class="dk-fstep">${deskFinStep(i)}</span>`]
     : i.state === "queued" && i.tree_wait ? ["stop", "Next", `Starts when one of its repository's ${deskCopies(deskOf(i.project))} copies is free.`]
