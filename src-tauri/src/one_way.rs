@@ -345,7 +345,7 @@ pub fn view(c: &Value) -> Value {
     json!({ "set": set, "asked": asked, "kinds": kinds, "default": DEFAULT, "ask_default": ASK_DEFAULT })
 }
 
-/// What a Desk on `project` shows of it (hub/desk.rs desk_view): its kinds (with their words), whether it was asked
+/// What a Desk on `project` shows of it (hub/desk_view.rs desk_view): its kinds (with their words), whether it was asked
 /// yet (not: the window asks, once the Desk has a lead), and what the question ticks.
 pub fn desk_view(project: &str) -> Value {
     let c = crate::config::load();

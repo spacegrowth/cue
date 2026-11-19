@@ -62,7 +62,7 @@ pub struct DeskItem {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub former_holders: Vec<String>,
     /// The lead's teammate doing it, when the lead keeps it and says so (`ROUTE: #id -> me | crew: <name>`): the name
-    /// the lead gave it, matched to its teammate of that name once there is one (hub/desk.rs `shown`).
+    /// the lead gave it, matched to its teammate of that name once there is one (hub/desk_view.rs `shown`).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub crew: String,
     /// The item it waits on (queued behind it), and why.
@@ -118,7 +118,7 @@ pub struct DeskItem {
     /// Its designs' canvas: the link a session gave last on a DESIGNS: line, shown as "Designs" on its page.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub designs: String,
-    /// The option you picked on its mocks ("B"), once you did (hub/desk.rs `pick`): the item is done then.
+    /// The option you picked on its mocks ("B"), once you did (hub/desk_act.rs `pick`): the item is done then.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub picked: String,
     /// The item that builds what you picked (`picked`): its id. A pick again names it and makes no other.
@@ -140,7 +140,7 @@ pub struct DeskItem {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub finish: Option<Finish>,
     /// The Desk lead said DONE on it for you (you told it it's done) while it was finishing or to check: closed as
-    /// Looks right would, at once when it's to check, else as soon as its finishing brings it there (hub/desk.rs
+    /// Looks right would, at once when it's to check, else as soon as its finishing brings it there (hub/desk_said.rs
     /// lead_done, #337). Saved, so an install's restart keeps it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub close_on_check: bool,
@@ -165,7 +165,7 @@ pub struct DeskItem {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub held_from: Option<(String, u64)>,
     /// Its stints with holders before `held_from` (who, from, until; ms), newest last, the last `HELD_KEPT`: an item that
-    /// moved on still ends the window of an item its old holder kept (hub/desk.rs `held_window`, #302).
+    /// moved on still ends the window of an item its old holder kept (hub/desk_view.rs `held_window`, #302).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub held_before: Vec<(String, u64, u64)>,
     pub created: u64,
@@ -457,9 +457,9 @@ pub struct Desk {
     /// lead is asked for a hand-off note instead, and goes on fresh from it (hub/cache_tick.rs full_due). Not saved.
     pub compact_failed: HashMap<String, u64>,
     /// Items a lead said DONE on that its DONE couldn't close, and how each was ("state@updated") when Cue told it
-    /// why (hub/desk.rs lead_done): a lead saying it again of an unchanged item isn't answered again. Not saved.
+    /// why (hub/desk_said.rs lead_done): a lead saying it again of an unchanged item isn't answered again. Not saved.
     pub done_told: HashMap<String, String>,
-    /// What a project's lead is to be told of its routes Cue couldn't make (hub/desk.rs `route_answers`, #248) when it
+    /// What a project's lead is to be told of its routes Cue couldn't make (hub/desk_said.rs `route_answers`, #248) when it
     /// couldn't be sent then, as the lead was asking the user something: told in its next Desk block instead, and
     /// cleared once that reaches it (`desk_told`). Not saved.
     pub routes_held: HashMap<String, String>,
