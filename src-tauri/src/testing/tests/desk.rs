@@ -33,7 +33,7 @@ pub(super) fn new_lead(w: &World, project: &str) -> String {
 }
 
 /// Another hosted session of the project, named `name`, at its prompt.
-fn second(w: &World, name: &str) -> String {
+pub(super) fn second(w: &World, name: &str) -> String {
     let opts = crate::ipc::StartOpts { hosted: true, perm: "auto".into(), ..Default::default() };
     let r = crate::ipc::start_session_with(w.hub(), "claude", &w.home().to_string_lossy(), "hi", name, &opts).unwrap();
     let sid = r["session_id"].as_str().unwrap().to_string();

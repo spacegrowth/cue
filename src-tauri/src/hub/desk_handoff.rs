@@ -92,6 +92,9 @@ impl Hub {
                         if let Some((by, _)) = it.held_from.as_mut().filter(|(by, _)| by == old) {
                             *by = new.to_string();
                         }
+                        for (by, _, _) in it.held_before.iter_mut().filter(|(by, _, _)| by == old) {
+                            *by = new.to_string();
+                        }
                         it.updated = secs(now);
                         fx.items.push(it.id.clone());
                     }

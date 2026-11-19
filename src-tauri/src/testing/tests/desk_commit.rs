@@ -417,3 +417,70 @@ fn another_sessions_change_that_cant_be_told_apart_is_left_out_of_the_commit() {
     assert!(shown["finish"]["without"].as_array().unwrap().iter().any(|p| p.as_str().unwrap().ends_with("a.txt")), "{shown}");
 
 }
+
+#[test]
+fn a_teammate_started_for_an_item_that_moved_to_another_session_stays_out_of_the_items_commit_it_stayed_with() {
+    // #302: cue-teams holds Header, then Footer; its crew writes a.txt for Header and b.txt for Footer; Footer moves to
+    // "second". Header's DONE commits a.txt only: b.txt was Footer's, though Footer is no longer cue-teams'.
+    let w = World::new();
+    let dir = super::team::main_repo(&w);
+    let h = lead(&w, "hello");
+    ends(&w, &h, "Hi.");
+    let project = w.snapshot().session(&h)["project"].as_str().unwrap().to_string();
+    w.hub().desk_set_member(&project, &h, true).unwrap();
+    let s = super::desk::second(&w, "second");
+    let d = super::desk::new_lead(&w, &project);
+    let f = |n: &str| dir.join(n).to_string_lossy().to_string();
+    w.advance(1000);
+    ends(&w, &d, "ITEM: bug | Header jumps | done when: it stays put\nROUTE: #new -> cue-teams | why: it made the header");
+    w.advance(1000);
+    says(&w, &h, writes("toolu_A", "agentA", "header-fix", &[f("a.txt")]));
+    w.advance(1000);
+    ends(&w, &d, "ITEM: bug | Footer jumps | done when: it stays put\nROUTE: #new -> cue-teams | why: it made the footer");
+    w.advance(1000);
+    says(&w, &h, writes("toolu_B", "agentB", "footer-fix", &[f("b.txt")]));
+    w.advance(1000);
+    let footer = item(&w, &project, "Footer jumps")["id"].as_str().unwrap().to_string();
+    ends(&w, &d, &format!("ROUTE: #{footer} -> second | why: free now"));
+    let moved = item(&w, &project, "Footer jumps");
+    assert_eq!((moved["holder"]["sid"].as_str(), moved["state"].as_str()), (Some(s.as_str()), Some("working")), "{moved}");
+    w.advance(1000);
+    let header = item(&w, &project, "Header jumps")["id"].as_str().unwrap().to_string();
+    ends(&w, &h, &format!("Fixed.\nDONE: #{header}"));
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!(it["state"], "to_check", "{it}");
+    assert_eq!(git(&dir, &["show", "--name-only", "--format=", "HEAD"]).trim(), "a.txt", "its own teammate's file, not the one started for Footer");
+    assert!(git(&dir, &["status", "--porcelain"]).contains("b.txt"), "Footer's file stays for Footer");
+}
+
+#[test]
+fn a_teammate_an_item_was_given_to_before_it_moved_away_stays_out_of_its_old_holders_other_item() {
+    // #302, crew side: Footer went to cue-teams's teammate footer-fix, then moved to "second". Header, which cue-teams
+    // keeps, still leaves footer-fix's b.txt out.
+    let w = World::new();
+    let dir = super::team::main_repo(&w);
+    let h = lead(&w, "hello");
+    ends(&w, &h, "Hi.");
+    let project = w.snapshot().session(&h)["project"].as_str().unwrap().to_string();
+    w.hub().desk_set_member(&project, &h, true).unwrap();
+    let s = super::desk::second(&w, "second");
+    let d = super::desk::new_lead(&w, &project);
+    let f = |n: &str| dir.join(n).to_string_lossy().to_string();
+    w.advance(1000);
+    ends(&w, &d, "ITEM: bug | Header jumps | done when: it stays put\nROUTE: #new -> cue-teams | why: it made the header");
+    w.advance(1000);
+    says(&w, &h, writes("toolu_A", "agentA", "header-fix", &[f("a.txt")]));
+    says(&w, &h, writes("toolu_B", "agentB", "footer-fix", &[f("b.txt")]));
+    w.advance(1000);
+    ends(&w, &d, "ITEM: bug | Footer jumps | done when: it stays put\nROUTE: #new -> footer-fix | why: it knows the footer");
+    let given = item(&w, &project, "Footer jumps");
+    assert_eq!(given["holder"]["kind"], "crew", "{given}");
+    w.advance(1000);
+    let footer = given["id"].as_str().unwrap().to_string();
+    ends(&w, &d, &format!("ROUTE: #{footer} -> second | why: free now"));
+    assert_eq!(item(&w, &project, "Footer jumps")["holder"]["sid"].as_str(), Some(s.as_str()));
+    w.advance(1000);
+    let header = item(&w, &project, "Header jumps")["id"].as_str().unwrap().to_string();
+    ends(&w, &h, &format!("Fixed.\nDONE: #{header}"));
+    assert_eq!(git(&dir, &["show", "--name-only", "--format=", "HEAD"]).trim(), "a.txt", "footer-fix's file was Footer's");
+}

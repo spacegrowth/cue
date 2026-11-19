@@ -281,19 +281,25 @@ fn session_mates<'a>(st: &Store, s: &'a Session, it: &DeskItem) -> Vec<&'a crate
         st.desk.items.iter().any(|o| {
             // One named for an item not done (an old item's name may be given again).
             let named = !o.crew.is_empty() && o.state != "done" && o.crew.eq_ignore_ascii_case(&t.name);
-            o.holder.as_ref().is_some_and(|h| crew_parts(h).is_some_and(|(_, a)| a == t.agent_id || a == t.call) || (h.sid == *sid && named))
+            let is_t = |a: &str| !a.is_empty() && (a == t.agent_id || a == t.call);
+            // Given to it as a crew member once, though the item has since moved on (#302): still that item's.
+            o.id != it.id && o.held_before.iter().any(|(by, _, _)| is_t(by))
+                || o.holder.as_ref().is_some_and(|h| crew_parts(h).is_some_and(|(_, a)| is_t(a)) || (h.sid == *sid && named))
         })
     };
     s.team.iter().filter(|t| t.started_ms >= from && t.started_ms < until && !holds(t)).collect()
 }
 
 /// When `it` was session `sid`'s to work on (ms): from when it went to it until its next item did (u64::MAX while
-/// none has). None when another of its items was at work then as well (whose work is whose can't be told), or the
-/// item has no start for `sid`.
+/// none has), counting an item that went to it and has since moved on (#302). None when another of its items was at
+/// work then as well (whose work is whose can't be told), or the item has no start for `sid`.
 pub(super) fn held_window(st: &Store, sid: &str, it: &DeskItem) -> Option<(u64, u64)> {
     let (_, from) = it.held_from.as_ref().filter(|(by, _)| by == sid)?;
     let mut until = u64::MAX;
     for o in st.desk.items.iter().filter(|o| o.id != it.id) {
+        if let Some(at) = o.held_before.iter().filter(|(by, at, _)| by == sid && at > from).map(|(_, at, _)| *at).min() {
+            until = until.min(at);
+        }
         let Some((by, at)) = &o.held_from else { continue };
         if by != sid {
             continue;
@@ -1583,7 +1589,7 @@ impl Hub {
                         continue;
                     }
                     if it.held_from.as_ref().is_none_or(|(by, _)| *by != sid) {
-                        it.held_from = Some((sid.clone(), now));
+                        it.held_by(&sid, now);
                     }
                     // Sent to its holder (again): a stall on it counts from here (desk_stall.rs).
                     if fx.sends.iter().any(|(to, _)| *to == sid) {

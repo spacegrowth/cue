@@ -1,5 +1,6 @@
-node_modules/
-src-tauri/target/
+# Folders, and the links an item's copy has in their place (hub/desk_trees.rs): a trailing / would match folders only.
+node_modules
+src-tauri/target
 src-tauri/gen/
 src-tauri/binaries/
 src-tauri/target-clean/

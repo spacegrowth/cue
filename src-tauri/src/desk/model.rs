@@ -142,6 +142,10 @@ pub struct DeskItem {
     /// Who it went to at work and when (ms): only work begun after that is its (stamped as it's saved: hub/desk.rs).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub held_from: Option<(String, u64)>,
+    /// Its stints with holders before `held_from` (who, from, until; ms), newest last, the last `HELD_KEPT`: an item that
+    /// moved on still ends the window of an item its old holder kept (hub/desk.rs `held_window`, #302).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub held_before: Vec<(String, u64, u64)>,
     pub created: u64,
     pub updated: u64,
     #[serde(default)]
@@ -176,7 +180,19 @@ pub struct DeskItem {
     pub said: Vec<Said>,
 }
 
+/// How many earlier stints an item keeps (`held_before`).
+pub const HELD_KEPT: usize = 8;
+
 impl DeskItem {
+    /// Its work starts now with `sid` (ms `now`): the stint before it, if any, is kept in `held_before`.
+    pub(crate) fn held_by(&mut self, sid: &str, now: u64) {
+        if let Some((by, from)) = self.held_from.replace((sid.to_string(), now)) {
+            self.held_before.push((by, from, now));
+            let over = self.held_before.len().saturating_sub(HELD_KEPT);
+            self.held_before.drain(..over);
+        }
+    }
+
     pub(crate) fn remember_holder(&mut self) {
         if let Some(sid) = self.holder.as_ref().map(Holder::to).filter(|sid| !self.former_holders.iter().any(|old| old == sid)) {
             self.former_holders.push(sid.to_string());
