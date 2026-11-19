@@ -439,3 +439,84 @@ fn an_item_an_older_cue_left_at_commit_wait_is_committed_after_the_upgrade() {
     assert_eq!(subject(&dir), format!("Header jumps (#{id})"), "landed");
     assert_eq!(item(&w, &project, "Header jumps")["state"], "to_check");
 }
+
+/// README on the main line as five lines before the item is routed: (repo, project, id, holder, its copy).
+fn five_lines(w: &World) -> (PathBuf, String, String, String, PathBuf) {
+    let (dir, project, id, h) = routed_with(
+        w,
+        |_, _, dir| {
+            std::fs::write(dir.join("README"), "1\n2\n3\n4\n5\n").unwrap();
+            git(dir, &["commit", "-q", "-am", "five lines"]);
+        },
+        |_, _, _| {},
+    );
+    let path = PathBuf::from(item(w, &project, "Header jumps")["tree"]["path"].as_str().unwrap().to_string());
+    assert_eq!(std::fs::read_to_string(path.join("README")).unwrap(), "1\n2\n3\n4\n5\n");
+    (dir, project, id, h, path)
+}
+
+#[test]
+fn others_unsaved_edits_in_files_the_item_didnt_change_stay_as_they_are_and_it_lands() {
+    let w = World::new();
+    let (dir, _, id, h, path) = routed(&w);
+    std::fs::write(dir.join("README"), "someone's unsaved edit\n").unwrap();
+    std::fs::write(path.join("a.txt"), "a\n").unwrap();
+    ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
+    assert_eq!(subject(&dir), format!("Header jumps (#{id})"), "landed");
+    assert_eq!(std::fs::read_to_string(dir.join("README")).unwrap(), "someone's unsaved edit\n");
+    assert_eq!(git(&dir, &["status", "--porcelain", "--", "README"]).trim(), "M README", "still unsaved");
+}
+
+#[test]
+fn others_unsaved_edits_in_a_file_the_item_changed_too_are_kept_with_its_change_merged_in() {
+    let w = World::new();
+    let (dir, project, id, h, path) = five_lines(&w);
+    std::fs::write(dir.join("README"), "1 unsaved\n2\n3\n4\n5\n").unwrap();
+    std::fs::write(path.join("README"), "1\n2\n3\n4\n5 item\n").unwrap();
+    ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
+    assert_eq!(subject(&dir), format!("Header jumps (#{id})"), "landed: {}", item(&w, &project, "Header jumps"));
+    assert_eq!(git(&dir, &["show", "HEAD:README"]), "1\n2\n3\n4\n5 item\n", "only the item's change committed");
+    assert_eq!(std::fs::read_to_string(dir.join("README")).unwrap(), "1 unsaved\n2\n3\n4\n5 item\n", "the edit kept, on top");
+    assert_eq!(git(&dir, &["diff", "--", "README"]).lines().filter(|l| l.starts_with(['+', '-']) && !l.starts_with("+++") && !l.starts_with("---")).collect::<Vec<_>>(), ["-1", "+1 unsaved"]);
+}
+
+#[test]
+fn unsaved_edits_on_the_same_lines_as_the_item_wait_and_are_left_untouched() {
+    let w = World::new();
+    let (dir, project, id, h, path) = five_lines(&w);
+    let main = git(&dir, &["rev-parse", "HEAD"]);
+    std::fs::write(dir.join("README"), "1\n2\n3 unsaved\n4\n5\n").unwrap();
+    std::fs::write(path.join("README"), "1\n2\n3 item\n4\n5\n").unwrap();
+    ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
+    assert_eq!(git(&dir, &["rev-parse", "HEAD"]), main, "nothing landed");
+    assert_eq!(std::fs::read_to_string(dir.join("README")).unwrap(), "1\n2\n3 unsaved\n4\n5\n", "the edit untouched");
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!(it["finish"]["step"], "line", "{it}");
+    assert!(it["finish"]["wait"].as_str().unwrap().contains("README"), "{it}");
+}
+
+#[test]
+fn a_staged_change_to_a_file_the_item_changed_waits_and_is_left_untouched() {
+    let w = World::new();
+    let (dir, project, id, h, path) = five_lines(&w);
+    let main = git(&dir, &["rev-parse", "HEAD"]);
+    std::fs::write(dir.join("README"), "1 staged\n2\n3\n4\n5\n").unwrap();
+    git(&dir, &["add", "README"]);
+    std::fs::write(path.join("README"), "1\n2\n3\n4\n5 item\n").unwrap();
+    ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
+    assert_eq!(git(&dir, &["rev-parse", "HEAD"]), main, "nothing landed");
+    assert_eq!(git(&dir, &["status", "--porcelain", "--", "README"]).trim(), "M  README", "still staged");
+    let it = item(&w, &project, "Header jumps");
+    assert!(it["finish"]["wait"].as_str().unwrap().contains("staged"), "{it}");
+}
+
+#[test]
+fn an_unsaved_new_file_the_same_as_the_one_the_item_adds_doesnt_stop_it() {
+    let w = World::new();
+    let (dir, _, id, h, path) = routed(&w);
+    std::fs::write(dir.join("a.txt"), "a\n").unwrap();
+    std::fs::write(path.join("a.txt"), "a\n").unwrap();
+    ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
+    assert_eq!(subject(&dir), format!("Header jumps (#{id})"), "landed");
+    assert!(git(&dir, &["status", "--porcelain"]).trim().is_empty());
+}

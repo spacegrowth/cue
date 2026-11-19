@@ -72,6 +72,13 @@ pub fn run_env(machine: &str, dir: &str, extra: &[String], env: &[(&str, &str)],
     })
 }
 
+/// `run` here, its stdout as bytes (a file's contents, as they are): stdout and the exit code.
+pub fn run_bytes(dir: &str, extra: &[String], rest: &[&str]) -> Result<(Vec<u8>, i32), String> {
+    let w = words(dir, extra, rest);
+    let out = Command::new(git_bin()).args(&w[1..]).stdin(Stdio::null()).stderr(Stdio::null()).output().map_err(|e| e.to_string())?;
+    Ok((out.stdout, out.status.code().unwrap_or(1)))
+}
+
 /// `run_env` that says why a run failed: its stdout when git exits 0, else git's own last words (its error, a hook's
 /// output, "nothing to commit"), a few lines at most; "" when it said nothing. On a machine, only what it printed.
 pub fn run_said(machine: &str, dir: &str, extra: &[String], env: &[(&str, &str)], rest: &[&str]) -> Result<String, String> {
