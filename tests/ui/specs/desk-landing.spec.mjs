@@ -1,6 +1,6 @@
 // How work lands (docs/desk-landing-design.md): each item works in its own copy of its repository (a pool of three),
 // and lands through one landing line, checked first. Its row and page say where it is: "waiting for a free copy",
-// "in its own copy desk/<id>", "in the landing line · waits: …", "checking…", "check failed", "landed, not checked".
+// "in its own copy desk/<id>", "In the landing line · waits: … · since 8:31pm", "Checking before it lands · since …", "Check failed · since …", "landed, not checked".
 // A dropped item's copy that had work in it is listed under Kept copies, with a Remove that takes two clicks.
 import { test, expect } from "./cue.mjs";
 
@@ -22,18 +22,19 @@ test("the landing line's steps on a finishing item: in the line with what it wai
   await cue.open("desk");
   await openDesk(page);
   const row = page.locator('.dk-items [data-desk-item="d5"]');
-  await patchItem(cue, "d5", { state: "finishing", tree: tree("d5"), finish: { step: "line", wait: "The main line kept moving", at: Date.now() } });
-  await expect(row.locator(".dk-who")).toHaveText("in the landing line · waits: The main line kept moving");
-  await patchItem(cue, "d5", { finish: { step: "line", at: Date.now() } });
-  await expect(row.locator(".dk-who")).toHaveText("in the landing line");
-  await patchItem(cue, "d5", { finish: { step: "checking", at: Date.now() } });
-  await expect(row.locator(".dk-who")).toHaveText("checking…");
+  const at = Date.now(), since = await page.evaluate((t) => clockAt(t), at);
+  await patchItem(cue, "d5", { state: "finishing", tree: tree("d5"), finish: { step: "line", wait: "The main line kept moving", at } });
+  await expect(row.locator(".dk-who")).toHaveText(`In the landing line · waits: The main line kept moving · since ${since}`);
+  await patchItem(cue, "d5", { finish: { step: "line", at } });
+  await expect(row.locator(".dk-who")).toHaveText(`In the landing line · since ${since}`);
+  await patchItem(cue, "d5", { finish: { step: "checking", at } });
+  await expect(row.locator(".dk-who")).toHaveText(`Checking before it lands · since ${since}`);
   const pane = await openItem(page, "d5");
-  await expect(pane).toContainText("checking…");
+  await expect(pane).toContainText(`Checking before it lands · since ${since}`);
   // No commit wait any more: nothing to ask of another session, nothing to land without.
   await expect(pane.locator('[data-desk-act="ask_commit"], [data-desk-act="land_without"]')).toHaveCount(0);
   await patchItem(cue, "d5", { finish: { step: "check_failed", at: Date.now(), question: "Its check failed", log: "test x failed" } });
-  await expect(row.locator(".dk-who")).toHaveText("check failed");
+  await expect(row.locator(".dk-who")).toHaveText(`Check failed · since ${since}`);
   const box = pane.locator(".dk-wo");
   await expect(box).toContainText("Its check failed");
   await expect(box.locator('[data-desk-act="fix_back"]')).toHaveCount(1);

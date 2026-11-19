@@ -3548,14 +3548,16 @@ test("an item with mocks has \"Open the mocks\" in its NOW; waiting on a pick, a
 /** Item `id` of the cue Desk changed by `patch` (merged in). */
 const patchItem = (cue, id, patch) => cue.change((st, [k, p]) => { Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === k), p); }, [id, patch]);
 
-test("a finishing item: amber and steady, its step under its title; in the next install, the Items header says when with Install now; not waiting on you; its row stays put (#181, #190)", async ({ page, cue }) => {
+test("a finishing item: amber and steady, its step and since when under its title; in the next install, on main with a countdown and Install now, the Items header too; not waiting on you; its row stays put (#181, #190)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   const before = await listOrder(page);
-  await patchItem(cue, "d5", { state: "finishing", finish: { step: "line", wait: "The main checkout is in the middle of a merge", at: Date.now() } });
+  const began = Date.now() - 3 * 60_000;
+  const since = await page.evaluate((t) => clockAt(t), began);
+  await patchItem(cue, "d5", { state: "finishing", finish: { step: "line", wait: "The main checkout is in the middle of a merge", at: began } });
   const row = page.locator('.dk-items [data-desk-item="d5"]');
   await expect(row).toHaveClass(/\bdk-fin\b/);
-  await expect(row.locator(".dk-who")).toHaveText("in the landing line · waits: The main checkout is in the middle of a merge");
+  await expect(row.locator(".dk-who")).toHaveText(`In the landing line · waits: The main checkout is in the middle of a merge · since ${since}`);
   // Steady: no blinking dot; amber, not the red of an ask.
   await expect(row.locator(".dk-si .dk-blink")).toHaveCount(0);
   const amber = await page.evaluate(() => { const e = document.createElement("i"); e.style.color = "var(--amber)"; document.body.append(e); const c = getComputedStyle(e).color; e.remove(); return c; });
@@ -3568,13 +3570,22 @@ test("a finishing item: amber and steady, its step under its title; in the next 
   await expect(page.locator(".dk-items .dk-gh.you .n")).toHaveText("1");
   expect(await listOrder(page)).toEqual(before);
 
-  // In the next install (#190): its row says so and when; the Items header has the one Install now, for all of it.
-  const due = Date.now() + 30 * 60_000;
+  // In the next install (#190, #339): its row says it's on main and when it installs, counting down, with Install now;
+  // the Items header has one Install now for all of it.
+  const due = (await page.evaluate(() => now())) + 30 * 60_000;
   await cue.change((st, t) => { st.desk.install_at = t; }, due);
   await patchItem(cue, "d5", { finish: { step: "queued", commit: "abc9999", at: Date.now() } });
   const clock = await page.evaluate((t) => clockAt(t), due);
-  await expect(row.locator(".dk-who")).toHaveText(`in the next install · ${clock}`);
-  await expect(row.locator(".dk-instnow")).toHaveCount(0);
+  await expect(row.locator(".dk-who")).toHaveText(`On main · installs at ${clock} · in 30m`);
+  await expect(row.locator('.dk-i2 [data-desk-act="install_now"]')).toHaveText("Install now");
+  // Counting down: due in under a minute, it says the seconds left, then what it waits on once it's due.
+  await cue.change((st, t) => { st.desk.install_at = t; }, due - 30 * 60_000 + 2_000);
+  await expect(row.locator(".dk-who")).toHaveText(/^On main · installs at .* · in 2s$/);
+  await page.clock.runFor(1000);
+  await expect(row.locator(".dk-who")).toHaveText(/^On main · installs at .* · in 1s$/);
+  await page.clock.runFor(1500);
+  await expect(row.locator(".dk-who")).toHaveText("On main · installs once no session is mid-turn");
+  await cue.change((st, t) => { st.desk.install_at = t; }, due);
   const head = page.locator(".dk-items .dk-ch");
   await expect(head.locator(".dk-next")).toHaveText(`Next install ${clock} · 1 item`);
   await expect(head.locator(".dk-instnow")).toHaveText("Install now");
@@ -3583,7 +3594,7 @@ test("a finishing item: amber and steady, its step under its title; in the next 
   await row.locator(".dk-t").click();
   const pane = page.locator(".dk-right .dk-pg");
   await expect(pane.locator(".dk-pnow .dk-pword")).toHaveText("Finishing");
-  await expect(pane.locator(".dk-pnow")).toContainText(`in the next install · ${clock}`);
+  await expect(pane.locator(".dk-pnow")).toContainText(`On main · installs at ${clock} · in 30m`);
   await expect(pane.locator('.dk-acts [data-desk-act="install_now"]')).toHaveText("Install now");
   await expect(pane.locator('[data-desk-act="looks_right"]')).toHaveCount(0);
   await cue.override("desk_item_act", () => null);
@@ -3592,11 +3603,14 @@ test("a finishing item: amber and steady, its step under its title; in the next 
   // Clicking it doesn't close the page it's on.
   await expect(pane.locator("h1")).toContainText("#d5");
 
-  await patchItem(cue, "d5", { finish: { step: "building", commit: "abc9999", at: Date.now() } });
-  await expect(row.locator(".dk-who")).toHaveText("building…");
+  await patchItem(cue, "d5", { finish: { step: "building", commit: "abc9999", at: began } });
+  await expect(row.locator(".dk-who")).toHaveText(`On main · building Cue · since ${since}`);
+  await expect(pane.locator(".dk-pnow")).toContainText(`On main · building Cue · since ${since}`);
   await expect(page.locator('[data-desk-act="install_now"]')).toHaveCount(0);
-  await patchItem(cue, "d5", { finish: { step: "installing", commit: "abc9999", at: Date.now() } });
-  await expect(row.locator(".dk-who")).toHaveText("installing…");
+  await patchItem(cue, "d5", { finish: { step: "installing", commit: "abc9999", at: began } });
+  await expect(row.locator(".dk-who")).toHaveText(`On main · installing Cue · since ${since}`);
+  await patchItem(cue, "d5", { finish: { step: "starting", commit: "abc9999", at: began } });
+  await expect(row.locator(".dk-who")).toHaveText(`Installed · Cue is restarting · since ${since}`);
   expect(await listOrder(page)).toEqual(before);
 });
 
@@ -3883,9 +3897,10 @@ test("an item shows ready only once its work is on main: until then it says wher
   await cue.open("desk");
   await openDesk(page);
   // Committed, and not on main yet: its row says where, with no ✓.
-  await patchItem(cue, "d5", { state: "finishing", finish: { step: "landing", wait: "on side, not main", at: Date.now() } });
+  const at = Date.now(), since = await page.evaluate((t) => clockAt(t), at);
+  await patchItem(cue, "d5", { state: "finishing", finish: { step: "landing", wait: "on side, not main", at } });
   const d5 = page.locator('.dk-items [data-desk-item="d5"]');
-  await expect(d5.locator(".dk-who")).toHaveText("not on main yet · on side, not main");
+  await expect(d5.locator(".dk-who")).toHaveText(`Committed, not on main yet · on side, not main · since ${since}`);
   await expect(d5.locator(".dk-ok")).toHaveCount(0);
   // To check with its files uncommitted (its session on another machine): no ✓ on its row; its page says it isn't on
   // main and its button commits it there.

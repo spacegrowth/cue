@@ -349,6 +349,8 @@ function tickAges() {
   document.querySelectorAll("[data-ago]").forEach((el) => { el.textContent = ago(+el.dataset.ago); });
   let coldDone = false;
   document.querySelectorAll("[data-cold-in]").forEach((el) => { if (+el.dataset.coldIn <= now()) coldDone = true; else el.textContent = coldIn(+el.dataset.coldIn); });
+  // A countdown (a finishing item's next install, #339): redraws once it's due, to say what it waits on then.
+  document.querySelectorAll("[data-until]").forEach((el) => { if (+el.dataset.until <= now()) coldDone = true; else el.textContent = untilIn(+el.dataset.until); });
   if (coldDone) renderMain();
   document.querySelectorAll("[data-helper-span]").forEach((el) => { el.textContent = helperSpan({ started_ms: +el.dataset.helperSpan }); });
 }

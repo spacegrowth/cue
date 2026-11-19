@@ -115,6 +115,8 @@
 .dk-i2 .dk-kid + .dk-who:not(:empty)::before, .dk-i2 .dk-kid + .dk-who:empty + .dk-age::before { content: "· "; }
 .dk-i2 .dk-age:empty { display: none; }
 .dk-i2 .dk-ok { margin-left: auto; }
+/* Install now on a finishing row in the next install (#339). */
+.dk-i2 .dk-rinst { margin-left: auto; flex: none; }
 /* Undo on a done row: back to waiting on you (nothing in the work changes). */
 /* Shown only while the row is hovered (or Undo has the keyboard's focus). */
 .dk-i2 .dk-undo { all: unset; margin-left: auto; flex: none; cursor: pointer; color: var(--accent); font-size: 12px; visibility: hidden; }

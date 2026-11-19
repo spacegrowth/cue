@@ -117,15 +117,24 @@ const deskFinCommit = (i) => (i?.finish ? i.finish.commit || i.commit || "" : ""
 const deskUncommitted = (i) => i?.state === "to_check" && !i.finish && !i.commit && (i.files || []).length > 0;
 /** Item `i`'s DONE on its way into the app: Cue commits, builds and installs it. Nothing for you to do yet. */
 const deskFinishing = (i) => i?.state === "finishing";
-/** Where a finishing item is, in a short line: "in the landing line · waits: …", "checking…", "building…". */
+/** Where a finishing item is, in a short line (HTML): what it's doing and since when ("Checking before it lands · since
+ *  8:31pm"); in the next install, that it's on main and when it installs, counting down ("On main · installs at 9:05pm ·
+ *  in 12m"), so a finished item never looks stuck while it waits (#339). */
 function deskFinStep(i) {
   const f = i.finish || {};
+  const since = f.at ? ` · since ${clockAt(f.at)}` : "";
   // In its own copy, waiting its turn to land (hub/desk_trees.rs): one item lands at a time.
-  if (f.step === "line") return `in the landing line${f.wait ? ` · waits: ${f.wait}` : ""}`;
+  if (f.step === "line") return `In the landing line${f.wait ? ` · waits: ${esc(f.wait)}` : ""}${since}`;
   // Committed, and not on main yet: where it is ("on side, not main").
-  if (f.step === "landing") return `not on main yet${f.wait ? ` · ${f.wait}` : ""}`;
-  if (f.step === "queued") return `in the next install${state.desk?.install_at ? ` · ${clockAt(state.desk.install_at)}` : ""}`;
-  return { checking: "checking…", check_failed: "check failed", building: "building…", installing: "installing…", starting: "starting…" }[f.step] || "committing…";
+  if (f.step === "landing") return `Committed, not on main yet${f.wait ? ` · ${esc(f.wait)}` : ""}${since}`;
+  if (f.step === "queued") {
+    // Cue installs half an hour after the first item waits (hub/desk_finish.rs), once no session is mid-turn.
+    const due = state.desk?.install_at || 0;
+    if (!due) return "On main · waiting for the next install";
+    return due > now() ? `On main · installs at ${clockAt(due)} · <span data-until="${due}">${untilIn(due)}</span>` : "On main · installs once no session is mid-turn";
+  }
+  const what = { checking: "Checking before it lands", check_failed: "Check failed", building: "On main · building Cue", installing: "On main · installing Cue", starting: "Installed · Cue is restarting" }[f.step] || "Committing";
+  return `${what}${since}`;
 }
 /** How many copies of one repository Desk items work in at once (hub/desk_trees.rs). */
 const DESK_COPIES = 3;
@@ -406,10 +415,10 @@ function deskItemRow(i, lit, held = false) {
   // Lit by its session (clicked on the left) and at work: "working · host-lead · 4m", how long its session has been at it.
   const s = held && i.state === "working" ? sessionOf(i.holder?.sid) : null;
   const at = s ? (s.state === "working" && s.since_ms) || deskMs(i.updated) : 0;
-  const who = i.state === "queued" && i.tree_wait ? [esc(deskHolderOf(i)), "waiting for a free copy"].filter(Boolean).join(" · ") : i.state === "queued" && i.after ? [esc(deskHolderOf(i)), `after #${esc(i.after)}`].filter(Boolean).join(" · ") : i.waiting && i.state === "working" ? `waiting · ${esc(firstLine(i.waiting))}` : i.stopped && i.state === "working" ? `stopped · the Desk lead is on it` : s ? `working · ${esc(deskHolderOf(i))} · <span data-ago="${at}">${ago(at)}</span>` : !i.holder && i.state !== "done" ? deskGive(i, "row") : deskInstallWait(i) ? `waiting for install · ${esc(deskHolderOf(i))}` : deskFinishing(i) ? `<span class="dk-fstep">${esc(deskFinStep(i))}</span>` : esc(deskHolderOf(i));
+  const who = i.state === "queued" && i.tree_wait ? [esc(deskHolderOf(i)), "waiting for a free copy"].filter(Boolean).join(" · ") : i.state === "queued" && i.after ? [esc(deskHolderOf(i)), `after #${esc(i.after)}`].filter(Boolean).join(" · ") : i.waiting && i.state === "working" ? `waiting · ${esc(firstLine(i.waiting))}` : i.stopped && i.state === "working" ? `stopped · the Desk lead is on it` : s ? `working · ${esc(deskHolderOf(i))} · <span data-ago="${at}">${ago(at)}</span>` : !i.holder && i.state !== "done" ? deskGive(i, "row") : deskInstallWait(i) ? `waiting for install · ${esc(deskHolderOf(i))}` : deskFinishing(i) ? `<span class="dk-fstep">${deskFinStep(i)}</span>` : esc(deskHolderOf(i));
   // Finishing: no age, so its step has the room.
   const when = s || deskFinishing(i) ? "" : i.state === "done" ? `${i.commit ? `<span class="dk-cm">committed ${esc(i.commit)}</span> · ` : ""}${clockAt(deskMs(i.done_at || i.updated))}` : ago(deskMs(i.created));
-  const ok = deskInstallWait(i) || deskFinishing(i) || deskUncommitted(i) ? "" : i.state === "to_check" && deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id) : i.state === "to_check" ? `<button class="dk-ok" data-desk-act="looks_right" data-id="${esc(i.id)}" aria-label="Looks right"></button>`
+  const ok = deskFinishing(i) ? deskInstallNow(i, "btn small dk-rinst") : deskInstallWait(i) || deskUncommitted(i) ? "" : i.state === "to_check" && deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id) : i.state === "to_check" ? `<button class="dk-ok" data-desk-act="looks_right" data-id="${esc(i.id)}" aria-label="Looks right"></button>`
     : i.state === "done" ? `<button class="dk-undo" data-desk-act="reopen" data-id="${esc(i.id)}">Undo</button>` : "";
   // What it waits on you for, in one plain line (Answer, Pick, Allow, Try it), and what it unblocks (#182).
   const request = i.state === "needs_you" && deskItemRequest(i);
@@ -1313,7 +1322,7 @@ function deskItemNow(i) {
     : i.stopped ? ["stop", "Stopped", "The Desk lead is on it."]
     : i.state === "needs_resume" ? ["stop", "Needs resume", (i.restart ? `${esc(firstLine(i.restart))}. ` : "") + (deskCanRestart(i) ? "Restart sends the item to its holder again." : "Its session is closed.")]
     : i.state === "working" ? ["work", "Working", `${who} is on it.${i.now_on && i.latest ? ` ${esc(firstLine(i.latest))}` : ""}${deskCrewNow(i) ? `<span class="dk-crewnow">Crew: ${esc(deskCrewNow(i))}</span>` : ""}`]
-    : deskFinishing(i) ? ["work", "Finishing", `<span class="dk-fstep">${esc(deskFinStep(i))}</span>`]
+    : deskFinishing(i) ? ["work", "Finishing", `<span class="dk-fstep">${deskFinStep(i)}</span>`]
     : i.state === "queued" && i.tree_wait ? ["stop", "Next", `Starts when one of its repository's ${DESK_COPIES} copies is free.`]
     : i.state === "queued" ? ["stop", "Next", first ? `Starts when ${esc(deskShort(first.title))} is done.` : i.holder ? `Next for ${who}.` : "Next up, not given to a session yet."]
     : i.state === "new" ? ["stop", "Not given out", "Not given to a session yet."]
