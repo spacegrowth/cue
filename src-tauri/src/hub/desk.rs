@@ -415,7 +415,7 @@ fn waits_on(st: &Store, from: &str, id: &str) -> bool {
 #[allow(clippy::too_many_arguments)]
 pub(super) fn decide(st: &mut Store, project: &str, item: Option<String>, by: &str, sid: &str, text: &str, why: &str, now: u64, fx: &mut Effects) {
     let id = st.desk.decision_id(now);
-    st.desk.decisions.push(DeskDecision { id: id.clone(), project: project.into(), item_id: item, by: by.into(), sid: sid.into(), text: text.into(), why: why.into(), at: secs(now), undo: "can".into(), call: false, delivery: None });
+    st.desk.decisions.push(DeskDecision { id: id.clone(), project: project.into(), item_id: item, by: by.into(), sid: sid.into(), text: text.into(), why: why.into(), at: secs(now), undo: "can".into(), call: false, delivery: None, act: String::new() });
     fx.decisions.push(id);
 }
 
@@ -859,8 +859,8 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx
                     answers.push(no);
                 }
             }
-            Line::Answer { id, text } => cleanup_said(st, project, &id, Some(text), fx, &mut answers),
-            Line::Pass { id, .. } => cleanup_said(st, project, &id, None, fx, &mut answers),
+            Line::Answer { id, text } => cleanup_said(st, project, &by, &id, Some(text), now, fx, &mut answers),
+            Line::Pass { id, .. } => cleanup_said(st, project, &by, &id, None, now, fx, &mut answers),
             Line::Context { .. } | Line::Designs { .. } => {}
         }
     }
@@ -876,10 +876,21 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx
 
 /// The lead's ANSWER (Some) or PASS (None) on item `id`'s landing clean-up question (desk_cleanup.rs); told when
 /// none waits on it.
-fn cleanup_said(st: &Store, project: &str, id: &str, answer: Option<String>, fx: &mut Effects, told: &mut Vec<String>) {
+#[allow(clippy::too_many_arguments)]
+fn cleanup_said(st: &mut Store, project: &str, by: &By, id: &str, answer: Option<String>, now: u64, fx: &mut Effects, told: &mut Vec<String>) {
     let id = st.desk.canon(id);
     match super::desk_cleanup::card_for(st, project, &id) {
-        Some(card) => fx.cleanup.push((card, answer)),
+        Some(card) => {
+            // Answered, it's one of the things the lead did on its own (#360): a step on the item.
+            if let Some(a) = &answer {
+                decide(st, project, Some(id.clone()), by.name, by.sid, &format!("Answered #{id}'s session: {a}"), "", now, fx);
+                if let Some(d) = st.desk.decisions.last_mut() {
+                    d.undo = "none".into();
+                    d.act = "answer".into();
+                }
+            }
+            fx.cleanup.push((card, answer));
+        }
         None => told.push(format!("No question from #{id} waits on you: nothing to answer or pass.")),
     }
 }

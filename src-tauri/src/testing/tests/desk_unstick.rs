@@ -59,7 +59,7 @@ fn the_lead_starts_an_item_waiting_for_a_copy_now_and_it_works_where_its_holder_
     assert_eq!((it["state"].as_str(), it["tree_wait"].as_bool().unwrap_or(false), it["tree"].is_null()), (Some("working"), false, true), "{it}");
     assert!(sent_to(&w, &h).iter().any(|t| t.contains(&format!("Desk item #{id}")) && t.contains("the user needs it now")), "its holder is told");
     let s = steps(&w, &project, &id);
-    assert!(s.iter().any(|d| d["text"] == format!("Started #{id} now, without waiting for a copy") && d["why"] == "the user needs it now"), "{s:?}");
+    assert!(s.iter().any(|d| d["text"] == format!("Started #{id} now, without waiting for a copy") && d["why"] == "the user needs it now" && d["act"] == "start"), "{s:?}");
     w.hub().desk_tick_now();
     w.settle();
     assert_eq!(item(&w, &project, "Header jumps")["state"], "working", "not queued for a copy again");
@@ -96,7 +96,7 @@ fn the_lead_takes_back_a_stuck_items_copy_its_work_is_kept_and_the_item_waiting_
     assert_eq!((footer["state"].as_str(), footer["tree"]["slot"].as_u64()), (Some("working"), Some(1)), "{footer}");
     assert!(sent_to(&w, &h).iter().any(|t| t.contains(&format!("Desk item #{id}: the Desk lead took back its copy"))), "its holder is told to stop");
     let s = steps(&w, &project, &id);
-    assert!(s.iter().any(|d| d["text"].as_str().unwrap().starts_with(&format!("Took back #{id}'s copy")) && d["why"].as_str().unwrap().starts_with("it stalled")), "{s:?}");
+    assert!(s.iter().any(|d| d["text"].as_str().unwrap().starts_with(&format!("Took back #{id}'s copy")) && d["act"] == "take_copy" && d["why"].as_str().unwrap().starts_with("it stalled")), "{s:?}");
 }
 
 #[test]
@@ -118,7 +118,7 @@ fn the_lead_moves_an_item_up_in_the_landing_line_and_it_lands_first() {
     w.advance(1000);
     w.settle();
     let s = steps(&w, &project, &f);
-    assert!(s.iter().any(|d| d["text"] == format!("Moved #{f} up in the landing line")), "{s:?}");
+    assert!(s.iter().any(|d| d["text"] == format!("Moved #{f} up in the landing line") && d["act"] == "land_first"), "{s:?}");
     std::fs::remove_file(dir.join(".git/MERGE_HEAD")).unwrap();
     w.hub().desk_tick_now();
     w.settle();
@@ -144,7 +144,7 @@ fn the_lead_closes_an_item_whose_work_is_already_on_main_and_its_copy_goes() {
     assert!(!path.exists(), "its copy, with nothing of its own, is gone");
     let short = &sha[..7];
     let s = steps(&w, &project, &id);
-    assert!(s.iter().any(|d| d["text"] == format!("Closed #{id}: its work is on main ({short})") && d["why"] == "it landed by hand"), "{s:?}");
+    assert!(s.iter().any(|d| d["text"] == format!("Closed #{id}: its work is on main ({short})") && d["why"] == "it landed by hand" && d["act"] == "close"), "{s:?}");
     assert!(sent_to(&w, &h).iter().any(|t| t.contains(&format!("Desk item #{id} is closed"))), "its holder stops");
 }
 

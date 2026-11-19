@@ -667,6 +667,14 @@ b.dk-say-t, .dk-say-t { font-weight: 650; color: var(--ink); }
 .dk-rchk-go { all: unset; flex: none; cursor: pointer; font-weight: 700; color: var(--ink); }
 .dk-rchk-go:hover { color: var(--link, var(--accent)); }
 .dk-chk-done { margin: 8px 0; }
+/* What the lead did on its own (#360): a line in its chat, its item's number opening the item. */
+.dk-act { margin: 8px 0; }
+.dk-act-it { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 3px; color: var(--ink); }
+.dk-act-it:hover .dk-inum { text-decoration: underline; }
+.dk-act-why { color: var(--muted); }
+.dk-prow.dk-pdid { cursor: default; }
+.dk-prow.dk-pdid:hover { background: none; }
+.dk-pdid .dk-prs { white-space: normal; line-height: 1.4; }
 /* Its item, a link in plain words (the page's done line, Cue's lines). */
 .dk-chk-a { all: unset; cursor: pointer; color: inherit; font-weight: inherit; }
 .dk-chk-a:hover { color: var(--link, var(--accent)); }

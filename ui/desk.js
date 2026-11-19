@@ -1031,13 +1031,27 @@ function deskChat(d) {
     && !thread.some((e) => e.role === "you" && e.at_ms >= p.at - 60000 && e.text.includes(p.text)));
   deskSent.set(d.project, pending);
   // The lead's own Desk lines drawn as lines, not raw text.
-  const rows = s ? deskChatRows(s, { extra: deskCheckRows(d), noSteps: true }) : "";
+  const rows = s ? deskChatRows(s, { extra: deskCheckRows(d).concat(deskActRows(d)), noSteps: true }) : "";
   const mine = pending.map((p) => { const hd = deskAboutHead(p); return `<div class="cv-you sending">${p.text ? `<div class="cv-you-text">${hd?.html || ""}${esc(hd ? hd.text : p.text).replace(/\n/g, "<br>")}</div>` : ""}${p.images?.length ? `<div class="thumbs">${p.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}<div class="cv-meta">Sending</div></div>`; }).join("");
   // Where the lead is now (working on what, its latest step, stuck, compacting), as under any session's chat.
   const where = s && sessionOf(s.session_id) ? whereNow(null, s) : "";
   const empty = !rows && !mine && !where ? `<div class="dk-empty">Tell ${esc(deskLeadName(d))} about a bug, a feature or a task. It adds them here, hands each to a session, and says why.</div>` : "";
   return `<div class="dk-chat" data-desk-chat="${esc(d.project)}">${empty}${rows}${mine}${where}</div>`;
 }
+/** What the lead did on its own (#360: closed, started, moved up, took back a copy, answered a session), newest first. */
+const deskActs = (d) => (d?.decisions || []).filter((x) => x.act && x.sid === deskLead(d)?.sid).sort((a, b) => b.at - a.at);
+/** One of those as a line: its words, the item's number opening its page, and why. */
+function deskActLine(x, d) {
+  const id = x.item_id || "", it = id && deskItem(d.project, id), at = x.text.indexOf(`#${id}`);
+  const num = `<button class="dk-act-it" data-desk-chk-item="${esc(id)}">${it ? deskKindIcon(it) : ""}<b class="dk-inum">#${esc(id)}</b></button>`;
+  const text = id && at >= 0 ? `${esc(x.text.slice(0, at))}${num}${esc(x.text.slice(at + id.length + 1))}` : esc(x.text);
+  return `${text}${x.why ? `<span class="dk-act-why"> · ${esc(x.why)}</span>` : ""}`;
+}
+/** Those lines for the lead's chat (chat/render.js chatHtml `extra`), each at its time. */
+const deskActRows = (d) => deskActs(d).map((x) => ({ at: x.at * 1000, html: keyed(`<div class="dk-act dk-cl"><span class="dk-cl-t"><b>${esc(x.by)}</b> · ${deskActLine(x, d)} <span class="dk-cl-age">· ${ago(x.at * 1000)}</span></span></div>`, `act:${x.id}`) }));
+/** How long the lead's last moves stay in the Dispatcher's panel, and how many. */
+const DESK_JUST_DID_MS = 30 * 60 * 1000, DESK_JUST_DID = 3;
+const deskJustDid = (d) => deskActs(d).filter((x) => now() - x.at * 1000 < DESK_JUST_DID_MS).slice(0, DESK_JUST_DID);
 /** A session's chat, opened from the sessions on the left: its name, Open its session, its messages and where it is
  *  now, as under any session's chat. */
 /** What every chat on the Desk is (chat type mark, pick O): one solid label in the theme color, the kind's icon (the
@@ -1777,19 +1791,25 @@ function deskRightChat(d, taskApprovals) {
   const why = (i) => (i.state === "needs_you" ? (i.ask?.kind === "permission" ? "Asks to use a tool" : "Asks you something") : "Ready to check");
   const waitRows = waits.map((i) => `<button class="dk-prow" data-desk-chk-item="${esc(i.id)}"><i class="dk-pdot ${i.state === "needs_you" ? "ask" : "check"}" aria-hidden="true"></i><span class="dk-prt">${deskKindIcon(i)}<b>${esc(deskNum(i))}</b></span><span class="dk-prs">${esc(why(i))} · ${ago(deskMs(i.updated))}</span></button>`).join("");
   const workRows = working.map(({ sid, name, on }) => `<button class="dk-prow" ${deskChatAttrs(sid, d)}><i class="dk-pdot work" aria-hidden="true"></i><span class="dk-prt"><b>${esc(name)}</b>${on ? ` <span class="dk-prs">on ${deskKindIcon(on)}#${esc(on.id)}</span>` : ""}</span></button>`).join("");
-  const panel = deskPsec(`Waits on you · ${waits.length}`, waitRows ? `<div class="dk-prows">${waitRows}</div>` : "") + deskPsec(`Working · ${working.length}`, workRows ? `<div class="dk-prows">${workRows}</div>` : "");
+  // The lead's own ask waits on you too, at the top, until it's answered (its card is under its chat).
+  const leadAsk = ask ? `<button class="dk-prow" data-desk-tab="lead"><i class="dk-pdot ask" aria-hidden="true"></i><span class="dk-prt"><b>${esc(deskLeadName(d))}</b></span><span class="dk-prs">${esc(summary(ask) || "Asks you something")} · ${ago(ask.created_ms || now())}</span></button>` : "";
+  const did = deskJustDid(d).map((x) => `<div class="dk-prow dk-pdid"><span class="dk-prs">${deskActLine(x, d)} · ${ago(x.at * 1000)}</span></div>`).join("");
+  const panel = deskPsec(`Waits on you · ${waits.length + (ask ? 1 : 0)}`, leadAsk || waitRows ? `<div class="dk-prows">${leadAsk}${waitRows}</div>` : "")
+    + deskPsec("Just did", did ? `<div class="dk-prows">${did}</div>` : "")
+    + deskPsec(`Working · ${working.length}`, workRows ? `<div class="dk-prows">${workRows}</div>` : "");
   const foot = ended || deskTab !== "lead" ? "" : ask ? `<div class="dk-ask">${askFoot(ask, ask.session_id, ask.harness || "claude", deskBoxKey({ project: d.project }))}</div>` : deskBox(d);
   return `<div class="dk-card dk-right">${deskPage({ page: "dispatcher", kind: "desk", back: `<span class="dk-back dk-here">${esc(deskName(d))}</span>`, mark: "Dispatcher · ", title: esc(deskLeadName(d)), meta: esc(meta),
-    now: deskLeadNow(d, waits, working), panel, main: `<div class="dk-tabs dk-ptabs">${tab("lead", esc(deskLeadName(d)), 0)}${tab("decisions", "Decisions", deskCalls(d).length)}</div>${main}`, foot })}</div>`;
+    now: deskLeadNow(d, waits, working, ask), panel, main: `<div class="dk-tabs dk-ptabs">${tab("lead", esc(deskLeadName(d)), 0)}${tab("decisions", "Decisions", deskCalls(d).length)}</div>${main}`, foot })}</div>`;
 }
 /** The sessions at work for Desk `d` (not its lead): [{ sid, name, on }], `on` the item each is on. */
 const deskWorkingFor = (d) => deskSessionsOf(d.project, d).filter((r) => deskHasSession(d, r.sid) && r.sid !== deskLead(d)?.sid && sessionOf(r.sid)?.state === "working").map((r) => ({ ...r, on: deskSessItem(d, r.sid) }));
 /** The Dispatcher's NOW (Lead chats pick 1 + D, as a panel since #200): its state's dot and word; a sentence: what it
  *  routes ("Routing #125"), what waits on you, how many items are with sessions; Check #131 opening the first that
  *  waits on you. Folded: "· 4 items · 6 sessions working". */
-function deskLeadNow(d, waits, working) {
+function deskLeadNow(d, waits, working, ask = null) {
   const resume = d.items.filter((i) => i.state === "needs_resume").length;
-  const fold = `${waits.length} waiting · ${working.length} ${working.length === 1 ? "session" : "sessions"} working${resume ? ` · ${resume} to resume` : ""}`;
+  const last = deskJustDid(d)[0];
+  const fold = `${waits.length + (ask ? 1 : 0)} waiting · ${working.length} ${working.length === 1 ? "session" : "sessions"} working${resume ? ` · ${resume} to resume` : ""}${last ? ` · Just did: ${esc(last.text)}, ${ago(last.at * 1000)}` : ""}`;
   if (deskLeadEnded(d)) return deskPnow({ dot: "stop", word: "Ended", say: "Items stay here: resume it or pick another.", fold });
   const lead = deskLead(d), s = sessionOf(lead.sid);
   const [dot, word] = deskPstate(s);
@@ -1797,7 +1817,7 @@ function deskLeadNow(d, waits, working) {
   const routing = word === "Working" && fresh.length === 1 ? fresh[0] : null;
   const held = d.items.filter((i) => i.holder && (deskMoving(i) || i.stopped || i.state === "queued" || i.state === "needs_resume") && deskGroupKey(i.holder) !== lead.sid).length;
   const num = (i) => `${deskKindIcon(i)}<b class="dk-inum">#${esc(i.id)}</b>`;
-  const say = [routing ? `Routing ${num(routing)} to a session.` : "", waits.length === 1 ? `${num(waits[0])} waits on you.` : waits.length ? `${waits.length} items wait on you.` : "",
+  const say = [ask ? "It asks you something: its question is under its chat." : "", routing ? `Routing ${num(routing)} to a session.` : "", waits.length === 1 ? `${num(waits[0])} waits on you.` : waits.length ? `${waits.length} items wait on you.` : "",
     resume ? `${resume} ${resume === 1 ? "item needs" : "items need"} to resume.` : "",
     held ? `${held} ${held === 1 ? "item is" : "items are"} with sessions.` : ""].filter(Boolean).join(" ") || "Nothing to route right now.";
   const check = waits.length ? `<button class="btn small primary dk-pgo" data-desk-chk-item="${esc(waits[0].id)}">Check #${esc(waits[0].id)}</button>` : "";

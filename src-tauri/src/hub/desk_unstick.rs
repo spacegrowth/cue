@@ -92,7 +92,7 @@ fn take_copy(st: &mut Store, project: &str, by: &By, id: &str, why: &str, now: u
     it.updated = secs(now);
     fx.items.push(id.to_string());
     let text = if back { format!("Took back #{id}'s copy; it's new again, its work kept on {}", t.branch) } else { format!("Took back #{id}'s copy") };
-    step(st, project, by, id, &text, why, now, fx);
+    step(st, project, by, "take_copy", id, &text, why, now, fx);
     Ok(())
 }
 
@@ -108,7 +108,7 @@ fn land_first(st: &mut Store, project: &str, by: &By, id: &str, why: &str, now: 
     it.updated = secs(now);
     fx.items.push(id.to_string());
     fx.land = true;
-    step(st, project, by, id, &format!("Moved #{id} up in the landing line"), why, now, fx);
+    step(st, project, by, "land_first", id, &format!("Moved #{id} up in the landing line"), why, now, fx);
     Ok(())
 }
 
@@ -136,7 +136,7 @@ fn start(st: &mut Store, project: &str, by: &By, id: &str, why: &str, now: u64, 
     }
     fx.items.push(id.to_string());
     let text = if copy { format!("Started #{id} now, without waiting for a copy") } else { format!("Started #{id} now") };
-    step(st, project, by, id, &text, why, now, fx);
+    step(st, project, by, "start", id, &text, why, now, fx);
     Ok(())
 }
 
@@ -149,12 +149,13 @@ fn shown_state(st: &Store, id: &str) -> String {
     })
 }
 
-/// The lead's unsticking, one of item `id`'s Steps: nothing to undo.
+/// The lead's unsticking (`what`, as `unstick` takes it), one of item `id`'s Steps: nothing to undo.
 #[allow(clippy::too_many_arguments)]
-fn step(st: &mut Store, project: &str, by: &By, id: &str, text: &str, why: &str, now: u64, fx: &mut Effects) {
+fn step(st: &mut Store, project: &str, by: &By, what: &str, id: &str, text: &str, why: &str, now: u64, fx: &mut Effects) {
     decide(st, project, Some(id.to_string()), by.name, by.sid, text, why, now, fx);
     if let Some(d) = st.desk.decisions.last_mut() {
         d.undo = "none".into();
+        d.act = what.into();
     }
 }
 
@@ -223,7 +224,7 @@ impl Hub {
             fx.items.push(o.id.clone());
             release(st, &o.id, now, &mut fx);
             let by = By { name: &o.by, sid: &o.by_sid };
-            step(st, &o.project, &by, &o.id, &format!("Closed #{}: its work is on {branch} ({short})", o.id), &o.why, now, &mut fx);
+            step(st, &o.project, &by, "close", &o.id, &format!("Closed #{}: its work is on {branch} ({short})", o.id), &o.why, now, &mut fx);
             Some(fx)
         });
         let Some(fx) = fx else { return };

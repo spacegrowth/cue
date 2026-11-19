@@ -412,6 +412,10 @@ pub struct DeskDecision {
     /// The message associated with this step, for showing its existing session delivery state.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub delivery: Option<DeskDelivery>,
+    /// What the lead did on its own (#360), shown in its chat as it happens and, for a while, in the Dispatcher's
+    /// panel: "close" | "take_copy" | "land_first" | "start" | "answer"; "" for any other step.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub act: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

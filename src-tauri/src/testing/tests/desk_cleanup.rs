@@ -53,6 +53,9 @@ fn a_landing_clean_up_question_goes_to_the_lead_who_answers_it_and_you_see_it_on
         other => panic!("no answer: {:?} {:?}", other.is_ok(), told(&w, &lead)),
     }
     assert!(w.snapshot().cards_of(&h).is_empty(), "answered");
+    // What the lead did on its own (#360): a step on the item, shown in its chat and the Dispatcher's panel.
+    let did = desk(&w, &project)["decisions"].as_array().unwrap().iter().find(|d| d["act"] == "answer").cloned().expect("the answer noted");
+    assert_eq!((did["item_id"].as_str(), did["text"].as_str(), did["sid"].as_str()), (Some(id.as_str()), Some(format!("Answered #{id}'s session: 2").as_str()), Some(lead.as_str())));
 
     // Asked again, the lead passes it on: now it's yours, on the item too.
     let (card, _rx) = ask(&w, &h, "Stray copy still holds the branch, landing fails. Remove the copy?", &["Remove it", "Keep it"]);
