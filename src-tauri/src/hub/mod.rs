@@ -22,6 +22,7 @@ mod desk_said;
 mod desk_view;
 mod desk_spaces;
 mod desk_away;
+mod desk_held;
 mod desk_pause;
 pub(crate) use desk_pause::pause_view as desk_pause_view;
 #[cfg(test)]
@@ -50,6 +51,8 @@ mod land_keep;
 pub(crate) use desk_lead::DeskClaim;
 pub(crate) use desk_checks::builds_this_cue;
 pub(crate) use desk_pr::PR_CLOSED;
+#[cfg(test)]
+pub(crate) use desk_held::HELD_WORDS;
 pub(crate) use desk_trees::tree_line;
 mod events;
 mod guard;

@@ -98,13 +98,31 @@ function deskAwayMark(c) {
 /** What Away adds under Waiting on you: open asks from the Desk's sessions not already on an item (a permission with
  *  Allow / Deny right there; the lead never grants one), and sessions on a usage limit as one quiet line. */
 function deskAwayWaiting(d, taskApprovals) {
-  if (!d?.away?.on) return { n: 0, html: "" };
+  // Steps held while you were away (#406): listed until you answer them, Away on or not.
+  const held = deskHeldRows(d);
+  if (!d?.away?.on) return { n: held.n, html: held.html };
   const { asks } = deskAwayNeeds(d, taskApprovals);
   const askRow = (it) => it.kind === "permission" ? deskAwayAsk(it, d, "Deny") : `<button class="dk-prow" ${deskChatAttrs(it.session_id, d)}><i class="dk-pdot ask" aria-hidden="true"></i><span class="dk-prt"><b>${esc(deskHolderName(it.session_id))}</b> <span class="dk-prs">asks you · ${esc(deskOneLine(summary(it)))}</span></span></button>`;
   const paused = [d.lead?.sid, ...(d.members || [])].filter((sid, k, all) => sid && all.indexOf(sid) === k && deskPausedTill(sid));
   const till = paused.length ? Math.max(...paused.map(deskPausedTill)) : 0;
   const quiet = paused.length ? `<div class="dk-aw-quiet">${esc(paused.map((sid) => deskHolderName(sid)).join(", "))} paused${till > 1 ? ` till ${deskHm(till)}` : ""} · Cue carries on then</div>` : "";
-  return { n: asks.length, html: (asks.length ? `<div class="dk-prows dk-aw-asks">${asks.map(askRow).join("")}</div>` : "") + quiet };
+  return { n: held.n + asks.length, html: held.html + (asks.length ? `<div class="dk-prows dk-aw-asks">${asks.map(askRow).join("")}</div>` : "") + quiet };
+}
+
+/** Desk `d`'s held steps (hub/desk_held.rs): who, what it wants to do in plain words, the exact command, Allow and No.
+ *  Only what you allow runs, in the order the session asked. */
+function deskHeldRows(d) {
+  const held = d?.held || [];
+  if (!held.length) return { n: 0, html: "" };
+  const row = (h) => `<div class="dk-request dk-aw-ask dk-held" data-held-row="${esc(h.id)}"><div class="dk-request-who">${esc(h.who || deskHolderName(h.sid))} wants to ${esc(h.what)} · held while you were away</div><pre>${esc(h.command)}</pre><div class="row-btns"><button class="btn deny flex" data-desk-held="${esc(h.id)}" data-allow="0">No</button><button class="btn primary flex" data-desk-held="${esc(h.id)}" data-allow="1">Allow</button></div></div>`;
+  return { n: held.length, html: `<div class="dk-prows dk-aw-asks">${held.map(row).join("")}</div>` };
+}
+/** Your Allow or No to held step `id`: gone from the list at once; the session is told once its earlier ones are answered. */
+async function deskHeldAnswer(id, allow) {
+  const d = (state.desk?.projects || []).find((x) => (x.held || []).some((h) => h.id === id));
+  if (d) d.held = d.held.filter((h) => h.id !== id);
+  renderMain();
+  try { await invoke("desk_held_answer", { id, allow }); } catch (err) { toast(`Couldn't answer the held step: ${err}`); }
 }
 
 /** The rules card, open: { project (the Desk it was opened on), on (Away is on there), until "HH:MM", budget "10",

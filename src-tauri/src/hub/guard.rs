@@ -11,14 +11,17 @@ impl Hub {
     /// A tool call checked before it runs. `hits`: the kinds its sender saw (empty: read here from `tool_input`, with
     /// `branch` for a plain push). Its card and the receiver its connection waits on, or None: it passes.
     pub fn guard(&self, origin: Origin, tool_name: String, tool_input: Value, hits: &[String], branch: &str, agent_id: String) -> Option<(String, oneshot::Receiver<Reply>)> {
-        let origin = self.guarded(origin, &tool_input, hits, branch)?;
+        let (origin, kinds) = self.guarded(origin, &tool_input, hits, branch)?;
+        if let Some(held) = self.held_guard(&origin, &tool_name, &tool_input, &kinds) {
+            return Some(held);
+        }
         let ask = NewAsk { kind: "permission".into(), tool_name, tool_input, suggestions: json!([]), context: vec![], agent_id };
         self.add_guard_ask(origin, None, ask)
     }
 
     /// The origin its card goes under (a session Cue hosts as it's kept here: its hook doesn't say it's hosted),
-    /// when it's asked first about; None when it isn't.
-    fn guarded(&self, origin: Origin, tool_input: &Value, hits: &[String], branch: &str) -> Option<Origin> {
+    /// and the kinds it is, when it's asked first about; None when it isn't.
+    fn guarded(&self, origin: Origin, tool_input: &Value, hits: &[String], branch: &str) -> Option<(Origin, Vec<String>)> {
         let origin = self.read(|st| st.sessions.get(&origin.session_id).map(|s| s.origin.clone()).filter(|o| o.hosted)).unwrap_or(origin);
         let project = super::crew_log::project_shown_for(&origin);
         if !self.read(|st| has_desk(st, &project)) {
@@ -30,13 +33,17 @@ impl Hub {
         } else {
             hits.iter().map(String::as_str).collect()
         };
-        asked_about(&crate::one_way::kinds(&project), &hits).then_some(origin)
+        let kinds = crate::one_way::kinds(&project);
+        asked_about(&kinds, &hits).then(|| (origin, hits.iter().filter(|h| kinds.contains(h)).map(|h| h.to_string()).collect()))
     }
 
     /// The same for a hosted Pi's ask (its extension can't count on reaching Cue's socket), keyed by its request:
     /// None when it passes; Some(None) when its card is already open (the same lines read again).
     pub(super) fn hosted_guard(&self, origin: Origin, request_id: &str, tool_name: String, tool_input: Value, branch: &str) -> Option<Option<(String, oneshot::Receiver<Reply>)>> {
-        let origin = self.guarded(origin, &tool_input, &[], branch)?;
+        let (origin, kinds) = self.guarded(origin, &tool_input, &[], branch)?;
+        if let Some(held) = self.held_guard(&origin, &tool_name, &tool_input, &kinds) {
+            return Some(Some(held));
+        }
         let ask = NewAsk { kind: "permission".into(), tool_name, tool_input, suggestions: json!([]), context: vec![], agent_id: String::new() };
         Some(self.add_guard_ask(origin, Some(request_id), ask))
     }

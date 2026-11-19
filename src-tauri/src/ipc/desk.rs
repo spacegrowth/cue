@@ -159,6 +159,12 @@ pub(crate) async fn desk_old_copies(hub: State<'_, Arc<Hub>>, desk: String, yes:
     with_hub(&hub, move |h| h.desk_old_copies_answer(&desk, yes)).await?
 }
 
+/// Your Allow (`allow` true) or No to a step held while you were away (hub/desk_held.rs).
+#[tauri::command]
+pub(crate) async fn desk_held_answer(hub: State<'_, Arc<Hub>>, id: String, allow: bool) -> Result<(), String> {
+    with_hub(&hub, move |h| h.desk_held_answer(&id, allow)).await?
+}
+
 /// Away mode for Desk `desk` (`away`: { on, until, budget, rules }): saved, its lead told. Returns its view.
 #[tauri::command]
 pub(crate) async fn desk_away_set(hub: State<'_, Arc<Hub>>, desk: String, away: serde_json::Value) -> Result<serde_json::Value, String> {

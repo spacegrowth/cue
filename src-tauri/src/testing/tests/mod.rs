@@ -10,6 +10,7 @@ mod db_faults;
 mod db_history;
 mod desk;
 mod desk_away;
+mod desk_held;
 mod desk_pause;
 mod desk_delivery;
 mod desk_approvals;

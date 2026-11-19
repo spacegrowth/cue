@@ -1,5 +1,5 @@
 // Fakes for the Desk's commands (desk_set_lead, desk_start, desk_send, desk_add, desk_give, desk_member, desk_item_act,
-// desk_looks_right, desk_commit_undo, desk_item_diff, desk_done, desk_moves, desk_moves_clear, desk_undo): `state.desk`,
+// desk_looks_right, desk_commit_undo, desk_item_diff, desk_done, desk_moves, desk_moves_clear, desk_undo, desk_held_answer): `state.desk`,
 // one entry a project with its items, its lead, its sessions (members) and today's decisions. Times are seconds; a dropped item stays, as
 // "dropped". A lead is a session like any other: desk_set_lead names one (or starts "<project>-lead", hosted), and
 // desk_send hands it your message as a session takes one.
@@ -232,6 +232,13 @@ CueBridge.area("desk", (w) => {
       dec.undo = "asked";
       w.changed();
       return "Asked its lead to undo it";
+    },
+    // A step held while you were away (hub/desk_held.rs): answered, so it leaves its Desk's list.
+    desk_held_answer: ({ id }) => {
+      const d = desk().projects.find((x) => (x.held || []).some((h) => h.id === id));
+      if (!d) throw "that step was already answered or isn't held any more";
+      d.held = d.held.filter((h) => h.id !== id);
+      w.changed();
     },
   };
 });

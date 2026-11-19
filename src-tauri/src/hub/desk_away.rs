@@ -2,7 +2,8 @@
 //! writes each as a DECIDED line the owner can undo; everything else waits as an ASK. Kept per Desk in config.json
 //! (`desk.away`: { <desk id>: { on, since, until, budget, base, ended, rules } }). It ends by itself at its end time
 //! or once the Desk's sessions have spent its budget (checked as a Desk session's turn ends); the lead is told each
-//! time it changes. Ask me before (guard.rs) is untouched: those steps wait for the owner either way.
+//! time it changes. Ask me before (guard.rs) still waits for the owner: while Away is in force, as a held step
+//! (desk_held.rs) the session carries on past.
 
 use super::*;
 
@@ -44,6 +45,16 @@ fn desk_sids(st: &Store, desk: &str) -> Vec<String> {
         }
     }
     out
+}
+
+/// Whether session `sid` is Desk `desk`'s lead or one of its sessions.
+pub(super) fn on_desk(st: &Store, desk: &str, sid: &str) -> bool {
+    desk_sids(st, desk).iter().any(|s| s == sid)
+}
+
+/// Whether Desk `desk`'s Away is on and in force at `now` (not past its end time or budget).
+pub(super) fn away_in_force(st: &Store, desk: &str, now: u64) -> bool {
+    saved(desk).get("on").and_then(Value::as_bool).unwrap_or(false) && Away::read(st, desk, now).active()
 }
 
 /// What Desk `desk`'s sessions have cost so far, summed.
@@ -175,7 +186,7 @@ fn block(a: &Away, now: u64) -> String {
         out.push_str(&format!("- {words}\n"));
     }
     out.push_str("Don't wait on an ASK: carry on with the other items.\n");
-    out.push_str("A session stopped on a permission it can't grant itself waits for the owner in the Away list. Never grant it yourself: don't allow it, don't change its permission settings, don't tell it to get round it. Move the other items along meanwhile.\n");
+    out.push_str("A session's Ask me before step (delete, push, release) is held for the owner: the session is told and carries on; the owner allows or refuses it on return. A session stopped on a permission it can't grant itself waits for the owner in the Away list. Never grant it yourself: don't allow it, don't change its permission settings, don't tell it to get round it. Move the other items along meanwhile.\n");
     if on("route") {
         out.push_str("Start at most 3 new sessions while the owner is away.\n");
     }

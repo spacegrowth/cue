@@ -247,3 +247,29 @@ test("while away, a session stopped on a permission shows in Waiting on you with
   await row.locator('[data-act="allow"]').click();
   expect((await cue.called("respond", { id: "n-perm" })).args.decision.behavior).toBe("allow");
 });
+
+test("steps held while you were away list under Waiting on you in plain words with Allow and No, Away on or off (#406)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  const items = page.locator(".dk-items");
+  await expect(items.locator(".dk-gh.you")).toHaveText("Waiting on you 1");
+  await cue.change((st) => {
+    const d = st.desk.projects.find((x) => x.project === "cue");
+    d.held = [{ id: "held-1", sid: "site", who: "site", what: "delete files", command: "rm -rf build", at: 1 },
+      { id: "held-2", sid: "site", who: "site", what: "push", command: "git push origin main", at: 2 }];
+  });
+  await expect(items.locator(".dk-gh.you")).toHaveText("Waiting on you 3");
+  const rows = items.locator(".dk-held");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0).locator(".dk-request-who")).toHaveText("site wants to delete files · held while you were away");
+  await expect(rows.nth(0).locator("pre")).toHaveText("rm -rf build");
+  await expect(rows.nth(1).locator(".dk-request-who")).toHaveText("site wants to push · held while you were away");
+  await expect(rows.nth(0).locator("button")).toHaveText(["No", "Allow"]);
+  await expect(items.locator(".dk-held [title]")).toHaveCount(0);
+  await rows.nth(1).locator('[data-allow="1"]').click();
+  await cue.called("desk_held_answer", { id: "held-2", allow: true });
+  await expect(rows).toHaveCount(1);
+  await rows.nth(0).locator('[data-allow="0"]').click();
+  await cue.called("desk_held_answer", { id: "held-1", allow: false });
+  await expect(rows).toHaveCount(0);
+});
