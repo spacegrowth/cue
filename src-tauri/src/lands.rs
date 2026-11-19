@@ -5,8 +5,8 @@
 //! a push. Cue's own project has Cue's setup (its check, then installed or served in place), and a folder that isn't a
 //! git repository can only work in place, its work committed by you.
 //!
-//! Some choices are shown before Cue can do them (a branch, merge, a pull request, a command of your own, a push after
-//! each landing): they can't be picked, and say so. The Desk reads the rest as it works (hub/desk_trees.rs,
+//! Some choices are shown before Cue can do them (a branch, merge, a command of your own): they can't be picked, and
+//! say so. A pull request and the push choices are built (hub/desk_pr.rs). The Desk reads the rest as it works (hub/desk_trees.rs,
 //! hub/desk_finish.rs, hub/desk_commit.rs).
 
 use serde_json::{json, Map, Value};
@@ -47,7 +47,7 @@ pub const PARTS: &[Part] = &[
         choices: &[
             c("squash", "One commit per item", "The Desk puts each item on main as one commit, named after the item. One at a time.", true),
             c("merge", "Merge", "", false),
-            c("pr", "Pull request", "", false),
+            c("pr", "Pull request", "The Desk checks each item, pushes its branch and opens a pull request. It lands once the pull request is merged.", true),
             c("owner", "You commit", "The Desk commits nothing. A finished item shows its changed files and waits for you.", true),
         ],
     },
@@ -73,9 +73,9 @@ pub const PARTS: &[Part] = &[
         key: "push",
         label: "Push to main",
         choices: &[
-            c("never", "Never", "Nothing is pushed. You push by hand.", true),
+            c("never", "Never", "The Desk pushes nothing and asks nothing. You push by hand.", true),
             c("ask", "Ask each time", "A push to main asks you first, naming its commits.", true),
-            c("after", "After each landing", "", false),
+            c("after", "After each landing", "After each landing the Desk pushes main as it is, everything on it, without asking. Never forced. Sessions still never push main.", true),
         ],
     },
 ];
@@ -172,7 +172,7 @@ pub fn allowed(part: &str, key: &str, place: Place) -> Result<&'static str, &'st
     }
     match (part, key, place) {
         ("check", "cue", p) | ("after", "install", p) if p != Place::Cue => Err("only for Cue's own project"),
-        ("where", "copy", Place::NoRepo) | ("how", "squash", Place::NoRepo) => Err("needs a git repository"),
+        ("where", "copy", Place::NoRepo) | ("how", "squash" | "pr", Place::NoRepo) => Err("needs a git repository"),
         _ => Ok(ch.key),
     }
 }
@@ -194,6 +194,10 @@ pub fn of_in(c: &Value, project: &str, place: Place) -> Lands {
     // You commit: there's no copy for it to land from.
     if l.how == "owner" {
         l.at = "shared";
+    }
+    // A pull request: its branch is the item's own copy's, so there's none in the shared folder.
+    if l.how == "pr" && l.at == "shared" {
+        l.how = defaults(place).how;
     }
     l
 }
@@ -253,6 +257,7 @@ fn short(part: &str, key: &str) -> &'static str {
         ("where", "copy") => "own copy",
         ("how", "squash") => "one commit per item",
         ("how", "owner") => "you commit",
+        ("how", "pr") => "pull request",
         ("check", "none") => "not checked",
         _ => "checked",
     }
@@ -305,6 +310,9 @@ pub fn save(project: &str, place: Place, value: &Value) -> Result<Lands, String>
     if out.get("how").and_then(Value::as_str) == Some("owner") && out.get("where").and_then(Value::as_str).is_some_and(|w| w != "shared") {
         return Err("You commit works only in the shared folder".into());
     }
+    if out.get("how").and_then(Value::as_str) == Some("pr") && out.get("where").and_then(Value::as_str) == Some("shared") {
+        return Err("A pull request needs each item in its own copy".into());
+    }
     crate::config::update("project.lands", |c| {
         let mut map = c.pointer("/project/lands").cloned().filter(Value::is_object).unwrap_or_else(|| json!({}));
         map[project] = Value::Object(out);
@@ -351,8 +359,10 @@ mod tests {
     #[test]
     fn what_cant_be_picked_says_why_in_plain_words() {
         assert_eq!(allowed("where", "branch", Place::Repo), Err(NOT_YET));
-        assert_eq!(allowed("how", "pr", Place::Cue), Err(NOT_YET));
-        assert_eq!(allowed("push", "after", Place::Cue), Err(NOT_YET));
+        assert_eq!(allowed("how", "merge", Place::Cue), Err(NOT_YET));
+        assert_eq!(allowed("how", "pr", Place::Repo), Ok("pr"));
+        assert_eq!(allowed("how", "pr", Place::NoRepo), Err("needs a git repository"));
+        assert_eq!(allowed("push", "after", Place::Cue), Ok("after"));
         assert_eq!(allowed("check", "command", Place::Cue), Err(NOT_YET));
         assert_eq!(allowed("check", "cue", Place::Repo), Err("only for Cue's own project"));
         assert_eq!(allowed("where", "copy", Place::NoRepo), Err("needs a git repository"));
@@ -361,9 +371,11 @@ mod tests {
 
     #[test]
     fn a_saved_setting_holds_and_you_commit_means_the_shared_folder() {
-        let c = json!({ "project": { "lands": { "p": { "where": "copy", "how": "owner", "check": "none", "at_once": 5, "push": "after" } } } });
+        let c = json!({ "project": { "lands": { "p": { "where": "branch", "how": "owner", "check": "command", "at_once": 5, "push": "after" } } } });
         let l = of_in(&c, "p", Place::Repo);
-        assert_eq!((l.at, l.how, l.at_once, l.push), ("shared", "owner", 5, "ask"), "a choice not built yet is never in effect");
+        assert_eq!((l.at, l.how, l.check, l.at_once, l.push), ("shared", "owner", "none", 5, "after"), "a choice not built yet is never in effect");
+        let c = json!({ "project": { "lands": { "p": { "where": "shared", "how": "pr" } } } });
+        assert_eq!(of_in(&c, "p", Place::Repo).how, "squash", "a pull request needs a copy");
         assert!(checked(&json!({ "p": { "where": "nowhere" } })).is_err());
         assert!(checked(&json!({ "p": { "at_once": 0 } })).is_err());
         assert!(checked(&json!({ "p": { "where": "shared", "at_once": 2 } })).is_ok());

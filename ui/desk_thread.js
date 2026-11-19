@@ -244,7 +244,9 @@ function deskItemMeta(i, d) {
   const cm = i.state === "done" ? i.commit : i.state === "to_check" ? deskFinCommit(i) : "";
   // Landed with no check to run (its repository has none).
   const unchecked = cm && i.finish?.unchecked ? " · landed, not checked" : "";
-  return [deskFeat(i) ? deskFeatBar(i, " big") : "", who ? `${i.state === "queued" ? "next for" : i.state === "done" ? "by" : "with"} ${who}` : "", cm ? `committed <span class="dk-cm">${esc(cm)}</span>${unchecked}` : "",
+  // Its project pushes main after each landing: pushed, or why not.
+  const pushed = cm && i.finish?.pushed ? ` · ${esc(i.finish.pushed[0].toLowerCase() + i.finish.pushed.slice(1))}` : "";
+  return [deskFeat(i) ? deskFeatBar(i, " big") : "", who ? `${i.state === "queued" ? "next for" : i.state === "done" ? "by" : "with"} ${who}` : "", cm ? `committed <span class="dk-cm">${esc(cm)}</span>${unchecked}${pushed}` : "",
     i.tree && i.state !== "done" ? `in its own copy <span class="dk-cm">${esc(i.tree.branch)}</span>` : "",
     `added by ${esc(deskFrom(i, d))}`, `${ago(deskMs(i.created))} ago`].filter(Boolean).join(" · ");
 }

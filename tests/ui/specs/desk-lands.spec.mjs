@@ -29,10 +29,14 @@ test("Cue's own Desk says how its work lands, and Change opens the setting with 
   await expect(seg("After landing").locator("button.on")).toHaveText("Install or serve Cue");
   await expect(seg("Push to main").locator("button.on")).toHaveText("Ask each time");
   // Not built yet: shown, can't be picked.
-  for (const [label, name] of [["Where an item works", "A branch"], ["How it lands", "Merge"], ["How it lands", "Pull request"], ["Check before landing", "A command"], ["After landing", "A command"], ["Push to main", "After each landing"]]) {
+  for (const [label, name] of [["Where an item works", "A branch"], ["How it lands", "Merge"], ["Check before landing", "A command"], ["After landing", "A command"]]) {
     const b = seg(label).locator("button", { hasText: name });
     await expect(b).toBeDisabled();
     await expect(b.locator(".ld-not")).toHaveText("not yet");
+  }
+  // Built: a pull request, and every push choice.
+  for (const [label, name] of [["How it lands", "Pull request"], ["Push to main", "Never"], ["Push to main", "After each landing"]]) {
+    await expect(seg(label).locator("button", { hasText: name })).toBeEnabled();
   }
   await expect(dlg.locator("[title]")).toHaveCount(0);
   // Esc closes it, nothing saved.

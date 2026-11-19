@@ -468,6 +468,12 @@ function deskWaitsOn(i) {
   }
   // Queued after another item: "What's holding it up" on its page says so, with Start it now / Put it before here.
   const f = i.finish;
+  // In review: its pull request, and a way to it. It lands once that's merged; closed unmerged, it goes back.
+  if (f?.step === "review" && f.pr) {
+    const sub = f.wait || deskSince(f.at);
+    return box(`A review of its pull request · <a href="#" data-href="${esc(f.pr)}">${esc(f.pr.replace(/^https?:\/\//, ""))}</a>`, sub,
+      `<div class="dk-acts"><a class="btn small primary" href="#" data-href="${esc(f.pr)}">Open the PR</a></div>`);
+  }
   if (!f?.question) return "";
   const q = esc(f.question);
   // A check (the build, the new Cue starting) that failed: its holder fixes it; the output is its log. Or, when main
@@ -478,6 +484,8 @@ function deskWaitsOn(i) {
   }
   // A word that mustn't go in, a clash with the main line: its holder's to fix.
   if (f.step === "word" || f.step === "conflict") return box(q, deskSince(f.at), `<div class="dk-acts">${btn("fix_back", "Send back to fix", "primary")}</div>`);
+  // Its branch couldn't be pushed or its pull request opened (it says why), or the pull request was closed unmerged.
+  if (f.step === "pr_failed" || f.step === "pr_closed") return box(q, deskSince(f.at), `<div class="dk-acts">${btn("rerun", f.step === "pr_failed" ? "Run the landing again" : "Open a new pull request")}${back}</div>`);
   // Nothing Cue can name: a plain retry, said so.
   return box(q, deskSince(f.at), `<div class="dk-acts">${btn("rerun", "Run the landing again")}${back}</div><div class="dk-wo-s">A plain retry: nothing known is in its way.</div>`);
 }

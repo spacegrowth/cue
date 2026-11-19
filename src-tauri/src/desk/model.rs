@@ -317,7 +317,8 @@ pub struct CommitWait {
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct Finish {
     /// "commit" (being made) | "line" (in its own copy, waiting in the landing line: `wait` says on what) |
-    /// "checking" (its check runs before it lands) | "check_failed" | "landing" (made,
+    /// "checking" (its check runs before it lands) | "check_failed" | "review" (its pull request is open: `pr`) |
+    /// "pr_failed" (its branch couldn't be pushed or its pull request opened) | "pr_closed" | "landing" (made,
     /// and not on main yet: `wait` says where it is) | "queued" (for
     /// the next install) | "building" | "installing" | "starting" | "word" (the word check found one) | "conflict"
     /// (the merge of its crew's branch) | "error" (git couldn't commit) | "failed" (the build) | "rolled_back" (the
@@ -339,7 +340,8 @@ pub struct Finish {
     /// is while it isn't on main ("on fix-header, not main").
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub wait: String,
-    /// When it began to wait for its work to be on main (ms): past `desk_finish::WAIT_ASK_MS` it's asked of you.
+    /// When it began to wait for its work to be on main (ms): past `desk_finish::WAIT_ASK_MS` it's asked of you. In
+    /// review, when its pull request was first seen merged but not on main (hub/desk_pr.rs).
     #[serde(default, skip_serializing_if = "is_zero_u64")]
     pub wait_from: u64,
     /// What it asks you, when it stopped: the window shows it as needing you.
@@ -364,6 +366,16 @@ pub struct Finish {
     /// Landed with no check to run (its repository has none): shown as "landed, not checked".
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub unchecked: bool,
+    /// Its pull request's link, once the Desk opened one (step "review", hub/desk_pr.rs).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub pr: String,
+    /// The branch its pull request goes into ("main"): once merged, the main checkout is brought up to it only while
+    /// that's the branch it's on.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub base: String,
+    /// Its project pushes main after each landing: "pushed", or why it couldn't ("" when nothing was pushed).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub pushed: String,
 }
 
 /// An item's own copy of its repository (hub/desk_trees.rs): the main checkout it's from, the copy's folder, its
@@ -522,6 +534,14 @@ pub struct Desk {
     /// What builds and installs this Cue with a finished item's commit: the app's own (self_install.rs) unless a test
     /// put another in. Not saved.
     pub installer: InstallerSlot,
+    /// The program a pull request is opened and read with: GitHub's gh unless a test put a fake in. Not saved.
+    pub gh: String,
+    /// When Cue last read each item's pull request (ms): it looks once a minute. Not saved.
+    pub pr_looked: HashMap<String, u64>,
+    /// Reads of each item's pull request that failed in a row: it says so only from the third. Not saved.
+    pub pr_misses: HashMap<String, u32>,
+    /// How long a push, a fetch or a gh call may take (ms; 0 for a minute): a test's shorter. Not saved.
+    pub net_cap_ms: u64,
     /// Finishing items whose commit is being made now, and "tick" while the finishing tick runs: one run of each at a
     /// time (hub/desk_finish.rs). Not saved.
     pub finish_claims: HashSet<String>,

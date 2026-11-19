@@ -12,8 +12,8 @@ use std::sync::{Arc, Mutex};
 
 /// An installer whose check passes, and that keeps what it was asked to check.
 #[derive(Default)]
-struct Checker {
-    checked: Mutex<Vec<String>>,
+pub(super) struct Checker {
+    pub(super) checked: Mutex<Vec<String>>,
 }
 
 impl Installer for Checker {
@@ -40,7 +40,7 @@ impl Installer for Checker {
 }
 
 /// Session `h`'s project set to `lands`, as the Desk's setting saves it.
-fn set(w: &World, h: &str, lands: Value) {
+pub(super) fn set(w: &World, h: &str, lands: Value) {
     let project = w.snapshot().session(h)["project"].as_str().unwrap().to_string();
     crate::lands::save(&project, crate::lands::Place::Repo, &lands).unwrap();
 }
@@ -65,11 +65,14 @@ fn a_new_project_shows_the_defaults_and_what_cant_be_picked_yet_says_so() {
     assert_eq!(l["set"], json!({ "where": "copy", "how": "squash", "check": "none", "after": "nothing", "push": "ask", "at_once": 3 }), "{l}");
     assert_eq!(l["summary"], "own copy, not checked, one commit per item");
     let choice = |part: &str, key: &str| l["parts"].as_array().unwrap().iter().find(|p| p["key"] == part).unwrap()["choices"].as_array().unwrap().iter().find(|c| c["key"] == key).cloned().unwrap();
-    for (part, key) in [("where", "branch"), ("how", "merge"), ("how", "pr"), ("check", "command"), ("after", "command"), ("push", "after")] {
+    for (part, key) in [("where", "branch"), ("how", "merge"), ("check", "command"), ("after", "command")] {
         assert_eq!((choice(part, key)["ok"].as_bool(), choice(part, key)["why"].as_str()), (Some(false), Some("not yet")), "{part} {key}");
     }
     assert_eq!(choice("check", "cue")["why"], "only for Cue's own project");
-    let err = w.hub().desk_lands_set(&project, &json!({ "how": "pr" })).unwrap_err();
+    for (part, key) in [("how", "pr"), ("push", "after"), ("push", "never")] {
+        assert_eq!(choice(part, key)["ok"], true, "{part} {key} can be picked");
+    }
+    let err = w.hub().desk_lands_set(&project, &json!({ "how": "merge" })).unwrap_err();
     assert!(err.contains("not yet"), "{err}");
     let saved = w.hub().desk_lands_set(&project, &json!({ "where": "shared", "at_once": 2 })).unwrap();
     assert_eq!((saved["set"]["where"].as_str(), saved["set"]["at_once"].as_u64(), saved["summary"].as_str()), (Some("shared"), Some(2), Some("shared folder, not checked, one commit per item")));

@@ -148,7 +148,7 @@ impl Hub {
     }
 
     /// `f` done to item `id` while it's still finishing, saved; the item as it is then.
-    fn finish_set(&self, id: &str, f: impl FnOnce(&mut DeskItem)) -> Option<DeskItem> {
+    pub(super) fn finish_set(&self, id: &str, f: impl FnOnce(&mut DeskItem)) -> Option<DeskItem> {
         let it = self.desk_saving(|| {
             let it = self.write(|st| {
                 let i = st.desk.item_mut(id).filter(|i| i.state == "finishing" && i.finish.is_some())?;
@@ -395,6 +395,10 @@ impl Hub {
                 return self.finish_landing(id, &top, &head, at);
             }
         }
+        // On main: pushed now when its project pushes after each landing (hub/desk_pr.rs).
+        if !top.is_empty() {
+            self.desk_push_after(id, &project, &top);
+        }
         // Only the window's files changed since the running Cue's build: they're served in place, no install.
         let in_place = if cue.is_some() { self.ui_in_place(&top, &head) } else { Ok(false) };
         if !matches!(in_place, Ok(false)) {
@@ -533,6 +537,8 @@ impl Hub {
     pub(super) fn desk_finish_tick(&self) {
         let Some(_claim) = Claim::take(self, "tick") else { return };
         self.finish_tick();
+        // Pull requests open for review: read once a minute (hub/desk_pr.rs).
+        self.desk_pr_tick();
         self.desk_trees_catch_up();
         self.desk_old_copies_tick();
         self.taken_out_tick();
@@ -836,7 +842,12 @@ impl Hub {
     /// Cue can name nothing in its way (#250; what it can name has its own offer, desk_waits.rs): an install that
     /// failed is queued again; anything else is committed again, what an earlier round made kept.
     pub(crate) fn desk_rerun_landing(&self, id: &str) -> Result<DeskItem, String> {
-        let at = self.read(|st| st.desk.item(id).map(|i| i.finish.clone().filter(|f| i.state == "finishing" && !f.question.is_empty()))).ok_or("no such item")?;
+        let at = self.read(|st| st.desk.item(id).map(|i| i.finish.clone().filter(|_| i.state == "finishing"))).ok_or("no such item")?;
+        // In review: its pull request is open, so nothing is pushed or opened again; it lands once that's merged.
+        if at.as_ref().is_some_and(|f| f.step == "review") {
+            return Err("Its pull request is open for review: it lands once that's merged".into());
+        }
+        let at = at.filter(|f| !f.question.is_empty());
         let Some(fin) = at else { return Err("It isn't stopped on a question".into()) };
         let now = now_ms();
         let install = stopped_install(&fin.step) && !fin.repo.is_empty();
@@ -846,6 +857,10 @@ impl Hub {
                 true => Finish { step: "queued".into(), at: now, ..begun(now, Some(&fin)) },
                 // A failed check retried: back in the landing line in its place.
                 false if i.tree.is_some() && fin.step == "check_failed" => Finish { step: "line".into(), at: fin.at, ..begun(now, Some(&fin)) },
+                // Its branch not pushed or its pull request not opened: back in the line, its check kept; a pull
+                // request closed unmerged: opened again from its copy as it is.
+                false if i.tree.is_some() && fin.step == "pr_failed" => Finish { step: "line".into(), at: fin.at, checked: fin.checked.clone(), unchecked: fin.unchecked, ..begun(now, Some(&fin)) },
+                false if i.tree.is_some() && fin.step == "pr_closed" => Finish { step: "line".into(), at: fin.at, ..begun(now, Some(&fin)) },
                 false => begun(now, Some(&fin)),
             });
         });
@@ -874,7 +889,7 @@ pub(super) fn begun(now: u64, before: Option<&Finish>) -> Finish {
 
 /// The branch that is main in `top`'s repository: "main", else "master", else the branch its main checkout is on.
 /// None when there's none of those (a detached main checkout in a repository with neither).
-fn main_ref(top: &str) -> Option<String> {
+pub(super) fn main_ref(top: &str) -> Option<String> {
     for b in ["main", "master"] {
         if git("", top, &[], &["rev-parse", "--verify", "-q", &format!("refs/heads/{b}")]).is_some() {
             return Some(b.to_string());

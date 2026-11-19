@@ -35,6 +35,13 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
     let busy = st.desk.item(id).and_then(|i| i.holder.as_ref()).filter(|h| at_work(st, h)).map(|h| h.name.clone());
     // Picked, but its build item dropped since: it can be undone, and picked again.
     let build_gone = st.desk.item(id).is_some_and(|i| !i.built_as.is_empty() && st.desk.item(&i.built_as).is_none());
+    // In review: its pull request stays open on GitHub when it's sent back or dropped (Cue never closes it).
+    let pr = st.desk.item(id).and_then(|i| i.finish.as_ref().filter(|f| i.state == "finishing" && f.step == "review" && !f.pr.is_empty())).map(|f| f.pr.clone());
+    if pr.is_some() && matches!(act, "send_back" | "drop") {
+        st.desk.pr_looked.remove(id);
+        st.desk.pr_misses.remove(id);
+    }
+    let pr_open = pr.map(|u| format!(" Its pull request stays open on GitHub: {u}")).unwrap_or_default();
     let rule = st.desk.item(id).map(|i| rule_of(st, &i.project)).unwrap_or_default();
     let it = st.desk.item_mut(id).ok_or("no such item")?;
     let holder = it.holder.clone();
@@ -74,7 +81,7 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
             let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
             let (title, project) = (it.title.clone(), it.project.clone());
             you_wrote(st, &project, id, words.split_once("\nPictures with it").map_or(words.as_str(), |(w, _)| w).trim(), &format!("sent back to {}", h.name), now, &mut fx);
-            let message = format!("{crew}Desk item #{id} ({title}) isn't done: {words}\nIts fixes stay in #{id}; don't add new items for them. Say DONE: #{id} when it is.");
+            let message = format!("{crew}Desk item #{id} ({title}) isn't done: {words}\nIts fixes stay in #{id}; don't add new items for them. Say DONE: #{id} when it is.{pr_open}");
             if let Some(step) = st.desk.decisions.last_mut() {
                 step.delivery = Some(crate::desk::model::DeskDelivery { session_id: h.to().to_string(), text: message.clone(), at_ms: now });
             }
@@ -145,6 +152,10 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
                 (m.built_as, m.updated) = (String::new(), secs(now));
                 fx.items.push(mid.clone());
                 you_wrote(st, &project, &mid, &format!("Dropped #{id}, the build of option {option}"), "it can be picked again", now, &mut fx);
+            }
+            if let Some(g) = gone.as_ref().filter(|_| !pr_open.is_empty()) {
+                let project = g.project.clone();
+                you_wrote(st, &project, id, &format!("Dropped #{id}.{pr_open}"), "", now, &mut fx);
             }
             fx.trees_gone.extend(gone.filter(|g| g.tree.is_some()));
             fx.dropped.push(id.to_string());

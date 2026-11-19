@@ -129,6 +129,8 @@ function deskFinStep(i) {
   const since = f.at ? ` · since ${clockAt(f.at)}` : "";
   // In its own copy, waiting its turn to land (hub/desk_trees.rs): one item lands at a time.
   if (f.step === "line") return `In the landing line${f.wait ? ` · waits: ${esc(f.wait)}` : ""}${since}`;
+  // Its pull request is open (hub/desk_pr.rs): it lands once that's merged.
+  if (f.step === "review") return `In review${f.wait ? ` · ${esc(f.wait)}` : ""}${since}`;
   // Committed, and not on main yet: where it is ("on side, not main").
   if (f.step === "landing") return `Committed, not on main yet${f.wait ? ` · ${esc(f.wait)}` : ""}${since}`;
   if (f.step === "queued") {
@@ -201,6 +203,7 @@ function deskLaneStep(i, ahead) {
   if (deskInstallWait(i)) return "waiting for install";
   if (f.step === "checking") return `Checking${age}`;
   if (f.step === "line") return f.wait ? `Waits: ${esc(f.wait)}${age}` : ahead ? `Waits on #${esc(ahead.id)}${age}` : `Next to land${age}`;
+  if (f.step === "review") return `In review${age}`;
   if (f.step === "landing") return `Not on main yet${f.wait ? ` · ${esc(f.wait)}` : ""}${age}`;
   if (f.step === "commit_wait") return `Waits to be committed${f.wait ? ` · ${esc(f.wait)}` : ""}${age}`;
   const c = (f.commit || i.commit || "").slice(0, 7);

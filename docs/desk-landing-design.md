@@ -3,8 +3,8 @@
 A design, for any project a Desk runs. Status: step 6 (parts 1 to 3, for Cue's fixed setup) is built and not yet
 merged, in #251. Step 7, the per-project setting with its defaults, is built and not yet merged, in #252: the Desk's
 header shows it and Change opens it; the engine honours the shared folder or an own copy, items at once, one commit
-per item or you commit, and no check or Cue's own. A branch, merge, a pull request, a command of your own and a push
-after each landing are shown as "not yet". PR landing and the push choices (step 8, #253) are not built.
+per item or you commit, and no check or Cue's own. Step 8, PR landing and the push choices, is built and not yet
+merged, in #253. A branch, merge and a command of your own are still shown as "not yet".
 
 It follows from the review of 17 November 2026, `docs/desk-fable-review-2026-11-17.md`. Where a choice
 here rests on that day, I point to the section there as "review 1" to "review 8".
@@ -352,6 +352,20 @@ that was not.
    setup. This step opens it to other projects. The check is set in the Desk's
    settings only, and a project with none lands as "landed, not checked". Medium.
 8. **PR landing and the push choices.** Only when a project asks for them. Medium.
+   **Status:** built in #253, not yet merged. A pull request: the check runs in the landing line, then the item's
+   one commit is pushed as its own branch (never main) and a pull request opened with GitHub's gh; the item shows
+   "In review" with the link and "Open the PR". Cue reads the pull request once a minute: merged and its commit seen
+   on main (the remote's, fetched; the main checkout brought up to it as a landing moves it, edits kept, only while
+   it's on the pull request's base branch and no other item is landing; until then the item says what it waits on),
+   it's landed; merged but never seen on main for half an hour, it stops and asks for the landing to be run again;
+   closed unmerged, it goes back to its holder with its copy kept. A push or a pull request that fails says why and
+   waits, with "Run the landing again". It needs an own copy: an item without one (its holder on another machine, or
+   in a worktree of its own) lands as before. Push: "ask each time" is the rule as it was (a session's push to main
+   asks you; the Desk pushes nothing); "never" has the Desk push and ask nothing; "after each landing" has the Desk
+   push main as it is (all of it, never forced) after each landing, saying on the item whether it did. Every push,
+   fetch and gh call is cut off after a minute and never prompts. An open pull request for the item's branch is used
+   again; dropping or sending back an item in review leaves its pull request open on GitHub. Sessions never push main. A session's push is
+   still guarded by Ask me before, whatever the push choice.
 
 Until step 6 ships, one stopgap from the review still earns its place: read Codex logs and ended
 sessions, and treat an edit nobody owns as "not mine" (review, fix 3).

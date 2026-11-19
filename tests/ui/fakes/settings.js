@@ -33,10 +33,10 @@ CueBridge.area("settings", (w) => {
   /** How work lands as lands.rs desk_view gives it, for `place` (cue, repo or folder) and what's saved. */
   const LANDS_PARTS = [
     ["where", "Where an item works", [["shared", "Shared folder", "Every session works in the project's own folder."], ["copy", "Own copy", "Each item gets its own copy of the project."], ["branch", "A branch"]]],
-    ["how", "How it lands", [["squash", "One commit per item", "The Desk puts each item on main as one commit, named after the item. One at a time."], ["merge", "Merge"], ["pr", "Pull request"], ["owner", "You commit", "The Desk commits nothing."]]],
+    ["how", "How it lands", [["squash", "One commit per item", "The Desk puts each item on main as one commit, named after the item. One at a time."], ["merge", "Merge"], ["pr", "Pull request", "The Desk checks each item, pushes its branch and opens a pull request."], ["owner", "You commit", "The Desk commits nothing."]]],
     ["check", "Check before landing", [["none", "None", "Nothing is run."], ["cue", "Cue's own check", "Run in a clean copy of main plus the item, in order."], ["command", "A command"]]],
     ["after", "After landing", [["nothing", "Nothing", "Landed is the last step."], ["install", "Install or serve Cue", "Window-only changes are served in place, after the check."], ["command", "A command"]]],
-    ["push", "Push to main", [["never", "Never", "Nothing is pushed."], ["ask", "Ask each time", "A push to main asks you first."], ["after", "After each landing"]]],
+    ["push", "Push to main", [["never", "Never", "The Desk pushes nothing and asks nothing."], ["ask", "Ask each time", "A push to main asks you first."], ["after", "After each landing", "After each landing the Desk pushes main as it is, everything on it, without asking. Never forced. Sessions still never push main."]]],
   ];
   const LANDS_DEFAULT = {
     cue: { where: "copy", how: "squash", check: "cue", after: "install", push: "ask", at_once: 3 },
@@ -47,12 +47,12 @@ CueBridge.area("settings", (w) => {
     const hint = LANDS_PARTS.find((p) => p[0] === part)[2].find((c) => c[0] === key);
     if (!hint[2]) return "not yet";
     if ((part === "check" && key === "cue") || (part === "after" && key === "install")) return place === "cue" ? "" : "only for Cue's own project";
-    if (place === "folder" && ((part === "where" && key === "copy") || (part === "how" && key === "squash"))) return "needs a git repository";
+    if (place === "folder" && ((part === "where" && key === "copy") || (part === "how" && (key === "squash" || key === "pr")))) return "needs a git repository";
     return "";
   };
   const landsView = (project, place, saved) => {
     const set = { ...LANDS_DEFAULT[place], ...saved };
-    const short = { shared: "shared folder", copy: "own copy", squash: "one commit per item", owner: "you commit" };
+    const short = { shared: "shared folder", copy: "own copy", squash: "one commit per item", owner: "you commit", pr: "pull request" };
     return {
       project, place, set, summary: `${short[set.where]}, ${set.check === "none" ? "not checked" : "checked"}, ${short[set.how]}`,
       parts: LANDS_PARTS.map(([key, label, cs]) => ({ key, label, now: set[key], choices: cs.map(([k, l, hint]) => { const why = landsWhy(key, k, place); return { key: k, label: l, hint: hint || "", ok: !why, why }; }) })),

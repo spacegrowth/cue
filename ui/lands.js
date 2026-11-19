@@ -88,6 +88,9 @@ document.addEventListener("click", (e) => {
     // You commit works in the shared folder; an own copy is landed by the Desk.
     if (pick.dataset.ldPart === "how" && s.how === "owner") s.where = "shared";
     if (pick.dataset.ldPart === "where" && s.where !== "shared" && s.how === "owner") s.how = "squash";
+    // A pull request is opened from an item's own copy, so it has none in the shared folder.
+    if (pick.dataset.ldPart === "how" && s.how === "pr") s.where = "copy";
+    if (pick.dataset.ldPart === "where" && s.where === "shared" && s.how === "pr") s.how = "squash";
     return renderMain();
   }
   const act = b.dataset.ld;

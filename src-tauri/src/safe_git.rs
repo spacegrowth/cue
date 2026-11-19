@@ -26,7 +26,7 @@ pub fn sh_words<S: AsRef<str>>(words: &[S]) -> String {
 }
 
 /// git, found where an app started from Finder can find it (its PATH is short).
-fn git_bin() -> PathBuf {
+pub(crate) fn git_bin() -> PathBuf {
     let path = std::env::var("PATH").unwrap_or_default();
     let found = path
         .split(':')

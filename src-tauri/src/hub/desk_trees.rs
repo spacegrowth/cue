@@ -358,6 +358,12 @@ impl Hub {
             if !self.read(|st| still_landing(st.desk.item(id), &t.path)) {
                 return Landed::Done;
             }
+            // Its project lands by pull request: checked, its branch pushed and a pull request opened; it lands when that's
+            // merged (hub/desk_pr.rs). Main isn't touched here.
+            if crate::lands::lands_of(&it.project, &t.repo).how == "pr" {
+                self.desk_open_pr(&it, &t, &onto, &squash, &message);
+                return Landed::Done;
+            }
             if let Some(what) = in_progress(&t.repo) {
                 return self.land_wait(id, &format!("The main checkout is in the middle of {what}"));
             }
@@ -389,7 +395,7 @@ impl Hub {
 
     /// Item `id` landed as `short` on `t`'s main line: its copy removed (the next queued item starts in its
     /// place), what waited on it started, then installed or to check as any finished item.
-    fn finish_landed(&self, id: &str, t: &ItemTree, short: &str) {
+    pub(super) fn finish_landed(&self, id: &str, t: &ItemTree, short: &str) {
         let made = vec![(t.repo.clone(), short.to_string())];
         self.save_made(id, &made);
         // Its helpers' copies whose work is on the main line now go too; any other is moved out of its copy (#376).
