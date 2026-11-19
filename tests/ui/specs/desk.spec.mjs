@@ -208,6 +208,7 @@ test("the lead's own ASK stands in the box's place: its choices, Type answer…;
   await expect(ask.locator('textarea[data-text="n-lead-ask"]')).toBeVisible();
   await page.keyboard.press("Escape");
   await ask.locator("[data-pick]", { hasText: "Yes, add it there" }).click();
+  await ask.locator('[data-act="submit-answers"]').click();
   const call = await cue.called("respond");
   expect(call.args.id).toBe("n-lead-ask");
   await cue.change((st) => { st.sessions.find((s) => s.session_id === "lead").state = "working"; });
@@ -2910,8 +2911,8 @@ test("files an item's words name are file chips at the words' size; a command or
 test("an item's question opens at the page's foot and keeps the answer on its page; a one-question ask has its choices on the row", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  // A one-question ask has its choices on the row (6917a17a) in place of Answer; opening the item brings its foot.
-  await expect(page.locator('[data-desk-item="d1"] [data-desk-question-pick]')).toHaveText(["Keep it in the box", "Move to the next item"]);
+  // A question with nothing suggested: Choose… on the row (#383) opens the item, whose foot has the whole card.
+  await expect(page.locator('[data-desk-item="d1"] .dk-row-decisions button')).toHaveText(["Choose…"]);
   await page.locator('[data-desk-item="d1"] .dk-t').click();
   const chain = page.locator(".dk-pane .dk-chain"), foot = page.locator(".dk-right .dk-ask");
   // The page's section shows only the question; its card is the foot, in the box's place.
@@ -2919,6 +2920,7 @@ test("an item's question opens at the page's foot and keeps the answer on its pa
   await expect(chain.locator("button")).toHaveCount(0);
   await expect(page.locator(".dk-right .dk-box")).toHaveCount(0);
   await foot.locator("[data-pick]", { hasText: "Keep it in the box" }).click();
+  await foot.locator('[data-act="submit-answers"]').click();
   await cue.called("respond");
   await cue.change((st) => {
     st.items = st.items.filter((i) => i.id !== "n-focus-ask");
@@ -3521,7 +3523,7 @@ test("the Desk's mark is on the session's chat title and its Inbox page head too
   expect(await page.evaluate(() => deskSessMark("nobody"))).toBe("");
 });
 
-test("tasks, bugs and features show a short question and right-aligned choices", async ({ page, cue }) => {
+test("tasks, bugs and features show a short question and right-aligned Send its suggestions / Choose…", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await cue.change((st) => {
@@ -3533,7 +3535,7 @@ test("tasks, bugs and features show a short question and right-aligned choices",
       item.state = "needs_you";
       item.ask = { item_id: `layout-${id}`, kind: "question", text: question, choices: ["Compact", "Spacious"] };
       st.items.push({ id: item.ask.item_id, session_id: "host", project: "cue", harness: "codex",
-        kind: "question", status: "pending", tool_input: { questions: [{ question, options: [{ label: "Compact" }, { label: "Spacious" }] }] }, created_ms: Date.now() });
+        kind: "question", status: "pending", tool_input: { questions: [{ question, options: [{ label: "Compact (Recommended)" }, { label: "Spacious" }] }] }, created_ms: Date.now() });
     }
   });
   const requests = page.locator(".dk-items .dk-ask-row").filter({ hasText: "Which layout should we use?" });
@@ -3541,14 +3543,15 @@ test("tasks, bugs and features show a short question and right-aligned choices",
   for (const id of ["d1", "d2", "d3"]) {
     const row = page.locator(`.dk-items [data-desk-item="${id}"] .dk-ask-row`);
     await expect(row.locator(".dk-h")).toHaveText("Which layout should we use?");
-    await expect(row.getByRole("button")).toHaveText(["Compact", "Spacious"]);
+    await expect(row.getByRole("button")).toHaveText(["Send its suggestions", "Choose…"]);
+    await expect(row.locator(".qc-fold")).toHaveText("Ready with its suggestions: Compact.");
     await expect(row).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     const rowBounds = await row.boundingBox(), choices = await row.locator(".dk-row-decisions").boundingBox();
     expect(Math.abs(rowBounds.x + rowBounds.width - choices.x - choices.width)).toBeLessThan(2);
   }
-  await requests.first().getByRole("button", { name: "Compact", exact: true }).click();
+  await requests.first().getByRole("button", { name: "Send its suggestions", exact: true }).click();
   const sent = await cue.called("respond");
-  expect(sent.args.decision).toEqual({ behavior: "allow", answers: { "Which layout should we use?": "Compact" } });
+  expect(sent.args.decision).toEqual({ behavior: "allow", answers: { "Which layout should we use?": "Compact (Recommended)" } });
 });
 
 test("an open item shows the question without a heading or unrelated decisions", async ({ page, cue }) => {

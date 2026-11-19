@@ -44,6 +44,8 @@ function ranAct(el, run) {
 const ITEM_ACTS = {
   "form-send": (it) => formSend(it),
   "submit-answers": (it) => { const a = answersFor(it); return a && respond(it, { behavior: "allow", answers: a }); },
+  // A folded question's Choose…: its whole card, where it is (the Board's Active pane).
+  choose: (it) => setActive(it.id),
   back: (it) => invoke("send_to_back", { id: it.id }).catch((e) => toast(`Couldn't move it to the bottom: ${e}`)),
   allow: (it) => allow(it),
   deny: (it) => deny(it),

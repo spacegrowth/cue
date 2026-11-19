@@ -225,13 +225,14 @@
     if (req?.kind === "permission") acts = `<button class="btn small primary" data-desk-decision="allow" data-id="${esc(req.id)}"${off}>Allow</button><button class="btn small" data-desk-decision="deny" data-id="${esc(req.id)}"${off}>No</button>`;
     else {
       const q = req ? questions(req) : [];
-      // One question, one choice: each choice is a button (Cue's own pick, board.js); Answer types your own.
-      const choices = q.length === 1 && !q[0].multiSelect ? (q[0].options || []).map((o, oi) => `<button class="btn small${oi ? "" : " primary"}" data-pick="0:${oi}" data-id="${esc(req.id)}"${off}>${esc(o.label)}</button>`).join("") : "";
-      acts = m.answer === i.id ? "" : `${choices}<button class="btn small" data-mdk-answer="${esc(i.id)}">Answer</button>`;
+      // A question (#383): Send its suggestions (board.js), Choose… opens its item on the Desk in Cue, where its whole
+      // card is; Answer types your own.
+      const choose = `<button class="btn small" data-mdesk-choose="${esc(i.id)}" data-project="${esc(i.project || "")}">Choose…</button>`;
+      acts = m.answer === i.id ? "" : `${q.length ? qFoldBtns(req, choose, "btn small") : ""}<button class="btn small" data-mdk-answer="${esc(i.id)}">Answer</button>`;
     }
     const key = m.answer === i.id ? deskAnswerKey(i, req) : "";
     const box = key ? `<div class="m-dk-box"><textarea rows="1" data-text="${esc(key)}" data-mdk-box="${esc(i.id)}" aria-label="Your answer" placeholder="Your answer" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off">${esc(draft(key).text)}</textarea><button class="btn primary small" data-mdk-send="${esc(i.id)}">Send</button></div>` : "";
-    return `<div class="m-dk-ask">${line ? `<div class="m-dk-q">${esc(line)}</div>` : ""}${acts ? `<div class="m-dk-acts">${acts}</div>` : ""}${box}</div>`;
+    return `<div class="m-dk-ask">${line ? `<div class="m-dk-q">${esc(line)}</div>` : ""}${req?.kind === "question" ? qFoldLine(req) : ""}${acts ? `<div class="m-dk-acts">${acts}</div>` : ""}${box}</div>`;
   }
   /** One item: its state, title and age; under them its kind and number, who holds it; then (waiting on you) its ask. */
   function deskRowHtml(i, wait) {
@@ -581,6 +582,7 @@
     rule("[data-desk-act]", (t) => deskAct(t.dataset.id, t.dataset.deskAct, t)),
     rule("[data-desk-decision]", (t) => DESK_CLICKS.deskDecision(t)),
     rule("[data-mdk-answer]", (t) => deskAnswerOpen(t.dataset.mdkAnswer)),
+    rule("[data-mdesk-choose]", (t) => deskInCue(t.dataset.project, t.dataset.mdeskChoose)),
     rule("[data-mdk-send]", (t) => deskAnswerSend(t.dataset.mdkSend)),
     rule("[data-mdesk-item]", (t) => deskInCue(t.dataset.project, t.dataset.mdeskItem), (_, x) => !x.closest("button, textarea, .m-dk-ask")),
     rule("[data-cue]", (t) => inCue(t.dataset.cue)),

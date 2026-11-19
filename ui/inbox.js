@@ -387,10 +387,7 @@ function inboxWords(r) {
   return inboxFeedSaid(r.sid) || lastSaid(r.s || {});
 }
 /** A choice's label without its "(Recommended)", and whether it had one: [label, recommended]. */
-function inboxLabel(label) {
-  const m = /^(.*?)\s*\(recommended\)\s*$/i.exec(label || "");
-  return m ? [m[1], true] : [label || "", false];
-}
+const inboxLabel = (label) => choiceLabel(label);
 /** A plain box to write in (pictures pasted or dropped on it go with it), and its button. Enter sends too (app/keys.js,
  *  by its draft key). With `sid`, Claude's suggestion for that session shows in the box while it's empty (inboxSuggest). */
 const inboxBox = (key, placeholder, label, attrs, extra = "", sid = "", phr = "") => {
@@ -456,38 +453,13 @@ function inboxTakeSuggestion(el) {
   ta.focus();
   ta.selectionStart = ta.selectionEnd = ta.value.length;
 }
-/** A question's choices, each with what it means and a "Recommended" tag; the one(s) picked lit; numbered on the
- *  question lit (its keys). A click picks (one question: that's the answer). */
-function inboxOpts(it, q, qi, lit) {
-  const d = draft(it.id);
-  return `<div class="ib-opts">${(q.options || []).map((o, oi) => {
-    const on = q.multiSelect ? d.choices[q.question]?.has?.(o.label) : d.choices[q.question] === o.label, [label, rec] = inboxLabel(o.label);
-    return `<button class="ib-opt ${on ? "on" : ""}" data-inbox-pick="${qi}:${oi}" data-id="${esc(it.id)}">${lit && oi < 9 ? `<span class="ib-kbd">${oi + 1}</span>` : `<span></span>`}<b>${esc(label)}</b>${rec ? `<span class="ib-rec">Recommended</span>` : ""}${o.description ? `<span class="ib-od">${esc(o.description)}</span>` : ""}</button>`;
-  }).join("")}</div>`;
-}
-/** What was picked for a question, in words. */
-function inboxPicked(it, q) {
-  const c = draft(it.id).choices[q.question];
-  return inboxLabel(q.multiSelect ? [...(c || [])].join(", ") : c || "")[0];
-}
-/** One question as a card: the one to answer now lit, an answered one folded to its answer (a click opens it again),
- *  the ones after it waiting, their choices in a line. */
-function inboxQuestionCard(it, q, qi, n, cur) {
-  const done = isAnswered(it, q), on = qi === cur;
-  const head = n > 1 ? `<div class="ib-qn">${qi + 1} of ${n}${done ? " · answered" : ""}${q.header ? ` · ${esc(q.header)}` : ""}</div>` : "";
-  const text = `<div class="ib-qt">${linkify(esc(q.question), sessBase(it.session_id))}${q.multiSelect ? `<span class="ib-dim"> · pick any</span>` : ""}</div>`;
-  if (done && !on) return `<div class="ib-card ib-q done" role="button" data-inbox-step="${esc(it.id)}:${qi}">${head}${text}<div class="ib-qa">→ ${esc(inboxPicked(it, q))}</div></div>`;
-  if (!on && qi > cur) return `<div class="ib-card ib-q wait" role="button" data-inbox-step="${esc(it.id)}:${qi}">${head}${text}<div class="ib-dim">${esc((q.options || []).map((o) => inboxLabel(o.label)[0]).join(" · "))}</div></div>`;
-  return `<div class="ib-card ib-q ${on ? "on" : ""}" ${on ? "" : `data-inbox-step="${esc(it.id)}:${qi}"`}>${head}${text}${inboxOpts(it, q, qi, on)}</div>`;
-}
-/** A question ask: [its questions stacked as cards; a box for your own answer to the one lit; Decline and, with
- *  several, one Send for all of them (answersFor, as the Board's Send answers)]. */
+/** A question ask: [the whole question card (board.js questionHtml: every question, its suggestions picked, what
+ *  will happen); a box for your own answer to the question you last picked in; Decline and one Send for all]. */
 function inboxQuestions(it) {
-  const qs = questions(it), n = qs.length, cur = stepOf(it), ready = !!answersFor(it);
-  const cards = qs.map((q, qi) => inboxQuestionCard(it, q, qi, n, cur)).join("");
-  const send = n > 1 || qs.some((q) => q.multiSelect) ? `<button class="btn primary" data-act="submit-answers" data-id="${esc(it.id)}" ${ready ? "" : "disabled"}>${ready ? `Send ${n > 1 ? `${n} answers` : "answer"}` : `${qs.filter((q) => isAnswered(it, q)).length} of ${n} answered`}</button>` : "";
-  const box = inboxReply(it.session_id, it.id, n > 1 ? `Your own answer to question ${cur + 1}…` : "Or say something else…", n > 1 ? "Answer" : "Send", `data-act="send" data-id="${esc(it.id)}"`);
-  return [cards, box, `<button class="btn deny ib-decline" data-act="deny" data-id="${esc(it.id)}">Decline</button>${send}`];
+  const n = questions(it).length, cur = stepOf(it);
+  const card = `<div class="ib-card on ib-q">${questionHtml(it, "data-inbox-pick")}</div>`;
+  const box = inboxReply(it.session_id, it.id, n > 1 ? `Your own answer to question ${cur + 1}…` : "Or say something else…", n > 1 ? "Use answer" : "Send", `data-act="send" data-id="${esc(it.id)}"`);
+  return [card, box, `<button class="btn deny ib-decline" data-act="deny" data-id="${esc(it.id)}">Decline</button>${qSendBtn(it)}`];
 }
 /** Any other ask (a command to run, an edit, a plan, a form, its terminal's): the Board's own card body and buttons. */
 const inboxAskCard = (it) => `<div class="ib-card on"><div class="ib-qn">${esc(verb(it).replace(/^./, (c) => c.toUpperCase()))}</div>${requestBody(it)}</div>${decisionButtons(it)}`;
@@ -959,10 +931,10 @@ function inboxSnoozeClick(el) {
   inboxSnoozeAt = inboxSnoozeAt === el.dataset.at ? "" : el.dataset.at;
   renderMain();
 }
-/** One of a multi-question card's choices: picked and held until Send (a single question's click is its answer). */
+/** One of a question's choices: picked, held until Send. */
 function inboxPick(el) {
   const it = findItem(el.dataset.id), [qi, oi] = el.dataset.inboxPick.split(":").map(Number);
-  if (it) pick(it, qi, oi, questions(it).length > 1);
+  if (it) pick(it, qi, oi);
 }
 
 /** Keys while the Inbox shows. The open session: Esc (a narrow window) back to the list, a Snooze menu first; 1–9 a
@@ -986,7 +958,7 @@ function inboxKey(e) {
 function inboxDigit(key) {
   const it = inboxItems().get(inboxSid);
   if (!/^[1-9]$/.test(key) || it?.kind !== "question") return false;
-  pick(it, stepOf(it), +key - 1, questions(it).length > 1);
+  pick(it, stepOf(it), +key - 1);
   return true;
 }
 

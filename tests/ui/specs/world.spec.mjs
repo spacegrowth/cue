@@ -65,8 +65,11 @@ test.describe("a question with four choices", () => {
   });
 
   for (const [i, choice] of CHOICES.entries()) {
-    test(`${i + 1} picks “${choice}”`, async ({ cue, page }) => {
+    test(`${i + 1} picks “${choice}”, A sends it`, async ({ cue, page }) => {
       await page.keyboard.press(String(i + 1));
+      await expect(page.locator(`.active-pane [data-pick="0:${i}"]`)).toHaveAttribute("aria-pressed", "true");
+      expect(await cue.calls("respond")).toEqual([]);
+      await page.keyboard.press("a");
       expect((await cue.called("respond", { id: ONLY })).args.decision).toEqual({ behavior: "allow", answers: { "Which source wins on a clash?": choice } });
     });
   }

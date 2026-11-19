@@ -73,11 +73,11 @@ function deskAwayFirstList(d) {
  *  has everywhere (decisionButtons: Allow / No, Decline / Type answer…, a form's fields). */
 function deskAwayAsk(it, d, deny = "No") {
   const qs = it.kind === "question" ? questions(it) : [];
-  const opts = qs.length === 1 && !qs[0].multiSelect ? qs[0].options || [] : [];
-  const picks = opts.length ? `<div class="dk-row-decisions">${opts.map((o, k) => `<button class="btn small" data-desk-question-pick="${k}" data-id="${esc(it.id)}"${answering.has(it.id) ? " disabled" : ""}>${esc(o.label)}</button>`).join("")}</div>` : "";
+  // A question: its whole card (board.js questionHtml), its suggestions picked; Send is in its buttons.
+  const picks = qs.length ? questionHtml(it) : "";
   const acts = ["permission", "question", "input"].includes(it.kind) ? decisionButtons(it, deny) : `<div class="row-btns"><button class="btn" ${deskChatAttrs(it.session_id, d)}>Open its chat</button></div>`;
   const cmd = it.tool_input?.command;
-  const what = it.kind === "input" ? formBody(it) : cmd ? `<pre>${esc(cmd)}</pre>` : `<p>${esc(qs[0]?.question || summary(it))}</p>`;
+  const what = it.kind === "input" ? formBody(it) : cmd ? `<pre>${esc(cmd)}</pre>` : qs.length ? "" : `<p>${esc(summary(it))}</p>`;
   return `<div class="dk-request dk-aw-ask" data-desk-request="${esc(it.id)}"><div class="dk-request-who">${esc(deskHolderName(it.session_id))}${it.agent_name ? ` · ${esc(it.agent_name)}` : ""}</div>${what}${picks}${acts}</div>`;
 }
 /** Away (#373, pick C): no column. Each call the lead made since Away went on is a small line under the item it changed

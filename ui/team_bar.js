@@ -20,8 +20,8 @@ function crewAskWhy(it) {
   const c = (it.context || []).filter((x) => x.role !== "user").at(-1) || it.context?.at(-1);
   return c ? firstLine(c.text) : "";
 }
-/** An ask's buttons in the bar, from what it is: a permission ↪ Deny Allow; a question its choices (up to 3, and ↪
- *  for your own words), more than that Choose ›; anything else (a form, one answered in its terminal) Open ›, the
+/** An ask's buttons in the bar, from what it is: a permission ↪ Deny Allow; a question ↪ for your own words, Send its
+ *  suggestions (when it has one for each question) and Choose ›; anything else (a form, one answered in its terminal) Open ›, the
  *  Needs you page, where its card is whole. Allow and Deny carry the keys ⌘⇧A and ⌘⇧D take, unless it's one-way. */
 function crewAskButtons(it, oneWay) {
   const id = esc(it.id), key = (k) => (oneWay ? "" : ` data-bar-key="${k}"`);
@@ -31,10 +31,9 @@ function crewAskButtons(it, oneWay) {
     return `${redir("Tell it what to do instead")}<button class="btn deny" data-act="deny" data-id="${id}"${key("d")}>${plan ? "Keep planning" : "Deny"}</button><button class="btn primary" data-act="allow" data-id="${id}"${key("a")}>${plan ? "Approve plan" : "Allow"}</button>`;
   }
   const qs = it.kind === "question" ? questions(it) : [];
-  if (qs.length === 1 && !qs[0].multiSelect && (qs[0].options || []).length <= 3) {
-    return redir("Your own answer") + (qs[0].options || []).map((o, n) => `<button class="btn ${n === 0 ? "primary" : ""}" data-pick="0:${n}" data-id="${id}">${esc(o.label)}</button>`).join("");
-  }
-  return `<button class="btn" data-cp-all="1">${it.kind === "question" ? "Choose ›" : "Open ›"}</button>`;
+  // A question (#383): Send its suggestions, or Choose › on the Needs you page, where its whole card is.
+  if (qs.length) return redir("Your own answer") + qFoldBtns(it, `<button class="btn" data-cp-all="1">Choose ›</button>`);
+  return `<button class="btn" data-cp-all="1">Open ›</button>`;
 }
 /** A reviewed teammate waiting on you: the button its review calls for, the other beside it. */
 function crewReadyButtons(sid, t) {

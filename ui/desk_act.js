@@ -234,9 +234,11 @@ const DESK_CLICKS = {
     const it = state.items.find((i) => i.id === el.dataset.id && i.kind === "permission" && i.status === "pending");
     if (it && !answering.has(it.id)) return el.dataset.deskDecision === "allow" ? allow(it) : deny(it);
   },
-  deskQuestionPick: (el) => {
-    const it = state.items.find((i) => i.id === el.dataset.id && i.kind === "question" && i.status === "pending");
-    if (it && !answering.has(it.id)) return pick(it, 0, Number(el.dataset.deskQuestionPick));
+  // A question's Send its suggestions on its row (#383): what's picked, sent.
+  deskSendAnswers: (el) => {
+    const it = state.items.find((i) => i.id === el.dataset.deskSendAnswers && i.kind === "question" && i.status === "pending");
+    const a = it && !answering.has(it.id) && answersFor(it);
+    if (a) return respond(it, { behavior: "allow", answers: a });
   },
   deskRen: (el) => renameSession({ dataset: { rename: el.dataset.deskRen } }),
   // Opened from an item's page or a holder's, it remembers that page so ‹ goes back to it (from the left list: the lead).

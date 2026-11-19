@@ -169,6 +169,11 @@ function usualAgent() {
  *  would repeat on every card), its mark for any other, so the odd one out is what you see. */
 const oddAgent = (h) => h && h !== usualAgent() ? agentBadge(h) : "";
 const draft = (id) => (drafts[id] ||= { text: "", choices: {}, images: [] });
+/** A choice's label without its "(Recommended)", and whether it had one: [label, recommended]. */
+function choiceLabel(label) {
+  const m = /^(.*?)\s*\(recommended\)\s*$/i.exec(label || "");
+  return m ? [m[1], true] : [label || "", false];
+}
 /** The Desk's mark before a session's name while it works for a Desk (desk_lead.js deskNameMark), "" without one. */
 const deskSessMark = (sid) => (typeof deskNameMark === "function" ? deskNameMark(sid) : "");
 /** A session's name: the Desk's mark and an add-on's before it. */

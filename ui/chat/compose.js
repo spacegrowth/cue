@@ -59,15 +59,12 @@ function submitText(it) {
   if (it.kind === "question") {
     const qs = questions(it);
     if (qs.length <= 1) return respond(it, { behavior: "allow", answers: Object.fromEntries(qs.map((q) => [q.question, text])) });
-    // Several questions: your typed answer is for the one on screen only. Then on to the next
-    // unanswered one; it's sent once every question has an answer.
-    const cur = stepOf(it), q = qs[cur], d = draft(it.id);
+    // Several questions: your typed answer is for the one you last picked in (stepOf); it goes with the others when
+    // you press Send.
+    const cur = stepOf(it), q = qs[cur], d = qDraft(it);
     d.choices[q.question] = q.multiSelect ? new Set([text]) : text;
     d.text = "";
-    const a = answersFor(it);
-    if (a) return respond(it, { behavior: "allow", answers: a });
-    const next = qs.findIndex((x, n) => n !== cur && !isAnswered(it, x));
-    if (next >= 0) qStep[it.id] = next;
+    redirectFor = null;
     return renderMain();
   }
   return deny(it, text);

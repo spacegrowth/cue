@@ -70,11 +70,31 @@ body.col-sizing, body.col-sizing * { cursor: col-resize !important; user-select:
 .diff { border-radius: 8px; overflow: hidden; box-shadow: inset 0 0 0 1px var(--line); font: 12px/1.5 var(--mono); }
 .diff pre { margin: 0; padding: 6px 10px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 120px; overflow-y: auto; }
 .diff .del { background: var(--panel-2); color: var(--muted); }
-.qtabs { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-.qtab { height: 26px; padding: 0 10px; border-radius: var(--pill-radius); font-size: 12px; font-weight: 650; color: var(--muted); background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.qtab.done { color: var(--accent); }
-.qtab.on { background: var(--accent); color: var(--on-accent); box-shadow: none; }
-.qcount { margin-left: auto; font-size: 11.5px; color: var(--muted); }
+/* A session's question (#383, option C): every question at once, each answer a row with what it does, its suggestion
+   picked and marked, then what will happen if you send it. */
+.qc { display: flex; flex-direction: column; gap: 8px; }
+.qc-sec { display: flex; flex-direction: column; gap: 6px; }
+.qc-sec + .qc-sec { padding-top: 8px; border-top: 1px solid var(--line); }
+.qc-sn { font: 700 10.5px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.qc-opts { display: flex; flex-direction: column; gap: 6px; }
+.qc-opt { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 2px 8px; width: 100%; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); text-align: left; font-size: 12.5px; cursor: pointer; }
+.qc-opt:hover { border-color: var(--muted); }
+.qc-opt.rec { border: 1.5px solid var(--accent); padding: 7.5px 9.5px; }
+.qc-k { grid-row: 1 / 3; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 5px; background: var(--panel-2); font: 600 11px var(--mono); color: var(--muted); }
+.qc-l { display: flex; align-items: center; gap: 8px; font-weight: 650; min-width: 0; }
+.qc-lt { min-width: 0; overflow-wrap: anywhere; }
+.qc-d { grid-column: 2; font-size: 12px; color: var(--muted); line-height: 1.4; }
+.qc-mark { flex: none; width: 14px; height: 14px; box-sizing: border-box; border: 1.5px solid var(--muted); }
+.qc-mark.rad { border-radius: 50%; }
+.qc-mark.chk { border-radius: 4px; }
+.qc-opt.on .qc-mark.rad { border: 4.5px solid var(--accent); }
+.qc-opt.on .qc-mark.chk { background: var(--accent); border-color: var(--accent); }
+.qc-rec, .qc-tag { flex: none; display: inline-block; padding: 2px 6px; border-radius: 5px; font: 600 10px var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+.qc-rec { background: var(--accent); color: var(--on-accent); }
+.qc-tag { background: var(--panel-2); color: var(--muted); margin-right: 6px; }
+.qc-sum { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 10px; background: var(--panel-2); font-size: 12px; line-height: 1.45; }
+.qc-h { font: 700 10.5px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.qc-fold { font-size: 12px; color: var(--muted); line-height: 1.5; margin-top: 4px; }
 .typed-answer { font-size: 12.5px; font-weight: 650; color: var(--accent); }
 .qtext { font-size: 13px; font-weight: 650; }
 .opts { display: flex; flex-direction: column; gap: 4px; }

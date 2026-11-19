@@ -127,6 +127,7 @@ test("a lead's Desk ask is answered as any other: its choice goes through respon
   await page.locator('.ib-row[data-inbox-open="cue-lead"]').click();
   await expect(page.locator(".inbox-page")).toHaveAttribute("data-inbox-page", "cue-lead");
   await page.locator(".inbox-page button", { hasText: "Wait for web-lead" }).first().click();
+  await page.locator('.inbox-page [data-act="submit-answers"]').click();
   const call = await cue.called("respond");
   expect(call.args.id).toMatch(/1$/);
 });

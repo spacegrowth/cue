@@ -191,7 +191,8 @@ test("mini: a Desk's rows answer in place", async ({ cue, page }) => {
   await expect(row("d5")).toHaveCount(1);
   await expect(page.locator(".m-dk-rest")).toHaveText("2 queued");
   // A question's own answer, typed: Answer opens a box in the row, Enter sends it as the card's answer.
-  await expect(row("d1").locator("[data-pick]")).toHaveText(["Keep it in the box", "Move to the next item"]);
+  // A question with nothing suggested: Choose… (opens it in Cue) and Answer (#383).
+  await expect(row("d1").locator(".m-dk-acts button")).toHaveText(["Choose…", "Answer"]);
   await row("d1").locator("[data-mdk-answer]").click();
   await row("d1").locator("textarea[data-mdk-box]").fill("Keep it, and select the text");
   await page.keyboard.press("Enter");

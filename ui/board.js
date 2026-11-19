@@ -80,44 +80,114 @@ async function respond(it, decision) {
 }
 const allow = (it) => respond(it, { behavior: "allow" });
 const deny = (it, message) => respond(it, { behavior: "deny", ...(message ? { message } : {}) });
-function answersFor(it) {
+// ---------- a session's question (#383, option C of the "Question card" mocks) ----------
+// Cue picks the answers it suggests (its "(Recommended)" ones) for you, every question shows at once, each answer with
+// what it does, and a line says what will happen; nothing goes until you press Send. Folded (a Board row, the Desk, the
+// mini panel): "Send its suggestions", or Choose… to open the whole card.
+/** The answers it suggests for question `q`: the labels it marked "(Recommended)". */
+const suggestedOf = (q) => (q.options || []).filter((o) => choiceLabel(o.label)[1]).map((o) => o.label);
+/** Whether it suggests an answer for every question. */
+const hasSuggestions = (it) => questions(it).length > 0 && questions(it).every((q) => suggestedOf(q).length);
+/** A question ask's draft, its suggestions picked for each question you haven't touched (what you change stays: a
+ *  pick-any question you emptied keeps its empty set). */
+function qDraft(it) {
   const d = draft(it.id);
+  for (const q of questions(it)) {
+    const s = suggestedOf(q);
+    if (s.length && !(q.question in d.choices)) d.choices[q.question] = q.multiSelect ? new Set(s) : s[0];
+  }
+  return d;
+}
+/** What's picked for question `q`, as labels ("(Recommended)" kept, as the session wrote them). */
+function qPicked(it, q) {
+  const c = qDraft(it).choices[q.question];
+  return q.multiSelect ? [...(c || [])] : c ? [c] : [];
+}
+function answersFor(it) {
   const out = {};
   for (const q of questions(it)) {
-    const c = d.choices[q.question];
-    const picked = q.multiSelect ? [...(c || [])] : c ? [c] : [];
+    const picked = qPicked(it, q);
     if (!picked.length) return null;
     out[q.question] = picked.join(", ");
   }
   return out;
 }
-const qStep = {};           // item id -> which question of a multi-question ask is showing
-const isAnswered = (it, q) => { const c = draft(it.id).choices[q.question]; return q.multiSelect ? !!c?.size : !!c; };
-/** The question on screen: the one you picked, else the first one not answered yet. */
+const qStep = {};           // item id -> the question you last picked in (where a typed answer and 1–9 go)
+const isAnswered = (it, q) => qPicked(it, q).length > 0;
+/** The question your keys and typed answer are for: the one you last picked in, else the first not answered, else the first. */
 function stepOf(it) {
   const qs = questions(it);
   const first = qs.findIndex((q) => !isAnswered(it, q));
-  return Math.min(qStep[it.id] ?? (first < 0 ? qs.length - 1 : first), qs.length - 1);
+  return Math.min(qStep[it.id] ?? Math.max(first, 0), Math.max(qs.length - 1, 0));
 }
-/** Pick choice `oi` of question `qi`. One single-choice question: that's the answer, sent. Several: each is sent once
- *  all have one, unless `hold` (the Inbox's cards wait for its Send). */
-function pick(it, qi, oi, hold = false) {
+/** Pick choice `oi` of question `qi` (pick any: on or off). Nothing is sent: Send does that. */
+function pick(it, qi, oi) {
   const q = questions(it)[qi];
   const label = q?.options?.[oi]?.label;
   if (!label) return;
-  const d = draft(it.id);
-  if (q.multiSelect) { const s = (d.choices[q.question] ||= new Set()); s.has(label) ? s.delete(label) : s.add(label); }
+  const d = qDraft(it);
+  if (q.multiSelect) { const s = (d.choices[q.question] instanceof Set ? d.choices[q.question] : (d.choices[q.question] = new Set())); s.has(label) ? s.delete(label) : s.add(label); }
   else d.choices[q.question] = label;
-  // One single-choice question: the click is the answer.
-  if (questions(it).length === 1 && !q.multiSelect) return respond(it, { behavior: "allow", answers: { [q.question]: label } });
-  const a = answersFor(it);
-  if (a && !hold && questions(it).every((x) => !x.multiSelect)) return respond(it, { behavior: "allow", answers: a });
-  // Several questions: a single choice moves on to the next one still unanswered.
-  if (!q.multiSelect) {
-    const next = questions(it).findIndex((x, n) => n !== qi && !isAnswered(it, x));
-    if (next >= 0) qStep[it.id] = next;
-  }
+  qStep[it.id] = qi;
   render();
+}
+/** Whether what's picked is just what it suggested. */
+const qAsSuggested = (it) => hasSuggestions(it) && questions(it).every((q) => { const p = qPicked(it, q), s = suggestedOf(q); return p.length === (q.multiSelect ? s.length : 1) && p.every((l) => s.includes(l)); });
+/** What's picked, in a line: each question's answers (", "), the questions apart ("; "). */
+const qPickedLine = (it) => questions(it).map((q) => qPicked(it, q).map((l) => choiceLabel(l)[0]).join(", ") || "nothing yet").join("; ");
+/** What will happen if you send it, a line a question, from what each picked answer does (its label when it says
+ *  nothing; an answer you typed, as you typed it). */
+function qOutcome(it) {
+  const qs = questions(it);
+  return qs.map((q, qi) => {
+    const picked = qPicked(it, q), name = q.header || (qs.length > 1 ? `Question ${qi + 1}` : "It");
+    if (!picked.length) return `${name}: nothing picked yet.`;
+    return picked.map((l) => {
+      const o = (q.options || []).find((x) => x.label === l), [label] = choiceLabel(l);
+      if (!o) return `Your answer${qs.length > 1 ? ` to ${name}` : ""}: “${l}”`;
+      return o.description ? (picked.length > 1 ? `${label}: ${o.description}` : o.description) : label;
+    }).join(" ");
+  });
+}
+/** Send's label: "Send answer", "Send 2 answers", or how many are still to answer (then it's off). */
+function qSendLabel(it) {
+  const qs = questions(it), n = qs.length;
+  if (answersFor(it)) return n > 1 ? `Send ${n} answers` : "Send answer";
+  return n > 1 ? `${qs.filter((q) => isAnswered(it, q)).length} of ${n} answered` : "Pick an answer";
+}
+const qSendBtn = (it, cls = "btn primary") => `<button class="${cls}" data-act="submit-answers" data-id="${esc(it.id)}" ${answersFor(it) ? "" : "disabled"}>${esc(qSendLabel(it))}</button>`;
+/** A folded question's line under it: "Ready with its suggestions: …" (or your answers, once you changed them);
+ *  "" when not every question has an answer. With several questions, their names first. */
+function qFoldLine(it) {
+  const qs = questions(it);
+  const names = qs.length > 1 ? `<span class="qc-tag">${qs.length} questions</span>${esc(qs.map((q, n) => q.header || `Question ${n + 1}`).join(" · "))} ` : "";
+  const ready = answersFor(it) ? `${qAsSuggested(it) ? "Ready with its suggestions" : "Ready with your answers"}: ${esc(qPickedLine(it))}.` : "";
+  return names || ready ? `<div class="qc-fold">${names}${names && ready ? "<br>" : ""}${ready}</div>` : "";
+}
+/** A folded question's buttons: Send its suggestions (or your answers), when every question has one, then `choose`
+ *  (the surface's own way to open the whole card). `sendAttr`: Send's click, where a surface has its own. */
+function qFoldBtns(it, choose, cls = "btn", sendAttr = `data-act="submit-answers" data-id="${esc(it.id)}"`) {
+  const send = answersFor(it) ? `<button class="${cls} primary" ${sendAttr}${answering.has(it.id) ? " disabled" : ""}>${qAsSuggested(it) ? "Send its suggestions" : questions(it).length > 1 ? `Send ${questions(it).length} answers` : "Send answer"}</button>` : "";
+  return send + choose;
+}
+/** The whole question card: every question at once, each answer a row (its key, a radio or a box, its label, a
+ *  Recommended tag, what it does), then what will happen if you send it. `attr`: the click that picks. */
+function questionHtml(it, attr = "data-pick") {
+  const qs = questions(it), lit = stepOf(it);
+  const secs = qs.map((q, qi) => {
+    const picked = qPicked(it, q);
+    const head = qs.length > 1 || q.header ? `<div class="qc-sn">${qs.length > 1 ? `${qi + 1} · ` : ""}${esc(q.header || `Question ${qi + 1}`)}${q.multiSelect ? " · pick any" : ""}</div>` : "";
+    const rows = (q.options || []).map((o, oi) => {
+      const on = picked.includes(o.label), [label, rec] = choiceLabel(o.label);
+      return `<button class="qc-opt${rec ? " rec" : ""}${on ? " on" : ""}" ${attr}="${qi}:${oi}" data-id="${esc(it.id)}" aria-pressed="${on}"><span class="qc-k">${qi === lit && oi < 9 ? oi + 1 : ""}</span><span class="qc-l"><span class="qc-mark ${q.multiSelect ? "chk" : "rad"}" aria-hidden="true"></span><span class="qc-lt">${esc(label)}</span>${rec ? `<span class="qc-rec">Recommended</span>` : ""}</span>${o.description ? `<span class="qc-d">${esc(o.description)}</span>` : ""}</button>`;
+    }).join("");
+    // An answer you typed yourself (not one of the choices) shows under them.
+    const typed = picked.filter((c) => !(q.options || []).some((o) => o.label === c));
+    const yours = typed.length ? `<div class="typed-answer">Your answer: “${esc(typed.join(", "))}”</div>` : "";
+    return `<div class="qc-sec">${head}<div class="qtext">${linkify(esc(q.question), sessBase(it.session_id))}${q.multiSelect && !head ? `<span class="dim"> · pick any</span>` : ""}</div><div class="qc-opts">${rows}</div>${yours}</div>`;
+  }).join("");
+  const sum = `<div class="qc-sum"><span class="qc-h">If you send this</span>${qOutcome(it).map((l) => `<span>${esc(l)}</span>`).join("")}</div>`;
+  return `<div class="qc">${secs}${sum}</div>`;
 }
 
 // ---------- shared pieces ----------
@@ -256,24 +326,7 @@ const field = (it, placeholder, label, extra = "", quick = true) => box(it.kind 
 function requestBody(it) {
   const i = it.tool_input || {};
   const t = tool(it);
-  if (it.kind === "question") {
-    const d = draft(it.id);
-    const qs = questions(it);
-    const opts = (q, qi) => `<div class="opts">${(q.options || []).map((o, oi) => {
-      const on = q.multiSelect ? d.choices[q.question]?.has?.(o.label) : d.choices[q.question] === o.label;
-      return `<button class="opt ${on ? "on" : ""}" data-pick="${qi}:${oi}" data-id="${esc(it.id)}">${oi + 1} · ${esc(o.label)}${o.description ? `<span class="d">: ${esc(o.description)}</span>` : ""}</button>`;
-    }).join("")}</div>`;
-    if (qs.length === 1) return `<div class="qtext">${linkify(esc(qs[0].question), sessBase(it.session_id))}</div>${opts(qs[0], 0)}${qs[0].multiSelect ? submitAnswers(it) : ""}`;
-    // Several questions: one at a time, with tabs to move between them (like Claude Code's own prompt).
-    const cur = stepOf(it);
-    const tabs = qs.map((q, n) => `<button class="qtab ${n === cur ? "on" : ""} ${isAnswered(it, q) ? "done" : ""}" data-qstep="${esc(it.id)}:${n}">${isAnswered(it, q) ? "✓ " : ""}${esc(q.header || `Question ${n + 1}`)}</button>`).join("");
-    const q = qs[cur];
-    const nav = q.multiSelect && cur < qs.length - 1 ? `<button class="btn" data-qstep="${esc(it.id)}:${cur + 1}">Next question</button>` : "";
-    // An answer you typed yourself (not one of the options) shows under the question.
-    const typed = [...(q.multiSelect ? d.choices[q.question] || [] : [d.choices[q.question]].filter(Boolean))].filter((c) => !(q.options || []).some((o) => o.label === c));
-    const yours = typed.length ? `<div class="typed-answer">Your answer: “${esc(typed.join(", "))}”</div>` : "";
-    return `<div class="qtabs">${tabs}<span class="qcount">${cur + 1} of ${qs.length}</span></div><div class="qtext">${linkify(esc(q.question), sessBase(it.session_id))}${q.multiSelect ? `<span class="dim"> · pick any</span>` : ""}</div>${opts(q, cur)}${yours}<div class="row-btns">${nav}${submitAnswers(it)}</div>`;
-  }
+  if (it.kind === "question") return questionHtml(it);
   if (it.kind === "input") return formBody(it);
   if (t === "bash") return `<div class="code-wrap"><pre class="slab"><span class="ps">$ </span>${esc(i.command)}</pre>${COPY_BTN}</div>`;
   if (t === "edit" || t === "multiedit") {
@@ -286,12 +339,6 @@ function requestBody(it) {
   // A plan to approve: the plan as written, not its JSON.
   if (t === "exitplanmode" && typeof i.plan === "string") return `<div class="plan-body">${md(i.plan)}</div>`;
   return `<pre class="slab">${esc(JSON.stringify(i, null, 2))}</pre>`;
-}
-/** Send all answers: shown once every question has one (needed when any allow several picks). */
-function submitAnswers(it) {
-  if (!questions(it).some((q) => q.multiSelect)) return "";
-  const ready = !!answersFor(it);
-  return `<span class="grow"></span><button class="btn primary" data-act="submit-answers" data-id="${esc(it.id)}" ${ready ? "" : "disabled"}>${ready ? "Send answers" : "Answer each question"}</button>`;
 }
 function whyLine(it) {
   const c = (it.context || []).filter((x) => x.role !== "user").at(-1) || it.context?.at(-1);
@@ -308,9 +355,9 @@ function decisionButtons(it, denyLabel = "Deny") {
   if (inTerminal(it) && it.tool_input?.dialog?.options?.length) return `${dialogHtml(it)}<div class="row-btns"><span class="dim">Or answer it in its terminal.</span><span class="grow"></span>${inTmux(it.session_id) ? `<button class="btn" data-act="term-open" data-sid="${esc(it.session_id)}">Open terminal</button>` : `<button class="btn" data-act="go" data-id="${esc(it.id)}">${openInLabel(sessionOf(it.session_id))}</button>`}</div>`;
   if (inTerminal(it) && inTmux(it.session_id)) return `<div class="row-btns"><span class="dim">It's waiting in its terminal: answer it there.</span><span class="grow"></span><button class="btn primary" data-act="term-open" data-sid="${esc(it.session_id)}">Answer in terminal</button></div>`;
   if (inTerminal(it)) return `<div class="row-btns"><span class="dim">Cue can't answer this one: answer it in its terminal.</span><span class="grow"></span><button class="btn primary" data-act="go" data-id="${esc(it.id)}">${openInLabel(sessionOf(it.session_id))}</button></div>`;
-  if (redirectFor === it.id) return `<div class="row-btns">${field(it, it.kind === "question" ? (questions(it).length > 1 ? `Your own answer to question ${stepOf(it) + 1}…` : "Your own answer…") : "Tell it what to do instead…", it.kind === "question" ? (questions(it).length > 1 && questions(it).filter((q) => !isAnswered(it, q)).length > 1 ? "Next" : "Send") : "Redirect")}</div>`;
+  if (redirectFor === it.id) return `<div class="row-btns">${field(it, it.kind === "question" ? (questions(it).length > 1 ? `Your own answer to question ${stepOf(it) + 1}…` : "Your own answer…") : "Tell it what to do instead…", it.kind === "question" ? (questions(it).length > 1 ? "Use answer" : "Send") : "Redirect")}</div>`;
   if (it.kind === "input") return formButtons(it);
-  if (it.kind === "question") return `<div class="row-btns"><button class="btn deny" data-act="deny" data-id="${esc(it.id)}">Decline</button><button class="btn" data-act="redirect" data-id="${esc(it.id)}">Type answer…</button></div>`;
+  if (it.kind === "question") return `<div class="row-btns"><button class="btn deny" data-act="deny" data-id="${esc(it.id)}">Decline</button><button class="btn" data-act="redirect" data-id="${esc(it.id)}">Type answer…</button><span class="grow"></span>${qSendBtn(it)}</div>`;
   const sugg = it.suggestions || [];
   const menu = menuFor === it.id && sugg.length ? `<div class="menu">${sugg.map((s, n) => { const x = describeSuggestion(s); return `<button data-always="${n}" data-id="${esc(it.id)}"><div>${esc(x.title)}</div><div class="sub">${esc(x.where)}</div></button>`; }).join("")}</div>` : "";
   const plan = tool(it) === "exitplanmode";
@@ -459,7 +506,7 @@ function needRow(it, ghost, open = false) {
   if (it.kind === "permission") quick = `<div class="nrow-acts"><button class="btn deny" data-act="deny" data-id="${esc(it.id)}">Deny</button><button class="btn primary" data-act="allow" data-id="${esc(it.id)}">Allow</button></div>`;
   else if (inTerminal(it) && (it.tool_input?.dialog?.options || []).length && it.tool_input.dialog.options.length <= 4) quick = `<div class="nrow-acts wrap">${it.tool_input.dialog.options.map((o, n) => `<button class="btn" data-tpick="${n + 1}" data-id="${esc(it.id)}">${esc(o)}</button>`).join("")}</div>`;
   else if (inTerminal(it)) quick = `<div class="nrow-acts">${inTmux(it.session_id) ? `<button class="btn primary" data-act="term-card" data-id="${esc(it.id)}">Answer in terminal</button>` : `<button class="btn primary" data-act="go" data-id="${esc(it.id)}">${openInLabel(sessionOf(it.session_id))}</button>`}</div>`;
-  else if (q.length === 1 && !q[0].multiSelect && (q[0].options || []).length <= 4) quick = `<div class="nrow-acts wrap">${q[0].options.map((o, oi) => `<button class="btn" data-pick="0:${oi}" data-id="${esc(it.id)}">${esc(o.label)}</button>`).join("")}</div>`;
+  else if (q.length) quick = `${qFoldLine(it)}<div class="nrow-acts wrap">${qFoldBtns(it, `<button class="btn" data-act="choose" data-id="${esc(it.id)}">Choose…</button>`)}</div>`;
   // An interrupted turn (Esc) waits at "What should Claude do instead?": say so, and offer Continue.
   if (it.interrupted) quick = `<div class="nrow-acts"><button class="btn primary" data-act="continue" data-id="${esc(it.id)}">Continue</button></div>`;
   return `<div class="nrow ${open ? "on" : ""} ${it.kind === "waiting" ? "turn" : "ask"} ${answering.has(it.id) ? "answering" : ""}" data-big="${esc(it.id)}">

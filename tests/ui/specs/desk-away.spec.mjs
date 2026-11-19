@@ -187,7 +187,8 @@ test("Before you go: an open ask holds Done until it's answered right there", as
   const done = card.locator('[data-away="done"]');
   await expect(done).toBeDisabled();
   await expect(done).toHaveText("Answer these first");
-  await card.locator('.dk-aw-ask [data-desk-question-pick="0"]').click();
+  await card.locator('.dk-aw-ask [data-pick="0:0"]').click();
+  await card.locator('.dk-aw-ask [data-act="submit-answers"]').click();
   await cue.called("respond", { id: "n-lead1" });
   await expect(card.locator(".dk-aw-ask")).toHaveCount(0);
   await expect(card.locator(".dk-aw-first")).toHaveCount(0);
@@ -205,7 +206,7 @@ test("Before you go shows 5, the lead's newest first, and says how many more wai
   const card = page.locator(".dk-aw-dialog");
   await sweepEnds(cue);
   await expect(card.locator(".dk-aw-h").first()).toHaveText("Before you go: 5 to answer");
-  await expect(card.locator(".dk-aw-ask p")).toHaveText(["Question 7?", "Question 6?", "Question 5?", "Question 4?", "Question 3?"]);
+  await expect(card.locator(".dk-aw-ask .qtext")).toHaveText(["Question 7?", "Question 6?", "Question 5?", "Question 4?", "Question 3?"]);
   await expect(card.locator(".dk-aw-more")).toHaveText("2 more will wait in Waiting on you");
 });
 

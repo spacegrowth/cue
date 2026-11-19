@@ -58,15 +58,35 @@ test("R, then a message, denies with what to do instead", async ({ cue, page }) 
   expect((await cue.called("respond", { id: "n4" })).args.decision).toEqual({ behavior: "deny", message: "run only the failing test" });
 });
 
-test("A question's option on its card answers it", async ({ cue, page }) => {
-  await card(page, "n6").locator('[data-pick="0:1"]').click();
+test("A question's folded card: Choose… opens it; an option picks; Send answers it (#383)", async ({ cue, page }) => {
+  await expect(card(page, "n6").locator(".nrow-acts button")).toHaveText(["Choose…"]);
+  await card(page, "n6").locator('[data-act="choose"]').click();
+  const pane = page.locator(".active-pane");
+  await pane.locator('[data-pick="0:1"]').click();
+  await expect(pane.locator('[data-pick="0:1"]')).toHaveAttribute("aria-pressed", "true");
+  expect(await cue.calls("respond")).toEqual([]);
+  await pane.locator('[data-act="submit-answers"]').click();
   const c = await cue.called("respond", { id: "n6" });
   expect(c.args.decision).toEqual({ behavior: "allow", answers: { "Which cache should the quotes endpoint use?": "In-process LRU" } });
+});
+
+test("A question it suggests an answer for: picked for you, said in the folded card, sent with one click (#383)", async ({ cue, page }) => {
+  await cue.change((st) => { st.items.find((i) => i.id === "n6").tool_input.questions[0].options[0].label = "Redis (Recommended)"; });
+  await expect(card(page, "n6").locator(".qc-fold")).toHaveText("Ready with its suggestions: Redis.");
+  await expect(card(page, "n6").locator(".nrow-acts button")).toHaveText(["Send its suggestions", "Choose…"]);
+  const pane = page.locator(".active-pane");
+  await expect(pane.locator(".qc-opt.rec")).toContainText("Redis");
+  await expect(pane.locator(".qc-opt.rec")).toHaveAttribute("aria-pressed", "true");
+  await expect(pane.locator(".qc-sum")).toContainText("If you send this");
+  await card(page, "n6").locator('[data-act="submit-answers"]').click();
+  const c = await cue.called("respond", { id: "n6" });
+  expect(c.args.decision.answers).toEqual({ "Which cache should the quotes endpoint use?": "Redis (Recommended)" });
 });
 
 test("A number key picks that option of the open question", async ({ cue, page }) => {
   await expect(page.locator(".active-pane")).toContainText("Which cache should the quotes endpoint use?");
   await page.keyboard.press("3");
+  await page.locator('.active-pane [data-act="submit-answers"]').click();
   expect((await cue.called("respond", { id: "n6" })).args.decision.answers).toEqual({ "Which cache should the quotes endpoint use?": "No cache" });
 });
 

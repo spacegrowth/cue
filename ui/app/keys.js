@@ -179,7 +179,8 @@ function keyTyping(e) {
   return true;
 }
 
-/** The open card's own keys, while it's pending: A allow, D deny, G go to it, R reply another way, 1–9 a choice.
+/** The open card's own keys, while it's pending: A allow (a question: send its picked answers), D deny, G go to it,
+ *  R reply another way, 1–9 a choice (picks it; A sends, #383).
  *  Nothing pending on screen: R still jumps to the message box. */
 function keyOnCard(e) {
   // The card under the chat (a crew member's open ask yields to the lead's own, chat/pane.js shownAsk).
@@ -191,6 +192,7 @@ function keyOnCard(e) {
     return;
   }
   if (e.key === "a" && it.kind === "permission") allow(it);
+  else if (e.key === "a" && it.kind === "question") ITEM_ACTS["submit-answers"](it);
   else if (e.key === "d" && it.kind === "permission") deny(it);
   else if (e.key === "g") goTo(it);
   else if (e.key === "r") { e.preventDefault(); if (it.kind !== "waiting" && !inTerminal(it)) redirectFor = it.id; renderMain(); document.querySelector(`[data-text="${CSS.escape(it.id)}"]`)?.focus(); }
