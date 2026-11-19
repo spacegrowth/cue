@@ -15,6 +15,8 @@ mod cache_tick;
 mod crew_log;
 mod desk;
 mod desk_spaces;
+mod desk_away;
+pub(crate) use desk_away::sweep_words as desk_away_sweep_words;
 mod desk_checks;
 mod desk_cleanup;
 mod desk_commit;

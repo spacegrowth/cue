@@ -245,6 +245,10 @@ impl Hub {
         #[cfg(feature = "ext")]
         let (sid, ended) = (origin.session_id.clone(), if failed { super::ext::TurnEnd::Failed(text.clone()) } else { super::ext::TurnEnd::Done(text.clone()) });
         if failed {
+            // A lead's Away sweep that failed won't be read: the window stops waiting on it.
+            if self.desk_away_turn_over(&origin.session_id, true) {
+                self.changed();
+            }
             self.failed(origin, "error", &text);
         } else {
             let turn = turn_parts(&origin.transcript_path, &text);

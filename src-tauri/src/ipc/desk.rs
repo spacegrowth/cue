@@ -140,6 +140,29 @@ pub(crate) async fn ask_before_set(hub: State<'_, Arc<Hub>>, project: String, ki
     with_hub(&hub, move |h| h.ask_before_set(&project, kinds.as_deref())).await?
 }
 
+/// Away mode for Desk `desk` (`away`: { on, until, budget, rules }): saved, its lead told. Returns its view.
+#[tauri::command]
+pub(crate) async fn desk_away_set(hub: State<'_, Arc<Hub>>, desk: String, away: serde_json::Value) -> Result<serde_json::Value, String> {
+    with_hub(&hub, move |h| h.desk_away_set(&desk, &away)).await?
+}
+
+/// The owner pressed Away (before it's on): Desk `desk`'s lead (woken if parked) is asked to settle what it can under
+/// `rules` and leave at most 5 questions; the Desk shows it's sorting things out until its next turn ends.
+#[tauri::command]
+pub(crate) async fn desk_away_sweep(hub: State<'_, Arc<Hub>>, desk: String, rules: serde_json::Value) -> Result<(), String> {
+    with_hub(&hub, move |h| desk_away_sweep_with(h, &desk, &rules)).await?
+}
+
+pub(crate) fn desk_away_sweep_with(h: &Arc<Hub>, desk: &str, rules: &serde_json::Value) -> Result<(), String> {
+    h.desk_away_sweeping(desk);
+    let words = crate::hub::desk_away_sweep_words(rules);
+    if let Err(e) = desk_send_with(h, desk, &words) {
+        h.desk_away_sweep_failed(desk);
+        return Err(e);
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub(crate) async fn desk_delete(hub: State<'_, Arc<Hub>>, id: String, close_sessions: Option<Vec<String>>) -> Result<serde_json::Value, String> {
     with_hub(&hub, move |h| {

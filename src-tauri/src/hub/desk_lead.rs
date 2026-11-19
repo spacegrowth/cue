@@ -256,6 +256,10 @@ impl Hub {
                 out.push_str(&context_note(st, sid, true, now));
                 out.push_str(")\n");
             }
+            if let Some(away) = super::desk_away::away_block(st, project, now) {
+                out.push('\n');
+                out.push_str(&away);
+            }
             // Running leads get this too, even if their original system prompt is older.
             out.push('\n');
             out.push_str(crate::desk::ROUTING_GUIDANCE);

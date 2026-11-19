@@ -533,9 +533,214 @@ function deskList(project, taskApprovals) {
   if (shown.length) parts.push(`<div class="dk-gh">Done</div>${shown.map(row).join("")}`);
   if (more && (shown.length || pg?.loading || !pg)) parts.push(`<div class="dk-more" data-desk-done-more="${esc(project)}">${shown.length ? "Loading older…" : ""}</div>`);
   const body = parts.join("") + (parts.length > 1 ? "" : `<div class="dk-empty">No items yet.</div>`);
-  return `<div class="dk-card dk-items"><div class="dk-ch"><b>Items</b>${deskNextInstall()}</div>
+  return `<div class="dk-card dk-items"><div class="dk-ch"><b>Items</b>${deskNextInstall()}${deskAwaySwitch(g.d)}</div>
     ${deskQuickAdd()}<div class="dk-scroll" data-scroll-key="desk-items:${esc(project)}">${body}</div></div>`;
 }
+
+// ---------- Away (#361, pick B): the lead keeps the Desk moving while you're away ----------
+
+/** The rules (desk_away_set): true = the lead may decide it alone. The last two show under "Always waits for you",
+ *  where a switch on means it waits (the rule false). */
+const DESK_AWAY_RULES = [
+  ["route", "Route, split and merge items; wake or start sessions (up to 3 new)"],
+  ["how", "“How” questions inside an item, when easy to change later"],
+  ["stopped", "Send back a stopped item with what to do next"],
+  ["order", "Which item goes first when two change the same files"],
+];
+const DESK_AWAY_WAITS = [
+  ["what", "“What” questions: scope, taste, what you want"],
+  ["outside", "Pulling in a session that isn't on the Desk"],
+];
+const DESK_AWAY_LOCKED = ["Ask me before: push to main, release, deleting files", "Picking a mock", "Looks right / Send back on a finished item"];
+const DESK_AWAY_DEFAULTS = { route: true, how: true, stopped: true, order: true, what: false, outside: false };
+const DESK_LOCK = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>`;
+const deskHm = (ms) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+const deskMoney = (n) => `$${Number(n || 0).toFixed(Number.isInteger(Number(n)) ? 0 : 2)}`;
+/** "HH:MM" → its next time from now, in ms. */
+function deskNextAt(hm) {
+  const [h, m] = String(hm || "").split(":").map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  const t = new Date(now()); t.setHours(h, m, 0, 0);
+  if (t.getTime() <= now()) t.setDate(t.getDate() + 1); // by the calendar: a clock change keeps the time
+  return t.getTime();
+}
+/** A Desk's Away now (desk_view), or off. */
+const deskAwayOf = (d) => d?.away || { on: false, active: false, ended: "", since: 0, until: null, budget: null, spent: 0, rules: { ...DESK_AWAY_DEFAULTS } };
+/** Its line: "until 07:00 · $3.20 of $10", or why it paused. */
+function deskAwayStatus(a) {
+  if (a.ended === "budget") return "Paused: budget reached";
+  if (a.ended === "until") return "Paused: its time is up";
+  return [a.until ? `until ${deskHm(a.until)}` : "", a.budget != null ? `${deskMoney(a.spent)} of ${deskMoney(a.budget)}` : ""].filter(Boolean).join(" · ") || "on";
+}
+/** The switch in the Items head: Away, lit while on. A click opens its rules. */
+function deskAwaySwitch(d) {
+  if (!d?.lead) return "";
+  const on = !!d.away?.on;
+  return `<button class="dk-aw-sw${on ? " on" : ""}" data-desk-away="${esc(d.project)}" aria-pressed="${on}"><span class="dk-knob" aria-hidden="true"></span>Away</button>`;
+}
+/** Session `sid` stopped on a usage limit Cue carries on from by itself (send_at's carry-on): the reset's ms (1 when
+ *  it isn't known), else 0. Not yours to do: it goes on when the limit resets. */
+function deskPausedTill(sid) {
+  const s = sid && sessionOf(sid), l = s?.limit;
+  if (!l || (l.resets_ms && l.resets_ms <= now()) || s.send_at?.failed) return 0;
+  return l.resets_ms || 1;
+}
+/** The Away column: Needs you (items that wait, and asks from this Desk's sessions), Decided for you (the lead's
+ *  calls since Away went on, each with Undo), Done, to check. Sessions on a usage limit are one quiet line. */
+/** What waits on you on Desk `d`: { waits: its items that wait, asks: open asks (the lead's questions, Ask me before
+ *  permissions) from its sessions not already on an item }, leaving out sessions paused on a usage limit. */
+function deskAwayNeeds(d, taskApprovals = deskTaskApprovals(d)) {
+  const waits = deskWaitingItems(d, taskApprovals).filter((i) => !deskPausedTill(deskHolderSid(i)));
+  const placed = new Set([...taskApprovals.values()].map((r) => r.id));
+  for (const i of d.items) if (i.ask?.item_id) placed.add(i.ask.item_id);
+  const asks = state.items.filter((it) => !placed.has(it.id) && deskHasSession(d, it.session_id) && it.status === "pending" && it.kind !== "waiting"
+    && !answering.has(it.id) && !deskPausedTill(it.session_id));
+  return { waits, asks };
+}
+/** The same as one list for "Before you go": the lead's asks first, newest first, then the other sessions' asks,
+ *  then the items that wait; each { key, html }. */
+function deskAwayFirstList(d) {
+  const { waits, asks } = deskAwayNeeds(d), lead = deskLead(d)?.sid;
+  const at = (it) => it.created_ms || it.at_ms || deskMs(it.created) || 0;
+  const sorted = [...asks].sort((x, y) => (y.session_id === lead) - (x.session_id === lead) || at(y) - at(x));
+  return [...sorted.map((it) => ({ key: `a:${it.id}`, html: () => deskAwayAsk(it, d) })),
+    ...[...waits].sort((x, y) => deskMs(y.updated) - deskMs(x.updated)).map((i) => ({ key: `i:${i.id}`, html: () => deskItemRow(i, false) }))];
+}
+/** An open ask, answerable where it is: who asks and what, a single question's choices, then the controls its card
+ *  has everywhere (decisionButtons: Allow / No, Decline / Type answer…, a form's fields). */
+function deskAwayAsk(it, d) {
+  const qs = it.kind === "question" ? questions(it) : [];
+  const opts = qs.length === 1 && !qs[0].multiSelect ? qs[0].options || [] : [];
+  const picks = opts.length ? `<div class="dk-row-decisions">${opts.map((o, k) => `<button class="btn small" data-desk-question-pick="${k}" data-id="${esc(it.id)}"${answering.has(it.id) ? " disabled" : ""}>${esc(o.label)}</button>`).join("")}</div>` : "";
+  const acts = ["permission", "question", "input"].includes(it.kind) ? decisionButtons(it, "No") : `<div class="row-btns"><button class="btn" ${deskChatAttrs(it.session_id, d)}>Open its chat</button></div>`;
+  const cmd = it.tool_input?.command;
+  const what = it.kind === "input" ? formBody(it) : cmd ? `<pre>${esc(cmd)}</pre>` : `<p>${esc(qs[0]?.question || summary(it))}</p>`;
+  return `<div class="dk-request dk-aw-ask" data-desk-request="${esc(it.id)}"><div class="dk-request-who">${esc(deskHolderName(it.session_id))}${it.agent_name ? ` · ${esc(it.agent_name)}` : ""}</div>${what}${picks}${acts}</div>`;
+}
+function deskAwayCard(d, taskApprovals) {
+  const a = deskAwayOf(d), since = deskMs(a.since);
+  const { waits, asks } = deskAwayNeeds(d, taskApprovals);
+  const askRow = (it) => `<button class="dk-prow" ${deskChatAttrs(it.session_id, d)}><i class="dk-pdot ask" aria-hidden="true"></i><span class="dk-prt"><b>${esc(deskHolderName(it.session_id))}</b> <span class="dk-prs">${it.kind === "permission" ? "asks to use a tool" : "asks you"} · ${esc(deskOneLine(summary(it)))}</span></span></button>`;
+  const paused = [d.lead?.sid, ...(d.members || [])].filter((sid, k, all) => sid && all.indexOf(sid) === k && deskPausedTill(sid));
+  const till = paused.length ? Math.max(...paused.map(deskPausedTill)) : 0;
+  const pausedLine = paused.length ? `<div class="dk-aw-quiet">${esc(paused.map((sid) => deskHolderName(sid)).join(", "))} paused${till > 1 ? ` till ${deskHm(till)}` : ""} · Cue carries on then</div>` : "";
+  const need = waits.length + asks.length;
+  const calls = deskCalls(d).filter((c) => deskMs(c.at) >= since).sort((x, y) => deskMs(y.at) - deskMs(x.at));
+  const waitIds = new Set(waits.map((i) => i.id));
+  const done = d.items.filter((i) => !waitIds.has(i.id) && (i.state === "to_check" || i.state === "done") && deskMs(i.done_at || i.updated) >= since);
+  const sec = (title, n, html, cls = "") => `<div class="dk-gh${cls}">${title} <span class="n">${n}</span></div>${html}`;
+  const body = sec("Needs you", need, waits.map((i) => deskItemRow(i, false)).join("") + (asks.length ? `<div class="dk-prows dk-aw-asks">${asks.map(askRow).join("")}</div>` : "")
+      + (need ? "" : `<div class="dk-aw-none">Nothing waits on you.</div>`) + pausedLine, need ? " you" : " you none")
+    + sec("Decided for you", calls.length, calls.length ? `<div class="dk-aw-decs">${deskDecList(calls)}</div>` : `<div class="dk-aw-none">No calls yet.</div>`)
+    + (done.length ? sec("Done, to check", done.length, done.map((i) => deskItemRow(i, false)).join("")) : "");
+  return `<div class="dk-card dk-away"><div class="dk-ch"><b>Away</b><button class="dk-aw-st${a.ended ? " ended" : ""}" data-desk-away="${esc(d.project)}">${esc(deskAwayStatus(a))}</button></div>
+    <div class="dk-scroll" data-scroll-key="desk-away:${esc(d.project)}">${body}</div></div>`;
+}
+
+/** The rules card, open: { project, desk, on, until "HH:MM", budget "10", rules, busy, shown: the keys "Before you
+ *  go" holds, fixed once the lead's sweep is over }. */
+let deskAwayEdit = null;
+const DESK_AWAY_FIRST = 5;
+function deskAwayOpen(project) {
+  const d = deskOf(project), a = deskAwayOf(d);
+  deskAwayEdit = { project, desk: d.id || d.project, on: !!a.on, until: a.on ? (a.until ? deskHm(a.until) : "") : "07:00",
+    budget: a.on ? (a.budget != null ? String(a.budget) : "") : "10", rules: { ...DESK_AWAY_DEFAULTS, ...(a.rules || {}) }, busy: false, shown: null, swept: !!a.on };
+  // From off: the lead goes through every open item first and settles what it can (sweeping till its turn ends).
+  // "Before you go" is fixed only once the sweep was sent: what the sweep leaves is what it shows.
+  if (!a.on) {
+    // Sent means the hub now has it sweeping (desk_away_sweep sets it before it returns): kept here too, so a state
+    // that hasn't caught up yet doesn't fix the list before the lead has gone through it.
+    const e = deskAwayEdit, sent = (on) => { if (deskAwayEdit !== e) return; const dd = (state.desk?.projects || []).find((x) => x.project === e.project); if (on && dd) dd.away = { ...deskAwayOf(dd), sweeping: true }; e.swept = true; renderMain(); };
+    invoke("desk_away_sweep", { desk: e.desk, rules: { ...e.rules } }).then(() => sent(true), (err) => { toast(`The lead couldn't go through the items: ${err}`); sent(false); });
+  }
+  renderMain();
+}
+function deskAwayHtml() {
+  const e = deskAwayEdit;
+  if (!e) return "";
+  const tg = (on) => `<span class="dk-tg${on ? " on" : ""}" aria-hidden="true"></span>`;
+  const row = (k, label, on) => `<button class="dk-aw-row" role="switch" aria-checked="${on}" data-away-rule="${k}"><span class="grow">${esc(label)}</span>${tg(on)}</button>`;
+  // Turning it on: the lead goes through the open items first (desk_away_sweep); then up to 5 that truly need you,
+  // answered in place. Those shown hold Done; the rest wait in the Away column.
+  const d = deskOf(e.project);
+  let first = "", block = 0;
+  if (!e.on && (!e.swept || d?.away?.sweeping)) {
+    first = `<div class="dk-aw-sweep"><i class="dk-aw-spin" aria-hidden="true"></i>The lead is going through the open items…</div>`;
+    block = 1;
+  } else if (!e.on && d) {
+    const list = deskAwayFirstList(d);
+    if (!e.shown) e.shown = list.slice(0, DESK_AWAY_FIRST).map((x) => x.key);
+    const shown = list.filter((x) => e.shown.includes(x.key)), more = list.length - shown.length;
+    block = shown.length;
+    if (shown.length || more) first = `<div class="dk-aw-h">Before you go: ${shown.length} to answer</div><div class="dk-aw-first">${shown.map((x) => x.html()).join("")}</div>`
+      + (more ? `<div class="dk-aw-more">${more} more will wait in the Away column</div>` : "");
+  }
+  const may = DESK_AWAY_RULES.map(([k, l]) => row(k, l, !!e.rules[k])).join("");
+  const lock = DESK_AWAY_LOCKED.map((l) => `<div class="dk-aw-row locked"><span class="grow">${esc(l)}</span><span class="dk-aw-lock">${DESK_LOCK}</span></div>`).join("")
+    + DESK_AWAY_WAITS.map(([k, l]) => row(k, l, !e.rules[k])).join("");
+  return `<div class="move-scrim dk-aw-scrim" data-away="scrim"><div class="move-dialog dk-aw-dialog" role="dialog" aria-labelledby="dk-aw-title">
+    <div class="move-title" id="dk-aw-title">Away</div>
+    <div class="end-text">The lead keeps this Desk moving while you're away.</div>${first}
+    <div class="dk-aw-flds"><label>Until<input type="time" data-away-field="until" value="${esc(e.until)}"/></label><label>Budget ($)<input type="number" min="0" step="1" data-away-field="budget" value="${esc(e.budget)}" placeholder="No limit"/></label></div>
+    <div class="dk-aw-h">The lead may decide</div><div class="dk-aw-rows">${may}</div>
+    <div class="dk-aw-h">Always waits for you</div><div class="dk-aw-rows">${lock}</div>
+    <div class="dk-aw-foot">One notification only when nothing can move without you.</div>
+    <div class="row-btns">${e.on ? `<button class="btn" data-away="off"${e.busy ? " disabled" : ""}>Turn Away off</button>` : `<button class="btn" data-away="cancel">Cancel</button>`}<span class="grow"></span><button class="btn primary" data-away="done"${e.busy || block ? " disabled" : ""}>${block && !d?.away?.sweeping ? "Answer these first" : "Done"}</button></div>
+  </div></div>`;
+}
+async function deskAwaySave(on) {
+  const e = deskAwayEdit;
+  if (!e || e.busy) return;
+  const b = String(e.budget).trim(), budget = b === "" ? null : Number(b);
+  if (budget != null && !(budget >= 0)) return toast("The budget is a number of dollars");
+  const away = { on, until: deskNextAt(e.until), budget, rules: { ...e.rules } };
+  e.busy = true;
+  renderMain();
+  try {
+    const view = await invoke("desk_away_set", { desk: e.desk, away });
+    const d = (state.desk?.projects || []).find((x) => x.project === e.project);
+    if (view && typeof view === "object" && d) d.away = view;
+    if (deskAwayEdit === e) deskAwayEdit = null;
+  } catch (err) { e.busy = false; toast(`Couldn't change Away: ${err}`); }
+  renderMain();
+}
+/** The Desk's own buttons in the rules card (an item's Allow / No, a choice, Looks right): as on the Desk. One that
+ *  opens a page closes the card first. */
+const DESK_AWAY_GOES = ["deskItem", "deskChkItem", "deskChatOf", "deskLeadChat", "deskCrew"];
+document.addEventListener("click", (ev) => {
+  if (!deskAwayEdit) return;
+  const own = ev.target.closest?.(".dk-aw-dialog") && ev.target.closest?.(DESK_SEL);
+  if (own && !own.closest("[data-away]:not([data-away=scrim]), [data-away-rule]")) {
+    ev.stopPropagation();
+    const k = Object.keys(DESK_CLICKS).find((x) => x in own.dataset);
+    if (DESK_AWAY_GOES.includes(k)) deskAwayEdit = null;
+    DESK_CLICKS[k](own);
+    if (!deskAwayEdit) renderMain();
+    return;
+  }
+  const r = ev.target.closest?.("[data-away-rule]"), b = ev.target.closest?.("[data-away]:not([data-away=scrim])") || (ev.target.dataset?.away === "scrim" ? ev.target : null);
+  if (!r && !b) return;
+  ev.stopPropagation();
+  if (r) {
+    const k = r.dataset.awayRule;
+    deskAwayEdit.rules[k] = !deskAwayEdit.rules[k];
+    return renderMain();
+  }
+  const act = b.dataset.away;
+  if (act === "scrim" || act === "cancel") { deskAwayEdit = null; return renderMain(); }
+  if (act === "off") return deskAwaySave(false);
+  if (act === "done" && !b.disabled) return deskAwaySave(true);
+}, true);
+document.addEventListener("input", (ev) => {
+  const f = ev.target.closest?.("[data-away-field]");
+  if (f && deskAwayEdit) deskAwayEdit[f.dataset.awayField] = f.value;
+}, true);
+document.addEventListener("keydown", (ev) => {
+  if (ev.key !== "Escape" || !deskAwayEdit) return;
+  ev.stopPropagation(); ev.preventDefault();
+  deskAwayEdit = null;
+  renderMain();
+}, true);
 
 // ---------- the sessions: the project's sessions, on the Desk and not ----------
 
@@ -1621,7 +1826,8 @@ function deskView() {
   queueMicrotask(deskSettle);
   const project = deskSelection();
   const taskApprovals = deskTaskApprovals(deskOf(project));
-  return `<div class="board dk-board">${deskSessions(project, taskApprovals)}${deskRight(project, taskApprovals)}${deskList(project, taskApprovals)}</div>`;
+  const away = deskOf(project).away?.on;
+  return `<div class="board dk-board${away ? " away" : ""}">${deskSessions(project, taskApprovals)}${deskRight(project, taskApprovals)}${deskList(project, taskApprovals)}${away ? deskAwayCard(deskOf(project), taskApprovals) : ""}</div>${deskAwayHtml()}`;
 }
 /** How many messages each item's Thread showed when last drawn, and for which opening of its page, by item. The page
  *  opens at its newest message, as a chat does; then one more (it arrived, or you sent it) scrolls to show it (#145). */
@@ -1890,6 +2096,7 @@ const DESK_CLICKS = {
   deskSend: (el) => deskSendBox(el.dataset.deskSend),
   deskAct: (el) => { deskGiveFor = null; deskAct(el.dataset.id, el.dataset.deskAct, el); },
   deskUndo: (el) => deskUndo(el.dataset.deskUndo),
+  deskAway: (el) => deskAwayOpen(el.dataset.deskAway),
   deskLogRow: (el) => { const id = el.dataset.deskLogRow; if (!deskLogOpen.delete(id)) deskLogOpen.add(id); renderMain(); },
   deskSession: (el) => openSession(el.dataset.deskSession),
   deskLeadChat: () => { deskPick = null; deskTab = "lead"; readerView = null; deskShow(null); },

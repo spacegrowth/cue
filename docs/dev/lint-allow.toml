@@ -34,6 +34,16 @@ reason = "the tests' own tmux seam: takes down the servers of test runs that hav
 # Lock order today: B may be taken while A is held. A new edge fails the check until it's added here.
 
 [[lock_order]]
+from = "the hub's store"
+to = "leads sweeping for Away"
+reason = "hub/desk_away away_view asks whether a Desk's lead is still sweeping while desk_view reads the store; leads sweeping for Away is a leaf, held only to look up or change one entry"
+
+[[lock_order]]
+from = "typing gate"
+to = "leads sweeping for Away"
+reason = "a redraw (snapshot → desk_view → away_view) can run under a send's typing gate; leads sweeping for Away is a leaf, held only to look up or change one entry"
+
+[[lock_order]]
 from = "AUTO_SEEN"
 to = "DB"
 reason = "logs::steps::windows::auto_compact_at asks the db under its own seen cache; neither takes AUTO_SEEN"
