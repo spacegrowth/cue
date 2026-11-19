@@ -1,5 +1,6 @@
-// Items as Progress (#409, mock J2): the List / Progress switch shows every open item as a row of six step marks
-// (from Cue's `steps` stamps) with how long each took, and a Now column; a row opens the item back in the List.
+// Progress (#409, mock J2): Progress in the Items head opens a popover over the Desk with every item under way (not the
+// queued or parked ones) as a row of six step marks (from Cue's `steps` stamps) with how long each took, and a Now
+// column; a row opens the item; Esc or a click outside closes it.
 import { test, expect } from "./cue.mjs";
 
 const openDesk = async (page) => {
@@ -9,7 +10,7 @@ const openDesk = async (page) => {
   await page.locator(".dk-items .dk-it").first().waitFor();
 };
 
-test("Progress shows each open item's steps, what it's doing now, and opens it on a click", async ({ page, cue }) => {
+test("Progress pops up each item under way with its steps, what it's doing now, and opens it on a click", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   const now = Date.now();
@@ -18,13 +19,14 @@ test("Progress shows each open item's steps, what it's doing now, and opens it o
     items.find((i) => i.id === "d3").steps = [now - 600000, now - 480000, now - 60000, 0, 0, 0];
     items.find((i) => i.id === "d2").steps = [now - 900000, now - 800000, now - 700000, now - 600000, now - 500000, now - 120000];
   }, now);
-  await page.locator('.dk-items [data-desk-items-view="progress"]').click();
+  await page.locator(".dk-items .dk-ch [data-desk-prog-toggle]").click();
   const prog = page.locator(".dk-prog");
   await expect(prog.locator(".dk-grh .dk-grhc")).toHaveText(["Picked up", "Building", "Tests", "Commit", "Landing", "To check"]);
-  // One row per open item: not the done or dropped ones.
+  // One row per item under way: not the queued (d4), new (d6), done or dropped ones.
   const rows = prog.locator("[data-desk-prog-row]");
-  await expect(rows).toHaveCount(6);
-  await expect(prog.locator('[data-desk-prog-row="d7"]')).toHaveCount(0);
+  await expect(rows).toHaveCount(4);
+  for (const id of ["d4", "d6", "d7"]) await expect(prog.locator(`[data-desk-prog-row="${id}"]`)).toHaveCount(0);
+  await expect(prog.locator(".dk-grcount")).toHaveText("4 under way · 2 need you · 2 not started");
   // At its tests: two steps done (8m, 7m), tests lit and counting, three ahead.
   const d3 = prog.locator('[data-desk-prog-row="d3"]');
   await expect(d3.locator(".dk-grt").nth(0)).toHaveText("2m");
@@ -38,14 +40,23 @@ test("Progress shows each open item's steps, what it's doing now, and opens it o
   // Asks you something: its Now says so, with one button.
   await expect(prog.locator('[data-desk-prog-row="d1"] .dk-grw')).toHaveClass(/you/);
   await expect(prog.locator('[data-desk-prog-row="d1"] .dk-grb button').first()).toBeVisible();
-  await expect(prog).toContainText("need");
   const dir = process.env.SHOT_DIR || process.env.TMPDIR || "/tmp";
-  await prog.screenshot({ path: `${dir}/cue-desk-progress-light.png` });
+  await page.screenshot({ path: `${dir}/cue-desk-progress-light.png` });
   await page.emulateMedia({ colorScheme: "dark" });
-  await prog.screenshot({ path: `${dir}/cue-desk-progress-dark.png` });
+  await page.screenshot({ path: `${dir}/cue-desk-progress-dark.png` });
   await page.emulateMedia({ colorScheme: "light" });
-  // A row opens its item, back in the List.
+  // It moves as Cue's state comes in: at its commit, tests' time stops counting.
+  await cue.change((st, now) => { st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d3").steps[3] = now; }, Date.now());
+  await expect(d3.locator(".dk-grr.on")).toHaveCount(3);
+  // Esc closes it; so does a click outside.
+  await page.keyboard.press("Escape");
+  await expect(prog).toHaveCount(0);
+  await page.locator(".dk-items .dk-ch [data-desk-prog-toggle]").click();
+  await page.locator(".dk-items .dk-ch b").click();
+  await expect(prog).toHaveCount(0);
+  // A row opens its item and closes the popover.
+  await page.locator(".dk-items .dk-ch [data-desk-prog-toggle]").click();
   await d3.locator(".dk-grtl").click();
-  await expect(page.locator(".dk-prog")).toHaveCount(0);
-  await expect(page.locator('.dk-items [data-desk-items-view="list"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(prog).toHaveCount(0);
+  await expect(page.locator('.dk-items .dk-it.on')).toContainText("Search stays centred");
 });

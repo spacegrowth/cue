@@ -235,7 +235,7 @@ const DESK_CLICKS = {
   deskAway: (el) => deskAwayOpen(el.dataset.deskAway),
   deskPause: (el) => deskPauseToggle(el.dataset.deskPause),
   // Items as a List or as Progress (#409, desk_progress.js); a Progress row opens its item's page.
-  deskItemsView: (el) => deskItemsViewSet(el.dataset.deskItemsView),
+  deskProgToggle: () => deskProgToggle(),
   deskProgOpen: (el) => deskProgOpen(el.dataset.deskProgOpen),
   deskLogRow: (el) => { const id = el.dataset.deskLogRow; if (!deskLogOpen.delete(id)) deskLogOpen.add(id); renderMain(); },
   deskSession: (el) => openSession(el.dataset.deskSession),
@@ -340,6 +340,8 @@ function deskClick(e) {
     queueMicrotask(renderMain);
     if (!e.target.closest?.("[data-desk-new-desk]")) return;
   }
+  // Progress (#409) closes on a click outside it.
+  if (deskProgShown && !e.target.closest?.(".dk-prog, [data-desk-prog-toggle]")) { deskProgShown = false; queueMicrotask(renderMain); }
   // A crew member's ⋯ menu closes on a click outside it.
   if (deskCrewMenu && !e.target.closest?.(".dk-cmore")) { deskCrewMenu = ""; queueMicrotask(renderMain); }
   // In a session's name box (✎ on its row): the click stays in the box, it doesn't open the row.
@@ -371,6 +373,7 @@ function deskKey(e) {
   if (deskQaKey(e, key)) return true;
   if (e.key === "Enter" && !e.shiftKey && deskBoxes.has(key)) { deskSendBox(key); return true; }
   if (e.key === "Enter" && !e.shiftKey && key.startsWith("back:")) { deskAct(key.slice(5), "back_go"); return true; }
+  if (e.key === "Escape" && deskProgShown) { deskProgToggle(false); document.querySelector("[data-desk-prog-toggle]")?.focus(); return true; }
   if (e.key === "Escape" && key.startsWith("back:")) { deskAct(key.slice(5), "back_cancel"); return true; }
   // Esc: only when nothing over the Desk wants it (the crew page, a sheet, search and the live list, the projects
   // list, a menu, a rename), as the Inbox's keys do.

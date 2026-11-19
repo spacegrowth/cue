@@ -169,9 +169,9 @@ function deskView() {
   queueMicrotask(deskSettle);
   const project = deskSelection();
   const taskApprovals = deskTaskApprovals(deskOf(project));
-  // Items as Progress (#409): the whole Desk, the table of every open item's steps.
-  if (deskItemsView === "progress") return `<div class="board dk-board dk-progb">${deskProgress(project, taskApprovals)}</div>${deskAwayHtml()}`;
-  return `<div class="board dk-board">${deskSessions(project, taskApprovals)}${deskRight(project, taskApprovals)}${deskList(project, taskApprovals)}</div>${deskAwayHtml()}`;
+  // Progress (#409): over the Desk while open, the table of every item under way.
+  const prog = deskProgShown ? deskProgress(project, taskApprovals) : "";
+  return `<div class="board dk-board">${deskSessions(project, taskApprovals)}${deskRight(project, taskApprovals)}${deskList(project, taskApprovals)}${prog}</div>${deskAwayHtml()}`;
 }
 /** How many messages each item's Thread showed when last drawn, and for which opening of its page, by item. The page
  *  opens at its newest message, as a chat does (#145). After that it follows its chat only while you're at its end,

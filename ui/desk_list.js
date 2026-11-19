@@ -345,7 +345,7 @@ function deskList(project, taskApprovals) {
   const left = calls.filter((c) => !placed.has(c.id));
   if (left.length) parts.splice(loose, 0, left.map(deskAwayMark).join(""));
   const body = parts.join("") + (parts.length > 1 ? "" : `<div class="dk-empty">No items yet.</div>`);
-  return `<div class="dk-card dk-items"><div class="dk-ch"><b>Items</b>${deskViewSwitch()}${deskPausedTag(g.d)}${deskPauseButton(g.d)}${deskAwaySwitch(g.d)}</div>
+  return `<div class="dk-card dk-items"><div class="dk-ch"><b>Items</b>${deskPausedTag(g.d)}${deskProgButtonHead()}${deskPauseButton(g.d)}${deskAwaySwitch(g.d)}</div>
     ${deskQuickAdd()}<div class="dk-scroll" data-scroll-key="desk-items:${esc(project)}">${body}</div></div>`;
 }
 

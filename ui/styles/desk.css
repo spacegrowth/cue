@@ -1090,16 +1090,17 @@ body.dk-dragging, body.dk-dragging * { cursor: grabbing !important; user-select:
 .dk-pc.done .dk-pc-t { color: var(--muted); }
 .dk-pc-m { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
 
-/* Items as Progress (#409, desk_progress.js; mock J2 of the "Live progress" canvas page): the whole Desk, one row per open
-   item, the six steps as columns named once, each row's marks joined by a line with how long each step took. */
-.board.dk-board.dk-progb { grid-template-columns: minmax(0, 1fr); }
-.dk-seg { display: inline-flex; gap: 2px; margin-left: 12px; padding: 2px; border-radius: 8px; background: var(--panel-2); }
-.dk-seg > button { all: unset; padding: 3px 10px; border-radius: 6px; color: var(--muted); font: 650 12px var(--sans); cursor: pointer; }
-.dk-seg > button:hover { color: var(--ink); }
-.dk-seg > button.on { background: var(--panel); color: var(--ink); box-shadow: var(--shadow); }
-.dk-seg > button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.dk-grcount { margin-left: 12px; color: var(--muted); font: 12px var(--sans); }
-.dk-prog .dk-scroll { padding-top: 0; overflow-x: auto; }
+/* Progress (#409, desk_progress.js; mock J2 of the "Live progress" canvas page): a popover over the Desk from the Items
+   head, one row per item under way, the six steps as columns named once, each row's marks joined by a line with how
+   long each step took. */
+.dk-prog-btn { margin-left: auto; }
+.dk-prog-btn + :is(.dk-pz, .dk-aw-sw) { margin-left: 0; }
+.dk-prog-btn.on { background: var(--sel); color: var(--on-sel); }
+.dk-board > .dk-prog { position: absolute; z-index: 40; top: 56px; right: 0; width: min(1180px, 100%); max-height: calc(100% - 64px); display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); color: var(--ink); box-shadow: 0 12px 32px rgba(0, 0, 0, .28); overflow: clip; font-size: 13px; }
+.dk-prog .dk-ch { flex: none; display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 14px 0 24px; border-bottom: 1px solid var(--line); }
+.dk-prog-x { margin-left: auto; }
+.dk-grcount { margin-left: 4px; color: var(--muted); font: 12px var(--sans); }
+.dk-prog .dk-scroll { min-height: 0; padding-top: 0; overflow: auto; }
 .dk-gr { display: grid; grid-template-columns: minmax(220px, 300px) repeat(6, 96px) minmax(220px, 1fr); align-items: start; padding: 12px 24px; border-top: 1px solid var(--line); cursor: pointer; }
 .dk-gr:not(.dk-grh):hover { background: var(--panel-2); }
 .dk-gr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }

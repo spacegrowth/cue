@@ -1,20 +1,19 @@
-// Cue UI desk — the Progress view of Items (#409, mock J2 of the "Live progress" canvas page): the whole Desk, one row
+// Cue UI desk — Progress, the popover of Items (#409, mock J2 of the "Live progress" canvas page): the whole Desk, one row
 // per open item, the six steps as columns named once, each row's marks joined by a line with how long each step took,
 // and a Now column saying what it's doing or waits on (with its one button when it needs you).
 // Its steps come from Cue (hub/desk_steps.rs `steps`): it redraws as Cue's state comes in, the current step's time
-// counts up with the other live times (tickAges). Loaded after desk_list.js (index.html, mini.html).
+// counts up with the other live times (tickAges). Opens as a popover over the Desk from Progress in the Items head.
+// Loaded after desk_list.js (index.html, mini.html).
 
 const DESK_PROG_STEPS = ["Picked up", "Building", "Tests", "Commit", "Landing", "To check"];
-/** Which way Items shows: "list" (the list beside the lead's chat) or "progress" (this view, the whole Desk). Kept in
- *  this window's storage. */
-let deskItemsView = (() => { try { return localStorage.getItem("cue.deskItemsView") === "progress" ? "progress" : "list"; } catch { return "list"; } })();
-function deskItemsViewSet(v) {
-  deskItemsView = v === "progress" ? "progress" : "list";
-  try { localStorage.setItem("cue.deskItemsView", deskItemsView); } catch { /* this window only */ }
+/** The Progress popover (#409): open over the Desk while true; Esc, a click outside it or a row closes it. */
+let deskProgShown = false;
+function deskProgToggle(on = !deskProgShown) {
+  deskProgShown = on;
   renderMain();
 }
-/** The List / Progress switch in the Items head. */
-const deskViewSwitch = () => `<span class="dk-seg" role="group" aria-label="Show items as">${["list", "progress"].map((v) => `<button class="${deskItemsView === v ? "on" : ""}" data-desk-items-view="${v}" aria-pressed="${deskItemsView === v}">${v === "list" ? "List" : "Progress"}</button>`).join("")}</span>`;
+/** The Progress button in the Items head. */
+const deskProgButtonHead = () => `<button class="btn small dk-prog-btn${deskProgShown ? " on" : ""}" data-desk-prog-toggle aria-haspopup="dialog" aria-expanded="${deskProgShown}">Progress</button>`;
 
 /** A length of time, short: "40s", "6m", "2h", "3d". */
 function deskProgDur(ms) {
@@ -92,19 +91,19 @@ function deskProgRow(i) {
   return `<div class="dk-gr" role="button" tabindex="0" data-desk-prog-open="${esc(i.id)}" data-desk-prog-row="${esc(i.id)}"><span class="dk-grn"><span class="dk-grtl">${esc(i.title)}</span><span class="dk-grmeta"><span class="dk-kid">${deskKindIcon(i)}<span class="dk-id">${esc(deskNum(i))}</span></span>${who ? `<span>· ${esc(who)}</span>` : ""}<span class="dk-grmono">· ${ago(deskMs(i.created))}</span></span></span>${cells}<span class="dk-grnow"><span class="dk-grw ${look}">${deskProgNow(i)}</span>${deskProgButton(i) ? `<span class="dk-grb">${deskProgButton(i)}</span>` : ""}</span></div>`;
 }
 
-/** The Progress view: every open item in the order the list has them (yours first, then at work, landing, waiting to
- *  install, queued, parked), under the step names. */
+/** The Progress popover: every item under way (not the queued or parked ones, which haven't started) in the order the
+ *  list has them (yours first, then at work, landing, waiting to install), under the step names. */
 function deskProgress(project, taskApprovals) {
   const g = deskGroups(project, taskApprovals);
-  const rows = [...g.waiting, ...g.review, ...g.working, ...g.landing, ...g.install, ...g.resume, ...g.paused, ...g.queued, ...g.held];
-  const you = rows.filter((i) => deskProgLook(i) === "you").length;
+  const rows = [...g.waiting, ...g.review, ...g.working, ...g.landing, ...g.install, ...g.resume, ...g.paused];
+  const you = rows.filter((i) => deskProgLook(i) === "you").length, later = g.queued.length + g.held.length;
   const head = `<div class="dk-gr dk-grh"><span>Item</span>${DESK_PROG_STEPS.map((s) => `<span class="dk-grhc">${s}</span>`).join("")}<span class="dk-grnow">Now</span></div>`;
-  const body = rows.length ? head + rows.map(deskProgRow).join("") : `<div class="dk-empty">Nothing open.</div>`;
-  return `<div class="dk-card dk-items dk-prog"><div class="dk-ch"><b>Items</b>${deskViewSwitch()}<span class="dk-grcount">${rows.length} open${you ? ` · ${you} need${you === 1 ? "s" : ""} you` : ""}</span>${deskPausedTag(g.d)}${deskPauseButton(g.d)}${deskAwaySwitch(g.d)}</div>
+  const body = rows.length ? head + rows.map(deskProgRow).join("") : `<div class="dk-empty">Nothing under way.</div>`;
+  return `<div class="dk-prog" role="dialog" aria-label="Progress"><div class="dk-ch"><b>Progress</b><span class="dk-grcount">${rows.length} under way${you ? ` · ${you} need${you === 1 ? "s" : ""} you` : ""}${later ? ` · ${later} not started` : ""}</span><button class="btn small dk-prog-x" data-desk-prog-toggle aria-label="Close">Close</button></div>
     <div class="dk-scroll" data-scroll-key="desk-progress:${esc(project)}">${body}</div></div>`;
 }
-/** A row (or its Answer) opens the item's page, back in the List where its page sits beside the items. */
+/** A row (or its Answer) closes the popover and opens the item's page. */
 function deskProgOpen(id) {
-  deskItemsViewSet("list");
+  deskProgShown = false;
   deskShow({ kind: "item", id });
 }
