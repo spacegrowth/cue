@@ -187,3 +187,17 @@ fn serving_a_copy_leaves_a_check_at_work_alone() {
     assert!(at_work.is_dir(), "a check at work keeps its copy");
     let _ = std::fs::remove_dir_all(root);
 }
+
+#[test]
+fn a_copy_git_couldnt_make_is_made_again_before_the_check_fails_on_it() {
+    // #323: git failing once to copy the commit is no word on its window; one that fails every time says so.
+    let (dir, root, head) = repo_with_check("check-copy-retry");
+    let live = root.join("live");
+    COPIES_FAIL.with(|n| n.set(COPY_TRIES - 1));
+    assert_eq!(check_in(&live, &s(&dir), &head), Ok(()), "made on its last try, and checked");
+    COPIES_FAIL.with(|n| n.set(COPY_TRIES));
+    let said = check_in(&live, &s(&dir), &head).unwrap_err();
+    assert!(said.contains("git couldn't copy") && said.contains(&format!("tried {COPY_TRIES} times; the window itself wasn't checked")), "{said}");
+    assert_eq!(checks(&live), 0, "no copy left behind");
+    let _ = std::fs::remove_dir_all(root);
+}

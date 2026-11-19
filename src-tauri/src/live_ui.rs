@@ -129,7 +129,40 @@ fn check_in(dir: &Path, repo: &str, head: &str) -> Result<(), String> {
     result
 }
 
+/// How many times the check's copy is made, in a fresh folder each time, before a check fails on it: git or tar
+/// failing once (a moment's contention on the repository) is no word on the item's window (#323).
+const COPY_TRIES: u64 = 3;
+
+#[cfg(test)]
+thread_local! {
+    /// Tests: how many copies on this thread fail before one is made.
+    static COPIES_FAIL: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
 fn check_copy(work: &Path, repo: &str, head: &str) -> Result<(), String> {
+    let mut tried = 0;
+    loop {
+        tried += 1;
+        match copy_out(work, repo, head) {
+            Ok(()) => break,
+            Err(_) if tried < COPY_TRIES => {
+                let _ = std::fs::remove_dir_all(work);
+                std::fs::create_dir_all(work).map_err(|e| e.to_string())?;
+                // A short pause, longer each time, for whatever held the repository to let go.
+                std::thread::sleep(std::time::Duration::from_millis(300 * tried));
+            }
+            Err(why) => return Err(format!("{why} (tried {COPY_TRIES} times; the window itself wasn't checked)")),
+        }
+    }
+    run_check(work)
+}
+
+/// `head`'s ui/, tests/ui/ and the check, unpacked in `work`, with `repo`'s node_modules and add-on linked in.
+fn copy_out(work: &Path, repo: &str, head: &str) -> Result<(), String> {
+    #[cfg(test)]
+    if COPIES_FAIL.with(|n| n.replace(n.get().saturating_sub(1)) > 0) {
+        return Err(format!("git couldn't copy {head} to check its window"));
+    }
     let tar = work.join("copy.tar");
     let tar_s = tar.to_string_lossy().to_string();
     let filters = crate::safe_git::no_repo_filters("", repo);
@@ -139,8 +172,9 @@ fn check_copy(work: &Path, repo: &str, head: &str) -> Result<(), String> {
     if matches!(harness, Ok((_, 0))) {
         args.push("tests/ui");
     }
-    if !matches!(crate::safe_git::run("", repo, &filters, &args), Ok((_, 0))) {
-        return Err(format!("git couldn't copy {head} to check its window"));
+    match crate::safe_git::run("", repo, &filters, &args) {
+        Ok((_, 0)) => {}
+        Ok((said, _)) | Err(said) => return Err(format!("git couldn't copy {head} to check its window: {}", said.trim())),
     }
     let out = std::process::Command::new("/usr/bin/tar").arg("-xf").arg(&tar).arg("-C").arg(work).output();
     let _ = std::fs::remove_file(&tar);
@@ -160,6 +194,11 @@ fn check_copy(work: &Path, repo: &str, head: &str) -> Result<(), String> {
             symlink(ext, work.join("src-tauri/ext")).map_err(|e| e.to_string())?;
         }
     }
+    Ok(())
+}
+
+/// scripts/check-window.mjs run in the copy `work`.
+fn run_check(work: &Path) -> Result<(), String> {
     // Started from the Finder, Cue has a short PATH: node is found on the login shell's.
     let shell = std::env::var("SHELL").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "/bin/zsh".into());
     let out = std::process::Command::new(shell)
