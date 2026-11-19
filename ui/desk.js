@@ -1146,6 +1146,9 @@ const deskPend = (id, text, why, pics = 0) => { const p = { text, why, pics, at:
 const deskUnpend = (id, p) => deskPending.set(id, (deskPending.get(id) || []).filter((x) => x !== p));
 /** A step that hands the item to someone (hub/desk.rs routed_text, give): on its Thread as a Hand-off. */
 const DESK_HANDOFF = /^(Routed|Gave|Started|Sent|Queued|Reopened) #/;
+/** The lead unsticking an item itself (hub/desk_unstick.rs, #347): closed as on main, its copy taken back, moved up
+ *  in the landing line, started now. On its Thread as a record line. */
+const DESK_UNSTUCK = /^(Closed|Took back|Moved|Started) #\S+(:| now| up|'s copy)/;
 /** Item `i`'s steps and calls, oldest first: today's (newest first in `decisions`) after the older ones. */
 const deskItemLog = (i, d) => [...(d.older || []), ...[...(d.decisions || [])].reverse()].filter((c) => c.item_id === i.id);
 /** Item `i`'s Thread, oldest first: the words it was added with, then what you wrote about it (Sent back in red), the
@@ -1167,6 +1170,7 @@ function deskThread(i, d) {
       const at = deskMs(c.at);
       rows.push({ at, by: c.by, tag: `Note to ${c.why.slice(8)}`, text: c.text, html: `<div class="dk-md">${deskMd(c.text)}</div>${deskTakenHtml(i, { text: c.text, at })}` });
     }
+    else if (c.by !== "You" && DESK_UNSTUCK.test(c.text)) rows.push({ at: deskMs(c.at), rec: "Unstuck", html: `${esc(c.by)}: ${esc(c.text)}${c.why ? `: ${esc(c.why)}` : ""}` });
     // A hand-off is a record line, not a message (#276): one quiet line in the time line.
     else if (DESK_HANDOFF.test(c.text)) rows.push({ at: deskMs(c.at), rec: "Hand-off", html: `${esc(c.by)}: ${esc(c.text)}${c.why ? `: ${esc(c.why)}` : ""}` });
   }

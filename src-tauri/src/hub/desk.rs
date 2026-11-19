@@ -41,6 +41,10 @@ pub(super) struct Effects {
     pub(super) trees_gone: Vec<DeskItem>,
     /// Items the lead said DONE on for you (`DeskItem::close_on_check`): closed as Looks right would once to check.
     pub(super) closes: Vec<String>,
+    /// Items the lead said are on main already (CLOSE, #347): closed once git says their commit is on the main line.
+    pub(super) on_main: Vec<super::desk_unstick::OnMain>,
+    /// The lead moved an item up in the landing line (LAND FIRST): the line runs now.
+    pub(super) land: bool,
 }
 
 
@@ -843,6 +847,12 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx
                     answers.push(no);
                 }
             }
+            Line::Unstick { what, id, commit, why } => {
+                let id = st.desk.canon(&id);
+                if let Err(no) = super::desk_unstick::unstick(st, project, &by, &what, &id, &commit, &why, now, fx) {
+                    answers.push(no);
+                }
+            }
             Line::Context { .. } | Line::Designs { .. } => {}
         }
     }
@@ -1261,7 +1271,7 @@ fn desk_line_start(line: &str) -> bool {
     let l = parse::unmarked(line.trim().trim_start_matches('`')).trim_start_matches('`');
     let Some((word, _)) = l.split_once(':') else { return false };
     let word = word.trim_end_matches(['*', '`']).trim();
-    matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "CONTEXT" | "DESIGNS" | "TITLE" | "SPLIT" | "CUT" | "MERGE" | "NOTE") || word.eq_ignore_ascii_case("DECIDED")
+    matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "CONTEXT" | "DESIGNS" | "TITLE" | "SPLIT" | "CUT" | "MERGE" | "NOTE" | "CLOSE" | "TAKE COPY" | "LAND FIRST" | "START") || word.eq_ignore_ascii_case("DECIDED")
 }
 
 /// What you did to item `id` ("looks_right" | "reopen" | "send_back" | "start_now" | "put_before" | "drop"), in the store.
@@ -1772,7 +1782,7 @@ impl Hub {
     /// What a change left to do, with the store let go: its saves, then its messages and questions, and new items
     /// for their lead (told a moment later, with any others that came meanwhile).
     pub(super) fn desk_done(&self, mut fx: Effects) {
-        if fx.items.is_empty() && fx.said.is_empty() && fx.dropped.is_empty() && fx.decisions.is_empty() && fx.sends.is_empty() && fx.asks.is_empty() && fx.news.is_empty() && fx.starts.is_empty() && fx.joined.is_empty() && fx.uses.is_empty() && fx.stopped.is_empty() && fx.trees_gone.is_empty() && fx.closes.is_empty() {
+        if fx.items.is_empty() && fx.said.is_empty() && fx.dropped.is_empty() && fx.decisions.is_empty() && fx.sends.is_empty() && fx.asks.is_empty() && fx.news.is_empty() && fx.starts.is_empty() && fx.joined.is_empty() && fx.uses.is_empty() && fx.stopped.is_empty() && fx.trees_gone.is_empty() && fx.closes.is_empty() && fx.on_main.is_empty() && !fx.land {
             return;
         }
         // Items going to work get their own copies (or wait for one), before their messages are saved and sent.
@@ -1851,6 +1861,12 @@ impl Hub {
         self.desk_later(fx.starts, fx.checked);
         for id in fx.closes {
             self.later(0, move |h| h.desk_close_on_check(&id));
+        }
+        for o in fx.on_main {
+            self.later(0, move |h| h.desk_close_on_main(o));
+        }
+        if fx.land {
+            self.later(0, |h| h.desk_land_line());
         }
     }
 

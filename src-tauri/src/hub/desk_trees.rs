@@ -77,16 +77,20 @@ impl Hub {
             let Some(main) = tree_repo(&folder) else { continue };
             let claimed = self.write(|st| {
                 let used: Vec<u32> = st.desk.items.iter().filter_map(|i| i.tree.as_ref()).filter(|t| t.repo == main).map(|t| t.slot).collect();
+                // Its copy taken back earlier (TAKE COPY, #347) is kept on its branch: this one's is another.
+                let again = if st.desk.kept.iter().any(|k| k.id == id) { "-again" } else { "" };
                 let it = st.desk.item_mut(&id).filter(|i| i.state == "working" && i.tree.is_none())?;
                 match (1..=SLOTS).find(|n| !used.contains(n)) {
                     Some(n) => {
-                        let t = ItemTree { repo: main.clone(), path: format!("{main}/{TREES}/desk-{n}"), branch: format!("desk/{id}"), base: String::new(), slot: n };
+                        let t = ItemTree { repo: main.clone(), path: format!("{main}/{TREES}/desk-{n}"), branch: format!("desk/{id}{again}"), base: String::new(), slot: n };
                         it.tree = Some(t.clone());
                         // Started another way (Start it now, or freed by its `after`) while it waited for a copy: that wait is over.
                         it.tree_wait = false;
                         it.tree_wait_repo.clear();
                         Some(Some(t))
                     }
+                    // Started now by the lead (START): it works where its holder is, message and all.
+                    None if it.no_copy_wait => None,
                     None => {
                         (it.state, it.tree_wait, it.tree_wait_repo) = ("queued".into(), true, main.clone());
                         Some(None)
@@ -201,7 +205,8 @@ impl Hub {
         }
     }
 
-    /// The landing line: items said DONE in their own copies landed one at a time, oldest DONE first. Whoever runs
+    /// The landing line: items said DONE in their own copies landed one at a time, oldest DONE first (those the lead
+    /// moved up, LAND FIRST, before them: the latest moved first). Whoever runs
     /// it takes everything waiting; an item that has to wait lets the next go first.
     pub(super) fn desk_land_line(&self) {
         let Some(_claim) = Claim::take(self, "landing") else { return };
@@ -217,9 +222,9 @@ impl Hub {
                     .items
                     .iter()
                     .filter(|i| i.state == "finishing" && i.tree.is_some() && !later.contains(&i.id))
-                    .filter_map(|i| i.finish.as_ref().filter(|f| matches!(f.step.as_str(), "commit" | "line")).map(|f| (f.at, i.id.clone())))
+                    .filter_map(|i| i.finish.as_ref().filter(|f| matches!(f.step.as_str(), "commit" | "line")).map(|f| (f.first == 0, std::cmp::Reverse(f.first), f.at, i.id.clone())))
                     .min()
-                    .map(|(_, id)| id)
+                    .map(|(_, _, _, id)| id)
             });
             let Some(id) = next else { break };
             if let Landed::Wait = self.land(&id) {
@@ -388,7 +393,7 @@ pub(super) fn copy_wait(st: &Store, repo: &str) -> String {
 
 /// The main checkout `folder` is, when an item worked from it gets a copy: a repository's main checkout (not one of
 /// its worktrees), on a branch with a commit.
-fn tree_repo(folder: &str) -> Option<String> {
+pub(super) fn tree_repo(folder: &str) -> Option<String> {
     let top = git("", folder, &[], &["rev-parse", "--show-toplevel"])?.trim().to_string();
     let (main, onto) = main_checkout(&top)?;
     (same_dir(&top, &main) && !onto.is_empty() && rev(&main, &onto).is_some()).then_some(main)
@@ -406,7 +411,7 @@ fn moved_base_of(repo: &str, path: &str, onto: &str, base: &str) -> Option<Strin
 }
 
 /// The full commit `what` names in `repo`.
-fn rev(repo: &str, what: &str) -> Option<String> {
+pub(super) fn rev(repo: &str, what: &str) -> Option<String> {
     git("", repo, &[], &["rev-parse", "-q", "--verify", what]).map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
 }
 
@@ -494,7 +499,7 @@ fn unlink_shared(path: &str) {
 }
 
 /// Copy `t` and its branch removed.
-fn remove(t: &ItemTree) {
+pub(super) fn remove(t: &ItemTree) {
     unlink_shared(&t.path);
     if git("", &t.repo, &[], &["worktree", "remove", "--force", "--force", &t.path]).is_none() && std::path::Path::new(&t.path).exists() {
         let _ = std::fs::remove_dir_all(&t.path);
@@ -514,7 +519,7 @@ fn has_work(t: &ItemTree) -> bool {
 
 /// The tree of everything in copy `path` (committed or not, new files too, ignored ones and the shared links left
 /// out), written with an index of its own so the copy's isn't touched.
-fn snapshot(path: &str) -> Option<String> {
+pub(super) fn snapshot(path: &str) -> Option<String> {
     let dir = std::env::temp_dir().join(format!("cue-land-{}-{}", std::process::id(), now_ms()));
     let index = dir.to_string_lossy().to_string();
     let env = [("GIT_INDEX_FILE", index.as_str())];

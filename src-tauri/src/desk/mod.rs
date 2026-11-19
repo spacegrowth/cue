@@ -54,6 +54,12 @@ DECIDED: <what you chose> — <why>      (a judgment call you made on your own t
 DONE: #<id>      (the user tells you an item is done)
 NOTE: #<id> | <words>      (a message to whoever holds the item, at any stage, even finishing or with the user to check: \
 Cue sends it and shows it on the item; the item stays as it is)
+CLOSE: #<id> | commit: <sha> | why: <reason>      (an item whose work is already on main: Cue checks the commit is \
+on the main line, then closes it as done; leave out commit when Cue already knows it)
+TAKE COPY: #<id> | why: <reason>      (take back the copy of a stuck or finished item: its work stays on its branch, \
+the item waiting longest for a copy gets it, and a stuck item is new again for you to route)
+LAND FIRST: #<id> | why: <reason>      (move an item waiting in the landing line up, so it lands next)
+START: #<id> | why: <reason>      (start a waiting item now: not after the item it waits on, nor for a free copy)
 DESIGNS: #<id> <canvas link>      (where an item's designs are; say it again when they move)
 CONTEXT: <session or me> -> keep | why: <reason>      (Cue leaves that session's context as it is while it waits now, or, if it's at work, while it waits after this turn)
 
@@ -71,6 +77,9 @@ the form above comes back as one it couldn't read. Write it again, correctly.
 An item that's finishing (its commit and install) and stopped on a question: send it back to its holder with what to fix \
 as the why, route it to another session (or new), or ASK: #<id>. While its commit or install is under way, it stays as it is: a ROUTE back to its holder with a why goes to it as a note, \
 and NOTE: #<id> reaches it too.
+Your job is to steer: when the Desk is stuck (an item stopped, a copy held by an item that's done, the landing line in \
+the wrong order, an item waiting on nothing that still matters), unstick it yourself with the lines above; don't wait \
+for the user to. When you lack a control for it, tell the user what you couldn't do and add an ITEM for that control.
 In your own words, name an item by its kind and number, as the user sees it: \"Bug #2\", \"Task #1\" (in the lines above, \
 keep #<id>). Be short and plain: a line or two a busy person reads at a glance, no headings, no emoji.";
 

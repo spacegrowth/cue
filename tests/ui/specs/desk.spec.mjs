@@ -3050,6 +3050,27 @@ test("an item's page is a Thread under Thread, Decisions and Steps tabs: every m
   await expect(pane).toContainText("No decisions on it yet.");
 });
 
+test("the lead unsticking an item shows on its Thread as record lines (#347)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.change((st) => {
+    const d = st.desk.projects.find((x) => x.project === "cue"), it = d.items.find((i) => i.id === "d4"), t = it.created < 1e12 ? it.created : it.created / 1000;
+    const step = (id, text, why, at) => d.decisions.push({ project: "cue", item_id: "d4", id, by: "cue-lead", sid: "lead", text, why, at: t + at, undo: "none" });
+    step("u1", "Started #d4 now, without waiting for a copy", "the user needs it", 60);
+    step("u2", "Moved #d4 up in the landing line", "the user waits on it", 120);
+    step("u3", "Took back #d4's copy", "it's done", 180);
+    step("u4", "Closed #d4: its work is on main (ab12cd3)", "it landed by hand", 240);
+  });
+  await page.locator('[data-desk-item="d4"]').click();
+  const recs = page.locator(".dk-right .dk-pg .dk-thread .dk-tm.rec", { hasText: "Unstuck" });
+  await expect(recs).toHaveText([
+    /Unstuck · cue-lead: Started #d4 now, without waiting for a copy: the user needs it/,
+    /Unstuck · cue-lead: Moved #d4 up in the landing line: the user waits on it/,
+    /Unstuck · cue-lead: Took back #d4's copy: it's done/,
+    /Unstuck · cue-lead: Closed #d4: its work is on main \(ab12cd3\): it landed by hand/,
+  ]);
+});
+
 test("what you send on an item's page shows in its Thread at once, before it comes back as a step (#140)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);

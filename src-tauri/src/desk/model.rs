@@ -145,6 +145,10 @@ pub struct DeskItem {
     /// The repository whose copy it's queued for (with `tree_wait`).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub tree_wait_repo: String,
+    /// Started now by the lead (START, #347) while it waited: it works where its holder is when no copy is free,
+    /// rather than queue for one again.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub no_copy_wait: bool,
     /// Where each of its commits is: (folder, short hash), for its Files changed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub commit_in: Vec<(String, String)>,
@@ -281,6 +285,10 @@ pub struct Finish {
     pub commit: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub repo: String,
+    /// When the lead moved it up in the landing line (LAND FIRST, #347; ms): it lands before items it wasn't put
+    /// ahead of, the latest moved first.
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    pub first: u64,
     /// What it waits on in the landing line ("the main checkout is in the middle of a merge"), or where its work
     /// is while it isn't on main ("on fix-header, not main").
     #[serde(default, skip_serializing_if = "String::is_empty")]

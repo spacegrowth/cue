@@ -31,6 +31,11 @@ pub enum Line {
     Merge { id: String, into: String, why: String },
     /// The lead's note to whoever holds item `id`, at any stage (#338): `NOTE: #<id> | <words>`.
     Note { id: String, text: String },
+    /// The lead unsticking item `id` itself (#347): `what` is "close" (`CLOSE: #<id> | commit: <sha> | why: …`: its
+    /// work is already on main; `commit` when said), "take_copy" (`TAKE COPY: #<id> | why: …`: its copy back from a
+    /// stuck or finished item), "land_first" (`LAND FIRST: #<id> | why: …`: up in the landing line) or "start"
+    /// (`START: #<id> | why: …`: a waiting item, now).
+    Unstick { what: String, id: String, commit: String, why: String },
 }
 
 /// The Desk lines in `text`, in order.
@@ -125,8 +130,35 @@ fn one(t: &str) -> Option<Line> {
         "CUT" => cut(body),
         "MERGE" => merge(body),
         "NOTE" => note(body),
+        "CLOSE" => unstick("close", body),
+        "TAKE COPY" => unstick("take_copy", body),
+        "LAND FIRST" => unstick("land_first", body),
+        "START" => unstick("start", body),
         _ => None,
     }
+}
+
+/// `CLOSE: #<id> | commit: <sha> | why: …` and the other lines that unstick an item (#347): Line::Unstick. Its why may
+/// be written with no label; a commit only on CLOSE.
+fn unstick(what: &str, body: &str) -> Option<Line> {
+    let ps = parts(body);
+    let head = ps.first()?;
+    if !head.starts_with('#') || head.contains(' ') {
+        return None;
+    }
+    let (mut commit, mut why) = (String::new(), String::new());
+    for p in &ps[1..] {
+        match (labelled(p, "commit"), labelled(p, "why")) {
+            (Some(c), _) if what == "close" => commit = c.trim_matches('`').to_string(),
+            (_, Some(w)) => why = w.to_string(),
+            _ if why.is_empty() => why = p.to_string(),
+            _ => {}
+        }
+    }
+    if !commit.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    Some(Line::Unstick { what: what.into(), id: id_of(head)?, commit: commit.to_ascii_lowercase(), why })
 }
 
 /// The parts of `body` between `|`, trimmed.

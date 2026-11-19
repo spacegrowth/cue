@@ -19,6 +19,7 @@ mod desk_checks;
 mod desk_commit;
 mod desk_finish;
 mod desk_trees;
+mod desk_unstick;
 mod desk_diff;
 mod desk_handoff;
 mod desk_lead;
