@@ -1,6 +1,6 @@
 //! Away mode on a Desk (hub/desk_away.rs): turned on, its rules in the lead's summary and the lead told; ended by its
-//! end time at a Desk session's turn end; turned off. Ask me before still waits for the owner while it's on; a lead a
-//! usage limit stopped is carried on after the reset like any session.
+//! end time (with no turn ending) or at a Desk session's turn end; turned off. Ask me before still waits for the owner
+//! while it's on; a session or lead a usage limit stopped is skipped and carried on after the reset.
 
 use super::desk::{desk, ends, holder, new_lead, sent_to};
 use crate::hosted::HostedEvent;
@@ -35,12 +35,19 @@ fn away_mode_turns_on_tells_the_lead_ends_at_its_time_and_turns_off() {
     assert!(s.contains("- Picking a mock") && s.contains("- 'What' questions") && s.contains("don't ASK about it"), "{s}");
     assert!(sent_to(&w, &d).iter().any(|t| t.starts_with("Away mode:")), "the lead is told: {:?}", sent_to(&w, &d));
 
-    // Ask me before still waits for the owner while Away is on.
+    // Ask me before still waits for the owner while Away is on, even with every rule switched on.
+    let all = json!({ "route": true, "how": true, "stopped": true, "order": true, "what": true, "outside": true });
+    let v = w.hub().desk_away_set(&project, &json!({ "on": true, "until": until, "budget": 20, "rules": all })).unwrap();
+    w.settle();
+    assert_eq!((v["active"].clone(), v["rules"].clone()), (json!(true), all), "{v}");
     assert!(w.session(&h).in_folder(w.home()).guard_bash("git push origin main", "main").is_some(), "a push to main still waits");
+    w.hub().desk_away_set(&project, &json!({ "on": true, "until": until, "budget": 20, "rules": { "how": false, "what": false, "outside": false } })).unwrap();
+    w.settle();
 
-    // Its end time passes: noticed at a Desk session's turn end, the lead told once.
+    // Its end time passes on an idle Desk (no turn ends): noticed then, the lead told once, though Away was set three
+    // times (three timers) and a turn ends after.
     w.advance(2 * 60 * 60 * 1000);
-    ends(&w, &d, "Still routing.");
+    assert_eq!(sent_to(&w, &d).iter().filter(|t| t.contains("Away is paused")).count(), 1, "{:?}", sent_to(&w, &d));
     let away = desk(&w, &project)["away"].clone();
     assert_eq!((away["on"].clone(), away["active"].clone(), away["ended"].clone()), (json!(true), json!(false), json!("until")), "{away}");
     let s = summary(&w, &project);
@@ -57,15 +64,43 @@ fn away_mode_turns_on_tells_the_lead_ends_at_its_time_and_turns_off() {
 }
 
 #[test]
-fn a_lead_a_usage_limit_stopped_is_carried_on_after_the_reset() {
+fn while_away_a_session_and_lead_a_usage_limit_stopped_are_skipped_and_carried_on_after_the_reset() {
+    use crate::sessions::send_at::CARRY_ON;
     let w = World::new();
-    let (_, project) = holder(&w);
+    let (h, project) = holder(&w);
     let d = new_lead(&w, &project);
-    w.hosted_says(&d, HostedEvent::ApiError { error: "rate_limit".into(), text: "You've hit your session limit · resets 4:10am (America/Los_Angeles)".into() });
-    w.hosted_says(&d, HostedEvent::TurnEnded { text: String::new(), failed: true, cost_usd: 0.0, unprompted: false });
+    w.hub().desk_away_set(&project, &json!({ "on": true, "until": null, "budget": null, "rules": {} })).unwrap();
     w.settle();
-    let s = w.snapshot().session(&d).clone();
-    assert_eq!((s["state"].as_str(), s["send_at"]["at_ms"].as_u64()), (Some("limited"), Some(0)), "{s}");
+    let limit = "You've hit your session limit · resets 4:10am (America/Los_Angeles)";
+    for sid in [&h, &d] {
+        w.hosted_says(sid, HostedEvent::ApiError { error: "rate_limit".into(), text: limit.into() });
+        w.hosted_says(sid, HostedEvent::TurnEnded { text: String::new(), failed: true, cost_usd: 0.0, unprompted: false });
+    }
+    w.settle();
+    for sid in [&h, &d] {
+        let s = w.snapshot().session(sid).clone();
+        assert_eq!((s["state"].as_str(), s["send_at"]["at_ms"].as_u64()), (Some("limited"), Some(0)), "{s}");
+    }
+    let (to_lead, to_holder) = (sent_to(&w, &d).len(), sent_to(&w, &h).len());
+
+    // Pressing Away again and changing a rule: the limited lead isn't sent the sweep or Away's words.
+    crate::ipc::desk_away_sweep_with(w.hub(), &project, &json!({})).unwrap();
+    w.hub().desk_away_set(&project, &json!({ "on": true, "until": null, "budget": null, "rules": { "how": false } })).unwrap();
+    w.settle();
+    assert_eq!(desk(&w, &project)["away"]["sweeping"], json!(false), "no sweep to wait for");
+    assert_eq!((sent_to(&w, &d).len(), sent_to(&w, &h).len()), (to_lead, to_holder), "{:?}", sent_to(&w, &d));
+    for sid in [&h, &d] {
+        assert_eq!(w.snapshot().session(sid)["send_at"]["at_ms"].as_u64(), Some(0), "its carry-on is kept");
+    }
+
+    // After the reset both are carried on, and Away's words are in the lead's summary.
+    w.advance(25 * 3600 * 1000);
+    w.hub().usage_tick();
+    w.settle();
+    for sid in [&h, &d] {
+        assert_eq!(sent_to(&w, sid).last().map(String::as_str), Some(CARRY_ON), "{sid}: {:?}", sent_to(&w, sid));
+    }
+    assert!(summary(&w, &project).contains("A session stopped by a usage limit is carried on by Cue after the reset"));
 }
 
 #[test]

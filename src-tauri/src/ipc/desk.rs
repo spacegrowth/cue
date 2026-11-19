@@ -154,7 +154,10 @@ pub(crate) async fn desk_away_sweep(hub: State<'_, Arc<Hub>>, desk: String, rule
 }
 
 pub(crate) fn desk_away_sweep_with(h: &Arc<Hub>, desk: &str, rules: &serde_json::Value) -> Result<(), String> {
-    h.desk_away_sweeping(desk);
+    // Its lead stopped by a usage limit: nothing sent now (Cue carries it on after the reset).
+    if !h.desk_away_sweeping(desk) {
+        return Ok(());
+    }
     let words = crate::hub::desk_away_sweep_words(rules);
     if let Err(e) = desk_send_with(h, desk, &words) {
         h.desk_away_sweep_failed(desk);

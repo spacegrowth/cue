@@ -116,6 +116,11 @@ fn is_sweeping(sid: &str) -> bool {
     held.contains_key(sid)
 }
 
+/// Whether session `sid` is stopped by a usage limit (Cue carries it on after the reset).
+fn limited(st: &Store, sid: &str) -> bool {
+    st.sessions.get(sid).is_some_and(|s| s.state == "limited")
+}
+
 /// `state.desk.projects[i].away`.
 pub(super) fn away_view(st: &Store, desk: &str, now: u64) -> Value {
     let mut v = Away::read(st, desk, now).view();
@@ -220,6 +225,12 @@ impl Hub {
             });
             self.tell_lead_away(desk, &words);
         }
+        // Its end time is noticed then even if no Desk session's turn ends (an idle Desk overnight). A timer left from
+        // an earlier end time finds the limits changed and does nothing; once ended, the saved `ended` keeps it to one telling.
+        if let Some(u) = until.filter(|_| on) {
+            let desk = desk.to_string();
+            self.later(u.saturating_sub(now), move |h| h.desk_away_end(&desk, None));
+        }
         self.changed();
         Ok(self.read(|st| away_view(st, desk, now)))
     }
@@ -231,41 +242,54 @@ impl Hub {
             self.changed();
         }
         let all = crate::config::load().pointer("/desk/away").and_then(Value::as_object).cloned().unwrap_or_default();
-        let now = now_ms();
-        for (desk, v) in all {
-            if !v.get("on").and_then(Value::as_bool).unwrap_or(false) || !v.get("ended").and_then(Value::as_str).unwrap_or("").is_empty() {
-                continue;
-            }
-            let found = self.read(|st| desk_sids(st, &desk).iter().any(|s| s == sid).then(|| Away::read(st, &desk, now)));
-            let Some(a) = found.filter(|a| !a.ended.is_empty()) else { continue };
-            let saved = crate::config::update_with("desk.away", |c| {
-                let mut map = c.pointer("/desk/away").cloned().filter(Value::is_object).unwrap_or_else(|| json!({}));
-                let Some(d) = map.get_mut(&desk).filter(|d| d.get("on").and_then(Value::as_bool).unwrap_or(false)) else { return Ok((None, false)) };
-                if !d.get("ended").and_then(Value::as_str).unwrap_or("").is_empty() {
-                    return Ok((None, false));
-                }
-                d["ended"] = json!(a.ended);
-                Ok((Some(map), true))
-            });
-            match saved {
-                Ok(true) => {
-                    self.tell_lead_away(&desk, &block(&a, now));
-                    self.changed();
-                }
-                Ok(false) => {}
-                Err(e) => eprintln!("cue: couldn't end Away on {desk}: {e}"),
-            }
+        for desk in all.keys() {
+            self.desk_away_end(desk, Some(sid));
         }
     }
 
-    /// Desk `desk`'s lead was asked to sort things out before Away: the window says so until its next turn ends.
-    pub(crate) fn desk_away_sweeping(&self, desk: &str) {
-        let Some((lead, busy)) = self.read(|st| st.desk.lead.get(desk).map(|l| (l.sid.clone(), st.sessions.get(&l.sid).is_some_and(|s| !matches!(s.state.as_str(), "" | "idle" | "waiting" | "stopped" | "ended"))))) else { return };
+    /// Desk `desk`'s Away, if it has run out (its end time, or its budget) and isn't marked so yet: marked ended, and
+    /// its lead told, once. `by`: only when that session is one of the Desk's (a turn's end); None for the end-time timer.
+    fn desk_away_end(&self, desk: &str, by: Option<&str>) {
+        let v = saved(desk);
+        if !v.get("on").and_then(Value::as_bool).unwrap_or(false) || !v.get("ended").and_then(Value::as_str).unwrap_or("").is_empty() {
+            return;
+        }
+        let now = now_ms();
+        let found = self.read(|st| by.is_none_or(|sid| desk_sids(st, desk).iter().any(|s| s == sid)).then(|| Away::read(st, desk, now)));
+        let Some(a) = found.filter(|a| !a.ended.is_empty()) else { return };
+        let saved = crate::config::update_with("desk.away", |c| {
+            let mut map = c.pointer("/desk/away").cloned().filter(Value::is_object).unwrap_or_else(|| json!({}));
+            let Some(d) = map.get_mut(desk).filter(|d| d.get("on").and_then(Value::as_bool).unwrap_or(false)) else { return Ok((None, false)) };
+            if !d.get("ended").and_then(Value::as_str).unwrap_or("").is_empty() {
+                return Ok((None, false));
+            }
+            d["ended"] = json!(a.ended);
+            Ok((Some(map), true))
+        });
+        match saved {
+            Ok(true) => {
+                self.tell_lead_away(desk, &block(&a, now));
+                self.changed();
+            }
+            Ok(false) => {}
+            Err(e) => eprintln!("cue: couldn't end Away on {desk}: {e}"),
+        }
+    }
+
+    /// Desk `desk`'s lead is asked to sort things out before Away: the window says so until its next turn ends. False
+    /// (nothing asked) while a usage limit has stopped it: a message then would bounce off the limit and cancel Cue's
+    /// carry-on; it reads Away's words in the Desk's summary once it's carried on.
+    pub(crate) fn desk_away_sweeping(&self, desk: &str) -> bool {
+        let Some((lead, busy)) = self.read(|st| st.desk.lead.get(desk).map(|l| (l.sid.clone(), st.sessions.get(&l.sid).is_some_and(|s| !matches!(s.state.as_str(), "" | "idle" | "waiting" | "stopped" | "ended"))))) else { return true };
+        if self.read(|st| limited(st, &lead)) {
+            return false;
+        }
         {
             let mut held = crate::locking::lock(sweeping(), "leads sweeping for Away");
             held.insert(lead, u8::from(busy));
         }
         self.changed();
+        true
     }
 
     /// The sweep didn't reach Desk `desk`'s lead: nothing to wait for.
@@ -298,7 +322,9 @@ impl Hub {
     /// `words` to Desk `desk`'s lead, if it's live. Sent on the hub's own thread (`later`), since a
     /// turn's end can arrive while a send holds the typing gate.
     fn tell_lead_away(&self, desk: &str, words: &str) {
-        let lead = self.read(|st| st.desk.lead.get(desk).map(|l| l.sid.clone()).filter(|sid| st.sessions.get(sid).is_some()));
+        // A lead a usage limit stopped isn't sent it (it would bounce, and cancel Cue's carry-on): the Desk's summary
+        // carries Away's words when it next hears from the Desk.
+        let lead = self.read(|st| st.desk.lead.get(desk).map(|l| l.sid.clone()).filter(|sid| st.sessions.get(sid).is_some() && !limited(st, sid)));
         if let Some(sid) = lead {
             let words = words.to_string();
             self.later(0, move |h| {
