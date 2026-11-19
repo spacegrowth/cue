@@ -77,6 +77,7 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
             if let Some(step) = st.desk.decisions.last_mut() {
                 step.delivery = Some(crate::desk::model::DeskDelivery { session_id: h.to().to_string(), text: message.clone(), at_ms: now });
             }
+            fx.backs.push((id.to_string(), message.clone()));
             fx.sends.push((h.to().to_string(), message));
         }
         // Nobody holds it yet: a new session of its project takes it (desk_start_new).

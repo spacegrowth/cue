@@ -23,6 +23,8 @@ pub(super) struct Effects {
     pub(super) decisions: Vec<String>,
     /// Messages to sessions: (session, text).
     pub(super) sends: Vec<(String, String)>,
+    /// Your Send backs (#396): (item, its message in `sends`), kept on the item if it has to wait for a copy.
+    pub(super) backs: Vec<(String, String)>,
     /// Your pick on a mocks item whose holder waits on its question (#281): (that ask, its question, the answer),
     /// answered with the option picked. A pick always changes an item, so `items` is never empty with these.
     pub(super) answers: Vec<(String, String, String)>,

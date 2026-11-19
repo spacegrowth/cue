@@ -97,10 +97,34 @@ impl Hub {
                     }
                 }
             });
+            // Going now (a copy, or none needed): your Send back kept while it waited goes with its message (#396).
+            if !matches!(claimed, Some(None)) {
+                let back = self.write(|st| st.desk.item_mut(&id).map(|i| std::mem::take(&mut i.back_waiting)).unwrap_or_default());
+                if !back.is_empty() {
+                    match fx.sends.iter_mut().find(|(s, text)| *s == to && names_item(text, &id)) {
+                        Some((_, text)) => {
+                            text.push_str("\n\n");
+                            text.push_str(&back);
+                        }
+                        None => fx.sends.push((to.clone(), back)),
+                    }
+                }
+            }
             match claimed {
                 None => {}
-                // None free: its message waits for its copy.
-                Some(None) => fx.sends.retain(|(s, text)| !(*s == to && names_item(text, &id))),
+                // None free: its message waits for its copy. The item's own words go then (`desk_trees_free`), and your
+                // Send back's message with them: kept on it, as only it has your words (#396).
+                Some(None) => {
+                    fx.sends.retain(|(s, text)| !(*s == to && names_item(text, &id)));
+                    let backs: Vec<String> = fx.backs.iter().filter(|(b, _)| *b == id).map(|(_, m)| m.clone()).collect();
+                    if !backs.is_empty() {
+                        self.write(|st| {
+                            if let Some(i) = st.desk.item_mut(&id) {
+                                i.back_waiting = std::iter::once(std::mem::take(&mut i.back_waiting)).chain(backs).filter(|m| !m.is_empty()).collect::<Vec<_>>().join("\n\n");
+                            }
+                        });
+                    }
+                }
                 Some(Some(mut t)) => match prepare(&t, &id) {
                     Ok((base, path)) => {
                         t.path = path;

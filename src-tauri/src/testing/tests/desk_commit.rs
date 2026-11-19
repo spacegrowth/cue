@@ -21,7 +21,7 @@ pub(super) fn item(w: &World, project: &str, title: &str) -> Value {
 }
 
 /// A repository, a session whose crew wrote a.txt and b.txt for an item now to check: (repo, project, item id).
-fn ready(w: &World) -> (std::path::PathBuf, String, String) {
+pub(super) fn ready(w: &World) -> (std::path::PathBuf, String, String) {
     ready_with(w, |_, _, _| {}, |w, h, dir| {
         let f = |n: &str| dir.join(n).to_string_lossy().to_string();
         says(w, h, writes("toolu_A", "agentA", "fixer", &[f("a.txt"), f("b.txt")]));

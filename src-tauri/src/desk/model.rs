@@ -174,6 +174,10 @@ pub struct DeskItem {
     /// The repository whose copy it's queued for (with `tree_wait`).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub tree_wait_repo: String,
+    /// Your Send back's message to its holder, kept while it waits for a copy (#396): it goes with the item's words
+    /// once one is free (hub/desk_trees.rs).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub back_waiting: String,
     /// Started now by the lead (START, #347) while it waited: it works where its holder is when no copy is free,
     /// rather than queue for one again.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]

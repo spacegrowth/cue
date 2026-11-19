@@ -79,3 +79,40 @@ fn a_dragged_order_picks_who_gets_the_next_free_copy_and_survives_a_restart() {
     w.hub().desk_item_act(&a, "reorder", &format!("{a} {b}")).unwrap();
     assert_eq!(item(&w, &project, "Footer")["queue_order"], 2);
 }
+
+#[test]
+fn your_send_back_on_an_item_whose_copy_is_gone_waits_with_it_and_reaches_its_holder_word_for_word() {
+    // #396: an item that landed has no copy any more. Sent back with every copy in use, it waited for one, and the
+    // message with your words was dropped: once a copy was free its holder got only the item's own words (#386).
+    let w = World::new();
+    let (_, project, id) = super::desk_commit::ready(&w);
+    let top = |w: &World| {
+        let out = String::from_utf8(std::process::Command::new("git").arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
+        out.lines().next().and_then(|l| l.strip_prefix("worktree ")).unwrap().to_string()
+    };
+    assert!(item(&w, &project, "Header jumps")["tree"].is_null(), "its copy went as it landed");
+    w.hub().desk_hold_copies(&top(&w), &[1, 2, 3]);
+    let snap = w.snapshot();
+    let h = snap.session_ids().into_iter().find(|s| snap.session(s)["name"] == "cue-teams").unwrap();
+    let before = w.hosted.sent().len();
+    let words = "Thinking to try A once and keep the mocks. Also, is it possible to show the chat like the threads?";
+    w.hub().desk_item_act(&id, "send_back", words).unwrap();
+    w.settle();
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!((it["state"].as_str(), it["tree_wait"].as_bool()), (Some("queued"), Some(true)), "waits for a copy: {it}");
+    assert!(!w.hosted.sent()[before..].iter().any(|(s, t)| *s == h && t.contains(&format!("#{id}"))), "nothing sent yet");
+    // A second Send back while it waits: both go.
+    w.hub().desk_item_act(&id, "send_back", "Lets try A one last time").unwrap();
+    w.settle();
+    w.hub().desk_let_go_copy(&top(&w), 2);
+    w.settle();
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!((it["state"].as_str(), it["tree"]["slot"].as_u64()), (Some("working"), Some(2)), "{it}");
+    let path = it["tree"]["path"].as_str().unwrap().to_string();
+    let sent: Vec<String> = w.hosted.sent()[before..].iter().filter(|(s, t)| *s == h && t.contains(&format!("#{id}"))).map(|(_, t)| t.clone()).collect();
+    assert_eq!(sent.len(), 1, "one message: {sent:?}");
+    let t = &sent[0];
+    assert!(t.contains(&format!("isn't done: {words}")) && t.contains("isn't done: Lets try A one last time"), "your words, as you wrote them: {t}");
+    assert!(t.contains(&path), "with its copy: {t}");
+    assert!(it.get("back_waiting").is_none_or(|b| b.is_null()), "{it}");
+}
