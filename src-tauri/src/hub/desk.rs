@@ -46,6 +46,9 @@ pub(super) struct Effects {
     pub(super) closes: Vec<String>,
     /// Items the lead said are on main already (CLOSE, #347): closed once git says their commit is on the main line.
     pub(super) on_main: Vec<super::desk_unstick::OnMain>,
+    /// The lead's word on a landing clean-up question it had first (desk_cleanup.rs): (its card, the answer; None:
+    /// passed on to you).
+    pub(super) cleanup: Vec<(String, Option<String>)>,
     /// The lead moved an item up in the landing line (LAND FIRST): the line runs now.
     pub(super) land: bool,
 }
@@ -138,7 +141,7 @@ pub(super) fn at_work(st: &Store, h: &Holder) -> bool {
 pub(super) fn ask_of<'a>(st: &'a Store, h: &Holder) -> Option<&'a Item> {
     let agent = crew_parts(h).map(|(_, a)| a);
     st.items.iter().find(|i| {
-        i.status == "pending" && i.kind != "waiting" && i.origin.session_id == h.to() && agent.is_none_or(|a| i.agent_id == a)
+        i.status == "pending" && i.kind != "waiting" && i.lead_has.is_none() && i.origin.session_id == h.to() && agent.is_none_or(|a| i.agent_id == a)
     })
 }
 
@@ -856,6 +859,8 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx
                     answers.push(no);
                 }
             }
+            Line::Answer { id, text } => cleanup_said(st, project, &id, Some(text), fx, &mut answers),
+            Line::Pass { id, .. } => cleanup_said(st, project, &id, None, fx, &mut answers),
             Line::Context { .. } | Line::Designs { .. } => {}
         }
     }
@@ -866,6 +871,16 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx
     for (what, why) in crate::sessions::crew_log::calls_in(text) {
         let item = item_named(st, project, &what).or_else(|| item_named(st, project, &why));
         decide_call(st, project, item, &name, lsid, &what, &why, now, fx);
+    }
+}
+
+/// The lead's ANSWER (Some) or PASS (None) on item `id`'s landing clean-up question (desk_cleanup.rs); told when
+/// none waits on it.
+fn cleanup_said(st: &Store, project: &str, id: &str, answer: Option<String>, fx: &mut Effects, told: &mut Vec<String>) {
+    let id = st.desk.canon(id);
+    match super::desk_cleanup::card_for(st, project, &id) {
+        Some(card) => fx.cleanup.push((card, answer)),
+        None => told.push(format!("No question from #{id} waits on you: nothing to answer or pass.")),
     }
 }
 
@@ -1274,7 +1289,7 @@ fn desk_line_start(line: &str) -> bool {
     let l = parse::unmarked(line.trim().trim_start_matches('`')).trim_start_matches('`');
     let Some((word, _)) = l.split_once(':') else { return false };
     let word = word.trim_end_matches(['*', '`']).trim();
-    matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "CONTEXT" | "DESIGNS" | "TITLE" | "SPLIT" | "CUT" | "MERGE" | "NOTE" | "CLOSE" | "TAKE COPY" | "LAND FIRST" | "START") || word.eq_ignore_ascii_case("DECIDED")
+    matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "CONTEXT" | "DESIGNS" | "TITLE" | "SPLIT" | "CUT" | "MERGE" | "NOTE" | "CLOSE" | "TAKE COPY" | "LAND FIRST" | "START" | "ANSWER" | "PASS") || word.eq_ignore_ascii_case("DECIDED")
 }
 
 /// What you did to item `id` ("looks_right" | "reopen" | "send_back" | "start_now" | "put_before" | "drop"), in the store.
@@ -1978,7 +1993,7 @@ impl Hub {
     /// What a change left to do, with the store let go: its saves, then its messages and questions, and new items
     /// for their lead (told a moment later, with any others that came meanwhile).
     pub(super) fn desk_done(&self, mut fx: Effects) {
-        if fx.items.is_empty() && fx.said.is_empty() && fx.dropped.is_empty() && fx.decisions.is_empty() && fx.sends.is_empty() && fx.asks.is_empty() && fx.news.is_empty() && fx.starts.is_empty() && fx.joined.is_empty() && fx.uses.is_empty() && fx.stopped.is_empty() && fx.trees_gone.is_empty() && fx.closes.is_empty() && fx.on_main.is_empty() && !fx.land {
+        if fx.items.is_empty() && fx.said.is_empty() && fx.dropped.is_empty() && fx.decisions.is_empty() && fx.sends.is_empty() && fx.asks.is_empty() && fx.news.is_empty() && fx.starts.is_empty() && fx.joined.is_empty() && fx.uses.is_empty() && fx.stopped.is_empty() && fx.trees_gone.is_empty() && fx.closes.is_empty() && fx.on_main.is_empty() && fx.cleanup.is_empty() && !fx.land {
             return;
         }
         // Items going to work get their own copies (or wait for one), before their messages are saved and sent.
@@ -2070,6 +2085,12 @@ impl Hub {
         }
         if fx.land {
             self.later(0, |h| h.desk_land_line());
+        }
+        for (card, answer) in fx.cleanup {
+            self.later(0, move |h| match answer {
+                Some(text) => h.cleanup_answered(&card, &text),
+                None => h.cleanup_to_you(&card),
+            });
         }
     }
 

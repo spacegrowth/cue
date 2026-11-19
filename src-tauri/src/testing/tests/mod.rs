@@ -12,6 +12,7 @@ mod desk;
 mod desk_delivery;
 mod desk_approvals;
 mod desk_spaces;
+mod desk_cleanup;
 mod desk_commit;
 mod desk_copy_wait;
 mod desk_land;

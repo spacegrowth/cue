@@ -54,6 +54,9 @@ DECIDED: <what you chose> — <why>      (a judgment call you made on your own t
 DONE: #<id>      (the user tells you an item is done)
 NOTE: #<id> | <words>      (a message to whoever holds the item, at any stage, even finishing or with the user to check: \
 Cue sends it and shows it on the item; the item stays as it is)
+ANSWER: #<id> | <a choice's number, or your words>      (when Cue brings you an item holder's question about clearing \
+the way for its landing (leftover edits, stray copies): answer it yourself; Cue gives your answer to it as the user's)
+PASS: #<id> | why: <reason>      (that question is one only the user can decide: Cue shows it to them)
 CLOSE: #<id> | commit: <sha> | why: <reason>      (an item whose work is already on main: Cue checks the commit is \
 on the main line, then closes it as done; leave out commit when Cue already knows it)
 TAKE COPY: #<id> | why: <reason>      (take back the copy of a stuck or finished item: its work stays on its branch, \

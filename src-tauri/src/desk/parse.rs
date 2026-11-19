@@ -36,6 +36,10 @@ pub enum Line {
     /// stuck or finished item), "land_first" (`LAND FIRST: #<id> | why: …`: up in the landing line) or "start"
     /// (`START: #<id> | why: …`: a waiting item, now).
     Unstick { what: String, id: String, commit: String, why: String },
+    /// The lead's answer to the landing clean-up question item `id`'s holder asked it (#349): `ANSWER: #<id> | <words>`.
+    Answer { id: String, text: String },
+    /// That question passed on to the user (#349): `PASS: #<id> | <why>` (the why may be left out).
+    Pass { id: String, why: String },
 }
 
 /// The Desk lines in `text`, in order.
@@ -130,6 +134,11 @@ fn one(t: &str) -> Option<Line> {
         "CUT" => cut(body),
         "MERGE" => merge(body),
         "NOTE" => note(body),
+        "ANSWER" => match note(body)? {
+            Line::Note { id, text } => Some(Line::Answer { id, text }),
+            _ => None,
+        },
+        "PASS" => pass(body),
         "CLOSE" => unstick("close", body),
         "TAKE COPY" => unstick("take_copy", body),
         "LAND FIRST" => unstick("land_first", body),
@@ -282,6 +291,18 @@ fn note(body: &str) -> Option<Line> {
     }
     let text = text.trim().to_string();
     (!text.is_empty()).then_some(Line::Note { id: id_of(head)?, text })
+}
+
+/// `PASS: #<id> | why: <words>` (the why's label, or the why, may be left out): Line::Pass.
+fn pass(body: &str) -> Option<Line> {
+    let (head, why) = body.split_once('|').unwrap_or((body, ""));
+    let head = head.trim();
+    if !head.starts_with('#') || head.contains(' ') {
+        return None;
+    }
+    let why = why.trim();
+    let why = labelled(why, "why").unwrap_or(why).to_string();
+    Some(Line::Pass { id: id_of(head)?, why })
 }
 
 fn merge(body: &str) -> Option<Line> {

@@ -180,7 +180,7 @@ pub(super) fn stop_shown(st: &Store, it: &DeskItem, s: &Session, now: u64) -> St
 }
 
 /// `project`'s Desk lead is running (not ended or parked).
-fn lead_live(st: &Store, project: &str) -> bool {
+pub(super) fn lead_live(st: &Store, project: &str) -> bool {
     st.desk.lead_sid(project).and_then(|l| st.sessions.get(l)).is_some_and(|s| s.state != "stopped")
 }
 

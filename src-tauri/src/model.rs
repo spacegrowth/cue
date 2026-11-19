@@ -344,6 +344,10 @@ pub struct Item {
     /// the answer goes back to the lead as a message.
     #[serde(default, alias = "from_dispatch", skip_serializing_if = "std::ops::Not::not")]
     pub desk: bool,
+    /// A Desk session's landing clean-up question its Desk lead has first (hub/desk_cleanup.rs, #349): the Desk
+    /// item it's about. Not shown to you until the lead passes it on or its time is up.
+    #[serde(skip)]
+    pub lead_has: Option<String>,
 }
 
 pub use crate::clock::now_ms;

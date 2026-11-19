@@ -51,7 +51,7 @@ impl Hub {
             crate::one_way::call_hits(&tool_input, &|_| None).iter().any(|k| kinds.contains(k))
         };
         let (tx, rx) = oneshot::channel();
-        let (id, title) = self.write(|st| {
+        let (id, title, to_lead) = self.write(|st| {
             let sid = origin.session_id.clone();
             let open = |i: &Item| i.status == "pending" && i.origin.session_id == sid && i.request_id.as_deref() == request_id;
             if request_id.is_some() && st.items.iter().any(open) {
@@ -73,6 +73,8 @@ impl Hub {
             it.one_way = one_way;
             it.request_id = request_id.map(str::to_string);
             it.scan_from = scan_from;
+            // A Desk session's landing clean-up question goes to its Desk lead first (desk_cleanup.rs, #349).
+            let to_lead = super::desk_cleanup::give_lead(st, &mut it);
             let asked = match it.kind.as_str() {
                 "question" => format!("asked: {}", summary(&it)),
                 _ => format!("{}: {}", it.tool_name, summary(&it)),
@@ -82,11 +84,13 @@ impl Hub {
             let title = notify_title(&it);
             st.items.push(it);
             st.waiters.insert(id.clone(), tx);
-            Some((id, title))
+            Some((id, title, to_lead))
         })?;
         self.changed();
-        if crate::config::flag("/notify/decisions") {
-            self.notify(&id, &title.0, &title.1, "");
+        match to_lead {
+            Some((lead, words)) => self.cleanup_to_lead(&id, lead, words),
+            None if crate::config::flag("/notify/decisions") => self.notify(&id, &title.0, &title.1, ""),
+            None => {}
         }
         Some((id, rx))
     }

@@ -16,6 +16,7 @@ mod crew_log;
 mod desk;
 mod desk_spaces;
 mod desk_checks;
+mod desk_cleanup;
 mod desk_commit;
 mod desk_finish;
 mod desk_trees;
@@ -342,7 +343,7 @@ impl Hub {
             tool_use_id: None,
             request_id: None,
             scan_from: 0,
-            at_prompt: false, agent_id: String::new(), agent_name: String::new(), one_way: false, desk: false,
+            at_prompt: false, agent_id: String::new(), agent_name: String::new(), one_way: false, desk: false, lead_has: None,
         }
     }
 
@@ -519,7 +520,8 @@ impl Hub {
             // Each lead's loose ends (open.rs): the Inbox side's Open rows.
             "open": Self::open_view(st),
         });
-        let items = st.items.clone();
+        // Not a question its Desk lead has first (desk_cleanup.rs).
+        let items = st.items.iter().filter(|i| i.lead_has.is_none()).cloned().collect();
         (seq, next, StoreParts { items, history: st.history.brief(), sessions, parked, small })
     }
 

@@ -45,6 +45,7 @@ digraph locks {
   "typing gate" -> "db writer's marks";
   "typing gate" -> "db writes";
   "typing gate" -> "desk saves";
+  "typing gate" -> "ended sessions read for their edits";
   "typing gate" -> "folder facts";
   "typing gate" -> "live_ui.served";
   "typing gate" -> "logs read for their edits";
