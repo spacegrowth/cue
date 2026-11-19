@@ -1040,3 +1040,7 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
 .dk-gb { display: flex; align-items: center; gap: 8px; margin: 8px 4px; font-size: 12.5px; }
 .dk-gb-n { color: var(--muted); }
 .dk-gb-box { margin: 8px 0; }
+/* On hold (#385): a quiet shelf; its titles muted, a plain Start at the row's end. */
+.dk-held .dk-t { color: var(--muted); }
+.dk-held .dk-it.on .dk-t { color: inherit; }
+.dk-i2 .dk-hstart { margin-left: auto; flex: none; }

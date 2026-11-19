@@ -494,8 +494,10 @@ function deskItemActs(i) {
   // Waiting for install: nothing to try yet, so no Looks right (Send back stays: what it says can be wrong already).
   const acts = deskInstallWait(i) ? b("send_back", "Send back") : i.state === "to_check" ? (deskLooksSoon.has(i.id) ? "" : b("send_back", "Send back"))
     : (i.state === "new" || i.state === "queued") && !i.holder && i.start_failed ? b("start_now", "Retry")
-    : i.state === "queued" ? b("start_now", "Start it now in a new session") + (first ? b("put_before", `Put it before ${deskShort(first.title)}`) : "")
-    : i.state === "new" ? b("start_now", "Start it now in a new session")
+    // On hold (#385): Start queues it as a new item, for the lead to give out.
+    : i.state === "held" ? b("start_now", "Start", "primary")
+    : i.state === "queued" ? b("start_now", "Start it now in a new session") + (first ? b("put_before", `Put it before ${deskShort(first.title)}`) : "") + b("hold", "Hold")
+    : i.state === "new" ? b("start_now", "Start it now in a new session") + b("hold", "Hold")
     // Its holder's turn cut off (a crash, a quit) leaves it "working" with nobody on it: Resume wakes that same
     // session where it left off (#375).
     : deskCanRestart(i) ? b("start_now", "Resume")
@@ -504,7 +506,7 @@ function deskItemActs(i) {
     : deskFinishing(i) ? deskInstallNow(i, "btn small")
     // Done by your pick on its mocks (#281): its build item says where it went (deskBuiltLink), nothing to undo here.
     : i.state === "done" && !i.picked ? `<div class="dk-chk-after">${deskCommitLine(i)}</div>` : "";
-  const give = !i.holder && i.state !== "done" ? deskGive(i, "pane") : "";
+  const give = !i.holder && i.state !== "done" && i.state !== "held" ? deskGive(i, "pane") : "";
   return acts || give ? `<div class="dk-acts">${give}${acts}</div>` : "";
 }
 /** Looks right on an item's page: in its title area, always in reach however far its page is scrolled (#163); its

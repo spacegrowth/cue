@@ -225,6 +225,7 @@ function deskItemNow(i) {
     : i.state === "queued" && i.tree_wait ? ["stop", "Next", `Starts when one of its repository's ${deskCopies(deskOf(i.project))} copies is free.`]
     : i.state === "queued" ? ["stop", "Next", first ? `Starts when ${esc(deskShort(first.title))} is done.` : i.holder ? `Next for ${who}.` : "Next up, not given to a session yet."]
     : i.state === "new" ? ["stop", "Not given out", "Not given to a session yet."]
+    : i.state === "held" ? ["stop", "On hold", `${i.held?.[1] && i.held[1] !== "You" ? `The Desk lead put it on hold for you${i.held[2] ? `: ${esc(firstLine(i.held[2]))}` : ""}. ` : "You put it on hold. "}Nothing starts it until you press Start.`]
     : i.state === "done" ? ["done", "Done", ""] : ["stop", i.state, ""];
   return { dot, word, say: pick ? `<p class="dk-pickl">${pick}</p>${ub}` : say };
 }

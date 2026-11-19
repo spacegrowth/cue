@@ -218,9 +218,17 @@ impl Hub {
             for it in &ready {
                 item_lines(st, it, &mut out, &mut failed, &mut told);
             }
+            // On hold (#385): listed apart, so they never read as waiting for a route.
+            let (held, open): (Vec<_>, Vec<_>) = open.into_iter().partition(|i| i.state == "held");
             if !open.is_empty() {
                 out.push_str("\nOther open items:\n");
                 for it in &open {
+                    item_lines(st, it, &mut out, &mut failed, &mut told);
+                }
+            }
+            if !held.is_empty() {
+                out.push_str("\nOn hold (the user starts these themselves; don't ROUTE or START them):\n");
+                for it in &held {
                     item_lines(st, it, &mut out, &mut failed, &mut told);
                 }
             }
@@ -405,6 +413,10 @@ fn item_lines(st: &Store, it: &DeskItem, out: &mut String, failed: &mut Vec<(Str
         (true, false) => "stopped, not committed".into(),
         (true, true) => "stopped".into(),
         _ if !it.waiting.is_empty() => format!("waiting: {}", it.waiting),
+        _ if it.state == "held" => match it.held.as_ref().filter(|h| !h.2.is_empty()) {
+            Some(h) => format!("on hold: {}", h.2),
+            None => "on hold".into(),
+        },
         _ => it.state.replace('_', " "),
     };
     out.push_str(&format!("- #{} {kind}: {} | {status}", it.id, it.title));

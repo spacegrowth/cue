@@ -1623,6 +1623,26 @@ test("an item the lead paused shows as paused and keeps its holder (#365)", asyn
   await expect(page.locator('[data-desk-page="dispatcher"] .dk-psay')).toContainText("1 item is paused.");
 });
 
+test("an item on hold sits in its own quiet group with a Start button (#385)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.change((st) => {
+    const d = st.desk.projects.find((x) => x.project === "cue");
+    const it = d.items.find((i) => i.state === "new" || i.state === "queued") || d.items[0];
+    Object.assign(it, { id: "h1", state: "held", holder: null, after: null, held: [Math.floor(Date.now() / 1000), "You", ""] });
+  });
+  const rows = page.locator(".dk-items");
+  await expect(rows.locator(".dk-gh", { hasText: "On hold" })).toBeVisible();
+  await expect(rows.locator(".dk-held [data-desk-item='h1']")).toBeVisible();
+  await expect(rows.locator(".dk-gh.you + [data-desk-item='h1']")).toHaveCount(0);
+  await expect(rows.locator("[data-desk-item='h1'] [data-desk-act='start_now']")).toHaveText("Start");
+  await rows.locator('[data-desk-item="h1"]').click();
+  const pane = page.locator(".dk-right .dk-pg");
+  await expect(pane).toContainText("You put it on hold. Nothing starts it until you press Start.");
+  await expect(pane.locator('[data-desk-act="start_now"]')).toHaveText("Start");
+  await expect(pane.locator('[data-desk-act="hold"]')).toHaveCount(0);
+});
+
 test("an item back to check stands out until you open it; its pane links to what was made", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);

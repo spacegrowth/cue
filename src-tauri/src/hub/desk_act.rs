@@ -9,12 +9,27 @@ use super::desk_view::shown;
 use super::desk_route::{decide, give, release, start_released};
 use super::desk_heard::new_item;
 
-/// What you did to item `id` ("looks_right" | "reopen" | "send_back" | "start_now" | "put_before" | "drop"), in the store.
+/// What you did to item `id` ("looks_right" | "reopen" | "send_back" | "start_now" | "put_before" | "hold" | "drop"), in the store.
 fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<Effects, String> {
     if act == "pick" {
         return pick(st, id, text, now);
     }
     let mut fx = Effects::default();
+    // The held shelf (#385): Hold puts an item nobody is at work on there; Start on a held one makes it new again,
+    // for the lead to route as any new item.
+    let held = st.desk.item(id).is_some_and(|i| i.state == "held");
+    if act == "hold" || (act == "start_now" && held) {
+        let project = st.desk.item(id).ok_or("no such item")?.project.clone();
+        let (words, whom) = if act == "hold" {
+            super::desk_unstick::hold(st, "You", id, text, now, &mut fx).map_err(|e| e.split_once(": ").map_or(e.clone(), |(_, w)| w.to_string()))?;
+            ("Put it on hold", "nothing starts it till you press Start")
+        } else {
+            super::desk_unstick::unhold(st, id, now, &mut fx)?;
+            ("Start", "off hold: queued as a new item")
+        };
+        you_wrote(st, &project, id, words, whom, now, &mut fx);
+        return Ok(fx);
+    }
     let busy = st.desk.item(id).and_then(|i| i.holder.as_ref()).filter(|h| at_work(st, h)).map(|h| h.name.clone());
     // Picked, but its build item dropped since: it can be undone, and picked again.
     let build_gone = st.desk.item(id).is_some_and(|i| !i.built_as.is_empty() && st.desk.item(&i.built_as).is_none());

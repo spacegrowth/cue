@@ -57,7 +57,8 @@ pub struct DeskItem {
     /// Why it's its own item, when a session on another item added it (`ITEM: … | why: …`).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub why: String,
-    /// "new" | "queued" | "working" | "finishing" | "to_check" | "done" as kept.
+    /// "new" | "queued" | "held" | "working" | "finishing" | "to_check" | "done" as kept. "held" (#385): on the held
+    /// shelf, nobody holding it; never started by Cue or the lead, only by your Start (it's new again then).
     /// The displayed "needs_you", "needs_resume" and "paused" states are derived from live conditions.
     pub state: String,
     #[serde(default)]
@@ -195,6 +196,10 @@ pub struct DeskItem {
     /// DONE) clears it. Shown as "paused" while it's at work (hub/desk.rs `shown`). Saved.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub paused: Option<(u64, String)>,
+    /// Put on the held shelf (#385): when (secs), by whom ("You", or the lead's name as you asked it), and why. Set
+    /// while it's "held"; cleared by Start.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub held: Option<(u64, String, String)>,
     /// Your last Restart of it (#291): where it went, or why it couldn't ("couldn't reach cue-251: …"). Saved.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub restart: String,
