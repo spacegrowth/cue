@@ -60,6 +60,8 @@
 .dk-add-button.btn { display: grid; place-items: center; width: 27px; height: 27px; padding: 0; font: 600 17px/1 var(--sans); }
 .dk-add-picker { position: absolute; bottom: calc(100% + 5px); left: 0; width: 172px; max-height: min(180px, 38vh); overflow: auto; padding: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: var(--shadow); }
 .dk-add-picker > .dim { padding: 5px 6px; font-size: 12px; }
+/* The light line between this Desk's sessions and the free ones to add (#189). */
+.dk-add-div { height: 1px; margin: 4px 6px; background: var(--line); }
 .dk-add-option { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 24px; padding: 3px 6px; border: 0; border-radius: 4px; background: none; color: var(--ink); text-align: left; font: 12px var(--sans); overflow-wrap: anywhere; cursor: pointer; }
 .dk-add-option small { display: block; }
 .dk-add-option:has(input:disabled) { cursor: default; }

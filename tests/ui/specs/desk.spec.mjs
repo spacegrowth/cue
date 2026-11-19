@@ -2356,6 +2356,25 @@ const spare = (cue) => cue.change((st) => st.sessions.push({ ...st.sessions.find
 /** The left card's groups and rows, as "# group" and session ids. */
 const leftRows = (page) => page.locator(".dk-sessions .dk-scroll > *").evaluateAll((els) => els.map((el) => el.matches(".dk-sdiv") ? "—" : el.matches(".dk-gh") ? `# ${el.firstChild.textContent.trim()}` : el.dataset.deskChatOf || el.dataset.deskCrew).filter(Boolean));
 
+test("Add session offers this Desk's sessions, a line, then only free, recent ones: none another Desk has, none stopped or idle for days (#189)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.change((st) => {
+    const base = st.sessions.find((x) => x.session_id === "site"), now = Date.now();
+    const add = (sid, more = {}) => st.sessions.push({ ...base, session_id: sid, project: "cue", name: sid, thread: [], state: "waiting", since_ms: now, ...more });
+    add("spare"); add("theirs", { state: "working" }); add("their-lead", { state: "working" }); add("holds"); add("crew-lead");
+    add("stopped", { state: "stopped" }); add("stale", { since_ms: now - 3 * 86400000 });
+    st.desk.projects.push({ project: "desk-other", id: "desk-other", independent: true, name: "Other", workspace_project: "cue", folder: "/x",
+      lead: { sid: "their-lead", name: "their-lead" }, members: ["theirs"], decisions: [],
+      items: [{ id: "o1", title: "theirs", state: "working", holder: { kind: "session", sid: "holds" }, created: 1, updated: 1 },
+        { id: "o2", title: "by crew", state: "working", holder: { kind: "crew", sid: "agent-x", lead_sid: "crew-lead", name: "x" }, created: 1, updated: 1 }] });
+  });
+  await page.getByRole("button", { name: "Add session", exact: true }).click();
+  const picker = page.getByRole("group", { name: "Desk membership" });
+  const rows = () => picker.locator(":scope > *").evaluateAll((els) => els.map((el) => el.matches(".dk-add-div") ? "—" : `${el.querySelector("input").dataset.deskMember}${el.querySelector("input").checked ? " ✓" : ""}`));
+  await expect.poll(rows).toEqual(["lead ✓", "host ✓", "—", "spare"]);
+});
+
 test("Add session toggles project sessions on and off this Desk", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);

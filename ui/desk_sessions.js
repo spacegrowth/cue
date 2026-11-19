@@ -126,22 +126,32 @@ function deskSessions(project, taskApprovals) {
   const runs = mine.filter((s) => deskSessState(s)[0] === "").length;
   const body = group("Working", atWork) + group("On the Desk", on) || '<div class="dk-empty">No other sessions on this Desk.</div>';
   const picking = deskAddingSession === project;
-  const candidates = picking ? deskSessionsOf(project, d) : [];
+  // Add session offers this Desk's own sessions (ticked), then a light line and only free, recent ones: none another
+  // Desk has, none stopped or idle for over a day (#189).
+  const candidates = picking ? deskSessionsOf(project, d).filter((r) => deskHasSession(d, r.sid) || (!deskElsewhere(r.sid, d) && !deskSessOld(sessionOf(r.sid)))) : [];
   if (picking && leadSid && !candidates.some((r) => r.sid === leadSid)) {
     candidates.unshift({ sid: leadSid, name: deskLeadName(d) });
   }
   candidates.sort((a, b) => Number(deskHasSession(d, b.sid)) - Number(deskHasSession(d, a.sid)));
   const history = new Set(d.work_history || []);
   const picker = picking ? `<div class="dk-add-picker" id="desk-add-picker" role="group" aria-label="Desk membership">${candidates.length
-    ? candidates.map((r) => {
+    ? candidates.map((r, n) => {
       const member = deskHasSession(d, r.sid), locked = member && history.has(r.sid);
-      return `<label class="dk-add-option"><input type="checkbox" data-desk-member="${esc(r.sid)}" data-project="${esc(project)}"${member ? " checked" : ""}${locked ? " disabled" : ""}><span aria-hidden="true">${deskKindIcon(r.sid === leadSid ? "desk" : r.lead ? "lead" : "session")}</span><span>${esc(r.name)}${r.sid === leadSid ? " · Dispatcher" : ""}${locked ? '<small class="dim">Has work history</small>' : ""}</span></label>`;
+      const line = n > 0 && !member && deskHasSession(d, candidates[n - 1].sid) ? '<div class="dk-add-div" role="separator"></div>' : "";
+      return `${line}<label class="dk-add-option"><input type="checkbox" data-desk-member="${esc(r.sid)}" data-project="${esc(project)}"${member ? " checked" : ""}${locked ? " disabled" : ""}><span aria-hidden="true">${deskKindIcon(r.sid === leadSid ? "desk" : r.lead ? "lead" : "session")}</span><span>${esc(r.name)}${r.sid === leadSid ? " · Dispatcher" : ""}${locked ? '<small class="dim">Has work history</small>' : ""}</span></label>`;
     }).join("")
     : '<div class="dim">No project sessions available.</div>'}</div>` : "";
   return `<div class="dk-card dk-sessions">${deskSessHead(project, mine.length, runs, leadS ? row(leadS, true) : "", deskLeadBar(leadS))}${leadS ? "" : deskLeadBar(leadS)}
     ${deskApprovals(d, taskApprovals)}<div class="dk-scroll" data-scroll-key="desk-sessions:${esc(project)}">${body}</div>
     <div class="dk-sfoot"><div class="dk-add-anchor"><button class="btn small dk-add-button" data-desk-add-session="${esc(project)}" aria-label="Add session" aria-expanded="${picking}"${picking ? ' aria-controls="desk-add-picker"' : ""}><span aria-hidden="true">+</span></button>${picker}</div></div></div>`;
 }
+/** Whether session `sid` belongs to a Desk other than `d`: it runs it, is on its list, or holds (or its crew holds) an
+ *  item there not done (#189). */
+const deskElsewhere = (sid, d) => (state.desk?.projects || []).some((o) => o.project !== d.project && (deskHasSession(o, sid)
+  || (o.items || []).some((i) => i.state !== "done" && i.state !== "dropped" && (i.holder?.sid === sid || i.holder?.lead_sid === sid))));
+/** An old, finished session: gone, stopped, or idle (not asking you) for over a day (#189). */
+const DESK_OLD_MS = 24 * 3600 * 1000;
+const deskSessOld = (s) => !s || s.state === "stopped" || (deskSessState(s)[0] === "idle" && !!s.since_ms && Date.now() - s.since_ms > DESK_OLD_MS);
 /** The line under "Run by", over the lead's card (#263, #359): the same working light a chat shows along its top (.sweep, chat.css), moving
  *  while the lead works (calmer after a quiet spell, still and amber when stuck, as sweep() in chat/thread.js), a plain
  *  lime line while it's idle. No data-sweep: that one is the open chat's, carried over by patch.js. The desk redraws
