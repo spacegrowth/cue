@@ -165,8 +165,7 @@ function deskView() {
   queueMicrotask(deskSettle);
   const project = deskSelection();
   const taskApprovals = deskTaskApprovals(deskOf(project));
-  const away = deskOf(project).away?.on;
-  return `<div class="board dk-board${away ? " away" : ""}">${deskSessions(project, taskApprovals)}${deskRight(project, taskApprovals)}${deskList(project, taskApprovals)}${away ? deskAwayCard(deskOf(project), taskApprovals) : ""}</div>${deskAwayHtml()}`;
+  return `<div class="board dk-board">${deskSessions(project, taskApprovals)}${deskRight(project, taskApprovals)}${deskList(project, taskApprovals)}</div>${deskAwayHtml()}`;
 }
 /** How many messages each item's Thread showed when last drawn, and for which opening of its page, by item. The page
  *  opens at its newest message, as a chat does; then one more (it arrived, or you sent it) scrolls to show it (#145). */

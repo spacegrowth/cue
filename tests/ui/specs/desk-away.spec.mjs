@@ -1,6 +1,6 @@
 // Away (#361, pick B): an Away switch in the Items head opens its rules card (Until, Budget, what the lead may decide,
-// what always waits for you); while Away is on, an Away column beside Items holds what needs you, the lead's calls
-// since Away went on (each with Undo) and what's done to check. A session stopped on a usage limit isn't yours to
+// what always waits for you); while Away is on (#373, pick C) each call the lead made since is a line under the item
+// it changed (with Undo), and the open asks join Waiting on you. A session stopped on a usage limit isn't yours to
 // do (Cue carries on when it resets): it stays off Needs you, one quiet line instead.
 import { test, expect } from "./cue.mjs";
 
@@ -13,11 +13,12 @@ const openDesk = async (page) => {
   await page.locator(".dk-items .dk-it").first().waitFor();
 };
 
-test("Away on: a column beside Items with Needs you, Decided for you (Undo) and Done, to check; a limited session is a quiet line", async ({ page, cue }) => {
+test("Away on: no column; each call since it went on is a line under its item with Undo, asks join Waiting on you, a limited session is a quiet line (#373)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  await expect(page.locator(".dk-away")).toHaveCount(0);
+  await expect(page.locator(".dk-aw-mark")).toHaveCount(0);
   await expect(page.locator(".dk-items .dk-aw-sw")).toHaveAttribute("aria-pressed", "false");
+  const order = await page.locator(".dk-items .dk-it").evaluateAll((els) => els.map((e) => e.dataset.deskItem));
   await cue.change((st, since) => {
     const d = st.desk.projects.find((x) => x.project === "cue");
     d.away = { on: true, active: true, ended: "", since, until: since + 9 * 3600000, budget: 10, spent: 3.2,
@@ -30,26 +31,46 @@ test("Away on: a column beside Items with Needs you, Decided for you (Undo) and 
     st.items.push({ ...ask, id: "n-asker", session_id: "asker" }, { ...ask, id: "n-capped", session_id: "capped" });
     d.members.push("asker", "capped");
   }, SINCE);
-  const away = page.locator(".dk-away");
-  await expect(away).toBeVisible();
-  await expect(page.locator(".dk-board.away")).toHaveCount(1);
-  await expect(page.locator(".dk-items .dk-aw-sw")).toHaveAttribute("aria-pressed", "true");
-  // Its head: until when and what it spent of the budget.
-  await expect(away.locator(".dk-aw-st")).toHaveText(/^until \d\d:\d\d · \$3\.20 of \$10$/);
-  // Three sections; Needs you counts the waiting item and the asker's ask, not the session on a usage limit.
-  await expect(away.locator(".dk-gh")).toHaveText(["Needs you 2", "Decided for you 1", "Done, to check 1"]);
-  await expect(away.locator('[data-desk-item="d1"]')).toHaveCount(1);
-  await expect(away.locator('.dk-aw-asks [data-desk-chat-of="asker"]')).toHaveCount(1);
-  await expect(away.locator('[data-desk-chat-of="capped"]')).toHaveCount(0);
-  await expect(away.locator(".dk-aw-quiet")).toHaveText(/^capped paused till \d\d:\d\d · Cue carries on then$/);
-  // Only the call made since Away went on, with its Undo.
-  await expect(away.locator(".dk-aw-decs .dk-d")).toHaveText(["An environment setting, not a settings file"]);
-  await away.locator('.dk-aw-decs [data-desk-undo="c1"]').click();
+  const sw = page.locator(".dk-items .dk-aw-sw");
+  await expect(sw).toHaveAttribute("aria-pressed", "true");
+  // No fourth column.
+  await expect(page.locator(".dk-board > *")).toHaveCount(3);
+  // The switch says until when and what it spent of the budget.
+  await expect(sw.locator(".dk-aw-st")).toHaveText(/^until \d\d:\d\d · \$3\.20 of \$10$/);
+  // Waiting on you counts the waiting item and the asker's ask, not the session on a usage limit.
+  const items = page.locator(".dk-items");
+  await expect(items.locator(".dk-gh.you")).toHaveText("Waiting on you 2");
+  await expect(items.locator('.dk-aw-asks [data-desk-chat-of="asker"]')).toHaveCount(1);
+  await expect(items.locator('[data-desk-chat-of="capped"]')).toHaveCount(0);
+  await expect(items.locator(".dk-aw-quiet")).toHaveText(/^capped paused till \d\d:\d\d · Cue carries on then$/);
+  // Only the call made since Away went on, right under the item it changed, with the Away icon, its why and Undo.
+  await expect(items.locator(".dk-aw-mark")).toHaveCount(1);
+  const mark = page.locator('[data-desk-item="d5"] + .dk-aw-mark');
+  await expect(mark).toHaveText("An environment setting, not a settings file · Hosted sessions don't read the settings file at start.Undo");
+  await expect(mark.locator(".dk-aw-ic")).toHaveCount(1);
+  await expect(items.locator(".dk-aw-n")).toHaveText("1 call while away");
+  // Rows stay where they were.
+  expect(await page.locator(".dk-items .dk-it").evaluateAll((els) => els.map((e) => e.dataset.deskItem))).toEqual(order);
+  await mark.locator('[data-desk-undo="c1"]').click();
   await cue.called("desk_undo", { decisionId: "c1" });
-  await expect(away.locator('[data-desk-item="d2"]')).toHaveCount(1);
-  // Away off: the column goes.
+  // Away off: the lines go.
   await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").away.on = false; });
-  await expect(page.locator(".dk-away")).toHaveCount(0);
+  await expect(page.locator(".dk-aw-mark")).toHaveCount(0);
+  await expect(page.locator(".dk-items .dk-gh.you")).toHaveText("Waiting on you 1");
+});
+
+test("a call while away with no item in the list sits at the end of Waiting on you (#373)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.change((st, since) => {
+    const d = st.desk.projects.find((x) => x.project === "cue");
+    d.away = { on: true, active: true, ended: "", since, until: null, budget: null, spent: 0, rules: {} };
+    d.decisions.push({ project: "cue", why: "No session knew that area.", undo: "can", id: "c9", call: true, by: "web-lead", sid: "lead", text: "Started a new session", at: since / 1000 + 60 });
+  }, SINCE);
+  await expect(page.locator(".dk-items .dk-aw-mark")).toHaveCount(2);
+  await expect(page.locator('.dk-items [data-desk-call="c9"]')).toHaveCount(1);
+  // Before Ready to review.
+  expect(await page.locator(".dk-items").evaluate((el) => { const m = el.querySelector('[data-desk-call="c9"]'), h = [...el.querySelectorAll(".dk-gh")][1]; return !!(m.compareDocumentPosition(h) & Node.DOCUMENT_POSITION_FOLLOWING); })).toBe(true);
 });
 
 /** Nothing waits on the cue Desk: d1 no longer asks. */
@@ -110,8 +131,7 @@ test("one Away switch for every Desk: defaults from off, a sweep on each, Done t
   const ahead = call.args.away.until - (await page.evaluate(() => Date.now()));
   expect(ahead > 0 && ahead <= 86400000).toBe(true);
   await expect(card).toHaveCount(0);
-  // The answer is kept on the Desk at once (desk_view brings it too): the column shows.
-  await expect(page.locator(".dk-away")).toBeVisible();
+  // The answer is kept on the Desk at once (desk_view brings it too).
   await expect(page.locator(".dk-items .dk-aw-sw")).toHaveAttribute("aria-pressed", "true");
   // Opened again while on: no sweep, no "Before you go"; Turn Away off sends on: false.
   await leadAsks(cue, 1);
@@ -175,7 +195,7 @@ test("Before you go: an open ask holds Done until it's answered right there", as
   await expect(done).toHaveText("Done");
 });
 
-test("Before you go shows 5, the lead's newest first, and says how many more wait in the Away column", async ({ page, cue }) => {
+test("Before you go shows 5, the lead's newest first, and says how many more wait in Waiting on you", async ({ page, cue }) => {
   await cue.open("desk");
   await cue.override("desk_away_sweep", () => null);
   await openDesk(page);
@@ -186,7 +206,7 @@ test("Before you go shows 5, the lead's newest first, and says how many more wai
   await sweepEnds(cue);
   await expect(card.locator(".dk-aw-h").first()).toHaveText("Before you go: 5 to answer");
   await expect(card.locator(".dk-aw-ask p")).toHaveText(["Question 7?", "Question 6?", "Question 5?", "Question 4?", "Question 3?"]);
-  await expect(card.locator(".dk-aw-more")).toHaveText("2 more will wait in the Away column");
+  await expect(card.locator(".dk-aw-more")).toHaveText("2 more will wait in Waiting on you");
 });
 
 test("Before you go holds what the lead's sweep left, not what was open when the card opened", async ({ page, cue }) => {
@@ -206,7 +226,7 @@ test("Before you go holds what the lead's sweep left, not what was open when the
   await expect(card.locator('[data-away="done"]')).toBeDisabled();
 });
 
-test("while away, a session stopped on a permission shows in the Away list with Allow / Deny", async ({ page, cue }) => {
+test("while away, a session stopped on a permission shows in Waiting on you with Allow / Deny", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await cue.change((st, since) => {
@@ -218,7 +238,7 @@ test("while away, a session stopped on a permission shows in the Away list with 
     st.items.push({ ...ask, id: "n-perm", session_id: "stuck", kind: "permission", tool_name: "Bash", tool_input: { command: "rm -rf build" }, questions: undefined });
     d.members.push("stuck");
   }, SINCE);
-  const row = page.locator('.dk-away [data-desk-request="n-perm"]');
+  const row = page.locator('.dk-items [data-desk-request="n-perm"]');
   await expect(row).toBeVisible();
   await expect(row).toContainText("stuck");
   await expect(row).toContainText("rm -rf build");
