@@ -20,7 +20,7 @@ pub fn desk_put_space(desk: &crate::desk::model::DeskSpace) -> Result<(), String
 pub fn desk_delete(id: &str) -> Result<(), String> {
     with(|c| {
         let tx = c.unchecked_transaction()?;
-        for table in ["desk_items", "desk_decisions", "desk_lead", "desk_members"] {
+        for table in ["desk_items", "desk_decisions", "desk_lead", "desk_members", "desk_moves", "desk_moves_cleared"] {
             tx.execute(&format!("DELETE FROM {table} WHERE project = ?1"), params![id])?;
         }
         tx.execute("DELETE FROM desk_spaces WHERE id = ?1", params![id])?;
@@ -105,8 +105,55 @@ pub fn desk_put_decision(d: &DeskDecision) {
              ON CONFLICT(id) DO UPDATE SET data = excluded.data",
             params![d.id, d.project, d.item_id.clone().unwrap_or_default(), (d.at * 1000) as i64, data],
         )?;
+        // One of the lead's own moves (#374): kept in its list too, until you clear it.
+        if !d.act.is_empty() {
+            c.execute(
+                "INSERT INTO desk_moves (id, project, at_ms, data) VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(id) DO UPDATE SET project = excluded.project, data = excluded.data",
+                params![d.id, d.project, (d.at * 1000) as i64, data],
+            )?;
+        }
         Ok(())
     });
+}
+
+/// `project`'s lead's own moves (#374), newest first, up to `take`: after `before` (the last one the list has: its
+/// ms and id) when given, else from the newest. The list loads these as you scroll.
+pub fn desk_moves_page(project: &str, before: Option<(u64, &str)>, take: u32) -> Vec<DeskDecision> {
+    let (ms, id) = before.map_or((i64::MAX, ""), |(ms, id)| (ms as i64, id));
+    with(|c| {
+        let mut q = c.prepare(
+            "SELECT data FROM desk_moves WHERE project = ?1 AND (at_ms < ?2 OR (at_ms = ?2 AND id < ?3))
+             ORDER BY at_ms DESC, id DESC LIMIT ?4",
+        )?;
+        let rows = q.query_map(params![project, ms, id, take], |r| r.get::<_, String>(0))?;
+        Ok(rows.flatten().filter_map(|d| serde_json::from_str(&d).ok()).collect())
+    })
+    .unwrap_or_default()
+}
+
+/// `project`'s list of the lead's moves cleared, at `at_ms`: those saved go, and the list shows only later ones.
+pub fn desk_moves_clear(project: &str, at_ms: u64) -> Result<(), String> {
+    with(|c| {
+        let tx = c.unchecked_transaction()?;
+        tx.execute("DELETE FROM desk_moves WHERE project = ?1", params![project])?;
+        tx.execute(
+            "INSERT INTO desk_moves_cleared (project, at_ms) VALUES (?1, ?2) ON CONFLICT(project) DO UPDATE SET at_ms = excluded.at_ms",
+            params![project, at_ms as i64],
+        )?;
+        tx.commit()
+    })
+    .ok_or_else(|| "Couldn't clear the list".to_string())
+}
+
+/// When each Desk's list of the lead's moves was last cleared (project, ms).
+pub fn desk_moves_cleared() -> Vec<(String, u64)> {
+    with(|c| {
+        let mut q = c.prepare("SELECT project, at_ms FROM desk_moves_cleared")?;
+        let rows = q.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as u64)))?;
+        Ok(rows.flatten().collect())
+    })
+    .unwrap_or_default()
 }
 
 /// `project`'s lead: session `session_id`, going by `name`.

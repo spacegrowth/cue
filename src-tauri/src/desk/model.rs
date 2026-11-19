@@ -426,7 +426,8 @@ pub struct DeskDecision {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub delivery: Option<DeskDelivery>,
     /// What the lead did on its own (#360), shown in its chat as it happens and, for a while, in the Dispatcher's
-    /// panel: "close" | "take_copy" | "land_first" | "start" | "answer"; "" for any other step.
+    /// panel, and kept in its "What the lead moved" list (#374): "close" | "take_copy" | "land_first" | "start" |
+    /// "send_back" | "answer"; "" for any other step.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub act: String,
 }
@@ -500,6 +501,8 @@ pub struct Desk {
     /// Circles in the waits list (hub/desk_waits.rs), by their key: when each was found, and whether the lead was told.
     /// Dropped once the circle is gone. Not saved: after a restart a circle still standing is found and told again.
     pub circles: HashMap<String, (u64, bool)>,
+    /// When each Desk's list of what its lead moved (#374) was last cleared (ms; saved: db/desk.rs).
+    pub moves_cleared: HashMap<String, u64>,
 }
 
 /// How an install is going, as the installer says: its tag and commit, its step ("building" | "installing" |

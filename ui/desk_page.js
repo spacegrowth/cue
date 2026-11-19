@@ -133,7 +133,7 @@ function deskChat(d) {
   const empty = !rows && !mine && !where ? `<div class="dk-empty">Tell ${esc(deskLeadName(d))} about a bug, a feature or a task. It adds them here, hands each to a session, and says why.</div>` : "";
   return `<div class="dk-chat" data-desk-chat="${esc(d.project)}">${empty}${rows}${mine}${where}</div>`;
 }
-/** What the lead did on its own (#360: closed, started, moved up, took back a copy, answered a session), newest first. */
+/** What the lead did on its own (#360: closed, started, sent back, moved up, took back a copy, answered a session), newest first. */
 const deskActs = (d) => (d?.decisions || []).filter((x) => x.act && x.sid === deskLead(d)?.sid).sort((a, b) => b.at - a.at);
 /** One of those as a line: its words, the item's number opening its page, and why. */
 function deskActLine(x, d) {
@@ -147,6 +147,76 @@ const deskActRows = (d) => deskActs(d).map((x) => ({ at: x.at * 1000, html: keye
 /** How long the lead's last moves stay in the Dispatcher's panel, and how many. */
 const DESK_JUST_DID_MS = 30 * 60 * 1000, DESK_JUST_DID = 3;
 const deskJustDid = (d) => deskActs(d).filter((x) => now() - x.at * 1000 < DESK_JUST_DID_MS).slice(0, DESK_JUST_DID);
+/** "What the lead moved" (#374): every move the lead made on its own, kept until you clear it. Today's come with the
+ *  Desk's state; older ones load from Cue (desk_moves) as you scroll: { items, end, loading } a Desk each. */
+const deskMovePages = new Map(), deskMovesShown = new Map();
+const DESK_MOVES_STEP = 30;
+/** Desk `d`'s moves, newest first: today's and those loaded, none from before you last cleared the list. */
+function deskMovesList(d) {
+  const from = d.moves_cleared || 0, byId = new Map();
+  for (const x of (deskMovePages.get(d.project)?.items || []).concat((d.decisions || []).filter((x) => x.act))) if (x.at * 1000 > from) byId.set(x.id, x);
+  return [...byId.values()].sort((a, b) => b.at - a.at || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
+}
+/** The next moves older than the list's last. */
+async function deskMovesFetch(project) {
+  const pg = deskMovePages.get(project) || { items: [], end: false, loading: false };
+  deskMovePages.set(project, pg);
+  if (pg.end || pg.loading) return;
+  pg.loading = true;
+  const last = pg.items.at(-1);
+  try {
+    const got = await invoke("desk_moves", { project, beforeMs: last ? last.at * 1000 : null, beforeId: last?.id ?? null, take: DESK_MOVES_STEP * 2 });
+    pg.items.push(...got);
+    pg.end = got.length < DESK_MOVES_STEP * 2;
+  } catch (e) { console.error(e); pg.end = true; }
+  pg.loading = false;
+  if (deskSelection() === project && view === "desk") renderMain();
+}
+/** The list's end came into view: more moves shown, the next ones fetched ahead. */
+function deskMovesMore(project) {
+  const pg = deskMovePages.get(project);
+  const all = deskMovesList(deskOf(project)).length, n = deskMovesShown.get(project) || DESK_MOVES_STEP;
+  if (all > n) { deskMovesShown.set(project, n + DESK_MOVES_STEP); renderMain(); }
+  if (!pg?.end && all < n + DESK_MOVES_STEP * 2) deskMovesFetch(project);
+}
+let deskMovesSeen = null;
+/** Watches the moves list's end (after each draw): in view, more. */
+function deskMovesWatch() {
+  deskMovesSeen?.disconnect();
+  const end = document.querySelector(".dk-moves [data-desk-moves-more]"), box = end?.closest(".dk-pane");
+  if (!end || typeof IntersectionObserver === "undefined") return;
+  const project = end.dataset.deskMovesMore;
+  deskMovesSeen = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { deskMovesSeen.disconnect(); deskMovesMore(project); } }, { root: box, rootMargin: "0px 0px 240px 0px" });
+  deskMovesSeen.observe(end);
+}
+/** Clear pressed once: it asks before the list goes. */
+let deskMovesClearing = null;
+async function deskMovesClear(project) {
+  if (deskMovesClearing !== project) { deskMovesClearing = project; renderMain(); return; }
+  deskMovesClearing = null;
+  try { await invoke("desk_moves_clear", { project }); } catch (e) { console.error(e); }
+  deskMovePages.set(project, { items: [], end: true, loading: false });
+  deskMovesShown.delete(project);
+  renderMain();
+}
+/** The Moves tab: what the lead did on its own, newest first: when, its words with the item's number, and why. */
+function deskMoves(d) {
+  if (!deskMovePages.has(d.project)) deskMovesFetch(d.project);
+  const all = deskMovesList(d), n = deskMovesShown.get(d.project) || DESK_MOVES_STEP, pg = deskMovePages.get(d.project);
+  const asking = deskMovesClearing === d.project;
+  const clear = all.length ? (asking ? `<span class="dk-mv-ask">Clear the whole list?</span><button class="btn small" data-desk-moves-keep>Keep</button><button class="btn small primary" data-desk-moves-clear="${esc(d.project)}">Clear</button>` : `<button class="btn small" data-desk-moves-clear="${esc(d.project)}">Clear</button>`) : "";
+  const head = `<div class="dk-mv-h"><span class="dk-mv-t">What the lead moved</span><span class="grow"></span>${clear}</div>`;
+  const rows = all.slice(0, n).map((x) => `<div class="dk-mv" data-key="mv:${esc(x.id)}"><span class="dk-mv-at">${esc(deskMoveWhen(x.at * 1000))}</span><span class="dk-mv-line">${deskActLine(x, d)}</span></div>`).join("");
+  const more = all.length > n || (pg && !pg.end) ? `<div class="dk-mv-more" data-desk-moves-more="${esc(d.project)}">${pg?.loading ? "Loading older moves…" : ""}</div>` : "";
+  const empty = !all.length && !pg?.loading ? `<div class="dk-empty">Nothing yet. When ${esc(deskLeadName(d) || "the lead")} closes, starts, sends back or moves up an item on its own, takes back a copy or answers a session, it's listed here and stays until you clear it.</div>` : "";
+  return `<div class="dk-pane dk-moves" data-scroll-key="moves:${esc(d.project)}">${head}${empty}${rows}${more}</div>`;
+}
+/** When a move was: the time today, else the day and time. */
+function deskMoveWhen(ms) {
+  const t = new Date(ms), today = new Date(now());
+  const hm = t.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return t.toDateString() === today.toDateString() ? hm : `${t.toLocaleDateString([], { month: "short", day: "numeric" })}, ${hm}`;
+}
 /** A session's chat, opened from the sessions on the left: its name, Open its session, its messages and where it is
  *  now, as under any session's chat. */
 /** What every chat on the Desk is (chat type mark, pick O): one solid label in the theme color, the kind's icon (the

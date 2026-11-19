@@ -684,6 +684,17 @@ b.dk-say-t, .dk-say-t { font-weight: 650; color: var(--ink); }
 .dk-act-it { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 3px; color: var(--ink); }
 .dk-act-it:hover .dk-inum { text-decoration: underline; }
 .dk-act-why { color: var(--muted); }
+/* What the lead moved (#374): a list of its own moves, newest first: time, then its words and why. */
+.dk-moves { padding: 8px 16px 16px; }
+.dk-mv-h { display: flex; align-items: center; gap: 8px; padding: 6px 0 10px; }
+.dk-mv-t { font: 700 11px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.dk-mv-ask { color: var(--muted); font-size: 12px; }
+.dk-mv { display: flex; gap: 12px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 13px; line-height: 1.45; }
+.dk-mv-at { flex: none; width: 92px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.dk-mv-line { min-width: 0; }
+.dk-mv-more { min-height: 24px; padding: 8px 0; color: var(--muted); font-size: 12px; }
+.dk-pall { all: unset; cursor: pointer; padding: 4px 8px; color: var(--muted); font-size: 12px; }
+.dk-pall:hover { color: var(--ink); text-decoration: underline; }
 .dk-prow.dk-pdid { cursor: default; }
 .dk-prow.dk-pdid:hover { background: none; }
 .dk-pdid .dk-prs { white-space: normal; line-height: 1.4; }

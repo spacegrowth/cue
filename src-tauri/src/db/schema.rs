@@ -201,6 +201,21 @@ CREATE TABLE IF NOT EXISTS desk_decisions (
 );
 CREATE INDEX IF NOT EXISTS desk_decisions_at ON desk_decisions(project, at_ms);
 
+-- What each Desk's lead did on its own (#374: closed, started, sent back, moved up, took back a copy, answered a
+-- session), a copy of its step kept until you clear the list (never pruned with the decisions); and when you last
+-- cleared it.
+CREATE TABLE IF NOT EXISTS desk_moves (
+  id          TEXT PRIMARY KEY,
+  project     TEXT NOT NULL,
+  at_ms       INTEGER NOT NULL,
+  data        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS desk_moves_at ON desk_moves(project, at_ms);
+CREATE TABLE IF NOT EXISTS desk_moves_cleared (
+  project     TEXT PRIMARY KEY,
+  at_ms       INTEGER NOT NULL
+);
+
 -- Each project's Desk lead: the session that runs its Desk, and the name it went by when last seen.
 CREATE TABLE IF NOT EXISTS desk_lead (
   project     TEXT PRIMARY KEY,

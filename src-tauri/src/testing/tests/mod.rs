@@ -19,6 +19,7 @@ mod desk_copy_wait;
 mod desk_land;
 mod desk_lands;
 mod desk_land_moved;
+mod desk_moves;
 mod desk_unstick;
 mod desk_theirs;
 mod desk_finish;

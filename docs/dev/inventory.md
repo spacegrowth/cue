@@ -14,12 +14,12 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 
 | What | Count |
 |---|---|
-| `#[tauri::command]` | 168 (3 sync) |
+| `#[tauri::command]` | 170 (3 sync) |
 | Lock declarations (static or field) | 110 |
 | Lock acquisitions | 261 |
 | Lock-graph edges | 59 |
 | Spawn sites | 88 |
-| External calls: fs / db / process / notify / login / socket | 448 / 196 / 52 / 4 / 1 / 4 |
+| External calls: fs / db / process / notify / login / socket | 454 / 203 / 52 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 12 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -83,6 +83,8 @@ Sync commands run on the main thread. "Hands work to": the threads or pools its 
 | `desk_item_diff` | async | `ipc/desk.rs::desk_item_diff` | ipc::with_hub |
 | `desk_commit_undo` | async | `ipc/desk.rs::desk_commit_undo` | ipc::with_hub |
 | `desk_done` | async | `ipc/desk.rs::desk_done` | ipc::with_hub |
+| `desk_moves` | async | `ipc/desk.rs::desk_moves` | ipc::with_hub |
+| `desk_moves_clear` | async | `ipc/desk.rs::desk_moves_clear` | ipc::with_hub |
 | `desk_undo` | async | `ipc/desk.rs::desk_undo` | ipc::with_hub |
 | `read_doc` | async | `ipc/docs.rs::read_doc` | ipc::blocking |
 | `peek_file` | async | `ipc/docs.rs::peek_file` | ipc::blocking |
@@ -491,7 +493,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (448)
+### fs (454)
 
 | In | Call | Times |
 |---|---|---|
@@ -585,6 +587,10 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hub/desk_theirs.rs::own_part` | read_to_string | 1 |
 | `hub/desk_theirs.rs::read_edits` | File::open | 1 |
 | `hub/desk_theirs.rs::read_edits` | Path::metadata | 1 |
+| `hub/desk_trees.rs::clear_build_leftovers` | File::open | 1 |
+| `hub/desk_trees.rs::clear_build_leftovers` | Path::is_dir | 1 |
+| `hub/desk_trees.rs::clear_build_leftovers` | read_dir | 3 |
+| `hub/desk_trees.rs::clear_build_leftovers` | remove_file | 1 |
 | `hub/desk_trees.rs::exclude_trees` | create_dir_all | 1 |
 | `hub/desk_trees.rs::exclude_trees` | read_to_string | 1 |
 | `hub/desk_trees.rs::exclude_trees` | write | 1 |
@@ -878,7 +884,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `uploads.rs::save` | create_dir_all | 1 |
 | `uploads.rs::save_kept` | create_dir_all | 1 |
 
-### db (196)
+### db (203)
 
 | In | Call | Times |
 |---|---|---|
@@ -902,6 +908,9 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `db/desk.rs::desk_load` | db::desk_prune | 1 |
 | `db/desk.rs::desk_load` | db::with | 3 |
 | `db/desk.rs::desk_members` | db::with | 1 |
+| `db/desk.rs::desk_moves_clear` | db::with | 1 |
+| `db/desk.rs::desk_moves_cleared` | db::with | 1 |
+| `db/desk.rs::desk_moves_page` | db::with | 1 |
 | `db/desk.rs::desk_prune` | db::with | 1 |
 | `db/desk.rs::desk_put_decision` | db::with | 1 |
 | `db/desk.rs::desk_put_item` | db::with | 1 |
@@ -997,11 +1006,13 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hub/desk.rs::Hub::desk_restore` | db::desk_kept | 1 |
 | `hub/desk.rs::Hub::desk_restore` | db::desk_load | 1 |
 | `hub/desk.rs::Hub::desk_restore` | db::desk_members | 1 |
+| `hub/desk.rs::Hub::desk_restore` | db::desk_moves_cleared | 1 |
 | `hub/desk.rs::Hub::desk_restore` | db::desk_put_numbered | 1 |
 | `hub/desk.rs::Hub::desk_restore` | db::desk_spaces | 1 |
 | `hub/desk_handoff.rs::Hub::desk_hand_on` | db::handoff | 1 |
 | `hub/desk_handoff.rs::Hub::desk_hand_on_now` | db::handoff_continued | 1 |
 | `hub/desk_lead.rs::Hub::desk_lead_candidate` | db::ended_session | 1 |
+| `hub/desk_members.rs::Hub::desk_retire_idle` | db::desk_drop_member | 1 |
 | `hub/desk_members.rs::Hub::desk_set_member` | db::desk_drop_lead | 1 |
 | `hub/desk_members.rs::Hub::desk_set_member` | db::desk_drop_member | 1 |
 | `hub/desk_members.rs::Hub::desk_set_member` | db::desk_put_member | 1 |
@@ -1013,6 +1024,8 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hub/desk_trees.rs::Hub::desk_kept_remove` | db::desk_drop_kept | 1 |
 | `hub/desk_trees.rs::Hub::desk_tree_dropped` | db::desk_put_kept | 1 |
 | `hub/desk_view.rs::Hub::desk_done_page` | db::desk_done_page | 1 |
+| `hub/desk_view.rs::Hub::desk_moves_clear` | db::desk_moves_clear | 1 |
+| `hub/desk_view.rs::Hub::desk_moves_page` | db::desk_moves_page | 1 |
 | `hub/hand_off.rs::Hub::hand_off_ahead` | db::draft_text | 1 |
 | `hub/live_writes.rs::LiveWrites::write` | db::delete_session | 1 |
 | `hub/live_writes.rs::LiveWrites::write` | db::park | 1 |

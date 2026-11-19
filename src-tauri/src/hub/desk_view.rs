@@ -243,6 +243,21 @@ impl Hub {
         self.read(|st| saved.iter().map(|i| shown(st, st.desk.item(&i.id).filter(|x| x.state == "done").unwrap_or(i))).collect())
     }
 
+    /// `project`'s lead's own moves (#374) older than `before` (ms, id), newest first, `take` of them: the "What the
+    /// lead moved" list loads them as you scroll (today's come with `decisions`).
+    pub(crate) fn desk_moves_page(&self, project: &str, before: Option<(u64, &str)>, take: u32) -> Vec<DeskDecision> {
+        crate::db::desk_moves_page(project, before, take.min(100))
+    }
+
+    /// `project`'s "What the lead moved" list cleared: it shows only the moves after now.
+    pub(crate) fn desk_moves_clear(&self, project: &str) -> Result<(), String> {
+        let now = crate::clock::now_ms();
+        crate::db::desk_moves_clear(project, now)?;
+        self.write(|st| st.desk.moves_cleared.insert(project.to_string(), now));
+        self.changed();
+        Ok(())
+    }
+
     /// `state.desk`: each project with items or a lead, its lead ({ sid, name, state: live | parked | ended }), its
     /// items (not done, or done today) and today's decisions, newest first.
     pub(super) fn desk_view(st: &Store, now: u64) -> Value {
@@ -263,7 +278,7 @@ impl Hub {
                 let work_history = super::desk_members::work_history(st, p);
                 // The sessions its lists show (#363); the rest fold into one "older" line.
                 let with_work = super::desk_members::with_work(st, p, now);
-                json!({ "with_work": with_work, "work_history": work_history, "id": p, "project": p, "name": st.desk.spaces.get(p).map(|d| &d.name), "independent": st.desk.spaces.contains_key(p), "workspace_project": st.desk.project_of(p), "folder": st.desk.spaces.get(p).map(|d| &d.folder), "lead": Self::desk_lead_view(st, p), "items": items, "decisions": decisions, "older": older, "members": members, "checks": super::desk_checks::checks_view(st, p), "kept": st.desk.kept.iter().filter(|k| &k.project == p).collect::<Vec<_>>(), "waits": super::desk_waits::waits_view(st, p), "circles": super::desk_waits::circles_view(st, p), "ask_before": crate::one_way::desk_view(st.desk.project_of(p)), "away": super::desk_away::away_view(st, p, now), "lands": crate::lands::desk_view(st.desk.project_of(p), &desk_folder(st, p)) })
+                json!({ "with_work": with_work, "work_history": work_history, "id": p, "project": p, "name": st.desk.spaces.get(p).map(|d| &d.name), "independent": st.desk.spaces.contains_key(p), "workspace_project": st.desk.project_of(p), "folder": st.desk.spaces.get(p).map(|d| &d.folder), "lead": Self::desk_lead_view(st, p), "items": items, "decisions": decisions, "older": older, "moves_cleared": st.desk.moves_cleared.get(p).copied().unwrap_or(0), "members": members, "checks": super::desk_checks::checks_view(st, p), "kept": st.desk.kept.iter().filter(|k| &k.project == p).collect::<Vec<_>>(), "waits": super::desk_waits::waits_view(st, p), "circles": super::desk_waits::circles_view(st, p), "ask_before": crate::one_way::desk_view(st.desk.project_of(p)), "away": super::desk_away::away_view(st, p, now), "lands": crate::lands::desk_view(st.desk.project_of(p), &desk_folder(st, p)) })
             })
             .collect();
         json!({ "projects": list, "installed_ms": super::desk_checks::installed_ms(), "install_at": super::desk_finish::install_at(st) })

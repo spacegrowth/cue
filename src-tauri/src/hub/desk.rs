@@ -172,6 +172,7 @@ impl Hub {
         st.desk.items = items;
         st.desk.decisions = decisions;
         st.desk.kept = crate::db::desk_kept();
+        st.desk.moves_cleared = crate::db::desk_moves_cleared().into_iter().collect();
         // Items from before numbering get their numbers once, saved under them.
         let changed = st.desk.number_old();
         crate::db::desk_put_numbered(&st.desk, &changed);

@@ -208,6 +208,8 @@ const DESK_CLICKS = {
   deskCrew: (el) => deskShow({ kind: "crew", lead: el.dataset.lead, agent: el.dataset.deskCrew }),
   deskBack: (el) => deskShow(el.dataset.deskBack ? { kind: "holder", sid: el.dataset.deskBack } : null),
   deskTab: (el) => { deskTab = el.dataset.deskTab; deskChatEnd = true; renderMain(); },
+  deskMovesClear: (el) => deskMovesClear(el.dataset.deskMovesClear),
+  deskMovesKeep: () => { deskMovesClearing = null; renderMain(); },
   ...DESK_LEAD_CLICKS,
   deskSend: (el) => deskSendBox(el.dataset.deskSend),
   deskAct: (el) => { deskGiveFor = null; deskAct(el.dataset.id, el.dataset.deskAct, el); },

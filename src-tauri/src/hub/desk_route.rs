@@ -184,6 +184,12 @@ pub(super) fn route(st: &mut Store, project: &str, by: &By, id: &str, to: &str, 
     }
     let text = routed_text(id, &h.name, waits.as_deref(), (reopen || unfinished) && same, same && was_working);
     decide(st, project, Some(id.to_string()), by.name, by.sid, &text, why, now, fx);
+    // Back to the session that had it, with what's left (#374): one of the lead's own moves.
+    if same && waits.is_none() && (reopen || unfinished || was_working) {
+        if let Some(d) = st.desk.decisions.last_mut() {
+            d.act = "send_back".into();
+        }
+    }
     Some(taken(id, &h.name, waits.as_deref()))
 }
 

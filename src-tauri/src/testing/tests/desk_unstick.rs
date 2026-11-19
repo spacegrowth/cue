@@ -14,7 +14,7 @@ fn lead_of(w: &World, project: &str) -> String {
 }
 
 /// The main checkout's top folder, as git lists it.
-fn top(w: &World) -> String {
+pub(super) fn top(w: &World) -> String {
     let out = String::from_utf8(std::process::Command::new("git").arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
     out.lines().next().and_then(|l| l.strip_prefix("worktree ")).unwrap().to_string()
 }

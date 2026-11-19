@@ -409,6 +409,19 @@ pub(crate) async fn desk_done(hub: State<'_, Arc<Hub>>, project: String, before_
     with_hub(&hub, move |h| h.desk_done_page(&project, before_ms.zip(before_id.as_deref()), take)).await
 }
 
+/// `project`'s lead's own moves (#374), newest first, `take` of them after the one the list ends with (`before_ms`,
+/// `before_id`): "What the lead moved" loads them as you scroll.
+#[tauri::command]
+pub(crate) async fn desk_moves(hub: State<'_, Arc<Hub>>, project: String, before_ms: Option<u64>, before_id: Option<String>, take: u32) -> Result<Vec<crate::desk::DeskDecision>, String> {
+    with_hub(&hub, move |h| h.desk_moves_page(&project, before_ms.zip(before_id.as_deref()), take)).await
+}
+
+/// Clear on "What the lead moved": the list starts again from now.
+#[tauri::command]
+pub(crate) async fn desk_moves_clear(hub: State<'_, Arc<Hub>>, project: String) -> Result<(), String> {
+    with_hub(&hub, move |h| h.desk_moves_clear(&project)).await?
+}
+
 /// Undo this: whoever made the decision is asked to undo it. What Cue did.
 #[tauri::command]
 pub(crate) async fn desk_undo(hub: State<'_, Arc<Hub>>, decision_id: String, answer: Option<String>) -> Result<String, String> {
