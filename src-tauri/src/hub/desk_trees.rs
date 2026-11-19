@@ -399,15 +399,15 @@ pub(super) fn tree_repo(folder: &str) -> Option<String> {
     (same_dir(&top, &main) && !onto.is_empty() && rev(&main, &onto).is_some()).then_some(main)
 }
 
-/// Where copy `path`'s branch meets the main line `onto` now, when the commit it was made from (`base`) is no longer
-/// in its history; None while it is.
+/// Where copy `path`'s branch meets the main line `onto` now, when that's not the commit it was made from (`base`):
+/// its branch moved onto a rewritten main line (`base` gone from its history), or main was merged into it or it was
+/// rebased onto main (the meeting point is past `base`; measured from `base`, main's own changes since would clash
+/// with its copies of them, #358). None while they meet at `base`.
 fn moved_base_of(repo: &str, path: &str, onto: &str, base: &str) -> Option<String> {
     let head = rev(path, "HEAD")?;
-    if crate::self_install::is_ancestor(repo, base, &head) {
-        return None;
-    }
     let main = rev(repo, onto)?;
-    git("", repo, &[], &["merge-base", &head, &main]).map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+    let meet = git("", repo, &[], &["merge-base", &head, &main]).map(|s| s.trim().to_string()).filter(|s| !s.is_empty())?;
+    (meet != base).then_some(meet)
 }
 
 /// The full commit `what` names in `repo`.
