@@ -16,12 +16,56 @@ function deskLog(list, about = null) {
     const on = deskLogOpen.has(c.id), what = about?.(c) || "";
     return `<div class="dk-lr ${c.call ? "dk-dec" : "dk-step"}${on ? " open" : ""}" data-desk-log-row="${esc(c.id)}"><span class="dk-lby">${esc(c.by || "")}</span>`
       + `<span class="dk-d">${esc(c.text)}${n > 1 ? ` <span class="dk-x">×${n}</span>` : ""}${what ? ` <span class="dk-la">· ${what}</span>` : ""}</span>`
-      + `<span class="dk-w">${c.why ? esc(c.why) : ""}</span><span class="dk-age">${ago(deskMs(c.at))} ago</span><span class="dk-lu">${deskUndoLink(c)}</span></div>`;
+      + `<span class="dk-w">${c.why ? esc(c.why) : ""}</span><span class="dk-age">${ago(deskMs(c.at))} ago</span><span class="dk-lu">${deskTickBox(c)}${deskUndoLink(c)}</span></div>`;
   }).join("")}</div>`;
 }
 /** Rows of a Decisions or Steps table shown in full (a click on a row; long ones are cut at two lines). */
 const deskLogOpen = new Set();
 const DESK_UNDO_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>`;
+/** Decisions you ticked to go back on together (their ids), whichever list they were ticked in. */
+const deskTicked = new Set();
+/** The lists showing housekeeping calls too (their keys): "show all" pressed there. */
+const deskShowAll = new Set();
+/** The list whose "Go back on these" box is open (its key), else null. */
+let deskGoBackOpen = null;
+const DESK_TICK_ICON = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5 10 17.5 19 7"/></svg>`;
+/** A checkbox at a call's row end, to go back on it with others: only on a call that can still be undone. */
+const deskTickBox = (c) => {
+  if (!c.call || c.undo !== "can") return "";
+  const on = deskTicked.has(c.id);
+  return `<button class="dk-tick${on ? " on" : ""}" role="checkbox" aria-checked="${on}" aria-label="Go back on this" data-desk-tick="${esc(c.id)}">${on ? DESK_TICK_ICON : ""}</button>`;
+};
+/** Calls `list` drawn by `render` (deskLog or deskDecList) as a Decisions list `key`: key calls only (what gets built,
+ *  how it looks or behaves, what's dropped), the housekeeping ones (DECIDED (minor): folders, routing, ordering,
+ *  copies) behind a small "Show all"; and once some are ticked, "Go back on these", which asks for your new answer
+ *  and sends each back to whoever decided it. `empty`: what shows with no calls at all. */
+function deskCallsBox(list, key, render, empty) {
+  if (!list.length) return empty;
+  const all = deskShowAll.has(key), minor = list.filter((c) => c.minor).length;
+  const shown = all ? list : list.filter((c) => !c.minor);
+  const ticked = list.filter((c) => deskTicked.has(c.id) && c.undo === "can").length;
+  const more = minor ? `<button class="dk-showall" data-desk-show-all="${esc(key)}">${all ? "Key decisions only" : `Show all · ${minor} more`}</button>` : "";
+  const none = shown.length ? render(shown) : `<p class="dk-note">No key decisions yet.</p>`;
+  return none + more + (ticked ? deskGoBackHtml(key, ticked) : "");
+}
+/** Under a Decisions list with `n` ticked: "Go back on these (n)", or, pressed, the box for your new answer. */
+function deskGoBackHtml(key, n) {
+  if (deskGoBackOpen !== key) return `<div class="dk-gb"><span class="dk-gb-n">${n} ticked</span><span class="grow"></span><button class="btn small" data-desk-go-back="clear">Clear</button><button class="btn primary small" data-desk-go-back="${esc(key)}">Go back on ${n === 1 ? "this" : `these (${n})`}</button></div>`;
+  return `<div class="dk-sb dk-gb-box"><div class="dk-sb-h"><span class="dk-sb-l">What should happen instead?</span><button class="dk-sb-x" data-desk-go-back="cancel">Cancel</button></div><div class="dk-box dk-sb-box"><div class="dk-box-row"><textarea rows="2" data-text="goback" aria-label="What should happen instead?" placeholder="Your answer goes to each one with its decision" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off">${esc(draft("goback").text)}</textarea><button class="btn primary small" data-desk-go-back="send">Send</button></div></div></div>`;
+}
+/** Go back on every ticked call: each goes to whoever decided it, with your answer. */
+async function deskGoBackSend() {
+  const answer = draft("goback").text.trim();
+  if (!answer) { toast("Say what should happen instead first", 4000); return document.querySelector('textarea[data-text="goback"]')?.focus(); }
+  let sent = 0;
+  for (const id of [...deskTicked]) {
+    try { await invoke("desk_undo", { decisionId: id, answer }); deskTicked.delete(id); sent++; }
+    catch (e) { toast(String(e), 5000); }
+  }
+  if (!deskTicked.size) { deskGoBackOpen = null; delete drafts.goback; saveDrafts(); }
+  if (sent) toast(sent === 1 ? "Sent back with your answer" : `${sent} sent back with your answer`);
+  renderMain();
+}
 /** Undo at a row's end: a small quiet icon shown while the pointer is on the row; "asked" once it was. */
 const deskUndoLink = (c) => (c.undo === "can" ? `<button class="dk-undo-l" data-desk-undo="${esc(c.id)}" aria-label="Undo">${DESK_UNDO_ICON}</button>`
   : c.undo === "asked" ? `<span class="dk-u">Undo asked</span>` : "");
@@ -197,9 +241,9 @@ function deskFollowSid() {
  *  contexts kept and Cue's hand-off asks are steps, kept on their item (deskItemPane). */
 const deskCalls = (d) => d.decisions.filter((c) => c.call);
 function deskDecisions(d) {
-  const calls = deskCalls(d);
-  if (!calls.length) return `<div class="dk-empty">No judgment calls yet. Routes and hand-offs are on each item.</div>`;
-  return `<div class="dk-pane" data-scroll-key="decisions:${esc(d.project)}"><div class="dk-sec">${deskLog(calls)}</div></div>`;
+  const calls = deskCalls(d), empty = `<div class="dk-empty">No judgment calls yet. Routes and hand-offs are on each item.</div>`;
+  if (!calls.length) return empty;
+  return `<div class="dk-pane" data-scroll-key="decisions:${esc(d.project)}"><div class="dk-sec">${deskCallsBox(calls, `desk:${d.project}`, deskLog, "")}</div></div>`;
 }
 /** "Done when" as its points, one per line: its own lines (a "-", "*", "•" or "1." in front dropped), else its
  *  sentences and "; " parts. "e.g." / "i.e." / "etc." don't end one; a point's last "." goes. */
@@ -424,5 +468,5 @@ function deskDecList(list) {
   return `<div class="dk-decs">${rows.map(({ c, n }) => `<div class="dk-lr dk-dec dk-dl${deskLogOpen.has(c.id) ? " open" : ""}" data-desk-log-row="${esc(c.id)}">`
     + `<div class="dk-dl1"><span class="dk-d">${esc(c.text)}${n > 1 ? ` <span class="dk-x">×${n}</span>` : ""}</span><span class="dk-age">${ago(deskMs(c.at))} ago</span></div>`
     + (c.why ? `<div class="dk-w">${esc(c.why)}</div>` : "")
-    + `<div class="dk-dl3">${c.by ? `<span class="dk-lby">by <b>${esc(c.by)}</b></span>` : ""}<span class="grow"></span><span class="dk-lu">${deskUndoLink(c)}</span></div></div>`).join("")}</div>`;
+    + `<div class="dk-dl3">${c.by ? `<span class="dk-lby">by <b>${esc(c.by)}</b></span>` : ""}<span class="grow"></span><span class="dk-lu">${deskTickBox(c)}${deskUndoLink(c)}</span></div></div>`).join("")}</div>`;
 }

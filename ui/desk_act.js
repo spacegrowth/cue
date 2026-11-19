@@ -212,6 +212,16 @@ const DESK_CLICKS = {
   deskSend: (el) => deskSendBox(el.dataset.deskSend),
   deskAct: (el) => { deskGiveFor = null; deskAct(el.dataset.id, el.dataset.deskAct, el); },
   deskUndo: (el) => deskUndo(el.dataset.deskUndo),
+  deskTick: (el) => { const id = el.dataset.deskTick; if (!deskTicked.delete(id)) deskTicked.add(id); if (!deskTicked.size) deskGoBackOpen = null; renderMain(); },
+  deskShowAll: (el) => { const k = el.dataset.deskShowAll; if (!deskShowAll.delete(k)) deskShowAll.add(k); renderMain(); },
+  deskGoBack: (el) => {
+    const v = el.dataset.deskGoBack;
+    if (v === "send") return deskGoBackSend();
+    if (v === "clear") { deskTicked.clear(); deskGoBackOpen = null; }
+    else deskGoBackOpen = v === "cancel" ? null : v;
+    renderMain();
+    if (deskGoBackOpen) document.querySelector('textarea[data-text="goback"]')?.focus();
+  },
   deskAway: (el) => deskAwayOpen(el.dataset.deskAway),
   deskLogRow: (el) => { const id = el.dataset.deskLogRow; if (!deskLogOpen.delete(id)) deskLogOpen.add(id); renderMain(); },
   deskSession: (el) => openSession(el.dataset.deskSession),

@@ -49,16 +49,17 @@ pub(super) fn waits_on(st: &Store, from: &str, id: &str) -> bool {
 #[allow(clippy::too_many_arguments)]
 pub(super) fn decide(st: &mut Store, project: &str, item: Option<String>, by: &str, sid: &str, text: &str, why: &str, now: u64, fx: &mut Effects) {
     let id = st.desk.decision_id(now);
-    st.desk.decisions.push(DeskDecision { id: id.clone(), project: project.into(), item_id: item, by: by.into(), sid: sid.into(), text: text.into(), why: why.into(), at: secs(now), undo: "can".into(), call: false, delivery: None, act: String::new() });
+    st.desk.decisions.push(DeskDecision { id: id.clone(), project: project.into(), item_id: item, by: by.into(), sid: sid.into(), text: text.into(), why: why.into(), at: secs(now), undo: "can".into(), call: false, minor: false, delivery: None, act: String::new() });
     fx.decisions.push(id);
 }
 
 /// A judgment call (a DECIDED line) noted on `project`'s Desk: `decide`, shown in its Decisions list.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn decide_call(st: &mut Store, project: &str, item: Option<String>, by: &str, sid: &str, text: &str, why: &str, now: u64, fx: &mut Effects) {
+pub(super) fn decide_call(st: &mut Store, project: &str, item: Option<String>, by: &str, sid: &str, (text, why, minor): (&str, &str, bool), now: u64, fx: &mut Effects) {
     decide(st, project, item, by, sid, text, why, now, fx);
     if let Some(d) = st.desk.decisions.last_mut() {
         d.call = true;
+        d.minor = minor;
     }
 }
 

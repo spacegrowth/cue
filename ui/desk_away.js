@@ -95,7 +95,7 @@ function deskAwayCard(d, taskApprovals) {
   const sec = (title, n, html, cls = "") => `<div class="dk-gh${cls}">${title} <span class="n">${n}</span></div>${html}`;
   const body = sec("Needs you", need, waits.map((i) => deskItemRow(i, false)).join("") + (asks.length ? `<div class="dk-prows dk-aw-asks">${asks.map(askRow).join("")}</div>` : "")
       + (need ? "" : `<div class="dk-aw-none">Nothing waits on you.</div>`) + pausedLine, need ? " you" : " you none")
-    + sec("Decided for you", calls.length, calls.length ? `<div class="dk-aw-decs">${deskDecList(calls)}</div>` : `<div class="dk-aw-none">No calls yet.</div>`)
+    + sec("Decided for you", calls.filter((c) => !c.minor).length, `<div class="dk-aw-decs">${deskCallsBox(calls, `away:${d.project}`, deskDecList, `<div class="dk-aw-none">No calls yet.</div>`)}</div>`)
     + (done.length ? sec("Done, to check", done.length, done.map((i) => deskItemRow(i, false)).join("")) : "");
   return `<div class="dk-card dk-away"><div class="dk-ch"><b>Away</b><button class="dk-aw-st${a.ended ? " ended" : ""}" data-desk-away="${esc(d.project)}">${esc(deskAwayStatus(a))}</button></div>
     <div class="dk-scroll" data-scroll-key="desk-away:${esc(d.project)}">${body}</div></div>`;

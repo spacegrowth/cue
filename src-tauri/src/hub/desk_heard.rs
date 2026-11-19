@@ -143,7 +143,7 @@ pub(super) fn holder_said(st: &mut Store, sid: &str, text: &str, decided: bool, 
             finished = Some(id);
         }
     }
-    let calls = crate::sessions::crew_log::calls_in(text);
+    let calls = crate::sessions::crew_log::calls_marked(text);
     if calls.is_empty() || !decided {
         return;
     }
@@ -153,8 +153,8 @@ pub(super) fn holder_said(st: &mut Store, sid: &str, text: &str, decided: bool, 
     let at = |i: &&DeskItem| finished.as_ref().map_or(i.state == "working", |f| &i.id == f);
     let Some((id, project, by)) = st.desk.items.iter().filter(held).max_by_key(|i| (at(i), i.updated)).map(|i| (i.id.clone(), i.project.clone(), i.holder.as_ref().map(|h| if h.sid == sid { h.name.clone() } else { String::new() }).unwrap_or_default())) else { return };
     let by = if by.is_empty() { st.sessions.get(sid).map(shown_name).unwrap_or_default() } else { by };
-    for (what, why) in calls {
-        decide_call(st, &project, Some(id.clone()), &by, sid, &what, &why, now, fx);
+    for (what, why, minor) in calls {
+        decide_call(st, &project, Some(id.clone()), &by, sid, (&what, &why, minor), now, fx);
     }
 }
 

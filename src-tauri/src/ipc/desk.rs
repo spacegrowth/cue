@@ -411,6 +411,6 @@ pub(crate) async fn desk_done(hub: State<'_, Arc<Hub>>, project: String, before_
 
 /// Undo this: whoever made the decision is asked to undo it. What Cue did.
 #[tauri::command]
-pub(crate) async fn desk_undo(hub: State<'_, Arc<Hub>>, decision_id: String) -> Result<String, String> {
-    with_hub(&hub, move |h| h.desk_undo(&decision_id)).await?
+pub(crate) async fn desk_undo(hub: State<'_, Arc<Hub>>, decision_id: String, answer: Option<String>) -> Result<String, String> {
+    with_hub(&hub, move |h| h.desk_undo_with(&decision_id, answer.as_deref().unwrap_or(""))).await?
 }

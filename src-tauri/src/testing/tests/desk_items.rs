@@ -167,6 +167,24 @@ fn a_same_title_of_another_kind_or_done_is_a_new_item() {
 }
 
 #[test]
+fn housekeeping_calls_are_marked_and_going_back_carries_your_answer() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let d = new_lead(&w, &project);
+    ends(&w, &d, "ITEM: Header\nROUTE: #new -> cue-teams | why: it knows");
+    ends(&w, &h, "DECIDED: kept the sticky header — it was asked for\nDECIDED (minor): put the notes in docs/dev — they're dev notes");
+    let decs = desk(&w, &project)["decisions"].as_array().unwrap().clone();
+    let key = decs.iter().find(|c| c["text"] == "kept the sticky header").unwrap();
+    let minor = decs.iter().find(|c| c["text"] == "put the notes in docs/dev").unwrap();
+    assert!(key.get("minor").is_none(), "a key call carries no mark");
+    assert_eq!(minor["minor"], true);
+    assert_eq!(minor["call"], true, "housekeeping is still a call, kept behind Show all");
+    w.hub().desk_undo_with(key["id"].as_str().unwrap(), "drop the sticky header").unwrap();
+    w.settle();
+    assert!(sent_to(&w, &h).iter().any(|t| t.starts_with("Go back on your call") && t.contains("kept the sticky header") && t.contains("The user's answer instead: drop the sticky header.")));
+}
+
+#[test]
 fn undo_asks_whoever_decided_to_go_back() {
     let w = World::new();
     let (h, project) = holder(&w);

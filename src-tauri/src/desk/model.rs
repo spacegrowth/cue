@@ -418,6 +418,10 @@ pub struct DeskDecision {
     /// (routes, gives, sessions started, contexts kept, Cue's hand-off asks) are steps, shown on their item.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub call: bool,
+    /// A housekeeping call (`DECIDED (minor): …`: a folder, a route, an order, a copy): kept, but the Decisions list
+    /// shows it only under "Show all". The rest are key product calls.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub minor: bool,
     /// The message associated with this step, for showing its existing session delivery state.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub delivery: Option<DeskDelivery>,

@@ -293,6 +293,44 @@ test("Decisions: only judgment calls, who decided, what and why; Undo (on hover)
   await expect(decs.first()).toContainText("Undo asked");
 });
 
+test("Decisions: key calls only, housekeeping behind Show all; tick several and Go back on these with your answer", async ({ page, cue }) => {
+  await cue.open("desk");
+  await cue.change((st) => {
+    const d = st.desk.projects.find((x) => x.project === "cue");
+    d.decisions.push({ project: "cue", id: "c4", call: true, minor: true, undo: "can", by: "web-lead", sid: "lead", text: "Put the notes in docs/dev", at: d.decisions[0].at });
+  });
+  await openDesk(page);
+  await page.locator('[data-desk-tab="decisions"]').click();
+  const right = page.locator(".dk-right");
+  // The housekeeping call isn't counted or listed until Show all.
+  await expect(page.locator(".dk-tab.on")).toContainText("Decisions2");
+  await expect(right.locator(".dk-dec")).toHaveCount(2);
+  await expect(right).not.toContainText("Put the notes in docs/dev");
+  await right.locator(".dk-showall").click();
+  await expect(right.locator(".dk-dec")).toHaveCount(3);
+  await expect(right.locator(".dk-showall")).toHaveText("Key decisions only");
+  await right.locator(".dk-showall").click();
+  await expect(right.locator(".dk-showall")).toHaveText("Show all · 1 more");
+  // Tick two; Go back on these asks for your answer, and each goes back with it.
+  await expect(right.locator(".dk-gb")).toHaveCount(0);
+  await right.locator('[data-desk-tick="c1"]').click();
+  await expect(right.locator('[data-desk-tick="c1"]')).toHaveAttribute("aria-checked", "true");
+  await right.locator('[data-desk-tick="c2"]').click();
+  await expect(right.locator('[data-desk-go-back="desk:cue"]')).toHaveText("Go back on these (2)");
+  await right.locator('[data-desk-go-back="desk:cue"]').click();
+  const box = right.locator('textarea[data-text="goback"]');
+  await expect(box).toBeFocused();
+  await right.locator('[data-desk-go-back="send"]').click();
+  await expect(page.locator(".toast")).toHaveText("Say what should happen instead first");
+  await box.fill("Keep the settings file and focus on a timer");
+  await right.locator('[data-desk-go-back="send"]').click();
+  await cue.called("desk_undo", { decisionId: "c1", answer: "Keep the settings file and focus on a timer" });
+  await cue.called("desk_undo", { decisionId: "c2", answer: "Keep the settings file and focus on a timer" });
+  await expect(page.locator(".toast")).toHaveText("2 sent back with your answer");
+  await expect(right.locator(".dk-gb, .dk-gb-box")).toHaveCount(0);
+  await expect(right.locator(".dk-dec").first()).toContainText("Undo asked");
+});
+
 test("a step (a route, a give) is a quiet line on its item, not a decision", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);

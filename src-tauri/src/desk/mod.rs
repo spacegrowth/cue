@@ -52,7 +52,8 @@ ROUTE: #<id> -> <name> | after: #<other id> | why: <reason>   (it starts once #<
 an item really waits on another, as when both would change the same files: the Desk shows the user what each waiting item unblocks)
 ASK: <question> | choices: <A> / <B> / <C>      (only when you can't decide without the user)
 ASK: #<id> | <question> | choices: <A> / <B>      (the same, about one item: it shows on that item as waiting on the user)
-DECIDED: <what you chose> — <why>      (a judgment call you made on your own that the user may want to undo; not for routing, starting or giving work: Cue lists those itself)
+DECIDED: <what you chose> — <why>      (a key judgment call you made on your own that the user may want to undo: what gets built, how it looks or behaves, what's dropped; not for routing, starting or giving work: Cue lists those itself)
+DECIDED (minor): <what you chose> — <why>      (housekeeping: folders, routing, ordering, copies; kept, but off the user's Decisions list)
 DONE: #<id>      (the user tells you an item is done)
 NOTE: #<id> | <words>      (a message to whoever holds the item, at any stage, even finishing or with the user to check: \
 Cue sends it and shows it on the item; the item stays as it is)
@@ -178,8 +179,17 @@ pub fn kind_words(it: &DeskItem) -> String {
 
 /// A decision's undo, in the words its decider is sent (as crew_log's `go_back_words` for a lead's own call).
 pub fn undo_words(d: &DeskDecision) -> String {
+    undo_words_with(d, "")
+}
+
+/// `undo_words`, with the user's new `answer` (when given) as the way to take instead.
+pub fn undo_words_with(d: &DeskDecision, answer: &str) -> String {
     let what = d.text.trim().trim_end_matches('.');
     let why = if d.why.trim().is_empty() { String::new() } else { format!(" (your reason: {})", d.why.trim().trim_end_matches('.')) };
     let about = d.item_id.as_deref().map(|id| format!(" on #{id}")).unwrap_or_default();
+    let answer = answer.trim();
+    if !answer.is_empty() {
+        return format!("Go back on your call{about}: you decided {what}{why}. The user's answer instead: {answer}. Undo it and do that, then carry on; say what that changes.");
+    }
     format!("Go back on your call{about}: you decided {what}{why}. Undo it and take the other way, then carry on; say what that changes.")
 }

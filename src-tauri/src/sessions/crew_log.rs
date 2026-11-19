@@ -184,6 +184,12 @@ fn push(log: &mut Vec<CrewDecision>, mut e: CrewDecision) -> String {
 /// own placeholder, said back, isn't one; nor is a line in a code block (``` or ~~~ fences) or a `>` quote: those
 /// show or cite one, they don't make it.
 pub fn calls_in(text: &str) -> Vec<(String, String)> {
+    calls_marked(text).into_iter().map(|(what, why, _)| (what, why)).collect()
+}
+
+/// The same as `calls_in`, each with whether it was marked housekeeping (`DECIDED (minor): …`): a folder, a route,
+/// an order, a copy. Those stay off the Desk's Decisions list unless you show all.
+pub fn calls_marked(text: &str) -> Vec<(String, String, bool)> {
     let mut fenced = false;
     text.lines().filter_map(|line| {
         let t = line.trim();
@@ -199,11 +205,16 @@ pub fn calls_in(text: &str) -> Vec<(String, String)> {
         if !head.eq_ignore_ascii_case(CALL_MARK) {
             return None;
         }
-        let body = l[CALL_MARK.len()..].trim_start().strip_prefix(':')?.trim().trim_start_matches("**").trim().trim_end_matches(['*', '`']).trim();
+        let rest = l[CALL_MARK.len()..].trim_start();
+        let (minor, rest) = match rest.get(..7) {
+            Some(m) if m.eq_ignore_ascii_case("(minor)") => (true, rest[7..].trim_start()),
+            _ => (false, rest),
+        };
+        let body = rest.strip_prefix(':')?.trim().trim_start_matches("**").trim().trim_end_matches(['*', '`']).trim();
         let (what, why) = ["—", "–", " -- "].iter().find_map(|sep| body.split_once(sep)).unwrap_or((body, ""));
         let (what, why) = (what.trim().trim_end_matches(['.', ',', ';']).trim(), why.trim());
         let placeholder = what.starts_with('<') || ["what you chose", "what it chose"].iter().any(|p| what.eq_ignore_ascii_case(p));
-        (!what.is_empty() && !placeholder).then(|| (what.to_string(), why.to_string()))
+        (!what.is_empty() && !placeholder).then(|| (what.to_string(), why.to_string(), minor))
     }).collect()
 }
 
@@ -381,6 +392,12 @@ mod tests {
             ("cut the CSV export".to_string(), String::new()),
         ]);
         assert!(calls_in("DECISION: one-way | why: the add-on's").is_empty(), "the add-on's own DECISION lines aren't these");
+        // Housekeeping is marked "(minor)", in any case; the rest are key calls.
+        assert_eq!(calls_marked("DECIDED (minor): notes in docs/dev — dev notes\nDecided (Minor): queued #4 after #3\nDECIDED: cut the CSV export"), [
+            ("notes in docs/dev".to_string(), "dev notes".to_string(), true),
+            ("queued #4 after #3".to_string(), String::new(), true),
+            ("cut the CSV export".to_string(), String::new(), false),
+        ]);
         // Shown in a code block or quoted: not made here. After the block, lines count again.
         let shown = "The form is:\n```\nDECIDED: kept the cache — it's warm\n```\n~~~text\nDECIDED: in tildes — too\n~~~\n> DECIDED: quoted from the user — not mine\n>DECIDED: quoted tight — not mine either\nDECIDED: after the block — it counts";
         assert_eq!(calls_in(shown), [("after the block".to_string(), "it counts".to_string())]);

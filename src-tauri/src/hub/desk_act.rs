@@ -402,6 +402,11 @@ impl Hub {
     /// Undo this: whoever made decision `id` is told to undo it (through the normal send path: kept in Cue while
     /// it's busy), and the decision is marked so. What Cue did.
     pub(crate) fn desk_undo(&self, id: &str) -> Result<String, String> {
+        self.desk_undo_with(id, "")
+    }
+
+    /// Undo decision `id`, telling whoever made it the user's new `answer` (when given) to take instead.
+    pub(crate) fn desk_undo_with(&self, id: &str, answer: &str) -> Result<String, String> {
         let d = self.write(|st| -> Result<DeskDecision, String> {
             let d = st.desk.decisions.iter_mut().find(|d| d.id == id).ok_or("no such decision")?;
             match d.undo.as_str() {
@@ -413,7 +418,7 @@ impl Hub {
             Ok(d.clone())
         })?;
         self.desk_done(Effects { decisions: vec![id.to_string()], ..Default::default() });
-        let sent = self.send_to_session(&d.sid, &crate::desk::undo_words(&d), &[], false);
+        let sent = self.send_to_session(&d.sid, &crate::desk::undo_words_with(&d, answer), &[], false);
         if sent.is_ok() {
             // A keep undone: Cue's own rule holds again for that session.
             self.write(|st| st.desk.keep.retain(|_, k| k.1 != d.id));

@@ -1012,3 +1012,13 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
 .dk-aw-ask .dk-request-who { all: unset; color: var(--muted); font-weight: 650; font-size: 12px; }
 .dk-aw-ask .dk-row-decisions { display: flex; flex-wrap: wrap; gap: 6px; }
 .dk-aw-more { color: var(--muted); font-size: 12px; }
+
+/* Decisions: tick several to go back on them together (#362); housekeeping calls behind "Show all". */
+.dk-tick { all: unset; display: grid; place-items: center; width: 14px; height: 14px; margin-right: 4px; border: 1.5px solid var(--muted); border-radius: 4px; color: var(--panel); cursor: pointer; opacity: 0; }
+.dk-tick.on { background: var(--ink); border-color: var(--ink); opacity: 1; }
+.dk-lr:hover .dk-tick, .dk-tick:focus-visible, .dk-aw-decs .dk-tick { opacity: 1; }
+.dk-showall { all: unset; display: inline-block; margin: 8px 4px; color: var(--muted); font-size: 12px; cursor: pointer; }
+.dk-showall:hover { color: var(--ink); }
+.dk-gb { display: flex; align-items: center; gap: 8px; margin: 8px 4px; font-size: 12.5px; }
+.dk-gb-n { color: var(--muted); }
+.dk-gb-box { margin: 8px 0; }
