@@ -2210,11 +2210,14 @@ test("an idle session whose crew is at work is listed under Working, its working
   await expect(left.locator(".dk-strip .dk-sub")).toHaveText("2 sessions");
 });
 
-test("Looks right commits the item's files at once: no sheet; the row and a toast say \"Committed <hash> · N files\" with Undo, which takes it back", async ({ page, cue }) => {
+test("Commit to main commits the item's files at once: no sheet; the row and a toast say \"Committed <hash> · N files\" with Undo, which takes it back", async ({ page, cue }) => {
   await cue.open("desk");
   await cue.change((s) => { s.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d2").files = ["ui/send.js", "ui/styles/send.css"]; });
   await openDesk(page);
-  await page.locator('[data-desk-item="d2"] .dk-ok').click();
+  // Its files aren't committed: no ✓ on its row; its page's Commit to main commits them (#247).
+  await expect(page.locator('.dk-items [data-desk-item="d2"] .dk-ok')).toHaveCount(0);
+  await page.locator('.dk-items [data-desk-item="d2"]').click();
+  await page.locator('.dk-right .dk-pnow [data-desk-act="looks_right"]:has-text("Commit to main")').click();
   await cue.called("desk_looks_right", { id: "d2" });
   await expect(page.locator(".sheet")).toHaveCount(0);
   await expect(page.locator(".toast")).toContainText("Committed abc1234 · 2 files");
@@ -2274,14 +2277,17 @@ test("✓ on a row: it dims while Undo can take it back, then folds away (height
   await expect(page.locator('.dk-items .dk-it.dk-leave')).toHaveCount(0);
 });
 
-test("Looks right on an item whose file another session is editing: done at once, \"Commit waiting: <file> (<session> is editing it)\", then \"Committed <hash>\" with Undo once it's made; with no files just done", async ({ page, cue }) => {
+test("Commit to main on an item whose file another session is editing: done at once, \"Commit waiting: <file> (<session> is editing it)\", then \"Committed <hash>\" with Undo once it's made; with no files Looks right, just done", async ({ page, cue }) => {
   await cue.open("desk");
   await cue.change((s) => {
     s.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d2").files = ["ui/send.js", "ui/styles/send.css"];
     s.desk_busy = [{ path: "ui/styles/send.css", by: "tidier" }];
   });
   await openDesk(page);
-  await page.locator('[data-desk-item="d2"] .dk-ok').click();
+  // Its files aren't committed: no ✓ on its row; its page's Commit to main commits them (#247).
+  await expect(page.locator('.dk-items [data-desk-item="d2"] .dk-ok')).toHaveCount(0);
+  await page.locator('.dk-items [data-desk-item="d2"]').click();
+  await page.locator('.dk-right .dk-pnow [data-desk-act="looks_right"]:has-text("Commit to main")').click();
   await expect(page.locator(".toast")).toContainText("Done · commit waiting: ui/styles/send.css (tidier is editing it)");
   const line = page.locator(".dk-cmt").first();
   await expect(line).toHaveText("Commit waiting: ui/styles/send.css (tidier is editing it) · Undo · back to check");
@@ -2300,8 +2306,7 @@ test("Looks right on an item whose file another session is editing: done at once
   await page.locator('[data-desk-item="d2"] .dk-ok').click();
   await expect(page.locator(".toast").last()).toContainText("Done");
   await expect(page.locator('[data-desk-item="d2"] .dk-cm')).toHaveCount(0);
-  // Done with nothing committed still has its Undo: back to check, no code changed.
-  await page.locator('[data-desk-item="d2"]').first().click();
+  // Done with nothing committed still has its Undo: back to check, no code changed. (Its page is open from Commit to main.)
   const plain = page.locator('.dk-cmt:has-text("Looked right")').first();
   await expect(plain).toHaveText("Looked right · Undo · back to check");
   await plain.locator('[data-desk-act="reopen"]').click();
@@ -3652,7 +3657,7 @@ test("Looks right on an item committed as it finished only closes it: its commit
   await expect(row).toHaveClass(/\bdk-done\b/);
 });
 
-test("an item to check from before (files, no commit) keeps today's: waiting for install till Cue has it, and Looks right commits its files (#181)", async ({ page, cue }) => {
+test("an item to check from before (files, no commit) keeps today's: waiting for install till Cue has it, then Commit to main commits its files (#181, #247)", async ({ page, cue }) => {
   await cue.open("desk");
   await cue.change((s) => { s.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d2").files = ["ui/send.js", "ui/styles/send.css"]; s.desk.installed_ms = 1793984280000 - 60000; });
   await openDesk(page);
@@ -3660,9 +3665,12 @@ test("an item to check from before (files, no commit) keeps today's: waiting for
   await expect(row.locator(".dk-who")).toContainText("waiting for install");
   await expect(row.locator(".dk-ok")).toHaveCount(0);
   await cue.change((s) => { s.desk.installed_ms = 1793984280000 + 60000; });
-  await expect(row.locator(".dk-ok")).toHaveCount(1);
+  await expect(row.locator(".dk-who")).not.toContainText("waiting for install");
+  // Not on main yet: no ✓; its page's Commit to main commits its files (#247).
+  await expect(row.locator(".dk-ok")).toHaveCount(0);
   await expect(row.locator(".dk-cm")).toHaveCount(0);
-  await row.locator(".dk-ok").click();
+  await row.click();
+  await page.locator('.dk-right .dk-pnow [data-desk-act="looks_right"]:has-text("Commit to main")').click();
   await cue.called("desk_looks_right", { id: "d2" });
   await expect(page.locator(".toast").last()).toContainText("Committed abc1234 · 2 files");
 });
