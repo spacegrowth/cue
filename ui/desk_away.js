@@ -71,11 +71,11 @@ function deskAwayFirstList(d) {
 }
 /** An open ask, answerable where it is: who asks and what, a single question's choices, then the controls its card
  *  has everywhere (decisionButtons: Allow / No, Decline / Type answer…, a form's fields). */
-function deskAwayAsk(it, d) {
+function deskAwayAsk(it, d, deny = "No") {
   const qs = it.kind === "question" ? questions(it) : [];
   const opts = qs.length === 1 && !qs[0].multiSelect ? qs[0].options || [] : [];
   const picks = opts.length ? `<div class="dk-row-decisions">${opts.map((o, k) => `<button class="btn small" data-desk-question-pick="${k}" data-id="${esc(it.id)}"${answering.has(it.id) ? " disabled" : ""}>${esc(o.label)}</button>`).join("")}</div>` : "";
-  const acts = ["permission", "question", "input"].includes(it.kind) ? decisionButtons(it, "No") : `<div class="row-btns"><button class="btn" ${deskChatAttrs(it.session_id, d)}>Open its chat</button></div>`;
+  const acts = ["permission", "question", "input"].includes(it.kind) ? decisionButtons(it, deny) : `<div class="row-btns"><button class="btn" ${deskChatAttrs(it.session_id, d)}>Open its chat</button></div>`;
   const cmd = it.tool_input?.command;
   const what = it.kind === "input" ? formBody(it) : cmd ? `<pre>${esc(cmd)}</pre>` : `<p>${esc(qs[0]?.question || summary(it))}</p>`;
   return `<div class="dk-request dk-aw-ask" data-desk-request="${esc(it.id)}"><div class="dk-request-who">${esc(deskHolderName(it.session_id))}${it.agent_name ? ` · ${esc(it.agent_name)}` : ""}</div>${what}${picks}${acts}</div>`;
@@ -83,7 +83,8 @@ function deskAwayAsk(it, d) {
 function deskAwayCard(d, taskApprovals) {
   const a = deskAwayOf(d), since = deskMs(a.since);
   const { waits, asks } = deskAwayNeeds(d, taskApprovals);
-  const askRow = (it) => `<button class="dk-prow" ${deskChatAttrs(it.session_id, d)}><i class="dk-pdot ask" aria-hidden="true"></i><span class="dk-prt"><b>${esc(deskHolderName(it.session_id))}</b> <span class="dk-prs">${it.kind === "permission" ? "asks to use a tool" : "asks you"} · ${esc(deskOneLine(summary(it)))}</span></span></button>`;
+  // A session stopped on a permission it can't grant itself: Allow / Deny right here (the lead never grants one).
+  const askRow = (it) => it.kind === "permission" ? deskAwayAsk(it, d, "Deny") : `<button class="dk-prow" ${deskChatAttrs(it.session_id, d)}><i class="dk-pdot ask" aria-hidden="true"></i><span class="dk-prt"><b>${esc(deskHolderName(it.session_id))}</b> <span class="dk-prs">${it.kind === "permission" ? "asks to use a tool" : "asks you"} · ${esc(deskOneLine(summary(it)))}</span></span></button>`;
   const paused = [d.lead?.sid, ...(d.members || [])].filter((sid, k, all) => sid && all.indexOf(sid) === k && deskPausedTill(sid));
   const till = paused.length ? Math.max(...paused.map(deskPausedTill)) : 0;
   const pausedLine = paused.length ? `<div class="dk-aw-quiet">${esc(paused.map((sid) => deskHolderName(sid)).join(", "))} paused${till > 1 ? ` till ${deskHm(till)}` : ""} · Cue carries on then</div>` : "";

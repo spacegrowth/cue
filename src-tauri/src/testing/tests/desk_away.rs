@@ -33,6 +33,7 @@ fn away_mode_turns_on_tells_the_lead_ends_at_its_time_and_turns_off() {
     let may = s.split("Everything else waits").next().unwrap();
     assert!(!may.contains("'How' questions") && !may.contains("'What' questions"), "switched off: not decided alone: {s}");
     assert!(s.contains("- Picking a mock") && s.contains("- 'What' questions") && s.contains("don't ASK about it"), "{s}");
+    assert!(s.contains("stopped on a permission it can't grant itself waits for the owner") && s.contains("Never grant it yourself") && s.contains("Move the other items along meanwhile"), "{s}");
     assert!(sent_to(&w, &d).iter().any(|t| t.starts_with("Away mode:")), "the lead is told: {:?}", sent_to(&w, &d));
 
     // Ask me before still waits for the owner while Away is on, even with every rule switched on.

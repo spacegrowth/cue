@@ -205,3 +205,24 @@ test("Before you go holds what the lead's sweep left, not what was open when the
   await expect(card.locator(".dk-aw-h").first()).toHaveText("Before you go: 1 to answer");
   await expect(card.locator('[data-away="done"]')).toBeDisabled();
 });
+
+test("while away, a session stopped on a permission shows in the Away list with Allow / Deny", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.change((st, since) => {
+    const d = st.desk.projects.find((x) => x.project === "cue");
+    d.away = { on: true, active: true, ended: "", since, until: since + 9 * 3600000, budget: 10, spent: 0,
+      rules: { route: true, how: true, stopped: true, order: true, what: false, outside: false } };
+    const site = st.sessions.find((x) => x.session_id === "site"), ask = st.items.find((i) => i.id === "n-focus-ask");
+    st.sessions.push({ ...site, session_id: "stuck", project: "cue", name: "stuck", state: "deciding", thread: [] });
+    st.items.push({ ...ask, id: "n-perm", session_id: "stuck", kind: "permission", tool_name: "Bash", tool_input: { command: "rm -rf build" }, questions: undefined });
+    d.members.push("stuck");
+  }, SINCE);
+  const row = page.locator('.dk-away [data-desk-request="n-perm"]');
+  await expect(row).toBeVisible();
+  await expect(row).toContainText("stuck");
+  await expect(row).toContainText("rm -rf build");
+  await expect(row.locator('[data-act="deny"]')).toHaveText("Deny");
+  await row.locator('[data-act="allow"]').click();
+  expect((await cue.called("respond", { id: "n-perm" })).args.decision.behavior).toBe("allow");
+});

@@ -175,6 +175,7 @@ fn block(a: &Away, now: u64) -> String {
         out.push_str(&format!("- {words}\n"));
     }
     out.push_str("Don't wait on an ASK: carry on with the other items.\n");
+    out.push_str("A session stopped on a permission it can't grant itself waits for the owner in the Away list. Never grant it yourself: don't allow it, don't change its permission settings, don't tell it to get round it. Move the other items along meanwhile.\n");
     if on("route") {
         out.push_str("Start at most 3 new sessions while the owner is away.\n");
     }
