@@ -444,7 +444,7 @@ test("Desk home: one row a Desk with what it's about, its people, open tasks, bu
   await expect(page.locator(".dk-sh button:not(.dk-ab-change)", { hasText: "Change" })).toHaveCount(0);
 });
 
-test("the Desks you opened last are one-click buttons after the name's ▾, the one you're on left out (#274)", async ({ page, cue }) => {
+test("the Desks you opened last are one-click buttons on their own row under the name and counts, the one you're on left out (#274, #402)", async ({ page, cue }) => {
   await cue.open("desk");
   await page.locator('.switch-view [data-view="desk"]').click();
   await page.locator("[data-desk-switch]").click(); await page.locator("[data-desk-home]").click();
@@ -455,22 +455,55 @@ test("the Desks you opened last are one-click buttons after the name's ▾, the 
   if (process.env.SHOT_DIR) await page.locator(".dk-strip .dk-sh").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-recent.png` });
   await expect(page.locator(".dk-strip .dk-shr b").first()).toContainText(/cue/i);
   expect(await page.locator(".dk-rcs [title]").count()).toBe(0);
+  // Not on the name's line: under the "N sessions · N working" line.
+  await expect(page.locator(".dk-shr .dk-rcs")).toHaveCount(0);
+  await expect(page.locator(".dk-sh > .dk-sub + .dk-rcs")).toHaveCount(1);
   // One click goes there; the Desk you left is now the button.
   await chips.first().click();
   await expect(chips).toHaveCount(1);
   await expect(chips.first()).toHaveAttribute("data-desk-go", "cue");
   await expect(page.locator(".dk-sw-menu")).toHaveCount(0);
-  // Long names: fewer buttons, so they fit (always one).
-  const shown = await page.evaluate(() => {
-    const ds = state.desk.projects, real = ds.map((d) => d.project), was = deskRecent;
-    state.desk.projects = [...ds, { project: "a1", name: "A very long Desk name for the" }, { project: "a2", name: "Another long Desk name" }, { project: "a3", name: "x" }];
-    deskRecent = ["a1", "a2", "a3"];
-    const n = (deskRecentChips(real[0]).match(/dk-rc"/g) || []).length;
-    deskRecent = ["a3", "website"]; const two = (deskRecentChips("cue").match(/dk-rc"/g) || []).length;
-    state.desk.projects = ds; deskRecent = was;
-    return [n, two];
-  });
-  expect(shown).toEqual([1, 2]);
+});
+
+test("a long Desk name shows in full and many recent Desks scroll sideways, at a narrow width too, ⋯ still reachable (#402)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await page.locator('.switch-view [data-view="desk"]').click();
+  await page.locator("[data-desk-switch]").click(); await page.locator("[data-desk-home]").click();
+  await page.locator('.dk-desk[data-desk-project="cue"]').click();
+  const long = "A very long Desk name that would not fit on one line";
+  await page.evaluate((long) => {
+    state.desk.projects.find((d) => d.project === "cue").name = long;
+    for (let k = 1; k <= 6; k++) state.desk.projects.push({ project: `r${k}`, name: `Recent Desk number ${k}`, items: [] });
+    deskRecent = ["cue", "r1", "r2", "r3", "r4", "r5", "r6"];
+    renderMain();
+  }, long);
+  for (const width of [1280, 760]) {
+    await page.setViewportSize({ width, height: 800 });
+    const name = page.locator(".dk-sw-btn b");
+    await expect(name).toHaveText(long);
+    const cut = await name.evaluate((el) => { const s = el.closest(".dk-strip").getBoundingClientRect(), b = el.getBoundingClientRect(); return el.scrollWidth > el.clientWidth + 1 || b.right > s.right || b.left < s.left; });
+    expect(cut).toBe(false);
+    // Every recent Desk is there (none dropped), on one row that scrolls sideways when they don't fit.
+    const row = page.locator(".dk-rcs");
+    await expect(row.locator(".dk-rc")).toHaveCount(6);
+    const r = await row.evaluate((el) => ({ wraps: new Set([...el.children].map((c) => c.offsetTop)).size, over: el.scrollWidth > el.clientWidth, x: getComputedStyle(el).overflowX }));
+    expect(r.wraps).toBe(1);
+    expect(r.x).toBe("auto");
+    if (width < 1000) expect(r.over).toBe(true);
+    if (r.over) {
+      await row.hover();
+      await page.mouse.wheel(0, 200);
+      await expect.poll(() => row.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
+    }
+    // The ⋯ menu stays on screen and in the strip.
+    const more = page.locator(".dk-strip .dk-more-btn");
+    if (await more.count()) {
+      const [m, s] = await Promise.all([more.boundingBox(), page.locator(".dk-strip").boundingBox()]);
+      expect(m.width).toBeGreaterThan(0);
+      expect(m.x + m.width).toBeLessThanOrEqual(s.x + s.width + 0.5);
+    }
+    if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-head-${width}.png`, clip: await page.locator(".dk-strip").boundingBox() });
+  }
 });
 
 test("the Desk's name is a switcher: every Desk with who needs you, typed to find, ↑ ↓ ↵ to open, All Desks and + New Desk (#240)", async ({ page, cue }) => {

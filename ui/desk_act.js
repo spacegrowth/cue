@@ -406,5 +406,12 @@ if (typeof document !== "undefined") {
     }, 0);
   }, true);
   // The lead's chat scrolled: whether it's at its end (new messages keep it there).
+  // The recent Desks' row scrolls sideways with a mouse wheel too, not only a trackpad (#402).
+  document.addEventListener("wheel", (e) => {
+    const row = e.target.closest?.(".dk-rcs");
+    if (!row || row.scrollWidth <= row.clientWidth || Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;
+    row.scrollLeft += e.deltaY;
+    e.preventDefault();
+  }, { passive: false });
   document.addEventListener("scroll", (e) => { const c = e.target; if (c?.matches?.(".dk-chat")) deskChatEnd = c.scrollHeight - c.scrollTop - c.clientHeight < 24; }, true);
 }

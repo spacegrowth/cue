@@ -19,21 +19,13 @@ function deskRecentPut(id) {
   deskRecent = [id, ...deskRecent.filter((x) => x !== id)].slice(0, 8);
   try { localStorage.setItem("cue.deskRecent", JSON.stringify(deskRecent)); } catch {}
 }
-/** Up to three of the Desks you opened last, other than `project`, while their names fit in about 30 letters
- *  together (always one, its name cut short if need be). Each opens its Desk. */
+/** The Desks you opened last, other than `project`, newest first, each one click to its Desk. They sit on a row of
+ *  their own under the Desk's name and counts, and scroll sideways when more than fit (#402). */
 function deskRecentChips(project) {
-  const ds = state.desk?.projects || [], out = [];
-  let room = 30;
-  for (const id of deskRecent) {
-    const d = id !== project && ds.find((x) => x.project === id);
-    if (!d) continue;
-    const name = deskName(d);
-    if (out.length && name.length > room) break;
-    out.push(`<button class="dk-rc" data-desk-go="${esc(d.project)}">${esc(name)}</button>`);
-    room -= name.length;
-    if (out.length === 3 || room <= 0) break;
-  }
-  return out.length ? `<span class="dk-rcs">${out.join("")}</span>` : "";
+  const ds = state.desk?.projects || [];
+  const out = deskRecent.map((id) => id !== project && ds.find((x) => x.project === id)).filter(Boolean)
+    .map((d) => `<button class="dk-rc" data-desk-go="${esc(d.project)}">${esc(deskName(d))}</button>`);
+  return out.length ? `<div class="dk-rcs" role="group" aria-label="Desks you opened last">${out.join("")}</div>` : "";
 }
 const deskHasSession = (d, sid) => !!sid && (deskLead(d)?.sid === sid || (d.members || []).includes(sid));
 const deskWorkspace = (d) => d.workspace_project || d.project;

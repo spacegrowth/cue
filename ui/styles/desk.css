@@ -554,7 +554,7 @@
 .dk-shtop { display: flex; align-items: center; margin-left: -4px; }
 /* The switcher (pick A, #240): the Desk's name is a button with ▾; its menu drops under it, over the sessions. */
 .dk-sw-anchor { position: relative; display: inline-flex; min-width: 0; }
-.dk-sw-btn { all: unset; display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 28px; margin-left: -6px; padding: 0 8px 0 6px; border-radius: 8px; color: inherit; cursor: pointer; }
+.dk-sw-btn { all: unset; display: inline-flex; align-items: center; gap: 6px; min-width: 0; min-height: 28px; margin-left: -6px; padding: 0 8px 0 6px; border-radius: 8px; color: inherit; cursor: pointer; }
 .dk-sw-btn:hover, .dk-sw-btn:focus-visible, .dk-sw-btn[aria-expanded="true"] { background: color-mix(in oklab, currentColor 12%, transparent); }
 .dk-sw-caret { flex: none; opacity: .75; }
 .dk-sw-menu { position: absolute; z-index: 40; top: calc(100% + 6px); left: -6px; width: 300px; max-width: calc(100vw - 32px); padding: 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); box-shadow: 0 12px 32px rgba(0, 0, 0, .28); font-size: 13px; font-weight: 400; }
@@ -580,14 +580,18 @@
 .dk-sw-act:hover, .dk-sw-act:focus-visible { background: color-mix(in oklab, var(--sel) 22%, transparent); }
 .dk-sw-keys { padding: 6px 8px 2px; color: var(--muted); font-size: 11px; }
 .dk-shr { display: flex; align-items: center; gap: 6px; min-width: 0; }
-/* The Desks you opened last (#274): one click each, after the name's ▾. Plain rounded buttons in the strip's own ink;
-   a long name is cut short, and when the strip is narrow they go before the name does. */
-.dk-rcs { display: flex; flex: 0 1 auto; gap: 4px; min-width: 0; margin-left: 4px; overflow: hidden; }
-.dk-rc { all: unset; flex: none; max-width: 160px; height: 24px; padding: 0 9px; overflow: hidden; border: 1px solid color-mix(in oklab, currentColor 24%, transparent); border-radius: 999px; font-size: 12px; font-weight: 600; line-height: 22px; text-overflow: ellipsis; white-space: nowrap; box-sizing: border-box; cursor: pointer; }
+/* The Desks you opened last (#274): one click each, on a row of their own under the name and counts (#402), so the
+   name never shares its line with them. More than fit: the row scrolls sideways (a mouse wheel too, desk_act.js). */
+.dk-rcs { display: flex; gap: 4px; min-width: 0; margin: 6px -14px 0 0; padding-right: 14px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+.dk-rcs::-webkit-scrollbar { display: none; }
+.dk-rc { all: unset; flex: none; max-width: 200px; height: 24px; padding: 0 9px; overflow: hidden; border: 1px solid color-mix(in oklab, currentColor 24%, transparent); border-radius: 999px; font-size: 12px; font-weight: 600; line-height: 22px; text-overflow: ellipsis; white-space: nowrap; box-sizing: border-box; cursor: pointer; }
 .dk-rc:hover, .dk-rc:focus-visible { background: color-mix(in oklab, currentColor 12%, transparent); }
 /* The Desk's mark takes the strip's text colour: in --accent it would vanish into the light strip. */
 .dk-strip .dk-shr :is(.dk-ric, .dk-kic) { color: inherit; }
-.dk-shr b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; font-weight: 700; }
+/* The Desk's name shows in full: a long one wraps onto a second line rather than being cut short (#402). */
+.dk-shr b { min-width: 0; overflow-wrap: anywhere; font-size: 16px; font-weight: 700; line-height: 1.25; }
+.dk-sw-btn b { padding: 3px 0; }
+.dk-shr > .dk-more-btn { flex: none; }
 .dk-strip .dk-sub { color: inherit; opacity: .75; font-size: 11px; }
 /* Ask me before, under the Desk's counts: its kinds, and Change as a plain underlined link in the strip's own ink. */
 .dk-strip .dk-ab { display: block; margin-top: 2px; font-family: var(--mono); font-size: 11px; opacity: .75; }
