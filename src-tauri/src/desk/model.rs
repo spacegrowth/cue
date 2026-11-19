@@ -164,6 +164,10 @@ pub struct DeskItem {
     /// holder started), while it has one: landed as one squash commit at its DONE (hub/desk_trees.rs).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tree: Option<ItemTree>,
+    /// Its place in its Desk's queue as you dragged it (#387), 1 at the top: the next free copy goes to the top one, and
+    /// the lead sees what needs routing in this order. None: after those you placed, oldest first. Saved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub queue_order: Option<u32>,
     /// Queued for a copy of its own: all of its repository's copies are in use, so it starts once one is free.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub tree_wait: bool,

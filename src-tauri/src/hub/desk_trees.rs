@@ -163,7 +163,7 @@ impl Hub {
         Ok(())
     }
 
-    /// One of `repo`'s copies is free: the item queued longest for one starts in it. Whether one started.
+    /// One of `repo`'s copies is free: the top one you dragged up (#387), else the item queued longest for one, starts in it. Whether one started.
     pub(super) fn desk_trees_free(&self, repo: &str) -> bool {
         let now = now_ms();
         let fx = self.write(|st| {
@@ -171,11 +171,12 @@ impl Hub {
             // The oldest waiting whose own project's pool (lands.rs) has room among the repository's copies.
             let used = st.desk.items.iter().filter(|i| i.tree.as_ref().is_some_and(|t| t.repo == repo)).count() as u32;
             let mut waiting: Vec<&DeskItem> = st.desk.items.iter().filter(|i| i.tree_wait && i.state == "queued" && i.tree_wait_repo == repo).collect();
-            waiting.sort_by_key(|i| i.updated);
+            // Your order first (#387), then the one queued longest.
+            waiting.sort_by_key(|i| (i.queue_order.unwrap_or(u32::MAX), i.updated));
             let Some(id) = waiting.into_iter().find(|i| used < crate::lands::lands_of(&i.project, repo).at_once).map(|i| i.id.clone()) else { return fx };
             let rule = st.desk.item(&id).map(|i| super::desk::rule_of(st, &i.project)).unwrap_or_default();
             let Some(it) = st.desk.item_mut(&id) else { return fx };
-            (it.state, it.tree_wait, it.updated) = ("working".into(), false, super::desk::secs(now));
+            (it.state, it.tree_wait, it.updated, it.queue_order) = ("working".into(), false, super::desk::secs(now), None);
             it.tree_wait_repo.clear();
             if let Some(h) = &it.holder {
                 fx.sends.push((h.to().to_string(), crate::desk::handed_words(it, "", &rule)));

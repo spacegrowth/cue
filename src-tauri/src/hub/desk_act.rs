@@ -115,6 +115,10 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
             return Ok(fx);
         }
         "put_before" => put_before(st, id, now, &mut fx)?,
+        "reorder" => {
+            reorder(st, id, text, &mut fx)?;
+            return Ok(fx);
+        }
         "drop" => {
             let gone = st.desk.items.iter().position(|i| i.id == id).map(|p| st.desk.items.remove(p));
             if let Some(h) = gone.as_ref().and_then(|g| g.holder.as_ref().filter(|_| g.state == "working")) {
@@ -285,6 +289,46 @@ pub(super) fn pick(st: &mut Store, id: &str, text: &str, now: u64) -> Result<Eff
     you_wrote(st, &it.project, &n, &format!("Builds option {option}, picked on #{id}"), "", now, &mut fx);
     release(st, &id, now, &mut fx);
     Ok(fx)
+}
+
+/// Your drag in the Queued list (#387): `order`, the queued items' ids top first as the list now shows them (`id`, the
+/// one you moved, among them). Each takes its place (`queue_order`), unless one would sit above the item it waits
+/// on: then nothing moves, and why says so in plain words. Not news to anyone: `updated` stays.
+fn reorder(st: &mut Store, id: &str, order: &str, fx: &mut Effects) -> Result<(), String> {
+    let ids: Vec<&str> = order.split([' ', ',', '\n']).map(|x| x.trim().trim_start_matches('#')).filter(|x| !x.is_empty()).collect();
+    let project = st.desk.item(id).ok_or("no such item")?.project.clone();
+    if !ids.contains(&id) {
+        return Err(format!("#{id} isn't in that order"));
+    }
+    for x in &ids {
+        let it = st.desk.item(x).ok_or_else(|| format!("#{x} isn't an item any more"))?;
+        if it.project != project {
+            return Err(format!("#{x} is on another Desk"));
+        }
+        // Running ones keep their place: only what hasn't started moves.
+        if !matches!(it.state.as_str(), "new" | "queued") {
+            return Err(format!("#{x} has started, so it can't move"));
+        }
+    }
+    for (k, x) in ids.iter().enumerate() {
+        let Some(on) = st.desk.item(x).and_then(|i| i.after.clone()) else { continue };
+        if ids[k + 1..].contains(&on.as_str()) {
+            return Err(format!("#{x} waits on #{on}, so it can't go above it"));
+        }
+    }
+    for (k, x) in ids.iter().enumerate() {
+        if let Some(it) = st.desk.item_mut(x) {
+            it.queue_order = Some(k as u32 + 1);
+            fx.items.push(x.to_string());
+        }
+    }
+    Ok(())
+}
+
+/// Where a queued item stands in its Desk's queue (#387): those you placed first, in your order, then the rest oldest
+/// first.
+pub(super) fn queue_key(i: &DeskItem) -> (u32, u64) {
+    (i.queue_order.unwrap_or(u32::MAX), i.created)
 }
 
 /// Item `id` put before the one it waits on, in the queue: it takes that one's place (starting now when that one

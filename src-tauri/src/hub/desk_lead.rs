@@ -207,10 +207,12 @@ impl Hub {
                 out.push_str(&format!("Desk lead: {name} (you){}\n\n", context_note(st, lead, false, now)));
             }
             let (mut failed, mut told) = (vec![], vec![]);
-            let (ready, open): (Vec<_>, Vec<_>) = st.desk.items.iter()
+            let (mut ready, open): (Vec<_>, Vec<_>) = st.desk.items.iter()
                 .filter(|i| i.project == project && i.state != "done")
                 .map(|i| shown(st, i))
                 .partition(|i| i.state == "new" && i.holder.is_none());
+            // In your order (#387): the one you dragged to the top first.
+            ready.sort_by_key(super::desk_act::queue_key);
             out.push_str("Needs routing:\n");
             if ready.is_empty() {
                 out.push_str("None.\n");

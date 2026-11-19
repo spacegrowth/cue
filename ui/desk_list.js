@@ -157,7 +157,9 @@ function deskGroups(project, taskApprovals) {
   const paused = rest.filter((i) => i.state === "paused");
   // On hold (#385): a quiet shelf of their own; nothing starts them till you press Start.
   const held = rest.filter((i) => i.state === "held");
-  const queued = rest.filter((i) => i.state !== "needs_resume" && i.state !== "paused" && i.state !== "held" && !going(i) && !deskLane(i));
+  // In your order (#387): those you dragged into place first, then the rest oldest first.
+  const queued = rest.filter((i) => i.state !== "needs_resume" && i.state !== "paused" && i.state !== "held" && !going(i) && !deskLane(i))
+    .sort((a, b) => (a.queue_order ?? Infinity) - (b.queue_order ?? Infinity));
   return { d, waiting, review, working: rest.filter(going), landing, install, resume, paused, queued, held, extra, done, all: items };
 }
 
@@ -318,7 +320,8 @@ function deskList(project, taskApprovals) {
   if (g.install.length) parts.push(`<div class="dk-gh dk-lane" data-lane="install">Waiting to install <span class="n">${g.install.length}</span>${deskInstallHead(g.install)}</div>${g.install.map((i) => deskItemRow(i, i.id === crewLit, false, {}) + marks(i)).join("")}`);
   if (g.resume.length) parts.push(`<div class="dk-gh">Needs resume <span class="n">${g.resume.length}</span></div>${g.resume.map(row).join("")}`);
   if (g.paused.length) parts.push(`<div class="dk-gh">Paused <span class="n">${g.paused.length}</span></div>${g.paused.map(row).join("")}`);
-  if (g.queued.length) parts.push(`<div class="dk-gh">Queued <span class="n">${g.queued.length}</span></div>${g.queued.map(row).join("")}`);
+  // Dragged up and down into your order (#387): the next free copy goes to the top one.
+  if (g.queued.length) parts.push(`<div class="dk-gh">Queued <span class="n">${g.queued.length}</span>${g.queued.length > 1 ? '<span class="dk-qhint">drag to reorder</span>' : ""}</div>${g.queued.map((i) => row(i).replace('<div class="dk-it ', `<div data-desk-qg${deskQMoves(i) ? ` data-desk-q="${esc(i.id)}"` : ""} class="dk-it `)).join("")}`);
   if (g.held.length) parts.push(`<div class="dk-gh dk-heldh">On hold <span class="n">${g.held.length}</span><span class="dk-split">start them when you want</span></div><div class="dk-held">${g.held.map(row).join("")}</div>`);
   for (const h of g.extra) parts.push(deskHolderHead({ ...h, addon: true, key: h.key || h.name }, o?.kind === "addon" && o.key === (h.key || h.name)) + (h.items || []).map(row).join(""));
   // Finished: the 10 newest, then 10 more each time the list's end comes into view (deskDoneWatch). Its end holds
@@ -342,3 +345,67 @@ function deskList(project, taskApprovals) {
   return `<div class="dk-card dk-items"><div class="dk-ch"><b>Items</b>${deskPausedTag(g.d)}${deskPauseButton(g.d)}${deskAwaySwitch(g.d)}</div>
     ${deskQuickAdd()}<div class="dk-scroll" data-scroll-key="desk-items:${esc(project)}">${body}</div></div>`;
 }
+
+// ---------- the Queued list in your order (#387) ----------
+
+/** Whether a row in Queued can be dragged: one that hasn't started (running ones keep their place). */
+const deskQMoves = (i) => i.state === "new" || i.state === "queued";
+/** Why order `ids` (top first) can't be, in plain words: one above the item it waits on. "" when it can. */
+function deskQWhyNot(ids, items) {
+  const at = new Map(ids.map((id, k) => [id, k]));
+  for (const id of ids) {
+    const i = items.find((x) => x.id === id), on = i?.after;
+    if (on && at.has(on) && at.get(on) > at.get(id)) {
+      const o = items.find((x) => x.id === on);
+      return `#${i.id} waits on #${on}${o ? ` (${deskShort(o.title)})` : ""}, so it can't go above it`;
+    }
+  }
+  return "";
+}
+/** A press on a queued row: past a few pixels up or down it's a drag, the others making room as it passes; let go,
+ *  it takes its place (desk_item_act "reorder"), or snaps back with why. A press that doesn't move is a click. */
+function deskQPress(e) {
+  if (e.button !== 0) return;
+  const row = e.target.closest?.(".dk-it[data-desk-q]");
+  if (!row || e.target.closest("button, a, input, textarea")) return;
+  const rows = [...row.parentElement.querySelectorAll(":scope > .dk-it[data-desk-qg]")];
+  const from = rows.indexOf(row), y0 = e.clientY, rects = rows.map((r) => r.getBoundingClientRect());
+  const h = rects[from].height + 2;
+  let on = false, to = from;
+  const move = (ev) => {
+    const dy = ev.clientY - y0;
+    if (!on && Math.abs(dy) < 5) return;
+    if (!on) { on = true; row.classList.add("dk-drag"); document.body.classList.add("dk-dragging"); }
+    const mid = rects[from].top + rects[from].height / 2 + dy;
+    to = rows.reduce((n, r, k) => (k === from ? n : k < from ? (mid < rects[k].top + rects[k].height / 2 ? Math.min(n, k) : n) : mid > rects[k].top + rects[k].height / 2 ? Math.max(n, k) : n), from);
+    // Running rows keep their place: nothing passes one.
+    rows.forEach((r, k) => { if (k === from) return; r.style.transform = from < k && k <= to ? `translateY(${-h}px)` : to <= k && k < from ? `translateY(${h}px)` : ""; });
+    row.style.transform = `translateY(${dy}px)`;
+  };
+  const up = () => {
+    window.removeEventListener("pointermove", move);
+    document.body.classList.remove("dk-dragging");
+    if (!on) return;
+    // The click that ends a drag doesn't open the item.
+    addEventListener("click", (c) => { c.stopPropagation(); c.preventDefault(); }, { capture: true, once: true });
+    const ids = rows.map((r) => r.dataset.deskQ || r.dataset.deskItem);
+    ids.splice(to, 0, ids.splice(from, 1)[0]);
+    const project = deskSelection(), items = deskOf(project)?.items || [];
+    const fixed = rows.findIndex((r, k) => !r.dataset.deskQ && (k - from) * (k - to) <= 0 && k !== from);
+    const why = to === from ? "" : fixed >= 0 ? "Items already started keep their place" : deskQWhyNot(ids, items);
+    const back = () => { rows.forEach((r) => { r.style.transition = "transform .15s ease"; r.style.transform = ""; }); setTimeout(() => { rows.forEach((r) => { r.style.transition = ""; }); row.classList.remove("dk-drag"); }, 160); };
+    if (to === from || why) { back(); if (why) toast(why, 4000); return; }
+    // In place at once; Cue saves it (and says why if it won't).
+    const moved = ids.filter((id) => rows.find((r) => (r.dataset.deskQ || r.dataset.deskItem) === id)?.dataset.deskQ);
+    const was = new Map(items.map((i) => [i.id, i.queue_order]));
+    moved.forEach((id, k) => { const i = items.find((x) => x.id === id); if (i) i.queue_order = k + 1; });
+    row.classList.remove("dk-drag");
+    rows.forEach((r) => { r.style.transform = ""; });
+    invoke("desk_item_act", { id: row.dataset.deskQ, act: "reorder", text: moved.join(" ") })
+      .catch((err) => { items.forEach((i) => { if (was.has(i.id)) i.queue_order = was.get(i.id); }); toast(String(err), 4000); renderMain(); });
+    renderMain();
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up, { once: true });
+}
+document.addEventListener("pointerdown", deskQPress);
