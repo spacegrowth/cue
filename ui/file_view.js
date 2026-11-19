@@ -47,7 +47,44 @@ function fvBody(f) {
   if (isDocPath(f.path)) return `<div class="fv-md msg">${md(text, { pathsOf: f.sid, doc: true })}</div>`;
   const lines = text.replace(/\n$/, "").split("\n");
   const nums = lines.map((_, i) => i + 1).join("\n");
-  return `<div class="fv-code"><pre class="fv-nums" aria-hidden="true">${nums}</pre><pre class="fv-text">${esc(lines.join("\n"))}</pre></div>`;
+  return `<div class="fv-code"><pre class="fv-nums" aria-hidden="true">${nums}</pre><pre class="fv-text">${fvColor(lines.join("\n"), f.path)}</pre></div>`;
+}
+
+// ---------- Code colours: comments, strings, numbers and keywords, by the file's kind ----------
+// A small scanner, not a parser: one pass over the text, each piece escaped. What it gets wrong (a regex literal, a
+// heredoc) shows plain or as a string, never as anything but the file's own text.
+const FV_KEYWORDS = new Set(("as async await break case catch class const continue crate def default del do elif else enum except export "
+  + "extends false fi finally fn for from func function go if impl import in interface is let loop match mod module mut new nil "
+  + "None not null or package pass pub raise return self Self static struct super switch then this throw true True False try type "
+  + "typeof undefined unsafe use var void where while with yield echo local done esac").split(" "));
+/** The comment forms of a file, by its name: `#` (shell, Python, Ruby, YAML, TOML…), `--` (SQL, Lua), `<!-- -->`
+ *  (HTML, XML), or `//` and `/* *\/` (the C family, JavaScript, Rust, Swift, CSS…). */
+function fvComments(path) {
+  const ext = (/\.([\w]+)$/.exec(path)?.[1] || "").toLowerCase(), name = readName(path);
+  if (/^(sh|bash|zsh|fish|command|py|rb|pl|r|jl|ex|exs|yaml|yml|toml|ini|conf|cfg|env|gitignore|dockerignore|tf|mk|nix)$/.test(ext) || /^(Makefile|Dockerfile|Gemfile|Rakefile|\.env.*)$/.test(name)) return String.raw`#[^\n]*`;
+  if (/^(sql|lua|hs)$/.test(ext)) return String.raw`--[^\n]*`;
+  if (/^(html?|xml|svg|plist|vue|svelte)$/.test(ext)) return String.raw`<!--[\s\S]*?-->|//[^\n]*|/\*[\s\S]*?\*/`;
+  if (/^(css|scss|less)$/.test(ext)) return String.raw`/\*[\s\S]*?\*/`;
+  if (/^(json|txt|log|csv|tsv|md|markdown|lock|diff|patch)$/.test(ext)) return "";
+  return String.raw`//[^\n]*|/\*[\s\S]*?\*/`;
+}
+/** `text` as html, its comments, strings, numbers and keywords in spans (.fv-c, .fv-s, .fv-n, .fv-k). Plain text
+ *  and logs stay plain. Rust's 'a (a lifetime) isn't a string: there only a one-character '…' is. */
+function fvColor(text, path) {
+  const ext = (/\.([\w]+)$/.exec(path)?.[1] || "").toLowerCase();
+  if (/^(txt|log|csv|tsv)$/.test(ext)) return esc(text);
+  const comment = fvComments(path);
+  const single = ext === "rs" ? String.raw`'(?:\\.|[^'\\\n])'` : String.raw`'(?:\\.|[^'\\\n])*'`;
+  const strs = String.raw`"(?:\\.|[^"\\\n])*"|` + single + (/^(js|mjs|cjs|ts|tsx|jsx|sh|bash|zsh|go)$/.test(ext) ? String.raw`|\`(?:\\.|[^\`\\])*\`` : "");
+  const re = new RegExp(`(${comment || "(?!)"})|(${strs})|(\\b(?:0x[\\da-fA-F_]+|\\d[\\d_]*(?:\\.\\d+)?(?:e[+-]?\\d+)?)\\b)|([A-Za-z_]\\w*)`, "g");
+  let out = "", at = 0;
+  for (const m of text.matchAll(re)) {
+    const cls = m[1] ? "c" : m[2] ? "s" : m[3] ? "n" : FV_KEYWORDS.has(m[4]) ? "k" : "";
+    if (!cls) continue;
+    out += esc(text.slice(at, m.index)) + `<span class="fv-${cls}">${esc(m[0])}</span>`;
+    at = m.index + m[0].length;
+  }
+  return out + esc(text.slice(at));
 }
 
 function fvDraw() {

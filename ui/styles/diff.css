@@ -77,10 +77,18 @@
 /* The file viewer (file_view.js): the diff overlay's frame, one column, the file in it. */
 .fv-meta { font-variant-numeric: tabular-nums; }
 .fv-body { flex: 1; min-height: 0; overflow: auto; outline: none; }
-.fv-code { display: grid; grid-template-columns: max-content minmax(max-content, 1fr); align-items: start; font: 12px/1.6 var(--mono); }
+/* Code on the slab chat's code blocks use (dark in both themes), so its colours are set for dark only. */
+.fv-body:has(.fv-code) { background: var(--slab); }
+.fv-code { display: grid; grid-template-columns: max-content minmax(max-content, 1fr); align-items: start; min-height: 100%; font: 13px/1.6 var(--mono); color: var(--on-slab); background: var(--slab);
+  --fv-k: #C7D38A; --fv-s: #E6B566; --fv-n: #8FC7C2; --fv-c: color-mix(in srgb, var(--on-slab) 50%, var(--slab)); }
 .fv-code pre { margin: 0; padding: 12px 0; font: inherit; white-space: pre; }
-.fv-nums { position: sticky; left: 0; padding: 12px 12px 12px 16px !important; text-align: right; color: var(--muted); background: var(--panel); border-right: 1px solid var(--panel-2); user-select: none; }
-.fv-text { padding: 12px 20px 12px 14px !important; color: var(--ink); }
+.fv-nums { position: sticky; left: 0; align-self: stretch; padding: 12px 12px 12px 16px !important; text-align: right; color: color-mix(in srgb, var(--on-slab) 42%, var(--slab)); background: var(--slab); border-right: 1px solid color-mix(in srgb, var(--on-slab) 12%, var(--slab)); user-select: none; }
+.fv-text { padding: 12px 20px 12px 14px !important; }
+.fv-text ::selection { background: color-mix(in srgb, var(--on-slab) 28%, var(--slab)); }
+.fv-k { color: var(--fv-k); }
+.fv-s { color: var(--fv-s); }
+.fv-n { color: var(--fv-n); }
+.fv-c { color: var(--fv-c); font-style: italic; }
 .fv-md { max-width: 760px; margin: 0 auto; padding: 22px 28px 40px; font-size: 14.5px; line-height: 1.6; }
 .fv-img { min-height: 100%; display: flex; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box; }
 .fv-img img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px; }

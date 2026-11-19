@@ -14,6 +14,10 @@ test("a code path in a reply opens in the pop-up viewer, Esc closes it", async (
   await expect(fv.locator(".dov-title")).toHaveText("sessions.js");
   await expect(fv.locator(".fv-nums")).toHaveText("1\n2");
   await expect(fv.locator(".fv-text")).toHaveText("const a = 1;\nconst b = a + 1;");
+  // In the code font, coloured: keywords and numbers in their spans, the rest plain.
+  await expect(fv.locator(".fv-text .fv-k")).toHaveText(["const", "const"]);
+  await expect(fv.locator(".fv-text .fv-n")).toHaveText(["1", "1"]);
+  expect(await fv.locator(".fv-text").evaluate((e) => getComputedStyle(e).fontFamily)).toMatch(/SF Mono/);
   await fv.locator("[data-fv-copy]").click();
   await cue.called("copy_text", { text: "/Users/me/code/agent-relay/ui/sessions.js" });
   await fv.locator("[data-fv-open]").click();
