@@ -14,12 +14,12 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 
 | What | Count |
 |---|---|
-| `#[tauri::command]` | 172 (3 sync) |
+| `#[tauri::command]` | 173 (3 sync) |
 | Lock declarations (static or field) | 111 |
 | Lock acquisitions | 263 |
 | Lock-graph edges | 59 |
 | Spawn sites | 88 |
-| External calls: fs / db / process / notify / login / socket | 462 / 208 / 53 / 4 / 1 / 4 |
+| External calls: fs / db / process / notify / login / socket | 463 / 208 / 53 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 12 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -71,6 +71,7 @@ Sync commands run on the main thread. "Hands work to": the threads or pools its 
 | `desk_start` | async | `ipc/desk.rs::desk_start` | ipc::with_hub |
 | `ask_before_set` | async | `ipc/desk.rs::ask_before_set` | ipc::with_hub |
 | `desk_lands_set` | async | `ipc/desk.rs::desk_lands_set` | ipc::with_hub |
+| `desk_old_copies_list` | async | `ipc/desk.rs::desk_old_copies_list` | ipc::with_hub |
 | `desk_old_copies` | async | `ipc/desk.rs::desk_old_copies` | ipc::with_hub |
 | `desk_away_set` | async | `ipc/desk.rs::desk_away_set` | ipc::with_hub |
 | `desk_pause` | async | `ipc/desk.rs::desk_pause` | ipc::with_hub |
@@ -496,7 +497,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (462)
+### fs (463)
 
 | In | Call | Times |
 |---|---|---|
@@ -588,7 +589,8 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hub/desk_copies.rs::Hub::desk_clear_helpers` | Path::exists | 1 |
 | `hub/desk_copies.rs::Hub::desk_clear_helpers` | Path::is_dir | 1 |
 | `hub/desk_copies.rs::Hub::desk_old_copies_answer` | Path::exists | 1 |
-| `hub/desk_copies.rs::Hub::desk_old_copies_find` | canonicalize | 1 |
+| `hub/desk_copies.rs::ask_once` | read_to_string | 1 |
+| `hub/desk_copies.rs::ask_once` | write | 1 |
 | `hub/desk_copies.rs::copies_of` | Path::is_dir | 1 |
 | `hub/desk_copies.rs::within` | canonicalize | 2 |
 | `hub/desk_copies.rs::work_on_main` | Path::exists | 1 |

@@ -3,7 +3,9 @@
  *  how many at once. Shown in a Desk's header ("Lands: own copy, checked, one commit per item · Change"); Change opens
  *  the setting. A Desk's `lands` (desk_view) has the setting now, its parts with each choice's words and whether it can
  *  be picked, and why when the folder decides it. Kept in Cue's own settings, never in the project. */
-let lands = null;   // { desk, set: { where, how, check, after, push, at_once }, busy }
+let lands = null;   // { desk, set: { where, how, check, after, push, at_once }, busy, old }
+// Remove old working folders (#397, hub/desk_copies.rs): looked at when you press it, listed with their size, removed
+// on a second press. `old`: null, { looking }, { list: { copies, kb } }, or { removing }.
 
 /** A Desk's header line. Only on a Desk run by a lead, like Ask me before. */
 function landsLine(d) {
@@ -42,6 +44,47 @@ function landsAtOnce(l) {
     <button class="btn" data-ld="less" aria-label="Fewer"${n <= min ? " disabled" : ""}>−</button><b class="ld-n">${n}</b><button class="btn" data-ld="more" aria-label="More"${n >= max ? " disabled" : ""}>+</button></div>
     <div class="ld-hint">More than ${n === 1 ? "one waits" : `${n === 2 ? "two" : n === 3 ? "three" : n} wait`} for a free copy.</div></div></div>`;
 }
+/** A size given in KB, as people say it. */
+const landsKb = (kb) => (kb >= 1048576 ? `${(kb / 1048576).toFixed(1)} GB` : kb >= 1024 ? `${Math.round(kb / 1024)} MB` : `${kb || 0} KB`);
+/** Remove old working folders: the folders of this project whose work is already in the app and that nothing uses. */
+function landsOld() {
+  const o = lands.old, l = o?.list, n = l?.copies?.length || 0;
+  let body;
+  if (!o) body = `<button class="btn" data-ld="old">Remove old working folders</button>
+    <div class="ld-hint">Folders whose work is already in the app, and that nothing is using. They're listed first.</div>`;
+  else if (o.looking) body = `<button class="btn" disabled>Looking…</button>`;
+  else if (o.removing) body = `<button class="btn" disabled>Removing…</button>`;
+  else if (!n) body = `<div class="ld-hint">None: every other folder has work not in the app yet, or is in use.</div>`;
+  else body = `<div class="ld-old-list">${l.copies.map((c) => `<div>${esc(c.path)} · ${landsKb(c.kb)}</div>`).join("")}</div>
+    <div class="ld-old-b"><button class="btn armed" data-ld="old-yes">Remove ${n} (${landsKb(l.kb)})</button><button class="btn" data-ld="old-no">Keep them</button></div>
+    <div class="ld-hint">Any that gets new work or comes into use first stays.</div>`;
+  return `<div class="ld-row ld-old"><div class="ld-label">Old working folders</div><div class="ld-body">${body}</div></div>`;
+}
+/** Remove old working folders pressed: looked at now. */
+function landsOldLook() {
+  const a = lands;
+  a.old = { looking: true };
+  renderMain();
+  invoke("desk_old_copies_list", { desk: a.desk }).then(
+    (list) => { if (lands === a) { a.old = { list }; renderMain(); } },
+    (e) => { a.old = null; toast(`Couldn't look for old working folders: ${e}`, 5000); renderMain(); },
+  );
+}
+/** Remove N pressed: each is looked at again, then removed. */
+function landsOldRemove() {
+  const a = lands;
+  a.old = { removing: true };
+  renderMain();
+  invoke("desk_old_copies", { desk: a.desk, yes: true }).then(
+    (r) => {
+      const kept = r.kept?.length ? ` · ${r.kept.length} kept: ${r.kept[0].why}` : "";
+      toast(`Removed ${r.removed} old working ${r.removed === 1 ? "folder" : "folders"} · ${landsKb(r.kb)} freed${kept}`, 8000);
+      if (lands === a) a.old = null;
+      renderMain();
+    },
+    (e) => { a.old = null; toast(`Couldn't remove the old working folders: ${e}`, 5000); renderMain(); },
+  );
+}
 function landsHtml() {
   if (!lands) return "";
   const d = deskOf(lands.desk), l = d?.lands;
@@ -52,7 +95,7 @@ function landsHtml() {
     <div class="move-title" id="ld-title">How work lands</div>
     <div class="end-text">How an item's work gets onto main in ${esc(name)}. Kept in Cue, not in the project.</div>
     ${l.why ? `<div class="ld-why">${esc(l.why)}</div>` : ""}
-    <div class="ld-rows">${parts}</div>
+    <div class="ld-rows">${parts}${landsOld()}</div>
     <div class="row-btns"><span class="grow"></span><button class="btn" data-ld="cancel">Cancel <kbd>Esc</kbd></button><button class="btn primary" data-ld="save"${lands.busy ? " disabled" : ""}>Save</button></div>
   </div></div>`;
 }
@@ -97,6 +140,9 @@ document.addEventListener("click", (e) => {
   const range = deskOf(lands.desk)?.lands?.at_once || {};
   if (act === "less") s.at_once = Math.max(range.min ?? 1, s.at_once - 1);
   else if (act === "more") s.at_once = Math.min(range.max ?? 9, s.at_once + 1);
+  else if (act === "old") return landsOldLook();
+  else if (act === "old-yes") return landsOldRemove();
+  else if (act === "old-no") lands.old = null;
   else if (act === "cancel") lands = null;
   else if (act === "save") return landsSave();
   renderMain();

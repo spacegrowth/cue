@@ -159,7 +159,7 @@ function deskView() {
   if (deskPick && deskPick !== deskSelection()) deskPick = null;
   const given = deskGiveFor && deskItem(deskSelection(), deskGiveFor.id);
   if (deskGiveFor && (!given || given.holder)) deskGiveFor = null;
-  if (deskDropArm && deskDropArm !== "old-copies" && !deskItem(deskSelection(), deskDropArm) && !(deskProjOf({ project: deskSelection() })?.kept || []).some((k) => k.id === deskDropArm)) deskDropArm = null;
+  if (deskDropArm && !deskItem(deskSelection(), deskDropArm) && !(deskProjOf({ project: deskSelection() })?.kept || []).some((k) => k.id === deskDropArm)) deskDropArm = null;
   deskBoxes.clear();   // the boxes drawn now note theirs again
   // An item's page at its end as this draw starts: it stays there as its chat grows (deskThreadFollow).
   const ip = document.querySelector(".dk-ipane");

@@ -339,9 +339,6 @@ function deskList(project, taskApprovals) {
   // Dropped items' copies kept with their work, till you remove them (hub/desk_trees.rs).
   const kept = g.d?.kept || [];
   if (kept.length) parts.push(`<div class="dk-gh">Kept copies <span class="n">${kept.length}</span></div>${kept.map(deskKeptRow).join("")}`);
-  // Copies whose work is already in the app, for you to remove (#376).
-  const old = deskOldCopiesHtml(project, g.d?.old_copies);
-  if (old) parts.push(old);
   if (shown.length) parts.push(`<div class="dk-gh">Done</div>${shown.map(row).join("")}`);
   if (more && (shown.length || pg?.loading || !pg)) parts.push(`<div class="dk-more" data-desk-done-more="${esc(project)}">${shown.length ? "Loading older…" : ""}</div>`);
   // A call whose item isn't in the list (none, or an older finished one): at the end of Waiting on you.

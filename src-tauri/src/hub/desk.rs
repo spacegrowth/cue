@@ -287,8 +287,9 @@ impl Hub {
     /// Your answer goes back to it as a message (`desk_answered`).
     /// `using`: a route waiting on your yes (`UseAsk`), kept on the card for `desk_answered`.
     /// `item`: the item it's about (ASK: #id | …), which then waits on you with it.
-    pub(super) fn desk_ask(&self, lsid: &str, project: &str, question: &str, choices: &[String], using: Option<&UseAsk>, item: Option<&str>) {
-        let Some(origin) = self.read(|st| st.sessions.origin(lsid)) else { return };
+    /// The card's id, None when the lead isn't a session here.
+    pub(super) fn desk_ask(&self, lsid: &str, project: &str, question: &str, choices: &[String], using: Option<&UseAsk>, item: Option<&str>) -> Option<String> {
+        let origin = self.read(|st| st.sessions.origin(lsid))?;
         let options: Vec<Value> = choices.iter().map(|c| json!({ "label": c, "description": "" })).collect();
         let mut input = json!({ "questions": [{ "question": question, "header": "Desk", "options": options, "multiSelect": false }] });
         if let Some(u) = using {
@@ -311,21 +312,28 @@ impl Hub {
             }
         });
         self.changed();
+        Some(id)
     }
 
     /// Card `id` answered with `d`: a lead's ASK is filed and its answer sent to the lead. False for any other.
     pub(super) fn desk_answered(&self, id: &str, d: &Decision) -> bool {
-        let Some((sid, question, using, about)) = self.read(|st| {
+        let Some((sid, question, using, about, old)) = self.read(|st| {
             st.items.iter().find(|i| i.id == id && i.desk).map(|i| {
+                let old = i.tool_input["desk_old"].as_str().map(str::to_string);
                 let using = serde_json::from_value::<UseAsk>(i.tool_input["desk_use"].clone()).ok();
                 let about = i.tool_input["desk_item"].as_str().map(|x| format!(" about #{x}")).unwrap_or_default();
-                (i.origin.session_id.clone(), i.tool_input.pointer("/questions/0/question").and_then(Value::as_str).unwrap_or("").to_string(), using, about)
+                (i.origin.session_id.clone(), i.tool_input.pointer("/questions/0/question").and_then(Value::as_str).unwrap_or("").to_string(), using, about, old)
             })
         }) else { return false };
         let answer = d.answers.as_ref().and_then(|a| a.as_object()).and_then(|a| a.values().next()).map(|v| v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string()));
         let answer = answer.or_else(|| d.message.clone()).unwrap_or_else(|| if d.behavior == "deny" { "no".into() } else { "yes".into() });
         self.write(|st| st.waiters.remove(id));
         self.finish(id, "answered", &format!("answered: {answer}"));
+        // Cue's own question, put in the lead's chat (desk_copies.rs): answered here, nothing sent to the lead.
+        if let Some(desk) = old {
+            self.desk_old_copies_answered(desk, d.behavior != "deny" && answer == "Yes");
+            return true;
+        }
         let mut words = format!("Your ASK{about}: {question}\nThe answer: {answer}");
         if let Some(u) = using {
             words = self.desk_use_answered(&u, d.behavior != "deny", &answer);

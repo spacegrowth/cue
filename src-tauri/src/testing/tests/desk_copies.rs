@@ -2,7 +2,7 @@
 //! copies whose work is on the main line go with its own; one with work that isn't stays. Copies left from before are
 //! listed with their sizes, and removed only once you say so; one with work not on the main line, or in use, never is.
 
-use super::desk::desk;
+use super::desk::{desk, sent_to};
 use super::desk_commit::{ends, item, routed_with};
 use super::team::{git, says, starts};
 use crate::hosted::HostedEvent;
@@ -53,10 +53,29 @@ fn as_an_item_lands_its_helpers_copies_whose_work_is_in_it_go_and_one_with_other
     assert_eq!(std::fs::read_to_string(b.join("b.txt")).unwrap(), "not taken\n", "the one with work not on main stays, as it was");
 }
 
+/// Desk `project`'s lead's session.
+fn lead_of(w: &World, project: &str) -> String {
+    desk(w, project)["lead"]["sid"].as_str().unwrap().to_string()
+}
+
+/// The lead's card asking about old working folders, if any.
+fn old_card(w: &World, lead: &str) -> Option<serde_json::Value> {
+    w.snapshot().cards_of(lead).into_iter().find(|c| c["tool_input"]["desk_old"].is_string()).cloned()
+}
+
+fn answer(w: &World, card: &serde_json::Value, a: &str) {
+    let q = card["tool_input"]["questions"][0]["question"].as_str().unwrap().to_string();
+    assert!(w.hub().respond(card["id"].as_str().unwrap(), crate::model::Decision { behavior: "allow".into(), answers: Some(json!({ q: a })), ..Default::default() }));
+    w.settle();
+    w.advance(1000);
+    w.settle();
+}
+
 #[test]
-fn old_copies_whose_work_is_on_main_are_listed_with_their_size_and_removed_only_once_you_say_so() {
+fn old_copies_whose_work_is_on_main_are_asked_about_once_in_the_leads_chat_and_removed_only_on_yes() {
     let w = World::new();
     let (dir, project, _, _) = routed_with(&w, |_, _, _| {}, |_, _, _| {});
+    let lead = lead_of(&w, &project);
     let item_copy = PathBuf::from(item(&w, &project, "Header jumps")["tree"]["path"].as_str().unwrap());
     // Landed as a squash: its commit isn't on main, but what it changed is.
     let landed = copy(&dir, "desk-9", "desk/9");
@@ -78,27 +97,50 @@ fn old_copies_whose_work_is_on_main_are_listed_with_their_size_and_removed_only_
     listed.sort();
     assert_eq!(listed, ["agent-old", "desk-9"], "not the item's copy (in use), not the one with work");
     assert!(found.kb > 0 && found.copies.iter().all(|c| c.kb > 0), "{found:?}");
-    let shown = &desk(&w, &project)["old_copies"];
-    assert_eq!(shown["copies"].as_array().map(|c| c.len()), Some(2), "listed on its Desk: {shown}");
+    assert!(desk(&w, &project).get("old_copies").is_none(), "not in the item list");
+
+    // Asked in the lead's chat: how many, how big.
+    w.hub().desk_old_copies_look();
+    w.settle();
+    let card = old_card(&w, &lead).expect("the lead asks");
+    let q = card["tool_input"]["questions"][0]["question"].as_str().unwrap();
+    assert!(q.starts_with("2 old working folders (") && q.contains(" KB) have work that's already in the app"), "{q}");
+    let choices: Vec<&str> = card["tool_input"]["questions"][0]["options"].as_array().unwrap().iter().map(|o| o["label"].as_str().unwrap()).collect();
+    assert_eq!(choices, ["Yes", "Not now"]);
     assert!(landed.exists() && empty.exists(), "nothing removed before you say so");
 
     // Meanwhile one gets work: looked at again, it stays.
     std::fs::write(empty.join("b.txt"), "new\n").unwrap();
-    let r = w.hub().desk_old_copies_answer(&project, true).unwrap();
-    assert_eq!(r["removed"], 1, "{r}");
-    assert_eq!(r["kept"][0]["why"], "it has work not in the app yet", "{r}");
+    let before = sent_to(&w, &lead).len();
+    answer(&w, &card, "Yes");
     assert!(!landed.exists() && git(&dir, &["branch", "--list", "desk/9"]).trim().is_empty(), "removed with its branch");
     assert!(empty.join("b.txt").exists() && work.join("b.txt").exists() && item_copy.exists(), "the rest untouched");
-    assert!(desk(&w, &project)["old_copies"].is_null(), "answered: the list goes");
+    assert_eq!(sent_to(&w, &lead).len(), before, "Cue's question: nothing sent to the lead");
+    let said = desk(&w, &project)["decisions"].to_string();
+    assert!(said.contains("Removed 1 old working folder") && said.contains("1 kept: it has work not in the app yet"), "{said}");
+
+    // Asked once: not again, even with old copies left.
+    std::fs::remove_file(empty.join("b.txt")).unwrap();
+    w.hub().desk_old_copies_look();
+    w.settle();
+    assert!(old_card(&w, &lead).is_none(), "asked once");
 }
 
 #[test]
-fn not_now_hides_the_list_and_removes_nothing() {
+fn not_now_removes_nothing_and_how_work_lands_lists_them_again() {
     let w = World::new();
     let (dir, project, _, _) = routed_with(&w, |_, _, _| {}, |_, _, _| {});
+    let lead = lead_of(&w, &project);
     let old = copy(&dir, "agent-old", "worktree-agent-old");
-    assert_eq!(w.hub().desk_old_copies_find(&top(&w)).copies.len(), 1);
-    w.hub().desk_old_copies_answer(&project, false).unwrap();
-    assert!(desk(&w, &project)["old_copies"].is_null());
+    w.hub().desk_old_copies_look();
+    w.settle();
+    let card = old_card(&w, &lead).expect("the lead asks");
+    assert!(card["tool_input"]["questions"][0]["question"].as_str().unwrap().starts_with("1 old working folder ("));
+    answer(&w, &card, "Not now");
     assert!(old.exists());
+    // How work lands: Remove old working folders looks again, and removes on yes.
+    let list = w.hub().desk_old_copies_list(&project).unwrap();
+    assert_eq!(list.copies.len(), 1);
+    assert_eq!(w.hub().desk_old_copies_answer(&project, true).unwrap()["removed"], 1);
+    assert!(!old.exists());
 }

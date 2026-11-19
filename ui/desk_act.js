@@ -308,7 +308,6 @@ const DESK_CLICKS = {
     renderMain();
     document.querySelector(".dk-sw-find")?.focus();
   },
-  deskOld: (el) => deskOldCopiesAnswer(el),
   deskGo: (el) => { deskSwitchClose(); DESK_CLICKS.deskProject({ dataset: { deskProject: el.dataset.deskGo } }); },
   deskHome: () => { deskSwitchClose(); if (!deskDeleting) deskDeleteAsk = null; deskSelect(""); deskOpen = null; deskPick = null; renderMain(); },
   deskProject: (el) => { deskSelect(el.dataset.deskProject); deskOpen = null; deskTab = "lead"; deskChatEnd = true; renderMain(); },
@@ -319,8 +318,7 @@ const DESK_SEL = Object.keys(DESK_CLICKS).map((k) => `[${deskAttr(k)}]`).join(",
 /** Element `el` (one with a Desk attribute, or null) clicked or pressed: an armed Drop disarms on anything else (as
  *  Remove does in the projects list); then `el` does its thing. True when it was the Desk's. */
 function deskTake(el) {
-  const armedOld = deskDropArm === "old-copies" && el?.dataset.deskOld === "remove";
-  if (deskDropArm && !armedOld && !((el?.dataset.deskAct === "drop" || el?.dataset.deskAct === "remove_kept") && el.dataset.id === deskDropArm)) { deskDropArm = null; if (!el) renderMain(); }
+  if (deskDropArm && !((el?.dataset.deskAct === "drop" || el?.dataset.deskAct === "remove_kept") && el.dataset.id === deskDropArm)) { deskDropArm = null; if (!el) renderMain(); }
   if (!el || !el.closest(".dk-board")) return false;
   DESK_CLICKS[Object.keys(DESK_CLICKS).find((k) => k in el.dataset)](el);
   return true;

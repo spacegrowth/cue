@@ -146,8 +146,14 @@ pub(crate) async fn desk_lands_set(hub: State<'_, Arc<Hub>>, desk: String, lands
     with_hub(&hub, move |h| h.desk_lands_set(&desk, &lands)).await?
 }
 
+/// How work lands' Remove old working folders: the Desk's repository looked at now, its old copies and their size.
+#[tauri::command]
+pub(crate) async fn desk_old_copies_list(hub: State<'_, Arc<Hub>>, desk: String) -> Result<crate::hub::OldCopies, String> {
+    with_hub(&hub, move |h| h.desk_old_copies_list(&desk)).await?
+}
+
 /// Your answer to Desk `desk`'s list of copies whose work is already in the app (#376): `yes` removes them (each
-/// looked at again first), no hides the list till Cue starts again. Returns what was removed and what stayed.
+/// looked at again first), no removes nothing. Returns what was removed and what stayed.
 #[tauri::command]
 pub(crate) async fn desk_old_copies(hub: State<'_, Arc<Hub>>, desk: String, yes: bool) -> Result<serde_json::Value, String> {
     with_hub(&hub, move |h| h.desk_old_copies_answer(&desk, yes)).await?

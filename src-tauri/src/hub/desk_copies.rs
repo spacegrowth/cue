@@ -4,8 +4,10 @@
 //! so removing the item's copy doesn't take it along.
 //!
 //! Copies from before this, or left some other way, are found once a launch (`desk_old_copies_tick`): every copy of a
-//! Desk's repository whose work is already on its main line, with its size, listed on that Desk. Nothing is removed
-//! until you say Remove them; each is looked at again just before it goes.
+//! Desk's repository whose work is already on its main line, with its size. The first time a repository has any, its
+//! Desk's lead asks you in its chat (how many, how big: Yes / Not now; asked once, ever, #397). How work lands has
+//! Remove old working folders for any time after (`desk_old_copies_list`). Nothing is removed until you say yes;
+//! each is looked at again just before it goes.
 //!
 //! Never touched: a copy with anything not on the main line (a commit, an edit, a new file git keeps), one a session
 //! here works in (live or parked), one a teammate at work uses, an item's copy or a dropped item's kept one, the main
@@ -27,18 +29,36 @@ pub struct OldCopy {
     pub kb: u64,
 }
 
-/// What the once-a-launch look found for a repository, as its Desks show it.
+/// What the last look found for a repository: what a yes removes (each looked at again first).
 #[derive(Clone, Debug, Default, Serialize, PartialEq)]
 pub struct OldCopies {
     pub copies: Vec<OldCopy>,
     pub kb: u64,
-    /// You said Not now: hidden till Cue starts again.
-    #[serde(skip)]
-    pub hidden: bool,
-    /// The repository's folder as it may be written (as given, and as the disk has it): how a Desk's folder is
-    /// matched to it while drawing, with no file system.
-    #[serde(skip)]
-    pub names: Vec<String>,
+}
+
+/// Where the repositories whose old copies were asked about are listed, one a line: each is asked once, ever.
+fn asked_file() -> std::path::PathBuf {
+    crate::server::cue_dir().join("old-copies-asked")
+}
+
+/// Whether `repo`'s old copies were asked about; marks it asked when not.
+fn ask_once(repo: &str) -> bool {
+    let f = asked_file();
+    let had = std::fs::read_to_string(&f).unwrap_or_default();
+    if had.lines().any(|l| l == repo) {
+        return false;
+    }
+    let _ = std::fs::write(&f, format!("{had}{repo}\n"));
+    true
+}
+
+/// "1.2 GB", "340 MB", "12 KB": `kb` in words.
+pub(super) fn size_words(kb: u64) -> String {
+    match kb {
+        k if k >= 1024 * 1024 => format!("{:.1} GB", k as f64 / (1024.0 * 1024.0)),
+        k if k >= 1024 => format!("{} MB", k / 1024),
+        k => format!("{k} KB"),
+    }
 }
 
 /// Whether everything in copy `path` is on `repo`'s main line already: its commits, its edits and new files (ignored
@@ -170,29 +190,95 @@ impl Hub {
     }
 
     /// Once a launch, a minute in: each Desk's repository looked at for copies whose work is already on its main
-    /// line (`old_copies`), listed on its Desks for you to remove.
+    /// line. The first time one has any, a Desk of it with a lead asks you (`desk_old_copies_ask`).
     pub(super) fn desk_old_copies_tick(&self) {
         static DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
         if DONE.swap(true, std::sync::atomic::Ordering::Relaxed) {
             return;
         }
-        self.later(60_000, |h| {
-            let folders: Vec<String> = h.read(|st| st.desk.spaces.values().map(|d| d.folder.clone()).filter(|f| !f.is_empty()).collect());
-            let mut repos: Vec<String> = folders.iter().filter_map(|f| main_checkout(f).map(|(m, _)| m)).collect();
-            repos.sort();
-            repos.dedup();
-            for repo in repos {
-                h.desk_old_copies_find(&repo);
-            }
+        self.later(60_000, |h| h.desk_old_copies_look());
+    }
+
+    /// Each Desk's repository looked at, once each; asked about on the first Desk of it with a lead.
+    pub(crate) fn desk_old_copies_look(&self) {
+        let desks: Vec<(String, String)> = self.read(|st| {
+            st.desk.lead.keys().map(|p| (p.clone(), super::desk_view::desk_folder(st, p))).filter(|(_, f)| !f.is_empty()).collect()
         });
+        let mut seen = std::collections::HashSet::new();
+        for (desk, folder) in desks {
+            let Some((repo, _)) = main_checkout(&folder) else { continue };
+            if !seen.insert(repo.clone()) {
+                continue;
+            }
+            let found = self.desk_old_copies_find(&repo);
+            if !found.copies.is_empty() && ask_once(&repo) {
+                self.desk_old_copies_ask(&desk, &found);
+            }
+        }
+    }
+
+    /// Desk `desk`'s lead asks you, in its chat, whether to remove the old copies `found`.
+    fn desk_old_copies_ask(&self, desk: &str, found: &OldCopies) {
+        let Some(lead) = self.read(|st| st.desk.lead_sid(desk).map(str::to_string)) else { return };
+        let n = found.copies.len();
+        let q = format!(
+            "{n} old working {} ({}) {} work that's already in the app, and nothing is using {}. Remove {}? Any that gets new work or comes into use first stays. You can do this later in How work lands.",
+            if n == 1 { "folder" } else { "folders" },
+            size_words(found.kb),
+            if n == 1 { "has" } else { "have" },
+            if n == 1 { "it" } else { "them" },
+            if n == 1 { "it" } else { "them" },
+        );
+        let id = self.desk_ask(&lead, desk, &q, &["Yes".to_string(), "Not now".to_string()], None, None);
+        if let Some(id) = id {
+            self.write(|st| {
+                if let Some(it) = st.items.iter_mut().find(|i| i.id == id) {
+                    it.tool_input["desk_old"] = serde_json::json!(desk);
+                }
+            });
+        }
+    }
+
+    /// The old copies question on Desk `desk` answered: `yes` removes them (off the hub's threads), and what was
+    /// done is noted on the Desk. Nothing is sent to the lead: the question was Cue's, not its.
+    pub(super) fn desk_old_copies_answered(&self, desk: String, yes: bool) {
+        if !yes {
+            return;
+        }
+        self.later(0, move |h| {
+            let words = match h.desk_old_copies_answer(&desk, true) {
+                Ok(r) => {
+                    let removed = r["removed"].as_u64().unwrap_or(0);
+                    let kept = r["kept"].as_array().map_or(0, |k| k.len());
+                    let mut w = format!("Removed {removed} old working {} · {} freed", if removed == 1 { "folder" } else { "folders" }, size_words(r["kb"].as_u64().unwrap_or(0)));
+                    if kept > 0 {
+                        w += &format!(" · {kept} kept: {}", r["kept"][0]["why"].as_str().unwrap_or(""));
+                    }
+                    w
+                }
+                Err(e) => format!("Couldn't remove the old working folders: {e}"),
+            };
+            let mut fx = super::desk::Effects::default();
+            h.write(|st| {
+                super::desk_route::decide(st, &desk, None, "You", "", &words, "old working folders", now_ms(), &mut fx);
+                if let Some(d) = st.desk.decisions.last_mut() {
+                    d.undo = "none".into();
+                }
+            });
+            h.desk_done(fx);
+        });
+    }
+
+    /// Desk `desk`'s repository looked at now: its old copies, for How work lands' Remove old working folders.
+    pub(crate) fn desk_old_copies_list(&self, desk: &str) -> Result<OldCopies, String> {
+        let folder = self.read(|st| super::desk_view::desk_folder(st, desk));
+        let (repo, _) = main_checkout(&folder).ok_or("This Desk's folder isn't a git repository")?;
+        Ok(self.desk_old_copies_find(&repo))
     }
 
     /// `repo`'s copies whose work is all on its main line and that nothing uses, with their sizes, kept for its Desks.
     pub(crate) fn desk_old_copies_find(&self, repo: &str) -> OldCopies {
         let mut found = OldCopies::default();
-        let real = std::fs::canonicalize(repo).map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|_| repo.to_string());
-        found.names = [repo.to_string(), real.clone(), real.strip_prefix("/private").unwrap_or(&real).to_string()].into();
-        found.names.dedup();
         let busy = self.read(|st| users(st, ""));
         for (path, branch) in copies_of(repo) {
             if in_use(&busy, &path).is_some() || !work_on_main(repo, &path) {
@@ -206,23 +292,16 @@ impl Hub {
         self.write(|st| {
             st.desk.old_copies.insert(repo.to_string(), found);
         });
-        self.changed();
         shown
     }
 
-    /// Your answer to Desk `desk`'s list of old copies: `yes` removes each listed (looked at again first: one now in
-    /// use, or with work not on the main line, stays); no hides the list till Cue starts again. What's left listed.
+    /// Your answer to Desk `desk`'s old copies, as last looked at: `yes` removes each (looked at again first: one now
+    /// in use, or with work not on the main line, stays); no removes nothing. What was removed and what was kept.
     pub(crate) fn desk_old_copies_answer(&self, desk: &str, yes: bool) -> Result<serde_json::Value, String> {
         let folder = self.read(|st| super::desk_view::desk_folder(st, desk));
         let (repo, _) = main_checkout(&folder).ok_or("This Desk's folder isn't a git repository")?;
         let listed = self.read(|st| st.desk.old_copies.get(&repo).cloned()).unwrap_or_default();
         if !yes {
-            self.write(|st| {
-                if let Some(o) = st.desk.old_copies.get_mut(&repo) {
-                    o.hidden = true;
-                }
-            });
-            self.changed();
             return Ok(serde_json::json!({ "removed": 0, "kb": 0, "kept": [] }));
         }
         let (mut removed, mut kb, mut kept) = (0, 0, Vec::new());
@@ -249,14 +328,4 @@ impl Hub {
         self.changed();
         Ok(serde_json::json!({ "removed": removed, "kb": kb, "kept": kept }))
     }
-}
-
-/// Desk `desk`'s list of old copies to show (none once answered, hidden, or empty).
-pub(super) fn old_copies_view(st: &Store, folder: &str) -> Option<OldCopies> {
-    if folder.is_empty() {
-        return None;
-    }
-    // The repository of the Desk's folder, by the copies found: paths compared as written, since this is drawn with the
-    // store held (no git, no file system).
-    st.desk.old_copies.values().find(|o| o.names.iter().any(|n| Path::new(folder).starts_with(n))).filter(|o| !o.hidden && !o.copies.is_empty()).cloned()
 }

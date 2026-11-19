@@ -40,10 +40,14 @@ CueBridge.area("desk", (w) => {
       }
       w.changed(); return { kept: [] };
     },
-    // Old copies (desk_copies.rs): yes removes the listed ones, no hides the list; either way it goes.
+    // Old working folders (desk_copies.rs): How work lands lists them (a Desk's `old_copies` in the world, as the
+    // hub finds them); yes removes them.
+    desk_old_copies_list: ({ desk: id }) => deskOf(id).old_copies || { copies: [], kb: 0 },
     desk_old_copies: ({ desk: id, yes }) => {
-      const d = deskOf(id), o = d.old_copies; d.old_copies = null; w.changed();
-      return yes ? { removed: o?.copies?.length || 0, kb: o?.kb || 0, kept: [] } : { removed: 0, kb: 0, kept: [] };
+      const d = deskOf(id), o = d.old_copies;
+      if (!yes) return { removed: 0, kb: 0, kept: [] };
+      d.old_copies = null; w.changed();
+      return { removed: o?.copies?.length || 0, kb: o?.kb || 0, kept: [] };
     },
     desk_rename: ({ id, name }) => {
       const d = deskOf(id); d.name = name.trim(); w.changed(); return null;
