@@ -30,7 +30,7 @@ pub(super) fn unstick(st: &mut Store, project: &str, by: &By, what: &str, id: &s
         "land_first" => "not moved up",
         "pause" => "not paused",
         "resume" => "not resumed",
-        "hold" => "not held",
+        "hold" => "not parked",
         _ => "not started",
     };
     let it = st.desk.item(id).filter(|i| i.project == project).ok_or_else(|| format!("#{id} {line}: this Desk has no item #{id}"))?;
@@ -127,7 +127,7 @@ fn start(st: &mut Store, project: &str, by: &By, id: &str, why: &str, now: u64, 
     let was = shown_state(st, id);
     let it = st.desk.item_mut(id).ok_or_else(|| format!("#{id} not started: this Desk has no item #{id}"))?;
     if it.state == "held" {
-        return Err(format!("#{id} not started: the user put it on hold. Only they start it (its Start button); you can ask them (ASK: #{id} | …)"));
+        return Err(format!("#{id} not started: the user parked it. Only they start it (its Start button); you can ask them (ASK: #{id} | …)"));
     }
     if it.state != "queued" {
         return Err(format!("#{id} not started: it isn't waiting (it's {was}). A new item starts with a ROUTE"));
@@ -209,20 +209,20 @@ fn resume(st: &mut Store, project: &str, by: &By, id: &str, why: &str, now: u64,
     Ok(())
 }
 
-/// HOLD (#385), by you or by the lead as you asked: item `id`, not at work, goes on the held shelf: nobody holds it,
+/// PARK (#385, #391), by you or by the lead as you asked: item `id`, not at work, is parked: nobody holds it,
 /// it waits on nothing, and neither Cue nor the lead starts it till you press Start (`unhold`). A session it was
 /// queued for is told it's off its list. Ok: its Step's words.
 pub(super) fn hold(st: &mut Store, by: &str, id: &str, why: &str, now: u64, fx: &mut Effects) -> Result<String, String> {
     let was = shown_state(st, id);
-    let it = st.desk.item_mut(id).ok_or_else(|| format!("#{id} not held: there's no item #{id}"))?;
+    let it = st.desk.item_mut(id).ok_or_else(|| format!("#{id} not parked: there's no item #{id}"))?;
     match it.state.as_str() {
-        "held" => return Err(format!("#{id} not held: it's on hold already")),
+        "held" => return Err(format!("#{id} not parked: it's parked already")),
         "new" | "queued" => {}
-        _ => return Err(format!("#{id} not held: only an item nobody is at work on can be put on hold (it's {was}). PAUSE: #{id} stops one at work")),
+        _ => return Err(format!("#{id} not parked: only an item nobody is at work on can be parked (it's {was}). PAUSE: #{id} stops one at work")),
     }
     if let Some(h) = it.holder.clone() {
         let who = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
-        fx.sends.push((h.to().to_string(), format!("{who}Desk item #{id} ({}) is put on hold: it's off your list. Don't start it; Cue tells you if it comes back.", it.title)));
+        fx.sends.push((h.to().to_string(), format!("{who}Desk item #{id} ({}) is parked: it's off your list. Don't start it; Cue tells you if it comes back.", it.title)));
         it.remember_holder();
     }
     (it.state, it.holder, it.after, it.moved_from) = ("held".into(), None, None, None);
@@ -236,15 +236,15 @@ pub(super) fn hold(st: &mut Store, by: &str, id: &str, why: &str, now: u64, fx: 
     it.updated = secs(now);
     st.desk.nudged.remove(id);
     fx.items.push(id.to_string());
-    Ok(format!("Put #{id} on hold"))
+    Ok(format!("Parked #{id}"))
 }
 
-/// Start on a held item (#385, yours only): off the shelf and new, its lead told of it to route as any new item.
+/// Start on a parked item (#385, yours only): no longer parked, new, its lead told of it to route as any new item.
 pub(super) fn unhold(st: &mut Store, id: &str, now: u64, fx: &mut Effects) -> Result<(), String> {
     let has_lead = st.desk.item(id).is_some_and(|i| st.desk.lead_sid(&i.project).is_some());
     let it = st.desk.item_mut(id).ok_or("no such item")?;
     if it.state != "held" {
-        return Err("it isn't on hold".into());
+        return Err("it isn't parked".into());
     }
     (it.state, it.held, it.updated) = ("new".into(), None, secs(now));
     if has_lead {
@@ -260,7 +260,7 @@ fn shown_state(st: &Store, id: &str) -> String {
         "to_check" => "with the user to check".into(),
         "finishing" => i.finish.as_ref().map_or("finishing".into(), |f| format!("finishing: {}", f.step)),
         "working" if i.paused.is_some() => "paused".into(),
-        "held" => "on hold".into(),
+        "held" => "parked".into(),
         s => s.into(),
     })
 }

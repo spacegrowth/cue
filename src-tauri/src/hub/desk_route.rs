@@ -240,7 +240,7 @@ fn unroutable(st: &Store, project: &str, id: &str) -> Option<String> {
     match st.desk.item(id) {
         None => Some(format!("Refused: #{id} isn't an open item on this Desk. You can route an item the Desk block lists, or add it first with ITEM:.")),
         Some(i) if i.project != project => Some(format!("Refused: #{id} belongs to another Desk. You can route only this Desk's items.")),
-        Some(i) if i.state == "held" => Some(format!("Refused: #{id} is on hold: the user starts it themselves (its Start button). You can ask them (ASK: #{id} | …).")),
+        Some(i) if i.state == "held" => Some(format!("Refused: #{id} is parked: the user starts it themselves (its Start button). You can ask them (ASK: #{id} | …).")),
         Some(i) if i.state == "done" => Some(format!("Refused: #{id} is done. You can ask the user to reopen it (ASK: #{id} | …), or add a new ITEM for what's left.")),
         _ => None,
     }
@@ -455,9 +455,9 @@ fn give_to(st: &mut Store, id: &str, sid: &str, by: (&str, &str, &str), started:
     if it.state == "done" {
         return Err("it's done".into());
     }
-    // On hold (#385): only you start it (your Give, or Start); never the lead or a session Cue started.
+    // Parked (#385): only you start it (your Give, or Start); never the lead or a session Cue started.
     if it.state == "held" && by.0 != "You" {
-        return Err("it's on hold".into());
+        return Err("it's parked".into());
     }
     it.held = None;
     if let Some(b) = it.holder.clone().filter(|b| it.state == "working" && !(b.sid == h.sid && b.lead_sid.is_empty())) {

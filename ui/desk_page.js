@@ -496,10 +496,10 @@ function deskItemActs(i) {
   // Waiting for install: nothing to try yet, so no Looks right (Send back stays: what it says can be wrong already).
   const acts = deskInstallWait(i) ? b("send_back", "Send back") : i.state === "to_check" ? (deskLooksSoon.has(i.id) ? "" : b("send_back", "Send back"))
     : (i.state === "new" || i.state === "queued") && !i.holder && i.start_failed ? b("start_now", "Retry")
-    // On hold (#385): Start queues it as a new item, for the lead to give out.
+    // Parked (#385): Start queues it as a new item, for the lead to give out.
     : i.state === "held" ? b("start_now", "Start", "primary")
-    : i.state === "queued" ? b("start_now", "Start it now in a new session") + (first ? b("put_before", `Put it before ${deskShort(first.title)}`) : "") + b("hold", "Hold")
-    : i.state === "new" ? b("start_now", "Start it now in a new session") + b("hold", "Hold")
+    : i.state === "queued" ? b("start_now", "Start it now in a new session") + (first ? b("put_before", `Put it before ${deskShort(first.title)}`) : "") + b("park", "Park")
+    : i.state === "new" ? b("start_now", "Start it now in a new session") + b("park", "Park")
     // Its holder's turn cut off (a crash, a quit) leaves it "working" with nobody on it: Resume wakes that same
     // session where it left off (#375).
     : deskCanRestart(i) ? b("start_now", "Resume")

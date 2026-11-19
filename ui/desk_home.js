@@ -28,7 +28,7 @@ function deskKindCell(d, kind) {
   const working = open.filter((i) => i.state === "working" && !i.stopped).length, fin = open.filter(deskFinishing).length;
   const need = open.filter(deskWaits).length, review = open.filter((i) => deskReadyToReview(i) && !deskWaits(i)).length;
   const resume = open.filter((i) => i.state === "needs_resume").length, paused = open.filter((i) => i.state === "paused").length, held = open.filter((i) => i.state === "held").length;
-  const sub = [working ? `${working} working` : "", resume ? `${resume} to resume` : "", paused ? `${paused} paused` : "", held ? `${held} on hold` : "", fin ? `${fin} finishing` : "", need ? `<span class="dh-ck">${need} need you</span>` : "", review ? `${review} to review` : ""].filter(Boolean).join(" · ") || "none moving";
+  const sub = [working ? `${working} working` : "", resume ? `${resume} to resume` : "", paused ? `${paused} paused` : "", held ? `${held} parked` : "", fin ? `${fin} finishing` : "", need ? `<span class="dh-ck">${need} need you</span>` : "", review ? `${review} to review` : ""].filter(Boolean).join(" · ") || "none moving";
   return `<span class="dh-cell"><span class="dh-big">${icon}${open.length} open</span><span class="dh-sm">${sub}</span></span>`;
 }
 /** Who's on a Desk: its lead, then the sessions and crew at work. */

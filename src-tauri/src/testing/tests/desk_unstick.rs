@@ -237,9 +237,10 @@ fn lead_summary(w: &World, project: &str, l: &str) -> String {
     w.hub().desk_summary(project, l, false).0
 }
 
-/// The held shelf (#385): an item you put on hold waits there, nobody holding it; the lead can't ROUTE or START it
+/// Parked (#385, #391): an item you park waits there, nobody holding it; the lead can't ROUTE or START it
 /// and is told so, it's listed apart in the lead's Desk block, and your Start makes it new again, the lead told of it
-/// to route as any new item. The lead holds one only as you asked (HOLD: #new for the ITEM it just added).
+/// to route as any new item. The lead parks one only as you asked (PARK: #new for the ITEM it just added; HOLD, the
+/// old spelling, still works).
 #[test]
 fn a_held_item_waits_on_its_shelf_until_you_start_it() {
     let w = World::new();
@@ -247,25 +248,25 @@ fn a_held_item_waits_on_its_shelf_until_you_start_it() {
     let l = lead_of(&w, &project);
     let it = w.hub().desk_add(&project, "feature", "Dark sidebar", "it's dark", None).unwrap();
     let id = it.id.clone();
-    w.hub().desk_item_act(&id, "hold", "").unwrap();
+    w.hub().desk_item_act(&id, "park", "").unwrap();
     w.advance(5000);
     w.settle();
     let it = item(&w, &project, "Dark sidebar");
     assert_eq!((it["state"].as_str(), it["held"][1].as_str(), it["holder"].is_null()), (Some("held"), Some("You"), true), "{it}");
-    assert!(steps(&w, &project, &id).iter().any(|d| d["text"] == "Put it on hold"), "{:?}", steps(&w, &project, &id));
-    // Its lead isn't asked to route it, and sees it on its own shelf.
+    assert!(steps(&w, &project, &id).iter().any(|d| d["text"] == "Parked it"), "{:?}", steps(&w, &project, &id));
+    // Its lead isn't asked to route it, and sees it listed apart.
     assert!(!sent_to(&w, &l).iter().any(|t| t.contains(&format!("New item #{id}"))), "{:?}", sent_to(&w, &l));
     let sum = lead_summary(&w, &project, &l);
-    let (before, shelf) = sum.split_once("On hold (the user starts these themselves").expect(&sum);
-    assert!(shelf.contains(&format!("#{id} feature: Dark sidebar | on hold")) && !before.contains(&format!("#{id} ")), "{sum}");
+    let (before, shelf) = sum.split_once("Parked (the user starts these themselves").expect(&sum);
+    assert!(shelf.contains(&format!("#{id} feature: Dark sidebar | parked")) && !before.contains(&format!("#{id} ")), "{sum}");
     // Neither a route nor a START moves it.
     ends(&w, &l, &format!("ROUTE: #{id} -> new | why: free hands\nSTART: #{id} | why: go"));
     w.advance(1000);
     w.settle();
     assert_eq!(item(&w, &project, "Dark sidebar")["state"], "held");
     let told = sent_to(&w, &l);
-    assert!(told.iter().any(|t| t.contains(&format!("Refused: #{id} is on hold"))), "{told:?}");
-    assert!(told.iter().any(|t| t.contains(&format!("#{id} not started: the user put it on hold"))), "{told:?}");
+    assert!(told.iter().any(|t| t.contains(&format!("Refused: #{id} is parked"))), "{told:?}");
+    assert!(told.iter().any(|t| t.contains(&format!("#{id} not started: the user parked it"))), "{told:?}");
     // Your Start: new again, and its lead told of it to route.
     w.hub().desk_item_act(&id, "start_now", "").unwrap();
     w.advance(5000);
@@ -273,8 +274,8 @@ fn a_held_item_waits_on_its_shelf_until_you_start_it() {
     let it = item(&w, &project, "Dark sidebar");
     assert!(it["state"] == "new" && it["held"].is_null(), "{it}");
     assert!(sent_to(&w, &l).iter().any(|t| t.contains(&format!("New item #{id}"))), "{:?}", sent_to(&w, &l));
-    // The lead holds one as you asked; one at work can't be held.
-    ends(&w, &l, "ITEM: task | Tidy the README | done when: it reads well\nHOLD: #new | why: the owner wants it later");
+    // The lead parks one as you asked; one at work can't be parked; HOLD still works.
+    ends(&w, &l, "ITEM: task | Tidy the README | done when: it reads well\nPARK: #new | why: the owner wants it later");
     w.advance(1000);
     w.settle();
     let t = item(&w, &project, "Tidy the README");
@@ -283,5 +284,9 @@ fn a_held_item_waits_on_its_shelf_until_you_start_it() {
     ends(&w, &l, &format!("HOLD: #{busy} | why: later"));
     w.advance(1000);
     w.settle();
-    assert!(sent_to(&w, &l).iter().any(|t| t.contains(&format!("#{busy} not held: only an item nobody is at work on"))), "{:?}", sent_to(&w, &l));
+    assert!(sent_to(&w, &l).iter().any(|t| t.contains(&format!("#{busy} not parked: only an item nobody is at work on"))), "{:?}", sent_to(&w, &l));
+    ends(&w, &l, "ITEM: task | Trim the logs | done when: they're short\nHOLD: #new | why: later");
+    w.advance(1000);
+    w.settle();
+    assert_eq!(item(&w, &project, "Trim the logs")["state"], "held", "the old HOLD: still parks");
 }

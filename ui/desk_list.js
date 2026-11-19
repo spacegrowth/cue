@@ -155,7 +155,7 @@ function deskGroups(project, taskApprovals) {
   const resume = rest.filter((i) => i.state === "needs_resume");
   // Paused by the lead (#365): kept apart, so it doesn't read as stuck or next up.
   const paused = rest.filter((i) => i.state === "paused");
-  // On hold (#385): a quiet shelf of their own; nothing starts them till you press Start.
+  // Parked (#385, #391): a quiet group of their own; nothing starts them till you press Start.
   const held = rest.filter((i) => i.state === "held");
   // In your order (#387): those you dragged into place first, then the rest oldest first.
   const queued = rest.filter((i) => i.state !== "needs_resume" && i.state !== "paused" && i.state !== "held" && !going(i) && !deskLane(i))
@@ -177,6 +177,8 @@ function deskTag(i) {
   // Its new session wouldn't start (#172): says so, its page has why and Retry.
   if ((i.state === "new" || i.state === "queued") && !i.holder && i.start_failed) return ["couldn't start", "ask"];
   if ((i.state === "new" || i.state === "queued") && i.route_failed) return ["stuck", "ask"];
+  // Parked (#391): a quiet tag, so the row says it on its own too.
+  if (i.state === "held") return ["parked", ""];
   return ["", i.state === "done" ? "done" : ""];
 }
 /** Where an item stands, as its row's icon: waiting on you (an ask, or back to check), in progress, queued (also
@@ -193,7 +195,7 @@ const DESK_STATE_SVG = {
   // way in (#346).
   fin: '<circle cx="7" cy="7" r="5.5" stroke="var(--amber)" stroke-width="1.5"/><path d="M7 4.2v5M4.9 7.3 7 9.4l2.1-2.1" stroke="var(--amber)" stroke-width="1.5"/>',
   done: '<path d="m2.8 7.4 2.8 2.8 5.6-6" stroke="var(--muted)" stroke-width="1.7"/>',
-  // On hold (#385): a dashed ring, nothing inside: it isn't going anywhere till you start it.
+  // Parked (#385): a dashed ring, nothing inside: it isn't going anywhere till you start it.
   held: '<circle cx="7" cy="7" r="5.5" stroke="var(--muted)" stroke-width="1.4" stroke-dasharray="2.2 2"/>',
 };
 const deskStateIcon = (i) => `<svg class="dk-si" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${DESK_STATE_SVG[deskStateOf(i)]}</svg>`;
@@ -219,10 +221,12 @@ function deskItemRow(i, lit, held = false, lane = null) {
     : `<span class="dk-doing"${i.act.stalls_at > 0 ? ` data-stalls="${i.act.stalls_at}"` : ""}>${esc(i.act.now)} · <span data-ago="${i.act.at_ms}">${ago(i.act.at_ms)}</span></span>`;
   // In a lane (#346): its holder and its step, short; the lane's head has the rest.
   const feat = deskFeat(i), fopen = feat && deskFeatOpen(i);
-  const who = i.state === "held" ? "on hold" : feat ? [esc(deskHolderOf(i)), deskFeatBar(i)].filter(Boolean).join(" · ") : lane ? [esc(deskHolderOf(i)), `<span class="dk-fstep">${deskLaneStep(i, lane.ahead)}</span>`].filter(Boolean).join(" · ") : i.state === "queued" && i.tree_wait ? [esc(deskHolderOf(i)), "waiting for a free copy"].filter(Boolean).join(" · ") : i.state === "queued" && i.after ? [esc(deskHolderOf(i)), `after #${esc(i.after)}`].filter(Boolean).join(" · ") : i.waiting && i.state === "working" ? `waiting · ${esc(firstLine(i.waiting))}` : i.stopped && i.state === "working" ? `stopped · the Desk lead is on it` : s ? `working · ${esc(deskHolderOf(i))} · <span data-ago="${at}">${ago(at)}</span>` : !i.holder && i.state !== "done" ? deskGive(i, "row") : deskInstallWait(i) ? `waiting for install · ${esc(deskHolderOf(i))}` : deskFinishing(i) ? `<span class="dk-fstep">${deskFinStep(i)}</span>` : esc(deskHolderOf(i));
+  const who = i.state === "held" ? "" : feat ? [esc(deskHolderOf(i)), deskFeatBar(i)].filter(Boolean).join(" · ") : lane ? [esc(deskHolderOf(i)), `<span class="dk-fstep">${deskLaneStep(i, lane.ahead)}</span>`].filter(Boolean).join(" · ") : i.state === "queued" && i.tree_wait ? [esc(deskHolderOf(i)), "waiting for a free copy"].filter(Boolean).join(" · ") : i.state === "queued" && i.after ? [esc(deskHolderOf(i)), `after #${esc(i.after)}`].filter(Boolean).join(" · ") : i.waiting && i.state === "working" ? `waiting · ${esc(firstLine(i.waiting))}` : i.stopped && i.state === "working" ? `stopped · the Desk lead is on it` : s ? `working · ${esc(deskHolderOf(i))} · <span data-ago="${at}">${ago(at)}</span>` : !i.holder && i.state !== "done" ? deskGive(i, "row") : deskInstallWait(i) ? `waiting for install · ${esc(deskHolderOf(i))}` : deskFinishing(i) ? `<span class="dk-fstep">${deskFinStep(i)}</span>` : esc(deskHolderOf(i));
   // Finishing: no age, so its step has the room.
   const when = s || act || deskFinishing(i) || (feat && i.state !== "done") ? "" : i.state === "done" ? `${i.commit ? `<span class="dk-cm">committed ${esc(i.commit)}</span> · ` : ""}${clockAt(deskMs(i.done_at || i.updated))}` : ago(deskMs(i.created));
-  const ok = i.state === "held" ? `<button class="btn small dk-hstart" data-desk-act="start_now" data-id="${esc(i.id)}">Start</button>` : lane ? "" : deskFinishing(i) ? deskInstallNow(i, "btn small dk-rinst") : deskInstallWait(i) || deskUncommitted(i) ? "" : i.state === "to_check" && deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id) : i.state === "to_check" ? `<button class="dk-ok" data-desk-act="looks_right" data-id="${esc(i.id)}" aria-label="Looks right"></button>`
+  const ok = i.state === "held" ? `<button class="btn small dk-hstart" data-desk-act="start_now" data-id="${esc(i.id)}">Start</button>` : lane ? ""
+    // Park on a row that waits its turn (#391), as on its page.
+    : (i.state === "new" || i.state === "queued") && !piece && !feat ? `<button class="btn small dk-hstart dk-park" data-desk-act="park" data-id="${esc(i.id)}">Park</button>` : deskFinishing(i) ? deskInstallNow(i, "btn small dk-rinst") : deskInstallWait(i) || deskUncommitted(i) ? "" : i.state === "to_check" && deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id) : i.state === "to_check" ? `<button class="dk-ok" data-desk-act="looks_right" data-id="${esc(i.id)}" aria-label="Looks right"></button>`
     : i.state === "done" && !i.picked ? `<button class="dk-undo" data-desk-act="reopen" data-id="${esc(i.id)}">Undo</button>` : "";
   // What it waits on you for, in one plain line (Answer, Pick, Allow, Try it), and what it unblocks (#182).
   const request = i.state === "needs_you" && deskItemRequest(i);
@@ -322,7 +326,7 @@ function deskList(project, taskApprovals) {
   if (g.paused.length) parts.push(`<div class="dk-gh">Paused <span class="n">${g.paused.length}</span></div>${g.paused.map(row).join("")}`);
   // Dragged up and down into your order (#387): the next free copy goes to the top one.
   if (g.queued.length) parts.push(`<div class="dk-gh">Queued <span class="n">${g.queued.length}</span>${g.queued.length > 1 ? '<span class="dk-qhint">drag to reorder</span>' : ""}</div>${g.queued.map((i) => row(i).replace('<div class="dk-it ', `<div data-desk-qg${deskQMoves(i) ? ` data-desk-q="${esc(i.id)}"` : ""} class="dk-it `)).join("")}`);
-  if (g.held.length) parts.push(`<div class="dk-gh dk-heldh">On hold <span class="n">${g.held.length}</span><span class="dk-split">start them when you want</span></div><div class="dk-held">${g.held.map(row).join("")}</div>`);
+  if (g.held.length) parts.push(`<div class="dk-gh dk-heldh">Parked <span class="n">${g.held.length}</span><span class="dk-split">start them when you want</span></div><div class="dk-held">${g.held.map(row).join("")}</div>`);
   for (const h of g.extra) parts.push(deskHolderHead({ ...h, addon: true, key: h.key || h.name }, o?.kind === "addon" && o.key === (h.key || h.name)) + (h.items || []).map(row).join(""));
   // Finished: the 10 newest, then 10 more each time the list's end comes into view (deskDoneWatch). Its end holds
   // its place while the next ones load, so nothing jumps.

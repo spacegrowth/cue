@@ -82,7 +82,7 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx
                 }
             }
             Line::Unstick { what, id, commit, why } => {
-                // HOLD: #new holds the reply's last ITEM (#385).
+                // PARK: #new parks the reply's last ITEM (#385).
                 let id = match last_new.clone().filter(|_| id == "new") { Some(n) => n, None => st.desk.canon(&id) };
                 if let Err(no) = super::desk_unstick::unstick(st, project, &by, &what, &id, &commit, &why, now, fx) {
                     answers.push(no);

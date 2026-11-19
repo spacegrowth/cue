@@ -1623,24 +1623,36 @@ test("an item the lead paused shows as paused and keeps its holder (#365)", asyn
   await expect(page.locator('[data-desk-page="dispatcher"] .dk-psay')).toContainText("1 item is paused.");
 });
 
-test("an item on hold sits in its own quiet group with a Start button (#385)", async ({ page, cue }) => {
+test("a parked item sits in its own quiet group with a Start button; queued rows have Park (#385, #391)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await cue.change((st) => {
     const d = st.desk.projects.find((x) => x.project === "cue");
     const it = d.items.find((i) => i.state === "new" || i.state === "queued") || d.items[0];
     Object.assign(it, { id: "h1", state: "held", holder: null, after: null, held: [Math.floor(Date.now() / 1000), "You", ""] });
+    d.items.push({ id: "q7", project: "cue", kind: "task", title: "Tidy the footer", state: "queued", created: Date.now() / 1000, updated: Date.now() / 1000, holder: null, from: "you" });
   });
   const rows = page.locator(".dk-items");
-  await expect(rows.locator(".dk-gh", { hasText: "On hold" })).toBeVisible();
+  await expect(rows.locator(".dk-gh", { hasText: "Parked" })).toBeVisible();
+  await expect(rows.locator(".dk-gh", { hasText: "On hold" })).toHaveCount(0);
   await expect(rows.locator(".dk-held [data-desk-item='h1']")).toBeVisible();
+  await expect(rows.locator(".dk-held [data-desk-item='h1'] .dk-tag")).toHaveText("parked");
   await expect(rows.locator(".dk-gh.you + [data-desk-item='h1']")).toHaveCount(0);
   await expect(rows.locator("[data-desk-item='h1'] [data-desk-act='start_now']")).toHaveText("Start");
+  // A queued row has its own Park, right in the list; a press parks it, without opening or dragging it.
+  const park = rows.locator("[data-desk-item='q7'] [data-desk-act='park']");
+  await expect(park).toHaveText("Park");
+  await park.click();
+  await cue.called("desk_item_act", { id: "q7", act: "park" });
   await rows.locator('[data-desk-item="h1"]').click();
   const pane = page.locator(".dk-right .dk-pg");
-  await expect(pane).toContainText("You put it on hold. Nothing starts it until you press Start.");
+  await expect(pane).toContainText("Parked");
+  await expect(pane).toContainText("You parked it. Nothing starts it until you press Start.");
   await expect(pane.locator('[data-desk-act="start_now"]')).toHaveText("Start");
-  await expect(pane.locator('[data-desk-act="hold"]')).toHaveCount(0);
+  await expect(pane.locator('[data-desk-act="park"]')).toHaveCount(0);
+  // A queued item's page has Park too.
+  await rows.locator('[data-desk-item="q7"] .dk-t').click();
+  await expect(page.locator('.dk-right .dk-pg [data-desk-act="park"]')).toHaveText("Park");
 });
 
 test("an item back to check stands out until you open it; its pane links to what was made", async ({ page, cue }) => {

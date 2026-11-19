@@ -43,7 +43,7 @@ pub enum Line {
     /// stuck or finished item), "land_first" (`LAND FIRST: #<id> | why: …`: up in the landing line) or "start"
     /// (`START: #<id> | why: …`: a waiting item, now), "pause" (`PAUSE: #<id> | why: …`: an item at work stops at a
     /// clean point and keeps its place, #365), "resume" (`RESUME: #<id> | why: …`: a paused one carries on) or
-    /// "hold" (`HOLD: #<id> | why: …`: onto the held shelf, as the user asked, #385; "#new": the reply's last ITEM).
+    /// "hold" (`PARK: #<id> | why: …`, or the old `HOLD:`: parked, as the user asked, #385/#391; "#new": the reply's last ITEM).
     Unstick { what: String, id: String, commit: String, why: String },
     /// The lead's answer to the landing clean-up question item `id`'s holder asked it (#349): `ANSWER: #<id> | <words>`.
     Answer { id: String, text: String },
@@ -156,7 +156,8 @@ fn one(t: &str) -> Option<Line> {
         "TAKE COPY" => unstick("take_copy", body),
         "LAND FIRST" => unstick("land_first", body),
         "START" => unstick("start", body),
-        "HOLD" => unstick("hold", body),
+        // PARK (#391); HOLD, its first name (#385), still works.
+        "PARK" | "HOLD" => unstick("hold", body),
         // With an item (#365) it pauses that item; with none (#366), the whole Desk.
         "PAUSE" => unstick("pause", body).or_else(|| whole_desk(true, body)),
         "RESUME" => unstick("resume", body).or_else(|| whole_desk(false, body)),

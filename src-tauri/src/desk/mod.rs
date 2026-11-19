@@ -74,8 +74,8 @@ START: #<id> | why: <reason>      (start a waiting item now: not after the item 
 PAUSE: #<id> | why: <reason>      (an item at work stops at a clean point and keeps its place and copy, e.g. to save \
 tokens for an urgent item; it shows as paused and its holder isn't asked if it's done)
 RESUME: #<id> | why: <reason>      (a paused item carries on where it stopped)
-HOLD: #<id> | why: <reason>      (only when the user asks: an item not at work goes on the held shelf; #new for \
-the ITEM just above. Neither Cue nor you start a held item: no ROUTE, no START; it waits until the user presses Start)
+PARK: #<id> | why: <reason>      (only when the user asks: an item not at work is parked; #new for \
+the ITEM just above. Neither Cue nor you start a parked item: no ROUTE, no START; it waits until the user presses Start)
 PAUSE: why: <reason>      (no #<id>: pause the whole Desk, only when the user asks: every session stops at a safe point, its work \
 kept in its copy; queued items don't start and what you route is held)
 RESUME: why: <reason>      (no #<id>: pick a paused Desk back up: sessions carry on, held routes go out)
