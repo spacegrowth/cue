@@ -74,6 +74,9 @@ START: #<id> | why: <reason>      (start a waiting item now: not after the item 
 PAUSE: #<id> | why: <reason>      (an item at work stops at a clean point and keeps its place and copy, e.g. to save \
 tokens for an urgent item; it shows as paused and its holder isn't asked if it's done)
 RESUME: #<id> | why: <reason>      (a paused item carries on where it stopped)
+PAUSE: why: <reason>      (no #<id>: pause the whole Desk, only when the user asks: every session stops at a safe point, its work \
+kept in its copy; queued items don't start and what you route is held)
+RESUME: why: <reason>      (no #<id>: pick a paused Desk back up: sessions carry on, held routes go out)
 DESIGNS: #<id> <canvas link>      (where an item's designs are; say it again when they move)
 CONTEXT: <session or me> -> keep | why: <reason>      (Cue leaves that session's context as it is while it waits now, or, if it's at work, while it waits after this turn)
 

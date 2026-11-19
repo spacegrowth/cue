@@ -14,7 +14,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 
 | What | Count |
 |---|---|
-| `#[tauri::command]` | 170 (3 sync) |
+| `#[tauri::command]` | 171 (3 sync) |
 | Lock declarations (static or field) | 110 |
 | Lock acquisitions | 261 |
 | Lock-graph edges | 59 |
@@ -72,6 +72,7 @@ Sync commands run on the main thread. "Hands work to": the threads or pools its 
 | `ask_before_set` | async | `ipc/desk.rs::ask_before_set` | ipc::with_hub |
 | `desk_lands_set` | async | `ipc/desk.rs::desk_lands_set` | ipc::with_hub |
 | `desk_away_set` | async | `ipc/desk.rs::desk_away_set` | ipc::with_hub |
+| `desk_pause` | async | `ipc/desk.rs::desk_pause` | ipc::with_hub |
 | `desk_away_sweep` | async | `ipc/desk.rs::desk_away_sweep` | ipc::with_hub |
 | `desk_delete` | async | `ipc/desk.rs::desk_delete` | ipc::with_hub |
 | `desk_rename` | async | `ipc/desk.rs::desk_rename` | ipc::with_hub |
@@ -1167,6 +1168,7 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `src-tauri/src/hub/desk.rs::desk_done` |  |  |
 | `src-tauri/src/hub/desk_act.rs::act_on` |  |  |
 | `src-tauri/src/hub/desk_lead.rs::desk_summary` |  |  |
+| `src-tauri/src/hub/desk_lead.rs::item_lines` |  |  |
 | `src-tauri/src/hub/desk_route.rs::route` |  |  |
 | `src-tauri/src/hub/desk_said.rs::lead_said` |  |  |
 | `src-tauri/src/hub/desk_stall.rs::stalls_asked` |  |  |

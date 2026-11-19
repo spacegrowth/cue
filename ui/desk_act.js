@@ -225,6 +225,7 @@ const DESK_CLICKS = {
     if (deskGoBackOpen) document.querySelector('textarea[data-text="goback"]')?.focus();
   },
   deskAway: (el) => deskAwayOpen(el.dataset.deskAway),
+  deskPause: (el) => deskPauseToggle(el.dataset.deskPause),
   deskLogRow: (el) => { const id = el.dataset.deskLogRow; if (!deskLogOpen.delete(id)) deskLogOpen.add(id); renderMain(); },
   deskSession: (el) => openSession(el.dataset.deskSession),
   deskLeadChat: () => { deskPick = null; deskTab = "lead"; readerView = null; deskShow(null); },

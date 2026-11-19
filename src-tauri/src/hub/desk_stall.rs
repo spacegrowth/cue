@@ -222,7 +222,8 @@ fn stop_words(it: &DeskItem, holder: &str, last: &str) -> String {
 pub(super) fn stalls_asked(st: &mut Store, sid: &str, text: &str, on: &[String], now: u64, fx: &mut Effects) {
     let still: Vec<(String, u64)> = on
         .iter()
-        .filter_map(|id| st.desk.item(id).filter(|i| i.state == "working" && i.paused.is_none() && i.holder.as_ref().is_some_and(|h| h.sid == sid && h.lead_sid.is_empty())).map(|i| (i.id.clone(), i.updated)))
+        // An item on a paused Desk (#366) stopped because it was told to: not a stall.
+        .filter_map(|id| st.desk.item(id).filter(|i| i.state == "working" && i.paused.is_none() && !super::desk_pause::is_paused(&i.project) && i.holder.as_ref().is_some_and(|h| h.sid == sid && h.lead_sid.is_empty())).map(|i| (i.id.clone(), i.updated)))
         .collect();
     // This holder's asks for items that aren't stalled with it now are over.
     st.desk.nudged.retain(|id, (by, _)| by != sid || still.iter().any(|(s, _)| s == id));

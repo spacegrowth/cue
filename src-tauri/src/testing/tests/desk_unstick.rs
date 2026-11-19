@@ -46,6 +46,10 @@ fn the_lines_that_unstick_an_item_are_read() {
     assert_eq!(got, want.map(|(a, b, c, d)| (a.to_string(), b.to_string(), c.to_string(), d.to_string())));
     assert!(lines("CLOSE: #12 | commit: not-a-sha").is_empty(), "a commit that isn't one");
     assert!(lines("START: the build").is_empty(), "prose, not an item");
+    // With no item, PAUSE and RESUME are the whole Desk's (#366); a malformed item line is neither.
+    assert!(matches!(lines("PAUSE: why: the user is away").as_slice(), [Line::Pause { on: true, why }] if why == "the user is away"));
+    assert!(matches!(lines("RESUME: why: back").as_slice(), [Line::Pause { on: false, why }] if why == "back"));
+    assert!(lines("PAUSE: #7 now").is_empty(), "an item line it can't read pauses nothing");
 }
 
 #[test]

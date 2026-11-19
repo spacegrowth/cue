@@ -102,6 +102,14 @@ CueBridge.area("settings", (w) => {
       w.changed(10);
       return view;
     },
+    // Pausing a whole Desk (hub/desk_pause.rs desk_pause_set): its `paused` view, as the hub returns it.
+    desk_pause: ({ desk, on }) => {
+      const d = (w.state.desk?.projects || []).find((x) => x.id === desk || x.project === desk);
+      if (!d) throw "no such Desk";
+      d.paused = on ? { on: true, since: Date.now(), by: "You", held: 0 } : { on: false };
+      w.changed(10);
+      return d.paused;
+    },
     get_drafts: () => drafts(),
     set_draft: ({ key, text, images }) => {
       const all = drafts();

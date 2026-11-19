@@ -56,6 +56,8 @@ pub(super) struct Effects {
     pub(super) cleanup: Vec<(String, Option<String>)>,
     /// The lead moved an item up in the landing line (LAND FIRST): the line runs now.
     pub(super) land: bool,
+    /// The lead's PAUSE (true) or RESUME (false) of its Desk (#366): (Desk, on, its name, its session, why).
+    pub(super) pause: Vec<(String, bool, String, String, String)>,
 }
 
 
@@ -381,10 +383,12 @@ impl Hub {
     /// What a change left to do, with the store let go: its saves, then its messages and questions, and new items
     /// for their lead (told a moment later, with any others that came meanwhile).
     pub(super) fn desk_done(&self, mut fx: Effects) {
-        if fx.items.is_empty() && fx.said.is_empty() && fx.dropped.is_empty() && fx.decisions.is_empty() && fx.sends.is_empty() && fx.asks.is_empty() && fx.news.is_empty() && fx.starts.is_empty() && fx.joined.is_empty() && fx.uses.is_empty() && fx.stopped.is_empty() && fx.trees_gone.is_empty() && fx.closes.is_empty() && fx.on_main.is_empty() && fx.cleanup.is_empty() && !fx.land {
+        if fx.items.is_empty() && fx.said.is_empty() && fx.dropped.is_empty() && fx.decisions.is_empty() && fx.sends.is_empty() && fx.asks.is_empty() && fx.news.is_empty() && fx.starts.is_empty() && fx.joined.is_empty() && fx.uses.is_empty() && fx.stopped.is_empty() && fx.trees_gone.is_empty() && fx.closes.is_empty() && fx.on_main.is_empty() && fx.cleanup.is_empty() && !fx.land && fx.pause.is_empty() {
             return;
         }
         // Items going to work get their own copies (or wait for one), before their messages are saved and sent.
+        // A paused Desk's sessions are sent nothing, and its items start no sessions, till it resumes (#366).
+        self.desk_pause_hold(&mut fx);
         self.desk_trees(&mut fx);
         {
             // Each save writes what the store holds now (saves.rs), in the order the saves run.
@@ -474,6 +478,13 @@ impl Hub {
         }
         if fx.land {
             self.later(0, |h| h.desk_land_line());
+        }
+        for (desk, on, name, sid, why) in fx.pause {
+            self.later(0, move |h| {
+                if let Err(e) = h.desk_pause_set(&desk, on, (&name, &sid), &why) {
+                    eprintln!("cue: desk: the lead's {} of {desk}: {e}", if on { "PAUSE" } else { "RESUME" });
+                }
+            });
         }
         for (card, answer) in fx.cleanup {
             self.later(0, move |h| match answer {

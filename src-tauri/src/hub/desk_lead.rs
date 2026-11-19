@@ -272,6 +272,10 @@ impl Hub {
                 let all: Vec<String> = older.iter().map(|s| route_of(s)).collect();
                 out.push_str(&format!("Older, idle with no recent item: {}\n", all.join("; ")));
             }
+            if let Some(paused) = super::desk_pause::pause_block(project, now) {
+                out.push('\n');
+                out.push_str(&paused);
+            }
             if let Some(away) = super::desk_away::away_block(st, project, now) {
                 out.push('\n');
                 out.push_str(&away);

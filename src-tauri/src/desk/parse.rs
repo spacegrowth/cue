@@ -44,6 +44,8 @@ pub enum Line {
     Answer { id: String, text: String },
     /// That question passed on to the user (#349): `PASS: #<id> | <why>` (the why may be left out).
     Pass { id: String, why: String },
+    /// The lead pausing (`PAUSE: why: …`, on) or resuming (`RESUME: why: …`) its whole Desk (#366).
+    Pause { on: bool, why: String },
 }
 
 /// The Desk lines in `text`, in order.
@@ -148,10 +150,16 @@ fn one(t: &str) -> Option<Line> {
         "TAKE COPY" => unstick("take_copy", body),
         "LAND FIRST" => unstick("land_first", body),
         "START" => unstick("start", body),
-        "PAUSE" => unstick("pause", body),
-        "RESUME" => unstick("resume", body),
+        // With an item (#365) it pauses that item; with none (#366), the whole Desk.
+        "PAUSE" => unstick("pause", body).or_else(|| whole_desk(true, body)),
+        "RESUME" => unstick("resume", body).or_else(|| whole_desk(false, body)),
         _ => None,
     }
+}
+
+/// `PAUSE: why: …` / `RESUME: why: …` with no item: the whole Desk (#366). None for one naming an item.
+fn whole_desk(on: bool, body: &str) -> Option<Line> {
+    (!body.trim_start().starts_with('#')).then(|| Line::Pause { on, why: labelled(body, "why").unwrap_or(body).to_string() })
 }
 
 /// `CLOSE: #<id> | commit: <sha> | why: …` and the other lines that unstick an item (#347): Line::Unstick. Its why may

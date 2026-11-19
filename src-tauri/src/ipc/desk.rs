@@ -152,6 +152,16 @@ pub(crate) async fn desk_away_set(hub: State<'_, Arc<Hub>>, desk: String, away: 
     with_hub(&hub, move |h| h.desk_away_set(&desk, &away)).await?
 }
 
+/// Pause (`on`) or resume Desk `desk` (#366): its sessions stop at a safe point, or carry on. Returns its view.
+#[tauri::command]
+pub(crate) async fn desk_pause(hub: State<'_, Arc<Hub>>, desk: String, on: bool) -> Result<serde_json::Value, String> {
+    with_hub(&hub, move |h| {
+        h.desk_pause_set(&desk, on, ("You", ""), "")?;
+        Ok(crate::hub::desk_pause_view(&desk))
+    })
+    .await?
+}
+
 /// The owner pressed Away (before it's on): Desk `desk`'s lead (woken if parked) is asked to settle what it can under
 /// `rules` and leave at most 5 questions; the Desk shows it's sorting things out until its next turn ends.
 #[tauri::command]

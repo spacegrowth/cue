@@ -1,4 +1,4 @@
-// Cue UI desk — Away (#361): the card that lets the lead keep the Desk moving while you're away, its rules and its clicks.
+// Cue UI desk — Away (#361) and Pause (#366): the card that lets the lead keep the Desk moving while you're away, its rules and its clicks; and the Pause/Resume button.
 // Split from desk.js, which keeps the Desk's state and item basics; loaded after it (and after desk_list.js).
 // ---------- Away (#361, pick B): the lead keeps the Desk moving while you're away ----------
 
@@ -239,3 +239,28 @@ document.addEventListener("keydown", (ev) => {
   deskAwayEdit = null;
   renderMain();
 }, true);
+
+// ---------- Pause (#366): every session on the Desk stops at a safe point; Resume picks them all back up ----------
+
+/** "Paused" by the Items title while the Desk is paused (desk_pause). */
+function deskPausedTag(d) {
+  return d?.paused?.on ? `<span class="dk-pz-tag">Paused</span>` : "";
+}
+/** Pause, or Resume while paused. */
+function deskPauseButton(d) {
+  if (!d) return "";
+  const on = !!d.paused?.on, busy = deskPausing.has(d.project);
+  return `<button class="btn small dk-pz${on ? " on" : ""}" data-desk-pause="${esc(d.project)}"${busy ? " disabled" : ""}>${on ? "Resume" : "Pause"}</button>`;
+}
+const deskPausing = new Set();
+async function deskPauseToggle(project) {
+  const d = deskOf(project);
+  if (!d || deskPausing.has(project)) return;
+  const on = !d.paused?.on;
+  deskPausing.add(project); renderMain();
+  try {
+    const view = await invoke("desk_pause", { desk: d.id || d.project, on });
+    if (view && typeof view === "object") d.paused = view;
+  } catch (err) { toast(`Couldn't ${on ? "pause" : "resume"} the Desk: ${err}`); }
+  deskPausing.delete(project); renderMain();
+}

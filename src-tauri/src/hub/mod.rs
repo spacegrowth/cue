@@ -21,6 +21,12 @@ mod desk_said;
 mod desk_view;
 mod desk_spaces;
 mod desk_away;
+mod desk_pause;
+pub(crate) use desk_pause::pause_view as desk_pause_view;
+#[cfg(test)]
+pub(crate) fn desk_pause_words() -> &'static str {
+    desk_pause::PAUSE_WORDS
+}
 pub(crate) use desk_away::sweep_words as desk_away_sweep_words;
 mod desk_checks;
 mod desk_cleanup;

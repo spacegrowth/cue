@@ -7,9 +7,13 @@ use super::desk_members::{ask_first, join, may_route, UseAsk};
 use super::desk::{Effects, NewStart, ask_of, at_work, holder_of, resolve, rule_of, secs};
 
 /// Items queued after `id` start now, with no reason (why it was queued isn't why it starts).
+/// While its Desk is paused (#366), nothing starts: they stay queued, and Resume starts them.
 pub(super) fn release(st: &mut Store, id: &str, now: u64, fx: &mut Effects) {
     let project = st.desk.item(id).map(|i| &i.project)
         .or_else(|| st.desk.items.iter().find(|i| i.after.as_deref() == Some(id)).map(|i| &i.project));
+    if project.is_some_and(|p| super::desk_pause::is_paused(p)) {
+        return;
+    }
     let rule = project.map(|p| rule_of(st, p)).unwrap_or_default();
     let lead = project.and_then(|p| st.desk.lead.get(p)).cloned();
     for it in st.desk.items.iter_mut().filter(|i| i.after.as_deref() == Some(id) && i.state == "queued") {

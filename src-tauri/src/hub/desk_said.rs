@@ -88,6 +88,7 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx
                 }
             }
             Line::Answer { id, text } => cleanup_said(st, project, &by, &id, Some(text), now, fx, &mut answers),
+            Line::Pause { on, why } => fx.pause.push((project.to_string(), on, name.clone(), lsid.to_string(), why)),
             Line::Pass { id, .. } => cleanup_said(st, project, &by, &id, None, now, fx, &mut answers),
             Line::Context { .. } | Line::Designs { .. } => {}
         }

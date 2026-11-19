@@ -298,6 +298,6 @@ function deskList(project, taskApprovals) {
   if (shown.length) parts.push(`<div class="dk-gh">Done</div>${shown.map(row).join("")}`);
   if (more && (shown.length || pg?.loading || !pg)) parts.push(`<div class="dk-more" data-desk-done-more="${esc(project)}">${shown.length ? "Loading older…" : ""}</div>`);
   const body = parts.join("") + (parts.length > 1 ? "" : `<div class="dk-empty">No items yet.</div>`);
-  return `<div class="dk-card dk-items"><div class="dk-ch"><b>Items</b>${deskAwaySwitch(g.d)}</div>
+  return `<div class="dk-card dk-items"><div class="dk-ch"><b>Items</b>${deskPausedTag(g.d)}${deskPauseButton(g.d)}${deskAwaySwitch(g.d)}</div>
     ${deskQuickAdd()}<div class="dk-scroll" data-scroll-key="desk-items:${esc(project)}">${body}</div></div>`;
 }
