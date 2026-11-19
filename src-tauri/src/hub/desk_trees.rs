@@ -145,7 +145,7 @@ impl Hub {
         } else {
             remove(&t);
         }
-        self.desk_trees_free(&t.repo);
+        let _ = self.desk_trees_free(&t.repo);
     }
 
     /// Removes a dropped item's kept copy and its branch, and takes it off the list.
@@ -159,8 +159,8 @@ impl Hub {
         Ok(())
     }
 
-    /// One of `repo`'s copies is free: the item queued longest for one starts in it.
-    pub(super) fn desk_trees_free(&self, repo: &str) {
+    /// One of `repo`'s copies is free: the item queued longest for one starts in it. Whether one started.
+    pub(super) fn desk_trees_free(&self, repo: &str) -> bool {
         let now = now_ms();
         let fx = self.write(|st| {
             let mut fx = Effects::default();
@@ -180,7 +180,25 @@ impl Hub {
             fx.items.push(id);
             fx
         });
+        let started = !fx.items.is_empty();
         self.desk_done(fx);
+        started
+    }
+
+    /// Items waiting for a copy of a repository with one free start (#340): a copy let go of by any way that
+    /// doesn't hand it on left them waiting for good. Run by the finishing tick (~10 s), so one starts within a minute.
+    pub(super) fn desk_trees_catch_up(&self) {
+        let mut repos: Vec<String> = self.read(|st| st.desk.items.iter().filter(|i| i.tree_wait && i.state == "queued").map(|i| i.tree_wait_repo.clone()).collect());
+        repos.sort();
+        repos.dedup();
+        for repo in repos {
+            // One per free copy; bounded, as a started item that got no copy leaves it free for the next.
+            for _ in 0..self.read(|st| st.desk.items.len()) {
+                if !self.desk_trees_free(&repo) {
+                    break;
+                }
+            }
+        }
     }
 
     /// The landing line: items said DONE in their own copies landed one at a time, oldest DONE first. Whoever runs
@@ -232,7 +250,7 @@ impl Hub {
                     i.tree = None;
                 }
             });
-            self.desk_trees_free(&t.repo);
+            let _ = self.desk_trees_free(&t.repo);
             // Committed where it was, as an item without a copy is (that path takes it at "commit").
             self.finish_fin(id, |f| (f.step, f.wait) = ("commit".into(), String::new()));
             self.desk_finish_shared(id);
@@ -347,10 +365,21 @@ impl Hub {
                 }
             }
         });
-        self.desk_trees_free(&t.repo);
+        let _ = self.desk_trees_free(&t.repo);
         self.finish_release(id);
         self.finish_after(id, std::slice::from_ref(&t.repo));
     }
+}
+
+/// What an item queued for one of `repo`'s copies waits on, as the Desk lead's summary says it (#340).
+pub(super) fn copy_wait(st: &Store, repo: &str) -> String {
+    let mut held: Vec<String> = st.desk.items.iter().filter(|i| i.tree.as_ref().is_some_and(|t| t.repo == repo)).map(|i| format!("#{}", i.id)).collect();
+    held.sort();
+    format!(
+        "waiting for a free copy of its repository ({} of {SLOTS} held, by {}): it starts by itself once one lands or is dropped",
+        held.len(),
+        if held.is_empty() { "none".to_string() } else { held.join(", ") }
+    )
 }
 
 /// The main checkout `folder` is, when an item worked from it gets a copy: a repository's main checkout (not one of
@@ -548,7 +577,7 @@ impl Hub {
 
     pub(crate) fn desk_let_go_copy(&self, repo: &str, slot: u32) {
         self.write(|st| st.desk.items.retain(|i| i.id != format!("held{slot}")));
-        self.desk_trees_free(repo);
+        let _ = self.desk_trees_free(repo);
     }
 }
 

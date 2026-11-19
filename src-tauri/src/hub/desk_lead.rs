@@ -211,12 +211,12 @@ impl Hub {
                 out.push_str("None.\n");
             }
             for it in &ready {
-                item_lines(it, &mut out, &mut failed, &mut told);
+                item_lines(st, it, &mut out, &mut failed, &mut told);
             }
             if !open.is_empty() {
                 out.push_str("\nOther open items:\n");
                 for it in &open {
-                    item_lines(it, &mut out, &mut failed, &mut told);
+                    item_lines(st, it, &mut out, &mut failed, &mut told);
                 }
             }
             for line in told {
@@ -375,7 +375,7 @@ pub(super) fn start_failed(st: &mut Store, s: &super::desk::NewStart, e: &str, n
 
 /// Item `it`'s line in the Desk's summary (into `out`), with the routes it couldn't make (into `failed`) and what the
 /// lead is told of them (into `told`).
-fn item_lines(it: &DeskItem, out: &mut String, failed: &mut Vec<(String, String)>, told: &mut Vec<String>) {
+fn item_lines(st: &Store, it: &DeskItem, out: &mut String, failed: &mut Vec<(String, String)>, told: &mut Vec<String>) {
     let kind = if it.kind.is_empty() { "no kind yet" } else { &it.kind };
     let status = match (it.stopped, it.loose.is_empty()) {
         (true, false) => "stopped, not committed".into(),
@@ -392,6 +392,10 @@ fn item_lines(it: &DeskItem, out: &mut String, failed: &mut Vec<(String, String)
     }
     if let Some(a) = &it.after {
         out.push_str(&format!(" | after #{a}"));
+    }
+    // Its own wait, said (#340): with nothing else shown it read as free to start, and was nudged by hand.
+    if it.state == "queued" && it.tree_wait {
+        out.push_str(&format!(" | {}", super::desk_trees::copy_wait(st, &it.tree_wait_repo)));
     }
     if !it.done_when.is_empty() {
         out.push_str(&format!(" | done when: {}", it.done_when));

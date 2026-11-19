@@ -508,6 +508,7 @@ impl Hub {
     pub(super) fn desk_finish_tick(&self) {
         let Some(_claim) = Claim::take(self, "tick") else { return };
         self.finish_tick();
+        self.desk_trees_catch_up();
         self.taken_out_tick();
         // Circles the waits list has now told to their lead, gone ones let go (#250).
         self.circle_check();
