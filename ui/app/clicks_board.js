@@ -106,7 +106,9 @@ const LIVE_CLICKS = [
   (t) => { if (nfFolderOpen && !t.closest(".nf-fwrap")) { closeFolders(); renderMain(); } return false; },
   rule("[data-lv]", (lv) => lvAct(lv.dataset.lv, lv.dataset)),
   // A button in the row (Allow / Deny in the starred list) does its own thing, not "open".
-  rule("[data-sv]", (sv) => { if (liveOpen && sv.dataset.sv !== "close") liveOpen = false; svAct(sv.dataset.sv, sv.dataset.sid); }, (sv, t) => !t.closest("button[data-act], button[data-wake]")),
+  rule("[data-fh]", (fh) => openHere(Number(fh.dataset.fh))),
+  // Found with ⌘K: it opens on the page you searched from (#316).
+  rule("[data-sv]", (sv) => { if (liveOpen && sv.dataset.sv !== "close") return openFound(sv.dataset.sid, sv.dataset.sv); svAct(sv.dataset.sv, sv.dataset.sid); }, (sv, t) => !t.closest("button[data-act], button[data-wake]")),
   (t) => { if (liveOpen && !downInLive && !t.closest(".lv-wrap")) { liveOpen = newOpen = false; renderMain(); } return false; },
 ];
 

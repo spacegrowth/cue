@@ -1840,6 +1840,27 @@ function deskOpenFound(sid) {
   deskShow({ kind: "chat", sid, from: ["item", "holder"].includes(deskOpen?.kind) && deskOpen.project === deskSelection() ? { ...deskOpen } : null });
   return true;
 }
+/** What ⌘K finds on the Desk (#316): its items (a bug, a feature, a task: by title, number, kind, what it asks or who
+ *  holds it) and, as `sids`, the sessions that work for it; the Desk picked, or every Desk with All Desks. Typed nothing:
+ *  what's open now, the ones waiting on you first. */
+function deskFindHere(q) {
+  const ds = (state.desk?.projects || []).filter((d) => !deskSelection() || d.project === deskSelection());
+  const sids = new Set(ds.flatMap((d) => [deskLead(d)?.sid, ...(d.members || [])]).filter(Boolean));
+  const order = { you: 0, stop: 1, work: 2, fin: 3, q: 4, done: 5 };
+  const all = ds.flatMap((d) => deskOf(d.project).items.map((i) => ({ i, d })));
+  const hay = ({ i, d }) => [i.title, i.words, i.kind, deskNum(i), `#${i.id}`, deskHolderOf(i), deskStateOf(i) === "done" ? "done" : "", ds.length > 1 ? deskName(d) : ""].join(" ").toLowerCase();
+  const hits = !q ? all.filter(({ i }) => i.state !== "done").sort((a, b) => order[deskStateOf(a.i)] - order[deskStateOf(b.i)] || deskMs(b.i.updated) - deskMs(a.i.updated)).slice(0, 8)
+    : all.map((x) => ({ ...x, s: x.i.id === q.replace(/^#/, "") ? -1 : nameScore(x.i.title, q) ?? (q.split(/\s+/).every((w) => hay(x).includes(w)) ? 5 : null) }))
+      .filter((x) => x.s !== null).sort((a, b) => a.s - b.s || (a.i.state === "done") - (b.i.state === "done") || deskMs(b.i.updated) - deskMs(a.i.updated)).slice(0, 20);
+  const where = ds.length === 1 ? deskName(ds[0]) : "every Desk";
+  return {
+    title: `Items · ${where}`, sessions: `Sessions · ${where}`, sids, place: ds.length === 1 ? "on this Desk" : "on the Desks", ask: "Find an item, a session, or anything said on the Desk…",
+    rows: hits.map(({ i, d, s: score }) => ({ weak: score === 5,
+      html: `${deskStateIcon(i)}${deskKindIcon(i)}<span class="lv-name">${esc(i.title)}</span><span class="sx-branch">${esc(deskNum(i))}${ds.length > 1 ? ` · ${esc(deskName(d))}` : ""}</span>`,
+      open: () => { if (deskSelection() !== d.project) deskSelect(d.project); deskShow({ kind: "item", id: i.id }); },
+    })),
+  };
+}
 /** A crew member's own session: its lead's crew page, on that member. */
 function deskOpenCrew(lead, agent) {
   const t = deskMate(lead, agent);

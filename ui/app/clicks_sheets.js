@@ -27,7 +27,8 @@ const FIND_CLICKS = [
   rule("[data-act=convo-resume]", () => resumeOlder({ session_id: convo.sid, name: convo.name })),
   rule("[data-act=convo-close]", () => { sheet = null; renderMain(); }),
   rule("[data-act=convo-back]", () => openFind()),
-  rule("[data-act=convo-open]", (co) => { sheet = null; setActive(null, co.dataset.sid); }),
+  // On the Desk, its chat there; anywhere else (Loops' pop-up too), on the Board.
+  rule("[data-act=convo-open]", (co) => { sheet = null; if (view === "desk" && typeof deskOpenFound === "function" && deskOpenFound(co.dataset.sid)) return; setActive(null, co.dataset.sid); }),
   rule("[data-srmore]", (sm) => { searchMore.add(sm.dataset.srmore); renderMain(); document.querySelector('[data-text="find-live"]')?.focus(); }),
   // Resume on a closed session's row: back to work at once (the row itself opens its conversation).
   rule("[data-resume]", (rsm) => resumeOlder({ session_id: rsm.dataset.resume, name: rsm.dataset.name })),

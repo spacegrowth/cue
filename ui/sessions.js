@@ -8,6 +8,17 @@ function recentFolders() {
   for (const h of state.history || []) add(h.cwd, h.created_ms);
   return [...seen.entries()].sort((a, b) => b[1] - a[1]).map(([cwd]) => cwd).slice(0, 12);
 }
+/** What ⌘K finds on the page you're on (#316), or null on the Board: on the Desk its items and its sessions
+ *  (deskFindHere), on a view of the add-on's (Loops) what it says (addOn.findHere). { title, rows: [{ html, open }],
+ *  sessions: the sessions' heading, sids: the sessions that belong there (null: any), place: "on this Desk", ask: the box's placeholder }. */
+let findHereRows = [];
+function findHere(q) {
+  try {
+    if (view === "desk" && typeof deskFindHere === "function") return deskFindHere(q);
+    if (addOn.views.some((v) => v.id === view)) return addOn.findHere?.(q) || null;
+  } catch (e) { console.error(e); }
+  return null;
+}
 function livePop(rows) {
   // + New: just the form, not the sessions under it.
   if (newOpen) {
@@ -15,6 +26,10 @@ function livePop(rows) {
     return `<div class="lv-pop nf-pop"><div class="nf-head"><span>New session</span><button class="nf-x" data-lv="cancel" aria-label="Close">×</button></div>${newForm()}</div>`;
   }
   const q = draft("find-live").text.trim().toLowerCase();
+  // On the Desk or Loops: what's there first (its items, its loops), and only its own sessions.
+  const here = findHere(q);
+  findHereRows = here?.rows || [];
+  if (here?.sids) rows = rows.filter((r) => here.sids.has(r.sid));
   const hay = (r) => { const ab = svAbout(r); return [r.name, r.cwd, ab.about, ab.now].join(" ").toLowerCase(); };
   const hits = rows.filter((r) => !q || q.split(/\s+/).every((w) => hay(r).includes(w)));
   // By project: a repository's worktrees share its group, each row saying its branch.
@@ -28,26 +43,31 @@ function livePop(rows) {
     const main = r.it ? (r.st === "asks" ? `<button class="btn primary" data-sv="open" data-sid="${esc(r.sid)}">Answer</button>` : "")
       : !r.quiet || r.harness === "claude" ? `<button class="btn" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}">Open</button>` : "";
     // The whole row opens its chat in Active (a quiet session has none in Cue yet: its tab instead).
-    const sel = liveShown[liveSel]?.sid === r.sid ? "sel" : "";
+    const sel = liveShown[liveSel] && liveShown[liveSel].sid === r.sid ? "sel" : "";
     const viewing = r.sid === (quietOpen || active?.sid) ? "on" : "";
     return `<div class="lv-row ${sel} ${viewing}" role="button" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}">${badge(r.harness)}<span class="lv-name">${esc(name)}</span>${r.where ? `<span class="sx-branch">${esc(r.where)}</span>` : ""}${newPill(r.sid)}${viewing ? VIEWING : ""}${svChipState(r)}${placeIcon(r.sid)}<span class="lv-acts">${main}</span></div>`;
   };
   const ordered = [...groups.entries()]
     .map(([p, rs]) => [p, rs.sort((a, b) => svRank(a) - svRank(b) || b.since - a.since)])
     .sort((a, b) => svRank(a[1][0]) - svRank(b[1][0]));
-  liveShown = ordered.flatMap(([, rs]) => rs.map((r) => ({ sid: r.sid, act: r.quiet ? "quiet" : "open" })));
+  // Items (loops) named like what you typed first, then the sessions, then those it's only in the words of (`weak`).
+  const fhs = (weak) => findHereRows.map((x, fh) => [x, fh]).filter(([x]) => !!x.weak === weak);
+  liveShown = [...fhs(false).map(([, fh]) => ({ fh })), ...ordered.flatMap(([, rs]) => rs.map((r) => ({ sid: r.sid, act: r.quiet ? "quiet" : "open" }))), ...fhs(true).map(([, fh]) => ({ fh }))];
   // ↑ ↓ go on past the live sessions into what search found (as many as it showed last time).
   liveSel = Math.min(Math.max(liveSel, 0), Math.max(liveShown.length + (q ? searchVisible.length : 0) - 1, 0));
-  const found = q ? searchSections(q, liveSel - liveShown.length) : "";
+  const found = q ? searchSections(q, liveSel - liveShown.length, here) : "";
+  const hereRows = (rs, title) => rs.length ? `<div class="lv-group"><div class="lv-ghead"><span>${esc(title)}</span></div>${rs.map(([x, fh]) => `<div class="lv-row lv-here ${liveShown[liveSel]?.fh === fh ? "sel" : ""}" role="button" data-fh="${fh}">${x.html}</div>`).join("")}</div>` : "";
+  const hereList = fhs(false).length ? hereRows(fhs(false), here.title) : here && q && !hits.length && !findHereRows.length ? `<div class="quiet-line">Nothing ${esc(here.place)} matches “${esc(q)}”.</div>` : "";
+  const hereMore = hereRows(fhs(true), `${here?.title || ""} · mentions it`);
   const list = ordered
     .map(([p, rs]) => {
       const many = spread(rs), cwd = many ? projRoot(rs[0].cwd) : rs[0].cwd;
       for (const r of rs) r.where = many ? state.branches?.[r.cwd] || baseName(r.cwd) : "";
-      return `<div class="lv-group"><div class="lv-ghead">${projDot(p, rs.some((r) => r.st === "working"))}<span>${esc(p || "(no folder)")}</span><span class="sx-branch">${esc(many ? "" : state.branches?.[cwd] || "")}</span><button class="sx-plus" data-lv="new" data-cwd="${esc(cwd)}" title="New session in ${esc(homeless(cwd))}">+</button></div>${rs.map(row).join("")}</div>`;
+      return `<div class="lv-group"><div class="lv-ghead">${here?.sessions && ordered.length === 1 ? `<span>${esc(here.sessions)}</span>` : ""}${projDot(p, rs.some((r) => r.st === "working"))}<span>${esc(p || "(no folder)")}</span><span class="sx-branch">${esc(many ? "" : state.branches?.[cwd] || "")}</span><button class="sx-plus" data-lv="new" data-cwd="${esc(cwd)}" title="New session in ${esc(homeless(cwd))}">+</button></div>${rs.map(row).join("")}</div>`;
     }).join("");
   return `<div class="lv-pop">
-    <div class="lv-top"><label class="sv-search">${SEARCH_ICON}<input data-text="find-live" placeholder="Find a session, or anything said…  ↑ ↓ Enter" spellcheck="false" autocomplete="off" value="${esc(draft("find-live").text)}"/></label><button class="btn primary" data-lv="new" title="New session (⌘N)">+ New</button></div>
-    <div class="lv-list">${list || `<div class="quiet-line">${q ? `No live session matches “${esc(q)}”.` : "No live sessions."}</div>`}${found}</div>
+    <div class="lv-top"><label class="sv-search">${SEARCH_ICON}<input data-text="find-live" placeholder="${esc(here?.ask || "Find a session, or anything said…")}  ↑ ↓ Enter" spellcheck="false" autocomplete="off" value="${esc(draft("find-live").text)}"/></label><button class="btn primary" data-lv="new" title="New session (⌘N)">+ New</button></div>
+    <div class="lv-list">${hereList}${list || (here ? "" : `<div class="quiet-line">${q ? `No live session matches “${esc(q)}”.` : "No live sessions."}</div>`)}${hereMore}${found}</div>
     <div class="lv-foot"><button data-lv="all">All sessions, as tiles →</button><span class="lv-keys"><kbd>↑</kbd><kbd>↓</kbd> move · <kbd>↵</kbd> open · <kbd>⌘K</kbd> open / close</span></div></div>`;
 }
 /** + New session: agent, folder (recent ones offered), an optional first message (images pasted, dropped or
@@ -292,8 +312,15 @@ function pickLive() {
   if (liveSel >= liveShown.length) return pickResult(searchVisible[liveSel - liveShown.length]);
   const r = liveShown[liveSel];
   if (!r) return;
+  if (r.fh !== undefined) return openHere(r.fh);
+  return openFound(r.sid, r.act);
+}
+/** An item or a loop ⌘K found on its page: it opens there. */
+function openHere(fh) {
+  const x = findHereRows[fh];
   liveOpen = newOpen = false;
-  return svAct(r.act, r.sid);
+  if (x) x.open();
+  renderMain();
 }
 /** ⌘K, ⌘F, / and the magnifier: the one place to find a session, live or not, or anything said in one. */
 function openFind() {

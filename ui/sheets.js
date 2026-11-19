@@ -127,9 +127,11 @@ function runSearch(q) {
 /** What ⌘K finds below the running sessions it lists, once you type: closed sessions, older ones, and what
  *  was said, in sections. `sel`: which of these rows is highlighted (its place on screen), -1 for none.
  *  Fills searchVisible, the rows' result indexes in screen order (↑ ↓ and Enter walk these). */
-function searchSections(q, sel) {
+function searchSections(q, sel, here = null) {
   const mark = (html) => q ? html.replace(new RegExp(esc(q).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), (m) => `<mark>${m}</mark>`) : html;
   searchVisible = [];
+  // On the Desk or Loops (#316): only what its own sessions said; sessions from elsewhere aren't listed.
+  const mine = (r) => !here?.sids || here.sids.has(r.session_id);
   const row = (r, i, inGroup = false) => {
     searchVisible.push(i);
     const on = searchVisible.length - 1 === sel ? "sel" : "";
@@ -144,7 +146,7 @@ function searchSections(q, sel) {
   // Sections, so it's clear what each result is: ended (Cue saw it), older (from Claude Code's own
   // archive, before Cue: Resume opens it again), and what was said.
   const section = (title, note, keep) => {
-    const rows = searchResults.map((r, i) => [r, i]).filter(([r]) => keep(r));
+    const rows = searchResults.map((r, i) => [r, i]).filter(([r]) => keep(r) && mine(r));
     return rows.length ? `<div class="sr-sec">${title.toUpperCase()} <span>${rows.length}</span><em>${note}</em></div>${rows.map(([r, i]) => row(r, i)).join("")}` : "";
   };
   // History, grouped by session: its name once, then its matches (the 3 newest, until you ask for more).
@@ -152,7 +154,7 @@ function searchSections(q, sel) {
   const history = () => {
     const groups = [];
     searchResults.forEach((r, i) => {
-      if (r.kind !== "message") return;
+      if (r.kind !== "message" || !mine(r)) return;
       let g = groups.find((x) => x.sid === r.session_id);
       if (!g) groups.push((g = { sid: r.session_id, r, rows: [] }));
       g.rows.push([r, i]);
@@ -167,7 +169,7 @@ function searchSections(q, sel) {
     }).join("");
   };
   return section("Closed", "ended; Cue has the conversation", (r) => r.kind === "session" && !r.live)
-    + section("Older", "from Claude Code, before Cue; matched by name", (r) => r.kind === "older")
+    + (here?.sids ? "" : section("Older", "from Claude Code, before Cue; matched by name", (r) => r.kind === "older"))
     + history();
 }
 /** What a session result is up to: live state, or ended. */

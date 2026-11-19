@@ -74,6 +74,9 @@ const addOn = {
   /** A live session found with ⌘K while one of its views is shown: opened there, true; false to show its conversation
    *  in a pop-up over the view (sheets.js openFound). */
   openFound: (sid) => false,
+  /** What ⌘K finds while one of its views is shown, above that view's sessions (sessions.js findHere): { title, rows:
+   *  [{ html, open }], sessions, sids, place, ask }, or null for the Board's ⌘K. */
+  findHere: (q) => null,
   /** Click rules as app/delegate.js walks them ((target, event) → true when taken), tried before the Board's own. */
   clicks: [],
   /** The crew page opened, closed, or went to another lead (team_page.js crewPageSet): `sid` the lead's open now, or
