@@ -104,6 +104,7 @@ pub fn call_hits(tool_input: &Value, branch: &dyn Fn(Option<&str>) -> Option<Str
 /// that deletes files or data (`data`). Each part of it (split at `&&`, `||`, `;`, `|` and new lines) is read alone.
 pub fn hits(command: &str, branch: &dyn Fn(Option<&str>) -> Option<String>) -> Vec<&'static str> {
     let mut out: Vec<&'static str> = vec![];
+    let command = &without_written_text(command);
     for part in command.split(['&', '|', ';', '\n', '(', ')', '`']).map(str::trim).filter(|p| !p.is_empty()) {
         let w: Vec<&str> = part.split_whitespace().map(|x| x.trim_matches(|c| c == '"' || c == '\'' || c == '{' || c == '}')).filter(|x| !x.is_empty()).collect();
         for k in part_hits(part, &w, branch) {
@@ -113,6 +114,52 @@ pub fn hits(command: &str, branch: &dyn Fn(Option<&str>) -> Option<String>) -> V
         }
     }
     in_order(out)
+}
+
+/// `command` without the text it hands a program to read (a here-document: `python3 - <<'EOF'` … `EOF`, or
+/// `cat > f <<EOF` … `EOF`): that text is a file's contents or a script for another language, so words in it
+/// ("rm -rf build" in a test, "DELETE FROM" in Rust) aren't commands run (#398). Kept when a shell runs it
+/// (`bash <<EOF`), since then each line is a command.
+fn without_written_text(command: &str) -> String {
+    let mut out = String::new();
+    let mut ends: Vec<String> = vec![];
+    let mut keep_body = false;
+    for line in command.split_inclusive('\n') {
+        if let Some(end) = ends.first() {
+            let done = line.trim_end_matches(['\n', '\r']).trim_start_matches('\t') == end;
+            if done {
+                ends.remove(0);
+            }
+            if keep_body || done {
+                out.push_str(line);
+            }
+            if ends.is_empty() {
+                keep_body = false;
+            }
+            continue;
+        }
+        out.push_str(line);
+        // The here-documents this line starts: each `<<` (not `<<<`), its word with quotes taken off.
+        let mut rest = line;
+        while let Some(i) = rest.find("<<") {
+            let after = &rest[i + 2..];
+            if after.starts_with('<') {
+                rest = after.trim_start_matches('<');
+                continue;
+            }
+            let word: String = after.trim_start_matches('-').trim_start().chars().take_while(|c| !c.is_whitespace() && !matches!(c, ';' | '&' | '|' | ')' | '<' | '>')).collect();
+            let word = word.trim_matches(|c| c == '\'' || c == '"').trim_start_matches('\\').to_string();
+            if word.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_') {
+                // Run by a shell (or on another machine): a shell or ssh before `<<` on its part of the line is sh, bash or zsh.
+                let before = rest[..i].rsplit(['&', '|', ';', '(']).next().unwrap_or("");
+                keep_body |= before.split_whitespace().any(|w| SHELLS.contains(&w.rsplit('/').next().unwrap_or(w)) || w == "ssh");
+                ends.push(word);
+            }
+            rest = after;
+        }
+    }
+    // A `<<` with no end line (one inside quotes, say) wasn't a here-document: everything is read.
+    if ends.is_empty() { out } else { command.to_string() }
 }
 
 fn in_order(list: Vec<&'static str>) -> Vec<&'static str> {
@@ -463,6 +510,23 @@ mod tests {
         for c in ["git tag", "git tag -l", "git tag -d v1", "gh release list", "cat scripts/release.sh", "grep release scripts", "git push origin v2-ui-fixes", "git push origin feature"] {
             assert!(!hits(c, &none).contains(&"release"), "{c}");
         }
+    }
+
+    #[test]
+    fn text_written_to_a_file_or_handed_to_python_is_not_read_as_commands() {
+        let none = |_: Option<&str>| None;
+        // #398: a file's contents (a test naming "rm -rf build", SQL in Rust) asked as if it deleted files.
+        assert!(hits("python3 - <<'EOF'\np='a.rs'\ns=s.replace('x', 'rm -rf build')\nEOF", &none).is_empty());
+        assert!(hits("cat >> src/a.rs <<'EOF'\n    tx.execute(\"DELETE FROM t\")?;\nEOF\ngit status", &none).is_empty());
+        assert!(hits("cat > a.txt <<-EOF\n\trm x\n\tEOF", &none).is_empty());
+        // What comes after the text is read again, and a shell's script is commands.
+        assert_eq!(hits("python3 - <<EOF\nprint(1)\nEOF\nrm a.txt", &none), vec!["data"]);
+        assert_eq!(hits("bash <<'EOF'\nrm -rf build\nEOF", &none), vec!["data"]);
+        assert_eq!(hits("ssh box sh <<EOF\nrm -rf build\nEOF", &none), vec!["data"]);
+        // A here-string is no here-document.
+        assert_eq!(hits("cat <<< x; rm a.txt", &none), vec!["data"]);
+        // A `<<` that never ends hides nothing.
+        assert_eq!(hits("python3 -c \"print(1<<EOF)\"\nrm a.txt", &none), vec!["data"]);
     }
 
     #[test]

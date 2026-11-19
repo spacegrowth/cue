@@ -27,3 +27,7 @@ tests/ui/shots/
 
 # cue-host for other machines (scripts/build-host.sh), carried in Cue.app
 src-tauri/host-builds/
+
+# Claude Code: the project's shared permission settings are kept; everything else in .claude/ (worktrees, local settings) is not
+.claude/*
+!.claude/settings.json

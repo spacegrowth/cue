@@ -1,0 +1,53 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Grep",
+      "Glob",
+      "Bash(cd *)",
+      "Bash(npx playwright test *)",
+      "Bash(npx playwright show-report *)",
+      "Bash(cargo test *)",
+      "Bash(cargo build *)",
+      "Bash(cargo check *)",
+      "Bash(cargo clippy *)",
+      "Bash(node scripts/*)",
+      "Bash(node --check *)",
+      "Bash(tests/run.sh *)",
+      "Bash(python3 *)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+      "Bash(git blame *)",
+      "Bash(git grep *)",
+      "Bash(git ls-files *)",
+      "Bash(git rev-parse *)",
+      "Bash(git merge-base *)",
+      "Bash(git branch --show-current)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(grep *)",
+      "Bash(rg *)",
+      "Bash(sed -n *)",
+      "Bash(cat *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(ls *)",
+      "Bash(wc *)",
+      "Bash(diff *)",
+      "Bash(cmp *)",
+      "Bash(sort *)",
+      "Bash(uniq *)",
+      "Bash(echo *)",
+      "Bash(pwd)",
+      "Bash(which *)",
+      "Bash(readlink *)",
+      "Bash(sqlite3 -readonly *)"
+    ],
+    "ask": [
+      "Bash(git push)",
+      "Bash(git push *)"
+    ]
+  }
+}
