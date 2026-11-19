@@ -135,20 +135,6 @@ function pick(it, qi, oi) {
 const qAsSuggested = (it) => hasSuggestions(it) && questions(it).every((q) => { const p = qPicked(it, q), s = suggestedOf(q); return p.length === (q.multiSelect ? s.length : 1) && p.every((l) => s.includes(l)); });
 /** What's picked, in a line: each question's answers (", "), the questions apart ("; "). */
 const qPickedLine = (it) => questions(it).map((q) => qPicked(it, q).map((l) => choiceLabel(l)[0]).join(", ") || "nothing yet").join("; ");
-/** What will happen if you send it, a line a question, from what each picked answer does (its label when it says
- *  nothing; an answer you typed, as you typed it). */
-function qOutcome(it) {
-  const qs = questions(it);
-  return qs.map((q, qi) => {
-    const picked = qPicked(it, q), name = q.header || (qs.length > 1 ? `Question ${qi + 1}` : "It");
-    if (!picked.length) return `${name}: nothing picked yet.`;
-    return picked.map((l) => {
-      const o = (q.options || []).find((x) => x.label === l), [label] = choiceLabel(l);
-      if (!o) return `Your answer${qs.length > 1 ? ` to ${name}` : ""}: “${l}”`;
-      return o.description ? (picked.length > 1 ? `${label}: ${o.description}` : o.description) : label;
-    }).join(" ");
-  });
-}
 /** Send's label: "Send answer", "Send 2 answers", or how many are still to answer (then it's off). */
 function qSendLabel(it) {
   const qs = questions(it), n = qs.length;
@@ -171,7 +157,7 @@ function qFoldBtns(it, choose, cls = "btn", sendAttr = `data-act="submit-answers
   return send + choose;
 }
 /** The whole question card: every question at once, each answer a row (its key, a radio or a box, its label, a
- *  Recommended tag, what it does), then what will happen if you send it. `attr`: the click that picks. */
+ *  Recommended tag, what it does). `attr`: the click that picks. */
 function questionHtml(it, attr = "data-pick") {
   const qs = questions(it), lit = stepOf(it);
   const secs = qs.map((q, qi) => {
@@ -186,8 +172,7 @@ function questionHtml(it, attr = "data-pick") {
     const yours = typed.length ? `<div class="typed-answer">Your answer: “${esc(typed.join(", "))}”</div>` : "";
     return `<div class="qc-sec">${head}<div class="qtext">${linkify(esc(q.question), sessBase(it.session_id))}${q.multiSelect && !head ? `<span class="dim"> · pick any</span>` : ""}</div><div class="qc-opts">${rows}</div>${yours}</div>`;
   }).join("");
-  const sum = `<div class="qc-sum"><span class="qc-h">If you send this</span>${qOutcome(it).map((l) => `<span>${esc(l)}</span>`).join("")}</div>`;
-  return `<div class="qc">${secs}${sum}</div>`;
+  return `<div class="qc">${secs}</div>`;
 }
 
 // ---------- shared pieces ----------

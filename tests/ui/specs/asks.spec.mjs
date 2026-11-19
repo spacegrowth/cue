@@ -77,7 +77,8 @@ test("A question it suggests an answer for: picked for you, said in the folded c
   const pane = page.locator(".active-pane");
   await expect(pane.locator(".qc-opt.rec")).toContainText("Redis");
   await expect(pane.locator(".qc-opt.rec")).toHaveAttribute("aria-pressed", "true");
-  await expect(pane.locator(".qc-sum")).toContainText("If you send this");
+  await expect(pane.locator(".qc-sum")).toHaveCount(0);   // no "If you send this" box (#399)
+  await expect(pane).not.toContainText("If you send this");
   await card(page, "n6").locator('[data-act="submit-answers"]').click();
   const c = await cue.called("respond", { id: "n6" });
   expect(c.args.decision.answers).toEqual({ "Which cache should the quotes endpoint use?": "Redis (Recommended)" });

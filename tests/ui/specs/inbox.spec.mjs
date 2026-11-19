@@ -171,7 +171,7 @@ test("a question's choices show what each means and which it recommends; the sid
   await page.locator('.ib-row[data-inbox-open="api"]').click();
   const pg = page.locator('.inbox-page[data-inbox-page="api"]');
   // Each choice: its number, its label (the "(Recommended)" made a tag), what it means; the suggestion picked (#383),
-  // and what sending it does.
+  // and no "If you send this" box (#399).
   const opts = pg.locator(".qc-opt");
   await expect(opts.locator(".qc-lt")).toHaveText(["Redis", "In-process LRU", "No cache"]);
   await expect(opts.nth(0).locator(".qc-rec")).toHaveText("Recommended");
@@ -179,7 +179,8 @@ test("a question's choices show what each means and which it recommends; the sid
   await expect(opts.locator(".qc-d")).toHaveText(["shared, 30s TTL", "fastest"]);
   await expect(opts.locator(".qc-k")).toHaveText(["1", "2", "3"]);
   await expect(opts.nth(0)).toHaveAttribute("aria-pressed", "true");
-  await expect(pg.locator(".qc-sum")).toHaveText("If you send thisshared, 30s TTL");
+  await expect(pg.locator(".qc-sum")).toHaveCount(0);
+  await expect(pg).not.toContainText("If you send this");
   await expect(pg.locator('[data-act="submit-answers"]')).toHaveText("Send answer");
   // Its words, the plan lifted out of them.
   await expect(pg.locator(".ib-said")).toContainText("The pricing lookup is 71% of each request.");
@@ -291,7 +292,7 @@ test("several questions show at once, each answer with what it does; one Send fo
   await expect(send).toHaveText("1 of 3 answered");
   await secs.nth(1).locator(".qc-opt", { hasText: "Replace it" }).click();
   await secs.nth(2).locator(".qc-opt", { hasText: "Whole UI suite" }).click();
-  await expect(page.locator(".inbox-page .qc-sum span:not(.qc-h)")).toHaveText(["Keep it", "Replace it", "Whole UI suite"]);
+  await expect(secs.locator(".qc-opt.on .qc-lt")).toHaveText(["Keep it", "Replace it", "Whole UI suite"]);
   // Nothing sent until Send.
   expect(await cue.calls("respond")).toEqual([]);
   await expect(send).toHaveText("Send 3 answers");
