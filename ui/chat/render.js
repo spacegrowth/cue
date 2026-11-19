@@ -199,7 +199,7 @@ function chatHtml(it, s, harness, paged = false, page = null) {
  *  sent and why. `key`: its row's key in the chat. */
 const outboxRow = (o, s, key) => `<div class="cv-you ${o.via ? "" : "sending"}" data-key="${esc(key)}"><div class="cv-you-text">${esc(o.text).replace(/\n/g, "<br>")}</div>${o.images.length ? `<div class="thumbs">${o.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}<div class="cv-meta" data-sid="${esc(o.sid)}">${/^kept in Cue/.test(o.via || "") ? "Not sent yet · it goes when this turn ends" : /^not sent: Model set to /.test(o.via || "") ? esc(o.via.slice(10)) : /^not sent: /.test(o.via || "") ? `Not sent · ${esc(o.via.slice(10))}${runHereBtn(o.via, s)}` : o.via ? `Sent · via ${esc(o.via)}` : esc(sendingMeta(o.sid))}</div></div>`;
 /** A message queued in its agent, read at its next step, with Send now. */
-const queuedRow = (s) => `<div class="cv-you queued" data-key="queued">${yourBubble(s.queued, `${s.session_id}:queued`, qPhase(), true)}${thumbs(s.queued.images)}<div class="cv-meta">Queued · it reads this when it finishes the current step · <button class="q-now" data-act="send-now" data-sid="${esc(s.session_id)}">Send now <kbd>⌘↵</kbd></button></div></div>`;
+const queuedRow = (s) => `<div class="cv-you queued" data-key="queued">${yourBubble(s.queued, `${s.session_id}:queued`, "", true)}${thumbs(s.queued.images)}<div class="cv-meta">Queued · it reads this when it finishes the current step · <button class="q-now" data-act="send-now" data-sid="${esc(s.session_id)}">Send now <kbd>⌘↵</kbd></button></div></div>`;
 /** A message kept for a session at work, to go when its turn ends: Cue's own crew message as Cue's bubble in the
  *  future tense (never one that looks like yours), yours as not sent yet; one that couldn't be sent says why. */
 function heldRow(s) {
@@ -207,7 +207,7 @@ function heldRow(s) {
   const sid = esc(s.session_id), now = `<button class="q-now" data-act="held-now" data-sid="${sid}">Send now <kbd>⌘↵</kbd></button>`;
   const cue = cueSaid(s.held.text);
   if (cue && !heldWhy) return cueSaidLine({ ...cue, html: cueWill(cue.html) }, `${s.session_id}:held`, s.held.text, `not sent yet · it goes when this turn ends · ${now}`);
-  return `<div class="cv-you queued held" data-key="held">${yourBubble(s.held, `${s.session_id}:held`, qPhase(), true)}${thumbs(s.held.images)}<div class="cv-meta">${heldWhy ? `Couldn't send it: ${esc(heldWhy.slice(15))}` : "Not sent yet · it goes when this turn ends"} · <button class="q-now" data-act="held-edit" data-sid="${sid}">Edit</button> · ${now}</div></div>`;
+  return `<div class="cv-you queued held" data-key="held">${yourBubble(s.held, `${s.session_id}:held`, "", true)}${thumbs(s.held.images)}<div class="cv-meta">${heldWhy ? `Couldn't send it: ${esc(heldWhy.slice(15))}` : "Not sent yet · it goes when this turn ends"} · <button class="q-now" data-act="held-edit" data-sid="${sid}">Edit</button> · ${now}</div></div>`;
 }
 /** A message Cue sends by itself later: at your time, or (Cue's carry-on) when the usage limit it stopped on resets. */
 function sendAtRow(s) {
@@ -217,7 +217,7 @@ function sendAtRow(s) {
   const resets = s.limit?.resets_ms ? ` (${new Date(s.limit.resets_ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})` : "";
   const when = l.failed ? `Couldn't send it: ${esc(l.failed)}` : l.at_ms ? `Not sent yet · Cue sends it ${day} at ${hm}` : `Not sent yet · Cue sends it when your usage limit resets${resets}`;
   const acts = `${l.at_ms ? `<button class="q-now" data-act="send-at-edit" data-sid="${sid}">Edit</button> · ` : ""}<button class="q-now" data-act="send-at-x" data-sid="${sid}">Cancel</button> · <button class="q-now" data-act="send-at-now" data-sid="${sid}">Send now</button>`;
-  return `<div class="cv-you queued held" data-key="send-at">${yourBubble({ role: "you", text: l.text, at_ms: l.at_ms || Date.now() }, `${s.session_id}:send-at`, qPhase(), true)}<div class="cv-meta">${when} · ${acts}</div></div>`;
+  return `<div class="cv-you queued held" data-key="send-at">${yourBubble({ role: "you", text: l.text, at_ms: l.at_ms || Date.now() }, `${s.session_id}:send-at`, "", true)}<div class="cv-meta">${when} · ${acts}</div></div>`;
 }
 /** In the chat where a restart (after an MCP change) ended: back, with which servers and how long it took,
  *  or why it didn't finish. The latest one also says how each server did, once Claude Code has said

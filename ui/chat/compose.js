@@ -119,9 +119,6 @@ async function interrupt(sid) {
 }
 const box_ = (key, placeholder, label, attrs, alt = "", extra = "", quick = true) => box(key, placeholder, label, attrs, true, alt, extra, quick);
 
-/** A waiting message's tracing outline: the window redraws every few seconds, so each copy starts where
- *  the clock says the trace is, and it goes round smoothly instead of jumping back to the start. */
-const qPhase = () => `--qd:-${Date.now() % 4000}ms`;
 /** Remember how the last message went out ("typed via tmux", "queued"), shown in the Active pane. */
 function sent(sid, text, images, via) {
   lastSent = { sid, text, images, via: String(via || "").replace(/^sent via /, ""), at: Date.now() };

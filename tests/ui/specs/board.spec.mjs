@@ -277,9 +277,17 @@ test.describe("a hosted lead's crew on its own page", () => {
     await cue.change((st) => {
       const lead = st.sessions.find((s) => s.session_id === "lead");
       lead.state = "working";
-      lead.queued = { role: "you", text: "and keep spike out of it", at_ms: lead.thread.at(-1).at_ms + 2000, images: [] };
+      lead.thread.push({ role: "you", text: "go on with the rest", at_ms: lead.thread.at(-1).at_ms + 1500, images: [] });
+      lead.queued = { role: "you", text: "and keep spike out of it", at_ms: lead.thread.at(-1).at_ms + 500, images: [] };
     });
     await expect(chat.locator(".cv-you.queued").last(), "what you queued, newest last").toContainText("and keep spike out of it");
+    // #369: a queued message is the same bubble as a sent one; only the line under it says it's queued.
+    const look = (l) => l.locator(".cv-you-text").first().evaluate((el) => {
+      const c = getComputedStyle(el), a = getComputedStyle(el, "::after");
+      return { bg: c.backgroundColor, ring: c.boxShadow, trace: a.content === "none" ? "" : a.backgroundImage };
+    });
+    expect(await look(chat.locator(".cv-you.queued").last()), "queued looks like sent").toEqual(await look(chat.locator(".cv-you:not(.queued):not(.cue-you)").last()));
+    await expect(chat.locator(".cv-you.queued .cv-meta").last()).toContainText("Queued");
     await expect(page.locator(".cp-lead .cp-lr")).toHaveText(/^working · /);
   });
 
