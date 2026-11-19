@@ -270,8 +270,9 @@ fn a_big_cold_session_is_marked_for_no_new_work() {
     w.hub().desk_set_member(&project, "small1", true).unwrap();
     w.tick(true);
     let s = w.hub().desk_summary(&project, "lead01", false).0;
-    let line = |sid: &str| s.lines().find(|l| l.contains(&format!("sid:{sid}"))).unwrap_or_default().to_string();
-    assert!(line("idle01").ends_with(", 95k, cold: no new work)"), "{s}");
+    // A session's route: its line, or its part of the one Older line (#363).
+    let line = |sid: &str| s.lines().flat_map(|l| l.split("; ")).find(|l| l.contains(&format!("sid:{sid}"))).unwrap_or_default().to_string();
+    assert!(line("idle01").ends_with("sid:idle01, idle, 95k, cold: no new work)"), "{s}");
     assert!(!line("small1").contains("cold") && !line("webui1").contains("cold"), "a small cold one and a warm one aren't marked: {s}");
     assert!(crate::desk::LEAD_SKILL.contains("A session marked cold takes no new work"), "the lead's rules say what the mark means");
 }

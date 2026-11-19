@@ -233,33 +233,44 @@ impl Hub {
                 failed.push((format!("{ROUTES_HELD}{project}"), held.clone()));
             }
 
-            let mut on: Vec<_> = routable(st, project).into_iter()
+            // Sessions with work (#363) get a line each; the rest of the Desk's, idle with no recent item, one line.
+            let work = super::desk_members::with_work(st, project, now);
+            let (on, older): (Vec<_>, Vec<_>) = routable(st, project).into_iter()
                 .filter(|s| s.origin.session_id != lead && st.desk.on_desk(project, &s.origin.session_id))
-                .map(|s| (idle_route(st, s), s))
-                .collect();
+                .partition(|s| work.contains(&s.origin.session_id));
+            let mut on: Vec<_> = on.into_iter().map(|s| (idle_route(st, s), s)).collect();
             on.sort_by_key(|(idle, _)| !idle);
-            if on.is_empty() {
+            if on.is_empty() && older.is_empty() {
                 out.push_str("\nNo Desk sessions available. Use ROUTE: #<id> -> new for a new session.\n");
             } else {
                 out.push_str("\nDesk routes (or use ROUTE: #<id> -> new):\n");
             }
-            for (idle, s) in on {
+            // One session as a route: its name, its sid's start, its state, its crew and its size and cache.
+            let route_of = |s: &crate::sessions::Session| {
                 let sid = &s.origin.session_id;
                 let id: String = sid.chars().take(8).collect();
-                out.push_str(&format!("- {} (sid:{id}", shown_name(s)));
-                if idle {
-                    out.push_str(", idle");
+                let mut r = format!("{} (sid:{id}", shown_name(s));
+                if idle_route(st, s) {
+                    r.push_str(", idle");
                 } else if matches!(s.state.as_str(), "" | "idle" | "waiting") {
-                    out.push_str(", work pending");
+                    r.push_str(", work pending");
                 } else {
-                    out.push_str(&format!(", {}", s.state));
+                    r.push_str(&format!(", {}", s.state));
                 }
                 if !s.team.is_empty() {
                     let crew: Vec<_> = s.team.iter().map(|t| t.name.as_str()).collect();
-                    out.push_str(&format!(", crew: {}", crew.join(", ")));
+                    r.push_str(&format!(", crew: {}", crew.join(", ")));
                 }
-                out.push_str(&context_note(st, sid, true, now));
-                out.push_str(")\n");
+                r.push_str(&context_note(st, sid, true, now));
+                r.push(')');
+                r
+            };
+            for (_, s) in on {
+                out.push_str(&format!("- {}\n", route_of(s)));
+            }
+            if !older.is_empty() {
+                let all: Vec<String> = older.iter().map(|s| route_of(s)).collect();
+                out.push_str(&format!("Older, idle with no recent item: {}\n", all.join("; ")));
             }
             if let Some(away) = super::desk_away::away_block(st, project, now) {
                 out.push('\n');

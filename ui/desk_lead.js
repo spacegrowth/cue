@@ -65,9 +65,23 @@ function deskSessionsOf(project, d = deskOf(project)) {
   const rows = (state.sessions || []).filter((s) => s.project === deskWorkspace(d) && s.session_id && !(state.desk?.projects || []).some((other) => other.project !== project && other.lead?.sid === s.session_id)).map((s) => {
     const sid = s.session_id, crew = deskCrew(sid).length;
     const lead = crew > 0 || deskLead(d)?.sid === sid || d.items.some((i) => i.holder?.kind === "lead" && i.holder.sid === sid);
-    return { sid, name: deskHolderName(sid), lead, sub: !lead ? "session" : crew ? `lead, crew of ${crew}` : "lead, on its own" };
+    return { sid, name: deskHolderName(sid), lead, work: deskHasWork(d, sid), sub: !lead ? "session" : crew ? `lead, crew of ${crew}` : "lead, on its own" };
   });
   return rows.sort((a, b) => (b.lead ? 1 : 0) - (a.lead ? 1 : 0));
+}
+
+/** Whether session `sid` has work on Desk `d` (#363): the hub's list of the ones a Desk's lists show (its lead, one
+ *  holding an item, or whose item was done in the last day, or busy on the Desk now). */
+const deskHasWork = (d, sid) => !d.with_work || d.with_work.includes(sid);
+/** Older lines open now, by where they are ("give:<id>", "lead:<desk>", "add:<desk>", "side:<desk>"): shut by default,
+ *  and shut again when the window opens. */
+const deskOlderOpen = new Set();
+/** A list's `rows` with work, each by `draw`; then the rest (idle, no recent item) folded into one "N older" line
+ *  that opens in place (data-desk-older). `rows` carry `work`, as deskSessionsOf's do. */
+function deskWithOlder(key, rows, draw, cls = "dk-sfold dk-older") {
+  const now = rows.filter((r) => r.work), older = rows.filter((r) => !r.work), open = deskOlderOpen.has(key);
+  const fold = older.length ? `<button class="${cls}" data-desk-older="${esc(key)}" aria-expanded="${open}">${older.length} older · ${open ? "hide" : "show"}</button>${open ? older.map(draw).join("") : ""}` : "";
+  return now.map(draw).join("") + fold;
 }
 
 /** The chat card when no one runs the Desk yet, or when changing who does: "Who runs this Desk?", then a button
@@ -82,7 +96,7 @@ function deskPicker(d) {
   else if (rows.length === 1 && !cur) body = `<div class="dk-acts dk-pick1"><button class="btn primary" data-desk-lead="${esc(rows[0].sid)}" ${dis}>${label(rows[0].sid, `Let ${esc(rows[0].name)} run it`)}</button>${fresh(false)}</div>`;
   else {
     const row = (r) => `<div class="dk-who"><i class="${r.lead ? "" : "idle"}"></i><div><div class="dk-lt">${esc(r.name)}</div><div class="dk-ls">${esc(r.sub)}</div></div><button class="btn small" data-desk-lead="${esc(r.sid)}" ${dis}>${label(r.sid, "Run it")}</button></div>`;
-    body = `<div class="dk-whos">${rows.map(row).join("")}</div>${fresh(false)}`;
+    body = `<div class="dk-whos">${deskWithOlder(`lead:${d.project}`, rows, row)}</div>${fresh(false)}`;
   }
   const keep = cur ? `<button class="dk-link dk-keep" data-desk-keep>Keep ${esc(deskLeadName(d))}</button>` : "";
   return `<div class="dk-card dk-right"><div class="dk-pick"><h2>Who runs this Desk?</h2><p>A dispatcher takes what you bring here, hands each item to a session, and tells you why.</p>${body}${keep}</div></div>`;
@@ -111,7 +125,8 @@ async function deskSetLead(project, sid) {
 /** "Give to…" and, open, its menu: the project's sessions (leads first) and New session. */
 function deskGive(i, at) {
   const open = deskGiveFor?.id === i.id && deskGiveFor.at === at;
-  const rows = open ? deskSessionsOf(i.project).map((r) => `<button role="menuitem" data-desk-give-to="${esc(r.sid)}" data-id="${esc(i.id)}"><span>${esc(r.name)}</span><span class="dk-ls">${esc(r.sub)}</span></button>`).join("") : "";
+  const draw = (r) => `<button role="menuitem" data-desk-give-to="${esc(r.sid)}" data-id="${esc(i.id)}"><span>${esc(r.name)}</span><span class="dk-ls">${esc(r.sub)}</span></button>`;
+  const rows = open ? deskWithOlder(`give:${i.id}`, deskSessionsOf(i.project), draw, "dk-older-mi") : "";
   const menu = open ? `<span class="dk-givemenu" role="menu">${rows}<button role="menuitem" data-desk-act="start_now" data-id="${esc(i.id)}"><span>New session</span></button></span>` : "";
   if (open) queueMicrotask(deskGivePlace);
   return `<span class="dk-givewrap"><button class="${at === "row" ? "dk-link dk-give" : "btn small"}" data-desk-give="${esc(i.id)}" data-at="${at}" aria-expanded="${open}">Give to…</button>${menu}</span>`;

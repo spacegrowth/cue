@@ -144,3 +144,69 @@ impl Hub {
         }
     }
 }
+
+/// How long a finished item keeps its holder among the sessions with work, and how long a session on a Desk stays on it
+/// idle with no item before Cue takes it off (#363): a day.
+pub(super) const WORK_FRESH_MS: u64 = 24 * 60 * 60_000;
+
+/// Whether session `s` is doing something now: at work, asking you, or with a message waiting to go in.
+fn busy(s: &crate::sessions::Session) -> bool {
+    !matches!(s.state.as_str(), "" | "idle" | "waiting" | "stopped") || s.compacting_ms > 0 || s.queued.is_some() || s.held.is_some()
+}
+
+/// The sessions of Desk `project` that have work (#363), the ones its lists show: its lead, a session holding an item
+/// not done or one whose item was done in the last day, and one on the Desk that's busy now. Every other session of
+/// the project folds into one "older" line in those lists.
+pub(super) fn with_work(st: &Store, project: &str, now: u64) -> std::collections::BTreeSet<String> {
+    let since = super::desk::secs(now.saturating_sub(WORK_FRESH_MS));
+    let mut out: std::collections::BTreeSet<String> = st.desk.items.iter()
+        .filter(|i| i.project == project && (i.state != "done" || i.done_at.unwrap_or(i.updated) >= since))
+        .filter_map(|i| i.holder.as_ref().map(|h| h.to().to_string()))
+        .filter(|sid| !sid.is_empty())
+        .collect();
+    out.extend(st.desk.lead_sid(project).map(str::to_string));
+    for sid in st.desk.members.get(project).into_iter().flatten() {
+        if st.sessions.get(sid).is_some_and(busy) {
+            out.insert(sid.clone());
+        }
+    }
+    out
+}
+
+/// The sessions to take off their Desks now (#363): on one, not its lead, live, idle a day, holding no item and with
+/// none done in the last day. Taken off without asking you; a route to one again asks first, as for any session
+/// not on the Desk.
+pub(super) fn idle_a_day(st: &Store, now: u64) -> Vec<(String, String)> {
+    let mut out = vec![];
+    for (project, sids) in &st.desk.members {
+        let work = with_work(st, project, now);
+        for sid in sids {
+            let Some(s) = st.sessions.get(sid) else { continue };
+            if !work.contains(sid) && !busy(s) && now.saturating_sub(s.since_ms) >= WORK_FRESH_MS {
+                out.push((project.clone(), sid.clone()));
+            }
+        }
+    }
+    out
+}
+
+impl Hub {
+    /// Take off their Desks the sessions idle for a day with no item (`idle_a_day`), saved; part of the ~10 s tick.
+    pub(crate) fn desk_retire_idle(&self) {
+        let now = now_ms();
+        let gone = self.write(|st| {
+            let gone = idle_a_day(st, now);
+            for (project, sid) in &gone {
+                st.desk.leave(project, sid);
+            }
+            gone
+        });
+        if gone.is_empty() {
+            return;
+        }
+        for (project, sid) in &gone {
+            crate::db::desk_drop_member(project, sid);
+        }
+        self.changed();
+    }
+}

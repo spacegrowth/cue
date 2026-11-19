@@ -134,8 +134,9 @@ fn the_lead_sees_only_the_desks_sessions_as_routes() {
 
     w.hub().desk_set_member(&project, &h, true).unwrap();
     let block = w.hub().desk_summary(&project, &d, false).0;
+    // On the Desk with no item: on the one Older line (#363).
     let (_, on) = block.split_once("Desk routes (or use ROUTE: #<id> -> new):\n").unwrap();
-    assert!(on.contains(&format!("cue-teams (sid:{id}, idle)")), "{on}");
+    assert!(on.contains(&format!("Older, idle with no recent item: cue-teams (sid:{id}, idle)")), "{on}");
     assert!(!block.contains("Off the Desk"), "{block}");
 }
 
@@ -176,4 +177,46 @@ fn removing_the_dispatcher_keeps_its_session_and_persists() {
     assert!(w.hub().session_origin(&lead).is_some());
     w.relaunch();
     assert!(desk(&w, &project)["lead"].is_null());
+}
+
+fn with_work(w: &World, project: &str) -> Vec<String> {
+    desk(w, project)["with_work"].as_array().unwrap().iter().map(|m| m.as_str().unwrap().to_string()).collect()
+}
+
+/// Only the sessions with work show (#363): an idle one with no item is "older" (the lead's routes say it on one
+/// line), one holding an item shows, and one idle a day with no item comes off the Desk without asking.
+#[test]
+fn a_desk_shows_sessions_with_work_and_takes_off_one_idle_a_day() {
+    let w = World::new();
+    let (h, project, d) = off_desk(&w);
+    w.hub().desk_set_member(&project, &h, true).unwrap();
+    assert_eq!(with_work(&w, &project), vec![d.clone()], "cue-teams has no item: older");
+    let routes = w.hub().desk_summary(&project, &d, false).0;
+    assert!(routes.contains("Older, idle with no recent item: cue-teams (sid:"), "{routes}");
+    assert!(!routes.contains("- cue-teams (sid:"), "{routes}");
+
+    // Idle under a day: it stays on the Desk.
+    w.advance(23 * 60 * 60_000);
+    w.hub().desk_retire_idle();
+    assert_eq!(members(&w, &project), vec![d.clone(), h.clone()]);
+
+    // Given an item, it has work: a line of its own, and it stays however long it holds it.
+    ends(&w, &d, "ITEM: bug | Header jumps | done when: it stays put\nROUTE: #new -> cue-teams | why: it made the header");
+    assert!(with_work(&w, &project).contains(&h));
+    let routes = w.hub().desk_summary(&project, &d, false).0;
+    assert!(routes.contains("- cue-teams (sid:") && !routes.contains("Older,"), "{routes}");
+    ends(&w, &h, "Still on it.");
+    w.advance(2 * 24 * 60 * 60_000);
+    w.hub().desk_retire_idle();
+    assert!(members(&w, &project).contains(&h), "it holds an open item");
+
+    // Its item gone and a day idle: off the Desk, saved, with no card asking you.
+    let id = header(&w, &project)["id"].as_str().unwrap().to_string();
+    w.hub().desk_item_act(&id, "drop", "").unwrap();
+    w.settle();
+    w.hub().desk_retire_idle();
+    assert!(!members(&w, &project).contains(&h), "idle over a day, no item");
+    assert!(!crate::db::desk_members().contains(&(project.clone(), h.clone())), "saved");
+    assert!(members(&w, &project).contains(&d), "the lead stays");
+    assert!(!asks(&w, &d).iter().any(|(_, q)| q.contains("cue-teams")), "no card asks about it: {:?}", asks(&w, &d));
 }

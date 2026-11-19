@@ -168,6 +168,8 @@ impl Hub {
         self.warn_cold(cold, now);
         // A Desk item's commit waiting for files a session was editing: made once they're free.
         self.desk_commit_waiting();
+        // Sessions idle a day on a Desk with no item come off it (#363).
+        self.desk_retire_idle();
     }
 
     /// The scan kept for the window, and of what it found, what wasn't told already: a heads-up once per expiry,

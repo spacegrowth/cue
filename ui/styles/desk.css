@@ -216,6 +216,10 @@
 .dk-givemenu button { display: flex; align-items: baseline; gap: 8px; padding: 7px 10px; border: 0; border-radius: 7px; background: none; color: var(--ink); font: 13px var(--sans); text-align: left; white-space: nowrap; cursor: pointer; }
 .dk-givemenu button:hover { background: var(--panel-2); }
 .dk-givemenu button > span:first-child { font-weight: 600; }
+/* The "N older" line in a menu or picker (#363): quiet, shut by default; the idle sessions with no recent item under it. */
+.dk-givemenu button.dk-older-mi, .dk-older-mi { display: block; width: 100%; padding: 5px 10px; border: 0; border-radius: 7px; background: none; color: var(--muted); font: 600 12px var(--sans); text-align: left; cursor: pointer; }
+.dk-older-mi:hover { color: var(--ink); background: var(--panel-2); }
+.dk-whos .dk-older { padding: 8px 14px; }
 .dk-givemenu button:last-child { margin-top: 2px; border-top: 1px solid var(--line); border-radius: 0 0 7px 7px; }
 
 /* Who runs this Desk? */

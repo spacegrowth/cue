@@ -252,6 +252,11 @@ const DESK_CLICKS = {
     renderMain();
     document.querySelector("[data-desk-add-session]")?.focus();
   },
+  deskOlder: (el) => {
+    const key = el.dataset.deskOlder;
+    if (!deskOlderOpen.delete(key)) deskOlderOpen.add(key);
+    renderMain();
+  },
   deskDoneFold: (el) => {
     const sid = el.dataset.deskDoneFold;
     if (deskFoldOpen.has(sid)) deskFoldOpen.delete(sid); else deskFoldOpen.add(sid);
