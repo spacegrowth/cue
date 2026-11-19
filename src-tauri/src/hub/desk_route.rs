@@ -57,13 +57,15 @@ pub(super) fn decide(st: &mut Store, project: &str, item: Option<String>, by: &s
     fx.decisions.push(id);
 }
 
-/// A judgment call (a DECIDED line) noted on `project`'s Desk: `decide`, shown in its Decisions list.
+/// A judgment call (a DECIDED line) noted on `project`'s Desk: `decide`, shown in its Decisions list unless it's
+/// housekeeping (`minor`) or dispatch work (DeskDecision::sort_call; `lead`: the Desk lead's, else its holder's).
 #[allow(clippy::too_many_arguments)]
-pub(super) fn decide_call(st: &mut Store, project: &str, item: Option<String>, by: &str, sid: &str, (text, why, minor): (&str, &str, bool), now: u64, fx: &mut Effects) {
+pub(super) fn decide_call(st: &mut Store, project: &str, item: Option<String>, by: &str, sid: &str, (text, why, minor): (&str, &str, bool), lead: bool, now: u64, fx: &mut Effects) {
     decide(st, project, item, by, sid, text, why, now, fx);
     if let Some(d) = st.desk.decisions.last_mut() {
         d.call = true;
         d.minor = minor;
+        d.sort_call(lead);
     }
 }
 

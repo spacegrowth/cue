@@ -472,6 +472,42 @@ pub struct DeskDecision {
     pub act: String,
 }
 
+/// Words that make one of the Desk lead's calls dispatch work (routing, starting, order, sending back, clashes,
+/// landing, copies, closing) rather than a product choice: kept, but behind "Show all" (#403).
+const LEAD_DISPATCH: &[&str] = &[
+    "route", "routes", "routed", "routing", "re-route", "reroute", "re-routed", "hand-off", "handoff", "hand off", "handed",
+    "send back", "sent back", "send-back", "sends back", "sent", "clash", "clashes", "conflict", "conflicts", "merge", "merged",
+    "land", "lands", "landed", "landing", "commit", "commits", "committed", "push", "pushed", "copy", "copies", "worktree",
+    "resume", "resumes", "resumed", "hold", "held", "pause", "paused", "restart", "restarted", "start", "starts", "started",
+    "wait", "waits", "queue", "queued", "order", "filed", "told", "close", "closes", "closed", "routes first", "takes over",
+];
+/// The same for an item holder's calls, which are mostly about what it built (and may well name routing as a
+/// feature): only plain notes of sending work back, a landing clash or a hand-off.
+const HOLDER_DISPATCH: &[&str] = &["sent back", "sent it back", "landing clash", "merge clash", "merge conflict", "handed off", "hand-off to", "re-routed"];
+
+/// Whether a call's words `text` are dispatch work, not a choice worth the owner's glance: `lead`, the Desk lead's
+/// (its job is dispatching, so an item number or any dispatch word marks it); else an item holder's.
+pub fn dispatch_call(text: &str, lead: bool) -> bool {
+    let lower = text.to_lowercase();
+    let t = format!(" {} ", lower.split(|c: char| !(c.is_alphanumeric() || c == '-' || c == '#')).filter(|w| !w.is_empty()).collect::<Vec<_>>().join(" "));
+    let has = |w: &&str| t.contains(&format!(" {w} "));
+    if lead {
+        t.split(' ').any(|w| w.len() > 1 && w.starts_with('#') && w[1..].chars().all(|c| c.is_ascii_digit())) || LEAD_DISPATCH.iter().any(has)
+    } else {
+        HOLDER_DISPATCH.iter().any(has)
+    }
+}
+
+impl DeskDecision {
+    /// A call that's dispatch work (`dispatch_call`; one noted as yours, like a Send back note, always is) goes behind
+    /// "Show all", off the Decisions list (#403). `lead`: whether the Desk lead made it.
+    pub fn sort_call(&mut self, lead: bool) {
+        if self.call && (self.sid.is_empty() || dispatch_call(&self.text, lead)) {
+            self.minor = true;
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct DeskDelivery {
     pub session_id: String,
@@ -682,6 +718,27 @@ impl Desk {
     }
 
     /// The item `id` names: by its number, or by the tag it had before (`alias`).
+    /// Calls kept from before #403 sorted as new ones are: one whose maker didn't hold its item is the lead's.
+    /// Those that changed.
+    pub fn sort_calls(&mut self) -> Vec<String> {
+        let held: HashMap<&str, &Holder> = self.items.iter().filter_map(|i| i.holder.as_ref().map(|h| (i.id.as_str(), h))).collect();
+        let mut changed = Vec::new();
+        for d in self.decisions.iter_mut().filter(|d| d.call && !d.minor) {
+            let known = d.item_id.as_deref().map(|i| self.items.iter().any(|x| x.id == i));
+            // An item no longer loaded: can't tell, so it's taken as its holder's (the narrower rule).
+            let lead = match (d.item_id.as_deref(), known) {
+                (None, _) => true,
+                (Some(_), Some(false)) => false,
+                (Some(i), _) => !held.get(i).is_some_and(|h| h.is(&d.sid)),
+            };
+            d.sort_call(lead);
+            if d.minor {
+                changed.push(d.id.clone());
+            }
+        }
+        changed
+    }
+
     pub fn item(&self, id: &str) -> Option<&DeskItem> {
         self.items.iter().find(|i| i.id == id).or_else(|| self.items.iter().find(|i| !i.alias.is_empty() && i.alias == id))
     }

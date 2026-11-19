@@ -105,7 +105,7 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx
     route_answers(st, project, lsid, answers, fx);
     for (what, why, minor) in crate::sessions::crew_log::calls_marked(text) {
         let item = item_named(st, project, &what).or_else(|| item_named(st, project, &why));
-        decide_call(st, project, item, &name, lsid, (&what, &why, minor), now, fx);
+        decide_call(st, project, item, &name, lsid, (&what, &why, minor), true, now, fx);
     }
 }
 

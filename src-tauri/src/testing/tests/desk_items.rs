@@ -185,6 +185,47 @@ fn housekeeping_calls_are_marked_and_going_back_carries_your_answer() {
 }
 
 #[test]
+fn only_product_calls_make_the_decisions_list_routing_and_sends_stay_off_it() {
+    let mut w = World::new();
+    let (h, project) = holder(&w);
+    let d = new_lead(&w, &project);
+    ends(&w, &d, "ITEM: Header\nROUTE: #new -> cue-teams | why: it knows");
+    let id = desk(&w, &project)["items"][0]["id"].as_str().unwrap().to_string();
+    ends(&w, &d, &format!("DECIDED: #{id} lands before the footer — they touch the same file\nDECIDED: Sent the landing clash back to its session — it's theirs\nDECIDED: Hold all work until the 1:30 reset — out of tokens\nDECIDED: Away mode is one switch for all Desks — simpler"));
+    ends(&w, &h, "DECIDED: Your new order also changes which item the lead routes first — that's what it's for\nDECIDED: Sent it back to the session holding #9 — the clash was its own");
+    let shown = |w: &World| -> Vec<String> {
+        let decs: Vec<_> = desk(w, &project)["decisions"].as_array().unwrap().iter().filter(|c| c["call"] == true).cloned().collect();
+        assert_eq!(decs.len(), 6, "all still kept as calls (behind Show all): {decs:?}");
+        decs.iter().filter(|c| c.get("minor").is_none()).map(|c| c["text"].as_str().unwrap().to_string()).collect()
+    };
+    let want = vec!["Your new order also changes which item the lead routes first".to_string(), "Away mode is one switch for all Desks".to_string()];
+    assert_eq!(shown(&w), want);
+    // Calls kept from before are sorted the same way at the next start.
+    for c in desk(&w, &project)["decisions"].as_array().unwrap().iter().filter(|c| c["call"] == true) {
+        let mut c: crate::desk::DeskDecision = serde_json::from_value(c.clone()).unwrap();
+        c.minor = false;
+        crate::db::desk_put_decision(&c);
+    }
+    w.relaunch();
+    assert_eq!(shown(&w), want);
+}
+
+#[test]
+fn a_call_is_dispatch_work_by_its_words_and_who_made_it() {
+    use crate::desk::model::dispatch_call;
+    for t in ["#366 lands before #373", "Took back the repository copy held by #356", "No changes to routing", "Resume work now instead of at 1:30", "Filed the clash-and-Send-back fix after the Away follow-ups"] {
+        assert!(dispatch_call(t, true), "{t}");
+    }
+    for t in ["Away mode is one switch for all Desks, not one per Desk", "default Away budget is $10, changeable on the rules card", "while Away, the lead never builds an unpicked mock"] {
+        assert!(!dispatch_call(t, true), "{t}");
+    }
+    for t in ["Start sets a held item back to new and tells the lead", "Changed the #145 test so a new reply no longer pulls you down", "Resume sends the session a short note"] {
+        assert!(!dispatch_call(t, false), "{t}");
+    }
+    assert!(dispatch_call("Sent #361's landing clash back to its session", false));
+}
+
+#[test]
 fn undo_asks_whoever_decided_to_go_back() {
     let w = World::new();
     let (h, project) = holder(&w);
