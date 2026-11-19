@@ -301,11 +301,20 @@ fn cues_own_copies_share_its_node_modules_and_one_build_folder_and_removing_one_
     let target = std::fs::read_link(path.join("src-tauri/target")).expect("the build folder linked");
     assert!(target.ends_with(".claude/worktrees/desk-target"), "{}", target.display());
     std::fs::write(target.join("built"), "1\n").unwrap();
+    // What earlier builds left in it (#377): object files no build reads again, beside what builds use.
+    let deps = target.join("debug/deps");
+    std::fs::create_dir_all(&deps).unwrap();
+    let left = deps.join("cue_lib-0123456789abcdef.0a1b2c3d4e5f.0g1h2i.rcgu.o");
+    for f in [&left, &deps.join("cue_lib-0123456789abcdef"), &deps.join("libserde-0123456789abcdef.rlib")] {
+        std::fs::write(f, "1\n").unwrap();
+    }
     std::fs::write(path.join("a.txt"), "a\n").unwrap();
     ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
     assert_eq!(git(&dir, &["show", "--name-only", "--format=", "HEAD"]).trim(), "a.txt", "the links aren't in its commit");
     assert!(!path.exists(), "the copy is gone");
     assert!(dir.join("node_modules/x/index.js").is_file() && target.join("built").is_file(), "what they pointed at stays");
+    assert!(!left.exists(), "the leftover object files are cleared as it lands");
+    assert!(deps.join("cue_lib-0123456789abcdef").is_file() && deps.join("libserde-0123456789abcdef.rlib").is_file(), "what builds use stays");
 }
 
 trait Pipe: Sized {

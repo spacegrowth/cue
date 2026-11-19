@@ -54,6 +54,16 @@ debug = "line-tables-only"
 split-debuginfo = "packed"
 strip = "debuginfo"
 
+# Builds and tests of Cue's own code keep no object files. On macOS debug info stays in each build's object files
+# (rustc's split-debuginfo "unpacked"), and an incremental build names its objects anew, so every rebuild added
+# a set and none was ever removed: about 10 GB a day in a busy build folder (#377). Off: the objects go once the
+# program is linked. A backtrace still names its functions, without file and line (a panic still says where).
+[profile.dev.package.cue]
+split-debuginfo = "off"
+
+[profile.dev.package.xtask]
+split-debuginfo = "off"
+
 [target.'cfg(target_os = "macos")'.dependencies]
 rusqlite = { version = "0.32", features = ["bundled"] }
 objc2 = "0.6"

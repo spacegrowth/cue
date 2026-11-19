@@ -378,6 +378,7 @@ impl Hub {
         let _ = self.desk_trees_free(&t.repo);
         self.finish_release(id);
         self.finish_after(id, std::slice::from_ref(&t.repo));
+        clear_build_leftovers(&std::path::Path::new(&t.repo).join(TREES).join(SHARED_TARGET));
     }
 }
 
@@ -485,6 +486,30 @@ fn link_shared(repo: &str, path: &str) {
             #[cfg(unix)]
             if let Err(e) = std::os::unix::fs::symlink(&from, &at) {
                 eprintln!("cue: desk: couldn't link {}: {e}", at.display());
+            }
+        }
+    }
+}
+
+/// What builds left in shared build folder `target` that no build reads again, cleared as an item lands (#377): the
+/// object files in each profile's `deps` (`<target>/debug`, `<target>/<triple>/release`, …). A build of Cue no longer
+/// leaves them (Cargo.toml, split-debuginfo), but one from before did, a set per rebuild, never removed: 87 GB in a
+/// week. A program built before only loses its file and line numbers. A profile folder cargo holds locked (a build
+/// under way) is left for the next landing; one cleared is held locked meanwhile, so a build waits for it.
+pub(crate) fn clear_build_leftovers(target: &std::path::Path) {
+    let mut profiles = Vec::new();
+    for e in std::fs::read_dir(target).into_iter().flatten().flatten() {
+        profiles.push(e.path());
+        profiles.extend(std::fs::read_dir(e.path()).into_iter().flatten().flatten().map(|e| e.path()));
+    }
+    for dir in profiles.into_iter().filter(|d| d.join("deps").is_dir()) {
+        let locks: Vec<std::fs::File> = [".cargo-lock", ".cargo-build-lock"].iter().filter_map(|n| std::fs::File::open(dir.join(n)).ok()).collect();
+        if locks.iter().any(|l| l.try_lock().is_err()) {
+            continue;
+        }
+        for e in std::fs::read_dir(dir.join("deps")).into_iter().flatten().flatten() {
+            if e.file_name().to_string_lossy().ends_with(".rcgu.o") {
+                let _ = std::fs::remove_file(e.path());
             }
         }
     }
@@ -606,6 +631,24 @@ impl Hub {
 #[cfg(test)]
 mod tests {
     use super::names_item;
+
+    /// A build under way holds its profile folder locked (cargo's `.cargo-lock`): nothing in it is cleared then (#377).
+    #[test]
+    fn a_build_folder_a_build_holds_locked_is_left_as_it_is() {
+        let dir = std::env::temp_dir().join(format!("cue-test-leftovers-{}", std::process::id()));
+        let deps = dir.join("debug/deps");
+        std::fs::create_dir_all(&deps).unwrap();
+        let left = deps.join("cue_lib-0123456789abcdef.0a1b2c.rcgu.o");
+        std::fs::write(&left, "1\n").unwrap();
+        let held = std::fs::File::create(dir.join("debug/.cargo-lock")).unwrap();
+        held.lock().unwrap();
+        super::clear_build_leftovers(&dir);
+        assert!(left.exists(), "left while a build holds it");
+        held.unlock().unwrap();
+        super::clear_build_leftovers(&dir);
+        assert!(!left.exists(), "cleared once it's free");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn an_items_message_is_told_by_its_whole_number() {

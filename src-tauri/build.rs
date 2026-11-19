@@ -91,17 +91,7 @@ fn speak_helper(target: &str) {
 fn swift_helper(target: &str, dir: &str, name: &str) {
     let out = format!("binaries/{name}-{target}");
     let ok = if target.starts_with("aarch64") {
-        let scratch = swift_scratch(name);
-        prune_swift_scratch(&scratch);
-        let built = || swiftpm_build(dir, &scratch);
-        // A build folder the temp folder's cleanup half-emptied, or another build broke, fails the build (an
-        // xcframework without its Info.plist, say): built again once from nothing before giving up.
-        let ok = built() || {
-            println!("cargo:warning=building {name} failed; building it again from a clean {}", scratch.display());
-            let _ = std::fs::remove_dir_all(&scratch);
-            built()
-        };
-        ok && std::process::Command::new("strip").arg("-x").arg("-o").arg(&out).arg(scratch.join("release").join(name)).status().map(|s| s.success()).unwrap_or(false)
+        swift_helper_shared(dir, name, &out)
     } else {
         std::process::Command::new("swiftc")
             .args(["-O", "-target", &target.replace("apple-darwin", "apple-macos13.0"), "-o", &out, &format!("{dir}/intel.swift")])
@@ -116,25 +106,90 @@ fn swift_helper(target: &str, dir: &str, name: &str) {
     }
 }
 
-/// SwiftPM's build folder for helper `name`: one per checkout of Cue, so two checkouts building at once don't
-/// share (and break) one. In the temp folder, not target/: the path ends up in the helper, and target/ is
-/// under your home folder, whose path release.sh refuses to ship.
-fn swift_scratch(name: &str) -> std::path::PathBuf {
-    use std::hash::{Hash, Hasher};
-    let mut checkout = std::collections::hash_map::DefaultHasher::new();
-    std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default().hash(&mut checkout);
-    std::env::temp_dir().join(format!("cue-swift-{:016x}", checkout.finish())).join(name)
+/// Helper `name` built with SwiftPM into `out`, through one folder per helper that every checkout of Cue shares
+/// (`<temp>/cue-swift/<name>`: SwiftPM's build folder, 1–2 GB, and the helper last built), held locked while used so
+/// two builds wait for each other instead of breaking the folder. A helper already built from the same sources is
+/// copied, not built again: the path maps leave nothing of the checkout in it. Before, each checkout had a folder
+/// of its own, and every copy of Cue a Desk item or a check made left 2–4 GB behind (#377).
+fn swift_helper_shared(dir: &str, name: &str, out: &str) -> bool {
+    let home = swift_home(name);
+    prune_swift_scratch();
+    if std::fs::create_dir_all(&home).is_err() {
+        return false;
+    }
+    let Ok(lock) = std::fs::File::create(home.join("lock")) else { return false };
+    if lock.lock().is_err() {
+        return false;
+    }
+    let built = home.join(format!("{name}-{:016x}", sources_key(dir)));
+    if !built.exists() {
+        let scratch = home.join("build");
+        let build = || swiftpm_build(dir, &scratch);
+        // A build folder the temp folder's cleanup half-emptied fails the build (an xcframework without its
+        // Info.plist, say): built again once from nothing before giving up.
+        let ok = build() || {
+            println!("cargo:warning=building {name} failed; building it again from a clean {}", scratch.display());
+            let _ = std::fs::remove_dir_all(&scratch);
+            build()
+        };
+        let part = home.join("part");
+        let stripped = ok && std::process::Command::new("strip").arg("-x").arg("-o").arg(&part).arg(scratch.join("release").join(name)).status().is_ok_and(|s| s.success());
+        if !stripped || std::fs::rename(&part, &built).is_err() {
+            return false;
+        }
+        // Only the helper just built is kept.
+        for e in std::fs::read_dir(&home).into_iter().flatten().flatten() {
+            if e.path() != built && e.file_name().to_string_lossy().starts_with(&format!("{name}-")) {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    }
+    std::fs::copy(&built, out).is_ok()
 }
 
-/// Other checkouts' SwiftPM build folders (1–2 GB each) that no build has written to in a day: removed, since every
-/// throwaway checkout leaves one behind and nothing else removes them. The temp folder's cleanup touches the folders
-/// as it empties them, so a folder's age is its newest file's.
-fn prune_swift_scratch(scratch: &std::path::Path) {
+/// The folder helper `name` is built in, shared by every checkout. In the temp folder, not target/: the path ends up
+/// in the helper, and target/ is under your home folder, whose path release.sh refuses to ship.
+fn swift_home(name: &str) -> std::path::PathBuf {
+    std::env::temp_dir().join("cue-swift").join(name)
+}
+
+/// What helper package `dir` is built from, as one number: its manifest, pinned versions and sources (names and
+/// contents). The same number means the same helper.
+fn sources_key(dir: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    fn files(at: &std::path::Path, into: &mut Vec<std::path::PathBuf>) {
+        if at.is_dir() {
+            for e in std::fs::read_dir(at).into_iter().flatten().flatten() {
+                files(&e.path(), into);
+            }
+        } else if at.is_file() {
+            into.push(at.to_path_buf());
+        }
+    }
+    let root = std::path::Path::new(dir);
+    let mut all = Vec::new();
+    for part in ["Package.swift", "Package.resolved", "Sources"] {
+        files(&root.join(part), &mut all);
+    }
+    all.sort();
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    for f in all {
+        f.strip_prefix(root).unwrap_or(&f).hash(&mut h);
+        std::fs::read(&f).unwrap_or_default().hash(&mut h);
+    }
+    h.finish()
+}
+
+/// The build folders each checkout once had of its own (`<temp>/cue-swift-<checkout>`, 1–2 GB each) that no build
+/// has written to in a day: removed, since nothing else removes them. One written to within the day may be an older
+/// checkout's build under way. The temp folder's cleanup touches the folders as it empties them, so a folder's age
+/// is its newest file's.
+fn prune_swift_scratch() {
     let day = std::time::Duration::from_secs(24 * 60 * 60);
-    let (Some(mine), Ok(entries)) = (scratch.parent(), std::fs::read_dir(std::env::temp_dir())) else { return };
+    let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) else { return };
     for entry in entries.flatten() {
         let path = entry.path();
-        if path == mine || !entry.file_name().to_string_lossy().starts_with("cue-swift-") {
+        if !entry.file_name().to_string_lossy().starts_with("cue-swift-") {
             continue;
         }
         let stale = match newest_file(&path) {
