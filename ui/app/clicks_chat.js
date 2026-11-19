@@ -160,7 +160,8 @@ function openPath(pl, e) {
   e.preventDefault();
   const sel = getSelection();
   if (!sel.isCollapsed && pl.contains(sel.anchorNode)) return;
-  // A markdown file: in the reader, for its session (one on this Mac; another's paths aren't linked at all).
+  // Found from its session's folder: markdown in Read, any other file in the pop-up viewer (one on this Mac; another's
+  // paths aren't linked at all).
   return openPathOrDoc(pl.dataset.path, pl.dataset.sid || current()?.s?.session_id);
 }
 /** Screenshots a message points at, full size: the ones Cue could read. */

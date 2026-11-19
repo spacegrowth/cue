@@ -33,13 +33,13 @@ function openDoc(sid, path) {
   return readOpen(path, sid, sessionOf(sid)?.cwd || null);
 }
 const isDocPath = (p) => /\.(md|markdown)$/i.test(p);
-/** A path or link a click opens, anywhere in Cue: a markdown file on this Mac in Read (found from session `sid`'s
- *  folder when one is given; a file:// link as its path), anything else where it opens (settings.rs how_to_open).
- *  Another machine's files never open in Read: they aren't on this Mac. */
+/** A path or link a click opens, anywhere in Cue: a file on this Mac (found from session `sid`'s folder when one is
+ *  given; a file:// link as its path) in Read when it's markdown, any other in the pop-up viewer (file_view.js); a web
+ *  link where it opens (settings.rs how_to_open). Another machine's files never open here: they aren't on this Mac. */
 function openPathOrDoc(path, sid = null) {
   const url = String(path || ""), file = /^file:\/\//i.test(url) ? decodeURI(url.replace(/^file:\/\//i, "")) : url;
   const s = sid ? sessionOf(sid) : null, here = !/^[a-z][\w+.-]*:/i.test(file) && !s?.machine;
-  if (isDocPath(file) && here && (s || /^[/~]/.test(file))) return openDoc(s ? sid : null, file);
+  if (here && (s || /^[/~]/.test(file))) return isDocPath(file) ? openDoc(s ? sid : null, file) : fileView(file, s ? sid : null);
   return invoke("open_link", { url }).catch((err) => toast(`Couldn't open: ${err}`));
 }
 /** The session the reader shows, as readerViewed takes it: the open chat's (its ask too), or, on the Desk, whose chat

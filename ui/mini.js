@@ -564,9 +564,11 @@
    *  does); anything else where it opens. */
   function openLink(link, e) {
     e.preventDefault();
-    const path = link.dataset.path, sid = link.dataset.sid || m.open;
-    if (path && sid && isDocPath(path)) return inCue(sid, path);
-    invoke("open_link", { url: link.dataset.href || path }).catch(() => {});
+    const href = link.dataset.href || "", path = link.dataset.path || (/^file:\/\//i.test(href) ? decodeURI(href.replace(/^file:\/\//i, "")) : "");
+    const sid = link.dataset.sid || m.open, local = !sessionOf(sid)?.machine;
+    // A file on this Mac: in Cue's window (markdown in Read, any other in its pop-up viewer, file_view.js).
+    if (path && local && (sid || /^[/~]/.test(path))) return inCue(sid, path);
+    invoke("open_link", { url: href || path }).catch(() => {});
   }
   /** The frame's own buttons (the rail's tab, a tab, ⤢ In Cue, ×), a link, and a terminal's button (the terminal is in
    *  Cue's window); then the chat's, as in Cue's window. */

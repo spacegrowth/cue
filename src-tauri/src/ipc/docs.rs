@@ -53,20 +53,38 @@ pub(crate) fn resolve_doc(path: &str, cwd: Option<&str>) -> Option<PathBuf> {
     if !is_doc(path) {
         return None;
     }
-    let p = expand_home(path);
-    if p.is_absolute() && p.is_file() {
-        return Some(p);
+    match near(path, cwd) {
+        Near::Found(p) => Some(p),
+        Near::Search(top, rel) => search(&top, &rel),
+        Near::Nowhere => None,
     }
-    let cwd = cwd.map(|c| PathBuf::from(c.trim_end_matches('/'))).filter(|c| c.is_absolute() && c.is_dir())?;
+}
+
+/// Where a path a reply wrote is, short of searching the repo for it.
+enum Near {
+    Found(PathBuf),
+    /// Not there: the repo's top, and the path relative to the session's folder, to search it for.
+    Search(PathBuf, PathBuf),
+    Nowhere,
+}
+
+/// The file `path` means, said in a session whose folder is `cwd` (any file, or a folder): as written, then the
+/// same relative path from each folder above the session's up to its repo's top, then beside the repo.
+fn near(path: &str, cwd: Option<&str>) -> Near {
+    let p = expand_home(path);
+    if p.is_absolute() && p.exists() {
+        return Near::Found(p);
+    }
+    let Some(cwd) = cwd.map(|c| PathBuf::from(c.trim_end_matches('/'))).filter(|c| c.is_absolute() && c.is_dir()) else { return Near::Nowhere };
     // What the reply wrote, relative: the UI joins a relative path to the session's folder, so take that off again.
-    let rel: PathBuf = if p.is_absolute() { p.strip_prefix(&cwd).map(Path::to_path_buf).ok()? } else { p };
+    let rel: PathBuf = if p.is_absolute() { match p.strip_prefix(&cwd) { Ok(r) => r.to_path_buf(), Err(_) => return Near::Nowhere } } else { p };
     let rel = PathBuf::from(rel.to_string_lossy().trim_start_matches("./"));
     let top = cwd.ancestors().find(|d| d.join(".git").exists()).map(Path::to_path_buf).unwrap_or_else(|| cwd.clone());
     // The same relative path from the session's folder and each one above it, up to the repo's top.
     for dir in cwd.ancestors() {
         let here = dir.join(&rel);
-        if here.is_file() {
-            return Some(here);
+        if here.exists() {
+            return Near::Found(here);
         }
         if dir == top {
             break;
@@ -76,11 +94,46 @@ pub(crate) fn resolve_doc(path: &str, cwd: Option<&str>) -> Option<PathBuf> {
     // no folder of that name itself.
     if let (Some(first), Some(beside)) = (rel.components().next(), top.parent()) {
         let there = beside.join(&rel);
-        if rel.components().count() > 1 && !top.join(first).exists() && there.is_file() {
-            return Some(there);
+        if rel.components().count() > 1 && !top.join(first).exists() && there.exists() {
+            return Near::Found(there);
         }
     }
-    search(&top, &rel)
+    Near::Search(top, rel)
+}
+
+/// The biggest text file the pop-up viewer shows; past it, it opens in its app.
+const PEEK_MAX: u64 = 1024 * 1024;
+
+/// Any file a click opens in Cue's pop-up viewer (ui/file_view.js): found as read_doc finds a markdown file, any
+/// other file from the session's folder up to its repo's top. `kind` says how it shows: "text" (with `text`),
+/// "image" (the UI asks image_data for it), "folder", or "other" (binary, or too big: it opens in its app).
+/// Never run, only read.
+#[tauri::command]
+pub(crate) async fn peek_file(path: String, cwd: Option<String>, sid: Option<String>) -> Result<serde_json::Value, String> {
+    blocking(move || {
+        let found = resolve_doc(&path, cwd.as_deref())
+            .or_else(|| match near(&path, cwd.as_deref()) { Near::Found(p) => Some(p), _ => None })
+            .or_else(|| cwd.as_deref().and_then(|c| in_scratch(&path, c, sid.as_deref(), &scratch_root())))
+            .ok_or_else(|| format!("Couldn't find {}", shown(&path, cwd.as_deref())))?;
+        let meta = std::fs::metadata(&found).map_err(|e| e.to_string())?;
+        let modified_ms = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_millis() as u64).unwrap_or(0);
+        let at = found.to_string_lossy().to_string();
+        let out = |kind: &str, text: Option<String>| serde_json::json!({ "path": at, "kind": kind, "text": text, "size": meta.len(), "modified_ms": modified_ms });
+        if meta.is_dir() {
+            return Ok(out("folder", None));
+        }
+        if !crate::uploads::mime_of(&at).is_empty() {
+            return Ok(out("image", None));
+        }
+        if meta.len() > PEEK_MAX {
+            return Ok(out("other", None));
+        }
+        let bytes = std::fs::read(&found).map_err(|e| e.to_string())?;
+        Ok(match (bytes.contains(&0), String::from_utf8(bytes)) {
+            (false, Ok(text)) => out("text", Some(text)),
+            _ => out("other", None),
+        })
+    }).await?
 }
 
 /// Where Claude Code keeps its sessions' scratch folders on this Mac: `<tmp>/claude-<uid>`, one folder per project
@@ -262,6 +315,27 @@ mod tests {
         assert_eq!(resolve_doc("app/src/main.rs", Some(c)), None);
         assert_eq!(resolve_doc("nope.md", Some(c)), None);
         assert_eq!(resolve_doc("x/README.md", Some(c)), None);
+        std::fs::remove_dir_all(&top).ok();
+    }
+
+    #[test]
+    fn peeks_any_file_a_reply_named() {
+        let top = tree();
+        std::fs::write(top.join("app/main.js"), "let a = 1;\n").unwrap();
+        std::fs::write(top.join("app/blob.bin"), [0u8, 159, 146, 150]).unwrap();
+        std::fs::write(top.join("app/shot.png"), [137u8, 80, 78, 71]).unwrap();
+        let sub = top.join("app/src");
+        let c = sub.to_str().map(String::from);
+        let peek = |p: &str| tauri::async_runtime::block_on(peek_file(p.into(), c.clone(), None));
+        // Relative to the repo's top while the session sits lower down, as the UI joins it to the session's folder.
+        let v = peek(&format!("{}/app/main.js", sub.display())).unwrap();
+        assert_eq!((v["kind"].as_str(), v["text"].as_str()), (Some("text"), Some("let a = 1;\n")));
+        assert_eq!(v["path"].as_str(), top.join("app/main.js").to_str());
+        assert_eq!(peek("app/blob.bin").unwrap()["kind"], "other", "binary: opens in its app");
+        assert_eq!(peek("app/shot.png").unwrap()["kind"], "image");
+        assert_eq!(peek(top.join("docs").to_str().unwrap()).unwrap()["kind"], "folder");
+        assert_eq!(peek("HANDOFF.md").unwrap()["text"], "# Hand-off", "markdown found as Read finds it");
+        assert!(peek("app/nothing.js").is_err());
         std::fs::remove_dir_all(&top).ok();
     }
 

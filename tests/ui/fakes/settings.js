@@ -89,6 +89,13 @@ CueBridge.area("settings", (w) => {
       const full = path.startsWith("/") ? path : `${cwd}/${path}`;
       return { path: full, text: `# ${full.split("/").pop()}\n\nThe plan, in three stages.\n\n## Stage 1\n\nPaper accounts only.`, modified_ms: w.now() - 120000 };
     },
+    // Any file a click opens in the pop-up viewer (ipc/docs.rs peek_file): a picture, or a few lines of text.
+    peek_file: ({ path, cwd }) => {
+      const full = path.startsWith("/") ? path : `${cwd}/${path}`;
+      if (/\.(png|jpe?g|gif|webp)$/i.test(full)) return { path: full, kind: "image", text: null, size: 2048, modified_ms: w.now() };
+      if (/\/$|\.(zip|dmg)$/i.test(full)) return { path: full, kind: "other", text: null, size: 0, modified_ms: w.now() };
+      return { path: full, kind: "text", text: "const a = 1;\nconst b = a + 1;\n", size: 32, modified_ms: w.now() };
+    },
     image_data: () => `data:image/png;base64,${PIXEL}`,
     clipboard_image: () => null,
     copy_text: () => null,

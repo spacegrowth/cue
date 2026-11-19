@@ -475,7 +475,7 @@ function inboxPicked(it, q) {
 function inboxQuestionCard(it, q, qi, n, cur) {
   const done = isAnswered(it, q), on = qi === cur;
   const head = n > 1 ? `<div class="ib-qn">${qi + 1} of ${n}${done ? " · answered" : ""}${q.header ? ` · ${esc(q.header)}` : ""}</div>` : "";
-  const text = `<div class="ib-qt">${esc(q.question)}${q.multiSelect ? `<span class="ib-dim"> · pick any</span>` : ""}</div>`;
+  const text = `<div class="ib-qt">${linkify(esc(q.question), sessBase(it.session_id))}${q.multiSelect ? `<span class="ib-dim"> · pick any</span>` : ""}</div>`;
   if (done && !on) return `<div class="ib-card ib-q done" role="button" data-inbox-step="${esc(it.id)}:${qi}">${head}${text}<div class="ib-qa">→ ${esc(inboxPicked(it, q))}</div></div>`;
   if (!on && qi > cur) return `<div class="ib-card ib-q wait" role="button" data-inbox-step="${esc(it.id)}:${qi}">${head}${text}<div class="ib-dim">${esc((q.options || []).map((o) => inboxLabel(o.label)[0]).join(" · "))}</div></div>`;
   return `<div class="ib-card ib-q ${on ? "on" : ""}" ${on ? "" : `data-inbox-step="${esc(it.id)}:${qi}"`}>${head}${text}${inboxOpts(it, q, qi, on)}</div>`;
@@ -1024,6 +1024,8 @@ function inboxClick(e) {
   // Inbox in the header while a session is open in it: the top one that needs you opens (the click goes on to switch
   // the view).
   if (e.target.closest?.('[data-view="inbox"]')) { if (view === "inbox") inboxSid = null; return; }
+  // A file or web link in a card (a path in a question) opens as anywhere else (clicks_chat.js), not the card.
+  if (e.target.closest?.("a[data-path], a[data-href]")) return;
   const el = e.target.closest?.(INBOX_SEL);
   if (!el) {
     if ((inboxSnoozeAt && !e.target.closest?.(".ib-snz")) || inboxPhrOpen) { inboxSnoozeAt = ""; inboxPhrOpen = ""; renderMain(); }
