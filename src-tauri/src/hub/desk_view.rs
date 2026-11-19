@@ -17,6 +17,11 @@ pub(super) fn with_pieces(st: &Store, it: &DeskItem) -> DeskItem {
 /// with its holder's latest and files.
 pub(super) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
     let mut out = it.clone();
+    // Waiting for a free copy (#401): which items are using them.
+    if it.tree_wait {
+        out.copy_users = st.desk.items.iter().filter(|i| i.tree.as_ref().is_some_and(|t| t.repo == it.tree_wait_repo)).map(|i| i.id.clone()).collect();
+        out.copy_users.sort_by_key(|x| (x.parse::<u64>().unwrap_or(u64::MAX), x.clone()));
+    }
     let Some(h) = it.holder.as_ref() else { return out };
     let mut h = h.clone();
     if let Some((lead, agent)) = crew_parts(&h) {

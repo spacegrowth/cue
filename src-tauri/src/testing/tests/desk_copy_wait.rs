@@ -116,3 +116,39 @@ fn your_send_back_on_an_item_whose_copy_is_gone_waits_with_it_and_reaches_its_ho
     assert!(t.contains(&path), "with its copy: {t}");
     assert!(it.get("back_waiting").is_none_or(|b| b.is_null()), "{it}");
 }
+
+#[test]
+fn a_sent_back_item_waiting_for_a_working_folder_names_who_uses_them_and_start_now_starts_it_at_once() {
+    // #401: sent back with every working folder in use, it only said "waiting for a free copy", with no way to go now.
+    let w = World::new();
+    let (_, project, id) = super::desk_commit::ready(&w);
+    let top = |w: &World| {
+        let out = String::from_utf8(std::process::Command::new("git").arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
+        out.lines().next().and_then(|l| l.strip_prefix("worktree ")).unwrap().to_string()
+    };
+    w.hub().desk_hold_copies(&top(&w), &[1, 2, 3]);
+    let snap = w.snapshot();
+    let h = snap.session_ids().into_iter().find(|s| snap.session(s)["name"] == "cue-teams").unwrap();
+    let before = w.hosted.sent().len();
+    w.hub().desk_item_act(&id, "send_back", "The dot is too big").unwrap();
+    w.settle();
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!((it["state"].as_str(), it["tree_wait"].as_bool()), (Some("queued"), Some(true)), "{it}");
+    assert_eq!(it["copy_users"], serde_json::json!(["held1", "held2", "held3"]), "who uses the working folders: {it}");
+    assert!(it["back_waiting"].as_str().is_some_and(|b| b.contains("The dot is too big")), "sent back, and says so: {it}");
+    // Start now: at once, where its holder is, with your words; the wait is over.
+    w.hub().desk_item_act(&id, "start_now", "").unwrap();
+    w.settle();
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!(it["state"], "working", "{it}");
+    for gone in ["tree_wait", "copy_users", "back_waiting", "tree"] {
+        assert!(it.get(gone).is_none_or(|v| v.is_null()), "{gone}: {it}");
+    }
+    let sent: Vec<String> = w.hosted.sent()[before..].iter().filter(|(s, t)| *s == h && t.contains(&format!("#{id}"))).map(|(_, t)| t.clone()).collect();
+    assert_eq!(sent.len(), 1, "one message: {sent:?}");
+    assert!(sent[0].contains("isn't done: The dot is too big"), "{}", sent[0]);
+    // A working folder let go of later goes to nobody here: it's already at work.
+    w.hub().desk_let_go_copy(&top(&w), 2);
+    w.settle();
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "working");
+}

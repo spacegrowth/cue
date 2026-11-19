@@ -1,5 +1,5 @@
 // How work lands (docs/desk-landing-design.md): each item works in its own copy of its repository (a pool of three),
-// and lands through one landing line, checked first. Its row and page say where it is: "waiting for a free copy",
+// and lands through one landing line, checked first. Its row and page say where it is: "waiting for a free working folder",
 // "in its own copy desk/<id>", "In the landing line · waits: … · since 8:31pm", "Checking before it lands · since …", "Check failed · since …", "landed, not checked".
 // A dropped item's copy that had work in it is listed under Kept copies, with a Remove that takes two clicks.
 import { test, expect } from "./cue.mjs";
@@ -73,13 +73,21 @@ test("an item in its own copy says so with its branch; one queued for a copy wai
   let pane = await openItem(page, "d3");
   await expect(pane.locator(".dk-state")).toContainText("in its own copy desk/d3");
 
-  // Queued for a copy: all three in use.
-  await patchItem(cue, "d4", { state: "queued", after: "", tree_wait: true });
+  // Queued for a working folder, all three in use (#401): its row and page say so plainly, naming who uses them.
+  await patchItem(cue, "d4", { state: "queued", after: "", tree_wait: true, copy_users: ["d3", "d5", "d7"] });
   const row = page.locator('.dk-items [data-desk-item="d4"]');
-  await expect(row.locator(".dk-who")).toContainText("waiting for a free copy");
+  await expect(row.locator(".dk-who")).toHaveText("Waiting for a free working folder (in use by #d3, #d5, #d7)");
   pane = await openItem(page, "d4");
-  await expect(pane).toContainText("Starts when one of its repository's 3 copies is free.");
+  await expect(pane).toContainText("Waiting for a free working folder (in use by #d3, #d5, #d7). It starts by itself when one is free, or now with Start now.");
   await expect(pane.locator(".dk-state")).not.toContainText("in its own copy");
+  // Sent back while none is free: it says so; Start now starts it at once, and the line goes.
+  await patchItem(cue, "d4", { back_waiting: "Desk item #d4 isn't done: the dot is too big" });
+  await expect(row.locator(".dk-who")).toHaveText("Sent back · waiting for a free working folder (in use by #d3, #d5, #d7)");
+  await expect(pane.locator('.dk-acts [data-desk-act="start_now"]')).toHaveText("Start now");
+  await row.locator('[data-desk-act="start_now"]').click();
+  await cue.called("desk_item_act", { id: "d4", act: "start_now" });
+  await expect(row.locator(".dk-who")).not.toContainText("working folder");
+  await expect(pane).not.toContainText("free working folder");
 
   // Landed with no check to run: to check, "landed, not checked" by its commit; its copy is gone.
   await patchItem(cue, "d2", { tree: null, commit: "def5678", finish: { step: "checked", commit: "def5678", at: Date.now(), unchecked: true } });

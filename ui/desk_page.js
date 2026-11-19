@@ -498,6 +498,8 @@ function deskItemActs(i) {
     : (i.state === "new" || i.state === "queued") && !i.holder && i.start_failed ? b("start_now", "Retry")
     // Parked (#385): Start queues it as a new item, for the lead to give out.
     : i.state === "held" ? b("start_now", "Start", "primary")
+    // Waiting for a free working folder (#401): its session starts on it now, without one.
+    : deskCopyWaits(i) ? b("start_now", "Start now", "primary") + b("park", "Park")
     : i.state === "queued" ? b("start_now", "Start it now in a new session") + (first ? b("put_before", `Put it before ${deskShort(first.title)}`) : "") + b("park", "Park")
     : i.state === "new" ? b("start_now", "Start it now in a new session") + b("park", "Park")
     // Its holder's turn cut off (a crash, a quit) leaves it "working" with nobody on it: Resume wakes that same

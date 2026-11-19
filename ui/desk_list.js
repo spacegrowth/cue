@@ -221,10 +221,12 @@ function deskItemRow(i, lit, held = false, lane = null) {
     : `<span class="dk-doing"${i.act.stalls_at > 0 ? ` data-stalls="${i.act.stalls_at}"` : ""}>${esc(i.act.now)} · <span data-ago="${i.act.at_ms}">${ago(i.act.at_ms)}</span></span>`;
   // In a lane (#346): its holder and its step, short; the lane's head has the rest.
   const feat = deskFeat(i), fopen = feat && deskFeatOpen(i);
-  const who = i.state === "held" ? "" : feat ? [esc(deskHolderOf(i)), deskFeatBar(i)].filter(Boolean).join(" · ") : lane ? [esc(deskHolderOf(i)), `<span class="dk-fstep">${deskLaneStep(i, lane.ahead)}</span>`].filter(Boolean).join(" · ") : i.state === "queued" && i.tree_wait ? [esc(deskHolderOf(i)), "waiting for a free copy"].filter(Boolean).join(" · ") : i.state === "queued" && i.after ? [esc(deskHolderOf(i)), `after #${esc(i.after)}`].filter(Boolean).join(" · ") : i.waiting && i.state === "working" ? `waiting · ${esc(firstLine(i.waiting))}` : i.stopped && i.state === "working" ? `stopped · the Desk lead is on it` : s ? `working · ${esc(deskHolderOf(i))} · <span data-ago="${at}">${ago(at)}</span>` : !i.holder && i.state !== "done" ? deskGive(i, "row") : deskInstallWait(i) ? `waiting for install · ${esc(deskHolderOf(i))}` : deskFinishing(i) ? `<span class="dk-fstep">${deskFinStep(i)}</span>` : esc(deskHolderOf(i));
+  const who = i.state === "held" ? "" : feat ? [esc(deskHolderOf(i)), deskFeatBar(i)].filter(Boolean).join(" · ") : lane ? [esc(deskHolderOf(i)), `<span class="dk-fstep">${deskLaneStep(i, lane.ahead)}</span>`].filter(Boolean).join(" · ") : deskCopyWaits(i) ? esc(deskCopyWaitLine(i)) : i.state === "queued" && i.after ? [esc(deskHolderOf(i)), `after #${esc(i.after)}`].filter(Boolean).join(" · ") : i.waiting && i.state === "working" ? `waiting · ${esc(firstLine(i.waiting))}` : i.stopped && i.state === "working" ? `stopped · the Desk lead is on it` : s ? `working · ${esc(deskHolderOf(i))} · <span data-ago="${at}">${ago(at)}</span>` : !i.holder && i.state !== "done" ? deskGive(i, "row") : deskInstallWait(i) ? `waiting for install · ${esc(deskHolderOf(i))}` : deskFinishing(i) ? `<span class="dk-fstep">${deskFinStep(i)}</span>` : esc(deskHolderOf(i));
   // Finishing: no age, so its step has the room.
   const when = s || act || deskFinishing(i) || (feat && i.state !== "done") ? "" : i.state === "done" ? `${i.commit ? `<span class="dk-cm">committed ${esc(i.commit)}</span> · ` : ""}${clockAt(deskMs(i.done_at || i.updated))}` : ago(deskMs(i.created));
   const ok = i.state === "held" ? `<button class="btn small dk-hstart" data-desk-act="start_now" data-id="${esc(i.id)}">Start</button>` : lane ? ""
+    // Waiting for a free working folder (#401): Start now goes without one.
+    : deskCopyWaits(i) && !piece && !feat ? `<button class="btn small dk-hstart" data-desk-act="start_now" data-id="${esc(i.id)}">Start now</button>`
     // Park on a row that waits its turn (#391), as on its page.
     : (i.state === "new" || i.state === "queued") && !piece && !feat ? `<button class="btn small dk-hstart dk-park" data-desk-act="park" data-id="${esc(i.id)}">Park</button>` : deskFinishing(i) ? deskInstallNow(i, "btn small dk-rinst") : deskInstallWait(i) || deskUncommitted(i) ? "" : i.state === "to_check" && deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id) : i.state === "to_check" ? `<button class="dk-ok" data-desk-act="looks_right" data-id="${esc(i.id)}" aria-label="Looks right"></button>`
     : i.state === "done" && !i.picked ? `<button class="dk-undo" data-desk-act="reopen" data-id="${esc(i.id)}">Undo</button>` : "";
@@ -352,6 +354,13 @@ function deskList(project, taskApprovals) {
 
 // ---------- the Queued list in your order (#387) ----------
 
+/** Waiting for a free working folder, with a session to start it (#401). */
+const deskCopyWaits = (i) => i.state === "queued" && !!i.tree_wait && !!i.holder;
+/** Why it waits, in plain words: sent back or not, and which items are using the working folders. */
+function deskCopyWaitLine(i) {
+  const by = (i.copy_users || []).map((x) => `#${x}`).join(", ");
+  return `${i.back_waiting ? "Sent back · waiting" : "Waiting"} for a free working folder${by ? ` (in use by ${by})` : ""}`;
+}
 /** Whether a row in Queued can be dragged: one that hasn't started (running ones keep their place). */
 const deskQMoves = (i) => i.state === "new" || i.state === "queued";
 /** Why order `ids` (top first) can't be, in plain words: one above the item it waits on. "" when it can. */

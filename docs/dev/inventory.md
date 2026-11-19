@@ -1197,6 +1197,7 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `src-tauri/src/logs/steps/tests/agents.rs::a_background_agent_shows_at_work_under_its_step_until_its_session_hears_it_finished` | test |  |
 | `ui/chat/render.js::chatHtml` |  |  |
 | `ui/desk_lead.js::deskLineHtml` |  |  |
+| `ui/desk_list.js::deskQPress` |  |  |
 | `ui/desk_sessions.js::deskSessions` |  |  |
 
 Files over 1000 lines: `src-tauri/src/hub/desk_finish.rs`, `src-tauri/src/testing/tests/desk_finish.rs`, `ui/board.js`, `ui/inbox.js`, `ui/styles/desk.css`.

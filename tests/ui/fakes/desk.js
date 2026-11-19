@@ -125,6 +125,7 @@ CueBridge.area("desk", (w) => {
       }
       // Your drag in Queued (#387): each takes its place.
       else if (act === "reorder") { text.split(" ").forEach((x, k) => { const q = itemOf(x); if (q) q.queue_order = k + 1; }); w.changed(); return it; }
+      else if (act === "start_now" && it.tree_wait && it.holder) { Object.assign(it, { state: "working", tree_wait: false, back_waiting: "" }); delete it.copy_users; }
       else if (act === "start_now") Object.assign(it, { state: "working", after: null, after_why: "", latest: "starting in a new session" });
       else if (act === "put_before") { const first = itemOf(it.after); if (first) Object.assign(first, { state: "queued", after: it.id, after_why: it.after_why }); Object.assign(it, { state: "working", after: null, after_why: "" }); }
       else if (act === "drop") {

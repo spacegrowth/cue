@@ -35,6 +35,7 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
     let busy = st.desk.item(id).and_then(|i| i.holder.as_ref()).filter(|h| at_work(st, h)).map(|h| h.name.clone());
     // Picked, but its build item dropped since: it can be undone, and picked again.
     let build_gone = st.desk.item(id).is_some_and(|i| !i.built_as.is_empty() && st.desk.item(&i.built_as).is_none());
+    let rule = st.desk.item(id).map(|i| rule_of(st, &i.project)).unwrap_or_default();
     let it = st.desk.item_mut(id).ok_or("no such item")?;
     let holder = it.holder.clone();
     match act {
@@ -79,6 +80,16 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
             }
             fx.backs.push((id.to_string(), message.clone()));
             fx.sends.push((h.to().to_string(), message));
+        }
+        // Waiting for a free copy (#401), its holder's (sent back, or given out with all copies in use): it starts now
+        // where its holder is, as the lead's START does, with its words and your Send back's.
+        "start_now" if it.state == "queued" && it.tree_wait && holder.is_some() => {
+            (it.after, it.tree_wait, it.no_copy_wait, it.state) = (None, false, true, "working".into());
+            it.tree_wait_repo.clear();
+            let words = crate::desk::handed_words(it, "", &rule);
+            let (to, project) = (holder.as_ref().map(|h| h.to().to_string()).unwrap_or_default(), it.project.clone());
+            fx.sends.push((to, words));
+            you_wrote(st, &project, id, "Start now", "without waiting for a free working folder", now, &mut fx);
         }
         // Nobody holds it yet: a new session of its project takes it (desk_start_new).
         "start_now" if holder.is_none() => {

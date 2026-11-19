@@ -178,6 +178,10 @@ pub struct DeskItem {
     /// once one is free (hub/desk_trees.rs).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub back_waiting: String,
+    /// Waiting for a copy (`tree_wait`): the items using its repository's copies now, as its row says (#401). Only
+    /// on what the window is shown (hub/desk_view.rs `shown`), never saved.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub copy_users: Vec<String>,
     /// Started now by the lead (START, #347) while it waited: it works where its holder is when no copy is free,
     /// rather than queue for one again.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
