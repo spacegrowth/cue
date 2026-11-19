@@ -3566,6 +3566,45 @@ test("an item with mocks has \"Open the mocks\" in its NOW; waiting on a pick, a
   await expect(head.locator("a.dk-dlink")).toHaveCount(0);
 });
 
+test("a pick on an item's mocks: Pick B closes it, its new build item is linked both ways; a pick again makes no other (#281)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.change((st) => {
+    const it = st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5");
+    Object.assign(it, { state: "to_check", title: "Mocks: working items", designs: "https://claude.ai/artifact/MOCKS", said: [{ at: Date.now(), by: "host-lead", text: "Three on the canvas.\nPick one for working items: A, B or C." }] });
+  });
+  await page.locator('[data-desk-item="d5"]').click();
+  const head = page.locator(".dk-right .dk-pnow");
+  const picks = head.locator('[data-desk-act="pick"]');
+  await expect(picks).toHaveText(["Pick A", "Pick B", "Pick C"]);
+  await expect(head.locator("[title]")).toHaveCount(0);
+  await picks.nth(1).click();
+  await cue.called("desk_item_act", { id: "d5", act: "pick", text: "B" });
+  const items = () => page.evaluate(() => CueBridge.world.state.desk.projects.find((x) => x.project === "cue").items);
+  // Picked: done, no more picks, and which item builds it.
+  await expect(head.locator(".dk-pword")).toHaveText("Done");
+  const n = (await items()).find((i) => i.id === "d5").built_as;
+  await expect(picks).toHaveCount(0);
+  await expect(head.locator(".dk-built")).toHaveText(`Picked B → being built as #${n}`);
+  const build = page.locator(`.dk-items [data-desk-item="${n}"]`);
+  await expect(build.locator(".dk-t")).toHaveText("Build: working items (option B)");
+  // Its link opens the build item, whose page links back to the mocks.
+  await head.locator(`a[data-desk-item="${n}"]`).click();
+  const back = page.locator(".dk-right .dk-pnow .dk-built");
+  await expect(back).toHaveText("Builds what you picked on #d5's mocks");
+  await back.locator('a[data-desk-item="d5"]').click();
+  await expect(page.locator(".dk-right .dk-pnow .dk-built")).toHaveText(`Picked B → being built as #${n}`);
+  // A pick again (the button is gone, the hub refuses any other): no second build item, and it says which.
+  const before = (await items()).length;
+  await page.evaluate(() => deskAct("d5", "pick", { dataset: { on: "C" } }));
+  await expect(page.locator(".toast").last()).toContainText(`Option B is picked already: it's being built as #${n}`);
+  expect((await items()).length).toBe(before);
+  for (const theme of ["light", "dark"]) {
+    await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
+    if (process.env.SHOT_DIR) await page.locator(".dk-right").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-281-${theme}.png` });
+  }
+});
+
 // Done means it's in your app (#181): a DONE is committed, built and installed before it's yours to check.
 /** Item `id` of the cue Desk changed by `patch` (merged in). */
 const patchItem = (cue, id, patch) => cue.change((st, [k, p]) => { Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === k), p); }, [id, patch]);

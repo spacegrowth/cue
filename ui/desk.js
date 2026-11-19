@@ -438,7 +438,7 @@ function deskItemRow(i, lit, held = false) {
   // Finishing: no age, so its step has the room.
   const when = s || act || deskFinishing(i) ? "" : i.state === "done" ? `${i.commit ? `<span class="dk-cm">committed ${esc(i.commit)}</span> · ` : ""}${clockAt(deskMs(i.done_at || i.updated))}` : ago(deskMs(i.created));
   const ok = deskFinishing(i) ? deskInstallNow(i, "btn small dk-rinst") : deskInstallWait(i) || deskUncommitted(i) ? "" : i.state === "to_check" && deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id) : i.state === "to_check" ? `<button class="dk-ok" data-desk-act="looks_right" data-id="${esc(i.id)}" aria-label="Looks right"></button>`
-    : i.state === "done" ? `<button class="dk-undo" data-desk-act="reopen" data-id="${esc(i.id)}">Undo</button>` : "";
+    : i.state === "done" && !i.picked ? `<button class="dk-undo" data-desk-act="reopen" data-id="${esc(i.id)}">Undo</button>` : "";
   // What it waits on you for, in one plain line (Answer, Pick, Allow, Try it), and what it unblocks (#182).
   const request = i.state === "needs_you" && deskItemRequest(i);
   const [question, ...more] = request?.kind === "question" ? questions(request) : [];
@@ -968,6 +968,21 @@ function deskPickLine(i) {
   }
   return "";
 }
+/** The options a mocks item asks you to pick from, as its pick line names them ("… working items: D, E or F" → D, E,
+ *  F), none once picked. */
+function deskPickOptions(i) {
+  if (i.picked) return [];
+  const run = deskPickLine(i).match(/\b[A-Z]\b(?:\s*(?:,|\/|\bor\b|\band\b)\s*(?:(?:or|and)\s+)?[A-Z]\b)+/);
+  return run ? [...new Set(run[0].match(/\b[A-Z]\b/g))] : [];
+}
+/** Pick D, Pick E…: a pick means build (#281): Cue closes the mocks and adds the item that builds the one you picked. */
+const deskPickBtns = (i) => deskPickOptions(i).map((o) => `<button class="btn small" data-desk-act="pick" data-id="${esc(i.id)}" data-on="${esc(o)}">Pick ${esc(o)}</button>`).join("");
+/** A picked mocks item and the item that builds its pick, each linking to the other (#281). */
+const deskBuiltLink = (i) => {
+  const a = (id) => `<a href="#" data-desk-item="${esc(id)}">#${esc(id)}</a>`;
+  const words = i.picked && i.built_as ? `Picked ${esc(i.picked)} → being built as ${a(i.built_as)}` : i.builds ? `Builds what you picked on ${a(i.builds)}'s mocks` : "";
+  return words ? `<p class="dk-built">${words}</p>` : "";
+};
 const deskSec = (title, html) => (html ? `<div class="dk-sec"><h3>${title}</h3>${html}</div>` : "");
 /** Item `i`'s latest DONE (`d.checks`), quiet, under What to check on its page: "Done by web-lead · 12m ago · 2 files"
  *  (a click on who opens its chat, as its row does), then whether the installed Cue has it ("In the installed Cue ·
@@ -1096,7 +1111,8 @@ function deskItemActs(i) {
     // Its holder's turn cut off (a crash, a quit) leaves it "working" with nobody on it: sent to the holder again.
     : deskCanRestart(i) ? b("start_now", "Restart")
     : deskFinishing(i) ? deskInstallNow(i, "btn small")
-    : i.state === "done" ? `<div class="dk-chk-after">${deskCommitLine(i)}</div>` : "";
+    // Done by your pick on its mocks (#281): its build item says where it went (deskBuiltLink), nothing to undo here.
+    : i.state === "done" && !i.picked ? `<div class="dk-chk-after">${deskCommitLine(i)}</div>` : "";
   const give = !i.holder && i.state !== "done" ? deskGive(i, "pane") : "";
   return acts || give ? `<div class="dk-acts">${give}${acts}</div>` : "";
 }
@@ -1323,7 +1339,7 @@ function deskItemPane(i, d, foot = "") {
   return deskPage({ page: "item", kind: i.kind, back: deskBack(deskLeadName(d) || "Back"),
     acts: sid && sessionOf(sid) ? `<span class="dk-ilinks"><button class="btn small" ${deskChatAttrs(sid, d)}>Watch ${esc(h.name)}</button></span>` : "",
     mark: `${deskNum(i)} · `, title: esc(i.title), meta: `<span class="dk-state">${deskItemMeta(i, d)}</span>`,
-    now: deskPnow({ ...deskItemNow(i), acts: `${deskLooksTop(i)}${backing ? "" : deskItemActs(i)}${deskDesignsLink(i)}`, fold: pts.length ? `${ticked} of ${pts.length} done` : "" }),
+    now: deskPnow({ ...deskItemNow(i), acts: `${deskLooksTop(i)}${backing ? "" : deskPickBtns(i) + deskItemActs(i)}${deskBuiltLink(i)}${deskDesignsLink(i)}`, fold: pts.length ? `${ticked} of ${pts.length} done` : "" }),
     panel: done + whoSec + deskItemFiles(i), main, foot });
 }
 /** An item's quiet line under its title (#200): who has it, its commit, who added it and when; its state is the

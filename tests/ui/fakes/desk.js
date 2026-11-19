@@ -120,7 +120,21 @@ CueBridge.area("desk", (w) => {
       }
       else if (act === "start_now") Object.assign(it, { state: "working", after: null, after_why: "", latest: "starting in a new session" });
       else if (act === "put_before") { const first = itemOf(it.after); if (first) Object.assign(first, { state: "queued", after: it.id, after_why: it.after_why }); Object.assign(it, { state: "working", after: null, after_why: "" }); }
-      else if (act === "drop") it.state = "dropped";
+      else if (act === "drop") {
+        it.state = "dropped";
+        // A pick's build item dropped: its mocks item can be picked again (#281).
+        const m = it.builds && itemOf(it.builds);
+        if (m && m.built_as === it.id) { delete m.picked; delete m.built_as; }
+      }
+      // A pick on its mocks (#281): done and picked, one build item linked both ways; a pick again makes none.
+      else if (act === "pick") {
+        if (it.built_as && itemOf(it.built_as)) throw `Option ${it.picked} is picked already: it's being built as #${it.built_as}`;
+        if (!it.designs) throw "It has no mocks to pick from";
+        const option = String(text || "").trim().toUpperCase(), d = deskOf(it.project);
+        const b = { id: `b${++n}`, project: it.project, kind: it.kind || "feature", title: `Build: ${it.title.replace(/^mocks:\s*/i, "")} (option ${option})`, done_when: "", state: "new", holder: null, from: "you", builds: it.id, created: t, updated: t, files: [] };
+        d.items.push(b);
+        Object.assign(it, { state: "done", done_at: t, picked: option, built_as: b.id });
+      }
       else throw `Unknown act ${act}`;
       it.updated = t;
       // Its cards in the lead's chat say where it is now, as the hub's view does.

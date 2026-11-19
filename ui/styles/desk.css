@@ -847,6 +847,10 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
 .dk-pacts .dk-acts { flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; padding: 0; }
 .dk-pacts .dk-givewrap { display: block; }
 .dk-pacts .dk-dsg { margin: 2px 0 0; }
+/* A picked mocks item and the item that builds its pick, each linking to the other (#281). */
+.dk-built { flex-basis: 100%; margin: 0; font-size: 12px; color: var(--muted); }
+.dk-built a { color: var(--accent); text-decoration: none; }
+.dk-built a:hover { text-decoration: underline; }
 .dk-pacts .dk-chk-after { font-size: 12px; color: var(--muted); }
 /* Done when as ticks: a ring each, filled in the accent once it's to check or done. */
 .dk-ptk { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; font-size: 12px; line-height: 1.4; color: var(--ink); }

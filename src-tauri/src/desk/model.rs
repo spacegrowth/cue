@@ -118,6 +118,15 @@ pub struct DeskItem {
     /// Its designs' canvas: the link a session gave last on a DESIGNS: line, shown as "Designs" on its page.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub designs: String,
+    /// The option you picked on its mocks ("B"), once you did (hub/desk.rs `pick`): the item is done then.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub picked: String,
+    /// The item that builds what you picked (`picked`): its id. A pick again names it and makes no other.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub built_as: String,
+    /// The mocks item whose pick this item builds: its id (the other end of that one's `built_as`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub builds: String,
     /// The commit Looks right made of its files (short; one per repository, space apart), once it did
     /// (hub/desk_commit.rs).
     #[serde(default, skip_serializing_if = "String::is_empty")]

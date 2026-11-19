@@ -98,6 +98,9 @@ pub fn handed_words(it: &DeskItem, why: &str, rule: &str) -> String {
     if !it.images.is_empty() {
         out.push_str(&format!("\nPictures with it (open each to see it): {}", pictures(it)));
     }
+    if !it.builds.is_empty() && !it.why.trim().is_empty() {
+        out.push_str(&format!("\n{}", it.why.trim()));
+    }
     if !why.trim().is_empty() {
         out.push_str(&format!("\nWhy you: {}", why.trim()));
     }
@@ -135,7 +138,9 @@ pub fn new_items_words(items: &[DeskItem]) -> String {
         if it.from != "you" && !it.from.is_empty() {
             out.push_str(&format!(" | from {}", it.from));
         }
-        if !it.why.trim().is_empty() {
+        if !it.builds.is_empty() {
+            out.push_str(&format!(" | {}", it.why.trim()));
+        } else if !it.why.trim().is_empty() {
             out.push_str(&format!(" | why separate: {}", it.why.trim()));
         }
         if !it.split_from.is_empty() {

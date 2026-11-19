@@ -267,6 +267,8 @@ impl Hub {
         if self.desk_answered(id, &d) {
             return true;
         }
+        // A mocks item's holder asking which option: the answer is your pick, too (desk.rs), done once it's answered.
+        let picked = self.desk_question_picked(id, &d);
         let outcome = describe(&d);
         let tx = self.write(|st| st.waiters.remove(id));
         match tx {
@@ -276,6 +278,9 @@ impl Hub {
                     crate::approval_trace::record(sid, request, id, if delivered { "waiter_received" } else { "waiter_closed" });
                 }
                 self.finish(id, if delivered { "answered" } else { "gone" }, &if delivered { outcome } else { "agent had already stopped waiting".into() });
+                if let Some(fx) = picked {
+                    self.desk_done(fx);
+                }
                 delivered
             }
             None => {

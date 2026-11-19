@@ -20,6 +20,9 @@ pub(super) struct Effects {
     pub(super) decisions: Vec<String>,
     /// Messages to sessions: (session, text).
     pub(super) sends: Vec<(String, String)>,
+    /// Your pick on a mocks item whose holder waits on its question (#281): (that ask, its question, the answer),
+    /// answered with the option picked. A pick always changes an item, so `items` is never empty with these.
+    pub(super) answers: Vec<(String, String, String)>,
     /// A lead's questions for you: (its session, its project, question, choices, the item it's about).
     pub(super) asks: Vec<(String, String, String, Vec<String>, Option<String>)>,
     /// New items for their project's lead to route: (project, item), told together a moment later.
@@ -1276,9 +1279,14 @@ fn desk_line_start(line: &str) -> bool {
 
 /// What you did to item `id` ("looks_right" | "reopen" | "send_back" | "start_now" | "put_before" | "drop"), in the store.
 fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<Effects, String> {
+    if act == "pick" {
+        return pick(st, id, text, now);
+    }
     let mut fx = Effects::default();
     let busy = st.desk.item(id).and_then(|i| i.holder.as_ref()).filter(|h| at_work(st, h)).map(|h| h.name.clone());
     let rule = st.desk.item(id).map(|i| rule_of(st, &i.project)).unwrap_or_default();
+    // Picked, but its build item dropped since: it can be undone, and picked again.
+    let build_gone = st.desk.item(id).is_some_and(|i| !i.built_as.is_empty() && st.desk.item(&i.built_as).is_none());
     let it = st.desk.item_mut(id).ok_or("no such item")?;
     let holder = it.holder.clone();
     match act {
@@ -1295,6 +1303,11 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
             if it.state != "done" {
                 return Err("It isn't done: nothing to undo".into());
             }
+            // Done by your pick on its mocks: its build item carries it on.
+            if !it.picked.is_empty() && !build_gone {
+                return Err(format!("Option {} is picked: it's being built as #{}", it.picked, it.built_as));
+            }
+            (it.picked, it.built_as) = (String::new(), String::new());
             (it.state, it.done_at, it.commit_wait) = ("to_check".into(), None, None);
         }
         "send_back" => {
@@ -1358,6 +1371,14 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
             if let Some(h) = gone.as_ref().and_then(|g| g.holder.as_ref().filter(|_| g.state == "working")) {
                 fx.sends.push((h.to().to_string(), format!("Desk item #{id} was dropped: stop work on it.")));
             }
+            // The build item of a pick on mocks: the mocks item is no longer picked, so it can be picked again.
+            let built = gone.as_ref().map(|g| g.builds.clone()).filter(|b| !b.is_empty());
+            if let Some(m) = built.as_deref().and_then(|b| st.desk.item_mut(b)).filter(|m| m.built_as == id) {
+                let (project, mid, option) = (m.project.clone(), m.id.clone(), std::mem::take(&mut m.picked));
+                (m.built_as, m.updated) = (String::new(), secs(now));
+                fx.items.push(mid.clone());
+                you_wrote(st, &project, &mid, &format!("Dropped #{id}, the build of option {option}"), "it can be picked again", now, &mut fx);
+            }
             fx.trees_gone.extend(gone.filter(|g| g.tree.is_some()));
             fx.dropped.push(id.to_string());
             release(st, id, now, &mut fx);
@@ -1378,6 +1399,143 @@ fn you_wrote(st: &mut Store, project: &str, id: &str, words: &str, whom: &str, n
     if let Some(d) = st.desk.decisions.last_mut() {
         d.undo = "none".into();
     }
+}
+
+/// The option you picked ("B", "option b" → "B"), or "" when there's none.
+fn option_of(text: &str) -> String {
+    let t = text.trim().trim_end_matches('.').trim();
+    let t = t.strip_prefix("option ").or_else(|| t.strip_prefix("Option ")).unwrap_or(t).trim();
+    if t.chars().count() == 1 { t.to_uppercase() } else { t.chars().take(40).collect::<String>().trim().to_string() }
+}
+
+/// What a mocks item is about, from its title: "Mocks: working items" → "working items".
+fn topic_of(title: &str) -> String {
+    let t = title.trim();
+    let mut topic = t;
+    if let Some(p) = ["mocks for ", "mocks of ", "mocks:", "mock:", "mocks ", "designs for ", "designs:", "design:"].iter().find(|p| t.get(..p.len()).is_some_and(|h| h.eq_ignore_ascii_case(p))) {
+        topic = t[p.len()..].trim();
+    }
+    if let Some(s) = [" (mocks)", " mocks"].iter().find(|s| topic.len() >= s.len() && topic.get(topic.len() - s.len()..).is_some_and(|e| e.eq_ignore_ascii_case(s))) {
+        topic = topic[..topic.len() - s.len()].trim();
+    }
+    if topic.is_empty() { t.to_string() } else { topic.to_string() }
+}
+
+/// The option an answer names, as one capital letter: "B", "b", "Option B", "B: the compact list", "B) …". None for
+/// anything else ("A new tab" isn't option A).
+fn letter_of(answer: &str) -> Option<String> {
+    let a = answer.trim();
+    let a = if a.len() > 7 && a[..7].eq_ignore_ascii_case("option ") { a[7..].trim_start() } else { a };
+    let mut chars = a.chars();
+    let c = chars.next().filter(char::is_ascii_alphabetic)?;
+    let rest = chars.as_str().trim_start();
+    let single = rest.is_empty() && c.is_ascii_alphabetic();
+    let marked = c.is_ascii_uppercase() && rest.starts_with([':', ')', '.', '-', '\u{2014}', '\u{2013}', ',', '(']);
+    (single || marked).then(|| c.to_ascii_uppercase().to_string())
+}
+
+/// The options a pick line names ("Pick one for working items: A, B or C." gives A, B, C): its newest words' line
+/// with "pick" or "choose" in it (the one starting so first), and the first run of two or more single capital letters
+/// joined by ",", "/", "or" or "and" in it. As the Desk page reads it (deskPickOptions).
+fn pick_letters(text: &str) -> Vec<String> {
+    let lines: Vec<&str> = text.split('\n').flat_map(|l| l.split_inclusive(['.', '?', '!'])).map(str::trim).collect();
+    let words = |l: &str| l.split(|c: char| !c.is_alphanumeric()).map(str::to_ascii_lowercase).collect::<Vec<_>>();
+    let asks: Vec<&str> = lines.into_iter().filter(|l| words(l).iter().any(|w| w == "pick" || w == "choose")).collect();
+    let starts = |l: &str| words(l).first().is_some_and(|w| matches!(w.as_str(), "pick" | "choose" | "which"));
+    let Some(line) = asks.iter().find(|l| starts(l)).or(asks.first()) else { return vec![] };
+    // Words, with "," and "/" as their own; anything else breaks a run.
+    let mut toks: Vec<String> = vec![];
+    let mut word = String::new();
+    for c in line.chars().chain([' ']) {
+        if c.is_alphanumeric() {
+            word.push(c);
+            continue;
+        }
+        if !word.is_empty() {
+            toks.push(std::mem::take(&mut word));
+        }
+        if !c.is_whitespace() {
+            toks.push(if c == ',' || c == '/' { c.to_string() } else { "|".into() });
+        }
+    }
+    let letter = |t: &str| t.len() == 1 && t.chars().all(|c| c.is_ascii_uppercase());
+    let joins = |t: &str| matches!(t, "," | "/" | "or" | "and");
+    for start in 0..toks.len() {
+        if !letter(&toks[start]) {
+            continue;
+        }
+        let (mut run, mut i) = (vec![toks[start].clone()], start + 1);
+        loop {
+            let mut j = i;
+            while j < toks.len() && joins(&toks[j]) {
+                j += 1;
+            }
+            if j == i || j >= toks.len() || !letter(&toks[j]) {
+                break;
+            }
+            run.push(toks[j].clone());
+            i = j + 1;
+        }
+        if run.len() > 1 {
+            run.dedup();
+            return run;
+        }
+    }
+    vec![]
+}
+
+/// You picked option `text` on mocks item `id` (one with a canvas): a pick means build. It's done, picked, and Cue
+/// adds one "Build: <topic> (option X)" item, linked both ways (`built_as`, `builds`), for its Desk lead to route at
+/// once. Picked already: no other build item, and the answer says which it's being built as.
+fn pick(st: &mut Store, id: &str, text: &str, now: u64) -> Result<Effects, String> {
+    let mut fx = Effects::default();
+    let id = st.desk.canon(id);
+    let it = st.desk.item(&id).ok_or("no such item")?.clone();
+    if !it.built_as.is_empty() && st.desk.item(&it.built_as).is_some() {
+        return Err(format!("Option {} is picked already: it's being built as #{}", it.picked, it.built_as));
+    }
+    if it.designs.trim().is_empty() {
+        return Err("It has no mocks to pick from".into());
+    }
+    let option = option_of(text);
+    if option.is_empty() {
+        return Err("Say which option you picked".into());
+    }
+    let kind = if it.kind.is_empty() { "feature" } else { it.kind.as_str() };
+    let title = format!("Build: {} (option {option})", topic_of(&it.title));
+    let done_when = format!("option {option} of #{id}'s mocks is in the app and works as the mocks show");
+    let mut b = new_item(st, &it.project, kind, &title, &done_when, "you", now);
+    b.builds = id.clone();
+    b.why = format!("You picked option {option} on #{id}'s mocks: {}", it.designs.trim());
+    let n = b.id.clone();
+    st.desk.items.push(b);
+    fx.items.push(n.clone());
+    if st.desk.lead_sid(&it.project).is_some() {
+        fx.news.push((it.project.clone(), n.clone()));
+    }
+    // Its holder waiting on its question (one): the question is answered with the option picked.
+    // One question only: an ask of several isn't answered for you.
+    let one = |a: &&Item| a.tool_input["questions"].as_array().is_some_and(|q| q.len() == 1);
+    let asking = it.holder.as_ref().and_then(|h| ask_of(st, h)).filter(|a| a.kind == "question").filter(one).map(|a| {
+        let q = a.tool_input.pointer("/questions/0");
+        let question = q.and_then(|q| q["question"].as_str()).unwrap_or("").to_string();
+        let labels = q.and_then(|q| q["options"].as_array()).map(|o| o.iter().filter_map(|x| x["label"].as_str()).collect::<Vec<_>>()).unwrap_or_default();
+        let label = labels.into_iter().find(|l| letter_of(l).as_deref() == Some(option.as_str())).map_or_else(|| format!("Option {option}"), str::to_string);
+        (a.id.clone(), question, label)
+    });
+    // Answered or not, its holder is told the mocks are done and what builds the pick, so it doesn't build it there.
+    fx.answers.extend(asking);
+    if let Some(h) = it.holder.as_ref() {
+        fx.sends.push((h.to().to_string(), format!("Desk item #{id} ({}): option {option} was picked, so it's done. #{n} builds it; the Desk lead routes that. Stop work on #{id}.", it.title)));
+    }
+    let m = st.desk.item_mut(&id).ok_or("no such item")?;
+    (m.picked, m.built_as) = (option.clone(), n.clone());
+    (m.state, m.after, m.close_on_check, m.done_at, m.updated) = ("done".into(), None, false, Some(secs(now)), secs(now));
+    fx.items.push(id.clone());
+    you_wrote(st, &it.project, &id, &format!("Picked option {option}"), &format!("being built as #{n}"), now, &mut fx);
+    you_wrote(st, &it.project, &n, &format!("Builds option {option}, picked on #{id}"), "", now, &mut fx);
+    release(st, &id, now, &mut fx);
+    Ok(fx)
 }
 
 /// Item `id` put before the one it waits on, in the queue: it takes that one's place (starting now when that one
@@ -1773,6 +1931,44 @@ impl Hub {
         true
     }
 
+    /// Ask `id` answered with `d`: when it's the question of a mocks item's holder, and the answer is one of the
+    /// options the question names, that's your pick (#281): the item is picked and done, and its build item made, as
+    /// a Pick on the page does. What's left to do (its saves, the done note to its holder) for once the answer, as
+    /// given, has gone to the holder.
+    pub(super) fn desk_question_picked(&self, id: &str, d: &Decision) -> Option<Effects> {
+        let answer = d.answers.as_ref().and_then(|a| a.as_object()).and_then(|a| a.values().next()).and_then(Value::as_str).unwrap_or("").to_string();
+        let option = letter_of(&answer)?;
+        let mocks = self.read(|st| {
+            let ask = st.items.iter().find(|i| i.id == id && i.kind == "question" && i.status == "pending")?;
+            let qs = ask.tool_input["questions"].as_array().filter(|q| q.len() == 1)?;
+            let question = qs[0]["question"].as_str().unwrap_or("");
+            let it = st.desk.items.iter().find(|i| {
+                !i.designs.trim().is_empty() && i.holder.as_ref().and_then(|h| ask_of(st, h)).is_some_and(|a| a.id == id)
+                    && (i.built_as.is_empty() || st.desk.item(&i.built_as).is_none())
+            })?;
+            // Only a question that asks you to pick, naming the lettered options in its words or its choices.
+            let asks = question.split(|c: char| !c.is_alphanumeric()).any(|w| w.eq_ignore_ascii_case("pick") || w.eq_ignore_ascii_case("choose"));
+            let mut letters = pick_letters(question);
+            if letters.is_empty() {
+                let labels = qs[0]["options"].as_array().map(|o| o.iter().filter_map(|x| x["label"].as_str().and_then(letter_of)).collect::<Vec<_>>()).unwrap_or_default();
+                letters = if labels.len() > 1 { labels } else { vec![] };
+            }
+            (asks && letters.contains(&option)).then(|| it.id.clone())
+        })?;
+        let now = now_ms();
+        match self.write(|st| pick(st, &mocks, &option, now)) {
+            Ok(mut fx) => {
+                // This very question is the one answered: by you, as you answered it.
+                fx.answers.clear();
+                Some(fx)
+            }
+            Err(e) => {
+                eprintln!("cue: desk: an answer's pick on #{mocks} wasn't taken: {e}");
+                None
+            }
+        }
+    }
+
     /// `f` run while the Desk's saves wait for it (saves.rs: each writes what the store holds then, in order).
     pub(super) fn desk_saving<T>(&self, f: impl FnOnce() -> T) -> T {
         let _saving = crate::locking::lock(&self.saves.desk, "desk saves");
@@ -1825,6 +2021,13 @@ impl Hub {
             fx.joined.iter().filter(|(project, _)| !project.starts_with("desk-") || self.read(|st| st.desk.spaces.contains_key(project))).for_each(|(project, sid)| crate::db::desk_put_member(project, sid, now));
         }
         self.changed();
+        // A pick on mocks whose holder waits on its question: answered with the option picked (#281).
+        for (ask, question, answer) in fx.answers {
+            let d = Decision { behavior: "allow".into(), message: None, answers: Some(json!({ question: answer })), permission: None };
+            if !self.respond(&ask, d) {
+                eprintln!("cue: desk: its holder's question was gone before the pick could answer it");
+            }
+        }
         for (sid, text) in fx.sends {
             // A Restart's send says how it went, on its item (#291).
             let restart = fx.restarts.iter().find(|(_, to, _)| *to == sid).map(|(id, _, name)| (id.clone(), name.clone()));
