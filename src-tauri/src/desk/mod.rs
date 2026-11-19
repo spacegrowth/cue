@@ -79,6 +79,10 @@ the ITEM just above. Neither Cue nor you start a held item: no ROUTE, no START; 
 PAUSE: why: <reason>      (no #<id>: pause the whole Desk, only when the user asks: every session stops at a safe point, its work \
 kept in its copy; queued items don't start and what you route is held)
 RESUME: why: <reason>      (no #<id>: pick a paused Desk back up: sessions carry on, held routes go out)
+FEATURE: <name> | #<id> #<id> …      (items that are pieces of one big feature: Cue adds a feature item of that \
+name and the Desk lists the pieces under it, with how many are done; it's done once they all are. Route the pieces, \
+not the feature. FEATURE: #<id> | #<id> … puts them under an item that's there already; #new is the ITEM you added \
+in this reply; say it again to add more pieces)
 DESIGNS: #<id> <canvas link>      (where an item's designs are; say it again when they move)
 CONTEXT: <session or me> -> keep | why: <reason>      (Cue leaves that session's context as it is while it waits now, or, if it's at work, while it waits after this turn)
 

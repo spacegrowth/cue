@@ -79,7 +79,11 @@ const deskOf = (p) => {
 };
 // An item by its number, or by the tag it had before items were numbered (its alias), so old lines still find it.
 const deskIdIs = (i, id) => i.id === id || (!!i.alias && i.alias === id);
-const deskItem = (p, id) => deskOf(p).items.find((i) => deskIdIs(i, id)) || null;
+// A big feature's piece done days ago is only in its feature's `pieces` (#282): found there too.
+const deskItem = (p, id) => {
+  const its = deskOf(p).items, old = typeof deskDonePages === "undefined" ? [] : deskDonePages.get(p)?.items || [];
+  return its.find((i) => deskIdIs(i, id)) || [...its, ...old].flatMap((i) => i.pieces || []).find((i) => deskIdIs(i, id)) || null;
+};
 /** An item as people name it: its kind and number, "Bug #2", "Task #1"; "#2" while it has no kind yet. */
 /** An item's kind as a small line icon in the one theme color (the "Type marks" pick): a checked box, a bug, a
  *  sparkle. The one helper for it: every place an item's kind shows (the item list, the left list, the item page,

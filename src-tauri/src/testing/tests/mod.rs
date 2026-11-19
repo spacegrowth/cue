@@ -23,6 +23,7 @@ mod desk_land_moved;
 mod desk_moves;
 mod desk_unstick;
 mod desk_theirs;
+mod desk_features;
 mod desk_finish;
 mod desk_wait_list;
 mod desk_context;

@@ -48,6 +48,13 @@ pub struct DeskItem {
     /// The item it was split from (SPLIT:), when it was.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub split_from: String,
+    /// The big feature it's one piece of (#282): that item's id. The Desk lists it under that feature's name, and
+    /// the feature is done once all its pieces are (hub/desk_features.rs). Set by the lead's FEATURE: line.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub part_of: String,
+    /// Its pieces, when it's a feature with any, oldest first: worked out as it's shown (hub/desk_view.rs), never saved.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pieces: Vec<DeskItem>,
     /// What you'll see when it's done, in plain words: the one line about it shown to you (#382).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub see: String,

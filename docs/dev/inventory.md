@@ -19,7 +19,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | Lock acquisitions | 261 |
 | Lock-graph edges | 59 |
 | Spawn sites | 88 |
-| External calls: fs / db / process / notify / login / socket | 454 / 203 / 52 / 4 / 1 / 4 |
+| External calls: fs / db / process / notify / login / socket | 454 / 208 / 52 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 12 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -393,7 +393,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 | Holder | Kind | Made in | Call | Path |
 |---|---|---|---|---|
-| `hub::Hub::build_snapshot` | fs | `hub::activity::written_ms` | metadata | `hub/mod.rs::Hub::build_snapshot` in a closure hub::store_access::Hub::write runs holding the lock → `hub/mod.rs::Hub::store_parts` → `hub/desk_view.rs::Hub::desk_view` → `hub/desk_view.rs::shown` → `hub/desk_view.rs::wrote_just_now` → `hub/activity.rs::written_ms`, calls out |
+| `hub::Hub::build_snapshot` | fs | `hub::activity::written_ms` | metadata | `hub/mod.rs::Hub::build_snapshot` in a closure hub::store_access::Hub::write runs holding the lock → `hub/mod.rs::Hub::store_parts` → `hub/desk_view.rs::Hub::desk_view` → `hub/desk_view.rs::with_pieces` → `hub/desk_view.rs::shown` → `hub/desk_view.rs::wrote_just_now` → `hub/activity.rs::written_ms`, calls out |
 | `hub::Hub::build_snapshot` | fs | `hub::desk_checks::builds_this_cue` | read_to_string | `hub/mod.rs::Hub::build_snapshot` in a closure hub::store_access::Hub::write runs holding the lock → `hub/mod.rs::Hub::store_parts` → `hub/desk_view.rs::Hub::desk_view` → `lands.rs::desk_view` → `lands.rs::place_of` → `lands.rs::is_cue` → `hub/desk_checks.rs::builds_this_cue`, calls out |
 | `hub::desk_act::Hub::desk_give` | fs | `hub::activity::written_ms` | metadata | `hub/desk_act.rs::Hub::desk_give` in a closure hub::store_access::Hub::read runs holding the lock → `hub/desk_view.rs::shown` → `hub/desk_view.rs::wrote_just_now` → `hub/activity.rs::written_ms`, calls out |
 | `hub::desk_act::Hub::desk_item_act` | fs | `hub::activity::written_ms` | metadata | `hub/desk_act.rs::Hub::desk_item_act` in a closure hub::store_access::Hub::read runs holding the lock → `hub/desk_view.rs::shown` → `hub/desk_view.rs::wrote_just_now` → `hub/activity.rs::written_ms`, calls out |
@@ -404,7 +404,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hub::desk_spaces::Hub::desk_delete_selected` | db | `hub::desk_spaces::Hub::desk_delete_selected` | db::desk_delete | `hub/desk_spaces.rs::Hub::desk_delete_selected` in a closure hub::store_access::Hub::write runs holding the lock, calls out |
 | `hub::desk_trees::Hub::desk_trees` | fs | `hub::desk_checks::builds_this_cue` | read_to_string | `hub/desk_trees.rs::Hub::desk_trees` in a closure hub::store_access::Hub::read runs holding the lock → `lands.rs::lands_of` → `lands.rs::place_of` → `lands.rs::is_cue` → `hub/desk_checks.rs::builds_this_cue`, calls out |
 | `hub::desk_trees::Hub::desk_trees_free` | fs | `hub::desk_checks::builds_this_cue` | read_to_string | `hub/desk_trees.rs::Hub::desk_trees_free` in a closure hub::store_access::Hub::write runs holding the lock → `lands.rs::lands_of` → `lands.rs::place_of` → `lands.rs::is_cue` → `hub/desk_checks.rs::builds_this_cue`, calls out |
-| `hub::desk_view::Hub::desk_done_page` | fs | `hub::activity::written_ms` | metadata | `hub/desk_view.rs::Hub::desk_done_page` in a closure hub::store_access::Hub::read runs holding the lock → `hub/desk_view.rs::shown` → `hub/desk_view.rs::wrote_just_now` → `hub/activity.rs::written_ms`, calls out |
+| `hub::desk_view::Hub::desk_done_page` | fs | `hub::activity::written_ms` | metadata | `hub/desk_view.rs::Hub::desk_done_page` in a closure hub::store_access::Hub::read runs holding the lock → `hub/desk_view.rs::with_pieces` → `hub/desk_view.rs::shown` → `hub/desk_view.rs::wrote_just_now` → `hub/activity.rs::written_ms`, calls out |
 
 ## Spawn sites
 
@@ -885,7 +885,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `uploads.rs::save` | create_dir_all | 1 |
 | `uploads.rs::save_kept` | create_dir_all | 1 |
 
-### db (203)
+### db (208)
 
 | In | Call | Times |
 |---|---|---|
@@ -905,13 +905,15 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `db/desk.rs::desk_drop_kept` | db::with | 1 |
 | `db/desk.rs::desk_drop_lead` | db::with | 1 |
 | `db/desk.rs::desk_drop_member` | db::with | 1 |
+| `db/desk.rs::desk_get_item` | db::with | 1 |
 | `db/desk.rs::desk_kept` | db::with | 1 |
 | `db/desk.rs::desk_load` | db::desk_prune | 1 |
-| `db/desk.rs::desk_load` | db::with | 3 |
+| `db/desk.rs::desk_load` | db::with | 4 |
 | `db/desk.rs::desk_members` | db::with | 1 |
 | `db/desk.rs::desk_moves_clear` | db::with | 1 |
 | `db/desk.rs::desk_moves_cleared` | db::with | 1 |
 | `db/desk.rs::desk_moves_page` | db::with | 1 |
+| `db/desk.rs::desk_pieces` | db::with | 1 |
 | `db/desk.rs::desk_prune` | db::with | 1 |
 | `db/desk.rs::desk_put_decision` | db::with | 1 |
 | `db/desk.rs::desk_put_item` | db::with | 1 |
@@ -1010,6 +1012,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hub/desk.rs::Hub::desk_restore` | db::desk_moves_cleared | 1 |
 | `hub/desk.rs::Hub::desk_restore` | db::desk_put_numbered | 1 |
 | `hub/desk.rs::Hub::desk_restore` | db::desk_spaces | 1 |
+| `hub/desk_features.rs::Hub::feature_pieces_on_disk` | db::desk_get_item | 1 |
 | `hub/desk_handoff.rs::Hub::desk_hand_on` | db::handoff | 1 |
 | `hub/desk_handoff.rs::Hub::desk_hand_on_now` | db::handoff_continued | 1 |
 | `hub/desk_lead.rs::Hub::desk_lead_candidate` | db::ended_session | 1 |
@@ -1025,6 +1028,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hub/desk_trees.rs::Hub::desk_kept_remove` | db::desk_drop_kept | 1 |
 | `hub/desk_trees.rs::Hub::desk_tree_dropped` | db::desk_put_kept | 1 |
 | `hub/desk_view.rs::Hub::desk_done_page` | db::desk_done_page | 1 |
+| `hub/desk_view.rs::Hub::desk_done_page` | db::desk_pieces | 1 |
 | `hub/desk_view.rs::Hub::desk_moves_clear` | db::desk_moves_clear | 1 |
 | `hub/desk_view.rs::Hub::desk_moves_page` | db::desk_moves_page | 1 |
 | `hub/hand_off.rs::Hub::hand_off_ahead` | db::draft_text | 1 |
@@ -1185,7 +1189,7 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `ui/desk_lead.js::deskLineHtml` |  |  |
 | `ui/desk_sessions.js::deskSessions` |  |  |
 
-Files over 1000 lines: `src-tauri/src/hub/desk_finish.rs`, `src-tauri/src/testing/tests/desk_finish.rs`, `ui/inbox.js`, `ui/styles/desk.css`.
+Files over 1000 lines: `src-tauri/src/hub/desk_finish.rs`, `src-tauri/src/testing/tests/desk_finish.rs`, `ui/board.js`, `ui/inbox.js`, `ui/styles/desk.css`.
 
 ## What this can't see
 

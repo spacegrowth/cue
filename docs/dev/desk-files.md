@@ -27,6 +27,7 @@ split it by topic the same way.
 | `desk_commit.rs` | Looks right with a commit: only the item's files, the word check, never pushed |
 | `desk_theirs.rs` | Other sessions' edits in an item's files, kept out of its commit |
 | `desk_diff.rs` | An item's Files changed |
+| `desk_features.rs` | Big features: the lead's FEATURE line puts items under one, and a feature nobody holds is done once all its pieces are |
 | `desk_handoff.rs` | Handing a session grown too big to a fresh one |
 
 Outside the hub, one line each:

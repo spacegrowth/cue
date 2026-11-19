@@ -76,6 +76,25 @@ pub fn desk_kept() -> Vec<crate::desk::KeptTree> {
     .unwrap_or_default()
 }
 
+/// Item `id` as saved, done long ago too (a feature's piece, #282).
+pub fn desk_get_item(id: &str) -> Option<DeskItem> {
+    with(|c| {
+        let d: Option<String> = c.query_row("SELECT data FROM desk_items WHERE id = ?1", params![id], |r| r.get(0)).ok();
+        Ok(d.and_then(|d| serde_json::from_str(&d).ok()))
+    })
+    .flatten()
+}
+
+/// The saved pieces of feature `id` (#282): its done page shows them under it.
+pub fn desk_pieces(id: &str) -> Vec<DeskItem> {
+    with(|c| {
+        let mut q = c.prepare("SELECT data FROM desk_items WHERE data LIKE ?1")?;
+        let rows = q.query_map(params![format!("%\"part_of\":\"{id}\"%")], |r| r.get::<_, String>(0))?;
+        Ok(rows.flatten().filter_map(|d| serde_json::from_str::<DeskItem>(&d).ok()).filter(|i| i.part_of == id).collect())
+    })
+    .unwrap_or_default()
+}
+
 /// An item dropped.
 pub fn desk_drop_item(id: &str) {
     with(|c| c.execute("DELETE FROM desk_items WHERE id = ?1", params![id]).map(|_| ()));
@@ -235,9 +254,19 @@ pub fn desk_load(now_ms: u64) -> (Vec<DeskItem>, Vec<DeskDecision>, Vec<(String,
     let items = with(|c| {
         let mut q = c.prepare("SELECT data FROM desk_items WHERE state != 'done' OR updated_ms >= ?1 ORDER BY rowid")?;
         let rows = q.query_map(params![since], |r| r.get::<_, String>(0))?;
-        Ok(rows.flatten().filter_map(|d| serde_json::from_str(&d).ok()).collect())
+        Ok(rows.flatten().filter_map(|d| serde_json::from_str(&d).ok()).collect::<Vec<DeskItem>>())
     })
     .unwrap_or_default();
+    // The pieces done long ago of a feature still shown (#282): its list counts and shows them.
+    let mut items = items;
+    let older: Vec<DeskItem> = with(|c| {
+        let mut q = c.prepare("SELECT data FROM desk_items WHERE state = 'done' AND updated_ms < ?1 AND data LIKE '%\"part_of\":%'")?;
+        let rows = q.query_map(params![since], |r| r.get::<_, String>(0))?;
+        Ok(rows.flatten().filter_map(|d| serde_json::from_str::<DeskItem>(&d).ok()).collect())
+    })
+    .unwrap_or_default();
+    let shown: std::collections::HashSet<String> = items.iter().map(|i| i.id.clone()).collect();
+    items.extend(older.into_iter().filter(|i| shown.contains(&i.part_of)));
     let decisions = with(|c| {
         let mut q = c.prepare("SELECT data FROM desk_decisions WHERE at_ms >= ?1 ORDER BY at_ms")?;
         let rows = q.query_map(params![since], |r| r.get::<_, String>(0))?;

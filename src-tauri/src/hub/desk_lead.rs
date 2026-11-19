@@ -429,6 +429,7 @@ fn item_lines(st: &Store, it: &DeskItem, out: &mut String, failed: &mut Vec<(Str
     if let Some(a) = &it.after {
         out.push_str(&format!(" | after #{a}"));
     }
+    out.push_str(&super::desk_features::feature_words(st, it));
     if let Some((_, why)) = it.paused.as_ref().filter(|_| it.state == "paused") {
         out.push_str(&if why.is_empty() { " | RESUME it when it should go on".to_string() } else { format!(" | paused: {why}") });
     }

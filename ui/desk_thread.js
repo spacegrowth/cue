@@ -163,7 +163,8 @@ function deskItemPane(i, d, foot = "") {
   const changed = deskFilesChanged(i), checking = i.state === "to_check" || i.state === "done";
   const read = deskDiffs.get(i.id)?.files, nFiles = (checking ? read?.length : read?.length || null) ?? (i.commit_wait?.files || i.files || []).length;
   const files = changed ? `<div class="dk-fcs">${changed}</div>` : "";
-  const thread = deskThread(i, d), tab = deskItemTabs.get(i.id) || "thread";
+  // A feature nobody holds is its pieces (#282): its page opens on them.
+  const feat = deskFeat(i), thread = deskThread(i, d), tab = deskItemTabs.get(i.id) || (feat && !i.holder ? "pieces" : "thread");
   const h = i.holder, sid = h ? (h.kind === "crew" ? h.lead_sid : h.sid) : null;
   const armed = deskDropArm === i.id;
   const tabBtn = (k, label, n) => `<button class="dk-itab${tab === k ? " on" : ""}" role="tab" aria-selected="${tab === k}" data-desk-itab="${k}" data-id="${esc(i.id)}">${label}<span class="n">${n}</span></button>`;
@@ -172,12 +173,16 @@ function deskItemPane(i, d, foot = "") {
   const backing = deskBackFor === i.id;
   const at = `${backing ? deskBackHtml(i.id) : ""}${deskSec("Couldn't give it out", i.route_failed ? `<p>${esc(i.route_failed)}</p>` : "")}${deskSec("Couldn't start", !i.holder && i.start_failed ? `<p>Cue couldn't start a new session for it: ${esc(i.start_failed)}</p>` : "")}
     ${i.state === "needs_you" ? deskChain(i) : deskSec(deskAnswerOf(i) ? "It asked you" : "What's holding it up", deskChain(i))}${deskSec("Build log", deskFinLog(i))}${deskSec("What it made", i.state === "to_check" || i.state === "done" ? deskMadeLinks(i) : "")}
+    ${i.part_of ? `<p class="dk-split">Part of <a href="#" data-desk-item="${esc(i.part_of)}">${esc(deskItem(i.project, i.part_of)?.title || `#${i.part_of}`)}</a></p>` : ""}
     ${i.split_from ? `<p class="dk-split">Split from <a href="#" data-desk-item="${esc(i.split_from)}">#${esc(i.split_from)}</a></p>` : ""}`;
-  const body = tab === "decisions" ? deskCallsBox(decs, `item:${i.id}`, deskDecList, `<p class="dk-note">No decisions on it yet.</p>`)
+  // Its pieces, oldest first (#282): each its state, title, and kind, number, who and age; a click opens it.
+  const pieceRow = (p) => `<div class="dk-pr${p.state === "done" ? " done" : ""}" role="button" tabindex="0" data-desk-item="${esc(p.id)}">${deskStateIcon(p)}<div class="dk-prt">${esc(p.title)}</div><div class="dk-prm">${deskKindIcon(p)}<span>${[esc(deskNum(p)), esc(deskHolderOf(p)), `${ago(deskMs(p.state === "done" ? p.done_at || p.updated : p.created))} ago`].filter(Boolean).join(" · ")}</span></div></div>`;
+  const body = tab === "pieces" && feat ? `<div class="dk-prs">${i.pieces.map(pieceRow).join("")}</div>`
+    : tab === "decisions" ? deskCallsBox(decs, `item:${i.id}`, deskDecList, `<p class="dk-note">No decisions on it yet.</p>`)
     : tab === "steps" ? (steps.length ? deskLog(steps) : `<p class="dk-note">No steps yet.</p>`)
     : tab === "files" ? (files ? deskSec(checking ? "Files changed" : deskDiffs.get(i.id)?.files?.length ? "Changed so far" : "Files it's on", files) : `<p class="dk-note">No files on it yet.</p>`)
     : `${deskThreadHtml(thread)}<div class="dk-inow">${at}</div>`;
-  const main = `<div class="dk-pane dk-ipane" data-scroll-key="item:${esc(i.id)}"><div class="dk-ihead"><div class="dk-itabs" role="tablist">${tabBtn("thread", "Thread", thread.length)}${tabBtn("decisions", "Decisions", decs.filter((c) => !c.minor).length)}${tabBtn("steps", "Steps", steps.length)}${tabBtn("files", "Files", nFiles)}<span class="grow"></span>${i.state !== "done" ? `<button class="dk-drop${armed ? " armed" : ""}" data-desk-act="drop" data-id="${esc(i.id)}">${armed ? "Drop it" : "Drop this item"}</button>` : ""}</div></div>
+  const main = `<div class="dk-pane dk-ipane" data-scroll-key="item:${esc(i.id)}"><div class="dk-ihead"><div class="dk-itabs" role="tablist">${feat ? tabBtn("pieces", "Pieces", i.pieces.length) : ""}${tabBtn("thread", "Thread", thread.length)}${tabBtn("decisions", "Decisions", decs.filter((c) => !c.minor).length)}${tabBtn("steps", "Steps", steps.length)}${tabBtn("files", "Files", nFiles)}<span class="grow"></span>${i.state !== "done" ? `<button class="dk-drop${armed ? " armed" : ""}" data-desk-act="drop" data-id="${esc(i.id)}">${armed ? "Drop it" : "Drop this item"}</button>` : ""}</div></div>
     <div class="dk-ibody dk-itab-${tab}">${body}</div></div>`;
   // What you'll see as ticks (#382: its Done when is the session's check, not shown here): all ticked once it's to
   // check or done (its session said DONE), none before; "n of m".
@@ -203,7 +208,7 @@ function deskItemMeta(i, d) {
   const cm = i.state === "done" ? i.commit : i.state === "to_check" ? deskFinCommit(i) : "";
   // Landed with no check to run (its repository has none).
   const unchecked = cm && i.finish?.unchecked ? " · landed, not checked" : "";
-  return [who ? `${i.state === "queued" ? "next for" : i.state === "done" ? "by" : "with"} ${who}` : "", cm ? `committed <span class="dk-cm">${esc(cm)}</span>${unchecked}` : "",
+  return [deskFeat(i) ? deskFeatBar(i, " big") : "", who ? `${i.state === "queued" ? "next for" : i.state === "done" ? "by" : "with"} ${who}` : "", cm ? `committed <span class="dk-cm">${esc(cm)}</span>${unchecked}` : "",
     i.tree && i.state !== "done" ? `in its own copy <span class="dk-cm">${esc(i.tree.branch)}</span>` : "",
     `added by ${esc(deskFrom(i, d))}`, `${ago(deskMs(i.created))} ago`].filter(Boolean).join(" · ");
 }
@@ -212,7 +217,11 @@ function deskItemMeta(i, d) {
 function deskItemNow(i) {
   const pick = deskVerbHtml(i), ub = pick ? deskUnblocksHtml(i).replace("dk-ub", "dk-ub dk-iub") : "";
   const who = esc(i.holder?.name || "Its session"), first = i.after && deskItem(i.project, i.after);
-  const [dot, word, say] = i.state === "needs_you" ? ["ask", "Waiting on you", ""]
+  // A feature nobody holds (#282): where its pieces are.
+  const fs = deskFeat(i) && !i.holder ? deskFeatState(i) : null, left = fs && i.pieces.length - deskFeatDone(i);
+  const [dot, word, say] = fs === "done" ? ["done", "Done", "All of its pieces are done."]
+    : fs ? [fs === "work" ? "work" : "stop", fs === "work" ? "In progress" : "Next", `${left} of its ${i.pieces.length} pieces ${left === 1 ? "is" : "are"} left. Each is given out on its own.`]
+    : i.state === "needs_you" ? ["ask", "Waiting on you", ""]
     : deskInstallWait(i) ? ["work", "Waiting for install", "Nothing to try till Cue is installed with it."]
     : deskUncommitted(i) ? ["ask", "Not on main yet", "Its files aren't committed. Commit to main puts them there and closes it."]
     : i.state === "to_check" ? ["check", "Ready to check", ""]

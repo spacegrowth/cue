@@ -16,6 +16,7 @@ mod crew_log;
 mod desk;
 mod desk_act;
 mod desk_heard;
+mod desk_features;
 mod desk_route;
 mod desk_said;
 mod desk_view;

@@ -394,6 +394,12 @@ impl Hub {
             // Each save writes what the store holds now (saves.rs), in the order the saves run.
             let _saving = crate::locking::lock(&self.saves.desk, "desk saves");
             let now = now_ms();
+            // A piece changed: its feature as its pieces now have it (#282), saved with them.
+            self.write(|st| {
+                for f in super::desk_features::features_of(st, &fx.items) {
+                    super::desk_features::settle(st, &f, now, &mut fx);
+                }
+            });
             let (items, decisions) = self.write(|st| {
                 // An item at work with a holder it wasn't stamped for: its work (and files) start now.
                 for id in &fx.items {

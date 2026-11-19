@@ -88,6 +88,11 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx
                     answers.push(no);
                 }
             }
+            Line::Feature { id, name, pieces } => {
+                if let Err(no) = super::desk_features::feature_said(st, project, &by, id, &name, &pieces, last_new.as_deref(), now, fx) {
+                    answers.push(no);
+                }
+            }
             Line::Answer { id, text } => cleanup_said(st, project, &by, &id, Some(text), now, fx, &mut answers),
             Line::Pause { on, why } => fx.pause.push((project.to_string(), on, name.clone(), lsid.to_string(), why)),
             Line::Pass { id, .. } => cleanup_said(st, project, &by, &id, None, now, fx, &mut answers),
@@ -392,8 +397,10 @@ impl Hub {
         }
         // Each item at work with it: its work git says isn't committed yet, asked with the store let go (#213).
         let loose: Vec<(String, Vec<String>)> = held.iter().map(|id| (id.clone(), self.desk_uncommitted(id))).collect();
+        let from_disk = self.feature_pieces_on_disk(text);
         let now = now_ms();
         let fx = self.write(|st| {
+            super::desk_features::bring_back(st, from_disk);
             let mut fx = Effects::default();
             for (id, files) in &loose {
                 if let Some(it) = st.desk.item_mut(id) {

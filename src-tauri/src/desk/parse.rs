@@ -32,6 +32,10 @@ pub enum Line {
     Cut { id: String, on: String, why: String },
     /// The lead folded item `id`, a repeat of item `into`, into it: its words and pictures go to `into`, and it goes.
     Merge { id: String, into: String, why: String },
+    /// A big feature's pieces (#282): `FEATURE: <name> | #a #b …` makes a feature item named so (`id` None), and
+    /// `FEATURE: #<id> | #a #b …` makes item `id` the feature; either way each of `pieces` ("new": the reply's last
+    /// ITEM) is listed under it.
+    Feature { id: Option<String>, name: String, pieces: Vec<String> },
     /// The lead's note to whoever holds item `id`, at any stage (#338): `NOTE: #<id> | <words>`.
     Note { id: String, text: String },
     /// The lead unsticking item `id` itself (#347): `what` is "close" (`CLOSE: #<id> | commit: <sha> | why: …`: its
@@ -142,6 +146,7 @@ fn one(t: &str) -> Option<Line> {
         "CUT" => cut(body),
         "MERGE" => merge(body),
         "NOTE" => note(body),
+        "FEATURE" => feature(body),
         "ANSWER" => match note(body)? {
             Line::Note { id, text } => Some(Line::Answer { id, text }),
             _ => None,
@@ -361,6 +366,30 @@ fn merge(body: &str) -> Option<Line> {
     let (id, into) = (id_of(a)?, id_of(b)?);
     let why = p[1..].iter().find_map(|s| labelled(s, "why")).unwrap_or("").to_string();
     (id != into).then_some(Line::Merge { id, into, why })
+}
+
+/// "<name> | #a #b, #c" or "#id | #a #b": a feature and its pieces, two or more (#282). The name may be bold or quoted.
+fn feature(body: &str) -> Option<Line> {
+    let p = parts(body);
+    let head = unwrapped(p.first()?);
+    let pieces: Vec<String> = p[1..].iter().flat_map(|s| s.split(|c: char| c.is_whitespace() || c == ',')).filter_map(|w| w.trim_matches(['*', '`', '.']).strip_prefix('#')).filter_map(id_of_bare).collect();
+    let (id, name) = match head.strip_prefix('#') {
+        Some(h) if !h.contains(char::is_whitespace) => (Some(id_of_bare(h)?), String::new()),
+        _ => (None, head.to_string()),
+    };
+    let mut seen = Vec::new();
+    for x in pieces {
+        if !seen.contains(&x) && id.as_ref() != Some(&x) {
+            seen.push(x);
+        }
+    }
+    (!seen.is_empty() && (id.is_some() || !name.is_empty())).then_some(Line::Feature { id, name, pieces: seen })
+}
+
+/// "253" or "new" (a piece's id without its #), lower case; None for anything else.
+fn id_of_bare(w: &str) -> Option<String> {
+    let w = w.trim_end_matches([')', ':', ';']).to_ascii_lowercase();
+    (!w.is_empty() && w.chars().all(|c| c.is_ascii_alphanumeric())).then_some(w)
 }
 
 /// "#id | a | b": the id (it must start with #) and the non-empty parts after it, quotes and bold taken off.

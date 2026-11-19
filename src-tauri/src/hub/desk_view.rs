@@ -6,6 +6,13 @@ use crate::desk::{DeskDecision, DeskItem, Holder};
 use crate::sessions::Session;
 use super::desk::{ask_of, ask_view, at_work, crew_parts, last_words, secs, shown_name};
 
+/// `it` as `shown`, with its pieces when it's a feature (#282).
+pub(super) fn with_pieces(st: &Store, it: &DeskItem) -> DeskItem {
+    let mut out = shown(st, it);
+    out.pieces = super::desk_features::pieces_shown(st, it, |p| shown(st, p));
+    out
+}
+
 /// `it` as the window shows it: its holder as it is now (name, lead or not), waiting on you when its holder is,
 /// with its holder's latest and files.
 pub(super) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
@@ -240,7 +247,16 @@ impl Hub {
     /// them: the ones Cue holds as it holds them, the rest as saved. The list loads them as you scroll.
     pub(crate) fn desk_done_page(&self, project: &str, before: Option<(u64, &str)>, take: u32) -> Vec<DeskItem> {
         let saved = crate::db::desk_done_page(project, before, take.min(100));
-        self.read(|st| saved.iter().map(|i| shown(st, st.desk.item(&i.id).filter(|x| x.state == "done").unwrap_or(i))).collect())
+        // A feature done long ago: its pieces from the disk (#282), read before the store is.
+        let pieces: std::collections::HashMap<String, Vec<DeskItem>> = saved.iter().filter(|i| i.kind == "feature").map(|i| (i.id.clone(), crate::db::desk_pieces(&i.id))).collect();
+        self.read(|st| saved.iter().map(|i| {
+            let mut out = with_pieces(st, st.desk.item(&i.id).filter(|x| x.state == "done").unwrap_or(i));
+            if out.pieces.is_empty() {
+                out.pieces = pieces.get(&i.id).into_iter().flatten().map(|p| shown(st, st.desk.item(&p.id).unwrap_or(p))).collect();
+                out.pieces.sort_by_key(|p| (p.id.parse::<u64>().unwrap_or(u64::MAX), p.created));
+            }
+            out
+        }).collect())
     }
 
     /// `project`'s lead's own moves (#374) older than `before` (ms, id), newest first, `take` of them: the "What the
@@ -268,7 +284,7 @@ impl Hub {
         let list: Vec<Value> = projects
             .iter()
             .map(|p| {
-                let items: Vec<DeskItem> = st.desk.items.iter().filter(|i| &i.project == p && (i.state != "done" || i.done_at.unwrap_or(i.updated) >= today)).map(|i| shown(st, i)).collect();
+                let items: Vec<DeskItem> = st.desk.items.iter().filter(|i| &i.project == p && (i.state != "done" || i.done_at.unwrap_or(i.updated) >= today)).map(|i| with_pieces(st, i)).collect();
                 // While Away is on, the decisions since it started too (an overnight Away keeps them).
                 let from = super::desk_away::away_since(p).map_or(today, |since| today.min(secs(since)));
                 let decisions: Vec<&DeskDecision> = st.desk.decisions.iter().rev().filter(|d| &d.project == p && d.at >= from).collect();

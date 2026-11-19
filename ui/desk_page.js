@@ -488,6 +488,8 @@ function deskItemActs(i) {
   const b = (act, label, look = "") => `<button class="btn small ${look}" data-desk-act="${act}" data-id="${esc(i.id)}">${esc(label)}</button>`;
   const first = i.after && deskItem(i.project, i.after);
   if (deskBackFor === i.id) return deskBackHtml(i.id);
+  // A feature nobody holds is only its pieces (#282): they're given out, not it.
+  if (deskFeat(i) && !i.holder) return "";
   // What it waits on, and what clears that (#250): in place of a plain Try again.
   const wo = deskWaitsOn(i);
   if (wo) return wo;
