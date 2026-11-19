@@ -15,6 +15,7 @@ mod desk_spaces;
 mod desk_commit;
 mod desk_copy_wait;
 mod desk_land;
+mod desk_land_moved;
 mod desk_theirs;
 mod desk_finish;
 mod desk_wait_list;

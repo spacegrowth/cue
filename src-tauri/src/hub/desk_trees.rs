@@ -242,6 +242,10 @@ impl Hub {
         };
         let base = if t.base.is_empty() { rev(&t.repo, &onto) } else { Some(t.base.clone()) };
         let Some(base) = base else { return self.land_wait(id, "Cue can't read the main line") };
+        // Its copy moved onto a main line whose history was rewritten (its branch rebased, the commit it started from
+        // gone from it): measured from there, main's own changes would read as its, and clash. Where its branch
+        // meets the main line now is where it starts.
+        let base = moved_base_of(&t.repo, &t.path, &onto, &base).unwrap_or(base);
         if rev(&t.repo, &format!("{base}^{{tree}}")).as_deref() == Some(work.as_str()) {
             // Nothing in its copy: its holder worked where it was. That's landed as before; the copy goes.
             remove(&t);
@@ -388,6 +392,17 @@ fn tree_repo(folder: &str) -> Option<String> {
     let top = git("", folder, &[], &["rev-parse", "--show-toplevel"])?.trim().to_string();
     let (main, onto) = main_checkout(&top)?;
     (same_dir(&top, &main) && !onto.is_empty() && rev(&main, &onto).is_some()).then_some(main)
+}
+
+/// Where copy `path`'s branch meets the main line `onto` now, when the commit it was made from (`base`) is no longer
+/// in its history; None while it is.
+fn moved_base_of(repo: &str, path: &str, onto: &str, base: &str) -> Option<String> {
+    let head = rev(path, "HEAD")?;
+    if crate::self_install::is_ancestor(repo, base, &head) {
+        return None;
+    }
+    let main = rev(repo, onto)?;
+    git("", repo, &[], &["merge-base", &head, &main]).map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
 }
 
 /// The full commit `what` names in `repo`.
