@@ -19,8 +19,8 @@ struct TurnEnd {
     /// What you sent during the turn that it hasn't read yet: the next turn's prompt, so it goes below this
     /// turn's reply (it was noted when you sent it, above where the reply lands).
     unread: Option<Exchange>,
-    /// Its teammates' messages to it since the chat last read them (when, who, what).
-    heard: Vec<(u64, String, String)>,
+    /// Its teammates' and other sessions' messages to it since the chat last read them.
+    heard: Vec<transcript::Heard>,
     /// A Stop hook sent it back to work and it stopped again: this turn ended once before, and Cue noted its
     /// answer then. The same answer isn't a second reply (note's own folding misses it when a message of
     /// yours, sent as the turn seemed over, sits between).
@@ -56,7 +56,7 @@ impl Hub {
 
     /// Its teammates' messages to it that the chat hasn't shown yet, from its log (where Cue can read it).
     /// The first time, from the start of the turn that just ended (else the last 10 minutes).
-    fn teammates_heard(&self, origin: &Origin) -> Vec<(u64, String, String)> {
+    fn teammates_heard(&self, origin: &Origin) -> Vec<transcript::Heard> {
         let Some(log) = super::send::log_here(origin) else { return vec![] };
         let since = self.read(|st| {
             let read = st.sessions.teammates_read(&origin.session_id);
@@ -68,8 +68,8 @@ impl Hub {
     pub(super) fn on_stopped(&self, origin: Origin, message: String, turn: &[TurnPart], driven_by: &str) {
         let unread = self.turn_over(&origin);
         let (message, followup) = split_turn(message, turn, &crate::config::turn_mode());
-        // What its teammates said to it since the chat last read them: those come mid-turn with no prompt
-        // hook, so only its log has them. They go in above the reply that answers them.
+        // What its teammates and other sessions said to it since the chat last read them: those come with no
+        // prompt hook, so only its log has them. They go in above the reply that answers them.
         let heard = self.teammates_heard(&origin);
         let end = TurnEnd { message, followup, unread, heard, ended_before: turn.iter().any(|p| p.hooked) };
         // Its turn ended with background agents still at work (Claude Code's Agent tool): it's at its

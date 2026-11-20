@@ -30,7 +30,7 @@ pub fn prompt_sender(path: &str, prompt_id: &str) -> Option<Sender> {
         Some("peer") if o("handback").as_bool() != Some(true) => Sender::Peer {
             name: o("name").as_str().unwrap_or("").to_string(),
             pid: o("verifiedPeerPid").as_i64().map(|p| p as i32),
-            body: o("body").as_str().unwrap_or("").to_string(),
+            body: peer_body(o("body").as_str().unwrap_or("")),
         },
         _ => Sender::Harness,
     })
@@ -147,15 +147,41 @@ pub fn teammate_messages(text: &str) -> Vec<(String, String)> {
     }).collect()
 }
 
-/// Teammates' messages in the session's log written after `after_ms` (by its clock): when, who, what.
-pub fn teammate_messages_after(path: &str, after_ms: u64) -> Vec<(u64, String, String)> {
+/// A message another session or a teammate sent this one, read from its log: when (by its clock), who sent it (Claude's
+/// name for it), its process when it's another session, and what it said.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Heard {
+    pub at: u64,
+    pub who: String,
+    pub pid: Option<i32>,
+    pub said: String,
+}
+
+/// What another session sent, without the note Claude Code adds below it about content it relayed.
+fn peer_body(body: &str) -> String {
+    body.split("<artifact-content-authored-by-others/>").next().unwrap_or("").trim().to_string()
+}
+
+/// Messages to the session in its log written after `after_ms` (by its clock): its teammates', and other sessions'.
+/// Claude Code hands another session's message over with no prompt hook (#472), so only its log has it: a prompt
+/// whose `origin` says a peer sent it (a sub-agent handing back its result is the harness, not a peer).
+pub fn teammate_messages_after(path: &str, after_ms: u64) -> Vec<Heard> {
     let Some(text) = read_from(path, tail_offset(path)) else { return vec![] };
     lines(&text)
-        .filter(|e| e.get("type").and_then(Value::as_str) == Some("user") && e.get("isSidechain").and_then(Value::as_bool) != Some(true) && e.get("origin").is_none_or(Value::is_null))
+        .filter(|e| e.get("type").and_then(Value::as_str) == Some("user") && e.get("isSidechain").and_then(Value::as_bool) != Some(true))
         .filter(|e| stamp(e) > after_ms)
         .flat_map(|e| {
             let at = stamp(&e);
-            content_blocks(&e).iter().filter_map(|b| b.get("text").and_then(Value::as_str)).flat_map(teammate_messages).map(|(who, said)| (at, who, said)).collect::<Vec<_>>()
+            let o = |k: &str| e.pointer(&format!("/origin/{k}")).cloned().unwrap_or(Value::Null);
+            if e.get("origin").is_none_or(Value::is_null) {
+                return content_blocks(&e).iter().filter_map(|b| b.get("text").and_then(Value::as_str)).flat_map(teammate_messages).map(|(who, said)| Heard { at, who, pid: None, said }).collect::<Vec<_>>();
+            }
+            if o("kind").as_str() != Some("peer") || o("handback").as_bool() == Some(true) {
+                return vec![];
+            }
+            let said = peer_body(o("body").as_str().unwrap_or(""));
+            let who = o("name").as_str().unwrap_or("").to_string();
+            if said.is_empty() { vec![] } else { vec![Heard { at, who, pid: o("verifiedPeerPid").as_i64().map(|p| p as i32), said }] }
         })
         .collect()
 }

@@ -107,7 +107,7 @@ fn a_paste_split_into_chunks_reads_as_sent() {
 fn a_teammates_messages_go_in_as_from_it_each_its_own_and_the_log_is_read_up_to_the_newest() {
     let mut s = Sessions::default();
     s.mark(&Origin { session_id: "lead".into(), ..Default::default() }, "working", None);
-    s.note_teammates("lead", &[(100, "reader".into(), "PROBE-SHORT".into()), (200, "reader".into(), "PROBE-LONG\nline 1".into())], 10);
+    s.note_teammates("lead", &[heard(100, "PROBE-SHORT"), heard(200, "PROBE-LONG\nline 1")], 10);
     s.note("lead", "agent", "Both arrived.", 10);
     let t = s.thread("lead");
     assert_eq!(t.iter().map(|e| format!("{} {}: {}", e.role, e.from, e.text)).collect::<Vec<_>>(), ["peer reader: PROBE-SHORT", "peer reader: PROBE-LONG\nline 1", "agent : Both arrived."]);
@@ -207,4 +207,9 @@ fn an_echo_that_lands_first_still_gets_the_images_and_short_replies_stay_apart()
     s.note("f", "you", "ok", 5);
     s.note("f", "you", "ok, ship it", 5);
     assert_eq!(s.thread("f").len(), 3, "two real messages, not an echo");
+}
+
+/// A teammate's message read from the log.
+fn heard(at: u64, said: &str) -> crate::logs::transcript::Heard {
+    crate::logs::transcript::Heard { at, who: "reader".into(), pid: None, said: said.into() }
 }

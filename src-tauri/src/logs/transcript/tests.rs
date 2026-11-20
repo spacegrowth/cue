@@ -138,7 +138,7 @@ fn a_leads_log_gives_its_teammates_messages_after_a_time_and_its_history_shows_t
         json!({"type":"user","timestamp":at(7),"message":{"role":"user","content":from_teammate(r#"{"type":"idle_notification","from":"reader","idleReason":"available"}"#, "")}}),
         json!({"type":"assistant","timestamp":at(8),"message":{"content":[{"type":"text","text":"All lines arrived."}]}}),
     ]);
-    let after = |s: u32| teammate_messages_after(&p.0, iso_ms(&at(s)).unwrap()).into_iter().map(|(t, w, m)| (t, format!("{w}: {m}"))).collect::<Vec<_>>();
+    let after = |s: u32| teammate_messages_after(&p.0, iso_ms(&at(s)).unwrap()).into_iter().map(|h| (h.at, format!("{}: {}", h.who, h.said))).collect::<Vec<_>>();
     assert_eq!(after(0), [(iso_ms(&at(3)).unwrap(), "reader: PROBE-SHORT: hello from reader".to_string()), (iso_ms(&at(6)).unwrap(), "reader: second message\nwith two lines".to_string())]);
     assert_eq!(after(3).len(), 1, "only what came after");
     assert!(after(6).is_empty());

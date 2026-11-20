@@ -111,6 +111,46 @@ fn a_prompt_another_session_sent_notes_which_session_sent_it() {
 }
 
 #[test]
+fn a_message_another_session_sent_with_no_prompt_hook_shows_in_the_chat_at_the_turns_end() {
+    // Claude Code hands another session's message over with no prompt hook: only the log has it, and Cue
+    // reads it there when the turn it started ends, with who sent it (#472).
+    let w = World::new();
+    w.session("b").running_as(4242).prompt("go");
+    let a = w.session("a");
+    a.prompt("lead the desk").stop("Leading.");
+    w.advance(1000);
+    let body = "Can #452 wait about 20 min?\n\n<artifact-content-authored-by-others/>\nThe session that sent this message has handled Artifact content.";
+    let text = format!("Another Claude session sent a message:\n<cross-session-message from-name=\"cue-9e\">\n{body}\n</cross-session-message>");
+    a.transcript().prompt_from(&text, "p2", json!({"kind": "peer", "name": "cue-9e", "body": body, "verifiedPeerPid": 4242}));
+    w.advance(1000);
+    a.stop("It can wait.");
+    let thread = w.snapshot().session("a")["thread"].clone();
+    let peers: Vec<_> = thread.as_array().unwrap().iter().filter(|e| e["role"] == "peer").collect();
+    assert_eq!(peers.len(), 1, "{thread}");
+    assert_eq!(peers[0]["from_sid"], "b", "{thread}");
+    assert_eq!(peers[0]["text"], "Can #452 wait about 20 min?", "without Claude Code's note under it");
+    let roles: Vec<_> = thread.as_array().unwrap().iter().map(|e| e["role"].as_str().unwrap().to_string()).collect();
+    assert_eq!(roles.iter().rev().take(2).collect::<Vec<_>>(), ["agent", "peer"], "above the reply that answers it: {roles:?}");
+    // Its next turn's end doesn't note it again.
+    a.prompt("next").stop("Done.");
+    assert_eq!(w.snapshot().session("a")["thread"].as_array().unwrap().iter().filter(|e| e["role"] == "peer").count(), 1);
+}
+
+#[test]
+fn a_message_another_session_sent_shows_once_when_its_prompt_hook_ran_too() {
+    let w = World::new();
+    w.session("b").running_as(4242).prompt("go");
+    let a = w.session("a");
+    a.prompt("lead the desk").stop("Leading.");
+    w.advance(1000);
+    a.prompt_logged("can it wait?", "p1", json!({"kind": "peer", "name": "cue-9e", "body": "can it wait?", "verifiedPeerPid": 4242}));
+    w.advance(1000);
+    a.stop("It can.");
+    let thread = w.snapshot().session("a")["thread"].clone();
+    assert_eq!(thread.as_array().unwrap().iter().filter(|e| e["role"] == "peer").count(), 1, "{thread}");
+}
+
+#[test]
 fn claude_codes_own_notice_is_not_a_prompt_of_yours() {
     let w = World::new();
     let a = w.session("a");

@@ -125,13 +125,23 @@ impl Sessions {
         }
     }
 
-    /// Its teammates' messages read from its log, oldest first (`teammate_messages_after`): each as a
-    /// message from that teammate, and the log read up to the newest.
-    pub fn note_teammates(&mut self, session_id: &str, heard: &[(u64, String, String)], keep: usize) {
-        for (_, who, said) in heard {
-            self.note_peer(session_id, who, said, keep);
+    /// Its teammates' and other sessions' messages read from its log, oldest first (`teammate_messages_after`): each
+    /// as a message from who sent it, and the log read up to the newest. Another session goes by the project Cue
+    /// shows for it and its id (as `Hub::prompt_from_peer` notes one), once: one already in the chat isn't noted again.
+    pub fn note_teammates(&mut self, session_id: &str, heard: &[crate::logs::transcript::Heard], keep: usize) {
+        for h in heard {
+            let Some(pid) = h.pid else {
+                self.note_peer(session_id, &h.who, &h.said, keep);
+                continue;
+            };
+            if self.0.get(session_id).is_some_and(|s| s.thread.iter().rev().take(20).any(|e| e.role == "peer" && e.text == h.said)) {
+                continue;
+            }
+            let who = self.project_by_pid(pid).unwrap_or_else(|| if h.who.is_empty() { "another agent".into() } else { h.who.clone() });
+            let sid = self.sid_by_pid(pid).unwrap_or_default();
+            self.note_peer_sid(session_id, &who, &sid, &h.said, keep);
         }
-        if let (Some(s), Some(last)) = (self.0.get_mut(session_id), heard.iter().map(|h| h.0).max()) {
+        if let (Some(s), Some(last)) = (self.0.get_mut(session_id), heard.iter().map(|h| h.at).max()) {
             s.teammates_read_ms = s.teammates_read_ms.max(last);
         }
     }
