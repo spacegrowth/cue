@@ -280,3 +280,24 @@ fn the_same_reply_told_again_with_more_is_one_reply() {
     ends(&w, &h, "Now it's done.");
     assert_eq!(said(&desk(&w, &project)).len(), 2);
 }
+
+/// A holder its crew's reports keep waking writes turn after turn with no message from you, till the one that gave it
+/// its item is past the few exchanges kept: it's still on that item, so the item shows its latest reply (#318).
+#[test]
+fn a_holder_whose_hand_off_is_no_longer_kept_is_still_on_its_item() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let a = w.hub().desk_add(&project, "bug", "First thing", "", None).unwrap();
+    w.hub().desk_give(&a.id, &h).unwrap();
+    w.settle();
+    let words = sent_to(&w, &h).into_iter().rev().find(|t| t.contains(&format!("Desk item #{}", a.id))).unwrap();
+    w.hosted_says(&h, HostedEvent::Taken { text: words });
+    for n in 0..40 {
+        ends(&w, &h, &format!("Step {n} done; waiting for the helper."));
+    }
+    let d = desk(&w, &project);
+    let it = item(&d, "First thing");
+    assert_eq!(it["now_on"].as_bool(), Some(true), "{d}");
+    assert!(it["latest"].as_str().is_some_and(|l| l.contains("Step 39")), "{d}");
+    assert!(it["said"].as_array().unwrap().iter().any(|s| s["text"].as_str().is_some_and(|t| t.contains("Step 39"))), "{d}");
+}
