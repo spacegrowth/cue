@@ -299,3 +299,10 @@ mod tests {
         std::fs::remove_dir_all(&there).unwrap();
     }
 }
+
+/// The window's answer to a look Cue asked of it (hub/page_look.rs).
+#[tauri::command]
+pub(crate) async fn page_look_said(id: u64, look: serde_json::Value) -> Result<(), String> {
+    crate::hub::page_look::page_look_said(id, look);
+    Ok(())
+}

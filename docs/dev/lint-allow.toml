@@ -44,6 +44,11 @@ to = "leads sweeping for Away"
 reason = "a redraw (snapshot → desk_view → away_view) can run under a send's typing gate; leads sweeping for Away is a leaf, held only to look up or change one entry"
 
 [[lock_order]]
+from = "typing gate"
+to = "hosted pickup"
+reason = "a send under its typing gate reaches the hosted port, which looks whether the launch pickup is over; the gate is handed out only once it is (Hub::typing_gate), so this never waits, and hosted pickup is a leaf held only to read or set it"
+
+[[lock_order]]
 from = "AUTO_SEEN"
 to = "DB"
 reason = "logs::steps::windows::auto_compact_at asks the db under its own seen cache; neither takes AUTO_SEEN"

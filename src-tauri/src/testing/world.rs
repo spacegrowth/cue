@@ -120,6 +120,21 @@ impl World {
     /// The same, Cue stopping before follow-up work already due ran (it quit, or the install restarted it, at that
     /// moment): that work is lost.
     pub fn relaunch_cut(&mut self) {
+        self.relaunch_hub();
+        // As at launch: what cue-host kept running is picked up again.
+        self.client.hub.reattach_hosted();
+        self.agents_take_what_is_typed();
+    }
+
+    /// Cue restarted as it starts for real: what cue-host kept running is picked up on a thread of its own
+    /// (startup/mod.rs); returns at once with that thread.
+    pub fn relaunch_as_cue_starts(&mut self) -> std::thread::JoinHandle<()> {
+        self.relaunch_hub();
+        self.client.hub.reattach_hosted_then(|_| {})
+    }
+
+    /// A new hub on the same fakes, as a restarted Cue has.
+    fn relaunch_hub(&mut self) {
         self.client.hub.save_live();
         let later = Arc::new(Deferred::default());
         // Its hosted sessions' Claudes ended with it.
@@ -127,9 +142,6 @@ impl World {
         let fakes = Fakes { terminal: self.terminal.clone(), launcher: self.launcher.clone(), hosted: self.hosted.clone(), notes: self.notes.clone(), window: self.window.clone() };
         self.client.hub = Arc::new(Hub::with_ports(None, fakes.ports(&later)));
         self.later = later;
-        // As at launch: what cue-host kept running is picked up again.
-        self.client.hub.reattach_hosted();
-        self.agents_take_what_is_typed();
     }
 
     /// What hosted session `sid` reports, handed to the hub as its session would (hub/hosted.rs).

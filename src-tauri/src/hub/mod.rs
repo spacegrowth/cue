@@ -66,6 +66,8 @@ mod hosted;
 mod kept_history;
 mod live_writes;
 mod open;
+pub(crate) mod page_look;
+mod picking_up;
 pub(crate) mod ports;
 mod projects;
 mod quitting;
@@ -285,6 +287,8 @@ pub struct Hub {
     saves: saves::SaveLocks,
     /// Changes waiting to be drawn, and the worker that draws them (redraw.rs).
     redraws: Arc<redraw::Redraws>,
+    /// The hosted sessions an earlier Cue left running, being picked up at launch (picking_up.rs).
+    picking_up: picking_up::PickingUp,
 }
 
 impl Hub {
@@ -312,7 +316,7 @@ impl Hub {
         st.review_queue = crate::db::review_queue().into_iter().map(|(exec, lead, text, at_ms)| QueuedReview { exec, lead, text, at_ms }).collect();
         // Ids keep counting from the clock so they never collide with ids in saved history.
         st.next = now_ms();
-        Self { store: store_access::StoreCell::new(st), app, typing: Mutex::new(HashMap::new()), shown: shown::Shown::default(), ports, saves: saves::SaveLocks::default(), redraws: Arc::default() }
+        Self { store: store_access::StoreCell::new(st), app, typing: Mutex::new(HashMap::new()), shown: shown::Shown::default(), ports, saves: saves::SaveLocks::default(), redraws: Arc::default(), picking_up: Default::default() }
     }
 
     /// The session terminals, to type into and look at.
@@ -343,7 +347,10 @@ impl Hub {
 
     /// The session's typing gate (see `typing`). Held for seconds by design (typing, then waiting for its hook):
     /// waited on with a plain lock, not `locking::lock`, whose 5 s limit is for locks nothing holds that long.
+    /// Handed out once the hosted sessions are picked up at launch (picking_up.rs): a send never holds its gate
+    /// while it waits for that.
     fn typing_gate(&self, session_id: &str) -> std::sync::Arc<Mutex<()>> {
+        self.picking_up.wait();
         let mut gates = crate::locking::lock(&self.typing, "typing gates");
         gates.entry(session_id.to_string()).or_default().clone()
     }

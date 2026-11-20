@@ -98,6 +98,7 @@ async function boot() {
   if (voicePick()) kokoroStatus();
   await T.event.listen("fill", (e) => onFill(e.payload));
   await T.event.listen("upload", (e) => onUpload(e.payload));
+  await listenPageLook(T);
   await T.event.listen("select", (e) => {
     // "s:<session>": that session's chat, whether or not a card of it waits.
     if (e.payload.startsWith("s:")) return setActive(null, e.payload.slice(2));

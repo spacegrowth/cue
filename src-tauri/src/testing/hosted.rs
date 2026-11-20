@@ -37,6 +37,12 @@ pub struct FakeHosted {
     controls: Mutex<Vec<(String, serde_json::Value)>>,
     /// What the agent answers a request with, by its subtype (none set: answered `{}`).
     control_answers: Mutex<std::collections::HashMap<String, Result<serde_json::Value, String>>>,
+    /// How long picking up a session cue-host kept takes (ms), as it does with a round trip to the host.
+    reattach_ms: Mutex<u64>,
+    /// Pickups under way now.
+    reattaching: std::sync::atomic::AtomicUsize,
+    /// Sends that reached a session while a pickup was under way.
+    sent_mid_pickup: Mutex<Vec<(String, String)>>,
 }
 
 /// The process ids the stand-in hands out: none a real process has (they're past the system's largest).
@@ -46,6 +52,16 @@ impl FakeHosted {
     pub fn models(&self) -> Vec<(String, String)> {
         crate::locking::lock(&self.models, "fake hosted models").clone()
     }
+    /// Picking up a session cue-host kept takes `ms` from now on.
+    pub fn slow_reattach(&self, ms: u64) {
+        *crate::locking::lock(&self.reattach_ms, "fake hosted pickup time") = ms;
+    }
+
+    /// What was sent to a session while one was being picked up.
+    pub fn sent_mid_pickup(&self) -> Vec<(String, String)> {
+        crate::locking::lock(&self.sent_mid_pickup, "fake hosted sends mid pickup").clone()
+    }
+
     /// Session `id` runs under cue-host: it doesn't end when Cue quits.
     pub fn under_host(&self, id: &str) {
         crate::locking::lock(&self.in_host, "fake hosted under the host").insert(id.into());
@@ -139,6 +155,9 @@ impl Hosted for FakeHosted {
 
     fn send(&self, session_id: &str, text: &str) -> Result<(), String> {
         self.live(session_id)?;
+        if self.reattaching.load(std::sync::atomic::Ordering::SeqCst) > 0 {
+            crate::locking::lock(&self.sent_mid_pickup, "fake hosted sends mid pickup").push((session_id.into(), text.into()));
+        }
         crate::locking::lock(&self.sent, "fake hosted sends").push((session_id.into(), text.into()));
         Ok(())
     }
@@ -200,6 +219,13 @@ impl Hosted for FakeHosted {
     /// A session cue-host kept running, picked up again at its prompt.
     fn reattach(&self, spec: &Spec, _report: Report) -> Option<crate::hosted::Reattached> {
         let sid = spec.start.session_id().to_string();
+        let ms = {
+            let g = crate::locking::lock(&self.reattach_ms, "fake hosted pickup time");
+            *g
+        };
+        self.reattaching.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        std::thread::sleep(std::time::Duration::from_millis(ms));
+        self.reattaching.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
         let kept = crate::locking::lock(&self.in_host, "fake hosted under the host").contains(&sid) && self.running(&sid);
         kept.then(|| crate::hosted::Reattached { started: Some(Started { pid: FIRST_PID - 1, session_id: sid, transcript: None, in_turn: false }), go: Box::new(|| {}) })
     }
