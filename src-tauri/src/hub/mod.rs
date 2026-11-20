@@ -41,6 +41,7 @@ mod desk_lands;
 pub(crate) use desk_copies::OldCopies;
 mod desk_pr;
 mod desk_unstick;
+mod desk_unlanded;
 mod desk_diff;
 mod desk_handoff;
 mod desk_lead;

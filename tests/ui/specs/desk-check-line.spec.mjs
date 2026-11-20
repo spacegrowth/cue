@@ -60,3 +60,14 @@ test("a mocks item says Mocks · open the canvas, the link opening it, on its ro
   await patchItem(cue, "d2", { finish: null, made: [], designs: "https://claude.ai/artifact/xyz" });
   await expect(page.locator('.dk-panel[data-side-for] .dk-pnow .dk-pickl a[data-href="https://claude.ai/artifact/xyz"]')).toHaveText("open the canvas");
 });
+
+test("an item with changes left on its branch says how many aren't landed yet, on its row and its page (#448)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await patchItem(cue, "d2", { finish: { step: "checked", at: await page.evaluate(() => now()), commit: "c71e0b4", unlanded: 2 } });
+  const row = page.locator('.dk-items [data-desk-item="d2"]');
+  await expect(row.locator(".dk-h")).toHaveText("2 changes not landed yet · send it back so they land");
+  await row.locator(".dk-t").click();
+  await expect(page.locator(".dk-panel .dk-pnow .dk-pword")).toHaveText("Not landed yet");
+  await expect(page.locator(".dk-panel .dk-pnow .dk-psay")).toHaveText("2 changes not landed yet · send it back so they land");
+});

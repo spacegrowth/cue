@@ -291,7 +291,7 @@ fn a_session_doing_the_item_itself_commits_what_it_changed_while_it_held_it() {
 #[test]
 fn each_done_leaves_a_card_for_the_lead_with_who_what_to_test_and_its_files_kept_after_a_restart() {
     let w = World::new();
-    let (_, project, id) = ready(&w);
+    let (dir, project, id) = ready(&w);
     let cards = |w: &World| desk(w, &project)["checks"].as_array().unwrap().clone();
     let c = &cards(&w)[0];
     assert_eq!((c["id"].as_str(), c["title"].as_str(), c["kind"].as_str()), (Some(id.as_str()), Some("Header jumps"), Some("bug")));
@@ -314,6 +314,9 @@ fn each_done_leaves_a_card_for_the_lead_with_who_what_to_test_and_its_files_kept
     assert!(decs.as_array().unwrap().iter().any(|d| d["by"] == "You" && d["text"] == "It still jumps" && d["why"] == "sent back to cue-teams"), "{decs}");
     let snap = w.snapshot();
     let h = snap.session_ids().into_iter().find(|s| snap.session(s)["name"] == "cue-teams").unwrap();
+    // A real fix (a reopened item with nothing new on main goes back to its session, #448).
+    std::fs::write(dir.join("a.txt"), "fixed properly\n").unwrap();
+    log_edit(&w, &h, &dir.join("a.txt"));
     ends(&w, &h, &format!("Fixed it properly.\nDONE: #{id}"));
     let all = cards(&w);
     assert_eq!(all.len(), 2, "{all:?}");

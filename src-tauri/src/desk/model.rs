@@ -229,6 +229,11 @@ pub struct DeskItem {
     /// A ROUTE to reopen it (with you to check) that Cue didn't act on, and why; until the lead is told.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub reopen_refused: String,
+    /// Reopened from your check (#448): when (ms, on the wall's clock, as git's commit times are) and how many commits it had made by then (`commit_in`). Its next
+    /// DONE finishes it only once something new of it landed on main since; with nothing new it goes back to its
+    /// session. Cleared once something new did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reopened: Option<(u64, usize)>,
     /// Each time its holder said DONE for it: kept, so the lead's chat shows a card for each, after a restart too
     /// (hub/desk_checks.rs).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -289,6 +294,12 @@ impl DeskItem {
             let over = self.held_before.len().saturating_sub(HELD_KEPT);
             self.held_before.drain(..over);
         }
+    }
+
+    /// Reopened from your check now (#448): see `reopened`.
+    pub(crate) fn mark_reopened(&mut self) {
+        let wall = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
+        self.reopened = Some((wall, self.commit_in.len()));
     }
 
     pub(crate) fn remember_holder(&mut self) {
@@ -402,7 +413,10 @@ pub struct Finish {
     /// It went to check with nothing to install, its own work outside the app (mocks, notes, plans, #408): its line
     /// says "Mocks · open the canvas", not "In the app" (#436).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub mocks: bool,
+    pub mocks: bool,    /// How many of its changes on its own branch aren't on main (#448, hub/desk_unlanded.rs): it stays to check,
+    /// saying so, and isn't closed till they are.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub unlanded: usize,
 }
 
 /// An item's own copy of its repository (hub/desk_trees.rs): the main checkout it's from, the copy's folder, its

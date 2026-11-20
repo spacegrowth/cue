@@ -530,3 +530,109 @@ fn an_unsaved_new_file_the_same_as_the_one_the_item_adds_doesnt_stop_it() {
     assert_eq!(subject(&dir), format!("Header jumps (#{id})"), "landed");
     assert!(git(&dir, &["status", "--porcelain"]).trim().is_empty());
 }
+
+#[test]
+fn an_item_reopened_twice_is_done_only_once_every_commit_on_its_branch_is_on_main() {
+    let w = World::new();
+    let (dir, project, id, h, path) = routed(&w);
+    let top = |w: &World| {
+        let out = String::from_utf8(std::process::Command::new("git").arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
+        out.lines().next().and_then(|l| l.strip_prefix("worktree ")).unwrap().to_string()
+    };
+    // Round 1 lands from its copy.
+    std::fs::write(path.join("a.txt"), "1\n").unwrap();
+    ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "to_check");
+    assert!(dir.join("a.txt").is_file());
+    // Round 2 (#417): sent back while every copy is in use, started without one; its holder makes a worktree of its
+    // own on the item's branch and commits there. Its DONE merges that branch.
+    w.hub().desk_hold_copies(&top(&w), &[1, 2, 3]);
+    let reopen = |w: &World| {
+        w.hub().desk_item_act(&id, "send_back", "Not like that").unwrap();
+        w.settle();
+        w.hub().desk_item_act(&id, "start_now", "").unwrap();
+        w.settle();
+        let it = item(w, &project, "Header jumps");
+        assert!(it["state"] == "working" && it["tree"].is_null(), "{it}");
+    };
+    reopen(&w);
+    let own = dir.join(".claude/worktrees").join(format!("mine-{id}"));
+    git(&dir, &["worktree", "add", "-q", "-b", &format!("desk/{id}"), own.to_str().unwrap()]);
+    std::fs::write(own.join("b.txt"), "2\n").unwrap();
+    git(&own, &["add", "b.txt"]);
+    git(&own, &["commit", "-q", "-m", "round 2"]);
+    ends(&w, &h, &format!("Fixed again.\nDONE: #{id}"));
+    assert_eq!(std::fs::read_to_string(dir.join("b.txt")).ok().as_deref(), Some("2\n"), "round 2 is on main");
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!(it["state"], "to_check", "{it}");
+    assert!(it["finish"]["unlanded"].is_null(), "nothing left on its branch: {it}");
+    // Round 3: committed on its branch, and its worktree gone before its DONE: nothing merges it.
+    reopen(&w);
+    std::fs::write(own.join("shared.txt"), "3\n").unwrap();
+    git(&own, &["add", "shared.txt"]);
+    git(&own, &["commit", "-q", "-m", "round 3"]);
+    git(&dir, &["worktree", "remove", own.to_str().unwrap()]);
+    ends(&w, &h, &format!("Fixed a third time.\nDONE: #{id}"));
+    assert!(!dir.join("shared.txt").exists());
+    // Nothing of it landed since its reopen: back to its session, told what's left where, not to you.
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!(it["state"], "working", "{it}");
+    assert!(w.hosted.sent().iter().any(|(s, t)| *s == h && t.contains("1 change not landed yet on its branch")), "its session is told");
+    // Its holder lands it; its DONE is to check, and it can be closed.
+    git(&dir, &["merge", "-q", "--no-edit", &format!("desk/{id}")]);
+    ends(&w, &h, &format!("Landed.\nDONE: #{id}"));
+    let it = item(&w, &project, "Header jumps");
+    assert!(it["state"] == "to_check" && it["reopened"].is_null(), "{it}");
+    w.hub().desk_looks_right(&id).unwrap();
+    let it = item(&w, &project, "Header jumps");
+    assert!(it["state"] == "done" && it["finish"]["unlanded"].is_null(), "{it}");
+}
+
+#[test]
+fn a_reopened_item_said_done_with_no_new_commit_goes_back_to_its_session() {
+    let w = World::new();
+    let (dir, project, id, h, path) = routed(&w);
+    std::fs::write(path.join("a.txt"), "1\n").unwrap();
+    ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "to_check");
+    let main = |dir: &PathBuf| String::from_utf8(std::process::Command::new("git").arg("-C").arg(dir).args(["rev-parse", "HEAD"]).output().unwrap().stdout).unwrap();
+    let before = main(&dir);
+    // #418: reopened, its session says "already on main" and DONE with no new commit.
+    w.hub().desk_item_act(&id, "send_back", "The right column is wrong").unwrap();
+    w.settle();
+    ends(&w, &h, &format!("It's already on main.\nDONE: #{id}"));
+    assert_eq!(main(&dir), before, "nothing landed");
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!(it["state"], "working", "stays with its session, not to check: {it}");
+    assert!(w.hosted.sent().iter().any(|(s, t)| *s == h && t.contains("Nothing of it landed on main since it was reopened")), "its session is told why");
+    // A real fix this time: to check.
+    let path = item(&w, &project, "Header jumps")["tree"]["path"].as_str().map(PathBuf::from).unwrap_or(dir.clone());
+    std::fs::write(path.join("a.txt"), "2\n").unwrap();
+    ends(&w, &h, &format!("Fixed the column.\nDONE: #{id}"));
+    let it = item(&w, &project, "Header jumps");
+    assert!(it["state"] == "to_check" && it["reopened"].is_null(), "{it}");
+}
+
+#[test]
+fn a_new_copy_starts_from_its_branch_when_that_has_work_not_on_main() {
+    let w = World::new();
+    let (dir, project, id, h, path) = routed(&w);
+    std::fs::write(path.join("a.txt"), "1\n").unwrap();
+    ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
+    // A round left on its branch (no copy holds it now).
+    git(&dir, &["branch", &format!("desk/{id}")]);
+    git(&dir, &["checkout", "-q", &format!("desk/{id}")]);
+    std::fs::write(dir.join("b.txt"), "2\n").unwrap();
+    git(&dir, &["add", "b.txt"]);
+    git(&dir, &["commit", "-q", "-m", "left over"]);
+    git(&dir, &["checkout", "-q", "-"]);
+    w.hub().desk_item_act(&id, "send_back", "Not like that").unwrap();
+    w.settle();
+    let it = item(&w, &project, "Header jumps");
+    let path = PathBuf::from(it["tree"]["path"].as_str().unwrap_or_else(|| panic!("no copy: {it}")));
+    assert_eq!(std::fs::read_to_string(path.join("b.txt")).ok().as_deref(), Some("2\n"), "its branch's work is in the new copy");
+    ends(&w, &h, &format!("Fixed again.\nDONE: #{id}"));
+    assert!(dir.join("b.txt").is_file(), "and lands with it");
+    let it = item(&w, &project, "Header jumps");
+    assert!(it["state"] == "to_check" && it["finish"]["unlanded"].is_null(), "{it}");
+}

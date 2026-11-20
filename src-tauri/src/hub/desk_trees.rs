@@ -481,7 +481,15 @@ fn prepare(t: &ItemTree, id: &str) -> Result<(String, String), String> {
     if let Some(parent) = std::path::Path::new(&path).parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    git_said("", &t.repo, &[], &["worktree", "add", "-q", "-B", &t.branch, &path, &base]).map_err(|e| super::desk_commit::because("git worktree add failed".into(), &e))?;
+    // Its branch still has work main doesn't (a round that never landed, #448): the copy starts from it, not over it,
+    // so that work lands with this round's.
+    let base = if super::desk_unlanded::left_on(&t.repo, &t.branch) > 0 {
+        git_said("", &t.repo, &[], &["worktree", "add", "-q", &path, &t.branch]).map_err(|e| super::desk_commit::because("git worktree add failed".into(), &e))?;
+        git("", &t.repo, &[], &["merge-base", &t.branch, &base]).map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).unwrap_or(base)
+    } else {
+        git_said("", &t.repo, &[], &["worktree", "add", "-q", "-B", &t.branch, &path, &base]).map_err(|e| super::desk_commit::because("git worktree add failed".into(), &e))?;
+        base
+    };
     if super::desk_checks::builds_this_cue(&t.repo) {
         link_shared(&t.repo, &path);
     }

@@ -377,6 +377,7 @@ function deskItemNow(i) {
     : i.state === "needs_you" ? ["ask", "Waiting on you", `${who} waits for your answer before it goes on. Its question is in its chat.`]
     : deskInstallWait(i) ? ["work", "Waiting for install", "Nothing to try till Cue is installed with it."]
     : deskUncommitted(i) ? ["ask", "Not on main yet", "Its files aren't committed. Commit to main puts them there and closes it."]
+    : i.state === "to_check" && i.finish?.unlanded ? ["ask", "Not landed yet", ""]
     : i.state === "to_check" ? ["check", "Ready to check", ""]
     : i.waiting && i.state === "working" ? ["work", "Waiting", `${who} waits: ${esc(firstLine(i.waiting))}`]
     : i.stopped ? ["stop", "Stopped", "The Desk lead is on it."]

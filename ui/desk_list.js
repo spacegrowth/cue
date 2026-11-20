@@ -101,11 +101,14 @@ function deskAllowLine(i) {
  *  on you. Allow a tool, Pick one of its choices (or of its mocks), Answer its question; Try it once it's in the app
  *  (what you'll see, #382: its "done when" is the session's). */
 /** Where an item to check is, in one plain line (#436): mocks to look at ("Mocks · open the canvas", with its pick),
- *  on its way in ("Lands with the next install"), or in the app since its install, with what to try. { text, html,
+ *  on its way in ("Lands with the next install"), changes left on its branch ("2 changes not landed yet"), or in the app since its install, with what to try. { text, html,
  *  tried } (tried: the line already says what you'll see), or null when it isn't to check. */
 function deskWhereLine(i) {
   if (i?.state !== "to_check") return null;
   const plainLine = (text, tried = false) => ({ text, html: esc(text), tried });
+  // Changes left on its own branch, not on main (#448): it isn't closed till they land.
+  const left = i.finish?.unlanded || 0;
+  if (left) return plainLine(`${left} change${left === 1 ? "" : "s"} not landed yet · send it back so they land`);
   const canvas = deskCanvas(i);
   if (canvas || i.finish?.mocks) {
     const pick = deskPickLine(i), tail = pick ? ` · ${pick}` : "";

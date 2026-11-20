@@ -291,6 +291,23 @@ impl Hub {
                 out.push(f.clone());
             }
         }
+        // A worktree its holder made itself on the item's own branch (started without a copy of its own: #417's
+        // rounds 2 and 3, #448), merged as its crew's is.
+        let holder = self.read(|st| it.holder.as_ref().and_then(|h| st.sessions.get(h.to())).filter(|s| s.origin.machine.is_empty()).map(|s| s.origin.cwd.clone()));
+        let mut repos: Vec<String> = Vec::new();
+        for f in out.iter().cloned().chain(holder) {
+            if let Some((m, _)) = main_checkout(&f).filter(|(m, _)| !repos.iter().any(|r| same_dir(r, m))) {
+                repos.push(m);
+            }
+        }
+        let skip = it.tree.as_ref().map(|t| t.path.clone());
+        for r in repos {
+            for t in super::desk_unlanded::branch_trees(&r, &it.id, skip.as_deref()) {
+                if !out.iter().any(|o| same_dir(o, &t)) {
+                    out.push(t);
+                }
+            }
+        }
         out
     }
 
@@ -401,6 +418,16 @@ impl Hub {
                 return self.finish_landing(id, &top, &head, at);
             }
         }
+        // Reopened, and nothing new of it landed since (#448): back to its session, not to you.
+        if self.desk_nothing_new(id) {
+            if let Some(it) = self.read(|st| st.desk.item(id).cloned()) {
+                let words = super::desk_unlanded::nothing_new_words(id, self.desk_unlanded(id));
+                self.finish_back(&it, &words, "nothing_new", "", true);
+            }
+            return;
+        }
+        // Changes left on its own branch (#448): it goes on as it would, and stays to check saying how many.
+        self.desk_unlanded(id);
         // On main: pushed now when its project pushes after each landing (hub/desk_pr.rs).
         if !top.is_empty() {
             self.desk_push_after(id, &project, &top);

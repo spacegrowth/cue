@@ -79,6 +79,7 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
                 return Err("Say what isn't right first: type it in the box, then Send back".into());
             }
             (it.state, it.done_at, it.finish, it.close_on_check) = ("working".into(), None, None, false);
+            it.mark_reopened();
             // Kept on the DONE it answers, so its card says why (the pictures, added by ipc desk_item_act, counted).
             if let Some(c) = it.checks.last_mut() {
                 let (why, pics) = words.split_once("\nPictures with it").unwrap_or((&words, ""));
@@ -516,6 +517,13 @@ impl Hub {
     /// item `text`), "drop", and "remove_kept" (a dropped item's kept copy deleted, desk_trees.rs: `id` is that item's).
     pub(crate) fn desk_item_act(&self, id: &str, act: &str, text: &str) -> Result<DeskItem, String> {
         match act {
+            // Not done while changes on its own branch aren't on main (#448).
+            "looks_right" => {
+                let n = self.desk_unlanded(id);
+                if n > 0 {
+                    return Err(format!("{}: they're still on its branch. Send it back so they land", super::desk_unlanded::unlanded_words(n)));
+                }
+            }
             "install_now" => return self.desk_install_now(id),
             "rerun" => return self.desk_rerun_landing(id),
             "remove_kept" => {

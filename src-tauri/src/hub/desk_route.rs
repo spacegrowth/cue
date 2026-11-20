@@ -189,6 +189,9 @@ pub(super) fn route(st: &mut Store, project: &str, by: &By, id: &str, to: &str, 
     }
     fx.items.push(it.id.clone());
     held_by(it, &h, refused, waits.clone(), why, now);
+    if reopen {
+        it.mark_reopened();
+    }
     if waits.is_none() {
         fx.sends.push((h.to().to_string(), crate::desk::handed_words(it, why, &rule)));
     }
