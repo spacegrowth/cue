@@ -31,3 +31,6 @@ src-tauri/host-builds/
 # Claude Code: the project's shared permission settings are kept; everything else in .claude/ (worktrees, local settings) is not
 .claude/*
 !.claude/settings.json
+
+# Playwright writes its last run and failure notes here.
+test-results
