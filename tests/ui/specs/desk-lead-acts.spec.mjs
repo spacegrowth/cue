@@ -110,7 +110,7 @@ test("a long reopen, note and start each show at most three lines in the lead's 
   // A reopen like #418's: twelve lines of feedback.
   const why = Array.from({ length: 12 }, (_, n) => `${n + 1}. The right column must stay the item list while its page is open, and the chat beside it keeps its width.`).join("\n");
   const note = "Top priority from Robin: as soon as the scroll test passes, commit, land it and install, then check the item's page in the installed app at a small window and at a wide one, and only then say DONE.";
-  const start = "it only reads and writes one doc, no code; it shouldn't wait behind five items that each need a copy of the code, and Robin is waiting on it right now, so it starts at once: the recovered notes go to him at seven in the morning, before he opens the Desk, with what was lost and what came back.";
+  const start = "it only reads and writes one doc, no code; it shouldn't wait behind five items that each need a copy of the code, and Robin is waiting on it right now, so it starts at once: the recovered notes go to them at seven in the morning, before they open the Desk, with what was lost and what came back.";
   await cue.change((st, { a }) => { st.desk.projects.find((p) => p.project === "cue").decisions.push(...a); }, { a: [
     act("r1", "d3", "send_back", "Reopened #d3 for cue-387", why, NOW - 3 * 60 * 1000),
     act("s1", "d4", "start", "Started #d4 now, without waiting for a copy", start, NOW - 2 * 60 * 1000),
