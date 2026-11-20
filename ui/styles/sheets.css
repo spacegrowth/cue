@@ -63,7 +63,8 @@ kbd { font: 600 10.5px var(--mono); padding: 2px 6px; border-radius: 5px; backgr
 .ab-note { padding: 4px 4px 0; font-size: 12px; line-height: 1.45; color: var(--muted); }
 /* How work lands (lands.js): a label column, then each part's choices, the picked one's words under them. A choice not
    built yet is shown greyed, saying so. */
-.ld-dialog { width: min(700px, calc(100vw - 32px)); }
+.ld-scrim { z-index: 30; }
+.ld-dialog { width: min(760px, calc(100vw - 32px)); }
 .ld-rows { display: flex; flex-direction: column; gap: 9px; margin: 6px 0 4px; }
 .ld-row { display: grid; grid-template-columns: 140px 1fr; gap: 12px; align-items: start; }
 .ld-label { padding-top: 6px; font-size: 13px; font-weight: 650; color: var(--ink); }
@@ -82,15 +83,10 @@ kbd { font: 600 10.5px var(--mono); padding: 2px 6px; border-radius: 5px; backgr
 .ld-step { display: inline-flex; align-items: center; gap: 10px; align-self: flex-start; }
 .ld-step .btn { min-width: 30px; padding: 4px 8px; }
 .ld-n { min-width: 14px; text-align: center; font-size: 14px; }
-.ld-dialog { max-height: calc(100vh - 48px); overflow-y: auto; }
-.ld-sec + .ld-sec { margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--line); }
-.ld-h { font-size: 13.5px; font-weight: 700; color: var(--ink); margin-bottom: 2px; }
-.ld-h .ld-hint { font-weight: 400; }
-.ld-top { display: flex; align-items: center; gap: 10px; }
-.ld-top .move-title { margin: 0; }
-.ld-x { width: 28px; height: 28px; display: grid; place-items: center; flex: none; margin: -4px -6px 0 0; border-radius: 8px; font-size: 18px; line-height: 1; color: var(--muted); }
-.ld-x:hover { background: var(--panel-2); color: var(--ink); }
-.ld-intro { margin: 2px 0 8px; }
+.ld-dialog .set-group { margin: 14px 0 6px; }
+.ld-sub { margin: -2px 0 4px; }
+.ld-esc { cursor: pointer; }
+.ld-intro { margin: 0 0 2px; }
 .ld-cmd { width: 100%; box-sizing: border-box; font: 12.5px/1.5 var(--mono); padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); resize: vertical; }
 .ld-dialog .ab-rows { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 0 16px; margin: 0; }
 .ld-dialog .ab-row, .ld-dialog .ab-more { padding: 4px; }

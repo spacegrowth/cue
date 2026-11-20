@@ -73,7 +73,7 @@ function landsOld() {
   else body = `<div class="ld-old-list">${l.copies.map((c) => `<div>${esc(c.path)} · ${landsKb(c.kb)}</div>`).join("")}</div>
     <div class="ld-old-b"><button class="btn armed" data-ld="old-yes">Remove ${n} (${landsKb(l.kb)})</button><button class="btn" data-ld="old-no">Keep them</button></div>
     <div class="ld-hint">Any that gets new work or comes into use first stays.</div>`;
-  return `<div class="ld-row ld-old"><div class="ld-label">Old working folders</div><div class="ld-body">${body}</div></div>`;
+  return `<div class="ld-old"><div class="ld-body">${body}</div></div>`;
 }
 /** Remove old working folders pressed: looked at now. */
 function landsOldLook() {
@@ -103,8 +103,8 @@ function landsOldRemove() {
 /** Ask me before, its kinds on one line, each saved as you tick it (ask_before.js has the rows and their words). */
 function landsAskBefore() {
   if (!lands.ab) return "";
-  return `<div class="ld-sec" data-ld-sec="ask"><div class="ld-h">Ask me before <span class="ld-hint">· the lead and its sessions stop and ask you first</span></div>
-    ${askBeforeRows(lands.ab)}</div>`;
+  return `<div class="ld-sec" data-ld-sec="ask"><div class="set-group ld-h">Ask me before</div>
+    <div class="ld-hint ld-sub">The lead and its sessions stop and ask you first.</div>${askBeforeRows(lands.ab)}</div>`;
 }
 function landsHtml() {
   if (!lands) return "";
@@ -112,15 +112,18 @@ function landsHtml() {
   if (!l) { lands = null; return ""; }
   const name = typeof projLabel === "function" ? projLabel(l.project) : l.project;
   const parts = l.parts.map((p) => p.key === "how" ? landsAtOnce(l) + landsPart(p, l) : landsPart(p, l)).join("");
-  return `<div class="move-scrim"><div class="move-dialog ld-dialog" role="dialog" aria-labelledby="ld-title">
-    <div class="ld-top"><div class="move-title" id="ld-title">Settings for ${esc(name)}</div><span class="ld-saved" aria-live="polite">${lands.saved ? "Saved" : ""}</span><span class="grow"></span><button class="ld-x" data-ld="close" aria-label="Close">×</button></div>
+  // As Settings is (sheets.js settingsSheet): a sheet, its title and Esc on one line, groups under it; a click
+  // outside or Esc closes it (#447).
+  return `<div class="scrim ld-scrim" data-ld="scrim"><div class="sheet ld-dialog" role="dialog" aria-labelledby="ld-title">
+    <div class="sheet-head"><h3 class="move-title" id="ld-title">Settings for ${esc(name)}</h3><span class="ld-saved" aria-live="polite">${lands.saved ? "Saved" : ""}</span><span class="grow"></span><kbd class="ld-esc" data-ld="close" role="button" aria-label="Close">Esc</kbd></div>
+    <div class="sheet-body">
     <div class="ld-hint ld-intro">Kept in Cue, not in the project. Each change saves at once; you can also tell the lead, and it asks you first.</div>
-    <div class="ld-sec" data-ld-sec="lands"><div class="ld-h">How work lands <span class="ld-hint">· how an item's work gets onto main</span></div>
+    <div class="ld-sec" data-ld-sec="lands"><div class="set-group ld-h">How work lands</div>
     ${l.why ? `<div class="ld-why">${esc(l.why)}</div>` : ""}
     <div class="ld-rows">${parts}</div></div>
     ${landsAskBefore()}
-    <div class="ld-sec" data-ld-sec="old"><div class="ld-rows">${landsOld()}</div></div>
-  </div></div>`;
+    <div class="ld-sec" data-ld-sec="old"><div class="set-group ld-h">Old working folders</div><div class="ld-rows">${landsOld()}</div></div>
+  </div></div></div>`;
 }
 /** "Saved" for a moment after a change goes through. */
 function landsSaved(a) {
@@ -169,7 +172,7 @@ document.addEventListener("click", (e) => {
   landsChange(c.dataset.landsChange);
 }, true);
 document.addEventListener("click", (e) => {
-  const pick = e.target.closest?.("[data-ld-pick]"), b = e.target.closest?.("[data-ld]");
+  const pick = e.target.closest?.("[data-ld-pick]"), b = e.target.closest?.("[data-ld]:not([data-ld=scrim])") || (e.target.dataset?.ld === "scrim" ? e.target : null);
   if (!lands || (!pick && !b)) return;
   e.stopPropagation();
   const s = lands.set;
@@ -194,7 +197,7 @@ document.addEventListener("click", (e) => {
   else if (act === "old") return landsOldLook();
   else if (act === "old-yes") return landsOldRemove();
   else if (act === "old-no") lands.old = null;
-  else if (act === "close") lands = null;
+  else if (act === "close" || act === "scrim") lands = null;
   renderMain();
 }, true);
 // Ask me before's rows and More on the screen (ask_before.js).

@@ -20,7 +20,7 @@ test("Cue's own Desk says how its work lands, and Change opens the setting with 
   await line(page).locator("[data-lands-change]").click();
   const dlg = page.locator(".ld-dialog");
   await expect(dlg.locator(".move-title")).toHaveText("Settings for cue");
-  await expect(dlg.locator(".ld-label")).toHaveText(["Where an item works", "Items at once", "How it lands", "Check before landing", "After landing", "Push to main", "Old working folders"]);
+  await expect(dlg.locator(".ld-label")).toHaveText(["Where an item works", "Items at once", "How it lands", "Check before landing", "After landing", "Push to main"]);
   const seg = (label) => dlg.locator(".ld-row", { has: page.locator(".ld-label", { hasText: label }) }).locator(".ld-seg");
   await expect(seg("Where an item works").locator("button.on")).toHaveText("Own copy");
   await expect(dlg.locator(".ld-n")).toHaveText("3");

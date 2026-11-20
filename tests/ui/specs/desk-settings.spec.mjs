@@ -11,13 +11,13 @@ const openDesk = async (page) => {
 };
 const lands = (page) => page.locator(".dk-strip .dk-ab");
 
-test("the screen has its parts, no Away and no Save, Ask me before on one line, and × at its top right (#417, #447)", async ({ page, cue }) => {
+test("the screen has its parts, no Away and no Save, Ask me before on one line, and Esc at its top right as Settings has (#417, #447)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await lands(page).locator("[data-lands-change]").click();
   const dlg = page.locator(".ld-dialog");
-  await expect(dlg.locator(".ld-h")).toHaveText([/^How work lands/, /^Ask me before/]);
-  await expect(dlg.locator(".ld-label", { hasText: "Old working folders" })).toBeVisible();
+  await expect(dlg.locator(".ld-h")).toHaveText(["How work lands", "Ask me before", "Old working folders"]);
+  await expect(dlg.getByRole("button", { name: "Remove old working folders" })).toBeVisible();
   await expect(dlg.locator('[data-ab-kind="main"]')).toHaveAttribute("aria-checked", "true");
   await expect(dlg.locator('[data-ld-sec="away"]')).toHaveCount(0);
   await expect(dlg.locator('[data-ld="save"]')).toHaveCount(0);
@@ -36,9 +36,9 @@ test("the screen has its parts, no Away and no Save, Ask me before on one line, 
   await lands(page).locator("[data-lands-change]").click();
   await expect(dlg.locator(".move-title")).toHaveText("Settings for cue");
   await expect(page.locator(".ab-dialog")).toHaveCount(0);
-  // Its close is × at the top right, on the title's line, as on the other screens; no Close at the bottom.
+  // Its close is Esc at the top right, on the title's line, as on Settings; no Close at the bottom.
   const x = dlg.locator('[data-ld="close"]');
-  await expect(x).toHaveText("×");
+  await expect(x).toHaveText("Esc");
   await expect(x).toHaveAttribute("aria-label", "Close");
   const [xb, tb, db] = await Promise.all([x.boundingBox(), dlg.locator(".move-title").boundingBox(), dlg.boundingBox()]);
   expect(Math.abs((xb.y + xb.height / 2) - (tb.y + tb.height / 2))).toBeLessThan(4);
@@ -46,6 +46,32 @@ test("the screen has its parts, no Away and no Save, Ask me before on one line, 
   await expect(dlg.locator(".row-btns")).toHaveCount(0);
   await x.click();
   await expect(dlg).toHaveCount(0);
+  // A click outside closes it too, as on Settings; a click inside doesn't.
+  await lands(page).locator("[data-lands-change]").click();
+  await dlg.locator(".ld-intro").click();
+  await expect(dlg).toHaveCount(1);
+  await page.locator(".ld-scrim").click({ position: { x: 5, y: 5 } });
+  await expect(dlg).toHaveCount(0);
+});
+
+test("the screen is built as Settings is: the same sheet, its title and Esc on one line, its groups headed the same way (#447)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await page.keyboard.press("Meta+,");
+  const set = page.locator(".scrim > .sheet");
+  await expect(set.locator(".sheet-head h3")).toHaveText("Settings");
+  const look = (sheet) => sheet.evaluate((e) => {
+    const s = getComputedStyle(e), h = getComputedStyle(e.querySelector(".sheet-head h3")), k = getComputedStyle(e.querySelector(".sheet-head kbd")), g = getComputedStyle(e.querySelector(".set-group"));
+    return { radius: s.borderRadius, bg: s.backgroundColor, title: h.fontSize, kbd: [k.fontSize, k.backgroundColor], group: [g.fontSize, g.textTransform, g.color] };
+  });
+  const theirs = await look(set);
+  await page.keyboard.press("Escape");
+  await expect(set).toHaveCount(0);
+  await lands(page).locator("[data-lands-change]").click();
+  const dlg = page.locator(".ld-dialog");
+  await expect(dlg.locator(".sheet-head kbd")).toHaveText("Esc");
+  expect(await look(dlg)).toEqual(theirs);
+  await expect(dlg.locator("[title]")).toHaveCount(0);
 });
 
 test("your own check: steps one per line, saved in order when you leave the box; a tick saves at once with Saved shown", async ({ page, cue }) => {
