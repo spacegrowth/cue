@@ -1018,15 +1018,33 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
 .dk-aw-st::before { content: "· "; }
 .dk-aw-st.ended { color: var(--deny); }
 .dk-aw-asks { padding: 2px 12px; }
-.dk-aw-mark { display: flex; align-items: center; gap: 7px; margin: 0 20px 6px 44px; padding: 5px 8px 5px 9px; border-radius: 8px; background: var(--panel-2); color: var(--muted); font-size: 12px; }
+/* The calls line at the top of Items while away (#415, calls 1): one line, folded or open over each call with its time. */
+.dk-aw-calls { margin: 0 4px; border-bottom: 1px solid var(--line); }
+.dk-aw-calls.open { padding-bottom: 8px; }
+.dk-items .dk-scroll > .dk-aw-calls + .dk-gh { margin-top: 14px; }
+.dk-items .dk-scroll > .dk-aw-calls + .dk-gh::before { display: none; }
+.dk-aw-fold { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 16px; color: var(--ink); font-size: 12.5px; cursor: pointer; }
+.dk-aw-fold:disabled { cursor: default; }
+.dk-aw-fold:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 8px; }
+.dk-aw-fold b { flex: none; font-weight: 650; }
+.dk-aw-fold .grow { flex: 1; min-width: 4px; }
+.dk-aw-chev { flex: none; width: 10px; color: var(--muted); font-size: 13px; line-height: 1; transition: transform .15s ease; }
+.dk-aw-chev.open { transform: rotate(90deg); }
+.dk-aw-w { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.dk-aw-w.ended { color: var(--deny); }
+.dk-aw-w.dk-aw-since { flex: none; }
+.dk-aw-meter { flex: none; width: 56px; height: 5px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.dk-aw-meter i { display: block; height: 100%; background: var(--accent); }
+.dk-aw-mark { display: flex; align-items: baseline; gap: 8px; padding: 5px 16px 5px 34px; font-size: 12.5px; }
+.dk-aw-tm { flex: none; width: 36px; font: 11px var(--mono); color: var(--muted); }
 .dk-aw-ic { flex: none; color: var(--muted); }
-.dk-aw-mt { flex: 1; min-width: 0; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-aw-mt { flex: 1; min-width: 0; color: var(--ink); }
+.dk-aw-mt b { font-weight: 600; }
 .dk-aw-why { color: var(--muted); }
 .dk-aw-undo { all: unset; flex: none; padding: 1px 7px; border-radius: 6px; color: var(--ink); font: 600 11.5px var(--sans); cursor: pointer; }
 .dk-aw-undo:hover { background: var(--line); }
 .dk-aw-undo:focus-visible { outline: 2px solid var(--accent); }
-.dk-gh .dk-split + .dk-aw-n { margin-left: 12px; }
-.dk-aw-none, .dk-aw-quiet { padding: 4px 20px 6px; color: var(--muted); font-size: 12.5px; }
+.dk-aw-none, .dk-aw-quiet { padding: 2px 20px 6px; color: var(--muted); font-size: 12.5px; }
 .dk-aw-dialog { width: min(480px, calc(100% - 40px)); max-height: calc(100vh - 60px); overflow-y: auto; }
 .dk-aw-flds { display: flex; gap: 10px; }
 .dk-aw-flds label { flex: 1; display: flex; flex-direction: column; gap: 3px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); font-size: 11px; }
@@ -1135,3 +1153,9 @@ body.dk-dragging, body.dk-dragging * { cursor: grabbing !important; user-select:
 .dk-grw.wait { color: var(--muted); }
 .dk-grw:is(.you, .fail) { color: var(--deny); font-weight: 600; }
 .dk-grb { display: inline-flex; gap: 6px; }
+/* Away on a Desk (#415, pick D): the window in its night colours (app/render.js applyTheme) and, in the head's
+   middle, "Away until 18:00 · $3.40 of $10". In a narrow window the spend goes first, then the words shorten. */
+.top-away { flex: 0 1 auto; min-width: 0; display: inline-flex; align-items: center; gap: 8px; color: var(--on-bg); font: 650 14px var(--sans); white-space: nowrap; overflow: hidden; }
+.top-away > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.top-away .dk-aw-ic { color: var(--sel); }
+.top-away-m { flex: 0 100 auto; font-weight: 500; color: var(--on-bg-muted); }

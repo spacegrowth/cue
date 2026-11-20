@@ -1,4 +1,4 @@
-// Cue UI desk — Away (#361, #373) and Pause (#366): the lines that show the lead keep the Desk moving while you're away, its rules and its clicks; and the Pause/Resume button.
+// Cue UI desk — Away (#361, #373, #415) and Pause (#366): the lines that show the lead keep the Desk moving while you're away, its rules and its clicks; and the Pause/Resume button.
 // Split from desk.js, which keeps the Desk's state and item basics; loaded after it (and after desk_list.js).
 // ---------- Away (#361, pick B): the lead keeps the Desk moving while you're away ----------
 
@@ -82,20 +82,60 @@ function deskAwayAsk(it, d, deny = "No") {
   const what = it.kind === "input" ? formBody(it) : cmd ? `<pre>${esc(cmd)}</pre>` : qs.length ? "" : `<p>${esc(summary(it))}</p>`;
   return `<div class="dk-request dk-aw-ask" data-desk-request="${esc(it.id)}"><div class="dk-request-who">${esc(deskHolderName(it.session_id))}${it.agent_name ? ` · ${esc(it.agent_name)}` : ""}</div>${what}${picks}${acts}</div>`;
 }
-/** Away (#373, pick C): no column. Each call the lead made since Away went on is a small line under the item it changed
- *  (deskAwayMark), with Undo; what waits on you joins Waiting on you (deskAwayWaiting). */
+/** Away (#415, calls 1): the lead's calls since Away went on sit in one line at the top of Items, "4 calls while away ·
+ *  since 16:00", with till, spend and a spend bar; open, each call with its time, why and Undo. Folded, one line; the
+ *  fold is remembered per Desk. Rows stay where they are. */
 const DESK_AWAY_ICON = `<svg class="dk-aw-ic" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/></svg>`;
-/** The lead's calls since Away went on, oldest first (a row's lines read down in the order they were made); none while off. */
+/** The lead's calls since Away went on, oldest first (the list reads down in the order they were made); none while off. */
 function deskAwayCalls(d) {
   const a = d?.away;
   if (!a?.on) return [];
   const since = deskMs(a.since);
   return deskCalls(d).filter((c) => deskMs(c.at) >= since).sort((x, y) => deskMs(x.at) - deskMs(y.at));
 }
-/** One call as a line under its item: the Away icon, what was decided · why, Undo (in words: it's the line's one act). */
-function deskAwayMark(c) {
+/** The Desks whose calls line you folded (kept in this window: a convenience, fine to lose). */
+let deskAwayFolded = new Set();
+try { deskAwayFolded = new Set(JSON.parse(localStorage.getItem("cue.desk.awayFolded") || "[]")); } catch {}
+function deskAwayFold(project) {
+  if (!deskAwayFolded.delete(project)) deskAwayFolded.add(project);
+  try { localStorage.setItem("cue.desk.awayFolded", JSON.stringify([...deskAwayFolded])); } catch {}
+  renderMain();
+}
+/** One call in the open list: its time, what was decided (its item) · why, Undo. */
+function deskAwayMark(c, d) {
   const undo = c.undo === "can" ? `<button class="dk-aw-undo" data-desk-undo="${esc(c.id)}">Undo</button>` : c.undo === "asked" ? `<span class="dk-u">Undo asked</span>` : "";
-  return `<div class="dk-aw-mark" data-desk-call="${esc(c.id)}">${DESK_AWAY_ICON}<span class="dk-aw-mt">${esc(c.text)}${c.why ? `<span class="dk-aw-why"> · ${esc(deskOneLine(c.why))}</span>` : ""}</span>${undo}</div>`;
+  // Its item ("Task #287"), unless the call already names it.
+  const item = c.item_id && !String(c.text || "").includes(`#${c.item_id}`) ? deskNum((d?.items || []).find((i) => i.id === c.item_id) || { id: c.item_id }) : "";
+  const why = [item, c.why ? deskOneLine(c.why) : ""].filter(Boolean).join(" · ");
+  return `<div class="dk-aw-mark" data-desk-call="${esc(c.id)}"><span class="dk-aw-tm">${c.at ? esc(deskHm(deskMs(c.at))) : ""}</span><span class="dk-aw-mt"><b>${esc(c.text)}</b>${why ? `<span class="dk-aw-why"> · ${esc(why)}</span>` : ""}</span>${undo}</div>`;
+}
+/** The calls line at the top of Items while Away is on: the count and since when, then till, spend and its bar (or why
+ *  it paused); a click folds or opens the list under it. */
+function deskAwayCallsHtml(d) {
+  const a = d?.away;
+  if (!a?.on) return "";
+  const calls = deskAwayCalls(d), open = calls.length > 0 && !deskAwayFolded.has(d.project);
+  const n = calls.length ? `${calls.length} call${calls.length === 1 ? "" : "s"} while away` : "No calls yet";
+  const since = a.since ? `<span class="dk-aw-w dk-aw-since">since ${esc(deskHm(deskMs(a.since)))}</span>` : "";
+  const st = a.ended ? `<span class="dk-aw-w ended">${esc(deskAwayStatus(a))}</span>`
+    : `<span class="dk-aw-w">${esc([a.until ? `till ${deskHm(a.until)}` : "", a.budget != null ? `${deskMoney(a.spent)} of ${deskMoney(a.budget)}` : ""].filter(Boolean).join(" · "))}</span>`;
+  const pct = a.budget > 0 ? Math.min(100, Math.round((Number(a.spent) || 0) / a.budget * 100)) : null;
+  const bar = pct == null ? "" : `<span class="dk-aw-meter" role="img" aria-label="${pct}% of the budget spent"><i style="width:${pct}%"></i></span>`;
+  const chev = calls.length ? `<span class="dk-aw-chev${open ? " open" : ""}" aria-hidden="true">›</span>` : "";
+  const head = `<button class="dk-aw-fold" data-desk-away-fold="${esc(d.project)}"${calls.length ? ` aria-expanded="${open}"` : " disabled"}>${chev}${DESK_AWAY_ICON}<b>${esc(n)}</b>${since}<span class="grow"></span>${st}${bar}</button>`;
+  return `<div class="dk-aw-calls${open ? " open" : ""}">${head}${open ? `<div class="dk-aw-list">${calls.map((c) => deskAwayMark(c, d)).join("")}</div>` : ""}</div>`;
+}
+/** Away on a Desk now: the window takes its night colours (the dark theme's tokens, app/render.js applyTheme) and its
+ *  head says so (#415, pick D). */
+const deskAwayOnDesks = () => (state.desk?.projects || []).filter((d) => d.away?.on);
+/** The head's mark: "Away until 18:00 · $3.40 of $10" (or why it paused); with several Desks away, how many. */
+function deskAwayHeadMark() {
+  const on = deskAwayOnDesks();
+  if (!on.length) return "";
+  const a = deskAwayOf(on[0]);
+  const main = on.length > 1 ? `Away on ${on.length} Desks` : a.ended ? "Away" : a.until ? `Away until ${deskHm(a.until)}` : "Away";
+  const rest = on.length > 1 ? "" : a.ended ? deskAwayStatus(a) : a.budget != null ? `${deskMoney(a.spent)} of ${deskMoney(a.budget)}` : "";
+  return `<span class="top-away" data-tauri-drag-region>${DESK_AWAY_ICON.replace('width="12" height="12"', 'width="16" height="16"')}<span>${esc(main)}</span>${rest ? `<span class="top-away-m">· ${esc(rest)}</span>` : ""}</span>`;
 }
 /** What Away adds under Waiting on you: open asks from the Desk's sessions not already on an item (a permission with
  *  Allow / Deny right there; the lead never grants one), and sessions on a usage limit as one quiet line. */

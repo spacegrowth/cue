@@ -211,6 +211,7 @@ const DESK_CLICKS = {
   deskPanel: (el) => deskPanelToggle(el.dataset.deskPanel),
   deskItem: (el) => deskShow(deskOpen?.kind === "item" && deskOpen.id === el.dataset.deskItem ? null : { kind: "item", id: el.dataset.deskItem }),
   deskHolder: (el) => deskShow({ kind: "holder", sid: el.dataset.deskHolder }),
+  deskAwayFold: (el) => deskAwayFold(el.dataset.deskAwayFold),
   deskHeld: (el) => deskHeldAnswer(el.dataset.deskHeld, el.dataset.allow === "1"),
   deskAddon: (el) => deskShow({ kind: "addon", key: el.dataset.deskAddon }),
   deskCrew: (el) => deskShow({ kind: "crew", lead: el.dataset.lead, agent: el.dataset.deskCrew }),

@@ -1,10 +1,15 @@
 // Cue UI app — the main draw: the whole window rebuilt from a string, then put back as it was (the cursor, every
 // list's scroll, the chat's place) and moved on where it changed (cards that glide, arrive, slide in).
 
+/** The window's light or dark (Settings → Appearance), or its night colours while a Desk is away (#415, pick D: the
+ *  dark theme's tokens, so you see it at a glance; the head says "Away until …" for anyone already in dark). */
 function applyTheme() {
-  const mode = state.settings?.appearance?.mode ?? "system";
-  if (mode === "system") document.documentElement.removeAttribute("data-theme");
-  else document.documentElement.dataset.theme = mode;
+  const away = typeof deskAwayOnDesks === "function" && deskAwayOnDesks().length > 0;
+  const mode = away ? "dark" : state.settings?.appearance?.mode ?? "system";
+  const root = document.documentElement;
+  if (mode === "system") root.removeAttribute("data-theme");
+  else if (root.dataset.theme !== mode) root.dataset.theme = mode;
+  root.classList.toggle("away-night", away);
   retheme();
 }
 /** The chat and color the window last said ("chat-open"), so they're said only when they change. */
@@ -72,7 +77,7 @@ function putPlacesBack(noted) {
 
 function renderMain() {
   projTheme();
-  retheme();
+  applyTheme();
   // You're dragging out a selection: a redraw would wipe it. It waits until you let go.
   if (dragSelecting() || folding || onPress || composing) { heldDraw = true; return; }
   const was = beforeDraw();
@@ -118,10 +123,12 @@ function beforeDraw() {
 
 /** The header: the chips; usage, search, the terminal, Extensions, Insights and Settings; then the views (Inbox, Board, Desk, the add-on's, Read) at the right edge. */
 function topBarHtml(counts) {
-  return `<div class="top" data-tauri-drag-region><span class="wordmark" data-tauri-drag-region role="img" aria-label="Cue">${CUE_MARK}</span><span class="hchips">${newChip()}${counts}${projChip()}</span><span class="grow" data-tauri-drag-region></span>
+  return `<div class="top" data-tauri-drag-region><span class="wordmark" data-tauri-drag-region role="img" aria-label="Cue">${CUE_MARK}</span><span class="hchips">${newChip()}${counts}${projChip()}</span><span class="grow" data-tauri-drag-region></span>${awayHead()}
       ${updateCard()}${usageChip()}<button class="top-btn icon top-find" data-act="open-search" aria-label="Find (⌘K)">${SEARCH_ICON}</button>${shellsBtn()}${extPanelBtn()}<button class="top-btn icon insights-btn" data-view="insights" aria-pressed="${view === "insights"}" aria-label="Insights">${INSIGHTS_ICON}</button><button class="top-btn icon" data-act="open-settings" aria-label="Settings">${GEAR_ICON}</button>
       <div class="switch-view">${inboxBtn()}<button class="${view === "board" ? "on" : ""}" data-view="board">Board</button><button class="${view === "desk" ? "on" : ""}" data-view="desk">Desk</button>${addOn.views.map((v) => `<button class="${view === v.id ? "on" : ""}" data-view="${v.id}">${v.label()}</button>`).join("")}<button class="${view === "read" ? "on" : ""}" data-view="read">Read</button></div></div>`;
 }
+/** While a Desk is away, its mark in the middle of the head (desk_away.js), with room either side. */
+const awayHead = () => { const m = typeof deskAwayHeadMark === "function" ? deskAwayHeadMark() : ""; return m ? `${m}<span class="grow" data-tauri-drag-region></span>` : ""; };
 /** Inbox in the header's switch, with how many need you ("Inbox 3"). */
 const inboxBtn = () => { const n = inboxCount(); return `<button class="${view === "inbox" ? "on" : ""}" data-view="inbox">Inbox${n ? `<span class="ib-count">${n}</span>` : ""}</button>`; };
 /** The view picked in the header. */

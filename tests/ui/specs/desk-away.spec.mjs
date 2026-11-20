@@ -1,6 +1,7 @@
 // Away (#361, pick B): an Away switch in the Items head opens its rules card (Until, Budget, what the lead may decide,
-// what always waits for you); while Away is on (#373, pick C) each call the lead made since is a line under the item
-// it changed (with Undo), and the open asks join Waiting on you. A session stopped on a usage limit isn't yours to
+// what always waits for you); while Away is on the window takes its night colours with "Away until …" in the head (#415,
+// pick D), the calls the lead made since sit in one foldable line at the top of Items, each with its time and Undo
+// (calls 1), and the open asks join Waiting on you. A session stopped on a usage limit isn't yours to
 // do (Cue carries on when it resets): it stays off Needs you, one quiet line instead.
 import { test, expect } from "./cue.mjs";
 
@@ -13,7 +14,7 @@ const openDesk = async (page) => {
   await page.locator(".dk-items .dk-it").first().waitFor();
 };
 
-test("Away on: no column; each call since it went on is a line under its item with Undo, asks join Waiting on you, a limited session is a quiet line (#373)", async ({ page, cue }) => {
+test("Away on: no column; the calls since it went on in one line at the top of Items with Undo, asks join Waiting on you, a limited session is a quiet line (#373, #415)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await expect(page.locator(".dk-aw-mark")).toHaveCount(0);
@@ -43,12 +44,16 @@ test("Away on: no column; each call since it went on is a line under its item wi
   await expect(items.locator('.dk-aw-asks [data-desk-chat-of="asker"]')).toHaveCount(1);
   await expect(items.locator('[data-desk-chat-of="capped"]')).toHaveCount(0);
   await expect(items.locator(".dk-aw-quiet")).toHaveText(/^capped paused till \d\d:\d\d · Cue carries on then$/);
-  // Only the call made since Away went on, right under the item it changed, with the Away icon, its why and Undo.
+  // Only the call made since Away went on, in the open list at the top of Items: its time, what, its item, why, Undo.
+  const fold = items.locator(".dk-scroll > .dk-aw-calls:first-child .dk-aw-fold");
+  await expect(fold).toHaveText(/^›1 call while awaysince \d\d:\d\dtill \d\d:\d\d · \$3\.20 of \$10$/);
+  await expect(fold.locator(".dk-aw-meter i")).toHaveAttribute("style", "width:32%");
   await expect(items.locator(".dk-aw-mark")).toHaveCount(1);
-  const mark = page.locator('[data-desk-item="d5"] + .dk-aw-mark');
-  await expect(mark).toHaveText("An environment setting, not a settings file · Hosted sessions don't read the settings file at start.Undo");
-  await expect(mark.locator(".dk-aw-ic")).toHaveCount(1);
-  await expect(items.locator(".dk-aw-n")).toHaveText("1 call while away");
+  const mark = items.locator('.dk-aw-list [data-desk-call="c1"]');
+  await expect(mark).toHaveText(/^\d\d:\d\dAn environment setting, not a settings file · Bug #d5 · Hosted sessions don't read the settings file at start\.Undo$/);
+  // Not under its item any more, nor a count on In progress.
+  await expect(page.locator('[data-desk-item="d5"] + .dk-aw-mark')).toHaveCount(0);
+  await expect(items.locator(".dk-aw-n")).toHaveCount(0);
   // Rows stay where they were.
   expect(await page.locator(".dk-items .dk-it").evaluateAll((els) => els.map((e) => e.dataset.deskItem))).toEqual(order);
   await mark.locator('[data-desk-undo="c1"]').click();
@@ -56,21 +61,72 @@ test("Away on: no column; each call since it went on is a line under its item wi
   // Away off: the lines go.
   await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").away.on = false; });
   await expect(page.locator(".dk-aw-mark")).toHaveCount(0);
+  await expect(page.locator(".dk-aw-calls")).toHaveCount(0);
   await expect(page.locator(".dk-items .dk-gh.you")).toHaveText("Waiting on you 1");
 });
 
-test("a call while away with no item in the list sits at the end of Waiting on you (#373)", async ({ page, cue }) => {
+test("the calls line folds to one line and stays folded for that Desk; a call with no item is in it too; nothing waiting says so (#415)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await cue.change((st, since) => {
     const d = st.desk.projects.find((x) => x.project === "cue");
     d.away = { on: true, active: true, ended: "", since, until: null, budget: null, spent: 0, rules: {} };
     d.decisions.push({ project: "cue", why: "No session knew that area.", undo: "can", id: "c9", call: true, by: "web-lead", sid: "lead", text: "Started a new session", at: since / 1000 + 60 });
+    d.items.find((i) => i.id === "d1").state = "working";
+    st.items.find((i) => i.id === "n-focus-ask").status = "answered";
   }, SINCE);
-  await expect(page.locator(".dk-items .dk-aw-mark")).toHaveCount(2);
-  await expect(page.locator('.dk-items [data-desk-call="c9"]')).toHaveCount(1);
-  // Before Ready to review.
-  expect(await page.locator(".dk-items").evaluate((el) => { const m = el.querySelector('[data-desk-call="c9"]'), h = [...el.querySelectorAll(".dk-gh")][1]; return !!(m.compareDocumentPosition(h) & Node.DOCUMENT_POSITION_FOLLOWING); })).toBe(true);
+  const items = page.locator(".dk-items");
+  const fold = items.locator(".dk-aw-fold");
+  // Oldest first, the one with no item as well; no till, spend or bar without them.
+  await expect(fold).toHaveText(/^›2 calls while awaysince \d\d:\d\d$/);
+  await expect(fold.locator(".dk-aw-meter")).toHaveCount(0);
+  expect(await items.locator(".dk-aw-mark").evaluateAll((els) => els.map((e) => e.dataset.deskCall))).toEqual(["c9", "c1"]);
+  // Waiting on you 0 says so in words.
+  await expect(items.locator(".dk-gh.you")).toHaveText("Waiting on you 0");
+  await expect(items.locator(".dk-gh.you + .dk-aw-none")).toHaveText("Nothing waits on you.");
+  if (process.env.SHOT_DIR) await page.locator(".dk-items").screenshot({ path: `${process.env.SHOT_DIR}/cue-away-calls.png` });
+  // Folded: one line, the Undos gone with the list; it stays folded through a redraw and a reload.
+  const order = await items.locator(".dk-it").evaluateAll((els) => els.map((e) => e.dataset.deskItem));
+  await fold.click();
+  await expect(fold).toHaveAttribute("aria-expanded", "false");
+  await expect(items.locator(".dk-aw-mark")).toHaveCount(0);
+  expect(await items.locator(".dk-it").evaluateAll((els) => els.map((e) => e.dataset.deskItem))).toEqual(order);
+  await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").away.spent = 1; });
+  await expect(items.locator(".dk-aw-mark")).toHaveCount(0);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("cue.desk.awayFolded")))).toEqual(["cue"]);
+  await fold.click();
+  await expect(items.locator(".dk-aw-mark")).toHaveCount(2);
+  await items.locator('[data-desk-call="c9"] [data-desk-undo="c9"]').click();
+  await cue.called("desk_undo", { decisionId: "c9" });
+});
+
+test("while away the window takes its night colours and the head says Away until when, with the spend; off, it's back (#415)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  const root = page.locator("html");
+  const bg = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  await expect(root).not.toHaveAttribute("data-theme", "dark");
+  const day = await bg();
+  await expect(page.locator(".top .top-away")).toHaveCount(0);
+  await cue.change((st, since) => {
+    st.desk.projects.find((x) => x.project === "cue").away = { on: true, active: true, ended: "", since, until: since + 9 * 3600000, budget: 10, spent: 3.4, rules: {} };
+  }, SINCE);
+  await expect(root).toHaveAttribute("data-theme", "dark");
+  await expect(root).toHaveClass(/away-night/);
+  await expect.poll(bg).not.toBe(day);
+  const mark = page.locator(".top .top-away");
+  await expect(mark).toHaveText(/^Away until \d\d:\d\d· \$3\.40 of \$10$/);
+  await expect(mark.locator(".dk-aw-ic")).toHaveCount(1);
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/cue-away-night.png` });
+  // The budget reached: it says it paused.
+  await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").away.ended = "budget"; });
+  await expect(mark).toHaveText("Away· Paused: budget reached");
+  // Off: the window's own appearance again.
+  await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").away.on = false; });
+  await expect(page.locator(".top .top-away")).toHaveCount(0);
+  await expect(root).not.toHaveAttribute("data-theme", "dark");
+  await expect(root).not.toHaveClass(/away-night/);
+  await expect.poll(bg).toBe(day);
 });
 
 /** Nothing waits on the cue Desk: d1 no longer asks. */

@@ -304,26 +304,22 @@ function deskList(project, taskApprovals) {
   const o = deskOpen;
   const crewLit = o?.kind === "crew" ? deskCrewItem(project, o.lead, o.agent)?.id : null;
   // A session clicked on the left lights nothing on the right (#170): it can hold several items.
-  // Away (#373): the lead's calls since it went on, each a line under the item it changed; rows stay where they are.
-  const calls = deskAwayCalls(g.d), byItem = new Map(), placed = new Set();
-  for (const c of calls) if (c.item_id) byItem.set(c.item_id, [...(byItem.get(c.item_id) || []), c]);
-  const marks = (i) => { const cs = byItem.get(i.id) || []; cs.forEach((c) => placed.add(c.id)); return cs.map(deskAwayMark).join(""); };
   // A feature's row, then its pieces under it while it or one of them is open (#282): in place, nothing moves.
-  const row = (i) => deskItemRow(i, i.id === crewLit, false) + marks(i) + (deskFeat(i) && deskFeatOpen(i) ? `<div class="dk-pcs">${i.pieces.map((p) => deskItemRow(p, p.id === crewLit, false, { piece: true }) + marks(p)).join("")}</div>` : "");
-  const parts = [];
-  // Waiting on you stays at 0 (in red only while something waits), so you see there's nothing for you. While away, the
-  // open asks from the Desk's sessions join it, and a call with no item shown here sits at its end (filled last).
+  const row = (i) => deskItemRow(i, i.id === crewLit, false) + (deskFeat(i) && deskFeatOpen(i) ? `<div class="dk-pcs">${i.pieces.map((p) => deskItemRow(p, p.id === crewLit, false, { piece: true })).join("")}</div>` : "");
+  // Away (#415, calls 1): the lead's calls since it went on, in one foldable line at the top.
+  const parts = [deskAwayCallsHtml(g.d)].filter(Boolean);
+  // Waiting on you stays at 0 (in red only while something waits), so you see there's nothing for you; while away it
+  // says so in words. While away, the open asks from the Desk's sessions join it.
   const aw = deskAwayWaiting(g.d, taskApprovals), nWait = g.waiting.length + aw.n;
-  parts.push(`<div class="dk-gh you${nWait ? "" : " none"}">Waiting on you <span class="n">${nWait}</span></div>${g.waiting.map(row).join("")}${aw.html}`);
-  const loose = parts.length;
+  const none = !nWait && g.d?.away?.on ? `<div class="dk-aw-none">Nothing waits on you.</div>` : "";
+  parts.push(`<div class="dk-gh you${nWait ? "" : " none"}">Waiting on you <span class="n">${nWait}</span></div>${g.waiting.map(row).join("")}${aw.html}${none}`);
   // Ready to review sits right under Waiting on you (#275): both are yours to look at.
   if (g.review.length) parts.push(`<div class="dk-gh">Ready to review <span class="n">${g.review.length}</span></div>${g.review.map(row).join("")}`);
-  const nCalls = calls.length ? `<span class="dk-split dk-aw-n">${calls.length} call${calls.length === 1 ? "" : "s"} while away</span>` : "";
-  if (g.working.length) parts.push(`<div class="dk-gh">In progress <span class="n">${g.working.length}</span>${deskSplitHtml(g.working)}${nCalls}</div>${g.working.map(row).join("")}`);
+  if (g.working.length) parts.push(`<div class="dk-gh">In progress <span class="n">${g.working.length}</span>${deskSplitHtml(g.working)}</div>${g.working.map(row).join("")}`);
   // The landing line, numbered in the order it lands (one at a time), then what's on main for the next install, with
   // its time and Install now (#346).
-  if (g.landing.length) parts.push(`<div class="dk-gh dk-lane" data-lane="landing">Landing <span class="n">${g.landing.length}</span><span class="dk-split">one at a time</span></div>${g.landing.map((i, k) => deskItemRow(i, i.id === crewLit, false, { n: k + 1, ahead: g.landing[k - 1] }) + marks(i)).join("")}`);
-  if (g.install.length) parts.push(`<div class="dk-gh dk-lane" data-lane="install">Waiting to install <span class="n">${g.install.length}</span>${deskInstallHead(g.install)}</div>${g.install.map((i) => deskItemRow(i, i.id === crewLit, false, {}) + marks(i)).join("")}`);
+  if (g.landing.length) parts.push(`<div class="dk-gh dk-lane" data-lane="landing">Landing <span class="n">${g.landing.length}</span><span class="dk-split">one at a time</span></div>${g.landing.map((i, k) => deskItemRow(i, i.id === crewLit, false, { n: k + 1, ahead: g.landing[k - 1] })).join("")}`);
+  if (g.install.length) parts.push(`<div class="dk-gh dk-lane" data-lane="install">Waiting to install <span class="n">${g.install.length}</span>${deskInstallHead(g.install)}</div>${g.install.map((i) => deskItemRow(i, i.id === crewLit, false, {})).join("")}`);
   if (g.resume.length) parts.push(`<div class="dk-gh">Needs resume <span class="n">${g.resume.length}</span></div>${g.resume.map(row).join("")}`);
   if (g.paused.length) parts.push(`<div class="dk-gh">Paused <span class="n">${g.paused.length}</span></div>${g.paused.map(row).join("")}`);
   // Dragged up and down into your order (#387): the next free copy goes to the top one.
@@ -341,10 +337,7 @@ function deskList(project, taskApprovals) {
   if (kept.length) parts.push(`<div class="dk-gh">Kept copies <span class="n">${kept.length}</span></div>${kept.map(deskKeptRow).join("")}`);
   if (shown.length) parts.push(`<div class="dk-gh">Done</div>${shown.map(row).join("")}`);
   if (more && (shown.length || pg?.loading || !pg)) parts.push(`<div class="dk-more" data-desk-done-more="${esc(project)}">${shown.length ? "Loading older…" : ""}</div>`);
-  // A call whose item isn't in the list (none, or an older finished one): at the end of Waiting on you.
-  const left = calls.filter((c) => !placed.has(c.id));
-  if (left.length) parts.splice(loose, 0, left.map(deskAwayMark).join(""));
-  const body = parts.join("") + (parts.length > 1 ? "" : `<div class="dk-empty">No items yet.</div>`);
+  const body = parts.join("") + (parts.length > (g.d?.away?.on ? 2 : 1) ? "" : `<div class="dk-empty">No items yet.</div>`);
   return `<div class="dk-card dk-items"><div class="dk-ch"><b>Items</b>${deskPausedTag(g.d)}${deskProgButtonHead()}${deskPauseButton(g.d)}${deskAwaySwitch(g.d)}</div>
     ${deskQuickAdd()}<div class="dk-scroll" data-scroll-key="desk-items:${esc(project)}">${body}</div></div>`;
 }
