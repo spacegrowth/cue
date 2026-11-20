@@ -1,6 +1,6 @@
 # Desks on the same code: knowing about each other
 
-A plan for #534. Status: a proposal. Nothing is built.
+A plan for #534. Status: option B picked on 20 November 2026. Nothing is built yet.
 
 ## The problem
 
@@ -149,7 +149,7 @@ A refactor is just an item with a big diff.
   folder has no diff yet, so other work starts there freely. Nothing says "wait, this is coming". It
   is also noisy: small shared files such as `ui/core.js` would set it off all day.
 
-## Suggested: B
+## Picked: B
 
 B is the only one that stops new work before it starts in a place that is about to move, and it keeps
 the leads, not you, as the ones who settle the order. It takes from A the band, which is the talk
