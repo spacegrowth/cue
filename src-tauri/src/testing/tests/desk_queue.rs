@@ -120,7 +120,9 @@ fn an_item_isnt_queued_after_one_that_waits_on_it() {
     let a = item(&desk(&w, &project), "Header")["id"].as_str().unwrap().to_string();
     ends(&w, &d, &format!("ITEM: Footer\nROUTE: #new -> cue-teams | after: #{a} | why: same file"));
     let b = item(&desk(&w, &project), "Footer")["id"].as_str().unwrap().to_string();
-    ends(&w, &d, &format!("ITEM: Logo\nROUTE: #new -> cue-teams | after: #{b} | why: same file"));
+    // cue-teams holds two open items, the most a session holds: the third goes to another session.
+    second(&w, "cue-two");
+    ends(&w, &d, &format!("ITEM: Logo\nROUTE: #new -> cue-two | after: #{b} | why: same file"));
     let c = item(&desk(&w, &project), "Logo")["id"].as_str().unwrap().to_string();
     // Header after Logo: Logo waits on Footer, which waits on Header.
     ends(&w, &d, &format!("ROUTE: #{a} -> cue-teams | after: #{c} | why: loop"));
@@ -145,17 +147,19 @@ fn put_before_takes_the_others_place_in_the_queue() {
     let a = item(&desk(&w, &project), "Header")["id"].as_str().unwrap().to_string();
     ends(&w, &d, &format!("ITEM: Footer\nROUTE: #new -> cue-teams | after: #{a} | why: same file"));
     let b = item(&desk(&w, &project), "Footer")["id"].as_str().unwrap().to_string();
-    ends(&w, &d, &format!("ITEM: Logo\nROUTE: #new -> cue-teams | after: #{b} | why: same file"));
+    // cue-teams holds two open items, the most a session holds: Logo and Menu go to another session.
+    let t = second(&w, "cue-two");
+    ends(&w, &d, &format!("ITEM: Logo\nROUTE: #new -> cue-two | after: #{b} | why: same file"));
     let c = item(&desk(&w, &project), "Logo")["id"].as_str().unwrap().to_string();
-    ends(&w, &d, &format!("ITEM: Menu\nROUTE: #new -> cue-teams | after: #{c} | why: same file"));
-    // Header at work <- Footer <- Logo <- Menu; Logo put before Footer: Header <- Logo <- Footer <- Menu.
+    ends(&w, &d, &format!("ITEM: Menu\nROUTE: #new -> cue-two | after: #{c} | why: same file"));
+    // Header at work <- Footer (cue-teams) <- Logo <- Menu (cue-two); Logo put before Footer: Header <- Logo <- Footer <- Menu.
     w.hub().desk_item_act(&c, "put_before", "").unwrap();
     w.settle();
     let now = desk(&w, &project);
     assert_eq!((item(&now, "Logo")["state"].as_str(), item(&now, "Logo")["after"].as_str()), (Some("queued"), Some(a.as_str())), "{now}");
     assert_eq!(item(&now, "Footer")["after"], c.as_str());
     assert_eq!(item(&now, "Menu")["after"], b.as_str());
-    assert!(!sent_to(&w, &h).iter().any(|t| t.contains(&format!("Desk item #{c}"))), "Logo still waits on Header");
+    assert!(!sent_to(&w, &t).iter().any(|m| m.contains(&format!("Desk item #{c}"))), "Logo still waits on Header");
     ends(&w, &h, &format!("DONE: #{a}"));
     let now = desk(&w, &project);
     assert_eq!(item(&now, "Logo")["state"], "working");

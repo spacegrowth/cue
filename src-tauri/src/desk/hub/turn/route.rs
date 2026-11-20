@@ -148,6 +148,11 @@ pub(crate) fn route(st: &mut Store, project: &str, by: &By, id: &str, to: &str, 
         ask_first(st, &UseAsk { lead: by.sid.into(), project: project.into(), sid: h.to().into(), name: h.name.clone(), item: id.into(), to: to.into(), after, why: why.into() }, fx);
         return Some(format!("Asked: #{id} goes to {0} once the user says yes ({0} isn't on the Desk).", h.name));
     }
+    // Merged routing rule 6 (#516): a session holds at most two open items, one at work and one waiting. Open counts
+    // items at work or queued, not one waiting for your check; an item it holds already isn't a third.
+    if let Some(no) = holder.as_ref().filter(|_| !to_new).and_then(|h| full(st, h, id)) {
+        return Some(no);
+    }
     let finishing = st.desk.item(id).is_some_and(|i| i.state == "finishing");
     let unfinished = finishing && (to_new || holder.is_some());
     if unfinished {
@@ -220,6 +225,21 @@ pub(crate) fn route(st: &mut Store, project: &str, by: &By, id: &str, to: &str, 
         }
     }
     Some(taken(id, &h.name, waits.as_deref()))
+}
+
+/// "Refused: …" when `h` already holds two open items (at work or queued) other than `id`, and doesn't hold `id`.
+fn full(st: &Store, h: &Holder, id: &str) -> Option<String> {
+    let holds = |i: &DeskItem| i.holder.as_ref().is_some_and(|b| b.sid == h.sid && b.lead_sid == h.lead_sid);
+    if st.desk.item(id).is_some_and(|i| holds(i)) {
+        return None;
+    }
+    let open: Vec<&str> = st.desk.items.iter()
+        .filter(|i| i.id != id && holds(i) && matches!(i.state.as_str(), "working" | "queued"))
+        .map(|i| i.id.as_str()).collect();
+    (open.len() >= 2).then(|| format!(
+        "Refused: #{id}: {} already holds two open items ({}), one at work and one waiting: a session holds at most two. \
+         You can route it again to the next session with a record, or to new (ROUTE: #{id} -> new | why: …).",
+        h.name, open.iter().map(|o| format!("#{o}")).collect::<Vec<_>>().join(", ")))
 }
 
 /// The lead's note on item `id` of `project` (NOTE:, or a route back to its holder while its finish is under way),

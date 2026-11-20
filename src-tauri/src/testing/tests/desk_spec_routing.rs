@@ -13,7 +13,6 @@ fn id_of(w: &World, project: &str, title: &str) -> String {
 /// Merged rule 6: "A session holds at most two open items: one at work, one waiting. Cue refuses a third and tells
 /// the lead to route it again." The third stays new, nobody holds it, and its holder isn't sent it.
 #[test]
-#[ignore = "#498 → to file: Cue refuses a third open item: both routing docs are proposals not picked yet, and today one session can hold a chain of any length"]
 fn a_session_with_two_open_items_is_refused_a_third_and_the_lead_is_told_to_route_it_again() {
     let w = World::new();
     let (h, project) = holder(&w);
@@ -76,7 +75,6 @@ fn a_send_back_of_an_item_the_session_holds_isnt_a_third() {
 
 /// Merged build order 1: the lead's instructions give the cap, so it routes by it and isn't only refused.
 #[test]
-#[ignore = "#498 → to file: Cue refuses a third open item: both routing docs are proposals not picked yet, and today one session can hold a chain of any length"]
 fn the_leads_instructions_say_a_session_holds_at_most_two_open_items() {
     assert!(crate::desk::LEAD_SKILL.contains("A session holds at most two open items: one at work, one waiting behind it. Cue refuses a third"));
 }

@@ -18,7 +18,7 @@ pub(crate) const ROUTING_GUIDANCE: &str = concat!(
     "For independent work, prefer a suitable idle Desk session over a busy one. ",
     "When routing several items together, count a session you just assigned as busy. ",
     "If items would change the same files, sequence them with after: #<id>, even when another session is idle. ",
-    "For several overlapping items, chain each one after the previous item in that sequence.",
+    "For several overlapping items, chain each one after the previous item in that sequence; a session takes at most two open items, so route the rest to other sessions, still chained.",
 );
 
 /// How a project's Desk lead works: appended to the system prompt or sent inside the Desk block.
@@ -59,6 +59,8 @@ an item a session already holds moves to it, as when its holder is too full and 
 stops, and the new session is sent the item with that hand-off note)
 ROUTE: #<id> -> <name> | after: #<other id> | why: <reason>   (it starts once #<other id> is done; use it whenever \
 an item really waits on another, as when both would change the same files: the Desk shows the user what each waiting item unblocks)
+A session holds at most two open items: one at work, one waiting behind it. Cue refuses a third and tells you to \
+route it again: to the next session with a record, or to new. An item waiting for the user's check doesn't count.
 ASK: <question> | choices: <A> / <B> / <C>      (only when you can't decide without the user; give each choice a \
 short line on what it does after a dash, and mark the one you suggest: choices: Merge now (Recommended) — it lands \
 today / Wait for #12 — it lands after the fix; no / or ; inside a choice)

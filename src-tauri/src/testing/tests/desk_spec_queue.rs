@@ -3,7 +3,7 @@
 //! An item queued after another starts by itself once nothing it waits on is still open, never waits on an item that
 //! can't move, and stays queued across a relaunch.
 
-use super::desk::{desk, ends, holder, item, new_lead, sent_to, summary};
+use super::desk::{desk, ends, holder, item, new_lead, second, sent_to, summary};
 use crate::testing::World;
 
 /// cue-teams at work on "Header" (a), and "Footer" (b) queued for it after a: (holder, project, lead, a, b).
@@ -20,13 +20,15 @@ fn queued(w: &World) -> (String, String, String, String, String) {
     (h, project, l, a, b)
 }
 
-/// `queued`, plus "Logo" (c) queued after b: a chain a <- b <- c, all for cue-teams.
-fn chain(w: &World) -> (String, String, String, String, String, String) {
+/// `queued`, plus "Logo" (c) queued after b for a second session, "cue-two" (t): a chain a <- b <- c. cue-teams
+/// already holds two open items, the most a session holds (merged routing rule 6), so the third goes to another.
+fn chain(w: &World) -> (String, String, String, String, String, String, String) {
     let (h, project, l, a, b) = queued(w);
-    ends(w, &l, &format!("ITEM: Logo\nROUTE: #new -> cue-teams | after: #{b} | why: same file as #{b}"));
+    let t = second(w, "cue-two");
+    ends(w, &l, &format!("ITEM: Logo\nROUTE: #new -> cue-two | after: #{b} | why: same file as #{b}"));
     let c = item(&desk(w, &project), "Logo")["id"].as_str().unwrap().to_string();
     assert_eq!(item(&desk(w, &project), "Logo")["after"], b.as_str());
-    (h, project, l, a, b, c)
+    (h, project, l, a, b, c, t)
 }
 
 /// Whether session `h` was handed item `id` (its "Desk item #id" words).
@@ -72,15 +74,15 @@ fn a_queued_item_starts_by_itself_when_the_item_ahead_is_dropped() {
 #[test]
 fn dropping_the_middle_of_a_chain_leaves_the_last_waiting_on_the_first() {
     let w = World::new();
-    let (h, project, _, a, b, c) = chain(&w);
+    let (h, project, _, a, b, c, t) = chain(&w);
     w.hub().desk_item_act(&b, "drop", "").unwrap();
     w.settle();
     let it = item(&desk(&w, &project), "Logo").clone();
     assert_eq!((it["state"].as_str(), it["after"].as_str()), (Some("queued"), Some(a.as_str())), "{it}");
-    assert!(!handed(&w, &h, &c), "not while #{a} is at work on the same files");
+    assert!(!handed(&w, &t, &c), "not while #{a} is at work on the same files");
     ends(&w, &h, &format!("DONE: #{a}"));
     assert_eq!(item(&desk(&w, &project), "Logo")["state"], "working");
-    assert!(handed(&w, &h, &c));
+    assert!(handed(&w, &t, &c));
 }
 
 /// Parked (#385): a parked item is never started by Cue, so nothing may be left waiting on it. The item queued after a
@@ -88,7 +90,7 @@ fn dropping_the_middle_of_a_chain_leaves_the_last_waiting_on_the_first() {
 #[test]
 fn parking_the_middle_of_a_chain_leaves_the_last_waiting_on_the_first() {
     let w = World::new();
-    let (h, project, _, a, b, c) = chain(&w);
+    let (h, project, _, a, b, c, t) = chain(&w);
     w.hub().desk_item_act(&b, "park", "").unwrap();
     w.settle();
     assert_eq!(item(&desk(&w, &project), "Footer")["state"], "held");
@@ -96,7 +98,7 @@ fn parking_the_middle_of_a_chain_leaves_the_last_waiting_on_the_first() {
     assert_eq!((it["state"].as_str(), it["after"].as_str()), (Some("queued"), Some(a.as_str())), "{it}");
     ends(&w, &h, &format!("DONE: #{a}"));
     assert_eq!(item(&desk(&w, &project), "Logo")["state"], "working", "it doesn't wait on the parked one");
-    assert!(handed(&w, &h, &c));
+    assert!(handed(&w, &t, &c));
     assert_eq!(item(&desk(&w, &project), "Footer")["state"], "held", "the parked one stays parked");
 }
 
@@ -201,16 +203,16 @@ fn you_cut_a_queued_items_wait_and_it_starts_now() {
 #[test]
 fn a_chain_moves_one_step_at_a_time() {
     let w = World::new();
-    let (h, project, _, a, b, c) = chain(&w);
+    let (h, project, _, a, b, c, t) = chain(&w);
     ends(&w, &h, &format!("DONE: #{a}"));
     let d = desk(&w, &project);
     assert_eq!(item(&d, "Footer")["state"], "working");
     let it = item(&d, "Logo");
     assert_eq!((it["state"].as_str(), it["after"].as_str()), (Some("queued"), Some(b.as_str())), "{it}");
-    assert!(!handed(&w, &h, &c));
+    assert!(!handed(&w, &t, &c));
     ends(&w, &h, &format!("DONE: #{b}"));
     assert_eq!(item(&desk(&w, &project), "Logo")["state"], "working");
-    assert!(handed(&w, &h, &c));
+    assert!(handed(&w, &t, &c));
 }
 
 /// Routing rules 9 / merged rule 11: with the item ahead open over 30 minutes the lead asks you (wait, or a smaller

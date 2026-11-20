@@ -39,11 +39,13 @@ fn a_dragged_order_picks_who_gets_the_next_free_copy_and_survives_a_restart() {
         let out = String::from_utf8(std::process::Command::new("git").arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
         out.lines().next().and_then(|l| l.strip_prefix("worktree ")).unwrap().to_string()
     };
-    let (_, project, a, h) = routed_with(&w, |w, _, _| w.hub().desk_hold_copies(&top(w), &[1, 2, 3]), |_, _, _| {});
+    let (_, project, a, _) = routed_with(&w, |w, _, _| w.hub().desk_hold_copies(&top(w), &[1, 2, 3]), |_, _, _| {});
     let lead = super::desk::desk(&w, &project)["lead"]["sid"].as_str().unwrap().to_string();
     super::desk::ends(&w, &lead, "ITEM: Footer\nROUTE: #new -> cue-teams | why: footer");
     w.advance(1000);
-    super::desk::ends(&w, &lead, "ITEM: Logo\nROUTE: #new -> cue-teams | why: logo");
+    // cue-teams holds two open items, the most a session holds: Logo goes to another session.
+    let t = super::desk::second(&w, "cue-two");
+    super::desk::ends(&w, &lead, "ITEM: Logo\nROUTE: #new -> cue-two | why: logo");
     let b = item(&w, &project, "Footer")["id"].as_str().unwrap().to_string();
     let c = item(&w, &project, "Logo")["id"].as_str().unwrap().to_string();
     for t in ["Header jumps", "Footer", "Logo"] {
@@ -64,7 +66,7 @@ fn a_dragged_order_picks_who_gets_the_next_free_copy_and_survives_a_restart() {
     assert_eq!(item(&w, &project, "Logo")["state"], "working", "the top one gets the free copy");
     assert_eq!(item(&w, &project, "Logo")["tree"]["slot"], 2, "{}", item(&w, &project, "Logo"));
     assert_eq!(item(&w, &project, "Header jumps")["state"], "queued");
-    assert!(w.hosted.sent().iter().any(|(s, t)| *s == h && t.contains(&format!("Desk item #{c}"))));
+    assert!(w.hosted.sent().iter().any(|(s, m)| *s == t && m.contains(&format!("Desk item #{c}"))));
     // Logo is at work now: it can't move.
     let e = w.hub().desk_item_act(&a, "reorder", &format!("{a} {c} {b}")).unwrap_err();
     assert_eq!(e, format!("#{c} has started, so it can't move"));
