@@ -2,7 +2,7 @@
 // under Pinned, Needs you, Done, and folded Later and Parked; a finished turn
 // that asks nothing under Done; the top ask opened by itself beside the list as a brief (never its full chat, which is a
 // link): its words, the question with each choice's meaning, what you asked, what it did, what this turn changed, its
-// context; several questions stacked as cards with one Send; Send leaving it open (as a sent email), the answered row sinking to
+// context; several questions as tabs with one Send; Send leaving it open (as a sent email), the answered row sinking to
 // Running with its bar, and rising again; Pin, Later and Snooze; with nothing needing you, what's running; a session half
 // full of context up as housekeeping, with Compact and Hand off.
 import { test, expect } from "./cue.mjs";
@@ -276,23 +276,26 @@ test("nothing needing you: Running stands in and finished replies stay in their 
   await expect(page.locator('.inbox-page[data-inbox-page="eng"] .ib-card.run')).toBeVisible();
 });
 
-test("several questions show at once, each answer with what it does; one Send for all (#383)", async ({ cue, page }) => {
+test("several questions are tabs, each answer with what it does; one Send for all (#383, #461)", async ({ cue, page }) => {
   await cue.open("board-waiting");
   await cue.change(threeQuestions);
   await openInbox(page);
   await expect(page.locator('.ib-row[data-inbox-open="api"] .ib-cnt')).toHaveText("3 questions");
   await page.locator('.ib-row[data-inbox-open="api"]').click();
-  const secs = page.locator(".inbox-page .qc-sec");
-  await expect(secs).toHaveCount(3);
-  await expect(secs.locator(".qc-sn")).toHaveText(["1 · Stop", "2 · Band", "3 · Tests"]);
+  const tabs = page.locator(".inbox-page .qc-tab");
+  await expect(tabs).toHaveText(["1Stop", "2Band", "3Tests"]);
+  await expect(page.locator(".inbox-page .qc-sec")).toHaveCount(1);
   const send = page.locator('.inbox-page [data-act="submit-answers"]');
   await expect(send).toHaveText("0 of 3 answered");
   await expect(send).toBeDisabled();
-  await secs.nth(0).locator(".qc-opt", { hasText: "Keep it" }).click();
+  const opt = (label) => page.locator(".inbox-page .qc-opt", { hasText: label });
+  await opt("Keep it").click();
   await expect(send).toHaveText("1 of 3 answered");
-  await secs.nth(1).locator(".qc-opt", { hasText: "Replace it" }).click();
-  await secs.nth(2).locator(".qc-opt", { hasText: "Whole UI suite" }).click();
-  await expect(secs.locator(".qc-opt.on .qc-lt")).toHaveText(["Keep it", "Replace it", "Whole UI suite"]);
+  await tabs.nth(1).click();
+  await opt("Replace it").click();
+  await tabs.nth(2).click();
+  await opt("Whole UI suite").click();
+  await expect(tabs.filter({ has: page.locator(".qc-tn", { hasText: "✓" }) })).toHaveCount(3);
   // Nothing sent until Send.
   expect(await cue.calls("respond")).toEqual([]);
   await expect(send).toHaveText("Send 3 answers");

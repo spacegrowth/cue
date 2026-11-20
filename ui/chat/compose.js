@@ -59,10 +59,11 @@ function submitText(it) {
   if (it.kind === "question") {
     const qs = questions(it);
     if (qs.length <= 1) return respond(it, { behavior: "allow", answers: Object.fromEntries(qs.map((q) => [q.question, text])) });
-    // Several questions: your typed answer is for the one you last picked in (stepOf); it goes with the others when
-    // you press Send.
+    // Several questions: your typed answer is for the one whose tab is open (stepOf), and its tab stays open (#461);
+    // it goes with the others when you press Send.
     const cur = stepOf(it), q = qs[cur], d = qDraft(it);
     d.choices[q.question] = q.multiSelect ? new Set([text]) : text;
+    qStep[it.id] = cur;
     d.text = "";
     redirectFor = null;
     return renderMain();

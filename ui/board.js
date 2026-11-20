@@ -81,7 +81,7 @@ async function respond(it, decision) {
 const allow = (it) => respond(it, { behavior: "allow" });
 const deny = (it, message) => respond(it, { behavior: "deny", ...(message ? { message } : {}) });
 // ---------- a session's question (#383, option C of the "Question card" mocks) ----------
-// Cue picks the answers it suggests (its "(Recommended)" ones) for you, every question shows at once, each answer with
+// Cue picks the answers it suggests (its "(Recommended)" ones) for you, several questions are tabs (#461), each answer with
 // what it does, and a line says what will happen; nothing goes until you press Send. Folded (a Board row, the Desk, the
 // mini panel): "Send its suggestions", or Choose… to open the whole card.
 /** The answers it suggests for question `q`: the labels it marked "(Recommended)". */
@@ -112,9 +112,10 @@ function answersFor(it) {
   }
   return out;
 }
-const qStep = {};           // item id -> the question you last picked in (where a typed answer and 1–9 go)
+const qStep = {};           // item id -> the question whose tab is open (where a typed answer and 1–9 go)
 const isAnswered = (it, q) => qPicked(it, q).length > 0;
-/** The question your keys and typed answer are for: the one you last picked in, else the first not answered, else the first. */
+/** The question your keys and typed answer are for: the tab you opened (or last picked in), else the first not
+ *  answered, else the first. */
 function stepOf(it) {
   const qs = questions(it);
   const first = qs.findIndex((q) => !isAnswered(it, q));
@@ -156,25 +157,31 @@ function qFoldBtns(it, choose, cls = "btn", sendAttr = `data-act="submit-answers
   const send = answersFor(it) ? `<button class="${cls} primary" ${sendAttr}${answering.has(it.id) ? " disabled" : ""}>${qAsSuggested(it) ? "Send its suggestions" : questions(it).length > 1 ? `Send ${questions(it).length} answers` : "Send answer"}</button>` : "";
   return send + choose;
 }
-/** The whole question card: every question at once, each answer a row (its key, a radio or a box, its label, a
- *  Recommended tag, what it does). `attr`: the click that picks. */
+/** The whole question card. Several questions: one tab per question (✓ once it has an answer), the open one's choices
+ *  under them (#461); the open tab is where 1–9 and a typed answer go, and Send sends every answer. Each answer a row
+ *  (its key, a radio or a box, its label, a Recommended tag, what it does). `attr`: the click that picks. */
 function questionHtml(it, attr = "data-pick") {
-  const qs = questions(it), lit = stepOf(it);
-  const secs = qs.map((q, qi) => {
+  const qs = questions(it), lit = stepOf(it), many = qs.length > 1;
+  const tabAttr = attr === "data-inbox-pick" ? "data-inbox-step" : "data-qstep";
+  const tabs = many ? `<div class="qc-tabs" role="tablist">${qs.map((q, qi) => {
+    const done = isAnswered(it, q);
+    return `<button role="tab" class="qc-tab${qi === lit ? " on" : ""}${done ? " done" : ""}" aria-selected="${qi === lit}" ${tabAttr}="${esc(it.id)}:${qi}" aria-label="${esc(`Question ${qi + 1}${done ? ", answered" : ""}`)}"><span class="qc-tn">${done ? "✓" : qi + 1}</span>${esc(q.header || `Question ${qi + 1}`)}</button>`;
+  }).join("")}</div>` : "";
+  const sec = (q, qi) => {
     const picked = qPicked(it, q);
     // A Desk lead's older asks carry "Desk" as their header: the card's head already names the lead (#450).
     const header = it.desk && q.header === "Desk" ? "" : q.header;
-    const head = qs.length > 1 || header ? `<div class="qc-sn">${qs.length > 1 ? `${qi + 1} · ` : ""}${esc(header || `Question ${qi + 1}`)}${q.multiSelect ? " · pick any" : ""}</div>` : "";
+    const head = !many && header ? `<div class="qc-sn">${esc(header)}${q.multiSelect ? " · pick any" : ""}</div>` : "";
     const rows = (q.options || []).map((o, oi) => {
       const on = picked.includes(o.label), [label, rec] = choiceLabel(o.label);
-      return `<button class="qc-opt${rec ? " rec" : ""}${on ? " on" : ""}" ${attr}="${qi}:${oi}" data-id="${esc(it.id)}" aria-pressed="${on}"><span class="qc-k">${qi === lit && oi < 9 ? oi + 1 : ""}</span><span class="qc-l"><span class="qc-mark ${q.multiSelect ? "chk" : "rad"}" aria-hidden="true"></span><span class="qc-lt">${esc(label)}</span>${rec ? `<span class="qc-rec">Recommended</span>` : ""}</span>${o.description ? `<span class="qc-d">${esc(o.description)}</span>` : ""}</button>`;
+      return `<button class="qc-opt${rec ? " rec" : ""}${on ? " on" : ""}" ${attr}="${qi}:${oi}" data-id="${esc(it.id)}" aria-pressed="${on}"><span class="qc-k">${oi < 9 ? oi + 1 : ""}</span><span class="qc-l"><span class="qc-mark ${q.multiSelect ? "chk" : "rad"}" aria-hidden="true"></span><span class="qc-lt">${esc(label)}</span>${rec ? `<span class="qc-rec">Recommended</span>` : ""}</span>${o.description ? `<span class="qc-d">${esc(o.description)}</span>` : ""}</button>`;
     }).join("");
     // An answer you typed yourself (not one of the choices) shows under them.
     const typed = picked.filter((c) => !(q.options || []).some((o) => o.label === c));
     const yours = typed.length ? `<div class="typed-answer">Your answer: “${esc(typed.join(", "))}”</div>` : "";
-    return `<div class="qc-sec">${head}<div class="qtext">${linkify(esc(q.question), sessBase(it.session_id))}${q.multiSelect && !head ? `<span class="dim"> · pick any</span>` : ""}</div><div class="qc-opts">${rows}</div>${yours}</div>`;
-  }).join("");
-  return `<div class="qc">${secs}</div>`;
+    return `<div class="qc-sec" role="${many ? "tabpanel" : "group"}">${head}<div class="qtext">${linkify(esc(q.question), sessBase(it.session_id))}${q.multiSelect && !head ? `<span class="dim"> · pick any</span>` : ""}</div><div class="qc-opts">${rows}</div>${yours}</div>`;
+  };
+  return `<div class="qc">${tabs}${qs.length ? sec(qs[lit], lit) : ""}</div>`;
 }
 
 // ---------- shared pieces ----------

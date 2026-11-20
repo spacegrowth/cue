@@ -83,6 +83,13 @@ body.col-sizing, body.col-sizing * { cursor: col-resize !important; user-select:
 .qc { display: flex; flex-direction: column; gap: 8px; }
 .qc-sec { display: flex; flex-direction: column; gap: 6px; }
 .qc-sec + .qc-sec { padding-top: 8px; border-top: 1px solid var(--line); }
+/* Several questions: one tab each (#461), ✓ once answered; the open one's choices under them. */
+.qc-tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 3px; border-radius: 10px; background: var(--panel-2); align-self: flex-start; max-width: 100%; }
+.qc-tab { display: inline-flex; align-items: center; gap: 6px; min-width: 0; padding: 5px 10px; border-radius: 7px; font-size: 12px; font-weight: 650; color: var(--muted); cursor: pointer; overflow-wrap: anywhere; text-align: left; }
+.qc-tab:hover { color: var(--ink); }
+.qc-tab.on { background: var(--panel); color: var(--ink); box-shadow: 0 0 0 1px var(--line); }
+.qc-tn { flex: none; display: grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--panel); font: 600 10px var(--mono); color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
+.qc-tab.done .qc-tn { background: var(--accent); color: var(--on-accent); box-shadow: none; }
 .qc-sn { font: 700 10.5px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .qc-opts { display: flex; flex-direction: column; gap: 6px; }
 .qc-opt { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 2px 8px; width: 100%; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); text-align: left; font-size: 12.5px; cursor: pointer; }
