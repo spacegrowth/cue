@@ -490,7 +490,8 @@ pub struct DeskDecision {
     pub delivery: Option<DeskDelivery>,
     /// What the lead did on its own (#360), shown in its chat as it happens and, for a while, in the Dispatcher's
     /// panel, and kept in its "What the lead moved" list (#374): "close" | "take_copy" | "land_first" | "start" |
-    /// "send_back" | "answer"; "" for any other step.
+    /// "send_back" | "answer" | "call" (one of its DECIDED lines that's dispatch work, not a product choice: #420); "" for
+    /// any other step.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub act: String,
 }
@@ -506,8 +507,16 @@ const LEAD_DISPATCH: &[&str] = &[
     "goes to", "go to", "went to", "gave", "give", "gives", "given", "send", "sends", "new session",
 ];
 /// The same for an item holder's calls, which are mostly about what it built (and may well name routing as a
-/// feature): only plain notes of sending work back, a landing clash or a hand-off.
-const HOLDER_DISPATCH: &[&str] = &["sent back", "sent it back", "landing clash", "merge clash", "merge conflict", "handed off", "hand-off to", "re-routed"];
+/// feature): plain notes of sending work back, a landing clash or a hand-off, and of how it worked rather than what
+/// the owner gets (#420): its copy, branch, rebases and builds, its tests, its teammates and reviews, its mocks' canvas, its repo.
+const HOLDER_DISPATCH: &[&str] = &[
+    "sent back", "sent it back", "landing clash", "merge clash", "merge conflict", "handed off", "hand-off to", "re-routed",
+    "working copy", "worktree", "branch", "commit message", "rewriting main", "own repo", "crate", "debug files", "teammate",
+    "teammates", "the review", "review request", "reviewer", "finding", "findings", "canvas", "as your pick", "no change to cue",
+    "left as they are", "left as it is", "alone", "rebase", "rebased", "rebasing", "build cache", "install built", "built from", "the test", "the tests", "new test", "new tests", "tests file", "its test", "its tests",
+];
+/// A source file named in a call ("`desk_finish.rs`"): how it was built, not what the owner gets.
+const CODE_FILES: &[&str] = &[".rs", ".js", ".mjs", ".ts", ".css", ".html", ".json", ".toml", ".swift", ".sh", ".py"];
 
 /// Whether a call's words `text` are dispatch work, not a choice worth the owner's glance: `lead`, the Desk lead's
 /// (its job is dispatching, so an item number or any dispatch word marks it); else an item holder's.
@@ -523,17 +532,38 @@ pub fn dispatch_call(text: &str, lead: bool) -> bool {
     if lead {
         t.split(' ').any(named) || LEAD_DISPATCH.iter().any(has)
     } else {
-        HOLDER_DISPATCH.iter().any(has)
+        let file = |w: &str| {
+            let w = w.trim_matches(|c: char| !(c.is_alphanumeric() || c == '_' || c == '.'));
+            CODE_FILES.iter().any(|x| w.len() > x.len() && w.ends_with(x))
+        };
+        // "the #145 test": a test it changed.
+        let ws: Vec<&str> = t.split(' ').collect();
+        let its_test = ws.windows(2).any(|p| (p[1] == "test" || p[1] == "tests") && p[0].strip_prefix('#').is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit())));
+        HOLDER_DISPATCH.iter().any(has) || lower.split_whitespace().any(file) || its_test
     }
+}
+
+/// A call as compared with another for being said again: its words, any case, spaces and end stop aside.
+pub fn call_words(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ").trim_end_matches(['.', '!']).to_lowercase()
 }
 
 impl DeskDecision {
     /// A call that's dispatch work (`dispatch_call`; one noted as yours, like a Send back note, always is) goes behind
     /// "Show all", off the Decisions list (#403). `lead`: whether the Desk lead made it.
+    /// A lead's dispatch call is one of its moves too, listed in Dispatcher Actions (#420).
     pub fn sort_call(&mut self, lead: bool) {
         if self.call && (self.sid.is_empty() || dispatch_call(&self.text, lead)) {
             self.minor = true;
         }
+        if self.call && self.minor && lead && !self.sid.is_empty() && self.act.is_empty() {
+            self.act = "call".into();
+        }
+    }
+
+    /// Whether this is call `c` said again: the same words by the same session on the same item and Desk.
+    pub fn same_call(&self, project: &str, item: Option<&str>, sid: &str, text: &str) -> bool {
+        self.call && self.project == project && self.item_id.as_deref() == item && self.sid == sid && call_words(&self.text) == call_words(text)
     }
 }
 
@@ -747,21 +777,29 @@ impl Desk {
     }
 
     /// The item `id` names: by its number, or by the tag it had before (`alias`).
-    /// Calls kept from before #403 sorted as new ones are. A lead's: one by a Desk's lead, or by a session that made
+    /// Calls kept from before #403 sorted as new ones are (#420: and those said again). A lead's: one by a Desk's lead, or by a session that made
     /// a lead's own moves (an earlier lead), or with no item, or on an item its maker didn't hold. Those that changed.
     pub fn sort_calls(&mut self) -> Vec<String> {
         let held: HashMap<&str, &Holder> = self.items.iter().filter_map(|i| i.holder.as_ref().map(|h| (i.id.as_str(), h))).collect();
-        let leads: HashSet<String> = self.lead.values().map(|l| l.sid.clone()).chain(self.decisions.iter().filter(|d| !d.act.is_empty()).map(|d| d.sid.clone())).collect();
+        let leads: HashSet<String> = self.lead.values().map(|l| l.sid.clone()).chain(self.decisions.iter().filter(|d| !d.act.is_empty() && d.act != "call").map(|d| d.sid.clone())).collect();
         let mut changed = Vec::new();
-        for d in self.decisions.iter_mut().filter(|d| d.call && !d.minor) {
-            // An item no longer loaded and a maker not known as a lead: taken as its holder's (the narrower rule).
-            let lead = leads.contains(&d.sid)
-                || match d.item_id.as_deref() {
-                    None => true,
-                    Some(i) => held.get(i).is_some_and(|h| !h.is(&d.sid)) || (!held.contains_key(i) && self.items.iter().any(|x| x.id == i)),
-                };
-            d.sort_call(lead);
-            if d.minor {
+        // A call said again (a session repeats its DECIDED lines in later replies): the first stays, the rest go behind
+        // "Show all" (#420).
+        let mut seen: HashSet<(String, Option<String>, String, String)> = HashSet::new();
+        for d in self.decisions.iter_mut().filter(|d| d.call) {
+            let was = (d.minor, d.act.clone());
+            if !seen.insert((d.project.clone(), d.item_id.clone(), d.sid.clone(), call_words(&d.text))) {
+                d.minor = true;
+            } else {
+                // An item no longer loaded and a maker not known as a lead: taken as its holder's (the narrower rule).
+                let lead = leads.contains(&d.sid)
+                    || match d.item_id.as_deref() {
+                        None => true,
+                        Some(i) => held.get(i).is_some_and(|h| !h.is(&d.sid)) || (!held.contains_key(i) && self.items.iter().any(|x| x.id == i)),
+                    };
+                d.sort_call(lead);
+            }
+            if (d.minor, d.act.as_str()) != (was.0, was.1.as_str()) {
                 changed.push(d.id.clone());
             }
         }

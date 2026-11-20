@@ -133,7 +133,8 @@ function deskChat(d) {
   const empty = !rows && !mine && !where ? `<div class="dk-empty">Tell ${esc(deskLeadName(d))} about a bug, a feature or a task. It adds them here, hands each to a session, and says why.</div>` : "";
   return `<div class="dk-chat" data-desk-chat="${esc(d.project)}">${empty}${rows}${mine}${where}</div>`;
 }
-/** What the lead did on its own (#360: closed, started, sent back, moved up, took back a copy, answered a session), newest first. */
+/** What the lead did on its own (#360: closed, started, sent back, moved up, took back a copy, answered a session; #420: its
+ *  routing and housekeeping calls, already in its chat as its own DECIDED lines), newest first. */
 const deskActs = (d) => (d?.decisions || []).filter((x) => x.act && x.sid === deskLead(d)?.sid).sort((a, b) => b.at - a.at);
 /** One of those as a line: its words, the item's number opening its page, and why (left out with `bare`). */
 function deskActLine(x, d, bare) {
@@ -144,8 +145,9 @@ function deskActLine(x, d, bare) {
 }
 /** Those lines for the lead's chat (chat/render.js chatHtml `extra`), each at its time, as its other lines are
  *  (desk_lead.js deskLineHtml): one short line at the left ("Reopened #417 for cue-12 · 3m"), its why folded under it,
- *  opening on a click (#433: a reopen's feedback was a long centred paragraph). */
-const deskActRows = (d) => deskActs(d).map((x) => {
+ *  opening on a click (#433: a reopen's feedback was a long centred paragraph). A call (#420) isn't repeated: the
+ *  lead already said it in its reply. */
+const deskActRows = (d) => deskActs(d).filter((x) => x.act !== "call").map((x) => {
   const key = `act:${x.id}`, open = !!x.why && deskLnOpen.has(key);
   const head = `<span class="dk-sl-h">${deskActLine(x, d, true)}</span><span class="dk-cl-age">${ago(x.at * 1000)}</span>`;
   const row = x.why ? `<div class="dk-sl-r why" role="button" tabindex="0" data-desk-why="${esc(key)}" aria-expanded="${open}">${head}</div>` : `<span class="dk-sl-r">${head}</span>`;
@@ -317,8 +319,11 @@ function deskFollowSid() {
 /** The Desk's judgment calls (DECIDED lines), the only decisions worth your look: routes, gives, sessions started,
  *  contexts kept and Cue's hand-off asks are steps, kept on their item (deskItemPane). */
 const deskCalls = (d) => d.decisions.filter((c) => c.call);
+/** The Desk's Decisions list (#420): a call on an item that's over (you checked it, or it was dropped) is settled, so it
+ *  goes behind "Show all" with the housekeeping; it stays on its item's own page. */
+const deskOpenCalls = (d) => deskCalls(d).map((c) => (!c.minor && ["done", "dropped"].includes(deskItem(d.project, c.item_id || "")?.state) ? { ...c, minor: true } : c));
 function deskDecisions(d) {
-  const calls = deskCalls(d), empty = `<div class="dk-empty">No judgment calls yet. Routes and hand-offs are on each item.</div>`;
+  const calls = deskOpenCalls(d), empty = `<div class="dk-empty">No judgment calls yet. Routes and hand-offs are on each item.</div>`;
   if (!calls.length) return empty;
   return `<div class="dk-pane" data-scroll-key="decisions:${esc(d.project)}"><div class="dk-sec">${deskCallsBox(calls, `desk:${d.project}`, deskLog, "")}</div></div>`;
 }

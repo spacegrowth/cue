@@ -5,6 +5,7 @@ use super::desk::{desk, ends, holder, item, new_lead, second, sent_to};
 use crate::desk::parse::{lines, Line};
 use crate::hosted::HostedEvent;
 use crate::testing::World;
+use serde_json::{json, Value};
 
 #[test]
 fn an_item_you_add_is_kept_across_a_relaunch() {
@@ -219,10 +220,98 @@ fn a_call_is_dispatch_work_by_its_words_and_who_made_it() {
     for t in ["Away mode is one switch for all Desks, not one per Desk", "default Away budget is $10, changeable on the rules card", "while Away, the lead never builds an unpicked mock"] {
         assert!(!dispatch_call(t, true), "{t}");
     }
-    for t in ["Start sets a held item back to new and tells the lead", "Changed the #145 test so a new reply no longer pulls you down", "Resume sends the session a short note"] {
+    for t in ["Start sets a held item back to new and tells the lead", "Resume sends the session a short note"] {
         assert!(!dispatch_call(t, false), "{t}");
     }
     assert!(dispatch_call("Sent #361's landing clash back to its session", false));
+}
+
+/// #420: today's real kinds of item sessions' calls. How a session worked (its copy, tests, files, commits, reviews,
+/// mocks' canvas) stays off the Decisions list; how Cue looks or behaves, what's left out and trade-offs stay on it.
+#[test]
+fn a_sessions_notes_on_how_it_worked_stay_off_the_decisions_list() {
+    use crate::desk::model::dispatch_call;
+    for t in [
+        "I worked in a new working copy, desk-411 (branch desk/411, now on current main)",
+        "no change to Cue itself",
+        "`desk_finish.rs` (994 lines) and `desk_theirs.rs` (928) are left as they are",
+        "The new tests file is named `desk_routing.rs`",
+        "I made main's `desk.js` stop needing the other session's code rather than committing its uncommitted files",
+        "One teammate does both the fixes and the new button, rather than starting a second one",
+        "I let clean-check skip setting git's commit dates in the tests (`GIT_COMMITTER_DATE`), as the review had asked",
+        "kept the misleading commit message as it is, because 367d1191 is already on origin/main",
+        "skipped the new review request for routing-review",
+        "For finding 3, clean-check only names the gap in a `SHORTCUT:` line",
+        "Turned off the separate debug files for Cue's own crate instead of pruning them after each build",
+        "the tests use a local stand-in remote and a fake PR tool, never a real one",
+        "suggested H on the canvas",
+        "read \"D and calls 1\" as your pick of D and Calls 1",
+        "#414 gets its own canvas page rather than more rows on \"Away without a column\"",
+        "Changed the #145 test so a new reply no longer pulls you down while you're scrolled up",
+        "Mac only. The other card belongs in the private app's own repo",
+        "I rebased #251 onto the newest main three times and left the shared folder's uncommitted edits in place",
+        "I copied the main checkout's build cache into the shared copy cache, which was empty",
+        "install built from a clean copy of main with the add-on",
+        "Left the notch panel's Allow/No order alone",
+    ] {
+        assert!(dispatch_call(t, false), "{t}");
+    }
+    for t in [
+        "If any Desk is away, the whole window goes dark",
+        "The calls line starts open, and Cue remembers per Desk if you fold it",
+        "refuse `git push` inside steps",
+        "cap a whole check or after-landing run at 30 minutes",
+        "I guarded Cut, Copy and Select All as well as Paste",
+        "\"Tests\" counts as reached when the item's session runs a command that looks like a test run (cargo test, playwright, jest and similar)",
+        "PR landing needs the item in its own copy, so saving PR together with \"shared folder\" is refused",
+        "Only branches Cue made for copies (`desk/…`, `worktree-agent-…`) are deleted with them",
+        "on an item ready to review, the \"You'll see\" line is left off because the row's \"Try it\" line already says the same thing",
+        "A folded question with no recommended answer shows only Choose…, so answering it takes two clicks",
+        "Your new order also changes which item the lead routes first, not just which item gets the next free folder",
+        "the recent row shows every Desk you opened recently (up to 7) instead of capping at 3",
+    ] {
+        assert!(!dispatch_call(t, false), "{t}");
+    }
+}
+
+/// #420: a session that says its DECIDED lines again in later replies (one Desk had one item's 4 calls 13 times) gets
+/// each on the list once; repeats kept from before are sorted off at the next start. The lead's dispatch calls are
+/// Dispatcher Actions.
+#[test]
+fn a_call_said_again_is_listed_once_and_the_leads_dispatch_calls_are_its_actions() {
+    let mut w = World::new();
+    let (h, project) = holder(&w);
+    let d = new_lead(&w, &project);
+    ends(&w, &d, "ITEM: Header\nROUTE: #new -> cue-teams | why: it knows");
+    let calls = "DECIDED: cap a whole check at 30 minutes — a stuck check shouldn't hold the Desk\nDECIDED: refuse `git push` inside steps — pushes ask you";
+    for _ in 0..3 {
+        ends(&w, &h, calls);
+    }
+    ends(&w, &h, "DECIDED: Cap a whole check at 30 minutes. — said again");
+    ends(&w, &d, "DECIDED: Away mode mocks go to cue-402 — it made the last ones\nDECIDED: going back is drawn as a curved arrow — easier to follow");
+    let all = |w: &World| -> Vec<Value> { desk(w, &project)["decisions"].as_array().unwrap().iter().filter(|c| c["call"] == true).cloned().collect() };
+    let shown = |w: &World| -> Vec<String> { all(w).iter().filter(|c| c.get("minor").is_none()).map(|c| c["text"].as_str().unwrap().to_string()).rev().collect() };
+    let want = vec!["cap a whole check at 30 minutes".to_string(), "refuse `git push` inside steps".to_string(), "going back is drawn as a curved arrow".to_string()];
+    assert_eq!(shown(&w), want);
+    assert_eq!(all(&w).len(), 4, "a repeat isn't recorded again");
+    let moved = all(&w).into_iter().find(|c| c["text"] == "Away mode mocks go to cue-402").unwrap();
+    assert_eq!((moved["minor"].clone(), moved["act"].clone()), (json!(true), json!("call")), "in Dispatcher Actions");
+    // Kept from before: repeats saved as their own entries, and the lead's routing hidden but no action.
+    let mut c: crate::desk::DeskDecision = serde_json::from_value(all(&w)[0].clone()).unwrap();
+    for n in 0..3 {
+        c.id = format!("{}-again{n}", c.id);
+        c.at += n + 1;
+        crate::db::desk_put_decision(&c);
+    }
+    let mut m: crate::desk::DeskDecision = serde_json::from_value(moved).unwrap();
+    m.act.clear();
+    crate::db::desk_put_decision(&m);
+    w.relaunch();
+    assert_eq!(shown(&w), want);
+    assert_eq!(all(&w).len(), 7);
+    assert_eq!(all(&w).into_iter().find(|c| c["text"] == "Away mode mocks go to cue-402").unwrap()["act"], "call");
+    let moves = crate::db::desk_moves_page(&project, None, 50);
+    assert!(moves.iter().any(|x| x.text == "Away mode mocks go to cue-402"), "{moves:?}");
 }
 
 #[test]

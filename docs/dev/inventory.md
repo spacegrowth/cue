@@ -14,12 +14,12 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 
 | What | Count |
 |---|---|
-| `#[tauri::command]` | 173 (3 sync) |
-| Lock declarations (static or field) | 111 |
-| Lock acquisitions | 263 |
+| `#[tauri::command]` | 174 (3 sync) |
+| Lock declarations (static or field) | 112 |
+| Lock acquisitions | 265 |
 | Lock-graph edges | 59 |
 | Spawn sites | 88 |
-| External calls: fs / db / process / notify / login / socket | 463 / 208 / 53 / 4 / 1 / 4 |
+| External calls: fs / db / process / notify / login / socket | 469 / 209 / 56 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 12 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -73,6 +73,7 @@ Sync commands run on the main thread. "Hands work to": the threads or pools its 
 | `desk_lands_set` | async | `ipc/desk.rs::desk_lands_set` | ipc::with_hub |
 | `desk_old_copies_list` | async | `ipc/desk.rs::desk_old_copies_list` | ipc::with_hub |
 | `desk_old_copies` | async | `ipc/desk.rs::desk_old_copies` | ipc::with_hub |
+| `desk_held_answer` | async | `ipc/desk.rs::desk_held_answer` | ipc::with_hub |
 | `desk_away_set` | async | `ipc/desk.rs::desk_away_set` | ipc::with_hub |
 | `desk_pause` | async | `ipc/desk.rs::desk_pause` | ipc::with_hub |
 | `desk_away_sweep` | async | `ipc/desk.rs::desk_away_sweep` | ipc::with_hub |
@@ -305,6 +306,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `notify.rs::APP` | `OnceLock<AppHandle>` | — |
 | `self_install.rs::STARTING` | `Mutex<()>` | "self_install.starting" (1 sites) |
 | `sounds.rs::PLAYING` | `std::sync::Mutex<Option<std::process::Child>>` | "PLAYING" (1 sites) |
+| `startup/edit.rs::LOADED` | `Mutex<Option<HashSet<String>>>` | "edit.loaded" (2 sites) |
 | `talk.rs::STATUS` | `Mutex<Value>` | "talk status" (2 sites) |
 | `talk.rs::RETELL` | `Mutex<Option<mpsc::UnboundedSender<Value>>>` | "talk retell" (4 sites) |
 | `talk.rs::LAUNCH` | `Mutex<Option<Launch>>` | "talk launch" (2 sites) |
@@ -486,7 +488,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `talk.rs::launch` | thread::spawn | 1 |
 | `talk.rs::send` | task::spawn_blocking | 1 |
 | `terminal/dictation.rs::start` | thread::spawn | 1 |
-| `terminal/focus/exec.rs::capped` | thread::spawn | 2 |
+| `terminal/focus/exec.rs::capped_in` | thread::spawn | 2 |
 | `terminal/input.rs::Input::new` | Builder::spawn | 1 |
 | `terminal/music.rs::send` | thread::spawn | 1 |
 | `terminal/shell.rs::wait_capped` | thread::spawn | 1 |
@@ -497,7 +499,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (463)
+### fs (469)
 
 | In | Call | Times |
 |---|---|---|
@@ -596,13 +598,19 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hub/desk_copies.rs::work_on_main` | Path::exists | 1 |
 | `hub/desk_finish.rs::in_progress` | Path::exists | 1 |
 | `hub/desk_finish.rs::same_dir` | canonicalize | 2 |
+| `hub/desk_pr.rs::gh_bin` | Path::is_file | 1 |
 | `hub/desk_theirs.rs::own_part` | read_to_string | 1 |
 | `hub/desk_theirs.rs::read_edits` | File::open | 1 |
 | `hub/desk_theirs.rs::read_edits` | Path::metadata | 1 |
+| `hub/desk_trees.rs::check_steps_on` | create_dir_all | 1 |
+| `hub/desk_trees.rs::check_steps_on` | remove_dir_all | 1 |
 | `hub/desk_trees.rs::clear_build_leftovers` | File::open | 1 |
 | `hub/desk_trees.rs::clear_build_leftovers` | Path::is_dir | 1 |
 | `hub/desk_trees.rs::clear_build_leftovers` | read_dir | 3 |
 | `hub/desk_trees.rs::clear_build_leftovers` | remove_file | 1 |
+| `hub/desk_trees.rs::clear_old_checks` | Path::is_dir | 1 |
+| `hub/desk_trees.rs::clear_old_checks` | read_dir | 1 |
+| `hub/desk_trees.rs::clear_old_checks` | remove_dir_all | 1 |
 | `hub/desk_trees.rs::exclude_trees` | create_dir_all | 1 |
 | `hub/desk_trees.rs::exclude_trees` | read_to_string | 1 |
 | `hub/desk_trees.rs::exclude_trees` | write | 1 |
@@ -896,7 +904,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `uploads.rs::save` | create_dir_all | 1 |
 | `uploads.rs::save_kept` | create_dir_all | 1 |
 
-### db (208)
+### db (209)
 
 | In | Call | Times |
 |---|---|---|
@@ -1021,6 +1029,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hub/desk.rs::Hub::desk_restore` | db::desk_load | 1 |
 | `hub/desk.rs::Hub::desk_restore` | db::desk_members | 1 |
 | `hub/desk.rs::Hub::desk_restore` | db::desk_moves_cleared | 1 |
+| `hub/desk.rs::Hub::desk_restore` | db::desk_put_decision | 1 |
 | `hub/desk.rs::Hub::desk_restore` | db::desk_put_numbered | 1 |
 | `hub/desk.rs::Hub::desk_restore` | db::desk_spaces | 1 |
 | `hub/desk_features.rs::Hub::feature_pieces_on_disk` | db::desk_get_item | 1 |
@@ -1091,7 +1100,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/turns.rs::read_so_far` | db::turns_read | 1 |
 | `startup/mod.rs::settle_folder_and_hooks` | db::rewrite_paths | 1 |
 
-### process (53)
+### process (56)
 
 | In | Call | Times |
 |---|---|---|
@@ -1110,8 +1119,11 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hosted/running.rs::Running::end_left` | /bin/ps | 1 |
 | `hosted/running.rs::end_leftovers` | /bin/ps | 1 |
 | `hub/desk_copies.rs::size_kb` | du | 1 |
+| `hub/desk_pr.rs::Hub::gh` | (program computed) | 1 |
+| `hub/desk_pr.rs::Hub::net_git` | (program computed) | 1 |
 | `ipc/settings.rs::copy_text` | /usr/bin/pbcopy | 1 |
 | `ipc/settings.rs::open_link` | /usr/bin/open | 1 |
+| `lands.rs::run_steps` | (program computed) | 1 |
 | `lib.rs::activate_app` | open | 1 |
 | `live_ui.rs::copy_out` | /usr/bin/tar | 1 |
 | `live_ui.rs::run_check` | (program computed) | 1 |
@@ -1183,6 +1195,8 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `src-tauri/src/hosted/machine_tests.rs::live_on_a_real_machine_claude_code_asks_runs_a_command_past_a_dropped_connection_and_is_picked_up_after_a_restart` | test |  |
 | `src-tauri/src/hub/desk.rs::desk_done` |  |  |
 | `src-tauri/src/hub/desk_act.rs::act_on` |  |  |
+| `src-tauri/src/hub/desk_away.rs::desk_away_set` |  |  |
+| `src-tauri/src/hub/desk_finish.rs::finish_after` |  |  |
 | `src-tauri/src/hub/desk_lead.rs::desk_summary` |  |  |
 | `src-tauri/src/hub/desk_lead.rs::item_lines` |  |  |
 | `src-tauri/src/hub/desk_route.rs::route` |  |  |
@@ -1197,12 +1211,15 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `src-tauri/src/hub/sessions.rs::a_parked_session_is_kept_through_a_restart_and_comes_back_whole` | test |  |
 | `src-tauri/src/logs/steps/tests/agents.rs::a_background_agent_sent_a_message_after_it_finished_is_at_work_again_until_it_reports_again` | test |  |
 | `src-tauri/src/logs/steps/tests/agents.rs::a_background_agent_shows_at_work_under_its_step_until_its_session_hears_it_finished` | test |  |
+| `src-tauri/src/testing/tests/desk_away.rs::each_away_stretch_is_kept_with_what_moved_the_calls_and_what_was_held` | test |  |
 | `ui/chat/render.js::chatHtml` |  |  |
+| `ui/desk_act.js::deskSendBox` |  |  |
 | `ui/desk_lead.js::deskLineHtml` |  |  |
 | `ui/desk_list.js::deskQPress` |  |  |
 | `ui/desk_sessions.js::deskSessions` |  |  |
+| `ui/desk_thread.js::deskThread` |  |  |
 
-Files over 1000 lines: `src-tauri/src/hub/desk_finish.rs`, `src-tauri/src/testing/tests/desk_finish.rs`, `ui/board.js`, `ui/inbox.js`, `ui/styles/desk.css`.
+Files over 1000 lines: `src-tauri/src/hub/desk_finish.rs`, `src-tauri/src/testing/tests/desk_finish.rs`, `ui/inbox.js`, `ui/styles/desk.css`.
 
 ## What this can't see
 

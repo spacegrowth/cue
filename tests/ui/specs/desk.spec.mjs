@@ -341,6 +341,28 @@ test("Decisions: key calls only, housekeeping behind Show all; tick several and 
   await expect(right.locator(".dk-dec").first()).toContainText("Undo asked");
 });
 
+test("Decisions (#420): a call on an item you've checked is settled, behind Show all; the lead's routing calls are Dispatcher Actions", async ({ page, cue }) => {
+  await cue.open("desk");
+  await cue.change((st) => {
+    const d = st.desk.projects.find((x) => x.project === "cue"), at = d.decisions[0].at;
+    d.decisions.push({ project: "cue", id: "c5", item_id: "d7", call: true, undo: "can", by: "web", sid: "web", text: "The count shows as a tint, not a number", at });
+    d.decisions.push({ project: "cue", id: "c6", call: true, minor: true, act: "call", undo: "can", by: "web-lead", sid: "lead", text: "Away mode mocks go to web", why: "it made the last ones", at });
+  });
+  await openDesk(page);
+  // The lead's chat doesn't draw its own DECIDED line a second time as a move.
+  await expect(page.locator(".dk-chat .dk-act")).not.toContainText(["Away mode mocks go to web"]);
+  await page.locator('[data-desk-tab="decisions"]').click();
+  const right = page.locator(".dk-right");
+  await expect(page.locator(".dk-tab.on")).toContainText("Decisions2");
+  await expect(right.locator(".dk-dec")).toHaveCount(2);
+  await expect(right).not.toContainText("The count shows as a tint");
+  await expect(right.locator(".dk-showall")).toHaveText("Show all · 2 more");
+  await right.locator(".dk-showall").click();
+  await expect(right).toContainText("The count shows as a tint");
+  await right.locator('.dk-tab[data-desk-tab="moves"]').click();
+  await expect(right.locator(".dk-moves .dk-mv").first()).toContainText("Away mode mocks go to web · it made the last ones");
+});
+
 test("a step (a route, a give) is a quiet line on its item, not a decision", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);

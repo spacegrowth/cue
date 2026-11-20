@@ -61,6 +61,10 @@ pub(super) fn decide(st: &mut Store, project: &str, item: Option<String>, by: &s
 /// housekeeping (`minor`) or dispatch work (DeskDecision::sort_call; `lead`: the Desk lead's, else its holder's).
 #[allow(clippy::too_many_arguments)]
 pub(super) fn decide_call(st: &mut Store, project: &str, item: Option<String>, by: &str, sid: &str, (text, why, minor): (&str, &str, bool), lead: bool, now: u64, fx: &mut Effects) {
+    // Said again in a later reply: already on the list (#420).
+    if st.desk.decisions.iter().any(|d| d.same_call(project, item.as_deref(), sid, text)) {
+        return;
+    }
     decide(st, project, item, by, sid, text, why, now, fx);
     if let Some(d) = st.desk.decisions.last_mut() {
         d.call = true;

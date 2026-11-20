@@ -142,6 +142,11 @@ pub fn handed_words(it: &DeskItem, why: &str, rule: &str) -> String {
          ITEM: <bug|feature|task> | <title> | you'll see: <…> | done when: <…> | why: <how it's separate from #{0}>",
         it.id
     ));
+    out.push_str(
+        "\nWrite DECIDED: only for a product choice the owner may want to undo (how it looks or behaves, what's left out, a \
+         trade-off); how you worked (copies, branches, tests, files, reviews, canvas pages) goes as DECIDED (minor):. Say each \
+         one once, not again in later replies.",
+    );
     out.push_str(&format!("\nIf you put its designs on a canvas, or move them, say DESIGNS: #{} <canvas link> on a line of its own.", it.id));
     out.push_str(&format!("\nSay DONE: #{} on a line of its own when it's done.", it.id));
     if let Some(t) = &it.tree {
