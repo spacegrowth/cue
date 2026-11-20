@@ -37,6 +37,7 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx
     let mut last_new: Option<String> = None;
     // What the lead is told of its routes, in one message once its lines are read (#248).
     let mut answers: Vec<String> = Vec::new();
+    let (away, mut back) = (super::desk_away::away_in_force(st, project, now), Vec::new());
     for line in parse::lines(text) {
         match line {
             Line::Item { kind, title, see, done_when, .. } => last_new = Some(item_said(st, project, &kind, &title, &see, &done_when, &name, now, fx).0),
@@ -58,11 +59,7 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx
                     answers.push(said);
                 }
             }
-            Line::Ask { question, choices, item } => {
-                // About an item of this Desk's: it shows on that item as waiting on you (`shown`).
-                let item = item.map(|i| st.desk.canon(&i)).filter(|i| st.desk.item(i).is_some_and(|x| x.project == project));
-                fx.asks.push((lsid.to_string(), project.to_string(), question, choices, item))
-            }
+            Line::Ask { question, choices, item } => ask_said(st, project, lsid, (question, choices, item), away.then_some(&mut back), fx),
             Line::Context { who, what, why } if what == "keep" => keep(st, project, &by, &who, &why, now, fx),
             Line::Done { ids } => lead_done(st, project, lsid, &ids, fx),
             Line::Title { id, title } => retitle(st, project, &by, &id, &title, now, fx),
@@ -103,10 +100,35 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx
     for line in parse::unread_routes(text) {
         answers.push(format!("Couldn't read this line as a route: {line}\nWrite it as ROUTE: #<id> -> <session> | why: <reason> ({}).", parse::route_fix(&line)));
     }
+    if !back.is_empty() {
+        answers.push(super::desk_away::sent_back_words(&back));
+    }
     route_answers(st, project, lsid, answers, fx);
+    lead_calls(st, project, &by, text, back, now, fx);
+}
+
+/// Lead `lsid`'s ASK line: a card asking you, or, while the owner is away (`back`: Some), kept to send back to it to
+/// decide itself (#471). About an item of this Desk's: it shows on that item as waiting on you (`shown`).
+type Ask = (String, Vec<String>, Option<String>);
+fn ask_said(st: &Store, project: &str, lsid: &str, (question, choices, item): Ask, back: Option<&mut Vec<(String, Option<String>)>>, fx: &mut Effects) {
+    let item = item.map(|i| st.desk.canon(&i)).filter(|i| st.desk.item(i).is_some_and(|x| x.project == project));
+    match back {
+        Some(back) => back.push((question, item)),
+        None => fx.asks.push((lsid.to_string(), project.to_string(), question, choices, item)),
+    }
+}
+
+/// Lead `by`'s DECIDED lines in `text`, each a call on the Desk. Those made in place of ASKs sent back before this
+/// turn are marked with them; this turn's ASKs sent back (`back`, #471) wait for its next calls.
+fn lead_calls(st: &mut Store, project: &str, by: &By, text: &str, back: Vec<(String, Option<String>)>, now: u64, fx: &mut Effects) {
+    let first = st.desk.decisions.len();
     for (what, why, minor) in crate::sessions::crew_log::calls_marked(text) {
         let item = item_named(st, project, &what).or_else(|| item_named(st, project, &why));
-        decide_call(st, project, item, &name, lsid, (&what, &why, minor), true, now, fx);
+        decide_call(st, project, item, by.name, by.sid, (&what, &why, minor), true, now, fx);
+    }
+    super::desk_away::answered_by_calls(st, by.sid, first, fx);
+    if !back.is_empty() {
+        st.desk.away_asked.entry(by.sid.to_string()).or_default().extend(back);
     }
 }
 

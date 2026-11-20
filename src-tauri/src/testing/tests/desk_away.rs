@@ -2,7 +2,7 @@
 //! end time (with no turn ending) or at a Desk session's turn end; turned off. Ask me before still waits for the owner
 //! while it's on; a session or lead a usage limit stopped is skipped and carried on after the reset.
 
-use super::desk::{desk, ends, holder, new_lead, sent_to};
+use super::desk::{desk, ends, holder, item, new_lead, sent_to};
 use crate::hosted::HostedEvent;
 use crate::testing::World;
 use serde_json::json;
@@ -30,7 +30,7 @@ fn away_mode_turns_on_tells_the_lead_ends_at_its_time_and_turns_off() {
     let s = summary(&w, &project);
     assert!(s.contains("Away mode:") && s.contains("with a $20.00 budget"), "{s}");
     assert!(s.contains("- Route, split and merge items; wake or start sessions (up to 3 new)") && s.contains("DECIDED: <what you chose> — <why>"), "{s}");
-    let may = s.split("Everything else waits").next().unwrap();
+    let may = s.split("Don't write ASK").next().unwrap();
     assert!(!may.contains("'How' questions") && !may.contains("'What' questions"), "switched off: not decided alone: {s}");
     assert!(s.contains("- Picking a mock") && s.contains("- 'What' questions") && s.contains("don't ASK about it"), "{s}");
     assert!(s.contains("stopped on a permission it can't grant itself waits for the owner") && s.contains("Never grant it yourself") && s.contains("Move the other items along meanwhile"), "{s}");
@@ -222,4 +222,64 @@ fn each_away_stretch_is_kept_with_what_moved_the_calls_and_what_was_held() {
     assert_eq!(log.as_array().unwrap().len(), 2, "{log}");
     assert_eq!((log[0]["ended"].clone(), log[0]["held"].clone()), (json!("until"), json!([])), "{log}");
     assert!(log[0]["end"].as_u64().unwrap() < until + 60 * 1000 && log[0]["since"].as_u64() > log[1]["since"].as_u64(), "{log}");
+}
+
+/// #471: while Away is in force the lead asks you nothing. Its ASK (with or without an item) isn't a card waiting on
+/// you: Cue sends it back to decide itself, and the call it writes next shows with the question. One still open as Away
+/// starts goes back the same way. A held delete still waits for you; once Away is off, an ASK reaches you again.
+#[test]
+fn while_away_the_leads_ask_goes_back_to_it_to_decide() {
+    let w = World::new();
+    // The lead's questions waiting on you (not its turn's end).
+    let asks = |sid: &str| w.snapshot().cards_of(sid).into_iter().filter(|c| c["kind"] == "question").count();
+    let (h, project) = holder(&w);
+    let d = new_lead(&w, &project);
+    w.hub().ask_before_set(&project, Some(&["data".into()])).unwrap();
+    ends(&w, &d, "ITEM: Header\nROUTE: #new -> cue-teams | why: it knows");
+    let id = item(&desk(&w, &project), "Header")["id"].as_str().unwrap().to_string();
+    // Asked before Away: a card waiting on you, and the item waits on you with it.
+    ends(&w, &d, "ASK: Which font for the footer? | choices: Serif / Sans");
+    assert_eq!(asks(&d), 1);
+
+    // Away comes on: that open ASK goes back to the lead; the lead's instructions say not to ask.
+    let until = crate::clock::now_ms() + 60 * 60 * 1000;
+    w.hub().desk_away_set(&project, &json!({ "on": true, "until": until, "budget": null, "rules": {} })).unwrap();
+    w.settle();
+    assert_eq!(asks(&d), 0, "no card waits on you");
+    let back = sent_to(&w, &d).into_iter().find(|t| t.contains("Cue didn't show them this ASK")).unwrap_or_else(|| panic!("{:?}", sent_to(&w, &d)));
+    assert!(back.contains("Decide it yourself") && back.contains("DECIDED:") && back.contains("- Which font for the footer?"), "{back}");
+    let s = summary(&w, &project);
+    assert!(s.contains("Don't write ASK: lines while the owner is away") && s.contains("Leave #<id> until the owner is back") && !s.contains("Always ASK about"), "{s}");
+    ends(&w, &d, "DECIDED: Sans for the footer — it matches the header");
+
+    // Asked while away, about an item and not: no card, the item doesn't wait on you, both go back in one message.
+    ends(&w, &d, &format!("ASK: #{id} | Keep the old header for a release? | choices: Yes / No\nASK: Ship the footer today?"));
+    assert_eq!(asks(&d), 0, "no card waits on you");
+    let it = item(&desk(&w, &project), "Header").clone();
+    assert!(it["state"] != "needs_you" && it["ask"].is_null(), "{it}");
+    let back = sent_to(&w, &d).into_iter().rev().find(|t| t.contains("Cue didn't show them these ASKs")).unwrap_or_else(|| panic!("{:?}", sent_to(&w, &d)));
+    assert!(back.contains(&format!("- #{id}: Keep the old header for a release?")) && back.contains("- Ship the footer today?"), "{back}");
+    // A held delete still waits for you in the Away list.
+    assert_eq!(w.session(&h).in_folder(w.home()).guard_bash("rm -rf build", "main").unwrap().told().unwrap()["behavior"], "deny", "held");
+    assert_eq!(desk(&w, &project)["held"].as_array().unwrap().len(), 1);
+
+    // Its calls next show with the questions they answer: by item first, then in order.
+    ends(&w, &d, &format!("DECIDED: Ship the footer tomorrow — the review isn't done\nDECIDED: Keep the old header on #{id} — it's in the release notes"));
+    let calls = desk(&w, &project)["decisions"].as_array().unwrap().clone();
+    let asked = |text: &str| calls.iter().find(|c| c["text"].as_str().is_some_and(|t| t.starts_with(text))).map(|c| c["asked"].clone()).unwrap_or_else(|| panic!("{text}: {calls:?}"));
+    assert_eq!(asked("Keep the old header"), json!("Keep the old header for a release?"));
+    assert_eq!(asked("Ship the footer tomorrow"), json!("Ship the footer today?"));
+    assert_eq!(asked("Sans for the footer"), json!("Which font for the footer?"), "the open ASK sent back as Away came on");
+    ends(&w, &d, "DECIDED: Blue badge — matches");
+    assert_eq!(desk(&w, &project)["decisions"].as_array().unwrap().iter().find(|c| c["text"] == "Blue badge").unwrap()["asked"], json!(null), "nothing left to answer");
+
+    // Kept in the stretch's record as Away goes off.
+    w.hub().desk_away_set(&project, &json!({ "on": false, "until": null, "budget": null, "rules": {} })).unwrap();
+    w.settle();
+    let log = desk(&w, &project)["away_log"][0]["calls"].clone();
+    assert!(log.as_array().unwrap().iter().any(|c| c["asked"] == "Ship the footer today?"), "{log}");
+
+    // Back: an ASK reaches you as a card again.
+    ends(&w, &d, "ASK: Which color for the badge?");
+    assert_eq!(asks(&d), 1);
 }

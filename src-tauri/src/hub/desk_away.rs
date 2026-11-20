@@ -1,5 +1,6 @@
 //! Away mode on a Desk: while the owner is away, its lead decides some things alone (the rules switched on) and
-//! writes each as a DECIDED line the owner can undo; everything else waits as an ASK. Kept per Desk in config.json
+//! writes each as a DECIDED line the owner can undo. It asks the owner nothing (#471): an ASK it writes, or one still
+//! open as Away comes into force, goes back to it to decide itself, and the call it writes next is shown with it. Kept per Desk in config.json
 //! (`desk.away`: { <desk id>: { on, since, until, budget, base, ended, rules } }). It ends by itself at its end time
 //! or once the Desk's sessions have spent its budget (checked as a Desk session's turn ends); the lead is told each
 //! time it changes. Ask me before (guard.rs) still waits for the owner: while Away is in force, as a held step
@@ -145,7 +146,7 @@ pub(crate) fn sweep_words(rules: &Value) -> String {
     let rules = rules_in(rules, &Value::Null);
     let may: Vec<&str> = RULES.iter().filter(|(k, _, _)| rules.get(*k).and_then(Value::as_bool).unwrap_or(false)).map(|(_, _, w)| *w).collect();
     let list = if may.is_empty() { "nothing: every call waits for the owner".to_string() } else { may.iter().map(|w| format!("\n- {w}")).collect::<String>() };
-    format!("The owner is about to go away. Go through every open item (working, waiting, to check) and settle everything you can under these rules, writing a DECIDED line for each call (DECIDED: <what you chose> — <why>). You may decide alone:{list}\nAnswer or close any ASK you can settle yourself. Leave at most 5 questions that truly need the owner, as ASK lines, most important first. Then stop.")
+    format!("The owner is about to go away. Go through every open item (working, waiting, to check) and settle everything you can under these rules, writing a DECIDED line for each call (DECIDED: <what you chose> — <why>). You may decide alone:{list}\nAnswer or close any ASK you can settle yourself. Leave at most 5 questions that truly need the owner, as ASK lines, most important first: any still open as Away goes on comes back to you to decide. Then stop.")
 }
 
 /// While Away is on: when it started (ms), so the Desk keeps showing the decisions made since.
@@ -178,20 +179,65 @@ fn block(a: &Away, now: u64) -> String {
             out.push_str(&format!("- {words}\n"));
         }
     }
-    out.push_str("Everything else waits for the owner: write it as an ASK: line. Always ASK about:\n");
-    for (_, _, words) in &waits {
-        out.push_str(&format!("- {words}\n"));
+    out.push_str("Don't write ASK: lines while the owner is away: Cue doesn't show them to the owner, it sends each back to you to decide yourself. Decide it and write a DECIDED line for it; pick what's easiest to change later.\n");
+    if !waits.is_empty() {
+        out.push_str("These stay the owner's: don't do them while they're away. Leave that item as it is and write DECIDED: Leave #<id> until the owner is back — <why>:\n");
+        for (_, _, words) in &waits {
+            out.push_str(&format!("- {words}\n"));
+        }
     }
+    out.push_str("These wait for the owner by themselves (don't ASK about them):\n");
     for words in LOCKED {
         out.push_str(&format!("- {words}\n"));
     }
-    out.push_str("Don't wait on an ASK: carry on with the other items.\n");
+    out.push_str("Carry on with the other items meanwhile.\n");
     out.push_str("A session's Ask me before step (delete, push, release) is held for the owner: the session is told and carries on; the owner allows or refuses it on return. A session stopped on a permission it can't grant itself waits for the owner in the Away list. Never grant it yourself: don't allow it, don't change its permission settings, don't tell it to get round it. Move the other items along meanwhile.\n");
     if on("route") {
         out.push_str("Start at most 3 new sessions while the owner is away.\n");
     }
     out.push_str("A session stopped by a usage limit is carried on by Cue after the reset: don't ASK about it.\n");
     out
+}
+
+/// What a lead is sent with its ASKs (question, item) while its Desk's Away is in force (#471): decide them yourself.
+pub(super) fn sent_back_words(asks: &[(String, Option<String>)]) -> String {
+    let one = asks.len() == 1;
+    let list: String = asks.iter().map(|(q, item)| format!("\n- {}{q}", item.as_ref().map(|i| format!("#{i}: ")).unwrap_or_default())).collect();
+    let (this, it) = if one { ("this ASK", "it") } else { ("these ASKs", "each one, in this order") };
+    format!("The owner is away: Cue didn't show them {this}. Decide {it} yourself and write a DECIDED line (DECIDED: <what you chose> — <why>), with the item's #id when it has one; the owner can undo it when back. If it's one that stays the owner's, write DECIDED: Leave #<id> until the owner is back — <why>. Then carry on.{list}")
+}
+
+/// Lead `lsid`'s calls from `first` on (this turn's DECIDED lines) answer the ASKs Cue sent back to it earlier (#471):
+/// each marked with the question it was made in place of, by item first, then in order. ASKs left over wait for its
+/// next calls.
+pub(super) fn answered_by_calls(st: &mut Store, lsid: &str, first: usize, fx: &mut super::desk::Effects) {
+    let Some(pending) = st.desk.away_asked.remove(lsid) else { return };
+    let mut free: Vec<usize> = (first..st.desk.decisions.len()).filter(|&k| st.desk.decisions[k].call && st.desk.decisions[k].sid == lsid && st.desk.decisions[k].asked.is_empty()).collect();
+    let mut mark = |st: &mut Store, k: usize, q: &str| {
+        let d = &mut st.desk.decisions[k];
+        d.asked = q.to_string();
+        if !fx.decisions.contains(&d.id) {
+            fx.decisions.push(d.id.clone());
+        }
+    };
+    let mut left = Vec::new();
+    for (q, item) in pending {
+        match item.as_ref().and_then(|i| free.iter().position(|&k| st.desk.decisions[k].item_id.as_ref() == Some(i))) {
+            Some(n) => mark(st, free.remove(n), &q),
+            None => left.push((q, item)),
+        }
+    }
+    let mut rest = Vec::new();
+    for (q, item) in left {
+        if free.is_empty() {
+            rest.push((q, item));
+        } else {
+            mark(st, free.remove(0), &q);
+        }
+    }
+    if !rest.is_empty() {
+        st.desk.away_asked.insert(lsid.to_string(), rest);
+    }
 }
 
 impl Hub {
@@ -249,6 +295,7 @@ impl Hub {
             });
             self.tell_lead_away(desk, &words);
         }
+        self.desk_away_asks(desk, on, now);
         // Its end time is noticed then even if no Desk session's turn ends (an idle Desk overnight). A timer left from
         // an earlier end time finds the limits changed and does nothing; once ended, the saved `ended` keeps it to one telling.
         if let Some(u) = until.filter(|_| on) {
@@ -257,6 +304,64 @@ impl Hub {
         }
         self.changed();
         Ok(self.read(|st| away_view(st, desk, now)))
+    }
+
+    /// Away on Desk `desk` was just set (`on`): in force now, its lead's ASKs still waiting on the owner go back to it
+    /// (#471); off, what it was sent back is no longer waited on.
+    fn desk_away_asks(&self, desk: &str, on: bool, now: u64) {
+        let (in_force, lead) = self.read(|st| (away_in_force(st, desk, now), st.desk.lead.get(desk).map(|l| l.sid.clone())));
+        if in_force {
+            self.desk_away_send_back_open(desk);
+        } else if !on {
+            if let Some(lead) = lead {
+                self.write(|st| st.desk.away_asked.remove(&lead));
+            }
+        }
+    }
+
+    /// Desk `desk`'s lead's ASKs still waiting on the owner as its Away comes into force (#471): their cards closed and
+    /// the questions sent back to the lead to decide itself. Only its own ASK lines: not a route waiting on a yes, a
+    /// change to how work lands, or Cue's own question in its chat.
+    fn desk_away_send_back_open(&self, desk: &str) {
+        let Some((lead, cards)) = self.read(|st| {
+            let lead = st.desk.lead.get(desk)?.sid.clone();
+            let cards: Vec<(String, String, Option<String>)> = st
+                .items
+                .iter()
+                .filter(|i| i.desk && i.status == "pending" && i.origin.session_id == lead && i.tool_input["desk_id"].as_str() == Some(desk))
+                .filter(|i| ["desk_use", "desk_lands", "desk_old"].iter().all(|k| i.tool_input.get(*k).is_none()))
+                .map(|i| (i.id.clone(), i.tool_input.pointer("/questions/0/question").and_then(Value::as_str).unwrap_or("").to_string(), i.tool_input["desk_item"].as_str().map(str::to_string)))
+                .collect();
+            Some((lead, cards))
+        }) else { return };
+        if cards.is_empty() {
+            return;
+        }
+        let mut asks = Vec::new();
+        for (id, question, item) in cards {
+            self.finish(&id, "answered", "sent back to the lead to decide: you're away");
+            asks.push((question, item));
+        }
+        let words = sent_back_words(&asks);
+        // A lead a usage limit stopped reads it in its next Desk block instead (it would bounce off the limit).
+        let reach = self.write(|st| {
+            st.desk.away_asked.entry(lead.clone()).or_default().extend(asks);
+            let reach = st.sessions.get(&lead).is_some() && !limited(st, &lead);
+            if !reach {
+                let held = st.desk.routes_held.entry(desk.to_string()).or_default();
+                held.push_str(&words);
+                held.push('\n');
+            }
+            reach
+        });
+        if reach {
+            self.later(0, move |h| {
+                if let Err(e) = h.send_to_session(&lead, &words, &[], false) {
+                    eprintln!("cue: couldn't send {lead} its ASKs back: {e}");
+                }
+            });
+        }
+        self.changed();
     }
 
     /// Session `sid`'s turn is over: each Desk it's on whose Away has run out (its end time, or its budget) is ended,

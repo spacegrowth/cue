@@ -512,6 +512,10 @@ pub struct DeskDecision {
     /// any other step.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub act: String,
+    /// The lead's ASK this call was made in place of (#471): while you're away, Cue sends a lead's ASK back to it to
+    /// decide itself; the call it writes next is shown with the question it answers. "" for any other.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub asked: String,
 }
 
 /// Words that make one of the Desk lead's calls dispatch work (routing, starting, order, sending back, clashes,
@@ -639,6 +643,10 @@ pub struct Desk {
     /// couldn't be sent then, as the lead was asking the user something: told in its next Desk block instead, and
     /// cleared once that reaches it (`desk_told`). Not saved.
     pub routes_held: HashMap<String, String>,
+    /// A lead's ASKs Cue sent back to it to decide itself while its Desk's Away was in force (#471), by the lead's
+    /// session: (the question, its item). Its next calls are marked with them (hub/desk_away.rs `answered_by_calls`).
+    /// Not saved.
+    pub away_asked: HashMap<String, Vec<(String, Option<String>)>>,
     /// Items whose holder's turn ended on them with no DONE, and Cue asked it once ("Done? …"): item → (that holder,
     /// the item's `updated` then). The turn that answers isn't asked again; the item changed since (sent again, routed)
     /// is a new stall (hub/desk_stall.rs). Not saved.

@@ -40,8 +40,8 @@ pub(super) fn stretch(st: &Store, desk: &str, since: u64, end: u64, start: &Valu
         .desk
         .decisions
         .iter()
-        .filter(|d| d.project == desk && d.call && d.at * 1000 >= since && d.at * 1000 <= end)
-        .map(|d| json!({ "id": d.id, "item_id": d.item_id, "text": d.text, "why": d.why, "at": d.at, "minor": d.minor }))
+        .filter(|d| d.project == desk && d.call && d.at >= since / 1000 && d.at * 1000 <= end)
+        .map(|d| json!({ "id": d.id, "item_id": d.item_id, "text": d.text, "why": d.why, "at": d.at, "minor": d.minor, "asked": d.asked }))
         .collect();
     (Value::Array(items), Value::Array(calls))
 }

@@ -1104,6 +1104,7 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
 .dk-aw-mt { flex: 1; min-width: 0; color: var(--ink); }
 .dk-aw-mt b { font-weight: 600; }
 .dk-aw-why { color: var(--muted); }
+.dk-aw-asked { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
 .dk-aw-undo { all: unset; flex: none; padding: 1px 7px; border-radius: 6px; color: var(--ink); font: 600 11.5px var(--sans); cursor: pointer; }
 .dk-aw-undo:hover { background: var(--line); }
 .dk-aw-undo:focus-visible { outline: 2px solid var(--accent); }

@@ -65,6 +65,18 @@ test("Away on: no column; the calls since it went on in one line at the top of I
   await expect(page.locator(".dk-items .dk-gh.you")).toHaveText("Waiting on you 1");
 });
 
+test("a call the lead made in place of asking you shows the question under it (#471)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.change((st, since) => {
+    const d = st.desk.projects.find((x) => x.project === "cue");
+    d.away = { on: true, active: true, ended: "", since, until: null, budget: null, spent: 0, rules: {} };
+    d.decisions.find((x) => x.id === "c1").asked = "Settings file or environment setting?";
+  }, SINCE);
+  const mark = page.locator('.dk-aw-list [data-desk-call="c1"]');
+  await expect(mark.locator(".dk-aw-asked")).toHaveText("Instead of asking you: Settings file or environment setting?");
+  await expect(mark.locator("b")).toHaveText("An environment setting, not a settings file");
+});
 test("the calls line folds to one line and stays folded for that Desk; a call with no item is in it too; nothing waiting says so (#415)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
@@ -151,7 +163,7 @@ const clear = (cue) => cue.change((st) => {
 /** `n` open questions from the lead, the newest last; a choice each. */
 const leadAsks = (cue, n) => cue.change((st, n) => {
   const ask = st.items.find((i) => i.id === "n-focus-ask");
-  for (let k = 1; k <= n; k++) st.items.push({ ...ask, status: "pending", id: `n-lead${k}`, session_id: "lead", agent_id: "", agent_name: "", created_ms: ask.created_ms + k * 1000,
+  for (let k = 1; k <= n; k++) st.items.push({ ...ask, status: "pending", desk: true, id: `n-lead${k}`, session_id: "lead", agent_id: "", agent_name: "", created_ms: ask.created_ms + k * 1000,
     tool_input: { questions: [{ question: `Question ${k}?`, header: "Q", multiSelect: false, options: [{ label: "Yes" }, { label: "No" }] }] } });
 }, n);
 
@@ -266,7 +278,7 @@ test("Before you go: an open ask holds Done until it's answered right there", as
   await expect(done).toHaveText("Done");
 });
 
-test("Before you go shows 5, the lead's newest first, and says how many more wait in Waiting on you", async ({ page, cue }) => {
+test("Before you go shows 5, the lead's newest first, and says the lead's others go back to it (#471)", async ({ page, cue }) => {
   await cue.open("desk");
   await cue.override("desk_away_sweep", () => null);
   await openDesk(page);
@@ -277,7 +289,7 @@ test("Before you go shows 5, the lead's newest first, and says how many more wai
   await sweepEnds(cue);
   await expect(card.locator(".dk-aw-h").first()).toHaveText("Before you go: 5 to answer");
   await expect(card.locator(".dk-aw-ask .qtext")).toHaveText(["Question 7?", "Question 6?", "Question 5?", "Question 4?", "Question 3?"]);
-  await expect(card.locator(".dk-aw-more")).toHaveText("2 more will wait in Waiting on you");
+  await expect(card.locator(".dk-aw-more")).toHaveText("2 more: the lead's questions go back to it to decide, the rest wait in Waiting on you");
 });
 
 test("Before you go holds what the lead's sweep left, not what was open when the card opened", async ({ page, cue }) => {

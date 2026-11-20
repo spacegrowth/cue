@@ -63,12 +63,12 @@ function deskAwayNeeds(d, taskApprovals = deskTaskApprovals(d)) {
   return { waits, asks };
 }
 /** The same as one list for "Before you go": the lead's asks first, newest first, then the other sessions' asks,
- *  then the items that wait; each { key, html }. */
+ *  then the items that wait; each { key, back (the lead's own ASK: it goes back to the lead once Away is on), html }. */
 function deskAwayFirstList(d) {
   const { waits, asks } = deskAwayNeeds(d), lead = deskLead(d)?.sid;
   const at = (it) => it.created_ms || it.at_ms || deskMs(it.created) || 0;
   const sorted = [...asks].sort((x, y) => (y.session_id === lead) - (x.session_id === lead) || at(y) - at(x));
-  return [...sorted.map((it) => ({ key: `a:${it.id}`, html: () => deskAwayAsk(it, d) })),
+  return [...sorted.map((it) => ({ key: `a:${it.id}`, back: !!it.desk && it.session_id === lead, html: () => deskAwayAsk(it, d) })),
     ...[...waits].sort((x, y) => deskMs(y.updated) - deskMs(x.updated)).map((i) => ({ key: `i:${i.id}`, html: () => deskItemRow(i, false) }))];
 }
 /** An open ask, answerable where it is: who asks and what, a single question's choices, then the controls its card
@@ -90,7 +90,8 @@ const DESK_AWAY_ICON = `<svg class="dk-aw-ic" width="12" height="12" viewBox="0 
 function deskAwayCalls(d) {
   const a = d?.away;
   if (!a?.on) return [];
-  const since = deskMs(a.since);
+  // Calls are kept to the second: one made in Away's first second counts.
+  const since = Math.floor(deskMs(a.since) / 1000) * 1000;
   return deskCalls(d).filter((c) => deskMs(c.at) >= since).sort((x, y) => deskMs(x.at) - deskMs(y.at));
 }
 /** The Desks whose calls line you folded (kept in this window: a convenience, fine to lose). */
@@ -107,7 +108,9 @@ function deskAwayMark(c, d) {
   // Its item ("Task #287"), unless the call already names it.
   const item = c.item_id && !String(c.text || "").includes(`#${c.item_id}`) ? deskNum((d?.items || []).find((i) => i.id === c.item_id) || { id: c.item_id }) : "";
   const why = [item, c.why ? deskOneLine(c.why) : ""].filter(Boolean).join(" · ");
-  return `<div class="dk-aw-mark" data-desk-call="${esc(c.id)}"><span class="dk-aw-tm">${c.at ? esc(deskHm(deskMs(c.at))) : ""}</span><span class="dk-aw-mt"><b>${esc(c.text)}</b>${why ? `<span class="dk-aw-why"> · ${esc(why)}</span>` : ""}</span>${undo}</div>`;
+  // Decided in place of a question you'd have been asked (#471): the question, under it.
+  const asked = c.asked ? `<span class="dk-aw-asked">Instead of asking you: ${esc(deskOneLine(c.asked))}</span>` : "";
+  return `<div class="dk-aw-mark" data-desk-call="${esc(c.id)}"><span class="dk-aw-tm">${c.at ? esc(deskHm(deskMs(c.at))) : ""}</span><span class="dk-aw-mt"><b>${esc(c.text)}</b>${why ? `<span class="dk-aw-why"> · ${esc(why)}</span>` : ""}${asked}</span>${undo}</div>`;
 }
 /** The calls line at the top of Items while Away is on: the count and since when, then till, spend and its bar (or why
  *  it paused); a click folds or opens the list under it. */
@@ -268,9 +271,11 @@ function deskAwayHtml() {
     const seen = new Set(), list = going.flatMap((r) => { const d = deskOf(r.project); return d ? deskAwayFirstList(d) : []; }).filter((x) => !seen.has(x.key) && seen.add(x.key));
     if (!e.shown) e.shown = list.slice(0, DESK_AWAY_FIRST).map((x) => x.key);
     const shown = list.filter((x) => e.shown.includes(x.key)), more = list.length - shown.length;
+    // The lead's own questions left over go back to it once Away is on (#471).
+    const leadMore = list.some((x) => !e.shown.includes(x.key) && x.back);
     block = shown.length;
     if (shown.length || more) first = `<div class="dk-aw-h">Before you go: ${shown.length} to answer</div><div class="dk-aw-first">${shown.map((x) => x.html()).join("")}</div>`
-      + (more ? `<div class="dk-aw-more">${more} more will wait in Waiting on you</div>` : "");
+      + (more ? `<div class="dk-aw-more">${more} more: ${esc(leadMore ? `the lead's questions go back to it to decide, the rest wait in Waiting on you` : "they wait in Waiting on you")}</div>` : "");
   }
   const may = DESK_AWAY_RULES.map(([k, l]) => row(k, l, !!e.rules[k])).join("");
   const desks = many ? `<div class="dk-aw-h">Desks</div><div class="dk-aw-rows">${e.desks.map((r) => `<button class="dk-aw-row" role="switch" aria-checked="${r.on}" data-away-desk="${esc(r.project)}"><span class="grow">${esc(deskName(deskOf(r.project)))}</span>${tg(r.on)}</button>`).join("")}</div>` : "";
