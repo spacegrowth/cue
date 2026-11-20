@@ -323,7 +323,7 @@ function deskList(project, taskApprovals) {
   if (g.resume.length) parts.push(`<div class="dk-gh">Needs resume <span class="n">${g.resume.length}</span></div>${g.resume.map(row).join("")}`);
   if (g.paused.length) parts.push(`<div class="dk-gh">Paused <span class="n">${g.paused.length}</span></div>${g.paused.map(row).join("")}`);
   // Dragged up and down into your order (#387): the next free copy goes to the top one.
-  if (g.queued.length) parts.push(`<div class="dk-gh">Queued <span class="n">${g.queued.length}</span>${g.queued.length > 1 ? '<span class="dk-qhint">drag to reorder</span>' : ""}</div>${g.queued.map((i) => row(i).replace('<div class="dk-it ', `<div data-desk-qg${deskQMoves(i) ? ` data-desk-q="${esc(i.id)}"` : ""} class="dk-it `)).join("")}`);
+  if (g.queued.length) parts.push(`<div class="dk-gh">Queued <span class="n">${g.queued.length}</span>${g.queued.length > 1 ? '<span class="dk-qhint">drag to reorder</span>' : ""}</div>${g.queued.map(deskQRow(row)).join("")}`);
   if (g.held.length) parts.push(`<div class="dk-gh dk-heldh">Parked <span class="n">${g.held.length}</span><span class="dk-split">start them when you want</span></div><div class="dk-held">${g.held.map(row).join("")}</div>`);
   for (const h of g.extra) parts.push(deskHolderHead({ ...h, addon: true, key: h.key || h.name }, o?.kind === "addon" && o.key === (h.key || h.name)) + (h.items || []).map(row).join(""));
   // Finished: the 10 newest, then 10 more each time the list's end comes into view (deskDoneWatch). Its end holds
@@ -351,6 +351,13 @@ function deskCopyWaitLine(i) {
   const by = (i.copy_users || []).map((x) => `#${x}`).join(", ");
   return `${i.back_waiting ? "Sent back · waiting" : "Waiting"} for a free working folder${by ? ` (in use by ${by})` : ""}`;
 }
+/** A row in Queued; one that can be dragged has a small grip (two short lines) in its left padding (#424). */
+const DESK_GRIP = `<svg class="dk-grip" width="8" height="6" viewBox="0 0 8 6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M1 1h6M1 5h6"/></svg>`;
+const deskQRow = (row) => (i) => {
+  const moves = deskQMoves(i);
+  const h = row(i).replace('<div class="dk-it ', `<div data-desk-qg${moves ? ` data-desk-q="${esc(i.id)}"` : ""} class="dk-it `);
+  return moves ? h.replace(/^(<div [^>]*>)/, `$1${DESK_GRIP}`) : h;
+};
 /** Whether a row in Queued can be dragged: one that hasn't started (running ones keep their place). */
 const deskQMoves = (i) => i.state === "new" || i.state === "queued";
 /** Why order `ids` (top first) can't be, in plain words: one above the item it waits on. "" when it can. */

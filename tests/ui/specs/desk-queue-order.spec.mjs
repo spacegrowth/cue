@@ -73,3 +73,35 @@ test("a dropped item stays where you let it go, selects no text, and the list sc
   await page.mouse.up();
   await expect.poll(async () => (await order(page))[0]).toBe("q10");
 });
+
+test("each queued item shows a grip with a grab hand, only on queued rows, and dragging by it works (#424)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  // A grip on each queued row, none on any other.
+  const queued = await order(page);
+  expect(queued.length).toBeGreaterThan(1);
+  for (const id of queued) await expect(page.locator(`.dk-items [data-desk-item="${id}"] > .dk-grip`)).toBeVisible();
+  await expect(page.locator(".dk-items .dk-it:not([data-desk-qg]) .dk-grip")).toHaveCount(0);
+  // Two short lines at the row's left, in its padding; the pointer a grab hand over it. (Read in one go: the list may
+  // be drawn again between two looks.)
+  const id = queued[1];
+  const look = await page.evaluate((id) => {
+    const r = document.querySelector(`.dk-items [data-desk-item="${id}"]`), g = r.querySelector(":scope > .dk-grip");
+    return { d: g.querySelector("path").getAttribute("d"), dx: g.getBoundingClientRect().left - r.getBoundingClientRect().left, cursor: getComputedStyle(g).cursor };
+  }, id);
+  expect(look).toEqual({ d: "M1 1h6M1 5h6", dx: expect.any(Number), cursor: "grab" });
+  expect(look.dx).toBeLessThan(14);
+  // Dragged by the grip, it takes its place.
+  await expect(async () => {
+    if ((await order(page))[0] === id) return;
+    const grip = page.locator(`.dk-items [data-desk-item="${id}"] > .dk-grip`);
+    await grip.scrollIntoViewIfNeeded();
+    const g = await grip.boundingBox(), top = await page.locator(`.dk-items [data-desk-item="${queued[0]}"]`).boundingBox();
+    await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(g.x + g.width / 2, g.y + 10, { steps: 2 });
+    await page.mouse.move(g.x + g.width / 2, top.y + 2, { steps: 6 });
+    await page.mouse.up();
+    await expect.poll(async () => (await order(page))[0], { timeout: 2000 }).toBe(id);
+  }).toPass({ timeout: 15000 });
+});
