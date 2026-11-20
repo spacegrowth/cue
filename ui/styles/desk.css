@@ -485,15 +485,20 @@
 .dk-hh { margin: 6px 4px 2px; font: 700 12px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--on-bg); opacity: .8; }
 .dk-hh .dh-n { font-weight: 600; opacity: .8; }
 .dh-tbl { flex: none; background: var(--panel); color: var(--ink); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
-.dh-tr { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(120px, 150px) repeat(3, minmax(100px, 150px)) minmax(0, 1.1fr) auto; align-items: center; gap: 12px; padding: 14px 18px; border-top: 1px solid var(--panel-2); }
+.dh-tr { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(120px, 1.2fr) repeat(3, minmax(100px, 1fr)) minmax(0, 1.1fr) 84px; align-items: center; gap: 12px; padding: 14px 18px; border-top: 1px solid var(--panel-2); }
 .dh-tr.dh-hd { border-top: 0; padding: 10px 18px; background: var(--panel-2); color: var(--muted); font: 700 10.5px var(--sans); letter-spacing: .08em; text-transform: uppercase; }
 .dh-tr.dk-desk { cursor: pointer; }
 .dh-tr.dk-desk:hover, .dh-tr.dk-desk:focus-visible { background: var(--panel-2); outline: none; }
 .dh-cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.dh-nm { font-size: 14px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dh-nm { font-size: 14px; font-weight: 700; overflow-wrap: anywhere; }
 .dh-sm { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11.5px; white-space: nowrap; }
 .dh-sm.dh-ab { display: block; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; }
-.dh-pj { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The Desk's name, project and people in full, wrapping; a kind's working · need you · to review wraps between its
+   pieces (#440: they ran into the next column). */
+.dh-sm.dh-sub { display: block; white-space: normal; line-height: 1.5; }
+.dh-pc { white-space: nowrap; }
+.dh-cell:nth-child(2) > .dh-sm { flex-wrap: wrap; white-space: normal; }
+.dh-pj { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12.5px; overflow-wrap: anywhere; min-width: 0; }
 .dh-big { display: inline-flex; align-items: center; font-weight: 650; }
 .dh-big .dk-kic { margin-right: 6px; vertical-align: 0; }
 .dh-cell.z .dh-big { color: var(--muted); font-weight: 500; opacity: .7; }
