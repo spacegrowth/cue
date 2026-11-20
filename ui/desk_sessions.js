@@ -6,8 +6,13 @@
  *  itself is on its item and in its chat, never as a card in this list, #431). */
 function deskSessState(s) {
   const asks = state.items.some((i) => i.session_id === s.session_id && actionableRequest(i));
-  return asks ? ["ask", "needs you"] : s.state === "working" ? ["", "working"] : ["idle", "idle"];
+  if (asks) return ["ask", "needs you"];
+  if (s.state === "working") return ["", "working"];
+  // Its tests or build running on (#556): "working · running tests…".
+  return deskSessBusy(s) ? ["", `working · ${s.running.charAt(0).toLowerCase()}${s.running.slice(1)}`] : ["idle", "idle"];
 }
+/** Session `s` at work: in a turn, or its turn over while its tests, build, install or landing run on (#556). */
+const deskSessBusy = (s) => s?.state === "working" || (!!s?.running && ["waiting", "stopped"].includes(s.state));
 /** deskSessState, but a session idle itself while its own helpers ("agent") or crew work says so (#457), as the
  *  Working group and the head's count take it: ["", "working · 2 helpers"]. Asking you still comes first. Without
  *  `crew`, its crew isn't counted: the Desk's own lead shows none (they aren't the Desk's). */

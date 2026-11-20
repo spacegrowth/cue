@@ -57,24 +57,43 @@ fn a_plain_line_with_a_build_word_is_still_a_stop() {
 }
 
 #[test]
-fn a_turn_that_ends_with_its_tests_running_in_the_background_shows_running_tests() {
-    let w = World::new();
-    let (h, project, l, _) = routed(&w);
-    w.advance(1000);
-    w.hosted_says(&h, HostedEvent::Taken { text: "Header".into() });
-    w.settle();
-    let log = w.hub().session_origin(&h).unwrap().transcript_path;
-    Transcript::at(&log).prompt("Header").background_command("b1", "Run the desk tests", "cargo test --lib desk_").assistant("A re-run of the tests is going now.");
-    w.advance(1000);
-    ends(&w, &h, "A re-run of the tests is going now.");
-    let it = item(&desk(&w, &project), "Header").clone();
-    assert_eq!((it["state"].as_str(), it["stopped"].as_bool(), it["waiting"].as_str()), (Some("working"), None, Some("Running tests…")), "{it}");
-    assert!(sent_to(&w, &h).iter().all(|t| !t.starts_with("Done? Write DONE")), "not asked");
-    assert!(sent_to(&w, &l).iter().all(|t| !t.contains(") stopped")), "no notice to the lead: {:?}", sent_to(&w, &l));
-    w.advance(11 * 60_000);
-    let it = item(&desk(&w, &project), "Header").clone();
-    assert_eq!(it["state"], "working", "{it}");
-    assert!(desk(&w, &project)["items"].as_array().unwrap().iter().all(|i| i["state"] != "needs_you"), "nothing waits on you, so the header counts none");
+fn a_turn_that_ends_with_its_tests_build_install_or_landing_running_in_the_background_is_working() {
+    // #556: these showed as waiting ("waiting · Running tests…"), and weren't in the working count. At work on them:
+    // working everywhere the Desk shows it, never idle, waiting or stalled while they run.
+    for (what, command, words) in [
+        ("Run the desk tests", "cargo test --lib desk_", "Running tests…"),
+        ("Build Cue", "cargo build --release", "Building…"),
+        ("Install Cue", "./install.sh --app", "Installing…"),
+        ("Land it on main", "git merge desk/556", "Landing…"),
+    ] {
+        let w = World::new();
+        let (h, project, l, id) = routed(&w);
+        w.advance(1000);
+        w.hosted_says(&h, HostedEvent::Taken { text: "Header".into() });
+        w.settle();
+        let log = w.hub().session_origin(&h).unwrap().transcript_path;
+        Transcript::at(&log).prompt("Header").background_command("b1", what, command).assistant("It's going now.");
+        w.advance(1000);
+        ends(&w, &h, "It's going now.");
+        let it = item(&desk(&w, &project), "Header").clone();
+        assert_eq!((it["state"].as_str(), it["stopped"].as_bool(), it["waiting"].as_str(), it["latest"].as_str()), (Some("working"), None, None, Some(words)), "{what}: {it}");
+        assert_eq!(it["act"]["now"], words, "{what}: what it's doing now: {it}");
+        assert!(sent_to(&w, &h).iter().all(|t| !t.starts_with("Done? Write DONE")), "{what}: not asked");
+        assert!(sent_to(&w, &l).iter().all(|t| !t.contains(") stopped")), "{what}: no notice to the lead: {:?}", sent_to(&w, &l));
+        // The lead's view: the item working, its session working on it, not idle or waiting.
+        let summary = w.hub().desk_summary(&project, "", false).0;
+        let line = summary.lines().find(|l| l.starts_with(&format!("- #{id} "))).unwrap_or_else(|| panic!("{summary}"));
+        assert!(line.contains("Header | working"), "{what}: {line}");
+        let route = summary.lines().find(|l| l.contains("cue-teams (sid:")).unwrap_or_else(|| panic!("{summary}"));
+        assert!(route.contains(&format!(", working: {words}")) && !route.contains("idle") && !route.contains("pending"), "{what}: {route}");
+        // A long run is quiet: still working, never stalled, nothing waits on you.
+        w.advance(11 * 60_000);
+        let it = item(&desk(&w, &project), "Header").clone();
+        assert_eq!((it["state"].as_str(), it["waiting"].as_str()), (Some("working"), None), "{what}: {it}");
+        let stalls = it["act"]["stalls_at"].as_u64().unwrap_or(0);
+        assert!(stalls == 0 || stalls > crate::clock::now_ms(), "{what}: not stalled: {it}");
+        assert!(desk(&w, &project)["items"].as_array().unwrap().iter().all(|i| i["state"] != "needs_you"), "{what}: nothing waits on you");
+    }
 }
 
 #[test]
@@ -84,6 +103,8 @@ fn running_words_say_what_runs() {
     assert_eq!(s(&["Run the desk tests"]), "Running tests…");
     assert_eq!(s(&["npx playwright test specs/desk.spec.mjs"]), "Running tests…");
     assert_eq!(s(&["Build Cue"]), "Building…");
+    assert_eq!(s(&["./install.sh --app"]), "Installing…");
+    assert_eq!(s(&["Land it on main"]), "Landing…");
     assert_eq!(s(&["npm run dev"]), "Running in the background: npm run dev");
     assert_eq!(s(&[]), "");
 }

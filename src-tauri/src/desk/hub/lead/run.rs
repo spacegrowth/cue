@@ -263,6 +263,9 @@ impl Hub {
                 let mut r = format!("{} (sid:{id}", shown_name(s));
                 if idle_route(st, s) {
                     r.push_str(", idle");
+                } else if matches!(s.state.as_str(), "waiting" | "stopped") && !s.running.is_empty() {
+                    // Its tests or build run on (#556): at work, not idle or waiting.
+                    r.push_str(&format!(", working: {}", s.running));
                 } else if matches!(s.state.as_str(), "" | "idle" | "waiting") {
                     r.push_str(", work pending");
                 } else {
@@ -360,6 +363,7 @@ fn idle_route(st: &Store, s: &crate::sessions::Session) -> bool {
     matches!(s.state.as_str(), "" | "idle" | "waiting")
         && !crate::desk::hub::stall::stall::still_at_it(st, &s.origin.session_id)
         && s.compacting_ms == 0
+        && s.running.is_empty()
         && s.held.is_none()
         && s.queued.is_none()
         && !s.thread.last().is_some_and(|e| e.role == "you" && e.pending)

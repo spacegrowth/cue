@@ -216,7 +216,7 @@ impl Sessions {
     }
 }
 
-/// Background shell commands as one plain line (#435): "Running tests…", "Building…", "Installing…", else what the
+/// Background shell commands as one plain line (#435): "Running tests…", "Building…", "Installing…", "Landing…", else what the
 /// first does ("Running in the background: Start the dev server"). "" for none.
 pub fn running_words(scripts: &[String]) -> String {
     let Some(first) = scripts.first() else { return String::new() };
@@ -227,6 +227,8 @@ pub fn running_words(scripts: &[String]) -> String {
         "Building…".into()
     } else if all.contains("install") {
         "Installing…".into()
+    } else if all.contains("land") || all.contains("merge") {
+        "Landing…".into()
     } else {
         format!("Running in the background: {}", first.chars().take(120).collect::<String>())
     }

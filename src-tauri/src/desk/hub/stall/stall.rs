@@ -19,6 +19,11 @@ pub(crate) fn stalled<'a>(st: &'a Store, it: &DeskItem, h: &Holder) -> Option<&'
         return None;
     }
     let s = st.sessions.get(&h.sid).filter(|s| matches!(s.state.as_str(), "waiting" | "stopped") && !crew_at_work(s))?;
+    // Its tests, build, install or landing still run in the background (#435, #556): at work on them, not stopped,
+    // unless its turn ended asking you something.
+    if !s.running.is_empty() && s.thread.iter().rev().find(|e| e.role == "agent").is_none_or(|e| question_in(&e.text).is_none()) {
+        return None;
+    }
     let held = it.held_from.as_ref().filter(|(by, _)| *by == h.sid).map_or(it.updated * 1000, |(_, at)| *at);
     let from = st.desk.run.sent_at.get(&it.id).filter(|(by, _)| *by == h.sid).map_or(held, |(_, at)| held.max(*at));
     s.thread.iter().rev().find(|e| e.role == "agent").filter(|e| e.at_ms > from && !back_mid_turn(st, it, &h.sid, s, e.at_ms)).map(|_| s)
@@ -36,12 +41,13 @@ fn crew_at_work(s: &Session) -> bool {
     s.team.iter().any(|t| t.working())
 }
 
-/// Its own crew still at work while session `sid` (the holder itself) is idle (#511): "5 teammates running", for its
-/// item to show it's at work on them, not stopped or waiting on you.
-pub(crate) fn crew_running(st: &Store, sid: &str) -> Option<String> {
+/// Session `sid` (the holder itself) idle while its work goes on, for its item to show it's at work, not stopped or
+/// waiting on you: its own crew at work (#511), "5 teammates running"; or its tests, build, install or landing running
+/// in the background (#556), "Running tests…".
+pub(crate) fn runs_on(st: &Store, sid: &str) -> Option<String> {
     let s = st.sessions.get(sid).filter(|s| matches!(s.state.as_str(), "waiting" | "stopped"))?;
     match s.team.iter().filter(|t| t.working()).count() {
-        0 => None,
+        0 => (!s.running.is_empty()).then(|| s.running.clone()),
         1 => Some("1 teammate running".into()),
         n => Some(format!("{n} teammates running")),
     }
@@ -240,10 +246,6 @@ pub(crate) enum Stop {
 /// its time is up or when the Desk has no lead at hand to settle it.
 pub(crate) fn stop_shown(st: &Store, it: &DeskItem, s: &Session, now: u64) -> Stop {
     let last = s.thread.iter().rev().find(|e| e.role == "agent").map(|e| e.text.as_str()).unwrap_or("");
-    // Its tests or build still run in the background (#435): still at work on them, nothing for you or the lead.
-    if !s.running.is_empty() && question_in(last).is_none() {
-        return Stop::Waits(s.running.clone());
-    }
     // It said what it waits on: waiting, not stopped, its work committed or not (#249).
     if let Some((_, w)) = it.waits.as_ref().filter(|(u, _)| *u == it.updated && question_in(last).is_none()) {
         return Stop::Waits(w.clone());
@@ -323,11 +325,11 @@ pub(crate) fn stalls_asked(st: &mut Store, sid: &str, text: &str, on: &[String],
     let left = says_whats_left(text);
     let busy = still_at_it(st, sid);
     let asks = ask_of(st, &h).is_some() || ends_on_a_question(text);
-    // Its own tests or build still running in the background (#435): waiting on them, whatever its words say.
-    let running = st.sessions.get(sid).map(|s| s.running.clone()).filter(|r| !r.is_empty());
+    // Its own tests or build still running in the background (#435): at work on them (#556), whatever its words say.
+    let running = st.sessions.get(sid).is_some_and(|s| !s.running.is_empty());
     // Its TO LEAD: words just went to the lead (#474): it waits on the lead's answer, not stopped.
     let asked_lead = || crate::desk::parse::lines(text).iter().any(|l| matches!(l, crate::desk::parse::Line::ToLead { .. })).then(|| "waiting on the Desk lead's answer".to_string());
-    let waits = running.or_else(|| waits_line(text)).or_else(asked_lead);
+    let waits = waits_line(text).or_else(asked_lead);
     let mut ask = Vec::new();
     // Its turn asks you something (#475): each item still at work with it waits on you with that, through its later
     // turns, until you answer (`DeskItem::asks`). A card it asks with is shown as itself.
@@ -359,8 +361,8 @@ pub(crate) fn stalls_asked(st: &mut Store, sid: &str, text: &str, on: &[String],
             continue;
         }
         let quiet = busy || asks;
-        // Waiting isn't stopping: not asked "Done?", and the lead isn't told (#249).
-        if waits.is_some() {
+        // Waiting isn't stopping, nor is running its tests: not asked "Done?", and the lead isn't told (#249, #435).
+        if waits.is_some() || running {
             st.desk.run.left_said.insert(id.clone(), (sid.to_string(), updated));
             st.desk.run.nudged.remove(&id);
             continue;
@@ -446,6 +448,13 @@ pub(crate) fn act_of(st: &Store, h: &Holder) -> Option<crate::desk::Act> {
     // Handed to agents that run on (an Agent call under way, or background agents Cue can't read): theirs is the
     // work, as for being stuck (activity.rs). Its crew's steps are read, so a quiet crew stalls it.
     let helped = crew == 0 && (doing.starts_with("Delegating") || s.state == "agent");
+    // Its turn over while its tests, build, install or landing run on (#556): that's what it's doing, given a
+    // helper's time before it reads as stalled (a long test run is quiet).
+    if doing.is_empty() && crew == 0 && !s.running.is_empty() {
+        let words = last_line(s);
+        let was = if words.is_empty() { "nothing said yet".into() } else { format!("last said: {words}") };
+        return Some(crate::desk::Act { at_ms: at, now: s.running.clone(), was, stalls_at: stalls_at(at, true) });
+    }
     if doing.is_empty() {
         let words = last_line(s);
         let now = match s.state.as_str() {

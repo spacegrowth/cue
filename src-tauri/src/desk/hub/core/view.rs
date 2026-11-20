@@ -78,8 +78,9 @@ pub(crate) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
                     };
                 }
             }
-        } else if let Some(crew) = crew_parts(&h).is_none().then(|| crate::desk::hub::stall::stall::crew_running(st, &h.sid)).flatten() {
-            // Idle only because its own teammates are at work (#511): at work on it, and it says so.
+        } else if let Some(crew) = crew_parts(&h).is_none().then(|| crate::desk::hub::stall::stall::runs_on(st, &h.sid)).flatten() {
+            // Idle only because its own teammates, or its tests or build, are at work (#511, #556): at work on it, and
+            // it says so.
             out.latest = crew;
         }
     }
@@ -134,7 +135,7 @@ pub(crate) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
         } else {
             // Or a note of yours waits for it, kept in Cue or queued in its box (#419): it goes in next.
             crate::desk::hub::stall::stall::still_at_it(st, &h.sid) || (out.now_on && st.sessions.get(&h.sid).is_some_and(|s| {
-                s.state != "stopped" && (s.held.is_some() || s.queued.is_some() || s.thread.last().is_some_and(|e| e.role == "you" && e.pending))
+                s.state != "stopped" && (s.held.is_some() || !s.running.is_empty() || s.queued.is_some() || s.thread.last().is_some_and(|e| e.role == "you" && e.pending))
             }))
         };
         if !active && !wrote_just_now(st, &h) {

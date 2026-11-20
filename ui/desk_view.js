@@ -124,7 +124,7 @@ function deskRightChat(d, taskApprovals) {
     now: deskLeadNow(d, waits, working, ask), panel, main: `<div class="dk-tabs dk-ptabs">${tab("lead", esc(deskLeadName(d)), 0)}${tab("decisions", "Decisions", deskOpenCalls(d).filter((c) => !c.minor).length)}${tab("moves", "Dispatcher Actions", 0)}${tab("away", "Away", 0)}</div>${main}`, foot })}</div>`;
 }
 /** The sessions at work for Desk `d` (not its lead): [{ sid, name, on }], `on` the item each is on. */
-const deskWorkingFor = (d) => deskSessionsOf(d.project, d).filter((r) => deskHasSession(d, r.sid) && r.sid !== deskLead(d)?.sid && sessionOf(r.sid)?.state === "working").map((r) => ({ ...r, on: deskSessItem(d, r.sid) }));
+const deskWorkingFor = (d) => deskSessionsOf(d.project, d).filter((r) => deskHasSession(d, r.sid) && r.sid !== deskLead(d)?.sid && deskSessBusy(sessionOf(r.sid))).map((r) => ({ ...r, on: deskSessItem(d, r.sid) }));
 /** The Dispatcher's NOW (Lead chats pick 1 + D, as a panel since #200): its state's dot and word; a sentence: what it
  *  routes ("Routing #125"), what waits on you, how many items are with sessions; Check #131 opening the first that
  *  waits on you. Folded: "· 4 items · 6 sessions working". */
