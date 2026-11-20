@@ -129,7 +129,9 @@ function reviewFolds(ex, team) {
  *  `reply(e, key)`: { text, after } a reply drawn as the page splits it; `say(text)`: the words being written, likewise.
  *  `folds(ex)`: turns the page folds to a line of its own (an item's page, the holder's turns about other items):
  *  { skip: the messages not drawn, by index; rows: its fold lines, placed by time; hides(at): their steps }.
- *  `acts({ st, sid, held })`: a held or queued message's controls as the page has them (heldRow, queuedRow). */
+ *  `acts({ st, sid, held })`: a held or queued message's controls as the page has them (heldRow, queuedRow).
+ *  `wait(e)`: { words, line } your held or queued note as the page tells it (an item's page, #419: your words alone,
+ *  "Waiting: cue-12 is finishing something, your note goes in next"). */
 function chatHtml(it, s, harness, paged = false, page = null) {
   const original = conversation(it, s);
   const ex = original.map(deskSaidE);
@@ -246,6 +248,8 @@ function laterOwn(e, page, key, meta) {
 function queuedRow(s, page, key = "queued") {
   const sid = esc(s.session_id), now = `<button class="q-now" data-act="send-now" data-sid="${sid}">Send now</button>`;
   const m = { st: "queued", to: msgTo(s), acts: page?.acts?.({ st: "queued", sid: s.session_id }) ?? now };
+  const w = page?.wait?.(s.queued);
+  if (w) return msgRow({ ...m, say: esc(w.line) }, yourBubble({ ...s.queued, text: w.words }, `${s.session_id}:queued`, "", true) + thumbs(s.queued.images), "queued", ` data-key="${esc(key)}"`);
   const own = laterOwn(s.queued, page, key, msgLine(m));
   if (own) return own;
   const cue = cueSaid(s.queued.text);
@@ -262,6 +266,8 @@ function heldRow(s, page, key = "held") {
   const m = heldWhy ? { st: "failed", why: esc(heldWhy.slice(15)), acts, to: msgTo(s) } : { st: "held", acts, to: msgTo(s) };
   const mine = page?.acts?.({ st: m.st, held: true, sid: s.session_id });
   if (mine != null) m.acts = mine;
+  const w = !heldWhy && page?.wait?.(s.held);
+  if (w) return msgRow({ ...m, say: esc(w.line) }, yourBubble({ ...s.held, text: w.words }, `${s.session_id}:held`, "", true) + thumbs(s.held.images), "queued held", ` data-key="${esc(key)}"`);
   const own = !heldWhy && laterOwn(s.held, page, key, msgLine(m));
   if (own) return own;
   const cue = cueSaid(s.held.text);

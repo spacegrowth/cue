@@ -280,3 +280,34 @@ fn a_working_item_says_what_its_holder_does_and_when_it_stalls() {
     assert_eq!(it["state"], "needs_you", "{it}");
     assert!(it["act"].is_null(), "{it}");
 }
+
+/// A turn that ended on a question waits on you; your note to its holder from the item's page (#419) takes it off
+/// Waiting on you at once, at work while the note goes in, and a turn that ends on a question after it waits on you
+/// again.
+#[test]
+fn a_note_from_the_items_page_takes_it_off_waiting_on_you() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    ends(&w, &l, "ITEM: Header\nROUTE: #new -> cue-teams | why: it knows");
+    let id = item(&desk(&w, &project), "Header")["id"].as_str().unwrap().to_string();
+    let state = || item(&desk(&w, &project), "Header")["state"].as_str().unwrap_or("").to_string();
+    w.advance(1000);
+    w.hosted_says(&h, HostedEvent::Taken { text: "Header".into() });
+    w.advance(1000);
+    ends(&w, &h, "I moved the header.\n\nShould the footer move too?");
+    assert_eq!(state(), "needs_you");
+    // Your note, as the page sends it: to its holder about the item, then noted on it.
+    w.advance(1000);
+    w.hub().send_to_session(&h, &format!("About #{id} (Header): Yes, and make it smaller"), &[], false).unwrap();
+    w.hub().desk_item_act(&id, "wrote_holder", "Yes, and make it smaller").unwrap();
+    w.settle();
+    assert_eq!(state(), "working", "off Waiting on you once your note went: {}", item(&desk(&w, &project), "Header"));
+    w.advance(1000);
+    w.hosted_says(&h, HostedEvent::Taken { text: format!("About #{id} (Header): Yes, and make it smaller") });
+    w.settle();
+    assert_eq!(state(), "working", "at work on your note");
+    w.advance(1000);
+    ends(&w, &h, "Moved and shrank it.\n\nKeep the old colour?");
+    assert_eq!(state(), "needs_you", "a new question waits on you again");
+}

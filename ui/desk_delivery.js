@@ -12,7 +12,9 @@ function deskMsgState(step, item, to, fallback = "delivered") {
   // The hub's own word that it didn't go (#437): red, why, and Retry from its step.
   const went = step.delivery?.went || "";
   if (went.startsWith("failed")) return { st: "failed", why: esc(went.replace(/^failed:?\s*/, "") || "it didn't go"), sid, step: step.id };
-  if (!session) return none;
+  // Sent back with every working folder in use (#419): it goes when one is free, not "Sending…" or "Delivered".
+  const copy = deskCopyWait(item);
+  if (!session) return copy || none;
   const normalize = (text) => String(text || "").replace(/\s+/g, " ").trim();
   const expected = step.delivery && normalize(step.delivery.text);
   // The same words sent again later: what's in the session after that is the later one's.
@@ -38,8 +40,10 @@ function deskMsgState(step, item, to, fallback = "delivered") {
   if (kept(session.queued)) return { st: "queued", sid };
   if (history.some((e) => e.unsent)) return { st: "failed", why: "it may have run as a command, or still be in its box", sid };
   if (history.some((e) => e.pending)) return { st: "sending", sid };
-  return none;
+  return copy ? { ...copy, sid } : none;
 }
+/** Item `item` queued for a free working folder (desk_trees.rs tree_wait): what you sent it waits with it (#419). */
+const deskCopyWait = (item) => (item.state === "queued" && item.tree_wait ? { st: "sending", note: "Waiting: sent back, it starts when a working folder is free" } : null);
 /** The session item `item`'s page means by a name in a step's "to <name>" / "sent back to <name>" / "note to <name>":
  *  its holder (or the lead it works for) or the Desk's lead; "" for neither. */
 function deskToSid(item, name) {

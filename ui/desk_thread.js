@@ -289,7 +289,7 @@ function deskItemChat(i, d, s) {
   const checks = (d.checks || []).filter((c) => c.id === i.id).map((c) => ({ at: c.at, html: keyed(deskCheckLine(c, d), `chk:${c.id}:${c.at}`) }));
   // Its held and queued lines' controls as the item's own (#422): Edit back into this page's box, not the session's.
   const acts = (m) => deskMsgActs({ ...m, item: i.id });
-  const rows = deskChatRows(s, { extra: checks, folds: deskChatFolds(i, d), say: deskSaidWords, reply: (e) => deskChatReply(i, e), acts });
+  const rows = deskChatRows(s, { extra: checks, folds: deskChatFolds(i, d), say: deskSaidWords, reply: (e) => deskChatReply(i, e), acts, wait: (e) => deskNoteWaits(i, e) });
   // Not twice: what the chat's own outbox shows already (chat/send.js), its held or queued line, or its thread has.
   const waits = (p) => p.text.trim() && [s.held, s.queued].some((w) => String(w?.text || "").includes(p.text.trim()));
   // What the hub says didn't reach it (#437: Cue stopped, the session was gone): red with why and Retry, kept across
@@ -300,7 +300,7 @@ function deskItemChat(i, d, s) {
   // Sent from here and not in its chat yet: its one line (#422), Sending till it is, red with Retry and Edit if it
   // couldn't go.
   const mine = (deskPending.get(i.id) || []).filter((p) => !sent(p)).map((p) => {
-    const m = { ...(p.failed != null ? { st: "failed", why: esc(p.failed), retry: p.at } : { st: "sending" }), to: p.why === "lead" ? deskLeadName(d) : i.holder?.name, item: i.id };
+    const m = { ...(p.failed != null ? { st: "failed", why: esc(p.failed), retry: p.at } : deskCopyWait(i) || { st: "sending" }), to: p.why === "lead" ? deskLeadName(d) : i.holder?.name, item: i.id };
     const pics = p.pics ? `<div class="dk-tpn">${p.pics === 1 ? "1 picture" : `${p.pics} pictures`}</div>` : "";
     return keyed(msgRow({ ...m, acts: deskMsgActs(m), extra: p.why === "back" ? ' · <span class="ml-back">sent back</span>' : "" }, `<div class="cv-you-text">${esc(p.text).replace(/\n/g, "<br>")}</div>${pics}`), `p:${p.at}`);
   }).join("");
@@ -310,6 +310,17 @@ function deskItemChat(i, d, s) {
   }).join("");
   const where = sessionOf(s.session_id) ? whereNow(null, s) : "";
   return `<div class="dk-ichat" data-thread-for="${esc(`${i.project}|${i.id}`)}">${rows}${failed}${mine}${where ? keyed(where, "where") : ""}</div>`;
+}
+/** Your note about item `i` waiting for its holder at work, kept in Cue or queued (#419): { words: yours alone, without
+ *  the "About #id (title): " or send-back wrapping Cue sent it in; line: "Waiting: cue-12 is finishing something, your
+ *  note goes in next" }. null for a note about something else. */
+function deskNoteWaits(i, e) {
+  const t = String(e?.text || ""), id = i.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const about = new RegExp(`^About #${id} \\(`).test(t) && deskAboutHead(e);
+  const back = new RegExp(`^(?:For your teammate [^:\\n]+: )?Desk item #${id} \\([^\\n]*?\\) isn't done: `).exec(t);
+  const words = about ? about.text : back ? t.slice(back[0].length).replace(/\n+Its fixes stay in #[\s\S]*$/, "") : null;
+  if (words == null) return null;
+  return { words: words.trim(), line: `Waiting: ${esc(i.holder?.name || "its session")} is finishing something, your note goes in next` };
 }
 /** Item `i`'s panel, beside its chat on its page (#418): This item (its state, what
  *  it waits on, its buttons; who has it and who added it), You'll see as ticks, What to try, its record, then Open its

@@ -81,8 +81,10 @@ pub(super) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
         }
     }
     // Queued, but its holder is on it anyway (#342): its ask, or the question its turn ended on, waits on you here
-    // too, not only in its own chat. A stop with no question stays the lead's (it's queued, not stalled).
-    if it.state == "queued" && crew_parts(&h).is_none() && super::desk_stall::on_queued(st, &h.sid, &it.id) {
+    // too, not only in its own chat. A stop with no question stays the lead's (it's queued, not stalled). Not once you
+    // sent it back and it waits for a free working folder (#419): your Send back is the answer, it goes with it.
+    let back_waits = it.tree_wait && !it.back_waiting.is_empty();
+    if it.state == "queued" && !back_waits && crew_parts(&h).is_none() && super::desk_stall::on_queued(st, &h.sid, &it.id) {
         if let Some(a) = ask_of(st, &h) {
             out.state = "needs_you".into();
             out.ask = Some(ask_view(a));
@@ -116,8 +118,9 @@ pub(super) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
         let active = if crew_parts(&h).is_some() {
             at_work(st, &h)
         } else {
+            // Or a note of yours waits for it, kept in Cue or queued in its box (#419): it goes in next.
             super::desk_stall::still_at_it(st, &h.sid) || (out.now_on && st.sessions.get(&h.sid).is_some_and(|s| {
-                s.state != "stopped" && s.thread.last().is_some_and(|e| e.role == "you" && e.pending)
+                s.state != "stopped" && (s.held.is_some() || s.queued.is_some() || s.thread.last().is_some_and(|e| e.role == "you" && e.pending))
             }))
         };
         if !active && !wrote_just_now(st, &h) {

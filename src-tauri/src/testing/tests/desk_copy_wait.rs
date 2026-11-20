@@ -152,3 +152,30 @@ fn a_sent_back_item_waiting_for_a_working_folder_names_who_uses_them_and_start_n
     w.settle();
     assert_eq!(item(&w, &project, "Header jumps")["state"], "working");
 }
+
+#[test]
+fn a_sent_back_item_waiting_for_a_working_folder_never_waits_on_you() {
+    // #419: sent back with every working folder in use, its holder's last turn ending on a question put it in Waiting
+    // on you, though your Send back was the answer and goes with it once a folder is free.
+    let w = World::new();
+    let (_, project, id) = super::desk_commit::ready(&w);
+    let top = |w: &World| {
+        let out = String::from_utf8(std::process::Command::new("git").arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
+        out.lines().next().and_then(|l| l.strip_prefix("worktree ")).unwrap().to_string()
+    };
+    w.hub().desk_hold_copies(&top(&w), &[1, 2, 3]);
+    let snap = w.snapshot();
+    let h = snap.session_ids().into_iter().find(|s| snap.session(s)["name"] == "cue-teams").unwrap();
+    w.advance(1000);
+    w.hub().desk_item_act(&id, "send_back", "The dot is too big").unwrap();
+    w.settle();
+    // Its holder, asked about it meanwhile, ends its turn on a question.
+    w.advance(1000);
+    w.hub().send_to_session(&h, &format!("About #{id} (Header jumps): is the dot the only thing left?"), &[], false).unwrap();
+    w.settle();
+    w.advance(1000);
+    super::desk_commit::ends(&w, &h, &format!("Looked at #{id} again.\n\nShould the dot blink too?"));
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!((it["state"].as_str(), it["tree_wait"].as_bool()), (Some("queued"), Some(true)), "still waiting for a folder, not Waiting on you: {it}");
+    assert!(it["back_waiting"].as_str().is_some_and(|b| b.contains("The dot is too big")), "{it}");
+}

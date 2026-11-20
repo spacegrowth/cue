@@ -13,12 +13,14 @@ for (const kind of ["task", "feature", "bug"]) {
     await box.press("Enter");
     await cue.called("desk_item_act", { id: "d2", act: "send_back" });
     // The item's page is its holder's chat (#418): your send-back shows in it once, as the message to its busy holder
-    // waiting there, not sent yet, its line the same as any message's (#422) (not also as a line of its own).
+    // waiting there, not sent yet, its line the same as any message's (#422) (not also as a line of its own): your words
+    // alone, and that it goes in next once its holder is done (#419).
     const chat = page.locator(".dk-right .dk-ichat");
-    const msg = chat.locator(".cv-you", { hasText: "isn't done: Fix the spacing" }).last();
+    const msg = chat.locator(".cv-you", { hasText: "Fix the spacing" }).last();
     const line = msg.locator(".msg-line");
     await expect(line).toHaveClass(/ml-held/);
-    await expect(line).toContainText("Not sent yet · Cue sends it when its turn ends");
+    await expect(line).toContainText(/Waiting: .+ is finishing something, your note goes in next · Edit · Send now · Cancel/);
+    await expect(msg.locator(".cv-you-text")).toHaveText("Fix the spacing");
     await expect(chat.locator(".cv-you.msg-sending")).toHaveCount(0);
     // Handed to the running agent, awaiting its delivery witness: still queued.
     await cue.change((st) => {
@@ -26,8 +28,7 @@ for (const kind of ["task", "feature", "bug"]) {
       s.queued = s.held; s.thread.push({ ...s.held, pending: true }); s.held = null;
     });
     await expect(line).toHaveClass(/ml-queued/);
-    await expect(line).toContainText("Queued for");
-    await expect(line).toContainText("it reads this after its current step · Send now");
+    await expect(line).toContainText(/Waiting: .+ is finishing something, your note goes in next · Send now/);
     await cue.change((st) => {
       const s = st.sessions.find((s) => s.session_id === "lead");
       s.queued = null; s.thread.at(-1).pending = false;

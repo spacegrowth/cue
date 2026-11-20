@@ -154,6 +154,14 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
                 return Err("nothing written".into());
             }
             let project = it.project.clone();
+            // To its holder, about an item at work: the turn it ended on before your note is no longer what it waits
+            // on (#419). A stall (a question, a stop) counts from here, so it leaves Waiting on you for at work while
+            // your note waits to go in or is read; a turn that ends on it after that is new.
+            if act == "wrote_holder" && it.state == "working" {
+                if let Some(sid) = holder.as_ref().filter(|h| h.kind != "crew").map(|h| h.sid.clone()) {
+                    st.desk.sent_at.insert(id.to_string(), (sid, now));
+                }
+            }
             let to = if act == "wrote_lead" { st.desk.lead.get(&project).map(|l| l.name.clone()) } else { holder.map(|h| h.name) };
             you_wrote(st, &project, id, &words, &to.map_or(String::new(), |n| format!("to {n}")), now, &mut fx);
             return Ok(fx);

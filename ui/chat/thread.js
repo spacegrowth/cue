@@ -131,18 +131,20 @@ function yourBubble(e, key, style = "", later = false, head = "") {
 /** The one line under a message you, the Desk lead or Cue passed on: a session's chat, the Desk lead's chat, an item's
  *  thread and the Inbox all draw it with this. `m`: { st: "sending" | "held" | "queued" | "delivered" | "failed", to:
  *  who it's for, from: who wrote it when not you, at: when it was delivered (ms), why: why it couldn't send (html),
- *  note: Sending's own words when it says more (html), acts: its controls (html), extra: after it all (html), sid: the
+ *  note: Sending's own words when it says more (html), say: a held or queued line's own words (html, an item's page's
+ *  "Waiting: …", #419), acts: its controls (html), extra: after it all (html), sid: the
  *  session it goes to (a copy's progress updates the line in place, chat/send.js onUpload) }. */
 function msgLine(m) {
   const to = esc(m.to || "it"), from = m.from ? `From <b>${esc(m.from)}</b> · ` : "";
   const mark = { delivered: "✓", failed: "!" }[m.st] || "◌";
-  const words = {
+  let words = {
     sending: m.note || "Sending…",
     held: "<b>Not sent yet</b> · Cue sends it when its turn ends",
     queued: `<b>Queued for ${to}</b> · it reads this after its current step`,
     delivered: `<b>Delivered to ${to}</b>${m.at ? ` · ${esc(clockAt(m.at))}` : ""}`,
     failed: `<b>Couldn't send</b>${m.why ? ` · ${m.why}` : ""}`,
   }[m.st];
+  if (m.say && (m.st === "held" || m.st === "queued")) words = m.say;
   return `<div class="cv-meta msg-line ml-${m.st}"${m.sid ? ` data-sid="${esc(m.sid)}"` : ""}><span class="ml-mark" aria-hidden="true">${mark}</span> ${from}<span class="ml-words">${words}</span>${m.acts ? ` · <span class="ml-acts">${m.acts}</span>` : ""}${m.extra || ""}</div>`;
 }
 /** A message drawn as the chat's "you" bubble with its one line under it: `inner` is the bubble (yourBubble's), `m`

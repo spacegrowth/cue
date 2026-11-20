@@ -47,10 +47,10 @@ test("an item's page is its holder's chat, other items' turns folded, the item b
   await expect(side).toBeVisible();
   await expect(page.locator(".dk-board > .dk-items")).toBeVisible();
   // Narrow, the whole panel over the chat; wide enough for both, beside it.
-  let [chatBox, sideBox] = [await ichat.boundingBox(), await side.boundingBox()];
-  expect(sideBox.y + sideBox.height).toBeLessThanOrEqual(chatBox.y + 1);
+  // (Polled: a redraw can catch either one between boxes.)
+  await expect(async () => { const [c, p] = [await ichat.boundingBox(), await side.boundingBox()]; expect(p.y + p.height).toBeLessThanOrEqual(c.y + 1); }).toPass();
   await page.setViewportSize({ width: 1728, height: 1000 });
-  await expect.poll(async () => (await side.boundingBox()).x).toBeGreaterThan((await ichat.boundingBox()).x + 200);
+  await expect(async () => { const [c, p] = [await ichat.boundingBox(), await side.boundingBox()]; expect(p.x).toBeGreaterThan(c.x + 200); }).toPass();
   await page.screenshot({ path: test.info().outputPath("item-chat-wide.png") });
   await page.setViewportSize({ width: 1280, height: 800 });
   await expect(side.locator(".dk-pnow .dk-psh")).toHaveText("This item");
