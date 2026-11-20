@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS exchanges (
   images      TEXT NOT NULL DEFAULT '[]',
   voice       INTEGER NOT NULL DEFAULT 0, -- yours, said by voice
   status_ask  TEXT NOT NULL DEFAULT '',    -- yours: what a prompt hook added to ask for a status list
+  from_name   TEXT NOT NULL DEFAULT '',    -- another session's message: who sent it
+  from_sid    TEXT NOT NULL DEFAULT '',    -- and that session's id, when Cue knew it
   PRIMARY KEY (session_id, at_ms, role)
 );
 
@@ -380,7 +382,15 @@ fn migrate(c: &Connection, version: i64) -> rusqlite::Result<()> {
     if version < 10 {
         drop_dispatch(c)?;
     }
-    seed_desk_members(c, version)
+    seed_desk_members(c, version)?;
+    // Who sent another session's message: the columns, so an older page of a chat keeps its sender (#513). A new
+    // database has them already.
+    if version < 12 {
+        let _ = c.execute("ALTER TABLE exchanges ADD COLUMN from_name TEXT NOT NULL DEFAULT ''", []);
+        let _ = c.execute("ALTER TABLE exchanges ADD COLUMN from_sid TEXT NOT NULL DEFAULT ''", []);
+        c.pragma_update(None, "user_version", 12)?;
+    }
+    Ok(())
 }
 
 /// Version 11 (a database older than that): each Desk keeps its own list of sessions. It starts with the sessions that hold its items now (not

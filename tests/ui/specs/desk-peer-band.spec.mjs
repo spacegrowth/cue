@@ -53,3 +53,26 @@ for (const scheme of ["light", "dark"]) {
     if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/desk-peer-band-${scheme}.png` });
   });
 }
+
+for (const scheme of ["light", "dark"]) {
+  test(`a message from another Desk on an older page of the lead's chat keeps its band (${scheme}) (#513)`, async ({ page, cue }) => {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.setViewportSize({ width: 1500, height: 950 });
+    await cue.open("desk");
+    await cue.change((st, at) => {
+      const site = st.desk.projects.find((p) => p.project === "website");
+      site.name = "Docs site";
+      site.items = [...(site.items || []), { id: "w118", project: "website", kind: "task", title: "Fix the scraper", state: "working", created: at, updated: at, holder: { kind: "session", sid: "site", name: "site-lead" }, from: "you" }];
+    }, NOW - 60 * 60 * 1000);
+    // Cue's log, as the hub reads it back (db::session_log_page): the sender comes with an older message.
+    await cue.override("session_log_page", ({ beforeMs }) => [
+      { role: "peer", from: "site-lead", from_sid: "site", text: "An older one from the Docs site.", at_ms: beforeMs - 5000, images: [] },
+      { role: "agent", text: "Noted.", at_ms: beforeMs - 4000, images: [] },
+    ]);
+    await openDesk(page);
+    const band = page.locator(".dk-chat .dk-xband");
+    await expect(band).toHaveCount(1);
+    await expect(band.locator(".dk-xb-t")).toHaveText("An older one from the Docs site.");
+    await expect(band.locator(".dk-xb-chip")).toHaveText("Docs site");
+  });
+}

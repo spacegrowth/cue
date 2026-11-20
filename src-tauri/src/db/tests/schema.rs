@@ -227,3 +227,32 @@ fn the_old_folder_moves_over_and_image_paths_follow() {
     assert!(crate::server::move_from_old_folder(&old, &new).is_none(), "only once: the database is there now");
     std::fs::remove_dir_all(&root).unwrap();
 }
+
+#[test]
+fn another_sessions_message_keeps_its_sender_on_an_older_page_of_the_chat() {
+    let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("cue-db-v11-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::env::set_var("CUE_HOME", &dir);
+    // Version 11's exchanges table (no sender columns), with a message from another session in it.
+    {
+        let c = Connection::open(path()).unwrap();
+        c.execute_batch("CREATE TABLE exchanges (session_id TEXT NOT NULL, at_ms INTEGER NOT NULL, role TEXT NOT NULL, text TEXT NOT NULL, images TEXT NOT NULL DEFAULT '[]', voice INTEGER NOT NULL DEFAULT 0, status_ask TEXT NOT NULL DEFAULT '', PRIMARY KEY (session_id, at_ms, role));
+            INSERT INTO exchanges (session_id, at_ms, role, text) VALUES ('lead', 10, 'peer', 'from before');
+            PRAGMA user_version = 11;").unwrap();
+    }
+    reset();
+    let old = session_log_page("lead", 1000, 30);
+    assert_eq!((old[0]["text"].as_str(), old[0].get("from"), old[0].get("from_sid")), (Some("from before"), None, None), "an old row keeps its text, with no sender");
+    let mut e = session("lead", "").thread[0].clone();
+    (e.role, e.at_ms, e.text, e.from, e.from_sid) = ("peer".into(), 20, "the loops are green".into(), "cue-loops".into(), "loops-lead".into());
+    with(|c| put_exchange(c, "lead", &e)).unwrap();
+    let page = session_log_page("lead", 1000, 30);
+    assert_eq!((page[1]["from"].as_str(), page[1]["from_sid"].as_str()), (Some("cue-loops"), Some("loops-lead")));
+    let back: crate::model::Exchange = serde_json::from_value(page[1].clone()).unwrap();
+    assert_eq!((back.from.as_str(), back.from_sid.as_str()), ("cue-loops", "loops-lead"), "read back as the live thread has it");
+    std::env::remove_var("CUE_HOME");
+    reset();
+    let _ = std::fs::remove_dir_all(&dir);
+}
