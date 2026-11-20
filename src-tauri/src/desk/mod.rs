@@ -150,6 +150,11 @@ pub fn handed_words(it: &DeskItem, why: &str, rule: &str) -> String {
     if !rule.is_empty() {
         out.push_str(&format!("\n{}", rule.trim_start_matches("- ")));
     }
+    // Your name (owner.rs), so what it writes about you uses it.
+    let told = crate::owner::told_line();
+    if !told.is_empty() {
+        out.push_str(&format!("\n{}", told.trim_end()));
+    }
     match &it.holder {
         Some(h) if h.kind == "crew" => format!("For your teammate {}: {out}", h.name),
         _ => out,

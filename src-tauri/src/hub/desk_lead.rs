@@ -296,6 +296,8 @@ impl Hub {
             out.push_str(crate::desk::ROUTING_GUIDANCE);
             out.push('\n');
             out.push_str("\nAnswer the user's question or request directly in plain language before any Desk command lines.\n");
+            // Your name (owner.rs): running leads get it too, and Cue's own words above use it.
+            out.push_str(&crate::owner::told_line());
             if with_skill {
                 out.push('\n');
                 out.push_str(crate::desk::LEAD_SKILL);
@@ -304,7 +306,7 @@ impl Hub {
             (out, failed)
         });
         // Titles and names are anyone's words: none of them may close the block early.
-        (format!("<desk {}</desk>", text.replace("</desk", "</ desk")), failed)
+        (format!("<desk {}</desk>", crate::owner::in_prompt(&text).replace("</desk", "</ desk")), failed)
     }
 
     /// The short, visible hand-off for the successor. The full routing context travels separately in the Desk block.

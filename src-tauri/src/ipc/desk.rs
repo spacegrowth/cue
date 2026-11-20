@@ -193,7 +193,7 @@ pub(crate) fn desk_away_sweep_with(h: &Arc<Hub>, desk: &str, rules: &serde_json:
     if !h.desk_away_sweeping(desk) {
         return Ok(());
     }
-    let words = crate::hub::desk_away_sweep_words(rules);
+    let words = crate::owner::in_prompt(&crate::hub::desk_away_sweep_words(rules));
     if let Err(e) = desk_send_with(h, desk, &words) {
         h.desk_away_sweep_failed(desk);
         return Err(e);
@@ -434,15 +434,22 @@ pub(crate) async fn desk_commit_undo(hub: State<'_, Arc<Hub>>, id: String) -> Re
 /// `project`'s done items, newest first, `take` of them after the one the list ends with (`before_ms`, `before_id`):
 /// the Desk's list loads them as you scroll.
 #[tauri::command]
-pub(crate) async fn desk_done(hub: State<'_, Arc<Hub>>, project: String, before_ms: Option<u64>, before_id: Option<String>, take: u32) -> Result<Vec<crate::desk::DeskItem>, String> {
-    with_hub(&hub, move |h| h.desk_done_page(&project, before_ms.zip(before_id.as_deref()), take)).await
+pub(crate) async fn desk_done(hub: State<'_, Arc<Hub>>, project: String, before_ms: Option<u64>, before_id: Option<String>, take: u32) -> Result<serde_json::Value, String> {
+    with_hub(&hub, move |h| shown(h.desk_done_page(&project, before_ms.zip(before_id.as_deref()), take))).await
+}
+
+/// `list` as the screen shows it: "the owner" as your name (owner.rs).
+fn shown<T: serde::Serialize>(list: T) -> serde_json::Value {
+    let mut v = serde_json::to_value(list).unwrap_or_default();
+    crate::owner::on_screen_json(&mut v);
+    v
 }
 
 /// `project`'s lead's own moves (#374), newest first, `take` of them after the one the list ends with (`before_ms`,
 /// `before_id`): "What the lead moved" loads them as you scroll.
 #[tauri::command]
-pub(crate) async fn desk_moves(hub: State<'_, Arc<Hub>>, project: String, before_ms: Option<u64>, before_id: Option<String>, take: u32) -> Result<Vec<crate::desk::DeskDecision>, String> {
-    with_hub(&hub, move |h| h.desk_moves_page(&project, before_ms.zip(before_id.as_deref()), take)).await
+pub(crate) async fn desk_moves(hub: State<'_, Arc<Hub>>, project: String, before_ms: Option<u64>, before_id: Option<String>, take: u32) -> Result<serde_json::Value, String> {
+    with_hub(&hub, move |h| shown(h.desk_moves_page(&project, before_ms.zip(before_id.as_deref()), take))).await
 }
 
 /// Clear on "What the lead moved": the list starts again from now.

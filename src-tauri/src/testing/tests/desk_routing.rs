@@ -222,7 +222,8 @@ fn a_working_item_whose_holder_stopped_is_sent_again_on_a_route_or_restart() {
     let now = desk(&w, &project);
     let again: Vec<_> = now["decisions"].as_array().unwrap().iter().filter(|d| d["text"] == format!("Sent #{id} to cue-teams again")).collect();
     assert_eq!(again.len(), 1, "{now}");
-    assert_eq!(again[0]["why"], "the owner says it's still off", "{now}");
+    // "the owner" on screen is your name, or "you" with none (owner.rs; none in tests).
+    assert_eq!(again[0]["why"], "You say it's still off", "{now}");
     // Cut off with no DONE: the item waits on you, and a route to the same holder sends it again.
     ends(&w, &h, "On it.");
     w.settle();

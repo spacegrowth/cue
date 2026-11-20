@@ -21,6 +21,7 @@ mod model;
 mod notify;
 mod lands;
 mod one_way;
+mod owner;
 mod quit;
 mod sounds;
 mod talk;

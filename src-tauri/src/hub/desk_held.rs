@@ -132,7 +132,7 @@ impl Hub {
             }
         };
         self.changed();
-        Some((id, given("deny", Some(HELD_WORDS))))
+        Some((id, given("deny", Some(&crate::owner::in_prompt(HELD_WORDS)))))
     }
 
     /// Your answer to held step `id`: `allow` or not. Then each session whose oldest held steps are all answered is
@@ -174,7 +174,7 @@ impl Hub {
                 return;
             }
         };
-        let words = release_words(&ready);
+        let words = crate::owner::in_prompt(&release_words(&ready));
         if let Err(e) = self.send_to_session(sid, &words, &[], false) {
             eprintln!("cue: couldn't tell {sid} the owner's answers to its held steps: {e}");
         }

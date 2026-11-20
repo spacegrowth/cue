@@ -32,6 +32,7 @@ mod desk_wait_list;
 mod desk_context;
 mod desk_members;
 mod desk_numbers;
+mod desk_owner;
 mod desk_waits;
 mod desk_routes;
 mod desk_pick;

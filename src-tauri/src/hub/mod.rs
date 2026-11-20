@@ -532,6 +532,8 @@ impl Hub {
         }
         let parked = st.parked.iter().filter(|p| !st.restarting.contains_key(&p.session.origin.session_id)).cloned().collect();
         let restarting: serde_json::Map<String, Value> = st.restarting.iter().map(|(sid, r)| (sid.clone(), json!({ "step": r.step, "since_ms": r.since_ms, "servers": r.servers.as_ref().map(Vec::len), "mcp": r.mcp }))).collect();
+        let mut desk = Self::desk_view(st, now);
+        crate::owner::on_screen_json(&mut desk);
         let small = json!({
             "ended": Self::ended_view(st),
             "restarting": restarting,
@@ -544,8 +546,8 @@ impl Hub {
             "codex_usage": st.codex_rates,
             // Today's numbers (today.rs), not every answer of the day: those grow all day.
             "today": today::today(&st.answers, now),
-            // Each project's Desk (desk.rs).
-            "desk": Self::desk_view(st, now),
+            // Each project's Desk (desk.rs), "the owner" in it as your name (owner.rs).
+            "desk": desk,
             // Each lead's loose ends (open.rs): the Inbox side's Open rows.
             "open": Self::open_view(st),
         });

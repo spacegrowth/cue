@@ -42,6 +42,9 @@ impl Hub {
             Some(desk) => [desk.to_string(), crate::one_way::ask_first(&kinds)].join("\n").trim_end().to_string(),
             None => super::team_out::skill_for(&kinds),
         };
+        // Your name (owner.rs), so what it writes about you uses it.
+        let told = crate::owner::told_line();
+        let skill = if told.is_empty() { skill } else { format!("{skill}\n{}", told.trim_end()) };
         let mut args = super::team_out::with_skill(agent, &with.args, &skill);
         // A Desk lead runs in fast mode: turned on as it starts or resumes (hosted, Claude Code turns it on only when
         // its settings say so), and left to it after that. Other sessions start as they are.

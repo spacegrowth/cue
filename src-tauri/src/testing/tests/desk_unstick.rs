@@ -279,7 +279,7 @@ fn a_held_item_waits_on_its_shelf_until_you_start_it() {
     w.advance(1000);
     w.settle();
     let t = item(&w, &project, "Tidy the README");
-    assert_eq!((t["state"].as_str(), t["held"][2].as_str()), (Some("held"), Some("the owner wants it later")), "{t}");
+    assert_eq!((t["state"].as_str(), t["held"][2].as_str()), (Some("held"), Some("You want it later")), "{t}");
     let busy = item(&w, &project, "Header jumps")["id"].as_str().unwrap().to_string();
     ends(&w, &l, &format!("HOLD: #{busy} | why: later"));
     w.advance(1000);
