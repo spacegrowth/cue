@@ -17,30 +17,25 @@ function deskShow(what) {
 async function deskSendBox(key) {
   const to = deskBoxes.get(key);
   const text = draft(key).text.trim();
-  const images = draft(key).images.map(({ name, mime, data }) => ({ name, mime, data }));
+  const images = boxImages(draft(key).images);
   if (!to || (!text && !images.length)) return;
   // About an item, from its page or its row: where it goes is read now, from where the item stands, not from when the
   // box was drawn (#437).
-  if (to.item && !/^[/!]/.test(text)) return deskSendItem(to, key, text, images);
+  if (to.item && !/^[/!]/.test(text)) return deskSendItem(to, key, text);
   if (to.sid) {
+    // To a crew member: through its lead, named (the guards, "It's restarting" and the rest, look at the lead).
     if (!to.mate) await sendTo(to.sid, false, key);
-    else if (state.restarting?.[to.sid]) return toast("It's restarting. Send once it's back.");
-    else if (sessionOf(to.sid)?.state === "deciding") return toast("It's asking you something first. Answer that, then send.");
-    else await deliver(to.sid, key, (typed, images) => {
-      const said = `About ${to.mate}: ${typed}`;
-      insSent(to.sid, said, false);
-      return invoke("send_to_session", { sessionId: to.sid, text: said, images, now: false });
-    });
+    else await deliver(to.sid, key, (typed, images) => boxToSession(to.sid)(`About ${to.mate}: ${typed}`, images), true);
     return;
   }
-  return deskSendLead(to, key, text, images);
+  return deskSendLead(to, key, text);
 }
 /** What you wrote about item `to.item` from box `key` (#437). Held by a live session: to it, at any stage, as a note
  *  the hub keeps on the item's Thread before it goes and marks sent, queued or not sent (with Retry); ready to check,
  *  it goes back with your words, unless they ask a question (to check or done: a note it answers). Held by no one,
  *  or done: to the lead. Your words stay in the box until the hub has
- *  them, so a restart or a change of state can't lose them. */
-async function deskSendItem(to, key, text, images) {
+ *  them, so a restart or a change of state can't lose them. `text`: what's in the box, trimmed. */
+async function deskSendItem(to, key, text) {
   const project = to.project || deskSelection(), it = deskItem(project, to.item);
   if (!it) return toast("That item isn't on this Desk any more.");
   // A question on an item to check or done (#475): its holder answers it, and the item stays where it is unless that
@@ -49,111 +44,100 @@ async function deskSendItem(to, key, text, images) {
   const phrase = phraseSending && it.state === "to_check";
   const asks = phrase || (["to_check", "done"].includes(it.state) && /\?\s*$/.test(text || ""));
   const hs = deskHolderSid(it), live = hs && (sessionOf(hs) || it.state === "to_check" || asks);
-  if (!it.holder || !live || (!asks && ["done", "dropped"].includes(it.state))) return deskSendLead({ project, item: it.id }, key, text, images);
+  if (!it.holder || !live || (!asks && ["done", "dropped"].includes(it.state))) return deskSendLead({ project, item: it.id }, key, text);
   if (it.state === "to_check" && !asks) {
-    await deskSendBack(it.id, key, text, images);
+    await deskSendBack(it.id, key);
     return renderMain();
   }
-  if (state.restarting?.[hs]) return toast("It's restarting. Send once it's back.");
-  if (sessionOf(hs)?.state === "deciding") return toast("It's asking you something first. Answer that, then send.");
-  // An answer: the page says what you answered (deskChain).
-  if (it.state === "needs_you") deskAnswers.set(it.id, { q: deskQuestion(it), a: text || "a picture", ask: it.ask?.item_id || "", at: now() });
-  // The box empties at once and the note is on the Thread; the saved draft goes only once the hub has the note.
-  if (!phraseSending) endDictation(key);
-  delete drafts[key];
-  const p = deskPend(it.id, text || "(a picture)", "note", images.length, { key, images, act: phrase ? "phrase" : "note" });
-  renderMain();
-  if (await deskNote(it.id, p)) saveDrafts();
-  // Didn't go: red on its Thread with why, Retry and Edit (#422). The saved draft keeps it till then, so a restart
-  // brings it back to the box.
-  else deskAnswers.delete(it.id);
-  renderMain();
+  // The guards look at its holder. The box empties at once and the note is on the Thread; the saved draft goes only
+  // once the hub has the note.
+  await boxSend({}, key, {
+    guardSid: hs, save: true,
+    // An answer: the page says what you answered (deskChain).
+    before: (t) => { if (it.state === "needs_you") deskAnswers.set(it.id, { q: deskQuestion(it), a: t || "a picture", ask: it.ask?.item_id || "", at: now() }); },
+    pending: (t, images) => deskPend(it.id, t || "(a picture)", "note", images.length, { key, images, act: phrase ? "phrase" : "note" }),
+    call: (t, images, p) => invoke("desk_item_act", { id: it.id, act: p.act, text: p.text, images: p.images }),
+    sent: () => renderMain(),
+    // Didn't go: red on its Thread with why, Retry and Edit (#422). The saved draft keeps it till then, so a restart
+    // brings it back to the box.
+    failed: (e, p) => { p.failed = e; deskAnswers.delete(it.id); renderMain(); return true; },
+  });
 }
 /** Pending note `p` on item `id` handed to the hub (act "note"): whether it took it; `p.failed` says why not. */
 async function deskNote(id, p) {
   try { await invoke("desk_item_act", { id, act: p.act || "note", text: p.text, images: p.images || [] }); return true; }
   catch (e) { p.failed = String(e); return false; }
 }
-/** Words from box `key` to the lead of `to.project`, about item `to.item` when there is one. */
-async function deskSendLead(to, key, text, images) {
+/** Words from box `key` (`text`: what's in it, trimmed) to the lead of `to.project`, about item `to.item` when there
+ *  is one. */
+async function deskSendLead(to, key, text) {
   const { project, item: id } = to;
   const it = id && deskItem(project, id);
   // About an item ready to check: it's sent back with your words, to its holder, as Send back does (off Waiting on you).
   if (it?.state === "to_check" && it.holder) {
     // Its page stays, as after anything you write about an item: the box empties and keeps the cursor.
-    await deskSendBack(id, key, text, images);
+    await deskSendBack(id, key);
     return renderMain();
   }
-  const said = it ? `About #${it.id} (${it.title}): ${text}` : text;
-  if (!phraseSending) endDictation(key);
+  let pend = null;
   // Saved without it only once it went: a restart in between leaves your words in the box.
-  delete drafts[key];
-  const list = deskSent.get(project) || [], mine = { text: said, images, at: now(), sent: 0, project };
-  list.push(mine);
-  deskSent.set(project, list);
-  // To the lead on its own: the chat shows it at once, Sending. From an item: its page stays, the box emptied and the
-  // cursor still in it, so you can go on writing (it used to swap to the lead's chat once the message went, seconds
-  // later, taking the box from under your typing); the lead's chat has it when you go back.
-  if (!it) { deskTab = "lead"; deskChatEnd = true; }
-  // About an item: on its Thread at once.
-  const pend = it && text ? deskPend(it.id, text, "lead", 0, { key, lead: mine }) : null;
-  renderMain();
-  try {
-    await invoke("desk_send", { project, text: said, images });
-    saveDrafts();
-    mine.sent = now();
-    if (it) { toast(`Sent to ${deskLeadName(deskOf(project)) || "the lead"}`); if (text) deskWrote(it.id, "wrote_lead", text); }
-  }
-  // Didn't go: red where you wrote it, the lead's chat and the item's Thread, with why, Retry and Edit (#422). A picture
-  // on its own from an item's page shows only in the lead's chat: it says so here too.
-  catch (e) { mine.failed = String(e); if (pend) pend.failed = String(e); else if (it) toast(`Not sent: ${e}`); renderMain(); }
+  await boxSend({}, key, {
+    save: true,
+    pending: (t, images) => {
+      const mine = { text: it ? `About #${it.id} (${it.title}): ${t}` : t, images, at: now(), sent: 0, project };
+      const list = deskSent.get(project) || [];
+      list.push(mine);
+      deskSent.set(project, list);
+      // To the lead on its own: the chat shows it at once, Sending. From an item: its page stays, the box emptied and
+      // the cursor still in it, so you can go on writing (it used to swap to the lead's chat once the message went,
+      // seconds later, taking the box from under your typing); the lead's chat has it when you go back.
+      if (!it) { deskTab = "lead"; deskChatEnd = true; }
+      // About an item: on its Thread at once.
+      pend = it && t ? deskPend(it.id, t, "lead", 0, { key, lead: mine }) : null;
+      return mine;
+    },
+    call: (t, images, mine) => invoke("desk_send", { project, text: mine.text, images }),
+    sent: (r, mine) => {
+      mine.sent = now();
+      if (it) { toast(`Sent to ${deskLeadName(deskOf(project)) || "the lead"}`); if (text) deskWrote(it.id, "wrote_lead", text); }
+    },
+    // Didn't go: red where you wrote it, the lead's chat and the item's Thread, with why, Retry and Edit (#422). A
+    // picture on its own from an item's page shows only in the lead's chat: it says so here too.
+    failed: (e, mine) => { mine.failed = e; if (pend) pend.failed = e; else if (it) toast(`Not sent: ${e}`); renderMain(); return true; },
+  });
 }
 /** What you wrote on item `id`'s page, sent (`act`: to its lead or its holder): kept in its Steps (hub/desk.rs act_on). */
 const deskWrote = (id, act, text) => invoke("desk_item_act", { id, act, text }).catch((e) => console.error(e));
-/** Item `id` sent back to its holder from box `key` with `text` and `images`: the box emptied once it went (kept when
- *  it didn't). Whether it went. */
-async function deskSendBack(id, key, text, images) {
-  // A quick phrase (compose.js sendPhrase): the box holds what you typed, so it isn't emptied once it goes.
+/** Item `id` sent back to its holder with what's in box `key`: the box emptied once it went (kept when it didn't).
+ *  Whether it went. */
+async function deskSendBack(id, key) {
+  // A quick phrase (compose.js sendPhrase): the box holds what you typed, so it isn't emptied, whether it goes or not.
   const phrase = phraseSending;
-  if (!phrase) endDictation(key);
-  const pend = text.trim() ? deskPend(id, text.trim(), "back", (images || []).length, { key, images }) : null;
-  if (pend) renderMain();
-  try {
-    const it = await invoke("desk_item_act", { id, act: "send_back", text, images });
-    if (!phrase) { delete drafts[key]; saveDrafts(); }
-    toast(`Sent back${it?.holder?.name ? ` to ${it.holder.name}` : ""}`);
-    return true;
-  }
-  catch (e) {
+  let pend = null;
+  const r = await boxSend({}, key, {
+    clear: "sent",
+    pending: (text, images) => (pend = text ? deskPend(id, text, "back", images.length, { key, images }) : null),
+    draw: (p) => { if (p) renderMain(); },
+    call: (text, images) => invoke("desk_item_act", { id, act: "send_back", text, images }),
+    sent: (it) => toast(`Sent back${it?.holder?.name ? ` to ${it.holder.name}` : ""}`),
     // Red on its Thread with why, Retry and Edit (#422), the box closed; a picture alone keeps its box and says why.
-    if (!pend) { toast(`Not sent: ${e}`, 5000); return false; }
-    pend.failed = String(e);
-    if (!phrase) { delete drafts[key]; saveDrafts(); }
-    if (deskBackFor === id) deskBackFor = null;
-    return false;
-  }
+    failed: (e) => {
+      if (!pend) { toast(`Not sent: ${e}`, 5000); return true; }
+      pend.failed = e;
+      if (!phrase) { delete drafts[key]; saveDrafts(); }
+      if (deskBackFor === id) deskBackFor = null;
+      return true;
+    },
+  });
+  return !!r.ok;
 }
 /** Pending message `p` (deskPend, path "holder") sent to its holder session as about its item, from a box of its own
  *  so nothing in yours is touched: deliver's outcome ({ ok } | { error }; nothing when it never went). */
 async function deskToHolder(p, k = p.key) {
   if (k !== p.key) Object.assign(draft(k), { text: p.text, images: (p.images || []).map((im) => ({ ...im })) });
-  const res = await deliver(p.sid, k, (typed, images) => {
-    const said = `${p.about}${typed || "(a picture)"}`;
-    insSent(p.sid, said, false);
-    return invoke("send_to_session", { sessionId: p.sid, text: said, images, now: false });
-  });
+  const res = await deliver(p.sid, k, boxToSession(p.sid, { about: p.about }));
   if (k !== p.key) { delete drafts[k]; saveDrafts(); }
   return res;
-}
-/** `text` and `images` put back in box `key` ahead of what's there, and the cursor in it. */
-function deskBackInBox(key, text, images = []) {
-  const d = draft(key);
-  d.text = d.text.trim() ? `${text}\n\n${d.text}` : text;
-  d.images = [...images.map((im) => ({ ...im })), ...d.images];
-  saveDrafts();
-  renderMain();
-  const el = document.querySelector(`textarea[data-text="${CSS.escape(key)}"]`);
-  if (el) { el.focus(); el.selectionStart = el.selectionEnd = el.value.length; }
 }
 /** Item `id`'s message that couldn't go, at `at`. */
 const deskFailedOf = (id, at) => (deskPending.get(id) || []).find((x) => String(x.at) === String(at) && x.failed != null);
@@ -176,8 +160,9 @@ async function deskMsgRetry(id, at) {
     return renderMain();
   }
   if (p.why === "holder") {
-    if (state.restarting?.[p.sid]) return toast("It's restarting. Send once it's back.");
-    if (sessionOf(p.sid)?.state === "deciding") return toast("It's asking you something first. Answer that, then send.");
+    // The guards first: it stays red, and why, while its holder restarts or asks you something.
+    const held = boxHeld(p.sid);
+    if (held) return toast(held);
     p.failed = null;
     renderMain();
     const res = await deskToHolder(p, `retry:${id}:${p.at}`);
@@ -187,27 +172,25 @@ async function deskMsgRetry(id, at) {
   }
   // Sent back.
   p.failed = null;
-  renderMain();
-  try {
-    const it = await invoke("desk_item_act", { id, act: "send_back", text: p.text, images: p.images || [] });
-    toast(`Sent back${it?.holder?.name ? ` to ${it.holder.name}` : ""}`);
-  }
-  catch (e) { p.failed = String(e); }
-  renderMain();
+  await boxSend({}, null, {
+    text: p.text, images: p.images || [],
+    call: () => invoke("desk_item_act", { id, act: "send_back", text: p.text, images: p.images || [] }),
+    sent: (it) => { toast(`Sent back${it?.holder?.name ? ` to ${it.holder.name}` : ""}`); renderMain(); },
+    failed: (e) => { p.failed = e; renderMain(); return true; },
+  });
 }
 /** Retry on message `m` to the lead that couldn't go (its chat's, and its item's Thread's copy): sent again as it was. */
 async function deskLeadRetry(m) {
   const pend = deskPendOf(m);
   m.failed = null;
   if (pend) pend[1].failed = null;
-  renderMain();
-  try {
-    await invoke("desk_send", { project: m.project, text: m.text, images: m.images || [] });
-    m.sent = now();
-    if (pend) deskWrote(pend[0], "wrote_lead", pend[1].text);
-  }
-  catch (e) { m.failed = String(e); if (pend) pend[1].failed = String(e); }
-  renderMain();
+  // Its own words as they first went (the box isn't touched).
+  await boxSend({}, null, {
+    text: m.text, images: m.images || [],
+    call: () => invoke("desk_send", { project: m.project, text: m.text, images: m.images || [] }),
+    sent: () => { m.sent = now(); if (pend) deskWrote(pend[0], "wrote_lead", pend[1].text); renderMain(); },
+    failed: (e) => { m.failed = e; if (pend) pend[1].failed = e; renderMain(); return true; },
+  });
 }
 /** Edit on item `id`'s message that couldn't go: back into the box it went from (the item's box as drawn now when
  *  that one isn't), off its Thread and the lead's chat (#422). */
@@ -218,7 +201,7 @@ function deskMsgEdit(id, at) {
   if (p.lead) deskSentOff(p.lead);
   if (p.why === "back") deskBackFor = id;
   const key = p.why === "back" ? `back:${id}` : document.querySelector(`textarea[data-text="${CSS.escape(p.key)}"]`) ? p.key : deskItemBox(id) || p.key;
-  deskBackInBox(key, p.text, p.images || []);
+  boxPutBack(key, p.text, p.images || [], { focus: true });
 }
 /** Retry and Edit on a message to the lead that couldn't go (its chat's, at `at`, in Desk `project`) (#422). Edit puts
  *  it in the lead's box as it was sent (from an item's page, with its "About #…"). */
@@ -229,7 +212,7 @@ function deskLeadFailed(project, at, edit) {
   deskSentOff(m);
   const pend = deskPendOf(m);
   if (pend) deskUnpend(pend[0], pend[1]);
-  deskBackInBox(deskBoxKey({ project }), m.text, m.images || []);
+  boxPutBack(deskBoxKey({ project }), m.text, m.images || [], { focus: true });
 }
 /** The box on item `id`'s page, as drawn now ("" for none). */
 const deskItemBox = (id) => [...deskBoxes].filter(([, to]) => to.item === id).map(([k]) => k).find((k) => document.querySelector(`textarea[data-text="${CSS.escape(k)}"]`)) || "";
@@ -242,12 +225,7 @@ async function deskHeldEdit(id, sid) {
   const h = await invoke("unhold_message", { sessionId: sid }).catch(() => null);
   if (!h) { toast("Too late: it had already gone"); return renderMain(); }
   const it = deskItem(deskSelection(), id), about = it ? `About #${it.id} (${it.title}): ` : "";
-  const images = [];
-  for (const path of h.images || []) {
-    const data = await invoke("image_data", { path }).catch(() => null);
-    if (data) images.push({ name: path.split("/").pop(), mime: data.slice(5, data.indexOf(";")), data });
-  }
-  deskBackInBox(key, about && h.text.startsWith(about) ? h.text.slice(about.length) : h.text, images);
+  boxPutBack(key, about && h.text.startsWith(about) ? h.text.slice(about.length) : h.text, await boxHeldImages(h.images), { focus: true });
 }
 /** Cancel on a message Cue keeps for session `sid`: taken back and dropped (#422). */
 async function deskHeldCancel(sid) {
@@ -286,10 +264,9 @@ async function deskAct(id, act, el = null) {
   }
   if (act === "back_cancel") { endDictation(`back:${id}`); deskBackFor = null; return renderMain(); }
   if (act === "back_go") {
-    const key = `back:${id}`, text = draft(key).text.trim();
-    const images = draft(key).images.map(({ name, mime, data }) => ({ name, mime, data }));
-    if (!text && !images.length) { toast("Say why it goes back first", 4000); return deskBackFocus(id); }
-    if (await deskSendBack(id, key, text, images)) deskBackFor = null;
+    const key = `back:${id}`;
+    if (!draft(key).text.trim() && !draft(key).images.length) { toast("Say why it goes back first", 4000); return deskBackFocus(id); }
+    if (await deskSendBack(id, key)) deskBackFor = null;
     return renderMain();
   }
   try {
@@ -304,8 +281,8 @@ async function deskAct(id, act, el = null) {
 /** Item `id`'s Send back, open: "Why send it back?" and Cancel over a box of its own (never the lead's), as the Desk's
  *  boxes are: words, the mic, a picture, Send. Enter sends, ⇧Enter a new line, Esc closes it. */
 function deskBackHtml(id) {
-  const key = `back:${id}`, mic = dictating?.key === key;
-  return `<div class="dk-sb"><div class="dk-sb-h"><span class="dk-sb-l">Why send it back?</span><button class="dk-sb-x" data-desk-act="back_cancel" data-id="${esc(id)}">Cancel</button></div><div class="dk-box dk-sb-box" data-drop="${esc(key)}">${draftChips(key)}<div class="dk-box-row"><textarea rows="1" data-text="${esc(key)}" aria-label="Why send it back?" placeholder="What isn't right yet" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off">${esc(draft(key).text)}</textarea><button class="icon-btn mic ${mic ? "on" : ""}" data-mic="${esc(key)}" aria-label="${mic ? "Stop dictating" : "Dictate"}">${MIC_ICON}</button><button class="icon-btn" data-attach="${esc(key)}" aria-label="Add an image">${IMAGE_ICON}</button><button class="btn primary small" data-desk-act="back_go" data-id="${esc(id)}">Send</button></div></div></div>`;
+  const key = `back:${id}`, label = "Why send it back?";
+  return boxHtml({ key, label, placeholder: "What isn't right yet", head: { label, cancel: `data-desk-act="back_cancel" data-id="${esc(id)}"` }, send: { attrs: `data-desk-act="back_go" data-id="${esc(id)}"` } });
 }
 const deskBackFocus = (id) => document.querySelector(`textarea[data-text="${CSS.escape(`back:${id}`)}"]`)?.focus();
 async function deskUndo(id) {
@@ -610,5 +587,5 @@ if (typeof document !== "undefined") {
     }, 0);
   }, true);
   // The lead's chat scrolled: whether it's at its end (new messages keep it there).
-  document.addEventListener("scroll", (e) => { const c = e.target; if (c?.matches?.(".dk-chat")) deskChatEnd = c.scrollHeight - c.scrollTop - c.clientHeight < 24; }, true);
+  document.addEventListener("scroll", (e) => { const c = e.target; if (c?.matches?.(".dk-chat")) deskChatEnd = boxAtEnd(c); }, true);
 }

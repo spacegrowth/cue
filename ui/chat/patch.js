@@ -172,7 +172,7 @@ document.addEventListener("focusout", (e) => { if (!e.relatedTarget) homeFocus()
 function scrollChat(chat, was, lifted, kept) {
   const key = chat ? `${active?.id}|${active?.sid}` : null;
   // Back from a background agent's or script's view (chat/helpers.js closeHelperView): the end, whatever the view's scroll was.
-  if (chat && chatToEnd) { pinChatEnd(chat); holdChat = null; }
+  if (chat && chatToEnd) { boxStickToEnd(chat, false); holdChat = null; }
   // A reply just opened in the reader (chat/reader.js readerPane): its start, wherever the chat was.
   else if (chat && !kept && chat.dataset.chatFor?.startsWith("r|")) { chat.scrollTop = 0; holdChat = null; }
   else if (chat && holdChat != null) { chat.scrollTop = chat.scrollHeight - holdChat; holdChat = null; }
@@ -196,7 +196,7 @@ function grow(el) {
   // Growing the box shrinks the chat above it. If you were reading the end of the chat, keep the
   // end in view (the conversation moves up with the box) instead of letting the box cover it.
   const chat = el.closest(".active-pane, .crew-page")?.querySelector("[data-chat]");
-  const pinned = chat && chat.scrollHeight - chat.scrollTop - chat.clientHeight < 24;
+  const pinned = boxAtEnd(chat);
   const top = el.scrollTop, atEnd = el.selectionEnd >= el.value.length;
   el.style.height = "auto";
   el.style.height = `${Math.min(el.scrollHeight, BOX_MAX)}px`;

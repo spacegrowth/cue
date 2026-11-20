@@ -51,7 +51,8 @@ function deskCallsBox(list, key, render, empty) {
 /** Under a Decisions list with `n` ticked: "Go back on these (n)", or, pressed, the box for your new answer. */
 function deskGoBackHtml(key, n) {
   if (deskGoBackOpen !== key) return `<div class="dk-gb"><span class="dk-gb-n">${n} ticked</span><span class="grow"></span><button class="btn small" data-desk-go-back="clear">Clear</button><button class="btn primary small" data-desk-go-back="${esc(key)}">Go back on ${n === 1 ? "this" : `these (${n})`}</button></div>`;
-  return `<div class="dk-sb dk-gb-box"><div class="dk-sb-h"><span class="dk-sb-l">What should happen instead?</span><button class="dk-sb-x" data-desk-go-back="cancel">Cancel</button></div><div class="dk-box dk-sb-box"><div class="dk-box-row"><textarea rows="2" data-text="goback" aria-label="What should happen instead?" placeholder="Your answer goes to each one with its decision" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off">${esc(draft("goback").text)}</textarea><button class="btn primary small" data-desk-go-back="send">Send</button></div></div></div>`;
+  const label = "What should happen instead?";
+  return boxHtml({ key: "goback", rows: 2, label, placeholder: "Your answer goes to each one with its decision", head: { label, cancel: 'data-desk-go-back="cancel"' }, sbClass: "dk-gb-box", drop: false, chips: false, mic: false, attach: false, send: { attrs: 'data-desk-go-back="send"' } });
 }
 /** Go back on every ticked call: each goes to whoever decided it, with your answer. */
 async function deskGoBackSend() {

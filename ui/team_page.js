@@ -240,7 +240,7 @@ function crewLeftSet(sid, what) {
   renderMain();
   const c = document.querySelector(".cp-left [data-chat]"), at = crewChatAt;
   crewChatAt = null;
-  if (c && at) { if (at.end) pinChatEnd(c); else c.scrollTop = at.top; }
+  if (c && at) { if (at.end) boxStickToEnd(c, false); else c.scrollTop = at.top; }
 }
 /** Back to the lead's chat, the cursor in its box. */
 function crewToLead(sid) {

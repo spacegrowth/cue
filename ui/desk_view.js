@@ -46,11 +46,9 @@ function deskBox(d) {
   // Pictures pasted, dropped or added, and the mic, as in a session's chat box (app/inputs.js, chat/compose.js); its
   // quick phrases over the text, and Claude's suggested reply in the empty box (Tab types it in) from the session it
   // talks to: the lead, or the open holder (not about an item, or a crew member: those words are Cue's, not its).
-  const mic = dictating?.key === key;
   const sugSid = to.item ? `item:${d.project}|${to.item}` : to.mate ? "" : to.sid || deskLead(d)?.sid || "";
-  const sug = suggestionFor(sugSid);
   // An item's page shows its recipient and item above the input; quick phrases use its normal send flow.
-  return `<div class="dk-box" data-drop="${esc(key)}">${quickRow(`data-quick="${esc(key)}"`)}${deskPreHtml(pre)}${draftChips(key)}<div class="dk-box-row"><div class="ta-wrap"><textarea rows="1" data-text="${esc(key)}"${sug ? ` class="sug" data-sug-sid="${esc(sugSid)}" aria-label="${esc(`Suggested: ${sug}. Tab types it in.`)}"` : ""} placeholder="${esc(sug ? " " : ph)}" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off">${esc(draft(key).text)}</textarea>${sugLineHtml(sug)}</div><button class="icon-btn mic ${mic ? "on" : ""}" data-mic="${esc(key)}" aria-label="${mic ? "Stop dictating" : "Dictate"}">${MIC_ICON}</button><button class="icon-btn" data-attach="${esc(key)}" aria-label="Add an image">${IMAGE_ICON}</button><button class="btn primary small" data-desk-send="${esc(key)}">Send</button></div></div>`;
+  return boxHtml({ key, top: quickRow(`data-quick="${esc(key)}"`) + deskPreHtml(pre), wrap: true, sug: suggestionFor(sugSid), sugSid, placeholder: ph, send: { attrs: `data-desk-send="${esc(key)}"` } });
 }
 /** An item page's foot: while its holder asks you, the answer goes there, so you stay on its page. Its ask's card
  *  (choices, Decline, Type answer…) as under a chat; a turn that ended on it, a box to its holder. Else the box. */
@@ -62,8 +60,8 @@ function deskItemFoot(i, d) {
   const sid = i.ask?.sid || (i.holder.kind === "crew" ? i.holder.lead_sid : i.holder.sid);
   if (!sessionOf(sid)) return `<div class="dk-ended">Its session has ended.</div>`;
   const to = i.holder.kind === "crew" && !i.ask ? { project: d.project, sid, mate: i.holder.name, item: i.id } : { project: d.project, sid, item: i.id };
-  const key = deskBoxKey(to), mic = dictating?.key === key, line = deskToLine(i.holder.name, i);
-  return `<div class="dk-box" data-drop="${esc(key)}">${deskPreHtml(line.pre)}${draftChips(key)}<div class="dk-box-row"><textarea rows="1" data-text="${esc(key)}" placeholder="${esc(line.ph)}" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off">${esc(draft(key).text)}</textarea><button class="icon-btn mic ${mic ? "on" : ""}" data-mic="${esc(key)}" aria-label="${mic ? "Stop dictating" : "Dictate"}">${MIC_ICON}</button><button class="icon-btn" data-attach="${esc(key)}" aria-label="Add an image">${IMAGE_ICON}</button><button class="btn primary small" data-desk-send="${esc(key)}">Send</button></div></div>`;
+  const key = deskBoxKey(to), line = deskToLine(i.holder.name, i);
+  return boxHtml({ key, top: deskPreHtml(line.pre), placeholder: line.ph, send: { attrs: `data-desk-send="${esc(key)}"` } });
 }
 function deskRight(project, taskApprovals) {
   const d = deskOf(project);
@@ -169,7 +167,7 @@ function deskView() {
   deskBoxes.clear();   // the boxes drawn now note theirs again
   // An item's page at its end as this draw starts: it stays there as its chat grows (deskThreadFollow).
   const ip = document.querySelector(".dk-ipane");
-  deskThreadPinned = !ip || ip.scrollHeight - ip.scrollTop - ip.clientHeight < 24;
+  deskThreadPinned = !ip || boxAtEnd(ip);
   if (!deskSelection()) return deskAll();
   deskLastSet(deskSelection());
   queueMicrotask(deskSettle);

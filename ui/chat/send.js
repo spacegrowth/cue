@@ -50,46 +50,38 @@ function ranCard(who, e, n) {
 }
 /** The line and its output, as a message: what you checked becomes context for the agent. */
 const ranAsMessage = (e) => `I ran \`${e.line}\` in ${homeless(e.cwd)}${e.machine ? ` on ${e.machine}` : ""}${e.code ? ` (exit ${e.code})` : ""}:\n\`\`\`\n${e.output || "(no output)"}\n\`\`\``;
-async function deliver(sid, key, call) {
-  // A quick phrase (compose.js sendPhrase): the box holds what you typed, so it's left alone, whatever happens.
-  const phrase = phraseSending;
-  if (!phrase) endDictation(key);
-  if (isParked(sid) && (draft(key).text.trim() || draft(key).images.length)) setParked(sid, false);   // you replied: decided
-  const d = draft(key);
-  const text = d.text.trim();
-  // "/btw …": a side question, in its panel (the session never sees it).
-  const bt = /^\/btw(?:\s+([\s\S]*))?$/.exec(text);
-  if (bt && sessionOf(sid)?.harness === "claude") { delete drafts[key]; return openBtw(sid, bt[1] || ""); }
-  // "/mcp" in a hosted Claude Code session: Cue's MCP servers list (chat/mcp.js), which headless Claude Code doesn't have.
-  if (/^\/mcp(\s|$)/.test(text) && isHostedClaude(sid)) { delete drafts[key]; return openMcp(sid); }
-  // "! …": a shell line, run by Cue in the session's folder (the card offers to send it on).
-  if (isBang(text) && !d.images.length) { delete drafts[key]; return runLine(sid, text); }
-  if (!text && !d.images.length) return;
-  // " /…" (a leading space) is a message that starts with a slash; "/…" is a command. Keep the space.
-  const typed = text.startsWith("/") && /^\s/.test(d.text) ? ` ${text}` : text;
-  // A command this session doesn't have ("/reomte"): it would just fail in the terminal. Say so instead.
-  if (typed.startsWith("/") && cmdOf(key) === null) return toast(`“${typed.split(/\s/)[0]}” isn't a command in this session. Use “Send as a message instead” under the box.`);
-  const images = d.images.map(({ name, mime, data }) => ({ name, mime, data }));
-  const entry = { sid, text, images, at: now(), via: null };
-  outbox.push(entry);
-  delete drafts[key];
-  drawAtChatEnd();
-  try {
-    const r = await call(typed, images);
-    entry.via = String(r || "sent").replace(/^sent via /, "");
-    sent(sid, text, images.length, r);
-    renderMain();
-    return { ok: true };
-  } catch (e) {
-    outbox.splice(outbox.indexOf(entry), 1);
-    if (phrase) { toast(`Couldn't send “${text}”: ${e}`); renderMain(); return { error: String(e) }; }
-    // Back in the box, ahead of anything you've typed there since (that's kept, not written over).
-    const now_ = draft(key);
-    drafts[key] = { ...now_, text: now_.text.trim() ? `${text}\n\n${now_.text}` : text, images: [...d.images, ...(now_.images || [])] };
-    toast(`Couldn't send: ${e}`);
-    renderMain();
-    return { error: String(e) };
-  }
+/** Send box `key` to session `sid` through `call` (ui/box/send.js boxSend): "/btw", "/mcp" and "!" lines are dealt with
+ *  here, a slash command this session doesn't have is refused, and your message shows in the chat while it goes (the
+ *  outbox). `guard`: the restarting / asking-first guards look at `sid` (a reply to a card goes without them).
+ *  boxSend's outcome. */
+function deliver(sid, key, call, guard = false) {
+  return boxSend({ sid }, key, {
+    call, guard,
+    before: (text, d) => {
+      if (isParked(sid) && (text || d.images.length)) setParked(sid, false);   // you replied: decided
+      // "/btw …": a side question, in its panel (the session never sees it).
+      const bt = /^\/btw(?:\s+([\s\S]*))?$/.exec(text);
+      if (bt && sessionOf(sid)?.harness === "claude") { delete drafts[key]; openBtw(sid, bt[1] || ""); return false; }
+      // "/mcp" in a hosted Claude Code session: Cue's MCP servers list (chat/mcp.js), which headless Claude Code doesn't have.
+      if (/^\/mcp(\s|$)/.test(text) && isHostedClaude(sid)) { delete drafts[key]; openMcp(sid); return false; }
+      // "! …": a shell line, run by Cue in the session's folder (the card offers to send it on).
+      if (isBang(text) && !d.images.length) { delete drafts[key]; runLine(sid, text); return false; }
+      // " /…" (a leading space) is a message that starts with a slash; "/…" is a command. Keep the space.
+      const typed = text.startsWith("/") && /^\s/.test(d.text) ? ` ${text}` : text;
+      // A command this session doesn't have ("/reomte"): it would just fail in the terminal. Say so instead.
+      if (typed.startsWith("/") && cmdOf(key) === null) { toast(`“${typed.split(/\s/)[0]}” isn't a command in this session. Use “Send as a message instead” under the box.`); return false; }
+      return typed;
+    },
+    pending: (text, images) => { const entry = { sid, text, images, at: now(), via: null }; outbox.push(entry); return entry; },
+    draw: drawAtChatEnd,
+    sent: (r, entry) => {
+      entry.via = String(r || "sent").replace(/^sent via /, "");
+      sent(sid, entry.text, entry.images.length, r);
+      renderMain();
+    },
+    // Out of the chat; boxSend puts the words back in the box (ahead of anything typed since) and says why.
+    failed: (e, entry) => { outbox.splice(outbox.indexOf(entry), 1); return false; },
+  });
 }
 /** Has the session's own thread (or queue) caught up with this outbox entry? Once Cue says it's sent
  *  (`via`), Cue has noted it: a message of yours since you pressed send is this one, whatever became of

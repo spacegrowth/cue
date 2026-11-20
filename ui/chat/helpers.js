@@ -44,7 +44,6 @@ function helperReplyToBox(sid, id) {
  *  later and once more when settled: whatever grows after the draw (the box growing to a draft, an image,
  *  a table laid out late) would otherwise leave the end just out of view. */
 let chatToEnd = false;    // the next chat draw lands at its end; app/render.js renderMain consumes it
-let chatPinnedAt = 0;     // when code last put the chat at its end: the scroll events that come of it aren't you scrolling up
 function closeHelperView() {
   helperView = null;
   drawAtChatEnd();
@@ -55,18 +54,7 @@ function drawAtChatEnd() {
   chatToEnd = true;
   renderMain();
   chatToEnd = false;
-  const chat = document.querySelector("[data-chat]");
-  if (!chat) return;
-  pinChatEnd(chat);
-  const again = () => { if (chat.isConnected && (chat.scrollTop === chat._pinTop || chat.scrollHeight - chat.scrollTop - chat.clientHeight < 24)) pinChatEnd(chat); };
-  requestAnimationFrame(again);
-  setTimeout(again, 250);
-}
-/** The chat at its end, by code (not you): the loader of earlier messages leaves the scroll events of it alone. */
-function pinChatEnd(chat) {
-  chat.scrollTop = chat.scrollHeight;
-  chat._pinTop = chat.scrollTop;
-  chatPinnedAt = Date.now();
+  boxStickToEnd(document.querySelector("[data-chat]"));
 }
 /** The agent whose full view is open in this session's chat area, if it's still in the feed. Opening
  *  another session's chat ends the view: coming back lands in the chat, not the agent. */

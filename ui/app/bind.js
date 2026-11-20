@@ -58,9 +58,9 @@ function releaseChat() {
 /** Near the top of the chat: the next page of earlier messages comes in above. Only the chat itself (a
  *  background agent's view fills the same element: its steps' top isn't the chat's), and only when it's
  *  you scrolling: not the chat moving on its own (see chatMovedAt), nor the scroll events of a chat code
- *  just put at its end (chat/helpers.js pinChatEnd). Each page makes every draw after it longer. */
+ *  just put at its end (ui/box/end.js boxStickToEnd). Each page makes every draw after it longer. */
 function onChatScroll(e) {
-  if (!e.target?.matches?.("[data-chat]") || e.target.scrollTop > 60 || /^[hr]\|/.test(e.target.dataset.chatFor || "") || Date.now() - chatPinnedAt < 400) return;
+  if (!e.target?.matches?.("[data-chat]") || e.target.scrollTop > 60 || /^[hr]\|/.test(e.target.dataset.chatFor || "") || Date.now() - (e.target._pinAt || 0) < 400) return;
   if (!chatHeld && Date.now() - chatMovedAt > CHAT_MOVED_MS) return;
   const cur = current(), sid = cur?.s?.session_id || cur?.it?.session_id;
   if (sid) loadOlder(sid);

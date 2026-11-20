@@ -93,7 +93,7 @@ function sendWaitingNow(sid) {
   return true;
 }
 /** `key`: the draft that goes (the session's box, or one of its own). */
-const sendTo = (sid, now = false, key = `s:${sid}`) => state.restarting?.[sid] ? toast("It's restarting. Send once it's back.") : sessionOf(sid)?.state === "deciding" ? toast("It's asking you something first. Answer that, then send.") : deliver(sid, key, (text, images) => { insSent(sid, text, now); return invoke("send_to_session", { sessionId: sid, text, images, now }); });
+const sendTo = (sid, now = false, key = `s:${sid}`) => deliver(sid, key, boxToSession(sid, { now }), true);
 /** The message Cue kept for a working session, back into its box to change (before anything you've typed
  *  there since), images and all. Your words only: the Desk's summary Cue put before a message to a Desk's lead
  *  (ipc/desk.rs desk_message) isn't yours, and would go twice if sent again (#498). */
@@ -101,15 +101,7 @@ async function pullHeld(sid, key = `s:${sid}`) {
   forgetSent(sid);
   const h = await invoke("unhold_message", { sessionId: sid }).catch(() => null);
   if (!h) return;
-  const d = draft(key), words = deskSaid(h.text);
-  d.text = d.text.trim() ? `${words}\n\n${d.text}` : words;
-  for (const path of h.images || []) {
-    const data = await invoke("image_data", { path }).catch(() => null);
-    if (data) d.images.push({ name: path.split("/").pop(), mime: data.slice(5, data.indexOf(";")), data });
-  }
-  saveDrafts();
-  renderMain();
-  focusComposer(key);
+  boxPutBack(key, deskSaid(h.text), await boxHeldImages(h.images), { imagesLast: true, focus: focusComposer });
 }
 /** Cancel on the message Cue kept for a working session: dropped, never sent (taken back as Edit does, not into the box). */
 const cancelHeld = (sid) => forgetSent(sid) || invoke("unhold_message", { sessionId: sid }).then((h) => toast(h ? "It won't be sent" : "Too late: it had already gone")).catch((e) => toast(`Couldn't cancel it: ${e}`));
@@ -483,22 +475,24 @@ function draftChips(key) {
  *  crew page with a teammate on its left: they belong to the chat). `alt` shows beside Send once something's typed;
  *  `extra` always does. */
 function box(key, placeholder, label, sendAttrs, images, alt = "", extra = "", quick = true) {
-  const d = draft(key);
+  const d = draft(key), sid = sidOfKey(key);
   const ready = d.text.trim() || (images && d.images.length);
-  if (bangTyped(d.text) && !d.images.length) label = "Run";
-  const chips = images ? draftChips(key) : "";
+  const bang = bangTyped(d.text) && !d.images.length;
   // Claude's suggestion in the empty box: "Suggested", the text and a Tab keycap, laid over the box (a placeholder
   // can't style its parts) and hidden by CSS once anything's typed; Tab types it in. The wrapper and the line are
-  // always drawn, so a redraw never swaps out the box you're typing in.
-  const sug = images ? suggestionFor(sidOfKey(key)) : "";
-  const sugLine = sugLineHtml(sug);
-  // Send sits inside the box, at the end of its row, so the box spans the full width (as the terminal dock does).
-  return `<div class="composer"><div class="field ${images ? "drop" : ""} ${bangTyped(d.text) ? "bang" : ""}" data-drop="${images ? esc(key) : ""}">${sidOfKey(key) ? `<div class="cmd-slot">${cmdMenu(key)}</div>` : ""}${images && quick ? quickRow(`data-quick="${esc(key)}"`, sidOfKey(key)) : ""}${chips}<div class="field-row">
-    <div class="ta-wrap"><textarea rows="2" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" data-text="${esc(key)}"${sug ? ` class="sug" aria-label="${esc(`Suggested: ${sug}. Tab types it in.`)}"` : ""} placeholder="${esc(sug ? " " : placeholder)}">${esc(d.text)}</textarea>${sugLine}</div>
-    <button class="icon-btn mic ${dictating?.key === key ? "on" : ""}" data-mic="${esc(key)}" title="${dictating?.key === key ? "Stop dictating" : "Dictate: talk and it types here"}" aria-label="Dictate">${MIC_ICON}</button>
-    ${images ? `<button class="icon-btn" data-attach="${esc(key)}" title="Add an image (or paste one with ⌘V)" aria-label="Add image">${IMAGE_ICON}</button>` : ""}
-    ${images && sidOfKey(key) ? `<button class="icon-btn ${sendAtFor === key ? "on" : ""}" data-send-at-open="${esc(key)}" aria-label="Send at a time">${CLOCK_ICON}</button>` : ""}
-    ${extra}${ready ? alt : ""}<button class="btn primary send" ${sendAttrs} ${ready ? "" : "disabled"}>${label}</button></div>${sendAtFor === key ? sendAtBar(key) : ""}${slashHint(key)}</div></div>`;
+  // always drawn, so a redraw never swaps out the box you're typing in. Send sits inside the box, at the end of its
+  // row, so the box spans the full width (as the terminal dock does).
+  return boxHtml({
+    key, look: "composer", rows: 2, placeholder, drop: !!images,
+    sug: images ? suggestionFor(sid) : "",
+    bang: bangTyped(d.text),
+    cmd: sid ? `<div class="cmd-slot">${cmdMenu(key)}</div>` : "",
+    top: images && quick ? quickRow(`data-quick="${esc(key)}"`, sid) : "",
+    clock: images && sid ? `<button class="icon-btn ${sendAtFor === key ? "on" : ""}" data-send-at-open="${esc(key)}" aria-label="Send at a time">${CLOCK_ICON}</button>` : "",
+    extra: `${extra}${ready ? alt : ""}`,
+    send: { attrs: sendAttrs, label: bang ? "Run" : label, disabled: !ready },
+    below: `${sendAtFor === key ? sendAtBar(key) : ""}${slashHint(key)}`,
+  });
 }
 /** The box whose "Send at…" bar is open (its clock button), and the time picked there ("HH:MM"). */
 let sendAtFor = null, sendAtTime = "08:01";
@@ -525,9 +519,5 @@ function sendAtKeep(key) {
 /** The message for later: back into the box to change (Edit), dropped (Cancel), or sent now. */
 async function sendAtEdit(sid) {
   const text = await invoke("send_at_drop", { sessionId: sid }).catch(() => null);
-  if (!text) return;
-  const d = draft(`s:${sid}`);
-  d.text = d.text.trim() ? `${text}\n\n${d.text}` : text;
-  saveDrafts(); renderMain();
+  if (text) boxPutBack(`s:${sid}`, text, [], { focus: false });
 }
-

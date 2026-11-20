@@ -122,7 +122,7 @@ function beforeDraw() {
   }
   was.onBefore = selectedCards();   // where the selected card sits in each list, and whether it's in full view
   was.oldChat = document.querySelector("[data-chat]");
-  was.chatPinned = was.oldChat && was.oldChat.scrollHeight - was.oldChat.scrollTop - was.oldChat.clientHeight < 24;
+  was.chatPinned = boxAtEnd(was.oldChat);
   return was;
 }
 
