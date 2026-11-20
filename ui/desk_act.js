@@ -12,15 +12,6 @@ function deskShow(what) {
   if (!what) deskChatEnd = true;
   renderMain();
 }
-/** A quick phrase picked on an item's page: it's in the box (sendPhrase added it), the cursor after it, nothing sent. */
-function deskPhraseIn(key) {
-  renderMain();
-  const el = document.querySelector(`textarea[data-text="${CSS.escape(key)}"]`);
-  if (!el) return;
-  el.focus();
-  el.selectionStart = el.selectionEnd = el.value.length;
-  el.dispatchEvent(new Event("input", { bubbles: true }));
-}
 /** Send what's in box `key`: to the lead (naming the open item), or to the lead (naming its crew member). Only what's
  *  sent is named: the box keeps what you typed if it doesn't go. */
 async function deskSendBox(key) {
@@ -66,7 +57,7 @@ async function deskSendItem(to, key, text, images) {
   // An answer: the page says what you answered (deskChain).
   if (it.state === "needs_you") deskAnswers.set(it.id, { q: deskQuestion(it), a: text || "a picture", ask: it.ask?.item_id || "", at: now() });
   // The box empties at once and the note is on the Thread; the saved draft goes only once the hub has the note.
-  endDictation(key);
+  if (!phraseSending) endDictation(key);
   delete drafts[key];
   const p = deskPend(it.id, text || "(a picture)", "note", images.length, { key, images });
   renderMain();
@@ -92,7 +83,7 @@ async function deskSendLead(to, key, text, images) {
     return renderMain();
   }
   const said = it ? `About #${it.id} (${it.title}): ${text}` : text;
-  endDictation(key);
+  if (!phraseSending) endDictation(key);
   // Saved without it only once it went: a restart in between leaves your words in the box.
   delete drafts[key];
   const list = deskSent.get(project) || [], mine = { text: said, images, at: now(), sent: 0, project };
@@ -120,13 +111,14 @@ const deskWrote = (id, act, text) => invoke("desk_item_act", { id, act, text }).
 /** Item `id` sent back to its holder from box `key` with `text` and `images`: the box emptied once it went (kept when
  *  it didn't). Whether it went. */
 async function deskSendBack(id, key, text, images) {
-  endDictation(key);
+  // A quick phrase (compose.js sendPhrase): the box holds what you typed, so it isn't emptied once it goes.
+  const phrase = phraseSending;
+  if (!phrase) endDictation(key);
   const pend = text.trim() ? deskPend(id, text.trim(), "back", (images || []).length, { key, images }) : null;
   if (pend) renderMain();
   try {
     const it = await invoke("desk_item_act", { id, act: "send_back", text, images });
-    delete drafts[key];
-    saveDrafts();
+    if (!phrase) { delete drafts[key]; saveDrafts(); }
     toast(`Sent back${it?.holder?.name ? ` to ${it.holder.name}` : ""}`);
     return true;
   }
@@ -134,8 +126,7 @@ async function deskSendBack(id, key, text, images) {
     // Red on its Thread with why, Retry and Edit (#422), the box closed; a picture alone keeps its box and says why.
     if (!pend) { toast(`Not sent: ${e}`, 5000); return false; }
     pend.failed = String(e);
-    delete drafts[key];
-    saveDrafts();
+    if (!phrase) { delete drafts[key]; saveDrafts(); }
     if (deskBackFor === id) deskBackFor = null;
     return false;
   }

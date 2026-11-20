@@ -51,7 +51,9 @@ function ranCard(who, e, n) {
 /** The line and its output, as a message: what you checked becomes context for the agent. */
 const ranAsMessage = (e) => `I ran \`${e.line}\` in ${homeless(e.cwd)}${e.machine ? ` on ${e.machine}` : ""}${e.code ? ` (exit ${e.code})` : ""}:\n\`\`\`\n${e.output || "(no output)"}\n\`\`\``;
 async function deliver(sid, key, call) {
-  endDictation(key);
+  // A quick phrase (compose.js sendPhrase): the box holds what you typed, so it's left alone, whatever happens.
+  const phrase = phraseSending;
+  if (!phrase) endDictation(key);
   if (isParked(sid) && (draft(key).text.trim() || draft(key).images.length)) setParked(sid, false);   // you replied: decided
   const d = draft(key);
   const text = d.text.trim();
@@ -80,6 +82,7 @@ async function deliver(sid, key, call) {
     return { ok: true };
   } catch (e) {
     outbox.splice(outbox.indexOf(entry), 1);
+    if (phrase) { toast(`Couldn't send “${text}”: ${e}`); renderMain(); return { error: String(e) }; }
     // Back in the box, ahead of anything you've typed there since (that's kept, not written over).
     const now_ = draft(key);
     drafts[key] = { ...now_, text: now_.text.trim() ? `${text}\n\n${now_.text}` : text, images: [...d.images, ...(now_.images || [])] };

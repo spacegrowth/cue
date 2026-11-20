@@ -92,6 +92,23 @@ test("A quick phrase replies with its words", async ({ cue, page }) => {
   expect((await cue.called("reply", { id: "n1" })).args.text).toBe("Go ahead");
 });
 
+// #477: a quick phrase goes on its own; what's typed stays in the box, and a double click sends it once.
+test("A quick phrase with words typed: only the phrase goes, the words stay", async ({ cue, page }) => {
+  await openCard(page, "n1");
+  await box(page, "relay").fill("and then the docs");
+  await page.locator('.active-pane .qp[data-phrase="Go ahead"]').click();
+  expect((await cue.called("reply", { id: "n1" })).args.text).toBe("Go ahead");
+  await expect(box(page, "relay")).toHaveValue("and then the docs");
+});
+
+test("A quick phrase double clicked: sent once", async ({ cue, page }) => {
+  await openCard(page, "n1");
+  await page.locator('.active-pane .qp[data-phrase="Go ahead"]').dblclick();
+  await cue.called("reply", { id: "n1" });
+  await page.waitForTimeout(300);
+  expect((await cue.calls("reply")).map((c) => c.args.text)).toEqual(["Go ahead"]);
+});
+
 test("To a working session: kept in Cue until its turn ends", async ({ cue, page }) => {
   await openWorking(page, "eng");
   await box(page, "eng").pressSequentially("also keep the old key valid for a day");

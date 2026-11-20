@@ -618,9 +618,11 @@ test("suggested reply in the empty box: Tab or a click types it in, typing hides
   await expect(ghost).toBeHidden();
   await page.keyboard.press("Tab");
   await expect(ta).toHaveValue("n");
-  await ta.fill("");
+  // A quick phrase goes on its own: what's typed stays in the box (#477).
+  await ta.fill("and the tests");
   await pg.locator('.ib-sug[data-inbox-phrase="go ahead"]').click();
   await cue.called("reply", { text: "go ahead" });
+  await expect(ta).toHaveValue("and the tests");
 });
 
 test("more context: the conversation before its latest reply, a line a message (a click opens it), a usual reply whole, a very long one folded to its end", async ({ cue, page }) => {

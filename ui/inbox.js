@@ -417,7 +417,7 @@ function inboxReply(sid, key, ph, label, attrs) {
 const inboxSuggest = (sug, key, sid) => sugLineHtml(sug, `<span class="sug-or">or write your own</span>`, `data-inbox-sug data-key="${esc(key)}" data-sid="${esc(sid)}"`);
 /** The quick phrase menu open, by its box's draft key ("" when none is). */
 let inboxPhrOpen = "";
-/** Your quick phrases (Settings → Quick phrases; a click sends it, after anything in the box) at the right of the
+/** Your quick phrases (Settings → Quick phrases; a click sends it on its own, the box kept as it is) at the right of the
  *  box's row; inboxFitPhrases hides those that don't fit and lists them in More's menu. */
 function inboxPhrases(sid, key) {
   const ps = phrases();
@@ -444,14 +444,8 @@ function inboxFitPhrases() {
     w.querySelectorAll(".ib-phr-menu [data-i]").forEach((b) => { b.hidden = +b.dataset.i < n; });
   }
 }
-/** A quick phrase clicked: added to what's in the box, and sent. */
-function inboxSendPhrase(el) {
-  const d = draft(el.dataset.key);
-  d.text = withPhrase(d.text, el.dataset.inboxPhrase);
-  saveDrafts();
-  renderMain();
-  document.querySelector(`.inbox-page .ib-box textarea[data-text="${CSS.escape(el.dataset.key)}"]`)?.closest(".ib-box")?.querySelector(".btn.primary")?.click();
-}
+/** A quick phrase clicked: sent on its own, as the box's Send would (compose.js sendPhrase); the box keeps what's typed. */
+const inboxSendPhrase = (el) => sendPhrase(el.dataset.key, el.dataset.inboxPhrase, (k) => document.querySelector(`.inbox-page .ib-box textarea[data-text="${CSS.escape(k)}"]`)?.closest(".ib-box")?.querySelector(".btn.primary"));
 /** Claude's suggestion clicked: into the box (as Tab does), the cursor at its end. */
 function inboxTakeSuggestion(el) {
   const ta = el.closest(".ta-wrap")?.querySelector("textarea");

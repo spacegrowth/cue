@@ -395,7 +395,7 @@ function atPick(key, name) {
   if (el) { el.value = d.text; el.focus(); el.selectionStart = el.selectionEnd = a.from + name.length + 1; grow(el); }
   refreshCmd(key);
 }
-/** Quick phrases (Settings → Quick phrases): chips that send their text, after anything typed in the box. */
+/** Quick phrases (Settings → Quick phrases): chips that send their text as its own message; the box keeps what's typed. */
 const phrases = () => state.settings?.quick?.phrases || [];
 /** The words a message asks you to reply with (Reply "commit and install", Reply “merge”): its last such line's, or "". */
 function replyAsked(text) {
@@ -441,19 +441,36 @@ function saveQuickPhrases() {
   const list = qpEdit.map((p) => p.trim()).filter(Boolean);
   if (JSON.stringify(list) !== JSON.stringify(phrases())) setSetting("quick.phrases", list);
 }
-const withPhrase = (text, p) => (text.trim() ? `${text.trimEnd()} ${p}` : p);
-/** A phrase sent from box `key`: after anything typed in it, and sent the way that box's Send would send it (a
- *  quick phrase). */
-function sendPhrase(key, phrase) {
-  const d = draft(key);
-  d.text = withPhrase(d.text, phrase);
-  saveDrafts();
-  // On a Desk item's page the phrase only goes in the box, to say more before Send; another Desk box sends its own
-  // way (desk.js deskSendBox).
-  if (deskBoxes.get(key)?.item && !deskBoxes.get(key).sid) return deskPhraseIn(key);
-  if (deskBoxes.has(key)) return deskSendBox(key);
-  renderMain();
-  document.querySelector(`textarea[data-text="${CSS.escape(key)}"]`)?.closest(".composer")?.querySelector(".btn.send")?.click();
+/** The quick phrase last sent, by box and phrase: a second click on it straight after (a double click) sends nothing. */
+let phraseLast = { key: "", phrase: "", at: 0 };
+/** True while a quick phrase is on its way from a box (the senders read it at once): what didn't go isn't put back
+ *  in the box, and the box isn't emptied when it goes. What you'd typed there is the box's own. */
+let phraseSending = false;
+/** A quick phrase clicked under box `key`: sent at once as its own message, the way that box's Send sends (#477).
+ *  Anything typed in the box stays there as it was; a repeat click on the same phrase straight after is ignored.
+ *  `button` finds the box's Send when it isn't a Desk box (the Inbox has its own). */
+function sendPhrase(key, phrase, button = (k) => document.querySelector(`textarea[data-text="${CSS.escape(k)}"]`)?.closest(".composer")?.querySelector(".btn.send")) {
+  const t = Date.now();
+  if (phraseLast.key === key && phraseLast.phrase === phrase && t - phraseLast.at < 1500) return;
+  phraseLast = { key, phrase, at: t };
+  const typed = drafts[key], mine = { text: phrase, choices: {}, images: [] };
+  drafts[key] = mine;
+  phraseSending = true;
+  try {
+    if (deskBoxes.has(key)) deskSendBox(key);
+    else {
+      renderMain();
+      const b = button(key);
+      // A box held for an answer first ("Answer first"): nothing goes yet.
+      if (!b || b.matches("[data-held]")) toast("Answer above first, then send.");
+      else { b.disabled = false; b.click(); }
+    }
+  } finally {
+    phraseSending = false;
+    if (typed) drafts[key] = typed; else delete drafts[key];
+    saveDrafts();
+    renderMain();
+  }
 }
 /** A box's images, before they're sent: each opens large, × takes it off. */
 function draftChips(key) {
