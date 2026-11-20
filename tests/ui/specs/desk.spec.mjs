@@ -40,7 +40,7 @@ test("the Desk is in the header after Board, and lists Waiting on you, then a gr
   // Each waiting row says what to do, in one plain line (#182).
   await expect(page.locator(".dk-items .dk-h")).toHaveCount(2);
   await expect(page.locator('[data-desk-item="d1"] .dk-h')).toContainText("keep focus in the box");
-  await expect(page.locator('[data-desk-item="d2"] .dk-h')).toHaveText(/^Try it: /);
+  await expect(page.locator('[data-desk-item="d2"] .dk-h')).toHaveText(/^In the app since .* · try: /);
   // Ready to check: Looks right on its row. Done today: each with the time it finished.
   await expect(page.locator(".dk-items .dk-ok")).toHaveCount(1);
   await expect(page.locator('[data-desk-item="d2"] .dk-ok')).toHaveAttribute("aria-label", "Looks right");
@@ -3818,17 +3818,18 @@ test("an item with mocks has \"Open the mocks\" in its NOW; waiting on a pick, a
   await expect(head.locator(".dk-pacts a.dk-dlink")).toHaveText("Open the mocks ↗");
   // Under the sentence, not over it.
   const box = async (l) => l.evaluate((e) => { const r = e.getBoundingClientRect(); return [r.top, r.bottom]; });
-  expect((await box(head.locator("a.dk-dlink")))[0]).toBeGreaterThanOrEqual((await box(head.locator(".dk-psay")))[1]);
-  await expect(head.locator(".dk-pickl")).toHaveText("Pick one for working items: D, E or F.");
+  expect((await box(head.locator(".dk-pacts a.dk-dlink")))[0]).toBeGreaterThanOrEqual((await box(head.locator(".dk-psay")))[1]);
+  await expect(head.locator(".dk-pickl")).toHaveText("Mocks · open the canvas · Pick one for working items: D, E or F.");
   for (const theme of ["light", "dark"]) {
     await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
     if (process.env.SHOT_DIR) await page.locator(".dk-right").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-178-${theme}.png` });
   }
-  // Picked (no reply asks for one): no pick line, only Try it (#182); no mocks: no link.
+  // Picked (no reply asks for one): no pick line, only the mocks (#182, #436); no mocks: no link, in the app.
   await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5").said = [{ at: Date.now(), by: "host-lead", text: "Built E. DONE: #d5" }]; });
-  await expect(head.locator(".dk-pickl")).toHaveText(/^Try it: /);
+  await expect(head.locator(".dk-pickl")).toHaveText("Mocks · open the canvas");
   await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5").designs = ""; });
   await expect(head.locator("a.dk-dlink")).toHaveCount(0);
+  await expect(head.locator(".dk-pickl")).toHaveText(/ · try: /);
 });
 
 test("a pick on an item's mocks: Pick B closes it, its new build item is linked both ways; a pick again makes no other (#281)", async ({ page, cue }) => {

@@ -100,8 +100,27 @@ function deskAllowLine(i) {
 /** What an item waiting on you asks you to do, in one plain line (#182): [verb, words], or null when it doesn't wait
  *  on you. Allow a tool, Pick one of its choices (or of its mocks), Answer its question; Try it once it's in the app
  *  (what you'll see, #382: its "done when" is the session's). */
+/** Where an item to check is, in one plain line (#436): mocks to look at ("Mocks · open the canvas", with its pick),
+ *  on its way in ("Lands with the next install"), or in the app since its install, with what to try. { text, html,
+ *  tried } (tried: the line already says what you'll see), or null when it isn't to check. */
+function deskWhereLine(i) {
+  if (i?.state !== "to_check") return null;
+  const plainLine = (text, tried = false) => ({ text, html: esc(text), tried });
+  const canvas = /^https?:\/\//.test(i.designs || "") ? i.designs : i.finish?.mocks ? (i.made || []).find((m) => /^https?:\/\//.test(m)) || "" : "";
+  if (canvas || i.finish?.mocks) {
+    const pick = deskPickLine(i), tail = pick ? ` · ${pick}` : "";
+    if (!canvas) return plainLine(`Mocks · nothing to install${tail}`);
+    return { text: `Mocks · open the canvas${tail}`, html: `Mocks · <a class="dk-dlink" href="#" data-href="${esc(canvas)}">open the canvas</a>${esc(tail)}`, tried: false };
+  }
+  if (deskInstallWait(i)) return plainLine("Lands with the next install");
+  if (deskUncommitted(i)) return plainLine("Not on main yet · Looks right commits it");
+  // Its install (or its window's files served in place): when it went to check. A project with nothing to install: on main.
+  const app = deskLatestCheck(i)?.cue !== false;
+  const at = i.finish?.step === "checked" && i.finish.at ? i.finish.at : app ? state.desk?.installed_ms || 0 : 0;
+  return plainLine(`${app ? "In the app" : "On main"}${at ? ` since ${clockAt(at)}` : ""} · try: ${deskOneLine(i.see) || i.title}`, true);
+}
 function deskVerb(i) {
-  if (i.state === "to_check" && !deskInstallWait(i)) return deskPickLine(i) ? ["Pick", deskPickLine(i)] : ["Try it", deskOneLine(i.see) || i.title];
+  if (i.state === "to_check") return ["", deskWhereLine(i).text];
   if (i.state !== "needs_you") return null;
   const a = i.ask;
   if (a) return [a.kind === "permission" ? "Allow" : (a.choices || []).length > 1 ? "Pick" : "Answer", a.kind === "permission" ? deskAllowLine(i) : deskOneLine(a.text)];
@@ -116,6 +135,7 @@ function deskVerbHtml(i) {
   const v = deskVerb(i);
   if (!v || !v[1]) return "";
   const [verb, words] = v;
+  if (i.state === "to_check") return deskWhereLine(i).html;
   if (!verb) return esc(words);
   const lead = words.match(new RegExp(`^${verb}\\b`, "i"));
   return lead ? `<b class="dk-vb">${esc(words.slice(0, verb.length))}</b>${esc(words.slice(verb.length))}` : `<b class="dk-vb">${esc(verb)}:</b> ${esc(words)}`;
@@ -247,7 +267,7 @@ function deskItemRow(i, lit, held = false, lane = null) {
   const ask = vb || decision ? `<div class="dk-ask-row${yn ? " yn" : ""}">${vb ? (yn ? reqCut(request.id, `<div class="dk-h">${vb}</div>`, deskAllowLine(i), 2, 100) : `<div class="dk-h">${vb}</div>`) : ""}${question ? qFoldLine(request) : ""}${decision ? `<div class="dk-row-decisions">${decision}</div>` : ""}</div>` : "";
   return `<div class="dk-it ${i.state === "needs_you" ? "ask" : ""} ${look === "landed" ? "landed" : ""} dk-${deskStateOf(i)} ${on ? "on" : ""}${stalled ? " stalled" : ""}${i.state === "to_check" && deskLooksSoon.has(i.id) ? " soon" : ""}${deskLeaveStyle(i.id)}${feat ? " dk-feat" : ""}${piece ? " pc" : ""}" role="button" tabindex="0" data-desk-item="${esc(i.id)}"${feat ? ` aria-expanded="${fopen}"` : ""}>
     ${deskStateIcon(i)}<div class="dk-i1">${on ? '<span class="dk-larrow" aria-hidden="true">‹</span>' : ""}<span class="dk-tag ${look}">${tag}</span>${lane?.n ? `<span class="dk-rn">${lane.n}</span>` : ""}<span class="dk-t">${esc(i.title)}</span>${feat ? `<span class="dk-chev${fopen ? " open" : ""}" aria-hidden="true">›</span>` : ""}</div>
-    ${i.see && !piece && deskVerb(i)?.[0] !== "Try it" ? `<div class="dk-see">You'll see: ${esc(deskOneLine(i.see))}</div>` : ""}<div class="dk-i2"><span class="dk-kid">${deskKindIcon(i)}<span class="dk-id">${esc(deskNum(i))}</span></span><span class="dk-who${s ? " held" : ""}">${who}</span>${doing}<span class="dk-age">${when}</span>${ok}</div>${ask}${deskWaits(i) ? deskUnblocksHtml(i) : ""}</div>`;
+    ${i.see && !piece && !deskWhereLine(i)?.tried ? `<div class="dk-see">You'll see: ${esc(deskOneLine(i.see))}</div>` : ""}<div class="dk-i2"><span class="dk-kid">${deskKindIcon(i)}<span class="dk-id">${esc(deskNum(i))}</span></span><span class="dk-who${s ? " held" : ""}">${who}</span>${doing}<span class="dk-age">${when}</span>${ok}</div>${ask}${deskWaits(i) ? deskUnblocksHtml(i) : ""}</div>`;
 }
 /** A permission's two buttons on the Desk (#426): No, then Allow, side by side on one line. */
 function deskAllowNo(id) {

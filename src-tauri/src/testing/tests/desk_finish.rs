@@ -748,6 +748,7 @@ fn an_item_whose_work_changed_nothing_the_app_runs_goes_to_check_with_no_install
     let head = git(&dir, &["rev-parse", "HEAD"]).trim().to_string();
     let shown = item(&w, &project, "Header jumps");
     assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str(), shown["finish"]["commit"].as_str()), (Some("to_check"), Some("checked"), Some(head.as_str())), "{shown}");
+    assert_eq!(shown["finish"]["mocks"], true, "its line says mocks, not in the app (#436): {shown}");
     let h = shown["holder"]["sid"].as_str().unwrap().to_string();
     ends(&w, &h, &format!("DESIGNS: #{id} https://claude.ai/artifact/abc"));
     assert_eq!(item(&w, &project, "Header jumps")["designs"], "https://claude.ai/artifact/abc", "its link, to check it");
@@ -764,6 +765,7 @@ fn an_item_whose_work_changed_the_app_waits_for_an_install_even_with_mocks_besid
     assert_eq!(step(&w, &project), "queued");
     w.advance(30 * 60_000);
     assert_eq!(fake.started().len(), 1, "installed");
+    assert!(item(&w, &project, "Header jumps")["finish"]["mocks"].is_null(), "in the app, not mocks (#436)");
 }
 
 /// #432 (#423 lined up to install): a mocks item whose only files in the repository are ones it never committed (a
@@ -776,6 +778,7 @@ fn a_mocks_item_with_no_commit_and_only_scratch_files_goes_to_check_with_no_inst
     let shown = item(&w, &project, "Header jumps");
     assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str()), (Some("to_check"), Some("checked")), "{shown}");
     assert!(shown["commit"].as_str().unwrap_or("").is_empty(), "no commit made: {shown}");
+    assert_eq!(shown["finish"]["mocks"], true, "{shown}");
     let h = shown["holder"]["sid"].as_str().unwrap().to_string();
     ends(&w, &h, &format!("DESIGNS: #{id} https://claude.ai/artifact/abc"));
     w.advance(30 * 60_000);

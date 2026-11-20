@@ -420,7 +420,7 @@ impl Hub {
         if cue.is_some() && self.runs_nothing(id, &top) {
             self.finish_set(id, |i| {
                 if let Some(f) = i.finish.as_mut() {
-                    (f.repo, f.commit) = (top.clone(), head.clone());
+                    (f.repo, f.commit, f.mocks) = (top.clone(), head.clone(), true);
                 }
             });
             return self.finish_checked(id);

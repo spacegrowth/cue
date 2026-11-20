@@ -352,6 +352,8 @@ function deskClick(e) {
   if (deskCrewMenu && !e.target.closest?.(".dk-cmore")) { deskCrewMenu = ""; queueMicrotask(renderMain); }
   // In a session's name box (✎ on its row): the click stays in the box, it doesn't open the row.
   if (e.target.closest?.(".dk-board .rename-in")) { e.stopPropagation(); return; }
+  // A link in a row (an item's canvas, #436): it opens, not the row.
+  if (e.target.closest?.(".dk-board a[data-href]")) return;
   if (deskTake(e.target.closest?.(DESK_SEL))) e.stopPropagation();
 }
 /** Keys on the Desk: ⌘N goes to the quick-add line, Enter sends a box (⇧Enter a new line), the quick-add line's keys

@@ -399,6 +399,10 @@ pub struct Finish {
     /// own work changed, so an item that changed nothing the app runs isn't installed (#408).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub merges: Vec<(String, String)>,
+    /// It went to check with nothing to install, its own work outside the app (mocks, notes, plans, #408): its line
+    /// says "Mocks · open the canvas", not "In the app" (#436).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub mocks: bool,
 }
 
 /// An item's own copy of its repository (hub/desk_trees.rs): the main checkout it's from, the copy's folder, its

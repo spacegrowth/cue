@@ -38,7 +38,7 @@ function deskProgLook(i) {
 function deskProgNow(i) {
   const who = esc(deskHolderOf(i));
   if (i.state === "needs_you") return deskVerbHtml(i) || "Asks you something";
-  if (i.state === "to_check") return deskInstallWait(i) ? `Done, waiting for the next install` : deskVerbHtml(i) || "In your app: try it";
+  if (i.state === "to_check") return deskVerbHtml(i);
   if (deskFinishing(i)) return deskFinStep(i);
   if (i.state === "held") return "Parked: starts when you press Start";
   if (i.state === "paused") return `Paused by the Desk lead${i.paused?.[1] ? `: ${esc(i.paused[1])}` : ""}`;
