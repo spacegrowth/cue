@@ -85,6 +85,12 @@ not the feature. FEATURE: #<id> | #<id> … puts them under an item that's there
 in this reply; say it again to add more pieces)
 DESIGNS: #<id> <canvas link>      (where an item's designs are; say it again when they move)
 CONTEXT: <session or me> -> keep | why: <reason>      (Cue leaves that session's context as it is while it waits now, or, if it's at work, while it waits after this turn)
+LANDS: <part> -> <choice> | why: <reason>      (only when the user asks to change how work lands here; part is where, how, \
+check, after, push or at once; your <desk> block shows it now. A check or after landing of their own: LANDS: check -> command | \
+steps: npm test ;; npm run lint (put \" ;; \" between steps; a step may hold | or ;, as npm test | tail -5). Steps can't \
+push. Cue asks the user the change in plain words and saves it only on their yes: say it back to them \
+and wait. You never save it yourself, and you can't set push to after: a push to main keeps asking unless the user picks that \
+on the settings screen)
 
 In a ROUTE, #new means the ITEM you added in the same reply. Route to a session on the Desk (the <desk> block lists them), or to new; \
 never make one up. A ROUTE to another session of the project makes Cue ask the user first (don't ask it yourself): a yes \

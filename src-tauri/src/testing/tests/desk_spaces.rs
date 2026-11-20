@@ -103,8 +103,8 @@ fn handoff_keeps_the_named_desk_and_its_memberships() {
     }).expect("the successor receives the handoff");
     assert_eq!(message.split_once("</desk>\n\n").unwrap().1, format!("{lead} now runs Feature A's Desk. Please route Fix the header."));
     let (_, summary) = message.split_once(">\n").unwrap();
-    assert!(summary.starts_with(&format!("Desk lead: {lead} (you)\n\nNeeds routing:\n")), "{message}");
-    assert!(summary.lines().nth(3).unwrap().contains(&format!("#{} bug: Fix the header | new | done when: Header fits", item.id)), "{message}");
+    assert!(summary.starts_with(&format!("Desk lead: {lead} (you)\nHow work lands now (LANDS: to propose a change): ")) && summary.contains(" · at once: 3\n\nNeeds routing:\n"), "{message}");
+    assert!(summary.lines().nth(4).unwrap().contains(&format!("#{} bug: Fix the header | new | done when: Header fits", item.id)), "{message}");
 }
 
 #[test]

@@ -94,6 +94,7 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx
                 }
             }
             Line::Answer { id, text } => cleanup_said(st, project, &by, &id, Some(text), now, fx, &mut answers),
+            Line::Lands { part, to, steps, why } => fx.lands.push(super::desk_lands::Proposal { lsid: lsid.to_string(), desk: project.to_string(), part, to, steps, why }),
             Line::Pause { on, why } => fx.pause.push((project.to_string(), on, name.clone(), lsid.to_string(), why)),
             Line::Pass { id, .. } => cleanup_said(st, project, &by, &id, None, now, fx, &mut answers),
             Line::Context { .. } | Line::Designs { .. } => {}
@@ -219,6 +220,7 @@ fn route_answers(st: &mut Store, project: &str, lsid: &str, answers: Vec<String>
     }
     let asking = fx.uses.iter().any(|u| u.lead == lsid)
         || fx.asks.iter().any(|a| a.0 == lsid)
+        || fx.lands.iter().any(|p| p.lsid == lsid)
         || st.sessions.state(lsid).as_deref() == Some("deciding");
     if asking {
         let held = st.desk.routes_held.entry(project.to_string()).or_default();

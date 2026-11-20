@@ -15,7 +15,7 @@ mod typing;
 pub use agents::{agents_installed, end_agent, end_machine_agent, AGENT_PATH};
 pub use apps::{open_tab_with, terminal_name, NewTab};
 pub use lines::{claude_trusts, fork_line, model_args, new_session_id, permission_flags, resume_line_for, resume_line_for_with, resume_line_local, resume_line_with, shq, start_line_args, start_line_with};
-pub(crate) use exec::capped;
+pub(crate) use exec::{capped, capped_group};
 #[cfg(test)]
 pub(crate) use exec::find_bin;
 pub use screen::{agent_gone, box_empty, dialog_on, text_in_box};

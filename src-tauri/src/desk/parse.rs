@@ -51,6 +51,9 @@ pub enum Line {
     Pass { id: String, why: String },
     /// The lead pausing (`PAUSE: why: …`, on) or resuming (`RESUME: why: …`) its whole Desk (#366).
     Pause { on: bool, why: String },
+    /// The lead proposing a change to how work lands (#381): `LANDS: <part> -> <choice> | steps: <one> ;; <two> | why: …`.
+    /// Cue asks you; only your yes saves it (hub/desk_lands.rs).
+    Lands { part: String, to: String, steps: Vec<String>, why: String },
 }
 
 /// The Desk lines in `text`, in order.
@@ -161,6 +164,7 @@ fn one(t: &str) -> Option<Line> {
         // With an item (#365) it pauses that item; with none (#366), the whole Desk.
         "PAUSE" => unstick("pause", body).or_else(|| whole_desk(true, body)),
         "RESUME" => unstick("resume", body).or_else(|| whole_desk(false, body)),
+        "LANDS" => lands(body),
         _ => None,
     }
 }
@@ -344,6 +348,40 @@ fn note(body: &str) -> Option<Line> {
     (!text.is_empty()).then_some(Line::Note { id: id_of(head)?, text })
 }
 
+/// `LANDS: <part> -> <choice> | steps: <one> ;; <two> | why: <reason>` (#381): steps only for your own steps. Read by
+/// its ` | steps:` and ` | why:` markers, so a step may hold `|` or `;` (`npm test | tail -5`, `cd web; make`); steps
+/// are split only on ` ;; ` (lands::STEP_SEP). A why without its label (`| the user asked`) still counts.
+fn lands(body: &str) -> Option<Line> {
+    let lower = body.to_ascii_lowercase();
+    let mark = |label: &str| lower.find(&format!("| {label}:")).or_else(|| lower.find(&format!("|{label}:")));
+    let (steps_at, why_at) = (mark("steps"), mark("why"));
+    let head_end = [steps_at, why_at].into_iter().flatten().min().unwrap_or(body.len());
+    // What follows a marker, up to the other one when it comes after.
+    let after = |at: Option<usize>, label: &str, other: Option<usize>| {
+        at.map(|i| {
+            let end = other.filter(|o| *o > i).unwrap_or(body.len());
+            let seg = body[i..end].trim_start_matches('|').trim();
+            labelled(seg, label).unwrap_or(seg).to_string()
+        })
+    };
+    let (head, mut why) = match body[..head_end].split_once('|') {
+        Some((h, w)) if why_at.is_none() => (h, w.trim().to_string()),
+        _ => (&body[..head_end], String::new()),
+    };
+    let (part, to) = head.split_once("->")?;
+    let (part, to) = (part.trim().to_string(), to.trim().to_string());
+    if part.is_empty() || to.is_empty() {
+        return None;
+    }
+    let steps = after(steps_at, "steps", why_at)
+        .map(|s| s.split(crate::lands::STEP_SEP.trim()).map(str::trim).filter(|s| !s.is_empty()).map(str::to_string).collect())
+        .unwrap_or_default();
+    if let Some(w) = after(why_at, "why", steps_at) {
+        why = w;
+    }
+    Some(Line::Lands { part, to, steps, why })
+}
+
 /// `PASS: #<id> | why: <words>` (the why's label, or the why, may be left out): Line::Pass.
 fn pass(body: &str) -> Option<Line> {
     let (head, why) = body.split_once('|').unwrap_or((body, ""));
@@ -474,4 +512,28 @@ pub fn made_in(text: &str, paths: bool) -> Vec<String> {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn steps_why(body: &str) -> (String, String, Vec<String>, String) {
+        match lands(body) {
+            Some(Line::Lands { part, to, steps, why }) => (part, to, steps, why),
+            _ => panic!("not read: {body}"),
+        }
+    }
+
+    #[test]
+    fn lands_steps_may_hold_a_pipe_or_a_semicolon_and_split_only_on_the_separator() {
+        let (part, to, steps, why) = steps_why("check -> command | steps: npm test | tail -5 ;; cd web; make lint | why: the user asked");
+        assert_eq!((part.as_str(), to.as_str(), why.as_str()), ("check", "command", "the user asked"));
+        assert_eq!(steps, ["npm test | tail -5", "cd web; make lint"]);
+        let (_, _, steps, why) = steps_why("after -> command | why: they want a deploy | steps: a; b");
+        assert_eq!((steps, why.as_str()), (vec!["a; b".to_string()], "they want a deploy"), "why first, steps after");
+        let (_, to, steps, why) = steps_why("check -> none | the user asked");
+        assert_eq!((to.as_str(), steps.len(), why.as_str()), ("none", 0, "the user asked"), "a why without its label");
+        assert!(lands("check | why: x").is_none(), "no arrow");
+    }
 }

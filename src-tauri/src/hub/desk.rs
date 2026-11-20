@@ -30,6 +30,8 @@ pub(super) struct Effects {
     pub(super) answers: Vec<(String, String, String)>,
     /// A lead's questions for you: (its session, its project, question, choices, the item it's about).
     pub(super) asks: Vec<(String, String, String, Vec<String>, Option<String>)>,
+    /// A lead's proposed changes to how work lands (LANDS:), each asked of you (desk_lands.rs).
+    pub(super) lands: Vec<super::desk_lands::Proposal>,
     /// New items for their project's lead to route: (project, item), told together a moment later.
     pub(super) news: Vec<(String, String)>,
     /// Items a lead gave to a new session (`-> new`): each started a moment later (desk_lead.rs).
@@ -323,18 +325,24 @@ impl Hub {
 
     /// Card `id` answered with `d`: a lead's ASK is filed and its answer sent to the lead. False for any other.
     pub(super) fn desk_answered(&self, id: &str, d: &Decision) -> bool {
-        let Some((sid, question, using, about, old)) = self.read(|st| {
+        let Some((sid, question, using, about, old, lands)) = self.read(|st| {
             st.items.iter().find(|i| i.id == id && i.desk).map(|i| {
                 let old = i.tool_input["desk_old"].as_str().map(str::to_string);
+                let lands = i.tool_input.get("desk_lands").filter(|v| v.is_object()).cloned();
                 let using = serde_json::from_value::<UseAsk>(i.tool_input["desk_use"].clone()).ok();
                 let about = i.tool_input["desk_item"].as_str().map(|x| format!(" about #{x}")).unwrap_or_default();
-                (i.origin.session_id.clone(), i.tool_input.pointer("/questions/0/question").and_then(Value::as_str).unwrap_or("").to_string(), using, about, old)
+                (i.origin.session_id.clone(), i.tool_input.pointer("/questions/0/question").and_then(Value::as_str).unwrap_or("").to_string(), using, about, old, lands)
             })
         }) else { return false };
         let answer = d.answers.as_ref().and_then(|a| a.as_object()).and_then(|a| a.values().next()).map(|v| v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string()));
         let answer = answer.or_else(|| d.message.clone()).unwrap_or_else(|| if d.behavior == "deny" { "no".into() } else { "yes".into() });
         self.write(|st| st.waiters.remove(id));
         self.finish(id, "answered", &format!("answered: {answer}"));
+        // The lead's proposed change to how work lands (desk_lands.rs): saved only on your yes, the lead told.
+        if let Some(lands) = lands {
+            self.desk_lands_answered(&sid, &lands, d.behavior != "deny" && answer == "Yes");
+            return true;
+        }
         // Cue's own question, put in the lead's chat (desk_copies.rs): answered here, nothing sent to the lead.
         if let Some(desk) = old {
             self.desk_old_copies_answered(desk, d.behavior != "deny" && answer == "Yes");
@@ -399,7 +407,7 @@ impl Hub {
     /// What a change left to do, with the store let go: its saves, then its messages and questions, and new items
     /// for their lead (told a moment later, with any others that came meanwhile).
     pub(super) fn desk_done(&self, mut fx: Effects) {
-        if fx.items.is_empty() && fx.said.is_empty() && fx.dropped.is_empty() && fx.decisions.is_empty() && fx.sends.is_empty() && fx.asks.is_empty() && fx.news.is_empty() && fx.starts.is_empty() && fx.joined.is_empty() && fx.uses.is_empty() && fx.stopped.is_empty() && fx.trees_gone.is_empty() && fx.closes.is_empty() && fx.on_main.is_empty() && fx.cleanup.is_empty() && !fx.land && fx.pause.is_empty() {
+        if fx.items.is_empty() && fx.said.is_empty() && fx.dropped.is_empty() && fx.decisions.is_empty() && fx.sends.is_empty() && fx.asks.is_empty() && fx.lands.is_empty() && fx.news.is_empty() && fx.starts.is_empty() && fx.joined.is_empty() && fx.uses.is_empty() && fx.stopped.is_empty() && fx.trees_gone.is_empty() && fx.closes.is_empty() && fx.on_main.is_empty() && fx.cleanup.is_empty() && !fx.land && fx.pause.is_empty() {
             return;
         }
         // Items going to work get their own copies (or wait for one), before their messages are saved and sent.
@@ -474,6 +482,9 @@ impl Hub {
         }
         for (lsid, project, q, choices, item) in fx.asks {
             self.desk_ask(&lsid, &project, &q, &choices, None, item.as_deref());
+        }
+        for p in fx.lands {
+            self.desk_lands_ask(p);
         }
         // A stop the lead hasn't settled turns red once its time is up: the Desk is shown again then.
         if !fx.stopped.is_empty() {

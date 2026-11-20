@@ -4,7 +4,9 @@ A design, for any project a Desk runs. Status: step 6 (parts 1 to 3, for Cue's f
 merged, in #251. Step 7, the per-project setting with its defaults, is built and not yet merged, in #252: the Desk's
 header shows it and Change opens it; the engine honours the shared folder or an own copy, items at once, one commit
 per item or you commit, and no check or Cue's own. Step 8, PR landing and the push choices, is built and not yet
-merged, in #253. A branch, merge and a command of your own are still shown as "not yet".
+merged, in #253. Your own steps for the check and after landing, one settings screen per project (how work lands,
+Ask me before, Away, old working folders) and the lead proposing a change you say yes to, are built and not yet
+merged, in #381. A branch and merge are still shown as "not yet".
 
 It follows from the review of 17 November 2026, `docs/desk-fable-review-2026-11-17.md`. Where a choice
 here rests on that day, I point to the section there as "review 1" to "review 8".

@@ -337,8 +337,13 @@ impl Hub {
             if checked != merged {
                 // Its `at` kept: cut short, it's back in the line in its place.
                 self.finish_fin(id, |f| (f.step, f.wait) = ("checking".into(), String::new()));
-                // Its project set to no check: it lands "not checked" (lands.rs).
-                let check = if crate::lands::check_off(&it.project, &t.repo) { None } else { self.installer().check(&t.repo, &squash) };
+                // Its project's check (lands.rs), on the same tree: main plus the item (`squash`). Your own steps run
+                // in a clean copy of it; set to none, it lands "not checked"; else the repository's own (Cue's).
+                let check = match crate::lands::check_of(&it.project, &t.repo) {
+                    crate::lands::Check::Steps(steps) => Some(check_steps_on(&t.repo, &squash, &steps)),
+                    crate::lands::Check::Off => None,
+                    crate::lands::Check::Repo => self.installer().check(&t.repo, &squash),
+                };
                 match check {
                     None => unchecked = true,
                     Some(Ok(())) => {}
@@ -508,6 +513,44 @@ fn names_item(text: &str, id: &str) -> bool {
     text.match_indices(&at).any(|(i, _)| !text[i + at.len()..].starts_with(|c: char| c.is_ascii_alphanumeric()))
 }
 
+/// Your own check's `steps` run on `commit` of `repo` (main plus the item, the tree Cue's own check reads): in a
+/// detached copy of it in Cue's folder, removed after. Err says which step and what it said. No lock is held here.
+fn check_steps_on(repo: &str, commit: &str, steps: &[String]) -> Result<(), String> {
+    static RUN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let run = RUN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir = crate::server::cue_dir().join("checks").join(format!("{}-{run}", std::process::id()));
+    let path = dir.to_string_lossy().to_string();
+    let _ = std::fs::remove_dir_all(&dir);
+    if let Some(parent) = dir.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    // A check cut off by a crash left its copy registered: forgotten first, so its place can be taken.
+    let _ = git("", repo, &[], &["worktree", "prune"]);
+    git_said("", repo, &[], &["worktree", "add", "-q", "--detach", &path, commit])
+        .map_err(|e| super::desk_commit::because("git couldn't make a copy of main plus the item to check".into(), &e))?;
+    if super::desk_checks::builds_this_cue(repo) {
+        link_shared(repo, &path);
+    }
+    let ran = crate::lands::run_steps(&path, steps).map_err(|e| format!("\"{}\" {}\n{}", e.step, e.why, e.said).trim_end().to_string());
+    remove(&ItemTree { repo: repo.to_string(), path, branch: String::new(), ..Default::default() });
+    ran
+}
+
+/// The copies under `checks` (`<Cue folder>/checks`) that a check cut off by a crash or a quit left behind, removed:
+/// each `<pid>-<n>` whose Cue isn't running any more. Only Cue's own scratch copies are ever there; nothing else is
+/// touched. Their registration in the repository goes at the next check's `git worktree prune`. Run at start-up.
+pub(crate) fn clear_old_checks(checks: &std::path::Path) {
+    for e in std::fs::read_dir(checks).into_iter().flatten().flatten() {
+        let name = e.file_name().to_string_lossy().to_string();
+        let Some(pid) = name.split_once('-').and_then(|(p, n)| n.parse::<u64>().ok().and(p.parse::<i32>().ok())) else { continue };
+        // SAFETY: kill with signal 0 sends nothing: it only asks whether that process is there.
+        let running = pid == std::process::id() as i32 || unsafe { libc::kill(pid, 0) } == 0;
+        if !running && e.file_type().is_ok_and(|t| t.is_dir()) {
+            let _ = std::fs::remove_dir_all(e.path());
+        }
+    }
+}
+
 /// The links a copy of Cue's repository shares: its main checkout's `node_modules`, and one build folder for all
 /// its copies.
 fn link_shared(repo: &str, path: &str) {
@@ -665,6 +708,27 @@ impl Hub {
 #[cfg(test)]
 mod tests {
     use super::names_item;
+
+    /// A check cut off by a crash leaves its copy in `<Cue folder>/checks`: cleared at start-up, while a running Cue's
+    /// copy and anything not named as a check's copy stay.
+    #[test]
+    fn desk_checks_left_by_a_crash_are_cleared_and_nothing_else() {
+        let dir = std::env::temp_dir().join(format!("cue-test-checks-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let gone = dir.join("999999-0");
+        let mine = dir.join(format!("{}-3", std::process::id()));
+        let other = dir.join("notes");
+        for d in [&gone, &mine, &other] {
+            std::fs::create_dir_all(d.join("src")).unwrap();
+            std::fs::write(d.join("src/a.txt"), "1\n").unwrap();
+        }
+        super::clear_old_checks(&dir);
+        assert!(!gone.exists(), "the crashed Cue's copy is cleared");
+        assert!(mine.join("src/a.txt").exists(), "a running Cue's copy stays");
+        assert!(other.join("src/a.txt").exists(), "nothing else is touched");
+        super::clear_old_checks(&dir.join("missing"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// A build under way holds its profile folder locked (cargo's `.cargo-lock`): nothing in it is cleared then (#377).
     #[test]

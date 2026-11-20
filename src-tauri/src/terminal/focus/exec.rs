@@ -33,6 +33,18 @@ pub(crate) fn find_bin(name: &str) -> String {
 /// to type into a terminal or read it (osascript, tmux, kitten, wezterm) answers in well under a second;
 /// one that doesn't (iTerm busy, a tmux server not answering) would otherwise hold a send for good.
 pub(crate) fn capped(cmd: &mut Command, cap: std::time::Duration) -> std::io::Result<std::process::Output> {
+    capped_in(cmd, cap, false)
+}
+
+/// `capped` for a command that may start others (a shell running your steps): it runs in a process group of its own,
+/// is done only when it and all it started that still hold its output are, and past `cap` the whole group is killed.
+pub(crate) fn capped_group(cmd: &mut Command, cap: std::time::Duration) -> std::io::Result<std::process::Output> {
+    use std::os::unix::process::CommandExt;
+    cmd.process_group(0);
+    capped_in(cmd, cap, true)
+}
+
+fn capped_in(cmd: &mut Command, cap: std::time::Duration, group: bool) -> std::io::Result<std::process::Output> {
     use std::io::Read;
     if cmd.get_program().to_string_lossy().ends_with("tmux") {
         crate::chaos::pause(crate::chaos::Knob::TmuxDelayMs);
@@ -43,11 +55,23 @@ pub(crate) fn capped(cmd: &mut Command, cap: std::time::Duration) -> std::io::Re
     let out = drain(child.stdout.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
     let err = drain(child.stderr.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
     let until = std::time::Instant::now() + cap;
+    let mut done = None;
     let status = loop {
-        if let Some(st) = child.try_wait()? {
-            break st;
+        if done.is_none() {
+            done = child.try_wait()?;
+        }
+        if let Some(st) = done {
+            if !group || (out.is_finished() && err.is_finished()) {
+                break st;
+            }
         }
         if std::time::Instant::now() >= until {
+            if group {
+                // SAFETY: killpg only sends a signal, to the group this command leads (its id is the group's).
+                unsafe {
+                    libc::killpg(child.id() as libc::pid_t, libc::SIGKILL);
+                }
+            }
             let _ = child.kill();
             let _ = child.wait();
             return Err(timed_out(cmd, cap));
@@ -115,5 +139,16 @@ mod tests {
         let o = capped(Command::new("/bin/sh").args(["-c", "head -c 200000 /dev/zero | tr '\\0' x; exit 3"]), CAP).unwrap();
         assert_eq!(o.stdout.len(), 200_000);
         assert_eq!(o.status.code(), Some(3));
+    }
+
+    #[test]
+    fn a_group_that_hangs_is_cut_off_with_all_it_started() {
+        let t = std::time::Instant::now();
+        // The shell waits on a sleep it started: the sleep is killed with it, and nothing holds the output after.
+        let e = capped_group(Command::new("/bin/sh").args(["-c", "sleep 30; echo late"]), std::time::Duration::from_secs(1)).unwrap_err();
+        assert!(t.elapsed() < std::time::Duration::from_secs(3), "{:?}", t.elapsed());
+        assert_eq!(e.kind(), std::io::ErrorKind::TimedOut);
+        let o = capped_group(Command::new("/bin/sh").args(["-c", "echo hi; exit 2"]), CAP).unwrap();
+        assert_eq!((String::from_utf8_lossy(&o.stdout).trim(), o.status.code()), ("hi", Some(2)));
     }
 }

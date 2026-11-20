@@ -81,6 +81,11 @@ kbd { font: 600 10.5px var(--mono); padding: 2px 6px; border-radius: 5px; backgr
 .ld-step { display: inline-flex; align-items: center; gap: 10px; align-self: flex-start; }
 .ld-step .btn { min-width: 30px; padding: 4px 8px; }
 .ld-n { min-width: 14px; text-align: center; font-size: 14px; }
+.ld-dialog { max-height: calc(100vh - 48px); overflow-y: auto; }
+.ld-sec + .ld-sec { margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
+.ld-h { font-size: 13.5px; font-weight: 700; color: var(--ink); margin-bottom: 2px; }
+.ld-cmd { width: 100%; box-sizing: border-box; font: 12.5px/1.5 var(--mono); padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); resize: vertical; }
+.ld-away { display: flex; align-items: center; gap: 12px; margin-top: 4px; font-size: 12.5px; color: var(--muted); }
 @media (max-width: 560px) { .ld-row { grid-template-columns: 1fr; gap: 6px; } .ld-label { padding-top: 0; } }
 /* An add-on row's choice of many (sheets.js extPick): a button, and the choices listed under its row. */
 .xp-btn { flex: none; display: inline-flex; align-items: center; gap: 8px; max-width: 280px; padding: 6px 10px; border-radius: 9px; background: var(--panel-2); color: var(--ink); font-size: 12.5px; font-weight: 650; }

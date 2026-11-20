@@ -195,6 +195,7 @@ impl Hub {
     /// With the routes it couldn't make that it's told of: `desk_told` once the message has reached it.
     pub(crate) fn desk_summary(&self, project: &str, lead: &str, with_skill: bool) -> (String, Vec<(String, String)>) {
         let now = now_ms();
+        let lands = if lead.is_empty() { String::new() } else { self.desk_lands_line(project) };
         let (text, failed) = self.read(|st| {
             let mut out = match st.desk.spaces.get(project) {
                 Some(d) => format!("id=\"{}\" name=\"{}\" project=\"{}\">\n", project, d.name.replace('"', "'"), d.project.replace('"', "'")),
@@ -204,7 +205,7 @@ impl Hub {
                 let name = st.sessions.get(lead).map(shown_name)
                     .or_else(|| st.desk.lead.get(project).filter(|l| l.sid == lead).map(|l| l.name.clone()))
                     .unwrap_or_else(|| lead.chars().take(8).collect());
-                out.push_str(&format!("Desk lead: {name} (you){}\n\n", context_note(st, lead, false, now)));
+                out.push_str(&format!("Desk lead: {name} (you){}\n{lands}\n", context_note(st, lead, false, now)));
             }
             let (mut failed, mut told) = (vec![], vec![]);
             let (mut ready, open): (Vec<_>, Vec<_>) = st.desk.items.iter()

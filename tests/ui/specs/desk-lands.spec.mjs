@@ -1,6 +1,7 @@
 // How work lands, per project (lands.js, lands.rs): the Desk's header says it ("Lands: own copy, checked, one commit
 // per item · Change"), and Change opens the setting: where an item works, items at once, how it lands, the check,
-// after landing, push. Choices Cue can't do yet are shown greyed, saying "not yet". A folder that isn't a git
+// after landing, push (your own steps for the check and after landing). Choices Cue can't do yet are shown greyed,
+// saying "not yet". A folder that isn't a git
 // repository says why it works in place.
 import { test, expect } from "./cue.mjs";
 
@@ -18,7 +19,7 @@ test("Cue's own Desk says how its work lands, and Change opens the setting with 
   await expect(line(page)).toHaveText("Lands: own copy, checked, one commit per item · Change");
   await line(page).locator("[data-lands-change]").click();
   const dlg = page.locator(".ld-dialog");
-  await expect(dlg.locator(".move-title")).toHaveText("How work lands");
+  await expect(dlg.locator(".move-title")).toHaveText("Settings for cue");
   await expect(dlg.locator(".ld-label")).toHaveText(["Where an item works", "Items at once", "How it lands", "Check before landing", "After landing", "Push to main", "Old working folders"]);
   const seg = (label) => dlg.locator(".ld-row", { has: page.locator(".ld-label", { hasText: label }) }).locator(".ld-seg");
   await expect(seg("Where an item works").locator("button.on")).toHaveText("Own copy");
@@ -29,13 +30,13 @@ test("Cue's own Desk says how its work lands, and Change opens the setting with 
   await expect(seg("After landing").locator("button.on")).toHaveText("Install or serve Cue");
   await expect(seg("Push to main").locator("button.on")).toHaveText("Ask each time");
   // Not built yet: shown, can't be picked.
-  for (const [label, name] of [["Where an item works", "A branch"], ["How it lands", "Merge"], ["Check before landing", "A command"], ["After landing", "A command"]]) {
+  for (const [label, name] of [["Where an item works", "A branch"], ["How it lands", "Merge"]]) {
     const b = seg(label).locator("button", { hasText: name });
     await expect(b).toBeDisabled();
     await expect(b.locator(".ld-not")).toHaveText("not yet");
   }
   // Built: a pull request, and every push choice.
-  for (const [label, name] of [["How it lands", "Pull request"], ["Push to main", "Never"], ["Push to main", "After each landing"]]) {
+  for (const [label, name] of [["How it lands", "Pull request"], ["Push to main", "Never"], ["Push to main", "After each landing"], ["Check before landing", "Your own steps"], ["After landing", "Your own steps"]]) {
     await expect(seg(label).locator("button", { hasText: name })).toBeEnabled();
   }
   await expect(dlg.locator("[title]")).toHaveCount(0);

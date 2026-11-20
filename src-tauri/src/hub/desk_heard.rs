@@ -211,5 +211,5 @@ pub(super) fn desk_line_start(line: &str) -> bool {
     let l = parse::unmarked(line.trim().trim_start_matches('`')).trim_start_matches('`');
     let Some((word, _)) = l.split_once(':') else { return false };
     let word = word.trim_end_matches(['*', '`']).trim();
-    matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "CONTEXT" | "DESIGNS" | "TITLE" | "SEE" | "SPLIT" | "CUT" | "MERGE" | "NOTE" | "FEATURE" | "CLOSE" | "TAKE COPY" | "LAND FIRST" | "START" | "PARK" | "HOLD" | "PAUSE" | "RESUME" | "ANSWER" | "PASS") || word.eq_ignore_ascii_case("DECIDED")
+    matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "CONTEXT" | "DESIGNS" | "TITLE" | "SEE" | "SPLIT" | "CUT" | "MERGE" | "NOTE" | "FEATURE" | "CLOSE" | "TAKE COPY" | "LAND FIRST" | "START" | "PARK" | "HOLD" | "PAUSE" | "RESUME" | "ANSWER" | "PASS" | "LANDS") || word.eq_ignore_ascii_case("DECIDED")
 }

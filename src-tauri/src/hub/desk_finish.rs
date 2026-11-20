@@ -391,7 +391,7 @@ impl Hub {
         let tops: Vec<String> = if tops.is_empty() && !before.is_empty() { vec![before] } else { tops.to_vec() };
         // Its project set to nothing after landing (lands.rs): Cue's own work isn't installed or served.
         let project = self.read(|st| st.desk.item(id).map(|i| i.project.clone())).unwrap_or_default();
-        let cue = tops.iter().find(|t| super::desk_checks::builds_this_cue(t) && crate::lands::lands_of(&project, t).after != "nothing");
+        let cue = tops.iter().find(|t| super::desk_checks::builds_this_cue(t) && crate::lands::lands_of(&project, t).after == "install");
         let top = cue.or(tops.first()).cloned().unwrap_or_default();
         let head = if top.is_empty() { String::new() } else { git("", &top, &[], &["rev-parse", "HEAD"]).map(|h| h.trim().to_string()).unwrap_or_default() };
         // Not on main yet (the main checkout is on another branch, or a worktree's work wasn't merged): it waits
@@ -404,6 +404,16 @@ impl Hub {
         // On main: pushed now when its project pushes after each landing (hub/desk_pr.rs).
         if !top.is_empty() {
             self.desk_push_after(id, &project, &top);
+        }
+        // After landing, your own steps (lands.rs): in order in the project's main folder, each stopped past its cap;
+        // the first that fails stops the rest, and the item waits for you, saying which. No lock is held here.
+        if cue.is_none() && !top.is_empty() {
+            let l = crate::lands::lands_of(&project, &top);
+            if l.after == "command" {
+                if let Err(e) = crate::lands::run_steps(&top, &l.after_steps) {
+                    return self.finish_ask(id, "after_failed", &format!("It landed, but after landing \"{}\" {}", e.step, e.why), &e.said);
+                }
+            }
         }
         // Its own work changed nothing the app runs (mocks, notes, plans, tests): to check now, no install, whatever
         // else on the main line waits for one (#408).

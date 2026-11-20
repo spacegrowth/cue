@@ -36,6 +36,7 @@ mod desk_commit;
 mod desk_finish;
 mod desk_trees;
 mod desk_copies;
+mod desk_lands;
 pub(crate) use desk_copies::OldCopies;
 mod desk_pr;
 mod desk_unstick;
@@ -286,6 +287,7 @@ pub struct Hub {
 impl Hub {
     pub fn new(app: Option<AppHandle>) -> Self {
         let ports = ports::Ports::real(app.as_ref());
+        desk_trees::clear_old_checks(&crate::server::cue_dir().join("checks"));
         Self::with_ports(app, ports)
     }
 
