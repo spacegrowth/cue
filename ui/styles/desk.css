@@ -1265,6 +1265,9 @@ button.dk-al-row:focus-visible { outline: 2px solid var(--accent); outline-offse
    items folded to a line each; the item itself in the column at the right, in the Items list's place. */
 .dk-ichat { display: flex; flex-direction: column; gap: 14px; }
 .dk-ichat .cv-you.sending { opacity: .6; }
+.dk-ichat .cv-status.dk-notyet { color: var(--ink); }
+.dk-ichat .cv-status.dk-notyet .dk-si { flex: none; }
+.dk-ichat .cv-status.dk-notyet .btn { margin-left: 6px; flex: none; }
 .dk-fold { all: unset; box-sizing: border-box; display: flex; align-items: baseline; gap: 6px; min-width: 0; padding: 8px 12px; border-radius: var(--radius-btn, 8px); background: var(--panel-2); color: var(--muted); font-size: 12.5px; cursor: pointer; user-select: none; -webkit-user-select: none; }
 .dk-fold b { flex: none; color: var(--ink); font-weight: 650; }
 .dk-fold .dk-fold-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }

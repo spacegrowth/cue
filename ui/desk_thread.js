@@ -308,8 +308,23 @@ function deskItemChat(i, d, s) {
     const m = { ...deskMsgState(c, i, s.session_id), to: c.why?.replace(/^(to |sent back to |note to )/, "") || i.holder?.name, item: i.id };
     return keyed(msgRow({ ...m, acts: deskMsgActs(m) }, `<div class="cv-you-text">${esc(c.text).replace(/\n/g, "<br>")}</div>`), `lost:${c.id}`);
   }).join("");
-  const where = sessionOf(s.session_id) ? whereNow(null, s) : "";
-  return `<div class="dk-ichat" data-thread-for="${esc(`${i.project}|${i.id}`)}">${rows}${failed}${mine}${where ? keyed(where, "where") : ""}</div>`;
+  // Not started yet (#476): that, and its holder's own line only when it really waits on you (its question, a step).
+  const notYet = deskNotStarted(i), asks = ["waiting", "deciding"].includes(s.state) && waitingFor(null, s) !== "your reply";
+  const where = sessionOf(s.session_id) && (!notYet || asks) ? whereNow(null, s) : "";
+  return `<div class="dk-ichat" data-thread-for="${esc(`${i.project}|${i.id}`)}">${rows}${failed}${mine}${notYet ? keyed(notYet, "notyet") : ""}${where ? keyed(where, "where") : ""}</div>`;
+}
+/** Item `i` given to a session but not started yet (#476): one plain line under its chat saying so and why, a free
+ *  working folder or the item before it, with Start now as its panel offers; in place of its holder's own line, which
+ *  says "Waiting on you for your reply" of an idle holder when nothing waits on you. "" once it has started. */
+function deskNotStarted(i) {
+  if (!["queued", "new"].includes(i.state) || !i.holder) return "";
+  const who = esc(i.holder.name || "its session"), first = i.after && deskItem(i.project, i.after);
+  const why = deskCopyWaits(i) ? `${esc(deskCopyWaitLine(i))}. It starts by itself when one is free.`
+    : i.state === "queued" && i.tree_wait ? `Waiting for a free working folder. It starts by itself when one is free.`
+    : first ? `It starts after <a href="#" data-desk-item="${esc(first.id)}">#${esc(first.id)} ${esc(deskShort(first.title))}</a>${first.state === "working" && first.holder ? `, which ${esc(first.holder.name)} is on now` : ""}.`
+    : sessionOf(deskHolderSid(i))?.state === "working" ? `It's next for ${who}, after what it's on now.` : `It's next for ${who}.`;
+  const go = `<button class="btn small" data-desk-act="start_now" data-id="${esc(i.id)}">Start now</button>`;
+  return `<div class="cv-status dk-notyet">${deskStateIcon(i)}<span><b>Hasn't started yet.</b> ${why}</span>${go}</div>`;
 }
 /** Your note about item `i` waiting for its holder at work, kept in Cue or queued (#419): { words: yours alone, without
  *  the "About #id (title): " or send-back wrapping Cue sent it in; line: "Waiting: cue-12 is finishing something, your
