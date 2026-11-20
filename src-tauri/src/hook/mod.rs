@@ -695,6 +695,29 @@ mod tests {
         assert_eq!(texts, ["Routed.", "Still here."]);
     }
 
+    /// A `/loop` wake-up (or a skill you run) sends the agent a prompt as a command tag: it starts a turn, so the lines of
+    /// the turn before it aren't read again at its end (#515). Its expanded instructions (a meta entry) start none.
+    #[test]
+    fn a_loop_wake_up_starts_a_turn() {
+        let path = std::env::temp_dir().join(format!("cue-loop-turn-{}.jsonl", std::process::id()));
+        let user = |t: &str| json!({ "type": "user", "message": { "role": "user", "content": t } }).to_string();
+        let meta = |t: &str| json!({ "type": "user", "isMeta": true, "message": { "role": "user", "content": [{ "type": "text", "text": t }] } }).to_string();
+        let said = |t: &str| json!({ "type": "assistant", "message": { "role": "assistant", "content": [{ "type": "text", "text": t }] } }).to_string();
+        let lines = [
+            "{}".to_string(),
+            user("<desk project=\"cue\">\nItems:\n</desk>\nhi"),
+            said("NOTE: #472 | Nothing more for you."),
+            user("<command-message>loop</command-message>\n<command-name>/loop</command-name>\n<command-args>check the Desk</command-args>"),
+            meta("# /loop — schedule a recurring or self-paced prompt"),
+            said("Next Desk check is at 02:22."),
+        ];
+        std::fs::write(&path, lines.join("\n") + "\n").unwrap();
+        let p = json!({ "transcript_path": path.to_string_lossy(), "last_assistant_message": "Next Desk check is at 02:22." });
+        let texts: Vec<String> = final_turn(&p).iter().filter_map(|v| v["text"].as_str().map(str::to_string)).collect();
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(texts, ["Next Desk check is at 02:22."]);
+    }
+
     /// A fake clock on this thread, run ahead as each case says.
     fn on_a_fake_clock() -> crate::clock::fake::Fake {
         let clock = crate::clock::fake::Fake::frozen(1_000_000);

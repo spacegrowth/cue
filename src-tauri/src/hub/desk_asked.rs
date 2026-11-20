@@ -109,8 +109,11 @@ impl Hub {
     /// back): it's at work on them again, so they are, until it says DONE again. One you asked a question on is
     /// settled as its answer ends (desk_asked's `answered`), not here.
     fn desk_back_at_work(&self, sid: &str, prompt: &str) {
+        // One of the Desk's own messages is about the item it opens with ("Desk item #513 …", a note on #472): an
+        // item to check it only mentions (a brief for the item queued after it, #515) stays as it is.
+        let on = desk_message_item(prompt);
         let about = |i: &crate::desk::DeskItem| {
-            i.state == "to_check" && i.asked.is_none() && i.holder.as_ref().is_some_and(|h| h.to() == sid) && names_item(prompt, &i.id)
+            i.state == "to_check" && i.asked.is_none() && i.holder.as_ref().is_some_and(|h| h.to() == sid) && on.as_ref().map_or_else(|| names_item(prompt, &i.id), |o| *o == i.id)
         };
         if !self.read(|st| st.desk.items.iter().any(about)) {
             return;
@@ -150,6 +153,14 @@ impl Hub {
         });
         self.desk_done(fx);
     }
+}
+
+/// The item one of the Desk's own messages is about: the one its first "Desk item #<id>" names. None for words that
+/// aren't the Desk's (yours, typed to the session).
+fn desk_message_item(text: &str) -> Option<String> {
+    let (_, rest) = text.split_once("Desk item #")?;
+    let id: String = rest.chars().take_while(|c| c.is_ascii_alphanumeric()).collect();
+    (!id.is_empty()).then_some(id)
 }
 
 /// `text` is about item `id`: it names "#id", not as the start of a longer number.

@@ -214,4 +214,13 @@ impl Hub {
             }
         });
     }
+
+    /// Item `id` put in `state` as it is, nothing else changed: to set up an item in any state at once.
+    pub(crate) fn desk_put_in_state(&self, id: &str, state: &str) {
+        self.write(|st| {
+            if let Some(it) = st.desk.item_mut(id) {
+                it.state = state.into();
+            }
+        });
+    }
 }

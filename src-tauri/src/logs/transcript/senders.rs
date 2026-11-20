@@ -109,10 +109,13 @@ pub fn harness_text(text: &str) -> bool {
 
 /// A prompt that is your own message, or Cue's on your behalf: it starts a turn. Text that opens with a tag is
 /// Claude Code's own (a command, its output, a notice), except a Desk lead's messages, which open with Cue's
-/// `<desk>` block: missing those made every lead turn reach back to the last plain prompt, re-reading old lines.
+/// `<desk>` block, and a command that sends it a prompt (a skill, or `/loop` waking it: `<command-message>`): missing
+/// those made a turn reach back to the last plain prompt, re-reading old lines (#515: a lead's note sent again on each
+/// `/loop` wake-up reopened the item it was on). A command Claude Code runs itself (`<command-name>` first) starts none.
 pub fn opens_a_turn(text: &str) -> bool {
     let t = text.trim_start();
-    !t.is_empty() && (!t.starts_with('<') || t.starts_with("<desk ") || t.starts_with("<desk>")) && !harness_text(t) && !peer_text(t)
+    let ours = t.starts_with("<desk ") || t.starts_with("<desk>") || t.starts_with("<command-message>");
+    !t.is_empty() && (!t.starts_with('<') || ours) && !harness_text(t) && !peer_text(t)
 }
 
 /// A teammate's message to its lead (or its notice), as Claude Code writes it into the lead's log: from it, not
