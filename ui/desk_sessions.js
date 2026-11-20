@@ -25,12 +25,13 @@ const deskSessItems = (d, sid) => d.items.filter((i) => i.state !== "done" && i.
 /** A session row's size and cache, as its card says them: "142k · cache 3m" (minutes its cache has left)
  *  or "142k · cold"; amber with under 5 minutes left. With `when` (an idle row), when its latest reply came first:
  *  "2h ago · 142k · cold". From its card's numbers (insights.js insCache), asked for here when no card brings them
- *  (deskInsAsk); "" without. */
-function deskSessCache(sid, when = false) {
+ *  (deskInsAsk). Without them: "", or with `hold` (a Desk row) an empty line of the same height (#485). */
+function deskSessCache(sid, when = false, hold = false) {
   deskInsAsk(sid);
   const c = typeof insCache !== "undefined" ? insCache.get(sid) : null;
-  // Not known yet: an empty line of the same height, so the row keeps its shape when the numbers come in (#485).
-  if (!c?.tokens && !c?.until_ms) return '<div class="dk-s3 dk-size" aria-hidden="true">&nbsp;</div>';
+  // Not known yet: on a Desk row an empty line of the same height, so the row keeps its shape when the numbers come in
+  // (#485); a Board card shows nothing, as it did (#524).
+  if (!c?.tokens && !c?.until_ms) return hold ? '<div class="dk-s3 dk-size" aria-hidden="true">&nbsp;</div>' : "";
   const left = (c.until_ms || 0) - now();
   const cache = left > 0 ? `cache ${Math.ceil(left / 60000)}m` : c.until_ms ? "cold" : "";
   const details = [c.tokens && insTok(c.tokens), cache].filter(Boolean).join(" · ");
@@ -118,12 +119,12 @@ function deskSessions(project) {
     // of its latest reply, else how many items it has open; a one-line card read as the strip's header.
     if (card) {
       const cItem = deskSessItem(d, sid), open = d.items.filter((i) => i.state !== "done").length;
-      return deskSessRow({ name: deskHolderName(sid), sid, cls: "dk-lcard", mark: "desk", harness: s.harness, tag: "Lead", dot, word, item: cItem, line: cItem ? "" : deskSessSaid(sid) || (open ? `${open} open item${open === 1 ? "" : "s"} on this Desk` : "No open items on this Desk"), on: lit(sid), attrs, step: deskStepLine(dot === "", s.compacting_ms ? "Compacting…" : s.doing, s.compacting_ms || s.doing_ms), size: deskSessCache(sid, !cItem && dot !== "") });
+      return deskSessRow({ name: deskHolderName(sid), sid, cls: "dk-lcard", mark: "desk", harness: s.harness, tag: "Lead", dot, word, item: cItem, line: cItem ? "" : deskSessSaid(sid) || (open ? `${open} open item${open === 1 ? "" : "s"} on this Desk` : "No open items on this Desk"), on: lit(sid), attrs, step: deskStepLine(dot === "", s.compacting_ms ? "Compacting…" : s.doing, s.compacting_ms || s.doing_ms), size: deskSessCache(sid, !cItem && dot !== "", true) });
     }
     // On no item: the first line of its latest reply, and when it came beside its size (#185).
     const item = deskSessItem(d, sid), idle = dot !== "" && !item;
     // Its reply's line stays while it's idle, empty till the reply is in, so the row doesn't grow a line (#485).
-    return deskSessRow({ name: deskHolderName(sid), sid, mark: sid === leadSid ? "desk" : lead ? "lead" : "session", dot, word, item, line: idle ? deskSessSaid(sid) || "\u00a0" : "", on: lit(sid), attrs, step: deskStepLine(dot === "", s.compacting_ms ? "Compacting…" : s.doing, s.compacting_ms || s.doing_ms), size: deskSessCache(sid, idle) }) + crew;
+    return deskSessRow({ name: deskHolderName(sid), sid, mark: sid === leadSid ? "desk" : lead ? "lead" : "session", dot, word, item, line: idle ? deskSessSaid(sid) || "\u00a0" : "", on: lit(sid), attrs, step: deskStepLine(dot === "", s.compacting_ms ? "Compacting…" : s.doing, s.compacting_ms || s.doing_ms), size: deskSessCache(sid, idle, true) }) + crew;
   };
   const leadS = sessions.find((s) => s.session_id === leadSid);
   const mine = sessions.filter((s) => s !== leadS && deskHasSession(d, s.session_id));
