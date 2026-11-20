@@ -1225,12 +1225,13 @@ body.dk-dragging, body.dk-dragging * { cursor: grabbing !important; user-select:
 span.dk-grbk-t { cursor: default; }
 .dk-grbk-t.open { white-space: pre-wrap; overflow-wrap: anywhere; }
 .dk-grbk-t b { color: var(--ink); font-weight: 600; }
-/* Away on a Desk (#415, pick D): the window in its night colours (app/render.js applyTheme) and, in the head's
-   middle, "Away until 18:00 · $3.40 of $10". In a narrow window the spend goes first, then the words shorten. */
-.top-away { flex: 0 1 auto; min-width: 0; display: inline-flex; align-items: center; gap: 8px; color: var(--on-bg); font: 650 14px var(--sans); white-space: nowrap; overflow: hidden; }
+/* Away on a Desk (#415, #459): the window keeps its light or dark; in the head's middle a lime capsule says
+   "Away until 18:00 · $3.40 of $10" (or "Away on 2 Desks"), lime on the head's dark ground in either theme. In a
+   narrow window the spend goes first, then the words shorten. */
+.top-away { flex: 0 1 auto; min-width: 0; display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 12px 0 9px; border-radius: var(--pill-radius); background: var(--sel); color: var(--on-sel); font: 650 13px var(--sans); white-space: nowrap; overflow: hidden; box-sizing: border-box; }
 .top-away > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.top-away .dk-aw-ic { color: var(--sel); }
-.top-away-m { flex: 0 100 auto; font-weight: 500; color: var(--on-bg-muted); }
+.top-away .dk-aw-ic { flex: none; color: inherit; }
+.top-away-m { flex: 0 100 auto; font-weight: 500; opacity: .75; }
 
 /* The dispatcher's Away tab (#416): past stretches, each one line, opening to what happened. */
 .dk-away-log .dk-al { border-top: 1px solid var(--line); }

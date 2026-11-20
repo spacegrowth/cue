@@ -177,8 +177,7 @@ function deskAwayLog(d) {
   const body = log.length ? log.map((r) => deskAwayStretch(r, d)).join("") : `<div class="dk-empty">Nothing yet. Each time Away goes off, what happened while you were away is kept here: the items that moved, ${esc(deskLeadName(d) || "the lead")}'s calls and the steps held for you.</div>`;
   return `<div class="dk-pane dk-away-log" data-scroll-key="awaylog:${esc(d.project)}">${body}</div>`;
 }
-/** Away on a Desk now: the window takes its night colours (the dark theme's tokens, app/render.js applyTheme) and its
- *  head says so (#415, pick D). */
+/** Away on a Desk now: the head says so (#415); the window keeps its own light or dark (#459). */
 const deskAwayOnDesks = () => (state.desk?.projects || []).filter((d) => d.away?.on);
 /** The head's mark: "Away until 18:00 · $3.40 of $10" (or why it paused); with several Desks away, how many. */
 function deskAwayHeadMark() {
@@ -187,7 +186,7 @@ function deskAwayHeadMark() {
   const a = deskAwayOf(on[0]);
   const main = on.length > 1 ? `Away on ${on.length} Desks` : a.ended ? "Away" : a.until ? `Away until ${deskHm(a.until)}` : "Away";
   const rest = on.length > 1 ? "" : a.ended ? deskAwayStatus(a) : a.budget != null ? `${deskMoney(a.spent)} of ${deskMoney(a.budget)}` : "";
-  return `<span class="top-away" data-tauri-drag-region>${DESK_AWAY_ICON.replace('width="12" height="12"', 'width="16" height="16"')}<span>${esc(main)}</span>${rest ? `<span class="top-away-m">· ${esc(rest)}</span>` : ""}</span>`;
+  return `<span class="top-away" data-tauri-drag-region>${DESK_AWAY_ICON.replace('width="12" height="12"', 'width="14" height="14"')}<span>${esc(main)}</span>${rest ? `<span class="top-away-m">· ${esc(rest)}</span>` : ""}</span>`;
 }
 /** What Away adds under Waiting on you: open asks from the Desk's sessions not already on an item (a permission with
  *  Allow / Deny right there; the lead never grants one), and sessions on a usage limit as one quiet line. */

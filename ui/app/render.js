@@ -1,15 +1,15 @@
 // Cue UI app — the main draw: the whole window rebuilt from a string, then put back as it was (the cursor, every
 // list's scroll, the chat's place) and moved on where it changed (cards that glide, arrive, slide in).
 
-/** The window's light or dark (Settings → Appearance), or its night colours while a Desk is away (#415, pick D: the
- *  dark theme's tokens, so you see it at a glance; the head says "Away until …" for anyone already in dark). */
+/** The window's light or dark (Settings → Appearance). Away on a Desk keeps it (#459): only the head's mark says so
+ *  (desk_away.js deskAwayHeadMark); `away-on` on the root for anything else that wants to know. */
 function applyTheme() {
   const away = typeof deskAwayOnDesks === "function" && deskAwayOnDesks().length > 0;
-  const mode = away ? "dark" : state.settings?.appearance?.mode ?? "system";
+  const mode = state.settings?.appearance?.mode ?? "system";
   const root = document.documentElement;
   if (mode === "system") root.removeAttribute("data-theme");
   else if (root.dataset.theme !== mode) root.dataset.theme = mode;
-  root.classList.toggle("away-night", away);
+  root.classList.toggle("away-on", away);
   retheme();
 }
 /** The chat and color the window last said ("chat-open"), so they're said only when they change. */

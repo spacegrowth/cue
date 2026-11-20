@@ -100,34 +100,48 @@ test("the calls line folds to one line and stays folded for that Desk; a call wi
   await cue.called("desk_undo", { decisionId: "c9" });
 });
 
-test("while away the window takes its night colours and the head says Away until when, with the spend; off, it's back (#415)", async ({ page, cue }) => {
-  await cue.open("desk");
-  await openDesk(page);
-  const root = page.locator("html");
-  const bg = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
-  await expect(root).not.toHaveAttribute("data-theme", "dark");
-  const day = await bg();
-  await expect(page.locator(".top .top-away")).toHaveCount(0);
-  await cue.change((st, since) => {
-    st.desk.projects.find((x) => x.project === "cue").away = { on: true, active: true, ended: "", since, until: since + 9 * 3600000, budget: 10, spent: 3.4, rules: {} };
-  }, SINCE);
-  await expect(root).toHaveAttribute("data-theme", "dark");
-  await expect(root).toHaveClass(/away-night/);
-  await expect.poll(bg).not.toBe(day);
-  const mark = page.locator(".top .top-away");
-  await expect(mark).toHaveText(/^Away until \d\d:\d\d· \$3\.40 of \$10$/);
-  await expect(mark.locator(".dk-aw-ic")).toHaveCount(1);
-  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/cue-away-night.png` });
-  // The budget reached: it says it paused.
-  await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").away.ended = "budget"; });
-  await expect(mark).toHaveText("Away· Paused: budget reached");
-  // Off: the window's own appearance again.
-  await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").away.on = false; });
-  await expect(page.locator(".top .top-away")).toHaveCount(0);
-  await expect(root).not.toHaveAttribute("data-theme", "dark");
-  await expect(root).not.toHaveClass(/away-night/);
-  await expect.poll(bg).toBe(day);
-});
+for (const mode of ["light", "dark"]) {
+  test(`while away the window keeps its ${mode} theme and only the head says Away until when, with the spend, readable; off, it's gone (#415, #459)`, async ({ page, cue }) => {
+    await cue.open("desk");
+    await cue.change((st, mode) => { st.settings = { ...(st.settings || {}), appearance: { ...(st.settings?.appearance || {}), mode } }; }, mode);
+    await openDesk(page);
+    const root = page.locator("html");
+    const bg = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    await expect(root).toHaveAttribute("data-theme", mode);
+    const before = await bg();
+    await expect(page.locator(".top .top-away")).toHaveCount(0);
+    await cue.change((st, since) => {
+      st.desk.projects.find((x) => x.project === "cue").away = { on: true, active: true, ended: "", since, until: since + 9 * 3600000, budget: 10, spent: 3.4, rules: {} };
+    }, SINCE);
+    const mark = page.locator(".top .top-away");
+    await expect(mark).toHaveText(/^Away until \d\d:\d\d· \$3\.40 of \$10$/);
+    await expect(mark.locator(".dk-aw-ic")).toHaveCount(1);
+    // The window's own theme stays: same theme, same ground.
+    await expect(root).toHaveAttribute("data-theme", mode);
+    await expect(root).toHaveClass(/away-on/);
+    expect(await bg()).toBe(before);
+    // The mark stands out from the head's ground and its words from the mark: lime capsule, dark words.
+    const c = await mark.evaluate((el) => { const s = getComputedStyle(el), lum = (v) => { const [r, g, b] = v.match(/[\d.]+/g).map(Number); return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255; }; return { mark: lum(s.backgroundColor), text: lum(s.color), head: lum(getComputedStyle(document.body).backgroundColor), radius: s.borderTopLeftRadius, left: s.borderLeftWidth }; });
+    expect(Math.abs(c.mark - c.head)).toBeGreaterThan(0.35);
+    expect(Math.abs(c.mark - c.text)).toBeGreaterThan(0.5);
+    expect(c.radius).toBe("999px");
+    expect(c.left).toBe("0px");
+    expect(await page.locator(".top-away [title], .top-away[title]").count()).toBe(0);
+    if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/cue-away-${mode}.png` });
+    // The budget reached: it says it paused.
+    await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").away.ended = "budget"; });
+    await expect(mark).toHaveText("Away· Paused: budget reached");
+    // Two Desks away: how many.
+    await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").away.ended = ""; st.desk.projects.find((x) => x.project !== "cue").away = { on: true, active: true, ended: "", rules: {} }; });
+    await expect(mark).toHaveText("Away on 2 Desks");
+    // Off: no mark, still the same theme.
+    await cue.change((st) => { for (const d of st.desk.projects) if (d.away) d.away.on = false; });
+    await expect(page.locator(".top .top-away")).toHaveCount(0);
+    await expect(root).not.toHaveClass(/away-on/);
+    await expect(root).toHaveAttribute("data-theme", mode);
+    expect(await bg()).toBe(before);
+  });
+}
 
 /** Nothing waits on the cue Desk: d1 no longer asks. */
 const clear = (cue) => cue.change((st) => {
