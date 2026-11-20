@@ -102,22 +102,40 @@ function deskWithOlder(key, rows, draw, cls = "dk-sfold dk-older", word = "older
   return now.map(draw).join("") + fold;
 }
 
+/** A picker row's line (#479): what it is (lead or session), its size, when it was last active ("working now" while it
+ *  works), from its card's numbers (insCache, asked for by deskInsAsk); and whether it's warm: at work, or its cache
+ *  still alive. With no numbers in yet, a session with work on the Desk counts as warm. */
+function deskPickInfo(r) {
+  if (typeof deskInsAsk === "function") deskInsAsk(r.sid);
+  const c = typeof insCache !== "undefined" ? insCache.get(r.sid) : null, s = sessionOf(r.sid);
+  const busy = !!s && typeof deskSessWithHelpers === "function" && deskSessWithHelpers(s)[0] === "";
+  const when = busy ? "working now" : c?.last_ms ? `active <span data-ago="${c.last_ms}">${ago(c.last_ms)}</span> ago` : "";
+  const line = [esc(r.sub), c?.tokens && typeof insTok === "function" ? esc(insTok(c.tokens)) : "", when].filter(Boolean).join(" · ");
+  const warm = busy || (c?.until_ms ? c.until_ms > now() : r.work);
+  return { line, warm, at: busy ? Infinity : c?.last_ms || s?.since_ms || 0 };
+}
+
 /** The chat card when no one runs the Desk yet, or when changing who does: "Who runs this Desk?", then a button
- *  (no sessions), "Let <name> run it" (one), or a row a session (several); "Start a new dispatcher" under them. */
+ *  (no sessions), "Let <name> run it" (one), or a row a session (several): warm ones first, the most recently active
+ *  on top, cold ones folded under "Older"; "Start a new lead" under them. Each row is the box's full width: its name
+ *  (wrapping, never cut) and its line, with Run it at the right (#479). */
 function deskPicker(d) {
   const cur = deskLead(d), rows = deskSessionsOf(d.project, d).filter((r) => r.sid !== cur?.sid), busy = deskLeadBusy;
   const label = (sid, text) => (busy === sid ? "Starting…" : text);
   const dis = busy !== null ? "disabled" : "";
-  const fresh = (primary) => `<button class="${primary ? "btn primary" : "dk-link dk-fresh"}" data-desk-lead="" ${dis}>${label("", rows.length || cur ? "Start a new dispatcher" : "Start a dispatcher")}</button>`;
+  const fresh = (primary) => `<button class="${primary ? "btn primary" : "dk-link dk-fresh"}" data-desk-lead="" ${dis}>${label("", rows.length || cur ? "Start a new lead" : "Start a lead")}</button>`;
   let body;
   if (!rows.length) body = cur ? fresh(false) : fresh(true);
   else if (rows.length === 1 && !cur) body = `<div class="dk-acts dk-pick1"><button class="btn primary" data-desk-lead="${esc(rows[0].sid)}" ${dis}>${label(rows[0].sid, `Let ${esc(rows[0].name)} run it`)}</button>${fresh(false)}</div>`;
   else {
-    const row = (r) => `<div class="dk-who"><i class="${r.lead ? "" : "idle"}"></i><div><div class="dk-lt">${esc(r.name)}</div><div class="dk-ls">${esc(r.sub)}</div></div><button class="btn small" data-desk-lead="${esc(r.sid)}" ${dis}>${label(r.sid, "Run it")}</button></div>`;
-    body = `<div class="dk-whos">${deskWithOlder(`lead:${d.project}`, rows, row)}</div>${fresh(false)}`;
+    const all = rows.map((r) => ({ ...r, ...deskPickInfo(r) })).sort((a, b) => b.at - a.at);
+    const row = (r) => `<div class="dk-whorow"><i class="${r.warm ? "" : "cold"}"></i><div class="dk-whotx"><div class="dk-lt">${esc(r.name)}</div><div class="dk-ls">${r.line}</div></div><button class="btn small" data-desk-lead="${esc(r.sid)}" ${dis}>${label(r.sid, "Run it")}</button></div>`;
+    const warm = all.filter((r) => r.warm), cold = all.filter((r) => !r.warm), key = `lead:${d.project}`, open = deskOlderOpen.has(key) || !warm.length;
+    const fold = cold.length ? `<button class="dk-older" data-desk-older="${esc(key)}" aria-expanded="${open}">Older · ${cold.length}<span class="dk-chev${open ? " open" : ""}" aria-hidden="true">›</span></button>${open ? cold.map(row).join("") : ""}` : "";
+    body = `<div class="dk-whos">${warm.map(row).join("")}${fold}</div>${fresh(false)}`;
   }
   const keep = cur ? `<button class="dk-link dk-keep" data-desk-keep>Keep ${esc(deskLeadName(d))}</button>` : "";
-  return `<div class="dk-card dk-right"><div class="dk-pick"><h2>Who runs this Desk?</h2><p>A dispatcher takes what you bring here, hands each item to a session, and tells you why.</p>${body}${keep}</div></div>`;
+  return `<div class="dk-card dk-right"><div class="dk-pick"><h2>Who runs this Desk?</h2><p>A lead takes what you bring here, hands each item to a session, and tells you why.</p>${body}${keep}</div></div>`;
 }
 /** The chat pane of a lead that has ended: one line, Resume it and Pick another. */
 const deskEndedLine = (d) => `<div class="dk-endlead"><p><b>${esc(deskLeadName(d))}</b> has ended. Items stay here.</p><div class="dk-acts"><button class="btn small primary" data-desk-lead="${esc(deskLead(d).sid)}" ${deskLeadBusy !== null ? "disabled" : ""}>${deskLeadBusy === deskLead(d).sid ? "Resuming…" : "Resume it"}</button><button class="btn small" data-desk-change>Pick another</button></div></div>`;
@@ -133,8 +151,8 @@ async function deskSetLead(project, sid) {
     deskPick = null;
     deskChatEnd = true;
   } catch (e) {
-    if (/no folder/i.test(String(e)) && typeof lvAct === "function") { toast("No folder known for this project yet: pick one for the new dispatcher"); sheet = lightbox = null; liveSpot = true; lvAct("new", {}); }
-    else toast(`Couldn't set the dispatcher: ${e}`);
+    if (/no folder/i.test(String(e)) && typeof lvAct === "function") { toast("No folder known for this project yet: pick one for the new lead"); sheet = lightbox = null; liveSpot = true; lvAct("new", {}); }
+    else toast(`Couldn't set the lead: ${e}`);
   } finally { deskLeadBusy = null; renderMain(); }
 }
 

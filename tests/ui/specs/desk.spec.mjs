@@ -951,7 +951,7 @@ test("no lead yet, one session: 'Let <name> run it', or start a new lead; picked
   const card = page.locator(".dk-right .dk-pick");
   await expect(card.locator("h2")).toHaveText("Who runs this Desk?");
   await expect(card.locator(".btn.primary")).toHaveText("Let site-lead run it");
-  await expect(card.locator(".dk-fresh")).toHaveText("Start a new dispatcher");
+  await expect(card.locator(".dk-fresh")).toHaveText("Start a new lead");
   // No box to anyone, nothing runs it, till someone does.
   await expect(page.locator(".dk-box")).toHaveCount(0);
   await expect(page.locator(".dk-strip .dk-lcard")).toHaveCount(0);
@@ -971,7 +971,7 @@ test("no sessions in the project: one button, Start a lead; with no folder known
   await cue.change((st) => { st.sessions = st.sessions.filter((s) => s.project !== "website"); });
   const card = page.locator(".dk-right .dk-pick");
   await expect(card.locator("button")).toHaveCount(1);
-  await expect(card.locator("button")).toHaveText("Start a dispatcher");
+  await expect(card.locator("button")).toHaveText("Start a lead");
   await card.locator("button").click();
   await cue.called("desk_set_lead", { project: "website" });
   await expect(page.locator(".toast")).toContainText("No folder known");
@@ -994,10 +994,10 @@ test("⋯ in the head strip: the project's other sessions, each with Run it; Kee
   await page.locator(".dk-strip [data-desk-change]").click();
   const card = page.locator(".dk-right .dk-pick");
   // web-lead runs it now: not listed, Keep web-lead instead.
-  const rows = await card.locator(".dk-who").evaluateAll((els) => els.map((el) => [el.querySelector(".dk-lt").textContent, el.querySelector(".dk-ls").textContent]));
-  expect(rows).toEqual([["host-lead", "session"]]);
-  await expect(card.locator(".dk-who .btn")).toHaveText("Run it");
-  await expect(card.locator(".dk-fresh")).toHaveText("Start a new dispatcher");
+  const rows = await card.locator(".dk-whorow").evaluateAll((els) => els.map((el) => [el.querySelector(".dk-lt").textContent, el.querySelector(".dk-ls").textContent]));
+  expect(rows).toEqual([["host-lead", "session · working now"]]);
+  await expect(card.locator(".dk-whorow .btn")).toHaveText("Run it");
+  await expect(card.locator(".dk-fresh")).toHaveText("Start a new lead");
   await expect(card.locator(".dk-keep")).toHaveText("Keep web-lead");
   await card.locator(".dk-keep").click();
   await expect(page.locator(".dk-pick")).toHaveCount(0);
@@ -1006,9 +1006,55 @@ test("⋯ in the head strip: the project's other sessions, each with Run it; Kee
   await page.locator("body").press("Escape");
   await expect(page.locator(".dk-pick")).toHaveCount(0);
   await page.locator(".dk-strip [data-desk-change]").click();
-  await card.locator('.dk-who [data-desk-lead="host"]').click();
+  await card.locator('.dk-whorow [data-desk-lead="host"]').click();
   await cue.called("desk_set_lead", { project: "cue", sid: "host" });
   await expect(page.locator(".dk-strip .dk-lcard")).toContainText("host-lead");
+});
+
+test("Who runs this Desk? rows use the box's width: full name, its line, Run it at the right never over the text; warm first, cold under Older (#479)", async ({ page, cue }) => {
+  const long = "cue-desk-lead-with-a-really-long-session-name-that-goes-on";
+  await cue.open("desk");
+  await openDesk(page);
+  // Three idle sessions more: one warm (its cache still alive), two cold.
+  await cue.change((st, long) => {
+    const host = st.sessions.find((s) => s.session_id === "host");
+    for (const [sid, name] of [["warm1", long], ["cold1", "cue-old-one"], ["cold2", "cue-older-two"]])
+      st.sessions.push({ ...host, session_id: sid, name, state: "idle", since_ms: host.since_ms - 3 * 86400000, team: [], thread: [] });
+    // The hub's list of sessions with work on the Desk: cold2's numbers never come, so it counts as cold by this.
+    st.desk.projects.find((d) => d.project === "cue").with_work = ["lead", "host"];
+  }, long);
+  await page.evaluate(() => {
+    insCache.set("warm1", { tokens: 142000, last_ms: now() - 2 * 3600000, until_ms: now() + 30 * 60000 });
+    insCache.set("cold1", { tokens: 88000, last_ms: now() - 26 * 3600000, until_ms: now() - 3600000 });
+  });
+  await page.locator(".dk-strip [data-desk-change]").click();
+  const card = page.locator(".dk-right .dk-pick");
+  await expect(card.locator(".dk-fresh")).toHaveText("Start a new lead");
+  await expect(card.locator(".dk-keep")).toHaveText("Keep web-lead");
+  await expect(card).not.toContainText("dispatcher");
+  const lines = () => card.locator(".dk-whorow").evaluateAll((els) => els.map((el) => [el.querySelector(".dk-lt").textContent, el.querySelector(".dk-ls").textContent]));
+  // Warm first, the one at work on top; the cold ones folded.
+  expect(await lines()).toEqual([["host-lead", "session · working now"], [long, "session · 142k · active 2h ago"]]);
+  const older = card.locator(".dk-whos > .dk-older");
+  await expect(older).toHaveText("Older · 2›");
+  await expect(older).toHaveAttribute("aria-expanded", "false");
+  await older.click();
+  await expect(card.locator(".dk-whorow")).toHaveCount(4);
+  expect((await lines()).slice(2)).toEqual([["cue-old-one", "session · 88k · active 1d ago"], ["cue-older-two", "session"]]);
+  /** Each row: the box's width, its whole name shown (not cut), and Run it clear of the name and the line. */
+  const fits = () => card.locator(".dk-whorow").evaluateAll((els) => els.map((el) => {
+    const r = (q) => el.querySelector(q).getBoundingClientRect(), box = el.parentElement.getBoundingClientRect();
+    const b = r(".btn"), t = r(".dk-lt"), l = r(".dk-ls"), nm = el.querySelector(".dk-lt");
+    return { wide: Math.abs(el.getBoundingClientRect().width - (box.width - 2)) <= 1, whole: nm.scrollWidth <= nm.clientWidth + 1,
+      clear: t.right <= b.left && l.right <= b.left, right: box.right - b.right < 24,
+      seen: el.getBoundingClientRect().bottom <= box.bottom + 1 && el.getBoundingClientRect().height >= t.height + l.height };
+  }));
+  const ok = { wide: true, whole: true, clear: true, right: true, seen: true };
+  for (const width of [1440, 900, 640]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await fits(), `at ${width}px`).toEqual([ok, ok, ok, ok]);
+  }
+  expect(await page.locator(".dk-pick [title]").count()).toBe(0);
 });
 
 test("✎ beside a session's name (its row, its chat's header) renames the session: Enter keeps it, Esc doesn't, the row doesn't open", async ({ page, cue }) => {
@@ -1070,13 +1116,13 @@ test("✎ by the Desk's name: Esc keeps the name as it was; a click away keeps w
   expect(await page.locator(".dk-board [title]").count()).toBe(0);
 });
 
-test("several sessions and no lead: a row each, leads first (dot), plain ones hollow", async ({ page, cue }) => {
+test("several sessions and no lead: a row each, warm ones first (filled dot), the one at work on top (#479)", async ({ page, cue }) => {
   await cue.open("desk");
   await cue.change((st) => { st.desk.projects.find((d) => d.project === "cue").lead = null; });
   await openDesk(page);
-  const who = page.locator(".dk-right .dk-who");
+  const who = page.locator(".dk-right .dk-whorow");
   expect(await who.evaluateAll((els) => els.map((el) => [el.querySelector(".dk-lt").textContent, el.querySelector(".dk-ls").textContent, el.querySelector("i").className]))).toEqual([
-    ["web-lead", "lead, crew of 2", ""], ["host-lead", "session", "idle"],
+    ["host-lead", "session · working now", ""], ["web-lead", "lead, crew of 2", ""],
   ]);
   await expect(page.locator(".dk-keep")).toHaveCount(0);
 });

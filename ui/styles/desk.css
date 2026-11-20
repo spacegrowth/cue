@@ -236,19 +236,29 @@
 /* The "N older" line in a menu or picker (#363): quiet, shut by default; the idle sessions with no recent item under it. */
 .dk-givemenu button.dk-older-mi, .dk-older-mi { display: block; width: 100%; padding: 5px 10px; border: 0; border-radius: 7px; background: none; color: var(--muted); font: 600 12px var(--sans); text-align: left; cursor: pointer; }
 .dk-older-mi:hover { color: var(--ink); background: var(--panel-2); }
-.dk-whos .dk-older { padding: 8px 14px; }
 .dk-givemenu button:last-child { margin-top: 2px; border-top: 1px solid var(--line); border-radius: 0 0 7px 7px; }
 
-/* Who runs this Desk? */
-.dk-pick { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; padding: 32px 56px; }
+/* Who runs this Desk? (#479) Each row runs the box's full width: a dot (filled: warm, ring: cold), the session's name
+   (wrapping, never cut) and its line, Run it at the right in its own column so it never sits on the text. Its own
+   class: .dk-who is the item list's 140px holder cell. */
+.dk-pick { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; justify-content: safe center; align-items: flex-start; padding: 32px 56px; }
+.dk-pick > * { flex: none; }
 .dk-pick h2 { margin: 0 0 10px; font-size: 19px; font-weight: 700; }
 .dk-pick > p { margin: 0 0 20px; color: var(--muted); font-size: 13.5px; line-height: 1.5; }
 .dk-pick .dk-acts { padding: 0; align-items: center; gap: 16px; }
 .dk-whos { align-self: stretch; margin-bottom: 18px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
-.dk-whos .dk-who { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; column-gap: 10px; align-items: center; padding: 10px 14px; }
-.dk-whos .dk-who + .dk-who { border-top: 1px solid var(--line); }
-.dk-whos .dk-who > i { align-self: start; width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: var(--work); }
-.dk-whos .dk-who > i.idle { background: none; box-shadow: inset 0 0 0 1.5px var(--work); }
+.dk-whos > * + * { border-top: 1px solid var(--line); }
+.dk-whorow { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; column-gap: 12px; align-items: center; padding: 10px 14px; }
+.dk-whorow > i { align-self: start; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: var(--work); }
+.dk-whorow > i.cold { background: none; box-shadow: inset 0 0 0 1.5px var(--muted); }
+.dk-whotx { min-width: 0; }
+.dk-whorow .dk-lt { overflow-wrap: anywhere; line-height: 1.35; }
+.dk-whorow .dk-ls { overflow-wrap: anywhere; }
+.dk-whorow > .btn { justify-self: end; white-space: nowrap; }
+.dk-whos > .dk-older { display: flex; align-items: center; width: 100%; padding: 8px 14px; border: 0; border-radius: 0; background: none; color: var(--muted); font: 600 12px var(--sans); text-align: left; cursor: pointer; }
+.dk-whos > .dk-older:not(:first-child) { border-top: 1px solid var(--line); }
+.dk-whos > .dk-older:hover { color: var(--ink); background: var(--panel-2); }
+@container dkcard (max-width: 460px) { .dk-pick { padding: 24px 16px; } }
 .dk-fresh { font-size: 13px; }
 .dk-keep { margin-top: 14px; color: var(--muted); font-size: 12.5px; }
 
