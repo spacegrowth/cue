@@ -24,9 +24,9 @@ pub fn start(app: AppHandle, d: &Dictation) -> Result<(), String> {
     }
     // cue-voice's (NVIDIA's model) once talking is on, else an add-on's own, else cue-listen (all the same lines).
     #[cfg(feature = "ext")]
-    let own = crate::talk::dictation().or_else(crate::ext::dictation);
+    let own = crate::voice::talk::dictation().or_else(crate::ext::dictation);
     #[cfg(not(feature = "ext"))]
-    let own = crate::talk::dictation();
+    let own = crate::voice::talk::dictation();
     let mut cmd = match own { Some(c) => c, None => Command::new(helper()?) };
     let mut child: Child = cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().map_err(|e| e.to_string())?;
     *slot = child.stdin.take();

@@ -14,32 +14,32 @@ struct AppInstaller;
 
 impl Installer for AppInstaller {
     fn has(&self, repo: &str, commit: &str) -> bool {
-        crate::self_install::has(repo, commit)
+        crate::install::self_install::has(repo, commit)
     }
 
     fn start(&self, repo: &str, commit: &str, tag: &str) -> Result<(), String> {
-        crate::self_install::start(repo, commit, tag)
+        crate::install::self_install::start(repo, commit, tag)
     }
 
     fn status(&self) -> Option<InstallStatus> {
-        crate::self_install::status().map(|s| InstallStatus { tag: s.tag, commit: s.commit, step: s.step, log: s.log, at: s.at })
+        crate::install::self_install::status().map(|s| InstallStatus { tag: s.tag, commit: s.commit, step: s.step, log: s.log, at: s.at })
     }
 
     fn contains(&self, repo: &str, commit: &str, of: &str) -> bool {
-        crate::self_install::is_ancestor(repo, commit, of)
+        crate::install::self_install::is_ancestor(repo, commit, of)
     }
 
     /// Cue's own repository is checked before a landing (the step 1 check, docs/desk-landing-design.md part 7): its
     /// window loaded from a clean copy of the commit, failing on a name missing or declared twice. Others have none.
     fn check(&self, repo: &str, commit: &str) -> Option<Result<(), String>> {
-        super::desk_checks::builds_this_cue(repo).then(|| crate::live_ui::check(repo, commit))
+        super::desk_checks::builds_this_cue(repo).then(|| crate::install::live_ui::check(repo, commit))
     }
 }
 
 /// Notes which Cue is running, once, as the hub starts (the app's only: a test's hub has its own installer).
 pub(super) fn note_running() {
     #[cfg(not(test))]
-    crate::self_install::note_running();
+    crate::install::self_install::note_running();
 }
 
 /// Whether an item at `step` is in an install (begun, not yet seen to have landed).

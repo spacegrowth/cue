@@ -33,7 +33,7 @@ fn live_dir() -> PathBuf {
 /// The commit this Cue was built from. A test's hub has none built in: its <Cue's folder>/install/running.json says.
 pub fn running() -> Option<String> {
     #[cfg(not(test))]
-    return crate::self_install::running_commit();
+    return crate::install::self_install::running_commit();
     #[cfg(test)]
     {
         let s = std::fs::read_to_string(cue_dir().join("install/running.json")).ok()?;

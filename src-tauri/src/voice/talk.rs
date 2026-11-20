@@ -949,5 +949,5 @@ mod tests {
 }
 
 #[cfg(test)]
-#[path = "voice_tests.rs"]
+#[path = "talk_tests.rs"]
 mod voice_tests;

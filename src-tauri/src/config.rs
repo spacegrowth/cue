@@ -88,7 +88,7 @@ fn from_config(c: &Value) -> Value {
     // (flag() falls back to true, so defaults that are off must be listed here.)
     json!({
         "history": { "keep": history_keep() },
-        "notify": { "finished": b("/notify/finished", true), "decisions": b("/notify/decisions", true), "cold": b("/notify/cold", true), "sound": crate::sounds::choice() },
+        "notify": { "finished": b("/notify/finished", true), "decisions": b("/notify/decisions", true), "cold": b("/notify/cold", true), "sound": crate::notify::sounds::choice() },
         "agents": { "show_driven": b("/agents/show_driven", false) },
         // Settings → Mini window (mini/mod.rs): "off", "rail" or "notch".
         "mini": { "mode": c.pointer("/mini/mode").and_then(Value::as_str).unwrap_or("off") },
@@ -386,8 +386,8 @@ fn checked_choice(key: &str, value: &Value) -> Result<Value, String> {
             _ => return Err("the mini window must be off, rail or notch".into()),
         },
         "notify.sound" => match value.as_str() {
-            Some(c) if crate::sounds::CHOICES.contains(&c) => json!(c),
-            _ => return Err(format!("the sound must be one of {}", crate::sounds::CHOICES.join(", "))),
+            Some(c) if crate::notify::sounds::CHOICES.contains(&c) => json!(c),
+            _ => return Err(format!("the sound must be one of {}", crate::notify::sounds::CHOICES.join(", "))),
         },
         "turn.mode" => match value.as_str() {
             Some(m @ ("answer" | "last")) => json!(m),
