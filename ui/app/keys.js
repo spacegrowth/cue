@@ -159,10 +159,9 @@ function enterInSessionBox(e, key) {
   if (turn) reply(turn); else sendTo(sid, e.ctrlKey || e.metaKey);
 }
 /** Enter in a box (keyTyping: not ⇧↵, never while an input method composes): what that box is for. Every box's Enter
- *  comes here: first the boxes the window's parts own (box/send.js BOX_OWNERS: the Desk's lead's, an item's, an ask's
- *  and Send back's; the mini window's Desk rows), then the Board's, btw, the forward note, + New and the renames, the
- *  Inbox's (a session's or an item's key). Go back on
- *  ticked decisions ("goback") has no Enter: its Send button sends. */
+ *  comes here: first the boxes the window's parts own (box/send.js BOX_OWNERS: the Desk's lead's, an item's, an ask's,
+ *  Send back's and Go back on ticked decisions'; the mini window's Desk rows), then the Board's, btw, the forward
+ *  note, + New and the renames, the Inbox's (a session's or an item's key). */
 function enterInBox(e, key) {
   const own = boxOwner(key, e.target);
   if (own) return own.enter ? own.enter(e, key) : own.send(key);

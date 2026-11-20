@@ -117,7 +117,7 @@ test("Send back: opening it puts the cursor in its box; composing Enter never se
   await expect(box).toHaveCount(0);
 });
 
-test("Go back on ticked decisions: the box takes the cursor; Enter neither sends nor makes a new line, ⇧↵ does", async ({ page, cue }) => {
+test("Go back on ticked decisions: the box takes the cursor; composing Enter never sends, ⇧↵ a new line, ↵ sends it (#522)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await page.locator('[data-desk-tab="decisions"]').click();
@@ -126,13 +126,13 @@ test("Go back on ticked decisions: the box takes the cursor; Enter neither sends
   await right.locator('[data-desk-go-back="desk:cue"]').click();
   const box = right.locator('textarea[data-text="goback"]');
   await expect(box).toBeFocused();
-  await box.fill("keep it");
-  for (const how of ["composing", "229"]) await imeEnter(box, how);
+  // Enter with nothing in it: says what's missing, sends nothing, the cursor stays.
   await box.press("Enter");
-  await expect(box).toHaveValue("keep it");
-  await box.press("Shift+Enter");
-  await expect(box).toHaveValue("keep it\n");
+  await expect(page.locator(".toast").last()).toHaveText("Say what should happen instead first");
   expect(await count(cue, "desk_undo")).toBe(0);
+  await expect(box).toBeFocused();
+  await enterKeys(page, cue, box, "desk_undo", { decisionId: "c1", answer: "keep the old one" });
+  await expect(box).toHaveCount(0);
 });
 
 // ---------- the Inbox ----------

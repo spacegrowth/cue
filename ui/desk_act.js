@@ -515,6 +515,8 @@ BOX_OWNERS.push({
   chatEnd: (atEnd) => { deskChatEnd = atEnd; },
   keptBox: (sid) => deskKeptBox(sid),
 });
+// Go back on ticked decisions (desk_page.js): Enter sends it, as its Send button does (#522).
+BOX_OWNERS.push({ owns: (key) => key === "goback", send: () => deskGoBackSend() });
 /** Esc's session on the Desk (#494), as the Board's open session: the lead's in its chat, the session on a session's or
  *  holder's page (a crew member's: its lead), the item's holder on an item's page (its page is its holder's chat, #418).
  *  Handed to the Board's Esc (app/keys.js escSession) with the box at the foot: a message Cue kept for it comes back
