@@ -6,6 +6,7 @@
 
 mod tickers;
 mod watchers;
+mod edit;
 pub(crate) mod window;
 
 use crate::hub::Hub;
@@ -48,6 +49,8 @@ pub(crate) fn build() -> tauri::App {
         .setup(setup)
         .menu(window::app_menu)
         .on_menu_event(window::on_menu_event)
+        // Which windows have their page in (edit.rs: an Edit command to one still loading is skipped, not crashed on).
+        .on_page_load(|webview, payload| edit::page_load(webview.label(), matches!(payload.event(), tauri::webview::PageLoadEvent::Finished)))
         .on_window_event(window::on_window_event)
         .build(context)
         .expect("error while building Cue")

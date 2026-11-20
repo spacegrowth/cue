@@ -51,7 +51,8 @@ fn no_webrtc(w: &tauri::WebviewWindow) {
 
 /// The menu bar's menus: Tauri's default ones, but Close (⌘W) is Cue's own: it goes to the window
 /// ("close-key"), where inside Cue's terminal it closes the tab you're in, elsewhere it hides the window
-/// as before. (Cue's terminal's shells run in tmux: quitting never asks, they carry on.)
+/// as before. (Cue's terminal's shells run in tmux: quitting never asks, they carry on.) Cut, Copy, Paste and
+/// Select All are Cue's own too, guarded against a page still loading (edit.rs).
 pub(super) fn app_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
     use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem as P, Submenu};
     let pkg = app.package_info();
@@ -68,14 +69,27 @@ pub(super) fn app_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Men
             &MenuItem::with_id(app, "app-quit", "Quit Cue", true, Some("CmdOrCtrl+Q"))?,
         ])?,
         &Submenu::with_items(app, "File", true, &[&MenuItem::with_id(app, "app-close", "Close", true, Some("CmdOrCtrl+W"))?])?,
-        &Submenu::with_items(app, "Edit", true, &[&P::undo(app, None)?, &P::redo(app, None)?, &P::separator(app)?, &P::cut(app, None)?, &P::copy(app, None)?, &P::paste(app, None)?, &P::select_all(app, None)?])?,
+        &edit_menu(app)?,
         &Submenu::with_items(app, "View", true, &[&P::fullscreen(app, None)?])?,
         &Submenu::with_items(app, "Window", true, &[&P::minimize(app, None)?, &P::maximize(app, None)?])?,
     ])
 }
 
-/// Quit Cue (⌘Q), or pass Close (⌘W) to the window.
+/// Edit: WebKit's Undo and Redo, then Cue's own guarded Cut, Copy, Paste and Select All (edit.rs).
+fn edit_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Submenu<tauri::Wry>> {
+    use tauri::menu::{IsMenuItem, MenuItem, PredefinedMenuItem as P, Submenu};
+    let fixed = [P::undo(app, None)?, P::redo(app, None)?, P::separator(app)?];
+    let own = super::edit::ITEMS.iter().map(|(id, title, key, _)| MenuItem::with_id(app, *id, *title, true, Some(*key))).collect::<tauri::Result<Vec<_>>>()?;
+    let mut items: Vec<&dyn IsMenuItem<tauri::Wry>> = fixed.iter().map(|i| i as &dyn IsMenuItem<tauri::Wry>).collect();
+    items.extend(own.iter().map(|i| i as &dyn IsMenuItem<tauri::Wry>));
+    Submenu::with_items(app, "Edit", true, &items)
+}
+
+/// Quit Cue (⌘Q), pass Close (⌘W) to the window, or a guarded Edit command (edit.rs).
 pub(super) fn on_menu_event(app: &tauri::AppHandle, event: tauri::menu::MenuEvent) {
+    if super::edit::on_menu(app, event.id().as_ref()) {
+        return;
+    }
     match event.id().as_ref() {
         "app-quit" => quit_asked(app),
         "app-close" => {
