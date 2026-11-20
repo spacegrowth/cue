@@ -273,3 +273,28 @@ test("steps held while you were away list under Waiting on you in plain words wi
   await cue.called("desk_held_answer", { id: "held-1", allow: false });
   await expect(rows).toHaveCount(0);
 });
+
+test("the Away switch shows in full, its until time with it, in the Items head at every window width (#412)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.change((st, since) => {
+    const d = st.desk.projects.find((x) => x.project === "cue");
+    d.away = { on: true, active: true, ended: "", since, until: since + 9 * 3600000, budget: 10, spent: 3.2, rules: {} };
+  }, SINCE);
+  const head = page.locator(".dk-items .dk-ch"), sw = head.locator(".dk-aw-sw");
+  for (const width of [1600, 1360, 1200, 1100, 1000, 900, 821, 700, 420]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(sw.locator(".dk-aw-st")).toHaveText(/^until \d\d:\d\d · \$3\.20 of \$10$/);
+    // Every button inside the head, none clipped; "Away" and its until time whole (what it spent may shorten).
+    const cut = await head.evaluate((h) => {
+      const box = h.getBoundingClientRect(), pad = parseFloat(getComputedStyle(h).paddingRight), out = [];
+      for (const c of h.children) { const r = c.getBoundingClientRect(); if (r.left < box.left - 0.5 || r.right > box.right - pad + 0.5) out.push(`${c.className} outside`); }
+      const u = h.querySelector(".dk-aw-until"), s = h.querySelector(".dk-aw-st"), su = u.getBoundingClientRect(), ss = s.getBoundingClientRect();
+      if (su.right > ss.right + 0.5 || u.scrollWidth > u.clientWidth + 1) out.push("until cut");
+      return out;
+    });
+    expect(cut, `at ${width}px`).toEqual([]);
+    if (process.env.SHOT_DIR) await page.locator(".dk-items .dk-ch").screenshot({ path: `${process.env.SHOT_DIR}/away-${width}.png` });
+    await expect(head.locator(".dk-prog-btn, .dk-pz, .dk-aw-sw")).toHaveCount(3);
+  }
+});

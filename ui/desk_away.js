@@ -40,7 +40,9 @@ function deskAwaySwitch(d) {
   if (!d?.lead) return "";
   const on = !!d.away?.on;
   // On: until when and what it spent, beside its name ("Away · until 18:00 · $3.40 of $10"), or why it paused.
-  const st = on ? `<span class="dk-aw-st${d.away.ended ? " ended" : ""}">${esc(deskAwayStatus(deskAwayOf(d)))}</span>` : "";
+  // In a narrow column (#412) the until time stays whole and what it spent shortens first.
+  const [until, ...rest] = on ? deskAwayStatus(deskAwayOf(d)).split(" · ") : [];
+  const st = on ? `<span class="dk-aw-st${d.away.ended ? " ended" : ""}"><span class="dk-aw-until">${esc(until)}</span>${rest.length ? `<span class="dk-aw-spent"> · ${esc(rest.join(" · "))}</span>` : ""}</span>` : "";
   return `<button class="dk-aw-sw${on ? " on" : ""}" data-desk-away="${esc(d.project)}" aria-pressed="${on}"><span class="dk-knob" aria-hidden="true"></span>Away${st}</button>`;
 }
 /** Session `sid` stopped on a usage limit Cue carries on from by itself (send_at's carry-on): the reset's ms (1 when

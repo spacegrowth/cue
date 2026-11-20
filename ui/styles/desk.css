@@ -1000,6 +1000,11 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
 /* Pause (#366): a plain button before Away, and "Paused" by the Items title while the Desk is paused. */
 .dk-pz { margin-left: auto; }
 .dk-pz + .dk-aw-sw { margin-left: 0; }
+/* The Items head (#412): its buttons wrap under Items when the column is too narrow for them all, the Away switch
+   and its until time whole on its line, never clipped at the card's edge. */
+.dk-items > .dk-ch { flex-wrap: wrap; row-gap: 8px; padding-top: 8px; padding-bottom: 8px; }
+.dk-items > .dk-ch > * { flex: none; max-width: 100%; }
+.dk-items > .dk-ch > .dk-aw-sw { flex: 0 1 auto; min-width: 0; }
 .dk-pz-tag { padding: 2px 8px; border-radius: 999px; background: var(--panel-2); color: var(--deny); font: 650 11.5px var(--sans); }
 .dk-aw-sw.on { background: var(--sel); color: var(--on-sel); }
 .dk-aw-sw:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -1007,7 +1012,9 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
 .dk-knob::after, .dk-tg::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #fff; transition: left .15s; }
 .dk-aw-sw.on .dk-knob, .dk-tg.on { background: var(--accent); }
 .dk-aw-sw.on .dk-knob::after, .dk-tg.on::after { left: 12px; }
-.dk-aw-st { min-width: 0; max-width: 220px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dk-aw-st { display: inline-flex; min-width: 0; max-width: 260px; font-weight: 500; white-space: pre; }
+.dk-aw-until { flex: none; }
+.dk-aw-spent { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .dk-aw-st::before { content: "· "; }
 .dk-aw-st.ended { color: var(--deny); }
 .dk-aw-asks { padding: 2px 12px; }
