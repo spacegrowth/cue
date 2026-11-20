@@ -1,7 +1,7 @@
 // An item's page shows its holder's own chat (#418, option B of the item chat mocks): the chat the holder's session
 // shows, its turns about other items folded to a line each that opens in place; your send-backs of this item and its
-// Working line in it; the item itself (state, You'll see, What to try, its record, Open and Drop) in the column at the
-// right, where the Items list was, back with "‹ Items".
+// Working line in it; the item itself (state, You'll see, What to try, its record, Open and Drop) in its panel beside
+// the chat; the Items list stays at the right.
 import { test, expect } from "./cue.mjs";
 
 const openItem = async (page, id) => {
@@ -22,7 +22,7 @@ const chat = (cue) => cue.change((st) => {
   ];
 });
 
-test("an item's page is its holder's chat, other items' turns folded, the item at the right", async ({ page, cue }) => {
+test("an item's page is its holder's chat, other items' turns folded, the item beside it, the Items list at the right", async ({ page, cue }) => {
   await cue.open("desk");
   await chat(cue);
   await openItem(page, "d5");
@@ -42,20 +42,27 @@ test("an item's page is its holder's chat, other items' turns folded, the item a
   await expect(ichat.locator(".dk-fold")).toHaveAttribute("aria-expanded", "true");
   await ichat.locator(".dk-fold").click();
   await expect(ichat).not.toContainText("Looking at the rail dot.");
-  // The item at the right, in the Items list's place: no list while it's open.
-  const side = page.locator(".dk-iside");
+  // The item in its panel beside the chat, in the middle; the Items list stays at the right, the item's row lit.
+  const side = right.locator('.dk-pg[data-desk-page="item"] > .dk-panel[data-side-for="d5"]');
   await expect(side).toBeVisible();
-  await expect(page.locator(".dk-board > .dk-items:not(.dk-iside)")).toHaveCount(0);
+  await expect(page.locator(".dk-board > .dk-items")).toBeVisible();
+  // Narrow, the whole panel over the chat; wide enough for both, beside it.
+  let [chatBox, sideBox] = [await ichat.boundingBox(), await side.boundingBox()];
+  expect(sideBox.y + sideBox.height).toBeLessThanOrEqual(chatBox.y + 1);
+  await page.setViewportSize({ width: 1728, height: 1000 });
+  await expect.poll(async () => (await side.boundingBox()).x).toBeGreaterThan((await ichat.boundingBox()).x + 200);
+  await page.screenshot({ path: test.info().outputPath("item-chat-wide.png") });
+  await page.setViewportSize({ width: 1280, height: 800 });
   await expect(side.locator(".dk-pnow .dk-psh")).toHaveText("This item");
   await expect(side).toContainText("What to try");
   await expect(side.locator(".dk-sfoot")).toContainText("Open host-lead");
   await expect(side.locator(".dk-sfoot")).toContainText("Drop this item");
   // No hover text on any of it.
-  expect(await page.locator(".dk-right .dk-pg [title], .dk-iside [title]").count()).toBe(0);
+  expect(await page.locator(".dk-right .dk-pg [title], .dk-panel[data-side-for] [title]").count()).toBe(0);
   await page.screenshot({ path: test.info().outputPath("item-chat.png") });
-  // Back to the Items list.
+  // Back to the lead's chat; the Items list still there.
   await right.locator(".dk-back").click();
-  await expect(page.locator(".dk-iside")).toHaveCount(0);
+  await expect(page.locator(".dk-panel[data-side-for]")).toHaveCount(0);
   await expect(page.locator(".dk-board > .dk-items")).toBeVisible();
 });
 
@@ -83,7 +90,7 @@ test("the pictures an item was added with show in its column, its chat being its
   await cue.open("desk");
   await cue.change((st) => { st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d5").images = ["data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="]; });
   await openItem(page, "d5");
-  const side = page.locator('.dk-iside[data-side-for="d5"]');
+  const side = page.locator('.dk-panel[data-side-for="d5"]');
   await expect(side.locator(".dk-psh", { hasText: "Pictures" })).toBeVisible();
   await expect(side.locator(".dk-tpics .thumb")).toHaveCount(2);
 });

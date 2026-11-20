@@ -13,13 +13,13 @@ const patchItem = (cue, id, patch) => cue.change((st, [k, p]) => { Object.assign
 // An item's page (#418): its holder's chat in the middle, the item itself in the column at the right, in the Items
 // list's place, so another item opens from the list after "‹ Items".
 const backToItems = async (page) => {
-  if (await page.locator(".dk-iside").count()) await page.locator(".dk-right .dk-back").click();
-  await page.locator(".dk-items:not(.dk-iside) .dk-it").first().waitFor();
+  if (await page.locator(".dk-panel[data-side-for]").count()) await page.locator(".dk-right .dk-back").click();
+  await page.locator(".dk-items .dk-it").first().waitFor();
 };
 const openItem = async (page, id) => {
   await backToItems(page);
   await page.locator(`.dk-items [data-desk-item="${id}"] .dk-t`).click();
-  await page.locator(`.dk-iside[data-side-for="${id}"]`).waitFor();
+  await page.locator(`.dk-panel[data-side-for="${id}"]`).waitFor();
   return page.locator(".dk-board");
 };
 

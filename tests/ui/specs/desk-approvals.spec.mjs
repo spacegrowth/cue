@@ -40,7 +40,7 @@ test("a checked Cue fix without a commit hash waits for verification in both Inb
   await expect(page.locator('.ib-scroll [data-inbox-desk][data-item]')).toHaveCount(1);
   await verify.click();
   await expect(page.locator(".dk-right h1")).toContainText("265");
-  await page.locator(".dk-iside").getByRole("button", { name: "Looks right" }).click();
+  await page.locator(".dk-panel[data-side-for]").getByRole("button", { name: "Looks right" }).click();
   await cue.called("desk_looks_right", { id: "265" });
   // Back to the Items list (#418: it's hidden while an item is open).
   await page.locator(".dk-right .dk-back").click();

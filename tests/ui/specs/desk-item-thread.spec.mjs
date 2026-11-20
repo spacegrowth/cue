@@ -28,7 +28,7 @@ test("an item's replies show whole, a Done is the Desk's line, and Open host-lea
   await expect(r.locator(".own-lines")).toContainText("Bug #d5 is done");
   await expect(r).not.toContainText("DONE:");
   // Its whole session opens here, as its name on the left does, with no pop-up (#306); ‹ goes back to the item.
-  await page.locator(".dk-iside .dk-sfoot").getByText("Open host-lead").click();
+  await page.locator(".dk-panel[data-side-for] .dk-sfoot").getByText("Open host-lead").click();
   await expect(page.locator(".convo-sheet")).toHaveCount(0);
   await expect(page.locator(".dk-chat")).toBeVisible();
   await page.locator("[data-desk-chat-back]").click();
@@ -107,7 +107,7 @@ test("while its holder works on it, the item's chat shows the turn it's writing,
   await expect(live.locator(".stx-fold .dot-live")).toHaveCount(1);
   await expect(live.locator(".stx-say")).toContainText("Found it: the header centres on the wrong box.");
   await expect(live.locator(".stx-line")).toHaveText([/Read header\.js/, /Ran npm test/]);
-  await expect(page.locator(".dk-iside .dk-sfoot")).toContainText("Open host-lead");
+  await expect(page.locator(".dk-panel[data-side-for] .dk-sfoot")).toContainText("Open host-lead");
   for (const theme of ["light", "dark"]) {
     await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
     if (process.env.SHOT_DIR) await page.locator(".dk-right").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-276-${theme}.png` });
@@ -126,13 +126,13 @@ test("an item at work shows its holder's latest reply and what each of its crew 
     ];
   });
   await openItem(page, cue, "d5");
-  const now = page.locator(".dk-iside .dk-pnow .dk-psay");
+  const now = page.locator(".dk-panel[data-side-for] .dk-pnow .dk-psay");
   await expect(now).toContainText("host-lead is on it. G built. Waiting for the test helper.");
   await expect(now.locator(".dk-crewnow")).toHaveText("Crew: loops-tests rewriting the old tests");
   await expect(reply(page, "G built. Waiting for the test helper.")).toHaveCount(1);
   // On another of its items now: its crew doesn't show here.
   await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5").now_on = false; });
-  await expect(page.locator(".dk-iside .dk-crewnow")).toHaveCount(0);
+  await expect(page.locator(".dk-panel[data-side-for] .dk-crewnow")).toHaveCount(0);
 });
 
 test("a reply with the stop hook's checklist in its own words, saved before the hub kept it apart, folds it too (#325)", async ({ page, cue }) => {

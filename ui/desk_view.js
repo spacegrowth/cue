@@ -175,10 +175,8 @@ function deskView() {
   const taskApprovals = deskTaskApprovals(deskOf(project));
   // Progress (#409): over the Desk while open, the table of every item under way.
   const prog = deskProgShown ? deskProgress(project, taskApprovals) : "";
-  return `<div class="board dk-board">${deskSessions(project)}${deskRight(project, taskApprovals)}${deskItemShown(project) ? deskItemSide(deskItemShown(project), deskOf(project)) : deskList(project, taskApprovals)}${prog}</div>${deskAwayHtml()}`;
+  return `<div class="board dk-board">${deskSessions(project)}${deskRight(project, taskApprovals)}${deskList(project, taskApprovals)}${prog}</div>${deskAwayHtml()}`;
 }
-/** The item whose page is open on Desk `project` (#418: its column at the right, in the Items list's place), or null. */
-const deskItemShown = (project) => (deskOpen?.kind === "item" && deskOpen.project === project && deskItem(project, deskOpen.id)) || null;
 /** How many messages each item's Thread showed when last drawn, and for which opening of its page, by item. The page
  *  opens at its newest message, as a chat does (#145). After that it follows its chat only while you're at its end,
  *  as a session's chat does (#395): the reply being written stays in view as it grows, and a page you'd scrolled up

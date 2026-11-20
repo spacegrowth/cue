@@ -191,8 +191,8 @@ function deskThreadHtml(rows, id = "") {
 /** Item `i`'s page (#418, option B of the item chat mocks): its holder's own chat in the middle, the same live chat its
  *  session's page shows (writing here is writing there), its turns about other items each folded to a line that opens
  *  in place. With no session to show (not given out yet, its session gone), its Thread as before. The item itself
- *  (state, You'll see, What to try, its record, Open and Drop) is in the column at the right (deskItemSide), in the
- *  Items list's place while it's open. */
+ *  (state, You'll see, What to try, its record, Open and Drop) is its panel, beside the chat (deskItemSide); the Items
+ *  list stays at the right. */
 function deskItemPane(i, d, foot = "") {
   const all = deskItemLog(i, d).reverse();
   const decs = all.filter((c) => c.call);
@@ -224,7 +224,7 @@ function deskItemPane(i, d, foot = "") {
   const main = `<div class="dk-pane dk-ipane${s && tab === "thread" ? " chat" : ""}" data-scroll-key="item:${esc(i.id)}"><div class="dk-ihead"><div class="dk-itabs" role="tablist">${feat ? tabBtn("pieces", "Pieces", i.pieces.length) : ""}${tabBtn("thread", "Chat", null)}${tabBtn("decisions", "Decisions", decs.filter((c) => !c.minor).length)}${tabBtn("files", "Files", nFiles)}</div></div>
     <div class="dk-ibody dk-itab-${tab}">${body}</div></div>`;
   const sub = s ? `<b>${esc(i.holder.kind === "crew" ? deskHolderName(s.session_id) : i.holder.name)}</b>'s chat · other items' turns folded` : `<span class="dk-state">${deskItemMeta(i, d)}</span>`;
-  return deskPage({ page: "item", kind: i.kind, side: true, back: deskBack("Items"), mark: `${deskNum(i)} · `, title: esc(i.title), meta: sub, main, foot });
+  return deskPage({ page: "item", kind: i.kind, panel: deskItemSide(i, d), aside: ` data-side-for="${esc(i.id)}"`, back: deskBack(deskLeadName(d) || "Back"), mark: `${deskNum(i)} · `, title: esc(i.title), meta: sub, main, foot });
 }
 /** The session whose chat an item's page shows: its holder's (a crew member's lead's), when Cue has it. */
 function deskItemChatOf(i) {
@@ -302,7 +302,7 @@ function deskItemChat(i, d, s) {
   const where = sessionOf(s.session_id) ? whereNow(null, s) : "";
   return `<div class="dk-ichat" data-thread-for="${esc(`${i.project}|${i.id}`)}">${rows}${mine}${where ? keyed(where, "where") : ""}</div>`;
 }
-/** The column at the right while item `i`'s page is open (#418), in the Items list's place: This item (its state, what
+/** Item `i`'s panel, beside its chat on its page (#418): This item (its state, what
  *  it waits on, its buttons; who has it and who added it), You'll see as ticks, What to try, its record, then Open its
  *  holder and Drop. */
 function deskItemSide(i, d) {
@@ -320,13 +320,13 @@ function deskItemSide(i, d) {
   // The pictures it was added with: its chat is its holder's, which never had them (#418).
   const shots = thumbs(i.images), pics = shots ? deskPsec("Pictures", `<div class="dk-tpics">${shots}</div>`) : "";
   const tryIt = deskPsec("What to try", deskCheckInfo(i, d) || (i.state === "done" ? "" : `<p class="dk-note">Shows here when ${esc(who)} says it's done, with Looks right and Send back.</p>`));
-  const now = deskPnow({ ...deskItemNow(i), acts: `${backing ? deskBackActs(i) : deskLooksTop(i) + deskPickBtns(i) + deskItemActs(i)}${deskBuiltLink(i)}${deskDesignsLink(i)}` })
+  const now = deskPnow({ ...deskItemNow(i), acts: `${backing ? deskBackActs(i) : deskLooksTop(i) + deskPickBtns(i) + deskItemActs(i)}${deskBuiltLink(i)}${deskDesignsLink(i)}`, fold: pts.length ? `${ticked} of ${pts.length} done` : "" })
     .replace('<h4 class="dk-psh">Now</h4>', '<h4 class="dk-psh">This item</h4>')
     .replace("</section>", `<div class="dk-pmeta">${deskItemMeta(i, d)}</div></section>`);
   const open = sid && sessionOf(sid) ? `<button class="btn small" ${deskChatAttrs(sid, d)}>Open ${esc(deskHolderName(sid, h.kind === "crew" ? "" : h.name))}</button>` : "";
   const drop = i.state !== "done" ? `<button class="btn small dk-drop${armed ? " armed" : ""}" data-desk-act="drop" data-id="${esc(i.id)}">${armed ? "Drop it" : "Drop this item"}</button>` : "";
-  const foot = open || drop ? `<div class="dk-sfoot">${open}${drop}</div>` : "";
-  return `<div class="dk-card dk-items dk-iside" data-side-for="${esc(i.id)}"><div class="dk-scroll dk-panel" data-scroll-key="item-side:${esc(i.id)}">${now}${see}${tryIt}${pics}${deskItemRecord(i, d)}${deskItemFiles(i)}</div>${foot}</div>`;
+  const foot = open || drop ? `<section class="dk-psec dk-sfoot">${open}${drop}</section>` : "";
+  return `${now}${see}${tryIt}${pics}${deskItemRecord(i, d)}${deskItemFiles(i)}${foot}`;
 }
 /** Item `i`'s record (#418, the Steps tab of before): its hand-offs and what you wrote about it, each a quiet line with
  *  its age, newest last; the last few, with All steps opening the rest in place. */

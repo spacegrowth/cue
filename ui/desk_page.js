@@ -267,16 +267,13 @@ const deskChatLink = (sid, name, d) => (sessionOf(sid) ? `<button class="dk-pwa"
 /** One page: `page` the kind of page (what Hide panel remembers), `kind` its icon and mark (DESK_MARKS), `mark` the
  *  quiet words before its name ("Bug #197 · "), `title` its name's html, `meta` its quiet line, `now` and `panel` the
  *  panel's sections, `main` its own column and `foot` the box under it. */
-function deskPage({ page, kind, back, acts = "", mark, title, meta = "", now = "", panel = "", main, foot = "", side = false }) {
-  // `side`: its panel is a column of its own at the Desk's right (an item's, deskItemSide), none here.
-  if (side) return `<div class="dk-pg hid side" data-desk-page="${page}"><div class="dk-ph"><div class="dk-ph1">${back}<span class="grow"></span>${acts}</div>`
-    + `<h1 class="dk-ph2"><span class="dk-hk">${deskKindIcon(kind)}${esc(mark.replace(/ · $/, ""))}</span><span class="dk-hsep"> · </span><span class="dk-tname">${title}</span></h1>${meta ? `<div class="dk-ph3">${meta}</div>` : ""}</div>`
-    + `<div class="dk-pgm">${main}${foot}</div></div>`;
+function deskPage({ page, kind, back, acts = "", mark, title, meta = "", now = "", panel = "", main, foot = "", aside = "" }) {
+  // `aside`: more attributes on its panel (an item's names the item, deskItemSide).
   const hid = deskPanelHid.has(page);
   const tog = `<button class="btn small dk-ptog" data-desk-panel="${page}" aria-pressed="${!hid}">${DESK_PANEL_ICON}<span>${hid ? "Show panel" : "Hide panel"}</span></button>`;
   return `<div class="dk-pg${hid ? " hid" : ""}" data-desk-page="${page}"><div class="dk-ph"><div class="dk-ph1">${back}<span class="grow"></span>${acts}${tog}</div>`
     + `<h1 class="dk-ph2"><span class="dk-hk"${["desk", "session", "crew", "lead"].includes(kind) ? ` data-desk-mark="${kind}"` : ""}>${deskKindIcon(kind)}${esc(mark.replace(/ · $/, ""))}</span><span class="dk-hsep"> · </span><span class="dk-tname">${title}</span></h1>${meta ? `<div class="dk-ph3">${meta}</div>` : ""}</div>`
-    + `<aside class="dk-panel">${now}${panel}</aside><div class="dk-pgm">${main}${foot}</div></div>`;
+    + `<aside class="dk-panel"${aside}>${now}${panel}</aside><div class="dk-pgm">${main}${foot}</div></div>`;
 }
 /** A session's dot and word for the panel, from deskSessState. */
 const deskPstate = (s) => { const [dot, word] = s ? deskSessState(s) : ["idle", "idle"]; return [dot === "ask" ? "ask" : dot === "idle" ? "stop" : "work", word[0].toUpperCase() + word.slice(1)]; };

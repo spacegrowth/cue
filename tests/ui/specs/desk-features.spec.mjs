@@ -31,12 +31,12 @@ test("the How work lands steps show as one feature with its pieces under it (#28
   await expect(page.locator(".dk-items .dk-it.pc")).toHaveCount(0);
   // Opened (#418: the item at the right, in the Items list's place): its page on the Pieces tab, its pieces in order.
   await feat.click();
-  await expect(page.locator('.dk-iside[data-side-for="253f"]')).toBeVisible();
+  await expect(page.locator('.dk-panel[data-side-for="253f"]')).toBeVisible();
   await expect(page.locator('.dk-itab[data-desk-itab="pieces"]')).toHaveClass(/\bon\b/);
   await expect(page.locator(".dk-pcl .dk-pc .dk-pc-t")).toHaveText(["How work lands 1", "How work lands 2", "How work lands 3", "How work lands 4", "How work lands 5", "How work lands 8"]);
-  await expect(page.locator(".dk-iside .dk-pmeta .dk-fp.big")).toContainText("5 of 6 done");
+  await expect(page.locator(".dk-panel[data-side-for] .dk-pmeta .dk-fp.big")).toContainText("5 of 6 done");
   // A piece opened from them (an old done one too): its page says what it's part of.
   await page.locator('.dk-pcl .dk-pc[data-desk-item="247"]').click();
-  await expect(page.locator('.dk-iside[data-side-for="247"]')).toBeVisible();
+  await expect(page.locator('.dk-panel[data-side-for="247"]')).toBeVisible();
   await expect(page.locator(".dk-ipane .dk-split").first()).toContainText("Part of How work lands");
 });
