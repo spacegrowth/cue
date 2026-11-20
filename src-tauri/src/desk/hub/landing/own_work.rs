@@ -58,19 +58,41 @@ fn short(sha: &str) -> &str {
     &sha[..sha.len().min(8)]
 }
 
-/// What `holder_work` checks each place against: the item's own copy, and repositories landing by pull request.
+/// What `holder_work` checks each place against: the item's own copy, other items' copies (#551), and repositories
+/// landing by pull request.
 struct Skip {
     copy: Option<(String, String)>,
+    others: Vec<(String, String)>,
     project: String,
 }
 
 impl Skip {
+    /// In its own copy, or in another item's: never merged as its work.
     fn in_copy(&self, path: &str, branch: &str) -> bool {
-        self.copy.as_ref().is_some_and(|(p, b)| same_dir(p, path) || (!b.is_empty() && b == branch))
+        let is = |(p, b): &(String, String)| (!path.is_empty() && same_dir(p, path)) || (!b.is_empty() && b == branch);
+        self.copy.as_ref().is_some_and(is) || self.others.iter().any(is)
     }
     fn by_pr(&self, main: &str) -> bool {
         crate::desk::lands::lands_of(&self.project, main).how == "pr"
     }
+}
+
+/// Each other item's copy (folder, branch): its holder may have looked in one, as #406's did in #510's, but that work
+/// is the other item's and lands with it (#551).
+pub(crate) fn other_copies(st: &Store, it: &DeskItem) -> Vec<(String, String)> {
+    // A done item's copy may be the one this item works in now; its own copy is never another's.
+    let own = it.tree.as_ref().map(|t| t.path.as_str()).unwrap_or("");
+    st.desk.items.iter().filter(|i| i.id != it.id && i.state != "done").filter_map(|i| i.tree.as_ref()).filter(|t| !t.path.is_empty() && t.path != own).map(|t| (t.path.clone(), t.branch.clone())).collect()
+}
+
+/// `f` is in one of `copies` (its folder or one inside it).
+pub(crate) fn in_copies(f: &str, copies: &[(String, String)]) -> bool {
+    let canon = |p: &str| std::fs::canonicalize(p).map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|_| p.trim_end_matches('/').to_string());
+    let f = canon(f);
+    copies.iter().any(|(p, _)| {
+        let p = canon(p);
+        f == p || f.starts_with(&format!("{p}/"))
+    })
 }
 
 fn add_repo(m: &str, repos: &mut Vec<String>) {
@@ -86,7 +108,8 @@ impl Hub {
         let mut out = OwnWork::default();
         let Some(own) = self.read(|st| own_log(st, it)) else { return out };
         let worked = crate::logs::steps::worked_between(&own.log, own.from, own.until);
-        let skip = Skip { copy: it.tree.as_ref().map(|t| (t.path.clone(), t.branch.clone())), project: it.project.clone() };
+        let others = self.read(|st| other_copies(st, it));
+        let skip = Skip { copy: it.tree.as_ref().map(|t| (t.path.clone(), t.branch.clone())), others, project: it.project.clone() };
         let mut repos: Vec<String> = Vec::new();
         for f in worked.folders.iter().chain(std::iter::once(&own.folder)) {
             worked_in(f, &skip, &mut repos, &mut out);

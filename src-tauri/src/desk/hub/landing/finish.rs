@@ -275,6 +275,9 @@ impl Hub {
                 out.push(t);
             }
         }
+        // Never another item's copy, wherever its holder looked: that work lands with that item (#551).
+        let others = self.read(|st| crate::desk::hub::landing::own_work::other_copies(st, it));
+        out.retain(|f| !crate::desk::hub::landing::own_work::in_copies(f, &others));
         out
     }
 

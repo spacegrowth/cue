@@ -105,3 +105,58 @@ fn a_done_with_nothing_changed_anywhere_still_goes_to_check() {
     let it = item(&w, &project, "Header jumps");
     assert_eq!(it["state"], "to_check", "{it}");
 }
+
+/// Another item's copy (one of the stand-ins holding the copies) made for real: its own branch with a commit to
+/// a.txt that clashes with one main has.
+fn another_items_copy_that_clashes(dir: &Path) -> PathBuf {
+    let copy = PathBuf::from(format!("{}/.claude/worktrees/held-1", top(dir)));
+    git(dir, &["worktree", "add", "-q", "-b", "held/1", copy.to_str().unwrap()]);
+    std::fs::write(copy.join("a.txt"), "theirs\n").unwrap();
+    git(&copy, &["add", "a.txt"]);
+    git(&copy, &["commit", "-q", "-m", "Theirs"]);
+    std::fs::write(dir.join("a.txt"), "ours\n").unwrap();
+    git(dir, &["add", "a.txt"]);
+    git(dir, &["commit", "-q", "-m", "Ours"]);
+    copy
+}
+
+#[test]
+fn a_holder_that_looked_in_another_items_copy_never_gets_that_items_clash() {
+    // #551: #406, started without a copy, kept coming back "isn't done: Its work clashes with main … in desk-1, merge
+    // main into desk/510" four times: its holder had looked in #510's copy, and Cue merged that copy as #406's work.
+    let w = World::new();
+    let (dir, project, id, h) = started_without_a_copy(&w);
+    let copy = another_items_copy_that_clashes(&dir);
+    works_in(&w, &h, &copy.join("ui"));
+    works_in(&w, &h, &copy);
+    works_in(&w, &h, &dir);
+    let before = git(&dir, &["rev-parse", "HEAD"]);
+    for round in 1..=4 {
+        ends(&w, &h, &format!("Built.\nDONE: #{id}"));
+        let it = item(&w, &project, "Header jumps");
+        assert_ne!(it["state"], "working", "round {round}: never sent back over another item's copy: {it}");
+        assert!(!w.hosted.sent().iter().any(|(s, t)| *s == h && t.contains("isn't done")), "round {round}: {:?}", w.hosted.sent());
+    }
+    assert_eq!(git(&dir, &["rev-parse", "HEAD"]), before, "the other item's work stays on its own branch");
+    assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "ours\n");
+}
+
+#[test]
+fn a_closed_item_is_never_sent_back() {
+    // #551: #406 was closed as on main while a landing of it still ran; that landing's clash sent it back anyway.
+    let w = World::new();
+    let (dir, project, id, h) = started_without_a_copy(&w);
+    let it = w.hub().read(|st| st.desk.item(&id).cloned()).unwrap();
+    // The lead closes it as on main, as #406 was.
+    let sha = git(&dir, &["rev-parse", "--short=9", "HEAD"]).trim().to_string();
+    let lead = super::desk::desk(&w, &project)["lead"]["sid"].as_str().unwrap().to_string();
+    ends(&w, &lead, &format!("CLOSE: #{id} | commit: {sha} | why: already on main"));
+    w.advance(1000);
+    w.settle();
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "done", "closed");
+    // Then the landing that was still running finds its clash.
+    w.hub().finish_clash(&it, "Its work clashes with main in a.txt");
+    w.settle();
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "done");
+    assert!(!w.hosted.sent().iter().any(|(s, t)| *s == h && t.contains("isn't done")), "{:?}", w.hosted.sent());
+}

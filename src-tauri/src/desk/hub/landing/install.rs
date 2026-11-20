@@ -280,6 +280,10 @@ impl Hub {
 
     /// `finish_failed`, and with `hand_back` the item at work again (as Send back leaves it) instead of waiting on you.
     pub(crate) fn finish_back(&self, it: &DeskItem, question: &str, step: &str, log: &str, hand_back: bool) {
+        // Closed while its landing ran (#406's, closed as on main mid-bounce): nothing goes back, it's done (#551).
+        if self.read(|st| st.desk.item(&it.id).is_none_or(|i| i.state == "done")) {
+            return;
+        }
         // Handed back, it's at work again: nothing for the lead to settle.
         if hand_back && it.holder.is_some() {
             self.finish_question(&it.id, step, question, log);
