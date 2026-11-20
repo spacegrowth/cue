@@ -68,15 +68,15 @@ function deskSessName(sid, name, cls) {
 }
 /** One row: what it is as its icon before the name (`mark`: desk, lead, session or crew, the icons the chat headers use,
  *  #202), its name, its state; then the item it's on (no line when it's on none, #179); then its size and cache. `cls`
- *  is dk-srow; the lead's card in the head strip is dk-lcard, with `pre` "Run by" before its icon. Rows run edge to
- *  edge, so their hover and their lime reach both sides of the column. */
-function deskSessRow({ name, sid = "", mark = "", dot, word, item, line, on, attrs, crew, step = "", size = "", loose = false, past = false, cls = "dk-srow", pre = "", harness = "" }) {
+ *  is dk-srow; the lead's card in the head strip is dk-lcard, with `tag` "Lead" as a pill after its name (pick M1, #446).
+ *  Rows run edge to edge, so their hover and their lime reach both sides of the column. */
+function deskSessRow({ name, sid = "", mark = "", dot, word, item, line, on, attrs, crew, step = "", size = "", loose = false, past = false, cls = "dk-srow", pre = "", harness = "", tag = "" }) {
   const what = item ? `<span class="dk-w">${deskKindIcon(item)}<span class="dk-id">${esc(deskNum(item))}</span> ${esc(item.title)}</span>` : line ? `<span class="dk-w">${esc(line)}</span>` : "";
   const arrow = on ? '<span class="dk-larrow" aria-hidden="true">›</span>' : "";   // only on the open row or card (#219)
   const loosePill = loose ? `<span class="dk-pill loose">not committed</span>` : "";
   const ic = DESK_MARKS[mark] ? `<span class="dk-ric" role="img" data-desk-type="${mark}" aria-label="${DESK_MARKS[mark]}">${deskKindIcon(mark)}</span>` : "";
   return `<div class="${cls} ${crew ? "crew" : ""} ${past ? "past" : ""} ${on ? "on" : ""}" role="button" tabindex="0" ${attrs}>
-    <div class="dk-s1">${pre ? `<span class="dk-lk">${pre}</span>` : ""}${ic}${sid ? deskSessName(sid, name, "dk-nm") : `<span class="dk-nm">${esc(name)}</span>`}${harness ? agentBadge(harness) : ""}<span class="dk-st"><i class="${dot}"></i><b>${word}</b></span>${arrow}</div>
+    <div class="dk-s1">${pre ? `<span class="dk-lk">${pre}</span>` : ""}${ic}${sid ? deskSessName(sid, name, "dk-nm") : `<span class="dk-nm">${esc(name)}</span>`}${harness ? agentBadge(harness) : ""}${tag ? `<span class="dk-ltag">${esc(tag)}</span>` : ""}<span class="dk-st"><i class="${dot}"></i><b>${word}</b></span>${arrow}</div>
     ${what || loosePill ? `<div class="dk-s2">${what}${loosePill}</div>` : ""}${step}${size}</div>`;
 }
 /** The lead and the sessions already on this Desk, with their crew. */
@@ -108,7 +108,7 @@ function deskSessions(project) {
     // of its latest reply, else how many items it has open; a one-line card read as the strip's header.
     if (card) {
       const cItem = deskSessItem(d, sid), open = d.items.filter((i) => i.state !== "done").length;
-      return deskSessRow({ name: deskHolderName(sid), sid, cls: "dk-lcard", mark: "desk", harness: s.harness, dot, word, item: cItem, line: cItem ? "" : deskSessSaid(sid) || (open ? `${open} open item${open === 1 ? "" : "s"} on this Desk` : "No open items on this Desk"), on: lit(sid), attrs, step: deskStepLine(dot === "", s.compacting_ms ? "Compacting…" : s.doing, s.compacting_ms || s.doing_ms), size: deskSessCache(sid, !cItem && dot !== "") });
+      return deskSessRow({ name: deskHolderName(sid), sid, cls: "dk-lcard", mark: "desk", harness: s.harness, tag: "Lead", dot, word, item: cItem, line: cItem ? "" : deskSessSaid(sid) || (open ? `${open} open item${open === 1 ? "" : "s"} on this Desk` : "No open items on this Desk"), on: lit(sid), attrs, step: deskStepLine(dot === "", s.compacting_ms ? "Compacting…" : s.doing, s.compacting_ms || s.doing_ms), size: deskSessCache(sid, !cItem && dot !== "") });
     }
     // On no item: the first line of its latest reply, and when it came beside its size (#185).
     const item = deskSessItem(d, sid), idle = dot !== "" && !item;
@@ -162,7 +162,7 @@ const deskElsewhere = (sid, d) => (state.desk?.projects || []).some((o) => o.pro
 /** An old, finished session: gone, stopped, or idle (not asking you) for over a day (#189). */
 const DESK_OLD_MS = 24 * 3600 * 1000;
 const deskSessOld = (s) => !s || s.state === "stopped" || (deskSessState(s)[0] === "idle" && !!s.since_ms && Date.now() - s.since_ms > DESK_OLD_MS);
-/** The line under "Run by", over the lead's card (#263, #359): the same working light a chat shows along its top (.sweep, chat.css), moving
+/** The line over the lead's card (#263, #359): the same working light a chat shows along its top (.sweep, chat.css), moving
  *  while the lead works (calmer after a quiet spell, still and amber when stuck, as sweep() in chat/thread.js), a plain
  *  lime line while it's idle. No data-sweep: that one is the open chat's, carried over by patch.js. The desk redraws
  *  often, so each new light starts where the clock says its pass is, never over from the left. */
@@ -174,8 +174,8 @@ function deskLeadBar(s) {
 }
 /** The head strip (pick B2), set in from the card's sides so it never meets the window's own colour: the Desk's name
  *  opens the switcher (every Desk, All Desks, + New Desk), ⋯ to hand the Desk to another session, this Desk's name (✎ on hover renames it, as the projects list
- *  does), how many sessions and how many work; then "Run by", its line (`bar`, #263) right under it (#359), and the
- *  lead's card (`lead`), outlined while its chat shows. */
+ *  does), how many sessions and how many work; then the lead's line (`bar`, #263, #359) and its card (`lead`), which says
+ *  "Lead" in a pill by its name and has a divider under it (pick M1, #446: no "Run by" head). */
 let deskDeleteAsk = null, deskDeleting = false, deskCloseSelected = new Set();
 function deskSessHead(project, n, working, lead = "", bar = "") {
   if (deskRecent[0] !== project) deskRecentPut(project);
@@ -186,7 +186,7 @@ function deskSessHead(project, n, working, lead = "", bar = "") {
     : `<b>${esc(title)}</b><button class="dk-ren" data-pjren="${esc(project)}" aria-label="Rename this Desk"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></svg></button>`;
   const more = lead ? `<button class="dk-more-btn" data-desk-change aria-label="Hand this Desk to another session"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>` : "";
   const sw = pjRenaming === project ? `<span class="dk-ric" aria-hidden="true">${deskKindIcon("tray")}</span>${name}` : `<span class="dk-sw-anchor"><button class="dk-sw-btn" data-desk-switch aria-haspopup="menu" aria-expanded="${deskSwitchOpen}"><span class="dk-ric" aria-hidden="true">${deskKindIcon("tray")}</span><b>${esc(title)}</b><svg class="dk-sw-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>${deskSwitchOpen ? deskSwitchMenu(project) : ""}</span>${name.slice(name.indexOf("<button"))}`;
-  return `<div class="dk-strip"><div class="dk-sh"><div class="dk-shr">${sw}<span class="grow"></span>${more}</div><div class="dk-subr"><span class="dk-sub">${n} session${n === 1 ? "" : "s"}${working ? ` · ${working} working` : ""}</span>${lead && typeof deskSettingsLine === "function" ? deskSettingsLine(deskOf(project)) : ""}</div>${pjRenaming === project ? "" : deskRecentChips(project)}</div>${lead ? `<div class="dk-lh">Run by</div>${bar}${lead}` : ""}</div>`;
+  return `<div class="dk-strip"><div class="dk-sh"><div class="dk-shr">${sw}<span class="grow"></span>${more}</div><div class="dk-subr"><span class="dk-sub">${n} session${n === 1 ? "" : "s"}${working ? ` · ${working} working` : ""}</span>${lead && typeof deskSettingsLine === "function" ? deskSettingsLine(deskOf(project)) : ""}</div>${pjRenaming === project ? "" : deskRecentChips(project)}</div>${lead ? `${bar}${lead}` : ""}</div>`;
 }
 /** The switcher (pick A, #240): the Desk's name opens a menu of every Desk, those waiting on you first, found by typing,
  *  ↑ ↓ ↵ to pick; All Desks and + New Desk under them. A row is the Desk's name and what needs you, nothing else: a

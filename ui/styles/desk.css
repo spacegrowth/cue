@@ -563,7 +563,7 @@
 .dk-lbar { position: relative; flex: none; height: 3px; overflow: hidden; background: var(--sel); }
 .dk-lbar.on { background: var(--panel); }
 /* With a lead it sits under "Run by", over the lead's card (#359), edge to edge as the card is. */
-.dk-strip > .dk-lbar { margin: 0 -20px; }
+.dk-strip > .dk-lbar { margin: 12px -20px 0; }
 :root[data-theme="dark"] .dk-sessions .dk-strip { background: color-mix(in oklab, var(--accent) 22%, var(--panel)); color: var(--ink); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .dk-sessions .dk-strip { background: color-mix(in oklab, var(--accent) 22%, var(--panel)); color: var(--ink); } }
 .dk-sh { display: flex; flex-direction: column; min-width: 0; }
@@ -622,8 +622,10 @@
 /* Edge to edge across the strip's foot, as the rows below are (#202), so it reads as a row you open, not a box. */
 /* #269 (pick A): "Run by" is a head of its own over the card, as "Working" heads the rows below, and the card is
    exactly a session row's size, so it reads as a row you open, not part of the strip. */
-.dk-lh { margin: 12px 0 6px; font: 700 11px var(--sans); letter-spacing: .08em; text-transform: uppercase; opacity: .75; }
-.dk-lcard { margin: 0 -20px -14px; padding: 12px 20px; background: var(--panel); color: var(--ink); cursor: pointer; }
+/* The lead's card (pick M1, #446): no "Run by" head; a lime "Lead" pill after its name, a divider under it. */
+.dk-lcard { margin: 0 -20px -14px; padding: 12px 20px; background: var(--panel); color: var(--ink); cursor: pointer; border-bottom: 1px solid var(--line); }
+.dk-ltag { flex: none; display: inline-flex; align-items: center; padding: 1px 7px; border-radius: 999px; font: 700 10.5px var(--sans); background: var(--sel); color: var(--on-sel); }
+.dk-lcard.on .dk-ltag { background: var(--on-sel); color: var(--sel); }
 .dk-lcard:hover { background: var(--panel-2); }
 .dk-lcard.on { background: var(--sel); color: var(--on-sel); }
 .dk-lcard:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }

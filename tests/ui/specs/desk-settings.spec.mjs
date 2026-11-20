@@ -97,18 +97,16 @@ test("the lead's proposed change is its ask; it shows on the screen only after y
   await expect(check.locator("button.on")).toHaveText("None");
 });
 
-test("Settings sits at the end of the counts' line, takes no line of its own, and lines up with Run by (#415)", async ({ page, cue }) => {
+test("Settings sits at the end of the counts' line, takes no line of its own (#415)", async ({ page, cue }) => {
   await page.setViewportSize({ width: 520, height: 800 });
   await cue.open("desk");
   await openDesk(page);
   const link = lands(page).locator("[data-lands-change]"), sub = page.locator(".dk-strip .dk-sub");
   await expect(link).toHaveText("Settings");
-  const [s, b, strip, lh] = await Promise.all([sub.boundingBox(), link.boundingBox(), page.locator(".dk-strip").boundingBox(), page.locator(".dk-strip .dk-lh").boundingBox()]);
+  const [s, b, strip] = await Promise.all([sub.boundingBox(), link.boundingBox(), page.locator(".dk-strip").boundingBox()]);
   // Same line as the counts, at the strip's right inside edge.
   expect(Math.abs((b.y + b.height / 2) - (s.y + s.height / 2))).toBeLessThan(4);
   expect(b.x + b.width).toBeLessThanOrEqual(strip.x + strip.width - 19);
-  // Run by starts where the counts do.
-  expect(Math.abs(lh.x - s.x)).toBeLessThan(1);
   await expect(page.locator(".dk-strip [title]")).toHaveCount(0);
   await link.click();
   await expect(page.locator(".ld-dialog .move-title")).toHaveText("Settings for cue");
