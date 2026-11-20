@@ -61,11 +61,10 @@ CueBridge.area("settings", (w) => {
       why: place === "folder" ? "This folder isn't a git repository, so items work in it directly, nothing is checked, and you commit their work yourself." : "",
     };
   };
+  // Kept per Desk (#460); Cue's own place by the folder it works in (a Desk with none works in its project's).
+  const landsPlace = (d) => d.folder ? (/\/cue$/.test(d.folder) ? "cue" : "repo") : ((d.workspace_project || d.project) === "cue" ? "cue" : "repo");
   const landsFill = () => {
-    for (const d of w.state?.desk?.projects || []) {
-      const project = d.workspace_project || d.project;
-      d.lands ||= landsView(project, project === "cue" ? "cue" : "repo", {});
-    }
+    for (const d of w.state?.desk?.projects || []) d.lands ||= landsView(d.id || d.project, landsPlace(d), {});
   };
   /** A lead's proposed change (hub/desk_lands.rs): its card carries `desk_lands`; your Yes saves it, as the hub does. */
   const plainAnswer = w.answer;
@@ -74,7 +73,7 @@ CueBridge.area("settings", (w) => {
     const p = it?.tool_input?.desk_lands;
     if (p && outcome === "answered — Yes") {
       landsFill();
-      for (const x of w.state.desk?.projects || []) if ((x.workspace_project || x.project) === p.project) x.lands = landsView(p.project, x.lands.place, p.set);
+      for (const x of w.state.desk?.projects || []) if ((x.id || x.project) === p.project) x.lands = landsView(p.project, x.lands.place, p.set);
       w.changed(10);
     }
     return it;
@@ -102,15 +101,16 @@ CueBridge.area("settings", (w) => {
       w.changed(10);
       return Array.isArray(ow.set[project]) ? ow.set[project] : ow.default;
     },
-    // How work lands (hub/desk.rs desk_lands_set): saved for the Desk's project, refusing a choice not built yet.
+    // How work lands (hub/desk_view.rs desk_lands_set): saved for the Desk alone, refusing a choice not built yet or
+    // one for Cue's own project on another's.
     desk_lands_set: ({ desk, lands }) => {
       landsFill();
       const d = (w.state.desk?.projects || []).find((x) => x.id === desk || x.project === desk);
       if (!d) throw "no such Desk";
       const place = d.lands.place;
       for (const [part] of LANDS_PARTS) if (lands[part] && landsWhy(part, lands[part], place)) throw `${part}: ${lands[part]} can't be picked (${landsWhy(part, lands[part], place)})`;
-      const view = landsView(d.lands.project, place, lands);
-      for (const x of w.state.desk.projects) if ((x.workspace_project || x.project) === d.lands.project) x.lands = view;
+      d.lands = landsView(d.lands.project, place, lands);
+      const view = d.lands;
       w.changed(10);
       return view;
     },

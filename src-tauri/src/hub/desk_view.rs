@@ -242,13 +242,14 @@ pub(super) fn item_sources(st: &Store, it: &DeskItem) -> (String, Vec<(String, V
 }
 
 impl Hub {
-    /// How work lands on Desk `desk`'s project, saved from the window's setting (lands.rs), for the folder the Desk
-    /// works in. Returns it as the Desk shows it.
+    /// How work lands on Desk `desk`, saved from the window's setting (lands.rs), for the folder the Desk works in.
+    /// Kept per Desk, the key its items land by (`it.project`), so a Desk on another repository never shares Cue's
+    /// own (#460). Returns it as the Desk shows it.
     pub(crate) fn desk_lands_set(&self, desk: &str, lands: &Value) -> Result<Value, String> {
-        let (project, folder) = self.read(|st| (st.desk.project_of(desk).to_string(), desk_folder(st, desk)));
-        crate::lands::save(&project, crate::lands::place_of(&folder), lands)?;
+        let folder = self.read(|st| desk_folder(st, desk));
+        crate::lands::save(desk, crate::lands::place_of(&folder), lands)?;
         self.changed();
-        Ok(crate::lands::desk_view(&project, &folder))
+        Ok(crate::lands::desk_view(desk, &folder))
     }
 
     /// `project`'s done items older than `before` (updated ms, id), newest first, `take` of them, as the Desk shows
@@ -302,7 +303,7 @@ impl Hub {
                 let work_history = super::desk_members::work_history(st, p);
                 // The sessions its lists show (#363); the rest fold into one "older" line.
                 let with_work = super::desk_members::with_work(st, p, now);
-                json!({ "with_work": with_work, "work_history": work_history, "id": p, "project": p, "name": st.desk.spaces.get(p).map(|d| &d.name), "independent": st.desk.spaces.contains_key(p), "workspace_project": st.desk.project_of(p), "folder": st.desk.spaces.get(p).map(|d| &d.folder), "lead": Self::desk_lead_view(st, p), "items": items, "decisions": decisions, "older": older, "moves_cleared": st.desk.moves_cleared.get(p).copied().unwrap_or(0), "members": members, "checks": super::desk_checks::checks_view(st, p), "kept": st.desk.kept.iter().filter(|k| &k.project == p).collect::<Vec<_>>(), "waits": super::desk_waits::waits_view(st, p), "circles": super::desk_waits::circles_view(st, p), "ask_before": crate::one_way::desk_view(st.desk.project_of(p)), "away": super::desk_away::away_view(st, p, now), "held": super::desk_held::held_view(st, p), "away_log": super::desk_away_log::log_view(st, p), "paused": super::desk_pause::pause_view(p), "lands": crate::lands::desk_view(st.desk.project_of(p), &desk_folder(st, p)) })
+                json!({ "with_work": with_work, "work_history": work_history, "id": p, "project": p, "name": st.desk.spaces.get(p).map(|d| &d.name), "independent": st.desk.spaces.contains_key(p), "workspace_project": st.desk.project_of(p), "folder": st.desk.spaces.get(p).map(|d| &d.folder), "lead": Self::desk_lead_view(st, p), "items": items, "decisions": decisions, "older": older, "moves_cleared": st.desk.moves_cleared.get(p).copied().unwrap_or(0), "members": members, "checks": super::desk_checks::checks_view(st, p), "kept": st.desk.kept.iter().filter(|k| &k.project == p).collect::<Vec<_>>(), "waits": super::desk_waits::waits_view(st, p), "circles": super::desk_waits::circles_view(st, p), "ask_before": crate::one_way::desk_view(st.desk.project_of(p)), "away": super::desk_away::away_view(st, p, now), "held": super::desk_held::held_view(st, p), "away_log": super::desk_away_log::log_view(st, p), "paused": super::desk_pause::pause_view(p), "lands": crate::lands::desk_view(p, &desk_folder(st, p)) })
             })
             .collect();
         json!({ "projects": list, "installed_ms": super::desk_checks::installed_ms(), "install_at": super::desk_finish::install_at(st) })

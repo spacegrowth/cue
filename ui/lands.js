@@ -24,7 +24,7 @@ function deskSettingsLine(d) {
 function landsChange(desk) {
   const d = deskOf(desk), l = d?.lands;
   if (!l) return;
-  const project = d.ask_before?.project || l.project;
+  const project = d.ask_before?.project || d.workspace_project || l.project;
   // Your own steps, one per line while you edit them.
   const steps = { check: (l.set.check_steps || []).join("\n"), after: (l.set.after_steps || []).join("\n") };
   const ab = project && askBeforeKinds().length ? { project, ticks: [...askBeforeNow(project)], more: false } : null;
@@ -32,7 +32,7 @@ function landsChange(desk) {
   renderMain();
 }
 /** The Desk whose settings show Ask me before for `project`, if any. */
-const landsDeskFor = (project) => (state.desk?.projects || []).find((d) => d.lead && d.lands && (d.ask_before?.project || d.lands.project) === project);
+const landsDeskFor = (project) => (state.desk?.projects || []).find((d) => d.lead && d.lands && (d.ask_before?.project || d.workspace_project || d.lands.project) === project);
 /** A part's choices: those that can be picked, and those not built yet (shown, saying so). One the folder rules out
  *  isn't shown: the Desk's `why` says why. */
 function landsSeg(p) {
@@ -110,7 +110,8 @@ function landsHtml() {
   if (!lands) return "";
   const d = deskOf(lands.desk), l = d?.lands;
   if (!l) { lands = null; return ""; }
-  const name = typeof projLabel === "function" ? projLabel(l.project) : l.project;
+  // Named as the Desk is: its settings are its own (#460).
+  const name = d.name || (typeof projLabel === "function" ? projLabel(l.project) : l.project);
   const parts = l.parts.map((p) => p.key === "how" ? landsAtOnce(l) + landsPart(p, l) : landsPart(p, l)).join("");
   // As Settings is (sheets.js settingsSheet): a sheet, its title and Esc on one line, groups under it; a click
   // outside or Esc closes it (#447).

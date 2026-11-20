@@ -96,3 +96,35 @@ test("a folder that isn't a git repository works in place and its settings say w
   await expect(dlg.locator(".ld-seg button", { hasText: "One commit per item" })).toHaveCount(0);
   await expect(dlg.locator(".ld-seg button", { hasText: "A branch" })).toBeDisabled();
 });
+
+test("a Desk on another project offers no Cue's own check or install, and keeps its own choices apart from Cue's (#460)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  // A second Desk in Cue's workspace, working in another repository.
+  await cue.change((st) => {
+    const d = st.desk.projects.find((x) => x.project === "cue");
+    st.desk.projects.push({ ...d, id: "desk-web", project: "desk-web", independent: true, name: "Web app", workspace_project: "cue", folder: "/work/web-app", items: [], decisions: [], lands: undefined });
+  });
+  await page.evaluate(() => { deskSelect("desk-web"); renderMain(); });
+  await line(page).locator("[data-lands-change]").click();
+  const dlg = page.locator(".ld-dialog");
+  await expect(dlg.locator(".move-title")).toHaveText("Settings for Web app");
+  const seg = (label) => dlg.locator(".ld-row", { has: page.locator(".ld-label", { hasText: label }) }).locator(".ld-seg button");
+  await expect(seg("Check before landing")).toHaveText(["None", "Your own steps"]);
+  await expect(seg("After landing")).toHaveText(["Nothing", "Your own steps"]);
+  await expect(dlg.getByText("Cue's own check")).toHaveCount(0);
+  await expect(dlg.getByText("Install or serve Cue")).toHaveCount(0);
+  await expect(dlg.locator("[title]")).toHaveCount(0);
+  // Its own steps saved for it alone.
+  await seg("After landing").filter({ hasText: "Your own steps" }).click();
+  await dlg.locator('[data-ld-steps="after"]').fill("npm run deploy");
+  await expect.poll(async () => (await cue.calls("desk_lands_set")).at(-1)?.args).toMatchObject({ desk: "desk-web", lands: { after: "command", after_steps: ["npm run deploy"] } });
+  await page.keyboard.press("Escape");
+  // Cue's own Desk keeps its own check and install.
+  await page.evaluate(() => { deskSelect("cue"); renderMain(); });
+  await line(page).locator("[data-lands-change]").click();
+  await expect(dlg.locator(".move-title")).toHaveText("Settings for cue");
+  await expect(seg("Check before landing").and(page.locator(".on"))).toHaveText("Cue's own check");
+  await expect(seg("After landing").and(page.locator(".on"))).toHaveText("Install or serve Cue");
+  await expect(seg("After landing")).toHaveText(["Nothing", "Install or serve Cue", "Your own steps"]);
+});

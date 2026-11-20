@@ -20,15 +20,16 @@ pub(super) struct Proposal {
 impl Hub {
     /// Proposal `p` asked of you (a Yes / No card from the lead), or the lead told why it can't be.
     pub(super) fn desk_lands_ask(&self, p: Proposal) {
-        let (project, folder) = self.read(|st| (st.desk.project_of(&p.desk).to_string(), desk_folder(st, &p.desk)));
+        // Kept per Desk, as its items land by it (#460); named as the Desk is.
+        let (project, name, folder) = self.read(|st| (p.desk.clone(), st.desk.name_of(&p.desk).to_string(), desk_folder(st, &p.desk)));
         let proposed = crate::lands::propose(&crate::config::load(), &project, crate::lands::place_of(&folder), &p.part, &p.to, &p.steps);
         let (set, words) = match proposed {
             Ok(x) => x,
             Err(why) => return self.desk_lands_tell(&p.lsid, format!("Not asked: LANDS: {} -> {}: {why}. Nothing changed.", p.part, p.to)),
         };
-        let question = format!("Change how work lands on {project}: {words}?");
+        let question = format!("Change how work lands on {name}: {words}?");
         let Some(id) = self.desk_ask(&p.lsid, &p.desk, &question, &["Yes".into(), "No".into()], None, None) else { return };
-        let lands = json!({ "project": project, "folder": folder, "set": set, "words": words, "why": p.why });
+        let lands = json!({ "project": project, "name": name, "folder": folder, "set": set, "words": words, "why": p.why });
         self.write(|st| {
             if let Some(it) = st.items.iter_mut().find(|i| i.id == id) {
                 it.tool_input["desk_lands"] = lands;
@@ -40,26 +41,27 @@ impl Hub {
     /// the setting shown with it from now; no leaves it. Either way the lead is told.
     pub(super) fn desk_lands_answered(&self, lsid: &str, lands: &Value, yes: bool) {
         let project = lands["project"].as_str().unwrap_or_default();
+        let name = lands["name"].as_str().unwrap_or(project);
         let words = lands["words"].as_str().unwrap_or_default();
         let said = if !yes {
-            format!("The user said no to changing how work lands on {project} ({words}). Nothing changed.")
+            format!("The user said no to changing how work lands on {name} ({words}). Nothing changed.")
         } else {
             let place = crate::lands::place_of(lands["folder"].as_str().unwrap_or_default());
             match crate::lands::save(project, place, &lands["set"]) {
                 Ok(_) => {
                     self.changed();
-                    format!("The user said yes: how work lands on {project} is changed ({words}). It shows on the settings screen.")
+                    format!("The user said yes: how work lands on {name} is changed ({words}). It shows on the settings screen.")
                 }
-                Err(e) => format!("The user said yes, but how work lands on {project} couldn't be changed ({words}): {e}"),
+                Err(e) => format!("The user said yes, but how work lands on {name} couldn't be changed ({words}): {e}"),
             }
         };
         self.desk_lands_tell(lsid, said);
     }
 
-    /// How work lands on Desk `desk`'s project, as its lead reads it (desk_lead.rs desk_summary).
+    /// How work lands on Desk `desk`, as its lead reads it (desk_lead.rs desk_summary).
     pub(super) fn desk_lands_line(&self, desk: &str) -> String {
-        let (project, folder) = self.read(|st| (st.desk.project_of(desk).to_string(), desk_folder(st, desk)));
-        crate::lands::lead_line(&crate::lands::lands_of(&project, &folder))
+        let folder = self.read(|st| desk_folder(st, desk));
+        crate::lands::lead_line(&crate::lands::lands_of(desk, &folder))
     }
 
     fn desk_lands_tell(&self, lsid: &str, words: String) {

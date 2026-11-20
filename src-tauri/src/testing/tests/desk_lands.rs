@@ -282,3 +282,61 @@ fn the_leads_change_waits_for_your_yes() {
     assert_eq!(now(&w)["push"], "ask");
     assert!(super::desk::sent_to(&w, &l).iter().any(|t| t.starts_with("Not asked: LANDS: push -> after") && t.contains("keeps asking")));
 }
+
+/// A git repository beside the test's home, named `name`; `cue` makes it Cue's own (its tauri.conf.json).
+fn repo_beside(w: &World, name: &str, cue: bool) -> String {
+    let home = w.home();
+    let dir = home.with_file_name(format!("{}-{name}", home.file_name().unwrap().to_string_lossy()));
+    std::fs::create_dir_all(dir.join("src-tauri")).unwrap();
+    if cue {
+        std::fs::write(dir.join("src-tauri/tauri.conf.json"), r#"{ "identifier": "dev.spacegrowth.cue" }"#).unwrap();
+    }
+    git(&dir, &["init", "-q", "-b", "main"]);
+    dir.to_string_lossy().into_owned()
+}
+
+#[test]
+fn a_desk_on_another_project_never_offers_cues_own_check_or_install_and_each_keeps_its_own() {
+    // #460: two Desks in one workspace, one on Cue's own folder, one on another repository.
+    let w = World::new();
+    let (_h, project) = super::desk::holder(&w);
+    let space = |id: &str, name: &str, folder: String| crate::desk::model::DeskSpace { id: id.into(), name: name.into(), project: project.clone(), folder };
+    w.hub().desk_put_space(space("desk-cue", "Cue work", repo_beside(&w, "cue", true))).unwrap();
+    w.hub().desk_put_space(space("desk-web", "Web app", repo_beside(&w, "web", false))).unwrap();
+    let shown = |desk: &str, part: &str| -> Vec<String> {
+        let d = desk_of(&w, desk);
+        let p = d["lands"]["parts"].as_array().unwrap().iter().find(|p| p["key"] == part).cloned().unwrap();
+        p["choices"].as_array().unwrap().iter().filter(|c| c["ok"] == true).map(|c| c["key"].as_str().unwrap().to_string()).collect()
+    };
+    assert_eq!(shown("desk-web", "check"), ["none", "command"], "another project: None or your own steps");
+    assert_eq!(shown("desk-web", "after"), ["nothing", "command"], "another project: Nothing or your own steps");
+    assert_eq!(shown("desk-cue", "check"), ["none", "cue", "command"], "Cue's own Desk keeps Cue's own check");
+    assert_eq!(shown("desk-cue", "after"), ["nothing", "install", "command"], "and its install");
+    assert_eq!(desk_of(&w, "desk-cue")["lands"]["set"]["check"], "cue");
+    assert_eq!(desk_of(&w, "desk-cue")["lands"]["set"]["after"], "install");
+    // Cue's own setting can't be saved on the other Desk.
+    assert!(w.hub().desk_lands_set("desk-web", &json!({ "check": "cue" })).is_err());
+    assert!(w.hub().desk_lands_set("desk-web", &json!({ "after": "install" })).is_err());
+    // Each keeps its own: a change on one leaves the other as it was.
+    w.hub().desk_lands_set("desk-web", &json!({ "check": "command", "check_steps": ["npm test"], "after": "command", "after_steps": ["npm run build"] })).unwrap();
+    w.hub().desk_lands_set("desk-cue", &json!({ "check": "none" })).unwrap();
+    let web = desk_of(&w, "desk-web")["lands"]["set"].clone();
+    assert_eq!((web["check"].clone(), web["check_steps"].clone(), web["after"].clone()), (json!("command"), json!(["npm test"]), json!("command")));
+    let cue = desk_of(&w, "desk-cue")["lands"]["set"].clone();
+    assert_eq!((cue["check"].clone(), cue["after"].clone()), (json!("none"), json!("install")), "Cue's Desk keeps its install");
+    // What its items land by is what its screen shows.
+    let folder = desk_of(&w, "desk-web")["folder"].as_str().unwrap().to_string();
+    assert_eq!(crate::lands::lands_of("desk-web", &folder).check, "command");
+    assert_eq!(crate::lands::lands_of("desk-web", &folder).after, "command");
+    // The workspace project's own setting (the legacy Desk) is untouched by either.
+    assert_ne!(crate::lands::lands_of(&project, &w.home().to_string_lossy()).check_steps, ["npm test"]);
+    for dir in ["cue", "web"] {
+        let home = w.home();
+        let _ = std::fs::remove_dir_all(home.with_file_name(format!("{}-{dir}", home.file_name().unwrap().to_string_lossy())));
+    }
+}
+
+fn desk_of(w: &World, id: &str) -> Value {
+    let snap = w.snapshot();
+    snap.0["desk"]["projects"].as_array().unwrap().iter().find(|p| p["id"] == id).cloned().unwrap_or_else(|| panic!("no Desk {id}"))
+}
