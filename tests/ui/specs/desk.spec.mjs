@@ -3889,7 +3889,8 @@ test("a pick on an item's mocks: Pick B closes it, its new build item is linked 
   await page.locator('[data-desk-item="d5"]').click();
   const head = page.locator(".dk-iside .dk-pnow");
   const picks = head.locator('[data-desk-act="pick"]');
-  await expect(picks).toHaveText(["Pick A", "Pick B", "Pick C"]);
+  await expect(picks).toHaveText(["Pick", "Pick", "Pick"]);
+  await expect(head.locator(".dk-opts .dk-optk")).toHaveText(["A", "B", "C"]);
   await expect(head.locator("[title]")).toHaveCount(0);
   await picks.nth(1).click();
   await cue.called("desk_item_act", { id: "d5", act: "pick", text: "B" });

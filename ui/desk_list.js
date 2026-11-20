@@ -106,7 +106,7 @@ function deskAllowLine(i) {
 function deskWhereLine(i) {
   if (i?.state !== "to_check") return null;
   const plainLine = (text, tried = false) => ({ text, html: esc(text), tried });
-  const canvas = /^https?:\/\//.test(i.designs || "") ? i.designs : i.finish?.mocks ? (i.made || []).find((m) => /^https?:\/\//.test(m)) || "" : "";
+  const canvas = deskCanvas(i);
   if (canvas || i.finish?.mocks) {
     const pick = deskPickLine(i), tail = pick ? ` · ${pick}` : "";
     if (!canvas) return plainLine(`Mocks · nothing to install${tail}`);

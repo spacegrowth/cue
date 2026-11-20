@@ -31,8 +31,13 @@ pub(super) fn ready(w: &World) -> (std::path::PathBuf, String, String) {
 /// The same, the item's work being what `work` does (with the session and the repository) once it's routed, and
 /// `before`'s before it was. Where its holder's DONE leaves it is the caller's to check.
 pub(super) fn done_with(w: &World, before: impl Fn(&World, &str, &std::path::Path), work: impl Fn(&World, &str, &std::path::Path)) -> (std::path::PathBuf, String, String) {
+    done_saying(w, before, work, "Fixed.")
+}
+
+/// `done_with`, its holder's DONE turn saying `words` first.
+pub(super) fn done_saying(w: &World, before: impl Fn(&World, &str, &std::path::Path), work: impl Fn(&World, &str, &std::path::Path), words: &str) -> (std::path::PathBuf, String, String) {
     let (dir, project, id, h) = routed_with(w, before, work);
-    ends(w, &h, &format!("Fixed.\nDONE: #{id}"));
+    ends(w, &h, &format!("{words}\nDONE: #{id}"));
     (dir, project, id)
 }
 

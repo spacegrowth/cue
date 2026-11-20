@@ -24,7 +24,7 @@ test("an item installed says In the app since its install, and what to try, on i
   // Said once: no You'll see line under it as well.
   await expect(row.locator(".dk-see")).toHaveCount(0);
   await row.locator(".dk-t").click();
-  await expect(page.locator(".dk-right .dk-pnow .dk-pickl")).toHaveText(want);
+  await expect(page.locator(".dk-iside .dk-pnow .dk-pickl")).toHaveText(want);
   await expect(page.locator(".dk-right [title]")).toHaveCount(0);
 });
 
@@ -55,8 +55,8 @@ test("a mocks item says Mocks · open the canvas, the link opening it, on its ro
   await cue.called("open_link", { url: "https://claude.ai/artifact/abc" });
   await expect(row).not.toHaveClass(/\bon\b/);
   await row.locator(".dk-t").click();
-  await expect(page.locator(".dk-right .dk-pnow .dk-pickl")).toHaveText("Mocks · open the canvas");
+  await expect(page.locator(".dk-iside .dk-pnow .dk-pickl")).toHaveText("Mocks · open the canvas");
   // Its DESIGNS link, when it gave one, is the canvas.
   await patchItem(cue, "d2", { finish: null, made: [], designs: "https://claude.ai/artifact/xyz" });
-  await expect(row.locator('.dk-h a[data-href="https://claude.ai/artifact/xyz"]')).toHaveText("open the canvas");
+  await expect(page.locator('.dk-iside .dk-pnow .dk-pickl a[data-href="https://claude.ai/artifact/xyz"]')).toHaveText("open the canvas");
 });

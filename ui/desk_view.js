@@ -28,7 +28,11 @@ function deskBox(d) {
       pre = it.holder.kind === "crew" ? `To ${it.holder.name}, through ${deskHolderName(hs)} · sent as #${it.id}` : `To ${it.holder.name}, who has this item · sent as #${it.id}`;
       ph = "Write to it here…";
     }
-    else ({ pre, ph } = deskToLine(it?.state === "to_check" && it.holder ? it.holder.name : lead, it));
+    else {
+      ({ pre, ph } = deskToLine(it?.state === "to_check" && it.holder ? it.holder.name : lead, it));
+      // Mocks to pick from: the chat is for what you think of them; a pick is its Pick button (#445).
+      if (deskPickOptions(it || {}).length) ph = "Comments on the mocks… (Pick an option above to build it)";
+    }
   }
   else if (o?.kind === "holder" || o?.kind === "crew" || o?.kind === "chat") {
     const sid = o.kind === "crew" ? o.lead : o.sid;

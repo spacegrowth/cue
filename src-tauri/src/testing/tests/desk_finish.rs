@@ -651,9 +651,14 @@ fn done_since_running(w: &World, files: &'static [&'static str]) -> (Arc<Fake>, 
 /// `ahead`: another change to the app (src-tauri/desk.rs) committed on the main line after the running Cue's commit,
 /// not installed yet, before the item's work.
 fn done_since_running_with(w: &World, files: &'static [&'static str], checked: bool, ahead: bool) -> (Arc<Fake>, std::path::PathBuf, String, String) {
+    done_since_running_saying(w, files, checked, ahead, "Fixed.")
+}
+
+/// `done_since_running_with`, its holder's DONE turn saying `words` first.
+fn done_since_running_saying(w: &World, files: &'static [&'static str], checked: bool, ahead: bool, words: &str) -> (Arc<Fake>, std::path::PathBuf, String, String) {
     let fake = Arc::new(Fake::default());
     w.hub().desk_set_installer(fake.clone());
-    let (dir, project, id) = done_with(
+    let (dir, project, id) = super::desk_commit::done_saying(
         w,
         |_, _, dir| {
             as_this_cue(dir);
@@ -690,6 +695,7 @@ fn done_since_running_with(w: &World, files: &'static [&'static str], checked: b
             }
             says(w, h, writes("toolu_A", "agentA", "fixer", &paths));
         },
+        words,
     );
     (fake, dir, project, id)
 }
@@ -784,6 +790,36 @@ fn a_mocks_item_with_no_commit_and_only_scratch_files_goes_to_check_with_no_inst
     w.advance(30 * 60_000);
     assert!(fake.started().is_empty(), "nothing installed");
     assert!(w.window.heard("ui-reload").is_empty(), "nor served");
+}
+
+#[test]
+fn a_mocks_only_items_pick_closes_it_and_makes_its_build_item_for_the_lead_marking_the_pick_on_its_canvas() {
+    let w = World::new();
+    let words = "Two ways on the canvas: https://claude.ai/artifact/abc\nM1: a strip under the header\nM2: a card\nPick one: M1 or M2.";
+    let (fake, _, project, id) = done_since_running_saying(&w, &["work/header-mocks.html"], false, true, words);
+    let shown = item(&w, &project, "Header jumps");
+    assert_eq!((shown["state"].as_str(), shown["finish"]["mocks"].as_bool(), shown["designs"].as_str()), (Some("to_check"), Some(true), None), "mocks only, no DESIGNS: line: {shown}");
+    let h = shown["holder"]["sid"].as_str().unwrap().to_string();
+    let lead = desk(&w, &project)["lead"]["sid"].as_str().unwrap().to_string();
+    let told_lead = sent_to(&w, &lead).len();
+
+    // M2, as you'd pick it (#445): its canvas is the link it made.
+    let picked = w.hub().desk_item_act(&id, "pick", "m2").unwrap();
+    assert_eq!((picked.state.as_str(), picked.picked.as_str()), ("done", "M2"));
+    let b = item(&w, &project, "Build: Header jumps (option M2)");
+    let n = b["id"].as_str().unwrap().to_string();
+    assert_eq!((picked.built_as.as_str(), b["builds"].as_str(), b["state"].as_str()), (n.as_str(), Some(id.as_str()), Some("new")));
+    assert!(b["why"].as_str().unwrap().contains("https://claude.ai/artifact/abc"), "{b}");
+    assert!(b.to_string().contains("Picked: M2"), "its done when has the pick marked: {b}");
+    // Its holder marks the pick on its canvas row and the Ideas page, and does no more on it.
+    let told = sent_to(&w, &h).into_iter().find(|t| t.contains("option M2 was picked")).expect("its holder is told");
+    assert!(told.contains(&format!("#{n} builds it")) && told.contains("Picked: M2") && told.contains("https://claude.ai/artifact/abc") && told.contains("Ideas page"), "{told}");
+    // The lead routes it at once.
+    w.advance(1000);
+    let sent = sent_to(&w, &lead);
+    assert_eq!(sent.len(), told_lead + 1, "{sent:?}");
+    assert!(sent.last().unwrap().contains(&format!("New item #{n} (bug): Build: Header jumps (option M2)")) && sent.last().unwrap().contains("Route it now"), "{sent:?}");
+    assert!(fake.started().is_empty(), "nothing installed for the mocks");
 }
 
 /// What was sent to session `sid`.

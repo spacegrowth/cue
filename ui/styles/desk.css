@@ -922,6 +922,12 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
 .dk-pacts .dk-givewrap { display: block; }
 .dk-pacts .dk-dsg { margin: 2px 0 0; }
 /* A picked mocks item and the item that builds its pick, each linking to the other (#281). */
+/* A mocks item's options, each with a Pick (#445). */
+.dk-opts { flex-basis: 100%; list-style: none; margin: 2px 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.dk-opts li { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; }
+.dk-optk { flex: none; min-width: 22px; font-weight: 600; }
+.dk-optw { flex: 1; min-width: 0; color: var(--muted); }
+.dk-opts .btn { flex: none; }
 .dk-built { flex-basis: 100%; margin: 0; font-size: 12px; color: var(--muted); }
 .dk-built a { color: var(--accent); text-decoration: none; }
 .dk-built a:hover { text-decoration: underline; }

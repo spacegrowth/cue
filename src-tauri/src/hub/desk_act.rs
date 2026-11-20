@@ -181,6 +181,9 @@ fn you_wrote(st: &mut Store, project: &str, id: &str, words: &str, whom: &str, n
 
 /// The option you picked ("B", "option b" → "B"), or "" when there's none.
 fn option_of(text: &str) -> String {
+    if let Some(o) = letter_of(text.trim().trim_end_matches('.')) {
+        return o;
+    }
     let t = text.trim().trim_end_matches('.').trim();
     let t = t.strip_prefix("option ").or_else(|| t.strip_prefix("Option ")).unwrap_or(t).trim();
     if t.chars().count() == 1 { t.to_uppercase() } else { t.chars().take(40).collect::<String>().trim().to_string() }
@@ -199,17 +202,21 @@ fn topic_of(title: &str) -> String {
     if topic.is_empty() { t.to_string() } else { topic.to_string() }
 }
 
-/// The option an answer names, as one capital letter: "B", "b", "Option B", "B: the compact list", "B) …". None for
-/// anything else ("A new tab" isn't option A).
+/// The option an answer names, as one capital letter, or a letter and a number (M1, #445): "B", "b", "Option B",
+/// "B: the compact list", "B) …", "M2". None for anything else ("A new tab" isn't option A).
 pub(super) fn letter_of(answer: &str) -> Option<String> {
     let a = answer.trim();
     let a = if a.len() > 7 && a[..7].eq_ignore_ascii_case("option ") { a[7..].trim_start() } else { a };
     let mut chars = a.chars();
     let c = chars.next().filter(char::is_ascii_alphabetic)?;
-    let rest = chars.as_str().trim_start();
-    let single = rest.is_empty() && c.is_ascii_alphabetic();
+    let digits: String = chars.as_str().chars().take_while(char::is_ascii_digit).take(2).collect();
+    let rest = chars.as_str()[digits.len()..].trim_start();
+    if rest.starts_with(|d: char| d.is_ascii_digit()) {
+        return None;
+    }
+    let single = rest.is_empty();
     let marked = c.is_ascii_uppercase() && rest.starts_with([':', ')', '.', '-', '\u{2014}', '\u{2013}', ',', '(']);
-    (single || marked).then(|| c.to_ascii_uppercase().to_string())
+    (single || marked).then(|| format!("{}{digits}", c.to_ascii_uppercase()))
 }
 
 /// The options a pick line names ("Pick one for working items: A, B or C." gives A, B, C): its newest words' line
@@ -236,7 +243,8 @@ pub(super) fn pick_letters(text: &str) -> Vec<String> {
             toks.push(if c == ',' || c == '/' { c.to_string() } else { "|".into() });
         }
     }
-    let letter = |t: &str| t.len() == 1 && t.chars().all(|c| c.is_ascii_uppercase());
+    // A, B… or M1, M2… (#445).
+    let letter = |t: &str| (1..=3).contains(&t.len()) && t.chars().next().is_some_and(|c| c.is_ascii_uppercase()) && t.chars().skip(1).all(|c| c.is_ascii_digit());
     let joins = |t: &str| matches!(t, "," | "/" | "or" | "and");
     for start in 0..toks.len() {
         if !letter(&toks[start]) {
@@ -272,7 +280,11 @@ pub(super) fn pick(st: &mut Store, id: &str, text: &str, now: u64) -> Result<Eff
     if !it.built_as.is_empty() && st.desk.item(&it.built_as).is_some() {
         return Err(format!("Option {} is picked already: it's being built as #{}", it.picked, it.built_as));
     }
-    if it.designs.trim().is_empty() {
+    // Its canvas: the DESIGNS: link its session gave, or, for an item whose work was only mocks (#408, #436), the
+    // link it made.
+    let mocks_only = it.finish.as_ref().is_some_and(|f| f.mocks);
+    let canvas = if !it.designs.trim().is_empty() { it.designs.trim().to_string() } else if mocks_only { it.made.iter().find(|m| m.starts_with("http://") || m.starts_with("https://")).cloned().unwrap_or_default() } else { String::new() };
+    if canvas.is_empty() {
         return Err("It has no mocks to pick from".into());
     }
     let option = option_of(text);
@@ -281,10 +293,10 @@ pub(super) fn pick(st: &mut Store, id: &str, text: &str, now: u64) -> Result<Eff
     }
     let kind = if it.kind.is_empty() { "feature" } else { it.kind.as_str() };
     let title = format!("Build: {} (option {option})", topic_of(&it.title));
-    let done_when = format!("option {option} of #{id}'s mocks is in the app and works as the mocks show");
+    let done_when = format!("option {option} of #{id}'s mocks is in the app and works as the mocks show; the canvas row and the Ideas page say \"Picked: {option}\"");
     let mut b = new_item(st, &it.project, kind, &title, &done_when, "you", now);
     b.builds = id.clone();
-    b.why = format!("You picked option {option} on #{id}'s mocks: {}", it.designs.trim());
+    b.why = format!("You picked option {option} on #{id}'s mocks: {canvas}");
     let n = b.id.clone();
     st.desk.items.push(b);
     fx.items.push(n.clone());
@@ -304,7 +316,8 @@ pub(super) fn pick(st: &mut Store, id: &str, text: &str, now: u64) -> Result<Eff
     // Answered or not, its holder is told the mocks are done and what builds the pick, so it doesn't build it there.
     fx.answers.extend(asking);
     if let Some(h) = it.holder.as_ref() {
-        fx.sends.push((h.to().to_string(), format!("Desk item #{id} ({}): option {option} was picked, so it's done. #{n} builds it; the Desk lead routes that. Stop work on #{id}.", it.title)));
+        // It made the canvas, so it marks the pick there now, on the canvas row and the Ideas page (#445).
+        fx.sends.push((h.to().to_string(), format!("Desk item #{id} ({}): option {option} was picked, so it's done. #{n} builds it; the Desk lead routes that. Mark \"Picked: {option}, <today's date>\" on its row of the canvas ({canvas}) and on its row of the Ideas page, keeping the other options; do no other work on #{id}.", it.title)));
     }
     let m = st.desk.item_mut(&id).ok_or("no such item")?;
     (m.picked, m.built_as) = (option.clone(), n.clone());

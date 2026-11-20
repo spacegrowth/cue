@@ -362,28 +362,53 @@ const deskDoneWhenHtml = (t, base = null) => {
  *  plain link in the accent colour (Lead chats pick 1 + D: no outlined button), in its page's header (#178). */
 const deskDesignsLink = (i) => /^https?:\/\//.test(i.designs || "") ? `<div class="dk-dsg">${deskDesignsA(i.designs)}</div>` : "";
 const deskDesignsA = (url) => `<a class="dk-dlink" href="#" data-href="${esc(url)}">Open the mocks ↗</a>`;
+/** Its mocks' canvas: the DESIGNS: link its session gave, or for an item whose work was only mocks (#408, #436), the
+ *  link it made. "" for none. */
+const deskCanvas = (i) => /^https?:\/\//.test(i?.designs || "") ? i.designs : i?.finish?.mocks ? (i.made || []).find((m) => /^https?:\/\//.test(m)) || "" : "";
 /** An item with mocks waiting on you to pick one: the line of its holder's newest words that asks you to, plain, for
  *  under its page's header ("Pick one for working items: D, E or F"). Its question first while it asks you, then its
  *  latest reply. An earlier pick can already have been answered. */
 function deskPickLine(i) {
-  if (!/^https?:\/\//.test(i.designs || "") || (i.state !== "needs_you" && i.state !== "to_check")) return "";
+  if (!deskCanvas(i) || (i.state !== "needs_you" && i.state !== "to_check")) return "";
   const texts = [i.state === "needs_you" ? deskQuestion(i) : "", i.said?.at(-1)?.text || ""];
   for (const t of texts) {
-    const lines = plain(t).split(/\n+|(?<=[.?!])\s+/).map((x) => x.trim()).filter((x) => /\b(pick|choose)\b/i.test(x));
+    // Line by line before its markdown goes (plain() can run lines together), then sentence by sentence.
+    const lines = t.split(/\n+/).flatMap((l) => plain(l).split(/(?<=[.?!])\s+/)).map((x) => x.trim()).filter((x) => /\b(pick|choose)\b/i.test(x));
     const line = lines.find((x) => /^(pick|choose|which)\b/i.test(x)) || lines[0];
     if (line) return line.replace(/^(not done yet|still to do)\s*:\s*/i, "").replace(/^./, (c) => c.toUpperCase());
   }
   return "";
 }
-/** The options a mocks item asks you to pick from, as its pick line names them ("… working items: D, E or F" → D, E,
- *  F), none once picked. */
-function deskPickOptions(i) {
-  if (i.picked) return [];
-  const run = deskPickLine(i).match(/\b[A-Z]\b(?:\s*(?:,|\/|\bor\b|\band\b)\s*(?:(?:or|and)\s+)?[A-Z]\b)+/);
-  return run ? [...new Set(run[0].match(/\b[A-Z]\b/g))] : [];
+/** The options its newest reply lists, each on a line of its own, its key first ("A: compact rows", "**M2** — a
+ *  strip", "- Option C) …"): Map key → its words, cut short (#445). */
+function deskOptionWords(i) {
+  const out = new Map();
+  for (const l of (i.said?.at(-1)?.text || "").split("\n")) {
+    const m = l.match(/^\s*(?:[-*•]\s+)?(?:\*\*|__)?(?:option\s+)?([A-Z]\d{0,2})(?:\*\*|__)?\s*(?:[:.)\u2014\u2013-]|\*\*)\s*(.+)$/i);
+    if (!m || (m[1].length === 1 && m[1] !== m[1].toUpperCase())) continue;
+    const words = plain(m[2]).replace(/^[\s:.)\u2014\u2013-]+/, "").trim();
+    if (words && !out.has(m[1].toUpperCase())) out.set(m[1].toUpperCase(), words.length > 70 ? `${words.slice(0, 69).trimEnd()}…` : words);
+  }
+  return out;
 }
-/** Pick D, Pick E…: a pick means build (#281): Cue closes the mocks and adds the item that builds the one you picked. */
-const deskPickBtns = (i) => deskPickOptions(i).map((o) => `<button class="btn small" data-desk-act="pick" data-id="${esc(i.id)}" data-on="${esc(o)}">Pick ${esc(o)}</button>`).join("");
+/** The options a mocks item asks you to pick from, A, B, C… or M1, M2… (#445): those its pick line names ("… working
+ *  items: D, E or F" → D, E, F), else the two or more its newest reply lists one to a line; none once picked. */
+function deskPickOptions(i) {
+  if (i.picked || !deskCanvas(i) || (i.state !== "needs_you" && i.state !== "to_check")) return [];
+  const run = deskPickLine(i).match(/\b[A-Z]\d{0,2}\b(?:\s*(?:,|\/|\bor\b|\band\b)\s*(?:(?:or|and)\s+)?[A-Z]\d{0,2}\b)+/);
+  if (run) return [...new Set(run[0].match(/\b[A-Z]\d{0,2}\b/g))];
+  const listed = [...deskOptionWords(i).keys()];
+  return listed.length > 1 ? listed : [];
+}
+/** Its options as a short list, each with what it is (when its reply says) and a Pick: a pick means build (#281,
+ *  #445): Cue closes the mocks and adds the item that builds the one you picked, for the lead to route at once. */
+function deskPickBtns(i) {
+  const opts = deskPickOptions(i);
+  if (!opts.length) return "";
+  const words = deskOptionWords(i);
+  const row = (o) => `<li><b class="dk-optk">${esc(o)}</b><span class="dk-optw">${esc(words.get(o) || `Option ${o}`)}</span><button class="btn small" data-desk-act="pick" data-id="${esc(i.id)}" data-on="${esc(o)}" aria-label="Pick ${esc(o)}">Pick</button></li>`;
+  return `<ul class="dk-opts">${opts.map(row).join("")}</ul>`;
+}
 /** A picked mocks item and the item that builds its pick, each linking to the other (#281). */
 const deskBuiltLink = (i) => {
   const a = (id) => `<a href="#" data-desk-item="${esc(id)}">#${esc(id)}</a>`;

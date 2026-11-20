@@ -141,7 +141,8 @@ CueBridge.area("desk", (w) => {
       // A pick on its mocks (#281): done and picked, one build item linked both ways; a pick again makes none.
       else if (act === "pick") {
         if (it.built_as && itemOf(it.built_as)) throw `Option ${it.picked} is picked already: it's being built as #${it.built_as}`;
-        if (!it.designs) throw "It has no mocks to pick from";
+        // Its canvas: its DESIGNS: link, or the link a mocks-only item made (#445).
+        if (!it.designs && !(it.finish?.mocks && (it.made || []).some((m) => /^https?:\/\//.test(m)))) throw "It has no mocks to pick from";
         const option = String(text || "").trim().toUpperCase(), d = deskOf(it.project);
         const b = { id: `b${++n}`, project: it.project, kind: it.kind || "feature", title: `Build: ${it.title.replace(/^mocks:\s*/i, "")} (option ${option})`, done_when: "", state: "new", holder: null, from: "you", builds: it.id, created: t, updated: t, files: [] };
         d.items.push(b);
