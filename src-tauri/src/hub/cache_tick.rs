@@ -38,11 +38,11 @@ fn ahead_by(ticked: bool, all: bool, desk: Option<&DeskRole>, tokens: u64, start
     let window = if window > 0 { window } else { AHEAD_WINDOW };
     let due = start > 0 && tokens as f64 >= window as f64 * AHEAD_SHARE && tokens as f64 >= start as f64 * AHEAD_GROWTH;
     if ticked {
-        crate::ipc::AHEAD_SESSION
+        crate::hub::AHEAD_SESSION
     } else if all && due {
-        crate::ipc::AHEAD_ALL
+        crate::hub::AHEAD_ALL
     } else if desk.is_some_and(|r| desk_due(r, tokens)) {
-        crate::ipc::AHEAD_DESK
+        crate::hub::AHEAD_DESK
     } else {
         0
     }
@@ -70,7 +70,7 @@ pub(super) struct DeskRole {
 
 impl DeskRole {
     /// Whether the lead's keep holds for the idle stretch since `last` (its latest reply): it said so since.
-    pub(super) fn kept(&self, last: u64) -> bool {
+    pub(crate) fn kept(&self, last: u64) -> bool {
         self.kept_at > 0 && self.kept_at >= last
     }
 }
@@ -102,9 +102,9 @@ pub(super) fn desk_role(st: &Store, sid: &str) -> Option<DeskRole> {
     if scopes.is_empty() {
         return None;
     }
-    let kept_at = st.desk.keep.get(sid).map_or(0, |k| if k.2 { u64::MAX } else { k.0 });
+    let kept_at = st.desk.run.keep.get(sid).map_or(0, |k| if k.2 { u64::MAX } else { k.0 });
     let member = scopes.iter().any(|id| st.desk.on_desk(id, sid));
-    let compact_failed = st.desk.compact_failed.contains_key(sid);
+    let compact_failed = st.desk.run.compact_failed.contains_key(sid);
     let lead = scopes.iter().any(|id| st.desk.lead_sid(id) == Some(sid));
     let mut role = DeskRole { lead, kept_at, member, compact_failed, ..Default::default() };
     let held = |i: &&crate::desk::DeskItem| scopes.contains(&i.project) && i.state != "done" && i.holder.as_ref().is_some_and(|h| h.is(sid));
@@ -118,13 +118,13 @@ pub(super) fn desk_role(st: &Store, sid: &str) -> Option<DeskRole> {
 /// Whether Cue will ask session `sid` (its card's numbers: `insight`) for a note as its cache runs out, as things
 /// stand (the lead's summary says it will): who the scan found would ask (its "ahead_by", by `ahead_would`, the
 /// same test the ask itself goes by; 0 once asked), its cache still warm, and no keep said since for the Desk's rule.
-pub(super) fn desk_will_hand_off(st: &Store, sid: &str, insight: &Value, now: u64) -> bool {
+pub(crate) fn desk_will_hand_off(st: &Store, sid: &str, insight: &Value, now: u64) -> bool {
     let n = |k: &str| insight[k].as_u64().unwrap_or(0);
     let by = n("ahead_by");
     if by == 0 || n("until_ms") <= now {
         return false;
     }
-    by != crate::ipc::AHEAD_DESK as u64 || desk_role(st, sid).is_some_and(|r| !r.kept(n("last_ms")))
+    by != crate::hub::AHEAD_DESK as u64 || desk_role(st, sid).is_some_and(|r| !r.kept(n("last_ms")))
 }
 
 /// A hand-off note due ahead of a cache running out at `until`, asked for `by` its tick or Insights.
@@ -177,7 +177,7 @@ impl Hub {
     fn not_told_yet(st: &mut Store, scan: CacheScan, now: u64) -> (Vec<(Item, u64)>, Vec<Ahead>) {
         st.insight = scan.insight;
         // A keep is for one idle stretch, and no cache outlasts an hour of it.
-        st.desk.keep.retain(|_, k| now.saturating_sub(k.0) < 4 * AHEAD_TTL_MS);
+        st.desk.run.keep.retain(|_, k| now.saturating_sub(k.0) < 4 * AHEAD_TTL_MS);
         st.ahead_tried.retain(|_, until| *until > now);
         let ahead: Vec<Ahead> = scan.ahead.into_iter().filter(|a| st.ahead_tried.insert(a.origin.session_id.clone(), a.until) != Some(a.until)).collect();
         // Asked already this expiry (or held from it): no other ask comes before it runs out.
@@ -237,7 +237,7 @@ fn scan_caches(waiting: Vec<Waiting>, now: u64) -> CacheScan {
     for (it, later, desk) in waiting {
         let Some(state) = crate::steps::insight_state(&it.origin.transcript_path) else { continue };
         let mut numbers = serde_json::json!(state);
-        // For its Desk's lead (desk_lead.rs): who would ask it for a note as its cache runs out, a keep aside (the
+        // For its Desk's lead (desk/hub/lead/run.rs): who would ask it for a note as its cache runs out, a keep aside (the
         // lead may take one back before then; desk_will_hand_off looks at it then).
         if let Some(r) = desk {
             numbers["ahead_by"] = ahead_would(&it, &state, Some(DeskRole { kept_at: 0, ..r }), now, &mut watched).unwrap_or(0).into();
@@ -272,7 +272,7 @@ fn full_wanted(it: &Item, state: &InsightState, role: &DeskRole, now: u64) -> Op
     }
     let handing = crate::db::handoff(sid).is_some_and(|k| !k.next.is_empty() || k.ahead > 0 || k.sent_ms >= state.last_ms);
     let until = state.last_ms.max(1) + 24 * 3_600_000;
-    (!handing && until > now).then(|| Ahead { origin: it.origin.clone(), until, tokens: state.tokens, by: crate::ipc::AHEAD_FULL })
+    (!handing && until > now).then(|| Ahead { origin: it.origin.clone(), until, tokens: state.tokens, by: crate::hub::AHEAD_FULL })
 }
 
 /// Who a note ahead of this card's cache running out is due by, if one is. Put off for later too: leaving it for
@@ -329,9 +329,9 @@ mod tests {
         assert!(!super::ahead_due(now + 80_000, now + 80_000 - 5 * min, 300_000, now), "a 5-minute cache: the button only");
         assert!(!super::ahead_due(now + 80_000, now + 80_000 - hour, 40_000, now), "too small to matter");
         // Its own tick goes from any size worth a note; Insights' every-session only where a fresh session is due.
-        assert_eq!(super::ahead_by(true, false, None, 60_000, 50_000, 1_000_000), crate::ipc::AHEAD_SESSION);
-        assert_eq!(super::ahead_by(false, true, None, 650_000, 45_000, 1_000_000), crate::ipc::AHEAD_ALL);
-        assert_eq!(super::ahead_by(false, true, None, 130_000, 40_000, 0), crate::ipc::AHEAD_ALL, "a 200k window when it doesn't say");
+        assert_eq!(super::ahead_by(true, false, None, 60_000, 50_000, 1_000_000), crate::hub::AHEAD_SESSION);
+        assert_eq!(super::ahead_by(false, true, None, 650_000, 45_000, 1_000_000), crate::hub::AHEAD_ALL);
+        assert_eq!(super::ahead_by(false, true, None, 130_000, 40_000, 0), crate::hub::AHEAD_ALL, "a 200k window when it doesn't say");
         assert_eq!(super::ahead_by(false, true, None, 173_000, 48_000, 1_000_000), 0, "17% of its window: started from a note an hour ago");
         assert_eq!(super::ahead_by(false, true, None, 700_000, 400_000, 1_000_000), 0, "hasn't grown 3× from its start");
         assert_eq!(super::ahead_by(false, true, None, 700_000, 0, 1_000_000), 0, "its start not known");
@@ -341,7 +341,7 @@ mod tests {
     #[test]
     fn the_desks_rule_goes_by_context_and_what_the_session_holds() {
         use super::{ahead_by, DeskRole};
-        use crate::ipc::{AHEAD_DESK, AHEAD_SESSION};
+        use crate::hub::{AHEAD_DESK, AHEAD_SESSION};
         let none = DeskRole::default();
         let open = DeskRole { open: true, ..none };
         let working = DeskRole { open: true, working: true, ..none };

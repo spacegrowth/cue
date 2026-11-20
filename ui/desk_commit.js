@@ -1,11 +1,11 @@
-// Cue UI desk_commit — Looks right on a Desk item commits its changed files at once (hub/desk_commit.rs: the word
+// Cue UI desk_commit — Looks right on a Desk item commits its changed files at once (desk/hub/landing/commit.rs: the word
 // check first, its title the message, never pushed) and the item is done; one with no files is just done. When another
 // session at work is editing some of them, the item is done at once and the commit waits ("Commit waiting: <file>
 // (<session> is editing it)"), made on its own once they're free. "Committed <hash> · N files" shows with Undo, which
 // only puts it back to check: the commit stays, no code changes (a waiting commit isn't made).
 // Each time a session says DONE for an item, the lead's chat shows one Ready to check line for it (deskCheckRows): its
 // item and Check it ›, which opens the item's page, where what to test, Looks right and Send back are. Kept by the hub
-// (hub/desk_checks.rs), so they're there after a restart.
+// (desk/hub/lead/checks.rs), so they're there after a restart.
 // Looks right waits a moment first: "Done · Undo" for DESK_LOOKS_WAIT on the item and in a toast, and Undo in that
 // time leaves it to check with nothing committed (Cue hasn't told the hub yet). Then it goes as above.
 // Commands: desk_looks_right, desk_item_act (reopen).

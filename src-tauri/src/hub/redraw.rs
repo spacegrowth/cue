@@ -60,7 +60,7 @@ impl Redraws {
 impl Hub {
     /// Something changed what the window shows: drawn soon, by the worker (see the module's note).
     /// The kept state is no longer current at once, so an ask before the draw builds it (`Hub::state`).
-    pub(super) fn changed(&self) {
+    pub(crate) fn changed(&self) {
         self.unshown();
         match &self.ports.later {
             #[cfg(test)]

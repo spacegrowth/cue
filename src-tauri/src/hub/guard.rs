@@ -1,4 +1,4 @@
-//! Ask me before (one_way.rs), checked before each tool call runs (from its command's words): a tool call that is one of the steps a project's Desk asks first
+//! Ask me before (desk/one_way.rs), checked before each tool call runs (from its command's words): a tool call that is one of the steps a project's Desk asks first
 //! about (a push to main, a release, deleting files) waits on your yes. The agent's hook (hook.rs `guard`) or Pi's
 //! extension sends it here before it runs; on any session of a project with a Desk lead it becomes a one-way card,
 //! answered with a click. Elsewhere (no Desk on the project, or a step not ticked) it passes.
@@ -11,10 +11,10 @@ impl Hub {
     /// A tool call checked before it runs. `hits`: the kinds its sender saw (empty: read here from `tool_input`, with
     /// `branch` for a plain push). Its card and the receiver its connection waits on, or None: it passes.
     /// `checked`: its sender read the kinds itself, so none (`hits` empty) means none. Before that, an item's holder
-    /// leaving the copy Cue gave it is stopped, saying why (desk_copy_guard.rs, #483).
+    /// leaving the copy Cue gave it is stopped, saying why (desk/hub/landing/copy_guard.rs, #483).
     pub fn guard(&self, origin: Origin, tool_name: String, tool_input: Value, hits: &[String], branch: &str, agent_id: String, checked: bool) -> Option<(String, oneshot::Receiver<Reply>)> {
         if let Some(why) = self.copy_guard(&origin, &tool_name, &tool_input) {
-            return Some((format!("copy-{}", now_ms()), super::desk_held::given("deny", Some(&why))));
+            return Some((format!("copy-{}", now_ms()), crate::desk::hub::away::away_holds::given("deny", Some(&why))));
         }
         if checked && hits.is_empty() {
             return None;
@@ -37,11 +37,11 @@ impl Hub {
         }
         let hits: Vec<&str> = if hits.is_empty() {
             let b = (!branch.is_empty()).then(|| branch.to_string());
-            crate::one_way::call_hits(tool_input, &|_| b.clone())
+            crate::desk::one_way::call_hits(tool_input, &|_| b.clone())
         } else {
             hits.iter().map(String::as_str).collect()
         };
-        let kinds = crate::one_way::kinds(&project);
+        let kinds = crate::desk::one_way::kinds(&project);
         asked_about(&kinds, &hits).then(|| (origin, hits.iter().filter(|h| kinds.contains(h)).map(|h| h.to_string()).collect()))
     }
 
@@ -60,17 +60,17 @@ impl Hub {
     /// the project's Desks told the new rule (it replaces what their instructions said). `kinds` None: not now (the
     /// setting kept as it is, never asked again). Returns the kinds as saved.
     pub(crate) fn ask_before_set(&self, project: &str, kinds: Option<&[String]>) -> Result<Vec<&'static str>, String> {
-        let before = crate::one_way::kinds(project);
+        let before = crate::desk::one_way::kinds(project);
         let Some(kinds) = kinds else {
-            crate::one_way::mark_asked(project)?;
+            crate::desk::one_way::mark_asked(project)?;
             self.changed();
             return Ok(before);
         };
-        let saved = crate::one_way::answer(project, kinds)?;
+        let saved = crate::desk::one_way::answer(project, kinds)?;
         if saved != before {
-            let words = crate::one_way::changed_words(&saved);
+            let words = crate::desk::one_way::changed_words(&saved);
             for sid in self.read(|st| desk_sessions(st, project)) {
-                if let Err(e) = self.send_to_session(&sid, &words, &[], false) {
+                if let Err(e) = self.tell(&sid, &words) {
                     eprintln!("cue: couldn't tell {sid} the new Ask me before: {e}");
                 }
             }
@@ -90,7 +90,7 @@ fn desk_sessions(st: &Store, project: &str) -> Vec<String> {
     let mut out: Vec<String> = vec![];
     let desks: Vec<&String> = st.desk.lead.keys().filter(|id| st.desk.project_of(id) == project).collect();
     for id in desks {
-        for s in super::desk::routable(st, id) {
+        for s in crate::desk::hub::core::desk::routable(st, id) {
             if !out.contains(&s.origin.session_id) {
                 out.push(s.origin.session_id.clone());
             }
@@ -102,7 +102,7 @@ fn desk_sessions(st: &Store, project: &str) -> Vec<String> {
 /// Whether any of `hits` is asked first about in a project with `kinds`: only a kind Cue checks (a push to main is a
 /// push too, so a project asking before any push stops it).
 fn asked_about(kinds: &[&str], hits: &[&str]) -> bool {
-    crate::one_way::KINDS.iter().any(|k| k.offered && kinds.contains(&k.key) && hits.contains(&k.key))
+    crate::desk::one_way::KINDS.iter().any(|k| k.offered && kinds.contains(&k.key) && hits.contains(&k.key))
 }
 
 #[cfg(test)]

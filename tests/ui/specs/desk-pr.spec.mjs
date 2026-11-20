@@ -1,4 +1,4 @@
-// PR landing (hub/desk_pr.rs): an item whose project lands by pull request shows "In review" once its pull request
+// PR landing (desk/hub/landing/pr.rs): an item whose project lands by pull request shows "In review" once its pull request
 // is open, with the link and Open the PR (no other buttons); one whose branch couldn't be pushed or pull request
 // opened says why and offers Run the landing again; one closed unmerged says so. After each landing, the item's
 // line says it was pushed.

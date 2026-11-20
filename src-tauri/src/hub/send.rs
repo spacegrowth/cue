@@ -17,7 +17,7 @@ fn reply_busy(st: &Store, sid: &str) -> bool {
 }
 
 /// This session's typing turn (see Hub::typing), or an error once the one before has held it for TURN_WAIT.
-fn wait_turn(gate: &Mutex<()>) -> Result<std::sync::MutexGuard<'_, ()>, String> {
+pub(super) fn wait_turn(gate: &Mutex<()>) -> Result<std::sync::MutexGuard<'_, ()>, String> {
     // A loop of its own rather than clock::within: the lock lint follows the gate out of a plain return.
     let until = mono_ms() + TURN_WAIT_MS;
     loop {
@@ -284,34 +284,21 @@ impl Hub {
         Ok("kept in Cue: it goes when this turn ends".into())
     }
 
-    /// A reply typed into the session's terminal (or handed over directly), then the card answered with
-    /// whether the agent was seen to take it.
+    /// A reply typed into the session's terminal (or handed over directly, or to a hosted one), then the card
+    /// answered with whether the agent was seen to take it. The same way in as the box's message (`deliver`).
     fn type_reply(&self, it: Item, id: &str, sid: &str, text: &str, saved: &[crate::uploads::Saved], t0: u64) -> Result<String, String> {
-        if it.origin.hosted {
-            let said = self.send_to_hosted(sid, text, saved, false)?;
-            self.file_reply(it, id, text, saved, "");
-            return Ok(said);
+        // Not busy: a stale card's reply was kept already (`reply`), so here it goes now.
+        let seen = (Some(it.origin.clone()), false, false);
+        match self.deliver(sid, text, saved, false, seen, None, Some(t0))? {
+            Went::Done(said) => {
+                self.file_reply(it, id, text, saved, "");
+                Ok(said)
+            }
+            Went::In { via, submitted, seen, .. } => {
+                self.file_reply(it, id, text, saved, if seen { "" } else { " (typed; didn't see it submit)" });
+                Ok(if submitted { format!("sent via {via}") } else { format!("via {via}; Cue is watching for it to take it") })
+            }
         }
-        let cmd_before = command_before(&it.origin, text);
-        // Direct delivery when the session listens for it (Pi); otherwise type into its terminal.
-        let direct = self.send_direct(sid, text, saved, false);
-        let via = if direct { "the session directly".to_string() } else { self.keys().type_into(&it.origin, &crate::uploads::with_paths(text, &self.images_there(sid, &it.origin, saved)?))? };
-        // The agent reports a new turn (Claude: UserPromptSubmit, Pi: agent_start) once it submits.
-        let mut submitted = self.took(sid, &it.origin, text, cmd_before, t0);
-        if !submitted && !direct && !text.starts_with('/') && self.retry_enter(&it.origin, text) {
-            submitted = self.wait_active(sid, t0, 4000);
-        }
-        let paths: Vec<String> = saved.iter().map(|s| s.path.clone()).collect();
-        self.write(|st| {
-            st.sessions.note_sent(sid, text, &paths, t0, crate::config::context_keep());
-            st.sessions.note_delivery(sid, text, &delivery_step(&via, submitted));
-        });
-        let seen = submitted;
-        if !submitted && !direct {
-            submitted = self.settle_typed(sid, &it.origin, text, cmd_before, t0);
-        }
-        self.file_reply(it, id, text, saved, if seen { "" } else { " (typed; didn't see it submit)" });
-        Ok(if submitted { format!("sent via {via}") } else { format!("via {via}; Cue is watching for it to take it") })
     }
 
     /// The card a reply answered, off the board and into History, saying what you replied (`note`: how it went).
@@ -418,6 +405,11 @@ impl Hub {
         self.send_saved(session_id, text, saved, now)
     }
 
+    /// Cue's own words to a session: `send_to_session` with no images, not interrupting (kept if it's mid-turn).
+    pub fn tell(&self, session_id: &str, text: &str) -> Result<String, String> {
+        self.send_to_session(session_id, text, &[], false)
+    }
+
     /// Send `typed` (and images already saved) to a session. Mid-turn, to an agent Cue types into: Cue
     /// keeps it and sends it when the turn ends (see `held`), unless `now`.
     pub(crate) fn send_saved(&self, session_id: &str, typed: &str, saved: Vec<crate::uploads::Saved>, now: bool) -> Result<String, String> {
@@ -450,18 +442,41 @@ impl Hub {
     /// the typing gate, but its turn can end in between: a message kept for it is kept only if it's still busy
     /// (see `keep`).
     fn send_as_seen(&self, session_id: &str, typed: &str, saved: Vec<crate::uploads::Saved>, now: bool, seen: (Option<Origin>, bool, bool), held: Option<&Exchange>) -> Result<String, String> {
+        let (via, submitted, busy) = match self.deliver(session_id, typed, &saved, now, seen, held, None)? {
+            Went::Done(said) => return Ok(said),
+            Went::In { via, submitted, busy, .. } => (via, submitted, busy),
+        };
+        self.changed();
+        if !submitted {
+            return Ok(format!("via {via}; Cue is watching for it to take it"));
+        }
+        Ok(if busy { format!("queued via {via}: it reads this when it finishes its current step") } else { format!("sent via {via}") })
+    }
+
+    /// The way a message goes into a session, for the box (`send_as_seen`) and a card's reply (`type_reply`) alike:
+    /// - a hosted session gets it over its connection (`send_saved_hosted`);
+    /// - a busy one Cue would type into keeps it until its turn ends (`keep`), unless `now` (⌘↵: its turn stopped
+    ///   first);
+    /// - otherwise it's handed straight to a session that listens (Pi) or typed into its terminal, with Enter once
+    ///   more if it's seen still in its box, then watched until something says it was taken (`settle_typed`).
+    ///
+    /// `reply`: a card's reply, typed as of then (its t0). It differs from the box's message only where it always
+    /// has: its text as you wrote it (not trimmed), no blank line before it, a session listening directly still
+    /// reports taking it, and "/compact" isn't noted as compacting.
+    #[allow(clippy::too_many_arguments)]
+    fn deliver(&self, session_id: &str, typed: &str, saved: &[crate::uploads::Saved], now: bool, seen: (Option<Origin>, bool, bool), held: Option<&Exchange>, reply: Option<u64>) -> Result<Went, String> {
         // " /…" keeps its space in `typed`: a message, not a command (see with_paths).
-        let text = typed.trim();
+        let text = if reply.is_some() { typed } else { typed.trim() };
         let (origin, mut busy, direct) = seen;
         if origin.as_ref().is_some_and(|o| o.hosted) {
-            return self.send_saved_hosted(session_id, typed, &saved, busy, now, held);
+            return self.send_saved_hosted(session_id, typed, saved, busy, now, held).map(Went::Done);
         }
         // Working, and Cue would type it into its terminal: Cue keeps it instead and sends it when the turn
         // ends, so until then it's yours to take back (Esc, Edit) or send now. (In the terminal's own queue
         // only Claude Code could give it back.) Its turn ended since: it goes now.
         if busy && !now && !direct && origin.is_some() {
-            match self.keep(session_id, typed, &saved, held.is_some())? {
-                Some(kept) => return Ok(kept),
+            match self.keep(session_id, typed, saved, held.is_some())? {
+                Some(kept) => return Ok(Went::Done(kept)),
                 None => busy = false,
             }
         }
@@ -472,14 +487,15 @@ impl Hub {
         }
         let busy = busy && !now;
         let origin = origin.ok_or("that session is gone")?;
-        let apart = self.apart(session_id, &origin, stopped);
+        let apart = if reply.is_some() { "" } else { self.apart(session_id, &origin, stopped) };
         let cmd_before = command_before(&origin, typed);
-        let t0 = now_ms();
-        let direct = self.send_direct(session_id, text, &saved, now);
-        let via = if direct { "the session directly".to_string() } else { self.keys().type_into(&origin, &format!("{apart}{}", crate::uploads::with_paths(typed, &self.images_there(session_id, &origin, &saved)?)))? };
-        // At its prompt it should take this (as a reply does); if not, Enter once more, then flag it.
-        let mut submitted = busy || direct || self.took(session_id, &origin, typed, cmd_before, t0);
-        if !submitted && !typed.starts_with('/') && self.retry_enter(&origin, typed) {
+        let t0 = reply.unwrap_or_else(now_ms);
+        let direct = self.send_direct(session_id, text, saved, now);
+        let via = if direct { "the session directly".to_string() } else { self.keys().type_into(&origin, &format!("{apart}{}", crate::uploads::with_paths(typed, &self.images_there(session_id, &origin, saved)?)))? };
+        // At its prompt it should take this (the agent reports a new turn once it submits: Claude's
+        // UserPromptSubmit, Pi's agent_start); if not, Enter once more, then flag it.
+        let mut submitted = busy || (direct && reply.is_none()) || self.took(session_id, &origin, typed, cmd_before, t0);
+        if !submitted && !direct && !typed.starts_with('/') && self.retry_enter(&origin, typed) {
             submitted = self.wait_active(session_id, t0, 4000);
         }
         let paths: Vec<String> = saved.iter().map(|s| s.path.clone()).collect();
@@ -494,18 +510,15 @@ impl Hub {
                 queue_typed(st, session_id, text, paths);
             }
             // "/compact" from the box: the same "Compacting" line as Compact in the ⋯ menu.
-            if submitted && !busy && is_command(typed, "compact") {
+            if submitted && !busy && reply.is_none() && is_command(typed, "compact") {
                 st.sessions.set_compacting(session_id, now_ms());
             }
         });
-        if !submitted && self.settle_typed(session_id, &origin, typed, cmd_before, t0) {
+        let seen = submitted;
+        if !submitted && !direct && self.settle_typed(session_id, &origin, typed, cmd_before, t0) {
             submitted = true;
         }
-        self.changed();
-        if !submitted {
-            return Ok(format!("via {via}; Cue is watching for it to take it"));
-        }
-        Ok(if busy { format!("queued via {via}: it reads this when it finishes its current step") } else { format!("sent via {via}") })
+        Ok(Went::In { via, submitted, seen, busy })
     }
 
     /// A hosted session can take a message mid-turn, but once handed over it can't be taken back: so mid-turn
@@ -688,6 +701,13 @@ impl Hub {
         (0..16).any(|_| self.wait_active(session_id, t0, 250) || crate::transcript::command_count(log, name) > before)
     }
 
+    /// One of Cue's own slash commands ("/compact", "/rename <name>", "/exit") typed into a session's terminal,
+    /// with Enter; where it was typed. The typing gate isn't taken: callers that need it take it themselves.
+    pub fn type_command(&self, origin: &Origin, command: &str) -> Result<String, String> {
+        debug_assert!(command.starts_with('/'), "not a slash command: {command}");
+        self.keys().type_into(origin, command)
+    }
+
     fn wait_active(&self, session_id: &str, since: u64, timeout_ms: u64) -> bool {
         crate::clock::within(timeout_ms, 150, || self.read(|st| st.active_at.get(session_id).is_some_and(|t| *t >= since)))
     }
@@ -704,7 +724,7 @@ impl Hub {
             "compact" => "/compact",
             _ => return Err(format!("Cue doesn't know \"{action}\"")),
         };
-        self.keys().type_into(&origin, line)?;
+        self.type_command(&origin, line)?;
         // Still in its box after a moment (it was busy drawing, or held the text): one more Enter, and if
         // it's still there, say so rather than show "Compacting" for the 15 minutes until Cue gives up,
         // holding every message meanwhile.
@@ -780,6 +800,15 @@ const LATE_EVERY_MS: u64 = 10_000;
 const LATE_MS: u64 = 10 * 60 * 1000;
 /// How many times at most Enter is pressed again for a message seen still in its box.
 const ENTER_AGAIN: u32 = 2;
+
+/// What became of a message on its way in (`Hub::deliver`).
+enum Went {
+    /// Settled there and then: handed to a hosted session, or kept in Cue while it works. What to tell you.
+    Done(String),
+    /// Handed over directly or typed into its terminal (`via`). `submitted`: known taken by the time this returned
+    /// (else Cue keeps watching for it); `seen`: taken before the watch; `busy`: queued mid-turn.
+    In { via: String, submitted: bool, seen: bool, busy: bool },
+}
 
 /// A typed message Cue is watching for the agent to take (`Hub::confirm`), and what its looks have seen.
 struct Watch {
@@ -886,8 +915,8 @@ mod tests {
         let origin = Origin { session_id: "s5".into(), harness: "claude".into(), ..Default::default() };
         let hub = Hub::new(None);
         hub.event(origin, "active", "refactor the router".into(), vec![], "");
-        assert!(hub.send_to_session("s5", "also keep the old session", &[], false).unwrap().starts_with("kept in Cue"));
-        hub.send_to_session("s5", "and run the tests", &[], false).unwrap();
+        assert!(hub.tell("s5", "also keep the old session").unwrap().starts_with("kept in Cue"));
+        hub.tell("s5", "and run the tests").unwrap();
         let held = |h: &Hub| h.read(|st| st.sessions.held("s5"));
         assert_eq!(held(&hub).map(|e| e.text), Some("also keep the old session\n\nand run the tests".into()), "one kept message, the second after the first");
         assert!(hub.read(|st| st.sessions.thread("s5")).iter().all(|e| e.role != "you" || e.text == "refactor the router"), "not in the chat as sent");

@@ -43,12 +43,30 @@ pub struct FakeHosted {
     reattaching: std::sync::atomic::AtomicUsize,
     /// Sends that reached a session while a pickup was under way.
     sent_mid_pickup: Mutex<Vec<(String, String)>>,
+    /// The next send (only that one) is held up until this is set.
+    hang: Mutex<Option<std::sync::Arc<std::sync::atomic::AtomicBool>>>,
+    /// Sends held up right now.
+    hung: std::sync::atomic::AtomicUsize,
 }
 
 /// The process ids the stand-in hands out: none a real process has (they're past the system's largest).
 const FIRST_PID: i32 = 9_000_000;
 
 impl FakeHosted {
+    /// The next send (only that one) is held up (a message on its way, not yet handed over) until `release` is set.
+    pub fn hang_next_send(&self, release: std::sync::Arc<std::sync::atomic::AtomicBool>) {
+        *crate::locking::lock(&self.hang, "fake hosted hang") = Some(release);
+    }
+
+    /// Wait (for real, a few seconds at most) until a send is held up.
+    pub fn wait_hung(&self) {
+        let t0 = std::time::Instant::now();
+        while self.hung.load(std::sync::atomic::Ordering::SeqCst) == 0 {
+            assert!(t0.elapsed().as_secs() < 5, "no send is held up");
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+    }
+
     pub fn models(&self) -> Vec<(String, String)> {
         crate::locking::lock(&self.models, "fake hosted models").clone()
     }
@@ -155,6 +173,19 @@ impl Hosted for FakeHosted {
 
     fn send(&self, session_id: &str, text: &str) -> Result<(), String> {
         self.live(session_id)?;
+        let hang = {
+            let mut g = crate::locking::lock(&self.hang, "fake hosted hang");
+            g.take()
+        };
+        if let Some(release) = hang {
+            self.hung.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let t0 = std::time::Instant::now();
+            while !release.load(std::sync::atomic::Ordering::SeqCst) {
+                assert!(t0.elapsed().as_secs() < 20, "a held-up send was never released");
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            self.hung.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+        }
         if self.reattaching.load(std::sync::atomic::Ordering::SeqCst) > 0 {
             crate::locking::lock(&self.sent_mid_pickup, "fake hosted sends mid pickup").push((session_id.into(), text.into()));
         }

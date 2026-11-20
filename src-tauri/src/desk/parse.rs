@@ -54,7 +54,7 @@ pub enum Line {
     /// The lead pausing (`PAUSE: why: …`, on) or resuming (`RESUME: why: …`) its whole Desk (#366).
     Pause { on: bool, why: String },
     /// The lead proposing a change to how work lands (#381): `LANDS: <part> -> <choice> | steps: <one> ;; <two> | why: …`.
-    /// Cue asks you; only your yes saves it (hub/desk_lands.rs).
+    /// Cue asks you; only your yes saves it (desk/hub/lead/lands.rs).
     Lands { part: String, to: String, steps: Vec<String>, why: String },
     /// A session's message for its Desk's lead (#474): `TO LEAD: [#<id>[ |]] <words>`. `id`: the item it's about, when
     /// named; without one, Cue takes the item the session is on.
@@ -430,7 +430,7 @@ fn lands(body: &str) -> Option<Line> {
         return None;
     }
     let steps = after(steps_at, "steps", why_at)
-        .map(|s| s.split(crate::lands::STEP_SEP.trim()).map(str::trim).filter(|s| !s.is_empty()).map(str::to_string).collect())
+        .map(|s| s.split(crate::desk::lands::STEP_SEP.trim()).map(str::trim).filter(|s| !s.is_empty()).map(str::to_string).collect())
         .unwrap_or_default();
     if let Some(w) = after(why_at, "why", steps_at) {
         why = w;

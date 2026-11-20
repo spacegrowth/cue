@@ -1,4 +1,4 @@
-//! A Desk item's holder stuck mid-turn (hub/desk_stuck.rs, #502): silent 20 minutes while working, or sitting on a
+//! A Desk item's holder stuck mid-turn (desk/hub/stall/stuck.rs, #502): silent 20 minutes while working, or sitting on a
 //! permission prompt: its lead is told once a spell, and told again only after it moved and got stuck again. A
 //! session whose background command still prints isn't stuck.
 

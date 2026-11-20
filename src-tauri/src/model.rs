@@ -133,7 +133,7 @@ pub enum ClientMsg {
         #[serde(default)]
         agent_id: String,
     },
-    /// Ask me before (one_way.rs): a tool call about to run that is one of the steps Cue checks. Cue answers
+    /// Ask me before (desk/one_way.rs): a tool call about to run that is one of the steps Cue checks. Cue answers
     /// {"type":"pass"} when its project's Desk doesn't ask first about it; else it's an ask like `Ask`, and the
     /// connection stays open until answered.
     Guard {
@@ -353,7 +353,7 @@ pub struct Item {
     pub agent_id: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub agent_name: String,
-    /// A permission to run something its project counts one-way (one_way.rs call_hits: a push to main, say), or one Ask me before stopped (hub/guard.rs):
+    /// A permission to run something its project counts one-way (desk/one_way.rs call_hits: a push to main, say), or one Ask me before stopped (hub/guard.rs):
     /// the crew page answers it only with a click, never a key.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub one_way: bool,
@@ -361,7 +361,7 @@ pub struct Item {
     /// the answer goes back to the lead as a message.
     #[serde(default, alias = "from_dispatch", skip_serializing_if = "std::ops::Not::not")]
     pub desk: bool,
-    /// A Desk session's landing clean-up question its Desk lead has first (hub/desk_cleanup.rs, #349): the Desk
+    /// A Desk session's landing clean-up question its Desk lead has first (desk/hub/lead/cleanup.rs, #349): the Desk
     /// item it's about. Not shown to you until the lead passes it on or its time is up.
     #[serde(skip)]
     pub lead_has: Option<String>,

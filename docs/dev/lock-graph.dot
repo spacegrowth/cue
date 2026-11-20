@@ -37,6 +37,7 @@ digraph locks {
   "typing gate" -> "CLAUDE";
   "typing gate" -> "DB";
   "typing gate" -> "FEEDS";
+  "typing gate" -> "FOUND";
   "typing gate" -> "WINDOWS";
   "typing gate" -> "a session's feed";
   "typing gate" -> "approval trace";
@@ -62,4 +63,6 @@ digraph locks {
   "typing gate" -> "redraw wanted";
   "typing gate" -> "shown snapshot";
   "typing gate" -> "the hub's store";
+  "typing gate" -> "typing gate" [color=red];
+  "typing gate" -> "typing gates";
 }

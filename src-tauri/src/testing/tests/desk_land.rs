@@ -1,4 +1,4 @@
-//! Each item in its own copy, landed as one squash (hub/desk_trees.rs): an item routed to a session here gets a git
+//! Each item in its own copy, landed as one squash (desk/hub/landing/trees.rs): an item routed to a session here gets a git
 //! worktree of its own from the main line, and its holder is told to work there; at its DONE everything in it is
 //! squashed into one commit, brought up to the main line, checked, and only then put on the main line (a
 //! fast-forward); the copy goes once it landed. Three items of a repository have copies at once; a fourth waits. A

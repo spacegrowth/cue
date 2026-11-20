@@ -1,4 +1,4 @@
-//! Copies cleared away once their work is in the app (hub/desk_copies.rs, #376): as an item lands, its helpers'
+//! Copies cleared away once their work is in the app (desk/hub/landing/copies.rs, #376): as an item lands, its helpers'
 //! copies whose work is on the main line go with its own; one with work that isn't stays. Copies left from before are
 //! listed with their sizes, and removed only once you say so; one with work not on the main line, or in use, never is.
 

@@ -43,7 +43,7 @@ fn carries_fixes(text: &str, name: &str) -> bool {
 }
 
 /// What `send_to_session` said: the message was kept for the busy session, not sent (send.rs `keep`).
-pub(super) fn kept(said: &str) -> bool {
+pub(crate) fn kept(said: &str) -> bool {
     said.starts_with("kept in Cue")
 }
 
@@ -161,7 +161,7 @@ impl Hub {
             what = if t.what.is_empty() { first(&t.asked) } else { t.what.clone() },
             files = if t.files.is_empty() { "(none)".to_string() } else { t.files.join(", ") },
         );
-        let kept = kept(&self.send_to_session(lead, &text, &[], false)?);
+        let kept = kept(&self.tell(lead, &text)?);
         self.set_teammate(lead, &t.call, |m| {
             m.fix_rounds += 1;
             m.step = if kept { FIXES_KEPT } else { FIXES_RESTART }.into();
@@ -182,7 +182,7 @@ impl Hub {
             if t.findings.is_empty() { "(the review listed none: ask it to check its work against what it was asked)".to_string() } else { t.findings.join("\n") },
             name = t.name
         );
-        let kept = kept(&self.send_to_session(lead, &text, &[], false)?);
+        let kept = kept(&self.tell(lead, &text)?);
         self.set_teammate(lead, &t.call, |m| {
             let now = now_ms();
             if kept {
@@ -503,7 +503,7 @@ fn commit_to_new_branch(m: &str, dir: &str, t: &Teammate, files: &[String], on: 
 }
 
 /// Remove `path` (a scratch file Cue made) here or on that machine; gone already is fine.
-pub(super) fn remove_file(machine: &str, path: &str) {
+pub(crate) fn remove_file(machine: &str, path: &str) {
     if machine.is_empty() {
         let _ = std::fs::remove_file(path);
     } else {

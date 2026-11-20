@@ -441,7 +441,7 @@ impl Hub {
                 st.ended.retain(|(_, e)| e.origin.session_id != session_id);
                 st.ended.push_front((now, s.clone()));
                 st.unsaved_ends.push((now, s.clone()));
-                st.ended.truncate(crate::ipc::CLOSED_MAX);
+                st.ended.truncate(crate::hub::CLOSED_MAX);
             }
             gone.is_some()
         });
@@ -528,7 +528,7 @@ impl Hub {
                 self.write(|st| st.sessions.defer_rename(session_id));
                 Ok("Renamed · Claude Code gets it when this turn ends".into())
             }
-            "claude" => match self.keys().type_into(&origin, &format!("/rename {name}")) {
+            "claude" => match self.type_command(&origin, &format!("/rename {name}")) {
                 Ok(_) => {
                     // Claude Code's list shows a rename within a few seconds: give it 15.
                     if origin.machine.is_empty() {
@@ -585,7 +585,7 @@ impl Hub {
         }
         let sid = session_id.to_string();
         self.later(2000, move |me| {
-            if let Err(e) = me.keys().type_into(&origin, &format!("/rename {name}")) {
+            if let Err(e) = me.type_command(&origin, &format!("/rename {name}")) {
                 me.rename_failed(&sid, &format!("Couldn't give Claude Code the new name: {e}"));
             }
         });

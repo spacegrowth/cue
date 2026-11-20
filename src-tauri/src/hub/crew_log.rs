@@ -39,7 +39,7 @@ impl Hub {
         let branch = branch_in(said);
         let step = branch.as_deref().map_or("committed".to_string(), |b| format!("committed to `{b}`"));
         // One-way as its project counts it (Ask me before; by default a commit on main or master).
-        let one_way = branch.as_deref().is_some_and(|b| crate::one_way::commit_one_way(&crate::one_way::kinds(&self.project_shown(lead)), b));
+        let one_way = branch.as_deref().is_some_and(|b| crate::desk::one_way::commit_one_way(&crate::desk::one_way::kinds(&self.project_shown(lead)), b));
         self.crew_note(lead, Decided { sha, one_way, ..Decided::about(t, "commit", &step) });
     }
 
@@ -78,7 +78,7 @@ impl Hub {
     pub fn crew_go_back(&self, sid: &str, id: &str) -> Result<String, String> {
         let d = self.write(|st| st.sessions.crew_go_back(sid, id))?;
         self.changed();
-        match self.send_to_session(sid, &go_back_words(&d), &[], false) {
+        match self.tell(sid, &go_back_words(&d)) {
             Ok(said) if super::team::kept(&said) => Ok("Cue tells its lead to undo this when its turn ends".into()),
             Ok(_) => Ok("Asked its lead to undo this".into()),
             Err(e) => {
@@ -92,7 +92,7 @@ impl Hub {
 
 /// The project the session of origin `o` shows under, as the window has it (hub/mod.rs settle_projects): moved there
 /// in Cue, else its folder's (put in a project by you, or its repository's own).
-pub(super) fn project_shown_for(o: &Origin) -> String {
+pub(crate) fn project_shown_for(o: &Origin) -> String {
     match crate::config::moved().remove(&o.session_id) {
         Some(to) => to,
         None => crate::model::project_at(&o.cwd, &o.machine),

@@ -1,4 +1,4 @@
-//! A finishing item's install (hub/desk_install.rs; split from desk_finish.rs): half an hour after the first DONE
+//! A finishing item's install (desk/hub/landing/install.rs; split from desk_finish.rs): half an hour after the first DONE
 //! waiting (or at once on Install now), never while a session that ends with Cue is mid-turn, built from the main
 //! line's HEAD; once the running Cue has its commit it's to check. A failed build, or a new Cue that didn't start,
 //! asks you and sends its holder the log.

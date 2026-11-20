@@ -46,7 +46,7 @@ fn not_now_keeps_the_setting_and_never_asks_again() {
     w.settle();
     let ab = ask_before(&w, &project);
     assert_eq!(ab["asked"], json!(true), "{ab}");
-    assert_eq!(crate::one_way::kinds(&project), vec!["main"], "the default, as it was");
+    assert_eq!(crate::desk::one_way::kinds(&project), vec!["main"], "the default, as it was");
 }
 
 #[test]

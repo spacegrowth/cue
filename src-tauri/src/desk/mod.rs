@@ -1,11 +1,15 @@
 //! The Desk: each project's items (a bug, a feature, a task), who holds each one, what it waits on, and the
 //! decisions made about them. Each project's Desk is run by a lead: a session you pick (or Cue starts) that keeps
 //! the list. It writes lines Cue reads at its turn's end (parse.rs), and Cue tells it where things stand before each
-//! message (`summary`). The hub keeps the store and does the sending (hub/desk.rs, hub/desk_lead.rs); this module is
+//! message (`summary`). The hub keeps the store and does the sending (desk/hub/core/desk.rs, desk/hub/lead/run.rs); this module is
 //! the data and the words.
 
+pub(crate) mod hub;
+pub(crate) mod lands;
+pub(crate) mod one_way;
 pub mod model;
 pub mod parse;
+pub mod state;
 
 pub use model::{Act, BusyFile, CommitWait, Desk, DeskDecision, DeskItem, Finish, Holder, InstallStatus, Installer, ItemTree, KeptTree, Lead, Waiting};
 

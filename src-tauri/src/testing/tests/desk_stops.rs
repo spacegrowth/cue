@@ -1,4 +1,4 @@
-//! A holder's turn that ends without DONE (hub/desk_said.rs, desk_stall.rs): asked once, then the Desk lead; stalls,
+//! A holder's turn that ends without DONE (desk/hub/turn/said.rs, desk_stall.rs): asked once, then the Desk lead; stalls,
 //! Restart, and what the item says its holder is doing.
 
 use super::desk::{desk, ends, holder, item, new_lead, sent_to};
@@ -299,7 +299,7 @@ fn a_note_from_the_items_page_takes_it_off_waiting_on_you() {
     assert_eq!(state(), "needs_you");
     // Your note, as the page sends it: to its holder about the item, then noted on it.
     w.advance(1000);
-    w.hub().send_to_session(&h, &format!("About #{id} (Header): Yes, and make it smaller"), &[], false).unwrap();
+    w.hub().tell(&h, &format!("About #{id} (Header): Yes, and make it smaller")).unwrap();
     w.hub().desk_item_act(&id, "wrote_holder", "Yes, and make it smaller").unwrap();
     w.settle();
     assert_eq!(state(), "working", "off Waiting on you once your note went: {}", item(&desk(&w, &project), "Header"));

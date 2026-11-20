@@ -1,4 +1,4 @@
-//! Whose edits are whose in an item's commit (hub/desk_theirs.rs, #248): another session's change in the item's file
+//! Whose edits are whose in an item's commit (desk/hub/theirs/theirs.rs, #248): another session's change in the item's file
 //! is read from its log, Claude Code's or Codex's, live or ended, and taken out of the commit or left out of it; a helper's
 //! write in its own copy of the repo isn't one in the shared folder; a session is named only when its log shows the
 //! change.

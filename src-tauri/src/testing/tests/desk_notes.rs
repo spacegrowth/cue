@@ -119,7 +119,7 @@ fn a_note_still_going_when_cue_stopped_offers_retry() {
     w.relaunch();
     let project = desk_project(&w, &id);
     let after = step(&w, &project, &id, "to ");
-    assert_eq!(after["delivery"]["went"], crate::hub::STOPPED, "{after}");
+    assert_eq!(after["delivery"]["went"], crate::desk::hub::core::desk::STOPPED, "{after}");
 }
 
 fn desk_project(w: &World, id: &str) -> String {

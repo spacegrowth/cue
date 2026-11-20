@@ -81,7 +81,7 @@ doesn't count. (The idle sessions in the review were all on the Desk.)
 - **Show three things the lead can't see today:** each session's size, always; its open-item
   count; and its idle time. Today the lead sees a session's size and cache only while a hand-off
   is pending for it ("142k, cache 12m → Cue will hand off at expiry"; `context_note` in
-  `src-tauri/src/hub/desk_lead.rs`). Rules 2, 3 and 4 all need the size. It already sees each
+  `src-tauri/src/desk/hub/lead/run.rs`). Rules 2, 3 and 4 all need the size. It already sees each
   item's holder, what it waits behind and up to 5 files, and when a session is working.
 - **Refuse a third open item.** Cue tells the lead why and to route it again, as it does after a
   failed route, so the item doesn't sit as new.

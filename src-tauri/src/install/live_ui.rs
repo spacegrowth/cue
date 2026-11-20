@@ -207,7 +207,7 @@ fn copy_out(work: &Path, repo: &str, head: &str) -> Result<(), String> {
 /// scripts/check-window.mjs run in the copy `work`.
 fn run_check(work: &Path) -> Result<(), String> {
     // Started from the Finder, Cue has a short PATH: node is found on the login shell's.
-    let out = std::process::Command::new(crate::lands::login_shell())
+    let out = std::process::Command::new(crate::desk::lands::login_shell())
         .arg("-lc")
         .arg("exec node scripts/check-window.mjs .")
         .current_dir(work)

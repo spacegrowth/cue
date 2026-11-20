@@ -1,7 +1,7 @@
 //! Sessions stay in their own copy, and a failed landing goes to the lead, not to you (#483). #455's holder made a
 //! worktree and a branch of its own; #456's merge stopped on edits sitting in the main checkout and showed as needing
-//! you with git's text. Now Cue stops an edit or git command that leaves the copy (hub/desk_copy_guard.rs), and a stop
-//! while landing is the Desk lead's, said plainly, the edits in the way named (hub/desk_stop_lead.rs).
+//! you with git's text. Now Cue stops an edit or git command that leaves the copy (desk/hub/landing/copy_guard.rs), and a stop
+//! while landing is the Desk lead's, said plainly, the edits in the way named (desk/hub/lead/stop_lead.rs).
 
 use super::desk::{desk, second, sent_to};
 use super::desk_commit::{done_with, ends, item, log, routed_with};

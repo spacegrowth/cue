@@ -416,7 +416,7 @@ fn a_prompt_you_append_yourself_gets_the_skill_merged_in_not_a_second_option() {
     let args = launched_args(&w);
     assert_eq!(args.iter().filter(|a| *a == "--append-system-prompt").count(), 1, "one option: {args:?}");
     let prompt = skill_in(&args).unwrap();
-    assert!(prompt.starts_with("Terse.\n\n") && prompt.ends_with(&crate::hub::team::out::skill_for(crate::one_way::DEFAULT)), "yours, then the skill: {prompt}");
+    assert!(prompt.starts_with("Terse.\n\n") && prompt.ends_with(&crate::hub::team::out::skill_for(crate::desk::one_way::DEFAULT)), "yours, then the skill: {prompt}");
 }
 
 #[test]

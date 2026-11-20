@@ -1,4 +1,4 @@
-//! The Desk's lead (hub/desk_lead.rs): starting a new lead or making a session the lead, changing it, parking and
+//! The Desk's lead (desk/hub/lead/run.rs): starting a new lead or making a session the lead, changing it, parking and
 //! resuming it, and what happens to a message you send it while it starts, changes or resumes.
 
 use super::desk::{desk, ends, holder, new_lead, second, sent_to};

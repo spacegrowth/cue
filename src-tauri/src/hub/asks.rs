@@ -47,8 +47,8 @@ impl Hub {
         // A command its project counts one-way (a push to main, say): answered only with a click on the crew page.
         // Read from its words alone (its command, or a patch deleting a file), the branch unknown here.
         let one_way = stopped || kind == "permission" && {
-            let kinds = crate::one_way::kinds(&super::crew_log::project_shown_for(&origin));
-            crate::one_way::call_hits(&tool_input, &|_| None).iter().any(|k| kinds.contains(k))
+            let kinds = crate::desk::one_way::kinds(&super::crew_log::project_shown_for(&origin));
+            crate::desk::one_way::call_hits(&tool_input, &|_| None).iter().any(|k| kinds.contains(k))
         };
         let (tx, rx) = oneshot::channel();
         let (id, title, to_lead) = self.write(|st| {
@@ -73,8 +73,8 @@ impl Hub {
             it.one_way = one_way;
             it.request_id = request_id.map(str::to_string);
             it.scan_from = scan_from;
-            // A Desk session's landing clean-up question goes to its Desk lead first (desk_cleanup.rs, #349).
-            let to_lead = super::desk_cleanup::give_lead(st, &mut it);
+            // A Desk session's landing clean-up question goes to its Desk lead first (desk/hub/lead/cleanup.rs, #349).
+            let to_lead = crate::desk::hub::lead::cleanup::give_lead(st, &mut it);
             let asked = match it.kind.as_str() {
                 "question" => format!("asked: {}", summary(&it)),
                 _ => format!("{}: {}", it.tool_name, summary(&it)),
@@ -453,7 +453,7 @@ pub(super) fn waiting_words(waiting_for: &str) -> String {
     if waiting_for.is_empty() { "It's asking you something in its terminal".into() } else { format!("Waiting in its terminal: {waiting_for}") }
 }
 
-pub(super) fn notify_title(it: &Item) -> (String, String) {
+pub(crate) fn notify_title(it: &Item) -> (String, String) {
     // Moved to another project in Cue: that one.
     let project = crate::config::moved().remove(&it.origin.session_id).unwrap_or_else(|| it.project.clone());
     let mut who = format!("{} · {}", it.origin.harness, if project.is_empty() { "?" } else { &project });

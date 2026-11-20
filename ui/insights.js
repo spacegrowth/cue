@@ -1,7 +1,7 @@
 // Cue UI — insights: small, evidence-first notes about how a session is going, from its own log.
 // Each one shows what's happening (a chart, a countdown), what you could do with what this session's
 // machine already has (its own skills and commands), and sends it when you pick one. Cue never sends
-// anything you didn't click. Its one prompt of its own is the hand-off (ipc/insights.rs), for a host
+// anything you didn't click. Its one prompt of its own is the hand-off (hub/hand_off_note.rs), for a host
 // with no hand-off skill: yours always comes first. What each insight did, and what
 // you did with it, goes to insight_log (shown / acted / later / dismissed) so Settings can count it.
 //
@@ -68,7 +68,7 @@ let insQuery = "";              // what's typed in that list's search
 /** Where a hand-off skill choice is kept: per machine ("" is this Mac) and agent. */
 const insSkillKey = (s) => `${s.machine || ""}|${s.harness}`;
 const insSkills = () => state.settings?.insights?.skills || {};
-const CUE_HANDOFF = "cue:handoff";   // Cue's own hand-off, as it's kept when chosen (ipc/insights.rs)
+const CUE_HANDOFF = "cue:handoff";   // Cue's own hand-off, as it's kept when chosen (hub/hand_off_note.rs)
 /** Whether a hand-off skill takes "resume" for the next session: its description says so. Otherwise
  *  Cue's own message starts the next one.
  *  SHORTCUT: reads the one-line description only; a skill that takes "resume" without saying so there gets

@@ -1,12 +1,12 @@
 "use strict";
-/** A project's settings (#381): how work lands (lands.rs: where a Desk item works, how it lands, its check, what
+/** A project's settings (#381): how work lands (desk/lands.rs: where a Desk item works, how it lands, its check, what
  *  follows, push, and how many at once), Ask me before and old working folders, on one screen. Opened from the
  *  Desk header's Settings (#417). Each change is saved the moment you make it, with a short "Saved"; Away is on the
  *  Desk's own switch, not here. A Desk's `lands` (desk_view) has the setting now,
  *  its parts with each choice's words and whether it can be picked, and why when the folder decides it. Kept in Cue's
  *  own settings, never in the project. The lead can propose a change too (a LANDS: line): asked of you, saved on yes. */
 let lands = null;   // { desk, set: { where, how, check, after, push, at_once, check_steps, after_steps }, steps, ab, busy, old }
-// Remove old working folders (#397, hub/desk_copies.rs): looked at when you press it, listed with their size, removed
+// Remove old working folders (#397, desk/hub/landing/copies.rs): looked at when you press it, listed with their size, removed
 // on a second press. `old`: null, { looking }, { list: { copies, kb } }, or { removing }.
 
 /** A Desk's one settings line (#417, #447), under its counts at the top left: what it asks before and how its work

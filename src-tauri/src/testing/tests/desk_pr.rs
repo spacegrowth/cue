@@ -1,4 +1,4 @@
-//! PR landing and the push choices (hub/desk_pr.rs). No network: `origin` is a bare repository in a temp folder, and
+//! PR landing and the push choices (desk/hub/landing/pr.rs). No network: `origin` is a bare repository in a temp folder, and
 //! gh is a fake script that keeps its arguments and answers from files the test writes.
 
 use super::desk_commit::{ends, item, routed_with};
@@ -102,9 +102,9 @@ fn a_pull_request_closed_without_merging_goes_back_to_its_holder() {
     w.hub().desk_pr_look(&id);
     w.settle();
     let it = item(&w, &project, "Header jumps");
-    assert_eq!((it["finish"]["step"].as_str(), it["finish"]["question"].as_str()), (Some("pr_closed"), Some(crate::hub::PR_CLOSED)), "{it}");
+    assert_eq!((it["finish"]["step"].as_str(), it["finish"]["question"].as_str()), (Some("pr_closed"), Some(crate::desk::hub::landing::pr::PR_CLOSED)), "{it}");
     assert!(!it["tree"].is_null(), "its copy kept for the fix");
-    assert!(w.hosted.sent().iter().any(|(s, t)| *s == h && t.contains(crate::hub::PR_CLOSED)), "its holder is told");
+    assert!(w.hosted.sent().iter().any(|(s, t)| *s == h && t.contains(crate::desk::hub::landing::pr::PR_CLOSED)), "its holder is told");
 }
 
 #[test]
@@ -152,7 +152,7 @@ fn push_never_and_ask_each_time_push_nothing() {
         assert_eq!(git(&dir, &["log", "-1", "--format=%s"]).trim(), format!("Header jumps (#{id})"), "{push}: landed");
         assert_ne!(git(&bare, &["rev-parse", "main"]), git(&dir, &["rev-parse", "main"]), "{push}: origin's main isn't pushed");
         assert!(fin(&w, &project)["pushed"].is_null(), "{push}");
-        assert_eq!(crate::one_way::kinds(&project), ["main"], "{push}: a session's push to main is asked about as before");
+        assert_eq!(crate::desk::one_way::kinds(&project), ["main"], "{push}: a session's push to main is asked about as before");
     }
 }
 

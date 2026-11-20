@@ -39,7 +39,7 @@ async function deskSendItem(to, key, text) {
   const project = to.project || deskSelection(), it = deskItem(project, to.item);
   if (!it) return toast("That item isn't on this Desk any more.");
   // A question on an item to check or done (#475): its holder answers it, and the item stays where it is unless that
-  // answer changes its code (the hub's desk_asked.rs).
+  // answer changes its code (the hub's desk/hub/turn/asked.rs).
   // A quick phrase on an item to check (#488, "Go ahead"): a note to its holder too, never a Send back.
   const phrase = phraseSending && it.state === "to_check";
   const asks = phrase || (["to_check", "done"].includes(it.state) && /\?\s*$/.test(text || ""));
@@ -106,7 +106,7 @@ async function deskSendLead(to, key, text) {
     failed: (e, mine) => { mine.failed = e; if (pend) pend.failed = e; else if (it) toast(`Not sent: ${e}`); renderMain(); return true; },
   });
 }
-/** What you wrote on item `id`'s page, sent (`act`: to its lead or its holder): kept in its Steps (hub/desk.rs act_on). */
+/** What you wrote on item `id`'s page, sent (`act`: to its lead or its holder): kept in its Steps (desk/hub/core/desk.rs act_on). */
 const deskWrote = (id, act, text) => invoke("desk_item_act", { id, act, text }).catch((e) => console.error(e));
 /** Item `id` sent back to its holder with what's in box `key`: the box emptied once it went (kept when it didn't).
  *  Whether it went. */

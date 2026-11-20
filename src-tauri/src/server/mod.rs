@@ -299,7 +299,7 @@ pub(crate) fn tick(h: &Hub, usage: bool) {
     settle_the_gone(h);
     // Teammates gone quiet (hub/team.rs): seen to once a quiet stretch.
     h.team_quiet_tick();
-    // Desk items whose holder is stuck mid-turn (hub/desk_stuck.rs): its lead told once a stuck spell.
+    // Desk items whose holder is stuck mid-turn (desk/hub/stall/stuck.rs): its lead told once a stuck spell.
     h.desk_stuck_tick();
     #[cfg(feature = "ext")]
     h.ext_tick();

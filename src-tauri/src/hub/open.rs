@@ -273,7 +273,7 @@ impl Hub {
         let mut out: Vec<OpenLead> = vec![];
         for s in st.sessions.iter().filter(|s| !s.team.is_empty()) {
             let sid = s.origin.session_id.as_str();
-            let name = super::desk::shown_name(s);
+            let name = crate::desk::hub::core::desk::shown_name(s);
             let asks = st.items.iter().filter(|i| i.origin.session_id == sid && i.status == "pending" && i.kind != "waiting" && i.lead_has.is_none()).collect();
             let f = LeadFacts { sid, name: &name, cwd: &s.origin.cwd, remote: !s.origin.machine.is_empty(), team: &s.team, asks };
             let rows = lead_rows(&f, &st.open_git);

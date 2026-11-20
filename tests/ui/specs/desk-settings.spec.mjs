@@ -1,6 +1,6 @@
 // A project's settings on one screen (#381, lands.js): how work lands, Ask me before and old working folders, each
 // change saved as you make it (#417). Opened from the Desk header's one Change link (#417); Away is on the Desk's own switch. The lead can propose a change in
-// plain words: it shows as its ask, and only your Yes saves it (hub/desk_lands.rs); the screen shows it after.
+// plain words: it shows as its ask, and only your Yes saves it (desk/hub/lead/lands.rs); the screen shows it after.
 import { test, expect, openDesk } from "./cue.mjs";
 
 const lands = (page) => page.locator(".dk-strip .dk-ab");

@@ -44,7 +44,7 @@ impl Hub {
     pub(super) fn send_at_tick(&self) {
         let due: Vec<(String, SendAt)> = self.write(|st| {
             // A session of a paused Desk (#366) isn't carried on, nor sent what you scheduled, till it resumes.
-            let ids: Vec<String> = st.sessions.send_at_due(now_ms()).into_iter().filter(|sid| !super::desk_pause::holds(st, sid)).collect();
+            let ids: Vec<String> = st.sessions.send_at_due(now_ms()).into_iter().filter(|sid| !crate::desk::hub::away::pause::holds(st, sid)).collect();
             let due: Vec<(String, SendAt)> =
                 ids.into_iter().filter_map(|sid| st.sessions.take_send_at(&sid).map(|l| (sid, l))).collect();
             for (sid, l) in &due {

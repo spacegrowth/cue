@@ -36,7 +36,7 @@ reason = "the tests' own tmux seam: takes down the servers of test runs that hav
 [[lock_order]]
 from = "the hub's store"
 to = "leads sweeping for Away"
-reason = "hub/desk_away away_view asks whether a Desk's lead is still sweeping while desk_view reads the store; leads sweeping for Away is a leaf, held only to look up or change one entry"
+reason = "desk/hub/away/away.rs away_view asks whether a Desk's lead is still sweeping while desk_view reads the store; leads sweeping for Away is a leaf, held only to look up or change one entry"
 
 [[lock_order]]
 from = "typing gate"
@@ -116,7 +116,7 @@ reason = "saves.rs hand_in_parked_turn, only without a writer thread (tests, or 
 [[lock_order]]
 from = "desk saves"
 to = "DB"
-reason = "hub/desk.rs desk_done and desk_lead_to: a Desk save reads (desk_lead_to: reads and changes) what the store holds now and writes it under the desk save lock, so saves of one record reach the database in the order the store changed. It's taken with the store let go, never under the store or the database"
+reason = "desk/hub/core/desk.rs desk_done and desk_lead_to: a Desk save reads (desk_lead_to: reads and changes) what the store holds now and writes it under the desk save lock, so saves of one record reach the database in the order the store changed. It's taken with the store let go, never under the store or the database"
 
 [[lock_order]]
 from = "desk saves"
@@ -126,7 +126,7 @@ reason = "db::open regroups projects by repo root (repos::repo_root) the first t
 [[lock_order]]
 from = "desk saves"
 to = "the hub's store"
-reason = "hub/desk.rs desk_done and desk_lead_to: under the desk save lock the store is read (or changed) for what to write, then let go before the database. Nothing takes a save lock under the store or the database"
+reason = "desk/hub/core/desk.rs desk_done and desk_lead_to: under the desk save lock the store is read (or changed) for what to write, then let go before the database. Nothing takes a save lock under the store or the database"
 
 [[lock_order]]
 from = "review queue saves"
@@ -176,7 +176,7 @@ reason = "the typing gate is taken first and held while a message is sent, by de
 [[lock_order]]
 from = "typing gate"
 to = "logs read for their edits"
-reason = "a turn's end can reach the Desk's finish check (hub/desk_theirs.rs read_edits); that lock only guards how far each log was read, is held for a lookup or an insert, and takes no other lock"
+reason = "a turn's end can reach the Desk's finish check (desk/hub/theirs/theirs.rs read_edits); that lock only guards how far each log was read, is held for a lookup or an insert, and takes no other lock"
 
 [[lock_order]]
 from = "typing gate"
@@ -216,7 +216,7 @@ reason = "the typing gate is taken first and held while a message is typed, by d
 [[lock_order]]
 from = "typing gate"
 to = "desk saves"
-reason = "the typing gate is taken first and held while a message is typed (hub/send.rs wait_turn); a hosted turn that ends under it saves the Desk lines it said (hub/desk.rs desk_done), the store and database after the save lock (gate before save lock, never the reverse)"
+reason = "the typing gate is taken first and held while a message is typed (hub/send.rs wait_turn); a hosted turn that ends under it saves the Desk lines it said (desk/hub/core/desk.rs desk_done), the store and database after the save lock (gate before save lock, never the reverse)"
 
 [[lock_order]]
 from = "typing gate"

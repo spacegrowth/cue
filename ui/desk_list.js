@@ -60,7 +60,7 @@ function deskMd(text) {
     if (!deskIsPath(t.replace(/&amp;/g, "&"))) return whole;
     const dir = /\/$/.test(t) || !/\.[A-Za-z][\w]{0,7}$/.test(t.split("/").pop());
     const bare = t.replace(/\/$/, ""), cut = bare.lastIndexOf("/");
-    // A long folder keeps its last two: …/src/hub/desk.rs.
+    // A long folder keeps its last two: …/src/desk/hub/core/desk.rs.
     const parts = cut >= 0 ? bare.slice(0, cut + 1).split("/") : [];
     const folder = parts.length > 3 ? `…/${parts.slice(-3).join("/")}` : parts.join("/");
     const shown = `${folder ? `<span class="dk-fchip-d">${folder}</span>` : ""}<span class="dk-fchip-n">${bare.slice(cut + 1)}</span>`;
@@ -392,7 +392,7 @@ function deskList(project, taskApprovals) {
   if (!pg) queueMicrotask(() => deskDoneFetch(project));
   const done = deskDoneList(g.d), shown = done.slice(0, deskDoneShown.get(project) || DESK_DONE_STEP);
   const more = done.length > shown.length || !pg?.end;
-  // Dropped items' copies kept with their work, till you remove them (hub/desk_trees.rs).
+  // Dropped items' copies kept with their work, till you remove them (desk/hub/landing/trees.rs).
   const kept = g.d?.kept || [];
   if (kept.length) parts.push(group("kept", `Kept copies <span class="n">${kept.length}</span>`, kept.map(deskKeptRow).join("")));
   // Its "Loading older…" end goes in its fold, so a folded Done loads nothing more.

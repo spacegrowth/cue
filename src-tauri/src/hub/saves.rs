@@ -13,10 +13,10 @@ use super::*;
 
 /// One lock per saved collection (see the module's note), and the writer of the live sessions and answers.
 #[derive(Default)]
-pub(super) struct SaveLocks {
+pub(crate) struct SaveLocks {
     review_queue: Mutex<()>,
     parked: Mutex<()>,
-    pub(super) desk: Mutex<()>,
+    pub(crate) desk: Mutex<()>,
     pub(super) live: Arc<super::live_writes::LiveWrites>,
 }
 

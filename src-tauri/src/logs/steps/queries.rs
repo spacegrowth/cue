@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-/// How Cue's own hand-off ask starts (ipc/insights.rs HANDOFF_ASK): a turn it began is the note's turn.
+/// How Cue's own hand-off ask starts (hub/hand_off_note.rs HANDOFF_ASK): a turn it began is the note's turn.
 pub const HANDOFF_ASK_START: &str = "Hand off: write a short note";
 
 /// One open feed: the feed under a lock of its own, where its log is read, and when it was last asked for.

@@ -42,7 +42,7 @@ impl Installer for Checker {
 /// Session `h`'s project set to `lands`, as the Desk's setting saves it.
 pub(super) fn set(w: &World, h: &str, lands: Value) {
     let project = w.snapshot().session(h)["project"].as_str().unwrap().to_string();
-    crate::lands::save(&project, crate::lands::Place::Repo, &lands).unwrap();
+    crate::desk::lands::save(&project, crate::desk::lands::Place::Repo, &lands).unwrap();
 }
 
 /// The repository's main checkout (where its copies are made from).
@@ -86,13 +86,13 @@ fn a_folder_that_isnt_a_git_repository_works_in_place_and_says_why() {
     std::fs::create_dir_all(&dir).unwrap();
     let folder = dir.to_string_lossy().to_string();
     crate::logs::repos::first_look(&folder);
-    let v = crate::lands::desk_view("plain", &folder);
+    let v = crate::desk::lands::desk_view("plain", &folder);
     assert_eq!((v["place"].as_str(), v["summary"].as_str()), (Some("folder"), Some("shared folder, not checked, you commit")), "{v}");
     assert!(v["why"].as_str().unwrap().contains("isn't a git repository"), "{v}");
-    let err = crate::lands::save("plain", crate::lands::place_of(&folder), &json!({ "where": "copy" })).unwrap_err();
+    let err = crate::desk::lands::save("plain", crate::desk::lands::place_of(&folder), &json!({ "where": "copy" })).unwrap_err();
     assert!(err.contains("needs a git repository"), "{err}");
     // The settings screen's save never takes steps that push: a push always asks first.
-    let err = crate::lands::save("plain", crate::lands::place_of(&folder), &json!({ "after": "command", "after_steps": ["npm run build", "git push"] })).unwrap_err();
+    let err = crate::desk::lands::save("plain", crate::desk::lands::place_of(&folder), &json!({ "after": "command", "after_steps": ["npm run build", "git push"] })).unwrap_err();
     assert!(err.ends_with("Steps can't push; a push always asks you first"), "{err}");
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -326,10 +326,10 @@ fn a_desk_on_another_project_never_offers_cues_own_check_or_install_and_each_kee
     assert_eq!((cue["check"].clone(), cue["after"].clone()), (json!("none"), json!("install")), "Cue's Desk keeps its install");
     // What its items land by is what its screen shows.
     let folder = desk_of(&w, "desk-web")["folder"].as_str().unwrap().to_string();
-    assert_eq!(crate::lands::lands_of("desk-web", &folder).check, "command");
-    assert_eq!(crate::lands::lands_of("desk-web", &folder).after, "command");
+    assert_eq!(crate::desk::lands::lands_of("desk-web", &folder).check, "command");
+    assert_eq!(crate::desk::lands::lands_of("desk-web", &folder).after, "command");
     // The workspace project's own setting (the legacy Desk) is untouched by either.
-    assert_ne!(crate::lands::lands_of(&project, &w.home().to_string_lossy()).check_steps, ["npm test"]);
+    assert_ne!(crate::desk::lands::lands_of(&project, &w.home().to_string_lossy()).check_steps, ["npm test"]);
     for dir in ["cue", "web"] {
         let home = w.home();
         let _ = std::fs::remove_dir_all(home.with_file_name(format!("{}-{dir}", home.file_name().unwrap().to_string_lossy())));

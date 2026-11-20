@@ -114,7 +114,7 @@ fn from_config(c: &Value) -> Value {
         "quick": { "phrases": quick_phrases() },
         "steps": { "mode": c.pointer("/steps/mode").and_then(Value::as_str).unwrap_or("line") },
         // A project's dot color, by folder name: the swatch you picked (0–7); unlisted folders hash to one.
-        "project": { "colors": c.pointer("/project/colors").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "all": c.pointer("/project/all").and_then(Value::as_u64).filter(|n| *n < 10), "hue": c.pointer("/project/hue").cloned().filter(own_hue), "pins": c.pointer("/project/pins").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])), "names": c.pointer("/project/names").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "moves": c.pointer("/project/moves").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "folders": c.pointer("/project/folders").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "made": c.pointer("/project/made").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])), "oneway": crate::one_way::view(c), "never": c.pointer("/project/never").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})) },
+        "project": { "colors": c.pointer("/project/colors").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "all": c.pointer("/project/all").and_then(Value::as_u64).filter(|n| *n < 10), "hue": c.pointer("/project/hue").cloned().filter(own_hue), "pins": c.pointer("/project/pins").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])), "names": c.pointer("/project/names").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "moves": c.pointer("/project/moves").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "folders": c.pointer("/project/folders").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "made": c.pointer("/project/made").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])), "oneway": crate::desk::one_way::view(c), "never": c.pointer("/project/never").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})) },
     })
 }
 
@@ -425,12 +425,12 @@ fn checked_project(key: &str, value: Value) -> Result<Value, String> {
         "project.names" => names(&value)?,
         "project.moves" => moves(&value)?,
         "project.folders" => folders(&value)?,
-        // Ask me before, per project, and the projects it was asked for (one_way.rs).
-        "project.oneway" => crate::one_way::checked(&value)?,
-        "project.asked" => crate::one_way::checked_asked(&value)?,
-        // How work lands, per project (lands.rs).
-        "project.lands" => crate::lands::checked(&value)?,
-        // Words never committed, per project (hub/desk_commit.rs).
+        // Ask me before, per project, and the projects it was asked for (desk/one_way.rs).
+        "project.oneway" => crate::desk::one_way::checked(&value)?,
+        "project.asked" => crate::desk::one_way::checked_asked(&value)?,
+        // How work lands, per project (desk/lands.rs).
+        "project.lands" => crate::desk::lands::checked(&value)?,
+        // Words never committed, per project (desk/hub/landing/commit.rs).
         "project.never" => never(&value)?,
         _ => return Err(format!("unknown setting {key}")),
     })
@@ -639,10 +639,10 @@ fn wanted(hook: &str, harness: &str, on_mac: bool) -> Vec<(&'static str, Value)>
         ("UserPromptSubmit", json!({ "hooks": [{ "type": "command", "command": cmd("prompt"), "timeout": 5 }] })),
         ("SessionEnd", json!({ "hooks": [{ "type": "command", "command": cmd("end"), "timeout": 3 }] })),
     ];
-    // Ask me before (one_way.rs): a tool call checked before it runs, and stopped to ask you when it's a step its
+    // Ask me before (desk/one_way.rs): a tool call checked before it runs, and stopped to ask you when it's a step its
     // project's Desk asks first about. On this Mac only: a machine's hook script reads no tool calls. Claude Code
     // runs its commands through Bash; Codex names its shell tools in more ways, and deletes with a patch. Edits are
-    // checked too: a Desk item's holder stays in its own copy (hub/desk_copy_guard.rs, #483).
+    // checked too: a Desk item's holder stays in its own copy (desk/hub/landing/copy_guard.rs, #483).
     if on_mac {
         want.push(("PreToolUse", json!({ "matcher": if harness == "claude" { "Bash|Edit|Write|MultiEdit|NotebookEdit" } else { "*" }, "hooks": [{ "type": "command", "command": cmd("guard"), "timeout": wait }] })));
     }

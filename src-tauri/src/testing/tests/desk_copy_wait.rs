@@ -1,4 +1,4 @@
-//! An item waiting for a free copy of its repository (hub/desk_trees.rs) starts on Cue's tick once one is free, however
+//! An item waiting for a free copy of its repository (desk/hub/landing/trees.rs) starts on Cue's tick once one is free, however
 //! the copy was let go of, and the Desk lead's summary says what it waits on (#340).
 
 use super::desk_commit::{item, routed_with};
@@ -171,7 +171,7 @@ fn a_sent_back_item_waiting_for_a_working_folder_never_waits_on_you() {
     w.settle();
     // Its holder, asked about it meanwhile, ends its turn on a question.
     w.advance(1000);
-    w.hub().send_to_session(&h, &format!("About #{id} (Header jumps): is the dot the only thing left?"), &[], false).unwrap();
+    w.hub().tell(&h, &format!("About #{id} (Header jumps): is the dot the only thing left?")).unwrap();
     w.settle();
     w.advance(1000);
     super::desk_commit::ends(&w, &h, &format!("Looked at #{id} again.\n\nShould the dot blink too?"));

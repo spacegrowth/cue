@@ -66,9 +66,9 @@ teammate's "not done" after a failed finish is the same line as above.
 | Undo a crew call | You undid a crew decision (bring back, revert, undo) | crew_log.rs `go_back_words` | Asked X · bring Y back, or revert: “…” |
 | Teammate quiet (automatic) | A teammate at work has been quiet a while with nothing running | team.rs quiet tick: “(Cue) Your teammate Y has been quiet for N min…” | Asked X · check on teammate Y (quiet N min) |
 | Teammate quiet (your Resume) | You press Resume on a quiet teammate's row | team.rs `resume_words`: “Your teammate Y has gone quiet. Ask it where it is…” | Asked X · check on teammate Y |
-| Hand off | You asked a session to hand off | ipc/insights.rs `HANDOFF_ASK` | Asked X · hand off: write a note for a fresh session |
-| Carry on | The next session after a hand-off | ipc/insights.rs `resume_ask` | Asked X · carry on from the hand-off note |
-| No longer the lead | The lead was taken off its Desk, or another took it | desk_members.rs, ipc/desk.rs | Told X · no longer runs cue's Desk |
+| Hand off | You asked a session to hand off | hub/hand_off_note.rs `HANDOFF_ASK` | Asked X · hand off: write a note for a fresh session |
+| Carry on | The next session after a hand-off | hub/hand_off_note.rs `resume_ask` | Asked X · carry on from the hand-off note |
+| No longer the lead | The lead was taken off its Desk, or another took it | desk_members.rs, desk/hub/lead/mod.rs | Told X · no longer runs cue's Desk |
 | Team carried over | A hand-off carried the crew over | team_out.rs `carried_note` | Told X · the team from the session before · 2 teammates |
 
 ## To a Desk lead
@@ -117,7 +117,7 @@ on the right with Cue's full text, as if you had typed it:
 | --- | --- | --- | --- |
 | Question from the item's page | You ask about an item that's to check or done | desk_asked.rs | your bubble: “A question about Desk item #id (title), which is …: your words”, Cue's “Answer it…” words under it |
 | Carry on after the usage limit | A turn stopped on the usage limit, and it reset (Carry on is on) | sessions/send_at.rs `CARRY_ON` | your bubble: “Carry on where you stopped: your usage limit reset.” |
-| Resume with the hand-off skill | The next session after a hand-off, when the skill takes `resume` | ipc/insights.rs | your bubble: “/handoff resume” |
+| Resume with the hand-off skill | The next session after a hand-off, when the skill takes `resume` | hub/hand_off_note.rs | your bubble: “/handoff resume” |
 | Background agent quiet, or stop it | You wake or stop a session's background agent | ui/agents.js (the window) | your bubble: “Your background agent “X” has gone quiet…”, or “Stop your background agent “X” now…” |
 | Cut refused | The lead's CUT: names a wait that isn't there | desk_said.rs | the lead's chat, your bubble: “Not cut: #a doesn't wait on #b” |
 | CLOSE commit not on main | The lead's CLOSE: names a commit that isn't on main | desk_unstick.rs | the lead's chat, your bubble: “Desk item #id not closed: … isn't on main…” |
@@ -178,7 +178,7 @@ Your own words or your click, so they show as your bubble, but Cue wrote the tex
 | --- | --- | --- | --- |
 | Asked for a hand-off note | Cue asked a session for a hand-off note by itself (cache ending) | desk.rs `desk_cue_asked` | a step by Cue on the item's Record: “Asked host-lead for a hand-off note” · why |
 | How a Resume went | You pressed Resume on an item | desk.rs `desk_restart_went` | on the item's Needs resume line: “Resume went to X”, or “Resume couldn't reach X: why” |
-| The lead didn't come up | You write to a Desk whose lead couldn't start | ipc/desk.rs `desk_send_with` | your message red in the lead's chat: “! Couldn't send · X's lead didn't come up (…), so this wasn't sent: … · Retry · Edit” |
+| The lead didn't come up | You write to a Desk whose lead couldn't start | desk/hub/lead/send.rs `desk_send_with` | your message red in the lead's chat: “! Couldn't send · X's lead didn't come up (…), so this wasn't sent: … · Retry · Edit” |
 
 ## Status lines and bands in a chat
 

@@ -237,9 +237,9 @@ impl Hub {
             for (sid, done, failed) in &compacted {
                 // Failed: a Desk session is handed off instead (cache_tick).
                 if *failed {
-                    st.desk.compact_failed.insert(sid.clone(), now);
+                    st.desk.run.compact_failed.insert(sid.clone(), now);
                 } else {
-                    st.desk.compact_failed.remove(sid);
+                    st.desk.run.compact_failed.remove(sid);
                 }
                 if *done {
                     st.sessions.set_compacted(sid, now);
@@ -333,12 +333,12 @@ impl Hub {
 }
 
 /// Written at `at` within the last minute before `now`: a session that did isn't stopped (#291).
-pub(super) fn wrote_lately(at: u64, now: u64) -> bool {
+pub(crate) fn wrote_lately(at: u64, now: u64) -> bool {
     now.saturating_sub(at) < 60_000
 }
 
 /// When the file at `path` was last written (ms since 1970), if it's there.
-pub(super) fn written_ms(path: &str) -> Option<u64> {
+pub(crate) fn written_ms(path: &str) -> Option<u64> {
     let at = std::fs::metadata(path).and_then(|m| m.modified()).ok()?;
     at.duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_millis() as u64)
 }

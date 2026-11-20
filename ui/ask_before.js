@@ -1,8 +1,8 @@
 "use strict";
-/** Ask me before (one_way.rs, hub/guard.rs): per project, the steps its Desk's lead and sessions stop and ask you
+/** Ask me before (desk/one_way.rs, hub/guard.rs): per project, the steps its Desk's lead and sessions stop and ask you
  *  first about. Asked once, as a project's Desk gets a lead (a Desk's `ask_before`: its words, whether it was asked,
  *  what the question ticks, any One-way setting carried over); changed later from where it's shown. The kinds and
- *  their words come from Settings' `project.oneway` (one_way.rs view): only those Cue checks are offered. */
+ *  their words come from Settings' `project.oneway` (desk/one_way.rs view): only those Cue checks are offered. */
 let askBefore = null;              // { project, ticks: [keys], more, change, busy }
 const askBeforeSkip = new Set();   // projects answered here, until Cue's next update says so
 

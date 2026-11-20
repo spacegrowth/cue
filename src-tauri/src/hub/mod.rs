@@ -9,76 +9,35 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::oneshot;
 
-mod activity;
-mod asks;
-mod cache_tick;
-mod crew_log;
-mod desk;
-mod desk_act;
-mod desk_heard;
-mod desk_features;
-mod desk_route;
-mod desk_stop_lead;
-mod desk_copy_guard;
-mod desk_said;
-mod desk_view;
-mod desk_spaces;
-mod desk_away;
-mod desk_away_log;
-mod desk_held;
-mod desk_pause;
-pub(crate) use desk_pause::pause_view as desk_pause_view;
+pub(crate) mod activity;
+pub(crate) mod asks;
+pub(crate) mod cache_tick;
+pub(crate) mod crew_log;
+pub(crate) use crate::desk::hub::away::pause::pause_view as desk_pause_view;
 #[cfg(test)]
 pub(crate) fn desk_pause_words() -> &'static str {
-    desk_pause::PAUSE_WORDS
+    crate::desk::hub::away::pause::PAUSE_WORDS
 }
-pub(crate) use desk_away::sweep_words as desk_away_sweep_words;
-mod desk_checks;
-mod desk_cleanup;
-mod desk_commit;
-mod desk_git;
-mod desk_finish;
-mod desk_install;
-mod desk_main_line;
-mod desk_trees;
-mod desk_tree_files;
-mod desk_copies;
-mod desk_lands;
-pub(crate) use desk_copies::OldCopies;
-mod desk_pr;
-mod desk_unstick;
-mod desk_unlanded;
-mod desk_own_work;
-mod desk_diff;
-mod desk_handoff;
-mod desk_lead;
-mod desk_members;
-mod desk_asked;
-mod desk_stall;
-mod desk_stuck;
-mod desk_steps;
-mod desk_theirs;
-mod desk_theirs_codex;
-mod desk_theirs_log;
-mod desk_waits;
-mod land_keep;
-pub(crate) use desk_lead::DeskClaim;
-pub(crate) use desk_checks::builds_this_cue;
-pub(crate) use desk_stall::question_for_you;
+pub(crate) use crate::desk::hub::away::away::sweep_words as desk_away_sweep_words;
+pub(crate) use crate::desk::hub::landing::copies::OldCopies;
+pub(crate) use crate::desk::hub::lead::run::DeskClaim;
+pub(crate) use crate::desk::hub::lead::checks::builds_this_cue;
 #[cfg(test)]
-pub(crate) use desk_stuck::{PROMPT_MS, SILENT_MS};
-pub(crate) use desk_pr::PR_CLOSED;
-pub(crate) use desk::STOPPED;
+pub(crate) use crate::desk::hub::stall::stuck::{PROMPT_MS, SILENT_MS};
 #[cfg(test)]
-pub(crate) use desk_held::HELD_WORDS;
-pub(crate) use desk_trees::tree_line;
+pub(crate) use crate::desk::hub::away::away_holds::HELD_WORDS;
+pub(crate) use crate::desk::hub::landing::trees::tree_line;
 mod events;
 mod guard;
 mod hand_off;
+mod hand_off_note;
+pub(crate) use hand_off_note::{handoff_continue_now, handoff_cue_ahead, handoff_cue_now, handoff_fresh_now, handoff_keep_now, local_log, notice_handoff, notice_handoff_in, record_insight, AHEAD_ALL, AHEAD_DESK, AHEAD_FULL, AHEAD_SESSION, AHEAD_YOU, CUE_HANDOFF};
 mod history;
 mod hosted;
 mod kept_history;
 mod live_writes;
+mod log_paths;
+pub(crate) use log_paths::{codex_sessions_dir, pi_sessions_dir, steps_path};
 mod open;
 pub(crate) mod page_look;
 mod picking_up;
@@ -86,6 +45,8 @@ pub(crate) mod ports;
 mod projects;
 mod quitting;
 mod redraw;
+mod resuming;
+pub(crate) use resuming::{closed_record, end_session, resume_parked_session, resume_record, ALREADY_RUNNING, CLOSED_DAYS, CLOSED_MAX};
 mod reviews;
 mod saves;
 mod send;
@@ -94,6 +55,8 @@ mod send_at;
 pub(crate) use send_at::probe as send_at_probe;
 mod sessions;
 mod shown;
+mod starting;
+pub(crate) use starting::{start_hosted, start_session, start_session_with, StartOpts, UNTRUSTED};
 pub(crate) mod team;
 // Moved into team/ (refactor step 1c); the optional add-on still names it here.
 #[cfg(feature = "ext")]
@@ -101,7 +64,7 @@ pub(crate) use team::out as team_out;
 mod store_access;
 mod terminal_only;
 pub(crate) use terminal_only::{claude_screens, Own};
-mod today;
+pub(crate) mod today;
 mod turn_end;
 mod usage;
 // The optional add-on's part of the hub (built in with the `ext` feature).
@@ -123,14 +86,14 @@ pub enum Reply {
 }
 
 #[derive(Default)]
-struct Store {
+pub(crate) struct Store {
     /// Each Claude Code session's cost so far, from its status line (shown in the chat's tab).
-    costs: HashMap<String, f64>,
-    items: Vec<Item>,
+    pub(crate) costs: HashMap<String, f64>,
+    pub(crate) items: Vec<Item>,
     history: kept_history::History,
     /// Every answer of the last day, newest first (History's today numbers; the list above is capped).
     answers: Vec<Answer>,
-    waiters: HashMap<String, oneshot::Sender<Reply>>,
+    pub(crate) waiters: HashMap<String, oneshot::Sender<Reply>>,
     next: u64,
     /// When each session last started a turn — how a typed reply is confirmed as submitted.
     active_at: HashMap<String, u64>,
@@ -149,7 +112,7 @@ struct Store {
     /// end is then that error (a usage limit: stopped on the limit, with Cue's carry-on), not a reply.
     hosted_api_error: HashMap<String, (String, String)>,
     /// Every live session and its recent activity (the Working column and the 30-minute bars).
-    sessions: crate::sessions::Sessions,
+    pub(crate) sessions: crate::sessions::Sessions,
     /// Sessions you deleted while Cue ran, and when: an answer of theirs from before then, still on its way to
     /// the database (saves.rs), isn't saved.
     purged: HashMap<String, u64>,
@@ -159,7 +122,7 @@ struct Store {
     /// Answered cards whose save goes with the next draw's (saves.rs `save_answered_with_draw`).
     unsaved: Vec<history::Answered>,
     /// Sessions you parked (stopped, kept to resume), the latest parked first.
-    parked: Vec<crate::sessions::Parked>,
+    pub(crate) parked: Vec<crate::sessions::Parked>,
     /// Cards with a notification in Notification Center — taken back once the card is gone. Only cards: other
     /// notifications (notify_about) are taken back by whoever posted them.
     notified: HashSet<String>,
@@ -190,7 +153,7 @@ struct Store {
     ahead_tried: HashMap<String, u64>,
     /// The board's cards on this Mac: their cache's expiry and their context, as of the last cache_tick
     /// (insights.js counts down from these; ipc::insight_states has the same shape).
-    insight: HashMap<String, Value>,
+    pub(crate) insight: HashMap<String, Value>,
     /// Teammates' reviews typed into their lead: `team:<lead>:<agent>` → (its lead, when). A lead takes one
     /// review at a time: Review waits until it's free again.
     review_sent: HashMap<String, (String, u64)>,
@@ -208,7 +171,7 @@ struct Store {
     /// Sessions that ended while Cue ran, newest first, each its record as it was and when it ended: what
     /// the window shows for one from the moment its row goes (its name with it), before the saved copy is
     /// asked for. The saved copy (db) is what a relaunch shows; this is the same list, had sooner.
-    ended: VecDeque<(u64, crate::sessions::Session)>,
+    pub(crate) ended: VecDeque<(u64, crate::sessions::Session)>,
     /// The same, as each ended, until the next save (redraw.rs save_live) has written it: whatever changed
     /// since the save before its end (a rename just as it ended) reaches Closed after a relaunch.
     unsaved_ends: Vec<(u64, crate::sessions::Session)>,
@@ -222,8 +185,8 @@ struct Store {
     restarted: HashMap<String, Vec<Value>>,
     /// How many snapshots have been taken from the store (each takes the next number): their order (shown.rs).
     shown_seq: u64,
-    /// Each project's Desk: its items, decisions and lead (desk.rs, desk_lead.rs).
-    desk: crate::desk::Desk,
+    /// Each project's Desk: its items, decisions and lead (desk.rs, desk/hub/lead/run.rs).
+    pub(crate) desk: crate::desk::Desk,
     /// What git last said of each crew folder on this Mac (open.rs), for the Inbox side's Open rows; when it was
     /// last read, whether a read is under way, and whether another was asked for meanwhile.
     open_git: HashMap<String, open::GitLook>,
@@ -296,9 +259,9 @@ pub struct Hub {
     /// The window's state as last built, handed out without building it again (shown.rs).
     shown: shown::Shown,
     /// The terminals it types into and where its follow-up work runs (ports.rs).
-    ports: ports::Ports,
+    pub(crate) ports: ports::Ports,
     /// What keeps saves made after the store is let go in order (saves.rs).
-    saves: saves::SaveLocks,
+    pub(crate) saves: saves::SaveLocks,
     /// Changes waiting to be drawn, and the worker that draws them (redraw.rs).
     redraws: Arc<redraw::Redraws>,
     /// The hosted sessions an earlier Cue left running, being picked up at launch (picking_up.rs).
@@ -308,7 +271,7 @@ pub struct Hub {
 impl Hub {
     pub fn new(app: Option<AppHandle>) -> Self {
         let ports = ports::Ports::real(app.as_ref());
-        desk_tree_files::clear_old_checks(&crate::server::cue_dir().join("checks"));
+        crate::desk::hub::landing::tree_files::clear_old_checks(&crate::server::cue_dir().join("checks"));
         Self::with_ports(app, ports)
     }
 
@@ -324,8 +287,8 @@ impl Hub {
         st.items = waiting;
         st.parked = crate::db::parked();
         Self::desk_restore(&mut st);
-        desk_checks::note_installed();
-        desk_install::note_running();
+        crate::desk::hub::lead::checks::note_installed();
+        crate::desk::hub::landing::install::note_running();
         st.rates = crate::usage::saved_rates(now_ms());
         st.review_queue = crate::db::review_queue().into_iter().map(|(exec, lead, text, at_ms)| QueuedReview { exec, lead, text, at_ms }).collect();
         // Ids keep counting from the clock so they never collide with ids in saved history.
@@ -345,7 +308,7 @@ impl Hub {
 
     /// `job` after `after_ms`, off this thread, with the hub as the app holds it (ports::Later). A hub with no
     /// app (a test's) has nothing to hand it: dropped, unless the test holds it (testing::Deferred).
-    fn later(&self, after_ms: u64, job: impl FnOnce(&Arc<Hub>) + Send + 'static) {
+    pub(crate) fn later(&self, after_ms: u64, job: impl FnOnce(&Arc<Hub>) + Send + 'static) {
         match &self.ports.later {
             ports::Later::Threads => {
                 let Some(me) = self.shared() else { return };
@@ -543,7 +506,7 @@ impl Hub {
         let now = now_ms();
         Self::prune_reviews(st, now);
         // Each open item's step as Cue hears it (#409): stamped as the change that brings it is shown.
-        desk_steps::stamp(st, now);
+        crate::desk::hub::core::steps::stamp(st, now);
         let next = Self::next_change(st, now);
         // A session restarting stays in its place: its record from before while its agent is down, and
         // not on Parked on the way.
@@ -574,7 +537,7 @@ impl Hub {
             // Each lead's loose ends (open.rs): the Inbox side's Open rows.
             "open": Self::open_view(st),
         });
-        // Not a question its Desk lead has first (desk_cleanup.rs).
+        // Not a question its Desk lead has first (desk/hub/lead/cleanup.rs).
         let items = st.items.iter().filter(|i| i.lead_has.is_none()).cloned().collect();
         (seq, next, StoreParts { items, history: st.history.brief(), sessions, parked, small })
     }
@@ -646,7 +609,7 @@ impl Hub {
 
     /// A card's notification (`id`: the card's), taken back once the card is gone (redraw.rs). `category`:
     /// "turn" puts Reply and the quick phrases on it; "turn-full" adds Compact.
-    fn notify(&self, id: &str, title: &str, body: &str, category: &str) {
+    pub(crate) fn notify(&self, id: &str, title: &str, body: &str, category: &str) {
         self.notify_card(id, title, body, category, false, true);
     }
 

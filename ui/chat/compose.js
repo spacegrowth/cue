@@ -96,7 +96,7 @@ function sendWaitingNow(sid) {
 const sendTo = (sid, now = false, key = `s:${sid}`) => deliver(sid, key, boxToSession(sid, { now }), true);
 /** The message Cue kept for a working session, back into its box to change (before anything you've typed
  *  there since), images and all. Your words only: the Desk's summary Cue put before a message to a Desk's lead
- *  (ipc/desk.rs desk_message) isn't yours, and would go twice if sent again (#498). */
+ *  (desk/hub/lead/send.rs desk_message) isn't yours, and would go twice if sent again (#498). */
 async function pullHeld(sid, key = `s:${sid}`) {
   forgetSent(sid);
   const h = await invoke("unhold_message", { sessionId: sid }).catch(() => null);

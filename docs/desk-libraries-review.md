@@ -6,7 +6,7 @@ Review for Desk item #293, 2026-11-18. No code was changed.
 
 | Library | Would replace | Recommendation |
 |---|---|---|
-| petgraph | the circle check in `hub/desk_waits.rs` | No, not now |
+| petgraph | the circle check in `desk/hub/core/waits.rs` | No, not now |
 | apalis | the landing line and the install queue | No |
 | statig | the item states and finishing steps | No, but a plain Rust enum: yes |
 | notify + tokio channels | the 3 s and ~10 s timers | Yes, in part, keeping a slow timer as a backstop |
@@ -15,7 +15,7 @@ The one change worth making soon is waking the finishing work with an event inst
 
 ## petgraph: waits and the circle check
 
-**What it would replace.** In `hub/desk_waits.rs` (about 60 lines), `waits()` builds the list of who waits on whom. `circles()` and `walk()` then search that list for circles.
+**What it would replace.** In `desk/hub/core/waits.rs` (about 60 lines), `waits()` builds the list of who waits on whom. `circles()` and `walk()` then search that list for circles.
 
 **Gain.** petgraph is well tested and ships `tarjan_scc` and `is_cyclic_directed`, so the hand-written search would go.
 
@@ -31,8 +31,8 @@ The one change worth making soon is waking the finishing work with an event inst
 ## apalis: the landing line and the install queue
 
 **What it would replace.**
-- The landing line (`desk_land_line` and `land` in `hub/desk_trees.rs`): one item at a time, oldest DONE first. LAND FIRST moves an item up. An item that has to wait steps aside, and a check cut short is put back in its place.
-- The install queue (`finish_tick` in `hub/desk_finish.rs`): one install at a time, everything waiting goes in one install, about half an hour after the first item. It holds off while a session is mid-turn unless you say Install now, and it follows `status.json` and `running.json`.
+- The landing line (`desk_land_line` and `land` in `desk/hub/landing/trees.rs`): one item at a time, oldest DONE first. LAND FIRST moves an item up. An item that has to wait steps aside, and a check cut short is put back in its place.
+- The install queue (`finish_tick` in `desk/hub/landing/finish.rs`): one install at a time, everything waiting goes in one install, about half an hour after the first item. It holds off while a session is mid-turn unless you say Install now, and it follows `status.json` and `running.json`.
 
 **Gain.** Workers, retries and job storage come built in, and jobs survive restarts.
 

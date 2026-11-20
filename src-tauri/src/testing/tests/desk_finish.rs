@@ -1,4 +1,4 @@
-//! Done means it's in your app (hub/desk_finish.rs): an item that changed the Cue this app is built from, once its
+//! Done means it's in your app (desk/hub/landing/finish.rs): an item that changed the Cue this app is built from, once its
 //! commit is made, is in the next install: half an hour after the first DONE waiting (or at once on Install now), never
 //! while a session that ends with Cue is mid-turn, built from the main line's HEAD. Once the running Cue has its commit
 //! it's to check; a failed build, or a new Cue that didn't start, asks you and sends its holder the log. A crew's work

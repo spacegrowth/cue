@@ -438,7 +438,7 @@ fn ask(p: &Value, harness: &str) -> Option<()> {
     Some(())
 }
 
-/// Ask me before (one_way.rs): a tool call about to run, checked first. One that's none of the steps Cue can
+/// Ask me before (desk/one_way.rs): a tool call about to run, checked first. One that's none of the steps Cue can
 /// see (most) ends here, with nothing said and Cue never reached. One that is (a push, a release, deleting
 /// files) goes to Cue, which says whether its project's Desk asks first about it: "pass" leaves the call to the
 /// agent's own flow; else it waits on your answer like a permission ask, and a no stops the call. A card closed
@@ -448,7 +448,7 @@ fn guard(p: &Value, harness: &str) -> Option<()> {
     let input = p.get("tool_input").cloned().unwrap_or(json!({}));
     let cwd = s(p, "cwd");
     let branch = |dir: Option<&str>| branch_in(&cwd, dir);
-    let hits = crate::one_way::call_hits(&input, &branch);
+    let hits = crate::desk::one_way::call_hits(&input, &branch);
     // An edit, or a git command, goes to Cue too: a Desk item's holder stays in its own copy (#483).
     let tool = s(p, "tool_name");
     let edit = matches!(tool.as_str(), "Edit" | "Write" | "MultiEdit" | "NotebookEdit");
@@ -496,7 +496,7 @@ pub(crate) fn guard_output(d: &Value, harness: &str) -> Option<Value> {
 }
 
 /// The branch checked out in the session's folder `cwd` (or `dir` in it, `git -C dir`): only ever this Mac's own
-/// folder, the hook running beside the agent. None when git can't say (a detached head counts as none); one_way.rs
+/// folder, the hook running beside the agent. None when git can't say (a detached head counts as none); desk/one_way.rs
 /// reads an unknown branch as main.
 fn branch_in(cwd: &str, dir: Option<&str>) -> Option<String> {
     let at = match dir {

@@ -112,6 +112,35 @@ fn a_message_sent_to_an_idle_one_goes_to_it_directly_and_starts_a_turn_when_take
     assert!(last["pending"].is_null() && last["unsent"].is_null(), "taken, nothing waiting on it (both are left out when false): {last}");
 }
 
+/// + New's first message goes under the session's typing gate, as the box's does: a message sent to it while the
+/// first is still on its way waits for it, and the two reach Claude in order, never interleaved.
+#[test]
+fn a_message_sent_while_the_first_is_on_its_way_waits_its_turn() {
+    let w = World::new();
+    hosted_on(true);
+    let release = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    w.hosted.hang_next_send(release.clone());
+    let dir = w.home().to_string_lossy().into_owned();
+    let start = w.client().spawn(move |c| {
+        let opts = StartOpts { hosted: true, perm: "auto".into(), ..Default::default() };
+        start_session_with(&c.hub, "claude", &dir, "fix the login", "trial", &opts)
+    });
+    w.hosted.wait_hung();
+    let sid = match &w.hosted.launched()[0].start {
+        Start::New(sid) => sid.clone(),
+        other => panic!("started as {other:?}"),
+    };
+    let to = sid.clone();
+    let second = w.client().spawn(move |c| c.hub.tell(&to, "and the signup"));
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    assert!(!second.is_finished(), "the second waits while the first is on its way");
+    assert!(w.hosted.sent().is_empty(), "nothing handed over yet: {:?}", w.hosted.sent());
+    release.store(true, std::sync::atomic::Ordering::SeqCst);
+    assert!(start.join().unwrap().is_ok());
+    assert!(second.join().unwrap().is_ok());
+    assert_eq!(w.hosted.sent(), vec![(sid.clone(), "fix the login".to_string()), (sid, "and the signup".to_string())]);
+}
+
 /// Claude says it started a turn the moment it reads your message, and repeats the message back only with its
 /// first words, a second or more later: the message is taken at the first.
 #[test]

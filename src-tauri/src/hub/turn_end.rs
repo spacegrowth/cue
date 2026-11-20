@@ -107,10 +107,10 @@ impl Hub {
             self.limits_lifted(&origin.session_id);
         }
         // It wrote its hand-off note itself: its card offers "Continue in a new session".
-        if crate::ipc::notice_handoff(self, &origin.session_id) {
+        if crate::hub::notice_handoff(self, &origin.session_id) {
             self.changed();
         }
-        // The note the Desk asked of a session grown too big: it goes on in a fresh session (desk_handoff.rs).
+        // The note the Desk asked of a session grown too big: it goes on in a fresh session (desk/hub/lead/handoff.rs).
         if let Some(log) = super::send::log_here(origin) {
             self.desk_hand_on(&origin.session_id, log);
         }
@@ -223,7 +223,7 @@ impl Hub {
         // goes now: nothing to tell you, it's working again in a moment.
         let (later, held) = self.read(|st| (st.sessions.is_later(sid), st.sessions.held(sid).is_some()));
         // The note Cue asked for while you're away (its tick, or Settings): no need to call you back for it.
-        let noted = !path.is_empty() && crate::steps::last_prompt(path).1 && crate::db::handoff(sid).is_some_and(|k| k.ahead > crate::ipc::AHEAD_YOU);
+        let noted = !path.is_empty() && crate::steps::last_prompt(path).1 && crate::db::handoff(sid).is_some_and(|k| k.ahead > crate::hub::AHEAD_YOU);
         let EndedCard { id, title, watched, took, again } = card;
         // You asked to be told ("Tell me"): it tells you whatever else would keep it quiet, Cue in front too.
         if watched {

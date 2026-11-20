@@ -1,4 +1,4 @@
-//! Pausing a whole Desk (hub/desk_pause.rs, #366): its sessions at work are told to stop at a safe point, nothing is
+//! Pausing a whole Desk (desk/hub/away/pause.rs, #366): its sessions at work are told to stop at a safe point, nothing is
 //! sent them nor started meanwhile (queued items stay queued), and Resume sends what was held and starts what waited.
 //! The owner presses it; the lead writes PAUSE: / RESUME:.
 

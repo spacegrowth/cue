@@ -66,7 +66,7 @@ CueBridge.area("settings", (w) => {
   const landsFill = () => {
     for (const d of w.state?.desk?.projects || []) d.lands ||= landsView(d.id || d.project, landsPlace(d), {});
   };
-  /** A lead's proposed change (hub/desk_lands.rs): its card carries `desk_lands`; your Yes saves it, as the hub does. */
+  /** A lead's proposed change (desk/hub/lead/lands.rs): its card carries `desk_lands`; your Yes saves it, as the hub does. */
   const plainAnswer = w.answer;
   w.answer = (id, outcome, opts) => {
     const it = plainAnswer(id, outcome, opts);
@@ -101,7 +101,7 @@ CueBridge.area("settings", (w) => {
       w.changed(10);
       return Array.isArray(ow.set[project]) ? ow.set[project] : ow.default;
     },
-    // How work lands (hub/desk_view.rs desk_lands_set): saved for the Desk alone, refusing a choice not built yet or
+    // How work lands (desk/hub/core/view.rs desk_lands_set): saved for the Desk alone, refusing a choice not built yet or
     // one for Cue's own project on another's.
     desk_lands_set: ({ desk, lands }) => {
       landsFill();
@@ -114,7 +114,7 @@ CueBridge.area("settings", (w) => {
       w.changed(10);
       return view;
     },
-    // Pausing a whole Desk (hub/desk_pause.rs desk_pause_set): its `paused` view, as the hub returns it.
+    // Pausing a whole Desk (desk/hub/away/pause.rs desk_pause_set): its `paused` view, as the hub returns it.
     desk_pause: ({ desk, on }) => {
       const d = (w.state.desk?.projects || []).find((x) => x.id === desk || x.project === desk);
       if (!d) throw "no such Desk";

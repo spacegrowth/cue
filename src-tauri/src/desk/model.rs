@@ -49,10 +49,10 @@ pub struct DeskItem {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub split_from: String,
     /// The big feature it's one piece of (#282): that item's id. The Desk lists it under that feature's name, and
-    /// the feature is done once all its pieces are (hub/desk_features.rs). Set by the lead's FEATURE: line.
+    /// the feature is done once all its pieces are (desk/hub/turn/features.rs). Set by the lead's FEATURE: line.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub part_of: String,
-    /// Its pieces, when it's a feature with any, oldest first: worked out as it's shown (hub/desk_view.rs), never saved.
+    /// Its pieces, when it's a feature with any, oldest first: worked out as it's shown (desk/hub/core/view.rs), never saved.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pieces: Vec<DeskItem>,
     /// What you'll see when it's done, in plain words: the one line about it shown to you (#382).
@@ -74,11 +74,11 @@ pub struct DeskItem {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub former_holders: Vec<String>,
     /// The holder it moved off when the lead routed it to a new session (`ROUTE: #id -> new` on a held item, #364),
-    /// until a session takes it: the new one is sent that holder's hand-off note with it (hub/desk_lead.rs).
+    /// until a session takes it: the new one is sent that holder's hand-off note with it (desk/hub/lead/run.rs).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub moved_from: Option<Holder>,
     /// The lead's teammate doing it, when the lead keeps it and says so (`ROUTE: #id -> me | crew: <name>`): the name
-    /// the lead gave it, matched to its teammate of that name once there is one (hub/desk_view.rs `shown`).
+    /// the lead gave it, matched to its teammate of that name once there is one (desk/hub/core/view.rs `shown`).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub crew: String,
     /// The item it waits on (queued behind it), and why.
@@ -89,19 +89,19 @@ pub struct DeskItem {
     /// Its holder's latest, in one line, while its holder is on it: worked out as it's shown.
     #[serde(default)]
     pub latest: String,
-    /// Its holder is at work on this one of the items it holds (hub/desk_stall.rs `now_on`): worked out as it's shown.
+    /// Its holder is at work on this one of the items it holds (desk/hub/stall/stall.rs `now_on`): worked out as it's shown.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub now_on: bool,
     /// Its holder stopped on it with no DONE and nothing to ask you, and Cue gave the stop to the Desk lead to settle:
-    /// (the item's `updated` then, when in ms). Saved, so a restart keeps it (hub/desk_stall.rs).
+    /// (the item's `updated` then, when in ms). Saved, so a restart keeps it (desk/hub/stall/stall.rs).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stop: Option<(u64, u64)>,
     /// The Desk lead was told of a stop of it (the item's `updated` then): once per item, a later stop is yours (#249).
-    /// Saved (hub/desk_stall.rs).
+    /// Saved (desk/hub/stall/stall.rs).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub told: Option<u64>,
     /// What its holder's last turn on it said it waits on (the item's `updated` then, the line): waiting, not
-    /// stopped, while the item is unchanged (#249, hub/desk_stall.rs). Saved.
+    /// stopped, while the item is unchanged (#249, desk/hub/stall/stall.rs). Saved.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub waits: Option<(u64, String)>,
     /// Its holder's turn ended on it saying what it waits on: that line. Worked out as it's shown.
@@ -111,17 +111,17 @@ pub struct DeskItem {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub stopped: bool,
     /// What its holder did last while at work on it, and when (#285): its row says so, and reads "Stalled" once that
-    /// is `QUIET_MS` old. Worked out as it's shown (hub/desk_stall.rs `act_of`); None when it isn't at work on it.
+    /// is `QUIET_MS` old. Worked out as it's shown (desk/hub/stall/stall.rs `act_of`); None when it isn't at work on it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub act: Option<Act>,
     /// Its work git said wasn't committed as its holder's turn last ended on it (paths in their folders): a stop then
-    /// is the Desk lead's, shown as "not committed", never waiting on you (#213, hub/desk_stall.rs). Saved.
+    /// is the Desk lead's, shown as "not committed", never waiting on you (#213, desk/hub/stall/stall.rs). Saved.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub loose: Vec<String>,
     /// Its holder's open ask, when it waits on you: worked out as it's shown.
     #[serde(default)]
     pub ask: Option<Value>,
-    /// The files changed for it, inside its holder's folder: worked out as it's shown (hub/desk.rs `item_files`).
+    /// The files changed for it, inside its holder's folder: worked out as it's shown (desk/hub/core/desk.rs `item_files`).
     #[serde(default)]
     pub files: Vec<String>,
     /// Pictures you attached as you added it: where Cue keeps them (uploads.rs `save_kept`), named to whoever takes it.
@@ -134,7 +134,7 @@ pub struct DeskItem {
     /// Its designs' canvas: the link a session gave last on a DESIGNS: line, shown as "Designs" on its page.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub designs: String,
-    /// The option you picked on its mocks ("B"), once you did (hub/desk_act.rs `pick`): the item is done then.
+    /// The option you picked on its mocks ("B"), once you did (desk/hub/turn/act.rs `pick`): the item is done then.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub picked: String,
     /// The item that builds what you picked (`picked`): its id. A pick again names it and makes no other.
@@ -144,24 +144,24 @@ pub struct DeskItem {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub builds: String,
     /// The commit Looks right made of its files (short; one per repository, space apart), once it did
-    /// (hub/desk_commit.rs).
+    /// (desk/hub/landing/commit.rs).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub commit: String,
     /// Looks right's commit while it waits: some of its files were being edited by another session at work, so the
-    /// item is done and Cue commits them on its own once they're free (hub/desk_commit.rs `desk_commit_waiting`).
+    /// item is done and Cue commits them on its own once they're free (desk/hub/landing/commit.rs `desk_commit_waiting`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commit_wait: Option<CommitWait>,
     /// Its DONE being finished, saved so it survives the restart an install makes: its commit made, then this Cue
-    /// built and installed with it (hub/desk_finish.rs). Kept once it's to check, so Looks right only closes it.
+    /// built and installed with it (desk/hub/landing/finish.rs). Kept once it's to check, so Looks right only closes it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub finish: Option<Finish>,
     /// The Desk lead said DONE on it for you (you told it it's done) while it was finishing or to check: closed as
-    /// Looks right would, at once when it's to check, else as soon as its finishing brings it there (hub/desk_said.rs
+    /// Looks right would, at once when it's to check, else as soon as its finishing brings it there (desk/hub/turn/said.rs
     /// lead_done, #337). Saved, so an install's restart keeps it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub close_on_check: bool,
     /// Its own copy of its repository to work in (a git worktree on a branch of its own, from the main line as its
-    /// holder started), while it has one: landed as one squash commit at its DONE (hub/desk_trees.rs).
+    /// holder started), while it has one: landed as one squash commit at its DONE (desk/hub/landing/trees.rs).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tree: Option<ItemTree>,
     /// Its place in its Desk's queue as you dragged it (#387), 1 at the top: the next free copy goes to the top one, and
@@ -175,11 +175,11 @@ pub struct DeskItem {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub tree_wait_repo: String,
     /// Your Send back's message to its holder, kept while it waits for a copy (#396): it goes with the item's words
-    /// once one is free (hub/desk_trees.rs).
+    /// once one is free (desk/hub/landing/trees.rs).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub back_waiting: String,
     /// Waiting for a copy (`tree_wait`): the items using its repository's copies now, as its row says (#401). Only
-    /// on what the window is shown (hub/desk_view.rs `shown`), never saved.
+    /// on what the window is shown (desk/hub/core/view.rs `shown`), never saved.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub copy_users: Vec<String>,
     /// Started now by the lead (START, #347) while it waited: it works where its holder is when no copy is free,
@@ -189,11 +189,11 @@ pub struct DeskItem {
     /// Where each of its commits is: (folder, short hash), for its Files changed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub commit_in: Vec<(String, String)>,
-    /// Who it went to at work and when (ms): only work begun after that is its (stamped as it's saved: hub/desk.rs).
+    /// Who it went to at work and when (ms): only work begun after that is its (stamped as it's saved: desk/hub/core/desk.rs).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub held_from: Option<(String, u64)>,
     /// Its stints with holders before `held_from` (who, from, until; ms), newest last, the last `HELD_KEPT`: an item that
-    /// moved on still ends the window of an item its old holder kept (hub/desk_view.rs `held_window`, #302).
+    /// moved on still ends the window of an item its old holder kept (desk/hub/core/view.rs `held_window`, #302).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub held_before: Vec<(String, u64, u64)>,
     pub created: u64,
@@ -207,12 +207,12 @@ pub struct DeskItem {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub route_failed: String,
     /// Why Cue couldn't start a new session for it (a ROUTE to new, or your Start now): it shows "couldn't start"
-    /// with a retry until a session takes it or you start it again. The lead is told at once (hub/desk_lead.rs).
+    /// with a retry until a session takes it or you start it again. The lead is told at once (desk/hub/lead/run.rs).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub start_failed: String,
     /// The Desk lead paused it (#365, PAUSE:): when (secs) and why. Its holder keeps it and its place, stopped at a
     /// clean point; it isn't asked "Done?" and the lead isn't told it stopped, until RESUME: (or a new route, or its
-    /// DONE) clears it. Shown as "paused" while it's at work (hub/desk.rs `shown`). Saved.
+    /// DONE) clears it. Shown as "paused" while it's at work (desk/hub/core/desk.rs `shown`). Saved.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub paused: Option<(u64, String)>,
     /// Put on the held shelf (#385): when (secs), by whom ("You", or the lead's name as you asked it), and why. Set
@@ -235,14 +235,14 @@ pub struct DeskItem {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reopened: Option<(u64, usize)>,
     /// Each time its holder said DONE for it: kept, so the lead's chat shows a card for each, after a restart too
-    /// (hub/desk_checks.rs).
+    /// (desk/hub/lead/checks.rs).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub checks: Vec<DeskCheck>,
     /// What its holder said as each turn ended while at work on it, oldest first (the last `SAID_KEPT`): the
     /// session's replies on its page's Thread, between your words and the lead's hand-offs (its Steps).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub said: Vec<Said>,    /// When it first reached each of its six steps (ms; 0: not yet): picked up, building, tests, commit, landing, to
-    /// check (#409, hub/desk_steps.rs). The Desk's Progress view shows them, and how long each took. Saved.
+    /// check (#409, desk/hub/core/steps.rs). The Desk's Progress view shows them, and how long each took. Saved.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub steps: Vec<u64>,
     /// Each time it went back from its finish to be redone (#421): sent back, its landing failed, its work taken out.
@@ -251,18 +251,18 @@ pub struct DeskItem {
     pub backs: Vec<StepBack>,
     /// You asked its holder a question from its page while it was to check or done (#475): the state it was in, and
     /// your question. Its holder is at work answering; the turn that answers puts it back where it was, or, if that
-    /// turn changed its code (or said DONE), it lands again as a new round (hub/desk_asked.rs). Saved.
+    /// turn changed its code (or said DONE), it lands again as a new round (desk/hub/turn/asked.rs). Saved.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub asked: Option<(String, String)>,
     /// Its holder's question to you (#475): what its turn ended asking you (a pick, a yes or no, something to tell
     /// it), in one line, and when (ms). It waits on you with it while it's at work, through any later turns of its
-    /// holder's, until you answer: you write to that session, or act on the item (desk_stall.rs `question_for_you`).
+    /// holder's, until you answer: you write to that session, or act on the item (desk/hub/stall/stall.rs `question_for_you`).
     /// Saved.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub asks: Option<(String, u64)>,
 }
 
-/// One time item went back to be redone (#421, hub/desk_steps.rs): the step it was at, why (as its DONE's card keeps
+/// One time item went back to be redone (#421, desk/hub/core/steps.rs): the step it was at, why (as its DONE's card keeps
 /// it), when, and that round's step stamps.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct StepBack {
@@ -354,7 +354,7 @@ pub struct CommitWait {
     pub error: String,
 }
 
-/// Where an item's finishing is (hub/desk_finish.rs).
+/// Where an item's finishing is (desk/hub/landing/finish.rs).
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct Finish {
     /// "commit" (being made) | "line" (in its own copy, waiting in the landing line: `wait` says on what) |
@@ -382,7 +382,7 @@ pub struct Finish {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub wait: String,
     /// When it began to wait for its work to be on main (ms): past `desk_finish::WAIT_ASK_MS` it's asked of you. In
-    /// review, when its pull request was first seen merged but not on main (hub/desk_pr.rs).
+    /// review, when its pull request was first seen merged but not on main (desk/hub/landing/pr.rs).
     #[serde(default, skip_serializing_if = "is_zero_u64")]
     pub wait_from: u64,
     /// What stopped it, in one plain line (git's own words go in `log`): the window shows it as needing you, or as
@@ -411,7 +411,7 @@ pub struct Finish {
     /// Landed with no check to run (its repository has none): shown as "landed, not checked".
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub unchecked: bool,
-    /// Its pull request's link, once the Desk opened one (step "review", hub/desk_pr.rs).
+    /// Its pull request's link, once the Desk opened one (step "review", desk/hub/landing/pr.rs).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub pr: String,
     /// The branch its pull request goes into ("main"): once merged, the main checkout is brought up to it only while
@@ -428,13 +428,13 @@ pub struct Finish {
     /// It went to check with nothing to install, its own work outside the app (mocks, notes, plans, #408): its line
     /// says "Mocks · open the canvas", not "In the app" (#436).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub mocks: bool,    /// How many of its changes on its own branch aren't on main (#448, hub/desk_unlanded.rs): it stays to check,
+    pub mocks: bool,    /// How many of its changes on its own branch aren't on main (#448, desk/hub/landing/unlanded.rs): it stays to check,
     /// saying so, and isn't closed till they are.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub unlanded: usize,
 }
 
-/// An item's own copy of its repository (hub/desk_trees.rs): the main checkout it's from, the copy's folder, its
+/// An item's own copy of its repository (desk/hub/landing/trees.rs): the main checkout it's from, the copy's folder, its
 /// branch ("desk/<item>"), the main line's commit it started from, and which of the repository's copies it is (1..).
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct ItemTree {
@@ -468,7 +468,7 @@ pub struct BusyFile {
 }
 
 /// A DONE for an item: when (ms), who did it, the files it touched (filled in a moment later, read from its logs:
-/// hub/desk_checks.rs), and whether it was made in the folder this Cue is built from.
+/// desk/hub/lead/checks.rs), and whether it was made in the folder this Cue is built from.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct DeskCheck {
     pub at: u64,
@@ -552,7 +552,7 @@ const HOLDER_DISPATCH: &[&str] = &[
     "teammates", "the review", "review request", "reviewer", "finding", "findings", "canvas", "as your pick", "no change to cue",
     "left as they are", "left as it is", "alone", "rebase", "rebased", "rebasing", "build cache", "install built", "built from", "the test", "the tests", "new test", "new tests", "tests file", "its test", "its tests",
 ];
-/// A source file named in a call ("`desk_finish.rs`"): how it was built, not what the owner gets.
+/// A source file named in a call ("`desk/hub/landing/finish.rs`"): how it was built, not what the owner gets.
 const CODE_FILES: &[&str] = &[".rs", ".js", ".mjs", ".ts", ".css", ".html", ".json", ".toml", ".swift", ".sh", ".py"];
 
 /// Whether a call's words `text` are dispatch work, not a choice worth the owner's glance: `lead`, the Desk lead's
@@ -622,93 +622,30 @@ pub struct DeskDelivery {
 pub struct Desk {
     /// Independent Desks. Older project-keyed Desks resolve through the fallback in `project_of`.
     pub spaces: HashMap<String, DeskSpace>,
-    /// Sessions being selected as leads, reserved across concurrent Desk changes.
-    pub lead_claims: HashMap<String, String>,
     pub items: Vec<DeskItem>,
     pub decisions: Vec<DeskDecision>,
     /// Each Desk's lead, keyed by its identity.
     pub lead: HashMap<String, Lead>,
     /// Decisions made since Cue started, for unique ids.
     pub next: u64,
-    /// Projects whose lead is being started or resumed, with the messages that arrived while it was starting, sent
-    /// once it's up.
-    pub starting: HashMap<String, Vec<Waiting>>,
-    /// Each project's new items its lead hasn't been told of yet: told in one message a moment after the first.
-    pub fresh: HashMap<String, Vec<String>>,
-    /// Sessions whose context the lead said to keep as it is (CONTEXT: … -> keep): session → (when it said so, its
-    /// decision, whether it was at work then). Cue asks no hand-off note of it for the idle stretch it was in then,
-    /// or, said while it worked, the one after that turn (stamped as the turn ends: hub/desk.rs; hub/cache_tick.rs).
-    pub keep: HashMap<String, (u64, String, bool)>,
     /// The highest item number given since Cue started, so one dropped meanwhile isn't given again.
     pub item_high: std::sync::atomic::AtomicU64,
     /// Each project's sessions on its Desk, in the order they joined: the ones its lead may route to (saved:
     /// db/desk.rs). You add and remove them; a session given an item joins, as does one you say yes to using.
     pub members: HashMap<String, Vec<String>>,
-    /// Sessions whose compacting failed (an error, or no end in 15 minutes), and when: a session on a Desk with a live
-    /// lead is asked for a hand-off note instead, and goes on fresh from it (hub/cache_tick.rs full_due). Not saved.
-    pub compact_failed: HashMap<String, u64>,
-    /// Items a lead said DONE on that its DONE couldn't close, and how each was ("state@updated") when Cue told it
-    /// why (hub/desk_said.rs lead_done): a lead saying it again of an unchanged item isn't answered again. Not saved.
-    pub done_told: HashMap<String, String>,
-    /// A holder's turn that said DONE while its background agents or crew were still at work (#393), by its session:
-    /// acted on once they've finished (hub/desk_heard.rs `held_done`), at its next turn's end or as its background
-    /// agents are seen done (hub/activity.rs `watch_helpers`). Not saved.
-    pub done_held: HashMap<String, String>,
-    /// What a project's lead is to be told of its routes Cue couldn't make (hub/desk_said.rs `route_answers`, #248) when it
-    /// couldn't be sent then, as the lead was asking the user something: told in its next Desk block instead, and
-    /// cleared once that reaches it (`desk_told`). Not saved.
-    pub routes_held: HashMap<String, String>,
-    /// A lead's ASKs Cue sent back to it to decide itself while its Desk's Away was in force (#471), by the lead's
-    /// session: (the question, its item). Its next calls are marked with them (hub/desk_away.rs `answered_by_calls`).
-    /// Not saved.
-    pub away_asked: HashMap<String, Vec<(String, Option<String>)>>,
-    /// Items whose holder's turn ended on them with no DONE, and Cue asked it once ("Done? …"): item → (that holder,
-    /// the item's `updated` then). The turn that answers isn't asked again; the item changed since (sent again, routed)
-    /// is a new stall (hub/desk_stall.rs). Not saved.
-    pub nudged: HashMap<String, (String, u64)>,
-    /// Items whose holder said what's left of them, or what they wait on (item → (that holder, the item's `updated`
-    /// then)): not asked "Done?" again until the item changes (hub/desk_stall.rs). Not saved.
-    pub left_said: HashMap<String, (String, u64)>,
-    /// Items whose holder the Desk lead was told is stuck mid-turn (hub/desk_stuck.rs): item → (that holder, the
-    /// stuck spell: when it last showed output, or the prompt it sits on). Told once a spell; gone once it moves.
-    /// Not saved.
-    pub stuck_told: HashMap<String, (String, String)>,
-    /// What the Desk itself sent each session lately (session → its last few messages): a prompt it takes that isn't
-    /// one of these was typed by you (hub/desk_asked.rs). Not saved.
-    pub sent: HashMap<String, Vec<String>>,
-    /// Your own words to each lead from the Desk lately (lead session → your last few messages): a turn answering one
-    /// of them is one you asked (UNPARK, #499). Not saved.
-    pub yours: HashMap<String, Vec<String>>,
-    /// When Cue last sent each working item to its holder (item → (holder, ms)): a turn that ended before it isn't a
-    /// stall on it. Not saved: after a restart, `held_from` stands in.
-    pub sent_at: HashMap<String, (String, u64)>,
     /// What builds and installs this Cue with a finished item's commit: the app's own (self_install.rs) unless a test
     /// put another in. Not saved.
     pub installer: InstallerSlot,
     /// The program a pull request is opened and read with: GitHub's gh unless a test put a fake in. Not saved.
     pub gh: String,
-    /// When Cue last read each item's pull request (ms): it looks once a minute. Not saved.
-    pub pr_looked: HashMap<String, u64>,
-    /// Reads of each item's pull request that failed in a row: it says so only from the third. Not saved.
-    pub pr_misses: HashMap<String, u32>,
     /// How long a push, a fetch or a gh call may take (ms; 0 for a minute): a test's shorter. Not saved.
     pub net_cap_ms: u64,
-    /// Finishing items whose commit is being made now, and "tick" while the finishing tick runs: one run of each at a
-    /// time (hub/desk_finish.rs). Not saved.
-    pub finish_claims: HashSet<String>,
-    /// Each main checkout's HEAD as Cue last looked for a commit that takes a finished item's work back out
-    /// (hub/desk_finish.rs `taken_out_tick`). Not saved: the first look after a start only notes it.
-    pub seen_heads: HashMap<String, String>,
     /// Dropped items' copies kept with their work, listed on their Desk (saved: db/desk.rs).
     pub kept: Vec<KeptTree>,
-    /// Circles in the waits list (hub/desk_waits.rs), by their key: when each was found, and whether the lead was told.
-    /// Dropped once the circle is gone. Not saved: after a restart a circle still standing is found and told again.
-    pub circles: HashMap<String, (u64, bool)>,
     /// When each Desk's list of what its lead moved (#374) was last cleared (ms; saved: db/desk.rs).
     pub moves_cleared: HashMap<String, u64>,
-    /// Each repository's copies whose work is already on its main line, found once a launch for you to remove
-    /// (hub/desk_copies.rs, #376). Not saved.
-    pub old_copies: HashMap<String, crate::hub::OldCopies>,
+    /// What the Desk keeps only while Cue runs (desk/state.rs): never saved, empty after a restart.
+    pub run: super::state::DeskRun,
 }
 
 /// How an install is going, as the installer says: its tag and commit, its step ("building" | "installing" |

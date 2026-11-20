@@ -1,4 +1,4 @@
-//! The Desk's one list of waits (#250, hub/desk_waits.rs): a queued item is in it, saying what it waits on; a circle
+//! The Desk's one list of waits (#250, desk/hub/core/waits.rs): a queued item is in it, saying what it waits on; a circle
 //! in it is found, shown and told to the lead once; and a wait is cleared by cutting its link, in place of a plain
 //! "Try again".
 

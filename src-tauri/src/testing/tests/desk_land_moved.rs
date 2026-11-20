@@ -1,4 +1,4 @@
-//! An item's copy whose branch was moved onto a rewritten main line (hub/desk_trees.rs, land): the commit it was
+//! An item's copy whose branch was moved onto a rewritten main line (desk/hub/landing/trees.rs, land): the commit it was
 //! made from is gone from its history, so it lands from where its branch meets the main line now, not as a clash.
 
 use super::desk_commit::{ends, item, routed_with};

@@ -10,7 +10,7 @@ impl Hub {
     /// background agents work: the note would be stale in minutes. What held it is counted (insight_events).
     pub(super) fn hand_off_ahead(&self, o: &Origin, tokens: u64, by: u8) {
         let sid = &o.session_id;
-        let held = |why: &str| crate::ipc::record_insight(sid, "ahead", "held", why, tokens);
+        let held = |why: &str| crate::hub::record_insight(sid, "ahead", "held", why, tokens);
         // A message of yours kept in Cue for it counts too: the ask would go in its place.
         let busy = self.read(|st| st.sessions.state(sid).as_deref() != Some("waiting") || st.sessions.compacting_since(sid) > 0 || st.sessions.held(sid).is_some());
         if busy {
@@ -33,13 +33,13 @@ impl Hub {
                 None => return held("unseen"),
             }
         }
-        let k = super::desk_lead::context_k(tokens);
-        match crate::ipc::handoff_cue_ahead(self, sid, by) {
+        let k = crate::desk::hub::lead::run::context_k(tokens);
+        match crate::hub::handoff_cue_ahead(self, sid, by) {
             Err(e) => held(&e),
             // Asked by the Desk's rules: its Desk says so.
-            Ok(_) if by == crate::ipc::AHEAD_DESK => self.desk_cue_asked(sid, &format!("{k}, cache ending")),
-            Ok(_) if by == crate::ipc::AHEAD_FULL => {
-                let failed = self.read(|st| st.desk.compact_failed.contains_key(sid));
+            Ok(_) if by == crate::hub::AHEAD_DESK => self.desk_cue_asked(sid, &format!("{k}, cache ending")),
+            Ok(_) if by == crate::hub::AHEAD_FULL => {
+                let failed = self.read(|st| st.desk.run.compact_failed.contains_key(sid));
                 let why = if failed { format!("{k}, compacting failed") } else { format!("{k}, over the {}k mark", crate::config::desk_handoff_tokens() / 1000) };
                 self.desk_cue_asked(sid, &why);
             }
@@ -90,12 +90,12 @@ mod tests {
         // Ticked, a note already written ahead: not again.
         waiting("e1", hour - 60_000, 150_000, 3600);
         crate::db::ahead_watch("e1", true);
-        crate::db::handoff_sent("e1", crate::ipc::CUE_HANDOFF, false, crate::ipc::AHEAD_SESSION);
+        crate::db::handoff_sent("e1", crate::hub::CUE_HANDOFF, false, crate::hub::AHEAD_SESSION);
         // Ticked, but it already continued in a fresh session (still open, its cache renewed by the note): never
         // again, a second note would write over where it continued.
         waiting("k1", hour - 60_000, 150_000, 3600);
         crate::db::ahead_watch("k1", true);
-        crate::db::handoff_sent("k1", crate::ipc::CUE_HANDOFF, false, crate::ipc::AHEAD_SESSION);
+        crate::db::handoff_sent("k1", crate::hub::CUE_HANDOFF, false, crate::hub::AHEAD_SESSION);
         crate::db::handoff_continued("k1", "k2");
         // Ticked, but it's asking you something now: held as busy.
         let f = waiting("f1", hour - 60_000, 150_000, 3600);
@@ -126,11 +126,11 @@ mod tests {
         // Taken back instead: nothing kept, nothing recorded as asked.
         let w = waiting("w1", hour - 60_000, 300_000, 3600);
         hub.mark_state(&w, "working");
-        assert_eq!(crate::ipc::handoff_cue_ahead(&hub, "w1", crate::ipc::AHEAD_SESSION), Err("busy".to_string()));
+        assert_eq!(crate::hub::handoff_cue_ahead(&hub, "w1", crate::hub::AHEAD_SESSION), Err("busy".to_string()));
         assert!(hub.read(|st| st.sessions.held("w1")).is_none() && crate::db::handoff("w1").is_none());
         // You pressing Write hand-off now while it works: kept for when it's free, as anything you send.
-        assert!(crate::ipc::handoff_cue_ahead(&hub, "w1", crate::ipc::AHEAD_YOU).unwrap().starts_with("kept in Cue"));
-        assert_eq!(crate::db::handoff("w1").map(|k| k.ahead), Some(crate::ipc::AHEAD_YOU));
+        assert!(crate::hub::handoff_cue_ahead(&hub, "w1", crate::hub::AHEAD_YOU).unwrap().starts_with("kept in Cue"));
+        assert_eq!(crate::db::handoff("w1").map(|k| k.ahead), Some(crate::hub::AHEAD_YOU));
 
         // In a tmux pane showing Claude Code's box: empty, it's asked for its note (ahead, by its tick); with
         // something typed in it, held and nothing typed.
@@ -161,7 +161,7 @@ mod tests {
             assert_eq!(events("t1"), ["shown:session"]);
             assert!(screen(&empty).contains("Hand off: write a short note") && screen(&empty).contains("HANDOFF-t1.md"), "{}", screen(&empty));
             let h = crate::db::handoff("t1").unwrap();
-            assert_eq!((h.skill.as_str(), h.ahead), (crate::ipc::CUE_HANDOFF, crate::ipc::AHEAD_SESSION));
+            assert_eq!((h.skill.as_str(), h.ahead), (crate::hub::CUE_HANDOFF, crate::hub::AHEAD_SESSION));
             hub.cache_tick();
             assert_eq!(events("t1"), ["shown:session"], "asked once");
             for n in [n1, n2] {
@@ -227,7 +227,7 @@ mod tests {
         // The lead said to keep this one's context: left be for this idle stretch.
         waiting("dkeep", "/x/shop", 150_000);
         holds("dkeep", "working");
-        hub.write(|st| st.desk.keep.insert("dkeep".into(), (now_ms(), "k1".into(), false)));
+        hub.write(|st| st.desk.run.keep.insert("dkeep".into(), (now_ms(), "k1".into(), false)));
         // Every hold still applies: busy, compacting, a message of yours kept for it, a draft, a note already asked.
         let busy = waiting("dbusy", "/x/shop", 150_000);
         holds("dbusy", "working");
@@ -243,7 +243,7 @@ mod tests {
         crate::db::set_draft("s:ddraft", "half a thought", &serde_json::json!([]));
         waiting("dnote", "/x/shop", 150_000);
         holds("dnote", "working");
-        crate::db::handoff_sent("dnote", crate::ipc::CUE_HANDOFF, false, crate::ipc::AHEAD_DESK);
+        crate::db::handoff_sent("dnote", crate::hub::CUE_HANDOFF, false, crate::hub::AHEAD_DESK);
         // No lead in its project: as before (not ticked, Settings off: nothing).
         waiting("dnolead", "/x/other", 150_000);
         holds("dnolead", "working");

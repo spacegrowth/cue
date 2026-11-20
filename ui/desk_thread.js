@@ -14,15 +14,15 @@ const deskUnpend = (id, p) => deskPending.set(id, (deskPending.get(id) || []).fi
 /** Pending message `p`'s step on item `i` (Desk `d`), once the hub has it: yours, in the same words, from when it went
  *  on. null till then. */
 const deskPendStep = (i, d, p) => (p.text.trim() && deskItemLog(i, d).find((c) => !c.call && c.by === "You" && c.text.trim() === p.text.trim() && (c.delivery?.at_ms || deskMs(c.at) + 999) >= p.at)) || null;
-/** A step that hands the item to someone (hub/desk.rs routed_text, give): on its Thread as a Hand-off. */
+/** A step that hands the item to someone (desk/hub/core/desk.rs routed_text, give): on its Thread as a Hand-off. */
 const DESK_HANDOFF = /^(Routed|Gave|Started|Sent|Queued|Reopened) #/;
-/** The lead unsticking an item itself (hub/desk_unstick.rs, #347): closed as on main, its copy taken back, moved up
+/** The lead unsticking an item itself (desk/hub/stall/unstick.rs, #347): closed as on main, its copy taken back, moved up
  *  in the landing line, started now. On its Thread as a record line. */
 const DESK_UNSTUCK = /^(Closed|Took back|Moved|Started) #\S+(:| now| up|'s copy)/;
 /** Item `i`'s steps and calls, oldest first: today's (newest first in `decisions`) after the older ones. */
 const deskItemLog = (i, d) => [...(d.older || []), ...[...(d.decisions || [])].reverse()].filter((c) => c.item_id === i.id);
 /** Item `i`'s Thread, oldest first: the words it was added with, then what you wrote about it (a send-back says so), the
- *  hand-offs, and what its holder said as each turn ended (hub/desk.rs replied); last, its holder at work now. */
+ *  hand-offs, and what its holder said as each turn ended (desk/hub/core/desk.rs replied); last, its holder at work now. */
 function deskThread(i, d) {
   const mine = deskItemLog(i, d).filter((c) => !c.call);
   const you = (i.from || "you") === "you";
@@ -119,7 +119,7 @@ function deskLiveTurn(i) {
   if ((i.said || []).some((r) => r.at >= (turn.at_ms || 0))) return null;
   const steps = turn.items.filter((x) => x.t === "step"), going = steps.filter((x) => !x.done).at(-1);
   const done = turnSummary(steps.filter((x) => x.done));
-  // Its words as the saved reply will have them (hub/desk_heard.rs replied): the Desk's own lines left out, what a
+  // Its words as the saved reply will have them (desk/hub/turn/heard.rs replied): the Desk's own lines left out, what a
   // Stop hook made it write after its answer apart (#395).
   const say = (hooked) => deskSaidWords(turn.items.filter((x) => x.t === "say" && hookedPart(turn, x) === hooked).map((x) => x.text).join("\n\n"));
   let words = say(false), after = turn.hooked_ms ? say(true) : "";
@@ -130,7 +130,7 @@ function deskLiveTurn(i) {
 const deskSaidHas = (i, line) => (i.said || []).some((r) => r.text.includes(line) || r.after?.includes(line));
 /** Whether `text` names item `id` as "#id" (not the start of a longer number or name), as the hub reads it. */
 const deskNames = (text, id) => new RegExp(`#${String(id).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w-])`).test(text || "");
-/** The lines that are the Desk's (DONE:, ITEM:, DECIDED: …), as the hub knows them (hub/desk_heard.rs desk_line_start). */
+/** The lines that are the Desk's (DONE:, ITEM:, DECIDED: …), as the hub knows them (desk/hub/turn/heard.rs desk_line_start). */
 const DESK_LINE = /^(?:ITEM|ROUTE|ASK|DONE|CONTEXT|DESIGNS|TITLE|SEE|SPLIT|CUT|MERGE|NOTE|FEATURE|CLOSE|TAKE COPY|LAND FIRST|START|PARK|HOLD|UNPARK|PAUSE|RESUME|ANSWER|PASS|[Dd][Ee][Cc][Ii][Dd][Ee][Dd])[*`]*\s*:/;
 /** A turn's words as its saved reply has them: without the Desk's own lines. */
 const deskUnmarked = (l) => l.trim().replace(/^`+/, "").replace(/^[-*+ ]+/, "").replace(/^\d+[.)]\s+[-*+ ]*/, "").replace(/^`+/, "");
@@ -161,7 +161,7 @@ function deskHookFold(i, r) {
 const deskTurnLink = (r) => (r.sid ? `<div class="dk-tl"><button class="dk-tlink" data-desk-turn="${esc(r.sid)}" data-at="${r.at}">This turn in ${esc(r.by || "its session")} ›</button></div>` : "");
 /** What you wrote on a Thread, in your words; for a send-back, how many pictures went with it, quiet under them. */
 /** Item `i`'s send-backs (steps in `log`) and how many pictures went with each. The hub counts them on the DONE a
- *  send-back answers (hub/desk.rs send_back: `back_pics` on the last DONE then), so by time, not words: a DONE's
+ *  send-back answers (desk/hub/core/desk.rs send_back: `back_pics` on the last DONE then), so by time, not words: a DONE's
  *  count goes to the last send-back after it and before the next DONE (a later one on the same DONE overwrote it). */
 function deskBackPics(i, d, log) {
   const out = new Map(), checks = (d.checks || []).filter((k) => k.id === i.id).sort((a, b) => a.at - b.at);

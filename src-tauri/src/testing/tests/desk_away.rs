@@ -1,4 +1,4 @@
-//! Away mode on a Desk (hub/desk_away.rs): turned on, its rules in the lead's summary and the lead told; ended by its
+//! Away mode on a Desk (desk/hub/away/away.rs): turned on, its rules in the lead's summary and the lead told; ended by its
 //! end time (with no turn ending) or at a Desk session's turn end; turned off. Ask me before still waits for the owner
 //! while it's on; a session or lead a usage limit stopped is skipped and carried on after the reset.
 

@@ -1,7 +1,7 @@
 // Cue UI desk — Progress, the popover of Items (#409, mock J2 of the "Live progress" canvas page): the whole Desk, one row
 // per open item, the six steps as columns named once, each row's marks joined by a line with how long each step took,
 // and a Now column saying what it's doing or waits on (with its one button when it needs you).
-// Its steps come from Cue (hub/desk_steps.rs `steps`): it redraws as Cue's state comes in, the current step's time
+// Its steps come from Cue (desk/hub/core/steps.rs `steps`): it redraws as Cue's state comes in, the current step's time
 // counts up with the other live times (tickAges). Opens as a popover over the Desk from Progress in the Items head.
 // Loaded after desk_list.js (index.html, mini.html).
 

@@ -128,7 +128,7 @@ const deskInstallWait = (i) => i?.state === "to_check" && i.finish?.step !== "ch
  *  item with one went through that, so it's in the installed Cue: never "waiting for install". */
 const deskFinCommit = (i) => (i?.finish ? i.finish.commit || i.commit || "" : "");
 /** Item `i` to check with its files not committed (its session is on another machine, or Undo put it back): not on
- *  main yet, so no Looks right. Its button commits them to main and closes it (hub/desk_commit.rs, Looks right's
+ *  main yet, so no Looks right. Its button commits them to main and closes it (desk/hub/landing/commit.rs, Looks right's
  *  commit). One with no files changed has nothing to land: Looks right as ever. */
 const deskUncommitted = (i) => i?.state === "to_check" && !i.finish && !i.commit && (i.files || []).length > 0;
 /** Item `i`'s DONE on its way into the app: Cue commits, builds and installs it. Nothing for you to do yet. */
@@ -139,14 +139,14 @@ const deskFinishing = (i) => i?.state === "finishing";
 function deskFinStep(i) {
   const f = i.finish || {};
   const since = f.at ? ` · since ${clockAt(f.at)}` : "";
-  // In its own copy, waiting its turn to land (hub/desk_trees.rs): one item lands at a time.
+  // In its own copy, waiting its turn to land (desk/hub/landing/trees.rs): one item lands at a time.
   if (f.step === "line") return `In the landing line${f.wait ? ` · waits: ${esc(f.wait)}` : ""}${since}`;
-  // Its pull request is open (hub/desk_pr.rs): it lands once that's merged.
+  // Its pull request is open (desk/hub/landing/pr.rs): it lands once that's merged.
   if (f.step === "review") return `In review${f.wait ? ` · ${esc(f.wait)}` : ""}${since}`;
   // Committed, and not on main yet: where it is ("on side, not main").
   if (f.step === "landing") return `Committed, not on main yet${f.wait ? ` · ${esc(f.wait)}` : ""}${since}`;
   if (f.step === "queued") {
-    // Cue installs half an hour after the first item waits (hub/desk_finish.rs), once no session is mid-turn.
+    // Cue installs half an hour after the first item waits (desk/hub/landing/finish.rs), once no session is mid-turn.
     const due = state.desk?.install_at || 0;
     if (!due) return "On main · waiting for the next install";
     return due > now() ? `On main · installs at ${clockAt(due)} · <span data-until="${due}">${untilIn(due)}</span>` : "On main · installs once no session is mid-turn";
@@ -154,7 +154,7 @@ function deskFinStep(i) {
   const what = { checking: "Checking before it lands", check_failed: "Check failed", building: "On main · building Cue", installing: "On main · installing Cue", starting: "Installed · Cue is restarting" }[f.step] || "Committing";
   return `${what}${since}`;
 }
-/** How many copies of one repository Desk `d`'s items work in at once (its How work lands, lands.rs). */
+/** How many copies of one repository Desk `d`'s items work in at once (its How work lands, desk/lands.rs). */
 const deskCopies = (d) => d?.lands?.set?.at_once || 3;
 /** A dropped item's copy that had work in it (`k`: { id, title, path, branch, at }), kept on disk until you Remove it.
  *  Remove takes two clicks: it deletes the copy and its branch. */
@@ -178,7 +178,7 @@ function deskLane(i) {
   const step = i.finish?.step || "commit";
   return DESK_INSTALL_STEPS.includes(step) ? "install" : DESK_LANDING_STEPS.includes(step) ? "landing" : "";
 }
-/** The landing line's order (hub/desk_trees.rs desk_land_line): the one being checked first; then those the lead moved
+/** The landing line's order (desk/hub/landing/trees.rs desk_land_line): the one being checked first; then those the lead moved
  *  up (LAND FIRST), the latest moved first; then the oldest DONE first. Committed and waiting to be on main from a
  *  shared folder (step "landing", no copy) after them. */
 const deskLandRank = (i) => ({ checking: 0, landing: 2 })[i.finish?.step] ?? 1;
@@ -201,7 +201,7 @@ function deskLaneStep(i, ahead) {
 }
 /** The Waiting to install lane's head, right side: when the next install is, counting down ("9:05pm · in 12m"), and
  *  Install now while anything waits for it. Cue installs on its own half an hour after the first of them, once no
- *  session is mid-turn (hub/desk_finish.rs). The install is Cue's, one for every Desk. */
+ *  session is mid-turn (desk/hub/landing/finish.rs). The install is Cue's, one for every Desk. */
 function deskInstallHead(items) {
   const waiting = items.find((i) => deskFinishing(i) && i.finish?.step === "queued");
   if (!waiting) return "";
@@ -229,7 +229,7 @@ function deskItemsWithRequests(d, taskApprovals = deskTaskApprovals(d)) {
 const deskWaitingItems = (d, taskApprovals) => deskItemsWithRequests(d, taskApprovals).filter(deskWaits);
 /** Items you've opened since they came back to check: id → its `updated` then (kept across restarts).
  *  SHORTCUT: kept in this window only, so another window or device still shows them as landed; move to a `seen`
- *  stamp on the item (hub/desk.rs, a desk_seen command) when the Desk is shown anywhere else. */
+ *  stamp on the item (desk/hub/core/desk.rs, a desk_seen command) when the Desk is shown anywhere else. */
 const deskSeen = (() => { try { return JSON.parse(localStorage.getItem("cue.deskSeen") || "{}"); } catch { return {}; } })();
 /** Just landed: back to check and not opened since (it stands out till you open it). */
 const deskLanded = (i) => i.state === "to_check" && !deskInstallWait(i) && deskSeen[i.id] !== i.updated;

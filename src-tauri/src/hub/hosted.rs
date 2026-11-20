@@ -37,11 +37,11 @@ impl Hub {
     pub(crate) fn run_hosted(&self, origin: &Origin, start: Start, with: &HostedStart) -> Result<Origin, String> {
         let agent = Agent::named(&origin.harness).ok_or("Cue can only host Claude Code, Pi and Codex")?;
         // A Claude lead starts with the team skill (team_out.rs), new or resumed: merged into a prompt you append; with
-        // what its project counts one-way (Ask me before, one_way.rs), as the setting is at this start.
-        // A project's Desk lead (desk_lead.rs) gets the Desk's instructions instead: it only hands work out, so no crew.
-        let kinds = crate::one_way::kinds(&super::crew_log::project_shown_for(origin));
+        // what its project counts one-way (Ask me before, desk/one_way.rs), as the setting is at this start.
+        // A project's Desk lead (desk/hub/lead/run.rs) gets the Desk's instructions instead: it only hands work out, so no crew.
+        let kinds = crate::desk::one_way::kinds(&super::crew_log::project_shown_for(origin));
         let skill = match self.desk_skill(&origin.session_id) {
-            Some(desk) => [desk.to_string(), crate::one_way::ask_first(&kinds)].join("\n").trim_end().to_string(),
+            Some(desk) => [desk.to_string(), crate::desk::one_way::ask_first(&kinds)].join("\n").trim_end().to_string(),
             None => super::team::out::skill_for(&kinds),
         };
         // Your name (owner.rs), so what it writes about you uses it.
@@ -92,7 +92,13 @@ impl Hub {
     /// milliseconds), handed over (the session started again first if it's paused), then settled by Claude itself:
     /// taken (`Taken`), or not sent if it couldn't be handed over or Claude exits first. Never waits on Claude.
     /// `busy`: it's mid-turn, so it's queued until Claude reads it at its next step.
+    /// Under the session's typing gate, as `send_saved`: a message sent to it meanwhile (a reply, the box) waits
+    /// until this one is handed over. Never called with the gate held (the gate's callers go by
+    /// `send_to_hosted_held`).
     pub(crate) fn send_to_hosted(&self, sid: &str, typed: &str, saved: &[crate::uploads::Saved], busy: bool) -> Result<String, String> {
+        // One message at a time into a session: another being sent to it goes first (see Hub::typing).
+        let gate = self.typing_gate(sid);
+        let _typing = super::send::wait_turn(&gate)?;
         self.send_to_hosted_held(sid, typed, saved, busy, None)
     }
 
@@ -288,9 +294,9 @@ impl Hub {
             _ => (true, true),
         };
         if failed {
-            self.write(|st| st.desk.compact_failed.insert(sid.to_string(), now_ms()));
+            self.write(|st| st.desk.run.compact_failed.insert(sid.to_string(), now_ms()));
         } else if done {
-            self.write(|st| st.desk.compact_failed.remove(sid));
+            self.write(|st| st.desk.run.compact_failed.remove(sid));
         }
         self.hosted_compacting(sid, done);
     }

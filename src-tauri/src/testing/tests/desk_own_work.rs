@@ -1,4 +1,4 @@
-//! Work its holder did outside the copy Cue gave it (hub/desk_own_work.rs, #481): an item started without a copy,
+//! Work its holder did outside the copy Cue gave it (desk/hub/landing/own_work.rs, #481): an item started without a copy,
 //! whose holder works on a branch it named itself, in a folder it made, or commits and removes the folder, is landed
 //! at its DONE like any other; and one whose commit Cue can't land never goes to check: back to its session,
 //! saying which commit and where.

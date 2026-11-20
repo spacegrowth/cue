@@ -1,5 +1,5 @@
-//! An item's commit, made as its holder says DONE (hub/desk_finish.rs, with Looks right's commit code in
-//! hub/desk_commit.rs): the item's files git says changed are committed at once (never pushed); a word never committed
+//! An item's commit, made as its holder says DONE (desk/hub/landing/finish.rs, with Looks right's commit code in
+//! desk/hub/landing/commit.rs): the item's files git says changed are committed at once (never pushed); a word never committed
 //! stops it and asks you; the item is to check with its commit's short hash, and Looks right only closes it. When
 //! another session at work is editing some of them, the commit waits, made on its own once they're free (across a
 //! restart too), and you're asked once it has waited 15 minutes.

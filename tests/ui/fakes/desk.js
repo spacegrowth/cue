@@ -256,7 +256,7 @@ CueBridge.area("desk", (w) => {
       w.changed();
       return "Asked its lead to undo it";
     },
-    // A step held while you were away (hub/desk_held.rs): answered, so it leaves its Desk's list.
+    // A step held while you were away (desk/hub/away/away_holds.rs): answered, so it leaves its Desk's list.
     desk_held_answer: ({ id }) => {
       const d = desk().projects.find((x) => (x.held || []).some((h) => h.id === id));
       if (!d) throw "that step was already answered or isn't held any more";

@@ -42,7 +42,7 @@ in the shared folder, where the missing files sat uncommitted.
 - First time. `905cc0e6` at 17:42, a hand commit by cue-200. Its own message says it pushed the whole
   shared `ui/desk.js` into main. That file called `deskApprovals`, `deskSessionRequestFoot`,
   `mateShownFiles` and `deskDeleteSessions`. None were on main. It was a window-only change, so Cue
-  served it to the running app at once (`ui_in_place`, `src-tauri/src/hub/desk_finish.rs` about lines
+  served it to the running app at once (`ui_in_place`, `src-tauri/src/desk/hub/landing/finish.rs` about lines
   292 to 325). The owner at 17:45, lead log line 237: "can yuo check why I am not able lick Desk ?".
   Fixed by `115c83d6` at 17:56.
 - Second time. `e6869d92` at 21:03. This was **the Desk's own commit** for item #182. It has the item
@@ -65,7 +65,7 @@ Main was broken three more times that day, without the Desk going dead:
 So main broke six times. Three of the six were the Desk's own commits.
 
 **Why the Desk's commit leaked.** A fix shipped at 14:54 to keep other sessions' edits out of an item's
-commit (`src-tauri/src/hub/desk_theirs.rs`). It reads other sessions' logs to learn what they changed.
+commit (`src-tauri/src/desk/hub/theirs/theirs.rs`). It reads other sessions' logs to learn what they changed.
 It has two holes:
 
 - It only reads logs in one format: Edit, Write and shell blocks (`read_edits`, about lines 109 to
@@ -98,7 +98,7 @@ runs the same commit step again. It hits the same wait.
 
 - `ui/desk.js` line 871: an item with a finish question gets the "Try again" button. "Looks right"
   needs the state `to_check` (line 302, and lines 879 to 882).
-- `src-tauri/src/hub/desk_finish.rs` line 18: the wait is 15 minutes. Line 235 writes the question
+- `src-tauri/src/desk/hub/landing/finish.rs` line 18: the wait is 15 minutes. Line 235 writes the question
   "Its commit has waited 15 minutes". Lines 601 to 622: Try again just reruns the commit.
 - Item #202 started waiting at 18:25 and was not ready to check until 21:03. That is 2 hours 38
   minutes. #203 started waiting in the same minute. #184 started waiting at 20:42.
@@ -167,7 +167,7 @@ line that triggered it. The Codex sessions could never be named, because their l
 
 **Cause.** Two causes, both silent.
 
-- Cue drops a route for an item that is done or finishing. `src-tauri/src/hub/desk.rs` lines 412 to
+- Cue drops a route for an item that is done or finishing. `src-tauri/src/desk/hub/core/desk.rs` lines 412 to
   414: the code returns with no message.
 - The lead once wrote its routes in the wrong form, with arrows and dashes Cue does not read.
 
@@ -210,7 +210,7 @@ or a yes from the owner. Last lines of those turns: "I'm waiting on the test run
 - Decision at 21:29: the lead told cue-124 to keep its turn open through the build, because "every stop
   so far was just 'still building'".
 - Decision at 20:36: a standing yes on "send fixes", to stop that kind of stop.
-- `src-tauri/src/hub/desk_stall.rs` lines 86 to 89 already spot phrases like "waiting on" and "waiting
+- `src-tauri/src/desk/hub/stall/stall.rs` lines 86 to 89 already spot phrases like "waiting on" and "waiting
   for". But `desk_stall.rs` lines 213 to 218 still send the lead a notice in that case.
 
 **Fix.**

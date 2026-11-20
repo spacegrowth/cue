@@ -1,4 +1,4 @@
-//! Steps held while you're away (hub/desk_held.rs): with Away on, a session's delete or push is held without stopping
+//! Steps held while you're away (desk/hub/away/away_holds.rs): with Away on, a session's delete or push is held without stopping
 //! it; the Desk lists each in plain words; once you answer, the session is sent them in the order it asked, and only
 //! what you allowed is let through, once. Nothing held runs before that.
 

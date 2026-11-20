@@ -81,7 +81,7 @@ pub fn agent_logs(path: &str) -> Vec<std::path::PathBuf> {
 /// The files the session itself changed from `from` until `until` (ms, by each log line's time): what its Edit,
 /// MultiEdit, Write and NotebookEdit calls name, and what its shell commands write (logs/shell_writes.rs:
 /// relative to its folder, or absolute). Its background agents' logs aren't read: those are its crew's files,
-/// counted as theirs (hub/desk.rs). A Claude Code log only (others: none).
+/// counted as theirs (desk/hub/core/desk.rs). A Claude Code log only (others: none).
 pub fn edited_between(path: &str, from: u64, until: u64) -> Vec<String> {
     edited_between_named(path, from, until).into_iter().map(|(f, _)| f).collect()
 }
@@ -128,7 +128,7 @@ fn script_writes_in(command: &str) -> Vec<String> {
 /// The paths an inline script (a Python heredoc, say) may write: when it opens a file to write (`open(…, 'w')`,
 /// `write_text`), each quoted string in it that reads as a file path (a name with an extension, no spaces).
 /// SHORTCUT: what it names, not what it wrote: a path it only read is in too. Looks right's sheet keeps only files git
-/// says changed (hub/desk_commit.rs) and you untick the rest; a real reader would follow the script's variables.
+/// says changed (desk/hub/landing/commit.rs) and you untick the rest; a real reader would follow the script's variables.
 fn script_writes(command: &str) -> Vec<String> {
     let writes = ["'w')", "\"w\")", "'a')", "\"a\")", "write_text(", "write_bytes("].iter().any(|m| command.contains(m));
     if !writes {

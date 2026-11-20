@@ -381,7 +381,7 @@ function deskLineHtml(line, inline) {
     return ln(`Folded ${ref(from, undefined, true)} into ${ref(to)}`, dot([titled(known(to)), why ? inline(why) : ""]));
   }
   if (m[1] === "NOTE") {
-    // "NOTE: #418 | words" (desk_route.rs note): who it went to, as Cue noted it ("note to cue-387"), else who holds it.
+    // "NOTE: #418 | words" (desk/hub/turn/route.rs note): who it went to, as Cue noted it ("note to cue-387"), else who holds it.
     const at = p[0].startsWith("#") && !p[0].includes(" ") && id(p[0]), words = body.slice(body.indexOf("|") + 1).trim();
     if (!body.includes("|")) return "";
     if (!at || !words) return "";
@@ -407,14 +407,14 @@ const deskNewlySaid = (title) => (title ? (state.desk?.projects || []).flatMap((
 /** Cue's message to the lead as quiet centred lines, when it's one of Cue's own (new items, or a DONE it couldn't act on);
  *  null for any other (chat/render.js chatHtml `you`). */
 const deskCueNote = (e) => deskNewItems(e) ?? deskDoneNotes(e) ?? deskStopNote(e) ?? deskFromSession(e) ?? deskAskAnswered(e);
-/** Cue telling the lead your answer to its ASK (hub/desk.rs desk_answered: "Your ASK[ about #12]: question\nThe answer:
+/** Cue telling the lead your answer to its ASK (desk/hub/core/desk.rs desk_answered: "Your ASK[ about #12]: question\nThe answer:
  *  …"): not drawn (#427), the question's card above already has your answer beside it. null for any other message.
  *  SHORTCUT: queued (the lead busy when it was sent) it shows as an empty "Queued" row; rare, a lead waits idle on its
  *  ASK. Upgrade: laterOwn skips a hidden note. */
 const deskAskAnswered = (e) => (/^Your ASK(?: about #\S+)?: [^\n]*\nThe answer: [^\n]*$/.test(String(e.text || "").replace(/^\s*<desk\b[\s\S]*?<\/desk>\s*/, "").trim()) ? `<i hidden></i>` : null);
-/** What Cue told the lead of an item that stopped (hub/desk_stall.rs stop_words: "#224 (title) stopped[, not committed]:
+/** What Cue told the lead of an item that stopped (desk/hub/stall/stall.rs stop_words: "#224 (title) stopped[, not committed]:
  *  holder ended its turn on it with no DONE…(files)… Its last line: …", then its words for the lead from "Settle it:
- *  ROUTE", not shown) or that it couldn't start a session for (hub/desk_lead.rs start_failed), as a card from Cue (#244):
+ *  ROUTE", not shown) or that it couldn't start a session for (desk/hub/lead/run.rs start_failed), as a card from Cue (#244):
  *  what happened, the item's icon, number and title (a click opens it), its holder and one plain line, its last line, and
  *  the files not committed folded. null for any other message. */
 function deskStopNote(e) {
@@ -436,7 +436,7 @@ function deskStopNote(e) {
     + (files.length ? `<details class="dk-sn-f"><summary>${files.length} file${files.length > 1 ? "s" : ""} not committed</summary><div class="dk-sn-fl">${files.map(esc).join("<br>")}</div></details>` : "")
     + `</div></div>`;
 }
-/** A session's words for the lead (#474: its TO LEAD: line, hub/desk_heard.rs to_lead_said: "From <name> on #<id> (title):\n
+/** A session's words for the lead (#474: its TO LEAD: line, desk/hub/turn/heard.rs to_lead_said: "From <name> on #<id> (title):\n
  *  <words>\nAnswer it with NOTE: …", or "From <name>:\n<words>\nIt holds no item here…" when it's on none) as a card:
  *  who it's from, the item it's about (a click opens it), its words. Cue's last line, for the lead, isn't shown. null for
  *  any other message. */
@@ -450,7 +450,7 @@ function deskFromSession(e) {
     + (id ? `<div class="dk-sn2">${deskItemRef(id, it?.kind || "", deskNum(it || { id }), it?.title || said)}</div>` : "")
     + `<div class="dk-sn3">${esc(words.trim()).replace(/\n/g, "<br>")}</div></div></div>`;
 }
-/** What Cue told the lead of a DONE it couldn't act on (hub/desk.rs lead_done: "#69 not closed: it's done already",
+/** What Cue told the lead of a DONE it couldn't act on (desk/hub/core/desk.rs lead_done: "#69 not closed: it's done already",
  *  a line each, then its words for the lead, not shown, ending "Don't say DONE for these again." as older notes did):
  *  a centred line an item, "Cue · not closed [task] Task #69 title · why", its number and title opening it. null for
  *  any other message. */

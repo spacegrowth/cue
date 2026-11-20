@@ -41,10 +41,10 @@ pub(crate) const TEAM_SKILL: &str = team_skill!(more_rules!());
 const TEAM_ON: &str = "(Crew: on. Split this into its independent parts and hand each to its own named background teammate, as your team instructions say.)";
 const TEAM_OFF: &str = "(Crew: off. Do this yourself: start no teammates.)";
 
-/// The team skill for a lead in a project whose Ask me before is `kinds` (one_way.rs): the skill, then what the lead
+/// The team skill for a lead in a project whose Ask me before is `kinds` (desk/one_way.rs): the skill, then what the lead
 /// asks the user first before there (nothing more when nothing's one-way there).
 pub(crate) fn skill_for(kinds: &[&str]) -> String {
-    let ask = crate::one_way::ask_first(kinds);
+    let ask = crate::desk::one_way::ask_first(kinds);
     if ask.is_empty() { TEAM_SKILL.to_string() } else { format!("{TEAM_SKILL}\n{ask}") }
 }
 
@@ -221,7 +221,7 @@ impl Hub {
             return Err("nothing to hand out".into());
         }
         self.read(|st| st.sessions.origin(sid)).filter(|o| o.hosted && o.harness == "claude").ok_or("only a hosted Claude Code lead takes a teammate")?;
-        self.send_to_session(sid, &hand_out_text(task), &[], false)?;
+        self.tell(sid, &hand_out_text(task))?;
         Ok(format!("Handed to {}'s crew", self.session_name(sid)))
     }
 
@@ -233,7 +233,7 @@ impl Hub {
             return;
         }
         self.changed();
-        if let Err(e) = self.send_to_session(to, &carried_note(&took), &[], false) {
+        if let Err(e) = self.tell(to, &carried_note(&took)) {
             eprintln!("cue: couldn't tell {to} about the team it carries on with: {e}");
         }
     }
@@ -286,7 +286,7 @@ mod tests {
         assert!(crate::sessions::crew_log::calls_in(example).is_empty(), "the instructions' own example, said back, isn't a call");
         assert_eq!(crate::sessions::crew_log::calls_in(&example.replace("what you chose", "kept the cache")).len(), 1, "in the form Cue reads");
         // Its project's Ask me before after the skill: the default asks before a push to main.
-        let default = skill_for(crate::one_way::DEFAULT);
+        let default = skill_for(crate::desk::one_way::DEFAULT);
         assert!(default.starts_with(TEAM_SKILL) && default.ends_with("ask the user first, and end your turn, before a push to main or master."), "{default}");
         assert!(skill_for(&["deploy"]).ends_with("before a deploy."));
         assert_eq!(skill_for(&[]), TEAM_SKILL, "nothing one-way there: the skill alone");

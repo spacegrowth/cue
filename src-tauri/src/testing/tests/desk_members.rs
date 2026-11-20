@@ -1,4 +1,4 @@
-//! A Desk's own list of sessions (hub/desk.rs `desk_set_member`, `UseAsk`): its lead routes to those (and new); a
+//! A Desk's own list of sessions (desk/hub/core/desk.rs `desk_set_member`, `UseAsk`): its lead routes to those (and new); a
 //! ROUTE to another session of the project asks you first, and a yes puts it on the Desk and makes the route.
 
 use super::desk::desk;

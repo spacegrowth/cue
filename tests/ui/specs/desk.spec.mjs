@@ -1550,7 +1550,7 @@ test("Cue's New item note shows as a small card an item, without its words for t
 test("Cue's word on a stopped item is a card from Cue, not a message from You; its words for the lead stay hidden (#244)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  // As hub/desk_stall.rs stop_words and hub/desk_lead.rs start_failed say them.
+  // As desk/hub/stall/stall.rs stop_words and desk/hub/lead/run.rs start_failed say them.
   await page.evaluate(() => {
     const t = Date.now(), lead = sessionOf("lead");
     lead.thread.push({ at_ms: t, role: "you", text: "#d2 (Quick phrases) stopped, not committed: desk-ui ended its turn on it with no DONE, and its work isn't committed (ui/desk.js, ui/styles/desk.css), so it isn't in the user's app. Its last line: The row keeps its seat; tests next.\nSettle it: ROUTE #d2 to desk-ui again with what's left as the why (Cue commits its work when it says DONE: #d2), or route it on; only if the user must decide, ASK: #d2 | <question> | choices: … Until then it isn't shown as waiting on the user." });
@@ -1588,7 +1588,7 @@ test("Cue's word on a stopped item is a card from Cue, not a message from You; i
 test("a session's TO LEAD: words are a card from that session about its item; Cue's NOTE hint stays hidden (#474)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  // As hub/desk_heard.rs to_lead_said says them.
+  // As desk/hub/turn/heard.rs to_lead_said says them.
   await page.evaluate(() => {
     const t = Date.now(), lead = sessionOf("lead");
     lead.thread.push({ at_ms: t, role: "you", text: "From desk-ui on #d2 (Quick phrases):\nShould the row wrap on narrow windows?\nAnswer it with NOTE: #d2 | <your words>." });

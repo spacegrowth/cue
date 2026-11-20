@@ -18,8 +18,6 @@ mod locking;
 mod logs;
 mod model;
 mod notify;
-mod lands;
-mod one_way;
 mod owner;
 mod quit;
 // An optional add-on, compiled in only with the `ext` feature: Rust in `src-tauri/ext/` (not part of
@@ -46,7 +44,7 @@ pub(crate) use logs::{about, live, steps, transcript, usage, usage_file};
 pub(crate) use terminal::{dialog, focus};
 #[cfg(feature = "ext")]
 pub(crate) use terminal::shell;
-// Moved into folders (refactor step 1a); these old paths stay only for a file other work has open (hub/desk_unstick.rs)
+// Moved into folders (refactor step 1a); these old paths stay only for a file other work has open (desk/hub/stall/unstick.rs)
 // and for the optional add-on. Each goes once nothing names it there.
 pub(crate) use install::self_install;
 #[cfg(feature = "ext")]

@@ -1,4 +1,4 @@
-//! A question you ask on an item's page while it's to check or done (#475, hub/desk_asked.rs): its holder answers
+//! A question you ask on an item's page while it's to check or done (#475, desk/hub/turn/asked.rs): its holder answers
 //! it; a turn that only answers puts the item back where it was, one that changed its code lands as a new round.
 
 use super::desk::sent_to;
@@ -139,7 +139,7 @@ fn a_question_to_you_waits_on_you_through_later_turns_until_you_answer() {
 /// question it answers itself, doesn't.
 #[test]
 fn what_a_turn_asks_you_is_read_from_its_words() {
-    use crate::hub::question_for_you;
+    use crate::desk::hub::stall::stall::question_for_you;
     assert_eq!(question_for_you(GRIP).as_deref(), Some("Which one: A, B or C?"));
     assert_eq!(question_for_you("Not done yet. I'm waiting for your pick of grip A, B or C on the canvas.").as_deref(), Some("Not done yet. I'm waiting for your pick of grip A, B or C on the canvas."));
     assert_eq!(question_for_you("Moved it.\n\nShould the footer move too?").as_deref(), Some("Should the footer move too?"));

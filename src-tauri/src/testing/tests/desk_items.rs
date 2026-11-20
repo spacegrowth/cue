@@ -1,4 +1,4 @@
-//! A Desk's items (hub/desk.rs, desk_said.rs, desk_act.rs): adding them (by you or an ITEM: line from any session),
+//! A Desk's items (desk/hub/core/desk.rs, desk_said.rs, desk_act.rs): adding them (by you or an ITEM: line from any session),
 //! kept across a relaunch, lines said again, retitle, split and merge, DESIGNS: links, pictures, undo and what you do to an item.
 
 use super::desk::{desk, ends, holder, item, new_lead, second, sent_to};

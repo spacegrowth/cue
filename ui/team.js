@@ -305,7 +305,7 @@ function crewNeedRows(sid, groups, ready = crewHandles(sid)) {
   const items = list.map((t) => mateNeeds(sid, t) ? mateNeedRow(sid, t) : mateReadyRow(sid, t));
   return { list, items, rows: items.join("") };
 }
-/** What lead `sid`'s project asks you first about (Ask me before, config one_way.rs): its kinds' words, in their
+/** What lead `sid`'s project asks you first about (Ask me before, config desk/one_way.rs): its kinds' words, in their
  *  order. A project never set has the default (a push to main). */
 function crewOneWay(sid) {
   const ow = state.settings?.project?.oneway || {}, s = sessionOf(sid) || {};

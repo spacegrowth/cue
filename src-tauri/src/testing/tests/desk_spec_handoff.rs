@@ -1,4 +1,4 @@
-//! Desk spec (#498): a session handed off to a fresh one, and its items moving with it (hub/desk_handoff.rs,
+//! Desk spec (#498): a session handed off to a fresh one, and its items moving with it (desk/hub/lead/handoff.rs,
 //! docs/desk-routing-rules.md "Fit with the context bands", docs/desk-routing-merged.md rules 1 and 17). The size marks
 //! and the lead's own hand-off: desk_context.rs; the lead changing: desk_lead.rs, desk_spaces.rs.
 

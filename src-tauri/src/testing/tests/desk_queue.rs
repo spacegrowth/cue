@@ -1,4 +1,4 @@
-//! Queued items (hub/desk_route.rs): a route to a new session that waits for the work before it, Put before, and the
+//! Queued items (desk/hub/turn/route.rs): a route to a new session that waits for the work before it, Put before, and the
 //! idle routes the dispatcher sees first.
 
 use super::desk::{desk, ends, holder, item, new_lead, second, sent_to, summary};

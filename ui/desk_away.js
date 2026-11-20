@@ -128,7 +128,7 @@ function deskAwayCallsHtml(d) {
   const head = `<button class="dk-aw-fold" data-desk-away-fold="${esc(d.project)}"${calls.length ? ` aria-expanded="${open}"` : " disabled"}>${chev}${DESK_AWAY_ICON}<b>${esc(n)}</b>${since}<span class="grow"></span>${st}${bar}</button>`;
   return `<div class="dk-aw-calls${open ? " open" : ""}">${head}${open ? `<div class="dk-aw-list">${calls.map((c) => deskAwayMark(c, d)).join("")}</div>` : ""}</div>`;
 }
-/** The dispatcher's Away tab (#416): each past Away stretch, newest first (hub/desk_away_log.rs). Folded, one line:
+/** The dispatcher's Away tab (#416): each past Away stretch, newest first (desk/hub/away/away_log.rs). Folded, one line:
  *  when, how long, spend and counts; open, the items that moved, the lead's calls (Undo while it can still be undone)
  *  and the steps held for you, allowed or refused. Which ones are open is kept in this window only. */
 const deskAwayLogOpen = new Set();
@@ -205,7 +205,7 @@ function deskAwayWaiting(d, taskApprovals) {
   return { n: held.n + asks.length, html: held.html + (asks.length ? `<div class="dk-prows dk-aw-asks">${asks.map(askRow).join("")}</div>` : "") + quiet };
 }
 
-/** Desk `d`'s held steps (hub/desk_held.rs): who, what it wants to do in plain words, the exact command, Allow and No.
+/** Desk `d`'s held steps (desk/hub/away/away_holds.rs): who, what it wants to do in plain words, the exact command, Allow and No.
  *  Only what you allow runs, in the order the session asked. */
 function deskHeldRows(d) {
   const held = d?.held || [];

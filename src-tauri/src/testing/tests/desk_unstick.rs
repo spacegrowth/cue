@@ -1,4 +1,4 @@
-//! The Desk lead unsticks its Desk itself (#347, hub/desk_unstick.rs): CLOSE an item whose work is already on main,
+//! The Desk lead unsticks its Desk itself (#347, desk/hub/stall/unstick.rs): CLOSE an item whose work is already on main,
 //! TAKE COPY back from a stuck or finished item, LAND FIRST to move one up in the landing line, START a waiting item
 //! now. Each is one of the item's steps; what can't be done is told to the lead.
 

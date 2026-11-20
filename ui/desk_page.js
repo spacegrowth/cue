@@ -356,7 +356,7 @@ const deskDoneWhenHtml = (t, base = null) => {
   const pts = deskDoneWhenPoints(t);
   return pts.length ? `<ul class="dk-dwl">${pts.map((p) => `<li><i aria-hidden="true"></i><span>${linkify(esc(p), base)}</span></li>`).join("")}</ul>` : "";
 };
-/** Its designs' canvas (the last DESIGNS: link a session gave, hub/desk.rs designs_said): "Open the mocks ↗", a
+/** Its designs' canvas (the last DESIGNS: link a session gave, desk/hub/core/desk.rs designs_said): "Open the mocks ↗", a
  *  plain link in the accent colour (Lead chats pick 1 + D: no outlined button), in its page's header (#178). */
 const deskDesignsLink = (i) => /^https?:\/\//.test(i.designs || "") ? `<div class="dk-dsg">${deskDesignsA(i.designs)}</div>` : "";
 const deskDesignsA = (url) => `<a class="dk-dlink" href="#" data-href="${esc(url)}">Open the mocks ↗</a>`;
@@ -491,7 +491,7 @@ function deskFilesShort(files, sep = ", ") {
 }
 /** Item `i`'s project as the hub sends it (its waits and circles in it). */
 const deskProjOf = (i) => (state.desk?.projects || []).find((p) => p.project === i.project || (p.items || []).some((x) => x.id === i.id));
-/** The circle item `i` is in, if any (hub/desk_waits.rs): its links in order, when it was found, whether its lead was told. */
+/** The circle item `i` is in, if any (desk/hub/core/waits.rs): its links in order, when it was found, whether its lead was told. */
 const deskCircleOf = (i) => (deskProjOf(i)?.circles || []).find((c) => c.items.includes(i.id)) || null;
 const deskSince = (ms) => (ms ? `Since ${clockAt(ms)} · ${ago(ms)}` : "");
 const DESK_NTH = ["no", "one", "two", "three", "four", "five"];

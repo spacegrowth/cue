@@ -1,4 +1,4 @@
-//! The Desk's lead and each session's context (hub/desk.rs, hub/desk_lead.rs): what the lead sees of each session's
+//! The Desk's lead and each session's context (desk/hub/core/desk.rs, desk/hub/lead/run.rs): what the lead sees of each session's
 //! size and cache, what Cue will do with it, and the lead's CONTEXT lines.
 
 use super::desk::desk;

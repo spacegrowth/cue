@@ -25,10 +25,10 @@ Results: **passes** · **caught a bug, fixed** (where) · **skipped** (why, and 
 |---|---|---|---|
 | nothing_queues_behind_an_item_waiting_for_your_check | Queued behind an item to check: it starts now, and the lead hears why | Routing rules, "Open" | passes |
 | a_queued_item_starts_by_itself_when_the_item_ahead_is_dropped | Dropping the item ahead starts what waited on it | #340 | passes |
-| dropping_the_middle_of_a_chain_leaves_the_last_waiting_on_the_first | Dropping the middle of a→b→c leaves c waiting on a, not started on the same files | Routing rules 8; lead guidance "chain each one after the previous item" | caught a bug, fixed in hub/desk_act.rs and hub/desk_route.rs (`hand_on`) |
-| parking_the_middle_of_a_chain_leaves_the_last_waiting_on_the_first | Same for Park: nothing is left waiting on a parked item | #385 | caught a bug, fixed in hub/desk_unstick.rs |
+| dropping_the_middle_of_a_chain_leaves_the_last_waiting_on_the_first | Dropping the middle of a→b→c leaves c waiting on a, not started on the same files | Routing rules 8; lead guidance "chain each one after the previous item" | caught a bug, fixed in desk/hub/turn/act.rs and desk/hub/turn/route.rs (`hand_on`) |
+| parking_the_middle_of_a_chain_leaves_the_last_waiting_on_the_first | Same for Park: nothing is left waiting on a parked item | #385 | caught a bug, fixed in desk/hub/stall/unstick.rs |
 | parking_the_item_ahead_starts_what_waited_on_it | Park with nothing ahead starts what waited on it | #385 | passes |
-| start_now_on_an_item_queued_after_another_hands_it_to_its_holder_now | Start now on a queued item hands it to its session as new work, not "pick up where you left off" | #401, #476 | caught a bug, fixed in hub/desk_act.rs and ui/desk_page.js |
+| start_now_on_an_item_queued_after_another_hands_it_to_its_holder_now | Start now on a queued item hands it to its session as new work, not "pick up where you left off" | #401, #476 | caught a bug, fixed in desk/hub/turn/act.rs and ui/desk_page.js |
 | put_before_an_item_already_at_work_is_refused_and_nothing_moves | Put before an item at work is refused, with a reason | desk_queue.rs, #387 | passes |
 | a_queued_item_stays_queued_across_a_relaunch… | Queued survives a relaunch and still starts by itself | #256 | passes |
 | the_waits_list_names_what_each_queued_item_waits_on_and_since_when | The Waits list names what waits on what, and since when | #250 | passes |
@@ -66,7 +66,7 @@ Results: **passes** · **caught a bug, fixed** (where) · **skipped** (why, and 
 | Test | What it checks | Why (source) | Result |
 |---|---|---|---|
 | a_note_held_while_its_holder_is_busy_goes_in_when_its_turn_ends | A note to a busy holder is kept, then goes in; never lost | #437, #419 | passes |
-| a_typed_note_on_an_item_to_check_while_its_holder_is_busy… | That note reopens the item; the busy turn about something else isn't taken as the item stopping | #437, #484 | caught a bug, fixed in hub/desk_stall.rs |
+| a_typed_note_on_an_item_to_check_while_its_holder_is_busy… | That note reopens the item; the busy turn about something else isn't taken as the item stopping | #437, #484 | caught a bug, fixed in desk/hub/stall/stall.rs |
 | every_quick_phrase_on_an_item_to_check_reaches_its_holder… | Each phrase on an item to check is a note; the item stays to check | #488, #477 | passes |
 | a_quick_phrase_while_its_holder_is_busy_waits… | A phrase for a busy holder waits; the item stays to check | #488, #419 | passes |
 | a_quick_phrase_on_a_working_item_goes_to_its_holder_at_once | A phrase on a working item is sent at once | #477 | passes |
@@ -92,7 +92,7 @@ Results: **passes** · **caught a bug, fixed** (where) · **skipped** (why, and 
 
 | Test | What it checks | Why (source) | Result |
 |---|---|---|---|
-| every_line_of_one_turn_cue_cant_make_comes_back_in_one_message | Refused ROUTE, SPLIT, MERGE and CUT in one turn come back as one message, none dropped | #248, docs/cue-messages.md | caught a bug, fixed in hub/desk_said.rs (SPLIT, CUT and MERGE refusals were sent on their own) |
+| every_line_of_one_turn_cue_cant_make_comes_back_in_one_message | Refused ROUTE, SPLIT, MERGE and CUT in one turn come back as one message, none dropped | #248, docs/cue-messages.md | caught a bug, fixed in desk/hub/turn/said.rs (SPLIT, CUT and MERGE refusals were sent on their own) |
 | a_route_to_a_parked_item_is_refused_and_it_stays_parked | A route to a parked item is refused, with why | LEAD_SKILL, PARK | passes |
 | route_new_names_the_item_just_above_it_in_the_reply | Two ITEM+ROUTE pairs route each item | LEAD_SKILL | passes |
 | dropping_an_item_at_work_tells_its_holder_to_stop_work_on_it | | cue-messages "Dropped" | passes |
@@ -101,7 +101,7 @@ Results: **passes** · **caught a bug, fixed** (where) · **skipped** (why, and 
 | an_item_line_from_a_holder_without_why_is_not_a_new_item… | | cue-messages "Not a new item" | passes |
 | an_item_line_several_desks_could_take_is_added_to_none… | | cue-messages "Several Desks" | passes |
 | to_lead_from_a_session_on_several_desks_with_no_item_comes_back_unsent | | cue-messages "TO LEAD not sent" | passes |
-| to_lead_that_cannot_reach_the_lead_tells_the_session_with_its_words | The session gets back what it wrote, not only that it failed | cue-messages "TO LEAD failed", #474 | caught a bug, fixed in hub/desk.rs and hub/desk_heard.rs |
+| to_lead_that_cannot_reach_the_lead_tells_the_session_with_its_words | The session gets back what it wrote, not only that it failed | cue-messages "TO LEAD failed", #474 | caught a bug, fixed in desk/hub/core/desk.rs and desk/hub/turn/heard.rs |
 
 ## Hand-offs (`desk_spec_handoff.rs`)
 

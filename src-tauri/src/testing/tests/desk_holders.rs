@@ -1,4 +1,4 @@
-//! An item's holder at work (hub/desk_said.rs): its DONE, its asks, its crew, and the replies and steps kept on the item.
+//! An item's holder at work (desk/hub/turn/said.rs): its DONE, its asks, its crew, and the replies and steps kept on the item.
 //! A turn that ends without DONE: desk_stops.rs.
 
 use super::desk::{desk, ends, holder, item, new_lead, sent_to};

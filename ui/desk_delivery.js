@@ -42,7 +42,7 @@ function deskMsgState(step, item, to, fallback = "delivered") {
   if (history.some((e) => e.pending)) return { ...(typedQueued(session) || { st: "sending" }), sid };
   return copy ? { ...copy, sid } : none;
 }
-/** Item `item` queued for a free working folder (desk_trees.rs tree_wait): what you sent it waits with it (#419). */
+/** Item `item` queued for a free working folder (desk/hub/landing/trees.rs tree_wait): what you sent it waits with it (#419). */
 const deskCopyWait = (item) => (item.state === "queued" && item.tree_wait ? { st: "sending", note: "Waiting: sent back, it starts when a working folder is free" } : null);
 /** The session item `item`'s page means by a name in a step's "to <name>" / "sent back to <name>" / "note to <name>":
  *  its holder (or the lead it works for) or the Desk's lead; "" for neither. */

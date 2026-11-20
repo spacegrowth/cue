@@ -394,7 +394,7 @@ async function lvStart(_d, trust = false) {
     rememberFolder(newMachine, cwd);
     afterNewSession(r);
   } catch (e) {
-    // Hosted Claude Code in a folder it hasn't been trusted in: Cue asks, as its terminal would (ipc/hosted.rs).
+    // Hosted Claude Code in a folder it hasn't been trusted in: Cue asks, as its terminal would (hub/starting.rs).
     if (String(e).startsWith(UNTRUSTED)) { trustAsk = { dir: String(e).slice(UNTRUSTED.length), machine: newMachine }; return renderMain(); }
     toast(`Couldn't start it: ${e}`);
   }

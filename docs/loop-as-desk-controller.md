@@ -7,7 +7,7 @@ message. The loop's scheduler is the part worth borrowing, not the loop.
 ## Why a loop can't drive a Desk today
 
 - **Only the Desk lead's lines count.** Cue reads `ROUTE:`, `ITEM:`, `ASK:`, `DONE:` only from the session that is the
-  project's Desk lead (`hub/desk_lead.rs`, `desk/parse.rs`). A loop's lead is a different session. Its route lines
+  project's Desk lead (`desk/hub/lead/run.rs`, `desk/parse.rs`). A loop's lead is a different session. Its route lines
   would just be text.
 - **A loop is built to change files.** Each round, Cue runs the loop's check in its folder, a reviewer reads the
   diff, and Cue stops the loop when nothing moves. Routing changes no files. There is no check that proves "the Desk

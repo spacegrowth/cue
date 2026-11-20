@@ -11,6 +11,9 @@ use crate::terminal::focus;
 use crate::terminal::shell;
 use crate::terminal::launch::{Place, Started};
 use crate::hub::Hub;
+// Kept at this path for the add-on.
+#[allow(unused_imports)]
+pub(crate) use crate::hub::{closed_record, end_session, resume_parked_session, resume_record, start_session, start_session_with, StartOpts, ALREADY_RUNNING, CLOSED_DAYS, CLOSED_MAX};
 use std::sync::Arc;
 use tauri::State;
 use crate::show_main;
@@ -94,31 +97,12 @@ pub(crate) async fn resume_parked(app: tauri::AppHandle, hub: State<'_, Arc<Hub>
     res
 }
 
-/// What Resume says when the session was running again already: it only left Parked, and `message` wasn't sent.
-pub(crate) const ALREADY_RUNNING: &str = "It's already running";
-
-pub(crate) fn resume_parked_session(h: &Arc<Hub>, session_id: &str, message: &str) -> Result<String, String> {
-    let p = h.parked(session_id).ok_or("it isn't parked any more")?;
-    // Running again already (you resumed it in a terminal yourself): a second agent would share its
-    // conversation. It's live, so it just leaves Parked. The registry read fresh: the list Cue keeps is
-    // a tick old, so a session parked a moment ago (Restart, after an MCP change) would still be on it.
-    live::refresh();
-    if p.session.origin.machine.is_empty() && live::claude().iter().any(|q| q.session_id == session_id) {
-        h.take_parked(session_id);
-        return Ok(ALREADY_RUNNING.into());
-    }
-    resume_record(h, p, message)
-}
-
 /// Closed, in the Parked drawer: sessions that ended in the last 30 days (at most 30), newest first,
 /// not parked and not running again. To find the ones that got lost (an agent that exited, a tab closed).
 #[tauri::command]
 pub(crate) async fn closed_sessions(hub: State<'_, Arc<Hub>>) -> Result<Vec<serde_json::Value>, String> {
     with_hub(&hub, |h| h.closed(CLOSED_DAYS * 24 * 3600 * 1000, CLOSED_MAX)).await
 }
-
-pub(crate) const CLOSED_DAYS: u64 = 30;
-pub(crate) const CLOSED_MAX: usize = 30;
 
 /// Resume a closed session, as a parked one resumes: its agent's resume command, its record back.
 #[tauri::command]
@@ -143,49 +127,6 @@ pub(crate) async fn park_closed(hub: State<'_, Arc<Hub>>, session_id: String) ->
         Ok(())
     })
     .await?
-}
-
-/// A closed session's saved record, if it can be brought back: ended, not live again, an agent Cue resumes.
-pub(crate) fn closed_record(h: &Arc<Hub>, session_id: &str) -> Result<crate::sessions::Parked, String> {
-    if h.session_origin(session_id).is_some() || live::claude().iter().any(|q| q.session_id == session_id) {
-        return Err("it's running again".into());
-    }
-    let (ended_ms, session) = db::ended_session(session_id).ok_or("Cue has no record of that session")?;
-    focus::resume_line_for(&session.origin.harness, &session.origin.cwd, session_id)?;
-    Ok(crate::sessions::Parked { parked_ms: ended_ms, session })
-}
-
-/// The work behind Resume, for a parked or a closed session: in tmux on this Mac or on its machine.
-pub(crate) fn resume_record(h: &Arc<Hub>, p: crate::sessions::Parked, message: &str) -> Result<String, String> {
-    let session_id = p.session.origin.session_id.clone();
-    let session_id = session_id.as_str();
-    let o = p.session.origin.clone();
-    if o.hosted {
-        return super::resume_hosted(h, p, message);
-    }
-    // On this Mac, with its MCP selection when it has one (logs/mcp.rs), so the choice sticks.
-    // And on its model, here or on its machine (focus::model_args).
-    let mut args = if o.harness == "claude" { focus::model_args(&o.transcript_path, &o.machine) } else { vec![] };
-    if o.machine.is_empty() {
-        args.extend(crate::logs::mcp::selection_flags(session_id));
-    }
-    let mut line = focus::resume_line_for_with(&o.harness, &o.cwd, session_id, &args)?;
-    if !message.trim().is_empty() {
-        line += &format!(" {}", focus::shq(message.trim()));
-    }
-    let label = if p.session.name.is_empty() { model::folder_of(&o.cwd) } else { p.session.name.clone() };
-    let base = model::Origin { session_id: session_id.to_string(), harness: o.harness.clone(), transcript_path: o.transcript_path.clone(), ..Default::default() };
-    let (fresh, at) = if o.machine.is_empty() {
-        let tab = h.launcher().here(&line, &o.cwd, &label, Place::chosen(None))?;
-        let at = tab.what.clone();
-        (model::Origin { cwd: o.cwd.clone(), term_program: tab.term_program, iterm_session_id: tab.iterm_session_id, tty: tab.tty, tmux_pane: tab.tmux_pane, ..base }, at)
-    } else {
-        let m = machines::get(&o.machine).ok_or(format!("{} isn't one of your machines any more (+ New → Machine)", o.machine))?;
-        let Started { pane, tty, dir } = h.launcher().there(&m, &line, &o.cwd, &label)?;
-        (model::Origin { cwd: dir, term_program: "tmux".into(), tty, tmux_pane: pane, machine: m.name.clone(), ..base }, format!("tmux on {}", m.name))
-    };
-    h.unparked(p, fresh, message.trim());
-    Ok(format!("Resumed in {at}"))
 }
 
 /// Unpark: take it off Parked without resuming it. Its conversation stays in History and search.
@@ -215,20 +156,6 @@ pub(crate) async fn adopt_session(hub: State<'_, Arc<Hub>>, session_id: String) 
 #[tauri::command]
 pub(crate) async fn close_session(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
     with_hub(&hub, move |h| end_session(&h, &session_id)).await?
-}
-
-/// The work behind Close. Blocking: it ends a process and closes a tab.
-pub(crate) fn end_session(h: &Arc<Hub>, session_id: &str) -> Result<String, String> {
-    let session_id = session_id.to_string();
-    {
-        h.closable(&session_id)?;
-        // Its machine can't be reached: nothing to end there now; it's taken out of Cue.
-        if h.unreachable(&session_id) {
-            h.forget(&session_id);
-            return Ok("Removed from Cue (its machine can't be reached)".into());
-        }
-        end_and_close(h, &session_id)
-    }
 }
 
 /// Delete, in the chat header's ⋯ (asked once more first): a session gone for good. A running one is
@@ -298,28 +225,6 @@ fn delete_transcript(o: &crate::model::Origin) -> Result<(), String> {
     }
 }
 
-/// End a session's agent and close its tab.
-fn end_and_close(h: &Hub, session_id: &str) -> Result<String, String> {
-    let origin = h.live_origin(session_id).ok_or("that session is gone")?;
-    if origin.hosted {
-        return super::close_hosted(h, origin);
-    }
-    // On this Mac, the agent's process. On a machine, there is no pid here (it runs there): its
-    // pane is ended on the machine instead.
-    if origin.machine.is_empty() {
-        let pid = origin.agent_pid.or_else(|| live::claude().into_iter().find(|q| q.session_id == session_id).map(|q| q.pid)).unwrap_or(0);
-        focus::end_agent(pid)?;
-    } else {
-        focus::end_machine_agent(&origin)?;
-    }
-    Ok(match focus::close_tab(&origin) {
-        Ok(t) => format!("Closed its {t}"),
-        // Many tabs close by themselves when the agent they run exits.
-        Err(e) if e.contains("is gone") || e.contains("couldn't find") => "Ended it; its tab closed with it".into(),
-        Err(e) => format!("Ended it ({e})"),
-    })
-}
-
 /// "+ New session": open a terminal tab in `cwd`, in the background, and start `agent` there with an
 /// optional first message and name. Cue picks the session id, so it knows the session at once (it
 /// opens in Active, ready to type into). Returns the id.
@@ -333,100 +238,6 @@ pub(crate) async fn new_session(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>,
         show_main(&app, None);
     }
     res
-}
-
-/// The work behind "+ New session": open a terminal tab in `cwd`
-/// and start `agent` there. Blocking: it types into a terminal.
-pub(crate) fn start_session(h: &Arc<Hub>, agent: &str, cwd: &str, message: &str, name: &str) -> Result<serde_json::Value, String> {
-    start_session_with(h, agent, cwd, message, name, &StartOpts::default())
-}
-
-/// What + New session can choose beyond the folder: where it runs (None: Settings' default), how much it
-/// may do without asking, and any extra flags.
-#[derive(Default)]
-pub(crate) struct StartOpts {
-    pub tmux: Option<bool>,
-    pub perm: String,
-    pub extra: String,
-    /// A machine from + New → Machine to run it on (empty: this Mac): in tmux there, or hosted by cue-host there.
-    pub machine: String,
-    /// The MCP servers it runs with (a Claude Code session on this Mac): written as its selection
-    /// (logs/mcp.rs) under the id Cue picks, and passed as `--mcp-config <file> --strict-mcp-config`.
-    /// None: whatever its folder has on.
-    pub mcp: Option<Vec<String>>,
-    /// Images with the first message (pasted or dropped into its box): saved, their paths typed after it.
-    pub images: Vec<model::Upload>,
-    /// Hosted by Cue, with no terminal (Claude Code, Pi or Codex, Settings → Cue-hosted sessions on).
-    pub hosted: bool,
-    /// You said you trust the folder (Cue asked, as Claude Code's terminal would: ipc/hosted.rs `trusted`).
-    pub trust: bool,
-    /// The project whose Desk it starts as the lead of (desk/): it starts with the Desk's instructions. "" for any
-    /// other.
-    pub desk_lead: String,
-}
-
-pub(crate) fn start_session_with(h: &Arc<Hub>, agent: &str, cwd: &str, message: &str, name: &str, opts: &StartOpts) -> Result<serde_json::Value, String> {
-    let saved = crate::uploads::save(&opts.images)?;
-    if !opts.machine.is_empty() && opts.hosted {
-        let Some(hosted) = crate::hosted::Agent::named(agent).filter(|_| crate::config::hosted_on()) else {
-            return Err("only Claude Code, Pi and Codex can be hosted, with Settings → Cue-hosted sessions on".into());
-        };
-        return super::start_hosted(h, hosted, cwd.trim(), message, name, opts, &saved);
-    }
-    if !opts.machine.is_empty() {
-        return start_on_machine(h, agent, cwd, message, name, opts, &saved);
-    }
-    let dir = cwd.trim();
-    let dir = if let Some(rest) = dir.strip_prefix("~") { format!("{}{rest}", std::env::var("HOME").unwrap_or_default()) } else { dir.to_string() };
-    if !std::path::Path::new(&dir).is_dir() {
-        return Err(format!("{dir} isn't a folder"));
-    }
-    if opts.hosted {
-        let Some(hosted) = crate::hosted::Agent::named(agent).filter(|_| crate::config::hosted_on()) else {
-            return Err("only Claude Code, Pi and Codex can be hosted in Cue, with Settings → Cue-hosted sessions on".into());
-        };
-        return super::start_hosted(h, hosted, &dir, message, name, opts, &saved);
-    }
-    let sid = if agent == "codex" { String::new() } else { focus::new_session_id() };
-    let asks_trust = agent == "claude" && !focus::claude_trusts(&dir);
-    let mut args = vec![];
-    if let (Some(names), "claude", false) = (&opts.mcp, agent, sid.is_empty()) {
-        let path = crate::logs::mcp::selection_path(&sid);
-        crate::logs::mcp::write_selection(&path, &crate::logs::mcp::definitions(&dir), names)?;
-        args = crate::logs::mcp::flags_for(&path);
-    }
-    let line = focus::start_line_args(agent, &dir, &sid, &crate::uploads::with_paths(message, &saved), name, &opts.perm, &opts.extra, &args)?;
-    let label = Some(name.trim()).filter(|n| !n.is_empty()).map(str::to_string).unwrap_or_else(|| model::folder_of(&dir));
-    let tab = h.launcher().here(&line, &dir, &label, Place::chosen(opts.tmux))?;
-    if !sid.is_empty() {
-        let origin = model::Origin { session_id: sid.clone(), harness: agent.to_string(), cwd: dir, term_program: tab.term_program, iterm_session_id: tab.iterm_session_id, tty: tab.tty, tmux_pane: tab.tmux_pane, ..Default::default() };
-        h.started(origin, message, &paths_of(&saved), asks_trust);
-        h.name_new(&sid, name);
-    }
-    Ok(serde_json::json!({ "session_id": sid, "detail": format!("Started {} in {}", agent, tab.what) }))
-}
-
-/// + New session on a machine: in tmux there (Cue's terminal shows it, over SSH), in `cwd` there.
-pub(crate) fn start_on_machine(h: &Arc<Hub>, agent: &str, cwd: &str, message: &str, name: &str, opts: &StartOpts, saved: &[crate::uploads::Saved]) -> Result<serde_json::Value, String> {
-    let m = machines::get(&opts.machine).ok_or(format!("{} isn't one of your machines (+ New → Machine)", opts.machine))?;
-    let sid = if agent == "codex" { String::new() } else { focus::new_session_id() };
-    // Its images copied there first, so the paths in its first message open on that machine.
-    let there = crate::uploads::on_machine(&m.name, saved, &|_, _| {})?;
-    // It starts where tmux opens the window (`cwd`): the line itself stays in that folder.
-    let line = focus::start_line_with(agent, ".", &sid, &crate::uploads::with_paths(message, &there), name, &opts.perm, &opts.extra)?;
-    let label = Some(name.trim()).filter(|n| !n.is_empty()).map(str::to_string).unwrap_or_else(|| model::folder_of(cwd.trim()));
-    let Started { pane, tty, dir } = h.launcher().there(&m, &line, cwd, &label)?;
-    if !sid.is_empty() {
-        let origin = model::Origin { session_id: sid.clone(), harness: agent.to_string(), cwd: dir, term_program: "tmux".into(), tty, tmux_pane: pane, machine: m.name.clone(), ..Default::default() };
-        h.started(origin, message, &paths_of(saved), false);
-        h.name_new(&sid, name);
-    }
-    Ok(serde_json::json!({ "session_id": sid, "detail": format!("Started {} on {}", agent, m.name) }))
-}
-
-/// The saved images' paths on this Mac, for the chat's copy of the first message.
-fn paths_of(saved: &[crate::uploads::Saved]) -> Vec<String> {
-    saved.iter().map(|s| s.path.clone()).collect()
 }
 
 /// btw's Fork: a Claude Code session copied into a new one that keeps going, in the same folder (on the
@@ -628,7 +439,7 @@ pub(crate) async fn move_to_cue(hub: State<'_, Arc<Hub>>, session_id: String) ->
 }
 
 pub(crate) fn move_session_to_cue(h: &Arc<Hub>, session_id: &str) -> Result<String, String> {
-    // Settings → Cue-hosted sessions on: it comes back hosted, with no terminal (ipc/hosted.rs).
+    // Settings → Cue-hosted sessions on: it comes back hosted, with no terminal (hub/resuming.rs).
     if crate::config::hosted_on() {
         let origin = movable_origin(h, session_id, MoveTo::Hosted)?;
         return super::move_into_hosted(h, origin, || end_session(h, session_id));
@@ -725,7 +536,7 @@ fn ask_to_exit(h: &Arc<Hub>, origin: &model::Origin, session_id: &str, pane: &st
         return Err(ended);
     }
     let pid = origin.agent_pid.or_else(|| live::claude().into_iter().find(|q| q.session_id == session_id).map(|q| q.pid)).unwrap_or(0);
-    if let Err(e) = h.keys().type_into(origin, "/exit") {
+    if let Err(e) = h.type_command(origin, "/exit") {
         h.launcher().close_pane(pane);
         return Err(e);
     }

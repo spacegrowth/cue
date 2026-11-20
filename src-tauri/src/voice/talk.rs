@@ -613,7 +613,7 @@ async fn send(hub: &Arc<Hub>, snap: &Value, sid: &str, said: &str) -> Result<Str
     tokio::task::spawn_blocking(move || {
         let sent = match waiting {
             Some(id) => h.reply(&id, &msg, &[]),
-            None => h.send_to_session(&sid, &msg, &[], false),
+            None => h.tell(&sid, &msg),
         };
         // Its bubble shows it was said, wherever it went: the chat, kept in Cue, or queued in the agent's box.
         if sent.is_ok() {
