@@ -1,7 +1,8 @@
 // Run: node tests/box.test.js  (the one message box: ui/box/markup.js, send.js, end.js)
 // The box's markup is checked against what the builders drew before they moved onto it (chat/compose.js box, before 3b;
-// desk_view.js deskBox and deskItemFoot, desk_act.js deskBackHtml, desk_page.js deskGoBackHtml, before 3c), less their
-// hover text, so moving a box onto it changes nothing you see. Its send, against a fake invoke.
+// desk_view.js deskBox and deskItemFoot, desk_act.js deskBackHtml, desk_page.js deskGoBackHtml, before 3c; inbox.js inboxBox,
+// mini.js's answer box, chat/send.js btwPanel's and sheets.js forwardPop's, before 3d), less their hover text, so moving a
+// box onto it changes nothing you see. Its send, against a fake invoke.
 const assert = require("assert");
 const fs = require("fs");
 const vm = require("vm");
@@ -30,7 +31,8 @@ const ctx = {
 };
 ctx.draft = (id) => (ctx.drafts[id] ||= { text: "", choices: {}, images: [] });
 vm.createContext(ctx);
-for (const f of ["chat/send.js", "chat/compose.js", "desk_page.js", "desk_view.js", "desk_act.js", "box/markup.js", "box/send.js", "box/end.js"]) {
+// In the windows' order (index.html): desk_act.js puts its boxes on box/send.js BOX_OWNERS as it loads.
+for (const f of ["box/markup.js", "box/send.js", "box/end.js", "chat/send.js", "chat/compose.js", "desk_page.js", "desk_view.js", "desk_act.js", "inbox.js", "sheets.js"]) {
   vm.runInContext(fs.readFileSync(`${__dirname}/../ui/${f}`, "utf8").replace(/^(const|let) /gm, "var "), ctx, { filename: f });
 }
 // What the builders call that isn't theirs to draw.
@@ -137,6 +139,62 @@ same("goback", ctx.deskGoBackHtml("dec", 2));
 ctx.deskGoBackOpen = null;
 same("gobackShut", ctx.deskGoBackHtml("dec", 1));
 for (const html of Object.values(OLD_DESK)) assert.doesNotMatch(html, /title=/, "no hover text");
+
+// ---- markup: the Inbox's box, the mini panel's, btw's and a forward's note (on boxHtml since step 3d) ----
+// What inbox.js inboxBox (and inboxReply), mini.js deskAskHtml's answer box, chat/send.js btwPanel and sheets.js
+// forwardPop drew before they moved onto boxHtml, word for word.
+const OLD_3D = {
+  inboxPics: "<div class=\"ib-box\" data-drop=\"s:A\"><div class=\"chips\"><span class=\"chip\"><button class=\"chip-img\" data-draft-lightbox=\"s:A:0\" aria-label=\"Open a.png\"><img src=\"data:image/png;base64,AA\" alt=\"a.png\"/></button><button class=\"chip-x\" data-unattach=\"s:A:0\" aria-label=\"Remove image\">×</button></span></div><div class=\"ta-wrap\"><textarea rows=\"2\" data-text=\"s:A\" placeholder=\"Tell it what's next…\" spellcheck=\"false\" autocorrect=\"off\" autocapitalize=\"off\" autocomplete=\"off\">hi &lt;b&gt; &amp; &quot;c&quot;</textarea><div class=\"sug-line\" data-inbox-sug data-key=\"s:A\" data-sid=\"A\" aria-hidden=\"true\"></div></div><div class=\"ib-box-acts\"><button class=\"btn primary\" data-inbox-send=\"A\">Send</button><button class=\"icon-btn mic \" data-mic=\"s:A\" aria-label=\"Dictate\"><mic/></button><button class=\"icon-btn\" data-attach=\"s:A\" aria-label=\"Add an image\"><img/></button><x/><phr/></div></div>",
+  inboxSug: "<div class=\"ib-box\" data-drop=\"s:A\"><div class=\"ta-wrap\"><textarea rows=\"2\" data-text=\"s:A\" class=\"sug\" data-sug-sid=\"A\" aria-label=\"Suggested: Go on. Tab types it in.\" placeholder=\" \" spellcheck=\"false\" autocorrect=\"off\" autocapitalize=\"off\" autocomplete=\"off\"></textarea><div class=\"sug-line\" data-inbox-sug data-key=\"s:A\" data-sid=\"A\" aria-hidden=\"true\"><span class=\"sug-k\">Suggested</span><span class=\"sug-t\">Go on</span><kbd>Tab</kbd><span class=\"sug-or\">or write your own</span></div></div><div class=\"ib-box-acts\"><button class=\"btn primary\" data-inbox-send=\"A\">Send</button><button class=\"icon-btn mic on\" data-mic=\"s:A\" aria-label=\"Stop dictating\"><mic/></button><button class=\"icon-btn\" data-attach=\"s:A\" aria-label=\"Add an image\"><img/></button><x/><phr/></div></div>",
+  inboxAnswer: "<div class=\"ib-box\" ><div class=\"ta-wrap\"><textarea rows=\"2\" data-text=\"Q1\" class=\"sug\" data-sug-sid=\"A\" aria-label=\"Suggested: Go on. Tab types it in.\" placeholder=\" \" spellcheck=\"false\" autocorrect=\"off\" autocapitalize=\"off\" autocomplete=\"off\">my &lt;answer&gt;</textarea><div class=\"sug-line\" data-inbox-sug data-key=\"Q1\" data-sid=\"A\" aria-hidden=\"true\"><span class=\"sug-k\">Suggested</span><span class=\"sug-t\">Go on</span><kbd>Tab</kbd><span class=\"sug-or\">or write your own</span></div></div><div class=\"ib-box-acts\"><button class=\"btn primary\" data-act=\"send\" data-id=\"Q1\">Use answer</button><button class=\"icon-btn mic \" data-mic=\"Q1\" aria-label=\"Dictate\"><mic/></button><button class=\"btn\" data-inbox-full=\"A\">Open chat</button><div class=\"ib-phr\"><div class=\"ib-phr-row\"><button class=\"ib-sug\" data-inbox-phrase=\"Yes\" data-i=\"0\" data-key=\"Q1\" data-sid=\"A\">Yes</button><button class=\"ib-sug\" data-inbox-phrase=\"No &lt;way&gt;\" data-i=\"1\" data-key=\"Q1\" data-sid=\"A\">No &lt;way&gt;</button></div><span class=\"ib-phr-more\" hidden><button class=\"ib-sug\" data-inbox-phr-more=\"Q1\" aria-expanded=\"false\">More<span class=\"ib-caret\">▴</span></button></span></div></div></div>",
+  inboxAnswerMic: "<div class=\"ib-box\" ><div class=\"ta-wrap\"><textarea rows=\"2\" data-text=\"Q1\" placeholder=\"Or say something else…\" spellcheck=\"false\" autocorrect=\"off\" autocapitalize=\"off\" autocomplete=\"off\"></textarea><div class=\"sug-line\" data-inbox-sug data-key=\"Q1\" data-sid=\"A\" aria-hidden=\"true\"></div></div><div class=\"ib-box-acts\"><button class=\"btn primary\" data-act=\"send\" data-id=\"Q1\">Send</button><button class=\"icon-btn mic on\" data-mic=\"Q1\" aria-label=\"Stop dictating\"><mic/></button><button class=\"btn\" data-inbox-full=\"A\">Open chat</button><div class=\"ib-phr\"><div class=\"ib-phr-row\"><button class=\"ib-sug\" data-inbox-phrase=\"Yes\" data-i=\"0\" data-key=\"Q1\" data-sid=\"A\">Yes</button><button class=\"ib-sug\" data-inbox-phrase=\"No &lt;way&gt;\" data-i=\"1\" data-key=\"Q1\" data-sid=\"A\">No &lt;way&gt;</button></div><span class=\"ib-phr-more\" hidden><button class=\"ib-sug\" data-inbox-phr-more=\"Q1\" aria-expanded=\"false\">More<span class=\"ib-caret\">▴</span></button></span></div></div></div>",
+  inboxWake: "<div class=\"ib-box\" data-drop=\"s:B\"><div class=\"ta-wrap\"><textarea rows=\"2\" data-text=\"s:B\" placeholder=\"Write to it… sending resumes it first\" spellcheck=\"false\" autocorrect=\"off\" autocapitalize=\"off\" autocomplete=\"off\">back</textarea><div class=\"sug-line\" data-inbox-sug data-key=\"s:B\" data-sid=\"\" aria-hidden=\"true\"></div></div><div class=\"ib-box-acts\"><button class=\"btn primary\" data-wake-send=\"B\" disabled>Resuming…</button><button class=\"icon-btn mic \" data-mic=\"s:B\" aria-label=\"Dictate\"><mic/></button><button class=\"icon-btn\" data-attach=\"s:B\" aria-label=\"Add an image\"><img/></button><button class=\"btn\" data-inbox-full=\"B\">Open chat</button></div></div>",
+  btw: "<div class=\"btw-pop\">\n    <div class=\"btw-head\">BY THE WAY · NOT PART OF THE CHAT<button class=\"btw-clear\" data-act=\"btw-clear\" data-sid=\"A\">Clear</button><button class=\"btw-x\" data-act=\"btw-close\" aria-label=\"Close\">×</button></div>\n    <div class=\"btw-ask\"><textarea data-text=\"btw:A\" rows=\"1\" placeholder=\"Ask without interrupting it…  ↵\" spellcheck=\"false\">why &lt;so&gt;?</textarea></div>\n    <div class=\"btw-body\"><div class=\"btw-q\">third</div><div class=\"btw-a dim\"><span class=\"dot-live\"></span>Thinking…</div><div class=\"btw-q\">second</div><div class=\"btw-a bad\">boom</div><div class=\"btw-q\">first</div><div class=\"btw-a msg\"><md>an answer</md></div><button class=\"btw-fork\" data-act=\"btw-fork\" data-sid=\"A\" data-i=\"0\" >Fork</button></div></div>",
+  btwLead: "<div class=\"btw-pop\">\n    <div class=\"btw-head\">BY THE WAY · ASKS THE LEAD, NOT PART OF ITS CHAT<button class=\"btw-x\" data-act=\"btw-close\" aria-label=\"Close\">×</button></div>\n    <div class=\"btw-ask\"><textarea data-text=\"btw:A\" rows=\"1\" placeholder=\"Ask the lead without interrupting it…  ↵\" spellcheck=\"false\"></textarea></div>\n    <div class=\"btw-body\"><div class=\"dim btw-empty\">A copy of the lead's conversation answers, so neither the lead nor its crew sees it. Each question costs about one turn.</div></div></div>",
+  fwd: "<div class=\"fwd-catch\" data-act=\"cancel-forward\"></div><div class=\"fwd-pop\" role=\"dialog\" aria-label=\"Send to another session\">\n    <div class=\"fwd-head\">SEND THIS MESSAGE TO</div>\n    <div class=\"fwd-list\"><button class=\"fwd-opt on\" data-fwd-to=\"A\">\n      <badge claude><span class=\"proj\">proj&lt;1&gt;</span><span class=\"grow\"></span><span class=\"fwd-st\">working</span></button></div>\n    <textarea rows=\"2\" class=\"fwd-note\" spellcheck=\"false\" data-text=\"fwd\" placeholder=\"Add a note (optional)\">a &lt;note&gt;</textarea>\n    <div class=\"fwd-foot\"><button class=\"btn\" data-act=\"cancel-forward\">Cancel</button><button class=\"btn primary\" data-act=\"send-forward\" >Send to proj&lt;1&gt;</button></div></div>",
+  fwdNone: "<div class=\"fwd-catch\" data-act=\"cancel-forward\"></div><div class=\"fwd-pop\" role=\"dialog\" aria-label=\"Send to another session\">\n    <div class=\"fwd-head\">SEND THIS MESSAGE TO</div>\n    <div class=\"fwd-list\"><button class=\"fwd-opt \" data-fwd-to=\"A\">\n      <badge claude><span class=\"proj\">proj&lt;1&gt;</span><span class=\"grow\"></span><span class=\"fwd-st\">working</span></button></div>\n    <textarea rows=\"2\" class=\"fwd-note\" spellcheck=\"false\" data-text=\"fwd\" placeholder=\"Add a note (optional)\"></textarea>\n    <div class=\"fwd-foot\"><button class=\"btn\" data-act=\"cancel-forward\">Cancel</button><button class=\"btn primary\" data-act=\"send-forward\" disabled>Pick a session</button></div></div>",
+  mini: "<div class=\"m-dk-box\"><textarea rows=\"1\" data-text=\"ans:7\" data-mdk-box=\"7\" aria-label=\"Your answer\" placeholder=\"Your answer\" spellcheck=\"false\" autocorrect=\"off\" autocapitalize=\"off\" autocomplete=\"off\">yes &lt;please&gt;</textarea><button class=\"btn primary small\" data-mdk-send=\"7\">Send</button></div>",
+  miniEmpty: "<div class=\"m-dk-box\"><textarea rows=\"1\" data-text=\"ans:7\" data-mdk-box=\"7&quot;x\" aria-label=\"Your answer\" placeholder=\"Your answer\" spellcheck=\"false\" autocorrect=\"off\" autocapitalize=\"off\" autocomplete=\"off\"></textarea><button class=\"btn primary small\" data-mdk-send=\"7&quot;x\">Send</button></div>"
+};
+const same3 = (name, html) => assert.strictEqual(html, OLD_3D[name], name);
+Object.assign(ctx, { phrases: () => ["Yes", "No <way>"], md: (t) => `<md>${esc(t)}</md>`, badge: (h) => `<badge ${h}>`, idleNote: () => false, crewPageOn: () => false });
+// The Inbox: a session's box (pictures), a word and a picture; then empty with a suggestion, dictating.
+D("s:A", "hi <b> & \"c\"", [PIC]);
+same3("inboxPics", ctx.inboxBox("s:A", "Tell it what's next…", "Send", 'data-inbox-send="A"', "<x/>", "A", "<phr/>"));
+ctx.suggestionFor = (sid) => (sid === "A" ? "Go on" : ""); ctx.dictating = { key: "s:A" }; D("s:A", "");
+same3("inboxSug", ctx.inboxBox("s:A", "Tell it what's next…", "Send", 'data-inbox-send="A"', "<x/>", "A", "<phr/>"));
+// An answer to its question (words only), its quick phrases and Open chat; then dictating, no suggestion.
+ctx.dictating = null; D("Q1", "my <answer>");
+same3("inboxAnswer", ctx.inboxReply("A", "Q1", "Or say something else…", "Use answer", 'data-act="send" data-id="Q1"'));
+ctx.suggestionFor = () => ""; ctx.dictating = { key: "Q1" }; D("Q1", "");
+same3("inboxAnswerMic", ctx.inboxReply("A", "Q1", "Or say something else…", "Send", 'data-act="send" data-id="Q1"'));
+// A parked one's box, resuming (its Send disabled), no phrases.
+ctx.dictating = null; ctx.phrases = () => []; D("s:B", "back");
+same3("inboxWake", ctx.inboxBox("s:B", "Write to it… sending resumes it first", "Resuming…", 'data-wake-send="B" disabled', '<button class="btn" data-inbox-full="B">Open chat</button>'));
+// btw's panel: asked, failed and answered; then the lead's, empty.
+ctx.btwFor = "A"; D("btw:A", "why <so>?");
+ctx.btwLog.set("A", [{ q: "first", a: "an answer", err: null }, { q: "second", a: null, err: "boom" }, { q: "third", a: null, err: null }]);
+same3("btw", ctx.btwPanel("A"));
+ctx.crewPageOn = () => true; ctx.btwLog.delete("A"); D("btw:A", "");
+same3("btwLead", ctx.btwPanel("A"));
+ctx.crewPageOn = () => false; ctx.btwFor = null;
+// Forward's menu: a note, a session picked; then none picked.
+const was3 = { items: ctx.state.items, sessions: ctx.state.sessions }, sessionOf3 = ctx.sessionOf;
+ctx.sessionOf = (sid) => ctx.state.sessions.find((s) => s.session_id === sid) || null;
+ctx.state.items = []; ctx.state.sessions = [{ session_id: "A", project: "proj<1>", harness: "claude" }, { session_id: "X", project: "from", harness: "claude" }];
+ctx.forward = { fromSid: "X", to: "A", key: "k", from: "from", text: "t" }; D("fwd", "a <note>");
+same3("fwd", ctx.forwardPop());
+ctx.forward = { fromSid: "X", to: null, key: "k" }; D("fwd", "");
+same3("fwdNone", ctx.forwardPop());
+Object.assign(ctx.state, was3); ctx.sessionOf = sessionOf3; ctx.forward = null;
+// The mini panel's answer box, as mini.js deskAskHtml asks for it (that's inside the mini window's own block).
+const miniBox = (key, i) => ctx.boxHtml({ look: "mini", key, attrs: `data-mdk-box="${esc(i.id)}"`, label: "Your answer", placeholder: "Your answer", send: { attrs: `data-mdk-send="${esc(i.id)}"` } });
+D("ans:7", "yes <please>");
+same3("mini", miniBox("ans:7", { id: "7" }));
+D("ans:7", "");
+same3("miniEmpty", miniBox("ans:7", { id: '7"x' }));
+assert.match(fs.readFileSync(`${__dirname}/../ui/mini.js`, "utf8"), /const box = key \? boxHtml\(\{ look: "mini", key, attrs: `data-mdk-box="\$\{esc\(i\.id\)\}"`, label: "Your answer", placeholder: "Your answer", send: \{ attrs: `data-mdk-send="\$\{esc\(i\.id\)\}"` \} \}\) : "";/, "mini.js asks for that box");
+for (const html of Object.values(OLD_3D)) assert.doesNotMatch(html, /title=/, "no hover text");
 
 // ---- putting words back ----
 assert.strictEqual(ctx.boxMerge("sent", ""), "sent");
@@ -366,6 +424,42 @@ assert.strictEqual(c._pinTop, 1000);
   D(itemKey, "mine");
   await ctx.deskMsgRetry(20, 5);
   eq([hp.failed, calls[0], ctx.drafts[itemKey].text, ctx.drafts["retry:20:5"]], [null, ["send_to_session", { sessionId: "H", text: "About #20 (Tidy): hi", images: [], now: false }], "mine", undefined], "a holder retry");
+
+  // ---- btw and a forward (chat/send.js askBtw, sheets.js sendForward, on boxSend since step 3d) ----
+  // btw: asked at once in its panel (the box emptied), then its answer; no guards, the session is never written to.
+  reset();
+  ctx.btwLog.clear(); ctx.sessions.A = { session_id: "A", state: "deciding" };
+  D("btw:A", "  why?  ");
+  let shown = null;
+  answer = async () => { shown = [ctx.btwLog.get("A")[0].a, ctx.drafts["btw:A"], draws]; return "because"; };
+  await ctx.askBtw("A", ctx.drafts["btw:A"].text);
+  eq([calls, shown, ctx.btwLog.get("A"), draws, toasts], [[["btw", { sessionId: "A", question: "why?" }]], [null, undefined, 1], [{ q: "why?", a: "because", err: null }], 2, []], "btw asked and answered");
+  // Didn't go: why, in its place; nothing put back, no toast.
+  reset(); answer = async () => { throw "no copy"; };
+  D("btw:A", "typed");
+  await ctx.askBtw("A", "from /btw");
+  eq([ctx.btwLog.get("A")[1], ctx.drafts["btw:A"], draws, toasts], [{ q: "from /btw", a: null, err: "no copy" }, undefined, 2, []], "btw failed; a /btw empties its box too");
+  reset(); D("btw:A", "kept");
+  await ctx.askBtw("A", "   ");
+  eq([calls.length, ctx.drafts["btw:A"].text, ctx.btwLog.get("A").length], [0, "kept", 2], "nothing to ask");
+  delete ctx.sessions.A;
+  // Forward: the note, then the message, the menu shut; a toast either way, nothing put back.
+  const fwdTo = { session_id: "F", project: "proj", state: "idle" };
+  const sess3 = ctx.state.sessions;
+  ctx.state.sessions = [fwdTo]; ctx.sessionOf = (sid) => ctx.state.sessions.find((s) => s.session_id === sid) || null;
+  reset(); ctx.sheet = "forward"; ctx.forward = { to: "F", from: "cue-1", text: "the reply" };
+  D("fwd", " see this ");
+  let duringFwd = null;
+  answer = async () => { duringFwd = [ctx.sheet, ctx.forward, ctx.drafts.fwd, draws]; return "sent"; };
+  await ctx.sendForward();
+  eq([calls, duringFwd, toasts, saves], [[["send_to_session", { sessionId: "F", text: "see this\n\n[Forwarded from the cue-1 session]\nthe reply", images: [] }]], [null, null, undefined, 1], ["Sent to proj"], 0], "forwarded with a note");
+  reset(); ctx.sheet = "forward"; ctx.forward = { to: "F", from: "cue-1", text: "x" }; answer = async () => { throw "gone"; };
+  await ctx.sendForward();
+  eq([calls[0][1].text, toasts, ctx.drafts.fwd, draws], ["[Forwarded from the cue-1 session]\nx", ["Couldn't send to proj: gone"], undefined, 1], "forward without a note, didn't go");
+  reset(); fwdTo.state = "deciding"; ctx.forward = { to: "F", from: "cue-1", text: "x" }; D("fwd", "n");
+  await ctx.sendForward();
+  eq([calls.length, toasts, ctx.drafts.fwd.text, !!ctx.forward], [0, ["proj is asking you something first. Answer that, then send."], "n", true], "forward held");
+  ctx.state.sessions = sess3; ctx.sessionOf = (sid) => ctx.sessions[sid] || null; ctx.forward = null; ctx.sheet = null;
 
   console.log("the message box: markup as today's boxes draw it, put back, the chat's end, send");
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -1,7 +1,6 @@
 // Cue UI box — the message box's markup: the words, the mic, a picture, Send. One builder for every box that sends
-// (a session's chat box, the Desk's boxes); each says how it looks through its options. Nothing calls it yet: the chat
-// box (chat/compose.js box) and the Desk's (desk_view.js deskBox, deskItemFoot, desk_act.js deskBackHtml, desk_page.js
-// deskGoBackHtml) move onto it one at a time (docs/refactor-plan.md, Phase 3).
+// (a session's chat box, the Desk's boxes, the Inbox's, the mini panel's, btw's, a forward's note); each says how it
+// looks through its options (docs/refactor-plan.md, Phase 3).
 
 /** A message box's HTML. `o`:
  *  - key: its draft key (data-text, data-mic, data-attach, data-drop). text: its words (the draft's when left out).
@@ -18,6 +17,13 @@
  *    Cancel button's attributes. sbClass: more classes for that .dk-sb.
  *  - "composer" only: bang (a "!" line typed), cmd (the "/" menu's slot), clock (the "Send at" button), below (under
  *    the row: the "Send at" bar and the "/" hint).
+ *  Other looks, each the box of one place:
+ *  - "inbox": the Inbox's reply (.ib-box; rows 2): Send first in the row under the box, then the mic, the picture
+ *    button (with `drop`), `extra`. sugSid, sugLine: the suggestion's session and its line (sugLineHtml's by default).
+ *  - "mini": an answer in the mini panel's Desk row (.m-dk-box; rows 1): the words and Send, no mic or pictures.
+ *    attrs: more of the textarea's attributes.
+ *  - "btw": the by-the-way panel's question (.btw-ask; rows 1), "forward": the note on a forwarded message (.fwd-note;
+ *    rows 2): just the words, Enter sends (app/keys.js).
  *  No hover text: say what a button does in its aria-label. */
 function boxHtml(o) {
   const key = o.key, k = esc(key);
@@ -37,12 +43,21 @@ function boxHtml(o) {
     ${o.clock || ""}
     ${o.extra || ""}<button class="btn primary send" ${send.attrs || ""} ${send.disabled ? "disabled" : ""}>${send.label ?? "Send"}</button></div>${o.below || ""}</div></div>`;
   }
+  const placeholder = esc(sug ? " " : o.placeholder || "");
+  if (o.look === "btw") return `<div class="btw-ask"><textarea data-text="${k}" rows="${o.rows || 1}" placeholder="${placeholder}" spellcheck="false">${esc(text)}</textarea></div>`;
+  if (o.look === "forward") return `<textarea rows="${o.rows || 2}" class="fwd-note" spellcheck="false" data-text="${k}" placeholder="${placeholder}">${esc(text)}</textarea>`;
   const label = sug ? ` aria-label="${esc(`Suggested: ${sug}. Tab types it in.`)}"` : o.label ? ` aria-label="${esc(o.label)}"` : "";
-  const ta = `<textarea rows="${o.rows || 1}" data-text="${k}"${sug ? ` class="sug"${o.sugSid != null ? ` data-sug-sid="${esc(o.sugSid)}"` : ""}` : ""}${label} placeholder="${esc(sug ? " " : o.placeholder || "")}" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off">${esc(text)}</textarea>`;
-  const field = o.wrap ? `<div class="ta-wrap">${ta}${sugLineHtml(sug)}</div>` : ta;
+  const fixed = 'spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off"';
   const mic = o.mic === false ? "" : `<button class="icon-btn mic ${on ? "on" : ""}" data-mic="${k}" aria-label="${on ? "Stop dictating" : "Dictate"}">${MIC_ICON}</button>`;
   const attach = o.attach === false ? "" : `<button class="icon-btn" data-attach="${k}" aria-label="Add an image">${IMAGE_ICON}</button>`;
   const go = `<button class="btn primary small" ${send.attrs || ""}${send.disabled ? " disabled" : ""}>${send.label ?? "Send"}</button>`;
+  if (o.look === "mini") return `<div class="m-dk-box"><textarea rows="${o.rows || 1}" data-text="${k}"${o.attrs ? ` ${o.attrs}` : ""}${label} placeholder="${placeholder}" ${fixed}>${esc(text)}</textarea>${go}</div>`;
+  if (o.look === "inbox") {
+    const ta = `<textarea rows="${o.rows || 2}" data-text="${k}"${sug ? ` class="sug" data-sug-sid="${esc(o.sugSid)}"` : ""}${label} placeholder="${placeholder}" ${fixed}>${esc(text)}</textarea>`;
+    return `<div class="ib-box" ${o.drop ? `data-drop="${k}"` : ""}>${o.drop ? chips : ""}<div class="ta-wrap">${ta}${o.sugLine ?? sugLineHtml(sug)}</div><div class="ib-box-acts"><button class="btn primary" ${send.attrs || ""}>${send.label ?? "Send"}</button>${mic}${o.drop ? attach : ""}${o.extra || ""}</div></div>`;
+  }
+  const ta = `<textarea rows="${o.rows || 1}" data-text="${k}"${sug ? ` class="sug"${o.sugSid != null ? ` data-sug-sid="${esc(o.sugSid)}"` : ""}` : ""}${label} placeholder="${placeholder}" ${fixed}>${esc(text)}</textarea>`;
+  const field = o.wrap ? `<div class="ta-wrap">${ta}${sugLineHtml(sug)}</div>` : ta;
   const inner = `<div class="dk-box${o.head ? " dk-sb-box" : ""}"${o.drop === false ? "" : ` data-drop="${k}"`}>${o.top || ""}${chips}<div class="dk-box-row">${field}${mic}${attach}${o.extra || ""}${go}</div></div>`;
   if (!o.head) return inner;
   return `<div class="dk-sb${o.sbClass ? ` ${o.sbClass}` : ""}"><div class="dk-sb-h"><span class="dk-sb-l">${esc(o.head.label)}</span><button class="dk-sb-x" ${o.head.cancel || ""}>Cancel</button></div>${inner}</div>`;

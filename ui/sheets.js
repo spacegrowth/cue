@@ -262,7 +262,7 @@ function forwardPop() {
   return `<div class="fwd-catch" data-act="cancel-forward"></div><div class="fwd-pop" role="dialog" aria-label="Send to another session">
     <div class="fwd-head">SEND THIS MESSAGE TO</div>
     <div class="fwd-list">${opts || `<div class="dim" style="padding:6px 8px">No other sessions are open.</div>`}</div>
-    <textarea rows="2" class="fwd-note" spellcheck="false" data-text="fwd" placeholder="Add a note (optional)">${esc(draft("fwd").text)}</textarea>
+    ${boxHtml({ look: "forward", key: "fwd", placeholder: "Add a note (optional)" })}
     <div class="fwd-foot"><button class="btn" data-act="cancel-forward">Cancel</button><button class="btn primary" data-act="send-forward" ${to ? "" : "disabled"}>${to ? `Send to ${esc(to.project)}` : "Pick a session"}</button></div></div>`;
 }
 /** Keep the menu just above its button (below it when there's no room), following the chat as it scrolls. */
@@ -279,13 +279,15 @@ async function sendForward() {
   const f = forward, to = sessionOf(f?.to);
   if (!to) return;
   if (to.state === "deciding") return toast(`${to.project} is asking you something first. Answer that, then send.`);
-  const note = draft("fwd").text.trim();
-  const text = `${note ? `${note}\n\n` : ""}[Forwarded from the ${f.from} session]\n${f.text}`;
-  sheet = forward = null;
-  delete drafts.fwd;
-  renderMain();
-  try { await invoke("send_to_session", { sessionId: to.session_id, text, images: [] }); toast(`Sent to ${to.project}`); }
-  catch (e) { toast(`Couldn't send to ${to.project}: ${e}`); }
+  // Through the one box send (ui/box/send.js boxSend): the note, then the message; the menu shuts and its box empties
+  // before it goes. Words only, nothing put back when it doesn't go: the toast says so.
+  await boxSend({ sid: to.session_id }, "fwd", {
+    guard: false, empty: true,
+    before: (note) => { sheet = forward = null; return `${note ? `${note}\n\n` : ""}[Forwarded from the ${f.from} session]\n${f.text}`; },
+    call: (text) => invoke("send_to_session", { sessionId: to.session_id, text, images: [] }),
+    sent: () => toast(`Sent to ${to.project}`),
+    failed: (e) => { toast(`Couldn't send to ${to.project}: ${e}`); return true; },
+  });
 }
 /** Notification sounds: Cue's own three, two of macOS's, and none (see sounds.rs). */
 const SOUNDS = [["pluck", "Pluck"], ["chime", "Chime"], ["rise", "Rise"], ["glass", "Glass"], ["ping", "Ping"], ["none", "None"]];

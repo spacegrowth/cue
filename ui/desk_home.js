@@ -225,22 +225,24 @@ if (typeof window !== "undefined") {
     if (input.checked) deskCloseSelected.add(input.dataset.deskCloseSession); else deskCloseSelected.delete(input.dataset.deskCloseSession);
   });
   document.addEventListener("submit", (e) => { if (ndEl?.contains(e.target)) { e.preventDefault(); deskNewStart(); } }, true);
-  window.addEventListener("keydown", (e) => {
-    if (ndEl?.isConnected) {
-      e.stopImmediatePropagation();
-      // The Project list open: ↑ ↓ move, Enter or Space picks, Esc closes just the list.
-      if (ndDrop) {
-        if (e.key === "Escape") { e.preventDefault(); ndDrop = false; ndPickDraw(); ndEl.querySelector("#nd-proj")?.focus(); }
-        else if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); ndSel = Math.min(ndCs.length - 1, Math.max(0, ndSel + (e.key === "ArrowDown" ? 1 : -1))); ndPickDraw(); }
-        else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); ndPick(ndSel); }
-        else if (e.key === "Tab") { ndDrop = false; ndPickDraw(); }
-        return;
-      }
-      if (e.key === "Escape") { e.preventDefault(); deskNewClose(); }
-      // On the picker, ↓ (or ↑) opens its list, as the system's menu would.
-      else if ((e.key === "ArrowDown" || e.key === "ArrowUp") && e.target.id === "nd-proj") { e.preventDefault(); ndDrop = true; ndSel = ndAt; ndPickDraw(); }
-      return;
+}
+/** The sheet's keys, and Esc for the menu, before the window's (app/keys.js KEY_FIRST): while the sheet is open it
+ *  takes every key (typing in its fields goes on as usual: only these keys are kept from their default). */
+function deskHomeKey(e) {
+  if (ndEl?.isConnected) {
+    // The Project list open: ↑ ↓ move, Enter or Space picks, Esc closes just the list.
+    if (ndDrop) {
+      if (e.key === "Escape") { e.preventDefault(); ndDrop = false; ndPickDraw(); ndEl.querySelector("#nd-proj")?.focus(); }
+      else if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); ndSel = Math.min(ndCs.length - 1, Math.max(0, ndSel + (e.key === "ArrowDown" ? 1 : -1))); ndPickDraw(); }
+      else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); ndPick(ndSel); }
+      else if (e.key === "Tab") { ndDrop = false; ndPickDraw(); }
+      return true;
     }
-    if (newMenuOpen && e.key === "Escape") { e.stopImmediatePropagation(); newMenuOpen = false; renderMain(); }
-  }, true);
+    if (e.key === "Escape") { e.preventDefault(); deskNewClose(); }
+    // On the picker, ↓ (or ↑) opens its list, as the system's menu would.
+    else if ((e.key === "ArrowDown" || e.key === "ArrowUp") && e.target.id === "nd-proj") { e.preventDefault(); ndDrop = true; ndSel = ndAt; ndPickDraw(); }
+    return true;
+  }
+  if (newMenuOpen && e.key === "Escape") { newMenuOpen = false; renderMain(); return true; }
+  return false;
 }

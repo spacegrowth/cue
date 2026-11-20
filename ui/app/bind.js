@@ -94,6 +94,6 @@ function bindMain() {
   delegate(app, "click", CLICKS);
   // Coming back to Cue: the cursor goes to the text box unless you were somewhere else in it.
   window.addEventListener("focus", () => { if (!sheet && !lightbox && document.activeElement === document.body) focusComposer(); });
-  document.addEventListener("keydown", keyDeleteAsk, true);
+  KEY_FIRST.push(keyDeleteAsk);
   document.addEventListener("keydown", onKey);
 }

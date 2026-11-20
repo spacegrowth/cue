@@ -1,8 +1,23 @@
 // Cue UI box — sending what's in a box, and putting words back in one. One path for every box: the guards ("It's
 // restarting", "It's asking you something first"), pictures cut down to what goes (name, mime, data), the box emptied,
-// and, when it doesn't go, the words back in the box ahead of what's typed there since. Nothing calls it yet: chat/send.js
-// deliver, chat/compose.js sendTo, pullHeld and sendAtEdit, and desk_act.js's senders move onto it in later steps
-// (docs/refactor-plan.md, Phase 3).
+// and, when it doesn't go, the words back in the box ahead of what's typed there since. Its callers: chat/send.js deliver
+// and askBtw, chat/compose.js sendTo, pullHeld and sendAtEdit, desk_act.js's senders, mini.js's answer and sheets.js
+// sendForward (docs/refactor-plan.md, Phase 3).
+
+/** Boxes a part of the window owns, asked before the shared code's own (the Desk's, desk_act.js; the mini window's Desk
+ *  rows, mini.js). The shared code never calls into them by name: it asks here. Each entry, every field but `owns`
+ *  optional:
+ *  - owns(key, el): box `key` (its textarea `el`, when there is one) is this entry's.
+ *  - send(key): what its Send does (Enter, and a quick phrase clicked under it). enter(e, key): Enter's own, if not send.
+ *  - recall(key): for ↑ ↓ (chat/compose.js recallSent), the session the box goes to as { s }; null for none.
+ *  - suggestion(sugSid): the suggested reply for a box's `sugSid` that's its own ("item:…"); null when it isn't.
+ *  - view: the view whose chat the entry keeps, for chatEnd(atEnd) (whether that chat sits at its end at the next draw:
+ *    the reader closing, or Reply from it) and keptBox(sid) (the box there a message Cue kept for `sid` comes back to). */
+const BOX_OWNERS = [];
+/** The entry that owns box `key` (its textarea `el`), or null. */
+const boxOwner = (key, el) => (key && BOX_OWNERS.find((o) => o.owns(key, el))) || null;
+/** The entry that keeps view `v`'s chat, or null (the Board's: none). */
+const boxViewOwner = (v) => BOX_OWNERS.find((o) => o.view === v) || null;
 
 /** Why nothing can go to session `sid` now ("" when it can): it's restarting, or it's asking you something first. */
 function boxHeld(sid) {

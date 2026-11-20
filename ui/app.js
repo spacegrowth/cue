@@ -1,6 +1,6 @@
 // Cue UI — everything that needs you, visible at once, on one board.
-// Cue UI app — the window's state as Cue sends it (setState), a draw that fails shown as an error, and boot(). The draw
-// is ui/app/render.js; its listeners ui/app/bind.js.
+// Cue UI app — the window's state as Cue sends it (setState), and boot(). The draw (and a draw that fails, shown as an
+// error) is ui/app/render.js; its listeners ui/app/bind.js.
 addEventListener("wheel", () => { glide = null; }, { capture: true, passive: true });
 /** The closed strip's line: the open session's screen, every 2 s (its last line with anything on it). */
 setInterval(async () => {
@@ -57,16 +57,6 @@ function setState(s) {
   render();
   extNotify();
 }
-// A draw that throws must not leave the window empty: what went wrong is shown where the board
-// would be, so a bad build is seen as an error and not as "Cue didn't start".
-function showRenderError(e) {
-  console.error("[render]", e);
-  const app = document.getElementById("app");
-  if (!app || app.innerHTML.length > 0 && !app.querySelector(".render-error")) return; // an earlier good draw stays
-  const detail = e && e.stack ? e.stack : String(e);
-  app.innerHTML = `<div class="render-error" style="padding:24px 28px;font:13px/1.5 ui-monospace,Menlo,monospace;white-space:pre-wrap;user-select:text"><div style="font:600 15px system-ui;margin-bottom:10px">Cue can't draw its window</div>${esc(detail)}\n\nIf this came with a new build, reinstall the previous one or fix the error above and run ./install.sh --app again.</div>`;
-}
-const render = () => { try { renderMain(); } catch (e) { showRenderError(e); } };
 window.addEventListener("error", (e) => showRenderError(e.error || e.message));
 window.addEventListener("unhandledrejection", (e) => showRenderError(e.reason));
 

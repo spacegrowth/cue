@@ -133,12 +133,17 @@ function morphAttrs(a, b) {
 let escArmed = 0;           // when Esc was last pressed on a working session (twice within 1.5s stops it)
 let focusedTarget = null;   // the Active target whose text box last got the cursor
 let overWas = false;        // something covered the chat at the last draw (a sheet, the live list, an image…)
-/** Put the cursor at the end of the Active pane's text box (opening something, Esc Esc). */
-function focusComposer(key) {
-  const el = document.querySelector(key && !key.startsWith("s:") ? `textarea[data-text="${CSS.escape(key)}"]` : ".active-pane textarea[data-text]");
+/** Where a view's open chat keeps its box: the Board's Active pane, the Desk's right side, the Inbox's open row. */
+const BOX_HOMES = { board: ".active-pane", desk: ".dk-right .dk-box", inbox: ".inbox-page .ib-box" };
+/** Every box takes the cursor through here (opening something, Esc Esc, Send back opening, the Inbox moving on):
+ *  `key`'s box (a box's draft key; a session's "s:…" is the Active pane's), else the box of view `home`'s open chat
+ *  (BOX_HOMES). The cursor goes to the end of what's in it, unless `end` is false (left where the browser puts it);
+ *  `scroll` false keeps the page from scrolling to it. False when there's no such box. */
+function focusComposer(key, { home = "board", end = true, scroll = true } = {}) {
+  const el = document.querySelector(key && !key.startsWith("s:") ? `textarea[data-text="${CSS.escape(key)}"]` : `${BOX_HOMES[home]} textarea[data-text]`);
   if (!el) return false;
-  el.focus();
-  el.setSelectionRange(el.value.length, el.value.length);
+  el.focus(scroll ? undefined : { preventScroll: true });
+  if (end) el.setSelectionRange(el.value.length, el.value.length);
   return true;
 }
 

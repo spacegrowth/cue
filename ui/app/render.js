@@ -79,7 +79,13 @@ function putPlacesBack(noted) {
   }
 }
 
+/** A window with its own draw: null in Cue's window. The mini window (mini.js) sets it as it loads to its paint, and
+ *  then every redraw Cue's code asks for (renderMain, render) is that paint, and this file's own listeners stand
+ *  aside (the mini window has no board, header or tips to fit). */
+let windowDraw = null;
+
 function renderMain() {
+  if (windowDraw) return windowDraw();
   projTheme();
   applyTheme();
   // You're dragging out a selection: a redraw would wipe it. It waits until you let go.
@@ -327,7 +333,8 @@ function restoreFocus(was) {
   // nothing scrolls it back: the item's box moved at the first redraw after it opened.
   if (focusKey) {
     const el = document.querySelector(`[data-text="${CSS.escape(focusKey)}"]`);
-    if (el) { el.focus({ preventScroll: true }); el.setSelectionRange(...caret); } else if (view === "inbox" && typeof inboxRefocus === "function") inboxRefocus();
+    // Gone: on the Inbox (Allow moved it on to the next row), the box on screen now takes it.
+    if (el) { el.focus({ preventScroll: true }); el.setSelectionRange(...caret); } else if (view === "inbox") focusComposer(undefined, { home: "inbox", end: false });
   }
   else if (focusId) { const el = document.getElementById(focusId); if (el) { el.focus({ preventScroll: true }); if (caret) el.setSelectionRange(...caret); } }
   // Where each box was scrolled, after the cursor is back (putting it back can scroll the box itself).
@@ -353,9 +360,21 @@ function fitAfterDraw(focused) {
   if (typeof inboxFitPhrases === "function") inboxFitPhrases();
   if (typeof inboxKeepEnd === "function") inboxKeepEnd();   // the open Inbox thread at its newest, unless you scrolled up
 }
-addEventListener("resize", () => { fitHead(); fitTips(); fitTop(); markMore(); if (typeof inboxFitPhrases === "function") inboxFitPhrases(); });
-document.addEventListener("scroll", (e) => { if (e.target instanceof Element) moreWoke.add(e.target); if (!moreFrame) moreFrame = requestAnimationFrame(() => { moreFrame = 0; markMore(false); }); }, true);
+// A draw that throws must not leave the window empty: what went wrong is shown where the board would be, so a bad
+// build is seen as an error and not as "Cue didn't start".
+function showRenderError(e) {
+  console.error("[render]", e);
+  const app = document.getElementById("app");
+  if (!app || app.innerHTML.length > 0 && !app.querySelector(".render-error")) return; // an earlier good draw stays
+  const detail = e && e.stack ? e.stack : String(e);
+  app.innerHTML = `<div class="render-error" style="padding:24px 28px;font:13px/1.5 ui-monospace,Menlo,monospace;white-space:pre-wrap;user-select:text"><div style="font:600 15px system-ui;margin-bottom:10px">Cue can't draw its window</div>${esc(detail)}\n\nIf this came with a new build, reinstall the previous one or fix the error above and run ./install.sh --app again.</div>`;
+}
+/** A redraw, its error shown rather than thrown (a window with its own draw: that draw, as it is). */
+const render = () => { if (windowDraw) return windowDraw(); try { renderMain(); } catch (e) { showRenderError(e); } };
+addEventListener("resize", () => { if (windowDraw) return; fitHead(); fitTips(); fitTop(); markMore(); if (typeof inboxFitPhrases === "function") inboxFitPhrases(); });
+document.addEventListener("scroll", (e) => { if (windowDraw) return; if (e.target instanceof Element) moreWoke.add(e.target); if (!moreFrame) moreFrame = requestAnimationFrame(() => { moreFrame = 0; markMore(false); }); }, true);
 document.addEventListener("click", (e) => {
+  if (windowDraw) return;
   const pill = e.target.closest?.(".more-below");
   if (!pill) return;
   e.stopPropagation();

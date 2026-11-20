@@ -255,17 +255,17 @@ async function deskAct(id, act, el = null) {
   if ((act === "drop" || act === "remove_kept") && deskDropArm !== id) { deskDropArm = id; return renderMain(); }
   deskDropArm = null;
   // Send back opens the item's own box for why (deskBackHtml); its Send sends that, to the item's holder only.
-  if (act === "send_back") { deskBackFor = deskBackFor === id ? null : id; renderMain(); return deskBackFocus(id); }
+  if (act === "send_back") { deskBackFor = deskBackFor === id ? null : id; renderMain(); focusComposer(`back:${id}`, { end: false }); return; }
   // Send back to fix (#250): the same box, its why started with what stopped the landing.
   if (act === "fix_back") {
     const it = (state.desk?.projects || []).flatMap((p) => p.items || []).find((x) => x.id === id), d = draft(`back:${id}`);
     if (!d.text.trim() && it?.finish?.question) d.text = `The landing stopped: ${it.finish.question}. Fix it, then say DONE again.`;
-    deskBackFor = id; renderMain(); return deskBackFocus(id);
+    deskBackFor = id; renderMain(); focusComposer(`back:${id}`, { end: false }); return;
   }
   if (act === "back_cancel") { endDictation(`back:${id}`); deskBackFor = null; return renderMain(); }
   if (act === "back_go") {
     const key = `back:${id}`;
-    if (!draft(key).text.trim() && !draft(key).images.length) { toast("Say why it goes back first", 4000); return deskBackFocus(id); }
+    if (!draft(key).text.trim() && !draft(key).images.length) { toast("Say why it goes back first", 4000); focusComposer(key, { end: false }); return; }
     if (await deskSendBack(id, key)) deskBackFor = null;
     return renderMain();
   }
@@ -284,7 +284,6 @@ function deskBackHtml(id) {
   const key = `back:${id}`, label = "Why send it back?";
   return boxHtml({ key, label, placeholder: "What isn't right yet", head: { label, cancel: `data-desk-act="back_cancel" data-id="${esc(id)}"` }, send: { attrs: `data-desk-act="back_go" data-id="${esc(id)}"` } });
 }
-const deskBackFocus = (id) => document.querySelector(`textarea[data-text="${CSS.escape(`back:${id}`)}"]`)?.focus();
 async function deskUndo(id) {
   try { toast((await invoke("desk_undo", { decisionId: id })) || "Asked to undo it"); }
   catch (e) { toast(String(e)); }
@@ -505,6 +504,17 @@ function deskKeptBox(sid) {
   const lead = (to) => !to.sid && !to.item && deskLead(deskOf(to.project))?.sid === sid;
   return [...deskBoxes].filter(([, to]) => (to.sid === sid && !to.mate && !to.item) || lead(to)).map(([k]) => k).find(shown) || "";
 }
+// The Desk's boxes, on the window's shared box (box/send.js BOX_OWNERS): Enter and a quick phrase send them, ↑ ↓ bring
+// back what went to their session, an item page's suggested reply, and the Desk's chat end for the reader.
+BOX_OWNERS.push({
+  owns: (key) => key.startsWith("back:") || deskBoxes.has(key),
+  send: (key) => (key.startsWith("back:") ? deskAct(key.slice(5), "back_go") : deskSendBox(key)),
+  recall: (key) => deskRecall(key),
+  suggestion: (sid) => (sid?.startsWith?.("item:") ? deskItemSuggestion(sid.slice(5)) : null),
+  view: "desk",
+  chatEnd: (atEnd) => { deskChatEnd = atEnd; },
+  keptBox: (sid) => deskKeptBox(sid),
+});
 /** Esc's session on the Desk (#494), as the Board's open session: the lead's in its chat, the session on a session's or
  *  holder's page (a crew member's: its lead), the item's holder on an item's page (its page is its holder's chat, #418).
  *  Handed to the Board's Esc (app/keys.js escSession) with the box at the foot: a message Cue kept for it comes back
@@ -517,7 +527,7 @@ function deskEscSession() {
   const lead = !o && deskTab === "lead" && deskPick !== d.project && deskLead(d) && !deskLeadEnded(d) ? deskLead(d).sid : "";
   return escSession(o?.kind === "crew" ? o.lead : o?.kind === "chat" || o?.kind === "holder" ? o.sid : lead, key);
 }
-/** Keys on the Desk: ⌘N goes to the quick-add line, Enter sends a box (⇧Enter a new line), the quick-add line's keys
+/** Keys on the Desk: ⌘N goes to the quick-add line (a box's Enter is the window's, app/keys.js enterInBox), the quick-add line's keys
  *  (desk_lead.js), Esc closes a Give to… menu, then the picker (when changing), then takes back a message Cue kept for
  *  the open session or stops it (Esc twice, deskEscSession), then the open pane. */
 function deskKey(e) {
@@ -541,8 +551,6 @@ function deskKey(e) {
   }
   if (e.metaKey && !e.shiftKey && !e.altKey && !e.ctrlKey && e.key?.toLowerCase() === "n" && deskSelection() && !sheet && !(crewPageSid && document.querySelector(".crew-page"))) return deskQaFocus();
   if (deskQaKey(e, key)) return true;
-  if (e.key === "Enter" && !e.shiftKey && deskBoxes.has(key)) { deskSendBox(key); return true; }
-  if (e.key === "Enter" && !e.shiftKey && key.startsWith("back:")) { deskAct(key.slice(5), "back_go"); return true; }
   if (e.key === "Escape" && deskProgShown) { deskProgToggle(false); document.querySelector("[data-desk-prog-toggle]")?.focus(); return true; }
   if (e.key === "Escape" && key.startsWith("back:")) { deskAct(key.slice(5), "back_cancel"); return true; }
   // Esc: only when nothing over the Desk wants it (the crew page, a sheet, search and the live list, the projects
@@ -568,7 +576,6 @@ function deskKey(e) {
 }
 
 if (typeof document !== "undefined") {
-  document.addEventListener("keydown", (e) => { if (deskKey(e)) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
   document.addEventListener("click", deskClick, true);
   document.addEventListener("change", (e) => {
     const input = e.target.closest?.(".dk-add-option [data-desk-member]");

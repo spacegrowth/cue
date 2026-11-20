@@ -1,7 +1,7 @@
 // Run: node tests/mini.test.js  (the mini window's page loads Cue's own chat: ui/mini.html against ui/index.html)
 // The mini window draws its open chat with the main window's code (ui/mini.js). So its page loads the main window's
-// stylesheets and scripts, in index.html's order, all but the terminal (vendor/xterm), the window's draw
-// (app/render.js) and its boot (app.js); then its own. A script added to index.html and not here would leave the mini
+// stylesheets and scripts, in index.html's order, all but the terminal (vendor/xterm) and the window's boot (app.js);
+// then its own. The window's draw (app/render.js) is loaded too: mini.js hands it its own (windowDraw). A script added to index.html and not here would leave the mini
 // window's chat a function short (a ReferenceError mid-draw); one here and not there, a name the Rust check
 // (lib.rs the_windows_scripts_declare_each_top_level_name_once) never saw.
 const assert = require("assert");
@@ -13,9 +13,9 @@ const scripts = (html) => [...html.matchAll(/<script src="([^"]+)"/g)].map((m) =
 const sheets = (html) => [...html.matchAll(/<link rel="stylesheet" href="([^"]+)"/g)].map((m) => m[1]);
 const index = read("index.html"), mini = read("mini.html");
 
-const MAIN_ONLY = new Set(["app/render.js", "app.js"]);
+const MAIN_ONLY = new Set(["app.js"]);
 const want = scripts(index).filter((s) => !s.startsWith("vendor/") && !MAIN_ONLY.has(s));
-assert.deepStrictEqual(scripts(mini), [...want, "mini.js"], "mini.html's scripts: index.html's (but its terminal, draw and boot), then mini.js");
+assert.deepStrictEqual(scripts(mini), [...want, "mini.js"], "mini.html's scripts: index.html's (but its terminal and boot), then mini.js");
 assert.deepStrictEqual(sheets(mini), [...sheets(index).filter((s) => !s.startsWith("vendor/")), "styles/mini.css"], "mini.html's styles: index.html's (but its terminal's), then mini.css");
 
 // mini.js keeps its names in one block: nothing declared at its top level (a name there could clash with one of the

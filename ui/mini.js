@@ -10,8 +10,8 @@
 // paneArgs, activeChat, paneFoot; app/clicks.js CHAT_CLICKS). This file is the frame around it: the tabs, ⤢ In Cue,
 // ×, the size and place, the pointer and the keyboard.
 // Everything lives inside one strict block: its names stay its own (core.js's state, view, active… are the main
-// window's, and a second top-level declaration of one would stop this script from running at all). The one name it
-// gives the page is renderMain (and render): what Cue's chat code calls to redraw is this window's paint.
+// window's, and a second top-level declaration of one would stop this script from running at all). It hands the page
+// its draw (app/render.js windowDraw): what Cue's chat code calls to redraw (renderMain, render) is this window's paint.
 "use strict";
 {
   const NOTCH = location.hash === "#notch";
@@ -231,7 +231,7 @@
       acts = m.answer === i.id ? "" : `${q.length ? qFoldBtns(req, choose, "btn small") : ""}<button class="btn small" data-mdk-answer="${esc(i.id)}">Answer</button>`;
     }
     const key = m.answer === i.id ? deskAnswerKey(i, req) : "";
-    const box = key ? `<div class="m-dk-box"><textarea rows="1" data-text="${esc(key)}" data-mdk-box="${esc(i.id)}" aria-label="Your answer" placeholder="Your answer" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off">${esc(draft(key).text)}</textarea><button class="btn primary small" data-mdk-send="${esc(i.id)}">Send</button></div>` : "";
+    const box = key ? boxHtml({ look: "mini", key, attrs: `data-mdk-box="${esc(i.id)}"`, label: "Your answer", placeholder: "Your answer", send: { attrs: `data-mdk-send="${esc(i.id)}"` } }) : "";
     return `<div class="m-dk-ask">${line ? `<div class="m-dk-q">${esc(line)}</div>` : ""}${req?.kind === "question" ? qFoldLine(req) : ""}${acts ? `<div class="m-dk-acts">${acts}</div>` : ""}${box}</div>`;
   }
   /** One item: its state, title and age; under them its kind and number, who holds it; then (waiting on you) its ask. */
@@ -289,7 +289,7 @@
     if (deskOpenId() !== null) return drawDesk(deskOpenId());
     if (active?.sid !== m.open) active = { id: itemFor(m.open)?.id || null, sid: m.open };
     const cur = current(), old = document.querySelector("[data-chat]"), caret = caretNow();
-    const was = { oldChat: old, chatPinned: !!old && old.scrollHeight - old.scrollTop - old.clientHeight < 24 };
+    const was = { oldChat: old, chatPinned: boxAtEnd(old) };
     const lifted = liftChat();
     pane.className = `active-pane ${cur?.s?.state === "working" || cur?.s?.compacting_ms ? "busy" : ""}`;
     pane.innerHTML = cur ? paneHtml(cur) : "";
@@ -359,9 +359,9 @@
       p.style.opacity = "";
       const t = root.querySelector("[data-chat]");
       if (!t) return;
-      const y = t.scrollTop, atEnd = t.scrollHeight - y - t.clientHeight < 24;
+      const y = t.scrollTop, atEnd = boxAtEnd(t);
       t.scrollTop = y > 0 ? y - 1 : y + 1;
-      requestAnimationFrame(() => { t.scrollTop = atEnd ? t.scrollHeight : y; });
+      requestAnimationFrame(() => { if (atEnd) boxStickToEnd(t, false); else t.scrollTop = y; });
     });
   }
   /** The side Cue says the tab is on: drawn again when that changed (its arrow, the panel's side). */
@@ -418,17 +418,17 @@
     }
     fit();
   }
-  /** Cue's chat code redraws by calling renderMain (and render): here that's this window's paint, held while you
-   *  drag out a selection, press a button or type through an input method, as Cue's window holds its own
-   *  (app/render.js renderMain; window.js lets it go). */
-  globalThis.renderMain = globalThis.render = () => {
+  /** Cue's chat code redraws by calling renderMain (and render): here that's this window's paint (app/render.js
+   *  windowDraw), held while you drag out a selection, press a button or type through an input method, as Cue's
+   *  window holds its own (app/render.js renderMain; window.js lets it go). */
+  windowDraw = () => {
     if (dragSelecting() || onPress || composing) { heldDraw = true; return; }
     paint();
   };
   /** The end of the chat: what it's doing now, under its last reply. Again on the next frame, once the window
    *  has its full height and the reply its final layout (scrolled before that, it stopped short of the end). */
   function toLatest() {
-    const end = () => { const t = root.querySelector("[data-chat]"); if (t) t.scrollTop = t.scrollHeight; };
+    const end = () => boxStickToEnd(root.querySelector("[data-chat]"), false);
     end();
     requestAnimationFrame(() => { end(); requestAnimationFrame(end); });
     setTimeout(end, 250);   // opened from the tab: the window grows to the panel's height a moment later
@@ -536,10 +536,9 @@
     if (!text) return;
     m.answer = null;
     if (req) {
+      // Out of the box (saved so) before it goes, nothing drawn first; respond says itself when it didn't go.
       const q = questions(req)[0];
-      delete drafts[key];
-      saveDrafts();
-      return respond(req, q ? { behavior: "allow", answers: { [q.question]: text } } : { behavior: "deny", message: text });
+      return boxSend({}, key, { guard: false, draw: () => saveDrafts(), call: (said) => respond(req, q ? { behavior: "allow", answers: { [q.question]: said } } : { behavior: "deny", message: said }) });
     }
     // deskSendBox finds the item on the Desk picked in Cue's window: this item's, while it starts (it reads that
     // before it first waits).
@@ -550,17 +549,19 @@
     await sent;
     renderMain();
   }
-  /** Keys in a Desk row's box: Enter sends (⇧Enter a new line), Esc closes it. Send back's box the same (desk.js). */
+  /** Esc in a Desk row's box closes it; Send back's box the same (desk.js). Enter sends either, as every box's Enter
+   *  does (app/keys.js enterInBox; a row's answer box: its BOX_OWNERS entry, added in bind()). */
   function keyDesk(e) {
     const t = e.target, back = /^back:/.test(t.dataset?.text || "") ? t.dataset.text.slice(5) : null, id = t.dataset?.mdkBox || back;
     if (!id || e.isComposing) return false;
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); back ? deskAct(id, "back_go") : deskAnswerSend(id); return true; }
     if (e.key !== "Escape") return false;
     e.preventDefault();
     if (back) deskAct(id, "back_cancel");
     else { m.answer = null; paint(); }
     return true;
   }
+  /** A Desk row's answer box, on the shared box (box/send.js BOX_OWNERS): Enter sends it (deskAnswerSend). */
+  const deskAnswerBox = { owns: (key, el) => !!el?.dataset?.mdkBox, enter: (e) => deskAnswerSend(e.target.dataset.mdkBox) };
   /** A link in the chat: a markdown file in Cue's reader, for the session that named it (as a click in Cue's own chat
    *  does); anything else where it opens. */
   function openLink(link, e) {
@@ -600,6 +601,7 @@
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && m.open && sendWaitingNow(m.open)) e.preventDefault();
   }
   function bind() {
+    BOX_OWNERS.unshift(deskAnswerBox);
     bindChat(root);
     delegate(root, "click", CLICKS_HERE);
     root.addEventListener("focusin", (e) => { if (!m.keyed && e.target.matches("textarea, input")) { m.keyed = true; invoke("mini_key", { on: true }).catch(() => {}); } });

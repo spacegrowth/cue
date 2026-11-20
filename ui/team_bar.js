@@ -190,7 +190,6 @@ function crewBarKey(e) {
 }
 
 if (typeof document !== "undefined") {
-  document.addEventListener("keydown", (e) => { if (crewBarKey(e)) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
   document.addEventListener("click", (e) => {
     const t = e.target, sid = crewPageSid;
     if (!sid || !t.closest?.(".crew-page")) return;

@@ -584,7 +584,6 @@ function crewEsc(e) {
 }
 
 if (typeof document !== "undefined") {
-  document.addEventListener("keydown", (e) => { if (crewEsc(e)) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
   document.addEventListener("click", (e) => {
     const t = e.target;
     // The mode on the tray's line is team_send.js's: it doesn't open or close the tray.

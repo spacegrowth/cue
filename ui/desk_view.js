@@ -232,7 +232,8 @@ function deskThreadSettle(lifted) {
 let deskBoxShown = null;
 /** When a key was last pressed: a row opened with Enter after it keeps the keys (pointedAt: the last click, chat/patch.js). */
 let deskKeyAt = 0;
-document.addEventListener("keydown", () => { deskKeyAt = Date.now(); }, true);
+/** Every key the views' steps leave on (app/keys.js KEY_FIRST) notes when it was pressed. */
+function deskKeyNote() { deskKeyAt = Date.now(); return false; }
 /** A chat opened on the Desk (the Desk itself, the lead's chat, an item's page, a session's or a crew member's): its
  *  text box takes the cursor, so you can just type (#154), as a chat on the Board does. Not over your choice: not
  *  while you're writing in another box, a sheet is open, or you're moving through the list with the keys. */
@@ -240,11 +241,10 @@ function deskFocusOpened() {
   const k = view === "desk" ? `${deskSelection()}|${JSON.stringify(deskOpen)}` : null;
   if (k === deskBoxShown) return;
   deskBoxShown = k;
-  const box = k && document.querySelector(".dk-right .dk-box textarea[data-text]"), a = document.activeElement;
-  if (!box || sheet || a?.matches?.("input, textarea, select, [contenteditable]")) return;
+  const a = document.activeElement;
+  if (!k || sheet || a?.matches?.("input, textarea, select, [contenteditable]")) return;
   if (a?.closest?.(".dk-board") && a.matches('[role="button"]') && deskKeyAt > pointedAt) return;   // keys, not a click
-  box.focus({ preventScroll: true });
-  box.setSelectionRange(box.value.length, box.value.length);
+  focusComposer(undefined, { home: "desk", scroll: false });
 }
 function deskSettle() {
   deskDoneWatch();

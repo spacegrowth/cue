@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Cue</title>
   <!-- The open chat is the main window's own (mini.js): its styles and scripts, as index.html lists them, all but its
-       terminal (xterm), its draw (app/render.js) and its boot (app.js); then the mini window's own. tests/mini.test.js
+       terminal (xterm) and its boot (app.js); then the mini window's own, which hands app/render.js its draw. tests/mini.test.js
        keeps the two lists the same. -->
   <link rel="stylesheet" href="styles/base.css" />
   <link rel="stylesheet" href="styles/board.css" />
@@ -95,6 +95,7 @@
   <script src="file_view.js"></script>
   <script src="background.js"></script>
   <script src="ask_before.js"></script>
+  <script src="app/render.js"></script>
   <script src="app/delegate.js"></script>
   <script src="app/clicks_chat.js"></script>
   <script src="app/clicks_board.js"></script>

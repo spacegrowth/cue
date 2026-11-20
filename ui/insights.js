@@ -635,11 +635,14 @@ document.addEventListener("input", (e) => {
   insQuery = e.target.value;
   renderMain();
 });
-document.addEventListener("keydown", (e) => {
-  if (!insChoosing) return;
+/** Keys while a hand-off skill list is open (app/keys.js KEY_FIRST): Esc closes it (and only it: the sheet stays),
+ *  Enter in its search picks the first row. Never takes the key from the steps after it. */
+function insChooserKey(e) {
+  if (!insChoosing) return false;
   if (e.key === "Escape") { e.stopPropagation(); insChoosing = ""; insQuery = ""; renderMain(); }
   else if (e.key === "Enter" && e.target.matches?.("[data-ins-search]")) { e.preventDefault(); document.querySelector(".ins-pop .ins-pop-row")?.click(); }
-}, true);
+  return false;
+}
 document.addEventListener("mousedown", (e) => {
   if (insChoosing && !e.target.closest?.(".ins-pop, [data-act=ins-choose]")) { insChoosing = ""; insQuery = ""; renderMain(); }
 });

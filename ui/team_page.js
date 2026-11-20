@@ -228,7 +228,7 @@ function crewLeftSet(sid, what) {
   const was = crewLeftOf(sid);
   if (!was && what) {
     const c = document.querySelector(".cp-left [data-chat]");
-    crewChatAt = c ? { top: c.scrollTop, end: c.scrollHeight - c.scrollTop - c.clientHeight < 24 } : null;
+    crewChatAt = c ? { top: c.scrollTop, end: boxAtEnd(c) } : null;
     crewLeftChatAt = Date.now();
   }
   // The add-on's page gives way to whatever the left shows next.
@@ -396,7 +396,6 @@ function crewPageEsc(e) {
 }
 
 if (typeof document !== "undefined") {
-  document.addEventListener("keydown", (e) => { if (crewPageEsc(e) || crewListKey(e)) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
   document.addEventListener("focusin", (e) => {
     const row = e.target?.closest?.(".crew-page .cp-lead, .crew-page .cp-row");
     crewListFocus = row ? (row.dataset.cpMate || "lead") : null;

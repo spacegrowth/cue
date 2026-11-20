@@ -50,8 +50,8 @@ function keyInBox(e) {
   // names its session); otherwise Tab moves on as usual.
   const sugSid = mk?.startsWith("s:") ? sidOfKey(mk) : e.target.dataset?.sugSid;
   if (sugSid && e.key === "Tab" && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey && !e.isComposing && takeSuggestion(mk, sugSid, e.target)) { e.preventDefault(); return true; }
-  // ↑ ↓ bring back what you sent: in a session's box, and in the Desk's boxes (desk.js deskRecall).
-  if ((mk?.startsWith("s:") || mk?.startsWith("desk")) && (e.key === "ArrowUp" || e.key === "ArrowDown") && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey && !e.isComposing && recallSent(e)) { e.preventDefault(); return true; }
+  // ↑ ↓ bring back what you sent: in a session's box, and in a box of the window's own that goes to one (BOX_OWNERS recall).
+  if ((mk?.startsWith("s:") || boxOwner(mk)?.recall) && (e.key === "ArrowUp" || e.key === "ArrowDown") && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey && !e.isComposing && recallSent(e)) { e.preventDefault(); return true; }
   return false;
 }
 
@@ -158,8 +158,14 @@ function enterInSessionBox(e, key) {
   if ((e.ctrlKey || e.metaKey) && !fresh && sendWaitingNow(sid)) return;
   if (turn) reply(turn); else sendTo(sid, e.ctrlKey || e.metaKey);
 }
-/** Enter in a box: what that box is for. */
+/** Enter in a box (keyTyping: not ⇧↵, never while an input method composes): what that box is for. Every box's Enter
+ *  comes here: first the boxes the window's parts own (box/send.js BOX_OWNERS: the Desk's lead's, an item's, an ask's
+ *  and Send back's; the mini window's Desk rows), then the Board's, btw, the forward note, + New and the renames, the
+ *  Inbox's (a session's or an item's key). Go back on
+ *  ticked decisions ("goback") has no Enter: its Send button sends. */
 function enterInBox(e, key) {
+  const own = boxOwner(key, e.target);
+  if (own) return own.enter ? own.enter(e, key) : own.send(key);
   if (key.startsWith("btw:")) return askBtw(key.slice(4), draft(key).text);
   if (key === "fwd") return sendForward();
   if (key === "new-name" || key === "new-msg") return lvAct("start", {});
@@ -230,32 +236,64 @@ const KEY_STEPS = [keyAnywhere, keyInTerminal, keyInBox, keyInFolder, keyCloseOp
 function onKey(e) {
   if (!KEY_STEPS.some((step) => step(e))) keyBoard(e);
 }
+
+/** A view's step that took the key: kept from its default too. */
+const keyTook = (step) => (e) => (step(e) ? (e.preventDefault(), true) : false);
+/** The views' own keys, before anything in the page sees them (a box, a terminal, the steps above): Esc closes the
+ *  nearest thing first. In order: what's over the window (+ New Desk's sheet and menu, desk_home.js; the diff
+ *  overlay, diff_overlay.js; the file viewer, file_view.js), the crew's tray (team.js), the crew's page
+ *  (team_page.js), the crew's bar (team_bar.js), Settings → Insights' chooser (insights.js), the Inbox (inbox.js), the
+ *  Desk's Away sheet (desk_away.js), the Desk (desk_view.js notes the key, desk_act.js deskKey), an add-on's panel
+ *  (extensions.js). A step that takes the key (true) is the last to see it; one may instead keep it from KEY_STEPS
+ *  alone (e.stopPropagation()) and let the rest of these run, as Settings → Insights' chooser does. The main window
+ *  adds its dialogs' (app/bind.js keyDeleteAsk); the mini window runs these too, before its own (mini.js keyHere). */
+const KEY_FIRST = [
+  deskHomeKey, diffOverlayKey, fileViewKey,
+  keyTook(crewEsc), keyTook((e) => crewPageEsc(e) || crewListKey(e)), keyTook(crewBarKey),
+  insChooserKey, keyTook(inboxKey), deskAwayKey, deskKeyNote, keyTook(deskKey), extKey,
+];
+/** The first of KEY_FIRST that takes a key keeps it from everything after it. A step that throws is reported and
+ *  the rest still run, as when each was a listener of its own. */
+function keyFirst(e) {
+  const took = KEY_FIRST.some((step) => {
+    try { return step(e); } catch (err) { setTimeout(() => { throw err; }); return false; }
+  });
+  if (took) e.stopImmediatePropagation();
+}
+if (typeof document !== "undefined") document.addEventListener("keydown", keyFirst, true);
 /** While Cue asks whether to delete a session: Esc is no, Enter yes, before a terminal under it takes the key. While
  *  it asks whether to quit when that ends sessions: Esc keeps it open (quitting takes a click). Esc says no to trusting a folder,
- *  Not now to Ask me before, and Cancel to How work lands (the mini window has no such dialog). */
+ *  Not now to Ask me before, and Cancel to How work lands (the mini window has no such dialog: the main window adds
+ *  this to KEY_FIRST, app/bind.js). Kept from KEY_STEPS; never from the steps after it. */
 function keyDeleteAsk(e) {
   if (e.key === "Escape" && typeof landsEscape === "function" && landsEscape()) {
     e.preventDefault();
     e.stopPropagation();
-    return;
+    return false;
   }
   if (e.key === "Escape" && typeof askBeforeEscape === "function" && askBeforeEscape()) {
     e.preventDefault();
     e.stopPropagation();
-    return;
+    return false;
   }
   if (quitAsk && e.key === "Escape") {
     e.preventDefault();
     e.stopPropagation();
-    return quitAnswer(false);
+    quitAnswer(false);
+    return false;
   }
   if (trustAsk && e.key === "Escape") {
     e.preventDefault();
     e.stopPropagation();
-    return trustAnswer(false);
+    trustAnswer(false);
+    return false;
   }
-  if (!deleteAsk || (e.key !== "Escape" && e.key !== "Enter")) return;
+  if (!deleteAsk || (e.key !== "Escape" && e.key !== "Enter")) return false;
+  // Enter in a Desk box sends that box (enterInBox), never a yes to deleting a session.
+  const box = e.target?.dataset?.text;
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing && e.keyCode !== 229 && view === "desk" && boxOwner(box)) return false;
   e.preventDefault();
   e.stopPropagation();
   deleteAnswer(e.key === "Enter");
+  return false;
 }

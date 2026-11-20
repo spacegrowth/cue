@@ -38,7 +38,7 @@ const QUEUE_CLICKS = [
     invoke("crew_go_back", { sessionId: cb.dataset.sid, id: cb.dataset.id }).then((m) => toast(m), (e) => { crewBackAsked.delete(k); renderMain(); toast(`Couldn't: ${e}`); });
   }),
   // On the Desk (the lead's chat, a session's page) back into the Desk's box it went from (#498), not the Board's.
-  rule("[data-act=held-edit]", (he) => pullHeld(he.dataset.sid, (view === "desk" && typeof deskKeptBox === "function" && deskKeptBox(he.dataset.sid)) || undefined)),
+  rule("[data-act=held-edit]", (he) => pullHeld(he.dataset.sid, boxViewOwner(view)?.keptBox?.(he.dataset.sid) || undefined)),
   rule("[data-act=held-now]", (hn) => sendHeldNow(hn.dataset.sid)),
   rule("[data-act=held-x]", (hx) => cancelHeld(hx.dataset.sid)),
   // A message for later: back to the box, dropped, or sent now.

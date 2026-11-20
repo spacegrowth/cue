@@ -62,15 +62,13 @@ function dovClick(e) {
   if (f) dovPick(+f.dataset.dovAt);
 }
 
-if (typeof window !== "undefined") {
-  // While it's open it takes every key before the page under it does (Esc there would close a Desk item, say);
-  // ⌘C and the like still work, as only these keys are kept from their default.
-  window.addEventListener("keydown", (e) => {
-    if (!dov) return;
-    e.stopImmediatePropagation();
-    if (e.key === "Escape") { e.preventDefault(); diffOverlayClose(); }
-    else if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); dovPick(dov.at + (e.key === "ArrowDown" ? 1 : -1)); }
-  }, true);
+/** While it's open it takes every key before the page under it does (Esc there would close a Desk item, say;
+ *  app/keys.js KEY_FIRST); ⌘C and the like still work, as only these keys are kept from their default. */
+function diffOverlayKey(e) {
+  if (!dov) return false;
+  if (e.key === "Escape") { e.preventDefault(); diffOverlayClose(); }
+  else if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); dovPick(dov.at + (e.key === "ArrowDown" ? 1 : -1)); }
+  return true;
 }
 
 /** A short list of changed files, as Inbox's side and the Desk's panel show them: each path with its +/−, the first

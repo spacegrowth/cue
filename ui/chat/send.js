@@ -121,16 +121,23 @@ function openBtw(sid, q = "") {
   document.querySelector(`[data-text="${CSS.escape(`btw:${sid}`)}"]`)?.focus();
   if (q.trim()) askBtw(sid, q);
 }
-async function askBtw(sid, q) {
-  q = q.trim();
-  if (!q) return;
-  const log = btwLog.get(sid) || btwLog.set(sid, []).get(sid);
-  const e = { q, a: null, err: null };
-  log.push(e);
-  delete drafts[`btw:${sid}`];
-  renderMain();
-  try { e.a = await invoke("btw", { sessionId: sid, question: q }); } catch (x) { e.err = String(x); }
-  renderMain();
+/** Ask `q` by the way (ui/box/send.js boxSend, no guards: the session is never written to): it shows in the panel at
+ *  once, the panel's box emptied, and its answer, or why there's none, in its place. */
+function askBtw(sid, q) {
+  const key = `btw:${sid}`;
+  return boxSend({}, key, {
+    text: q, guard: false,
+    pending: (text) => {
+      const log = btwLog.get(sid) || btwLog.set(sid, []).get(sid);
+      const e = { q: text, a: null, err: null };
+      log.push(e);
+      delete drafts[key];   // a "/btw …" from the chat's box too: the panel's box starts empty
+      return e;
+    },
+    call: (text) => invoke("btw", { sessionId: sid, question: text }),
+    sent: (a, e) => { e.a = a; renderMain(); },
+    failed: (err, e) => { e.err = err; renderMain(); return true; },
+  });
 }
 // Fork: the conversation copied into a new session that keeps going ("<name>-fork", then -fork-2…), in Active
 // beside this one, which goes on untouched. From ⋯ it starts with nothing said; under a btw answer, that side
@@ -155,6 +162,6 @@ function btwPanel(sid) {
   const rows = log.map((e, i) => [e, i]).reverse().map(([e, i]) => `<div class="btw-q">${esc(e.q)}</div>${e.a != null ? `<div class="btw-a msg">${md(e.a)}</div>${forkBtn(sid, i)}` : e.err ? `<div class="btw-a bad">${esc(e.err)}</div>` : `<div class="btw-a dim"><span class="dot-live"></span>Thinking…</div>`}`).join("");
   return `<div class="btw-pop">
     <div class="btw-head">${lead ? "BY THE WAY · ASKS THE LEAD, NOT PART OF ITS CHAT" : "BY THE WAY · NOT PART OF THE CHAT"}${log.length ? `<button class="btw-clear" data-act="btw-clear" data-sid="${esc(sid)}">Clear</button>` : ""}<button class="btw-x" data-act="btw-close" aria-label="Close">×</button></div>
-    <div class="btw-ask"><textarea data-text="btw:${esc(sid)}" rows="1" placeholder="${lead ? "Ask the lead without interrupting it…  ↵" : "Ask without interrupting it…  ↵"}" spellcheck="false">${esc(draft(`btw:${sid}`).text)}</textarea></div>
+    ${boxHtml({ look: "btw", key: `btw:${sid}`, placeholder: lead ? "Ask the lead without interrupting it…  ↵" : "Ask without interrupting it…  ↵" })}
     <div class="btw-body">${rows || `<div class="dim btw-empty">${lead ? "A copy of the lead's conversation answers, so neither the lead nor its crew sees it." : "A copy of this conversation answers, so the session never sees it."} Each question costs about one turn.</div>`}</div></div>`;
 }

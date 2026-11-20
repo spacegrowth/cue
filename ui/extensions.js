@@ -241,7 +241,11 @@ function extShowPanel(name) {
   renderMain();
 }
 function extClosePanel() { if (extPanel) { extPanel.el.remove(); extPanel = null; renderMain(); } }
-document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && extPanel) { ev.stopPropagation(); extClosePanel(); } }, true);
+/** Esc closes the add-on's panel (app/keys.js KEY_FIRST): kept from the Board's Esc. */
+function extKey(ev) {
+  if (ev.key === "Escape" && extPanel) { ev.stopPropagation(); extClosePanel(); }
+  return false;
+}
 document.addEventListener("click", (ev) => {
   const open = ev.target.closest?.("[data-xp-open]");
   if (open) { ev.stopPropagation(); return extPanel ? extClosePanel() : extShowPanel(open.dataset.xpOpen); }

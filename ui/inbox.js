@@ -394,15 +394,14 @@ function inboxWords(r) {
 }
 /** A choice's label without its "(Recommended)", and whether it had one: [label, recommended]. */
 const inboxLabel = (label) => choiceLabel(label);
-/** A plain box to write in (pictures pasted or dropped on it go with it), and its button. Enter sends too (app/keys.js,
- *  by its draft key). With `sid`, Claude's suggestion for that session shows in the box while it's empty (inboxSuggest). */
+/** A plain box to write in (pictures pasted or dropped on it go with it), and its button (ui/box/markup.js boxHtml's
+ *  "inbox" look): Send, then talk and pictures, as the chat's box has them (the mic types what you say into the box; the
+ *  picture button adds one, ⌘V pastes one, or drop it on the box). Enter sends too (app/keys.js, by its draft key).
+ *  With `sid`, Claude's suggestion for that session shows in the box while it's empty (inboxSuggest). */
 const inboxBox = (key, placeholder, label, attrs, extra = "", sid = "", phr = "") => {
   const sug = sid ? suggestionFor(sid) : "";
-  return `<div class="ib-box" ${inboxPics(key) ? `data-drop="${esc(key)}"` : ""}>${inboxPics(key) ? draftChips(key) : ""}<div class="ta-wrap"><textarea rows="2" data-text="${esc(key)}"${sug ? ` class="sug" data-sug-sid="${esc(sid)}" aria-label="${esc(`Suggested: ${sug}. Tab types it in.`)}"` : ""} placeholder="${esc(sug ? " " : placeholder)}" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off">${esc(draft(key).text)}</textarea>${inboxSuggest(sug, key, sid)}</div><div class="ib-box-acts"><button class="btn primary" ${attrs}>${label}</button>${inboxTalkBtns(key)}${extra}${phr}</div></div>`;
+  return boxHtml({ look: "inbox", key, placeholder, sug, sugSid: sid, sugLine: inboxSuggest(sug, key, sid), drop: inboxPics(key), extra: extra + phr, send: { attrs, label } });
 };
-/** Talk and pictures, as the chat's box has them (chat/compose.js): the mic types what you say into the box; the
- *  picture button adds one (⌘V pastes one, or drop it on the box). */
-const inboxTalkBtns = (key) => `<button class="icon-btn mic ${dictating?.key === key ? "on" : ""}" data-mic="${esc(key)}" aria-label="${dictating?.key === key ? "Stop dictating" : "Dictate"}">${MIC_ICON}</button>${inboxPics(key) ? `<button class="icon-btn" data-attach="${esc(key)}" aria-label="Add an image">${IMAGE_ICON}</button>` : ""}`;
 /** Whether pictures go with what's written in this box: a message to the session (its "s:" box) does; an answer to its
  *  question is words only. */
 const inboxPics = (key) => key.startsWith("s:");
@@ -666,7 +665,7 @@ function inboxAtEnd(sid, kind) {
   const el = document.querySelector(".inbox-page .ib-thread");
   if (!el || el.dataset.sid !== sid || el.dataset.kind !== kind || (typeof chatToEnd !== "undefined" && chatToEnd)) return true;
   const { box, end } = inboxThreadEnd(el);
-  return Math.abs(end - box.scrollTop) < 24;
+  return box === el ? boxAtEnd(el) : Math.abs(end - box.scrollTop) < 24;
 }
 /** What scrolls the open thread, and where it stands at its newest. With room, the thread scrolls itself and its newest
  *  is its foot. Narrow, the whole brief scrolls (the thread, then the side under it), and the newest is where the main
@@ -684,7 +683,7 @@ function inboxKeepEnd() {
   const el = inboxToEnd && document.querySelector(".inbox-page .ib-thread");
   if (!el) return;
   const { box, end } = inboxThreadEnd(el);
-  box.scrollTop = end;
+  if (box === el) boxStickToEnd(el, false); else box.scrollTop = end;
 }
 
 // ---------- the brief's side: you asked, it did, what changed, its context ----------
@@ -1017,7 +1016,6 @@ function inboxClick(e) {
 }
 
 if (typeof document !== "undefined") {
-  document.addEventListener("keydown", (e) => { if (inboxKey(e)) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
   document.addEventListener("click", inboxClick, true);
   // Writing in the reply box, a click on a button in the Inbox (Allow, a choice, a phrase) leaves the cursor in the box.
   document.addEventListener("mousedown", (e) => {
@@ -1025,5 +1023,3 @@ if (typeof document !== "undefined") {
     if (e.button === 0 && a?.matches?.(".inbox-page textarea[data-text]") && e.target.closest?.(".inbox-page button, .inbox-page [role=button]")) e.preventDefault();
   }, true);
 }
-/** The cursor was in an Inbox reply box that's gone (Allow moved it on to the next): the box on screen now takes it. */
-const inboxRefocus = () => document.querySelector(".inbox-page .ib-box textarea[data-text]")?.focus();

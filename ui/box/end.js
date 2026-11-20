@@ -1,6 +1,6 @@
 // Cue UI box — a chat's end: whether you're reading at it, and keeping it there. One test for every chat (the pane,
-// the Desk's, the crew page's, the mini window's), where each wrote its own "within 24px of the bottom". Nothing calls
-// it yet (docs/refactor-plan.md, Phase 3).
+// the Desk's, the crew page's, the mini window's, the Inbox's thread), where each wrote its own "within 24px of the
+// bottom" (docs/refactor-plan.md, Phase 3).
 
 /** Whether `el` is scrolled to its end, give or take `px` (24 by default): you're reading the newest. False for none. */
 const boxAtEnd = (el, px = 24) => !!el && el.scrollHeight - el.scrollTop - el.clientHeight < px;

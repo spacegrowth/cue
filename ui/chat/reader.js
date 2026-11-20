@@ -72,7 +72,7 @@ function sizeReader(dir) {
 function closeReader() {
   const key = readerView?.key;
   readerView = null;
-  if (view === "desk") deskChatEnd = false;   // not the Desk's chat-end scroll (desk.js deskSettle) over it
+  boxViewOwner(view)?.chatEnd?.(false);   // not a view's own chat-end scroll (the Desk's: desk_view.js deskSettle) over it
   renderMain();
   const btn = key && document.querySelector(`[data-read="${CSS.escape(key)}"], [data-fwd="${CSS.escape(key)}"]`);
   btn?.closest(".cv-agent")?.scrollIntoView({ block: "start" });
@@ -80,7 +80,8 @@ function closeReader() {
 /** Reply: to the chat's own box, at the chat's end, the cursor in it. */
 function replyFromReader() {
   readerView = null;
-  if (view === "desk") { deskChatEnd = true; renderMain(); return document.querySelector(".dk-right .dk-box textarea[data-text]")?.focus(); }
+  const own = boxViewOwner(view);
+  if (own?.chatEnd) { own.chatEnd(true); renderMain(); focusComposer(undefined, { home: view, end: false }); return; }
   drawAtChatEnd();
   focusComposer();
 }

@@ -218,8 +218,8 @@ function onEdgeRow(ta, up) {
 }
 function recallSent(e) {
   const ta = e.target, key = ta.dataset.text;
-  // A Desk's box: what you sent to the session it goes to, as its chat shows it (desk.js deskRecall).
-  const desk = !sidOfKey(key) && typeof deskRecall === "function" ? deskRecall(key) : null;
+  // A box of the window's own (box/send.js BOX_OWNERS: a Desk's): what you sent to the session it goes to, as its chat shows it.
+  const desk = !sidOfKey(key) ? boxOwner(key)?.recall?.(key) || null : null;
   const sid = sidOfKey(key) || desk?.s?.session_id;
   if (!sid) return false;
   const up = e.key === "ArrowUp";
@@ -396,9 +396,9 @@ function replyAsked(text) {
   return all.length ? all[all.length - 1][1].trim() : "";
 }
 /** The suggested reply in a session's empty box once its turn has ended: the words its latest message asks you to
- *  reply with (#186), else Claude's own suggestion. `sid` "item:<project>|<id>": an item page's (desk.js). */
+ *  reply with (#186), else Claude's own suggestion. A box of the window's own (BOX_OWNERS: an item page's "item:…") has its own. */
 const suggestionFor = (sid) => {
-  if (sid?.startsWith?.("item:")) return typeof deskItemSuggestion === "function" ? deskItemSuggestion(sid.slice(5)) : "";
+  for (const o of BOX_OWNERS) { const own = o.suggestion?.(sid); if (own != null) return own; }
   const s = sid && sessionOf(sid);
   if (s?.state !== "waiting") return "";
   const last = [...(s.thread || [])].reverse().find((e) => e.role === "agent" || e.role === "you");
@@ -450,7 +450,8 @@ function sendPhrase(key, phrase, button = (k) => document.querySelector(`textare
   drafts[key] = mine;
   phraseSending = true;
   try {
-    if (deskBoxes.has(key)) deskSendBox(key);
+    const own = boxOwner(key);
+    if (own) own.send(key);
     else {
       renderMain();
       const b = button(key);

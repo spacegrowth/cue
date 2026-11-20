@@ -118,13 +118,11 @@ function fvClick(e) {
   if (a) { e.preventDefault(); return openPathOrDoc(a.dataset.path || a.dataset.href, a.dataset.sid || f.sid); }
 }
 
-if (typeof window !== "undefined") {
-  // While it's open it takes Esc before the page under it does (Esc there would close a Desk item, say); every other
-  // key (⌘C, the arrows that scroll it) works as usual.
-  window.addEventListener("keydown", (e) => {
-    if (!fv || e.key !== "Escape") return;
-    e.stopImmediatePropagation();
-    e.preventDefault();
-    fileViewClose();
-  }, true);
+/** While it's open it takes Esc before the page under it does (Esc there would close a Desk item, say; app/keys.js
+ *  KEY_FIRST); every other key (⌘C, the arrows that scroll it) works as usual. */
+function fileViewKey(e) {
+  if (!fv || e.key !== "Escape") return false;
+  e.preventDefault();
+  fileViewClose();
+  return true;
 }
