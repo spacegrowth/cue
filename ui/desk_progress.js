@@ -110,10 +110,10 @@ function deskProgBack(i) {
 }
 
 /** The Progress popover: every item under way (not the queued or parked ones, which haven't started) in the order the
- *  list has them (yours first, then at work, landing, waiting to install), under the step names. */
+ *  list has them (yours first, then landing, waiting to install, at work), under the step names. */
 function deskProgress(project, taskApprovals) {
   const g = deskGroups(project, taskApprovals);
-  const rows = [...g.waiting, ...g.review, ...g.working, ...g.landing, ...g.install, ...g.resume, ...g.paused];
+  const rows = [...g.waiting, ...g.review, ...g.landing, ...g.install, ...g.working, ...g.resume, ...g.paused];
   const you = rows.filter((i) => ["you", "check"].includes(deskProgLook(i))).length, later = g.queued.length + g.held.length;
   const head = `<div class="dk-gr dk-grh"><span>Item</span>${DESK_PROG_STEPS.map((s) => `<span class="dk-grhc">${s}</span>`).join("")}<span class="dk-grnow">Now</span></div>`;
   const body = rows.length ? head + rows.map(deskProgRow).join("") : `<div class="dk-empty">Nothing under way.</div>`;

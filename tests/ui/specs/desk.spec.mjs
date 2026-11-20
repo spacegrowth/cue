@@ -3987,7 +3987,7 @@ test("a finishing item: amber and steady, out of In progress into Landing, then 
   const row = page.locator('.dk-items [data-desk-item="d5"]');
   await expect(row).toHaveClass(/\bdk-fin\b/);
   // Its own lane, the landing line, numbered; its row says what it waits on, short, after its holder (#346).
-  expect(await listOrder(page)).toEqual(["# Waiting on you", "d1", "# Ready to review", "d2", "# In progress", "d3", "# Landing", "d5", "# Queued", "d4", "d6", "# Done", "d7", "d8", "d9"]);
+  expect(await listOrder(page)).toEqual(["# Waiting on you", "d1", "# Ready to review", "d2", "# Landing", "d5", "# In progress", "d3", "# Queued", "d4", "d6", "# Done", "d7", "d8", "d9"]);
   await expect(page.locator('.dk-items .dk-gh[data-lane="landing"] .dk-split')).toHaveText("one at a time");
   await expect(row.locator(".dk-rn")).toHaveText("1");
   await expect(row.locator(".dk-who")).toHaveText("host-lead · Waits: The main checkout is in the middle of a merge · 3m");
@@ -4008,7 +4008,7 @@ test("a finishing item: amber and steady, out of In progress into Landing, then 
   await cue.change((st, t) => { st.desk.install_at = t; }, due);
   await patchItem(cue, "d5", { finish: { step: "queued", commit: "abc9999", at: Date.now() } });
   const clock = await page.evaluate((t) => clockAt(t), due);
-  expect(await listOrder(page)).toEqual(["# Waiting on you", "d1", "# Ready to review", "d2", "# In progress", "d3", "# Waiting to install", "d5", "# Queued", "d4", "d6", "# Done", "d7", "d8", "d9"]);
+  expect(await listOrder(page)).toEqual(["# Waiting on you", "d1", "# Ready to review", "d2", "# Waiting to install", "d5", "# In progress", "d3", "# Queued", "d4", "d6", "# Done", "d7", "d8", "d9"]);
   await expect(row.locator(".dk-who")).toHaveText("host-lead · On main · abc9999");
   await expect(row.locator(".dk-rn")).toHaveCount(0);
   await expect(row.locator('[data-desk-act="install_now"]')).toHaveCount(0);
@@ -4068,7 +4068,7 @@ test("the Landing lane is the landing line: the one being checked first, then th
   await expect(n("d3").locator(".dk-fstep")).toHaveText("On main · c71e0b4");
   // Its check failed: back with the work, In progress, out of the line; the next one up is first.
   await patchItem(cue, "d5", { finish: { step: "check_failed", at: Date.now(), question: "Its check failed" } });
-  expect(await listOrder(page)).toEqual(["# Waiting on you", "d1", "# Ready to review", "d2", "# In progress", "d5", "# Landing", "d6", "d4", "# Waiting to install", "d3", "# Done", "d7", "d8", "d9"]);
+  expect(await listOrder(page)).toEqual(["# Waiting on you", "d1", "# Ready to review", "d2", "# Landing", "d6", "d4", "# Waiting to install", "d3", "# In progress", "d5", "# Done", "d7", "d8", "d9"]);
   await expect(n("d6").locator(".dk-rn")).toHaveText("1");
   await expect(n("d6").locator(".dk-fstep")).toHaveText("Next to land · 9m");
   await expect(n("d5").locator(".dk-who")).toHaveText(/^Check failed · since /);

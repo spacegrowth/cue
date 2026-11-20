@@ -372,11 +372,12 @@ function deskList(project, taskApprovals) {
   parts.push(group("you", `Waiting on you <span class="n">${nWait}</span>`, `${g.waiting.map(row).join("")}${aw.html}${none}`, `you${nWait ? "" : " none"}`));
   // Ready to review sits right under Waiting on you (#275): both are yours to look at.
   if (g.review.length) parts.push(group("review", `Ready to review <span class="n">${g.review.length}</span>`, g.review.map(row).join("")));
-  if (g.working.length) parts.push(group("working", `In progress <span class="n">${g.working.length}</span>${deskSplitHtml(g.working)}`, g.working.map(row).join("")));
-  // The landing line, numbered in the order it lands (one at a time), then what's on main for the next install, with
+  // The landing line (above In progress, #468), numbered in the order it lands (one at a time), then what's on main for the next install, with
   // its time and Install now (#346).
   if (g.landing.length) parts.push(group("landing", `Landing <span class="n">${g.landing.length}</span><span class="dk-split">one at a time</span>`, g.landing.map((i, k) => deskItemRow(i, i.id === crewLit, false, { n: k + 1, ahead: g.landing[k - 1] })).join(""), "dk-lane", ' data-lane="landing"'));
   if (g.install.length) parts.push(group("install", `Waiting to install <span class="n">${g.install.length}</span>${deskInstallHead(g.install)}`, g.install.map((i) => deskItemRow(i, i.id === crewLit, false, {})).join(""), "dk-lane", ' data-lane="install"'));
+  // In progress sits under Landing and Waiting to install (#468): what is nearly yours comes first.
+  if (g.working.length) parts.push(group("working", `In progress <span class="n">${g.working.length}</span>${deskSplitHtml(g.working)}`, g.working.map(row).join("")));
   if (g.resume.length) parts.push(group("resume", `Needs resume <span class="n">${g.resume.length}</span>`, g.resume.map(row).join("")));
   if (g.paused.length) parts.push(group("paused", `Paused <span class="n">${g.paused.length}</span>`, g.paused.map(row).join("")));
   // Dragged up and down into your order (#387): the next free copy goes to the top one.

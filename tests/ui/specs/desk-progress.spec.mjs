@@ -102,3 +102,13 @@ test("A reopened item shows a plain line under its steps, its round and your not
   await page.emulateMedia({ colorScheme: "dark" });
   await page.screenshot({ path: `${dir}/cue-desk-progress-back-dark.png` });
 });
+
+test("Progress lists items landing or waiting to install above those in progress, as the list does (#468)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.change((st) => { Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5"), { state: "finishing", finish: { step: "line", wait: "Landing", at: Date.now() } }); });
+  await page.locator(".dk-items .dk-ch [data-desk-prog-toggle]").click();
+  const ids = await page.locator(".dk-prog [data-desk-prog-row]").evaluateAll((r) => r.map((e) => e.dataset.deskProgRow));
+  expect(ids.indexOf("d5")).toBeGreaterThan(-1);
+  expect(ids.indexOf("d5")).toBeLessThan(ids.indexOf("d3"));
+});
