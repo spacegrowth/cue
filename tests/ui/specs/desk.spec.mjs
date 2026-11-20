@@ -1933,7 +1933,7 @@ test("three columns: the project's sessions on the left, the lead's chat in the 
   await expect(left.locator('[data-desk-lead-chat="lead"]')).toHaveClass(/\bon\b/);
   // Another session's crew sit under it; a crew row opens its pane, lit.
   await crewNotLead(cue);
-  await expect(left.locator('[data-desk-crew="id-focus"] .dk-st')).toHaveText("waiting on you");
+  await expect(left.locator('[data-desk-crew="id-focus"] .dk-st')).toHaveText("needs you");
   await left.locator('[data-desk-crew="id-search"]').click();
   await expect(page.locator(".dk-right .dk-pg h1 .dk-tname")).toHaveText("search-centre");
   await expect(left.locator(".dk-srow.on")).toHaveAttribute("data-desk-crew", "id-search");
@@ -2090,7 +2090,7 @@ test("the lead's card in the strip: Run by, its state and the item it holds; ope
   expect([Math.round(lb.left), Math.round(lb.right)]).toEqual([Math.round(sb.left), Math.round(sb.right)]);
   expect(Math.round(cb.bottom)).toBe(Math.round(sb.bottom));
   await expect(lead.locator(".dk-nm")).toHaveText("web-lead");
-  await expect(lead.locator(".dk-st")).toHaveText("waiting on you");
+  await expect(lead.locator(".dk-st")).toHaveText("needs you");
   await expect(lead.locator(".dk-st > i.ask")).toHaveCount(1);
   await expect(lead.locator(".dk-s2 .dk-id")).toHaveText("Feature #d2");
   await expect(lead.locator(".dk-s2 svg.dk-kic")).toHaveCount(1);
@@ -2140,10 +2140,8 @@ test("no line under the strip: the list starts right after it", async ({ page, c
   await openDesk(page);
   await expect(page.locator(".dk-sessions .dk-sum")).toHaveCount(0);
   // The lead's working line (#263) is inside the strip, under "Run by" (#359): nothing between the strip and the list.
-  // "Needs your decision" right under the strip while a request waits (e6869d92); with none, the list.
+  // Never a "Needs your decision" block, even while a request waits (#431): the list right after the strip.
   await cue.change((st) => { st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d1").ask = null; });
-  expect(await page.locator(".dk-sessions .dk-strip").evaluate((el) => el.nextElementSibling.classList.contains("dk-approvals"))).toBe(true);
-  await cue.change((st) => { st.items = st.items.filter((i) => i.status !== "pending"); });
   await expect(page.locator(".dk-sessions .dk-approvals")).toHaveCount(0);
   expect(await page.locator(".dk-sessions .dk-strip").evaluate((el) => el.nextElementSibling.classList.contains("dk-scroll"))).toBe(true);
 });
@@ -2232,7 +2230,7 @@ test("a row's state dot sits after its name with its word: working blinks, waiti
   const [abg, aanim] = await cssOf(ask, "background-color", "animation-name");
   expect(abg).toBe("rgb(155, 44, 31)");
   expect(aanim).toBe("none");
-  await expect(left.locator('[data-desk-chat-of="asker"] .dk-st')).toHaveText("waiting on you");
+  await expect(left.locator('[data-desk-chat-of="asker"] .dk-st')).toHaveText("needs you");
   const idle = left.locator('[data-desk-chat-of="spare"] .dk-st > i.idle');
   const [ibg, ishadow, ianim] = await cssOf(idle, "background-color", "box-shadow", "animation-name");
   expect(ibg).toBe("rgba(0, 0, 0, 0)");
@@ -3393,7 +3391,7 @@ test("the chats' pages: the Dispatcher's NOW (its state, routing, with sessions,
   await expect(pg.locator(".dk-ptabs")).toContainText("Decisions");
   const now = pg.locator(".dk-pnow");
   await expect(now.locator(".dk-pdot")).toHaveCount(1);
-  await expect(now.locator(".dk-pword")).toHaveText(/^(Working|Idle|Waiting on you)$/);
+  await expect(now.locator(".dk-pword")).toHaveText(/^(Working|Idle|Needs you)$/);
   await expect(now.locator(".dk-psay")).toContainText("#d1 waits on you.");
   await expect(now.locator(".dk-pgo")).toHaveText("Check #d1");
   const waitsSec = pg.locator(".dk-panel .dk-psec", { has: page.locator("h4", { hasText: "Waits on you" }) });
@@ -3427,7 +3425,7 @@ test("the chats' pages: the Dispatcher's NOW (its state, routing, with sessions,
   await expect(sp.locator("h1 .dk-shn")).toHaveText("host-lead");
   await expect(sp.locator(".dk-ph1 [data-desk-session]")).toHaveText("Open its session");
   await expect(sp.locator(".dk-ph3")).toHaveText(/^on #d5 · /);
-  await expect(sp.locator(".dk-pnow .dk-pword")).toHaveText(/^(Working|Idle|Waiting on you)$/);
+  await expect(sp.locator(".dk-pnow .dk-pword")).toHaveText(/^(Working|Idle|Needs you)$/);
   // The same type as the Dispatcher's header.
   const font = (l) => l.evaluate((e) => { const c = getComputedStyle(e); return [c.fontSize, c.fontWeight]; });
   await page.evaluate(() => deskShow(null));

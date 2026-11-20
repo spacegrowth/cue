@@ -2,10 +2,11 @@
 // Split from desk.js, which keeps the Desk's state and item basics; loaded after it (index.html, mini.html).
 // ---------- the sessions: the project's sessions, on the Desk and not ----------
 
-/** A session's state, for its row: [dot, words]. Waiting on you when it asks you something. */
+/** A session's state, for its row: [dot, words]. "needs you" when it asks you something (a permission too: the request
+ *  itself is on its item and in its chat, never as a card in this list, #431). */
 function deskSessState(s) {
   const asks = state.items.some((i) => i.session_id === s.session_id && actionableRequest(i));
-  return asks ? ["ask", "waiting on you"] : s.state === "working" ? ["", "working"] : ["idle", "idle"];
+  return asks ? ["ask", "needs you"] : s.state === "working" ? ["", "working"] : ["idle", "idle"];
 }
 /** The item a session holds (an ask before what's at work), or null. */
 const deskSessItem = (d, sid) => deskSessItems(d, sid)[0] || null;
@@ -76,7 +77,7 @@ function deskSessRow({ name, sid = "", mark = "", dot, word, item, line, on, att
     ${what || loosePill ? `<div class="dk-s2">${what}${loosePill}</div>` : ""}${step}${size}</div>`;
 }
 /** The lead and the sessions already on this Desk, with their crew. */
-function deskSessions(project, taskApprovals) {
+function deskSessions(project) {
   const d = deskOf(project), o = deskOpen, leadSid = deskLead(d)?.sid;
   const sessions = (state.sessions || []).filter((s) => s.project === deskWorkspace(d) && s.session_id);
   const lit = (sid) => (sid === leadSid && !o && deskPick !== project) || ((o?.kind === "chat" || o?.kind === "holder") && o.sid === sid);
@@ -86,7 +87,7 @@ function deskSessions(project, taskApprovals) {
     const attrs = sid === leadSid ? `data-desk-lead-chat="${esc(sid)}"` : `data-desk-chat-of="${esc(sid)}"`;
     const mate = (t, past) => {
       const key = t.agent_id || t.call, it = past ? null : deskCrewItem(project, sid, key);
-      const [cd, cw] = past ? ["idle", t.state === "aside" ? "set aside" : t.state] : mateNeeds(sid, t) ? ["ask", "waiting on you"] : deskMateBusy(t) ? ["", t.state] : ["idle", t.state];
+      const [cd, cw] = past ? ["idle", t.state === "aside" ? "set aside" : t.state] : mateNeeds(sid, t) ? ["ask", "needs you"] : deskMateBusy(t) ? ["", t.state] : ["idle", t.state];
       return deskSessRow({ name: t.name, mark: "crew", dot: cd, word: cw, item: it, line: it ? "" : t.what, crew: true, past, loose: !past && !deskMateBusy(t) && !!t.uncommitted,
         step: past ? "" : deskStepLine(cd === "", t.step, t.step_ms || t.started_ms),
         on: o?.kind === "crew" && o.lead === sid && o.agent === key, attrs: `data-desk-crew="${esc(key)}" data-lead="${esc(sid)}"` });
@@ -148,7 +149,7 @@ function deskSessions(project, taskApprovals) {
     }).join("")
     : '<div class="dim">No project sessions available.</div>'}</div>` : "";
   return `<div class="dk-card dk-sessions">${deskSessHead(project, mine.length, runs, leadS ? row(leadS, true) : "", deskLeadBar(leadS))}${leadS ? "" : deskLeadBar(leadS)}
-    ${deskApprovals(d, taskApprovals)}<div class="dk-scroll" data-scroll-key="desk-sessions:${esc(project)}">${body}</div>
+    <div class="dk-scroll" data-scroll-key="desk-sessions:${esc(project)}">${body}</div>
     <div class="dk-sfoot"><div class="dk-add-anchor"><button class="btn small dk-add-button" data-desk-add-session="${esc(project)}" aria-label="Add session" aria-expanded="${picking}"${picking ? ' aria-controls="desk-add-picker"' : ""}><span aria-hidden="true">+</span></button>${picker}</div></div></div>`;
 }
 /** Whether session `sid` belongs to a Desk other than `d`: it runs it, is on its list, or holds (or its crew holds) an

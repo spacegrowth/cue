@@ -79,44 +79,63 @@ test("Inbox and Desk count the same open decisions, excluding resolved requests 
   await expect(page.locator('[data-desk-item="d5"] [data-desk-decision]')).toHaveCount(0);
 });
 
-test("Desk surfaces a Codex request without an item tag and Allow clears it in the session too", async ({ cue, page }) => {
+// No permission cards on the Desk's left list (#431): a session waiting on one has only its small "needs you" mark there;
+// the request is on its item on the right and in the session's chat.
+test("a request with no item tag puts no card on the left: the session's row reads needs you, and its chat answers it (#431)", async ({ cue, page }) => {
   await setup(cue, page);
-  const request = page.locator('[data-desk-request="codex-approval"]');
-  await expect(request).toContainText("host-lead");
-  await expect(request).toContainText("printf approval-check");
-  await page.locator(".dk-sessions").screenshot({ path: "/tmp/cue-desk-approval.png" });
-  await request.locator('[data-act="allow"]').click();
+  const left = page.locator(".dk-sessions");
+  const row = left.locator('[data-desk-chat-of="host"]');
+  await expect(row.locator(".dk-st")).toHaveText("needs you");
+  await expect(row.locator(".dk-st > i.ask")).toHaveCount(1);
+  // Fails if a permission card ever renders in the left list.
+  await expect(left.locator('[data-desk-request], .dk-request, .dk-approvals, [data-act="allow"], [data-desk-decision]')).toHaveCount(0);
+  await expect(left).not.toContainText("Needs your decision");
+  await expect(left).not.toContainText("printf approval-check");
+  expect(await left.locator("[title]").count()).toBe(0);
+  await row.click();
+  await expect(page.locator(".dk-right .dk-ask")).toContainText("printf approval-check");
+  await page.locator('.dk-right [data-act="allow"][data-id="codex-approval"]').click();
   await cue.called("respond", { id: "codex-approval", decision: { behavior: "allow" } });
-  await expect(request).toHaveCount(0);
-  await page.locator('.dk-sessions [data-desk-chat-of="host"]').click();
-  await page.locator('.dk-right [data-desk-session="host"]').click();
-  await expect(page.locator('.active-pane [data-act="allow"][data-id="codex-approval"]')).toHaveCount(0);
-  expect(await page.evaluate(() => state.items.some((it) => it.id === "codex-approval"))).toBe(false);
+  await expect(page.locator(".dk-right .dk-ask")).toHaveCount(0);
+  await expect(row.locator(".dk-st")).not.toHaveText("needs you");
 });
 
-test("the worker chat on Desk has the live approval footer and Deny updates its request list", async ({ cue, page }) => {
+test("a request on an item shows on the item and in its session's chat, never as a card on the left (#431)", async ({ cue, page }) => {
   await setup(cue, page);
-  await page.locator('[data-desk-request="codex-approval"] [data-desk-chat-of="host"]').click();
+  await cue.change((st) => {
+    const task = st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d5");
+    Object.assign(task, { state: "needs_you", ask: { item_id: "codex-approval", sid: "host", kind: "permission", text: "printf approval-check" } });
+  });
+  const left = page.locator(".dk-sessions");
+  await expect(page.locator('.dk-items [data-desk-item="d5"] [data-desk-decision="allow"]')).toHaveCount(1);
+  await expect(left.locator('[data-desk-chat-of="host"] .dk-st')).toHaveText("needs you");
+  await expect(left.locator('[data-desk-request], .dk-request, .dk-approvals, [data-act="allow"], [data-desk-decision]')).toHaveCount(0);
+  await left.locator('[data-desk-chat-of="host"]').click();
+  await expect(page.locator(".dk-right .dk-ask")).toContainText("printf approval-check");
+});
+
+test("the worker chat on Desk has the live approval footer and Deny clears it", async ({ cue, page }) => {
+  await setup(cue, page);
+  await page.locator('.dk-sessions [data-desk-chat-of="host"]').click();
   await expect(page.locator(".dk-right .dk-ask")).toContainText("printf approval-check");
   await page.locator('.dk-right [data-act="deny"][data-id="codex-approval"]').click();
   await cue.called("respond", { id: "codex-approval", decision: { behavior: "deny" } });
-  await expect(page.locator('[data-desk-request="codex-approval"]')).toHaveCount(0);
   await expect(page.locator(".dk-right .dk-ask")).toHaveCount(0);
 });
 
 test("Allow from the session removes the same pending request from Desk", async ({ cue, page }) => {
   await setup(cue, page);
-  await page.locator('[data-desk-request="codex-approval"] [data-desk-chat-of="host"]').click();
+  await page.locator('.dk-sessions [data-desk-chat-of="host"]').click();
   await page.locator('.dk-right [data-desk-session="host"]').click();
   await page.locator('.active-pane [data-act="allow"][data-id="codex-approval"]').click();
   await cue.called("respond", { id: "codex-approval" });
   await page.locator('.switch-view [data-view="desk"]').click();
-  await expect(page.locator('[data-desk-request="codex-approval"]')).toHaveCount(0);
   await expect(page.locator('.dk-right [data-id="codex-approval"]')).toHaveCount(0);
+  await expect(page.locator('.dk-sessions [data-desk-chat-of="host"] .dk-st')).not.toHaveText("needs you");
 });
 
 for (const choice of ["Allow", "No"]) {
-  test(`Computer Use confirmation shows right-aligned Allow and No and ${choice} answers it from Desk`, async ({ cue, page }) => {
+  test(`Computer Use confirmation shows right-aligned Allow and No in the session's chat and ${choice} answers it`, async ({ cue, page }) => {
     await setup(cue, page);
     await cue.change((st) => {
       const request = st.items.find((it) => it.id === "codex-approval");
@@ -124,22 +143,15 @@ for (const choice of ["Allow", "No"]) {
       request.tool_name = "cua_repl";
       request.tool_input = { server: "cua_repl", message: 'Allow Computer Use to use "Cue"?', form: { type: "object", properties: {} } };
     });
-    const card = page.locator('[data-desk-request="codex-approval"]');
-    await expect(card).toContainText('Allow Computer Use to use "Cue"?');
-    await expect(card.locator(".row-btns button")).toHaveText(["No", "Allow"]);
-    const panel = await card.boundingBox(), yes = await card.getByRole("button", { name: "Allow", exact: true }).boundingBox();
-    expect(panel.x + panel.width - yes.x - yes.width).toBeLessThan(20);
-    expect(yes.width).toBeLessThan(panel.width / 2);
-    await card.locator('[data-desk-chat-of="host"]').click();
+    await expect(page.locator('.dk-sessions [data-desk-request], .dk-sessions .dk-request')).toHaveCount(0);
+    await page.locator('.dk-sessions [data-desk-chat-of="host"]').click();
     const footer = page.locator(".dk-right .dk-ask");
+    await expect(footer).toContainText('Allow Computer Use to use "Cue"?');
     await expect(footer.locator(".row-btns button")).toHaveText(["No", "Allow"]);
     const bounds = await footer.locator(".act-card").boundingBox(), right = await footer.getByRole("button", { name: "Allow", exact: true }).boundingBox();
     expect(bounds.x + bounds.width - right.x - right.width).toBeLessThan(20);
-    await page.screenshot({ path: `/tmp/cue-desk-computer-use-${choice.toLowerCase()}.png` });
-    const source = choice === "Allow" ? card : footer;
-    await source.getByRole("button", { name: choice, exact: true }).click();
+    await footer.getByRole("button", { name: choice, exact: true }).click();
     await cue.called("respond", { id: "codex-approval", decision: choice === "Allow" ? { behavior: "allow", answers: {} } : { behavior: "deny" } });
-    await expect(card).toHaveCount(0);
     await expect(page.locator(".dk-right .dk-ask")).toHaveCount(0);
   });
 }

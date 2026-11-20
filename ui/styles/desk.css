@@ -282,8 +282,6 @@
 .dk-box .chips { margin: 0; }
 .dk-ask { flex: none; max-height: 55%; overflow-y: auto; padding: 0 20px 14px; }
 .dk-request { margin: 0 10px 12px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
-.dk-approvals { flex: none; max-height: 38%; overflow-y: auto; border-bottom: 1px solid var(--line); }
-.dk-requests-head { padding: 12px 20px; font-weight: 600; color: var(--ink); }
 .dk-request-who { font: inherit; font-weight: 600; text-align: left; color: var(--ink); }
 .dk-request pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 160px; overflow: auto; font-size: 12px; margin: 10px 0; }
 .dk-request p { margin: 10px 0; overflow-wrap: anywhere; }

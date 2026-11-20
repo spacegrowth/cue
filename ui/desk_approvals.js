@@ -23,20 +23,6 @@ function deskTaskApprovals(d) {
   return tasks;
 }
 
-function deskApprovals(d, taskApprovals) {
-  const placed = new Set(deskWaitingItems(d, taskApprovals).map((i) => i.ask?.item_id));
-  const requests = state.items.filter((it) => !placed.has(it.id) && deskHasSession(d, it.session_id) && actionableRequest(it));
-  if (!requests.length) return "";
-  return `<section class="dk-approvals" aria-label="Pending requests"><div class="dk-requests-head">Needs your decision <span class="n">${requests.length}</span></div>${requests.map((it) => {
-    const who = deskHolderName(it.session_id), command = it.tool_input?.command;
-    const preview = it.kind === "input" ? formBody(it) : command ? reqCut(it.id, `<pre>${esc(command)}</pre>`, command) : `<p>${esc(summary(it))}</p>`;
-    const actions = ["permission", "input"].includes(it.kind) && !inTerminal(it) ? decisionButtons(it, "No") : "";
-    const target = it.agent_id && deskMate(it.session_id, it.agent_id)
-      ? `data-desk-crew="${esc(it.agent_id)}" data-lead="${esc(it.session_id)}"` : `data-desk-chat-of="${esc(it.session_id)}"`;
-    return `<div class="dk-request" data-desk-request="${esc(it.id)}"><button class="dk-request-who" ${target}>${esc(who)}${it.agent_name ? ` · ${esc(it.agent_name)}` : ""} ›</button>${preview}${actions}</div>`;
-  }).join("")}</section>`;
-}
-
 /** The same live request and response handler used by the session's full chat. */
 function deskSessionRequestFoot(d, open) {
   const sid = open?.kind === "crew" ? open.lead : open?.sid;

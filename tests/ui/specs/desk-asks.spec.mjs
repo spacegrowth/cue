@@ -18,6 +18,6 @@ test("the Desk opens with a pending ask and a finished turn: only the ask reads 
     st.desk.projects.find((d) => d.project === "cue").members.push("asker", "done1");
   });
   const left = page.locator(".dk-sessions");
-  await expect(left.locator('[data-desk-chat-of="asker"] .dk-st')).toHaveText("waiting on you");
-  await expect(left.locator('[data-desk-chat-of="done1"] .dk-st')).not.toHaveText("waiting on you");
+  await expect(left.locator('[data-desk-chat-of="asker"] .dk-st')).toHaveText("needs you");
+  await expect(left.locator('[data-desk-chat-of="done1"] .dk-st')).not.toHaveText("needs you");
 });
