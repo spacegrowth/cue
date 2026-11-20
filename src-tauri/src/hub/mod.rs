@@ -53,6 +53,7 @@ mod desk_lead;
 mod desk_members;
 mod desk_asked;
 mod desk_stall;
+mod desk_stuck;
 mod desk_steps;
 mod desk_theirs;
 mod desk_theirs_codex;
@@ -62,6 +63,8 @@ mod land_keep;
 pub(crate) use desk_lead::DeskClaim;
 pub(crate) use desk_checks::builds_this_cue;
 pub(crate) use desk_stall::question_for_you;
+#[cfg(test)]
+pub(crate) use desk_stuck::{PROMPT_MS, SILENT_MS};
 pub(crate) use desk_pr::PR_CLOSED;
 pub(crate) use desk::STOPPED;
 #[cfg(test)]

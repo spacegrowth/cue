@@ -155,6 +155,12 @@ pub fn running_background(path: &str) -> usize {
     })
 }
 
+/// When a Claude Code session's background work still running (its shell commands and agents) last showed output:
+/// a command's output file last written, an agent's newest line. 0 when none runs.
+pub fn background_heard_ms(path: &str) -> u64 {
+    caught_up(path, |feed, _| feed.helpers.iter().filter(|h| h.running()).map(|h| h.heard_ms()).max().unwrap_or(0))
+}
+
 /// Its background shell commands still running (not its agents): each one's description, else its command.
 pub fn running_scripts(path: &str) -> Vec<String> {
     caught_up(path, |feed, _| {

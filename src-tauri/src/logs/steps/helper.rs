@@ -119,7 +119,7 @@ impl Helper {
     }
 
     /// When it was last heard of: its newest line, or a message its session sent it since (that restarts the quiet).
-    fn heard_ms(&self) -> u64 {
+    pub(super) fn heard_ms(&self) -> u64 {
         self.last_ms.max(self.resumed_ms).max(self.feed.as_ref().map_or(0, |f| f.last_line.0))
     }
 

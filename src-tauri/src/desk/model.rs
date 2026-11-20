@@ -665,6 +665,10 @@ pub struct Desk {
     /// Items whose holder said what's left of them, or what they wait on (item → (that holder, the item's `updated`
     /// then)): not asked "Done?" again until the item changes (hub/desk_stall.rs). Not saved.
     pub left_said: HashMap<String, (String, u64)>,
+    /// Items whose holder the Desk lead was told is stuck mid-turn (hub/desk_stuck.rs): item → (that holder, the
+    /// stuck spell: when it last showed output, or the prompt it sits on). Told once a spell; gone once it moves.
+    /// Not saved.
+    pub stuck_told: HashMap<String, (String, String)>,
     /// What the Desk itself sent each session lately (session → its last few messages): a prompt it takes that isn't
     /// one of these was typed by you (hub/desk_asked.rs). Not saved.
     pub sent: HashMap<String, Vec<String>>,
