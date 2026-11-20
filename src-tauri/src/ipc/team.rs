@@ -1,4 +1,4 @@
-//! A hosted lead's teammate's buttons in its chat (docs/dev/cue-teams.md §4–§5): hub/team.rs does them.
+//! A hosted lead's teammate's buttons in its chat (docs/dev/cue-teams.md §4–§5): hub/team/mod.rs does them.
 
 use super::with_hub;
 use crate::hub::Hub;

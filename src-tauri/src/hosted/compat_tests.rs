@@ -434,7 +434,7 @@ mod team {
 }
 
 /// T4 (docs/dev/cue-teams.md §6), live: a plain request with two independent parts, to a real Claude lead started with
-/// Cue's team skill (hub/team_out.rs) in a git folder, becomes a team of two on its own: each a named background
+/// Cue's team skill (hub/team/out.rs) in a git folder, becomes a team of two on its own: each a named background
 /// teammate in a worktree of its own. Its stream, read by a hub as Cue reads a hosted lead's, makes the two rows, and
 /// one teammate's work is committed in its worktree. Nothing in the message says "team".
 #[test]
@@ -466,7 +466,7 @@ fn compat_a_two_part_request_becomes_a_team_of_two_on_its_own_and_one_is_committ
     let r = crate::ipc::start_session_with(w.hub(), "claude", &dir.to_string_lossy(), message, "live-team", &opts).unwrap();
     let sid = r["session_id"].as_str().unwrap().to_string();
     // A lead's usual model, not the compat suite's smallest: the lead's judgement is what's tested.
-    let real = Real::start_in(dir.clone(), quiet(), Start::fresh(), &["--append-system-prompt", crate::hub::team_out::TEAM_SKILL], "sonnet");
+    let real = Real::start_in(dir.clone(), quiet(), Start::fresh(), &["--append-system-prompt", crate::hub::team::out::TEAM_SKILL], "sonnet");
     real.s().send(message).unwrap();
     // Up to both teammates finished and the lead's turn after them ended.
     let end = Instant::now() + Duration::from_secs(600);

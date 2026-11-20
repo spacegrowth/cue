@@ -42,12 +42,12 @@ impl Hub {
         let kinds = crate::one_way::kinds(&super::crew_log::project_shown_for(origin));
         let skill = match self.desk_skill(&origin.session_id) {
             Some(desk) => [desk.to_string(), crate::one_way::ask_first(&kinds)].join("\n").trim_end().to_string(),
-            None => super::team_out::skill_for(&kinds),
+            None => super::team::out::skill_for(&kinds),
         };
         // Your name (owner.rs), so what it writes about you uses it.
         let told = crate::owner::told_line();
         let skill = if told.is_empty() { skill } else { format!("{skill}\n{}", told.trim_end()) };
-        let mut args = super::team_out::with_skill(agent, &with.args, &skill);
+        let mut args = super::team::out::with_skill(agent, &with.args, &skill);
         // A Desk lead runs in fast mode: turned on as it starts or resumes (hosted, Claude Code turns it on only when
         // its settings say so), and left to it after that. Other sessions start as they are.
         if agent == Agent::Claude && self.desk_skill(&origin.session_id).is_some() {
@@ -266,7 +266,7 @@ impl Hub {
             self.failed(origin, "error", &text);
         } else {
             let turn = turn_parts(&origin.transcript_path, &text);
-            let lead_turn = super::team_review::LeadTurn::read(&origin.transcript_path, &turn, &text, unprompted);
+            let lead_turn = super::team::review::LeadTurn::read(&origin.transcript_path, &turn, &text, unprompted);
             self.team_reply(&origin.session_id, &lead_turn);
             let (lead, all, parts) = (origin.session_id.clone(), lead_turn.all, turn.clone());
             self.event(origin, "stopped", text, turn, "");

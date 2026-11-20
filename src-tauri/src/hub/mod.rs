@@ -89,10 +89,10 @@ mod send_at;
 pub(crate) use send_at::probe as send_at_probe;
 mod sessions;
 mod shown;
-mod team;
-mod team_review;
-mod team_tidy;
-pub(crate) mod team_out;
+pub(crate) mod team;
+// Moved into team/ (refactor step 1c); the optional add-on still names it here.
+#[cfg(feature = "ext")]
+pub(crate) use team::out as team_out;
 mod store_access;
 mod terminal_only;
 pub(crate) use terminal_only::{claude_screens, Own};

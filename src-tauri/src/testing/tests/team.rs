@@ -394,14 +394,14 @@ fn the_sessions_own_asks_and_unnamed_agents_make_no_team() {
     assert_eq!(w.snapshot().cards_of(&sid)[0]["agent_name"].as_str().unwrap_or(""), "");
 }
 
-// ---------- T4, T5, H22 (hub/team_out.rs): the team skill, the Team switch, a handoff carries the team, hand-out ----------
+// ---------- T4, T5, H22 (hub/team/out.rs): the team skill, the Team switch, a handoff carries the team, hand-out ----------
 
 /// The arguments the session's last start was given.
 fn launched_args(w: &World) -> Vec<String> {
     w.hosted.launched().last().map(|l| l.args.clone()).unwrap_or_default()
 }
 
-/// How the team skill (hub/team_out.rs) starts.
+/// How the team skill (hub/team/out.rs) starts.
 const SKILL_START: &str = "# Working as a crew lead (Cue)";
 
 /// The team skill in `args`: right after `--append-system-prompt`.
@@ -418,7 +418,7 @@ fn a_prompt_you_append_yourself_gets_the_skill_merged_in_not_a_second_option() {
     let args = launched_args(&w);
     assert_eq!(args.iter().filter(|a| *a == "--append-system-prompt").count(), 1, "one option: {args:?}");
     let prompt = skill_in(&args).unwrap();
-    assert!(prompt.starts_with("Terse.\n\n") && prompt.ends_with(&crate::hub::team_out::skill_for(crate::one_way::DEFAULT)), "yours, then the skill: {prompt}");
+    assert!(prompt.starts_with("Terse.\n\n") && prompt.ends_with(&crate::hub::team::out::skill_for(crate::one_way::DEFAULT)), "yours, then the skill: {prompt}");
 }
 
 #[test]
@@ -437,7 +437,7 @@ fn a_lead_asks_first_before_what_its_project_counts_one_way() {
     // Nothing one-way there: no such line.
     crate::config::set("project.oneway", json!({ project.as_str(): [] })).unwrap();
     lead(&w, "a third part");
-    assert_eq!(skill_in(&launched_args(&w)).as_deref(), Some(crate::hub::team_out::TEAM_SKILL));
+    assert_eq!(skill_in(&launched_args(&w)).as_deref(), Some(crate::hub::team::out::TEAM_SKILL));
 }
 
 #[test]

@@ -109,7 +109,7 @@ none of relay's ceremony: no packet or report files, no status formats, no revie
 tags (lead and teammate are told apart by Cue's layout, never by text in a name). Cue appends it to every hosted
 Claude Code lead's system prompt at launch (`--append-system-prompt`; when your own launch options already append a
 prompt, the skill goes after your text in the same option; with `--append-system-prompt-file` it is left out). Pi
-and Codex leads get nothing: they have no Agent tool. The text, as shipped (`hub/team_out.rs` `TEAM_SKILL`):
+and Codex leads get nothing: they have no Agent tool. The text, as shipped (`hub/team/out.rs` `TEAM_SKILL`):
 
 ```
 # Working as a team lead (Cue)
@@ -254,7 +254,7 @@ https://claude.ai/artifact/NHGzaVDABY7aveRuqjM1Js):
   reply that is X's saved review word for word, else the last one with a Recommendation line. Verdict: the words after
   "Recommendation:". Counts: should-fix (with must-fix, blocker) and notes (with nit, question, or no kind). Every
   window that draws a crew is held to the same cases: `tests/fixtures/crew-review.json`.
-- The crew tidies itself (hub/team.rs `team_tidy`, at most once a minute, off the tick's thread): a member that stopped
+- The crew tidies itself (hub/team/mod.rs `team_tidy`, at most once a minute, off the tick's thread): a member that stopped
   having written nothing is set aside at once; a finished one whose files are all committed since it started, by
   Commit or by you outside Cue, leaves as committed ("Committed outside Cue", its commit); one whose files are clean
   with nothing committed since it started leaves as set aside ("Its changes are gone"). Files git can't speak for

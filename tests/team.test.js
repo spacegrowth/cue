@@ -285,7 +285,7 @@ assert.doesNotMatch(folded, /data-mt-act|data-crew-open|Open ›/, "no buttons i
   delete world.sessions.W;
 }
 
-// ---- fixes kept for a busy lead (hub/team.rs send_fixes): it waits on the lead, not at work, not on you ----
+// ---- fixes kept for a busy lead (hub/team/mod.rs send_fixes): it waits on the lead, not at work, not on you ----
 {
   world.sessions.K = { session_id: "K", team: [
     { call: "c-k1", agent_id: "k1", name: "ops", state: "reviewed", recommendation: "send fixes", findings: ["1. a.js:1 — should-fix — x"], fixes_kept_ms: NOW - M, fix_rounds: 1, step: "Fixes go to its lead when its turn ends", started_ms: NOW - 9 * M, ended_ms: NOW - 2 * M, files: ["a.js"] },

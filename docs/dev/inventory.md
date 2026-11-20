@@ -650,9 +650,9 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hub/open.rs::look` | Path::is_dir | 1 |
 | `hub/open.rs::look` | Path::is_file | 1 |
 | `hub/ports.rs::hosts` | Path::is_file | 1 |
-| `hub/team.rs::remove_file` | remove_file | 1 |
-| `hub/team.rs::repo_top` | Path::is_dir | 1 |
-| `hub/team.rs::worktree_gone` | Path::is_dir | 1 |
+| `hub/team/mod.rs::remove_file` | remove_file | 1 |
+| `hub/team/mod.rs::repo_top` | Path::is_dir | 1 |
+| `hub/team/mod.rs::worktree_gone` | Path::is_dir | 1 |
 | `install/live_ui.rs::check_copy` | create_dir_all | 1 |
 | `install/live_ui.rs::check_copy` | remove_dir_all | 1 |
 | `install/live_ui.rs::check_in` | create_dir_all | 1 |

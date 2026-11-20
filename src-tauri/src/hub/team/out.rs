@@ -3,7 +3,7 @@
 //! lead to hand out as a new teammate (with the files it would likely touch that a teammate already touches), and the
 //! team carried over to the lead that carries on after a handoff. The user never types any of it.
 
-use super::*;
+use crate::hub::*;
 use crate::sessions::team::carried_note;
 
 /// The team skill's text, with `$more` (rules the optional add-on adds; "" without it) after its first rule.
@@ -24,7 +24,7 @@ You run inside Cue, which shows each teammate you start under you as your crew; 
     };
 }
 #[cfg(feature = "ext")]
-use super::ext::team_rules as more_rules;
+use crate::hub::ext::team_rules as more_rules;
 #[cfg(not(feature = "ext"))]
 macro_rules! more_rules {
     () => {
@@ -50,7 +50,7 @@ pub(crate) fn skill_for(kinds: &[&str]) -> String {
 
 /// `args` (yours) with the team skill added (`skill`, skill_for's): Claude Code's only (Pi and Codex have no Agent
 /// tool).
-pub(super) fn with_skill(agent: crate::hosted::Agent, args: &[String], skill: &str) -> Vec<String> {
+pub(in crate::hub) fn with_skill(agent: crate::hosted::Agent, args: &[String], skill: &str) -> Vec<String> {
     let mut out = args.to_vec();
     if agent != crate::hosted::Agent::Claude {
         return out;
@@ -101,7 +101,7 @@ fn hand_out_text(task: &str) -> String {
 
 /// SHORTCUT: a task's files are only the paths it names, so a task that names none shows nothing taken. Upgrade
 /// path (the canvas's "a guess from the task and the files nearby"): ask a small model for the files it would touch.
-/// File paths named in `text` ("ui/board.js", "`src/hub/team.rs:40`", "a.txt"): a word with an extension that has a
+/// File paths named in `text` ("ui/board.js", "`src/hub/team/mod.rs:40`", "a.txt"): a word with an extension that has a
 /// letter in it, without quotes, backticks, a line number or the punctuation after it. Not a link or a version.
 pub(crate) fn paths_named(text: &str) -> Vec<String> {
     let mut out: Vec<String> = vec![];
@@ -241,7 +241,7 @@ impl Hub {
 
 /// Two folders are one when equal, trailing slashes aside.
 #[cfg_attr(not(feature = "ext"), allow(dead_code))]
-pub(super) fn same_folder(a: &str, b: &str) -> bool {
+pub(in crate::hub) fn same_folder(a: &str, b: &str) -> bool {
     !a.is_empty() && a.trim_end_matches('/') == b.trim_end_matches('/')
 }
 
@@ -307,7 +307,7 @@ mod tests {
     #[test]
     fn a_tasks_files_are_the_paths_it_names() {
         assert_eq!(paths_named("Fix the typo in a.txt and add a line to `b.txt`."), ["a.txt", "b.txt"]);
-        assert_eq!(paths_named("see ui/board.js:40 and (src-tauri/src/hub/team.rs), ./README.md"), ["ui/board.js", "src-tauri/src/hub/team.rs", "README.md"]);
+        assert_eq!(paths_named("see ui/board.js:40 and (src-tauri/src/hub/team/mod.rs), ./README.md"), ["ui/board.js", "src-tauri/src/hub/team/mod.rs", "README.md"]);
         assert!(paths_named("bump 0.1.22 to 1.2, see https://example.com/a.html, e.g. this. Done.").is_empty());
         assert!(same_file("board.js", "ui/board.js") && !same_file("oard.js", "ui/board.js"));
     }

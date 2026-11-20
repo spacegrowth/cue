@@ -1,10 +1,10 @@
-//! A hosted lead's crew tidied (hub/team.rs has the rest): a finished member whose work was committed (by Cue, by its
+//! A hosted lead's crew tidied (hub/team/mod.rs has the rest): a finished member whose work was committed (by Cue, by its
 //! lead, or by you elsewhere) or thrown away leaves the crew by itself, so nobody has to set it aside. A member whose
 //! files Cue never saw is committed by its lead, asked by Cue; its reply says what it committed.
 
-use super::team::{first, free_branch, repos, worktree_gone};
-use super::*;
-use super::team_review::{didnt_come_back, LeadTurn};
+use super::{first, free_branch, repos, worktree_gone};
+use crate::hub::*;
+use super::review::{didnt_come_back, LeadTurn};
 use crate::sessions::crew_log::Decided;
 use crate::sessions::team::{read_committed, Teammate};
 
@@ -12,7 +12,7 @@ use crate::sessions::team::{read_committed, Teammate};
 const TIDY_MS: u64 = 60_000;
 
 /// Where a finished crew member's work ended up, when it's settled.
-pub(super) enum Settled {
+pub(in crate::hub) enum Settled {
     /// Every one of its files is committed, and at least one in a commit since it started (that commit, short).
     Committed(String),
     /// Every file is clean, but nothing was committed since it started: its changes were thrown away.
@@ -23,7 +23,7 @@ pub(super) enum Settled {
 
 /// Its files, asked of the git repo each is in (a crew member can work outside its lead's folder): None while any
 /// has uncommitted changes, or git can't say; Scratch when none is one git keeps (in no repo, or ignored there).
-pub(super) fn settled(lead_cwd: &str, t: &Teammate) -> Option<Settled> {
+pub(in crate::hub) fn settled(lead_cwd: &str, t: &Teammate) -> Option<Settled> {
     let since = t.started_ms / 1000;
     let mut newest: Option<(u64, String)> = None;
     // Whether any of its files is one git keeps: a member whose files are all scratch (in no repository, or ignored)
@@ -75,7 +75,7 @@ pub(super) fn settled(lead_cwd: &str, t: &Teammate) -> Option<Settled> {
 
 /// Whether one of its files (on this Mac) still has uncommitted changes in git: ignored files and files in no
 /// repository left out, and none for one whose worktree is gone (its work went elsewhere or was thrown away).
-pub(super) fn uncommitted(lead_cwd: &str, t: &Teammate) -> bool {
+pub(in crate::hub) fn uncommitted(lead_cwd: &str, t: &Teammate) -> bool {
     if t.files.is_empty() || (!t.worktree.is_empty() && worktree_gone("", t)) {
         return false;
     }
@@ -92,7 +92,7 @@ pub(super) fn uncommitted(lead_cwd: &str, t: &Teammate) -> bool {
 
 impl Hub {
     /// At most every TIDY_MS, a tidy pass off the tick's thread (`team_tidy`).
-    pub(super) fn team_tidy_tick(&self, now: u64) {
+    pub(in crate::hub) fn team_tidy_tick(&self, now: u64) {
         static LAST: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let last = LAST.load(std::sync::atomic::Ordering::Relaxed);
         if now >= last && now - last < TIDY_MS {
@@ -184,7 +184,7 @@ impl Hub {
     /// lead is asked to commit them, on a branch of their own, and to say what it committed; the tidy leaves it alone
     /// until the lead's reply (`commit_reply`). A busy lead isn't sent it then: the ask waits on the member's row
     /// (`commit_wait_ms`, never in the lead's chat) and goes once the lead is free (`drain_commit_asks`).
-    pub(super) fn ask_lead_to_commit(&self, lead: &str, t: &Teammate) -> Result<String, String> {
+    pub(in crate::hub) fn ask_lead_to_commit(&self, lead: &str, t: &Teammate) -> Result<String, String> {
         let now = now_ms();
         let go = self.write(|st| {
             let m = st.sessions.team(lead).into_iter().find(|m| m.call == t.call)?;
@@ -213,7 +213,7 @@ impl Hub {
 
     /// Each free lead's members whose commit ask waits (`commit_wait_ms`), sent to it now, joined into one message.
     /// The lead then settles (`review_last`) before anything else of Cue's goes to it.
-    pub(super) fn drain_commit_asks(&self) {
+    pub(in crate::hub) fn drain_commit_asks(&self) {
         let now = now_ms();
         let due: Vec<(String, Vec<Teammate>)> = self.write(|st| {
             let waiting = st.sessions.all().into_iter().filter(|s| s.team.iter().any(|t| t.commit_wait_ms > 0)).map(|s| s.origin.session_id.clone());
@@ -286,16 +286,16 @@ fn mark_asked(m: &mut Teammate, now: u64) {
 /// review that isn't in Review's queue (nor on its way), and one under review whose lead has been free while
 /// REVIEW_SHOWN_MS passed since its ask (a lead whose transcript Cue can't read, or an ask scrolled out of it: the turn
 /// that answers it, team_review.rs `unanswered`, is the usual way). Whether any changed.
-pub(super) fn unstick(st: &mut Store, now: u64) -> bool {
+pub(in crate::hub) fn unstick(st: &mut Store, now: u64) -> bool {
     let mut stuck: Vec<(String, String, bool)> = vec![];
     for s in st.sessions.all() {
         let lead = s.origin.session_id.clone();
         // Free as Review's queue judges it: not working, asking you something, compacting, or settling.
         let free = Hub::lead_busy(st, &lead, now).is_none();
         for t in &s.team {
-            let key = format!("{}{lead}:{}", super::team::KEY, t.agent_id);
+            let key = format!("{}{lead}:{}", super::KEY, t.agent_id);
             let lost = t.state == "queued" && !st.review_queue.iter().any(|q| q.exec == key) && !st.review_sent.contains_key(&key);
-            let long = t.state == "reviewing" && free && now.saturating_sub(t.review_ms) >= super::reviews::REVIEW_SHOWN_MS;
+            let long = t.state == "reviewing" && free && now.saturating_sub(t.review_ms) >= crate::hub::reviews::REVIEW_SHOWN_MS;
             if lost || long {
                 stuck.push((lead.clone(), t.call.clone(), lost));
             }
@@ -329,7 +329,7 @@ fn commit_words(name: &str) -> String {
 /// SHORTCUT: the lead's first prompted reply after an ask went is taken as its answer; a reply to something else of
 /// yours typed meanwhile reads as "didn't say" and leaves it to you. Upgrade: match the reply to the turn the ask
 /// started (`LeadTurn::said`, once Cue's asks are in the transcript every time).
-pub(super) fn commit_reply(st: &mut Store, lead: &str, turn: &LeadTurn, review: bool) -> bool {
+pub(in crate::hub) fn commit_reply(st: &mut Store, lead: &str, turn: &LeadTurn, review: bool) -> bool {
     let on_its_way = [st.sessions.held(lead).map(|h| h.text), st.sessions.queued_text(lead)].into_iter().flatten().collect::<Vec<_>>().join("\n");
     let team = st.sessions.team(lead);
     let asked = |t: &Teammate| t.commit_asked_ms > 0 && !on_its_way.contains(&commit_words(&t.name));

@@ -8,7 +8,11 @@ use crate::hosted::HostedEvent;
 use crate::sessions::quiet::Quiet;
 use crate::sessions::crew_log::Decided;
 use crate::sessions::team::{add_files, Teammate};
-use super::team_tidy::{settled, Settled};
+use self::tidy::{settled, Settled};
+
+pub(crate) mod out;
+pub(super) mod review;
+mod tidy;
 
 /// A teammate's review in Review's queue goes by this key: `team:<lead>:<agent id>`.
 pub(super) const KEY: &str = "team:";

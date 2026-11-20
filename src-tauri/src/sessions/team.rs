@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// The tools a teammate changes files with, and where each names the file. Its Bash commands change files too: in a
-/// worktree of its own, git says which (hub/team.rs reads its status after each and when it finishes); in the lead's
+/// worktree of its own, git says which (hub/team/mod.rs reads its status after each and when it finishes); in the lead's
 /// folder, `shell_writes` reads them off the command, marked as `via_shell`.
 /// SHORTCUT: in the lead's folder a command's files are read off its words, not git (others may be changing the same
 /// folder at once). Upgrade (docs/dev/cue-teams.md §7): git status before and after each of its Bash calls.
@@ -74,7 +74,7 @@ pub struct Teammate {
     /// The other teammates (by name) with uncommitted changes in one of its files, in the same folder: Commit waits.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub also: Vec<String>,
-    /// Whether git says one of its files still has uncommitted changes (asked by the crew tidy, hub/team_tidy.rs
+    /// Whether git says one of its files still has uncommitted changes (asked by the crew tidy, hub/team/tidy.rs
     /// `uncommitted`): the Desk's "not committed" tag. False until asked, for one with no files, and on another machine.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub uncommitted: bool,
