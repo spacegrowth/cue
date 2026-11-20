@@ -1,6 +1,6 @@
 // An item's page has the quick phrases over its box, as a chat does (#242). A click sends that phrase at once, as its own
 // message, the way the page's Send would; what you'd typed stays in the box, and a double click sends it once (#477).
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
 /** What the item page's Send sent, by any of its ways (a note to its holder, sent back, or to the lead). */
 const sentTexts = async (cue) => [...await cue.calls("desk_item_act"), ...await cue.calls("desk_send")]
@@ -13,9 +13,7 @@ async function openItem(cue, page, kind = "task") {
     st.desk.projects[0].items.find((i) => i.id === "d2").kind = type;
     st.items = [];
   }, kind);
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
+  await openDesk(page);
   await page.locator('[data-desk-item="d2"]').click();
 }
 
@@ -74,9 +72,7 @@ test("an item page's quick phrase with words typed in the box: only the phrase g
 test("the lead's box still sends a quick phrase at once", async ({ cue, page }) => {
   await cue.open("desk");
   await cue.change((st) => { st.settings.quick = { phrases: ["go ahead"] }; st.items = []; });
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
+  await openDesk(page);
   const qp = page.locator(".dk-right .dk-box .quick .qp");
   if (!(await qp.count())) test.skip(true, "this Desk's lead box has no phrases here");
   await qp.first().click();

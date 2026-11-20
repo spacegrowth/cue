@@ -2,12 +2,10 @@
 // host-lead is finishing something, your note goes in next" under it, kept in Cue or queued; once the session takes it,
 // the chat's Working line instead. The item leaves Waiting on you when the note goes (the hub puts it back at work): in
 // the Items list, the Progress view and the Waiting on you count.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
 const openItem = async (page, id) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
+  await openDesk(page);
   await page.locator(`[data-desk-item="${id}"]`).first().click();
 };
 const WAIT = "Waiting: host-lead is finishing something, your note goes in next";
@@ -51,9 +49,7 @@ test("a send-back queued in its session shows your words alone, waiting", async 
 test("an item your note went to leaves Waiting on you: the list, Progress and the count", async ({ page, cue }) => {
   await cue.open("desk");
   await cue.change((st) => { Object.assign(st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d5"), { state: "needs_you" }); });
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
+  await openDesk(page);
   const items = page.locator(".dk-items"), you = items.locator(".dk-gh.you");
   await expect(you).toHaveText(/^Waiting on you \d+$/);
   const before = Number((await you.innerText()).match(/\d+$/)[0]);

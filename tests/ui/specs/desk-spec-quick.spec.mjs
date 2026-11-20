@@ -2,14 +2,8 @@
 // session's chat, over its box), #477 (one click sends the phrase at once as its own message, repeat clicks never stack
 // it, a draft stays untouched; every chat with phrases), #488 (on an item to check a phrase is a note to its holder, the
 // item stays to check). The scenario's phrases: Commit, Go ahead, Think hard.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
-const openDesk = async (page) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator(".dk-items .dk-it").first().waitFor();
-};
 const box = (page) => page.locator(".dk-right .dk-box textarea");
 const phrase = (page, p) => page.locator(`.dk-right .dk-box .quick .qp[data-phrase="${p}"]`);
 

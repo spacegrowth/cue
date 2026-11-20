@@ -1,14 +1,8 @@
 // The Desk lead's ASK lines in its chat (#427): never raw "ASK: …" text. Cue files each as a question, which the chat
 // shows once as a small card (the question, then your answer beside it); the pop-up is where you answer, and Cue's
 // "Your ASK…The answer…" message back to the lead isn't drawn a second time. The same for an ASK about an item.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
-const openDesk = async (page) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator(".dk-items .dk-it").first().waitFor();
-};
 /** Entries added to the lead's thread, as the hub notes them, a millisecond apart. */
 const push = (page, entries) => page.evaluate((es) => {
   const th = sessionOf("lead").thread, t = Date.now();

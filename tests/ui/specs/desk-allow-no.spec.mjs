@@ -1,7 +1,7 @@
 // Permission cards (#426): No and Allow sit side by side on one line at the right, No first, the ask beside them (or
 // above them when narrow); on the Desk's item list, its Progress view, and the item page's / session chat's card.
 // A long command shows its first lines with more, which opens the rest in place, and less, which folds it back.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
 const CMD = "node node_modules/@playwright/test/cli.js test --config tests/ui/playwright.config.mjs --grep 'a Desk can start in a folder|three columns'";
 
@@ -15,9 +15,7 @@ async function setup(cue, page, cmd = CMD) {
     Object.assign(d.items.find((item) => item.holder?.sid === "host"), { id: "227", kind: "feature", title: "Give the Desk its own icon" });
     st.items.push({ id: "perm", session_id: "host", harness: "codex", hosted: true, project: "cue", kind: "permission", status: "pending", tool_name: "Bash", tool_input: { command }, suggestions: [], created_ms: Date.now(), thread: [{ role: "you", text: "Desk item #227 (feature): Give the Desk its own icon" }] });
   }, cmd);
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
+  await openDesk(page);
 }
 
 /** Where the card's ask, No and Allow sit, measured at one moment (the Desk redraws its rows): what's wrong, or "ok". */

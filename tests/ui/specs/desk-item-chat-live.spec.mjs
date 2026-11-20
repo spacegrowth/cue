@@ -3,12 +3,10 @@
 // you send shows at once; the words being written stay whole as its turn ends, till the saved reply is in; a turn typed
 // with no item number stays on the item its session holds; and the live words leave out the Desk's own lines, as the
 // saved reply does.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
 const openItem = async (page, id) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
+  await openDesk(page);
   await page.locator(`[data-desk-item="${id}"]`).first().click();
 };
 // The holder's newest turn: you wrote `prompt` (in its chat), and it read a file and has written `words` so far (its

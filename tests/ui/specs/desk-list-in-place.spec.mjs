@@ -1,14 +1,8 @@
 // The Desk's Items list and Progress kept across a draw (#480): as items are added, dropped or change group, the list
 // updates in place. The rows that didn't change are the same elements, untouched inside; a row that changed group is
 // the same element in its new group; the list keeps its scroll and an open feature row stays open.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
-const openDesk = async (page) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator(".dk-items .dk-it").first().waitFor();
-};
 // The list is drawn again as the Desk's finished items come in: wait till it has been still for a moment.
 const settle = (page, sel = ".dk-items") => page.evaluate((sel) => new Promise((res) => {
   let t;

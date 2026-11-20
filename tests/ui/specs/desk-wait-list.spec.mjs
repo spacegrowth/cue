@@ -1,13 +1,7 @@
 // What an item waits on (#250, ui/desk.js deskWaitsOn): its page shows one "Waits on" box with the buttons that clear
 // it: a circle (red tag, the loop, Cut this link on each link); the item it's queued after. No "Try again" anywhere.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
-const openDesk = async (page) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator(".dk-items .dk-it").first().waitFor();
-};
 const patchDesk = (cue, patch) => cue.change((st, p) => { Object.assign(st.desk.projects.find((x) => x.project === "cue"), p); }, patch);
 const patchItem = (cue, id, patch) => cue.change((st, [k, p]) => { Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === k), p); }, [id, patch]);
 // An item's page (#418): its holder's chat in the middle, the item itself in the column at the right, in the Items

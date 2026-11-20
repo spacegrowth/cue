@@ -1,12 +1,10 @@
 // An item given out but not started yet (#476): its page's chat says so plainly and why (the item before it, or a
 // free working folder), with Start now, never "Waiting on you" of its idle holder unless something really waits on
 // you; once it starts, the holder's own line as before.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
 const openItem = async (page, id) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
+  await openDesk(page);
   await page.locator(`[data-desk-item="${id}"]`).first().click();
 };
 

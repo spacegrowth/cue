@@ -137,6 +137,7 @@ function deskWorld(s) {
   site.thread.push({ role: "agent", text: "Should the launch page keep the old logo until the new one is ready?", at_ms: at - 120000 });
   s.sessions.push({ ...site, session_id: "notes", name: "release-notes", project: "notes", state: "working", since_ms: at - 240000, thread: [] });
 }
+// Not cue.mjs's openDesk: this opens the mini window (notch or rail) on the Desk world, not the main window's Desk.
 async function openDesk(cue, page, shape, { frozen = false, dark } = {}) {
   await page.setViewportSize(WINDOW[shape]);
   await page.addInitScript((h) => Object.defineProperty(Screen.prototype, "height", { get: () => h }), SCREEN.height);

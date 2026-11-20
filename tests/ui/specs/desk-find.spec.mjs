@@ -1,11 +1,9 @@
 // ⌘K from the Desk opens what it finds on the Desk, not the Board (#316).
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
 test("a session found with ⌘K on the Desk opens in the Desk's middle", async ({ cue, page }) => {
   await cue.open("desk");
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
+  await openDesk(page);
   await page.keyboard.press("Meta+k");
   await page.locator('[data-text="find-live"]').pressSequentially("host-lead");
   await page.locator('.lv-pop .lv-row[data-sid="host"]').click();
@@ -51,9 +49,7 @@ test("on the Board it still opens there", async ({ cue, page }) => {
 test("on the Desk, ⌘K lists the Desk's items and its own sessions only; an item found opens there", async ({ cue, page }) => {
   await cue.open("desk");
   const d = await page.evaluate(() => { const d = state.desk.projects.find((x) => x.project === "cue"); return { item: d.items.find((i) => i.state !== "done" && i.state !== "dropped"), members: [d.lead?.sid, ...(d.members || [])] }; });
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
+  await openDesk(page);
   await page.keyboard.press("Meta+k");
   await expect(page.locator(".lv-pop .lv-ghead").first()).toContainText("Items");
   // Sessions from outside this Desk aren't listed.

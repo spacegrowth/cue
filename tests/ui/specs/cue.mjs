@@ -58,3 +58,15 @@ export const test = base.extend({
   },
 });
 export { expect };
+
+/** Project `p` picked in the header's project menu (All projects with ""). */
+export const pick = async (page, p) => {
+  await page.locator('[data-pj="toggle"]').click();
+  await page.locator(`.pj-pop [data-pj="pick"][data-project="${p}"]`).click();
+};
+/** The Desk opened from the header on project `p`; resolves once its first item row is drawn. */
+export const openDesk = async (page, p = "cue") => {
+  await pick(page, p);
+  await page.locator('.switch-view [data-view="desk"]').click();
+  await page.locator(".dk-items .dk-it").first().waitFor();
+};

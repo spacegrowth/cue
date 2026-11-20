@@ -1,13 +1,11 @@
 // What the window looks like to the pointer and the keyboard, asked by Cue (`page-look`, hub/page_look.rs) for when
 // the cursor acts up while it runs (#456): the box with the keyboard, what's under the pointer, anything covering
 // the window. Only read: asking changes nothing on the page.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
 test("asked how the page looks, the window says which box has the keyboard, what's under the pointer and what covers it", async ({ page, cue }) => {
   await cue.open("desk");
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
+  await openDesk(page);
   const box = page.locator(".dk-right .dk-box textarea[data-text]").first();
   await box.click();
   const b = await box.boundingBox();

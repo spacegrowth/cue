@@ -1,14 +1,10 @@
 /* ---------- Insights (insights.js): ink, but for their bulb in the theme's own color. Set off by a line above and below:
    the bulb and INSIGHT, a bar chart as the evidence, one sentence, then the commands. ---------- */
 .ins { margin: 10px 16px 0; padding: 12px 2px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 9px; }
-.ins-head { display: flex; align-items: center; gap: 7px; }
 .ins-bulb { width: 15px; height: 15px; flex: none; fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .ins-bulb path:first-child { fill: var(--accent); }   /* the bulb is lit: filled, its rays stroked */
-.ins-tag { font-family: var(--mono); font-size: 10.5px; font-weight: 700; letter-spacing: .12em; color: var(--ink); }
-.ins-note { font-size: 12.5px; color: var(--muted); }
 .ins-axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
 .ins-axis b { color: var(--ink); }
-.ins-why { font-size: 14px; line-height: 1.45; color: var(--ink); }
 .ins-n { flex: none; font: 700 11px var(--mono); color: var(--ink); background: var(--panel-2); border: 0; border-radius: var(--pill-radius); padding: 2px 8px; }
 button.ins-n { cursor: pointer; }
 .ins-line .ins-n { margin-left: auto; }
@@ -85,14 +81,6 @@ button.ins-n { cursor: pointer; }
 .cv-status.ins-status .ins-bulb { width: 13px; height: 13px; flex: none; }
 .cv-status.ins-status b { color: var(--ink); }
 .cv-status.ins-status .btn { margin-left: 4px; }
-.linkish { background: none; border: 0; padding: 2px 4px; font: inherit; font-size: 12.5px; color: var(--muted); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
-.linkish:hover { color: var(--ink); }
-/* Hand off if I don't come back: a checkbox drawn as a button (insights.js watchToggle). */
-.ins-check { display: inline-flex; align-items: center; gap: 6px; flex: none; background: none; border: 0; padding: 2px 4px; font: inherit; font-size: 12.5px; color: var(--muted); cursor: pointer; white-space: nowrap; }
-.ins-check:hover { color: var(--ink); }
-.ins-check i { width: 12px; height: 12px; border: 1.5px solid currentColor; border-radius: 3px; display: inline-grid; place-items: center; }
-.ins-check[aria-checked="true"] { color: var(--ink); }
-.ins-check[aria-checked="true"] i::after { content: ""; width: 6px; height: 6px; border-radius: 1px; background: currentColor; }
 /* One-line insights: a waiting card's cache countdown, the note by Now. */
 .ins-line { display: flex; align-items: center; gap: 9px; font-size: 12.5px; line-height: 1.4; color: var(--muted); margin-top: 8px; }
 .ins-line b { color: var(--ink); }

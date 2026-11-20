@@ -203,7 +203,6 @@ const hideX = (s) => cutOff(s) ? `<button class="x-clear" data-forget="${esc(s.s
  *  Cue sees the same stars); a star you just clicked shows until Cue's next update says so too. */
 const starNow = new Map();   // sid -> on, clicked here, not yet in Cue's state
 const isStarred = (sid) => starNow.get(sid) ?? !!(sessionOf(sid) || parkedOf(sid))?.starred_ms;
-const starredIds = () => new Set(state.sessions.map((s) => s.session_id).filter(isStarred));
 function toggleStar(sid) {
   const on = !isStarred(sid);
   starNow.set(sid, on);

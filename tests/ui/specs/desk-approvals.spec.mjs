@@ -1,4 +1,4 @@
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
 async function setup(cue, page) {
   await cue.open("desk");
@@ -11,9 +11,7 @@ async function setup(cue, page) {
     }
     st.items.push({ id: "codex-approval", session_id: "host", harness: "codex", hosted: true, project: "cue", kind: "permission", status: "pending", tool_name: "Bash", tool_input: { command: "printf approval-check" }, suggestions: [], created_ms: Date.now() });
   });
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
+  await openDesk(page);
 }
 
 test("a checked Cue fix without a commit hash waits for verification in both Inbox and Desk", async ({ cue, page }) => {

@@ -1,21 +1,16 @@
 // A redraw while you type in the Desk's "Add an item…" line, or scroll the Items list or Give to…'s menu, leaves each
 // where it was (#308): the window is rebuilt on every update, and these went back to their start.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
 test.use({ browserName: "webkit" });
 
-async function openDesk(cue, page) {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
-}
 /** Two frames gone by: a scroll's event and anything placed after a draw have run. */
 const frames = (page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 const tick = (cue, n) => cue.change((st, w) => { st.sessions[0].doing = w; }, `tick ${n}`);
 
 test("the Add an item line keeps its words in view, not their start, through updates while you type", async ({ cue, page }) => {
   await cue.open("desk");
-  await openDesk(cue, page);
+  await openDesk(page);
   const line = page.locator('.dk-qa [data-qa="line"]');
   await line.click();
   await line.pressSequentially("a long item title that runs well past the end of the box so it scrolls sideways while typing");
@@ -38,7 +33,7 @@ test("the Items list and Give to…'s menu stay where you scrolled them through 
     const p = st.desk.projects[0], fresh = p.items.find((i) => i.id === "d6");
     for (let n = 0; n < 30; n++) p.items.push({ ...fresh, id: `n${n}`, title: `New thing ${n}` });
   });
-  await openDesk(cue, page);
+  await openDesk(page);
   const list = page.locator('.dk-scroll[data-scroll-key^="desk-items"]');
   await list.evaluate((el) => { el.scrollTop = 400; });
   await tick(cue, 1);

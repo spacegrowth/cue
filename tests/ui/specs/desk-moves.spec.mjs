@@ -1,14 +1,8 @@
 // What the lead moved (#374): the Dispatcher's "Dispatcher Actions" tab (named so in #390) lists every move the lead made on its own, newest first, each
 // with its item, why and time; older ones load from Cue as you scroll; Clear asks once, then empties it.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 import { NOW } from "./clock.mjs";
 
-const openDesk = async (page) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator(".dk-items .dk-it").first().waitFor();
-};
 const s = (ms) => Math.floor(ms / 1000);
 const act = (id, item, act, text, why, at) => ({ id, project: "cue", item_id: item, by: "web-lead", sid: "lead", text, why, at: s(at), undo: "none", act });
 const DAY = 24 * 60 * 60 * 1000;

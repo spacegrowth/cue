@@ -1,12 +1,6 @@
 // Every item line shows its kind's icon before its number (#292): bug, feature and task alike, wherever the line is.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
-const openDesk = async (page) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator(".dk-items .dk-it").first().waitFor();
-};
 /** The kind its icon draws, by matching its shape against the Desk's own icons. */
 const kindOf = (loc) => loc.evaluate((svg) => ["task", "bug", "feature"].find((k) => {
   const t = document.createElement("div");

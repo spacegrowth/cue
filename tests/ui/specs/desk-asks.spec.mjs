@@ -1,14 +1,11 @@
 // The Desk opens with asks in play (#279): a session asking you something reads "waiting on you"; one whose turn
 // just finished doesn't. 89466073 put the Desk's use of actionableRequest (ui/core.js) on main without it, and
 // the Desk threw on every draw.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
 test("the Desk opens with a pending ask and a finished turn: only the ask reads waiting on you (#279)", async ({ page, cue }) => {
   await cue.open("desk");
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator(".dk-items .dk-it").first().waitFor();
+  await openDesk(page);
   await cue.change((st) => {
     const site = st.sessions.find((x) => x.session_id === "site");
     st.sessions.push({ ...site, session_id: "asker", project: "cue", name: "asker", state: "deciding", thread: [] },

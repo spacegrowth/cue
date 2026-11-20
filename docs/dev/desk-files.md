@@ -3,6 +3,79 @@
 New Desk work goes in the file for its topic. Keep each file under about 500 lines; when one grows past that,
 split it by topic the same way.
 
+## Where things live
+
+Start here to find a Desk feature, then read its file's row below. Hub files are in `src-tauri/src/hub`, UI files
+in `ui/`.
+
+### Items and their states
+
+- Records and the lead's lines: `desk/model.rs`, `desk/parse.rs`; saved by `db/desk.rs`.
+- Shown to the window: `desk_view.rs`. Steps for Progress: `desk_steps.rs`.
+- What you do to an item: `desk_act.rs`; a question on a done item: `desk_asked.rs`.
+- Features and their pieces: `desk_features.rs`. Who waits on whom: `desk_waits.rs`.
+- A turn with no DONE: `desk_stall.rs`. A holder silent mid-turn: `desk_stuck.rs`.
+
+### Routing
+
+- ROUTE, give, note, reopen, start fresh: `desk_route.rs`.
+- Lines read at a turn's end: the lead's in `desk_said.rs`, everyone else's in `desk_heard.rs`.
+- Who is on a Desk, and asking before routing outside it: `desk_members.rs`.
+- A Desk's identity and workspace: `desk_spaces.rs`.
+
+### The lead
+
+- Which session, what it's told, how messages reach it: `desk_lead.rs`, `desk.rs`.
+- Picking, starting and taking on a lead: `ipc/desk.rs` (for now, plan section 3).
+- The lead unsticking things: `desk_unstick.rs`. Stops while landing go to it: `desk_stop_lead.rs`.
+- Questions about clearing the way: `desk_cleanup.rs`. A session grown too big: `desk_handoff.rs`.
+- Pausing the whole Desk: `desk_pause.rs`.
+
+### Landing and copies
+
+- After DONE: `desk_finish.rs` (commit, merge, install), with `desk_main_line.rs` (the main branch and merges)
+  and `desk_install.rs` (the installer).
+- The item's commit: `desk_commit.rs`, with `desk_git.rs` (git and the word check).
+- Other sessions' edits kept out: `desk_theirs.rs`, read from logs by `desk_theirs_log.rs` and
+  `desk_theirs_codex.rs`.
+- Each item's copy: `desk_trees.rs`, on disk `desk_tree_files.rs`; kept inside it: `desk_copy_guard.rs`;
+  cleared away: `desk_copies.rs`.
+- Work left off main: `desk_unlanded.rs` (the item's branch), `desk_own_work.rs` (folders it made itself).
+- Pull requests and pushes: `desk_pr.rs`. Files changed: `desk_diff.rs`. Check cards: `desk_checks.rs`.
+- How work lands, per project: `lands.rs` (setting), `desk_lands.rs` (the lead asking to change it).
+
+### Away and Ask me before
+
+- Away itself: `desk_away.rs`; its past stretches: `desk_away_log.rs`.
+- Ask me before steps held while away: `desk_held.rs`.
+- UI: `desk_away.js` (the switch, its sheet, held steps with Allow and No, the Away log). A session's other
+  pending decisions: `desk_approvals.js`.
+
+### Messages and delivery
+
+- Where a sent message stands: `sessions/delivery.rs`, `sessions/kept_message.rs`; UI `desk_delivery.js`.
+- Sending to the lead and the wait-or-claim logic: `ipc/desk.rs` (`desk_send`, `deliver`).
+- What Cue itself sends, drawn as one line: `desk_cue_said.js`.
+- The Desk's asks in the Inbox: `inbox_desk.js`.
+
+### UI pages
+
+- State and item basics: `desk.js`. The Items list: `desk_list.js`. Progress: `desk_progress.js`.
+- Sessions on the left: `desk_sessions.js`. Desk home: `desk_home.js`.
+- An item's page and thread: `desk_page.js`, `desk_thread.js`, `desk_view.js`, `desk_files.js`.
+- Acting, clicks and keys: `desk_act.js`. Commit lines and check cards: `desk_commit.js`.
+- The lead's chat and its lines: `desk_lead.js`.
+
+### Naming traps
+
+- `hub/desk_held.rs` is an Ask me before step held during Away. A message kept until a busy session's turn ends is
+  `sessions/kept_message.rs` (it was `sessions/held.rs`).
+- Three "lands": `lands.rs` is the per-project landing setting, `hub/desk_lands.rs` the lead's LANDS: line asking to
+  change it, `hub/land_keep.rs` the fast-forward of main that keeps other sessions' edits.
+- `desk/model.rs` holds the Desk's records; top-level `model.rs` holds wire and card types.
+- `desk_trees.rs` and `desk_tree_files.rs` are both about an item's copy: the first decides, the second touches disk.
+  `desk_copies.rs` clears copies away after landing.
+
 ## Hub (src-tauri/src/hub)
 
 | File | What lives there |
@@ -14,31 +87,53 @@ split it by topic the same way.
 | `desk_heard.rs` | Other sessions' lines at a turn's end: any session's ITEM lines, designs, replies on an item, a holder's DONE and DECIDED; making a new item |
 | `desk_act.rs` | What you do from the window: add, give, act on an item (looks right, reopen, send back, start now, put before, pick an option, drop), undo |
 | `desk_lead.rs` | The lead: which session it is, how a message reaches it, what it's told before each message, new items to route |
-| `desk_away.rs` | Away mode: the lead decides by your rules while you're away, and it ends by itself |
+| `desk_away.rs` | Away mode: the lead decides by your rules while you're away and asks you nothing; it ends by itself |
+| `desk_away_log.rs` | What happened in each past Away stretch (items moved, the lead's calls, held steps), for the Away tab |
+| `desk_held.rs` | Ask me before steps held while you're away: noted, the session carries on, sent once you Allow or say No |
 | `desk_members.rs` | A Desk's own list of sessions, and asking you before routing outside it |
 | `desk_spaces.rs` | A Desk's identity and workspace |
 | `desk_stall.rs` | A turn that ended on an item with no DONE: it waits on you, and the holder is asked once |
-| `desk_unstick.rs` | The lead unsticking its Desk: CLOSE, TAKE COPY, LAND FIRST, START |
+| `desk_stuck.rs` | A holder stuck mid-turn (silent, or on an unanswered prompt): its lead is told once per spell |
+| `desk_unstick.rs` | The lead unsticking its Desk: CLOSE, TAKE COPY, LAND FIRST, START, and PAUSE / RESUME of one item |
+| `desk_pause.rs` | Pausing a whole Desk: every session stops at a safe point, queued items wait, Resume picks it all up |
+| `desk_stop_lead.rs` | A landing that stops goes to the lead in one plain line, not to you; edits in the way named with who made them |
 | `desk_waits.rs` | The list of who waits on whom, and circles of items waiting on each other |
 | `desk_cleanup.rs` | A session's question about clearing the way for a landing, asked of the lead first |
 | `desk_checks.rs` | The check card in the lead's chat for each DONE |
 | `desk_finish.rs` | Done means it's in your app: commit, merge and install after DONE |
+| `desk_main_line.rs` | The main line for a finishing item: which branch is main, merging a worktree or branch into it, later commits that take work back out |
+| `desk_install.rs` | A finishing item's install: the installer, the tick that starts the next, Install now, Run again |
+| `desk_unlanded.rs` | An item is done only once every commit on its own branch (`desk/<item>`) is on main |
+| `desk_own_work.rs` | Work its holder did outside its copy (its own worktrees and branches), found in its log and landed |
+| `desk_pr.rs` | Landing by pull request (push the item's branch, open and watch the PR), and the push-to-main choices |
+| `desk_lands.rs` | The lead's `LANDS:` line: a change to how work lands, asked of you; only your yes saves it |
 | `desk_trees.rs` | Each item in its own copy (a git worktree), landed as one squash |
+| `desk_tree_files.rs` | An item's copy on disk: made from its branch, linked to the shared build folder, checked, removed |
+| `desk_copy_guard.rs` | Sessions stay in their own copy: the edit and git guard stops one that leaves it |
+| `desk_copies.rs` | Copies cleared away once their work is in the app, and old copies found once a launch and offered to remove |
 | `desk_commit.rs` | Looks right with a commit: only the item's files, the word check, never pushed |
+| `desk_git.rs` | git for the Desk: run with the repository's filters off, git's own words when it refuses, the word check |
 | `desk_theirs.rs` | Other sessions' edits in an item's files, kept out of its commit |
+| `desk_theirs_log.rs` | Those edits read from Claude Code's and Pi's logs, each log read once and then only what it adds |
+| `desk_theirs_codex.rs` | Those edits read from a Codex rollout: its patches and what its shell commands write |
 | `desk_diff.rs` | An item's Files changed |
+| `desk_steps.rs` | When each open item reached each of its six steps, for Progress |
+| `desk_asked.rs` | Your question on an item that's to check or done: its holder answers without reopening it |
 | `desk_features.rs` | Big features: the lead's FEATURE line puts items under one, and a feature nobody holds is done once all its pieces are |
 | `desk_handoff.rs` | Handing a session grown too big to a fresh one |
 
 Outside the hub, one line each:
 
-- `src-tauri/src/desk/`: the Desk's records (`model.rs`), the lines Cue reads from the lead (`parse.rs`), and its words.
-- `src-tauri/src/ipc/desk.rs`: the Desk's commands from the window.
+- `src-tauri/src/desk/`: the Desk's records (`model.rs`), the lines Cue reads from the lead (`parse.rs`), and its words
+  (`mod.rs`, with `summary`).
+- `src-tauri/src/ipc/desk.rs`: the Desk's commands from the window. It also starts, resumes and takes on a lead, and
+  holds the wait-or-claim delivery to it (plan section 3 moves these out).
 - `src-tauri/src/db/desk.rs`: saving and loading Desk records.
 
 ## UI (ui/)
 
-The Desk view is plain scripts loaded by `ui/index.html` and `ui/mini.html`, in this order. A top-level name is
+The Desk view is plain scripts loaded by `ui/index.html` and `ui/mini.html`, in this order (`inbox_desk.js` loads
+earlier, with the Inbox). A top-level name is
 declared in one file only (WebKit skips a whole script that declares a name twice; `cargo test --lib --
 the_windows_scripts` catches it). A file may call functions from a later one, but top-level code that runs at load
 uses only what is declared before it. The document listeners keep their old order: Away's (`desk_away.js`), then the
@@ -46,9 +141,12 @@ key time (`desk_view.js`), then the Desk's clicks and keys (`desk_act.js`).
 
 | File | What lives there |
 | --- | --- |
-| `desk_lead.js` | Who runs a Desk (its lead), Give to…, the quick-add line, the lead's own lines in its chat (ITEM, ROUTE, DONE…), hand-offs, stop notes. |
+| `inbox_desk.js` | The Inbox's part of the Desk: a lead's or a holder's ask, Open in Desk, Add to Desk on a session's ask. |
+| `desk_lead.js` | Who runs a Desk (its lead), Give to…, the quick-add line, the lead's own lines in its chat (ITEM, ROUTE, DONE…), messages from another Desk as a band, hand-offs, stop notes. |
+| `desk_cue_said.js` | What Cue itself sends a session or a lead, drawn as one short line with the full text folded under it. |
 | `desk.js` | The Desk's state (selected Desk, recent Desks and their kept rows, what's open, boxes, sent words) and item basics: lookups (`deskOf`, `deskItem`), kind icons and numbers, finish and install steps, what waits on you, seen/landed, made links, Files changed, stalled items. |
 | `desk_list.js` | The Items list: holders (a lead and its crew, a session, an add-on), unblocks, the one-line ask (`deskVerb`), file chips and the small markdown (`deskMd`), a tool's allow line, groups by state, an item's row, finished items loaded as you scroll. |
+| `desk_progress.js` | Progress: the popover with one row per open item and its six steps. |
 | `desk_away.js` | Away (#361): its rules, the Away switch and card, what still needs you, paused sessions, the Away sheet and its save, and its own click, input and key listeners. |
 | `desk_sessions.js` | The sessions on the left: session state, size and cache, rows, the lead's bar, the head strip and Delete, the Desk switcher, Add to / Remove from Desk. |
 | `desk_page.js` | The chat card and its pages: Decisions and steps tables, the lead's chat, a session's chat, the reader, What the lead moved (the Dispatcher Actions tab, loaded as you scroll), the one page pattern (`deskPage`) and its panel, and an item page's parts (done when, mocks and picks, checks, its ask and your answer, buttons, build log, decisions, what it waits on). |

@@ -1,15 +1,9 @@
 // The dispatcher's Away tab (#416): beside Decisions and Dispatcher Actions, each past Away stretch, newest first, folded
 // to one line (when, how long, spend, counts); open, the items that moved, the lead's calls with Undo while it can
 // still be undone, and the steps held for you, allowed or refused.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 import { NOW } from "./clock.mjs";
 
-const openDesk = async (page) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator(".dk-items .dk-it").first().waitFor();
-};
 const H = 60 * 60 * 1000;
 
 test("past Away stretches in their own tab, newest first, each one line opening to what moved, the calls and what was held (#416)", async ({ page, cue }) => {

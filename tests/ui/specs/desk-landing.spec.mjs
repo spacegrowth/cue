@@ -2,14 +2,8 @@
 // and lands through one landing line, checked first. Its row and page say where it is: "waiting for a free working folder",
 // "in its own copy desk/<id>", "In the landing line · waits: … · since 8:31pm", "Checking before it lands · since …", "Check failed · since …", "landed, not checked".
 // A dropped item's copy that had work in it is listed under Kept copies, with a Remove that takes two clicks.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
-const openDesk = async (page) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator(".dk-items .dk-it").first().waitFor();
-};
 const patchDesk = (cue, patch) => cue.change((st, p) => { Object.assign(st.desk.projects.find((x) => x.project === "cue"), p); }, patch);
 const patchItem = (cue, id, patch) => cue.change((st, [k, p]) => { Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === k), p); }, [id, patch]);
 // An item's page (#418): its holder's chat in the middle, the item itself in the column at the right, in the Items

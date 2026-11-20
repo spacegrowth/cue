@@ -82,5 +82,11 @@ CueBridge.area("sessions", (w) => {
       const disk = { "~/code/": ["api-server", "api-tools", "docs-site", "web-app"], "~/code/api-tools/": ["cli", "lib"] };
       return (disk[dir] || []).filter((n) => n.toLowerCase().startsWith(part)).map((n) => dir + n);
     },
+    // src-tauri/src/ipc/hosted.rs: quitting (nothing ends with Cue here, so it quits at once), and cue-host as
+    // Settings → Agents shows it (reachable, nothing running, no older hosts).
+    quit_check: () => [],
+    quit_now: () => null,
+    host_status: () => ({ reachable: true, build: "test", running: 0, older: [], inside_cue: 0, machines: [] }),
+    host_restart: () => "Restarted cue-host",
   };
 });

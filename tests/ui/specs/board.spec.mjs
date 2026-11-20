@@ -1,6 +1,6 @@
 // The rest of the board: parking and resuming, stars, the project switcher, search, and
 // Settings switches. Each checks the call the window made and what it shows once Cue's state comes back.
-import { test, expect } from "./cue.mjs";
+import { test, expect, pick } from "./cue.mjs";
 import { compareShot } from "./shots.mjs";
 
 const openCard = (page, id) => page.locator(`.nrow[data-big="${id}"]`).click();
@@ -44,8 +44,7 @@ test.describe("the board", () => {
   });
 
   test("the project switcher shows one project's sessions only", async ({ page }) => {
-    await page.locator('[data-pj="toggle"]').click();
-    await page.locator('.pj-pop [data-pj="pick"][data-project="agent-relay"]').click();
+    await pick(page, "agent-relay");
     await expect(page.locator(".pj-open").first()).toContainText("agent-relay");
     await expect(page.locator(".sec-waiting .nrow")).toHaveCount(1);
     await expect(page.locator('.nrow[data-big="n1"]')).toBeVisible();

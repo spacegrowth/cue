@@ -1,14 +1,8 @@
 // Progress (#409, mock J2): Progress in the Items head opens a popover over the Desk with every item under way (not the
 // queued or parked ones) as a row of six step marks (from Cue's `steps` stamps) with how long each took, and a Now
 // column; a row opens the item; Esc or a click outside closes it.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
-const openDesk = async (page) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator(".dk-items .dk-it").first().waitFor();
-};
 
 test("Progress pops up each item under way with its steps, what it's doing now, and opens it on a click", async ({ page, cue }) => {
   await cue.open("desk");

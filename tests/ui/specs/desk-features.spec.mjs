@@ -1,13 +1,7 @@
 // A big feature's items show together under its name (#282, option A of the #162 mocks): one row in its state's
 // group with "n of m done" and a bar; opened, its pieces show under it, indented, in place; its page has a Pieces tab.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
-const openDesk = async (page) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator(".dk-items .dk-it").first().waitFor();
-};
 
 test("the How work lands steps show as one feature with its pieces under it (#282)", async ({ page, cue }) => {
   await cue.open("desk");

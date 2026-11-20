@@ -1,14 +1,8 @@
 // Esc on the Desk (#494), as on the Board (app/keys.js escSession): a message Cue kept for the session the Desk has
 // open comes back into its box, and Esc twice stops that session while it works. In the lead's chat, on an item's page
 // (its holder's) and on a session's page. Desk panels still close first.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
-const openDesk = async (page) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator(".dk-items .dk-it").first().waitFor();
-};
 const hold = (cue, sid, text) => cue.change((st, [sid, text]) => { st.sessions.find((s) => s.session_id === sid).held = { text, images: [], at_ms: Date.now() }; }, [sid, text]);
 
 test("the lead's chat: Esc brings back a kept message into its box, then Esc twice stops the lead", async ({ page, cue }) => {

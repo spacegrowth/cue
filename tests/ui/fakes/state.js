@@ -97,5 +97,30 @@ CueBridge.area("state", (w) => {
       w.changed();
       return null;
     },
+    // Send at… (hub/send_at.rs): the message kept on its session as `send_at`, dropped (its text back), or sent now.
+    send_at: ({ sessionId, text, atMs }) => {
+      const s = w.session(sessionId);
+      if (!text?.trim()) throw "nothing to send";
+      if (atMs <= w.now()) throw "that time has passed";
+      if (!s) throw "that session is gone";
+      s.send_at = { text, at_ms: atMs, failed: "" };
+      w.changed();
+      return "Cue sends it then";
+    },
+    send_at_drop: ({ sessionId }) => {
+      const s = w.session(sessionId), l = s?.send_at;
+      if (!l) return null;
+      delete s.send_at;
+      w.changed();
+      return l.text;
+    },
+    send_at_now: ({ sessionId }) => {
+      const s = w.session(sessionId), l = s?.send_at;
+      if (!l) throw "nothing to send later";
+      delete s.send_at;
+      w.working(s, l.text, []);
+      w.changed();
+      return "Sent";
+    },
   };
 });

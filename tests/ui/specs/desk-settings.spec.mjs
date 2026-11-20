@@ -1,14 +1,8 @@
 // A project's settings on one screen (#381, lands.js): how work lands, Ask me before and old working folders, each
 // change saved as you make it (#417). Opened from the Desk header's one Change link (#417); Away is on the Desk's own switch. The lead can propose a change in
 // plain words: it shows as its ask, and only your Yes saves it (hub/desk_lands.rs); the screen shows it after.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
-const openDesk = async (page) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator(".dk-items .dk-it").first().waitFor();
-};
 const lands = (page) => page.locator(".dk-strip .dk-ab");
 
 test("the screen has its parts, no Away and no Save, Ask me before on one line, and Esc at its top right as Settings has (#417, #447)", async ({ page, cue }) => {

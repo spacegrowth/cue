@@ -3,16 +3,10 @@
 // pick D), the calls the lead made since sit in one foldable line at the top of Items, each with its time and Undo
 // (calls 1), and the open asks join Waiting on you. A session stopped on a usage limit isn't yours to
 // do (Cue carries on when it resets): it stays off Needs you, one quiet line instead.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
 const SINCE = 1793984100 * 1000;   // between the scenario's two calls: c1 after it, c2 before
 
-const openDesk = async (page) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator(".dk-items .dk-it").first().waitFor();
-};
 
 test("Away on: no column; the calls since it went on in one line at the top of Items with Undo, asks join Waiting on you, a limited session is a quiet line (#373, #415)", async ({ page, cue }) => {
   await cue.open("desk");

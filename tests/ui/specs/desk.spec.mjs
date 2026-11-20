@@ -4,20 +4,9 @@
 // crew member opened in the middle with ‹ back, its row lit where it is; the one box at the foot going to the lead;
 // who runs the Desk (picked, changed, ended); Give to…; the quick-add line; and with All projects, every project's
 // Desk as a card.
-import { test, expect } from "./cue.mjs";
+import { test, expect, pick, openDesk } from "./cue.mjs";
 import { NOW } from "./clock.mjs";
 
-/** Project `p` picked in the header (All projects with ""). */
-const pick = async (page, p) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator(p ? `.pj-pop [data-pj="pick"][data-project="${p}"]` : '.pj-pop [data-pj="pick"][data-project=""]').click();
-};
-/** The Desk open from the header, on project `p`. */
-const openDesk = async (page, p = "cue") => {
-  await pick(page, p);
-  await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator(".dk-items .dk-it").first().waitFor();
-};
 /** The list as it reads, top to bottom: group labels and holder heads as "# …", items by id. */
 /** A group's rows are in its fold (#430), after its label. */
 const listOrder = (page) => page.locator(".dk-items .dk-scroll > *, .dk-items .dk-scroll > .dk-gbody > .dk-gin > *").evaluateAll((els) => els.map((el) =>

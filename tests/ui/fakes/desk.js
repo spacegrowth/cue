@@ -263,5 +263,14 @@ CueBridge.area("desk", (w) => {
       d.held = d.held.filter((h) => h.id !== id);
       w.changed();
     },
+    // Away (#361): the Desk's away kept in the world, as desk_view has it; Go through the items now sends the lead nothing here.
+    desk_away_set: ({ desk: id, away }) => {
+      const d = desk().projects.find((x) => x.project === id || x.id === id);
+      if (!d) throw "no Desk";
+      d.away = { ...away, active: !!away.on, ended: "", since: w.now(), spent: 0 };
+      w.changed();
+      return structuredClone(d.away);
+    },
+    desk_away_sweep: () => null,
   };
 });

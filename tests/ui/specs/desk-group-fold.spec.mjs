@@ -1,13 +1,7 @@
 // The Desk's item list (#430): a click on a group's header (In progress, Waiting on you, Queued, …) folds or opens it
 // with a short slide; its chevron turns, its count stays, and it stays as you left it, across restarts.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
-const openDesk = async (page) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator(".dk-items .dk-it").first().waitFor();
-};
 const head = (page, key) => page.locator(`.dk-items [data-desk-group="${key}"]`);
 const body = (page, key) => page.locator(`.dk-items [data-desk-gbody="${key}"]`);
 // The tests' window turns transitions off (load.js, still=1); this one watches the slide, so it turns them back on.

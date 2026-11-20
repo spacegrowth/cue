@@ -47,8 +47,7 @@ body.col-sizing, body.col-sizing * { cursor: col-resize !important; user-select:
 /* On a card: at the head of its text line, in full (core.js machLead). */
 .mach.lead { margin: 0 6px 0 0; vertical-align: 1px; }
 :is(.doing, .tl-said) > .mach.lead { margin-right: 0; align-self: center; }
-.prow .mach.lead, .mach-line > .mach.lead { margin: 0; }
-.mach-line { font-style: normal; }
+.prow .mach.lead { margin: 0; }
 /* In a card's top line, by the name: the name keeps a few letters (.nrow-top .proj), then this shortens, then the state words. */
 :is(.nrow-top, .card-head, .tl-top) .mach { flex: 0 3 auto; min-width: 22px; overflow: hidden; }
 :is(.nrow-top, .card-head, .tl-top) .mach > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -189,7 +188,6 @@ body.col-sizing, body.col-sizing * { cursor: col-resize !important; user-select:
 .working .card-head { color: var(--on-bg); }
 .working .bar { margin-top: 6px; }
 .working .prompt { margin-top: 8px; font-size: 12px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.legend { font-size: 11.5px; color: var(--on-bg-muted); line-height: 1.5; }
 
 /* A plan to approve (ExitPlanMode): the plan as written, scrolled inside the card when long. */
 .plan-body { font-size: 13px; line-height: 1.5; max-height: 320px; overflow-y: auto; padding: 4px 2px; }

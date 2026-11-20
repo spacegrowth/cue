@@ -1,13 +1,7 @@
 // Pause (#366): a Pause button in the Items head pauses the whole Desk (desk_pause); while paused, "Paused" shows by
 // the Items title and the button reads Resume.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
-const openDesk = async (page) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator(".dk-items .dk-it").first().waitFor();
-};
 
 test("Pause pauses the Desk; while paused it shows Paused and Resume", async ({ page, cue }) => {
   await cue.open("desk");

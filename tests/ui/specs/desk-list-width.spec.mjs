@@ -1,7 +1,7 @@
 // The Desk's item list scrolls up and down only (#405): a done row with a long commit line ("committed 2f2448c7
 // ef66ab27 · Thu 9:45pm") and its Undo made the list wider than its pane, so it slid sideways and cut off the group
 // headings and row icons at its left edge.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
 test("a long done row doesn't widen the item list; it can't scroll sideways and its left edge shows in full", async ({ page, cue }) => {
   await cue.open("desk");
@@ -9,9 +9,7 @@ test("a long done row doesn't widen the item list; it can't scroll sideways and 
     const d = st.desk.projects.find((x) => x.project === "cue");
     for (const i of d.items.filter((x) => x.state === "done")) Object.assign(i, { commit: "2f2448c7 ef66ab27 9a1b2c3d", holder: { name: "cue-387-a-long-session-name" } });
   });
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
+  await openDesk(page);
   const list = page.locator(".dk-items .dk-scroll");
   await page.locator('.dk-items [data-desk-item="d7"]').waitFor();
   const row = page.locator('.dk-items [data-desk-item="d7"]');

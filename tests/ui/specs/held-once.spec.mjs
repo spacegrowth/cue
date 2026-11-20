@@ -1,7 +1,7 @@
 // A message sent while its session is busy shows once (#439): Cue keeps it, and the session's state can say so before
 // the send itself returns. Its kept bubble ("Not sent yet") is the only copy then, never also a Sending one, and the
 // same bubble turns into the sent message once it goes. In a session's chat, the Desk lead's chat and an item's page.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
 /** `cmd` answered as the hub does for a busy session: kept (in the state at once), its answer held back till
  *  window.__go(). `sidOf`: the session it goes to, from its args; `textOf`: what's kept. */
@@ -48,9 +48,7 @@ test("a session's chat: a message to it while it works shows once, and goes as t
 
 test("the Desk lead's chat: a message to it while it works shows once, and goes as that one", async ({ cue, page }) => {
   await cue.open("desk");
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
+  await openDesk(page);
   const lead = await page.evaluate(() => deskOf("cue").lead.sid);
   await keepThenWait(cue, "desk_send", () => deskOf("cue").lead.sid, (a) => `<desk project="cue">\n4 items.\n</desk>\n\n${a.text}`);
   await page.evaluate(() => { deskOpen = null; deskTab = "lead"; renderMain(); });
@@ -62,9 +60,7 @@ test("the Desk lead's chat: a message to it while it works shows once, and goes 
 
 test("an item's page: a note to its busy holder (the hub keeps it, hub/desk_act.rs note) shows once, and goes as that one", async ({ cue, page }) => {
   await cue.open("desk");
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
+  await openDesk(page);
   await page.locator('[data-desk-item="d3"]').click();
   const sid = await page.evaluate(() => { const h = deskItem("cue", "d3").holder; return h.lead_sid || h.sid; });
   const box = page.locator(".dk-right .dk-box textarea");

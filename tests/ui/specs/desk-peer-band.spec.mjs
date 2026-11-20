@@ -1,15 +1,9 @@
 // A message from another Desk's session in the lead's chat (#472, option C): a band across the whole chat between
 // hairlines, a FROM ANOTHER DESK tag, that Desk's chip, the session and its item there, the message, and a line that the
 // lead answers it. One from the lead's own Desk keeps the usual "From …" bubble.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 import { NOW } from "./clock.mjs";
 
-const openDesk = async (page) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator(".dk-items .dk-it").first().waitFor();
-};
 
 for (const scheme of ["light", "dark"]) {
   test(`a message from another Desk's session spans the lead's chat as a band; one from its own Desk doesn't (${scheme}) (#472)`, async ({ page, cue }) => {

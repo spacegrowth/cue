@@ -1,11 +1,9 @@
 // After you send a note on an item's page, its chat shows its holder at work on it (its Working line) till the reply
 // comes (#407), as it did before the live chat (#395), now in the holder's own chat (#418).
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
 const openItem = async (page, id) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
+  await openDesk(page);
   await page.locator(`[data-desk-item="${id}"]`).first().click();
 };
 const turns = (cue, list) => cue.override("session_steps", ({ sessionId }, list) => ({ version: list.length, turns: sessionId === "host" ? list : [] }), list);

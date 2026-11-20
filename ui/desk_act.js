@@ -133,14 +133,6 @@ async function deskSendBack(id, key, text, images) {
     return false;
   }
 }
-/** What deliver (chat/send.js) put back at the head of box `key` when `text` (with `pics` pictures) didn't go, taken
- *  out again: it's on its Thread now, red, with Retry and Edit (#422). Anything typed since stays. */
-function deskTakeBack(key, text, pics) {
-  const d = draft(key);
-  if (d.text.startsWith(text)) d.text = d.text.slice(text.length).replace(/^\n\n/, "");
-  d.images = d.images.slice(pics);
-  saveDrafts();
-}
 /** Pending message `p` (deskPend, path "holder") sent to its holder session as about its item, from a box of its own
  *  so nothing in yours is touched: deliver's outcome ({ ok } | { error }; nothing when it never went). */
 async function deskToHolder(p, k = p.key) {

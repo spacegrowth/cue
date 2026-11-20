@@ -193,7 +193,6 @@
 .sr-ended { font: 600 10px var(--mono); padding: 1px 6px; border-radius: var(--pill-radius); background: var(--panel-2); color: var(--muted); }
 .sr-snip { margin-top: 3px; font-size: 13px; line-height: 1.45; color: var(--ink); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .sr-snip mark { background: var(--sel); color: var(--on-sel); border-radius: 3px; padding: 0 1px; }
-.sr-full { margin-top: 6px; font-size: 13px; max-height: 320px; overflow-y: auto; }
 /* A Need-to-decide card that's open in Active gets the full selection, like any other: its muted
    parked background mustn't win over it (it did: a half-selected grey card that read as a Waiting one). */
 .nrow.later.on, .nrow.later.on:hover { background: var(--sel); color: var(--on-sel); box-shadow: var(--shadow); }

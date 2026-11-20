@@ -1,18 +1,12 @@
 // What Cue itself sends a session or a Desk lead shows as one short plain line (#478): "Cue · Asked host-lead · #d5 not
 // done: “…”", its full text folded under it (a click opens it), in the session's chat, the lead's chat and the Inbox.
 // The session still gets the full text. Every kind is listed in docs/cue-messages.md.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 import { NOW } from "./clock.mjs";
 
 // The line as a chat draws it: "Cue · " and the plain line, then what's folded besides (" · its log"), if anything.
 const head = (rows) => rows.map(([, w]) => new RegExp(`^Cue · ${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}( · .+)?$`));
 
-const openDesk = async (page) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator(".dk-items .dk-it").first().waitFor();
-};
 
 // [the hub's words, the line] for each kind a session gets (docs/cue-messages.md, "To a session").
 const TO_SESSION = [

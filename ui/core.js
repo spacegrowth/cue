@@ -106,8 +106,6 @@ const openAsks = new Set(); // messages whose added note (voice line, status ask
 const openFollow = new Set();  // cards whose "After a stop hook" is expanded
 let dictating = null;       // { key, base, stopping } — the text box you're dictating into, and what it held before
 let renaming = null;        // the session whose name is being edited in the Active pane
-/** A model id as a label: "claude-opus-5-5[1m]" -> "opus-5-5", "anthropic/claude-sonnet-5-5" -> "sonnet-5-5". */
-const shortModel = (m) => String(m || "").replace(/\[.*\]$/, "").replace(/^.*\//, "").replace(/^claude-/, "");
 let revealed = "";             // the selection last scrolled into view (only a new one scrolls)
 const seenCards = new Set();  // Waiting cards already on screen once (only new arrivals animate)
 let cardsPrimed = false;        // the first draw just takes stock: nothing "arrives" at launch

@@ -1,13 +1,7 @@
 // Clicking the Desk's text box puts the cursor in it and you can type (#411): the lead's chat and an item's page,
 // with the list redrawing many times a second (agents at work), as it does in the app.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
-const openDesk = async (page) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator(".dk-items .dk-it").first().waitFor();
-};
 // The hub's state comes in again and again at its own pace (about every 0.3 s), the items changing as they do while work goes on.
 const churn = (page) => page.evaluate(() => {
   window.__churn = setInterval(() => {

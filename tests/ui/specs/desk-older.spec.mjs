@@ -1,14 +1,8 @@
 // Fewer sessions on show (#363, #485): the Desk's session list folds cold idle sessions holding no item under Older,
 // shut by default, that opens in place; Give to… lists the sessions with work (the hub's `with_work`), the rest on one
 // "N older" line.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
-const openDesk = async (page) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator(".dk-items .dk-it").first().waitFor();
-};
 
 /** Two idle sessions on the Desk, "busy" with work (an item) and "spare" with none. */
 const twoIdle = async (cue) => {

@@ -1,12 +1,10 @@
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
 // What you write on an item's page reaches its holder at every stage (#437), or the page says it didn't and offers Retry.
 
 const set = (cue, id, fields) => cue.change((st, [id, fields]) => Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === id), fields), [id, fields]);
 async function openItem(page, cue, id) {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
+  await openDesk(page);
   await page.locator(`[data-desk-item="${id}"]`).click();
 }
 

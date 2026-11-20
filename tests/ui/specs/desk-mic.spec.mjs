@@ -1,7 +1,7 @@
 // The Desk's mic looks and behaves as the Board's (#493): same size, corners, colours, at rest, on hover and while
 // listening, in light and dark; in the lead's box and on an item's page. (It had no size of its own, so listening
 // lit a bare square around the icon.)
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
 /** What the mic looks like: everything that shows. */
 const look = (page, sel) => page.locator(sel).evaluate((el) => {
@@ -21,12 +21,6 @@ async function states(page, sel) {
   await page.evaluate(() => { dictating = null; renderMain(); });
   return { rest, hover, on };
 }
-const toDesk = async (page) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
-};
-
 for (const scheme of ["light", "dark"]) {
   test(`the Desk's mic looks as the Board's, at rest, on hover and listening (${scheme})`, async ({ cue, page }) => {
     await page.emulateMedia({ colorScheme: scheme });
@@ -37,7 +31,7 @@ for (const scheme of ["light", "dark"]) {
     expect(board.hover.background, "hover tints it").not.toBe(board.rest.background);
     expect(board.on.background, "listening lights it").not.toBe(board.rest.background);
 
-    await toDesk(page);
+    await openDesk(page);
     expect(await states(page, ".dk-box [data-mic]"), "the lead's box").toEqual(board);
     await page.locator('[data-desk-item="d2"]').click();
     await page.locator(".dk-right .dk-box [data-mic]").waitFor();

@@ -1,12 +1,10 @@
 // An item's page (#276), kept as its holder's own chat (#418): each reply in full, a Done as the Desk's line; the turn
 // its holder is writing, live, with its steps; the box going straight to the holder, sent as about the item, with no
 // copy to the lead; what a stop hook made it write folded under the reply; and Open <holder> for its whole session.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
 const openItem = async (page, cue, id) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
+  await openDesk(page);
   await page.locator(`[data-desk-item="${id}"]`).first().click();
 };
 // host-lead's chat: you, about #d5, then each of `replies` in turn, a minute apart.

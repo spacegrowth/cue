@@ -2,14 +2,8 @@
 // after landing, push (your own steps for the check and after landing). Choices Cue can't do yet are shown greyed,
 // saying "not yet". A folder that isn't a git
 // repository says why it works in place.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
-const openDesk = async (page) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator(".dk-items .dk-it").first().waitFor();
-};
 const line = (page) => page.locator(".dk-strip .dk-ab");
 
 test("Cue's own Desk says how its work lands, and Change opens the setting with Cue's setup", async ({ page, cue }) => {

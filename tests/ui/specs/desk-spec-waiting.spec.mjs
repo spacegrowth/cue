@@ -2,14 +2,8 @@
 // clear ask: Answer / Pick / Try it), #475 (a session's question puts its item in Waiting on you until you answer it),
 // the Dispatcher panel's "Waits on you" (#200, #392: what waits on you, each opening its item), held steps (a tool
 // approval on an item's session waits on you as the item's ask, #299/#431), and answered asks leave the list.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
-const openDesk = async (page) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator(".dk-items .dk-it").first().waitFor();
-};
 // Wide enough that the Dispatcher's panel stands beside its chat (narrower, it folds into the Now line).
 test.use({ viewport: { width: 1728, height: 1000 } });
 /** The ids in the list's Waiting on you group, sorted (its order is #182's, checked elsewhere). */

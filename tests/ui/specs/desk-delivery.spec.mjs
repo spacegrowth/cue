@@ -1,12 +1,10 @@
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
 for (const kind of ["task", "feature", "bug"]) {
   test(`${kind} send-back says where it is, in the one line every message has, till it's delivered`, async ({ cue, page }) => {
     await cue.open("desk");
     await cue.change((st, type) => { st.desk.projects[0].items.find((i) => i.id === "d2").kind = type; st.items = []; }, kind);
-    await page.locator('[data-pj="toggle"]').click();
-    await page.locator('.pj-pop [data-project="cue"]').click();
-    await page.locator('.switch-view [data-view="desk"]').click();
+    await openDesk(page);
     await page.locator('[data-desk-item="d2"]').click();
     const box = page.locator(".dk-right .dk-box textarea");
     await box.fill("Fix the spacing");

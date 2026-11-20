@@ -1,13 +1,7 @@
 // The Desk lead's NOTE lines in its chat (#449): never raw "NOTE: #418 | …". Each is a small card saying who it went
 // to and which item ("Note to cue-387 · Feature #418"), the message under it in plain text.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
-const openDesk = async (page) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator(".dk-items .dk-it").first().waitFor();
-};
 const push = (page, text) => page.evaluate((t) => { sessionOf("lead").thread.push({ at_ms: Date.now(), role: "agent", text: t }); renderMain(); }, text);
 
 test("a NOTE is a small card: who it went to and which item, the message under it; no raw NOTE line", async ({ page, cue }) => {

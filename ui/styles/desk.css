@@ -43,9 +43,8 @@
 .dk-older-h[aria-expanded="false"] > .dk-gchev { transform: none; }
 .dk-older-close { margin-left: auto; padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink); font: 600 11.5px var(--sans); letter-spacing: 0; text-transform: none; cursor: pointer; }
 .dk-older-close:hover, .dk-older-close:focus-visible { background: var(--panel-2); }
-.dk-st { flex: 0 0 auto; max-width: 50%; min-width: 0; margin-left: auto; display: flex; align-items: center; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; }
+.dk-st { flex: 0 0 auto; max-width: 50%; min-width: 0; margin-left: auto; display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; }
 .dk-st > b { min-width: 0; font-weight: inherit; overflow: hidden; text-overflow: ellipsis; }
-.dk-st { gap: 6px; }
 .dk-st > i { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--work); }
 .dk-st > i.ask { background: var(--deny); }
 .dk-st > i:not(.ask):not(.idle) { background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
@@ -57,7 +56,6 @@
 @media (max-width: 1100px) { .dk-s1 .dk-st { flex-shrink: 3; } }
 .dk-s2 { display: flex; align-items: center; gap: 8px; margin: 6px 0 0; color: var(--ink); font-size: 12.5px; white-space: nowrap; }
 .dk-s2 > .dk-w { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.dk-s2 .dk-none { color: var(--muted); }
 .dk-s3 { margin: 3px 0 0; color: var(--muted); font: 11px var(--mono); }
 .dk-s3.hot { color: var(--amber); font-weight: 600; }
 /* How full a session's window is: a short bar at the end of its size · cache line (#423). */
@@ -67,8 +65,7 @@
 .on .dk-meter { background: color-mix(in oklab, var(--on-sel) 22%, transparent); }
 .on .dk-meter:not(.full) i { background: var(--on-sel); }
 .dk-s3.dk-now { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dk-srow.on .dk-st, .dk-srow.on .dk-s2, .dk-srow.on .dk-s3:not(.hot), .dk-srow.on .dk-id, .dk-srow.on .dk-none { color: var(--on-sel); }
-.dk-sfoot { display: flex; align-items: center; flex: none; padding: 10px 14px; border-top: 1px solid var(--line); }
+.dk-srow.on .dk-st, .dk-srow.on .dk-s2, .dk-srow.on .dk-s3:not(.hot), .dk-srow.on .dk-id { color: var(--on-sel); }
 .dk-add-anchor { position: relative; flex: none; z-index: 1; }
 .dk-add-button.btn { display: grid; place-items: center; width: 27px; height: 27px; padding: 0; font: 600 17px/1 var(--sans); }
 .dk-add-picker { position: absolute; bottom: calc(100% + 5px); left: 0; width: 172px; max-height: min(180px, 38vh); overflow: auto; padding: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: var(--shadow); }
@@ -197,7 +194,6 @@
 .dk-instnow { flex: none; margin-left: auto; padding: 2px 8px; border: 1px solid var(--amber); border-radius: 999px; background: none; color: var(--amber); font: 600 11px var(--sans); white-space: nowrap; cursor: pointer; }
 .dk-instnow:hover, .dk-instnow:focus-visible { background: color-mix(in srgb, var(--amber) 14%, transparent); }
 .dk-it.on .dk-instnow { border-color: currentColor; color: var(--on-sel); }
-.dk-next { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dk-next + .dk-instnow { margin-left: 0; }
 /* The finished lanes' heads (#346): Landing's "one at a time", Waiting to install's time and Install now, in plain case. */
 .dk-gh .dk-next { font-weight: 600; letter-spacing: 0; text-transform: none; }
@@ -335,7 +331,6 @@
 .dk-sec { padding: 16px 24px 0; }
 .dk-sec h3 { margin: 0 0 8px; font: 700 11px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .dk-sec p { margin: 0 0 6px; line-height: 1.5; }
-.dk-sec p.dk-words { white-space: pre-wrap; color: var(--ink-2, var(--ink)); }
 .dk-sec p.dk-split { color: var(--muted); font-size: 12.5px; }
 .dk-quiet { color: var(--muted); }
 .dk-note { margin: 14px 24px 0; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
@@ -372,7 +367,6 @@
 .dk-flog-more:hover, .dk-flog-more:focus-visible { text-decoration: underline; }
 /* Pick 4 (Item thread, 16 Nov 2026): under the header, Thread, Decisions and Steps tabs (Drop at their right); the
    open one below. Thread is a time line: each message's age, its dot on a line, who and what kind, then its words. */
-.dk-ilinks { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 10px; }
 .dk-itabs { display: flex; align-items: center; gap: 4px; margin: 14px 0 0; padding: 0 24px; border-bottom: 1px solid var(--line); }
 .dk-itab { all: unset; padding: 7px 10px; margin-bottom: -1px; border-bottom: 2px solid transparent; color: var(--muted); font-size: 12.5px; font-weight: 600; cursor: pointer; user-select: none; -webkit-user-select: none; }
 .dk-itab:hover { color: var(--ink); }
@@ -590,7 +584,6 @@
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .dk-sessions .dk-strip { background: color-mix(in oklab, var(--accent) 22%, var(--panel)); color: var(--ink); } }
 .dk-sh { display: flex; flex-direction: column; min-width: 0; }
 /* The strip's top line (‹ Desks … ⋯). Not .dk-stop: a stopped item's row is .dk-it.dk-stop and took this flex (#218). */
-.dk-shtop { display: flex; align-items: center; margin-left: -4px; }
 /* The switcher (pick A, #240): the Desk's name is a button with ▾; its menu drops under it, over the sessions. */
 .dk-sw-anchor { position: relative; display: inline-flex; min-width: 0; }
 .dk-sw-btn { all: unset; display: inline-flex; align-items: center; gap: 6px; min-width: 0; min-height: 28px; margin-left: -6px; padding: 0 8px 0 6px; border-radius: 8px; color: inherit; cursor: pointer; }
@@ -660,7 +653,7 @@
 .dk-lcard:hover { background: var(--panel-2); }
 .dk-lcard.on { background: var(--sel); color: var(--on-sel); }
 .dk-lcard:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.dk-lcard.on :is(.dk-lk, .dk-st, .dk-s2, .dk-s3:not(.hot), .dk-id, .dk-none, .dk-kic) { color: inherit; }
+.dk-lcard.on :is(.dk-lk, .dk-st, .dk-s2, .dk-s3:not(.hot), .dk-id, .dk-kic) { color: inherit; }
 .dk-lcard.on :is(.dk-lk, .dk-id, .dk-s3:not(.hot)) { opacity: .75; }
 .dk-larrow { flex: none; font: 600 19px/1 var(--sans); }
 .dk-lcard .badge { width: 16px; height: 16px; border-radius: 4px; font-size: 9px; }
@@ -680,7 +673,6 @@
 .dk-ren-in { width: 190px; padding: 2px 7px; }
 .dk-more-btn { all: unset; display: grid; place-items: center; width: 24px; height: 20px; border-radius: 6px; color: var(--muted); cursor: pointer; }
 .dk-more-btn:hover, .dk-more-btn:focus-visible { background: var(--panel-2); color: var(--ink); }
-.dk-none { color: var(--muted); font-size: 12.5px; }
 
 /* The lead's own lines in its chat (desk_lead.js deskLineHtml): ITEM, ROUTE, DONE, CONTEXT, DESIGNS as quiet centred
    lines, item numbers in bold with their kind's icon; no box, no chip, no edge color. */
@@ -693,12 +685,9 @@
 .dk-cl-t b { color: var(--ink); font-weight: 650; }
 .dk-cl-age { font-family: var(--mono); font-size: 11px; color: var(--muted); }
 .dk-inum { font-weight: 650; color: var(--ink); }
-.dk-say-h { color: var(--ink); }
 b.dk-say-t, .dk-say-t { font-weight: 650; color: var(--ink); }
 .dk-say-id { font-weight: 600; color: var(--ink); }
 .dk-say-s .dk-say-id { font-weight: 500; color: inherit; }
-.dk-say-to { color: var(--muted); }
-.dk-say-to b { font-weight: 650; color: var(--ink); }
 .dk-say-w { font-weight: 400; color: var(--muted); }
 .dk-say-s { color: var(--muted); }
 /* What Cue told the lead of new items or a DONE it couldn't close (desk_lead.js deskNewItems, deskDoneNotes): a
@@ -902,7 +891,6 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
 .dk-ph { grid-area: head; min-width: 0; display: flex; flex-direction: column; gap: 8px; padding: 14px 20px 10px; }
 .dk-ph1 { display: flex; align-items: center; gap: 8px; min-height: 28px; }
 .dk-ph1 .dk-back { margin: 0 0 0 -6px; font-size: 12px; font-weight: 600; }
-.dk-ph1 .dk-ilinks { margin: 0; }
 .dk-back.dk-here { cursor: default; }
 .dk-back.dk-here:hover { background: none; color: var(--muted); }
 .dk-ptog { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
@@ -920,12 +908,10 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
 .dk-ph3 .dk-sch-t { color: var(--ink); font-weight: 600; }
 /* Its own column: the chat or the thread (it scrolls), then the box. */
 .dk-pgm { grid-area: main; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
-.dk-ptabs { flex: none; display: flex; align-items: stretch; min-height: 38px; border-bottom: 1px solid var(--line); }
-.dk-ptabs .dk-tab { font-size: 12.5px; }
 /* Four tabs (#416): each on one line; in a narrow column the row scrolls sideways rather than wrap a name. */
-.dk-ptabs { overflow-x: auto; scrollbar-width: none; }
+.dk-ptabs { flex: none; display: flex; align-items: stretch; min-height: 38px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
 .dk-ptabs::-webkit-scrollbar { display: none; }
-.dk-ptabs .dk-tab { flex: none; white-space: nowrap; }
+.dk-ptabs .dk-tab { flex: none; font-size: 12.5px; white-space: nowrap; }
 .dk-pg .dk-ipane > .dk-ihead { background: var(--panel); }
 .dk-pg .dk-itabs { margin: 0; padding: 0 12px; gap: 0; }
 .dk-pg .dk-itab { padding: 9px 8px; flex: none; }
@@ -939,7 +925,7 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
 .dk-panel { grid-area: panel; min-width: 0; padding: 0 20px 12px; border-bottom: 1px solid var(--line); user-select: text; -webkit-user-select: text; }
 .dk-panel button { user-select: none; -webkit-user-select: none; }
 .dk-psh { margin: 0 0 8px; font: 700 10.5px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-.dk-pnr { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 12.5px; }
+.dk-pnr { flex: 1 1 160px; display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 12.5px; }
 .dk-pword { font-weight: 650; color: var(--ink); white-space: nowrap; }
 .dk-pdot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
 .dk-pdot.ask { background: var(--deny); }
@@ -999,7 +985,6 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
    buttons. Hidden by you, or on a card too narrow for both, it stays so; else the two columns. */
 .dk-psec:not(.dk-pnow), .dk-pnow > .dk-psh, .dk-psay { display: none; }
 .dk-pnow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 8px 12px; border-radius: 10px; background: var(--panel-2); }
-.dk-pnr { flex: 1 1 160px; }
 @container dkcard (min-width: 641px) {
   .dk-pg:not(.hid) { grid-template-columns: minmax(0, 1fr) 272px; grid-template-rows: auto minmax(0, 1fr); grid-template-areas: "head head" "main panel"; }
   .dk-pg:not(.hid) > .dk-ph { padding-bottom: 12px; border-bottom: 1px solid var(--line); }
@@ -1035,13 +1020,11 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
 .dk-wo-tag { padding: 1px 7px; border-radius: var(--pill-radius); background: var(--deny); color: var(--panel); font-size: 10.5px; letter-spacing: 0; text-transform: none; }
 .dk-wo-t { margin-top: 4px; }
 .dk-wo-t a { color: var(--ink); font-weight: 600; }
-.dk-wo-f { font-family: var(--mono); font-size: 11.5px; }
 .dk-wo-s { margin-top: 3px; color: var(--muted); font-size: 11.5px; }
 .dk-wo-loop { margin-top: 8px; padding: 6px 8px; border-radius: 6px; background: var(--panel); font: 11.5px/1.45 var(--mono); }
 .dk-wo-link { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
 .dk-wo-link > span { flex: 1; min-width: 0; }
 .dk-wo .dk-acts { padding: 8px 0 0; }
-.dk-wo-done { align-self: center; color: var(--muted); font-size: 12px; }
 /* A crew member's page (#303, pick A): Doing, Why, Result. */
 .dk-crewpg .dk-csp { margin-left: 6px; font-weight: 600; letter-spacing: 0; text-transform: none; }
 .dk-cnow { margin: 0 0 8px; font-size: 14.5px; font-weight: 600; line-height: 1.45; }
@@ -1146,7 +1129,7 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
 /* Decisions: tick several to go back on them together (#362); housekeeping calls behind "Show all". */
 .dk-tick { all: unset; display: grid; place-items: center; width: 14px; height: 14px; margin-right: 4px; border: 1.5px solid var(--muted); border-radius: 4px; color: var(--panel); cursor: pointer; opacity: 0; }
 .dk-tick.on { background: var(--ink); border-color: var(--ink); opacity: 1; }
-.dk-lr:hover .dk-tick, .dk-tick:focus-visible, .dk-aw-decs .dk-tick { opacity: 1; }
+.dk-lr:hover .dk-tick, .dk-tick:focus-visible { opacity: 1; }
 .dk-showall { all: unset; display: inline-block; margin: 8px 4px; color: var(--muted); font-size: 12px; cursor: pointer; }
 .dk-showall:hover { color: var(--ink); }
 .dk-gb { display: flex; align-items: center; gap: 8px; margin: 8px 4px; font-size: 12.5px; }
@@ -1308,7 +1291,7 @@ button.dk-al-row:focus-visible { outline: 2px solid var(--accent); outline-offse
 .dk-recs { display: flex; flex-direction: column; gap: 10px; padding: 16px 20px; user-select: text; -webkit-user-select: text; }
 .dk-rec { font-size: 13px; line-height: 1.45; color: var(--ink); overflow-wrap: anywhere; white-space: pre-wrap; }
 .dk-rec .dk-age { color: var(--muted); font: 11px var(--mono); }
-.dk-sfoot { flex: none; display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--line); }
+.dk-sfoot { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--line); }
 .dk-sfoot .dk-drop { margin: 0 0 0 auto; align-self: center; font-weight: 600; }
 
 /* A message from another Desk's session in the lead's chat (desk_lead.js deskPeerBand, #472, option C): across the whole

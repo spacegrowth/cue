@@ -1,15 +1,9 @@
 // What the lead does on the Desk (#360): anything that needs you, its own asks too, waits in the Dispatcher's
 // panel until it's answered; what it did on its own (closed, started, moved up, took back a copy, answered a
 // session) is a line in its chat as it happens, and its last few show in the panel for a while, then drop off.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 import { NOW } from "./clock.mjs";
 
-const openDesk = async (page) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator(".dk-items .dk-it").first().waitFor();
-};
 const s = (ms) => Math.floor(ms / 1000);
 const act = (id, item, act, text, why, at) => ({ id, project: "cue", item_id: item, by: "web-lead", sid: "lead", text, why, at: s(at), undo: "none", act });
 

@@ -2,14 +2,8 @@
 // (Edit or Esc), with its words intact and nothing typed since lost; Esc closes what's open before it stops anything.
 // Sources: #494 (Esc pulls back a kept message, Esc twice stops a working session, on the lead's chat, an item's page and
 // a session's page), #422 (Edit on a kept message, back into this page's box), #437 (an item's box keeps what you typed).
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
-const openDesk = async (page) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator(".dk-items .dk-it").first().waitFor();
-};
 /** desk_send as the hub answers it for a busy lead (ipc/desk.rs deliver + hub/send.rs keep): the Desk's summary block,
  *  a blank line, your words, kept in Cue till its turn ends. */
 const leadKeeps = (cue) => cue.override("desk_send", (args) => {

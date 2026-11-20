@@ -2,14 +2,8 @@
 // is open, with the link and Open the PR (no other buttons); one whose branch couldn't be pushed or pull request
 // opened says why and offers Run the landing again; one closed unmerged says so. After each landing, the item's
 // line says it was pushed.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
-const openDesk = async (page) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator(".dk-items .dk-it").first().waitFor();
-};
 const patchItem = (cue, id, patch) => cue.change((st, [k, p]) => { Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === k), p); }, [id, patch]);
 // An item's page (#418): its holder's chat in the middle, the item itself in the column at the right, in the Items
 // list's place, so another item opens from the list after "‹ Items".

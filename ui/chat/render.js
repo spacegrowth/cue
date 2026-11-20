@@ -309,8 +309,6 @@ function restartLine(sid, r, latest) {
   const later = latest && !known?.length ? `<div class="rs-sv">Whether each one connected shows after its next message</div>` : "";
   return `<div class="cv-result rs-line"><span class="sent-check">✓</span><span>${title}<span class="dim"> · ${r.secs}s</span></span>${when}${list ? `<div class="rs-sv">${list}</div>` : ""}${later}</div>`;
 }
-/** A turn's changed files, one per line, for the pill's tooltip. */
-const changesTip = (ch) => ch.files.map((f) => `${f.path}  +${f.add} −${f.del}`).join("\n");
 /** Under the chat: where the session is now, and while any of its background agents run, their tray, whatever
  *  state it's in (working on your message, your turn, waiting on them), so they never drop out of sight. */
 function statusLine(it, s) {

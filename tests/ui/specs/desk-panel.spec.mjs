@@ -1,13 +1,7 @@
 // An item's side panel (#394; #418: the column at the right): every line starts at the same edge, the files' counts sit
 // in one column whatever's new, and pressing Send back or Looks right doesn't make it jump.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
-const openDesk = async (page) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator(".dk-items .dk-it").first().waitFor();
-};
 const DIFF = "diff --git a/ui/a.js b/ui/a.js\nnew file mode 100644\n--- /dev/null\n+++ b/ui/a.js\n@@ -0,0 +1,12 @@\n" + "+a\n".repeat(12)
   + "diff --git a/ui/b.js b/ui/b.js\n--- a/ui/b.js\n+++ b/ui/b.js\n@@ -1,2 +1,3 @@\n-old\n+new\n+more\n same\n";
 /** Where each of the panel's sections starts, top to bottom. */

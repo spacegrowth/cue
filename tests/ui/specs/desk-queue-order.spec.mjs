@@ -1,12 +1,10 @@
 // The Queued list in your order (#387): drag a queued item up or down and it takes its place (desk_item_act
 // "reorder"); one can't go above the item it waits on: it snaps back and says why; a running item doesn't move.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
-const openDesk = async (page) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator(".dk-items .dk-it").first().waitFor();
+/** The Desk open, then its list settled. */
+const openSettled = async (page) => {
+  await openDesk(page);
   // The list is drawn again just after the Desk opens: wait for it to settle, so a row looked up isn't swapped mid-drag.
   await page.evaluate(() => new Promise((ok) => {
     let t = setTimeout(done, 200);
@@ -43,7 +41,7 @@ test("Queued items drag into your order; one can't go above the item it waits on
     const d = st.desk.projects.find((x) => x.project === "cue"), d4 = d.items.find((i) => i.id === "d4");
     d.items.push({ ...d4, id: "d10", title: "Footer links", after: "d4", after_why: "same file", created: Math.max(...d.items.map((i) => i.created)) + 1 });
   });
-  await openDesk(page);
+  await openSettled(page);
   await expect(page.locator(".dk-items .dk-gh", { hasText: "Queued" })).toContainText("drag to reorder");
   expect(await order(page)).toEqual(["d4", "d6", "d10"]);
   // Footer links above Rail dot, which it waits on: back in its place, and why.
@@ -68,7 +66,7 @@ test("a dropped item stays where you let it go, selects no text, and the list sc
     const d = st.desk.projects.find((x) => x.project === "cue"), d6 = d.items.find((i) => i.id === "d6"), t = Math.max(...d.items.map((i) => i.created));
     for (let k = 1; k <= 10; k++) d.items.push({ ...d6, id: `q${k}`, title: `Queued thing ${k}`, created: t + k });
   });
-  await openDesk(page);
+  await openSettled(page);
   // Cue is slow to save it: a change that comes in meanwhile still shows your order.
   await cue.override("desk_item_act", () => new Promise(() => {}));
   await drag(page, "d6", "d4");
@@ -91,7 +89,7 @@ test("a dropped item stays where you let it go, selects no text, and the list sc
 
 test("each queued item shows a grip with a grab hand, only on queued rows, and dragging by it works (#424)", async ({ page, cue }) => {
   await cue.open("desk");
-  await openDesk(page);
+  await openSettled(page);
   // A grip on each queued row, none on any other.
   const queued = await order(page);
   expect(queued.length).toBeGreaterThan(1);

@@ -1,14 +1,8 @@
 // Old working folders (desk_copies.rs, #397): not in the item list; the lead asks once in its chat (a question card,
 // tested in Rust), and How work lands has Remove old working folders: it looks, lists them with their size, and
 // removes them on a second press.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
-const openDesk = async (page) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator(".dk-items .dk-it").first().waitFor();
-};
 const old = { kb: 3 * 1024 * 1024 + 512 * 1024, copies: [
   { path: "/r/cue/.claude/worktrees/agent-a1", branch: "worktree-agent-a1", kb: 3 * 1024 * 1024 },
   { path: "/r/cue/.claude/worktrees/desk-9", branch: "desk/9", kb: 512 * 1024 },

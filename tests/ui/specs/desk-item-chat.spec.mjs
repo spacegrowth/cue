@@ -2,12 +2,10 @@
 // shows, its turns about other items folded to a line each that opens in place; your send-backs of this item and its
 // Working line in it; the item itself (state, You'll see, What to try, its record, Open and Drop) in its panel beside
 // the chat; the Items list stays at the right.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
 const openItem = async (page, id) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
+  await openDesk(page);
   await page.locator(`[data-desk-item="${id}"]`).first().click();
 };
 // host-lead's chat: a turn about #d4 (two replies), then the hand-off of #d5 and its reply.

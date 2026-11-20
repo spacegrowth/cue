@@ -1,14 +1,8 @@
 // Items to check say where they are, in one plain line (#436): in the app since its install with what to try, landing
 // with the next install, or mocks with the canvas to open. On the Desk row and the item page; it changes by itself as
 // the install finishes.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
-const openDesk = async (page) => {
-  await page.locator('[data-pj="toggle"]').click();
-  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
-  await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator(".dk-items .dk-it").first().waitFor();
-};
 const patchItem = (cue, id, patch) => cue.change((st, [k, p]) => { Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === k), p); }, [id, patch]);
 const patchCheck = (cue, id, patch) => cue.change((st, [k, p]) => { Object.assign(st.desk.projects.find((x) => x.project === "cue").checks.find((c) => c.id === k), p); }, [id, patch]);
 const clock = (page, ms) => page.evaluate((t) => clockAt(t), ms);
