@@ -14,7 +14,7 @@
 use crate::desk::hub::landing::commit::{commit_each, shas_of, words_checked};
 use crate::desk::hub::landing::git::git;
 use crate::desk::hub::landing::install::{installing, stopped_install, tail};
-use crate::desk::hub::landing::main_line::{main_checkout, main_ref, merge_ref, merge_to_main, same_dir, Merge};
+use crate::desk::hub::landing::main_line::{main_checkout, merge_ref, merge_to_main, same_dir, Merge};
 use crate::desk::hub::theirs::theirs::Part;
 use crate::desk::hub::prelude::*;
 use crate::desk::{DeskItem, Finish};
@@ -245,7 +245,7 @@ impl Hub {
     }
 
     /// Item `it`'s folders on this Mac: its crew's (desk/hub/core/desk.rs `item_sources`), then each folder of `sources`.
-    fn item_folders(&self, it: &DeskItem, sources: &[(String, Vec<String>)]) -> Vec<String> {
+    pub(crate) fn item_folders(&self, it: &DeskItem, sources: &[(String, Vec<String>)]) -> Vec<String> {
         let mut out: Vec<String> = self.read(|st| crate::desk::hub::core::desk::item_sources(st, it).1.into_iter().map(|(f, _)| f).collect());
         for (f, _) in sources {
             if !out.contains(f) {
@@ -476,58 +476,6 @@ impl Hub {
         true
     }
 
-    /// Whether item `id`'s own commits on `top`'s main line (those Cue made for it, its crew's merges) changed nothing
-    /// that goes into the app (live_ui::outside_app). With none there, its files in that repository say: each outside
-    /// the app or never in it (a mocks item's scratch files, read as the repository's, #432). False when git can't
-    /// say, or it has a file in the app (work its holder committed itself): it's installed as before.
-    fn runs_nothing(&self, id: &str, top: &str) -> bool {
-        let Some(it) = self.read(|st| st.desk.item(id).cloned()) else { return false };
-        let merges = it.finish.as_ref().map(|f| f.merges.clone()).unwrap_or_default();
-        let here = |folder: &str| main_checkout(folder).is_some_and(|(m, _)| same_dir(&m, top));
-        let own: Vec<String> = it.commit_in.iter().chain(&merges).filter(|(folder, _)| here(folder)).map(|(_, sha)| sha.clone()).collect();
-        if !own.is_empty() {
-            return own.iter().all(|sha| crate::install::live_ui::changed_in(top, sha).is_some_and(|paths| paths.iter().all(|p| crate::install::live_ui::outside_app(p))));
-        }
-        let Ok((_, machine, sources)) = self.desk_change_sources(id) else { return false };
-        let files: Vec<(String, String)> = sources.into_iter().filter(|(folder, _)| machine.is_empty() && here(folder)).flat_map(|(folder, paths)| paths.into_iter().map(move |p| (folder.clone(), p))).collect();
-        !files.is_empty() && files.iter().all(|(folder, p)| crate::install::live_ui::outside_app(p) || never_in(folder, p))
-    }
-
-    /// Where item `id`'s work is, when it isn't all on `top`'s main yet ("on fix-header, not main"): the main line's
-    /// `head`, each commit Cue made for it in that repository, and the HEAD of each other worktree of it the item
-    /// worked in (merged into the main checkout as it finished). None once all are on main, or when the repository
-    /// has no main to look at (no main or master branch, and its main checkout on none).
-    fn not_on_main(&self, id: &str, top: &str, head: &str) -> Option<String> {
-        let main = main_ref(top)?;
-        let Ok((it, _, sources)) = self.desk_change_sources(id) else { return None };
-        let mut shas: Vec<String> = Vec::new();
-        for (folder, sha) in &it.commit_in {
-            if main_checkout(folder).is_some_and(|(m, _)| same_dir(&m, top)) {
-                shas.push(sha.clone());
-            }
-        }
-        for folder in self.item_folders(&it, &sources) {
-            let Some((m, _)) = main_checkout(&folder).filter(|(m, _)| same_dir(m, top)) else { continue };
-            let own = git("", &folder, &[], &["rev-parse", "--show-toplevel"]).map(|t| t.trim().to_string()).unwrap_or_default();
-            if own.is_empty() || same_dir(&own, &m) {
-                continue;
-            }
-            if let Some(h) = git("", &own, &[], &["rev-parse", "HEAD"]).map(|h| h.trim().to_string()) {
-                shas.push(h);
-            }
-        }
-        if !head.is_empty() {
-            shas.push(head.to_string());
-        }
-        let off = shas.iter().find(|s| !matches!(crate::safe_git::run("", top, &[], &["merge-base", "--is-ancestor", s, &main]), Ok((_, 0))))?;
-        let on = git("", top, &[], &["branch", "--contains", off, "--format=%(refname:short)"]).unwrap_or_default();
-        let branch = on.lines().map(str::trim).find(|b| !b.is_empty() && *b != main).map(str::to_string);
-        Some(match branch {
-            Some(b) => format!("on {b}, not {main}"),
-            None => format!("not on {main} or any branch"),
-        })
-    }
-
     /// Item `id` waits for its work to be on main (`at` says where it is), with the main line's `top` and `head` kept;
     /// asked of you once it has waited `WAIT_ASK_MS`.
     fn finish_landing(&self, id: &str, top: &str, head: &str, at: String) {
@@ -615,7 +563,7 @@ impl Hub {
 
 /// Whether `path` (relative to `folder`) was never in its main line: in no commit of it (a scratch or ignored file
 /// lands nothing). False when git can't say.
-fn never_in(folder: &str, path: &str) -> bool {
+pub(crate) fn never_in(folder: &str, path: &str) -> bool {
     git("", folder, &[], &["log", "-1", "--format=%H", "HEAD", "--", path]).is_some_and(|o| o.trim().is_empty())
 }
 

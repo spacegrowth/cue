@@ -4,6 +4,7 @@
 use crate::desk::hub::landing::git::{git, git_said, word_in};
 use crate::desk::hub::prelude::*;
 use crate::desk::DeskItem;
+use crate::desk::hub::landing::finish::never_in;
 
 /// The branch that is main in `top`'s repository: "main", else "master", else the branch its main checkout is on.
 /// None when there's none of those (a detached main checkout in a repository with neither).
@@ -277,5 +278,60 @@ impl Hub {
             fx
         });
         self.desk_done(fx);
+    }
+}
+
+/// Whether an item's work is on the main line, as it finishes (split from finish.rs).
+impl Hub {
+    /// Whether item `id`'s own commits on `top`'s main line (those Cue made for it, its crew's merges) changed nothing
+    /// that goes into the app (live_ui::outside_app). With none there, its files in that repository say: each outside
+    /// the app or never in it (a mocks item's scratch files, read as the repository's, #432). False when git can't
+    /// say, or it has a file in the app (work its holder committed itself): it's installed as before.
+    pub(crate) fn runs_nothing(&self, id: &str, top: &str) -> bool {
+        let Some(it) = self.read(|st| st.desk.item(id).cloned()) else { return false };
+        let merges = it.finish.as_ref().map(|f| f.merges.clone()).unwrap_or_default();
+        let here = |folder: &str| main_checkout(folder).is_some_and(|(m, _)| same_dir(&m, top));
+        let own: Vec<String> = it.commit_in.iter().chain(&merges).filter(|(folder, _)| here(folder)).map(|(_, sha)| sha.clone()).collect();
+        if !own.is_empty() {
+            return own.iter().all(|sha| crate::install::live_ui::changed_in(top, sha).is_some_and(|paths| paths.iter().all(|p| crate::install::live_ui::outside_app(p))));
+        }
+        let Ok((_, machine, sources)) = self.desk_change_sources(id) else { return false };
+        let files: Vec<(String, String)> = sources.into_iter().filter(|(folder, _)| machine.is_empty() && here(folder)).flat_map(|(folder, paths)| paths.into_iter().map(move |p| (folder.clone(), p))).collect();
+        !files.is_empty() && files.iter().all(|(folder, p)| crate::install::live_ui::outside_app(p) || never_in(folder, p))
+    }
+
+    /// Where item `id`'s work is, when it isn't all on `top`'s main yet ("on fix-header, not main"): the main line's
+    /// `head`, each commit Cue made for it in that repository, and the HEAD of each other worktree of it the item
+    /// worked in (merged into the main checkout as it finished). None once all are on main, or when the repository
+    /// has no main to look at (no main or master branch, and its main checkout on none).
+    pub(crate) fn not_on_main(&self, id: &str, top: &str, head: &str) -> Option<String> {
+        let main = main_ref(top)?;
+        let Ok((it, _, sources)) = self.desk_change_sources(id) else { return None };
+        let mut shas: Vec<String> = Vec::new();
+        for (folder, sha) in &it.commit_in {
+            if main_checkout(folder).is_some_and(|(m, _)| same_dir(&m, top)) {
+                shas.push(sha.clone());
+            }
+        }
+        for folder in self.item_folders(&it, &sources) {
+            let Some((m, _)) = main_checkout(&folder).filter(|(m, _)| same_dir(m, top)) else { continue };
+            let own = git("", &folder, &[], &["rev-parse", "--show-toplevel"]).map(|t| t.trim().to_string()).unwrap_or_default();
+            if own.is_empty() || same_dir(&own, &m) {
+                continue;
+            }
+            if let Some(h) = git("", &own, &[], &["rev-parse", "HEAD"]).map(|h| h.trim().to_string()) {
+                shas.push(h);
+            }
+        }
+        if !head.is_empty() {
+            shas.push(head.to_string());
+        }
+        let off = shas.iter().find(|s| !matches!(crate::safe_git::run("", top, &[], &["merge-base", "--is-ancestor", s, &main]), Ok((_, 0))))?;
+        let on = git("", top, &[], &["branch", "--contains", off, "--format=%(refname:short)"]).unwrap_or_default();
+        let branch = on.lines().map(str::trim).find(|b| !b.is_empty() && *b != main).map(str::to_string);
+        Some(match branch {
+            Some(b) => format!("on {b}, not {main}"),
+            None => format!("not on {main} or any branch"),
+        })
     }
 }
