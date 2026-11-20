@@ -175,6 +175,11 @@ test("the lead at work shows it in its chat: the working line, live, but not its
   // Done: the working line goes.
   await cue.change((st) => { Object.assign(st.sessions.find((x) => x.session_id === "lead"), { state: "idle", doing: "" }); });
   await expect(page.locator(".dk-chat .dot-live")).toHaveCount(0);
+  // Waiting on you says what for (#410): your reply, or its open question.
+  await cue.change((st) => { Object.assign(st.sessions.find((x) => x.session_id === "lead"), { state: "waiting", since_ms: Date.now() - 60000 }); });
+  await expect(live.locator(".cv-what")).toHaveText("Waiting on you for your answer: Keep focus in the box, or move to the next item?");
+  await cue.change((st) => { st.items = st.items.filter((i) => !(i.session_id === "lead" && i.status === "pending")); });
+  await expect(live.locator(".cv-what")).toHaveText("Waiting on you for your reply");
 });
 
 test("a send from an item that doesn't go keeps the item open, and your words in its box", async ({ page, cue }) => {
@@ -2723,8 +2728,12 @@ test("a DONE is one Ready to check line in the lead's chat: its item, its age, C
   await expect(said).toHaveText("You · looked at #d2 and said it looks right · Undo · back to check");
   await expect(said.locator("svg.dk-kic")).toHaveCount(1);
   await expect(said.locator(".dk-cl-t")).toHaveCSS("text-align", "center");
-  await cue.change((s) => { s.desk.projects.find((d) => d.project === "cue").checks[0].state = "back"; });
-  await expect(said).toHaveText("You · sent #d2 back");
+  // Sent back (#410): the item's title and what you wrote, in a line; "no note" when you wrote none.
+  await cue.change((s) => { Object.assign(s.desk.projects.find((d) => d.project === "cue").checks[0], { state: "back", back: "The arrows still skip one", back_pics: 2 }); });
+  const title = await page.evaluate(() => deskItem("cue", "d2").title);
+  await expect(said).toHaveText(`You · sent #d2 ${title} back: “The arrows still skip one” · 2 pictures`);
+  await cue.change((s) => { Object.assign(s.desk.projects.find((d) => d.project === "cue").checks[0], { back: "", back_pics: 0 }); });
+  await expect(said).toHaveText(`You · sent #d2 ${title} back · no note`);
   expect(await page.locator(".dk-board [title]").count()).toBe(0);
 });
 

@@ -273,6 +273,17 @@ function toldMeta(s) {
 }
 /** How long a turn ran: "45s", "38m", "1h 52m" (as its notification says it). */
 const tookText = (ms) => { const sec = Math.floor(ms / 1000); return sec < 60 ? `${sec}s` : sec < 3600 ? `${Math.floor(sec / 60)}m` : `${Math.floor(sec / 3600)}h ${Math.floor(sec % 3600 / 60)}m`; };
+/** What a session waiting on you waits for (#410), from its open card: your answer to its question, your OK for a
+ *  step, else your reply. */
+function waitingFor(it, s) {
+  // Drawn without its card (the Desk's chats): the session's newest open one.
+  if (!it || it.status !== "pending") it = state.items.filter((i) => i.status === "pending" && i.session_id === s?.session_id).sort((a, b) => b.created_ms - a.created_ms)[0] || it;
+  const cut = (t) => { t = plain(t); return t.length > 100 ? t.slice(0, 100).replace(/\s+\S*$/, "") + "…" : t; };
+  if (it?.kind === "question") { const q = cut(summary(it)); return q && q !== "Question" ? `your answer: ${q}` : "your answer to its question"; }
+  if (it?.kind === "permission") { const d = it.tool_input?.description; const w = cut(typeof d === "string" && d.trim() ? d : summary(it)); return w ? `your OK to run: ${w}` : "your OK on a step"; }
+  if (it?.kind === "input") return "you to fill in its form";
+  return "your reply";
+}
 /** One line under the chat: where the session is now. */
 function whereNow(it, s) {
   // Started in a folder Claude Code doesn't trust yet: it's asking in its terminal before it does anything.
@@ -297,7 +308,7 @@ function whereNow(it, s) {
   // count since the turn started, so a long think doesn't look stuck.
   const prompt = deskSaid(s?.prompt);
   if (s?.state === "working") return `<div class="cv-status"><span class="dot-live"></span><span class="cv-what">Working${prompt ? ` on: ${esc(prompt.length > 120 ? prompt.slice(0, 120) + "…" : prompt)}` : ""}</span><span class="dim"> · <span data-ago="${s.since_ms}">${ago(s.since_ms)}</span></span>${tipFor(it, s, "working")}</div>`;
-  if (s?.state === "waiting" || s?.state === "deciding") return `<div class="cv-status"><i class="sw z live"></i>Waiting on you · ${ago(s.since_ms)}${tipFor(it, s, "waiting")}</div>`;
+  if (s?.state === "waiting" || s?.state === "deciding") return `<div class="cv-status"><i class="sw z live"></i><span class="cv-what">Waiting on you for ${esc(waitingFor(it, s))}</span><span class="dim"> · ${ago(s.since_ms)}</span>${tipFor(it, s, "waiting")}</div>`;
   // A lead whose teammates wait on you, or that waits on teammates at work: named, not "1 background agent".
   const crew = s?.state === "agent" && s.session_id ? crewWaitLine(s.session_id) : "";
   if (crew) return `<div class="cv-status">${/^<span class="cv-what">Waiting on you/.test(crew) ? `<i class="sw z live"></i>` : ""}${crew}${tipFor(it, s, "working")}</div>`;

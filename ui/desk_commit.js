@@ -96,6 +96,18 @@ function deskCommitLine(i, said = false) {
   return `<span class="dk-cmt">Committed <span class="dk-cm">${esc(i.commit)}</span>${files ? ` · ${files === 1 ? "1 file" : `${files} files`}` : ""} · ${undo}</span>`;
 }
 
+/** An item's title for a one-line mention: its first words, cut at a word near `max` characters. */
+function deskCheckTitle(c, max = 60) {
+  const t = String(c.title || "").trim(), cut = t.length > max ? t.slice(0, max).replace(/\s+\S*$/, "") + "…" : t;
+  return cut ? `<span class="dk-chk-t">${esc(cut)}</span>` : "";
+}
+/** What you wrote as you sent it back (#410): your note in quotes, cut to a line, and the pictures counted; "no note"
+ *  when you wrote none. */
+function deskBackNote(c) {
+  const note = plain(c.back || ""), pics = c.back_pics ? ` · ${c.back_pics === 1 ? "1 picture" : `${c.back_pics} pictures`}` : "";
+  if (!note) return ` · <span class="dk-chk-note">no note</span>${pics}`;
+  return `: <span class="dk-chk-note">“${esc(note.length > 140 ? note.slice(0, 140).replace(/\s+\S*$/, "") + "…" : note)}”</span>${pics}`;
+}
 /** Project `d`'s Ready to check lines for the lead's chat (chat/render.js chatHtml `extra`): one per DONE, at its time. */
 function deskCheckRows(d) {
   return (d?.checks || []).map((c) => ({ at: c.at, html: keyed(deskCheckLine(c, d), `chk:${c.id}:${c.at}`) }));
@@ -107,7 +119,7 @@ function deskCheckRows(d) {
 function deskCheckLine(c, d) {
   const num = `${deskKindIcon(c)}<b class="dk-inum">#${esc(c.id)}</b>`;
   if (!(c.last && c.state === "to_check")) {
-    const said = c.state === "done" ? `looked at ${num} and said it looks right` : `sent ${num} back`;
+    const said = c.state === "done" ? `looked at ${num} and said it looks right` : `sent ${num} ${deskCheckTitle(c)} back${deskBackNote(c)}`;
     const cmt = c.last && c.state === "done" ? ` · ${deskCommitLine(c, true)}` : "";
     return `<div class="dk-chk-done dk-cl"><span class="dk-cl-t"><b>You</b> · ${said}${cmt}</span></div>`;
   }

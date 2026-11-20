@@ -264,7 +264,7 @@ function deskItemNow(i) {
   const fs = deskFeat(i) && !i.holder ? deskFeatState(i) : null, left = fs && i.pieces.length - deskFeatDone(i);
   const [dot, word, say] = fs === "done" ? ["done", "Done", "All of its pieces are done."]
     : fs ? [fs === "work" ? "work" : "stop", fs === "work" ? "In progress" : "Next", `${left} of its ${i.pieces.length} pieces ${left === 1 ? "is" : "are"} left. Each is given out on its own.`]
-    : i.state === "needs_you" ? ["ask", "Waiting on you", ""]
+    : i.state === "needs_you" ? ["ask", "Waiting on you", `${who} waits for your answer before it goes on. Its question is in its chat.`]
     : deskInstallWait(i) ? ["work", "Waiting for install", "Nothing to try till Cue is installed with it."]
     : deskUncommitted(i) ? ["ask", "Not on main yet", "Its files aren't committed. Commit to main puts them there and closes it."]
     : i.state === "to_check" ? ["check", "Ready to check", ""]
