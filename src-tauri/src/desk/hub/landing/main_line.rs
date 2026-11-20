@@ -145,10 +145,12 @@ fn taken_out_by(top: &str, head: &str, it: &DeskItem, new: &[&str]) -> Option<St
         if removed.is_empty() {
             continue;
         }
+        // A line it removes and adds again elsewhere was moved (a file renamed or split, #475), not taken out.
+        let put_back = lines_of(top, c, '+');
         let mut now_in: Vec<(String, Vec<String>)> = Vec::new();
         let mut gone = 0;
         for (file, line) in &added {
-            if !removed.iter().any(|(f, l)| f == file && l == line) {
+            if !removed.iter().any(|(f, l)| f == file && l == line) || put_back.iter().any(|(_, l)| l == line) {
                 continue;
             }
             if !now_in.iter().any(|(f, _)| f == file) {

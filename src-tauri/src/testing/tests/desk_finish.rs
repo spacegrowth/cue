@@ -405,6 +405,23 @@ fn a_commit_that_takes_an_items_work_back_out_reopens_it_and_says_so() {
     assert_eq!(sent_to(&w, &h).iter().filter(|t| t.contains("took its work back out")).count(), 1, "once");
 }
 
+#[test]
+fn a_commit_that_moves_an_items_work_to_other_files_leaves_it_alone() {
+    let w = World::new();
+    let (dir, project, id) = done_with(&w, |_, _, _| {}, writes_both);
+    w.hub().desk_looks_right(&id).unwrap();
+    w.settle();
+    tick(&w);
+    // Its files moved to a folder of their own, as a refactor does (#475's work moved by #509): still there.
+    std::fs::create_dir_all(dir.join("moved")).unwrap();
+    git(&dir, &["mv", "a.txt", "moved/a.txt"]);
+    git(&dir, &["mv", "b.txt", "moved/b.txt"]);
+    git(&dir, &["commit", "-q", "-m", "Move the files"]);
+    tick(&w);
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "done", "{}", item(&w, &project, "Header jumps"));
+    assert!(!desk(&w, &project)["decisions"].as_array().cloned().unwrap_or_default().iter().any(|d| d["text"].as_str().is_some_and(|t| t.contains("took its work back out"))));
+}
+
 /// `dir`'s pre-commit hook: refuses every commit saying `words` (none: it's taken out).
 pub(super) fn hook_says(dir: &std::path::Path, words: Option<&str>) {
     let hook = dir.join(".git/hooks/pre-commit");
