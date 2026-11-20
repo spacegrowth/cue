@@ -79,7 +79,7 @@ function deskAwayAsk(it, d, deny = "No") {
   const picks = qs.length ? questionHtml(it) : "";
   const acts = ["permission", "question", "input"].includes(it.kind) ? decisionButtons(it, deny) : `<div class="row-btns"><button class="btn" ${deskChatAttrs(it.session_id, d)}>Open its chat</button></div>`;
   const cmd = it.tool_input?.command;
-  const what = it.kind === "input" ? formBody(it) : cmd ? `<pre>${esc(cmd)}</pre>` : qs.length ? "" : `<p>${esc(summary(it))}</p>`;
+  const what = it.kind === "input" ? formBody(it) : cmd ? reqCut(it.id, `<pre>${esc(cmd)}</pre>`, cmd) : qs.length ? "" : `<p>${esc(summary(it))}</p>`;
   return `<div class="dk-request dk-aw-ask" data-desk-request="${esc(it.id)}"><div class="dk-request-who">${esc(deskHolderName(it.session_id))}${it.agent_name ? ` · ${esc(it.agent_name)}` : ""}</div>${what}${picks}${acts}</div>`;
 }
 /** Away (#415, calls 1): the lead's calls since Away went on sit in one line at the top of Items, "4 calls while away ·
@@ -208,7 +208,7 @@ function deskAwayWaiting(d, taskApprovals) {
 function deskHeldRows(d) {
   const held = d?.held || [];
   if (!held.length) return { n: 0, html: "" };
-  const row = (h) => `<div class="dk-request dk-aw-ask dk-held" data-held-row="${esc(h.id)}"><div class="dk-request-who">${esc(h.who || deskHolderName(h.sid))} wants to ${esc(h.what)} · held while you were away</div><pre>${esc(h.command)}</pre><div class="row-btns"><button class="btn deny flex" data-desk-held="${esc(h.id)}" data-allow="0">No</button><button class="btn primary flex" data-desk-held="${esc(h.id)}" data-allow="1">Allow</button></div></div>`;
+  const row = (h) => `<div class="dk-request dk-aw-ask dk-held" data-held-row="${esc(h.id)}"><div class="dk-request-who">${esc(h.who || deskHolderName(h.sid))} wants to ${esc(h.what)} · held while you were away</div>${reqCut(`held:${h.id}`, `<pre>${esc(h.command)}</pre>`, h.command)}<div class="row-btns"><button class="btn deny flex" data-desk-held="${esc(h.id)}" data-allow="0">No</button><button class="btn primary flex" data-desk-held="${esc(h.id)}" data-allow="1">Allow</button></div></div>`;
   return { n: held.length, html: `<div class="dk-prows dk-aw-asks">${held.map(row).join("")}</div>` };
 }
 /** Your Allow or No to held step `id`: gone from the list at once; the session is told once its earlier ones are answered. */

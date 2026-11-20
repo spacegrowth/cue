@@ -583,6 +583,30 @@ function linkify(h, base = null) {
 }
 /** Markdown-lite for agents' messages: paragraphs, lists, tables, headings, quotes, code. Escapes first, so it's safe. */
 /** Copy on a code block or a command: what's in the block beside it, as plain text (a "$ " before a command isn't). */
+/** A permission's long command or request (#426): cut to a few lines with "more", which opens the rest in place, and
+ *  "less", which folds it back; a short one shows in full. `key` is the request's id: open stays open through redraws,
+ *  and on every card that shows it. */
+const reqOpen = new Set();
+function reqCut(key, inner, text, lines = 3, chars = 180) {
+  const t = String(text ?? "");
+  if (t.split("\n").length <= lines && t.length <= chars) return inner;
+  const open = reqOpen.has(key);
+  return `<div class="req-cut${open ? " open" : ""}" style="--cut-lines:${lines}">${inner}<button class="req-more" data-req-more="${esc(key)}" aria-expanded="${open}">${open ? "less" : "more"}</button></div>`;
+}
+// Before any row's own click (capture): more / less opens or folds just the words, not the row it sits on.
+document.addEventListener("click", (e) => {
+  const b = e.target.closest?.("[data-req-more]");
+  if (!b) return;
+  // Immediate: the Desk's own click listener sits on the document too, and would open the row.
+  e.preventDefault(); e.stopImmediatePropagation();
+  const key = b.dataset.reqMore, open = !reqOpen.has(key);
+  if (open) reqOpen.add(key); else reqOpen.delete(key);
+  for (const btn of document.querySelectorAll(`[data-req-more="${CSS.escape(key)}"]`)) {
+    btn.closest(".req-cut")?.classList.toggle("open", open);
+    btn.textContent = open ? "less" : "more";
+    btn.setAttribute("aria-expanded", String(open));
+  }
+}, true);
 const COPY_BTN = `<button class="code-copy" data-copy-code aria-label="Copy">Copy</button>`;
 /** The text of the code block a button sits on, without a "$ " prompt Cue drew before a command. */
 function codeText(btn) {

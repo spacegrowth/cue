@@ -66,6 +66,13 @@ body.col-sizing, body.col-sizing * { cursor: col-resize !important; user-select:
 
 .decide { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
 .slab { background: var(--slab); color: var(--on-slab); border-radius: 8px; padding: 9px 10px; font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 160px; overflow-y: auto; margin: 0; }
+/* A long request cut to a few lines (#426): more opens the rest in place, less folds it back. */
+.req-cut { min-width: 0; }
+.req-cut:not(.open) :is(pre, .dk-h) { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--cut-lines, 3); overflow: hidden; }
+.req-cut.open pre { max-height: none; }
+.req-cut.open .dk-h { display: block; -webkit-line-clamp: unset; }
+.req-more { all: unset; cursor: pointer; margin-top: 4px; color: var(--accent); font-size: 12px; font-weight: 600; }
+.req-more:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
 .why { font-size: 12px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .diff { border-radius: 8px; overflow: hidden; box-shadow: inset 0 0 0 1px var(--line); font: 12px/1.5 var(--mono); }
 .diff pre { margin: 0; padding: 6px 10px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 120px; overflow-y: auto; }

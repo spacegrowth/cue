@@ -2945,7 +2945,7 @@ test("Desk row approvals send Allow and No for the pending request", async ({ pa
   await cue.open("desk");
   await openDesk(page);
   const row = page.locator('[data-desk-item="d1"]');
-  // A one-question ask shows its choices on the row (6917a17a); a permission's No ends where they end.
+  // A one-question ask shows its choices on the row (6917a17a); a permission's Allow ends where they end, No before it (#426).
   const questionRight = (await row.locator(".dk-row-decisions .btn").last().boundingBox());
   for (const [index, [label, behavior]] of [["Allow", "allow"], ["No", "deny"]].entries()) {
     const id = `row-approval-${index}`;
@@ -2955,8 +2955,8 @@ test("Desk row approvals send Allow and No for the pending request", async ({ pa
       st.items.push({ ...st.items.find((i) => i.id === "n-focus-ask"), id, kind: "permission", tool_name: "Bash", tool_input: { command: "npm test" } });
     }, id);
     await expect(row.locator(".dk-h")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-    const no = await row.getByRole("button", { name: "No", exact: true }).boundingBox();
-    expect(no.x + no.width).toBeCloseTo(questionRight.x + questionRight.width);
+    const allow = await row.getByRole("button", { name: "Allow", exact: true }).boundingBox();
+    expect(allow.x + allow.width).toBeCloseTo(questionRight.x + questionRight.width);
     await row.getByRole("button", { name: label, exact: true }).click();
     await cue.called("respond", { id, decision: { behavior } });
   }

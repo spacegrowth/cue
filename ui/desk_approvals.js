@@ -29,7 +29,7 @@ function deskApprovals(d, taskApprovals) {
   if (!requests.length) return "";
   return `<section class="dk-approvals" aria-label="Pending requests"><div class="dk-requests-head">Needs your decision <span class="n">${requests.length}</span></div>${requests.map((it) => {
     const who = deskHolderName(it.session_id), command = it.tool_input?.command;
-    const preview = it.kind === "input" ? formBody(it) : command ? `<pre>${esc(command)}</pre>` : `<p>${esc(summary(it))}</p>`;
+    const preview = it.kind === "input" ? formBody(it) : command ? reqCut(it.id, `<pre>${esc(command)}</pre>`, command) : `<p>${esc(summary(it))}</p>`;
     const actions = ["permission", "input"].includes(it.kind) && !inTerminal(it) ? decisionButtons(it, "No") : "";
     const target = it.agent_id && deskMate(it.session_id, it.agent_id)
       ? `data-desk-crew="${esc(it.agent_id)}" data-lead="${esc(it.session_id)}"` : `data-desk-chat-of="${esc(it.session_id)}"`;

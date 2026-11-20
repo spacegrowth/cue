@@ -57,7 +57,7 @@ function deskProgButton(i) {
   if (i.state === "to_check" && !deskInstallWait(i) && !deskUncommitted(i) && !deskLooksSoon.has(i.id)) return `<button class="btn small primary" data-desk-act="looks_right" data-id="${esc(i.id)}">Looks right</button>`;
   if (i.state !== "needs_you") return "";
   const r = deskItemRequest(i);
-  if (r?.kind === "permission") return `<button class="btn small primary" data-desk-decision="allow" data-id="${esc(r.id)}"${answering.has(r.id) ? " disabled" : ""}>Allow</button><button class="btn small" data-desk-decision="deny" data-id="${esc(r.id)}"${answering.has(r.id) ? " disabled" : ""}>No</button>`;
+  if (r?.kind === "permission") return deskAllowNo(r.id);
   return `<button class="btn small primary" data-desk-prog-open="${esc(i.id)}">Answer</button>`;
 }
 

@@ -313,17 +313,18 @@ function requestBody(it) {
   const t = tool(it);
   if (it.kind === "question") return questionHtml(it);
   if (it.kind === "input") return formBody(it);
-  if (t === "bash") return `<div class="code-wrap"><pre class="slab"><span class="ps">$ </span>${esc(i.command)}</pre>${COPY_BTN}</div>`;
+  if (t === "bash") return reqCut(it.id, `<div class="code-wrap"><pre class="slab"><span class="ps">$ </span>${esc(i.command)}</pre>${COPY_BTN}</div>`, i.command);
   if (t === "edit" || t === "multiedit") {
     const edits = t === "multiedit" ? i.edits || [] : [{ old_string: i.old_string, new_string: i.new_string }];
     return `<div class="dim" style="font-size:12px">${esc(shortPath(i.file_path || ""))}</div>` + edits.map((e) => `<div class="diff"><pre class="del">− ${esc(e.old_string)}</pre><pre>+ ${esc(e.new_string)}</pre></div>`).join("");
   }
-  if (t === "write") return `<div class="dim" style="font-size:12px">${esc(shortPath(i.file_path || i.path || ""))}</div><pre class="slab">${esc(i.content)}</pre>`;
+  if (t === "write") return `<div class="dim" style="font-size:12px">${esc(shortPath(i.file_path || i.path || ""))}</div>${reqCut(it.id, `<pre class="slab">${esc(i.content)}</pre>`, i.content)}`;
   // Codex's file change: the files, and the change to each as Codex wrote it.
-  if (t === "apply_patch") return `<div class="dim" style="font-size:12px">${esc((i.files || [i.file_path]).map(shortPath).join(", "))}</div><pre class="slab">${esc(i.patch || "")}</pre>`;
+  if (t === "apply_patch") return `<div class="dim" style="font-size:12px">${esc((i.files || [i.file_path]).map(shortPath).join(", "))}</div>${reqCut(it.id, `<pre class="slab">${esc(i.patch || "")}</pre>`, i.patch)}`;
   // A plan to approve: the plan as written, not its JSON.
   if (t === "exitplanmode" && typeof i.plan === "string") return `<div class="plan-body">${md(i.plan)}</div>`;
-  return `<pre class="slab">${esc(JSON.stringify(i, null, 2))}</pre>`;
+  const json = JSON.stringify(i, null, 2);
+  return reqCut(it.id, `<pre class="slab">${esc(json)}</pre>`, json);
 }
 function whyLine(it) {
   const c = (it.context || []).filter((x) => x.role !== "user").at(-1) || it.context?.at(-1);

@@ -236,14 +236,20 @@ function deskItemRow(i, lit, held = false, lane = null) {
   const isQuestion = i.state === "needs_you" && (i.ask?.kind === "question" || (!i.ask && !i.finish?.question && !deskPickLine(i)));
   const vb = isQuestion ? esc(deskOneLine(question?.question || deskQuestion(i))) : deskVerbHtml(i);
   const decision = request?.kind === "permission"
-    ? `<button class="btn small primary" data-desk-decision="allow" data-id="${esc(request.id)}"${answering.has(request.id) ? " disabled" : ""}>Allow</button><button class="btn small" data-desk-decision="deny" data-id="${esc(request.id)}"${answering.has(request.id) ? " disabled" : ""}>No</button>`
+    ? deskAllowNo(request.id)
     // A question (#383): Send its suggestions, or Choose… on the item's page, where its whole card is.
     : question ? qFoldBtns(request, `<button class="btn small" data-desk-chk-item="${esc(i.id)}">Choose…</button>`, "btn small", `data-desk-send-answers="${esc(request.id)}"`)
     : i.state === "needs_you" && i.ask?.kind !== "permission" ? `<button class="btn small" data-desk-chk-item="${esc(i.id)}">Answer</button>` : "";
-  const ask = vb || decision ? `<div class="dk-ask-row">${vb ? `<div class="dk-h">${vb}</div>` : ""}${question ? qFoldLine(request) : ""}${decision ? `<div class="dk-row-decisions">${decision}</div>` : ""}</div>` : "";
+  const yn = request?.kind === "permission";
+  const ask = vb || decision ? `<div class="dk-ask-row${yn ? " yn" : ""}">${vb ? (yn ? reqCut(request.id, `<div class="dk-h">${vb}</div>`, deskAllowLine(i), 2, 100) : `<div class="dk-h">${vb}</div>`) : ""}${question ? qFoldLine(request) : ""}${decision ? `<div class="dk-row-decisions">${decision}</div>` : ""}</div>` : "";
   return `<div class="dk-it ${i.state === "needs_you" ? "ask" : ""} ${look === "landed" ? "landed" : ""} dk-${deskStateOf(i)} ${on ? "on" : ""}${stalled ? " stalled" : ""}${i.state === "to_check" && deskLooksSoon.has(i.id) ? " soon" : ""}${deskLeaveStyle(i.id)}${feat ? " dk-feat" : ""}${piece ? " pc" : ""}" role="button" tabindex="0" data-desk-item="${esc(i.id)}"${feat ? ` aria-expanded="${fopen}"` : ""}>
     ${deskStateIcon(i)}<div class="dk-i1">${on ? '<span class="dk-larrow" aria-hidden="true">‹</span>' : ""}<span class="dk-tag ${look}">${tag}</span>${lane?.n ? `<span class="dk-rn">${lane.n}</span>` : ""}<span class="dk-t">${esc(i.title)}</span>${feat ? `<span class="dk-chev${fopen ? " open" : ""}" aria-hidden="true">›</span>` : ""}</div>
     ${i.see && !piece && deskVerb(i)?.[0] !== "Try it" ? `<div class="dk-see">You'll see: ${esc(deskOneLine(i.see))}</div>` : ""}<div class="dk-i2"><span class="dk-kid">${deskKindIcon(i)}<span class="dk-id">${esc(deskNum(i))}</span></span><span class="dk-who${s ? " held" : ""}">${who}</span>${doing}<span class="dk-age">${when}</span>${ok}</div>${ask}${deskWaits(i) ? deskUnblocksHtml(i) : ""}</div>`;
+}
+/** A permission's two buttons on the Desk (#426): No, then Allow, side by side on one line. */
+function deskAllowNo(id) {
+  const off = answering.has(id) ? " disabled" : "";
+  return `<button class="btn small" data-desk-decision="deny" data-id="${esc(id)}"${off}>No</button><button class="btn small primary" data-desk-decision="allow" data-id="${esc(id)}"${off}>Allow</button>`;
 }
 /** An add-on's head: its name, what it is, › while it's open (#219). */
 const deskHolderHead = (h, on) => `<div class="dk-holder ${on ? "on" : ""}" role="button" tabindex="0" ${h.addon ? `data-desk-addon="${esc(h.key)}"` : `data-desk-holder="${esc(h.sid)}"`}><span class="dk-nm">${esc(h.name)}</span><span class="dk-s">${esc(h.sub || "")}</span><span class="grow"></span>${on ? '<span class="dk-go">›</span>' : ""}</div>`;

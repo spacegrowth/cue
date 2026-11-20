@@ -192,6 +192,12 @@
 .dk-it.on .dk-rn { background: color-mix(in srgb, currentColor 18%, transparent); color: inherit; }
 .dk-ask-row { grid-column: 2; min-width: 0; display: flex; align-items: center; gap: 8px; }
 .dk-row-decisions { display: flex; flex-wrap: wrap; justify-content: flex-end; flex: 0 1 auto; max-width: 70%; gap: 4px; margin-left: auto; }
+/* A permission (#426): No and Allow side by side at the right, the ask taking the rest of the line; when the line is too
+   narrow for both, the ask goes above them. */
+.dk-ask-row.yn { flex-wrap: wrap; }
+.dk-ask-row.yn > :is(.dk-h, .req-cut) { flex: 1 1 140px; }
+.dk-it.on .req-more { color: var(--on-sel); text-decoration: underline; }
+.dk-ask-row.yn .dk-row-decisions { flex: none; flex-wrap: nowrap; max-width: none; }
 .dk-h { min-width: 0; margin-top: 1px; color: var(--ink); font-size: 12.5px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Selected: its words in the selected ink, as the Board's selected card. */
 .dk-it.on .dk-id, .dk-it.on .dk-who, .dk-it.on .dk-age, .dk-it.on .dk-h { color: var(--on-sel); }
@@ -1189,3 +1195,5 @@ button.dk-al-row:hover { background: var(--line); }
 button.dk-al-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .dk-al-t { color: var(--ink); }
 .dk-al-cmd { display: block; margin-top: 3px; font: 11.5px var(--mono); color: var(--muted); white-space: pre-wrap; word-break: break-all; }
+/* A list row's permission opened with more (#426): all its words, not two lines. */
+.dk-it .req-cut.open .dk-h { display: block; -webkit-line-clamp: unset; }
