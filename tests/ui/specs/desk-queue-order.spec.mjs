@@ -7,10 +7,27 @@ const openDesk = async (page) => {
   await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
   await page.locator('.switch-view [data-view="desk"]').click();
   await page.locator(".dk-items .dk-it").first().waitFor();
+  // The list is drawn again just after the Desk opens: wait for it to settle, so a row looked up isn't swapped mid-drag.
+  await page.evaluate(() => new Promise((ok) => {
+    let t = setTimeout(done, 200);
+    const mo = new MutationObserver(() => { clearTimeout(t); t = setTimeout(done, 200); });
+    function done() { mo.disconnect(); ok(); }
+    mo.observe(document.querySelector(".dk-items"), { childList: true, subtree: true });
+  }));
+};
+// Where rows are, looked up again if the list was drawn anew meanwhile (it may be, now and then).
+const boxes = async (page, from, other) => {
+  let r;
+  await expect(async () => {
+    await page.locator(from).scrollIntoViewIfNeeded({ timeout: 1000 });
+    const a = await page.locator(from).boundingBox(), b = await page.locator(other).boundingBox();
+    expect(a && b).toBeTruthy();
+    r = { a, b };
+  }).toPass({ timeout: 5000 });
+  return r;
 };
 const drag = async (page, from, to) => {
-  await page.locator(`.dk-items [data-desk-item="${from}"]`).scrollIntoViewIfNeeded();
-  const a = await page.locator(`.dk-items [data-desk-item="${from}"]`).boundingBox(), b = await page.locator(`.dk-items [data-desk-item="${to}"]`).boundingBox();
+  const { a, b } = await boxes(page, `.dk-items [data-desk-item="${from}"]`, `.dk-items [data-desk-item="${to}"]`);
   await page.mouse.move(a.x + 60, a.y + a.height / 2);
   await page.mouse.down();
   await page.mouse.move(a.x + 60, a.y + a.height / 2 + 8, { steps: 2 });
@@ -61,9 +78,7 @@ test("a dropped item stays where you let it go, selects no text, and the list sc
   // A short window, so the list scrolls.
   await page.setViewportSize({ width: 1280, height: 560 });
   // The last one, held at the list's top edge: the list scrolls up and it goes to the top.
-  const last = page.locator('.dk-items [data-desk-item="q10"]');
-  await last.scrollIntoViewIfNeeded();
-  const a = await last.boundingBox(), box = await page.locator(".dk-items .dk-scroll").boundingBox();
+  const { a, b: box } = await boxes(page, '.dk-items [data-desk-item="q10"]', ".dk-items .dk-scroll");
   await page.mouse.move(a.x + 60, a.y + a.height / 2);
   await page.mouse.down();
   await page.mouse.move(a.x + 60, a.y + a.height / 2 - 10, { steps: 2 });
