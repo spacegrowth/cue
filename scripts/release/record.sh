@@ -13,7 +13,7 @@ write_record() {  # $1 = the file
     # (The build is that commit with the version written in VERSION_FILES; release-next.sh commits that after.)
     printf 'commit: %s, plus the version set to %s\n' "$(git rev-parse HEAD)" "$VERSION"
     if [ -n "$SKIP_GATES" ]; then
-      printf 'gates: SKIPPED (all but the clean tree), %s\n' "$SKIP_GATES"
+      printf 'gates: SKIPPED (all but the clean tree and private words), %s\n' "$SKIP_GATES"
     else
       printf 'gates passed: %s\ngate logs: %s\n' "$GATES_PASSED" "$GATE_LOGS"
     fi

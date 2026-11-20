@@ -25,13 +25,18 @@ Run in this order. The first one that fails stops the release, and its log is in
 
 1. **clean tree:** `git status --porcelain` is empty, untracked files included. The record names the commit,
    so the build must be that commit.
-2. **xtask check:** `cargo run -p xtask -- check` (lints, function and file sizes, lock order).
-3. **inventory current:** `cargo run -p xtask -- inventory`, then `git diff --exit-code` on
+2. **private words:** `scripts/check-private-words.sh` finds none of the words listed in
+   `.git/info/private-words` (kept outside the repo: names, hosts, private projects) in the code at HEAD, nor
+   in the message or added lines of any commit not yet on `origin/main`, since a word taken out later is still
+   in the pushed history. No list, nothing to check. It runs even with `--skip-gates`, and works as a
+   pre-push hook too.
+3. **xtask check:** `cargo run -p xtask -- check` (lints, function and file sizes, lock order).
+4. **inventory current:** `cargo run -p xtask -- inventory`, then `git diff --exit-code` on
    `docs/dev/inventory.md` and `docs/dev/lock-graph.dot`. A stale one is left regenerated in the tree to commit.
-4. **swift helpers:** cue-listen (`swiftc`), and cue-speak and cue-voice (`swift build`), each built into a new
+5. **swift helpers:** cue-listen (`swiftc`), and cue-speak and cue-voice (`swift build`), each built into a new
    scratch folder, so a half-purged build cache can't hide a broken build.
-5. **unit, ui, e2e tests:** `tests/run.sh unit`, `ui`, `e2e`, one gate each.
-6. **soak 10 min:** `tests/run.sh soak 10` (docs/dev/soak.md).
+6. **unit, ui, e2e tests:** `tests/run.sh unit`, `ui`, `e2e`, one gate each.
+7. **soak 10 min:** `tests/run.sh soak 10` (docs/dev/soak.md).
 
 Before the gates and before anything in `dist/` is removed, every build (dry or not, published or not)
 checks that its version isn't tagged here or released on GitHub: a released version's `dist/v<version>` holds
@@ -86,7 +91,7 @@ reason is recorded. A promote also waits a day on beta, sooner only with `--hotf
 ## What gets recorded
 
 `dist/v<version>/release-record.txt`: the version and channel, the date, the commit (plus the version bump), the gates passed and
-where their logs are (or `gates: SKIPPED (all but the clean tree), <why>`), `hotfix: <why>` when given, Cargo.lock's sha256 and
+where their logs are (or `gates: SKIPPED (all but the clean tree and private words), <why>`), `hotfix: <why>` when given, Cargo.lock's sha256 and
 `rustc --version`. The release's notes on GitHub end with "Released without its gates: <why>" or
 "Hotfix: <why>" when either applies, so they stay visible after `dist/` is gone. A promote with `--hotfix`
 adds "Promoted after N h on beta, a hotfix: <why>" to the release's notes.

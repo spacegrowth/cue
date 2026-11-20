@@ -72,7 +72,7 @@ STUB
 make_repo() {
   local repo="$WORK/repo"
   rm -rf "$repo"; mkdir -p "$repo/scripts" "$repo/tests" "$repo/docs/dev" "$repo/src-tauri"
-  cp -R "$ROOT/scripts/release.sh" "$ROOT/scripts/release" "$repo/scripts/"
+  cp -R "$ROOT/scripts/release.sh" "$ROOT/scripts/release" "$ROOT/scripts/check-private-words.sh" "$repo/scripts/"
   echo "inventory" >"$repo/docs/dev/inventory.md"
   echo "lock graph" >"$repo/docs/dev/lock-graph.dot"
   echo "# a lock file" >"$repo/src-tauri/Cargo.lock"
@@ -119,7 +119,7 @@ make_stubs
 
 start "a dry run with every gate green stops before building"
 release 0.2.0 "Notes." --beta --dry-run
-passed; says "dry run: Cue 0.2.0 (beta) would be built now"; says "gates passed: clean tree, xtask check, inventory current, swift helpers, unit tests, ui tests, e2e tests, soak 10 min"
+passed; says "dry run: Cue 0.2.0 (beta) would be built now"; says "gates passed: clean tree, private words, xtask check, inventory current, swift helpers, unit tests, ui tests, e2e tests, soak 10 min"
 called "tests/run.sh unit"; called "tests/run.sh ui"; called "tests/run.sh e2e"; called "tests/run.sh soak 10"; called "swift build -c release"
 not_called "security"; not_called "gh release create"
 [ -z "$(cd "$REPO" && git status --porcelain)" ] || fail "the dry run changed the tree (a version bumped?)"
@@ -180,10 +180,29 @@ release 0.2.0 "Notes." --dry-run
 passed; not_called "gh api"
 done_case
 
+start "a private word in the code or in an unpushed commit stops the release, even with the gates skipped"
+mkdir -p "$REPO/.git/info"; printf '# names\nRobin Sample\n' >"$REPO/.git/info/private-words"
+release 0.2.0 "Notes." --beta --dry-run
+passed; says "passed  private words"
+(cd "$REPO" && echo "asked by robin sample" >notes.txt && git add notes.txt && git -c user.email=t@t -c user.name=t commit -qm "notes")
+: >"$CALLS"
+release 0.2.0 "Notes." --beta --dry-run --skip-gates "in a hurry"
+refused; says "the private words gate failed"; says "notes.txt:1:asked by robin sample"; not_called "tests/run.sh"
+(cd "$REPO" && git rm -q notes.txt && git -c user.email=t@t -c user.name=t commit -qm "take it out")
+release 0.2.0 "Notes." --beta --dry-run --skip-gates "in a hurry"
+refused; says "in commit"; says "+asked by robin sample"
+(cd "$REPO" && git update-ref refs/remotes/origin/main HEAD)
+release 0.2.0 "Notes." --beta --dry-run --skip-gates "in a hurry"
+passed
+(cd "$REPO" && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m "what Robin Sample asked")
+release 0.2.0 "Notes." --beta --dry-run --skip-gates "in a hurry"
+refused; says "what Robin Sample asked"
+done_case
+
 start "skipping the gates runs none and records why"
 release 0.2.0 "Notes." --beta --dry-run --skip-gates "Apple's notary is down; tried the suites by hand"
 passed; not_called "tests/run.sh"; not_called "cargo"; says "passed  clean tree"
-says "gates: SKIPPED (all but the clean tree), Apple's notary is down; tried the suites by hand"
+says "gates: SKIPPED (all but the clean tree and private words), Apple's notary is down; tried the suites by hand"
 echo "edit" >>"$REPO/package.json"
 release 0.2.0 "Notes." --beta --dry-run --skip-gates "in a hurry"
 refused; says "the clean tree gate failed"

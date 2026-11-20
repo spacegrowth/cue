@@ -16,6 +16,11 @@ gate_clean_tree() {
   return 1
 }
 
+# No private word (a name, a host) in the code or in any commit about to become public: see the script.
+gate_private_words() {
+  scripts/check-private-words.sh
+}
+
 gate_xtask_check() {
   (cd src-tauri && cargo run -q -p xtask -- check)
 }
@@ -55,12 +60,13 @@ run_gate() {
   fi
 }
 
-# Every gate, cheapest first, with their logs in $1. --skip-gates runs only the clean tree (its reason is
-# recorded): a build is always of a commit, and a run that fails puts the version files back from it.
+# Every gate, cheapest first, with their logs in $1. --skip-gates runs only the clean tree and private words
+# (its reason is recorded): a build is always of a commit, and a run that fails puts the version files back from it.
 run_gates() {
   GATE_LOGS="$1"
   mkdir -p "$GATE_LOGS"
   run_gate "clean tree" gate_clean_tree
+  run_gate "private words" gate_private_words
   if [ -n "$SKIP_GATES" ]; then
     say "the other gates skipped: $SKIP_GATES"
     return 0
