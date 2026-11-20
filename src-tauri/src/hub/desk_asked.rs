@@ -102,6 +102,35 @@ impl Hub {
         if !desks {
             self.desk_you_answered(sid);
         }
+        self.desk_back_at_work(sid, &m);
+    }
+
+    /// Session `sid` took `prompt`, about items of its that are to check (#484: the lead's note, your words, a send
+    /// back): it's at work on them again, so they are, until it says DONE again. One you asked a question on is
+    /// settled as its answer ends (desk_asked's `answered`), not here.
+    fn desk_back_at_work(&self, sid: &str, prompt: &str) {
+        let about = |i: &crate::desk::DeskItem| {
+            i.state == "to_check" && i.asked.is_none() && i.holder.as_ref().is_some_and(|h| h.to() == sid) && names_item(prompt, &i.id)
+        };
+        if !self.read(|st| st.desk.items.iter().any(about)) {
+            return;
+        }
+        let now = now_ms();
+        let why = why_back(prompt);
+        let fx = self.write(|st| {
+            let mut fx = Effects::default();
+            for it in st.desk.items.iter_mut().filter(|i| about(i)) {
+                (it.state, it.done_at, it.finish, it.close_on_check, it.updated) = ("working".into(), None, None, false, secs(now));
+                it.mark_reopened();
+                // Kept on the DONE it reopens, so its card and Progress say why it's at work again.
+                if let Some(c) = it.checks.last_mut().filter(|c| c.back.is_empty()) {
+                    c.back = why.clone();
+                }
+                fx.items.push(it.id.clone());
+            }
+            fx
+        });
+        self.desk_done(fx);
     }
 
     /// You wrote to session `sid` yourself: the questions it asked you on the items it holds are answered (#475).
@@ -120,5 +149,38 @@ impl Hub {
             fx
         });
         self.desk_done(fx);
+    }
+}
+
+/// `text` is about item `id`: it names "#id", not as the start of a longer number.
+fn names_item(text: &str, id: &str) -> bool {
+    let tag = format!("#{id}");
+    text.match_indices(&tag).any(|(at, _)| !text[at + tag.len()..].starts_with(|c: char| c.is_ascii_alphanumeric()))
+}
+
+/// Why an item to check is at work again, from the prompt its holder took: its words after the Desk's "… #id (title…):"
+/// opening, on one line, kept short.
+fn why_back(prompt: &str) -> String {
+    let first = prompt.lines().find(|l| !l.trim().is_empty()).unwrap_or_default().trim();
+    let words = if first.contains("Desk item #") { first.split_once("): ").map_or(first, |(_, w)| w) } else { first };
+    let mut out: String = words.chars().take(160).collect();
+    if words.chars().count() > 160 {
+        out.push('…');
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_prompt_is_about_the_items_it_names() {
+        assert!(names_item("Note from the Desk lead on Desk item #12 (Header): x", "12"));
+        assert!(names_item("#12: shorter", "12"));
+        assert!(!names_item("#123: shorter", "12"));
+        assert!(!names_item("make it shorter", "12"));
+        assert_eq!(why_back("Note from the Desk lead on Desk item #12 (Header, with the user to check): fix the footer too"), "fix the footer too");
+        assert_eq!(why_back("#12: make it shorter"), "#12: make it shorter");
     }
 }

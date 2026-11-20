@@ -187,8 +187,10 @@ pub(super) fn ask_view(i: &Item) -> Value {
 }
 
 /// The first line of a session's last words.
+/// At work on a turn: only this turn's words (#484: what it said last round isn't what it's doing now).
 pub(super) fn last_words(s: &Session) -> String {
-    s.thread.iter().rev().find(|e| e.role == "agent").and_then(|e| e.text.lines().map(str::trim).find(|l| !l.is_empty())).unwrap_or("").chars().take(160).collect()
+    let from = if s.state == "working" { s.since_ms } else { 0 };
+    s.thread.iter().rev().find(|e| e.role == "agent" && e.at_ms >= from).and_then(|e| e.text.lines().map(str::trim).find(|l| !l.is_empty())).unwrap_or("").chars().take(160).collect()
 }
 
 /// How a note that was still going when Cue stopped went.

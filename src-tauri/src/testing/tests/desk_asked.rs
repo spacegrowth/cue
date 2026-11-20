@@ -8,7 +8,7 @@ use crate::hosted::HostedEvent;
 use crate::testing::World;
 
 /// An item to check, its holder's crew having written a.txt and b.txt: (repo, project, item id, holder).
-fn to_check(w: &World) -> (std::path::PathBuf, String, String, String) {
+pub(super) fn to_check(w: &World) -> (std::path::PathBuf, String, String, String) {
     let (dir, project, id, h) = routed_with(w, |_, _, _| {}, |w, h, dir| {
         let f = |n: &str| dir.join(n).to_string_lossy().to_string();
         says(w, h, writes("toolu_A", "agentA", "fixer", &[f("a.txt"), f("b.txt")]));

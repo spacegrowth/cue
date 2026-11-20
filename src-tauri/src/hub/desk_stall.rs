@@ -37,8 +37,10 @@ pub(super) fn still_at_it(st: &Store, sid: &str) -> bool {
 }
 
 /// The last line of a session's last words.
+/// At work on a turn: only this turn's (#484), as `last_words`.
 pub(super) fn last_line(s: &Session) -> String {
-    s.thread.iter().rev().find(|e| e.role == "agent").and_then(|e| e.text.lines().map(str::trim).rfind(|l| !l.is_empty())).unwrap_or("").chars().take(160).collect()
+    let from = if s.state == "working" { s.since_ms } else { 0 };
+    s.thread.iter().rev().find(|e| e.role == "agent" && e.at_ms >= from).and_then(|e| e.text.lines().map(str::trim).rfind(|l| !l.is_empty())).unwrap_or("").chars().take(160).collect()
 }
 
 /// The item session `sid` (itself, not a crew member of it) is on now, of the ones at work with it (#176): the one the
