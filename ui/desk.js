@@ -38,13 +38,14 @@ function deskStepArrows(project) {
   const prev = ring[(at - 1 + ring.length) % ring.length], next = ring[(at + 1) % ring.length];
   return `<span class="dk-step"><button class="dk-step-btn" data-desk-step="${esc(prev.project)}" aria-label="Previous Desk: ${esc(deskName(prev))}">${DESK_STEP_SVG("m15 6-6 6 6 6")}</button><button class="dk-step-btn" data-desk-step="${esc(next.project)}" aria-label="Next Desk: ${esc(deskName(next))}">${DESK_STEP_SVG("m9 6 6 6-6 6")}</button></span>`;
 }
-/** For the counts' line: a dot per recent Desk (the open one a lime bar) and the next one's name, which opens it. */
+/** On a row of its own under the counts (#402): a dot per recent Desk (the open one a lime bar) and the next one's
+ *  name, which opens it. Its own row so the name always has the strip's width, never squeezed beside the counts. */
 function deskStepDots(project) {
   const { ring, at } = deskStepRing(project);
   if (ring.length < 2 || at < 0) return "";
   const next = ring[(at + 1) % ring.length];
   const dots = ring.map((_, k) => `<i${k === at ? ' class="at"' : ""}></i>`).join("");
-  return `<span class="dk-dots" role="img" aria-label="${at + 1} of ${ring.length} recent Desks">${dots}</span><button class="dk-next" data-desk-step="${esc(next.project)}"><span>${esc(deskName(next))}</span> ›</button>`;
+  return `<div class="dk-steprow"><span class="dk-dots" role="img" aria-label="${at + 1} of ${ring.length} recent Desks">${dots}</span><button class="dk-next" data-desk-step="${esc(next.project)}"><span>${esc(deskName(next))}</span> ›</button></div>`;
 }
 const deskHasSession = (d, sid) => !!sid && (deskLead(d)?.sid === sid || (d.members || []).includes(sid));
 const deskWorkspace = (d) => d.workspace_project || d.project;

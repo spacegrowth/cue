@@ -547,9 +547,11 @@ test("‹ › on the Desk's head step through the Desks you opened last, in the 
   await expect(page.locator(".dk-dots")).toHaveCount(0);
   await page.evaluate(() => { state.desk.projects.push({ project: "docs", name: "Docs site", items: [] }); deskRecent = ["website", "docs", "cue"]; renderMain(); });
   const name = page.locator(".dk-sw-btn b"), dots = page.locator(".dk-strip .dk-dots i"), next = page.locator(".dk-strip .dk-next");
-  // The arrows sit on the name's line, before ⋯; the dots and the next Desk under it, beside the counts. No pills.
+  // The arrows sit on the name's line, before ⋯; the dots and the next Desk on a row of their own under the counts
+  // (#402). No pills.
   await expect(page.locator(".dk-shr .dk-step .dk-step-btn")).toHaveCount(2);
-  await expect(page.locator(".dk-subr .dk-sub + .dk-dots + .dk-next")).toHaveCount(1);
+  await expect(page.locator(".dk-subr + .dk-steprow > .dk-dots + .dk-next")).toHaveCount(1);
+  await expect(page.locator(".dk-subr .dk-dots, .dk-subr .dk-next")).toHaveCount(0);
   await expect(page.locator(".dk-rcs, .dk-rc")).toHaveCount(0);
   await expect(dots).toHaveCount(3);
   await expect(page.locator(".dk-dots i.at")).toHaveCount(1);
@@ -614,7 +616,7 @@ test("the head's \"N working\" counts a session whose helpers are working (\"age
   await expect.poll(count).toBe(before);
 });
 
-test("a long Desk name shows in full and the recent Desks’ arrows and next name stay in the strip, at a narrow width too, ⋯ still reachable (#402, #464)", async ({ page, cue }) => {
+test("a long Desk name and the next recent Desk's name show in full, the next on its own row under the counts, arrows and ⋯ in the strip, in a narrow column too (#402, #464)", async ({ page, cue }) => {
   await cue.open("desk");
   await page.locator('.switch-view [data-view="desk"]').click();
   await page.locator("[data-desk-switch]").click(); await page.locator("[data-desk-home]").click();
@@ -622,21 +624,27 @@ test("a long Desk name shows in full and the recent Desks’ arrows and next nam
   const long = "A very long Desk name that would not fit on one line";
   await page.evaluate((long) => {
     state.desk.projects.find((d) => d.project === "cue").name = long;
-    for (let k = 1; k <= 6; k++) state.desk.projects.push({ project: `r${k}`, name: `Recent Desk number ${k}`, items: [] });
+    for (let k = 1; k <= 6; k++) state.desk.projects.push({ project: `r${k}`, name: `Recent Desk with a long name number ${k}`, items: [] });
     deskRecent = ["cue", "r1", "r2", "r3", "r4", "r5", "r6"];
     renderMain();
   }, long);
-  for (const width of [1280, 760]) {
+  // 1000 leaves the Desk's column about 260px wide, where the next name used to shrink to "Re… ›" beside the counts.
+  for (const width of [1280, 1000, 760]) {
     await page.setViewportSize({ width, height: 800 });
     const name = page.locator(".dk-sw-btn b");
     await expect(name).toHaveText(long);
     await expect.poll(() => name.evaluate((el) => { const s = el.closest(".dk-strip")?.getBoundingClientRect(), b = el.getBoundingClientRect(); return !s || el.scrollWidth > el.clientWidth + 1 || b.right > s.right || b.left < s.left; })).toBe(false);
-    // The arrows, the dots, the next Desk's name and ⋯ stay inside the strip; a long next name is cut, not spilled.
-    // Read in one go, again if a redraw swapped the strip out meanwhile.
+    // The arrows, the dots, the next Desk's name and ⋯ stay inside the strip; the next name shows in full (wrapping
+    // if it must, never cut), on its own row below the counts. Read in one go, again if a redraw swapped the strip out.
     await expect.poll(() => page.evaluate(() => {
       const st = document.querySelector(".dk-strip")?.getBoundingClientRect();
-      return st ? [".dk-step", ".dk-dots", ".dk-next", ".dk-more-btn"].every((sel) => { const b = document.querySelector(`.dk-strip ${sel}`)?.getBoundingClientRect(); return b && b.width > 0 && b.right <= st.right + 0.5; }) : false;
-    })).toBe(true);
+      if (!st) return "no strip";
+      for (const sel of [".dk-step", ".dk-dots", ".dk-next", ".dk-more-btn"]) { const b = document.querySelector(`.dk-strip ${sel}`)?.getBoundingClientRect(); if (!(b && b.width > 0 && b.right <= st.right + 0.5 && b.left >= st.left - 0.5)) return `${sel} out`; }
+      const next = document.querySelector(".dk-strip .dk-next"), sub = document.querySelector(".dk-strip .dk-subr").getBoundingClientRect();
+      if (next.textContent !== "Recent Desk with a long name number 1 ›") return "next name: " + next.textContent;
+      if ([next, ...next.children].some((e) => e.scrollWidth > e.clientWidth + 1)) return "next name cut";
+      return next.getBoundingClientRect().top >= sub.bottom - 0.5 ? "ok" : "next not below the counts";
+    })).toBe("ok");
     if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-head-${width}.png`, clip: await page.locator(".dk-strip").boundingBox() });
   }
 });

@@ -180,7 +180,9 @@ function drawWindow() {
   const root = document.getElementById("app");
   const editors = liftDraftEditors(root);
   const thread = typeof deskThreadLift === "function" ? deskThreadLift() : null;   // an item's Thread, kept (desk_view.js)
+  const lists = typeof deskListsLift === "function" ? deskListsLift() : null;   // the Desk's Items and Progress, kept (desk_list.js)
   root.innerHTML = html;
+  if (lists) deskListsSettle(lists);
   settleDraftEditors(root, editors);
   if (thread) deskThreadSettle(thread);
   return lifted;

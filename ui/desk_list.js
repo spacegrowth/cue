@@ -512,3 +512,93 @@ function deskQPress(e) {
 // The press that may become a drag selects no text (the window's text would light up as you drag, and be copied).
 document.addEventListener("mousedown", (e) => { if (e.button === 0 && e.target.closest?.(".dk-it[data-desk-q]") && !e.target.closest("button, a, input, textarea")) e.preventDefault(); });
 document.addEventListener("pointerdown", deskQPress);
+
+// ---------- the list kept across a draw (#480) ----------
+
+/** Every draw sets the window's HTML afresh, which threw the Items list (and Progress) away and drew each row new
+ *  several times a second while items were at work: each row's pulse started over and the row under the pointer lost
+ *  its hover till the mouse moved, so the whole list blinked. Now the list's scroll box is lifted out before the window
+ *  is drawn and put back after, brought up to date by key: a row whose HTML is the same is left exactly as it is, one
+ *  that changed is updated in place, one that changed group is moved there (the same element), a new one goes in, a
+ *  gone one comes out. */
+const DESK_KEPT_LISTS = '.dk-items > .dk-scroll[data-scroll-key], .dk-prog > .dk-scroll[data-scroll-key]';
+/** A child's key among its siblings: an item's row by its id (the same row anywhere in the list), a group's head and
+ *  body by the group, a Progress row by its item; anything else by its class and place among those of its kind. */
+function deskKeepKey(el, n) {
+  const d = el.dataset;
+  if (d.deskItem != null && el.classList.contains("dk-it")) return `i:${d.deskItem}`;
+  if (d.deskProgRow != null) return `p:${d.deskProgRow}`;
+  if (d.deskGroup != null) return `g:${d.deskGroup}`;
+  if (d.deskGbody != null) return `b:${d.deskGbody}`;
+  const k = `${el.tagName}.${el.classList[0] || ""}`;
+  n.set(k, (n.get(k) || 0) + 1);
+  return `${k}#${n.get(k)}`;
+}
+const deskKeepKeys = (box) => { const n = new Map(); return [...box.children].map((c) => deskKeepKey(c, n)); };
+/** What holds rows: brought up to date child by child, not as one. */
+const DESK_KEEP_INSIDE = ".dk-gbody, .dk-gin, .dk-pcs, .dk-held";
+/** Attributes as the fresh draw has them; a group sliding open or shut (deskGroupFold) keeps sliding. */
+function deskKeepAttrs(a, b) {
+  if (a.classList.contains("moving")) b.classList.add("moving");
+  morphAttrs(a, b);
+}
+/** `live`'s children made to match `fresh`'s, by key. `pool`: every row of the list as it was, by key, so a row
+ *  that changed group is the same element in its new place. `spare`: where a row waits that left its group before
+ *  the group it goes to is reached. */
+/** A move that keeps the row's state where it can: a row in a box taken out already (a feature's pieces) just goes in. */
+const deskKeepMove = (parent, node, before) => (node.isConnected ? moveTo(parent, node, before) : parent.insertBefore(node, before));
+function deskKeepPatch(live, fresh, pool, spare) {
+  const kids = [...fresh.children], keys = deskKeepKeys(fresh), want = new Set(keys);
+  const old = new Map();
+  deskKeepKeys(live).forEach((k, x) => { const c = live.children[x]; if (!old.has(k)) old.set(k, c); });
+  for (const [k, c] of [...old]) if (!want.has(k)) { old.delete(k); if (k.startsWith("i:")) deskKeepMove(spare, c, null); else c.remove(); }
+  // Placed in order after `prev`: worked out afresh each time, as a group further in can take a row from here (a
+  // feature's piece that's also listed on its own).
+  let prev = null;
+  const at = () => (prev ? prev.nextElementSibling : live.firstElementChild);
+  kids.forEach((f, x) => {
+    const k = keys[x];
+    let node = old.get(k);
+    old.delete(k);
+    if (node && node.parentNode !== live) node = null;
+    if (!node && k.startsWith("i:")) node = pool.get(k)?.find((n) => !n._deskUsed);
+    if (!node) { live.insertBefore(f, at()); f._html = f.outerHTML; f._deskUsed = true; prev = f; return; }
+    node._deskUsed = true;
+    if (node !== at()) deskKeepMove(live, node, at());
+    prev = node;
+    const h = f.outerHTML;
+    if ((node._html ?? node.outerHTML) === h) return;
+    node._html = h;
+    if (node.matches(DESK_KEEP_INSIDE) && f.matches(DESK_KEEP_INSIDE)) { deskKeepAttrs(node, f); deskKeepPatch(node, f, pool, spare); }
+    else morph(node, f);   // a row or a header: in place where its shape is the same (chat/patch.js)
+  });
+  // Left over: not in the fresh draw (a duplicate key). A row waits aside in case a later group takes it.
+  for (let c = at(); c; ) { const next = c.nextElementSibling; if (c.matches(".dk-it[data-desk-item]")) deskKeepMove(spare, c, null); else c.remove(); c = next; }
+}
+/** Before the window's HTML is set: the lists lifted out, by their scroll key. */
+function deskListsLift() {
+  const kept = new Map();
+  for (const el of document.querySelectorAll(DESK_KEPT_LISTS)) { moveTo(document.body, el); kept.set(el.dataset.scrollKey, el); }
+  return kept;
+}
+/** After: each list back in its fresh place, brought up to date; one not drawn any more is dropped. */
+function deskListsSettle(kept) {
+  if (!kept?.size) return;
+  for (const fresh of document.querySelectorAll(DESK_KEPT_LISTS)) {
+    const el = kept.get(fresh.dataset.scrollKey);
+    if (!el) continue;
+    kept.delete(fresh.dataset.scrollKey);
+    const pool = new Map();
+    for (const r of el.querySelectorAll(".dk-it[data-desk-item]")) { r._deskUsed = false; const k = `i:${r.dataset.deskItem}`; pool.set(k, [...(pool.get(k) || []), r]); }
+    for (const c of el.querySelectorAll("*")) c._deskUsed = false;
+    const spare = document.createElement("div");
+    spare.hidden = true;
+    document.body.append(spare);
+    deskKeepAttrs(el, fresh);
+    deskKeepPatch(el, fresh, pool, spare);
+    moveTo(fresh.parentNode, el, fresh);
+    fresh.remove();
+    spare.remove();
+  }
+  for (const el of kept.values()) el.remove();
+}

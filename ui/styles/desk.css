@@ -610,16 +610,17 @@
 .dk-sw-act:hover, .dk-sw-act:focus-visible { background: color-mix(in oklab, var(--sel) 22%, transparent); }
 .dk-sw-keys { padding: 6px 8px 2px; color: var(--muted); font-size: 11px; }
 .dk-shr { display: flex; align-items: center; gap: 6px; min-width: 0; }
-/* Step through the recent Desks (pick F, #464): ‹ › at the right of the name's line; on the counts' line a dot per
-   recent Desk (the open one a lime bar) and the next one's name, which opens it too. */
+/* Step through the recent Desks (pick F, #464): ‹ › at the right of the name's line; on a row of its own under the
+   counts (#402) a dot per recent Desk (the open one a lime bar) and the next one's name, which opens it too. A long
+   name wraps there rather than being cut short, at any width. */
+.dk-steprow { display: flex; align-items: baseline; gap: 8px; min-width: 0; margin-top: 3px; }
 .dk-step { flex: none; display: inline-flex; align-items: center; gap: 2px; }
 .dk-step-btn { all: unset; width: 22px; height: 22px; border-radius: 6px; display: inline-grid; place-items: center; opacity: .85; cursor: pointer; }
 .dk-step-btn:hover, .dk-step-btn:focus-visible { background: color-mix(in oklab, currentColor 14%, transparent); opacity: 1; }
 .dk-dots { flex: none; display: inline-flex; align-items: center; gap: 4px; margin: 0 2px; align-self: center; }
 .dk-dots i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; opacity: .35; }
 .dk-dots i.at { width: 14px; border-radius: 3px; background: var(--sel); opacity: 1; }
-.dk-next { all: unset; display: inline-flex; gap: 3px; min-width: 0; font-size: 11px; opacity: .7; white-space: nowrap; cursor: pointer; }
-.dk-next > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.dk-next { all: unset; display: inline; min-width: 0; font-size: 11px; opacity: .7; overflow-wrap: anywhere; cursor: pointer; }
 .dk-next:hover, .dk-next:focus-visible { opacity: 1; text-decoration: underline; text-underline-offset: 2px; }
 /* The Desk's mark takes the strip's text colour: in --accent it would vanish into the light strip. */
 .dk-strip .dk-shr :is(.dk-ric, .dk-kic) { color: inherit; }
