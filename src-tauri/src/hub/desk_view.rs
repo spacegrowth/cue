@@ -78,6 +78,9 @@ pub(super) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
                     };
                 }
             }
+        } else if let Some(crew) = crew_parts(&h).is_none().then(|| super::desk_stall::crew_running(st, &h.sid)).flatten() {
+            // Idle only because its own teammates are at work (#511): at work on it, and it says so.
+            out.latest = crew;
         }
     }
     // Its holder asked you something (#475): waiting on you with that until you answer, whatever it has done since.

@@ -146,4 +146,8 @@ fn what_a_turn_asks_you_is_read_from_its_words() {
     assert_eq!(question_for_you("Why did it jump? Because the cache was stale."), None);
     assert_eq!(question_for_you("Still waiting on the test run."), None);
     assert_eq!(question_for_you("Moved some of it."), None);
+    // #511: only what it ends on. A line before its last naming Cue's Waiting on you list isn't it waiting on you.
+    assert_eq!(question_for_you("Started them:\n- ui-tests: the Waiting on you list\n\nI'll report back when they finish."), None);
+    assert_eq!(question_for_you("Next I'll check the Waiting on you list."), None);
+    assert_eq!(question_for_you("Waiting on your pick of A or B."), Some("Waiting on your pick of A or B.".into()));
 }

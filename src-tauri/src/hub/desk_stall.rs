@@ -36,6 +36,17 @@ fn crew_at_work(s: &Session) -> bool {
     s.team.iter().any(|t| t.working())
 }
 
+/// Its own crew still at work while session `sid` (the holder itself) is idle (#511): "5 teammates running", for its
+/// item to show it's at work on them, not stopped or waiting on you.
+pub(super) fn crew_running(st: &Store, sid: &str) -> Option<String> {
+    let s = st.sessions.get(sid).filter(|s| matches!(s.state.as_str(), "waiting" | "stopped"))?;
+    match s.team.iter().filter(|t| t.working()).count() {
+        0 => None,
+        1 => Some("1 teammate running".into()),
+        n => Some(format!("{n} teammates running")),
+    }
+}
+
 /// Session `sid` (itself, not a crew member of it) is still at it as its turn ends: its background agents run on, or
 /// one of its crew is at work. A DONE it says then waits (the item stays at work), and it isn't asked if it's done.
 pub(super) fn still_at_it(st: &Store, sid: &str) -> bool {
@@ -166,9 +177,11 @@ pub(crate) fn question_for_you(text: &str) -> Option<String> {
             }
         }
     }
-    // It says it waits on you.
-    let w = waits_line(text)?;
-    let t = w.to_lowercase().replace('\u{2019}', "'");
+    // Its last line says it waits on you (#511: only its last line, as the question is; a line before it, a list of
+    // what its teammates do, isn't what it ends on). "Waiting on you" mid-line is Cue's list of that name, not you.
+    let w = waits_line(last)?;
+    let at = w.chars().next().map_or(0, char::len_utf8);
+    let t = format!("{}{}", &w[..at], w[at..].replace("Waiting on you", "")).to_lowercase().replace('\u{2019}', "'");
     ["for your ", "on your ", "for you ", "on you ", "for you.", "on you.", "for you to", "until you "].iter().any(|y| t.contains(y)).then_some(w)
 }
 
