@@ -289,10 +289,21 @@ fn wrote(st: &mut Store, id: &str, act: &str, holder: Option<Holder>, text: &str
     Ok(false)
 }
 
+/// Item `id` dropped by its lead as you asked (DROP, desk/hub/stall/unstick.rs, #544): as your Drop does it.
+pub(crate) fn drop_as_asked(st: &mut Store, id: &str, now: u64, fx: &mut Effects) {
+    let pr_open = pr_open(st, id, "drop");
+    drop_item(st, id, &pr_open, now, fx);
+}
+
 fn drop_item(st: &mut Store, id: &str, pr_open: &str, now: u64, fx: &mut Effects) -> bool {
     let gone = st.desk.items.iter().position(|i| i.id == id).map(|p| st.desk.items.remove(p));
     if let Some(h) = gone.as_ref().and_then(|g| g.holder.as_ref().filter(|_| g.state == "working")) {
         fx.sends.push((h.to().to_string(), format!("Desk item #{id} was dropped: stop work on it.")));
+    }
+    // Queued for a session that hasn't started it: off its list, so it never does (#544).
+    if let Some((h, title)) = gone.as_ref().and_then(|g| g.holder.as_ref().filter(|_| g.state == "queued").map(|h| (h, &g.title))) {
+        let who = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
+        fx.sends.push((h.to().to_string(), format!("{who}Desk item #{id} ({title}) was dropped: it's off your list. Don't start it.")));
     }
     // The build item of a pick on mocks: the mocks item is no longer picked, so it can be picked again.
     let built = gone.as_ref().map(|g| g.builds.clone()).filter(|b| !b.is_empty());

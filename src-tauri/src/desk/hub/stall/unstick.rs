@@ -1,6 +1,6 @@
 //! The Desk lead unsticking its Desk itself (#347): lines that close an item whose work is already on main (CLOSE),
 //! take back a copy from a stuck or finished item (TAKE COPY), move an item up in the landing line (LAND FIRST) and
-//! start a waiting item now (START), and pause an item at work and resume it later (PAUSE, RESUME, #365). Each is one of the item's Steps, shown on its Thread; what can't be done is told
+//! start a waiting item now (START), and pause an item at work and resume it later (PAUSE, RESUME, #365), and drop one in any state (DROP, #544). Each is one of the item's Steps, shown on its Thread; what can't be done is told
 //! to the lead with why.
 
 use crate::desk::hub::core::desk::{at_work, decide, release, rule_of, secs, By, Effects, NewStart};
@@ -33,10 +33,12 @@ pub(crate) fn unstick(st: &mut Store, project: &str, by: &By, what: &str, id: &s
         "resume" => "not resumed",
         "hold" => "not parked",
         "unpark" => "not unparked",
+        "drop" => "not dropped",
         _ => "not started",
     };
     let it = st.desk.item(id).filter(|i| i.project == project).ok_or_else(|| format!("#{id} {line}: this Desk has no item #{id}"))?;
-    if it.state == "done" && what != "take_copy" {
+    // DROP takes a done item off the list too (#544).
+    if it.state == "done" && !matches!(what, "take_copy" | "drop") {
         return Err(format!("#{id} {line}: it's done already"));
     }
     match what {
@@ -47,6 +49,7 @@ pub(crate) fn unstick(st: &mut Store, project: &str, by: &By, what: &str, id: &s
         "resume" => resume(st, project, by, id, why, now, fx),
         "hold" => hold(st, by.name, id, why, now, fx).map(|text| step(st, project, by, "hold", id, &text, why, now, fx)),
         "unpark" => unpark(st, project, by, id, why, now, fx),
+        "drop" => drop_said(st, project, by, id, why, now, fx),
         _ => start(st, project, by, id, why, now, fx),
     }
 }
@@ -275,6 +278,19 @@ fn unpark(st: &mut Store, project: &str, by: &By, id: &str, why: &str, now: u64,
     }
     unhold(st, id, now, fx)?;
     step(st, project, by, "unpark", id, &format!("Unparked #{id}, as you asked: it's new again, to route"), why, now, fx);
+    Ok(())
+}
+
+/// DROP (#544): item `id` gone in whatever state it's in, as its Drop in the window does: whoever holds it or has it
+/// queued is told to stop or never start it, its copy goes (kept when it holds work), what waited on it is handed on.
+/// A step on the Desk says it was dropped, not done, and why; a DROP with no why is refused.
+fn drop_said(st: &mut Store, project: &str, by: &By, id: &str, why: &str, now: u64, fx: &mut Effects) -> Result<(), String> {
+    if why.trim().is_empty() {
+        return Err(format!("#{id} not dropped: say why, as DROP: #{id} | why: <reason>"));
+    }
+    let title = st.desk.item(id).map(|i| i.title.clone()).unwrap_or_default();
+    crate::desk::hub::turn::act::drop_as_asked(st, id, now, fx);
+    step(st, project, by, "drop", id, &format!("Dropped #{id} ({title})"), why, now, fx);
     Ok(())
 }
 

@@ -92,6 +92,9 @@ is new again and you route it as any new item; Cue refuses it otherwise)
 PAUSE: why: <reason>      (no #<id>: pause the whole Desk, only when the user asks: every session stops at a safe point, its work \
 kept in its copy; queued items don't start and what you route is held)
 RESUME: why: <reason>      (no #<id>: pick a paused Desk back up: sessions carry on, held routes go out)
+DROP: #<id> | why: <reason>      (take an item off the list in any state, e.g. when the user says to drop it or it's no \
+longer wanted: whoever holds it stops (or never starts it), its copy goes (kept if it holds work), what waited on it \
+goes ahead, and it shows as dropped with your reason, not done. Never DONE or CLOSE an item to get rid of it)
 FEATURE: <name> | #<id> #<id> …      (items that are pieces of one big feature: Cue adds a feature item of that \
 name and the Desk lists the pieces under it, with how many are done; it's done once they all are. Route the pieces, \
 not the feature. FEATURE: #<id> | #<id> … puts them under an item that's there already; #new is the ITEM you added \

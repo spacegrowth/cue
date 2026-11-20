@@ -45,7 +45,7 @@ pub enum Line {
     /// clean point and keeps its place, #365), "resume" (`RESUME: #<id> | why: …`: a paused one carries on) or
     /// "hold" (`PARK: #<id> | why: …`, or the old `HOLD:`: parked, as the user asked, #385/#391; "#new": the reply's last ITEM)
     /// or "unpark" (`UNPARK: #<id> — why: …`: back to be routed, only when the user asked for it in the message the
-    /// turn answers, #499).
+    /// turn answers, #499) or "drop" (`DROP: #<id> | why: …`: gone in any state, as its Drop does, #544).
     Unstick { what: String, id: String, commit: String, why: String },
     /// The lead's answer to the landing clean-up question item `id`'s holder asked it (#349): `ANSWER: #<id> | <words>`.
     Answer { id: String, text: String },
@@ -176,6 +176,8 @@ fn one(t: &str) -> Option<Line> {
         "PARK" | "HOLD" => unstick("hold", body),
         // UNPARK (#499): its why after a dash ("UNPARK: #12 — why: …") or a "|" as the other lines have it.
         "UNPARK" => unstick("unpark", &dashed(body)),
+        // DROP (#544): the item is gone, as its Drop does; its why after a dash or a "|".
+        "DROP" => unstick("drop", &dashed(body)),
         // With an item (#365) it pauses that item; with none (#366), the whole Desk.
         "PAUSE" => unstick("pause", body).or_else(|| whole_desk(true, body)),
         "RESUME" => unstick("resume", body).or_else(|| whole_desk(false, body)),
