@@ -38,6 +38,9 @@ pub(crate) fn rev(repo: &str, what: &str) -> Option<String> {
 /// from, and its folder. A copy left at `t.path` (Cue stopped as it removed it) is removed first only when it holds no
 /// work; one with work stays, and this copy goes beside it (`desk-<n>-<id>`).
 pub(crate) fn prepare(t: &ItemTree, id: &str) -> Result<(String, String), String> {
+    if t.keep {
+        return crate::desk::hub::landing::named_copy::prepare_named(t, id);
+    }
     let (_, onto) = main_checkout(&t.repo).ok_or("no main checkout")?;
     let base = rev(&t.repo, &onto).ok_or("no main line")?;
     exclude_trees(&t.repo);
@@ -187,14 +190,14 @@ pub(crate) fn unlink_shared(path: &str) {
     }
 }
 
-/// Copy `t` and its branch removed.
+/// Copy `t` and its branch removed (a branch the lead named, `keep`, stays: it's where the work is, #557).
 pub(crate) fn remove(t: &ItemTree) {
     unlink_shared(&t.path);
     if git("", &t.repo, &[], &["worktree", "remove", "--force", "--force", &t.path]).is_none() && std::path::Path::new(&t.path).exists() {
         let _ = std::fs::remove_dir_all(&t.path);
     }
     let _ = git("", &t.repo, &[], &["worktree", "prune"]);
-    if !t.branch.is_empty() {
+    if !t.branch.is_empty() && !t.keep {
         let _ = git("", &t.repo, &[], &["branch", "-q", "-D", &t.branch]);
     }
 }

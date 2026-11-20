@@ -63,6 +63,9 @@ pub enum Line {
     /// `CHECK: #<id> | Try: <one thing to do in the app>` (`kind` "try") or `CHECK: #<id> | Nothing to see: <why>`
     /// (`kind` "nothing"). `text`: the words after the label.
     Check { id: String, kind: String, text: String },
+    /// The lead giving item `id` a copy of another repository on a branch it names (#557):
+    /// `COPY: #<id> | in: <add-on, or a repository's folder> | branch: <name> | why: …`.
+    Copy { id: String, repo: String, branch: String, why: String },
 }
 
 /// The Desk lines in `text`, in order.
@@ -178,8 +181,33 @@ fn one(t: &str) -> Option<Line> {
         "RESUME" => unstick("resume", body).or_else(|| whole_desk(false, body)),
         "LANDS" => lands(body),
         "TO LEAD" => to_lead(body),
+        "COPY" => copy(body),
         _ => None,
     }
+}
+
+/// `COPY: #<id> | in: <repo> | branch: <name> | why: …` (#557): a branch name git would take, no spaces.
+fn copy(body: &str) -> Option<Line> {
+    let ps = parts(body);
+    let head = ps.first()?;
+    if !head.starts_with('#') || head.contains(' ') {
+        return None;
+    }
+    let (mut repo, mut branch, mut why) = (String::new(), String::new(), String::new());
+    for p in &ps[1..] {
+        if let Some(r) = labelled(p, "in") {
+            repo = r.trim_matches('`').to_string();
+        } else if let Some(b) = labelled(p, "branch") {
+            branch = b.trim_matches('`').to_string();
+        } else if let Some(w) = labelled(p, "why") {
+            why = w.to_string();
+        }
+    }
+    let ok = |b: &str| !b.is_empty() && !b.starts_with(['-', '/']) && !b.contains("..") && b.chars().all(|c| c.is_ascii_alphanumeric() || "-_./".contains(c));
+    if repo.is_empty() || !ok(&branch) {
+        return None;
+    }
+    Some(Line::Copy { id: id_of(head)?, repo, branch, why })
 }
 
 /// `PAUSE: why: …` / `RESUME: why: …` with no item: the whole Desk (#366). None for one naming an item.

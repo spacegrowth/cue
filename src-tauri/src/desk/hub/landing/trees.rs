@@ -32,6 +32,9 @@ pub(crate) const CHECK_FAILED: &str = "Its check failed";
 
 /// What a holder is told of its item's copy.
 pub(crate) fn tree_line(t: &ItemTree) -> String {
+    if t.keep {
+        return crate::desk::hub::landing::named_copy::named_line(t);
+    }
     format!(
         "Work in its own copy of the repository: {} (branch {}). Change files only there, never in the main checkout \
          or another folder, make no worktree or branch of your own, and don't merge or push: at your DONE, Cue lands \
@@ -61,7 +64,8 @@ impl Hub {
             return;
         }
         // (item, the holder's folder, whom its message goes to, how many of its project's items have copies at once).
-        // A project set to the shared folder, or to commit its work yourself, gets none (desk/lands.rs).
+        // A project set to the shared folder, or to commit its work yourself, gets none (desk/lands.rs). One the lead
+        // gave a copy of another repository (COPY, #557) gets that, wherever its holder works.
         let wanted: Vec<(String, String, String, u32)> = self.read(|st| {
             fx.items
                 .iter()
@@ -69,6 +73,9 @@ impl Hub {
                     let it = st.desk.item(id).filter(|i| i.state == "working" && i.tree.is_none())?;
                     let h = it.holder.as_ref()?;
                     let s = st.sessions.get(h.to()).filter(|s| s.origin.machine.is_empty() && !s.origin.cwd.is_empty())?;
+                    if let Some(c) = &it.copy_on {
+                        return Some((id.clone(), c.repo.clone(), h.to().to_string(), crate::desk::lands::lands_of(&it.project, &c.repo).at_once.max(1)));
+                    }
                     let l = crate::desk::lands::lands_of(&it.project, &s.origin.cwd);
                     (l.at == "copy").then(|| (id.clone(), s.origin.cwd.clone(), h.to().to_string(), l.at_once))
                 })
@@ -81,9 +88,14 @@ impl Hub {
                 // Its copy taken back earlier (TAKE COPY, #347) is kept on its branch: this one's is another.
                 let again = if st.desk.kept.iter().any(|k| k.id == id) { "-again" } else { "" };
                 let it = st.desk.item_mut(&id).filter(|i| i.state == "working" && i.tree.is_none())?;
+                // A branch the lead named (COPY, #557): that one, kept.
+                let (branch, keep) = match &it.copy_on {
+                    Some(c) => (c.branch.clone(), true),
+                    None => (format!("desk/{id}{again}"), false),
+                };
                 match (1..=at_once).find(|n| !used.contains(n)) {
                     Some(n) => {
-                        let t = ItemTree { repo: main.clone(), path: format!("{main}/{TREES}/desk-{n}"), branch: format!("desk/{id}{again}"), base: String::new(), slot: n };
+                        let t = ItemTree { repo: main.clone(), path: format!("{main}/{TREES}/desk-{n}"), branch, base: String::new(), slot: n, keep };
                         it.tree = Some(t.clone());
                         // Started another way (Start it now, or freed by its `after`) while it waited for a copy: that wait is over.
                         it.tree_wait = false;
@@ -143,6 +155,14 @@ impl Hub {
                     Err(e) => {
                         // Its holder works in the shared folder, as before.
                         eprintln!("cue: desk: couldn't make #{id} its own copy: {e}");
+                        // One the lead asked for (COPY, #557): it and the holder are told, so the work isn't done elsewhere unknowingly.
+                        if t.keep {
+                            let words = format!("Desk item #{id}: Cue couldn't make its copy of {} on branch {}: {e}. Say where to work before changing files.", t.repo, t.branch);
+                            fx.sends.push((to.clone(), words.clone()));
+                            if let Some(lead) = self.read(|st| st.desk.item(&id).and_then(|i| st.desk.lead_sid(&i.project)).map(str::to_string)) {
+                                fx.sends.push((lead, words));
+                            }
+                        }
                         self.write(|st| {
                             if let Some(i) = st.desk.item_mut(&id) {
                                 i.tree = None;
@@ -157,7 +177,10 @@ impl Hub {
     /// A dropped item's copy: kept and listed when it has work in it, else removed (its slot free for the next).
     fn desk_tree_dropped(&self, it: DeskItem) {
         let Some(t) = it.tree.clone() else { return };
-        if has_work(&t) {
+        if t.keep {
+            // A branch the lead named (#557): its work stays on it, the copy goes.
+            self.desk_named_dropped(&it.id, &it.title, &t);
+        } else if has_work(&t) {
             let to = format!("{}/{TREES}/kept-{}", t.repo, it.id);
             unlink_shared(&t.path);
             let moved = git_said("", &t.repo, &[], &["worktree", "move", &t.path, &to]);
@@ -263,6 +286,11 @@ impl Hub {
     fn land(&self, id: &str) -> Landed {
         let Some(it) = self.read(|st| st.desk.item(id).cloned()) else { return Landed::Done };
         let (Some(t), Some(fin)) = (it.tree.clone(), it.finish.clone()) else { return Landed::Done };
+        // On a branch the lead named (#557): committed there, never on a main line.
+        if t.keep {
+            self.land_on_branch(id, &t);
+            return Landed::Done;
+        }
         let Some((_, onto)) = main_checkout(&t.repo) else { return self.land_wait(id, "Cue can't read the main checkout") };
         if onto.is_empty() {
             return self.land_wait(id, "The main checkout isn't on a branch");
@@ -441,7 +469,7 @@ impl Hub {
     pub(crate) fn desk_hold_copies(&self, repo: &str, slots: &[u32]) {
         self.write(|st| {
             for n in slots {
-                let tree = ItemTree { repo: repo.to_string(), path: format!("{repo}/{TREES}/held-{n}"), branch: format!("held/{n}"), base: String::new(), slot: *n };
+                let tree = ItemTree { repo: repo.to_string(), path: format!("{repo}/{TREES}/held-{n}"), branch: format!("held/{n}"), base: String::new(), slot: *n, keep: false };
                 st.desk.items.push(DeskItem { id: format!("held{n}"), project: "elsewhere".into(), state: "working".into(), tree: Some(tree), ..Default::default() });
             }
         });

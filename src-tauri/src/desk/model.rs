@@ -168,6 +168,10 @@ pub struct DeskItem {
     /// holder started), while it has one: landed as one squash commit at its DONE (desk/hub/landing/trees.rs).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tree: Option<ItemTree>,
+    /// The copy the lead asked for it (COPY, #557): another repository's, on a branch it named. Its copy is made from
+    /// this as it starts, wherever its holder works.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub copy_on: Option<CopyOn>,
     /// Its place in its Desk's queue as you dragged it (#387), 1 at the top: the next free copy goes to the top one, and
     /// the lead sees what needs routing in this order. None: after those you placed, oldest first. Saved.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -462,6 +466,18 @@ pub struct ItemTree {
     pub base: String,
     #[serde(default)]
     pub slot: u32,
+    /// A branch the lead named for it (COPY, #557), in a repository of its choosing (the add-on's, say): its work is
+    /// committed on that branch and stays there. Never landed on a main line, and the branch is never removed.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub keep: bool,
+}
+
+/// The copy the lead asked for an item (`COPY: #<id> | in: <repo> | branch: <name>`, #557): the main checkout of the
+/// repository it's cut from, and the branch it works on (desk/hub/landing/named_copy.rs).
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct CopyOn {
+    pub repo: String,
+    pub branch: String,
 }
 
 /// A dropped item's copy that had work in it, kept (moved aside, its branch kept) and listed on its Desk until you

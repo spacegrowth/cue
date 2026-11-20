@@ -173,7 +173,8 @@ impl Hub {
             Some(t) => format!("Desk item #{id} works only in its own copy, {} (branch {})", t.path, t.branch),
             None => format!("Desk item #{id} works where you are, on the branch that's there"),
         };
-        Some(format!("Cue stopped this: {place}, and {what}. Change files only there, with no worktree or branch of your own; at your DONE Cue lands it on main."))
+        let lands = if copies.iter().any(|t| t.keep) { "commits it on its branch" } else { "lands it on main" };
+        Some(format!("Cue stopped this: {place}, and {what}. Change files only there, with no worktree or branch of your own; at your DONE Cue {lands}."))
     }
 }
 

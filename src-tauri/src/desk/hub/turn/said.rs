@@ -31,7 +31,8 @@ pub(crate) fn item_said(st: &mut Store, project: &str, kind: &str, title: &str, 
 }
 
 /// Lead `lsid` of `project` said `text` at its turn's end: its ITEM, ROUTE, ASK and DECIDED lines.
-fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx: &mut Effects) {
+/// `repos`: the repositories its COPY lines name, found before the store was taken (desk/hub/landing/named_copy.rs).
+fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, repos: &[(String, Result<String, String>)], now: u64, fx: &mut Effects) {
     let name = st.sessions.get(lsid).map(shown_name).or_else(|| st.desk.lead.get(project).map(|l| l.name.clone())).unwrap_or_default();
     let by = By { name: &name, sid: lsid };
     let mut last_new: Option<String> = None;
@@ -87,6 +88,12 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx
             }
             Line::Feature { id, name, pieces } => {
                 if let Err(no) = crate::desk::hub::turn::features::feature_said(st, project, &by, id, &name, &pieces, last_new.as_deref(), now, fx) {
+                    answers.push(no);
+                }
+            }
+            Line::Copy { id, repo, branch, why } => {
+                let id = match last_new.clone().filter(|_| id == "new") { Some(n) => n, None => st.desk.canon(&id) };
+                if let Err(no) = crate::desk::hub::landing::named_copy::copy_said(st, project, &by, &id, repos.iter().find(|(r, _)| *r == repo).map(|(_, f)| f.clone()).unwrap_or_else(|| Err("Cue didn't look it up".into())), &branch, &why, now, fx) {
                     answers.push(no);
                 }
             }
@@ -425,6 +432,8 @@ impl Hub {
         // Each item at work with it: its work git says isn't committed yet, asked with the store let go (#213).
         let loose: Vec<(String, Vec<String>)> = held.iter().chain(asked.iter().filter(|a| !held.contains(a))).map(|id| (id.clone(), self.desk_uncommitted(id))).collect();
         let from_disk = self.feature_pieces_on_disk(text);
+        let from = self.read(|st| st.sessions.get(sid).filter(|s| s.origin.machine.is_empty()).map(|s| s.origin.cwd.clone())).unwrap_or_default();
+        let repos = crate::desk::hub::landing::named_copy::repos_said(text, &from);
         let now = now_ms();
         let fx = self.write(|st| {
             crate::desk::hub::turn::features::bring_back(st, from_disk);
@@ -455,7 +464,7 @@ impl Hub {
             crate::desk::hub::turn::heard::to_lead_said(st, sid, text, &mut fx);
             let lead = st.desk.lead_of(sid);
             match &lead {
-                Some(project) => lead_said(st, project, sid, text, now, &mut fx),
+                Some(project) => lead_said(st, project, sid, text, &repos, now, &mut fx),
                 None => session_items(st, sid, text, now, &mut fx),
             }
             if st.desk.items.iter().any(|i| i.holder.as_ref().is_some_and(|h| h.is(sid))) {

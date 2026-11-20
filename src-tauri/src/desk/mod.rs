@@ -11,7 +11,7 @@ pub mod model;
 pub mod parse;
 pub mod state;
 
-pub use model::{Act, BusyFile, CommitWait, Desk, DeskDecision, DeskItem, Finish, Holder, InstallStatus, Installer, ItemTree, KeptTree, Lead, Waiting};
+pub use model::{Act, BusyFile, CommitWait, Desk, DeskDecision, DeskItem, Finish, Holder, InstallStatus, Installer, ItemTree, CopyOn, KeptTree, Lead, Waiting};
 
 /// Routing policy in every Desk summary, including for already-running leads.
 pub(crate) const ROUTING_GUIDANCE: &str = concat!(
@@ -79,6 +79,9 @@ TAKE COPY: #<id> | why: <reason>      (take back the copy of a stuck or finished
 the item waiting longest for a copy gets it, and a stuck item is new again for you to route)
 LAND FIRST: #<id> | why: <reason>      (move an item waiting in the landing line up, so it lands next)
 START: #<id> | why: <reason>      (start a waiting item now: not after the item it waits on, nor for a free copy)
+COPY: #<id> | in: add-on | branch: <name> | why: <reason>      (work that belongs in the add-on's own repository, or \
+another one: put its full path after in:. The item gets a copy of it on that branch (made from its main line if new) \
+as it starts, or now if it's at work; at its DONE its work is committed on that branch and stays there, never on main)
 PAUSE: #<id> | why: <reason>      (an item at work stops at a clean point and keeps its place and copy, e.g. to save \
 tokens for an urgent item; it shows as paused and its holder isn't asked if it's done)
 RESUME: #<id> | why: <reason>      (a paused item carries on where it stopped)
