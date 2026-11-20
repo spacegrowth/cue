@@ -348,7 +348,9 @@ const deskNewlySaid = (title) => (title ? (state.desk?.projects || []).flatMap((
  *  null for any other (chat/render.js chatHtml `you`). */
 const deskCueNote = (e) => deskNewItems(e) ?? deskDoneNotes(e) ?? deskStopNote(e) ?? deskAskAnswered(e);
 /** Cue telling the lead your answer to its ASK (hub/desk.rs desk_answered: "Your ASK[ about #12]: question\nThe answer:
- *  …"): not drawn (#427), the question's card above already has your answer beside it. null for any other message. */
+ *  …"): not drawn (#427), the question's card above already has your answer beside it. null for any other message.
+ *  SHORTCUT: queued (the lead busy when it was sent) it shows as an empty "Queued" row; rare, a lead waits idle on its
+ *  ASK. Upgrade: laterOwn skips a hidden note. */
 const deskAskAnswered = (e) => (/^Your ASK(?: about #\S+)?: [^\n]*\nThe answer: [^\n]*$/.test(String(e.text || "").replace(/^\s*<desk\b[\s\S]*?<\/desk>\s*/, "").trim()) ? `<i hidden></i>` : null);
 /** What Cue told the lead of an item that stopped (hub/desk_stall.rs stop_words: "#224 (title) stopped[, not committed]:
  *  holder ended its turn on it with no DONE…(files)… Its last line: …", then its words for the lead from "Settle it:
