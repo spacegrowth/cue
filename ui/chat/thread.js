@@ -3,7 +3,9 @@
 const OLDER_PAGE = 30;
 const older = new Map();   // session id -> { msgs (oldest first), anchor (the thread's first message when they loaded), done, tdone, busy }
 /** The next page before the oldest message shown: from Cue's log as you scroll up; past its start, from
- *  the session's transcript, only when you click for it (`fromTranscript`: a heavier read). */
+ *  the session's transcript, only when you click for it (`fromTranscript`: a heavier read). `pressed`: you asked
+ *  with a button, so the chat shows the page it loaded (its top, the button above it again); scrolling up keeps your
+ *  place instead, the page going in above what you were reading (#530: a press used to look like it did nothing). */
 /** The chat of session `sid` as it shows now ({ it, s }): Active's, or the Desk's (its lead's, or one opened there:
  *  desk.js deskShownChat). Null when it doesn't show. */
 function shownChat(sid) {
@@ -12,7 +14,7 @@ function shownChat(sid) {
   const s = view === "desk" && typeof deskShownChat === "function" ? deskShownChat(sid) : null;
   return s ? { it: null, s } : null;
 }
-async function loadOlder(sid, fromTranscript = false) {
+async function loadOlder(sid, fromTranscript = false, pressed = false) {
   const o = older.get(sid) || { msgs: [], anchor: 0, done: false, tdone: false, busy: false };
   older.set(sid, o);
   const cur = shownChat(sid);
@@ -37,9 +39,12 @@ async function loadOlder(sid, fromTranscript = false) {
     o.tdone = Array.isArray(probe) && probe.every((e) => sameMessage(e, top));
   }
   o.busy = false;
-  const chat = document.querySelector(view === "desk" ? ".dk-chat" : "[data-chat]");
-  if (chat) holdChat = chat.scrollHeight - chat.scrollTop;
+  const where = view === "desk" ? ".dk-chat" : "[data-chat]", chat = document.querySelector(where);
+  if (chat && !pressed) holdChat = chat.scrollHeight - chat.scrollTop;
   renderMain();
+  // Moved by code, not you (ui/box/end.js): its scroll to the top loads nothing more (app/bind.js onChatScroll).
+  const shown = pressed && document.querySelector(where);
+  if (shown) { shown._pinAt = Date.now(); shown.scrollTop = 0; }
 }
 /** The same message, from two records of it (Cue's log and the transcript): who said it and what. */
 const sameMessage = (a, b) => a.role === b.role && String(a.text || "").trim() === String(b.text || "").trim();

@@ -12,8 +12,8 @@ const ACTS = {
   "run-here": (el) => openShell(el.dataset.cwd, { line: el.dataset.line }),
   "open-search": () => openFind(),
   shells: () => toggleShellView(),
-  "load-older": (el) => loadOlder(el.dataset.sid),
-  "load-transcript": (el) => loadOlder(el.dataset.sid, true),
+  "load-older": (el) => loadOlder(el.dataset.sid, false, true),
+  "load-transcript": (el) => loadOlder(el.dataset.sid, true, true),
   "open-settings": () => { sheet = sheet === "settings" ? null : "settings"; extSections = null; renderMain(); },
   // Buttons that name a session, not a card (no data-id): the "!" cards, Send again, Move to Cue.
   "move-cue": (el) => el.dataset.why ? toast(`Move to Cue: ${el.dataset.why}`) : moveToCue(el.dataset.sid),
