@@ -536,24 +536,54 @@ test("Desk home: one row a Desk with what it's about, its people, open tasks, bu
   await expect(page.locator(".dk-sh button:not(.dk-ab-change)", { hasText: "Change" })).toHaveCount(0);
 });
 
-test("the Desks you opened last are one-click buttons on their own row under the name and counts, the one you're on left out (#274, #402)", async ({ page, cue }) => {
+test("‹ › on the Desk's head step through the Desks you opened last, in the order you opened them; dots say where you are and the next one's name opens it (#464)", async ({ page, cue }) => {
   await cue.open("desk");
   await page.locator('.switch-view [data-view="desk"]').click();
   await page.locator("[data-desk-switch]").click(); await page.locator("[data-desk-home]").click();
   await page.locator('.dk-desk[data-desk-project="website"]').click();
-  await page.locator("[data-desk-switch]").click(); await page.locator('.dk-sw-row[data-desk-go="cue"]').click();
-  const chips = page.locator(".dk-strip .dk-rcs .dk-rc");
-  await expect(chips).toHaveText(["website"]);
-  if (process.env.SHOT_DIR) await page.locator(".dk-strip .dk-sh").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-recent.png` });
-  await expect(page.locator(".dk-strip .dk-shr b").first()).toContainText(/cue/i);
-  expect(await page.locator(".dk-rcs [title]").count()).toBe(0);
-  // Not on the name's line: under the "N sessions · N working" line.
-  await expect(page.locator(".dk-shr .dk-rcs")).toHaveCount(0);
-  await expect(page.locator(".dk-sh > .dk-subr + .dk-rcs")).toHaveCount(1);
-  // One click goes there; the Desk you left is now the button.
-  await chips.first().click();
-  await expect(chips).toHaveCount(1);
-  await expect(chips.first()).toHaveAttribute("data-desk-go", "cue");
+  // Only one Desk opened so far: no arrows, no dots.
+  await page.evaluate(() => { deskRecent = ["website"]; renderMain(); });
+  await expect(page.locator(".dk-step")).toHaveCount(0);
+  await expect(page.locator(".dk-dots")).toHaveCount(0);
+  await page.evaluate(() => { state.desk.projects.push({ project: "docs", name: "Docs site", items: [] }); deskRecent = ["website", "docs", "cue"]; renderMain(); });
+  const name = page.locator(".dk-sw-btn b"), dots = page.locator(".dk-strip .dk-dots i"), next = page.locator(".dk-strip .dk-next");
+  // The arrows sit on the name's line, before ⋯; the dots and the next Desk under it, beside the counts. No pills.
+  await expect(page.locator(".dk-shr .dk-step .dk-step-btn")).toHaveCount(2);
+  await expect(page.locator(".dk-subr .dk-sub + .dk-dots + .dk-next")).toHaveCount(1);
+  await expect(page.locator(".dk-rcs, .dk-rc")).toHaveCount(0);
+  await expect(dots).toHaveCount(3);
+  await expect(page.locator(".dk-dots i.at")).toHaveCount(1);
+  await expect(dots.nth(0)).toHaveClass("at");
+  await expect(next).toHaveText("Docs site ›");
+  await expect(page.locator(".dk-step-btn").first()).toHaveAttribute("aria-label", "Previous Desk: cue");
+  expect(await page.locator(".dk-strip [title]").count()).toBe(0);
+  if (process.env.SHOT_DIR) {
+    // A clip of the page, not the element: the Desk redraws often and a shot of a swapped-out element fails.
+    let clip = null;
+    await expect.poll(async () => (clip = await page.locator(".dk-strip .dk-sh").boundingBox())).not.toBeNull();
+    await page.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-recent.png`, clip });
+    await page.evaluate(() => { document.documentElement.dataset.theme = "dark"; });
+    await page.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-recent-dark.png`, clip });
+    await page.evaluate(() => { delete document.documentElement.dataset.theme; });
+  }
+  // › goes on through the same order, not back and forth.
+  await page.locator('.dk-step-btn[aria-label^="Next"]').click();
+  await expect(name).toHaveText("Docs site");
+  await expect(dots.nth(1)).toHaveClass("at");
+  await expect(next).toHaveText("cue ›");
+  await page.locator('.dk-step-btn[aria-label^="Next"]').click();
+  await expect(name).toHaveText("cue");
+  await expect(dots.nth(2)).toHaveClass("at");
+  // Past the end it steps round to the first; ‹ steps back.
+  await next.click();
+  await expect(name).toHaveText("website");
+  await page.locator('.dk-step-btn[aria-label^="Previous"]').click();
+  await expect(name).toHaveText("cue");
+  expect(await page.evaluate(() => deskRecent.slice(0, 3))).toEqual(["website", "docs", "cue"]);
+  // Opened another way (the switcher), a Desk goes first again.
+  await page.locator("[data-desk-switch]").click(); await page.locator('.dk-sw-row[data-desk-go="docs"]').click();
+  await expect(name).toHaveText("Docs site");
+  await expect(dots.nth(0)).toHaveClass("at");
   await expect(page.locator(".dk-sw-menu")).toHaveCount(0);
 });
 
@@ -584,7 +614,7 @@ test("the head's \"N working\" counts a session whose helpers are working (\"age
   await expect.poll(count).toBe(before);
 });
 
-test("a long Desk name shows in full and many recent Desks scroll sideways, at a narrow width too, ⋯ still reachable (#402)", async ({ page, cue }) => {
+test("a long Desk name shows in full and the recent Desks’ arrows and next name stay in the strip, at a narrow width too, ⋯ still reachable (#402, #464)", async ({ page, cue }) => {
   await cue.open("desk");
   await page.locator('.switch-view [data-view="desk"]').click();
   await page.locator("[data-desk-switch]").click(); await page.locator("[data-desk-home]").click();
@@ -601,27 +631,12 @@ test("a long Desk name shows in full and many recent Desks scroll sideways, at a
     const name = page.locator(".dk-sw-btn b");
     await expect(name).toHaveText(long);
     await expect.poll(() => name.evaluate((el) => { const s = el.closest(".dk-strip")?.getBoundingClientRect(), b = el.getBoundingClientRect(); return !s || el.scrollWidth > el.clientWidth + 1 || b.right > s.right || b.left < s.left; })).toBe(false);
-    // Every recent Desk is there (none dropped), on one row that scrolls sideways when they don't fit.
-    const row = page.locator(".dk-rcs");
-    await expect(row.locator(".dk-rc")).toHaveCount(6);
-    // Read in one go, again if a redraw swapped the row out meanwhile (a detached row has no style).
-    const read = () => row.evaluate((el) => ({ wraps: new Set([...el.children].map((c) => c.offsetTop)).size, over: el.scrollWidth > el.clientWidth, x: getComputedStyle(el).overflowX }));
-    await expect.poll(async () => (await read()).x).toBe("auto");
-    const r = await read();
-    expect(r.wraps).toBe(1);
-    if (width < 1000) expect(r.over).toBe(true);
-    if (r.over) {
-      await row.hover();
-      await page.mouse.wheel(0, 200);
-      await expect.poll(() => row.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
-    }
-    // The ⋯ menu stays on screen and in the strip.
-    const more = page.locator(".dk-strip .dk-more-btn");
-    if (await more.count()) {
-      const [m, s] = await Promise.all([more.boundingBox(), page.locator(".dk-strip").boundingBox()]);
-      expect(m.width).toBeGreaterThan(0);
-      expect(m.x + m.width).toBeLessThanOrEqual(s.x + s.width + 0.5);
-    }
+    // The arrows, the dots, the next Desk's name and ⋯ stay inside the strip; a long next name is cut, not spilled.
+    // Read in one go, again if a redraw swapped the strip out meanwhile.
+    await expect.poll(() => page.evaluate(() => {
+      const st = document.querySelector(".dk-strip")?.getBoundingClientRect();
+      return st ? [".dk-step", ".dk-dots", ".dk-next", ".dk-more-btn"].every((sel) => { const b = document.querySelector(`.dk-strip ${sel}`)?.getBoundingClientRect(); return b && b.width > 0 && b.right <= st.right + 0.5; }) : false;
+    })).toBe(true);
     if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-head-${width}.png`, clip: await page.locator(".dk-strip").boundingBox() });
   }
 });

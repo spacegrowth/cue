@@ -186,7 +186,7 @@ function deskLeadBar(s) {
  *  "Lead" in a pill by its name and has a divider under it (pick M1, #446: no "Run by" head). */
 let deskDeleteAsk = null, deskDeleting = false, deskCloseSelected = new Set();
 function deskSessHead(project, n, working, lead = "", bar = "") {
-  if (deskRecent[0] !== project) deskRecentPut(project);
+  if (deskRecent[0] !== project && deskStepped !== project) deskRecentPut(project);
   const d = deskOf(project);
   const title = deskName(d);
   const name = pjRenaming === project
@@ -194,7 +194,7 @@ function deskSessHead(project, n, working, lead = "", bar = "") {
     : `<b>${esc(title)}</b><button class="dk-ren" data-pjren="${esc(project)}" aria-label="Rename this Desk"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></svg></button>`;
   const more = lead ? `<button class="dk-more-btn" data-desk-change aria-label="Hand this Desk to another session"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>` : "";
   const sw = pjRenaming === project ? `<span class="dk-ric" aria-hidden="true">${deskKindIcon("tray")}</span>${name}` : `<span class="dk-sw-anchor"><button class="dk-sw-btn" data-desk-switch aria-haspopup="menu" aria-expanded="${deskSwitchOpen}"><span class="dk-ric" aria-hidden="true">${deskKindIcon("tray")}</span><b>${esc(title)}</b><svg class="dk-sw-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>${deskSwitchOpen ? deskSwitchMenu(project) : ""}</span>${name.slice(name.indexOf("<button"))}`;
-  return `<div class="dk-strip"><div class="dk-sh"><div class="dk-shr">${sw}<span class="grow"></span>${more}</div><div class="dk-subr"><span class="dk-sub">${n} session${n === 1 ? "" : "s"}${working ? ` · ${working} working` : ""}</span></div>${pjRenaming === project ? "" : deskRecentChips(project)}${lead && typeof deskSettingsLine === "function" ? deskSettingsLine(deskOf(project)) : ""}</div>${lead ? `${bar}${lead}` : ""}</div>`;
+  return `<div class="dk-strip"><div class="dk-sh"><div class="dk-shr">${sw}<span class="grow"></span>${pjRenaming === project ? "" : deskStepArrows(project)}${more}</div><div class="dk-subr"><span class="dk-sub">${n} session${n === 1 ? "" : "s"}${working ? ` · ${working} working` : ""}</span>${pjRenaming === project ? "" : deskStepDots(project)}</div>${lead && typeof deskSettingsLine === "function" ? deskSettingsLine(deskOf(project)) : ""}</div>${lead ? `${bar}${lead}` : ""}</div>`;
 }
 /** The switcher (pick A, #240): the Desk's name opens a menu of every Desk, those waiting on you first, found by typing,
  *  ↑ ↓ ↵ to pick; All Desks and + New Desk under them. A row is the Desk's name and what needs you, nothing else: a

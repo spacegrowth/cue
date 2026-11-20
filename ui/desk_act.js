@@ -486,6 +486,8 @@ const DESK_CLICKS = {
   },
   deskGo: (el) => { deskSwitchClose(); DESK_CLICKS.deskProject({ dataset: { deskProject: el.dataset.deskGo } }); },
   deskHome: () => { deskSwitchClose(); if (!deskDeleting) deskDeleteAsk = null; deskSelect(""); deskOpen = null; deskPick = null; renderMain(); },
+  // ‹ › and the next Desk's name (#464): open it without moving it first in the recent order.
+  deskStep: (el) => { deskSwitchClose(); deskStepped = el.dataset.deskStep; DESK_CLICKS.deskProject({ dataset: { deskProject: deskStepped } }); },
   deskProject: (el) => { deskSelect(el.dataset.deskProject); deskOpen = null; deskTab = "lead"; deskChatEnd = true; renderMain(); },
 };
 /** A click rule's attribute: deskItem → data-desk-item. */
@@ -587,12 +589,5 @@ if (typeof document !== "undefined") {
     }, 0);
   }, true);
   // The lead's chat scrolled: whether it's at its end (new messages keep it there).
-  // The recent Desks' row scrolls sideways with a mouse wheel too, not only a trackpad (#402).
-  document.addEventListener("wheel", (e) => {
-    const row = e.target.closest?.(".dk-rcs");
-    if (!row || row.scrollWidth <= row.clientWidth || Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;
-    row.scrollLeft += e.deltaY;
-    e.preventDefault();
-  }, { passive: false });
   document.addEventListener("scroll", (e) => { const c = e.target; if (c?.matches?.(".dk-chat")) deskChatEnd = c.scrollHeight - c.scrollTop - c.clientHeight < 24; }, true);
 }
