@@ -766,6 +766,23 @@ fn an_item_whose_work_changed_the_app_waits_for_an_install_even_with_mocks_besid
     assert_eq!(fake.started().len(), 1, "installed");
 }
 
+/// #432 (#423 lined up to install): a mocks item whose only files in the repository are ones it never committed (a
+/// script it wrote in its scratch folder, read as the repository's; here one the repository ignores) made no commit
+/// there: to check at once, no install, even with another item's change to the app waiting for one.
+#[test]
+fn a_mocks_item_with_no_commit_and_only_scratch_files_goes_to_check_with_no_install() {
+    let w = World::new();
+    let (fake, _, project, id) = done_since_running_with(&w, &["gen_rr.py"], false, true);
+    let shown = item(&w, &project, "Header jumps");
+    assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str()), (Some("to_check"), Some("checked")), "{shown}");
+    assert!(shown["commit"].as_str().unwrap_or("").is_empty(), "no commit made: {shown}");
+    let h = shown["holder"]["sid"].as_str().unwrap().to_string();
+    ends(&w, &h, &format!("DESIGNS: #{id} https://claude.ai/artifact/abc"));
+    w.advance(30 * 60_000);
+    assert!(fake.started().is_empty(), "nothing installed");
+    assert!(w.window.heard("ui-reload").is_empty(), "nor served");
+}
+
 /// What was sent to session `sid`.
 fn sent_to(w: &World, sid: &str) -> Vec<String> {
     w.hosted.sent().into_iter().filter(|(s, _)| s == sid).map(|(_, t)| t).collect()

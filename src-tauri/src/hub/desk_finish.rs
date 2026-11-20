@@ -460,13 +460,20 @@ impl Hub {
     }
 
     /// Whether item `id`'s own commits on `top`'s main line (those Cue made for it, its crew's merges) changed nothing
-    /// that goes into the app (live_ui::outside_app). False when it has none there (work its holder committed itself)
-    /// or git can't say: it's installed as before.
+    /// that goes into the app (live_ui::outside_app). With none there, its files in that repository say: each outside
+    /// the app or never in it (a mocks item's scratch files, read as the repository's, #432). False when git can't
+    /// say, or it has a file in the app (work its holder committed itself): it's installed as before.
     fn runs_nothing(&self, id: &str, top: &str) -> bool {
         let Some(it) = self.read(|st| st.desk.item(id).cloned()) else { return false };
         let merges = it.finish.as_ref().map(|f| f.merges.clone()).unwrap_or_default();
-        let own: Vec<String> = it.commit_in.iter().chain(&merges).filter(|(folder, _)| main_checkout(folder).is_some_and(|(m, _)| same_dir(&m, top))).map(|(_, sha)| sha.clone()).collect();
-        !own.is_empty() && own.iter().all(|sha| crate::live_ui::changed_in(top, sha).is_some_and(|paths| paths.iter().all(|p| crate::live_ui::outside_app(p))))
+        let here = |folder: &str| main_checkout(folder).is_some_and(|(m, _)| same_dir(&m, top));
+        let own: Vec<String> = it.commit_in.iter().chain(&merges).filter(|(folder, _)| here(folder)).map(|(_, sha)| sha.clone()).collect();
+        if !own.is_empty() {
+            return own.iter().all(|sha| crate::live_ui::changed_in(top, sha).is_some_and(|paths| paths.iter().all(|p| crate::live_ui::outside_app(p))));
+        }
+        let Ok((_, machine, sources)) = self.desk_change_sources(id) else { return false };
+        let files: Vec<(String, String)> = sources.into_iter().filter(|(folder, _)| machine.is_empty() && here(folder)).flat_map(|(folder, paths)| paths.into_iter().map(move |p| (folder.clone(), p))).collect();
+        !files.is_empty() && files.iter().all(|(folder, p)| crate::live_ui::outside_app(p) || never_in(folder, p))
     }
 
     /// Where item `id`'s work is, when it isn't all on `top`'s main yet ("on fix-header, not main"): the main line's
@@ -916,6 +923,12 @@ impl Hub {
 pub(super) fn install_at(st: &Store) -> u64 {
     let first = st.desk.items.iter().filter(|i| i.state == "finishing").filter_map(|i| i.finish.as_ref()).filter(|f| f.step == "queued").map(|f| f.at).min();
     first.map_or(0, |at| at + INSTALL_EVERY_MS)
+}
+
+/// Whether `path` (relative to `folder`) was never in its main line: in no commit of it (a scratch or ignored file
+/// lands nothing). False when git can't say.
+fn never_in(folder: &str, path: &str) -> bool {
+    git("", folder, &[], &["log", "-1", "--format=%H", "HEAD", "--", path]).is_some_and(|o| o.trim().is_empty())
 }
 
 pub(super) fn begun(now: u64, before: Option<&Finish>) -> Finish {
