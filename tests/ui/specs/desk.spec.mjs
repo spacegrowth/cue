@@ -574,6 +574,14 @@ test("the head's \"N working\" counts a session whose helpers are working (\"age
   expect(sid).toBeTruthy();
   await expect.poll(count).toBe(before + 1);
   await expect(page.locator(".dk-gh", { hasText: "Working" }).locator(".n")).toHaveText(String(before + 1));
+  // Its own row says so too, not "idle" (#457).
+  const st = page.locator(`.dk-sessions [data-desk-chat-of="${sid}"] .dk-st`).first();
+  await expect(st.locator("b")).toHaveText("working · 2 helpers");
+  await expect(st.locator("i")).not.toHaveClass(/idle/);
+  // Helpers done: idle again, out of the count.
+  await cue.change((st) => { const s = st.sessions.find((x) => x.session_id === "s-agent"); s.state = "idle"; s.helpers = 0; });
+  await expect(st.locator("b")).toHaveText("idle");
+  await expect.poll(count).toBe(before);
 });
 
 test("a long Desk name shows in full and many recent Desks scroll sideways, at a narrow width too, ⋯ still reachable (#402)", async ({ page, cue }) => {
@@ -2508,9 +2516,9 @@ test("an idle session whose crew is at work is listed under Working, its working
   const order = () => left.locator(".dk-scroll > *").evaluateAll((els) => els.map((el) => el.matches(".dk-sdiv") ? "—" : el.matches(".dk-gh") ? `# ${el.firstChild.textContent.trim()}`
     : el.matches(".dk-sfold") ? null : `${el.matches(".crew") ? "  " : ""}${el.dataset.deskLeadChat || el.dataset.deskChatOf || el.dataset.deskCrew}`).filter(Boolean));
   await expect.poll(order).toEqual(["# Working", "spare", "  m2", "  m1", "# Idle", "host"]);
-  // Its row shows the idle mark, but its crew works, so the strip's meta line counts it as working: working means
-  // working (#402).
-  await expect(left.locator('[data-desk-chat-of="spare"] .dk-st > i.idle')).toHaveCount(1);
+  // Its crew works, so its row says working, as the strip's meta line counts it: working means working (#402, #457).
+  await expect(left.locator('[data-desk-chat-of="spare"] .dk-st > i.idle')).toHaveCount(0);
+  await expect(left.locator('[data-desk-chat-of="spare"] .dk-st b')).toHaveText("working · 1 helper");
   await expect(left.locator(".dk-strip .dk-sub")).toHaveText("2 sessions · 1 working");
 });
 

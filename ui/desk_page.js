@@ -276,7 +276,7 @@ function deskPage({ page, kind, back, acts = "", mark, title, meta = "", now = "
     + `<aside class="dk-panel"${aside}>${now}${panel}</aside><div class="dk-pgm">${main}${foot}</div></div>`;
 }
 /** A session's dot and word for the panel, from deskSessState. */
-const deskPstate = (s) => { const [dot, word] = s ? deskSessState(s) : ["idle", "idle"]; return [dot === "ask" ? "ask" : dot === "idle" ? "stop" : "work", word[0].toUpperCase() + word.slice(1)]; };
+const deskPstate = (s) => { const [dot, word] = s ? deskSessWithHelpers(s) : ["idle", "idle"]; return [dot === "ask" ? "ask" : dot === "idle" ? "stop" : "work", word[0].toUpperCase() + word.slice(1)]; };
 /** What session `sid` is on Desk `d`, as the left list's corner mark says it: "desk" (it runs the Desk: its
  *  Dispatcher, one name wherever it shows), "lead" (the Desk gave it a lead's work or it has a crew), else "session". */
 const deskSessKind = (sid, d) => (sid === deskLead(d)?.sid ? "desk" : deskIsLead(sid, d.items.filter((i) => deskGroupKey(i.holder) === sid)) ? "lead" : "session");

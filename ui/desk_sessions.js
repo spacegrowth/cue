@@ -8,6 +8,15 @@ function deskSessState(s) {
   const asks = state.items.some((i) => i.session_id === s.session_id && actionableRequest(i));
   return asks ? ["ask", "needs you"] : s.state === "working" ? ["", "working"] : ["idle", "idle"];
 }
+/** deskSessState, but a session idle itself while its own helpers ("agent") or crew work says so (#457), as the
+ *  Working group and the head's count take it: ["", "working · 2 helpers"]. Asking you still comes first. Without
+ *  `crew`, its crew isn't counted: the Desk's own lead shows none (they aren't the Desk's). */
+function deskSessWithHelpers(s, crew = true) {
+  const st = deskSessState(s);
+  if (st[0] !== "idle") return st;
+  const n = (s.state === "agent" ? +s.helpers || 0 : 0) + (crew ? (sessionOf(s.session_id)?.team || []).filter(deskMateBusy).length : 0);
+  return n ? ["", `working · ${n} helper${n === 1 ? "" : "s"}`] : st;
+}
 /** The item a session holds (an ask before what's at work), or null. */
 const deskSessItem = (d, sid) => deskSessItems(d, sid)[0] || null;
 /** Every open item session `sid` holds, the one it's on now first (working, then waiting on you, then the newest). */
@@ -85,7 +94,7 @@ function deskSessions(project) {
   const sessions = (state.sessions || []).filter((s) => s.project === deskWorkspace(d) && s.session_id);
   const lit = (sid) => (sid === leadSid && !o && deskPick !== project) || ((o?.kind === "chat" || o?.kind === "holder") && o.sid === sid);
   const row = (s, card = false) => {
-    const sid = s.session_id, [dot, word] = deskSessState(s);
+    const sid = s.session_id, [dot, word] = deskSessWithHelpers(s, sid !== leadSid);
     const lead = sid === leadSid || deskIsLead(sid, d.items.filter((i) => deskGroupKey(i.holder) === sid));
     const attrs = sid === leadSid ? `data-desk-lead-chat="${esc(sid)}"` : `data-desk-chat-of="${esc(sid)}"`;
     const mate = (t, past) => {
@@ -118,8 +127,7 @@ function deskSessions(project) {
   const mine = sessions.filter((s) => s !== leadS && deskHasSession(d, s.session_id));
   // At work: the session itself, its background agents (state "agent" with helpers running), or any of its crew. A
   // session idle while its crew works is listed with the working ones, so their rows never sit under idle sessions.
-  const busy = (s) => deskSessState(s)[1] === "working" || (s.state === "agent" && !!s.helpers)
-    || (sessionOf(s.session_id)?.team || []).some(deskMateBusy);
+  const busy = (s) => deskSessWithHelpers(s)[0] === "";
   // Each group most recent first: the one whose state changed last on top (#184). A row moves only when its state
   // does, never on a click.
   const recent = (list) => list.sort((a, b) => (b.since_ms || 0) - (a.since_ms || 0));
