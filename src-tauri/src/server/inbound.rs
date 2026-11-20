@@ -67,6 +67,7 @@ pub fn apply(hub: &Hub, msg: ClientMsg, peer: Option<i32>) -> Outcome {
         }
         ClientMsg::List => Outcome::Say(hub.state()),
         ClientMsg::Probe => Outcome::Say(probe()),
+        ClientMsg::Page => Outcome::Say(hub.page_look()),
         ClientMsg::Respond { id, decision } => Outcome::Say(json!({"ok": hub.respond(&id, decision)})),
         ClientMsg::Focus { id } => Outcome::Say(told(Ok(go_to(hub, &id)))),
         ClientMsg::Reply { id, text, images } => Outcome::Say(told(Ok(hub.reply(&id, &text, &images)))),

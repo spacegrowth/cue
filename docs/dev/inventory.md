@@ -14,12 +14,12 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 
 | What | Count |
 |---|---|
-| `#[tauri::command]` | 174 (3 sync) |
-| Lock declarations (static or field) | 113 |
-| Lock acquisitions | 269 |
+| `#[tauri::command]` | 175 (3 sync) |
+| Lock declarations (static or field) | 114 |
+| Lock acquisitions | 272 |
 | Lock-graph edges | 60 |
 | Spawn sites | 89 |
-| External calls: fs / db / process / notify / login / socket | 469 / 211 / 56 / 4 / 1 / 4 |
+| External calls: fs / db / process / notify / login / socket | 470 / 211 / 56 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 12 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -149,6 +149,7 @@ Sync commands run on the main thread. "Hands work to": the threads or pools its 
 | `test_notification` | async | `ipc/settings.rs::test_notification` | ipc::blocking |
 | `get_drafts` | async | `ipc/settings.rs::get_drafts` | ipc::blocking |
 | `set_draft` | async | `ipc/settings.rs::set_draft` | ipc::blocking |
+| `page_look_said` | async | `ipc/settings.rs::page_look_said` | — |
 | `get_state` | async | `ipc/state.rs::get_state` | ipc::with_hub |
 | `history_item` | async | `ipc/state.rs::history_item` | ipc::with_hub |
 | `respond` | async | `ipc/state.rs::respond` | ipc::with_hub |
@@ -252,6 +253,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `hub/live_writes.rs::LiveWrites.written` | `Mutex<Written>` | "db writer's marks" (2 sites) |
 | `hub/live_writes.rs::LiveWrites.worker` | `OnceLock<bool>` | — |
 | `hub/mod.rs::Hub.typing` | `Mutex<HashMap<String,std::sync::Arc<Mutex<()>>>>` | "typing gates" (1 sites) |
+| `hub/page_look.rs::WAITING` | `Mutex<Vec<(u64,mpsc::Sender<Value>)>>` | "page looks waiting" (3 sites) |
 | `hub/picking_up.rs::PickingUp.0` | `Mutex<(bool,Option<ThreadId>)>` | "hosted pickup" (2 sites) |
 | `hub/redraw.rs::Redraws.dirty` | `Mutex<bool>` | "redraw wanted" (3 sites) |
 | `hub/redraw.rs::Redraws.worker` | `OnceLock<()>` | — |
@@ -502,7 +504,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (469)
+### fs (470)
 
 | In | Call | Times |
 |---|---|---|
@@ -631,6 +633,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hub/desk_trees.rs::unlink_shared` | Path::is_symlink | 1 |
 | `hub/desk_trees.rs::unlink_shared` | remove_file | 1 |
 | `hub/desk_trees.rs::unlink_shared` | symlink_metadata | 1 |
+| `hub/desk_unlanded.rs::branch_trees` | Path::is_dir | 1 |
 | `hub/hosted.rs::Hub::resume_hosted_as` | Path::is_file | 1 |
 | `hub/hosted.rs::written_on_machine` | metadata | 1 |
 | `hub/land_keep.rs::edits_in_the_way` | read | 2 |
