@@ -1101,6 +1101,18 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
 .dk-held .dk-it.on .dk-t { color: inherit; }
 .dk-i2 .dk-hstart { margin-left: auto; flex: none; }
 
+/* A group of the item list folds and opens (#430): a click on its header; a chevron before its name turns with it, its
+   count stays; its rows slide shut and fade, about 200ms, none with reduced motion. */
+.dk-gh.dk-gf { cursor: pointer; user-select: none; }
+.dk-gf > .dk-gchev { flex: none; margin-left: -16px; transform: rotate(90deg); transition: transform .2s ease; }
+.dk-gf[aria-expanded="false"] > .dk-gchev { transform: none; }
+.dk-gf[aria-expanded="false"] .dk-qhint { visibility: hidden; }
+.dk-gbody { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .2s ease, opacity .2s ease; }
+.dk-gbody.shut { grid-template-rows: 0fr; opacity: 0; visibility: hidden; transition: grid-template-rows .2s ease, opacity .2s ease, visibility 0s .2s; }
+.dk-gin { min-width: 0; min-height: 0; }
+.dk-gbody:is(.shut, .moving) > .dk-gin { overflow: hidden; }
+@media (prefers-reduced-motion: reduce) { .dk-gbody, .dk-gbody.shut, .dk-gf > .dk-gchev { transition: none; } }
+
 /* The Queued list in your order (#387): a row you drag rides above the rest, which make room as it passes. */
 .dk-it[data-desk-q] { touch-action: none; }
 /* Its grip (#424): two short lines in the row's left padding, by the title; the pointer a grab hand over it. The open

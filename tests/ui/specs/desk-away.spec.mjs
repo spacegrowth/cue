@@ -83,7 +83,7 @@ test("the calls line folds to one line and stays folded for that Desk; a call wi
   expect(await items.locator(".dk-aw-mark").evaluateAll((els) => els.map((e) => e.dataset.deskCall))).toEqual(["c9", "c1"]);
   // Waiting on you 0 says so in words.
   await expect(items.locator(".dk-gh.you")).toHaveText("Waiting on you 0");
-  await expect(items.locator(".dk-gh.you + .dk-aw-none")).toHaveText("Nothing waits on you.");
+  await expect(items.locator(".dk-gh.you + .dk-gbody > .dk-gin > .dk-aw-none")).toHaveText("Nothing waits on you.");
   if (process.env.SHOT_DIR) await page.locator(".dk-items").screenshot({ path: `${process.env.SHOT_DIR}/cue-away-calls.png` });
   // Folded: one line, the Undos gone with the list; it stays folded through a redraw and a reload.
   const order = await items.locator(".dk-it").evaluateAll((els) => els.map((e) => e.dataset.deskItem));

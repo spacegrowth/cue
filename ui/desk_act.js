@@ -275,6 +275,7 @@ const DESK_CLICKS = {
     if (!deskOlderOpen.delete(key)) deskOlderOpen.add(key);
     renderMain();
   },
+  deskGroup: (el) => deskGroupFold(el.dataset.deskGroup),
   deskDoneFold: (el) => {
     const sid = el.dataset.deskDoneFold;
     if (deskFoldOpen.has(sid)) deskFoldOpen.delete(sid); else deskFoldOpen.add(sid);

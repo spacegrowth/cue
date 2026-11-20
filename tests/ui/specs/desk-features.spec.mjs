@@ -26,7 +26,7 @@ test("the How work lands steps show as one feature with its pieces under it (#28
   // In progress (a piece is at work), with how many are done; its working piece isn't a row of its own.
   await expect(feat).toHaveCount(1);
   await expect(feat.locator(".dk-fp")).toHaveText("5 of 6 done");
-  expect(await feat.evaluate((el) => { let h = el.previousElementSibling; while (h && !h.classList.contains("dk-gh")) h = h.previousElementSibling; return h?.textContent || ""; })).toMatch(/^In progress/);
+  expect(await feat.evaluate((el) => { let h = el.closest(".dk-gbody").previousElementSibling; while (h && !h.classList.contains("dk-gh")) h = h.previousElementSibling; return h?.textContent || ""; })).toMatch(/^In progress/);
   await expect(page.locator('.dk-items > .dk-scroll > .dk-it[data-desk-item="253"]')).toHaveCount(0);
   await expect(page.locator(".dk-items .dk-it.pc")).toHaveCount(0);
   // Opened: lit, its pieces under it in order, and the Pieces tab on its page.

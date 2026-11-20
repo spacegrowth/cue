@@ -19,8 +19,9 @@ const openDesk = async (page, p = "cue") => {
   await page.locator(".dk-items .dk-it").first().waitFor();
 };
 /** The list as it reads, top to bottom: group labels and holder heads as "# …", items by id. */
-const listOrder = (page) => page.locator(".dk-items .dk-scroll > *").evaluateAll((els) => els.map((el) =>
-  el.dataset.deskItem || (el.matches(".dk-holder") ? `# ${el.querySelector(".dk-nm").textContent}` : el.matches(".dk-gh") ? `# ${el.firstChild.textContent.trim()}` : null)).filter(Boolean));
+/** A group's rows are in its fold (#430), after its label. */
+const listOrder = (page) => page.locator(".dk-items .dk-scroll > *, .dk-items .dk-scroll > .dk-gbody > .dk-gin > *").evaluateAll((els) => els.map((el) =>
+  el.dataset.deskItem || (el.matches(".dk-holder") ? `# ${el.querySelector(".dk-nm").textContent}` : el.matches(".dk-gh") ? `# ${[...el.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim()).textContent.trim()}` : null)).filter(Boolean));
 
 test("the Desk is in the header after Board, and lists Waiting on you, then a group a holder", async ({ page, cue }) => {
   await cue.open("desk");
@@ -1636,7 +1637,7 @@ test("an interrupted assignment needs resume while a dependency stays queued", a
   });
   await expect(pane).toContainText("Needs resume");
   const rows = page.locator(".dk-items");
-  await expect(rows.locator(".dk-gh", { hasText: "Needs resume" }).locator("+ [data-desk-item='d5']")).toBeVisible();
+  await expect(rows.locator(".dk-gh", { hasText: "Needs resume" }).locator("+ .dk-gbody > .dk-gin > [data-desk-item='d5']:first-child")).toBeVisible();
   await expect(rows.locator("[data-desk-item='d4']")).toContainText("after #d5");
   await pane.locator(".dk-ph [data-desk-back]").click();
   await expect(page.locator('[data-desk-page="dispatcher"] .dk-psay')).toContainText("1 item needs to resume.");
@@ -1666,7 +1667,7 @@ test("an item the lead paused shows as paused and keeps its holder (#365)", asyn
     d5.paused = [Math.floor(Date.now() / 1000), "#9 is urgent"];
   });
   const rows = page.locator(".dk-items");
-  await expect(rows.locator(".dk-gh", { hasText: "Paused" }).locator("+ [data-desk-item='d5']")).toBeVisible();
+  await expect(rows.locator(".dk-gh", { hasText: "Paused" }).locator("+ .dk-gbody > .dk-gin > [data-desk-item='d5']:first-child")).toBeVisible();
   await rows.locator('[data-desk-item="d5"]').click();
   const pane = page.locator(".dk-right .dk-pg");
   await expect(pane).toContainText("Paused");
@@ -1690,7 +1691,7 @@ test("a parked item sits in its own quiet group with a Start button; queued rows
   await expect(rows.locator(".dk-gh", { hasText: "On hold" })).toHaveCount(0);
   await expect(rows.locator(".dk-held [data-desk-item='h1']")).toBeVisible();
   await expect(rows.locator(".dk-held [data-desk-item='h1'] .dk-tag")).toHaveText("parked");
-  await expect(rows.locator(".dk-gh.you + [data-desk-item='h1']")).toHaveCount(0);
+  await expect(rows.locator(".dk-gh.you + .dk-gbody > .dk-gin > [data-desk-item='h1']")).toHaveCount(0);
   await expect(rows.locator("[data-desk-item='h1'] [data-desk-act='start_now']")).toHaveText("Start");
   // A queued row has its own Park, right in the list; a press parks it, without opening or dragging it.
   const park = rows.locator("[data-desk-item='q7'] [data-desk-act='park']");

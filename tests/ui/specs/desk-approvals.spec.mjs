@@ -30,7 +30,7 @@ test("a checked Cue fix without a commit hash waits for verification in both Inb
     );
   });
   await expect(page.locator(".dk-items .dk-gh.you .n")).toHaveText("1");
-  await expect(page.locator(".dk-items .dk-gh.you + [data-desk-item='265']")).toBeVisible();
+  await expect(page.locator(".dk-items .dk-gh.you + .dk-gbody > .dk-gin > [data-desk-item='265']:first-child")).toBeVisible();
   await expect(page.locator('[data-desk-item="265"] .dk-ok')).toHaveAccessibleName("Looks right");
   await expect(page.locator('[data-desk-item="awaits-install"] .dk-ok')).toHaveCount(0);
   await expect(page.locator('[data-view="inbox"] .ib-count')).toHaveText("1");
@@ -57,12 +57,12 @@ test("Inbox and Desk count the same open decisions, excluding resolved requests 
   const inboxBadge = page.locator('[data-view="inbox"] .ib-count');
   const deskRows = () => page.locator(".dk-items .dk-gh.you").evaluate((head) => {
     const rows = [];
-    for (let row = head.nextElementSibling; row?.matches(".dk-it"); row = row.nextElementSibling) rows.push(row.dataset.deskItem);
+    for (let row = head.nextElementSibling.querySelector(".dk-gin").firstElementChild; row?.matches(".dk-it"); row = row.nextElementSibling) rows.push(row.dataset.deskItem);
     return rows;
   });
   await expect(deskCount).toHaveText("2");
   expect((await deskRows()).sort()).toEqual(["d1", "d5"]);
-  await expect(page.locator(".dk-items .dk-gh", { hasText: "Ready to review" }).locator("+ [data-desk-item='d2']")).toBeVisible();
+  await expect(page.locator(".dk-items .dk-gh", { hasText: "Ready to review" }).locator("+ .dk-gbody > .dk-gin > [data-desk-item='d2']:first-child")).toBeVisible();
   await expect(page.locator('[data-desk-request="codex-approval"]')).toHaveCount(0);
   await expect(inboxBadge).toHaveText("2");
   await page.locator('[data-view="inbox"]').click();
@@ -173,7 +173,7 @@ for (const [verb, behavior] of [["Allow", "allow"], ["No", "deny"]]) {
     const approval = task.locator(".dk-ask-row");
     await expect(task).toHaveClass(/\bask\b/);
     const group = await task.evaluate((row) => {
-      let heading = row.previousElementSibling;
+      let heading = row.closest(".dk-gbody").previousElementSibling;
       while (heading && !heading.matches(".dk-gh")) heading = heading.previousElementSibling;
       return heading?.textContent;
     });
