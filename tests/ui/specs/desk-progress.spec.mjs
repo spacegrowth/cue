@@ -72,7 +72,7 @@ test("Progress pops up each item under way with its steps, what it's doing now, 
   await expect(page.locator(".dk-right h1")).toContainText("Search stays centred");
 });
 
-test("An item sent back shows a curved arrow back to Building with its round and why (#421)", async ({ page, cue }) => {
+test("A reopened item shows a plain line under its steps, its round and your note's first words; a click shows the whole note (#421, #444)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   const now = Date.now();
@@ -83,11 +83,19 @@ test("An item sent back shows a curved arrow back to Building with its round and
   }, now);
   await page.locator(".dk-items .dk-ch [data-desk-prog-toggle]").click();
   const d3 = page.locator('.dk-prog [data-desk-prog-row="d3"]');
-  await expect(d3.locator(".dk-grbk svg")).toHaveCount(1);
-  await expect(d3.locator(".dk-grbk-t")).toHaveText("Round 2 · back from To check · The arrow is missing on Progress");
+  // No arrow under its steps: one plain line.
+  await expect(d3.locator(".dk-grbk svg")).toHaveCount(0);
+  const line = d3.locator(".dk-grbk-t");
+  await expect(line).toHaveText("Round 2 · you sent it back: The arrow is missing on Progress");
+  // A click shows the whole note, in place (it doesn't open the item); another folds it back.
+  await line.click();
+  await expect(page.locator(".dk-prog")).toHaveCount(1);
+  await expect(line).toHaveText("Round 2 · you sent it back: The arrow is missing on Progress\nand more");
+  await line.click();
+  await expect(line).toHaveText("Round 2 · you sent it back: The arrow is missing on Progress");
   // Picked up took till its first round's Building (2m), not till this round's.
   await expect(d3.locator(".dk-grt").nth(0)).toHaveText("2m");
-  // Items that never went back have no arrow.
+  // Items that never went back have no such line.
   await expect(page.locator('.dk-prog [data-desk-prog-row="d2"] .dk-grbk')).toHaveCount(0);
   const dir = process.env.SHOT_DIR || process.env.TMPDIR || "/tmp";
   await page.screenshot({ path: `${dir}/cue-desk-progress-back-light.png` });

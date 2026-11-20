@@ -242,6 +242,7 @@ const DESK_CLICKS = {
   // Items as a List or as Progress (#409, desk_progress.js); a Progress row opens its item's page.
   deskProgToggle: () => deskProgToggle(),
   deskProgOpen: (el) => deskProgOpen(el.dataset.deskProgOpen),
+  deskProgNote: (el) => { const id = el.dataset.deskProgNote; if (!deskProgNoteOpen.delete(id)) deskProgNoteOpen.add(id); renderMain(); },
   deskLogRow: (el) => { const id = el.dataset.deskLogRow; if (!deskLogOpen.delete(id)) deskLogOpen.add(id); renderMain(); },
   deskSession: (el) => openSession(el.dataset.deskSession),
   deskLeadChat: () => { deskPick = null; deskTab = "lead"; readerView = null; deskShow(null); },

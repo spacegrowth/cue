@@ -95,15 +95,18 @@ function deskProgRow(i) {
   return `<div class="dk-gr" role="button" tabindex="0" data-desk-prog-open="${esc(i.id)}" data-desk-prog-row="${esc(i.id)}"><span class="dk-grn"><span class="dk-grtl">${esc(i.title)}</span><span class="dk-grmeta"><span class="dk-kid">${deskKindIcon(i)}<span class="dk-id">${esc(deskNum(i))}</span></span>${who ? `<span>· ${esc(who)}</span>` : ""}<span class="dk-grmono">· ${ago(deskMs(i.created))}</span></span></span>${cells}<span class="dk-grnow"><span class="dk-grw ${look}">${deskProgNow(i)}</span>${deskProgButton(i) ? `<span class="dk-grb">${deskProgButton(i)}</span>` : ""}</span>${deskProgBack(i)}</div>`;
 }
 
-/** Under its marks when it went back to be redone (#421): a curved arrow from the step it was at back to Building,
- *  with the round it's on and why it went back (the latest time; the round counts them all). */
+/** Reopened items whose full send-back note is shown (#444): a click on the line opens it, another folds it. */
+const deskProgNoteOpen = new Set();
+/** Under its marks when it went back to be redone (#421, #444): one plain line, the round it's on and why it went back
+ *  (the latest time; the round counts them all): your note's first words, the whole note on a click. */
 function deskProgBack(i) {
   const b = i.backs?.[i.backs.length - 1];
   if (!b) return "";
-  const x = (k) => 48 + 96 * k, from = Math.min(Math.max(+b.from || 0, 2), 5), to = 1;
-  const arrow = `<svg class="dk-grbk-arrow" width="576" height="22" viewBox="0 0 576 22" aria-hidden="true"><path d="M${x(from)} 1 C${x(from)} 19 ${x(to)} 19 ${x(to)} 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="m${x(to) - 4} 7 4-5 4 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-  const why = b.why ? ` · ${esc(firstLine(b.why))}` : "";
-  return `<span class="dk-grbk">${arrow}<span class="dk-grbk-t"><b>Round ${i.backs.length + 1}</b> · back from ${DESK_PROG_STEPS[+b.from] || "its finish"}${why}</span></span>`;
+  const round = `<b>Round ${i.backs.length + 1}</b>`;
+  const note = (b.why || "").trim();
+  if (!note) return `<span class="dk-grbk"><span class="dk-grbk-t">${round} · went back to work from ${DESK_PROG_STEPS[+b.from] || "its finish"}</span></span>`;
+  const open = deskProgNoteOpen.has(i.id);
+  return `<span class="dk-grbk"><button class="dk-grbk-t${open ? " open" : ""}" data-desk-prog-note="${esc(i.id)}" aria-expanded="${open}">${round} · you sent it back: ${open ? esc(note) : esc(firstLine(note))}</button></span>`;
 }
 
 /** The Progress popover: every item under way (not the queued or parked ones, which haven't started) in the order the
