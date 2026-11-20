@@ -208,6 +208,9 @@ function deskOpenCrew(lead, agent) {
 const DESK_CLICKS = {
   deskPre: (el) => el.closest(".dk-box")?.querySelector("textarea")?.focus(),
   deskItab: (el) => { deskItemTabs.set(el.dataset.id, el.dataset.deskItab); renderMain(); },
+  // An item's chat (#418): a turn about another item opened in place, or folded again; its record, all of it.
+  deskFold: (el) => { const k = el.dataset.deskFold; if (!deskTurnOpen.delete(k)) deskTurnOpen.add(k); renderMain(); },
+  deskRecord: (el) => { const k = el.dataset.deskRecord; if (!deskRecordAll.delete(k)) deskRecordAll.add(k); renderMain(); },
   deskPanel: (el) => deskPanelToggle(el.dataset.deskPanel),
   deskItem: (el) => deskShow(deskOpen?.kind === "item" && deskOpen.id === el.dataset.deskItem ? null : { kind: "item", id: el.dataset.deskItem }),
   deskHolder: (el) => deskShow({ kind: "holder", sid: el.dataset.deskHolder }),

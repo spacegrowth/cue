@@ -85,7 +85,8 @@ test("Open in Desk from the real Desk view opens the item on the right", async (
   await page.locator('.ib-row[data-inbox-open="web"]').click();
   await page.locator(".ib-forbar .ib-desk").click();
   await expect(page.locator(".dk-right .dk-pg h1")).toHaveText("Bug #d7k2 · Reply box loses focus after Send");
-  await expect(page.locator('[data-desk-item="d7k2"]')).toHaveClass(/\bon\b/);
+  // The item in the column at the right, in the Items list's place (#418).
+  await expect(page.locator('.dk-iside[data-side-for="d7k2"]')).toBeVisible();
 });
 
 test("without a Desk view, Open in Desk says so and stays in the Inbox", async ({ cue, page }) => {

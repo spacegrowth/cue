@@ -12,19 +12,26 @@ for (const kind of ["task", "feature", "bug"]) {
     await box.fill("Fix the spacing");
     await box.press("Enter");
     await cue.called("desk_item_act", { id: "d2", act: "send_back" });
-    const tag = page.locator(".dk-right .dk-ttag.back").last();
-    await expect(tag).toHaveText("Sent back (queued)");
-    // Handed to the running agent, awaiting its delivery witness.
+    // The item's page is its holder's chat (#418): your send-back shows in it once, as the message to its busy holder
+    // waiting there, not sent yet (not also as a line of its own).
+    const chat = page.locator(".dk-right .dk-ichat");
+    const msg = chat.locator(".cv-you", { hasText: "isn't done: Fix the spacing" }).last();
+    await expect(msg.locator(".cv-meta")).toContainText("Not sent yet");
+    await expect(chat.locator(".cv-you.sending")).toHaveCount(0);
+    // Handed to the running agent, awaiting its delivery witness: still queued.
     await cue.change((st) => {
       const s = st.sessions.find((s) => s.session_id === "lead");
       s.queued = s.held; s.thread.push({ ...s.held, pending: true }); s.held = null;
     });
-    await expect(tag).toHaveText("Sent back (queued)");
+    await expect(msg.locator(".cv-meta")).toContainText("Queued");
     await cue.change((st) => {
       const s = st.sessions.find((s) => s.session_id === "lead");
       s.queued = null; s.thread.at(-1).pending = false;
     });
-    await expect(tag).toHaveText("Sent back");
+    // Delivered: a plain message of yours, nothing queued about it.
+    await expect(msg.locator(".cv-meta")).not.toContainText(/queued|not sent/i);
+    await expect(msg.locator(".cv-meta")).toContainText("You");
+    await expect(chat.locator(".cv-you.sending")).toHaveCount(0);
   });
 }
 

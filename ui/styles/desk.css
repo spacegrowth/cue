@@ -1218,3 +1218,32 @@ button.dk-al-row:focus-visible { outline: 2px solid var(--accent); outline-offse
 .dk-al-cmd { display: block; margin-top: 3px; font: 11.5px var(--mono); color: var(--muted); white-space: pre-wrap; word-break: break-all; }
 /* A list row's permission opened with more (#426): all its words, not two lines. */
 .dk-it .req-cut.open .dk-h { display: block; -webkit-line-clamp: unset; }
+/* An item's page (#418, option B of the item chat mocks): its holder's own chat in the middle, its turns about other
+   items folded to a line each; the item itself in the column at the right, in the Items list's place. */
+.dk-ichat { display: flex; flex-direction: column; gap: 14px; }
+.dk-ichat .cv-you.sending { opacity: .6; }
+.dk-fold { all: unset; box-sizing: border-box; display: flex; align-items: baseline; gap: 6px; min-width: 0; padding: 8px 12px; border-radius: var(--radius-btn, 8px); background: var(--panel-2); color: var(--muted); font-size: 12.5px; cursor: pointer; user-select: none; -webkit-user-select: none; }
+.dk-fold b { flex: none; color: var(--ink); font-weight: 650; }
+.dk-fold .dk-fold-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+.dk-fold .dk-fold-n { flex: none; }
+.dk-fold .dk-fold-gt { margin-left: auto; flex: none; }
+.dk-fold:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 7%, var(--panel-2)); }
+.dk-fold:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dk-iside { display: flex; flex-direction: column; }
+.dk-iside > .dk-panel { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; padding: 16px 20px; border-bottom: 0; }
+.dk-iside :is(.dk-psec, .dk-pnow > .dk-psh, .dk-psay) { display: block; }
+.dk-iside .dk-pnow { padding: 0; border-radius: 0; background: none; }
+.dk-iside .dk-pacts { margin-top: 8px; }
+/* Its buttons' row keeps a button's height while Looks right waits its moment (#394), as on a full page. */
+.dk-iside .dk-pacts { min-height: 28px; }
+.dk-iside .dk-pacts .dk-soon { margin-left: 0; }
+.dk-iside .dk-pfc { display: none; }
+.dk-iside .dk-panel .dk-note { margin: 0; font-size: 12px; color: var(--muted); }
+.dk-pmeta { margin-top: 8px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.dk-recs { display: flex; flex-direction: column; gap: 6px; }
+.dk-rec { font-size: 12px; line-height: 1.4; color: var(--ink); overflow-wrap: anywhere; }
+.dk-rec .dk-age { color: var(--muted); font: 11px var(--mono); }
+.dk-rec-more { all: unset; margin-top: 8px; color: var(--accent); font-size: 12px; font-weight: 600; cursor: pointer; }
+.dk-rec-more:hover, .dk-rec-more:focus-visible { text-decoration: underline; }
+.dk-sfoot { flex: none; display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--line); }
+.dk-sfoot .dk-drop { margin: 0 0 0 auto; align-self: center; font-weight: 600; }

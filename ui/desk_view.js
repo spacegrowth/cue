@@ -171,8 +171,10 @@ function deskView() {
   const taskApprovals = deskTaskApprovals(deskOf(project));
   // Progress (#409): over the Desk while open, the table of every item under way.
   const prog = deskProgShown ? deskProgress(project, taskApprovals) : "";
-  return `<div class="board dk-board">${deskSessions(project)}${deskRight(project, taskApprovals)}${deskList(project, taskApprovals)}${prog}</div>${deskAwayHtml()}`;
+  return `<div class="board dk-board">${deskSessions(project)}${deskRight(project, taskApprovals)}${deskItemShown(project) ? deskItemSide(deskItemShown(project), deskOf(project)) : deskList(project, taskApprovals)}${prog}</div>${deskAwayHtml()}`;
 }
+/** The item whose page is open on Desk `project` (#418: its column at the right, in the Items list's place), or null. */
+const deskItemShown = (project) => (deskOpen?.kind === "item" && deskOpen.project === project && deskItem(project, deskOpen.id)) || null;
 /** How many messages each item's Thread showed when last drawn, and for which opening of its page, by item. The page
  *  opens at its newest message, as a chat does (#145). After that it follows its chat only while you're at its end,
  *  as a session's chat does (#395): the reply being written stays in view as it grows, and a page you'd scrolled up
@@ -183,9 +185,9 @@ let deskThreadPinned = true;
 /** You just wrote on an item's page (deskPend): it goes to its end to show what you sent. */
 let deskThreadToEnd = false;
 function deskThreadFollow() {
-  const pane = document.querySelector(".dk-ipane"), th = pane?.querySelector(".dk-thread");
+  const pane = document.querySelector(".dk-ipane"), th = pane?.querySelector("[data-thread-for]");
   if (!th) return;
-  const rows = th.querySelectorAll(":scope > .dk-tm"), key = pane.dataset.scrollKey, was = deskThreadSeen.get(key);
+  const rows = th.querySelectorAll(":scope > [data-key]"), key = pane.dataset.scrollKey, was = deskThreadSeen.get(key);
   deskThreadSeen.set(key, { n: rows.length, open: deskOpen });
   const toEnd = () => { pane.scrollTop = pane.scrollHeight; };
   // Just opened: at its end, the newest message and where it stands (what to check) in view.
@@ -195,7 +197,7 @@ function deskThreadFollow() {
   // header (one written as you watched has grown in view already).
   let down = pane.scrollHeight - pane.clientHeight - pane.scrollTop;
   const last = rows[rows.length - 1];
-  if (rows.length > was.n && last && !last.classList.contains("live")) {
+  if (rows.length > was.n && last && !last.classList.contains("live") && last.dataset.key !== "where") {
     const head = pane.querySelector(".dk-ihead")?.getBoundingClientRect().bottom ?? pane.getBoundingClientRect().top;
     down = Math.min(down, last.getBoundingClientRect().top - head - 12);
   }
@@ -205,7 +207,7 @@ function deskThreadFollow() {
  *  touched (chat/patch.js patchKids, by each message's key), as a session's chat is kept. So the words being written
  *  grow in place, and what you'd selected in it stays. Lifted before the window's HTML is set, back after. */
 function deskThreadLift() {
-  const el = document.querySelector(".dk-thread[data-thread-for]");
+  const el = document.querySelector(".dk-ipane [data-thread-for]");
   if (!el) return null;
   const sel = getSelection();
   const picked = sel.rangeCount && !sel.isCollapsed && el.contains(sel.getRangeAt(0).commonAncestorContainer) ? [sel.anchorNode, sel.anchorOffset, sel.focusNode, sel.focusOffset] : null;
@@ -214,7 +216,7 @@ function deskThreadLift() {
 }
 function deskThreadSettle(lifted) {
   if (!lifted) return;
-  const { el, picked } = lifted, fresh = [...document.querySelectorAll(".dk-thread[data-thread-for]")].find((x) => x.dataset.threadFor === el.dataset.threadFor);
+  const { el, picked } = lifted, fresh = [...document.querySelectorAll(".dk-ipane [data-thread-for]")].find((x) => x.dataset.threadFor === el.dataset.threadFor);
   if (!fresh) return el.remove();
   patchKids(el, fresh, false);
   morphAttrs(el, fresh);

@@ -4,7 +4,7 @@
  *  wrote mid-turn, the turn is drawn in parts around your messages ({ from, to } ms); only the first
  *  part has the header (its count is the whole turn's). `replied`: the chat has its reply (false when you
  *  cut it off: its last words then stay here, or they'd be nowhere). */
-function stepsBlock(sid, turn, live, latest, part = { from: -Infinity, to: Infinity }, said = new Set(), replied = true) {
+function stepsBlock(sid, turn, live, latest, part = { from: -Infinity, to: Infinity }, said = new Set(), replied = true, say = null) {
   const mode = stepsMode();
   // What a Stop hook made it do goes in its own fold at the end (hookFold); the rest is the turn.
   const hooked = turn.items.filter((x) => hookedPart(turn, x) && (x.t !== "say" || !said.has(String(x.text || "").trim())));
@@ -26,7 +26,7 @@ function stepsBlock(sid, turn, live, latest, part = { from: -Infinity, to: Infin
   const head = `<div class="stx-head" data-key="head"><button class="stx-fold" data-turn-fold="${esc(key)}" data-open="${open ? 1 : 0}">${live ? `<span class="dot-live"></span>` : `<span class="stx-tri">${open ? "▾" : "▸"}</span>`}<b>${live ? `Working · ${count}` : count}</b>${open ? "" : `<span class="stx-sum"> · ${esc(turnSummary(steps))}</span>`}</button>${open ? `<button class="stx-all" data-turn-all="${esc(key)}">${all ? "Show less" : "Show all"}</button>` : ""}</div>`;
   // Folded, only the steps go: what it said to you stays in the chat (a fold never hides its words).
   if (!open) {
-    const says = items.filter(([x]) => x.t === "say").map(([x, i]) => `<div class="stx-say msg" data-key="${esc(itemKey(turn, x, i))}">${md(x.text)}</div>`).join("");
+    const says = items.filter(([x]) => x.t === "say").map(([x, i]) => `<div class="stx-say msg" data-key="${esc(itemKey(turn, x, i))}">${md(say ? say(x.text) : x.text)}</div>`).join("");
     return first || fold || says ? `<div class="stx" data-key="${esc(bk)}">${first ? head : ""}${says}${fold}</div>` : "";
   }
   if (!items.length) return first || fold ? `<div class="stx" data-key="${esc(bk)}">${first ? head : ""}${fold}</div>` : "";
@@ -40,7 +40,7 @@ function stepsBlock(sid, turn, live, latest, part = { from: -Infinity, to: Infin
     flush();
     // New words unroll top to bottom, quicker for short ones.
     const ms = Math.min(REVEAL_MS, 250 + x.text.length * 2);
-    body += `<div class="stx-say msg" data-key="${esc(itemKey(turn, x, i))}" style="--rv:${ms}ms">${md(x.text)}</div>`;
+    body += `<div class="stx-say msg" data-key="${esc(itemKey(turn, x, i))}" style="--rv:${ms}ms">${md(say ? say(x.text) : x.text)}</div>`;
   });
   flush();
   if (!first) return `<div class="stx" data-key="${esc(bk)}">${body}${fold}</div>`;
@@ -60,8 +60,10 @@ function hookFold(sid, turn, hooked) {
  *  after the hook starts a turn of its own, and the hook's part stays in the one before. */
 const hookInChat = (sid, since) => stepsMode() !== "hidden" && !!stepFeeds.get(sid)?.turns?.some((t) => t.hooked_ms && t.hooked_ms >= since);
 /** The chat with each turn's steps put in by time: after your message, before the reply. `extra`:
- *  more lines to place by time (what you chose on a decision, when you chose it). */
-function withSteps(sid, s, ex, rows, extra = []) {
+ *  more lines to place by time (what you chose on a decision, when you chose it). `hides(at)`: a turn's steps that
+ *  aren't drawn (a page's folded turns, chatHtml `page.folds`). `say(text)`: the words being written as a page shows
+ *  them (chatHtml `page.say`). */
+function withSteps(sid, s, ex, rows, extra = [], hides = null, say = null) {
   const f = sid && stepFeeds.get(sid);
   const first = ex[0]?.at_ms ?? 0;
   const turns = f?.turns || [];
@@ -82,9 +84,10 @@ function withSteps(sid, s, ex, rows, extra = []) {
       const bounds = [-Infinity, ...cuts, Infinity];
       return cuts.concat([null]).map((_, k) => ({
         at: k === 0 ? start : cuts[k - 1] + 0.5,
-        html: stepsBlock(sid, t, t === lastTurn && s?.state === "working", latest, { from: bounds[k], to: bounds[k + 1] }, said, replied),
+        html: stepsBlock(sid, t, t === lastTurn && s?.state === "working", latest, { from: bounds[k], to: bounds[k + 1] }, said, replied, say),
       }));
     })
+    .filter((b) => !hides?.(b.at))
     .concat(extra)
     .filter((b) => b.html)
     .sort((a, b) => a.at - b.at);
@@ -122,7 +125,10 @@ function reviewFolds(ex, team) {
 
 /** `page`: a page that draws this chat as its own (the crew's page, team_page.js): `extra`, more rows of its own placed
  *  by time ({ at, html }, each keyed). It folds replies as the chat does. The Desk's lead chat (desk.js deskChat):
- *  `lines`, md's hook that draws the lead's own ITEM/ROUTE/DONE/CONTEXT lines; `noActs`, no Send to… on its messages (the Desk's lead hands work on by its own lines). */
+ *  `lines`, md's hook that draws the lead's own ITEM/ROUTE/DONE/CONTEXT lines; `noActs`, no Send to… on its messages (the Desk's lead hands work on by its own lines).
+ *  `reply(e, key)`: { text, after } a reply drawn as the page splits it; `say(text)`: the words being written, likewise.
+ *  `folds(ex)`: turns the page folds to a line of its own (an item's page, the holder's turns about other items):
+ *  { skip: the messages not drawn, by index; rows: its fold lines, placed by time; hides(at): their steps }. */
 function chatHtml(it, s, harness, paged = false, page = null) {
   const original = conversation(it, s);
   const ex = original.map(deskSaidE);
@@ -143,8 +149,10 @@ function chatHtml(it, s, harness, paged = false, page = null) {
   const ran = sid ? (ranLog.get(sid) || []).map((e, n) => ({ at: e.at, html: keyed(ranCard(sid, e, n), K(`ran:${e.at}`)) })) : [];
   const restarts = sid ? (state.restarted?.[sid] || []).map((r, n, all) => ({ at: r.at_ms, html: keyed(restartLine(sid, r, n === all.length - 1), K(`rs:${r.at_ms}`)) })) : [];
   const { reviews, reviewAt } = reviewFolds(ex, s?.team || []);
+  const fold = page?.folds?.(ex);
   // `page.noSteps`: a chat without its turns' steps (the Desk lead's: what it read to route is not yours to read).
   const rows = withSteps(page?.noSteps ? null : sid, s, ex, ex.map((e, n) => keyed((() => {
+    if (fold?.skip.has(n)) return "";
     if (e.role === "peer") return peerBubble(e.from || "another agent", "", e.at_ms, e.text);
     if (answers.has(n)) return "";
     if (decided.has(n)) return chose.length && near(e.at_ms) ? "" : chatDecisionLine(decided.get(n), e.at_ms);
@@ -181,11 +189,13 @@ function chatHtml(it, s, harness, paged = false, page = null) {
     const follow = it?.followup && e.text === it.message && !hookInChat(sid, ex.findLast((y) => y.role === "you" && y.at_ms < e.at_ms)?.at_ms ?? 0) ? followHtml(it) : "";
     fwdMsgs.set(key, { text: addOn.plain(e.text), from: project, fromSid: sid });
     // Listen and Read go together: a reply worth hearing is worth reading set larger (Read shows wherever Listen does).
-    const said = addOn.reply(sid, e.text), listen = sid && proseWords(said.text, page?.lines) >= LISTEN_WORDS;
+    // A page's own split of a reply (the Desk's item chat: its own lines out, a stop hook's checklist folded under it).
+    const split = page?.reply?.(e, key);
+    const said = addOn.reply(sid, split ? split.text : e.text), listen = sid && proseWords(said.text, page?.lines) >= LISTEN_WORDS;
     return `<div class="cv-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}" data-at="${e.at_ms}"><div class="cv-meta">${esc(agentName(harness))}${machTag(it?.machine || s?.machine)} · ${ago(e.at_ms)} ago${n === lastAgent ? toldMeta(s) : ""}</div>
-      <div class="msg cv-text">${md(said.text, { runIn: s?.session_id, lines: page?.lines })}</div>${said.after}${thumbs(e.images)}${localImages(e.text)}
+      <div class="msg cv-text">${md(said.text, { runIn: s?.session_id, lines: page?.lines })}</div>${split?.after || ""}${said.after}${thumbs(e.images)}${localImages(e.text)}
       <div class="cv-acts">${listen ? listenBtn(key) : ""}${listen && paged ? `<button class="cv-pill" data-read="${esc(key)}">${BOOK_ICON}Read</button>` : ""}${foldable ? `<button class="cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}${page?.noActs ? "" : `<button class="cv-fwd" data-fwd="${esc(key)}">↗ Send to…</button>`}</div>${follow}</div>`;
-  })(), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran, restarts, page?.extra || []));
+  })(), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran, restarts, page?.extra || [], fold?.rows || []), fold?.hides, page?.say);
   for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(outboxRow(o, s, K(`out:${o.at}`)));
   // Sent while it worked: Cue keeps it until the turn ends. Yours to take back (Edit, Esc) or send now. (What Cue
   // itself will send its crew's lead once it's free waits on the member's row in the crew tray, team.js: the chat

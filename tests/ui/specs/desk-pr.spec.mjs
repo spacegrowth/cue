@@ -11,9 +11,17 @@ const openDesk = async (page) => {
   await page.locator(".dk-items .dk-it").first().waitFor();
 };
 const patchItem = (cue, id, patch) => cue.change((st, [k, p]) => { Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === k), p); }, [id, patch]);
+// An item's page (#418): its holder's chat in the middle, the item itself in the column at the right, in the Items
+// list's place, so another item opens from the list after "‹ Items".
+const backToItems = async (page) => {
+  if (await page.locator(".dk-iside").count()) await page.locator(".dk-right .dk-back").click();
+  await page.locator(".dk-items:not(.dk-iside) .dk-it").first().waitFor();
+};
 const openItem = async (page, id) => {
+  await backToItems(page);
   await page.locator(`.dk-items [data-desk-item="${id}"] .dk-t`).click();
-  return page.locator(".dk-right .dk-pg");
+  await page.locator(`.dk-iside[data-side-for="${id}"]`).waitFor();
+  return page.locator(".dk-board");
 };
 const tree = (id) => ({ repo: "/r/cue", path: "/r/cue-copies/1", branch: `desk/${id}`, base: "abc1234", slot: 1 });
 const PR = "https://example.test/o/r/pull/7";
@@ -33,10 +41,11 @@ test("an item in review shows its pull request's link and Open the PR, and nothi
   await expect(box.locator("button")).toHaveCount(0);
   await expect(pane.locator('[data-desk-act="looks_right"]')).toHaveCount(0);
   await expect(box.locator("[title]")).toHaveCount(0);
-  // Merged, not seen on main yet: it says so.
+  // Merged, not seen on main yet: its page and its row say so.
   await patchItem(cue, "d5", { finish: { step: "review", pr: PR, at, wait: "Merged; waiting to see it on main" } });
-  await expect(row.locator(".dk-who")).toHaveText("In review · Merged; waiting to see it on main" + ` · since ${since}`);
   await expect(box.locator(".dk-wo-s")).toHaveText("Merged; waiting to see it on main");
+  await backToItems(page);
+  await expect(row.locator(".dk-who")).toHaveText("In review · Merged; waiting to see it on main" + ` · since ${since}`);
 });
 
 test("a pull request that couldn't be opened says why; one closed unmerged offers a new one", async ({ page, cue }) => {
@@ -58,5 +67,5 @@ test("pushed after its landing: its line says so", async ({ page, cue }) => {
   await openDesk(page);
   await patchItem(cue, "d2", { tree: null, commit: "def5678", finish: { step: "checked", commit: "def5678", at: Date.now(), pushed: "Pushed to origin" } });
   const pane = await openItem(page, "d2");
-  await expect(pane.locator(".dk-state")).toContainText("committed def5678 · pushed to origin");
+  await expect(pane.locator(".dk-iside .dk-pmeta")).toContainText("committed def5678 · pushed to origin");
 });

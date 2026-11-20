@@ -18,6 +18,10 @@ let chatOpenTold;
 // settleChat, so its scroll is its own). Each is known by its kind and its place among that kind, or by its
 // data-scroll-key: a list new in this draw (a lead's review rows) is never handed another list's place.
 const SCROLLERS = [".col", ".cp-scroll", ".cpv-scroll", ".cpm-body", ".ib-scroll", ".ib-brief", ".ib-page-body", ".lv-list", ".sv-scroll", ".sheet-body", ".sec-body", ".card.recent", ".hist", ".hdetail", ".itab", ".vp-list", ".rdv-scroll", ".rdv-list", ".rdv-toc", ".dk-scroll", ".dk-pane", ".dk-chat", ".dk-rd", ".dk-desks", ".dk-givemenu"];
+/** The lists that keep their place while they're off the window, by key: the Desk's Items list, which an open item's
+ *  column takes the place of till "‹ Items" (#418). */
+const AWAY_KEPT = /^\.dk-scroll:desk-items/;
+const scrollsAway = new Map();
 function scrollerKeys() {
   const seen = {};
   return [...document.querySelectorAll(SCROLLERS.join(", "))].map((el) => {
@@ -100,6 +104,7 @@ function beforeDraw() {
   was.lineLefts = new Map([...document.querySelectorAll("input[data-text]")].map((el) => [el.dataset.text, el.scrollLeft]));
   was.places = notePlaces();
   was.scrolls = new Map(scrollerKeys().map(([key, el]) => [key, el.scrollTop]));
+  for (const [key, top] of was.scrolls) if (AWAY_KEPT.test(key)) scrollsAway.set(key, top);
   was.mcpTops = new Map([...document.querySelectorAll(".mcp-list[data-mcp-key]")].map((el) => [el.dataset.mcpKey, el.scrollTop]));   // the MCP picker, redrawn on every tick
   // A background script's output in its full view (chat/helpers.js scriptPane): where you were, or at its newest.
   was.bgScrolls = new Map([...document.querySelectorAll("[data-bg-scroll]")].map((el) => [el.dataset.bgScroll, el.scrollHeight - el.scrollTop - el.clientHeight < 4 ? null : el.scrollTop]));
@@ -226,7 +231,7 @@ function keepSessionsTop(anchor) {
  *  background script's output where they were. */
 function restoreScrolls(was) {
   putPlacesBack(was.places);
-  scrollerKeys().forEach(([key, el]) => { if (was.scrolls.has(key)) el.scrollTop = was.scrolls.get(key); });
+  scrollerKeys().forEach(([key, el]) => { if (was.scrolls.has(key)) el.scrollTop = was.scrolls.get(key); else if (scrollsAway.has(key)) el.scrollTop = scrollsAway.get(key); });
   if (was.waitAnchor) {
     const el = [...document.querySelectorAll(".sec-waiting .sec-body .nrow[data-big]")].find((x) => x.dataset.big === was.waitAnchor.id);
     const dy = el ? el.getBoundingClientRect().top - was.waitAnchor.top : 0;

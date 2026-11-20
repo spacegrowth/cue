@@ -190,35 +190,118 @@ function deskThreadHtml(rows, id = "") {
   const key = (r) => { const k = r.key || `${r.rec || r.by}:${r.at}`, n = seen.get(k) || 0; seen.set(k, n + 1); return esc(n ? `${k}~${n}` : k); };
   return `<div class="dk-thread"${id ? ` data-thread-for="${esc(id)}"` : ""}>${rows.map((r) => r.rec ? `<div class="dk-tm rec" data-key="${key(r)}"><span class="dk-age">${esc(ago(r.at))}</span><span class="dk-tdot"><i></i></span><div class="dk-tb"><b>${esc(r.rec)}</b> · ${r.html}</div></div>` : `<div class="dk-tm${r.live ? " live" : ""}" data-key="${key(r)}"><span class="dk-age">${r.live ? "now" : esc(ago(r.at))}</span><span class="dk-tdot${r.back ? " back" : r.you || r.live ? " on" : ""}"><i></i></span><div class="dk-tb"><div class="dk-tw"><b>${esc(r.by)}</b>${r.tag ? `<span class="dk-ttag${r.back ? " back" : r.on ? " on" : ""}">${esc(r.tag)}</span>` : ""}</div>${r.html}</div></div>`).join("")}</div>`;
 }
+/** Item `i`'s page (#418, option B of the item chat mocks): its holder's own chat in the middle, the same live chat its
+ *  session's page shows (writing here is writing there), its turns about other items each folded to a line that opens
+ *  in place. With no session to show (not given out yet, its session gone), its Thread as before. The item itself
+ *  (state, You'll see, What to try, its record, Open and Drop) is in the column at the right (deskItemSide), in the
+ *  Items list's place while it's open. */
 function deskItemPane(i, d, foot = "") {
   const all = deskItemLog(i, d).reverse();
-  const decs = all.filter((c) => c.call), steps = all.filter((c) => !c.call);
+  const decs = all.filter((c) => c.call);
   // Its Files tab (#149): each file it changed with its counts, a click opening its diff; while it's worked on, what's
   // changed so far (the files it's on, till they've changed).
   const changed = deskFilesChanged(i), checking = i.state === "to_check" || i.state === "done";
   const read = deskDiffs.get(i.id)?.files, nFiles = (checking ? read?.length : read?.length || null) ?? (i.commit_wait?.files || i.files || []).length;
   const files = changed ? `<div class="dk-fcs">${changed}</div>` : "";
-  // A feature nobody holds is its pieces (#282): its page opens on them.
-  const feat = deskFeat(i), thread = deskThread(i, d), tab = deskItemTabs.get(i.id) || (feat && !i.holder ? "pieces" : "thread");
-  const h = i.holder, sid = h ? (h.kind === "crew" ? h.lead_sid : h.sid) : null;
-  const armed = deskDropArm === i.id;
-  const tabBtn = (k, label, n) => `<button class="dk-itab${tab === k ? " on" : ""}" role="tab" aria-selected="${tab === k}" data-desk-itab="${k}" data-id="${esc(i.id)}">${label}<span class="n">${n}</span></button>`;
-  // Under the thread, by the newest message and the box: writing why to send it back, what held it up or what it
-  // asks, a build log, what it made. Its state, what you'll see, buttons and who has it are in the panel (#200).
+  // A feature nobody holds is its pieces (#282): its page opens on them. The Steps tab of before is its record now, in
+  // the column at the right.
+  const feat = deskFeat(i), s = deskItemChatOf(i), thread = s ? null : deskThread(i, d);
+  let tab = deskItemTabs.get(i.id) || (feat && !i.holder ? "pieces" : "thread");
+  if (tab === "steps") tab = "thread";
+  const tabBtn = (k, label, n) => `<button class="dk-itab${tab === k ? " on" : ""}" role="tab" aria-selected="${tab === k}" data-desk-itab="${k}" data-id="${esc(i.id)}">${label}${n == null ? "" : `<span class="n">${n}</span>`}</button>`;
+  // Under the chat, by the newest message and the box: writing why to send it back, what held it up or what it asks, a
+  // build log, what it made. Not what it asks when the chat is its holder's and the question is its reply: once, there
+  // (a lead's ask, or Cue's own question while it finishes it, stays: the chat never had those).
   const backing = deskBackFor === i.id;
   const at = `${backing ? deskBackHtml(i.id) : ""}${deskSec("Couldn't give it out", i.route_failed ? `<p>${esc(i.route_failed)}</p>` : "")}${deskSec("Couldn't start", !i.holder && i.start_failed ? `<p>Cue couldn't start a new session for it: ${esc(i.start_failed)}</p>` : "")}
-    ${i.state === "needs_you" ? deskChain(i) : deskSec(deskAnswerOf(i) ? "It asked you" : "What's holding it up", deskChain(i))}${deskSec("Build log", deskFinLog(i))}${deskSec("What it made", i.state === "to_check" || i.state === "done" ? deskMadeLinks(i) : "")}
+    ${s && !i.ask && !i.finish?.question && i.state === "needs_you" && !deskAnswerOf(i) ? "" : i.state === "needs_you" ? deskChain(i) : deskSec(deskAnswerOf(i) ? "It asked you" : "What's holding it up", deskChain(i))}${deskSec("Build log", deskFinLog(i))}${deskSec("What it made", i.state === "to_check" || i.state === "done" ? deskMadeLinks(i) : "")}
     ${i.part_of ? `<p class="dk-split">Part of <a href="#" data-desk-item="${esc(i.part_of)}">${esc(deskItem(i.project, i.part_of)?.title || `#${i.part_of}`)}</a></p>` : ""}
     ${i.split_from ? `<p class="dk-split">Split from <a href="#" data-desk-item="${esc(i.split_from)}">#${esc(i.split_from)}</a></p>` : ""}`;
   // Its pieces, oldest first (#282): each its state, title, and kind, number, who and age; a click opens it.
   const pieceRow = (p) => `<div class="dk-pc${p.state === "done" ? " done" : ""}" role="button" tabindex="0" data-desk-item="${esc(p.id)}">${deskStateIcon(p)}<div class="dk-pc-t">${esc(p.title)}</div><div class="dk-pc-m">${deskKindIcon(p)}<span>${[esc(deskNum(p)), esc(deskHolderOf(p)), `${ago(deskMs(p.state === "done" ? p.done_at || p.updated : p.created))} ago`].filter(Boolean).join(" · ")}</span></div></div>`;
   const body = tab === "pieces" && feat ? `<div class="dk-pcl">${i.pieces.map(pieceRow).join("")}</div>`
     : tab === "decisions" ? deskCallsBox(decs, `item:${i.id}`, deskDecList, `<p class="dk-note">No decisions on it yet.</p>`)
-    : tab === "steps" ? (steps.length ? deskLog(steps) : `<p class="dk-note">No steps yet.</p>`)
     : tab === "files" ? (files ? deskSec(checking ? "Files changed" : deskDiffs.get(i.id)?.files?.length ? "Changed so far" : "Files it's on", files) : `<p class="dk-note">No files on it yet.</p>`)
-    : `${deskThreadHtml(thread, `${i.project}|${i.id}`)}<div class="dk-inow">${at}</div>`;
-  const main = `<div class="dk-pane dk-ipane" data-scroll-key="item:${esc(i.id)}"><div class="dk-ihead"><div class="dk-itabs" role="tablist">${feat ? tabBtn("pieces", "Pieces", i.pieces.length) : ""}${tabBtn("thread", "Thread", thread.length)}${tabBtn("decisions", "Decisions", decs.filter((c) => !c.minor).length)}${tabBtn("steps", "Steps", steps.length)}${tabBtn("files", "Files", nFiles)}<span class="grow"></span>${i.state !== "done" ? `<button class="dk-drop${armed ? " armed" : ""}" data-desk-act="drop" data-id="${esc(i.id)}">${armed ? "Drop it" : "Drop this item"}</button>` : ""}</div></div>
+    : `${s ? deskItemChat(i, d, s) : deskThreadHtml(thread, `${i.project}|${i.id}`)}<div class="dk-inow">${at}</div>`;
+  const main = `<div class="dk-pane dk-ipane${s && tab === "thread" ? " chat" : ""}" data-scroll-key="item:${esc(i.id)}"><div class="dk-ihead"><div class="dk-itabs" role="tablist">${feat ? tabBtn("pieces", "Pieces", i.pieces.length) : ""}${tabBtn("thread", "Chat", null)}${tabBtn("decisions", "Decisions", decs.filter((c) => !c.minor).length)}${tabBtn("files", "Files", nFiles)}</div></div>
     <div class="dk-ibody dk-itab-${tab}">${body}</div></div>`;
+  const sub = s ? `<b>${esc(i.holder.kind === "crew" ? deskHolderName(s.session_id) : i.holder.name)}</b>'s chat · other items' turns folded` : `<span class="dk-state">${deskItemMeta(i, d)}</span>`;
+  return deskPage({ page: "item", kind: i.kind, side: true, back: deskBack("Items"), mark: `${deskNum(i)} · `, title: esc(i.title), meta: sub, main, foot });
+}
+/** The session whose chat an item's page shows: its holder's (a crew member's lead's), when Cue has it. */
+function deskItemChatOf(i) {
+  const sid = deskHolderSid(i);
+  return (sid && sessionOf(sid)) || null;
+}
+/** Each item page's turns about other items you opened in place, by "<item>:<the turn's time>". */
+const deskTurnOpen = new Set();
+/** The item a message of yours is about: "#id" naming one of the Desk's items (the hub's "About #d4 (…)", a hand-off),
+ *  or null. */
+function deskTurnItem(text, d) {
+  const items = d?.items || [];
+  return items.find((x) => deskNames(text, x.id)) || (/^About #([\w.-]+)/.exec(text || "") ? { id: /^About #([\w.-]+)/.exec(text)[1], title: "" } : null);
+}
+/** Item `i`'s chat folds (chat/render.js chatHtml `folds`): each run of turns about another item (your message naming
+ *  it, and the replies after) as one line, "Worked on #d4 Rail dot blinks · 3 replies ›", that opens them in place;
+ *  turns naming this item, or none, stay as they are. */
+function deskChatFolds(i, d) {
+  return (ex) => {
+    const skip = new Set(), rows = [], spans = [];
+    let run = null;
+    const close = () => {
+      if (!run) return;
+      const { it, from, to, replies } = run, key = `${i.id}:${ex[from].at_ms}`, open = deskTurnOpen.has(key);
+      const t = it.title ? ` <span class="dk-fold-t">${esc(it.title)}</span>` : "";
+      rows.push({ at: ex[from].at_ms - 0.5, html: keyed(`<button class="dk-fold${open ? " open" : ""}" data-desk-fold="${esc(key)}" aria-expanded="${open}"><b>Worked on #${esc(it.id)}</b>${t}<span class="dk-fold-n"> · ${replies === 1 ? "1 reply" : `${replies} replies`}</span><span class="dk-fold-gt" aria-hidden="true">${open ? "‹" : "›"}</span></button>`, `fold:${key}`) });
+      if (!open) {
+        for (let k = from; k < to; k++) skip.add(k);
+        spans.push([ex[from].at_ms - 2000, to < ex.length ? ex[to].at_ms - 2000 : Infinity]);
+      }
+      run = null;
+    };
+    for (let n = 0; n < ex.length;) {
+      if (ex[n].role !== "you") { n++; continue; }
+      let m = n + 1;
+      while (m < ex.length && ex[m].role !== "you") m++;
+      const it = deskNames(ex[n].text, i.id) ? null : deskTurnItem(ex[n].text, d);
+      const replies = ex.slice(n + 1, m).filter((e) => e.role === "agent").length;
+      if (it && run?.it.id === it.id) Object.assign(run, { to: m, replies: run.replies + replies });
+      else { close(); if (it) run = { it, from: n, to: m, replies }; }
+      n = m;
+    }
+    close();
+    return { skip, rows, hides: (at) => spans.some(([a, b]) => at >= a && at < b) };
+  };
+}
+/** A reply's words on an item's chat: the Desk's own lines out, as its saved reply has them (deskSaidWords), but the
+ *  ones the chat draws as lines of their own (DONE: as "Bug #x is done", deskLineHtml) kept. */
+const deskChatWords = (text) => String(text || "").split("\n").filter((l) => !DESK_LINE.test(deskUnmarked(l)) || deskLineHtml(l, (x) => esc(x))).join("\n").trim();
+/** Reply `e` on item `i`'s chat: its words (deskChatWords), and a stop hook's checklist in them folded under it
+ *  (deskHookSplit, deskHookFold), as the item's thread drew it (#325, #353). */
+function deskChatReply(i, e) {
+  const r = deskHookSplit({ at: e.at_ms, text: e.text });
+  return { text: deskChatWords(r.text), after: deskHookFold(i, r) };
+}
+/** Item `i`'s chat: its holder's session `s`, drawn as its own page draws it (deskChatRows), other items' turns folded;
+ *  your send-backs of this item as their lines (#410); what you sent from here that it doesn't show yet (#395); and
+ *  where it is now, its Working line (#407). Kept across draws, only what changed touched (deskThreadLift). */
+function deskItemChat(i, d, s) {
+  const thread = s.thread || [];
+  const checks = (d.checks || []).filter((c) => c.id === i.id).map((c) => ({ at: c.at, html: keyed(deskCheckLine(c, d), `chk:${c.id}:${c.at}`) }));
+  const rows = deskChatRows(s, { extra: checks, folds: deskChatFolds(i, d), say: deskSaidWords, reply: (e) => deskChatReply(i, e) });
+  // Not twice: what the chat's own outbox shows already (chat/send.js), its held or queued line, or its thread has.
+  const waits = (p) => p.text.trim() && [s.held, s.queued].some((w) => String(w?.text || "").includes(p.text.trim()));
+  const sent = (p) => waits(p) || outbox.some((o) => o.sid === s.session_id && o.text === p.text) || thread.some((e) => e.role === "you" && e.at_ms >= p.at - 60000 && (p.text.trim() ? e.text.includes(p.text.trim()) : true));
+  const mine = (deskPending.get(i.id) || []).filter((p) => !sent(p)).map((p) => keyed(`<div class="cv-you sending"><div class="cv-you-text">${esc(p.text).replace(/\n/g, "<br>")}</div>${p.pics ? `<div class="dk-tpn">${p.pics === 1 ? "1 picture" : `${p.pics} pictures`}</div>` : ""}<div class="cv-meta">${p.why === "back" ? "Sent back · queued" : "Sending"}</div></div>`, `p:${p.at}`)).join("");
+  const where = sessionOf(s.session_id) ? whereNow(null, s) : "";
+  return `<div class="dk-ichat" data-thread-for="${esc(`${i.project}|${i.id}`)}">${rows}${mine}${where ? keyed(where, "where") : ""}</div>`;
+}
+/** The column at the right while item `i`'s page is open (#418), in the Items list's place: This item (its state, what
+ *  it waits on, its buttons; who has it and who added it), You'll see as ticks, What to try, its record, then Open its
+ *  holder and Drop. */
+function deskItemSide(i, d) {
+  const h = i.holder, sid = deskHolderSid(i), checking = i.state === "to_check" || i.state === "done";
+  const backing = deskBackFor === i.id, armed = deskDropArm === i.id;
   // What you'll see as ticks (#382: its Done when is the session's check, not shown here): all ticked once it's to
   // check or done (its session said DONE), none before; "n of m".
   // SHORTCUT: the ticks come from the item's state, so they're all or none: Cue has no status per point. Upgrade: its
@@ -226,15 +309,30 @@ function deskItemPane(i, d, foot = "") {
   const pts = deskDoneWhenPoints(i.see), ticked = checking ? pts.length : 0;
   const tk = (y) => `<i class="dk-tk${y ? " y" : ""}" aria-hidden="true">${y ? `<svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>` : ""}</i>`;
   const dw = pts.length ? `<div class="dk-idw"><ul class="dk-ptk">${pts.map((p) => `<li${checking ? ` class="y"` : ""}>${tk(checking)}<span>${linkify(esc(p), sessBase(sid))}</span></li>`).join("")}</ul></div>` : "";
-  const done = deskPsec(`You'll see${pts.length > 1 ? ` · ${ticked} of ${pts.length}` : ""}`, `${dw || (i.state === "done" ? "" : `<p class="dk-note">The lead hasn't said yet.</p>`)}${deskCheckInfo(i, d)}`, "dk-pdw");
-  const who = h ? (h.kind === "crew" ? `<b>${esc(h.name)}</b>` : deskChatLink(h.sid, h.name, d)) : "";
-  const leadOf = h?.kind === "crew" ? deskChatLink(h.lead_sid, deskHolderName(h.lead_sid), d) : "";
-  const whoSec = deskPsec("Who", deskPwho("Held by", who ? `${who}${i.crew ? ` → <b>${esc(i.crew)}</b>` : ""}` : "nobody yet") + deskPwho("Lead", leadOf));
-  return deskPage({ page: "item", kind: i.kind, back: deskBack(deskLeadName(d) || "Back"),
-    acts: sid && sessionOf(sid) ? `<span class="dk-ilinks"><button class="btn small" ${deskChatAttrs(sid, d)}>Watch ${esc(h.name)}</button></span>` : "",
-    mark: `${deskNum(i)} · `, title: esc(i.title), meta: `<span class="dk-state">${deskItemMeta(i, d)}</span>`,
-    now: deskPnow({ ...deskItemNow(i), acts: `${backing ? deskBackActs(i) : deskLooksTop(i) + deskPickBtns(i) + deskItemActs(i)}${deskBuiltLink(i)}${deskDesignsLink(i)}`, fold: pts.length ? `${ticked} of ${pts.length} done` : "" }),
-    panel: done + whoSec + deskItemFiles(i), main, foot });
+  const see = deskPsec(`You'll see${pts.length > 1 ? ` · ${ticked} of ${pts.length}` : ""}`, dw || (i.state === "done" ? "" : `<p class="dk-note">The lead hasn't said yet.</p>`), "dk-pdw");
+  const who = h?.name || "its session";
+  // The pictures it was added with: its chat is its holder's, which never had them (#418).
+  const shots = thumbs(i.images), pics = shots ? deskPsec("Pictures", `<div class="dk-tpics">${shots}</div>`) : "";
+  const tryIt = deskPsec("What to try", deskCheckInfo(i, d) || (i.state === "done" ? "" : `<p class="dk-note">Shows here when ${esc(who)} says it's done, with Looks right and Send back.</p>`));
+  const now = deskPnow({ ...deskItemNow(i), acts: `${backing ? deskBackActs(i) : deskLooksTop(i) + deskPickBtns(i) + deskItemActs(i)}${deskBuiltLink(i)}${deskDesignsLink(i)}` })
+    .replace('<h4 class="dk-psh">Now</h4>', '<h4 class="dk-psh">This item</h4>')
+    .replace("</section>", `<div class="dk-pmeta">${deskItemMeta(i, d)}</div></section>`);
+  const open = sid && sessionOf(sid) ? `<button class="btn small" ${deskChatAttrs(sid, d)}>Open ${esc(deskHolderName(sid, h.kind === "crew" ? "" : h.name))}</button>` : "";
+  const drop = i.state !== "done" ? `<button class="btn small dk-drop${armed ? " armed" : ""}" data-desk-act="drop" data-id="${esc(i.id)}">${armed ? "Drop it" : "Drop this item"}</button>` : "";
+  const foot = open || drop ? `<div class="dk-sfoot">${open}${drop}</div>` : "";
+  return `<div class="dk-card dk-items dk-iside" data-side-for="${esc(i.id)}"><div class="dk-scroll dk-panel" data-scroll-key="item-side:${esc(i.id)}">${now}${see}${tryIt}${pics}${deskItemRecord(i, d)}${deskItemFiles(i)}</div>${foot}</div>`;
+}
+/** Item `i`'s record (#418, the Steps tab of before): its hand-offs and what you wrote about it, each a quiet line with
+ *  its age, newest last; the last few, with All steps opening the rest in place. */
+const deskRecordAll = new Set();
+function deskItemRecord(i, d) {
+  // The same step said again in a row is one line (its last), not several.
+  const steps = deskItemLog(i, d).filter((c) => !c.call).filter((c, n, all) => !(all[n + 1] && all[n + 1].by === c.by && all[n + 1].text === c.text));
+  if (!steps.length) return "";
+  const all = deskRecordAll.has(i.id), shown = all ? steps : steps.slice(-5);
+  const line = (c) => `<div class="dk-rec"><span class="dk-rec-t">${c.by === "You" ? `You: ${esc(firstLine(c.text))}` : `${esc(c.by)}: ${esc(firstLine(c.text))}`}</span><span class="dk-age"> · ${esc(ago(deskMs(c.at)))}</span></div>`;
+  const more = steps.length > shown.length ? `<button class="dk-rec-more" data-desk-record="${esc(i.id)}">All ${steps.length} steps</button>` : "";
+  return deskPsec("Record", `<div class="dk-recs">${shown.map(line).join("")}</div>${more}`);
 }
 /** The panel's buttons while you write why to send item `i` back (#394): the same ones in the same place, so nothing
  *  jumps: Looks right greyed, Send back pressed (pressing it again closes the box). */

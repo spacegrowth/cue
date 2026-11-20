@@ -58,7 +58,9 @@ test("Progress pops up each item under way with its steps, what it's doing now, 
   await page.locator(".dk-items .dk-ch [data-desk-prog-toggle]").click();
   await d3.locator(".dk-grtl").click();
   await expect(prog).toHaveCount(0);
-  await expect(page.locator('.dk-items .dk-it.on')).toContainText("Search stays centred");
+  // Its page, the item in the column at the right (#418), in the Items list's place.
+  await expect(page.locator('.dk-iside[data-side-for="d3"]')).toBeVisible();
+  await expect(page.locator(".dk-right h1")).toContainText("Search stays centred");
 });
 
 test("An item sent back shows a curved arrow back to Building with its round and why (#421)", async ({ page, cue }) => {

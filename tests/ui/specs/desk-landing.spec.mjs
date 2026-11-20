@@ -12,9 +12,17 @@ const openDesk = async (page) => {
 };
 const patchDesk = (cue, patch) => cue.change((st, p) => { Object.assign(st.desk.projects.find((x) => x.project === "cue"), p); }, patch);
 const patchItem = (cue, id, patch) => cue.change((st, [k, p]) => { Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === k), p); }, [id, patch]);
+// An item's page (#418): its holder's chat in the middle, the item itself in the column at the right, in the Items
+// list's place, so another item opens from the list after "‹ Items".
+const backToItems = async (page) => {
+  if (await page.locator(".dk-iside").count()) await page.locator(".dk-right .dk-back").click();
+  await page.locator(".dk-items:not(.dk-iside) .dk-it").first().waitFor();
+};
 const openItem = async (page, id) => {
+  await backToItems(page);
   await page.locator(`.dk-items [data-desk-item="${id}"] .dk-t`).click();
-  return page.locator(".dk-right .dk-pg");
+  await page.locator(`.dk-iside[data-side-for="${id}"]`).waitFor();
+  return page.locator(".dk-board");
 };
 const tree = (id, slot = 1) => ({ repo: "/r/cue", path: `/r/cue-copies/${slot}`, branch: `desk/${id}`, base: "abc1234", slot });
 
@@ -35,13 +43,15 @@ test("the landing line's steps on a finishing item: in the line with what it wai
   // No commit wait any more: nothing to ask of another session, nothing to land without.
   await expect(pane.locator('[data-desk-act="ask_commit"], [data-desk-act="land_without"]')).toHaveCount(0);
   await patchItem(cue, "d5", { finish: { step: "check_failed", at: Date.now(), question: "Its check failed", log: "test x failed" } });
-  await expect(row.locator(".dk-who")).toHaveText(`Check failed · since ${since}`);
   const box = pane.locator(".dk-wo");
   await expect(box).toContainText("Its check failed");
   await expect(box.locator('[data-desk-act="fix_back"]')).toHaveCount(1);
   await expect(box.locator('[data-desk-act="log_all"]')).toHaveText("Show the output");
   // Main may have been what broke it: run again on main as it is now (#343).
   await expect(box.locator('[data-desk-act="rerun"]')).toHaveText("Run the landing again");
+  // Its row in the Items list says so too.
+  await backToItems(page);
+  await expect(row.locator(".dk-who")).toHaveText(`Check failed · since ${since}`);
 });
 
 test("Send back is only on an item to check: not on an ask, nor on a stopped landing, where Send back to fix stays (#371, #435)", async ({ page, cue }) => {
@@ -52,7 +62,7 @@ test("Send back is only on an item to check: not on an ask, nor on a stopped lan
   await expect(pane.locator('[data-desk-act="send_back"]')).toHaveCount(0);
   // Ready to check: Send back, your words to its holder.
   pane = await openItem(page, "d2");
-  await pane.locator('.dk-acts [data-desk-act="send_back"]').first().click();
+  await pane.locator('.dk-iside [data-desk-act="send_back"]').click();
   await expect(pane.locator('textarea[data-text="back:d2"]')).toBeVisible();
   await pane.locator('textarea[data-text="back:d2"]').fill("Use the box's own focus step");
   await pane.locator('[data-desk-act="back_go"][data-id="d2"]').click();
@@ -85,30 +95,33 @@ test("an item in its own copy says so with its branch; one queued for a copy wai
   // At work in its own copy: its page names the branch.
   await patchItem(cue, "d3", { tree: tree("d3", 2) });
   let pane = await openItem(page, "d3");
-  await expect(pane.locator(".dk-state")).toContainText("in its own copy desk/d3");
+  await expect(pane.locator(".dk-iside .dk-pmeta")).toContainText("in its own copy desk/d3");
 
   // Queued for a working folder, all three in use (#401): its row and page say so plainly, naming who uses them.
   await patchItem(cue, "d4", { state: "queued", after: "", tree_wait: true, copy_users: ["d3", "d5", "d7"] });
   const row = page.locator('.dk-items [data-desk-item="d4"]');
+  await backToItems(page);
   await expect(row.locator(".dk-who")).toHaveText("Waiting for a free working folder (in use by #d3, #d5, #d7)");
   pane = await openItem(page, "d4");
   await expect(pane).toContainText("Waiting for a free working folder (in use by #d3, #d5, #d7). It starts by itself when one is free, or now with Start now.");
-  await expect(pane.locator(".dk-state")).not.toContainText("in its own copy");
+  await expect(pane.locator(".dk-iside .dk-pmeta")).not.toContainText("in its own copy");
   // Sent back while none is free: it says so; Start now starts it at once, and the line goes.
   await patchItem(cue, "d4", { back_waiting: "Desk item #d4 isn't done: the dot is too big" });
+  await expect(pane.locator('.dk-iside [data-desk-act="start_now"]')).toHaveText("Start now");
+  await backToItems(page);
   await expect(row.locator(".dk-who")).toHaveText("Sent back · waiting for a free working folder (in use by #d3, #d5, #d7)");
-  await expect(pane.locator('.dk-acts [data-desk-act="start_now"]')).toHaveText("Start now");
   await row.locator('[data-desk-act="start_now"]').click();
   await cue.called("desk_item_act", { id: "d4", act: "start_now" });
   await expect(row.locator(".dk-who")).not.toContainText("working folder");
+  pane = await openItem(page, "d4");
   await expect(pane).not.toContainText("free working folder");
 
   // Landed with no check to run: to check, "landed, not checked" by its commit; its copy is gone.
   await patchItem(cue, "d2", { tree: null, commit: "def5678", finish: { step: "checked", commit: "def5678", at: Date.now(), unchecked: true } });
   pane = await openItem(page, "d2");
-  await expect(pane.locator(".dk-state")).toContainText("landed, not checked");
+  await expect(pane.locator(".dk-iside .dk-pmeta")).toContainText("landed, not checked");
   await patchItem(cue, "d2", { finish: { step: "checked", commit: "def5678", at: Date.now() } });
-  await expect(pane.locator(".dk-state")).not.toContainText("not checked");
+  await expect(pane.locator(".dk-iside .dk-pmeta")).not.toContainText("not checked");
 });
 
 test("Kept copies lists a dropped item's copy with its work; Remove takes two clicks, and anything else disarms it", async ({ page, cue }) => {
