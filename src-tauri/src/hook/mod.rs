@@ -41,7 +41,7 @@ pub fn main(args: &[String]) {
     let Ok(p) = serde_json::from_str::<Value>(&input) else { return };
     // Something you said by voice: the line asking for a short answer goes with it, read by the agent only (the
     // chat shows just your words). Claude Code takes it as the prompt hook's added context.
-    let voice_ask = if event == "prompt" && harness == "claude" { crate::talk::hook_context(&s(&p, "prompt")) } else { None };
+    let voice_ask = if event == "prompt" && harness == "claude" { crate::voice::talk::hook_context(&s(&p, "prompt")) } else { None };
     let voice = voice_ask.is_some();
     if let Some(context) = voice_ask {
         println!("{}", json!({ "hookSpecificOutput": { "hookEventName": "UserPromptSubmit", "additionalContext": context } }));

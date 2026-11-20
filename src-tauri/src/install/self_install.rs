@@ -29,7 +29,7 @@ pub struct Status {
 }
 
 /// The helper, built into Cue: the one this Cue runs is its own, never what a checkout has at the moment.
-const HELPER: &str = include_str!("../../scripts/self-install.sh");
+const HELPER: &str = include_str!("../../../scripts/self-install.sh");
 
 /// Taken while one is started, so two at once can't both find the lock free.
 static STARTING: Mutex<()> = Mutex::new(());

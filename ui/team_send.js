@@ -1,11 +1,11 @@
-// ---------- how work goes out to a hosted lead's team (hub/team_out.rs; docs/dev/cue-teams.md §6) ----------
+// ---------- how work goes out to a hosted lead's team (hub/team/out.rs; docs/dev/cue-teams.md §6) ----------
 // The crew's mode on its tray ("Handle it ▾" / "Ask me ▾", team.js crewTray), opening its three settings (split work:
 // Auto, the lead decides; Always; Never; which finished members are reviewed by themselves; and what happens once a
 // review comes back), Cue's own /crew (Always for one message), and a task handed out by drag: text dropped on a hosted
 // lead's card under Sessions shows the files it names, with who already changes each, before it goes as a new
 // teammate. Cue adds the words; the lead does the rest.
 
-/** Cue's own command: the message after it goes with the Team switch On, this once (hub/team_out.rs with_team). */
+/** Cue's own command: the message after it goes with the Team switch On, this once (hub/team/out.rs with_team). */
 const TEAM_CMD = { name: "crew", kind: "cue", hint: "[what to do]", desc: "Split this message among the crew: each independent part to its own" };
 /** A hosted Claude Code session: the only kind that leads a team. */
 const isTeamLead = (sid) => { const s = sid && sessionOf(sid); return !!s?.hosted && s.harness === "claude"; };
@@ -28,7 +28,7 @@ function crewPicked(now, sid, was) {
 /** The commit setting: "wait", every review waits for you; anything else (the default): Cue handles it. */
 const crewCommitNow = new Map();
 const crewCommit = (sid) => crewPicked(crewCommitNow, sid, sessionOf(sid)?.crew_commit === "wait" ? "wait" : "auto");
-/** The review setting (hub/team_review.rs no_review): "always", "never", or "code" (the default: only a member whose
+/** The review setting (hub/team/review.rs no_review): "always", "never", or "code" (the default: only a member whose
  *  files Cue sees changed in a git repo is reviewed by itself). */
 const crewReviewNow = new Map();
 const crewReview = (sid) => crewPicked(crewReviewNow, sid, ["always", "never"].includes(sessionOf(sid)?.crew_review) ? sessionOf(sid).crew_review : "code");

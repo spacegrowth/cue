@@ -1,4 +1,4 @@
-//! The Desk's "not committed" tag on a crew member: from git (hub/team_tidy.rs `uncommitted`), never from its state.
+//! The Desk's "not committed" tag on a crew member: from git (hub/team/tidy.rs `uncommitted`), never from its state.
 
 use super::team::{git, lead, mate, repo, says, writes_then_stops};
 use crate::testing::World;

@@ -133,7 +133,7 @@ pub(crate) async fn focus_session(hub: State<'_, Arc<Hub>>, id: String) -> Resul
 pub(crate) async fn send_to_session(hub: State<'_, Arc<Hub>>, session_id: String, text: String, images: Option<Vec<model::Upload>>, now: Option<bool>) -> Result<String, String> {
     let images = images.unwrap_or_default();
     let now = now.unwrap_or(false);
-    // Yours from a box: a hosted lead's Team switch says its piece (hub/team_out.rs).
+    // Yours from a box: a hosted lead's Team switch says its piece (hub/team/out.rs).
     with_hub(&hub, move |h| h.send_yours(&session_id, &text, &images, now)).await?
 }
 

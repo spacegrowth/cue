@@ -27,7 +27,7 @@ fn hook_context(e: &Value) -> Vec<&str> {
 
 /// The prompt hook's added context, with the line Cue adds to what you said by voice.
 fn said_by_voice(e: &Value) -> bool {
-    hook_context(e).contains(&crate::talk::ASK)
+    hook_context(e).contains(&crate::voice::talk::ASK)
 }
 
 /// What marks a status-list ask in a prompt hook's context: the heading the agent ends its replies with.

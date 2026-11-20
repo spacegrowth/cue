@@ -1,4 +1,4 @@
-//! Transcript copies over a machine's cue-host connection (host/src/tail.rs), for machines/logs.rs: a machine Cue is
+//! Transcript copies over a machine's cue-host connection (host/src/tail.rs), for machines/log_mirror.rs: a machine Cue is
 //! connected to (it hosts a session there) copies each log over that one connection instead of a `tail -F` SSH
 //! session each. A copy goes on where the local file ends after the connection is made again (`resume`).
 

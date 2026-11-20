@@ -40,7 +40,7 @@ fn ext_settings_rows() -> serde_json::Value {
     #[cfg(not(feature = "ext"))]
     let mut rows = serde_json::json!([]);
     // Talking from anywhere on the Mac (talk.rs) comes first, in the same shape.
-    if let (Some(all), Some(voice)) = (rows.as_array_mut(), crate::talk::settings()) {
+    if let (Some(all), Some(voice)) = (rows.as_array_mut(), crate::voice::talk::settings()) {
         all.insert(0, voice);
     }
     rows
@@ -53,7 +53,7 @@ pub(crate) async fn ext_set(id: String, value: String) -> Result<(), String> {
 }
 
 fn ext_set_now(id: &str, value: &str) -> Result<(), String> {
-    if crate::talk::set(id, value).is_ok() {
+    if crate::voice::talk::set(id, value).is_ok() {
         return Ok(());
     }
     #[cfg(feature = "ext")]

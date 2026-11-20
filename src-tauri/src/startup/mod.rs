@@ -12,7 +12,7 @@ pub(crate) mod window;
 use crate::hub::Hub;
 use crate::ipc::*;
 use crate::terminal::{self, dictation};
-use crate::{config, db, extensions, hook, logs, notify, quit, server, talk};
+use crate::{config, db, extensions, hook, logs, notify, quit, server, voice::talk};
 use std::sync::Arc;
 use tauri::Manager;
 
@@ -33,7 +33,7 @@ pub(crate) fn build() -> tauri::App {
     #[cfg(feature = "ext")]
     let commands = crate::ext::handler(commands);
     // The window's files: a copy taken from the main line in place of the built-in ones, when one is served (live_ui.rs).
-    let context = crate::live_ui::wrap(tauri::generate_context!());
+    let context = crate::install::live_ui::wrap(tauri::generate_context!());
     #[cfg(feature = "ext")]
     let context = crate::ext::with_ui(context);
     builder
@@ -98,7 +98,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     hub.show_waiting();
     // Up: the commit this Cue runs, for an install that started it to see it came up (self_install; else it puts
     // the old Cue back).
-    crate::self_install::note_running();
+    crate::install::self_install::note_running();
     tickers::usage_file(&hub);
     if std::env::var_os("CUE_QUIET").is_none() {
         tickers::updates(app.handle());

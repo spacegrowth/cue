@@ -10,10 +10,9 @@ mod hook;
 mod hosted;
 mod changes;
 mod safe_git;
-mod self_install;
-mod live_ui;
 mod commands;
 mod hub;
+mod install;
 mod ipc;
 mod locking;
 mod logs;
@@ -23,8 +22,6 @@ mod lands;
 mod one_way;
 mod owner;
 mod quit;
-mod sounds;
-mod talk;
 // An optional add-on, compiled in only with the `ext` feature: Rust in `src-tauri/ext/` (not part of
 // this repo). Without it there's nothing here.
 #[cfg(feature = "ext")]
@@ -35,6 +32,7 @@ mod server;
 mod sessions;
 mod startup;
 mod uploads;
+mod voice;
 mod terminal;
 #[cfg(test)]
 mod testing;
@@ -48,6 +46,11 @@ pub(crate) use logs::{about, live, steps, transcript, usage, usage_file};
 pub(crate) use terminal::{dialog, focus};
 #[cfg(feature = "ext")]
 pub(crate) use terminal::shell;
+// Moved into folders (refactor step 1a); these old paths stay only for a file other work has open (hub/desk_unstick.rs)
+// and for the optional add-on. Each goes once nothing names it there.
+pub(crate) use install::self_install;
+#[cfg(feature = "ext")]
+pub(crate) use voice::talk;
 
 use tauri::Manager;
 
@@ -208,7 +211,7 @@ mod tests {
         let repo = repo.to_string_lossy();
         let out = std::process::Command::new("git").args(["-C", &repo, "rev-parse", "HEAD"]).output().unwrap();
         let head = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        if let Err(said) = crate::live_ui::check(&repo, &head) {
+        if let Err(said) = crate::install::live_ui::check(&repo, &head) {
             panic!("the window at HEAD doesn't pass its check:\n{said}");
         }
     }

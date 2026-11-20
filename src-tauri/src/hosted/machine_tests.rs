@@ -395,7 +395,7 @@ fn a_transcript_there_is_copied_over_the_cue_host_connection_with_nothing_lost_o
         let m = machines::get(&b.name).unwrap();
         let remote = "/home/dev/transcript.jsonl";
         b.run(&format!("printf 'one\\ntwo\\n' >{remote}"));
-        let copy = crate::machines::logs::local_copy(&m, remote);
+        let copy = crate::machines::log_mirror::local_copy(&m, remote);
         assert!(!copy.is_empty());
         let read = || std::fs::read_to_string(&copy).unwrap_or_default();
         until("the start of it here", || read() == "one\ntwo\n");
@@ -406,7 +406,7 @@ fn a_transcript_there_is_copied_over_the_cue_host_connection_with_nothing_lost_o
         b.drop_connection();
         b.run(&format!("printf 'four\\nfive\\n' >>{remote}"));
         until("the rest after the drop", || read() == "one\ntwo\nthree\nfour\nfive\n");
-        crate::machines::logs::stop(&m, remote);
+        crate::machines::log_mirror::stop(&m, remote);
         hosts.close(&sid);
     });
 }

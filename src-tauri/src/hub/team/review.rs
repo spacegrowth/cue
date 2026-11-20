@@ -1,12 +1,12 @@
-//! A crew member's review (hub/team.rs has the rest of the crew): asked of its lead when the member finishes (through
+//! A crew member's review (hub/team/mod.rs has the rest of the crew): asked of its lead when the member finishes (through
 //! Review's queue, hub/reviews.rs), read off the lead's turn that answers the ask, filed to the member the ask named,
 //! and what Cue does next by itself (commit a clean one, send findings back, or leave it to you). A member whose
 //! review never comes stops waiting, so none stays "under review" (counted at work) for good.
 
-use super::team::{changes, first, worktree_gone, KEY};
-use super::team_tidy::commit_reply;
-use super::*;
-use super::crew_log::review_decided;
+use super::{changes, first, worktree_gone, KEY};
+use super::tidy::commit_reply;
+use crate::hub::*;
+use crate::hub::crew_log::review_decided;
 use crate::sessions::crew_log::Decided;
 use crate::sessions::team::{fix_findings, read_review, review_ask_name, Teammate};
 
@@ -21,7 +21,7 @@ const NOT_BACK: &str = "Its review didn't come back";
 const ASK_SLACK_MS: u64 = 5000;
 
 /// A lead's turn as Cue reads it for its crew.
-pub(super) struct LeadTurn<'a> {
+pub(in crate::hub) struct LeadTurn<'a> {
     /// The reply that answers Cue's asks (`answer_in`: not a stop hook's audit after it).
     pub answer: &'a str,
     /// Everything it wrote this turn: a `Committed <name>:` line anywhere in it counts.
@@ -71,7 +71,7 @@ fn heading_name(line: &str, names: &[&str]) -> Option<String> {
 /// lines (`heading_name`), each section, from its heading to the next (or the text's end), its member's review when it
 /// has a Recommendation line (so a stop hook's audit, or a teammate's news, is never one). A member named twice: its
 /// last.
-pub(super) fn named_reviews(texts: &[&str], names: &[&str]) -> Vec<(String, String)> {
+pub(in crate::hub) fn named_reviews(texts: &[&str], names: &[&str]) -> Vec<(String, String)> {
     let mut out: Vec<(String, String)> = vec![];
     let mut keep = |section: Option<(String, Vec<&str>)>| {
         let Some((name, lines)) = section else { return };
@@ -184,7 +184,7 @@ fn background_member(team: &[Teammate], background: Option<&str>) -> Option<(Tea
 
 /// Whether git shows a member's `c`hanges in a git repository; None when git couldn't read one of its repositories
 /// (it may have changes there: reviewed).
-pub(super) fn in_repo(c: &super::team::Changes) -> Option<bool> {
+pub(in crate::hub) fn in_repo(c: &super::Changes) -> Option<bool> {
     if !c.unread.is_empty() {
         return None;
     }
@@ -215,7 +215,7 @@ impl Hub {
     /// members they name (`commit_reply`); and a member whose review ask this turn took, with neither its review nor
     /// word that it runs in the background, stops waiting (`unanswered`). A turn nothing of yours started (a teammate
     /// finishing) is no answer to an ask; only its reviews and `Committed <name>: <sha>` lines count.
-    pub(super) fn team_reply(&self, lead: &str, turn: &LeadTurn) {
+    pub(in crate::hub) fn team_reply(&self, lead: &str, turn: &LeadTurn) {
         let answered = !turn.unprompted && !read_review(turn.answer).1.is_empty();
         let filed = self.write(|st| file_turn(st, lead, turn));
         let review = !filed.is_empty() || answered;
@@ -249,7 +249,7 @@ impl Hub {
 
     /// A crew member that just finished, reviewed by itself through its lead's review queue: only one that finished its
     /// work (not stopped), and not a loop's (a loop reviews its own crew) or a Desk lead's.
-    pub(super) fn review_on_finish(&self, lead: &str, origin: &Origin, call: &str) {
+    pub(in crate::hub) fn review_on_finish(&self, lead: &str, origin: &Origin, call: &str) {
         #[cfg(feature = "ext")]
         if self.ext_leads_loop(lead) {
             return;
@@ -296,7 +296,7 @@ impl Hub {
     /// (Review's queue; queued, the member is marked so in the same step, hub/reviews.rs `take_review`). The lead says
     /// it started it and is free again at once; the fork's report, in the turn it starts, comes back as the teammate's
     /// review, named by its `Review of <name>:` line (`team_reply`).
-    pub(super) fn review_teammate(&self, lead: &str, origin: &Origin, t: &Teammate) -> Result<String, String> {
+    pub(in crate::hub) fn review_teammate(&self, lead: &str, origin: &Origin, t: &Teammate) -> Result<String, String> {
         if t.agent_id.is_empty() || t.working() {
             return Err(format!("{} is still working", t.name));
         }
@@ -306,8 +306,8 @@ impl Hub {
     }
 
     /// A teammate's review typed into its lead (now, or from the queue): it's under review from here.
-    pub(super) fn team_review_sent(&self, key: &str, sent: bool) {
-        let Some((lead, agent)) = super::team::teammate_key(key) else { return };
+    pub(in crate::hub) fn team_review_sent(&self, key: &str, sent: bool) {
+        let Some((lead, agent)) = super::teammate_key(key) else { return };
         self.set_teammate(lead, agent, |m| {
             m.state = if sent { "reviewing" } else { "done" }.into();
             m.review_ms = if sent { now_ms() } else { 0 };
@@ -375,7 +375,7 @@ fn no_review(setting: &str, in_repo: impl FnOnce() -> Option<bool>) -> Option<&'
 }
 
 /// A member under review whose review isn't coming: done again, with Review in its menu, its row saying why.
-pub(super) fn didnt_come_back(m: &mut Teammate) {
+pub(in crate::hub) fn didnt_come_back(m: &mut Teammate) {
     m.state = "done".into();
     m.review_ms = 0;
     m.step = NOT_BACK.into();
@@ -431,7 +431,7 @@ fn auto_next(crew_commit: &str, recommendation: &str, findings: &[String], fix_r
 /// answer never came (lost to a reply after it, say) are `stale`: they wait no more. No ask this turn (you talking to
 /// the lead while a review runs in the background: its "Recommendation" is about something else), or its member no
 /// longer under review: None.
-pub(super) fn reviewed_member(team: &[Teammate], asks: &[String]) -> Option<(Teammate, Vec<String>)> {
+pub(in crate::hub) fn reviewed_member(team: &[Teammate], asks: &[String]) -> Option<(Teammate, Vec<String>)> {
     let reviewing: Vec<&Teammate> = team.iter().filter(|t| t.state == "reviewing").collect();
     let name = asks.iter().rev().find_map(|a| review_ask_name(a))?;
     // Named, but no longer under review (its work committed meanwhile, say): nobody else's review.

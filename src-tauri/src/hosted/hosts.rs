@@ -12,11 +12,11 @@
 //! reported again, its card having gone with the Cue that had it), then attaches for what came after.
 //!
 //! New sessions always go to the host of Cue's own build (`home`); hosts of other builds still running agents are
-//! let finish them, then stopped (old_hosts.rs). Restart cue-host ends them all at once (`restart_host`).
+//! let finish them, then stopped (older_builds.rs). Restart cue-host ends them all at once (`restart_host`).
 
 use super::driver::Driver;
 use super::host_link::{Failed, HostLink};
-use super::old_hosts::{self, OldHost};
+use super::older_builds::{self, OldHost};
 use super::on_machines::OnMachines;
 use super::remote::{logged, sink, Cursor, Remote};
 use super::running::{Hosted, Reattached, Report, Running, Started};
@@ -64,7 +64,7 @@ impl Hosts {
     /// Cue's own children, as before the host, and it's tried again.
     pub fn new(root: PathBuf, home: PathBuf, serve: Vec<String>, seen: PathBuf) -> Hosts {
         Cursor::prune(&seen);
-        let old: Olds = Arc::new(Mutex::new(old_hosts::find(&root, &home)));
+        let old: Olds = Arc::new(Mutex::new(older_builds::find(&root, &home)));
         let hosts = Hosts { home, serve, link: Mutex::new(None), failed_at: Mutex::new(None), old, direct: Running::default(), remotes: Arc::default(), seen, machines: OnMachines::default() };
         hosts.link();
         hosts
@@ -282,7 +282,7 @@ fn back(remotes: &Remotes, r: &Arc<Remote>) {
 
 /// The session the host on `link` runs under `id`, while it runs.
 fn running_there(link: &HostLink, id: &str) -> Option<SessionInfo> {
-    old_hosts::hello(link).ok()?.sessions.into_iter().find(|s| s.session == id && s.running)
+    older_builds::hello(link).ok()?.sessions.into_iter().find(|s| s.session == id && s.running)
 }
 
 fn take_remote(remotes: &Remotes, session_id: &str) -> Option<Arc<Remote>> {
@@ -313,7 +313,7 @@ fn drain(old: &Olds, remotes: &Remotes) -> usize {
     // Asked outside the list's lock: each is a question to a host.
     let links: Vec<Arc<HostLink>> = crate::locking::lock(old, "hosts: older hosts").iter().map(|o| o.link.clone()).collect();
     for link in links {
-        if link.connected() && old_hosts::busy(&link) {
+        if link.connected() && older_builds::busy(&link) {
             continue;
         }
         let gone = !link.connected();
@@ -323,7 +323,7 @@ fn drain(old: &Olds, remotes: &Remotes) -> usize {
             let o = all.remove(i);
             drop(all);
             eprintln!("cue: an older cue-host (pid {}) runs nothing any more: stopped", o.pid);
-            old_hosts::stop(&o);
+            older_builds::stop(&o);
         }
     }
     crate::locking::lock(old, "hosts: older hosts").len()
@@ -432,7 +432,7 @@ impl Hosted for Hosts {
 
     /// Those processes, of a Cue that's gone, still running on their own: not any host's (they're meant to run on).
     fn end_left(&self, pids: &[i32]) {
-        let hosts: Vec<i32> = self.links().iter().filter_map(|l| old_hosts::hello(l).ok()).flat_map(|h| h.sessions.into_iter().filter_map(|s| s.pid)).collect();
+        let hosts: Vec<i32> = self.links().iter().filter_map(|l| older_builds::hello(l).ok()).flat_map(|h| h.sessions.into_iter().filter_map(|s| s.pid)).collect();
         let left: Vec<i32> = pids.iter().copied().filter(|p| !hosts.contains(p)).collect();
         self.direct.end_left(&left);
     }
@@ -449,7 +449,7 @@ impl Hosted for Hosts {
             self.links_on(&spec.machine)
         };
         let (link, info) = links.into_iter().find_map(|l| {
-            let info = old_hosts::hello(&l).ok()?.sessions.into_iter().find(|s| s.session == host_id)?;
+            let info = older_builds::hello(&l).ok()?.sessions.into_iter().find(|s| s.session == host_id)?;
             Some((l, info))
         })?;
         self.pick_up(&link, info, spec, report)
@@ -461,7 +461,7 @@ impl Hosted for Hosts {
         let olds: Vec<Arc<HostLink>> = crate::locking::lock(&self.old, "hosts: older hosts").iter().map(|o| o.link.clone()).collect();
         for link in olds {
             let ours: Vec<String> = on_link(&self.remotes, &link).iter().map(|r| r.host_id.clone()).collect();
-            let theirs = old_hosts::hello(&link).map(|h| h.sessions).unwrap_or_default();
+            let theirs = older_builds::hello(&link).map(|h| h.sessions).unwrap_or_default();
             for s in theirs.into_iter().filter(|s| s.running && !ours.contains(&s.session)) {
                 eprintln!("cue: closing {} on an older cue-host: no session of Cue's is it", s.session);
                 let _ = link.request(json!({ "op": "close", "session": s.session }));
@@ -478,7 +478,7 @@ impl Hosted for Hosts {
         let links = self.links();
         let mut ended = 0;
         for link in &links {
-            let hello = old_hosts::hello(link).ok();
+            let hello = older_builds::hello(link).ok();
             let running: Vec<String> = hello.iter().flat_map(|h| h.sessions.iter()).filter(|s| s.running).map(|s| s.session.clone()).collect();
             ended += running.len();
             // All at once: each takes a few seconds to end. Their exits are reported (not closed on purpose).
@@ -494,7 +494,7 @@ impl Hosted for Hosts {
             let_go(&self.remotes, link, true);
             link.shut();
             if let Some(h) = hello {
-                old_hosts::end_process(h.pid);
+                older_builds::end_process(h.pid);
             }
         }
         crate::locking::lock(&self.old, "hosts: older hosts").retain(|o| o.machine.is_some());
@@ -510,7 +510,7 @@ impl Hosted for Hosts {
 
     /// The hosts, for Settings: reachable, how many sessions each runs, and how many run inside Cue.
     fn host_status(&self) -> Value {
-        let count = |l: &HostLink| old_hosts::hello(l).map(|h| h.sessions.iter().filter(|s| s.running).count()).unwrap_or(0);
+        let count = |l: &HostLink| older_builds::hello(l).map(|h| h.sessions.iter().filter(|s| s.running).count()).unwrap_or(0);
         let current = crate::locking::lock(&self.link, "hosts: link").clone();
         let olds: Vec<(i32, Arc<HostLink>)> = crate::locking::lock(&self.old, "hosts: older hosts").iter().map(|o| (o.pid, o.link.clone())).collect();
         let older: Vec<Value> = olds.iter().map(|(pid, l)| json!({ "pid": pid, "running": count(l) })).collect();

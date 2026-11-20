@@ -68,7 +68,7 @@ fn a_new_hosted_session_starts_claude_with_no_terminal_and_hands_it_its_first_me
     let l = w.hosted.launched();
     assert_eq!(l.len(), 1);
     assert_eq!((&l[0].start, l[0].permissions.as_str(), &l[0].args[..2]), (&Start::New(sid.clone()), "auto", &["--model".to_string(), "opus".to_string()][..]));
-    // Then the team skill every hosted Claude lead starts with (hub/team_out.rs), and nothing else.
+    // Then the team skill every hosted Claude lead starts with (hub/team/out.rs), and nothing else.
     assert_eq!((l[0].args.len(), l[0].args[2].as_str()), (4, "--append-system-prompt"));
     assert!(l[0].args[3].starts_with("# Working as a crew lead (Cue)"));
     assert!(w.launcher.launched().is_empty(), "no terminal");

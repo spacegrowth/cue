@@ -1,4 +1,4 @@
-//! Teammates' reviews typed into their lead (hub/team.rs): sent when the lead is free, queued while it is busy.
+//! Teammates' reviews typed into their lead (hub/team/mod.rs): sent when the lead is free, queued while it is busy.
 
 use super::*;
 

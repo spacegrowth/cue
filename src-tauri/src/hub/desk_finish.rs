@@ -486,11 +486,11 @@ impl Hub {
         let here = |folder: &str| main_checkout(folder).is_some_and(|(m, _)| same_dir(&m, top));
         let own: Vec<String> = it.commit_in.iter().chain(&merges).filter(|(folder, _)| here(folder)).map(|(_, sha)| sha.clone()).collect();
         if !own.is_empty() {
-            return own.iter().all(|sha| crate::live_ui::changed_in(top, sha).is_some_and(|paths| paths.iter().all(|p| crate::live_ui::outside_app(p))));
+            return own.iter().all(|sha| crate::install::live_ui::changed_in(top, sha).is_some_and(|paths| paths.iter().all(|p| crate::install::live_ui::outside_app(p))));
         }
         let Ok((_, machine, sources)) = self.desk_change_sources(id) else { return false };
         let files: Vec<(String, String)> = sources.into_iter().filter(|(folder, _)| machine.is_empty() && here(folder)).flat_map(|(folder, paths)| paths.into_iter().map(move |p| (folder.clone(), p))).collect();
-        !files.is_empty() && files.iter().all(|(folder, p)| crate::live_ui::outside_app(p) || never_in(folder, p))
+        !files.is_empty() && files.iter().all(|(folder, p)| crate::install::live_ui::outside_app(p) || never_in(folder, p))
     }
 
     /// Where item `id`'s work is, when it isn't all on `top`'s main yet ("on fix-header, not main"): the main line's
@@ -561,18 +561,18 @@ impl Hub {
     /// files, or it soon will be in the app anyway. Err: the window at `head` doesn't pass its check
     /// (live_ui::check), what's wrong said; nothing is served.
     fn ui_in_place(&self, repo: &str, head: &str) -> Result<bool, String> {
-        let Some(running) = crate::live_ui::running() else { return Ok(false) };
+        let Some(running) = crate::install::live_ui::running() else { return Ok(false) };
         let busy = self.read(|st| st.desk.items.iter().any(|i| i.state == "finishing" && i.finish.as_ref().is_some_and(|f| f.step == "queued" || installing(&f.step))));
         if busy {
             return Ok(false);
         }
-        let served = crate::live_ui::current().filter(|c| c.base == running).map(|c| c.commit);
-        match crate::live_ui::plan(repo, &running, served.as_deref(), head) {
-            crate::live_ui::Plan::Install => Ok(false),
-            crate::live_ui::Plan::Nothing => Ok(true),
-            crate::live_ui::Plan::Reload => {
-                crate::live_ui::check(repo, head)?;
-                match crate::live_ui::take(repo, head, &running) {
+        let served = crate::install::live_ui::current().filter(|c| c.base == running).map(|c| c.commit);
+        match crate::install::live_ui::plan(repo, &running, served.as_deref(), head) {
+            crate::install::live_ui::Plan::Install => Ok(false),
+            crate::install::live_ui::Plan::Nothing => Ok(true),
+            crate::install::live_ui::Plan::Reload => {
+                crate::install::live_ui::check(repo, head)?;
+                match crate::install::live_ui::take(repo, head, &running) {
                     Ok(()) => {
                         self.ports.window.tell("ui-reload", serde_json::json!({ "commit": head }));
                         Ok(true)

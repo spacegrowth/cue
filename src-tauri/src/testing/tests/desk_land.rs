@@ -38,7 +38,7 @@ impl Installer for Checker {
     }
 
     fn contains(&self, repo: &str, commit: &str, of: &str) -> bool {
-        crate::self_install::is_ancestor(repo, commit, of)
+        crate::install::self_install::is_ancestor(repo, commit, of)
     }
 
     fn check(&self, _repo: &str, commit: &str) -> Option<Result<(), String>> {

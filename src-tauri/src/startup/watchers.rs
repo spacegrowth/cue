@@ -41,5 +41,5 @@ pub(super) fn machines(hub: &Arc<Hub>) {
     let known: Vec<(String, String)> = hub.snapshot()["sessions"].as_array().into_iter().flatten()
         .filter_map(|s| Some((s["machine"].as_str().filter(|m| !m.is_empty())?.to_string(), s["transcript_path"].as_str()?.to_string())))
         .collect();
-    std::thread::spawn(move || machines::logs::resume(&known));
+    std::thread::spawn(move || machines::log_mirror::resume(&known));
 }

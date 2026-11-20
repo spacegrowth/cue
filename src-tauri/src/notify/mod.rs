@@ -9,6 +9,8 @@
 //! UserNotifications only works from a bundled .app. A bare `cargo run` binary returns false here
 //! and the caller falls back to the plain notification plugin (which can't remove anything).
 
+pub(crate) mod sounds;
+
 /// Sessions whose finished turns aren't notified for now: something else is already telling you about them (an
 /// add-on reading their answers out to you). What needs you still is. Empty: notify as usual.
 static QUIET: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
@@ -152,7 +154,7 @@ pub fn show(app: tauri::AppHandle, note: Note) {
 fn post_now(app: &tauri::AppHandle, note: Note) {
     use tauri_plugin_notification::NotificationExt;
     let Note { id, title, body, category, watched, .. } = note;
-    let sound = if watched { crate::sounds::TADA.to_string() } else { crate::sounds::choice() };
+    let sound = if watched { crate::notify::sounds::TADA.to_string() } else { crate::notify::sounds::choice() };
     if !post_sound(&id, &title, &body, &category, &sound) {
         let _ = app.notification().builder().title(&title).body(&body).show();
     }
@@ -297,7 +299,7 @@ mod mac {
             return;
         }
         let _ = APP.set(app.clone());
-        crate::sounds::install();
+        crate::notify::sounds::install();
         let center = UNUserNotificationCenter::currentNotificationCenter();
         let delegate: Retained<Delegate> = unsafe { msg_send![Delegate::alloc(), init] };
         center.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
@@ -317,7 +319,7 @@ mod mac {
 
     /// `category`: "turn" for a finished turn (Reply and quick phrases on it), "turn-full" (and Compact), else "".
     pub fn post(id: &str, title: &str, body: &str, category: &str) -> bool {
-        post_sound(id, title, body, category, &crate::sounds::choice())
+        post_sound(id, title, body, category, &crate::notify::sounds::choice())
     }
 
     /// `post` with a given sound (a choice in sounds.rs) instead of the one you picked.
@@ -330,7 +332,7 @@ mod mac {
         content.setTitle(&NSString::from_str(title));
         content.setBody(&NSString::from_str(body));
         // The sound you picked (Settings → General), or none.
-        if let Some(name) = crate::sounds::notification_name(sound) {
+        if let Some(name) = crate::notify::sounds::notification_name(sound) {
             content.setSound(Some(&UNNotificationSound::soundNamed(&NSString::from_str(&name))));
         }
         if !category.is_empty() {
@@ -434,7 +436,7 @@ mod tests {
                 let p = e.path();
                 if p.is_dir() {
                     stack.push(p);
-                } else if p.extension().is_some_and(|x| x == "rs") && !p.ends_with("notify.rs") {
+                } else if p.extension().is_some_and(|x| x == "rs") && !p.ends_with("notify/mod.rs") {
                     let text = std::fs::read_to_string(&p).unwrap();
                     for (i, line) in text.lines().enumerate() {
                         if ["notify::remove(", "notify::post_sound("].iter().any(|c| line.contains(c)) {

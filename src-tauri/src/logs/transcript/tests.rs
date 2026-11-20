@@ -52,7 +52,7 @@ fn a_message_said_by_voice_is_marked_by_the_line_its_hook_added() {
     let added = |parent: &str, line: &str| json!({"type":"attachment","timestamp":at(2),"parentUuid":parent,"attachment":{"type":"hook_additional_context","content":[line],"hookName":"UserPromptSubmit","hookEvent":"UserPromptSubmit"}});
     let p = write_transcript(&[
         json!({"type":"user","uuid":"u1","timestamp":at(1),"message":{"content":"is the fix installed?"}}),
-        added("u1", crate::talk::ASK),
+        added("u1", crate::voice::talk::ASK),
         json!({"type":"assistant","timestamp":at(3),"message":{"content":[{"type":"text","text":"Yes."}]}}),
         json!({"type":"user","uuid":"u2","timestamp":at(4),"message":{"content":"now commit it"}}),
         added("u2", "some other hook's note"),
@@ -78,7 +78,7 @@ fn a_message_whose_hook_asked_for_a_status_list_carries_that_text() {
         json!({"type":"assistant","timestamp":at(5),"message":{"content":[{"type":"text","text":"Ok."}]}}),
         json!({"type":"user","uuid":"u3","timestamp":at(6),"message":{"content":"third, by voice"}}),
         added("u3", recall),
-        added("u3", crate::talk::ASK),
+        added("u3", crate::voice::talk::ASK),
     ]);
     let got = conversation_before(&p.0, iso_ms(&at(9)).unwrap(), 10);
     let you: Vec<(&str, Option<&str>, bool)> = got.iter().filter(|e| e["role"] == "you").map(|e| (e["text"].as_str().unwrap(), e["status_ask"].as_str(), e["voice"] == true)).collect();

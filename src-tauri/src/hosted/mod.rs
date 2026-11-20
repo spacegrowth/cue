@@ -25,7 +25,7 @@ mod host_link;
 mod hosts;
 mod launch;
 mod machine_host;
-mod old_hosts;
+mod older_builds;
 mod on_machines;
 mod remote;
 mod pi;

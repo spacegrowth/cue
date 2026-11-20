@@ -22,7 +22,7 @@ CueBridge.area("chat", (w) => {
     skill("relay:spawn", "Start an executor on a packet"),
     skill("relay:verify", "Check an executor's report against what it staged"),
   ];
-  /** Send fixes (hub/team.rs): the teammate is back at work on its review's findings, so its "Review not sent" row
+  /** Send fixes (hub/team/mod.rs): the teammate is back at work on its review's findings, so its "Review not sent" row
    *  leaves Open (hub/open.rs). */
   const sentFixes = (agent) => {
     const t = (w.state.sessions || []).flatMap((s) => s.team || []).find((x) => x.agent_id === agent || x.call === agent);
@@ -31,7 +31,7 @@ CueBridge.area("chat", (w) => {
     w.changed();
     return `fixes: ${agent}`;
   };
-  /** A crew member's diff as hub/team.rs writes it: its own repo's files from its top, another repo's (its folder's
+  /** A crew member's diff as hub/team/mod.rs writes it: its own repo's files from its top, another repo's (its folder's
    *  first two levels) under that repo's name. */
   const mateDiff = (agent) => {
     const t = (w.state.sessions || []).flatMap((s) => s.team || []).find((x) => x.agent_id === agent || x.call === agent);

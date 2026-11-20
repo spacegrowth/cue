@@ -79,7 +79,7 @@ pub fn agent_logs(path: &str) -> Vec<std::path::PathBuf> {
 }
 
 /// The files the session itself changed from `from` until `until` (ms, by each log line's time): what its Edit,
-/// MultiEdit, Write and NotebookEdit calls name, and what its shell commands write (sessions/shell_writes.rs:
+/// MultiEdit, Write and NotebookEdit calls name, and what its shell commands write (logs/shell_writes.rs:
 /// relative to its folder, or absolute). Its background agents' logs aren't read: those are its crew's files,
 /// counted as theirs (hub/desk.rs). A Claude Code log only (others: none).
 pub fn edited_between(path: &str, from: u64, until: u64) -> Vec<String> {
@@ -104,7 +104,7 @@ pub fn edited_between_named(path: &str, from: u64, until: u64) -> Vec<(String, b
             let input = &b["input"];
             let (files, named) = match b.get("name").and_then(Value::as_str).unwrap_or("") {
                 "Edit" | "MultiEdit" | "Write" | "NotebookEdit" => (input.get("file_path").or_else(|| input.get("notebook_path")).and_then(Value::as_str).map(str::to_string).into_iter().collect(), true),
-                "Bash" => (input.get("command").and_then(Value::as_str).map(|c| [crate::sessions::shell_writes::writes(c), script_writes_in(c)].concat()).unwrap_or_default(), false),
+                "Bash" => (input.get("command").and_then(Value::as_str).map(|c| [crate::logs::shell_writes::writes(c), script_writes_in(c)].concat()).unwrap_or_default(), false),
                 _ => (vec![], false),
             };
             for f in files.into_iter().filter(|f| !f.trim().is_empty()) {
@@ -120,7 +120,7 @@ pub fn edited_between_named(path: &str, from: u64, until: u64) -> Vec<(String, b
 
 /// `script_writes`, each path as seen from where the command started: a script run after `cd` writes there.
 fn script_writes_in(command: &str) -> Vec<String> {
-    use crate::sessions::shell_writes::{from_dir, runs_in};
+    use crate::logs::shell_writes::{from_dir, runs_in};
     let here = runs_in(command);
     script_writes(command).into_iter().filter_map(|p| from_dir(here.as_deref(), &p)).collect()
 }

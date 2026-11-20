@@ -2,7 +2,7 @@
 //! of three it is, so Cue acts once and calmly rather than only showing "quiet":
 //! - its own words (a summary, an answer): it finished and lingers in the list; it's done.
 //! - a tool call with no result yet: a long run (a test suite, a build); it's left to it ("running … for 12m").
-//! - a tool's result, and nothing after: stuck; its lead is nudged once for that quiet stretch (hub/team.rs).
+//! - a tool's result, and nothing after: stuck; its lead is nudged once for that quiet stretch (hub/team/mod.rs).
 
 /// No line for this long: quiet, and judged by its last line. The one threshold, for teams, background agents and
 /// the add-on alike. A debug build can set it shorter with CUE_TEST_QUIET_MS (the real-CLI tests: a minute, not 15).

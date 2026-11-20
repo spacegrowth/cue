@@ -474,7 +474,7 @@ impl Hub {
         let sound = (key == "notify.sound").then(|| value.as_str().map(str::to_string)).flatten();
         crate::config::set(key, value)?;
         if let Some(c) = sound {
-            crate::sounds::preview(&c);
+            crate::notify::sounds::preview(&c);
         }
         self.setting_changed(key);
         Ok(())

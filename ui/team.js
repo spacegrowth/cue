@@ -1,10 +1,10 @@
 // ---------- a hosted lead's team: its crew as a tray on its message box (docs/dev/cue-teams.md §4) ----------
-// Cue keeps the team from the lead's stream (hub/team.rs: state.sessions[].team); this draws it. On the lead's title
+// Cue keeps the team from the lead's stream (hub/team/mod.rs: state.sessions[].team); this draws it. On the lead's title
 // line, a chip for each crew member that needs you. On the message box, the crew's tray: closed, one line ("● Cue Crew ·
 // 6 · hub needs you · 2 ready · 2 working  Handle it ▾ ▴"); open, the same tray grows upward with the members grouped by
 // what you'd do: Needs you (a member's ask, its Deny and Allow on its row), Ready (its review back, one button that
 // agrees with its line), Working (one line each, a plain Stop), then the finished ones folded into "N done ›". A finished
-// one is reviewed by itself (hub/team_review.rs review_on_finish). Cue clears members by itself (a committed or set-aside one
+// one is reviewed by itself (hub/team/review.rs review_on_finish). Cue clears members by itself (a committed or set-aside one
 // leaves the team). A member's name opens its menu (what it was asked, its full review, its diff).
 
 /** The leads whose tray is open, and per member what's open under its row ("asked", "review"); the member whose menu
@@ -26,9 +26,9 @@ const mateKey = (sid, t) => `${sid}|${t.agent_id || t.call}`;
 /** Needs you: it asks you something, or the hub says what it needs (`needs`: its lead didn't say it committed it). */
 const mateNeeds = (sid, t) => !!mateAsk(sid, t) || !!t.needs;
 /** Its lead commits it for Cue (files Cue never saw): Cue's ask waits for the lead to be free, or went and waits for
- *  the lead's `Committed <name>:` line (hub/team_tidy.rs). Nothing for you to do meanwhile. */
+ *  the lead's `Committed <name>:` line (hub/team/tidy.rs). Nothing for you to do meanwhile. */
 const mateLeadCommits = (t) => !!(t.commit_wait_ms || t.commit_asked_ms);
-/** Its fixes are kept for its busy lead (they go when the lead's turn ends, hub/team.rs send_fixes): not at work yet,
+/** Its fixes are kept for its busy lead (they go when the lead's turn ends, hub/team/mod.rs send_fixes): not at work yet,
  *  and nothing for you to do. */
 const mateFixesKept = (t) => !!t.fixes_kept_ms;
 /** Something Cue has for it waits on its lead: its commit, or its fixes. */
@@ -120,7 +120,7 @@ function mateLine(t) {
 }
 
 /** Finished, and Cue never saw which files it changed (it wrote them with shell commands outside its lead's folder):
- *  nothing Cue can diff; its Commit asks its lead to commit them (hub/team.rs). */
+ *  nothing Cue can diff; its Commit asks its lead to commit them (hub/team/mod.rs). */
 const mateUnknownFiles = (t) => ["done", "reviewed"].includes(t.state) && !(t.files || []).length && !t.worktree && !t.stat && !mateLeadCommits(t);
 const UNKNOWN_FILES = "Cue doesn't know which files it changed: Commit asks its lead to commit them";
 /** One button of a member's: `look` "primary" (filled) or "" (outlined), both one fixed width so a group's line up, or
@@ -143,7 +143,7 @@ const verdictKind = (verdict) => /fix/.test(verdict || "") ? "fixes" : /^commit/
 /** What a reviewed member's one button is: its review's call; said neither, its findings go back if it has any, else
  *  Commit. The other is in its menu. */
 const mateReadyAct = (t) => mateRec(t) || ((t.findings || []).length ? "fixes" : "commit");
-/** Fix rounds Cue sends back by itself while it handles reviews (hub/team_review.rs AUTO_FIX_ROUNDS). */
+/** Fix rounds Cue sends back by itself while it handles reviews (hub/team/review.rs AUTO_FIX_ROUNDS). */
 const AUTO_FIX_ROUNDS = 1;
 
 /** A finding as a list item (its number is the list's): where, its words, its kind after them. */
@@ -459,7 +459,7 @@ function mateChips(sid) {
 }
 
 // ---------- Cue's own words to a lead, and its crew's reviews, in the chat ----------
-// What Cue sends a lead for its crew (hub/team.rs, team_out.rs) is drawn as Cue's bubble on the right, never as yours.
+// What Cue sends a lead for its crew (hub/team/mod.rs, team_out.rs) is drawn as Cue's bubble on the right, never as yours.
 // The lead's reply to a review request isn't a message of its own: it folds into that request's bubble ("+ docs
 // reviewed: commit · 1 note" unfolds it); its findings and buttons are on the member's row in the tray.
 
