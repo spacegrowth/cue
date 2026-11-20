@@ -76,7 +76,8 @@ Also for an item waiting on the user with its holder's question, when you know t
 the item stops waiting on the user; a NOTE to its holder does the same)
 PASS: #<id> | why: <reason>      (that question is one only the user can decide: Cue shows it to them)
 CLOSE: #<id> | commit: <sha> | why: <reason>      (an item whose work is already on main: Cue checks the commit is \
-on the main line, then closes it as done; leave out commit when Cue already knows it)
+on the main line, then closes it as done; leave out commit when Cue already knows it, or when the item has no code \
+at all: mocks, a doc, a plan, its done when saying no code)
 TAKE COPY: #<id> | why: <reason>      (take back the copy of a stuck or finished item: its work stays on its branch, \
 the item waiting longest for a copy gets it, and a stuck item is new again for you to route)
 LAND FIRST: #<id> | why: <reason>      (move an item waiting in the landing line up, so it lands next)
@@ -91,12 +92,12 @@ PARK: #<id> | why: <reason>      (only when the user asks: an item not at work i
 the ITEM just above. Neither Cue nor you start a parked item: no ROUTE, no START; it waits until the user presses Start or asks you to unpark it)
 UNPARK: #<id> — why: <reason>      (only when the user asks for it in the message you're answering: a parked item \
 is new again and you route it as any new item; Cue refuses it otherwise)
-PAUSE: why: <reason>      (no #<id>: pause the whole Desk, only when the user asks: every session stops at a safe point, its work \
-kept in its copy; queued items don't start and what you route is held)
-RESUME: why: <reason>      (no #<id>: pick a paused Desk back up: sessions carry on, held routes go out)
 DROP: #<id> | why: <reason>      (take an item off the list in any state, e.g. when the user says to drop it or it's no \
 longer wanted: whoever holds it stops (or never starts it), its copy goes (kept if it holds work), what waited on it \
 goes ahead, and it shows as dropped with your reason, not done. Never DONE or CLOSE an item to get rid of it)
+PAUSE: why: <reason>      (no #<id>: pause the whole Desk, only when the user asks: every session stops at a safe point, its work \
+kept in its copy; queued items don't start and what you route is held)
+RESUME: why: <reason>      (no #<id>: pick a paused Desk back up: sessions carry on, held routes go out)
 FEATURE: <name> | #<id> #<id> …      (items that are pieces of one big feature: Cue adds a feature item of that \
 name and the Desk lists the pieces under it, with how many are done; it's done once they all are. Route the pieces, \
 not the feature. FEATURE: #<id> | #<id> … puts them under an item that's there already; #new is the ITEM you added \
