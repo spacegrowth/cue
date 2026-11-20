@@ -119,14 +119,15 @@ function deskReader(s, ask = null) {
 }
 /** The lead's chat: its session's messages, drawn as any session's chat is (chat/render.js), your words without the
  *  Desk's summary; then what you sent that it doesn't show yet, Sending… until its session has it: in its thread
- *  (delivered), or kept or queued in it (those rows say so). Given up ten minutes after the send returned, in case its
+ *  (delivered), or kept or queued in it (those rows say so, the moment its state has it, even before the send returns:
+ *  never twice, #439). Given up ten minutes after the send returned, in case its
  *  words never match. */
 function deskChat(d) {
   const s = deskLeadSession(d);
   const thread = s?.thread || [];
   const has = (e, p) => !!e && String(e.text || "").includes(p.text.slice(0, 200));
   const pending = (deskSent.get(d.project) || []).filter((p) => p.failed || !(p.sent && now() - p.sent > 600000)
-    && !thread.some((e) => e.role === "you" && e.at_ms >= p.at - 60000 && has(e, p)) && !(p.sent && (has(s?.held, p) || has(s?.queued, p))));
+    && !thread.some((e) => e.role === "you" && e.at_ms >= p.at - 60000 && has(e, p)) && !has(s?.held, p) && !has(s?.queued, p));
   deskSent.set(d.project, pending);
   // The lead's own Desk lines drawn as lines, not raw text.
   const rows = s ? deskChatRows(s, { extra: deskCheckRows(d).concat(deskActRows(d)), noSteps: true }) : "";

@@ -101,10 +101,11 @@ function landed(o) {
   // Kept in Cue: shown as the kept bubble, once the session's state carries it (from a machine that can
   // take a moment; dropped before then, the message would vanish and come back). Once seen, it's that
   // bubble's, even if you take it back to edit; and it doesn't wait forever.
-  if (/^kept in Cue/.test(o.via || "")) {
-    if (s.held && msgStart(s.held.text).includes(want)) o.seenHeld = true;
-    if (o.seenHeld || now() - o.at > 30000) return true;
-  }
+  // Kept before the send even returned (the session's state can come first): the kept bubble is this one, so it
+  // never shows twice, "Not sent yet" and a Sending copy (#439).
+  if (want && s.held && msgStart(s.held.text).includes(want) && (!o.via || /^kept in Cue/.test(o.via))) o.seenHeld = true;
+  if (o.seenHeld) return true;
+  if (/^kept in Cue/.test(o.via || "") && now() - o.at > 30000) return true;
   // Nothing typed (just an image): no words to tell it by, so only a message from the moment you sent.
   const since = (e) => e && e.role === "you" && e.at_ms >= o.at - (want ? 5000 : 1000);
   const mine = (e) => since(e) && msgStart(e.text).startsWith(want);
