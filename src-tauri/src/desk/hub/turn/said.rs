@@ -174,6 +174,17 @@ fn cleanup_said(st: &mut Store, project: &str, by: &By, id: &str, answer: Option
                 }
             }
             fx.cleanup.push((card, answer));
+            // It answers what its holder asked you too, if it asked (#559).
+            if st.desk.item_mut(&id).and_then(|i| i.asks.take()).is_some() {
+                fx.items.push(id.clone());
+            }
+        }
+        // No card, but its holder asked the user something (#559): the lead's answer goes to it, as a note would,
+        // and the item no longer waits on the user.
+        None if answer.is_some() && st.desk.item(&id).is_some_and(|i| i.project == project && i.asks.is_some()) => {
+            if let Err(no) = note(st, project, by, &id, &format!("Answer to your question: {}", answer.unwrap_or_default()), now, fx) {
+                told.push(no);
+            }
         }
         None => told.push(format!("No question from #{id} waits on you: nothing to answer or pass.")),
     }

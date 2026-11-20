@@ -380,9 +380,17 @@ fn stall_held(st: &mut Store, turn: &Turn, id: &str, updated: u64, now: u64, fx:
         fx.items.push(id.to_string());
         return true;
     }
-    // Still waiting on your answer to what it asked earlier: nothing to ask it, nothing for the lead.
+    // What it asked you earlier: a card it asks with still waits on you, nothing to ask it, nothing for the lead.
+    // Else this turn, asking you nothing, carried on past it (#559): it no longer waits on you, and the turn is read
+    // as any other.
     if st.desk.item(id).is_some_and(|i| i.asks.is_some()) {
-        return true;
+        if ask_of(st, &turn.h).is_some() {
+            return true;
+        }
+        if let Some(it) = st.desk.item_mut(id) {
+            it.asks = None;
+        }
+        fx.items.push(id.to_string());
     }
     // What this turn says it waits on, if anything: the item shows it until it changes or a turn says otherwise.
     if let Some(it) = st.desk.item_mut(id) {

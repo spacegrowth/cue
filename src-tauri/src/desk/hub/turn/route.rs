@@ -281,6 +281,10 @@ pub(crate) fn note(st: &mut Store, project: &str, by: &By, id: &str, words: &str
         step.undo = "none".into();
     }
     send_step(st, id, h.to(), message, now, fx);
+    // What its holder asked you is answered by the lead's note (#559).
+    if st.desk.item_mut(id).and_then(|i| i.asks.take()).is_some() {
+        fx.items.push(id.to_string());
+    }
     Ok(())
 }
 

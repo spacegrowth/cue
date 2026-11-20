@@ -100,13 +100,23 @@ fn at_work_view(st: &Store, it: &DeskItem, h: &Holder, out: &mut DeskItem) {
     }
 }
 
+/// Holder `h` (a session of its own) is at work on a turn it began after `at` (ms): past what it asked then (#559).
+pub(crate) fn carried_on(st: &Store, h: &Holder, at: u64) -> bool {
+    crew_parts(h).is_none() && st.sessions.get(&h.sid).is_some_and(|s| matches!(s.state.as_str(), "working" | "agent") && s.since_ms > at)
+}
+
 /// Asks that make it wait on you: its holder's question (#475), a queued item's ask, the lead's ASK.
 fn asks_view(st: &Store, it: &DeskItem, h: &Holder, out: &mut DeskItem) {
-    // Its holder asked you something (#475): waiting on you with that until you answer, whatever it has done since.
-    if let Some((q, _)) = it.asks.as_ref().filter(|_| it.state == "working" && it.paused.is_none() && out.ask.is_none()) {
+    // Its holder asked you something (#475): waiting on you with that while it's live (#559). Not once its holder
+    // is at work on a newer turn: it carried on past it, and that turn's end asks again if it still needs you.
+    let live = it.asks.as_ref().filter(|(_, at)| it.state == "working" && !carried_on(st, h, *at));
+    if let Some((q, _)) = live.filter(|_| it.paused.is_none() && out.ask.is_none()) {
         out.state = "needs_you".into();
         (out.latest, out.stopped, out.act) = (q.clone(), false, None);
         out.waiting.clear();
+    }
+    if live.is_none() {
+        out.asks = None;
     }
     // Queued, but its holder is on it anyway (#342): its ask, or the question its turn ended on, waits on you here
     // too, not only in its own chat. A stop with no question stays the lead's (it's queued, not stalled). Not once you

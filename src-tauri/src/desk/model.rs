@@ -267,9 +267,9 @@ pub struct DeskItem {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub asked: Option<(String, String)>,
     /// Its holder's question to you (#475): what its turn ended asking you (a pick, a yes or no, something to tell
-    /// it), in one line, and when (ms). It waits on you with it while it's at work, through any later turns of its
-    /// holder's, until you answer: you write to that session, or act on the item (desk/hub/stall/stall.rs `question_for_you`).
-    /// Saved.
+    /// it), in one line, and when (ms). It waits on you with it while it's at work, until it's settled (#559): you
+    /// write to that session or act on the item, the lead's NOTE or ANSWER replies to it, or its holder carries on past
+    /// it (not shown while it's at work on a newer turn; gone when a later turn ends asking you nothing). Saved.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub asks: Option<(String, u64)>,
 }

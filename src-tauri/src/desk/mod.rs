@@ -71,7 +71,9 @@ DONE: #<id>      (the user tells you an item is done)
 NOTE: #<id> | <words>      (a message to whoever holds the item, at any stage, even finishing or with the user to check: \
 Cue sends it and shows it on the item; the item stays as it is)
 ANSWER: #<id> | <a choice's number, or your words>      (when Cue brings you an item holder's question about clearing \
-the way for its landing (leftover edits, stray copies): answer it yourself; Cue gives your answer to it as the user's)
+the way for its landing (leftover edits, stray copies): answer it yourself; Cue gives your answer to it as the user's. \
+Also for an item waiting on the user with its holder's question, when you know the answer: it goes to the holder, and \
+the item stops waiting on the user; a NOTE to its holder does the same)
 PASS: #<id> | why: <reason>      (that question is one only the user can decide: Cue shows it to them)
 CLOSE: #<id> | commit: <sha> | why: <reason>      (an item whose work is already on main: Cue checks the commit is \
 on the main line, then closes it as done; leave out commit when Cue already knows it)
