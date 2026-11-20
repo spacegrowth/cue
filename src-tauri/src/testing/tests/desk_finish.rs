@@ -643,12 +643,14 @@ fn a_crew_merge_onto_a_file_with_your_uncommitted_changes_is_refused_and_leaves_
 /// An item done in this Cue's source, the running Cue built from its commit before the item's work, which writes
 /// `files` (paths in the repo): (fake, repo, project, id).
 fn done_since_running(w: &World, files: &'static [&'static str]) -> (Arc<Fake>, std::path::PathBuf, String, String) {
-    done_since_running_with(w, files, false)
+    done_since_running_with(w, files, false, false)
 }
 
 /// `done_since_running`, with Cue's window check (scripts/check-window.mjs) committed in the repo when `checked`, its
 /// window loading ui/desk.js, and Cue's node_modules linked in.
-fn done_since_running_with(w: &World, files: &'static [&'static str], checked: bool) -> (Arc<Fake>, std::path::PathBuf, String, String) {
+/// `ahead`: another change to the app (src-tauri/desk.rs) committed on the main line after the running Cue's commit,
+/// not installed yet, before the item's work.
+fn done_since_running_with(w: &World, files: &'static [&'static str], checked: bool, ahead: bool) -> (Arc<Fake>, std::path::PathBuf, String, String) {
     let fake = Arc::new(Fake::default());
     w.hub().desk_set_installer(fake.clone());
     let (dir, project, id) = done_with(
@@ -657,7 +659,7 @@ fn done_since_running_with(w: &World, files: &'static [&'static str], checked: b
             as_this_cue(dir);
             // The test repo ignores everything but a few files: let in the window's, the tests' and the app's.
             let mut ignore = std::fs::read_to_string(dir.join(".gitignore")).unwrap();
-            ignore.push_str("!ui/\n!ui/**\n!tests/\n!tests/**\n!src-tauri/\n!src-tauri/desk.rs\n");
+            ignore.push_str("!ui/\n!ui/**\n!tests/\n!tests/**\n!src-tauri/\n!src-tauri/desk.rs\n!work/\n!work/**\n!docs/\n!docs/**\n");
             std::fs::write(dir.join(".gitignore"), &ignore).unwrap();
             std::fs::create_dir_all(dir.join("ui")).unwrap();
             std::fs::write(dir.join("ui/index.html"), "<p>built in</p>\n").unwrap();
@@ -675,6 +677,11 @@ fn done_since_running_with(w: &World, files: &'static [&'static str], checked: b
             let install = crate::server::cue_dir().join("install");
             std::fs::create_dir_all(&install).unwrap();
             std::fs::write(install.join("running.json"), json!({ "commit": running }).to_string()).unwrap();
+            if ahead {
+                std::fs::write(dir.join("src-tauri/desk.rs"), "// another item's change\n").unwrap();
+                git(dir, &["add", "-A"]);
+                git(dir, &["commit", "-q", "-m", "another item, not installed yet"]);
+            }
         },
         |w, h, dir| {
             let paths: Vec<String> = files.iter().map(|f| dir.join(f).to_string_lossy().to_string()).collect();
@@ -707,7 +714,7 @@ fn an_item_that_changed_only_the_windows_files_is_served_in_place_and_to_check_w
 #[test]
 fn an_item_whose_window_doesnt_load_is_not_served_and_goes_back_to_its_holder() {
     let w = World::new();
-    let (fake, _, project, id) = done_since_running_with(&w, &["ui/desk.js"], true);
+    let (fake, _, project, id) = done_since_running_with(&w, &["ui/desk.js"], true, false);
     let shown = item(&w, &project, "Header jumps");
     let broken = "The window doesn't load at this commit, so it wasn't installed or served";
     assert_eq!((shown["state"].as_str(), shown["latest"].as_str(), shown["finish"]["step"].as_str()), (Some("needs_you"), Some(broken), Some("failed")), "{shown}");
@@ -730,6 +737,33 @@ fn an_item_that_changed_the_app_side_too_still_waits_for_an_install() {
     w.advance(30 * 60_000);
     assert_eq!(fake.started().len(), 1, "installed");
     assert!(!crate::server::cue_dir().join("live").exists(), "nothing served in place");
+}
+
+/// #408: mocks, canvas pages, notes and plans change nothing the app runs: to check at once, with the link to what
+/// it made, even with another item's change to the app on the main line waiting for an install.
+#[test]
+fn an_item_whose_work_changed_nothing_the_app_runs_goes_to_check_with_no_install() {
+    let w = World::new();
+    let (fake, dir, project, id) = done_since_running_with(&w, &["work/header-mocks.html", "docs/header-plan.md"], false, true);
+    let head = git(&dir, &["rev-parse", "HEAD"]).trim().to_string();
+    let shown = item(&w, &project, "Header jumps");
+    assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str(), shown["finish"]["commit"].as_str()), (Some("to_check"), Some("checked"), Some(head.as_str())), "{shown}");
+    let h = shown["holder"]["sid"].as_str().unwrap().to_string();
+    ends(&w, &h, &format!("DESIGNS: #{id} https://claude.ai/artifact/abc"));
+    assert_eq!(item(&w, &project, "Header jumps")["designs"], "https://claude.ai/artifact/abc", "its link, to check it");
+    w.advance(30 * 60_000);
+    assert!(fake.started().is_empty(), "nothing installed");
+    assert!(w.window.heard("ui-reload").is_empty(), "nor served");
+}
+
+/// #408: the same, but its work changed the app: it waits for the install as before.
+#[test]
+fn an_item_whose_work_changed_the_app_waits_for_an_install_even_with_mocks_beside_it() {
+    let w = World::new();
+    let (fake, _, project, _) = done_since_running_with(&w, &["work/header-mocks.html", "src-tauri/desk.rs"], false, true);
+    assert_eq!(step(&w, &project), "queued");
+    w.advance(30 * 60_000);
+    assert_eq!(fake.started().len(), 1, "installed");
 }
 
 /// What was sent to session `sid`.

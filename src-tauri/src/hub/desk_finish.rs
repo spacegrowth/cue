@@ -352,7 +352,13 @@ impl Hub {
         let mut merged: Vec<String> = Vec::new();
         for folder in &crew {
             match merge_to_main(&project, folder, &it.title) {
-                Ok(Some(main)) => merged.push(main),
+                Ok(Some(main)) => {
+                    if let Some(sha) = git("", &main, &[], &["rev-parse", "HEAD"]).map(|h| h.trim().to_string()) {
+                        let m = main.clone();
+                        self.finish_fin(&it.id, |f| f.merges.push((m, sha)));
+                    }
+                    merged.push(main)
+                }
                 Ok(None) => {}
                 // A clash in its work: back to the session that did it (#371); git refusing or a word: waits on you.
                 Err(("clash", question)) => {
@@ -399,6 +405,16 @@ impl Hub {
         if !top.is_empty() {
             self.desk_push_after(id, &project, &top);
         }
+        // Its own work changed nothing the app runs (mocks, notes, plans, tests): to check now, no install, whatever
+        // else on the main line waits for one (#408).
+        if cue.is_some() && self.runs_nothing(id, &top) {
+            self.finish_set(id, |i| {
+                if let Some(f) = i.finish.as_mut() {
+                    (f.repo, f.commit) = (top.clone(), head.clone());
+                }
+            });
+            return self.finish_checked(id);
+        }
         // Only the window's files changed since the running Cue's build: they're served in place, no install.
         let in_place = if cue.is_some() { self.ui_in_place(&top, &head) } else { Ok(false) };
         if !matches!(in_place, Ok(false)) {
@@ -431,6 +447,16 @@ impl Hub {
         } else {
             self.finish_checked(id);
         }
+    }
+
+    /// Whether item `id`'s own commits on `top`'s main line (those Cue made for it, its crew's merges) changed nothing
+    /// that goes into the app (live_ui::outside_app). False when it has none there (work its holder committed itself)
+    /// or git can't say: it's installed as before.
+    fn runs_nothing(&self, id: &str, top: &str) -> bool {
+        let Some(it) = self.read(|st| st.desk.item(id).cloned()) else { return false };
+        let merges = it.finish.as_ref().map(|f| f.merges.clone()).unwrap_or_default();
+        let own: Vec<String> = it.commit_in.iter().chain(&merges).filter(|(folder, _)| main_checkout(folder).is_some_and(|(m, _)| same_dir(&m, top))).map(|(_, sha)| sha.clone()).collect();
+        !own.is_empty() && own.iter().all(|sha| crate::live_ui::changed_in(top, sha).is_some_and(|paths| paths.iter().all(|p| crate::live_ui::outside_app(p))))
     }
 
     /// Where item `id`'s work is, when it isn't all on `top`'s main yet ("on fix-header, not main"): the main line's

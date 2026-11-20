@@ -379,6 +379,10 @@ pub struct Finish {
     /// Its project pushes main after each landing: "pushed", or why it couldn't ("" when nothing was pushed).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub pushed: String,
+    /// The merges of its crew's branches into the main line (main checkout, merge commit): with `commit_in`, what its
+    /// own work changed, so an item that changed nothing the app runs isn't installed (#408).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub merges: Vec<(String, String)>,
 }
 
 /// An item's own copy of its repository (hub/desk_trees.rs): the main checkout it's from, the copy's folder, its

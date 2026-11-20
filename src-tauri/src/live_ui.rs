@@ -54,7 +54,7 @@ pub enum Plan {
 }
 
 /// A path that never goes into the app: tests, docs, the website, a note at the top.
-fn outside_app(path: &str) -> bool {
+pub fn outside_app(path: &str) -> bool {
     ["tests/", "docs/", "site/", "work/"].iter().any(|p| path.starts_with(p)) || (!path.contains('/') && path.ends_with(".md"))
 }
 
@@ -71,6 +71,13 @@ pub fn plan(repo: &str, running: &str, served: Option<&str>, head: &str) -> Plan
         Some(_) => Plan::Reload,
         None => Plan::Install,
     }
+}
+
+/// The paths commit `sha` of `repo` changed (a merge: what it brought onto its first parent); None when git can't say.
+pub fn changed_in(repo: &str, sha: &str) -> Option<Vec<String>> {
+    let parent = crate::safe_git::run("", repo, &[], &["rev-parse", &format!("{sha}^1")]).ok().filter(|(_, c)| *c == 0)?.0.trim().to_string();
+    let full = crate::safe_git::run("", repo, &[], &["rev-parse", &format!("{sha}^{{commit}}")]).ok().filter(|(_, c)| *c == 0)?.0.trim().to_string();
+    changed(repo, &parent, &full, &[])
 }
 
 /// The paths that differ between commits `a` and `b` (limited by `rest`); None when git can't say.
