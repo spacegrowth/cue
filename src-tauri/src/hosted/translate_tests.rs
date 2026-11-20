@@ -149,6 +149,16 @@ fn a_rate_limit_event_reports_the_plans_usage_as_the_status_line_would() {
     let es = t.step(&wire::parse(r#"{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":1794078000,"rateLimitType":"five_hour","utilization":0.5}}"#));
     let [HostedEvent::Rates(v)] = es.as_slice() else { panic!("{es:?}") };
     assert_eq!((v["five_hour"]["used_percentage"].as_f64(), v.get("seven_day")), (Some(50.0), None));
+    assert_eq!(v["partial"], true, "it says nothing about the weekly window");
+}
+
+#[test]
+fn an_ultra_rate_limit_event_has_only_the_weekly_window() {
+    // As Claude Code sent it on 19 Nov 2026, right after the upgrade to Ultra.
+    let mut t = Translator::default();
+    let es = t.step(&wire::parse(r#"{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":1795273200,"rateLimitType":"seven_day","overageStatus":"rejected","overageDisabledReason":"out_of_credits","isUsingOverage":false,"unifiedWindows":{"seven_day":{"utilization":0,"resetsAt":1795273200,"status":"allowed"}}}}"#));
+    let [HostedEvent::Rates(v)] = es.as_slice() else { panic!("{es:?}") };
+    assert_eq!((v.get("five_hour"), v["seven_day"]["used_percentage"].as_f64(), v.get("partial")), (None, Some(0.0), None));
 }
 
 #[test]

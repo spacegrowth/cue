@@ -114,13 +114,20 @@ impl Hub {
         let changed = self.write(|st| {
             // A status line without a window (another agent's, or before Claude Code has numbers) keeps the
             // last one instead of wiping it: the meter shouldn't vanish between updates.
+            // A window the report says the plan doesn't have (`no_limit`: the 5-hour one on Ultra) is dropped, not kept.
             if let Some(old) = &st.rates {
                 let fresh = rates.five_hour.is_some() || rates.seven_day.is_some();
-                if rates.five_hour.is_none() { rates.five_hour = old.five_hour.clone(); }
-                if rates.seven_day.is_none() { rates.seven_day = old.seven_day.clone(); }
-                if !fresh { rates.at_ms = old.at_ms; }   // "as of" stays when the numbers it carries are old
+                let gone = |k: &str| rates.no_limit.iter().any(|n| n == k);
+                if rates.five_hour.is_none() && !gone("five_hour") { rates.five_hour = old.five_hour.clone(); }
+                if rates.seven_day.is_none() && !gone("seven_day") { rates.seven_day = old.seven_day.clone(); }
+                if !fresh {
+                    rates.at_ms = old.at_ms;   // "as of" stays when the numbers it carries are old
+                    rates.no_limit = old.no_limit.clone();
+                    if rates.plan.is_none() { rates.plan = old.plan.clone(); }
+                }
             }
-            let changed = st.rates.as_ref().map(|r| (&r.five_hour, &r.seven_day, &r.models)) != Some((&rates.five_hour, &rates.seven_day, &rates.models));
+            let key = |r: &crate::usage::Rates| (r.five_hour.clone(), r.seven_day.clone(), r.models.clone(), r.no_limit.clone(), r.plan.clone());
+            let changed = st.rates.as_ref().map(key) != Some(key(&rates));
             st.rates = Some(rates);
             changed
         });

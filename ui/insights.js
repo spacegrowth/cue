@@ -405,7 +405,7 @@ const canCompact = (sid) => cmdList(sid).some((c) => c.name === "compact");
  *  replies as it's worth when the model is priced (prices::cold_x), with the tokens it re-writes, and dollars
  *  only on the API: Claude Code's 5-hour and weekly limits mean a subscription, where nothing is billed. */
 function coldCost(c, what) {
-  const u = state.usage, api = !(u && (u.five_hour || u.seven_day));
+  const u = state.usage, api = !(u && (u.five_hour || u.seven_day || u.no_limit?.length));
   const usd = api && c.cold_cents >= 1 ? `, about $${(c.cold_cents / 100).toFixed(2)}` : "";
   return c.cold_x > 1 ? `${what} costs as much as <b>${c.cold_x} warm replies</b> (it re-writes ${esc(insTok(c.tokens))} tokens${usd})`
     : `${what} re-writes ${esc(insTok(c.tokens))} tokens${usd}`;

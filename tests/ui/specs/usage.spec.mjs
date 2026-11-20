@@ -84,3 +84,46 @@ test("merged usage and its details fit the smallest window", async ({ cue, page 
   expect(pop.x).toBeGreaterThanOrEqual(0);
   expect(pop.x + pop.width).toBeLessThanOrEqual(901);
 });
+
+/** The usage as each plan reports it: Pro and Max with both windows, Ultra with the weekly one only. */
+async function plan(cue, plan, { codex = false } = {}) {
+  await cue.change((s, a) => {
+    const now = Date.now();
+    const w = (pct, h) => ({ pct, resets_ms: now + h * 3600000 });
+    s.usage = a.plan === "Ultra"
+      ? { seven_day: w(4, 40), models: [], at_ms: now, no_limit: ["five_hour"], plan: "Ultra" }
+      : { five_hour: w(32, 1), seven_day: w(18, 24), models: [], at_ms: now, no_limit: [], plan: a.plan };
+    s.codex_usage = a.codex ? { windows: [{ pct: 64, minutes: 300, resets_ms: now + 7200000 }], at_ms: now } : null;
+  }, { plan, codex });
+}
+
+for (const name of ["Pro", "Max 5x", "Max 20x"]) {
+  test(`${name}: both limits with their numbers, and the plan named`, async ({ cue, page }) => {
+    await cue.open("board-waiting");
+    await plan(cue, name);
+    await expect(page.locator('.usage-chip')).toHaveText('5h32%wk18%');
+    await page.getByRole('button', { name: 'Claude Code usage', exact: true }).click();
+    const pop = page.locator('.usage-pop');
+    await expect(pop.locator('.up-head')).toContainText(`Claude Code usage · ${name}`);
+    await expect(pop).toContainText('32%');
+    await expect(pop).not.toContainText('No 5-hour limit');
+  });
+}
+
+test("Ultra: no 5-hour limit is said plainly, with no bar or old number", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  await plan(cue, "Ultra");
+  const chip = page.locator('.usage-chip');
+  await expect(chip).toHaveText('5hno limitwk4%');
+  await expect(chip.locator('.um')).toHaveCount(1);
+  await chip.click();
+  const pop = page.locator('.usage-pop');
+  await expect(pop.locator('.up-head')).toContainText('Claude Code usage · Ultra');
+  await expect(pop).toContainText('No 5-hour limit on your plan');
+  await expect(pop.locator('.up-bar')).toHaveCount(1);
+  await expect(pop).toContainText('4%');
+  // Beside Codex, the shared 5h chip says the same.
+  await chip.click();
+  await plan(cue, "Ultra", { codex: true });
+  await expect(page.getByRole('button', { name: 'Usage', exact: true })).toHaveText('Claudeno limitCodex64%5h');
+});

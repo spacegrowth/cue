@@ -154,6 +154,7 @@
 .up-note { grid-column: 2 / -1; font-size: 11px; color: var(--muted); margin-top: -1px; }
 .up-bar { height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--ink) 12%, transparent); overflow: hidden; }
 .up-bar i { display: block; height: 100%; background: var(--accent); }
+.up-row.up-none { display: block; color: var(--muted); }
 .up-row.high .up-bar i { background: #d99a3a; }
 .up-row.full .up-bar i { background: #c0612b; }
 .up-pct { text-align: right; font-variant-numeric: tabular-nums; font-weight: 650; }

@@ -152,7 +152,7 @@ pub fn saved_rates(now: u64) -> Option<Rates> {
     if !live(&r.seven_day) {
         r.seven_day = None;
     }
-    (r.five_hour.is_some() || r.seven_day.is_some()).then_some(r)
+    (r.five_hour.is_some() || r.seven_day.is_some() || !r.no_limit.is_empty()).then_some(r)
 }
 
 /// Keeps `r` for the next start (`saved_rates`).
@@ -171,6 +171,14 @@ pub struct Rates {
     /// they're read from the copy its /usage panel saves, so they can be old: see `fetched_ms`.
     pub models: Vec<ModelWindow>,
     pub at_ms: u64,
+    /// The windows the last full report left out: limits the plan doesn't have ("five_hour" on Ultra), so
+    /// the header says there's no limit instead of keeping an old number.
+    #[serde(default)]
+    pub no_limit: Vec<String>,
+    /// The plan's name ("Pro", "Max 20x", "Ultra"), from the account Claude Code saved, when it agrees with
+    /// the report (an account saved before an upgrade can still say the old plan).
+    #[serde(default)]
+    pub plan: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -182,23 +190,70 @@ pub struct ModelWindow {
     pub fetched_ms: u64,
 }
 
-/// The status line's `rate_limits` object → Rates. Missing windows stay None.
+/// The two windows a plan can have.
+pub const WINDOWS: [&str; 2] = ["five_hour", "seven_day"];
+
+/// The status line's `rate_limits` object → Rates. Missing windows stay None. A report with any window says
+/// every limit the plan has (Claude Code gets them together, in one answer's headers), so a window it leaves
+/// out doesn't apply: `no_limit`. One marked `partial` (an older stream-json event that names only the window
+/// it's about) says nothing about the others.
 pub fn rates_from_statusline(rl: &Value, now: u64) -> Rates {
+    let account = claude_json();
+    let mut r = rates_from(rl, now, account.as_ref());
+    r.models = account.as_ref().map(model_windows).unwrap_or_default();
+    r
+}
+
+/// rates_from_statusline with the saved account given (`~/.claude.json`, parsed), and no per-model rows.
+fn rates_from(rl: &Value, now: u64, account: Option<&Value>) -> Rates {
     let window = |k: &str| -> Option<Window> {
         let w = rl.get(k)?;
         let pct = w.get("used_percentage")?.as_f64()?;
         let resets_ms = w.get("resets_at").and_then(Value::as_u64).map(|s| s * 1000);
         Some(Window { pct, resets_ms })
     };
-    Rates { five_hour: window("five_hour"), seven_day: window("seven_day"), models: model_windows(), at_ms: now }
+    let (five_hour, seven_day) = (window("five_hour"), window("seven_day"));
+    let full = (five_hour.is_some() || seven_day.is_some()) && rl.get("partial").and_then(Value::as_bool) != Some(true);
+    let no_limit = if full { WINDOWS.iter().filter(|k| window(k).is_none()).map(|k| k.to_string()).collect() } else { vec![] };
+    let plan = account.and_then(plan_name).filter(|p| !(has_session_limit(p) && no_limit.iter().any(|k| k == "five_hour")));
+    Rates { five_hour, seven_day, models: vec![], at_ms: now, no_limit, plan }
+}
+
+/// Plans that have a 5-hour limit. One of these named while the report has none is the name from before an
+/// upgrade (Claude Code refreshes the saved account only now and then), so it isn't shown.
+fn has_session_limit(plan: &str) -> bool {
+    plan == "Pro" || plan.starts_with("Max")
+}
+
+/// The plan, from the account Claude Code saved in ~/.claude.json: its rate-limit tier
+/// ("default_claude_max_20x" → "Max 20x"), else its organization type ("claude_ultra" → "Ultra").
+/// Not a documented format: anything unexpected just means no name.
+pub fn plan_name(account: &Value) -> Option<String> {
+    let a = account.get("oauthAccount")?;
+    let field = |k: &str| a.get(k).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty());
+    let raw = field("organizationRateLimitTier").or_else(|| field("userRateLimitTier")).or_else(|| field("organizationType"))?;
+    let raw = raw.strip_prefix("default_").unwrap_or(raw);
+    let raw = raw.strip_prefix("claude_").unwrap_or(raw);
+    let words: Vec<String> = raw
+        .split('_')
+        .filter(|w| !w.is_empty())
+        .map(|w| {
+            // "20x" stays as it is; a word gets its capital.
+            if w.chars().next().is_some_and(|c| c.is_ascii_digit()) { w.to_string() } else { w[..1].to_uppercase() + &w[1..] }
+        })
+        .collect();
+    (!words.is_empty() && raw.len() < 40).then(|| words.join(" "))
+}
+
+/// ~/.claude.json, parsed, if it's there.
+fn claude_json() -> Option<Value> {
+    let home = std::env::var("HOME").ok()?;
+    serde_json::from_str(&std::fs::read_to_string(format!("{home}/.claude.json")).ok()?).ok()
 }
 
 /// Per-model limits from Claude Code's saved /usage data in ~/.claude.json. Not a documented
 /// format: anything unexpected just means no rows.
-fn model_windows() -> Vec<ModelWindow> {
-    let Ok(home) = std::env::var("HOME") else { return vec![] };
-    let Ok(text) = std::fs::read_to_string(format!("{home}/.claude.json")) else { return vec![] };
-    let Ok(v) = serde_json::from_str::<Value>(&text) else { return vec![] };
+fn model_windows(v: &Value) -> Vec<ModelWindow> {
     let Some(c) = v.get("cachedUsageUtilization").filter(|c| !c.is_null()) else { return vec![] };
     let fetched_ms = c.get("fetchedAtMs").and_then(Value::as_f64).unwrap_or(0.0) as u64;
     c.pointer("/utilization/limits")
@@ -361,6 +416,60 @@ pub fn when(ms: u64, now: u64) -> String {
 mod tests {
     use super::*;
     use crate::model::now_ms;
+
+    fn account(org_type: &str, tier: Option<&str>) -> Value {
+        serde_json::json!({ "oauthAccount": { "organizationType": org_type, "organizationRateLimitTier": tier, "userRateLimitTier": null } })
+    }
+
+    /// Each plan by its name, read from the account Claude Code saved.
+    #[test]
+    fn the_plan_is_named_from_the_saved_account() {
+        assert_eq!(plan_name(&account("claude_pro", Some("default_claude_pro"))).as_deref(), Some("Pro"));
+        assert_eq!(plan_name(&account("claude_max", Some("default_claude_max_5x"))).as_deref(), Some("Max 5x"));
+        assert_eq!(plan_name(&account("claude_max", Some("default_claude_max_20x"))).as_deref(), Some("Max 20x"));
+        assert_eq!(plan_name(&account("claude_ultra", None)).as_deref(), Some("Ultra"));
+        assert_eq!(plan_name(&account("claude_ultra", Some("default_claude_ultra"))).as_deref(), Some("Ultra"));
+        assert_eq!(plan_name(&account("claude_team", None)).as_deref(), Some("Team"));
+        assert_eq!(plan_name(&serde_json::json!({})), None, "an API key: no account");
+    }
+
+    /// Pro and Max: both windows come, and both have a number; nothing is said to have no limit.
+    #[test]
+    fn pro_and_max_have_a_session_and_a_weekly_limit() {
+        let rl = serde_json::json!({ "five_hour": { "used_percentage": 40.0, "resets_at": 100 }, "seven_day": { "used_percentage": 12.0, "resets_at": 200 } });
+        for (t, tier, name) in [("claude_pro", "default_claude_pro", "Pro"), ("claude_max", "default_claude_max_5x", "Max 5x"), ("claude_max", "default_claude_max_20x", "Max 20x")] {
+            let r = rates_from(&rl, 1, Some(&account(t, Some(tier))));
+            assert_eq!(r.five_hour, Some(Window { pct: 40.0, resets_ms: Some(100_000) }));
+            assert_eq!(r.seven_day.map(|w| w.pct), Some(12.0));
+            assert!(r.no_limit.is_empty(), "{name}: {:?}", r.no_limit);
+            assert_eq!(r.plan.as_deref(), Some(name));
+        }
+    }
+
+    /// Ultra: the report has the weekly window only (as Claude Code sent it on 19 Nov 2026), so there's no 5-hour
+    /// limit, and an account still saved as Max from before the upgrade isn't named.
+    #[test]
+    fn ultra_has_no_session_limit() {
+        // The stream-json event, through the hosted translator's shape, and the status line's alike.
+        let rl = serde_json::json!({ "seven_day": { "used_percentage": 0.0, "resets_at": 1795273200 } });
+        let r = rates_from(&rl, 1, Some(&account("claude_ultra", None)));
+        assert_eq!((r.five_hour, r.seven_day.map(|w| w.pct)), (None, Some(0.0)));
+        assert_eq!(r.no_limit, vec!["five_hour".to_string()]);
+        assert_eq!(r.plan.as_deref(), Some("Ultra"));
+        let stale = rates_from(&rl, 1, Some(&account("claude_max", Some("default_claude_max_20x"))));
+        assert_eq!(stale.no_limit, vec!["five_hour".to_string()]);
+        assert_eq!(stale.plan, None, "the account still says Max: it was saved before the upgrade");
+    }
+
+    /// A report with no numbers, or one that names only its own window, says nothing about the others.
+    #[test]
+    fn a_report_without_every_window_says_no_limit_only_when_it_is_whole() {
+        let r = rates_from(&serde_json::json!({}), 1, None);
+        assert!(r.no_limit.is_empty() && r.five_hour.is_none() && r.seven_day.is_none());
+        let r = rates_from(&serde_json::json!({ "five_hour": { "used_percentage": 50.0 }, "partial": true }), 1, None);
+        assert!(r.no_limit.is_empty(), "{:?}", r.no_limit);
+        assert_eq!(r.five_hour.map(|w| w.pct), Some(50.0));
+    }
 
     #[test]
     fn a_retry_is_read_until_the_api_answers_or_you_write() {

@@ -117,3 +117,25 @@ fn the_plans_usage_is_back_after_a_relaunch_and_a_window_that_reset_meanwhile_is
     assert_eq!(usage["seven_day"]["pct"], 91.0, "kept across the restart: {usage}");
     assert!(usage["five_hour"].is_null(), "reset long ago: its number is over: {usage}");
 }
+
+/// Upgrading to Ultra: the reports now carry the weekly window only. The old 5-hour number goes, the usage says
+/// there's no 5-hour limit, and that holds through a report with no numbers and a relaunch.
+#[test]
+fn after_an_upgrade_to_ultra_the_old_session_limit_is_gone_not_kept() {
+    let mut w = World::new();
+    let soon = crate::model::now_ms() / 1000 + 3600;
+    w.hub().set_rates(&serde_json::json!({
+        "five_hour": { "used_percentage": 97.0, "resets_at": soon },
+        "seven_day": { "used_percentage": 92.0, "resets_at": soon },
+    }));
+    assert_eq!(w.snapshot().0["usage"]["five_hour"]["pct"], 97.0);
+    w.hub().set_rates(&serde_json::json!({ "seven_day": { "used_percentage": 0.0, "resets_at": soon } }));
+    let usage = w.snapshot().0["usage"].clone();
+    assert!(usage["five_hour"].is_null(), "Ultra has no 5-hour limit: {usage}");
+    assert_eq!((usage["seven_day"]["pct"].as_f64(), usage["no_limit"].clone()), (Some(0.0), serde_json::json!(["five_hour"])));
+    w.hub().set_rates(&serde_json::json!({}));
+    assert_eq!(w.snapshot().0["usage"]["no_limit"], serde_json::json!(["five_hour"]), "a report without numbers changes nothing");
+    w.relaunch();
+    let usage = &w.snapshot().0["usage"];
+    assert_eq!((usage["five_hour"].is_null(), usage["no_limit"].clone()), (true, serde_json::json!(["five_hour"])), "{usage}");
+}

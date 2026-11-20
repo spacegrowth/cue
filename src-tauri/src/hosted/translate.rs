@@ -26,6 +26,10 @@ fn rates(v: &Value) -> Option<HostedEvent> {
             rl.insert(k.to_string(), w);
         }
     }
+    // Without `unifiedWindows` it names only its own window: the others may still apply.
+    if !rl.is_empty() && info.get("unifiedWindows").is_none() {
+        rl.insert("partial".to_string(), Value::Bool(true));
+    }
     (!rl.is_empty()).then(|| HostedEvent::Rates(Value::Object(rl)))
 }
 
