@@ -95,7 +95,7 @@ fn logs() -> Vec<(String, PathBuf)> {
     for d in subdirs(&crate::ipc::pi_sessions_dir()) {
         out.extend(jsonl(&d).into_iter().map(|p| (String::new(), p)));
     }
-    out.extend(crate::machines::logs::copied_logs());
+    out.extend(crate::machines::log_mirror::copied_logs());
     out
 }
 

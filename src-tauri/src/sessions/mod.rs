@@ -2,21 +2,23 @@
 //! the 30-minute activity bars (solid = working, striped = waiting on you).
 //!
 //! The record and its state changes are here; what a session said and how each message of yours
-//! got to it are in `thread` and `delivery`, messages kept for later in `held`, names in `names`,
+//! got to it are in `thread` and `delivery`, messages kept for later in `kept_message`, names in `names`,
 //! what the current turn is doing in `turn`, and your own marks on it (later, star, tell me) in `marks`.
 
 mod bar;
 pub mod crew_log;
 mod delivery;
-mod held;
+mod kept_message;
 pub mod send_at;
 mod marks;
 pub(crate) mod names;
-pub(crate) mod shell_writes;
 pub mod quiet;
 pub mod team;
 mod thread;
 pub(crate) mod turn;
+// Moved to logs/ (refactor step 1b); the optional add-on still names it here.
+#[cfg(feature = "ext")]
+pub(crate) use crate::logs::shell_writes;
 
 pub use self::delivery::unwrap_pasted;
 use self::delivery::taken;

@@ -1,11 +1,11 @@
 //! Hosts on other machines (machine_host.rs puts cue-host there): one connection per machine to the host of Cue's own
 //! build, made the first time a session there needs it and kept (it's made again when it drops, as this Mac's is);
-//! and, once per machine, the older builds' hosts found there, let finish what they run (old_hosts.rs).
+//! and, once per machine, the older builds' hosts found there, let finish what they run (older_builds.rs).
 
 use super::host_link::HostLink;
 use super::hosts::{rejoin_when_back, Remotes};
 use super::machine_host;
-use super::old_hosts::{self, OldHost};
+use super::older_builds::{self, OldHost};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
@@ -29,7 +29,7 @@ impl OnMachines {
         machine_host::ensure(&m)?;
         let link = HostLink::over(machine_host::dial(&m)).map_err(|e| format!("{e} on {}", m.name))?;
         // ssh starts whether or not the machine answers: a host that answers is what says it's there.
-        if let Err(e) = old_hosts::hello(&link) {
+        if let Err(e) = older_builds::hello(&link) {
             link.shut();
             // What the host there said last, if it said anything (its log), says more than "no answer".
             let log = crate::machines::run(&m.host, &format!("tail -3 \"$HOME/{}/host.log\" 2>/dev/null; true", machine_host::home())).unwrap_or_default();
@@ -54,7 +54,7 @@ impl OnMachines {
             }
             None => {
                 // Its logs being copied over SSH sessions of their own come over this connection from now on.
-                crate::machines::logs::onto_host(&m);
+                crate::machines::log_mirror::onto_host(&m);
                 Ok(link)
             }
         }
@@ -67,7 +67,7 @@ impl OnMachines {
             return vec![];
         }
         let Some(m) = crate::machines::get(name) else { return vec![] };
-        old_hosts::find_there(&m.host, &m.name, cue_host::proto::BUILD)
+        older_builds::find_there(&m.host, &m.name, cue_host::proto::BUILD)
     }
 
     pub(super) fn all(&self) -> Vec<(String, Arc<HostLink>)> {
@@ -87,7 +87,7 @@ impl OnMachines {
         self.all()
             .into_iter()
             .map(|(name, l)| {
-                let running = old_hosts::hello(&l).map(|h| h.sessions.iter().filter(|s| s.running).count()).unwrap_or(0);
+                let running = older_builds::hello(&l).map(|h| h.sessions.iter().filter(|s| s.running).count()).unwrap_or(0);
                 json!({ "machine": crate::machines::display_name(&name), "reachable": l.connected(), "running": running })
             })
             .collect()

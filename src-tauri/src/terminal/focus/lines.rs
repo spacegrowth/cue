@@ -153,7 +153,7 @@ pub fn resume_line_local(cwd: &str, session_id: &str, transcript: &str) -> Resul
 }
 
 /// `--model <its model>` to resume a Claude Code session on (its 1M window as `[1m]`; logs::steps::model_of),
-/// when its log can be read here: this Mac's, or a machine's copy (machines::logs; a machine's own path is
+/// when its log can be read here: this Mac's, or a machine's copy (machines::log_mirror; a machine's own path is
 /// never read from here). Resumed without it, Claude Code comes back on its default model and window.
 pub fn model_args(transcript: &str, machine: &str) -> Vec<String> {
     let readable = !transcript.is_empty() && (machine.is_empty() || std::path::Path::new(transcript).starts_with(crate::server::cue_dir().join("machines")));

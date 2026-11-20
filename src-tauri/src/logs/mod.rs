@@ -8,6 +8,7 @@ pub(crate) mod live;
 pub(crate) mod mcp;
 pub(crate) mod prices;
 pub(crate) mod repos;
+pub(crate) mod shell_writes;
 pub(crate) mod steps;
 pub(crate) mod transcript;
 pub(crate) mod turns;

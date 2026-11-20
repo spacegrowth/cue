@@ -27,7 +27,7 @@ impl Feed {
             return None;
         }
         // A session on another machine: its agent's log is copied over (to where it's read from here).
-        crate::machines::logs::copy_helper(&self.path, &id);
+        crate::machines::log_mirror::copy_helper(&self.path, &id);
         let feed = helper_path(&self.path, &id).and_then(|p| p.to_str().map(|p| Box::new(Feed::open_helper(p))));
         self.helpers.push(Helper { id: id.clone(), step: step.to_string(), desc, kind: String::new(), model, started_ms: at_ms, finished_ms: 0, last_ms: at_ms, tokens: 0, items: Vec::new(), more: 0, feed, script: false, command: String::new(), output: Vec::new(), lines: 0, failed: false, stopped: false, out_path: None, out_len: 0, closed: false, resumed_ms: 0, teammate: false, name: String::new(), meta_read: false, seen: false, unconfirmed: false });
         self.trim_helpers();
@@ -58,7 +58,7 @@ impl Feed {
         h.resumed_ms = at_ms;
         h.step = step.to_string();
         // Its copy from another machine was stopped when it reported: on again, from where it was.
-        crate::machines::logs::copy_helper(&self.path, id);
+        crate::machines::log_mirror::copy_helper(&self.path, id);
     }
 
     /// A shell command went to the background (Claude Code's Bash tool, run in the background or moved
@@ -71,9 +71,9 @@ impl Feed {
         }
         let out_path = launch.split("Output is being written to: ").nth(1).and_then(|r| r.split_whitespace().next()).map(|p| std::path::PathBuf::from(p.trim_end_matches('.')));
         // A session on another machine: its output file is there, and is copied over (to where it's read from here), like an agent's log.
-        let out_path = out_path.and_then(|remote| match crate::machines::logs::copy_task(&self.path, &id, &remote.to_string_lossy()) {
+        let out_path = out_path.and_then(|remote| match crate::machines::log_mirror::copy_task(&self.path, &id, &remote.to_string_lossy()) {
             Some(local) => Some(local),
-            None if crate::machines::logs::is_copy(&self.path) => None,
+            None if crate::machines::log_mirror::is_copy(&self.path) => None,
             None => Some(remote),
         });
         let desc = if desc.trim().is_empty() { subject.to_string() } else { desc.trim().to_string() };
@@ -124,7 +124,7 @@ impl Feed {
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_secs(5));
             if helper_done(&copy, &id) {
-                crate::machines::logs::stop_helper(&copy, &id);
+                crate::machines::log_mirror::stop_helper(&copy, &id);
             }
         });
         true
@@ -139,7 +139,7 @@ impl Feed {
             let (copy, id) = (self.path.clone(), h.id.clone());
             std::thread::spawn(move || {
                 std::thread::sleep(std::time::Duration::from_secs(5));
-                crate::machines::logs::stop_task(&copy, &id);
+                crate::machines::log_mirror::stop_task(&copy, &id);
             });
             if h.failed && h.finished_ms.saturating_sub(h.started_ms) > FAILURE_WORTH_MS {
                 self.failures.push(TaskFailure { path: self.path.clone(), at_ms: h.finished_ms, desc: h.desc.clone(), line: h.last_line() });

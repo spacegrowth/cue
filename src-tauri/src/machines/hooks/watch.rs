@@ -22,7 +22,7 @@ pub fn watch_all() {
     // A watcher an earlier Cue left behind would take events away from this one: end them first.
     // Only ssh processes whose command carries the watcher's mark, nothing else that mentions it.
     machines::end_streams("# cue-watch");
-    crate::machines::logs::stop_strays();
+    crate::machines::log_mirror::stop_strays();
     for m in machines::list() {
         watch(&m);
     }

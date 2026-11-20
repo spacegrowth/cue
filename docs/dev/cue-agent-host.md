@@ -261,7 +261,7 @@ it never saw answered is resent on reconnect with the same `msg`; the host refus
   in `hello`); a change elsewhere in Cue isn't a new host build. Each build lives in its own folder under Cue's data
   folder's `host/` (`b-<build>`; the first host, from before builds, in `host/` itself), so a Cue with fixed host code
   always sends new sessions to a host of its own build. Hosts of other builds are found when Cue starts
-  (`hosted/old_hosts.rs`), let finish the agents they run (sessions Cue no longer knows are closed), looked at every
+  (`hosted/older_builds.rs`), let finish the agents they run (sessions Cue no longer knows are closed), looked at every
   15 s, and once one runs nothing it's stopped by a signal (nothing is asked of its code, so a broken one can't stay)
   and its folder cleared. Settings → Agents → cue-host shows what runs where and has **Restart cue-host** (twice):
   every hosted agent ended, its exit reported (the session comes back paused, and your next message starts it on a
@@ -304,7 +304,7 @@ it never saw answered is resent on reconnect with the same `msg`; the host refus
   commands') over that one connection: `tail` / `untail` (host/src/tail.rs: looked at five times a second, whole
   lines, a file not there yet waited for, one written over sent again from its start), written into the copy from
   the byte it starts at, so nothing doubles after a reconnect; copies running over `tail -F` move onto the connection
-  when it's made (`machines/logs.rs` `onto_host`). A machine with no hosted session still copies by `tail -F`.
+  when it's made (`machines/log_mirror.rs` `onto_host`). A machine with no hosted session still copies by `tail -F`.
 - **Names.** On a machine the program is `~/.cue/bin/b-<build>/cue-host`, so it shows as `cue-host` in `ps`, as on
   this Mac; its agents show as themselves (`claude`, `pi`, `codex`).
 - **Tests.** `scripts/test-machines.sh [--both]`: containers running sshd (reached through `docker exec … nc`, no port

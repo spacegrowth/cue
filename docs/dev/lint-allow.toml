@@ -283,32 +283,32 @@ reason = "hosted::remote: as for cue-host link: out (a request's answer is waite
 [[lock_order]]
 from = "a session's feed"
 to = "machine tails"
-reason = "hosted::tails: starting or looking at a transcript copy over a machine's cue-host connection (machines/logs.rs) reads and writes these two maps only; they are leaves (nothing is taken under them, and the request goes on a thread of its own)"
+reason = "hosted::tails: starting or looking at a transcript copy over a machine's cue-host connection (machines/log_mirror.rs) reads and writes these two maps only; they are leaves (nothing is taken under them, and the request goes on a thread of its own)"
 
 [[lock_order]]
 from = "a session's feed"
 to = "machine tails: links"
-reason = "hosted::tails: starting or looking at a transcript copy over a machine's cue-host connection (machines/logs.rs) reads and writes these two maps only; they are leaves (nothing is taken under them, and the request goes on a thread of its own)"
+reason = "hosted::tails: starting or looking at a transcript copy over a machine's cue-host connection (machines/log_mirror.rs) reads and writes these two maps only; they are leaves (nothing is taken under them, and the request goes on a thread of its own)"
 
 [[lock_order]]
 from = "copies"
 to = "machine tails"
-reason = "hosted::tails: starting or looking at a transcript copy over a machine's cue-host connection (machines/logs.rs) reads and writes these two maps only; they are leaves (nothing is taken under them, and the request goes on a thread of its own)"
+reason = "hosted::tails: starting or looking at a transcript copy over a machine's cue-host connection (machines/log_mirror.rs) reads and writes these two maps only; they are leaves (nothing is taken under them, and the request goes on a thread of its own)"
 
 [[lock_order]]
 from = "copies"
 to = "machine tails: links"
-reason = "hosted::tails: starting or looking at a transcript copy over a machine's cue-host connection (machines/logs.rs) reads and writes these two maps only; they are leaves (nothing is taken under them, and the request goes on a thread of its own)"
+reason = "hosted::tails: starting or looking at a transcript copy over a machine's cue-host connection (machines/log_mirror.rs) reads and writes these two maps only; they are leaves (nothing is taken under them, and the request goes on a thread of its own)"
 
 [[lock_order]]
 from = "typing gate"
 to = "machine tails"
-reason = "hosted::tails: starting or looking at a transcript copy over a machine's cue-host connection (machines/logs.rs) reads and writes these two maps only; they are leaves (nothing is taken under them, and the request goes on a thread of its own)"
+reason = "hosted::tails: starting or looking at a transcript copy over a machine's cue-host connection (machines/log_mirror.rs) reads and writes these two maps only; they are leaves (nothing is taken under them, and the request goes on a thread of its own)"
 
 [[lock_order]]
 from = "typing gate"
 to = "machine tails: links"
-reason = "hosted::tails: starting or looking at a transcript copy over a machine's cue-host connection (machines/logs.rs) reads and writes these two maps only; they are leaves (nothing is taken under them, and the request goes on a thread of its own)"
+reason = "hosted::tails: starting or looking at a transcript copy over a machine's cue-host connection (machines/log_mirror.rs) reads and writes these two maps only; they are leaves (nothing is taken under them, and the request goes on a thread of its own)"
 
 [[lock_order]]
 from = "typing gate"

@@ -101,10 +101,10 @@ pub(super) fn handle(m: &Machine, id: &str, ev: Value) {
         // Never the machine's own path: Cue would read it on this Mac (a stat on /home can stall). No copy (it
         // couldn't start): no log for now, as for a session that has none.
         let local = if ev["event"] == "end" {
-            crate::machines::logs::stop(m, &remote);
-            crate::machines::logs::copy_of(m, &remote)
+            crate::machines::log_mirror::stop(m, &remote);
+            crate::machines::log_mirror::copy_of(m, &remote)
         } else {
-            crate::machines::logs::local_copy(m, &remote)
+            crate::machines::log_mirror::local_copy(m, &remote)
         };
         msg["transcript_path"] = json!(local);
     }

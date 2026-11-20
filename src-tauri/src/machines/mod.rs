@@ -7,7 +7,7 @@
 
 pub(crate) mod hooks;
 pub(crate) mod listing;
-pub(crate) mod logs;
+pub(crate) mod log_mirror;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};

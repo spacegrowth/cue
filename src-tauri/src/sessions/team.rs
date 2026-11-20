@@ -185,7 +185,7 @@ pub fn sees(team: &mut Vec<Teammate>, cwd: &str, e: &HostedEvent, now: u64) -> b
                     t.bash_calls.push(id.clone());
                 } else if let Some(command) = input.get("command").and_then(Value::as_str) {
                     let folder = t.folder(cwd).trim_end_matches('/').to_string();
-                    let files: Vec<String> = super::shell_writes::writes(command).into_iter().filter_map(|p| in_folder(&p, &folder)).collect();
+                    let files: Vec<String> = crate::logs::shell_writes::writes(command).into_iter().filter_map(|p| in_folder(&p, &folder)).collect();
                     add_files(t, files, true);
                 }
             }

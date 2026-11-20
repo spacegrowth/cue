@@ -59,8 +59,8 @@ impl Hub {
         let base = self.session_cost(&origin.session_id).unwrap_or(0.0);
         let started: crate::hosted::Started = self.hosted().start(&spec, self.hosted_report(origin.clone(), base))?;
         let transcript_path = match started.transcript {
-            // On a machine, the agent's own file is there: Cue reads its copy here (machines/logs.rs).
-            Some(there) if !origin.machine.is_empty() => crate::machines::get(&origin.machine).map(|m| crate::machines::logs::local_copy(&m, &there)).filter(|c| !c.is_empty()).unwrap_or_else(|| origin.transcript_path.clone()),
+            // On a machine, the agent's own file is there: Cue reads its copy here (machines/log_mirror.rs).
+            Some(there) if !origin.machine.is_empty() => crate::machines::get(&origin.machine).map(|m| crate::machines::log_mirror::local_copy(&m, &there)).filter(|c| !c.is_empty()).unwrap_or_else(|| origin.transcript_path.clone()),
             Some(here) => here,
             None => origin.transcript_path.clone(),
         };
@@ -488,5 +488,5 @@ fn written_on_machine(origin: &Origin) -> bool {
         return true;
     }
     let Some(m) = crate::machines::get(&origin.machine) else { return true };
-    origin.transcript_path.is_empty() || crate::machines::logs::written_there(&m, &origin.transcript_path).unwrap_or(true)
+    origin.transcript_path.is_empty() || crate::machines::log_mirror::written_there(&m, &origin.transcript_path).unwrap_or(true)
 }

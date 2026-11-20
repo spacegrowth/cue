@@ -102,7 +102,7 @@ impl Ports {
 /// Hosted sessions through cue-host: the cue-host program next to Cue's own in Cue.app (so it shows as cue-host),
 /// else Cue's own program run as `cue host serve` (a build without it: `cargo run`, tests); each build of the host in
 /// a folder of its own under Cue's data folder's `host/` (an older one there finishes what it runs, then goes:
-/// hosted/old_hosts.rs).
+/// hosted/older_builds.rs).
 fn hosts() -> crate::hosted::Hosts {
     let root = crate::server::cue_dir().join("host");
     let home = root.join(format!("b-{}", cue_host::proto::BUILD));

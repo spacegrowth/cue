@@ -105,7 +105,7 @@ fn trust_key(machine: &str, dir: &str) -> String {
 }
 
 /// A session's folder on machine `name` (`dir` as you typed it: `~` is your home there), as its full path there, and
-/// for Claude Code the copy on this Mac of where its conversation will be (machines/logs.rs: copied as it's written,
+/// for Claude Code the copy on this Mac of where its conversation will be (machines/log_mirror.rs: copied as it's written,
 /// so the chat reads it as it would a local one). Says so when the folder isn't there.
 fn on_machine(name: &str, agent: Agent, dir: &str, sid: &str) -> Result<(String, String), String> {
     let m = crate::machines::get(name).ok_or(format!("{name} isn't one of your machines (+ New → Machine)"))?;
@@ -114,7 +114,7 @@ fn on_machine(name: &str, agent: Agent, dir: &str, sid: &str) -> Result<(String,
     if l.first() == Some(&"NODIR") || l.len() < 3 {
         return Err(format!("{dir} isn't a folder on {}", m.name));
     }
-    let transcript = if agent == Agent::Claude { crate::machines::logs::local_copy(&m, &format!("{}/projects/{}/{sid}.jsonl", l[2], live::claude_project_folder(l[1]))) } else { String::new() };
+    let transcript = if agent == Agent::Claude { crate::machines::log_mirror::local_copy(&m, &format!("{}/projects/{}/{sid}.jsonl", l[2], live::claude_project_folder(l[1]))) } else { String::new() };
     Ok((l[0].to_string(), transcript))
 }
 
