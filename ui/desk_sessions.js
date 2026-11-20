@@ -25,7 +25,10 @@ function deskSessCache(sid, when = false) {
   const cache = left > 0 ? `cache ${Math.ceil(left / 60000)}m` : c.until_ms ? "cold" : "";
   const details = [c.tokens && insTok(c.tokens), cache].filter(Boolean).join(" · ");
   const at = when && c.last_ms ? `<span data-ago="${c.last_ms}">${ago(c.last_ms)}</span> ago · ` : "";
-  return `<div class="dk-s3 dk-size${left > 0 && left < HOT_CACHE_MS ? " hot" : ""}">${at}${esc(details)}</div>`;
+  // How full its window is, as a short bar at the end of the line (no % written; amber from 80% full, #423).
+  const pct = c.tokens ? Math.min(100, Math.round((c.tokens / (c.window || HANDOFF.window)) * 100)) : 0;
+  const meter = pct ? ` · <span class="dk-meter${pct >= 80 ? " full" : ""}" role="img" aria-label="${pct}% of its window"><i style="width:${Math.max(3, pct)}%"></i></span>` : "";
+  return `<div class="dk-s3 dk-size${left > 0 && left < HOT_CACHE_MS ? " hot" : ""}">${at}${esc(details)}${meter}</div>`;
 }
 /** The first line of a session's latest reply, from the same numbers ("" until they're in). */
 const deskSessSaid = (sid) => (typeof insCache !== "undefined" && insCache.get(sid)?.said) || "";

@@ -1843,7 +1843,7 @@ test("a session on no item says the first line of its latest reply, when it came
   await cue.change((st) => st.desk.projects.find((d) => d.project === "cue").members.push("spare"));
   const row = page.locator('.dk-sessions [data-desk-chat-of="spare"]');
   await expect(row.locator(".dk-s2 .dk-w")).toHaveText("Done: spare's rows read as rows.");
-  await expect(row.locator(".dk-size")).toHaveText("4h ago · 600k · cold");
+  await expect(row.locator(".dk-size")).toHaveText("4h ago · 600k · cold ·");
   await expect(row.locator("[data-desk-member]")).toHaveCount(0);
 });
 
@@ -1953,17 +1953,25 @@ test("each session row says its size and cache: \"142k · cache 12m\", \"cold\",
     st.desk.projects.find((d) => d.project === "cue").members.push("spare");
   });
   const left = page.locator(".dk-sessions");
-  await expect(left.locator('[data-desk-lead-chat="lead"] .dk-size')).toHaveText("142k · cache 12m");
+  await expect(left.locator('[data-desk-lead-chat="lead"] .dk-size')).toHaveText("142k · cache 12m ·");
   await expect(left.locator('[data-desk-lead-chat="lead"] .dk-size')).not.toHaveClass(/hot/);
-  await expect(left.locator('[data-desk-chat-of="host"] .dk-size')).toHaveText("88k · cache 3m");
+  await expect(left.locator('[data-desk-chat-of="host"] .dk-size')).toHaveText("88k · cache 3m ·");
   await expect(left.locator('[data-desk-chat-of="host"] .dk-size')).toHaveClass(/hot/);
-  await expect(left.locator('[data-desk-chat-of="spare"] .dk-size')).toHaveText("51k · cold");
+  await expect(left.locator('[data-desk-chat-of="spare"] .dk-size')).toHaveText("51k · cold ·");
+  // How full its window is: a short bar last on the line, no % written; amber from 80% full (#423).
+  await expect(left.locator('[data-desk-lead-chat="lead"] .dk-size .dk-meter')).toHaveAccessibleName("71% of its window");
+  await expect(left.locator('[data-desk-lead-chat="lead"] .dk-meter')).not.toHaveClass(/full/);
+  await expect(left.locator('[data-desk-lead-chat="lead"] .dk-size')).not.toContainText("%");
+  await expect(left.locator('[data-desk-chat-of="spare"] .dk-meter')).toHaveAccessibleName("26% of its window");
+  await cue.change((st) => { st.insight.spare = { tokens: 170000, until_ms: Date.now() - 60000 }; });
+  await expect(left.locator('[data-desk-chat-of="spare"] .dk-meter')).toHaveClass(/full/);
   // Each with its state and what it's on.
   await expect(left.locator('[data-desk-chat-of="host"] .dk-st')).toHaveText("working");
   await expect(left.locator('[data-desk-chat-of="host"] .dk-s2')).toContainText("#d5");
   await expect(left.locator('[data-desk-chat-of="spare"] .dk-st')).toHaveText("idle");
   await cue.change((st) => { st.insight.lead = { until_ms: Date.now() + 4 * 60000 - 2000 }; });
   await expect(left.locator('[data-desk-lead-chat="lead"] .dk-size')).toHaveText("cache 4m");
+  await expect(left.locator('[data-desk-lead-chat="lead"] .dk-meter')).toHaveCount(0);   // no size, no bar
 });
 
 /** The animation the app's own styles give `el` (the test page turns every animation off, so not what it computes). */
