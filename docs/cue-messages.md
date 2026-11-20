@@ -15,7 +15,7 @@ message has (#422): sending, waiting, delivered to whom and when.
 - Left-aligned and quiet like #433's lead lines, the item number the same chip; up to two lines in a narrow chat.
   No stripe, no hover text. Light and dark.
 
-The patterns live in `ui/desk_cue_said.js` (`CUE_MSGS`); `tests/ui/specs/desk-cue-said.spec.mjs` renders each one in
+The patterns live in `ui/desk/cue_said.js` (`CUE_MSGS`); `tests/ui/specs/desk-cue-said.spec.mjs` renders each one in
 light and dark.
 
 ## Where they show
@@ -156,15 +156,15 @@ Your own words or your click, so they show as your bubble, but Cue wrote the tex
 
 | Kind | Sent when | Window | How it shows today |
 | --- | --- | --- | --- |
-| Quick phrase | You press one of your quick phrases (chat, item page, crew page, mini); on an item to check it's a note to its holder (#488) | chat/compose.js `sendPhrase`, desk_act.js | your bubble: “Go ahead” |
+| Quick phrase | You press one of your quick phrases (chat, item page, crew page, mini); on an item to check it's a note to its holder (#488) | chat/compose.js `sendPhrase`, desk/act.js | your bubble: “Go ahead” |
 | Commit, continue | Commit or continue on a finished turn's card | app/clicks.js | your bubble “Commit” or “continue”, and a toast |
 | A nudge's command | A nudge's button (e.g. Hand off) | insights.js `insFill` | your bubble: “/handoff”, toast “/handoff sent” |
 | /compact while it works | Compact while a turn runs | insights.js `insCompact` | your bubble “/compact”, queued; toast “/compact queued…” |
 | A command's output | Send to… on a “!” command's card | chat/send.js `ranAsMessage` | your bubble: “I ran `npm test` in ~/work/cue (exit 1):” and the output |
 | Run in its terminal | Run in terminal on a “!” card | app/clicks.js | your bubble: “! npm test”, toast “Typed into its terminal” |
 | Forward a reply | ↗ Send to… on a reply | sheets.js `sendForward` | in the receiving chat: “↘ From website · forwarded by you”, your note above the quote |
-| Note about a teammate | You write to a teammate from the crew box | desk_act.js | your bubble: “About docs: …” |
-| Resend after the usage limit | Resend once the limit is lifted | board.js `resend` | a second copy of the last prompt, as your bubble |
+| Note about a teammate | You write to a teammate from the crew box | desk/act.js | your bubble: “About docs: …” |
+| Resend after the usage limit | Resend once the limit is lifted | board/usage.js `resend` | a second copy of the last prompt, as your bubble |
 
 ## Messages between sessions
 

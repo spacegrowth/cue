@@ -54,6 +54,6 @@ const MockApp = {
     doc.addEventListener("keydown", hot, true);
     document.addEventListener("keydown", hot);
   },
-  /** Cue's terminal icon (ui/core.js), at `size`. */
+  /** Cue's terminal icon (ui/core/), at `size`. */
   icon(win, size = 16) { return win.eval("TERM_ICON").replace(/width="\d+" height="\d+"/, `width="${size}" height="${size}"`); },
 };

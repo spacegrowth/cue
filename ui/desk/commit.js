@@ -1,4 +1,4 @@
-// Cue UI desk_commit — Looks right on a Desk item commits its changed files at once (desk/hub/landing/commit.rs: the word
+// Cue UI desk/commit — Looks right on a Desk item commits its changed files at once (desk/hub/landing/commit.rs: the word
 // check first, its title the message, never pushed) and the item is done; one with no files is just done. When another
 // session at work is editing some of them, the item is done at once and the commit waits ("Commit waiting: <file>
 // (<session> is editing it)"), made on its own once they're free. "Committed <hash> · N files" shows with Undo, which

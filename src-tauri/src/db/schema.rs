@@ -360,6 +360,11 @@ fn migrate(c: &Connection, version: i64) -> rusqlite::Result<()> {
         c.execute_batch("DELETE FROM turns_read;")?;
         c.pragma_update(None, "user_version", 5)?;
     }
+    migrate_on(c, version)
+}
+
+/// `migrate` from version 6 on: the columns added since, the Desk's tables marked, the old Dispatch dropped.
+fn migrate_on(c: &Connection, version: i64) -> rusqlite::Result<()> {
     // A hand-off note written before its session's cache ran out: the column. A new database has it already.
     if version < 6 {
         let _ = c.execute("ALTER TABLE handoffs ADD COLUMN ahead INTEGER NOT NULL DEFAULT 0", []);

@@ -2,7 +2,7 @@
 // shows: a session's chat, an item's page (its holder's chat), the lead's chat, and the Inbox. "Cue · Asked cue-383 ·
 // #461 not done: “Are we done here completely?” · 3m", Cue's full text folded under it (a click on the line opens it).
 // The session still gets the full text; only how the chat draws it changes. Every kind is listed in
-// docs/cue-messages.md, with where it shows. Loaded after desk_lead.js (index.html, mini.html).
+// docs/cue-messages.md, with where it shows. Loaded after desk/lead.js (index.html, mini.html).
 
 /** Each kind of message Cue sends, by how it starts (the hub's own words, quoted in docs/cue-messages.md): [pattern,
  *  (match, text) => { verb, id, what, more }]. `verb` and the session's name make "Asked cue-383"; `id` is the item it's

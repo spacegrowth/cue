@@ -1,4 +1,4 @@
-// The Inbox and the Desk (ui/inbox_desk.js): a project lead's ask about its Desk sits under that Desk's heading (#217),
+// The Inbox and the Desk (ui/desk/inbox.js): a project lead's ask about its Desk sits under that Desk's heading (#217),
 // tagged "<PROJECT> · Desk"; a session holding a Desk item shows "<PROJECT> · for <title>" on its row and, opened,
 // a bar with Open in Desk; a session's own ask can be added to its project's Desk. Scenario: desk-inbox.
 import { test, expect } from "./cue.mjs";
@@ -72,7 +72,7 @@ test("Add to Desk on a session's ask: an item on its project's Desk, held by it"
 test("Open in Desk picks the project, goes to the Desk and opens the item (when the Desk is there)", async ({ cue, page }) => {
   await cue.open("desk-inbox");
   await openInbox(page);
-  // A stand-in for the Desk view, as ui/desk.js gives it.
+  // A stand-in for the Desk view, as ui/desk/desk.js gives it.
   await page.evaluate(() => { window.__opened = []; window.deskOpenItem = (id) => window.__opened.push(id); });
   await page.locator('.ib-row[data-inbox-open="web"]').click();
   await page.locator(".ib-forbar .ib-desk").click();
@@ -92,7 +92,7 @@ test("Open in Desk from the real Desk view opens the item on the right", async (
 test("without a Desk view, Open in Desk says so and stays in the Inbox", async ({ cue, page }) => {
   await cue.open("desk-inbox");
   await openInbox(page);
-  // The Desk stubbed away (a top-level function can't be deleted, only overwritten), so this runs with ui/desk.js too.
+  // The Desk stubbed away (a top-level function can't be deleted, only overwritten), so this runs with ui/desk/desk.js too.
   await page.evaluate(() => { window.deskOpenItem = undefined; });
   await page.locator('.ib-row[data-inbox-open="web"]').click();
   await page.locator(".ib-forbar .ib-desk").click();

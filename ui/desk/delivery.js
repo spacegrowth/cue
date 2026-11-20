@@ -51,7 +51,7 @@ function deskToSid(item, name) {
   return h && name === h.name ? h.lead_sid || h.sid : lead && name === lead.name ? lead.sid : "";
 }
 /** The line's controls for a message on an item's page (#422): Send now while it's queued in that session; Edit (back
- *  into this page's box, desk_act.js deskHeldEdit) and Send now while Cue keeps it there, as the session's own chat
+ *  into this page's box, desk/act.js deskHeldEdit) and Send now while Cue keeps it there, as the session's own chat
  *  has them, and Cancel (deskHeldCancel); Retry and Edit on one from here that couldn't go (`retry`: its time, deskMsgRetry, deskMsgEdit). */
 function deskMsgActs(m) {
   const btn = (act, label, more = "") => `<button class="q-now" ${act}${more}>${label}</button>`;

@@ -72,7 +72,7 @@ function sizeReader(dir) {
 function closeReader() {
   const key = readerView?.key;
   readerView = null;
-  boxViewOwner(view)?.chatEnd?.(false);   // not a view's own chat-end scroll (the Desk's: desk_view.js deskSettle) over it
+  boxViewOwner(view)?.chatEnd?.(false);   // not a view's own chat-end scroll (the Desk's: desk/view.js deskSettle) over it
   renderMain();
   const btn = key && document.querySelector(`[data-read="${CSS.escape(key)}"], [data-fwd="${CSS.escape(key)}"]`);
   btn?.closest(".cv-agent")?.scrollIntoView({ block: "start" });

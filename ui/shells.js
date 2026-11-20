@@ -340,7 +340,7 @@ function pipWhole() {
   return { left: px("paddingLeft", 20), right: innerWidth - px("paddingRight", 20), top: (document.querySelector(".top")?.getBoundingClientRect().bottom ?? 60) + 14, bottom: innerHeight - px("paddingBottom", 16) };
 }
 const GROW_ICON = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 2h4v4M6 14H2v-4M14 2 9.5 6.5M2 14l4.5-4.5"/></svg>`;
-/** The Terminal view (the terminal button's click, core.js `view`): the same shells, filling the window under the header,
+/** The Terminal view (the terminal button's click, core/state.js `view`): the same shells, filling the window under the header,
  *  the peek put away. Coming on, it brings the terminal out (a first shell if there's none); going, it puts it
  *  away. Its place under the shells (shellView) says how to open one when the last is closed. */
 function syncShellView() {

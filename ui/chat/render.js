@@ -154,61 +154,75 @@ function chatHtml(it, s, harness, paged = false, page = null) {
   const { reviews, reviewAt } = reviewFolds(ex, s?.team || []);
   const fold = page?.folds?.(ex);
   // `page.noSteps`: a chat without its turns' steps (the Desk lead's: what it read to route is not yours to read).
-  const rows = withSteps(page?.noSteps ? null : sid, s, ex, ex.map((e, n) => keyed((() => {
-    if (fold?.skip.has(n)) return "";
-    // From another Desk's session, in a lead's chat: a band across the chat (desk_lead.js, #472).
-    if (e.role === "peer") return (typeof deskPeerBand === "function" && deskPeerBand(sid, e)) || peerBubble(e.from || "another agent", "", e.at_ms, e.text);
-    if (answers.has(n)) return "";
-    if (decided.has(n)) return chose.length && near(e.at_ms) ? "" : chatDecisionLine(decided.get(n), e.at_ms);
-    if (asks.has(n)) return chatAskHtml(`${s?.session_id || it?.id}:${e.at_ms}`, e, asks.get(n), harness, it?.machine || s?.machine);
-    // What Cue sent the lead for its crew: Cue's bubble on the right, never yours (team.js). A page's own drawing first.
-    const own = e.role === "you" && page?.you?.(e, n);
-    if (own) return own;
-    // The Desk's hand-off of an item: a card, Cue's standing words to the session left out (desk_lead.js).
-    const hand = e.role === "you" && typeof deskHandHtml === "function" && deskHandHtml(e);
-    if (hand) return hand;
-    const cue = e.role === "you" && cueSaid(e.text);
-    if (cue) return cueSaidLine(cue, `${sid}:${e.at_ms}`, e.text, { st: "delivered", to: msgTo(s), at: msgTaken(e) }, reviewAt.get(n));
-    if (reviews.has(n)) return "";
-    // Cue's own message to the session (a send-back, a reopen, a refusal…, #478): one short plain line, its full text
-    // folded under it (desk_cue_said.js).
-    const cm = e.role === "you" && typeof cueMsgHtml === "function" && cueMsgHtml(e, s, `${sid}:${e.at_ms}:cue`, e.unsent ? { st: "failed", why: "it may have run as a command, or still be in its box", to: msgTo(s) } : e.pending ? { ...(typedQueued(s) || { st: "sending" }), to: msgTo(s) } : { st: "delivered", to: msgTo(s), at: msgTaken(e) });
-    if (cm) return cm;
-    const fwd = e.role === "you" && FORWARDED.exec(e.text);
-    if (fwd) return peerBubble(fwd[2], "forwarded by you", e.at_ms, fwd[1], fwd[3]);
-    if (e.role === "you") {
-      const how = lastSent && lastSent.sid === (s?.session_id || it?.session_id) && e.text.startsWith(lastSent.text) ? lastSent.via : "";
-      // Queued in its agent ("queued via iTerm session"): it reads it at its next step. Sent another way: which.
-      const queued = /^queued/.test(how), via = how && !queued ? ` · via ${esc(how)}` : "";
-      // Typed into its terminal, but it never became a message: say so where you'll see it. Typed, and Cue hasn't yet
-      // seen it take it: Queued while it's mid-turn (#531), else Sending until it does (past half a minute, that Cue
-      // hasn't seen it yet).
-      const resend = sid ? `<button class="q-now" data-act="resend" data-sid="${esc(sid)}" data-resend="${esc(original[n].text)}">Send again</button>` : "";
-      const m = e.unsent ? { st: "failed", why: "it may have run as a command, or still be in its box", acts: resend }
-        : e.pending ? typedQueued(s) || { st: "sending", note: Date.now() - e.at_ms > 30_000 ? "Sending… · Cue hasn't seen it take this yet" : "" }
-        : { st: queued ? "queued" : "delivered", at: msgTaken(e) };
-      // Sent now right after the one above, before it answered: the agent got both as one (sessions.rs note_with).
-      const joined = e.joined ? " · went to the agent with your message above, as one" : "";
-      // A page's own head on your words (the Desk: what item they're about), and the words without it.
-      const hd = page?.youHead?.(e);
-      return msgRow({ ...m, to: msgTo(s), extra: via + joined }, yourBubble(hd ? { ...e, text: hd.text } : e, `${sid}:${e.at_ms}`, "", false, hd?.html || "") + thumbs(e.images), `${e.unsent ? "unsent" : ""} ${e.pending ? "pending" : ""}`.trim());
-    }
-    const key = `${s?.session_id || it?.id}:${e.at_ms}`;
-    const long = e.text.length > 280 || e.text.split("\n").length > 4;
-    const foldable = !recent.has(n) && long, folded = foldable && !openMsgs.has(key);
-    const follow = it?.followup && e.text === it.message && !hookInChat(sid, ex.findLast((y) => y.role === "you" && y.at_ms < e.at_ms)?.at_ms ?? 0) ? followHtml(it) : "";
-    fwdMsgs.set(key, { text: addOn.plain(e.text), from: project, fromSid: sid });
-    // Listen and Read go together: a reply worth hearing is worth reading set larger (Read shows wherever Listen does).
-    // A page's own split of a reply (the Desk's item chat: its own lines out, a stop hook's checklist folded under it).
-    const split = page?.reply?.(e, key);
-    const said = addOn.reply(sid, split ? split.text : e.text), listen = sid && proseWords(said.text, page?.lines) >= LISTEN_WORDS;
-    return `<div class="cv-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}" data-at="${e.at_ms}"><div class="cv-meta">${esc(agentName(harness))}${machTag(it?.machine || s?.machine)} · ${ago(e.at_ms)} ago${n === lastAgent ? toldMeta(s) : ""}</div>
-      <div class="msg cv-text">${md(said.text, { runIn: s?.session_id, lines: page?.lines })}</div>${split?.after || ""}${said.after}${thumbs(e.images)}${localImages(e.text)}
-      <div class="cv-acts">${listen ? listenBtn(key) : ""}${listen && paged ? `<button class="cv-pill" data-read="${esc(key)}">${BOOK_ICON}Read</button>` : ""}${foldable ? `<button class="cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}${page?.noActs ? "" : `<button class="cv-fwd" data-fwd="${esc(key)}">↗ Send to…</button>`}</div>${follow}</div>`;
-  })(), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran, restarts, page?.extra || [], fold?.rows || [], chatWaitRows(s, page, K)), fold?.hides, page?.say);
+  const c = { it, s, harness, paged, page, original, ex, asks, answers, decided, lastAgent, recent, project, sid, near,
+    chose, reviews, reviewAt, fold };
+  const rows = withSteps(page?.noSteps ? null : sid, s, ex, ex.map((e, n) => keyed(chatRowHtml(c, e, n), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran, restarts, page?.extra || [], fold?.rows || [], chatWaitRows(s, page, K)), fold?.hides, page?.say);
   for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(outboxRow(o, s, K(`out:${o.at}`)));
   if (s?.send_at) rows.push(sendAtRow(s));
   return rows.length ? (paged && sid ? keyed(olderRow(sid, harness), "older") : "") + rows.join("") : ran.length ? ran.map((r) => r.html).join("") : `<div class="dim cv-empty" data-key="empty">No messages yet in this session.</div>`;
+}
+/** Message `e`, the `n`th of chatHtml's thread, as drawn there: an ask, a decision, a card of a page's or Cue's own, a
+ *  bubble of yours or the agent's reply; "" for one not drawn. `c`: what chatHtml worked out for the whole thread. */
+function chatRowHtml(c, e, n) {
+  const { it, s, harness, page, asks, answers, decided, chose, near, reviews, reviewAt, fold, sid } = c;
+  if (fold?.skip.has(n)) return "";
+  // From another Desk's session, in a lead's chat: a band across the chat (desk/lead.js, #472).
+  if (e.role === "peer") return (typeof deskPeerBand === "function" && deskPeerBand(sid, e)) || peerBubble(e.from || "another agent", "", e.at_ms, e.text);
+  if (answers.has(n)) return "";
+  if (decided.has(n)) return chose.length && near(e.at_ms) ? "" : chatDecisionLine(decided.get(n), e.at_ms);
+  if (asks.has(n)) return chatAskHtml(`${s?.session_id || it?.id}:${e.at_ms}`, e, asks.get(n), harness, it?.machine || s?.machine);
+  // What Cue sent the lead for its crew: Cue's bubble on the right, never yours (team.js). A page's own drawing first.
+  const own = e.role === "you" && page?.you?.(e, n);
+  if (own) return own;
+  // The Desk's hand-off of an item: a card, Cue's standing words to the session left out (desk/lead.js).
+  const hand = e.role === "you" && typeof deskHandHtml === "function" && deskHandHtml(e);
+  if (hand) return hand;
+  const cue = e.role === "you" && cueSaid(e.text);
+  if (cue) return cueSaidLine(cue, `${sid}:${e.at_ms}`, e.text, { st: "delivered", to: msgTo(s), at: msgTaken(e) }, reviewAt.get(n));
+  if (reviews.has(n)) return "";
+  // Cue's own message to the session (a send-back, a reopen, a refusal…, #478): one short plain line, its full text
+  // folded under it (desk/cue_said.js).
+  const cm = e.role === "you" && typeof cueMsgHtml === "function" && cueMsgHtml(e, s, `${sid}:${e.at_ms}:cue`, e.unsent ? { st: "failed", why: "it may have run as a command, or still be in its box", to: msgTo(s) } : e.pending ? { ...(typedQueued(s) || { st: "sending" }), to: msgTo(s) } : { st: "delivered", to: msgTo(s), at: msgTaken(e) });
+  if (cm) return cm;
+  const fwd = e.role === "you" && FORWARDED.exec(e.text);
+  if (fwd) return peerBubble(fwd[2], "forwarded by you", e.at_ms, fwd[1], fwd[3]);
+  if (e.role === "you") return chatYouHtml(c, e, n);
+  return chatAgentHtml(c, e, n);
+}
+/** Your message `e` (the `n`th) in chatHtml's thread: your bubble, with how it went. */
+function chatYouHtml(c, e, n) {
+  const { it, s, page, original, sid } = c;
+  const how = lastSent && lastSent.sid === (s?.session_id || it?.session_id) && e.text.startsWith(lastSent.text) ? lastSent.via : "";
+  // Queued in its agent ("queued via iTerm session"): it reads it at its next step. Sent another way: which.
+  const queued = /^queued/.test(how), via = how && !queued ? ` · via ${esc(how)}` : "";
+  // Typed into its terminal, but it never became a message: say so where you'll see it. Typed, and Cue hasn't yet
+  // seen it take it: Queued while it's mid-turn (#531), else Sending until it does (past half a minute, that Cue
+  // hasn't seen it yet).
+  const resend = sid ? `<button class="q-now" data-act="resend" data-sid="${esc(sid)}" data-resend="${esc(original[n].text)}">Send again</button>` : "";
+  const m = e.unsent ? { st: "failed", why: "it may have run as a command, or still be in its box", acts: resend }
+    : e.pending ? typedQueued(s) || { st: "sending", note: Date.now() - e.at_ms > 30_000 ? "Sending… · Cue hasn't seen it take this yet" : "" }
+    : { st: queued ? "queued" : "delivered", at: msgTaken(e) };
+  // Sent now right after the one above, before it answered: the agent got both as one (sessions.rs note_with).
+  const joined = e.joined ? " · went to the agent with your message above, as one" : "";
+  // A page's own head on your words (the Desk: what item they're about), and the words without it.
+  const hd = page?.youHead?.(e);
+  return msgRow({ ...m, to: msgTo(s), extra: via + joined }, yourBubble(hd ? { ...e, text: hd.text } : e, `${sid}:${e.at_ms}`, "", false, hd?.html || "") + thumbs(e.images), `${e.unsent ? "unsent" : ""} ${e.pending ? "pending" : ""}`.trim());
+}
+/** The agent's reply `e` (the `n`th) in chatHtml's thread: its words, Listen, Read, Fold and Send to…. */
+function chatAgentHtml(c, e, n) {
+  const { it, s, harness, paged, page, ex, lastAgent, recent, project, sid } = c;
+  const key = `${s?.session_id || it?.id}:${e.at_ms}`;
+  const long = e.text.length > 280 || e.text.split("\n").length > 4;
+  const foldable = !recent.has(n) && long, folded = foldable && !openMsgs.has(key);
+  const follow = it?.followup && e.text === it.message && !hookInChat(sid, ex.findLast((y) => y.role === "you" && y.at_ms < e.at_ms)?.at_ms ?? 0) ? followHtml(it) : "";
+  fwdMsgs.set(key, { text: addOn.plain(e.text), from: project, fromSid: sid });
+  // Listen and Read go together: a reply worth hearing is worth reading set larger (Read shows wherever Listen does).
+  // A page's own split of a reply (the Desk's item chat: its own lines out, a stop hook's checklist folded under it).
+  const split = page?.reply?.(e, key);
+  const said = addOn.reply(sid, split ? split.text : e.text), listen = sid && proseWords(said.text, page?.lines) >= LISTEN_WORDS;
+  return `<div class="cv-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}" data-at="${e.at_ms}"><div class="cv-meta">${esc(agentName(harness))}${machTag(it?.machine || s?.machine)} · ${ago(e.at_ms)} ago${n === lastAgent ? toldMeta(s) : ""}</div>
+      <div class="msg cv-text">${md(said.text, { runIn: s?.session_id, lines: page?.lines })}</div>${split?.after || ""}${said.after}${thumbs(e.images)}${localImages(e.text)}
+      <div class="cv-acts">${listen ? listenBtn(key) : ""}${listen && paged ? `<button class="cv-pill" data-read="${esc(key)}">${BOOK_ICON}Read</button>` : ""}${foldable ? `<button class="cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}${page?.noActs ? "" : `<button class="cv-fwd" data-fwd="${esc(key)}">↗ Send to…</button>`}</div>${follow}</div>`;
 }
 /** Sent while it worked: kept in Cue till the turn ends (yours to take back, Edit or Esc; to drop, Cancel; or to send
  *  now), or queued in its agent. Each sits where you wrote it, among the rest by time, keyed as its thread copy will

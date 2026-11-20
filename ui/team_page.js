@@ -6,7 +6,7 @@
 // waiting line, its box with the same draft), what the lead decided on its own placed in its chat by time, and Needs
 // you over its box (one bar, one ask at a time: team_bar.js) in the crew tray's place. Right, the rest of the width: The lead, then the crew's cards (one to a line) in the order the
 // lead started them (a card never moves for its state), the finished ones folded into "N done ›" (the drawer's fold).
-// The optional add-on may add to it (core.js addOn.crewPage*): its own head line, a band under The lead, rows under the
+// The optional add-on may add to it (core/addon.js addOn.crewPage*): its own head line, a band under The lead, rows under the
 // goal, rows in Needs you and decisions in the chat.
 
 /** The lead whose crew's page is open; null when none is. It closes when that session goes away, or another opens. */
@@ -292,7 +292,7 @@ function crewPageHead(sid, head) {
 }
 
 /** The page: its head (crewPageHead), the goal line and the add-on's rows; then the
- *  left (the lead's chat, Needs you, its box), as wide as the board's chat pane (board.js boardChatWidth), beside the
+ *  left (the lead's chat, Needs you, its box), as wide as the board's chat pane (board/columns.js boardChatWidth), beside the
  *  list, which has the rest: The lead, the add-on's band, the crew's cards. While the left shows a teammate (`mate`),
  *  the left takes all but a narrow list, so its diff has the room. */
 function crewPageView(sid) {

@@ -1,5 +1,5 @@
 // Cue UI desk — Away (#361, #373, #415) and Pause (#366): the lines that show the lead keep the Desk moving while you're away, its rules and its clicks; and the Pause/Resume button.
-// Split from desk.js, which keeps the Desk's state and item basics; loaded after it (and after desk_list.js).
+// Split from desk.js, which keeps the Desk's state and item basics; loaded after it (and after desk/list.js).
 // ---------- Away (#361, pick B): the lead keeps the Desk moving while you're away ----------
 
 /** The rules (desk_away_set): true = the lead may decide it alone. The last two show under "Always waits for you",
@@ -75,7 +75,7 @@ function deskAwayFirstList(d) {
  *  has everywhere (decisionButtons: Allow / No, Decline / Type answer…, a form's fields). */
 function deskAwayAsk(it, d, deny = "No") {
   const qs = it.kind === "question" ? questions(it) : [];
-  // A question: its whole card (board.js questionHtml), its suggestions picked; Send is in its buttons.
+  // A question: its whole card (board/question.js questionHtml), its suggestions picked; Send is in its buttons.
   const picks = qs.length ? questionHtml(it) : "";
   const acts = ["permission", "question", "input"].includes(it.kind) ? decisionButtons(it, deny) : `<div class="row-btns"><button class="btn" ${deskChatAttrs(it.session_id, d)}>Open its chat</button></div>`;
   const cmd = it.tool_input?.command;
@@ -320,7 +320,7 @@ async function deskAwaySave(on) {
 const DESK_AWAY_GOES = ["deskItem", "deskChkItem", "deskChatOf", "deskLeadChat", "deskCrew"];
 document.addEventListener("click", (ev) => {
   if (!deskAwayEdit) return;
-  const own = ev.target.closest?.(".dk-aw-dialog") && ev.target.closest?.(DESK_SEL);
+  const own = ev.target.closest?.(".dk-aw-dialog") && ev.target.closest?.(deskSel());
   if (own && !own.closest("[data-away]:not([data-away=scrim]), [data-away-rule]")) {
     ev.stopPropagation();
     const k = Object.keys(DESK_CLICKS).find((x) => x in own.dataset);

@@ -24,7 +24,17 @@ pub(crate) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
     }
     let Some(h) = it.holder.as_ref() else { return out };
     let mut h = h.clone();
-    if let Some((lead, agent)) = crew_parts(&h) {
+    holder_view(st, it, &mut h, &mut out);
+    at_work_view(st, it, &h, &mut out);
+    asks_view(st, it, &h, &mut out);
+    stops_view(st, it, &h, &mut out);
+    out.holder = Some(h);
+    out
+}
+
+/// Its holder as shown: a teammate's or a session's name, and what it's at on this item (its latest, its files).
+fn holder_view(st: &Store, it: &DeskItem, h: &mut Holder, out: &mut DeskItem) {
+    if let Some((lead, agent)) = crew_parts(h) {
         out.now_on = it.state == "working";
         if let Some(t) = st.sessions.get(lead).and_then(|s| s.team.iter().find(|t| t.agent_id == agent || t.call == agent)) {
             h.name = t.name.clone();
@@ -51,16 +61,20 @@ pub(crate) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
             out.files = Vec::new();
         }
     }
+}
+
+/// The item at work, by what its holder is doing on it: an ask, a stop, or its crew at work.
+fn at_work_view(st: &Store, it: &DeskItem, h: &Holder, out: &mut DeskItem) {
     // Only the item at work: a queued one's holder asks about the item before it. Waiting on you while its holder
     // asks, or while its holder's turn ended on it (with no DONE, or it would be to check): its last line then.
     // Waiting on you only with one plain thing to do (#182): its ask (Answer, Pick, Allow), or the question its turn
     // ended on (Answer). A stop with nothing to ask you goes to the Desk lead to settle: shown as stopped, not red,
     // until the lead asks you about it (ASK: #id …) or its time is up (desk/hub/stall/stall.rs).
     if it.state == "working" && out.now_on {
-        if let Some(a) = ask_of(st, &h) {
+        if let Some(a) = ask_of(st, h) {
             out.state = "needs_you".into();
             out.ask = Some(ask_view(a));
-        } else if let Some(s) = crate::desk::hub::stall::stall::stalled(st, it, &h) {
+        } else if let Some(s) = crate::desk::hub::stall::stall::stalled(st, it, h) {
             match crate::desk::hub::stall::stall::stop_shown(st, it, s, now_ms()) {
                 crate::desk::hub::stall::stall::Stop::Asks(q) => {
                     out.state = "needs_you".into();
@@ -78,12 +92,16 @@ pub(crate) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
                     };
                 }
             }
-        } else if let Some(crew) = crew_parts(&h).is_none().then(|| crate::desk::hub::stall::stall::runs_on(st, &h.sid)).flatten() {
+        } else if let Some(crew) = crew_parts(h).is_none().then(|| crate::desk::hub::stall::stall::runs_on(st, &h.sid)).flatten() {
             // Idle only because its own teammates, or its tests or build, are at work (#511, #556): at work on it, and
             // it says so.
             out.latest = crew;
         }
     }
+}
+
+/// Asks that make it wait on you: its holder's question (#475), a queued item's ask, the lead's ASK.
+fn asks_view(st: &Store, it: &DeskItem, h: &Holder, out: &mut DeskItem) {
     // Its holder asked you something (#475): waiting on you with that until you answer, whatever it has done since.
     if let Some((q, _)) = it.asks.as_ref().filter(|_| it.state == "working" && it.paused.is_none() && out.ask.is_none()) {
         out.state = "needs_you".into();
@@ -94,11 +112,11 @@ pub(crate) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
     // too, not only in its own chat. A stop with no question stays the lead's (it's queued, not stalled). Not once you
     // sent it back and it waits for a free working folder (#419): your Send back is the answer, it goes with it.
     let back_waits = it.tree_wait && !it.back_waiting.is_empty();
-    if it.state == "queued" && !back_waits && crew_parts(&h).is_none() && crate::desk::hub::stall::stall::on_queued(st, &h.sid, &it.id) {
-        if let Some(a) = ask_of(st, &h) {
+    if it.state == "queued" && !back_waits && crew_parts(h).is_none() && crate::desk::hub::stall::stall::on_queued(st, &h.sid, &it.id) {
+        if let Some(a) = ask_of(st, h) {
             out.state = "needs_you".into();
             out.ask = Some(ask_view(a));
-        } else if let Some(q) = crate::desk::hub::stall::stall::stalled(st, it, &h).and_then(|s| s.thread.iter().rev().find(|e| e.role == "agent")).and_then(|e| crate::desk::hub::stall::stall::question_in(&e.text)) {
+        } else if let Some(q) = crate::desk::hub::stall::stall::stalled(st, it, h).and_then(|s| s.thread.iter().rev().find(|e| e.role == "agent")).and_then(|e| crate::desk::hub::stall::stall::question_in(&e.text)) {
             out.state = "needs_you".into();
             out.latest = q;
         }
@@ -111,6 +129,10 @@ pub(crate) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
             out.ask = Some(ask_view(a));
         }
     }
+}
+
+/// Finishing and stopped, paused by the lead, or to resume; and what its holder did last while at work.
+fn stops_view(st: &Store, it: &DeskItem, h: &Holder, out: &mut DeskItem) {
     // Finishing and stopped (a word, a conflict, a long wait, a failed install): stopped while its Desk lead has it
     // (#483), else it needs you; the lead's ASK about it waits on you whatever.
     if let Some(f) = it.finish.as_ref().filter(|f| it.state == "finishing" && !f.question.is_empty()) {
@@ -130,15 +152,15 @@ pub(crate) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
     }
     if out.state == "working" && !out.stopped && out.waiting.is_empty() {
         // Work handed to a live session is under way while it takes the message, or while its crew finishes.
-        let active = if crew_parts(&h).is_some() {
-            at_work(st, &h)
+        let active = if crew_parts(h).is_some() {
+            at_work(st, h)
         } else {
             // Or a note of yours waits for it, kept in Cue or queued in its box (#419): it goes in next.
             crate::desk::hub::stall::stall::still_at_it(st, &h.sid) || (out.now_on && st.sessions.get(&h.sid).is_some_and(|s| {
                 s.state != "stopped" && (s.held.is_some() || !s.running.is_empty() || s.queued.is_some() || s.thread.last().is_some_and(|e| e.role == "you" && e.pending))
             }))
         };
-        if !active && !wrote_just_now(st, &h) {
+        if !active && !wrote_just_now(st, h) {
             out.state = "needs_resume".into();
             if !it.restart.is_empty() {
                 out.latest = it.restart.clone();
@@ -147,10 +169,8 @@ pub(crate) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
     }
     // At work on it: what its holder did last, and when, so its row shows whether it's moving or stalled (#285).
     if out.state == "working" && out.now_on && !out.stopped && out.waiting.is_empty() && out.ask.is_none() {
-        out.act = crate::desk::hub::stall::stall::act_of(st, &h);
+        out.act = crate::desk::hub::stall::stall::act_of(st, h);
     }
-    out.holder = Some(h);
-    out
 }
 
 /// Holder `h`, a session on this Mac, wrote to its conversation within the last minute: at work, whatever its state

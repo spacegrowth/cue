@@ -61,7 +61,7 @@ test.describe("the board", () => {
   });
 
   // The window is drawn whole on every change: a bar an element a stretch made a busy board's bars most of
-  // each draw (core.js bar). Its stretches are one masked layer a kind, and the one still going.
+  // each draw (core/helpers.js bar). Its stretches are one masked layer a kind, and the one still going.
   test("a session's bar is a few elements however many stretches it had", async ({ cue, page }) => {
     await cue.change((st) => {
       const s = st.sessions.find((x) => x.session_id === "relay"), t = Date.now() - 1_800_000;
@@ -124,7 +124,7 @@ test.describe("Settings", () => {
   });
 });
 
-// A waiting stretch wide enough for its stripes: striped, each one outlined at both its ends (core.js barLayerStyle's
+// A waiting stretch wide enough for its stripes: striped, each one outlined at both its ends (core/helpers.js barLayerStyle's
 // `--ends` over the layer's own top and bottom), as drawn.
 test("a wide waiting stretch is striped and outlined at both its ends", async ({ cue, page }) => {
   await cue.open("board-waiting", { frozen: true });
@@ -417,7 +417,7 @@ test.describe("a hosted lead's crew on its own page", () => {
       });
       expect(z.over, `${vp.width}×${vp.height}: the page itself doesn't scroll`).toBeLessThanOrEqual(1);
       expect(z.bottom, `${vp.width}×${vp.height}: the box in view`).toBeLessThanOrEqual(0);
-      // The board's chat pane: Active's 1.9 of its 3.75 shares, after the columns' two 14px gaps (board.js colLayout).
+      // The board's chat pane: Active's 1.9 of its 3.75 shares, after the columns' two 14px gaps (board/columns.js colLayout).
       expect(Math.round(z.left), `${vp.width}×${vp.height}: the chat as wide as on the board`).toBe(Math.round((z.page - 28) * 1.9 / 3.75));
       expect(new Set(z.cards.map(([x]) => x)).size, `${vp.width}×${vp.height}: one card to a line`).toBe(1);
       expect(z.cards[0][1], `${vp.width}×${vp.height}: as wide as the list`).toBe(Math.round(z.list));
@@ -658,7 +658,7 @@ test.describe("a hosted lead's crew on its own page", () => {
     expect(await page.locator(".crew-page .cp-list").evaluate((el) => Math.round(el.getBoundingClientRect().width)), "the halves back").toBeGreaterThan(330);
   });
 
-  // The add-on's slots on the page (core.js addOn.crewPage*): its page shares the one left with a teammate.
+  // The add-on's slots on the page (core/addon.js addOn.crewPage*): its page shares the one left with a teammate.
   test("the add-on's page on the left: in the chat's place under the pane's head; The lead's row, a teammate or Esc closes it; a record opens with no box", async ({ page }) => {
     await page.evaluate(() => {
       window.__left = { key: "loop:1", html: `<div class="their-page">Their page</div>` };

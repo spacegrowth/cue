@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 /// How much of a long text a brief row keeps (a row shows one line of it).
 const BRIEF_CHARS: usize = 300;
-/// The request's parts a row's one line is made of (ui/core.js `summary`).
+/// The request's parts a row's one line is made of (ui/core/md.js `summary`).
 const SUMMARY_KEYS: [&str; 5] = ["command", "file_path", "path", "url", "description"];
 
 #[derive(Default)]

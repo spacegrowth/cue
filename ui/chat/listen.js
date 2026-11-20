@@ -129,7 +129,7 @@ function listenFollow(l) {
     l.follow = true;
   }
   if (!over && !below) return;
-  // A glide of Cue's own (core.js glideTo), not the browser's smooth scroll: this runs in every redraw, and in
+  // A glide of Cue's own (core/helpers.js glideTo), not the browser's smooth scroll: this runs in every redraw, and in
   // WebKit a smooth scroll started then ran from the chat's top.
   const by = r.top - mark;
   if (Math.abs(by) < box.height) return glideTo(() => listenRoot(l.key)?.closest("[data-chat], .rdv-scroll"), chat.scrollTop + by);

@@ -52,7 +52,7 @@ const deskWorkspace = (d) => d.workspace_project || d.project;
 const deskName = (d) => d.name || projLabel(d.project);
 
 // Cue UI desk — the Desk view: the Desk's sessions, its items (a bug, a feature, a task), who holds each (a lead and its crew, a
-// session on its own, or the add-on's), what each waits on, the chat with the project's lead (desk_lead.js: who runs
+// session on its own, or the add-on's), what each waits on, the chat with the project's lead (desk/lead.js: who runs
 // the Desk, Give to…, the quick-add line) and today's decisions. With All projects picked, every project's Desk as a
 // card (what waits on you, what got done, what was decided).
 // The data is Cue's `state.desk` (hub: items, the lead, holders by session, decisions); the commands are desk_send,

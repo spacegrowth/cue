@@ -42,24 +42,7 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, repos: &[(St
     for line in parse::lines(text) {
         match line {
             Line::Item { kind, title, see, done_when, .. } => last_new = Some(item_said(st, project, &kind, &title, &see, &done_when, &name, now, fx).0),
-            Line::Route { id, to, after, why, kind, .. } => {
-                // An old tag ("#d7k2") names the item by its number from now.
-                let id = if id == "new" { last_new.clone() } else { Some(st.desk.canon(&id)) };
-                let after = if after.as_deref() == Some("new") { last_new.clone() } else { after.map(|a| st.desk.canon(&a)) };
-                let Some(id) = id else {
-                    answers.push("Refused: ROUTE #new has no ITEM line before it in this reply. You can add the ITEM: line first, or route the item by its number.".into());
-                    continue;
-                };
-                // The lead says what it is as it routes it (before, so whoever takes it is told).
-                if let (Some(k), Some(it)) = (kind, st.desk.item_mut(&id).filter(|i| i.project == project)) {
-                    it.kind = k;
-                    fx.items.push(id.clone());
-                }
-                // A route made isn't answered: the lead knows what it said, and each answer costs it a turn.
-                if let Some(said) = route(st, project, &by, &id, &to, after, &why, now, fx).filter(|s| !s.starts_with("Taken:")) {
-                    answers.push(said);
-                }
-            }
+            Line::Route { id, to, after, why, kind, .. } => route_said(st, project, &by, (id, to, after, why, kind), last_new.as_deref(), now, fx, &mut answers),
             Line::Ask { question, choices, item } => ask_said(st, project, lsid, (question, choices, item), away.then_some(&mut back), fx),
             Line::Context { who, what, why } if what == "keep" => keep(st, project, &by, &who, &why, now, fx),
             Line::Done { ids } => lead_done(st, project, lsid, &ids, fx),
@@ -81,7 +64,7 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, repos: &[(St
             }
             Line::Unstick { what, id, commit, why } => {
                 // PARK: #new parks the reply's last ITEM (#385).
-                let id = match last_new.clone().filter(|_| id == "new") { Some(n) => n, None => st.desk.canon(&id) };
+                let id = new_or_canon(st, &id, last_new.as_deref());
                 if let Err(no) = crate::desk::hub::stall::unstick::unstick(st, project, &by, &what, &id, &commit, &why, now, fx) {
                     answers.push(no);
                 }
@@ -91,12 +74,7 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, repos: &[(St
                     answers.push(no);
                 }
             }
-            Line::Copy { id, repo, branch, why } => {
-                let id = match last_new.clone().filter(|_| id == "new") { Some(n) => n, None => st.desk.canon(&id) };
-                if let Err(no) = crate::desk::hub::landing::named_copy::copy_said(st, project, &by, &id, repos.iter().find(|(r, _)| *r == repo).map(|(_, f)| f.clone()).unwrap_or_else(|| Err("Cue didn't look it up".into())), &branch, &why, now, fx) {
-                    answers.push(no);
-                }
-            }
+            Line::Copy { id, repo, branch, why } => copy_line(st, project, &by, (new_or_canon(st, &id, last_new.as_deref()), repo, branch, why), repos, now, fx, &mut answers),
             Line::Answer { id, text } => cleanup_said(st, project, &by, &id, Some(text), now, fx, &mut answers),
             Line::Lands { part, to, steps, why } => fx.lands.push(crate::desk::hub::lead::lands::Proposal { lsid: lsid.to_string(), desk: project.to_string(), part, to, steps, why }),
             Line::Pause { on, why } => fx.pause.push((project.to_string(), on, name.clone(), lsid.to_string(), why)),
@@ -112,6 +90,47 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, repos: &[(St
     }
     route_answers(st, project, lsid, answers, fx);
     lead_calls(st, project, &by, text, back, now, fx);
+}
+
+/// An item named on a lead's line: `#new` is the reply's last ITEM (`last_new`), else its number from now.
+fn new_or_canon(st: &Store, id: &str, last_new: Option<&str>) -> String {
+    match last_new.filter(|_| id == "new") {
+        Some(n) => n.to_string(),
+        None => st.desk.canon(id),
+    }
+}
+
+/// The lead's COPY line (`id`, `repo`, `branch`, `why`), its repository looked up in `repos` before the store was
+/// taken (desk/hub/landing/named_copy.rs); a refusal into `answers`.
+#[allow(clippy::too_many_arguments)]
+fn copy_line(st: &mut Store, project: &str, by: &By, (id, repo, branch, why): (String, String, String, String), repos: &[(String, Result<String, String>)], now: u64, fx: &mut Effects, answers: &mut Vec<String>) {
+    let found = repos.iter().find(|(r, _)| *r == repo).map(|(_, f)| f.clone()).unwrap_or_else(|| Err("Cue didn't look it up".into()));
+    if let Err(no) = crate::desk::hub::landing::named_copy::copy_said(st, project, by, &id, found, &branch, &why, now, fx) {
+        answers.push(no);
+    }
+}
+
+/// The lead's ROUTE line (`id`, `to`, `after`, `why`, `kind`), `#new` naming the reply's last ITEM (`last_new`); what
+/// it's told of it into `answers`.
+#[allow(clippy::too_many_arguments)]
+fn route_said(st: &mut Store, project: &str, by: &By, line: (String, String, Option<String>, String, Option<String>), last_new: Option<&str>, now: u64, fx: &mut Effects, answers: &mut Vec<String>) {
+    let (id, to, after, why, kind) = line;
+    // An old tag ("#d7k2") names the item by its number from now.
+    let id = if id == "new" { last_new.map(str::to_string) } else { Some(st.desk.canon(&id)) };
+    let after = if after.as_deref() == Some("new") { last_new.map(str::to_string) } else { after.map(|a| st.desk.canon(&a)) };
+    let Some(id) = id else {
+        answers.push("Refused: ROUTE #new has no ITEM line before it in this reply. You can add the ITEM: line first, or route the item by its number.".into());
+        return;
+    };
+    // The lead says what it is as it routes it (before, so whoever takes it is told).
+    if let (Some(k), Some(it)) = (kind, st.desk.item_mut(&id).filter(|i| i.project == project)) {
+        it.kind = k;
+        fx.items.push(id.clone());
+    }
+    // A route made isn't answered: the lead knows what it said, and each answer costs it a turn.
+    if let Some(said) = route(st, project, by, &id, &to, after, &why, now, fx).filter(|s| !s.starts_with("Taken:")) {
+        answers.push(said);
+    }
 }
 
 /// Lead `lsid`'s ASK line: a card asking you, or, while the owner is away (`back`: Some), kept to send back to it to
@@ -387,7 +406,7 @@ fn lead_done(st: &mut Store, project: &str, lsid: &str, ids: &[String], fx: &mut
 }
 
 /// The last line of Cue's note on a lead's DONE it couldn't act on: for the lead, not shown in its chat
-/// (ui/desk_lead.js deskDoneNotes).
+/// (ui/desk/lead.js deskDoneNotes).
 const DONE_NOTE_FOR_LEAD: &str = "Say DONE for an item only once it's finishing or waiting on the user's check. Don't say DONE for these again.";
 
 /// The lead said to keep session `who`'s context ("me": its own) as it is: Cue asks it for no hand-off note for the

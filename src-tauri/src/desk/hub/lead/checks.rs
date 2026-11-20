@@ -1,4 +1,4 @@
-//! A card in the lead's chat each time a session says DONE for an item (ui/desk_commit.js): the item, who did it, what
+//! A card in the lead's chat each time a session says DONE for an item (ui/desk/commit.js): the item, who did it, what
 //! to test (its "done when"), the files it touched and whether the installed Cue has it yet. Each DONE is kept on its
 //! item (`DeskItem::checks`, saved with it), so the cards are there after a restart.
 

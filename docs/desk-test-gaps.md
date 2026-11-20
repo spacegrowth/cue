@@ -28,7 +28,7 @@ Results: **passes** · **caught a bug, fixed** (where) · **skipped** (why, and 
 | dropping_the_middle_of_a_chain_leaves_the_last_waiting_on_the_first | Dropping the middle of a→b→c leaves c waiting on a, not started on the same files | Routing rules 8; lead guidance "chain each one after the previous item" | caught a bug, fixed in desk/hub/turn/act.rs and desk/hub/turn/route.rs (`hand_on`) |
 | parking_the_middle_of_a_chain_leaves_the_last_waiting_on_the_first | Same for Park: nothing is left waiting on a parked item | #385 | caught a bug, fixed in desk/hub/stall/unstick.rs |
 | parking_the_item_ahead_starts_what_waited_on_it | Park with nothing ahead starts what waited on it | #385 | passes |
-| start_now_on_an_item_queued_after_another_hands_it_to_its_holder_now | Start now on a queued item hands it to its session as new work, not "pick up where you left off" | #401, #476 | caught a bug, fixed in desk/hub/turn/act.rs and ui/desk_page.js |
+| start_now_on_an_item_queued_after_another_hands_it_to_its_holder_now | Start now on a queued item hands it to its session as new work, not "pick up where you left off" | #401, #476 | caught a bug, fixed in desk/hub/turn/act.rs and ui/desk/page.js |
 | put_before_an_item_already_at_work_is_refused_and_nothing_moves | Put before an item at work is refused, with a reason | desk_queue.rs, #387 | passes |
 | a_queued_item_stays_queued_across_a_relaunch… | Queued survives a relaunch and still starts by itself | #256 | passes |
 | the_waits_list_names_what_each_queued_item_waits_on_and_since_when | The Waits list names what waits on what, and since when | #250 | passes |
@@ -114,7 +114,7 @@ Results: **passes** · **caught a bug, fixed** (where) · **skipped** (why, and 
 | Test | What it checks | Why (source) | Result |
 |---|---|---|---|
 | the lead's chat: Enter sends; kept while it works; Esc brings back just your words | Not the Desk summary Cue put before them, and ahead of what you typed since | #494 | caught a bug, fixed in ui/chat/compose.js |
-| the lead's chat: Edit on a kept message puts your words back in the lead's box | The box it went from | #422 | caught a bug, fixed in ui/app/clicks_chat.js, ui/desk_act.js |
+| the lead's chat: Edit on a kept message puts your words back in the lead's box | The box it went from | #422 | caught a bug, fixed in ui/app/clicks_chat.js, ui/desk/act.js |
 | a session's page: kept while it works; Edit brings it back into that page's box | The draft is kept after it | #494, #422 | passes |
 | an item's page: Esc takes back the note kept for its busy holder | Your words alone, the draft after them | #494, #422 | passes |
 | Esc with words in a page's box keeps the page and the words; empty, it closes the page | Nothing typed is lost | #494 | passes |
@@ -125,7 +125,7 @@ Results: **passes** · **caught a bug, fixed** (where) · **skipped** (why, and 
 - desk-redraw-keep: the test sometimes read the line the redraw had just replaced. It now waits for the redraw to
   finish. The app was right.
 - desk-old-copies: since #447 made the screen shorter, the label is its section's heading.
-- The Give to… menu lost its scroll on a redraw (#308). Fixed in ui/desk_lead.js: it's placed again from where you'd
+- The Give to… menu lost its scroll on a redraw (#308). Fixed in ui/desk/lead.js: it's placed again from where you'd
   scrolled it, once the list's scroll is back.
 
 ## Already covered (not written again)

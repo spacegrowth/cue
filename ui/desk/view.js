@@ -154,7 +154,7 @@ function deskLeadAsk(d) {
   return (sid && deskSessionRequests(sid)[0]) || null;
 }
 
-// ---------- All projects: every Desk (desk_home.js) ----------
+// ---------- All projects: every Desk (desk/home.js) ----------
 
 /** The Desk view: the project picked (its items, and its lead beside them), or with All projects every Desk. */
 function deskView() {

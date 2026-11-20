@@ -1,4 +1,4 @@
-// The Inbox's motion through redraws (ui/inbox.js, app/render.js replayMotion): a redraw rebuilds every row, and
+// The Inbox's motion through redraws (ui/inbox/, app/render.js replayMotion): a redraw rebuilds every row, and
 // must not start an animation over. Just after a Send, redraws come several a second.
 import { test, expect } from "./cue.mjs";
 

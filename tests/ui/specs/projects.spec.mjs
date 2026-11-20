@@ -53,7 +53,7 @@ test.describe("moving a session to another project", () => {
   });
 });
 
-// History's rows come brief, and a row opened asks for its card in full (ui/core.js fullItem): a row whose
+// History's rows come brief, and a row opened asks for its card in full (ui/core/helpers.js fullItem): a row whose
 // project then moves (hub/projects.rs, in place) is asked for again, never the card as it was.
 test("a History card already had in full follows its row when its project moves", async ({ cue, page }) => {
   await cue.open("terminal");

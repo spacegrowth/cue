@@ -1,6 +1,6 @@
 //! A session's activity bar as the window gets it: the last 30 minutes of its stretches (working, waiting on
 //! you, waiting on something else), with the ones too short for the bar to draw gathered up. The bar draws
-//! nothing narrower than BAR_SLOT_MS (ui/core.js `bar`: 0.6 % of its width), so a run of shorter stretches
+//! nothing narrower than BAR_SLOT_MS (ui/core/helpers.js `bar`: 0.6 % of its width), so a run of shorter stretches
 //! (a session switching between working and waiting every few seconds) goes as one stretch per slot, of the
 //! kind that held most of it. Longer stretches go as they are. A session's bar is then at most a few hundred
 //! stretches, whatever it did, instead of one per change: the state goes out on every change.

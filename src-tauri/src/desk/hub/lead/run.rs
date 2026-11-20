@@ -197,115 +197,11 @@ impl Hub {
         let now = now_ms();
         let lands = if lead.is_empty() { String::new() } else { self.desk_lands_line(project) };
         let (text, failed) = self.read(|st| {
-            let mut out = match st.desk.spaces.get(project) {
-                Some(d) => format!("id=\"{}\" name=\"{}\" project=\"{}\">\n", project, d.name.replace('"', "'"), d.project.replace('"', "'")),
-                None => format!("project=\"{}\">\n", project.replace('"', "'")),
-            };
-            if !lead.is_empty() {
-                let name = st.sessions.get(lead).map(shown_name)
-                    .or_else(|| st.desk.lead.get(project).filter(|l| l.sid == lead).map(|l| l.name.clone()))
-                    .unwrap_or_else(|| lead.chars().take(8).collect());
-                out.push_str(&format!("Desk lead: {name} (you){}\n{lands}\n", context_note(st, lead, false, now)));
-            }
-            let (mut failed, mut told) = (vec![], vec![]);
-            let (mut ready, open): (Vec<_>, Vec<_>) = st.desk.items.iter()
-                .filter(|i| i.project == project && i.state != "done")
-                .map(|i| shown(st, i))
-                .partition(|i| i.state == "new" && i.holder.is_none());
-            // In your order (#387): the one you dragged to the top first.
-            ready.sort_by_key(crate::desk::hub::turn::act::queue_key);
-            out.push_str("Needs routing:\n");
-            if ready.is_empty() {
-                out.push_str("None.\n");
-            }
-            for it in &ready {
-                item_lines(st, it, &mut out, &mut failed, &mut told);
-            }
-            // Parked (#385, #391): listed apart, so they never read as waiting for a route.
-            let (held, open): (Vec<_>, Vec<_>) = open.into_iter().partition(|i| i.state == "held");
-            if !open.is_empty() {
-                out.push_str("\nOther open items:\n");
-                for it in &open {
-                    item_lines(st, it, &mut out, &mut failed, &mut told);
-                }
-            }
-            if !held.is_empty() {
-                out.push_str("\nParked (the user starts these themselves; don't ROUTE or START them):\n");
-                for it in &held {
-                    item_lines(st, it, &mut out, &mut failed, &mut told);
-                }
-            }
-            for line in told {
-                out.push_str(&line);
-            }
-            // Its routes Cue couldn't make that it couldn't be told of then, as it was asking the user something (#248).
-            if let Some(held) = st.desk.run.routes_held.get(project).filter(|h| !h.is_empty()) {
-                out.push_str(held);
-                failed.push((format!("{ROUTES_HELD}{project}"), held.clone()));
-            }
-
-            // Sessions with work (#363) get a line each; the rest of the Desk's, idle with no recent item, one line.
-            let work = crate::desk::hub::core::members::with_work(st, project, now);
-            let (on, older): (Vec<_>, Vec<_>) = routable(st, project).into_iter()
-                .filter(|s| s.origin.session_id != lead && st.desk.on_desk(project, &s.origin.session_id))
-                .partition(|s| work.contains(&s.origin.session_id));
-            let mut on: Vec<_> = on.into_iter().map(|s| (idle_route(st, s), s)).collect();
-            on.sort_by_key(|(idle, _)| !idle);
-            if on.is_empty() && older.is_empty() {
-                out.push_str("\nNo Desk sessions available. Use ROUTE: #<id> -> new for a new session.\n");
-            } else {
-                out.push_str("\nDesk routes (or use ROUTE: #<id> -> new):\n");
-            }
-            // One session as a route: its name, its sid's start, its state, its crew and its size and cache.
-            let route_of = |s: &crate::sessions::Session| {
-                let sid = &s.origin.session_id;
-                let id: String = sid.chars().take(8).collect();
-                let mut r = format!("{} (sid:{id}", shown_name(s));
-                if idle_route(st, s) {
-                    r.push_str(", idle");
-                } else if matches!(s.state.as_str(), "waiting" | "stopped") && !s.running.is_empty() {
-                    // Its tests or build run on (#556): at work, not idle or waiting.
-                    r.push_str(&format!(", working: {}", s.running));
-                } else if matches!(s.state.as_str(), "" | "idle" | "waiting") {
-                    r.push_str(", work pending");
-                } else {
-                    r.push_str(&format!(", {}", s.state));
-                }
-                if !s.team.is_empty() {
-                    let crew: Vec<_> = s.team.iter().map(|t| t.name.as_str()).collect();
-                    r.push_str(&format!(", crew: {}", crew.join(", ")));
-                }
-                r.push_str(&context_note(st, sid, true, now));
-                r.push(')');
-                r
-            };
-            for (_, s) in on {
-                out.push_str(&format!("- {}\n", route_of(s)));
-            }
-            if !older.is_empty() {
-                let all: Vec<String> = older.iter().map(|s| route_of(s)).collect();
-                out.push_str(&format!("Older, idle with no recent item: {}\n", all.join("; ")));
-            }
-            if let Some(paused) = crate::desk::hub::away::pause::pause_block(project, now) {
-                out.push('\n');
-                out.push_str(&paused);
-            }
-            if let Some(away) = crate::desk::hub::away::away::away_block(st, project, now) {
-                out.push('\n');
-                out.push_str(&away);
-            }
-            // Running leads get this too, even if their original system prompt is older.
-            out.push('\n');
-            out.push_str(crate::desk::ROUTING_GUIDANCE);
-            out.push('\n');
-            out.push_str("\nAnswer the user's question or request directly in plain language before any Desk command lines.\n");
-            // Your name (owner.rs): running leads get it too, and Cue's own words above use it.
-            out.push_str(&crate::owner::told_line());
-            if with_skill {
-                out.push('\n');
-                out.push_str(crate::desk::LEAD_SKILL);
-                out.push('\n');
-            }
+            let mut out = summary_head(st, project, lead, &lands, now);
+            let mut failed = vec![];
+            summary_items(st, project, &mut out, &mut failed);
+            summary_routes(st, project, lead, &mut out, now);
+            summary_tail(st, project, with_skill, &mut out, now);
             (out, failed)
         });
         // Titles and names are anyone's words: none of them may close the block early.
@@ -414,6 +310,132 @@ pub(crate) fn start_failed(st: &mut Store, s: &crate::desk::hub::core::desk::New
     }
 }
 
+/// The Desk summary's opening: which Desk, and the lead told (its name, its context, how its project lands).
+fn summary_head(st: &Store, project: &str, lead: &str, lands: &str, now: u64) -> String {
+    let mut out = match st.desk.spaces.get(project) {
+        Some(d) => format!("id=\"{}\" name=\"{}\" project=\"{}\">\n", project, d.name.replace('"', "'"), d.project.replace('"', "'")),
+        None => format!("project=\"{}\">\n", project.replace('"', "'")),
+    };
+    if !lead.is_empty() {
+        let name = st.sessions.get(lead).map(shown_name)
+            .or_else(|| st.desk.lead.get(project).filter(|l| l.sid == lead).map(|l| l.name.clone()))
+            .unwrap_or_else(|| lead.chars().take(8).collect());
+        out.push_str(&format!("Desk lead: {name} (you){}\n{lands}\n", context_note(st, lead, false, now)));
+    }
+    out
+}
+
+/// The summary's items: to route, the others open, the parked ones; with the routes it couldn't make (`failed`).
+fn summary_items(st: &Store, project: &str, out: &mut String, failed: &mut Vec<(String, String)>) {
+    let mut told = vec![];
+    let (mut ready, open): (Vec<_>, Vec<_>) = st.desk.items.iter()
+        .filter(|i| i.project == project && i.state != "done")
+        .map(|i| shown(st, i))
+        .partition(|i| i.state == "new" && i.holder.is_none());
+    // In your order (#387): the one you dragged to the top first.
+    ready.sort_by_key(crate::desk::hub::turn::act::queue_key);
+    out.push_str("Needs routing:\n");
+    if ready.is_empty() {
+        out.push_str("None.\n");
+    }
+    for it in &ready {
+        item_lines(st, it, out, failed, &mut told);
+    }
+    // Parked (#385, #391): listed apart, so they never read as waiting for a route.
+    let (held, open): (Vec<_>, Vec<_>) = open.into_iter().partition(|i| i.state == "held");
+    if !open.is_empty() {
+        out.push_str("\nOther open items:\n");
+        for it in &open {
+            item_lines(st, it, out, failed, &mut told);
+        }
+    }
+    if !held.is_empty() {
+        out.push_str("\nParked (the user starts these themselves; don't ROUTE or START them):\n");
+        for it in &held {
+            item_lines(st, it, out, failed, &mut told);
+        }
+    }
+    for line in told {
+        out.push_str(&line);
+    }
+    // Its routes Cue couldn't make that it couldn't be told of then, as it was asking the user something (#248).
+    if let Some(held) = st.desk.run.routes_held.get(project).filter(|h| !h.is_empty()) {
+        out.push_str(held);
+        failed.push((format!("{ROUTES_HELD}{project}"), held.clone()));
+    }
+}
+
+/// The summary's routes: the Desk's sessions with work a line each, the rest in one line.
+fn summary_routes(st: &Store, project: &str, lead: &str, out: &mut String, now: u64) {
+    // Sessions with work (#363) get a line each; the rest of the Desk's, idle with no recent item, one line.
+    let work = crate::desk::hub::core::members::with_work(st, project, now);
+    let (on, older): (Vec<_>, Vec<_>) = routable(st, project).into_iter()
+        .filter(|s| s.origin.session_id != lead && st.desk.on_desk(project, &s.origin.session_id))
+        .partition(|s| work.contains(&s.origin.session_id));
+    let mut on: Vec<_> = on.into_iter().map(|s| (idle_route(st, s), s)).collect();
+    on.sort_by_key(|(idle, _)| !idle);
+    if on.is_empty() && older.is_empty() {
+        out.push_str("\nNo Desk sessions available. Use ROUTE: #<id> -> new for a new session.\n");
+    } else {
+        out.push_str("\nDesk routes (or use ROUTE: #<id> -> new):\n");
+    }
+    for (_, s) in on {
+        out.push_str(&format!("- {}\n", route_of(st, s, now)));
+    }
+    if !older.is_empty() {
+        let all: Vec<String> = older.iter().map(|s| route_of(st, s, now)).collect();
+        out.push_str(&format!("Older, idle with no recent item: {}\n", all.join("; ")));
+    }
+}
+
+/// One session as a route: its name, its sid's start, its state, its crew and its size and cache.
+fn route_of(st: &Store, s: &crate::sessions::Session, now: u64) -> String {
+    let sid = &s.origin.session_id;
+    let id: String = sid.chars().take(8).collect();
+    let mut r = format!("{} (sid:{id}", shown_name(s));
+    if idle_route(st, s) {
+        r.push_str(", idle");
+    } else if matches!(s.state.as_str(), "waiting" | "stopped") && !s.running.is_empty() {
+        // Its tests or build run on (#556): at work, not idle or waiting.
+        r.push_str(&format!(", working: {}", s.running));
+    } else if matches!(s.state.as_str(), "" | "idle" | "waiting") {
+        r.push_str(", work pending");
+    } else {
+        r.push_str(&format!(", {}", s.state));
+    }
+    if !s.team.is_empty() {
+        let crew: Vec<_> = s.team.iter().map(|t| t.name.as_str()).collect();
+        r.push_str(&format!(", crew: {}", crew.join(", ")));
+    }
+    r.push_str(&context_note(st, sid, true, now));
+    r.push(')');
+    r
+}
+
+/// The summary's close: a pause or Away in force, how to route, and (for a new lead) how a lead works.
+fn summary_tail(st: &Store, project: &str, with_skill: bool, out: &mut String, now: u64) {
+    if let Some(paused) = crate::desk::hub::away::pause::pause_block(project, now) {
+        out.push('\n');
+        out.push_str(&paused);
+    }
+    if let Some(away) = crate::desk::hub::away::away::away_block(st, project, now) {
+        out.push('\n');
+        out.push_str(&away);
+    }
+    // Running leads get this too, even if their original system prompt is older.
+    out.push('\n');
+    out.push_str(crate::desk::ROUTING_GUIDANCE);
+    out.push('\n');
+    out.push_str("\nAnswer the user's question or request directly in plain language before any Desk command lines.\n");
+    // Your name (owner.rs): running leads get it too, and Cue's own words above use it.
+    out.push_str(&crate::owner::told_line());
+    if with_skill {
+        out.push('\n');
+        out.push_str(crate::desk::LEAD_SKILL);
+        out.push('\n');
+    }
+}
+
 /// Item `it`'s line in the Desk's summary (into `out`), with the routes it couldn't make (into `failed`) and what the
 /// lead is told of them (into `told`).
 fn item_lines(st: &Store, it: &DeskItem, out: &mut String, failed: &mut Vec<(String, String)>, told: &mut Vec<String>) {
@@ -446,6 +468,13 @@ fn item_lines(st: &Store, it: &DeskItem, out: &mut String, failed: &mut Vec<(Str
     if it.state == "queued" && it.tree_wait {
         out.push_str(&format!(" | {}", crate::desk::hub::landing::trees::copy_wait(st, &it.project, &it.tree_wait_repo)));
     }
+    item_details(it, out);
+    out.push('\n');
+    item_refused(it, failed, told);
+}
+
+/// Item `it`'s line, on: when it's done and what you'll see, its files, a start that failed.
+fn item_details(it: &DeskItem, out: &mut String) {
     if !it.done_when.is_empty() {
         out.push_str(&format!(" | done when: {}", it.done_when));
     }
@@ -467,7 +496,10 @@ fn item_lines(st: &Store, it: &DeskItem, out: &mut String, failed: &mut Vec<(Str
     if !it.start_failed.is_empty() {
         out.push_str(&format!(" | couldn't start a new session: {}", it.start_failed));
     }
-    out.push('\n');
+}
+
+/// The routes, queues and reopens Cue couldn't make for item `it` (into `failed`), and what the lead is told of them.
+fn item_refused(it: &DeskItem, failed: &mut Vec<(String, String)>, told: &mut Vec<String>) {
     if !it.route_failed.is_empty() {
         failed.push((it.id.clone(), it.route_failed.clone()));
         // Still new only when nobody holds it; else it stays where it is.

@@ -19,7 +19,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | Lock acquisitions | 273 |
 | Lock-graph edges | 63 |
 | Spawn sites | 89 |
-| External calls: fs / db / process / notify / login / socket | 478 / 211 / 56 / 4 / 1 / 4 |
+| External calls: fs / db / process / notify / login / socket | 487 / 212 / 56 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 12 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -365,7 +365,7 @@ An edge A → B: B is taken (here or in something called) while A is held. Also 
 | "the hub's store" | "DB" |  | `desk/hub/core/spaces.rs::Hub::desk_delete_selected` in a closure hub::store_access::Hub::write runs holding the lock → `db/desk.rs::desk_delete` → `db/mod.rs::with` → `db/mod.rs::attempt`, takes it |
 | "the hub's store" | "config in memory" |  | `desk/hub/away/away.rs::Hub::desk_away_set` in a closure hub::store_access::Hub::read runs holding the lock → `desk/hub/away/away.rs::Away::read` → `desk/hub/away/away.rs::saved` → `config.rs::load` → `config/cache.rs::current`, takes it |
 | "the hub's store" | "folder facts" |  | `desk/hub/core/spaces.rs::Hub::desk_delete_selected` in a closure hub::store_access::Hub::write runs holding the lock → `db/desk.rs::desk_delete` → `db/mod.rs::with` → `db/mod.rs::attempt` → `db/schema.rs::open` → `db/schema.rs::set_up` → `db/schema.rs::migrate` → `db/schema.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
-| "the hub's store" | "lands cue folders" |  | `desk/hub/landing/trees.rs::Hub::desk_trees` in a closure hub::store_access::Hub::read runs holding the lock → `desk/lands.rs::lands_of` → `desk/lands.rs::place_of` → `desk/lands.rs::is_cue`, takes it |
+| "the hub's store" | "lands cue folders" |  | `desk/hub/landing/trees.rs::Hub::desk_trees_wanted` in a closure hub::store_access::Hub::read runs holding the lock → `desk/lands.rs::lands_of` → `desk/lands.rs::place_of` → `desk/lands.rs::is_cue`, takes it |
 | "the hub's store" | "leads sweeping for Away" |  | `desk/hub/away/away.rs::Hub::desk_away_set` in a closure hub::store_access::Hub::read runs holding the lock → `desk/hub/away/away.rs::away_view` → `desk/hub/away/away.rs::is_sweeping`, takes it |
 | "typing gate" | "CLAUDE" |  | `hub/hosted.rs::Hub::send_to_hosted` → `hub/hosted.rs::Hub::send_to_hosted_held` → `hub/terminal_only.rs::Hub::run_own_command` → `hub/terminal_only.rs::Hub::codex_model` → `hub/terminal_only.rs::Hub::codex_models` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `hub/hosted.rs::Hub::run_hosted` → `hub/hosted.rs::Hub::hosted_report` → `hub/hosted.rs::Hub::on_hosted` → `hub/hosted.rs::Hub::hosted_turn_started` → `hub/hosted.rs::Hub::hosted_taken` → `hub/events.rs::Hub::event` → `hub/events.rs::Hub::event_in` → `hub/events.rs::Hub::on_event` → `hub/asks.rs::Hub::terminal_ask_with` → `terminal/keys.rs::Terminals::dialog_on` → `terminal/focus/screen.rs::dialog_on` → `terminal/focus/screen.rs::screen_of` → `terminal/focus/apps.rs::iterm_contents` → `terminal/focus/apps.rs::current_tty` → `logs/live.rs::claude`, takes it |
 | "typing gate" | "DB" |  | `hub/hosted.rs::Hub::send_to_hosted` → `hub/hosted.rs::Hub::send_to_hosted_held` → `hub/terminal_only.rs::Hub::run_own_command` → `hub/terminal_only.rs::Hub::codex_model` → `hub/terminal_only.rs::Hub::codex_models` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `hub/hosted.rs::Hub::run_hosted` → `hub/hosted.rs::Hub::hosted_report` → `hub/hosted.rs::Hub::on_hosted` → `hub/team/mod.rs::Hub::team_sees` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Hub::save_live` → `hub/saves.rs::Hub::hand_in_parked_turn` → `hub/saves.rs::Hub::hand_writes` → `hub/live_writes.rs::LiveWrites::hand` → `hub/live_writes.rs::LiveWrites::write` → `hub/live_writes.rs::save_live` → `db/live.rs::save_live` → `db/mod.rs::with` → `db/mod.rs::attempt`, takes it |
@@ -406,17 +406,17 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | Holder | Kind | Made in | Call | Path |
 |---|---|---|---|---|
 | `desk::hub::core::spaces::Hub::desk_delete_selected` | db | `desk::hub::core::spaces::Hub::desk_delete_selected` | db::desk_delete | `desk/hub/core/spaces.rs::Hub::desk_delete_selected` in a closure hub::store_access::Hub::write runs holding the lock, calls out |
-| `desk::hub::core::view::Hub::desk_done_page` | fs | `hub::activity::written_ms` | metadata | `desk/hub/core/view.rs::Hub::desk_done_page` in a closure hub::store_access::Hub::read runs holding the lock → `desk/hub/core/view.rs::with_pieces` → `desk/hub/core/view.rs::shown` → `desk/hub/core/view.rs::wrote_just_now` → `hub/activity.rs::written_ms`, calls out |
-| `desk::hub::landing::install::Hub::desk_install_now` | fs | `hub::activity::written_ms` | metadata | `desk/hub/landing/install.rs::Hub::desk_install_now` in a closure hub::store_access::Hub::read runs holding the lock → `desk/hub/core/view.rs::shown` → `desk/hub/core/view.rs::wrote_just_now` → `hub/activity.rs::written_ms`, calls out |
-| `desk::hub::landing::install::Hub::desk_rerun_landing` | fs | `hub::activity::written_ms` | metadata | `desk/hub/landing/install.rs::Hub::desk_rerun_landing` in a closure hub::store_access::Hub::read runs holding the lock → `desk/hub/core/view.rs::shown` → `desk/hub/core/view.rs::wrote_just_now` → `hub/activity.rs::written_ms`, calls out |
-| `desk::hub::landing::trees::Hub::desk_trees` | fs | `desk::hub::lead::checks::builds_this_cue` | read_to_string | `desk/hub/landing/trees.rs::Hub::desk_trees` in a closure hub::store_access::Hub::read runs holding the lock → `desk/lands.rs::lands_of` → `desk/lands.rs::place_of` → `desk/lands.rs::is_cue` → `desk/hub/lead/checks.rs::builds_this_cue`, calls out |
+| `desk::hub::core::view::Hub::desk_done_page` | fs | `hub::activity::written_ms` | metadata | `desk/hub/core/view.rs::Hub::desk_done_page` in a closure hub::store_access::Hub::read runs holding the lock → `desk/hub/core/view.rs::with_pieces` → `desk/hub/core/view.rs::shown` → `desk/hub/core/view.rs::stops_view` → `desk/hub/core/view.rs::wrote_just_now` → `hub/activity.rs::written_ms`, calls out |
+| `desk::hub::landing::install::Hub::desk_install_now` | fs | `hub::activity::written_ms` | metadata | `desk/hub/landing/install.rs::Hub::desk_install_now` in a closure hub::store_access::Hub::read runs holding the lock → `desk/hub/core/view.rs::shown` → `desk/hub/core/view.rs::stops_view` → `desk/hub/core/view.rs::wrote_just_now` → `hub/activity.rs::written_ms`, calls out |
+| `desk::hub::landing::install::Hub::desk_rerun_landing` | fs | `hub::activity::written_ms` | metadata | `desk/hub/landing/install.rs::Hub::desk_rerun_landing` in a closure hub::store_access::Hub::read runs holding the lock → `desk/hub/core/view.rs::shown` → `desk/hub/core/view.rs::stops_view` → `desk/hub/core/view.rs::wrote_just_now` → `hub/activity.rs::written_ms`, calls out |
 | `desk::hub::landing::trees::Hub::desk_trees_free` | fs | `desk::hub::lead::checks::builds_this_cue` | read_to_string | `desk/hub/landing/trees.rs::Hub::desk_trees_free` in a closure hub::store_access::Hub::write runs holding the lock → `desk/lands.rs::lands_of` → `desk/lands.rs::place_of` → `desk/lands.rs::is_cue` → `desk/hub/lead/checks.rs::builds_this_cue`, calls out |
-| `desk::hub::lead::run::Hub::desk_summary` | fs | `desk::hub::lead::checks::builds_this_cue` | read_to_string | `desk/hub/lead/run.rs::Hub::desk_summary` in a closure hub::store_access::Hub::read runs holding the lock → `desk/hub/lead/run.rs::item_lines` → `desk/hub/landing/trees.rs::copy_wait` → `desk/lands.rs::lands_of` → `desk/lands.rs::place_of` → `desk/lands.rs::is_cue` → `desk/hub/lead/checks.rs::builds_this_cue`, calls out |
-| `desk::hub::lead::run::Hub::desk_summary` | fs | `hub::activity::written_ms` | metadata | `desk/hub/lead/run.rs::Hub::desk_summary` in a closure hub::store_access::Hub::read runs holding the lock → `desk/hub/core/view.rs::shown` → `desk/hub/core/view.rs::wrote_just_now` → `hub/activity.rs::written_ms`, calls out |
-| `desk::hub::turn::act::Hub::desk_give` | fs | `hub::activity::written_ms` | metadata | `desk/hub/turn/act.rs::Hub::desk_give` in a closure hub::store_access::Hub::read runs holding the lock → `desk/hub/core/view.rs::shown` → `desk/hub/core/view.rs::wrote_just_now` → `hub/activity.rs::written_ms`, calls out |
-| `desk::hub::turn::act::Hub::desk_item_act` | fs | `hub::activity::written_ms` | metadata | `desk/hub/turn/act.rs::Hub::desk_item_act` in a closure hub::store_access::Hub::read runs holding the lock → `desk/hub/core/view.rs::shown` → `desk/hub/core/view.rs::wrote_just_now` → `hub/activity.rs::written_ms`, calls out |
+| `desk::hub::landing::trees::Hub::desk_trees_wanted` | fs | `desk::hub::lead::checks::builds_this_cue` | read_to_string | `desk/hub/landing/trees.rs::Hub::desk_trees_wanted` in a closure hub::store_access::Hub::read runs holding the lock → `desk/lands.rs::lands_of` → `desk/lands.rs::place_of` → `desk/lands.rs::is_cue` → `desk/hub/lead/checks.rs::builds_this_cue`, calls out |
+| `desk::hub::lead::run::Hub::desk_summary` | fs | `desk::hub::lead::checks::builds_this_cue` | read_to_string | `desk/hub/lead/run.rs::Hub::desk_summary` in a closure hub::store_access::Hub::read runs holding the lock → `desk/hub/lead/run.rs::summary_items` → `desk/hub/lead/run.rs::item_lines` → `desk/hub/landing/trees.rs::copy_wait` → `desk/lands.rs::lands_of` → `desk/lands.rs::place_of` → `desk/lands.rs::is_cue` → `desk/hub/lead/checks.rs::builds_this_cue`, calls out |
+| `desk::hub::lead::run::Hub::desk_summary` | fs | `hub::activity::written_ms` | metadata | `desk/hub/lead/run.rs::Hub::desk_summary` in a closure hub::store_access::Hub::read runs holding the lock → `desk/hub/lead/run.rs::summary_items` → `desk/hub/core/view.rs::shown` → `desk/hub/core/view.rs::stops_view` → `desk/hub/core/view.rs::wrote_just_now` → `hub/activity.rs::written_ms`, calls out |
+| `desk::hub::turn::act::Hub::desk_give` | fs | `hub::activity::written_ms` | metadata | `desk/hub/turn/act.rs::Hub::desk_give` in a closure hub::store_access::Hub::read runs holding the lock → `desk/hub/core/view.rs::shown` → `desk/hub/core/view.rs::stops_view` → `desk/hub/core/view.rs::wrote_just_now` → `hub/activity.rs::written_ms`, calls out |
+| `desk::hub::turn::act::Hub::desk_item_act` | fs | `hub::activity::written_ms` | metadata | `desk/hub/turn/act.rs::Hub::desk_item_act` in a closure hub::store_access::Hub::read runs holding the lock → `desk/hub/core/view.rs::shown` → `desk/hub/core/view.rs::stops_view` → `desk/hub/core/view.rs::wrote_just_now` → `hub/activity.rs::written_ms`, calls out |
 | `hub::Hub::build_snapshot` | fs | `desk::hub::lead::checks::builds_this_cue` | read_to_string | `hub/mod.rs::Hub::build_snapshot` in a closure hub::store_access::Hub::write runs holding the lock → `hub/mod.rs::Hub::store_parts` → `desk/hub/core/view.rs::Hub::desk_view` → `desk/lands.rs::desk_view` → `desk/lands.rs::place_of` → `desk/lands.rs::is_cue` → `desk/hub/lead/checks.rs::builds_this_cue`, calls out |
-| `hub::Hub::build_snapshot` | fs | `hub::activity::written_ms` | metadata | `hub/mod.rs::Hub::build_snapshot` in a closure hub::store_access::Hub::write runs holding the lock → `hub/mod.rs::Hub::store_parts` → `desk/hub/core/view.rs::Hub::desk_view` → `desk/hub/core/view.rs::with_pieces` → `desk/hub/core/view.rs::shown` → `desk/hub/core/view.rs::wrote_just_now` → `hub/activity.rs::written_ms`, calls out |
+| `hub::Hub::build_snapshot` | fs | `hub::activity::written_ms` | metadata | `hub/mod.rs::Hub::build_snapshot` in a closure hub::store_access::Hub::write runs holding the lock → `hub/mod.rs::Hub::store_parts` → `desk/hub/core/view.rs::Hub::desk_view` → `desk/hub/core/view.rs::with_pieces` → `desk/hub/core/view.rs::shown` → `desk/hub/core/view.rs::stops_view` → `desk/hub/core/view.rs::wrote_just_now` → `hub/activity.rs::written_ms`, calls out |
 
 ## Spawn sites
 
@@ -507,7 +507,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (478)
+### fs (487)
 
 | In | Call | Times |
 |---|---|---|
@@ -567,7 +567,13 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `desk/hub/landing/land_keep.rs::merge` | write | 3 |
 | `desk/hub/landing/main_line.rs::in_progress` | Path::exists | 1 |
 | `desk/hub/landing/main_line.rs::same_dir` | canonicalize | 2 |
+| `desk/hub/landing/named_copy.rs::prepare_named` | Path::exists | 1 |
+| `desk/hub/landing/named_copy.rs::prepare_named` | create_dir_all | 1 |
+| `desk/hub/landing/named_copy.rs::repo_named` | Path::exists | 3 |
+| `desk/hub/landing/named_copy.rs::repo_named` | Path::is_dir | 1 |
+| `desk/hub/landing/named_copy.rs::repo_named` | canonicalize | 1 |
 | `desk/hub/landing/own_work.rs::Hub::holder_work` | Path::is_dir | 1 |
+| `desk/hub/landing/own_work.rs::in_copies` | canonicalize | 2 |
 | `desk/hub/landing/own_work.rs::worked_in` | Path::is_dir | 1 |
 | `desk/hub/landing/pr.rs::gh_bin` | Path::is_file | 1 |
 | `desk/hub/landing/tree_files.rs::check_steps_on` | create_dir_all | 1 |
@@ -920,7 +926,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `voice/talk.rs::save` | write | 1 |
 | `voice/talk.rs::set` | write | 1 |
 
-### db (211)
+### db (212)
 
 | In | Call | Times |
 |---|---|---|
@@ -1013,9 +1019,10 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `db/mod.rs::with` | db::busy | 1 |
 | `db/schema.rs::import_old_files` | db::put_exchange | 1 |
 | `db/schema.rs::import_old_files` | db::put_item | 2 |
-| `db/schema.rs::migrate` | db::drop_dispatch | 1 |
+| `db/schema.rs::migrate` | db::migrate_on | 1 |
 | `db/schema.rs::migrate` | db::regroup_projects | 1 |
-| `db/schema.rs::migrate` | db::seed_desk_members | 1 |
+| `db/schema.rs::migrate_on` | db::drop_dispatch | 1 |
+| `db/schema.rs::migrate_on` | db::seed_desk_members | 1 |
 | `db/schema.rs::open` | db::first_read | 3 |
 | `db/schema.rs::open` | db::keep_aside | 1 |
 | `db/schema.rs::open` | db::path | 6 |
@@ -1028,10 +1035,6 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `db/search.rs::search` | db::with | 1 |
 | `db/search.rs::session_log` | db::with | 1 |
 | `db/search.rs::session_log_page` | db::with | 1 |
-| `desk/hub/core/desk.rs::Hub::desk_done` | db::desk_drop_item | 1 |
-| `desk/hub/core/desk.rs::Hub::desk_done` | db::desk_put_decision | 1 |
-| `desk/hub/core/desk.rs::Hub::desk_done` | db::desk_put_item | 1 |
-| `desk/hub/core/desk.rs::Hub::desk_done` | db::desk_put_member | 1 |
 | `desk/hub/core/desk.rs::Hub::desk_lead_to` | db::desk_drop_lead | 1 |
 | `desk/hub/core/desk.rs::Hub::desk_lead_to` | db::desk_put_lead | 1 |
 | `desk/hub/core/desk.rs::Hub::desk_lead_to` | db::desk_put_member | 1 |
@@ -1044,6 +1047,10 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `desk/hub/core/desk.rs::Hub::desk_restore` | db::desk_put_decision | 2 |
 | `desk/hub/core/desk.rs::Hub::desk_restore` | db::desk_put_numbered | 1 |
 | `desk/hub/core/desk.rs::Hub::desk_restore` | db::desk_spaces | 1 |
+| `desk/hub/core/desk.rs::Hub::desk_save` | db::desk_drop_item | 1 |
+| `desk/hub/core/desk.rs::Hub::desk_save` | db::desk_put_decision | 1 |
+| `desk/hub/core/desk.rs::Hub::desk_save` | db::desk_put_item | 1 |
+| `desk/hub/core/desk.rs::Hub::desk_save` | db::desk_put_member | 1 |
 | `desk/hub/core/desk.rs::Hub::desk_went` | db::desk_put_decision | 1 |
 | `desk/hub/core/members.rs::Hub::desk_retire_idle` | db::desk_drop_member | 1 |
 | `desk/hub/core/members.rs::Hub::desk_set_member` | db::desk_drop_lead | 1 |
@@ -1208,20 +1215,6 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 
 | Function |  |  |
 |---|---|---|
-| `src-tauri/src/db/schema.rs::migrate` |  |  |
-| `src-tauri/src/desk/hub/away/away.rs::desk_away_set` |  |  |
-| `src-tauri/src/desk/hub/core/desk.rs::desk_done` |  |  |
-| `src-tauri/src/desk/hub/core/view.rs::shown` |  |  |
-| `src-tauri/src/desk/hub/landing/finish.rs::finish_after` |  |  |
-| `src-tauri/src/desk/hub/landing/trees.rs::desk_trees` |  |  |
-| `src-tauri/src/desk/hub/landing/trees.rs::land` |  |  |
-| `src-tauri/src/desk/hub/lead/run.rs::desk_summary` |  |  |
-| `src-tauri/src/desk/hub/lead/run.rs::item_lines` |  |  |
-| `src-tauri/src/desk/hub/stall/stall.rs::stalls_asked` |  |  |
-| `src-tauri/src/desk/hub/stall/unstick.rs::desk_close_on_main` |  |  |
-| `src-tauri/src/desk/hub/turn/act.rs::acted_on` |  |  |
-| `src-tauri/src/desk/hub/turn/route.rs::route` |  |  |
-| `src-tauri/src/desk/hub/turn/said.rs::lead_said` |  |  |
 | `src-tauri/src/hosted/compat_tests.rs::compat_a_two_part_request_becomes_a_team_of_two_on_its_own_and_one_is_committed` | test |  |
 | `src-tauri/src/hosted/machine_tests.rs::live_on_a_real_machine_claude_code_asks_runs_a_command_past_a_dropped_connection_and_is_picked_up_after_a_restart` | test |  |
 | `src-tauri/src/hub/hand_off.rs::a_hand_off_goes_ahead_only_where_you_turned_it_on_and_holds_where_typing_could_hurt` | test |  |
@@ -1230,13 +1223,8 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `src-tauri/src/logs/steps/tests/agents.rs::a_background_agent_sent_a_message_after_it_finished_is_at_work_again_until_it_reports_again` | test |  |
 | `src-tauri/src/logs/steps/tests/agents.rs::a_background_agent_shows_at_work_under_its_step_until_its_session_hears_it_finished` | test |  |
 | `src-tauri/src/testing/tests/desk_away.rs::each_away_stretch_is_kept_with_what_moved_the_calls_and_what_was_held` | test |  |
-| `ui/chat/render.js::chatHtml` |  |  |
-| `ui/desk_lead.js::deskLineHtml` |  |  |
-| `ui/desk_list.js::deskQPress` |  |  |
-| `ui/desk_sessions.js::deskSessions` |  |  |
-| `ui/desk_thread.js::deskThread` |  |  |
 
-Files over 1000 lines: `ui/board.js`, `ui/inbox.js`, `ui/styles/desk.css`.
+Files over 1000 lines: .
 
 ## What this can't see
 

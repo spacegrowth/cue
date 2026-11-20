@@ -1,4 +1,4 @@
-/* ---------- Inbox (inbox.js): two lines per session under Pinned, Needs you, Running, Done; a session opened in its place ---------- */
+/* ---------- Inbox (inbox/): two lines per session under Pinned, Needs you, Running, Done; a session opened in its place ---------- */
 /* "Inbox 3" in the header's switch: how many need you, on the button's one line. */
 .switch-view [data-view="inbox"] { flex: none; white-space: nowrap; }
 /* How many need you: a quiet count in the button's own colour (a tint of its text), not an alarm. */
@@ -295,7 +295,7 @@ button.ib-file:hover { background: color-mix(in srgb, var(--ink) 6%, transparent
 .ib-msg:hover .ib-msg-more { text-decoration: underline; }
 .ib-msg-body .ib-msg-more { display: block; margin-top: 4px; }
 .ib-msg-body { grid-column: 3; min-width: 0; overflow-wrap: anywhere; line-height: 1.5; cursor: text; user-select: text; }
-/* An ask it made and your answer, one row (inbox.js inboxAskMsgHtml): the command in code, the answer after it. */
+/* An ask it made and your answer, one row (inbox/box.js inboxAskMsgHtml): the command in code, the answer after it. */
 .ib-ask-line code { font: 11.5px var(--mono); background: var(--panel-2); color: var(--ink); padding: 1px 5px; border-radius: 4px; }
 .ib-ask-ans { color: var(--ink); font-weight: 600; }
 .ib-ask-ans.no { color: var(--deny); }

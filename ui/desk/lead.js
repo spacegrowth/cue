@@ -1,4 +1,4 @@
-// Cue UI desk_lead — who runs a Desk, and adding to it (ui/desk.js draws the rest). Each project's Desk has one lead:
+// Cue UI desk/lead — who runs a Desk, and adding to it (ui/desk/desk.js draws the rest). Each project's Desk has one lead:
 // a normal session you pick ("Who runs this Desk?") or a new one Cue starts; you tell it, it does the work or hands it
 // out. Here: the picker (zero, one or several sessions; "Keep <name>" when changing), ⋯ in the head strip, the
 // ended lead's line, "Give to…" on an item no one holds, and the quick-add line at the top of Items (Enter adds;
@@ -253,8 +253,8 @@ function deskQaFocus() {
   return true;
 }
 
-/** The Desk's clicks for the lead and adding, merged into desk.js's. */
-const DESK_LEAD_CLICKS = {
+/** The Desk's clicks for the lead and adding (desk/clicks.js). */
+deskClicks({
   deskLead: (el) => deskSetLead(deskSelection(), el.dataset.deskLead),
   // The picker takes the chat card: whatever's open there closes.
   deskChange: () => { deskPick = deskSelection(); deskGiveFor = null; deskOpen = null; deskDropArm = null; renderMain(); },
@@ -262,7 +262,7 @@ const DESK_LEAD_CLICKS = {
   deskGive: (el) => { const at = el.dataset.at; deskGiveFor = deskGiveFor?.id === el.dataset.deskGive && deskGiveFor.at === at ? null : { id: el.dataset.deskGive, at }; renderMain(); },
   deskGiveTo: (el) => deskGiveTo(el.dataset.id, el.dataset.deskGiveTo),
   deskWhy: (el) => { const k = el.dataset.deskWhy; if (!deskLnOpen.delete(k)) deskLnOpen.add(k); renderMain(); },
-};
+});
 
 if (typeof document !== "undefined") {
   // Leaving the Desk's name box (its Sessions head) keeps what's in it, as Enter does; Esc has closed it already.
@@ -287,7 +287,7 @@ if (typeof document !== "undefined") {
 
 // ---------- the lead's own lines, drawn in its chat ----------
 /** A card's words in the lead's chat cut to two lines under its one-line head (#452: at most three lines a card), with
- *  More to open the rest in place and Less to fold it (core.js reqCut, the permission cards' own). `key`: what keeps it
+ *  More to open the rest in place and Less to fold it (core/md.js reqCut, the permission cards' own). `key`: what keeps it
  *  open through redraws; `html` the words drawn, `text` them plain (how long they are). */
 const deskCut = (key, cls, html, text) => reqCut(`dk:${key}`, `<div class="${cls} req-t">${html}</div>`, String(text ?? "").replace(/<[^>]*>/g, ""), 2, 140);
 /** A Desk line as desk/parse.rs reads it: its word in capitals, a list mark or bold around it. DECIDED is md's own
@@ -307,6 +307,15 @@ function deskLineHtml(line, inline) {
   const body = m[2].trim().replace(/^\*\*/, "").trim().replace(/\*+$/, "").trim();
   if (!body || body.startsWith("<")) return "";
   if (m[1] === "ASK") return MD_DROP;
+  const k = deskLineKit(m, body, inline);
+  const kinds = { ITEM: deskLineItem, SEE: deskLineSee, ROUTE: deskLineRoute, DONE: deskLineDone, TITLE: deskLineTitle,
+    MERGE: deskLineMerge, NOTE: deskLineNote, DESIGNS: deskLineDesigns };
+  const run = kinds[m[1]] || deskLineContext;
+  return run(k);
+}
+/** What deskLineHtml's kinds share: the line's match `m`, its `body` and parts `p`, and the helpers that read and draw
+ *  them. */
+function deskLineKit(m, body, inline) {
   const p = body.split("|").map((x) => x.trim());
   // A part without its label ("done when:", any case), as parse.rs labelled(); null without it.
   const lab = (s, k) => (s.slice(0, k.length).toLowerCase() === k ? s.slice(k.length).trimStart().replace(/^:/, "").trim() : null);
@@ -331,70 +340,91 @@ function deskLineHtml(line, inline) {
   const who = (s) => `<b class="dk-rt-to">${esc(s)}</b>`;
   const dot = (xs) => xs.filter(Boolean).join(" · ");
   const and = (xs) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
-  if (m[1] === "ITEM") {
-    const first = p[0].toLowerCase();
-    const kind = DESK_KINDS.includes(first) ? first : "";
-    const rest = kind ? p.slice(1) : p;
-    const title = rest.find((s) => lab(s, "done when") === null && deskSeeOf(s) === null && !/^why\s*:/i.test(s)) || "";
-    if (!title) return "";
-    deskSaidItem = title;
-    // What you'll see (#382); its done when is the session's check, not shown.
-    const see = rest.map(deskSeeOf).find((v) => v !== null) || "";
-    const it = deskNewlySaid(title);
-    const what = it ? ref(it.id, it) : kind ? `a ${kind}` : "";
-    return ln(`Added ${what ? `${what}: ` : ""}<span class="dk-say-t">${inline(title)}</span>`, see ? `You'll see ${inline(see)}` : "");
-  }
-  if (m[1] === "SEE") {
-    // "SEE: #12 | <what you'll see> | done when: <check>" (#382): "Said what you'll see for Bug #12", the words under it.
-    if (!p[0].startsWith("#")) return "";
-    const it = known(id(p[0]));
-    const see = p.slice(1).map((s) => deskSeeOf(s) ?? (lab(s, "done when") === null ? s : null)).find((v) => v) || "";
-    return ln(`Said what you'll see for ${ref(id(p[0]), it)}`, see ? `You'll see ${inline(see)}` : "");
-  }
-  if (m[1] === "ROUTE") {
-    const ht = arrow(p[0]), at = ht && id(ht[0]), to = ht && name(ht[1]);
-    if (!at || !to) return "";
-    const after = id(find("after")), why = find("why"), crew = name(find("crew"));
-    // "#new" is the ITEM just above it, once the Desk has it; "→ new" (or "me") the session Cue started for it, once there is one.
-    const it = at === "new" ? deskNewlySaid(deskSaidItem) : known(at);
-    const fresh = /^(new|me)$/i.test(to) && it?.holder;
-    const to2 = fresh ? who(deskHolderName(it.holder.sid, it.holder.name)) : /^new$/i.test(to) ? "a new session" : who(to);
-    const to3 = crew ? `${esc(crew)} on ${to2}'s crew` : to2;
-    const what = at === "new" && !it ? "the new item" : ref(at, it);
-    const head = after ? `${what} waits on ${ref(after, undefined, true)}` : `Gave ${what} to ${to3}`;
-    const title = it?.title || (at === "new" ? deskSaidItem : "");
-    return ln(head, dot([titled(it, title), after ? `Then to ${to3}` : "", why ? inline(why) : ""]));
-  }
-  if (m[1] === "DONE") {
-    const ids = body.split(/[, ]/).filter((x) => x.trim().startsWith("#")).map(id).filter(Boolean);
-    return ids.length ? ln(`${and(ids.map((x) => ref(x)))} ${ids.length > 1 ? "are" : "is"} done`, dot(ids.map((x) => titled(known(x))))) : "";
-  }
-  if (m[1] === "TITLE") {
-    const at = p[0].startsWith("#") && id(p[0]), t = (p[1] || "").replace(/^["`*]+|["`*]+$/g, "").trim();
-    return at && t ? ln(`Renamed ${ref(at)}`, titled(known(at), t)) : "";
-  }
-  if (m[1] === "MERGE") {
-    // "#320 into #319" (or an arrow), as parse.rs merge: the copy is gone once Cue folds it, so it's its number alone.
-    const pr = /^(#\S+)\s+(?:into|->|→|=>)\s+(#\S+)/i.exec(p[0]), from = pr && id(pr[1]), to = pr && id(pr[2]);
-    if (!from || !to || from === to) return "";
-    const why = find("why");
-    return ln(`Folded ${ref(from, undefined, true)} into ${ref(to)}`, dot([titled(known(to)), why ? inline(why) : ""]));
-  }
-  if (m[1] === "NOTE") {
-    // "NOTE: #418 | words" (desk/hub/turn/route.rs note): who it went to, as Cue noted it ("note to cue-387"), else who holds it.
-    const at = p[0].startsWith("#") && !p[0].includes(" ") && id(p[0]), words = body.slice(body.indexOf("|") + 1).trim();
-    if (!body.includes("|")) return "";
-    if (!at || !words) return "";
-    const it = known(at), d = it && deskOf(it.project);
-    const sent = (d?.decisions || []).find((x) => x.item_id === it.id && x.text === words && /^note to /.test(x.why || ""));
-    const to = sent ? sent.why.slice(8) : it?.holder ? deskHolderName(it.holder.sid, it.holder.name) : "";
-    return `<div class="dk-say dk-note"><div class="dk-note-h">Note${to ? ` to ${who(to)}` : ""} · ${ref(at, it)}</div>${deskCut(`note:${body}`, "dk-note-t", inline(words), words)}</div>`;
-  }
-  if (m[1] === "DESIGNS") {
-    // "#135 https://…" (as parse.rs designs): the link alone, under the words, as the item page has it.
-    const url = /^#\S+\s.*?(https?:\/\/[^\s>)\]"`*]+)/.exec(body)?.[1]?.replace(/[.,;]+$/, "");
-    return url ? `<div class="dk-say dk-dsay">${deskDesignsA(url)}</div>` : "";
-  }
+  return { m, body, inline, p, lab, find, id, name, arrow, known, ref, titled, ln, who, dot, and };
+}
+/** An ITEM line (deskLineHtml): "Added Bug #2: title". */
+function deskLineItem(k) {
+  const { inline, p, lab, ref, ln } = k;
+  const first = p[0].toLowerCase();
+  const kind = DESK_KINDS.includes(first) ? first : "";
+  const rest = kind ? p.slice(1) : p;
+  const title = rest.find((s) => lab(s, "done when") === null && deskSeeOf(s) === null && !/^why\s*:/i.test(s)) || "";
+  if (!title) return "";
+  deskSaidItem = title;
+  // What you'll see (#382); its done when is the session's check, not shown.
+  const see = rest.map(deskSeeOf).find((v) => v !== null) || "";
+  const it = deskNewlySaid(title);
+  const what = it ? ref(it.id, it) : kind ? `a ${kind}` : "";
+  return ln(`Added ${what ? `${what}: ` : ""}<span class="dk-say-t">${inline(title)}</span>`, see ? `You'll see ${inline(see)}` : "");
+}
+/** A SEE line (deskLineHtml): "Said what you'll see for Bug #12". */
+function deskLineSee(k) {
+  const { inline, p, lab, id, known, ref, ln } = k;
+  // "SEE: #12 | <what you'll see> | done when: <check>" (#382): "Said what you'll see for Bug #12", the words under it.
+  if (!p[0].startsWith("#")) return "";
+  const it = known(id(p[0]));
+  const see = p.slice(1).map((s) => deskSeeOf(s) ?? (lab(s, "done when") === null ? s : null)).find((v) => v) || "";
+  return ln(`Said what you'll see for ${ref(id(p[0]), it)}`, see ? `You'll see ${inline(see)}` : "");
+}
+/** A ROUTE line (deskLineHtml): "Gave Task #2 to who", or "Task #2 waits on #1". */
+function deskLineRoute(k) {
+  const { inline, p, find, id, name, arrow, known, ref, titled, ln, who, dot } = k;
+  const ht = arrow(p[0]), at = ht && id(ht[0]), to = ht && name(ht[1]);
+  if (!at || !to) return "";
+  const after = id(find("after")), why = find("why"), crew = name(find("crew"));
+  // "#new" is the ITEM just above it, once the Desk has it; "→ new" (or "me") the session Cue started for it, once there is one.
+  const it = at === "new" ? deskNewlySaid(deskSaidItem) : known(at);
+  const fresh = /^(new|me)$/i.test(to) && it?.holder;
+  const to2 = fresh ? who(deskHolderName(it.holder.sid, it.holder.name)) : /^new$/i.test(to) ? "a new session" : who(to);
+  const to3 = crew ? `${esc(crew)} on ${to2}'s crew` : to2;
+  const what = at === "new" && !it ? "the new item" : ref(at, it);
+  const head = after ? `${what} waits on ${ref(after, undefined, true)}` : `Gave ${what} to ${to3}`;
+  const title = it?.title || (at === "new" ? deskSaidItem : "");
+  return ln(head, dot([titled(it, title), after ? `Then to ${to3}` : "", why ? inline(why) : ""]));
+}
+/** A DONE line (deskLineHtml): "Bug #2 is done". */
+function deskLineDone(k) {
+  const { body, id, known, ref, titled, ln, dot, and } = k;
+  const ids = body.split(/[, ]/).filter((x) => x.trim().startsWith("#")).map(id).filter(Boolean);
+  return ids.length ? ln(`${and(ids.map((x) => ref(x)))} ${ids.length > 1 ? "are" : "is"} done`, dot(ids.map((x) => titled(known(x))))) : "";
+}
+/** A TITLE line (deskLineHtml): "Renamed Bug #2". */
+function deskLineTitle(k) {
+  const { p, id, known, ref, titled, ln } = k;
+  const at = p[0].startsWith("#") && id(p[0]), t = (p[1] || "").replace(/^["`*]+|["`*]+$/g, "").trim();
+  return at && t ? ln(`Renamed ${ref(at)}`, titled(known(at), t)) : "";
+}
+/** A MERGE line (deskLineHtml): "Folded #3 into Bug #2". */
+function deskLineMerge(k) {
+  const { inline, p, find, id, known, ref, titled, ln, dot } = k;
+  // "#320 into #319" (or an arrow), as parse.rs merge: the copy is gone once Cue folds it, so it's its number alone.
+  const pr = /^(#\S+)\s+(?:into|->|→|=>)\s+(#\S+)/i.exec(p[0]), from = pr && id(pr[1]), to = pr && id(pr[2]);
+  if (!from || !to || from === to) return "";
+  const why = find("why");
+  return ln(`Folded ${ref(from, undefined, true)} into ${ref(to)}`, dot([titled(known(to)), why ? inline(why) : ""]));
+}
+/** A NOTE line (deskLineHtml): a small card, "Note to who · Feature #418", the words under it. */
+function deskLineNote(k) {
+  const { body, inline, p, id, known, ref, who } = k;
+  // "NOTE: #418 | words" (desk/hub/turn/route.rs note): who it went to, as Cue noted it ("note to cue-387"), else who holds it.
+  const at = p[0].startsWith("#") && !p[0].includes(" ") && id(p[0]), words = body.slice(body.indexOf("|") + 1).trim();
+  if (!body.includes("|")) return "";
+  if (!at || !words) return "";
+  const it = known(at), d = it && deskOf(it.project);
+  const sent = (d?.decisions || []).find((x) => x.item_id === it.id && x.text === words && /^note to /.test(x.why || ""));
+  const to = sent ? sent.why.slice(8) : it?.holder ? deskHolderName(it.holder.sid, it.holder.name) : "";
+  return `<div class="dk-say dk-note"><div class="dk-note-h">Note${to ? ` to ${who(to)}` : ""} · ${ref(at, it)}</div>${deskCut(`note:${body}`, "dk-note-t", inline(words), words)}</div>`;
+}
+/** A DESIGNS line (deskLineHtml): the mocks' link alone. */
+function deskLineDesigns(k) {
+  const { body } = k;
+  // "#135 https://…" (as parse.rs designs): the link alone, under the words, as the item page has it.
+  const url = /^#\S+\s.*?(https?:\/\/[^\s>)\]"`*]+)/.exec(body)?.[1]?.replace(/[.,;]+$/, "");
+  return url ? `<div class="dk-say dk-dsay">${deskDesignsA(url)}</div>` : "";
+}
+/** A CONTEXT line (deskLineHtml): "Kept who's context". */
+function deskLineContext(k) {
+  const { inline, p, find, name, arrow, ln, who } = k;
   const ht = arrow(p[0]), whom = ht && name(ht[0]), what = ht && (ht[1].trim().split(/\s+/)[0] || "").replace(/["`*.]/g, "").toLowerCase();
   if (!whom || !what) return "";
   const why = find("why");
@@ -520,7 +550,7 @@ const deskCueLine = (html, at) => `<div class="dk-new dk-cl"><span class="dk-cl-
 function deskHandHtml(e, meta) {
   const text = String(e.text || "");
   // Cue's other messages about an item start the same way ("Desk item #d5: the Desk lead took back its copy…"): a
-  // short line, not a hand-off (desk_cue_said.js, #478).
+  // short line, not a hand-off (desk/cue_said.js, #478).
   if (typeof cueMsgOf === "function" && cueMsgOf(text)) return null;
   const at = /(?:^|\n)(?:For your teammate (.+?): )?Desk item #([^\s:(]+)(?: \((bug|feature|task)\))?: (.*)/.exec(text);
   if (!at) return null;

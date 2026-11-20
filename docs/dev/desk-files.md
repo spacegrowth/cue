@@ -48,23 +48,23 @@ in `ui/`.
 
 - Away itself: `away/away.rs`; its past stretches: `away/away_log.rs`.
 - Ask me before steps held while away: `away/away_holds.rs`.
-- UI: `desk_away.js` (the switch, its sheet, held steps with Allow and No, the Away log). A session's other
-  pending decisions: `desk_approvals.js`.
+- UI: `desk/away.js` (the switch, its sheet, held steps with Allow and No, the Away log). A session's other
+  pending decisions: `desk/approvals.js`.
 
 ### Messages and delivery
 
-- Where a sent message stands: `sessions/delivery.rs`, `sessions/kept_message.rs`; UI `desk_delivery.js`.
+- Where a sent message stands: `sessions/delivery.rs`, `sessions/kept_message.rs`; UI `desk/delivery.js`.
 - Sending to the lead and the wait-or-claim logic: `desk/hub/lead/send.rs` (`desk_send_with`, `deliver`); its command `desk_send` stays in `ipc/desk.rs`. Starting, resuming and taking on a lead: `desk/hub/lead/mod.rs`.
-- What Cue itself sends, drawn as one line: `desk_cue_said.js`.
-- The Desk's asks in the Inbox: `inbox_desk.js`.
+- What Cue itself sends, drawn as one line: `desk/cue_said.js`.
+- The Desk's asks in the Inbox: `desk/inbox.js`.
 
 ### UI pages
 
-- State and item basics: `desk.js`. The Items list: `desk_list.js`. Progress: `desk_progress.js`.
-- Sessions on the left: `desk_sessions.js`. Desk home: `desk_home.js`.
-- An item's page and thread: `desk_page.js`, `desk_thread.js`, `desk_view.js`, `desk_files.js`.
-- Acting, clicks and keys: `desk_act.js`. Commit lines and check cards: `desk_commit.js`.
-- The lead's chat and its lines: `desk_lead.js`.
+- State and item basics: `desk/desk.js`. The Items list: `desk/list.js`. Progress: `desk/progress.js`.
+- Sessions on the left: `desk/sessions.js`. Desk home: `desk/home.js`.
+- An item's page and thread: `desk/page.js`, `desk/thread.js`, `desk/view.js`, `desk/files.js`.
+- Acting, clicks and keys: `desk/act.js`. Commit lines and check cards: `desk/commit.js`.
+- The lead's chat and its lines: `desk/lead.js`.
 
 ### Naming traps
 
@@ -133,32 +133,33 @@ Outside the hub, one line each:
 
 ## UI (ui/)
 
-The Desk view is plain scripts loaded by `ui/index.html` and `ui/mini.html`, in this order (`inbox_desk.js` loads
+The Desk view is plain scripts in `ui/desk/`, loaded by `ui/index.html` and `ui/mini.html` in this order (`desk/inbox.js` loads
 earlier, with the Inbox). A top-level name is
 declared in one file only (WebKit skips a whole script that declares a name twice; `cargo test --lib --
 the_windows_scripts` catches it). A file may call functions from a later one, but top-level code that runs at load
-uses only what is declared before it. The document listeners keep their old order: Away's (`desk_away.js`), then the
-key time (`desk_view.js`), then the Desk's clicks and keys (`desk_act.js`).
+uses only what is declared before it. The document listeners keep their old order: Away's (`desk/away.js`), then the
+key time (`desk/view.js`), then the Desk's clicks and keys (`desk/act.js`).
 
 | File | What lives there |
 | --- | --- |
-| `inbox_desk.js` | The Inbox's part of the Desk: a lead's or a holder's ask, Open in Desk, Add to Desk on a session's ask. |
-| `desk_lead.js` | Who runs a Desk (its lead), Give to…, the quick-add line, the lead's own lines in its chat (ITEM, ROUTE, DONE…), messages from another Desk as a band, hand-offs, stop notes. |
-| `desk_cue_said.js` | What Cue itself sends a session or a lead, drawn as one short line with the full text folded under it. |
-| `desk.js` | The Desk's state (selected Desk, recent Desks and their kept rows, what's open, boxes, sent words) and item basics: lookups (`deskOf`, `deskItem`), kind icons and numbers, finish and install steps, what waits on you, seen/landed, made links, Files changed, stalled items. |
-| `desk_list.js` | The Items list: holders (a lead and its crew, a session, an add-on), unblocks, the one-line ask (`deskVerb`), file chips and the small markdown (`deskMd`), a tool's allow line, groups by state, an item's row, finished items loaded as you scroll. |
-| `desk_progress.js` | Progress: the popover with one row per open item and its six steps. |
-| `desk_away.js` | Away (#361): its rules, the Away switch and card, what still needs you, paused sessions, the Away sheet and its save, and its own click, input and key listeners. |
-| `desk_sessions.js` | The sessions on the left: session state, size and cache, rows, the lead's bar, the head strip and Delete, the Desk switcher, Add to / Remove from Desk. |
-| `desk_page.js` | The chat card and its pages: Decisions and steps tables, the lead's chat, a session's chat, the reader, What the lead moved (the Dispatcher Actions tab, loaded as you scroll), the one page pattern (`deskPage`) and its panel, and an item page's parts (done when, mocks and picks, checks, its ask and your answer, buttons, build log, decisions, what it waits on). |
-| `desk_thread.js` | An item's Thread (`deskThread`, live turn, taken, turn links, the hook fold), its page (`deskItemPane`, meta, NOW), a holder's page, a crew member's page. |
-| `desk_view.js` | The boxes that send (`deskBoxKey`, `deskBox`), an item's foot, the right card, the lead's NOW and ask, `deskView`, following the thread, focus and scroll after a draw (`deskSettle`). |
-| `desk_act.js` | Acting: open (`deskShow`, `deskOpenItem`), find (`deskFindHere`), send (`deskSendBox`), send back, item actions (`deskAct`), undo, the click table (`DESK_CLICKS`), keys, and the document listeners. |
-| `desk_files.js` | The Desk panel's files (#313): what an item, a session or a crew member changed, the first three with +/−. |
-| `desk_delivery.js` | Where a sent-back message stands (held, queued, pending), as its session has it. |
-| `desk_approvals.js` | Pending decisions of a session (and its crew), with or without an item. |
-| `desk_home.js` | Desk home (All projects): every Desk as a row of one table, + New Desk. |
-| `desk_commit.js` | Looks right's commit, the commit line and its Undo, a DONE's check line in the lead's chat. |
+| `desk/inbox.js` | The Inbox's part of the Desk: a lead's or a holder's ask, Open in Desk, Add to Desk on a session's ask. |
+| `desk/clicks.js` | The click table (`DESK_CLICKS`) and `deskClicks`, which each file with clicks (`desk/lead.js`, `desk/act.js`) calls to add its own; read at click time, so it loads first and the rest in any order. |
+| `desk/lead.js` | Who runs a Desk (its lead), Give to…, the quick-add line, the lead's own lines in its chat (ITEM, ROUTE, DONE…), messages from another Desk as a band, hand-offs, stop notes. |
+| `desk/cue_said.js` | What Cue itself sends a session or a lead, drawn as one short line with the full text folded under it. |
+| `desk/desk.js` | The Desk's state (selected Desk, recent Desks and their kept rows, what's open, boxes, sent words) and item basics: lookups (`deskOf`, `deskItem`), kind icons and numbers, finish and install steps, what waits on you, seen/landed, made links, Files changed, stalled items. |
+| `desk/list.js` | The Items list: holders (a lead and its crew, a session, an add-on), unblocks, the one-line ask (`deskVerb`), file chips and the small markdown (`deskMd`), a tool's allow line, groups by state, an item's row, finished items loaded as you scroll. |
+| `desk/progress.js` | Progress: the popover with one row per open item and its six steps. |
+| `desk/away.js` | Away (#361): its rules, the Away switch and card, what still needs you, paused sessions, the Away sheet and its save, and its own click, input and key listeners. |
+| `desk/sessions.js` | The sessions on the left: session state, size and cache, rows, the lead's bar, the head strip and Delete, the Desk switcher, Add to / Remove from Desk. |
+| `desk/page.js` | The chat card and its pages: Decisions and steps tables, the lead's chat, a session's chat, the reader, What the lead moved (the Dispatcher Actions tab, loaded as you scroll), the one page pattern (`deskPage`) and its panel, and an item page's parts (done when, mocks and picks, checks, its ask and your answer, buttons, build log, decisions, what it waits on). |
+| `desk/thread.js` | An item's Thread (`deskThread`, live turn, taken, turn links, the hook fold), its page (`deskItemPane`, meta, NOW), a holder's page, a crew member's page. |
+| `desk/view.js` | The boxes that send (`deskBoxKey`, `deskBox`), an item's foot, the right card, the lead's NOW and ask, `deskView`, following the thread, focus and scroll after a draw (`deskSettle`). |
+| `desk/act.js` | Acting: open (`deskShow`, `deskOpenItem`), find (`deskFindHere`), send (`deskSendBox`), send back, item actions (`deskAct`), undo, its clicks (`deskClicks`), keys, and the document listeners. |
+| `desk/files.js` | The Desk panel's files (#313): what an item, a session or a crew member changed, the first three with +/−. |
+| `desk/delivery.js` | Where a sent-back message stands (held, queued, pending), as its session has it. |
+| `desk/approvals.js` | Pending decisions of a session (and its crew), with or without an item. |
+| `desk/home.js` | Desk home (All projects): every Desk as a row of one table, + New Desk. |
+| `desk/commit.js` | Looks right's commit, the commit line and its Undo, a DONE's check line in the lead's chat. |
 
 ## Tests (src-tauri/src/testing/tests)
 

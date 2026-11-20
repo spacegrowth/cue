@@ -9,7 +9,7 @@
 // the chat, what's under it and their buttons are drawn and handled by the same code as in Cue's window (chat/pane.js
 // paneArgs, activeChat, paneFoot; app/clicks.js CHAT_CLICKS). This file is the frame around it: the tabs, ⤢ In Cue,
 // ×, the size and place, the pointer and the keyboard.
-// Everything lives inside one strict block: its names stay its own (core.js's state, view, active… are the main
+// Everything lives inside one strict block: its names stay its own (core/state.js's state, view, active… are the main
 // window's, and a second top-level declaration of one would stop this script from running at all). It hands the page
 // its draw (app/render.js windowDraw): what Cue's chat code calls to redraw (renderMain, render) is this window's paint.
 "use strict";
@@ -34,7 +34,7 @@
   const m = { shape: "quiet", open: null, keyed: false, over: false, timer: 0, sized: "" };
 
   // ---------- what needs you, in the Waiting column's order ----------
-  /** Back within a few minutes of your last message to it, and not sat there longer than that (board.js talking). */
+  /** Back within a few minutes of your last message to it, and not sat there longer than that (board/board.js talking). */
   function talking(it) {
     if (it.back_ms || now() - it.created_ms > TALK_MS) return false;
     const you = (sessionOf(it.session_id)?.thread || []).filter((e) => e.role === "you" && e.at_ms <= it.created_ms).pop();
@@ -225,7 +225,7 @@
     if (req?.kind === "permission") acts = `<button class="btn small primary" data-desk-decision="allow" data-id="${esc(req.id)}"${off}>Allow</button><button class="btn small" data-desk-decision="deny" data-id="${esc(req.id)}"${off}>No</button>`;
     else {
       const q = req ? questions(req) : [];
-      // A question (#383): Send its suggestions (board.js), Choose… opens its item on the Desk in Cue, where its whole
+      // A question (#383): Send its suggestions (board/question.js), Choose… opens its item on the Desk in Cue, where its whole
       // card is; Answer types your own.
       const choose = `<button class="btn small" data-mdesk-choose="${esc(i.id)}" data-project="${esc(i.project || "")}">Choose…</button>`;
       acts = m.answer === i.id ? "" : `${q.length ? qFoldBtns(req, choose, "btn small") : ""}<button class="btn small" data-mdk-answer="${esc(i.id)}">Answer</button>`;
@@ -526,7 +526,7 @@
     paint();
     root.querySelector(`textarea[data-mdk-box="${CSS.escape(id)}"]`)?.focus();
   }
-  /** Send what's typed in item `id`'s row: a question card's answer goes as its answer (board.js respond); a question
+  /** Send what's typed in item `id`'s row: a question card's answer goes as its answer (board/board.js respond); a question
    *  its holder ended its turn on goes to the holder about the item, as from its page (desk.js deskSendBox). Either
    *  way the row then says what you answered (desk.js deskAnswerOf). */
   async function deskAnswerSend(id) {
@@ -644,7 +644,7 @@
     const mode = NOTCH ? "dark" : state.settings?.appearance?.mode ?? "system";
     if (mode === "system") document.documentElement.removeAttribute("data-theme");
     else document.documentElement.dataset.theme = mode;
-    // Cue's window's Color, as All projects wears it (core.js projTheme), not a project picked in Cue's window:
+    // Cue's window's Color, as All projects wears it (core/colors.js projTheme), not a project picked in Cue's window:
     // the rail sits over every app, for every project.
     projFilter = "";
     projTheme();

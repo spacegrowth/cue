@@ -119,7 +119,7 @@ function keyLightbox(e) {
 /** Esc twice on a working session stops it (once only arms it, so a stray Esc can't); a message Cue kept for it
  *  (sent while it worked) comes back into the box first. Stopping it is a pause to say something else, so the
  *  cursor stays in (or goes to) its box. The open session, `sid`: the Board's, or the one the Desk has open, with its
- *  box `key` there and how that box takes a kept message back, `pull` (desk_act.js deskEscSession). False when that
+ *  box `key` there and how that box takes a kept message back, `pull` (desk/act.js deskEscSession). False when that
  *  session has neither. */
 function escSession(sid = active?.sid, key = undefined, pull = pullHeld) {
   const s = !sheet && !menuFor && !redirectFor ? sessionOf(sid) : null;
@@ -139,7 +139,7 @@ function keyEscape(e) {
   if (!sheet && !lightbox && helperView && helperViewed(helperView.sid)) { closeHelperView(); return true; }
   if (!sheet && !lightbox && readerShown()) { closeReader(); return true; }
   if (view === "history") { histOpen = null; renderMain(); return true; }
-  // On the Desk, the Desk's own session (desk_act.js deskKey) had its turn: the Board's open one isn't on screen.
+  // On the Desk, the Desk's own session (desk/act.js deskKey) had its turn: the Board's open one isn't on screen.
   if (view !== "desk" && escSession()) return true;
   // Full screen: an Esc nothing else wanted leaves it (a working session's Esc arms Stop above instead).
   if (focus && !sheet && !menuFor && !redirectFor) { leaveFocus(); renderMain(); return true; }
@@ -239,11 +239,11 @@ function onKey(e) {
 /** A view's step that took the key: kept from its default too. */
 const keyTook = (step) => (e) => (step(e) ? (e.preventDefault(), true) : false);
 /** The views' own keys, before anything in the page sees them (a box, a terminal, the steps above): Esc closes the
- *  nearest thing first. In order: what's over the window (+ New Desk's sheet and menu, desk_home.js; the diff
+ *  nearest thing first. In order: what's over the window (+ New Desk's sheet and menu, desk/home.js; the diff
  *  overlay, diff_overlay.js; the file viewer, file_view.js), the crew's tray (team.js), the crew's page
- *  (team_page.js), the crew's bar (team_bar.js), Settings → Insights' chooser (insights.js), the Inbox (inbox.js), the
- *  Desk's Away sheet (desk_away.js), an add-on's panel (extensions.js), then the Desk (desk_view.js notes the key,
- *  desk_act.js deskKey). Each of the last three closes only itself: an Esc that shut a sheet or a panel never goes on
+ *  (team_page.js), the crew's bar (team_bar.js), Settings → Insights' chooser (insights.js), the Inbox (inbox/), the
+ *  Desk's Away sheet (desk/away.js), an add-on's panel (extensions.js), then the Desk (desk/view.js notes the key,
+ *  desk/act.js deskKey). Each of the last three closes only itself: an Esc that shut a sheet or a panel never goes on
  *  to arm Stop on the open item's session (#521). A step that takes the key (true) is the last to see it; one may instead keep it from KEY_STEPS
  *  alone (e.stopPropagation()) and let the rest of these run, as Settings → Insights' chooser does. The main window
  *  adds its dialogs' (app/bind.js keyDeleteAsk); the mini window runs these too, before its own (mini.js keyHere). */

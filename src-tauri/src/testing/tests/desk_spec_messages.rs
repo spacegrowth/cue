@@ -126,6 +126,6 @@ fn to_lead_that_cannot_reach_the_lead_tells_the_session_with_its_words() {
     w.settle();
     let back = sent_to(&w, &h).into_iter().find(|t| t.starts_with("Your TO LEAD: line didn't reach the Desk's lead")).unwrap_or_else(|| panic!("{:?}", sent_to(&w, &h)));
     assert!(back.contains("Should it wrap on narrow windows?"), "{back}");
-    // Its first line says why, as the chat's short line quotes it (ui/desk_cue_said.js).
+    // Its first line says why, as the chat's short line quotes it (ui/desk/cue_said.js).
     assert_eq!(back.lines().next(), Some("Your TO LEAD: line didn't reach the Desk's lead: it won't start"), "{back}");
 }

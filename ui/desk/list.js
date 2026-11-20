@@ -510,27 +510,32 @@ function deskQPress(e) {
     if (tick) cancelAnimationFrame(tick);
     document.body.classList.remove("dk-dragging");
     if (!on) return;
-    // The click that ends a drag doesn't open the item (none may come: then it's let go of soon after).
-    const eat = (c) => { c.stopPropagation(); c.preventDefault(); };
-    addEventListener("click", eat, { capture: true, once: true });
-    setTimeout(() => removeEventListener("click", eat, { capture: true }), 400);
-    const ids = rows.map((r) => r.dataset.deskQ || r.dataset.deskItem);
-    ids.splice(to, 0, ids.splice(from, 1)[0]);
-    const project = deskSelection(), items = deskOf(project)?.items || [];
-    const fixed = rows.findIndex((r, k) => !r.dataset.deskQ && (k - from) * (k - to) <= 0 && k !== from);
-    const why = to === from ? "" : fixed >= 0 ? "Items already started keep their place" : deskQWhyNot(ids, items);
-    const back = () => { rows.forEach((r) => { r.style.transition = "transform .15s ease"; r.style.transform = ""; }); setTimeout(() => { rows.forEach((r) => { r.style.transition = ""; }); row.classList.remove("dk-drag"); }, 160); };
-    if (to === from || why) { back(); if (why) toast(why, 4000); return; }
-    // It stays where you let go (the rows keep their places till the list is drawn again, in your order), and Cue
-    // saves it, or says why it won't.
-    const moved = ids.filter((id) => rows.find((r) => (r.dataset.deskQ || r.dataset.deskItem) === id)?.dataset.deskQ);
-    deskQDropped.set(project, { ids: moved, until: Date.now() + 5000 });
-    invoke("desk_item_act", { id: row.dataset.deskQ, act: "reorder", text: moved.join(" ") })
-      .catch((err) => { deskQDropped.delete(project); toast(String(err), 4000); renderMain(); });
-    renderMain();
+    deskQDrop(row, rows, from, to);
   };
   window.addEventListener("pointermove", move);
   window.addEventListener("pointerup", up, { once: true });
+}
+/** A queued row's drag let go (deskQPress): `row`, at `from` among `rows`, dropped at `to`. It takes its place
+ *  (desk_item_act "reorder"), or snaps back with why. */
+function deskQDrop(row, rows, from, to) {
+  // The click that ends a drag doesn't open the item (none may come: then it's let go of soon after).
+  const eat = (c) => { c.stopPropagation(); c.preventDefault(); };
+  addEventListener("click", eat, { capture: true, once: true });
+  setTimeout(() => removeEventListener("click", eat, { capture: true }), 400);
+  const ids = rows.map((r) => r.dataset.deskQ || r.dataset.deskItem);
+  ids.splice(to, 0, ids.splice(from, 1)[0]);
+  const project = deskSelection(), items = deskOf(project)?.items || [];
+  const fixed = rows.findIndex((r, k) => !r.dataset.deskQ && (k - from) * (k - to) <= 0 && k !== from);
+  const why = to === from ? "" : fixed >= 0 ? "Items already started keep their place" : deskQWhyNot(ids, items);
+  const back = () => { rows.forEach((r) => { r.style.transition = "transform .15s ease"; r.style.transform = ""; }); setTimeout(() => { rows.forEach((r) => { r.style.transition = ""; }); row.classList.remove("dk-drag"); }, 160); };
+  if (to === from || why) { back(); if (why) toast(why, 4000); return; }
+  // It stays where you let go (the rows keep their places till the list is drawn again, in your order), and Cue
+  // saves it, or says why it won't.
+  const moved = ids.filter((id) => rows.find((r) => (r.dataset.deskQ || r.dataset.deskItem) === id)?.dataset.deskQ);
+  deskQDropped.set(project, { ids: moved, until: Date.now() + 5000 });
+  invoke("desk_item_act", { id: row.dataset.deskQ, act: "reorder", text: moved.join(" ") })
+    .catch((err) => { deskQDropped.delete(project); toast(String(err), 4000); renderMain(); });
+  renderMain();
 }
 // The press that may become a drag selects no text (the window's text would light up as you drag, and be copied).
 document.addEventListener("mousedown", (e) => { if (e.button === 0 && e.target.closest?.(".dk-it[data-desk-q]") && !e.target.closest("button, a, input, textarea")) e.preventDefault(); });

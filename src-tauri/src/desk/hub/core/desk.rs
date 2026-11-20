@@ -479,74 +479,15 @@ impl Hub {
     /// What a change left to do, with the store let go: its saves, then its messages and questions, and new items
     /// for their lead (told a moment later, with any others that came meanwhile).
     pub(crate) fn desk_done(&self, mut fx: Effects) {
-        if fx.items.is_empty() && fx.said.is_empty() && fx.dropped.is_empty() && fx.decisions.is_empty() && fx.sends.is_empty() && fx.asks.is_empty() && fx.lands.is_empty() && fx.news.is_empty() && fx.starts.is_empty() && fx.joined.is_empty() && fx.uses.is_empty() && fx.stopped.is_empty() && fx.trees_gone.is_empty() && fx.closes.is_empty() && fx.on_main.is_empty() && fx.cleanup.is_empty() && !fx.land && fx.pause.is_empty() && fx.to_lead.is_empty() {
+        if left_nothing(&fx) {
             return;
         }
         // Items going to work get their own copies (or wait for one), before their messages are saved and sent.
         // A paused Desk's sessions are sent nothing, and its items start no sessions, till it resumes (#366).
         self.desk_pause_hold(&mut fx);
         self.desk_trees(&mut fx);
-        // Steps whose message goes now, by the send that carries it; the rest Cue keeps (a paused Desk, an item waiting
-        // for a copy: it goes with the item's start), and their steps say so.
-        let tracked = std::mem::take(&mut fx.went);
-        let mut went_with: Vec<Vec<String>> = fx.sends.iter().map(|_| Vec::new()).collect();
-        let mut kept_back = Vec::new();
-        for (step, to, item) in tracked {
-            match fx.sends.iter().position(|(s, text)| *s == to && text.contains(&format!("#{item} ("))) {
-                Some(n) => went_with[n].push(step),
-                None => kept_back.push(step),
-            }
-        }
-        {
-            // Each save writes what the store holds now (saves.rs), in the order the saves run.
-            let _saving = crate::locking::lock(&self.saves.desk, "desk saves");
-            let now = now_ms();
-            // A piece changed: its feature as its pieces now have it (#282), saved with them.
-            self.write(|st| {
-                for f in crate::desk::hub::turn::features::features_of(st, &fx.items) {
-                    crate::desk::hub::turn::features::settle(st, &f, now, &mut fx);
-                }
-            });
-            let (items, decisions) = self.write(|st| {
-                for (to, text) in &fx.sends {
-                    let sent = st.desk.run.sent.entry(to.clone()).or_default();
-                    sent.push(text.clone());
-                    if sent.len() > 8 {
-                        sent.remove(0);
-                    }
-                }
-                // An item at work with a holder it wasn't stamped for: its work (and files) start now.
-                for id in &fx.items {
-                    let Some(it) = st.desk.item_mut(id).filter(|i| i.state == "working") else { continue };
-                    let sid = it.holder.as_ref().map(|h| h.sid.clone()).unwrap_or_default();
-                    if sid.is_empty() {
-                        continue;
-                    }
-                    if it.held_from.as_ref().is_none_or(|(by, _)| *by != sid) {
-                        it.held_by(&sid, now);
-                    }
-                    // Sent to its holder (again): a stall on it counts from here (desk/hub/stall/stall.rs).
-                    if fx.sends.iter().any(|(to, _)| *to == sid) {
-                        st.desk.run.sent_at.insert(id.clone(), (sid, now));
-                    }
-                }
-                let mut ids: Vec<&String> = fx.items.iter().collect();
-                ids.extend(fx.said.iter().filter(|id| !fx.items.contains(id)));
-                let items: Vec<DeskItem> = ids.into_iter().filter_map(|id| st.desk.item(id).cloned()).collect();
-                let decisions: Vec<DeskDecision> = st.desk.decisions.iter().filter(|d| fx.decisions.contains(&d.id)).cloned().collect();
-                (items, decisions)
-            });
-            for it in &items {
-                crate::db::desk_put_item(it);
-            }
-            for id in &fx.dropped {
-                crate::db::desk_drop_item(id);
-            }
-            for d in &decisions {
-                crate::db::desk_put_decision(d);
-            }
-            fx.joined.iter().filter(|(project, _)| !project.starts_with("desk-") || self.read(|st| st.desk.spaces.contains_key(project))).for_each(|(project, sid)| crate::db::desk_put_member(project, sid, now));
-        }
+        let (went_with, kept_back) = went_with(&mut fx);
+        self.desk_save(&mut fx);
         self.changed();
         // A pick on mocks whose holder waits on its question: answered with the option picked (#281).
         for (ask, question, answer) in fx.answers {
@@ -558,25 +499,7 @@ impl Hub {
         if !kept_back.is_empty() {
             self.desk_went(&kept_back, &Ok("kept in Cue".into()));
         }
-        for ((sid, text), steps) in fx.sends.into_iter().zip(went_with) {
-            // A Resume's send says how it went, on its item (#291).
-            let restart = fx.restarts.iter().find(|(_, to, _)| *to == sid).map(|(id, _, name)| (id.clone(), name.clone()));
-            let now = fx.now.contains(&sid);
-            // Off this thread: typing into a terminal session waits for it to take the message.
-            self.later(0, move |h| {
-                let sent = h.send_to_session(&sid, &text, &[], now);
-                if let Err(e) = &sent {
-                    eprintln!("cue: desk: couldn't send {sid} its item: {e}");
-                }
-                // Your note or send-back (#437): how it went, on its step.
-                if !steps.is_empty() {
-                    h.desk_went(&steps, &sent);
-                }
-                if let Some((id, name)) = restart {
-                    h.desk_restart_went(&id, &name, sent);
-                }
-            });
-        }
+        self.desk_send_out(std::mem::take(&mut fx.sends), went_with, &fx.restarts, &fx.now);
         // A session's words for its lead (#474), to whoever leads that Desk as they go; when they can't, it's told.
         for (desk, sid, text, words) in std::mem::take(&mut fx.to_lead) {
             self.later(0, move |h| {
@@ -593,17 +516,7 @@ impl Hub {
             self.desk_lands_ask(p);
         }
         self.desk_ask_first(fx.uses);
-        for (project, id) in fx.news {
-            let first = self.write(|st| {
-                if !st.desk.item(&id).is_some_and(|i| i.project == project) { return false; }
-                let fresh = st.desk.run.fresh.entry(project.clone()).or_default();
-                fresh.push(id);
-                fresh.len() == 1
-            });
-            if first {
-                self.later(NEWS_WAIT_MS, move |h| h.desk_tell_fresh(&project));
-            }
-        }
+        self.desk_news(fx.news);
         self.desk_later(fx.starts, fx.checked);
         for id in fx.closes {
             self.later(0, move |h| h.desk_close_on_check(&id));
@@ -614,14 +527,82 @@ impl Hub {
         if fx.land {
             self.later(0, |h| h.desk_land_line());
         }
-        for (desk, on, name, sid, why) in fx.pause {
+        self.desk_pause_and_cleanup(fx.pause, fx.cleanup);
+    }
+
+    /// `desk_done`'s saves, under the Desk's save lock: features settled, sends and holders stamped, then the items,
+    /// drops, steps and members written.
+    fn desk_save(&self, fx: &mut Effects) {
+        // Each save writes what the store holds now (saves.rs), in the order the saves run.
+        let _saving = crate::locking::lock(&self.saves.desk, "desk saves");
+        let now = now_ms();
+        // A piece changed: its feature as its pieces now have it (#282), saved with them.
+        self.write(|st| {
+            for f in crate::desk::hub::turn::features::features_of(st, &fx.items) {
+                crate::desk::hub::turn::features::settle(st, &f, now, fx);
+            }
+        });
+        let (items, decisions) = self.write(|st| stamp_sends(st, fx, now));
+        for it in &items {
+            crate::db::desk_put_item(it);
+        }
+        for id in &fx.dropped {
+            crate::db::desk_drop_item(id);
+        }
+        for d in &decisions {
+            crate::db::desk_put_decision(d);
+        }
+        fx.joined.iter().filter(|(project, _)| !project.starts_with("desk-") || self.read(|st| st.desk.spaces.contains_key(project))).for_each(|(project, sid)| crate::db::desk_put_member(project, sid, now));
+    }
+
+    /// `desk_done`'s messages, each sent off this thread with the steps that go with it.
+    fn desk_send_out(&self, sends: Vec<(String, String)>, went_with: Vec<Vec<String>>, restarts: &[(String, String, String)], now_ones: &[String]) {
+        for ((sid, text), steps) in sends.into_iter().zip(went_with) {
+            // A Resume's send says how it went, on its item (#291).
+            let restart = restarts.iter().find(|(_, to, _)| *to == sid).map(|(id, _, name)| (id.clone(), name.clone()));
+            let now = now_ones.contains(&sid);
+            // Off this thread: typing into a terminal session waits for it to take the message.
+            self.later(0, move |h| {
+                let sent = h.send_to_session(&sid, &text, &[], now);
+                if let Err(e) = &sent {
+                    eprintln!("cue: desk: couldn't send {sid} its item: {e}");
+                }
+                // Your note or send-back (#437): how it went, on its step.
+                if !steps.is_empty() {
+                    h.desk_went(&steps, &sent);
+                }
+                if let Some((id, name)) = restart {
+                    h.desk_restart_went(&id, &name, sent);
+                }
+            });
+        }
+    }
+
+    /// New items for their lead: the first since it was last told starts the wait before it's told.
+    fn desk_news(&self, news: Vec<(String, String)>) {
+        for (project, id) in news {
+            let first = self.write(|st| {
+                if !st.desk.item(&id).is_some_and(|i| i.project == project) { return false; }
+                let fresh = st.desk.run.fresh.entry(project.clone()).or_default();
+                fresh.push(id);
+                fresh.len() == 1
+            });
+            if first {
+                self.later(NEWS_WAIT_MS, move |h| h.desk_tell_fresh(&project));
+            }
+        }
+    }
+
+    /// The lead's PAUSE and RESUME, and cleanup cards answered or brought to you, each a moment later.
+    fn desk_pause_and_cleanup(&self, pause: Vec<(String, bool, String, String, String)>, cleanup: Vec<(String, Option<String>)>) {
+        for (desk, on, name, sid, why) in pause {
             self.later(0, move |h| {
                 if let Err(e) = h.desk_pause_set(&desk, on, (&name, &sid), &why) {
                     eprintln!("cue: desk: the lead's {} of {desk}: {e}", if on { "PAUSE" } else { "RESUME" });
                 }
             });
         }
-        for (card, answer) in fx.cleanup {
+        for (card, answer) in cleanup {
             self.later(0, move |h| match answer {
                 Some(text) => h.cleanup_answered(&card, &text),
                 None => h.cleanup_to_you(&card),
@@ -654,4 +635,56 @@ impl Hub {
         }
         self.changed();
     }
+}
+
+/// Whether a change left nothing for `desk_done` to do.
+fn left_nothing(fx: &Effects) -> bool {
+    fx.items.is_empty() && fx.said.is_empty() && fx.dropped.is_empty() && fx.decisions.is_empty() && fx.sends.is_empty() && fx.asks.is_empty() && fx.lands.is_empty() && fx.news.is_empty() && fx.starts.is_empty() && fx.joined.is_empty() && fx.uses.is_empty() && fx.stopped.is_empty() && fx.trees_gone.is_empty() && fx.closes.is_empty() && fx.on_main.is_empty() && fx.cleanup.is_empty() && !fx.land && fx.pause.is_empty() && fx.to_lead.is_empty()
+}
+
+/// Steps whose message goes now, by the send that carries it; the rest Cue keeps (a paused Desk, an item waiting
+/// for a copy: it goes with the item's start), and their steps say so.
+fn went_with(fx: &mut Effects) -> (Vec<Vec<String>>, Vec<String>) {
+    let tracked = std::mem::take(&mut fx.went);
+    let mut went_with: Vec<Vec<String>> = fx.sends.iter().map(|_| Vec::new()).collect();
+    let mut kept_back = Vec::new();
+    for (step, to, item) in tracked {
+        match fx.sends.iter().position(|(s, text)| *s == to && text.contains(&format!("#{item} ("))) {
+            Some(n) => went_with[n].push(step),
+            None => kept_back.push(step),
+        }
+    }
+    (went_with, kept_back)
+}
+
+/// In the store: each send kept as sent to its session, and items at work stamped for their holder; then the items
+/// and steps to save.
+fn stamp_sends(st: &mut Store, fx: &Effects, now: u64) -> (Vec<DeskItem>, Vec<DeskDecision>) {
+    for (to, text) in &fx.sends {
+        let sent = st.desk.run.sent.entry(to.clone()).or_default();
+        sent.push(text.clone());
+        if sent.len() > 8 {
+            sent.remove(0);
+        }
+    }
+    // An item at work with a holder it wasn't stamped for: its work (and files) start now.
+    for id in &fx.items {
+        let Some(it) = st.desk.item_mut(id).filter(|i| i.state == "working") else { continue };
+        let sid = it.holder.as_ref().map(|h| h.sid.clone()).unwrap_or_default();
+        if sid.is_empty() {
+            continue;
+        }
+        if it.held_from.as_ref().is_none_or(|(by, _)| *by != sid) {
+            it.held_by(&sid, now);
+        }
+        // Sent to its holder (again): a stall on it counts from here (desk/hub/stall/stall.rs).
+        if fx.sends.iter().any(|(to, _)| *to == sid) {
+            st.desk.run.sent_at.insert(id.clone(), (sid, now));
+        }
+    }
+    let mut ids: Vec<&String> = fx.items.iter().collect();
+    ids.extend(fx.said.iter().filter(|id| !fx.items.contains(id)));
+    let items: Vec<DeskItem> = ids.into_iter().filter_map(|id| st.desk.item(id).cloned()).collect();
+    let decisions: Vec<DeskDecision> = st.desk.decisions.iter().filter(|d| fx.decisions.contains(&d.id)).cloned().collect();
+    (items, decisions)
 }

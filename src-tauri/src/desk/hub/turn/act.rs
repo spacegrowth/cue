@@ -2,7 +2,7 @@
 //! send back, start now, put before, pick an option, drop) and undo.
 
 use crate::desk::hub::prelude::*;
-use crate::desk::{DeskDecision, DeskItem};
+use crate::desk::{DeskDecision, DeskItem, Holder};
 use crate::desk::hub::core::members::join;
 use crate::desk::hub::core::desk::{Effects, NewStart, ask_of, at_work, holder_of, rule_of, secs};
 use crate::desk::hub::core::view::shown;
@@ -45,212 +45,273 @@ fn acted_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result
     // "park" (#391); "hold", its first name, still works.
     let act = if act == "park" { "hold" } else { act };
     if act == "hold" || (act == "start_now" && held) {
-        let project = st.desk.item(id).ok_or("no such item")?.project.clone();
-        let (words, whom) = if act == "hold" {
-            crate::desk::hub::stall::unstick::hold(st, "You", id, text, now, &mut fx).map_err(|e| e.split_once(": ").map_or(e.clone(), |(_, w)| w.to_string()))?;
-            ("Parked it", "nothing starts it till you press Start")
-        } else {
-            crate::desk::hub::stall::unstick::unhold(st, id, now, &mut fx)?;
-            ("Start", "no longer parked: queued as a new item")
-        };
-        you_wrote(st, &project, id, words, whom, now, &mut fx);
+        park(st, id, act, text, now, &mut fx)?;
         return Ok(fx);
     }
-    let busy = st.desk.item(id).and_then(|i| i.holder.as_ref()).filter(|h| at_work(st, h)).map(|h| h.name.clone());
-    // Picked, but its build item dropped since: it can be undone, and picked again.
-    let build_gone = st.desk.item(id).is_some_and(|i| !i.built_as.is_empty() && st.desk.item(&i.built_as).is_none());
-    // In review: its pull request stays open on GitHub when it's sent back or dropped (Cue never closes it).
-    let pr = st.desk.item(id).and_then(|i| i.finish.as_ref().filter(|f| i.state == "finishing" && f.step == "review" && !f.pr.is_empty())).map(|f| f.pr.clone());
-    if pr.is_some() && matches!(act, "send_back" | "drop") {
-        st.desk.run.pr_looked.remove(id);
-        st.desk.run.pr_misses.remove(id);
-    }
-    let pr_open = pr.map(|u| format!(" Its pull request stays open on GitHub: {u}")).unwrap_or_default();
-    let rule = st.desk.item(id).map(|i| rule_of(st, &i.project)).unwrap_or_default();
-    let it = st.desk.item_mut(id).ok_or("no such item")?;
-    let holder = it.holder.clone();
-    match act {
-        "looks_right" => {
-            it.state = "done".into();
-            it.after = None;
-            it.close_on_check = false;
-            it.done_at = Some(secs(now));
-            release(st, id, now, &mut fx);
-        }
-        // Done, skip install (#490): landed on main and waiting for its install, it's done now with no install of its
-        // own. Its work stays on main, so the next install (whatever starts it) has it; its holder is told.
-        "skip_install" => {
-            if !(it.state == "finishing" && it.finish.as_ref().is_some_and(|f| f.step == "queued")) {
-                return Err("It isn't waiting for an install".into());
-            }
-            if let Some(f) = it.finish.as_mut() {
-                (f.step, f.at, f.now, f.question, f.wait) = ("checked".into(), now, false, String::new(), String::new());
-            }
-            (it.state, it.after, it.close_on_check, it.done_at) = ("done".into(), None, false, Some(secs(now)));
-            let (title, project) = (it.title.clone(), it.project.clone());
-            release(st, id, now, &mut fx);
-            you_wrote(st, &project, id, "Done, skip install", "closed without an install", now, &mut fx);
-            if let Some(h) = holder {
-                let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
-                let message = format!("{crew}Desk item #{id} ({title}) is done: closed without an install, none is needed for it. Its work stays on main and goes into the next install. Nothing more to do on it.");
-                send_step(st, id, h.to(), message, now, &mut fx);
-            }
-        }
-        // Undo on a done item: back to waiting on you, nothing in the work touched (a commit made stays; one still
-        // waiting isn't made).
-        "reopen" => {
-            if it.state != "done" {
-                return Err("It isn't done: nothing to undo".into());
-            }
-            // Done by your pick on its mocks: its build item carries it on.
-            if !it.picked.is_empty() && !build_gone {
-                return Err(format!("Option {} is picked: it's being built as #{}", it.picked, it.built_as));
-            }
-            (it.picked, it.built_as) = (String::new(), String::new());
-            (it.state, it.done_at, it.commit_wait) = ("to_check".into(), None, None);
-        }
-        "send_back" => {
-            let h = holder.ok_or("nobody holds it yet")?;
-            let words = text.trim().to_string();
-            if words.is_empty() {
-                return Err("Say what isn't right first: type it in the box, then Send back".into());
-            }
-            (it.state, it.done_at, it.finish, it.close_on_check) = ("working".into(), None, None, false);
-            it.check = None;
-            it.mark_reopened();
-            // Kept on the DONE it answers, so its card says why (the pictures, added by ipc desk_item_act, counted).
-            if let Some(c) = it.checks.last_mut() {
-                let (why, pics) = words.split_once("\nPictures with it").unwrap_or((&words, ""));
-                (c.back, c.back_pics) = (why.trim().to_string(), pics.matches('`').count() / 2);
-            }
-            let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
-            let (title, project) = (it.title.clone(), it.project.clone());
-            you_wrote(st, &project, id, words.split_once("\nPictures with it").map_or(words.as_str(), |(w, _)| w).trim(), &format!("sent back to {}", h.name), now, &mut fx);
-            let message = format!("{crew}Desk item #{id} ({title}) isn't done: {words}\nIts fixes stay in #{id}; don't add new items for them. Say DONE: #{id} when it is.\n{}{pr_open}", crate::desk::check_words(id));
-            fx.backs.push((id.to_string(), message.clone()));
-            send_step(st, id, h.to(), message, now, &mut fx);
-        }
-        // A note from its page to whoever holds it (#437), at any stage but to check (a Send back, above): noted on
-        // it first, then sent as about the item ("About #12 (…): …"), kept in Cue while that session works, and how
-        // it went kept on its step, so the page says when it didn't go and offers Retry.
-        "note" => {
-            let h = holder.filter(|_| !matches!(it.state.as_str(), "done" | "dropped")).ok_or("nobody holds it: it goes to the lead")?;
-            let words = text.trim().to_string();
-            if words.is_empty() {
-                return Err("nothing written".into());
-            }
-            // Its holder asked you something as its turn ended: the answer goes where that ask came from.
-            let ask = it.ask.as_ref().and_then(|a| a.get("sid")).and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(str::to_string);
-            let to = ask.unwrap_or_else(|| h.to().to_string());
-            let mate = if h.kind == "crew" { format!(", for {}", h.name) } else { String::new() };
-            let message = format!("About #{id} ({}){mate}: {words}", it.title);
-            let project = it.project.clone();
-            you_wrote(st, &project, id, words.split_once("\nPictures with it").map_or(words.as_str(), |(w, _)| w).trim(), &format!("to {}", h.name), now, &mut fx);
-            send_step(st, id, &to, message, now, &mut fx);
-            fx.items.push(id.to_string());
-            return Ok(fx);
-        }
-        // Waiting for a free copy (#401), its holder's (sent back, or given out with all copies in use): it starts now
-        // where its holder is, as the lead's START does, with its words and your Send back's.
-        "start_now" if it.state == "queued" && it.tree_wait && holder.is_some() => {
-            (it.after, it.tree_wait, it.no_copy_wait, it.state) = (None, false, true, "working".into());
-            it.tree_wait_repo.clear();
-            let words = crate::desk::handed_words(it, "", &rule);
-            let (to, project) = (holder.as_ref().map(|h| h.to().to_string()).unwrap_or_default(), it.project.clone());
-            fx.sends.push((to, words));
-            you_wrote(st, &project, id, "Start now", "without waiting for a free working folder", now, &mut fx);
-        }
-        // Nobody holds it yet: a new session of its project takes it (desk_start_new).
-        "start_now" if holder.is_none() => {
-            // Tried again: "couldn't start" goes until this try says how it went.
-            it.start_failed.clear();
-            it.after = None;
-            let s = NewStart { project: it.project.clone(), id: id.into(), why: String::new(), by: "You".into(), by_sid: String::new() };
-            fx.starts.push(s);
-        }
-        // Queued after another item, for its holder: it starts now with that holder, handed the item as a
-        // release would (it never began, so it isn't a Resume); the item it waited on is left as it is.
-        "start_now" if it.state == "queued" && holder.is_some() => {
-            (it.after, it.state) = (None, "working".into());
-            let words = crate::desk::handed_words(it, "", &rule);
-            let (to, project) = (holder.as_ref().map(|h| h.to().to_string()).unwrap_or_default(), it.project.clone());
-            fx.sends.push((to, words));
-            you_wrote(st, &project, id, "Start now", "without waiting for the item ahead", now, &mut fx);
-        }
-        // Resume (an item at work whose holder isn't on it: cut off by a crash, a quit, or a turn that ended short of
-        // DONE): its holder's own session is woken to pick up where it left off (#375), not handed the item afresh.
-        "start_now" => {
-            let h = holder.ok_or("nobody holds it yet")?;
-            if let Some(name) = busy.filter(|_| it.state == "working") {
-                return Err(format!("{name} is at work on it now"));
-            }
-            it.after = None;
-            it.state = "working".into();
-            it.restart = format!("Resume: waking {}", h.name);
-            it.check = None;
-            let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
-            let words = format!("{crew}Desk item #{id} ({}): you stopped before it was done. Pick up where you left off.\nSay DONE: #{id} on a line of its own when it's done.\n{}", it.title, crate::desk::check_words(id));
-            let project = it.project.clone();
-            you_wrote(st, &project, id, "Resume", &format!("to {}", h.name), now, &mut fx);
-            fx.restarts.push((id.to_string(), h.to().to_string(), h.name.clone()));
-            fx.sends.push((h.to().to_string(), words));
-        }
-        // What you wrote on its page, to its lead or its holder (sent by the window): one of its Steps, with whom it
-        // went to. Nothing else about it changes (nor `updated`: it isn't news to you).
-        "wrote_lead" | "wrote_holder" => {
-            let words = text.trim().to_string();
-            if words.is_empty() {
-                return Err("nothing written".into());
-            }
-            let project = it.project.clone();
-            // To its holder, about an item at work: the turn it ended on before your note is no longer what it waits
-            // on (#419). A stall (a question, a stop) counts from here, so it leaves Waiting on you for at work while
-            // your note waits to go in or is read; a turn that ends on it after that is new.
-            if act == "wrote_holder" && it.state == "working" {
-                if let Some(sid) = holder.as_ref().filter(|h| h.kind != "crew").map(|h| h.sid.clone()) {
-                    st.desk.run.sent_at.insert(id.to_string(), (sid, now));
-                }
-            }
-            let to = if act == "wrote_lead" { st.desk.lead.get(&project).map(|l| l.name.clone()) } else { holder.map(|h| h.name) };
-            you_wrote(st, &project, id, &words, &to.map_or(String::new(), |n| format!("to {n}")), now, &mut fx);
-            return Ok(fx);
-        }
-        "put_before" => put_before(st, id, now, &mut fx)?,
-        "reorder" => {
-            reorder(st, id, text, &mut fx)?;
-            return Ok(fx);
-        }
-        "drop" => {
-            let gone = st.desk.items.iter().position(|i| i.id == id).map(|p| st.desk.items.remove(p));
-            if let Some(h) = gone.as_ref().and_then(|g| g.holder.as_ref().filter(|_| g.state == "working")) {
-                fx.sends.push((h.to().to_string(), format!("Desk item #{id} was dropped: stop work on it.")));
-            }
-            // The build item of a pick on mocks: the mocks item is no longer picked, so it can be picked again.
-            let built = gone.as_ref().map(|g| g.builds.clone()).filter(|b| !b.is_empty());
-            if let Some(m) = built.as_deref().and_then(|b| st.desk.item_mut(b)).filter(|m| m.built_as == id) {
-                let (project, mid, option) = (m.project.clone(), m.id.clone(), std::mem::take(&mut m.picked));
-                (m.built_as, m.updated) = (String::new(), secs(now));
-                fx.items.push(mid.clone());
-                you_wrote(st, &project, &mid, &format!("Dropped #{id}, the build of option {option}"), "it can be picked again", now, &mut fx);
-            }
-            if let Some(g) = gone.as_ref().filter(|_| !pr_open.is_empty()) {
-                let project = g.project.clone();
-                you_wrote(st, &project, id, &format!("Dropped #{id}.{pr_open}"), "", now, &mut fx);
-            }
-            // What waited on it waits on what it waited on, or starts now.
-            let ahead = gone.as_ref().and_then(|g| g.after.clone());
-            fx.trees_gone.extend(gone.filter(|g| g.tree.is_some()));
-            fx.dropped.push(id.to_string());
-            hand_on(st, id, ahead.as_deref(), now, &mut fx);
-            return Ok(fx);
-        }
-        _ => return Err(format!("unknown act: {act}")),
+    let stamp = apply(st, id, act, text, now, &mut fx)?;
+    if !stamp {
+        return Ok(fx);
     }
     if let Some(it) = st.desk.item_mut(id) {
         it.updated = secs(now);
     }
     fx.items.push(id.to_string());
     Ok(fx)
+}
+
+/// Act `act` (as `acted_on` settled it) done on item `id`: whether the item is stamped as changed afterwards.
+fn apply(st: &mut Store, id: &str, act: &str, text: &str, now: u64, fx: &mut Effects) -> Result<bool, String> {
+    let busy = st.desk.item(id).and_then(|i| i.holder.as_ref()).filter(|h| at_work(st, h)).map(|h| h.name.clone());
+    // Picked, but its build item dropped since: it can be undone, and picked again.
+    let build_gone = st.desk.item(id).is_some_and(|i| !i.built_as.is_empty() && st.desk.item(&i.built_as).is_none());
+    let pr_open = pr_open(st, id, act);
+    let rule = st.desk.item(id).map(|i| rule_of(st, &i.project)).unwrap_or_default();
+    let holder = st.desk.item(id).ok_or("no such item")?.holder.clone();
+    // Whether the item is stamped as changed afterwards: the acts that answer at once say false.
+    let stamp = match act {
+        "looks_right" => looks_right(st, id, now, fx)?,
+        "skip_install" => skip_install(st, id, holder, now, fx)?,
+        "reopen" => reopen(st, id, build_gone)?,
+        "send_back" => send_back(st, id, holder, text, &pr_open, now, fx)?,
+        "note" => note_to_holder(st, id, holder, text, now, fx)?,
+        "start_now" => start_now(st, id, holder, busy, &rule, now, fx)?,
+        "wrote_lead" | "wrote_holder" => wrote(st, id, act, holder, text, now, fx)?,
+        "put_before" => {
+            put_before(st, id, now, fx)?;
+            true
+        }
+        "reorder" => {
+            reorder(st, id, text, fx)?;
+            false
+        }
+        "drop" => drop_item(st, id, &pr_open, now, fx),
+        _ => return Err(format!("unknown act: {act}")),
+    };
+    Ok(stamp)
+}
+
+/// Item `id`, to change: an act's own step finds it again, as `acted_on` found it.
+fn item_of<'a>(st: &'a mut Store, id: &str) -> Result<&'a mut DeskItem, String> {
+    st.desk.item_mut(id).ok_or_else(|| "no such item".to_string())
+}
+
+/// Park (`hold`) item `id`, or Start on a parked one: new again, for the lead to route.
+fn park(st: &mut Store, id: &str, act: &str, text: &str, now: u64, fx: &mut Effects) -> Result<(), String> {
+    let project = st.desk.item(id).ok_or("no such item")?.project.clone();
+    let (words, whom) = if act == "hold" {
+        crate::desk::hub::stall::unstick::hold(st, "You", id, text, now, fx).map_err(|e| e.split_once(": ").map_or(e.clone(), |(_, w)| w.to_string()))?;
+        ("Parked it", "nothing starts it till you press Start")
+    } else {
+        crate::desk::hub::stall::unstick::unhold(st, id, now, fx)?;
+        ("Start", "no longer parked: queued as a new item")
+    };
+    you_wrote(st, &project, id, words, whom, now, fx);
+    Ok(())
+}
+
+/// In review: its pull request stays open on GitHub when it's sent back or dropped (Cue never closes it). The words
+/// that say so ("" when it has none).
+fn pr_open(st: &mut Store, id: &str, act: &str) -> String {
+    let pr = st.desk.item(id).and_then(|i| i.finish.as_ref().filter(|f| i.state == "finishing" && f.step == "review" && !f.pr.is_empty())).map(|f| f.pr.clone());
+    if pr.is_some() && matches!(act, "send_back" | "drop") {
+        st.desk.run.pr_looked.remove(id);
+        st.desk.run.pr_misses.remove(id);
+    }
+    pr.map(|u| format!(" Its pull request stays open on GitHub: {u}")).unwrap_or_default()
+}
+
+fn looks_right(st: &mut Store, id: &str, now: u64, fx: &mut Effects) -> Result<bool, String> {
+    let it = item_of(st, id)?;
+    it.state = "done".into();
+    it.after = None;
+    it.close_on_check = false;
+    it.done_at = Some(secs(now));
+    release(st, id, now, fx);
+    Ok(true)
+}
+
+// Done, skip install (#490): landed on main and waiting for its install, it's done now with no install of its
+// own. Its work stays on main, so the next install (whatever starts it) has it; its holder is told.
+fn skip_install(st: &mut Store, id: &str, holder: Option<Holder>, now: u64, fx: &mut Effects) -> Result<bool, String> {
+    let it = item_of(st, id)?;
+    if !(it.state == "finishing" && it.finish.as_ref().is_some_and(|f| f.step == "queued")) {
+        return Err("It isn't waiting for an install".into());
+    }
+    if let Some(f) = it.finish.as_mut() {
+        (f.step, f.at, f.now, f.question, f.wait) = ("checked".into(), now, false, String::new(), String::new());
+    }
+    (it.state, it.after, it.close_on_check, it.done_at) = ("done".into(), None, false, Some(secs(now)));
+    let (title, project) = (it.title.clone(), it.project.clone());
+    release(st, id, now, fx);
+    you_wrote(st, &project, id, "Done, skip install", "closed without an install", now, fx);
+    if let Some(h) = holder {
+        let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
+        let message = format!("{crew}Desk item #{id} ({title}) is done: closed without an install, none is needed for it. Its work stays on main and goes into the next install. Nothing more to do on it.");
+        send_step(st, id, h.to(), message, now, fx);
+    }
+    Ok(true)
+}
+
+// Undo on a done item: back to waiting on you, nothing in the work touched (a commit made stays; one still
+// waiting isn't made).
+fn reopen(st: &mut Store, id: &str, build_gone: bool) -> Result<bool, String> {
+    let it = item_of(st, id)?;
+    if it.state != "done" {
+        return Err("It isn't done: nothing to undo".into());
+    }
+    // Done by your pick on its mocks: its build item carries it on.
+    if !it.picked.is_empty() && !build_gone {
+        return Err(format!("Option {} is picked: it's being built as #{}", it.picked, it.built_as));
+    }
+    (it.picked, it.built_as) = (String::new(), String::new());
+    (it.state, it.done_at, it.commit_wait) = ("to_check".into(), None, None);
+    Ok(true)
+}
+
+fn send_back(st: &mut Store, id: &str, holder: Option<Holder>, text: &str, pr_open: &str, now: u64, fx: &mut Effects) -> Result<bool, String> {
+    let it = item_of(st, id)?;
+    let h = holder.ok_or("nobody holds it yet")?;
+    let words = text.trim().to_string();
+    if words.is_empty() {
+        return Err("Say what isn't right first: type it in the box, then Send back".into());
+    }
+    (it.state, it.done_at, it.finish, it.close_on_check) = ("working".into(), None, None, false);
+    it.check = None;
+    it.mark_reopened();
+    // Kept on the DONE it answers, so its card says why (the pictures, added by ipc desk_item_act, counted).
+    if let Some(c) = it.checks.last_mut() {
+        let (why, pics) = words.split_once("\nPictures with it").unwrap_or((&words, ""));
+        (c.back, c.back_pics) = (why.trim().to_string(), pics.matches('`').count() / 2);
+    }
+    let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
+    let (title, project) = (it.title.clone(), it.project.clone());
+    you_wrote(st, &project, id, words.split_once("\nPictures with it").map_or(words.as_str(), |(w, _)| w).trim(), &format!("sent back to {}", h.name), now, fx);
+    let message = format!("{crew}Desk item #{id} ({title}) isn't done: {words}\nIts fixes stay in #{id}; don't add new items for them. Say DONE: #{id} when it is.\n{}{pr_open}", crate::desk::check_words(id));
+    fx.backs.push((id.to_string(), message.clone()));
+    send_step(st, id, h.to(), message, now, fx);
+    Ok(true)
+}
+
+// A note from its page to whoever holds it (#437), at any stage but to check (a Send back, above): noted on
+// it first, then sent as about the item ("About #12 (…): …"), kept in Cue while that session works, and how
+// it went kept on its step, so the page says when it didn't go and offers Retry.
+fn note_to_holder(st: &mut Store, id: &str, holder: Option<Holder>, text: &str, now: u64, fx: &mut Effects) -> Result<bool, String> {
+    let it = item_of(st, id)?;
+    let h = holder.filter(|_| !matches!(it.state.as_str(), "done" | "dropped")).ok_or("nobody holds it: it goes to the lead")?;
+    let words = text.trim().to_string();
+    if words.is_empty() {
+        return Err("nothing written".into());
+    }
+    // Its holder asked you something as its turn ended: the answer goes where that ask came from.
+    let ask = it.ask.as_ref().and_then(|a| a.get("sid")).and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(str::to_string);
+    let to = ask.unwrap_or_else(|| h.to().to_string());
+    let mate = if h.kind == "crew" { format!(", for {}", h.name) } else { String::new() };
+    let message = format!("About #{id} ({}){mate}: {words}", it.title);
+    let project = it.project.clone();
+    you_wrote(st, &project, id, words.split_once("\nPictures with it").map_or(words.as_str(), |(w, _)| w).trim(), &format!("to {}", h.name), now, fx);
+    send_step(st, id, &to, message, now, fx);
+    fx.items.push(id.to_string());
+    Ok(false)
+}
+
+fn start_now(st: &mut Store, id: &str, holder: Option<Holder>, busy: Option<String>, rule: &str, now: u64, fx: &mut Effects) -> Result<bool, String> {
+    let it = item_of(st, id)?;
+    // Waiting for a free copy (#401), its holder's (sent back, or given out with all copies in use): it starts now
+    // where its holder is, as the lead's START does, with its words and your Send back's.
+    if it.state == "queued" && it.tree_wait && holder.is_some() {
+        (it.after, it.tree_wait, it.no_copy_wait, it.state) = (None, false, true, "working".into());
+        it.tree_wait_repo.clear();
+        let words = crate::desk::handed_words(it, "", rule);
+        let (to, project) = (holder.as_ref().map(|h| h.to().to_string()).unwrap_or_default(), it.project.clone());
+        fx.sends.push((to, words));
+        you_wrote(st, &project, id, "Start now", "without waiting for a free working folder", now, fx);
+    // Nobody holds it yet: a new session of its project takes it (desk_start_new).
+    } else if holder.is_none() {
+        // Tried again: "couldn't start" goes until this try says how it went.
+        it.start_failed.clear();
+        it.after = None;
+        let s = NewStart { project: it.project.clone(), id: id.into(), why: String::new(), by: "You".into(), by_sid: String::new() };
+        fx.starts.push(s);
+    // Queued after another item, for its holder: it starts now with that holder, handed the item as a
+    // release would (it never began, so it isn't a Resume); the item it waited on is left as it is.
+    } else if it.state == "queued" && holder.is_some() {
+        (it.after, it.state) = (None, "working".into());
+        let words = crate::desk::handed_words(it, "", rule);
+        let (to, project) = (holder.as_ref().map(|h| h.to().to_string()).unwrap_or_default(), it.project.clone());
+        fx.sends.push((to, words));
+        you_wrote(st, &project, id, "Start now", "without waiting for the item ahead", now, fx);
+    } else {
+        resume(st, id, holder, busy, now, fx)?;
+    }
+    Ok(true)
+}
+
+// Resume (an item at work whose holder isn't on it: cut off by a crash, a quit, or a turn that ended short of
+// DONE): its holder's own session is woken to pick up where it left off (#375), not handed the item afresh.
+fn resume(st: &mut Store, id: &str, holder: Option<Holder>, busy: Option<String>, now: u64, fx: &mut Effects) -> Result<(), String> {
+    let it = item_of(st, id)?;
+    let h = holder.ok_or("nobody holds it yet")?;
+    if let Some(name) = busy.filter(|_| it.state == "working") {
+        return Err(format!("{name} is at work on it now"));
+    }
+    it.after = None;
+    it.state = "working".into();
+    it.restart = format!("Resume: waking {}", h.name);
+    it.check = None;
+    let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
+    let words = format!("{crew}Desk item #{id} ({}): you stopped before it was done. Pick up where you left off.\nSay DONE: #{id} on a line of its own when it's done.\n{}", it.title, crate::desk::check_words(id));
+    let project = it.project.clone();
+    you_wrote(st, &project, id, "Resume", &format!("to {}", h.name), now, fx);
+    fx.restarts.push((id.to_string(), h.to().to_string(), h.name.clone()));
+    fx.sends.push((h.to().to_string(), words));
+    Ok(())
+}
+
+// What you wrote on its page, to its lead or its holder (sent by the window): one of its Steps, with whom it
+// went to. Nothing else about it changes (nor `updated`: it isn't news to you).
+fn wrote(st: &mut Store, id: &str, act: &str, holder: Option<Holder>, text: &str, now: u64, fx: &mut Effects) -> Result<bool, String> {
+    let it = item_of(st, id)?;
+    let words = text.trim().to_string();
+    if words.is_empty() {
+        return Err("nothing written".into());
+    }
+    let project = it.project.clone();
+    // To its holder, about an item at work: the turn it ended on before your note is no longer what it waits
+    // on (#419). A stall (a question, a stop) counts from here, so it leaves Waiting on you for at work while
+    // your note waits to go in or is read; a turn that ends on it after that is new.
+    if act == "wrote_holder" && it.state == "working" {
+        if let Some(sid) = holder.as_ref().filter(|h| h.kind != "crew").map(|h| h.sid.clone()) {
+            st.desk.run.sent_at.insert(id.to_string(), (sid, now));
+        }
+    }
+    let to = if act == "wrote_lead" { st.desk.lead.get(&project).map(|l| l.name.clone()) } else { holder.map(|h| h.name) };
+    you_wrote(st, &project, id, &words, &to.map_or(String::new(), |n| format!("to {n}")), now, fx);
+    Ok(false)
+}
+
+fn drop_item(st: &mut Store, id: &str, pr_open: &str, now: u64, fx: &mut Effects) -> bool {
+    let gone = st.desk.items.iter().position(|i| i.id == id).map(|p| st.desk.items.remove(p));
+    if let Some(h) = gone.as_ref().and_then(|g| g.holder.as_ref().filter(|_| g.state == "working")) {
+        fx.sends.push((h.to().to_string(), format!("Desk item #{id} was dropped: stop work on it.")));
+    }
+    // The build item of a pick on mocks: the mocks item is no longer picked, so it can be picked again.
+    let built = gone.as_ref().map(|g| g.builds.clone()).filter(|b| !b.is_empty());
+    if let Some(m) = built.as_deref().and_then(|b| st.desk.item_mut(b)).filter(|m| m.built_as == id) {
+        let (project, mid, option) = (m.project.clone(), m.id.clone(), std::mem::take(&mut m.picked));
+        (m.built_as, m.updated) = (String::new(), secs(now));
+        fx.items.push(mid.clone());
+        you_wrote(st, &project, &mid, &format!("Dropped #{id}, the build of option {option}"), "it can be picked again", now, fx);
+    }
+    if let Some(g) = gone.as_ref().filter(|_| !pr_open.is_empty()) {
+        let project = g.project.clone();
+        you_wrote(st, &project, id, &format!("Dropped #{id}.{pr_open}"), "", now, fx);
+    }
+    // What waited on it waits on what it waited on, or starts now.
+    let ahead = gone.as_ref().and_then(|g| g.after.clone());
+    fx.trees_gone.extend(gone.filter(|g| g.tree.is_some()));
+    fx.dropped.push(id.to_string());
+    hand_on(st, id, ahead.as_deref(), now, fx);
+    false
 }
 
 /// Your words about item `id`, as one of its Steps (`whom`: where they went), by you: nothing to undo.

@@ -409,40 +409,11 @@ impl Hub {
         }
         // After landing, your own steps (desk/lands.rs): in order in the project's main folder, each stopped past its cap;
         // the first that fails stops the rest, and the item waits for you, saying which. No lock is held here.
-        if cue.is_none() && !top.is_empty() {
-            let l = crate::desk::lands::lands_of(&project, &top);
-            if l.after == "command" {
-                if let Err(e) = crate::desk::lands::run_steps(&top, &l.after_steps) {
-                    return self.finish_ask(id, "after_failed", &format!("It landed, but after landing \"{}\" {}", e.step, e.why), &e.said);
-                }
-            }
+        if cue.is_none() && !top.is_empty() && self.finish_after_steps(id, &project, &top) {
+            return;
         }
-        // Its own work changed nothing the app runs (mocks, notes, plans, tests): to check now, no install, whatever
-        // else on the main line waits for one (#408).
-        if cue.is_some() && self.runs_nothing(id, &top) {
-            self.finish_set(id, |i| {
-                if let Some(f) = i.finish.as_mut() {
-                    (f.repo, f.commit, f.mocks) = (top.clone(), head.clone(), true);
-                }
-            });
-            return self.finish_checked(id);
-        }
-        // Only the window's files changed since the running Cue's build: they're served in place, no install.
-        let in_place = if cue.is_some() { self.ui_in_place(&top, &head) } else { Ok(false) };
-        if !matches!(in_place, Ok(false)) {
-            self.finish_set(id, |i| {
-                if let Some(f) = i.finish.as_mut() {
-                    (f.repo, f.commit) = (top.clone(), head.clone());
-                }
-            });
-            // Its window doesn't load: back to its holder with what's wrong, as a failed install is.
-            if let Err(said) = in_place {
-                if let Some(it) = self.read(|st| st.desk.item(id).cloned()) {
-                    self.finish_failed(&it, WINDOW_BROKEN, "failed", &said);
-                }
-                return;
-            }
-            return self.finish_checked(id);
+        if self.finish_in_place(id, &top, &head, cue.is_some()) {
+            return;
         }
         let queued = cue.is_some();
         self.finish_set(id, |i| {
@@ -459,6 +430,53 @@ impl Hub {
         } else {
             self.finish_checked(id);
         }
+    }
+
+    /// After landing, item `id`'s project's own steps in `top`: true when one failed (it waits for you, saying which).
+    fn finish_after_steps(&self, id: &str, project: &str, top: &str) -> bool {
+        let l = crate::desk::lands::lands_of(project, top);
+        if l.after == "command" {
+            if let Err(e) = crate::desk::lands::run_steps(top, &l.after_steps) {
+                self.finish_ask(id, "after_failed", &format!("It landed, but after landing \"{}\" {}", e.step, e.why), &e.said);
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Item `id` on main at `top` (`head`), its work changing nothing the app runs, or only the window's files (`cue`:
+    /// this Cue's source): to check with no install, or back to its holder when its window doesn't load. True when so.
+    fn finish_in_place(&self, id: &str, top: &str, head: &str, cue: bool) -> bool {
+        // Its own work changed nothing the app runs (mocks, notes, plans, tests): to check now, no install, whatever
+        // else on the main line waits for one (#408).
+        if cue && self.runs_nothing(id, top) {
+            self.finish_set(id, |i| {
+                if let Some(f) = i.finish.as_mut() {
+                    (f.repo, f.commit, f.mocks) = (top.to_string(), head.to_string(), true);
+                }
+            });
+            self.finish_checked(id);
+            return true;
+        }
+        // Only the window's files changed since the running Cue's build: they're served in place, no install.
+        let in_place = if cue { self.ui_in_place(top, head) } else { Ok(false) };
+        if !matches!(in_place, Ok(false)) {
+            self.finish_set(id, |i| {
+                if let Some(f) = i.finish.as_mut() {
+                    (f.repo, f.commit) = (top.to_string(), head.to_string());
+                }
+            });
+            // Its window doesn't load: back to its holder with what's wrong, as a failed install is.
+            if let Err(said) = in_place {
+                if let Some(it) = self.read(|st| st.desk.item(id).cloned()) {
+                    self.finish_failed(&it, WINDOW_BROKEN, "failed", &said);
+                }
+                return true;
+            }
+            self.finish_checked(id);
+            return true;
+        }
+        false
     }
 
     /// Item `id` sent back to its session, not to check, when its work isn't all on main: reopened and nothing new of

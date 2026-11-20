@@ -1,4 +1,4 @@
-// An agent's judgment calls (`DECIDED: what — why` lines; core.js decidedHtml): one quiet block in its message, in the
+// An agent's judgment calls (`DECIDED: what — why` lines; core/md.js decidedHtml): one quiet block in its message, in the
 // chat and the Inbox alike, each call a line with its reason under it; a one-line preview says "Decided:".
 import { test, expect } from "./cue.mjs";
 

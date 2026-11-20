@@ -1,0 +1,229 @@
+/* The Desk, part 2 of 4 (desk-list, desk-lead, desk-landing, desk-page, loaded in that order): the lead's chat card, its ASK, and the panes in it (an item's thread, decisions, files). */
+/* The lead's chat head: its name (a tab), Decisions, its crew; and the line when it has ended. */
+.dk-endlead { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 24px 32px; }
+.dk-endlead p { margin: 0; color: var(--muted); font-size: 13.5px; }
+.dk-endlead p b { color: var(--ink); font-weight: 650; }
+.dk-endlead .dk-acts { padding: 12px 0 0; }
+
+/* The chat card (left; class dk-right from when it sat on the right): tabs, the chat, the box. */
+.dk-right { position: relative; }
+.dk-tabs { gap: 18px; padding: 0 20px; align-items: stretch; }
+.dk-tname { max-width: 100%; min-width: 0; display: flex; align-items: center; gap: 6px; }
+.dk-tname > .dk-tab { padding-bottom: 1px; }
+/* In the chat card's tabs the lead's name is a tab too: its block runs to the header's bottom, so its underline sits
+   on the same line as Decisions'. */
+.dk-tabs .dk-tname, .dk-tabs .dk-tname > .dk-tab { align-self: stretch; }
+.dk-tabs .dk-tname > .dk-tab { padding-bottom: 0; }
+.dk-tab { display: flex; align-items: center; gap: 6px; padding: 0; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--muted); font-size: 13.5px; font-weight: 650; cursor: pointer; }
+.dk-tab.on { color: var(--ink); border-bottom-color: var(--ink); }
+.dk-tab .n { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+/* A session's name and the items it holds (#170). */
+.dk-shn { font-size: 13.5px; font-weight: 650; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-sch-t { all: unset; cursor: pointer; color: var(--muted); }
+.dk-sch-t b { color: var(--ink); }
+.dk-sch-t:hover, .dk-sch-t:hover b { color: var(--link, var(--accent)); }
+.dk-sch-t:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.dk-chat { display: flex; flex-direction: column; gap: 14px; padding: 14px 20px; }
+.dk-box { flex: none; display: flex; flex-direction: column; gap: 6px; margin: 8px 16px 16px; padding: 8px 8px 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+/* Its row: the words, the mic, a picture, Send; pictures added sit above it (draftChips). */
+.dk-box-row { display: flex; align-items: flex-end; gap: 6px; }
+/* Item context sits above the input, with controls on their own line. */
+.dk-pre { align-self: flex-start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font: 600 12px/1.4 var(--sans); cursor: text; user-select: none; }
+.dk-box:has(> .dk-pre) .dk-box-row { flex-wrap: wrap; justify-content: flex-end; }
+.dk-box:has(> .dk-pre) .dk-box-row > :is(.ta-wrap, textarea) { flex: 1 0 100%; min-width: 0; }
+.dk-box .chips { margin: 0; }
+.dk-ask { flex: none; max-height: 55%; overflow-y: auto; padding: 0 20px 14px; }
+.dk-request { margin: 0 10px 12px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.dk-request-who { font: inherit; font-weight: 600; text-align: left; color: var(--ink); }
+.dk-request pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 160px; overflow: auto; font-size: 12px; margin: 10px 0; }
+.dk-request p { margin: 10px 0; overflow-wrap: anywhere; }
+.dk-request .row-btns, .dk-ask .row-btns { justify-content: flex-end; }
+.dk-request .row-btns > .btn.flex, .dk-ask .row-btns > .btn.flex { flex: 0 0 auto; min-width: 76px; }
+/* The lead's ASK: a bordered panel card in the chat's column, not a tinted
+   band; its choices on the panel too, the accent only on the one you point at or picked. */
+.dk-ask .act-card { max-height: none; overflow: visible; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.dk-ask .act-card .opt { background: var(--panel); }
+.dk-box textarea { flex: 1; min-height: 28px; max-height: 160px; padding: 5px 0; border: 0; outline: none; resize: none; background: none; color: var(--ink); font: 13.5px/1.4 var(--sans); field-sizing: content; }
+
+/* A pane: an item, a holder, a crew member. */
+.dk-pane { padding: 0 0 18px; }
+/* An item's (or a session's) pane: its words select and copy; its buttons and rows still click. */
+.dk-pane, .dk-ph { user-select: text; -webkit-user-select: text; }
+.dk-pane button, .dk-pane [role="button"], .dk-pane .btn, .dk-ph button, .dk-ph .btn { user-select: none; -webkit-user-select: none; }
+.dk-back { margin: 14px 0 0 18px; padding: 4px 6px; border: 0; border-radius: 8px; background: none; color: var(--muted); font-size: 12.5px; font-weight: 650; cursor: pointer; }
+.dk-back:hover { color: var(--ink); background: var(--panel-2); }
+.dk-pane h1 { margin: 8px 24px 4px; font-size: 19px; font-weight: 700; line-height: 1.3; }
+.dk-state { margin: 0 24px; color: var(--muted); font-size: 12.5px; }
+.dk-state b { color: var(--ink); font-weight: 650; }
+/* An item's designs (desk.js deskDesignsLink): "Open the mocks ↗" in the accent, plain words, no box. */
+.dk-dsg { margin: 10px 24px 0; }
+.dk-dlink { font-size: 12.5px; font-weight: 600; color: var(--accent); text-decoration: none; }
+.dk-dlink:hover { text-decoration: underline; }
+.dk-say.dk-dsay { text-align: left; }
+.dk-sec { padding: 16px 24px 0; }
+.dk-sec h3 { margin: 0 0 8px; font: 700 11px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.dk-sec p { margin: 0 0 6px; line-height: 1.5; }
+.dk-sec p.dk-split { color: var(--muted); font-size: 12.5px; }
+.dk-quiet { color: var(--muted); }
+.dk-note { margin: 14px 24px 0; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+.dk-files { font-family: var(--mono); font-size: 12px; color: var(--ink); }
+.dk-fcs { display: flex; flex-direction: column; }
+.dk-fc { display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 3px 6px; margin: 0 -6px; border: 0; border-radius: 6px; background: none; color: var(--ink); font: 12px var(--mono); text-align: left; cursor: pointer; }
+.dk-fc.wait { cursor: default; }
+.dk-fc:not(.wait):hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.dk-fc-p { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-fc-new { font: 600 10px var(--sans); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.dk-acts { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 24px 0; }
+.dk-chain .dk-acts { padding: 8px 0 0; }
+.dk-drop { margin: 18px 0 0 18px; padding: 4px 6px; border: 0; background: none; color: var(--muted); font-size: 12px; cursor: pointer; border-radius: 8px; }
+.dk-drop:hover { color: var(--ink); background: var(--panel-2); }
+.dk-drop.armed { color: var(--deny); }
+/* The item page: its header, then the open tab (below). */
+.dk-ipane { container-type: inline-size; padding: 0 0 24px; }
+.dk-ihead { padding: 0; }
+/* The header (back, title, pill, tabs) stays at the top as the open tab scrolls, on the tinted band it had before #140,
+   so the pill stands out on it (#142); the tabs' line is its bottom edge. */
+.dk-ipane > .dk-ihead { position: sticky; top: 0; z-index: 2; background: var(--panel-2); }
+.dk-ipane .dk-ihead h1 { margin: 6px 0 8px 24px; max-width: 700px; font-size: 20px; letter-spacing: -.01em; }
+/* What pick it waits on (desk.js deskPickLine), one plain line under the state (#178). */
+.dk-pickl { margin: 8px 24px 0; font-size: 13px; color: var(--ink); }
+/* What a waiting item asks you to do (#182): its verb bold; what it unblocks, quiet, under it. */
+.dk-vb { font-weight: 700; }
+.dk-ub { grid-column: 2; margin-top: 3px; color: var(--muted); font: 11.5px var(--mono); }
+.dk-it.on .dk-ub { color: var(--on-sel); }
+.dk-iub { margin: 3px 24px 0; }
+/* A failed build's or start's log tail on its page: mono, its last few lines till Show all, then it scrolls. */
+.dk-flog { margin: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); color: var(--ink); font: 11px/1.45 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.dk-flog.open { max-height: 320px; overflow: auto; }
+.dk-flog-more { all: unset; margin-top: 6px; color: var(--accent); font-size: 12px; font-weight: 600; cursor: pointer; }
+.dk-flog-more:hover, .dk-flog-more:focus-visible { text-decoration: underline; }
+/* Pick 4 (Item thread, 16 Nov 2026): under the header, Thread, Decisions and Steps tabs (Drop at their right); the
+   open one below. Thread is a time line: each message's age, its dot on a line, who and what kind, then its words. */
+.dk-itabs { display: flex; align-items: center; gap: 4px; margin: 14px 0 0; padding: 0 24px; border-bottom: 1px solid var(--line); }
+.dk-itab { all: unset; padding: 7px 10px; margin-bottom: -1px; border-bottom: 2px solid transparent; color: var(--muted); font-size: 12.5px; font-weight: 600; cursor: pointer; user-select: none; -webkit-user-select: none; }
+.dk-itab:hover { color: var(--ink); }
+.dk-itab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 6px 6px 0 0; }
+.dk-itab.on { color: var(--ink); border-color: var(--ink); }
+.dk-itab .n { margin-left: 5px; font: 600 10.5px var(--mono); color: var(--muted); }
+.dk-itabs .dk-drop { margin: 0; font-weight: 500; white-space: nowrap; flex: none; }
+.dk-ibody { padding: 18px 24px 0; min-width: 0; }
+.dk-ibody > .dk-decs, .dk-ibody > .dk-log { margin: 0 -24px; }
+.dk-thread { display: flex; flex-direction: column; }
+.dk-tm { display: grid; grid-template-columns: 40px 14px minmax(0, 1fr); column-gap: 12px; padding-bottom: 18px; }
+.dk-tm > .dk-age { text-align: right; padding-top: 2px; font: 11px var(--mono); }
+.dk-tdot { position: relative; }
+.dk-tdot i { display: block; width: 10px; height: 10px; margin: 4px 2px 0; border-radius: 50%; background: var(--line); }
+.dk-tdot.on i { background: var(--accent); }
+.dk-tdot.back i { background: var(--deny); }
+.dk-tdot::after { content: ""; position: absolute; left: 6px; top: 18px; bottom: -14px; width: 2px; background: var(--line); }
+.dk-tm:last-child .dk-tdot::after { display: none; }
+.dk-tw { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+/* Reply / Done / Sent back on a thread line: plain muted words after a dot, no box. */
+.dk-ttag { color: var(--muted); font-size: 12px; font-weight: 500; text-transform: lowercase; }
+.dk-ttag::before { content: "· "; }
+.dk-ttag.on { color: var(--ink); }
+.dk-ttag.back { color: var(--deny); }
+.dk-tb { min-width: 0; }
+.dk-tb > .dk-md { margin-top: 3px; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+/* Its Done when under the thread, the first thing by where it stands (#140): the checklist at the thread's size. */
+.dk-idw .dk-dwl { font-size: 13.5px; gap: 8px; }
+.dk-tpics { margin-top: 8px; }
+/* A send-back's pictures, counted under your words. */
+.dk-tpn { margin-top: 3px; font-size: 12px; color: var(--muted); }
+/* Under what to check (deskCheckInfo): who did it, when, how many files; installed or not, or its mocks. Quiet. */
+.dk-chk-info { margin-top: 8px; display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; color: var(--muted); }
+.dk-chk-info .dk-chk-a { color: var(--ink); font-weight: 600; }
+/* A record line (#276): a hand-off, a Done; one quiet line in the time line, not a message. */
+.dk-tm.rec { padding-bottom: 12px; }
+.dk-tm.rec .dk-tdot i { width: 6px; height: 6px; margin: 5px 4px 0; }
+.dk-tm.rec .dk-tb { font-size: 11.5px; line-height: 1.5; color: var(--muted); overflow-wrap: anywhere; }
+.dk-tm.rec .dk-tb b { color: var(--ink); font-weight: 600; }
+/* A turn's steps in a line, over its words (the live turn). */
+.dk-stp { margin-top: 3px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+/* What its crew at work are doing (#318): a line of its own under the holder's words. */
+.dk-crewnow { display: block; margin-top: 3px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+/* Under a reply: the link to that turn in its session. */
+.dk-tl { margin-top: 6px; font-size: 12.5px; }
+.dk-tl .dk-tlink { padding: 0; border: 0; background: none; cursor: pointer; font: inherit; color: var(--ink); font-weight: 650; text-decoration: underline; text-underline-offset: 2px; }
+/* A message on the Thread (yours, a send-back, the lead's note): the chat's bubble on the right, its one line under it
+   (#422, chat.css .msg-line); no dot of its own, the time line running past it. */
+.dk-tmsg { padding-bottom: 10px; }
+.dk-tmsg .dk-tdot::after { top: 0; }
+.dk-tmsg .dk-tb { display: flex; flex-direction: column; min-width: 0; }
+.dk-tmsg .cv-you { max-width: 85%; }
+.dk-tmsg .cv-you-text .dk-md > :first-child { margin-top: 0; }
+.dk-tmsg .cv-you-text .dk-md > :last-child { margin-bottom: 0; }
+.dk-tbar { width: 160px; height: 6px; margin-top: 8px; border-radius: 3px; background: var(--work); }
+.dk-inow .dk-sec { padding: 4px 0 14px; }
+.dk-inow .dk-acts { padding: 0 0 14px; }
+.dk-ibody > .dk-note { margin: 0; }
+.dk-ibody > .dk-sec { padding: 0; }   /* Files: in line with the tabs, as the thread is */
+/* Files: each file's counts at the right, apart from its name, as in the diff it opens (#149); the list kept narrow
+   enough that the counts stay by their file on a wide page. */
+.dk-ibody .dk-fcs { max-width: 560px; }
+.dk-ibody .dk-fc .dv-add { margin-left: 16px; }
+/* Its decisions as sentences: what (age at the right), why under it, by who and Undo. */
+.dk-decs { border-top: 1px solid var(--line); }
+.dk-lr.dk-dl { display: block; padding: 10px 24px; }   /* the body's side padding, as the Thread has (#297) */
+.dk-pg .dk-lr.dk-dl { padding: 10px 20px; }
+.dk-dl1 { display: flex; align-items: baseline; gap: 12px; }
+.dk-dl1 .dk-d { flex: 1; font-size: 14px; font-weight: 600; }
+.dk-dl1 .dk-age { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.dk-lr.dk-dl > .dk-w { margin-top: 2px; font-size: 13px; }
+.dk-dl3 { display: flex; align-items: center; gap: 8px; margin-top: 4px; min-height: 18px; color: var(--muted); font-size: 12px; }
+.dk-dl3 .dk-lby { color: var(--muted); font-weight: 400; }
+.dk-dl3 .dk-lby b { color: var(--ink); font-weight: 600; }
+.dk-ended { flex: none; margin: 8px 16px 16px; padding: 10px 12px; color: var(--muted); font-size: 13px; }
+
+/* What holds it up, and a lead's crew: bordered lists with a dot a row. */
+.dk-chain, .dk-crew { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.dk-ln, .dk-mb { display: grid; grid-template-columns: 14px minmax(0, 1fr); column-gap: 10px; padding: 10px 14px; }
+.dk-mb { grid-template-columns: 14px minmax(0, 1fr) auto; cursor: pointer; }
+.dk-mb:hover { background: var(--panel-2); }
+.dk-mb .dk-ls { grid-column: 2 / -1; }
+.dk-ln + .dk-ln, .dk-mb + .dk-mb { border-top: 1px solid var(--line); }
+.dk-ln > i, .dk-mb > i { width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: var(--work); }
+.dk-ln > i.wait, .dk-mb > i.idle { background: none; border: 1.5px solid var(--muted); width: 5px; height: 5px; }
+.dk-ln > i.ask, .dk-mb > i.ask { background: var(--deny); }
+.dk-ln > i.ok { background: var(--accent); }
+/* What an item asks you (or asked): one plain box, no dot (#166). */
+.dk-ln.dk-q { grid-template-columns: minmax(0, 1fr); }
+/* What you answered on an item's page: the ✓ small, as in a chat's answered ask. */
+.dk-picked { display: flex; align-items: center; gap: 6px; }
+.dk-picked .sent-check { width: 16px; height: 16px; font-size: 10px; }
+/* An ask answered on the item's page: its card, as under a chat, inside the chain's frame. */
+.dk-ln .dk-md > :last-child { margin-bottom: 0; }
+.dk-lt { font-weight: 600; }
+.dk-ls { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+
+/* Decisions and steps: one compact table, a row each. Who | what was decided | why (muted) | when | Undo, a quiet
+   icon there only while the pointer is on the row. Long cells cut at two lines; a click on the row shows it all. */
+.dk-log { display: grid; grid-template-columns: fit-content(120px) minmax(0, 1.25fr) minmax(0, 1fr) max-content max-content; border-top: 1px solid var(--line); }
+.dk-lr { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; column-gap: 12px; align-items: baseline; padding: 7px 4px; border-bottom: 1px solid var(--line); font-size: 12.5px; line-height: 1.4; cursor: pointer; }
+.dk-lr:hover { background: var(--panel-2); }
+.dk-lby { color: var(--ink); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dk-lr .dk-d { color: var(--ink); font-weight: 500; }
+.dk-lr .dk-d, .dk-lr .dk-w { min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.dk-lr.open .dk-d, .dk-lr.open .dk-w { -webkit-line-clamp: unset; display: block; }
+.dk-lr .dk-w { color: var(--muted); }
+.dk-lr > .dk-age { color: var(--muted); font-size: 12px; white-space: nowrap; text-align: right; }
+.dk-la { color: var(--muted); }
+.dk-x { color: var(--muted); font: 600 11px var(--mono); }
+.dk-lu { align-self: center; display: flex; justify-content: flex-end; }
+.dk-u { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.dk-undo-l { all: unset; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 5px; color: var(--muted); cursor: pointer; opacity: 0; }
+.dk-undo-l:hover { color: var(--ink); background: var(--line); }
+.dk-lr:hover .dk-undo-l, .dk-undo-l:focus-visible { opacity: 1; }
+/* Latest, as written: bold, links that open on a click. */
+.dk-md > :first-child { margin-top: 0; }
+.dk-md p { margin: 0 0 6px; line-height: 1.5; }
+.dk-md a { overflow-wrap: anywhere; }
+/* Code in an item's words: the mono a size under the words, as in a chat (#305); it had the browser's own size. */
+.dk-md code { font: .86em var(--mono); background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
+/* A file or folder it names: a file chip, as Slack shows one (#305). Its icon, its folder quiet, its name in ink. */
+.dk-md .dk-fchip { display: inline-block; max-width: 100%; box-sizing: border-box; padding: 0 6px; margin: 1px 1px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); color: var(--ink); font: 500 .9em/1.55 var(--sans); vertical-align: bottom; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-decoration: none; }
+.dk-md a.dk-fchip:hover { text-decoration: none; border-color: var(--muted); }
+.dk-fchip-i { margin-right: 4px; color: var(--muted); vertical-align: -1px; }
+.dk-fchip-d { color: var(--muted); font-weight: 400; }
+.dk-fchip-n { font-weight: 600; }
+

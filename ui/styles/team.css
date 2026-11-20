@@ -152,7 +152,7 @@ button.mt-name:hover, .mt-name.on { text-decoration: underline; text-underline-o
 .crew-page .cg-l { font-size: 10.5px; }
 .crew-page .cg-t { margin-top: 3px; font-size: 13px; line-height: 1.4; -webkit-line-clamp: 4; }
 
-/* The left reads, the list picks. The left exactly as wide as the board's chat pane beside its cards (board.js
+/* The left reads, the list picks. The left exactly as wide as the board's chat pane beside its cards (board/columns.js
    boardChatWidth sets --cp-chat-w, a length of the page's width, which is the board's); the list has the rest. */
 .cp-body { flex: 1; min-height: 0; display: grid; grid-template-columns: var(--cp-chat-w, 50%) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
 /* A teammate on the left: the left takes all but a narrow list, so its diff has the room. */
@@ -458,7 +458,7 @@ button.cp-lead:not(.on):hover { background: var(--panel-2); }
   .cpb-keys, .cpb-ow, .cpb-why, .cpb-what { display: none; }
   .cpb-btns .btn { min-width: 0; padding: 0 10px; }
 }
-/* The add-on's page on the left (core.js addOn.crewPageLeft), in the chat's place, scrolling inside itself; a record's
+/* The add-on's page on the left (core/addon.js addOn.crewPageLeft), in the chat's place, scrolling inside itself; a record's
    left has nothing else. */
 .cp-addon-left { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .cpm .mt-under { margin: 0 14px 8px; padding: 6px 10px; border-radius: 8px; background: var(--panel-2); }

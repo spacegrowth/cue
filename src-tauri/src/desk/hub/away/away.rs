@@ -281,12 +281,7 @@ impl Hub {
         })?;
         // Back (#416): what happened while away kept for the dispatcher's Away tab.
         if was_on && !on {
-            let since = before.get("since").and_then(Value::as_u64).unwrap_or(0);
-            let end = before.get("ended_at").and_then(Value::as_u64).or_else(|| before.get("until").and_then(Value::as_u64).filter(|u| pre.ended == "until" && *u < now)).unwrap_or(now);
-            let start = before.get("items").cloned().unwrap_or_else(|| json!({}));
-            let (items, calls) = self.read(|st| crate::desk::hub::away::away_log::stretch(st, desk, since, end, &start));
-            crate::desk::hub::away::away_log::keep(json!({ "id": format!("away-{since}"), "desk": desk, "since": since, "end": end, "until": before.get("until"), "budget": before.get("budget"),
-                "spent": (pre.spent * 100.0).round() / 100.0, "ended": pre.ended, "items": items, "calls": calls }));
+            self.desk_away_back(desk, &before, &pre, now);
         }
         if on != was_on || (on && rules_changed) {
             let words = self.read(|st| {
@@ -304,6 +299,16 @@ impl Hub {
         }
         self.changed();
         Ok(self.read(|st| away_view(st, desk, now)))
+    }
+
+    /// Back from Away on Desk `desk` (`before`: its settings as it went off; `pre`: as it stood): the stretch kept.
+    fn desk_away_back(&self, desk: &str, before: &Value, pre: &Away, now: u64) {
+        let since = before.get("since").and_then(Value::as_u64).unwrap_or(0);
+        let end = before.get("ended_at").and_then(Value::as_u64).or_else(|| before.get("until").and_then(Value::as_u64).filter(|u| pre.ended == "until" && *u < now)).unwrap_or(now);
+        let start = before.get("items").cloned().unwrap_or_else(|| json!({}));
+        let (items, calls) = self.read(|st| crate::desk::hub::away::away_log::stretch(st, desk, since, end, &start));
+        crate::desk::hub::away::away_log::keep(json!({ "id": format!("away-{since}"), "desk": desk, "since": since, "end": end, "until": before.get("until"), "budget": before.get("budget"),
+            "spent": (pre.spent * 100.0).round() / 100.0, "ended": pre.ended, "items": items, "calls": calls }));
     }
 
     /// Away on Desk `desk` was just set (`on`): in force now, its lead's ASKs still waiting on the owner go back to it

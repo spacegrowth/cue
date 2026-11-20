@@ -100,37 +100,7 @@ function deskSessions(project) {
   const d = deskOf(project), o = deskOpen, leadSid = deskLead(d)?.sid;
   const sessions = (state.sessions || []).filter((s) => s.project === deskWorkspace(d) && s.session_id);
   const lit = (sid) => (sid === leadSid && !o && deskPick !== project) || ((o?.kind === "chat" || o?.kind === "holder") && o.sid === sid);
-  const row = (s, card = false) => {
-    const sid = s.session_id, [dot, word] = deskSessWithHelpers(s, sid !== leadSid);
-    const lead = sid === leadSid || deskIsLead(sid, d.items.filter((i) => deskGroupKey(i.holder) === sid));
-    const attrs = sid === leadSid ? `data-desk-lead-chat="${esc(sid)}"` : `data-desk-chat-of="${esc(sid)}"`;
-    const mate = (t, past) => {
-      const key = t.agent_id || t.call, it = past ? null : deskCrewItem(project, sid, key);
-      const [cd, cw] = past ? ["idle", t.state === "aside" ? "set aside" : t.state] : mateNeeds(sid, t) ? ["ask", "needs you"] : deskMateBusy(t) ? ["", t.state] : ["idle", t.state];
-      return deskSessRow({ name: t.name, mark: "crew", dot: cd, word: cw, item: it, line: it ? "" : t.what, crew: true, past, loose: !past && !deskMateBusy(t) && !!t.uncommitted,
-        step: past ? "" : deskStepLine(cd === "", t.step, t.step_ms || t.started_ms),
-        on: o?.kind === "crew" && o.lead === sid && o.agent === key, attrs: `data-desk-crew="${esc(key)}" data-lead="${esc(sid)}"` });
-    };
-    // Rows only for crew still in play: at work, asking you, or with files git says aren't committed. The rest
-    // (committed, set aside, or finished with nothing left to commit) fold into one "N done" line, opened in place and
-    // kept the way you left it (deskFoldOpen).
-    const team = sessionOf(sid)?.team || [];
-    const rank = (t) => (deskMateBusy(t) ? 0 : mateNeeds(sid, t) ? 1 : 2);
-    const live = team.filter((t) => deskMateLive(sid, t)).sort((a, b) => rank(a) - rank(b)), done = team.filter((t) => !deskMateLive(sid, t)), open = deskFoldOpen.has(sid);
-    const fold = done.length ? `<button class="dk-sfold" data-desk-done-fold="${esc(sid)}" aria-expanded="${open}">${done.length} done · ${open ? "hide" : "show"}</button>${open ? done.map((t) => mate(t, true)).join("") : ""}` : "";
-    // The Desk's own lead shows no crew (it routes; any teammates it had, even old ones, aren't the Desk's).
-    const crew = sid === leadSid ? "" : live.map((t) => mate(t, false)).join("") + fold;
-    // The card always carries a second line, as every row under it does (#269): the item it's on, else the first line
-    // of its latest reply, else how many items it has open; a one-line card read as the strip's header.
-    if (card) {
-      const cItem = deskSessItem(d, sid), open = d.items.filter((i) => i.state !== "done").length;
-      return deskSessRow({ name: deskHolderName(sid), sid, cls: "dk-lcard", mark: "desk", harness: s.harness, tag: "Lead", dot, word, item: cItem, line: cItem ? "" : deskSessSaid(sid) || (open ? `${open} open item${open === 1 ? "" : "s"} on this Desk` : "No open items on this Desk"), on: lit(sid), attrs, step: deskStepLine(dot === "", s.compacting_ms ? "Compacting…" : s.doing, s.compacting_ms || s.doing_ms), size: deskSessCache(sid, !cItem && dot !== "", true) });
-    }
-    // On no item: the first line of its latest reply, and when it came beside its size (#185).
-    const item = deskSessItem(d, sid), idle = dot !== "" && !item;
-    // Its reply's line stays while it's idle, empty till the reply is in, so the row doesn't grow a line (#485).
-    return deskSessRow({ name: deskHolderName(sid), sid, mark: sid === leadSid ? "desk" : lead ? "lead" : "session", dot, word, item, line: idle ? deskSessSaid(sid) || "\u00a0" : "", on: lit(sid), attrs, step: deskStepLine(dot === "", s.compacting_ms ? "Compacting…" : s.doing, s.compacting_ms || s.doing_ms), size: deskSessCache(sid, idle, true) }) + crew;
-  };
+  const row = (s, card = false) => deskSessionsRow({ project, d, o, leadSid, lit }, s, card);
   const leadS = sessions.find((s) => s.session_id === leadSid);
   const mine = sessions.filter((s) => s !== leadS && deskHasSession(d, s.session_id));
   // At work: the session itself, its background agents (state "agent" with helpers running), or any of its crew. A
@@ -153,24 +123,64 @@ function deskSessions(project) {
   const olderGroup = older.length ? `<div class="dk-gh dk-gf dk-older-h" role="button" tabindex="0" data-desk-older="${esc(key)}" aria-expanded="${!shut}">${DESK_GCHEV}Older <span class="n">${older.length}</span>${close}</div>${shut ? "" : older.map((s) => row(s)).join("")}` : "";
   const body = group("Working", atWork) + group("Idle", idle) + olderGroup || '<div class="dk-empty">No other sessions on this Desk.</div>';
   const picking = deskAddingSession === project;
+  const picker = picking ? deskSessionsPicker(project, d, leadSid) : "";
+  return `<div class="dk-card dk-sessions">${deskSessHead(project, mine.length, runs, leadS ? row(leadS, true) : "", deskLeadBar(leadS))}${leadS ? "" : deskLeadBar(leadS)}
+    <div class="dk-scroll" data-scroll-key="desk-sessions:${esc(project)}">${body}</div>
+    <div class="dk-sfoot"><div class="dk-add-anchor"><button class="btn small dk-add-button" data-desk-add-session="${esc(project)}" aria-label="Add session" aria-expanded="${picking}"${picking ? ' aria-controls="desk-add-picker"' : ""}><span aria-hidden="true">+</span></button>${picker}</div></div></div>`;
+}
+/** Session `s`'s row in a Desk's sessions (deskSessions), with its crew under it; `card`: the lead's card. `x`: the
+ *  Desk's { project, d, o (deskOpen), leadSid, lit(sid) → whether its row is lit }. */
+function deskSessionsRow(x, s, card) {
+  const { d, leadSid, lit } = x;
+  const sid = s.session_id, [dot, word] = deskSessWithHelpers(s, sid !== leadSid);
+  const lead = sid === leadSid || deskIsLead(sid, d.items.filter((i) => deskGroupKey(i.holder) === sid));
+  const attrs = sid === leadSid ? `data-desk-lead-chat="${esc(sid)}"` : `data-desk-chat-of="${esc(sid)}"`;
+  const mate = (t, past) => deskSessionsMate(x, sid, t, past);
+  // Rows only for crew still in play: at work, asking you, or with files git says aren't committed. The rest
+  // (committed, set aside, or finished with nothing left to commit) fold into one "N done" line, opened in place and
+  // kept the way you left it (deskFoldOpen).
+  const team = sessionOf(sid)?.team || [];
+  const rank = (t) => (deskMateBusy(t) ? 0 : mateNeeds(sid, t) ? 1 : 2);
+  const live = team.filter((t) => deskMateLive(sid, t)).sort((a, b) => rank(a) - rank(b)), done = team.filter((t) => !deskMateLive(sid, t)), open = deskFoldOpen.has(sid);
+  const fold = done.length ? `<button class="dk-sfold" data-desk-done-fold="${esc(sid)}" aria-expanded="${open}">${done.length} done · ${open ? "hide" : "show"}</button>${open ? done.map((t) => mate(t, true)).join("") : ""}` : "";
+  // The Desk's own lead shows no crew (it routes; any teammates it had, even old ones, aren't the Desk's).
+  const crew = sid === leadSid ? "" : live.map((t) => mate(t, false)).join("") + fold;
+  // The card always carries a second line, as every row under it does (#269): the item it's on, else the first line
+  // of its latest reply, else how many items it has open; a one-line card read as the strip's header.
+  if (card) {
+    const cItem = deskSessItem(d, sid), open = d.items.filter((i) => i.state !== "done").length;
+    return deskSessRow({ name: deskHolderName(sid), sid, cls: "dk-lcard", mark: "desk", harness: s.harness, tag: "Lead", dot, word, item: cItem, line: cItem ? "" : deskSessSaid(sid) || (open ? `${open} open item${open === 1 ? "" : "s"} on this Desk` : "No open items on this Desk"), on: lit(sid), attrs, step: deskStepLine(dot === "", s.compacting_ms ? "Compacting…" : s.doing, s.compacting_ms || s.doing_ms), size: deskSessCache(sid, !cItem && dot !== "", true) });
+  }
+  // On no item: the first line of its latest reply, and when it came beside its size (#185).
+  const item = deskSessItem(d, sid), idle = dot !== "" && !item;
+  // Its reply's line stays while it's idle, empty till the reply is in, so the row doesn't grow a line (#485).
+  return deskSessRow({ name: deskHolderName(sid), sid, mark: sid === leadSid ? "desk" : lead ? "lead" : "session", dot, word, item, line: idle ? deskSessSaid(sid) || "\u00a0" : "", on: lit(sid), attrs, step: deskStepLine(dot === "", s.compacting_ms ? "Compacting…" : s.doing, s.compacting_ms || s.doing_ms), size: deskSessCache(sid, idle, true) }) + crew;
+}
+/** Crew member `t` of session `sid` as a row under it (deskSessionsRow); `past`: one folded under "N done". */
+function deskSessionsMate({ project, o }, sid, t, past) {
+  const key = t.agent_id || t.call, it = past ? null : deskCrewItem(project, sid, key);
+  const [cd, cw] = past ? ["idle", t.state === "aside" ? "set aside" : t.state] : mateNeeds(sid, t) ? ["ask", "needs you"] : deskMateBusy(t) ? ["", t.state] : ["idle", t.state];
+  return deskSessRow({ name: t.name, mark: "crew", dot: cd, word: cw, item: it, line: it ? "" : t.what, crew: true, past, loose: !past && !deskMateBusy(t) && !!t.uncommitted,
+    step: past ? "" : deskStepLine(cd === "", t.step, t.step_ms || t.started_ms),
+    on: o?.kind === "crew" && o.lead === sid && o.agent === key, attrs: `data-desk-crew="${esc(key)}" data-lead="${esc(sid)}"` });
+}
+/** Add session's list of sessions to tick (deskSessions): this Desk's own, then free, recent ones. */
+function deskSessionsPicker(project, d, leadSid) {
   // Add session offers this Desk's own sessions (ticked), then a light line and only free, recent ones: none another
   // Desk has, none stopped or idle for over a day (#189).
-  const candidates = picking ? deskSessionsOf(project, d).filter((r) => deskHasSession(d, r.sid) || (!deskElsewhere(r.sid, d) && !deskSessOld(sessionOf(r.sid)))) : [];
-  if (picking && leadSid && !candidates.some((r) => r.sid === leadSid)) {
+  const candidates = deskSessionsOf(project, d).filter((r) => deskHasSession(d, r.sid) || (!deskElsewhere(r.sid, d) && !deskSessOld(sessionOf(r.sid))));
+  if (leadSid && !candidates.some((r) => r.sid === leadSid)) {
     candidates.unshift({ sid: leadSid, name: deskLeadName(d) });
   }
   candidates.sort((a, b) => Number(deskHasSession(d, b.sid)) - Number(deskHasSession(d, a.sid)));
   const history = new Set(d.work_history || []);
-  const picker = picking ? `<div class="dk-add-picker" id="desk-add-picker" role="group" aria-label="Desk membership">${candidates.length
+  return `<div class="dk-add-picker" id="desk-add-picker" role="group" aria-label="Desk membership">${candidates.length
     ? candidates.map((r, n) => {
       const member = deskHasSession(d, r.sid), locked = member && history.has(r.sid);
       const line = n > 0 && !member && deskHasSession(d, candidates[n - 1].sid) ? '<div class="dk-add-div" role="separator"></div>' : "";
       return `${line}<label class="dk-add-option"><input type="checkbox" data-desk-member="${esc(r.sid)}" data-project="${esc(project)}"${member ? " checked" : ""}${locked ? " disabled" : ""}><span aria-hidden="true">${deskKindIcon(r.sid === leadSid ? "desk" : r.lead ? "lead" : "session")}</span><span>${esc(r.name)}${r.sid === leadSid ? " · Dispatcher" : ""}${locked ? '<small class="dim">Has work history</small>' : ""}</span></label>`;
     }).join("")
-    : '<div class="dim">No project sessions available.</div>'}</div>` : "";
-  return `<div class="dk-card dk-sessions">${deskSessHead(project, mine.length, runs, leadS ? row(leadS, true) : "", deskLeadBar(leadS))}${leadS ? "" : deskLeadBar(leadS)}
-    <div class="dk-scroll" data-scroll-key="desk-sessions:${esc(project)}">${body}</div>
-    <div class="dk-sfoot"><div class="dk-add-anchor"><button class="btn small dk-add-button" data-desk-add-session="${esc(project)}" aria-label="Add session" aria-expanded="${picking}"${picking ? ' aria-controls="desk-add-picker"' : ""}><span aria-hidden="true">+</span></button>${picker}</div></div></div>`;
+    : '<div class="dim">No project sessions available.</div>'}</div>`;
 }
 /** Whether session `sid` belongs to a Desk other than `d`: it runs it, is on its list, or holds (or its crew holds) an
  *  item there not done (#189). */
@@ -217,7 +227,7 @@ function deskSessHead(project, n, working, lead = "", bar = "") {
 }
 /** The switcher (pick A, #240): the Desk's name opens a menu of every Desk, those waiting on you first, found by typing,
  *  ↑ ↓ ↵ to pick; All Desks and + New Desk under them. A row is the Desk's name and what needs you, nothing else: a
- *  name too long for its room fades at its end and, while its row is lit, slides to show the rest (desk.css). Open while `deskSwitchOpen`; `deskSwitchAt` is the lit row. */
+ *  name too long for its room fades at its end and, while its row is lit, slides to show the rest (desk-landing.css). Open while `deskSwitchOpen`; `deskSwitchAt` is the lit row. */
 let deskSwitchOpen = false, deskSwitchAt = 0;
 function deskSwitchList() {
   const q = (draft("desk-find").text || "").trim().toLowerCase();

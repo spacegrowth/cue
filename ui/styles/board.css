@@ -1,6 +1,6 @@
 /* ---------- board ---------- */
 .board { margin-top: 14px; flex: 1; min-height: 0; display: grid; gap: 14px; position: relative; }
-/* The gap before Waiting and Sessions: hover shows a grip, drag trades width (board.js dragColGrip). */
+/* The gap before Waiting and Sessions: hover shows a grip, drag trades width (board/columns.js dragColGrip). */
 .col-grip { position: absolute; top: 0; bottom: 0; width: 14px; cursor: col-resize; z-index: 3; }
 .col-grip::before { content: ""; position: absolute; left: 6px; top: 22px; bottom: 0; width: 2px; border-radius: 1px; background: var(--on-bg); opacity: 0; transition: opacity .14s ease; }
 .col-grip i { position: absolute; left: 5px; top: 50%; width: 4px; height: 36px; margin-top: -18px; border-radius: 2px; background: var(--on-bg); opacity: 0; transition: opacity .14s ease, height .14s ease, margin .14s ease; }
@@ -44,7 +44,7 @@ body.col-sizing, body.col-sizing * { cursor: col-resize !important; user-select:
 .nrow.on .mach, .tl.on .mach { color: var(--on-sel); border-color: var(--on-sel); }
 .working .mach { color: var(--on-bg); border-color: var(--on-bg); }
 .mach::before { content: ""; width: 8px; height: 6px; border: 1.3px solid currentColor; border-radius: 1.5px; margin-bottom: 2px; box-shadow: 0 2.6px 0 -1.3px currentColor; opacity: 0.75; }
-/* On a card: at the head of its text line, in full (core.js machLead). */
+/* On a card: at the head of its text line, in full (core/helpers.js machLead). */
 .mach.lead { margin: 0 6px 0 0; vertical-align: 1px; }
 :is(.doing, .tl-said) > .mach.lead { margin-right: 0; align-self: center; }
 .prow .mach.lead { margin: 0; }
@@ -59,7 +59,7 @@ body.col-sizing, body.col-sizing * { cursor: col-resize !important; user-select:
 .foot { padding: 10px 12px; border-top: 1px solid var(--line); background: var(--panel-2); display: flex; gap: 8px; align-items: stretch; }
 .foot > .btn { height: auto; }
 .link { font-size: 12px; font-weight: 650; color: var(--accent); margin-top: 6px; }
-/* Under Parked · Closed, on the board's own color: every session, as tiles (board.js shelfDrawer). */
+/* Under Parked · Closed, on the board's own color: every session, as tiles (board/board.js shelfDrawer). */
 .shelf-all { display: block; text-align: left; font-size: 12px; font-weight: 650; color: var(--on-bg-muted); padding: 6px 4px 4px; }
 .shelf-all:hover { color: var(--on-bg); }
 

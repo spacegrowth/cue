@@ -107,7 +107,7 @@ store's lock (waits of 1.9 s), and the window taking seconds to take it in. What
 
 - **History's rows are brief** (hub/kept_history.rs): what a row shows (who, a line of what it wanted, what you
   did, when), made once as each card is answered and shared, never copied under the lock. A row opened, in
-  History or in Active from Recently answered, asks for its card in full (`history_item`; ui/core.js
+  History or in Active from Recently answered, asks for its card in full (`history_item`; ui/core/helpers.js
   `fullItem`). Its size goes with Settings → History's count, not with the run.
 - **Today's numbers, not today's answers** (hub/today.rs): the line atop Insights is worked out by Cue; the
   answers themselves (which grow all day) never ride along.

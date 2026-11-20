@@ -3,7 +3,7 @@
 // and a Now column saying what it's doing or waits on (with its one button when it needs you).
 // Its steps come from Cue (desk/hub/core/steps.rs `steps`): it redraws as Cue's state comes in, the current step's time
 // counts up with the other live times (tickAges). Opens as a popover over the Desk from Progress in the Items head.
-// Loaded after desk_list.js (index.html, mini.html).
+// Loaded after desk/list.js (index.html, mini.html).
 
 const DESK_PROG_STEPS = ["Picked up", "Building", "Tests", "Commit", "Landing", "To check"];
 /** The Progress popover (#409): open over the Desk while true; Esc, a click outside it or a row closes it. */

@@ -1,6 +1,6 @@
-// The Inbox's part of the Desk (ui/desk.js): an ask from a project's lead about its Desk (tagged "<PROJECT> · Desk"),
+// The Inbox's part of the Desk (ui/desk/desk.js): an ask from a project's lead about its Desk (tagged "<PROJECT> · Desk"),
 // an ask from a session that holds a Desk item ("<PROJECT> · for <item>"), Open in Desk, and Add to Desk on a session's
-// ask. Kept apart from ui/inbox.js, which loads first and calls these when it draws.
+// ask. Kept apart from ui/inbox/, which loads first and calls these when it draws.
 
 /** The Desk's projects (state.desk, from the hub); [] when there's none. */
 const inboxDeskProjects = () => state.desk?.projects || [];
@@ -71,7 +71,7 @@ async function inboxAddToDesk(sid, deskId) {
   renderMain();
 }
 /** The Desk on `project` (the header's project picked), item `itemId` open when given. Nothing but a note when this
- *  build has no Desk (ui/desk.js's deskOpenItem). */
+ *  build has no Desk (ui/desk/desk.js's deskOpenItem). */
 function openInDesk(project, itemId = "") {
   if (typeof deskOpenItem !== "function") return toast("The Desk isn't in this build");
   if (project) deskSelect(project);

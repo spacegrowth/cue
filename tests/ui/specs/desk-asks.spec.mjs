@@ -1,5 +1,5 @@
 // The Desk opens with asks in play (#279): a session asking you something reads "waiting on you"; one whose turn
-// just finished doesn't. 89466073 put the Desk's use of actionableRequest (ui/core.js) on main without it, and
+// just finished doesn't. 89466073 put the Desk's use of actionableRequest (ui/core/state.js) on main without it, and
 // the Desk threw on every draw.
 import { test, expect, openDesk } from "./cue.mjs";
 

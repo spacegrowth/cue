@@ -424,7 +424,7 @@ const TRAY_LEAVES = 80;
  *  under a row scrolled into the body, its row with it. */
 function placeTeamRows() {
   // The crew's page too (team_page.js): its parts scroll inside themselves, so only its menu is placed.
-  // The Inbox's crew blocks too (inbox.js): only their menu is placed.
+  // The Inbox's crew blocks too (inbox/): only their menu is placed.
   for (const tray of document.querySelectorAll(".crew-tray.open, .crew-page, .ib-crew, .ib-mates")) {
     const pane = tray.closest(".active-pane"), body = tray.querySelector(".crew-body");
     const head = tray.querySelector(".crew-head")?.offsetHeight || 0;

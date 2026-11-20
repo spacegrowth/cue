@@ -14,7 +14,7 @@ It already went wrong:
 - **20 November.** #509, a refactor on one Desk, was moving `hub/desk_*.rs`. Meanwhile #525, a small
   fix, was working nearby. The only reason #525 didn't land a clash is that the lead noticed by hand
   and told its session to rebase once #509 landed.
-- **17 and 18 November.** A session on another Desk changed `ui/core.js` and made `desk_approvals.js`
+- **17 and 18 November.** A session on another Desk changed `ui/core.js` and made `desk/approvals.js`
   while one of this Desk's items was working in the same place. Main broke, and the review spent an
   evening working out whose edit it was (`docs/desk-fable-review-2026-11-17.md`,
   `docs/desk-finish-breaks-main-2026-11-18.md`).
@@ -100,7 +100,7 @@ Two checks are Cue's own, because they are facts:
 **Agreeing an order.** For an item already mid-way in the area, the two leads settle it in bands:
 
 ```
-TELL DESK: cue | #533 is half done in ui/desk_thread.js, about 20 min from landing. Land it before #509 starts moving files?
+TELL DESK: cue | #533 is half done in ui/desk/thread.js, about 20 min from landing. Land it before #509 starts moving files?
 ```
 
 The holder's lead answers with one of three:
@@ -168,7 +168,7 @@ The lead's rules gain one paragraph:
 The canvas page "Desks on the same code" shows option B, in light and dark:
 
 - **The holder's lead (main Desk).** Its HOLD line, then Cue's answer: "Held. Told loops. 1 item there
-  already changed a held file: #533 `ui/desk_thread.js`". Then the band from the loops lead, and its
+  already changed a held file: #533 `ui/desk/thread.js`". Then the band from the loops lead, and its
   `LAND FIRST` reply.
 - **The other lead (loops Desk).** The FROM ANOTHER DESK band with the hold. Its own new item routed
   `after: cue#509`. Its TELL DESK asking to land #533 first, and the answer.

@@ -2,7 +2,7 @@
 // list's scroll, the chat's place) and moved on where it changed (cards that glide, arrive, slide in).
 
 /** The window's light or dark (Settings → Appearance). Away on a Desk keeps it (#459): only the head's mark says so
- *  (desk_away.js deskAwayHeadMark); `away-on` on the root for anything else that wants to know. */
+ *  (desk/away.js deskAwayHeadMark); `away-on` on the root for anything else that wants to know. */
 function applyTheme() {
   const away = typeof deskAwayOnDesks === "function" && deskAwayOnDesks().length > 0;
   const mode = state.settings?.appearance?.mode ?? "system";
@@ -138,7 +138,7 @@ function topBarHtml(counts) {
       ${updateCard()}${usageChip()}<button class="top-btn icon top-find" data-act="open-search" aria-label="Find (⌘K)">${SEARCH_ICON}</button>${shellsBtn()}${extPanelBtn()}<button class="top-btn icon insights-btn" data-view="insights" aria-pressed="${view === "insights"}" aria-label="Insights">${INSIGHTS_ICON}</button><button class="top-btn icon" data-act="open-settings" aria-label="Settings">${GEAR_ICON}</button>
       <div class="switch-view">${inboxBtn()}<button class="${view === "board" ? "on" : ""}" data-view="board">Board</button><button class="${view === "desk" ? "on" : ""}" data-view="desk">Desk</button>${addOn.views.map((v) => `<button class="${view === v.id ? "on" : ""}" data-view="${v.id}">${v.label()}</button>`).join("")}<button class="${view === "read" ? "on" : ""}" data-view="read">Read</button></div></div>`;
 }
-/** While a Desk is away, its mark in the middle of the head (desk_away.js), with room either side. */
+/** While a Desk is away, its mark in the middle of the head (desk/away.js), with room either side. */
 const awayHead = () => { const m = typeof deskAwayHeadMark === "function" ? deskAwayHeadMark() : ""; return m ? `${m}<span class="grow" data-tauri-drag-region></span>` : ""; };
 /** Inbox in the header's switch, with how many need you ("Inbox 3"). */
 const inboxBtn = () => { const n = inboxCount(); return `<button class="${view === "inbox" ? "on" : ""}" data-view="inbox">Inbox${n ? `<span class="ib-count">${n}</span>` : ""}</button>`; };
@@ -185,8 +185,8 @@ function drawWindow() {
   </div>${overlaysHtml()}`;
   const root = document.getElementById("app");
   const editors = liftDraftEditors(root);
-  const thread = typeof deskThreadLift === "function" ? deskThreadLift() : null;   // an item's Thread, kept (desk_view.js)
-  const lists = typeof deskListsLift === "function" ? deskListsLift() : null;   // the Desk's Items and Progress, kept (desk_list.js)
+  const thread = typeof deskThreadLift === "function" ? deskThreadLift() : null;   // an item's Thread, kept (desk/view.js)
+  const lists = typeof deskListsLift === "function" ? deskListsLift() : null;   // the Desk's Items and Progress, kept (desk/list.js)
   root.innerHTML = html;
   if (lists) deskListsSettle(lists);
   settleDraftEditors(root, editors);

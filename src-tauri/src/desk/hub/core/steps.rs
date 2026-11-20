@@ -1,5 +1,5 @@
 //! When each open Desk item reached each of its six steps (#409): picked up, building, tests, commit, landing, to
-//! check. The Desk's Progress view (ui/desk_progress.js) shows them as a row of marks with how long each step took.
+//! check. The Desk's Progress view (ui/desk/progress.js) shows them as a row of marks with how long each step took.
 //! Stamped from what Cue already hears (its holder's latest step, its DONE's finish steps, its state) each time the
 //! window's state is built after a change: no clock of its own.
 

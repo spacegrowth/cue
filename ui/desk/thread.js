@@ -24,11 +24,27 @@ const deskItemLog = (i, d) => [...(d.older || []), ...[...(d.decisions || [])].r
 /** Item `i`'s Thread, oldest first: the words it was added with, then what you wrote about it (a send-back says so), the
  *  hand-offs, and what its holder said as each turn ended (desk/hub/core/desk.rs replied); last, its holder at work now. */
 function deskThread(i, d) {
-  const mine = deskItemLog(i, d).filter((c) => !c.call);
   const you = (i.from || "you") === "you";
   // Its Done when isn't in this first message: it's under the thread, by where it stands (deskItemPane).
   const pics = thumbs(i.images);
   const rows = [{ key: "first", at: deskMs(i.created), by: you ? "You" : deskFrom(i, d), you, html: `<div class="dk-md">${deskMd(i.words || i.title)}</div>${pics ? `<div class="dk-tpics">${pics}</div>` : ""}` }];
+  deskThreadSteps(rows, i, d);
+  deskThreadReplies(rows, i);
+  deskThreadPending(rows, i, d);
+  // At work on this one: its holder can hold several, and its work and latest words are only this one's while it's on
+  // it (#176).
+  const live = i.state === "working" && i.holder && i.now_on && !i.stopped;
+  deskThreadLatest(rows, i, live);
+  rows.sort((a, b) => a.at - b.at);
+  // Its holder at work: last, under what you wrote, as the answer to it comes (#165): the turn it's writing, in full,
+  // as it writes it, with a line for its steps (#276); its latest line till its steps are read.
+  if (live) rows.push(deskThreadLive(i));
+  return rows;
+}
+/** Item `i`'s steps on its Thread (deskThread): what you wrote about it, the lead's notes to its holder, the lead
+ *  unsticking it, its hand-offs. */
+function deskThreadSteps(rows, i, d) {
+  const mine = deskItemLog(i, d).filter((c) => !c.call);
   const backPics = deskBackPics(i, d, mine);
   for (const c of mine) {
     if (c.by === "You" && /^(to |sent back)/.test(c.why || "")) {
@@ -48,6 +64,9 @@ function deskThread(i, d) {
     // A hand-off is a record line, not a message (#276): one quiet line in the time line.
     else if (DESK_HANDOFF.test(c.text)) rows.push({ key: `r:${c.id}`, at: deskMs(c.at), rec: "Hand-off", html: `${esc(c.by)}: ${esc(c.text)}${c.why ? `: ${esc(c.why)}` : ""}` });
   }
+}
+/** Item `i`'s replies on its Thread (deskThread), each with a Done line when it said DONE. */
+function deskThreadReplies(rows, i) {
   // A reply that's the one before it told again with more after it (a turn on a usage limit, saved twice before the
   // hub kept one): shown once, the longer.
   const said = (i.said || []).filter((r, n, all) => { const x = all[n + 1]; return !(x && x.by === r.by && x.text.startsWith(r.text.replace(/…$/, ""))); });
@@ -57,6 +76,9 @@ function deskThread(i, d) {
     rows.push({ key: `s:${r.at}`, at: r.at, by: r.by, tag: "Reply", text: r.text, html: `${r.text ? `<div class="dk-md">${deskMd(r.text)}</div>` : ""}${deskHookFold(i, r)}${deskTurnLink(r)}` });
     if (r.done) rows.push({ key: `d:${r.at}`, at: r.at + 1, rec: "Done", html: `${esc(r.by)} said ${esc(deskNum(i))} is done` });
   }
+}
+/** What you sent from item `i`'s page that isn't back as a step yet, on its Thread (deskThread). */
+function deskThreadPending(rows, i, d) {
   // Sent from here, not back as a step yet.
   // A picture with no words is never one of its Steps: it's in once a reply came after it.
   const recorded = (p) => (p.text.trim() ? !!deskPendStep(i, d, p) : (i.said || []).some((r) => r.at > p.at));
@@ -67,9 +89,10 @@ function deskThread(i, d) {
     const m = p.failed != null ? { st: "failed", why: esc(p.failed), retry: p.at } : deskMsgState({ text: p.text, at: p.at / 1000 }, i, p.why === "back" ? "" : deskToSid(i, name), "sending");
     rows.push({ key: `p:${p.at}`, at: p.at, by: "You", you: true, back: p.why === "back", msg: { ...m, to: name, item: i.id }, text: p.text, html: deskBackWords(p.text, p.pics) });
   }
-  // At work on this one: its holder can hold several, and its work and latest words are only this one's while it's on
-  // it (#176).
-  const live = i.state === "working" && i.holder && i.now_on && !i.stopped;
+}
+/** Item `i`'s last words when it isn't `live` (deskThread): the turn it just wrote, till its reply is saved, else its
+ *  latest words when no reply holds them. */
+function deskThreadLatest(rows, i, live) {
   // The turn it just wrote here, till its reply is saved on the item (#395): the session is marked stopped a moment
   // before its reply is kept, and in that gap the page would show only its last line.
   const kept = live ? null : deskLiveKept.get(i.id);
@@ -85,16 +108,14 @@ function deskThread(i, d) {
     const at = Math.max(deskMs(i.updated), theirs), r = deskHookSplit({ at, text: lat });
     rows.push({ key: "lat", at, by: i.holder?.name || i.by || "It", tag: fin ? "Done" : "Reply", on: fin, text: r.text, html: `${r.text ? `<div class="dk-md">${deskMd(r.text)}</div>` : ""}${deskHookFold(i, r)}` });
   }
-  rows.sort((a, b) => a.at - b.at);
-  // Its holder at work: last, under what you wrote, as the answer to it comes (#165): the turn it's writing, in full,
-  // as it writes it, with a line for its steps (#276); its latest line till its steps are read.
-  if (live) {
-    const turn = deskLiveTurn(i), crew = deskCrewNow(i), crewHtml = crew ? `<div class="dk-stp dk-crewnow">Crew: ${esc(crew)}</div>` : "";
-    if (turn?.words) deskLiveKept.set(i.id, { by: i.holder.name, text: turn.words, after: turn.after, from: turn.from, seen: Date.now() });
-    rows.push({ key: "live", at: 0, by: i.holder.name, live: true, tag: turn?.words ? "Writing" : "", html: turn ? `${turn.steps ? `<div class="dk-stp">${esc(turn.steps)}</div>` : ""}${turn.words ? `<div class="dk-md">${deskMd(turn.words)}</div>` : ""}${crewHtml}<div class="dk-tbar"></div>`
-      : `<div class="dk-md dk-quiet">${lat && !deskSaidHas(i, lat1) ? deskMd(lat1) : "Working…"}</div>${crewHtml}<div class="dk-tbar"></div>` });
-  }
-  return rows;
+}
+/** The row for item `i`'s holder at work on it (deskThread): the turn it's writing, else its latest line. */
+function deskThreadLive(i) {
+  const lat = (i.latest || "").trim(), lat1 = firstLine(lat);
+  const turn = deskLiveTurn(i), crew = deskCrewNow(i), crewHtml = crew ? `<div class="dk-stp dk-crewnow">Crew: ${esc(crew)}</div>` : "";
+  if (turn?.words) deskLiveKept.set(i.id, { by: i.holder.name, text: turn.words, after: turn.after, from: turn.from, seen: Date.now() });
+  return { key: "live", at: 0, by: i.holder.name, live: true, tag: turn?.words ? "Writing" : "", html: turn ? `${turn.steps ? `<div class="dk-stp">${esc(turn.steps)}</div>` : ""}${turn.words ? `<div class="dk-md">${deskMd(turn.words)}</div>` : ""}${crewHtml}<div class="dk-tbar"></div>`
+    : `<div class="dk-md dk-quiet">${lat && !deskSaidHas(i, lat1) ? deskMd(lat1) : "Working…"}</div>${crewHtml}<div class="dk-tbar"></div>` };
 }
 /** What item `i`'s holder's crew at work are doing, in a line ("loops-tests editing app.js; ui-fix running npm test"),
  *  while its holder is on this item; "" for a crew member's item or with none at work (#318). */

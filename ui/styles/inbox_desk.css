@@ -1,4 +1,4 @@
-/* The Inbox and the Desk (ui/inbox_desk.js): what a row is for on the Desk under it ("CUE · Desk" for its lead's ask,
+/* The Inbox and the Desk (ui/desk/inbox.js): what a row is for on the Desk under it ("CUE · Desk" for its lead's ask,
    "CUE · for <title>" for a session holding an item), the bar over its brief with Open in Desk, and Add to Desk. */
 
 /* A row's third line: what it's for on the Desk. */

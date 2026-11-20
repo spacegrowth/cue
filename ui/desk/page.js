@@ -151,7 +151,7 @@ function deskActLine(x, d, bare) {
   return bare ? text : `${text}${x.why ? `<span class="dk-act-why"> · ${esc(x.why)}</span>` : ""}`;
 }
 /** Those lines for the lead's chat (chat/render.js chatHtml `extra`), each at its time, as its other lines are
- *  (desk_lead.js deskLineHtml): one short line at the left ("Reopened #417 for cue-12 · 3m", #433), its why under it cut
+ *  (desk/lead.js deskLineHtml): one short line at the left ("Reopened #417 for cue-12 · 3m", #433), its why under it cut
  *  to two lines with More (#452: a reopen's feedback was its whole twelve lines). A call (#420) isn't repeated: the
  *  lead already said it in its reply. */
 const deskActRows = (d) => deskActs(d).filter((x) => x.act !== "call").map((x) => {
@@ -245,7 +245,7 @@ const DESK_MARKS = { desk: "Dispatcher", session: "Session", crew: "Crew", lead:
  *  quiet and its name, then one quiet line), the page's own column at the left (its chat or thread, the box under it)
  *  and a panel at the right: NOW (its state said once, a sentence, its buttons), then what else it is (DONE WHEN, WHO…).
  *  Hide panel folds the panel into one line under the header (its NOW: dot, word, counts, buttons), remembered by kind
- *  of page; a narrow card folds it on its own (desk.css). */
+ *  of page; a narrow card folds it on its own (desk-page.css). */
 const DESK_PANEL_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M15 4v16"/></svg>`;
 /** Kinds of page whose panel you hid ("item", "session", "crew", "lead", "dispatcher"), kept across restarts. */
 const deskPanelHid = (() => { try { return new Set(JSON.parse(localStorage.getItem("cue.deskPanelHidden") || "[]")); } catch { return new Set(); } })();
@@ -459,7 +459,7 @@ const deskChkWhen = (ms) => new Date(ms).toLocaleString([], { weekday: "short", 
 const deskBack = (label, to = "") => `<button class="dk-back" data-desk-back="${esc(to)}">‹ ${esc(label)}</button>`;
 
 /** What you answered an item's holder on its page, by item: { q, a, ask, at }. Shown there until its holder asks again
- *  goes back to work, or ten minutes pass (board.js respond calls deskAnswered). */
+ *  goes back to work, or ten minutes pass (board/board.js respond calls deskAnswered). */
 const deskAnswers = new Map();
 /** Card `it` answered with `decision`: kept for the Desk item whose holder asked it, so its page says what you picked. */
 function deskAnswered(it, decision) {

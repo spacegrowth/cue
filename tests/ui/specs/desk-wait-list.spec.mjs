@@ -1,4 +1,4 @@
-// What an item waits on (#250, ui/desk.js deskWaitsOn): its page shows one "Waits on" box with the buttons that clear
+// What an item waits on (#250, ui/desk/desk.js deskWaitsOn): its page shows one "Waits on" box with the buttons that clear
 // it: a circle (red tag, the loop, Cut this link on each link); the item it's queued after. No "Try again" anywhere.
 import { test, expect, openDesk } from "./cue.mjs";
 

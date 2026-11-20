@@ -330,7 +330,7 @@ the shared code and leaves the others alone.
 | 4c | The 16 `desk_*.js` → `ui/desk/`. Make the `DESK_LEAD_CLICKS` load-order dependency explicit (one registry function instead of a spread at load time) | desk_*, html | low | Desk specs |
 | 4d | `desk.spec.mjs` → 6 files at its existing helper seams (lines 2072, 2186, 2214, 2734, 4066): lead, list, item page, quick-add, landing/approvals, look | tests | low | the same tests pass, and the test count is unchanged |
 | 4e | Split the long functions: the 13 Rust and 5 JS functions over 60 lines, plus `DESK_CLICKS` and `addOn`. One file per step | each | low | its area's tests |
-| 4f | Swift: fold `cue-listen` into `cue-voice listen`, one `emit()`, one FluidAudio pin. On the Rust side, one helper runner shared by speak, dictation and talk | `listen/`, `voice/`, `speak/`, `build.rs`, `voice/*.rs` | medium: build and bundle changes | the Swift tests, a dictation test by hand (`docs/dev/manual-checks.md`), a release dry run | Intel builds (`intel.swift` stubs), the bundled binaries list in `tauri.conf.json` |
+| 4f | **Parked, 2026-11-20.** The work so far is a patch outside the repo, `~/development/cue-parked/510-voice-4f.patch` (apply on main with `git apply`). Swift: fold `cue-listen` into `cue-voice listen`, one `emit()`, one FluidAudio pin. On the Rust side, one helper runner shared by speak, dictation and talk | `listen/`, `voice/`, `speak/`, `build.rs`, `voice/*.rs` | medium: build and bundle changes | the Swift tests, a dictation test by hand (`docs/dev/manual-checks.md`), a release dry run | Intel builds (`intel.swift` stubs), the bundled binaries list in `tauri.conf.json` |
 
 ### What makes each step safe to land alone
 

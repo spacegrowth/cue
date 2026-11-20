@@ -1,10 +1,10 @@
 // Cue UI box — sending what's in a box, and putting words back in one. One path for every box: the guards ("It's
 // restarting", "It's asking you something first"), pictures cut down to what goes (name, mime, data), the box emptied,
 // and, when it doesn't go, the words back in the box ahead of what's typed there since. Its callers: chat/send.js deliver
-// and askBtw, chat/compose.js sendTo, pullHeld and sendAtEdit, desk_act.js's senders, mini.js's answer and sheets.js
+// and askBtw, chat/compose.js sendTo, pullHeld and sendAtEdit, desk/act.js's senders, mini.js's answer and sheets.js
 // sendForward (docs/refactor-plan.md, Phase 3).
 
-/** Boxes a part of the window owns, asked before the shared code's own (the Desk's, desk_act.js; the mini window's Desk
+/** Boxes a part of the window owns, asked before the shared code's own (the Desk's, desk/act.js; the mini window's Desk
  *  rows, mini.js). The shared code never calls into them by name: it asks here. Each entry, every field but `owns`
  *  optional:
  *  - owns(key, el): box `key` (its textarea `el`, when there is one) is this entry's.

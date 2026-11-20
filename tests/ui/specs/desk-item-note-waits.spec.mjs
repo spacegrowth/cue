@@ -79,7 +79,7 @@ test("a send-back waiting for a free working folder says so, not Sending, and th
     Object.assign(it, { state: "queued", tree_wait: true, back_waiting: "The canvas still opens blank" });
   });
   await openItem(page, "d5");
-  // Sent back from its page (desk_act.js deskSendBack), the hub keeping it till a working folder is free.
+  // Sent back from its page (desk/act.js deskSendBack), the hub keeping it till a working folder is free.
   await page.evaluate(() => { deskPend("d5", "The canvas still opens blank", "back"); renderMain(); });
   const right = page.locator(".dk-right"), ichat = right.locator(".dk-ichat");
   await expect(ichat.locator(".cv-you .ml-words", { hasText: "Waiting: sent back, it starts when a working folder is free" })).toHaveCount(1);

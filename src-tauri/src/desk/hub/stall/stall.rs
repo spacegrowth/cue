@@ -334,72 +334,110 @@ pub(crate) fn stalls_asked(st: &mut Store, sid: &str, text: &str, on: &[String],
     // Its turn asks you something (#475): each item still at work with it waits on you with that, through its later
     // turns, until you answer (`DeskItem::asks`). A card it asks with is shown as itself.
     let yours = if ask_of(st, &h).is_none() { question_for_you(text) } else { None };
+    let turn = Turn { sid, text, h, yours, waits, running, left, busy, asks };
     for (id, updated) in still {
-        // Its work not committed: a question it ends on is the lead's to settle first (#213, below).
-        if let Some(q) = yours.as_ref().filter(|_| st.desk.item(&id).is_some_and(|i| i.loose.is_empty())) {
-            if let Some(it) = st.desk.item_mut(&id) {
-                (it.asks, it.waits) = (Some((q.clone(), now)), None);
-            }
-            st.desk.run.nudged.remove(&id);
-            st.desk.run.left_said.remove(&id);
-            fx.items.push(id.clone());
+        if stall_held(st, &turn, &id, updated, now, fx) {
             continue;
         }
-        // Still waiting on your answer to what it asked earlier: nothing to ask it, nothing for the lead.
-        if st.desk.item(&id).is_some_and(|i| i.asks.is_some()) {
-            continue;
+        if let Some(words) = stall_settled(st, &turn, &id, updated, now, fx) {
+            ask.push(words);
         }
-        // What this turn says it waits on, if anything: the item shows it until it changes or a turn says otherwise.
-        if let Some(it) = st.desk.item_mut(&id) {
-            it.waits = waits.clone().map(|w| (updated, w));
-        }
-        // A question its turn ended on, with its work not committed, is the lead's to settle, not yours (#213).
-        let loose = st.desk.item(&id).is_some_and(|i| !i.loose.is_empty());
-        if loose && !busy && ask_of(st, &h).is_none() && ends_on_a_question(text) {
-            st.desk.run.nudged.remove(&id);
-            to_lead(st, sid, &id, now, fx);
-            continue;
-        }
-        let quiet = busy || asks;
-        // Waiting isn't stopping, nor is running its tests: not asked "Done?", and the lead isn't told (#249, #435).
-        if waits.is_some() || running {
-            st.desk.run.left_said.insert(id.clone(), (sid.to_string(), updated));
-            st.desk.run.nudged.remove(&id);
-            continue;
-        }
-        // It said what's left of it, or what it waited on: not asked "Done?" until the item changes (sent again, routed;
-        // #168). A turn that no longer waits is a stop the lead hears of; told already (what's left), this is a no-op.
-        if st.desk.run.left_said.get(&id).is_some_and(|(by, at)| by == sid && *at == updated) {
-            if !quiet {
-                to_lead(st, sid, &id, now, fx);
-            }
-            continue;
-        }
-        if left {
-            st.desk.run.left_said.insert(id.clone(), (sid.to_string(), updated));
-            st.desk.run.nudged.remove(&id);
-            if !quiet {
-                to_lead(st, sid, &id, now, fx);
-            }
-            continue;
-        }
-        // Asked of this stall already: this turn is its answer. Still no DONE: the lead settles it.
-        if st.desk.run.nudged.get(&id).is_some_and(|(_, at)| *at == updated) {
-            st.desk.run.nudged.remove(&id);
-            if !quiet {
-                to_lead(st, sid, &id, now, fx);
-            }
-            continue;
-        }
-        if quiet {
-            continue;
-        }
-        st.desk.run.nudged.insert(id.clone(), (sid.to_string(), updated));
-        ask.push(stall_words(&id));
     }
     if !ask.is_empty() {
         fx.sends.push((sid.to_string(), ask.join("\n")));
     }
+}
+
+/// What session `sid`'s ended turn said, as `stalls_asked` read it for each item still at work with it.
+struct Turn<'a> {
+    sid: &'a str,
+    text: &'a str,
+    h: Holder,
+    /// Its question for you, if it asks you one.
+    yours: Option<String>,
+    /// What it says it waits on.
+    waits: Option<String>,
+    /// Its own tests or build still run in the background (#435, #556).
+    running: bool,
+    /// It says what's left.
+    left: bool,
+    /// Still at it: its agents or crew run on.
+    busy: bool,
+    /// It asks you, or ends on a question.
+    asks: bool,
+}
+
+/// Item `id` (changed at `updated`), still at work after `turn`: true when it waits on you, or is the lead's to
+/// settle now; else what it waits on is kept on it, for `stall_settled`.
+fn stall_held(st: &mut Store, turn: &Turn, id: &str, updated: u64, now: u64, fx: &mut Effects) -> bool {
+    // Its work not committed: a question it ends on is the lead's to settle first (#213, below).
+    if let Some(q) = turn.yours.as_ref().filter(|_| st.desk.item(id).is_some_and(|i| i.loose.is_empty())) {
+        if let Some(it) = st.desk.item_mut(id) {
+            (it.asks, it.waits) = (Some((q.clone(), now)), None);
+        }
+        st.desk.run.nudged.remove(id);
+        st.desk.run.left_said.remove(id);
+        fx.items.push(id.to_string());
+        return true;
+    }
+    // Still waiting on your answer to what it asked earlier: nothing to ask it, nothing for the lead.
+    if st.desk.item(id).is_some_and(|i| i.asks.is_some()) {
+        return true;
+    }
+    // What this turn says it waits on, if anything: the item shows it until it changes or a turn says otherwise.
+    if let Some(it) = st.desk.item_mut(id) {
+        it.waits = turn.waits.clone().map(|w| (updated, w));
+    }
+    // A question its turn ended on, with its work not committed, is the lead's to settle, not yours (#213).
+    let loose = st.desk.item(id).is_some_and(|i| !i.loose.is_empty());
+    if loose && !turn.busy && ask_of(st, &turn.h).is_none() && ends_on_a_question(turn.text) {
+        st.desk.run.nudged.remove(id);
+        to_lead(st, turn.sid, id, now, fx);
+        return true;
+    }
+    false
+}
+
+/// Item `id` (changed at `updated`), stopped after `turn`: waiting, said what's left, or asked already (the lead
+/// told when it's a stop); else the "Done?" words it's asked with.
+fn stall_settled(st: &mut Store, turn: &Turn, id: &str, updated: u64, now: u64, fx: &mut Effects) -> Option<String> {
+    let sid = turn.sid;
+    let quiet = turn.busy || turn.asks;
+    // Waiting isn't stopping, nor is running its tests: not asked "Done?", and the lead isn't told (#249, #435).
+    if turn.waits.is_some() || turn.running {
+        st.desk.run.left_said.insert(id.to_string(), (sid.to_string(), updated));
+        st.desk.run.nudged.remove(id);
+        return None;
+    }
+    // It said what's left of it, or what it waited on: not asked "Done?" until the item changes (sent again, routed;
+    // #168). A turn that no longer waits is a stop the lead hears of; told already (what's left), this is a no-op.
+    if st.desk.run.left_said.get(id).is_some_and(|(by, at)| by == sid && *at == updated) {
+        if !quiet {
+            to_lead(st, sid, id, now, fx);
+        }
+        return None;
+    }
+    if turn.left {
+        st.desk.run.left_said.insert(id.to_string(), (sid.to_string(), updated));
+        st.desk.run.nudged.remove(id);
+        if !quiet {
+            to_lead(st, sid, id, now, fx);
+        }
+        return None;
+    }
+    // Asked of this stall already: this turn is its answer. Still no DONE: the lead settles it.
+    if st.desk.run.nudged.get(id).is_some_and(|(_, at)| *at == updated) {
+        st.desk.run.nudged.remove(id);
+        if !quiet {
+            to_lead(st, sid, id, now, fx);
+        }
+        return None;
+    }
+    if quiet {
+        return None;
+    }
+    st.desk.run.nudged.insert(id.to_string(), (sid.to_string(), updated));
+    Some(stall_words(id))
 }
 
 /// Holder `sid`'s stop on item `id` to the Desk lead to settle, once while the item is unchanged; kept on the item

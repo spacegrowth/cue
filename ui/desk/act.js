@@ -241,7 +241,7 @@ function deskOpenItem(id) {
   deskDropArm = deskGiveFor = null;
 }
 async function deskAct(id, act, el = null) {
-  // Looks right commits the item's files at once; Undo on a done item only puts it back to check (desk_commit.js).
+  // Looks right commits the item's files at once; Undo on a done item only puts it back to check (desk/commit.js).
   if (act === "looks_right") return deskLooksRight(id);
   if (act === "looks_undo") return deskLooksUndo(id);
   if (act === "reopen") return deskReopen(id);
@@ -334,8 +334,9 @@ function deskOpenCrew(lead, agent) {
   renderMain();
 }
 
-/** The Desk's clicks, by attribute: each with its element. */
-const DESK_CLICKS = {
+/** The Desk's clicks, by attribute: each with its element (desk/clicks.js; the lead's are in desk/lead.js). Added in a few
+ *  groups, in this order (the first rule an element has is the one taken). An item's page, its panels and boxes: */
+deskClicks({
   deskPre: (el) => el.closest(".dk-box")?.querySelector("textarea")?.focus(),
   deskItab: (el) => { deskItemTabs.set(el.dataset.id, el.dataset.deskItab); renderMain(); },
   // An item's chat (#418): a turn about another item opened in place, or folded again; its record, all of it.
@@ -352,7 +353,6 @@ const DESK_CLICKS = {
   deskTab: (el) => { deskTab = el.dataset.deskTab; deskChatEnd = true; renderMain(); },
   deskMovesClear: (el) => deskMovesClear(el.dataset.deskMovesClear),
   deskMovesKeep: () => { deskMovesClearing = null; renderMain(); },
-  ...DESK_LEAD_CLICKS,
   deskSend: (el) => deskSendBox(el.dataset.deskSend),
   deskRetry: (el) => deskRetry(el.dataset.item, el.dataset.deskRetry),
   deskAct: (el) => { deskGiveFor = null; deskAct(el.dataset.id, el.dataset.deskAct, el); },
@@ -369,7 +369,10 @@ const DESK_CLICKS = {
   },
   deskAway: (el) => deskAwayOpen(el.dataset.deskAway),
   deskPause: (el) => deskPauseToggle(el.dataset.deskPause),
-  // Items as a List or as Progress (#409, desk_progress.js); a Progress row opens its item's page.
+});
+/** The items' List or Progress, and the rows on the left. */
+deskClicks({
+  // Items as a List or as Progress (#409, desk/progress.js); a Progress row opens its item's page.
   deskProgToggle: () => deskProgToggle(),
   deskProgOpen: (el) => deskProgOpen(el.dataset.deskProgOpen),
   deskProgNote: (el) => { const id = el.dataset.deskProgNote; if (!deskProgNoteOpen.delete(id)) deskProgNoteOpen.add(id); renderMain(); },
@@ -388,6 +391,9 @@ const DESK_CLICKS = {
     if (a) return respond(it, { behavior: "allow", answers: a });
   },
   deskRen: (el) => renameSession({ dataset: { rename: el.dataset.deskRen } }),
+});
+/** Chats, sessions and files opened from the Desk. */
+deskClicks({
   // Opened from an item's page or a holder's, it remembers that page so ‹ goes back to it (from the left list: the lead).
   // A reply's "This turn in …": that session, here in the middle as its name on the left opens it (#306; it was a
   // read-only pop-up, #276), at that reply; ‹ goes back to the item.
@@ -436,6 +442,9 @@ const DESK_CLICKS = {
   deskSessDiff: (el) => { extTabOf.set(el.dataset.deskSessDiff, DIFF_TAB); openSession(el.dataset.deskSessDiff); },
   deskCrewOpen: (el) => { deskCrewMenu = ""; deskOpenCrew(el.dataset.lead, el.dataset.deskCrewOpen); },
   deskCrewMore: (el) => { deskCrewMenu = deskCrewMenu === el.dataset.deskCrewMore ? "" : el.dataset.deskCrewMore; renderMain(); },
+});
+/** A Desk's own: Delete, the switcher, Home and the next Desk. */
+deskClicks({
   deskDelete: (el) => { deskDeleteAsk = el.dataset.deskDelete; deskCloseSelected = new Set(deskDeleteSessions(deskOf(deskDeleteAsk)).filter((s) => !s.shared && !s.busy).map((s) => s.sid)); renderMain(); },
   deskDeleteCancel: () => { deskDeleteAsk = null; renderMain(); },
   deskDeleteConfirm: async () => {
@@ -462,10 +471,11 @@ const DESK_CLICKS = {
   // ‹ › and the next Desk's name (#464): open it without moving it first in the recent order.
   deskStep: (el) => { deskSwitchClose(); deskStepped = el.dataset.deskStep; DESK_CLICKS.deskProject({ dataset: { deskProject: deskStepped } }); },
   deskProject: (el) => { deskSelect(el.dataset.deskProject); deskOpen = null; deskTab = "lead"; deskChatEnd = true; renderMain(); },
-};
+});
 /** A click rule's attribute: deskItem → data-desk-item. */
 const deskAttr = (k) => `data-${k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`;
-const DESK_SEL = Object.keys(DESK_CLICKS).map((k) => `[${deskAttr(k)}]`).join(", ");
+/** Every Desk click attribute as one selector, from the rules there are when it's asked. */
+const deskSel = () => Object.keys(DESK_CLICKS).map((k) => `[${deskAttr(k)}]`).join(", ");
 /** Element `el` (one with a Desk attribute, or null) clicked or pressed: an armed Drop disarms on anything else (as
  *  Remove does in the projects list); then `el` does its thing. True when it was the Desk's. */
 function deskTake(el) {
@@ -495,7 +505,7 @@ function deskClick(e) {
   if (e.target.closest?.(".dk-board .rename-in")) { e.stopPropagation(); return; }
   // A link in a row (an item's canvas, #436): it opens, not the row.
   if (e.target.closest?.(".dk-board a[data-href]")) return;
-  if (deskTake(e.target.closest?.(DESK_SEL))) e.stopPropagation();
+  if (deskTake(e.target.closest?.(deskSel()))) e.stopPropagation();
 }
 /** The Desk's box on screen that sends to session `sid` itself (a session's or holder's page, or the lead's chat for its
  *  lead), where Edit on a message Cue kept for it brings it back (#498); "" for none. */
@@ -515,7 +525,7 @@ BOX_OWNERS.push({
   chatEnd: (atEnd) => { deskChatEnd = atEnd; },
   keptBox: (sid) => deskKeptBox(sid),
 });
-// Go back on ticked decisions (desk_page.js): Enter sends it, as its Send button does (#522).
+// Go back on ticked decisions (desk/page.js): Enter sends it, as its Send button does (#522).
 BOX_OWNERS.push({ owns: (key) => key === "goback", send: () => deskGoBackSend() });
 /** Esc's session on the Desk (#494), as the Board's open session: the lead's in its chat, the session on a session's or
  *  holder's page (a crew member's: its lead), the item's holder on an item's page (its page is its holder's chat, #418).
@@ -530,7 +540,7 @@ function deskEscSession() {
   return escSession(o?.kind === "crew" ? o.lead : o?.kind === "chat" || o?.kind === "holder" ? o.sid : lead, key);
 }
 /** Keys on the Desk: ⌘N goes to the quick-add line (a box's Enter is the window's, app/keys.js enterInBox), the quick-add line's keys
- *  (desk_lead.js), Esc closes a Give to… menu, then the picker (when changing), then takes back a message Cue kept for
+ *  (desk/lead.js), Esc closes a Give to… menu, then the picker (when changing), then takes back a message Cue kept for
  *  the open session or stops it (Esc twice, deskEscSession), then the open pane. */
 function deskKey(e) {
   if (view !== "desk" || e.isComposing || e.keyCode === 229) return false;
@@ -544,7 +554,7 @@ function deskKey(e) {
   }
   // A row (an item, a holder, a crew member, a project's Desk): Enter or Space opens it as a click does, and it keeps
   // the keyboard where it is.
-  const row = e.target?.matches?.('.dk-board [role="button"]') && e.target.matches(DESK_SEL) ? e.target : null;
+  const row = e.target?.matches?.('.dk-board [role="button"]') && e.target.matches(deskSel()) ? e.target : null;
   if (row && (e.key === "Enter" || e.key === " ") && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
     const at = Object.keys(DESK_CLICKS).find((k) => k in row.dataset), sel = `[${deskAttr(at)}="${CSS.escape(row.dataset[at])}"]`;
     deskTake(row);

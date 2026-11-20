@@ -1,4 +1,4 @@
-// The Inbox (ui/inbox.js): a folded Running strip at the top (its count and a small bar a session), then two lines a row
+// The Inbox (ui/inbox/): a folded Running strip at the top (its count and a small bar a session), then two lines a row
 // under Pinned, Needs you, Done, and folded Later and Parked; a finished turn
 // that asks nothing under Done; the top ask opened by itself beside the list as a brief (never its full chat, which is a
 // link): its words, the question with each choice's meaning, what you asked, what it did, what this turn changed, its

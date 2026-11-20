@@ -132,16 +132,8 @@ pub(crate) fn route(st: &mut Store, project: &str, by: &By, id: &str, to: &str, 
     // Finishing (its commit and install): the lead may take it off its finish only once it stopped on a question;
     // while its commit or install is under way, it's refused before anything else (the user isn't asked either).
     // A route back to its holder with a why is never dropped (#338): the why goes to it as a note, the item as it is.
-    if let Some(busy) = crate::desk::hub::landing::finish::under_way(st, id) {
-        let held = st.desk.item(id).and_then(|i| i.holder.clone());
-        let back = held.filter(|b| holder.as_ref().is_some_and(|h| h.sid == b.sid && h.lead_sid == b.lead_sid));
-        if let Some(b) = back.filter(|_| !why.trim().is_empty()) {
-            return Some(match note(st, project, by, id, why, now, fx) {
-                Ok(()) => format!("Noted: #{id} {busy}, so it stays as it is; your why went to {} as a note.", b.name),
-                Err(no) => no,
-            });
-        }
-        return Some(format!("Refused: #{id} {busy}. You can wait for it, tell its holder something (NOTE: #{id} | …), or ask the user (ASK: #{id} | …)."));
+    if let Some(no) = route_under_way(st, project, by, id, holder.as_ref(), why, now, fx) {
+        return Some(no);
     }
     // A session not on the Desk: you're asked first, and the item stays.
     if let Some(h) = holder.as_ref().filter(|h| !to_new && !may_route(st, project, h, id)) {
@@ -167,6 +159,28 @@ pub(crate) fn route(st: &mut Store, project: &str, by: &By, id: &str, to: &str, 
         }
         return start_fresh(st, project, by, id, after, why, now, fx);
     }
+    route_to_holder(st, project, by, id, to, holder, after, unfinished, &rule, why, now, fx)
+}
+
+/// Item `id` finishing with its commit or install under way: refused, or (back to its holder, with a why) noted.
+#[allow(clippy::too_many_arguments)]
+fn route_under_way(st: &mut Store, project: &str, by: &By, id: &str, holder: Option<&Holder>, why: &str, now: u64, fx: &mut Effects) -> Option<String> {
+    let busy = crate::desk::hub::landing::finish::under_way(st, id)?;
+    let held = st.desk.item(id).and_then(|i| i.holder.clone());
+    let back = held.filter(|b| holder.is_some_and(|h| h.sid == b.sid && h.lead_sid == b.lead_sid));
+    if let Some(b) = back.filter(|_| !why.trim().is_empty()) {
+        return Some(match note(st, project, by, id, why, now, fx) {
+            Ok(()) => format!("Noted: #{id} {busy}, so it stays as it is; your why went to {} as a note.", b.name),
+            Err(no) => no,
+        });
+    }
+    Some(format!("Refused: #{id} {busy}. You can wait for it, tell its holder something (NOTE: #{id} | …), or ask the user (ASK: #{id} | …)."))
+}
+
+/// Item `id` to `holder` (none: no session goes by `to`), now or after another item: held by it and sent, or the
+/// same route said again, or a reopen refused.
+#[allow(clippy::too_many_arguments)]
+fn route_to_holder(st: &mut Store, project: &str, by: &By, id: &str, to: &str, holder: Option<Holder>, after: Option<String>, unfinished: bool, rule: &str, why: &str, now: u64, fx: &mut Effects) -> Option<String> {
     let refused = after.as_deref().and_then(|a| after_refused(st, a, id)).unwrap_or_default();
     let waits = after.filter(|_| refused.is_empty());
     // Its holder on it now (mid-turn, or asking you): a route to it again is a turn repeating itself. Not on it (its
@@ -214,7 +228,7 @@ pub(crate) fn route(st: &mut Store, project: &str, by: &By, id: &str, to: &str, 
         it.mark_reopened();
     }
     if waits.is_none() {
-        fx.sends.push((h.to().to_string(), crate::desk::handed_words(it, why, &rule)));
+        fx.sends.push((h.to().to_string(), crate::desk::handed_words(it, why, rule)));
     }
     let text = routed_text(id, &h.name, waits.as_deref(), (reopen || unfinished) && same, same && was_working);
     decide(st, project, Some(id.to_string()), by.name, by.sid, &text, why, now, fx);

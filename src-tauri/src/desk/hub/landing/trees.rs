@@ -63,10 +63,20 @@ impl Hub {
         if fx.items.is_empty() {
             return;
         }
-        // (item, the holder's folder, whom its message goes to, how many of its project's items have copies at once).
-        // A project set to the shared folder, or to commit its work yourself, gets none (desk/lands.rs). One the lead
-        // gave a copy of another repository (COPY, #557) gets that, wherever its holder works.
-        let wanted: Vec<(String, String, String, u32)> = self.read(|st| {
+        let wanted = self.desk_trees_wanted(fx);
+        for (id, folder, to, at_once) in wanted {
+            let Some(main) = tree_repo(&folder) else { continue };
+            let claimed = self.write(|st| claim_tree(st, &id, &main, at_once));
+            self.desk_tree_back(fx, &id, &to, &claimed);
+            self.desk_tree_placed(fx, &id, &to, claimed);
+        }
+    }
+
+    /// (item, the holder's folder, whom its message goes to, how many of its project's items have copies at once).
+    /// A project set to the shared folder, or to commit its work yourself, gets none (desk/lands.rs). One the lead
+    /// gave a copy of another repository (COPY, #557) gets that, wherever its holder works.
+    fn desk_trees_wanted(&self, fx: &Effects) -> Vec<(String, String, String, u32)> {
+        self.read(|st| {
             fx.items
                 .iter()
                 .filter_map(|id| {
@@ -80,97 +90,74 @@ impl Hub {
                     (l.at == "copy").then(|| (id.clone(), s.origin.cwd.clone(), h.to().to_string(), l.at_once))
                 })
                 .collect()
-        });
-        for (id, folder, to, at_once) in wanted {
-            let Some(main) = tree_repo(&folder) else { continue };
-            let claimed = self.write(|st| {
-                let used: Vec<u32> = st.desk.items.iter().filter_map(|i| i.tree.as_ref()).filter(|t| t.repo == main).map(|t| t.slot).collect();
-                // Its copy taken back earlier (TAKE COPY, #347) is kept on its branch: this one's is another.
-                let again = if st.desk.kept.iter().any(|k| k.id == id) { "-again" } else { "" };
-                let it = st.desk.item_mut(&id).filter(|i| i.state == "working" && i.tree.is_none())?;
-                // A branch the lead named (COPY, #557): that one, kept.
-                let (branch, keep) = match &it.copy_on {
-                    Some(c) => (c.branch.clone(), true),
-                    None => (format!("desk/{id}{again}"), false),
-                };
-                match (1..=at_once).find(|n| !used.contains(n)) {
-                    Some(n) => {
-                        let t = ItemTree { repo: main.clone(), path: format!("{main}/{TREES}/desk-{n}"), branch, base: String::new(), slot: n, keep };
-                        it.tree = Some(t.clone());
-                        // Started another way (Start it now, or freed by its `after`) while it waited for a copy: that wait is over.
-                        it.tree_wait = false;
-                        it.tree_wait_repo.clear();
-                        Some(Some(t))
+        })
+    }
+
+    /// Going now (a copy, or none needed): your Send back kept while it waited goes with its message (#396).
+    fn desk_tree_back(&self, fx: &mut Effects, id: &str, to: &str, claimed: &Option<Option<ItemTree>>) {
+        if !matches!(claimed, Some(None)) {
+            let back = self.write(|st| st.desk.item_mut(id).map(|i| std::mem::take(&mut i.back_waiting)).unwrap_or_default());
+            if !back.is_empty() {
+                match fx.sends.iter_mut().find(|(s, text)| *s == to && names_item(text, id)) {
+                    Some((_, text)) => {
+                        text.push_str("\n\n");
+                        text.push_str(&back);
                     }
-                    // Started now by the lead (START): it works where its holder is, message and all.
-                    None if it.no_copy_wait => None,
-                    None => {
-                        (it.state, it.tree_wait, it.tree_wait_repo) = ("queued".into(), true, main.clone());
-                        Some(None)
-                    }
-                }
-            });
-            // Going now (a copy, or none needed): your Send back kept while it waited goes with its message (#396).
-            if !matches!(claimed, Some(None)) {
-                let back = self.write(|st| st.desk.item_mut(&id).map(|i| std::mem::take(&mut i.back_waiting)).unwrap_or_default());
-                if !back.is_empty() {
-                    match fx.sends.iter_mut().find(|(s, text)| *s == to && names_item(text, &id)) {
-                        Some((_, text)) => {
-                            text.push_str("\n\n");
-                            text.push_str(&back);
-                        }
-                        None => fx.sends.push((to.clone(), back)),
-                    }
+                    None => fx.sends.push((to.to_string(), back)),
                 }
             }
-            match claimed {
-                None => {}
-                // None free: its message waits for its copy. The item's own words go then (`desk_trees_free`), and your
-                // Send back's message with them: kept on it, as only it has your words (#396).
-                Some(None) => {
-                    fx.sends.retain(|(s, text)| !(*s == to && names_item(text, &id)));
-                    let backs: Vec<String> = fx.backs.iter().filter(|(b, _)| *b == id).map(|(_, m)| m.clone()).collect();
-                    if !backs.is_empty() {
-                        self.write(|st| {
-                            if let Some(i) = st.desk.item_mut(&id) {
-                                i.back_waiting = std::iter::once(std::mem::take(&mut i.back_waiting)).chain(backs).filter(|m| !m.is_empty()).collect::<Vec<_>>().join("\n\n");
-                            }
-                        });
+        }
+    }
+
+    /// Item `id` as its claim went: its message waits for a copy, or says where its copy is.
+    fn desk_tree_placed(&self, fx: &mut Effects, id: &str, to: &str, claimed: Option<Option<ItemTree>>) {
+        match claimed {
+            None => {}
+            // None free: its message waits for its copy. The item's own words go then (`desk_trees_free`), and your
+            // Send back's message with them: kept on it, as only it has your words (#396).
+            Some(None) => {
+                fx.sends.retain(|(s, text)| !(*s == to && names_item(text, id)));
+                let backs: Vec<String> = fx.backs.iter().filter(|(b, _)| *b == id).map(|(_, m)| m.clone()).collect();
+                if !backs.is_empty() {
+                    self.write(|st| {
+                        if let Some(i) = st.desk.item_mut(id) {
+                            i.back_waiting = std::iter::once(std::mem::take(&mut i.back_waiting)).chain(backs).filter(|m| !m.is_empty()).collect::<Vec<_>>().join("\n\n");
+                        }
+                    });
+                }
+            }
+            Some(Some(mut t)) => match prepare(&t, id) {
+                Ok((base, path)) => {
+                    t.path = path;
+                    self.write(|st| {
+                        if let Some(i) = st.desk.item_mut(id).and_then(|i| i.tree.as_mut()) {
+                            (i.base, i.path) = (base.clone(), t.path.clone());
+                        }
+                    });
+                    let line = tree_line(&t);
+                    for (_, text) in fx.sends.iter_mut().filter(|(s, text)| *s == to && names_item(text, id) && !text.contains(&t.path)) {
+                        text.push('\n');
+                        text.push_str(&line);
                     }
                 }
-                Some(Some(mut t)) => match prepare(&t, &id) {
-                    Ok((base, path)) => {
-                        t.path = path;
-                        self.write(|st| {
-                            if let Some(i) = st.desk.item_mut(&id).and_then(|i| i.tree.as_mut()) {
-                                (i.base, i.path) = (base.clone(), t.path.clone());
-                            }
-                        });
-                        let line = tree_line(&t);
-                        for (_, text) in fx.sends.iter_mut().filter(|(s, text)| *s == to && names_item(text, &id) && !text.contains(&t.path)) {
-                            text.push('\n');
-                            text.push_str(&line);
+                Err(e) => {
+                    // Its holder works in the shared folder, as before.
+                    eprintln!("cue: desk: couldn't make #{id} its own copy: {e}");
+                    // One the lead asked for (COPY, #557): it and the holder are told, so the work isn't done elsewhere unknowingly.
+                    if t.keep {
+                        let words = format!("Desk item #{id}: Cue couldn't make its copy of {} on branch {}: {e}. Say where to work before changing files.", t.repo, t.branch);
+                        fx.sends.push((to.to_string(), words.clone()));
+                        if let Some(lead) = self.read(|st| st.desk.item(id).and_then(|i| st.desk.lead_sid(&i.project)).map(str::to_string)) {
+                            fx.sends.push((lead, words));
                         }
                     }
-                    Err(e) => {
-                        // Its holder works in the shared folder, as before.
-                        eprintln!("cue: desk: couldn't make #{id} its own copy: {e}");
-                        // One the lead asked for (COPY, #557): it and the holder are told, so the work isn't done elsewhere unknowingly.
-                        if t.keep {
-                            let words = format!("Desk item #{id}: Cue couldn't make its copy of {} on branch {}: {e}. Say where to work before changing files.", t.repo, t.branch);
-                            fx.sends.push((to.clone(), words.clone()));
-                            if let Some(lead) = self.read(|st| st.desk.item(&id).and_then(|i| st.desk.lead_sid(&i.project)).map(str::to_string)) {
-                                fx.sends.push((lead, words));
-                            }
+                    self.write(|st| {
+                        if let Some(i) = st.desk.item_mut(id) {
+                            i.tree = None;
                         }
-                        self.write(|st| {
-                            if let Some(i) = st.desk.item_mut(&id) {
-                                i.tree = None;
-                            }
-                        });
-                    }
-                },
-            }
+                    });
+                }
+            },
         }
     }
 
@@ -306,18 +293,7 @@ impl Hub {
         // meets the main line now is where it starts.
         let base = moved_base_of(&t.repo, &t.path, &onto, &base).unwrap_or(base);
         if rev(&t.repo, &format!("{base}^{{tree}}")).as_deref() == Some(work.as_str()) {
-            // Nothing in its copy: its holder worked where it was. That's landed as before; the copy goes.
-            remove(&t);
-            self.write(|st| {
-                if let Some(i) = st.desk.item_mut(id) {
-                    i.tree = None;
-                }
-            });
-            let _ = self.desk_trees_free(&t.repo);
-            // Committed where it was, as an item without a copy is (that path takes it at "commit").
-            self.finish_fin(id, |f| (f.step, f.wait) = ("commit".into(), String::new()));
-            self.desk_finish_shared(id);
-            return Landed::Done;
+            return self.land_nothing(id, &t);
         }
         if fin.step == "commit" {
             self.finish_step(id, "line");
@@ -331,27 +307,9 @@ impl Hub {
         }
         for _ in 0..3 {
             let Some(main) = rev(&t.repo, &onto) else { return self.land_wait(id, "Cue can't read the main line") };
-            let merged = if main == base {
-                work.clone()
-            } else {
-                let Some(c) = git("", &t.repo, &[], &["commit-tree", &work, "-p", &base, "-m", "desk work"]).map(|c| c.trim().to_string()) else {
-                    return self.land_wait(id, "git couldn't make its commit");
-                };
-                let filters = crate::safe_git::no_repo_filters("", &t.repo);
-                let tried = crate::safe_git::run("", &t.repo, &filters, &["merge-tree", "--write-tree", "--name-only", "--merge-base", &base, &main, &c]);
-                let Ok((out, code)) = tried else { return self.land_wait(id, "git couldn't bring it up to the main line") };
-                if code != 0 {
-                    let files: Vec<&str> = out.lines().skip(1).take_while(|l| !l.is_empty()).collect();
-                    let q = format!(
-                        "Its work clashes with {onto} in {}: in {}, merge {onto} into {}, settle the clash there, and say DONE again",
-                        files.join(", "),
-                        t.path,
-                        t.branch
-                    );
-                    self.finish_clash(&it, &q);
-                    return Landed::Done;
-                }
-                out.lines().next().unwrap_or("").trim().to_string()
+            let merged = match self.land_merged(id, &it, &t, &onto, &base, &main, &work) {
+                Ok(merged) => merged,
+                Err(landed) => return landed,
             };
             let diff = git("", &t.repo, &[], &["diff", "-U0", "--no-color", "--no-ext-diff", "--no-textconv", &main, &merged]).unwrap_or_default();
             if let Some((w, at)) = word_in(&diff, &words) {
@@ -361,56 +319,112 @@ impl Hub {
             let Some(squash) = git("", &t.repo, &[], &["commit-tree", &merged, "-p", &main, "-m", &message]).map(|c| c.trim().to_string()) else {
                 return self.land_wait(id, "git couldn't make its commit");
             };
-            // Its check, once per state of the main line it's checked on (a wait doesn't run it again).
-            let checked = self.read(|st| st.desk.item(id).and_then(|i| i.finish.as_ref()).map(|f| f.checked.clone())).unwrap_or_default();
-            let mut unchecked = false;
-            if checked != merged {
-                // Its `at` kept: cut short, it's back in the line in its place.
-                self.finish_fin(id, |f| (f.step, f.wait) = ("checking".into(), String::new()));
-                // Its project's check (desk/lands.rs), on the same tree: main plus the item (`squash`). Your own steps run
-                // in a clean copy of it; set to none, it lands "not checked"; else the repository's own (Cue's).
-                let check = match crate::desk::lands::check_of(&it.project, &t.repo) {
-                    crate::desk::lands::Check::Steps(steps) => Some(check_steps_on(&t.repo, &squash, &steps)),
-                    crate::desk::lands::Check::Off => None,
-                    crate::desk::lands::Check::Repo => self.installer().check(&t.repo, &squash),
-                };
-                match check {
-                    None => unchecked = true,
-                    Some(Ok(())) => {}
-                    Some(Err(log)) => {
-                        self.desk_land_back(&it, CHECK_FAILED, "check_failed", &log);
-                        return Landed::Done;
-                    }
-                }
-                let m = merged.clone();
-                self.finish_fin(id, |f| (f.checked, f.unchecked) = (m, unchecked));
+            if let Some(landed) = self.land_check(id, &it, &t, &merged, &squash) {
+                return landed;
             }
             // The main line moved while it was checked: brought up to it again.
             if rev(&t.repo, &onto).as_deref() != Some(main.as_str()) {
                 continue;
             }
-            // Dropped or sent back while it was checked: not landed.
-            if !self.read(|st| still_landing(st.desk.item(id), &t.path)) {
-                return Landed::Done;
-            }
-            // Its project lands by pull request: checked, its branch pushed and a pull request opened; it lands when that's
-            // merged (desk/hub/landing/pr.rs). Main isn't touched here.
-            if crate::desk::lands::lands_of(&it.project, &t.repo).how == "pr" {
-                self.desk_open_pr(&it, &t, &onto, &squash, &message);
-                return Landed::Done;
-            }
-            if let Some(what) = in_progress(&t.repo) {
-                return self.land_wait(id, &format!("The main checkout is in the middle of {what}"));
-            }
-            // Others' unsaved edits in the main checkout stay as they are, the item's changes merged into them (#350).
-            if let Err(why) = crate::desk::hub::landing::land_keep::fast_forward_keeping_edits(&t.repo, &main, &squash) {
-                return self.land_wait(id, &crate::desk::hub::landing::git::because(format!("git wouldn't move {onto} in the main checkout"), &why));
-            }
-            let short = git("", &t.repo, &[], &["rev-parse", "--short", &squash]).map(|s| s.trim().to_string()).unwrap_or_default();
-            self.finish_landed(id, &t, &short);
-            return Landed::Done;
+            return self.land_onto(id, &it, &t, &onto, &main, &squash, &message);
         }
         self.land_wait(id, "The main line kept moving")
+    }
+
+    /// Nothing in item `id`'s copy `t`: its holder worked where it was. That's landed as before; the copy goes.
+    fn land_nothing(&self, id: &str, t: &ItemTree) -> Landed {
+        remove(t);
+        self.write(|st| {
+            if let Some(i) = st.desk.item_mut(id) {
+                i.tree = None;
+            }
+        });
+        let _ = self.desk_trees_free(&t.repo);
+        // Committed where it was, as an item without a copy is (that path takes it at "commit").
+        self.finish_fin(id, |f| (f.step, f.wait) = ("commit".into(), String::new()));
+        self.desk_finish_shared(id);
+        Landed::Done
+    }
+
+    /// Item `id`'s work (the tree `work`, from `base`) brought up to the main line at `main`: the merged tree, or how
+    /// its turn ended (a clash asks its holder; git failing waits).
+    #[allow(clippy::too_many_arguments)]
+    fn land_merged(&self, id: &str, it: &DeskItem, t: &ItemTree, onto: &str, base: &str, main: &str, work: &str) -> Result<String, Landed> {
+        if main == base {
+            return Ok(work.to_string());
+        }
+        let Some(c) = git("", &t.repo, &[], &["commit-tree", work, "-p", base, "-m", "desk work"]).map(|c| c.trim().to_string()) else {
+            return Err(self.land_wait(id, "git couldn't make its commit"));
+        };
+        let filters = crate::safe_git::no_repo_filters("", &t.repo);
+        let tried = crate::safe_git::run("", &t.repo, &filters, &["merge-tree", "--write-tree", "--name-only", "--merge-base", base, main, &c]);
+        let Ok((out, code)) = tried else { return Err(self.land_wait(id, "git couldn't bring it up to the main line")) };
+        if code != 0 {
+            let files: Vec<&str> = out.lines().skip(1).take_while(|l| !l.is_empty()).collect();
+            let q = format!(
+                "Its work clashes with {onto} in {}: in {}, merge {onto} into {}, settle the clash there, and say DONE again",
+                files.join(", "),
+                t.path,
+                t.branch
+            );
+            self.finish_clash(it, &q);
+            return Err(Landed::Done);
+        }
+        Ok(out.lines().next().unwrap_or("").trim().to_string())
+    }
+
+    /// Its check, once per state of the main line it's checked on (a wait doesn't run it again): Some when its turn
+    /// ends here (the check failed and it went back).
+    fn land_check(&self, id: &str, it: &DeskItem, t: &ItemTree, merged: &str, squash: &str) -> Option<Landed> {
+        let checked = self.read(|st| st.desk.item(id).and_then(|i| i.finish.as_ref()).map(|f| f.checked.clone())).unwrap_or_default();
+        let mut unchecked = false;
+        if checked != merged {
+            // Its `at` kept: cut short, it's back in the line in its place.
+            self.finish_fin(id, |f| (f.step, f.wait) = ("checking".into(), String::new()));
+            // Its project's check (desk/lands.rs), on the same tree: main plus the item (`squash`). Your own steps run
+            // in a clean copy of it; set to none, it lands "not checked"; else the repository's own (Cue's).
+            let check = match crate::desk::lands::check_of(&it.project, &t.repo) {
+                crate::desk::lands::Check::Steps(steps) => Some(check_steps_on(&t.repo, squash, &steps)),
+                crate::desk::lands::Check::Off => None,
+                crate::desk::lands::Check::Repo => self.installer().check(&t.repo, squash),
+            };
+            match check {
+                None => unchecked = true,
+                Some(Ok(())) => {}
+                Some(Err(log)) => {
+                    self.desk_land_back(it, CHECK_FAILED, "check_failed", &log);
+                    return Some(Landed::Done);
+                }
+            }
+            let m = merged.to_string();
+            self.finish_fin(id, |f| (f.checked, f.unchecked) = (m, unchecked));
+        }
+        None
+    }
+
+    /// Item `id`, checked on the main line as it still is: landed on it (`squash`), or its pull request opened.
+    #[allow(clippy::too_many_arguments)]
+    fn land_onto(&self, id: &str, it: &DeskItem, t: &ItemTree, onto: &str, main: &str, squash: &str, message: &str) -> Landed {
+        // Dropped or sent back while it was checked: not landed.
+        if !self.read(|st| still_landing(st.desk.item(id), &t.path)) {
+            return Landed::Done;
+        }
+        // Its project lands by pull request: checked, its branch pushed and a pull request opened; it lands when that's
+        // merged (desk/hub/landing/pr.rs). Main isn't touched here.
+        if crate::desk::lands::lands_of(&it.project, &t.repo).how == "pr" {
+            self.desk_open_pr(it, t, onto, squash, message);
+            return Landed::Done;
+        }
+        if let Some(what) = in_progress(&t.repo) {
+            return self.land_wait(id, &format!("The main checkout is in the middle of {what}"));
+        }
+        // Others' unsaved edits in the main checkout stay as they are, the item's changes merged into them (#350).
+        if let Err(why) = crate::desk::hub::landing::land_keep::fast_forward_keeping_edits(&t.repo, main, squash) {
+            return self.land_wait(id, &crate::desk::hub::landing::git::because(format!("git wouldn't move {onto} in the main checkout"), &why));
+        }
+        let short = git("", &t.repo, &[], &["rev-parse", "--short", squash]).map(|s| s.trim().to_string()).unwrap_or_default();
+        self.finish_landed(id, t, &short);
+        Landed::Done
     }
 
     /// Item `id` waits in the landing line on `why` (said on it; nobody asked).
@@ -461,6 +475,36 @@ pub(crate) fn copy_wait(st: &Store, project: &str, repo: &str) -> String {
         held.len(),
         if held.is_empty() { "none".to_string() } else { held.join(", ") }
     )
+}
+
+/// Item `id`'s copy of `main`, in a slot free of the `at_once` its project allows: Some(Some) claimed, Some(None) none
+/// free (it's queued for one), None nothing to claim (not at work, has one, or started by the lead to go without).
+fn claim_tree(st: &mut Store, id: &str, main: &str, at_once: u32) -> Option<Option<ItemTree>> {
+    let used: Vec<u32> = st.desk.items.iter().filter_map(|i| i.tree.as_ref()).filter(|t| t.repo == main).map(|t| t.slot).collect();
+    // Its copy taken back earlier (TAKE COPY, #347) is kept on its branch: this one's is another.
+    let again = if st.desk.kept.iter().any(|k| k.id == id) { "-again" } else { "" };
+    let it = st.desk.item_mut(id).filter(|i| i.state == "working" && i.tree.is_none())?;
+    // A branch the lead named (COPY, #557): that one, kept.
+    let (branch, keep) = match &it.copy_on {
+        Some(c) => (c.branch.clone(), true),
+        None => (format!("desk/{id}{again}"), false),
+    };
+    match (1..=at_once).find(|n| !used.contains(n)) {
+        Some(n) => {
+            let t = ItemTree { repo: main.to_string(), path: format!("{main}/{TREES}/desk-{n}"), branch, base: String::new(), slot: n, keep };
+            it.tree = Some(t.clone());
+            // Started another way (Start it now, or freed by its `after`) while it waited for a copy: that wait is over.
+            it.tree_wait = false;
+            it.tree_wait_repo.clear();
+            Some(Some(t))
+        }
+        // Started now by the lead (START): it works where its holder is, message and all.
+        None if it.no_copy_wait => None,
+        None => {
+            (it.state, it.tree_wait, it.tree_wait_repo) = ("queued".into(), true, main.to_string());
+            Some(None)
+        }
+    }
 }
 
 #[cfg(test)]

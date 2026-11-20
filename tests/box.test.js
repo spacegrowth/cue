@@ -1,6 +1,6 @@
 // Run: node tests/box.test.js  (the one message box: ui/box/markup.js, send.js, end.js)
 // The box's markup is checked against what the builders drew before they moved onto it (chat/compose.js box, before 3b;
-// desk_view.js deskBox and deskItemFoot, desk_act.js deskBackHtml, desk_page.js deskGoBackHtml, before 3c; inbox.js inboxBox,
+// desk/view.js deskBox and deskItemFoot, desk/act.js deskBackHtml, desk/page.js deskGoBackHtml, before 3c; inbox.js inboxBox,
 // mini.js's answer box, chat/send.js btwPanel's and sheets.js forwardPop's, before 3d), less their hover text, so moving a
 // box onto it changes nothing you see. Its send, against a fake invoke.
 const assert = require("assert");
@@ -27,12 +27,12 @@ const ctx = {
   CSS: { escape: (s) => s },
   document: { addEventListener() {}, querySelector: () => null },
   requestAnimationFrame: (f) => setTimeout(f, 0),
-  setTimeout, Date, Promise, JSON, Map, Set, DESK_LEAD_CLICKS: {},
+  setTimeout, Date, Promise, JSON, Map, Set,
 };
 ctx.draft = (id) => (ctx.drafts[id] ||= { text: "", choices: {}, images: [] });
 vm.createContext(ctx);
-// In the windows' order (index.html): desk_act.js puts its boxes on box/send.js BOX_OWNERS as it loads.
-for (const f of ["box/markup.js", "box/send.js", "box/end.js", "chat/send.js", "chat/compose.js", "desk_page.js", "desk_view.js", "desk_act.js", "inbox.js", "sheets.js"]) {
+// In the windows' order (index.html): desk/act.js puts its boxes on box/send.js BOX_OWNERS as it loads.
+for (const f of ["box/markup.js", "box/send.js", "box/end.js", "chat/send.js", "chat/compose.js", "desk/clicks.js", "desk/page.js", "desk/view.js", "desk/act.js", "inbox/list.js", "inbox/box.js", "inbox/side.js", "inbox/keys.js", "sheets.js"]) {
   vm.runInContext(fs.readFileSync(`${__dirname}/../ui/${f}`, "utf8").replace(/^(const|let) /gm, "var "), ctx, { filename: f });
 }
 // What the builders call that isn't theirs to draw.
@@ -69,7 +69,7 @@ assert.doesNotMatch(ctx.box("s:A", "R", "Send", "", true), /title=/, "no hover t
 ctx.dictating = null; ctx.sendAtFor = null; ctx.suggestionFor = () => "";
 
 // ---- markup: the Desk's boxes (on boxHtml since step 3c) ----
-// What desk_view.js deskBox and deskItemFoot, desk_act.js deskBackHtml and desk_page.js deskGoBackHtml drew before they
+// What desk/view.js deskBox and deskItemFoot, desk/act.js deskBackHtml and desk/page.js deskGoBackHtml drew before they
 // moved onto boxHtml, word for word.
 const OLD_DESK = {
   lead: "<div class=\"dk-box\" data-drop=\"desk:[&quot;P&quot;,&quot;&quot;]\"><quick data-quick=\"desk:[&quot;P&quot;,&quot;&quot;]\"><div class=\"chips\"><span class=\"chip\"><button class=\"chip-img\" data-draft-lightbox=\"desk:[&quot;P&quot;,&quot;&quot;]:0\" aria-label=\"Open a.png\"><img src=\"data:image/png;base64,AA\" alt=\"a.png\"/></button><button class=\"chip-x\" data-unattach=\"desk:[&quot;P&quot;,&quot;&quot;]:0\" aria-label=\"Remove image\">×</button></span></div><div class=\"dk-box-row\"><div class=\"ta-wrap\"><textarea rows=\"1\" data-text=\"desk:[&quot;P&quot;,&quot;&quot;]\" class=\"sug\" data-sug-sid=\"L\" aria-label=\"Suggested: Ship it. Tab types it in.\" placeholder=\" \" spellcheck=\"false\" autocorrect=\"off\" autocapitalize=\"off\" autocomplete=\"off\"></textarea><div class=\"sug-line\"  aria-hidden=\"true\"><span class=\"sug-k\">Suggested</span><span class=\"sug-t\">Ship it</span><kbd>Tab</kbd></div></div><button class=\"icon-btn mic \" data-mic=\"desk:[&quot;P&quot;,&quot;&quot;]\" aria-label=\"Dictate\"><mic/></button><button class=\"icon-btn\" data-attach=\"desk:[&quot;P&quot;,&quot;&quot;]\" aria-label=\"Add an image\"><img/></button><button class=\"btn primary small\" data-desk-send=\"desk:[&quot;P&quot;,&quot;&quot;]\">Send</button></div></div>",
@@ -346,7 +346,7 @@ assert.strictEqual(c._pinTop, 1000);
   await ctx.sendAtEdit("S");
   eq([ctx.drafts["s:S"].text, saves, draws], ["later", 1, 1], "sendAtEdit");
 
-  // ---- the Desk's boxes on it (desk_act.js deskSendBox, deskSendItem, deskSendLead, deskSendBack, the retries) ----
+  // ---- the Desk's boxes on it (desk/act.js deskSendBox, deskSendItem, deskSendLead, deskSendBack, the retries) ----
   const pends = [];
   Object.assign(ctx, {
     deskPending: new Map(), deskSent: new Map(), deskAnswers: new Map(), deskQuestion: () => "Which?", deskOf: () => ({}),

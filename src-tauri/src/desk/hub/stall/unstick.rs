@@ -314,27 +314,14 @@ impl Hub {
         if o.commit.is_empty() {
             return self.desk_close_no_code(o);
         }
-        let mut found: Option<(String, String, String, String)> = None;
-        let mut not = Vec::new();
-        let mut repos: Vec<String> = o.folders.iter().filter_map(|f| tree_repo(f)).collect();
-        repos.dedup();
-        for repo in &repos {
-            let Some((_, branch)) = crate::desk::hub::landing::main_line::main_checkout(repo) else { continue };
-            let Some(tip) = rev(repo, &branch) else { continue };
-            match rev(repo, &format!("{}^{{commit}}", o.commit)) {
-                Some(full) if crate::self_install::is_ancestor(repo, &full, &tip) => {
-                    found = Some((repo.clone(), branch, full, tip));
-                    break;
-                }
-                Some(_) => not.push(format!("{} isn't on {branch} in {repo}", o.commit)),
-                None => not.push(format!("{repo} has no commit {}", o.commit)),
+        let (repo, branch, full, tip) = match commit_on_main(&o) {
+            Ok(found) => found,
+            Err(not) => {
+                let where_ = if !not.is_empty() { not.join("; ") } else { "Cue found no repository to look in".to_string() };
+                let fx = Effects { sends: vec![(o.by_sid.clone(), format!("Desk item #{} not closed: {where_}. Say the commit on main that holds its work: CLOSE: #{} | commit: <sha> | why: …", o.id, o.id))], ..Default::default() };
+                self.desk_done(fx);
+                return;
             }
-        }
-        let Some((repo, branch, full, tip)) = found else {
-            let where_ = if !not.is_empty() { not.join("; ") } else { "Cue found no repository to look in".to_string() };
-            let fx = Effects { sends: vec![(o.by_sid.clone(), format!("Desk item #{} not closed: {where_}. Say the commit on main that holds its work: CLOSE: #{} | commit: <sha> | why: …", o.id, o.id))], ..Default::default() };
-            self.desk_done(fx);
-            return;
         };
         let short: String = full.chars().take(7).collect();
         // Its copy: removed when everything in it is on main (nothing kept would be lost), else kept and listed.
@@ -349,36 +336,7 @@ impl Hub {
             remove(t);
         }
         let now = now_ms();
-        let fx = self.write(|st| {
-            let mut fx = Effects::default();
-            let it = st.desk.item_mut(&o.id).filter(|i| i.project == o.project && i.state != "done")?;
-            let was = it.state.clone();
-            if let Some(t) = it.tree.take() {
-                if !spent {
-                    let mut gone = it.clone();
-                    gone.tree = Some(t);
-                    fx.trees_gone.push(gone);
-                }
-            }
-            it.state = "done".into();
-            it.paused = None;
-            (it.after, it.close_on_check, it.finish, it.tree_wait, it.no_copy_wait) = (None, false, None, false, false);
-            it.tree_wait_repo.clear();
-            it.done_at = Some(secs(now));
-            it.updated = secs(now);
-            if it.commit.is_empty() {
-                it.commit = short.clone();
-                it.commit_in = vec![(repo.clone(), short.clone())];
-            }
-            if let Some(h) = it.holder.as_ref().filter(|_| matches!(was.as_str(), "working" | "queued")) {
-                fx.sends.push((h.to().to_string(), format!("Desk item #{} is closed: its work is already on {branch} ({short}). Stop work on it.", o.id)));
-            }
-            fx.items.push(o.id.clone());
-            release(st, &o.id, now, &mut fx);
-            let by = By { name: &o.by, sid: &o.by_sid };
-            step(st, &o.project, &by, "close", &o.id, &format!("Closed #{}: its work is on {branch} ({short})", o.id), &o.why, now, &mut fx);
-            Some(fx)
-        });
+        let fx = self.write(|st| closed_on_main(st, &o, spent, &repo, &branch, &short, now));
         let Some(fx) = fx else { return };
         self.desk_done(fx);
         if let Some(t) = copy.filter(|_| spent) {
@@ -423,4 +381,57 @@ impl Hub {
             self.desk_done(fx);
         }
     }
+}
+
+/// CLOSE's commit, looked for on the main line of each repository its folders are in: (repository, branch, full
+/// commit, branch tip), or where Cue looked and why it isn't there.
+fn commit_on_main(o: &OnMain) -> Result<(String, String, String, String), Vec<String>> {
+    let mut not = Vec::new();
+    let mut repos: Vec<String> = o.folders.iter().filter_map(|f| tree_repo(f)).collect();
+    repos.dedup();
+    for repo in &repos {
+        let Some((_, branch)) = crate::desk::hub::landing::main_line::main_checkout(repo) else { continue };
+        let Some(tip) = rev(repo, &branch) else { continue };
+        match rev(repo, &format!("{}^{{commit}}", o.commit)) {
+            Some(full) if crate::self_install::is_ancestor(repo, &full, &tip) => {
+                return Ok((repo.clone(), branch, full, tip));
+            }
+            Some(_) => not.push(format!("{} isn't on {branch} in {repo}", o.commit)),
+            None => not.push(format!("{repo} has no commit {}", o.commit)),
+        }
+    }
+    Err(not)
+}
+
+/// CLOSE's item closed in the store, its work on `branch` of `repo` as commit `short` (its copy let go: listed as kept
+/// unless `spent`); its holder told to stop. None when it isn't open in that project.
+fn closed_on_main(st: &mut Store, o: &OnMain, spent: bool, repo: &str, branch: &str, short: &str, now: u64) -> Option<Effects> {
+    let mut fx = Effects::default();
+    let it = st.desk.item_mut(&o.id).filter(|i| i.project == o.project && i.state != "done")?;
+    let was = it.state.clone();
+    if let Some(t) = it.tree.take() {
+        if !spent {
+            let mut gone = it.clone();
+            gone.tree = Some(t);
+            fx.trees_gone.push(gone);
+        }
+    }
+    it.state = "done".into();
+    it.paused = None;
+    (it.after, it.close_on_check, it.finish, it.tree_wait, it.no_copy_wait) = (None, false, None, false, false);
+    it.tree_wait_repo.clear();
+    it.done_at = Some(secs(now));
+    it.updated = secs(now);
+    if it.commit.is_empty() {
+        it.commit = short.to_string();
+        it.commit_in = vec![(repo.to_string(), short.to_string())];
+    }
+    if let Some(h) = it.holder.as_ref().filter(|_| matches!(was.as_str(), "working" | "queued")) {
+        fx.sends.push((h.to().to_string(), format!("Desk item #{} is closed: its work is already on {branch} ({short}). Stop work on it.", o.id)));
+    }
+    fx.items.push(o.id.clone());
+    release(st, &o.id, now, &mut fx);
+    let by = By { name: &o.by, sid: &o.by_sid };
+    step(st, &o.project, &by, "close", &o.id, &format!("Closed #{}: its work is on {branch} ({short})", o.id), &o.why, now, &mut fx);
+    Some(fx)
 }

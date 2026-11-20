@@ -1,5 +1,5 @@
 // The Inbox brief's side column, its live and git parts: what's running now (the session, its agents, scripts and
-// crew) and what its turn changed. Kept apart from ui/inbox.js, which loads first and calls these when it draws.
+// crew) and what its turn changed. Kept apart from ui/inbox/, which loads first and calls these when it draws.
 
 /** The menu a teammate's name opens (team.js), in the block its name is in; "" when it's another's. */
 const inboxMateMenu = (sid, list) => (list.some((t) => mateKey(sid, t) === mateMenu) ? mateMenuOf(sid) : "");

@@ -314,7 +314,7 @@
   font-size: 11px; font-weight: 600; letter-spacing: 0.01em; white-space: nowrap; color: var(--on-bg);
   background: var(--bg); border: 1px solid color-mix(in srgb, var(--on-bg) 22%, transparent); transition: opacity 0.15s; }
 .more-below:hover { border-color: color-mix(in srgb, var(--on-bg) 45%, transparent); }
-/* Faded after a few seconds still: back only when you scroll the list or its count changes (board.js). */
+/* Faded after a few seconds still: back only when you scroll the list or its count changes (board_motion.js). */
 .more-below.quiet { opacity: 0; pointer-events: none; transition: opacity 0.4s; }
 
 /* ---------- Parked: sessions you stopped, to resume (the last drawer, below Recently answered) ---------- */
@@ -328,7 +328,7 @@
 .prow:hover { background: color-mix(in srgb, var(--on-bg) 8%, transparent); color: var(--on-bg); }
 .prow.on, .prow.on:hover { background: var(--sel); color: var(--on-sel); }
 .prow b { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
-/* An agent other than your usual one (core.js oddAgent): its mark, small, after the name. */
+/* An agent other than your usual one (core/helpers.js oddAgent): its mark, small, after the name. */
 .tl-top .badge, .prow .badge, .card-head .badge { width: 16px; height: 16px; border-radius: 4px; font-size: 9px; }
 .prow .mach { color: inherit; border-color: currentColor; margin-left: 0; }
 .prow-age { margin-left: auto; font: 11px var(--mono); opacity: 0.8; white-space: nowrap; flex: none; }

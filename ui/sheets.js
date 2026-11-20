@@ -327,7 +327,7 @@ function hostRestart() {
   renderMain();
   invoke("host_restart").then(toast, (e) => toast(`Couldn't restart cue-host: ${e}`)).finally(() => { hostAsked = 0; renderMain(); });
 }
-/** Settings → General's Color: All projects' swatches (core.js projBtn's), so the window's color can be picked here too. */
+/** Settings → General's Color: All projects' swatches (core/colors.js projBtn's), so the window's color can be picked here too. */
 const themeSwatches = () => `<div class="set-sw">${swatchPicker(ALL_PROJ)}</div>`;
 /** Settings rows an add-on adds (fetched when Settings opens; none without one). A group with a `tab` gets a
  *  tab of its own; the others show under Agents. */

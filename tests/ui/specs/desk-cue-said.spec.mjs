@@ -70,7 +70,7 @@ test("each kind of message Cue sends reads as one short line; your own words and
   expect(await page.evaluate(() => [
     cueMsgPlain("Can you make the header blue?"),
     cueMsgPlain("About #d5 (Header): make it blue"),
-    // A new lead's hello and hand-off note are short already: they keep their bubble (desk.spec's Desk handoff).
+    // A new lead's hello and hand-off note are short already: they keep their bubble (desk-quick-add.spec's Desk handoff).
     cueMsgPlain("You run cue's Desk now. Say so in one line, then hand out anything not given out yet."),
     cueMsgPlain("web-lead now runs cue's Desk. Please route Header, Footer."),
     cueMsgPlain("Done? Write DONE: #d5, or say what's left\n\nDesk item #d5 (bug): Hosted sessions can't open the canvas\nSay DONE: #d5 on a line of its own when it's done."),
@@ -78,7 +78,7 @@ test("each kind of message Cue sends reads as one short line; your own words and
 });
 
 // A crew lead's "(Cue) Your teammate … has been quiet" keeps the crew's own Cue line (team.js), as before.
-// In the lead's chat, two already have their own drawing (desk_lead.js deskCueNote): a start failure, and your answer
+// In the lead's chat, two already have their own drawing (desk/lead.js deskCueNote): a start failure, and your answer
 // to its ASK (shown with the ASK).
 const IN_LEAD = TO_LEAD.filter(([t]) => !/^(Cue couldn't start|Your ASK)/.test(t));
 const IN_CHAT = TO_SESSION.filter(([t]) => !t.startsWith("(Cue) "));
