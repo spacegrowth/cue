@@ -2043,6 +2043,8 @@ test("a session on no item says the first line of its latest reply, when it came
   await openDesk(page);
   await cue.change((st) => st.sessions.push({ ...st.sessions.find((x) => x.session_id === "site"), session_id: "spare", project: "cue", name: "spare", thread: [] }));
   await cue.change((st) => st.desk.projects.find((d) => d.project === "cue").members.push("spare"));
+  // Cold and on no item, it sits under Older (#485): open it.
+  await page.locator('.dk-sessions [data-desk-older="side:cue"]').click({ position: { x: 24, y: 6 } });
   const row = page.locator('.dk-sessions [data-desk-chat-of="spare"]');
   await expect(row.locator(".dk-s2 .dk-w")).toHaveText("Done: spare's rows read as rows.");
   await expect(row.locator(".dk-size")).toHaveText("4h ago · 600k · cold ·");
@@ -2055,6 +2057,8 @@ test("the sessions on the left: working first, then each group most recent first
   await cue.change((st) => {
     const site = st.sessions.find((x) => x.session_id === "site");
     for (const [sid, h] of [["older", 5], ["newest", 1], ["middle", 3]]) st.sessions.push({ ...site, session_id: sid, project: "cue", name: sid, state: "idle", since_ms: Date.now() - h * 3600000, thread: [] });
+    // Their caches still warm, so they stay in Idle (a cold one folds under Older, #485).
+    st.insight = Object.fromEntries(["older", "newest", "middle"].map((sid) => [sid, { tokens: 50000, until_ms: Date.now() + 30 * 60000 }]));
   });
   await cue.change((st) => st.desk.projects.find((d) => d.project === "cue").members.push("older", "newest", "middle"));
   const ids = () => page.locator(".dk-sessions .dk-scroll > *").evaluateAll((els) => els.map((el) => el.matches(".dk-sdiv") ? "—" : el.matches(".dk-gh") ? `# ${el.firstChild.textContent.trim()}` : el.dataset.deskChatOf || el.dataset.deskCrew));
@@ -2104,8 +2108,8 @@ test("three columns: the project's sessions on the left, the lead's chat in the 
     : `${el.matches(".crew") ? "  " : ""}${el.dataset.deskLeadChat || el.dataset.deskChatOf || el.dataset.deskCrew}${el.querySelector(".dk-pill") ? ` [${el.querySelector(".dk-pill").textContent}]` : ""}`));
   expect(rows).toEqual(["# Working 1", "host", "# Idle 1", "spare"]);
   await expect(left.locator('[data-desk-chat-of="host"] .dk-s2')).toContainText("#d5");
-  // On no item: no item line (#179).
-  await expect(left.locator('[data-desk-chat-of="spare"] .dk-w')).toHaveCount(0);
+  // On no item: no item line (#179); with no reply known yet, a blank line keeps the row's shape (#485).
+  await expect(left.locator('[data-desk-chat-of="spare"] .dk-s2')).toHaveText("\u00a0");
   await expect(left.locator('[data-desk-chat-of="spare"] [data-desk-member]')).toHaveCount(0);
   await expect(left.locator('[data-desk-chat-of="host"] [data-desk-member]')).toHaveCount(0);
   // The lead's chat shows: its card is lit, alone.
@@ -2145,8 +2149,8 @@ test("three columns: the project's sessions on the left, the lead's chat in the 
 test("each session row says its size and cache: \"142k · cache 12m\", \"cold\", amber in its last 5 minutes", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  // No numbers yet: no line.
-  await expect(page.locator(".dk-sessions .dk-size")).toHaveCount(0);
+  // No numbers yet: a blank line holding the row's shape (#485).
+  await expect(page.locator('.dk-sessions [data-desk-chat-of="host"] .dk-size')).toHaveText("\u00a0");
   await cue.change((st) => {
     const t = Date.now();
     st.insight = { lead: { tokens: 142000, until_ms: t + 12 * 60000 - 2000 }, host: { tokens: 88000, until_ms: t + 3 * 60000 } };
@@ -2155,6 +2159,8 @@ test("each session row says its size and cache: \"142k · cache 12m\", \"cold\",
     st.desk.projects.find((d) => d.project === "cue").members.push("spare");
   });
   const left = page.locator(".dk-sessions");
+  // spare is cold and on no item, so it sits under Older (#485): open it.
+  await left.locator('[data-desk-older="side:cue"]').click({ position: { x: 24, y: 6 } });
   await expect(left.locator('[data-desk-lead-chat="lead"] .dk-size')).toHaveText("142k · cache 12m ·");
   await expect(left.locator('[data-desk-lead-chat="lead"] .dk-size')).not.toHaveClass(/hot/);
   await expect(left.locator('[data-desk-chat-of="host"] .dk-size')).toHaveText("88k · cache 3m ·");
@@ -4385,6 +4391,8 @@ test("the Desk's session list: one hairline above each session but a group's fir
     add("s-d", [m("d-live", "reviewed", { uncommitted: true }), m("d1", "committed"), m("d2", "committed")], 6);
     add("s-e", [], 5);
     st.desk.projects.find((d) => d.project === "cue").members.push("s-a", "s-b", "s-c", "s-d", "s-e");
+    // Their caches still warm, so they stay in Idle (a cold one folds under Older, #485).
+    st.insight = Object.fromEntries(["s-a", "s-b", "s-c", "s-d", "s-e"].map((sid) => [sid, { tokens: 50000, until_ms: Date.now() + 30 * 60000 }]));
   });
   const left = page.locator(".dk-sessions");
   await expect(left.locator('[data-desk-chat-of="s-e"]')).toHaveCount(1);

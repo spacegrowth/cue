@@ -29,7 +29,8 @@ const deskSessItems = (d, sid) => d.items.filter((i) => i.state !== "done" && i.
 function deskSessCache(sid, when = false) {
   deskInsAsk(sid);
   const c = typeof insCache !== "undefined" ? insCache.get(sid) : null;
-  if (!c?.tokens && !c?.until_ms) return "";
+  // Not known yet: an empty line of the same height, so the row keeps its shape when the numbers come in (#485).
+  if (!c?.tokens && !c?.until_ms) return '<div class="dk-s3 dk-size" aria-hidden="true">&nbsp;</div>';
   const left = (c.until_ms || 0) - now();
   const cache = left > 0 ? `cache ${Math.ceil(left / 60000)}m` : c.until_ms ? "cold" : "";
   const details = [c.tokens && insTok(c.tokens), cache].filter(Boolean).join(" · ");
@@ -121,7 +122,8 @@ function deskSessions(project) {
     }
     // On no item: the first line of its latest reply, and when it came beside its size (#185).
     const item = deskSessItem(d, sid), idle = dot !== "" && !item;
-    return deskSessRow({ name: deskHolderName(sid), sid, mark: sid === leadSid ? "desk" : lead ? "lead" : "session", dot, word, item, line: idle ? deskSessSaid(sid) : "", on: lit(sid), attrs, step: deskStepLine(dot === "", s.compacting_ms ? "Compacting…" : s.doing, s.compacting_ms || s.doing_ms), size: deskSessCache(sid, idle) }) + crew;
+    // Its reply's line stays while it's idle, empty till the reply is in, so the row doesn't grow a line (#485).
+    return deskSessRow({ name: deskHolderName(sid), sid, mark: sid === leadSid ? "desk" : lead ? "lead" : "session", dot, word, item, line: idle ? deskSessSaid(sid) || "\u00a0" : "", on: lit(sid), attrs, step: deskStepLine(dot === "", s.compacting_ms ? "Compacting…" : s.doing, s.compacting_ms || s.doing_ms), size: deskSessCache(sid, idle) }) + crew;
   };
   const leadS = sessions.find((s) => s.session_id === leadSid);
   const mine = sessions.filter((s) => s !== leadS && deskHasSession(d, s.session_id));
@@ -132,17 +134,18 @@ function deskSessions(project) {
   // does, never on a click.
   const recent = (list) => list.sort((a, b) => (b.since_ms || 0) - (a.since_ms || 0));
   const atWork = recent(mine.filter(busy));
-  // The rest: with work on the Desk (an item it holds, or one done in the last day) first; the others, idle with no
-  // recent item, fold into one "N cold" line, shut by default (#363, #428).
-  const on = recent(mine.filter((s) => !busy(s))).map((s) => ({ s, work: deskHasWork(d, s.session_id) }));
+  // The rest (#485): idle ones still warm, or holding an open item, under Idle; cold ones holding none fold under Older,
+  // shut by default, its count on its header. A session idle over a day there is offered to be closed (its chat kept).
+  const rest = recent(mine.filter((s) => !busy(s)));
+  const older = rest.filter((s) => deskSessOlder(d, s)), idle = rest.filter((s) => !older.includes(s));
   const group = (title, list) => (list.length ? `<div class="dk-gh">${title} <span class="n">${list.length}</span></div>${list.map((s) => row(s)).join("")}` : "");
   // The strip's meta line counts this Desk's sessions, and the working ones as the Working group lists them: working
   // itself, or its helpers ("agent") or crew at work; working means working (#402).
   const runs = atWork.length;
-  // One Desk list (#428): Working, then Idle; Idle's count takes in the cold ones folded at its end, so the two add up
-  // to the strip's session count.
-  const onGroup = on.length ? `<div class="dk-gh">Idle <span class="n">${on.length}</span></div>${deskWithOlder(`side:${project}`, on, (r) => row(r.s), undefined, "cold")}` : "";
-  const body = group("Working", atWork) + onGroup || '<div class="dk-empty">No other sessions on this Desk.</div>';
+  const key = `side:${project}`, shut = !deskOlderOpen.has(key), stale = older.filter(deskSessStale).map((s) => s.session_id);
+  const close = stale.length ? `<button class="dk-older-close" data-desk-close-idle="${esc(stale.join(" "))}">Close ${stale.length} idle over a day</button>` : "";
+  const olderGroup = older.length ? `<div class="dk-gh dk-gf dk-older-h" role="button" tabindex="0" data-desk-older="${esc(key)}" aria-expanded="${!shut}">${DESK_GCHEV}Older <span class="n">${older.length}</span>${close}</div>${shut ? "" : older.map((s) => row(s)).join("")}` : "";
+  const body = group("Working", atWork) + group("Idle", idle) + olderGroup || '<div class="dk-empty">No other sessions on this Desk.</div>';
   const picking = deskAddingSession === project;
   // Add session offers this Desk's own sessions (ticked), then a light line and only free, recent ones: none another
   // Desk has, none stopped or idle for over a day (#189).
@@ -169,6 +172,16 @@ const deskElsewhere = (sid, d) => (state.desk?.projects || []).some((o) => o.pro
   || (o.items || []).some((i) => i.state !== "done" && i.state !== "dropped" && (i.holder?.sid === sid || i.holder?.lead_sid === sid))));
 /** An old, finished session: gone, stopped, or idle (not asking you) for over a day (#189). */
 const DESK_OLD_MS = 24 * 3600 * 1000;
+/** Whether an idle session of Desk `d` goes under Older (#485): it holds no open item and its cache has gone cold
+ *  (with no numbers in yet: idle for over an hour). */
+const DESK_COLD_GUESS_MS = 3600 * 1000;
+function deskSessOlder(d, s) {
+  if (deskSessItem(d, s.session_id)) return false;
+  const c = typeof insCache !== "undefined" ? insCache.get(s.session_id) : null;
+  return c?.until_ms ? c.until_ms <= now() : now() - (s.since_ms || 0) > DESK_COLD_GUESS_MS;
+}
+/** A live session in Older idle for over a day: Cue offers to close it (#485). A stopped one is closed already. */
+const deskSessStale = (s) => s.state !== "stopped" && !!s.since_ms && now() - s.since_ms > DESK_OLD_MS;
 const deskSessOld = (s) => !s || s.state === "stopped" || (deskSessState(s)[0] === "idle" && !!s.since_ms && Date.now() - s.since_ms > DESK_OLD_MS);
 /** The line over the lead's card (#263, #359): the same working light a chat shows along its top (.sweep, chat.css), moving
  *  while the lead works (calmer after a quiet spell, still and amber when stuck, as sweep() in chat/thread.js), a plain

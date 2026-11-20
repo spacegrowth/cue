@@ -36,6 +36,13 @@
 .dk-srow.past { opacity: .6; }
 .dk-sfold { display: block; margin: 0; padding: 4px 20px 8px 44px; border: 0; background: none; color: var(--muted); font: 600 12px var(--sans); cursor: pointer; }
 .dk-sfold:hover { color: var(--ink); }
+/* Older (#485): the cold sessions' group, shut by default; a click on its header opens it. At its right, once some sat
+   there over a day, the offer to close them. */
+.dk-older-h { cursor: pointer; user-select: none; }
+.dk-older-h > .dk-gchev { flex: none; margin-left: -16px; transform: rotate(90deg); }
+.dk-older-h[aria-expanded="false"] > .dk-gchev { transform: none; }
+.dk-older-close { margin-left: auto; padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink); font: 600 11.5px var(--sans); letter-spacing: 0; text-transform: none; cursor: pointer; }
+.dk-older-close:hover, .dk-older-close:focus-visible { background: var(--panel-2); }
 .dk-st { flex: 0 0 auto; max-width: 50%; min-width: 0; margin-left: auto; display: flex; align-items: center; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; }
 .dk-st > b { min-width: 0; font-weight: inherit; overflow: hidden; text-overflow: ellipsis; }
 .dk-st { gap: 6px; }

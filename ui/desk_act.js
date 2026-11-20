@@ -434,6 +434,14 @@ const DESK_CLICKS = {
     renderMain();
     document.querySelector("[data-desk-add-session]")?.focus();
   },
+  // Older's offer (#485): close the sessions idle there over a day; nothing deleted, their chats kept to reopen.
+  deskCloseIdle: async (el) => {
+    const sids = el.dataset.deskCloseIdle.split(" ").filter(Boolean), failed = [];
+    for (const sessionId of sids) { try { await invoke("close_session", { sessionId }); } catch (e) { failed.push(`${deskHolderName(sessionId)} (${e})`); } }
+    const done = sids.length - failed.length;
+    toast(failed.length ? `Closed ${done}. Couldn't close: ${failed.join(", ")}` : `Closed ${done} session${done === 1 ? "" : "s"} · their chats are kept`, failed.length ? 10000 : undefined);
+    renderMain();
+  },
   deskOlder: (el) => {
     const key = el.dataset.deskOlder;
     if (!deskOlderOpen.delete(key)) deskOlderOpen.add(key);

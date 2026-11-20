@@ -184,9 +184,10 @@ fn with_work(w: &World, project: &str) -> Vec<String> {
 }
 
 /// Only the sessions with work show (#363): an idle one with no item is "older" (the lead's routes say it on one
-/// line), one holding an item shows, and one idle a day with no item comes off the Desk without asking.
+/// line), one holding an item shows. One idle a day with no item stays while it's live (#485: the Desk offers to close
+/// it); closed, it comes off the Desk a day later without asking.
 #[test]
-fn a_desk_shows_sessions_with_work_and_takes_off_one_idle_a_day() {
+fn a_desk_shows_sessions_with_work_and_takes_off_one_closed_a_day() {
     let w = World::new();
     let (h, project, d) = off_desk(&w);
     w.hub().desk_set_member(&project, &h, true).unwrap();
@@ -215,7 +216,15 @@ fn a_desk_shows_sessions_with_work_and_takes_off_one_idle_a_day() {
     w.hub().desk_item_act(&id, "drop", "").unwrap();
     w.settle();
     w.hub().desk_retire_idle();
-    assert!(!members(&w, &project).contains(&h), "idle over a day, no item");
+    assert!(members(&w, &project).contains(&h), "live, idle over a day, no item: it stays, offered to be closed");
+    // Closed: a day later it comes off.
+    w.hub().mark_state(&w.hub().session_origin(&h).unwrap(), "stopped");
+    w.settle();
+    w.hub().desk_retire_idle();
+    assert!(members(&w, &project).contains(&h), "closed under a day ago");
+    w.advance(24 * 60 * 60_000);
+    w.hub().desk_retire_idle();
+    assert!(!members(&w, &project).contains(&h), "closed over a day, no item");
     assert!(!crate::db::desk_members().contains(&(project.clone(), h.clone())), "saved");
     assert!(members(&w, &project).contains(&d), "the lead stays");
     assert!(!asks(&w, &d).iter().any(|(_, q)| q.contains("cue-teams")), "no card asks about it: {:?}", asks(&w, &d));

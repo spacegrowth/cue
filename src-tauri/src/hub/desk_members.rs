@@ -173,16 +173,17 @@ pub(super) fn with_work(st: &Store, project: &str, now: u64) -> std::collections
     out
 }
 
-/// The sessions to take off their Desks now (#363): on one, not its lead, live, idle a day, holding no item and with
-/// none done in the last day. Taken off without asking you; a route to one again asks first, as for any session
-/// not on the Desk.
+/// The sessions to take off their Desks now (#363): on one, not its lead, closed (stopped) a day, holding no item and
+/// with none done in the last day. Taken off without asking you; a route to one again asks first, as for any session
+/// not on the Desk. A live one idle a day stays (#485): the Desk's Older group offers to close it, and once closed it
+/// comes off a day later.
 pub(super) fn idle_a_day(st: &Store, now: u64) -> Vec<(String, String)> {
     let mut out = vec![];
     for (project, sids) in &st.desk.members {
         let work = with_work(st, project, now);
         for sid in sids {
             let Some(s) = st.sessions.get(sid) else { continue };
-            if !work.contains(sid) && !busy(s) && now.saturating_sub(s.since_ms) >= WORK_FRESH_MS {
+            if !work.contains(sid) && s.state == "stopped" && now.saturating_sub(s.since_ms) >= WORK_FRESH_MS {
                 out.push((project.clone(), sid.clone()));
             }
         }
