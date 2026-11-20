@@ -127,6 +127,17 @@ pub fn next_number<'a>(ids: impl Iterator<Item = &'a str>, high: u64) -> u64 {
     ids.filter_map(|id| id.parse::<u64>().ok()).fold(high, u64::max) + 1
 }
 
+/// What a holder writes next to its DONE for item `id` (#526): the one line shown on the item while it waits for your
+/// check (parse.rs `Line::Check`). It never says "the owner": the screen shows that phrase as your name or "you"
+/// (owner.rs `on_screen`), and a send back's words must read the same on the item as in the session.
+pub fn check_words(id: &str) -> String {
+    format!(
+        "With your DONE, on a line of its own, write the one line shown to whoever checks it, built from its you'll-see (if \
+         it has one) and what you changed: CHECK: #{id} | Try: <one concrete thing to do in the app> when there's something to see, or \
+         CHECK: #{id} | Nothing to see: <why, e.g. tests passed, or a change nobody can see>, close it."
+    )
+}
+
 /// What the session holding `it` is told when it's handed the item. `rule`: its Desk's Ask me before line
 /// (one_way::ask_first; "" when nothing's set), so every session that works on the Desk has it.
 pub fn handed_words(it: &DeskItem, why: &str, rule: &str) -> String {
@@ -159,6 +170,7 @@ pub fn handed_words(it: &DeskItem, why: &str, rule: &str) -> String {
     );
     out.push_str(&format!("\nIf you put its designs on a canvas, or move them, say DESIGNS: #{} <canvas link> on a line of its own.", it.id));
     out.push_str(&format!("\nSay DONE: #{} on a line of its own when it's done.", it.id));
+    out.push_str(&format!("\n{}", check_words(&it.id)));
     out.push_str("\nTo ask the owner something (a pick, a yes or no, something only they can tell you), end your reply with that question as its last line, ending in \"?\".");
     if let Some(t) = &it.tree {
         out.push_str(&format!("\n{}", crate::hub::tree_line(t)));

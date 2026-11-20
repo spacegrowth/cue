@@ -204,7 +204,7 @@ fn resume(st: &mut Store, project: &str, by: &By, id: &str, why: &str, now: u64,
     if let Some(h) = it.holder.clone() {
         let why = if why.trim().is_empty() { String::new() } else { format!(" ({})", why.trim().trim_end_matches('.')) };
         let who = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
-        fx.sends.push((h.to().to_string(), format!("{who}Desk item #{id} is resumed{why}: carry on from where you stopped. Say DONE: #{id} on a line of its own when it's done.")));
+        fx.sends.push((h.to().to_string(), format!("{who}Desk item #{id} is resumed{why}: carry on from where you stopped. Say DONE: #{id} on a line of its own when it's done.\n{}", crate::desk::check_words(id))));
     }
     fx.items.push(id.to_string());
     step(st, project, by, "resume", id, &format!("Resumed #{id}"), why, now, fx);

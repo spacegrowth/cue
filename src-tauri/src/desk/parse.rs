@@ -59,6 +59,10 @@ pub enum Line {
     /// A session's message for its Desk's lead (#474): `TO LEAD: [#<id>[ |]] <words>`. `id`: the item it's about, when
     /// named; without one, Cue takes the item the session is on.
     ToLead { id: Option<String>, text: String },
+    /// What you check on item `id` once it's done (#526), as its holder says next to its DONE:
+    /// `CHECK: #<id> | Try: <one thing to do in the app>` (`kind` "try") or `CHECK: #<id> | Nothing to see: <why>`
+    /// (`kind` "nothing"). `text`: the words after the label.
+    Check { id: String, kind: String, text: String },
 }
 
 /// The Desk lines in `text`, in order.
@@ -146,6 +150,7 @@ fn one(t: &str) -> Option<Line> {
         "ROUTE" => route(body),
         "ASK" => ask(body),
         "DONE" => done(body),
+        "CHECK" => check(body),
         "CONTEXT" => context(body),
         "DESIGNS" => designs(body),
         "TITLE" => title(body),
@@ -349,6 +354,24 @@ fn split_choices(part: &str) -> Vec<String> {
 fn done(body: &str) -> Option<Line> {
     let ids: Vec<String> = body.split([',', ' ']).filter(|w| w.trim().starts_with('#')).filter_map(id_of).collect();
     (!ids.is_empty()).then_some(Line::Done { ids })
+}
+
+/// "#111 | Try: <thing>" or "#111 | Nothing to see: <why>" (labels in any case; the words may hold `|`).
+fn check(body: &str) -> Option<Line> {
+    let (head, rest) = body.split_once('|')?;
+    let head = head.trim();
+    if !head.starts_with('#') || head.contains(' ') {
+        return None;
+    }
+    // The label and its colon: "Try:" or "Nothing to see:", any case.
+    let rest = rest.trim();
+    let said = |label: &str| rest.get(..label.len()).filter(|h| h.eq_ignore_ascii_case(label)).and_then(|_| rest[label.len()..].trim_start().strip_prefix(':')).map(str::trim);
+    let (kind, text) = match said("try") {
+        Some(t) => ("try", t),
+        None => ("nothing", said("nothing to see")?),
+    };
+    let id = id_of(head)?;
+    (!text.is_empty()).then(|| Line::Check { id, kind: kind.into(), text: text.into() })
 }
 
 /// "#111 | <title>": the item and its new title.

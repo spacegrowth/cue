@@ -116,6 +116,7 @@ fn acted_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result
                 return Err("Say what isn't right first: type it in the box, then Send back".into());
             }
             (it.state, it.done_at, it.finish, it.close_on_check) = ("working".into(), None, None, false);
+            it.check = None;
             it.mark_reopened();
             // Kept on the DONE it answers, so its card says why (the pictures, added by ipc desk_item_act, counted).
             if let Some(c) = it.checks.last_mut() {
@@ -125,7 +126,7 @@ fn acted_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result
             let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
             let (title, project) = (it.title.clone(), it.project.clone());
             you_wrote(st, &project, id, words.split_once("\nPictures with it").map_or(words.as_str(), |(w, _)| w).trim(), &format!("sent back to {}", h.name), now, &mut fx);
-            let message = format!("{crew}Desk item #{id} ({title}) isn't done: {words}\nIts fixes stay in #{id}; don't add new items for them. Say DONE: #{id} when it is.{pr_open}");
+            let message = format!("{crew}Desk item #{id} ({title}) isn't done: {words}\nIts fixes stay in #{id}; don't add new items for them. Say DONE: #{id} when it is.\n{}{pr_open}", crate::desk::check_words(id));
             fx.backs.push((id.to_string(), message.clone()));
             send_step(st, id, h.to(), message, now, &mut fx);
         }
@@ -186,8 +187,9 @@ fn acted_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result
             it.after = None;
             it.state = "working".into();
             it.restart = format!("Resume: waking {}", h.name);
+            it.check = None;
             let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
-            let words = format!("{crew}Desk item #{id} ({}): you stopped before it was done. Pick up where you left off.\nSay DONE: #{id} on a line of its own when it's done.", it.title);
+            let words = format!("{crew}Desk item #{id} ({}): you stopped before it was done. Pick up where you left off.\nSay DONE: #{id} on a line of its own when it's done.\n{}", it.title, crate::desk::check_words(id));
             let project = it.project.clone();
             you_wrote(st, &project, id, "Resume", &format!("to {}", h.name), now, &mut fx);
             fx.restarts.push((id.to_string(), h.to().to_string(), h.name.clone()));

@@ -29,7 +29,7 @@ test("the Desk is in the header after Board, and lists Waiting on you, then a gr
   // Each waiting row says what to do, in one plain line (#182).
   await expect(page.locator(".dk-items .dk-h")).toHaveCount(2);
   await expect(page.locator('[data-desk-item="d1"] .dk-h')).toContainText("keep focus in the box");
-  await expect(page.locator('[data-desk-item="d2"] .dk-h')).toHaveText(/^In the app since .* · try: /);
+  await expect(page.locator('[data-desk-item="d2"] .dk-h')).toHaveText(/^In the app since .* · Try: /);
   // Ready to check: Looks right on its row. Done today: each with the time it finished.
   await expect(page.locator(".dk-items .dk-ok")).toHaveCount(1);
   await expect(page.locator('[data-desk-item="d2"] .dk-ok')).toHaveAttribute("aria-label", "Looks right");
@@ -2901,10 +2901,12 @@ test("a DONE is one Ready to check line in the lead's chat: its item, its age, C
   await expect(pane.locator(".dk-ptk li").first()).toBeVisible();
   await expect(info.locator(".dk-chk-w")).toHaveText(/^Done by web-lead · \d+[smhd] ago · 2 files$/);
   await expect(info.locator(".dk-chk-in")).toContainText("In the installed Cue · installed ");
-  // It sits under what to test: What to try, the section after You'll see (#418).
+  // It sits under what to test, the section after You'll see (#418); with the check box at the top saying what to
+  // try (#526), it's "Its work", so "What to try" isn't said twice.
   expect(await pane.evaluate((el) => { const w = el.querySelector(".dk-idw"), i = el.querySelector(".dk-chk-info"); return !!(w.compareDocumentPosition(i) & Node.DOCUMENT_POSITION_FOLLOWING); })).toBe(true);
-  await expect(pane.locator(".dk-psec", { has: page.locator(".dk-chk-info") }).locator(".dk-psh")).toHaveText("What to try");
-  await expect(pane.locator('.dk-pnow [data-desk-act="looks_right"]')).toHaveText("Looks right");
+  await expect(pane.locator(".dk-pbox")).toBeVisible();
+  await expect(pane.locator(".dk-psec", { has: page.locator(".dk-chk-info") }).locator(".dk-psh")).toHaveText("Its work");
+  await expect(pane.locator('.dk-pnow [data-desk-act="looks_right"]')).toHaveText("Close");
   await expect(pane.locator('.dk-acts [data-desk-act="send_back"]')).toHaveText("Send back");
   // A design item's: its mocks in place of installed.
   await cue.change((s) => { s.desk.projects.find((d) => d.project === "cue").checks[0].designs = "https://claude.ai/artifact/mocks"; });
@@ -3053,7 +3055,7 @@ test("Looks right is in an item's panel, in reach however far its thread is scro
   await page.locator('[data-desk-item="d2"]').click();
   // In the panel's NOW (#200), beside the thread: it stays put however far the thread scrolls; Send back with it.
   const pane = page.locator(".dk-right .dk-ipane"), now = page.locator(".dk-panel[data-side-for] .dk-pnow"), top = now.locator('[data-desk-act="looks_right"]');
-  await expect(top).toHaveText("Looks right");
+  await expect(top).toHaveText("Close");
   await expect(pane.locator('[data-desk-act="looks_right"]')).toHaveCount(0);
   await expect(now.locator('[data-desk-act="send_back"]')).toBeVisible();
   const at = await top.boundingBox();
@@ -4017,7 +4019,8 @@ test("an item with mocks has \"Open the mocks\" in its NOW; waiting on a pick, a
   await expect(head.locator(".dk-pickl")).toHaveText("Mocks · open the canvas");
   await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5").designs = ""; });
   await expect(head.locator("a.dk-dlink")).toHaveCount(0);
-  await expect(head.locator(".dk-pickl")).toHaveText(/ · try: /);
+  await expect(head.locator(".dk-pickl")).toHaveCount(0);
+  await expect(head.locator(".dk-pbox .dk-ckl")).toHaveText(/^(Try|Nothing said what to try): /);
 });
 
 test("a pick on an item's mocks: Pick B closes it, its new build item is linked both ways; a pick again makes no other (#281)", async ({ page, cue }) => {
@@ -4481,10 +4484,10 @@ test("an item shows ready only once its work is on main: until then it says wher
   const now = page.locator(".dk-panel[data-side-for] .dk-pnow");
   await expect(now.locator(".dk-pword")).toHaveText("Not on main yet");
   await expect(now.locator('[data-desk-act="looks_right"]')).toHaveText("Commit to main");
-  // Committed at its DONE and on main: Looks right, as ever.
+  // Committed at its DONE and on main: Close, beside its check line (#526).
   await patchItem(cue, "d2", { finish: { step: "checked", commit: "abc1234", at: Date.now() }, commit: "abc1234" });
   await expect(now.locator(".dk-pword")).toHaveText("Ready to check");
-  await expect(now.locator('[data-desk-act="looks_right"]')).toHaveText("Looks right");
+  await expect(now.locator('[data-desk-act="looks_right"]')).toHaveText("Close");
   await page.locator(".dk-back").click();   // its row in the Items list, behind ‹ Items while it's open (#418)
   await expect(d2.locator(".dk-ok")).toHaveCount(1);
 });

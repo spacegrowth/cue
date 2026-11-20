@@ -30,8 +30,9 @@ pub(crate) fn ask(st: &mut Store, id: &str, text: &str, now: u64) -> Result<Effe
     (it.state, it.stopped, it.updated) = ("working".into(), false, secs(now));
     let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
     let message = format!(
-        "{crew}A question about Desk item #{id} ({}), which is {stage}: {words}\nAnswer it. If you change code for it, say DONE: #{id} once that's done; if you don't, the item stays as it was.",
-        it.title
+        "{crew}A question about Desk item #{id} ({}), which is {stage}: {words}\nAnswer it. If you change code for it, say DONE: #{id} once that's done; if you don't, the item stays as it was.\n{}",
+        it.title,
+        crate::desk::check_words(id)
     );
     let project = it.project.clone();
     you_wrote(st, &project, id, &question, &format!("asked {}", h.name), now, &mut fx);
@@ -124,6 +125,7 @@ impl Hub {
             let mut fx = Effects::default();
             for it in st.desk.items.iter_mut().filter(|i| about(i)) {
                 (it.state, it.done_at, it.finish, it.close_on_check, it.updated) = ("working".into(), None, None, false, secs(now));
+                it.check = None;
                 it.mark_reopened();
                 // Kept on the DONE it reopens, so its card and Progress say why it's at work again.
                 if let Some(c) = it.checks.last_mut().filter(|c| c.back.is_empty()) {

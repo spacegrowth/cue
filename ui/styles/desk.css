@@ -1309,3 +1309,22 @@ button.dk-al-row:focus-visible { outline: 2px solid var(--accent); outline-offse
 .dk-xb-t { font-size: 13.5px; line-height: 1.5; }
 .dk-xb-t > :last-child { margin-bottom: 0; }
 .dk-xb-f { margin-top: 6px; font-size: 11.5px; color: var(--muted); }
+
+/* An item to check (#526, option B): its Now in a filled box at the panel's top: the state, what to do in larger type
+   ("Try:" / "Nothing to see:" bold), a quiet note of where that line came from, then Close and Send back. Folded, the
+   box is no box: the same one line as any Now. */
+.dk-pbox { display: contents; }
+.dk-ckl { margin: 0; font-size: 15px; line-height: 1.4; color: var(--ink); overflow-wrap: anywhere; }
+.dk-ckl .dk-vb { font-weight: 750; }
+.dk-cks { margin: 4px 0 0; font-size: 11.5px; line-height: 1.4; color: var(--muted); }
+/* "Cue's words" on a row: quiet, after the line. */
+.dk-cw { color: var(--muted); }
+.dk-it.on .dk-cw { color: var(--on-sel); opacity: .8; }
+@container dkcard (min-width: 641px) {
+  .dk-pg:not(.hid) .dk-pbox { display: block; padding: 12px; border-radius: 12px; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
+  .dk-pg:not(.hid) .dk-pbox .dk-psay { margin-top: 6px; }
+}
+@container dkcard (max-width: 640px) {
+  .dk-pg[data-desk-page="item"]:not(.hid) .dk-pbox { display: block; padding: 12px; border-radius: 12px; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
+  .dk-pg[data-desk-page="item"]:not(.hid) .dk-pbox .dk-psay { margin-top: 6px; }
+}

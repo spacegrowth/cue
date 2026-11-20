@@ -94,7 +94,7 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx
             Line::Lands { part, to, steps, why } => fx.lands.push(crate::desk::hub::lead::lands::Proposal { lsid: lsid.to_string(), desk: project.to_string(), part, to, steps, why }),
             Line::Pause { on, why } => fx.pause.push((project.to_string(), on, name.clone(), lsid.to_string(), why)),
             Line::Pass { id, .. } => cleanup_said(st, project, &by, &id, None, now, fx, &mut answers),
-            Line::Context { .. } | Line::Designs { .. } | Line::ToLead { .. } => {}
+            Line::Context { .. } | Line::Designs { .. } | Line::ToLead { .. } | Line::Check { .. } => {}
         }
     }
     for line in parse::unread_routes(text) {

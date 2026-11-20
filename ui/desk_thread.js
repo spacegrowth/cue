@@ -131,7 +131,7 @@ const deskSaidHas = (i, line) => (i.said || []).some((r) => r.text.includes(line
 /** Whether `text` names item `id` as "#id" (not the start of a longer number or name), as the hub reads it. */
 const deskNames = (text, id) => new RegExp(`#${String(id).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w-])`).test(text || "");
 /** The lines that are the Desk's (DONE:, ITEM:, DECIDED: …), as the hub knows them (desk/hub/turn/heard.rs desk_line_start). */
-const DESK_LINE = /^(?:ITEM|ROUTE|ASK|DONE|CONTEXT|DESIGNS|TITLE|SEE|SPLIT|CUT|MERGE|NOTE|FEATURE|CLOSE|TAKE COPY|LAND FIRST|START|PARK|HOLD|UNPARK|PAUSE|RESUME|ANSWER|PASS|[Dd][Ee][Cc][Ii][Dd][Ee][Dd])[*`]*\s*:/;
+const DESK_LINE = /^(?:ITEM|ROUTE|ASK|DONE|CONTEXT|DESIGNS|TITLE|SEE|SPLIT|CUT|MERGE|NOTE|FEATURE|CLOSE|TAKE COPY|LAND FIRST|START|PARK|HOLD|UNPARK|PAUSE|RESUME|ANSWER|PASS|CHECK|LANDS|TO LEAD|[Dd][Ee][Cc][Ii][Dd][Ee][Dd])[*`]*\s*:/;
 /** A turn's words as its saved reply has them: without the Desk's own lines. */
 const deskUnmarked = (l) => l.trim().replace(/^`+/, "").replace(/^[-*+ ]+/, "").replace(/^\d+[.)]\s+[-*+ ]*/, "").replace(/^`+/, "");
 const deskSaidWords = (text) => String(text || "").split("\n").filter((l) => !DESK_LINE.test(deskUnmarked(l))).join("\n").trim();
@@ -364,8 +364,10 @@ function deskItemSide(i, d) {
   const who = h?.name || "its session";
   // The pictures it was added with: its chat is its holder's, which never had them (#418).
   const shots = thumbs(i.images), pics = shots ? deskPsec("Pictures", `<div class="dk-tpics">${shots}</div>`) : "";
-  const tryIt = deskPsec("What to try", deskCheckInfo(i, d) || (i.state === "done" ? "" : `<p class="dk-note">Shows here when ${esc(who)} says it's done, with Looks right and Send back.</p>`));
-  const now = deskPnow({ ...deskItemNow(i), acts: `${backing ? deskBackActs(i) : deskLooksTop(i) + deskPickBtns(i) + deskItemActs(i)}${deskBuiltLink(i)}${deskDesignsLink(i)}`, fold: pts.length ? `${ticked} of ${pts.length} done` : "" })
+  // The check box at the top says what to try (#526): under it, this section is only who did it (and its mocks), so
+  // it isn't a second "What to try".
+  const tryIt = deskPsec(deskCheckBox(i) ? "Its work" : "What to try", deskCheckInfo(i, d) || (i.state === "done" ? "" : `<p class="dk-note">Shows here when ${esc(who)} says it's done, with Close and Send back.</p>`));
+  const now = deskPnow({ ...deskItemNow(i), acts: `${backing ? deskBackActs(i) : deskLooksTop(i) + deskPickBtns(i) + deskItemActs(i)}${deskBuiltLink(i)}${deskDesignsLink(i)}`, fold: pts.length ? `${ticked} of ${pts.length} done` : "", box: deskCheckBox(i) })
     .replace('<h4 class="dk-psh">Now</h4>', '<h4 class="dk-psh">This item</h4>')
     .replace("</section>", `<div class="dk-pmeta">${deskItemMeta(i, d)}</div></section>`);
   const open = sid && sessionOf(sid) ? `<button class="btn small" ${deskChatAttrs(sid, d)}>Open ${esc(deskHolderName(sid, h.kind === "crew" ? "" : h.name))}</button>` : "";
@@ -385,7 +387,7 @@ function deskItemRecord(steps) {
 /** The panel's buttons while you write why to send item `i` back (#394): the same ones in the same place, so nothing
  *  jumps: Looks right greyed, Send back pressed (pressing it again closes the box). */
 function deskBackActs(i) {
-  const looks = i.state === "to_check" && !deskInstallWait(i) ? `<button class="btn small primary" disabled>${deskUncommitted(i) ? "Commit to main" : "Looks right"}</button>` : "";
+  const looks = i.state === "to_check" && !deskInstallWait(i) ? `<button class="btn small primary" disabled>${deskLooksWord(i)}</button>` : "";
   return `${looks}<div class="dk-acts"><button class="btn small" data-desk-act="send_back" data-id="${esc(i.id)}" aria-pressed="true">Send back</button></div>`;
 }
 /** An item's quiet line under its title (#200): who has it, its commit, who added it and when; its state is the
@@ -427,7 +429,17 @@ function deskItemNow(i) {
     : i.state === "new" ? ["stop", "Not given out", "Not given to a session yet."]
     : i.state === "held" ? ["stop", "Parked", `${i.held?.[1] && i.held[1] !== "You" ? `The Desk lead parked it for you${i.held[2] ? `: ${esc(firstLine(i.held[2]))}` : ""}. ` : "You parked it. "}Nothing starts it until you press Start.`]
     : i.state === "done" ? ["done", "Done", ""] : ["stop", i.state, ""];
+  // To check, in the app (#526): what to do with it in larger type, a quiet note of where that line came from.
+  if (deskCheckBox(i)) return { dot, word, say: `<p class="dk-ckl">${deskCheckHtml(deskToCheckLine(i))}</p><p class="dk-cks">${esc(deskCheckFrom(i))}</p>${ub}` };
   return { dot, word, say: pick ? `<p class="dk-pickl">${pick}</p>${ub}` : say };
+}
+/** Where item `i`'s check line came from, quiet, and where the item is (#526): "cue-231 said this when it finished ·
+ *  in the app since 3:04 PM", or Cue's words when its session said nothing of what to try. */
+function deskCheckFrom(i) {
+  const c = deskToCheckLine(i), who = i.holder?.name || "Its session";
+  const from = !c.cue ? `${who} said this when it finished` : `Cue's words: ${c.kind === "try" ? `${who} didn't say what to try, so this is its You'll see` : `${who} didn't say what to try`}`;
+  const where = deskUncommitted(i) ? "Commit to main puts it there and closes it" : deskInAppSince(i).replace(/^./, (x) => x.toLowerCase());
+  return `${from} · ${where}`;
 }
 
 /** A session's latest words in a line. */

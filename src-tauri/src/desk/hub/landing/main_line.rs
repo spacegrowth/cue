@@ -258,6 +258,7 @@ impl Hub {
             let h = i.holder.clone();
             let what = format!("Commit {by} took its work back out");
             (i.state, i.done_at, i.finish, i.updated) = (if h.is_some() { "working" } else { "new" }.into(), None, None, crate::desk::hub::core::desk::secs(now));
+            i.check = None;
             if let Some(c) = i.checks.last_mut() {
                 c.back = what.clone();
             }

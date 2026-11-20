@@ -319,6 +319,7 @@ fn unfinish(st: &mut Store, id: &str, h: Option<&Holder>, why: &str, now: u64) -
         c.back = if why.trim().is_empty() { question } else { why.trim().to_string() };
     }
     (it.state, it.done_at, it.finish) = ("working".into(), None, None);
+    it.check = None;
     // To a new session: nobody holds it till it starts (start_fresh takes only an item nobody holds).
     if h.is_none() {
         it.remember_holder();

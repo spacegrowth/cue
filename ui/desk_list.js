@@ -116,12 +116,33 @@ function deskWhereLine(i) {
     return { text: `Mocks · open the canvas${tail}`, html: `Mocks · <a class="dk-dlink" href="#" data-href="${esc(canvas)}">open the canvas</a>${esc(tail)}`, tried: false };
   }
   if (deskInstallWait(i)) return plainLine("Lands with the next install");
-  if (deskUncommitted(i)) return plainLine("Not on main yet · Looks right commits it");
-  // Its install (or its window's files served in place): when it went to check. A project with nothing to install: on main.
+  // Not on main yet: the same line as its page's box (#526), whose button says Commit to main.
+  if (deskUncommitted(i)) return plainLine(`Not on main yet · ${deskCheckText(deskToCheckLine(i))} · Commit to main puts it there`, true);
+  // In the app: what to do with it, the line its session wrote at DONE or Cue's own words (#526).
+  const c = deskToCheckLine(i), cw = c.cue ? " · Cue's words" : "";
+  return { text: `${deskInAppSince(i)} · ${deskCheckText(c)}${cw}`, html: `${esc(deskInAppSince(i))} · ${deskCheckHtml(c)}${cw ? `<span class="dk-cw">${esc(cw)}</span>` : ""}`, tried: true };
+}
+/** Where an item to check that's in the app is (#436): "In the app since 3:04 PM", from its install (or its window's
+ *  files served in place); a project with nothing to install: "On main since …". */
+function deskInAppSince(i) {
   const app = deskLatestCheck(i)?.cue !== false;
   const at = i.finish?.step === "checked" && i.finish.at ? i.finish.at : app ? state.desk?.installed_ms || 0 : 0;
-  return plainLine(`${app ? "In the app" : "On main"}${at ? ` since ${clockAt(at)}` : ""} · try: ${deskOneLine(i.see) || i.title}`, true);
+  return `${app ? "In the app" : "On main"}${at ? ` since ${clockAt(at)}` : ""}`;
 }
+/** The words before an item's check line, by its kind (#526). */
+const DESK_CHECK_LABEL = { try: "Try:", nothing: "Nothing to see:", unsaid: "Nothing said what to try:" };
+/** What to do with item `i` to check, in one line (#526): { kind, text, cue }. Its session's line at DONE (`i.check`:
+ *  "try", something to try, or "nothing", nothing to see and why); else Cue's own words (`cue`): its you'll-see to
+ *  try, or, with none, that nothing said what to try (kind "unsaid"). */
+function deskToCheckLine(i) {
+  const c = i?.check, text = c && (c.kind === "try" || c.kind === "nothing") ? plain(c.text) : "";
+  if (text) return { kind: c.kind, text, cue: false };
+  const see = deskOneLine(i?.see);
+  return see ? { kind: "try", text: see, cue: true } : { kind: "unsaid", text: "Send back to ask its session", cue: true };
+}
+/** That line as text ("Try: …") and as html, its label bold. */
+const deskCheckText = (c) => `${DESK_CHECK_LABEL[c.kind]} ${c.text}`;
+const deskCheckHtml = (c) => `<b class="dk-vb">${DESK_CHECK_LABEL[c.kind]}</b> ${esc(c.text)}`;
 function deskVerb(i) {
   if (i.state === "to_check") return ["", deskWhereLine(i).text];
   if (i.state !== "needs_you") return null;

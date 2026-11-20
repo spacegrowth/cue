@@ -159,6 +159,8 @@ pub(crate) fn holder_said(st: &mut Store, sid: &str, text: &str, decided: bool, 
         if names_held {
             st.desk.run.done_held.insert(sid.to_string(), text.to_string());
         }
+        // A CHECK for an item already finishing or to check still counts (#526); one with a held DONE waits with it.
+        checks(st, sid, text, now, fx);
         None
     } else {
         dones(st, sid, text, now, fx)
@@ -193,7 +195,8 @@ fn dones(st: &mut Store, sid: &str, text: &str, now: u64, fx: &mut Effects) -> O
             it.checks.push(crate::desk::model::DeskCheck { at: now, by, ..Default::default() });
             fx.checked.push(id.clone());
             it.state = "finishing".into();
-            (it.paused, it.asks) = (None, None);
+            // A new DONE: last round's CHECK line is gone; this turn's (`checks`, after) is the one shown (#526).
+            (it.paused, it.asks, it.check) = (None, None, None);
             it.finish = Some(crate::desk::hub::landing::finish::begun(now, it.finish.as_ref()));
             it.after = None;
             it.updated = secs(now);
@@ -201,7 +204,24 @@ fn dones(st: &mut Store, sid: &str, text: &str, now: u64, fx: &mut Effects) -> O
             finished = Some(id);
         }
     }
+    checks(st, sid, text, now, fx);
     finished
+}
+
+/// Holder `sid`'s CHECK lines in `text` (#526): what you check on an item it said DONE for, in this turn or before,
+/// kept on it (the last one said wins). One for an item it doesn't hold, or that isn't done by it yet, does nothing.
+fn checks(st: &mut Store, sid: &str, text: &str, now: u64, fx: &mut Effects) {
+    for line in parse::lines(text) {
+        let Line::Check { id, kind, text } = line else { continue };
+        let id = st.desk.canon(&id);
+        let Some(it) = st.desk.item_mut(&id).filter(|i| i.holder.as_ref().is_some_and(|h| h.is(sid)) && matches!(i.state.as_str(), "finishing" | "to_check")) else { continue };
+        let check = Some(crate::desk::model::Check { kind, text });
+        if it.check != check {
+            it.check = check;
+            it.updated = secs(now);
+            fx.items.push(id);
+        }
+    }
 }
 
 /// Its DECIDED lines, as decisions on the item it's at (`finished`: the one this turn said DONE for).
@@ -243,11 +263,11 @@ pub(crate) fn new_item(st: &Store, project: &str, kind: &str, title: &str, done_
     }
 }
 
-/// Whether `line` starts as one of the Desk's lines would (ITEM:, ROUTE:, ASK:, DONE:, CONTEXT:, DECIDED:), after list marks
+/// Whether `line` starts as one of the Desk's lines would (ITEM:, ROUTE:, ASK:, DONE:, CHECK:, CONTEXT:, DECIDED:), after list marks
 /// and bold: a cheap look before parsing.
 pub(crate) fn desk_line_start(line: &str) -> bool {
     let l = parse::unmarked(line.trim().trim_start_matches('`')).trim_start_matches('`');
     let Some((word, _)) = l.split_once(':') else { return false };
     let word = word.trim_end_matches(['*', '`']).trim();
-    matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "CONTEXT" | "DESIGNS" | "TITLE" | "SEE" | "SPLIT" | "CUT" | "MERGE" | "NOTE" | "FEATURE" | "CLOSE" | "TAKE COPY" | "LAND FIRST" | "START" | "PARK" | "HOLD" | "UNPARK" | "PAUSE" | "RESUME" | "ANSWER" | "PASS" | "LANDS" | "TO LEAD") || word.eq_ignore_ascii_case("DECIDED")
+    matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "CHECK" | "CONTEXT" | "DESIGNS" | "TITLE" | "SEE" | "SPLIT" | "CUT" | "MERGE" | "NOTE" | "FEATURE" | "CLOSE" | "TAKE COPY" | "LAND FIRST" | "START" | "PARK" | "HOLD" | "UNPARK" | "PAUSE" | "RESUME" | "ANSWER" | "PASS" | "LANDS" | "TO LEAD") || word.eq_ignore_ascii_case("DECIDED")
 }

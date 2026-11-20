@@ -131,6 +131,10 @@ pub struct DeskItem {
     /// Desk can link to them (parse.rs `made_in`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub made: Vec<String>,
+    /// What you check once it's done (#526), as its holder said on a CHECK: line next to its DONE: one thing to try,
+    /// or nothing to see and why. Cleared when it's sent back or resumed, so an old one never shows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub check: Option<Check>,
     /// Its designs' canvas: the link a session gave last on a DESIGNS: line, shown as "Designs" on its page.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub designs: String,
@@ -352,6 +356,15 @@ pub struct CommitWait {
     pub busy: Vec<BusyFile>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub error: String,
+}
+
+/// What you check on a done item (#526): `CHECK: #<id> | Try: <thing>` or `CHECK: #<id> | Nothing to see: <why>`.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct Check {
+    /// "try" (one thing to do in the app) | "nothing" (nothing to see).
+    pub kind: String,
+    /// The words after the label.
+    pub text: String,
 }
 
 /// Where an item's finishing is (desk/hub/landing/finish.rs).

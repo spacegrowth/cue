@@ -258,7 +258,11 @@ function deskPanelToggle(page) {
 const deskPsec = (head, html, cls = "") => (html ? `<section class="dk-psec${cls ? ` ${cls}` : ""}"><h4 class="dk-psh">${head}</h4>${html}</section>` : "");
 /** The panel's NOW: the state's dot (`dot`: "ask", "work", "stop", "done") and word, once; one plain sentence; its
  *  buttons. `fold`: the counts said after the word only when the panel is folded into a line. */
-const deskPnow = ({ dot, word, say = "", acts = "", fold = "" }) => `<section class="dk-psec dk-pnow"><h4 class="dk-psh">Now</h4><div class="dk-pnr"><i class="dk-pdot ${dot}" aria-hidden="true"></i><b class="dk-pword">${esc(word)}</b>${fold ? `<span class="dk-pfc"> · ${fold}</span>` : ""}</div>${say ? `<div class="dk-psay">${say}</div>` : ""}${acts ? `<div class="dk-pacts">${acts}</div>` : ""}</section>`;
+const deskPnow = ({ dot, word, say = "", acts = "", fold = "", box = false }) => {
+  const body = `<div class="dk-pnr"><i class="dk-pdot ${dot}" aria-hidden="true"></i><b class="dk-pword">${esc(word)}</b>${fold ? `<span class="dk-pfc"> · ${fold}</span>` : ""}</div>${say ? `<div class="dk-psay">${say}</div>` : ""}${acts ? `<div class="dk-pacts">${acts}</div>` : ""}`;
+  // `box`: all of it in a filled box at the panel's top (an item to check, #526); folded, the same one line.
+  return `<section class="dk-psec dk-pnow"><h4 class="dk-psh">Now</h4>${box ? `<div class="dk-pbox">${body}</div>` : body}</section>`;
+};
 /** A WHO line: a quiet label, then its value. */
 const deskPwho = (label, html) => (html ? `<div class="dk-pw"><span class="dk-pwl">${label}</span><span class="dk-pwv">${html}</span></div>` : "");
 /** Item `i`'s number as a link to its page ("#191"). */
@@ -447,7 +451,7 @@ function deskCheckInfo(i, d) {
   // In it when Cue was installed after the work last changed (`edited`), not after the DONE: you install, then say DONE.
   const mocks = /^https?:\/\//.test(c.designs || "") ? `<a class="dk-dlink" href="#" data-href="${esc(c.designs)}">Open the mocks ↗</a>` : "";
   const inst = mocks || !c.cue ? mocks : deskInstallWait({ ...i, state: "to_check" }) ? "Not installed yet: install Cue to try it"
-    : i.finish?.step === "checked" ? "Ready to verify in Cue"
+    : i.finish?.step === "checked" ? (deskCheckBox(i) ? "" : "Ready to verify in Cue")
     : `In the installed Cue · installed ${esc(deskChkWhen(state.desk?.installed_ms || 0))}`;
   return `<div class="dk-chk-info"><div class="dk-chk-w">Done by ${who} · ${ago(c.at)} ago${files}</div>${inst ? `<div class="dk-chk-in">${inst}</div>` : ""}</div>`;
 }
@@ -591,8 +595,13 @@ function deskLooksTop(i) {
   if (i.state !== "to_check" || deskInstallWait(i) || deskBackFor === i.id) return "";
   // Committed when its session said DONE: Looks right only closes it (its state line says which commit). Not
   // committed yet: the same button commits it to main first, and says so.
-  return deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id) : `<button class="btn small primary" data-desk-act="looks_right" data-id="${esc(i.id)}">${deskUncommitted(i) ? "Commit to main" : "Looks right"}</button>`;
+  return deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id) : `<button class="btn small primary" data-desk-act="looks_right" data-id="${esc(i.id)}">${deskLooksWord(i)}</button>`;
 }
+/** Looks right's words: "Commit to main" for an item whose files aren't committed; "Close" beside its check line (#526). */
+const deskLooksWord = (i) => (deskUncommitted(i) ? "Commit to main" : deskCheckBox(i) ? "Close" : "Looks right");
+/** Item `i` is to check and there's something to do with it now (#526): its check line shows in a box at the top of
+ *  its panel, with Close and Send back. Not mocks (their pick), not changes left on its branch, not waiting for install. */
+const deskCheckBox = (i) => i?.state === "to_check" && !deskInstallWait(i) && !i.finish?.unlanded && !i.finish?.mocks && !deskCanvas(i);
 const DESK_LOG_FOLD = 6;
 /** Which items' build logs are open in full (Show all), by id. */
 const deskFinLogOpen = new Set();
