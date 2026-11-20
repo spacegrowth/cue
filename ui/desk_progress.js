@@ -82,13 +82,25 @@ function deskProgRow(i) {
     const state = at < 0 || k > at ? "todo" : k < at ? "done" : "cur";
     // How long the step took: till the next step it reached; the one it's at counts up (tickAges), unless it waits on
     // you to check it (the time it has been in your app isn't the step's work).
-    const next = st.slice(k + 1).find(Boolean);
+    // Picked up took till its first round's next step: a later round starts building afresh (#421).
+    const next = (k === 0 && i.backs?.length ? i.backs[0].steps || [] : st).slice(k + 1).find(Boolean);
     const took = !t ? "" : next ? deskProgDur(next - t) : state === "cur" ? `<span data-ago="${t}">${ago(t)}</span>` : "";
     const l = k > 0 ? `<i class="dk-grl${at >= k ? " on" : ""}"></i>` : "", r = k < 5 ? `<i class="dk-grr${at > k ? " on" : ""}"></i>` : "";
     return `<span class="dk-grc">${l}${r}${deskProgMark(state, look)}<span class="dk-grt${state === "cur" ? ` cur ${look}` : ""}">${took}</span></span>`;
   }).join("");
   const who = deskHolderOf(i);
-  return `<div class="dk-gr" role="button" tabindex="0" data-desk-prog-open="${esc(i.id)}" data-desk-prog-row="${esc(i.id)}"><span class="dk-grn"><span class="dk-grtl">${esc(i.title)}</span><span class="dk-grmeta"><span class="dk-kid">${deskKindIcon(i)}<span class="dk-id">${esc(deskNum(i))}</span></span>${who ? `<span>· ${esc(who)}</span>` : ""}<span class="dk-grmono">· ${ago(deskMs(i.created))}</span></span></span>${cells}<span class="dk-grnow"><span class="dk-grw ${look}">${deskProgNow(i)}</span>${deskProgButton(i) ? `<span class="dk-grb">${deskProgButton(i)}</span>` : ""}</span></div>`;
+  return `<div class="dk-gr" role="button" tabindex="0" data-desk-prog-open="${esc(i.id)}" data-desk-prog-row="${esc(i.id)}"><span class="dk-grn"><span class="dk-grtl">${esc(i.title)}</span><span class="dk-grmeta"><span class="dk-kid">${deskKindIcon(i)}<span class="dk-id">${esc(deskNum(i))}</span></span>${who ? `<span>· ${esc(who)}</span>` : ""}<span class="dk-grmono">· ${ago(deskMs(i.created))}</span></span></span>${cells}<span class="dk-grnow"><span class="dk-grw ${look}">${deskProgNow(i)}</span>${deskProgButton(i) ? `<span class="dk-grb">${deskProgButton(i)}</span>` : ""}</span>${deskProgBack(i)}</div>`;
+}
+
+/** Under its marks when it went back to be redone (#421): a curved arrow from the step it was at back to Building,
+ *  with the round it's on and why it went back (the latest time; the round counts them all). */
+function deskProgBack(i) {
+  const b = i.backs?.[i.backs.length - 1];
+  if (!b) return "";
+  const x = (k) => 48 + 96 * k, from = Math.min(Math.max(+b.from || 0, 2), 5), to = 1;
+  const arrow = `<svg class="dk-grbk-arrow" width="576" height="22" viewBox="0 0 576 22" aria-hidden="true"><path d="M${x(from)} 1 C${x(from)} 19 ${x(to)} 19 ${x(to)} 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="m${x(to) - 4} 7 4-5 4 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  const why = b.why ? ` · ${esc(firstLine(b.why))}` : "";
+  return `<span class="dk-grbk">${arrow}<span class="dk-grbk-t"><b>Round ${i.backs.length + 1}</b> · back from ${DESK_PROG_STEPS[+b.from] || "its finish"}${why}</span></span>`;
 }
 
 /** The Progress popover: every item under way (not the queued or parked ones, which haven't started) in the order the

@@ -60,3 +60,26 @@ test("Progress pops up each item under way with its steps, what it's doing now, 
   await expect(prog).toHaveCount(0);
   await expect(page.locator('.dk-items .dk-it.on')).toContainText("Search stays centred");
 });
+
+test("An item sent back shows a curved arrow back to Building with its round and why (#421)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  const now = Date.now();
+  await cue.change((st, now) => {
+    const d3 = st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d3");
+    d3.steps = [now - 900000, now - 60000, 0, 0, 0, 0];
+    d3.backs = [{ from: 5, why: "The arrow is missing on Progress\nand more", at_ms: now - 60000, steps: [now - 900000, now - 780000, 0, now - 400000, 0, now - 300000] }];
+  }, now);
+  await page.locator(".dk-items .dk-ch [data-desk-prog-toggle]").click();
+  const d3 = page.locator('.dk-prog [data-desk-prog-row="d3"]');
+  await expect(d3.locator(".dk-grbk svg")).toHaveCount(1);
+  await expect(d3.locator(".dk-grbk-t")).toHaveText("Round 2 · back from To check · The arrow is missing on Progress");
+  // Picked up took till its first round's Building (2m), not till this round's.
+  await expect(d3.locator(".dk-grt").nth(0)).toHaveText("2m");
+  // Items that never went back have no arrow.
+  await expect(page.locator('.dk-prog [data-desk-prog-row="d2"] .dk-grbk')).toHaveCount(0);
+  const dir = process.env.SHOT_DIR || process.env.TMPDIR || "/tmp";
+  await page.screenshot({ path: `${dir}/cue-desk-progress-back-light.png` });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.screenshot({ path: `${dir}/cue-desk-progress-back-dark.png` });
+});

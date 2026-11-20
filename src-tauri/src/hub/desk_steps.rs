@@ -52,8 +52,9 @@ fn step_now(st: &Store, it: &DeskItem) -> Option<usize> {
 }
 
 /// Stamps each open item's step as first reached (ms): picked up when its holder took it, the rest as Cue hears them.
-/// A step only fills in: work back to Editing after its tests stays at tests. Sent back from its DONE, it's at work
-/// again: its commit, landing and to-check stamps go, to fill in afresh. True when anything changed.
+/// A step only fills in: work back to Editing after its tests stays at tests. Sent back from its finish (your Send
+/// back, a failed landing, its work taken out), it's at work again (#421): the round is kept in `backs` (the step it
+/// was at and why), and it's building afresh from now: its later stamps go, to fill in again. True when anything changed.
 pub(super) fn stamp(st: &mut Store, now: u64) -> bool {
     let at: Vec<(String, usize)> = st.desk.items.iter().filter_map(|i| step_now(st, i).map(|s| (i.id.clone(), s))).collect();
     let mut changed = false;
@@ -64,7 +65,12 @@ pub(super) fn stamp(st: &mut Store, now: u64) -> bool {
         }
         let before = it.steps.clone();
         if step < COMMIT {
-            it.steps[COMMIT..].iter_mut().for_each(|s| *s = 0);
+            if let Some(from) = it.steps[COMMIT..].iter().rposition(|s| *s != 0).map(|k| k + COMMIT) {
+                let why = it.checks.last().map(|c| c.back.trim().to_string()).unwrap_or_default();
+                it.backs.push(crate::desk::model::StepBack { from, why, at_ms: now, steps: before.clone() });
+                it.steps[BUILDING..].iter_mut().for_each(|s| *s = 0);
+                it.steps[BUILDING] = now;
+            }
         }
         if it.steps[0] == 0 {
             it.steps[0] = it.held_from.as_ref().map_or(now, |(_, ms)| *ms).min(now);
@@ -102,13 +108,19 @@ mod tests {
         st.desk.items[0].state = "to_check".into();
         stamp(&mut st, 9_000);
         assert_eq!(at(&st), vec![1_000, 0, 0, 7_000, 0, 9_000]);
-        // Sent back: at work again, its finish fills in afresh.
+        // Sent back: at work again, building afresh, the round kept with why.
+        st.desk.items[0].checks.push(Default::default());
+        st.desk.items[0].checks[0].back = "The arrow is missing".into();
         st.desk.items[0].state = "working".into();
         stamp(&mut st, 10_000);
-        assert_eq!(at(&st), vec![1_000, 0, 0, 0, 0, 0]);
+        assert_eq!(at(&st), vec![1_000, 10_000, 0, 0, 0, 0]);
+        let b = &st.desk.items[0].backs;
+        assert_eq!((b.len(), b[0].from, b[0].why.as_str(), b[0].at_ms), (1, TO_CHECK, "The arrow is missing", 10_000));
+        assert_eq!(b[0].steps, vec![1_000, 0, 0, 7_000, 0, 9_000]);
+        assert!(!stamp(&mut st, 11_000), "went back once: no second round");
         // Queued items haven't started: no steps.
         st.desk.items.push(DeskItem { id: "2".into(), state: "queued".into(), ..Default::default() });
-        stamp(&mut st, 11_000);
+        stamp(&mut st, 12_000);
         assert!(st.desk.items[1].steps.is_empty());
     }
 }

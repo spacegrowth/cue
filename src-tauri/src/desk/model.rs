@@ -240,6 +240,22 @@ pub struct DeskItem {
     /// check (#409, hub/desk_steps.rs). The Desk's Progress view shows them, and how long each took. Saved.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub steps: Vec<u64>,
+    /// Each time it went back from its finish to be redone (#421): sent back, its landing failed, its work taken out.
+    /// Its Progress row draws an arrow back with "round N" and why. Saved.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub backs: Vec<StepBack>,
+}
+
+/// One time item went back to be redone (#421, hub/desk_steps.rs): the step it was at, why (as its DONE's card keeps
+/// it), when, and that round's step stamps.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct StepBack {
+    pub from: usize,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub why: String,
+    pub at_ms: u64,
+    #[serde(default)]
+    pub steps: Vec<u64>,
 }
 
 /// What an item's holder did last while at work on it (#285), as its row shows it.
