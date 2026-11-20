@@ -97,6 +97,23 @@ These already showed as short cards or lines before #478 and are unchanged:
 | From another Desk's session | #472's band across the lead's chat |
 | What Cue sent a crew lead for its crew (reviews, "(Cue) Your teammate … quiet") | Cue's crew line with "+ What Cue sent" (team.js) |
 
+## Not a short line yet
+
+The hub (or the window) sends these too, but no pattern in `CUE_MSGS` knows them, so today they show as a raw bubble
+on the right with Cue's full text, as if you had typed it:
+
+| Kind | Sent when | Hub | How it shows today |
+| --- | --- | --- | --- |
+| Question from the item's page | You ask about an item that's to check or done | desk_asked.rs | your bubble: “A question about Desk item #id (title), which is …: your words”, Cue's “Answer it…” words under it |
+| Carry on after the usage limit | A turn stopped on the usage limit, and it reset (Carry on is on) | sessions/send_at.rs `CARRY_ON` | your bubble: “Carry on where you stopped: your usage limit reset.” |
+| Resume with the hand-off skill | The next session after a hand-off, when the skill takes `resume` | ipc/insights.rs | your bubble: “/handoff resume” |
+| Background agent quiet, or stop it | You wake or stop a session's background agent | ui/agents.js (the window) | your bubble: “Your background agent “X” has gone quiet…”, or “Stop your background agent “X” now…” |
+| Cut refused | The lead's CUT: names a wait that isn't there | desk_said.rs | the lead's chat, your bubble: “Not cut: #a doesn't wait on #b” |
+| CLOSE commit not on main | The lead's CLOSE: names a commit that isn't on main | desk_unstick.rs | the lead's chat, your bubble: “Desk item #id not closed: … isn't on main…” |
+
+A Cue message waiting to go (queued or held) shows as the short line in the chat, but the session's card on the board
+(“Queued: “…””) and its Inbox row (“Queued for X: “…””) still quote Cue's raw text.
+
 ## Your own words, kept as your bubble
 
 - What you type to a session or the lead (a lead's copy has its `<desk …>` block dropped, as before).
