@@ -386,10 +386,10 @@ pub(super) fn by_folder(files: &[(String, String)]) -> Vec<(String, Vec<String>)
 
 /// Where a session's own changes for an item are read from: its log, its folder, and when it held the item (ms).
 pub(super) struct OwnLog {
-    log: String,
+    pub(super) log: String,
     pub(super) folder: String,
-    from: u64,
-    until: u64,
+    pub(super) from: u64,
+    pub(super) until: u64,
 }
 
 /// `it`'s holder's own log, when a session here holds it itself (not a crew member, nor a teammate it named) with a

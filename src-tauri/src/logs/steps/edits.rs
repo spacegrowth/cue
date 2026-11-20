@@ -168,3 +168,90 @@ mod tests {
         assert!(script_writes_in(&edit("cd \"$DIR\" && ")).is_empty(), "where it ran can't be told");
     }
 }
+
+/// Where a session worked from `from` until `until` (ms, by each log line's time), as its log says: each folder
+/// Claude Code noted it in (each line's `cwd`), and each commit its shell commands made, read from git's own line
+/// for it ("[fix-grip b4d4e28] The grip…": the branch, "detached HEAD" for none, and the short hash), with the
+/// folder it was made from. Not its background agents': their work is its crew's. A Claude Code log only.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Worked {
+    pub folders: Vec<String>,
+    /// (folder, branch, short hash).
+    pub commits: Vec<(String, String, String)>,
+}
+
+pub fn worked_between(path: &str, from: u64, until: u64) -> Worked {
+    let mut out = Worked::default();
+    if kind_of(path) != Kind::Claude {
+        return out;
+    }
+    let Ok(text) = std::fs::read_to_string(path) else { return out };
+    let mut commits_by: Vec<String> = Vec::new();
+    for line in text.lines() {
+        let Ok(e) = serde_json::from_str::<Value>(line) else { continue };
+        let at = crate::logs::transcript::stamp(&e);
+        if at < from || at >= until {
+            continue;
+        }
+        let cwd = e.get("cwd").and_then(Value::as_str).unwrap_or("").trim_end_matches('/').to_string();
+        if !cwd.is_empty() && !out.folders.contains(&cwd) {
+            out.folders.push(cwd.clone());
+        }
+        for b in e.pointer("/message/content").and_then(Value::as_array).into_iter().flatten() {
+            match b.get("type").and_then(Value::as_str) {
+                Some("tool_use") if b.get("name").and_then(Value::as_str) == Some("Bash") => {
+                    let c = b.pointer("/input/command").and_then(Value::as_str).unwrap_or("");
+                    if c.contains("commit") || c.contains("merge") || c.contains("cherry-pick") {
+                        commits_by.push(b.get("id").and_then(Value::as_str).unwrap_or("").to_string());
+                    }
+                }
+                Some("tool_result") if b.get("tool_use_id").and_then(Value::as_str).is_some_and(|id| commits_by.iter().any(|c| c == id)) => {
+                    let said = match &b["content"] {
+                        Value::String(s) => s.clone(),
+                        Value::Array(a) => a.iter().filter_map(|p| p.get("text").and_then(Value::as_str)).collect::<Vec<_>>().join("\n"),
+                        _ => String::new(),
+                    };
+                    for (branch, sha) in said.lines().filter_map(commit_line) {
+                        if !out.commits.iter().any(|(_, _, s)| *s == sha) {
+                            out.commits.push((cwd.clone(), branch, sha));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    out
+}
+
+/// git's line for a commit it made, "[<branch> (root-commit) <hash>] <subject>": the branch and the hash.
+fn commit_line(l: &str) -> Option<(String, String)> {
+    let inner = l.trim_start().strip_prefix('[')?;
+    let (inner, rest) = inner.split_once(']')?;
+    if !rest.starts_with(' ') {
+        return None;
+    }
+    let mut words: Vec<&str> = inner.split_whitespace().collect();
+    let sha = words.pop()?;
+    if !(7..=40).contains(&sha.len()) || !sha.bytes().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()) {
+        return None;
+    }
+    if words.last() == Some(&"(root-commit)") {
+        words.pop();
+    }
+    (!words.is_empty()).then(|| (words.join(" "), sha.to_string()))
+}
+
+#[cfg(test)]
+mod worked_tests {
+    use super::commit_line;
+
+    #[test]
+    fn gits_line_for_a_commit_gives_its_branch_and_hash() {
+        assert_eq!(commit_line("[fix-grip b4d4e28] The grip (#455)"), Some(("fix-grip".into(), "b4d4e28".into())));
+        assert_eq!(commit_line("[detached HEAD 0a1b2c3] x"), Some(("detached HEAD".into(), "0a1b2c3".into())));
+        assert_eq!(commit_line("[main (root-commit) 0a1b2c3] first"), Some(("main".into(), "0a1b2c3".into())));
+        assert_eq!(commit_line("[1/3] building"), None);
+        assert_eq!(commit_line("[WARN abcdefg]x"), None);
+    }
+}

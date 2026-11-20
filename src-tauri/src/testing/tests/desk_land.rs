@@ -566,21 +566,14 @@ fn an_item_reopened_twice_is_done_only_once_every_commit_on_its_branch_is_on_mai
     let it = item(&w, &project, "Header jumps");
     assert_eq!(it["state"], "to_check", "{it}");
     assert!(it["finish"]["unlanded"].is_null(), "nothing left on its branch: {it}");
-    // Round 3: committed on its branch, and its worktree gone before its DONE: nothing merges it.
+    // Round 3: committed on its branch, and its worktree gone before its DONE: its branch is merged all the same (#481).
     reopen(&w);
     std::fs::write(own.join("shared.txt"), "3\n").unwrap();
     git(&own, &["add", "shared.txt"]);
     git(&own, &["commit", "-q", "-m", "round 3"]);
     git(&dir, &["worktree", "remove", own.to_str().unwrap()]);
     ends(&w, &h, &format!("Fixed a third time.\nDONE: #{id}"));
-    assert!(!dir.join("shared.txt").exists());
-    // Nothing of it landed since its reopen: back to its session, told what's left where, not to you.
-    let it = item(&w, &project, "Header jumps");
-    assert_eq!(it["state"], "working", "{it}");
-    assert!(w.hosted.sent().iter().any(|(s, t)| *s == h && t.contains("1 change not landed yet on its branch")), "its session is told");
-    // Its holder lands it; its DONE is to check, and it can be closed.
-    git(&dir, &["merge", "-q", "--no-edit", &format!("desk/{id}")]);
-    ends(&w, &h, &format!("Landed.\nDONE: #{id}"));
+    assert_eq!(std::fs::read_to_string(dir.join("shared.txt")).ok().as_deref(), Some("3\n"), "round 3 is on main");
     let it = item(&w, &project, "Header jumps");
     assert!(it["state"] == "to_check" && it["reopened"].is_null(), "{it}");
     w.hub().desk_looks_right(&id).unwrap();

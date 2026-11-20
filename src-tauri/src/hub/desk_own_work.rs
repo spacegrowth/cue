@@ -1,0 +1,182 @@
+//! Work its holder did outside the copy Cue gave it, landed as any other (#481). An item reached "to check" with its
+//! work never on main: #455's holder, started without a copy, made a worktree of its own on desk/455, committed
+//! there and said DONE; Cue looked only at the main checkout, found nothing new, and sent it to you. A branch named
+//! for the item is merged since #448, but a session can name its branch anything, work in a folder it made, or
+//! commit and remove the folder.
+//!
+//! So its holder's own log says where it worked while it held the item: each folder Claude Code noted it in, and each
+//! commit its shell made (git's "[fix-grip b4d4e28] …" line). At its DONE each worktree it worked in, each branch
+//! holding a commit it made, and its own desk/<item> branch with no worktree are merged into the main line as its
+//! crew's are. And it never goes to check while one of its commits still isn't on main: it goes back to its session,
+//! saying which and where. A commit nothing holds any more (amended, rebased, its branch deleted) was let go by it.
+
+use super::desk_commit::own_log;
+use super::desk_git::git;
+use super::desk_main_line::{main_checkout, same_dir};
+use super::desk_unlanded::{own_branches, rev_left};
+use super::*;
+use crate::desk::DeskItem;
+
+/// Its holder's work outside its own copy, not on main.
+#[derive(Default)]
+pub(super) struct OwnWork {
+    /// Worktrees (none a main checkout) holding it: merged as its crew's folders are.
+    pub(super) folders: Vec<String>,
+    /// Branches holding it that no worktree has: (main checkout, branch, its tip).
+    pub(super) refs: Vec<(String, String, String)>,
+    /// Each commit of it, said for its holder ("b4d4e28 on fix-grip in /…/cue"), whatever holds it.
+    pub(super) off: Vec<String>,
+}
+
+/// One worktree of a repository: its folder, HEAD and branch ("" when detached).
+struct Tree {
+    path: String,
+    head: String,
+    branch: String,
+}
+
+fn trees(top: &str) -> Vec<Tree> {
+    let Some(list) = git("", top, &[], &["worktree", "list", "--porcelain"]) else { return Vec::new() };
+    let mut out: Vec<Tree> = Vec::new();
+    for line in list.lines() {
+        if let Some(p) = line.strip_prefix("worktree ") {
+            out.push(Tree { path: p.to_string(), head: String::new(), branch: String::new() });
+        } else if let (Some(h), Some(t)) = (line.strip_prefix("HEAD "), out.last_mut()) {
+            t.head = h.to_string();
+        } else if let (Some(b), Some(t)) = (line.strip_prefix("branch refs/heads/"), out.last_mut()) {
+            t.branch = b.to_string();
+        }
+    }
+    out
+}
+
+fn contains(top: &str, of: &str, sha: &str) -> bool {
+    !of.is_empty() && matches!(crate::safe_git::run("", top, &[], &["merge-base", "--is-ancestor", sha, of]), Ok((_, 0)))
+}
+
+fn short(sha: &str) -> &str {
+    &sha[..sha.len().min(8)]
+}
+
+/// What `holder_work` checks each place against: the item's own copy, and repositories landing by pull request.
+struct Skip {
+    copy: Option<(String, String)>,
+    project: String,
+}
+
+impl Skip {
+    fn in_copy(&self, path: &str, branch: &str) -> bool {
+        self.copy.as_ref().is_some_and(|(p, b)| same_dir(p, path) || (!b.is_empty() && b == branch))
+    }
+    fn by_pr(&self, main: &str) -> bool {
+        crate::lands::lands_of(&self.project, main).how == "pr"
+    }
+}
+
+fn add_repo(m: &str, repos: &mut Vec<String>) {
+    if !repos.iter().any(|r| same_dir(r, m)) {
+        repos.push(m.to_string());
+    }
+}
+
+impl Hub {
+    /// Item `it`'s holder's own work outside its copy that main doesn't have yet (none for a crew's or a remote
+    /// session's: those land as before; a repository landing by pull request left out, its branches being GitHub's).
+    pub(super) fn holder_work(&self, it: &DeskItem) -> OwnWork {
+        let mut out = OwnWork::default();
+        let Some(own) = self.read(|st| own_log(st, it)) else { return out };
+        let worked = crate::logs::steps::worked_between(&own.log, own.from, own.until);
+        let skip = Skip { copy: it.tree.as_ref().map(|t| (t.path.clone(), t.branch.clone())), project: it.project.clone() };
+        let mut repos: Vec<String> = Vec::new();
+        for f in worked.folders.iter().chain(std::iter::once(&own.folder)) {
+            worked_in(f, &skip, &mut repos, &mut out);
+        }
+        for (cwd, said_branch, sha) in &worked.commits {
+            let at = if std::path::Path::new(cwd).is_dir() { cwd.as_str() } else { own.folder.as_str() };
+            committed(at, said_branch, sha, &skip, &mut repos, &mut out);
+        }
+        let keep: Vec<String> = self.read(|st| st.desk.kept.iter().filter(|k| k.id == it.id).map(|k| k.branch.clone()).collect());
+        for m in repos.iter().filter(|m| !skip.by_pr(m)) {
+            own_branch_left(m, &it.id, &keep, &skip, &mut out);
+        }
+        out
+    }
+}
+
+/// A folder it worked in: a worktree (not a main checkout) with work main lacks is merged.
+fn worked_in(f: &str, skip: &Skip, repos: &mut Vec<String>, out: &mut OwnWork) {
+    if !std::path::Path::new(f).is_dir() {
+        return;
+    }
+    let Some((m, _)) = main_checkout(f) else { return };
+    add_repo(&m, repos);
+    let Some(top) = git("", f, &[], &["rev-parse", "--show-toplevel"]).map(|t| t.trim().to_string()) else { return };
+    let branch = git("", &top, &[], &["symbolic-ref", "--short", "-q", "HEAD"]).map(|b| b.trim().to_string()).unwrap_or_default();
+    if same_dir(&top, &m) || skip.in_copy(&top, &branch) || skip.by_pr(&m) || out.folders.iter().any(|o| same_dir(o, &top)) {
+        return;
+    }
+    if git("", &top, &[], &["rev-parse", "HEAD"]).is_some_and(|h| rev_left(&m, h.trim()) > 0) {
+        out.folders.push(top);
+    }
+}
+
+/// A commit it made (in `at`), wherever it is now: in a worktree, merged as one; on a branch alone, merged as that.
+fn committed(at: &str, said_branch: &str, sha: &str, skip: &Skip, repos: &mut Vec<String>, out: &mut OwnWork) {
+    let Some((m, _)) = main_checkout(at) else { return };
+    let Some(full) = git("", &m, &[], &["rev-parse", "-q", "--verify", &format!("{sha}^{{commit}}")]).map(|s| s.trim().to_string()) else { return };
+    add_repo(&m, repos);
+    if skip.by_pr(&m) || rev_left(&m, &full) == 0 {
+        return;
+    }
+    if let Some(t) = trees(&m).into_iter().find(|t| contains(&m, &t.head, &full)) {
+        if skip.in_copy(&t.path, &t.branch) {
+            return;
+        }
+        let on = if t.branch.is_empty() { String::new() } else { format!(" on {}", t.branch) };
+        out.off.push(format!("{}{on} in {}", short(&full), t.path));
+        if !same_dir(&t.path, &m) && !out.folders.iter().any(|o| same_dir(o, &t.path)) {
+            out.folders.push(t.path);
+        }
+        return;
+    }
+    // On no worktree: the branch holding it (the one git named at the commit first). On none, it was let go.
+    let on = git("", &m, &[], &["branch", "--contains", &full, "--format=%(refname:short)"]).unwrap_or_default();
+    let mut branches: Vec<&str> = on.lines().map(str::trim).filter(|b| !b.is_empty()).collect();
+    branches.sort_by_key(|b| *b != said_branch);
+    let Some(b) = branches.first().map(|b| b.to_string()) else { return };
+    if skip.in_copy("", &b) {
+        return;
+    }
+    out.off.push(format!("{} on {b}", short(&full)));
+    if let Some(tip) = git("", &m, &[], &["rev-parse", &format!("refs/heads/{b}")]).map(|t| t.trim().to_string()) {
+        if !out.refs.iter().any(|(_, r, _)| *r == b) {
+            out.refs.push((m.clone(), b, tip));
+        }
+    }
+}
+
+/// Its own branch (desk/<item>) with work main lacks and no worktree on it (#448's round 3); a dropped copy's work
+/// you kept left out.
+fn own_branch_left(m: &str, id: &str, keep: &[String], skip: &Skip, out: &mut OwnWork) {
+    let all = trees(m);
+    for b in own_branches(id) {
+        if keep.contains(&b) || skip.in_copy("", &b) || all.iter().any(|t| t.branch == b) || out.refs.iter().any(|(_, r, _)| *r == b) {
+            continue;
+        }
+        if super::desk_unlanded::left_on(m, &b) == 0 {
+            continue;
+        }
+        if let Some(tip) = git("", m, &[], &["rev-parse", &format!("refs/heads/{b}")]).map(|t| t.trim().to_string()) {
+            out.refs.push((m.to_string(), b, tip));
+        }
+    }
+}
+
+/// What its session is told when its work isn't all on main after its DONE: which commits, and where.
+pub(super) fn off_main_words(off: &[String], unlanded: usize, id: &str) -> String {
+    let mut parts: Vec<String> = off.to_vec();
+    if unlanded > 0 && !parts.iter().any(|p| p.contains(&format!("desk/{id}"))) {
+        parts.push(format!("{} on desk/{id}", super::desk_unlanded::unlanded_words(unlanded)));
+    }
+    format!("Its work isn't on main yet, so it isn't ready to check: {}. Cue couldn't land it. Put it on main (or say why it shouldn't be there), then say DONE", parts.join("; "))
+}

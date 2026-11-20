@@ -20,7 +20,7 @@ use super::*;
 use crate::desk::DeskItem;
 
 /// Item `id`'s own branches.
-fn own_branches(id: &str) -> [String; 2] {
+pub(super) fn own_branches(id: &str) -> [String; 2] {
     [format!("desk/{id}"), format!("desk/{id}-again")]
 }
 
@@ -52,9 +52,14 @@ pub(super) fn unlanded_in(top: &str, id: &str, keep: &[String]) -> usize {
 /// How many changes on branch `b` of `top`'s repository main doesn't have: none when there's no such branch, or main
 /// has all of it (merged, or landed as one squash); one with only merges main lacks counts one.
 pub(super) fn left_on(top: &str, b: &str) -> usize {
+    rev_left(top, &format!("refs/heads/{b}"))
+}
+
+/// How many changes up to `rev` (a branch, a commit) of `top`'s repository main doesn't have, as `left_on`.
+pub(super) fn rev_left(top: &str, rev_of: &str) -> usize {
     let Some(main) = main_ref(top) else { return 0 };
     let rev = |what: String| git("", top, &[], &["rev-parse", "-q", "--verify", &what]).map(|s| s.trim().to_string());
-    let (Some(main_tree), Some(tip)) = (rev(format!("refs/heads/{main}^{{tree}}")), rev(format!("refs/heads/{b}"))) else { return 0 };
+    let (Some(main_tree), Some(tip)) = (rev(format!("refs/heads/{main}^{{tree}}")), rev(format!("{rev_of}^{{commit}}"))) else { return 0 };
     if matches!(crate::safe_git::run("", top, &[], &["merge-base", "--is-ancestor", &tip, &main]), Ok((_, 0))) {
         return 0;
     }

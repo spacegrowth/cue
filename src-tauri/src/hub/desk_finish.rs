@@ -14,7 +14,7 @@
 use super::desk_commit::{commit_each, shas_of, words_checked};
 use super::desk_git::git;
 use super::desk_install::{installing, stopped_install, tail};
-use super::desk_main_line::{main_checkout, main_ref, merge_to_main, same_dir};
+use super::desk_main_line::{main_checkout, main_ref, merge_ref, merge_to_main, same_dir, Merge};
 use super::desk_theirs::Part;
 use super::*;
 use crate::desk::{DeskItem, Finish};
@@ -249,6 +249,12 @@ impl Hub {
                 }
             }
         }
+        // Any other worktree its holder worked in or committed in, whatever its branch is called (#481).
+        for t in self.holder_work(it).folders {
+            if !out.iter().any(|o| same_dir(o, &t)) {
+                out.push(t);
+            }
+        }
         out
     }
 
@@ -308,8 +314,14 @@ impl Hub {
             return None;
         }
         let mut merged: Vec<String> = Vec::new();
-        for folder in &crew {
-            match merge_to_main(&project, folder, &it.title) {
+        // Branches holding its holder's commits that no worktree has (#481), merged as a worktree's are.
+        let refs: Vec<Merge> = self.holder_work(it).refs.into_iter().map(|(main, branch, sha)| Merge::Ref { main, branch, sha }).collect();
+        for m in crew.iter().map(|f| Merge::Folder(f.clone())).chain(refs) {
+            let tried = match &m {
+                Merge::Folder(folder) => merge_to_main(&project, folder, &it.title),
+                Merge::Ref { main, branch, sha } => merge_ref(&project, main, branch, sha, &it.title),
+            };
+            match tried {
                 Ok(Some(main)) => {
                     if let Some(sha) = git("", &main, &[], &["rev-parse", "HEAD"]).map(|h| h.trim().to_string()) {
                         let m = main.clone();
@@ -359,16 +371,10 @@ impl Hub {
                 return self.finish_landing(id, &top, &head, at);
             }
         }
-        // Reopened, and nothing new of it landed since (#448): back to its session, not to you.
-        if self.desk_nothing_new(id) {
-            if let Some(it) = self.read(|st| st.desk.item(id).cloned()) {
-                let words = super::desk_unlanded::nothing_new_words(id, self.desk_unlanded(id));
-                self.finish_back(&it, &words, "nothing_new", "", true);
-            }
+        // Landed, but not all of its work (#448, #481): back to its session, never to check.
+        if self.sent_back_off_main(id) {
             return;
         }
-        // Changes left on its own branch (#448): it goes on as it would, and stays to check saying how many.
-        self.desk_unlanded(id);
         // On main: pushed now when its project pushes after each landing (hub/desk_pr.rs).
         if !top.is_empty() {
             self.desk_push_after(id, &project, &top);
@@ -425,6 +431,24 @@ impl Hub {
         } else {
             self.finish_checked(id);
         }
+    }
+
+    /// Item `id` sent back to its session, not to check, when its work isn't all on main: reopened and nothing new of
+    /// it landed since (#448); or a commit of its holder's Cue couldn't land, changes left on its own branch (#481).
+    fn sent_back_off_main(&self, id: &str) -> bool {
+        let Some(it) = self.read(|st| st.desk.item(id).cloned()) else { return false };
+        if self.desk_nothing_new(id) {
+            let words = super::desk_unlanded::nothing_new_words(id, self.desk_unlanded(id));
+            self.finish_back(&it, &words, "nothing_new", "", true);
+            return true;
+        }
+        let left = self.desk_unlanded(id);
+        let off = self.holder_work(&it).off;
+        if left == 0 && off.is_empty() {
+            return false;
+        }
+        self.finish_back(&it, &super::desk_own_work::off_main_words(&off, left, id), "unlanded", "", true);
+        true
     }
 
     /// Whether item `id`'s own commits on `top`'s main line (those Cue made for it, its crew's merges) changed nothing

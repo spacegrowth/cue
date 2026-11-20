@@ -43,7 +43,7 @@ mod windows;
 mod tests;
 
 pub use detail::detail;
-pub use edits::{agent_logs, edited_between, edited_between_named, edited_files_by};
+pub use edits::{agent_logs, edited_between, edited_between_named, edited_files_by, worked_between};
 #[cfg(test)]
 pub use helper::helper_path_for_test;
 pub use history::{history, history_helper};

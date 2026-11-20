@@ -38,6 +38,28 @@ pub(super) fn merge_to_main(project: &str, folder: &str, title: &str) -> Result<
     }
     let Some(sha) = git("", &top, &[], &["rev-parse", "HEAD"]).map(|s| s.trim().to_string()) else { return Ok(None) };
     let branch = git("", &top, &[], &["symbolic-ref", "--short", "-q", "HEAD"]).map(|b| b.trim().to_string()).filter(|b| !b.is_empty() && *b != onto).unwrap_or_else(|| sha[..sha.len().min(8)].to_string());
+    merge_into(project, &main, &onto, &sha, &branch, &format!("in {top}"), title)
+}
+
+/// One merge an item's landing makes: a worktree's work, or a branch no worktree has (#481).
+pub(super) enum Merge {
+    Folder(String),
+    Ref { main: String, branch: String, sha: String },
+}
+
+/// Branch `branch` (at `sha`) merged into the branch of `main` (a main checkout), as `merge_to_main` merges a
+/// worktree's.
+pub(super) fn merge_ref(project: &str, main: &str, branch: &str, sha: &str, title: &str) -> Result<Option<String>, (&'static str, String)> {
+    let Some((main, onto)) = main_checkout(main) else { return Ok(None) };
+    if onto.is_empty() || onto == branch {
+        return Ok(None);
+    }
+    merge_into(project, &main, &onto, sha, branch, &format!("in a worktree of {main} on {branch}"), title)
+}
+
+/// `sha` (from `branch`, settled `where_`) merged into `onto`, checked out in the main checkout `main`.
+fn merge_into(project: &str, main: &str, onto: &str, sha: &str, branch: &str, where_: &str, title: &str) -> Result<Option<String>, (&'static str, String)> {
+    let (main, onto) = (main.to_string(), onto.to_string());
     let ahead = git("", &main, &[], &["rev-list", "--count", &format!("{onto}..{sha}")]).and_then(|n| n.trim().parse::<u64>().ok()).unwrap_or(0);
     if ahead == 0 {
         return Ok(None);
@@ -47,7 +69,7 @@ pub(super) fn merge_to_main(project: &str, folder: &str, title: &str) -> Result<
     let (out, code) = tried.map_err(|e| ("conflict", format!("Not merged: git couldn't try the merge of {branch} into {onto}: {e}")))?;
     if code != 0 {
         let files: Vec<&str> = out.lines().skip(1).take_while(|l| !l.is_empty()).collect();
-        return Err(("clash", format!("Its work clashes with {onto} in {}: in {top}, merge {onto} into {branch}, settle the clash there, and say DONE again", files.join(", "))));
+        return Err(("clash", format!("Its work clashes with {onto} in {}: {where_}, merge {onto} into {branch}, settle the clash there, and say DONE again", files.join(", "))));
     }
     let tree = out.lines().next().unwrap_or("").trim().to_string();
     let diff = git("", &main, &[], &["diff", "-U0", "--no-color", "--no-ext-diff", "--no-textconv", &onto, &tree]).ok_or(("conflict", format!("Not merged: git couldn't read the merge of {branch}")))?;
