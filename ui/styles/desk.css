@@ -1284,3 +1284,17 @@ button.dk-al-row:focus-visible { outline: 2px solid var(--accent); outline-offse
 .dk-rec .dk-age { color: var(--muted); font: 11px var(--mono); }
 .dk-sfoot { flex: none; display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--line); }
 .dk-sfoot .dk-drop { margin: 0 0 0 auto; align-self: center; font-weight: 600; }
+
+/* A message from another Desk's session in the lead's chat (desk_lead.js deskPeerBand, #472, option C): across the whole
+   chat between hairlines on panel-2, neither left (the lead) nor right (you, Cue); no edge stripe. */
+.dk-xband { margin: 0 -20px; padding: 9px 20px 10px; background: var(--panel-2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.dk-xb-h { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+.dk-xb-tag { display: inline-flex; align-items: center; padding: 1px 7px; border-radius: 999px; font: 600 10px var(--mono); letter-spacing: .12em; box-shadow: inset 0 0 0 1px var(--line); color: var(--muted); }
+.dk-xb-chip { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px 1px 6px; border-radius: 999px; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); font-weight: 650; color: var(--ink); }
+.dk-xb-chip .dk-kic { width: 11px; height: 11px; }
+.dk-xb-chip .pdot { width: 8px; height: 8px; }
+.dk-xb-id { font-family: var(--mono); }
+.dk-xb-age { margin-left: auto; }
+.dk-xb-t { font-size: 13.5px; line-height: 1.5; }
+.dk-xb-t > :last-child { margin-bottom: 0; }
+.dk-xb-f { margin-top: 6px; font-size: 11.5px; color: var(--muted); }

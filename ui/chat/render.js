@@ -154,7 +154,8 @@ function chatHtml(it, s, harness, paged = false, page = null) {
   // `page.noSteps`: a chat without its turns' steps (the Desk lead's: what it read to route is not yours to read).
   const rows = withSteps(page?.noSteps ? null : sid, s, ex, ex.map((e, n) => keyed((() => {
     if (fold?.skip.has(n)) return "";
-    if (e.role === "peer") return peerBubble(e.from || "another agent", "", e.at_ms, e.text);
+    // From another Desk's session, in a lead's chat: a band across the chat (desk_lead.js, #472).
+    if (e.role === "peer") return (typeof deskPeerBand === "function" && deskPeerBand(sid, e)) || peerBubble(e.from || "another agent", "", e.at_ms, e.text);
     if (answers.has(n)) return "";
     if (decided.has(n)) return chose.length && near(e.at_ms) ? "" : chatDecisionLine(decided.get(n), e.at_ms);
     if (asks.has(n)) return chatAskHtml(`${s?.session_id || it?.id}:${e.at_ms}`, e, asks.get(n), harness, it?.machine || s?.machine);

@@ -18,6 +18,25 @@ let deskSaidItem = "";
 
 // ---------- the lead ----------
 
+/** A message another Desk's session sent this lead (#472, option C): a band across the whole chat between hairlines,
+ *  a FROM ANOTHER DESK tag, that Desk's chip (its mark, colour dot and name), the session and the item it holds there,
+ *  then the message and a quiet line that the lead answers it. Null for any other message: one from the lead's own
+ *  Desk, from no Desk, or in a chat that isn't a lead's (chat/render.js draws those as today). The sender is found by
+ *  its session id (the hub notes it when the message came through its hook), else by its name. */
+function deskPeerBand(sid, e) {
+  const own = (state.desk?.projects || []).find((d) => deskLead(d)?.sid === sid);
+  if (!own) return null;
+  const from = e.from_sid || (state.sessions || []).find((x) => e.from && nameOf(x.session_id, x.project) === e.from)?.session_id;
+  const d = from && from !== sid ? deskForSession(from) : null;
+  if (!d || d.project === own.project) return null;
+  const it = deskSessItem(d, from);
+  const who = `${esc(nameOf(from, e.from) || e.from || "a session")}${it ? ` · <span class="dk-xb-id">#${esc(it.id)}</span>` : ""}`;
+  return `<div class="dk-xband" data-from-desk="${esc(d.project)}"><div class="dk-xb-h"><span class="dk-xb-tag">FROM ANOTHER DESK</span>`
+    + `<span class="dk-xb-chip">${deskKindIcon("tray")}${projDot(d.project)}${esc(deskName(d))}</span><span class="dk-xb-who">${who}</span>`
+    + `<span class="dk-xb-age">${ago(e.at_ms)} ago</span></div><div class="msg cv-text dk-xb-t">${md(e.text || "")}</div>`
+    + `<div class="dk-xb-f">The lead answers it below; you don't need to.</div></div>`;
+}
+
 /** Desks a session runs, has work on, or belongs to, in that order. */
 function deskForSession(sid) {
   if (!sid) return null;

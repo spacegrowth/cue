@@ -21,6 +21,10 @@ pub struct Exchange {
     /// For "peer": the session that sent it.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub from: String,
+    /// For "peer": the sending session's id, when Cue knows it (it sent through its hook, #472). The lead's chat
+    /// finds its Desk and item from it, to show a message from another Desk across the chat.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub from_sid: String,
     /// Yours, typed into the terminal, but the agent never took it as a message (it may have run as a
     /// command, or still be sitting in its box). Cue says so on the bubble.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]

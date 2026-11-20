@@ -465,6 +465,11 @@ impl Sessions {
     }
 
     /// The project of the live session running as process `pid`.
+    /// The session whose agent runs as `pid`, by id.
+    pub fn sid_by_pid(&self, pid: i32) -> Option<String> {
+        self.0.iter().find(|(_, s)| s.origin.agent_pid == Some(pid)).map(|(k, _)| k.clone())
+    }
+
     pub fn project_by_pid(&self, pid: i32) -> Option<String> {
         self.0.values().find(|s| s.origin.agent_pid == Some(pid)).map(|s| s.project.clone())
     }

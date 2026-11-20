@@ -78,7 +78,7 @@ impl Sessions {
         // Never the same moment as the entry before: two noted at once (a teammate's messages, then the
         // reply to them) are saved by moment and speaker, and the second would overwrite the first.
         let at_ms = now_ms().max(s.thread.last().map_or(0, |l| l.at_ms + 1));
-        s.thread.push(Exchange { role: role.into(), text, at_ms, images: images.to_vec(), from: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None, written_ms: 0 });
+        s.thread.push(Exchange { role: role.into(), text, at_ms, images: images.to_vec(), from: String::new(), from_sid: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None, written_ms: 0 });
         let excess = s.thread.len().saturating_sub(keep);
         s.thread.drain(..excess);
     }
@@ -111,10 +111,16 @@ impl Sessions {
 
     /// A message another agent session sent this one, labelled with who sent it.
     pub fn note_peer(&mut self, session_id: &str, from: &str, text: &str, keep: usize) {
+        self.note_peer_sid(session_id, from, "", text, keep);
+    }
+
+    /// The same, with the sending session's id when Cue knows it (#472).
+    pub fn note_peer_sid(&mut self, session_id: &str, from: &str, from_sid: &str, text: &str, keep: usize) {
         self.note(session_id, "peer", text, keep);
         if let Some(last) = self.0.get_mut(session_id).and_then(|s| s.thread.last_mut()) {
             if last.role == "peer" && last.from.is_empty() {
                 last.from = from.to_string();
+                last.from_sid = from_sid.to_string();
             }
         }
     }

@@ -762,7 +762,8 @@ impl Hub {
         self.write(|st| {
             // The project Cue shows for the sender, else Claude's own name for it.
             let who = pid.and_then(|p| st.sessions.project_by_pid(p)).unwrap_or_else(|| if name.is_empty() { "another agent".into() } else { name.to_string() });
-            st.sessions.note_peer(session_id, &who, body, crate::config::context_keep());
+            let sid = pid.and_then(|p| st.sessions.sid_by_pid(p)).unwrap_or_default();
+            st.sessions.note_peer_sid(session_id, &who, &sid, body, crate::config::context_keep());
         });
         self.changed();
     }
@@ -803,7 +804,7 @@ struct Watch {
 pub(super) fn queue_typed(st: &mut Store, session_id: &str, text: &str, paths: Vec<String>) {
     // When you wrote it, too (a kept message sent now): its row stands there, where its bubble was (#422).
     let (at, written) = st.sessions.thread(session_id).iter().rev().find(|e| e.role == "you").map(|e| (e.at_ms, e.written_ms)).unwrap_or_else(|| (now_ms(), 0));
-    let q = crate::model::Exchange { role: "you".into(), text: text.to_string(), at_ms: at, images: paths, from: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None, written_ms: written };
+    let q = crate::model::Exchange { role: "you".into(), text: text.to_string(), at_ms: at, images: paths, from: String::new(), from_sid: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None, written_ms: written };
     st.sessions.set_queued(session_id, Some(q));
 }
 

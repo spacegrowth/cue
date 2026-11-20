@@ -100,6 +100,17 @@ fn a_prompt_another_session_sent_shows_as_from_it() {
 }
 
 #[test]
+fn a_prompt_another_session_sent_notes_which_session_sent_it() {
+    // The lead's chat finds the sender's Desk from it (#472).
+    let w = World::new();
+    w.session("b").running_as(4242).prompt("go");
+    w.session("a").prompt_logged("can it wait?", "p1", json!({"kind": "peer", "name": "docs-118", "body": "can it wait?", "verifiedPeerPid": 4242}));
+    let thread = w.snapshot().session("a")["thread"].clone();
+    assert_eq!(thread[0]["role"], "peer", "{thread}");
+    assert_eq!(thread[0]["from_sid"], "b", "{thread}");
+}
+
+#[test]
 fn claude_codes_own_notice_is_not_a_prompt_of_yours() {
     let w = World::new();
     let a = w.session("a");
