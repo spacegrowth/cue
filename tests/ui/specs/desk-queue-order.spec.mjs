@@ -97,15 +97,17 @@ test("each queued item shows a grip with a grab hand, only on queued rows, and d
   expect(queued.length).toBeGreaterThan(1);
   for (const id of queued) await expect(page.locator(`.dk-items [data-desk-item="${id}"] > .dk-grip`)).toBeVisible();
   await expect(page.locator(".dk-items .dk-it:not([data-desk-qg]) .dk-grip")).toHaveCount(0);
-  // Two short lines at the row's right end, in its padding (away from the state icon); the pointer a grab hand over it. (Read in one go: the list may
+  // A ridged bar of three short lines, centred at the row's right end, in its padding (away from the state icon); the pointer a grab hand over it. (Read in one go: the list may
   // be drawn again between two looks.)
   const id = queued[1];
   const look = await page.evaluate((id) => {
     const r = document.querySelector(`.dk-items [data-desk-item="${id}"]`), g = r.querySelector(":scope > .dk-grip");
-    return { d: g.querySelector("path").getAttribute("d"), dx: r.getBoundingClientRect().right - g.getBoundingClientRect().right, cursor: getComputedStyle(g).cursor };
+    const rb = r.getBoundingClientRect(), gb = g.getBoundingClientRect();
+    return { d: g.querySelector("path").getAttribute("d"), dx: rb.right - gb.right, dy: Math.abs((rb.top + rb.bottom) / 2 - (gb.top + gb.bottom) / 2), cursor: getComputedStyle(g).cursor };
   }, id);
-  expect(look).toEqual({ d: "M1 1h6M1 5h6", dx: expect.any(Number), cursor: "grab" });
+  expect(look).toEqual({ d: "M1 1h10M1 5h10M1 9h10", dx: expect.any(Number), dy: expect.any(Number), cursor: "grab" });
   expect(look.dx).toBeLessThan(14);
+  expect(look.dy).toBeLessThan(2);
   // Dragged by the grip, it takes its place.
   await expect(async () => {
     if ((await order(page))[0] === id) return;

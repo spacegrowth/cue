@@ -408,7 +408,7 @@ function deskCopyWaitLine(i) {
   return `${i.back_waiting ? "Sent back · waiting" : "Waiting"} for a free working folder${by ? ` (in use by ${by})` : ""}`;
 }
 /** A row in Queued; one that can be dragged has a small grip (two short lines) in its right padding (#424). */
-const DESK_GRIP = `<svg class="dk-grip" width="8" height="6" viewBox="0 0 8 6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M1 1h6M1 5h6"/></svg>`;
+const DESK_GRIP = `<svg class="dk-grip" width="12" height="10" viewBox="0 0 12 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M1 1h10M1 5h10M1 9h10"/></svg>`;
 const deskQRow = (row) => (i) => {
   const moves = deskQMoves(i);
   const h = row(i).replace('<div class="dk-it ', `<div data-desk-qg${moves ? ` data-desk-q="${esc(i.id)}"` : ""} class="dk-it `);
