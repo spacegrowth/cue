@@ -65,6 +65,8 @@ pub(super) struct Effects {
     /// Steps whose message is in `sends` (your notes and send-backs, the lead's NOTE: #437): (step, session, item), so
     /// how each send went is kept on its step (`desk_went`), and the item's page can say so (and offer Retry).
     pub(super) went: Vec<(String, String, String)>,
+    /// A session's TO LEAD: words (#474): (Desk, the session, the message), sent to that Desk's lead as it is then.
+    pub(super) to_lead: Vec<(String, String, String)>,
 }
 
 
@@ -109,8 +111,24 @@ pub(super) fn routable<'a>(st: &'a Store, project: &str) -> Vec<&'a Session> {
 
 /// Desk `scope`'s Ask me before line for the sessions it hands work to (one_way.rs; "" when nothing's set): its
 /// project's, so two Desks on one project share it.
+/// Then how to reach the Desk's lead (#474), named as it is now: every hand-off says so, so a session needn't look it up.
 pub(super) fn rule_of(st: &Store, scope: &str) -> String {
-    crate::one_way::ask_first(&crate::one_way::kinds(st.desk.project_of(scope)))
+    let rule = crate::one_way::ask_first(&crate::one_way::kinds(st.desk.project_of(scope)));
+    let reach = reach_lead(st, scope);
+    if rule.is_empty() { reach } else { format!("{}\n{reach}", rule.trim_end()) }
+}
+
+/// How a session on Desk `scope` messages its lead (#474): the lead's name now, and the TO LEAD: line Cue delivers to
+/// whoever leads it when it's written (so a lead's hand-off changes nothing for the session).
+pub(super) fn reach_lead(st: &Store, scope: &str) -> String {
+    let how = "write a line of its own: TO LEAD: <your words> (add #<id> first for another item); Cue delivers it to whoever runs the Desk then, no lookups needed.";
+    match st.desk.lead.get(scope) {
+        Some(l) => {
+            let name = st.sessions.get(&l.sid).map(shown_name).filter(|n| !n.is_empty()).unwrap_or_else(|| l.name.clone());
+            format!("Your Desk lead is {name}. To message it, {how}")
+        }
+        None => format!("To message your Desk's lead, {how}"),
+    }
 }
 
 /// Live session `sid` as a holder: a lead when it has a crew.
@@ -446,7 +464,7 @@ impl Hub {
     /// What a change left to do, with the store let go: its saves, then its messages and questions, and new items
     /// for their lead (told a moment later, with any others that came meanwhile).
     pub(super) fn desk_done(&self, mut fx: Effects) {
-        if fx.items.is_empty() && fx.said.is_empty() && fx.dropped.is_empty() && fx.decisions.is_empty() && fx.sends.is_empty() && fx.asks.is_empty() && fx.lands.is_empty() && fx.news.is_empty() && fx.starts.is_empty() && fx.joined.is_empty() && fx.uses.is_empty() && fx.stopped.is_empty() && fx.trees_gone.is_empty() && fx.closes.is_empty() && fx.on_main.is_empty() && fx.cleanup.is_empty() && !fx.land && fx.pause.is_empty() {
+        if fx.items.is_empty() && fx.said.is_empty() && fx.dropped.is_empty() && fx.decisions.is_empty() && fx.sends.is_empty() && fx.asks.is_empty() && fx.lands.is_empty() && fx.news.is_empty() && fx.starts.is_empty() && fx.joined.is_empty() && fx.uses.is_empty() && fx.stopped.is_empty() && fx.trees_gone.is_empty() && fx.closes.is_empty() && fx.on_main.is_empty() && fx.cleanup.is_empty() && !fx.land && fx.pause.is_empty() && fx.to_lead.is_empty() {
             return;
         }
         // Items going to work get their own copies (or wait for one), before their messages are saved and sent.
@@ -534,6 +552,15 @@ impl Hub {
                 }
                 if let Some((id, name)) = restart {
                     h.desk_restart_went(&id, &name, sent);
+                }
+            });
+        }
+        // A session's words for its lead (#474), to whoever leads that Desk as they go; when they can't, it's told.
+        for (desk, sid, text) in std::mem::take(&mut fx.to_lead) {
+            self.later(0, move |h| {
+                if let Err(e) = crate::ipc::desk_send_with(h, &desk, &text) {
+                    eprintln!("cue: desk: {sid}'s TO LEAD didn't reach {desk}'s lead: {e}");
+                    let _ = h.send_to_session(&sid, &format!("Your TO LEAD: line didn't reach the Desk's lead: {e}"), &[], false);
                 }
             });
         }

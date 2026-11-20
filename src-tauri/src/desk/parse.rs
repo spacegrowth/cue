@@ -54,6 +54,9 @@ pub enum Line {
     /// The lead proposing a change to how work lands (#381): `LANDS: <part> -> <choice> | steps: <one> ;; <two> | why: …`.
     /// Cue asks you; only your yes saves it (hub/desk_lands.rs).
     Lands { part: String, to: String, steps: Vec<String>, why: String },
+    /// A session's message for its Desk's lead (#474): `TO LEAD: [#<id>[ |]] <words>`. `id`: the item it's about, when
+    /// named; without one, Cue takes the item the session is on.
+    ToLead { id: Option<String>, text: String },
 }
 
 /// The Desk lines in `text`, in order.
@@ -165,6 +168,7 @@ fn one(t: &str) -> Option<Line> {
         "PAUSE" => unstick("pause", body).or_else(|| whole_desk(true, body)),
         "RESUME" => unstick("resume", body).or_else(|| whole_desk(false, body)),
         "LANDS" => lands(body),
+        "TO LEAD" => to_lead(body),
         _ => None,
     }
 }
@@ -356,6 +360,21 @@ fn cut(body: &str) -> Option<Line> {
 }
 
 /// "#320 into #319 | why: …" (or "#320 -> #319"): item 320 folded into item 319.
+/// `TO LEAD: #<id> | <words>`, `TO LEAD: #<id> <words>` or `TO LEAD: <words>` (#474): Line::ToLead.
+fn to_lead(body: &str) -> Option<Line> {
+    let body = body.trim();
+    let (id, text) = match body.strip_prefix('#') {
+        Some(rest) => {
+            let end = rest.find(|c: char| !c.is_ascii_alphanumeric()).unwrap_or(rest.len());
+            let id = id_of(&rest[..end])?;
+            let text = rest[end..].trim_start_matches([':', ',', '.', ')']).trim().trim_start_matches(['|', ':', '-', '—']).trim();
+            (Some(id), text)
+        }
+        None => (None, body),
+    };
+    (!text.is_empty()).then(|| Line::ToLead { id, text: text.to_string() })
+}
+
 /// `NOTE: #<id> | <words>` (the words may hold `|` too): Line::Note.
 fn note(body: &str) -> Option<Line> {
     let (head, text) = body.split_once('|')?;

@@ -127,7 +127,12 @@ pub(super) fn waits_line(text: &str) -> Option<String> {
 
 /// The turn ends on a question for you: nothing to ask it this time.
 fn ends_on_a_question(text: &str) -> bool {
-    text.lines().map(str::trim).rfind(|l| !l.is_empty()).is_some_and(|l| l.ends_with('?'))
+    text.lines().map(str::trim).rfind(|l| !l.is_empty()).is_some_and(|l| l.ends_with('?') && !to_lead_line(l))
+}
+
+/// `line` is a TO LEAD: line (#474): words for the Desk's lead.
+fn to_lead_line(line: &str) -> bool {
+    matches!(crate::desk::parse::lines(line).first(), Some(crate::desk::parse::Line::ToLead { .. }))
 }
 
 /// How long the Desk lead has to settle a cleanup card before it turns to you (desk_cleanup.rs).
@@ -136,6 +141,10 @@ pub(super) const STOP_WAIT_MS: u64 = 10 * 60 * 1000;
 /// The question a turn ended on, in one plain line: the last sentence of its last line, when that ends on "?".
 pub(super) fn question_in(text: &str) -> Option<String> {
     let line = text.lines().map(str::trim).rfind(|l| !l.is_empty())?;
+    // A question in its TO LEAD: line is the lead's (#474), not yours.
+    if to_lead_line(line) {
+        return None;
+    }
     let line = line.trim_start_matches(['-', '*', '>', ' ']).replace("**", "").replace('`', "");
     let line = line.trim();
     if !line.ends_with('?') {
@@ -247,7 +256,9 @@ pub(super) fn stalls_asked(st: &mut Store, sid: &str, text: &str, on: &[String],
     let asks = ask_of(st, &h).is_some() || ends_on_a_question(text);
     // Its own tests or build still running in the background (#435): waiting on them, whatever its words say.
     let running = st.sessions.get(sid).map(|s| s.running.clone()).filter(|r| !r.is_empty());
-    let waits = running.or_else(|| waits_line(text));
+    // Its TO LEAD: words just went to the lead (#474): it waits on the lead's answer, not stopped.
+    let asked_lead = || crate::desk::parse::lines(text).iter().any(|l| matches!(l, crate::desk::parse::Line::ToLead { .. })).then(|| "waiting on the Desk lead's answer".to_string());
+    let waits = running.or_else(|| waits_line(text)).or_else(asked_lead);
     let mut ask = Vec::new();
     for (id, updated) in still {
         // What this turn says it waits on, if anything: the item shows it until it changes or a turn says otherwise.

@@ -97,7 +97,7 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx
             Line::Lands { part, to, steps, why } => fx.lands.push(super::desk_lands::Proposal { lsid: lsid.to_string(), desk: project.to_string(), part, to, steps, why }),
             Line::Pause { on, why } => fx.pause.push((project.to_string(), on, name.clone(), lsid.to_string(), why)),
             Line::Pass { id, .. } => cleanup_said(st, project, &by, &id, None, now, fx, &mut answers),
-            Line::Context { .. } | Line::Designs { .. } => {}
+            Line::Context { .. } | Line::Designs { .. } | Line::ToLead { .. } => {}
         }
     }
     for line in parse::unread_routes(text) {
@@ -427,6 +427,7 @@ impl Hub {
                 return fx;
             }
             designs_said(st, sid, text, &mut fx);
+            super::desk_heard::to_lead_said(st, sid, text, &mut fx);
             let lead = st.desk.lead_of(sid);
             match &lead {
                 Some(project) => lead_said(st, project, sid, text, now, &mut fx),

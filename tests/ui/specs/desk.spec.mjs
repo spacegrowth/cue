@@ -1542,6 +1542,33 @@ test("Cue's word on a stopped item is a card from Cue, not a message from You; i
   await expect(page.locator('.dk-panel[data-side-for="d9"]')).toHaveCount(1);
 });
 
+test("a session's TO LEAD: words are a card from that session about its item; Cue's NOTE hint stays hidden (#474)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  // As hub/desk_heard.rs to_lead_said says them.
+  await page.evaluate(() => {
+    const t = Date.now(), lead = sessionOf("lead");
+    lead.thread.push({ at_ms: t, role: "you", text: "From desk-ui on #d2 (Quick phrases):\nShould the row wrap on narrow windows?\nAnswer it with NOTE: #d2 | <your words>." });
+    lead.thread.push({ at_ms: t, role: "you", text: "From web-lead:\nI'm free for more work.\nIt holds no item here, so a NOTE can't reach it." });
+    renderMain();
+  });
+  const cards = page.locator(".dk-chat .dk-sn");
+  await expect(cards).toHaveCount(2);
+  await expect(cards.nth(0).locator(".dk-sn-who")).toHaveText("desk-ui");
+  await expect(cards.nth(0).locator(".dk-sn-w")).toHaveText("To you");
+  await expect(cards.nth(0).locator(".dk-sn2")).toHaveText("Feature #d2 Quick phrases at the right of Send");
+  await expect(cards.nth(0).locator(".dk-sn3")).toHaveText("Should the row wrap on narrow windows?");
+  await expect(cards.nth(1).locator(".dk-sn-who")).toHaveText("web-lead");
+  await expect(cards.nth(1).locator(".dk-sn2")).toHaveCount(0);
+  const chat = page.locator(".dk-chat");
+  await expect(chat).not.toContainText("Answer it with NOTE");
+  await expect(chat).not.toContainText("a NOTE can't reach it");
+  await expect(chat.locator(".dk-sn [title]")).toHaveCount(0);
+  if (process.env.SHOT_DIR) await chat.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-to-lead-card.png` });
+  await cards.nth(0).locator("[data-desk-chk-item]").click();
+  await expect(page.locator('.dk-panel[data-side-for="d2"]')).toHaveCount(1);
+});
+
 test("a new item with a picture, no kind, and Cue's SPLIT words before its Route words: a card with a thumbnail; no path, no words for the lead (#147)", async ({ page, cue }) => {
   await cue.open("desk", { frozen: true });
   await openDesk(page);

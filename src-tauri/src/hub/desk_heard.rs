@@ -61,6 +61,44 @@ pub(super) fn designs_said(st: &mut Store, sid: &str, text: &str, fx: &mut Effec
     }
 }
 
+/// Session `sid` (not a lead) wrote TO LEAD: lines (#474): each goes to the lead of its item's Desk, as from it and
+/// that item. Without #<id>, the item it's on (the one it holds that changed last); holding none, its one Desk. An item
+/// it names that isn't on its Desks, or words with no Desk to go to, come back to it saying why.
+pub(super) fn to_lead_said(st: &mut Store, sid: &str, text: &str, fx: &mut Effects) {
+    let wants: Vec<(Option<String>, String)> = parse::lines(text).into_iter().filter_map(|l| if let Line::ToLead { id, text } = l { Some((id, text)) } else { None }).collect();
+    if wants.is_empty() || st.desk.lead_of(sid).is_some() {
+        return;
+    }
+    let Some((project, name)) = st.sessions.get(sid).map(|s| (s.project.clone(), shown_name(s))) else { return };
+    let scopes = st.desk.scopes(sid, &project);
+    let held = |i: &&DeskItem| i.state != "done" && i.holder.as_ref().is_some_and(|h| h.is(sid));
+    let on = st.desk.items.iter().filter(held).max_by_key(|i| (i.state == "working", i.updated)).map(|i| i.id.clone());
+    let mut back = Vec::new();
+    for (id, words) in wants {
+        let id = id.map(|i| st.desk.canon(&i)).or_else(|| on.clone());
+        let it = id.as_deref().and_then(|i| st.desk.item(i));
+        let message = match (&id, it) {
+            (Some(_), Some(it)) if scopes.contains(&it.project) || it.holder.as_ref().is_some_and(|h| h.is(sid)) => (
+                it.project.clone(),
+                format!("From {name} on #{} ({}):\n{words}\nAnswer it with NOTE: #{} | <your words>.", it.id, it.title, it.id),
+            ),
+            (Some(i), _) => {
+                back.push(format!("TO LEAD: not sent: #{i} isn't an item on your Desk. Name one you're on, or leave the # out."));
+                continue;
+            }
+            (None, _) if scopes.len() == 1 => (scopes[0].clone(), format!("From {name}:\n{words}\nIt holds no item here, so a NOTE can't reach it.")),
+            (None, _) => {
+                back.push("TO LEAD: not sent: you hold no item and aren't on one Desk. Add #<id> for the item it's about.".into());
+                continue;
+            }
+        };
+        fx.to_lead.push((message.0, sid.to_string(), message.1));
+    }
+    if !back.is_empty() {
+        fx.sends.push((sid.to_string(), back.join("\n")));
+    }
+}
+
 /// A turn's words as a reply keeps them: the Desk's own lines left out, cut to `SAID_CHARS`.
 fn said_words(text: &str) -> String {
     let words: Vec<&str> = text.lines().filter(|l| !desk_line_start(l)).collect();
@@ -211,5 +249,5 @@ pub(super) fn desk_line_start(line: &str) -> bool {
     let l = parse::unmarked(line.trim().trim_start_matches('`')).trim_start_matches('`');
     let Some((word, _)) = l.split_once(':') else { return false };
     let word = word.trim_end_matches(['*', '`']).trim();
-    matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "CONTEXT" | "DESIGNS" | "TITLE" | "SEE" | "SPLIT" | "CUT" | "MERGE" | "NOTE" | "FEATURE" | "CLOSE" | "TAKE COPY" | "LAND FIRST" | "START" | "PARK" | "HOLD" | "PAUSE" | "RESUME" | "ANSWER" | "PASS" | "LANDS") || word.eq_ignore_ascii_case("DECIDED")
+    matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "CONTEXT" | "DESIGNS" | "TITLE" | "SEE" | "SPLIT" | "CUT" | "MERGE" | "NOTE" | "FEATURE" | "CLOSE" | "TAKE COPY" | "LAND FIRST" | "START" | "PARK" | "HOLD" | "PAUSE" | "RESUME" | "ANSWER" | "PASS" | "LANDS" | "TO LEAD") || word.eq_ignore_ascii_case("DECIDED")
 }

@@ -381,7 +381,7 @@ function deskLineHtml(line, inline) {
 const deskNewlySaid = (title) => (title ? (state.desk?.projects || []).flatMap((d) => d.items).filter((i) => i.title === title).sort((a, b) => (b.created ?? 0) - (a.created ?? 0))[0] : undefined);
 /** Cue's message to the lead as quiet centred lines, when it's one of Cue's own (new items, or a DONE it couldn't act on);
  *  null for any other (chat/render.js chatHtml `you`). */
-const deskCueNote = (e) => deskNewItems(e) ?? deskDoneNotes(e) ?? deskStopNote(e) ?? deskAskAnswered(e);
+const deskCueNote = (e) => deskNewItems(e) ?? deskDoneNotes(e) ?? deskStopNote(e) ?? deskFromSession(e) ?? deskAskAnswered(e);
 /** Cue telling the lead your answer to its ASK (hub/desk.rs desk_answered: "Your ASK[ about #12]: question\nThe answer:
  *  …"): not drawn (#427), the question's card above already has your answer beside it. null for any other message.
  *  SHORTCUT: queued (the lead busy when it was sent) it shows as an empty "Queued" row; rare, a lead waits idle on its
@@ -410,6 +410,20 @@ function deskStopNote(e) {
     + (last ? deskCut(`last:${id}:${e.at_ms}`, "dk-sn-last", `Its last line: <span>${esc(last)}</span>`, `Its last line: ${last}`) : "")
     + (files.length ? `<details class="dk-sn-f"><summary>${files.length} file${files.length > 1 ? "s" : ""} not committed</summary><div class="dk-sn-fl">${files.map(esc).join("<br>")}</div></details>` : "")
     + `</div></div>`;
+}
+/** A session's words for the lead (#474: its TO LEAD: line, hub/desk_heard.rs to_lead_said: "From <name> on #<id> (title):\n
+ *  <words>\nAnswer it with NOTE: …", or "From <name>:\n<words>\nIt holds no item here…" when it's on none) as a card:
+ *  who it's from, the item it's about (a click opens it), its words. Cue's last line, for the lead, isn't shown. null for
+ *  any other message. */
+function deskFromSession(e) {
+  const text = String(e.text || "").replace(/^\s*<desk\b[\s\S]*?<\/desk>\s*/, "").trim();
+  const m = /^From ([^\n]+?)(?: on #(\S+) \(([^\n]*)\))?:\n([\s\S]+)\n(?:Answer it with NOTE: #\S+ \| <your words>\.|It holds no item here, so a NOTE can't reach it\.)$/.exec(text);
+  if (!m) return null;
+  const [, who, id, said, words] = m;
+  const it = id ? (state.desk?.projects || []).flatMap((d) => d.items).find((i) => deskIdIs(i, id)) : null;
+  return `<div class="dk-news"><div class="dk-sn"><div class="dk-sn1"><b class="dk-sn-who">${esc(who)}</b><span>·</span><span class="dk-sn-w">To you</span><span class="dk-cl-age">${ago(e.at_ms)}</span></div>`
+    + (id ? `<div class="dk-sn2">${deskItemRef(id, it?.kind || "", deskNum(it || { id }), it?.title || said)}</div>` : "")
+    + `<div class="dk-sn3">${esc(words.trim()).replace(/\n/g, "<br>")}</div></div></div>`;
 }
 /** What Cue told the lead of a DONE it couldn't act on (hub/desk.rs lead_done: "#69 not closed: it's done already",
  *  a line each, then its words for the lead, not shown, ending "Don't say DONE for these again." as older notes did):
