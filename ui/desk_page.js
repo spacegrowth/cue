@@ -142,8 +142,15 @@ function deskActLine(x, d, bare) {
   const text = id && at >= 0 ? `${esc(x.text.slice(0, at))}${num}${esc(x.text.slice(at + id.length + 1))}` : esc(x.text);
   return bare ? text : `${text}${x.why ? `<span class="dk-act-why"> · ${esc(x.why)}</span>` : ""}`;
 }
-/** Those lines for the lead's chat (chat/render.js chatHtml `extra`), each at its time. */
-const deskActRows = (d) => deskActs(d).map((x) => ({ at: x.at * 1000, html: keyed(`<div class="dk-act dk-cl"><span class="dk-cl-t"><b>${esc(x.by)}</b> · ${deskActLine(x, d)} <span class="dk-cl-age">· ${ago(x.at * 1000)}</span></span></div>`, `act:${x.id}`) }));
+/** Those lines for the lead's chat (chat/render.js chatHtml `extra`), each at its time, as its other lines are
+ *  (desk_lead.js deskLineHtml): one short line at the left ("Reopened #417 for cue-12 · 3m"), its why folded under it,
+ *  opening on a click (#433: a reopen's feedback was a long centred paragraph). */
+const deskActRows = (d) => deskActs(d).map((x) => {
+  const key = `act:${x.id}`, open = !!x.why && deskLnOpen.has(key);
+  const head = `<span class="dk-sl-h">${deskActLine(x, d, true)}</span><span class="dk-cl-age">${ago(x.at * 1000)}</span>`;
+  const row = x.why ? `<div class="dk-sl-r why" role="button" tabindex="0" data-desk-why="${esc(key)}" aria-expanded="${open}">${head}</div>` : `<span class="dk-sl-r">${head}</span>`;
+  return { at: x.at * 1000, html: keyed(`<div class="dk-act dk-say dk-sl${open ? " open" : ""}">${row}${open ? `<div class="dk-sl-d">${esc(x.why)}</div>` : ""}</div>`, key) };
+});
 /** How long the lead's last moves stay in the Dispatcher's panel, and how many. */
 const DESK_JUST_DID_MS = 30 * 60 * 1000, DESK_JUST_DID = 3;
 const deskJustDid = (d) => deskActs(d).filter((x) => now() - x.at * 1000 < DESK_JUST_DID_MS).slice(0, DESK_JUST_DID);

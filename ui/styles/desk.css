@@ -702,7 +702,8 @@ b.dk-say-t, .dk-say-t { font-weight: 650; color: var(--ink); }
 .dk-rchk-go:hover { color: var(--link, var(--accent)); }
 .dk-chk-done { margin: 8px 0; }
 /* What the lead did on its own (#360): a line in its chat, its item's number opening the item. */
-.dk-act { margin: 8px 0; }
+.dk-act { margin: 6px 0; text-align: left; }
+.dk-act .dk-cl-age { flex: none; }
 .dk-act-it { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 3px; color: var(--ink); }
 .dk-act-it:hover .dk-inum { text-decoration: underline; }
 .dk-act-why { color: var(--muted); }

@@ -31,7 +31,11 @@ test("the lead's own moves show in its chat and, for a while, in the panel; its 
   // In its chat, as it happened: each one, the item's number opening it, and why; the old one too.
   const chat = page.locator(".dk-chat");
   await expect(chat.locator(".dk-act")).toHaveCount(3);
-  await expect(chat.locator('.dk-act[data-key="act:a2"]')).toContainText("web-lead · Moved #d3 up in the landing line · the user waits on it");
+  const a2 = chat.locator('.dk-act[data-key="act:a2"]');
+  await expect(a2.locator(".dk-sl-h")).toHaveText("Moved #d3 up in the landing line");
+  await expect(a2.locator(".dk-sl-d")).toHaveCount(0);
+  await a2.locator(".dk-cl-age").click();
+  await expect(a2.locator(".dk-sl-d")).toHaveText("the user waits on it");
   await expect(chat.locator('.dk-act[data-key="act:a3"]')).toContainText("Closed #d8: its work is on main (ab12cd3)");
   // In the panel: only the last ones, newest first; the close two hours ago has dropped off.
   const panel = page.locator(".dk-right .dk-panel");
@@ -98,4 +102,25 @@ test("Just did and Working read as lines, not pieces, at the panel's narrowest (
   if (process.env.SHOT_DIR) await panel.screenshot({ path: `${process.env.SHOT_DIR}/just-did-working.png` });
   await panel.locator(".dk-pall").click();
   await expect(page.locator('.dk-right .dk-tab[data-desk-tab="moves"]')).toHaveAttribute("aria-pressed", "true");
+});
+
+test("a reopen with long feedback is one short line at the left in the lead's chat, the feedback folded under it (#433)", async ({ page, cue }) => {
+  await page.setViewportSize({ width: 1728, height: 1000 });
+  await cue.open("desk");
+  await openDesk(page);
+  const why = "The phrases still sit on the wrong side of Send, the hint text overlaps them at narrow widths, and the undo button vanishes after a second send; fix all three and check it on a small window before saying done again.";
+  await cue.change((st, { a }) => { st.desk.projects.find((p) => p.project === "cue").decisions.push(a); },
+    { a: act("r1", "d3", "send_back", "Reopened #d3 for cue-12", why, NOW - 2 * 60 * 1000) });
+  const chat = page.locator(".dk-chat"), row = chat.locator('.dk-act[data-key="act:r1"]');
+  await expect(row.locator(".dk-sl-h")).toHaveText("Reopened #d3 for cue-12");
+  await expect(row).not.toContainText("wrong side of Send");
+  const box = await row.boundingBox(), lh = await row.evaluate((e) => parseFloat(getComputedStyle(e).lineHeight));
+  expect(box.height, "one line").toBeLessThan(lh * 1.6);
+  const left = await chat.locator(".dk-act").first().evaluate((e) => e.querySelector(".dk-sl-r").getBoundingClientRect().left - e.getBoundingClientRect().left);
+  expect(left, "at the left").toBeLessThan(4);
+  // A click opens the feedback under it; another folds it again.
+  await row.locator(".dk-cl-age").click(); // (the item number in it opens the item)
+  await expect(row.locator(".dk-sl-d")).toHaveText(why);
+  await row.locator(".dk-cl-age").click(); // (the item number in it opens the item)
+  await expect(row.locator(".dk-sl-d")).toHaveCount(0);
 });
