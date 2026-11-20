@@ -604,8 +604,11 @@ function runCode(btn) {
   const line = codeText(btn).split("\n").map((l) => l.replace(/^\$ /, "")).join("\n").trim();
   if (line) runLine(btn.dataset.runCode, line);
 }
+/** What a `lines` hook gives for a line of its page's own that's shown elsewhere, not in the text (the lead's ASK: its
+ *  card is in the chat already). */
+const MD_DROP = "<!--drop-->";
 /** `lines`: a hook for lines of a page's own (the Desk's lead lines, desk_lead.js deskLineHtml): (line, inline) → its
- *  html, or "" for an ordinary line. Lines in code blocks never reach it; a run of them is one block. */
+ *  html, MD_DROP to leave it out, or "" for an ordinary line. Lines in code blocks never reach it; a run of them is one block. */
 function md(text, { runIn = null, pathsOf = null, doc = false, lines = null } = {}) {
   const out = [];
   // Its folder for relative paths, its machine (another: no paths): the session it runs in, or (pathsOf) only
@@ -632,6 +635,7 @@ function md(text, { runIn = null, pathsOf = null, doc = false, lines = null } = 
       const runs = [];
       for (const l of para.split("\n").filter((x) => x.trim())) {
         const own = lines ? lines(l, inline) : "";
+        if (own === MD_DROP) continue;
         if (own) { if (runs.at(-1)?.kind === "own") runs.at(-1).lines.push(own); else runs.push({ kind: "own", lines: [own] }); continue; }
         const kind = DECIDED_LINE.test(l) ? "decided" : QUOTE.test(l) ? "quote" : TABLE.test(l) ? "table" : LIST.test(l) ? "list" : /^#{1,4}\s/.test(l) || /^\*\*[^*]+\*\*:?$/.test(l.trim()) ? "head" : "text";
         const last = runs.at(-1);

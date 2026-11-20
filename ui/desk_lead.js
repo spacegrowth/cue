@@ -241,9 +241,10 @@ if (typeof document !== "undefined") {
 }
 
 // ---------- the lead's own lines, drawn in its chat ----------
-/** A Desk line as desk/parse.rs reads it: its word in capitals, a list mark or bold around it; ASK has its own card
- *  (deskLeadAsk) and DECIDED md's own block, so neither is here. */
-const DESK_SAY = /^[-*+ ]*(ITEM|ROUTE|DONE|CONTEXT|DESIGNS|TITLE|SEE|MERGE)\**\s*:(.*)$/;
+/** A Desk line as desk/parse.rs reads it: its word in capitals, a list mark or bold around it. DECIDED is md's own
+ *  block, so not here; ASK is left out of the text (#427): Cue files it as a question, which the chat shows once as a
+ *  small card ("Asked: …", your answer beside it once you give it) and the pop-up answers. */
+const DESK_SAY = /^[-*+ ]*(ITEM|ROUTE|DONE|CONTEXT|DESIGNS|TITLE|SEE|MERGE|ASK)\**\s*:(.*)$/;
 const DESK_KINDS = ["bug", "feature", "task"];
 /** `line` of a Desk chat's reply as one short plain sentence at the left (md's `lines` hook; #157, #173): ROUTE "Gave
  *  Task #2 to who" (or "Task #2 waits on #1"); ITEM "Added Bug #2: title"; DONE "Bug #2 is done"; TITLE "Renamed Bug
@@ -256,6 +257,7 @@ function deskLineHtml(line, inline) {
   const body = m[2].trim().replace(/^\*\*/, "").trim().replace(/\*+$/, "").trim();
   if (!body || body.startsWith("<")) return "";
   const p = body.split("|").map((x) => x.trim());
+  if (m[1] === "ASK") return MD_DROP;
   // A part without its label ("done when:", any case), as parse.rs labelled(); null without it.
   const lab = (s, k) => (s.slice(0, k.length).toLowerCase() === k ? s.slice(k.length).trimStart().replace(/^:/, "").trim() : null);
   const find = (k) => p.slice(1).map((s) => lab(s, k)).find((v) => v !== null) ?? "";
@@ -344,7 +346,10 @@ function deskLineHtml(line, inline) {
 const deskNewlySaid = (title) => (title ? (state.desk?.projects || []).flatMap((d) => d.items).filter((i) => i.title === title).sort((a, b) => (b.created ?? 0) - (a.created ?? 0))[0] : undefined);
 /** Cue's message to the lead as quiet centred lines, when it's one of Cue's own (new items, or a DONE it couldn't act on);
  *  null for any other (chat/render.js chatHtml `you`). */
-const deskCueNote = (e) => deskNewItems(e) ?? deskDoneNotes(e) ?? deskStopNote(e);
+const deskCueNote = (e) => deskNewItems(e) ?? deskDoneNotes(e) ?? deskStopNote(e) ?? deskAskAnswered(e);
+/** Cue telling the lead your answer to its ASK (hub/desk.rs desk_answered: "Your ASK[ about #12]: question\nThe answer:
+ *  …"): not drawn (#427), the question's card above already has your answer beside it. null for any other message. */
+const deskAskAnswered = (e) => (/^Your ASK(?: about #\S+)?: [^\n]*\nThe answer: [^\n]*$/.test(String(e.text || "").replace(/^\s*<desk\b[\s\S]*?<\/desk>\s*/, "").trim()) ? `<i hidden></i>` : null);
 /** What Cue told the lead of an item that stopped (hub/desk_stall.rs stop_words: "#224 (title) stopped[, not committed]:
  *  holder ended its turn on it with no DONE…(files)… Its last line: …", then its words for the lead from "Settle it:
  *  ROUTE", not shown) or that it couldn't start a session for (hub/desk_lead.rs start_failed), as a card from Cue (#244):
