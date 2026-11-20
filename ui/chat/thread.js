@@ -152,6 +152,10 @@ function msgLine(m) {
   if (m.say && (m.st === "held" || m.st === "queued")) words = m.say;
   return `<div class="cv-meta msg-line ml-${m.st}"${m.sid ? ` data-sid="${esc(m.sid)}"` : ""}><span class="ml-mark" aria-hidden="true">${mark}</span> ${from}<span class="ml-words">${words}</span>${m.acts ? ` · <span class="ml-acts">${m.acts}</span>` : ""}${m.extra || ""}</div>`;
 }
+/** Your message typed into session `s`'s box while it's mid-turn (#531): its agent takes it in when it's free, so it
+ *  says Queued, not Sending (that's for one still on its way to the box). Its line, as msgLine takes it; null when
+ *  `s` isn't busy. */
+const typedQueued = (s) => (s?.state === "working" || s?.compacting_ms ? { st: "queued", say: "<b>Queued</b> · goes in when it's free", typed: true } : null);
 /** A message drawn as the chat's "you" bubble with its one line under it: `inner` is the bubble (yourBubble's), `m`
  *  msgLine's. Dashed on the panel till it's with them, filled once delivered, outlined red when it couldn't go. */
 const msgRow = (m, inner, cls = "", attrs = "") => `<div class="cv-you msg-${m.st}${cls ? ` ${cls}` : ""}"${attrs}>${inner}${msgLine(m)}</div>`;

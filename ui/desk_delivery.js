@@ -39,7 +39,7 @@ function deskMsgState(step, item, to, fallback = "delivered") {
   }
   if (kept(session.queued)) return { st: "queued", sid };
   if (history.some((e) => e.unsent)) return { st: "failed", why: "it may have run as a command, or still be in its box", sid };
-  if (history.some((e) => e.pending)) return { st: "sending", sid };
+  if (history.some((e) => e.pending)) return { ...(typedQueued(session) || { st: "sending" }), sid };
   return copy ? { ...copy, sid } : none;
 }
 /** Item `item` queued for a free working folder (desk_trees.rs tree_wait): what you sent it waits with it (#419). */
@@ -56,7 +56,7 @@ function deskToSid(item, name) {
 function deskMsgActs(m) {
   const btn = (act, label, more = "") => `<button class="q-now" ${act}${more}>${label}</button>`;
   const sid = ` data-sid="${esc(m.sid || "")}"`, at = ` data-id="${esc(m.item || "")}" data-at="${esc(String(m.retry || ""))}"`;
-  if (m.st === "queued") return btn('data-act="send-now"', "Send now", sid);
+  if (m.st === "queued" && !m.typed) return btn('data-act="send-now"', "Send now", sid);
   if (m.st === "held" || (m.st === "failed" && m.held)) return `${m.item ? `${btn('data-desk-act="held_edit"', "Edit", `${sid} data-id="${esc(m.item)}"`)} · ` : ""}${btn('data-act="held-now"', "Send now", sid)} · ${btn('data-desk-act="held_cancel"', "Cancel", `${sid} data-id="${esc(m.item || "")}"`)}`;
   if (m.st === "failed" && m.step) return btn(`data-desk-retry="${esc(m.step)}"`, "Retry", ` data-item="${esc(m.item || "")}"`);
   if (m.st === "failed" && m.retry) return `${btn('data-desk-act="msg_retry"', "Retry", at)} · ${btn('data-desk-act="msg_edit"', "Edit", at)}`;

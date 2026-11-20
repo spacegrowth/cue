@@ -172,7 +172,7 @@ function chatHtml(it, s, harness, paged = false, page = null) {
     if (reviews.has(n)) return "";
     // Cue's own message to the session (a send-back, a reopen, a refusal…, #478): one short plain line, its full text
     // folded under it (desk_cue_said.js).
-    const cm = e.role === "you" && typeof cueMsgHtml === "function" && cueMsgHtml(e, s, `${sid}:${e.at_ms}:cue`, e.unsent ? { st: "failed", why: "it may have run as a command, or still be in its box", to: msgTo(s) } : e.pending ? { st: "sending", to: msgTo(s) } : { st: "delivered", to: msgTo(s), at: msgTaken(e) });
+    const cm = e.role === "you" && typeof cueMsgHtml === "function" && cueMsgHtml(e, s, `${sid}:${e.at_ms}:cue`, e.unsent ? { st: "failed", why: "it may have run as a command, or still be in its box", to: msgTo(s) } : e.pending ? { ...(typedQueued(s) || { st: "sending" }), to: msgTo(s) } : { st: "delivered", to: msgTo(s), at: msgTaken(e) });
     if (cm) return cm;
     const fwd = e.role === "you" && FORWARDED.exec(e.text);
     if (fwd) return peerBubble(fwd[2], "forwarded by you", e.at_ms, fwd[1], fwd[3]);
@@ -181,10 +181,11 @@ function chatHtml(it, s, harness, paged = false, page = null) {
       // Queued in its agent ("queued via iTerm session"): it reads it at its next step. Sent another way: which.
       const queued = /^queued/.test(how), via = how && !queued ? ` · via ${esc(how)}` : "";
       // Typed into its terminal, but it never became a message: say so where you'll see it. Typed, and Cue hasn't yet
-      // seen it take it: Sending until it does (past half a minute, that Cue hasn't seen it yet).
+      // seen it take it: Queued while it's mid-turn (#531), else Sending until it does (past half a minute, that Cue
+      // hasn't seen it yet).
       const resend = sid ? `<button class="q-now" data-act="resend" data-sid="${esc(sid)}" data-resend="${esc(original[n].text)}">Send again</button>` : "";
       const m = e.unsent ? { st: "failed", why: "it may have run as a command, or still be in its box", acts: resend }
-        : e.pending ? { st: "sending", note: Date.now() - e.at_ms > 30_000 ? "Sending… · Cue hasn't seen it take this yet" : "" }
+        : e.pending ? typedQueued(s) || { st: "sending", note: Date.now() - e.at_ms > 30_000 ? "Sending… · Cue hasn't seen it take this yet" : "" }
         : { st: queued ? "queued" : "delivered", at: msgTaken(e) };
       // Sent now right after the one above, before it answered: the agent got both as one (sessions.rs note_with).
       const joined = e.joined ? " · went to the agent with your message above, as one" : "";

@@ -71,7 +71,7 @@ test("the box on an item at work goes straight to its holder, sent as the item, 
   expect(await page.evaluate(() => deskOf("cue").decisions.find((c) => c.item_id === "d5" && c.delivery)?.delivery.session_id)).toBe("host");
   expect(sent.args.text).toMatch(/^About #d5 \(.+\): Check the narrow window too$/);
   expect(await cue.calls("desk_send")).toHaveLength(0);
-  // In its chat, not taken yet: it says it waits for it to take it; taken, that goes.
+  // In its chat, not taken yet while its holder works: queued, it goes in when it's free (#531); taken, that goes.
   await cue.change((st, text) => {
     const s = st.sessions.find((x) => x.session_id === "host");
     s.held = null;
@@ -79,7 +79,8 @@ test("the box on an item at work goes straight to its holder, sent as the item, 
   }, sent.args.text);
   const mine = page.locator(".dk-right .dk-ichat .cv-you").filter({ hasText: "Check the narrow window too" });
   await expect(mine).toHaveCount(1);
-  await expect(mine.locator(".msg-line")).toContainText("Sending…");
+  await expect(mine.locator(".msg-line")).toHaveText("◌ Queued · goes in when it's free");
+  await expect(mine).toHaveClass(/msg-queued/);
   await cue.change((st) => { st.sessions.find((x) => x.session_id === "host").thread.at(-1).pending = false; });
   await expect(mine).toHaveCount(1);
   // The same line as under any message (#422): delivered, to whom, when; its bubble filled.
