@@ -125,6 +125,43 @@ pub(super) fn waits_line(text: &str) -> Option<String> {
     })
 }
 
+/// What a holder's turn asks you, in one line (#475), if anything: the question on its last line (its Desk lines,
+/// DECIDED and the like, left out), even with a word on what happens next after it ("Which one: A, B or C? Once
+/// it's built I'll say DONE."), or a line saying it waits on you ("I'm waiting for your pick of A, B or C").
+pub(crate) fn question_for_you(text: &str) -> Option<String> {
+    let mut fenced = false;
+    let lines: Vec<&str> = text
+        .lines()
+        .map(str::trim)
+        .filter(|l| {
+            if l.starts_with("```") {
+                fenced = !fenced;
+                return false;
+            }
+            !fenced && !l.is_empty() && !super::desk_heard::desk_line_start(l)
+        })
+        .collect();
+    let last = *lines.last()?;
+    if let Some(q) = question_in(last) {
+        return Some(q);
+    }
+    // A question, then one sentence on what comes after it.
+    if let Some(at) = last.rfind("? ") {
+        let after = last[at + 2..].trim().to_lowercase().replace('\u{2019}', "'");
+        const NEXT: [&str; 8] = ["once ", "then ", "after ", "when ", "if ", "i'll ", "i will ", "as soon as "];
+        let one = after.trim_end_matches(['.', '!']).matches(". ").count() == 0;
+        if one && NEXT.iter().any(|w| after.starts_with(w)) {
+            if let Some(q) = question_in(&last[..=at]) {
+                return Some(q);
+            }
+        }
+    }
+    // It says it waits on you.
+    let w = waits_line(text)?;
+    let t = w.to_lowercase().replace('\u{2019}', "'");
+    ["for your ", "on your ", "for you ", "on you ", "for you.", "on you.", "for you to", "until you "].iter().any(|y| t.contains(y)).then_some(w)
+}
+
 /// The turn ends on a question for you: nothing to ask it this time.
 fn ends_on_a_question(text: &str) -> bool {
     text.lines().map(str::trim).rfind(|l| !l.is_empty()).is_some_and(|l| l.ends_with('?') && !to_lead_line(l))
@@ -260,7 +297,24 @@ pub(super) fn stalls_asked(st: &mut Store, sid: &str, text: &str, on: &[String],
     let asked_lead = || crate::desk::parse::lines(text).iter().any(|l| matches!(l, crate::desk::parse::Line::ToLead { .. })).then(|| "waiting on the Desk lead's answer".to_string());
     let waits = running.or_else(|| waits_line(text)).or_else(asked_lead);
     let mut ask = Vec::new();
+    // Its turn asks you something (#475): each item still at work with it waits on you with that, through its later
+    // turns, until you answer (`DeskItem::asks`). A card it asks with is shown as itself.
+    let yours = if ask_of(st, &h).is_none() { question_for_you(text) } else { None };
     for (id, updated) in still {
+        // Its work not committed: a question it ends on is the lead's to settle first (#213, below).
+        if let Some(q) = yours.as_ref().filter(|_| st.desk.item(&id).is_some_and(|i| i.loose.is_empty())) {
+            if let Some(it) = st.desk.item_mut(&id) {
+                (it.asks, it.waits) = (Some((q.clone(), now)), None);
+            }
+            st.desk.nudged.remove(&id);
+            st.desk.left_said.remove(&id);
+            fx.items.push(id.clone());
+            continue;
+        }
+        // Still waiting on your answer to what it asked earlier: nothing to ask it, nothing for the lead.
+        if st.desk.item(&id).is_some_and(|i| i.asks.is_some()) {
+            continue;
+        }
         // What this turn says it waits on, if anything: the item shows it until it changes or a turn says otherwise.
         if let Some(it) = st.desk.item_mut(&id) {
             it.waits = waits.clone().map(|w| (updated, w));

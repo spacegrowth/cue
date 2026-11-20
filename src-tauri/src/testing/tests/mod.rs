@@ -47,6 +47,7 @@ mod desk_routing;
 mod desk_queue;
 mod desk_holders;
 mod desk_stops;
+mod desk_asked;
 mod db_open;
 mod handoffs;
 mod hosted;

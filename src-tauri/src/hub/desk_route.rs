@@ -477,7 +477,7 @@ fn give_to(st: &mut Store, id: &str, sid: &str, by: (&str, &str, &str), started:
     if it.state == "held" && by.0 != "You" {
         return Err("it's parked".into());
     }
-    it.held = None;
+    (it.held, it.asks) = (None, None);
     if let Some(b) = it.holder.clone().filter(|b| it.state == "working" && !(b.sid == h.sid && b.lead_sid.is_empty())) {
         fx.sends.push(moved_words(&b, it, &h));
     }

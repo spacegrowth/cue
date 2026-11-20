@@ -151,6 +151,7 @@ pub fn handed_words(it: &DeskItem, why: &str, rule: &str) -> String {
     );
     out.push_str(&format!("\nIf you put its designs on a canvas, or move them, say DESIGNS: #{} <canvas link> on a line of its own.", it.id));
     out.push_str(&format!("\nSay DONE: #{} on a line of its own when it's done.", it.id));
+    out.push_str("\nTo ask the owner something (a pick, a yes or no, something only they can tell you), end your reply with that question as its last line, ending in \"?\".");
     if let Some(t) = &it.tree {
         out.push_str(&format!("\n{}", crate::hub::tree_line(t)));
     }

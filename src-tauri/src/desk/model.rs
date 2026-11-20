@@ -249,6 +249,17 @@ pub struct DeskItem {
     /// Its Progress row draws an arrow back with "round N" and why. Saved.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub backs: Vec<StepBack>,
+    /// You asked its holder a question from its page while it was to check or done (#475): the state it was in, and
+    /// your question. Its holder is at work answering; the turn that answers puts it back where it was, or, if that
+    /// turn changed its code (or said DONE), it lands again as a new round (hub/desk_asked.rs). Saved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asked: Option<(String, String)>,
+    /// Its holder's question to you (#475): what its turn ended asking you (a pick, a yes or no, something to tell
+    /// it), in one line, and when (ms). It waits on you with it while it's at work, through any later turns of its
+    /// holder's, until you answer: you write to that session, or act on the item (desk_stall.rs `question_for_you`).
+    /// Saved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asks: Option<(String, u64)>,
 }
 
 /// One time item went back to be redone (#421, hub/desk_steps.rs): the step it was at, why (as its DONE's card keeps
@@ -654,6 +665,9 @@ pub struct Desk {
     /// Items whose holder said what's left of them, or what they wait on (item → (that holder, the item's `updated`
     /// then)): not asked "Done?" again until the item changes (hub/desk_stall.rs). Not saved.
     pub left_said: HashMap<String, (String, u64)>,
+    /// What the Desk itself sent each session lately (session → its last few messages): a prompt it takes that isn't
+    /// one of these was typed by you (hub/desk_asked.rs). Not saved.
+    pub sent: HashMap<String, Vec<String>>,
     /// When Cue last sent each working item to its holder (item → (holder, ms)): a turn that ended before it isn't a
     /// stall on it. Not saved: after a restart, `held_from` stands in.
     pub sent_at: HashMap<String, (String, u64)>,

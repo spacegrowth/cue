@@ -80,6 +80,12 @@ pub(super) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
             }
         }
     }
+    // Its holder asked you something (#475): waiting on you with that until you answer, whatever it has done since.
+    if let Some((q, _)) = it.asks.as_ref().filter(|_| it.state == "working" && it.paused.is_none() && out.ask.is_none()) {
+        out.state = "needs_you".into();
+        (out.latest, out.stopped, out.act) = (q.clone(), false, None);
+        out.waiting.clear();
+    }
     // Queued, but its holder is on it anyway (#342): its ask, or the question its turn ended on, waits on you here
     // too, not only in its own chat. A stop with no question stays the lead's (it's queued, not stalled). Not once you
     // sent it back and it waits for a free working folder (#419): your Send back is the answer, it goes with it.

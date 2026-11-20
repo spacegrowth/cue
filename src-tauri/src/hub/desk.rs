@@ -493,6 +493,13 @@ impl Hub {
                 }
             });
             let (items, decisions) = self.write(|st| {
+                for (to, text) in &fx.sends {
+                    let sent = st.desk.sent.entry(to.clone()).or_default();
+                    sent.push(text.clone());
+                    if sent.len() > 8 {
+                        sent.remove(0);
+                    }
+                }
                 // An item at work with a holder it wasn't stamped for: its work (and files) start now.
                 for id in &fx.items {
                     let Some(it) = st.desk.item_mut(id).filter(|i| i.state == "working") else { continue };

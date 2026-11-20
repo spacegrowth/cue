@@ -11,12 +11,26 @@ use super::desk_heard::new_item;
 
 /// What you did to item `id` ("looks_right" | "reopen" | "send_back" | "start_now" | "put_before" | "hold" | "drop"), in the store.
 fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<Effects, String> {
+    let mut fx = acted_on(st, id, act, text, now)?;
+    // Anything you did to it but write to its lead answers what its holder asked you (#475).
+    if !matches!(act, "retry" | "wrote_lead") && st.desk.item_mut(id).and_then(|i| i.asks.take()).is_some() {
+        fx.items.push(id.to_string());
+    }
+    Ok(fx)
+}
+
+fn acted_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<Effects, String> {
     if act == "pick" {
         return pick(st, id, text, now);
     }
     let mut fx = Effects::default();
     // A note from its page (#437): to check, it's a Send back (the item reopens, your words go with it); else to
     // whoever holds it, at any stage. With nobody holding it, the window sends it to the lead.
+    // A question there (#475) isn't a Send back: its holder answers it, and the item stays where it was unless that
+    // answer changes its code.
+    if act == "note" && super::desk_asked::is_question(text) && st.desk.item(id).is_some_and(|i| matches!(i.state.as_str(), "to_check" | "done") && i.holder.is_some()) {
+        return super::desk_asked::ask(st, id, text, now);
+    }
     let act = if act == "note" && st.desk.item(id).is_some_and(|i| i.state == "to_check" && i.holder.is_some()) { "send_back" } else { act };
     if act == "retry" {
         return retry(st, id, text, now);
@@ -109,6 +123,7 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
             let project = it.project.clone();
             you_wrote(st, &project, id, words.split_once("\nPictures with it").map_or(words.as_str(), |(w, _)| w).trim(), &format!("to {}", h.name), now, &mut fx);
             send_step(st, id, &to, message, now, &mut fx);
+            fx.items.push(id.to_string());
             return Ok(fx);
         }
         // Waiting for a free copy (#401), its holder's (sent back, or given out with all copies in use): it starts now
@@ -219,7 +234,7 @@ fn retry(st: &mut Store, id: &str, step: &str, now: u64) -> Result<Effects, Stri
     Ok(fx)
 }
 
-fn you_wrote(st: &mut Store, project: &str, id: &str, words: &str, whom: &str, now: u64, fx: &mut Effects) {
+pub(super) fn you_wrote(st: &mut Store, project: &str, id: &str, words: &str, whom: &str, now: u64, fx: &mut Effects) {
     decide(st, project, Some(id.to_string()), "You", "", words, whom, now, fx);
     if let Some(d) = st.desk.decisions.last_mut() {
         d.undo = "none".into();

@@ -8,11 +8,11 @@ use crate::desk::DeskItem;
 
 /// The steps, in order: their index is the place in `DeskItem::steps`.
 pub(crate) const STEPS: usize = 6;
-const BUILDING: usize = 1;
+pub(super) const BUILDING: usize = 1;
 const TESTS: usize = 2;
 const COMMIT: usize = 3;
 const LANDING: usize = 4;
-const TO_CHECK: usize = 5;
+pub(super) const TO_CHECK: usize = 5;
 
 /// A holder's step that runs tests ("Running: cargo test", "Running: npx playwright test …").
 fn runs_tests(doing: &str) -> bool {
@@ -37,6 +37,10 @@ fn doing_on(st: &Store, it: &DeskItem) -> String {
 
 /// The step item `it` is at as Cue last heard it, or None when it hasn't started (new, queued, parked, done).
 fn step_now(st: &Store, it: &DeskItem) -> Option<usize> {
+    // Its holder answering your question (#475): still where it was, not back at work (desk_asked.rs says otherwise).
+    if it.asked.is_some() {
+        return None;
+    }
     match it.state.as_str() {
         "to_check" => Some(TO_CHECK),
         "finishing" => Some(match it.finish.as_ref().map(|f| f.step.as_str()).unwrap_or("commit") {

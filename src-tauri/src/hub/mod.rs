@@ -50,6 +50,7 @@ mod desk_diff;
 mod desk_handoff;
 mod desk_lead;
 mod desk_members;
+mod desk_asked;
 mod desk_stall;
 mod desk_steps;
 mod desk_theirs;
@@ -59,6 +60,7 @@ mod desk_waits;
 mod land_keep;
 pub(crate) use desk_lead::DeskClaim;
 pub(crate) use desk_checks::builds_this_cue;
+pub(crate) use desk_stall::question_for_you;
 pub(crate) use desk_pr::PR_CLOSED;
 pub(crate) use desk::STOPPED;
 #[cfg(test)]

@@ -178,7 +178,10 @@ impl Hub {
 
     /// A message you typed in a session's box: to a hosted Claude lead with its Team switch's words (`with_team`).
     pub fn send_yours(&self, sid: &str, text: &str, images: &[crate::model::Upload], now: bool) -> Result<String, String> {
-        self.send_to_session(sid, &self.team_words(sid, text), images, now)
+        let sent = self.send_to_session(sid, &self.team_words(sid, text), images, now)?;
+        // What it asked you on its items is answered (#475).
+        self.desk_you_answered(sid);
+        Ok(sent)
     }
 
     /// What you typed to `sid`, from its box or its reply box: with its Team switch's words when it's a hosted Claude

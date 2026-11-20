@@ -193,7 +193,7 @@ fn dones(st: &mut Store, sid: &str, text: &str, now: u64, fx: &mut Effects) -> O
             it.checks.push(crate::desk::model::DeskCheck { at: now, by, ..Default::default() });
             fx.checked.push(id.clone());
             it.state = "finishing".into();
-            it.paused = None;
+            (it.paused, it.asks) = (None, None);
             it.finish = Some(super::desk_finish::begun(now, it.finish.as_ref()));
             it.after = None;
             it.updated = secs(now);

@@ -417,11 +417,13 @@ impl Hub {
         let said = text.lines().any(|l| desk_line_start(l) || parse::route_like(l));
         let held = self.read(|st| super::desk_stall::at_work_with(st, sid));
         let done_held = self.read(|st| st.desk.done_held.contains_key(sid));
-        if !said && held.is_empty() && !done_held {
+        // Items it was answering your question on (#475): settled as its turn ends (desk_asked.rs).
+        let asked: Vec<String> = self.read(|st| st.desk.items.iter().filter(|i| i.asked.is_some() && i.holder.as_ref().is_some_and(|h| h.is(sid))).map(|i| i.id.clone()).collect());
+        if !said && held.is_empty() && !done_held && asked.is_empty() {
             return;
         }
         // Each item at work with it: its work git says isn't committed yet, asked with the store let go (#213).
-        let loose: Vec<(String, Vec<String>)> = held.iter().map(|id| (id.clone(), self.desk_uncommitted(id))).collect();
+        let loose: Vec<(String, Vec<String>)> = held.iter().chain(asked.iter().filter(|a| !held.contains(a))).map(|id| (id.clone(), self.desk_uncommitted(id))).collect();
         let from_disk = self.feature_pieces_on_disk(text);
         let now = now_ms();
         let fx = self.write(|st| {
@@ -441,6 +443,7 @@ impl Hub {
             let held = super::desk_stall::at_work_with(st, sid);
             let mut on = super::desk_stall::about(st, text, &held, super::desk_stall::now_on(st, sid).as_deref());
             replied(st, sid, text, turn, &on, now, &mut fx);
+            super::desk_asked::answered(st, sid, text, &loose, now, &mut fx);
             if on.is_empty() && held.len() == 1 {
                 on = held;
             }

@@ -87,6 +87,8 @@ impl Hub {
     /// A turn began (its prompt hook): working again, whoever started it.
     fn on_active(&self, origin: Origin, message: &str, from_you: bool) {
         let started = self.write(|st| Self::working_on(st, &origin, message, from_you));
+        // Whatever its prompt hook calls it: a prompt the Desk didn't send answers what it asked you (#475).
+        self.desk_prompt_taken(&origin.session_id, message);
         if started {
             self.turn_started(&origin.session_id, &origin.cwd, &origin.machine);
         }
