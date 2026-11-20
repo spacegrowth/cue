@@ -28,10 +28,14 @@ fn acted_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result
     // whoever holds it, at any stage. With nobody holding it, the window sends it to the lead.
     // A question there (#475) isn't a Send back: its holder answers it, and the item stays where it was unless that
     // answer changes its code.
+    // A quick phrase clicked on its page (#488, "Go ahead", "Commit"): a note to its holder at any stage, never a Send
+    // back, so the item stays to check.
+    let phrase = act == "phrase";
+    let act = if phrase { "note" } else { act };
     if act == "note" && super::desk_asked::is_question(text) && st.desk.item(id).is_some_and(|i| matches!(i.state.as_str(), "to_check" | "done") && i.holder.is_some()) {
         return super::desk_asked::ask(st, id, text, now);
     }
-    let act = if act == "note" && st.desk.item(id).is_some_and(|i| i.state == "to_check" && i.holder.is_some()) { "send_back" } else { act };
+    let act = if act == "note" && !phrase && st.desk.item(id).is_some_and(|i| i.state == "to_check" && i.holder.is_some()) { "send_back" } else { act };
     if act == "retry" {
         return retry(st, id, text, now);
     }
@@ -533,7 +537,8 @@ impl Hub {
         it.ok_or_else(|| "no such item".into())
     }
 
-    /// What you did to an item: "looks_right" (done), "send_back" (to its holder again, with `text`), "start_now"
+    /// What you did to an item: "looks_right" (done), "send_back" (to its holder again, with `text`), "note" (your
+    /// words to its holder; to check, a Send back), "phrase" (a quick phrase: a note that never sends it back, #488), "start_now"
     /// (not waiting on another any more), "put_before" (ahead of the item it waited on), "install_now" (its install
     /// starts without waiting, desk_finish.rs), "rerun" (its landing run again: a plain retry, offered only when Cue
     /// can name nothing in its way, desk_finish.rs), what clears a wait (desk_waits.rs): "cut" (no longer waits on

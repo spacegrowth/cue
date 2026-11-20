@@ -45,7 +45,9 @@ async function deskSendItem(to, key, text, images) {
   if (!it) return toast("That item isn't on this Desk any more.");
   // A question on an item to check or done (#475): its holder answers it, and the item stays where it is unless that
   // answer changes its code (the hub's desk_asked.rs).
-  const asks = ["to_check", "done"].includes(it.state) && /\?\s*$/.test(text || "");
+  // A quick phrase on an item to check (#488, "Go ahead"): a note to its holder too, never a Send back.
+  const phrase = phraseSending && it.state === "to_check";
+  const asks = phrase || (["to_check", "done"].includes(it.state) && /\?\s*$/.test(text || ""));
   const hs = deskHolderSid(it), live = hs && (sessionOf(hs) || it.state === "to_check" || asks);
   if (!it.holder || !live || (!asks && ["done", "dropped"].includes(it.state))) return deskSendLead({ project, item: it.id }, key, text, images);
   if (it.state === "to_check" && !asks) {
@@ -59,7 +61,7 @@ async function deskSendItem(to, key, text, images) {
   // The box empties at once and the note is on the Thread; the saved draft goes only once the hub has the note.
   if (!phraseSending) endDictation(key);
   delete drafts[key];
-  const p = deskPend(it.id, text || "(a picture)", "note", images.length, { key, images });
+  const p = deskPend(it.id, text || "(a picture)", "note", images.length, { key, images, act: phrase ? "phrase" : "note" });
   renderMain();
   if (await deskNote(it.id, p)) saveDrafts();
   // Didn't go: red on its Thread with why, Retry and Edit (#422). The saved draft keeps it till then, so a restart
@@ -69,7 +71,7 @@ async function deskSendItem(to, key, text, images) {
 }
 /** Pending note `p` on item `id` handed to the hub (act "note"): whether it took it; `p.failed` says why not. */
 async function deskNote(id, p) {
-  try { await invoke("desk_item_act", { id, act: "note", text: p.text, images: p.images || [] }); return true; }
+  try { await invoke("desk_item_act", { id, act: p.act || "note", text: p.text, images: p.images || [] }); return true; }
   catch (e) { p.failed = String(e); return false; }
 }
 /** Words from box `key` to the lead of `to.project`, about item `to.item` when there is one. */

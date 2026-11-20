@@ -82,3 +82,21 @@ test("the lead's box still sends a quick phrase at once", async ({ cue, page }) 
   await qp.first().click();
   await cue.called("desk_send", { project: "cue" });
 });
+
+// #488: on an item to check, a quick phrase reaches its holder as a note and the item stays to check; what you type and
+// send still sends it back as not done.
+test("a quick phrase on an item to check is a note to its holder; typed words still send it back", async ({ cue, page }) => {
+  await openItem(cue, page);
+  const state = () => page.evaluate(() => state.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d2").state);
+  expect(await state()).toBe("to_check");
+  await page.locator('.dk-right .dk-box .qp[data-phrase="go ahead"]').click();
+  await cue.called("desk_item_act", { id: "d2", act: "phrase", text: "go ahead" });
+  await page.waitForTimeout(300);
+  expect((await cue.calls("desk_item_act")).filter((c) => c.args.act === "send_back")).toEqual([]);
+  expect(await state()).toBe("to_check");
+  const box = page.locator(".dk-right .dk-box textarea");
+  await box.fill("still 6px on the left");
+  await box.press("Enter");
+  await cue.called("desk_item_act", { id: "d2", act: "send_back", text: "still 6px on the left" });
+  await expect.poll(state).toBe("working");
+});

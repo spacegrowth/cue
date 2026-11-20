@@ -108,8 +108,9 @@ CueBridge.area("desk", (w) => {
       const it = itemOf(id);
       if (!it) throw "No such item";
       const t = secs();
-      // A note on an item to check sends it back with the note (#437).
+      // A note on an item to check sends it back with the note (#437); a quick phrase is a note that never does (#488).
       if (act === "note" && it.state === "to_check" && it.holder) act = "send_back";
+      if (act === "phrase") act = "note";
       // Your note to its holder (#437): on its Thread, how it went with it; to the session as about the item.
       if (act === "note") {
         if (!it.holder || ["done", "dropped"].includes(it.state)) throw "nobody holds it: it goes to the lead";

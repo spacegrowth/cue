@@ -51,6 +51,23 @@ fn a_note_on_an_item_to_check_reopens_it_with_the_note() {
     assert_eq!(s["delivery"]["went"], "sent", "{s}");
 }
 
+/// A quick phrase clicked on the page of an item to check (#488): to its holder as a note, the item still to check.
+#[test]
+fn a_quick_phrase_on_an_item_to_check_is_a_note_and_it_stays_to_check() {
+    let w = World::new();
+    let (sid, project) = holder(&w);
+    let it = w.hub().desk_add(&project, "bug", "Spacing", "", Some(&sid)).unwrap();
+    w.hub().desk_set_state(&it.id, "to_check");
+    let after = w.hub().desk_item_act(&it.id, "phrase", "Go ahead").unwrap();
+    w.settle();
+    assert_eq!(after.state, "to_check");
+    let sent = sent_to(&w, &sid);
+    assert!(sent.iter().any(|t| t.starts_with(&format!("About #{} (Spacing): Go ahead", it.id))), "{sent:?}");
+    assert!(!sent.iter().any(|t| t.contains("isn't done")), "{sent:?}");
+    assert_eq!(step(&w, &project, &it.id, "to ")["delivery"]["went"], "sent");
+    assert_eq!(desk(&w, &project)["items"].as_array().unwrap().iter().find(|i| i["id"] == it.id.as_str()).unwrap()["state"], "to_check");
+}
+
 #[test]
 fn a_note_to_a_busy_holder_is_queued_and_says_so() {
     let w = World::new();
