@@ -512,6 +512,9 @@ const deskCueLine = (html, at) => `<div class="dk-new dk-cl"><span class="dk-cl-
  *  "Done? Write DONE: #171…") stay as a quiet line over it. null for any other message. */
 function deskHandHtml(e, meta) {
   const text = String(e.text || "");
+  // Cue's other messages about an item start the same way ("Desk item #d5: the Desk lead took back its copy…"): a
+  // short line, not a hand-off (desk_cue_said.js, #478).
+  if (typeof cueMsgOf === "function" && cueMsgOf(text)) return null;
   const at = /(?:^|\n)(?:For your teammate (.+?): )?Desk item #([^\s:(]+)(?: \((bug|feature|task)\))?: (.*)/.exec(text);
   if (!at) return null;
   const [, mate, id, kind = "", title] = at;

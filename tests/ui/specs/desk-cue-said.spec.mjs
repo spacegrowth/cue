@@ -1,0 +1,150 @@
+// What Cue itself sends a session or a Desk lead shows as one short plain line (#478): "Cue · Asked host-lead · #d5 not
+// done: “…”", its full text folded under it (a click opens it), in the session's chat, the lead's chat and the Inbox.
+// The session still gets the full text. Every kind is listed in docs/cue-messages.md.
+import { test, expect } from "./cue.mjs";
+import { NOW } from "./clock.mjs";
+
+// The line as a chat draws it: "Cue · " and the plain line, then what's folded besides (" · its log"), if anything.
+const head = (rows) => rows.map(([, w]) => new RegExp(`^Cue · ${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}( · .+)?$`));
+
+const openDesk = async (page) => {
+  await page.locator('[data-pj="toggle"]').click();
+  await page.locator('.pj-pop [data-pj="pick"][data-project="cue"]').click();
+  await page.locator('.switch-view [data-view="desk"]').click();
+  await page.locator(".dk-items .dk-it").first().waitFor();
+};
+
+// [the hub's words, the line] for each kind a session gets (docs/cue-messages.md, "To a session").
+const TO_SESSION = [
+  ["Desk item #d5 (Fix (the) header) isn't done: Are we done here completely?\nIts fixes stay in #d5; don't add new items for them. Say DONE: #d5 when it is.", "Asked host-lead · #d5 not done: “Are we done here completely?”"],
+  ["For your teammate ui-tests: Desk item #d5 (Fix) isn't done: The build failed.\nThe end of its log:\nerror[E0425]\nIts fixes stay in #d5; don't add new items for them. Say DONE: #d5 when it is.", "Asked ui-tests · #d5 not done: “The build failed”"],
+  ["Desk item #d5 (Header) is open again: Commit abc1234 (Revert x) took its work back out. Put it back, then say DONE: #d5.\nIts fixes stay in #d5; don't add new items for them.", "Asked host-lead · #d5 open again: “Commit abc1234 (Revert x) took its work back out”"],
+  ["Desk item #d5 (Header): you stopped before it was done. Pick up where you left off.\nSay DONE: #d5 on a line of its own when it's done.", "Asked host-lead · #d5 pick up where it stopped"],
+  ["Note from the Desk lead on Desk item #d5 (Header, finishing): Check the dark theme too.", "Told host-lead · #d5 the lead's note: “Check the dark theme too”"],
+  ["Desk item #d5 (Header) has moved to site-lead: stop work on it.", "Told host-lead · #d5 moved to site-lead: stop work on it"],
+  ["Desk item #d5 (Header) is parked: it's off your list. Don't start it; Cue tells you if it comes back.", "Told host-lead · #d5 parked: off its list"],
+  ["Desk item #d5 is paused by the Desk lead (clash with #d3). Stop at the next clean point: finish or undo the edit you're in so the files make sense, don't start anything new on it, write in a few lines where you are and what's next, and end your turn. Keep it: Cue tells you when to resume.", "Asked host-lead · #d5 paused (clash with #d3): stop at a clean point"],
+  ["Desk item #d5 is resumed: carry on from where you stopped. Say DONE: #d5 on a line of its own when it's done.", "Told host-lead · #d5 resumed: carry on"],
+  ["Desk item #d5: the Desk lead took back its copy (/w/desk-5). Its work, if any, is kept on branch desk/d5. Stop work on it until it's routed to you again.", "Told host-lead · #d5 copy taken back: stop work on it"],
+  ["Desk item #d5 is closed: its work is already on main (abc1234). Stop work on it.", "Told host-lead · #d5 closed: already on main"],
+  ["Desk item #d5 was dropped: stop work on it.", "Told host-lead · #d5 dropped: stop work on it"],
+  ["Desk item #d5 (Mocks): option B was picked, so it's done. #d9 builds it; the Desk lead routes that. Mark \"Picked: B\" on its row.", "Told host-lead · #d5 option B picked: done, #d9 builds it"],
+  ["Desk item #d3 was folded into #d5, which you have. It said: Make it blue", "Told host-lead · #d3 folded into #d5: “Make it blue”"],
+  ["Done? Write DONE: #d5, or say what's left\nDone? Write DONE: #d3, or say what's left", "Asked host-lead · #d5 done? or what's left"],
+  ["The Desk is paused. Stop at the next safe point: finish the step you're on, leave your work as it is in your copy (don't commit, push or undo anything, and don't say DONE), say in one line where you stopped, and end your turn. Cue tells you when to go on.", "Asked host-lead · the Desk is paused: stop at a safe point"],
+  ["The Desk is resumed: carry on with #d5, #d3 from where you stopped.", "Told host-lead · the Desk is resumed: carry on with #d5, #d3"],
+  ["Your TO LEAD: line didn't reach the Desk's lead: it isn't running", "Told host-lead · TO LEAD didn't reach the lead: “it isn't running”"],
+  ["TO LEAD: not sent: #x isn't an item on your Desk. Name one you're on, or leave the # out.", "Told host-lead · TO LEAD not sent: “#x isn't an item on your Desk. Name one you're on, or leave the # out”"],
+  ["Not added as a new item: Dark theme pass. Its fix or next step stays in #d5, the item you're on: do it there, or say it in your reply.\nOnly something truly separate from it is a new item.", "Told host-lead · #d5 not a new item: “Dark theme pass” stays here"],
+  ["Several Desks could receive this item. Add it through the intended Desk so it reaches the right lead.", "Told host-lead · item not added: several Desks could take it"],
+  ["Robin answered the steps held while they were away (Ask me before), in the order you asked:\n1. ALLOWED: run it now, exactly as written:\nrm x\n2. NO: don't run it:\ngit push\n", "Told host-lead · held steps answered: 1 allowed, 1 refused"],
+  ["Ask me before, changed by Robin just now: ask Robin first, and end your turn, before a release, or deleting files. This replaces any earlier Ask me before or One-way rule you were given. No reply needed.", "Told host-lead · Ask me before changed: before a release, or deleting files"],
+  ["Go back on your call on #d5: you decided to use red (your reason: brand). Undo it and take the other way, then carry on; say what that changes.", "Asked host-lead · #d5 go back on: “to use red”"],
+  ["Bring parser-tests back: it was set aside (too slow). Pick its part up again: start a teammate for it.", "Asked host-lead · bring parser-tests back"],
+  ["(Cue) Your teammate parser-tests has been quiet for 12 min with nothing running. Ask it where it is.", "Asked host-lead · check on teammate parser-tests (quiet 12 min)"],
+  ["Hand off: write a short note so a fresh session can carry on from here.\n\nPut it in HANDOFF.md at the project root.", "Asked host-lead · hand off: write a note for a fresh session"],
+  ["Carry on from the previous session's hand-off.\n\nRead its hand-off note at HANDOFF.md.", "Asked host-lead · carry on from the hand-off note"],
+  ["You no longer run cue's Desk: web-lead does now. Keep on with the items you hold.", "Told host-lead · no longer runs cue's Desk"],
+  ["The team from the session before you. Their processes ended with it.\n- a: x (done).\n- b: y (working).", "Told host-lead · the team from the session before"],
+];
+
+// To a Desk lead (docs/cue-messages.md, "To a Desk lead").
+const TO_LEAD = [
+  ["host-lead, on #d5, asks about clearing the way for its landing (it's waiting on the answer):\nThere are leftover edits in main. Commit them?\n1. Yes: commit\n2. No\nAnswer it yourself: ANSWER: #d5 | <a choice's number, or your own words>. Only if the user must decide: PASS: #d5 | <why>. Without either in 10 minutes, it goes to the user.", "Asked web-lead · #d5 host-lead's landing question: “There are leftover edits in main. Commit them?”"],
+  ["Circle on the Desk: #d5 waits on #d3 waits on #d5. None of them can move until one link is cut.\n- #d5 waits on #d3: queued after it", "Asked web-lead · cut a wait circle: #d5 waits on #d3 waits on #d5"],
+  ["Cue couldn't start a new session for #d5 (Header): no agent. It's still new; ROUTE it to a session, or to new to try again.", "Told web-lead · #d5 no new session: “no agent”"],
+  ["The Desk is paused (by Robin, 3m ago). Its sessions stopped at a safe point.", "Told web-lead · the Desk is paused (by Robin)"],
+  ["The Desk is resumed: its sessions carry on and what was held is sent. Route as usual.", "Told web-lead · the Desk is resumed"],
+  ["Your ASK about #d5: Blue or red?\nThe answer: Blue", "Told web-lead · #d5 its ASK answered: “Blue”"],
+  ["Cue asked Robin before routing #d5 to site-lead, which isn't on the Desk. The answer: No. #d5 stays as it was.", "Told web-lead · #d5 not routed to site-lead: answer “No”"],
+  ["Robin said yes: site-lead is on the Desk now, and Cue routed #d5 to it as you asked.", "Told web-lead · #d5 routed to site-lead (a yes)"],
+  ["Robin said no to changing how work lands on cue (check → none). Nothing changed.", "Told web-lead · Robin said no to changing how work lands on cue (check → none). Nothing changed."],
+  ["Robin is away: Cue didn't show them these ASKs. Decide each one, in this order, yourself.\n- #d5: x\n- y", "Asked web-lead · decide the open ASKs yourself (away)"],
+  ["Robin is about to go away. Go through every open item (working, waiting, to check).", "Asked web-lead · settle what you can before Away"],
+  ["Away mode is off: the owner is back. Ask and decide as usual.", "Told web-lead · Away is off"],
+  ["Away mode:\nRobin is away until 18:00, with no budget set.\n", "Told web-lead · Away is on, until 18:00"],
+  ["#d5 not cut: this Desk has no item #d5\n#d3 not split: it's done already", "Told web-lead · #d5 not cut: this Desk has no item #d5"],
+  ["Refused: #d5 is done. You can ask the user to reopen it (ASK: #d5 | …), or add a new ITEM for what's left.", "Told web-lead · refused: #d5 is done"],
+];
+
+test("each kind of message Cue sends reads as one short line; your own words and notes don't (#478)", async ({ page, cue }) => {
+  await cue.open("desk");
+  const got = await page.evaluate(([s, l]) => [s.map(([t]) => cueMsgPlain(t, "host-lead")), l.map(([t]) => cueMsgPlain(t, "web-lead"))], [TO_SESSION, TO_LEAD]);
+  expect(got[0]).toEqual(TO_SESSION.map(([, w]) => w));
+  expect(got[1]).toEqual(TO_LEAD.map(([, w]) => w));
+  // Not Cue's: your words, your note from an item's page, and the hand-off (its own card).
+  expect(await page.evaluate(() => [
+    cueMsgPlain("Can you make the header blue?"),
+    cueMsgPlain("About #d5 (Header): make it blue"),
+    // A new lead's hello and hand-off note are short already: they keep their bubble (desk.spec's Desk handoff).
+    cueMsgPlain("You run cue's Desk now. Say so in one line, then hand out anything not given out yet."),
+    cueMsgPlain("web-lead now runs cue's Desk. Please route Header, Footer."),
+    cueMsgPlain("Done? Write DONE: #d5, or say what's left\n\nDesk item #d5 (bug): Hosted sessions can't open the canvas\nSay DONE: #d5 on a line of its own when it's done."),
+  ])).toEqual([null, null, null, null, null]);
+});
+
+// A crew lead's "(Cue) Your teammate … has been quiet" keeps the crew's own Cue line (team.js), as before.
+// In the lead's chat, two already have their own drawing (desk_lead.js deskCueNote): a start failure, and your answer
+// to its ASK (shown with the ASK).
+const IN_LEAD = TO_LEAD.filter(([t]) => !/^(Cue couldn't start|Your ASK)/.test(t));
+const IN_CHAT = TO_SESSION.filter(([t]) => !t.startsWith("(Cue) "));
+
+for (const scheme of ["light", "dark"]) {
+  test(`Cue's messages show as short lines in the session's and the lead's chats, the full text folded under each (${scheme}) (#478)`, async ({ page, cue }) => {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.setViewportSize({ width: 1500, height: 950 });
+    await cue.open("desk");
+    await openDesk(page);
+    await cue.change((st, { s, l, at }) => {
+      const host = st.sessions.find((x) => x.session_id === "host"), lead = st.sessions.find((x) => x.session_id === "lead");
+      s.filter(([t]) => !t.startsWith("(Cue) ")).forEach(([text], n) => host.thread.push({ role: "you", text, at_ms: at + n * 1000 }));
+      host.thread.push({ role: "you", text: "Can you make the header blue?", at_ms: at + 99_000 });
+      l.forEach(([text], n) => lead.thread.push({ role: "you", text, at_ms: at + n * 1000 }));
+    }, { s: TO_SESSION, l: TO_LEAD, at: NOW - 3 * 60 * 1000 });
+    await page.evaluate(() => deskShow({ kind: "chat", sid: "host" }));
+    const chat = page.locator('.dk-right [data-desk-chat="host"]');
+    const lines = chat.locator(".cv-cue");
+    await expect(lines).toHaveCount(IN_CHAT.length);
+    await expect(lines.locator(".cv-cue-h")).toHaveText(head(IN_CHAT));
+    await expect(chat.locator(".dk-hand")).toHaveCount(0);
+    // Each has the one line every message has (#422): delivered, to whom.
+    await expect(lines.locator(".msg-line.ml-delivered")).toHaveCount(IN_CHAT.length);
+    await expect(lines.nth(1).locator(".cv-cue-more")).toHaveText("· its log");
+    await expect(lines.nth(14).locator(".cv-cue-more")).toHaveText("· 1 more item");
+    // Your own words keep their bubble.
+    await expect(chat).toContainText("Can you make the header blue?");
+    // Folded: the standing words aren't in the line; a click opens Cue's full text under it, again closes it.
+    const first = lines.first();
+    await expect(first).not.toContainText("Its fixes stay");
+    await expect(first.locator(".cv-cue-full")).toHaveCount(0);
+    await first.locator(".cv-cue-by").click();
+    await expect(first.locator(".cv-cue-full")).toHaveText(TO_SESSION[0][0]);
+    await expect(first.locator(".cv-cue-r")).toHaveAttribute("aria-expanded", "true");
+    // Left-aligned, no left stripe, no hover text.
+    const css = await first.evaluate((e) => { const c = getComputedStyle(e); return [c.borderLeftWidth, c.textAlign]; });
+    expect(css[0]).toBe("0px");
+    const [lb, cb] = [await first.boundingBox(), await chat.boundingBox()];
+    expect(lb.x - cb.x).toBeLessThan(40);
+    await expect(page.locator("[title]")).toHaveCount(0);
+    if (process.env.SHOT_DIR) await chat.screenshot({ path: `${process.env.SHOT_DIR}/desk-cue-said-session-${scheme}.png` });
+    await first.locator(".cv-cue-by").click();
+    await expect(first.locator(".cv-cue-full")).toHaveCount(0);
+    // Its item's number opens the item.
+    await lines.nth(0).locator(".cv-cue-id").click();
+    await expect.poll(() => page.evaluate(() => deskOpen && [deskOpen.kind, deskOpen.id])).toEqual(["item", "d5"]);
+
+    // The lead's chat.
+    await page.evaluate(() => deskShow({ kind: "chat", sid: "lead" }));
+    const lchat = page.locator(".dk-chat");
+    const llines = lchat.locator(".cv-cue");
+    await expect(llines).toHaveCount(IN_LEAD.length);
+    await expect(llines.locator(".cv-cue-h")).toHaveText(head(IN_LEAD));
+    await expect(llines.nth(0).locator(".cv-cue-more")).toHaveText("· 2 choices");
+    await expect(llines.nth(IN_LEAD.length - 2).locator(".cv-cue-more")).toHaveText("· 1 more line");
+    // Its start failure keeps its own note, and your answer to its ASK stays with the ASK's card.
+    await expect(lchat).toContainText("no agent");
+    await expect(lchat).not.toContainText("The answer: Blue");
+    await expect(page.locator("[title]")).toHaveCount(0);
+    if (process.env.SHOT_DIR) await lchat.screenshot({ path: `${process.env.SHOT_DIR}/desk-cue-said-lead-${scheme}.png` });
+  });
+}

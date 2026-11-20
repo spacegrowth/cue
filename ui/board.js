@@ -861,7 +861,7 @@ function sessionCard(s, open) {
   const doing = preStart(s) ? `Not started: ${preStart(s)}` : s.compacting_ms ? "Compacting…" : s.state === "working" && s.doing ? s.doing : "";
   const desk = deskCardLine(s.session_id);
   const words = deskSaid(s.prompt);
-  const preview = desk && /^Desk item #/i.test(words) ? "" : deskAboutHead({ text: words })?.text ?? words;
+  const preview = desk && /^Desk item #/i.test(words) ? "" : cueMsgPlain(words, nameOf(s.session_id, s.project)) ?? deskAboutHead({ text: words })?.text ?? words;
   return `<div class="working click ${idleNote(s) ? "on-agent" : ""} ${open ? "on" : ""}" ${go}>
       <div class="card-head">${projDot(s.project, (s.state === "working" || s.compacting_ms) && !cutOff(s) && !preStart(s))}${nameSpan(s.session_id, s.project)}${oddAgent(s.harness)}${machTag(s.machine)}${bgPill(s)}<span class="grow"></span><span class="age" style="color:inherit">${idleNote(s) && s.state !== "limited" && !state.items.some((x) => x.session_id === s.session_id) ? "idle " : ""}${ago(s.since_ms)}</span>${starBtn(s.session_id)}${isStarred(s.session_id) && !cutOff(s) ? "" : hideX(s)}</div>
       ${addOn.cardLine(s.session_id)}${desk}${sessionNote(s) ? `<div class="agent-note">${esc(sessionNote(s))}</div>` : ""}

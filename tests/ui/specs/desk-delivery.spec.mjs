@@ -33,10 +33,14 @@ for (const kind of ["task", "feature", "bug"]) {
       const s = st.sessions.find((s) => s.session_id === "lead");
       s.queued = null; s.thread.at(-1).pending = false;
     });
-    // Delivered: its line says so, nothing queued about it.
-    await expect(line).toHaveClass(/ml-delivered/);
-    await expect(line).toContainText("✓ Delivered to");
-    await expect(line).not.toContainText(/queued|not sent/i);
+    // Delivered: Cue's one short line for what went (#478), "Cue · Asked <holder> · #d2 not done: “Fix the spacing”",
+    // its line saying so, nothing queued about it.
+    const sent = chat.locator(".cv-cue", { hasText: "Fix the spacing" }).last();
+    await expect(sent.locator(".cv-cue-h")).toHaveText(/^Cue · Asked .+ · #d2 not done: “Fix the spacing”$/);
+    const went = sent.locator(".msg-line");
+    await expect(went).toHaveClass(/ml-delivered/);
+    await expect(went).toContainText("✓ Delivered to");
+    await expect(went).not.toContainText(/queued|not sent/i);
     await expect(chat.locator(".cv-you.msg-sending")).toHaveCount(0);
   });
 }

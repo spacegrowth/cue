@@ -192,7 +192,7 @@ function inboxWhy(it) {
 /** A working row's lines: what you asked it (what you just sent, else its prompt), and what it's on now (or that it's
  *  quiet, or stuck). */
 function inboxRunLines(r, card = false) {
-  const s = r.s, seat = inboxSeats.get(r.sid), sent = outbox.findLast((o) => o.sid === r.sid)?.text, said = plain(sent || s.prompt);
+  const s = r.s, seat = inboxSeats.get(r.sid), sent = outbox.findLast((o) => o.sid === r.sid)?.text, said = (!sent && cueMsgPlain(s.prompt, nameOf(r.sid, s.project))) || plain(sent || s.prompt);
   const answered = r.it && answering.has(r.it.id) && !sent ? `You answered: ${r.it.kind === "waiting" ? inboxEndQuestion(finishedText(r.it)) || "its reply" : inboxAskSubject(r.it)}` : "";
   const subj = answered || (said ? (sent || seat?.from === "need" ? `You: “${said}”` : said) : "Working");
   const stuck = s.stuck_ms && !s.compacting_ms ? `No new output for ${ago(s.stuck_ms)}` : "";
@@ -735,7 +735,9 @@ const inboxStepHtml = (l) => `<div class="ib-step ${l.bad ? "bad" : ""} ${l.live
  *  its context, and its full chat and diff as links. */
 function inboxAside(r) {
   const you = inboxYouAsked(r), sid = esc(r.sid);
-  const asked = you ? `<div class="ib-blk"><div class="ib-k">You asked${you.at ? ` · ${ago(you.at)} ago` : ""}</div><div class="ib-you">${esc(plain(you.text))}</div></div>` : "";
+  // Cue's own message (a send-back, a reopen…, #478): what Cue asked, in one plain line, not its instructions.
+  const cue = you && cueMsgPlain(you.text, nameOf(r.sid, r.s?.project));
+  const asked = you ? `<div class="ib-blk"><div class="ib-k">${cue ? "Cue asked" : "You asked"}${you.at ? ` · ${ago(you.at)} ago` : ""}</div><div class="ib-you">${esc(cue || plain(you.text))}</div></div>` : "";
   const ctx = inboxCtx(r.s) ? `<div class="ib-blk"><div class="ib-k">Context</div><div class="ib-ctx">${inboxMeter(r.s, "wide")}<span>${inboxCtx(r.s)}%</span></div></div>` : "";
   const links = `<div class="ib-links"><button class="ib-link" data-inbox-diff="${sid}">Diff</button></div>`;
   return `<aside class="ib-page-body ib-aside" data-scroll-key="inbox-aside">${inboxLive(r).html}${inboxOpenBlock()}${asked}${inboxDid(r)}${inboxChangedBlock(r)}${ctx}${links}</aside>`;
