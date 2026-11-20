@@ -1857,10 +1857,10 @@ test("the sessions on the left: working first, then each group most recent first
   });
   await cue.change((st) => st.desk.projects.find((d) => d.project === "cue").members.push("older", "newest", "middle"));
   const ids = () => page.locator(".dk-sessions .dk-scroll > *").evaluateAll((els) => els.map((el) => el.matches(".dk-sdiv") ? "—" : el.matches(".dk-gh") ? `# ${el.firstChild.textContent.trim()}` : el.dataset.deskChatOf || el.dataset.deskCrew));
-  await expect.poll(ids).toEqual(["# Working", "host", "# On the Desk", "newest", "middle", "older"]);
+  await expect.poll(ids).toEqual(["# Working", "host", "# Idle", "newest", "middle", "older"]);
   // One comes back from its reply: it moves to the top of its group.
   await cue.change((st) => { st.sessions.find((x) => x.session_id === "older").since_ms = Date.now(); });
-  await expect.poll(ids).toEqual(["# Working", "host", "# On the Desk", "older", "newest", "middle"]);
+  await expect.poll(ids).toEqual(["# Working", "host", "# Idle", "older", "newest", "middle"]);
 });
 
 /** The Desk run by host instead, so "lead" (with its crew) is a session in the list like any other. */
@@ -1876,7 +1876,7 @@ test("three columns: the project's sessions on the left, the lead's chat in the 
   // A Desk member with no item.
   await cue.change((st) => st.sessions.push({ ...st.sessions.find((x) => x.session_id === "site"), session_id: "spare", project: "cue", name: "spare", thread: [] }));
   // The Desk's lead as a "Run by" card in the head strip, with no crew, not even old ones; the list under it: Working
-  // first (host-lead), then On the Desk.
+  // first (host-lead), then Idle.
   await cue.change((st) => { const l = st.sessions.find((x) => x.session_id === "lead"); l.team.push({ ...l.team[0], agent_id: "id-old", call: "id-old", name: "old", state: "committed" }); });
   await cue.change((st) => st.desk.projects.find((d) => d.project === "cue").members.push("spare"));
   const left = page.locator(".dk-sessions");
@@ -1901,7 +1901,7 @@ test("three columns: the project's sessions on the left, the lead's chat in the 
   await expect(left.locator(".dk-strip .dk-sub")).toHaveText("2 sessions · 1 working");
   const rows = await left.locator(".dk-scroll > *").evaluateAll((els) => els.map((el) => el.matches(".dk-sdiv") ? "—" : el.matches(".dk-gh") ? `# ${el.textContent.trim()}`
     : `${el.matches(".crew") ? "  " : ""}${el.dataset.deskLeadChat || el.dataset.deskChatOf || el.dataset.deskCrew}${el.querySelector(".dk-pill") ? ` [${el.querySelector(".dk-pill").textContent}]` : ""}`));
-  expect(rows).toEqual(["# Working 1", "host", "# On the Desk 1", "spare"]);
+  expect(rows).toEqual(["# Working 1", "host", "# Idle 1", "spare"]);
   await expect(left.locator('[data-desk-chat-of="host"] .dk-s2')).toContainText("#d5");
   // On no item: no item line (#179).
   await expect(left.locator('[data-desk-chat-of="spare"] .dk-w')).toHaveCount(0);
@@ -2366,17 +2366,17 @@ test("working sessions show first in a Working group; a session moves when its s
   const left = page.locator(".dk-sessions");
   const order = () => left.locator(".dk-scroll > *").evaluateAll((els) => els.map((el) => el.matches(".dk-sdiv") ? "—" : el.matches(".dk-gh") ? `# ${el.firstChild.textContent.trim()}`
     : `${el.matches(".crew") ? "  " : ""}${el.dataset.deskLeadChat || el.dataset.deskChatOf || el.dataset.deskCrew}`));
-  const before = ["# Working", "host", "# On the Desk", "spare"];
+  const before = ["# Working", "host", "# Idle", "spare"];
   await expect.poll(order).toEqual(before);
   // A click lights a row where it is.
   await left.locator('[data-desk-chat-of="spare"]').click();
   await expect(left.locator('[data-desk-chat-of="spare"]')).toHaveClass(/\bon\b/);
   expect(await order()).toEqual(before);
-  // spare starts work: it moves up to Working, after host; host stops: it leaves Working for On the Desk.
+  // spare starts work: it moves up to Working, after host; host stops: it leaves Working for Idle.
   await cue.change((st) => { st.sessions.find((x) => x.session_id === "spare").state = "working"; });
   await expect.poll(order).toEqual(["# Working", "host", "spare"]);
   await cue.change((st) => { st.sessions.find((x) => x.session_id === "host").state = "idle"; });
-  await expect.poll(order).toEqual(["# Working", "spare", "# On the Desk", "host"]);
+  await expect.poll(order).toEqual(["# Working", "spare", "# Idle", "host"]);
 });
 
 test("an idle session whose crew is at work is listed under Working, its working crew first, never below idle sessions", async ({ page, cue }) => {
@@ -2391,7 +2391,7 @@ test("an idle session whose crew is at work is listed under Working, its working
   const left = page.locator(".dk-sessions");
   const order = () => left.locator(".dk-scroll > *").evaluateAll((els) => els.map((el) => el.matches(".dk-sdiv") ? "—" : el.matches(".dk-gh") ? `# ${el.firstChild.textContent.trim()}`
     : el.matches(".dk-sfold") ? null : `${el.matches(".crew") ? "  " : ""}${el.dataset.deskLeadChat || el.dataset.deskChatOf || el.dataset.deskCrew}`).filter(Boolean));
-  await expect.poll(order).toEqual(["# Working", "spare", "  m2", "  m1", "# On the Desk", "host"]);
+  await expect.poll(order).toEqual(["# Working", "spare", "  m2", "  m1", "# Idle", "host"]);
   // Its row shows the idle mark, but its crew works, so the strip's meta line counts it as working: working means
   // working (#402).
   await expect(left.locator('[data-desk-chat-of="spare"] .dk-st > i.idle')).toHaveCount(1);

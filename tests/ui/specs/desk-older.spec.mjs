@@ -20,7 +20,7 @@ const twoIdle = async (cue) => {
   });
 };
 
-test("idle sessions with no recent item fold into one older line, shut until you open it", async ({ page, cue }) => {
+test("idle sessions with no recent item fold into one cold line at the end of Idle, shut until you open it", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await twoIdle(cue);
@@ -28,11 +28,18 @@ test("idle sessions with no recent item fold into one older line, shut until you
   await expect(side.locator('[data-desk-chat-of="busy"]')).toHaveCount(1);
   await expect(side.locator('[data-desk-chat-of="spare"]')).toHaveCount(0);
   const fold = side.locator('[data-desk-older="side:cue"]');
-  await expect(fold).toHaveText("1 older · show");
+  await expect(fold).toHaveText("1 cold · show");
+  // One Desk list (#428): Working, then Idle, the cold line last; the counts add up to the strip's session count.
+  const heads = await side.locator(".dk-scroll > .dk-gh").evaluateAll((els) => els.map((el) => el.textContent.trim().replace(/\s+/g, " ")));
+  expect(heads).toEqual(["Working 1", "Idle 2"]);
+  await expect(side.locator(".dk-scroll > *").last()).toHaveAttribute("data-desk-older", "side:cue");
+  await expect(side.locator(".dk-strip .dk-sub")).toHaveText(/^3 sessions/);
+  await expect(side.locator(".dk-scroll")).not.toContainText("On the Desk");
+  await expect(side.locator(".dk-scroll [title]")).toHaveCount(0);
   await expect(fold).toHaveAttribute("aria-expanded", "false");
   await fold.click();
   await expect(side.locator('[data-desk-chat-of="spare"]')).toHaveCount(1);
-  await expect(fold).toHaveText("1 older · hide");
+  await expect(fold).toHaveText("1 cold · hide");
 });
 
 test("Give to… lists the sessions with work, the rest under one older line", async ({ page, cue }) => {

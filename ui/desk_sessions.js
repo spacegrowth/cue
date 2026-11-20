@@ -121,13 +121,15 @@ function deskSessions(project, taskApprovals) {
   const recent = (list) => list.sort((a, b) => (b.since_ms || 0) - (a.since_ms || 0));
   const atWork = recent(mine.filter(busy));
   // The rest: with work on the Desk (an item it holds, or one done in the last day) first; the others, idle with no
-  // recent item, fold into one "N older" line, shut by default (#363).
+  // recent item, fold into one "N cold" line, shut by default (#363, #428).
   const on = recent(mine.filter((s) => !busy(s))).map((s) => ({ s, work: deskHasWork(d, s.session_id) }));
   const group = (title, list) => (list.length ? `<div class="dk-gh">${title} <span class="n">${list.length}</span></div>${list.map((s) => row(s)).join("")}` : "");
   // The strip's meta line counts this Desk's sessions, and the working ones as the Working group lists them: working
   // itself, or its helpers ("agent") or crew at work; working means working (#402).
   const runs = atWork.length;
-  const onGroup = on.length ? `<div class="dk-gh">On the Desk <span class="n">${on.length}</span></div>${deskWithOlder(`side:${project}`, on, (r) => row(r.s))}` : "";
+  // One Desk list (#428): Working, then Idle; Idle's count takes in the cold ones folded at its end, so the two add up
+  // to the strip's session count.
+  const onGroup = on.length ? `<div class="dk-gh">Idle <span class="n">${on.length}</span></div>${deskWithOlder(`side:${project}`, on, (r) => row(r.s), undefined, "cold")}` : "";
   const body = group("Working", atWork) + onGroup || '<div class="dk-empty">No other sessions on this Desk.</div>';
   const picking = deskAddingSession === project;
   // Add session offers this Desk's own sessions (ticked), then a light line and only free, recent ones: none another

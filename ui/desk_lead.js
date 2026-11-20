@@ -75,10 +75,11 @@ const deskHasWork = (d, sid) => !d.with_work || d.with_work.includes(sid);
  *  and shut again when the window opens. */
 const deskOlderOpen = new Set();
 /** A list's `rows` with work, each by `draw`; then the rest (idle, no recent item) folded into one "N older" line
- *  that opens in place (data-desk-older). `rows` carry `work`, as deskSessionsOf's do. */
-function deskWithOlder(key, rows, draw, cls = "dk-sfold dk-older") {
+ *  (`word`: "cold" on the Desk's left column, #428) that opens in place (data-desk-older). `rows` carry `work`, as
+ *  deskSessionsOf's do. */
+function deskWithOlder(key, rows, draw, cls = "dk-sfold dk-older", word = "older") {
   const now = rows.filter((r) => r.work), older = rows.filter((r) => !r.work), open = deskOlderOpen.has(key);
-  const fold = older.length ? `<button class="${cls}" data-desk-older="${esc(key)}" aria-expanded="${open}">${older.length} older · ${open ? "hide" : "show"}</button>${open ? older.map(draw).join("") : ""}` : "";
+  const fold = older.length ? `<button class="${cls}" data-desk-older="${esc(key)}" aria-expanded="${open}">${older.length} ${word} · ${open ? "hide" : "show"}</button>${open ? older.map(draw).join("") : ""}` : "";
   return now.map(draw).join("") + fold;
 }
 
