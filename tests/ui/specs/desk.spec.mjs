@@ -1417,10 +1417,10 @@ test("a reply of only routing lines is short lines at the left: TITLE and ROUTE,
   await ln.nth(0).locator(".dk-sl-r").dispatchEvent("click");
   await expect(ln.nth(0).locator(".dk-sl-d")).toHaveText("A longer title the lead gave it, long enough that it would wrap on a narrow chat");
   const dir = process.env.SHOT_DIR || process.env.TMPDIR || "/tmp";
-  await last.screenshot({ path: `${dir}/cue-desk-lead-lines-light.png` });
+  await expect(() => last.screenshot({ path: `${dir}/cue-desk-lead-lines-light.png`, timeout: 1000 })).toPass(); // (a steps load can redraw the row mid-shot)
   await page.emulateMedia({ colorScheme: "dark" });
   await expect(ln.nth(1).locator("button.dk-say-id").first()).not.toHaveCSS("color", "rgb(0, 0, 0)");
-  await last.screenshot({ path: `${dir}/cue-desk-lead-lines-dark.png` });
+  await expect(() => last.screenshot({ path: `${dir}/cue-desk-lead-lines-dark.png`, timeout: 1000 })).toPass(); // (a steps load can redraw the row mid-shot)
   // Its title opens the item.
   await ln.nth(1).locator(".dk-sl-it").click();
   await expect.poll(() => page.evaluate(() => deskOpen && [deskOpen.kind, deskOpen.id])).toEqual(["item", "d2"]);

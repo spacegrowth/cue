@@ -242,10 +242,15 @@ if (typeof document !== "undefined") {
 }
 
 // ---------- the lead's own lines, drawn in its chat ----------
+/** A card's words in the lead's chat cut to two lines under its one-line head (#452: at most three lines a card), with
+ *  More to open the rest in place and Less to fold it (core.js reqCut, the permission cards' own). `key`: what keeps it
+ *  open through redraws; `html` the words drawn, `text` them plain (how long they are). */
+const deskCut = (key, cls, html, text) => reqCut(`dk:${key}`, `<div class="${cls} req-t">${html}</div>`, String(text ?? "").replace(/<[^>]*>/g, ""), 2, 140);
 /** A Desk line as desk/parse.rs reads it: its word in capitals, a list mark or bold around it. DECIDED is md's own
  *  block, so not here; ASK is left out of the text (#427): Cue files it as a question, which the chat shows once as a
- *  small card ("Asked: …", your answer beside it once you give it) and the pop-up answers. */
-const DESK_SAY = /^[-*+ ]*(ITEM|ROUTE|DONE|CONTEXT|DESIGNS|TITLE|SEE|MERGE|ASK)\**\s*:(.*)$/;
+ *  small card ("Asked: …", your answer beside it once you give it) and the pop-up answers. NOTE (#449) is a small card
+ *  too: "Note to cue-387 · Feature #418", the message under it. */
+const DESK_SAY = /^[-*+ ]*(ITEM|ROUTE|DONE|CONTEXT|DESIGNS|TITLE|SEE|MERGE|ASK|NOTE)\**\s*:(.*)$/;
 const DESK_KINDS = ["bug", "feature", "task"];
 /** `line` of a Desk chat's reply as one short plain sentence at the left (md's `lines` hook; #157, #173): ROUTE "Gave
  *  Task #2 to who" (or "Task #2 waits on #1"); ITEM "Added Bug #2: title"; DONE "Bug #2 is done"; TITLE "Renamed Bug
@@ -277,7 +282,7 @@ function deskLineHtml(line, inline) {
   const ln = (head, more) => {
     const key = `${m[1]}:${body}`, open = !!more && deskLnOpen.has(key);
     const row = more ? `<div class="dk-sl-r why" role="button" tabindex="0" data-desk-why="${esc(key)}" aria-expanded="${open}"><span class="dk-sl-h">${head}</span></div>` : `<span class="dk-sl-r"><span class="dk-sl-h">${head}</span></span>`;
-    return `<div class="dk-say dk-sl${open ? " open" : ""}">${row}${open ? `<div class="dk-sl-d">${more}</div>` : ""}</div>`;
+    return `<div class="dk-say dk-sl${open ? " open" : ""}">${row}${open ? deskCut(key, "dk-sl-d", more, more) : ""}</div>`;
   };
   const who = (s) => `<b class="dk-rt-to">${esc(s)}</b>`;
   const dot = (xs) => xs.filter(Boolean).join(" · ");
@@ -331,6 +336,16 @@ function deskLineHtml(line, inline) {
     const why = find("why");
     return ln(`Folded ${ref(from, undefined, true)} into ${ref(to)}`, dot([titled(known(to)), why ? inline(why) : ""]));
   }
+  if (m[1] === "NOTE") {
+    // "NOTE: #418 | words" (desk_route.rs note): who it went to, as Cue noted it ("note to cue-387"), else who holds it.
+    const at = p[0].startsWith("#") && !p[0].includes(" ") && id(p[0]), words = body.slice(body.indexOf("|") + 1).trim();
+    if (!body.includes("|")) return "";
+    if (!at || !words) return "";
+    const it = known(at), d = it && deskOf(it.project);
+    const sent = (d?.decisions || []).find((x) => x.item_id === it.id && x.text === words && /^note to /.test(x.why || ""));
+    const to = sent ? sent.why.slice(8) : it?.holder ? deskHolderName(it.holder.sid, it.holder.name) : "";
+    return `<div class="dk-say dk-note"><div class="dk-note-h">Note${to ? ` to ${who(to)}` : ""} · ${ref(at, it)}</div>${deskCut(`note:${body}`, "dk-note-t", inline(words), words)}</div>`;
+  }
   if (m[1] === "DESIGNS") {
     // "#135 https://…" (as parse.rs designs): the link alone, under the words, as the item page has it.
     const url = /^#\S+\s.*?(https?:\/\/[^\s>)\]"`*]+)/.exec(body)?.[1]?.replace(/[.,;]+$/, "");
@@ -373,7 +388,7 @@ function deskStopNote(e) {
   return `<div class="dk-news"><div class="dk-sn"><div class="dk-sn1"><span class="dk-sn-cue"><i></i>Cue</span><span>·</span><span class="dk-sn-w${fail || loose ? " red" : ""}">${what}</span><span class="dk-cl-age">${ago(e.at_ms)}</span></div>`
     + `<div class="dk-sn2">${deskItemRef(id, it?.kind || "", deskNum(it || { id }), it?.title || said)}</div>`
     + `<div class="dk-sn3">${plain}</div>`
-    + (last ? `<div class="dk-sn-last">Its last line: <span>${esc(last)}</span></div>` : "")
+    + (last ? deskCut(`last:${id}:${e.at_ms}`, "dk-sn-last", `Its last line: <span>${esc(last)}</span>`, `Its last line: ${last}`) : "")
     + (files.length ? `<details class="dk-sn-f"><summary>${files.length} file${files.length > 1 ? "s" : ""} not committed</summary><div class="dk-sn-fl">${files.map(esc).join("<br>")}</div></details>` : "")
     + `</div></div>`;
 }
@@ -430,7 +445,7 @@ function deskNewCard([, id, said = "", rest], known, at) {
     return [see ? `you'll see ${esc(see[1])}` : esc(x)];
   });
   return `<div class="dk-nc" role="button" tabindex="0" data-desk-chk-item="${esc(id)}"><div class="dk-nc1">${deskKindIcon(kind)}<b class="dk-inum">${esc(deskNum({ id, kind }))}</b><span class="dk-cl-age">${ago(at)}</span></div>`
-    + `<div class="dk-nc-t">${esc(title)}</div>${words ? `<div class="dk-nc-w">${esc(words)}</div>` : ""}`
+    + `<div class="dk-nc-t">${esc(title)}</div>${words ? deskCut(`nc:${id}`, "dk-nc-w", esc(words), words) : ""}`
     + `${sub.length ? `<div class="dk-nc2">${sub.join(" · ")}</div>` : ""}${thumbs(pics)}</div>`;
 }
 /** An item in a Desk chat's line: its kind's icon and number in bold, then its title (a click on either opens it). */

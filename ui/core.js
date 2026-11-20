@@ -593,6 +593,11 @@ function reqCut(key, inner, text, lines = 3, chars = 180) {
   const open = reqOpen.has(key);
   return `<div class="req-cut${open ? " open" : ""}" style="--cut-lines:${lines}">${inner}<button class="req-more" data-req-more="${esc(key)}" aria-expanded="${open}">${open ? "less" : "more"}</button></div>`;
 }
+/** After a draw: a cut whose words fit in their lines after all (reqCut guesses by length; a wide window fits more)
+ *  hides its More, so More always has more under it (#452). */
+function reqFit() {
+  for (const t of document.querySelectorAll(".req-cut:not(.open) > .req-t")) t.parentElement.classList.toggle("fits", t.scrollHeight <= t.clientHeight + 1);
+}
 // Before any row's own click (capture): more / less opens or folds just the words, not the row it sits on.
 document.addEventListener("click", (e) => {
   const b = e.target.closest?.("[data-req-more]");

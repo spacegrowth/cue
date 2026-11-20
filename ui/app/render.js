@@ -202,6 +202,7 @@ function afterDraw(was, lifted, kept) {
   tellChatOpen(chat);
   restoreFocus(was);
   fitAfterDraw(was.focused);
+  reqFit();
 }
 /** What floats over the window, back under what it belongs to. */
 function placeFloating() {

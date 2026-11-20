@@ -33,9 +33,8 @@ test("the lead's own moves show in its chat and, for a while, in the panel; its 
   await expect(chat.locator(".dk-act")).toHaveCount(3);
   const a2 = chat.locator('.dk-act[data-key="act:a2"]');
   await expect(a2.locator(".dk-sl-h")).toHaveText("Moved #d3 up in the landing line");
-  await expect(a2.locator(".dk-sl-d")).toHaveCount(0);
-  await a2.locator(".dk-cl-age").click();
   await expect(a2.locator(".dk-sl-d")).toHaveText("the user waits on it");
+  await expect(a2.locator(".req-more")).toHaveCount(0);
   await expect(chat.locator('.dk-act[data-key="act:a3"]')).toContainText("Closed #d8: its work is on main (ab12cd3)");
   // In the panel: only the last ones, newest first; the close two hours ago has dropped off.
   const panel = page.locator(".dk-right .dk-panel");
@@ -104,23 +103,52 @@ test("Just did and Working read as lines, not pieces, at the panel's narrowest (
   await expect(page.locator('.dk-right .dk-tab[data-desk-tab="moves"]')).toHaveAttribute("aria-pressed", "true");
 });
 
-test("a reopen with long feedback is one short line at the left in the lead's chat, the feedback folded under it (#433)", async ({ page, cue }) => {
+test("a long reopen, note and start each show at most three lines in the lead's chat, More opening the rest in place and Less folding it (#433, #452)", async ({ page, cue }) => {
   await page.setViewportSize({ width: 1728, height: 1000 });
   await cue.open("desk");
   await openDesk(page);
-  const why = "The phrases still sit on the wrong side of Send, the hint text overlaps them at narrow widths, and the undo button vanishes after a second send; fix all three and check it on a small window before saying done again.";
+  // A reopen like #418's: twelve lines of feedback.
+  const why = Array.from({ length: 12 }, (_, n) => `${n + 1}. The right column must stay the item list while its page is open, and the chat beside it keeps its width.`).join("\n");
+  const note = "Top priority from Robin: as soon as the scroll test passes, commit, land it and install, then check the item's page in the installed app at a small window and at a wide one, and only then say DONE.";
+  const start = "it only reads and writes one doc, no code; it shouldn't wait behind five items that each need a copy of the code, and Robin is waiting on it right now, so it starts at once: the recovered notes go to him at seven in the morning, before he opens the Desk, with what was lost and what came back.";
+  await cue.change((st, { a }) => { st.desk.projects.find((p) => p.project === "cue").decisions.push(...a); }, { a: [
+    act("r1", "d3", "send_back", "Reopened #d3 for cue-387", why, NOW - 3 * 60 * 1000),
+    act("s1", "d4", "start", "Started #d4 now, without waiting for a copy", start, NOW - 2 * 60 * 1000),
+  ] });
+  await page.evaluate((t) => { sessionOf("lead").thread.push({ at_ms: Date.now(), role: "agent", text: t }); renderMain(); }, `NOTE: #d2 | ${note}`);
+  const chat = page.locator(".dk-chat");
+  const cards = [chat.locator('.dk-act[data-key="act:r1"]'), chat.locator('.dk-act[data-key="act:s1"]'), chat.locator(".dk-note")];
+  await expect(cards[0].locator(".dk-sl-h")).toHaveText("Reopened #d3 for cue-387");
+  const lines = (l) => l.evaluate((e) => { const t = e.querySelector(".req-t"), lh = parseFloat(getComputedStyle(t).lineHeight); return Math.round(t.getBoundingClientRect().height / lh); });
+  for (const card of cards) {
+    // Its head, then its words cut to two lines, then More.
+    await expect(card.locator(".req-more")).toHaveText(/^more$/i);
+    await expect.poll(() => lines(card), { message: "two lines under the head" }).toBeLessThanOrEqual(2);
+    await expect.poll(() => card.locator(".req-t").evaluate((e) => e.scrollHeight > e.clientHeight + 1), { message: "cut" }).toBe(true);
+    await expect(card.locator(".req-more")).toHaveCSS("text-transform", "capitalize");
+  }
+  // More opens the whole reopen in place; Less folds it again.
+  const r = cards[0];
+  await r.locator(".req-more").click();
+  await expect(r.locator(".req-more")).toHaveText(/^less$/i);
+  await expect.poll(() => lines(r)).toBeGreaterThan(10);
+  await expect(r.locator(".req-t")).toContainText("12. The right column");
+  // In the panel's Just did, the same reopen is cut to two lines too.
+  const did = page.locator(".dk-right .dk-panel .dk-pdid", { hasText: "Reopened" }).locator(".dk-prs");
+  await expect.poll(() => did.evaluate((e) => Math.round(e.getBoundingClientRect().height / parseFloat(getComputedStyle(e).lineHeight)))).toBeLessThanOrEqual(2);
+  await r.locator(".req-more").click();
+  await expect.poll(() => lines(r)).toBeLessThanOrEqual(2);
+  // Open stays open through a redraw; the other cards stay cut.
+  await r.locator(".req-more").click();
+  await page.evaluate(() => renderMain());
+  await expect(r.locator(".req-more")).toHaveText(/^less$/i);
+  await expect.poll(() => lines(cards[1])).toBeLessThanOrEqual(2);
+  await expect(chat.locator("[title]")).toHaveCount(0);
+  // Words that fit in two lines have no More.
   await cue.change((st, { a }) => { st.desk.projects.find((p) => p.project === "cue").decisions.push(a); },
-    { a: act("r1", "d3", "send_back", "Reopened #d3 for cue-12", why, NOW - 2 * 60 * 1000) });
-  const chat = page.locator(".dk-chat"), row = chat.locator('.dk-act[data-key="act:r1"]');
-  await expect(row.locator(".dk-sl-h")).toHaveText("Reopened #d3 for cue-12");
-  await expect(row).not.toContainText("wrong side of Send");
-  const box = await row.boundingBox(), lh = await row.evaluate((e) => parseFloat(getComputedStyle(e).lineHeight));
-  expect(box.height, "one line").toBeLessThan(lh * 1.6);
-  const left = await chat.locator(".dk-act").first().evaluate((e) => e.querySelector(".dk-sl-r").getBoundingClientRect().left - e.getBoundingClientRect().left);
-  expect(left, "at the left").toBeLessThan(4);
-  // A click opens the feedback under it; another folds it again.
-  await row.locator(".dk-cl-age").click(); // (the item number in it opens the item)
-  await expect(row.locator(".dk-sl-d")).toHaveText(why);
-  await row.locator(".dk-cl-age").click(); // (the item number in it opens the item)
-  await expect(row.locator(".dk-sl-d")).toHaveCount(0);
+    { a: act("s2", "d5", "start", "Started #d5 now, without waiting for a copy", "it is mocks only: no code, no copy needed, and it should not wait behind five items that need one today", NOW - 60 * 1000) });
+  const short = chat.locator('.dk-act[data-key="act:s2"]');
+  await expect(short.locator(".dk-sl-d")).toBeVisible();
+  await expect(short.locator(".req-more")).toBeHidden();
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/lead-cards.png` });
 });
