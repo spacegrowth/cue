@@ -81,6 +81,35 @@ fn committed_since(top: &str, at: u64, paths: &[String]) -> bool {
     git("", top, &[], &args).is_some_and(|o| !o.trim().is_empty())
 }
 
+/// Whether a commit on main since `at` (ms) changed one of `files` (absolute, outside the item's folder) in its own
+/// repository: work landed in a repository beside the project's (#465: a private one linked into it, whose commits
+/// the project's main never shows). A file whose folder is gone is left out.
+fn landed_elsewhere(files: &[String], at: u64) -> bool {
+    let mut tops: Vec<(String, Option<String>)> = Vec::new();
+    let mut by_main: Vec<(String, Vec<String>)> = Vec::new();
+    for f in files {
+        let path = std::path::Path::new(f);
+        let (Some(dir), Some(name)) = (path.parent().and_then(|d| std::fs::canonicalize(d).ok()), path.file_name()) else { continue };
+        let dir = dir.to_string_lossy().to_string();
+        let top = match tops.iter().find(|(d, _)| *d == dir) {
+            Some((_, t)) => t.clone(),
+            None => {
+                let t = git("", &dir, &[], &["rev-parse", "--show-toplevel"]).map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
+                tops.push((dir.clone(), t.clone()));
+                t
+            }
+        };
+        let Some(top) = top else { continue };
+        let Some(rel) = std::path::Path::new(&dir).join(name).strip_prefix(&top).ok().map(|r| r.to_string_lossy().to_string()) else { continue };
+        let Some((main, _)) = main_checkout(&top) else { continue };
+        match by_main.iter_mut().find(|(m, _)| same_dir(m, &main)) {
+            Some((_, paths)) => paths.push(rel),
+            None => by_main.push((main, vec![rel])),
+        }
+    }
+    by_main.iter().any(|(main, paths)| committed_since(main, at, paths))
+}
+
 /// Whether a commit on one of item `id`'s own branches in `top`'s repository made since `at` (ms) is on main now.
 fn branch_landed_since(top: &str, id: &str, at: u64) -> bool {
     let Some(main) = main_ref(top) else { return false };
@@ -134,7 +163,11 @@ impl Hub {
             let here = |folder: &str| main_checkout(folder).is_some_and(|(m, _)| same_dir(&m, top));
             sources.iter().filter(|(f, _)| here(f)).flat_map(|(_, paths)| paths.iter().cloned()).collect()
         };
-        if it.commit_in.len() > had || merged || self.item_repos(&it).iter().any(|top| committed_since(top, at, &own(top)) || branch_landed_since(top, id, at)) {
+        if it.commit_in.len() > had
+            || merged
+            || self.item_repos(&it).iter().any(|top| committed_since(top, at, &own(top)) || branch_landed_since(top, id, at))
+            || landed_elsewhere(&self.desk_edits_elsewhere(id), at)
+        {
             self.finish_set(id, |i| i.reopened = None);
             return false;
         }

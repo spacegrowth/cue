@@ -239,6 +239,34 @@ pub fn writes(command: &str) -> Vec<String> {
     found
 }
 
+/// Where `command`'s first command other than `cd`/`pushd` runs, as `writes` tells it: relative to where it started
+/// ("" there), or absolute after an absolute `cd`; None once a `cd` went somewhere it can't tell. An inline script's
+/// paths (logs/steps/edits.rs) are read from there: `cd ../other && python3 - <<'EOF'` writes in ../other.
+pub fn runs_in(command: &str) -> Option<String> {
+    let toks = lex(command);
+    let mut here: Option<String> = Some(String::new());
+    for cmd in toks.split(|t| *t == Tok::Sep) {
+        let mut words = cmd.iter().filter_map(|t| match t {
+            Tok::Word { text, plain } => Some((text.as_str(), *plain)),
+            _ => None,
+        });
+        let Some((name, true)) = words.next() else { continue };
+        if !matches!(name.rsplit('/').next().unwrap_or(name), "cd" | "pushd") {
+            return here;
+        }
+        here = match words.next() {
+            Some((d, true)) if d != "-" => resolve(here.as_deref(), d).filter(|d| !d.starts_with("/dev")),
+            _ => None,
+        };
+    }
+    here
+}
+
+/// `p` as a command running in `here` (`runs_in`) names it: absolute, or relative to where the command started.
+pub fn from_dir(here: Option<&str>, p: &str) -> Option<String> {
+    resolve(here, p)
+}
+
 /// `p` (from `here`) into `found`, once.
 fn wrote(found: &mut Vec<String>, here: Option<&str>, p: &str) {
     if let Some(f) = resolve(here, p) {

@@ -104,7 +104,7 @@ pub fn edited_between_named(path: &str, from: u64, until: u64) -> Vec<(String, b
             let input = &b["input"];
             let (files, named) = match b.get("name").and_then(Value::as_str).unwrap_or("") {
                 "Edit" | "MultiEdit" | "Write" | "NotebookEdit" => (input.get("file_path").or_else(|| input.get("notebook_path")).and_then(Value::as_str).map(str::to_string).into_iter().collect(), true),
-                "Bash" => (input.get("command").and_then(Value::as_str).map(|c| [crate::sessions::shell_writes::writes(c), script_writes(c)].concat()).unwrap_or_default(), false),
+                "Bash" => (input.get("command").and_then(Value::as_str).map(|c| [crate::sessions::shell_writes::writes(c), script_writes_in(c)].concat()).unwrap_or_default(), false),
                 _ => (vec![], false),
             };
             for f in files.into_iter().filter(|f| !f.trim().is_empty()) {
@@ -116,6 +116,13 @@ pub fn edited_between_named(path: &str, from: u64, until: u64) -> Vec<(String, b
         }
     }
     out
+}
+
+/// `script_writes`, each path as seen from where the command started: a script run after `cd` writes there.
+fn script_writes_in(command: &str) -> Vec<String> {
+    use crate::sessions::shell_writes::{from_dir, runs_in};
+    let here = runs_in(command);
+    script_writes(command).into_iter().filter_map(|p| from_dir(here.as_deref(), &p)).collect()
 }
 
 /// The paths an inline script (a Python heredoc, say) may write: when it opens a file to write (`open(…, 'w')`,
@@ -143,12 +150,21 @@ fn script_writes(command: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::script_writes;
+    use super::{script_writes, script_writes_in};
 
     #[test]
     fn a_script_that_writes_names_its_files_and_one_that_only_reads_names_none() {
         let edit = "python3 - <<'EOF'\np='src/hub/desk.rs'\ns=open(p).read()\nopen(p,'w').write(s.replace('a b', 'x'))\nopen(\"ui/desk.js\", \"w\")\nEOF";
         assert_eq!(script_writes(edit), ["src/hub/desk.rs", "ui/desk.js"]);
         assert!(script_writes("python3 -c \"print(open('src/hub/desk.rs').read())\"").is_empty());
+    }
+
+    #[test]
+    fn a_script_run_after_cd_names_its_files_where_it_ran() {
+        let edit = |cd: &str| format!("{cd}python3 - <<'EOF'\np='ui/addon.js'\nopen(p,'w').write('x')\nEOF");
+        assert_eq!(script_writes_in(&edit("cd /work/addon/mac && ")), ["/work/addon/mac/ui/addon.js"]);
+        assert_eq!(script_writes_in(&edit("cd mac; ")), ["mac/ui/addon.js"]);
+        assert_eq!(script_writes_in(&edit("")), ["ui/addon.js"]);
+        assert!(script_writes_in(&edit("cd \"$DIR\" && ")).is_empty(), "where it ran can't be told");
     }
 }

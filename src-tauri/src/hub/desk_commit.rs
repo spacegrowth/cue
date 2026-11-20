@@ -87,6 +87,16 @@ impl Hub {
         }
         Ok((it, machine, sources))
     }
+
+    /// The files item `id`'s holder changed outside its own folder while it held it (absolute paths, from its own
+    /// log): work in a repository beside its project's, such as a private one linked into it. Never committed with the
+    /// item (Looks right takes only its folder's); a reopened item's DONE counts them once they're on that main
+    /// (hub/desk_unlanded.rs).
+    pub(super) fn desk_edits_elsewhere(&self, id: &str) -> Vec<String> {
+        let Some(o) = self.read(|st| st.desk.item(id).and_then(|i| own_log(st, i))) else { return Vec::new() };
+        let base = format!("{}/", o.folder.trim_end_matches('/'));
+        crate::logs::steps::edited_between(&o.log, o.from, o.until).into_iter().filter(|f| f.starts_with('/') && !f.starts_with(&base)).collect()
+    }
 }
 
 impl Hub {

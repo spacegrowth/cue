@@ -499,3 +499,43 @@ fn a_teammate_an_item_was_given_to_before_it_moved_away_stays_out_of_its_old_hol
     ends(&w, &h, &format!("Fixed.\nDONE: #{header}"));
     assert_eq!(git(&dir, &["show", "--name-only", "--format=", "HEAD"]).trim(), "a.txt", "footer-fix's file was Footer's");
 }
+
+#[test]
+fn a_reopened_items_done_counts_its_work_landed_in_a_repository_beside_its_project() {
+    // #465: its holder's fix went into a private repository linked into the project, and landed on that one's main.
+    let w = World::new();
+    let beside = std::path::PathBuf::from(format!("{}-beside", w.home().display()));
+    let _ = std::fs::remove_dir_all(&beside);
+    std::fs::create_dir_all(beside.join("mac/ui")).unwrap();
+    git(&beside, &["init", "-q", "-b", "main"]);
+    git(&beside, &["config", "user.email", "t@example.com"]);
+    git(&beside, &["config", "user.name", "T"]);
+    std::fs::write(beside.join("mac/ui/addon.js"), "1\n").unwrap();
+    git(&beside, &["add", "."]);
+    git(&beside, &["commit", "-q", "-m", "start"]);
+    let (_, project, id, h) = routed_with(&w, |_, _, _| {}, |w, h, dir| {
+        std::fs::write(dir.join("a.txt"), "1\n").unwrap();
+        log(w, h).tool_use("toolu_1", "Edit", json!({ "file_path": dir.join("a.txt") }));
+    });
+    ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "to_check");
+    w.hub().desk_item_act(&id, "send_back", "No back arrow there").unwrap();
+    w.settle();
+    w.advance(2000);
+    // Its fix, a script run after cd into the repository beside, not committed yet: nothing landed.
+    let script = format!("cd {} && python3 - <<'EOF'\np='ui/addon.js'\nopen(p,'w').write('2')\nEOF", beside.join("mac").display());
+    log(&w, &h).tool_use("toolu_2", "Bash", json!({ "command": script }));
+    std::fs::write(beside.join("mac/ui/addon.js"), "2\n").unwrap();
+    ends(&w, &h, &format!("Took it out.\nDONE: #{id}"));
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!(it["state"], "working", "{it}");
+    // Landed on that repository's main (dated by Cue's clock, as the reopen was): to check.
+    let when = format!("@{} +0000", crate::clock::now_ms() / 1000 + 1);
+    git(&beside, &["add", "mac/ui/addon.js"]);
+    let o = std::process::Command::new("git").arg("-C").arg(&beside).args(["commit", "-q", "-m", "No back arrow (#465)"]).env("GIT_COMMITTER_DATE", &when).env("GIT_AUTHOR_DATE", &when).output().unwrap();
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    ends(&w, &h, &format!("Landed.\nDONE: #{id}"));
+    let it = item(&w, &project, "Header jumps");
+    let _ = std::fs::remove_dir_all(&beside);
+    assert!(it["state"] == "to_check" && it["reopened"].is_null(), "{it}");
+}
