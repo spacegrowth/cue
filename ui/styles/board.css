@@ -158,10 +158,11 @@ body.col-sizing, body.col-sizing * { cursor: col-resize !important; user-select:
 .field-row { display: flex; align-items: flex-end; gap: 4px; }
 .field textarea { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: 13px; line-height: 1.45; resize: none; padding: 5px 0; max-height: 180px; overflow-y: auto; }
 .field textarea::placeholder { color: var(--muted); }
-.field .icon-btn { width: 30px; height: 30px; flex: none; border-radius: 8px; display: grid; place-items: center; color: var(--muted); }
-.field .icon-btn:hover { color: var(--accent); background: var(--panel-2); }
+/* The box's mic and picture buttons: the same in a session's box and the Desk's (#493). */
+:is(.field, .dk-box) .icon-btn { width: 30px; height: 30px; flex: none; border-radius: 8px; display: grid; place-items: center; color: var(--muted); }
+:is(.field, .dk-box) .icon-btn:hover { color: var(--accent); background: var(--panel-2); }
 /* Dictating: the mic glows and pulses until you click it again or send. */
-.field .icon-btn.mic.on, .dk-box .icon-btn.mic.on { color: var(--on-accent); background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
+:is(.field, .dk-box) .icon-btn.mic.on { color: var(--on-accent); background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
 /* Quick phrases: small chips along the top of a session's box. */
 .quick { display: flex; gap: 5px; flex-wrap: wrap; padding: 5px 0 1px; }
 .qp { height: 22px; padding: 0 9px; border-radius: 6px; font-size: 11.5px; font-weight: 600; color: var(--muted); background: var(--panel-2); }
