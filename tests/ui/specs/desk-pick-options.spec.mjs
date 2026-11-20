@@ -18,7 +18,7 @@ test("a mocks-only item lists its options M1, M2 with a Pick each; a pick closes
   const text = "Two ways on the canvas: https://claude.ai/artifact/MOCKS\n- **M1**: a strip under the header\n- **M2** — a card in the list\nPick one: M1 or M2.";
   await patchItem(cue, "d5", { state: "to_check", title: "Mocks: working items", designs: "", made: ["https://claude.ai/artifact/MOCKS"], finish: { step: "checked", at: Date.now(), mocks: true }, said: [{ at: Date.now(), by: "host-lead", text }] });
   await page.locator('[data-desk-item="d5"] .dk-t').click();
-  const head = page.locator(".dk-iside .dk-pnow");
+  const head = page.locator(".dk-panel[data-side-for] .dk-pnow");
   const opts = head.locator(".dk-opts li");
   await expect(opts).toHaveCount(2);
   await expect(opts.locator(".dk-optk")).toHaveText(["M1", "M2"]);
@@ -32,7 +32,7 @@ test("a mocks-only item lists its options M1, M2 with a Pick each; a pick closes
   for (const theme of ["light", "dark"]) {
     await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
     // The theme redraws the page: again once it's settled.
-    if (process.env.SHOT_DIR) await expect(async () => page.locator(".dk-iside").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-445-${theme}.png`, timeout: 2000 })).toPass();
+    if (process.env.SHOT_DIR) await expect(async () => page.locator(".dk-panel[data-side-for]").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-445-${theme}.png`, timeout: 2000 })).toPass();
   }
   await opts.nth(1).locator('[data-desk-act="pick"]').click();
   await cue.called("desk_item_act", { id: "d5", act: "pick", text: "M2" });
@@ -48,10 +48,10 @@ test("options listed one to a line are picked from even with no pick line; one o
   await openDesk(page);
   await patchItem(cue, "d5", { state: "to_check", designs: "https://claude.ai/artifact/MOCKS", said: [{ at: Date.now(), by: "host-lead", text: "On the canvas:\nA: rows\nB) cards\nC — a table" }] });
   await page.locator('[data-desk-item="d5"] .dk-t').click();
-  const opts = page.locator(".dk-iside .dk-pnow .dk-opts li");
+  const opts = page.locator(".dk-panel[data-side-for] .dk-pnow .dk-opts li");
   await expect(opts.locator(".dk-optk")).toHaveText(["A", "B", "C"]);
   await expect(opts.locator(".dk-optw")).toHaveText(["rows", "cards", "a table"]);
   await patchItem(cue, "d5", { said: [{ at: Date.now(), by: "host-lead", text: "A: the one way, on the canvas." }] });
-  await expect(page.locator(".dk-iside .dk-pnow .dk-opts")).toHaveCount(0);
+  await expect(page.locator(".dk-panel[data-side-for] .dk-pnow .dk-opts")).toHaveCount(0);
   await expect(page.locator(".dk-right .dk-box textarea")).not.toHaveAttribute("placeholder", /^Comments on the mocks/);
 });

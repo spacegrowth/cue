@@ -201,11 +201,11 @@ function deskItemPane(i, d, foot = "") {
   const changed = deskFilesChanged(i), checking = i.state === "to_check" || i.state === "done";
   const read = deskDiffs.get(i.id)?.files, nFiles = (checking ? read?.length : read?.length || null) ?? (i.commit_wait?.files || i.files || []).length;
   const files = changed ? `<div class="dk-fcs">${changed}</div>` : "";
-  // A feature nobody holds is its pieces (#282): its page opens on them. The Steps tab of before is its record now, in
-  // the column at the right.
+  // A feature nobody holds is its pieces (#282): its page opens on them. The Steps tab of before is its Record tab.
   const feat = deskFeat(i), s = deskItemChatOf(i), thread = s ? null : deskThread(i, d);
   let tab = deskItemTabs.get(i.id) || (feat && !i.holder ? "pieces" : "thread");
-  if (tab === "steps") tab = "thread";
+  if (tab === "steps") tab = "record";
+  const steps = deskItemSteps(i, d);
   const tabBtn = (k, label, n) => `<button class="dk-itab${tab === k ? " on" : ""}" role="tab" aria-selected="${tab === k}" data-desk-itab="${k}" data-id="${esc(i.id)}">${label}${n == null ? "" : `<span class="n">${n}</span>`}</button>`;
   // Under the chat, by the newest message and the box: writing why to send it back, what held it up or what it asks, a
   // build log, what it made. Not what it asks when the chat is its holder's and the question is its reply: once, there
@@ -219,9 +219,10 @@ function deskItemPane(i, d, foot = "") {
   const pieceRow = (p) => `<div class="dk-pc${p.state === "done" ? " done" : ""}" role="button" tabindex="0" data-desk-item="${esc(p.id)}">${deskStateIcon(p)}<div class="dk-pc-t">${esc(p.title)}</div><div class="dk-pc-m">${deskKindIcon(p)}<span>${[esc(deskNum(p)), esc(deskHolderOf(p)), `${ago(deskMs(p.state === "done" ? p.done_at || p.updated : p.created))} ago`].filter(Boolean).join(" · ")}</span></div></div>`;
   const body = tab === "pieces" && feat ? `<div class="dk-pcl">${i.pieces.map(pieceRow).join("")}</div>`
     : tab === "decisions" ? deskCallsBox(decs, `item:${i.id}`, deskDecList, `<p class="dk-note">No decisions on it yet.</p>`)
+    : tab === "record" ? deskItemRecord(steps)
     : tab === "files" ? (files ? deskSec(checking ? "Files changed" : deskDiffs.get(i.id)?.files?.length ? "Changed so far" : "Files it's on", files) : `<p class="dk-note">No files on it yet.</p>`)
     : `${s ? deskItemChat(i, d, s) : deskThreadHtml(thread, `${i.project}|${i.id}`)}<div class="dk-inow">${at}</div>`;
-  const main = `<div class="dk-pane dk-ipane${s && tab === "thread" ? " chat" : ""}" data-scroll-key="item:${esc(i.id)}"><div class="dk-ihead"><div class="dk-itabs" role="tablist">${feat ? tabBtn("pieces", "Pieces", i.pieces.length) : ""}${tabBtn("thread", "Chat", null)}${tabBtn("decisions", "Decisions", decs.filter((c) => !c.minor).length)}${tabBtn("files", "Files", nFiles)}</div></div>
+  const main = `<div class="dk-pane dk-ipane${s && tab === "thread" ? " chat" : ""}" data-scroll-key="item:${esc(i.id)}"><div class="dk-ihead"><div class="dk-itabs" role="tablist">${feat ? tabBtn("pieces", "Pieces", i.pieces.length) : ""}${tabBtn("thread", "Chat", null)}${tabBtn("record", "Record", steps.length)}${tabBtn("decisions", "Decisions", decs.filter((c) => !c.minor).length)}${tabBtn("files", "Files", nFiles)}</div></div>
     <div class="dk-ibody dk-itab-${tab}">${body}</div></div>`;
   const sub = s ? `<b>${esc(i.holder.kind === "crew" ? deskHolderName(s.session_id) : i.holder.name)}</b>'s chat · other items' turns folded` : `<span class="dk-state">${deskItemMeta(i, d)}</span>`;
   return deskPage({ page: "item", kind: i.kind, panel: deskItemSide(i, d), aside: ` data-side-for="${esc(i.id)}"`, back: deskBack(deskLeadName(d) || "Back"), mark: `${deskNum(i)} · `, title: esc(i.title), meta: sub, main, foot });
@@ -334,19 +335,16 @@ function deskItemSide(i, d) {
   const open = sid && sessionOf(sid) ? `<button class="btn small" ${deskChatAttrs(sid, d)}>Open ${esc(deskHolderName(sid, h.kind === "crew" ? "" : h.name))}</button>` : "";
   const drop = i.state !== "done" ? `<button class="btn small dk-drop${armed ? " armed" : ""}" data-desk-act="drop" data-id="${esc(i.id)}">${armed ? "Drop it" : "Drop this item"}</button>` : "";
   const foot = open || drop ? `<section class="dk-psec dk-sfoot">${open}${drop}</section>` : "";
-  return `${now}${see}${tryIt}${pics}${deskItemRecord(i, d)}${deskItemFiles(i)}${foot}`;
+  return `${now}${see}${tryIt}${pics}${deskItemFiles(i)}${foot}`;
 }
-/** Item `i`'s record (#418, the Steps tab of before): its hand-offs and what you wrote about it, each a quiet line with
- *  its age, newest last; the last few, with All steps opening the rest in place. */
-const deskRecordAll = new Set();
-function deskItemRecord(i, d) {
-  // The same step said again in a row is one line (its last), not several.
-  const steps = deskItemLog(i, d).filter((c) => !c.call).filter((c, n, all) => !(all[n + 1] && all[n + 1].by === c.by && all[n + 1].text === c.text));
-  if (!steps.length) return "";
-  const all = deskRecordAll.has(i.id), shown = all ? steps : steps.slice(-5);
-  const line = (c) => `<div class="dk-rec"><span class="dk-rec-t">${c.by === "You" ? `You: ${esc(firstLine(c.text))}` : `${esc(c.by)}: ${esc(firstLine(c.text))}`}</span><span class="dk-age"> · ${esc(ago(deskMs(c.at)))}</span></div>`;
-  const more = steps.length > shown.length ? `<button class="dk-rec-more" data-desk-record="${esc(i.id)}">All ${steps.length} steps</button>` : "";
-  return deskPsec("Record", `<div class="dk-recs">${shown.map(line).join("")}</div>${more}`);
+/** Item `i`'s steps for its Record tab (#418, the Steps tab of before): its hand-offs and what you wrote about it.
+ *  The same step said again in a row is one (its last), not several. */
+const deskItemSteps = (i, d) => deskItemLog(i, d).filter((c) => !c.call).filter((c, n, all) => !(all[n + 1] && all[n + 1].by === c.by && all[n + 1].text === c.text));
+/** The Record tab: each step a line with who and its age, newest last. */
+function deskItemRecord(steps) {
+  if (!steps.length) return `<p class="dk-note">Nothing on its record yet.</p>`;
+  const line = (c) => `<div class="dk-rec"><span class="dk-rec-t"><b>${esc(c.by)}</b>: ${esc(c.text)}</span><span class="dk-age"> · ${esc(ago(deskMs(c.at)))} ago</span></div>`;
+  return `<div class="dk-recs">${steps.map(line).join("")}</div>`;
 }
 /** The panel's buttons while you write why to send item `i` back (#394): the same ones in the same place, so nothing
  *  jumps: Looks right greyed, Send back pressed (pressing it again closes the box). */

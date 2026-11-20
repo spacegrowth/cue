@@ -28,7 +28,7 @@ test("an item's page is its holder's chat, other items' turns folded, the item b
   await openItem(page, "d5");
   const right = page.locator(".dk-right"), ichat = right.locator(".dk-ichat");
   await expect(right.locator(".dk-ph3")).toContainText("host-lead's chat · other items' turns folded");
-  await expect(right.locator(".dk-itab")).toHaveText(["Chat", "Decisions0", "Files0"].map((t) => new RegExp(t.replace(/\d/, ""))));
+  await expect(right.locator(".dk-itab")).toHaveText(["Chat", "Record0", "Decisions0", "Files0"].map((t) => new RegExp(t.replace(/\d/, ""))));
   // This item's turn as the chat shows it; #d4's folded to one line.
   await expect(ichat).toContainText("Chose an environment setting over a settings file.");
   await expect(ichat).not.toContainText("Looking at the rail dot.");

@@ -92,8 +92,12 @@ test("an item opens in the middle, its panel beside its chat, its row lit in pla
   await expect(side.locator(".dk-pnow .dk-pword")).toHaveText("Next");
   await expect(pane.locator(".dk-chain")).toContainText("Search stays centred in the header");
   await expect(pane.locator(".dk-chain")).toContainText("This one");
-  // Its record (the Steps tab of before) in its panel.
-  await expect(side.locator(".dk-rec")).toContainText(["Gave it to web-lead after Search"]);
+  // Its record (the Steps tab of before) in its Record tab, beside Chat (#418).
+  await expect(pane.locator('[data-desk-itab="record"] .n')).toHaveText("1");
+  await pane.locator('[data-desk-itab="record"]').click();
+  await expect(pane.locator(".dk-rec")).toContainText(["Gave it to web-lead after Search"]);
+  await expect(side.locator(".dk-rec")).toHaveCount(0);
+  await pane.locator('[data-desk-itab="thread"]').click();
   // The box starts with who gets it and the item, kept as you type (#132); ready to check, it goes back to its holder,
   // and the prefix follows it. The empty box shows the item's short title.
   const ph = page.locator(".dk-right .dk-box textarea"), pre = page.locator(".dk-right .dk-box .dk-pre");
@@ -430,8 +434,9 @@ test("a step (a route, a give) is a quiet line on its item, not a decision", asy
   await cue.open("desk");
   await openDesk(page);
   await page.locator('[data-desk-item="d4"]').click();
-  // In its record at the right (#418, the Steps tab of before), not in its Decisions.
-  const step = page.locator(".dk-panel[data-side-for] .dk-rec", { hasText: "Gave it to web-lead after Search" });
+  // In its Record tab (#418, the Steps tab of before), not in its Decisions.
+  await page.locator('.dk-right [data-desk-itab="record"]').click();
+  const step = page.locator(".dk-right .dk-ipane .dk-rec", { hasText: "Gave it to web-lead after Search" });
   await expect(step).toHaveCount(1);
   await expect(page.locator('.dk-right [data-desk-itab="decisions"] .n')).toHaveText("0");
   await expect(page.locator(".dk-sec h3", { hasText: "Decisions" })).toHaveCount(0);
@@ -3183,7 +3188,7 @@ test("an item's Files tab: what's changed so far while it's worked on, with coun
   await openDesk(page);
   await page.locator('[data-desk-item="d3"]').click();
   const pane = page.locator(".dk-right .dk-ipane");
-  await expect(pane.locator(".dk-itab")).toHaveText([/^Chat/, /^Decisions/, /^Files/]);
+  await expect(pane.locator(".dk-itab")).toHaveText([/^Chat/, /^Record/, /^Decisions/, /^Files/]);
   await expect(pane.locator(".dk-inow .dk-fc")).toHaveCount(0);
   await cue.called("desk_item_diff", { id: "d3" });
   const n = await page.evaluate(() => state.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d3").files.length);
@@ -3286,8 +3291,9 @@ test("what you write on an item's page shows in its Steps, with whom it went to 
   await box.fill("Keep the search box centred on narrow windows too");
   await page.locator(".dk-right [data-desk-send]").click();
   await cue.called("desk_item_act", { id: "d6", act: "wrote_lead", text: "Keep the search box centred on narrow windows too" });
-  // In its record at the right (#418, the Steps tab of before).
-  const step = page.locator(".dk-panel[data-side-for] .dk-rec", { hasText: "Keep the search box centred on narrow windows too" });
+  // In its Record tab (#418, the Steps tab of before).
+  await page.locator('.dk-right [data-desk-itab="record"]').click();
+  const step = page.locator(".dk-right .dk-ipane .dk-rec", { hasText: "Keep the search box centred on narrow windows too" });
   await expect(step).toHaveCount(1);
   await expect(step).toContainText("You: Keep the search box");
   expect(await page.evaluate(() => [view, deskOpen?.kind, deskOpen?.id])).toEqual(["desk", "item", "d6"]);
@@ -3344,7 +3350,7 @@ test("an item's page is a Thread under Thread, Decisions and Steps tabs: every m
   });
   await page.locator('[data-desk-item="d4"]').click();
   const pane = page.locator(".dk-right .dk-pg");
-  await expect(pane.locator(".dk-itab")).toHaveText([/^Chat/, /^Decisions/, /^Files/]);
+  await expect(pane.locator(".dk-itab")).toHaveText([/^Chat/, /^Record/, /^Decisions/, /^Files/]);
   await expect(pane.locator(".dk-itab.on")).toHaveText(/^Chat/);
   const msgs = pane.locator(".dk-thread .dk-tm:not(.rec)");
   // Added first, its reply, then the send-back; the hand-off (a step) sits where its time puts it. A reply that said
@@ -3364,8 +3370,9 @@ test("an item's page is a Thread under Thread, Decisions and Steps tabs: every m
   const foot = await page.locator(".dk-right .dk-box").boundingBox(), last = await back.boundingBox();
   expect(foot.y).toBeGreaterThan(last.y);
   // Steps and Decisions behind their tabs; the pick stays while the item's open.
-  // Its steps are its record in the column at the right (#418).
-  await expect(page.locator(".dk-panel[data-side-for] .dk-rec").first()).toBeVisible();
+  // Its steps are its Record tab (#418).
+  await pane.locator('[data-desk-itab="record"]').click();
+  await expect(pane.locator(".dk-rec").first()).toBeVisible();
   await pane.locator('[data-desk-itab="decisions"]').click();
   await expect(pane).toContainText("No decisions on it yet.");
 });
