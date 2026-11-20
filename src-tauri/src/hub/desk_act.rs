@@ -77,6 +77,25 @@ fn acted_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result
             it.done_at = Some(secs(now));
             release(st, id, now, &mut fx);
         }
+        // Done, skip install (#490): landed on main and waiting for its install, it's done now with no install of its
+        // own. Its work stays on main, so the next install (whatever starts it) has it; its holder is told.
+        "skip_install" => {
+            if !(it.state == "finishing" && it.finish.as_ref().is_some_and(|f| f.step == "queued")) {
+                return Err("It isn't waiting for an install".into());
+            }
+            if let Some(f) = it.finish.as_mut() {
+                (f.step, f.at, f.now, f.question, f.wait) = ("checked".into(), now, false, String::new(), String::new());
+            }
+            (it.state, it.after, it.close_on_check, it.done_at) = ("done".into(), None, false, Some(secs(now)));
+            let (title, project) = (it.title.clone(), it.project.clone());
+            release(st, id, now, &mut fx);
+            you_wrote(st, &project, id, "Done, skip install", "closed without an install", now, &mut fx);
+            if let Some(h) = holder {
+                let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
+                let message = format!("{crew}Desk item #{id} ({title}) is done: closed without an install, none is needed for it. Its work stays on main and goes into the next install. Nothing more to do on it.");
+                send_step(st, id, h.to(), message, now, &mut fx);
+            }
+        }
         // Undo on a done item: back to waiting on you, nothing in the work touched (a commit made stays; one still
         // waiting isn't made).
         "reopen" => {
@@ -540,7 +559,8 @@ impl Hub {
     /// What you did to an item: "looks_right" (done), "send_back" (to its holder again, with `text`), "note" (your
     /// words to its holder; to check, a Send back), "phrase" (a quick phrase: a note that never sends it back, #488), "start_now"
     /// (not waiting on another any more), "put_before" (ahead of the item it waited on), "install_now" (its install
-    /// starts without waiting, desk_finish.rs), "rerun" (its landing run again: a plain retry, offered only when Cue
+    /// starts without waiting, desk_finish.rs), "skip_install" (waiting to install, done now with no install of its own,
+    /// #490), "rerun" (its landing run again: a plain retry, offered only when Cue
     /// can name nothing in its way, desk_finish.rs), what clears a wait (desk_waits.rs): "cut" (no longer waits on
     /// item `text`), "drop", and "remove_kept" (a dropped item's kept copy deleted, desk_trees.rs: `id` is that item's).
     pub(crate) fn desk_item_act(&self, id: &str, act: &str, text: &str) -> Result<DeskItem, String> {

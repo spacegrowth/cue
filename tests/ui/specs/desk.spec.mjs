@@ -4108,6 +4108,9 @@ test("a finishing item: amber and steady, out of In progress into Landing, then 
   await expect(row.locator(".dk-who")).toHaveText("host-lead · On main · abc9999");
   await expect(row.locator(".dk-rn")).toHaveCount(0);
   await expect(row.locator('[data-desk-act="install_now"]')).toHaveCount(0);
+  // Done, skip install on its row (#490), no hover text.
+  await expect(row.locator('[data-desk-act="skip_install"]')).toHaveText("Done, skip install");
+  await expect(row.locator('[data-desk-act="skip_install"]')).not.toHaveAttribute("title", /.*/);
   await expect(page.locator(".dk-items .dk-ch .dk-instnow, .dk-items .dk-ch .dk-next")).toHaveCount(0);
   const head = page.locator('.dk-items .dk-gh[data-lane="install"]');
   await expect(head.locator(".dk-next")).toHaveText(`${clock} · in 30m`);
@@ -4131,12 +4134,14 @@ test("a finishing item: amber and steady, out of In progress into Landing, then 
   await cue.override("desk_item_act", () => null);
   await pane.locator('.dk-acts [data-desk-act="install_now"]').click();
   await cue.called("desk_item_act", { id: "d5", act: "install_now" });
+  await pane.locator('.dk-acts [data-desk-act="skip_install"]').click();
+  await cue.called("desk_item_act", { id: "d5", act: "skip_install" });
   // Clicking it doesn't close the page it's on.
   await expect(page.locator(".dk-right .dk-pg h1")).toContainText("#d5");
 
   await patchItem(cue, "d5", { finish: { step: "building", commit: "abc9999", at: began } });
   await expect(pane.locator(".dk-pnow")).toContainText(`On main · building Cue · since ${since}`);
-  await expect(page.locator('[data-desk-act="install_now"]')).toHaveCount(0);
+  await expect(page.locator('[data-desk-act="install_now"], [data-desk-act="skip_install"]')).toHaveCount(0);
   await page.locator(".dk-back").click();
   await expect(row.locator(".dk-who")).toHaveText("host-lead · Building Cue");
   await patchItem(cue, "d5", { finish: { step: "installing", commit: "abc9999", at: began } });

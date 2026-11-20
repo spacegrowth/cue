@@ -394,3 +394,29 @@ fn the_leads_done_on_a_failed_install_runs_it_again_and_closes_it_once_installed
     tick(&w);
     assert_eq!(item(&w, &project, "Header jumps")["state"], "done");
 }
+
+/// Done, skip install (#490): an item landed on main and waiting for its install is done at once, its holder told no
+/// install is needed, and no install starts for it; the Desk's after-landing setting stays as it was.
+#[test]
+fn an_item_waiting_to_install_closes_with_done_skip_install_and_no_install_runs() {
+    let w = World::new();
+    let (fake, dir, project, id) = done_in_cue(&w);
+    assert_eq!(step(&w, &project), "queued");
+    let lands = super::desk::desk(&w, &project)["lands"].clone();
+    let h = holder(&w, &project);
+    let head = git(&dir, &["rev-parse", "HEAD"]).trim().to_string();
+
+    w.hub().desk_item_act(&id, "skip_install", "").unwrap();
+    w.settle();
+    let shown = item(&w, &project, "Header jumps");
+    assert_eq!(shown["state"], "done", "{shown}");
+    let told = sent_to(&w, &h);
+    assert!(told.last().is_some_and(|t| t.contains(&format!("#{id}")) && t.contains("is done") && t.contains("none is needed")), "{told:?}");
+    assert_eq!(git(&dir, &["rev-parse", "HEAD"]).trim(), head, "its work stays on main as it is");
+
+    w.advance(31 * 60_000);
+    tick(&w);
+    assert!(fake.started().is_empty(), "no install for it: {:?}", fake.started());
+    assert_eq!(super::desk::desk(&w, &project)["lands"], lands, "the after-landing setting is unchanged");
+    assert!(w.hub().desk_item_act(&id, "skip_install", "").is_err(), "only while it waits for an install");
+}
