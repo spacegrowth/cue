@@ -92,7 +92,7 @@ pub(super) fn to_lead_said(st: &mut Store, sid: &str, text: &str, fx: &mut Effec
                 continue;
             }
         };
-        fx.to_lead.push((message.0, sid.to_string(), message.1));
+        fx.to_lead.push((message.0, sid.to_string(), message.1, words));
     }
     if !back.is_empty() {
         fx.sends.push((sid.to_string(), back.join("\n")));

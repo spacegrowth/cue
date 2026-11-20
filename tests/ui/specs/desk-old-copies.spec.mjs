@@ -22,7 +22,8 @@ test("How work lands lists the old working folders with their size, and removes 
   await openDesk(page);
   await expect(page.locator(".dk-items")).not.toContainText("Old copies");
   await page.locator(".dk-strip [data-lands-change]").click();
-  await expect(row(page).locator(".ld-label")).toHaveText("Old working folders");
+  // Its name is its section's heading since #447 made the screen shorter.
+  await expect(page.locator('.ld-dialog [data-ld-sec="old"] .ld-h')).toHaveText("Old working folders");
   await row(page).locator('[data-ld="old"]').click();
   await expect(row(page).locator(".ld-old-list")).toContainText("agent-a1 · 3.0 GB");
   await expect(row(page).locator(".ld-old-list")).toContainText("desk-9 · 512 MB");

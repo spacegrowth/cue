@@ -6,7 +6,7 @@ use crate::desk::{DeskDecision, DeskItem};
 use super::desk_members::join;
 use super::desk::{Effects, NewStart, ask_of, at_work, holder_of, rule_of, secs};
 use super::desk_view::shown;
-use super::desk_route::{decide, give, release, send_step, start_released};
+use super::desk_route::{decide, give, hand_on, release, send_step, start_released};
 use super::desk_heard::new_item;
 
 /// What you did to item `id` ("looks_right" | "reopen" | "send_back" | "start_now" | "put_before" | "hold" | "drop"), in the store.
@@ -167,6 +167,15 @@ fn acted_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result
             let s = NewStart { project: it.project.clone(), id: id.into(), why: String::new(), by: "You".into(), by_sid: String::new() };
             fx.starts.push(s);
         }
+        // Queued after another item, for its holder: it starts now with that holder, handed the item as a
+        // release would (it never began, so it isn't a Resume); the item it waited on is left as it is.
+        "start_now" if it.state == "queued" && holder.is_some() => {
+            (it.after, it.state) = (None, "working".into());
+            let words = crate::desk::handed_words(it, "", &rule);
+            let (to, project) = (holder.as_ref().map(|h| h.to().to_string()).unwrap_or_default(), it.project.clone());
+            fx.sends.push((to, words));
+            you_wrote(st, &project, id, "Start now", "without waiting for the item ahead", now, &mut fx);
+        }
         // Resume (an item at work whose holder isn't on it: cut off by a crash, a quit, or a turn that ended short of
         // DONE): its holder's own session is woken to pick up where it left off (#375), not handed the item afresh.
         "start_now" => {
@@ -226,9 +235,11 @@ fn acted_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result
                 let project = g.project.clone();
                 you_wrote(st, &project, id, &format!("Dropped #{id}.{pr_open}"), "", now, &mut fx);
             }
+            // What waited on it waits on what it waited on, or starts now.
+            let ahead = gone.as_ref().and_then(|g| g.after.clone());
             fx.trees_gone.extend(gone.filter(|g| g.tree.is_some()));
             fx.dropped.push(id.to_string());
-            release(st, id, now, &mut fx);
+            hand_on(st, id, ahead.as_deref(), now, &mut fx);
             return Ok(fx);
         }
         _ => return Err(format!("unknown act: {act}")),

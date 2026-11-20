@@ -65,8 +65,9 @@ pub(super) struct Effects {
     /// Steps whose message is in `sends` (your notes and send-backs, the lead's NOTE: #437): (step, session, item), so
     /// how each send went is kept on its step (`desk_went`), and the item's page can say so (and offer Retry).
     pub(super) went: Vec<(String, String, String)>,
-    /// A session's TO LEAD: words (#474): (Desk, the session, the message), sent to that Desk's lead as it is then.
-    pub(super) to_lead: Vec<(String, String, String)>,
+    /// A session's TO LEAD: words (#474): (Desk, the session, the message, its own words), sent to that Desk's lead as
+    /// it is then; its words quoted back to it when they can't be.
+    pub(super) to_lead: Vec<(String, String, String, String)>,
 }
 
 
@@ -577,11 +578,11 @@ impl Hub {
             });
         }
         // A session's words for its lead (#474), to whoever leads that Desk as they go; when they can't, it's told.
-        for (desk, sid, text) in std::mem::take(&mut fx.to_lead) {
+        for (desk, sid, text, words) in std::mem::take(&mut fx.to_lead) {
             self.later(0, move |h| {
                 if let Err(e) = crate::ipc::desk_send_with(h, &desk, &text) {
                     eprintln!("cue: desk: {sid}'s TO LEAD didn't reach {desk}'s lead: {e}");
-                    let _ = h.send_to_session(&sid, &format!("Your TO LEAD: line didn't reach the Desk's lead: {e}"), &[], false);
+                    let _ = h.send_to_session(&sid, &format!("Your TO LEAD: line didn't reach the Desk's lead: {e}\nIt said: \"{words}\""), &[], false);
                 }
             });
         }

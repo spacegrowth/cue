@@ -95,13 +95,14 @@ function sendWaitingNow(sid) {
 /** `key`: the draft that goes (the session's box, or one of its own). */
 const sendTo = (sid, now = false, key = `s:${sid}`) => state.restarting?.[sid] ? toast("It's restarting. Send once it's back.") : sessionOf(sid)?.state === "deciding" ? toast("It's asking you something first. Answer that, then send.") : deliver(sid, key, (text, images) => { insSent(sid, text, now); return invoke("send_to_session", { sessionId: sid, text, images, now }); });
 /** The message Cue kept for a working session, back into its box to change (before anything you've typed
- *  there since), images and all. */
+ *  there since), images and all. Your words only: the Desk's summary Cue put before a message to a Desk's lead
+ *  (ipc/desk.rs desk_message) isn't yours, and would go twice if sent again (#498). */
 async function pullHeld(sid, key = `s:${sid}`) {
   forgetSent(sid);
   const h = await invoke("unhold_message", { sessionId: sid }).catch(() => null);
   if (!h) return;
-  const d = draft(key);
-  d.text = d.text.trim() ? `${h.text}\n\n${d.text}` : h.text;
+  const d = draft(key), words = deskSaid(h.text);
+  d.text = d.text.trim() ? `${words}\n\n${d.text}` : words;
   for (const path of h.images || []) {
     const data = await invoke("image_data", { path }).catch(() => null);
     if (data) d.images.push({ name: path.split("/").pop(), mime: data.slice(5, data.indexOf(";")), data });

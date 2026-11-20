@@ -529,6 +529,13 @@ function deskClick(e) {
   if (e.target.closest?.(".dk-board a[data-href]")) return;
   if (deskTake(e.target.closest?.(DESK_SEL))) e.stopPropagation();
 }
+/** The Desk's box on screen that sends to session `sid` itself (a session's or holder's page, or the lead's chat for its
+ *  lead), where Edit on a message Cue kept for it brings it back (#498); "" for none. */
+function deskKeptBox(sid) {
+  const shown = (k) => document.querySelector(`textarea[data-text="${CSS.escape(k)}"]`);
+  const lead = (to) => !to.sid && !to.item && deskLead(deskOf(to.project))?.sid === sid;
+  return [...deskBoxes].filter(([, to]) => (to.sid === sid && !to.mate && !to.item) || lead(to)).map(([k]) => k).find(shown) || "";
+}
 /** Esc's session on the Desk (#494), as the Board's open session: the lead's in its chat, the session on a session's or
  *  holder's page (a crew member's: its lead), the item's holder on an item's page (its page is its holder's chat, #418).
  *  Handed to the Board's Esc (app/keys.js escSession) with the box at the foot: a message Cue kept for it comes back

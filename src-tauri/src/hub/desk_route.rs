@@ -24,6 +24,22 @@ pub(super) fn release(st: &mut Store, id: &str, now: u64, fx: &mut Effects) {
     }
 }
 
+/// Item `id` leaves the queue without being done (dropped, parked), and it waited on `ahead`: what was queued after
+/// it waits on `ahead` in its place while that one is still to be done (the queue keeps them off the same files, as
+/// MERGE and Put before hand a wait on), else starts now (`release`).
+pub(super) fn hand_on(st: &mut Store, id: &str, ahead: Option<&str>, now: u64, fx: &mut Effects) {
+    let open = ahead.filter(|a| *a != id).filter(|a| st.desk.item(a).is_some_and(|w| !matches!(w.state.as_str(), "to_check" | "done" | "held")));
+    if let Some(a) = open {
+        for it in st.desk.items.iter_mut().filter(|i| i.after.as_deref() == Some(id) && i.state == "queued") {
+            it.after = Some(a.to_string());
+            it.updated = secs(now);
+            fx.items.push(it.id.clone());
+        }
+        return;
+    }
+    release(st, id, now, fx);
+}
+
 pub(super) fn start_released(it: &mut DeskItem, rule: &str, lead: Option<&crate::desk::Lead>, fx: &mut Effects) {
     if let Some(h) = &it.holder {
         it.state = "working".into();

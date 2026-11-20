@@ -22,10 +22,12 @@ test("the Add an item line keeps its words in view, not their start, through upd
   const left = await line.evaluate((el) => el.scrollLeft);
   expect(left).toBeGreaterThan(0);
   await tick(cue, 1);
+  await frames(page);   // the redraw done: read the line on screen, not the one it replaced
   await expect(line).toBeFocused();
   expect(await line.evaluate((el) => [el.scrollLeft, el.selectionStart === el.value.length])).toEqual([left, true]);
   await line.pressSequentially(" more");
   await tick(cue, 2);
+  await frames(page);
   expect(await line.evaluate((el) => el.scrollLeft)).toBeGreaterThanOrEqual(left);
 });
 

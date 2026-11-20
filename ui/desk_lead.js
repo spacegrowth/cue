@@ -164,16 +164,23 @@ function deskGive(i, at) {
   const draw = (r) => `<button role="menuitem" data-desk-give-to="${esc(r.sid)}" data-id="${esc(i.id)}"><span>${esc(r.name)}</span><span class="dk-ls">${esc(r.sub)}</span></button>`;
   const rows = open ? deskWithOlder(`give:${i.id}`, deskSessionsOf(i.project), draw, "dk-older-mi") : "";
   const menu = open ? `<span class="dk-givemenu" role="menu">${rows}<button role="menuitem" data-desk-act="start_now" data-id="${esc(i.id)}"><span>New session</span></button></span>` : "";
-  if (open) queueMicrotask(deskGivePlace);
+  // Drawn again while open: where you'd scrolled it, read off the menu still on screen. The draw places the menu
+  // before the list's scroll is put back, which moves its button: sized for the wrong place, the browser cuts its
+  // scroll short. Placed again once all is back (this microtask), from the place noted here (#308).
+  if (open) {
+    deskGiveTop = document.querySelector(".dk-givemenu")?.scrollTop ?? null;
+    queueMicrotask(() => { deskGivePlace(); deskGiveTop = null; });
+  }
   return `<span class="dk-givewrap"><button class="${at === "row" ? "dk-link dk-give" : "btn small"}" data-desk-give="${esc(i.id)}" data-at="${at}" aria-expanded="${open}">Give to…</button>${menu}</span>`;
 }
 /** The open menu, whole inside the window wherever its button sits (#152): under the button from its left edge, moved
  *  left as far as it must, above it when there's more room there, and scrolling inside when even that is too short.
  *  Fixed to the window so no column cuts it; it follows its button as the list scrolls or the window resizes. */
+let deskGiveTop = null;
 function deskGivePlace() {
   const m = document.querySelector(".dk-givemenu"), b = m?.previousElementSibling;
   if (!m || !b) return;
-  const r = b.getBoundingClientRect(), pad = 8, W = innerWidth, H = innerHeight, top = m.scrollTop;
+  const r = b.getBoundingClientRect(), pad = 8, W = innerWidth, H = innerHeight, top = deskGiveTop ?? m.scrollTop;
   Object.assign(m.style, { position: "fixed", right: "auto", maxWidth: `${W - 2 * pad}px`, maxHeight: "", overflowY: "" });
   const w = m.offsetWidth, h = m.scrollHeight, below = H - r.bottom - 4 - pad, above = r.top - 4 - pad;
   const up = h > below && above > below, room = up ? above : below;

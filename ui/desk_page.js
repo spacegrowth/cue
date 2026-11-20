@@ -552,7 +552,7 @@ function deskItemActs(i) {
     : i.state === "held" ? b("start_now", "Start", "primary")
     // Waiting for a free working folder (#401): its session starts on it now, without one.
     : deskCopyWaits(i) ? b("start_now", "Start now", "primary") + b("park", "Park")
-    : i.state === "queued" ? b("start_now", "Start it now in a new session") + (first ? b("put_before", `Put it before ${deskShort(first.title)}`) : "") + b("park", "Park")
+    : i.state === "queued" ? b("start_now", i.holder ? "Start it now" : "Start it now in a new session") + (first ? b("put_before", `Put it before ${deskShort(first.title)}`) : "") + b("park", "Park")
     : i.state === "new" ? b("start_now", "Start it now in a new session") + b("park", "Park")
     // Its holder's turn cut off (a crash, a quit) leaves it "working" with nobody on it: Resume wakes that same
     // session where it left off (#375).

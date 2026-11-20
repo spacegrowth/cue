@@ -227,7 +227,8 @@ pub(super) fn hold(st: &mut Store, by: &str, id: &str, why: &str, now: u64, fx: 
         fx.sends.push((h.to().to_string(), format!("{who}Desk item #{id} ({}) is parked: it's off your list. Don't start it; Cue tells you if it comes back.", it.title)));
         it.remember_holder();
     }
-    (it.state, it.holder, it.after, it.moved_from) = ("held".into(), None, None, None);
+    let ahead = it.after.take();
+    (it.state, it.holder, it.moved_from) = ("held".into(), None, None);
     (it.tree_wait, it.no_copy_wait) = (false, false);
     it.tree_wait_repo.clear();
     it.after_why.clear();
@@ -238,6 +239,8 @@ pub(super) fn hold(st: &mut Store, by: &str, id: &str, why: &str, now: u64, fx: 
     it.updated = secs(now);
     st.desk.nudged.remove(id);
     fx.items.push(id.to_string());
+    // Never started by Cue (#385), so nothing waits on it: what did waits on what it waited on, or starts now.
+    super::desk_route::hand_on(st, id, ahead.as_deref(), now, fx);
     Ok(format!("Parked #{id}"))
 }
 

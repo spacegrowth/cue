@@ -21,7 +21,14 @@ pub(super) fn stalled<'a>(st: &'a Store, it: &DeskItem, h: &Holder) -> Option<&'
     let s = st.sessions.get(&h.sid).filter(|s| matches!(s.state.as_str(), "waiting" | "stopped") && !crew_at_work(s))?;
     let held = it.held_from.as_ref().filter(|(by, _)| *by == h.sid).map_or(it.updated * 1000, |(_, at)| *at);
     let from = st.desk.sent_at.get(&it.id).filter(|(by, _)| *by == h.sid).map_or(held, |(_, at)| held.max(*at));
-    s.thread.iter().rev().find(|e| e.role == "agent").filter(|e| e.at_ms > from).map(|_| s)
+    s.thread.iter().rev().find(|e| e.role == "agent").filter(|e| e.at_ms > from && !back_mid_turn(st, it, &h.sid, s, e.at_ms)).map(|_| s)
+}
+
+/// Item `it` was sent back to `sid` from your check (reopened) after the turn that ended at `at` began: that turn was
+/// on something else, and what Cue sent it was kept till it ended, so it isn't a turn on the item (#484).
+fn back_mid_turn(st: &Store, it: &DeskItem, sid: &str, s: &Session, at: u64) -> bool {
+    let began = s.segments.iter().rev().find(|g| g.kind == "working" && g.start_ms <= at).map(|g| g.start_ms);
+    it.reopened.is_some() && st.desk.sent_at.get(&it.id).is_some_and(|(by, sent)| by == sid && began.is_some_and(|b| *sent > b))
 }
 
 /// One of session `s`'s crew is still at work: its turn ended, but the work handed to them goes on.
@@ -94,6 +101,7 @@ pub(super) fn at_work_with(st: &Store, sid: &str) -> Vec<String> {
         .iter()
         .filter(|i| i.state == "working" && i.holder.as_ref().is_some_and(|h| h.sid == sid && h.lead_sid.is_empty()))
         .filter(|i| i.held_from.as_ref().is_some_and(|(by, _)| by == sid))
+        .filter(|i| !st.sessions.get(sid).is_some_and(|s| back_mid_turn(st, i, sid, s, u64::MAX)))
         .map(|i| i.id.clone())
         .collect()
 }

@@ -69,9 +69,9 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, now: u64, fx
                     answers.push(no);
                 }
             }
-            Line::Split { id, titles } => split(st, project, &by, &id, &titles, now, fx),
-            Line::Cut { id, on, why } => cut(st, project, &by, &id, &on, &why, now, fx),
-            Line::Merge { id, into, why } => merge(st, project, &by, &id, &into, &why, now, fx),
+            Line::Split { id, titles } => split(st, project, &by, &id, &titles, now, fx, &mut answers),
+            Line::Cut { id, on, why } => cut(st, project, &by, &id, &on, &why, now, fx, &mut answers),
+            Line::Merge { id, into, why } => merge(st, project, &by, &id, &into, &why, now, fx, &mut answers),
             Line::Note { id, text } => {
                 let id = st.desk.canon(&id);
                 if let Err(no) = note(st, project, &by, &id, &text, now, fx) {
@@ -157,10 +157,10 @@ fn cleanup_said(st: &mut Store, project: &str, by: &By, id: &str, answer: Option
 /// that's what waited, lands at the next finishing tick. Noted as its decision; the lead told when there's no such
 /// link.
 #[allow(clippy::too_many_arguments)]
-fn cut(st: &mut Store, project: &str, by: &By, id: &str, on: &str, why: &str, now: u64, fx: &mut Effects) {
+fn cut(st: &mut Store, project: &str, by: &By, id: &str, on: &str, why: &str, now: u64, fx: &mut Effects, told: &mut Vec<String>) {
     let id = st.desk.canon(id);
     if !st.desk.item(&id).is_some_and(|i| i.project == project) {
-        fx.sends.push((by.sid.to_string(), format!("#{id} not cut: this Desk has no item #{id}")));
+        told.push(format!("#{id} not cut: this Desk has no item #{id}"));
         return;
     }
     match super::desk_waits::cut_in(st, &id, on, now) {
@@ -170,7 +170,7 @@ fn cut(st: &mut Store, project: &str, by: &By, id: &str, on: &str, why: &str, no
             fx.news.extend(done.news);
             decide(st, project, Some(id.clone()), by.name, by.sid, &format!("Cut its wait on #{}", st.desk.canon(on)), why, now, fx);
         }
-        Err(e) => fx.sends.push((by.sid.to_string(), format!("Not cut: {e}"))),
+        Err(e) => told.push(format!("Not cut: {e}")),
     }
 }
 
@@ -178,23 +178,23 @@ fn cut(st: &mut Store, project: &str, by: &By, id: &str, on: &str, why: &str, no
 /// (its holder, at work on it, told them), anything queued after it waits on `into` instead, and it leaves the list.
 /// Only one not begun: no session is started for it (one at work on it, or to check, stays; the lead is told why).
 #[allow(clippy::too_many_arguments)]
-fn merge(st: &mut Store, project: &str, by: &By, id: &str, into: &str, why: &str, now: u64, fx: &mut Effects) {
+fn merge(st: &mut Store, project: &str, by: &By, id: &str, into: &str, why: &str, now: u64, fx: &mut Effects, told: &mut Vec<String>) {
     let (id, into) = (st.desk.canon(id), st.desk.canon(into));
-    let note = |fx: &mut Effects, why: String| fx.sends.push((by.sid.to_string(), format!("#{id} not merged: {why}")));
+    let note = |told: &mut Vec<String>, why: String| told.push(format!("#{id} not merged: {why}"));
     if id == into {
         return;
     }
-    let Some(copy) = st.desk.item(&id).filter(|i| i.project == project).cloned() else { return note(fx, format!("this Desk has no item #{id}")) };
-    let Some(target) = st.desk.item(&into).filter(|i| i.project == project).cloned() else { return note(fx, format!("this Desk has no item #{into}")) };
+    let Some(copy) = st.desk.item(&id).filter(|i| i.project == project).cloned() else { return note(told, format!("this Desk has no item #{id}")) };
+    let Some(target) = st.desk.item(&into).filter(|i| i.project == project).cloned() else { return note(told, format!("this Desk has no item #{into}")) };
     if !matches!(copy.state.as_str(), "new" | "queued") {
         let who = copy.holder.as_ref().map(|h| h.name.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| "a session".into());
-        return note(fx, if copy.state == "done" { "it's done already".into() } else { format!("{who} has begun it already") });
+        return note(told, if copy.state == "done" { "it's done already".into() } else { format!("{who} has begun it already") });
     }
     if target.state == "done" {
-        return note(fx, format!("#{into} is done; route #{id} instead"));
+        return note(told, format!("#{into} is done; route #{id} instead"));
     }
     if waits_on(st, &into, &id) {
-        return note(fx, format!("#{into} waits on it; CUT that wait first"));
+        return note(told, format!("#{into} waits on it; CUT that wait first"));
     }
     let said = if copy.words.is_empty() { copy.title.clone() } else { copy.words.clone() };
     let added: Vec<String> = copy.images.iter().filter(|p| !target.images.contains(p)).cloned().collect();
@@ -225,8 +225,8 @@ fn merge(st: &mut Store, project: &str, by: &By, id: &str, into: &str, why: &str
     }
 }
 
-/// What lead `lsid` of `project` is told of the routes of the turn that just ended (#248), in one message: each
-/// refused route, and each line Cue couldn't read (once, when said twice). A repeat said again later is answered
+/// What lead `lsid` of `project` is told of the lines of the turn that just ended (#248), in one message: each
+/// refused route, each SPLIT, MERGE or CUT not made, and each line Cue couldn't read (once, when said twice). A repeat said again later is answered
 /// again: the lead is never left thinking a refused route was made. Not "Asked:" (the user's card is in the lead's
 /// name, and it hears the answer). With the lead asking the user something (a card from this turn, or before), a
 /// message can't reach it: it's told in its next Desk block instead (`routes_held`).
@@ -297,16 +297,16 @@ fn see_said(st: &mut Store, project: &str, id: &str, see: &str, done_when: &str,
 /// kind, with the same words and pictures, from whoever added it; the lead is told their numbers to route them. Only
 /// one not given out yet: work begun on it stays one item (the lead is told why).
 #[allow(clippy::too_many_arguments)]
-fn split(st: &mut Store, project: &str, by: &By, id: &str, titles: &[String], now: u64, fx: &mut Effects) {
+fn split(st: &mut Store, project: &str, by: &By, id: &str, titles: &[String], now: u64, fx: &mut Effects, told: &mut Vec<String>) {
     let id = st.desk.canon(id);
     let Some(it) = st.desk.item(&id).filter(|i| i.project == project).cloned() else {
-        fx.sends.push((by.sid.to_string(), format!("#{id} not split: this Desk has no item #{id}")));
+        told.push(format!("#{id} not split: this Desk has no item #{id}"));
         return;
     };
     if it.holder.is_some() || it.state != "new" {
         let who = it.holder.as_ref().map(|h| h.name.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| "a session".into());
         let why = if it.state == "done" { "it's done already".to_string() } else { format!("{who} has it already; add the other part as an ITEM") };
-        fx.sends.push((by.sid.to_string(), format!("#{id} not split: {why}")));
+        told.push(format!("#{id} not split: {why}"));
         return;
     }
     let words = if it.words.is_empty() { it.title.clone() } else { it.words.clone() };
