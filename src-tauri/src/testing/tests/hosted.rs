@@ -217,6 +217,37 @@ fn send_now_on_a_kept_message_hands_it_over_and_stops_the_turn() {
     assert_eq!(s.state(&sid), "working");
 }
 
+/// #473: its turn over, its teammate still at work in the background. The teammate's lines and task news don't
+/// make it "working" again, so a message to it goes straight in (Claude takes it as its next turn) with no stop,
+/// which would end the teammate too. A Stop pressed on purpose, mid-turn, still stops it.
+#[test]
+fn a_message_while_only_its_background_agents_work_goes_in_without_stopping_them() {
+    let w = World::new();
+    let sid = running(&w, "build it with a teammate");
+    let agent = Some("call-1".to_string());
+    w.hosted_says(&sid, HostedEvent::Task { what: "task_started".into(), detail: json!({ "task_type": "local_agent", "tool_use_id": "call-1", "task_id": "a1" }) });
+    turn_ends(&w, &sid, "A teammate is on it.");
+    w.hosted_says(&sid, HostedEvent::Task { what: "task_progress".into(), detail: json!({ "task_id": "a1", "tool_use_id": "call-1", "description": "Running the tests" }) });
+    w.hosted_says(&sid, HostedEvent::Said { text: "Now the full run.".into(), agent: agent.clone() });
+    w.hosted_says(&sid, HostedEvent::ToolCall { id: "t9".into(), name: "Bash".into(), input: json!({ "command": "npm test" }), agent: agent.clone() });
+    w.hosted_says(&sid, HostedEvent::ToolResult { id: "t9".into(), output: json!("ok"), failed: false, agent });
+    w.settle();
+    assert_ne!(w.snapshot().state(&sid), "working", "its own turn is over: its teammate's work isn't its turn");
+    w.send_to(&sid, "Doing anything or are you done?");
+    assert_eq!(w.hosted.sent().last(), Some(&(sid.clone(), "Doing anything or are you done?".to_string())), "it goes in, not kept");
+    assert!(w.snapshot().session(&sid)["held"].is_null());
+    // Send now (⌘↵, or a held message's button) with nothing held stops nothing either.
+    let _ = w.hub().send_held(&sid, true);
+    assert!(w.hosted.interrupted().is_empty(), "nothing stopped its teammate: {:?}", w.hosted.interrupted());
+    // Its next turn under way (its own lines): a Stop pressed on purpose stops it.
+    w.hosted_says(&sid, HostedEvent::TurnStarted);
+    w.hosted_says(&sid, HostedEvent::Said { text: "Still building.".into(), agent: None });
+    w.settle();
+    assert_eq!(w.snapshot().state(&sid), "working");
+    w.hub().interrupt(&sid).unwrap();
+    assert_eq!(w.hosted.interrupted(), [sid.clone()], "your Stop stops it");
+}
+
 #[test]
 fn a_turn_that_ends_is_a_finished_turn_card_with_its_cost() {
     let w = World::new();

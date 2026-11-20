@@ -207,7 +207,9 @@ impl Hub {
             HostedEvent::TurnStarted => self.hosted_turn_started(origin),
             HostedEvent::Taken { text } => self.hosted_taken(origin, text),
             HostedEvent::NotTaken { text, why } => self.hosted_not_taken(&origin, &text, &why),
-            HostedEvent::Said { .. } | HostedEvent::ToolCall { .. } | HostedEvent::ToolResult { .. } | HostedEvent::Task { .. } => self.hosted_at_work(origin),
+            // Its own lines only: a teammate's (`agent`) and its tasks' news come while its turn has ended too.
+            HostedEvent::Said { agent: None, .. } | HostedEvent::ToolCall { agent: None, .. } | HostedEvent::ToolResult { agent: None, .. } => self.hosted_at_work(origin),
+            HostedEvent::Said { .. } | HostedEvent::ToolCall { .. } | HostedEvent::ToolResult { .. } | HostedEvent::Task { .. } => {}
             HostedEvent::Rates(rl) => self.set_rates(&rl),
             e @ (HostedEvent::Compacting { .. } | HostedEvent::CompactFailed) => self.hosted_compacted(&origin.session_id, &e),
             HostedEvent::Suggested { text } => self.hosted_suggested(&origin, &text),
@@ -370,7 +372,9 @@ impl Hub {
     }
 
     /// It's doing something: at work, if nothing of yours started that (a background task that finished
-    /// can start a turn of its own). Not while it waits on you: an ask's answer puts it back to work.
+    /// can start a turn of its own). Not while it waits on you: an ask's answer puts it back to work. Never for its
+    /// background agents' work (#473): they go on after its turn ends, and a session taken for mid-turn by them
+    /// keeps your message for a "Send now", whose stop ends them too.
     pub(super) fn hosted_at_work(&self, origin: Origin) {
         let idle = self.read(|st| matches!(st.sessions.state(&origin.session_id).as_deref(), Some("waiting" | "stopped")));
         if idle {

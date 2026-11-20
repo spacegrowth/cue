@@ -111,14 +111,12 @@ fn a_teammates_current_step_comes_live_its_long_command_is_no_second_teammate_an
     assert_eq!(mate(&w, &sid, "worker")["state"], "working", "not done before it's said to be");
     says(&w, &sid, ls[done].clone());
     let t = mate(&w, &sid, "worker");
-    assert_eq!(t["state"], "queued", "finished, its review queued by itself");
+    // Its lead's turn ended long before (its teammate's lines are no turn of its own, #473): free, so the review
+    // goes to it at once. (Skip on a queued one: team_replay.rs.)
+    assert_eq!(t["state"], "reviewing", "finished, and its free lead reviews it");
     assert!(t["summary"].as_str().unwrap().starts_with("Both commands ran in order"), "{t}");
     assert!(t["ended_ms"].as_u64().unwrap() > 0);
-    // Skip on the queued review: none goes, and it's done again (its ⋯ has Review for later), not stuck as queued.
-    w.hub().unqueue_review(&format!("team:{sid}:a0d8fe7624f6fed65")).unwrap();
-    assert_eq!(mate(&w, &sid, "worker")["state"], "done", "skipped: done, with Review in ⋯");
-    w.hub().drain_reviews();
-    assert!(!w.hosted.sent().iter().any(|(_, t)| t.starts_with("Review your teammate worker")), "the skipped review never goes");
+    assert_eq!(w.hosted.sent().iter().filter(|(s, t)| *s == sid && t.starts_with("Review your teammate worker")).count(), 1, "{:?}", w.hosted.sent());
 }
 
 #[test]
