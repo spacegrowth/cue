@@ -12,7 +12,8 @@ use crate::desk::hub::prelude::*;
 pub(crate) struct OnMain {
     pub(crate) project: String,
     pub(crate) id: String,
-    /// As the lead said it, or as the item has it; never empty.
+    /// As the lead said it, or as the item has it; empty when neither has one: closed then only if it has no code to
+    /// land (#549).
     pub(crate) commit: String,
     pub(crate) folders: Vec<String>,
     pub(crate) by: String,
@@ -61,7 +62,8 @@ fn close(st: &Store, project: &str, by: &By, id: &str, commit: &str, why: &str, 
         .into_iter()
         .chain(it.commit_in.iter().map(|(_, c)| c.clone()))
         .find(|c| !c.is_empty())
-        .ok_or_else(|| format!("#{id} not closed: Cue doesn't know which commit holds its work. Say it: CLOSE: #{id} | commit: <sha> | why: …"))?;
+        // None: it may have no code at all (mocks, a doc, #549), which `Hub::desk_close_on_main` checks.
+        .unwrap_or_default();
     let session_folder = |sid: &str| st.sessions.get(sid).filter(|s| s.origin.machine.is_empty()).map(|s| s.origin.cwd.clone());
     let mut folders: Vec<String> = [fin.map(|f| f.repo.clone()), it.tree.as_ref().map(|t| t.repo.clone()), Some(it.tree_wait_repo.clone())].into_iter().flatten().collect();
     folders.extend(it.commit_in.iter().map(|(f, _)| f.clone()));
@@ -309,6 +311,9 @@ impl Hub {
     /// CLOSE's item closed once its commit is on the main line, as Looks right closes one; its copy goes (kept when
     /// it holds work that isn't on main). Not found there: the lead is told where Cue looked.
     pub(crate) fn desk_close_on_main(&self, o: OnMain) {
+        if o.commit.is_empty() {
+            return self.desk_close_no_code(o);
+        }
         let mut found: Option<(String, String, String, String)> = None;
         let mut not = Vec::new();
         let mut repos: Vec<String> = o.folders.iter().filter_map(|f| tree_repo(f)).collect();
@@ -378,6 +383,44 @@ impl Hub {
         self.desk_done(fx);
         if let Some(t) = copy.filter(|_| spent) {
             let _ = self.desk_trees_free(&t.repo);
+        }
+    }
+    /// CLOSE on an item with no commit: closed when it has no code to land (mocks, a doc, a plan: #549), as Looks
+    /// right closes one; else the lead is asked for the commit that holds its work.
+    fn desk_close_no_code(&self, o: OnMain) {
+        let it = self.read(|st| st.desk.item(&o.id).filter(|i| i.project == o.project && i.state != "done").cloned());
+        let Some(it) = it else { return };
+        if !self.desk_no_code(&it) {
+            let id = &o.id;
+            let fx = Effects { sends: vec![(o.by_sid.clone(), format!("Desk item #{id} not closed: Cue doesn't know which commit holds its work. Say it: CLOSE: #{id} | commit: <sha> | why: …"))], ..Default::default() };
+            self.desk_done(fx);
+            return;
+        }
+        let now = now_ms();
+        let fx = self.write(|st| {
+            let mut fx = Effects::default();
+            let it = st.desk.item_mut(&o.id).filter(|i| i.project == o.project && i.state != "done")?;
+            let was = it.state.clone();
+            // Its copy goes, kept with its branch should anything be left in it.
+            if it.tree.is_some() {
+                fx.trees_gone.push(it.clone());
+                it.tree = None;
+            }
+            (it.state, it.paused, it.after, it.close_on_check, it.finish, it.reopened) = ("done".into(), None, None, false, None, None);
+            (it.tree_wait, it.no_copy_wait) = (false, false);
+            it.tree_wait_repo.clear();
+            (it.done_at, it.updated) = (Some(secs(now)), secs(now));
+            if let Some(h) = it.holder.as_ref().filter(|_| matches!(was.as_str(), "working" | "queued" | "finishing")) {
+                fx.sends.push((h.to().to_string(), format!("Desk item #{} is closed: it had no code to land. Stop work on it.", o.id)));
+            }
+            fx.items.push(o.id.clone());
+            release(st, &o.id, now, &mut fx);
+            let by = By { name: &o.by, sid: &o.by_sid };
+            step(st, &o.project, &by, "close", &o.id, &format!("Closed #{}: no code to land", o.id), &o.why, now, &mut fx);
+            Some(fx)
+        });
+        if let Some(fx) = fx {
+            self.desk_done(fx);
         }
     }
 }

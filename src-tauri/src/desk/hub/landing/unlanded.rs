@@ -125,6 +125,13 @@ fn branch_landed_since(top: &str, id: &str, at: u64) -> bool {
     })
 }
 
+/// Whether an item's "done when" rules out code ("no code", "no code changes"): the lead says so for mocks, docs and
+/// plans.
+pub(crate) fn rules_out_code(done_when: &str) -> bool {
+    let w: String = done_when.to_lowercase().chars().map(|c| if c.is_alphanumeric() { c } else { ' ' }).collect();
+    format!(" {} ", w.split_whitespace().collect::<Vec<_>>().join(" ")).contains(" no code ")
+}
+
 /// What a reopened item's DONE with nothing new landed says, back to its session.
 pub(crate) const NOTHING_NEW: &str = "Nothing of it landed on main since it was reopened, so it isn't done: what it was sent back for still needs a change. Make it, then say DONE";
 
@@ -163,6 +170,11 @@ impl Hub {
     pub(crate) fn desk_nothing_new(&self, id: &str) -> bool {
         let Ok((it, _, sources)) = self.desk_change_sources(id) else { return false };
         let Some((at, had)) = it.reopened else { return false };
+        // Mocks, a doc, a plan: nothing of it was ever for main, so nothing new there is asked of it (#549).
+        if self.desk_no_code(&it) {
+            self.finish_set(id, |i| i.reopened = None);
+            return false;
+        }
         let merged = it.finish.as_ref().is_some_and(|f| !f.merges.is_empty());
         let own = |top: &String| -> Vec<String> {
             let here = |folder: &str| main_checkout(folder).is_some_and(|(m, _)| same_dir(&m, top));
@@ -177,6 +189,19 @@ impl Hub {
             return false;
         }
         true
+    }
+
+    /// Whether item `it` has no code to land (#549): nothing ever committed or merged for it, nothing on its own
+    /// branches, and its work is mocks, notes or plans: it went to check as such (`mocks_only`), or its "done when"
+    /// says no code. Such an item is done once its holder says so and you (or the lead's CLOSE) agree; main never
+    /// shows it.
+    pub(crate) fn desk_no_code(&self, it: &DeskItem) -> bool {
+        let merged = it.finish.as_ref().is_some_and(|f| !f.merges.is_empty());
+        let had = it.reopened.map_or(0, |(_, n)| n);
+        if !it.commit.is_empty() || !it.commit_in.is_empty() || had > 0 || merged {
+            return false;
+        }
+        (it.mocks_only || rules_out_code(&it.done_when)) && self.desk_unlanded(&it.id) == 0
     }
 
     /// How many of item `id`'s changes on its own branch aren't on main (none for a project that lands by pull

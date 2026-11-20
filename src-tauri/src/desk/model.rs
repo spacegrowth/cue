@@ -238,6 +238,10 @@ pub struct DeskItem {
     /// session. Cleared once something new did.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reopened: Option<(u64, usize)>,
+    /// Its work went to check as mocks, notes or plans only, nothing the app runs (#408, `Finish::mocks`): kept past
+    /// a reopen, which clears its `finish`, so its next DONE isn't held for something new on main (#549).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub mocks_only: bool,
     /// Each time its holder said DONE for it: kept, so the lead's chat shows a card for each, after a restart too
     /// (desk/hub/lead/checks.rs).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
