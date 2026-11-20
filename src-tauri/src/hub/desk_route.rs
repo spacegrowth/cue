@@ -351,6 +351,11 @@ fn held_by(it: &mut DeskItem, h: &Holder, refused: String, waits: Option<String>
     it.after_why = why.to_string();
     it.done_at = None;
     it.state = if waits.is_some() { "queued" } else { "working" }.into();
+    // Queued after another item, it no longer waits for a copy (#512): it asks for one again once that item is done.
+    if waits.is_some() {
+        it.tree_wait = false;
+        it.tree_wait_repo.clear();
+    }
     it.after = waits;
 }
 
@@ -394,6 +399,8 @@ fn start_fresh(st: &mut Store, project: &str, by: &By, id: &str, after: Option<S
         it.crew.clear();
         it.state = "queued".into();
         it.after = Some(after.clone());
+        (it.tree_wait, it.no_copy_wait) = (false, false);
+        it.tree_wait_repo.clear();
         it.after_why = why.to_string();
         it.route_failed.clear();
         it.start_failed.clear();

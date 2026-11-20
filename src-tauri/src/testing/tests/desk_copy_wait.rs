@@ -179,3 +179,79 @@ fn a_sent_back_item_waiting_for_a_working_folder_never_waits_on_you() {
     assert_eq!((it["state"].as_str(), it["tree_wait"].as_bool()), (Some("queued"), Some(true)), "still waiting for a folder, not Waiting on you: {it}");
     assert!(it["back_waiting"].as_str().is_some_and(|b| b.contains("The dot is too big")), "{it}");
 }
+
+#[test]
+fn an_item_queued_after_another_while_it_waits_for_a_copy_never_starts_until_that_one_is_done() {
+    // #512: an item waiting for a free copy was queued after another; once a copy was free it started, took the copy and
+    // got its brief, the item it waited on not done.
+    let w = World::new();
+    let top = |w: &World| {
+        let out = String::from_utf8(std::process::Command::new("git").arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
+        out.lines().next().and_then(|l| l.strip_prefix("worktree ")).unwrap().to_string()
+    };
+    let (_, project, a, h) = routed_with(&w, |w, _, _| w.hub().desk_hold_copies(&top(w), &[1, 2, 3]), |_, _, _| {});
+    assert_eq!(item(&w, &project, "Header jumps")["tree_wait"], true, "waits for a copy");
+    let lead = super::desk::desk(&w, &project)["lead"]["sid"].as_str().unwrap().to_string();
+    super::desk::ends(&w, &lead, "ITEM: bug | Footer moves | done when: it stays put");
+    let b = item(&w, &project, "Footer moves")["id"].as_str().unwrap().to_string();
+    w.advance(1000);
+    super::desk::ends(&w, &lead, &format!("ROUTE: #{a} -> cue-teams | after: #{b} | why: same file"));
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!((it["state"].as_str(), it["after"].as_str()), (Some("queued"), Some(b.as_str())), "{it}");
+    let before = w.hosted.sent().len();
+    let briefed = |w: &World, from: usize| w.hosted.sent()[from..].iter().any(|(s, t)| *s == h && t.contains(&format!("Desk item #{a}")));
+    // A copy frees up, by a way that hands it on, then by one that doesn't, and the tick runs.
+    w.hub().desk_let_go_copy(&top(&w), 2);
+    w.settle();
+    w.hub().desk_let_go_copy_quietly(3);
+    w.hub().desk_tick_now();
+    w.settle();
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!((it["state"].as_str(), it["after"].as_str()), (Some("queued"), Some(b.as_str())), "still waits on #{b}: {it}");
+    assert!(it["tree"].is_null(), "took no copy: {it}");
+    assert!(!briefed(&w, before), "got no brief: {:?}", &w.hosted.sent()[before..]);
+    // #b done (here: dropped): now it starts, in a free copy, with its brief.
+    w.hub().desk_item_act(&b, "drop", "").unwrap();
+    w.settle();
+    w.hub().desk_tick_now();
+    w.settle();
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!(it["state"], "working", "{it}");
+    let path = it["tree"]["path"].as_str().unwrap_or_else(|| panic!("a copy: {it}")).to_string();
+    let sent: Vec<String> = w.hosted.sent()[before..].iter().filter(|(s, t)| *s == h && t.contains(&format!("Desk item #{a}"))).map(|(_, t)| t.clone()).collect();
+    assert_eq!(sent.len(), 1, "one brief: {sent:?}");
+    assert!(sent[0].contains(&path), "with its copy: {}", sent[0]);
+}
+
+#[test]
+fn a_free_copy_goes_to_an_item_that_waits_only_for_a_copy_not_to_one_still_queued_after_another() {
+    // #512: of two items waiting for a copy, the one queued longest also waits on an item not done (as a Desk saved
+    // before #512 loads it, both marks on). The free copy goes to the other.
+    let w = World::new();
+    let top = |w: &World| {
+        let out = String::from_utf8(std::process::Command::new("git").arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
+        out.lines().next().and_then(|l| l.strip_prefix("worktree ")).unwrap().to_string()
+    };
+    let (_, project, a, h) = routed_with(&w, |w, _, _| w.hub().desk_hold_copies(&top(w), &[1, 2, 3]), |_, _, _| {});
+    let lead = super::desk::desk(&w, &project)["lead"]["sid"].as_str().unwrap().to_string();
+    super::desk::ends(&w, &lead, "ITEM: bug | Footer moves | done when: it stays put");
+    let b = item(&w, &project, "Footer moves")["id"].as_str().unwrap().to_string();
+    w.advance(1000);
+    super::desk::ends(&w, &lead, "ITEM: Logo\nROUTE: #new -> cue-teams | why: logo");
+    let c = item(&w, &project, "Logo")["id"].as_str().unwrap().to_string();
+    assert_eq!(item(&w, &project, "Logo")["tree_wait"], true, "waits for a copy");
+    w.hub().desk_queue_after_unchecked(&a, &b);
+    assert_eq!(item(&w, &project, "Header jumps")["tree_wait"], true, "both marks on");
+    let before = w.hosted.sent().len();
+    w.hub().desk_let_go_copy(&top(&w), 2);
+    w.settle();
+    w.hub().desk_tick_now();
+    w.settle();
+    let header = item(&w, &project, "Header jumps");
+    assert_eq!(header["state"], "queued", "{header}");
+    assert!(header["tree"].is_null(), "{header}");
+    let logo = item(&w, &project, "Logo");
+    assert_eq!((logo["state"].as_str(), logo["tree"]["slot"].as_u64()), (Some("working"), Some(2)), "{logo}");
+    assert!(!w.hosted.sent()[before..].iter().any(|(s, t)| *s == h && t.contains(&format!("Desk item #{a}"))), "no brief for #{a}");
+    assert!(w.hosted.sent()[before..].iter().any(|(s, t)| *s == h && t.contains(&format!("Desk item #{c}"))), "a brief for #{c}");
+}

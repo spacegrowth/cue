@@ -195,7 +195,8 @@ impl Hub {
             let mut fx = Effects::default();
             // The oldest waiting whose own project's pool (lands.rs) has room among the repository's copies.
             let used = st.desk.items.iter().filter(|i| i.tree.as_ref().is_some_and(|t| t.repo == repo)).count() as u32;
-            let mut waiting: Vec<&DeskItem> = st.desk.items.iter().filter(|i| i.tree_wait && i.state == "queued" && i.tree_wait_repo == repo).collect();
+            // Never one still queued after another item (#512): that one isn't done, so it waits on, copy or not.
+            let mut waiting: Vec<&DeskItem> = st.desk.items.iter().filter(|i| i.tree_wait && i.state == "queued" && i.after.is_none() && i.tree_wait_repo == repo).collect();
             // Your order first (#387), then the one queued longest.
             waiting.sort_by_key(|i| (i.queue_order.unwrap_or(u32::MAX), i.updated));
             let Some(id) = waiting.into_iter().find(|i| used < crate::lands::lands_of(&i.project, repo).at_once).map(|i| i.id.clone()) else { return fx };
@@ -217,7 +218,7 @@ impl Hub {
     /// Items waiting for a copy of a repository with one free start (#340): a copy let go of by any way that
     /// doesn't hand it on left them waiting for good. Run by the finishing tick (~10 s), so one starts within a minute.
     pub(super) fn desk_trees_catch_up(&self) {
-        let mut repos: Vec<String> = self.read(|st| st.desk.items.iter().filter(|i| i.tree_wait && i.state == "queued").map(|i| i.tree_wait_repo.clone()).collect());
+        let mut repos: Vec<String> = self.read(|st| st.desk.items.iter().filter(|i| i.tree_wait && i.state == "queued" && i.after.is_none()).map(|i| i.tree_wait_repo.clone()).collect());
         repos.sort();
         repos.dedup();
         for repo in repos {
