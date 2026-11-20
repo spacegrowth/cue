@@ -33,10 +33,19 @@ test("Progress pops up each item under way with its steps, what it's doing now, 
   await expect(d3.locator(".dk-grt").nth(1)).toHaveText("7m");
   await expect(d3.locator(".dk-grt.cur")).toHaveCount(1);
   await expect(d3.locator(".dk-grr.on")).toHaveCount(2);
-  // Waiting for you to check it: every step reached, its Now in your colour with Looks right.
+  // Waiting for you to check it: every step reached, its Now with Looks right. Your turn, not an error (#443): its
+  // last step and Now in the normal text colour, a calm accent mark, no red and no "!".
   const d2 = prog.locator('[data-desk-prog-row="d2"]');
   await expect(d2.locator(".dk-grr.on")).toHaveCount(5);
-  await expect(d2.locator(".dk-grw.you")).toHaveCount(1);
+  await expect(d2.locator(".dk-grw.check")).toHaveCount(1);
+  await expect(d2.locator(".dk-grw.you, .dk-grt.cur.you, .dk-grt.cur.fail")).toHaveCount(0);
+  const colour = (v) => page.evaluate((v) => { const e = document.createElement("i"); e.style.color = `var(${v})`; document.body.append(e); const c = getComputedStyle(e).color; e.remove(); return c; }, v);
+  const ink = await colour("--ink");
+  expect(ink).not.toBe(await colour("--deny"));
+  for (const el of [d2.locator(".dk-grw"), d2.locator(".dk-grt.cur")]) await expect(el).toHaveCSS("color", ink);
+  const mark = await d2.locator(".dk-grc").last().locator("svg.dk-grm").innerHTML();
+  expect(mark).not.toContain("--deny");
+  expect(mark).toContain("--accent");
   // Asks you something: its Now says so, with one button.
   await expect(prog.locator('[data-desk-prog-row="d1"] .dk-grw')).toHaveClass(/you/);
   await expect(prog.locator('[data-desk-prog-row="d1"] .dk-grb button').first()).toBeVisible();

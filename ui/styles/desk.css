@@ -1184,7 +1184,7 @@ body.dk-dragging, body.dk-dragging * { cursor: grabbing !important; user-select:
 .dk-grt { min-height: 13px; color: var(--muted); font: 10px var(--mono); }
 .dk-grt.cur { font-weight: 700; }
 .dk-grt.cur.work { color: var(--accent); }
-.dk-grt.cur.wait { color: var(--ink); }
+.dk-grt.cur:is(.wait, .check) { color: var(--ink); }
 .dk-grt.cur:is(.you, .fail) { color: var(--deny); }
 .dk-grnow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; padding-left: 14px; }
 .dk-grw { min-width: 0; color: var(--ink); font: 12.5px/1.4 var(--sans); }

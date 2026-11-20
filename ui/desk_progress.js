@@ -24,10 +24,12 @@ function deskProgDur(ms) {
 const deskProgStamps = (i) => DESK_PROG_STEPS.map((_, k) => +(i.steps || [])[k] || 0);
 /** The step it's at: the furthest it reached, or -1 when it hasn't started. */
 const deskProgAt = (i) => deskProgStamps(i).reduce((at, t, k) => (t ? k : at), -1);
-/** How its current step looks: "work" (moving), "you" (needs you), "fail" (its check failed), "wait" (held up). */
+/** How its current step looks: "work" (moving), "you" (asks you something), "check" (your turn to try it: calm, not an
+ *  error, #443), "fail" (its check failed), "wait" (held up). */
 function deskProgLook(i) {
   if (i.finish?.step === "check_failed") return "fail";
-  if (i.state === "needs_you" || (i.state === "to_check" && !deskInstallWait(i))) return "you";
+  if (i.state === "needs_you") return "you";
+  if (i.state === "to_check" && !deskInstallWait(i)) return "check";
   if (i.state === "working" && !i.stopped && !i.waiting && !deskStalled(i)) return "work";
   return "wait";
 }
@@ -65,10 +67,11 @@ function deskProgButton(i) {
 function deskProgMark(state, look) {
   if (state === "done") return '<svg class="dk-grm" width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="var(--accent)"/><path d="m4.6 8.2 2.2 2.2 4.6-4.8" fill="none" stroke="var(--on-accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   if (state === "todo") return '<svg class="dk-grm" width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="var(--panel)" stroke="var(--line)" stroke-width="1.4"/></svg>';
-  const c = look === "work" ? "var(--accent)" : look === "wait" ? "var(--muted)" : "var(--deny)";
+  const c = look === "work" || look === "check" ? "var(--accent)" : look === "wait" ? "var(--muted)" : "var(--deny)";
   const inner = {
     work: `<circle class="dk-blink" cx="8" cy="8" r="3" fill="${c}"/>`,
     wait: `<path d="M8 4.8V8l2 1.4" fill="none" stroke="${c}" stroke-width="1.6" stroke-linecap="round"/>`,
+    check: `<circle cx="8" cy="6.2" r="1.7" fill="${c}"/><path d="M4.9 11.2c.6-1.6 1.7-2.4 3.1-2.4s2.5.8 3.1 2.4" fill="none" stroke="${c}" stroke-width="1.6" stroke-linecap="round"/>`,
     you: `<path d="M8 4.4v4.2" stroke="${c}" stroke-width="1.7" stroke-linecap="round"/><circle cx="8" cy="11.2" r="1" fill="${c}"/>`,
     fail: `<path d="m5.4 5.4 5.2 5.2M10.6 5.4l-5.2 5.2" stroke="${c}" stroke-width="1.7" stroke-linecap="round"/>`,
   }[look];
@@ -108,7 +111,7 @@ function deskProgBack(i) {
 function deskProgress(project, taskApprovals) {
   const g = deskGroups(project, taskApprovals);
   const rows = [...g.waiting, ...g.review, ...g.working, ...g.landing, ...g.install, ...g.resume, ...g.paused];
-  const you = rows.filter((i) => deskProgLook(i) === "you").length, later = g.queued.length + g.held.length;
+  const you = rows.filter((i) => ["you", "check"].includes(deskProgLook(i))).length, later = g.queued.length + g.held.length;
   const head = `<div class="dk-gr dk-grh"><span>Item</span>${DESK_PROG_STEPS.map((s) => `<span class="dk-grhc">${s}</span>`).join("")}<span class="dk-grnow">Now</span></div>`;
   const body = rows.length ? head + rows.map(deskProgRow).join("") : `<div class="dk-empty">Nothing under way.</div>`;
   return `<div class="dk-prog" role="dialog" aria-label="Progress"><div class="dk-ch"><b>Progress</b><span class="dk-grcount">${rows.length} under way${you ? ` · ${you} need${you === 1 ? "s" : ""} you` : ""}${later ? ` · ${later} not started` : ""}</span><button class="btn small dk-prog-x" data-desk-prog-toggle aria-label="Close">Close</button></div>
