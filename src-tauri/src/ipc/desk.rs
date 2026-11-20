@@ -21,6 +21,7 @@ pub(crate) fn desk_send_images(h: &Arc<Hub>, project: &str, text: &str, images: 
     let saved = crate::uploads::save(images)?;
     let lost = |e: String| format!("{}'s lead didn't come up ({e}), so this wasn't sent: {}", h.desk_name(project), text.trim());
     let sid = deliver(h, project, text, saved, &lost)?;
+    h.desk_yours(&sid, text);
     Ok(serde_json::json!({ "sid": sid }))
 }
 
@@ -30,6 +31,7 @@ pub(crate) fn desk_send_with(h: &Arc<Hub>, project: &str, text: &str) -> Result<
     }
     let lost = |e: String| format!("{}'s lead didn't come up ({e}), so this wasn't sent: {}", h.desk_name(project), text.trim());
     let sid = deliver(h, project, text, vec![], &lost)?;
+    h.desk_yours(&sid, text);
     Ok(serde_json::json!({ "sid": sid }))
 }
 

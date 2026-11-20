@@ -290,3 +290,64 @@ fn a_held_item_waits_on_its_shelf_until_you_start_it() {
     w.settle();
     assert_eq!(item(&w, &project, "Trim the logs")["state"], "held", "the old HOLD: still parks");
 }
+
+/// A parked item `title` of a routed Desk, and its lead: (project, lead, item id).
+fn parked(w: &World, title: &str) -> (String, String, String) {
+    let (_, project, _, _) = routed_with(w, |_, _, _| {}, |_, _, _| {});
+    let l = lead_of(w, &project);
+    let id = w.hub().desk_add(&project, "feature", title, "it's there", None).unwrap().id;
+    w.hub().desk_item_act(&id, "park", "").unwrap();
+    w.advance(5000);
+    w.settle();
+    assert_eq!(item(w, &project, title)["state"], "held");
+    (project, l, id)
+}
+
+/// You write `text` to the lead from the Desk, and its turn takes it.
+fn you_write(w: &World, project: &str, l: &str, text: &str) {
+    crate::ipc::desk_send_with(w.hub(), project, text).unwrap();
+    let message = sent_to(w, l).last().cloned().unwrap();
+    w.hosted_says(l, crate::hosted::HostedEvent::Taken { text: message });
+    w.settle();
+}
+
+/// UNPARK (#499): you ask the lead to unpark an item, and its line makes it new again, routed as any new item.
+#[test]
+fn the_lead_unparks_an_item_when_you_ask_for_it() {
+    let w = World::new();
+    let (project, l, id) = parked(&w, "Dark sidebar");
+    you_write(&w, &project, &l, &format!("Unpark #{id}, I want it now"));
+    ends(&w, &l, &format!("UNPARK: #{id} — why: the user asked for it back"));
+    w.advance(1000);
+    w.settle();
+    let it = item(&w, &project, "Dark sidebar");
+    assert!(it["state"] == "new" && it["held"].is_null(), "{it}");
+    assert!(steps(&w, &project, &id).iter().any(|d| d["act"] == "unpark"), "{:?}", steps(&w, &project, &id));
+    assert!(sent_to(&w, &l).iter().any(|t| t.contains(&format!("New item #{id}"))), "the lead is asked to route it: {:?}", sent_to(&w, &l));
+    // Routed as any new item.
+    ends(&w, &l, &format!("ROUTE: #{id} -> cue-teams | why: it made the header"));
+    w.advance(1000);
+    w.settle();
+    assert_ne!(item(&w, &project, "Dark sidebar")["state"], "new");
+}
+
+/// UNPARK without your asking for it in the message the lead answers is refused, said plainly; the item stays parked.
+#[test]
+fn the_lead_cant_unpark_an_item_you_didnt_ask_for() {
+    let w = World::new();
+    let (project, l, id) = parked(&w, "Dark sidebar");
+    you_write(&w, &project, &l, "How is the Desk doing?");
+    ends(&w, &l, &format!("UNPARK: #{id} | why: there's room now"));
+    w.advance(1000);
+    w.settle();
+    assert_eq!(item(&w, &project, "Dark sidebar")["state"], "held");
+    let told = sent_to(&w, &l);
+    assert!(told.iter().any(|t| t.contains(&format!("#{id} not unparked: the user didn't ask for it"))), "{told:?}");
+}
+
+#[test]
+fn unpark_is_read_with_a_dash_or_a_bar() {
+    for l in ["UNPARK: #12 — why: you asked", "UNPARK: #12 | why: you asked", "- **UNPARK:** #12 - you asked"] {
+        assert_eq!(lines(l), [Line::Unstick { what: "unpark".into(), id: "12".into(), commit: String::new(), why: "you asked".into() }], "{l}");
+    }
+}

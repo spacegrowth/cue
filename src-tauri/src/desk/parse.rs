@@ -43,7 +43,9 @@ pub enum Line {
     /// stuck or finished item), "land_first" (`LAND FIRST: #<id> | why: …`: up in the landing line) or "start"
     /// (`START: #<id> | why: …`: a waiting item, now), "pause" (`PAUSE: #<id> | why: …`: an item at work stops at a
     /// clean point and keeps its place, #365), "resume" (`RESUME: #<id> | why: …`: a paused one carries on) or
-    /// "hold" (`PARK: #<id> | why: …`, or the old `HOLD:`: parked, as the user asked, #385/#391; "#new": the reply's last ITEM).
+    /// "hold" (`PARK: #<id> | why: …`, or the old `HOLD:`: parked, as the user asked, #385/#391; "#new": the reply's last ITEM)
+    /// or "unpark" (`UNPARK: #<id> — why: …`: back to be routed, only when the user asked for it in the message the
+    /// turn answers, #499).
     Unstick { what: String, id: String, commit: String, why: String },
     /// The lead's answer to the landing clean-up question item `id`'s holder asked it (#349): `ANSWER: #<id> | <words>`.
     Answer { id: String, text: String },
@@ -164,6 +166,8 @@ fn one(t: &str) -> Option<Line> {
         "START" => unstick("start", body),
         // PARK (#391); HOLD, its first name (#385), still works.
         "PARK" | "HOLD" => unstick("hold", body),
+        // UNPARK (#499): its why after a dash ("UNPARK: #12 — why: …") or a "|" as the other lines have it.
+        "UNPARK" => unstick("unpark", &dashed(body)),
         // With an item (#365) it pauses that item; with none (#366), the whole Desk.
         "PAUSE" => unstick("pause", body).or_else(|| whole_desk(true, body)),
         "RESUME" => unstick("resume", body).or_else(|| whole_desk(false, body)),
@@ -199,6 +203,20 @@ fn unstick(what: &str, body: &str) -> Option<Line> {
         return None;
     }
     Some(Line::Unstick { what: what.into(), id: id_of(head)?, commit: commit.to_ascii_lowercase(), why })
+}
+
+/// `body` with a dash between its item and its why ("#12 — why: …") read as a "|" (#499).
+fn dashed(body: &str) -> String {
+    match body.split_once(char::is_whitespace) {
+        Some((head, rest)) if head.starts_with('#') => {
+            let rest = rest.trim_start();
+            match rest.strip_prefix(['—', '–', '-']) {
+                Some(r) => format!("{head} | {}", r.trim_start()),
+                None => body.to_string(),
+            }
+        }
+        _ => body.to_string(),
+    }
 }
 
 /// The parts of `body` between `|`, trimmed.

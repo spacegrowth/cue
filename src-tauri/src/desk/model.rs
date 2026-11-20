@@ -676,6 +676,9 @@ pub struct Desk {
     /// What the Desk itself sent each session lately (session → its last few messages): a prompt it takes that isn't
     /// one of these was typed by you (hub/desk_asked.rs). Not saved.
     pub sent: HashMap<String, Vec<String>>,
+    /// Your own words to each lead from the Desk lately (lead session → your last few messages): a turn answering one
+    /// of them is one you asked (UNPARK, #499). Not saved.
+    pub yours: HashMap<String, Vec<String>>,
     /// When Cue last sent each working item to its holder (item → (holder, ms)): a turn that ended before it isn't a
     /// stall on it. Not saved: after a restart, `held_from` stands in.
     pub sent_at: HashMap<String, (String, u64)>,

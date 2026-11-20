@@ -267,6 +267,18 @@ impl Hub {
         self.changed();
     }
 
+    /// Your words `text` sent from the Desk to its lead `sid`: kept (the last few) so a turn answering them is known as
+    /// one you asked (UNPARK, #499).
+    pub(crate) fn desk_yours(&self, sid: &str, text: &str) {
+        self.write(|st| {
+            let yours = st.desk.yours.entry(sid.to_string()).or_default();
+            yours.push(text.trim().to_string());
+            if yours.len() > 4 {
+                yours.remove(0);
+            }
+        });
+    }
+
     /// The lead has been told of these failed routes (item, name) with a message that reached it: each is cleared,
     /// unless a newer one failed since.
     pub(crate) fn desk_told(&self, failed: &[(String, String)]) {

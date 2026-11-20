@@ -31,6 +31,7 @@ pub(super) fn unstick(st: &mut Store, project: &str, by: &By, what: &str, id: &s
         "pause" => "not paused",
         "resume" => "not resumed",
         "hold" => "not parked",
+        "unpark" => "not unparked",
         _ => "not started",
     };
     let it = st.desk.item(id).filter(|i| i.project == project).ok_or_else(|| format!("#{id} {line}: this Desk has no item #{id}"))?;
@@ -44,6 +45,7 @@ pub(super) fn unstick(st: &mut Store, project: &str, by: &By, what: &str, id: &s
         "pause" => pause(st, project, by, id, why, now, fx),
         "resume" => resume(st, project, by, id, why, now, fx),
         "hold" => hold(st, by.name, id, why, now, fx).map(|text| step(st, project, by, "hold", id, &text, why, now, fx)),
+        "unpark" => unpark(st, project, by, id, why, now, fx),
         _ => start(st, project, by, id, why, now, fx),
     }
 }
@@ -252,6 +254,31 @@ pub(super) fn unhold(st: &mut Store, id: &str, now: u64, fx: &mut Effects) -> Re
     }
     fx.items.push(id.to_string());
     Ok(())
+}
+
+/// UNPARK (#499): a parked item back to be routed as any new item, only when the message the lead's turn answers is
+/// yours (sent from the Desk) and names it. Parking stays yours: the lead never unparks one on its own.
+fn unpark(st: &mut Store, project: &str, by: &By, id: &str, why: &str, now: u64, fx: &mut Effects) -> Result<(), String> {
+    let was = shown_state(st, id);
+    if st.desk.item(id).is_none_or(|i| i.state != "held") {
+        return Err(format!("#{id} not unparked: it isn't parked (it's {was})"));
+    }
+    if !you_asked(st, by.sid, id) {
+        return Err(format!(
+            "#{id} not unparked: the user didn't ask for it in the message you're answering. Only they unpark an item: they press its Start, or ask you to in their message (ASK: #{id} | … if you think it should come back)"
+        ));
+    }
+    unhold(st, id, now, fx)?;
+    step(st, project, by, "unpark", id, &format!("Unparked #{id}, as you asked: it's new again, to route"), why, now, fx);
+    Ok(())
+}
+
+/// Whether lead `sid`'s turn answers a message of yours from the Desk that names item `id` ("#12", or "12" alone).
+fn you_asked(st: &Store, sid: &str, id: &str) -> bool {
+    let Some(prompt) = st.sessions.get(sid).map(|s| s.prompt.clone()) else { return false };
+    let words = prompt.split_once("</desk>").map_or(prompt.as_str(), |(_, w)| w).trim();
+    let yours = st.desk.yours.get(sid).is_some_and(|y| y.iter().any(|m| !m.is_empty() && words.starts_with(m.as_str())));
+    yours && words.split(|c: char| !(c.is_ascii_alphanumeric() || c == '#')).any(|w| w.trim_start_matches('#').eq_ignore_ascii_case(id))
 }
 
 /// Item `id`'s state as the lead is told it.
