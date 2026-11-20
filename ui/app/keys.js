@@ -118,15 +118,17 @@ function keyLightbox(e) {
 
 /** Esc twice on a working session stops it (once only arms it, so a stray Esc can't); a message Cue kept for it
  *  (sent while it worked) comes back into the box first. Stopping it is a pause to say something else, so the
- *  cursor stays in (or goes to) its box. False when the open session has neither. */
-function escSession() {
-  const s = !sheet && !menuFor && !redirectFor ? sessionOf(active?.sid) : null;
-  if (s?.held) { escArmed = 0; pullHeld(s.session_id); return true; }
+ *  cursor stays in (or goes to) its box. The open session, `sid`: the Board's, or the one the Desk has open, with its
+ *  box `key` there and how that box takes a kept message back, `pull` (desk_act.js deskEscSession). False when that
+ *  session has neither. */
+function escSession(sid = active?.sid, key = undefined, pull = pullHeld) {
+  const s = !sheet && !menuFor && !redirectFor ? sessionOf(sid) : null;
+  if (s?.held) { escArmed = 0; pull(s.session_id, key); return true; }
   if (s?.state !== "working") return false;
   if (Date.now() - escArmed < 1500) { escArmed = 0; interrupt(s.session_id); }
   else { escArmed = Date.now(); toast(`Esc again to stop ${s.project}`); }
   renderMain();
-  focusComposer();
+  focusComposer(key);
   return true;
 }
 /** Esc: the side question's panel, a background agent's view, the reader, History's open row, the open session
@@ -137,7 +139,8 @@ function keyEscape(e) {
   if (!sheet && !lightbox && helperView && helperViewed(helperView.sid)) { closeHelperView(); return true; }
   if (!sheet && !lightbox && readerShown()) { closeReader(); return true; }
   if (view === "history") { histOpen = null; renderMain(); return true; }
-  if (escSession()) return true;
+  // On the Desk, the Desk's own session (desk_act.js deskKey) had its turn: the Board's open one isn't on screen.
+  if (view !== "desk" && escSession()) return true;
   // Full screen: an Esc nothing else wanted leaves it (a working session's Esc arms Stop above instead).
   if (focus && !sheet && !menuFor && !redirectFor) { leaveFocus(); renderMain(); return true; }
   sheet = null; menuFor = redirectFor = null; document.activeElement?.blur(); renderMain();

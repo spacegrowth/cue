@@ -2135,6 +2135,14 @@ test("three columns: the project's sessions on the left, the lead's chat in the 
   await left.locator('[data-desk-chat-of="host"]').click();
   await expect(left.locator(".dk-srow.on")).toHaveAttribute("data-desk-chat-of", "host");
   await expect(page.locator(".dk-right .dk-box textarea")).toHaveAttribute("placeholder", /^Talk to /);
+  // It's working: Esc is its Stop first, as on the Board (#494): once arms it, twice stops it, its chat still open.
+  await page.keyboard.press("Escape");
+  await expect(left.locator(".dk-srow.on")).toHaveAttribute("data-desk-chat-of", "host");
+  await page.keyboard.press("Escape");
+  await cue.called("interrupt_session", { sessionId: "host" });
+  await expect(left.locator(".dk-srow.on")).toHaveAttribute("data-desk-chat-of", "host");
+  // Stopped: Esc goes back to the lead's chat.
+  await expect.poll(() => page.evaluate(() => sessionOf("host").state)).toBe("waiting");
   await page.keyboard.press("Escape");
   await expect(left.locator('[data-desk-lead-chat="lead"]')).toHaveClass(/\bon\b/);
   // Another session's crew sit under it; a crew row opens its pane, lit.
@@ -3413,7 +3421,8 @@ test("Open on an item's page, or its holder's, opens that session's chat here on
   await cue.open("desk");
   await openDesk(page);
   const sid = await page.evaluate(() => state.sessions.find((s) => s.project === "cue" && s.session_id !== "lead").session_id);
-  await cue.change((st, s) => Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d4"), { holder: { kind: "session", sid: s, name: "cue-117" } }), sid);
+  // Not working: on a working session's chat Esc is its Stop first (#494, desk-esc.spec.mjs).
+  await cue.change((st, s) => { st.sessions.find((x) => x.session_id === s).state = "waiting"; Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d4"), { holder: { kind: "session", sid: s, name: "cue-117" } }); }, sid);
   await page.locator('[data-desk-item="d4"]').click();
   // Open its holder, at the foot of the item's column (#418).
   await page.locator(".dk-panel[data-side-for] .dk-sfoot .btn", { hasText: /^Open / }).click();
@@ -4360,6 +4369,8 @@ test("the Desk list's › sits only on the open row or card and moves with it, i
   await openDesk(page);
   const left = page.locator(".dk-sessions");
   const arrows = left.locator(".dk-larrow, .dk-go");
+  // host-lead not working: on a working session's chat Esc is its Stop first (#494, desk-esc.spec.mjs).
+  await cue.change((st) => { st.sessions.find((x) => x.session_id === "host").state = "waiting"; });
   const owner = () => arrows.evaluateAll((els) => els.map((el) => { const r = el.closest(".dk-srow, .dk-lcard, .dk-holder"); return [r.dataset.deskLeadChat || r.dataset.deskChatOf || r.dataset.deskHolder || r.dataset.deskAddon, r.classList.contains("on")]; }));
   for (const scheme of ["light", "dark"]) {
     await page.emulateMedia({ colorScheme: scheme });

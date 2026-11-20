@@ -96,11 +96,11 @@ function sendWaitingNow(sid) {
 const sendTo = (sid, now = false, key = `s:${sid}`) => state.restarting?.[sid] ? toast("It's restarting. Send once it's back.") : sessionOf(sid)?.state === "deciding" ? toast("It's asking you something first. Answer that, then send.") : deliver(sid, key, (text, images) => { insSent(sid, text, now); return invoke("send_to_session", { sessionId: sid, text, images, now }); });
 /** The message Cue kept for a working session, back into its box to change (before anything you've typed
  *  there since), images and all. */
-async function pullHeld(sid) {
+async function pullHeld(sid, key = `s:${sid}`) {
   forgetSent(sid);
   const h = await invoke("unhold_message", { sessionId: sid }).catch(() => null);
   if (!h) return;
-  const key = `s:${sid}`, d = draft(key);
+  const d = draft(key);
   d.text = d.text.trim() ? `${h.text}\n\n${d.text}` : h.text;
   for (const path of h.images || []) {
     const data = await invoke("image_data", { path }).catch(() => null);
@@ -108,7 +108,7 @@ async function pullHeld(sid) {
   }
   saveDrafts();
   renderMain();
-  focusComposer();
+  focusComposer(key);
 }
 /** Cancel on the message Cue kept for a working session: dropped, never sent (taken back as Edit does, not into the box). */
 const cancelHeld = (sid) => forgetSent(sid) || invoke("unhold_message", { sessionId: sid }).then((h) => toast(h ? "It won't be sent" : "Too late: it had already gone")).catch((e) => toast(`Couldn't cancel it: ${e}`));

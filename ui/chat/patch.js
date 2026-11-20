@@ -134,8 +134,8 @@ let escArmed = 0;           // when Esc was last pressed on a working session (t
 let focusedTarget = null;   // the Active target whose text box last got the cursor
 let overWas = false;        // something covered the chat at the last draw (a sheet, the live list, an image…)
 /** Put the cursor at the end of the Active pane's text box (opening something, Esc Esc). */
-function focusComposer() {
-  const el = document.querySelector(".active-pane textarea[data-text]");
+function focusComposer(key) {
+  const el = document.querySelector(key && !key.startsWith("s:") ? `textarea[data-text="${CSS.escape(key)}"]` : ".active-pane textarea[data-text]");
   if (!el) return false;
   el.focus();
   el.setSelectionRange(el.value.length, el.value.length);

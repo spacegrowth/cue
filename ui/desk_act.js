@@ -529,8 +529,21 @@ function deskClick(e) {
   if (e.target.closest?.(".dk-board a[data-href]")) return;
   if (deskTake(e.target.closest?.(DESK_SEL))) e.stopPropagation();
 }
+/** Esc's session on the Desk (#494), as the Board's open session: the lead's in its chat, the session on a session's or
+ *  holder's page (a crew member's: its lead), the item's holder on an item's page (its page is its holder's chat, #418).
+ *  Handed to the Board's Esc (app/keys.js escSession) with the box at the foot: a message Cue kept for it comes back
+ *  there (on an item's page as its Edit does, deskHeldEdit), and Esc twice stops it. */
+function deskEscSession() {
+  const d = deskOf(deskSelection()), o = deskOpen;
+  if (!d) return false;
+  const key = [...document.querySelectorAll("textarea[data-text]")].map((t) => t.dataset.text).find((k) => deskBoxes.has(k));
+  if (o?.kind === "item") return escSession(deskHolderSid(deskItem(d.project, o.id)), key, (sid) => deskHeldEdit(o.id, sid));
+  const lead = !o && deskTab === "lead" && deskPick !== d.project && deskLead(d) && !deskLeadEnded(d) ? deskLead(d).sid : "";
+  return escSession(o?.kind === "crew" ? o.lead : o?.kind === "chat" || o?.kind === "holder" ? o.sid : lead, key);
+}
 /** Keys on the Desk: ⌘N goes to the quick-add line, Enter sends a box (⇧Enter a new line), the quick-add line's keys
- *  (desk_lead.js), Esc closes a Give to… menu, then the picker (when changing), then the open pane. */
+ *  (desk_lead.js), Esc closes a Give to… menu, then the picker (when changing), then takes back a message Cue kept for
+ *  the open session or stops it (Esc twice, deskEscSession), then the open pane. */
 function deskKey(e) {
   if (view !== "desk" || e.isComposing || e.keyCode === 229) return false;
   const key = e.target?.dataset?.text || "";
@@ -557,8 +570,8 @@ function deskKey(e) {
   if (e.key === "Escape" && deskProgShown) { deskProgToggle(false); document.querySelector("[data-desk-prog-toggle]")?.focus(); return true; }
   if (e.key === "Escape" && key.startsWith("back:")) { deskAct(key.slice(5), "back_cancel"); return true; }
   // Esc: only when nothing over the Desk wants it (the crew page, a sheet, search and the live list, the projects
-  // list, a menu, a rename), as the Inbox's keys do.
-  const over = sheet || lightbox || liveOpen || deleteAsk || renaming || pjRenaming || pjOpen || pjNewOpen || colorFor || newProjFor || btwFor || menuFor || redirectFor || (typeof moreFor !== "undefined" && moreFor) || (crewPageSid && document.querySelector(".crew-page"));
+  // list, a menu, a rename, a dialog: How work lands, Ask me before, quitting, trusting a folder), as the Inbox's keys do.
+  const over = sheet || lightbox || liveOpen || deleteAsk || quitAsk || trustAsk || (typeof lands !== "undefined" && lands) || (typeof askBefore !== "undefined" && askBefore) || renaming || pjRenaming || pjOpen || pjNewOpen || colorFor || newProjFor || btwFor || menuFor || redirectFor || (typeof moreFor !== "undefined" && moreFor) || (crewPageSid && document.querySelector(".crew-page"));
   if (e.key === "Escape" && !e.metaKey && !e.ctrlKey && !e.altKey && !over) {
     if (deskAddingSession && deskAddingSession === deskSelection()) {
       deskAddingSession = null;
@@ -569,6 +582,10 @@ function deskKey(e) {
     if (deskDropArm) { deskDropArm = null; renderMain(); return true; }
     if (deskGiveFor) { deskGiveFor = null; renderMain(); return true; }
     if (deskPick && deskLead(deskOf(deskSelection()))) { deskPick = null; renderMain(); return true; }
+    // Then the session the Desk has open, as on the Board (#494): a message Cue kept comes back, Esc twice stops it.
+    // Not while the reader or a background agent's view is in the chat's place (the Board's Esc closes those first).
+    const shown = readerShown() || (helperView && helperViewed(helperView.sid)) || (key && cmdMatches(key).length);
+    if (!shown && deskEscSession()) return true;
     if (deskOpen && !(e.target.matches?.("textarea, input") && e.target.value)) { deskShow(deskOpen.kind === "crew" ? { kind: "holder", sid: deskOpen.lead } : deskOpen.kind === "chat" ? deskOpen.from || null : null); return true; }
   }
   return false;
