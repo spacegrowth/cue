@@ -1,9 +1,10 @@
 // Esc, one step a press, in the order the window takes it (app/keys.js KEY_STEPS): what's over the window first (the
 // pop-ups: + New Desk's sheet and menu, the diff overlay, the file viewer), then the crew's tray and page, the
-// Settings chooser, the Desk's away sheet, the Desk, the Inbox, an add-on's panel, the dialogs (delete, quit, How work
+// Settings chooser, the Inbox, the Desk's away sheet, an add-on's panel, the Desk, the dialogs (delete, quit, How work
 // lands), then the Board's own (the "/" menu, lists, a picture, btw, a sheet, the open session). Each test opens one
 // state (or two, stacked), presses Esc and checks what closed and what stayed. These write down how Esc behaved before
-// the listeners became one chain (refactor step 3e), odd cases included, so the chain keeps every step.
+// the listeners became one chain (refactor step 3e), so the chain keeps every step; since #521 an Esc that closes the
+// away sheet or an add-on's panel stops there, never reaching the Desk's open item.
 import { test, expect, openDesk } from "./cue.mjs";
 
 const esc = (page) => page.keyboard.press("Escape");
@@ -77,16 +78,18 @@ test("+ New's menu over the diff overlay: Esc closes the menu, then the overlay,
 
 // ---------- the Desk ----------
 
-test("the Desk's away sheet: Esc closes it and the Desk's own Esc runs on too (the item's holder: Esc arms Stop)", async ({ page, cue }) => {
+test("the Desk's away sheet: Esc closes it only; the item's holder isn't touched (#521)", async ({ page, cue }) => {
   await deskItem(page, cue);
   await page.evaluate(() => deskAwayOpen("cue"));
   await expect.poll(() => get(page, () => !!deskAwayEdit)).toBe(true);
   await esc(page);
   expect(await get(page, () => deskAwayEdit)).toBeNull();
-  // The same Esc went on to the Desk (desk_act.js deskKey): it armed Stop on the item's holder, so one more stops it.
+  expect(await itemOpen(page)).toBe(true);
+  // That Esc armed nothing: one more only arms Stop, the next stops the holder.
+  await esc(page);
+  expect(await cue.calls("interrupt_session")).toHaveLength(0);
   await esc(page);
   await cue.called("interrupt_session", { sessionId: "host" });
-  expect(await itemOpen(page)).toBe(true);
 });
 
 test("the Desk's progress panel closes before the item; then the item's holder (Esc twice stops it)", async ({ page, cue }) => {
@@ -152,14 +155,17 @@ test("an add-on's panel on the Board: Esc closes it, and the Board's own Esc doe
   expect(await get(page, () => liveOpen)).toBe(false);
 });
 
-test("an add-on's panel on a Desk item: the Desk takes Esc first (Stop armed, then the holder stops); the panel stays", async ({ page, cue }) => {
+test("an add-on's panel on a Desk item: Esc closes the panel only; the item and its holder stay as they were (#521)", async ({ page, cue }) => {
   await deskItem(page, cue);
   await page.evaluate(() => { const el = document.createElement("div"); document.body.append(el); extPanel = { name: "x", el }; });
   await esc(page);
-  expect(await get(page, () => extPanel?.name)).toBe("x");
+  expect(await get(page, () => extPanel)).toBeNull();
+  expect(await itemOpen(page)).toBe(true);
+  // That Esc armed nothing: one more only arms Stop, the next stops the holder.
+  await esc(page);
+  expect(await cue.calls("interrupt_session")).toHaveLength(0);
   await esc(page);
   await cue.called("interrupt_session", { sessionId: "host" });
-  expect(await get(page, () => extPanel?.name)).toBe("x");
 });
 
 test("Settings → Insights' chooser: Esc closes the chooser, not the sheet; then the sheet", async ({ page, cue }) => {

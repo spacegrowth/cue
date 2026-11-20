@@ -355,13 +355,14 @@ document.addEventListener("input", (ev) => {
   const f = ev.target.closest?.("[data-away-field]");
   if (f && deskAwayEdit) deskAwayEdit[f.dataset.awayField] = f.value;
 }, true);
-/** Esc closes the Away sheet (app/keys.js KEY_FIRST): kept from the Board's Esc, not from the Desk's after it. */
+/** Esc closes the Away sheet (app/keys.js KEY_FIRST), and only it: kept from the Desk's Esc and the Board's. */
 function deskAwayKey(ev) {
   if (ev.key !== "Escape" || !deskAwayEdit) return false;
   ev.stopPropagation(); ev.preventDefault();
   deskAwayEdit = null;
   renderMain();
-  return false;
+  // Taken: the Desk under it doesn't see this Esc (#521).
+  return true;
 }
 
 // ---------- Pause (#366): every session on the Desk stops at a safe point; Resume picks them all back up ----------

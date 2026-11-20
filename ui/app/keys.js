@@ -243,14 +243,15 @@ const keyTook = (step) => (e) => (step(e) ? (e.preventDefault(), true) : false);
  *  nearest thing first. In order: what's over the window (+ New Desk's sheet and menu, desk_home.js; the diff
  *  overlay, diff_overlay.js; the file viewer, file_view.js), the crew's tray (team.js), the crew's page
  *  (team_page.js), the crew's bar (team_bar.js), Settings → Insights' chooser (insights.js), the Inbox (inbox.js), the
- *  Desk's Away sheet (desk_away.js), the Desk (desk_view.js notes the key, desk_act.js deskKey), an add-on's panel
- *  (extensions.js). A step that takes the key (true) is the last to see it; one may instead keep it from KEY_STEPS
+ *  Desk's Away sheet (desk_away.js), an add-on's panel (extensions.js), then the Desk (desk_view.js notes the key,
+ *  desk_act.js deskKey). Each of the last three closes only itself: an Esc that shut a sheet or a panel never goes on
+ *  to arm Stop on the open item's session (#521). A step that takes the key (true) is the last to see it; one may instead keep it from KEY_STEPS
  *  alone (e.stopPropagation()) and let the rest of these run, as Settings → Insights' chooser does. The main window
  *  adds its dialogs' (app/bind.js keyDeleteAsk); the mini window runs these too, before its own (mini.js keyHere). */
 const KEY_FIRST = [
   deskHomeKey, diffOverlayKey, fileViewKey,
   keyTook(crewEsc), keyTook((e) => crewPageEsc(e) || crewListKey(e)), keyTook(crewBarKey),
-  insChooserKey, keyTook(inboxKey), deskAwayKey, deskKeyNote, keyTook(deskKey), extKey,
+  insChooserKey, keyTook(inboxKey), deskAwayKey, extKey, deskKeyNote, keyTook(deskKey),
 ];
 /** The first of KEY_FIRST that takes a key keeps it from everything after it. A step that throws is reported and
  *  the rest still run, as when each was a listener of its own. */

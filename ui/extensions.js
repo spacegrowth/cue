@@ -241,10 +241,13 @@ function extShowPanel(name) {
   renderMain();
 }
 function extClosePanel() { if (extPanel) { extPanel.el.remove(); extPanel = null; renderMain(); } }
-/** Esc closes the add-on's panel (app/keys.js KEY_FIRST): kept from the Board's Esc. */
+/** Esc closes the add-on's panel (app/keys.js KEY_FIRST), and only it: before the Desk's Esc and the Board's. */
 function extKey(ev) {
-  if (ev.key === "Escape" && extPanel) { ev.stopPropagation(); extClosePanel(); }
-  return false;
+  if (ev.key !== "Escape" || !extPanel) return false;
+  // Taken: nothing under the panel (the Desk's open item, the Board) sees this Esc (#521).
+  ev.preventDefault();
+  extClosePanel();
+  return true;
 }
 document.addEventListener("click", (ev) => {
   const open = ev.target.closest?.("[data-xp-open]");
