@@ -12,14 +12,9 @@ let lands = null;   // { desk, set: { where, how, check, after, push, at_once, c
  *  screen ("Asks before release, delete · lands in own copy, checked · Settings"). Only on a Desk run by a lead. The
  *  words shorten with an ellipsis at narrow widths; Settings always shows. Why the folder decides a part is on the screen. */
 function deskSettingsLine(d) {
-  if (!d?.lead) return "";
-  const l = d.lands, ab = d.ask_before;
-  const asks = ab?.project ? askBeforeWords(ab) : "";
-  const parts = [asks ? (asks === "nothing" ? "Asks nothing first" : `Asks before ${asks}`) : "", l?.summary ? `lands in ${l.summary}` : ""].filter(Boolean);
-  if (!parts.length) return "";
-  const open = l ? `data-lands-change="${esc(d.id || d.project)}"` : `data-ab-change="${esc(ab.project)}"`;
-  const words = parts.join(" · ");
-  return `<span class="dk-ab"><span class="dk-ab-words">${esc(words[0].toUpperCase() + words.slice(1))}</span><span class="dk-ab-sep"> · </span><button class="dk-ab-change" ${open}>Settings</button></span>`;
+  if (!d?.lead || !(d.lands || d.ask_before?.project)) return "";
+  const open = d.lands ? `data-lands-change="${esc(d.id || d.project)}"` : `data-ab-change="${esc(d.ask_before.project)}"`;
+  return `<span class="dk-ab"><button class="dk-ab-change" ${open}>Settings</button></span>`;
 }
 /** Open Desk `desk`'s settings. */
 function landsChange(desk) {

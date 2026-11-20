@@ -23,9 +23,9 @@ test("the screen has its four parts, opens from Lands and Ask me before, and Awa
   await expect(dlg.locator("[title]")).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(dlg).toHaveCount(0);
-  // One line, one link (#417): what it asks before and how work lands, then Settings; no other Change in the head.
+  // One link (#417), just the word Settings on the counts' line (#415); no other Change in the head.
   await expect(lands(page)).toHaveCount(1);
-  await expect(lands(page)).toHaveText("Asks before push to main · lands in own copy, checked, one commit per item · Settings");
+  await expect(lands(page)).toHaveText("Settings");
   await expect(page.locator(".dk-strip [data-ab-change]")).toHaveCount(0);
   await expect(page.locator(".dk-strip button", { hasText: "Change" })).toHaveCount(0);
   await lands(page).locator("[data-lands-change]").click();
@@ -89,29 +89,27 @@ test("the lead's proposed change is its ask; it shows on the screen only after y
   }, q);
   const ask = page.locator(".dk-right .dk-ask");
   await expect(ask).toContainText(q);
-  // Nothing changed yet.
-  await expect(lands(page)).toContainText("lands in own copy, checked, one commit per item · Settings");
   await ask.locator("[data-pick]", { hasText: "Yes" }).click();
   await ask.locator('[data-act="submit-answers"]').click();
   expect((await cue.called("respond")).args.id).toBe("n-lands-ask");
-  await expect(lands(page)).toContainText("lands in own copy, not checked, one commit per item · Settings");
   await lands(page).locator("[data-lands-change]").click();
   const check = page.locator(".ld-dialog .ld-row", { has: page.locator(".ld-label", { hasText: "Check before landing" }) });
   await expect(check.locator("button.on")).toHaveText("None");
 });
 
-test("the Desk's one settings line shortens at a narrow width and Settings still shows and opens the screen (#417)", async ({ page, cue }) => {
+test("Settings sits at the end of the counts' line, takes no line of its own, and lines up with Run by (#415)", async ({ page, cue }) => {
   await page.setViewportSize({ width: 520, height: 800 });
   await cue.open("desk");
   await openDesk(page);
-  const line = lands(page), link = line.locator("[data-lands-change]");
+  const link = lands(page).locator("[data-lands-change]"), sub = page.locator(".dk-strip .dk-sub");
   await expect(link).toHaveText("Settings");
-  const [l, b] = [await line.boundingBox(), await link.boundingBox()];
-  expect(b.x + b.width).toBeLessThanOrEqual(l.x + l.width + 1);
-  expect(b.height).toBeLessThan(20);
-  const cut = await line.locator(".dk-ab-words").evaluate((e) => e.scrollWidth > e.clientWidth);
-  expect(cut || l.width < 400).toBeTruthy();
-  await expect(line.locator("[title]")).toHaveCount(0);
+  const [s, b, strip, lh] = await Promise.all([sub.boundingBox(), link.boundingBox(), page.locator(".dk-strip").boundingBox(), page.locator(".dk-strip .dk-lh").boundingBox()]);
+  // Same line as the counts, at the strip's right inside edge.
+  expect(Math.abs((b.y + b.height / 2) - (s.y + s.height / 2))).toBeLessThan(4);
+  expect(b.x + b.width).toBeLessThanOrEqual(strip.x + strip.width - 19);
+  // Run by starts where the counts do.
+  expect(Math.abs(lh.x - s.x)).toBeLessThan(1);
+  await expect(page.locator(".dk-strip [title]")).toHaveCount(0);
   await link.click();
   await expect(page.locator(".ld-dialog .move-title")).toHaveText("Settings for cue");
 });

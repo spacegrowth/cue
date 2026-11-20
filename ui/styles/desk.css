@@ -538,7 +538,7 @@
    into the window's dark green: ‹ Desks and ⋯ (hand the Desk on), the Desk's name with ✎ on hover, its meta line; then
    the lead's card inside it. Light: the accent with white text; dark: a dark green (see pick O
    below). */
-.dk-strip { flex: none; margin: 0; padding: 10px 14px 14px; border-radius: 14px 14px 0 0; background: var(--accent); color: var(--on-accent); }
+.dk-strip { flex: none; margin: 0; padding: 10px 20px 14px; border-radius: 14px 14px 0 0; background: var(--accent); color: var(--on-accent); }
 /* Pick O: the left column lifts off the window (a hairline light edge, a deeper shadow), and a lime line under the strip
    closes it off from the sessions. Dark: the strip is a dark green, not lime, so the lead's card lights lime when open
    exactly as a row does, in both themes. */
@@ -548,7 +548,7 @@
 .dk-lbar { position: relative; flex: none; height: 3px; overflow: hidden; background: var(--sel); }
 .dk-lbar.on { background: var(--panel); }
 /* With a lead it sits under "Run by", over the lead's card (#359), edge to edge as the card is. */
-.dk-strip > .dk-lbar { margin: 0 -14px; }
+.dk-strip > .dk-lbar { margin: 0 -20px; }
 :root[data-theme="dark"] .dk-sessions .dk-strip { background: color-mix(in oklab, var(--accent) 22%, var(--panel)); color: var(--ink); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .dk-sessions .dk-strip { background: color-mix(in oklab, var(--accent) 22%, var(--panel)); color: var(--ink); } }
 .dk-sh { display: flex; flex-direction: column; min-width: 0; }
@@ -584,7 +584,7 @@
 .dk-shr { display: flex; align-items: center; gap: 6px; min-width: 0; }
 /* The Desks you opened last (#274): one click each, on a row of their own under the name and counts (#402), so the
    name never shares its line with them. More than fit: the row scrolls sideways (a mouse wheel too, desk_act.js). */
-.dk-rcs { display: flex; gap: 4px; min-width: 0; margin: 6px -14px 0 0; padding-right: 14px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+.dk-rcs { display: flex; gap: 4px; min-width: 0; margin: 6px -20px 0 0; padding-right: 20px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
 .dk-rcs::-webkit-scrollbar { display: none; }
 .dk-rc { all: unset; flex: none; max-width: 200px; height: 24px; padding: 0 9px; overflow: hidden; border: 1px solid color-mix(in oklab, currentColor 24%, transparent); border-radius: 999px; font-size: 12px; font-weight: 600; line-height: 22px; text-overflow: ellipsis; white-space: nowrap; box-sizing: border-box; cursor: pointer; }
 .dk-rc:hover, .dk-rc:focus-visible { background: color-mix(in oklab, currentColor 12%, transparent); }
@@ -595,20 +595,20 @@
 .dk-sw-btn b { padding: 3px 0; }
 .dk-shr > .dk-more-btn { flex: none; }
 .dk-strip .dk-sub { color: inherit; opacity: .75; font-size: 11px; }
-/* The Desk's one settings line, under its counts (#417): what it asks before and how work lands, then Settings as a
-   plain underlined link in the strip's own ink. The words shorten with an ellipsis; Settings never wraps away. */
-.dk-strip .dk-ab { display: flex; min-width: 0; margin-top: 2px; font-family: var(--mono); font-size: 11px; opacity: .75; white-space: nowrap; }
-.dk-ab-words { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.dk-ab-sep, .dk-strip .dk-ab .dk-ab-change { flex: none; white-space: pre; }
-.dk-ab-change { padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+/* The counts, then the Desk's Settings link at their end (#417, #415): one short word in the strip's own ink, on the
+   counts' line so it takes no line of its own. What it asks before and how work lands are on the screen it opens. */
+.dk-subr { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.dk-strip .dk-ab { flex: none; margin-left: auto; font-size: 11px; }
+.dk-ab-change { padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: 600; opacity: .85; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.dk-ab-change:hover, .dk-ab-change:focus-visible { opacity: 1; }
 .dk-sh .dk-ren, .dk-strip .dk-more-btn { color: inherit; }
 .dk-sh .dk-ren:hover, .dk-strip .dk-more-btn:hover, .dk-strip .dk-more-btn:focus-visible { background: color-mix(in oklab, currentColor 14%, transparent); color: inherit; }
 /* The lead's card: white (dark: the panel); while its chat shows, lit lime as an open row is. */
 /* Edge to edge across the strip's foot, as the rows below are (#202), so it reads as a row you open, not a box. */
 /* #269 (pick A): "Run by" is a head of its own over the card, as "Working" heads the rows below, and the card is
    exactly a session row's size, so it reads as a row you open, not part of the strip. */
-.dk-lh { margin: 12px 0 6px; padding-left: 6px; font: 700 11px var(--sans); letter-spacing: .08em; text-transform: uppercase; opacity: .75; }
-.dk-lcard { margin: 0 -14px -14px; padding: 12px 20px; background: var(--panel); color: var(--ink); cursor: pointer; }
+.dk-lh { margin: 12px 0 6px; font: 700 11px var(--sans); letter-spacing: .08em; text-transform: uppercase; opacity: .75; }
+.dk-lcard { margin: 0 -20px -14px; padding: 12px 20px; background: var(--panel); color: var(--ink); cursor: pointer; }
 .dk-lcard:hover { background: var(--panel-2); }
 .dk-lcard.on { background: var(--sel); color: var(--on-sel); }
 .dk-lcard:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }

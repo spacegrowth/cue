@@ -59,11 +59,10 @@ test("the Desk is in the header after Board, and lists Waiting on you, then a gr
   await expect(page.locator(".dk-sh .dk-ren")).toHaveCSS("opacity", "0");
   await page.locator(".dk-sh").hover();
   await expect(page.locator(".dk-sh .dk-ren")).toHaveCSS("opacity", "1");
-  // No Change for the lead (⋯ hands it over); one settings line with one Settings link (#417).
+  // No Change for the lead (⋯ hands it over); one Settings link, at the end of the counts' line (#417, #415).
   await expect(page.locator(".dk-board button", { hasText: "Change" })).toHaveCount(0);
   await expect(page.locator(".dk-strip .dk-ab")).toHaveCount(1);
-  await expect(page.locator(".dk-strip .dk-ab")).toContainText("Asks before push to main · ");
-  await expect(page.locator(".dk-strip .dk-ab .dk-ab-change")).toHaveText("Settings");
+  await expect(page.locator(".dk-strip .dk-subr .dk-ab .dk-ab-change")).toHaveText("Settings");
   await expect(page.locator(".dk-box textarea")).toHaveAttribute("placeholder", "Tell web-lead: a bug, a feature, or a question…");
   await expect(page.locator("[data-desk-new]")).toHaveCount(0);
 });
@@ -464,7 +463,7 @@ test("the Desks you opened last are one-click buttons on their own row under the
   expect(await page.locator(".dk-rcs [title]").count()).toBe(0);
   // Not on the name's line: under the "N sessions · N working" line.
   await expect(page.locator(".dk-shr .dk-rcs")).toHaveCount(0);
-  await expect(page.locator(".dk-sh > .dk-sub + .dk-rcs")).toHaveCount(1);
+  await expect(page.locator(".dk-sh > .dk-subr + .dk-rcs")).toHaveCount(1);
   // One click goes there; the Desk you left is now the button.
   await chips.first().click();
   await expect(chips).toHaveCount(1);

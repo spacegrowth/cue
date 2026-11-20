@@ -27,11 +27,6 @@ function askBeforeChange(project) {
   askBefore = { project, ticks: [...askBeforeNow(project)], more: false, change: true, busy: false };
   renderMain();
 }
-/** The short words for each kind, in a Desk's header line. */
-const AB_SHORT = { main: "push to main", push: "any push", release: "release", deploy: "deploy", data: "delete", outside: "outside files" };
-/** What a Desk asks before (its `ask_before`, from desk_view), in short words: "push to main, release, delete", or
- *  "nothing". Shown in the Desk's one header line (lands.js deskSettingsLine). */
-const askBeforeWords = (ab) => (ab.kinds || []).map((k) => AB_SHORT[k.key] || k.label.toLowerCase()).join(", ") || "nothing";
 const AB_FIRST = ["main", "release", "data"];
 const AB_CHECK = `<svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true"><path d="M2.5 6.3l2.3 2.3 4.7-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 /** Kind `k`'s row, ticked as `st` (this dialog's, or the settings screen's) has it. */

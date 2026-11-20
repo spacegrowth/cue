@@ -1,5 +1,4 @@
-// How work lands, per project (lands.js, lands.rs): the Desk's header says it ("… · lands in own copy, checked, one commit
-// per item · Settings"), and Settings opens the setting: where an item works, items at once, how it lands, the check,
+// How work lands, per project (lands.js, lands.rs): the Desk's header's Settings link (#415: just the word) opens the setting: where an item works, items at once, how it lands, the check,
 // after landing, push (your own steps for the check and after landing). Choices Cue can't do yet are shown greyed,
 // saying "not yet". A folder that isn't a git
 // repository says why it works in place.
@@ -16,7 +15,7 @@ const line = (page) => page.locator(".dk-strip .dk-ab");
 test("Cue's own Desk says how its work lands, and Settings opens the setting with Cue's setup", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  await expect(line(page)).toContainText("lands in own copy, checked, one commit per item · Settings");
+  await expect(line(page)).toHaveText("Settings");
   await line(page).locator("[data-lands-change]").click();
   const dlg = page.locator(".ld-dialog");
   await expect(dlg.locator(".move-title")).toHaveText("Settings for cue");
@@ -45,7 +44,7 @@ test("Cue's own Desk says how its work lands, and Settings opens the setting wit
   await expect(dlg).toHaveCount(0);
 });
 
-test("a change saved shows in the header; you commit means the shared folder", async ({ page, cue }) => {
+test("a change saved shows on the screen next time; you commit means the shared folder", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await line(page).locator("[data-lands-change]").click();
@@ -60,7 +59,9 @@ test("a change saved shows in the header; you commit means the shared folder", a
   await expect(dlg.locator(".ld-n")).toHaveCount(0);
   await dlg.locator('[data-ld="save"]').click();
   await expect(dlg).toHaveCount(0);
-  await expect(line(page)).toContainText("lands in shared folder, not checked, you commit · Settings");
+  expect((await cue.called("desk_lands_set")).args.lands.where).toBe("shared");
+  await line(page).locator("[data-lands-change]").click();
+  await expect(dlg.locator('[data-ld-part="where"].on')).toHaveText("Shared folder");
 });
 
 test("a folder that isn't a git repository works in place and its settings say why", async ({ page, cue }) => {
@@ -80,8 +81,8 @@ test("a folder that isn't a git repository works in place and its settings say w
     };
   }, why);
   await openDesk(page);
-  await expect(line(page)).toContainText("lands in shared folder, not checked, you commit · Settings");
-  // Why is on the settings screen, not in the header's one line (#417).
+  // Why is on the settings screen; the header has only its one Settings link (#417, #415).
+  await expect(line(page)).toHaveText("Settings");
   await expect(page.locator(".dk-strip .dk-ab")).toHaveCount(1);
   await line(page).locator("[data-lands-change]").click();
   const dlg = page.locator(".ld-dialog");
