@@ -59,9 +59,11 @@ test("the Desk is in the header after Board, and lists Waiting on you, then a gr
   await expect(page.locator(".dk-sh .dk-ren")).toHaveCSS("opacity", "0");
   await page.locator(".dk-sh").hover();
   await expect(page.locator(".dk-sh .dk-ren")).toHaveCSS("opacity", "1");
-  // No Change for the lead (⋯ hands it over); the only Changes are Ask me before's and How work lands', in the strip's lines.
-  await expect(page.locator(".dk-board button:not(.dk-ab-change)", { hasText: "Change" })).toHaveCount(0);
-  await expect(page.locator(".dk-strip .dk-ab").first()).toHaveText("Asks before: push to main · Change");
+  // No Change for the lead (⋯ hands it over); one settings line with one Settings link (#417).
+  await expect(page.locator(".dk-board button", { hasText: "Change" })).toHaveCount(0);
+  await expect(page.locator(".dk-strip .dk-ab")).toHaveCount(1);
+  await expect(page.locator(".dk-strip .dk-ab")).toContainText("Asks before push to main · ");
+  await expect(page.locator(".dk-strip .dk-ab .dk-ab-change")).toHaveText("Settings");
   await expect(page.locator(".dk-box textarea")).toHaveAttribute("placeholder", "Tell web-lead: a bug, a feature, or a question…");
   await expect(page.locator("[data-desk-new]")).toHaveCount(0);
 });
@@ -446,7 +448,7 @@ test("Desk home: one row a Desk with what it's about, its people, open tasks, bu
   await expect(rows).toHaveCount(2);
   await rows.first().click();
   await expect(page.locator(".dk-sh b")).toHaveText("cue");
-  await expect(page.locator(".dk-sh button:not(.dk-ab-change)", { hasText: "Change" })).toHaveCount(0);
+  await expect(page.locator(".dk-sh button", { hasText: "Change" })).toHaveCount(0);
 });
 
 test("the Desks you opened last are one-click buttons on their own row under the name and counts, the one you're on left out (#274, #402)", async ({ page, cue }) => {

@@ -1,5 +1,5 @@
 // A project's settings on one screen (#381, lands.js): how work lands, Ask me before, Away and old working folders.
-// Opened from the Desk header's Change and Ask me before's Change; its Away part opens Away's own card. The lead can propose a change in
+// Opened from the Desk header's one Settings link (#417); its Away part opens Away's own card. The lead can propose a change in
 // plain words: it shows as its ask, and only your Yes saves it (hub/desk_lands.rs); the screen shows it after.
 import { test, expect } from "./cue.mjs";
 
@@ -9,7 +9,7 @@ const openDesk = async (page) => {
   await page.locator('.switch-view [data-view="desk"]').click();
   await page.locator(".dk-items .dk-it").first().waitFor();
 };
-const lands = (page) => page.locator(".dk-strip .dk-ab", { hasText: "Lands:" });
+const lands = (page) => page.locator(".dk-strip .dk-ab");
 
 test("the screen has its four parts, opens from Lands and Ask me before, and Away opens from it", async ({ page, cue }) => {
   await cue.open("desk");
@@ -23,8 +23,12 @@ test("the screen has its four parts, opens from Lands and Ask me before, and Awa
   await expect(dlg.locator("[title]")).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(dlg).toHaveCount(0);
-  // Ask me before's Change opens the same screen.
-  await page.locator(".dk-strip [data-ab-change]").click();
+  // One line, one link (#417): what it asks before and how work lands, then Settings; no other Change in the head.
+  await expect(lands(page)).toHaveCount(1);
+  await expect(lands(page)).toHaveText("Asks before push to main · lands in own copy, checked, one commit per item · Settings");
+  await expect(page.locator(".dk-strip [data-ab-change]")).toHaveCount(0);
+  await expect(page.locator(".dk-strip button", { hasText: "Change" })).toHaveCount(0);
+  await lands(page).locator("[data-lands-change]").click();
   await expect(dlg.locator(".move-title")).toHaveText("Settings for cue");
   await expect(page.locator(".ab-dialog")).toHaveCount(0);
   // Away's part opens Away's own card; closing it comes back to the screen.
@@ -86,12 +90,28 @@ test("the lead's proposed change is its ask; it shows on the screen only after y
   const ask = page.locator(".dk-right .dk-ask");
   await expect(ask).toContainText(q);
   // Nothing changed yet.
-  await expect(lands(page)).toHaveText("Lands: own copy, checked, one commit per item · Change");
+  await expect(lands(page)).toContainText("lands in own copy, checked, one commit per item · Settings");
   await ask.locator("[data-pick]", { hasText: "Yes" }).click();
   await ask.locator('[data-act="submit-answers"]').click();
   expect((await cue.called("respond")).args.id).toBe("n-lands-ask");
-  await expect(lands(page)).toHaveText("Lands: own copy, not checked, one commit per item · Change");
+  await expect(lands(page)).toContainText("lands in own copy, not checked, one commit per item · Settings");
   await lands(page).locator("[data-lands-change]").click();
   const check = page.locator(".ld-dialog .ld-row", { has: page.locator(".ld-label", { hasText: "Check before landing" }) });
   await expect(check.locator("button.on")).toHaveText("None");
+});
+
+test("the Desk's one settings line shortens at a narrow width and Settings still shows and opens the screen (#417)", async ({ page, cue }) => {
+  await page.setViewportSize({ width: 520, height: 800 });
+  await cue.open("desk");
+  await openDesk(page);
+  const line = lands(page), link = line.locator("[data-lands-change]");
+  await expect(link).toHaveText("Settings");
+  const [l, b] = [await line.boundingBox(), await link.boundingBox()];
+  expect(b.x + b.width).toBeLessThanOrEqual(l.x + l.width + 1);
+  expect(b.height).toBeLessThan(20);
+  const cut = await line.locator(".dk-ab-words").evaluate((e) => e.scrollWidth > e.clientWidth);
+  expect(cut || l.width < 400).toBeTruthy();
+  await expect(line.locator("[title]")).toHaveCount(0);
+  await link.click();
+  await expect(page.locator(".ld-dialog .move-title")).toHaveText("Settings for cue");
 });

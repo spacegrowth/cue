@@ -595,8 +595,11 @@
 .dk-sw-btn b { padding: 3px 0; }
 .dk-shr > .dk-more-btn { flex: none; }
 .dk-strip .dk-sub { color: inherit; opacity: .75; font-size: 11px; }
-/* Ask me before, under the Desk's counts: its kinds, and Change as a plain underlined link in the strip's own ink. */
-.dk-strip .dk-ab { display: block; margin-top: 2px; font-family: var(--mono); font-size: 11px; opacity: .75; }
+/* The Desk's one settings line, under its counts (#417): what it asks before and how work lands, then Settings as a
+   plain underlined link in the strip's own ink. The words shorten with an ellipsis; Settings never wraps away. */
+.dk-strip .dk-ab { display: flex; min-width: 0; margin-top: 2px; font-family: var(--mono); font-size: 11px; opacity: .75; white-space: nowrap; }
+.dk-ab-words { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.dk-ab-sep, .dk-strip .dk-ab .dk-ab-change { flex: none; white-space: pre; }
 .dk-ab-change { padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 .dk-sh .dk-ren, .dk-strip .dk-more-btn { color: inherit; }
 .dk-sh .dk-ren:hover, .dk-strip .dk-more-btn:hover, .dk-strip .dk-more-btn:focus-visible { background: color-mix(in oklab, currentColor 14%, transparent); color: inherit; }

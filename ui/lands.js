@@ -1,19 +1,25 @@
 "use strict";
 /** A project's settings (#381): how work lands (lands.rs: where a Desk item works, how it lands, its check, what
  *  follows, push, and how many at once), Ask me before, Away and old working folders, on one screen. Opened from a
- *  Desk header's Change and Ask me before's Change; the Away switch still opens Away's own card at once. A Desk's `lands` (desk_view) has the setting now,
+ *  Desk header's Settings (#417); the Away switch still opens Away's own card at once. A Desk's `lands` (desk_view) has the setting now,
  *  its parts with each choice's words and whether it can be picked, and why when the folder decides it. Kept in Cue's
  *  own settings, never in the project. The lead can propose a change too (a LANDS: line): asked of you, saved on yes. */
 let lands = null;   // { desk, set: { where, how, check, after, push, at_once, check_steps, after_steps }, steps, ab, busy, old }
 // Remove old working folders (#397, hub/desk_copies.rs): looked at when you press it, listed with their size, removed
 // on a second press. `old`: null, { looking }, { list: { copies, kb } }, or { removing }.
 
-/** A Desk's header line. Only on a Desk run by a lead, like Ask me before. */
-function landsLine(d) {
-  const l = d?.lands;
-  if (!d?.lead || !l?.summary) return "";
-  const why = l.why ? `<span class="dk-ab dk-lands-why">${esc(l.why)}</span>` : "";
-  return `<span class="dk-ab">Lands: ${esc(l.summary)} · <button class="dk-ab-change" data-lands-change="${esc(d.id || d.project)}">Change</button></span>${why}`;
+/** A Desk's one header line (#417): what it asks before and how its work lands, then Settings, which opens this
+ *  screen ("Asks before release, delete · lands in own copy, checked · Settings"). Only on a Desk run by a lead. The
+ *  words shorten with an ellipsis at narrow widths; Settings always shows. Why the folder decides a part is on the screen. */
+function deskSettingsLine(d) {
+  if (!d?.lead) return "";
+  const l = d.lands, ab = d.ask_before;
+  const asks = ab?.project ? askBeforeWords(ab) : "";
+  const parts = [asks ? (asks === "nothing" ? "Asks nothing first" : `Asks before ${asks}`) : "", l?.summary ? `lands in ${l.summary}` : ""].filter(Boolean);
+  if (!parts.length) return "";
+  const open = l ? `data-lands-change="${esc(d.id || d.project)}"` : `data-ab-change="${esc(ab.project)}"`;
+  const words = parts.join(" · ");
+  return `<span class="dk-ab"><span class="dk-ab-words">${esc(words[0].toUpperCase() + words.slice(1))}</span><span class="dk-ab-sep"> · </span><button class="dk-ab-change" ${open}>Settings</button></span>`;
 }
 /** Open Desk `desk`'s settings. */
 function landsChange(desk) {
