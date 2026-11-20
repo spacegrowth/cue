@@ -35,16 +35,18 @@ function bindTips() {
   addEventListener("blur", hide);
 }
 
-/** When you last moved the chat yourself: the wheel, a touch, a scroll key, or a press (its scrollbar), and
- *  all the while a press on it is held (a slow drag of its scrollbar's thumb). A scroll event without one is
+/** When you last moved the chat yourself: the wheel, a touch, a scroll key, or a press on its scrollbar, and
+ *  all the while that press is held (a slow drag of its scrollbar's thumb). A scroll event without one is
  *  the chat moving on its own: it grew or shrank (a terminal opened above the box, a redraw), and the browser
- *  kept it in range. */
+ *  kept it in range. A press on what's in the chat (a button, text) isn't one: pressing Earlier messages, a
+ *  scroll while it was held loaded a page as scrolling up does, then the press loaded another (#530's flicker). */
 let chatMovedAt = 0;
 let chatHeld = false;
 const CHAT_MOVED_MS = 1000;
 const SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
 function noteChatMove(e) {
-  const moved = e.type === "keydown" ? SCROLL_KEYS.has(e.key) && !e.target?.closest?.("textarea, input, [contenteditable]") : e.target?.closest?.("[data-chat]");
+  const moved = e.type === "keydown" ? SCROLL_KEYS.has(e.key) && !e.target?.closest?.("textarea, input, [contenteditable]")
+    : e.type === "pointerdown" ? e.target?.matches?.("[data-chat]") : e.target?.closest?.("[data-chat]");
   if (!moved) return;
   chatMovedAt = Date.now();
   if (e.type === "pointerdown") chatHeld = true;
