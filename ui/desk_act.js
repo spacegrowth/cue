@@ -46,14 +46,18 @@ async function deskSendBox(key) {
 }
 /** What you wrote about item `to.item` from box `key` (#437). Held by a live session: to it, at any stage, as a note
  *  the hub keeps on the item's Thread before it goes and marks sent, queued or not sent (with Retry); ready to check,
- *  it goes back with your words. Held by no one, or done: to the lead. Your words stay in the box until the hub has
+ *  it goes back with your words, unless they ask a question (to check or done: a note it answers). Held by no one,
+ *  or done: to the lead. Your words stay in the box until the hub has
  *  them, so a restart or a change of state can't lose them. */
 async function deskSendItem(to, key, text, images) {
   const project = to.project || deskSelection(), it = deskItem(project, to.item);
   if (!it) return toast("That item isn't on this Desk any more.");
-  const hs = deskHolderSid(it), live = hs && (sessionOf(hs) || it.state === "to_check");
-  if (!it.holder || !live || ["done", "dropped"].includes(it.state)) return deskSendLead({ project, item: it.id }, key, text, images);
-  if (it.state === "to_check") {
+  // A question on an item to check or done (#475): its holder answers it, and the item stays where it is unless that
+  // answer changes its code (the hub's desk_asked.rs).
+  const asks = ["to_check", "done"].includes(it.state) && /\?\s*$/.test(text || "");
+  const hs = deskHolderSid(it), live = hs && (sessionOf(hs) || it.state === "to_check" || asks);
+  if (!it.holder || !live || (!asks && ["done", "dropped"].includes(it.state))) return deskSendLead({ project, item: it.id }, key, text, images);
+  if (it.state === "to_check" && !asks) {
     await deskSendBack(it.id, key, text, images);
     return renderMain();
   }
