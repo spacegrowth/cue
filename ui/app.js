@@ -100,8 +100,9 @@ async function boot() {
   await T.event.listen("upload", (e) => onUpload(e.payload));
   await listenPageLook(T);
   await T.event.listen("select", (e) => {
-    // "s:<session>": that session's chat, whether or not a card of it waits.
-    if (e.payload.startsWith("s:")) return setActive(null, e.payload.slice(2));
+    // "s:<session>": that session where it lives (#492): on its Desk when it's on one, else its chat on the Board,
+    // whether or not a card of it waits.
+    if (e.payload.startsWith("s:")) return openWhereItLives(null, e.payload.slice(2));
     // "d:{sid, path}": a file a reply named, as a click on it opens it here (a link in the mini window): a markdown
     // file in that session's Read, any other in the pop-up viewer.
     if (e.payload.startsWith("d:")) { const d = JSON.parse(e.payload.slice(2)); return isDocPath(d.path) ? openDoc(d.sid || null, d.path) : fileView(d.path, d.sid || null); }

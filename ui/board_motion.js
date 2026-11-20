@@ -202,10 +202,11 @@ function pickFromWaiting(key) {
   chipNav = "waiting";
   slideDir = 1;
   if (next.open) return next.open();
-  setActive(next.id, next.sid);
+  openWhereItLives(next.id, next.sid);
 }
-/** Where the Active pane sits in a chip's list (-1 when it's showing something else). */
-const chipAt = (list) => list.findIndex((x) => (x.shown ? x.shown() : x.id ? x.id === active?.id : x.sid === active?.sid && !isPending(findItem(active?.id))));
+/** Where the window sits in a chip's list (-1 when it's showing something else): a Desk's session where its Desk
+ *  shows it (#492), any other in the Board's Active pane. */
+const chipAt = (list) => list.findIndex((x) => (x.shown ? x.shown() : shownWhereItLives(x.sid) ?? (view === "board" && (x.id ? x.id === active?.id : x.sid === active?.sid && !isPending(findItem(active?.id))))));
 /** A chip click opens the oldest of its kind; clicking again (or ›, →) steps to the next, ‹ or ← back; both wrap. */
 function openFromChip(kind, dir = 1) {
   const list = chipList(kind);
@@ -216,7 +217,7 @@ function openFromChip(kind, dir = 1) {
   waitOpen = false;
   slideDir = dir;
   if (next.open) return next.open();
-  setActive(next.id, next.sid);
+  openWhereItLives(next.id, next.sid);
 }
 
 // ---------- boot ----------

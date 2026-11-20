@@ -206,8 +206,16 @@ function openNotice(id, about = null) {
   const card = findItem(id);
   const sid = card?.session_id || about || null;
   try { if (addOn.openNotice(id, sid)) return; } catch (e) { console.error(e); }
+  openWhereItLives(card || !sid ? id : null, sid);
+}
+/** Session `sid` (its card `id`, when one is named) opened where it lives (#317, #492): a Desk's session on that Desk,
+ *  its lead's chat for the lead, else the item the session is on, else its chat; any other session on the Board. Every
+ *  list of what waits on you opens through here (a notification, the header's chips and Waiting's list, the mini
+ *  window's ⤢ In Cue). */
+function openWhereItLives(id, sid) {
+  sid = sid || (id && findItem(id)?.session_id) || null;
   const d = sid && typeof deskForSession === "function" ? deskForSession(sid) : null;
-  if (!d) return card || !sid ? setActive(id) : setActive(null, sid);
+  if (!d) return id || !sid ? setActive(id, sid) : setActive(null, sid);
   seenSession(sid);
   openInDesk(d.project);
   if (deskLead(d)?.sid === sid) { deskPick = null; deskTab = "lead"; deskShow(null); return; }
@@ -215,6 +223,16 @@ function openNotice(id, about = null) {
   if (item) return deskShow({ kind: "item", id: item.id });
   deskChatEnd = true;   // at its newest
   deskShow({ kind: "chat", sid });
+}
+/** Whether session `sid`'s place on its Desk (as openWhereItLives opens it) is on screen now; null when it's on no
+ *  Desk (then the Board's Active pane is where it shows). */
+function shownWhereItLives(sid) {
+  const d = sid && typeof deskForSession === "function" ? deskForSession(sid) : null;
+  if (!d) return null;
+  if (view !== "desk" || deskSelection() !== d.project) return false;
+  if (deskLead(d)?.sid === sid) return !deskOpen && deskTab === "lead";
+  const item = deskSessItem(d, sid);
+  return item ? deskOpen?.kind === "item" && deskOpen.id === item.id : deskOpen?.kind === "chat" && deskOpen.sid === sid;
 }
 /** Another project picked (or All projects): the chat opens on the top of its Waiting (or none), and the
  *  terminal open closes with what was there. */
