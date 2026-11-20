@@ -257,8 +257,8 @@ function deskLineHtml(line, inline) {
   if (!m) return "";
   const body = m[2].trim().replace(/^\*\*/, "").trim().replace(/\*+$/, "").trim();
   if (!body || body.startsWith("<")) return "";
-  const p = body.split("|").map((x) => x.trim());
   if (m[1] === "ASK") return MD_DROP;
+  const p = body.split("|").map((x) => x.trim());
   // A part without its label ("done when:", any case), as parse.rs labelled(); null without it.
   const lab = (s, k) => (s.slice(0, k.length).toLowerCase() === k ? s.slice(k.length).trimStart().replace(/^:/, "").trim() : null);
   const find = (k) => p.slice(1).map((s) => lab(s, k)).find((v) => v !== null) ?? "";
