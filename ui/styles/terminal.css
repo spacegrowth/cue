@@ -81,6 +81,7 @@
 .active-pane > .copied { bottom: 12px; }
 @keyframes copied { 0% { opacity: 0; transform: translateY(4px); } 10%, 75% { opacity: 1; transform: none; } 100% { opacity: 0; } }
 .act-head { font-size: 12px; font-weight: 650; color: var(--muted); }
+.act-head .act-who { color: var(--ink); font-weight: 700; }
 .code-wrap { position: relative; }
 .code-copy { position: absolute; top: 6px; right: 6px; padding: 2px 8px; border-radius: 6px; font: 600 11px var(--sans); color: var(--on-slab); background: color-mix(in srgb, var(--on-slab) 14%, var(--slab)); opacity: 0; transition: opacity .12s; }
 .code-wrap:hover .code-copy, .code-copy:focus-visible { opacity: 1; }

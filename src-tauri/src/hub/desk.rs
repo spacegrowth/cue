@@ -311,8 +311,10 @@ impl Hub {
     /// The card's id, None when the lead isn't a session here.
     pub(super) fn desk_ask(&self, lsid: &str, project: &str, question: &str, choices: &[String], using: Option<&UseAsk>, item: Option<&str>) -> Option<String> {
         let origin = self.read(|st| st.sessions.origin(lsid))?;
-        let options: Vec<Value> = choices.iter().map(|c| json!({ "label": c, "description": "" })).collect();
-        let mut input = json!({ "questions": [{ "question": question, "header": "Desk", "options": options, "multiSelect": false }] });
+        // Each choice with its line on what it does, the lead's suggestion marked (#450); no header: the card's head
+        // names the lead.
+        let options: Vec<Value> = choices.iter().map(|c| crate::desk::parse::ask_choice(c)).map(|(label, what)| json!({ "label": label, "description": what })).collect();
+        let mut input = json!({ "questions": [{ "question": question, "header": "", "options": options, "multiSelect": false }] });
         if let Some(u) = using {
             input["desk_use"] = json!(u);
         }
@@ -349,6 +351,7 @@ impl Hub {
         }) else { return false };
         let answer = d.answers.as_ref().and_then(|a| a.as_object()).and_then(|a| a.values().next()).map(|v| v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string()));
         let answer = answer.or_else(|| d.message.clone()).unwrap_or_else(|| if d.behavior == "deny" { "no".into() } else { "yes".into() });
+        let answer = crate::desk::parse::plain_choice(&answer).to_string();
         self.write(|st| st.waiters.remove(id));
         self.finish(id, "answered", &format!("answered: {answer}"));
         // The lead's proposed change to how work lands (desk_lands.rs): saved only on your yes, the lead told.

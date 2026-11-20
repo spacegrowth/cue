@@ -162,7 +162,9 @@ function questionHtml(it, attr = "data-pick") {
   const qs = questions(it), lit = stepOf(it);
   const secs = qs.map((q, qi) => {
     const picked = qPicked(it, q);
-    const head = qs.length > 1 || q.header ? `<div class="qc-sn">${qs.length > 1 ? `${qi + 1} · ` : ""}${esc(q.header || `Question ${qi + 1}`)}${q.multiSelect ? " · pick any" : ""}</div>` : "";
+    // A Desk lead's older asks carry "Desk" as their header: the card's head already names the lead (#450).
+    const header = it.desk && q.header === "Desk" ? "" : q.header;
+    const head = qs.length > 1 || header ? `<div class="qc-sn">${qs.length > 1 ? `${qi + 1} · ` : ""}${esc(header || `Question ${qi + 1}`)}${q.multiSelect ? " · pick any" : ""}</div>` : "";
     const rows = (q.options || []).map((o, oi) => {
       const on = picked.includes(o.label), [label, rec] = choiceLabel(o.label);
       return `<button class="qc-opt${rec ? " rec" : ""}${on ? " on" : ""}" ${attr}="${qi}:${oi}" data-id="${esc(it.id)}" aria-pressed="${on}"><span class="qc-k">${qi === lit && oi < 9 ? oi + 1 : ""}</span><span class="qc-l"><span class="qc-mark ${q.multiSelect ? "chk" : "rad"}" aria-hidden="true"></span><span class="qc-lt">${esc(label)}</span>${rec ? `<span class="qc-rec">Recommended</span>` : ""}</span>${o.description ? `<span class="qc-d">${esc(o.description)}</span>` : ""}</button>`;

@@ -310,6 +310,30 @@ fn the_leads_ask_is_an_ask_of_its_session_marked_for_the_desk() {
     assert!(sent_to(&w, &d).iter().any(|t| t.contains("The answer: Footer")), "{:?}", sent_to(&w, &d));
 }
 
+/// The lead's ASK as the option C card (#450): a line under each choice, its suggestion marked Recommended, no "Desk"
+/// header; your pick goes back to it in the lead's own words.
+#[test]
+fn the_leads_ask_carries_a_line_per_choice_and_its_suggestion() {
+    let w = World::new();
+    let (_, project) = holder(&w);
+    let d = new_lead(&w, &project);
+    ends(&w, &d, "ASK: Header or footer first? | choices: Header (recommended) — it's what you see first / Footer - smaller, done today / Neither");
+    let snap = w.snapshot();
+    let card = snap.card(&d);
+    let q = &card["tool_input"]["questions"][0];
+    assert_eq!(q["header"], "");
+    let opts: Vec<(String, String)> = q["options"].as_array().unwrap().iter().map(|o| (o["label"].as_str().unwrap().into(), o["description"].as_str().unwrap().into())).collect();
+    assert_eq!(opts, vec![
+        ("Header (Recommended)".to_string(), "it's what you see first".to_string()),
+        ("Footer".into(), "smaller, done today".into()),
+        ("Neither".into(), "".into()),
+    ]);
+    let id = card["id"].as_str().unwrap().to_string();
+    w.answer(&id, json!({ "behavior": "allow", "answers": { "Header or footer first?": "Header (Recommended)" } }));
+    w.settle();
+    assert!(sent_to(&w, &d).iter().any(|t| t.contains("The answer: Header\n") || t.ends_with("The answer: Header")), "{:?}", sent_to(&w, &d));
+}
+
 /// The Desk's lead runs in fast mode: Cue turns it on as it starts the lead and as it resumes it. A session the lead
 /// starts for an item starts as any other.
 #[test]

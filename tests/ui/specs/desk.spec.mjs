@@ -255,6 +255,36 @@ test("the lead's own ASK stands in the box's place: its choices, Type answer…;
   await expect(page.locator(".dk-box textarea")).toHaveValue("And the footer too");
 });
 
+test("the lead's question is the option C card: who asks and when, a line per choice, its suggestion picked, Decline and one Send, no summary box (#450)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.change((st) => {
+    st.sessions.find((s) => s.session_id === "lead").state = "deciding";
+    st.items.push({ ...st.items[0], id: "n-lead-q", agent_id: "", agent_name: "", desk: true, hosted: false, created_ms: Date.now() - 4 * 60_000,
+      tool_input: { questions: [{ question: "Header or footer first?", header: "Desk", multiSelect: false, options: [
+        { label: "Header (Recommended)", description: "It's what you see first." },
+        { label: "Footer", description: "Smaller; done today." }] }] } });
+  });
+  const ask = page.locator(".dk-right .dk-ask");
+  await expect(ask.locator(".act-head")).toHaveText("web-lead asks you · 4m");
+  await expect(ask.locator(".qc-sn")).toHaveCount(0);
+  await expect(ask).not.toContainText("Claude Code asks");
+  await expect(ask.locator(".qc-opt .qc-d")).toHaveText(["It's what you see first.", "Smaller; done today."]);
+  const rec = ask.locator(".qc-opt.rec");
+  await expect(rec).toHaveCount(1);
+  await expect(rec.locator(".qc-lt")).toHaveText("Header");
+  await expect(rec.locator(".qc-rec")).toHaveText("Recommended");
+  await expect(rec).toHaveAttribute("aria-pressed", "true");
+  await expect(ask.locator(".qc-sum")).toHaveCount(0);
+  await expect(ask).not.toContainText("If you send this");
+  await expect(ask.locator('[data-act="deny"]')).toHaveText("Decline");
+  await expect(ask.locator('[data-act="submit-answers"]')).toHaveCount(1);
+  await expect(ask.locator(".act-card [title]")).toHaveCount(0);
+  await ask.locator('[data-act="submit-answers"]').click();
+  const call = await cue.called("respond", { id: "n-lead-q" });
+  expect(call.args.decision.answers).toEqual({ "Header or footer first?": "Header (Recommended)" });
+});
+
 test("a lead opens with its crew; a crew member with where it is, and the box goes to the lead", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);

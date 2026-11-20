@@ -291,6 +291,25 @@ fn ask(body: &str) -> Option<Line> {
     (!question.is_empty()).then_some(Line::Ask { question, choices: choices.unwrap_or_default(), item })
 }
 
+/// One of an ASK's choices as the card shows it (#450): its label and the line on what it does, written after a dash
+/// ("Merge now — it lands today"); "(Recommended)" anywhere in the label marks the lead's suggestion, kept as the
+/// label's suffix (as Claude Code marks one) so the card picks it for you.
+pub fn ask_choice(choice: &str) -> (String, String) {
+    let (label, what) = [" — ", " – ", " -- ", " - "].iter().find_map(|d| choice.split_once(d)).unwrap_or((choice, ""));
+    let low = label.to_lowercase();
+    let label = match low.find("(recommended)") {
+        Some(at) => format!("{} (Recommended)", format!("{}{}", &label[..at], &label[at + "(recommended)".len()..]).split_whitespace().collect::<Vec<_>>().join(" ")),
+        None => label.trim().to_string(),
+    };
+    (label, what.trim().to_string())
+}
+
+/// A choice's label as the lead wrote it: without the "(Recommended)" the card marks it with.
+pub fn plain_choice(label: &str) -> &str {
+    let t = label.trim_end();
+    t.len().checked_sub("(recommended)".len()).filter(|&at| t.is_char_boundary(at) && t[at..].eq_ignore_ascii_case("(recommended)")).map_or(t, |at| t[..at].trim_end())
+}
+
 /// One part of an ASK's choices, split on `/` or `;`; with neither, on commas or " or ".
 fn split_choices(part: &str) -> Vec<String> {
     let clean = |x: &str| x.trim().trim_matches(['"', '`', '*', '.']).trim().to_string();

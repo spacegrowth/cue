@@ -55,7 +55,9 @@ an item a session already holds moves to it, as when its holder is too full and 
 stops, and the new session is sent the item with that hand-off note)
 ROUTE: #<id> -> <name> | after: #<other id> | why: <reason>   (it starts once #<other id> is done; use it whenever \
 an item really waits on another, as when both would change the same files: the Desk shows the user what each waiting item unblocks)
-ASK: <question> | choices: <A> / <B> / <C>      (only when you can't decide without the user)
+ASK: <question> | choices: <A> / <B> / <C>      (only when you can't decide without the user; give each choice a \
+short line on what it does after a dash, and mark the one you suggest: choices: Merge now (Recommended) — it lands \
+today / Wait for #12 — it lands after the fix; no / or ; inside a choice)
 ASK: #<id> | <question> | choices: <A> / <B>      (the same, about one item: it shows on that item as waiting on the user)
 DECIDED: <what you chose> — <why>      (a key judgment call you made on your own that the user may want to undo: what gets built, how it looks or behaves, what's dropped; not for routing, starting or giving work: Cue lists those itself)
 DECIDED (minor): <what you chose> — <why>      (housekeeping: folders, routing, ordering, copies; kept, but off the user's Decisions list)
