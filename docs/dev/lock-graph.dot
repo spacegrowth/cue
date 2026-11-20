@@ -49,6 +49,7 @@ digraph locks {
   "typing gate" -> "desk saves";
   "typing gate" -> "ended sessions read for their edits";
   "typing gate" -> "folder facts";
+  "typing gate" -> "hosted pickup";
   "typing gate" -> "lands cue folders";
   "typing gate" -> "leads sweeping for Away";
   "typing gate" -> "live_ui.served";

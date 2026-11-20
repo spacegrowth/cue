@@ -69,20 +69,24 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     crate::chaos::start();
     let hub = Arc::new(Hub::new(Some(app.handle().clone())));
     app.manage(hub.clone());
-    // Hosted sessions cue-host kept running while Cue was away: picked up before anything can be sent to them.
-    hub.reattach_hosted();
-    #[cfg(feature = "ext")]
-    hub.ext_hub_up();
     quit::on_signals(app.handle().clone());
-    watchers::bring_back(&hub);
-    // Events from the agents on your machines (+ New → Machine), over SSH, and their sessions' logs.
-    // A test instance (CUE_HOME) watches its machines only when asked (CUE_TEST_MACHINES).
-    if std::env::var_os("CUE_HOME").is_none() || std::env::var_os("CUE_TEST_MACHINES").is_some() {
-        watchers::machines(&hub);
-    }
-    tickers::serve_socket(&hub, app.handle());
-    tickers::local_reads(&hub);
-    tickers::remote_reads(&hub);
+    // Hosted sessions cue-host kept running while Cue was away: picked up before anything can be sent to them
+    // (a send meanwhile waits), on a thread of their own: with many it takes seconds, and the window takes no
+    // click or key while this thread waits (#456). What came after them still does, in the same order.
+    let handle = app.handle().clone();
+    hub.reattach_hosted_then(move |hub| {
+        #[cfg(feature = "ext")]
+        hub.ext_hub_up();
+        watchers::bring_back(hub);
+        // Events from the agents on your machines (+ New → Machine), over SSH, and their sessions' logs.
+        // A test instance (CUE_HOME) watches its machines only when asked (CUE_TEST_MACHINES).
+        if std::env::var_os("CUE_HOME").is_none() || std::env::var_os("CUE_TEST_MACHINES").is_some() {
+            watchers::machines(hub);
+        }
+        tickers::serve_socket(hub, &handle);
+        tickers::local_reads(hub);
+        tickers::remote_reads(hub);
+    });
     talk::start(app, hub.clone());
     #[cfg(feature = "ext")]
     crate::ext::start(app, hub.clone());

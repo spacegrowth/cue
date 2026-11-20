@@ -336,6 +336,26 @@ fn restarted_mid_turn_a_message_starts_it_rather_than_queueing() {
     assert!(w.snapshot().session(&sid)["cut_by_restart"].is_null(), "at work again: the note goes");
 }
 
+/// Cue starting picks up the hosted sessions cue-host kept running off the window's thread (#456: with many, the
+/// window took no click or key for seconds after every restart), and a message sent meanwhile waits until they
+/// are picked up: it never reaches one mid-pickup.
+#[test]
+fn starting_cue_picks_hosted_sessions_up_without_holding_the_window_and_a_message_meanwhile_waits() {
+    let mut w = World::new();
+    let sid = running(&w, "go");
+    turn_ends(&w, &sid, "Done.");
+    w.hosted.under_host(&sid);
+    w.hosted.slow_reattach(600);
+    let t0 = std::time::Instant::now();
+    let picking = w.relaunch_as_cue_starts();
+    assert!(t0.elapsed() < std::time::Duration::from_millis(300), "the window's thread goes on at once: {:?}", t0.elapsed());
+    w.ask(json!({ "type": "send_to", "session_id": sid, "text": "next" }));
+    assert!(t0.elapsed() >= std::time::Duration::from_millis(600), "the message waited for the pickup: {:?}", t0.elapsed());
+    picking.join().unwrap();
+    assert!(w.hosted.sent_mid_pickup().is_empty(), "{:?}", w.hosted.sent_mid_pickup());
+    assert!(w.hosted.sent().contains(&(sid.clone(), "next".to_string())), "then it went: {:?}", w.hosted.sent());
+}
+
 /// Stop, or Send now, while Claude is starting up with your message next in its input: nothing is interrupted
 /// (that would end the turn your message starts before it begins).
 #[test]

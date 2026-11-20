@@ -27,7 +27,9 @@ pub(crate) fn fast_mode() -> [String; 2] {
 }
 
 impl Hub {
+    /// The hosted port, once the sessions an earlier Cue left running are picked up (picking_up.rs).
     pub(crate) fn hosted(&self) -> &dyn crate::hosted::Hosted {
+        self.picking_up.wait();
         &*self.ports.hosted
     }
 
@@ -163,7 +165,7 @@ impl Hub {
             let Some(agent) = Agent::named(&o.harness) else { continue };
             let spec = Spec { agent, cwd: o.cwd.clone().into(), start: Start::Resume(o.session_id.clone()), permissions: String::new(), model: None, args: vec![], program: Program::Agent, machine: o.machine.clone() };
             // Costs aren't kept across restarts: this run's count from zero, as a resumed one's does.
-            let Some(back) = self.hosted().reattach(&spec, self.hosted_report(o.clone(), 0.0)) else { continue };
+            let Some(back) = self.ports.hosted.reattach(&spec, self.hosted_report(o.clone(), 0.0)) else { continue };
             // Its process noted first: what it reports next (an ask again, what it said meanwhile) finds it.
             if let Some(started) = &back.started {
                 self.write(|st| st.sessions.set_pid(&o.session_id, Some(started.pid)));
@@ -173,7 +175,7 @@ impl Hub {
             }
             (back.go)();
         }
-        self.hosted().settled();
+        self.ports.hosted.settled();
         self.changed();
     }
 
