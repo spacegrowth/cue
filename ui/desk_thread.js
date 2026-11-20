@@ -280,9 +280,11 @@ function deskChatFolds(i, d) {
 const deskChatWords = (text) => String(text || "").split("\n").filter((l) => !DESK_LINE.test(deskUnmarked(l)) || deskLineHtml(l, (x) => esc(x))).join("\n").trim();
 /** Reply `e` on item `i`'s chat: its words (deskChatWords), and a stop hook's checklist in them folded under it
  *  (deskHookSplit, deskHookFold), as the item's thread drew it (#325, #353). */
-function deskChatReply(i, e) {
+function deskChatReply(i, e, pickAt = null) {
   const r = deskHookSplit({ at: e.at_ms, text: e.text });
-  return { text: deskChatWords(r.text), after: deskHookFold(i, r) };
+  // The reply that asks you to pick: its options' Pick buttons under it, as on the item's panel (#539).
+  const pick = pickAt != null && e.at_ms === pickAt ? deskPickBtns(i, "dk-chat-opts") : "";
+  return { text: deskChatWords(r.text), after: deskHookFold(i, r) + pick };
 }
 /** Item `i`'s chat: its holder's session `s`, drawn as its own page draws it (deskChatRows), other items' turns folded;
  *  your send-backs of this item as their lines (#410); what you sent from here that it doesn't show yet (#395); and
@@ -292,7 +294,8 @@ function deskItemChat(i, d, s) {
   const checks = (d.checks || []).filter((c) => c.id === i.id).map((c) => ({ at: c.at, html: keyed(deskCheckLine(c, d), `chk:${c.id}:${c.at}`) }));
   // Its held and queued lines' controls as the item's own (#422): Edit back into this page's box, not the session's.
   const acts = (m) => deskMsgActs({ ...m, item: i.id });
-  const rows = deskChatRows(s, { extra: checks, folds: deskChatFolds(i, d), say: deskSaidWords, reply: (e) => deskChatReply(i, e), acts, wait: (e) => deskNoteWaits(i, e) });
+  const pickAt = deskPickReplyAt(i, thread);
+  const rows = deskChatRows(s, { extra: checks, folds: deskChatFolds(i, d), say: deskSaidWords, reply: (e) => deskChatReply(i, e, pickAt), acts, wait: (e) => deskNoteWaits(i, e) });
   // Not twice: what the chat's own outbox shows already (chat/send.js), its held or queued line, or its thread has.
   const waits = (p) => p.text.trim() && [s.held, s.queued].some((w) => String(w?.text || "").includes(p.text.trim()));
   // What the hub says didn't reach it (#437: Cue stopped, the session was gone): red with why and Retry, kept across

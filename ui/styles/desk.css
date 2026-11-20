@@ -949,6 +949,8 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
 .dk-optk { flex: none; min-width: 22px; font-weight: 600; }
 .dk-optw { flex: 1; min-width: 0; color: var(--muted); }
 .dk-opts .btn { flex: none; }
+/* The same options under the reply that asks you to pick, in the item's chat (#539). */
+.dk-chat-opts { margin: 8px 0 2px; max-width: 520px; }
 .dk-built { flex-basis: 100%; margin: 0; font-size: 12px; color: var(--muted); }
 .dk-built a { color: var(--accent); text-decoration: none; }
 .dk-built a:hover { text-decoration: underline; }

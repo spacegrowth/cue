@@ -368,24 +368,37 @@ const deskCanvas = (i) => /^https?:\/\//.test(i?.designs || "") ? i.designs : i?
  *  latest reply. An earlier pick can already have been answered. */
 function deskPickLine(i) {
   if (!deskCanvas(i) || (i.state !== "needs_you" && i.state !== "to_check")) return "";
-  const texts = [i.state === "needs_you" ? deskQuestion(i) : "", i.said?.at(-1)?.text || ""];
-  for (const t of texts) {
-    // Line by line before its markdown goes (plain() can run lines together), then sentence by sentence.
-    const lines = t.split(/\n+/).flatMap((l) => plain(l).split(/(?<=[.?!])\s+/)).map((x) => x.trim()).filter((x) => /\b(pick|choose)\b/i.test(x));
-    const line = lines.find((x) => /^(pick|choose|which)\b/i.test(x)) || lines[0];
-    if (line) return line.replace(/^(not done yet|still to do)\s*:\s*/i, "").replace(/^./, (c) => c.toUpperCase());
+  for (const t of [i.state === "needs_you" ? deskQuestion(i) : "", i.said?.at(-1)?.text || ""]) {
+    const line = deskPickLineIn(t);
+    if (line) return line;
   }
   return "";
+}
+/** The line of `t` that asks you to pick (deskPickLine): one starting "Pick", "Choose" or "Which", else a question
+ *  that says pick, choose or "which option", else the first that does (#539: "Which option do you want built: A, B or
+ *  C?" says neither pick nor choose). Line by line before its markdown goes (plain() can run lines together), then
+ *  sentence by sentence. "" for none. */
+function deskPickLineIn(t) {
+  const lines = String(t || "").split(/\n+/).flatMap((l) => plain(l).split(/(?<=[.?!])\s+/)).map((x) => x.trim())
+    .filter((x) => /\b(pick|choose)\b|\bwhich\s+(option|one|mock|way)s?\b/i.test(x));
+  const line = lines.find((x) => /^(pick|choose|which)\b/i.test(x)) || lines.find((x) => x.endsWith("?")) || lines[0];
+  return line ? line.replace(/^(not done yet|still to do)\s*:\s*/i, "").replace(/^./, (c) => c.toUpperCase()) : "";
 }
 /** The options its newest reply lists, each on a line of its own, its key first ("A: compact rows", "**M2** — a
  *  strip", "- Option C) …"): Map key → its words, cut short (#445). */
 function deskOptionWords(i) {
   const out = new Map();
   for (const l of (i.said?.at(-1)?.text || "").split("\n")) {
-    const m = l.match(/^\s*(?:[-*•]\s+)?(?:\*\*|__)?(?:option\s+)?([A-Z]\d{0,2})(?:\*\*|__)?\s*(?:[:.)\u2014\u2013-]|\*\*)\s*(.+)$/i);
-    if (!m || (m[1].length === 1 && m[1] !== m[1].toUpperCase())) continue;
-    const words = plain(m[2]).replace(/^[\s:.)\u2014\u2013-]+/, "").trim();
-    if (words && !out.has(m[1].toUpperCase())) out.set(m[1].toUpperCase(), words.length > 70 ? `${words.slice(0, 69).trimEnd()}…` : words);
+    // Its key, then a note on it ("B (suggested)", #539), then its mark: a colon, dot, bracket or dash, or its bold's
+    // end; a comma too inside bold ("**A, heads-up only:** …").
+    const m = l.match(/^\s*(?:[-*•]\s+)?(\*\*|__)?(?:option\s+)?([A-Z]\d{0,2})(?:\s*\(([^)]{1,30})\))?(.*)$/i);
+    if (!m || (m[2].length === 1 && m[2] !== m[2].toUpperCase())) continue;
+    const mark = m[4].match(m[1] ? /^\s*(?:\*\*|__)?\s*[:.)\u2014\u2013,-]|^\s*(?:\*\*|__)/ : /^\s*[:.)\u2014\u2013-]/);
+    if (!mark) continue;
+    const words = plain(m[4].slice(mark[0].length)).replace(/^[\s:.)\u2014\u2013-]+/, "").trim();
+    const note = m[3] && !words.toLowerCase().includes(m[3].toLowerCase()) ? ` (${m[3].trim()})` : "", max = 70 - note.length;
+    const k = m[2].toUpperCase();
+    if (words && !out.has(k)) out.set(k, `${words.length > max ? `${words.slice(0, max - 1).trimEnd()}…` : words}${note}`);
   }
   return out;
 }
@@ -400,12 +413,20 @@ function deskPickOptions(i) {
 }
 /** Its options as a short list, each with what it is (when its reply says) and a Pick: a pick means build (#281,
  *  #445): Cue closes the mocks and adds the item that builds the one you picked, for the lead to route at once. */
-function deskPickBtns(i) {
+function deskPickBtns(i, cls = "") {
   const opts = deskPickOptions(i);
   if (!opts.length) return "";
   const words = deskOptionWords(i);
   const row = (o) => `<li><b class="dk-optk">${esc(o)}</b><span class="dk-optw">${esc(words.get(o) || `Option ${o}`)}</span><button class="btn small" data-desk-act="pick" data-id="${esc(i.id)}" data-on="${esc(o)}" aria-label="Pick ${esc(o)}">Pick</button></li>`;
-  return `<ul class="dk-opts">${opts.map(row).join("")}</ul>`;
+  return `<ul class="dk-opts${cls ? ` ${cls}` : ""}">${opts.map(row).join("")}</ul>`;
+}
+/** The reply on item `i`'s chat that asks you to pick (#539): the newest of its holder's replies `ex` with its pick
+ *  line, or with no pick line its options one to a line. Its time, null for none. */
+function deskPickReplyAt(i, ex) {
+  if (!deskPickOptions(i).length) return null;
+  const line = deskPickLine(i);
+  const asks = (e) => (line ? deskPickLineIn(e.text) === line : deskOptionWords({ said: [{ text: e.text }] }).size > 1);
+  return (ex || []).findLast((e) => e.role === "agent" && asks(e))?.at_ms ?? null;
 }
 /** A picked mocks item and the item that builds its pick, each linking to the other (#281). */
 const deskBuiltLink = (i) => {

@@ -49,3 +49,68 @@ test("options listed one to a line are picked from even with no pick line; one o
   await expect(page.locator(".dk-panel[data-side-for] .dk-pnow .dk-opts")).toHaveCount(0);
   await expect(page.locator(".dk-right .dk-box textarea")).not.toHaveAttribute("placeholder", /^Comments on the mocks/);
 });
+
+// #539: an item whose reply marks one option suggested ("**B (suggested):**") and asks "Which option do you want
+// built: A, B or C?" (no "pick" in it) lists all three, the suggested one too, in its panel and under that reply in
+// its chat, where a Pick works as the panel's does.
+test("three options with the middle one suggested: all three get a Pick, in the panel and under the question in the chat (#539)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  const text = [
+    "The plan offers three options:",
+    "- **A, heads-up only:** a lead sends a note to the other Desks' leads.",
+    "- **B, holds with heads-up (suggested):** a big item holds the files it will change.",
+    "- **C, Cue spots overlaps itself:** Cue compares what each item has changed.",
+    "",
+    "- **Canvas page:** seven boards, all Mac.",
+    "  - **A:** the heads-up note.",
+    "  - **B (suggested):** both leads' chats and your Desk page.",
+    "  - **C:** the warning Cue sends both leads.",
+    "- **Ideas row:** added, with the status \"Mocks, waiting for a pick\".",
+    "",
+    "Which option do you want built: A, B or C?",
+  ].join("\n");
+  const at = Date.now() - 5000;
+  await cue.change((st, [text, at]) => {
+    Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5"), { state: "to_check", title: "Plan and mocks: Desks on the same code", designs: "https://claude.ai/artifact/MOCKS", said: [{ at, by: "host-lead", text }] });
+    st.sessions.find((x) => x.session_id === "host").thread = [{ role: "you", text: "About #d5 (Plan and mocks): go on", at_ms: at - 60000 }, { role: "agent", text: "Reading the code first.", at_ms: at - 30000 }, { role: "agent", text, at_ms: at }];
+  }, [text, at]);
+  await page.locator('[data-desk-item="d5"] .dk-t').click();
+  const side = page.locator(".dk-panel[data-side-for] .dk-pnow .dk-opts li");
+  await expect(side.locator(".dk-optk")).toHaveText(["A", "B", "C"]);
+  await expect(side.locator(".dk-optw")).toHaveText(["heads-up only: a lead sends a note to the other Desks' leads.", /^holds with heads-up \(suggested\): /, /^Cue spots overlaps itself: /]);
+  await expect(side.locator('[data-desk-act="pick"]')).toHaveText(["Pick", "Pick", "Pick"]);
+  await expect(page.locator(".dk-panel[data-side-for] .dk-pickl")).toContainText("Which option do you want built: A, B or C?");
+  // In the chat: under the reply that asks, not the one before it.
+  const chat = page.locator(".dk-right .dk-ichat");
+  await expect(chat.locator(".dk-chat-opts")).toHaveCount(1);
+  const asks = chat.locator(".cv-agent").filter({ hasText: "Which option do you want built" });
+  const inChat = asks.locator(".dk-chat-opts li");
+  await expect(inChat.locator(".dk-optk")).toHaveText(["A", "B", "C"]);
+  await expect(inChat.locator('[data-desk-act="pick"]')).toHaveText(["Pick", "Pick", "Pick"]);
+  await expect(page.locator(".dk-right [title]")).toHaveCount(0);
+  for (const theme of ["light", "dark"]) {
+    await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
+    if (process.env.SHOT_DIR) await expect(async () => page.locator(".dk-right").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-539-${theme}.png`, timeout: 2000 })).toPass();
+  }
+  await inChat.nth(1).locator('[data-desk-act="pick"]').click();
+  await cue.called("desk_item_act", { id: "d5", act: "pick", text: "B" });
+  await expect(chat.locator(".dk-chat-opts")).toHaveCount(0);
+  await expect(page.locator(".dk-panel[data-side-for] .dk-pnow .dk-opts")).toHaveCount(0);
+});
+
+test("options one to a line with the middle one marked suggested and no pick line: all three in both places (#539)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  const text = "On the canvas:\n- **A:** rows\n- **B (suggested):** cards\n- **C:** a table", at = Date.now() - 5000;
+  await cue.change((st, [text, at]) => {
+    Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5"), { state: "to_check", designs: "https://claude.ai/artifact/MOCKS", said: [{ at, by: "host-lead", text }] });
+    st.sessions.find((x) => x.session_id === "host").thread = [{ role: "agent", text, at_ms: at }];
+  }, [text, at]);
+  await page.locator('[data-desk-item="d5"] .dk-t').click();
+  for (const opts of [page.locator(".dk-panel[data-side-for] .dk-pnow .dk-opts li"), page.locator(".dk-right .dk-ichat .dk-chat-opts li")]) {
+    await expect(opts.locator(".dk-optk")).toHaveText(["A", "B", "C"]);
+    await expect(opts.locator(".dk-optw")).toHaveText(["rows", "cards (suggested)", "a table"]);
+    await expect(opts.locator('[data-desk-act="pick"]')).toHaveCount(3);
+  }
+});
