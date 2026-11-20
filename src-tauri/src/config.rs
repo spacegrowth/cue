@@ -641,9 +641,10 @@ fn wanted(hook: &str, harness: &str, on_mac: bool) -> Vec<(&'static str, Value)>
     ];
     // Ask me before (one_way.rs): a tool call checked before it runs, and stopped to ask you when it's a step its
     // project's Desk asks first about. On this Mac only: a machine's hook script reads no tool calls. Claude Code
-    // runs its commands through Bash; Codex names its shell tools in more ways, and deletes with a patch.
+    // runs its commands through Bash; Codex names its shell tools in more ways, and deletes with a patch. Edits are
+    // checked too: a Desk item's holder stays in its own copy (hub/desk_copy_guard.rs, #483).
     if on_mac {
-        want.push(("PreToolUse", json!({ "matcher": if harness == "claude" { "Bash" } else { "*" }, "hooks": [{ "type": "command", "command": cmd("guard"), "timeout": wait }] })));
+        want.push(("PreToolUse", json!({ "matcher": if harness == "claude" { "Bash|Edit|Write|MultiEdit|NotebookEdit" } else { "*" }, "hooks": [{ "type": "command", "command": cmd("guard"), "timeout": wait }] })));
     }
     if harness == "claude" {
         // A turn that ends on an API error (a usage limit) fires this, not Stop.

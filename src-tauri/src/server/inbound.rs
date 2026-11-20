@@ -50,7 +50,7 @@ pub fn apply(hub: &Hub, msg: ClientMsg, peer: Option<i32>) -> Outcome {
             let (id, answer) = hub.add_ask(origin, NewAsk { kind, tool_name, tool_input, suggestions, context, agent_id });
             Outcome::Asked { id, answer }
         }
-        ClientMsg::Guard { origin, tool_name, tool_input, hits, branch, agent_id } => match hub.guard(origin, tool_name, tool_input, &hits, &branch, agent_id) {
+        ClientMsg::Guard { origin, tool_name, tool_input, hits, branch, agent_id, checked } => match hub.guard(origin, tool_name, tool_input, &hits, &branch, agent_id, checked) {
             Some((id, answer)) => Outcome::Asked { id, answer },
             None => Outcome::Say(json!({"type": "pass"})),
         },

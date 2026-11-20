@@ -100,17 +100,22 @@ pub(super) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
         }
     }
     // The lead's ASK about this item: it waits on you with it.
-    if matches!(it.state.as_str(), "new" | "queued" | "working") && out.ask.is_none() {
+    if matches!(it.state.as_str(), "new" | "queued" | "working" | "finishing") && out.ask.is_none() {
         if let Some(a) = st.items.iter().find(|i| i.desk && i.status == "pending" && i.tool_input["desk_item"].as_str() == Some(it.id.as_str())) {
             out.state = "needs_you".into();
             out.stopped = false;
             out.ask = Some(ask_view(a));
         }
     }
-    // Finishing and stopped on a question (a word, a conflict, a long wait, a failed install): it needs you.
-    if let Some(q) = it.finish.as_ref().map(|f| f.question.clone()).filter(|q| it.state == "finishing" && !q.is_empty()) {
-        out.state = "needs_you".into();
-        out.latest = q;
+    // Finishing and stopped (a word, a conflict, a long wait, a failed install): stopped while its Desk lead has it
+    // (#483), else it needs you; the lead's ASK about it waits on you whatever.
+    if let Some(f) = it.finish.as_ref().filter(|f| it.state == "finishing" && !f.question.is_empty()) {
+        out.latest = f.question.clone();
+        if f.lead && super::desk_stall::lead_live(st, &it.project) && out.ask.is_none() {
+            out.stopped = true;
+        } else if out.ask.is_none() {
+            out.state = "needs_you".into();
+        }
     }
     // Paused by the lead (#365): it keeps its place, its holder stopped (or stopping) at a clean point; not stopped,
     // waiting or to resume, and nothing for you unless something asks you (its holder's ask, the lead's ASK).

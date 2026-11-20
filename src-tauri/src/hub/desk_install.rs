@@ -280,7 +280,13 @@ impl Hub {
 
     /// `finish_failed`, and with `hand_back` the item at work again (as Send back leaves it) instead of waiting on you.
     pub(super) fn finish_back(&self, it: &DeskItem, question: &str, step: &str, log: &str, hand_back: bool) {
-        self.finish_ask(&it.id, step, question, log);
+        // Handed back, it's at work again: nothing for the lead to settle.
+        if hand_back && it.holder.is_some() {
+            self.finish_question(&it.id, step, question, log);
+        } else {
+            self.finish_ask(&it.id, step, question, log);
+        }
+        let question = &super::desk_stop_lead::plain_and_said(question).0;
         let Some(h) = it.holder.clone() else { return };
         let now = now_ms();
         let log = tail(log);

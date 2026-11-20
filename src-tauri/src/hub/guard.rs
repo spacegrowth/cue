@@ -10,7 +10,15 @@ use super::*;
 impl Hub {
     /// A tool call checked before it runs. `hits`: the kinds its sender saw (empty: read here from `tool_input`, with
     /// `branch` for a plain push). Its card and the receiver its connection waits on, or None: it passes.
-    pub fn guard(&self, origin: Origin, tool_name: String, tool_input: Value, hits: &[String], branch: &str, agent_id: String) -> Option<(String, oneshot::Receiver<Reply>)> {
+    /// `checked`: its sender read the kinds itself, so none (`hits` empty) means none. Before that, an item's holder
+    /// leaving the copy Cue gave it is stopped, saying why (desk_copy_guard.rs, #483).
+    pub fn guard(&self, origin: Origin, tool_name: String, tool_input: Value, hits: &[String], branch: &str, agent_id: String, checked: bool) -> Option<(String, oneshot::Receiver<Reply>)> {
+        if let Some(why) = self.copy_guard(&origin, &tool_name, &tool_input) {
+            return Some((format!("copy-{}", now_ms()), super::desk_held::given("deny", Some(&why))));
+        }
+        if checked && hits.is_empty() {
+            return None;
+        }
         let (origin, kinds) = self.guarded(origin, &tool_input, hits, branch)?;
         if let Some(held) = self.held_guard(&origin, &tool_name, &tool_input, &kinds) {
             return Some(held);

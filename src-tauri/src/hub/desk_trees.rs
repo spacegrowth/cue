@@ -33,8 +33,9 @@ pub(crate) const CHECK_FAILED: &str = "Its check failed";
 /// What a holder is told of its item's copy.
 pub(crate) fn tree_line(t: &ItemTree) -> String {
     format!(
-        "Work in its own copy of the repository: {} (branch {}). Change files only there, never in the main checkout, \
-         and don't merge or push: at your DONE, Cue lands everything in it on the main line as one commit.",
+        "Work in its own copy of the repository: {} (branch {}). Change files only there, never in the main checkout \
+         or another folder, make no worktree or branch of your own, and don't merge or push: at your DONE, Cue lands \
+         everything in it on the main line as one commit. Cue stops an edit or git command outside it.",
         t.path, t.branch
     )
 }

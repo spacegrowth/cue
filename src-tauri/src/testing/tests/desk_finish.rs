@@ -258,14 +258,15 @@ fn a_word_in_a_crews_merged_work_or_its_merge_message_stops_the_merge() {
             crew_in_worktree(w, h, dir, "a.txt");
         });
         let shown = item(&w, &project, "Header jumps");
-        assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str()), (Some("needs_you"), Some("word")), "{shown}");
+        assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str()), (Some("finishing"), Some("word")), "{shown}");
+        assert_eq!(shown["stopped"], true, "the Desk lead's to settle, not yours (#483): {shown}");
         assert!(shown["latest"].as_str().unwrap().contains(at), "{shown}");
         assert!(!git(&dir, &["log", "-1", "--format=%s"]).starts_with("Merge"), "nothing merged");
     }
 }
 
 #[test]
-fn a_main_checkout_mid_merge_is_left_alone_and_asks_you() {
+fn a_main_checkout_mid_merge_is_left_alone_and_goes_to_the_lead() {
     let w = World::new();
     let (dir, project, _) = done_with(&w, |_, _, _| {}, |w, h, dir| {
         crew_in_worktree(w, h, dir, "a.txt");
@@ -282,7 +283,8 @@ fn a_main_checkout_mid_merge_is_left_alone_and_asks_you() {
         assert!(!o.status.success(), "a conflict");
     });
     let shown = item(&w, &project, "Header jumps");
-    assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str()), (Some("needs_you"), Some("conflict")), "{shown}");
+    assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str()), (Some("finishing"), Some("conflict")), "{shown}");
+    assert_eq!(shown["stopped"], true, "the Desk lead's to settle, not yours (#483): {shown}");
     assert!(shown["latest"].as_str().unwrap().contains("in the middle of a merge"), "{shown}");
     assert!(dir.join(".git/MERGE_HEAD").exists(), "your merge still in progress");
 }
@@ -295,7 +297,9 @@ fn a_crew_merge_onto_a_file_with_your_uncommitted_changes_is_refused_and_leaves_
         std::fs::write(dir.join("a.txt"), "yours, not committed\n").unwrap();
     });
     let shown = item(&w, &project, "Header jumps");
-    assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str()), (Some("needs_you"), Some("conflict")), "{shown}");
+    assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str()), (Some("finishing"), Some("conflict")), "{shown}");
+    assert_eq!(shown["stopped"], true, "the Desk lead's to settle, not yours (#483): {shown}");
+    assert_eq!(shown["latest"], "Not merged: the main checkout has edits of its own in a.txt that aren't committed", "{shown}");
     assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "yours, not committed\n");
     assert!(!dir.join(".git/MERGE_HEAD").exists());
     assert!(!git(&dir, &["log", "-1", "--format=%s"]).starts_with("Merge"), "nothing merged");
@@ -420,7 +424,8 @@ fn a_commit_git_refuses_says_why_in_gits_words_and_a_rerun_says_it_again() {
     let w = World::new();
     let (dir, project, id) = done_with(&w, |_, _, dir| hook_says(dir, Some("lint: a.txt has a tab")), writes_both);
     let shown = item(&w, &project, "Header jumps");
-    assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str()), (Some("needs_you"), Some("error")), "{shown}");
+    assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str()), (Some("finishing"), Some("error")), "{shown}");
+    assert_eq!(shown["stopped"], true, "the Desk lead's to settle, not yours (#483): {shown}");
     let q = shown["finish"]["question"].as_str().unwrap();
     assert!(q.starts_with("Not committed: git didn't commit the files in") && q.ends_with(": lint: a.txt has a tab"), "{q}");
 
@@ -470,7 +475,8 @@ fn an_item_shows_ready_only_once_its_commit_is_on_main_and_says_where_it_is_till
     tick(&w);
     assert!(fake.started().is_empty(), "nothing installed that isn't on main");
     let shown = item(&w, &project, "Header jumps");
-    assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str()), (Some("needs_you"), Some("landing")), "asked after 15 minutes: {shown}");
+    assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str()), (Some("finishing"), Some("landing")), "asked after 15 minutes: {shown}");
+    assert_eq!(shown["stopped"], true, "the Desk lead's to settle, not yours (#483): {shown}");
     assert!(shown["finish"]["question"].as_str().unwrap().contains("on side, not main"), "{shown}");
 
     // Main gets it: on its way into the app, then to check once Cue has it.

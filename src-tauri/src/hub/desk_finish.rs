@@ -122,6 +122,15 @@ impl Hub {
     pub(super) fn desk_close_on_check(&self, id: &str) {
         // Stopped on a failed install: its landing run again on the main line as it is now (#343), closed once that's in.
         let stopped = self.read(|st| st.desk.item(id).is_some_and(|i| i.close_on_check && i.state == "finishing" && i.finish.as_ref().is_some_and(|f| stopped_install(&f.step) && !f.repo.is_empty())));
+        // A stop the lead has (#483): its DONE says the way is clear. Landed again, it comes to your check.
+        let cleared = self.read(|st| st.desk.item(id).is_some_and(|i| i.close_on_check && i.state == "finishing" && i.finish.as_ref().is_some_and(|f| f.lead && !f.question.is_empty())));
+        if cleared && !stopped {
+            self.finish_set(id, |i| i.close_on_check = false);
+            if let Err(e) = self.desk_rerun_landing(id) {
+                eprintln!("cue: desk: #{id}: the lead's DONE couldn't run its landing again: {e}");
+            }
+            return;
+        }
         if stopped {
             if let Err(e) = self.desk_rerun_landing(id) {
                 eprintln!("cue: desk: #{id}: the lead's DONE couldn't run its landing again: {e}");
@@ -151,15 +160,26 @@ impl Hub {
         self.finish_fin(id, |f| (f.step, f.at, f.wait) = (step.to_string(), now, String::new()));
     }
 
-    /// Item `id` stopped on `question` at `step`: shown as needing you.
+    /// Item `id` stopped on `question` at `step`: its Desk lead's to settle when it has a live one, else yours
+    /// (desk_stop_lead.rs, #483).
     pub(super) fn finish_ask(&self, id: &str, step: &str, question: &str, log: &str) {
+        let said = self.finish_question(id, step, question, log);
+        self.finish_to_lead(id, &said);
+    }
+
+    /// Item `id` stopped on `question` at `step`, its first line kept as what's wrong and git's words after it with
+    /// its log; returns git's words.
+    pub(super) fn finish_question(&self, id: &str, step: &str, question: &str, log: &str) -> String {
         let now = now_ms();
+        let (plain, said) = super::desk_stop_lead::plain_and_said(question);
+        let log = [said.as_str(), log].iter().filter(|l| !l.trim().is_empty()).copied().collect::<Vec<_>>().join("\n");
         self.finish_set(id, |i| {
             i.updated = super::desk::secs(now);
             if let Some(f) = i.finish.as_mut() {
-                (f.step, f.at, f.question, f.log, f.now) = (step.into(), now, question.into(), tail(log), false);
+                (f.step, f.at, f.question, f.log, f.now, f.lead) = (step.into(), now, plain, tail(&log), false, false);
             }
         });
+        said
     }
 
     /// Items queued after `id` start now (its commit is made, or there was none to make).
@@ -336,6 +356,11 @@ impl Hub {
                     return None;
                 }
                 Err((step, question)) => {
+                    let main = match &m {
+                        Merge::Folder(folder) => main_checkout(folder).map(|(main, _)| main).unwrap_or_default(),
+                        Merge::Ref { main, .. } => main.clone(),
+                    };
+                    let question = self.main_edits_named(it, &main, &question);
                     self.finish_ask(&it.id, step, &question, "");
                     return None;
                 }
@@ -519,9 +544,15 @@ impl Hub {
                 if f.step != "landing" {
                     f.at = now;
                 }
-                (f.step, f.repo, f.commit, f.wait, f.wait_from, f.question) = ("landing".into(), top.into(), head.into(), at, from, question);
+                (f.step, f.repo, f.commit, f.wait, f.wait_from) = ("landing".into(), top.into(), head.into(), at, from);
+                if f.question != question {
+                    (f.question, f.lead) = (question.clone(), false);
+                }
             }
         });
+        if ask && fin.question.is_empty() {
+            self.finish_to_lead(id, "");
+        }
     }
 
     /// Whether `head` of `repo` is in the running Cue without an install: what changed since the commit it was built

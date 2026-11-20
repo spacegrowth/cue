@@ -152,6 +152,9 @@ pub enum ClientMsg {
         branch: String,
         #[serde(default)]
         agent_id: String,
+        /// The sender read `hits` itself, so empty means none (sent for an edit or a git command, #483).
+        #[serde(default)]
+        checked: bool,
     },
     /// Fire-and-forget lifecycle event: stopped (waiting for you), active, ended.
     Event {

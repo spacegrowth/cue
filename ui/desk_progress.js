@@ -39,6 +39,7 @@ function deskProgNow(i) {
   const who = esc(deskHolderOf(i));
   if (i.state === "needs_you") return deskVerbHtml(i) || "Asks you something";
   if (i.state === "to_check") return deskVerbHtml(i);
+  if (deskFinishing(i) && i.stopped) return `Stopped while landing · the Desk lead is on it`;
   if (deskFinishing(i)) return deskFinStep(i);
   if (i.state === "held") return "Parked: starts when you press Start";
   if (i.state === "paused") return `Paused by the Desk lead${i.paused?.[1] ? `: ${esc(i.paused[1])}` : ""}`;

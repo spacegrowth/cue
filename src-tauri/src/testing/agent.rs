@@ -195,6 +195,17 @@ impl<'w> Agent<'w> {
         }
     }
 
+    /// Its PreToolUse hook as it is since #483: `tool` (an edit, or Bash with a git command) sent with no kinds it
+    /// read, meaning none. Cue's answer (at once, when it stops the call), or None when it passes.
+    pub fn guard_tool(&self, tool: &str, input: Value) -> Option<Ask> {
+        let fields = json!({"type": "guard", "tool_name": tool, "tool_input": input, "checked": true});
+        match self.world.drive(self.message(fields)) {
+            Outcome::Asked { id, answer } => Some(Ask { id, answer: Mutex::new(answer) }),
+            Outcome::Say(v) if v["type"] == "pass" => None,
+            _ => panic!("a guard passes or waits"),
+        }
+    }
+
     fn open_ask(&self, fields: Value) -> Ask {
         self.answer_after_thinking();
         match self.world.drive(self.message(fields)) {

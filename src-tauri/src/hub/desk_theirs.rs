@@ -39,6 +39,19 @@ pub(super) struct Theirs {
     edits: Vec<(String, TheirEdit)>,
 }
 
+impl Theirs {
+    /// The sessions these changes are named to (never a guess), once each.
+    pub(super) fn named(&self) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for (_, e) in self.edits.iter().filter(|(_, e)| !e.guess) {
+            if !out.contains(&e.by) {
+                out.push(e.by.clone());
+            }
+        }
+        out
+    }
+}
+
 /// What of one file is the item's to commit.
 #[derive(Debug, PartialEq)]
 pub(super) enum Own {

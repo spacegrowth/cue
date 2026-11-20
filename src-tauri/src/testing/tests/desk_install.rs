@@ -134,7 +134,7 @@ fn install_now_while_an_install_without_its_commit_runs_starts_the_moment_that_o
 }
 
 #[test]
-fn a_failed_build_asks_you_keeps_its_log_and_sends_the_holder_back_to_it() {
+fn a_failed_build_goes_to_the_lead_keeps_its_log_and_sends_the_holder_back_to_it() {
     let w = World::new();
     let (fake, _, project, id) = done_in_cue(&w);
     w.hub().desk_item_act(&id, "install_now", "").unwrap();
@@ -142,7 +142,8 @@ fn a_failed_build_asks_you_keeps_its_log_and_sends_the_holder_back_to_it() {
     fake.goes("failed", "Compiling cue\nerror[E0425]: cannot find value `x`\n");
     tick(&w);
     let shown = item(&w, &project, "Header jumps");
-    assert_eq!((shown["state"].as_str(), shown["latest"].as_str(), shown["finish"]["step"].as_str()), (Some("needs_you"), Some("The build failed"), Some("failed")), "{shown}");
+    assert_eq!((shown["state"].as_str(), shown["latest"].as_str(), shown["finish"]["step"].as_str()), (Some("finishing"), Some("The build failed"), Some("failed")), "{shown}");
+    assert_eq!(shown["stopped"], true, "the Desk lead's to settle, not yours (#483): {shown}");
     assert!(shown["finish"]["log"].as_str().unwrap().contains("E0425"), "{shown}");
     let h = shown["holder"]["sid"].as_str().unwrap().to_string();
     let sent: Vec<String> = w.hosted.sent().into_iter().filter(|(s, _)| *s == h).map(|(_, t)| t).collect();
@@ -155,7 +156,7 @@ fn a_failed_build_asks_you_keeps_its_log_and_sends_the_holder_back_to_it() {
 }
 
 #[test]
-fn a_new_cue_that_didnt_start_asks_you_the_old_one_is_back() {
+fn a_new_cue_that_didnt_start_goes_to_the_lead_the_old_one_is_back() {
     let w = World::new();
     let (fake, _, project, id) = done_in_cue(&w);
     w.hub().desk_item_act(&id, "install_now", "").unwrap();
@@ -163,7 +164,8 @@ fn a_new_cue_that_didnt_start_asks_you_the_old_one_is_back() {
     fake.goes("rolled_back", "launch timed out");
     tick(&w);
     let shown = item(&w, &project, "Header jumps");
-    assert_eq!((shown["state"].as_str(), shown["latest"].as_str()), (Some("needs_you"), Some("The new Cue didn't start; the old one is back")), "{shown}");
+    assert_eq!((shown["state"].as_str(), shown["latest"].as_str()), (Some("finishing"), Some("The new Cue didn't start; the old one is back")), "{shown}");
+    assert_eq!(shown["stopped"], true, "the Desk lead's to settle, not yours (#483): {shown}");
 }
 
 #[test]
@@ -311,14 +313,15 @@ fn rerun_on_a_failed_install_queues_it_again_with_no_holder_needed() {
 }
 
 #[test]
-fn an_install_that_refuses_to_start_asks_you_with_why() {
+fn an_install_that_refuses_to_start_goes_to_the_lead_with_why() {
     let w = World::new();
     let (fake, _, project, id) = done_in_cue(&w);
     *crate::locking::lock(&fake.refuse, "fake installer refuse") = "Another install is running".into();
     w.hub().desk_item_act(&id, "install_now", "").unwrap();
     w.settle();
     let shown = item(&w, &project, "Header jumps");
-    assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str(), shown["finish"]["log"].as_str()), (Some("needs_you"), Some("failed"), Some("Another install is running")), "{shown}");
+    assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str(), shown["finish"]["log"].as_str()), (Some("finishing"), Some("failed"), Some("Another install is running")), "{shown}");
+    assert_eq!(shown["stopped"], true, "the Desk lead's to settle, not yours (#483): {shown}");
     assert_eq!(shown["latest"], "The install didn't start: Another install is running", "not a failed build: {shown}");
     assert!(fake.started().is_empty());
 }

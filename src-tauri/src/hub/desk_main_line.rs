@@ -90,8 +90,9 @@ fn merge_into(project: &str, main: &str, onto: &str, sha: &str, branch: &str, wh
         if in_progress(&main).is_some() {
             git("", &main, &[], &["merge", "--abort"]);
         }
-        let what = format!("Not merged: git wouldn't merge {branch} into {onto} in the main checkout");
-        return Err(("conflict", super::desk_git::because(what, &why)));
+        let way = super::desk_stop_lead::in_the_way(&main, &onto, &tree);
+        let what = if way.is_empty() { format!("Not merged: git wouldn't merge {branch} into {onto} in the main checkout") } else { super::desk_stop_lead::edits_line(&way, &[]) };
+        return Err(("conflict", super::desk_stop_lead::because_plain(what, &why)));
     }
     Ok(Some(main))
 }

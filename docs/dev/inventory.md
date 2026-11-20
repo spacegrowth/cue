@@ -19,7 +19,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | Lock acquisitions | 272 |
 | Lock-graph edges | 60 |
 | Spawn sites | 89 |
-| External calls: fs / db / process / notify / login / socket | 474 / 211 / 56 / 4 / 1 / 4 |
+| External calls: fs / db / process / notify / login / socket | 478 / 211 / 56 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 12 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -504,7 +504,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (474)
+### fs (478)
 
 | In | Call | Times |
 |---|---|---|
@@ -601,11 +601,14 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hub/desk_copies.rs::copies_of` | Path::is_dir | 1 |
 | `hub/desk_copies.rs::within` | canonicalize | 2 |
 | `hub/desk_copies.rs::work_on_main` | Path::exists | 1 |
+| `hub/desk_copy_guard.rs::canon` | canonicalize | 1 |
+| `hub/desk_copy_guard.rs::existing` | Path::is_dir | 1 |
 | `hub/desk_main_line.rs::in_progress` | Path::exists | 1 |
 | `hub/desk_main_line.rs::same_dir` | canonicalize | 2 |
 | `hub/desk_own_work.rs::Hub::holder_work` | Path::is_dir | 1 |
 | `hub/desk_own_work.rs::worked_in` | Path::is_dir | 1 |
 | `hub/desk_pr.rs::gh_bin` | Path::is_file | 1 |
+| `hub/desk_stop_lead.rs::Hub::main_edits_named` | canonicalize | 2 |
 | `hub/desk_theirs.rs::own_part` | read_to_string | 1 |
 | `hub/desk_theirs_log.rs::read_edits` | File::open | 1 |
 | `hub/desk_theirs_log.rs::read_edits` | Path::metadata | 1 |

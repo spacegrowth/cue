@@ -93,7 +93,8 @@ fn an_item_whose_window_doesnt_load_is_not_served_and_goes_back_to_its_holder() 
     let (fake, _, project, id) = done_since_running_with(&w, &["ui/desk.js"], true, false);
     let shown = item(&w, &project, "Header jumps");
     let broken = "The window doesn't load at this commit, so it wasn't installed or served";
-    assert_eq!((shown["state"].as_str(), shown["latest"].as_str(), shown["finish"]["step"].as_str()), (Some("needs_you"), Some(broken), Some("failed")), "{shown}");
+    assert_eq!((shown["state"].as_str(), shown["latest"].as_str(), shown["finish"]["step"].as_str()), (Some("finishing"), Some(broken), Some("failed")), "{shown}");
+    assert_eq!(shown["stopped"], true, "the Desk lead's to settle, not yours (#483): {shown}");
     assert!(shown["finish"]["log"].as_str().unwrap_or("").contains("doesn't parse: ui/desk.js"), "{shown}");
     let h = shown["holder"]["sid"].as_str().unwrap().to_string();
     let sent = sent_to(&w, &h);

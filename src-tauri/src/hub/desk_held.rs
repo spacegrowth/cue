@@ -58,7 +58,7 @@ pub(super) fn plain(kinds: &[String]) -> String {
 }
 
 /// A reply already given: the guard's connection gets it at once.
-fn given(behavior: &str, message: Option<&str>) -> oneshot::Receiver<Reply> {
+pub(super) fn given(behavior: &str, message: Option<&str>) -> oneshot::Receiver<Reply> {
     let (tx, rx) = oneshot::channel();
     let _ = tx.send(Reply::Decision(Decision { behavior: behavior.into(), message: message.map(str::to_string), ..Default::default() }));
     rx

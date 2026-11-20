@@ -18,6 +18,8 @@ mod desk_act;
 mod desk_heard;
 mod desk_features;
 mod desk_route;
+mod desk_stop_lead;
+mod desk_copy_guard;
 mod desk_said;
 mod desk_view;
 mod desk_spaces;

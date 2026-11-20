@@ -385,9 +385,13 @@ pub struct Finish {
     /// review, when its pull request was first seen merged but not on main (hub/desk_pr.rs).
     #[serde(default, skip_serializing_if = "is_zero_u64")]
     pub wait_from: u64,
-    /// What it asks you, when it stopped: the window shows it as needing you.
+    /// What stopped it, in one plain line (git's own words go in `log`): the window shows it as needing you, or as
+    /// stopped while its Desk lead has it (`lead`).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub question: String,
+    /// Its stop went to its Desk's lead (#483): it sends it back or clears the way; not yours unless the lead asks.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub lead: bool,
     /// The end of the install's log, when the build failed or the new Cue didn't start.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub log: String,

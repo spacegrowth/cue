@@ -184,7 +184,7 @@ fn an_items_why_needs_its_colon_so_a_title_starting_why_stays_the_title() {
 }
 
 #[test]
-fn a_word_never_committed_stops_the_commit_asks_you_and_the_next_done_tries_again() {
+fn a_word_never_committed_stops_the_commit_goes_to_the_lead_and_the_next_done_tries_again() {
     let w = World::new();
     let never = |w: &World, h: &str, _: &std::path::Path| {
         let project = w.snapshot().session(h)["project"].as_str().unwrap().to_string();
@@ -195,7 +195,8 @@ fn a_word_never_committed_stops_the_commit_asks_you_and_the_next_done_tries_agai
         says(w, h, writes("toolu_A", "agentA", "fixer", &[f("a.txt"), f("b.txt")]));
     });
     let shown = item(&w, &project, "Header jumps");
-    assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str()), (Some("needs_you"), Some("word")), "{shown}");
+    assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str()), (Some("finishing"), Some("word")), "{shown}");
+    assert_eq!(shown["stopped"], true, "the Desk lead's to settle, not yours (#483): {shown}");
     let q = shown["latest"].as_str().unwrap();
     assert!(q.contains("\"Fixer\"") && q.contains(": fixer wrote this"), "{q}");
     assert_eq!(commits(&dir), "1", "nothing committed");

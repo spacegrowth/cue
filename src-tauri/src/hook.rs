@@ -449,15 +449,22 @@ fn guard(p: &Value, harness: &str) -> Option<()> {
     let cwd = s(p, "cwd");
     let branch = |dir: Option<&str>| branch_in(&cwd, dir);
     let hits = crate::one_way::call_hits(&input, &branch);
-    if hits.is_empty() {
+    // An edit, or a git command, goes to Cue too: a Desk item's holder stays in its own copy (#483).
+    let tool = s(p, "tool_name");
+    let edit = matches!(tool.as_str(), "Edit" | "Write" | "MultiEdit" | "NotebookEdit");
+    let git = input.get("command").and_then(Value::as_str).is_some_and(|c| c.contains("git"));
+    if hits.is_empty() && !edit && !git {
         return None;
     }
     let mut msg = origin(p, harness);
     msg.insert("type".into(), json!("guard"));
     msg.insert("tool_name".into(), json!(s(p, "tool_name")));
+    // An edit's text stays here: only where it writes is needed.
+    let input = if edit { json!({ "file_path": input.get("file_path"), "notebook_path": input.get("notebook_path") }) } else { input };
     msg.insert("tool_input".into(), input);
     msg.insert("hits".into(), json!(hits));
     msg.insert("agent_id".into(), json!(s(p, "agent_id")));
+    msg.insert("checked".into(), json!(true));
     let m = match wait_for_answer(&Value::Object(msg)) {
         Answer::Said(m) => m,
         Answer::Pass | Answer::Never => return None,
