@@ -13,7 +13,7 @@ impl Sessions {
                 h.text = [h.text.as_str(), text].iter().filter(|t| !t.trim().is_empty()).cloned().collect::<Vec<_>>().join("\n\n");
                 h.images.extend(images);
             }
-            None => s.held = Some(Exchange { role: "you".into(), text: text.to_string(), at_ms: now_ms(), images, from: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None }),
+            None => s.held = Some(Exchange { role: "you".into(), text: text.to_string(), at_ms: now_ms(), images, from: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None, written_ms: 0 }),
         }
     }
 
@@ -36,6 +36,39 @@ impl Sessions {
             h.unsent = true;
             record(h, format!("couldn't send: {why}"));
         }
+    }
+
+    /// The kept message (written at `written`) went at `since`: its copy in the thread says when you wrote it.
+    pub fn sent_written(&mut self, session_id: &str, since: u64, written: u64) {
+        let Some(e) = self.0.get_mut(session_id).and_then(|s| s.thread.iter_mut().rev().find(|e| e.role == "you" && e.at_ms >= since)) else { return };
+        if e.written_ms == 0 && written < e.at_ms {
+            e.written_ms = written;
+        }
+    }
+
+    /// The kept message `h` went at `since` and its copy is in the thread: the copy says when you wrote it and
+    /// takes the kept one's place. Called in the write that notes the copy, so no redraw sees the bubble gone
+    /// or moved (#422).
+    pub fn kept_went(&mut self, session_id: &str, since: u64, h: &Exchange) {
+        self.sent_written(session_id, since, h.at_ms);
+        self.sent_held(session_id, h);
+    }
+
+    /// The kept message `sent` went (its copy is in the thread now, from the same write): off the kept slot, so
+    /// its bubble is never missing in between. Anything kept since, added after it, stays kept.
+    pub fn sent_held(&mut self, session_id: &str, sent: &Exchange) {
+        let Some(s) = self.0.get_mut(session_id) else { return };
+        let Some(h) = s.held.as_mut() else { return };
+        let Some(rest) = h.text.strip_prefix(sent.text.as_str()).map(|r| r.trim_start().to_string()) else { return };
+        if rest.is_empty() && h.images.len() <= sent.images.len() {
+            s.held = None;
+            return;
+        }
+        h.text = rest;
+        h.images.drain(..sent.images.len().min(h.images.len()));
+        h.at_ms = now_ms();
+        h.unsent = false;
+        h.delivery.clear();
     }
 
     pub fn held(&self, session_id: &str) -> Option<Exchange> {
@@ -66,6 +99,9 @@ impl Sessions {
             return;
         }
         let mut e = s.thread.remove(i);
+        if e.written_ms == 0 {
+            e.written_ms = e.at_ms; // the chat keeps it where you wrote it
+        }
         e.at_ms = s.thread.last().map_or(e.at_ms, |l| l.at_ms + 1).max(e.at_ms);
         s.thread.push(e);
     }

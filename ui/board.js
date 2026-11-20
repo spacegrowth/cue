@@ -856,7 +856,7 @@ function sessionCard(s, open) {
   return `<div class="working click ${idleNote(s) ? "on-agent" : ""} ${open ? "on" : ""}" ${go}>
       <div class="card-head">${projDot(s.project, (s.state === "working" || s.compacting_ms) && !cutOff(s) && !preStart(s))}${nameSpan(s.session_id, s.project)}${oddAgent(s.harness)}${machTag(s.machine)}${bgPill(s)}<span class="grow"></span><span class="age" style="color:inherit">${idleNote(s) && s.state !== "limited" && !state.items.some((x) => x.session_id === s.session_id) ? "idle " : ""}${ago(s.since_ms)}</span>${starBtn(s.session_id)}${isStarred(s.session_id) && !cutOff(s) ? "" : hideX(s)}</div>
       ${addOn.cardLine(s.session_id)}${desk}${sessionNote(s) ? `<div class="agent-note">${esc(sessionNote(s))}</div>` : ""}
-      ${s.queued || s.held ? ((q) => `<div class="queued-note">${s.held ? "Kept" : "Queued"}: “${esc(q.length > 80 ? q.slice(0, 80) + "…" : q)}”</div>`)((s.held || s.queued).text) : ""}
+      ${s.queued || s.held ? ((q) => `<div class="queued-note">${s.held ? "Not sent yet" : "Queued"}: “${esc(q.length > 80 ? q.slice(0, 80) + "…" : q)}”</div>`)((s.held || s.queued).text) : ""}
       ${bar(s.session_id)}${doing ? `<div class="doing">${esc(doing)}</div>` : ""}${preview ? `<div class="prompt">› ${esc(preview)}</div>` : ""}${deskSessCache(s.session_id)}${handOutHtml(s)}</div>`;
 }
 /** Sessions' cards: working, then out of usage, then idle, each under its heading. */

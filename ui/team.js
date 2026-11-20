@@ -496,7 +496,9 @@ const cueWill = (html) => html.replace(/^Cue (sent|asked|handed) /, (_, v) => `C
  *  "+ <its one line>". */
 function cueSaidLine(said, key, text, meta, review = null) {
   const rv = review ? addedNote(`${key}:review`, esc(reviewLineParts(review.team, review.name, review.text).words), review.text) : "";
-  return `<div class="cv-you cue-you"><div class="cv-you-text">${cueWords(said.html)}${text ? addedNote(key, "What Cue sent", text) : ""}${rv}</div><div class="cv-meta">Cue · ${meta}</div></div>`;
+  // `meta` as msgLine's state ({ st, to, … }): the same line as any message's, "From Cue · …" (#422).
+  const line = typeof meta === "string" ? `<div class="cv-meta">Cue · ${meta}</div>` : msgLine({ ...meta, from: "Cue" });
+  return `<div class="cv-you cue-you${typeof meta === "string" ? "" : ` msg-${meta.st}`}"><div class="cv-you-text">${cueWords(said.html)}${text ? addedNote(key, "What Cue sent", text) : ""}${rv}</div>${line}</div>`;
 }
 /** A review's Recommendation line: it starts the line ("**Recommendation**:" and "**Recommendation:**" both), and what
  *  follows it up to . ( , ; or * is the verdict. */

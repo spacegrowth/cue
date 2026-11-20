@@ -91,6 +91,11 @@ impl Hub {
     /// taken (`Taken`), or not sent if it couldn't be handed over or Claude exits first. Never waits on Claude.
     /// `busy`: it's mid-turn, so it's queued until Claude reads it at its next step.
     pub(crate) fn send_to_hosted(&self, sid: &str, typed: &str, saved: &[crate::uploads::Saved], busy: bool) -> Result<String, String> {
+        self.send_to_hosted_held(sid, typed, saved, busy, None)
+    }
+
+    /// The same, for the kept message `held` (send_held): its copy takes its place in the same write (#422).
+    pub(crate) fn send_to_hosted_held(&self, sid: &str, typed: &str, saved: &[crate::uploads::Saved], busy: bool, held: Option<&crate::model::Exchange>) -> Result<String, String> {
         let text = typed.trim();
         // One of its agent's own commands (/config, /login): a terminal opens it, or it's refused; the session never
         // gets it (terminal_only.rs).
@@ -99,7 +104,11 @@ impl Hub {
         }
         let paths: Vec<String> = saved.iter().map(|s| s.path.clone()).collect();
         self.write(|st| {
+            let t0 = now_ms();
             st.sessions.note_yours(sid, text, &paths, crate::config::context_keep());
+            if let Some(h) = held {
+                st.sessions.kept_went(sid, t0, h);
+            }
             st.sessions.set_pending(sid, text, true);
             if busy {
                 super::send::queue_typed(st, sid, text, paths.clone());

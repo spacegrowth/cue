@@ -325,9 +325,12 @@ button.ib-file:hover { background: color-mix(in srgb, var(--ink) 6%, transparent
 
 /* What you wrote that hasn't reached it yet: the chat's own rows (queued, kept in Cue, sent later), yours on the right. */
 /* Your reply under its message, whole, as in a mail thread. */
-.ib-yours { display: flex; flex-direction: column; gap: 4px; padding-top: 10px; border-top: 1px solid var(--line); }
-.ib-yours-text { font-size: 13.5px; line-height: 1.5; color: var(--ink); white-space: normal; }
-.ib-pending { display: flex; flex-direction: column; gap: 6px; padding-top: 10px; border-top: 1px solid var(--line); }
+/* What you wrote it: the chat's bubble on the right with its one line under it (#422). */
+.ib-yours { display: flex; flex-direction: column; padding-top: 6px; }
+.ib-yours > .cv-you { max-width: 85%; }
+.ib-yours-text { white-space: normal; }
+.ib-pending { display: flex; flex-direction: column; gap: 6px; padding-top: 6px; }
+.ib-pending.after { padding-top: 0; }
 .ib-pending > .cv-you { max-width: 85%; }
 
 /* The reply's mic and picture buttons, and the pictures going with it. */

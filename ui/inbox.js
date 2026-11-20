@@ -197,8 +197,14 @@ function inboxRunLines(r, card = false) {
   const subj = answered || (said ? (sent || seat?.from === "need" ? `You: “${said}”` : said) : "Working");
   const stuck = s.stuck_ms && !s.compacting_ms ? `No new output for ${ago(s.stuck_ms)}` : "";
   const busy = s.state === "working" || s.state === "agent" || s.compacting_ms;
-  const line = s.compacting_ms ? "Compacting…" : preStart(s) ? `Not started: ${preStart(s)}` : stuck || (card ? "" : inboxPendingLine(s)) || (!busy ? "Sent" : s.state === "agent" ? idleNote(s) : s.doing || "Thinking");
+  const line = s.compacting_ms ? "Compacting…" : preStart(s) ? `Not started: ${preStart(s)}` : stuck || (card ? "" : inboxPendingLine(s)) || (!busy ? (!card && inboxTaken(s)) || "Sent" : s.state === "agent" ? idleNote(s) : s.doing || "Thinking");
   return [subj, line];
+}
+/** Your last message to session `s`, once it took it: "Delivered to <name> 14:12" (#422); "" before that. */
+function inboxTaken(s) {
+  const e = (s.thread || []).findLast((x) => x.role === "you");
+  if (!e || e.pending || e.unsent || outbox.some((o) => o.sid === s.session_id && !landed(o))) return "";
+  return `Delivered to ${nameOf(s.session_id, s.project)} ${clockAt(msgTaken(e))}`;
 }
 /** A finished row's lines: how it ended and what it said, then what it did. */
 function inboxDoneLines(r) {
@@ -560,7 +566,10 @@ function inboxThread(r, words) {
 /** A message's head as mail's: who on the left, when on the right ("2:14pm · 5m ago"; nothing when not known). */
 const inboxHead = (who, ms) => `<div class="ib-mhead"><span class="ib-k">${who}</span>${ms ? `<span class="ib-when">${clockAt(ms)} · ${ago(ms)} ago</span>` : ""}</div>`;
 function inboxYours(sid, yours) {
-  return yours.map((e) => `<div class="ib-yours">${inboxHead("You", e.at_ms)}<div class="ib-yours-text">${esc(e.text).replace(/\n/g, "<br>")}</div>${e.sent ? inboxSentPics(e.sent) : thumbs(e.images)}</div>`).join("");
+  // As its chat draws them (#422): the bubble, and its one line: Sending… while on its way, else delivered. Under
+  // "Yours", with what still waits to go after them (inboxPending).
+  const to = nameOf(sid, sessionOf(sid)?.project);
+  return yours.map((e, n) => `<div class="ib-yours">${n ? "" : '<div class="ib-k">Yours</div>'}${msgRow(e.sent ? { st: "sending", to, sid } : { st: "delivered", to, at: msgTaken(e) }, `<div class="cv-you-text ib-yours-text">${esc(e.text).replace(/\n/g, "<br>")}</div>${e.sent ? inboxSentPics(e.sent) : thumbs(e.images)}`)}</div>`).join("");
 }
 /** The pictures of a message still on its way: what you picked, as they are (not files yet), as its chat shows them. */
 const inboxSentPics = (images) => (images.length ? `<div class="thumbs">${images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : "");
@@ -606,17 +615,20 @@ const inboxAsksHtml = (sid, asks) => (asks.length ? `<div class="ib-asks">${asks
 /** What you've written to it that hasn't reached it yet, as its chat shows it (chat/render.js): on its way, queued in
  *  it till its next step (Send now), kept in Cue till its turn ends (Edit, Send now), or to go at a time (Edit,
  *  Cancel, Send now). Empty when nothing waits. */
-function inboxPending(r) {
+function inboxPending(r, after = false) {
   const going = r.kind === "run" ? inboxGoing(r.sid) : [];   // at work, those show as yours in the thread
   const s = r.s, rows = outbox.filter((o) => o.sid === r.sid && !landed(o) && !going.includes(o)).map((o) => outboxRow(o, s, `ib-out:${o.at}`));
   if (s?.held) rows.push(heldRow(s));
   if (s?.send_at) rows.push(sendAtRow(s));
   if (s?.queued) rows.push(queuedRow(s));
-  return rows.length ? `<div class="ib-pending"><div class="ib-k">Waiting to go</div>${rows.join("")}</div>` : "";
+  // Under the rest of yours as more of them, each its bubble and its one line (#422): "Yours" over them when nothing
+  // of yours is above.
+  return rows.length ? `<div class="ib-pending${after ? " after" : ""}">${after ? "" : '<div class="ib-k">Yours</div>'}${rows.join("")}</div>` : "";
 }
-/** What waits to go to it, in a line for its row ("Queued: …"); "" when nothing does. */
+/** What waits to go to it, in a line for its row, in its message's words (#422: "Queued for cue-418: …"); "" when
+ *  nothing does. */
 function inboxPendingLine(s) {
-  const w = s?.queued ? ["Queued", s.queued.text] : s?.held ? ["Not sent yet", s.held.text] : s?.send_at ? ["Sends later", s.send_at.text] : null;
+  const w = s?.queued ? [`Queued for ${nameOf(s.session_id, s.project)}`, s.queued.text] : s?.held ? ["Not sent yet", s.held.text] : s?.send_at ? ["Sends later", s.send_at.text] : null;
   return w ? `${w[0]}: “${plain(w[1] || "")}”` : "";
 }
 /** The brief's main column: its words before the question, the question with its choices, what it plans next, then
@@ -649,7 +661,7 @@ function inboxMain(r) {
   // what it's doing now, right over the box. (Housekeeping and a crew's asks lead with what they need of you.) The
   // thread scrolls; the box is pinned to the foot of the pane, so nothing drawn above it ever moves it.
   const earlier = inboxEarlier(r, thread.msgs), asksHtml = inboxAsksHtml(r.sid, thread.asks);
-  const first = r.kind === "run" ? `${saidHtml}${asksHtml}${inboxYours(r.sid, thread.yours)}${inboxPending(r)}${crew}${top}`
+  const first = r.kind === "run" ? `${saidHtml}${asksHtml}${inboxYours(r.sid, thread.yours)}${inboxPending(r, thread.yours.length > 0)}${crew}${top}`
     : `${r.kind === "chore" || r.kind === "crew" ? `${crew}${top}${saidHtml}${asksHtml}` : `${saidHtml}${asksHtml}${top}${crew}`}${thenHtml}${inboxPending(r)}`;
   return `<div class="ib-main"><div class="ib-page-body ib-thread" data-scroll-key="inbox-main" data-sid="${esc(r.sid)}" data-kind="${r.kind}">${earlier}${first}</div><div class="ib-foot">${foot}${inboxHint(r, acts)}</div></div>`;
 }

@@ -190,3 +190,57 @@ fn a_delivery_record_keeps_only_its_last_steps() {
     s.note_delivery("a", "nothing like it", "lost");
     assert_eq!(s.thread("a").pop().unwrap().delivery.len(), DELIVERY_STEPS, "a step for a message that isn't there goes nowhere");
 }
+
+#[test]
+fn a_message_read_after_the_reply_still_says_when_you_wrote_it() {
+    let mut s = Sessions::default();
+    s.mark(&origin("w"), "working", None);
+    s.note("w", "you", "fix the header", 9);
+    s.note("w", "you", "also the footer", 9); // queued while it worked
+    let q = s.thread("w")[1].clone();
+    s.note("w", "agent", "Header fixed.", 9);
+    s.below_reply("w", &q);
+    let moved = s.thread("w")[2].clone();
+    assert_eq!(moved.text, "also the footer");
+    assert_eq!(moved.written_ms, q.at_ms, "the chat draws it where you wrote it");
+    assert!(moved.at_ms > moved.written_ms);
+}
+
+#[test]
+fn a_kept_message_sent_is_in_its_place_from_the_write_that_sends_it() {
+    let mut s = Sessions::default();
+    s.mark(&origin("k"), "working", None);
+    s.note("k", "you", "earlier one", 9);
+    s.hold("k", "run the tests", vec!["/u/1.png".into()]);
+    let h = s.held("k").unwrap();
+    // The one write that notes its copy (send_as_seen, send_to_hosted): what any redraw after it sees.
+    let since = now_ms() + 1;
+    s.note_sent("k", &h.text, &h.images, since, 9);
+    s.kept_went("k", since, &h);
+    let t = s.thread("k");
+    assert_eq!(t[0].written_ms, 0, "a message noted before the send isn't it");
+    assert_eq!(t[1].written_ms, h.at_ms, "its copy says when you wrote it, in that same write");
+    assert!(s.held("k").is_none(), "and the kept one is gone in that write, not before");
+    s.sent_written("k", since, 1);
+    assert_eq!(s.thread("k")[1].written_ms, h.at_ms, "set once");
+}
+
+#[test]
+fn a_message_kept_while_the_kept_one_went_stays_kept() {
+    let mut s = Sessions::default();
+    s.mark(&origin("m"), "working", None);
+    s.hold("m", "first", vec!["/u/1.png".into()]);
+    let h = s.held("m").unwrap();
+    s.hold("m", "second", vec!["/u/2.png".into()]); // kept while the first was being typed
+    let since = now_ms() + 1;
+    s.note_sent("m", &h.text, &h.images, since, 9);
+    s.kept_went("m", since, &h);
+    let left = s.held("m").unwrap();
+    assert_eq!(left.text, "second");
+    assert_eq!(left.images, ["/u/2.png"]);
+    // Taken back meanwhile (Cancel) and something else kept: that one isn't touched.
+    s.take_held("m");
+    s.hold("m", "other", vec![]);
+    s.kept_went("m", since, &h);
+    assert_eq!(s.held("m").unwrap().text, "other");
+}

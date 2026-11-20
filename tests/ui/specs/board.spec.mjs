@@ -281,13 +281,13 @@ test.describe("a hosted lead's crew on its own page", () => {
       lead.queued = { role: "you", text: "and keep spike out of it", at_ms: lead.thread.at(-1).at_ms + 500, images: [] };
     });
     await expect(chat.locator(".cv-you.queued").last(), "what you queued, newest last").toContainText("and keep spike out of it");
-    // #369: a queued message is the same bubble as a sent one; only the line under it says it's queued.
-    const look = (l) => l.locator(".cv-you-text").first().evaluate((el) => {
-      const c = getComputedStyle(el), a = getComputedStyle(el, "::after");
-      return { bg: c.backgroundColor, ring: c.boxShadow, trace: a.content === "none" ? "" : a.backgroundImage };
-    });
-    expect(await look(chat.locator(".cv-you.queued").last()), "queued looks like sent").toEqual(await look(chat.locator(".cv-you:not(.queued):not(.cue-you)").last()));
-    await expect(chat.locator(".cv-you.queued .cv-meta").last()).toContainText("Queued");
+    // #422 (A): not with it yet, a dashed outline on the panel; the filled bubble once delivered; the line under it says which.
+    const look = (l) => l.locator(".cv-you-text").first().evaluate((el) => { const c = getComputedStyle(el); return { bg: c.backgroundColor, border: c.borderTopStyle }; });
+    const queued = await look(chat.locator(".cv-you.queued").last()), sent = await look(chat.locator(".cv-you:not(.queued):not(.cue-you)").last());
+    expect(queued.border, "queued is dashed").toBe("dashed");
+    expect(sent.border, "delivered is filled, no outline").toBe("none");
+    expect(queued.bg, "queued is on the panel, not filled").not.toBe(sent.bg);
+    await expect(chat.locator(".cv-you.queued .cv-meta").last()).toContainText("Queued for");
     await expect(page.locator(".cp-lead .cp-lr")).toHaveText(/^working · /);
   });
 
@@ -1021,7 +1021,7 @@ test.describe("a hosted lead's crew: the Crew switch, /crew, a task dropped on t
     await page.locator(".crew-tray .crew-car").click();
     const asked = page.locator(".cue-you", { hasText: "Asked for handoff's review" });
     await expect(asked).toHaveCount(1);
-    await expect(asked.locator(".cv-meta")).toHaveText(/^Cue · /);
+    await expect(asked.locator(".cv-meta")).toHaveText(/^✓ From Cue · Delivered to /);
     await expect(asked.locator(".cv-voice-line")).toHaveCount(0);
     await asked.locator("[data-ask-open]").first().click();
     await expect(asked.locator("[data-ask-open]").first()).toHaveText("− What Cue sent");

@@ -52,7 +52,7 @@ test("A message that starts with \" /\" goes with its space, as a message", asyn
 test("A message Cue is still watching says it's waiting for it to take it", async ({ cue, page }) => {
   await openCard(page, "n1");
   await markLastYours(cue, "relay", { pending: true, at_ms: Date.now() });
-  await expect(page.locator(".active-pane .cv-you.pending").last()).toContainText("waiting for it to take this");
+  await expect(page.locator(".active-pane .cv-you.pending").last()).toContainText("◌ Sending…");
 });
 
 test("A message that didn't go through offers Send again, which sends it", async ({ cue, page }) => {
@@ -69,7 +69,7 @@ test("A kept message that couldn't be sent says why", async ({ cue, page }) => {
   await cue.change((st) => {
     st.sessions.find((x) => x.session_id === "eng").held = { role: "you", text: "use the new pool", at_ms: Date.now(), images: [], unsent: true, delivery: [{ at_ms: Date.now(), what: "couldn't send: tmux pane is gone" }] };
   });
-  await expect(page.locator(".active-pane .cv-you.held")).toContainText("Couldn't send it: tmux pane is gone");
+  await expect(page.locator(".active-pane .cv-you.held")).toContainText("! Couldn't send · tmux pane is gone");
 });
 
 test("⌘↵ with nothing typed sends the kept message now", async ({ cue, page }) => {
@@ -87,7 +87,79 @@ test("Your kept message says it isn't sent yet", async ({ cue, page }) => {
   await cue.change((st) => {
     st.sessions.find((x) => x.session_id === "eng").held = { role: "you", text: "use the new pool", at_ms: Date.now(), images: [] };
   });
-  await expect(page.locator(".active-pane .cv-you.held")).toContainText("Not sent yet · it goes when this turn ends");
+  await expect(page.locator(".active-pane .cv-you.held")).toContainText("◌ Not sent yet · Cue sends it when its turn ends");
+});
+
+test("Cancel on a kept message drops it without sending it", async ({ cue, page }) => {
+  await openWorking(page, "eng");
+  await cue.change((st) => {
+    st.sessions.find((x) => x.session_id === "eng").held = { role: "you", text: "use the new pool", at_ms: Date.now(), images: [] };
+  });
+  const held = page.locator(".active-pane .cv-you.held");
+  await expect(held).toContainText("Not sent yet · Cue sends it when its turn ends · Edit · Send now · Cancel");
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/chat-held-cancel.png` });
+  await held.locator('button[data-act="held-x"]').click();
+  await cue.called("unhold_message", { sessionId: "eng" });
+  await expect(page.locator(".toast")).toContainText("It won't be sent");
+  await expect(held).toHaveCount(0);
+  await expect(box(page, "eng")).toHaveValue("");
+  expect(await cue.calls("send_held_now")).toHaveLength(0);
+});
+
+test("Cancel that loses the race with its turn's end says it had already gone", async ({ cue, page }) => {
+  await openWorking(page, "eng");
+  await cue.change((st) => {
+    st.sessions.find((x) => x.session_id === "eng").held = { role: "you", text: "use the new pool", at_ms: Date.now(), images: [] };
+  });
+  // Its turn ended and Cue sent it just before the click reached the hub: nothing kept to take back.
+  await cue.override("unhold_message", () => null);
+  await page.locator('.active-pane .cv-you.held button[data-act="held-x"]').click();
+  await expect(page.locator(".toast")).toContainText("Too late: it had already gone");
+});
+
+test("In a narrow pane a kept message's actions stay on one line", async ({ cue, page }) => {
+  await page.setViewportSize({ width: 760, height: 800 });
+  await openWorking(page, "eng");
+  await cue.change((st) => {
+    st.sessions.find((x) => x.session_id === "eng").held = { role: "you", text: "use the new pool", at_ms: Date.now(), images: [] };
+  });
+  const acts = page.locator(".active-pane .cv-you.held .msg-line .ml-acts");
+  await expect(acts).toContainText("Edit · Send now · Cancel");
+  const lines = await acts.evaluate((el) => el.getClientRects().length);
+  expect(lines).toBe(1);
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/chat-held-narrow.png` });
+});
+
+test("A kept message stays where you wrote it: drawn in time order, and its line turns Delivered in place", async ({ cue, page }) => {
+  await openWorking(page, "eng");
+  const t = await page.evaluate(() => Date.now());
+  await cue.change((st, t) => {
+    const s = st.sessions.find((x) => x.session_id === "eng");
+    s.thread = [
+      { role: "you", text: "Fix the retry loop.", at_ms: t - 600000, delivery: [{ at_ms: t - 599000, what: "taken: it started a turn" }] },
+      { role: "agent", text: "Looking at the retry loop now.", at_ms: t - 300000 },
+    ];
+    s.held = { role: "you", text: "Run the queue tests too.", at_ms: t - 200000, images: [] };
+    s.thread.push({ role: "agent", text: "Found it: the backoff never resets.", at_ms: t - 100000 });
+  }, t);
+  const chat = page.locator(".active-pane [data-chat]");
+  const order = () => chat.locator(".cv-you .cv-you-text, .cv-agent .cv-text").allInnerTexts();
+  const written = ["Fix the retry loop.", "Looking at the retry loop now.", "Run the queue tests too.", "Found it: the backoff never resets."];
+  await expect.poll(order).toEqual(written);
+  const bubble = chat.locator(`[data-key="y:${t - 200000}"]`);
+  await expect(bubble.locator(".msg-line")).toContainText("Not sent yet");
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/chat-held-in-place.png` });
+  await bubble.evaluate((el) => { el._same = true; });   // the same element after: a property (a redraw sets its attributes)
+  // Its turn ends and Cue sends it: the thread's copy (sent now) says when you wrote it (the hub's written_ms).
+  await cue.change((st, t) => {
+    const s = st.sessions.find((x) => x.session_id === "eng");
+    delete s.held;
+    s.thread.push({ role: "you", text: "Run the queue tests too.", at_ms: t - 1000, written_ms: t - 200000, delivery: [{ at_ms: t - 900, what: "taken: it started a turn" }] });
+  }, t);
+  await expect(bubble.locator(".msg-line")).toContainText("Delivered to");
+  await expect.poll(order).toEqual(written);
+  expect(await bubble.evaluate((el) => el._same === true), "the same bubble, its line changed in place").toBe(true);
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/chat-held-taken.png` });
 });
 
 test("Cue's own kept crew message is Cue's bubble in the future tense, not yours, and Send now sends it", async ({ cue, page }) => {
@@ -97,7 +169,7 @@ test("Cue's own kept crew message is Cue's bubble in the future tense, not yours
   });
   const line = page.locator(".active-pane .cv-you.cue-you").last();
   await expect(line).toContainText("Will send docs's findings back to it");
-  await expect(line).toContainText("Cue · not sent yet · it goes when this turn ends");
+  await expect(line).toContainText("From Cue · Not sent yet · Cue sends it when its turn ends");
   await expect(page.locator(".active-pane .cv-you.held")).toHaveCount(0);
   await line.locator('button[data-act="held-now"]').click();
   await cue.called("send_held_now", { sessionId: "eng" });

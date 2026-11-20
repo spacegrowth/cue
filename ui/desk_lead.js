@@ -473,7 +473,7 @@ function deskHandHtml(e, meta) {
     ${parts.S?.trim() ? `<div class="dk-hand-l">You'll see</div>${deskDoneWhenHtml(parts.S.trim())}` : ""}
     ${pics ? `<div class="dk-hand-p">${pics} picture${pics === 1 ? "" : "s"} with it</div>` : ""}
     ${parts.W?.trim() ? `<div class="dk-hand-l">Why</div><div class="dk-hand-w">${esc(parts.W.trim())}</div>` : ""}
-  </div><div class="cv-meta">${meta ?? `Cue · ${ago(e.at_ms)} ago`}</div></div>`;
+  </div>${/^<div /.test(meta || "") ? meta : `<div class="cv-meta">${meta ?? `Cue · ${ago(e.at_ms)} ago`}</div>`}</div>`;
 }
 if (typeof document !== "undefined") {
   // A hand-off's item number: that item on its Desk, from any chat.

@@ -274,6 +274,30 @@ fn a_kept_message_taken_back_is_not_typed_when_the_turn_ends() {
 }
 
 #[test]
+fn cancel_while_the_kept_message_is_being_typed_is_too_late_and_it_still_goes() {
+    let w = World::new();
+    let a = w.session("a");
+    a.prompt("long job");
+    w.send_to("a", "run the tests");
+    // Its turn ends with its pane refusing for now: still kept (marked not sent), so Send now can be held up mid-typing.
+    w.terminal.pane("a", |p| p.takes = Takes::Refuses("tmux pane is gone".into()));
+    a.stop("done");
+    assert_eq!(w.snapshot().session("a")["held"]["unsent"], true);
+    let release = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    w.terminal.pane("a", |p| p.takes = Takes::Hangs(release.clone()));
+    // Cue types the kept message (send_held, off this thread), and Cancel comes mid-typing.
+    let hub = w.hub().clone();
+    let send = w.client().spawn(move |_| hub.send_held("a", false));
+    w.terminal.wait_hung();
+    assert!(w.hub().unhold("a").is_none(), "being typed: too late to take back");
+    release.store(true, std::sync::atomic::Ordering::SeqCst);
+    assert!(send.join().unwrap().is_ok_and(|d| d.starts_with("sent via")));
+    w.advance(2_000);
+    assert_eq!(w.terminal.typed("a"), ["run the tests"]);
+    assert!(w.snapshot().session("a")["held"].is_null());
+}
+
+#[test]
 fn a_kept_message_that_failed_goes_once_sent_again_and_loses_its_failure_mark() {
     let w = World::new();
     let a = w.session("a");

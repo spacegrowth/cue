@@ -5,10 +5,11 @@
 const deskChatAttrs = (sid, d) => (sid === deskLead(d)?.sid ? `data-desk-lead-chat="${esc(sid)}"` : `data-desk-chat-of="${esc(sid)}"`);
 /** Each item page's open tab ("thread" | "decisions" | "steps"), by item: Thread unless you picked another. */
 const deskItemTabs = new Map();
-/** What you wrote on an item's page that hasn't come back as one of its Steps yet, by item: [{ text, why, at }], so
- *  Thread has it the moment it's sent (deskSendBox, deskSendBack). Dropped once the step is in, or the send failed. */
+/** What you wrote on an item's page that hasn't come back as one of its Steps yet, by item: [{ text, why, at, key,
+ *  images }], so Thread has it the moment it's sent (deskSendBox, deskSendBack). Dropped once the step is in; one that
+ *  couldn't go stays, `failed` (why, "" when not known), with Retry and Edit (#422). `key`: the box it went from. */
 const deskPending = new Map();
-const deskPend = (id, text, why, pics = 0) => { const p = { text, why, pics, at: now() }; deskPending.set(id, [...(deskPending.get(id) || []), p]); deskThreadToEnd = true; return p; };
+const deskPend = (id, text, why, pics = 0, more = {}) => { const p = { text, why, pics, at: now(), ...more }; deskPending.set(id, [...(deskPending.get(id) || []), p]); deskThreadToEnd = true; return p; };
 const deskUnpend = (id, p) => deskPending.set(id, (deskPending.get(id) || []).filter((x) => x !== p));
 /** A step that hands the item to someone (hub/desk.rs routed_text, give): on its Thread as a Hand-off. */
 const DESK_HANDOFF = /^(Routed|Gave|Started|Sent|Queued|Reopened) #/;
@@ -17,7 +18,7 @@ const DESK_HANDOFF = /^(Routed|Gave|Started|Sent|Queued|Reopened) #/;
 const DESK_UNSTUCK = /^(Closed|Took back|Moved|Started) #\S+(:| now| up|'s copy)/;
 /** Item `i`'s steps and calls, oldest first: today's (newest first in `decisions`) after the older ones. */
 const deskItemLog = (i, d) => [...(d.older || []), ...[...(d.decisions || [])].reverse()].filter((c) => c.item_id === i.id);
-/** Item `i`'s Thread, oldest first: the words it was added with, then what you wrote about it (Sent back in red), the
+/** Item `i`'s Thread, oldest first: the words it was added with, then what you wrote about it (a send-back says so), the
  *  hand-offs, and what its holder said as each turn ended (hub/desk.rs replied); last, its holder at work now. */
 function deskThread(i, d) {
   const mine = deskItemLog(i, d).filter((c) => !c.call);
@@ -28,22 +29,22 @@ function deskThread(i, d) {
   const backPics = deskBackPics(i, d, mine);
   for (const c of mine) {
     if (c.by === "You" && /^(to |sent back)/.test(c.why || "")) {
-      const back = c.why.startsWith("sent back");
+      const back = c.why.startsWith("sent back"), name = back ? c.why.replace(/^sent back( to )?/, "") : c.why.slice(3);
+      // Where it is now, in the same words as anywhere (#422): a send-back goes where its delivery says.
+      const m = deskMsgState(c, i, back ? "" : deskToSid(i, name));
       // Timed to the thousandth of a second when its message's delivery says (#395): a step is kept to the second, and
       // in the second a reply lands in, it would sort above it.
-      rows.push({ key: `y:${c.id}`, at: c.delivery?.at_ms || deskMs(c.at), by: "You", you: true, back, tag: back ? deskBackLabel(c, i) : deskHeldTag(c, i), text: c.text, html: deskBackWords(c.text, backPics.get(c) || 0) });
+      rows.push({ key: `y:${c.id}`, at: c.delivery?.at_ms || deskMs(c.at), by: "You", you: true, back, msg: { ...m, to: name || i.holder?.name, item: i.id }, text: c.text, html: deskBackWords(c.text, backPics.get(c) || 0) });
     }
     // The lead's note to its holder (#338: NOTE:, at any stage): a message from the lead, with whether it was taken.
     else if (/^note to /.test(c.why || "")) {
-      const at = deskMs(c.at);
-      rows.push({ key: `n:${c.id}`, at, by: c.by, tag: `Note to ${c.why.slice(8)}`, text: c.text, html: `<div class="dk-md">${deskMd(c.text)}</div>${deskTakenHtml(i, { text: c.text, at })}` });
+      const name = c.why.slice(8), m = deskMsgState(c, i, deskToSid(i, name) || deskHolderSid(i));
+      rows.push({ key: `n:${c.id}`, at: deskMs(c.at), by: c.by, msg: { ...m, from: c.by, to: name, item: i.id }, text: c.text, html: `<div class="dk-md">${deskMd(c.text)}</div>` });
     }
     else if (c.by !== "You" && DESK_UNSTUCK.test(c.text)) rows.push({ key: `r:${c.id}`, at: deskMs(c.at), rec: "Unstuck", html: `${esc(c.by)}: ${esc(c.text)}${c.why ? `: ${esc(c.why)}` : ""}` });
     // A hand-off is a record line, not a message (#276): one quiet line in the time line.
     else if (DESK_HANDOFF.test(c.text)) rows.push({ key: `r:${c.id}`, at: deskMs(c.at), rec: "Hand-off", html: `${esc(c.by)}: ${esc(c.text)}${c.why ? `: ${esc(c.why)}` : ""}` });
   }
-  // What you wrote to its holder from here: under it, whether the holder took it yet (#276).
-  for (const r of rows) if (r.you && !r.back && r.text) r.html += deskTakenHtml(i, r);
   // A reply that's the one before it told again with more after it (a turn on a usage limit, saved twice before the
   // hub kept one): shown once, the longer.
   const said = (i.said || []).filter((r, n, all) => { const x = all[n + 1]; return !(x && x.by === r.by && x.text.startsWith(r.text.replace(/…$/, ""))); });
@@ -56,7 +57,13 @@ function deskThread(i, d) {
   // Sent from here, not back as a step yet.
   // A picture with no words is never one of its Steps: it's in once a reply came after it.
   const recorded = (p) => (p.text.trim() ? mine.some((c) => c.by === "You" && c.text.trim() === p.text.trim() && (c.delivery?.at_ms || deskMs(c.at) + 999) >= p.at) : (i.said || []).some((r) => r.at > p.at));
-  for (const p of deskPending.get(i.id) || []) if (!recorded(p)) rows.push({ key: `p:${p.at}`, at: p.at, by: "You", you: true, back: p.why === "back", tag: p.why === "back" ? "Sent back (queued)" : p.why === "holder" || p.why === "lead" ? deskHeldTag({ text: p.text, why: `to ${p.why === "lead" ? deskLead(d)?.name : i.holder?.name}`, at: p.at / 1000 }, i) : "", html: deskBackWords(p.text, p.pics) + (p.why === "holder" ? deskTakenHtml(i, { text: p.text, at: p.at }) : "") });
+  for (const p of deskPending.get(i.id) || []) {
+    if (recorded(p)) continue;
+    const name = p.why === "lead" ? deskLead(d)?.name : i.holder?.name;
+    // One that couldn't go: red, why, and Retry · Edit (#422).
+    const m = p.failed != null ? { st: "failed", why: esc(p.failed), retry: p.at } : deskMsgState({ text: p.text, at: p.at / 1000 }, i, p.why === "back" ? "" : deskToSid(i, name), "sending");
+    rows.push({ key: `p:${p.at}`, at: p.at, by: "You", you: true, back: p.why === "back", msg: { ...m, to: name, item: i.id }, text: p.text, html: deskBackWords(p.text, p.pics) });
+  }
   // At work on this one: its holder can hold several, and its work and latest words are only this one's while it's on
   // it (#176).
   const live = i.state === "working" && i.holder && i.now_on && !i.stopped;
@@ -129,17 +136,6 @@ const deskSaidWords = (text) => String(text || "").split("\n").filter((l) => !DE
  *  shown as its reply after the turn ends, till the saved one is in (deskThread). */
 const deskLiveKept = new Map();
 const DESK_KEEP_MS = 30_000;
-/** Under what you wrote to item `i`'s holder (`r`: its words and when): "✓ cue-268 took it · 10:42" once its session
- *  took it, "Waiting: it reads this after its current step" while it works on something before it, else nothing. */
-function deskTakenHtml(i, r) {
-  const sid = deskHolderSid(i), s = sid && sessionOf(sid);
-  if (!s) return "";
-  const words = String(r.text || "").trim().slice(0, 80);
-  const e = words && (s.thread || []).find((x) => x.role === "you" && x.at_ms >= r.at - 60000 && x.text.includes(`#${i.id}`) && x.text.includes(words));
-  const took = e?.delivery?.find((x) => x.what.startsWith("taken"));
-  if (took) return `<div class="dk-took"><span class="dk-ck" aria-hidden="true">✓</span><span><b>${esc(i.holder.name)}</b> took it · ${esc(clockAt(took.at_ms))}</span></div>`;
-  return e && s.state === "working" ? `<div class="dk-took">Waiting: it reads this after its current step</div>` : "";
-}
 // Its first line, however it's written: "1. SHAPE:", "1. Shape:", "1. **Shape:**", "1 — Shape was…" (#353).
 const DESK_HOOK_START = /^[ \t]*1[.)]?[ \t]*(?:[—–-][ \t]*)?\**[ \t]*shape\b/im;
 /** Reply `r` with the stop hook's checklist ("1. SHAPE: …", "2. ASSUMPTIONS: …", the numbered lines after) as its
@@ -183,12 +179,14 @@ function deskItemSuggestion(key) {
   const last = i && deskThread(i, d).at(-1);
   return last && !last.you && !last.live ? replyAsked(last.text) : "";
 }
-/** A Thread as a time line: each message's age, a dot (yours and the live one in the accent colour, a send-back's
- *  red), who and what kind, then the words. */
+/** A Thread as a time line: each reply's and record's age, a dot (the live one in the accent colour), who and what
+ *  kind, then the words; a message (yours, the lead's note) as the chat draws it, its bubble and its one line. */
 function deskThreadHtml(rows, id = "") {
   const seen = new Map();
   const key = (r) => { const k = r.key || `${r.rec || r.by}:${r.at}`, n = seen.get(k) || 0; seen.set(k, n + 1); return esc(n ? `${k}~${n}` : k); };
-  return `<div class="dk-thread"${id ? ` data-thread-for="${esc(id)}"` : ""}>${rows.map((r) => r.rec ? `<div class="dk-tm rec" data-key="${key(r)}"><span class="dk-age">${esc(ago(r.at))}</span><span class="dk-tdot"><i></i></span><div class="dk-tb"><b>${esc(r.rec)}</b> · ${r.html}</div></div>` : `<div class="dk-tm${r.live ? " live" : ""}" data-key="${key(r)}"><span class="dk-age">${r.live ? "now" : esc(ago(r.at))}</span><span class="dk-tdot${r.back ? " back" : r.you || r.live ? " on" : ""}"><i></i></span><div class="dk-tb"><div class="dk-tw"><b>${esc(r.by)}</b>${r.tag ? `<span class="dk-ttag${r.back ? " back" : r.on ? " on" : ""}">${esc(r.tag)}</span>` : ""}</div>${r.html}</div></div>`).join("")}</div>`;
+  // A message (yours, the lead's note): the chat's bubble on the right with its one line under it (#422), on the line.
+  const msg = (r) => `<div class="dk-tm dk-tmsg" data-key="${key(r)}"><span class="dk-age"></span><span class="dk-tdot"></span><div class="dk-tb">${msgRow({ ...r.msg, acts: deskMsgActs(r.msg), extra: r.back ? ' · <span class="ml-back">sent back</span>' : "" }, `<div class="cv-you-text">${r.html}</div>`)}</div></div>`;
+  return `<div class="dk-thread"${id ? ` data-thread-for="${esc(id)}"` : ""}>${rows.map((r) => r.msg ? msg(r) : r.rec ? `<div class="dk-tm rec" data-key="${key(r)}"><span class="dk-age">${esc(ago(r.at))}</span><span class="dk-tdot"><i></i></span><div class="dk-tb"><b>${esc(r.rec)}</b> · ${r.html}</div></div>` : `<div class="dk-tm${r.live ? " live" : ""}" data-key="${key(r)}"><span class="dk-age">${r.live ? "now" : esc(ago(r.at))}</span><span class="dk-tdot${r.back ? " back" : r.you || r.live ? " on" : ""}"><i></i></span><div class="dk-tb"><div class="dk-tw"><b>${esc(r.by)}</b>${r.tag ? `<span class="dk-ttag${r.back ? " back" : r.on ? " on" : ""}">${esc(r.tag)}</span>` : ""}</div>${r.html}</div></div>`).join("")}</div>`;
 }
 /** Item `i`'s page (#418, option B of the item chat mocks): its holder's own chat in the middle, the same live chat its
  *  session's page shows (writing here is writing there), its turns about other items each folded to a line that opens
@@ -288,11 +286,19 @@ function deskChatReply(i, e) {
 function deskItemChat(i, d, s) {
   const thread = s.thread || [];
   const checks = (d.checks || []).filter((c) => c.id === i.id).map((c) => ({ at: c.at, html: keyed(deskCheckLine(c, d), `chk:${c.id}:${c.at}`) }));
-  const rows = deskChatRows(s, { extra: checks, folds: deskChatFolds(i, d), say: deskSaidWords, reply: (e) => deskChatReply(i, e) });
+  // Its held and queued lines' controls as the item's own (#422): Edit back into this page's box, not the session's.
+  const acts = (m) => deskMsgActs({ ...m, item: i.id });
+  const rows = deskChatRows(s, { extra: checks, folds: deskChatFolds(i, d), say: deskSaidWords, reply: (e) => deskChatReply(i, e), acts });
   // Not twice: what the chat's own outbox shows already (chat/send.js), its held or queued line, or its thread has.
   const waits = (p) => p.text.trim() && [s.held, s.queued].some((w) => String(w?.text || "").includes(p.text.trim()));
   const sent = (p) => waits(p) || outbox.some((o) => o.sid === s.session_id && o.text === p.text) || thread.some((e) => e.role === "you" && e.at_ms >= p.at - 60000 && (p.text.trim() ? e.text.includes(p.text.trim()) : true));
-  const mine = (deskPending.get(i.id) || []).filter((p) => !sent(p)).map((p) => keyed(`<div class="cv-you sending"><div class="cv-you-text">${esc(p.text).replace(/\n/g, "<br>")}</div>${p.pics ? `<div class="dk-tpn">${p.pics === 1 ? "1 picture" : `${p.pics} pictures`}</div>` : ""}<div class="cv-meta">${p.why === "back" ? "Sent back · queued" : "Sending"}</div></div>`, `p:${p.at}`)).join("");
+  // Sent from here and not in its chat yet: its one line (#422), Sending till it is, red with Retry and Edit if it
+  // couldn't go.
+  const mine = (deskPending.get(i.id) || []).filter((p) => !sent(p)).map((p) => {
+    const m = { ...(p.failed != null ? { st: "failed", why: esc(p.failed), retry: p.at } : { st: "sending" }), to: p.why === "lead" ? deskLeadName(d) : i.holder?.name, item: i.id };
+    const pics = p.pics ? `<div class="dk-tpn">${p.pics === 1 ? "1 picture" : `${p.pics} pictures`}</div>` : "";
+    return keyed(msgRow({ ...m, acts: deskMsgActs(m), extra: p.why === "back" ? ' · <span class="ml-back">sent back</span>' : "" }, `<div class="cv-you-text">${esc(p.text).replace(/\n/g, "<br>")}</div>${pics}`), `p:${p.at}`);
+  }).join("");
   const where = sessionOf(s.session_id) ? whereNow(null, s) : "";
   return `<div class="dk-ichat" data-thread-for="${esc(`${i.project}|${i.id}`)}">${rows}${mine}${where ? keyed(where, "where") : ""}</div>`;
 }

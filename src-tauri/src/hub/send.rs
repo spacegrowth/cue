@@ -424,9 +424,15 @@ impl Hub {
         // One message at a time into a session: another being typed into it goes first (see Hub::typing).
         let gate = self.typing_gate(session_id);
         let _typing = wait_turn(&gate)?;
+        self.send_in_turn(session_id, typed, saved, now, None)
+    }
+
+    /// `send_saved` once it holds the session's typing gate. `held`: the kept message this is (send_held), which
+    /// stays kept until its copy is in the thread, so its bubble is never gone in between.
+    fn send_in_turn(&self, session_id: &str, typed: &str, saved: Vec<crate::uploads::Saved>, now: bool, held: Option<&Exchange>) -> Result<String, String> {
         self.set_later(session_id, false); // you wrote to it: decided
         let seen = self.read(|st| Self::send_state(st, session_id))?;
-        self.send_as_seen(session_id, typed, saved, now, seen)
+        self.send_as_seen(session_id, typed, saved, now, seen, held)
     }
 
     /// The same, as a test replays it: `meanwhile` runs between reading the session's state and acting on it
@@ -437,24 +443,24 @@ impl Hub {
         let _typing = wait_turn(&gate)?;
         let seen = self.read(|st| Self::send_state(st, session_id))?;
         meanwhile();
-        self.send_as_seen(session_id, typed, vec![], false, seen)
+        self.send_as_seen(session_id, typed, vec![], false, seen, None)
     }
 
     /// `send_saved` once it has read the session's state (`seen`: where it is, busy, listening directly). Under
     /// the typing gate, but its turn can end in between: a message kept for it is kept only if it's still busy
     /// (see `keep`).
-    fn send_as_seen(&self, session_id: &str, typed: &str, saved: Vec<crate::uploads::Saved>, now: bool, seen: (Option<Origin>, bool, bool)) -> Result<String, String> {
+    fn send_as_seen(&self, session_id: &str, typed: &str, saved: Vec<crate::uploads::Saved>, now: bool, seen: (Option<Origin>, bool, bool), held: Option<&Exchange>) -> Result<String, String> {
         // " /…" keeps its space in `typed`: a message, not a command (see with_paths).
         let text = typed.trim();
         let (origin, mut busy, direct) = seen;
         if origin.as_ref().is_some_and(|o| o.hosted) {
-            return self.send_saved_hosted(session_id, typed, &saved, busy, now);
+            return self.send_saved_hosted(session_id, typed, &saved, busy, now, held);
         }
         // Working, and Cue would type it into its terminal: Cue keeps it instead and sends it when the turn
         // ends, so until then it's yours to take back (Esc, Edit) or send now. (In the terminal's own queue
         // only Claude Code could give it back.) Its turn ended since: it goes now.
         if busy && !now && !direct && origin.is_some() {
-            match self.keep(session_id, typed, &saved)? {
+            match self.keep(session_id, typed, &saved, held.is_some())? {
                 Some(kept) => return Ok(kept),
                 None => busy = false,
             }
@@ -479,6 +485,10 @@ impl Hub {
         let paths: Vec<String> = saved.iter().map(|s| s.path.clone()).collect();
         self.write(|st| {
             st.sessions.note_sent(session_id, text, &paths, t0, crate::config::context_keep());
+            // The kept message: its copy says when you wrote it and takes its place, in this one write (#422).
+            if let Some(h) = held {
+                st.sessions.kept_went(session_id, t0, h);
+            }
             st.sessions.note_delivery(session_id, text, &delivery_step(&via, submitted));
             if busy {
                 queue_typed(st, session_id, text, paths);
@@ -502,19 +512,19 @@ impl Hub {
     /// Cue keeps it, as for a terminal (Esc, Edit). `now` (⌘↵, Send now) hands it over and stops the turn, as
     /// Send now on a queued one does, so it reads it straight away. Mid-turn only if its Claude runs: a paused
     /// one starts a turn with this.
-    fn send_saved_hosted(&self, session_id: &str, typed: &str, saved: &[crate::uploads::Saved], busy: bool, now: bool) -> Result<String, String> {
+    fn send_saved_hosted(&self, session_id: &str, typed: &str, saved: &[crate::uploads::Saved], busy: bool, now: bool, held: Option<&Exchange>) -> Result<String, String> {
         // One of its agent's own commands opens a terminal (or is refused) now, mid-turn or not: it never waits to go.
         if let Some(done) = self.run_own_command(session_id, typed) {
             return done;
         }
         let mut busy = busy && self.hosted().running(session_id);
         if busy && !now {
-            match self.keep(session_id, typed, saved)? {
+            match self.keep(session_id, typed, saved, held.is_some())? {
                 Some(kept) => return Ok(kept),
                 None => busy = false,
             }
         }
-        let said = self.send_to_hosted(session_id, typed, saved, busy)?;
+        let said = self.send_to_hosted_held(session_id, typed, saved, busy, held)?;
         if busy {
             return self.send_queued_now(session_id);
         }
@@ -525,11 +535,12 @@ impl Hub {
     /// under the same lock as the hold: its turn's end (the store marking it at its prompt, then sending what's
     /// kept, events.rs) comes either before the check (None: it goes now) or after the hold (it sends it), never
     /// in between, so nothing kept is left with no turn end to send it.
-    fn keep(&self, session_id: &str, typed: &str, saved: &[crate::uploads::Saved]) -> Result<Option<String>, String> {
+    /// `again`: it's the kept message itself (send_held), still kept as it was: it stays so, untouched.
+    fn keep(&self, session_id: &str, typed: &str, saved: &[crate::uploads::Saved], again: bool) -> Result<Option<String>, String> {
         let paths: Vec<String> = saved.iter().map(|s| s.path.clone()).collect();
         let kept = self.write(|st| {
             let (_, busy, _) = Self::send_state(st, session_id)?;
-            if busy {
+            if busy && !again {
                 st.sessions.hold(session_id, typed, paths);
             }
             Ok::<bool, String>(busy)
@@ -537,7 +548,9 @@ impl Hub {
         if !kept {
             return Ok(None);
         }
-        self.changed();
+        if !again {
+            self.changed();
+        }
         Ok(Some("kept in Cue: it goes when this turn ends".into()))
     }
 
@@ -575,13 +588,14 @@ impl Hub {
     /// Send the message kept for a session: when its turn ends, or now (`now`: stop the turn first). If it
     /// can't be sent it's kept again, so nothing you wrote is lost.
     pub fn send_held(&self, session_id: &str, now: bool) -> Result<String, String> {
-        let h = self.write(|st| st.sessions.take_held(session_id)).ok_or("nothing kept for it")?;
+        // Under the typing gate, read but not taken: it stays kept (its bubble in place) until its copy is in the
+        // thread, and goes from there in that same write (send_as_seen). Cancel meanwhile takes it back.
+        let gate = self.typing_gate(session_id);
+        let _typing = wait_turn(&gate)?;
+        let h = self.read(|st| st.sessions.held(session_id)).ok_or("nothing kept for it")?;
         let saved = h.images.iter().map(|p| crate::uploads::Saved { path: p.clone(), mime: crate::uploads::mime_of(p).into() }).collect();
-        let sent = self.send_saved(session_id, &h.text, saved, now).inspect_err(|e| {
-            self.write(|st| {
-                st.sessions.hold_back(session_id, &h.text, h.images.clone());
-                st.sessions.held_failed(session_id, e);
-            });
+        let sent = self.send_in_turn(session_id, &h.text, saved, now, Some(&h)).inspect_err(|e| {
+            self.write(|st| st.sessions.held_failed(session_id, e));
             self.changed();
         })?;
         // Gone (not kept again, its session busy once more): a crew member whose fixes it carried is at work now.
@@ -616,7 +630,16 @@ impl Hub {
     }
 
     /// The kept message, back to you (into the box, to change it): Esc, or Edit.
+    /// Under the session's typing gate, tried and never waited on (a click shouldn't hang for seconds): busy, a
+    /// message is being typed into it, the kept one included (send_held keeps it until its copy is in), so it
+    /// may be on its way: None, too late to take back, rather than "won't be sent" for one that goes.
     pub fn unhold(&self, session_id: &str) -> Option<Exchange> {
+        let gate = self.typing_gate(session_id);
+        let _typing = match gate.try_lock() {
+            Ok(g) => g,
+            Err(std::sync::TryLockError::Poisoned(e)) => e.into_inner(),
+            Err(std::sync::TryLockError::WouldBlock) => return None,
+        };
         let h = self.write(|st| st.sessions.take_held(session_id));
         if let Some(h) = &h {
             self.team_kept_left(session_id, &h.text, false);
@@ -778,8 +801,9 @@ struct Watch {
 /// A message typed into a session mid-turn, queued: the agent reads it when it finishes its current step. The
 /// same message as the thread's copy (same time), so the chat shows it once, as queued.
 pub(super) fn queue_typed(st: &mut Store, session_id: &str, text: &str, paths: Vec<String>) {
-    let at = st.sessions.thread(session_id).iter().rev().find(|e| e.role == "you").map(|e| e.at_ms).unwrap_or_else(now_ms);
-    let q = crate::model::Exchange { role: "you".into(), text: text.to_string(), at_ms: at, images: paths, from: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None };
+    // When you wrote it, too (a kept message sent now): its row stands there, where its bubble was (#422).
+    let (at, written) = st.sessions.thread(session_id).iter().rev().find(|e| e.role == "you").map(|e| (e.at_ms, e.written_ms)).unwrap_or_else(|| (now_ms(), 0));
+    let q = crate::model::Exchange { role: "you".into(), text: text.to_string(), at_ms: at, images: paths, from: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None, written_ms: written };
     st.sessions.set_queued(session_id, Some(q));
 }
 

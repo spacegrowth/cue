@@ -50,6 +50,14 @@ pub struct Exchange {
     /// Yours: how you answered a permission or a question (Allow, an option picked), not a message you wrote.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub decision: bool,
+    /// Yours, sent later than you wrote it (kept in Cue while it worked, or queued and read when its turn ended):
+    /// when you wrote it, so the chat draws it there, where it stood while it waited. 0: `at_ms` is that time.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub written_ms: u64,
+}
+
+fn is_zero(n: &u64) -> bool {
+    *n == 0
 }
 
 /// One step of a message's way to the agent (see `Exchange::delivery`).

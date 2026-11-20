@@ -18,8 +18,8 @@ function sendingMeta(sid) {
 function onUpload(p) {
   if (p.done) uploading.delete(p.session_id);
   else uploading.set(p.session_id, p);
-  for (const el of document.querySelectorAll(".cv-you.sending .cv-meta[data-sid]")) {
-    if (el.dataset.sid === p.session_id) el.textContent = sendingMeta(p.session_id);
+  for (const el of document.querySelectorAll(".msg-line.ml-sending[data-sid] .ml-words")) {
+    if (el.parentElement.dataset.sid === p.session_id) el.textContent = sendingMeta(p.session_id);
   }
 }
 // ---------- "!": a shell line Cue runs for you, in the session's folder, shown as a card (shell.rs) ----------
@@ -77,6 +77,7 @@ async function deliver(sid, key, call) {
     entry.via = String(r || "sent").replace(/^sent via /, "");
     sent(sid, text, images.length, r);
     renderMain();
+    return { ok: true };
   } catch (e) {
     outbox.splice(outbox.indexOf(entry), 1);
     // Back in the box, ahead of anything you've typed there since (that's kept, not written over).
@@ -84,6 +85,7 @@ async function deliver(sid, key, call) {
     drafts[key] = { ...now_, text: now_.text.trim() ? `${text}\n\n${now_.text}` : text, images: [...d.images, ...(now_.images || [])] };
     toast(`Couldn't send: ${e}`);
     renderMain();
+    return { error: String(e) };
   }
 }
 /** Has the session's own thread (or queue) caught up with this outbox entry? Once Cue says it's sent

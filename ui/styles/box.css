@@ -27,10 +27,6 @@
 .at-menu .cmd-row.on i.need { color: inherit; box-shadow: none; }
 .slash-hint button { color: var(--accent); font-weight: 650; text-decoration: underline; text-underline-offset: 2px; }
 
-/* Yours, but it never went through as a message (a typo'd "/command", or stuck in the box). */
-.cv-you.unsent .cv-you-text { box-shadow: inset 0 0 0 1.5px var(--deny); }
-.cv-unsent { max-width: 340px; margin-top: 4px; font-size: 11.5px; line-height: 1.4; color: var(--deny); text-align: right; }
-.cv-unsent button { color: inherit; font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
 
 /* A "! " line in the box: the box itself says so (monospace, accent outline), not just the hint under it. */
 .field.bang, .field.bang:focus-within { background: #16171a; box-shadow: inset 0 0 0 1px #3a3c44; }

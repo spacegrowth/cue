@@ -78,7 +78,7 @@ impl Sessions {
         // Never the same moment as the entry before: two noted at once (a teammate's messages, then the
         // reply to them) are saved by moment and speaker, and the second would overwrite the first.
         let at_ms = now_ms().max(s.thread.last().map_or(0, |l| l.at_ms + 1));
-        s.thread.push(Exchange { role: role.into(), text, at_ms, images: images.to_vec(), from: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None });
+        s.thread.push(Exchange { role: role.into(), text, at_ms, images: images.to_vec(), from: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None, written_ms: 0 });
         let excess = s.thread.len().saturating_sub(keep);
         s.thread.drain(..excess);
     }

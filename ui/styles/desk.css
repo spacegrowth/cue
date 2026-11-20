@@ -277,7 +277,6 @@
 .dk-sch-t:hover, .dk-sch-t:hover b { color: var(--link, var(--accent)); }
 .dk-sch-t:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 .dk-chat { display: flex; flex-direction: column; gap: 14px; padding: 14px 20px; }
-.dk-chat .cv-you.sending { opacity: .6; }
 .dk-box { flex: none; display: flex; flex-direction: column; gap: 6px; margin: 8px 16px 16px; padding: 8px 8px 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
 /* Its row: the words, the mic, a picture, Send; pictures added sit above it (draftChips). */
 .dk-box-row { display: flex; align-items: flex-end; gap: 6px; }
@@ -401,10 +400,14 @@
 /* Under a reply: the link to that turn in its session. */
 .dk-tl { margin-top: 6px; font-size: 12.5px; }
 .dk-tl .dk-tlink { padding: 0; border: 0; background: none; cursor: pointer; font: inherit; color: var(--ink); font-weight: 650; text-decoration: underline; text-underline-offset: 2px; }
-/* Under what you wrote its holder: whether it took it. */
-.dk-took { margin-top: 5px; display: flex; gap: 6px; font-size: 12px; color: var(--muted); }
-.dk-took b { color: var(--ink); font-weight: 600; }
-.dk-ck { color: var(--accent); font-weight: 700; }
+/* A message on the Thread (yours, a send-back, the lead's note): the chat's bubble on the right, its one line under it
+   (#422, chat.css .msg-line); no dot of its own, the time line running past it. */
+.dk-tmsg { padding-bottom: 10px; }
+.dk-tmsg .dk-tdot::after { top: 0; }
+.dk-tmsg .dk-tb { display: flex; flex-direction: column; min-width: 0; }
+.dk-tmsg .cv-you { max-width: 85%; }
+.dk-tmsg .cv-you-text .dk-md > :first-child { margin-top: 0; }
+.dk-tmsg .cv-you-text .dk-md > :last-child { margin-bottom: 0; }
 .dk-tbar { width: 160px; height: 6px; margin-top: 8px; border-radius: 3px; background: var(--work); }
 .dk-inow .dk-sec { padding: 4px 0 14px; }
 .dk-inow .dk-acts { padding: 0 0 14px; }

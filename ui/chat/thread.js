@@ -80,6 +80,11 @@ function conversation(it, s) {
   // would hide every message of yours that minute.
   const isQueued = (e) => { const q = s.queued.text.trim(); return !!q && e.role === "you" && Math.abs(e.at_ms - s.queued.at_ms) < 60000 && (e.text.trim() === q || (q.length >= 20 && e.text.includes(q))); };
   if (s?.queued) ex = ex.filter((e) => !isQueued(e));
+  // Sent later than you wrote it (kept in Cue while it worked, or queued and read after its reply): drawn where you
+  // wrote it, where its bubble stood while it waited (#422). `sent_ms`: when it went (msgTaken's fallback).
+  if (ex.some((e) => e.written_ms && e.written_ms < e.at_ms)) {
+    ex = ex.map((e) => (e.written_ms && e.written_ms < e.at_ms ? { ...e, at_ms: e.written_ms, sent_ms: e.at_ms } : e)).sort((a, b) => a.at_ms - b.at_ms);
+  }
   if (it?.kind === "waiting") {
     const msg = finishedText(it);
     if (!ex.some((e) => e.role !== "you" && e.text.trim() === msg.trim())) ex.push({ role: "agent", text: msg, at_ms: it.created_ms });
@@ -122,6 +127,27 @@ function yourBubble(e, key, style = "", later = false, head = "") {
   const bubble = `<div class="cv-you-text"${style ? ` style="${style}"` : ""}>${head}${linkify(esc(said.text)).replace(/\n/g, "<br>")}${notes}</div>`;
   return said.voice ? `<div class="cv-you-row"><span class="cv-mic" role="img" aria-label="Said by voice">${MIC_ICON}</span>${bubble}</div>` : bubble;
 }
+// ---------- a message's state, the same words wherever it shows (#422) ----------
+/** The one line under a message you, the Desk lead or Cue passed on: a session's chat, the Desk lead's chat, an item's
+ *  thread and the Inbox all draw it with this. `m`: { st: "sending" | "held" | "queued" | "delivered" | "failed", to:
+ *  who it's for, from: who wrote it when not you, at: when it was delivered (ms), why: why it couldn't send (html),
+ *  note: Sending's own words when it says more (html), acts: its controls (html), extra: after it all (html), sid: the
+ *  session it goes to (a copy's progress updates the line in place, chat/send.js onUpload) }. */
+function msgLine(m) {
+  const to = esc(m.to || "it"), from = m.from ? `From <b>${esc(m.from)}</b> · ` : "";
+  const mark = { delivered: "✓", failed: "!" }[m.st] || "◌";
+  const words = {
+    sending: m.note || "Sending…",
+    held: "<b>Not sent yet</b> · Cue sends it when its turn ends",
+    queued: `<b>Queued for ${to}</b> · it reads this after its current step`,
+    delivered: `<b>Delivered to ${to}</b>${m.at ? ` · ${esc(clockAt(m.at))}` : ""}`,
+    failed: `<b>Couldn't send</b>${m.why ? ` · ${m.why}` : ""}`,
+  }[m.st];
+  return `<div class="cv-meta msg-line ml-${m.st}"${m.sid ? ` data-sid="${esc(m.sid)}"` : ""}><span class="ml-mark" aria-hidden="true">${mark}</span> ${from}<span class="ml-words">${words}</span>${m.acts ? ` · <span class="ml-acts">${m.acts}</span>` : ""}${m.extra || ""}</div>`;
+}
+/** A message drawn as the chat's "you" bubble with its one line under it: `inner` is the bubble (yourBubble's), `m`
+ *  msgLine's. Dashed on the panel till it's with them, filled once delivered, outlined red when it couldn't go. */
+const msgRow = (m, inner, cls = "", attrs = "") => `<div class="cv-you msg-${m.st}${cls ? ` ${cls}` : ""}"${attrs}>${inner}${msgLine(m)}</div>`;
 const fwdMsgs = new Map();  // chat key -> { text, from, fromSid }: what "Send to another session" sends
 /** A message from another session: an accent stripe, who it's from, then the message (a forward quotes the original). */
 function peerBubble(from, how, at, body, quote) {

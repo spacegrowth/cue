@@ -39,6 +39,7 @@ const QUEUE_CLICKS = [
   }),
   rule("[data-act=held-edit]", (he) => pullHeld(he.dataset.sid)),
   rule("[data-act=held-now]", (hn) => sendHeldNow(hn.dataset.sid)),
+  rule("[data-act=held-x]", (hx) => cancelHeld(hx.dataset.sid)),
   // A message for later: back to the box, dropped, or sent now.
   rule("[data-act=send-at-edit]", (se) => sendAtEdit(se.dataset.sid)),
   rule("[data-act=send-at-x]", (sx) => invoke("send_at_drop", { sessionId: sx.dataset.sid }).then(() => toast("It won't be sent"))),

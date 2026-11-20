@@ -52,7 +52,7 @@ function deskProgNow(i) {
   }
   if (deskCopyWaits(i)) return esc(deskCopyWaitLine(i));
   if (!i.holder) return i.start_failed ? "Couldn't start a session for it" : "Nobody has it yet";
-  return i.after ? `Queued with ${who}, after #${esc(i.after)}` : `Queued with ${who}`;
+  return i.after ? `Up next with ${who}, after #${esc(i.after)}` : `Up next with ${who}`;
 }
 /** Its one button when it needs you: Answer (its page), Allow / No, Looks right. */
 function deskProgButton(i) {

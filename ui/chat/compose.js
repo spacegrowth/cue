@@ -109,6 +109,8 @@ async function pullHeld(sid) {
   renderMain();
   focusComposer();
 }
+/** Cancel on the message Cue kept for a working session: dropped, never sent (taken back as Edit does, not into the box). */
+const cancelHeld = (sid) => forgetSent(sid) || invoke("unhold_message", { sessionId: sid }).then((h) => toast(h ? "It won't be sent" : "Too late: it had already gone")).catch((e) => toast(`Couldn't cancel it: ${e}`));
 /** Stop a working session mid-turn (Esc in its terminal; Pi aborts directly). */
 async function interrupt(sid) {
   try { toast(`Stopped ${sessionOf(sid)?.project || "it"}: ${(await invoke("interrupt_session", { sessionId: sid })).replace(/^stopped via /, "via ")}`); }

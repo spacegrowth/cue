@@ -37,16 +37,15 @@ async function deskSendBox(key) {
       if (state.restarting?.[to.sid]) return toast("It's restarting. Send once it's back.");
       if (sessionOf(to.sid)?.state === "deciding") return toast("It's asking you something first. Answer that, then send.");
       // On its Thread at once, as a message to the lead is (#395); taken off again if it didn't go.
-      const p = deskPend(it.id, text, "holder", images.length);
+      // What it went as and to whom kept with it, for Retry (#422).
+      const p = deskPend(it.id, text, "holder", images.length, { key, images, sid: to.sid, about: `About #${it.id} (${it.title}): ` });
       renderMain();
-      await deliver(to.sid, key, (typed, images) => {
-        const said = typed ? `About #${it.id} (${it.title}): ${typed}` : `About #${it.id} (${it.title}): (a picture)`;
-        insSent(to.sid, said, false);
-        return invoke("send_to_session", { sessionId: to.sid, text: said, images, now: false });
-      });
-      const back = draft(key);
-      if (back.text.trim() || back.images.length) { deskUnpend(it.id, p); return renderMain(); }
-      if (text) deskWrote(it.id, "wrote_holder", text);
+      const res = await deskToHolder(p);
+      // Didn't go (deliver put it back in the box): red on its Thread with why, Retry and Edit instead (#422). Never
+      // tried (deliver stopped first): off its Thread, still in the box.
+      if (res?.error) { deskTakeBack(key, text, images.length); p.failed = res.error; }
+      else if (!res?.ok) deskUnpend(it.id, p);
+      else if (text) deskWrote(it.id, "wrote_holder", text);
       return renderMain();
     }
     else if (!to.mate) await sendTo(to.sid, false, key);
@@ -73,7 +72,7 @@ async function deskSendBox(key) {
   endDictation(key);
   delete drafts[key];
   saveDrafts();
-  const list = deskSent.get(project) || [], mine = { text: said, images, at: now(), sent: 0 };
+  const list = deskSent.get(project) || [], mine = { text: said, images, at: now(), sent: 0, project };
   list.push(mine);
   deskSent.set(project, list);
   // To the lead on its own: the chat shows it at once, Sending. From an item: its page stays, the box emptied and the
@@ -81,14 +80,16 @@ async function deskSendBox(key) {
   // later, taking the box from under your typing); the lead's chat has it when you go back.
   if (!it) { deskTab = "lead"; deskChatEnd = true; }
   // About an item: on its Thread at once.
-  const pend = it && text ? deskPend(it.id, text, "lead") : null;
+  const pend = it && text ? deskPend(it.id, text, "lead", 0, { key, lead: mine }) : null;
   renderMain();
   try {
     await invoke("desk_send", { project, text: said, images });
     mine.sent = now();
     if (it) { toast(`Sent to ${deskLeadName(deskOf(project)) || "the lead"}`); if (text) deskWrote(it.id, "wrote_lead", text); }
   }
-  catch (e) { if (pend) deskUnpend(it.id, pend); deskSent.set(project, (deskSent.get(project) || []).filter((p) => p !== mine)); Object.assign(draft(key), { text, images }); toast(`Not sent: ${e}`); renderMain(); }
+  // Didn't go: red where you wrote it, the lead's chat and the item's Thread, with why, Retry and Edit (#422). A picture
+  // on its own from an item's page shows only in the lead's chat: it says so here too.
+  catch (e) { mine.failed = String(e); if (pend) pend.failed = String(e); else if (it) toast(`Not sent: ${e}`); renderMain(); }
 }
 /** What you wrote on item `id`'s page, sent (`act`: to its lead or its holder): kept in its Steps (hub/desk.rs act_on). */
 const deskWrote = (id, act, text) => invoke("desk_item_act", { id, act, text }).catch((e) => console.error(e));
@@ -96,7 +97,7 @@ const deskWrote = (id, act, text) => invoke("desk_item_act", { id, act, text }).
  *  it didn't). Whether it went. */
 async function deskSendBack(id, key, text, images) {
   endDictation(key);
-  const pend = text.trim() ? deskPend(id, text.trim(), "back", (images || []).length) : null;
+  const pend = text.trim() ? deskPend(id, text.trim(), "back", (images || []).length, { key, images }) : null;
   if (pend) renderMain();
   try {
     const it = await invoke("desk_item_act", { id, act: "send_back", text, images });
@@ -105,7 +106,140 @@ async function deskSendBack(id, key, text, images) {
     toast(`Sent back${it?.holder?.name ? ` to ${it.holder.name}` : ""}`);
     return true;
   }
-  catch (e) { if (pend) deskUnpend(id, pend); toast(`Not sent: ${e}`, 5000); return false; }
+  catch (e) {
+    // Red on its Thread with why, Retry and Edit (#422), the box closed; a picture alone keeps its box and says why.
+    if (!pend) { toast(`Not sent: ${e}`, 5000); return false; }
+    pend.failed = String(e);
+    delete drafts[key];
+    saveDrafts();
+    if (deskBackFor === id) deskBackFor = null;
+    return false;
+  }
+}
+/** What deliver (chat/send.js) put back at the head of box `key` when `text` (with `pics` pictures) didn't go, taken
+ *  out again: it's on its Thread now, red, with Retry and Edit (#422). Anything typed since stays. */
+function deskTakeBack(key, text, pics) {
+  const d = draft(key);
+  if (d.text.startsWith(text)) d.text = d.text.slice(text.length).replace(/^\n\n/, "");
+  d.images = d.images.slice(pics);
+  saveDrafts();
+}
+/** Pending message `p` (deskPend, path "holder") sent to its holder session as about its item, from a box of its own
+ *  so nothing in yours is touched: deliver's outcome ({ ok } | { error }; nothing when it never went). */
+async function deskToHolder(p, k = p.key) {
+  if (k !== p.key) Object.assign(draft(k), { text: p.text, images: (p.images || []).map((im) => ({ ...im })) });
+  const res = await deliver(p.sid, k, (typed, images) => {
+    const said = `${p.about}${typed || "(a picture)"}`;
+    insSent(p.sid, said, false);
+    return invoke("send_to_session", { sessionId: p.sid, text: said, images, now: false });
+  });
+  if (k !== p.key) { delete drafts[k]; saveDrafts(); }
+  return res;
+}
+/** `text` and `images` put back in box `key` ahead of what's there, and the cursor in it. */
+function deskBackInBox(key, text, images = []) {
+  const d = draft(key);
+  d.text = d.text.trim() ? `${text}\n\n${d.text}` : text;
+  d.images = [...images.map((im) => ({ ...im })), ...d.images];
+  saveDrafts();
+  renderMain();
+  const el = document.querySelector(`textarea[data-text="${CSS.escape(key)}"]`);
+  if (el) { el.focus(); el.selectionStart = el.selectionEnd = el.value.length; }
+}
+/** Item `id`'s message that couldn't go, at `at`. */
+const deskFailedOf = (id, at) => (deskPending.get(id) || []).find((x) => String(x.at) === String(at) && x.failed != null);
+/** The item Thread's copy of message `m` to the lead: [item id, its pending entry], or null. */
+const deskPendOf = (m) => { for (const [id, list] of deskPending) { const p = list.find((x) => x.lead === m); if (p) return [id, p]; } return null; };
+/** A message to the lead taken out of its chat's list. */
+function deskSentOff(m) {
+  for (const [project, list] of deskSent) if (list.includes(m)) deskSent.set(project, list.filter((x) => x !== m));
+}
+/** Retry on item `id`'s message that couldn't go: sent again from its own words, by the way it first went (#422).
+ *  Red till it goes; the box isn't touched. */
+async function deskMsgRetry(id, at) {
+  const p = deskFailedOf(id, at);
+  if (!p) return;
+  if (p.why === "lead" && p.lead) return deskLeadRetry(p.lead);
+  if (p.why === "holder") {
+    if (state.restarting?.[p.sid]) return toast("It's restarting. Send once it's back.");
+    if (sessionOf(p.sid)?.state === "deciding") return toast("It's asking you something first. Answer that, then send.");
+    p.failed = null;
+    renderMain();
+    const res = await deskToHolder(p, `retry:${id}:${p.at}`);
+    if (res?.ok) deskWrote(id, "wrote_holder", p.text);
+    else p.failed = res?.error || "";
+    return renderMain();
+  }
+  // Sent back.
+  p.failed = null;
+  renderMain();
+  try {
+    const it = await invoke("desk_item_act", { id, act: "send_back", text: p.text, images: p.images || [] });
+    toast(`Sent back${it?.holder?.name ? ` to ${it.holder.name}` : ""}`);
+  }
+  catch (e) { p.failed = String(e); }
+  renderMain();
+}
+/** Retry on message `m` to the lead that couldn't go (its chat's, and its item's Thread's copy): sent again as it was. */
+async function deskLeadRetry(m) {
+  const pend = deskPendOf(m);
+  m.failed = null;
+  if (pend) pend[1].failed = null;
+  renderMain();
+  try {
+    await invoke("desk_send", { project: m.project, text: m.text, images: m.images || [] });
+    m.sent = now();
+    if (pend) deskWrote(pend[0], "wrote_lead", pend[1].text);
+  }
+  catch (e) { m.failed = String(e); if (pend) pend[1].failed = String(e); }
+  renderMain();
+}
+/** Edit on item `id`'s message that couldn't go: back into the box it went from (the item's box as drawn now when
+ *  that one isn't), off its Thread and the lead's chat (#422). */
+function deskMsgEdit(id, at) {
+  const p = deskFailedOf(id, at);
+  if (!p) return;
+  deskUnpend(id, p);
+  if (p.lead) deskSentOff(p.lead);
+  if (p.why === "back") deskBackFor = id;
+  const key = p.why === "back" ? `back:${id}` : document.querySelector(`textarea[data-text="${CSS.escape(p.key)}"]`) ? p.key : deskItemBox(id) || p.key;
+  deskBackInBox(key, p.text, p.images || []);
+}
+/** Retry and Edit on a message to the lead that couldn't go (its chat's, at `at`, in Desk `project`) (#422). Edit puts
+ *  it in the lead's box as it was sent (from an item's page, with its "About #…"). */
+function deskLeadFailed(project, at, edit) {
+  const m = (deskSent.get(project) || []).find((x) => String(x.at) === String(at) && x.failed);
+  if (!m) return;
+  if (!edit) return deskLeadRetry(m);
+  deskSentOff(m);
+  const pend = deskPendOf(m);
+  if (pend) deskUnpend(pend[0], pend[1]);
+  deskBackInBox(deskBoxKey({ project }), m.text, m.images || []);
+}
+/** The box on item `id`'s page, as drawn now ("" for none). */
+const deskItemBox = (id) => [...deskBoxes].filter(([, to]) => to.item === id).map(([k]) => k).find((k) => document.querySelector(`textarea[data-text="${CSS.escape(k)}"]`)) || "";
+/** Edit on a message Cue keeps for session `sid` (sent from item `id`'s page): taken back, as the session's chat's Edit
+ *  does (chat/compose.js pullHeld), into this page's box, without the "About #…" Cue put before it (#422). */
+async function deskHeldEdit(id, sid) {
+  const key = deskItemBox(id);
+  if (!key) return pullHeld(sid);
+  forgetSent(sid);
+  const h = await invoke("unhold_message", { sessionId: sid }).catch(() => null);
+  if (!h) { toast("Too late: it had already gone"); return renderMain(); }
+  const it = deskItem(deskSelection(), id), about = it ? `About #${it.id} (${it.title}): ` : "";
+  const images = [];
+  for (const path of h.images || []) {
+    const data = await invoke("image_data", { path }).catch(() => null);
+    if (data) images.push({ name: path.split("/").pop(), mime: data.slice(5, data.indexOf(";")), data });
+  }
+  deskBackInBox(key, about && h.text.startsWith(about) ? h.text.slice(about.length) : h.text, images);
+}
+/** Cancel on a message Cue keeps for session `sid`: taken back and dropped (#422). */
+async function deskHeldCancel(sid) {
+  forgetSent(sid);
+  const h = await invoke("unhold_message", { sessionId: sid }).catch(() => null);
+  toast(h ? "It won't be sent" : "Too late: it had already gone");
+  renderMain();
 }
 /** Item `id` of the project picked, open in the chat card (the Inbox's Open in Desk). */
 function deskOpenItem(id) {
@@ -118,6 +252,11 @@ async function deskAct(id, act, el = null) {
   if (act === "looks_right") return deskLooksRight(id);
   if (act === "looks_undo") return deskLooksUndo(id);
   if (act === "reopen") return deskReopen(id);
+  if (act === "msg_retry") return deskMsgRetry(id, el?.dataset.at);
+  if (act === "msg_edit") return deskMsgEdit(id, el?.dataset.at);
+  if (act === "held_edit") return deskHeldEdit(id, el?.dataset.sid);
+  if (act === "held_cancel") return deskHeldCancel(el?.dataset.sid);
+  if (act === "lead_retry" || act === "lead_edit") return deskLeadFailed(id, el?.dataset.at, act === "lead_edit");
   if (act === "log_all") { if (!deskFinLogOpen.delete(id)) deskFinLogOpen.add(id); return renderMain(); }
   // Drop, and Remove on a kept copy, take two clicks: the first arms it.
   if ((act === "drop" || act === "remove_kept") && deskDropArm !== id) { deskDropArm = id; return renderMain(); }

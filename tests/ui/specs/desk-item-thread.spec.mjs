@@ -80,10 +80,15 @@ test("the box on an item at work goes straight to its holder, sent as the item, 
   }, sent.args.text);
   const mine = page.locator(".dk-right .dk-ichat .cv-you").filter({ hasText: "Check the narrow window too" });
   await expect(mine).toHaveCount(1);
-  await expect(mine.locator(".cv-meta")).toContainText("waiting for it to take this");
+  await expect(mine.locator(".msg-line")).toContainText("Sending…");
   await cue.change((st) => { st.sessions.find((x) => x.session_id === "host").thread.at(-1).pending = false; });
   await expect(mine).toHaveCount(1);
-  await expect(mine.locator(".cv-meta")).not.toContainText("waiting for it to take this");
+  // The same line as under any message (#422): delivered, to whom, when; its bubble filled.
+  const line = mine.locator(".msg-line");
+  await expect(line).toContainText("✓ Delivered to host-lead ·");
+  if (process.env.SHOT_DIR) await line.locator("xpath=..").screenshot({ path: `${process.env.SHOT_DIR}/took.png` });
+  expect(await line.evaluate((e) => { const c = getComputedStyle(e); return [c.borderTopWidth, c.backgroundColor, c.cursor, e.tagName]; })).toEqual(["0px", "rgba(0, 0, 0, 0)", "auto", "DIV"]);
+  await expect(mine).toHaveClass(/msg-delivered/);
 });
 
 test("while its holder works on it, the item's chat shows the turn it's writing, whole, with its steps", async ({ page, cue }) => {

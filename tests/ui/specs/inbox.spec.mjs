@@ -674,7 +674,7 @@ test("what you sent that hasn't gone yet shows: queued on its row, and in its br
   await runOpen(page);
   await page.locator('.switch-view [data-view="inbox"]').click();
   const row = page.locator('.ib-row[data-inbox-open="eng"]');
-  await expect(row.locator(".ib-l2")).toHaveText("Queued: “also check the retry path”");
+  await expect(row.locator(".ib-l2")).toHaveText(/^Queued for .+: “also check the retry path”$/);
   await row.click();
   const pend = page.locator('.inbox-page[data-inbox-page="eng"] .ib-pending');
   await expect(pend).toContainText("also check the retry path");
@@ -825,6 +825,31 @@ test("at work, what you wrote that waits shows in its own block, not as what it'
   const pg = page.locator('.inbox-page[data-inbox-page="eng"]');
   await expect(pg.locator(".ib-card.run .ib-qt")).not.toContainText("Not sent yet");
   await expect(pg.locator(".ib-pending")).toContainText("check the retry path");
+});
+
+test("a held message in the brief: under Yours as its chat draws it, Edit puts it back in the reply box (#422)", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  await cue.change((st) => { const s = st.sessions.find((x) => x.session_id === "eng"); s.held = { text: "check the retry path" }; });
+  await cue.override("unhold_message", () => ({ role: "you", text: "check the retry path", images: [] }));
+  await page.locator('.switch-view [data-view="inbox"]').click();
+  await page.locator('[data-inbox-fold="run"]').click();
+  await page.locator('.ib-row[data-inbox-open="eng"]').click();
+  const pend = page.locator('.inbox-page[data-inbox-page="eng"] .ib-pending');
+  await expect(pend).not.toContainText("Waiting to go");
+  await expect(pend.locator(".cv-you.msg-held .msg-line")).toContainText("Not sent yet · Cue sends it when its turn ends · Edit · Send now");
+  await pend.locator('[data-act="held-edit"]').click();
+  await cue.called("unhold_message", { sessionId: "eng" });
+  await expect(page.locator('.inbox-page[data-inbox-page="eng"] .ib-box textarea')).toHaveValue("check the retry path");
+});
+
+test("a row whose last message it took says Delivered to it, with the time, not Sent (#422)", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  const line = await page.evaluate(() => {
+    const s = { session_id: "eng", project: "eng", thread: [{ role: "you", text: "go", at_ms: new Date(2026, 0, 1, 14, 12).getTime() }] };
+    return [inboxTaken(s), inboxTaken({ ...s, thread: [{ ...s.thread[0], pending: true }] })];
+  });
+  expect(line[0]).toMatch(/^Delivered to \S+ .*12/);
+  expect(line[1]).toBe("");
 });
 
 test("writing in the reply box, a click on a button in the Inbox leaves the cursor in the box", async ({ cue, page }) => {

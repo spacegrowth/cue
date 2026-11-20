@@ -118,16 +118,21 @@ function deskReader(s, ask = null) {
   return `${p.bar}<div class="dk-rd" data-scroll-key="rd:${esc(rv.all[rv.at].key)}">${p.body}</div>${p.foot}`;
 }
 /** The lead's chat: its session's messages, drawn as any session's chat is (chat/render.js), your words without the
- *  Desk's summary; then what you sent that it doesn't show yet (given up a minute after the send returned). */
+ *  Desk's summary; then what you sent that it doesn't show yet, Sending… until its session has it: in its thread
+ *  (delivered), or kept or queued in it (those rows say so). Given up ten minutes after the send returned, in case its
+ *  words never match. */
 function deskChat(d) {
   const s = deskLeadSession(d);
   const thread = s?.thread || [];
-  const pending = (deskSent.get(d.project) || []).filter((p) => !(p.sent && now() - p.sent > 60000)
-    && !thread.some((e) => e.role === "you" && e.at_ms >= p.at - 60000 && e.text.includes(p.text)));
+  const has = (e, p) => !!e && String(e.text || "").includes(p.text.slice(0, 200));
+  const pending = (deskSent.get(d.project) || []).filter((p) => p.failed || !(p.sent && now() - p.sent > 600000)
+    && !thread.some((e) => e.role === "you" && e.at_ms >= p.at - 60000 && has(e, p)) && !(p.sent && (has(s?.held, p) || has(s?.queued, p))));
   deskSent.set(d.project, pending);
   // The lead's own Desk lines drawn as lines, not raw text.
   const rows = s ? deskChatRows(s, { extra: deskCheckRows(d).concat(deskActRows(d)), noSteps: true }) : "";
-  const mine = pending.map((p) => { const hd = deskAboutHead(p); return `<div class="cv-you sending">${p.text ? `<div class="cv-you-text">${hd?.html || ""}${esc(hd ? hd.text : p.text).replace(/\n/g, "<br>")}</div>` : ""}${p.images?.length ? `<div class="thumbs">${p.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}<div class="cv-meta">Sending</div></div>`; }).join("");
+  // One that couldn't go: red, why, Retry and Edit (#422), till you pick one.
+  const failed = (p) => ({ st: "failed", why: esc(p.failed), acts: ["lead_retry", "lead_edit"].map((a, n) => `<button class="q-now" data-desk-act="${a}" data-id="${esc(d.project)}" data-at="${p.at}">${n ? "Edit" : "Retry"}</button>`).join(" · ") });
+  const mine = pending.map((p) => { const hd = deskAboutHead(p); return msgRow(p.failed ? { ...failed(p), to: deskLeadName(d) } : { st: "sending", to: deskLeadName(d) }, `${p.text ? `<div class="cv-you-text">${hd?.html || ""}${esc(hd ? hd.text : p.text).replace(/\n/g, "<br>")}</div>` : ""}${p.images?.length ? `<div class="thumbs">${p.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}`); }).join("");
   // Where the lead is now (working on what, its latest step, stuck, compacting), as under any session's chat.
   const where = s && sessionOf(s.session_id) ? whereNow(null, s) : "";
   const empty = !rows && !mine && !where ? `<div class="dk-empty">Tell ${esc(deskLeadName(d))} about a bug, a feature or a task. It adds them here, hands each to a session, and says why.</div>` : "";

@@ -349,7 +349,19 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .cv-voice-note { border-top: 1px solid var(--line); margin-top: 7px; padding-top: 6px; font-size: 12px; color: var(--voice); }
 .cv-voice-ask { font: inherit; font-weight: 650; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
 .cv-voice-line { margin-top: 5px; color: var(--muted); line-height: 1.45; }
-.cv-you.sending { opacity: 0.6; }
+/* A message's state (#422, chat/thread.js msgLine): the same bubble and one line under it in a session's chat, the Desk
+   lead's chat, an item's thread and the Inbox. Not with them yet (sending, kept in Cue, queued in it): a dashed outline
+   on the panel; sending also faint. Delivered: the filled bubble. Couldn't send: a red outline. */
+.cv-you.msg-sending .cv-you-text, .cv-you.msg-held .cv-you-text, .cv-you.msg-queued .cv-you-text { background: var(--panel); border: 1.5px dashed var(--muted); padding: 6.5px 10.5px; }
+.cv-you.msg-sending .cv-you-text, .cv-you.msg-sending .thumbs { opacity: .65; }
+.cv-you.msg-failed .cv-you-text { background: var(--panel); border: 1.5px solid var(--deny); padding: 6.5px 10.5px; }
+.msg-line { max-width: 100%; text-align: right; font-weight: 500; line-height: 1.5; }
+.msg-line b { color: var(--ink); font-weight: 650; }
+.msg-line .ml-mark { font-weight: 700; }
+.msg-line .ml-acts { white-space: nowrap; }
+.msg-line.ml-delivered .ml-mark { color: var(--accent); }
+.msg-line.ml-failed .ml-mark, .msg-line.ml-failed .ml-words > b:first-child { color: var(--deny); }
+.msg-line .ml-back { color: var(--muted); }
 /* Queued, kept in Cue, sent later or not yet taken: the same bubble as a sent message; the line under it says it hasn't gone yet. */
 /* One a page draws as its own card once sent (the Desk lead's new-item note): that card now, the same line under it. */
 .cv-later { display: flex; flex-direction: column; }

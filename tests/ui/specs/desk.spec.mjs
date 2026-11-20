@@ -28,7 +28,7 @@ test("the Desk is in the header after Board, and lists Waiting on you, then a gr
   const views = await page.locator(".switch-view button").evaluateAll((els) => els.map((el) => el.dataset.view));
   expect(views.slice(0, 3)).toEqual(["inbox", "board", "desk"]);
   await openDesk(page);
-  expect(await listOrder(page)).toEqual(["# Waiting on you", "d1", "# Ready to review", "d2", "# In progress", "d3", "d5", "# Queued", "d4", "d6", "# Done", "d7", "d8", "d9"]);
+  expect(await listOrder(page)).toEqual(["# Waiting on you", "d1", "# Ready to review", "d2", "# In progress", "d3", "d5", "# Up next", "d4", "d6", "# Done", "d7", "d8", "d9"]);
   await expect(page.locator(".dk-items .dk-gh.you .n")).toHaveText("1");
   // Grouped by state only: no head a session (the sessions are on the left).
   await expect(page.locator(".dk-items .dk-holder")).toHaveCount(0);
@@ -140,7 +140,7 @@ test("written about an item no session holds, the box goes to the lead naming it
   await page.locator(".dk-back").click();
   await expect(page.locator(".dk-chat")).toContainText("The More menu is cut off");
   // The lead has it (after the Desk's summary Cue put before it): no Sending left, and no summary shown.
-  await expect(page.locator(".dk-chat .sending")).toHaveCount(0);
+  await expect(page.locator(".dk-chat .msg-sending")).toHaveCount(0);
   await expect(page.locator(".dk-chat")).not.toContainText("<desk>");
   await expect(page.locator(".dk-chat")).not.toContainText("3 open: 2 wait on you");
   await expect(page.locator(".dk-chat")).toContainText("Fine. And the canvas one?");
@@ -189,16 +189,45 @@ test("the lead at work shows it in its chat: the working line, live, but not its
   await expect(live.locator(".cv-what")).toHaveText("Waiting on you for your reply");
 });
 
-test("a send from an item that doesn't go keeps the item open, and your words in its box", async ({ page, cue }) => {
+test("a send from an item that doesn't go keeps the item open, red on its Thread with why, Retry and Edit (#422)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await page.locator('[data-desk-item="d6"]').click();
   await cue.override("desk_send", () => { throw "offline"; });
   await page.locator(".dk-box textarea").fill("The More menu is cut off");
   await page.locator(".dk-box textarea").press("Enter");
-  await expect(page.locator(".toast")).toContainText("offline");
   await expect(page.locator(".dk-right .dk-pg h1")).toHaveText("Task #d6 · Tidy the Settings copy");
+  const mine = page.locator(".dk-thread .dk-tm", { hasText: "The More menu is cut off" });
+  await expect(mine.locator(".cv-you.msg-failed .msg-line")).toHaveText("! Couldn't send · offline · Retry · Edit");
+  await expect(page.locator(".dk-box textarea")).toHaveValue("");
+  // Retry: the same send again, by the same path.
+  await cue.override("desk_send", () => ({ sid: "lead" }));
+  await mine.locator('[data-desk-act="msg_retry"]').click();
+  await cue.called("desk_send", { project: "cue", text: "About #d6 (Tidy the Settings copy): The More menu is cut off" });
+  await expect(page.locator(".dk-thread .msg-failed")).toHaveCount(0);
+});
+
+test("Edit on an item's message that didn't go puts it back in the box; the lead's chat shows it red with Retry (#422)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await page.locator('[data-desk-item="d6"]').click();
+  await cue.override("desk_send", () => { throw "offline"; });
+  await page.locator(".dk-box textarea").fill("The More menu is cut off");
+  await page.locator(".dk-box textarea").press("Enter");
+  const mine = page.locator(".dk-thread .dk-tm", { hasText: "The More menu is cut off" });
+  await mine.locator('[data-desk-act="msg_edit"]').click();
   await expect(page.locator(".dk-box textarea")).toHaveValue("The More menu is cut off");
+  await expect(page.locator(".dk-thread .msg-failed")).toHaveCount(0);
+  // To the lead on its own: red in its chat, and Retry sends it again.
+  await page.evaluate(() => { deskOpen = null; deskTab = "lead"; renderMain(); });
+  await page.locator(".dk-box textarea").fill("Footer too");
+  await page.locator(".dk-box textarea").press("Enter");
+  const bad = page.locator(".dk-chat .cv-you.msg-failed", { hasText: "Footer too" });
+  await expect(bad.locator(".msg-line")).toHaveText("! Couldn't send · offline · Retry · Edit");
+  await cue.override("desk_send", () => ({ sid: "lead" }));
+  await bad.locator('[data-desk-act="lead_retry"]').click();
+  await cue.called("desk_send", { project: "cue", text: "Footer too" });
+  await expect(page.locator(".dk-chat .msg-failed")).toHaveCount(0);
 });
 
 test("the lead's own ASK stands in the box's place: its choices, Type answer…; answered, the box is back", async ({ page, cue }) => {
@@ -823,7 +852,7 @@ test("rows open from the keyboard: Enter or Space, and the focus stays on the ro
   if (process.env.SHOT_DIR) await page.locator(".dk-right").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-crew-mark.png`, clip: undefined });
 });
 
-test("Send back opens the item's own \"Why send it back?\" box: it keeps what you wrote when it doesn't go, and closes when it does", async ({ page, cue }) => {
+test("Send back opens the item's own \"Why send it back?\" box: when it doesn't go it's red on the Thread and Edit opens the box with it again; it closes when it goes", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await page.locator('[data-desk-item="d2"]').click();
@@ -841,7 +870,10 @@ test("Send back opens the item's own \"Why send it back?\" box: it keeps what yo
   await box.fill("Still loses focus");
   await cue.override("desk_item_act", () => { throw "offline"; });
   await why.locator('[data-desk-act="back_go"]').click();
-  await expect(page.locator(".toast")).toContainText("offline");
+  // Didn't go: red on its Thread with why, Retry and Edit (#422); Edit opens the box with it again.
+  const bad = page.locator(".dk-right .dk-ipane .cv-you.msg-failed", { hasText: "Still loses focus" });
+  await expect(bad.locator(".msg-line")).toHaveText("! Couldn't send · offline · Retry · Edit · sent back");
+  await bad.locator('[data-desk-act="msg_edit"]').click();
   await expect(box).toHaveValue("Still loses focus");
   await cue.override("desk_item_act", () => null);
   // A picture goes with the words.
@@ -1561,19 +1593,19 @@ test("Cue's new-item note waiting to go to the lead: the same card as once it's 
     renderMain();
   }, [note("h1", "One Away switch"), note("h2", "Another switch")]);
   const chat = page.locator(".dk-chat");
-  const sent = chat.locator('.dk-nc[data-desk-chk-item="h1"]'), held = chat.locator('[data-key="held"] .dk-nc[data-desk-chk-item="h2"]');
+  const sent = chat.locator('.dk-nc[data-desk-chk-item="h1"]'), held = chat.locator('.cv-later .dk-nc[data-desk-chk-item="h2"]');
   await expect(held).toHaveCount(1);
   await expect(chat.locator(".cv-you.held")).toHaveCount(0);
-  await expect(chat.locator('[data-key="held"] > .cv-meta')).toContainText("Not sent yet · it goes when this turn ends");
+  await expect(chat.locator('.cv-later > .cv-meta')).toContainText("Not sent yet · Cue sends it when its turn ends");
   await expect(chat).not.toContainText("Route it now");
   const look = (l) => l.evaluate((el) => { const c = getComputedStyle(el); return [el.className, c.backgroundColor, c.borderTopColor, c.boxShadow, Math.round(el.getBoundingClientRect().right)]; });
   expect(await look(held), "waiting looks like sent").toEqual(await look(sent));
   if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-held-note.png`, animations: "disabled" });
   // Queued in the agent: the same.
   await page.evaluate((c) => { const lead = sessionOf("lead"); delete lead.held; lead.queued = { role: "you", text: c, at_ms: Date.now(), images: [] }; renderMain(); }, note("h3", "A third switch"));
-  const queued = chat.locator('[data-key="queued"] .dk-nc[data-desk-chk-item="h3"]');
+  const queued = chat.locator('.cv-later .dk-nc[data-desk-chk-item="h3"]');
   await expect(queued).toHaveCount(1);
-  await expect(chat.locator('[data-key="queued"] > .cv-meta')).toContainText("Queued");
+  await expect(chat.locator('.cv-later > .cv-meta')).toContainText("Queued");
   expect(await look(queued)).toEqual(await look(sent));
   if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-queued-note.png`, animations: "disabled" });
 });
@@ -1859,15 +1891,14 @@ test("written about an item ready to check, it's sent back with your words: off 
   await expect(page.locator(".dk-pane")).toHaveCount(1);
   // Off Waiting on you: back in the Items list, it's In progress (#418: the list is behind ‹ Items while it's open).
   await page.locator(".dk-back").click();
-  await expect.poll(() => listOrder(page)).toEqual(["# Waiting on you", "d1", "# In progress", "d3", "d2", "d5", "# Queued", "d4", "d6", "# Done", "d7", "d8", "d9"]);
-  // One that doesn't go: still waiting on you, your words kept in its box.
+  await expect.poll(() => listOrder(page)).toEqual(["# Waiting on you", "d1", "# In progress", "d3", "d2", "d5", "# Up next", "d4", "d6", "# Done", "d7", "d8", "d9"]);
+  // One that doesn't go: still waiting on you, red in its chat with why, Retry and Edit (#422).
   await page.locator('[data-desk-item="d1"]').click();
   await cue.change((st) => { st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d1").state = "to_check"; });
   await cue.override("desk_item_act", () => { throw "its session has ended"; });
   await page.locator(".dk-box textarea").fill("Still loses focus");
   await page.locator(".dk-box textarea").press("Enter");
-  await expect(page.locator(".toast").last()).toContainText("its session has ended");
-  await expect(page.locator(".dk-box textarea")).toHaveValue("Still loses focus");
+  await expect(page.locator(".dk-right .dk-ipane .cv-you.msg-failed .msg-line")).toContainText("Couldn't send · its session has ended · Retry · Edit");
   await expect(page.locator(".dk-right .dk-pg h1")).toHaveText("Bug #d1 · Reply box loses focus after Send");
 });
 
@@ -2806,7 +2837,7 @@ test("two send-backs in the same words, each on its own DONE: each shows its own
   await page.locator('[data-desk-item="d2"]').click();
   const pane = page.locator(".dk-pg");
   await pane.locator('[data-desk-itab="thread"]').click();
-  const backs = pane.locator(".dk-tm", { has: page.locator(".dk-ttag.back") });
+  const backs = pane.locator(".dk-tm", { has: page.locator(".ml-back") });
   await expect(backs).toHaveCount(2);
   await expect(backs.locator(".dk-md")).toHaveText(["Still off", "Still off"]);
   await expect(backs.nth(0).locator(".dk-tpn")).toHaveText("1 picture");
@@ -3274,7 +3305,7 @@ test("Open on an item's page, or its holder's, opens that session's chat here on
   await expect(page.locator('.dk-chat[data-desk-chat="cue"]')).toBeVisible();
 });
 
-test("an item's page is a Thread under Thread, Decisions and Steps tabs: every message in order, a send-back's dot red (#140)", async ({ page, cue }) => {
+test("an item's page is a Thread under Thread, Decisions and Steps tabs: every message in order, a send-back says so on its line (#140, #422)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await cue.change((st) => {
@@ -3291,15 +3322,16 @@ test("an item's page is a Thread under Thread, Decisions and Steps tabs: every m
   const msgs = pane.locator(".dk-thread .dk-tm:not(.rec)");
   // Added first, its reply, then the send-back; the hand-off (a step) sits where its time puts it. A reply that said
   // DONE is a reply, with a record line after it (#276).
-  const who = await msgs.locator(".dk-tw b").allTextContents();
-  expect(who.slice(-3)).toEqual(["You", "cue-117", "You"]);
+  // A message you sent is the chat's bubble with its one line (#422), not a head of its own.
+  const who = await msgs.evaluateAll((els) => els.map((e) => (e.classList.contains("dk-tmsg") ? "msg" : e.querySelector(".dk-tw b")?.textContent)));
+  expect(who.slice(-3)).toEqual(["You", "cue-117", "msg"]);
   await expect(msgs.nth(who.length - 2).locator(".dk-ttag")).toHaveText("Reply");
   await expect(pane.locator(".dk-thread .dk-tm.rec", { hasText: "Done" })).toHaveText(/Done · cue-117 said Bug #d4 is done/);
   await expect(msgs.nth(who.length - 2).locator("strong")).toHaveText("who sent");
   const back = msgs.last();
-  await expect(back.locator(".dk-ttag.back")).toHaveText("Sent back");
-  await expect(back.locator(".dk-tdot.back")).toHaveCount(1);
-  expect(await back.locator(".dk-tdot i").evaluate((e) => getComputedStyle(e).backgroundColor)).not.toBe(await msgs.first().locator(".dk-tdot i").evaluate((e) => getComputedStyle(e).backgroundColor));
+  await expect(back.locator(".cv-you-text")).toHaveText("Still blinks after a reply from someone else");
+  await expect(back.locator(".msg-line")).toContainText("Delivered to cue-117");
+  await expect(back.locator(".ml-back")).toHaveText("sent back");
   await expect(pane.locator(".dk-thread .dk-ttag", { hasText: "Hand-off" })).toHaveCount(0);   // "Gave it…" isn't a hand-off line
   // The answer box is the pane's foot.
   const foot = await page.locator(".dk-right .dk-box").boundingBox(), last = await back.boundingBox();
@@ -3343,6 +3375,8 @@ test("what you send on an item's page shows in its Thread at once, before it com
   // Its page is its holder's chat (#418): yours in it at once, as you wrote it.
   const mine = page.locator(".dk-right .dk-ichat .cv-you", { hasText: "Narrow windows too" });
   await expect(mine).toHaveCount(1);
+  // The lead is at work: Cue holds it till its turn ends, and the line says so, with its controls (#422).
+  await expect(mine.locator(".msg-line")).toHaveText("◌ Not sent yet · Cue sends it when its turn ends · Edit · Send now · Cancel");
   // Back as a step: still one message.
   await cue.change((st) => st.desk.projects.find((x) => x.project === "cue").decisions.push({ project: "cue", item_id: "d3", id: "y2", by: "You", sid: "", text: "Narrow windows too", why: "to web-lead", at: Math.floor(Date.now() / 1000) }));
   await page.evaluate(() => window.__release?.(null));
@@ -3896,7 +3930,7 @@ test("a finishing item: amber and steady, out of In progress into Landing, then 
   const row = page.locator('.dk-items [data-desk-item="d5"]');
   await expect(row).toHaveClass(/\bdk-fin\b/);
   // Its own lane, the landing line, numbered; its row says what it waits on, short, after its holder (#346).
-  expect(await listOrder(page)).toEqual(["# Waiting on you", "d1", "# Ready to review", "d2", "# In progress", "d3", "# Landing", "d5", "# Queued", "d4", "d6", "# Done", "d7", "d8", "d9"]);
+  expect(await listOrder(page)).toEqual(["# Waiting on you", "d1", "# Ready to review", "d2", "# In progress", "d3", "# Landing", "d5", "# Up next", "d4", "d6", "# Done", "d7", "d8", "d9"]);
   await expect(page.locator('.dk-items .dk-gh[data-lane="landing"] .dk-split')).toHaveText("one at a time");
   await expect(row.locator(".dk-rn")).toHaveText("1");
   await expect(row.locator(".dk-who")).toHaveText("host-lead · Waits: The main checkout is in the middle of a merge · 3m");
@@ -3917,7 +3951,7 @@ test("a finishing item: amber and steady, out of In progress into Landing, then 
   await cue.change((st, t) => { st.desk.install_at = t; }, due);
   await patchItem(cue, "d5", { finish: { step: "queued", commit: "abc9999", at: Date.now() } });
   const clock = await page.evaluate((t) => clockAt(t), due);
-  expect(await listOrder(page)).toEqual(["# Waiting on you", "d1", "# Ready to review", "d2", "# In progress", "d3", "# Waiting to install", "d5", "# Queued", "d4", "d6", "# Done", "d7", "d8", "d9"]);
+  expect(await listOrder(page)).toEqual(["# Waiting on you", "d1", "# Ready to review", "d2", "# In progress", "d3", "# Waiting to install", "d5", "# Up next", "d4", "d6", "# Done", "d7", "d8", "d9"]);
   await expect(row.locator(".dk-who")).toHaveText("host-lead · On main · abc9999");
   await expect(row.locator(".dk-rn")).toHaveCount(0);
   await expect(row.locator('[data-desk-act="install_now"]')).toHaveCount(0);
