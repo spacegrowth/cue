@@ -28,7 +28,7 @@ test("the Desk is in the header after Board, and lists Waiting on you, then a gr
   const views = await page.locator(".switch-view button").evaluateAll((els) => els.map((el) => el.dataset.view));
   expect(views.slice(0, 3)).toEqual(["inbox", "board", "desk"]);
   await openDesk(page);
-  expect(await listOrder(page)).toEqual(["# Waiting on you", "d1", "# Ready to review", "d2", "# In progress", "d3", "d5", "# Up next", "d4", "d6", "# Done", "d7", "d8", "d9"]);
+  expect(await listOrder(page)).toEqual(["# Waiting on you", "d1", "# Ready to review", "d2", "# In progress", "d3", "d5", "# Queued", "d4", "d6", "# Done", "d7", "d8", "d9"]);
   await expect(page.locator(".dk-items .dk-gh.you .n")).toHaveText("1");
   // Grouped by state only: no head a session (the sessions are on the left).
   await expect(page.locator(".dk-items .dk-holder")).toHaveCount(0);
@@ -1918,7 +1918,7 @@ test("written about an item ready to check, it's sent back with your words: off 
   await expect(page.locator(".dk-pane")).toHaveCount(1);
   // Off Waiting on you: back in the Items list, it's In progress (#418: the list is behind ‹ Items while it's open).
   await page.locator(".dk-back").click();
-  await expect.poll(() => listOrder(page)).toEqual(["# Waiting on you", "d1", "# In progress", "d3", "d2", "d5", "# Up next", "d4", "d6", "# Done", "d7", "d8", "d9"]);
+  await expect.poll(() => listOrder(page)).toEqual(["# Waiting on you", "d1", "# In progress", "d3", "d2", "d5", "# Queued", "d4", "d6", "# Done", "d7", "d8", "d9"]);
   // One that doesn't go: still waiting on you, red in its chat with why, Retry and Edit (#422).
   await page.locator('[data-desk-item="d1"]').click();
   await cue.change((st) => { st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d1").state = "to_check"; });
@@ -3957,7 +3957,7 @@ test("a finishing item: amber and steady, out of In progress into Landing, then 
   const row = page.locator('.dk-items [data-desk-item="d5"]');
   await expect(row).toHaveClass(/\bdk-fin\b/);
   // Its own lane, the landing line, numbered; its row says what it waits on, short, after its holder (#346).
-  expect(await listOrder(page)).toEqual(["# Waiting on you", "d1", "# Ready to review", "d2", "# In progress", "d3", "# Landing", "d5", "# Up next", "d4", "d6", "# Done", "d7", "d8", "d9"]);
+  expect(await listOrder(page)).toEqual(["# Waiting on you", "d1", "# Ready to review", "d2", "# In progress", "d3", "# Landing", "d5", "# Queued", "d4", "d6", "# Done", "d7", "d8", "d9"]);
   await expect(page.locator('.dk-items .dk-gh[data-lane="landing"] .dk-split')).toHaveText("one at a time");
   await expect(row.locator(".dk-rn")).toHaveText("1");
   await expect(row.locator(".dk-who")).toHaveText("host-lead · Waits: The main checkout is in the middle of a merge · 3m");
@@ -3978,7 +3978,7 @@ test("a finishing item: amber and steady, out of In progress into Landing, then 
   await cue.change((st, t) => { st.desk.install_at = t; }, due);
   await patchItem(cue, "d5", { finish: { step: "queued", commit: "abc9999", at: Date.now() } });
   const clock = await page.evaluate((t) => clockAt(t), due);
-  expect(await listOrder(page)).toEqual(["# Waiting on you", "d1", "# Ready to review", "d2", "# In progress", "d3", "# Waiting to install", "d5", "# Up next", "d4", "d6", "# Done", "d7", "d8", "d9"]);
+  expect(await listOrder(page)).toEqual(["# Waiting on you", "d1", "# Ready to review", "d2", "# In progress", "d3", "# Waiting to install", "d5", "# Queued", "d4", "d6", "# Done", "d7", "d8", "d9"]);
   await expect(row.locator(".dk-who")).toHaveText("host-lead · On main · abc9999");
   await expect(row.locator(".dk-rn")).toHaveCount(0);
   await expect(row.locator('[data-desk-act="install_now"]')).toHaveCount(0);

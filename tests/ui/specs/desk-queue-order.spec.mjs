@@ -44,7 +44,7 @@ test("Queued items drag into your order; one can't go above the item it waits on
     d.items.push({ ...d4, id: "d10", title: "Footer links", after: "d4", after_why: "same file", created: Math.max(...d.items.map((i) => i.created)) + 1 });
   });
   await openDesk(page);
-  await expect(page.locator(".dk-items .dk-gh", { hasText: "Up next" })).toContainText("drag to reorder");
+  await expect(page.locator(".dk-items .dk-gh", { hasText: "Queued" })).toContainText("drag to reorder");
   expect(await order(page)).toEqual(["d4", "d6", "d10"]);
   // Footer links above Rail dot, which it waits on: back in its place, and why.
   await drag(page, "d10", "d4");
@@ -57,7 +57,7 @@ test("Queued items drag into your order; one can't go above the item it waits on
   await expect.poll(() => order(page)).toEqual(["d6", "d4", "d10"]);
   // A drag isn't a click: nothing opened.
   await expect(page.locator(".dk-it.on")).toHaveCount(0);
-  // A running item isn't in Up next: nothing to drag.
+  // A running item isn't in Queued: nothing to drag.
   await expect(page.locator('[data-desk-item="d3"][data-desk-qg]')).toHaveCount(0);
 });
 
