@@ -11,6 +11,9 @@ const deskItemTabs = new Map();
 const deskPending = new Map();
 const deskPend = (id, text, why, pics = 0, more = {}) => { const p = { text, why, pics, at: now(), ...more }; deskPending.set(id, [...(deskPending.get(id) || []), p]); deskThreadToEnd = true; return p; };
 const deskUnpend = (id, p) => deskPending.set(id, (deskPending.get(id) || []).filter((x) => x !== p));
+/** Pending message `p`'s step on item `i` (Desk `d`), once the hub has it: yours, in the same words, from when it went
+ *  on. null till then. */
+const deskPendStep = (i, d, p) => (p.text.trim() && deskItemLog(i, d).find((c) => !c.call && c.by === "You" && c.text.trim() === p.text.trim() && (c.delivery?.at_ms || deskMs(c.at) + 999) >= p.at)) || null;
 /** A step that hands the item to someone (hub/desk.rs routed_text, give): on its Thread as a Hand-off. */
 const DESK_HANDOFF = /^(Routed|Gave|Started|Sent|Queued|Reopened) #/;
 /** The lead unsticking an item itself (hub/desk_unstick.rs, #347): closed as on main, its copy taken back, moved up
@@ -56,7 +59,7 @@ function deskThread(i, d) {
   }
   // Sent from here, not back as a step yet.
   // A picture with no words is never one of its Steps: it's in once a reply came after it.
-  const recorded = (p) => (p.text.trim() ? mine.some((c) => c.by === "You" && c.text.trim() === p.text.trim() && (c.delivery?.at_ms || deskMs(c.at) + 999) >= p.at) : (i.said || []).some((r) => r.at > p.at));
+  const recorded = (p) => (p.text.trim() ? !!deskPendStep(i, d, p) : (i.said || []).some((r) => r.at > p.at));
   for (const p of deskPending.get(i.id) || []) {
     if (recorded(p)) continue;
     const name = p.why === "lead" ? deskLead(d)?.name : i.holder?.name;
@@ -296,7 +299,11 @@ function deskItemChat(i, d, s) {
   // restarts as the hub keeps it; a pending copy of one is shown by it.
   const lost = deskItemLog(i, d).filter((c) => !c.call && (c.delivery?.went || "").startsWith("failed"));
   const lostOf = (p) => lost.some((c) => c.text.trim() === p.text.trim() && (c.delivery.at_ms || 0) >= p.at - 1000);
-  const sent = (p) => (p.failed == null && lostOf(p)) || waits(p) || outbox.some((o) => o.sid === s.session_id && o.text === p.text) || thread.some((e) => e.role === "you" && e.at_ms >= p.at - 60000 && (p.text.trim() ? e.text.includes(p.text.trim()) : true));
+  // Gone by the hub's own record (#525): its session's chat here holds only its last few messages, so one that went
+  // and was answered falls out of them once more is said, and would show as Sending again. One the hub is still
+  // sending (or kept no word of how it went) waits for its chat as before.
+  const went = (p) => { const c = p.failed == null && deskPendStep(i, d, p); return !!c && (!c.delivery || !["", "sending"].includes(c.delivery.went || "")); };
+  const sent = (p) => went(p) || (p.failed == null && lostOf(p)) || waits(p) || outbox.some((o) => o.sid === s.session_id && o.text === p.text) || thread.some((e) => e.role === "you" && e.at_ms >= p.at - 60000 && (p.text.trim() ? e.text.includes(p.text.trim()) : true));
   // Sent from here and not in its chat yet: its one line (#422), Sending till it is, red with Retry and Edit if it
   // couldn't go.
   const mine = (deskPending.get(i.id) || []).filter((p) => !sent(p)).map((p) => {
