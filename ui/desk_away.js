@@ -125,6 +125,58 @@ function deskAwayCallsHtml(d) {
   const head = `<button class="dk-aw-fold" data-desk-away-fold="${esc(d.project)}"${calls.length ? ` aria-expanded="${open}"` : " disabled"}>${chev}${DESK_AWAY_ICON}<b>${esc(n)}</b>${since}<span class="grow"></span>${st}${bar}</button>`;
   return `<div class="dk-aw-calls${open ? " open" : ""}">${head}${open ? `<div class="dk-aw-list">${calls.map((c) => deskAwayMark(c, d)).join("")}</div>` : ""}</div>`;
 }
+/** The dispatcher's Away tab (#416): each past Away stretch, newest first (hub/desk_away_log.rs). Folded, one line:
+ *  when, how long, spend and counts; open, the items that moved, the lead's calls (Undo while it can still be undone)
+ *  and the steps held for you, allowed or refused. Which ones are open is kept in this window only. */
+const deskAwayLogOpen = new Set();
+function deskAwayLogToggle(id) {
+  if (!deskAwayLogOpen.delete(id)) deskAwayLogOpen.add(id);
+  renderMain();
+}
+/** An item's state in plain words. */
+const DESK_STATE_WORDS = { new: "new", queued: "queued", working: "working", finishing: "finishing", needs_you: "waiting on you", to_check: "ready to check", done: "done", dropped: "dropped", paused: "paused", needs_resume: "stopped", held: "parked" };
+const deskStateWord = (s) => DESK_STATE_WORDS[s] || String(s || "").replace(/_/g, " ");
+/** How long: "8h 50m", "45m", "under a minute". */
+function deskAwayLong(ms) {
+  const m = Math.round(Math.max(0, ms) / 60000);
+  if (m < 1) return "under a minute";
+  const h = Math.floor(m / 60);
+  return h ? `${h}h${m % 60 ? ` ${m % 60}m` : ""}` : `${m}m`;
+}
+/** When a stretch ran: "07:00 – 15:50" today, "Nov 18, 22:10 – 07:00" before (the end's day too when it's another
+ *  day than the start's). */
+function deskAwayRan(since, end) {
+  const day = (ms) => { const t = new Date(ms); return t.toDateString() === new Date(now()).toDateString() ? "" : `${t.toLocaleDateString([], { month: "short", day: "numeric" })}, `; };
+  const same = new Date(since).toDateString() === new Date(end).toDateString();
+  return `${day(since)}${deskHm(since)} – ${same ? "" : day(end)}${deskHm(end)}`;
+}
+const deskCount = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+/** One stretch: its line, and open, what happened. */
+function deskAwayStretch(r, d) {
+  const open = deskAwayLogOpen.has(r.id);
+  const items = r.items || [], calls = r.calls || [], held = r.held || [];
+  const counts = [items.length ? `${items.length} moved` : "", calls.length ? deskCount(calls.length, "call") : "", held.length ? `${held.length} held` : ""].filter(Boolean);
+  const facts = [deskAwayLong(r.end - r.since), r.spent > 0 || r.budget != null ? deskMoney(r.spent) : "", ...(counts.length ? counts : ["nothing happened"]),
+    r.ended === "budget" ? "budget spent" : r.ended === "until" ? "ran to its end time" : ""].filter(Boolean).join(" · ");
+  const head = `<button class="dk-aw-fold dk-al-h" data-desk-away-log="${esc(r.id)}" aria-expanded="${open}"><span class="dk-aw-chev${open ? " open" : ""}" aria-hidden="true">›</span>${DESK_AWAY_ICON}<span class="dk-al-tx"><b>${esc(deskAwayRan(r.since, r.end))}</b> <span class="dk-aw-w">${esc(facts)}</span></span></button>`;
+  if (!open) return `<div class="dk-al" data-key="al:${esc(r.id)}">${head}</div>`;
+  const sec = (t, rows) => rows ? `<div class="dk-al-s">${esc(t)}</div>${rows}` : "";
+  const moved = items.map((i) => {
+    const there = (d.items || []).some((x) => x.id === i.id);
+    const num = `<b class="dk-inum">#${esc(i.id)}</b>`;
+    const what = `${num} <span class="dk-al-t">${esc(i.title)}</span><span class="dk-aw-why"> · ${esc(i.from ? `${deskStateWord(i.from)} → ${deskStateWord(i.to)}` : `added · ${deskStateWord(i.to)}`)}</span>`;
+    return there ? `<button class="dk-aw-mark dk-al-row" data-desk-chk-item="${esc(i.id)}"><span class="dk-aw-mt">${what}</span></button>` : `<div class="dk-aw-mark dk-al-row"><span class="dk-aw-mt">${what}</span></div>`;
+  }).join("");
+  const answer = (h) => h.answer === "allow" ? "Allowed" : h.answer === "no" ? "Refused" : "Not answered yet: under Waiting on you";
+  const heldRows = held.map((h) => `<div class="dk-aw-mark dk-al-held" data-held-log="${esc(h.id)}"><span class="dk-aw-tm">${esc(deskHm(deskMs(h.at)))}</span><span class="dk-aw-mt"><b>${esc(h.who || "A session")} wanted to ${esc(h.what)}</b><span class="dk-aw-why"> · ${esc(answer(h))}</span><code class="dk-al-cmd">${esc(h.command)}</code></span></div>`).join("");
+  const body = sec("Items", moved) + sec("Calls", calls.map((c) => deskAwayMark(c, d)).join("")) + sec("Held for you", heldRows);
+  return `<div class="dk-al open" data-key="al:${esc(r.id)}">${head}<div class="dk-aw-list">${body || `<div class="dk-aw-none">Nothing moved, no calls, nothing held.</div>`}</div></div>`;
+}
+function deskAwayLog(d) {
+  const log = d.away_log || [];
+  const body = log.length ? log.map((r) => deskAwayStretch(r, d)).join("") : `<div class="dk-empty">Nothing yet. Each time Away goes off, what happened while you were away is kept here: the items that moved, ${esc(deskLeadName(d) || "the lead")}'s calls and the steps held for you.</div>`;
+  return `<div class="dk-pane dk-away-log" data-scroll-key="awaylog:${esc(d.project)}">${body}</div>`;
+}
 /** Away on a Desk now: the window takes its night colours (the dark theme's tokens, app/render.js applyTheme) and its
  *  head says so (#415, pick D). */
 const deskAwayOnDesks = () => (state.desk?.projects || []).filter((d) => d.away?.on);

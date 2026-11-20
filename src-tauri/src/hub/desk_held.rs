@@ -35,7 +35,7 @@ fn str_of<'a>(v: &'a Value, k: &str) -> &'a str {
 }
 
 /// What a held step does, in plain words.
-fn plain(kinds: &[String]) -> String {
+pub(super) fn plain(kinds: &[String]) -> String {
     let mut out: Vec<&str> = vec![];
     for k in kinds {
         let w = match k.as_str() {
@@ -112,11 +112,17 @@ impl Hub {
         let held = update(|list| {
             // Asked again before you answered: the one already held stands.
             if let Some(h) = list.iter().find(|h| str_of(h, "sid") == sid && str_of(h, "command") == command && str_of(h, "answer").is_empty()) {
-                return str_of(h, "id").to_string();
+                return (str_of(h, "id").to_string(), None);
             }
-            list.push(entry);
-            id.clone()
+            list.push(entry.clone());
+            (id.clone(), Some(entry))
         });
+        // Noted for the stretch's history too (#416), which outlives this list.
+        if let Ok((_, Some(e))) = &held {
+            let who = self.read(|st| st.sessions.get(&sid).map(super::desk::shown_name).unwrap_or_default());
+            super::desk_away_log::note_held(e, &who);
+        }
+        let held = held.map(|(id, _)| id);
         let id = match held {
             Ok(id) => id,
             // Not saved: the usual card, so it isn't lost.
@@ -135,9 +141,11 @@ impl Hub {
         let found = update(|list| {
             let h = list.iter_mut().find(|h| str_of(h, "id") == id && str_of(h, "answer").is_empty())?;
             h["answer"] = json!(if allow { "allow" } else { "no" });
-            Some(str_of(h, "sid").to_string())
+            Some(h.clone())
         })?;
-        let sid = found.ok_or("that step was already answered or isn't held any more")?;
+        let h = found.ok_or("that step was already answered or isn't held any more")?;
+        super::desk_away_log::note_held(&h, "");
+        let sid = str_of(&h, "sid").to_string();
         self.held_release(&sid);
         self.changed();
         Ok(())

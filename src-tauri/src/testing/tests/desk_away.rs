@@ -158,3 +158,68 @@ fn a_sweep_whose_turn_fails_stops_the_window_waiting() {
     w.settle();
     assert_eq!(desk(&w, &project)["away"]["sweeping"], json!(false));
 }
+
+/// #416: each Away stretch is kept as it goes off, newest first: when, how long, spend, the items that moved, the
+/// lead's calls (with Undo while it can still be undone) and the steps held for you, with your answer once given.
+#[test]
+fn each_away_stretch_is_kept_with_what_moved_the_calls_and_what_was_held() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let d = new_lead(&w, &project);
+    w.hub().ask_before_set(&project, Some(&["data".into()])).unwrap();
+    w.hub().desk_add(&project, "bug", "Before", "", None).unwrap();
+    w.settle();
+    assert_eq!(desk(&w, &project)["away_log"], json!([]), "none yet");
+
+    w.hub().desk_away_set(&project, &json!({ "on": true, "until": null, "budget": 10, "rules": {} })).unwrap();
+    w.settle();
+    w.advance(60 * 1000);
+    w.hub().desk_add(&project, "task", "While away", "", None).unwrap();
+    ends(&w, &d, "DECIDED: Header first — it blocks the rest");
+    let s = w.session(&h).in_folder(w.home());
+    assert_eq!(s.guard_bash("rm -rf build", "main").unwrap().told().unwrap()["behavior"], "deny", "held");
+    w.advance(60 * 1000);
+    // Still on: nothing kept yet.
+    assert_eq!(desk(&w, &project)["away_log"], json!([]));
+    w.hub().desk_away_set(&project, &json!({ "on": false, "until": null, "budget": null, "rules": {} })).unwrap();
+    w.settle();
+
+    let log = desk(&w, &project)["away_log"].clone();
+    let r = &log[0];
+    assert_eq!(log.as_array().unwrap().len(), 1, "{log}");
+    assert!(r["end"].as_u64().unwrap() >= r["since"].as_u64().unwrap() + 2 * 60 * 1000, "{r}");
+    assert_eq!((r["budget"].clone(), r["ended"].clone()), (json!(10.0), json!("")), "{r}");
+    let items = r["items"].as_array().unwrap();
+    assert!(items.iter().any(|i| i["title"] == "While away" && i["from"] == ""), "added while away: {r}");
+    assert!(items.iter().all(|i| i["title"] != "Before" || i["from"] != i["to"]), "{r}");
+    let call = r["calls"].as_array().unwrap().iter().find(|c| c["text"] == "Header first").cloned().expect("the call kept");
+    assert_eq!((call["why"].clone(), call["undo"].clone()), (json!("it blocks the rest"), json!("can")), "{call}");
+    let held = r["held"].as_array().unwrap();
+    assert_eq!((held.len(), held[0]["what"].clone(), held[0]["command"].clone(), held[0]["answer"].clone()), (1, json!("delete files"), json!("rm -rf build"), json!("")), "{r}");
+
+    // You answer it after you're back: the stretch says so, though the held list has let it go.
+    let id = held[0]["id"].as_str().unwrap().to_string();
+    w.hub().desk_held_answer(&id, false).unwrap();
+    w.settle();
+    assert!(desk(&w, &project)["held"].as_array().unwrap().is_empty());
+    assert_eq!(desk(&w, &project)["away_log"][0]["held"][0]["answer"], "no");
+
+    // Undone: no Undo any more.
+    w.hub().desk_undo(call["id"].as_str().unwrap()).unwrap();
+    w.settle();
+    let undo = desk(&w, &project)["away_log"][0]["calls"].as_array().unwrap().iter().find(|c| c["id"] == call["id"]).unwrap()["undo"].clone();
+    assert_ne!(undo, "can", "{undo}");
+
+    // A second stretch, ended by its time: newest first, and it ends when its time came, not when you turned it off.
+    w.advance(60 * 1000);
+    let until = crate::clock::now_ms() + 10 * 60 * 1000;
+    w.hub().desk_away_set(&project, &json!({ "on": true, "until": until, "budget": null, "rules": {} })).unwrap();
+    w.settle();
+    w.advance(60 * 60 * 1000);
+    w.hub().desk_away_set(&project, &json!({ "on": false, "until": null, "budget": null, "rules": {} })).unwrap();
+    w.settle();
+    let log = desk(&w, &project)["away_log"].clone();
+    assert_eq!(log.as_array().unwrap().len(), 2, "{log}");
+    assert_eq!((log[0]["ended"].clone(), log[0]["held"].clone()), (json!("until"), json!([])), "{log}");
+    assert!(log[0]["end"].as_u64().unwrap() < until + 60 * 1000 && log[0]["since"].as_u64() > log[1]["since"].as_u64(), "{log}");
+}

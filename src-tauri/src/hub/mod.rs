@@ -22,6 +22,7 @@ mod desk_said;
 mod desk_view;
 mod desk_spaces;
 mod desk_away;
+mod desk_away_log;
 mod desk_held;
 mod desk_pause;
 pub(crate) use desk_pause::pause_view as desk_pause_view;

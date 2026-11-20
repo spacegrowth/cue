@@ -209,8 +209,8 @@ impl Hub {
             Some(b) => Some(b.as_f64().filter(|b| *b >= 0.0).ok_or("the budget must be a number of dollars")?).filter(|b| *b > 0.0),
         };
         let now = now_ms();
-        let cost = self.read(|st| cost_now(st, desk));
-        let (was_on, rules_changed) = crate::config::update_with("desk.away", |c| {
+        let (cost, pre, items_now) = self.read(|st| (cost_now(st, desk), Away::read(st, desk, now), super::desk_away_log::item_states(st, desk)));
+        let (was_on, rules_changed, before) = crate::config::update_with("desk.away", |c| {
             let mut map = c.pointer("/desk/away").cloned().filter(Value::is_object).unwrap_or_else(|| json!({}));
             let before = map.get(desk).cloned().unwrap_or(Value::Null);
             let was_on = before.get("on").and_then(Value::as_bool).unwrap_or(false);
@@ -219,6 +219,9 @@ impl Hub {
             // Set again with the same limits (a rule changed): an Away that already ran out stays so, its lead told once.
             let same = on && was_on && before.get("until").and_then(Value::as_u64) == until && before.get("budget").and_then(Value::as_f64) == budget;
             let ended = if same { before.get("ended").cloned().unwrap_or(json!("")) } else { json!("") };
+            let ended_at = if same { before.get("ended_at").cloned().unwrap_or(Value::Null) } else { Value::Null };
+            // The items as Away went on (#416): what moved is told from these as it goes off.
+            let items = if on && was_on { before.get("items").cloned().unwrap_or_else(|| items_now.clone()) } else if on { items_now.clone() } else { Value::Null };
             let (since, base) = if on && was_on {
                 (before.get("since").cloned().unwrap_or(json!(now)), before.get("base").cloned().unwrap_or(json!(cost)))
             } else if on {
@@ -227,9 +230,18 @@ impl Hub {
                 (before.get("since").cloned().unwrap_or(json!(0)), before.get("base").cloned().unwrap_or(json!(0.0)))
             };
             // Set again with new limits (a later end time, a bigger budget): it holds again until a turn's end finds otherwise.
-            map[desk] = json!({ "on": on, "since": since, "until": until, "budget": budget, "base": base, "ended": ended, "rules": rules });
-            Ok((Some(map), (was_on, rules != old_rules)))
+            map[desk] = json!({ "on": on, "since": since, "until": until, "budget": budget, "base": base, "ended": ended, "ended_at": ended_at, "items": items, "rules": rules });
+            Ok((Some(map), (was_on, rules != old_rules, before)))
         })?;
+        // Back (#416): what happened while away kept for the dispatcher's Away tab.
+        if was_on && !on {
+            let since = before.get("since").and_then(Value::as_u64).unwrap_or(0);
+            let end = before.get("ended_at").and_then(Value::as_u64).or_else(|| before.get("until").and_then(Value::as_u64).filter(|u| pre.ended == "until" && *u < now)).unwrap_or(now);
+            let start = before.get("items").cloned().unwrap_or_else(|| json!({}));
+            let (items, calls) = self.read(|st| super::desk_away_log::stretch(st, desk, since, end, &start));
+            super::desk_away_log::keep(json!({ "id": format!("away-{since}"), "desk": desk, "since": since, "end": end, "until": before.get("until"), "budget": before.get("budget"),
+                "spent": (pre.spent * 100.0).round() / 100.0, "ended": pre.ended, "items": items, "calls": calls }));
+        }
         if on != was_on || (on && rules_changed) {
             let words = self.read(|st| {
                 let a = Away::read(st, desk, now);
@@ -276,6 +288,7 @@ impl Hub {
                 return Ok((None, false));
             }
             d["ended"] = json!(a.ended);
+            d["ended_at"] = json!(now);
             Ok((Some(map), true))
         });
         match saved {

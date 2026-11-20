@@ -863,6 +863,10 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
 .dk-pgm { grid-area: main; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .dk-ptabs { flex: none; display: flex; align-items: stretch; min-height: 38px; border-bottom: 1px solid var(--line); }
 .dk-ptabs .dk-tab { font-size: 12.5px; }
+/* Four tabs (#416): each on one line; in a narrow column the row scrolls sideways rather than wrap a name. */
+.dk-ptabs { overflow-x: auto; scrollbar-width: none; }
+.dk-ptabs::-webkit-scrollbar { display: none; }
+.dk-ptabs .dk-tab { flex: none; white-space: nowrap; }
 .dk-pg .dk-ipane > .dk-ihead { background: var(--panel); }
 .dk-pg .dk-itabs { margin: 0; padding: 0 12px; gap: 0; }
 .dk-pg .dk-itab { padding: 9px 8px; flex: none; }
@@ -1162,3 +1166,18 @@ body.dk-dragging, body.dk-dragging * { cursor: grabbing !important; user-select:
 .top-away > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .top-away .dk-aw-ic { color: var(--sel); }
 .top-away-m { flex: 0 100 auto; font-weight: 500; color: var(--on-bg-muted); }
+
+/* The dispatcher's Away tab (#416): past stretches, each one line, opening to what happened. */
+.dk-away-log .dk-al { border-top: 1px solid var(--line); }
+.dk-away-log .dk-al.open { padding-bottom: 8px; }
+.dk-away-log .dk-al-h { padding: 9px 4px; align-items: baseline; }
+/* The when and the facts as one run of text: narrow, the facts wrap under the when, not under the moon. */
+.dk-al-tx { flex: 1; min-width: 0; line-height: 1.45; }
+.dk-al-tx b { font-weight: 650; margin-right: 4px; }
+.dk-away-log .dk-al-h .dk-aw-w { white-space: normal; }
+.dk-al-s { padding: 8px 16px 2px 34px; font: 700 10.5px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+button.dk-al-row { all: unset; box-sizing: border-box; display: flex; width: 100%; padding: 5px 16px 5px 34px; font-size: 12.5px; cursor: pointer; border-radius: 6px; }
+button.dk-al-row:hover { background: var(--line); }
+button.dk-al-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.dk-al-t { color: var(--ink); }
+.dk-al-cmd { display: block; margin-top: 3px; font: 11.5px var(--mono); color: var(--muted); white-space: pre-wrap; word-break: break-all; }
