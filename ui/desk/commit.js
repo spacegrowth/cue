@@ -112,8 +112,8 @@ function deskBackNote(c) {
 function deskCheckRows(d) {
   return (d?.checks || []).map((c) => ({ at: c.at, html: keyed(deskCheckLine(c, d), `chk:${c.id}:${c.at}`) }));
 }
-/** A DONE as one line between thin rules while it's the one to check: "Ready to check: [task] Task #125 title… 12m
- *  Check it ›", the item and Check it › opening its page (what to test, Looks right and Send back are there). Once
+/** A DONE as the family's card (#501) while it's the one to check: "Cue READY TO CHECK Task #125 12m", its title,
+ *  Check it ›; the item and Check it › opening its page (what to test, Looks right and Send back are there). Once
  *  checked, a quiet centred line: "You · looked at [task] #124 and said it looks right" (or sent it back), the last
  *  one's commit and Undo · back to check after it. */
 function deskCheckLine(c, d) {
@@ -124,5 +124,7 @@ function deskCheckLine(c, d) {
     return `<div class="dk-chk-done dk-cl"><span class="dk-cl-t"><b>You</b> · ${said}${cmt}</span></div>`;
   }
   const open = `data-desk-chk-item="${esc(c.id)}"`;
-  return `<div class="dk-rchk"><span class="dk-rchk-w">${deskChkUninstalled(c) && !deskFinCommit(d && deskItem(d.project, c.id)) ? "Waiting for install:" : "Ready to check:"}</span><button class="dk-rchk-it" ${open}>${deskKindIcon(c)}<b class="dk-inum">${esc(deskNum(c))}</b><span class="dk-rchk-t">${esc(c.title || "")}</span></button><span class="dk-cl-age">${ago(c.at)}</span><button class="dk-rchk-go" ${open}>Check it ›</button></div>`;
+  const wait = deskChkUninstalled(c) && !deskFinCommit(d && deskItem(d.project, c.id));
+  return deskMg({ kind: "check", cue: true, who: "Cue", tag: wait ? "WAITING FOR INSTALL" : "READY TO CHECK", id: deskMgId(c.id, c, deskNum(c)), age: c.at,
+    body: `<div class="mg-t">${esc(c.title || "")}</div>`, foot: `<span class="mg-acts"><button class="mg-lk" ${open}>Check it ›</button></span>` });
 }

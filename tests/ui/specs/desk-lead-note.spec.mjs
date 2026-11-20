@@ -14,10 +14,13 @@ test("a NOTE is a small card: who it went to and which item, the message under i
     d.decisions.push({ id: "n1", project: "cue", item_id: "d2", by: "web-lead", sid: "lead", text: words, why: "note to cue-387", at: Math.floor(Date.now() / 1000), undo: "none", act: "" });
   }, { words });
   await push(page, `Sent a note.\n\n- **NOTE:** #d2 | ${words}`);
-  const chat = page.locator(".dk-chat"), card = chat.locator(".dk-note");
+  // The message family's card (#501): who → to, NOTE, the item, then the note.
+  const chat = page.locator(".dk-chat"), card = chat.locator('[data-mg="note"]');
   await expect(card).toHaveCount(1);
-  await expect(card.locator(".dk-note-h")).toHaveText(/^Note to cue-387 · Feature #d2$/);
-  await expect(card.locator(".dk-note-t")).toHaveText("The phrases go left of Send; keep | as it is in commands.");
+  await expect(card.locator(".mg-to")).toHaveText("→ cue-387");
+  await expect(card.locator(".mg-tag")).toHaveText("NOTE");
+  await expect(card.locator(".mg-id")).toHaveText("Feature #d2");
+  await expect(card.locator(".mg-t")).toHaveText("The phrases go left of Send; keep | as it is in commands.");
   await expect(chat).not.toContainText("NOTE:");
   await expect(chat).not.toContainText("**");
   await expect(card.locator("[title]")).toHaveCount(0);
@@ -31,8 +34,9 @@ test("a NOTE Cue has no record of yet names the item's holder; one the hub would
   await cue.open("desk");
   await openDesk(page);
   await push(page, "NOTE: #d2 | Check the small window too.");
-  const card = page.locator(".dk-chat .dk-note");
-  await expect(card.locator(".dk-note-h")).toHaveText(/^Note to \S+ · (Bug|Feature|Task) #d2$/);
+  const card = page.locator('.dk-chat [data-mg="note"]');
+  await expect(card.locator(".mg-to")).toHaveText(/^→ \S+$/);
+  await expect(card.locator(".mg-id")).toHaveText(/^(Bug|Feature|Task) #d2$/);
   await push(page, "NOTE: no item here");
   await expect(page.locator(".dk-chat .cv-agent").last()).toContainText("NOTE: no item here");
 });

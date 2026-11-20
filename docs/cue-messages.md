@@ -1,32 +1,39 @@
 # What Cue sends a session or a Desk lead, and how it shows
 
 Every message Cue itself writes into a session's chat or a Desk lead's chat (#478). The session or lead always gets
-the full text. In the chat you see one short plain line saying who it went to and what it asks or tells, with the full
-text folded under it. A click on the line opens the full text; a click on the item's number opens the item. Under it, the one line every
-message has (#422): sending, waiting, delivered to whom and when.
+the full text. In the chat you see one compact card (#501, one card family, `ui/styles/messages.css`): a head row with
+Cue's mark, who it went to, a tag saying what kind it is, the item's chip and the age; then what it asks or tells in two
+lines, More opening the full text under them; then the foot, how it went at the left (#422: sending, waiting, delivered
+to whom and when) and its actions at the right. A click on the item's chip opens the item.
 
-    Cue · Asked cue-383 · #461 not done: “Are we done here completely?”                2m
-    Cue · Told web-lead · refused: #d5 is done · 1 more line                            just now
+    ◔ Cue → cue-383   NOT DONE   #461                                                   2m
+    Asked: not done: “Are we done here completely?”
+    ✓ Delivered to cue-383 · 14:09                                                    More
+
+One family for every message (#501): whatever is said is one body size (13.5px), everything around it (head, foot,
+status line) one smaller size (12px). An ask is the same card outlined all round, plain again once answered with the
+answer in its foot; a message still going is dashed. The agent's reply stays plain text with the same head row, and
+your own words stay your bubble at the right. Colours come from the theme's tokens, so light and dark follow.
 
 - **Asked**: Cue wants the session to do something or answer. **Told**: it informs.
 - A message for a teammate ("For your teammate ui-tests: …") names the teammate, not its lead.
 - Cue's standing words to the session ("Its fixes stay in #…", "Say DONE: #… when it is"), a log, the choices are
   only in the fold. When there's more, the line ends with what: "· its log", "· 2 choices", "· 1 more line".
-- Left-aligned and quiet like #433's lead lines, the item number the same chip; up to two lines in a narrow chat.
+- Left-aligned, the item number the same chip everywhere; up to two lines in a narrow chat.
   No stripe, no hover text. Light and dark.
 
 The patterns live in `ui/desk/cue_said.js` (`CUE_MSGS`); `tests/ui/specs/desk-cue-said.spec.mjs` renders each one in
-light and dark.
+light and dark; `tests/ui/specs/messages-one-family.spec.mjs` checks every kind below uses the family's classes.
 
 ## Where they show
 
 | Place | How |
 | --- | --- |
-| Session's chat (its Desk page, the main chat) | the short line, full text folded |
-| Item's page (its holder's chat about it) | the same line |
-| Lead's chat (the Desk) | the same line, except the kinds that already had their own design (below) |
-| Inbox (a session's "Cue asked", its run lines) | the line as plain text |
-| Session card on the board, and "Working on" | the line as plain text |
+| Session's chat (its Desk page, the main chat) | the card, full text folded |
+| Item's page (its holder's chat about it) | the same card |
+| Lead's chat (the Desk) | the same card; the lead's own Desk lines (ROUTE, ITEM, DONE…) are plain rows with the item's chip |
+| Inbox (a session's "Cue asked", its run lines) | the card's words as a plain line (`.mg-plain`) |
+| Session card on the board, "Working on", the notch | the same plain line, at the row's size |
 
 Before #478 every kind below showed as a raw bubble on the right, as if you had typed Cue's whole instructions. One,
 "Desk item #…: the Desk lead took back its copy", was worse: it showed as a hand-off card with that as its title.
@@ -97,16 +104,16 @@ These already showed as short cards or lines before #478 and are unchanged:
 
 | Kind | How it shows |
 | --- | --- |
-| Hand-off of an item ("Desk item #id (kind): title …") | the hand-off card (#174), in the session's chat |
-| New items from you | the new-items note in the lead's chat |
-| A session stopped without DONE ("#id (title) stopped…") | the stop note in the lead's chat |
-| A session's TO LEAD: line | the "From X" card in the lead's chat |
-| Items done | the done note in the lead's chat |
-| Cue couldn't start a new session for #id | the start-failed note in the lead's chat |
+| Hand-off of an item ("Desk item #id (kind): title …") | the family's card tagged HAND-OFF (#174), at the right of the session's chat |
+| New items from you | a card tagged NEW ITEMS from you, at the right of the lead's chat, one row per item |
+| A session stopped without DONE ("#id (title) stopped…") | a card from Cue tagged STOPPED, with Open #id |
+| A session's TO LEAD: line | a card from the session tagged TO LEAD |
+| Items done | a card tagged DONE, one row per item |
+| Cue couldn't start a new session for #id | a card from Cue tagged COULDN'T START |
 | A new lead's hello ("You run cue's Desk now…") and hand-off ("X now runs cue's Desk. Please route …") | already one short line: its bubble, the `<desk …>` block dropped |
 | Your answer to its ASK ("Your ASK about #id: …") | hidden: the ASK's card shows the answer |
-| From another Desk's session | #472's band across the lead's chat |
-| What Cue sent a crew lead for its crew | Cue's crew bubble with "+ What Cue sent" (team.js `CUE_SAID`, below) |
+| From another Desk's session | a card with that Desk's chip in its head (#472's band is now a card) |
+| What Cue sent a crew lead for its crew | a card tagged CREW with "+ What Cue sent" (team.js `CUE_SAID`, below) |
 
 ## Not a short line yet
 
@@ -122,13 +129,13 @@ on the right with Cue's full text, as if you had typed it:
 | Cut refused | The lead's CUT: names a wait that isn't there | desk_said.rs | the lead's chat, your bubble: “Not cut: #a doesn't wait on #b” |
 | CLOSE commit not on main | The lead's CLOSE: names a commit that isn't on main | desk_unstick.rs | the lead's chat, your bubble: “Desk item #id not closed: … isn't on main…” |
 
-A Cue message waiting to go (queued or held) shows as the short line in the chat, but the session's card on the board
-(“Queued: “…””) and its Inbox row (“Queued for X: “…””) still quote Cue's raw text.
+A Cue message waiting to go (queued or held) shows as the card in the chat, dashed; the session's card on the board
+(“Queued: …”) and its Inbox row (“Queued for X: …”) give its plain line, not Cue's raw text.
 
 ## What Cue sends a crew lead for its crew
 
 A second pattern table, `CUE_SAID` in `ui/team.js`, draws these. It runs before `CUE_MSGS`, so in a chat they are not
-#478's short line: each is a bubble on the right, where yours are, named Cue, with “+ What Cue sent” folding the full
+#478's line: each is the family's card from Cue tagged CREW, with “+ What Cue sent” folding the full
 text. In the Inbox and on a session's card only the automatic quiet one has a `CUE_MSGS` line; the rest quote Cue's raw
 text there.
 
@@ -170,7 +177,7 @@ Your own words or your click, so they show as your bubble, but Cue wrote the tex
 
 | Kind | Sent when | Hub | How it shows today |
 | --- | --- | --- | --- |
-| From another session | Another agent session sends this one a message (not another Desk's, which is #472's band) | send.rs `prompt_from_peer` | “↘ From notes-1 · 2m ago” and its words, on the left |
+| From another session | Another agent session sends this one a message (not another Desk's, which is #472's card) | send.rs `prompt_from_peer` | the family's card with the session's chip and FROM A SESSION (FORWARDED for a forward), its words under it; was “↘ From notes-1 · 2m ago” and its words, on the left |
 
 ## Hub notices and Desk steps
 
@@ -182,7 +189,8 @@ Your own words or your click, so they show as your bubble, but Cue wrote the tex
 
 ## Status lines and bands in a chat
 
-One line under a chat, saying where the session is now (`whereNow`, `chat/render.js`), or a line in it:
+One line under a chat, saying where the session is now (`whereNow`, `chat/render.js`), or a line in it. Each is the
+family's status line (`.mg-status`), centred at the meta size:
 
 | Kind | When | The line |
 | --- | --- | --- |

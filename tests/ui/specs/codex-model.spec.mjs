@@ -37,7 +37,7 @@ test("hosted Codex offers its models and sends the selected command without Clau
   const confirmation = await page.evaluate(() => {
     const row = document.createElement("div");
     row.innerHTML = outboxRow({ text: "/model model-b", images: [], sid: "lead", via: "not sent: Model set to model-b for subsequent turns" }, null, "confirmation");
-    return row.querySelector(".cv-meta").textContent;
+    return row.querySelector(".mg-f").textContent;
   });
   expect(confirmation).toBe("Model set to model-b for subsequent turns");
 });

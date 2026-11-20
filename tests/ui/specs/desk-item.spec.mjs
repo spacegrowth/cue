@@ -129,32 +129,36 @@ test("↑ in the lead's box brings back what you sent it (without the Desk's sum
   await expect(box).toHaveValue("draft");
 });
 
-test("a DONE is one Ready to check line in the lead's chat: its item, its age, Check it › opens the item's page, where what to test, Looks right and Send back are; once checked a quiet line says what you said", async ({ page, cue }) => {
+test("a DONE is one Ready to check card in the lead's chat: its item, its age, Check it › opens the item's page, where what to test, Looks right and Send back are; once checked a quiet line says what you said", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  const line = page.locator(".dk-chat .dk-rchk");
+  // The message family's card from Cue (#501): READY TO CHECK, the item, its age; its title; Check it › in the foot.
+  const line = page.locator('.dk-chat [data-mg="check"]');
   await expect(line).toHaveCount(1);
   await expect(page.locator(".dk-chat .dk-chk")).toHaveCount(0);
-  await expect(line).toHaveText(/^Ready to check:Feature #d2Quick phrases at the right of Send\d+[smhd]Check it ›$/);
-  await expect(line.locator(".dk-rchk-it svg.dk-kic")).toHaveCount(1);
-  await expect(line.locator(".dk-inum")).toHaveText("Feature #d2");
-  // Thin rules above and below, no box, no buttons of its own but the two that open the item.
-  await expect(line).toHaveCSS("border-top-width", "1px");
-  await expect(line).toHaveCSS("border-bottom-width", "1px");
+  await expect(line.locator(".mg-tag")).toHaveText("READY TO CHECK");
+  await expect(line.locator(".mg-h .mg-id")).toHaveText("Feature #d2");
+  await expect(line.locator(".mg-h .mg-id svg.dk-kic")).toHaveCount(1);
+  await expect(line.locator(".mg-h .mg-age")).toHaveText(/^\d+[smhd]$/);
+  await expect(line.locator(".mg-t")).toHaveText("Quick phrases at the right of Send");
+  await expect(line.locator(".mg-f .mg-lk")).toHaveText("Check it ›");
+  // No edge stripe, the family's body size, no buttons of its own but the two that open the item.
   await expect(line).toHaveCSS("border-left-width", "0px");
+  await expect(line.locator(".mg-t")).toHaveCSS("font-size", "13.5px");
   await expect(line.locator("[data-desk-act]")).toHaveCount(0);
-  expect(await line.evaluate((el) => el.getBoundingClientRect().height)).toBeLessThan(48);
+  // Compact: its title on one line of the body size.
+  expect(await line.locator(".mg-t").evaluate((el) => el.getBoundingClientRect().height)).toBeLessThan(23);
 
   // Not installed yet: nothing to try, so it's waiting for install, on its line, row and page (#130).
   await page.evaluate(() => { state.desk.installed_ms = 1793984280000 - 60000; renderMain(); });
-  await expect(line.locator(".dk-rchk-w")).toHaveText("Waiting for install:");
+  await expect(line.locator(".mg-tag")).toHaveText("WAITING FOR INSTALL");
   const row = page.locator('.dk-it[data-desk-item="d2"]');
   await expect(row.locator(".dk-who")).toContainText("waiting for install");
   await expect(row.locator(".dk-ok")).toHaveCount(0);
   // Its page while it waits: says so under what to test, and no Looks right among its buttons (Send back stays).
   const lead = page.locator(".dk-right .dk-box textarea");
   await lead.fill("a word for the lead");
-  await line.locator(".dk-rchk-go").click();
+  await line.locator(".mg-lk").click();
   // What to try, Looks right and Send back: the item's panel (#418).
   const pane = page.locator(".dk-panel[data-side-for]");
   const info = pane.locator(".dk-chk-info");
@@ -167,13 +171,13 @@ test("a DONE is one Ready to check line in the lead's chat: its item, its age, C
   // Installed before the DONE but after its work last changed (you install, then say DONE): it's in, too (#115).
   await cue.change((s) => { s.desk.projects.find((d) => d.project === "cue").checks[0].edited = 1793984280000 - 120000; });
   await page.evaluate(() => { state.desk.installed_ms = 1793984280000 - 60000; renderMain(); });
-  await expect(line.locator(".dk-rchk-w")).toHaveText("Ready to check:");
+  await expect(line.locator(".mg-tag")).toHaveText("READY TO CHECK");
 
   // Check it › opens the item's page: what to test as a checklist, then quiet under it who did it, when and how many
   // files, and that the installed Cue has it; Looks right and Send back.
   // A window wide enough for the panel to show beside the thread (#200).
   await page.setViewportSize({ width: 1512, height: 945 });
-  await line.locator(".dk-rchk-go").click();
+  await line.locator(".mg-lk").click();
   await expect(page.locator('.dk-panel[data-side-for="d2"]')).toBeVisible();
   await expect(pane.locator(".dk-ptk li").first()).toBeVisible();
   await expect(info.locator(".dk-chk-w")).toHaveText(/^Done by web-lead · \d+[smhd] ago · 2 files$/);
@@ -1217,9 +1221,9 @@ test("the Desk's hand-off shows in the session's chat as a card: from the lead a
     sessionOf("host").thread.push({ at_ms: Date.now() - 60_000, role: "you", text: words });
     deskShow({ kind: "chat", sid: "host" });
   });
-  const card = page.locator('.dk-right [data-desk-chat="host"] .dk-hand');
+  const card = page.locator('.dk-right [data-desk-chat="host"] .mg-hand');
   await expect(card).toHaveCount(1);
-  await expect(card.locator(".dk-hand-h")).toHaveText("From web-lead · Bug #d5");
+  await expect(card.locator(".mg-h")).toHaveText(/^web-lead\s*HAND-OFF\s*Bug #d5/);
   await expect(card.locator(".dk-hand-t")).toHaveText("Hosted sessions can't open the canvas");
   await expect(card.locator(".dk-dwl li")).toHaveText(["the canvas opens from a hosted session", "it says why when it can't", "light and dark", "Installed and committed"]);
   await expect(card.locator(".dk-hand-w")).toHaveText("you know the host side");
@@ -1235,7 +1239,7 @@ test("the Desk's hand-off shows in the session's chat as a card: from the lead a
   await card.screenshot({ path: `${dir}/cue-desk-hand-dark.png` });
   await page.emulateMedia({ colorScheme: "light" });
   // Its number opens the item.
-  await card.locator(".dk-hand-n").click();
+  await card.locator(".mg-id[data-desk-hand]").click();
   await expect.poll(() => page.evaluate(() => deskOpen && [deskOpen.kind, deskOpen.id])).toEqual(["item", "d5"]);
 });
 

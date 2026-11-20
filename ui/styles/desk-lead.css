@@ -59,7 +59,6 @@
 .dk-dsg { margin: 10px 24px 0; }
 .dk-dlink { font-size: 12.5px; font-weight: 600; color: var(--accent); text-decoration: none; }
 .dk-dlink:hover { text-decoration: underline; }
-.dk-say.dk-dsay { text-align: left; }
 .dk-sec { padding: 16px 24px 0; }
 .dk-sec h3 { margin: 0 0 8px; font: 700 11px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .dk-sec p { margin: 0 0 6px; line-height: 1.5; }
@@ -151,8 +150,8 @@
 .dk-tmsg .dk-tdot::after { top: 0; }
 .dk-tmsg .dk-tb { display: flex; flex-direction: column; min-width: 0; }
 .dk-tmsg .cv-you { max-width: 85%; }
-.dk-tmsg .cv-you-text .dk-md > :first-child { margin-top: 0; }
-.dk-tmsg .cv-you-text .dk-md > :last-child { margin-bottom: 0; }
+.dk-tmsg .mg-text .dk-md > :first-child { margin-top: 0; }
+.dk-tmsg .mg-text .dk-md > :last-child { margin-bottom: 0; }
 .dk-tbar { width: 160px; height: 6px; margin-top: 8px; border-radius: 3px; background: var(--work); }
 .dk-inow .dk-sec { padding: 4px 0 14px; }
 .dk-inow .dk-acts { padding: 0 0 14px; }
@@ -177,22 +176,22 @@
 
 /* What holds it up, and a lead's crew: bordered lists with a dot a row. */
 .dk-chain, .dk-crew { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
-.dk-ln, .dk-mb { display: grid; grid-template-columns: 14px minmax(0, 1fr); column-gap: 10px; padding: 10px 14px; }
+.dk-chain > .dk-cn, .dk-mb { display: grid; grid-template-columns: 14px minmax(0, 1fr); column-gap: 10px; padding: 10px 14px; }
 .dk-mb { grid-template-columns: 14px minmax(0, 1fr) auto; cursor: pointer; }
 .dk-mb:hover { background: var(--panel-2); }
 .dk-mb .dk-ls { grid-column: 2 / -1; }
-.dk-ln + .dk-ln, .dk-mb + .dk-mb { border-top: 1px solid var(--line); }
-.dk-ln > i, .dk-mb > i { width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: var(--work); }
-.dk-ln > i.wait, .dk-mb > i.idle { background: none; border: 1.5px solid var(--muted); width: 5px; height: 5px; }
-.dk-ln > i.ask, .dk-mb > i.ask { background: var(--deny); }
-.dk-ln > i.ok { background: var(--accent); }
+.dk-chain > .dk-cn + .dk-ln, .dk-mb + .dk-mb { border-top: 1px solid var(--line); }
+.dk-chain > .dk-cn > i, .dk-mb > i { width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: var(--work); }
+.dk-chain > .dk-cn > i.wait, .dk-mb > i.idle { background: none; border: 1.5px solid var(--muted); width: 5px; height: 5px; }
+.dk-chain > .dk-cn > i.ask, .dk-mb > i.ask { background: var(--deny); }
+.dk-chain > .dk-cn > i.ok { background: var(--accent); }
 /* What an item asks you (or asked): one plain box, no dot (#166). */
-.dk-ln.dk-q { grid-template-columns: minmax(0, 1fr); }
+.dk-chain > .dk-cn.dk-q { grid-template-columns: minmax(0, 1fr); }
 /* What you answered on an item's page: the ✓ small, as in a chat's answered ask. */
 .dk-picked { display: flex; align-items: center; gap: 6px; }
 .dk-picked .sent-check { width: 16px; height: 16px; font-size: 10px; }
 /* An ask answered on the item's page: its card, as under a chat, inside the chain's frame. */
-.dk-ln .dk-md > :last-child { margin-bottom: 0; }
+.dk-chain > .dk-cn .dk-md > :last-child { margin-bottom: 0; }
 .dk-lt { font-weight: 600; }
 .dk-ls { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
 

@@ -155,8 +155,8 @@
 .up-row.full .up-bar i { background: #c0612b; }
 .up-pct { text-align: right; font-variant-numeric: tabular-nums; font-weight: 650; }
 .up-foot { margin-top: 8px; font-size: 11px; color: var(--muted); }
-.cv-status.limit, .cv-status.stuck { color: var(--ink); }
-.cv-status.limit .btn, .cv-status.stuck .btn { margin-left: 6px; }
+.mg-status.limit, .mg-status.stuck { color: var(--ink); }
+.mg-status.limit .btn, .mg-status.stuck .btn { margin-left: 6px; }
 .lim-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: #d99a3a; }
 .lim-dot.back { background: #7fae5a; }
 .ok-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: #7fae5a; }

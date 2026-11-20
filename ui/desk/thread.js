@@ -209,7 +209,7 @@ function deskThreadHtml(rows, id = "") {
   const seen = new Map();
   const key = (r) => { const k = r.key || `${r.rec || r.by}:${r.at}`, n = seen.get(k) || 0; seen.set(k, n + 1); return esc(n ? `${k}~${n}` : k); };
   // A message (yours, the lead's note): the chat's bubble on the right with its one line under it (#422), on the line.
-  const msg = (r) => `<div class="dk-tm dk-tmsg" data-key="${key(r)}"><span class="dk-age"></span><span class="dk-tdot"></span><div class="dk-tb">${msgRow({ ...r.msg, acts: deskMsgActs(r.msg), extra: r.back ? ' · <span class="ml-back">sent back</span>' : "" }, `<div class="cv-you-text">${r.html}</div>`)}</div></div>`;
+  const msg = (r) => `<div class="dk-tm dk-tmsg" data-key="${key(r)}"><span class="dk-age"></span><span class="dk-tdot"></span><div class="dk-tb">${msgRow({ ...r.msg, acts: deskMsgActs(r.msg), extra: r.back ? ' · <span class="ml-back">sent back</span>' : "" }, `<div class="cv-you-text mg-text">${r.html}</div>`)}</div></div>`;
   return `<div class="dk-thread"${id ? ` data-thread-for="${esc(id)}"` : ""}>${rows.map((r) => r.msg ? msg(r) : r.rec ? `<div class="dk-tm rec" data-key="${key(r)}"><span class="dk-age">${esc(ago(r.at))}</span><span class="dk-tdot"><i></i></span><div class="dk-tb"><b>${esc(r.rec)}</b> · ${r.html}</div></div>` : `<div class="dk-tm${r.live ? " live" : ""}" data-key="${key(r)}"><span class="dk-age">${r.live ? "now" : esc(ago(r.at))}</span><span class="dk-tdot${r.back ? " back" : r.you || r.live ? " on" : ""}"><i></i></span><div class="dk-tb"><div class="dk-tw"><b>${esc(r.by)}</b>${r.tag ? `<span class="dk-ttag${r.back ? " back" : r.on ? " on" : ""}">${esc(r.tag)}</span>` : ""}</div>${r.html}</div></div>`).join("")}</div>`;
 }
 /** Item `i`'s page (#418, option B of the item chat mocks): its holder's own chat in the middle, the same live chat its
@@ -333,11 +333,11 @@ function deskItemChat(i, d, s) {
   const mine = (deskPending.get(i.id) || []).filter((p) => !sent(p)).map((p) => {
     const m = { ...(p.failed != null ? { st: "failed", why: esc(p.failed), retry: p.at } : deskCopyWait(i) || { st: "sending" }), to: p.why === "lead" ? deskLeadName(d) : i.holder?.name, item: i.id };
     const pics = p.pics ? `<div class="dk-tpn">${p.pics === 1 ? "1 picture" : `${p.pics} pictures`}</div>` : "";
-    return keyed(msgRow({ ...m, acts: deskMsgActs(m), extra: p.why === "back" ? ' · <span class="ml-back">sent back</span>' : "" }, `<div class="cv-you-text">${esc(p.text).replace(/\n/g, "<br>")}</div>${pics}`), `p:${p.at}`);
+    return keyed(msgRow({ ...m, acts: deskMsgActs(m), extra: p.why === "back" ? ' · <span class="ml-back">sent back</span>' : "" }, `<div class="cv-you-text mg-text">${esc(p.text).replace(/\n/g, "<br>")}</div>${pics}`), `p:${p.at}`);
   }).join("");
   const failed = lost.map((c) => {
     const m = { ...deskMsgState(c, i, s.session_id), to: c.why?.replace(/^(to |sent back to |note to )/, "") || i.holder?.name, item: i.id };
-    return keyed(msgRow({ ...m, acts: deskMsgActs(m) }, `<div class="cv-you-text">${esc(c.text).replace(/\n/g, "<br>")}</div>`), `lost:${c.id}`);
+    return keyed(msgRow({ ...m, acts: deskMsgActs(m) }, `<div class="cv-you-text mg-text">${esc(c.text).replace(/\n/g, "<br>")}</div>`), `lost:${c.id}`);
   }).join("");
   // Not started yet (#476): that, and its holder's own line only when it really waits on you (its question, a step).
   const notYet = deskNotStarted(i), asks = ["waiting", "deciding"].includes(s.state) && waitingFor(null, s) !== "your reply";
@@ -355,7 +355,7 @@ function deskNotStarted(i) {
     : first ? `It starts after <a href="#" data-desk-item="${esc(first.id)}">#${esc(first.id)} ${esc(deskShort(first.title))}</a>${first.state === "working" && first.holder ? `, which ${esc(first.holder.name)} is on now` : ""}.`
     : sessionOf(deskHolderSid(i))?.state === "working" ? `It's next for ${who}, after what it's on now.` : `It's next for ${who}.`;
   const go = `<button class="btn small" data-desk-act="start_now" data-id="${esc(i.id)}">Start now</button>`;
-  return `<div class="cv-status dk-notyet">${deskStateIcon(i)}<span><b>Hasn't started yet.</b> ${why}</span>${go}</div>`;
+  return `<div class="mg-status dk-notyet">${deskStateIcon(i)}<span><b>Hasn't started yet.</b> ${why}</span>${go}</div>`;
 }
 /** Your note about item `i` waiting for its holder at work, kept in Cue or queued (#419): { words: yours alone, without
  *  the "About #id (title): " or send-back wrapping Cue sent it in; line: "Waiting: cue-12 is finishing something, your

@@ -77,10 +77,10 @@ button.ins-n { cursor: pointer; }
 .mi-cache.soon { color: var(--amber); }
 .mi-cache.cold { color: var(--muted); }
 /* Under the chat: a hand-off on its way, a note written ahead, a cache gone (insights.js handoffStatus). */
-.cv-status.ins-status { align-self: stretch; color: var(--muted); }
-.cv-status.ins-status .ins-bulb { width: 13px; height: 13px; flex: none; }
-.cv-status.ins-status b { color: var(--ink); }
-.cv-status.ins-status .btn { margin-left: 4px; }
+.mg-status.ins-status { align-self: stretch; color: var(--muted); }
+.mg-status.ins-status .ins-bulb { width: 13px; height: 13px; flex: none; }
+.mg-status.ins-status b { color: var(--ink); }
+.mg-status.ins-status .btn { margin-left: 4px; }
 /* One-line insights: a waiting card's cache countdown, the note by Now. */
 .ins-line { display: flex; align-items: center; gap: 9px; font-size: 12.5px; line-height: 1.4; color: var(--muted); margin-top: 8px; }
 .ins-line b { color: var(--ink); }

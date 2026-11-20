@@ -177,11 +177,13 @@ body.m-drag, body.m-drag * { cursor: grabbing !important; user-select: none; }
 .m-dk-who > span { overflow: hidden; text-overflow: ellipsis; }
 .m-dk-to { flex: none; }
 .m-dk-ask { display: flex; flex-direction: column; gap: 6px; padding: 4px 0 2px 21px; cursor: default; }
-.m-dk-q { font-size: 12.5px; line-height: 1.4; color: var(--ink); }
+/* What it asks, as the message family's plain line (#501) at the row's size; the ask itself reads in ink. */
+.m-dk-q { font-size: 12.5px; line-height: 1.4; }
+.m-dk-q.mg-plain { color: var(--ink); }
 .m-dk-acts { display: flex; flex-wrap: wrap; gap: 6px; }
 .m-dk-acts .dk-soon { margin: 0; }
-.m-dk-said { display: flex; align-items: center; gap: 6px; padding: 4px 0 0 21px; font-size: 12px; color: var(--muted); }
-.m-dk-said .sent-check { width: 16px; height: 16px; font-size: 10px; }
+/* "✓ You answered: …": the message family's foot status (.mg-f .mg-st), under the title. */
+.m-dk-said { padding: 4px 0 0 21px; }
 .m-dk-box { display: flex; align-items: flex-end; gap: 6px; padding: 4px 4px 4px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
 .m-dk-box:focus-within { border-color: color-mix(in srgb, var(--ink) 30%, var(--line)); }
 .m-dk-box textarea { flex: 1; min-height: 26px; max-height: 72px; padding: 4px 0; border: 0; outline: none; resize: none; background: none; color: var(--ink); font: 13px/1.4 var(--sans); field-sizing: content; }

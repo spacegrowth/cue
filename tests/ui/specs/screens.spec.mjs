@@ -72,7 +72,7 @@ const SCREENS = {
   "team-review": {
     scenario: "world-team",
     setup: async (p) => { await openCard(p, TEAM_ASK); await showTeam(p, false); await p.locator(".cue-you", { hasText: "Asked for handoff's review" }).locator('[data-ask-open$=":review"]').click(); },
-    done: (p) => p.locator(".cue-you .cv-voice-line", { hasText: "Recommendation" }).waitFor(),
+    done: (p) => p.locator(".cue-you .mg-full", { hasText: "Recommendation" }).waitFor(),
   },
   // team-diff: skill's Diff (one of its files in another repo, site) opens the lead's Diff tab on its files, each
   // labelled with its repo. session-diff: a session's Diff tab, its count on the tab.

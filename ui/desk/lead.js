@@ -18,9 +18,9 @@ let deskSaidItem = "";
 
 // ---------- the lead ----------
 
-/** A message another Desk's session sent this lead (#472, option C): a band across the whole chat between hairlines,
- *  a FROM ANOTHER DESK tag, that Desk's chip (its mark, colour dot and name), the session and the item it holds there,
- *  then the message and a quiet line that the lead answers it. Null for any other message: one from the lead's own
+/** A message another Desk's session sent this lead (#472; #501 option B): the family's card (messages.css .mg) with
+ *  that Desk's chip (its mark, colour dot and name) in the head, the session, a FROM ANOTHER DESK tag and the item it
+ *  holds there, then the message and a quiet foot that the lead answers it. Null for any other message: one from the lead's own
  *  Desk, from no Desk, or in a chat that isn't a lead's (chat/render.js draws those as today). The sender is found by
  *  its session id (the hub notes it when the message came through its hook), else by its name. */
 function deskPeerBand(sid, e) {
@@ -30,12 +30,24 @@ function deskPeerBand(sid, e) {
   const d = from && from !== sid ? deskForSession(from) : null;
   if (!d || d.project === own.project) return null;
   const it = deskSessItem(d, from);
-  const who = `${esc(nameOf(from, e.from) || e.from || "a session")}${it ? ` · <span class="dk-xb-id">#${esc(it.id)}</span>` : ""}`;
-  return `<div class="dk-xband" data-from-desk="${esc(d.project)}"><div class="dk-xb-h"><span class="dk-xb-tag">FROM ANOTHER DESK</span>`
-    + `<span class="dk-xb-chip">${deskKindIcon("tray")}${projDot(d.project)}${esc(deskName(d))}</span><span class="dk-xb-who">${who}</span>`
-    + `<span class="dk-xb-age">${ago(e.at_ms)} ago</span></div><div class="msg cv-text dk-xb-t">${md(e.text || "")}</div>`
-    + `<div class="dk-xb-f">The lead answers it below; you don't need to.</div></div>`;
+  return deskMg({ kind: "peer", attrs: ` data-from-desk="${esc(d.project)}"`,
+    chip: `<span class="mg-chip">${deskKindIcon("tray")}${projDot(d.project)}${esc(deskName(d))}</span>`,
+    who: esc(nameOf(from, e.from) || e.from || "a session"), tag: "FROM ANOTHER DESK", id: it ? `<span class="mg-id">#${esc(it.id)}</span>` : "",
+    age: e.at_ms, body: `<div class="mg-t whole dk-md">${md(e.text || "")}</div>`,
+    foot: `<span class="mg-st">The lead answers it below; you don't need to.</span>` });
 }
+/** One message of the family (#501, option B, ui/styles/messages.css): the card on panel-2, its head row (Cue's mark
+ *  with `cue`, another Desk's `chip`, who → to, the TAG, the item's chip, the age at the right), then `body` (its
+ *  .mg-t / .mg-line / .mg-full rows) and the foot (`foot`: how it went, actions). `kind` names it for the page and
+ *  its tests (data-mg). */
+function deskMg({ kind, cls = "", attrs = "", cue = false, chip = "", who = "", to = "", tag = "", id = "", age = null, body = "", foot = "" }) {
+  const mark = cue && typeof CUE_MARK_SM === "string" ? CUE_MARK_SM.replace("<svg ", '<svg class="mg-mk" ') : "";
+  const head = `${mark}${chip}${who ? `<span class="mg-who">${who}</span>` : ""}${to ? `<span class="mg-to">→ ${to}</span>` : ""}`
+    + `${tag ? `<span class="mg-tag">${esc(tag)}</span>` : ""}${id}${age != null ? `<span class="mg-age">${ago(age)}</span>` : ""}`;
+  return `<div class="mg${cls ? ` ${cls}` : ""}" data-mg="${kind}"${attrs}><div class="mg-h">${head}</div>${body}${foot ? `<div class="mg-f">${foot}</div>` : ""}</div>`;
+}
+/** An item's chip in a message (messages.css .mg-id): its kind's icon and number ("Bug #12"), a button that opens it. */
+const deskMgId = (id, kind, num) => `<button class="mg-id" data-desk-chk-item="${esc(id)}">${deskKindIcon(kind)}${esc(num)}</button>`;
 
 /** Desks a session runs, has work on, or belongs to, in that order. */
 function deskForSession(sid) {
@@ -327,17 +339,18 @@ function deskLineKit(m, body, inline) {
   // An item as "Bug #2", a link that opens it (just "#2" when `bare`); plain until the Desk has it.
   const ref = (x, it = known(x), bare) => {
     const t = bare || !it ? `#${it?.id ?? x}` : deskNum(it);
-    return it ? `<button class="dk-say-id" data-desk-chk-item="${esc(it.id)}">${bare ? "" : deskKindIcon(it)}${esc(t)}</button>` : `<b class="dk-say-id">${esc(t)}</b>`;
+    return it ? `<button class="mg-id" data-desk-chk-item="${esc(it.id)}">${bare ? "" : deskKindIcon(it)}${esc(t)}</button>` : `<span class="mg-id">${esc(t)}</span>`;
   };
   // Its title under the line, a click opening it.
-  const titled = (it, t = it?.title) => (!t ? "" : it ? `<button class="dk-sl-it" data-desk-chk-item="${esc(it.id)}">${esc(t)}</button>` : `<span class="dk-sl-tt">${esc(t)}</span>`);
-  // The line, and what opens under it (none: a plain line). The line isn't a button: its item's number is one.
+  const titled = (it, t = it?.title) => (!t ? "" : it ? `<button class="dk-ln-it" data-desk-chk-item="${esc(it.id)}">${esc(t)}</button>` : `<span>${esc(t)}</span>`);
+  // The line (messages.css .mg-line, its verbs quiet in .mg-v), and what opens under it as .mg-full (none: a plain
+  // line). A click on the line opens it; its item's chip opens the item.
   const ln = (head, more) => {
     const key = `${m[1]}:${body}`, open = !!more && deskLnOpen.has(key);
-    const row = more ? `<div class="dk-sl-r why" role="button" tabindex="0" data-desk-why="${esc(key)}" aria-expanded="${open}"><span class="dk-sl-h">${head}</span></div>` : `<span class="dk-sl-r"><span class="dk-sl-h">${head}</span></span>`;
-    return `<div class="dk-say dk-sl${open ? " open" : ""}">${row}${open ? deskCut(key, "dk-sl-d", more, more) : ""}</div>`;
+    const row = more ? `<div class="mg-line" role="button" tabindex="0" data-desk-why="${esc(key)}" aria-expanded="${open}"><span class="mg-lh">${head}</span></div>` : `<div class="mg-line"><span class="mg-lh">${head}</span></div>`;
+    return `<div class="dk-ln${open ? " open" : ""}">${row}${open ? deskCut(key, "mg-full", more, more) : ""}</div>`;
   };
-  const who = (s) => `<b class="dk-rt-to">${esc(s)}</b>`;
+  const who = (s) => `<b class="mg-who">${esc(s)}</b>`;
   const dot = (xs) => xs.filter(Boolean).join(" · ");
   const and = (xs) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
   return { m, body, inline, p, lab, find, id, name, arrow, known, ref, titled, ln, who, dot, and };
@@ -355,7 +368,7 @@ function deskLineItem(k) {
   const see = rest.map(deskSeeOf).find((v) => v !== null) || "";
   const it = deskNewlySaid(title);
   const what = it ? ref(it.id, it) : kind ? `a ${kind}` : "";
-  return ln(`Added ${what ? `${what}: ` : ""}<span class="dk-say-t">${inline(title)}</span>`, see ? `You'll see ${inline(see)}` : "");
+  return ln(`<span class="mg-v">Added</span> ${what ? `${what}: ` : ""}${inline(title)}`, see ? `You'll see ${inline(see)}` : "");
 }
 /** A SEE line (deskLineHtml): "Said what you'll see for Bug #12". */
 function deskLineSee(k) {
@@ -364,7 +377,7 @@ function deskLineSee(k) {
   if (!p[0].startsWith("#")) return "";
   const it = known(id(p[0]));
   const see = p.slice(1).map((s) => deskSeeOf(s) ?? (lab(s, "done when") === null ? s : null)).find((v) => v) || "";
-  return ln(`Said what you'll see for ${ref(id(p[0]), it)}`, see ? `You'll see ${inline(see)}` : "");
+  return ln(`<span class="mg-v">Said what you'll see for</span> ${ref(id(p[0]), it)}`, see ? `You'll see ${inline(see)}` : "");
 }
 /** A ROUTE line (deskLineHtml): "Gave Task #2 to who", or "Task #2 waits on #1". */
 function deskLineRoute(k) {
@@ -378,7 +391,7 @@ function deskLineRoute(k) {
   const to2 = fresh ? who(deskHolderName(it.holder.sid, it.holder.name)) : /^new$/i.test(to) ? "a new session" : who(to);
   const to3 = crew ? `${esc(crew)} on ${to2}'s crew` : to2;
   const what = at === "new" && !it ? "the new item" : ref(at, it);
-  const head = after ? `${what} waits on ${ref(after, undefined, true)}` : `Gave ${what} to ${to3}`;
+  const head = after ? `${what} <span class="mg-v">waits on</span> ${ref(after, undefined, true)}` : `<span class="mg-v">Gave</span> ${what} <span class="mg-v">to</span> ${to3}`;
   const title = it?.title || (at === "new" ? deskSaidItem : "");
   return ln(head, dot([titled(it, title), after ? `Then to ${to3}` : "", why ? inline(why) : ""]));
 }
@@ -386,13 +399,13 @@ function deskLineRoute(k) {
 function deskLineDone(k) {
   const { body, id, known, ref, titled, ln, dot, and } = k;
   const ids = body.split(/[, ]/).filter((x) => x.trim().startsWith("#")).map(id).filter(Boolean);
-  return ids.length ? ln(`${and(ids.map((x) => ref(x)))} ${ids.length > 1 ? "are" : "is"} done`, dot(ids.map((x) => titled(known(x))))) : "";
+  return ids.length ? ln(`${and(ids.map((x) => ref(x)))} <span class="mg-v">${ids.length > 1 ? "are" : "is"} done</span>`, dot(ids.map((x) => titled(known(x))))) : "";
 }
 /** A TITLE line (deskLineHtml): "Renamed Bug #2". */
 function deskLineTitle(k) {
   const { p, id, known, ref, titled, ln } = k;
   const at = p[0].startsWith("#") && id(p[0]), t = (p[1] || "").replace(/^["`*]+|["`*]+$/g, "").trim();
-  return at && t ? ln(`Renamed ${ref(at)}`, titled(known(at), t)) : "";
+  return at && t ? ln(`<span class="mg-v">Renamed</span> ${ref(at)}`, titled(known(at), t)) : "";
 }
 /** A MERGE line (deskLineHtml): "Folded #3 into Bug #2". */
 function deskLineMerge(k) {
@@ -401,9 +414,9 @@ function deskLineMerge(k) {
   const pr = /^(#\S+)\s+(?:into|->|→|=>)\s+(#\S+)/i.exec(p[0]), from = pr && id(pr[1]), to = pr && id(pr[2]);
   if (!from || !to || from === to) return "";
   const why = find("why");
-  return ln(`Folded ${ref(from, undefined, true)} into ${ref(to)}`, dot([titled(known(to)), why ? inline(why) : ""]));
+  return ln(`<span class="mg-v">Folded</span> ${ref(from, undefined, true)} <span class="mg-v">into</span> ${ref(to)}`, dot([titled(known(to)), why ? inline(why) : ""]));
 }
-/** A NOTE line (deskLineHtml): a small card, "Note to who · Feature #418", the words under it. */
+/** A NOTE line (deskLineHtml): the family's card, "lead → who NOTE Feature #418", the words under it. */
 function deskLineNote(k) {
   const { body, inline, p, id, known, ref, who } = k;
   // "NOTE: #418 | words" (desk/hub/turn/route.rs note): who it went to, as Cue noted it ("note to cue-387"), else who holds it.
@@ -413,14 +426,16 @@ function deskLineNote(k) {
   const it = known(at), d = it && deskOf(it.project);
   const sent = (d?.decisions || []).find((x) => x.item_id === it.id && x.text === words && /^note to /.test(x.why || ""));
   const to = sent ? sent.why.slice(8) : it?.holder ? deskHolderName(it.holder.sid, it.holder.name) : "";
-  return `<div class="dk-say dk-note"><div class="dk-note-h">Note${to ? ` to ${who(to)}` : ""} · ${ref(at, it)}</div>${deskCut(`note:${body}`, "dk-note-t", inline(words), words)}</div>`;
+  // The family's card (#501): "cue-lead → cue-481 NOTE Feature #418", the words under it.
+  return deskMg({ kind: "note", who: esc(d ? deskLeadName(d) : "The lead"), to: to ? esc(to) : "", tag: "NOTE", id: ref(at, it),
+    body: deskCut(`note:${body}`, "mg-t whole", inline(words), words) });
 }
 /** A DESIGNS line (deskLineHtml): the mocks' link alone. */
 function deskLineDesigns(k) {
   const { body } = k;
   // "#135 https://…" (as parse.rs designs): the link alone, under the words, as the item page has it.
   const url = /^#\S+\s.*?(https?:\/\/[^\s>)\]"`*]+)/.exec(body)?.[1]?.replace(/[.,;]+$/, "");
-  return url ? `<div class="dk-say dk-dsay">${deskDesignsA(url)}</div>` : "";
+  return url ? `<div class="mg-line dk-dsay">${deskDesignsA(url)}</div>` : "";
 }
 /** A CONTEXT line (deskLineHtml): "Kept who's context". */
 function deskLineContext(k) {
@@ -430,11 +445,11 @@ function deskLineContext(k) {
   const why = find("why");
   const said = /^(me|lead)$/i.test(whom) ? "my" : `${who(whom)}'s`;
   const verb = { keep: "Kept", clear: "Cleared", drop: "Dropped", compact: "Compacted" }[what];
-  return ln(verb ? `${verb} ${said} context` : `${said === "my" ? "My" : said} context: ${esc(what)}`, why ? inline(why) : "");
+  return ln(verb ? `<span class="mg-v">${verb}</span> ${said} <span class="mg-v">context</span>` : `${said === "my" ? "My" : said} <span class="mg-v">context:</span> ${esc(what)}`, why ? inline(why) : "");
 }
 /** The newest item titled `title` (as the lead's ITEM line said it), or undefined. */
 const deskNewlySaid = (title) => (title ? (state.desk?.projects || []).flatMap((d) => d.items).filter((i) => i.title === title).sort((a, b) => (b.created ?? 0) - (a.created ?? 0))[0] : undefined);
-/** Cue's message to the lead as quiet centred lines, when it's one of Cue's own (new items, or a DONE it couldn't act on);
+/** Cue's message to the lead as the family's card (#501), when it's one of Cue's own (new items, or a DONE it couldn't act on);
  *  null for any other (chat/render.js chatHtml `you`). */
 const deskCueNote = (e) => deskNewItems(e) ?? deskDoneNotes(e) ?? deskStopNote(e) ?? deskFromSession(e) ?? deskAskAnswered(e);
 /** Cue telling the lead your answer to its ASK (desk/hub/core/desk.rs desk_answered: "Your ASK[ about #12]: question\nThe answer:
@@ -455,16 +470,16 @@ function deskStopNote(e) {
   const [, id, said] = stop || fail;
   const it = (state.desk?.projects || []).flatMap((d) => d.items).find((i) => deskIdIs(i, id));
   const loose = !!stop?.[3], files = loose ? stop[5].split(", ").filter(Boolean) : [];
-  const what = fail ? "Couldn't start" : loose ? "Stopped, not committed" : "Stopped";
+  const tag = fail ? "COULDN'T START" : loose ? "STOPPED, NOT COMMITTED" : "STOPPED";
   const plain = fail ? `Cue couldn't start a session for it: ${esc(fail[3])}.`
-    : `<b class="dk-sn-who">${esc(stop[4])}</b> · Ended its turn with no DONE${loose ? ", and its work isn't in your app yet." : " and no question for you."}`;
+    : `<b class="mg-who">${esc(stop[4])}</b> ended its turn with no DONE${loose ? ", and its work isn't in your app yet." : " and no question for you."}`;
   const last = stop?.[6]?.trim();
-  return `<div class="dk-news"><div class="dk-sn"><div class="dk-sn1"><span class="dk-sn-cue"><i></i>Cue</span><span>·</span><span class="dk-sn-w${fail || loose ? " red" : ""}">${what}</span><span class="dk-cl-age">${ago(e.at_ms)}</span></div>`
-    + `<div class="dk-sn2">${deskItemRef(id, it?.kind || "", deskNum(it || { id }), it?.title || said)}</div>`
-    + `<div class="dk-sn3">${plain}</div>`
-    + (last ? deskCut(`last:${id}:${e.at_ms}`, "dk-sn-last", `Its last line: <span>${esc(last)}</span>`, `Its last line: ${last}`) : "")
-    + (files.length ? `<details class="dk-sn-f"><summary>${files.length} file${files.length > 1 ? "s" : ""} not committed</summary><div class="dk-sn-fl">${files.map(esc).join("<br>")}</div></details>` : "")
-    + `</div></div>`;
+  const num = deskNum(it || { id });
+  const folded = files.length ? `<details class="dk-mfiles mg-st"><summary>${files.length} file${files.length > 1 ? "s" : ""} not committed</summary><div class="dk-mfl">${files.map(esc).join("<br>")}</div></details>` : "";
+  return deskMg({ kind: "stop", cue: true, who: "Cue", tag, id: deskMgId(id, it?.kind || "", num), age: e.at_ms,
+    body: `<div class="mg-t whole">${esc(it?.title || said)}</div><div class="mg-t whole dk-mq">${plain}</div>`
+      + (last ? deskCut(`last:${id}:${e.at_ms}`, "mg-full", `Its last line: ${esc(last)}`, `Its last line: ${last}`) : ""),
+    foot: `${folded}<span class="mg-acts"><button class="mg-btn" data-desk-chk-item="${esc(id)}">Open #${esc(id)}</button></span>` });
 }
 /** A session's words for the lead (#474: its TO LEAD: line, desk/hub/turn/heard.rs to_lead_said: "From <name> on #<id> (title):\n
  *  <words>\nAnswer it with NOTE: …", or "From <name>:\n<words>\nIt holds no item here…" when it's on none) as a card:
@@ -476,25 +491,24 @@ function deskFromSession(e) {
   if (!m) return null;
   const [, who, id, said, words] = m;
   const it = id ? (state.desk?.projects || []).flatMap((d) => d.items).find((i) => deskIdIs(i, id)) : null;
-  return `<div class="dk-news"><div class="dk-sn"><div class="dk-sn1"><b class="dk-sn-who">${esc(who)}</b><span>·</span><span class="dk-sn-w">To you</span><span class="dk-cl-age">${ago(e.at_ms)}</span></div>`
-    + (id ? `<div class="dk-sn2">${deskItemRef(id, it?.kind || "", deskNum(it || { id }), it?.title || said)}</div>` : "")
-    + `<div class="dk-sn3">${esc(words.trim()).replace(/\n/g, "<br>")}</div></div></div>`;
+  return deskMg({ kind: "from", who: esc(who), tag: "TO LEAD", id: id ? deskMgId(id, it?.kind || "", deskNum(it || { id })) : "", age: e.at_ms,
+    body: `${id ? `<div class="mg-t whole">${esc(it?.title || said)}</div>` : ""}${deskCut(`from:${e.at_ms}`, "mg-t whole", esc(words.trim()).replace(/\n/g, "<br>"), words.trim())}` });
 }
 /** What Cue told the lead of a DONE it couldn't act on (desk/hub/core/desk.rs lead_done: "#69 not closed: it's done already",
  *  a line each, then its words for the lead, not shown, ending "Don't say DONE for these again." as older notes did):
- *  a centred line an item, "Cue · not closed [task] Task #69 title · why", its number and title opening it. null for
- *  any other message. */
+ *  one card from Cue (NOT CLOSED), a line an item: "[task] Task #69 title · why", its number opening it. null for any
+ *  other message. */
 function deskDoneNotes(e) {
   const lines = String(e.text || "").split("\n").map((l) => l.trim()).filter(Boolean);
   if (lines.length < 2 || !/Don't say DONE for these again\.$/.test(lines[lines.length - 1])) return null;
   const notes = lines.slice(0, -1).map((l) => /^#([^\s:]+) not closed: (.*)$/.exec(l));
   if (notes.some((m) => !m)) return null;
   const known = (x) => (state.desk?.projects || []).flatMap((d) => d.items).find((i) => deskIdIs(i, x));
-  return `<div class="dk-news">${notes.map(([, id, why]) => {
+  return deskMg({ kind: "done", cue: true, who: "Cue", tag: "NOT CLOSED", age: e.at_ms, body: notes.map(([, id, why]) => {
     const it = known(id);
-    const head = it ? deskItemRef(it.id, it.kind, deskNum(it), it.title) : `<b class="dk-new-t">#${esc(id)}</b>`;
-    return deskCueLine(`<span class="dk-say-w">not closed</span> ${head}<span class="dk-say-s"> · ${esc(why)}</span>`, e.at_ms);
-  }).join("")}</div>`;
+    const head = it ? `${deskMgId(it.id, it.kind, deskNum(it))} ${esc(it.title)}` : `<span class="mg-id">#${esc(id)}</span>`;
+    return `<div class="mg-line"><span class="mg-lh">${head} <span class="mg-v">· ${esc(why)}</span></span></div>`;
+  }).join("") });
 }
 /** `part` without its "you'll see:" label (or "you will see:", "see:"), as parse.rs see_of(); null without it. */
 function deskSeeOf(part) {
@@ -504,9 +518,9 @@ function deskSeeOf(part) {
 /** What Cue told the lead of new items (desk/mod.rs new_items_words: "New item #72 (bug): title | done when: … |
  *  pictures: `a.png` | from x", a line each, then one line of words for the lead, none of it shown: sometimes "If one
  *  of yours holds two separate problems, SPLIT it first…", always "Route it now…" or "Route each now…", sometimes "Say
- *  what one without a kind is…". Cue never sends new items without the Route words, so they mark the message) as a small
- *  card an item: its kind's icon, number and title, a muted line under them (you'll see, who it's from), then its
- *  pictures as thumbnails; a click on the card opens the item. null for any other message (chat/render.js chatHtml
+ *  what one without a kind is…". Cue never sends new items without the Route words, so they mark the message) as one
+ *  card (NEW ITEMS), a line an item: its kind's icon, number and title, a muted line under them (you'll see, who it's
+ *  from), then its pictures as thumbnails; a click on the item opens it. null for any other message (chat/render.js chatHtml
  *  `you`). */
 function deskNewItems(e) {
   const lines = String(e.text || "").split("\n").map((l) => l.trim()).filter(Boolean);
@@ -515,12 +529,12 @@ function deskNewItems(e) {
   // Cue's own: New item lines first, then its words for the lead, which always ask for a ROUTE.
   if (n < 1 || !lines.slice(n).some((l) => /\bRoute (it|each) now:/.test(l)) || lines.slice(n).some((l) => NEW.test(l))) return null;
   const known = (x) => (state.desk?.projects || []).flatMap((d) => d.items).find((i) => deskIdIs(i, x));
-  return `<div class="dk-news">${lines.slice(0, n).map((l) => deskNewCard(NEW.exec(l), known, e.at_ms)).join("")}</div>`;
+  return deskMg({ kind: "new", who: "You", tag: "NEW ITEMS", age: e.at_ms, body: lines.slice(0, n).map((l) => deskNewCard(NEW.exec(l), known)).join("") });
 }
-/** One new item's card (deskNewItems), design B (#200, #203): "[icon] Feature #72  1h" on one line, the short title
- *  under it, then the words it was added with, plain and lighter (once the lead gave it a shorter title), a quiet
+/** One new item in the NEW ITEMS card (deskNewItems, #501): "[icon] Feature #72 title" as one line, then the words it was
+ *  added with, plain and lighter (once the lead gave it a shorter title), a quiet
  *  line (what you'll see, who it's from: not its done when, the session's check, #382), and its pictures as a small row. */
-function deskNewCard([, id, said = "", rest], known, at) {
+function deskNewCard([, id, said = "", rest], known) {
   const p = rest.split(" | "), it = known(id), kind = it?.kind || said;
   // The line holds the title it was added with; the item may have a shorter one since (TITLE:), its words kept.
   const title = it?.title || p[0], words = it?.words || (p[0] !== title ? p[0] : "");
@@ -532,14 +546,10 @@ function deskNewCard([, id, said = "", rest], known, at) {
     if (/^done when: /.test(x)) return [];
     return [see ? `you'll see ${esc(see[1])}` : esc(x)];
   });
-  return `<div class="dk-nc" role="button" tabindex="0" data-desk-chk-item="${esc(id)}"><div class="dk-nc1">${deskKindIcon(kind)}<b class="dk-inum">${esc(deskNum({ id, kind }))}</b><span class="dk-cl-age">${ago(at)}</span></div>`
-    + `<div class="dk-nc-t">${esc(title)}</div>${words ? deskCut(`nc:${id}`, "dk-nc-w", esc(words), words) : ""}`
-    + `${sub.length ? `<div class="dk-nc2">${sub.join(" · ")}</div>` : ""}${thumbs(pics)}</div>`;
+  return `<div class="dk-ni" role="button" tabindex="0" data-desk-chk-item="${esc(id)}"><div class="mg-line"><span class="mg-lh"><span class="mg-id">${deskKindIcon(kind)}${esc(deskNum({ id, kind }))}</span> <span class="dk-ni-t">${esc(title)}</span></span></div>`
+    + `${words ? deskCut(`nc:${id}`, "dk-ni-w", esc(words), words) : ""}`
+    + `${sub.length ? `<div class="dk-ni-s">${sub.join(" · ")}</div>` : ""}${thumbs(pics)}</div>`;
 }
-/** An item in a Desk chat's line: its kind's icon and number in bold, then its title (a click on either opens it). */
-const deskItemRef = (id, kind, num, title) => `<button class="dk-chk-a dk-new-t" data-desk-chk-item="${esc(id)}">${deskKindIcon(kind)}<b class="dk-inum">${esc(num)}</b>${title ? ` <span class="dk-new-tt">${esc(title)}</span>` : ""}</button>`;
-/** One of Cue's own lines in the lead's chat, centred between thin rules: "Cue · <what> <age>". */
-const deskCueLine = (html, at) => `<div class="dk-new dk-cl"><span class="dk-cl-t"><b>Cue</b> · ${html} <span class="dk-cl-age">${ago(at)}</span></span></div>`;
 
 // ---------- the Desk's hand-off, as a card in the chat of the session it went to (#174) ----------
 /** The Desk's hand-off (desk/mod.rs handed_words: "Desk item #171 (task): title", then "You'll see:", "Done when:", "Pictures with
@@ -571,15 +581,16 @@ function deskHandHtml(e, meta) {
   const it = d?.items.find((i) => deskIdIs(i, id));
   const lead = d ? deskLeadName(d) : "";
   const num = deskKindIcon(kind || it?.kind) + esc(deskNum({ id, kind: kind || it?.kind }));
-  const ref = d ? `<button class="dk-hand-n" data-desk-hand="${esc(d.project)}" data-id="${esc(it?.id ?? id)}">${num}</button>` : `<b>${num}</b>`;
+  const ref = d ? `<button class="mg-id" data-desk-hand="${esc(d.project)}" data-id="${esc(it?.id ?? id)}">${num}</button>` : `<span class="mg-id">${num}</span>`;
   const pics = (parts.P || "").split(",").map((x) => x.trim()).filter(Boolean).length;
-  return `<div class="cv-you dk-hand">${pre ? `<div class="dk-hand-pre">${esc(pre)}</div>` : ""}<div class="dk-hand-c">
-    <div class="dk-hand-h">${lead ? `From <b>${esc(lead)}</b> · ` : "From the Desk · "}${ref}${mate ? ` · for ${esc(mate)}` : ""}</div>
-    <div class="dk-hand-t">${esc(title)}</div>
-    ${parts.S?.trim() ? `<div class="dk-hand-l">You'll see</div>${deskDoneWhenHtml(parts.S.trim())}` : ""}
-    ${pics ? `<div class="dk-hand-p">${pics} picture${pics === 1 ? "" : "s"} with it</div>` : ""}
-    ${parts.W?.trim() ? `<div class="dk-hand-l">Why</div><div class="dk-hand-w">${esc(parts.W.trim())}</div>` : ""}
-  </div>${/^<div /.test(meta || "") ? meta : `<div class="cv-meta">${meta ?? `Cue · ${ago(e.at_ms)} ago`}</div>`}</div>`;
+  // The family's card (#501): "web-lead HAND-OFF Bug #d5 for x", the title, You'll see, Why, the pictures counted.
+  const card = deskMg({ kind: "hand", cue: !lead, who: esc(lead || "The Desk"), tag: "HAND-OFF", id: ref, to: mate ? esc(mate) : "",
+    body: `<div class="mg-t whole dk-hand-t"><b>${esc(title)}</b></div>`
+      + (parts.S?.trim() ? `<div class="mg-f">You'll see</div>${deskDoneWhenHtml(parts.S.trim())}` : "")
+      + (parts.W?.trim() ? `<div class="mg-f">Why</div><div class="mg-t whole dk-hand-w">${esc(parts.W.trim())}</div>` : ""),
+    foot: pics ? `<span class="mg-st dk-hand-p">${pics} picture${pics === 1 ? "" : "s"} with it</span>` : "" });
+  return `<div class="mg-you mg-hand">${pre ? `<div class="mg-f dk-hand-pre">${esc(pre)}</div>` : ""}${card}`
+    + `${/^<div /.test(meta || "") ? meta : `<div class="mg-f"><span class="mg-st">${meta ?? `Cue · ${ago(e.at_ms)} ago`}</span></div>`}</div>`;
 }
 if (typeof document !== "undefined") {
   // A hand-off's item number: that item on its Desk, from any chat.

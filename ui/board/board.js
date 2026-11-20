@@ -319,7 +319,7 @@ const bgPill = (s) => agentPill(s?.session_id);
  *  buttons. When both don't fit (a narrow Waiting column) the time and buttons take a line of their own, right-aligned
  *  under it, before the name would shorten to a few letters or a button be cut off. */
 const cardTop = (who, side) => `<div class="nrow-top"><span class="nrow-who">${who}</span><span class="nrow-side">${side}</span></div>`;
-const talkWorkRow = (s, open) => `<div class="nrow talk-work ${open ? "on" : ""}" data-session="${esc(s.session_id)}">${cardTop(`${projDot(s.project, true)}${badge(s.harness)}${nameSpan(s.session_id, s.project)}${machTag(s.machine)}<span class="dim">working</span>${bgPill(s)}`, `<span class="age">${ago(s.since_ms)}</span>`)}<div class="nrow-text">${esc(s.compacting_ms ? "Compacting…" : s.doing || "Thinking")}</div>${s.prompt ? `<div class="nrow-text talk-said">› ${esc(s.prompt)}</div>` : ""}</div>`;
+const talkWorkRow = (s, open) => `<div class="nrow talk-work ${open ? "on" : ""}" data-session="${esc(s.session_id)}">${cardTop(`${projDot(s.project, true)}${badge(s.harness)}${nameSpan(s.session_id, s.project)}${machTag(s.machine)}<span class="dim">working</span>${bgPill(s)}`, `<span class="age">${ago(s.since_ms)}</span>`)}<div class="nrow-text">${esc(s.compacting_ms ? "Compacting…" : s.doing || "Thinking")}</div>${s.prompt ? `<div class="nrow-text talk-said mg-plain">› ${cueMsgPlainHtml(s.prompt, nameOf(s.session_id, s.project)) ?? esc(s.prompt)}</div>` : ""}</div>`;
 /** The grey line under a card's name: why it's in conversation (a finished turn answered you, anything else asks
  *  you), or that it just left it. */
 function talkNote(it) {
@@ -452,18 +452,22 @@ function sessionNote(s) {
   const i = state.items.find((x) => x.session_id === s.session_id);
   return i ? (i.kind === "waiting" ? "your turn" : "asks you") : preStart(s) ? "needs you in its terminal" : idleNote(s);
 }
+/** A message's words in one line (Queued: …, Not sent yet: …): Cue's in its plain line, anything else quoted, cut at
+ *  `max`. */
+const msgPlainWords = (text, to, max = 80) => cueMsgPlainHtml(text, to) ?? `“${esc(text.length > max ? text.slice(0, max) + "…" : text)}”`;
 /** A session's card under Sessions. */
 function sessionCard(s, open) {
   const go = `data-session="${esc(s.session_id)}"`;
   const doing = preStart(s) ? `Not started: ${preStart(s)}` : s.compacting_ms ? "Compacting…" : s.state === "working" && s.doing ? s.doing : "";
   const desk = deskCardLine(s.session_id);
   const words = deskSaid(s.prompt);
-  const preview = desk && /^Desk item #/i.test(words) ? "" : cueMsgPlain(words, nameOf(s.session_id, s.project)) ?? deskAboutHead({ text: words })?.text ?? words;
+  const to = nameOf(s.session_id, s.project), cue = desk && /^Desk item #/i.test(words) ? null : cueMsgPlainHtml(words, to);
+  const preview = desk && /^Desk item #/i.test(words) ? "" : cue ?? esc(deskAboutHead({ text: words })?.text ?? words);
   return `<div class="working click ${idleNote(s) ? "on-agent" : ""} ${open ? "on" : ""}" ${go}>
       <div class="card-head">${projDot(s.project, (s.state === "working" || s.compacting_ms) && !cutOff(s) && !preStart(s))}${nameSpan(s.session_id, s.project)}${oddAgent(s.harness)}${machTag(s.machine)}${bgPill(s)}<span class="grow"></span><span class="age" style="color:inherit">${idleNote(s) && s.state !== "limited" && !state.items.some((x) => x.session_id === s.session_id) ? "idle " : ""}${ago(s.since_ms)}</span>${starBtn(s.session_id)}${isStarred(s.session_id) && !cutOff(s) ? "" : hideX(s)}</div>
       ${addOn.cardLine(s.session_id)}${desk}${sessionNote(s) ? `<div class="agent-note">${esc(sessionNote(s))}</div>` : ""}
-      ${s.queued || s.held ? ((q) => `<div class="queued-note">${s.held ? "Not sent yet" : "Queued"}: “${esc(q.length > 80 ? q.slice(0, 80) + "…" : q)}”</div>`)((s.held || s.queued).text) : ""}
-      ${bar(s.session_id)}${doing ? `<div class="doing">${esc(doing)}</div>` : ""}${preview ? `<div class="prompt">› ${esc(preview)}</div>` : ""}${deskSessCache(s.session_id)}${handOutHtml(s)}</div>`;
+      ${s.queued || s.held ? `<div class="queued-note mg-plain on-bg">${s.held ? "Not sent yet" : "Queued"}: ${msgPlainWords(String((s.held || s.queued).text ?? ""), to)}</div>` : ""}
+      ${bar(s.session_id)}${doing ? `<div class="doing">${esc(doing)}</div>` : ""}${preview ? `<div class="prompt mg-plain on-bg">› ${preview}</div>` : ""}${deskSessCache(s.session_id)}${handOutHtml(s)}</div>`;
 }
 /** Sessions' cards: working, then out of usage, then idle, each under its heading. */
 function workColumn(all, isOpen) {
@@ -601,7 +605,7 @@ async function submitRename(sid, again = false) {
 /** The agent didn't take the name you gave it: Cue keeps it, says why, and offers it again. */
 function renameNotice(s) {
   if (!s?.rename_error) return "";
-  return `<div class="cv-status stuck"><span class="lim-dot"></span><span><b>${esc(s.rename_error)}.</b> Cue keeps “${esc(s.name)}”.</span><button class="btn small" data-act="rename-again" data-sid="${esc(s.session_id)}">Try again</button><button class="btn small" data-act="rename-dismiss" data-sid="${esc(s.session_id)}" aria-label="Dismiss">×</button></div>`;
+  return `<div class="cv-status mg-status stuck"><span class="lim-dot"></span><span><b>${esc(s.rename_error)}.</b> Cue keeps “${esc(s.name)}”.</span><button class="btn small" data-act="rename-again" data-sid="${esc(s.session_id)}">Try again</button><button class="btn small" data-act="rename-dismiss" data-sid="${esc(s.session_id)}" aria-label="Dismiss">×</button></div>`;
 }
 /** Rename notices already announced (a toast once, wherever you are; the chat keeps showing it). */
 const renameErrSeen = new Set();

@@ -1,12 +1,12 @@
-// A message from another Desk's session in the lead's chat (#472, option C): a band across the whole chat between
-// hairlines, a FROM ANOTHER DESK tag, that Desk's chip, the session and its item there, the message, and a line that the
-// lead answers it. One from the lead's own Desk keeps the usual "From …" bubble.
+// A message from another Desk's session in the lead's chat (#472; #501: the message family's card): that Desk's chip,
+// the session, a FROM ANOTHER DESK tag, its item there, the age, the message, and a line that the lead answers it. One
+// from the lead's own Desk keeps the usual "From …" bubble.
 import { test, expect, openDesk } from "./cue.mjs";
 import { NOW } from "./clock.mjs";
 
 
 for (const scheme of ["light", "dark"]) {
-  test(`a message from another Desk's session spans the lead's chat as a band; one from its own Desk doesn't (${scheme}) (#472)`, async ({ page, cue }) => {
+  test(`a message from another Desk's session is a card with that Desk's chip; one from its own Desk doesn't (${scheme}) (#472)`, async ({ page, cue }) => {
     await page.emulateMedia({ colorScheme: scheme });
     await page.setViewportSize({ width: 1500, height: 950 });
     await cue.open("desk");
@@ -22,27 +22,26 @@ for (const scheme of ["light", "dark"]) {
       lead.thread.push({ role: "peer", from: "site-lead", text: "And one more, by name only.", at_ms: at + 1000 });
       lead.thread.push({ role: "peer", from: "host-lead", from_sid: "host", text: "From this Desk's own session.", at_ms: at + 2000 });
     }, { said, at: NOW - 2 * 60 * 1000 });
-    const chat = page.locator(".dk-chat"), band = chat.locator(".dk-xband");
+    const chat = page.locator(".dk-chat"), band = chat.locator(".mg[data-from-desk]");
     await expect(band).toHaveCount(2);
     const b = band.first();
-    await expect(b.locator(".dk-xb-tag")).toHaveText("FROM ANOTHER DESK");
-    await expect(b.locator(".dk-xb-chip")).toHaveText("Docs site");
-    await expect(b.locator(".dk-xb-chip .pdot")).toHaveCount(1);
-    await expect(b.locator(".dk-xb-chip svg")).toHaveCount(1);
-    await expect(b.locator(".dk-xb-who")).toHaveText(/ · #w118$/);
-    await expect(b.locator(".dk-xb-age")).toHaveText("2m ago");
-    await expect(b.locator(".dk-xb-t")).toHaveText(said);
-    await expect(b.locator(".dk-xb-f")).toHaveText("The lead answers it below; you don't need to.");
-    // Across the whole chat, between hairlines, no edge stripe.
-    const [bb, cb] = [await b.boundingBox(), await chat.boundingBox()];
-    expect(Math.abs(bb.x - cb.x)).toBeLessThan(1.5);
-    expect(Math.abs(bb.width - cb.width)).toBeLessThan(1.5);
-    const css = await b.evaluate((e) => { const c = getComputedStyle(e); return [c.borderTopWidth, c.borderBottomWidth, c.borderLeftWidth, c.borderTopColor, c.backgroundColor]; });
-    expect(css.slice(0, 3)).toEqual(["1px", "1px", "0px"]);
-    expect(css[4]).not.toBe(await chat.evaluate((e) => getComputedStyle(e.closest(".dk-card, .chat-card, .card") || e).backgroundColor));
+    await expect(b.locator(".mg-tag")).toHaveText("FROM ANOTHER DESK");
+    await expect(b.locator(".mg-chip")).toHaveText("Docs site");
+    await expect(b.locator(".mg-chip .pdot")).toHaveCount(1);
+    await expect(b.locator(".mg-chip svg")).toHaveCount(1);
+    await expect(b.locator(".mg-who")).toHaveText("site-lead");
+    await expect(b.locator(".mg-id")).toHaveText("#w118");
+    await expect(b.locator(".mg-age")).toHaveText("2m");
+    await expect(b.locator(".mg-t")).toHaveText(said);
+    await expect(b.locator(".mg-f")).toHaveText("The lead answers it below; you don't need to.");
+    // The family's card: filled, no edge stripe, its message at the family's body size.
+    const css = await b.evaluate((e) => { const c = getComputedStyle(e); return [c.borderLeftWidth, c.backgroundColor, getComputedStyle(e.querySelector(".mg-t")).fontSize]; });
+    expect(css[0]).toBe("0px");
+    expect(css[1]).not.toBe(await chat.evaluate((e) => getComputedStyle(e.closest(".dk-card, .chat-card, .card") || e).backgroundColor));
+    expect(css[2]).toBe("13.5px");
     // The one from the lead's own Desk keeps the usual bubble.
-    await expect(chat.locator(".cv-peer")).toHaveCount(1);
-    await expect(chat.locator(".cv-peer")).toContainText("From this Desk's own session.");
+    await expect(chat.locator(".peer-msg")).toHaveCount(1);
+    await expect(chat.locator(".peer-msg")).toContainText("From this Desk's own session.");
     await expect(page.locator("[title]")).toHaveCount(0);
     if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/desk-peer-band-${scheme}.png` });
   });
@@ -64,9 +63,9 @@ for (const scheme of ["light", "dark"]) {
       { role: "agent", text: "Noted.", at_ms: beforeMs - 4000, images: [] },
     ]);
     await openDesk(page);
-    const band = page.locator(".dk-chat .dk-xband");
+    const band = page.locator(".dk-chat .mg[data-from-desk]");
     await expect(band).toHaveCount(1);
-    await expect(band.locator(".dk-xb-t")).toHaveText("An older one from the Docs site.");
-    await expect(band.locator(".dk-xb-chip")).toHaveText("Docs site");
+    await expect(band.locator(".mg-t")).toHaveText("An older one from the Docs site.");
+    await expect(band.locator(".mg-chip")).toHaveText("Docs site");
   });
 }

@@ -208,11 +208,15 @@ for (const c of cases.said) {
 assert.match(ctx.cueSaid("Review your teammate docs's work with a fork").html, /Cue asked for <b>docs<\/b>'s review/, "the name in bold");
 assert.equal(ctx.cueSaid("Review your teammate <img>'s work with a fork").html.includes("<img>"), false, "a name is escaped");
 assert.match(ctx.cueSaid("Review your teammate docs's work with a fresh agent").html, /Cue asked for <b>docs<\/b>'s review/, "today's ask folds too");
-// Drawn as Cue's bubble on the right: named Cue in its meta line, its words without "Cue", the text folded behind addedNote.
-ctx.addedNote = (key, label, line) => `<note ${key}|${label}|${line}>`;
-const bubble = ctx.cueSaidLine(ctx.cueSaid("Review your teammate docs's work with a fork"), "L:1", "Review your teammate docs's work with a fork", "2m ago");
-assert.match(bubble, /^<div class="cv-you cue-you"><div class="cv-you-text">Asked for <b>docs<\/b>'s review<note L:1\|What Cue sent\|Review your teammate docs's work with a fork><\/div><div class="cv-meta">Cue · 2m ago<\/div><\/div>$/);
-assert.doesNotMatch(ctx.cueSaidLine({ html: "Cue will ask for <b>x</b>'s review" }, "", "", "waits"), /<note/, "nothing sent yet: nothing to unfold");
+// Drawn as the family's card (#501): Cue and CREW in its head, its words without "Cue", when it went in its foot, the
+// exact text behind "+ What Cue sent", opened under the words.
+ctx.openAsks = new Set();
+const said = ctx.cueSaid("Review your teammate docs's work with a fork");
+const bubble = ctx.cueSaidLine(said, "L:1", "Review your teammate docs's work with a fork", "2m ago");
+assert.match(bubble, /^<div class="mg cue-you"><div class="mg-h"><span class="mg-who">Cue<\/span><span class="mg-tag">Crew<\/span><\/div><div class="mg-t">Asked for <b>docs<\/b>'s review<\/div><div class="mg-f"><span class="mg-st">2m ago<\/span><span class="mg-acts"><button class="mg-lk" data-ask-open="L:1" aria-expanded="false">\+ What Cue sent<\/button><\/span><\/div><\/div>$/);
+ctx.openAsks.add("L:1");
+assert.match(ctx.cueSaidLine(said, "L:1", "Review your teammate docs's work with a fork", "2m ago"), /<\/div><div class="mg-full">Review your teammate docs's work with a fork<\/div><div class="mg-f">.*− What Cue sent/, "opened: the text under its words");
+assert.doesNotMatch(ctx.cueSaidLine({ html: "Cue will ask for <b>x</b>'s review" }, "", "", "waits"), /mg-lk/, "nothing sent yet: nothing to unfold");
 for (const c of cases.reviews) assert.deepEqual(ctx.reviewSays(c.text), { verdict: c.verdict, counts: c.counts }, c.text);
 for (const c of cases.lines) {
   const p = ctx.reviewLineParts(c.team, "docs", c.text);

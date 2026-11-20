@@ -423,7 +423,7 @@ const BOOK_ICON = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" s
 function listenBtn(key) {
   const on = listening?.key === key;
   const [icon, label] = !on ? [SPEAKER_ICON, "Listen"] : listening.playing ? [PAUSE_ICON, "Pause"] : [PLAY_ICON, "Resume"];
-  return `<button class="cv-pill ls-pill ${on ? "on" : ""}" data-listen="${esc(key)}">${icon}${label}</button>`;
+  return `<button class="mg-btn ls-pill${on ? " on" : ""}" data-listen="${esc(key)}">${icon}${label}</button>`;
 }
 /** Above the chat's box while a reply is read out: in its own session, how far; in another, whose (a click goes there); Skip code & tables, as in the reader. */
 function listenLine(sid) {

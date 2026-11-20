@@ -129,7 +129,7 @@ function yourBubble(e, key, style = "", later = false, head = "") {
   const said = yourWords(e);
   const notes = (said.voice ? addedNote(key, `Cue ${later ? "will ask" : "asked"} for a short spoken answer`, VOICE_ASK_LINE) : "")
     + (e.status_ask ? addedNote(`${key}:status`, "Status list asked for", e.status_ask) : "");
-  const bubble = `<div class="cv-you-text"${style ? ` style="${style}"` : ""}>${head}${linkify(esc(said.text)).replace(/\n/g, "<br>")}${notes}</div>`;
+  const bubble = `<div class="cv-you-text mg-text"${style ? ` style="${style}"` : ""}>${head}${linkify(esc(said.text)).replace(/\n/g, "<br>")}${notes}</div>`;
   return said.voice ? `<div class="cv-you-row"><span class="cv-mic" role="img" aria-label="Said by voice">${MIC_ICON}</span>${bubble}</div>` : bubble;
 }
 // ---------- a message's state, the same words wherever it shows (#422) ----------
@@ -150,7 +150,8 @@ function msgLine(m) {
     failed: `<b>Couldn't send</b>${m.why ? ` · ${m.why}` : ""}`,
   }[m.st];
   if (m.say && (m.st === "held" || m.st === "queued")) words = m.say;
-  return `<div class="cv-meta msg-line ml-${m.st}"${m.sid ? ` data-sid="${esc(m.sid)}"` : ""}><span class="ml-mark" aria-hidden="true">${mark}</span> ${from}<span class="ml-words">${words}</span>${m.acts ? ` · <span class="ml-acts">${m.acts}</span>` : ""}${m.extra || ""}</div>`;
+  // The foot of the message (#501, messages.css): how it went at the left (.mg-st), its actions at the right (.mg-acts).
+  return `<div class="mg-f msg-line ml-${m.st}"${m.sid ? ` data-sid="${esc(m.sid)}"` : ""}><span class="mg-st${m.st === "failed" ? " failed" : ""}"><span class="mg-mark ml-mark" aria-hidden="true">${mark}</span> ${from}<span class="ml-words">${words}</span>${m.acts ? "" : m.extra || ""}</span>${m.acts ? `<span class="mg-acts ml-acts"><span class="ml-sep" aria-hidden="true"> · </span>${m.acts}${m.extra || ""}</span>` : ""}</div>`;
 }
 /** Your message typed into session `s`'s box while it's mid-turn (#531): its agent takes it in when it's free, so it
  *  says Queued, not Sending (that's for one still on its way to the box). Its line, as msgLine takes it; null when
@@ -158,12 +159,13 @@ function msgLine(m) {
 const typedQueued = (s) => (s?.state === "working" || s?.compacting_ms ? { st: "queued", say: "<b>Queued</b> · goes in when it's free", typed: true } : null);
 /** A message drawn as the chat's "you" bubble with its one line under it: `inner` is the bubble (yourBubble's), `m`
  *  msgLine's. Dashed on the panel till it's with them, filled once delivered, outlined red when it couldn't go. */
-const msgRow = (m, inner, cls = "", attrs = "") => `<div class="cv-you msg-${m.st}${cls ? ` ${cls}` : ""}"${attrs}>${inner}${msgLine(m)}</div>`;
+const msgRow = (m, inner, cls = "", attrs = "") => `<div class="cv-you mg-you msg-${m.st}${cls ? ` ${cls}` : ""}"${attrs}>${inner}${msgLine(m)}</div>`;
 const fwdMsgs = new Map();  // chat key -> { text, from, fromSid }: what "Send to another session" sends
-/** A message from another session: an accent stripe, who it's from, then the message (a forward quotes the original). */
+/** A message from another session (#501, messages.css): the family's card, who it's from as its chip in the head, then
+ *  the message (a forward quotes the original under it, as the full text). */
 function peerBubble(from, how, at, body, quote) {
-  return `<div class="cv-peer"><div class="cv-peer-from">↘ From ${esc(from)}${how ? ` · ${esc(how)}` : ""} · ${ago(at)} ago</div>
-    ${body ? `<div class="msg cv-text">${md(body)}</div>` : ""}${quote ? `<div class="cv-peer-quote">${md(quote)}</div>` : ""}</div>`;
+  return `<div class="mg peer-msg"><div class="mg-h"><span class="mg-chip">${esc(from)}</span>${how ? `<span class="mg-to">${esc(how)}</span>` : ""}<span class="mg-tag">${quote ? "Forwarded" : "From a session"}</span><span class="mg-age">${ago(at)} ago</span></div>
+    ${body ? `<div class="msg mg-text cv-text">${md(body)}</div>` : ""}${quote ? `<div class="mg-full msg">${md(quote)}</div>` : ""}</div>`;
 }
 // ---------- steps: what the agent did between your message and its reply ----------
 // Read from the session's transcript by Cue on demand (only for the session open here), never saved.

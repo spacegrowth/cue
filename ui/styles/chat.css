@@ -92,8 +92,9 @@ a[data-path]:hover, .msg a[data-path]:hover { text-decoration: underline; text-u
 .pill.soft { background: var(--panel-2); color: var(--muted); }
 .ap-bar { padding: 8px 16px 0; }
 .ap-chat { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 18px 10px; display: flex; flex-direction: column; gap: 14px; }
-/* The agent: full-width prose, no bubble, same size as before (it dumps a lot). */
-.cv-agent { font-size: 14px; line-height: 1.6; }
+/* The agent: full-width prose, no bubble, the family's body size (#501: .mg-agent/.mg-text in messages.css). Kept for a
+   parked session's chat (chat/parked.js), which still draws .cv-agent alone. */
+.cv-agent { font: var(--mg-body); }
 /* Steps: what the agent did between your message and its reply (a turn), one line per step. */
 .stx { display: flex; flex-direction: column; gap: 6px; }
 .stx-head { display: flex; align-items: center; gap: 8px; }
@@ -240,18 +241,15 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 @keyframes stxIn { from { opacity: 0; transform: translateY(3px); } }
 @media (prefers-reduced-motion: reduce) { .stx-say.reveal, .stx-line.reveal, .cv-result.reveal { animation: none; } }
 .cv-agent.folded .cv-text { max-height: 4.8em; overflow: hidden; -webkit-mask-image: linear-gradient(#000 55%, transparent); mask-image: linear-gradient(#000 55%, transparent); }
-.cv-meta { font-size: 11px; font-weight: 650; color: var(--muted); margin-bottom: 3px; }
-.cv-more { font-size: 12px; font-weight: 650; color: var(--accent); margin-top: 4px; }
-/* Under an agent message: fold, and send it on to another session (shown on hover; always on the latest). */
-.cv-acts { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+/* The meta line of markup not yet on the family (chat/parked.js, chat/send.js's "You ran"): the family's meta size. */
+/* An agent's head row outside the family's markup (kept for pages that still draw it). */
+.cv-meta { font: var(--mg-meta); color: var(--muted); margin-bottom: 3px; }
+/* Under an agent message (.mg-f): Listen, Read, fold, and send it on to another session (shown on hover; always on the latest). */
+.cv-acts { margin-top: 4px; }
 /* A reply taller than the chat: its Listen and Read stay at the chat's foot while you're in it, scrolling up or
  *  down, and go with the reply once its end is in view. Above the row, the text fades out under it. */
 .cv-agent .cv-acts { position: sticky; bottom: -10px; z-index: 2; background: var(--panel); padding: 6px 0 16px; margin: 2px 0 -10px; }   /* -10px: the chat's own bottom padding (.ap-chat), so no line shows under it */
 .cv-agent .cv-acts::before { content: ""; position: absolute; left: 0; right: 0; bottom: 100%; height: 10px; background: linear-gradient(transparent, var(--panel)); pointer-events: none; }
-/* Listen and Read under a reply: real buttons, not links. */
-.cv-pill { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: var(--pill-radius); font-size: 12px; font-weight: 650; color: var(--accent); background: var(--panel-2); border: 1px solid var(--line); }
-.cv-pill:hover { background: var(--sel); color: var(--on-sel); border-color: transparent; }
-.cv-pill.on { background: var(--sel); color: var(--on-sel); border-color: transparent; }
 /* A reply read out (Listen): what it read in gray, the sentence it's on in lime, the word it's saying underlined. */
 ::highlight(cue-said) { color: var(--muted); }
 ::highlight(cue-say) { background-color: var(--sel); color: var(--on-sel); }
@@ -315,16 +313,12 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .ls-fill { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
 .ls-then { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); white-space: nowrap; }
 
-/* A real button (a tinted pill), not a text link, so it doesn't read as part of the message. */
-.cv-fwd { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: var(--pill-radius); font-size: 12px; font-weight: 650; color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, var(--panel)); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); opacity: 0; transition: opacity 0.12s, background 0.12s, color 0.12s; }
-/* Last in the row, at its right end: the reply's own buttons come first. */
-.cv-fwd:hover { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+/* Send to… (.mg-btn): shown on hover, always on the latest; last in the row, at its right end. */
+.cv-fwd { opacity: 0; transition: opacity 0.12s, background 0.12s, color 0.12s; }
 .cv-agent:hover .cv-fwd, .cv-agent.last .cv-fwd, .cv-fwd:focus-visible { opacity: 1; }
-/* A message from another session: who it's from, the message, and (for a forward) the original, quoted. */
-.cv-peer { border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 7%, var(--panel)); border-radius: 4px 12px 12px 4px; padding: 9px 13px; font-size: 13.5px; line-height: 1.55; }
-.cv-peer-from { font-size: 11.5px; font-weight: 700; color: var(--accent); margin-bottom: 4px; }
-.cv-peer-quote { margin-top: 6px; font-size: 12.5px; color: var(--muted); border-left: 2px solid var(--line); padding-left: 10px; max-height: 9em; overflow: hidden; -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
-.cv-peer-quote > :last-child, .cv-peer .msg > :last-child { margin-bottom: 0; }
+/* A message from another session (.mg with its chip, thread.js peerBubble): a forward's original under it, as text. */
+.peer-msg .mg-full { white-space: normal; max-height: 9em; overflow: hidden; -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
+.peer-msg .msg > :last-child, .peer-msg .mg-full > :last-child { margin-bottom: 0; }
 /* The "send to another session" menu, right above its button. */
 .fwd-catch { position: fixed; inset: 0; z-index: 25; }
 .fwd-pop { position: fixed; z-index: 26; width: 320px; background: var(--panel); color: var(--ink); border-radius: 12px; padding: 10px; box-shadow: 0 18px 50px -12px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--line); }
@@ -336,12 +330,10 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .fwd-st { font: 600 10.5px var(--mono); color: var(--muted); }
 .fwd-note { width: 100%; margin-top: 8px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: inherit; font-size: 12.5px; resize: none; }
 .fwd-foot { display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px; }
-/* You: a compact tinted bubble on the right. */
+/* You: a compact bubble on the right (.mg-you, messages.css); .cv-you sets its width in a chat. */
 .cv-you { align-self: flex-end; max-width: 72%; min-width: 0; display: flex; flex-direction: column; align-items: flex-end; }
 /* A long word with no spaces (a pasted URL, path or log line) wraps instead of widening the bubble past
    the chat, where its left edge was cut off. */
-.cv-you-text { overflow-wrap: anywhere; max-width: 100%; padding: 8px 12px; border-radius: 14px 14px 4px 14px; background: color-mix(in srgb, var(--accent) 16%, var(--panel)); font-size: 13.5px; line-height: 1.5; user-select: text; -webkit-user-select: text; }
-.cv-you .cv-meta { margin: 3px 2px 0; }
 /* Said by voice: a teal mic beside your message, and inside it, under a hairline, the line Cue added for the agent. */
 .cv-you-row { display: flex; align-items: flex-end; gap: 6px; max-width: 100%; min-width: 0; }
 .cv-mic { flex: none; display: inline-flex; color: var(--voice); margin-bottom: 7px; }
@@ -349,25 +341,11 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .cv-voice-note { border-top: 1px solid var(--line); margin-top: 7px; padding-top: 6px; font-size: 12px; color: var(--voice); }
 .cv-voice-ask { font: inherit; font-weight: 650; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
 .cv-voice-line { margin-top: 5px; color: var(--muted); line-height: 1.45; }
-/* A message's state (#422, chat/thread.js msgLine): the same bubble and one line under it in a session's chat, the Desk
-   lead's chat, an item's thread and the Inbox. Not with them yet (sending, kept in Cue, queued in it): a dashed outline
-   on the panel; sending also faint. Delivered: the filled bubble. Couldn't send: a red outline. */
-.cv-you.msg-sending .cv-you-text, .cv-you.msg-held .cv-you-text, .cv-you.msg-queued .cv-you-text { background: var(--panel); border: 1.5px dashed var(--muted); padding: 6.5px 10.5px; }
-.cv-you.msg-sending .cv-you-text, .cv-you.msg-sending .thumbs { opacity: .65; }
-.cv-you.msg-failed .cv-you-text { background: var(--panel); border: 1.5px solid var(--deny); padding: 6.5px 10.5px; }
-.msg-line { max-width: 100%; text-align: right; font-weight: 500; line-height: 1.5; }
-.msg-line b { color: var(--ink); font-weight: 650; }
-.msg-line .ml-mark { font-weight: 700; }
-.msg-line .ml-acts { white-space: nowrap; }
-.msg-line.ml-delivered .ml-mark { color: var(--accent); }
-.msg-line.ml-failed .ml-mark, .msg-line.ml-failed .ml-words > b:first-child { color: var(--deny); }
-.msg-line .ml-back { color: var(--muted); }
 /* Queued, kept in Cue, sent later or not yet taken: the same bubble as a sent message; the line under it says it hasn't gone yet. */
 /* One a page draws as its own card once sent (the Desk lead's new-item note): that card now, the same line under it. */
 .cv-later { display: flex; flex-direction: column; }
-.cv-later > .cv-meta { align-self: flex-end; margin: 3px 2px 0; }
+.cv-later > .mg-f { align-self: flex-end; margin: 3px 2px 0; }
 .cv-empty { text-align: center; margin: 18px 0; }
-.cv-status { align-self: center; font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 7px; padding: 2px 0; }
 /* flex: none: beside a long line ("Running: …") it keeps its size instead of being squeezed. */
 .dot-live { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
 /* A project's dot: its color (--pc), solid; pulsing while the session works. On the green (working
@@ -438,21 +416,11 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 /* Eases in once, when it lands (chat/patch.js patchKids marks it): never again on a redraw. */
 .cv-result.reveal { animation: sentIn 0.25s ease; }
 .cv-result.no .sent-check { background: var(--deny); }
-/* An ask the agent made (chat/render.js chatAskHtml): what it asked, your answer beside it, the command in a code block. */
-.cv-ask { font-size: 13px; }
-/* The head and a question wrap as text; the answer wraps inside the pane, beside "Asked to run" or on its own line
-   under a question (render.js chatAskHtml). Nothing runs past the right edge. */
-.cv-ask-row { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; row-gap: 4px; min-width: 0; margin-bottom: 6px; }
-.cv-ask-head { font-weight: 650; white-space: nowrap; }
-.cv-ask-q { flex: 1 1 12em; min-width: 0; overflow-wrap: anywhere; }
-.cv-ask-ans { display: inline-flex; align-items: flex-start; gap: 7px; max-width: 100%; min-width: 0; box-sizing: border-box; padding: 4px 10px 4px 5px; border-radius: 10px; background: var(--panel-2); font-weight: 600; overflow-wrap: anywhere; }
-.cv-ask > .cv-ask-ans { margin-bottom: 6px; }
-.cv-ask-ans .sent-check { flex: none; }
-.cv-ask-ans .sent-check { width: 18px; height: 18px; font-size: 10px; }
-.cv-ask-ans.no .sent-check { background: var(--deny); }
-.cv-ask-code, .ib-ask-code { margin: 0 0 4px; background: var(--slab); color: var(--on-slab); padding: 9px 12px; border-radius: 8px; font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
-.cv-ask-code.folded { -webkit-mask-image: linear-gradient(#000 60%, transparent); mask-image: linear-gradient(#000 60%, transparent); }
-.cv-ask-ps { opacity: 0.55; user-select: none; }
+/* An ask the agent made (.mg.ask, chat/render.js chatAskHtml): its command (.mg-code) folded to a few lines when long. */
+.ask-code { user-select: text; }
+.ask-code.folded { -webkit-mask-image: linear-gradient(#000 60%, transparent); mask-image: linear-gradient(#000 60%, transparent); }
+.ask-ps { opacity: 0.55; user-select: none; }
+.ask-q { overflow-wrap: anywhere; }
 /* Next: solid Moss, the one obvious thing to do after you act. */
 .next-bar { display: flex; align-items: center; gap: 8px; margin: 0 12px 10px; padding: 9px 10px 9px 12px; border-radius: 10px; background: var(--accent); color: var(--on-accent); font-size: 13px; text-align: left; min-width: 0; }
 .next-bar:hover { filter: brightness(1.1); }
@@ -496,7 +464,7 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .btw-ask textarea { width: 100%; resize: none; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; background: var(--panel-2); color: var(--ink); font: 13px/1.4 var(--sans); outline: none; }
 .btw-ask textarea:focus { border-color: var(--accent); }
 /* "Not sent" for an agent's own screen: Run it in a terminal, beside the words. */
-.cv-you .cv-meta .run-here { display: inline-flex; margin: 4px 0 0 6px; vertical-align: middle; }
+.mg-f .run-here { margin-left: 6px; vertical-align: middle; }
 
 /* "Send at…" under a session's box: a time, then Cue sends what's typed (compose.js sendAtBar). */
 .send-at-bar { display: flex; align-items: center; gap: 8px; padding: 6px 10px 8px; font-size: 12.5px; border-top: 1px solid var(--line); }
@@ -513,17 +481,6 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .decided .dec-what { color: var(--ink); }
 .decided .dec-why { font-size: 0.92em; color: var(--muted); }
 
-/* Cue's own message to a session or a Desk lead (desk/cue_said.js, #478): one short quiet line at the left, as the
-   lead's own lines are (#433) — "Cue · Asked cue-383 · #461 not done: “…” · 3m" — Cue's full text folded under it,
-   a click on the line opening it. No bubble, no box, no edge stripe. */
-.cv-cue { align-self: stretch; min-width: 0; margin: 2px 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); text-align: left; }
-.cv-cue-r { display: flex; align-items: baseline; gap: 10px; min-width: 0; cursor: pointer; border-radius: 4px; }
-.cv-cue-r:hover { color: var(--ink); }
-.cv-cue-r:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-/* Up to two lines in a narrow chat, then cut; the whole text is in the fold. */
-.cv-cue-h { flex: 1; min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
-.cv-cue-by, .cv-cue-to { font-weight: 650; color: var(--ink); }
-.cv-cue-w { color: var(--ink); }
-.cv-cue .dk-cl-age { flex: none; white-space: nowrap; }
-.cv-cue-full { margin: 4px 0 4px 12px; padding: 8px 11px; border-radius: 8px; background: var(--panel-2); color: var(--ink); font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
-.cv-cue .msg-line { text-align: left; }
+/* Cue's own message to a session or a Desk lead (desk/cue_said.js, #478) is the family's card (.mg, #501); what's
+   folded besides its words ("· its log") stays quiet. */
+.cue-msg .cue-more { color: var(--muted); }

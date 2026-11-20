@@ -359,14 +359,6 @@ button.cpb-who:hover { text-decoration: underline; text-underline-offset: 2px; }
 .ho-acts { display: flex; gap: 6px; padding-top: 2px; }
 .ho-acts .btn { height: 28px; padding: 0 11px; font-size: 12px; }
 
-/* What Cue sends a lead for its crew: a bubble on the right like yours, a quieter fill, named Cue in its meta line, the
-   exact text behind "+ What Cue sent", and for a review request the lead's review behind its own line (ui/team.js
-   cueSaidLine). */
-.cue-you .cv-you-text { background: var(--panel-2); }
-.cue-you .cv-you-text b { font-weight: 650; }
-.cue-you .cv-voice-note { color: var(--muted); }
-.cue-you .cv-voice-line { white-space: pre-wrap; }
-
 /* A crew member's line in even-width digits, so the words after its time hold still as it changes (team.js mateLine). */
 .mt-line { font-variant-numeric: tabular-nums; }
 /* The crew's live dots stay still: only the notch's and the rail's dot blink (a pulse in a list pulls the eye). */

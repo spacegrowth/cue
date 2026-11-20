@@ -1,0 +1,148 @@
+/* Messages: one family for every message Cue shows (#501, the Messages page's option B, "one card family").
+   Whatever is said (Cue's message, a note, an ask, another Desk's message, the agent's reply, your own words) is one
+   body size, --mg-body; everything around it (who → to, the tag, the item, the age, how it went, its actions, the
+   status line) is one meta size, --mg-meta. Cue's and the Desk's messages are the same compact card: a head row
+   (mark, who → to, TAG, #item, age), the words in two lines with More, then the foot (how it went at the left, actions
+   at the right). An ask is that card outlined all round in --deny; never a coloured left edge. No hover text.
+   Colours are base.css's tokens, so light, dark and a project's tint all follow from there. work/501-spec.md says
+   which kind, on which screen, takes which class. */
+:root {
+  /* The design system's space, shape and type tokens (tokens.json), which base.css doesn't carry yet. */
+  --card-pad-y: 10px;
+  --card-pad-x: 12px;
+  --card-gap: 6px;
+  --col-gap: 10px;
+  --radius-tag: 5px;
+  --radius-btn: 8px;
+  --radius-card: 12px;
+  --radius-pane: 14px;
+  --radius-pill: var(--pill-radius);
+  --type-body: 13.5px;      /* Mac "body": anything a message says */
+  --type-body-lh: 1.5;
+  --type-button: 12px;      /* Mac "button", 650 */
+  --type-meta: 12px;        /* who → to, how it went, the status line (the head row of option B) */
+  --type-pill: 11px;        /* Mac mono "pill", 600: the item's number, the age */
+  --type-tag: 10.5px;       /* mono tag, 0.12em: NOTE, ASKS YOU, FROM ANOTHER DESK */
+  --on-deny: #FFFFFF;       /* text on a deny fill (the ask's tag) */
+  /* The family's two sizes, by name, so a screen never picks its own. */
+  --mg-body: 400 var(--type-body) / var(--type-body-lh) var(--sans);
+  --mg-meta: 400 var(--type-meta) / 1.4 var(--sans);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --on-deny: #151A08; }
+}
+:root[data-theme="dark"] { --on-deny: #151A08; }
+
+/* ---------- the card: Cue's message, a note, an item line set, another Desk's message, Ready to check ---------- */
+.mg {
+  align-self: stretch; min-width: 0; box-sizing: border-box;
+  display: flex; flex-direction: column; gap: var(--card-gap);
+  padding: var(--card-pad-y) var(--card-pad-x);
+  border-radius: var(--radius-card); background: var(--panel-2); color: var(--ink);
+  font: var(--mg-body); text-align: left; overflow-wrap: anywhere;
+}
+/* The head row: mark, who → to, TAG, #item, age (right). */
+.mg-h { display: flex; align-items: center; gap: 7px; min-width: 0; font: var(--mg-meta); color: var(--muted); }
+.mg-mk { flex: none; width: 14px; height: 14px; color: var(--accent); }
+.mg-who { color: var(--ink); font-weight: 650; white-space: nowrap; }
+.mg-to { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mg-tag {
+  flex: none; padding: 1px 7px; border-radius: var(--radius-pill); background: var(--panel); color: var(--muted);
+  font: 600 var(--type-tag) var(--mono); letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap;
+}
+.mg-age { flex: none; margin-left: auto; font: var(--type-pill) var(--mono); color: var(--muted); white-space: nowrap; }
+/* An item's number: the same chip everywhere (head row, a line, a plain line); a button when it opens the item. */
+.mg-id {
+  all: unset; display: inline-flex; align-items: center; gap: 3px; padding: 0 6px; line-height: 17px; vertical-align: 1px;
+  border-radius: var(--radius-pill); background: var(--panel-2); color: var(--ink);
+  font: 600 var(--type-pill) var(--mono); white-space: nowrap;
+}
+.mg .mg-id { background: var(--panel); }
+button.mg-id { cursor: pointer; }
+button.mg-id:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Another Desk's chip in the head: its tray, colour dot and name. */
+.mg-chip { flex: none; display: inline-flex; align-items: center; gap: 5px; padding: 0 7px; border-radius: var(--radius-pill); background: var(--panel); color: var(--ink); font-weight: 650; white-space: nowrap; }
+
+/* What it says: two lines, More opens the rest in place. */
+.mg-t { font: var(--mg-body); color: var(--ink); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.mg.open .mg-t, .mg-t.whole { display: block; -webkit-line-clamp: none; overflow: visible; }
+.mg-t b, .mg-line b { font-weight: 650; }
+/* The full text Cue sent, under the line once opened. */
+.mg-full {
+  padding: 8px 11px; border-radius: var(--radius-btn); background: var(--panel); color: var(--ink);
+  font: var(--mg-body); white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.mg-full code, .mg-full .mono { font: var(--type-button) / 1.5 var(--mono); color: var(--muted); }
+
+/* The foot: how it went at the left, actions at the right. */
+.mg-f { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; font: var(--mg-meta); font-weight: 650; color: var(--muted); }
+.mg-st { min-width: 0; }
+.mg-st b, .mg-st .mg-mark { color: var(--accent); font-weight: 700; }
+.mg-st.failed b, .mg-st.failed .mg-mark { color: var(--deny); }
+.mg-acts { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+/* A quiet link (More, Less, Answer in words, Check it ›). */
+.mg-lk { all: unset; cursor: pointer; color: var(--accent); font: 650 var(--type-button) var(--sans); white-space: nowrap; }
+.mg-lk:focus-visible, .mg-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-tag); }
+/* An action: one small button size for every message (Open #461, Try again, Listen, Read, an ask's choices). */
+.mg-btn {
+  all: unset; box-sizing: border-box; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;
+  height: 24px; padding: 0 10px; border-radius: var(--radius-btn); border: 1px solid var(--line);
+  background: var(--panel); color: var(--ink); font: 650 var(--type-button) var(--sans); white-space: nowrap;
+}
+.mg-btn svg { width: 13px; height: 13px; flex: none; }
+.mg-btn:hover { background: var(--sel); color: var(--on-sel); border-color: transparent; }
+.mg-btn.pri { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.mg-btn.on { background: var(--sel); color: var(--on-sel); border-color: transparent; }
+
+/* ---------- an ask: the same card, outlined all round ---------- */
+.mg.ask { background: var(--panel); border: 1px solid var(--deny); }
+.mg.ask .mg-tag { background: var(--deny); color: var(--on-deny); }
+.mg.ask .mg-t { -webkit-line-clamp: 3; }
+.mg.ask .mg-full, .mg.ask .mg-id, .mg.ask .mg-chip { background: var(--panel-2); }
+/* Answered: back to the plain card; the answer is the foot's status ("✓ Answered: Yes, delete it"), not a pill. */
+.mg.ask.answered { background: var(--panel-2); border-color: transparent; }
+.mg.ask.answered .mg-tag { background: var(--panel); color: var(--muted); }
+.mg.ask.answered .mg-id, .mg.ask.answered .mg-chip { background: var(--panel); }
+/* A tool's command in an ask. */
+.mg-code { margin: 0; padding: 9px 12px; border-radius: var(--radius-btn); background: var(--slab); color: var(--on-slab); font: var(--type-button) / 1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
+
+/* ---------- waiting to go: the card dashed until it's with them ---------- */
+.mg.sending, .mg.queued, .mg.held { background: var(--panel); border: 1px dashed var(--line); }
+.mg.failed { background: var(--panel); border: 1px solid var(--deny); }
+
+/* ---------- the lead's own Desk lines in its reply (ROUTE, ITEM, DONE, TITLE, MERGE, CONTEXT, SEE) ---------- */
+/* One plain row at body size, regular weight, the item as the chip; what's under it opens in place as .mg-full. */
+.mg-line { display: flex; align-items: baseline; gap: 6px; min-width: 0; font: var(--mg-body); color: var(--ink); padding: 1px 0; }
+.mg-line .mg-v { color: var(--muted); }
+.mg-line[role="button"] { cursor: pointer; }
+
+/* ---------- the agent's reply and your own message ---------- */
+.mg-agent { align-self: stretch; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.mg-agent > .mg-h .mg-who { color: var(--muted); }
+.mg-text { font: var(--mg-body); color: var(--ink); }
+.mg-you { align-self: flex-end; max-width: 80%; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+/* The bubble; said by voice it sits in a row beside the mic (chat/thread.js yourBubble), and is the same bubble there. */
+.mg-you > .mg-text, .mg-you > .cv-you-row > .mg-text {
+  box-sizing: border-box; max-width: 100%; padding: 8px 12px; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text;
+  border-radius: var(--radius-pane) var(--radius-pane) 4px var(--radius-pane); background: var(--panel-2);
+}
+/* Not with them yet (sending, kept in Cue, queued): the bubble dashed on the panel, sending also faint; couldn't send:
+   outlined deny (#422, chat/thread.js msgLine). */
+.mg-you:is(.msg-sending, .msg-held, .msg-queued) .mg-text { background: var(--panel); border: 1.5px dashed var(--muted); padding: 6.5px 10.5px; }
+.mg-you.msg-sending .mg-text, .mg-you.msg-sending .thumbs { opacity: .65; }
+.mg-you.msg-failed .mg-text { background: var(--panel); border: 1.5px solid var(--deny); padding: 6.5px 10.5px; }
+.mg-you > .mg-f { justify-content: flex-end; font-weight: 400; }
+
+/* ---------- the status line under a chat (Working on…, Compacted…, Waiting on you…) ---------- */
+.mg-status { align-self: center; display: flex; align-items: center; gap: 7px; min-width: 0; padding: 2px 0; font: var(--mg-meta); color: var(--muted); }
+.mg-status b { color: var(--ink); font-weight: 650; }
+
+/* ---------- a plain line: the same message as text in a row (Inbox, a board card, Working on, the mini) ---------- */
+/* It takes the size of the row it sits in (a card's 12.5px), never a size of its own. */
+.mg-plain { font-size: inherit; line-height: inherit; color: var(--muted); min-width: 0; }
+.mg-plain .mg-who, .mg-plain b { color: var(--ink); font-weight: 650; }
+.mg-plain .mg-w { color: var(--ink); }
+/* On a coloured background (a working card on the board's colour): that background's inks, the chip a tint of them. */
+.mg-plain.on-bg { color: var(--on-bg-muted); }
+.mg-plain.on-bg :is(.mg-who, .mg-w, b) { color: var(--on-bg); }
+.mg-plain.on-bg .mg-id { background: color-mix(in srgb, var(--on-bg) 14%, transparent); color: var(--on-bg); }

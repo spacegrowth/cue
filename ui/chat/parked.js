@@ -100,11 +100,11 @@ function parkedPane(p) {
     : parkedAll === sid && lastTurns(thread, 2).length < thread.length ? `<button class="park-more" data-key="more" data-park-all="${esc(sid)}">▾ Just the last two turns</button>` : "";
   const K = keyer();
   const rows = shown.map((e) => keyed(e.role === "you"
-    ? `<div class="cv-you"><div class="cv-you-text">${linkify(esc(e.text)).replace(/\n/g, "<br>")}</div>${thumbs(e.images)}<div class="cv-meta">You · ${ago(e.at_ms)} ago</div></div>`
-    : `<div class="cv-agent"><div class="cv-meta">${esc(e.role === "peer" ? e.from || "another agent" : agentName(harness))}${machTag(p.machine)} · ${ago(e.at_ms)} ago</div><div class="msg cv-text">${md(addOn.plain(e.text))}</div></div>`, K(`${e.role[0]}:${e.at_ms}`))).join("");
+    ? `<div class="cv-you mg-you"><div class="cv-you-text mg-text">${linkify(esc(e.text)).replace(/\n/g, "<br>")}</div>${thumbs(e.images)}<div class="mg-f"><span class="mg-st">You · ${ago(e.at_ms)} ago</span></div></div>`
+    : `<div class="cv-agent mg-agent"><div class="mg-h"><span class="mg-who">${esc(e.role === "peer" ? e.from || "another agent" : agentName(harness))}</span>${machTag(p.machine)} · ${ago(e.at_ms)} ago</div><div class="msg mg-text cv-text">${md(addOn.plain(e.text))}</div></div>`, K(`${e.role[0]}:${e.at_ms}`))).join("");
   const where = p.machine ? ` on ${esc(machShort(p.machine))}` : "";
   const line = w
-    ? `<div class="cv-status" data-key="line"><span class="dot-live"></span>Resuming${where}…</div>`
+    ? `<div class="mg-status" data-key="line"><span class="dot-live"></span>Resuming${where}…</div>`
     : `<div class="park-line" data-key="line">${closed ? "" : P_SIGN}${closed ? "Closed" : "Parked"} ${parkedAgo(p)} · ${esc(agentName(harness))} stopped${where} · Resume picks up right here</div>`;
   return `<div class="active-pane parked">
     <div class="ap-head">${projBtn(p.project, "ap")}${badge(harness)}<span class="proj">${esc(name)}</span>${machTag(p.machine)}<span class="pill soft park-pill">${w ? "resuming…" : `${closed ? "" : P_SIGN}${p.kind} · ${now() - p.at < 60000 ? "now" : ago(p.at)}`}</span>${closed ? "" : starBtn(sid)}<span class="grow"></span>

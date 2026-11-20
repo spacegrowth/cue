@@ -209,14 +209,14 @@
    *  opens a box in the row; once sent, the row says what you answered. */
   function deskAskHtml(i, showActions) {
     const said = deskAnswerOf(deskItem(i.project, i.id) || i);
-    if (said) return `<div class="m-dk-said"><span class="sent-check">✓</span> You answered: ${esc(said.a)}</div>`;
+    if (said) return `<div class="m-dk-said mg-f"><span class="mg-st"><b>✓</b> You answered: ${esc(said.a)}</span></div>`;
     if (!showActions) return "";
     if (i.state === "to_check") {
       if (deskBackFor === i.id) return `<div class="m-dk-ask">${deskBackHtml(i.id)}</div>`;
       const line = deskVerb(i)?.[1] || "";
       const acts = deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id)
         : `<button class="btn small primary" data-desk-act="looks_right" data-id="${esc(i.id)}">Looks right</button><button class="btn small" data-desk-act="send_back" data-id="${esc(i.id)}">Send back</button>`;
-      return `<div class="m-dk-ask">${line ? `<div class="m-dk-q">${esc(line)}</div>` : ""}<div class="m-dk-acts">${acts}</div></div>`;
+      return `<div class="m-dk-ask">${line ? `<div class="m-dk-q mg-plain">${esc(line)}</div>` : ""}<div class="m-dk-acts">${acts}</div></div>`;
     }
     const req = deskReq(i);
     const line = deskOneLine(req?.kind === "question" ? questions(req)[0]?.question || deskQuestion(i) : deskQuestion(i));
@@ -232,7 +232,7 @@
     }
     const key = m.answer === i.id ? deskAnswerKey(i, req) : "";
     const box = key ? boxHtml({ look: "mini", key, attrs: `data-mdk-box="${esc(i.id)}"`, label: "Your answer", placeholder: "Your answer", send: { attrs: `data-mdk-send="${esc(i.id)}"` } }) : "";
-    return `<div class="m-dk-ask">${line ? `<div class="m-dk-q">${esc(line)}</div>` : ""}${req?.kind === "question" ? qFoldLine(req) : ""}${acts ? `<div class="m-dk-acts">${acts}</div>` : ""}${box}</div>`;
+    return `<div class="m-dk-ask">${line ? `<div class="m-dk-q mg-plain">${esc(line)}</div>` : ""}${req?.kind === "question" ? qFoldLine(req) : ""}${acts ? `<div class="m-dk-acts">${acts}</div>` : ""}${box}</div>`;
   }
   /** One item: its state, title and age; under them its kind and number, who holds it; then (waiting on you) its ask. */
   function deskRowHtml(i, wait) {

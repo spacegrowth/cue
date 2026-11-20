@@ -3,7 +3,7 @@
 function histDetail(i) {
   // A reply goes in the conversation, right under what it answered, so opening the row lands on it.
   const reply = i.kind === "waiting" && /^replied: “/.test(outcomeText(i)) ? replyOf(i) : null;
-  const yours = reply ? `<div class="cv-you hreply"><div class="cv-you-text">${esc(reply).replace(/\n/g, "<br>")}</div>${thumbs(i.images)}<div class="cv-meta">You replied · ${ago(i.resolved_ms)} ago</div></div>` : "";
+  const yours = reply ? `<div class="cv-you mg-you hreply"><div class="cv-you-text mg-text">${esc(reply).replace(/\n/g, "<br>")}</div>${thumbs(i.images)}<div class="mg-f"><span class="mg-st">You replied · ${ago(i.resolved_ms)} ago</span></div></div>` : "";
   const chat = (i.thread || []).length || i.kind === "waiting" ? `<div class="hdetail">${chatHtml(i, null, i.harness)}${yours}</div>` : "";
   let ask = "";
   if (i.kind === "question") ask = questions(i).map((q) => `<div class="qtext">${linkify(esc(q.question), sessBase(i.session_id))}</div><ul class="hopts">${(q.options || []).map((o) => `<li>${esc(o.label)}${o.description ? `<span class="dim">: ${esc(o.description)}</span>` : ""}</li>`).join("")}</ul>`).join("");

@@ -22,15 +22,15 @@ for (const [what, line, about] of [["an ASK", "ASK: Phrases left or right of Sen
     await expect(chat.locator(".cv-agent").last().locator(".cv-text")).toHaveText("Two ways to place them.");
     await expect(chat).not.toContainText("ASK:");
     await expect(chat.locator(".cv-ask")).toHaveCount(1);
-    await expect(chat.locator(".cv-ask .cv-ask-q")).toHaveText("Phrases left or right of Send?");
-    await expect(chat.locator(".cv-ask .cv-ask-ans")).toHaveCount(0);
+    await expect(chat.locator(".cv-ask .ask-q")).toHaveText("Phrases left or right of Send?");
+    await expect(chat.locator(".cv-ask .mg-st")).toHaveCount(0);
     // Answered: beside the question on its card; Cue's message telling the lead isn't a second copy.
     await push(page, [
       { role: "you", text: "answered: Left", decision: true },
       { role: "you", text: `Your ASK${about}: Phrases left or right of Send?\nThe answer: Left` },
     ]);
     await expect(chat.locator(".cv-ask")).toHaveCount(1);
-    await expect(chat.locator(".cv-ask .cv-ask-ans")).toHaveText(/Answered: Left/);
+    await expect(chat.locator(".cv-ask .mg-st")).toHaveText(/Answered: Left/);
     await expect(chat.getByText("Phrases left or right of Send?")).toHaveCount(1);
     await expect(chat).not.toContainText("Your ASK");
     await expect(chat).not.toContainText("ASK:");

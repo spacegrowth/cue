@@ -286,7 +286,7 @@ test.describe("a hosted lead's crew on its own page", () => {
     expect(queued.border, "queued is dashed").toBe("dashed");
     expect(sent.border, "delivered is filled, no outline").toBe("none");
     expect(queued.bg, "queued is on the panel, not filled").not.toBe(sent.bg);
-    await expect(chat.locator(".cv-you.queued .cv-meta").last()).toContainText("Queued for");
+    await expect(chat.locator(".cv-you.queued .mg-f").last()).toContainText("Queued for");
     await expect(page.locator(".cp-lead .cp-lr")).toHaveText(/^working · /);
   });
 
@@ -1020,11 +1020,12 @@ test.describe("a hosted lead's crew: the Crew switch, /crew, a task dropped on t
     await page.locator(".crew-tray .crew-car").click();
     const asked = page.locator(".cue-you", { hasText: "Asked for handoff's review" });
     await expect(asked).toHaveCount(1);
-    await expect(asked.locator(".cv-meta")).toHaveText(/^✓ From Cue · Delivered to /);
-    await expect(asked.locator(".cv-voice-line")).toHaveCount(0);
+    await expect(asked.locator(".mg-h")).toHaveText(/^Cue.*Crew$/);
+    await expect(asked.locator(".mg-st")).toHaveText(/^✓ Delivered to /);
+    await expect(asked.locator(".mg-full")).toHaveCount(0);
     await asked.locator("[data-ask-open]").first().click();
     await expect(asked.locator("[data-ask-open]").first()).toHaveText("− What Cue sent");
-    await expect(asked.locator(".cv-voice-line", { hasText: "Review your teammate handoff's work" })).toHaveCount(1);
+    await expect(asked.locator(".mg-full", { hasText: "Review your teammate handoff's work" })).toHaveCount(1);
     await expect(asked.locator('[data-ask-open$=":review"]')).toHaveText(/^\+ handoff reviewed: /);
     await expect(page.locator(".cv-agent", { hasText: "Recommendation" }), "the review isn't a message of its own").toHaveCount(0);
   });

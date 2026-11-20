@@ -134,7 +134,7 @@ function deskChat(d) {
   const rows = s ? deskChatRows(s, { extra: deskCheckRows(d).concat(deskActRows(d)), noSteps: true }) : "";
   // One that couldn't go: red, why, Retry and Edit (#422), till you pick one.
   const failed = (p) => ({ st: "failed", why: esc(p.failed), acts: ["lead_retry", "lead_edit"].map((a, n) => `<button class="q-now" data-desk-act="${a}" data-id="${esc(d.project)}" data-at="${p.at}">${n ? "Edit" : "Retry"}</button>`).join(" · ") });
-  const mine = pending.map((p) => { const hd = deskAboutHead(p); return msgRow(p.failed ? { ...failed(p), to: deskLeadName(d) } : { st: "sending", to: deskLeadName(d) }, `${p.text ? `<div class="cv-you-text">${hd?.html || ""}${esc(hd ? hd.text : p.text).replace(/\n/g, "<br>")}</div>` : ""}${p.images?.length ? `<div class="thumbs">${p.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}`); }).join("");
+  const mine = pending.map((p) => { const hd = deskAboutHead(p); return msgRow(p.failed ? { ...failed(p), to: deskLeadName(d) } : { st: "sending", to: deskLeadName(d) }, `${p.text ? `<div class="cv-you-text mg-text">${hd?.html || ""}${esc(hd ? hd.text : p.text).replace(/\n/g, "<br>")}</div>` : ""}${p.images?.length ? `<div class="thumbs">${p.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}`); }).join("");
   // Where the lead is now (working on what, its latest step, stuck, compacting), as under any session's chat.
   const where = s && sessionOf(s.session_id) ? whereNow(null, s) : "";
   const empty = !rows && !mine && !where ? `<div class="dk-empty">Tell ${esc(deskLeadName(d))} about a bug, a feature or a task. It adds them here, hands each to a session, and says why.</div>` : "";
@@ -143,10 +143,12 @@ function deskChat(d) {
 /** What the lead did on its own (#360: closed, started, sent back, moved up, took back a copy, answered a session; #420: its
  *  routing and housekeeping calls, already in its chat as its own DECIDED lines), newest first. */
 const deskActs = (d) => (d?.decisions || []).filter((x) => x.act && x.sid === deskLead(d)?.sid).sort((a, b) => b.at - a.at);
-/** One of those as a line: its words, the item's number opening its page, and why (left out with `bare`). */
-function deskActLine(x, d, bare) {
+/** One of those as a line: its words, the item's number opening its page (the family's chip with `chip`, #501), and why
+ *  (left out with `bare`). */
+function deskActLine(x, d, bare, chip) {
   const id = x.item_id || "", it = id && deskItem(d.project, id), at = x.text.indexOf(`#${id}`);
-  const num = `<button class="dk-act-it" data-desk-chk-item="${esc(id)}">${it ? deskKindIcon(it) : ""}<b class="dk-inum">#${esc(id)}</b></button>`;
+  const num = chip ? `<button class="mg-id" data-desk-chk-item="${esc(id)}">${it ? deskKindIcon(it) : ""}#${esc(id)}</button>`
+    : `<button class="dk-act-it" data-desk-chk-item="${esc(id)}">${it ? deskKindIcon(it) : ""}<b class="dk-inum">#${esc(id)}</b></button>`;
   const text = id && at >= 0 ? `${esc(x.text.slice(0, at))}${num}${esc(x.text.slice(at + id.length + 1))}` : esc(x.text);
   return bare ? text : `${text}${x.why ? `<span class="dk-act-why"> · ${esc(x.why)}</span>` : ""}`;
 }
@@ -156,8 +158,8 @@ function deskActLine(x, d, bare) {
  *  lead already said it in its reply. */
 const deskActRows = (d) => deskActs(d).filter((x) => x.act !== "call").map((x) => {
   const key = `act:${x.id}`;
-  const head = `<span class="dk-sl-r"><span class="dk-sl-h">${deskActLine(x, d, true)}</span><span class="dk-cl-age">${ago(x.at * 1000)}</span></span>`;
-  return { at: x.at * 1000, html: keyed(`<div class="dk-act dk-say dk-sl">${head}${x.why ? deskCut(key, "dk-sl-d", esc(x.why), x.why) : ""}</div>`, key) };
+  const head = `<div class="mg-line"><span class="mg-lh">${deskActLine(x, d, true, true)}</span><span class="mg-age">${ago(x.at * 1000)}</span></div>`;
+  return { at: x.at * 1000, html: keyed(`<div class="dk-act dk-ln">${head}${x.why ? deskCut(key, "mg-full", esc(x.why), x.why) : ""}</div>`, key) };
 });
 /** How long the lead's last moves stay in the Dispatcher's panel, and how many. */
 const DESK_JUST_DID_MS = 30 * 60 * 1000, DESK_JUST_DID = 3;
@@ -494,10 +496,10 @@ function deskAnswerOf(i) {
  *  answered at the page's foot, deskItemFoot), then what you answered. */
 function deskChain(i) {
   const said = deskAnswerOf(i);
-  if (said) return `<div class="dk-chain"><div class="dk-ln dk-q"><div><div class="dk-lt dk-md">${deskMd(said.q)}</div><div class="dk-ls dk-picked"><span class="sent-check">✓</span> You answered: ${esc(said.a)}</div></div></div></div>`;
+  if (said) return `<div class="dk-chain"><div class="dk-cn dk-q"><div><div class="dk-lt dk-md">${deskMd(said.q)}</div><div class="dk-ls dk-picked"><span class="sent-check">✓</span> You answered: ${esc(said.a)}</div></div></div></div>`;
   if (i.state === "needs_you") {
     const q = deskQuestion(i);
-    return q ? `<div class="dk-chain"><div class="dk-ln dk-q"><div class="dk-lt dk-md">${deskMd(q)}</div></div></div>` : "";
+    return q ? `<div class="dk-chain"><div class="dk-cn dk-q"><div class="dk-lt dk-md">${deskMd(q)}</div></div></div>` : "";
   }
   if (i.state !== "queued" || !i.after) return "";
   const first = deskItem(i.project, i.after);
@@ -505,8 +507,8 @@ function deskChain(i) {
   const who = first.holder?.kind === "crew" ? `${first.holder.name} (${deskHolderName(first.holder.lead_sid)}'s crew)` : first.crew && first.holder ? `${first.holder.name} → ${first.crew}` : first.holder?.name || "";
   const files = deskFilesShort(first.files);
   const sub = [who, first.latest, files ? `has ${files} open` : ""].filter(Boolean).join(" · ");
-  return `<div class="dk-chain"><div class="dk-ln"><i></i><div><div class="dk-lt">${esc(first.title)}</div><div class="dk-ls">${esc(sub)}</div></div></div>
-    <div class="dk-ln"><i class="wait"></i><div><div class="dk-lt">This one</div><div class="dk-ls">starts when ${esc(deskShort(first.title))} is done${i.after_why ? `: ${esc(i.after_why)}` : ""}</div></div></div></div>`;
+  return `<div class="dk-chain"><div class="dk-cn"><i></i><div><div class="dk-lt">${esc(first.title)}</div><div class="dk-ls">${esc(sub)}</div></div></div>
+    <div class="dk-cn"><i class="wait"></i><div><div class="dk-lt">This one</div><div class="dk-ls">starts when ${esc(deskShort(first.title))} is done${i.after_why ? `: ${esc(i.after_why)}` : ""}</div></div></div></div>`;
 }
 /** An item's files, short: a few names, the rest as "+N more" ("" for none). */
 function deskFilesShort(files, sep = ", ") {

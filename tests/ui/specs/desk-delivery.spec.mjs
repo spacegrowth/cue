@@ -33,8 +33,9 @@ for (const kind of ["task", "feature", "bug"]) {
     });
     // Delivered: Cue's one short line for what went (#478), "Cue · Asked <holder> · #d2 not done: “Fix the spacing”",
     // its line saying so, nothing queued about it.
-    const sent = chat.locator(".cv-cue", { hasText: "Fix the spacing" }).last();
-    await expect(sent.locator(".cv-cue-h")).toHaveText(/^Cue · Asked .+ · #d2 not done: “Fix the spacing”$/);
+    const sent = chat.locator(".mg.cue-msg", { hasText: "Fix the spacing" }).last();
+    await expect(sent.locator(".mg-h")).toContainText("#d2");
+    await expect(sent.locator(".mg-t")).toHaveText("Not done: “Fix the spacing”");
     const went = sent.locator(".msg-line");
     await expect(went).toHaveClass(/ml-delivered/);
     await expect(went).toContainText("✓ Delivered to");

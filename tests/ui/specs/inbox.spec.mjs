@@ -1059,7 +1059,7 @@ test("an ask it made reads as an ask, not its words: its reply stays what it sai
   await expect(ask.locator(".ib-ask-ans")).toHaveText("Allowed");
   // Opened, the whole command in a code block.
   await ask.click();
-  await expect(pg.locator(".ib-asks .ib-ask-code")).toHaveText(`$ ${ASK_CMD}`);
+  await expect(pg.locator(".ib-asks .mg-code")).toHaveText(`$ ${ASK_CMD}`);
   // Earlier: an ask and its answer before its reply fold into one row each; a denied one says so.
   await cue.change((st, rest) => {
     const t0 = rest[0].at_ms - 50000;

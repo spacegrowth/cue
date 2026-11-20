@@ -190,15 +190,21 @@ function inboxWhy(it) {
   return plain(firstLine(c?.text || ""));
 }
 /** A working row's lines: what you asked it (what you just sent, else its prompt), and what it's on now (or that it's
- *  quiet, or stuck). */
-function inboxRunLines(r, card = false) {
-  const s = r.s, seat = inboxSeats.get(r.sid), sent = outbox.findLast((o) => o.sid === r.sid)?.text, said = (!sent && cueMsgPlain(s.prompt, nameOf(r.sid, s.project))) || plain(sent || s.prompt);
+ *  quiet, or stuck). `html`: as markup, Cue's message and what waits to go in the message family's plain line
+ *  (.mg-plain, #501); otherwise as text. */
+function inboxRunLines(r, card = false, html = false) {
+  const s = r.s, seat = inboxSeats.get(r.sid), sent = outbox.findLast((o) => o.sid === r.sid)?.text, to = nameOf(r.sid, s.project);
+  const cue = !sent && cueMsgPlain(s.prompt, to), said = cue || plain(sent || s.prompt);
   const answered = r.it && answering.has(r.it.id) && !sent ? `You answered: ${r.it.kind === "waiting" ? inboxEndQuestion(finishedText(r.it)) || "its reply" : inboxAskSubject(r.it)}` : "";
-  const subj = answered || (said ? (sent || seat?.from === "need" ? `You: “${said}”` : said) : "Working");
+  const you = !!(said && (sent || seat?.from === "need"));
+  const subj = answered || (said ? (you ? `You: “${said}”` : said) : "Working");
   const stuck = s.stuck_ms && !s.compacting_ms ? `No new output for ${ago(s.stuck_ms)}` : "";
   const busy = s.state === "working" || s.state === "agent" || s.compacting_ms;
-  const line = s.compacting_ms ? "Compacting…" : preStart(s) ? `Not started: ${preStart(s)}` : stuck || (card ? "" : inboxPendingLine(s)) || (!busy ? (!card && inboxTaken(s)) || "Sent" : s.state === "agent" ? idleNote(s) : s.doing || "Thinking");
-  return [subj, line];
+  const pending = card ? "" : inboxPendingLine(s);
+  const line = s.compacting_ms ? "Compacting…" : preStart(s) ? `Not started: ${preStart(s)}` : stuck || pending || (!busy ? (!card && inboxTaken(s)) || "Sent" : s.state === "agent" ? idleNote(s) : s.doing || "Thinking");
+  if (!html) return [subj, line];
+  const cueHtml = !answered && !you && cue ? `<span class="mg-plain">${cueMsgPlainHtml(s.prompt, to)}</span>` : "";
+  return [cueHtml || esc(subj), !s.compacting_ms && !preStart(s) && !stuck && pending ? inboxPendingLine(s, true) : esc(line)];
 }
 /** Your last message to session `s`, once it took it: "Delivered to <name> 14:12" (#422); "" before that. */
 function inboxTaken(s) {
@@ -213,8 +219,9 @@ function inboxDoneLines(r) {
   const subj = ended ? `${ended}${said ? `: ${said}` : ""}` : said || "Finished";
   return [subj, inboxChanged(s) || ""];
 }
-/** A row's two lines: [subject, the useful line under it]. */
-function inboxLines(r) {
+/** A row's two lines: [subject, the useful line under it]; `html`: as markup (escaped, a message's words in .mg-plain). */
+function inboxLines(r, html = false) {
+  if (html) return r.kind === "run" ? inboxRunLines(r, false, true) : inboxLines(r).map(esc);
   if (r.kind === "ask") return [inboxAskSubject(r.it), inboxWhy(r.it) || inboxSoFar(r) || (r.it.kind === "question" ? inboxQuestionLine(r.it) : "")];
   if (r.kind === "turn") return [r.it.interrupted ? "Interrupted: it stopped mid-turn" : inboxEndQuestion(finishedText(r.it)) || inboxLastLine(finishedText(r.it)) || "Your turn", inboxSoFar(r)];
   if (r.kind === "crew") return [inboxCrewSubject(r.sid), inboxCrewLine(r.sid)];
@@ -273,14 +280,14 @@ const inboxWhen = (ms) => new Date(ms).toLocaleString([], { weekday: "short", ho
 /** One row: dot, name, badges and subject; the useful line; the time (a pin, a meter) at the right; Pin, Later and
  *  Snooze on hover; a working one's bar along its foot. */
 function inboxRowHtml(r) {
-  const { sid, s, kind } = r, seat = inboxSeats.get(sid), [subj, line] = inboxLines(r);
+  const { sid, s, kind } = r, seat = inboxSeats.get(sid), [subj, line] = inboxLines(r, true);
   // Its sink plays once, from when it came in: a redraw carries on from there rather than starting it over.
   const sinking = kind === "run" && seat?.from === "need" && now() - seat.at < INBOX_SINK_MS;
-  const under = inboxSnoozed(s) ? `Back ${inboxWhen(s.snooze_ms)}${line ? ` · ${line}` : ""}` : line;
+  const under = inboxSnoozed(s) ? `Back ${esc(inboxWhen(s.snooze_ms))}${line ? ` · ${line}` : ""}` : line;
   const side = `<span class="ib-time">${ago(r.at)}</span>${inboxPinned(s) ? `<span class="ib-pin">${PIN_ICON}</span>` : ""}${inboxFull(s) ? inboxMeter(s) : ""}`;
   return `<div class="ib-row ${kind} ${inboxLater(s) ? "later" : ""} ${sinking ? "sinking" : ""} ${(inboxSid || inboxLast) === sid ? "on" : ""}" role="button" tabindex="0" data-inbox-open="${esc(sid)}" style="${projStyle(r.project)}${sinking ? `;animation-delay:-${now() - seat.at}ms` : ""}">`
-    + `<span class="ib-dot">${inboxDot(r)}</span><span class="ib-l1">${nameSpan(r.sid, r.project, "ib-name")}${inboxBadges(r)}<span class="ib-subj">${esc(subj)}</span></span>`
-    + `<span class="ib-l2">${esc(under)}</span>${inboxForHtml(r)}<span class="ib-side">${side}</span>`
+    + `<span class="ib-dot">${inboxDot(r)}</span><span class="ib-l1">${nameSpan(r.sid, r.project, "ib-name")}${inboxBadges(r)}<span class="ib-subj">${subj}</span></span>`
+    + `<span class="ib-l2">${under}</span>${inboxForHtml(r)}<span class="ib-side">${side}</span>`
     + `<span class="ib-acts ${inboxSnoozeAt === `row:${sid}` ? "open" : ""}">${inboxActs(sid, s, `row:${sid}`)}</span>${kind === "run" && s ? inboxBar(s) : ""}</div>`;
 }
 /** Whether a collapsible Inbox section is open (remembered). */

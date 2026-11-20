@@ -167,9 +167,9 @@ test("Cue's own kept crew message is Cue's bubble in the future tense, not yours
   await cue.change((st) => {
     st.sessions.find((x) => x.session_id === "eng").held = { role: "you", text: 'Send your teammate docs its review\'s findings with SendMessage (to: "docs") and let it fix them; don\'t fix them yourself:\n1. a.md:1 — fix', at_ms: Date.now(), images: [] };
   });
-  const line = page.locator(".active-pane .cv-you.cue-you").last();
+  const line = page.locator(".active-pane .mg.cue-you").last();
   await expect(line).toContainText("Will send docs's findings back to it");
-  await expect(line).toContainText("From Cue · Not sent yet · Cue sends it when its turn ends");
+  await expect(line).toContainText("Not sent yet · Cue sends it when its turn ends");
   await expect(page.locator(".active-pane .cv-you.held")).toHaveCount(0);
   await line.locator('button[data-act="held-now"]').click();
   await cue.called("send_held_now", { sessionId: "eng" });

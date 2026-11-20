@@ -108,7 +108,7 @@ const OPEN_REPLIES = 3;
 function runHereBtn(via, s) {
   const line = /run (.+?) in a terminal in /.exec(via)?.[1];
   if (!line || !s?.cwd || s.machine) return "";
-  return ` <button class="cv-pill run-here" data-act="run-here" data-line="${esc(line)}" data-cwd="${esc(s.cwd)}">Run it in a terminal</button>`;
+  return ` <button class="mg-btn run-here" data-act="run-here" data-line="${esc(line)}" data-cwd="${esc(s.cwd)}">Run it in a terminal</button>`;
 }
 
 /** A crew member's review (the lead's reply to Cue's request) folds into that request's bubble: not a message of its
@@ -220,10 +220,12 @@ function chatAgentHtml(c, e, n) {
   // A page's own split of a reply (the Desk's item chat: its own lines out, a stop hook's checklist folded under it).
   const split = page?.reply?.(e, key);
   const said = addOn.reply(sid, split ? split.text : e.text), listen = sid && proseWords(said.text, page?.lines) >= LISTEN_WORDS;
-  return `<div class="cv-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}" data-at="${e.at_ms}"><div class="cv-meta">${esc(agentName(harness))}${machTag(it?.machine || s?.machine)} · ${ago(e.at_ms)} ago${n === lastAgent ? toldMeta(s) : ""}</div>
-      <div class="msg cv-text">${md(said.text, { runIn: s?.session_id, lines: page?.lines })}</div>${split?.after || ""}${said.after}${thumbs(e.images)}${localImages(e.text)}
-      <div class="cv-acts">${listen ? listenBtn(key) : ""}${listen && paged ? `<button class="cv-pill" data-read="${esc(key)}">${BOOK_ICON}Read</button>` : ""}${foldable ? `<button class="cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}${page?.noActs ? "" : `<button class="cv-fwd" data-fwd="${esc(key)}">↗ Send to…</button>`}</div>${follow}</div>`;
+  return `<div class="cv-agent mg-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}" data-at="${e.at_ms}"><div class="mg-h">${mgAgentHead(harness, it?.machine || s?.machine, e.at_ms)}${n === lastAgent ? toldMeta(s) : ""}</div>
+      <div class="msg mg-text cv-text">${md(said.text, { runIn: s?.session_id, lines: page?.lines })}</div>${split?.after || ""}${said.after}${thumbs(e.images)}${localImages(e.text)}
+      <div class="mg-f cv-acts">${listen ? listenBtn(key) : ""}${listen && paged ? `<button class="mg-btn" data-read="${esc(key)}">${BOOK_ICON}Read</button>` : ""}${foldable ? `<button class="mg-lk cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}${page?.noActs ? "" : `<button class="mg-btn cv-fwd" data-fwd="${esc(key)}">↗ Send to…</button>`}</div>${follow}</div>`;
 }
+/** The head row over an agent's words (#501, messages.css .mg-h): "Claude Code · 6m ago", its machine beside the name. */
+const mgAgentHead = (harness, machine, at) => `<span class="mg-who">${esc(agentName(harness))}</span>${machTag(machine)} · ${ago(at)} ago`;
 /** Sent while it worked: kept in Cue till the turn ends (yours to take back, Edit or Esc; to drop, Cancel; or to send
  *  now), or queued in its agent. Each sits where you wrote it, among the rest by time, keyed as its thread copy will
  *  be once it goes (`y:` and when you wrote it, the hub's written_ms): the same bubble, only its line changing, never
@@ -242,9 +244,9 @@ function chatWaitRows(s, page, K) {
  *  sent and why. `key`: its row's key in the chat. */
 function outboxRow(o, s, key) {
   const pics = o.images.length ? `<div class="thumbs">${o.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : "";
-  const inner = `<div class="cv-you-text">${esc(o.text).replace(/\n/g, "<br>")}</div>${pics}`, attrs = ` data-key="${esc(key)}"`;
+  const inner = `<div class="cv-you-text mg-text">${esc(o.text).replace(/\n/g, "<br>")}</div>${pics}`, attrs = ` data-key="${esc(key)}"`;
   // A "/model" line: Cue set the model, nothing went to the agent.
-  if (/^not sent: Model set to /.test(o.via || "")) return `<div class="cv-you"${attrs}>${inner}<div class="cv-meta">${esc(o.via.slice(10))}</div></div>`;
+  if (/^not sent: Model set to /.test(o.via || "")) return `<div class="cv-you mg-you"${attrs}>${inner}<div class="mg-f"><span class="mg-st">${esc(o.via.slice(10))}</span></div></div>`;
   const m = !o.via ? { st: "sending", note: esc(sendingMeta(o.sid)) } : /^kept in Cue/.test(o.via) ? { st: "held" }
     : /^not sent: /.test(o.via) ? { st: "failed", why: esc(o.via.slice(10)), extra: runHereBtn(o.via, s) }
     : /^queued/.test(o.via) ? { st: "queued" } : { st: "delivered", at: o.at, extra: ` · via ${esc(o.via)}` };
@@ -259,7 +261,7 @@ const msgTaken = (e) => (e.delivery || []).find((x) => String(x.what || "").star
 function laterOwn(e, page, key, meta) {
   e = deskSaidE(e);
   const hand = typeof deskHandHtml === "function" && deskHandHtml(e, meta);
-  if (hand) return hand.replace(/^<div class="cv-you dk-hand"/, `<div class="cv-you dk-hand" data-key="${key}"`);
+  if (hand) return hand.replace(/^<div class="mg-you mg-hand"/, `<div class="mg-you mg-hand" data-key="${key}"`);
   const own = page?.you?.(e);
   return own ? `<div class="cv-later" data-key="${key}">${own}${meta}</div>` : "";
 }
@@ -306,7 +308,7 @@ function sendAtRow(s) {
   const resets = s.limit?.resets_ms ? ` (${new Date(s.limit.resets_ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})` : "";
   const when = l.failed ? `Couldn't send it: ${esc(l.failed)}` : l.at_ms ? `Not sent yet · Cue sends it ${day} at ${hm}` : `Not sent yet · Cue sends it when your usage limit resets${resets}`;
   const acts = `${l.at_ms ? `<button class="q-now" data-act="send-at-edit" data-sid="${sid}">Edit</button> · ` : ""}<button class="q-now" data-act="send-at-x" data-sid="${sid}">Cancel</button> · <button class="q-now" data-act="send-at-now" data-sid="${sid}">Send now</button>`;
-  return `<div class="cv-you queued held" data-key="send-at">${yourBubble({ role: "you", text: l.text, at_ms: l.at_ms || Date.now() }, `${s.session_id}:send-at`, "", true)}<div class="cv-meta">${when} · ${acts}</div></div>`;
+  return `<div class="cv-you mg-you queued held" data-key="send-at">${yourBubble({ role: "you", text: l.text, at_ms: l.at_ms || Date.now() }, `${s.session_id}:send-at`, "", true)}<div class="mg-f"><span class="mg-st${l.failed ? " failed" : ""}">${when}</span><span class="mg-acts">${acts}</span></div></div>`;
 }
 /** In the chat where a restart (after an MCP change) ended: back, with which servers and how long it took,
  *  or why it didn't finish. The latest one also says how each server did, once Claude Code has said
@@ -356,44 +358,44 @@ function waitingFor(it, s) {
 /** One line under the chat: where the session is now. */
 function whereNow(it, s) {
   // Started in a folder Claude Code doesn't trust yet: it's asking in its terminal before it does anything.
-  if (s?.trust_ms) return `<div class="cv-status stuck"><span class="lim-dot"></span><span><b>Claude Code is asking whether you trust ${esc(homeless(s.cwd) || "this folder")}.</b> It won't start until you answer.</span><button class="btn small primary" data-act="trust" data-sid="${esc(s.session_id)}">Trust folder</button></div>`;
+  if (s?.trust_ms) return `<div class="mg-status cv-status stuck"><span class="lim-dot"></span><span><b>Claude Code is asking whether you trust ${esc(homeless(s.cwd) || "this folder")}.</b> It won't start until you answer.</span><button class="btn small primary" data-act="trust" data-sid="${esc(s.session_id)}">Trust folder</button></div>`;
   // Waiting for Enter on a screen before Claude Code starts ("Security notes … Press Enter to continue").
-  if (s?.enter_ms) return `<div class="cv-status stuck"><span class="lim-dot"></span><span><b>Claude Code is waiting for Enter in its terminal before it starts.</b> Nothing runs until then.</span><button class="btn small primary" data-act="continue-start" data-sid="${esc(s.session_id)}">Continue</button></div>`;
+  if (s?.enter_ms) return `<div class="mg-status cv-status stuck"><span class="lim-dot"></span><span><b>Claude Code is waiting for Enter in its terminal before it starts.</b> Nothing runs until then.</span><button class="btn small primary" data-act="continue-start" data-sid="${esc(s.session_id)}">Continue</button></div>`;
   // Working, but Claude Code can't reach the API (or the proxy in front of it) and keeps trying: minutes of a
   // spinner in its terminal otherwise. What failed, which try; Stop ends the turn instead of waiting it out.
   if (s?.state === "working" && s.retry) {
     const r = s.retry, head = r.network ? "Can't reach the API." : "The API returned an error.";
-    return `<div class="cv-status stuck"><span class="lim-dot"></span><span><b>${head}</b> ${esc(r.error)}. Claude Code is trying again${r.max ? ` (${r.attempt} of ${r.max})` : ""}; messages you send wait until it gets through or gives up.</span><button class="btn small deny" data-act="interrupt" data-sid="${esc(s.session_id)}">Stop</button></div>`;
+    return `<div class="mg-status cv-status stuck"><span class="lim-dot"></span><span><b>${head}</b> ${esc(r.error)}. Claude Code is trying again${r.max ? ` (${r.attempt} of ${r.max})` : ""}; messages you send wait until it gets through or gives up.</span><button class="btn small deny" data-act="interrupt" data-sid="${esc(s.session_id)}">Stop</button></div>`;
   }
   // Working, but nothing new from it in a while: a command waiting for input in its terminal, or hung.
-  if (s?.state === "working" && s.stuck_ms) return `<div class="cv-status stuck"><span class="lim-dot"></span><span><b>No new output for <span data-ago="${s.stuck_ms}">${ago(s.stuck_ms)}</span>.</b> ${esc((s.doing || "Thinking").replace(/…$/, ""))}. If it's waiting for input, it's in its terminal.</span></div>`;
+  if (s?.state === "working" && s.stuck_ms) return `<div class="mg-status cv-status stuck"><span class="lim-dot"></span><span><b>No new output for <span data-ago="${s.stuck_ms}">${ago(s.stuck_ms)}</span>.</b> ${esc((s.doing || "Thinking").replace(/…$/, ""))}. If it's waiting for input, it's in its terminal.</span></div>`;
   // Compact (⋯) typed /compact: it's summarizing, until Claude Code says it's done.
-  if (s?.compacting_ms) return `<div class="cv-status"><span class="dot-live"></span>Compacting: summarizing the conversation to free up context<span class="dim"> · <span data-ago="${s.compacting_ms}">${ago(s.compacting_ms)}</span></span></div>`;
+  if (s?.compacting_ms) return `<div class="mg-status cv-status"><span class="dot-live"></span>Compacting: summarizing the conversation to free up context<span class="dim"> · <span data-ago="${s.compacting_ms}">${ago(s.compacting_ms)}</span></span></div>`;
   // It finished compacting (until the next turn starts).
-  if (s?.compacted_ms && s.state !== "working") return `<div class="cv-status"><span class="ok-dot"></span>Compacted: the conversation was summarized and its context freed<span class="dim"> · <span data-ago="${s.compacted_ms}">${ago(s.compacted_ms)}</span> ago</span></div>`;
+  if (s?.compacted_ms && s.state !== "working") return `<div class="mg-status cv-status"><span class="ok-dot"></span>Compacted: the conversation was summarized and its context freed<span class="dim"> · <span data-ago="${s.compacted_ms}">${ago(s.compacted_ms)}</span> ago</span></div>`;
   // What it's doing right now (its latest step), else the prompt it's on.
-  if (s?.state === "working" && s.doing) return `<div class="cv-status"><span class="dot-live"></span><span class="cv-what">${esc(s.doing)}</span><span class="dim"> · <span data-ago="${s.doing_ms}">${ago(s.doing_ms)}</span></span>${tipFor(it, s, "working")}</div>`;
+  if (s?.state === "working" && s.doing) return `<div class="mg-status cv-status"><span class="dot-live"></span><span class="cv-what">${esc(s.doing)}</span><span class="dim"> · <span data-ago="${s.doing_ms}">${ago(s.doing_ms)}</span></span>${tipFor(it, s, "working")}</div>`;
   // Nothing in its transcript yet (it's thinking; Claude Code writes a message once it's whole): a live
   // count since the turn started, so a long think doesn't look stuck.
   const prompt = (typeof cueMsgPlain === "function" && cueMsgPlain(s?.prompt, msgTo(s))) || deskSaid(s?.prompt);
-  if (s?.state === "working") return `<div class="cv-status"><span class="dot-live"></span><span class="cv-what">Working${prompt ? ` on: ${esc(prompt.length > 120 ? prompt.slice(0, 120) + "…" : prompt)}` : ""}</span><span class="dim"> · <span data-ago="${s.since_ms}">${ago(s.since_ms)}</span></span>${tipFor(it, s, "working")}</div>`;
-  if (s?.state === "waiting" || s?.state === "deciding") return `<div class="cv-status"><i class="sw z live"></i><span class="cv-what">Waiting on you for ${esc(waitingFor(it, s))}</span><span class="dim"> · ${ago(s.since_ms)}</span>${tipFor(it, s, "waiting")}</div>`;
+  if (s?.state === "working") return `<div class="mg-status cv-status"><span class="dot-live"></span><span class="cv-what">Working${prompt ? ` on: ${esc(prompt.length > 120 ? prompt.slice(0, 120) + "…" : prompt)}` : ""}</span><span class="dim"> · <span data-ago="${s.since_ms}">${ago(s.since_ms)}</span></span>${tipFor(it, s, "working")}</div>`;
+  if (s?.state === "waiting" || s?.state === "deciding") return `<div class="mg-status cv-status"><i class="sw z live"></i><span class="cv-what">Waiting on you for ${esc(waitingFor(it, s))}</span><span class="dim"> · ${ago(s.since_ms)}</span>${tipFor(it, s, "waiting")}</div>`;
   // A lead whose teammates wait on you, or that waits on teammates at work: named, not "1 background agent".
   const crew = s?.state === "agent" && s.session_id ? crewWaitLine(s.session_id) : "";
-  if (crew) return `<div class="cv-status">${/^<span class="cv-what">Waiting on you/.test(crew) ? `<i class="sw z live"></i>` : ""}${crew}${tipFor(it, s, "working")}</div>`;
-  if (s?.state === "agent") return `<div class="cv-status">${s.helpers ? `<span class="dot-live"></span><span class="cv-what">Waiting on ${esc(s.driven_by)}</span>` : `<span class="cv-what">Idle, waiting on ${esc(s.driven_by || "another agent")}</span>`}${tipFor(it, s, "working")}</div>`;
+  if (crew) return `<div class="mg-status cv-status">${/^<span class="cv-what">Waiting on you/.test(crew) ? `<i class="sw z live"></i>` : ""}${crew}${tipFor(it, s, "working")}</div>`;
+  if (s?.state === "agent") return `<div class="mg-status cv-status">${s.helpers ? `<span class="dot-live"></span><span class="cv-what">Waiting on ${esc(s.driven_by)}</span>` : `<span class="cv-what">Idle, waiting on ${esc(s.driven_by || "another agent")}</span>`}${tipFor(it, s, "working")}</div>`;
   if (s?.state === "limited" && s.limit) {
     const l = s.limit, what = prompt ? `“${esc(prompt.length > 80 ? prompt.slice(0, 80) + "…" : prompt)}”` : "Your last message";
-    if (lifted(l)) return `<div class="cv-status limit"><span class="lim-dot back"></span><span><b>${esc(scopeName(l))} is back.</b> ${what} didn't run.</span><button class="btn small" data-usage="resend-one" data-sid="${esc(s.session_id)}">Resend</button></div>`;
+    if (lifted(l)) return `<div class="mg-status cv-status limit"><span class="lim-dot back"></span><span><b>${esc(scopeName(l))} is back.</b> ${what} didn't run.</span><button class="btn small" data-usage="resend-one" data-sid="${esc(s.session_id)}">Resend</button></div>`;
     const when = l.resets_ms ? ` · resets ${clockAt(l.resets_ms)}${l.resets_ms - now() < 20 * 3600000 ? `, in ${untilText(l.resets_ms - now())}` : ""}` : "";
     const head = l.scope === "all" ? "Out of usage" : `${esc(l.scope)} used up`;
     const tail = l.scope === "all" ? "Cue will tell you when it resets." : "Switch models with /model to keep going.";
-    return `<div class="cv-status limit"><span class="lim-dot"></span><span><b>${head}</b>${when}. ${what} didn't run. ${tail}</span></div>`;
+    return `<div class="mg-status cv-status limit"><span class="lim-dot"></span><span><b>${head}</b>${when}. ${what} didn't run. ${tail}</span></div>`;
   }
   // Cue quit (restarted, reinstalled) while a session it hosts was mid-turn: that turn ended there, not by you.
-  if (s?.state === "stopped" && s.cut_by_restart) return `<div class="cv-status">Cue restarted mid-turn, so that turn ended · your next message starts it again</div>`;
-  if (s?.state === "stopped") return `<div class="cv-status">Stopped by you · it's at its prompt</div>`;
-  if (!s && it && !isPending(it)) return `<div class="cv-status">This session has ended.</div>`;
+  if (s?.state === "stopped" && s.cut_by_restart) return `<div class="mg-status cv-status">Cue restarted mid-turn, so that turn ended · your next message starts it again</div>`;
+  if (s?.state === "stopped") return `<div class="mg-status cv-status">Stopped by you · it's at its prompt</div>`;
+  if (!s && it && !isPending(it)) return `<div class="mg-status cv-status">This session has ended.</div>`;
   return "";
 }
 /** The ask lines in a chat's thread (askLnOf), each with the answer right after it: `asks` (index → { ask, answer },
@@ -419,18 +421,18 @@ function chatAsks(ex) {
 const chatDecisionLine = ({ text, no }, at, cls = no ? "no" : "") => `<div class="cv-result ${cls}"><span class="sent-check">${no ? "✕" : "✓"}</span><span>${esc(text)}</span><span class="grow"></span><span class="dim nowrap">${ago(at)} ago</span></div>`;
 /** Lines of a command shown before it folds; a longer one opens whole with "Show all" (openMsgs, as a long reply). */
 const CHAT_ASK_LINES = 4;
-/** An ask the agent made, as the chat draws it: "Asked to run" (or what it asked), the command in a code block (folded
- *  to a few lines when long), and how you answered: beside "Asked to run", under a question (which wraps as text), in
- *  the look of the result line (.cv-result). */
+/** An ask the agent made, as the chat draws it (#501, messages.css .mg.ask): the family's card outlined in deny, its head
+ *  "Claude Code · ASKS YOU · 6m ago", what it asked as its words ("Asked to run", "Asked: …"), the command in a code
+ *  block (folded to a few lines when long), and how you answered as its foot's status, the card back to plain. */
 function chatAskHtml(key, e, { ask, answer }, harness, machine) {
   const lines = ask.code.split("\n"), long = lines.length > CHAT_ASK_LINES, open = openMsgs.has(key);
   const shown = long && !open ? lines.slice(0, CHAT_ASK_LINES).join("\n") : ask.code;
-  const code = !ask.code ? "" : `<pre class="cv-ask-code ${long && !open ? "folded" : ""}"><code>${ask.tool === "Bash" ? `<span class="cv-ask-ps">$ </span>` : ""}${esc(shown)}</code></pre>`;
-  const more = long ? `<button class="cv-more" data-msg="${esc(key)}">${open ? "Fold" : `Show all ${lines.length} lines`}</button>` : "";
-  const what = ask.tool ? "" : `<span class="cv-ask-q">${esc(ask.what)}</span>`;
-  const ans = answer ? `<span class="cv-ask-ans ${answer.no ? "no" : ""}"><span class="sent-check">${answer.no ? "✕" : "✓"}</span>${esc(answer.text)}</span>` : "";
-  return `<div class="cv-ask"><div class="cv-meta">${esc(agentName(harness))}${machTag(machine)} · ${ago(e.at_ms)} ago</div>
-    <div class="cv-ask-row"><span class="cv-ask-head">${esc(ask.head)}${ask.tool ? "" : ":"}</span>${what}${ask.tool ? `<span class="grow"></span>${ans}` : ""}</div>${ask.tool ? "" : ans}${code}${more}</div>`;
+  const code = !ask.code ? "" : `<pre class="mg-code ask-code ${long && !open ? "folded" : ""}"><code>${ask.tool === "Bash" ? `<span class="ask-ps">$ </span>` : ""}${esc(shown)}</code></pre>`;
+  const more = long ? `<span class="mg-acts"><button class="mg-lk cv-more" data-msg="${esc(key)}">${open ? "Fold" : `Show all ${lines.length} lines`}</button></span>` : "";
+  const what = ask.tool ? "" : ` <span class="ask-q">${esc(ask.what)}</span>`;
+  const st = answer ? `<span class="mg-st ask-ans${answer.no ? " failed no" : ""}"><span class="mg-mark" aria-hidden="true">${answer.no ? "✕" : "✓"}</span> ${esc(answer.text)}</span>` : "";
+  return `<div class="cv-ask mg ask${answer ? " answered" : ""}"><div class="mg-h">${mgAgentHead(harness, machine, e.at_ms).replace(/ · (.*)$/, `<span class="mg-tag">${answer ? "Asked you" : "Asks you"}</span><span class="mg-age">$1</span>`)}</div>
+    <div class="mg-t whole"><b class="ask-head">${esc(ask.head)}${ask.tool ? "" : ":"}</b>${what}</div>${code}${st || more ? `<div class="mg-f">${st}${more}</div>` : ""}</div>`;
 }
 /** After a decision: what you chose. Replies need no line, they're already in the chat. */
 function resultLine(it) {
@@ -586,12 +588,12 @@ function quietPane() {
 }
 /** One turn of a quiet session: your message, its steps, its reply (all from the transcript). */
 function quietTurn(sid, t, live, latest, harness = "claude") {
-  const you = t.prompt ? `<div class="cv-you" data-key="y:${t.at_ms}"><div class="cv-you-text">${linkify(esc(t.prompt)).replace(/\n/g, "<br>")}</div><div class="cv-meta">You · ${ago(t.at_ms)} ago</div></div>` : "";
+  const you = t.prompt ? `<div class="cv-you mg-you" data-key="y:${t.at_ms}"><div class="cv-you-text mg-text">${linkify(esc(t.prompt)).replace(/\n/g, "<br>")}</div><div class="mg-f"><span class="mg-st">You · ${ago(t.at_ms)} ago</span></div></div>` : "";
   // Its reply: the words after its last step (the steps leave a finished turn's last words to the chat).
   const tail = [];
   if (!live) for (let k = t.items.length - 1; k >= 0 && t.items[k].t === "say"; k--) tail.unshift(t.items[k]);
   const said = tail.length ? addOn.reply(sid, tail.map((x) => x.text).join("\n\n")) : null;
-  const reply = said ? `<div class="cv-agent" data-key="a:${t.at_ms}"><div class="cv-meta">${esc(agentName(harness))} · ${ago(tail.at(-1).at_ms)} ago</div><div class="msg cv-text">${md(said.text)}</div>${said.after}</div>` : "";
+  const reply = said ? `<div class="cv-agent mg-agent" data-key="a:${t.at_ms}"><div class="mg-h">${mgAgentHead(harness, null, tail.at(-1).at_ms)}</div><div class="msg mg-text cv-text">${md(said.text)}</div>${said.after}</div>` : "";
   return you + stepsBlock(sid, t, live, latest) + reply;
 }
 

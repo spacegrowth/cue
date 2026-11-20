@@ -78,7 +78,7 @@ test("mini: the chat's buttons work as in Cue's window", async ({ cue, page }) =
   await cue.called("respond", { id: "n1793984390004" });
   await showCrew(page, false);
   await page.locator(".m-chat .cue-you", { hasText: "Asked for handoff's review" }).locator('[data-ask-open$=":review"]').click();
-  await page.locator(".m-chat .cue-you .cv-voice-line", { hasText: "Recommendation" }).waitFor();
+  await page.locator(".m-chat .cue-you .mg-full", { hasText: "Recommendation" }).waitFor();
   await page.locator('.m-chat .quick .qp[data-phrase="Go ahead"]').click();
   await cue.called("send_to_session", { sessionId: "lead", text: "Go ahead" });
   // Its box is Cue's: Enter sends what's typed; Esc folds the chat back into the rail's tab.

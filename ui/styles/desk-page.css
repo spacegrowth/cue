@@ -8,61 +8,48 @@
 
 /* The lead's own lines in its chat (desk/lead.js deskLineHtml): ITEM, ROUTE, DONE, CONTEXT, DESIGNS as quiet centred
    lines, item numbers in bold with their kind's icon; no box, no chip, no edge color. */
-.msg .own-lines { margin: 8px 0; font-size: 12.5px; user-select: text; -webkit-user-select: text; }
-.dk-say { padding: 3px 0; line-height: 1.45; overflow-wrap: anywhere; }
+.msg .own-lines { margin: 8px 0; user-select: text; -webkit-user-select: text; }
+/* #501: the lead's lines are messages.css .mg-line rows (body size, the item as the chip), what opens under one its
+   .mg-full; a NOTE, Ready to check, Cue's notes (new items, not closed, stopped, TO LEAD), another Desk's message and a
+   hand-off are its .mg card. Only what the family doesn't have is here. */
+.dk-ln .mg-full { margin: 2px 0 4px; background: var(--panel-2); }
+.dk-ln-it { all: unset; cursor: pointer; color: var(--ink); }
+.dk-ln-it:hover { text-decoration: underline; }
+.mg-line .dk-dlink { font-size: inherit; }
+.mg-id > .dk-kic, .mg-chip > .dk-kic { width: 11px; height: 11px; margin: 0; vertical-align: 0; color: inherit; }
+.mg-chip .pdot { width: 8px; height: 8px; }
+.dk-chat .mg { margin: 4px 0; user-select: text; -webkit-user-select: text; }
+.dk-chat .mg button { user-select: none; -webkit-user-select: none; }
+.mg .dk-md > :first-child { margin-top: 0; }
+.mg .dk-md > :last-child { margin-bottom: 0; }
+.mg .dk-mq { color: var(--muted); }
+/* A new item in NEW ITEMS (deskNewCard): its line, the words it was added with, a quiet line, its pictures. */
+/* Your new items (NEW ITEMS, from you): the family's card where your messages are, at the right, as wide as it says (#167). */
+.mg[data-mg="new"] { align-self: flex-end; width: fit-content; max-width: min(100%, 70%, 520px); }
+.dk-ni { cursor: pointer; border-radius: var(--radius-tag); }
+.dk-ni:hover .mg-lh { color: var(--link, var(--accent)); }
+.dk-ni:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dk-ni + .dk-ni { margin-top: 4px; }
+.dk-ni-w { color: var(--muted); white-space: pre-line; }
+.dk-ni-s { font: var(--mg-meta); color: var(--muted); overflow-wrap: anywhere; }
+.dk-ni .thumbs { margin-top: 6px; gap: 6px; flex-wrap: nowrap; overflow-x: auto; }
+.dk-ni .thumb { flex: none; width: 40px; height: 40px; box-sizing: border-box; border: 1px solid var(--line); border-radius: 6px; box-shadow: none; }
+/* A stopped item's files not committed, folded in the card's foot. */
+.dk-mfiles summary { cursor: pointer; width: fit-content; user-select: none; -webkit-user-select: none; }
+.dk-mfiles summary:hover { color: var(--ink); }
+.dk-mfl { margin: 4px 0 0 14px; font: 400 var(--type-pill) / 1.6 var(--mono); overflow-wrap: anywhere; }
 /* A centred line between thin rules (.dk-cl): the lead's lines, Cue's notes, a check you made. */
 .dk-cl { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
 .dk-cl::before, .dk-cl::after { content: ""; flex: 1; min-width: 16px; height: 1px; background: var(--line); }
 .dk-cl-t { flex: 0 1 auto; max-width: 80%; text-align: center; overflow-wrap: anywhere; }
 .dk-cl-t b { color: var(--ink); font-weight: 650; }
-.dk-cl-age { font-family: var(--mono); font-size: 11px; color: var(--muted); }
 .dk-inum { font-weight: 650; color: var(--ink); }
-b.dk-say-t, .dk-say-t { font-weight: 650; color: var(--ink); }
-.dk-say-id { font-weight: 600; color: var(--ink); }
-.dk-say-s .dk-say-id { font-weight: 500; color: inherit; }
-.dk-say-w { font-weight: 400; color: var(--muted); }
-.dk-say-s { color: var(--muted); }
-/* What Cue told the lead of new items or a DONE it couldn't close (desk/lead.js deskNewItems, deskDoneNotes): a
-   centred line an item, "Cue · added [kind] Task #72 title · …  1h". */
-.dk-news { margin: 8px 0; display: flex; flex-direction: column; gap: 6px; }
-.dk-new { user-select: text; -webkit-user-select: text; }
-.dk-new button { user-select: none; -webkit-user-select: none; }
-.dk-new-t { color: var(--ink); }
-.dk-new-tt { color: var(--muted); }
-.dk-new-t:hover, .dk-new-t:hover .dk-new-tt { color: var(--link, var(--accent)); }
-/* A new item from Cue (deskNewItems): a small card, no fill, no edge color: its kind's icon, number in bold and title,
-   a muted line under them, then its pictures as small thumbnails; a click on it opens the item. */
-.dk-nc { align-self: flex-end; width: fit-content; max-width: min(100%, 70%, 520px); min-width: 0; box-sizing: border-box; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 12.5px; line-height: 1.45; color: var(--ink); cursor: pointer; }
-.dk-nc:hover { border-color: color-mix(in srgb, var(--ink) 25%, var(--line)); }
 /* #203: icon and number on one line, the title under them across the card's width, never a column beside the icon. */
-.dk-nc1 { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--muted); }
-.dk-nc1 .dk-kic { margin: 0; }
-.dk-nc1 .dk-inum { flex: none; font-weight: 650; color: var(--ink); white-space: nowrap; }
-.dk-nc1 .dk-cl-age { flex: none; margin-left: auto; padding-left: 12px; font-size: 11px; }
-.dk-nc-t { margin-top: 3px; font-weight: 600; overflow-wrap: anywhere; }
-.dk-nc:hover .dk-nc-t { color: var(--link, var(--accent)); }
-.dk-nc-w { margin-top: 3px; color: var(--muted); white-space: pre-line; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
-.dk-nc2 { margin-top: 4px; font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
-.dk-nc .thumbs { margin-top: 6px; gap: 6px; flex-wrap: nowrap; overflow-x: auto; }
-.dk-nc .thumb { flex: none; width: 40px; height: 40px; box-sizing: border-box; border: 1px solid var(--line); border-radius: 6px; box-shadow: none; }
 
 .dk-cm { font-family: var(--mono); font-size: 11px; }
-/* A DONE in the lead's chat, ready to check (desk/commit.js deskCheckLine): one line between thin rules, "Ready to
-   check: [kind] Task #125 title…  12m  Check it ›"; Check it › opens the item's page, where the checks are. */
-.dk-rchk { margin: 8px 0; padding: 10px 0; display: flex; align-items: baseline; gap: 8px; min-width: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); font-size: 13px; color: var(--ink); }
-.dk-rchk-w { flex: none; color: var(--muted); }
-.dk-rchk-it { all: unset; flex: 0 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 5px; cursor: pointer; white-space: nowrap; overflow: hidden; }
-.dk-rchk-it .dk-kic { margin: 0; align-self: center; }
-.dk-rchk-it .dk-inum { flex: none; }
-.dk-rchk-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.dk-rchk-it:hover .dk-rchk-t { color: var(--link, var(--accent)); }
-.dk-rchk > .dk-cl-age { flex: none; margin-left: auto; padding-left: 6px; }
-.dk-rchk-go { all: unset; flex: none; cursor: pointer; font-weight: 700; color: var(--ink); }
-.dk-rchk-go:hover { color: var(--link, var(--accent)); }
 .dk-chk-done { margin: 8px 0; }
 /* What the lead did on its own (#360): a line in its chat, its item's number opening the item. */
 .dk-act { margin: 6px 0; text-align: left; }
-.dk-act .dk-cl-age { flex: none; }
 .dk-act-it { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 3px; color: var(--ink); }
 .dk-act-it:hover .dk-inum { text-decoration: underline; }
 .dk-act-why { color: var(--muted); }
@@ -85,28 +72,9 @@ b.dk-say-t, .dk-say-t { font-weight: 650; color: var(--ink); }
 /* Its item, a link in plain words (the page's done line, Cue's lines). */
 .dk-chk-a { all: unset; cursor: pointer; color: inherit; font-weight: inherit; }
 .dk-chk-a:hover { color: var(--link, var(--accent)); }
-/* The Desk chats' unset buttons (a Ready to check line, a title, who did it, Check it ›, waits on you ›): a ring when
+/* The Desk chats' unset buttons (a line, a title, who did it, waits on you ›): a ring when
    reached by keyboard, as the item page's tabs have. */
-.dk-sch-t:focus-visible, .dk-rchk-it:focus-visible, .dk-rchk-go:focus-visible, .dk-chk-a:focus-visible, .dk-sl-r:focus-visible, .dk-sl-it:focus-visible, button.dk-say-id:focus-visible, .dk-undo-c:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
-.dk-nc:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-/* Cue's word on an item that stopped (desk/lead.js deskStopNote, #244): a card from Cue mid-chat, not a message from You. */
-.dk-sn { align-self: center; width: min(560px, 92%); box-sizing: border-box; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; font-size: 12.5px; line-height: 1.45; color: var(--ink); user-select: text; -webkit-user-select: text; }
-.dk-sn1 { display: flex; align-items: center; gap: 7px; color: var(--muted); }
-.dk-sn1 .dk-cl-age { margin-left: auto; }
-.dk-sn-cue { display: inline-flex; align-items: center; gap: 5px; font-weight: 650; color: var(--ink); }
-.dk-sn-cue i { width: 11px; height: 11px; box-sizing: border-box; border: 2.2px solid currentColor; border-radius: 50%; }
-.dk-sn-w { font-weight: 650; color: var(--ink); }
-.dk-sn-w.red { color: var(--deny); }
-.dk-sn2 { margin-top: 6px; }
-.dk-sn2 .dk-new-tt { color: var(--ink); }
-.dk-sn3 { margin-top: 5px; overflow-wrap: anywhere; }
-.dk-sn-who { font-weight: 650; }
-.dk-sn-last { margin-top: 6px; padding: 6px 10px; border-radius: 8px; background: var(--panel-2); color: var(--muted); overflow-wrap: anywhere; }
-.dk-sn-last span { color: var(--ink); }
-.dk-sn-f { margin-top: 7px; font-size: 12px; color: var(--muted); }
-.dk-sn-f summary { cursor: pointer; font-weight: 650; width: fit-content; user-select: none; -webkit-user-select: none; }
-.dk-sn-f summary:hover { color: var(--ink); }
-.dk-sn-fl { margin: 4px 0 0 14px; font-family: var(--mono); font-size: 11.5px; line-height: 1.6; overflow-wrap: anywhere; }
+.dk-sch-t:focus-visible, .dk-chk-a:focus-visible, .dk-ln-it:focus-visible, .mg-line[role="button"]:focus-visible, .dk-undo-c:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 .dk-chk-after { padding-top: 6px; font-size: 12.5px; color: var(--muted); }
 /* Send back, open on its item (desk.js deskBackHtml): why, in a box like the Desk's own. */
 .dk-sb { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
@@ -133,31 +101,8 @@ b.dk-say-t, .dk-say-t { font-weight: 650; color: var(--ink); }
 .dk-srow.on .dk-kic { color: var(--on-sel); }
 .dk-kid > .dk-kic { margin-right: 5px; vertical-align: 0; color: var(--muted); }
 .dk-it.on .dk-kid > .dk-kic { color: var(--on-sel); }
-/* A hand-off (ROUTE): a centred line, "gave [kind] #125 title to web-lead · Why ⌃"; the why under it, centred and
-   quiet (open until folded). No box. */
-/* The lead's lines (#157): one short quiet line at the left each, what's longer opening under it on a click. */
-/* The lead's note to a session (desk/lead.js NOTE, #449): a small card, who and which item, the message under it. */
-.dk-say.dk-note { margin: 6px 0; padding: 8px 12px; border-radius: 10px; background: var(--panel-2); font-size: 13px; line-height: 1.45; }
-.dk-note-h { color: var(--muted); font-size: 12px; font-weight: 600; }
-.dk-note-h .dk-rt-to, .dk-note-h .dk-say-id { color: var(--ink); }
-.dk-note-t { margin-top: 2px; color: var(--ink); overflow-wrap: anywhere; }
-.dk-say.dk-sl { padding: 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
-.dk-sl-r { display: inline-flex; align-items: baseline; gap: 6px; max-width: 100%; min-width: 0; white-space: nowrap; }
-.dk-sl-r.why { cursor: pointer; border-radius: 4px; }
-.dk-sl-h { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.dk-sl-r.why:hover { color: var(--ink); }
-/* An item's number in a line: a link that opens it. */
-button.dk-say-id { all: unset; cursor: pointer; font-weight: 600; color: var(--ink); border-radius: 3px; }
-button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: underline; }
 /* A card's words cut to two lines (desk/lead.js deskCut, #452): More and Less under them, as words, not a button look. */
-.dk-act .dk-sl-d { white-space: pre-line; }
 .dk-chat .req-cut .req-more { text-transform: capitalize; margin-top: 2px; }
-.dk-sl .req-cut .req-more { margin-left: 12px; }
-.dk-sl-d { padding: 0 0 3px 12px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
-.dk-sl-it { all: unset; cursor: pointer; color: var(--ink); font-weight: 500; }
-.dk-sl-it:hover { text-decoration: underline; }
-.dk-sl-tt { color: var(--ink); font-weight: 500; }
-.dk-rt-to { font-weight: 650; color: var(--ink); }
 /* Your words about an item in the lead's chat (deskAboutHead): its kind, number and title over them, quiet. */
 .dk-about { all: unset; display: block; margin-bottom: 4px; font-size: 12px; color: var(--muted); cursor: pointer; overflow-wrap: anywhere; }
 .dk-about b { color: var(--ink); font-weight: 650; }
@@ -200,20 +145,11 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
 .dk-chip > .dk-kic { margin: 0; flex: none; color: inherit; }
 .dk-chip-k { flex: none; }
 .dk-chip-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--on-bg); font-weight: 650; }
-/* The Desk's hand-off in the chat of the session it went to (desk/lead.js deskHandHtml): a card on the right, where
-   yours are: who gave it and the item's number, its title, Done when as short lines, Why. */
-.cv-you.dk-hand { align-self: flex-end; width: min(520px, 100%); }
-.dk-hand-pre { margin-bottom: 6px; font-size: 12px; color: var(--muted); text-align: right; }
-.dk-hand-c { align-self: stretch; display: flex; flex-direction: column; gap: 4px; padding: 10px 14px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); text-align: left; }
-.dk-hand-h { font-size: 12px; color: var(--muted); }
-.dk-hand-h b { font-weight: 600; color: var(--ink); }
-.dk-hand-n { all: unset; cursor: pointer; font-weight: 600; color: var(--ink); border-radius: 3px; }
-.dk-hand-n:hover { color: var(--link, var(--accent)); text-decoration: underline; }
-.dk-hand-n:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.dk-hand-t { font-size: 14px; font-weight: 650; line-height: 1.35; color: var(--ink); overflow-wrap: anywhere; }
-.dk-hand-l { margin-top: 6px; font-size: 11.5px; font-weight: 600; color: var(--muted); }
-.dk-hand-w, .dk-hand-p { font-size: 12.5px; line-height: 1.45; color: var(--ink); overflow-wrap: anywhere; }
-.dk-hand-p { color: var(--muted); }
+/* The Desk's hand-off in the chat of the session it went to (desk/lead.js deskHandHtml): the family's card on the right,
+   where yours are: who gave it, HAND-OFF and the item, its title, You'll see as short lines, Why. */
+.mg-you.mg-hand { width: min(520px, 100%); }
+.mg-hand > .mg { align-self: stretch; }
+.mg-hand .dk-dwl { font: var(--mg-body); }
 /* Desk screens, one pattern (#200, pick B; desk.js deskPage): one header (back and the page's buttons, then its kind's
    icon, "Bug #197 · " and its name, then a quiet line), its own column at the left with the box under it, and a panel
    at the right on the tinted ground: NOW, then DONE WHEN, WHO… Hide panel (or a card under 640px) folds the panel
@@ -346,7 +282,7 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
 .desk-fold .desk-fold-n { font-weight: 500; letter-spacing: 0; }
 .desk-fold:focus-visible { outline: 2px solid var(--on-bg); outline-offset: 2px; border-radius: 4px; }
 /* An item's kind icon wherever its number shows (#292): in the line's own colour, just before the number. */
-:is(.dh-ab, .dk-say-id, .dk-hand-n, .dk-sch-t, .dk-prs) > .dk-kic { color: inherit; margin-right: 4px; }
+:is(.dh-ab, .dk-sch-t, .dk-prs) > .dk-kic { color: inherit; margin-right: 4px; }
 /* Waits on (#250): what an item waits on, in a box, its buttons under it; a circle's tag red, its links each with Cut. */
 .dk-wo { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); font-size: 12.5px; line-height: 1.45; color: var(--ink); }
 .dk-wo + .dk-wo { margin-top: 8px; }
@@ -592,9 +528,9 @@ button.dk-al-row:focus-visible { outline: 2px solid var(--accent); outline-offse
    items folded to a line each; the item itself in the column at the right, in the Items list's place. */
 .dk-ichat { display: flex; flex-direction: column; gap: 14px; }
 .dk-ichat .cv-you.sending { opacity: .6; }
-.dk-ichat .cv-status.dk-notyet { color: var(--ink); }
-.dk-ichat .cv-status.dk-notyet .dk-si { flex: none; }
-.dk-ichat .cv-status.dk-notyet .btn { margin-left: 6px; flex: none; }
+.dk-ichat .mg-status.dk-notyet { color: var(--ink); }
+.dk-ichat .mg-status.dk-notyet .dk-si { flex: none; }
+.dk-ichat .mg-status.dk-notyet .btn { margin-left: 6px; flex: none; }
 .dk-fold { all: unset; box-sizing: border-box; display: flex; align-items: baseline; gap: 6px; min-width: 0; padding: 8px 12px; border-radius: var(--radius-btn, 8px); background: var(--panel-2); color: var(--muted); font-size: 12.5px; cursor: pointer; user-select: none; -webkit-user-select: none; }
 .dk-fold b { flex: none; color: var(--ink); font-weight: 650; }
 .dk-fold .dk-fold-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
@@ -628,19 +564,6 @@ button.dk-al-row:focus-visible { outline: 2px solid var(--accent); outline-offse
 .dk-sfoot { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--line); }
 .dk-sfoot .dk-drop { margin: 0 0 0 auto; align-self: center; font-weight: 600; }
 
-/* A message from another Desk's session in the lead's chat (desk/lead.js deskPeerBand, #472, option C): across the whole
-   chat between hairlines on panel-2, neither left (the lead) nor right (you, Cue); no edge stripe. */
-.dk-xband { margin: 0 -20px; padding: 9px 20px 10px; background: var(--panel-2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-.dk-xb-h { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
-.dk-xb-tag { display: inline-flex; align-items: center; padding: 1px 7px; border-radius: 999px; font: 600 10px var(--mono); letter-spacing: .12em; box-shadow: inset 0 0 0 1px var(--line); color: var(--muted); }
-.dk-xb-chip { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px 1px 6px; border-radius: 999px; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); font-weight: 650; color: var(--ink); }
-.dk-xb-chip .dk-kic { width: 11px; height: 11px; }
-.dk-xb-chip .pdot { width: 8px; height: 8px; }
-.dk-xb-id { font-family: var(--mono); }
-.dk-xb-age { margin-left: auto; }
-.dk-xb-t { font-size: 13.5px; line-height: 1.5; }
-.dk-xb-t > :last-child { margin-bottom: 0; }
-.dk-xb-f { margin-top: 6px; font-size: 11.5px; color: var(--muted); }
 
 /* An item to check (#526, option B): its Now in a filled box at the panel's top: the state, what to do in larger type
    ("Try:" / "Nothing to see:" bold), a quiet note of where that line came from, then Close and Send back. Folded, the

@@ -27,12 +27,12 @@ test("an ask in the chat: Asked to run, the command in a code block with Allowed
   const chat = await openEngChat(page);
   const ask = chat.locator(".cv-ask");
   await expect(ask).toHaveCount(1);
-  await expect(ask.locator(".cv-ask-head")).toHaveText("Asked to run");
-  await expect(ask.locator(".cv-ask-ans")).toContainText("Allowed");
+  await expect(ask.locator(".mg-t")).toHaveText("Asked to run");
+  await expect(ask.locator(".mg-st")).toContainText("Allowed");
   // Folded to its first lines; Show all opens it whole.
-  await expect(ask.locator("pre.cv-ask-code")).toHaveText("$ cat >> notes.md <<'EOF'\n## Router\n- split in two\n- partial fills next");
+  await expect(ask.locator("pre.mg-code")).toHaveText("$ cat >> notes.md <<'EOF'\n## Router\n- split in two\n- partial fills next");
   await ask.locator(".cv-more").click();
-  await expect(chat.locator(".cv-ask pre.cv-ask-code")).toHaveText(`$ ${ASK_CMD}`);
+  await expect(chat.locator(".cv-ask pre.mg-code")).toHaveText(`$ ${ASK_CMD}`);
   // Not its words: no reply paragraph holds the command, and "allowed" is no bubble of yours.
   await expect(chat.locator(".cv-agent")).toHaveCount(1);
   await expect(chat.locator(".cv-agent .cv-text")).toHaveText("Split the router in two; writing the notes now.");
@@ -56,9 +56,9 @@ test("a denied ask says so, and an edit names its file; a reply that merely star
   });
   const chat = await openEngChat(page);
   await expect(chat.locator(".cv-ask")).toHaveCount(2);
-  await expect(chat.locator(".cv-ask").nth(0).locator(".cv-ask-ans.no")).toContainText("Denied");
-  await expect(chat.locator(".cv-ask").nth(1).locator(".cv-ask-head")).toHaveText("Asked to edit router.rs");
-  await expect(chat.locator(".cv-ask").nth(1).locator(".cv-ask-ans")).toContainText("Allowed always");
+  await expect(chat.locator(".cv-ask").nth(0).locator(".mg-st.failed")).toContainText("Denied");
+  await expect(chat.locator(".cv-ask").nth(1).locator(".mg-t")).toHaveText("Asked to edit router.rs");
+  await expect(chat.locator(".cv-ask").nth(1).locator(".mg-st")).toContainText("Allowed always");
   await expect(chat.locator(".cv-agent .cv-text")).toHaveText("Read: the router is now two files.");
   await expect(chat.locator(".cv-you")).toHaveCount(1);
 });
@@ -77,10 +77,10 @@ test("a message you typed after an unanswered ask, starting with a decision word
   });
   const chat = await openEngChat(page);
   await expect(chat.locator(".cv-ask")).toHaveCount(2);
-  await expect(chat.locator(".cv-ask").nth(0).locator(".cv-ask-ans")).toHaveCount(0);
+  await expect(chat.locator(".cv-ask").nth(0).locator(".mg-st")).toHaveCount(0);
   await expect(chat.locator(".cv-you")).toHaveCount(2);
   await expect(chat.locator(".cv-you").nth(1)).toContainText("allowed the plan, but keep build");
-  await expect(chat.locator(".cv-ask").nth(1).locator(".cv-ask-ans")).toContainText("Allowed");
+  await expect(chat.locator(".cv-ask").nth(1).locator(".mg-st")).toContainText("Allowed");
 });
 
 test("any tool's ask is one, a Bash ask with no command too; an answer whose ask scrolled out isn't yours; Read skips asks", async ({ cue, page }) => {
@@ -99,10 +99,10 @@ test("any tool's ask is one, a Bash ask with no command too; an answer whose ask
   });
   const chat = await openEngChat(page);
   await expect(chat.locator(".cv-ask")).toHaveCount(2);
-  await expect(chat.locator(".cv-ask").nth(0).locator(".cv-ask-head")).toHaveText("Asked to update its to-do list");
-  await expect(chat.locator(".cv-ask").nth(0).locator(".cv-ask-ans")).toContainText("In the terminal");
-  await expect(chat.locator(".cv-ask").nth(1).locator(".cv-ask-head")).toHaveText("Asked to run");
-  await expect(chat.locator(".cv-ask").nth(1).locator(".cv-ask-ans")).toHaveCount(0);
+  await expect(chat.locator(".cv-ask").nth(0).locator(".mg-t")).toHaveText("Asked to update its to-do list");
+  await expect(chat.locator(".cv-ask").nth(0).locator(".mg-st")).toContainText("In the terminal");
+  await expect(chat.locator(".cv-ask").nth(1).locator(".mg-t")).toHaveText("Asked to run");
+  await expect(chat.locator(".cv-ask").nth(1).locator(".mg-st")).toHaveCount(0);
   // The "allowed" at the top (its ask gone) is no message of yours, but a decision line; "in the morning", typed, is yours.
   await expect(chat.locator(".cv-result")).toHaveCount(1);
   await expect(chat.locator(".cv-result")).toContainText("Allowed");
@@ -151,8 +151,8 @@ test("an answered question wraps as text with its answer under it, inside the pa
   for (const width of [720, 1500]) {
     await page.setViewportSize({ width, height: 900 });
     const ask = chat.locator(".cv-ask");
-    await expect(ask.locator(".cv-ask-ans")).toContainText("Keep it apart");
-    const [box, qb, ab] = await Promise.all([ask.boundingBox(), ask.locator(".cv-ask-q").boundingBox(), ask.locator(".cv-ask-ans").boundingBox()]);
+    await expect(ask.locator(".mg-st")).toContainText("Keep it apart");
+    const [box, qb, ab] = await Promise.all([ask.boundingBox(), ask.locator(".ask-q").boundingBox(), ask.locator(".mg-st").boundingBox()]);
     // The question as text, not a letter a line; the answer under it; both inside the ask's own width.
     expect(qb.width).toBeGreaterThan(box.width / 2);
     expect(ab.y).toBeGreaterThanOrEqual(qb.y + qb.height - 1);

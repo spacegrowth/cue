@@ -120,7 +120,7 @@ function handoffNext(sid, s, ho) {
   }
   const stuck = !writing && !going && (!fresh || insAutoTried.has(sid));
   const where = writing ? "writing its note…" : stuck ? "note written, not continued yet." : "note written · opening the fresh session here…";
-  return `<div class="cv-status ins-status">${BULB}<span><b>Continuing in a fresh session:</b> ${where}</span></div>`;
+  return `<div class="mg-status ins-status">${BULB}<span><b>Continuing in a fresh session:</b> ${where}</span></div>`;
 }
 /** ⋯ → Continue in a fresh session, when a hand-off's note is written and Cue didn't continue it by itself. */
 function handoffNextItem(sid, s, ho) {
@@ -134,11 +134,11 @@ function handoffNextItem(sid, s, ho) {
 function aheadLine(sid, s, ho) {
   const c = cacheOf(sid), left = c ? c.until_ms - now() : 0;
   // Written once Cue has seen the note (its time, from its log): asking leave to write it isn't done yet.
-  if (!ho.note_ms) return `<div class="cv-status ins-status">${BULB}<span><b>Writing a hand-off note</b> before its cache runs out. Nothing else changes.</span></div>`;
+  if (!ho.note_ms) return `<div class="mg-status ins-status">${BULB}<span><b>Writing a hand-off note</b> before its cache runs out. Nothing else changes.</span></div>`;
   const why = left > 0
     ? `Its cache lasts ${Math.max(1, Math.ceil(left / 60000))} more min, so replying here is still cheap.`
     : `Cache expired: replying here ${c ? coldCost(c, "").replace(/^ /, "") : "re-writes all of its context"}.`;
-  return `<div class="cv-status ins-status">${BULB}<span><b>Hand-off note ready.</b> ${why}</span></div>`;
+  return `<div class="mg-status ins-status">${BULB}<span><b>Hand-off note ready.</b> ${why}</span></div>`;
 }
 /** ⋯ items for a note written ahead: Open fresh (this one closes), and Keep going here (sets the note aside). */
 function aheadItems(sid, ho) {
@@ -151,7 +151,7 @@ function aheadItems(sid, ho) {
 /** A hand-off that already continued: a status line saying where it carries on now (Close is in the head). */
 function handoffContinued(sid, ho) {
   const next = nameOf(ho.next, sessionOf(ho.next)?.project) || "its new session";
-  return `<div class="cv-status ins-status">${BULB}<span>It continued in <b>${esc(next)}</b>. Carry on there, and close this one when you're done with it (Closed keeps it).</span><button class="btn small" data-act="ins-goto" data-sid="${esc(ho.next)}">Go to ${esc(next)}</button></div>`;
+  return `<div class="mg-status ins-status">${BULB}<span>It continued in <b>${esc(next)}</b>. Carry on there, and close this one when you're done with it (Closed keeps it).</span><button class="btn small" data-act="ins-goto" data-sid="${esc(ho.next)}">Go to ${esc(next)}</button></div>`;
 }
 
 // The open session's hand-off is a chip on the title row, "Fresh session", once the session
@@ -338,13 +338,13 @@ function handoffStatus(sid, s) {
   const pending = insOn("handoff") && state.skill_handoffs?.[sid];
   if (pending && !pending.next) return handoffNext(sid, s, pending);
   if (pending?.next) return handoffContinued(sid, pending);
-  if (insBusy.has(sid)) return `<div class="cv-status ins-status">${BULB}<span role="status">${esc(insBusy.get(sid))}</span></div>`;
+  if (insBusy.has(sid)) return `<div class="mg-status ins-status">${BULB}<span role="status">${esc(insBusy.get(sid))}</span></div>`;
   const it = state.items.find((i) => i.session_id === sid), ask = !!it && it.kind !== "waiting";
   const cw = cacheWarn(sid);
   let out = "";
   // Gone: what the next reply costs, once (the meta line says "cache gone"; the ways on are in Fresh session's plan).
-  if (cw && cw.left <= 0) out += `<div class="cv-status ins-status">${BULB}<span>Cache expired: ${coldCost(cw.c, ask ? "answering" : "its next reply")}.</span></div>`;
-  if (aheadCan(sid) && aheadWatched(sid)) out += `<div class="cv-status ins-status">${BULB}<span>${watchText(sid)}</span></div>`;
+  if (cw && cw.left <= 0) out += `<div class="mg-status ins-status">${BULB}<span>Cache expired: ${coldCost(cw.c, ask ? "answering" : "its next reply")}.</span></div>`;
+  if (aheadCan(sid) && aheadWatched(sid)) out += `<div class="mg-status ins-status">${BULB}<span>${watchText(sid)}</span></div>`;
   return out;
 }
 

@@ -82,9 +82,9 @@ function tellTip(s, line) {
 /** After a render (and a resize): a tip that would put its line on a second row goes, so a long line gets no
  *  tip; one that shows counts toward today. Tell me always stays (the text before it shortens instead). */
 function fitTips() {
-  const el = document.querySelector(".cv-status .cv-tip:not(.tip-tell)");
+  const el = document.querySelector(".mg-status .cv-tip:not(.tip-tell)");
   if (!el) return;
-  const line = el.closest(".cv-status");
+  const line = el.closest(".mg-status");
   el.hidden = true;
   const without = line.getBoundingClientRect().height;
   el.hidden = false;

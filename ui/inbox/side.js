@@ -48,8 +48,8 @@ const inboxStepHtml = (l) => `<div class="ib-step ${l.bad ? "bad" : ""} ${l.live
 function inboxAside(r) {
   const you = inboxYouAsked(r), sid = esc(r.sid);
   // Cue's own message (a send-back, a reopen…, #478): what Cue asked, in one plain line, not its instructions.
-  const cue = you && cueMsgPlain(you.text, nameOf(r.sid, r.s?.project));
-  const asked = you ? `<div class="ib-blk"><div class="ib-k">${cue ? "Cue asked" : "You asked"}${you.at ? ` · ${ago(you.at)} ago` : ""}</div><div class="ib-you">${esc(cue || plain(you.text))}</div></div>` : "";
+  const cue = you && cueMsgPlainHtml(you.text, nameOf(r.sid, r.s?.project));
+  const asked = you ? `<div class="ib-blk"><div class="ib-k">${cue ? "Cue asked" : "You asked"}${you.at ? ` · ${ago(you.at)} ago` : ""}</div><div class="ib-you${cue ? " mg-plain" : ""}">${cue || esc(plain(you.text))}</div></div>` : "";
   const ctx = inboxCtx(r.s) ? `<div class="ib-blk"><div class="ib-k">Context</div><div class="ib-ctx">${inboxMeter(r.s, "wide")}<span>${inboxCtx(r.s)}%</span></div></div>` : "";
   const links = `<div class="ib-links"><button class="ib-link" data-inbox-diff="${sid}">Diff</button></div>`;
   return `<aside class="ib-page-body ib-aside" data-scroll-key="inbox-aside">${inboxLive(r).html}${inboxOpenBlock()}${asked}${inboxDid(r)}${inboxChangedBlock(r)}${ctx}${links}</aside>`;
@@ -116,9 +116,9 @@ function inboxParkedPage(p) {
 /** A session on the calm page: its name, what you asked and what it's on (a working one's bar along its foot), or
  *  what it said and changed. Opens it. */
 function inboxCalmCard(r) {
-  const [subj, line] = r.kind === "run" ? inboxRunLines(r) : inboxDoneLines(r);
+  const [subj, line] = r.kind === "run" ? inboxRunLines(r, false, true) : inboxDoneLines(r).map(esc);
   return `<div class="ib-calm-card ${r.kind}" role="button" tabindex="0" data-inbox-open="${esc(r.sid)}" style="${projStyle(r.project)}"><div class="ib-calm-t"><span class="ib-dot">${inboxDot(r)}</span>${nameSpan(r.sid, r.project, "ib-name")}<span class="grow"></span><span class="ib-time">${ago(r.at)}</span></div>`
-    + `<div class="ib-calm-s">${esc(subj)}</div>${line ? `<div class="ib-calm-l">${esc(line)}</div>` : ""}${r.kind === "run" && r.s ? inboxBar(r.s) : ""}</div>`;
+    + `<div class="ib-calm-s">${subj}</div>${line ? `<div class="ib-calm-l">${line}</div>` : ""}${r.kind === "run" && r.s ? inboxBar(r.s) : ""}</div>`;
 }
 /** Beside the list with nothing open: what needs you, or a preview of running sessions. */
 function inboxIdle() {

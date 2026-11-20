@@ -437,11 +437,11 @@ test("the lead's MERGE line reads as a short line: the copy folded into the item
   await cue.open("desk");
   await openDesk(page);
   await page.evaluate(() => { sessionOf("lead").thread.push({ at_ms: Date.now(), role: "agent", text: "MERGE: #x9 into #d2 | why: the same ask again" }); renderMain(); });
-  const ln = page.locator(".dk-chat .cv-agent").last().locator(".dk-sl");
+  const ln = page.locator(".dk-chat .cv-agent").last().locator(".dk-ln");
   await expect(ln).toHaveCount(1);
-  await expect(ln.locator(".dk-sl-h")).toHaveText(/^Folded #x9 into \w+ #d2$/);
-  await ln.locator(".dk-sl-r").click();
-  await expect(ln.locator(".dk-sl-d")).toContainText("the same ask again");
+  await expect(ln.locator(".mg-lh")).toHaveText(/^Folded #x9 into \w+ #d2$/);
+  await ln.locator(".mg-line").click();
+  await expect(ln.locator(".mg-full")).toContainText("the same ask again");
 });
 
 test("the open item's long title keeps its full width beside its icon, not one letter per line (#327)", async ({ page, cue }) => {
@@ -511,10 +511,10 @@ test("each item shows what you'll see in plain words under its title; its Done w
     sessionOf("lead").thread.push({ at_ms: Date.now(), role: "agent", text: "SEE: #d4 | the dot blinks only for you | done when: rail.spec passes" });
     renderMain();
   });
-  const ln = page.locator(".dk-chat .cv-agent").last().locator(".own-lines .dk-sl");
+  const ln = page.locator(".dk-chat .cv-agent").last().locator(".own-lines .dk-ln");
   await expect(ln).toHaveCount(1);
-  await expect(ln.locator(".dk-sl-h")).toContainText("Said what you'll see for");
-  await ln.locator(".dk-sl-r").click();
-  await expect(ln.locator(".dk-sl-d")).toHaveText("You'll see the dot blinks only for you");
+  await expect(ln.locator(".mg-lh")).toContainText("Said what you'll see for");
+  await ln.locator(".mg-line").click();
+  await expect(ln.locator(".mg-full")).toHaveText("You'll see the dot blinks only for you");
   await expect(ln).not.toContainText("rail.spec");
 });

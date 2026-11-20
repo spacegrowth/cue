@@ -26,8 +26,8 @@ test("the lead's own moves show in its chat and, for a while, in the panel; its 
   const chat = page.locator(".dk-chat");
   await expect(chat.locator(".dk-act")).toHaveCount(3);
   const a2 = chat.locator('.dk-act[data-key="act:a2"]');
-  await expect(a2.locator(".dk-sl-h")).toHaveText("Moved #d3 up in the landing line");
-  await expect(a2.locator(".dk-sl-d")).toHaveText("the user waits on it");
+  await expect(a2.locator(".mg-lh")).toHaveText("Moved #d3 up in the landing line");
+  await expect(a2.locator(".mg-full")).toHaveText("the user waits on it");
   await expect(a2.locator(".req-more")).toHaveCount(0);
   await expect(chat.locator('.dk-act[data-key="act:a3"]')).toContainText("Closed #d8: its work is on main (ab12cd3)");
   // In the panel: only the last ones, newest first; the close two hours ago has dropped off.
@@ -111,9 +111,10 @@ test("a long reopen, note and start each show at most three lines in the lead's 
   ] });
   await page.evaluate((t) => { sessionOf("lead").thread.push({ at_ms: Date.now(), role: "agent", text: t }); renderMain(); }, `NOTE: #d2 | ${note}`);
   const chat = page.locator(".dk-chat");
-  const cards = [chat.locator('.dk-act[data-key="act:r1"]'), chat.locator('.dk-act[data-key="act:s1"]'), chat.locator(".dk-note")];
-  await expect(cards[0].locator(".dk-sl-h")).toHaveText("Reopened #d3 for cue-387");
-  const lines = (l) => l.evaluate((e) => { const t = e.querySelector(".req-t"), lh = parseFloat(getComputedStyle(t).lineHeight); return Math.round(t.getBoundingClientRect().height / lh); });
+  const cards = [chat.locator('.dk-act[data-key="act:r1"]'), chat.locator('.dk-act[data-key="act:s1"]'), chat.locator('[data-mg="note"]')];
+  await expect(cards[0].locator(".mg-lh")).toHaveText("Reopened #d3 for cue-387");
+  // Its text's lines: the box's height less its padding (a why is the family's .mg-full, a padded fill, #501).
+  const lines = (l) => l.evaluate((e) => { const t = e.querySelector(".req-t"), c = getComputedStyle(t), lh = parseFloat(c.lineHeight); return Math.round((t.clientHeight - parseFloat(c.paddingTop) - parseFloat(c.paddingBottom)) / lh); });
   for (const card of cards) {
     // Its head, then its words cut to two lines, then More.
     await expect(card.locator(".req-more")).toHaveText(/^more$/i);
@@ -142,7 +143,7 @@ test("a long reopen, note and start each show at most three lines in the lead's 
   await cue.change((st, { a }) => { st.desk.projects.find((p) => p.project === "cue").decisions.push(a); },
     { a: act("s2", "d5", "start", "Started #d5 now, without waiting for a copy", "it is mocks only: no code, no copy needed, and it should not wait behind five items that need one today", NOW - 60 * 1000) });
   const short = chat.locator('.dk-act[data-key="act:s2"]');
-  await expect(short.locator(".dk-sl-d")).toBeVisible();
+  await expect(short.locator(".mg-full")).toBeVisible();
   await expect(short.locator(".req-more")).toBeHidden();
   if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/lead-cards.png` });
 });

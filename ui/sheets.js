@@ -243,8 +243,8 @@ function convoSheet() {
   const near = !exact && c.hitAt ? c.items.filter((e) => e.role !== "you" && Math.abs(e.at_ms - c.hitAt) < 120_000).sort((x, y) => Math.abs(x.at_ms - c.hitAt) - Math.abs(y.at_ms - c.hitAt))[0] : null;
   const msgs = c.items.map((e) => {
     const hit = e.at_ms === c.hitAt || e === near ? " cv-hit" : "";
-    if (e.role === "you") return `<div class="cv-you${hit}"><div class="cv-you-text">${linkify(esc(e.text)).replace(/\n/g, "<br>")}</div>${thumbs(e.images)}<div class="cv-meta">You · ${when(e.at_ms)}</div></div>`;
-    return `<div class="cv-agent${hit}"><div class="cv-meta">${esc(e.role === "peer" ? "Another session" : agentName(c.harness))}${e.role === "peer" ? "" : machTag(live?.machine)} · ${when(e.at_ms)}</div><div class="msg cv-text">${md(e.text)}</div></div>`;
+    if (e.role === "you") return `<div class="cv-you mg-you${hit}"><div class="cv-you-text mg-text">${linkify(esc(e.text)).replace(/\n/g, "<br>")}</div>${thumbs(e.images)}<div class="mg-f"><span class="mg-st">You · ${when(e.at_ms)}</span></div></div>`;
+    return `<div class="cv-agent mg-agent${hit}"><div class="mg-h"><span class="mg-who">${esc(e.role === "peer" ? "Another session" : agentName(c.harness))}</span>${e.role === "peer" ? "" : machTag(live?.machine)} · ${when(e.at_ms)}</div><div class="msg mg-text cv-text">${md(e.text)}</div></div>`;
   }).join("");
   return `<div class="sheet convo-sheet"><div class="sheet-head">${c.from === "search" ? `<button class="btn" data-act="convo-back">← Results</button>` : `<button class="btn" data-act="convo-close">← ${esc(c.from)}</button>`}${badge(c.harness)}<h3>${esc(c.name)}</h3>
       <span class="dim" style="font-size:12px">${live ? (live.state === "working" ? "working" : "live") : "ended"} · ${c.items.length} messages</span><span class="grow"></span>

@@ -26,12 +26,12 @@ for (const kind of ["task", "bug", "feature"]) {
     }, kind);
     const word = kind[0].toUpperCase() + kind.slice(1);
     // The lead's line about it: "[icon] Task #d3 is done".
-    const say = page.locator(".dk-chat .own-lines button.dk-say-id").first();
+    const say = page.locator(".dk-chat .own-lines button.mg-id").first();
     await expect(say).toHaveText(`${word} #d3`);
     expect(await kindOf(say.locator("svg.dk-kic"))).toBe(kind);
     // The hand-off card in the session's chat.
     await page.evaluate(() => deskShow({ kind: "chat", sid: "host" }));
-    const hand = page.locator('.dk-right [data-desk-chat="host"] .dk-hand-n');
+    const hand = page.locator('.dk-right [data-desk-chat="host"] .mg-id[data-desk-hand]');
     await expect(hand).toHaveText(`${word} #d5`);
     expect(await kindOf(hand.locator("svg.dk-kic"))).toBe(kind);
     // Desk home's line under the Desk's name.

@@ -62,7 +62,10 @@
 /* In the drop-down the lime fill is the keyboard highlight, so the open session gets a tag instead. */
 .viewing-tag { flex: none; margin: 0 6px; font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: var(--pill-radius); background: var(--ink); color: var(--panel); }
 .tl.on { background: color-mix(in srgb, var(--accent) 14%, transparent); }
-.queued-note { margin-top: 6px; font-size: 12px; color: var(--on-bg); }
+.queued-note { margin-top: 6px; }
+/* A message's plain line in a picked row is on the selection's fill: its names and item take that row's ink (#501). */
+.nrow.on .mg-plain :is(.mg-who, .mg-w, b) { color: inherit; }
+.nrow.on .mg-plain .mg-id { background: color-mix(in srgb, var(--on-sel) 16%, transparent); color: inherit; }
 
 /* ---------- "Sent" confirmation ---------- */
 .sent-check { width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: var(--on-accent); display: grid; place-items: center; font-weight: 700; font-size: 12px; flex: none; }

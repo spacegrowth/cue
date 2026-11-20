@@ -490,16 +490,22 @@ function cueSaid(text) {
 const cueWords = (html) => html.replace(/^Cue (.)/, (_, c) => c.toUpperCase());
 /** Cue's words for a message it hasn't sent yet: "Cue sent …" → "Cue will send …". */
 const cueWill = (html) => html.replace(/^Cue (sent|asked|handed) /, (_, v) => `Cue will ${{ sent: "send", asked: "ask", handed: "hand" }[v]} `);
-/** Cue's message as a bubble on the right, where yours are, named Cue: its few words, and "+ What Cue sent" unfolds
- *  the exact text (addedNote, opened by `key`). `meta`: what follows "Cue ·" (when it went, or that it waits).
- *  `review`: for a review request, the lead's reply that is the review ({ name, text, team }), folded under its own
- *  "+ <its one line>". */
+/** Cue's message to a lead for its crew (#501, messages.css): the family's card, "◔ Cue → lead · CREW", its few words,
+ *  and "What Cue sent" opening the exact text under them (`key`, openAsks). `meta`: when it went or that it waits
+ *  (a string), or msgLine's state ({ st, to, … }) for its foot (#422). `review`: for a review request, the lead's reply
+ *  that is the review ({ name, text, team }), opened by its own one line in the foot. */
 function cueSaidLine(said, key, text, meta, review = null) {
-  const rv = review ? addedNote(`${key}:review`, esc(reviewLineParts(review.team, review.name, review.text).words), review.text) : "";
-  // `meta` as msgLine's state ({ st, to, … }): the same line as any message's, "From Cue · …" (#422).
-  const line = typeof meta === "string" ? `<div class="cv-meta">Cue · ${meta}</div>` : msgLine({ ...meta, from: "Cue" });
-  return `<div class="cv-you cue-you${typeof meta === "string" ? "" : ` msg-${meta.st}`}"><div class="cv-you-text">${cueWords(said.html)}${text ? addedNote(key, "What Cue sent", text) : ""}${rv}</div>${line}</div>`;
+  const st = typeof meta === "string" ? null : meta;
+  const folds = [text && [key, "What Cue sent", text], review && [`${key}:review`, esc(reviewLineParts(review.team, review.name, review.text).words), review.text]].filter(Boolean);
+  const isOpen = (k) => typeof openAsks !== "undefined" && openAsks.has(k);
+  const lks = folds.map(([k, label]) => `<button class="mg-lk" data-ask-open="${esc(k)}" aria-expanded="${isOpen(k)}">${isOpen(k) ? "−" : "+"} ${label}</button>`).join("");
+  const full = folds.filter(([k]) => isOpen(k)).map(([, , t]) => `<div class="mg-full">${esc(t)}</div>`).join("");
+  const head = `${cueMark()}<span class="mg-who">Cue</span>${st?.to ? `<span class="mg-to">→ ${esc(st.to)}</span>` : ""}<span class="mg-tag">Crew</span>`;
+  const foot = st ? msgLine({ ...st, acts: `${st.acts ? `${st.acts} ` : ""}${lks}` }) : `<div class="mg-f"><span class="mg-st">${meta}</span>${lks ? `<span class="mg-acts">${lks}</span>` : ""}</div>`;
+  return `<div class="mg cue-you${st && st.st !== "delivered" ? ` ${st.st}` : ""}"><div class="mg-h">${head}</div><div class="mg-t">${cueWords(said.html)}</div>${full}${foot}</div>`;
 }
+/** Cue's ring mark at the head of its own messages (window.js's small mark, accent through .mg-mk). */
+const cueMark = () => (typeof CUE_MARK_SM === "string" ? CUE_MARK_SM.replace("<svg ", '<svg class="mg-mk" ') : "");
 /** A review's Recommendation line: it starts the line ("**Recommendation**:" and "**Recommendation:**" both), and what
  *  follows it up to . ( , ; or * is the verdict. */
 const RECOMMENDATION = /^\**recommendation\**\s*:\s*\**\s*([^.(,;*]*)/i;

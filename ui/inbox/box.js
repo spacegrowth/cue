@@ -215,7 +215,7 @@ function inboxYours(sid, yours) {
   // As its chat draws them (#422): the bubble, and its one line: Sending… while on its way, else delivered. Under
   // "Yours", with what still waits to go after them (inboxPending).
   const to = nameOf(sid, sessionOf(sid)?.project);
-  return yours.map((e, n) => `<div class="ib-yours">${n ? "" : '<div class="ib-k">Yours</div>'}${msgRow(e.sent ? { st: "sending", to, sid } : { st: "delivered", to, at: msgTaken(e) }, `<div class="cv-you-text ib-yours-text">${esc(e.text).replace(/\n/g, "<br>")}</div>${e.sent ? inboxSentPics(e.sent) : thumbs(e.images)}`)}</div>`).join("");
+  return yours.map((e, n) => `<div class="ib-yours">${n ? "" : '<div class="ib-k">Yours</div>'}${msgRow(e.sent ? { st: "sending", to, sid } : { st: "delivered", to, at: msgTaken(e) }, `<div class="mg-text ib-yours-text">${esc(e.text).replace(/\n/g, "<br>")}</div>${e.sent ? inboxSentPics(e.sent) : thumbs(e.images)}`)}</div>`).join("");
 }
 /** The pictures of a message still on its way: what you picked, as they are (not files yet), as its chat shows them. */
 const inboxSentPics = (images) => (images.length ? `<div class="thumbs">${images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : "");
@@ -235,13 +235,13 @@ function inboxEarlier(r, msgs) {
 function inboxMsgHtml(sid, e) {
   if (e.ask) return inboxAskMsgHtml(sid, e);
   // A decision with no ask before it (a terminal dialog's choice): one line, "You · Chose 1. Yes"; nothing to open.
-  if (e.decided) return `<div class="ib-msg you decided"><span class="ib-msg-who">You</span><span class="ib-msg-at">${e.at_ms ? ago(e.at_ms) : ""}</span><span class="ib-msg-line ib-ask-ans ${e.decided.no ? "no" : ""}">${esc(e.decided.text)}</span></div>`;
+  if (e.decided) return `<div class="ib-msg you decided"><span class="ib-msg-who">You</span><span class="ib-msg-at">${e.at_ms ? ago(e.at_ms) : ""}</span><span class="ib-msg-line mg-plain ib-ask-ans ${e.decided.no ? "no" : ""}">${esc(e.decided.text)}</span></div>`;
   const k = `${sid}|${e.at_ms}|${e.role}`, open = inboxMsgOpen.has(k), you = e.role === "you";
   const who = `<span class="ib-msg-who">${you ? "You" : "It"}</span><span class="ib-msg-at">${e.at_ms ? ago(e.at_ms) : ""}</span>`;
   // Folded: two lines of it, and "more" when that cuts it (a click opens it whole; "less" folds it again).
   const line = plain(e.text).replace(/\s+/g, " ").trim(), cut = line.length > INBOX_MSG_CUT || /\n\s*\S/.test(String(e.text).trim());
   const tag = cut ? `<span class="ib-msg-more">${open ? "less" : "more"}</span>` : "";
-  const body = open ? `<div class="ib-msg-body ${you ? "" : "ib-md msg"}">${you ? esc(e.text).replace(/\n/g, "<br>") : md(e.text, { pathsOf: sid })}${thumbs(e.images)}${you ? "" : localImages(e.text)}${tag}</div>` : `<span class="ib-msg-fold"><span class="ib-msg-line">${esc(line.slice(0, 600))}</span>${thumbs(e.images)}${tag}</span>`;
+  const body = open ? `<div class="ib-msg-body ${you ? "" : "ib-md msg"}">${you ? esc(e.text).replace(/\n/g, "<br>") : md(e.text, { pathsOf: sid })}${thumbs(e.images)}${you ? "" : localImages(e.text)}${tag}</div>` : `<span class="ib-msg-fold"><span class="ib-msg-line mg-plain">${esc(line.slice(0, 600))}</span>${thumbs(e.images)}${tag}</span>`;
   return `<div class="ib-msg ${you ? "you" : "it"} ${open ? "open" : ""}" role="button" data-inbox-msg="${esc(k)}">${who}${body}</div>`;
 }
 /** An ask it made and your answer, as one row: "It · Asked to run `cmd…` · Allowed"; opened, the command whole, in code. */
@@ -252,8 +252,8 @@ function inboxAskMsgHtml(sid, e) {
   const head = `${esc(ask.head)}${ask.tool ? "" : ":"}`;
   const tag = flat.length > 60 || line.includes("\n") ? `<span class="ib-msg-more">${open ? "less" : "more"}</span>` : "";
   const body = open
-    ? `<div class="ib-msg-body"><div class="ib-ask-line">${head}${ans}</div>${ask.code ? `<pre class="ib-ask-code"><code>${ask.tool === "Bash" ? "$ " : ""}${esc(ask.code)}</code></pre>` : line ? `<div>${esc(line)}</div>` : ""}${tag}</div>`
-    : `<span class="ib-msg-fold"><span class="ib-msg-line ib-ask-line">${head}${flat ? ` <code>${esc(flat.length > 60 ? `${flat.slice(0, 60)}…` : flat)}</code>` : ""}${ans}</span>${tag}</span>`;
+    ? `<div class="ib-msg-body"><div class="ib-ask-line">${head}${ans}</div>${ask.code ? `<pre class="mg-code"><code>${ask.tool === "Bash" ? "$ " : ""}${esc(ask.code)}</code></pre>` : line ? `<div>${esc(line)}</div>` : ""}${tag}</div>`
+    : `<span class="ib-msg-fold"><span class="ib-msg-line mg-plain ib-ask-line">${head}${flat ? ` <code>${esc(flat.length > 60 ? `${flat.slice(0, 60)}…` : flat)}</code>` : ""}${ans}</span>${tag}</span>`;
   return `<div class="ib-msg it ask ${open ? "open" : ""}" role="button" data-inbox-msg="${esc(k)}"><span class="ib-msg-who">It</span><span class="ib-msg-at">${e.at_ms ? ago(e.at_ms) : ""}</span>${body}</div>`;
 }
 /** The asks it made after its message (and how you answered), and your decisions, under it: a row each, as in Earlier. */
@@ -272,10 +272,15 @@ function inboxPending(r, after = false) {
   return rows.length ? `<div class="ib-pending${after ? " after" : ""}">${after ? "" : '<div class="ib-k">Yours</div>'}${rows.join("")}</div>` : "";
 }
 /** What waits to go to it, in a line for its row, in its message's words (#422: "Queued for cue-418: …"); "" when
- *  nothing does. */
-function inboxPendingLine(s) {
-  const w = s?.queued ? [`Queued for ${nameOf(s.session_id, s.project)}`, s.queued.text] : s?.held ? ["Not sent yet", s.held.text] : s?.send_at ? ["Sends later", s.send_at.text] : null;
-  return w ? `${w[0]}: “${plain(w[1] || "")}”` : "";
+ *  nothing does. `html`: as markup, the message family's plain line (.mg-plain, #501), Cue's own message in its
+ *  words ("Queued for <who>: Asked <who> · #461 not done…"). */
+function inboxPendingLine(s, html = false) {
+  const to = s ? nameOf(s.session_id, s.project) : "";
+  const w = s?.queued ? ["Queued for", s.queued.text] : s?.held ? ["Not sent yet", s.held.text] : s?.send_at ? ["Sends later", s.send_at.text] : null;
+  if (!w) return "";
+  const head = w[0] === "Queued for" ? `Queued for ${html ? `<span class="mg-who">${esc(to)}</span>` : to}` : w[0];
+  if (!html) return `${head}: ${cueMsgPlain(w[1], to) ?? `“${plain(w[1] || "")}”`}`;
+  return `<span class="mg-plain">${head}: ${cueMsgPlainHtml(w[1], to) ?? `“${esc(plain(w[1] || ""))}”`}</span>`;
 }
 /** The brief's main column: its words before the question, the question with its choices, what it plans next, then
  *  the box to answer in (at the foot). */
