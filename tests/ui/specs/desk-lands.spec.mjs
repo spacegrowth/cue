@@ -1,4 +1,4 @@
-// How work lands, per project (lands.js, lands.rs): the Desk's header's Settings link (#415: just the word) opens the setting: where an item works, items at once, how it lands, the check,
+// How work lands, per project (lands.js, lands.rs): the Desk header's one Change (#417) opens the setting: where an item works, items at once, how it lands, the check,
 // after landing, push (your own steps for the check and after landing). Choices Cue can't do yet are shown greyed,
 // saying "not yet". A folder that isn't a git
 // repository says why it works in place.
@@ -12,10 +12,11 @@ const openDesk = async (page) => {
 };
 const line = (page) => page.locator(".dk-strip .dk-ab");
 
-test("Cue's own Desk says how its work lands, and Settings opens the setting with Cue's setup", async ({ page, cue }) => {
+test("Cue's own Desk says how its work lands, and Change opens the setting with Cue's setup", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  await expect(line(page)).toHaveText("Settings");
+  await expect(line(page).locator(".dk-ab-change")).toHaveText("Change");
+  await expect(line(page).locator(".dk-ab-words")).toContainText("lands in");
   await line(page).locator("[data-lands-change]").click();
   const dlg = page.locator(".ld-dialog");
   await expect(dlg.locator(".move-title")).toHaveText("Settings for cue");
@@ -39,7 +40,7 @@ test("Cue's own Desk says how its work lands, and Settings opens the setting wit
     await expect(seg(label).locator("button", { hasText: name })).toBeEnabled();
   }
   await expect(dlg.locator("[title]")).toHaveCount(0);
-  // Esc closes it, nothing saved.
+  // Esc closes it.
   await page.keyboard.press("Escape");
   await expect(dlg).toHaveCount(0);
 });
@@ -57,9 +58,11 @@ test("a change saved shows on the screen next time; you commit means the shared 
   await dlg.locator('[data-ld-pick="owner"]').click();
   await expect(dlg.locator('[data-ld-part="where"].on')).toHaveText("Shared folder");
   await expect(dlg.locator(".ld-n")).toHaveCount(0);
-  await dlg.locator('[data-ld="save"]').click();
+  // Each change saved as made: the + and − a moment after the last press, no Save.
+  await expect(dlg.locator(".ld-saved")).toHaveText("Saved");
+  await expect.poll(async () => (await cue.calls("desk_lands_set")).at(-1)?.args.lands).toMatchObject({ check: "none", how: "owner", where: "shared" });
+  await page.keyboard.press("Escape");
   await expect(dlg).toHaveCount(0);
-  expect((await cue.called("desk_lands_set")).args.lands.where).toBe("shared");
   await line(page).locator("[data-lands-change]").click();
   await expect(dlg.locator('[data-ld-part="where"].on')).toHaveText("Shared folder");
 });
@@ -81,8 +84,9 @@ test("a folder that isn't a git repository works in place and its settings say w
     };
   }, why);
   await openDesk(page);
-  // Why is on the settings screen; the header has only its one Settings link (#417, #415).
-  await expect(line(page)).toHaveText("Settings");
+  // Why is on the settings screen; the header has its one line, with one Change (#417).
+  await expect(line(page).locator(".dk-ab-words")).toContainText("lands in shared folder, not checked, you commit");
+  await expect(line(page).locator(".dk-ab-change")).toHaveText("Change");
   await expect(page.locator(".dk-strip .dk-ab")).toHaveCount(1);
   await line(page).locator("[data-lands-change]").click();
   const dlg = page.locator(".ld-dialog");

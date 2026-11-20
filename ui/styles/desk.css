@@ -613,11 +613,14 @@
 .dk-sw-btn b { padding: 3px 0; }
 .dk-shr > .dk-more-btn { flex: none; }
 .dk-strip .dk-sub { color: inherit; opacity: .75; font-size: 11px; }
-/* The counts, then the Desk's Settings link at their end (#417, #415): one short word in the strip's own ink, on the
-   counts' line so it takes no line of its own. What it asks before and how work lands are on the screen it opens. */
+/* The counts, then under them at the left the Desk's settings line (#417, #447): what it asks before and how work
+   lands, then one "Change". Narrow, the words shorten; "Change" always shows. */
 .dk-subr { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
-.dk-strip .dk-ab { flex: none; margin-left: auto; font-size: 11px; }
-.dk-ab-change { padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: 600; opacity: .85; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.dk-subr .dk-sub { flex: none; }
+.dk-strip .dk-ab { display: flex; align-items: baseline; min-width: 0; margin-top: 2px; font-family: var(--mono); font-size: 11px; white-space: nowrap; }
+.dk-ab-words { min-width: 0; overflow: hidden; text-overflow: ellipsis; opacity: .75; }
+.dk-ab-sep { flex: none; white-space: pre; opacity: .75; }
+.dk-ab-change { flex: none; padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: 600; opacity: .85; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 .dk-ab-change:hover, .dk-ab-change:focus-visible { opacity: 1; }
 .dk-sh .dk-ren, .dk-strip .dk-more-btn { color: inherit; }
 .dk-sh .dk-ren:hover, .dk-strip .dk-more-btn:hover, .dk-strip .dk-more-btn:focus-visible { background: color-mix(in oklab, currentColor 14%, transparent); color: inherit; }

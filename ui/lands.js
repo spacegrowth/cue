@@ -1,20 +1,24 @@
 "use strict";
 /** A project's settings (#381): how work lands (lands.rs: where a Desk item works, how it lands, its check, what
- *  follows, push, and how many at once), Ask me before, Away and old working folders, on one screen. Opened from a
- *  Desk header's Settings (#417); the Away switch still opens Away's own card at once. A Desk's `lands` (desk_view) has the setting now,
+ *  follows, push, and how many at once), Ask me before and old working folders, on one screen. Opened from the
+ *  Desk header's Settings (#417). Each change is saved the moment you make it, with a short "Saved"; Away is on the
+ *  Desk's own switch, not here. A Desk's `lands` (desk_view) has the setting now,
  *  its parts with each choice's words and whether it can be picked, and why when the folder decides it. Kept in Cue's
  *  own settings, never in the project. The lead can propose a change too (a LANDS: line): asked of you, saved on yes. */
 let lands = null;   // { desk, set: { where, how, check, after, push, at_once, check_steps, after_steps }, steps, ab, busy, old }
 // Remove old working folders (#397, hub/desk_copies.rs): looked at when you press it, listed with their size, removed
 // on a second press. `old`: null, { looking }, { list: { copies, kb } }, or { removing }.
 
-/** A Desk's one header line (#417): what it asks before and how its work lands, then Settings, which opens this
- *  screen ("Asks before release, delete · lands in own copy, checked · Settings"). Only on a Desk run by a lead. The
- *  words shorten with an ellipsis at narrow widths; Settings always shows. Why the folder decides a part is on the screen. */
+/** A Desk's one settings line (#417, #447), under its counts at the top left: what it asks before and how its work
+ *  lands, then one "Change" that opens this screen. Only on a Desk run by a lead. */
 function deskSettingsLine(d) {
   if (!d?.lead || !(d.lands || d.ask_before?.project)) return "";
-  const open = d.lands ? `data-lands-change="${esc(d.id || d.project)}"` : `data-ab-change="${esc(d.ask_before.project)}"`;
-  return `<span class="dk-ab"><button class="dk-ab-change" ${open}>Settings</button></span>`;
+  const l = d.lands, ab = d.ask_before;
+  const asks = ab?.project ? askBeforeWords(ab) : "";
+  const words = [asks ? (asks === "nothing" ? "Asks nothing first" : `Asks before ${asks}`) : "", l?.summary ? `lands in ${l.summary}` : ""].filter(Boolean).join(" · ");
+  const open = l ? `data-lands-change="${esc(d.id || d.project)}"` : `data-ab-change="${esc(ab.project)}"`;
+  const said = words ? `<span class="dk-ab-words">${esc(words[0].toUpperCase() + words.slice(1))}</span><span class="dk-ab-sep"> · </span>` : "";
+  return `<span class="dk-ab">${said}<button class="dk-ab-change" ${open}>Change</button></span>`;
 }
 /** Open Desk `desk`'s settings. */
 function landsChange(desk) {
@@ -23,8 +27,8 @@ function landsChange(desk) {
   const project = d.ask_before?.project || l.project;
   // Your own steps, one per line while you edit them.
   const steps = { check: (l.set.check_steps || []).join("\n"), after: (l.set.after_steps || []).join("\n") };
-  const ab = project && askBeforeKinds().length ? { project, ticks: [...askBeforeNow(project)], was: [...askBeforeNow(project)], more: false } : null;
-  lands = { desk, set: { ...l.set }, steps, ab, busy: false };
+  const ab = project && askBeforeKinds().length ? { project, ticks: [...askBeforeNow(project)], more: false } : null;
+  lands = { desk, set: { ...l.set }, steps, ab };
   renderMain();
 }
 /** The Desk whose settings show Ask me before for `project`, if any. */
@@ -43,7 +47,7 @@ function landsSeg(p) {
 function landsPart(p, l) {
   const now = p.choices.find((c) => c.key === lands.set[p.key]);
   const steps = p.key === "check" && lands.set.check === "cue"
-    ? `<ol class="ld-steps">${(l.steps || []).map((s) => `<li><b>${esc(s.label)}</b> <span>${esc(s.hint)}</span></li>`).join("")}</ol>`
+    ? `<ol class="ld-steps">${(l.steps || []).map((s) => `<li><b>${esc(s.label)}</b></li>`).join("")}</ol>`
     : (p.key === "check" || p.key === "after") && lands.set[p.key] === "command"
       ? `<textarea class="ld-cmd" rows="3" spellcheck="false" aria-label="${esc(p.label)}: your steps, one per line" placeholder="One step per line, e.g. npm test" data-ld-steps="${p.key}">${esc(lands.steps[p.key])}</textarea>` : "";
   return `<div class="ld-row"><div class="ld-label">${esc(p.label)}</div><div class="ld-body">${landsSeg(p)}${steps}${now?.hint ? `<div class="ld-hint">${esc(now.hint)}</div>` : ""}</div></div>`;
@@ -62,7 +66,7 @@ function landsOld() {
   const o = lands.old, l = o?.list, n = l?.copies?.length || 0;
   let body;
   if (!o) body = `<button class="btn" data-ld="old">Remove old working folders</button>
-    <div class="ld-hint">Folders whose work is already in the app, and that nothing is using. They're listed first.</div>`;
+    <div class="ld-hint">Their work is already in the app and nothing uses them. Listed before anything is removed.</div>`;
   else if (o.looking) body = `<button class="btn" disabled>Looking…</button>`;
   else if (o.removing) body = `<button class="btn" disabled>Removing…</button>`;
   else if (!n) body = `<div class="ld-hint">None: every other folder has work not in the app yet, or is in use.</div>`;
@@ -96,64 +100,64 @@ function landsOldRemove() {
     (e) => { a.old = null; toast(`Couldn't remove the old working folders: ${e}`, 5000); renderMain(); },
   );
 }
-/** Ask me before, its ticks kept with the screen and saved with it (ask_before.js has the rows and their words). */
+/** Ask me before, its kinds on one line, each saved as you tick it (ask_before.js has the rows and their words). */
 function landsAskBefore() {
   if (!lands.ab) return "";
-  return `<div class="ld-sec" data-ld-sec="ask"><div class="ld-h">Ask me before</div><div class="ld-hint">The lead and its sessions stop and ask you first.</div>
+  return `<div class="ld-sec" data-ld-sec="ask"><div class="ld-h">Ask me before <span class="ld-hint">· the lead and its sessions stop and ask you first</span></div>
     ${askBeforeRows(lands.ab)}</div>`;
 }
-/** Away: whether it's on, and its own dialog to turn it on or change it. */
-function landsAway(d) {
-  const a = deskAwayOf(d);
-  return `<div class="ld-sec" data-ld-sec="away"><div class="ld-h">Away</div><div class="ld-away"><span class="grow">${a.on ? `On · ${esc(deskAwayStatus(a))}` : "Off: the lead waits for you on anything it can't settle."}</span>
-    <button class="btn" data-ld="away">${a.on ? "Change…" : "Turn on…"}</button></div></div>`;
-}
 function landsHtml() {
-  // Away's own dialog shows over the Desk; this screen comes back when it closes.
-  if (!lands || (typeof deskAwayEdit !== "undefined" && deskAwayEdit)) return "";
+  if (!lands) return "";
   const d = deskOf(lands.desk), l = d?.lands;
   if (!l) { lands = null; return ""; }
   const name = typeof projLabel === "function" ? projLabel(l.project) : l.project;
   const parts = l.parts.map((p) => p.key === "how" ? landsAtOnce(l) + landsPart(p, l) : landsPart(p, l)).join("");
   return `<div class="move-scrim"><div class="move-dialog ld-dialog" role="dialog" aria-labelledby="ld-title">
-    <div class="move-title" id="ld-title">Settings for ${esc(name)}</div>
-    <div class="end-text">Kept in Cue, not in the project. You can also tell the lead what to change: it asks you first.</div>
-    <div class="ld-sec" data-ld-sec="lands"><div class="ld-h">How work lands</div><div class="ld-hint">How an item's work gets onto main.</div>
+    <div class="ld-top"><div class="move-title" id="ld-title">Settings for ${esc(name)}</div><span class="ld-saved" aria-live="polite">${lands.saved ? "Saved" : ""}</span><span class="grow"></span><button class="ld-x" data-ld="close" aria-label="Close">×</button></div>
+    <div class="ld-hint ld-intro">Kept in Cue, not in the project. Each change saves at once; you can also tell the lead, and it asks you first.</div>
+    <div class="ld-sec" data-ld-sec="lands"><div class="ld-h">How work lands <span class="ld-hint">· how an item's work gets onto main</span></div>
     ${l.why ? `<div class="ld-why">${esc(l.why)}</div>` : ""}
     <div class="ld-rows">${parts}</div></div>
-    ${landsAskBefore()}${landsAway(d)}
+    ${landsAskBefore()}
     <div class="ld-sec" data-ld-sec="old"><div class="ld-rows">${landsOld()}</div></div>
-    <div class="row-btns"><span class="grow"></span><button class="btn" data-ld="cancel">Cancel <kbd>Esc</kbd></button><button class="btn primary" data-ld="save"${lands.busy ? " disabled" : ""}>Save</button></div>
   </div></div>`;
 }
-function landsSave() {
+/** "Saved" for a moment after a change goes through. */
+function landsSaved(a) {
+  a.saved = true;
+  clearTimeout(a.savedT);
+  a.savedT = setTimeout(() => { a.saved = false; if (lands === a) renderMain(); }, 1600);
+  if (lands === a) renderMain();
+}
+/** How work lands, saved as it is on the screen now: at once for a pick, a moment after the last + or −, and steps
+ *  when you leave their box. Your own steps go with a part only when that part is "Your own steps". */
+function landsSaveSet(wait = 0) {
   const a = lands;
-  if (!a || a.busy) return;
-  a.busy = true;
-  renderMain();
-  // Your own steps go with a part only when that part is "Your own steps".
-  const set = { ...a.set };
-  delete set.check_steps;
-  delete set.after_steps;
-  for (const k of ["check", "after"]) if (set[k] === "command") set[`${k}_steps`] = (a.steps[k] || "").split("\n").map((x) => x.trim()).filter(Boolean);
-  const ab = a.ab, kinds = ab && askBeforeKinds().map((x) => x.key).filter((x) => ab.ticks.includes(x));
-  const abChanged = ab && [...kinds].sort().join() !== [...ab.was].sort().join();
-  const failed = (e) => { a.busy = false; renderMain(); return e; };
-  invoke("desk_lands_set", { desk: a.desk, lands: set }).then(
-    () => {
-      if (!abChanged) { if (lands === a) lands = null; return renderMain(); }
-      // How work lands is saved now: what's left on the screen is Ask me before, as you ticked it.
-      a.set = { ...set };
-      invoke("ask_before_set", { project: ab.project, kinds }).then(
-        () => { if (lands === a) lands = null; renderMain(); },
-        (e) => toast(`How work lands is saved; Ask me before couldn't be saved: ${failed(e)}`, 6000),
-      );
-    },
-    (e) => toast(`Nothing was saved. How work lands couldn't be saved: ${failed(e)}`, 6000),
+  if (!a) return;
+  clearTimeout(a.setT);
+  a.setT = setTimeout(() => {
+    const set = { ...a.set };
+    delete set.check_steps;
+    delete set.after_steps;
+    for (const k of ["check", "after"]) if (set[k] === "command") set[`${k}_steps`] = (a.steps[k] || "").split("\n").map((x) => x.trim()).filter(Boolean);
+    invoke("desk_lands_set", { desk: a.desk, lands: set }).then(
+      () => landsSaved(a),
+      (e) => toast(`Couldn't save how work lands: ${e}`, 6000),
+    );
+  }, wait);
+}
+/** Ask me before, saved as ticked; a tick that couldn't be saved goes back. */
+function landsSaveAsk(was) {
+  const a = lands, ab = a?.ab;
+  if (!ab) return;
+  const kinds = askBeforeKinds().map((x) => x.key).filter((x) => ab.ticks.includes(x));
+  invoke("ask_before_set", { project: ab.project, kinds }).then(
+    () => landsSaved(a),
+    (e) => { ab.ticks = was; toast(`Couldn't save Ask me before: ${e}`, 6000); renderMain(); },
   );
 }
 function landsEscape() {
-  if (!lands || (typeof deskAwayEdit !== "undefined" && deskAwayEdit)) return false;
+  if (!lands) return false;
   lands = null;
   renderMain();
   return true;
@@ -177,25 +181,32 @@ document.addEventListener("click", (e) => {
     // A pull request is opened from an item's own copy, so it has none in the shared folder.
     if (pick.dataset.ldPart === "how" && s.how === "pr") s.where = "copy";
     if (pick.dataset.ldPart === "where" && s.where === "shared" && s.how === "pr") s.how = "squash";
+    // Your own steps with none written yet waits for them (saved when you leave the box).
+    if (s[pick.dataset.ldPart] !== "command") landsSaveSet();
     return renderMain();
   }
   const act = b.dataset.ld;
   const range = deskOf(lands.desk)?.lands?.at_once || {};
-  if (act === "less") s.at_once = Math.max(range.min ?? 1, s.at_once - 1);
-  else if (act === "more") s.at_once = Math.min(range.max ?? 9, s.at_once + 1);
+  if (act === "less" || act === "more") {
+    s.at_once = act === "less" ? Math.max(range.min ?? 1, s.at_once - 1) : Math.min(range.max ?? 9, s.at_once + 1);
+    landsSaveSet(500);
+  }
   else if (act === "old") return landsOldLook();
   else if (act === "old-yes") return landsOldRemove();
   else if (act === "old-no") lands.old = null;
-  else if (act === "away") return deskAwayOpen(deskOf(lands.desk)?.project || lands.desk);
-  else if (act === "cancel") lands = null;
-  else if (act === "save") return landsSave();
+  else if (act === "close") lands = null;
   renderMain();
 }, true);
 // Ask me before's rows and More on the screen (ask_before.js).
 document.addEventListener("click", (e) => {
-  if (lands?.ab && e.target.closest?.(".ld-dialog")) askBeforeClick(lands.ab, e);
+  if (!lands?.ab || !e.target.closest?.(".ld-dialog")) return;
+  const was = [...lands.ab.ticks];
+  if (askBeforeClick(lands.ab, e) && was.join() !== lands.ab.ticks.join()) landsSaveAsk(was);
 }, true);
 document.addEventListener("input", (e) => {
   const t = e.target.closest?.("[data-ld-steps]");
   if (t && lands) lands.steps[t.dataset.ldSteps] = t.value;
+}, true);
+document.addEventListener("change", (e) => {
+  if (lands && e.target.closest?.("[data-ld-steps]")) landsSaveSet();
 }, true);
