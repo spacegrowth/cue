@@ -1116,10 +1116,9 @@ button.dk-say-id:hover { color: var(--link, var(--accent)); text-decoration: und
 
 /* The Queued list in your order (#387): a row you drag rides above the rest, which make room as it passes. */
 .dk-it[data-desk-q] { touch-action: none; }
-/* Its grip (#424): two short lines in the row's left padding, by the title; the pointer a grab hand over it. The open
-   row's › takes that spot, so there it gives way. */
-.dk-it > .dk-grip { position: absolute; top: 14px; left: 6px; color: var(--muted); cursor: grab; }
-.dk-it.on > .dk-grip { display: none; }
+/* Its grip (#424): two short lines in the row's right padding, level with the title, away from its state icon so it
+   reads as a grip; the pointer a grab hand over it. */
+.dk-it > .dk-grip { position: absolute; top: 14px; right: 6px; color: var(--muted); cursor: grab; }
 .dk-it.dk-drag { z-index: 2; background: var(--panel); box-shadow: 0 4px 14px rgba(0, 0, 0, .18); border-radius: 8px; cursor: grabbing; }
 body.dk-dragging, body.dk-dragging * { cursor: grabbing !important; user-select: none; }
 
