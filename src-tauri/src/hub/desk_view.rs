@@ -306,7 +306,7 @@ impl Hub {
                 json!({ "with_work": with_work, "work_history": work_history, "id": p, "project": p, "name": st.desk.spaces.get(p).map(|d| &d.name), "independent": st.desk.spaces.contains_key(p), "workspace_project": st.desk.project_of(p), "folder": st.desk.spaces.get(p).map(|d| &d.folder), "lead": Self::desk_lead_view(st, p), "items": items, "decisions": decisions, "older": older, "moves_cleared": st.desk.moves_cleared.get(p).copied().unwrap_or(0), "members": members, "checks": super::desk_checks::checks_view(st, p), "kept": st.desk.kept.iter().filter(|k| &k.project == p).collect::<Vec<_>>(), "waits": super::desk_waits::waits_view(st, p), "circles": super::desk_waits::circles_view(st, p), "ask_before": crate::one_way::desk_view(st.desk.project_of(p)), "away": super::desk_away::away_view(st, p, now), "held": super::desk_held::held_view(st, p), "away_log": super::desk_away_log::log_view(st, p), "paused": super::desk_pause::pause_view(p), "lands": crate::lands::desk_view(p, &desk_folder(st, p)) })
             })
             .collect();
-        json!({ "projects": list, "installed_ms": super::desk_checks::installed_ms(), "install_at": super::desk_finish::install_at(st) })
+        json!({ "projects": list, "installed_ms": super::desk_checks::installed_ms(), "install_at": super::desk_install::install_at(st) })
     }
 }
 

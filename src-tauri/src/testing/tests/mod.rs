@@ -30,6 +30,8 @@ mod desk_unstick;
 mod desk_theirs;
 mod desk_features;
 mod desk_finish;
+mod desk_install;
+mod desk_served;
 mod desk_wait_list;
 mod desk_context;
 mod desk_members;

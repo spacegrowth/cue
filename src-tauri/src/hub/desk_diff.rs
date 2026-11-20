@@ -2,7 +2,8 @@
 //! same files, the same scratch index, so your own index stays as it is); done, its commit, or what waits to be;
 //! still being worked on, what's changed so far.
 
-use super::desk_commit::{by_folder, changed_of, git, staged_diff};
+use super::desk_commit::{by_folder, changed_of, staged_diff};
+use super::desk_git::git;
 use crate::desk::DeskItem;
 use super::*;
 

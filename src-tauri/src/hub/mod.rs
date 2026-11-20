@@ -34,8 +34,12 @@ pub(crate) use desk_away::sweep_words as desk_away_sweep_words;
 mod desk_checks;
 mod desk_cleanup;
 mod desk_commit;
+mod desk_git;
 mod desk_finish;
+mod desk_install;
+mod desk_main_line;
 mod desk_trees;
+mod desk_tree_files;
 mod desk_copies;
 mod desk_lands;
 pub(crate) use desk_copies::OldCopies;
@@ -49,6 +53,8 @@ mod desk_members;
 mod desk_stall;
 mod desk_steps;
 mod desk_theirs;
+mod desk_theirs_codex;
+mod desk_theirs_log;
 mod desk_waits;
 mod land_keep;
 pub(crate) use desk_lead::DeskClaim;
@@ -294,7 +300,7 @@ pub struct Hub {
 impl Hub {
     pub fn new(app: Option<AppHandle>) -> Self {
         let ports = ports::Ports::real(app.as_ref());
-        desk_trees::clear_old_checks(&crate::server::cue_dir().join("checks"));
+        desk_tree_files::clear_old_checks(&crate::server::cue_dir().join("checks"));
         Self::with_ports(app, ports)
     }
 
@@ -311,7 +317,7 @@ impl Hub {
         st.parked = crate::db::parked();
         Self::desk_restore(&mut st);
         desk_checks::note_installed();
-        desk_finish::note_running();
+        desk_install::note_running();
         st.rates = crate::usage::saved_rates(now_ms());
         st.review_queue = crate::db::review_queue().into_iter().map(|(exec, lead, text, at_ms)| QueuedReview { exec, lead, text, at_ms }).collect();
         // Ids keep counting from the clock so they never collide with ids in saved history.

@@ -9,8 +9,9 @@
 //! the Desk pushes nothing), "never" the same with nothing ever pushed by the Desk, and "after" has the Desk push
 //! main after each landing, without asking. Sessions never push main in any of them.
 
-use super::desk_commit::{because, git};
-use super::desk_finish::{in_progress, main_checkout, main_ref, Claim};
+use super::desk_git::{because, git};
+use super::desk_finish::Claim;
+use super::desk_main_line::{in_progress, main_checkout, main_ref};
 use super::*;
 use crate::desk::{DeskItem, ItemTree};
 use std::process::{Command, Stdio};

@@ -14,8 +14,8 @@
 //! (#448): #418, reopened, was said DONE as "already on main" with no new commit. With nothing new, its DONE sends it
 //! back to its session, never to you.
 
-use super::desk_commit::git;
-use super::desk_finish::{main_checkout, main_ref, same_dir};
+use super::desk_git::git;
+use super::desk_main_line::{main_checkout, main_ref, same_dir};
 use super::*;
 use crate::desk::DeskItem;
 

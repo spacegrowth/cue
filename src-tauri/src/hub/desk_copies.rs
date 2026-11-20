@@ -13,9 +13,9 @@
 //! here works in (live or parked), one a teammate at work uses, an item's copy or a dropped item's kept one, the main
 //! checkout, and copies in the temp folder or Cue's own folder (other tools' scratch, Cue's installs).
 
-use super::desk_commit::git;
-use super::desk_finish::{main_checkout, same_dir};
-use super::desk_trees::{remove, rev, snapshot};
+use super::desk_git::git;
+use super::desk_main_line::{main_checkout, same_dir};
+use super::desk_tree_files::{remove, rev, snapshot};
 use super::*;
 use crate::desk::ItemTree;
 use serde::Serialize;
@@ -180,7 +180,7 @@ impl Hub {
                 eprintln!("cue: desk: #{id}'s helper copy {path} has work in it, and {to} is taken: left in the item's copy");
                 continue;
             }
-            match super::desk_commit::git_said("", repo, &[], &["worktree", "move", &path, &to]) {
+            match super::desk_git::git_said("", repo, &[], &["worktree", "move", &path, &to]) {
                 Ok(_) => {
                     self.write(|st| st.sessions.with_teammate(&lead, &call, |m| m.worktree = to.clone()));
                 }

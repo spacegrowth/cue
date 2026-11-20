@@ -4,7 +4,7 @@
 //! to the lead with why.
 
 use super::desk::{at_work, decide, release, rule_of, secs, By, Effects, NewStart};
-use super::desk_trees::{remove, rev, snapshot, tree_repo};
+use super::desk_tree_files::{remove, rev, snapshot, tree_repo};
 use super::*;
 
 /// An item the lead said is on main already (CLOSE): closed once its commit is found on the main line of one of
@@ -284,7 +284,7 @@ impl Hub {
         let mut repos: Vec<String> = o.folders.iter().filter_map(|f| tree_repo(f)).collect();
         repos.dedup();
         for repo in &repos {
-            let Some((_, branch)) = super::desk_finish::main_checkout(repo) else { continue };
+            let Some((_, branch)) = super::desk_main_line::main_checkout(repo) else { continue };
             let Some(tip) = rev(repo, &branch) else { continue };
             match rev(repo, &format!("{}^{{commit}}", o.commit)) {
                 Some(full) if crate::self_install::is_ancestor(repo, &full, &tip) => {
