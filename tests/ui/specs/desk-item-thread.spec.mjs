@@ -68,8 +68,9 @@ test("the box on an item at work goes straight to its holder, sent as the item, 
   await expect(page.locator(".dk-right .dk-box textarea")).toHaveAttribute("placeholder", "Write to it here…");
   await page.locator(".dk-right .dk-box textarea").fill("Check the narrow window too");
   await page.locator(".dk-right [data-desk-send]").click();
-  const sent = await cue.called("send_to_session");
-  expect(sent.args.sessionId).toBe("host");
+  await cue.called("desk_item_act", { id: "d5", act: "note", text: "Check the narrow window too" });
+  const sent = { args: { text: await page.evaluate(() => deskOf("cue").decisions.find((c) => c.item_id === "d5" && c.delivery)?.delivery.text) } };
+  expect(await page.evaluate(() => deskOf("cue").decisions.find((c) => c.item_id === "d5" && c.delivery)?.delivery.session_id)).toBe("host");
   expect(sent.args.text).toMatch(/^About #d5 \(.+\): Check the narrow window too$/);
   expect(await cue.calls("desk_send")).toHaveLength(0);
   // In its chat, not taken yet: it says it waits for it to take it; taken, that goes.

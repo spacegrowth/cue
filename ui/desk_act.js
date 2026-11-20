@@ -28,38 +28,57 @@ async function deskSendBox(key) {
   const text = draft(key).text.trim();
   const images = draft(key).images.map(({ name, mime, data }) => ({ name, mime, data }));
   if (!to || (!text && !images.length)) return;
+  // About an item, from its page or its row: where it goes is read now, from where the item stands, not from when the
+  // box was drawn (#437).
+  if (to.item && !/^[/!]/.test(text)) return deskSendItem(to, key, text, images);
   if (to.sid) {
-    // An answer from an item's page: the page says what you answered (deskChain).
-    const it = to.item && deskItem(deskSelection(), to.item);
-    if (it?.state === "needs_you" && sessionOf(to.sid)?.state !== "deciding" && !state.restarting?.[to.sid]) deskAnswers.set(it.id, { q: deskQuestion(it), a: text || "a picture", ask: it.ask?.item_id || "", at: now() });
-    // From an item's page: it goes as about that item, so the session answers about it and its reply is that item's (#176).
-    if (!to.mate && it && !/^[/!]/.test(text)) {
-      if (state.restarting?.[to.sid]) return toast("It's restarting. Send once it's back.");
-      if (sessionOf(to.sid)?.state === "deciding") return toast("It's asking you something first. Answer that, then send.");
-      // On its Thread at once, as a message to the lead is (#395); taken off again if it didn't go.
-      // What it went as and to whom kept with it, for Retry (#422).
-      const p = deskPend(it.id, text, "holder", images.length, { key, images, sid: to.sid, about: `About #${it.id} (${it.title}): ` });
-      renderMain();
-      const res = await deskToHolder(p);
-      // Didn't go (deliver put it back in the box): red on its Thread with why, Retry and Edit instead (#422). Never
-      // tried (deliver stopped first): off its Thread, still in the box.
-      if (res?.error) { deskTakeBack(key, text, images.length); p.failed = res.error; }
-      else if (!res?.ok) deskUnpend(it.id, p);
-      else if (text) deskWrote(it.id, "wrote_holder", text);
-      return renderMain();
-    }
-    else if (!to.mate) await sendTo(to.sid, false, key);
+    if (!to.mate) await sendTo(to.sid, false, key);
     else if (state.restarting?.[to.sid]) return toast("It's restarting. Send once it's back.");
     else if (sessionOf(to.sid)?.state === "deciding") return toast("It's asking you something first. Answer that, then send.");
     else await deliver(to.sid, key, (typed, images) => {
-      const said = it ? /* its item's number too, so the turn is that item's (#276) */ `About #${it.id} (${it.title}), for ${to.mate}: ${typed}` : `About ${to.mate}: ${typed}`;
+      const said = `About ${to.mate}: ${typed}`;
       insSent(to.sid, said, false);
       return invoke("send_to_session", { sessionId: to.sid, text: said, images, now: false });
     });
-    // Went (the box emptied): on the item's page, in its Steps.
-    if (it && text && !draft(key).text.trim()) { deskPend(it.id, text, "holder"); deskWrote(it.id, "wrote_holder", text); renderMain(); }
     return;
   }
+  return deskSendLead(to, key, text, images);
+}
+/** What you wrote about item `to.item` from box `key` (#437). Held by a live session: to it, at any stage, as a note
+ *  the hub keeps on the item's Thread before it goes and marks sent, queued or not sent (with Retry); ready to check,
+ *  it goes back with your words. Held by no one, or done: to the lead. Your words stay in the box until the hub has
+ *  them, so a restart or a change of state can't lose them. */
+async function deskSendItem(to, key, text, images) {
+  const project = to.project || deskSelection(), it = deskItem(project, to.item);
+  if (!it) return toast("That item isn't on this Desk any more.");
+  const hs = deskHolderSid(it), live = hs && (sessionOf(hs) || it.state === "to_check");
+  if (!it.holder || !live || ["done", "dropped"].includes(it.state)) return deskSendLead({ project, item: it.id }, key, text, images);
+  if (it.state === "to_check") {
+    await deskSendBack(it.id, key, text, images);
+    return renderMain();
+  }
+  if (state.restarting?.[hs]) return toast("It's restarting. Send once it's back.");
+  if (sessionOf(hs)?.state === "deciding") return toast("It's asking you something first. Answer that, then send.");
+  // An answer: the page says what you answered (deskChain).
+  if (it.state === "needs_you") deskAnswers.set(it.id, { q: deskQuestion(it), a: text || "a picture", ask: it.ask?.item_id || "", at: now() });
+  // The box empties at once and the note is on the Thread; the saved draft goes only once the hub has the note.
+  endDictation(key);
+  delete drafts[key];
+  const p = deskPend(it.id, text || "(a picture)", "note", images.length, { key, images });
+  renderMain();
+  if (await deskNote(it.id, p)) saveDrafts();
+  // Didn't go: red on its Thread with why, Retry and Edit (#422). The saved draft keeps it till then, so a restart
+  // brings it back to the box.
+  else deskAnswers.delete(it.id);
+  renderMain();
+}
+/** Pending note `p` on item `id` handed to the hub (act "note"): whether it took it; `p.failed` says why not. */
+async function deskNote(id, p) {
+  try { await invoke("desk_item_act", { id, act: "note", text: p.text, images: p.images || [] }); return true; }
+  catch (e) { p.failed = String(e); return false; }
+}
+/** Words from box `key` to the lead of `to.project`, about item `to.item` when there is one. */
+async function deskSendLead(to, key, text, images) {
   const { project, item: id } = to;
   const it = id && deskItem(project, id);
   // About an item ready to check: it's sent back with your words, to its holder, as Send back does (off Waiting on you).
@@ -70,8 +89,8 @@ async function deskSendBox(key) {
   }
   const said = it ? `About #${it.id} (${it.title}): ${text}` : text;
   endDictation(key);
+  // Saved without it only once it went: a restart in between leaves your words in the box.
   delete drafts[key];
-  saveDrafts();
   const list = deskSent.get(project) || [], mine = { text: said, images, at: now(), sent: 0, project };
   list.push(mine);
   deskSent.set(project, list);
@@ -84,6 +103,7 @@ async function deskSendBox(key) {
   renderMain();
   try {
     await invoke("desk_send", { project, text: said, images });
+    saveDrafts();
     mine.sent = now();
     if (it) { toast(`Sent to ${deskLeadName(deskOf(project)) || "the lead"}`); if (text) deskWrote(it.id, "wrote_lead", text); }
   }
@@ -160,6 +180,12 @@ async function deskMsgRetry(id, at) {
   const p = deskFailedOf(id, at);
   if (!p) return;
   if (p.why === "lead" && p.lead) return deskLeadRetry(p.lead);
+  if (p.why === "note") {
+    p.failed = null;
+    renderMain();
+    await deskNote(id, p);
+    return renderMain();
+  }
   if (p.why === "holder") {
     if (state.restarting?.[p.sid]) return toast("It's restarting. Send once it's back.");
     if (sessionOf(p.sid)?.state === "deciding") return toast("It's asking you something first. Answer that, then send.");
@@ -364,6 +390,7 @@ const DESK_CLICKS = {
   deskMovesKeep: () => { deskMovesClearing = null; renderMain(); },
   ...DESK_LEAD_CLICKS,
   deskSend: (el) => deskSendBox(el.dataset.deskSend),
+  deskRetry: (el) => deskRetry(el.dataset.item, el.dataset.deskRetry),
   deskAct: (el) => { deskGiveFor = null; deskAct(el.dataset.id, el.dataset.deskAct, el); },
   deskUndo: (el) => deskUndo(el.dataset.deskUndo),
   deskTick: (el) => { const id = el.dataset.deskTick; if (!deskTicked.delete(id)) deskTicked.add(id); if (!deskTicked.size) deskGoBackOpen = null; renderMain(); },

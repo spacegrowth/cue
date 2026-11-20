@@ -291,7 +291,11 @@ function deskItemChat(i, d, s) {
   const rows = deskChatRows(s, { extra: checks, folds: deskChatFolds(i, d), say: deskSaidWords, reply: (e) => deskChatReply(i, e), acts });
   // Not twice: what the chat's own outbox shows already (chat/send.js), its held or queued line, or its thread has.
   const waits = (p) => p.text.trim() && [s.held, s.queued].some((w) => String(w?.text || "").includes(p.text.trim()));
-  const sent = (p) => waits(p) || outbox.some((o) => o.sid === s.session_id && o.text === p.text) || thread.some((e) => e.role === "you" && e.at_ms >= p.at - 60000 && (p.text.trim() ? e.text.includes(p.text.trim()) : true));
+  // What the hub says didn't reach it (#437: Cue stopped, the session was gone): red with why and Retry, kept across
+  // restarts as the hub keeps it; a pending copy of one is shown by it.
+  const lost = deskItemLog(i, d).filter((c) => !c.call && (c.delivery?.went || "").startsWith("failed"));
+  const lostOf = (p) => lost.some((c) => c.text.trim() === p.text.trim() && (c.delivery.at_ms || 0) >= p.at - 1000);
+  const sent = (p) => (p.failed == null && lostOf(p)) || waits(p) || outbox.some((o) => o.sid === s.session_id && o.text === p.text) || thread.some((e) => e.role === "you" && e.at_ms >= p.at - 60000 && (p.text.trim() ? e.text.includes(p.text.trim()) : true));
   // Sent from here and not in its chat yet: its one line (#422), Sending till it is, red with Retry and Edit if it
   // couldn't go.
   const mine = (deskPending.get(i.id) || []).filter((p) => !sent(p)).map((p) => {
@@ -299,8 +303,12 @@ function deskItemChat(i, d, s) {
     const pics = p.pics ? `<div class="dk-tpn">${p.pics === 1 ? "1 picture" : `${p.pics} pictures`}</div>` : "";
     return keyed(msgRow({ ...m, acts: deskMsgActs(m), extra: p.why === "back" ? ' · <span class="ml-back">sent back</span>' : "" }, `<div class="cv-you-text">${esc(p.text).replace(/\n/g, "<br>")}</div>${pics}`), `p:${p.at}`);
   }).join("");
+  const failed = lost.map((c) => {
+    const m = { ...deskMsgState(c, i, s.session_id), to: c.why?.replace(/^(to |sent back to |note to )/, "") || i.holder?.name, item: i.id };
+    return keyed(msgRow({ ...m, acts: deskMsgActs(m) }, `<div class="cv-you-text">${esc(c.text).replace(/\n/g, "<br>")}</div>`), `lost:${c.id}`);
+  }).join("");
   const where = sessionOf(s.session_id) ? whereNow(null, s) : "";
-  return `<div class="dk-ichat" data-thread-for="${esc(`${i.project}|${i.id}`)}">${rows}${mine}${where ? keyed(where, "where") : ""}</div>`;
+  return `<div class="dk-ichat" data-thread-for="${esc(`${i.project}|${i.id}`)}">${rows}${failed}${mine}${where ? keyed(where, "where") : ""}</div>`;
 }
 /** Item `i`'s panel, beside its chat on its page (#418): This item (its state, what
  *  it waits on, its buttons; who has it and who added it), You'll see as ticks, What to try, its record, then Open its

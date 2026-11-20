@@ -226,10 +226,19 @@ pub(super) fn note(st: &mut Store, project: &str, by: &By, id: &str, words: &str
     decide(st, project, Some(id.to_string()), by.name, by.sid, words, &format!("note to {}", h.name), now, fx);
     if let Some(step) = st.desk.decisions.last_mut() {
         step.undo = "none".into();
-        step.delivery = Some(crate::desk::model::DeskDelivery { session_id: h.to().to_string(), text: message.clone(), at_ms: now });
     }
-    fx.sends.push((h.to().to_string(), message));
+    send_step(st, id, h.to(), message, now, fx);
     Ok(())
+}
+
+/// The step just noted (the last decision) goes to session `to` as `message`, about item `id`: kept on it as its
+/// delivery, "sending" till Cue has handed it over (`Hub::desk_went` notes how that went, #437).
+pub(super) fn send_step(st: &mut Store, id: &str, to: &str, message: String, now: u64, fx: &mut Effects) {
+    if let Some(step) = st.desk.decisions.last_mut() {
+        step.delivery = Some(crate::desk::model::DeskDelivery { session_id: to.to_string(), text: message.clone(), at_ms: now, went: "sending".into() });
+        fx.went.push((step.id.clone(), to.to_string(), id.to_string()));
+    }
+    fx.sends.push((to.to_string(), message));
 }
 
 /// "Taken: #12 to web." (after `waits`, when it's queued): what the lead is told of a route made (#248).

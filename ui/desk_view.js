@@ -2,7 +2,9 @@
 // Split from desk.js, which keeps the Desk's state and item basics; loaded after it (index.html, mini.html).
 /** The draft key of the box that sends to `to` ({ project, item } or { sid, mate }), noted with where it sends. */
 function deskBoxKey(to) {
-  const key = to.sid ? `desk-to:${JSON.stringify([to.sid, to.mate || "", ...(to.item ? [to.item] : [])])}` : `desk:${JSON.stringify([to.project, to.item || ""])}`;
+  // An item's box keeps one key whoever it goes to (#437): a change of state mid-typing used to swap the box, and
+  // what was in it was never sent.
+  const key = to.item ? `desk:${JSON.stringify([to.project || deskSelection(), to.item])}` : to.sid ? `desk-to:${JSON.stringify([to.sid, to.mate || "", ...(to.item ? [to.item] : [])])}` : `desk:${JSON.stringify([to.project, to.item || ""])}`;
   deskBoxes.set(key, to);
   return key;
 }
@@ -24,7 +26,7 @@ function deskBox(d) {
     // to it, sent as about the item, and the lead gets no copy (#276); else (no holder, not begun yet, or done) to the lead.
     const it = deskItem(d.project, o.id), hs = deskHolderSid(it);
     if (it && hs && sessionOf(hs) && !["to_check", "done", "queued", "new", "dropped"].includes(it.state)) {
-      to = it.holder.kind === "crew" ? { sid: hs, mate: it.holder.name, item: it.id } : { sid: hs, item: it.id };
+      to = it.holder.kind === "crew" ? { project: d.project, sid: hs, mate: it.holder.name, item: it.id } : { project: d.project, sid: hs, item: it.id };
       pre = it.holder.kind === "crew" ? `To ${it.holder.name}, through ${deskHolderName(hs)} · sent as #${it.id}` : `To ${it.holder.name}, who has this item · sent as #${it.id}`;
       ph = "Write to it here…";
     }
@@ -59,7 +61,7 @@ function deskItemFoot(i, d) {
   if (!i.holder) return deskBox(d);
   const sid = i.ask?.sid || (i.holder.kind === "crew" ? i.holder.lead_sid : i.holder.sid);
   if (!sessionOf(sid)) return `<div class="dk-ended">Its session has ended.</div>`;
-  const to = i.holder.kind === "crew" && !i.ask ? { sid, mate: i.holder.name, item: i.id } : { sid, item: i.id };
+  const to = i.holder.kind === "crew" && !i.ask ? { project: d.project, sid, mate: i.holder.name, item: i.id } : { project: d.project, sid, item: i.id };
   const key = deskBoxKey(to), mic = dictating?.key === key, line = deskToLine(i.holder.name, i);
   return `<div class="dk-box" data-drop="${esc(key)}">${deskPreHtml(line.pre)}${draftChips(key)}<div class="dk-box-row"><textarea rows="1" data-text="${esc(key)}" placeholder="${esc(line.ph)}" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off">${esc(draft(key).text)}</textarea><button class="icon-btn mic ${mic ? "on" : ""}" data-mic="${esc(key)}" aria-label="${mic ? "Stop dictating" : "Dictate"}">${MIC_ICON}</button><button class="icon-btn" data-attach="${esc(key)}" aria-label="Add an image">${IMAGE_ICON}</button><button class="btn primary small" data-desk-send="${esc(key)}">Send</button></div></div>`;
 }

@@ -3115,7 +3115,8 @@ test("an item's question opens at the page's foot and keeps the answer on its pa
   await box.fill("It stays put now");
   await page.locator(".dk-right [data-desk-send]").click();
   // Sent as about this item, so its session answers on it (#176).
-  await cue.called("send_to_session", { sessionId: "site", text: "About #d1 (Reply box loses focus after Send): It stays put now" });
+  await cue.called("desk_item_act", { id: "d1", act: "note", text: "It stays put now" });
+  expect(await page.evaluate(() => deskOf("cue").decisions.find((c) => c.item_id === "d1" && c.delivery)?.delivery)).toMatchObject({ session_id: "site", text: "About #d1 (Reply box loses focus after Send): It stays put now" });
   await expect(chain).toContainText("You answered: It stays put now");
   expect(await page.evaluate(() => [view, deskOpen.kind])).toEqual(["desk", "item"]);
   // Its session at work again: the old ask and your answer leave the page.
@@ -3365,7 +3366,6 @@ test("what you send on an item's page shows in its Thread at once, before it com
   await cue.open("desk");
   await openDesk(page);
   await page.locator('[data-desk-item="d3"]').click();
-  await cue.override("desk_item_act", () => new Promise((r) => { window.__release = r; }));
   await page.locator(".dk-right .dk-box textarea").fill("Narrow windows too");
   await page.locator(".dk-right [data-desk-send]").click();
   // Its page is its holder's chat (#418): yours in it at once, as you wrote it.
@@ -3373,9 +3373,8 @@ test("what you send on an item's page shows in its Thread at once, before it com
   await expect(mine).toHaveCount(1);
   // The lead is at work: Cue holds it till its turn ends, and the line says so, with its controls (#422).
   await expect(mine.locator(".msg-line")).toHaveText("◌ Not sent yet · Cue sends it when its turn ends · Edit · Send now · Cancel");
-  // Back as a step: still one message.
-  await cue.change((st) => st.desk.projects.find((x) => x.project === "cue").decisions.push({ project: "cue", item_id: "d3", id: "y2", by: "You", sid: "", text: "Narrow windows too", why: "to web-lead", at: Math.floor(Date.now() / 1000) }));
-  await page.evaluate(() => window.__release?.(null));
+  // The hub keeps it as a step (#437): still one message.
+  await cue.called("desk_item_act", { id: "d3", act: "note", text: "Narrow windows too" });
   await expect(mine).toHaveCount(1);
 });
 
@@ -3838,8 +3837,8 @@ test("an item's thread holds only its own messages: its session's words about an
   });
   await page.locator(".dk-right .dk-box textarea").fill("Check the narrow window too");
   await page.locator(".dk-right [data-desk-send]").click();
-  const sent = await cue.called("send_to_session");
-  expect(sent.args.text).toMatch(/^About #d5 \(.+\): Check the narrow window too$/);
+  await cue.called("desk_item_act", { id: "d5", act: "note", text: "Check the narrow window too" });
+  expect(await page.evaluate(() => deskOf("cue").decisions.find((c) => c.item_id === "d5" && c.delivery)?.delivery.text)).toMatch(/^About #d5 \(.+\): Check the narrow window too$/);
   await expect(pane.locator(".dk-ichat .cv-you").last()).toContainText("Check the narrow window too");
   // Its session on it now: its working row comes back.
   await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5").state = "working"; st.sessions.find((x) => x.session_id === "host").state = "working"; });

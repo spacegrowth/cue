@@ -62,6 +62,9 @@ pub(super) struct Effects {
     pub(super) land: bool,
     /// The lead's PAUSE (true) or RESUME (false) of its Desk (#366): (Desk, on, its name, its session, why).
     pub(super) pause: Vec<(String, bool, String, String, String)>,
+    /// Steps whose message is in `sends` (your notes and send-backs, the lead's NOTE: #437): (step, session, item), so
+    /// how each send went is kept on its step (`desk_went`), and the item's page can say so (and offer Retry).
+    pub(super) went: Vec<(String, String, String)>,
 }
 
 
@@ -170,6 +173,9 @@ pub(super) fn last_words(s: &Session) -> String {
     s.thread.iter().rev().find(|e| e.role == "agent").and_then(|e| e.text.lines().map(str::trim).find(|l| !l.is_empty())).unwrap_or("").chars().take(160).collect()
 }
 
+/// How a note that was still going when Cue stopped went.
+pub(crate) const STOPPED: &str = "failed: Cue stopped before it went";
+
 impl Hub {
     /// The Desk as it was saved (with_ports).
     pub(super) fn desk_restore(st: &mut Store) {
@@ -186,6 +192,13 @@ impl Hub {
         // Calls from before #403 (once the leads are known): the lead's dispatch work sorted off the Decisions list, as new ones are.
         for id in st.desk.sort_calls() {
             if let Some(d) = st.desk.decisions.iter().find(|d| d.id == id) {
+                crate::db::desk_put_decision(d);
+            }
+        }
+        // A note still going when Cue stopped never went (#437): its step says so and offers Retry.
+        for d in st.desk.decisions.iter_mut() {
+            if let Some(del) = d.delivery.as_mut().filter(|del| del.went == "sending") {
+                del.went = STOPPED.into();
                 crate::db::desk_put_decision(d);
             }
         }
@@ -404,6 +417,29 @@ impl Hub {
         f()
     }
 
+    /// How the sends of steps `steps` went (#437), kept on each step: "sent", "kept" (Cue keeps it for when that
+    /// session's turn ends) or "failed: <why>". Saved, and the window shown it.
+    pub(super) fn desk_went(&self, steps: &[String], sent: &Result<String, String>) {
+        let went = match sent {
+            Ok(said) if super::team::kept(said) => "kept".to_string(),
+            Ok(_) => "sent".to_string(),
+            Err(e) => format!("failed: {e}"),
+        };
+        let saved: Vec<DeskDecision> = self.write(|st| {
+            st.desk.decisions.iter_mut().filter(|d| steps.contains(&d.id)).filter_map(|d| {
+                let del = d.delivery.as_mut()?;
+                del.went = went.clone();
+                Some(d.clone())
+            }).collect()
+        });
+        for d in &saved {
+            crate::db::desk_put_decision(d);
+        }
+        if !saved.is_empty() {
+            self.changed();
+        }
+    }
+
     /// What a change left to do, with the store let go: its saves, then its messages and questions, and new items
     /// for their lead (told a moment later, with any others that came meanwhile).
     pub(super) fn desk_done(&self, mut fx: Effects) {
@@ -414,6 +450,17 @@ impl Hub {
         // A paused Desk's sessions are sent nothing, and its items start no sessions, till it resumes (#366).
         self.desk_pause_hold(&mut fx);
         self.desk_trees(&mut fx);
+        // Steps whose message goes now, by the send that carries it; the rest Cue keeps (a paused Desk, an item waiting
+        // for a copy: it goes with the item's start), and their steps say so.
+        let tracked = std::mem::take(&mut fx.went);
+        let mut went_with: Vec<Vec<String>> = fx.sends.iter().map(|_| Vec::new()).collect();
+        let mut kept_back = Vec::new();
+        for (step, to, item) in tracked {
+            match fx.sends.iter().position(|(s, text)| *s == to && text.contains(&format!("#{item} ("))) {
+                Some(n) => went_with[n].push(step),
+                None => kept_back.push(step),
+            }
+        }
         {
             // Each save writes what the store holds now (saves.rs), in the order the saves run.
             let _saving = crate::locking::lock(&self.saves.desk, "desk saves");
@@ -465,7 +512,10 @@ impl Hub {
                 eprintln!("cue: desk: its holder's question was gone before the pick could answer it");
             }
         }
-        for (sid, text) in fx.sends {
+        if !kept_back.is_empty() {
+            self.desk_went(&kept_back, &Ok("kept in Cue".into()));
+        }
+        for ((sid, text), steps) in fx.sends.into_iter().zip(went_with) {
             // A Resume's send says how it went, on its item (#291).
             let restart = fx.restarts.iter().find(|(_, to, _)| *to == sid).map(|(id, _, name)| (id.clone(), name.clone()));
             let now = fx.now.contains(&sid);
@@ -474,6 +524,10 @@ impl Hub {
                 let sent = h.send_to_session(&sid, &text, &[], now);
                 if let Err(e) = &sent {
                     eprintln!("cue: desk: couldn't send {sid} its item: {e}");
+                }
+                // Your note or send-back (#437): how it went, on its step.
+                if !steps.is_empty() {
+                    h.desk_went(&steps, &sent);
                 }
                 if let Some((id, name)) = restart {
                     h.desk_restart_went(&id, &name, sent);

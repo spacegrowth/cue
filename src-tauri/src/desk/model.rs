@@ -577,6 +577,11 @@ pub struct DeskDelivery {
     pub text: String,
     #[serde(default)]
     pub at_ms: u64,
+    /// How its send went, as Cue saw it (#437): "sending" till Cue has handed it over, then "sent", "kept" (Cue keeps
+    /// it for when that session's turn ends, or till the item has a copy to work in) or "failed: <why>". "" on steps
+    /// saved before Cue tracked it. "sending" that stays so (Cue stopped first) is shown as not sent, with Retry.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub went: String,
 }
 
 /// Every project's Desk, as Cue holds it while it runs (saved as it changes: db/desk.rs).

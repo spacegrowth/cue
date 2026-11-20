@@ -53,6 +53,7 @@ mod land_keep;
 pub(crate) use desk_lead::DeskClaim;
 pub(crate) use desk_checks::builds_this_cue;
 pub(crate) use desk_pr::PR_CLOSED;
+pub(crate) use desk::STOPPED;
 #[cfg(test)]
 pub(crate) use desk_held::HELD_WORDS;
 pub(crate) use desk_trees::tree_line;

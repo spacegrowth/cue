@@ -108,6 +108,27 @@ CueBridge.area("desk", (w) => {
       const it = itemOf(id);
       if (!it) throw "No such item";
       const t = secs();
+      // A note on an item to check sends it back with the note (#437).
+      if (act === "note" && it.state === "to_check" && it.holder) act = "send_back";
+      // Your note to its holder (#437): on its Thread, how it went with it; to the session as about the item.
+      if (act === "note") {
+        if (!it.holder || ["done", "dropped"].includes(it.state)) throw "nobody holds it: it goes to the lead";
+        const sid = it.ask?.sid || it.holder.lead_sid || it.holder.sid, s = w.session(sid);
+        const message = `About #${id} (${it.title})${it.holder.kind === "crew" ? `, for ${it.holder.name}` : ""}: ${text}`;
+        const went = !s ? "failed: its session has ended" : s.state === "working" ? "kept" : "sent";
+        deskOf(it.project).decisions.unshift({ id: `w${++n}`, project: it.project, item_id: id, by: "You", sid: "", text: text.trim(), why: `to ${it.holder.name}`, at: t, undo: "none", call: false, delivery: { session_id: sid, text: message, at_ms: w.now(), went } });
+        if (s?.state === "working") s.held = { role: "you", text: s.held ? `${s.held.text}\n\n${message}` : message, at_ms: s.held?.at_ms || w.now() };
+        else if (s) w.working(s, message, images);
+        w.changed();
+        return it;
+      }
+      if (act === "retry") {
+        const c = deskOf(it.project).decisions.find((x) => x.id === text && x.item_id === id);
+        if (!c?.delivery?.went?.startsWith("failed")) throw "it went already";
+        c.delivery.went = "sent";
+        w.changed();
+        return it;
+      }
       if (act === "wrote_lead" || act === "wrote_holder") {
         const d = desk().projects.find((x) => x.project === it.project);
         d.decisions.unshift({ id: `w${++n}`, project: it.project, item_id: it.id, by: "You", sid: "", text, why: act === "wrote_lead" ? `to ${d.lead?.name || ""}` : `to ${it.holder?.name || ""}`, at: secs(), undo: "none", call: false });

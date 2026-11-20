@@ -222,7 +222,7 @@ test("mini: a question its holder ended on, answered from the row", async ({ cue
   await row.locator("[data-mdk-answer]").click();
   await row.locator("textarea[data-mdk-box]").fill("Keep the old one for now");
   await row.locator("[data-mdk-send]").click();
-  await cue.called("send_to_session", { sessionId: "site", text: "About #w3 (Logo on the launch page): Keep the old one for now" });
+  await cue.called("desk_item_act", { id: "w3", act: "note", text: "Keep the old one for now" });
   await expect(row.locator(".m-dk-said")).toHaveText("✓ You answered: Keep the old one for now");
   // Send back on the one to check: its own box in the row, Enter sends it back.
   const w1 = page.locator('.m-dk-it[data-mdesk-item="w1"]');

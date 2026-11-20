@@ -55,7 +55,7 @@ test("what you send on an item's page shows at once, before its session has it",
   await cue.open("desk");
   await atWork(cue);
   // The send never comes back while we look.
-  await cue.override("send_to_session", () => new Promise(() => {}));
+  await cue.override("desk_item_act", () => new Promise(() => {}));
   await openItem(page, "d5");
   await page.locator(".dk-right .dk-box textarea").fill("Check the narrow window too");
   await page.locator(".dk-right [data-desk-send]").click();

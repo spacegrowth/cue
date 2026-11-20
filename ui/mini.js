@@ -127,7 +127,7 @@
   function deskAnswerKey(i, req = deskReq(i)) {
     if (req) return `mdk:${req.id}`;
     const sid = i.ask?.sid || (i.holder?.kind === "crew" ? i.holder.lead_sid : i.holder?.sid);
-    return deskBoxKey(i.holder?.kind === "crew" && !i.ask ? { sid, mate: i.holder.name, item: i.id } : { sid, item: i.id });
+    return deskBoxKey(i.holder?.kind === "crew" && !i.ask ? { project: i.project, sid, mate: i.holder.name, item: i.id } : { project: i.project, sid, item: i.id });
   }
   const deskFind = (id) => { for (const p of state.desk?.projects || []) { const i = deskItemsWithRequests(deskOf(p.project)).find((x) => x.id === id); if (i) return i; } return null; };
 

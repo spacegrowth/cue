@@ -6,7 +6,7 @@ use crate::desk::{DeskDecision, DeskItem};
 use super::desk_members::join;
 use super::desk::{Effects, NewStart, ask_of, at_work, holder_of, rule_of, secs};
 use super::desk_view::shown;
-use super::desk_route::{decide, give, release, start_released};
+use super::desk_route::{decide, give, release, send_step, start_released};
 use super::desk_heard::new_item;
 
 /// What you did to item `id` ("looks_right" | "reopen" | "send_back" | "start_now" | "put_before" | "hold" | "drop"), in the store.
@@ -15,6 +15,12 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
         return pick(st, id, text, now);
     }
     let mut fx = Effects::default();
+    // A note from its page (#437): to check, it's a Send back (the item reopens, your words go with it); else to
+    // whoever holds it, at any stage. With nobody holding it, the window sends it to the lead.
+    let act = if act == "note" && st.desk.item(id).is_some_and(|i| i.state == "to_check" && i.holder.is_some()) { "send_back" } else { act };
+    if act == "retry" {
+        return retry(st, id, text, now);
+    }
     // Parked (#385, #391): Park puts an item nobody is at work on there; Start on a held one makes it new again,
     // for the lead to route as any new item.
     let held = st.desk.item(id).is_some_and(|i| i.state == "held");
@@ -82,11 +88,27 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
             let (title, project) = (it.title.clone(), it.project.clone());
             you_wrote(st, &project, id, words.split_once("\nPictures with it").map_or(words.as_str(), |(w, _)| w).trim(), &format!("sent back to {}", h.name), now, &mut fx);
             let message = format!("{crew}Desk item #{id} ({title}) isn't done: {words}\nIts fixes stay in #{id}; don't add new items for them. Say DONE: #{id} when it is.{pr_open}");
-            if let Some(step) = st.desk.decisions.last_mut() {
-                step.delivery = Some(crate::desk::model::DeskDelivery { session_id: h.to().to_string(), text: message.clone(), at_ms: now });
-            }
             fx.backs.push((id.to_string(), message.clone()));
-            fx.sends.push((h.to().to_string(), message));
+            send_step(st, id, h.to(), message, now, &mut fx);
+        }
+        // A note from its page to whoever holds it (#437), at any stage but to check (a Send back, above): noted on
+        // it first, then sent as about the item ("About #12 (…): …"), kept in Cue while that session works, and how
+        // it went kept on its step, so the page says when it didn't go and offers Retry.
+        "note" => {
+            let h = holder.filter(|_| !matches!(it.state.as_str(), "done" | "dropped")).ok_or("nobody holds it: it goes to the lead")?;
+            let words = text.trim().to_string();
+            if words.is_empty() {
+                return Err("nothing written".into());
+            }
+            // Its holder asked you something as its turn ended: the answer goes where that ask came from.
+            let ask = it.ask.as_ref().and_then(|a| a.get("sid")).and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(str::to_string);
+            let to = ask.unwrap_or_else(|| h.to().to_string());
+            let mate = if h.kind == "crew" { format!(", for {}", h.name) } else { String::new() };
+            let message = format!("About #{id} ({}){mate}: {words}", it.title);
+            let project = it.project.clone();
+            you_wrote(st, &project, id, words.split_once("\nPictures with it").map_or(words.as_str(), |(w, _)| w).trim(), &format!("to {}", h.name), now, &mut fx);
+            send_step(st, id, &to, message, now, &mut fx);
+            return Ok(fx);
         }
         // Waiting for a free copy (#401), its holder's (sent back, or given out with all copies in use): it starts now
         // where its holder is, as the lead's START does, with its words and your Send back's.
@@ -172,6 +194,22 @@ fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<E
 }
 
 /// Your words about item `id`, as one of its Steps (`whom`: where they went), by you: nothing to undo.
+/// Retry on item `id`'s step `step` (#437), whose message didn't go (or Cue stopped before it went): sent again as it
+/// was, to the same session.
+fn retry(st: &mut Store, id: &str, step: &str, now: u64) -> Result<Effects, String> {
+    let mut fx = Effects::default();
+    let d = st.desk.decisions.iter_mut().find(|d| d.id == step && d.item_id.as_deref() == Some(id)).ok_or("that message isn't on this item any more")?;
+    let del = d.delivery.as_mut().ok_or("nothing to send again")?;
+    if !del.went.starts_with("failed") {
+        return Err("it went already".into());
+    }
+    (del.went, del.at_ms) = ("sending".into(), now);
+    fx.sends.push((del.session_id.clone(), del.text.clone()));
+    fx.went.push((d.id.clone(), del.session_id.clone(), id.to_string()));
+    fx.decisions.push(d.id.clone());
+    Ok(fx)
+}
+
 fn you_wrote(st: &mut Store, project: &str, id: &str, words: &str, whom: &str, now: u64, fx: &mut Effects) {
     decide(st, project, Some(id.to_string()), "You", "", words, whom, now, fx);
     if let Some(d) = st.desk.decisions.last_mut() {

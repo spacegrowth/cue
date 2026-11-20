@@ -9,6 +9,9 @@ function deskMsgState(step, item, to, fallback = "delivered") {
   const session = sid && (sessionOf(sid) || parkedOf(sid));
   const start = step.delivery?.at_ms || deskMs(step.at);
   const none = { st: fallback, at: fallback === "delivered" ? start : 0, sid };
+  // The hub's own word that it didn't go (#437): red, why, and Retry from its step.
+  const went = step.delivery?.went || "";
+  if (went.startsWith("failed")) return { st: "failed", why: esc(went.replace(/^failed:?\s*/, "") || "it didn't go"), sid, step: step.id };
   if (!session) return none;
   const normalize = (text) => String(text || "").replace(/\s+/g, " ").trim();
   const expected = step.delivery && normalize(step.delivery.text);
@@ -51,6 +54,13 @@ function deskMsgActs(m) {
   const sid = ` data-sid="${esc(m.sid || "")}"`, at = ` data-id="${esc(m.item || "")}" data-at="${esc(String(m.retry || ""))}"`;
   if (m.st === "queued") return btn('data-act="send-now"', "Send now", sid);
   if (m.st === "held" || (m.st === "failed" && m.held)) return `${m.item ? `${btn('data-desk-act="held_edit"', "Edit", `${sid} data-id="${esc(m.item)}"`)} · ` : ""}${btn('data-act="held-now"', "Send now", sid)} · ${btn('data-desk-act="held_cancel"', "Cancel", `${sid} data-id="${esc(m.item || "")}"`)}`;
+  if (m.st === "failed" && m.step) return btn(`data-desk-retry="${esc(m.step)}"`, "Retry", ` data-item="${esc(m.item || "")}"`);
   if (m.st === "failed" && m.retry) return `${btn('data-desk-act="msg_retry"', "Retry", at)} · ${btn('data-desk-act="msg_edit"', "Edit", at)}`;
   return "";
+}
+/** Retry on step `step` of item `id`: its message sent again, as it was. */
+async function deskRetry(id, step) {
+  try { await invoke("desk_item_act", { id, act: "retry", text: step }); toast("Sent again"); }
+  catch (e) { toast(`Not sent: ${e}`, 5000); }
+  renderMain();
 }

@@ -36,6 +36,15 @@ impl Hub {
 
 #[cfg(test)]
 impl Hub {
+    /// Tests: item `id` put in state `state` as it stands, unsaved (a note's tests, #437).
+    pub(crate) fn desk_set_state(&self, id: &str, state: &str) {
+        self.write(|st| {
+            if let Some(i) = st.desk.items.iter_mut().find(|i| i.id == id) {
+                i.state = state.to_string();
+            }
+        });
+    }
+
     /// Tests: the store held, as a slow or stuck hub call holds it: `held` hears once it is, and it's let go
     /// when `release` hears (or hangs up).
     pub(crate) fn hold_store(&self, held: std::sync::mpsc::Sender<()>, release: std::sync::mpsc::Receiver<()>) {
