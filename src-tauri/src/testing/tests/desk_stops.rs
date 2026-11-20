@@ -149,10 +149,10 @@ fn a_stop_hooks_follow_up_is_kept_apart_from_the_reply() {
     assert_eq!((said["text"].as_str(), said.get("after")), (Some("And the footer too."), None), "{said}");
 }
 
-/// A stop the Desk lead doesn't settle in 10 minutes waits on you, saying so; with no lead at hand it waits on you at
-/// once. The lead's ASK about the item (ASK: #id | …) shows on it as waiting on you, and its answer goes to the lead.
+/// A stop stays the Desk lead's however long it takes (#435): it never waits on you unless the session or the lead asks
+/// you something; with no lead at hand it waits on you at once. The lead's ASK about the item (ASK: #id | …) shows on it as waiting on you, and its answer goes to the lead.
 #[test]
-fn a_stop_the_lead_cant_settle_waits_on_you_and_its_ask_shows_on_the_item() {
+fn a_stop_stays_the_leads_and_its_ask_shows_on_the_item() {
     let w = World::new();
     let (h, project) = holder(&w);
     let l = new_lead(&w, &project);
@@ -178,11 +178,10 @@ fn a_stop_the_lead_cant_settle_waits_on_you_and_its_ask_shows_on_the_item() {
     w.advance(1000);
     assert!(sent_to(&w, &l).iter().any(|t| t == &format!("Your ASK about #{id}: Keep the old header for a release?\nThe answer: No")), "{:?}", sent_to(&w, &l));
     assert_eq!(item(&desk(&w, &project), "Header")["stopped"].as_bool(), Some(true), "the lead has it again");
-    // Not settled in 10 minutes: it waits on you, saying so.
+    // Not settled in 10 minutes: still the lead's, never yours.
     w.advance(10 * 60 * 1000);
     let it = item(&desk(&w, &project), "Header").clone();
-    assert_eq!(it["state"], "needs_you", "{it}");
-    assert!(it["latest"].as_str().unwrap().contains("couldn't settle it"), "{it}");
+    assert_eq!((it["state"].as_str(), it["stopped"].as_bool()), (Some("working"), Some(true)), "{it}");
 }
 
 /// Restart on an item whose holder can't be reached (its host refuses to start it) says why on the item and in its

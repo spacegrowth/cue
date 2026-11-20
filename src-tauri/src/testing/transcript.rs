@@ -83,6 +83,14 @@ impl Transcript {
             "toolUseResult": {"isAsync": true, "status": "async_launched", "agentId": id, "description": description}}))
     }
 
+    /// A shell command `id` sent to the background (the Bash tool, run in the background), as Claude Code logs its launch.
+    pub fn background_command(&self, id: &str, description: &str, command: &str) -> &Self {
+        let call = format!("call-{id}");
+        self.tool_use(&call, "Bash", json!({"command": command, "description": description, "run_in_background": true}));
+        self.entry(json!({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": call, "content": format!("Command running in background with ID: {id}.")}]},
+            "toolUseResult": {"stdout": "", "stderr": "", "interrupted": false, "backgroundTaskId": id}}))
+    }
+
     /// Claude Code telling the session background task `id` is done (the prompt it wakes the session with).
     pub fn task_done(&self, id: &str) -> String {
         let text = format!("<task-notification>\n<task-id>{id}</task-id>\n<status>completed</status>\n</task-notification>");

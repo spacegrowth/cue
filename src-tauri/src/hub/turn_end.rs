@@ -75,11 +75,18 @@ impl Hub {
         // Its turn ended with background agents still at work (Claude Code's Agent tool): it's at its
         // prompt, but its answer isn't in yet; Claude Code wakes it when they report. So it waits on
         // them, not on you, and the chat shows them at work. (A message you send goes straight in.)
-        let (helpers, background) = if driven_by.is_empty() && origin.harness == "claude" && !origin.transcript_path.is_empty() {
-            (crate::steps::running_helpers(&origin.transcript_path).len() as u64, crate::steps::running_background(&origin.transcript_path) as u64)
+        let (helpers, background, scripts) = if driven_by.is_empty() && origin.harness == "claude" && !origin.transcript_path.is_empty() {
+            let p = &origin.transcript_path;
+            (crate::steps::running_helpers(p).len() as u64, crate::steps::running_background(p) as u64, crate::steps::running_scripts(p))
         } else {
-            (0, 0)
+            (0, 0, Vec::new())
         };
+        // Its shell commands still running in the background (tests, a build): its item shows them, still at work,
+        // not stopped (#435). Claude Code wakes it when they end, and its next turn clears this.
+        self.write(|st| {
+            st.sessions.set_background(&origin.session_id, background);
+            st.sessions.set_running(&origin.session_id, &scripts);
+        });
         let driven_by = if helpers > 0 { crate::sessions::helpers_words(helpers) } else { driven_by.to_string() };
         // Another agent drives this session (a helper its lead started, labelled CUE_DRIVEN_BY): its finished turn is for that
         // agent, so it stays in Working as "waiting on its lead" instead of becoming your card.

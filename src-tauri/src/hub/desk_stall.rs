@@ -2,8 +2,9 @@
 //! asks the holder once, "Done? Write DONE: #N, or say what's left". The turn that answers isn't asked again, nor one
 //! that ends on an ask; once a turn says what's left or what it waits on, none is while the item is unchanged.
 //! Waiting isn't stopping (#249): a turn that ends saying it waits (on a build, tests, a helper, another commit) shows
-//! the item as waiting on that, and the Desk lead isn't told. The lead is told of an item's stop once at most; a later
-//! stop of it waits on you.
+//! the item as waiting on that, and the Desk lead isn't told; so is a turn that ends with its own tests or build still
+//! running in the background (#435). A stop with no question for you is the lead's, each time: it waits on you only
+//! when its holder asked you something, the lead asks you (ASK: #id …), or the Desk has no lead at hand.
 
 use super::desk::{ask_of, at_work, crew_parts, Effects};
 use super::*;
@@ -129,7 +130,7 @@ fn ends_on_a_question(text: &str) -> bool {
     text.lines().map(str::trim).rfind(|l| !l.is_empty()).is_some_and(|l| l.ends_with('?'))
 }
 
-/// How long the Desk lead has to settle a stop before it turns to you (#182).
+/// How long the Desk lead has to settle a cleanup card before it turns to you (desk_cleanup.rs).
 pub(super) const STOP_WAIT_MS: u64 = 10 * 60 * 1000;
 
 /// The question a turn ended on, in one plain line: the last sentence of its last line, when that ends on "?".
@@ -161,6 +162,10 @@ pub(super) enum Stop {
 /// its time is up or when the Desk has no lead at hand to settle it.
 pub(super) fn stop_shown(st: &Store, it: &DeskItem, s: &Session, now: u64) -> Stop {
     let last = s.thread.iter().rev().find(|e| e.role == "agent").map(|e| e.text.as_str()).unwrap_or("");
+    // Its tests or build still run in the background (#435): still at work on them, nothing for you or the lead.
+    if !s.running.is_empty() && question_in(last).is_none() {
+        return Stop::Waits(s.running.clone());
+    }
     // It said what it waits on: waiting, not stopped, its work committed or not (#249).
     if let Some((_, w)) = it.waits.as_ref().filter(|(u, _)| *u == it.updated && question_in(last).is_none()) {
         return Stop::Waits(w.clone());
@@ -178,12 +183,10 @@ pub(super) fn stop_shown(st: &Store, it: &DeskItem, s: &Session, now: u64) -> St
     if !lead_live(st, &it.project) {
         return Stop::Asks("It stopped, and this Desk has no lead to settle it: say what's next".into());
     }
-    match it.stop {
-        // The lead was told of an earlier stop of it: one notice per item, so this one is yours at once (#249).
-        Some((updated, _)) if updated == it.updated && it.told.is_some_and(|t| t != updated) => Stop::Asks("It stopped again after the Desk lead had it once: say what's next".into()),
-        Some((updated, at)) if updated == it.updated && now.saturating_sub(at) >= STOP_WAIT_MS => Stop::Asks("It stopped, and the Desk lead couldn't settle it: say what's next".into()),
-        _ => Stop::Lead,
-    }
+    // A stop with no question for you is the lead's to settle, each time and however long it takes (#435): it
+    // routes it on, or asks you (ASK: #id …) when you must decide.
+    let _ = now;
+    Stop::Lead
 }
 
 /// `project`'s Desk lead is running (not ended or parked).
@@ -242,7 +245,9 @@ pub(super) fn stalls_asked(st: &mut Store, sid: &str, text: &str, on: &[String],
     let left = says_whats_left(text);
     let busy = still_at_it(st, sid);
     let asks = ask_of(st, &h).is_some() || ends_on_a_question(text);
-    let waits = waits_line(text);
+    // Its own tests or build still running in the background (#435): waiting on them, whatever its words say.
+    let running = st.sessions.get(sid).map(|s| s.running.clone()).filter(|r| !r.is_empty());
+    let waits = running.or_else(|| waits_line(text));
     let mut ask = Vec::new();
     for (id, updated) in still {
         // What this turn says it waits on, if anything: the item shows it until it changes or a turn says otherwise.
@@ -314,9 +319,7 @@ fn to_lead(st: &mut Store, sid: &str, id: &str, now: u64, fx: &mut Effects) {
     let Some(it) = st.desk.item_mut(id) else { return };
     it.stop = Some((it.updated, now));
     fx.said.push(id.to_string());
-    if it.told.is_some() {
-        return;
-    }
+    // Each stop is the lead's (#435): told of every one, once while the item is unchanged.
     fx.stopped.push(id.to_string());
     if let Some(lead) = lead {
         it.told = Some(it.updated);

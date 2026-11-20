@@ -155,6 +155,13 @@ pub fn running_background(path: &str) -> usize {
     })
 }
 
+/// Its background shell commands still running (not its agents): each one's description, else its command.
+pub fn running_scripts(path: &str) -> Vec<String> {
+    caught_up(path, |feed, _| {
+        feed.helpers.iter().filter(|h| h.script && h.running()).map(|h| if h.desc.trim().is_empty() { h.command.clone() } else { h.desc.clone() }).collect()
+    })
+}
+
 /// How many agents a session has: the background agents and teammates (not its scripts) in its feed, the same
 /// list the window shows as its agents. `open`: start its feed
 /// when there's none (a session at work); else None while nobody reads it, and a feed only this asks for isn't kept

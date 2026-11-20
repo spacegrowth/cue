@@ -49,7 +49,7 @@ pub use helper::helper_path_for_test;
 pub use history::{history, history_helper};
 pub use kind::harness_of;
 pub use model::Usage;
-pub use queries::{agent_count, agent_name, context_pct, handoff_note, insight_state, last_prompt, last_say, model_of, running_background, running_helpers, set_window, steps, take_task_failures};
+pub use queries::{agent_count, agent_name, context_pct, handoff_note, insight_state, last_prompt, last_say, model_of, running_background, running_helpers, running_scripts, set_window, steps, take_task_failures};
 #[cfg(test)]
 pub use queries::{is_handoff_note, HANDOFF_ASK_START};
 #[cfg(test)]

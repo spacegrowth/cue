@@ -170,6 +170,13 @@ impl Sessions {
         }
     }
 
+    /// What its background shell commands still running do (see `running`), as its turn ends at its prompt.
+    pub fn set_running(&mut self, session_id: &str, scripts: &[String]) {
+        if let Some(s) = self.0.get_mut(session_id) {
+            s.running = running_words(scripts);
+        }
+    }
+
     /// A background task of its failed after a while (`at_ms`: when): noted on the session. True when new.
     pub fn set_task_failed(&mut self, session_id: &str, at_ms: u64, desc: &str, line: &str) -> bool {
         match self.0.get_mut(session_id) {
@@ -206,5 +213,21 @@ impl Sessions {
 
     pub fn with_helpers(&self) -> Vec<Origin> {
         self.0.values().filter(|s| s.state == "agent" && s.helpers > 0).map(|s| s.origin.clone()).collect()
+    }
+}
+
+/// Background shell commands as one plain line (#435): "Running tests…", "Building…", "Installing…", else what the
+/// first does ("Running in the background: Start the dev server"). "" for none.
+pub fn running_words(scripts: &[String]) -> String {
+    let Some(first) = scripts.first() else { return String::new() };
+    let all = scripts.join(" ").to_lowercase();
+    if all.contains("test") || all.contains("spec") {
+        "Running tests…".into()
+    } else if ["build", "compil", "check"].iter().any(|w| all.contains(w)) {
+        "Building…".into()
+    } else if all.contains("install") {
+        "Installing…".into()
+    } else {
+        format!("Running in the background: {}", first.chars().take(120).collect::<String>())
     }
 }

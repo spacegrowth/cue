@@ -107,13 +107,16 @@ function deskVerb(i) {
   if (a) return [a.kind === "permission" ? "Allow" : (a.choices || []).length > 1 ? "Pick" : "Answer", a.kind === "permission" ? deskAllowLine(i) : deskOneLine(a.text)];
   const pick = deskPickLine(i);
   if (pick) return ["Pick", pick];
-  return ["Answer", deskOneLine(i.finish?.question || i.latest || deskQuestion(i))];
+  // "Answer" only for a question: a status line ("A re-run is going now") is shown as it is (#435).
+  const words = deskOneLine(i.finish?.question || i.latest || deskQuestion(i));
+  return [/\?\s*$/.test(words || "") ? "Answer" : "", words];
 }
-/** That line as HTML: "<b>Answer:</b> keep the old group?"; words that start with the verb ("Pick one for …") bold it. */
+/** That line as HTML: "<b>Answer:</b> keep the old group?", or just the words when there's no verb; words that start with the verb ("Pick one for …") bold it. */
 function deskVerbHtml(i) {
   const v = deskVerb(i);
   if (!v || !v[1]) return "";
   const [verb, words] = v;
+  if (!verb) return esc(words);
   const lead = words.match(new RegExp(`^${verb}\\b`, "i"));
   return lead ? `<b class="dk-vb">${esc(words.slice(0, verb.length))}</b>${esc(words.slice(verb.length))}` : `<b class="dk-vb">${esc(verb)}:</b> ${esc(words)}`;
 }

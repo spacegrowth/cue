@@ -464,8 +464,8 @@ function deskWaitsOn(i) {
   const btn = (act, label, look = "", extra = "") => `<button class="btn small ${look}" data-desk-act="${act}" data-id="${esc(i.id)}"${extra}>${esc(label)}</button>`;
   const box = (text, sub, more = "", tag = "") => `<div class="dk-wo${tag ? " circle" : ""}"><div class="dk-wo-l">Waits on${tag ? `<span class="dk-wo-tag">${tag}</span>` : ""}</div><div class="dk-wo-t">${text}</div>${sub ? `<div class="dk-wo-s">${esc(sub)}</div>` : ""}${more}</div>`;
   const ref = (id) => { const it = deskItem(i.project, id); return `<a href="#" data-desk-item="${esc(id)}">#${esc(id)}</a>${it ? ` ${esc(deskShort(it.title))}` : ""}`; };
-  // Send back, your words to its holder, on every box it waits on you in (#371); "Send back to fix" is the same.
-  const back = i.holder ? btn("send_back", "Send back") : "";
+  // Send back, your words to its holder, only on an item that's yours to check (#435); "Send back to fix" is the same.
+  const back = i.holder && i.state === "to_check" ? btn("send_back", "Send back") : "";
   const c = deskCircleOf(i);
   if (c) {
     const others = c.items.length - 1;
@@ -509,7 +509,7 @@ function deskItemActs(i) {
   const wo = deskWaitsOn(i);
   if (wo) return wo;
   // Waiting for install: nothing to try yet, so no Looks right (Send back stays: what it says can be wrong already).
-  const acts = deskInstallWait(i) ? b("send_back", "Send back") : i.state === "to_check" ? (deskLooksSoon.has(i.id) ? "" : b("send_back", "Send back"))
+  const acts = deskInstallWait(i) ? (i.state === "to_check" ? b("send_back", "Send back") : "") : i.state === "to_check" ? (deskLooksSoon.has(i.id) ? "" : b("send_back", "Send back"))
     : (i.state === "new" || i.state === "queued") && !i.holder && i.start_failed ? b("start_now", "Retry")
     // Parked (#385): Start queues it as a new item, for the lead to give out.
     : i.state === "held" ? b("start_now", "Start", "primary")
@@ -520,8 +520,6 @@ function deskItemActs(i) {
     // Its holder's turn cut off (a crash, a quit) leaves it "working" with nobody on it: Resume wakes that same
     // session where it left off (#375).
     : deskCanRestart(i) ? b("start_now", "Resume")
-    // Waiting on you for an answer (#371): Send back is always there too, your words to its holder.
-    : i.state === "needs_you" && i.holder ? b("send_back", "Send back")
     : deskFinishing(i) ? deskInstallNow(i, "btn small")
     // Done by your pick on its mocks (#281): its build item says where it went (deskBuiltLink), nothing to undo here.
     : i.state === "done" && !i.picked ? `<div class="dk-chk-after">${deskCommitLine(i)}</div>` : "";

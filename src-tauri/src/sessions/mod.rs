@@ -16,7 +16,7 @@ pub(crate) mod shell_writes;
 pub mod quiet;
 pub mod team;
 mod thread;
-mod turn;
+pub(crate) mod turn;
 
 pub use self::delivery::unwrap_pasted;
 use self::delivery::taken;
@@ -58,6 +58,10 @@ pub struct Session {
     /// (the card counts them; `helpers` alone says what it waits on). 0 = none.
     #[serde(default)]
     pub background: u64,
+    /// What its background shell commands still running as its turn ended do, in plain words ("Running tests…"):
+    /// its item on the Desk shows it, still in progress, not stopped (#435). "" when none runs.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub running: String,
     /// Its agents (background agents and teammates, any state) in the list its chat shows (steps::agent_count): its
     /// cards count these, so a card and its chat say the same "N agents".
     #[serde(default)]
@@ -293,6 +297,7 @@ impl Session {
             driven_by: String::new(),
             helpers: 0,
             background: 0,
+            running: String::new(),
             agents: 0,
             task_failed_ms: 0,
             task_failed: String::new(),
@@ -371,6 +376,7 @@ impl Session {
             self.helpers = 0;
         }
         self.background = 0;
+        self.running.clear();
     }
 
     /// It entered `state` at `now`: a new state drops what only held for the old one.

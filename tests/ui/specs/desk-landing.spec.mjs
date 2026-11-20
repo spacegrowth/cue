@@ -44,25 +44,39 @@ test("the landing line's steps on a finishing item: in the line with what it wai
   await expect(box.locator('[data-desk-act="rerun"]')).toHaveText("Run the landing again");
 });
 
-test("Send back is on every item waiting on you: an ask, a stopped landing Cue can name nothing in, a word or check failed (#371)", async ({ page, cue }) => {
+test("Send back is only on an item to check: not on an ask, nor on a stopped landing, where Send back to fix stays (#371, #435)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  // Its holder asked you: Send back beside the ask, your words to its holder.
+  // Its holder asked you: you answer it; no Send back beside it.
   let pane = await openItem(page, "d1");
-  await pane.locator('.dk-acts [data-desk-act="send_back"]').click();
-  await expect(pane.locator('textarea[data-text="back:d1"]')).toBeVisible();
-  await pane.locator('textarea[data-text="back:d1"]').fill("Use the box's own focus step");
-  await pane.locator('[data-desk-act="back_go"][data-id="d1"]').click();
-  await cue.called("desk_item_act", { id: "d1", act: "send_back", text: "Use the box's own focus step" });
-  // A landing stopped on something Cue can't name: Run the landing again, and Send back too.
+  await expect(pane.locator('[data-desk-act="send_back"]')).toHaveCount(0);
+  // Ready to check: Send back, your words to its holder.
+  pane = await openItem(page, "d2");
+  await pane.locator('.dk-acts [data-desk-act="send_back"]').first().click();
+  await expect(pane.locator('textarea[data-text="back:d2"]')).toBeVisible();
+  await pane.locator('textarea[data-text="back:d2"]').fill("Use the box's own focus step");
+  await pane.locator('[data-desk-act="back_go"][data-id="d2"]').click();
+  await cue.called("desk_item_act", { id: "d2", act: "send_back", text: "Use the box's own focus step" });
+  // A landing stopped on something Cue can't name: Run the landing again, no Send back.
   await patchItem(cue, "d5", { state: "needs_you", tree: tree("d5"), finish: { step: "error", at: Date.now(), question: "git couldn't make its commit" } });
   pane = await openItem(page, "d5");
   const box = pane.locator(".dk-wo");
   await expect(box.locator('[data-desk-act="rerun"]')).toHaveText("Run the landing again");
-  await expect(box.locator('[data-desk-act="send_back"]')).toHaveText("Send back");
+  await expect(box.locator('[data-desk-act="send_back"]')).toHaveCount(0);
   // A word that mustn't go in, a check failed: Send back to fix.
   await patchItem(cue, "d5", { finish: { step: "word", at: Date.now(), question: "Not landed: a word is in it" } });
   await expect(box.locator('[data-desk-act="fix_back"]')).toHaveText("Send back to fix");
+});
+
+test("a status line an item stopped on isn't labelled Answer on its page; a question is (#435)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await patchItem(cue, "d5", { state: "needs_you", ask: null, finish: null, latest: "A re-run of the tests is going now." });
+  const pane = await openItem(page, "d5");
+  await expect(pane).toContainText("A re-run of the tests is going now.");
+  await expect(pane).not.toContainText("Answer:");
+  await patchItem(cue, "d5", { latest: "Keep the old group?" });
+  await expect(pane).toContainText("Answer: Keep the old group?");
 });
 
 test("an item in its own copy says so with its branch; one queued for a copy waits for a free one; one landed with no check says so", async ({ page, cue }) => {

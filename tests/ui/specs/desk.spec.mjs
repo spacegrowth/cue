@@ -3941,7 +3941,7 @@ test("a failed build waits on you with its question; its page has the log's last
   const log = Array.from({ length: 20 }, (_, n) => `line ${n + 1}`).join("\n");
   await patchItem(cue, "d5", { state: "needs_you", latest: "The build failed", finish: { step: "failed", question: "The build failed", log, at: Date.now() } });
   const row = page.locator('.dk-items [data-desk-item="d5"]');
-  await expect(row.locator(".dk-h")).toHaveText("Answer: The build failed");
+  await expect(row.locator(".dk-h")).toHaveText("The build failed");
   await expect(page.locator(".dk-items .dk-gh.you .n")).toHaveText("2");
   await row.locator(".dk-t").click();
   const pane = page.locator(".dk-right .dk-pg");

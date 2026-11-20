@@ -486,10 +486,6 @@ impl Hub {
         for p in fx.lands {
             self.desk_lands_ask(p);
         }
-        // A stop the lead hasn't settled turns red once its time is up: the Desk is shown again then.
-        if !fx.stopped.is_empty() {
-            self.later(super::desk_stall::STOP_WAIT_MS + 1000, |h| h.changed());
-        }
         self.desk_ask_first(fx.uses);
         for (project, id) in fx.news {
             let first = self.write(|st| {
