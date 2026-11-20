@@ -1205,6 +1205,7 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 
 | Function |  |  |
 |---|---|---|
+| `src-tauri/src/db/schema.rs::migrate` |  |  |
 | `src-tauri/src/hosted/compat_tests.rs::compat_a_two_part_request_becomes_a_team_of_two_on_its_own_and_one_is_committed` | test |  |
 | `src-tauri/src/hosted/machine_tests.rs::live_on_a_real_machine_claude_code_asks_runs_a_command_past_a_dropped_connection_and_is_picked_up_after_a_restart` | test |  |
 | `src-tauri/src/hub/desk.rs::desk_done` |  |  |

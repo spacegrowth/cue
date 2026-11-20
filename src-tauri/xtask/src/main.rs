@@ -4,6 +4,17 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+/// The repository it's run in (#518): `cargo run` names this copy's xtask folder as it starts it, and a bare run goes
+/// by the folder it's run from. Not the folder it was built in: Desk copies share one build folder, so a program built
+/// in another copy would read and write that copy.
+fn repo_root() -> PathBuf {
+    if let Some(dir) = std::env::var_os("CARGO_MANIFEST_DIR") {
+        return PathBuf::from(dir).join("../..");
+    }
+    let here = std::env::current_dir().unwrap_or_default();
+    here.ancestors().find(|d| d.join("src-tauri/xtask/Cargo.toml").is_file()).map(PathBuf::from).unwrap_or(here)
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let repo = match args.iter().position(|a| a == "--repo") {
@@ -11,7 +22,7 @@ fn main() -> ExitCode {
             Some(p) => PathBuf::from(p),
             None => return usage(),
         },
-        None => PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.."),
+        None => repo_root(),
     };
     let Some(command) = args.first() else { return usage() };
     if command == "soak-report" {
