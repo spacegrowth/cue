@@ -180,13 +180,13 @@ impl Hub {
         // Items from before numbering get their numbers once, saved under them.
         let changed = st.desk.number_old();
         crate::db::desk_put_numbered(&st.desk, &changed);
-        // Calls from before #403: the lead's dispatch work sorted off the Decisions list, as new ones are.
+        st.desk.lead = leads.into_iter().map(|(p, sid, name)| (p, crate::desk::Lead { sid, name })).collect();
+        // Calls from before #403 (once the leads are known): the lead's dispatch work sorted off the Decisions list, as new ones are.
         for id in st.desk.sort_calls() {
             if let Some(d) = st.desk.decisions.iter().find(|d| d.id == id) {
                 crate::db::desk_put_decision(d);
             }
         }
-        st.desk.lead = leads.into_iter().map(|(p, sid, name)| (p, crate::desk::Lead { sid, name })).collect();
         st.desk.members.clear();
         for (p, sid) in crate::db::desk_members() {
             st.desk.join(&p, &sid);

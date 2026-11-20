@@ -213,7 +213,7 @@ fn only_product_calls_make_the_decisions_list_routing_and_sends_stay_off_it() {
 #[test]
 fn a_call_is_dispatch_work_by_its_words_and_who_made_it() {
     use crate::desk::model::dispatch_call;
-    for t in ["#366 lands before #373", "Took back the repository copy held by #356", "No changes to routing", "Resume work now instead of at 1:30", "Filed the clash-and-Send-back fix after the Away follow-ups"] {
+    for t in ["#366 lands before #373", "Took back the repository copy held by #356", "No changes to routing", "Resume work now instead of at 1:30", "Filed the clash-and-Send-back fix after the Away follow-ups", "Away mode mocks go to cue-402", "Gave cue-180 three open items at once", "I didn't send #125 back"] {
         assert!(dispatch_call(t, true), "{t}");
     }
     for t in ["Away mode is one switch for all Desks, not one per Desk", "default Away budget is $10, changeable on the rules card", "while Away, the lead never builds an unpicked mock"] {

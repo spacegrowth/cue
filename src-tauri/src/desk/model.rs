@@ -487,6 +487,7 @@ const LEAD_DISPATCH: &[&str] = &[
     "land", "lands", "landed", "landing", "commit", "commits", "committed", "push", "pushed", "copy", "copies", "worktree",
     "resume", "resumes", "resumed", "hold", "held", "pause", "paused", "restart", "restarted", "start", "starts", "started",
     "wait", "waits", "queue", "queued", "order", "filed", "told", "close", "closes", "closed", "routes first", "takes over",
+    "goes to", "go to", "went to", "gave", "give", "gives", "given", "send", "sends", "new session",
 ];
 /// The same for an item holder's calls, which are mostly about what it built (and may well name routing as a
 /// feature): only plain notes of sending work back, a landing clash or a hand-off.
@@ -498,8 +499,13 @@ pub fn dispatch_call(text: &str, lead: bool) -> bool {
     let lower = text.to_lowercase();
     let t = format!(" {} ", lower.split(|c: char| !(c.is_alphanumeric() || c == '-' || c == '#')).filter(|w| !w.is_empty()).collect::<Vec<_>>().join(" "));
     let has = |w: &&str| t.contains(&format!(" {w} "));
+    // An item number ("#12") or a session's name ("cue-402"): who gets what.
+    let named = |w: &str| {
+        let num = |x: &str| !x.is_empty() && x.chars().all(|c| c.is_ascii_digit());
+        w.strip_prefix('#').is_some_and(num) || w.rsplit_once('-').is_some_and(|(a, n)| !a.is_empty() && a.chars().any(|c| c.is_alphabetic()) && num(n))
+    };
     if lead {
-        t.split(' ').any(|w| w.len() > 1 && w.starts_with('#') && w[1..].chars().all(|c| c.is_ascii_digit())) || LEAD_DISPATCH.iter().any(has)
+        t.split(' ').any(named) || LEAD_DISPATCH.iter().any(has)
     } else {
         HOLDER_DISPATCH.iter().any(has)
     }
@@ -725,19 +731,19 @@ impl Desk {
     }
 
     /// The item `id` names: by its number, or by the tag it had before (`alias`).
-    /// Calls kept from before #403 sorted as new ones are: one whose maker didn't hold its item is the lead's.
-    /// Those that changed.
+    /// Calls kept from before #403 sorted as new ones are. A lead's: one by a Desk's lead, or by a session that made
+    /// a lead's own moves (an earlier lead), or with no item, or on an item its maker didn't hold. Those that changed.
     pub fn sort_calls(&mut self) -> Vec<String> {
         let held: HashMap<&str, &Holder> = self.items.iter().filter_map(|i| i.holder.as_ref().map(|h| (i.id.as_str(), h))).collect();
+        let leads: HashSet<String> = self.lead.values().map(|l| l.sid.clone()).chain(self.decisions.iter().filter(|d| !d.act.is_empty()).map(|d| d.sid.clone())).collect();
         let mut changed = Vec::new();
         for d in self.decisions.iter_mut().filter(|d| d.call && !d.minor) {
-            let known = d.item_id.as_deref().map(|i| self.items.iter().any(|x| x.id == i));
-            // An item no longer loaded: can't tell, so it's taken as its holder's (the narrower rule).
-            let lead = match (d.item_id.as_deref(), known) {
-                (None, _) => true,
-                (Some(_), Some(false)) => false,
-                (Some(i), _) => !held.get(i).is_some_and(|h| h.is(&d.sid)),
-            };
+            // An item no longer loaded and a maker not known as a lead: taken as its holder's (the narrower rule).
+            let lead = leads.contains(&d.sid)
+                || match d.item_id.as_deref() {
+                    None => true,
+                    Some(i) => held.get(i).is_some_and(|h| !h.is(&d.sid)) || (!held.contains_key(i) && self.items.iter().any(|x| x.id == i)),
+                };
             d.sort_call(lead);
             if d.minor {
                 changed.push(d.id.clone());
