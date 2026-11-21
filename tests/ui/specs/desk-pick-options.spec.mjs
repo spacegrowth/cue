@@ -114,3 +114,66 @@ test("options one to a line with the middle one marked suggested and no pick lin
     await expect(opts.locator('[data-desk-act="pick"]')).toHaveCount(3);
   }
 });
+
+// #619: a mocks item sent back and redone, its holder asking again with numbered options (4, 6, 8, 9) and IF PICKED:
+// lines for them: the page, the chat and the Desk row show the new options with their names, A/B/C go, and a Pick
+// files that option's plan.
+test("a redone mocks item asks again with numbered options: the new ones replace A, B, C everywhere (#619)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  const plan = (option, title) => ({ option, kind: "feature", title, see: "", done_when: "", by: "new" });
+  const first = "Three on the canvas:\n- **A:** a needs-you band\n- **B:** lanes\n- **C:** a track\nPick one: A, B or C.", at = Date.now() - 60000;
+  await cue.change((st, [text, at, next]) => {
+    Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5"), { state: "to_check", title: "Mocks: the Desk page", designs: "https://claude.ai/artifact/MOCKS", next, said: [{ at, by: "host-lead", text }] });
+    st.sessions.find((x) => x.session_id === "host").thread = [{ role: "agent", text, at_ms: at }];
+  }, [first, at, [plan("A", "Old band"), plan("B", "Old lanes"), plan("C", "Old track")]]);
+  await page.locator('[data-desk-item="d5"] .dk-t').click();
+  const side = page.locator(".dk-panel[data-side-for] .dk-pnow .dk-opts li");
+  await expect(side.locator(".dk-optk")).toHaveText(["A", "B", "C"]);
+  // Sent back: the old round's plans go with it.
+  await page.locator('.dk-panel[data-side-for] [data-desk-act="send_back"]').click();
+  await page.locator('textarea[data-text="back:d5"]').fill("Not these: start again");
+  await page.locator('[data-desk-act="back_go"][data-id="d5"]').click();
+  await cue.called("desk_item_act", { id: "d5", act: "send_back", text: "Not these: start again" });
+  expect((await items(page)).find((i) => i.id === "d5").next).toEqual([]);
+  // Redone: it asks again, numbered, with what follows each.
+  const again = "Four new mocks are on the canvas, each its own page.\n\nWhich option, 4, 6, 8 or 9, should we build?", at2 = Date.now();
+  const next = [plan("9", "A calm list with progress under each row"), plan("6", "Progress is the page"), plan("8", "A List / Progress switch"), plan("4", "The picked row opens its journey")];
+  await cue.change((st, [text, at, next]) => {
+    Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5"), { state: "to_check", next, said: [...st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5").said, { at, by: "host-lead", text }] });
+    st.sessions.find((x) => x.session_id === "host").thread.push({ role: "agent", text, at_ms: at });
+  }, [again, at2, next]);
+  const chat = page.locator(".dk-right .dk-ichat .dk-chat-opts li");
+  for (const opts of [side, chat]) {
+    await expect(opts.locator(".dk-optk")).toHaveText(["4", "6", "8", "9"]);
+    await expect(opts.locator(".dk-optw")).toHaveText(["The picked row opens its journey", "Progress is the page", "A List / Progress switch", "A calm list with progress under each row"]);
+    await expect(opts.locator('[data-desk-act="pick"]')).toHaveCount(4);
+  }
+  // Under the new ask only; the old one's A/B/C are gone.
+  await expect(page.locator(".dk-right .dk-ichat .dk-chat-opts")).toHaveCount(1);
+  await expect(page.locator(".dk-right").getByText("Old band")).toHaveCount(0);
+  // The Desk row says what to pick.
+  await expect(page.locator('[data-desk-item="d5"]').first()).toContainText("4, 6, 8 or 9");
+  await expect(page.locator(".dk-right [title]")).toHaveCount(0);
+  for (const theme of ["light", "dark"]) {
+    await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
+    if (process.env.SHOT_DIR) await expect(async () => page.locator(".dk-right").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-619-${theme}.png`, timeout: 2000 })).toPass();
+  }
+  await side.nth(2).locator('[data-desk-act="pick"]').click();
+  await cue.called("desk_item_act", { id: "d5", act: "pick", text: "8" });
+  const built = (await items(page)).find((i) => i.id === "d5").built_as;
+  expect((await items(page)).find((i) => i.id === built).title).toBe("A List / Progress switch");
+});
+
+// The numbered options one to a line with no pick line, and a range ("1 to 10") on the pick line, are read too.
+test("numbered options one to a line, or a pick line's range, are picked from (#619)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await patchItem(cue, "d5", { state: "to_check", designs: "https://claude.ai/artifact/MOCKS", next: [], said: [{ at: Date.now(), by: "host-lead", text: "Three versions:\n1. **Calmest:** a Desk menu in the head\n2. **Closest to today:** Desk pills\n3. **Most on screen:** a Desk strip" }] });
+  await page.locator('[data-desk-item="d5"] .dk-t').click();
+  const opts = page.locator(".dk-panel[data-side-for] .dk-pnow .dk-opts li");
+  await expect(opts.locator(".dk-optk")).toHaveText(["1", "2", "3"]);
+  await expect(opts.locator(".dk-optw")).toHaveText(["Calmest: a Desk menu in the head", "Closest to today: Desk pills", "Most on screen: a Desk strip"]);
+  await patchItem(cue, "d5", { said: [{ at: Date.now(), by: "host-lead", text: "Ten on the canvas.\n\nWhich option, 1 to 10, should we build?" }] });
+  await expect(opts.locator(".dk-optk")).toHaveText(["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]);
+});

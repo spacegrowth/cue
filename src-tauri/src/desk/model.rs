@@ -179,7 +179,7 @@ pub struct DeskItem {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub built_as: String,
     /// What its holder said comes after each option you might pick (#543), on its IF PICKED: lines: filed and routed
-    /// as you pick. Its latest turn that names any replaces them all.
+    /// as you pick. Its latest turn that names any replaces them all; a Send back clears them (#619).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub next: Vec<FollowUp>,
     /// The item whose pick this item carries on: its id (the other end of that one's `built_as`).
@@ -346,7 +346,7 @@ pub struct DeskItem {
 /// | done when: … | by: <me | new | a session's name>`.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct FollowUp {
-    /// The option it follows ("B"), or "any": whichever is picked.
+    /// The option it follows ("B", "M2", "9"), or "any": whichever is picked.
     pub option: String,
     pub kind: String,
     pub title: String,

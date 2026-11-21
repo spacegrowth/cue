@@ -156,7 +156,8 @@ CueBridge.area("desk", (w) => {
       else if (act === "reopen") { if (it.state !== "done") throw "It isn't done: nothing to undo"; Object.assign(it, { state: "to_check", done_at: null, commit_wait: null }); }
       else if (act === "send_back") {
         if (!text?.trim()) throw "Say what isn't right first: type it in the box, then Send back";
-        Object.assign(it, { state: "working", latest: `sent back: ${text}` });
+        // What followed each option was for the round being redone (#619): it goes.
+        Object.assign(it, { state: "working", latest: `sent back: ${text}`, next: [] });
         const sid = it.holder?.lead_sid || it.holder?.sid, s = sid && w.session(sid);
         const prefix = it.holder?.kind === "crew" ? `For your teammate ${it.holder.name}: ` : "";
         const message = `${prefix}Desk item #${id} (${it.title}) isn't done: ${text}\nIts fixes stay in #${id}; don't add new items for them. Say DONE: #${id} when it is.`;

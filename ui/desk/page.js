@@ -438,13 +438,13 @@ function deskPickLineIn(t) {
   return line ? line.replace(/^(not done yet|still to do)\s*:\s*/i, "").replace(/^./, (c) => c.toUpperCase()) : "";
 }
 /** The options its newest reply lists, each on a line of its own, its key first ("A: compact rows", "**M2** — a
- *  strip", "- Option C) …"): Map key → its words, cut short (#445). */
+ *  strip", "- Option C) …", "4. a calm list"): Map key → its words, cut short (#445, #619). */
 function deskOptionWords(i) {
   const out = new Map();
   for (const l of (i.said?.at(-1)?.text || "").split("\n")) {
     // Its key, then a note on it ("B (suggested)", #539), then its mark: a colon, dot, bracket or dash, or its bold's
     // end; a comma too inside bold ("**A, heads-up only:** …").
-    const m = l.match(/^\s*(?:[-*•]\s+)?(\*\*|__)?(?:option\s+)?([A-Z]\d{0,2})(?:\s*\(([^)]{1,30})\))?(.*)$/i);
+    const m = l.match(/^\s*(?:[-*•]\s+)?(\*\*|__)?(?:option\s+)?([A-Z]\d{0,2}|\d{1,2}(?!\d))(?:\s*\(([^)]{1,30})\))?(.*)$/i);
     if (!m || (m[2].length === 1 && m[2] !== m[2].toUpperCase())) continue;
     const mark = m[4].match(m[1] ? /^\s*(?:\*\*|__)?\s*[:.)\u2014\u2013,-]|^\s*(?:\*\*|__)/ : /^\s*[:.)\u2014\u2013-]/);
     if (!mark) continue;
@@ -455,17 +455,32 @@ function deskOptionWords(i) {
   }
   return out;
 }
-/** The options an item asks you to pick from, A, B, C… or M1, M2… (#445, #543): those its pick line names ("…
- *  working items: D, E or F" → D, E, F); else, for one with a canvas or with what follows each option (IF PICKED:
- *  lines), the two or more its newest reply lists one to a line, or those its IF PICKED: lines name; none once picked. */
+/** An option's key: A, B… M1, M2… or 1, 2… 10 (#619). */
+const DESK_OPT = String.raw`(?:\b[A-Z]\d{0,2}\b|\b\d{1,2}\b)`;
+/** The options a pick line runs through: "D, E or F", "4, 6, 8 and 9", else a range, "1 to 10", "A–F" (#619). */
+function deskPickRun(line) {
+  const run = line.match(new RegExp(String.raw`${DESK_OPT}(?:\s*(?:,|\/|\bor\b|\band\b)\s*(?:(?:or|and)\s+)?${DESK_OPT})+`));
+  if (run) return [...new Set(run[0].match(new RegExp(DESK_OPT, "g")))];
+  const range = line.match(new RegExp(String.raw`\b([A-Z]|\d{1,2})\s*(?:to|-|\u2013|\u2014)\s*([A-Z]|\d{1,2})\b`));
+  if (range && /\d/.test(range[1]) === /\d/.test(range[2])) {
+    const num = /\d/.test(range[1]), [a, b] = [range[1], range[2]].map((k) => (num ? +k : k.charCodeAt(0)));
+    if (b > a && b - a < 20) return Array.from({ length: b - a + 1 }, (_, k) => (num ? String(a + k) : String.fromCharCode(a + k)));
+  }
+  return [];
+}
+/** The options an item asks you to pick from, A, B, C…, M1, M2… or 1, 2… (#445, #543, #619): those its pick line
+ *  names ("… working items: D, E or F" → D, E, F; "Which option, 1 to 10?"); else, for one with a canvas or with
+ *  what follows each option (IF PICKED: lines), the two or more its newest reply lists one to a line, or those its
+ *  IF PICKED: lines name: those when the list shares none of them (a numbered list that isn't its options); none once
+ *  picked. */
 function deskPickOptions(i) {
   if (i.picked || (i.state !== "needs_you" && i.state !== "to_check")) return [];
-  const run = deskPickLine(i).match(/\b[A-Z]\d{0,2}\b(?:\s*(?:,|\/|\bor\b|\band\b)\s*(?:(?:or|and)\s+)?[A-Z]\d{0,2}\b)+/);
-  if (run) return [...new Set(run[0].match(/\b[A-Z]\d{0,2}\b/g))];
+  const run = deskPickRun(deskPickLine(i));
+  if (run.length > 1) return run;
   if (!deskCanvas(i) && !(i.next || []).length) return [];
   const listed = [...deskOptionWords(i).keys()];
-  if (listed.length > 1) return listed;
-  const named = [...new Set((i.next || []).map((n) => n.option).filter((o) => o && o !== "any"))];
+  const named = [...new Set((i.next || []).map((n) => String(n.option)).filter((o) => o && o !== "any"))];
+  if (listed.length > 1 && (named.length < 2 || listed.some((o) => named.includes(o)))) return listed;
   return named.length > 1 ? named : [];
 }
 /** Its options as a short list, each with what it is (when its reply says) and a Pick (#281, #445, #543): Cue closes
@@ -474,7 +489,9 @@ function deskPickBtns(i, cls = "") {
   const opts = deskPickOptions(i);
   if (!opts.length) return "";
   const words = deskOptionWords(i);
-  const row = (o) => `<li><b class="dk-optk">${esc(o)}</b><span class="dk-optw">${esc(words.get(o) || `Option ${o}`)}</span><button class="btn small" data-desk-act="pick" data-id="${esc(i.id)}" data-on="${esc(o)}" aria-label="Pick ${esc(o)}">Pick</button></li>`;
+  // Its name: what its reply says of it, else the title of what follows it (IF PICKED:, #619).
+  const named = (o) => (i.next || []).find((n) => String(n.option) === o)?.title || "";
+  const row = (o) => `<li><b class="dk-optk">${esc(o)}</b><span class="dk-optw">${esc(words.get(o) || named(o) || `Option ${o}`)}</span><button class="btn small" data-desk-act="pick" data-id="${esc(i.id)}" data-on="${esc(o)}" aria-label="Pick ${esc(o)}">Pick</button></li>`;
   return `<ul class="dk-opts${cls ? ` ${cls}` : ""}">${opts.map(row).join("")}</ul>`;
 }
 /** The reply on item `i`'s chat that asks you to pick (#539): the newest of its holder's replies `ex` with its pick

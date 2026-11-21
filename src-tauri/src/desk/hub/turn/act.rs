@@ -237,6 +237,9 @@ fn send_back(st: &mut Store, id: &str, holder: Option<Holder>, text: &str, pr_op
     (it.state, it.done_at, it.finish, it.close_on_check) = ("working".into(), None, None, false);
     it.check = None;
     it.mark_reopened();
+    // What follows each option was said for the round being redone (#619): it goes, and the redone round's ask names its own.
+    let again = if it.next.is_empty() { "" } else { "\nThe IF PICKED: lines you gave were for the options being redone, so they're cleared: when you ask for a pick again, give them again for the options you ask about." };
+    it.next.clear();
     // Kept on the DONE it answers, so its card says why (the pictures, added by ipc desk_item_act, counted).
     if let Some(c) = it.checks.last_mut() {
         let (why, pics) = crate::desk::your_words(&words);
@@ -247,7 +250,7 @@ fn send_back(st: &mut Store, id: &str, holder: Option<Holder>, text: &str, pr_op
     let did = if done { "reopened" } else { "sent back" };
     if let Some(x) = busy {
         // What it's told once it's free; a fresh session's hand-off if it stays busy 20 minutes.
-        let message = format!("{crew}Desk item #{id} ({title}) isn't done (you said it looks right, and now it's reopened): {}\nIts fixes stay in #{id}; don't add new items for them. Say DONE: #{id} when it is.\n{}{pr_open}", crate::desk::with_your_pictures(&words), crate::desk::check_words(id));
+        let message = format!("{crew}Desk item #{id} ({title}) isn't done (you said it looks right, and now it's reopened): {}\nIts fixes stay in #{id}; don't add new items for them. Say DONE: #{id} when it is.{again}\n{}{pr_open}", crate::desk::with_your_pictures(&words), crate::desk::check_words(id));
         let hand = reopen_handoff(it, &h, &format!("{} is at work on #{x}", h.name), &words);
         it.remember_holder();
         (it.moved_from, it.reopen_note, it.back_message) = (Some(h.clone()), hand, message);
@@ -276,7 +279,7 @@ fn send_back(st: &mut Store, id: &str, holder: Option<Holder>, text: &str, pr_op
     // Your pictures go as pictures (desk_send_out), not as paths in its words (#541).
     let words = crate::desk::with_your_pictures(&words);
     let was = if done { " (you said it looks right, and now it's reopened)" } else { "" };
-    let message = format!("{crew}Desk item #{id} ({title}) isn't done{was}: {words}\nIts fixes stay in #{id}; don't add new items for them. Say DONE: #{id} when it is.\n{}{pr_open}", crate::desk::check_words(id));
+    let message = format!("{crew}Desk item #{id} ({title}) isn't done{was}: {words}\nIts fixes stay in #{id}; don't add new items for them. Say DONE: #{id} when it is.{again}\n{}{pr_open}", crate::desk::check_words(id));
     fx.backs.push((id.to_string(), message.clone()));
     send_step(st, id, h.to(), message, now, fx);
     Ok(true)
@@ -503,11 +506,18 @@ fn topic_of(title: &str) -> String {
     if topic.is_empty() { t.to_string() } else { topic.to_string() }
 }
 
-/// The option an answer names, as one capital letter, or a letter and a number (M1, #445): "B", "b", "Option B",
-/// "B: the compact list", "B) …", "M2". None for anything else ("A new tab" isn't option A).
+/// The option an answer names, as one capital letter, a letter and a number (M1, #445), or a number of one or two
+/// digits (mocks 1 to 10, #619): "B", "b", "Option B", "B: the compact list", "B) …", "M2", "9", "Option 10", "4: …".
+/// None for anything else ("A new tab" isn't option A, nor "10 things" option 10).
 pub(crate) fn letter_of(answer: &str) -> Option<String> {
     let a = answer.trim();
     let a = if a.len() > 7 && a[..7].eq_ignore_ascii_case("option ") { a[7..].trim_start() } else { a };
+    let marks = [':', ')', '.', '-', '\u{2014}', '\u{2013}', ',', '('];
+    let number: String = a.chars().take_while(char::is_ascii_digit).collect();
+    if !number.is_empty() {
+        let rest = a[number.len()..].trim_start();
+        return (number.len() <= 2 && (rest.is_empty() || rest.starts_with(marks))).then_some(number);
+    }
     let mut chars = a.chars();
     let c = chars.next().filter(char::is_ascii_alphabetic)?;
     let digits: String = chars.as_str().chars().take_while(char::is_ascii_digit).take(2).collect();
@@ -516,13 +526,14 @@ pub(crate) fn letter_of(answer: &str) -> Option<String> {
         return None;
     }
     let single = rest.is_empty();
-    let marked = c.is_ascii_uppercase() && rest.starts_with([':', ')', '.', '-', '\u{2014}', '\u{2013}', ',', '(']);
+    let marked = c.is_ascii_uppercase() && rest.starts_with(marks);
     (single || marked).then(|| format!("{}{digits}", c.to_ascii_uppercase()))
 }
 
 /// The options a pick line names ("Pick one for working items: A, B or C." gives A, B, C): its newest words' line
 /// with "pick" or "choose" in it (the one starting so first), and the first run of two or more single capital letters
-/// joined by ",", "/", "or" or "and" in it. As the Desk page reads it (deskPickOptions).
+/// (or numbers, #619: "4, 6, 8 or 9") joined by ",", "/", "or" or "and" in it, else a range ("1 to 10", "A–F").
+/// As the Desk page reads it (deskPickOptions).
 pub(crate) fn pick_letters(text: &str) -> Vec<String> {
     let lines: Vec<&str> = text.split('\n').flat_map(|l| l.split_inclusive(['.', '?', '!'])).map(str::trim).collect();
     let words = |l: &str| l.split(|c: char| !c.is_alphanumeric()).map(str::to_ascii_lowercase).collect::<Vec<_>>();
@@ -541,11 +552,16 @@ pub(crate) fn pick_letters(text: &str) -> Vec<String> {
             toks.push(std::mem::take(&mut word));
         }
         if !c.is_whitespace() {
-            toks.push(if c == ',' || c == '/' { c.to_string() } else { "|".into() });
+            toks.push(match c {
+                ',' | '/' => c.to_string(),
+                '-' | '\u{2013}' | '\u{2014}' => "to".into(),
+                _ => "|".into(),
+            });
         }
     }
-    // A, B… or M1, M2… (#445).
-    let letter = |t: &str| (1..=3).contains(&t.len()) && t.chars().next().is_some_and(|c| c.is_ascii_uppercase()) && t.chars().skip(1).all(|c| c.is_ascii_digit());
+    // A, B… or M1, M2… (#445), or 1, 2… (#619).
+    let number = |t: &str| (1..=2).contains(&t.len()) && t.chars().all(|c| c.is_ascii_digit());
+    let letter = |t: &str| number(t) || (1..=3).contains(&t.len()) && t.chars().next().is_some_and(|c| c.is_ascii_uppercase()) && t.chars().skip(1).all(|c| c.is_ascii_digit());
     let joins = |t: &str| matches!(t, "," | "/" | "or" | "and");
     for start in 0..toks.len() {
         if !letter(&toks[start]) {
@@ -568,7 +584,22 @@ pub(crate) fn pick_letters(text: &str) -> Vec<String> {
             return run;
         }
     }
-    vec![]
+    (0..toks.len()).find_map(|s| toks.get(s..s + 3).and_then(|r| range(&r[0], &r[1], &r[2]))).unwrap_or_default()
+}
+
+/// "1 to 10" or "A–F" (its dash read as "to"): each option from `from` to `to`, two to twenty of them; None for
+/// anything else.
+fn range(from: &str, to_word: &str, to: &str) -> Option<Vec<String>> {
+    if to_word != "to" {
+        return None;
+    }
+    let (a, b) = match (from.parse::<u32>(), to.parse::<u32>()) {
+        (Ok(a), Ok(b)) if from.len() <= 2 && to.len() <= 2 => (a, b),
+        _ if from.len() == 1 && to.len() == 1 && from.chars().chain(to.chars()).all(|c| c.is_ascii_uppercase()) => (from.as_bytes()[0] as u32, to.as_bytes()[0] as u32),
+        _ => return None,
+    };
+    let letters = from.as_bytes()[0].is_ascii_uppercase();
+    (b > a && b - a < 20).then(|| (a..=b).map(|n| if letters { char::from_u32(n).unwrap_or('?').to_string() } else { n.to_string() }).collect())
 }
 
 /// You picked option `text` on item `id` (#281, #543): it's done, picked. The follow-ups its holder named for that

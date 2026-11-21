@@ -298,6 +298,56 @@ fn if_picked_lines_are_read() {
     assert_eq!((next[1].1.option.as_str(), next[1].1.title.as_str(), next[1].1.by.as_str()), ("any", "Note it", "me"));
 }
 
+/// #619: options can be numbers (mocks 1 to 10). Before, a numbered IF PICKED: line was dropped, so a redone mocks item
+/// kept the first round's A, B, C and their plans.
+#[test]
+fn numbered_if_picked_lines_are_read() {
+    use crate::desk::parse::{lines, Line};
+    let got = lines("IF PICKED: #607 | 9 | feature | A calm list | you'll see: dots | by: new\nIF PICKED: #607 | option 10 | feature | Item on the left\nIF PICKED: #607 | 100 | task | Not an option");
+    let opts: Vec<String> = got.into_iter().filter_map(|l| if let Line::IfPicked { next, .. } = l { Some(next.option) } else { None }).collect();
+    assert_eq!(opts, ["9", "10"]);
+}
+
+#[test]
+fn an_answer_or_a_pick_line_can_name_numbered_options() {
+    use crate::desk::hub::turn::act::{letter_of, pick_letters};
+    for (a, want) in [("9", Some("9")), ("Option 10", Some("10")), ("4: a calm list", Some("4")), ("10 things", None), ("100", None), ("B", Some("B")), ("A new tab", None)] {
+        assert_eq!(letter_of(a).as_deref(), want, "{a}");
+    }
+    assert_eq!(pick_letters("Pick one: 4, 6, 8 or 9."), ["4", "6", "8", "9"]);
+    assert_eq!(pick_letters("Which option, 1 to 10, should we pick?"), (1..=10).map(|n| n.to_string()).collect::<Vec<_>>());
+    assert_eq!(pick_letters("Pick one of A\u{2013}D."), ["A", "B", "C", "D"]);
+    assert_eq!(pick_letters("Pick one for working items: A, B or C."), ["A", "B", "C"]);
+}
+
+#[test]
+fn a_redone_mocks_item_picks_from_its_new_numbered_options_not_the_old_letters() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let m = mocks(&w, &h, &project);
+    ends(&w, &h, &format!("Pick one: A, B or C.\n\
+        IF PICKED: #{m} | A | feature | Old band (option A)\n\
+        IF PICKED: #{m} | B | feature | Old lanes (option B)\n\
+        IF PICKED: #{m} | C | feature | Old track (option C)"));
+    let letters = |w: &World| item(&desk(w, &project), "Mocks: working items")["next"].as_array().map(|n| n.iter().map(|x| x["option"].as_str().unwrap().to_string()).collect::<Vec<_>>()).unwrap_or_default();
+    assert_eq!(letters(&w), ["A", "B", "C"]);
+    // Sent back: the rejected round's plans go, and its holder is told to give them again.
+    w.hub().desk_item_act(&m, "send_back", "Not these: start again").unwrap();
+    assert!(letters(&w).is_empty());
+    assert!(sent_to(&w, &h).iter().any(|t| t.contains("isn't done") && t.contains("give them again")), "{:?}", sent_to(&w, &h));
+    ends(&w, &h, &format!("Four new mocks. Pick one: 4, 6, 8 or 9.\n\
+        IF PICKED: #{m} | 9 | feature | A calm list with progress under each row | you'll see: dots on every row | by: new\n\
+        IF PICKED: #{m} | 6 | feature | Progress is the page | by: new\n\
+        IF PICKED: #{m} | 8 | feature | A List / Progress switch | by: new\n\
+        IF PICKED: #{m} | 4 | feature | The picked row opens its journey | by: new"));
+    assert_eq!(letters(&w), ["9", "6", "8", "4"]);
+    let done = w.hub().desk_item_act(&m, "pick", "8").unwrap();
+    assert_eq!(done.picked, "8");
+    w.settle();
+    let b = builds(&w, &project);
+    assert_eq!(b.iter().map(|x| x["title"].as_str().unwrap()).collect::<Vec<_>>(), ["A List / Progress switch"], "{b:?}");
+}
+
 #[test]
 fn a_build_item_the_lead_files_for_your_pick_links_both_ways() {
     // #606: you picked in the lead's chat; the lead closes the mocks item and files what builds it itself, naming
