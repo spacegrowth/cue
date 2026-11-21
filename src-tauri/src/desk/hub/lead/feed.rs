@@ -151,7 +151,8 @@ fn applies(st: &Store, r: &Change) -> bool {
     let Some(it) = st.desk.item(&r.item) else { return false };
     match r.kind {
         ChangeKind::NewItem => it.state == "new" && it.holder.is_none(),
-        ChangeKind::Stopped => it.state == "working" && it.stop.is_some_and(|(u, _)| u.to_string() == r.key),
+        // Not once it's in line for a free copy (#633): it waits for that, it isn't stopped.
+        ChangeKind::Stopped => it.state == "working" && !crate::desk::hub::landing::trees::in_line(it) && it.stop.is_some_and(|(u, _)| u.to_string() == r.key),
         ChangeKind::StuckLanding => match r.key.strip_prefix("checks:") {
             Some(n) => it.checks.len().to_string() == n,
             None => it.state == "finishing" && it.finish.as_ref().is_some_and(|f| format!("{}:{}", f.step, f.at) == r.key),

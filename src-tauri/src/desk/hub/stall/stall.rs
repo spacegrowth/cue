@@ -7,6 +7,7 @@
 //! when its holder asked you something, the lead asks you (ASK: #id …), or the Desk has no lead at hand.
 
 use crate::desk::hub::core::desk::{ask_of, at_work, crew_parts, Effects};
+use crate::desk::hub::landing::trees::{copy_wait_line, in_line};
 use crate::desk::hub::prelude::*;
 use crate::desk::{DeskItem, Holder};
 use crate::sessions::Session;
@@ -250,6 +251,10 @@ pub(crate) fn stop_shown(st: &Store, it: &DeskItem, s: &Session, now: u64) -> St
     if let Some((_, w)) = it.waits.as_ref().filter(|(u, _)| *u == it.updated && question_in(last).is_none()) {
         return Stop::Waits(w.clone());
     }
+    // In line for a free copy (#633): waiting for it, not stopped, unless its turn asks you something.
+    if in_line(it) && question_in(last).is_none() {
+        return Stop::Waits(copy_wait_line(st, it));
+    }
     // Its work isn't committed: it isn't in your app, so it isn't yours yet. The lead has it, its question too (#213).
     if !it.loose.is_empty() {
         return match lead_live(st, &it.project) {
@@ -393,9 +398,11 @@ fn stall_held(st: &mut Store, turn: &Turn, id: &str, updated: u64, now: u64, fx:
         }
         fx.items.push(id.to_string());
     }
-    // What this turn says it waits on, if anything: the item shows it until it changes or a turn says otherwise.
+    // What this turn says it waits on, if anything: the item shows it until it changes or a turn says otherwise. In
+    // line for a free copy (#633), that's what it waits on, whatever its words.
+    let copy = st.desk.item(id).filter(|i| in_line(i)).map(|i| copy_wait_line(st, i));
     if let Some(it) = st.desk.item_mut(id) {
-        it.waits = turn.waits.clone().map(|w| (updated, w));
+        it.waits = turn.waits.clone().or(copy).map(|w| (updated, w));
     }
     // A question its turn ended on, with its work not committed, is the lead's to settle, not yours (#213).
     let loose = st.desk.item(id).is_some_and(|i| !i.loose.is_empty());
@@ -412,8 +419,9 @@ fn stall_held(st: &mut Store, turn: &Turn, id: &str, updated: u64, now: u64, fx:
 fn stall_settled(st: &mut Store, turn: &Turn, id: &str, updated: u64, now: u64, fx: &mut Effects) -> Option<String> {
     let sid = turn.sid;
     let quiet = turn.busy || turn.asks;
-    // Waiting isn't stopping, nor is running its tests: not asked "Done?", and the lead isn't told (#249, #435).
-    if turn.waits.is_some() || turn.running {
+    // Waiting isn't stopping, nor is running its tests, nor waiting in line for a free copy (#633): not asked
+    // "Done?", and the lead isn't told (#249, #435). A copy that comes wakes it (desk/hub/landing/trees.rs).
+    if turn.waits.is_some() || turn.running || st.desk.item(id).is_some_and(in_line) {
         st.desk.run.left_said.insert(id.to_string(), (sid.to_string(), updated));
         st.desk.run.nudged.remove(id);
         return None;

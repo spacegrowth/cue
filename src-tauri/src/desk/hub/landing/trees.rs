@@ -598,6 +598,18 @@ pub(crate) fn in_line(i: &DeskItem) -> bool {
     i.tree_wait && i.after.is_none() && (i.state == "queued" || (i.state == "working" && i.tree.is_none()))
 }
 
+/// Item `it`, at work or queued, in line for a free copy (#633): how its row says so, with the items using its
+/// repository's copies now. Its holder's turn ending then isn't a stop: it waits for the copy, and is woken once one is its.
+pub(crate) fn copy_wait_line(st: &Store, it: &DeskItem) -> String {
+    let mut by: Vec<&DeskItem> = st.desk.items.iter().filter(|i| i.tree.as_ref().is_some_and(|t| t.repo == it.tree_wait_repo)).collect();
+    by.sort_by_key(|i| (i.id.parse::<u64>().unwrap_or(u64::MAX), i.id.clone()));
+    let by: Vec<String> = by.iter().map(|i| format!("#{}", i.id)).collect();
+    match by.is_empty() {
+        true => "Waiting for a free copy of its repository".into(),
+        false => format!("Waiting for a free copy of its repository (in use by {})", by.join(", ")),
+    }
+}
+
 /// What an item of `project` queued for one of `repo`'s copies waits on, as the Desk lead's summary says it (#340).
 pub(crate) fn copy_wait(st: &Store, project: &str, repo: &str) -> String {
     let mut held: Vec<String> = st.desk.items.iter().filter(|i| i.tree.as_ref().is_some_and(|t| t.repo == repo)).map(|i| format!("#{}", i.id)).collect();

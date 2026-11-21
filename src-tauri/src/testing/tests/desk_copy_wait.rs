@@ -415,3 +415,45 @@ fn the_lead_moves_an_item_to_the_front_of_the_line_for_a_free_copy_and_it_gets_t
     let told: Vec<String> = w.hosted.sent().into_iter().filter(|(s, _)| *s == lead).map(|(_, m)| m).collect();
     assert!(told.iter().any(|m| m.contains(&format!("#{c} not moved up: it isn't waiting for a free copy"))), "{told:?}");
 }
+
+/// #633: an item started with every copy in use, in line for the next free one. Its holder's turns end on it with no
+/// DONE (it read and planned, as told): it isn't asked "Done?" and the lead isn't told it stopped; its row shows it
+/// waits for a free copy. Once one is free its holder is woken with where it is.
+#[test]
+fn a_holder_ending_its_turn_while_its_item_waits_for_a_copy_is_not_a_stop() {
+    let w = World::new();
+    let (_, project, id, h) = routed_with(&w, |w, _, _| w.hub().desk_hold_copies(&super::desk_unstick::top(w), &[1, 2, 3]), |_, _, _| {});
+    let repo = super::desk_unstick::top(&w);
+    let lead = super::desk::desk(&w, &project)["lead"]["sid"].as_str().unwrap().to_string();
+    super::desk_commit::ends(&w, &lead, &format!("START: #{id} | why: the user needs it now"));
+    w.advance(1000);
+    let sent_from = w.hosted.sent().len();
+    // Two turns of its end with no DONE and no word of waiting: the second is what used to go to the lead as a stop.
+    for (prompt, reply) in [(format!("Desk item #{id}: Header jumps"), "Read the header code and planned the fix."), (format!("Desk item #{id}: carry on"), "Plan is ready.")] {
+        w.advance(1000);
+        w.hosted_says(&h, crate::hosted::HostedEvent::Taken { text: prompt });
+        w.settle();
+        w.advance(1000);
+        super::desk_commit::ends(&w, &h, reply);
+        w.advance(1000);
+        w.hub().desk_tick_now();
+        w.settle();
+    }
+    let sent: Vec<(String, String)> = w.hosted.sent().into_iter().skip(sent_from).collect();
+    assert!(!sent.iter().any(|(s, t)| *s == h && t.contains("Done? Write DONE")), "not asked Done?: {sent:?}");
+    assert!(!sent.iter().any(|(s, t)| *s == lead && t.contains(&format!("#{id} (Header jumps) stopped"))), "the lead isn't told it stopped: {sent:?}");
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!((it["state"].as_str(), it["stopped"].as_bool().unwrap_or(false)), (Some("working"), false), "{it}");
+    assert!(it["waiting"].as_str().is_some_and(|x| x.starts_with("Waiting for a free copy")), "shown waiting for a copy: {it}");
+    let summary = w.hub().desk_summary(&project, "", false).0;
+    let line = summary.lines().find(|l| l.starts_with(&format!("- #{id} "))).unwrap_or_else(|| panic!("{summary}"));
+    assert!(!line.contains("| stopped") && line.contains("waiting: Waiting for a free copy"), "{line}");
+    // A copy is let go of: its holder is woken to build there.
+    let before = w.hosted.sent().len();
+    w.hub().desk_let_go_copy(&repo, 2);
+    w.settle();
+    let it = item(&w, &project, "Header jumps");
+    let path = it["tree"]["path"].as_str().unwrap().to_string();
+    assert!(w.hosted.sent()[before..].iter().any(|(s, t)| *s == h && t.contains("it's yours") && t.contains(&path)), "woken with its copy");
+    assert!(it["waiting"].as_str().is_none_or(|x| !x.starts_with("Waiting for a free copy")), "{it}");
+}

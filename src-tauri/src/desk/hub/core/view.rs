@@ -180,7 +180,11 @@ fn stops_view(st: &Store, it: &DeskItem, h: &Holder, out: &mut DeskItem) {
                 s.state != "stopped" && (s.held.is_some() || !s.running.is_empty() || s.queued.is_some() || s.thread.last().is_some_and(|e| e.role == "you" && e.pending))
             }))
         };
-        if !active && !wrote_just_now(st, h) {
+        if !active && !wrote_just_now(st, h) && crate::desk::hub::landing::trees::in_line(it) {
+            // Started early and in line for a free copy (#633): it waits for that, nothing to resume.
+            out.waiting = crate::desk::hub::landing::trees::copy_wait_line(st, it);
+            out.latest = out.waiting.clone();
+        } else if !active && !wrote_just_now(st, h) {
             out.state = "needs_resume".into();
             if !it.restart.is_empty() {
                 out.latest = it.restart.clone();
