@@ -12,10 +12,10 @@ use crate::desk::hub::turn::heard::new_item;
 /// What you did to item `id` ("looks_right" | "reopen" | "send_back" | "start_now" | "put_before" | "hold" | "drop"), in the store.
 fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<Effects, String> {
     // What you did, for the lead's picture: read first, as a drop removes the item.
-    // Words on its page (a note) to check are a Send back, or a question (#475): said to the lead as such (#567).
+    // Words on its page (a note) to check or done that ask something are a question (#475): said to the lead as such
+    // (#567). Any other note is a note, never a Send back (#584).
     let said = match st.desk.item(id).filter(|i| act == "note" && i.holder.is_some()) {
         Some(i) if crate::desk::hub::turn::asked::is_question(text) && matches!(i.state.as_str(), "to_check" | "done") => "ask",
-        Some(i) if i.state == "to_check" => "send_back",
         _ => act,
     };
     let did = crate::desk::hub::lead::feed::you_did(st, id, said, text);
@@ -35,8 +35,8 @@ fn acted_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result
         return pick(st, id, text, now);
     }
     let mut fx = Effects::default();
-    // A note from its page (#437): to check, it's a Send back (the item reopens, your words go with it); else to
-    // whoever holds it, at any stage. With nobody holding it, the window sends it to the lead.
+    // A note from its page (#437): to whoever holds it, at any stage. To check, it stays to check (#584: "ok testing
+    // now" isn't a Send back); only Send back reopens it. With nobody holding it, the window sends it to the lead.
     // A question there (#475) isn't a Send back: its holder answers it, and the item stays where it was unless that
     // answer changes its code.
     // A quick phrase clicked on its page (#488, "Go ahead", "Commit"): a note to its holder at any stage, never a Send
@@ -46,7 +46,6 @@ fn acted_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result
     if act == "note" && crate::desk::hub::turn::asked::is_question(text) && st.desk.item(id).is_some_and(|i| matches!(i.state.as_str(), "to_check" | "done") && i.holder.is_some()) {
         return crate::desk::hub::turn::asked::ask(st, id, text, now);
     }
-    let act = if act == "note" && !phrase && st.desk.item(id).is_some_and(|i| i.state == "to_check" && i.holder.is_some()) { "send_back" } else { act };
     if act == "retry" {
         return retry(st, id, text, now);
     }
@@ -205,7 +204,7 @@ fn send_back(st: &mut Store, id: &str, holder: Option<Holder>, text: &str, pr_op
     Ok(true)
 }
 
-// A note from its page to whoever holds it (#437), at any stage but to check (a Send back, above): noted on
+// A note from its page to whoever holds it (#437), at any stage (to check too, #584: it stays to check): noted on
 // it first, then sent as about the item ("About #12 (…): …"), kept in Cue while that session works, and how
 // it went kept on its step, so the page says when it didn't go and offers Retry.
 fn note_to_holder(st: &mut Store, id: &str, holder: Option<Holder>, text: &str, now: u64, fx: &mut Effects) -> Result<bool, String> {
@@ -751,7 +750,7 @@ impl Hub {
     }
 
     /// What you did to an item: "looks_right" (done), "send_back" (to its holder again, with `text`), "note" (your
-    /// words to its holder; to check, a Send back), "phrase" (a quick phrase: a note that never sends it back, #488), "start_now"
+    /// words to its holder, never a Send back, #584), "phrase" (a quick phrase: a note, #488), "start_now"
     /// (not waiting on another any more), "put_before" (ahead of the item it waited on), "install_now" (its install
     /// starts without waiting, desk/hub/landing/finish.rs), "skip_install" (waiting to install, done now with no install of its own,
     /// #490), "rerun" (its landing run again: a plain retry, offered only when Cue

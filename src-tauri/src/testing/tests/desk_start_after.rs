@@ -44,10 +44,10 @@ fn starting_an_item_queued_after_another_leaves_that_one_as_it_was_in_every_stat
     }
 }
 
-/// A Desk message about an item to check (a note on it) still puts it back to work (#484): only one about another
-/// item that merely names it doesn't.
+/// The lead's note on an item to check, taken by its holder, leaves it to check (#584: it was #484's "puts it back
+/// to work", and #542 went round and round on it). Only a Send back reopens it.
 #[test]
-fn a_note_on_an_item_to_check_still_puts_it_back_to_work() {
+fn a_leads_note_on_an_item_to_check_leaves_it_to_check() {
     let w = World::new();
     let (h, project, l, m, _) = band_and_older_pages(&w, "to_check");
     let before = sent_to(&w, &h).len();
@@ -55,7 +55,10 @@ fn a_note_on_an_item_to_check_still_puts_it_back_to_work() {
     let note = sent_to(&w, &h)[before..].iter().find(|t| t.contains(&format!("Desk item #{m}"))).cloned().unwrap();
     w.hosted_says(&h, HostedEvent::Taken { text: note });
     w.settle();
-    assert_eq!(item(&desk(&w, &project), "Band")["state"], "working");
+    let d = desk(&w, &project);
+    let band = item(&d, "Band");
+    assert_eq!(band["state"], "to_check", "{band}");
+    assert!(band.get("reopened").is_none_or(|r| r.is_null()), "not reopened: {band}");
 }
 
 /// Tonight's other half: the lead's note on #472 ("nothing more for you") came again with each `/loop` wake-up, as

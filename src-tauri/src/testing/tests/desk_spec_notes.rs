@@ -53,26 +53,25 @@ fn a_note_held_while_its_holder_is_busy_goes_in_when_its_turn_ends() {
     assert!(w.snapshot().session(&sid)["held"].is_null(), "nothing left held: {}", w.snapshot().session(&sid)["held"]);
 }
 
-/// #437 done when ("a to-check item that gets a note reopens and the note goes in with it"), #484, desk_stall.rs ("a
-/// turn on its item"): the note, typed while its holder is busy, still reopens the item and reaches the holder once
-/// its turn ends; that turn, about something else, isn't the item's, so the holder isn't asked "Done?" nor the item
-/// left waiting on you.
+/// #584 (in place of #437's "a to-check item that gets a note reopens"), desk_stall.rs ("a turn on its item"): a note
+/// typed on an item to check while its holder is busy reaches the holder once its turn ends, and the item stays to
+/// check; that turn, about something else, isn't the item's, so the holder isn't asked "Done?" nor the item stopped.
 #[test]
-fn a_typed_note_on_an_item_to_check_while_its_holder_is_busy_reopens_it_and_goes_in_after() {
+fn a_typed_note_on_an_item_to_check_while_its_holder_is_busy_goes_in_after_and_it_stays_to_check() {
     let w = World::new();
     let (sid, project) = holder(&w);
     let it = w.hub().desk_add(&project, "bug", "Spacing", "", Some(&sid)).unwrap();
     w.hub().desk_set_state(&it.id, "to_check");
     busy(&w, &sid);
-    let back = w.hub().desk_item_act(&it.id, "note", "Still 6px on the left").unwrap();
+    let after = w.hub().desk_item_act(&it.id, "note", "Still 6px on the left").unwrap();
     w.settle();
-    assert_eq!(back.state, "working");
-    let words = format!("#{} (Spacing) isn't done: Still 6px on the left", it.id);
+    assert_eq!(after.state, "to_check");
     ends_turn(&w, &sid);
-    assert!(sent_to(&w, &sid).iter().any(|t| t.contains(&words)), "{:?}", sent_to(&w, &sid));
-    assert!(!sent_to(&w, &sid).iter().any(|t| t.starts_with("Done? Write DONE")), "{:?}", sent_to(&w, &sid));
+    let sent = sent_to(&w, &sid);
+    assert!(sent.iter().any(|t| t.starts_with(&format!("About #{} (Spacing): Still 6px on the left", it.id))), "{sent:?}");
+    assert!(!sent.iter().any(|t| t.contains("isn't done") || t.starts_with("Done? Write DONE")), "{sent:?}");
     let now = shown(&w, &project, &it.id);
-    assert_eq!((now["state"].as_str(), now["stopped"].as_bool().unwrap_or(false)), (Some("working"), false), "{now}");
+    assert_eq!((now["state"].as_str(), now["stopped"].as_bool().unwrap_or(false)), (Some("to_check"), false), "{now}");
 }
 
 /// #488 done when, #477 (its phrases): each quick phrase clicked on a to-check item reaches its holder as a note, as

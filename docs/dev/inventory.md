@@ -19,8 +19,8 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | Lock acquisitions | 273 |
 | Lock-graph edges | 52 |
 | Spawn sites | 89 |
-| External calls: fs / db / process / notify / login / socket | 488 / 220 / 57 / 4 / 1 / 4 |
-| External calls reachable under the hub's store | 0 |
+| External calls: fs / db / process / notify / login / socket | 490 / 220 / 57 / 4 / 1 / 4 |
+| External calls reachable under the hub's store | 8 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
 
@@ -394,6 +394,14 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 | Holder | Kind | Made in | Call | Path |
 |---|---|---|---|---|
+| `desk::hub::landing::trees::Hub::desk_kept_remove` | fs | `desk::hub::landing::main_line::same_dir` | canonicalize | `desk/hub/landing/trees.rs::Hub::desk_kept_remove` in a closure hub::store_access::Hub::read runs holding the lock → `desk/hub/landing/tree_files.rs::not_its_own` → `desk/hub/landing/main_line.rs::same_dir`, calls out |
+| `desk::hub::landing::trees::Hub::desk_kept_remove` | fs | `desk::hub::landing::tree_files::not_its_own` | Path::exists | `desk/hub/landing/trees.rs::Hub::desk_kept_remove` in a closure hub::store_access::Hub::read runs holding the lock → `desk/hub/landing/tree_files.rs::not_its_own`, calls out |
+| `desk::hub::landing::trees::Hub::desk_kept_remove` | fs | `safe_git::git_bin` | Path::is_file | `desk/hub/landing/trees.rs::Hub::desk_kept_remove` in a closure hub::store_access::Hub::read runs holding the lock → `desk/hub/landing/tree_files.rs::not_its_own` → `desk/hub/landing/git.rs::git` → `safe_git.rs::no_repo_filters` → `safe_git.rs::run` → `safe_git.rs::run_env` → `safe_git.rs::git_bin`, calls out |
+| `desk::hub::landing::trees::Hub::desk_kept_remove` | process | `safe_git::run_env` | (program computed) | `desk/hub/landing/trees.rs::Hub::desk_kept_remove` in a closure hub::store_access::Hub::read runs holding the lock → `desk/hub/landing/tree_files.rs::not_its_own` → `desk/hub/landing/git.rs::git` → `safe_git.rs::no_repo_filters` → `safe_git.rs::run` → `safe_git.rs::run_env`, calls out |
+| `desk::hub::landing::trees::Hub::desk_tree_dropped` | fs | `desk::hub::landing::main_line::same_dir` | canonicalize | `desk/hub/landing/trees.rs::Hub::desk_tree_dropped` in a closure hub::store_access::Hub::read runs holding the lock → `desk/hub/landing/tree_files.rs::not_its_own` → `desk/hub/landing/main_line.rs::same_dir`, calls out |
+| `desk::hub::landing::trees::Hub::desk_tree_dropped` | fs | `desk::hub::landing::tree_files::not_its_own` | Path::exists | `desk/hub/landing/trees.rs::Hub::desk_tree_dropped` in a closure hub::store_access::Hub::read runs holding the lock → `desk/hub/landing/tree_files.rs::not_its_own`, calls out |
+| `desk::hub::landing::trees::Hub::desk_tree_dropped` | fs | `safe_git::git_bin` | Path::is_file | `desk/hub/landing/trees.rs::Hub::desk_tree_dropped` in a closure hub::store_access::Hub::read runs holding the lock → `desk/hub/landing/tree_files.rs::not_its_own` → `desk/hub/landing/git.rs::git` → `safe_git.rs::no_repo_filters` → `safe_git.rs::run` → `safe_git.rs::run_env` → `safe_git.rs::git_bin`, calls out |
+| `desk::hub::landing::trees::Hub::desk_tree_dropped` | process | `safe_git::run_env` | (program computed) | `desk/hub/landing/trees.rs::Hub::desk_tree_dropped` in a closure hub::store_access::Hub::read runs holding the lock → `desk/hub/landing/tree_files.rs::not_its_own` → `desk/hub/landing/git.rs::git` → `safe_git.rs::no_repo_filters` → `safe_git.rs::run` → `safe_git.rs::run_env`, calls out |
 
 ## Spawn sites
 
@@ -484,7 +492,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (488)
+### fs (490)
 
 | In | Call | Times |
 |---|---|---|
@@ -551,6 +559,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `desk/hub/landing/named_copy.rs::repo_named` | canonicalize | 1 |
 | `desk/hub/landing/own_work.rs::Hub::holder_work` | Path::is_dir | 1 |
 | `desk/hub/landing/own_work.rs::in_copies` | canonicalize | 2 |
+| `desk/hub/landing/own_work.rs::on_others_branch` | Path::is_dir | 1 |
 | `desk/hub/landing/own_work.rs::worked_in` | Path::is_dir | 1 |
 | `desk/hub/landing/pr.rs::gh_bin` | Path::is_file | 1 |
 | `desk/hub/landing/tree_files.rs::check_steps_on` | create_dir_all | 1 |
@@ -572,6 +581,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `desk/hub/landing/tree_files.rs::link_shared` | Path::exists | 1 |
 | `desk/hub/landing/tree_files.rs::link_shared` | create_dir_all | 1 |
 | `desk/hub/landing/tree_files.rs::link_shared` | symlink_metadata | 1 |
+| `desk/hub/landing/tree_files.rs::not_its_own` | Path::exists | 1 |
 | `desk/hub/landing/tree_files.rs::prepare` | Path::exists | 3 |
 | `desk/hub/landing/tree_files.rs::prepare` | create_dir_all | 1 |
 | `desk/hub/landing/tree_files.rs::remove` | Path::exists | 1 |

@@ -109,14 +109,17 @@ impl Hub {
         }
         let m = crate::sessions::unwrap_pasted(prompt);
         let desks = self.read(|st| st.desk.run.sent.get(sid).is_some_and(|sent| sent.iter().any(|t| is_message(&m, t))));
+        // Only words typed into it yourself put an item to check back at work. The Desk's own messages don't (#584):
+        // a Send back or a route back reopened it as it was sent, and a note (yours from its page, the lead's) is
+        // only a note: "ok testing now" isn't a send-back.
         if !desks {
             self.desk_you_answered(sid);
+            self.desk_back_at_work(sid, &m);
         }
-        self.desk_back_at_work(sid, &m);
     }
 
-    /// Session `sid` took `prompt`, about items of its that are to check (#484: the lead's note, your words, a send
-    /// back): it's at work on them again, so they are, until it says DONE again. One you asked a question on is
+    /// Session `sid` took `prompt`, words you typed into it about items of its that are to check (#484): it's at work
+    /// on them again, so they are, until it says DONE again. One you asked a question on is
     /// settled as its answer ends (desk_asked's `answered`), not here.
     fn desk_back_at_work(&self, sid: &str, prompt: &str) {
         // One of the Desk's own messages is about the item it opens with ("Desk item #513 …", a note on #472): an

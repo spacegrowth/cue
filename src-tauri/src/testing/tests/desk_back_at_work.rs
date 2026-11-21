@@ -1,6 +1,7 @@
-//! An item to check whose holder goes back to work on it (#484): a send-back, the lead's note, a route back to it, or
-//! any turn about it. It shows at work (the list, Progress, the header count and its page all read its state), its
-//! page saying what its holder is doing, and it's to check again only when its holder says DONE again.
+//! An item to check whose holder goes back to work on it (#484): a send-back, a route back to it, or words you type
+//! into its session about it (the lead's note and your comment on its page don't, #584: desk_comments.rs). It shows
+//! at work (the list, Progress, the header count and its page all read its state), its page saying what its holder
+//! is doing, and it's to check again only when its holder says DONE again.
 
 use super::desk::sent_to;
 use super::desk_asked::to_check;
@@ -49,26 +50,6 @@ fn an_item_sent_back_while_to_check_shows_at_work_until_its_done_again() {
     assert_ne!(it["latest"], "Fixed.", "not what it said last round: {it}");
     let it = at_work(&w, &project);
     assert_ne!(it["act"]["now"], "DONE: #1", "not what it said last round: {it}");
-    done_again(&w, &h, &id, &project);
-}
-
-#[test]
-fn an_item_to_check_whose_holder_takes_the_leads_note_shows_at_work_until_its_done_again() {
-    let w = World::new();
-    let (_, project, id, h) = to_check(&w);
-    let l = super::desk::desk(&w, &project)["lead"]["sid"].as_str().unwrap().to_string();
-    w.advance(1000);
-    ends(&w, &l, &format!("Telling it.\nNOTE: #{id} | the footer jumps too, fix it with the header"));
-    // Sent, not yet taken: still to check.
-    assert_eq!(item(&w, &project, "Header jumps")["state"], "to_check");
-    let note = sent_to(&w, &h).into_iter().find(|t| t.starts_with(&format!("Note from the Desk lead on Desk item #{id}"))).expect("the note sent");
-    takes(&w, &h, &note);
-    let it = at_work(&w, &project);
-    assert_ne!(it["latest"], "Fixed.", "not what it said last round: {it}");
-    // A turn that ends without DONE: still at work (asked Done?), not back to check.
-    w.advance(1000);
-    ends(&w, &h, "Moved the footer.");
-    assert_ne!(item(&w, &project, "Header jumps")["state"], "to_check");
     done_again(&w, &h, &id, &project);
 }
 

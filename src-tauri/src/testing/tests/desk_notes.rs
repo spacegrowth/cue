@@ -36,19 +36,21 @@ fn a_note_reaches_its_holder_at_every_stage() {
     }
 }
 
+/// A note on an item to check (#584: "ok testing now"): to its holder as a note, the item still to check. Only Send
+/// back reopens it.
 #[test]
-fn a_note_on_an_item_to_check_reopens_it_with_the_note() {
+fn a_note_on_an_item_to_check_reaches_its_holder_and_it_stays_to_check() {
     let w = World::new();
     let (sid, project) = holder(&w);
     let it = w.hub().desk_add(&project, "bug", "Spacing", "", Some(&sid)).unwrap();
     w.hub().desk_set_state(&it.id, "to_check");
-    let back = w.hub().desk_item_act(&it.id, "note", "Still 6px on the left").unwrap();
+    let after = w.hub().desk_item_act(&it.id, "note", "Still 6px on the left").unwrap();
     w.settle();
-    assert_eq!(back.state, "working");
+    assert_eq!(after.state, "to_check");
     let sent = sent_to(&w, &sid);
-    assert!(sent.iter().any(|t| t.contains(&format!("#{} (Spacing) isn't done: Still 6px on the left", it.id))), "{sent:?}");
-    let s = step(&w, &project, &it.id, "sent back");
-    assert_eq!(s["delivery"]["went"], "sent", "{s}");
+    assert!(sent.iter().any(|t| t.starts_with(&format!("About #{} (Spacing): Still 6px on the left", it.id))), "{sent:?}");
+    assert!(!sent.iter().any(|t| t.contains("isn't done")), "{sent:?}");
+    assert_eq!(step(&w, &project, &it.id, "to ")["delivery"]["went"], "sent");
 }
 
 /// A quick phrase clicked on the page of an item to check (#488): to its holder as a note, the item still to check.
