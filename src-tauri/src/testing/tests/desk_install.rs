@@ -425,3 +425,103 @@ fn an_item_waiting_to_install_closes_with_done_skip_install_and_no_install_runs(
     assert_eq!(super::desk::desk(&w, &project)["lands"], lands, "the after-landing setting is unchanged");
     assert!(w.hub().desk_item_act(&id, "skip_install", "").is_err(), "only while it waits for an install");
 }
+
+/// An item done in this Cue, its repository given a local bare "shared copy" holding main as it was before the item,
+/// `set` run, then installed and in the running Cue: (repo, shared copy, project).
+fn installed_with_shared_copy(w: &mut World, set: impl Fn(&World, &str, &std::path::Path)) -> (std::path::PathBuf, std::path::PathBuf, String) {
+    let (fake, dir, project, id) = done_in_cue(w);
+    let bare = dir.join("shared.git");
+    git(&dir, &["init", "-q", "--bare", "-b", "main", &bare.to_string_lossy()]);
+    git(&dir, &["remote", "add", "origin", &bare.to_string_lossy()]);
+    git(&dir, &["push", "-q", "origin", "HEAD~1:refs/heads/main"]);
+    set(&*w, &project, &dir);
+    let head = git(&dir, &["rev-parse", "HEAD"]).trim().to_string();
+    w.hub().desk_item_act(&id, "install_now", "").unwrap();
+    w.settle();
+    fake.goes("installed", "");
+    tick(w);
+    w.relaunch();
+    fake.runs(&head);
+    w.hub().desk_set_installer(fake.clone());
+    tick(w);
+    w.settle();
+    assert_eq!(step(w, &project), "checked", "installed");
+    (dir, bare, project)
+}
+
+fn same_main(dir: &std::path::Path, bare: &std::path::Path) -> bool {
+    git(bare, &["rev-parse", "main"]).trim() == git(dir, &["rev-parse", "main"]).trim()
+}
+
+/// After an install, main ahead of the shared copy is offered for a push (#599): nothing pushed before your yes.
+#[test]
+fn after_an_install_main_ahead_of_the_shared_copy_is_offered_and_a_yes_pushes_it() {
+    let mut w = World::new();
+    let (dir, bare, project) = installed_with_shared_copy(&mut w, |_, _, _| {});
+    let card = super::desk_remote::push_card(&w, &project).expect("offered");
+    assert!(card.to_string().contains("Main is 1 landing ahead of the shared copy. Push it?"), "{card}");
+    assert!(!same_main(&dir, &bare), "nothing pushed before your yes");
+    super::desk_remote::answer(&w, card["id"].as_str().unwrap(), "Yes");
+    assert!(same_main(&dir, &bare), "pushed");
+    assert!(super::desk_remote::push_card(&w, &project).is_none());
+}
+
+/// A yes still goes through the check before a push: a word that must not go public refuses it, naming the find.
+#[test]
+fn a_yes_to_the_offer_is_refused_when_the_leak_check_finds_a_word() {
+    let mut w = World::new();
+    let (dir, bare, project) = installed_with_shared_copy(&mut w, |_, _, _| {});
+    let card = super::desk_remote::push_card(&w, &project).expect("offered");
+    w.hub().set_setting("project.never", serde_json::json!({ project.clone(): ["zorblax"] })).unwrap();
+    std::fs::write(dir.join("shared.txt"), "the zorblax plan\n").unwrap();
+    git(&dir, &["add", "-f", "shared.txt"]);
+    git(&dir, &["commit", "-q", "-m", "plan"]);
+    super::desk_remote::answer(&w, card["id"].as_str().unwrap(), "Yes");
+    assert!(!same_main(&dir, &bare), "not pushed");
+    let said: Vec<String> = w.hub().read(|st| st.desk.decisions.iter().map(|d| d.text.clone()).collect());
+    assert!(said.iter().any(|t| t.starts_with("Not pushed") && t.contains("zorblax") && t.contains("shared.txt line 1")), "{said:?}");
+}
+
+#[test]
+fn after_an_install_with_main_even_with_the_shared_copy_nothing_is_offered() {
+    let mut w = World::new();
+    let (dir, bare, project) = installed_with_shared_copy(&mut w, |_, _, dir| {
+        git(dir, &["push", "-q", "origin", "HEAD:refs/heads/main"]);
+    });
+    assert!(same_main(&dir, &bare));
+    assert!(super::desk_remote::push_card(&w, &project).is_none());
+}
+
+#[test]
+fn a_project_set_to_never_push_is_offered_nothing_after_an_install() {
+    let mut w = World::new();
+    let (dir, bare, project) = installed_with_shared_copy(&mut w, |w, project, _| {
+        w.hub().set_setting("project.lands", serde_json::json!({ project: { "push": "never" } })).unwrap();
+    });
+    assert!(super::desk_remote::push_card(&w, &project).is_none());
+    assert!(!same_main(&dir, &bare), "nothing pushed");
+}
+
+/// "After each landing": main ahead is pushed after the install (checked), nothing asked.
+#[test]
+fn a_project_pushed_after_each_landing_is_pushed_after_an_install_without_asking() {
+    let mut w = World::new();
+    let (dir, bare, project) = installed_with_shared_copy(&mut w, |w, project, _| {
+        w.hub().set_setting("project.lands", serde_json::json!({ project: { "push": "after" } })).unwrap();
+    });
+    w.settle();
+    assert!(super::desk_remote::push_card(&w, &project).is_none(), "nothing asked");
+    assert!(same_main(&dir, &bare), "pushed");
+}
+
+/// A shared copy that doesn't answer isn't taken as even: main is still offered, saying Cue couldn't compare.
+#[test]
+fn a_shared_copy_that_cant_be_reached_still_gets_the_offer_after_an_install() {
+    let mut w = World::new();
+    let (_, _, project) = installed_with_shared_copy(&mut w, |_, _, dir| {
+        let gone = dir.join("no-such-remote.git");
+        git(dir, &["remote", "set-url", "origin", &gone.to_string_lossy()]);
+    });
+    let card = super::desk_remote::push_card(&w, &project).expect("offered although it couldn't compare");
+    assert!(card.to_string().contains("couldn't compare main with the shared copy"), "{card}");
+}

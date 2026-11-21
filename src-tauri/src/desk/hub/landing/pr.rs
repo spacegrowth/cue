@@ -228,17 +228,11 @@ impl Hub {
         if l.push != "after" || l.how == "pr" {
             return;
         }
-        let Some((_, onto)) = main_checkout(top).filter(|(_, b)| !b.is_empty()) else { return };
-        let said = match remote_of("", top, &onto) {
-            None => "Not pushed: this project has no remote".to_string(),
-            Some(r) => match crate::desk::hub::landing::push_check::push_allowed("", top, project, &r, &format!("refs/heads/{onto}")) {
-                Err(refused) => refused,
-                Ok(()) => match self.net_git(top, &["push", "-q", &r, &format!("refs/heads/{onto}:refs/heads/{onto}")]) {
-                    Ok(_) => format!("Pushed to {r}"),
-                    Err(e) => because(format!("Not pushed to {r}"), &e),
-                },
-            },
-        };
+        if main_checkout(top).filter(|(_, b)| !b.is_empty()).is_none() {
+            return;
+        }
+        // The one checked path every push of main takes (desk/hub/landing/push_main.rs).
+        let said = self.desk_push_main(project, top).unwrap_or_else(|e| e);
         self.finish_fin(id, |f| f.pushed = said);
     }
 

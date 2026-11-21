@@ -360,7 +360,7 @@ impl Hub {
                 .items
                 .iter()
                 .filter(|i| i.desk && i.status == "pending" && i.origin.session_id == lead && i.tool_input["desk_id"].as_str() == Some(desk))
-                .filter(|i| ["desk_use", "desk_lands", "desk_old"].iter().all(|k| i.tool_input.get(*k).is_none()))
+                .filter(|i| ["desk_use", "desk_lands", "desk_old", "desk_push"].iter().all(|k| i.tool_input.get(*k).is_none()))
                 .map(|i| (i.id.clone(), i.tool_input.pointer("/questions/0/question").and_then(Value::as_str).unwrap_or("").to_string(), i.tool_input["desk_item"].as_str().map(str::to_string)))
                 .collect();
             Some((lead, cards))

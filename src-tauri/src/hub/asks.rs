@@ -298,12 +298,17 @@ impl Hub {
 
     /// Move an item to history. Any still-open connection is told to stand down.
     pub fn finish(&self, id: &str, status: &str, outcome: &str) {
+        let mut push = None;
         let answered = self.write(|st| {
             if let Some(tx) = st.waiters.remove(id) {
                 let _ = tx.send(Reply::Cancel(outcome.to_string()));
             }
             let pos = st.items.iter().position(|i| i.id == id)?;
             let it = st.items.remove(pos);
+            // A Desk push card that closes unanswered (answered ones go through desk_answered).
+            if status != "answered" {
+                push = it.tool_input.get("desk_push").cloned();
+            }
             // An answered permission or question means the agent is back at work, unless another of its asks
             // still waits on you (two tool calls asked at once): then once the last of them closes, answered or
             // gone. A command's dialog answered at its prompt starts no turn (no Stop would ever come): back to
@@ -328,6 +333,7 @@ impl Hub {
         // Saved with the draw this change asks for: whoever answered never waits on the database (saves.rs).
         self.save_answered_with_draw(answered);
         self.changed();
+        self.desk_push_card_closed(push);
     }
 
     /// A session's cards taken off Waiting while it's parked (its end would otherwise file them as "session
@@ -357,8 +363,10 @@ impl Hub {
     /// Cards taken with `take_cards`, to History as `status` / `outcome`.
     pub fn file_taken(&self, items: Vec<Item>, status: &str, outcome: &str) {
         for it in items {
+            let push = it.tool_input.get("desk_push").cloned();
             let answered = self.write(|st| filed(st, it, status, outcome));
             self.save_answered_with_draw(answered);
+            self.desk_push_card_closed(push);
         }
         self.changed();
     }

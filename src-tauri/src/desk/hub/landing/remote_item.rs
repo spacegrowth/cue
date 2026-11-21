@@ -95,10 +95,28 @@ pub(crate) fn remote_of(machine: &str, repo: &str, onto: &str) -> Option<String>
     (all.len() == 1).then(|| all[0].to_string())
 }
 
+/// Item `id` started on `machine` from `remote`/`onto` while main here is `ahead` commits past it (None: Cue couldn't
+/// compare them), nobody asked to push first: its lead told on its feed.
+pub(crate) fn remote_behind_note(st: &mut Store, id: &str, machine: &str, remote: &str, onto: &str, ahead: Option<u32>, now: u64) {
+    let Some(it) = st.desk.item(id) else { return };
+    let shown = crate::machines::display_name(machine);
+    let how = match ahead {
+        Some(n) => format!("but {onto} here is {n} commit{} ahead of it", if n == 1 { "" } else { "s" }),
+        None => format!("but Cue couldn't compare {onto} here with it (the remote didn't answer), so it may be behind"),
+    };
+    let words = format!(
+        "#{id} ({}) starts on {shown} from {remote}/{onto}, {how}. Ask the user to push {onto} (or say it's fine), so the session there works on current code.",
+        it.title
+    );
+    let project = it.project.clone();
+    let key = format!("ahead:{}:{now}", ahead.map_or("unknown".to_string(), |n| n.to_string()));
+    crate::desk::hub::lead::feed::note(st, &project, id, crate::desk::feed::ChangeKind::Machine, words, &key, now);
+}
+
 impl Hub {
     /// Items in `fx` that just went to work with a holder on another machine, in a project whose items land from
-    /// copies: each told to work on a branch of its own there, which lands here at its DONE. The lead is told when main
-    /// here is ahead of the shared remote, so the machine would start from old work. Run as the Desk's changes are
+    /// copies: each told to work on a branch of its own there, which lands here at its DONE. When main here is ahead of
+    /// the shared remote, so the machine would start from old work, you're asked to push first (push_main.rs). Run as the Desk's changes are
     /// saved (with `desk_trees`), before the holder's message goes.
     pub(crate) fn desk_remote_starts(&self, fx: &mut Effects) {
         // Moved to another holder (here, or on another machine or folder): its old branch there is no longer its work.
@@ -129,23 +147,33 @@ impl Hub {
             }
             let Some(remote) = remote_of("", &repo, &onto) else { continue };
             let r = RemoteWork { machine: machine.clone(), folder, branch: format!("desk/{id}"), remote: remote.clone(), onto: onto.clone(), ..Default::default() };
-            let ahead = git("", &repo, &[], &["rev-list", "--count", &format!("{remote}/{onto}..{onto}")]).and_then(|n| n.trim().parse::<u32>().ok()).unwrap_or(0);
             let line = remote_line(&r, &id);
-            let now = now_ms();
-            self.write(|st| {
-                let Some(it) = st.desk.item_mut(&id).filter(|i| i.remote.is_none()) else { return };
+            let set = self.write(|st| {
+                let Some(it) = st.desk.item_mut(&id).filter(|i| i.remote.is_none()) else { return false };
                 it.remote = Some(r);
-                if ahead > 0 {
-                    let shown = crate::machines::display_name(&machine);
-                    let words = format!(
-                        "#{id} ({}) starts on {shown} from {remote}/{onto}, but {onto} here is {ahead} commit{} ahead of it. Ask the user to push {onto} (or say it's fine), so the session there works on current code.",
-                        it.title,
-                        if ahead == 1 { "" } else { "s" }
-                    );
-                    let project = it.project.clone();
-                    crate::desk::hub::lead::feed::note(st, &project, &id, crate::desk::feed::ChangeKind::Machine, words, &format!("ahead:{ahead}:{now}"), now);
-                }
+                true
             });
+            if !set {
+                continue;
+            }
+            // A project set to never push: it starts now, nothing fetched or asked.
+            if l.push != "never" {
+                // Its holder's message held while main here is compared with the remote the machine starts from, off
+                // this thread (a capped fetch can take a minute): even, it goes; behind or not known, pushed first on
+                // "after each landing", asked first on "ask" (push_main.rs).
+                let mut texts: Vec<String> = fx.sends.iter().filter(|(s, text)| *s == to && names_item(text, &id)).map(|(_, t)| t.clone()).collect();
+                fx.sends.retain(|(s, text)| !(*s == to && names_item(text, &id)));
+                if texts.is_empty() {
+                    texts.push(format!("Desk item #{id}: {line}"));
+                } else {
+                    let last = texts.len() - 1;
+                    texts[last].push('\n');
+                    texts[last].push_str(&line);
+                }
+                let s = crate::desk::hub::landing::push_main::HeldStart { desk: project, top: repo, id, machine, remote, onto, push: l.push.to_string(), to, text: texts.join("\n\n") };
+                self.later(0, move |h| h.desk_remote_start_checked(s));
+                continue;
+            }
             match fx.sends.iter_mut().find(|(s, text)| *s == to && names_item(text, &id)) {
                 Some((_, text)) => {
                     text.push('\n');
