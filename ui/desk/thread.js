@@ -252,12 +252,12 @@ function deskItemPane(i, d, foot = "") {
     : tab === "record" ? deskItemRecord(steps)
     : tab === "files" ? (files ? deskSec(checking ? "Files changed" : deskDiffs.get(i.id)?.files?.length ? "Changed so far" : "Files it's on", files) : `<p class="dk-note">No files on it yet.</p>`)
     : `${s ? deskItemChat(i, d, s) : deskThreadHtml(thread, `${i.project}|${i.id}`)}<div class="dk-inow">${at}</div>`;
-  const main = `<div class="dk-pane dk-ipane${s && tab === "thread" ? " chat" : ""}" data-scroll-key="item:${esc(i.id)}"><div class="dk-ihead"><div class="dk-itabs" role="tablist">${feat ? tabBtn("pieces", "Pieces", i.pieces.length) : ""}${tabBtn("thread", "Chat", null)}${tabBtn("record", "Record", steps.length)}${tabBtn("decisions", "Decisions", decs.filter((c) => !c.minor).length)}${tabBtn("files", "Files", nFiles)}</div></div>
+  const main = `<div class="dk-pane dk-ipane${s && tab === "thread" ? " chat" : ""}" data-scroll-key="item:${esc(i.id)}">${deskV2 ? deskV2ItemTop(i, d, tab) : ""}<div class="dk-ihead"><div class="dk-itabs" role="tablist">${feat ? tabBtn("pieces", "Pieces", i.pieces.length) : ""}${tabBtn("thread", "Chat", null)}${tabBtn("record", "Record", steps.length)}${tabBtn("decisions", "Decisions", decs.filter((c) => !c.minor).length)}${tabBtn("files", "Files", nFiles)}</div></div>
     <div class="dk-ibody dk-itab-${tab}">${body}</div></div>`;
   // Its holder's chat from when it took the item (#575); an item from before stints were kept, all of it, folded.
   const span = (i.stints || []).some((t) => t.sid === s?.session_id) ? (deskStintLeft(i, s.session_id) ? "while it had this item" : "from when it took this item") : "other items' turns folded";
   const sub = s ? `<b>${esc(i.holder.kind === "crew" ? deskHolderName(s.session_id) : i.holder.name)}</b>'s chat${deskMachTag(i)} · ${span}` : `<span class="dk-state">${deskItemMeta(i, d)}</span>`;
-  return deskPage({ page: "item", kind: i.kind, panel: i.kept ? deskKeptSide(i, d) : deskItemSide(i, d), aside: ` data-side-for="${esc(i.id)}"`, back: deskBack(deskLeadName(d) || "Back"), mark: `${deskNum(i)} · `, title: esc(i.title), meta: sub, main, foot });
+  return deskPage({ page: "item", kind: i.kind, panel: i.kept ? deskKeptSide(i, d) : deskItemSide(i, d), aside: ` data-side-for="${esc(i.id)}"`, back: deskV2 ? "" : deskBack(deskLeadName(d) || "Back"), mark: `${deskNum(i)} · `, title: esc(i.title), meta: sub, main, foot });
 }
 /** The session whose chat an item's page shows: its holder's (a crew member's lead's), when Cue has it. */
 function deskItemChatOf(i) {

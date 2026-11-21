@@ -81,16 +81,23 @@ function deskProgMark(state, look) {
   return `<svg class="dk-grm" width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="var(--panel)" stroke="${c}" stroke-width="1.8"/>${inner}</svg>`;
 }
 
-/** One item's row: its title, kind and number, who holds it; a cell per step; what it's doing now. */
-function deskProgRow(i) {
-  const st = deskProgStamps(i), at = deskProgAt(i), look = deskProgLook(i);
-  const cells = st.map((t, k) => {
+/** Item `i`'s six steps: each one's state ("done", "cur", "todo") and how long it took (HTML), as its row shows them. */
+function deskProgSteps(i) {
+  const st = deskProgStamps(i), at = deskProgAt(i);
+  return st.map((t, k) => {
     const state = at < 0 || k > at ? "todo" : k < at ? "done" : "cur";
     // How long the step took: till the next step it reached; the one it's at counts up (tickAges), unless it waits on
     // you to check it (the time it has been in your app isn't the step's work).
     // Picked up took till its first round's next step: a later round starts building afresh (#421).
     const next = (k === 0 && i.backs?.length ? i.backs[0].steps || [] : st).slice(k + 1).find(Boolean);
     const took = !t ? "" : next ? deskProgDur(next - t) : state === "cur" ? `<span data-ago="${t}">${ago(t)}</span>` : "";
+    return { state, took };
+  });
+}
+/** One item's row: its title, kind and number, who holds it; a cell per step; what it's doing now. */
+function deskProgRow(i) {
+  const at = deskProgAt(i), look = deskProgLook(i);
+  const cells = deskProgSteps(i).map(({ state, took }, k) => {
     const l = k > 0 ? `<i class="dk-grl${at >= k ? " on" : ""}"></i>` : "", r = k < 5 ? `<i class="dk-grr${at > k ? " on" : ""}"></i>` : "";
     return `<span class="dk-grc">${l}${r}${deskProgMark(state, look)}<span class="dk-grt${state === "cur" ? ` cur ${look}` : ""}">${took}</span></span>`;
   }).join("");

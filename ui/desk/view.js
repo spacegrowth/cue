@@ -127,7 +127,7 @@ function deskRightChat(d, taskApprovals) {
     + deskPsec("Just did", did ? `<div class="dk-prows">${did}<button class="dk-pall" data-desk-tab="moves">More</button></div>` : "")
     + deskPsec(`Working · ${working.length}`, workRows ? `<div class="dk-prows">${workRows}</div>` : "");
   const foot = ended || deskTab !== "lead" ? "" : ask ? `<div class="dk-ask">${askFoot(ask, ask.session_id, ask.harness || "claude", deskBoxKey({ project: d.project }))}</div>` : deskBox(d);
-  return `<div class="dk-card dk-right">${deskPage({ page: "dispatcher", kind: "desk", back: `<span class="dk-back dk-here">${esc(deskName(d))}</span>`, mark: "Dispatcher · ", title: esc(deskLeadName(d)), meta: esc(meta),
+  return `<div class="dk-card dk-right">${deskPage({ page: "dispatcher", kind: "desk", back: `<span class="dk-back dk-here">${esc(deskName(d))}</span>`, acts: deskV2 ? deskV2ChatsMenu(d) : "", mark: "Dispatcher · ", title: esc(deskLeadName(d)), meta: esc(meta),
     now: deskLeadNow(d, waits, working, ask), panel, main: `<div class="dk-tabs dk-ptabs">${tab("lead", esc(deskLeadName(d)), 0)}${tab("decisions", "Decisions", deskOpenCalls(d).filter((c) => !c.minor).length)}${tab("moves", "Dispatcher Actions", 0)}${tab("away", "Away", 0)}</div>${main}`, foot })}</div>`;
 }
 /** The sessions at work for Desk `d` (not its lead): [{ sid, name, on }], `on` the item each is on. */
@@ -182,6 +182,8 @@ function deskView() {
   const taskApprovals = deskTaskApprovals(deskOf(project));
   // Progress (#409): over the Desk while open, the table of every item under way.
   const prog = deskProgShown ? deskProgress(project, taskApprovals) : "";
+  // The new Desk page (#628, desk/v2.js): no sessions column, Desks in its head, Progress in the list.
+  if (deskV2) return `<div class="board dk-board dk-v2">${deskV2Head(project)}${deskRight(project, taskApprovals)}${deskList(project, taskApprovals)}${deskV2Drawer(project)}</div>${deskAwayHtml()}`;
   return `<div class="board dk-board">${deskSessions(project)}${deskRight(project, taskApprovals)}${deskList(project, taskApprovals)}${prog}</div>${deskAwayHtml()}`;
 }
 /** How many messages each item's Thread showed when last drawn, and for which opening of its page, by item. The page
