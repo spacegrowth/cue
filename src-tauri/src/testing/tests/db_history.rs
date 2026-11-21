@@ -7,7 +7,7 @@ use rusqlite::{params, Connection};
 use serde_json::json;
 
 /// The columns each version added (db/schema.rs `migrate`), as (version, table, column).
-const ADDED: [(i64, &str, &str); 10] = [
+const ADDED: [(i64, &str, &str); 12] = [
     (3, "turns", "looks"),
     (3, "turns", "agents"),
     (3, "turns", "relay"),
@@ -18,8 +18,10 @@ const ADDED: [(i64, &str, &str); 10] = [
     (6, "handoffs", "ahead"),
     (7, "exchanges", "voice"),
     (8, "exchanges", "status_ask"),
+    (12, "exchanges", "from_name"),
+    (12, "exchanges", "from_sid"),
 ];
-const LATEST: i64 = 11;
+const LATEST: i64 = 12;
 
 /// The World's database file, opened beside Cue's (Cue's own connection let go first).
 fn outside(w: &World) -> Connection {

@@ -1,0 +1,4 @@
+# Tests run from a private copy of their program, so a build during a test run can't make macOS refuse the
+# processes that run starts (scripts/test-runner.sh says why).
+[target.'cfg(target_os = "macos")']
+runner = "scripts/test-runner.sh"

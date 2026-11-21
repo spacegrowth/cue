@@ -76,8 +76,10 @@ fn read(p: &Path) -> String {
     std::fs::read_to_string(p).unwrap_or_default()
 }
 
+/// Still running: there and not a zombie. A stopped Cue (detached, its parent is launchd) is a zombie until launchd
+/// collects it, and still answers `kill -0` meanwhile; under load that's long enough to be looked at.
 fn alive(pid: u32) -> bool {
-    crate::server::alive(pid as i32)
+    crate::server::alive(pid as i32) && !Command::new("ps").args(["-o", "stat=", "-p", &pid.to_string()]).output().map(|o| String::from_utf8_lossy(&o.stdout).trim_start().starts_with('Z')).unwrap_or(false)
 }
 
 /// `exe` with these arguments, started so it isn't this process's child (a child of ours, once stopped, would linger
