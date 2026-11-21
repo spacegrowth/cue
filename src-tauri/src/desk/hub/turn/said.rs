@@ -33,7 +33,7 @@ pub(crate) fn item_said(st: &mut Store, project: &str, kind: &str, title: &str, 
 /// Lead `lsid` of `project` said `text` at its turn's end: its ITEM, ROUTE, ASK and DECIDED lines.
 /// `repos`: the repositories its COPY lines name, found before the store was taken (desk/hub/landing/named_copy.rs).
 #[allow(clippy::too_many_arguments)]
-fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, repos: &[(String, Result<String, String>)], changes: &crate::desk::hold_check::Changes, now: u64, fx: &mut Effects) {
+fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, repos: &[(String, Result<(String, String), String>)], changes: &crate::desk::hold_check::Changes, now: u64, fx: &mut Effects) {
     let name = st.sessions.get(lsid).map(shown_name).or_else(|| st.desk.lead.get(project).map(|l| l.name.clone())).unwrap_or_default();
     let by = By { name: &name, sid: lsid };
     let mut last_new: Option<String> = None;
@@ -149,7 +149,7 @@ fn new_or_canon(st: &Store, id: &str, last_new: Option<&str>) -> String {
 /// The lead's COPY line (`id`, `repo`, `branch`, `why`), its repository looked up in `repos` before the store was
 /// taken (desk/hub/landing/named_copy.rs); a refusal into `answers`.
 #[allow(clippy::too_many_arguments)]
-fn copy_line(st: &mut Store, project: &str, by: &By, (id, repo, branch, why): (String, String, String, String), repos: &[(String, Result<String, String>)], now: u64, fx: &mut Effects, answers: &mut Vec<String>) {
+fn copy_line(st: &mut Store, project: &str, by: &By, (id, repo, branch, why): (String, String, String, String), repos: &[(String, Result<(String, String), String>)], now: u64, fx: &mut Effects, answers: &mut Vec<String>) {
     let found = repos.iter().find(|(r, _)| *r == repo).map(|(_, f)| f.clone()).unwrap_or_else(|| Err("Cue didn't look it up".into()));
     if let Err(no) = crate::desk::hub::landing::named_copy::copy_said(st, project, by, &id, found, &branch, &why, now, fx) {
         answers.push(no);

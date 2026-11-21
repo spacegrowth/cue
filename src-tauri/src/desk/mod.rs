@@ -13,11 +13,13 @@ pub(crate) mod hub;
 pub(crate) mod lands;
 pub(crate) mod one_way;
 pub mod model;
+pub mod installer;
 pub mod tell;
 pub mod parse;
 pub mod state;
 
-pub use model::{Act, BusyFile, CommitWait, Desk, DeskDecision, DeskItem, Finish, Holder, InstallStatus, Installer, ItemTree, CopyOn, KeptTree, OnMachine, RemoteWork, Lead, Stint, Waiting};
+pub use installer::{InstallStatus, Installer};
+pub use model::{Act, BusyFile, CommitWait, Desk, DeskDecision, DeskItem, Finish, Holder, ItemTree, CopyOn, KeptTree, OnMachine, RemoteWork, Lead, Stint, Waiting};
 
 /// Routing policy in every Desk summary, including for already-running leads.
 pub(crate) const ROUTING_GUIDANCE: &str = concat!(

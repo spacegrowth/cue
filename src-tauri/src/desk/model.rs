@@ -504,6 +504,12 @@ pub struct Finish {
     /// own work changed, so an item that changed nothing the app runs isn't installed (#408).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub merges: Vec<(String, String)>,
+    /// Work on Cue's add-on (#565): the add-on's main checkout and the commit on its main line that has the work.
+    /// The install isn't done until the running Cue was built with that commit of the add-on too.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub addon_repo: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub addon: String,
     /// It went to check with nothing to install, its own work outside the app (mocks, notes, plans, #408): its line
     /// says "Mocks · open the canvas", not "In the app" (#436).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -528,6 +534,10 @@ pub struct ItemTree {
     /// committed on that branch and stays there. Never landed on a main line, and the branch is never removed.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub keep: bool,
+    /// A copy of Cue's add-on (#565): the main checkout of the Cue it's built into. At its DONE its branch is merged
+    /// into the add-on's main line and that Cue installed with it, as Cue's own items land.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub addon_of: String,
 }
 
 /// An item's work on another machine (#500, docs/desk-remote-items-plan.md).
@@ -574,6 +584,10 @@ pub struct OnMachine {
 pub struct CopyOn {
     pub repo: String,
     pub branch: String,
+    /// The repository is Cue's add-on (`in: add-on`, #565): the main checkout of the Cue it's built into. Its work
+    /// then lands on the add-on's main line and that Cue is installed with it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub cue: String,
 }
 
 /// A dropped item's copy that had work in it, kept (moved aside, its branch kept) and listed on its Desk until you
@@ -764,7 +778,7 @@ pub struct Desk {
     pub members: HashMap<String, Vec<String>>,
     /// What builds and installs this Cue with a finished item's commit: the app's own (self_install.rs) unless a test
     /// put another in. Not saved.
-    pub installer: InstallerSlot,
+    pub installer: super::installer::InstallerSlot,
     /// The program a pull request is opened and read with: GitHub's gh unless a test put a fake in. Not saved.
     pub gh: String,
     /// How long a push, a fetch or a gh call may take (ms; 0 for a minute): a test's shorter. Not saved.
@@ -781,44 +795,6 @@ pub struct Desk {
     pub bands: Vec<super::tell::Band>,
     /// What the Desk keeps only while Cue runs (desk/state.rs): never saved, empty after a restart.
     pub run: super::state::DeskRun,
-}
-
-/// How an install is going, as the installer says: its tag and commit, its step ("building" | "installing" |
-/// "starting" | "installed" | "failed" | "rolled_back"), its log's end, and when (ms).
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct InstallStatus {
-    pub tag: String,
-    pub commit: String,
-    pub step: String,
-    pub log: String,
-    pub at: u64,
-}
-
-/// What builds this Cue from a commit and installs it (the app restarts into it), and says how that's going.
-pub trait Installer: Send + Sync {
-    /// Whether the running Cue was built from `commit` of `repo`, or from one that has it.
-    fn has(&self, repo: &str, commit: &str) -> bool;
-    /// An install of `commit` of `repo` begun, called `tag`.
-    fn start(&self, repo: &str, commit: &str, tag: &str) -> Result<(), String>;
-    /// The latest install's status, if there's been one.
-    fn status(&self) -> Option<InstallStatus>;
-    /// The check `commit` of `repo` has to pass before it lands on the main line: None when the repository has no
-    /// check, else what it said (an error with the end of its output when it failed).
-    fn check(&self, _repo: &str, _commit: &str) -> Option<Result<(), String>> {
-        None
-    }
-    /// Whether `of` of `repo` has `commit`: it is that commit or one after it.
-    fn contains(&self, repo: &str, commit: &str, of: &str) -> bool;
-}
-
-/// The installer a Desk uses: None for the app's own.
-#[derive(Clone, Default)]
-pub struct InstallerSlot(pub Option<std::sync::Arc<dyn Installer>>);
-
-impl std::fmt::Debug for InstallerSlot {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(if self.0.is_some() { "InstallerSlot(set)" } else { "InstallerSlot(app)" })
-    }
 }
 
 /// A Desk's identity and workspace, independent of its lead and items.

@@ -43,6 +43,17 @@ pub fn running_commit() -> Option<String> {
     Some(option_env!("CUE_COMMIT").unwrap_or("").to_string()).filter(|c| !c.is_empty())
 }
 
+/// The commit of the add-on this running Cue was built with (build.rs's CUE_ADDON_COMMIT); None without one.
+pub fn running_addon_commit() -> Option<String> {
+    Some(option_env!("CUE_ADDON_COMMIT").unwrap_or("").to_string()).filter(|c| !c.is_empty())
+}
+
+/// Whether `commit` of the add-on's repository `repo` is in the running Cue: the add-on commit it was built with is
+/// that one or one after it.
+pub fn has_addon(repo: &str, commit: &str) -> bool {
+    running_addon_commit().is_some_and(|running| is_ancestor(repo, commit, &running))
+}
+
 /// Said once as Cue starts: install/running.json, {commit, pid, at}. The helper waits for it to name the commit it
 /// installed, from a PID that's alive.
 pub fn note_running() {

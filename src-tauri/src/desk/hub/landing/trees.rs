@@ -621,13 +621,13 @@ fn claim_tree(st: &mut Store, id: &str, main: &str, at_once: u32) -> Option<Opti
     let again = if st.desk.kept.iter().any(|k| k.id == id) { "-again" } else { "" };
     let it = st.desk.item_mut(id).filter(|i| i.state == "working" && i.tree.is_none())?;
     // A branch the lead named (COPY, #557): that one, kept.
-    let (branch, keep) = match &it.copy_on {
-        Some(c) => (c.branch.clone(), true),
-        None => (format!("desk/{id}{again}"), false),
+    let (branch, keep, addon_of) = match &it.copy_on {
+        Some(c) => (c.branch.clone(), true, c.cue.clone()),
+        None => (format!("desk/{id}{again}"), false, String::new()),
     };
     match (1..=at_once).find(|n| !used.contains(n)) {
         Some(n) => {
-            let t = ItemTree { repo: main.to_string(), path: format!("{main}/{TREES}/desk-{n}"), branch, base: String::new(), slot: n, keep };
+            let t = ItemTree { repo: main.to_string(), path: format!("{main}/{TREES}/desk-{n}"), branch, base: String::new(), slot: n, keep, addon_of };
             it.tree = Some(t.clone());
             // Started another way (Start it now, or freed by its `after`) while it waited for a copy: that wait is over.
             it.tree_wait = false;
@@ -653,7 +653,7 @@ impl Hub {
     pub(crate) fn desk_hold_copies(&self, repo: &str, slots: &[u32]) {
         self.write(|st| {
             for n in slots {
-                let tree = ItemTree { repo: repo.to_string(), path: format!("{repo}/{TREES}/held-{n}"), branch: format!("held/{n}"), base: String::new(), slot: *n, keep: false };
+                let tree = ItemTree { repo: repo.to_string(), path: format!("{repo}/{TREES}/held-{n}"), branch: format!("held/{n}"), base: String::new(), slot: *n, keep: false, addon_of: String::new() };
                 st.desk.items.push(DeskItem { id: format!("held{n}"), project: "elsewhere".into(), state: "working".into(), tree: Some(tree), ..Default::default() });
             }
         });

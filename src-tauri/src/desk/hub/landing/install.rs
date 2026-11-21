@@ -29,6 +29,10 @@ impl Installer for AppInstaller {
         crate::install::self_install::is_ancestor(repo, commit, of)
     }
 
+    fn has_addon(&self, repo: &str, commit: &str) -> bool {
+        crate::install::self_install::has_addon(repo, commit)
+    }
+
     /// Cue's own repository is checked before a landing (the step 1 check, docs/desk-landing-design.md part 7): its
     /// window loaded from a clean copy of the commit, failing on a name missing or declared twice. Others have none.
     fn check(&self, repo: &str, commit: &str) -> Option<Result<(), String>> {
@@ -161,7 +165,7 @@ impl Hub {
             // Stopped on a failed install too: a later install (main fixed, another item's) brought its work into the
             // running Cue, so nothing of its is left to install (#343).
             let Some(f) = it.finish.as_ref().filter(|f| f.step == "queued" || installing(&f.step) || stopped_install(&f.step)) else { continue };
-            if !f.commit.is_empty() && inst.has(&f.repo, &f.commit) {
+            if !f.commit.is_empty() && inst.has(&f.repo, &f.commit) && (f.addon.is_empty() || inst.has_addon(&f.addon_repo, &f.addon)) {
                 self.finish_checked(&it.id);
                 continue;
             }
@@ -217,7 +221,8 @@ impl Hub {
     /// Item `id`, waiting (`f`) while the install `status` runs, goes with that install when its commit has the item's
     /// (the Desk's own, or one a session began): never waiting for it to end to start another. Whether it did.
     fn finish_join(&self, id: &str, f: &Finish, status: Option<&InstallStatus>, now: u64) -> bool {
-        let Some(s) = status.filter(|s| installing(&s.step) && !f.commit.is_empty()) else { return false };
+        // Work on the add-on (#565): an install under way may have been built before it was merged; it waits for the next.
+        let Some(s) = status.filter(|s| installing(&s.step) && !f.commit.is_empty() && f.addon.is_empty()) else { return false };
         if !self.installer().contains(&f.repo, &f.commit, &s.commit) {
             return false;
         }

@@ -1,15 +1,18 @@
 //! An item at work in the add-on's own repository, on a branch the lead names (#557, desk/hub/landing/named_copy.rs):
 //! `COPY: #<id> | in: add-on | branch: loops-d` gives it a copy of that repository on that branch as it starts; its
-//! holder's edits there pass; at its DONE its work is committed on that branch and stays there, nothing on Cue's main
-//! line, and the item goes to check with that commit, its Files changed showing it.
+//! holder's edits there pass; at its DONE its work is committed on that branch, which stays. In the add-on's
+//! repository (#565) the branch is then merged into the add-on's main line and Cue installed with it, to check once
+//! the running Cue has that add-on commit; in a repository named by its folder nothing goes to a main line.
 
-use super::desk_commit::{ends, item};
+use super::desk_commit::{ends, item, tick};
+use super::desk_finish::{as_this_cue, sent_to, Fake};
 use super::team::{git, lead, main_repo};
 use crate::desk::parse::{lines, Line};
 use crate::hosted::HostedEvent;
 use crate::testing::World;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 /// An add-on repository beside the World's (its main line `main`, one commit), linked from `src-tauri/ext` as Cue's
 /// add-on is: its main checkout.
@@ -30,9 +33,15 @@ fn add_on(dir: &Path) -> PathBuf {
 /// A Desk whose lead adds "Loops band", gives it a copy of the add-on on `loops-d` and routes it: (cue's repository,
 /// the add-on's, project, item id, holder, the lead). `before` runs on the add-on before the lead's turn.
 fn routed(w: &World, before: impl Fn(&Path)) -> (PathBuf, PathBuf, String, String, String, String) {
+    routed_in(w, None, before)
+}
+
+/// `routed`, the COPY line naming the add-on's repository by its folder when `by_folder`, else as "add-on".
+fn routed_in(w: &World, by_folder: Option<()>, before: impl Fn(&Path)) -> (PathBuf, PathBuf, String, String, String, String) {
     let dir = main_repo(w);
     let addon = add_on(&dir);
     before(&addon);
+    let in_ = if by_folder.is_some() { addon.to_string_lossy().to_string() } else { "add-on".to_string() };
     let h = lead(w, "hello");
     ends(w, &h, "Hi.");
     let project = w.snapshot().session(&h)["project"].as_str().unwrap().to_string();
@@ -42,7 +51,7 @@ fn routed(w: &World, before: impl Fn(&Path)) -> (PathBuf, PathBuf, String, Strin
     w.hosted_says(&d, HostedEvent::Taken { text: "hello".into() });
     ends(w, &d, "I run the Desk now.");
     w.advance(1000);
-    ends(w, &d, "ITEM: task | Loops band | done when: it shows\nCOPY: #new | in: add-on | branch: loops-d | why: it's add-on work\nROUTE: #new -> cue-teams | why: it knows Loops");
+    ends(w, &d, &format!("ITEM: task | Loops band | done when: it shows\nCOPY: #new | in: {in_} | branch: loops-d | why: it's add-on work\nROUTE: #new -> cue-teams | why: it knows Loops"));
     w.advance(1000);
     let id = item(w, &project, "Loops band")["id"].as_str().unwrap().to_string();
     (dir, addon, project, id, h, d)
@@ -82,9 +91,9 @@ fn an_item_given_a_copy_of_the_add_on_works_there_on_its_branch_and_isnt_stopped
 }
 
 #[test]
-fn done_commits_its_work_on_the_named_branch_and_nothing_on_main() {
+fn done_in_a_repository_named_by_its_folder_commits_its_work_on_the_named_branch_and_nothing_on_main() {
     let w = World::new();
-    let (dir, addon, project, id, h, _) = routed(&w, |_| {});
+    let (dir, addon, project, id, h, _) = routed_in(&w, Some(()), |_| {});
     let copy = copy_of(&item(&w, &project, "Loops band"));
     let cue_main = git(&dir, &["rev-parse", "HEAD"]);
     let addon_main = git(&addon, &["rev-parse", "main"]);
@@ -138,4 +147,91 @@ fn an_item_that_has_a_copy_of_cue_already_is_told_to_give_it_back_first() {
     w.settle();
     let to_lead: Vec<String> = w.hosted.sent().into_iter().filter(|(s, _)| *s == d).map(|(_, t)| t).collect();
     assert!(to_lead.iter().any(|t| t.contains(&format!("#{id} got no copy: it has one already")) && t.contains("TAKE COPY")), "{to_lead:?}");
+}
+
+/// The World as Cue's own source with a fake installer, and the add-on item routed: `routed`'s, and the installer.
+fn routed_in_cue(w: &World) -> (Arc<Fake>, PathBuf, PathBuf, String, String, String) {
+    let fake = Arc::new(Fake::default());
+    w.hub().desk_set_installer(fake.clone());
+    let (dir, addon, project, id, h, _) = routed(w, |_| {});
+    as_this_cue(&dir);
+    (fake, dir, addon, project, id, h)
+}
+
+#[test]
+fn done_on_the_add_on_merges_its_branch_into_the_add_ons_main_line_and_installs_cue_with_it() {
+    let w = World::new();
+    let (fake, dir, addon, project, id, h) = routed_in_cue(&w);
+    let copy = copy_of(&item(&w, &project, "Loops band"));
+    let addon_main = git(&addon, &["rev-parse", "main"]);
+    std::fs::write(copy.join("mac/loops.rs"), "band\n").unwrap();
+    ends(&w, &h, &format!("Built.\nDONE: #{id}"));
+    // On the add-on's main line, as a merge of its branch; its branch and its commit kept.
+    assert_eq!(std::fs::read_to_string(addon.join("mac/loops.rs")).unwrap(), "band\n", "the add-on's main checkout has it");
+    assert_eq!(git(&addon, &["rev-parse", "main^1"]), addon_main, "a merge onto the main line as it was");
+    assert_eq!(git(&addon, &["rev-parse", "main^2"]), git(&addon, &["rev-parse", "loops-d"]));
+    assert_eq!(git(&addon, &["log", "-1", "--format=%s", "loops-d"]).trim(), format!("Loops band (#{id})"));
+    let it = item(&w, &project, "Loops band");
+    assert!(it["tree"].is_null() && !copy.exists(), "the copy is gone: {it}");
+    for c in it["commit"].as_str().unwrap().split_whitespace() {
+        assert!(git(&addon, &["branch", "--contains", c, "--format=%(refname:short)"]).lines().any(|b| b.trim() == "main"), "{c} is on the add-on's main line");
+    }
+    // The landing check counts it as landed: nothing left off a main line.
+    assert_eq!(w.hub().desk_unlanded(&id), 0);
+    // Queued for an install of the Cue it's built into, the add-on's new tip what that install has to have.
+    assert_eq!(it["state"], "finishing", "{it}");
+    assert_eq!(it["finish"]["step"], "queued", "{it}");
+    assert_eq!(PathBuf::from(it["finish"]["repo"].as_str().unwrap()).canonicalize().unwrap(), dir.canonicalize().unwrap());
+    let addon_head = git(&addon, &["rev-parse", "main"]).trim().to_string();
+    assert_eq!(it["finish"]["addon"], addon_head);
+    w.hub().desk_item_act(&id, "install_now", "").unwrap();
+    w.settle();
+    let started = fake.started();
+    assert_eq!(started.len(), 1, "{started:?}");
+    assert_eq!(PathBuf::from(&started[0].0).canonicalize().unwrap(), dir.canonicalize().unwrap(), "Cue is what's built, the add-on in it");
+    // Cue's commit alone isn't enough: the running Cue must have the add-on's too.
+    fake.runs(git(&dir, &["rev-parse", "HEAD"]).trim());
+    fake.goes("installed", "");
+    tick(&w);
+    assert_ne!(item(&w, &project, "Loops band")["state"], "to_check", "not until the running Cue has the add-on's commit");
+    fake.runs(&addon_head);
+    tick(&w);
+    assert_eq!(item(&w, &project, "Loops band")["state"], "to_check");
+}
+
+#[test]
+fn add_on_work_that_clashes_with_its_main_line_goes_back_to_its_holder_with_its_copy_kept() {
+    let w = World::new();
+    let (_fake, _dir, addon, project, id, h) = routed_in_cue(&w);
+    let copy = copy_of(&item(&w, &project, "Loops band"));
+    std::fs::write(addon.join("mac/lib.rs"), "fn main_line() {}\n").unwrap();
+    git(&addon, &["commit", "-q", "-am", "main moved on"]);
+    let addon_main = git(&addon, &["rev-parse", "main"]);
+    std::fs::write(copy.join("mac/lib.rs"), "fn mine() {}\n").unwrap();
+    ends(&w, &h, &format!("Built.\nDONE: #{id}"));
+    assert_eq!(git(&addon, &["rev-parse", "main"]), addon_main, "nothing merged");
+    let it = item(&w, &project, "Loops band");
+    assert_eq!(it["state"], "working", "back to its holder: {it}");
+    assert!(copy.exists() && !it["tree"].is_null(), "its copy stays to settle it in: {it}");
+    let told = sent_to(&w, &h);
+    assert!(told.iter().any(|t| t.contains(&format!("Desk item #{id}")) && t.contains("clashes") && t.contains("mac/lib.rs")), "{told:?}");
+    // Settled in its copy and DONE again: it lands.
+    git(&copy, &["merge", "-q", "-X", "ours", "main", "-m", "settled"]);
+    ends(&w, &h, &format!("Settled.\nDONE: #{id}"));
+    assert_eq!(item(&w, &project, "Loops band")["finish"]["step"], "queued");
+    assert!(!copy.exists());
+    assert_eq!(std::fs::read_to_string(addon.join("mac/lib.rs")).unwrap(), "fn mine() {}\n", "its settled work on the add-on's main line");
+}
+
+#[test]
+fn add_on_work_outside_what_cue_builds_goes_to_check_with_no_install() {
+    let w = World::new();
+    let (fake, _dir, addon, project, id, h) = routed_in_cue(&w);
+    let copy = copy_of(&item(&w, &project, "Loops band"));
+    std::fs::create_dir_all(copy.join("mocks")).unwrap();
+    std::fs::write(copy.join("mocks/band.html"), "<p>band</p>\n").unwrap();
+    ends(&w, &h, &format!("Mocks.\nDONE: #{id}"));
+    assert!(addon.join("mocks/band.html").exists(), "on the add-on's main line");
+    assert_eq!(item(&w, &project, "Loops band")["state"], "to_check");
+    assert!(fake.started().is_empty());
 }

@@ -335,7 +335,7 @@ impl Hub {
             let _ = git("", repo, &[], &["worktree", "prune"]);
         }
         git_said("", repo, &[], &["worktree", "add", "-q", "-B", &branch, &path, sha])?;
-        Ok(ItemTree { repo: repo.to_string(), path, branch, base: base.to_string(), slot: 0, keep: false })
+        Ok(ItemTree { repo: repo.to_string(), path, branch, base: base.to_string(), slot: 0, keep: false, addon_of: String::new() })
     }
 
     /// Item `id`'s remote work forgotten (its holder moved): its copy here of that work goes, and what was fetched.

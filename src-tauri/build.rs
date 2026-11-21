@@ -28,6 +28,7 @@ fn main() {
     // The optional add-on (`ext/`, built in with the `ext` feature): rebuild when it changes.
     println!("cargo:rerun-if-changed=ext");
     stamp_commit();
+    stamp_addon_commit();
     tauri_build::build()
 }
 
@@ -58,6 +59,37 @@ fn stamp_commit() {
     // A path that doesn't exist would rerun this script on every build: only the ones there are watched.
     for path in watched.into_iter().filter(|p| !p.is_empty() && std::path::Path::new(p).exists()) {
         println!("cargo:rerun-if-changed={path}");
+    }
+}
+
+/// CUE_ADDON_COMMIT: the commit the add-on (`ext/`, a link into its own repository) is at, empty without one. A
+/// running Cue reads it to say whether a change to the add-on is in it (self_install.rs, #565). Rebuilt when the
+/// add-on's HEAD moves, as `stamp_commit` is for Cue's.
+fn stamp_addon_commit() {
+    let git = |args: &[&str]| {
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg("ext")
+            .args(args)
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .unwrap_or_default()
+    };
+    let commit = if std::path::Path::new("ext").exists() { git(&["rev-parse", "HEAD"]) } else { String::new() };
+    println!("cargo:rustc-env=CUE_ADDON_COMMIT={commit}");
+    if commit.is_empty() {
+        return;
+    }
+    let path = |p: &str| git(&["rev-parse", "--path-format=absolute", "--git-path", p]);
+    let mut watched = vec![path("HEAD"), path("packed-refs")];
+    let branch = git(&["symbolic-ref", "-q", "HEAD"]);
+    if !branch.is_empty() {
+        watched.push(path(&branch));
+    }
+    for p in watched.into_iter().filter(|p| !p.is_empty() && std::path::Path::new(p).exists()) {
+        println!("cargo:rerun-if-changed={p}");
     }
 }
 
