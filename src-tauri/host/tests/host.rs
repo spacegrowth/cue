@@ -49,7 +49,7 @@ struct Client {
     out: UnixStream,
     lines: Receiver<FromHost>,
     next: u64,
-    /// Events that came while waiting for a response, in order.
+    /// Events that came while waiting for something else (a response, another session's events), in order.
     events: Vec<FromHost>,
 }
 
@@ -90,23 +90,37 @@ impl Client {
         }
     }
 
+    /// The kept events `mine` picks, taken out in order; the others stay kept.
+    fn kept_for(&mut self, mine: impl Fn(&FromHost) -> bool) -> Vec<FromHost> {
+        let (picked, rest) = std::mem::take(&mut self.events).into_iter().partition(|e| mine(e));
+        self.events = rest;
+        picked
+    }
+
+    /// The next event `mine` picks as it comes (by `until`); any other that comes first is kept for a later call, as
+    /// another session's events can come while this one's are awaited.
+    fn next_for(&mut self, mine: impl Fn(&FromHost) -> bool, until: Instant) -> Result<FromHost, RecvTimeoutError> {
+        loop {
+            let e = self.lines.recv_timeout(until.saturating_duration_since(Instant::now()))?;
+            if mine(&e) {
+                return Ok(e);
+            }
+            self.events.push(e);
+        }
+    }
+
     /// Records for `session` until `done` says so (or 10 s go by).
     fn records_until(&mut self, session: &str, done: impl Fn(&[Record]) -> bool) -> Vec<Record> {
-        let mut got: Vec<Record> = vec![];
-        let take = |e: FromHost, got: &mut Vec<Record>| {
-            if let FromHost::Event { session: s, event: cue_host::proto::Event::Record { record } } = e {
-                if s == session {
-                    got.push(record);
-                }
-            }
+        let mine = |e: &FromHost| matches!(e, FromHost::Event { session: s, event: cue_host::proto::Event::Record { .. } } if s == session);
+        let record = |e: FromHost| match e {
+            FromHost::Event { event: cue_host::proto::Event::Record { record }, .. } => record,
+            _ => unreachable!("only records are picked"),
         };
-        for e in std::mem::take(&mut self.events) {
-            take(e, &mut got);
-        }
+        let mut got: Vec<Record> = self.kept_for(mine).into_iter().map(record).collect();
         let until = Instant::now() + Duration::from_secs(10);
         while !done(&got) {
-            match self.lines.recv_timeout(until.saturating_duration_since(Instant::now())) {
-                Ok(e) => take(e, &mut got),
+            match self.next_for(mine, until) {
+                Ok(e) => got.push(record(e)),
                 Err(RecvTimeoutError::Timeout) => panic!("timed out; got {got:?}"),
                 Err(RecvTimeoutError::Disconnected) => break,
             }
@@ -318,22 +332,21 @@ impl Client {
     /// before it), until `done` says so (or 10 s go by).
     fn tailed_until(&mut self, tail: &str, done: impl Fn(&str) -> bool) -> String {
         let mut got = String::new();
+        let mine = |e: &FromHost| matches!(e, FromHost::Event { session, event: cue_host::proto::Event::Tail { .. } } if session == tail);
         let take = |e: FromHost, got: &mut String| {
-            if let FromHost::Event { session, event: cue_host::proto::Event::Tail { at, data } } = e {
-                if session == tail {
-                    if at == 0 {
-                        got.clear();
-                    }
-                    got.push_str(&data);
+            if let FromHost::Event { event: cue_host::proto::Event::Tail { at, data }, .. } = e {
+                if at == 0 {
+                    got.clear();
                 }
+                got.push_str(&data);
             }
         };
-        for e in std::mem::take(&mut self.events) {
+        for e in self.kept_for(mine) {
             take(e, &mut got);
         }
         let until = Instant::now() + Duration::from_secs(10);
         while !done(&got) {
-            match self.lines.recv_timeout(until.saturating_duration_since(Instant::now())) {
+            match self.next_for(mine, until) {
                 Ok(e) => take(e, &mut got),
                 Err(_) => panic!("timed out; got {got:?}"),
             }
