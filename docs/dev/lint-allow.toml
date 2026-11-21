@@ -300,3 +300,8 @@ from = "typing gate"
 to = "machine tails: links"
 reason = "hosted::tails: starting or looking at a transcript copy over a machine's cue-host connection (machines/log_mirror.rs) reads and writes these two maps only; they are leaves (nothing is taken under them, and the request goes on a thread of its own)"
 
+
+[[lock_order]]
+from = "working out found words"
+to = "found words"
+reason = "desk/hub/landing/found_words.rs work_out: one worker at a time works the words out, and under that looks at or saves the words kept; found words is a leaf, held only to clone or set them, and never taken first"

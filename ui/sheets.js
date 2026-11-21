@@ -587,15 +587,9 @@ function saveOwnerNames() {
 }
 const SET_TABS = [["general", "General"], ["agents", "Agents"], ["chat", "Chat"], ["voice", "Voice"], ["insights", "Insights"], ["usage", "Usage"]];
 let setTab = (() => { try { return localStorage.getItem("cue.setTab") || "general"; } catch { return "general"; } })();
-function settingsSheet() {
-  const st = state.settings || {};
-  const c = state.connections || {};
-  const keep = st.history?.keep ?? 300;
-  // The add-on's own tabs after Cue's; its groups in a tab Cue has too (Voice) go under Cue's own rows there.
-  const tabs = [...SET_TABS, ...[...new Set(extLoad().map((g) => g.tab).filter(Boolean))].filter((t) => !SET_TABS.some(([, l]) => l === t)).map((t) => [`ext:${t}`, t])];
-  const tab = tabs.some(([k]) => k === setTab) ? setTab : "general";
-  const pane = {
-    general: `
+// Settings' General tab: updates, look, notifications, the Mac, projects and privacy.
+function setGeneralPane(st) {
+  return `
     <div class="set-group">Updates</div>
     ${updateRow()}
     <div class="set-group">Look</div>
@@ -615,7 +609,30 @@ function settingsSheet() {
     <div class="set-group">Projects</div>
     ${projResetRows()}
     <div class="set-group">Privacy</div>
-    ${ownerNamesRow(st)}`,
+    ${ownerNamesRow(st)}`;
+}
+// Settings' Chat tab: quick phrases, steps, context and history (`keep`: how many History keeps).
+function setChatPane(st, keep) {
+  return `
+    <div class="set-group">Quick phrases</div>
+    ${setRow("Above the text box", `Click one to send it as its own message; anything you've typed stays in the box. Up to 4. Empty a field to remove it.`, `<div class="quick-edit">${[0, 1, 2, 3].map((n) => `<input class="qp-in" data-quick-edit id="qp-${n}" value="${esc(qpEdit ? qpEdit[n] : phrases()[n] || "")}" maxlength="40" placeholder="${n < phrases().length ? "" : "Add one"}" aria-label="Quick phrase ${n + 1}"/>`).join("")}</div>`)}
+    <div class="set-group">Steps</div>
+    ${setRow("Steps in the chat", "What the agent did between your message and its reply, read from its transcript when you look. Folded: one line per turn, what it said left in view, its newest step shown on one line while it works; click the line or a message's step count to list every step, one line each, and click a step to open it.", seg("steps.mode", st.steps?.mode ?? "line", [["line", "Folded"], ["all", "Open"], ["hidden", "Hidden"]]))}
+    <div class="set-group">Context</div>
+    ${setRow("Earlier in this session", "How many past exchanges (what it said or asked, what you answered) each card keeps.", seg("context.keep", st.context?.keep ?? 5, [[5, "5"], [10, "10"], [20, "20"]]))}
+    ${setRow("When a Stop hook makes the agent continue, the card shows", "The answer: the agent's final reply, with the hook's output (e.g. a checklist) tucked underneath. The last message: whatever it wrote last, usually the hook's output.", seg("turn.mode", st.turn?.mode ?? "answer", [["answer", "The answer"], ["last", "The last message"]]))}
+    <div class="set-group">History</div>
+    ${setRow("Keep the last", `${state.history.length.toLocaleString()} saved now · ~/.cue/history.jsonl`, `<div style="display:flex;gap:8px;align-items:center">${seg("history.keep", keep, [[100, "100"], [300, "300"], [1000, "1,000"], [5000, "5,000"]])}<input class="num" type="number" min="10" step="50" value="${keep}" data-keep-custom aria-label="Custom history size"/></div>`)}`;
+}
+function settingsSheet() {
+  const st = state.settings || {};
+  const c = state.connections || {};
+  const keep = st.history?.keep ?? 300;
+  // The add-on's own tabs after Cue's; its groups in a tab Cue has too (Voice) go under Cue's own rows there.
+  const tabs = [...SET_TABS, ...[...new Set(extLoad().map((g) => g.tab).filter(Boolean))].filter((t) => !SET_TABS.some(([, l]) => l === t)).map((t) => [`ext:${t}`, t])];
+  const tab = tabs.some(([k]) => k === setTab) ? setTab : "general";
+  const pane = {
+    general: setGeneralPane(st),
     agents: `
     <div class="set-group">Connected agents</div>
     ${agentRows()}
@@ -626,16 +643,7 @@ function settingsSheet() {
     ${setRow("Ask me before", "Pi doesn't ask on its own; Cue's extension adds the prompt.", seg("pi.gate", st.pi?.gate ?? "dangerous", [["dangerous", "Risky commands"], ["all", "Every command & edit"], ["off", "Never"]]))}
     <div class="set-group">Agents driving agents</div>
     ${setRow("Show sessions another agent drives in Waiting", "Off: when a helper agent finishes (one another agent started and labelled with CUE_DRIVEN_BY), its lead handles it, so it stays in Working as \"waiting on its lead\" with no card or notification. Turn on to treat them like your own sessions.", toggle("agents.show_driven", st.agents?.show_driven ?? false))}`,
-    chat: `
-    <div class="set-group">Quick phrases</div>
-    ${setRow("Above the text box", `Click one to send it as its own message; anything you've typed stays in the box. Up to 4. Empty a field to remove it.`, `<div class="quick-edit">${[0, 1, 2, 3].map((n) => `<input class="qp-in" data-quick-edit id="qp-${n}" value="${esc(qpEdit ? qpEdit[n] : phrases()[n] || "")}" maxlength="40" placeholder="${n < phrases().length ? "" : "Add one"}" aria-label="Quick phrase ${n + 1}"/>`).join("")}</div>`)}
-    <div class="set-group">Steps</div>
-    ${setRow("Steps in the chat", "What the agent did between your message and its reply, read from its transcript when you look. Folded: one line per turn, what it said left in view, its newest step shown on one line while it works; click the line or a message's step count to list every step, one line each, and click a step to open it.", seg("steps.mode", st.steps?.mode ?? "line", [["line", "Folded"], ["all", "Open"], ["hidden", "Hidden"]]))}
-    <div class="set-group">Context</div>
-    ${setRow("Earlier in this session", "How many past exchanges (what it said or asked, what you answered) each card keeps.", seg("context.keep", st.context?.keep ?? 5, [[5, "5"], [10, "10"], [20, "20"]]))}
-    ${setRow("When a Stop hook makes the agent continue, the card shows", "The answer: the agent's final reply, with the hook's output (e.g. a checklist) tucked underneath. The last message: whatever it wrote last, usually the hook's output.", seg("turn.mode", st.turn?.mode ?? "answer", [["answer", "The answer"], ["last", "The last message"]]))}
-    <div class="set-group">History</div>
-    ${setRow("Keep the last", `${state.history.length.toLocaleString()} saved now · ~/.cue/history.jsonl`, `<div style="display:flex;gap:8px;align-items:center">${seg("history.keep", keep, [[100, "100"], [300, "300"], [1000, "1,000"], [5000, "5,000"]])}<input class="num" type="number" min="10" step="50" value="${keep}" data-keep-custom aria-label="Custom history size"/></div>`)}`,
+    chat: setChatPane(st, keep),
     voice: voiceSettings() + extRows("Voice"),
     insights: insSettings(st) + tipsSettings(st),
     usage: `
