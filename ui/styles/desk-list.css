@@ -135,7 +135,7 @@
 .dk-i2 .dk-ok { margin-left: auto; }
 /* Install now on a finishing row in the next install (#339). */
 .dk-i2 .dk-rinst { margin-left: auto; flex: none; }
-/* Done, skip install beside it (#490). */
+/* Skip install beside it (#490). */
 .dk-i2 .dk-rskip { flex: none; margin-left: 6px; }
 /* Undo on a done row: back to waiting on you (nothing in the work changes). */
 /* Shown only while the row is hovered (or Undo has the keyboard's focus). */

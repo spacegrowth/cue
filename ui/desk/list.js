@@ -289,7 +289,7 @@ function deskItemRow(i, lit, held = false, lane = null) {
   // Finishing: no age, so its step has the room.
   const when = s || act || deskFinishing(i) || (feat && i.state !== "done") ? "" : i.state === "done" ? `${i.commit ? `<span class="dk-cm">committed ${esc(i.commit)}</span> · ` : ""}${clockAt(deskMs(i.done_at || i.updated))}` : ago(deskMs(i.created));
   const ok = i.state === "held" ? `<button class="btn small dk-hstart" data-desk-act="start_now" data-id="${esc(i.id)}">Start</button>`
-    // Waiting to install (#490): Done, skip install on its row; Install now is the lane head's, for all of it.
+    // Waiting to install (#490): Skip install on its row; Install now is the lane head's, for all of it.
     : lane ? deskSkipInstall(i, "btn small dk-rinst")
     // Waiting for a free working folder (#401): Start now goes without one.
     : deskCopyWaits(i) && !piece && !feat ? `<button class="btn small dk-hstart" data-desk-act="start_now" data-id="${esc(i.id)}">Start now</button>`

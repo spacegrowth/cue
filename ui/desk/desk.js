@@ -176,9 +176,9 @@ function deskKeptRow(k) {
 }
 /** Install now on a finishing item in the next install (step "queued"): everything waiting installs at once. */
 const deskInstallNow = (i, cls) => (deskFinishing(i) && i.finish?.step === "queued" ? `<button class="${cls}" data-desk-act="install_now" data-id="${esc(i.id)}">Install now</button>` : "");
-// Done, skip install (#490): an item waiting to install closed now, with no install of its own (its work stays on main
+// Skip install (#490): an item waiting to install closed now, with no install of its own (its work stays on main
 // for the next one).
-const deskSkipInstall = (i, cls) => (deskFinishing(i) && i.finish?.step === "queued" ? `<button class="${cls}" data-desk-act="skip_install" data-id="${esc(i.id)}">Done, skip install</button>` : "");
+const deskSkipInstall = (i, cls) => (deskFinishing(i) && i.finish?.step === "queued" ? `<button class="${cls}" data-desk-act="skip_install" data-id="${esc(i.id)}">Skip install</button>` : "");
 /** Which lane a finished item waits in (#346, option B of docs/desk-install-lane-plan.md): "landing" from its DONE till
  *  it's on main (committed, in the landing line, checked); "install" once it's on main and waits for the next install
  *  (or is in it); "" for everything else. One that stopped on a question (its check failed, a clash) isn't moving on

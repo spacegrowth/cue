@@ -159,7 +159,7 @@ fn looks_right(st: &mut Store, id: &str, now: u64, fx: &mut Effects) -> Result<b
     Ok(true)
 }
 
-// Done, skip install (#490): landed on main and waiting for its install, it's done now with no install of its
+// Skip install (#490): landed on main and waiting for its install, it's done now with no install of its
 // own. Its work stays on main, so the next install (whatever starts it) has it; its holder is told.
 fn skip_install(st: &mut Store, id: &str, holder: Option<Holder>, now: u64, fx: &mut Effects) -> Result<bool, String> {
     let it = item_of(st, id)?;
@@ -174,7 +174,7 @@ fn skip_install(st: &mut Store, id: &str, holder: Option<Holder>, now: u64, fx: 
     let released = waiting_on(st, id);
     item_of(st, id)?.released = released;
     release(st, id, now, fx);
-    you_wrote(st, &project, id, "Done, skip install", "closed without an install", now, fx);
+    you_wrote(st, &project, id, "Skip install", "closed without an install", now, fx);
     if let Some(h) = holder {
         let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
         let message = format!("{crew}Desk item #{id} ({title}) is done: closed without an install, none is needed for it. Its work stays on main and goes into the next install. Nothing more to do on it.");
