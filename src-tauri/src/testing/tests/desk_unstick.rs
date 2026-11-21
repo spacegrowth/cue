@@ -60,7 +60,8 @@ fn the_lead_starts_an_item_waiting_for_a_copy_now_and_it_works_where_its_holder_
     ends(&w, &lead_of(&w, &project), &format!("START: #{id} | why: the user needs it now"));
     w.advance(1000);
     let it = item(&w, &project, "Header jumps");
-    assert_eq!((it["state"].as_str(), it["tree_wait"].as_bool().unwrap_or(false), it["tree"].is_null()), (Some("working"), false, true), "{it}");
+    // At work where its holder is, in line for the next free copy all the same (#566).
+    assert_eq!((it["state"].as_str(), it["tree_wait"].as_bool().unwrap_or(false), it["tree"].is_null()), (Some("working"), true, true), "{it}");
     assert!(sent_to(&w, &h).iter().any(|t| t.contains(&format!("Desk item #{id}")) && t.contains("the user needs it now")), "its holder is told");
     let s = steps(&w, &project, &id);
     assert!(s.iter().any(|d| d["text"] == format!("Started #{id} now, without waiting for a copy") && d["why"] == "the user needs it now" && d["act"] == "start"), "{s:?}");

@@ -162,9 +162,10 @@ impl Hub {
                             fx.sends.push((lead, words));
                         }
                     }
+                    // Not in line again: a copy that can't be made would be tried at every free one (#566).
                     self.write(|st| {
                         if let Some(i) = st.desk.item_mut(id) {
-                            i.tree = None;
+                            (i.tree, i.no_copy_wait) = (None, false);
                         }
                     });
                 }
@@ -213,23 +214,30 @@ impl Hub {
     pub(crate) fn desk_trees_free(&self, repo: &str) -> bool {
         let now = now_ms();
         // How many copies of it each project waiting for one may have at once, read before the store is taken.
-        let projects: Vec<String> = self.read(|st| st.desk.items.iter().filter(|i| i.tree_wait && i.tree_wait_repo == repo).map(|i| i.project.clone()).collect());
+        let projects: Vec<String> = self.read(|st| st.desk.items.iter().filter(|i| in_line(i) && i.tree_wait_repo == repo).map(|i| i.project.clone()).collect());
         let at_once: HashMap<String, u32> = projects.into_iter().map(|p| { let n = crate::desk::lands::lands_of(&p, repo).at_once; (p, n) }).collect();
         let fx = self.write(|st| {
             let mut fx = Effects::default();
             // The oldest waiting whose own project's pool (desk/lands.rs) has room among the repository's copies.
             let used = st.desk.items.iter().filter(|i| i.tree.as_ref().is_some_and(|t| t.repo == repo)).count() as u32;
             // Never one still queued after another item (#512): that one isn't done, so it waits on, copy or not.
-            let mut waiting: Vec<&DeskItem> = st.desk.items.iter().filter(|i| i.tree_wait && i.state == "queued" && i.after.is_none() && i.tree_wait_repo == repo).collect();
+            let mut waiting: Vec<&DeskItem> = st.desk.items.iter().filter(|i| in_line(i) && i.tree_wait_repo == repo).collect();
             // Your order first (#387), then the one queued longest.
             waiting.sort_by_key(|i| (i.queue_order.unwrap_or(u32::MAX), i.updated));
             let Some(id) = waiting.into_iter().find(|i| used < at_once.get(&i.project).copied().unwrap_or_else(|| crate::desk::lands::lands_known(&i.project, repo).at_once)).map(|i| i.id.clone()) else { return fx };
             let rule = st.desk.item(&id).map(|i| crate::desk::hub::core::desk::rule_of(st, &i.project)).unwrap_or_default();
             let Some(it) = st.desk.item_mut(&id) else { return fx };
+            // Already at work without one (started now with every copy in use, #566): told the copy is its now.
+            let at_work = it.state == "working";
             (it.state, it.tree_wait, it.updated, it.queue_order) = ("working".into(), false, crate::desk::hub::core::desk::secs(now), None);
             it.tree_wait_repo.clear();
             if let Some(h) = &it.holder {
-                fx.sends.push((h.to().to_string(), crate::desk::handed_words(it, "", &rule)));
+                let words = if at_work {
+                    format!("Desk item #{id} ({}): a copy of its repository is free now, and it's yours. Move any work you've done for it so far into it, then carry on there.", it.title)
+                } else {
+                    crate::desk::handed_words(it, "", &rule)
+                };
+                fx.sends.push((h.to().to_string(), words));
             }
             fx.items.push(id);
             fx
@@ -242,7 +250,8 @@ impl Hub {
     /// Items waiting for a copy of a repository with one free start (#340): a copy let go of by any way that
     /// doesn't hand it on left them waiting for good. Run by the finishing tick (~10 s), so one starts within a minute.
     pub(crate) fn desk_trees_catch_up(&self) {
-        let mut repos: Vec<String> = self.read(|st| st.desk.items.iter().filter(|i| i.tree_wait && i.state == "queued" && i.after.is_none()).map(|i| i.tree_wait_repo.clone()).collect());
+        self.desk_trees_line_up();
+        let mut repos: Vec<String> = self.read(|st| st.desk.items.iter().filter(|i| in_line(i)).map(|i| i.tree_wait_repo.clone()).collect());
         repos.sort();
         repos.dedup();
         for repo in repos {
@@ -252,6 +261,24 @@ impl Hub {
                     break;
                 }
             }
+        }
+    }
+
+    /// Items at work without a copy, started now with every copy in use (START, Start now), put in line for the next
+    /// free one (#566): saved before they were, nothing ever gave them one. Only those whose holder would get a copy.
+    fn desk_trees_line_up(&self) {
+        let items: Vec<String> = self.read(|st| st.desk.items.iter().filter(|i| i.state == "working" && i.no_copy_wait && i.tree.is_none() && !i.tree_wait).map(|i| i.id.clone()).collect());
+        if items.is_empty() {
+            return;
+        }
+        let fx = Effects { items, ..Default::default() };
+        for (id, folder, _, _) in self.desk_trees_wanted(&fx) {
+            let Some(main) = tree_repo(&folder) else { continue };
+            self.write(|st| {
+                if let Some(i) = st.desk.item_mut(&id).filter(|i| i.state == "working" && i.tree.is_none()) {
+                    (i.tree_wait, i.tree_wait_repo) = (true, main);
+                }
+            });
         }
     }
 
@@ -480,6 +507,12 @@ impl Hub {
     }
 }
 
+/// Item `i` in line for a free copy of `tree_wait_repo`: queued for one (and not after another item, #512), or at
+/// work without one till then (#566).
+pub(crate) fn in_line(i: &DeskItem) -> bool {
+    i.tree_wait && i.after.is_none() && (i.state == "queued" || (i.state == "working" && i.tree.is_none()))
+}
+
 /// What an item of `project` queued for one of `repo`'s copies waits on, as the Desk lead's summary says it (#340).
 pub(crate) fn copy_wait(st: &Store, project: &str, repo: &str) -> String {
     let mut held: Vec<String> = st.desk.items.iter().filter(|i| i.tree.as_ref().is_some_and(|t| t.repo == repo)).map(|i| format!("#{}", i.id)).collect();
@@ -513,8 +546,12 @@ fn claim_tree(st: &mut Store, id: &str, main: &str, at_once: u32) -> Option<Opti
             it.tree_wait_repo.clear();
             Some(Some(t))
         }
-        // Started now by the lead (START): it works where its holder is, message and all.
-        None if it.no_copy_wait => None,
+        // Started now by the lead (START): it works where its holder is, message and all, in line for the next free
+        // copy all the same (#566).
+        None if it.no_copy_wait => {
+            (it.tree_wait, it.tree_wait_repo) = (true, main.to_string());
+            None
+        }
         None => {
             (it.state, it.tree_wait, it.tree_wait_repo) = ("queued".into(), true, main.to_string());
             Some(None)
@@ -549,6 +586,16 @@ impl Hub {
         self.write(|st| {
             let it = DeskItem { id: "waits-elsewhere".into(), project: "elsewhere".into(), state: "queued".into(), tree_wait: true, tree_wait_repo: repo.to_string(), ..Default::default() };
             st.desk.items.push(it);
+        });
+    }
+
+    /// Item `id` as an older Cue saved one started now with every copy in use: at work, not in line for one (#566).
+    pub(crate) fn desk_out_of_copy_line(&self, id: &str) {
+        self.write(|st| {
+            if let Some(i) = st.desk.item_mut(id) {
+                (i.tree_wait, i.no_copy_wait) = (false, true);
+                i.tree_wait_repo.clear();
+            }
         });
     }
 

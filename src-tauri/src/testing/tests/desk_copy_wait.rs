@@ -143,16 +143,19 @@ fn a_sent_back_item_waiting_for_a_working_folder_names_who_uses_them_and_start_n
     w.settle();
     let it = item(&w, &project, "Header jumps");
     assert_eq!(it["state"], "working", "{it}");
-    for gone in ["tree_wait", "copy_users", "back_waiting", "tree"] {
+    for gone in ["copy_users", "back_waiting", "tree"] {
         assert!(it.get(gone).is_none_or(|v| v.is_null()), "{gone}: {it}");
     }
+    // In line for the next free one all the same (#566).
+    assert_eq!(it["tree_wait"], true, "{it}");
     let sent: Vec<String> = w.hosted.sent()[before..].iter().filter(|(s, t)| *s == h && t.contains(&format!("#{id}"))).map(|(_, t)| t.clone()).collect();
     assert_eq!(sent.len(), 1, "one message: {sent:?}");
     assert!(sent[0].contains("isn't done: The dot is too big"), "{}", sent[0]);
-    // A working folder let go of later goes to nobody here: it's already at work.
+    // A working folder let go of later is its (#566): it stays at work, now in its own copy.
     w.hub().desk_let_go_copy(&top(&w), 2);
     w.settle();
-    assert_eq!(item(&w, &project, "Header jumps")["state"], "working");
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!((it["state"].as_str(), it["tree"]["slot"].as_u64()), (Some("working"), Some(2)), "{it}");
 }
 
 #[test]
@@ -256,4 +259,58 @@ fn a_free_copy_goes_to_an_item_that_waits_only_for_a_copy_not_to_one_still_queue
     assert_eq!((logo["state"].as_str(), logo["tree"]["slot"].as_u64()), (Some("working"), Some(2)), "{logo}");
     assert!(!w.hosted.sent()[before..].iter().any(|(s, t)| *s == h && t.contains(&format!("Desk item #{a}"))), "no brief for #{a}");
     assert!(w.hosted.sent()[before..].iter().any(|(s, t)| *s == h && t.contains(&format!("Desk item #{c}"))), "a brief for #{c}");
+}
+
+/// #566 (#542's case): the lead STARTs an item while every copy is in use. It works where its holder is for now, in
+/// line for the next free copy, and gets it once one is let go of, its holder told where it is.
+#[test]
+fn an_item_started_with_every_copy_in_use_gets_the_next_free_copy() {
+    let w = World::new();
+    let (_, project, id, h) = routed_with(&w, |w, _, _| w.hub().desk_hold_copies(&super::desk_unstick::top(w), &[1, 2, 3]), |_, _, _| {});
+    let repo = super::desk_unstick::top(&w);
+    let lead = super::desk::desk(&w, &project)["lead"]["sid"].as_str().unwrap().to_string();
+    super::desk_commit::ends(&w, &lead, &format!("START: #{id} | why: the user needs it now"));
+    w.advance(1000);
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!((it["state"].as_str(), it["tree"].is_null(), it["tree_wait"].as_bool()), (Some("working"), true, Some(true)), "{it}");
+    let summary = w.hub().desk_summary(&project, "", false).0;
+    let line = summary.lines().find(|l| l.starts_with(&format!("- #{id} "))).unwrap_or_else(|| panic!("{summary}"));
+    assert!(line.contains("in line for the next free copy"), "{line}");
+    let before = w.hosted.sent().len();
+    w.hub().desk_let_go_copy(&repo, 2);
+    w.settle();
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!((it["state"].as_str(), it["tree"]["slot"].as_u64(), it["tree_wait"].as_bool().unwrap_or(false)), (Some("working"), Some(2), false), "{it}");
+    let path = it["tree"]["path"].as_str().unwrap().to_string();
+    let told: Vec<String> = w.hosted.sent().into_iter().skip(before).filter(|(s, _)| *s == h).map(|(_, t)| t).collect();
+    assert!(told.iter().any(|t| t.contains(&format!("Desk item #{id}")) && t.contains("it's yours") && t.contains(&path)), "{told:?}");
+    assert!(std::path::Path::new(&path).is_dir(), "its copy is made");
+}
+
+/// #566: an item an older Cue saved at work without a copy, not in line for one (#542 as it was), is put in line on
+/// the tick and gets the next free copy.
+#[test]
+fn an_item_saved_at_work_without_a_copy_is_put_in_line_and_gets_the_next_free_one() {
+    let w = World::new();
+    let (_, project, id, h) = routed_with(&w, |w, _, _| w.hub().desk_hold_copies(&super::desk_unstick::top(w), &[1, 2, 3]), |_, _, _| {});
+    let repo = super::desk_unstick::top(&w);
+    let lead = super::desk::desk(&w, &project)["lead"]["sid"].as_str().unwrap().to_string();
+    super::desk_commit::ends(&w, &lead, &format!("START: #{id} | why: the user needs it now"));
+    w.advance(1000);
+    w.hub().desk_out_of_copy_line(&id);
+    // A copy let go of with nothing in line for it: stays free.
+    w.hub().desk_let_go_copy(&repo, 3);
+    w.settle();
+    assert!(item(&w, &project, "Header jumps")["tree"].is_null(), "not in line yet");
+    w.hub().desk_tick_now();
+    w.settle();
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!((it["state"].as_str(), it["tree"]["slot"].as_u64()), (Some("working"), Some(3)), "{it}");
+    let path = it["tree"]["path"].as_str().unwrap().to_string();
+    assert!(w.hosted.sent().iter().any(|(s, t)| *s == h && t.contains("it's yours") && t.contains(&path)), "its holder is told where");
+    // Nothing more on later ticks.
+    let n = w.hosted.sent().len();
+    w.hub().desk_tick_now();
+    w.settle();
+    assert_eq!(w.hosted.sent().len(), n);
 }
