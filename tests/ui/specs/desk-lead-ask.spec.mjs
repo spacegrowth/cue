@@ -43,3 +43,37 @@ test("a line that only mentions ASK in its words stays as it is", async ({ page,
   await push(page, [{ role: "agent", text: "I'll ASK you about it later." }]);
   await expect(page.locator(".dk-chat .cv-agent").last().locator(".cv-text")).toHaveText("I'll ASK you about it later.");
 });
+
+// #651: your own words typed on Cue's push card ("what does it mean? what do i do") were taken as the answer: the card
+// closed, nothing was pushed, and nobody answered you. They aren't a yes or a no: the card stays open for its Yes or No,
+// and the words go to the lead, who answers in its chat.
+test("words typed on the push card go to the lead and the card stays open for its Yes or No (#651)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  const q = "Main is 87 landings ahead of the shared copy. Push it?";
+  await cue.change((st, q) => {
+    st.sessions.find((s) => s.session_id === "lead").state = "deciding";
+    st.items.push({ ...st.items[0], id: "n-push", agent_id: "", agent_name: "", desk: true, hosted: false,
+      tool_input: { questions: [{ question: q, header: "", multiSelect: false, options: [{ label: "Yes", description: "" }, { label: "No", description: "" }] }], desk_push: { desk: "cue", top: "/work/cue", ahead: 87, starts: [] } } });
+  }, q);
+  const ask = page.locator(".dk-right .dk-ask");
+  await expect(ask).toContainText(q);
+  await ask.locator('[data-act="redirect"]').click();
+  const box = ask.locator('textarea[data-text="n-push"]');
+  await box.fill("what does it mean? what do i do");
+  await box.press("Enter");
+  await cue.called("respond", { id: "n-push", decision: { behavior: "allow", answers: { [q]: "what does it mean? what do i do" } } });
+  // Delivered to the lead, as Cue's card in its chat with your words.
+  const said = page.locator(".dk-chat", { hasText: "what does it mean? what do i do" });
+  await expect(said).toHaveCount(1);
+  await expect(page.locator(".dk-chat")).toContainText("Your words");
+  // The card is still open and answerable: its Yes and No, not greyed out.
+  await expect(ask).toContainText(q);
+  const yes = ask.locator("[data-pick]", { hasText: "Yes" });
+  await yes.click();
+  const send = ask.locator('[data-act="submit-answers"]');
+  await expect(send).toBeEnabled();
+  await send.click();
+  await expect.poll(async () => (await cue.calls("respond")).filter((c) => c.args.id === "n-push").length).toBe(2);
+  await expect(page.locator(".dk-right .dk-ask")).toHaveCount(0);
+});

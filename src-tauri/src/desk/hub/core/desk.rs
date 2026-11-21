@@ -405,6 +405,11 @@ impl Hub {
         let answer = d.answers.as_ref().and_then(|a| a.as_object()).and_then(|a| a.values().next()).map(|v| v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string()));
         let answer = answer.or_else(|| d.message.clone()).unwrap_or_else(|| if d.behavior == "deny" { "no".into() } else { "yes".into() });
         let answer = crate::desk::parse::plain_choice(&answer).to_string();
+        // Your own words on Cue's Yes / No card (a push, old copies, a change to how work lands) aren't a yes or a no
+        // (#651): the card stays open and the words go to the lead, who answers you in its chat.
+        if d.behavior != "deny" && (push.is_some() || old.is_some() || lands.is_some()) && !["Yes", "No"].iter().any(|c| answer.eq_ignore_ascii_case(c)) {
+            return self.desk_card_words(id, &answer);
+        }
         // Cue's question when Desks' leads can't settle it (desk/escalate.rs): read before the card is filed.
         let to_user = self.read(|st| st.items.iter().find(|i| i.id == id).and_then(|i| serde_json::from_value::<crate::desk::escalate::ToUser>(i.tool_input["desk_to_user"].clone()).ok()));
         self.write(|st| st.waiters.remove(id));
@@ -435,6 +440,35 @@ impl Hub {
         self.later(0, move |h| {
             if let Err(e) = h.tell(&sid, &words) {
                 eprintln!("cue: desk: couldn't send the lead its answer: {e}");
+            }
+        });
+        true
+    }
+
+    /// Your words `text` typed on Cue's own Yes / No card `id` in a lead's chat, which aren't one of its choices
+    /// (#651): never taken as a yes or a no. The card stays open (your words kept on it), and the words go to the
+    /// lead, who answers you in its chat. False when `id` isn't such a card (then the words go as they would).
+    pub(crate) fn desk_card_words(&self, id: &str, text: &str) -> bool {
+        let text = text.trim();
+        let now = now_ms();
+        let Some((lead, question)) = self.write(|st| {
+            let it = st.items.iter_mut().find(|i| i.id == id && i.desk && i.status == "pending" && ["desk_push", "desk_old", "desk_lands"].iter().any(|k| i.tool_input.get(*k).is_some_and(|v| !v.is_null())))?;
+            if !it.tool_input["desk_said"].is_array() {
+                it.tool_input["desk_said"] = json!([]);
+            }
+            if let Some(all) = it.tool_input["desk_said"].as_array_mut() {
+                all.push(json!({ "text": text, "at": now }));
+            }
+            Some((it.origin.session_id.clone(), it.tool_input.pointer("/questions/0/question").and_then(Value::as_str).unwrap_or("").to_string()))
+        }) else { return false };
+        self.changed();
+        if text.is_empty() {
+            return true;
+        }
+        let words = card_words(&question, text);
+        self.later(0, move |h| {
+            if let Err(e) = h.tell(&lead, &words) {
+                eprintln!("cue: desk: couldn't send the lead your words on Cue's question: {e}");
             }
         });
         true
@@ -747,4 +781,9 @@ fn stamp_sends(st: &mut Store, fx: &Effects, now: u64) -> (Vec<DeskItem>, Vec<De
     let items: Vec<DeskItem> = ids.into_iter().filter_map(|id| st.desk.item(id).cloned()).collect();
     let decisions: Vec<DeskDecision> = st.desk.decisions.iter().filter(|d| fx.decisions.contains(&d.id)).cloned().collect();
     (items, decisions)
+}
+
+/// What the lead is told when you write your own words on Cue's Yes / No card `question` (#651).
+pub(crate) fn card_words(question: &str, text: &str) -> String {
+    format!("On Cue's question in your chat (\"{question}\"), the user wrote: \"{text}\"\nThe card is still open and waits for their Yes or No: Cue took neither. Answer them here in plain words (what it means, what each choice does, what you'd pick); don't answer the card for them.")
 }

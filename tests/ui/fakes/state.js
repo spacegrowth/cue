@@ -20,6 +20,21 @@ CueBridge.area("state", (w) => {
     w.changed();
     return it;
   };
+  /** Your own words on Cue's Yes / No card in a lead's chat (desk/hub/core/desk.rs desk_card_words, #651): not a yes or
+   *  a no. The card stays open, your words kept on it, and they go to the lead. False for any other answer. */
+  w.cueCardWords = (id, decision) => {
+    const it = w.state.items.find((x) => x.id === id && x.status === "pending" && x.desk);
+    const cue = it && ["desk_push", "desk_old", "desk_lands"].some((k) => it.tool_input?.[k]);
+    const words = decision.behavior !== "deny" && Object.values(decision.answers || {})[0];
+    if (!cue || !words || /^(yes|no)$/i.test(String(words).trim())) return false;
+    const at = w.now();
+    (it.tool_input.desk_said ||= []).push({ text: words, at });
+    const q = it.tool_input.questions?.[0]?.question || "";
+    const s = w.session(it.session_id);
+    if (s) s.thread = [...(s.thread || []), { role: "you", at_ms: at, text: `On Cue's question in your chat ("${q}"), the user wrote: "${words}"\nThe card is still open and waits for their Yes or No: Cue took neither. Answer them here in plain words (what it means, what each choice does, what you'd pick); don't answer the card for them.` }];
+    w.changed();
+    return true;
+  };
   /** Today's numbers as hub/today.rs counts them, from the fake's History (it keeps no other list of answers). */
   const HOUR = 3600000;
   const today = (rows) => {
@@ -48,7 +63,7 @@ CueBridge.area("state", (w) => {
     get_state: () => w.snapshot(),
     state_drawn: () => null,
     history_item: ({ id }) => structuredClone(w.state.items.find((i) => i.id === id) || (w.state.history || []).find((i) => i.id === id) || null),
-    respond: ({ id, decision }) => !!w.answer(id, decision.behavior === "allow" ? (decision.answers ? `answered — ${Object.values(decision.answers).join(", ")}` : "allowed") : decision.message ? `denied — “${decision.message}”` : "denied"),
+    respond: ({ id, decision }) => w.cueCardWords(id, decision) || !!w.answer(id, decision.behavior === "allow" ? (decision.answers ? `answered — ${Object.values(decision.answers).join(", ")}` : "allowed") : decision.message ? `denied — “${decision.message}”` : "denied"),
     dismiss: ({ id }) => { w.answer(id, "dismissed", { idle: true }); return null; },
     reply: ({ id, text, images }) => {
       if (!w.answer(id, `replied — “${text}”`, { text, images })) throw "That message was already answered";

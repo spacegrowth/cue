@@ -230,6 +230,11 @@ impl Hub {
             return Err("nothing to send".into());
         }
         let it = self.get(id).filter(|i| i.status == "pending").ok_or("that card is gone")?;
+        // Your words on Cue's own Yes / No card in a lead's chat: never a yes or a no; the card stays open and the
+        // lead answers you (#651).
+        if images.is_empty() && self.desk_card_words(id, text) {
+            return Ok("sent to the Desk lead: the question stays open".into());
+        }
         let sid = it.origin.session_id.clone();
         // A reply to a finished turn is a message like the box's: a hosted lead's Team switch (and /team) say their piece.
         let worded = if it.kind == "waiting" { self.team_words(&sid, text) } else { text.to_string() };
@@ -596,7 +601,10 @@ impl Hub {
     /// something (its terminal shows a permission prompt or a question: typing now would answer it).
     fn send_state(st: &Store, session_id: &str) -> Result<(Option<Origin>, bool, bool), String> {
         let state = st.sessions.state(session_id);
-        if state.as_deref() == Some("deciding") {
+        // Asking you something it waits on. Not a Desk card in a lead's chat (desk_ask): nobody waits on those, the
+        // lead is at its prompt, and your words on one go to it while the card stays open (#651).
+        let only_desk = st.items.iter().filter(|i| i.status == "pending" && i.kind != "waiting" && i.origin.session_id == session_id).all(|i| i.desk);
+        if state.as_deref() == Some("deciding") && !only_desk {
             return Err("it's asking you something first: answer that, then send".to_string());
         }
         let busy = state.as_deref() == Some("working") || st.sessions.compacting_since(session_id) > 0;

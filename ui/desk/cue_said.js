@@ -56,6 +56,8 @@ const CUE_MSGS = [
   [/^The Desk is paused \(by (.+?), /, (m) => ({ verb: "Told", what: `the Desk is paused (by ${m[1]})`, next: "Its sessions wait at a safe point until it's resumed" }), "Paused"],
   [/^The Desk is resumed: its sessions carry on/, () => ({ verb: "Told", what: "the Desk is resumed", next: "Its sessions carry on" }), "Resumed"],
   [cueRe(String.raw`^Your ASK(?: about #ID)?: ([^\n]*)\nThe answer: ([^\n]*)`), (m) => ({ verb: "Told", id: m[1] || "", what: `its ASK answered: ${cueQ(m[3], 70)}`, by: "You", said: m[3], next: "The lead carries on with your answer" }), "Answered"],
+  // Your own words on Cue's Yes / No card (desk/hub/core/desk.rs card_words, #651): the card stays open, the lead answers.
+  [/^On Cue's question in your chat \("(.*)"\), .+? wrote: "([^\n]*)"\n/, (m) => ({ verb: "Asked", what: `your words on ${cueQ(m[1], 50)}: ${cueQ(m[2], 60)}`, by: "You", said: m[2], next: "The lead answers you here; the question stays open for your Yes or No" }), "Your words"],
   [cueRe(String.raw`^Cue asked .+? before routing #ID to (.+?), which isn't on the Desk\. The answer: (.*?)\. #`), (m) => ({ verb: "Told", id: m[1], what: `not routed to ${m[2]}: answer ${cueQ(m[3], 60)}` }), "Routed"],
   [cueRe(String.raw`^.+? said yes: (.+?) is on the Desk now, and Cue routed #ID`), (m) => ({ verb: "Told", id: m[2], what: `routed to ${m[1]} (a yes)` }), "Routed"],
   [cueRe(String.raw`^.+? said yes, but Cue couldn't route #ID to (.+?)\. ([^\n]*)`), (m) => ({ verb: "Told", id: m[1], what: `not routed to ${m[2]}: ${cueQ(m[3], 70)}` }), "Not routed"],

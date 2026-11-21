@@ -123,6 +123,7 @@ These already showed as short cards or lines before #478 and are unchanged:
 | Cue couldn't start a new session for #id | a card from Cue tagged COULDN'T START |
 | A new lead's hello ("You run cue's Desk now…") and hand-off ("X now runs cue's Desk. Please route …") | already one short line: its bubble, the `<desk …>` block dropped |
 | Your answer to its ASK ("Your ASK about #id: …") | hidden: the ASK's card shows the answer |
+| Your own words on Cue's Yes / No card ("On Cue's question in your chat (…), … wrote: …", #651) | a card tagged YOUR WORDS; the card stays open for your Yes or No |
 | From another Desk's session | a card with that Desk's chip in its head (#472's band is now a card) |
 | What Cue sent a crew lead for its crew | a card tagged CREW with "+ What Cue sent" (team.js `CUE_SAID`, below) |
 

@@ -28,6 +28,11 @@ function setState(s) {
     answering.delete(it.id);
     ghosts.set(it.id, { it, at: clicked ? Math.max(clicked, Date.now() - LINGER_MS + 400) : Date.now(), soft: !!clicked, h: document.querySelector(`.nrow[data-big="${CSS.escape(it.id)}"]`)?.offsetHeight });
   }
+  // Your own words on Cue's Yes / No card went to the lead, and the card stays open (#651): answerable again.
+  for (const it of s.items) {
+    const said = it.status === "pending" && answering.has(it.id) && it.tool_input?.desk_said;
+    if (Array.isArray(said) && said.length && said[said.length - 1].at >= answering.get(it.id) - 5000) answering.delete(it.id);
+  }
   for (const [id, g] of ghosts) if (Date.now() - g.at > LINGER_MS || ids.has(id)) ghosts.delete(id);
   watchGhosts();
   if (typeof deskGoneApply === "function") deskGoneApply(s);   // a Desk deleted here stays gone (desk/home.js)

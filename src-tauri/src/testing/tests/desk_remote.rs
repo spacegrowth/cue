@@ -326,6 +326,37 @@ fn main_ahead_asks_to_push_before_an_item_starts_on_another_machine_and_a_yes_pu
     assert!(push_card(&w, &project).is_none());
 }
 
+/// Your own words typed on the push card (#651: "what does it mean? what do i do") are neither a yes nor a no: the card
+/// stays open, nothing is pushed, the start stays held, and the words go to the lead to answer. A Yes after still pushes.
+#[test]
+fn words_typed_on_the_push_card_go_to_the_lead_and_the_card_stays_open() {
+    let w = World::new();
+    let ((dir, bare, _, project, id, h), _ssh) = routed_there_with(&w, two_ahead);
+    let lead = w.hub().desk_lead_sid(&project).unwrap();
+    let card = push_card(&w, &project).expect("asked to push first");
+    let cid = card["id"].as_str().unwrap().to_string();
+    answer(&w, &cid, "what does it mean? what do i do");
+    let open = push_card(&w, &project).expect("the card stays open");
+    assert_eq!(open["id"], card["id"]);
+    assert_eq!(open["tool_input"]["desk_said"][0]["text"], "what does it mean? what do i do", "{open}");
+    assert!(!same_main(&dir, &bare), "nothing pushed");
+    assert!(starts(&w, &h, &id).is_empty(), "the start still waits on your Yes or No");
+    let told: Vec<String> = w.hosted.sent().into_iter().filter(|(s, t)| *s == lead && t.contains("what does it mean? what do i do")).map(|(_, t)| t).collect();
+    assert_eq!(told.len(), 1, "{told:?}");
+    assert!(told[0].starts_with("On Cue's question in your chat (\"Main is 2 landings ahead") && told[0].contains("Cue took neither"), "{}", told[0]);
+    // Typed in the card's reply box instead: the same.
+    w.hub().reply(&cid, "and if I say no?", &[]).unwrap();
+    w.settle();
+    w.advance(1000);
+    assert!(push_card(&w, &project).is_some(), "still open");
+    assert!(w.hosted.sent().iter().any(|(s, t)| *s == lead && t.contains("\"and if I say no?\"")));
+    assert!(starts(&w, &h, &id).is_empty());
+    answer(&w, &cid, "Yes");
+    assert!(same_main(&dir, &bare), "main pushed on the Yes");
+    assert_eq!(starts(&w, &h, &id).len(), 1);
+    assert!(push_card(&w, &project).is_none());
+}
+
 #[test]
 fn a_no_starts_the_item_anyway_saying_it_starts_from_older_work() {
     let w = World::new();
