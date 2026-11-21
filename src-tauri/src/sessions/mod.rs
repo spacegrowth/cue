@@ -41,7 +41,7 @@ pub struct Segment {
     pub end_ms: Option<u64>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Session {
     #[serde(flatten)]
     pub origin: Origin,
@@ -291,65 +291,7 @@ impl Parked {
 impl Session {
     /// A session's record as Cue first sees it: at `now`, with nothing known about it yet.
     fn first_seen(origin: &Origin, now: u64) -> Session {
-        Session {
-            origin: origin.clone(),
-            project: crate::model::project_of_origin(origin),
-            state: String::new(),
-            since_ms: now,
-            prompt: String::new(),
-            suggestion: String::new(),
-            segments: vec![],
-            thread: vec![],
-            driven_by: String::new(),
-            helpers: 0,
-            background: 0,
-            running: String::new(),
-            agents: 0,
-            task_failed_ms: 0,
-            task_failed: String::new(),
-            task_failed_line: String::new(),
-            task_told_ms: 0,
-            queued: None,
-            cut_by_restart: false,
-            name: String::new(),
-            rename_pending: false,
-            claude_name: None,
-            claude_pid: None,
-            rename_check: None,
-            rename_error: String::new(),
-            limit: None,
-            retry: None,
-            doing: String::new(),
-            doing_ms: 0,
-            compacting_ms: 0,
-            compacted_ms: 0,
-            later_ms: 0,
-            watch_ms: 0,
-            told_ms: 0,
-            starred_ms: 0,
-            pinned_ms: 0,
-            snooze_ms: 0,
-            snoozed_at_ms: 0,
-            context_pct: 0,
-            trust_ms: 0,
-            enter_ms: 0,
-            turn_base: None,
-            turn_from: None,
-            session_from: None,
-            changes: None,
-            teammates_read_ms: 0,
-            stuck_ms: 0,
-            held: None,
-            turn_ends: 0,
-            send_at: None,
-            carry_tries: 0,
-            team: vec![],
-            team_mode: String::new(),
-            crew_commit: String::new(),
-            crew_review: String::new(),
-            crew_job: String::new(),
-            crew_log: vec![],
-        }
+        Session { origin: origin.clone(), project: crate::model::project_of_origin(origin), since_ms: now, ..Session::default() }
     }
 
     /// An event came from it: take what that tells about where it runs and how far it has started.
