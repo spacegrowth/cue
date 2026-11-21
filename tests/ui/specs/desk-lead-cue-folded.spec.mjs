@@ -46,9 +46,11 @@ for (const scheme of ["light", "dark"]) {
     await expect(chat).not.toContainText("Nothing to do unless it gets stuck");
     await expect(chat).not.toContainText("(Desk changes");
     if (process.env.SHOT_DIR) await chat.screenshot({ path: `${process.env.SHOT_DIR}/desk-lead-cue-folded-${scheme}-closed.png` });
-    // A click opens Cue's full text under its line, word for word; another folds it again.
+    // A click opens what matters in it under its line (#625): what happens next, not Cue's rules for the lead; another
+    // folds it again.
     await lines.nth(0).locator(".dk-cue-w").click();
-    await expect(lines.nth(0).locator(".mg-full")).toHaveText(AWAY);
+    await expect(lines.nth(0).locator(".mg-full")).toContainText("The lead settles what it can; at most 5 questions wait for you");
+    await expect(lines.nth(0).locator(".mg-full")).not.toContainText("Go through every open item");
     await expect(lines.nth(0).locator(".dk-cue-t")).toHaveAttribute("aria-expanded", "true");
     if (process.env.SHOT_DIR) await chat.screenshot({ path: `${process.env.SHOT_DIR}/desk-lead-cue-folded-${scheme}.png` });
     await lines.nth(0).locator(".dk-cue-t").click();

@@ -55,6 +55,13 @@ button.mg-id:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
   padding: 8px 11px; border-radius: var(--radius-btn); background: var(--panel); color: var(--ink);
   font: var(--mg-body); white-space: pre-wrap; overflow-wrap: anywhere;
 }
+/* Cue's message opened (#625, desk/cue_said.js cueFoldHtml): only what matters to you, a row each: whose words, the
+   item, what happens next. The name of each row at the left in the meta size, muted; the session's own rules are never
+   here. */
+.mg-full.cue-fold { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 3px 12px; align-items: baseline; white-space: normal; }
+.cue-fold-k { font: var(--mg-meta); color: var(--muted); white-space: nowrap; }
+.cue-fold-v { min-width: 0; color: var(--ink); }
+.cue-fold-v.said { white-space: pre-wrap; }
 .mg-full code, .mg-full .mono { font: var(--type-button) / 1.5 var(--mono); color: var(--muted); }
 
 /* The foot: how it went at the left, actions at the right. */
@@ -78,6 +85,9 @@ button.mg-id:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
 
 /* ---------- an ask: the same card, outlined all round ---------- */
 .mg.ask { background: var(--panel); border: 1px solid var(--deny); }
+/* Cue's message's tag (Not done, Lead's note…) in its own case (#625, as #622 restyles every tag): a quiet chip told
+   apart by its fill and weight, not capitals. */
+.mg.cue-msg .mg-tag { font: 600 var(--type-meta) var(--sans); letter-spacing: 0; text-transform: none; }
 .mg.ask .mg-tag { background: var(--deny); color: var(--on-deny); }
 .mg.ask .mg-t { -webkit-line-clamp: 3; }
 .mg.ask .mg-full, .mg.ask .mg-id, .mg.ask .mg-chip { background: var(--panel-2); }
