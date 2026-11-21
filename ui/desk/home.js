@@ -4,6 +4,18 @@
 // starts a lead there and opens the Desk. The sheet is drawn on its own element over the window, apart from
 // renderMain, so a redraw under it keeps what you typed.
 
+/** What a Delete Desk here took away: the Desk and the sessions it closed, gone from the window as the delete comes
+ *  back (the hub has dropped them by then), not when Cue's next update does. An update sent before the delete can't
+ *  bring them back; each is let go once an update comes without it. */
+const deskGoneNow = { desks: new Set(), sessions: new Set() };
+function deskGoneApply(s) {
+  const ds = s.desk?.projects || [], ss = s.sessions || [];
+  for (const id of deskGoneNow.desks) if (!ds.some((d) => d.project === id)) deskGoneNow.desks.delete(id);
+  for (const sid of deskGoneNow.sessions) if (!ss.some((x) => x.session_id === sid)) deskGoneNow.sessions.delete(sid);
+  if (deskGoneNow.desks.size && s.desk) s.desk.projects = ds.filter((d) => !deskGoneNow.desks.has(d.project));
+  if (deskGoneNow.sessions.size) s.sessions = ss.filter((x) => !deskGoneNow.sessions.has(x.session_id));
+}
+
 /** A Desk's sessions (its lead among them) and their crew still in play. */
 function deskPeople(d) {
   const ss = (state.sessions || []).filter((s) => s.project === deskWorkspace(d) && deskHasSession(d, s.session_id));

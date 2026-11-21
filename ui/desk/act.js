@@ -454,6 +454,10 @@ deskClicks({
       const closeSessions = deskDeleteSessions(deskOf(id)).filter((s) => deskCloseSelected.has(s.sid) && !s.shared && !s.busy).map((s) => s.sid);
       const result = await invoke("desk_delete", { id, closeSessions });
       if (result?.kept?.length) toast(`Desk deleted. Couldn't close: ${result.kept.map((x) => `${deskHolderName(x.sid)} (${x.reason})`).join(", ")}`, 10000);
+      const kept = new Set((result?.kept || []).map((x) => x.sid));
+      deskGoneNow.desks.add(id);
+      for (const sid of closeSessions) if (!kept.has(sid)) deskGoneNow.sessions.add(sid);
+      deskGoneApply(state);
       deskDeleteAsk = null;
       if (deskSelection() === id) { deskSelect(""); deskOpen = null; deskPick = null; }
     } catch (e) { toast(`Couldn't delete the Desk: ${e}`); }

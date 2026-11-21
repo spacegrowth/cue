@@ -111,3 +111,32 @@ test("deleting a Desk closes selected sessions and protects shared or working se
   expect(ids).toEqual(expect.arrayContaining(["keep", "shared", "busy"]));
   expect(ids).not.toContain("lead-desk-1");
 });
+
+test("a deleted Desk and the sessions it closed are gone as the delete comes back, before Cue's next update", async ({ cue, page }) => {
+  await cue.open("world-empty");
+  await page.locator("[data-new-menu]").click();
+  await page.locator("[data-desk-new-desk]").click();
+  await page.locator("#nd-folder").fill("/work/project");
+  await page.locator("#nd-name").fill("My Desk");
+  await page.locator('.nd [type="submit"]').click();
+  await expect(page.locator(".dk-sh b")).toHaveText("My Desk");
+  await cue.change((st) => st.desk.projects.push({ project: "desk-other", independent: true, name: "Other", workspace_project: "project", items: [], decisions: [], members: [] }));
+  // The hub has deleted it when the command returns; its update to the window comes later (here: never).
+  await cue.override("desk_delete", ({ id, closeSessions }) => {
+    const w = CueBridge.world;
+    w.state.desk.projects = w.state.desk.projects.filter((d) => d.project !== id);
+    w.state.sessions = w.state.sessions.filter((s) => !closeSessions.includes(s.session_id));
+    return { kept: [] };
+  });
+  await page.locator("[data-desk-switch]").click(); await page.locator("[data-desk-home]").click();
+  const before = await page.evaluate(() => state);
+  await page.locator('[data-desk-delete="desk-1"]').click();
+  await page.locator("[data-desk-delete-confirm]").click();
+  await expect(page.locator(".dh-nm")).toHaveText("Other");
+  await expect(page.locator(".dk-hh")).toContainText("· 1");
+  expect(await page.evaluate(() => state.sessions.some((s) => s.session_id === "lead-desk-1"))).toBe(false);
+  // An update sent before the delete, arriving late, doesn't bring them back.
+  await cue.emit("state", before);
+  await expect(page.locator(".dh-nm")).toHaveText("Other");
+  expect(await page.evaluate(() => state.sessions.some((s) => s.session_id === "lead-desk-1"))).toBe(false);
+});
