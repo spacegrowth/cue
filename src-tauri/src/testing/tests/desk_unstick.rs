@@ -374,3 +374,51 @@ fn taking_back_a_copy_whose_record_points_at_another_items_folder_leaves_that_fo
     assert!(desk(&w, &project)["kept"].as_array().is_none_or(|k| k.is_empty()), "#{f}'s folder isn't listed as #{id}'s kept copy");
     assert!(git(std::path::Path::new(&top(&w)), &["branch", "--list", &format!("desk/{id}")]).contains(&format!("desk/{id}")), "#{id}'s branch kept");
 }
+
+/// A mocks item (#549): its "done when" rules out code, so nothing of it ever lands on main. Sent back from your
+/// check, its next DONE goes to check again, not back to its session for "nothing new on main" on and on.
+#[test]
+fn a_reopened_item_with_no_code_goes_to_check_on_its_next_done() {
+    let w = World::new();
+    let (_, project, id, h) = routed_with(&w, |_, _, _| {}, |_, _, _| {});
+    no_code(&w, &id);
+    ends(&w, &h, &format!("Mock D is on the canvas.\nDONE: #{id}"));
+    w.settle();
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "to_check");
+    w.hub().desk_item_act(&id, "send_back", "Let's settle on D").unwrap();
+    w.settle();
+    ends(&w, &h, &format!("Settled on D, nothing else to change.\nDONE: #{id}"));
+    w.settle();
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!(it["state"], "to_check", "to check, not back to its session: {it}");
+    assert!(!sent_to(&w, &h).iter().any(|t| t.contains("Nothing of it landed on main since it was reopened")), "{:?}", sent_to(&w, &h));
+    w.hub().desk_item_act(&id, "looks_right", "").unwrap();
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "done");
+}
+
+/// CLOSE with no commit on an item with no code (#549) closes it; on one that may have code it asks for the commit.
+#[test]
+fn the_lead_closes_an_item_with_no_code_without_a_commit() {
+    let w = World::new();
+    let (_, project, id, h) = routed_with(&w, |_, _, _| {}, |_, _, _| {});
+    let d = lead_of(&w, &project);
+    ends(&w, &d, &format!("CLOSE: #{id} | why: the user settled on D"));
+    w.advance(1000);
+    w.settle();
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "working", "it may have code: not closed");
+    assert!(sent_to(&w, &d).iter().any(|t| t.contains(&format!("Desk item #{id} not closed: Cue doesn't know which commit"))), "{:?}", sent_to(&w, &d));
+    no_code(&w, &id);
+    ends(&w, &d, &format!("CLOSE: #{id} | why: the user settled on D"));
+    w.advance(1000);
+    w.settle();
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!((it["state"].as_str(), it["tree"].is_null()), (Some("done"), true), "{it}");
+    let s = steps(&w, &project, &id);
+    assert!(s.iter().any(|x| x["text"] == format!("Closed #{id}: no code to land") && x["act"] == "close"), "{s:?}");
+    assert!(sent_to(&w, &h).iter().any(|t| t.contains(&format!("Desk item #{id} is closed"))), "its holder stops");
+}
+
+/// Item `id`'s "done when" made one that rules out code, as the lead writes it for mocks.
+fn no_code(w: &World, id: &str) {
+    w.hub().write(|st| st.desk.item_mut(id).unwrap().done_when = "mock D on the canvas; no code".into());
+}
