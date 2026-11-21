@@ -19,7 +19,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | Lock acquisitions | 276 |
 | Lock-graph edges | 53 |
 | Spawn sites | 89 |
-| External calls: fs / db / process / notify / login / socket | 495 / 231 / 58 / 4 / 1 / 4 |
+| External calls: fs / db / process / notify / login / socket | 497 / 231 / 58 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -488,7 +488,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (495)
+### fs (497)
 
 | In | Call | Times |
 |---|---|---|
@@ -548,6 +548,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `desk/hub/landing/land_keep.rs::merge` | write | 3 |
 | `desk/hub/landing/main_line.rs::in_progress` | Path::exists | 1 |
 | `desk/hub/landing/main_line.rs::same_dir` | canonicalize | 2 |
+| `desk/hub/landing/named_copy.rs::cue_of_addon` | canonicalize | 2 |
 | `desk/hub/landing/named_copy.rs::in_app` | canonicalize | 2 |
 | `desk/hub/landing/named_copy.rs::prepare_named` | Path::exists | 1 |
 | `desk/hub/landing/named_copy.rs::prepare_named` | create_dir_all | 1 |

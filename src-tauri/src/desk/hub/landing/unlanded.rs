@@ -177,7 +177,7 @@ pub(crate) fn unlanded_words(n: usize) -> String {
 
 impl Hub {
     /// The main checkouts item `it` worked in on this Mac: where it landed, its commits', its copy's and its holder's.
-    fn item_repos(&self, it: &DeskItem) -> Vec<String> {
+    pub(crate) fn item_repos(&self, it: &DeskItem) -> Vec<String> {
         let holder = self.read(|st| it.holder.as_ref().and_then(|h| st.sessions.get(h.to())).filter(|s| s.origin.machine.is_empty()).map(|s| s.origin.cwd.clone()));
         let folders = it.finish.iter().map(|f| f.repo.clone()).chain(it.commit_in.iter().map(|(f, _)| f.clone())).chain(it.tree.iter().map(|t| t.repo.clone())).chain(holder);
         let mut out: Vec<String> = Vec::new();

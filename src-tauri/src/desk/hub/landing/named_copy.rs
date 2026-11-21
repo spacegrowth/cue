@@ -10,25 +10,32 @@
 //! own, so its Files changed show it as any other item's.
 //!
 //! In a repository named by its folder nothing goes to a main line, and neither its project's check nor its words are
-//! run on it. In the add-on's (#565) it lands as Cue's own items do: its branch merged into the add-on's main line
+//! run on it. In the add-on's (#565), however the lead named it, it lands as Cue's own items do: its branch merged into the add-on's main line
 //! (its words checked, a clash back to its holder with its copy kept), then the Cue it's built into installed with
 //! it in the next install, and to check once the running Cue has that add-on commit. Work that changed nothing
 //! the app builds from the add-on (mocks beside it, say) goes to check with no install.
+//!
+//! How #582's work was left off the add-on's main line: its copy was made by a Cue from before #565, which didn't
+//! note whose add-on it was, so its DONE only committed on its branch and removed the copy. Sent back from there, it
+//! got a copy of Cue (none of the add-on's any more), and each DONE after landed that empty copy while its add-on
+//! commit stayed on desk/582: "1 change not landed yet". Now whose add-on a copy is is looked up again as it lands
+//! when it wasn't noted, and an item's work left on the add-on's branches (its own, or holding a commit of its) is
+//! merged into the add-on's main line at its DONE, wherever it works now (`land_addon_left`).
 
 use crate::desk::hub::core::desk::{secs, Effects};
 use crate::desk::hub::landing::git::{git, git_said};
-use crate::desk::hub::landing::main_line::{main_checkout, merge_ref};
+use crate::desk::hub::landing::main_line::{main_checkout, merge_ref, same_dir};
 use crate::desk::hub::landing::tree_files::{exclude_trees, remove, rev, snapshot};
 use crate::desk::hub::prelude::*;
 use crate::desk::hub::turn::route::{decide, By};
-use crate::desk::{CopyOn, ItemTree};
+use crate::desk::{CopyOn, DeskItem, ItemTree};
 
 /// The main checkout `said` names: "add-on" is the repository Cue's add-on link (`src-tauri/ext`, in the folder of
 /// `from` or one above it) points into; anything else is a repository's main checkout as its folder. With it, for
-/// the add-on, the main checkout of the Cue it's built into ("" for any other).
+/// the add-on (said either way), the main checkout of the Cue it's built into ("" for any other).
 pub(crate) fn repo_named(said: &str, from: &str) -> Result<(String, String), String> {
     let top_of = |dir: &std::path::Path| dir.ancestors().find(|a| a.join(".git").exists()).map(|a| a.to_path_buf());
-    let mut cue = String::new();
+    let cue;
     let dir = if said.eq_ignore_ascii_case("add-on") || said.eq_ignore_ascii_case("addon") {
         let link = std::path::Path::new(from).ancestors().map(|a| a.join("src-tauri/ext")).find(|l| l.exists()).ok_or("Cue has no add-on here (no src-tauri/ext in the Desk's folder)")?;
         let real = std::fs::canonicalize(&link).map_err(|e| format!("Cue can't read the add-on's link: {e}"))?;
@@ -40,7 +47,10 @@ pub(crate) fn repo_named(said: &str, from: &str) -> Result<(String, String), Str
         if !p.is_absolute() {
             return Err(format!("\"{said}\" isn't a folder: say in: add-on, or the repository's full path"));
         }
-        top_of(p).ok_or_else(|| format!("{said} isn't in a git repository"))?
+        let top = top_of(p).ok_or_else(|| format!("{said} isn't in a git repository"))?;
+        // The add-on's repository named by its folder: the add-on all the same.
+        cue = cue_of_addon(&top.to_string_lossy(), &[from.to_string()]);
+        top
     };
     // A worktree's `.git` is a file: its main checkout is the one copies are made from.
     if !dir.join(".git").is_dir() {
@@ -146,6 +156,40 @@ fn in_app(cue: &str, main: &str, before: &str, head: &str) -> bool {
     git("", main, &[], &["diff", "--name-only", before, head, "--", &sub]).is_none_or(|out| !out.trim().is_empty())
 }
 
+/// The Cue (its main checkout) among `folders` whose add-on link (`src-tauri/ext`) points into repository `repo`; ""
+/// when none does.
+pub(crate) fn cue_of_addon(repo: &str, folders: &[String]) -> String {
+    let Ok(top) = std::fs::canonicalize(repo) else { return String::new() };
+    for f in folders.iter().filter(|f| !f.is_empty()) {
+        let Some((cue, _)) = main_checkout(f) else { continue };
+        let Ok(link) = std::fs::canonicalize(std::path::Path::new(&cue).join("src-tauri/ext")) else { continue };
+        if link.starts_with(&top) && !same_dir(&cue, repo) {
+            return cue;
+        }
+    }
+    String::new()
+}
+
+/// Item `it`'s work left off repository `repo`'s main line: its own branches' tips (but `keep`, a dropped copy's work
+/// you kept) and its commits there, each (a branch holding it, the commit).
+fn left_off(repo: &str, it: &DeskItem, keep: &[String]) -> Vec<(String, String)> {
+    let full = |r: &str| git("", repo, &[], &["rev-parse", "-q", "--verify", &format!("{r}^{{commit}}")]).map(|s| s.trim().to_string());
+    let mut out: Vec<(String, String)> = Vec::new();
+    for b in crate::desk::hub::landing::unlanded::own_branches(&it.id).into_iter().filter(|b| !keep.contains(b)) {
+        if let Some(tip) = full(&format!("refs/heads/{b}")) {
+            out.push((b, tip));
+        }
+    }
+    for (_, c) in it.commit_in.iter().filter(|(r, _)| main_checkout(r).is_some_and(|(m, _)| same_dir(&m, repo))) {
+        let Some(sha) = full(c) else { continue };
+        let on = git("", repo, &[], &["branch", "--contains", &sha, "--format=%(refname:short)"]).unwrap_or_default();
+        let branch = on.lines().map(str::trim).find(|b| !b.is_empty()).map_or_else(|| format!("desk/{}", it.id), str::to_string);
+        out.push((branch, sha));
+    }
+    out.retain(|(_, sha)| crate::desk::hub::landing::unlanded::rev_left(repo, sha) > 0);
+    out
+}
+
 /// What a holder is told of a copy on a branch the lead named.
 pub(crate) fn named_line(t: &ItemTree) -> String {
     if !t.addon_of.is_empty() {
@@ -184,7 +228,16 @@ impl Hub {
     /// copy gone and the branch kept, and the item to check with its commits. Nothing in it: as any item whose holder
     /// worked where it was.
     pub(crate) fn land_on_branch(&self, id: &str, t: &ItemTree) {
-        let title = self.read(|st| st.desk.item(id).map(|i| i.title.clone())).unwrap_or_default();
+        let Some(it) = self.read(|st| st.desk.item(id).cloned()) else { return };
+        // Made by a Cue that didn't note whose add-on it is (before #565: #582's): looked up now.
+        let looked_up;
+        let t = if t.addon_of.is_empty() {
+            looked_up = ItemTree { addon_of: self.addon_cue(&it, &t.repo), ..t.clone() };
+            &looked_up
+        } else {
+            t
+        };
+        let title = it.title;
         let made = match commit_on_branch(t, &format!("{title} (#{id})")) {
             Ok(m) => m,
             Err(e) => {
@@ -214,7 +267,7 @@ impl Hub {
             if let Some(m) = merge {
                 self.finish_fin(id, |f| f.merges.push(m));
             }
-            self.install_addon(id, t, &before);
+            self.install_addon(id, &t.addon_of, &t.repo, &before);
             return;
         }
         if made.is_empty() {
@@ -231,7 +284,7 @@ impl Hub {
     /// merged into Cue's. Some: the main line's tip before, and the merge (main checkout, merge commit) when one was
     /// made. None: stopped, said where (a clash goes back to its holder, its copy kept to settle it in).
     fn merge_addon(&self, id: &str, t: &ItemTree, title: &str) -> Option<(String, Option<(String, String)>)> {
-        let project = self.read(|st| st.desk.item(id).map(|i| i.project.clone())).unwrap_or_default();
+        let project = self.read(|st| st.desk.item(id).map(|i| st.desk.project_of(&i.project).to_string())).unwrap_or_default();
         let Some((main, _)) = main_checkout(&t.repo).filter(|(_, b)| !b.is_empty()) else {
             self.finish_ask(id, "conflict", "Not merged: the add-on's main checkout isn't on a branch", "");
             return None;
@@ -255,12 +308,12 @@ impl Hub {
         }
     }
 
-    /// Item `id`'s work on the add-on's main line (since `before`): the Cue it's built into (`t.addon_of`) queued for
-    /// the next install, as Cue's own items are, the add-on's main line's tip what it has to have. Nothing the app
+    /// Item `id`'s work on the main line of the add-on (`repo`) since `before`: the Cue it's built into (`cue`) queued
+    /// for the next install, as Cue's own items are, the add-on's main line's tip what it has to have. Nothing the app
     /// builds from the add-on changed: to check with no install.
-    fn install_addon(&self, id: &str, t: &ItemTree, before: &str) {
-        let cue = t.addon_of.clone();
-        let Some((main, _)) = main_checkout(&t.repo) else { return self.finish_after(id, &[]) };
+    fn install_addon(&self, id: &str, cue: &str, repo: &str, before: &str) {
+        let cue = cue.to_string();
+        let Some((main, _)) = main_checkout(repo) else { return self.finish_checked(id) };
         let head = rev(&main, "HEAD").unwrap_or_default();
         let project = self.read(|st| st.desk.item(id).map(|i| i.project.clone())).unwrap_or_default();
         let installs = crate::desk::hub::lead::checks::builds_this_cue(&cue) && crate::desk::lands::lands_of(&project, &cue).after == "install";
@@ -283,6 +336,58 @@ impl Hub {
         self.later(crate::desk::hub::landing::finish::INSTALL_EVERY_MS, |h| h.desk_finish_tick());
     }
 
+    /// The Cue whose add-on repository `repo` is, for item `it`: its Desk's folder's, or one its work is in ("" for none).
+    pub(crate) fn addon_cue(&self, it: &DeskItem, repo: &str) -> String {
+        let mut folders: Vec<String> = self.desk_folder(&it.project).into_iter().collect();
+        folders.extend(self.item_repos(it));
+        cue_of_addon(repo, &folders)
+    }
+
+    /// Item `id`, landed on Cue's main line or with nothing there: its work left on the add-on's branches (#582's)
+    /// merged into the add-on's main line now, and Cue queued to install with it. True when that's what happens to it
+    /// (or it stopped on a clash or a question); false when it has no such work.
+    pub(crate) fn land_addon_left(&self, id: &str) -> bool {
+        let Some(it) = self.read(|st| st.desk.item(id).cloned()) else { return false };
+        let keep: Vec<String> = self.read(|st| st.desk.kept.iter().filter(|k| k.id == id).map(|k| k.branch.clone()).collect());
+        let project = self.read(|st| st.desk.project_of(&it.project).to_string());
+        for repo in self.item_repos(&it) {
+            let cue = self.addon_cue(&it, &repo);
+            if cue.is_empty() || crate::desk::lands::lands_of(&it.project, &repo).how == "pr" {
+                continue;
+            }
+            let left = left_off(&repo, &it, &keep);
+            if left.is_empty() {
+                continue;
+            }
+            if main_checkout(&repo).is_none_or(|(_, b)| b.is_empty()) {
+                self.finish_ask(id, "conflict", "Not merged: the add-on's main checkout isn't on a branch", "");
+                return true;
+            }
+            let before = rev(&repo, "HEAD").unwrap_or_default();
+            for (branch, sha) in left {
+                match merge_ref(&project, &repo, &branch, &sha, &format!("{} (#{id})", it.title)) {
+                    Ok(Some(m)) => {
+                        if let Some(head) = rev(&m, "HEAD") {
+                            self.finish_fin(id, |f| f.merges.push((m, head)));
+                        }
+                    }
+                    Ok(None) => {}
+                    Err(("clash", question)) => {
+                        self.finish_clash(&it, &question);
+                        return true;
+                    }
+                    Err((step, question)) => {
+                        self.finish_ask(id, step, &question, "");
+                        return true;
+                    }
+                }
+            }
+            self.install_addon(id, &cue, &repo, &before);
+            return true;
+        }
+        false
+    }
+
     /// A dropped item's copy on a branch the lead named: what's in it committed on that branch (it's kept there), the
     /// copy removed.
     pub(crate) fn desk_named_dropped(&self, id: &str, title: &str, t: &ItemTree) {
@@ -291,5 +396,26 @@ impl Hub {
             return;
         }
         remove(t);
+    }
+}
+
+#[cfg(test)]
+impl Hub {
+    /// Item `id`'s copy as a Cue from before #565 made it: whose add-on it is not noted.
+    pub(crate) fn desk_copy_unnoted(&self, id: &str) {
+        self.write(|st| {
+            if let Some(t) = st.desk.item_mut(id).and_then(|i| i.tree.as_mut()) {
+                t.addon_of.clear();
+            }
+        });
+    }
+
+    /// Item `id` with commit `short` of `repo` as its own, as a DONE that committed it there saved it.
+    pub(crate) fn desk_add_commit_in(&self, id: &str, repo: &str, short: &str) {
+        self.write(|st| {
+            if let Some(i) = st.desk.item_mut(id) {
+                i.commit_in.push((repo.to_string(), short.to_string()));
+            }
+        });
     }
 }

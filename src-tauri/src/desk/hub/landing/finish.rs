@@ -377,7 +377,11 @@ impl Hub {
 
     /// Item `id`, its work on the main line in `tops`: queued for an install when one of them is this Cue's source,
     /// else to check.
+    /// Its work left on the add-on's branches (#582's) is merged into the add-on's main line first, Cue installed with it.
     pub(crate) fn finish_after(&self, id: &str, tops: &[String]) {
+        if self.land_addon_left(id) {
+            return;
+        }
         let now = now_ms();
         // Nothing new this round (its fix after a failed install was already committed): the main line it went to
         // before, so it's installed all the same.
