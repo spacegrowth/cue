@@ -65,9 +65,9 @@ fn a_new_project_shows_the_defaults_and_what_cant_be_picked_yet_says_so() {
     assert_eq!(l["set"], json!({ "where": "copy", "how": "squash", "check": "none", "after": "nothing", "push": "ask", "at_once": 3, "check_steps": [], "after_steps": [] }), "{l}");
     assert_eq!(l["summary"], "own copy, not checked, one commit per item");
     let choice = |part: &str, key: &str| l["parts"].as_array().unwrap().iter().find(|p| p["key"] == part).unwrap()["choices"].as_array().unwrap().iter().find(|c| c["key"] == key).cloned().unwrap();
-    for (part, key) in [("where", "branch"), ("how", "merge")] {
-        assert_eq!((choice(part, key)["ok"].as_bool(), choice(part, key)["why"].as_str()), (Some(false), Some("not yet")), "{part} {key}");
-    }
+    assert_eq!((choice("how", "merge")["ok"].as_bool(), choice("how", "merge")["why"].as_str()), (Some(false), Some("not yet")));
+    assert_eq!(choice("where", "branch")["ok"], true, "a branch can be picked in a repository");
+    assert!(choice("where", "branch")["hint"].as_str().is_some_and(|h| h.contains("one item at a time")), "{}", choice("where", "branch"));
     assert_eq!(choice("check", "cue")["why"], "only for Cue's own project");
     for (part, key) in [("how", "pr"), ("push", "after"), ("push", "never"), ("check", "command"), ("after", "command")] {
         assert_eq!(choice(part, key)["ok"], true, "{part} {key} can be picked");

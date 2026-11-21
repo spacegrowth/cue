@@ -471,10 +471,30 @@ fn staged_diff_with(machine: &str, folder: &str, paths: &[String], parts: &[&Par
     out.ok_or_else(|| format!("Not committed: git couldn't read the changes in {name}"))
 }
 
+/// Err while `folder` (here) is the project's own folder on another item's own branch ("A branch",
+/// desk/hub/landing/in_place.rs): a commit there would go onto that item's branch, not the main line. Nothing is
+/// committed; it's tried again once that item has landed or been dropped.
+pub(crate) fn not_on_item_branch(machine: &str, folder: &str, name: &str) -> Result<(), String> {
+    if !machine.is_empty() {
+        return Ok(());
+    }
+    let Some((top, _)) = crate::desk::hub::landing::main_line::main_checkout(folder) else { return Ok(()) };
+    // Only in the main checkout itself: another worktree of the repository is on a branch of its own.
+    let here = git("", folder, &[], &["rev-parse", "--show-toplevel"]).map(|t| t.trim().to_string()).unwrap_or_default();
+    if !crate::desk::hub::landing::main_line::same_dir(&here, &top) {
+        return Ok(());
+    }
+    match crate::desk::hub::landing::in_place::on_item_branch(&top) {
+        Some((b, _)) => Err(format!("Not committed: {name} is on {b}, another Desk item's own branch, till that item lands or is dropped; say DONE again then")),
+        None => Ok(()),
+    }
+}
+
 /// `paths` (relative to `folder`) committed on the branch `folder` is on, and only they: `git commit --only`, so
 /// whatever else is staged stays staged and out of it. The commit, short.
 fn commit_only(machine: &str, folder: &str, paths: &[String], message: &str) -> Result<String, String> {
     let name = crate::model::folder_of(folder);
+    not_on_item_branch(machine, folder, &name)?;
     let p: Vec<&str> = paths.iter().map(String::as_str).collect();
     // Added: the ones in the index or new in the folder. A file already taken out with `git rm` is in neither, and
     // `git add` stops on it ("did not match any files"); `commit --only` takes its removal in as it is.
@@ -512,6 +532,7 @@ fn put_parts(folder: &str, git_dir: &str, env: &[(&str, &str)], parts: &[&Part])
 /// and what's not the item's stays uncommitted; your index then has those paths as committed. The commit, short.
 fn commit_parts(folder: &str, paths: &[String], parts: &[&Part], message: &str) -> Result<String, String> {
     let name = crate::model::folder_of(folder);
+    not_on_item_branch("", folder, &name)?;
     let fail = |what: &str| format!("Not committed: git couldn't {what} in {name}");
     let git_dir = git("", folder, &[], &["rev-parse", "--absolute-git-dir"]).ok_or_else(|| format!("Not committed: {name} isn't in a git repository"))?;
     let head = git("", folder, &[], &["rev-parse", "-q", "--verify", "HEAD^{commit}"]).map(|h| h.trim().to_string());

@@ -35,6 +35,15 @@ pub(crate) fn tree_line(t: &ItemTree) -> String {
     if t.keep {
         return crate::desk::hub::landing::named_copy::named_line(t);
     }
+    if t.in_place {
+        let line = crate::desk::hub::landing::main_line::main_checkout(&t.repo).map(|(_, b)| b).filter(|b| !b.is_empty()).unwrap_or_else(|| "the main line".into());
+        return format!(
+            "Work on its own branch {} in the project's own folder: {}. Cue put the folder on that branch for this item. \
+             Change files only there, make no worktree or branch of your own, don't switch branches, and don't merge \
+             or push: at your DONE, Cue lands everything on it on {line} as one commit and puts the folder back on {line}.",
+            t.branch, t.path
+        );
+    }
     format!(
         "Work in its own copy of the repository: {} (branch {}). Change files only there, never in the main checkout \
          or another folder, make no worktree or branch of your own, and don't merge or push: at your DONE, Cue lands \
@@ -69,18 +78,30 @@ impl Hub {
             return;
         }
         let wanted = self.desk_trees_wanted(fx);
-        for (id, folder, to, at_once) in wanted {
+        for (id, folder, to, at_once, in_place) in wanted {
             let Some(main) = tree_repo(&folder) else { continue };
-            let claimed = self.write(|st| claim_tree(st, &id, &main, at_once));
+            // On a branch in the folder itself: switched there holding the landing line's claim, and never while the
+            // folder is on another item's branch (one let go of that Cue couldn't put back yet). It waits for it then.
+            let (guard, busy) = if in_place {
+                match Claim::landing(self) {
+                    Ok(g) => (g, crate::desk::hub::landing::in_place::folder_busy(self, &main)),
+                    Err(()) => (None, true),
+                }
+            } else {
+                (None, false)
+            };
+            let claimed = self.write(|st| claim_tree(st, &id, &main, at_once, in_place, busy));
             self.desk_tree_back(fx, &id, &to, &claimed);
             self.desk_tree_placed(fx, &id, &to, claimed);
+            drop(guard);
         }
     }
 
-    /// (item, the holder's folder, whom its message goes to, how many of its project's items have copies at once).
-    /// A project set to the shared folder, or to commit its work yourself, gets none (desk/lands.rs). One the lead
-    /// gave a copy of another repository (COPY, #557) gets that, wherever its holder works.
-    fn desk_trees_wanted(&self, fx: &Effects) -> Vec<(String, String, String, u32)> {
+    /// (item, the holder's folder, whom its message goes to, how many of its project's items have copies at once,
+    /// whether it works on a branch in the project's own folder instead: one at a time). A project set to the shared
+    /// folder, or to commit its work yourself, gets none (desk/lands.rs). One the lead gave a copy of another
+    /// repository (COPY, #557) gets that, wherever its holder works.
+    fn desk_trees_wanted(&self, fx: &Effects) -> Vec<(String, String, String, u32, bool)> {
         // (item, its project, the folder that decides, whom its message goes to, whether the lead gave it a copy). Read
         // under the store's lock; how each project lands is read after, with it let go (the folder may need a look).
         let asked: Vec<(String, String, String, String, bool)> = self.read(|st| {
@@ -107,9 +128,13 @@ impl Hub {
             .filter_map(|(id, project, folder, to, given)| {
                 let l = crate::desk::lands::lands_of(&project, &folder);
                 if given {
-                    return Some((id, folder, to, l.at_once.max(1)));
+                    return Some((id, folder, to, l.at_once.max(1), false));
                 }
-                (l.at == "copy").then_some((id, folder, to, l.at_once))
+                match l.at {
+                    "copy" => Some((id, folder, to, l.at_once, false)),
+                    "branch" => Some((id, folder, to, 1, true)),
+                    _ => None,
+                }
             })
             .collect()
     }
@@ -160,6 +185,9 @@ impl Hub {
         // Picked up again (#608): its kept copy moves into the slot, on its own branch.
         let kept = self.read(|st| st.desk.item(id).and_then(|i| i.kept_copy.clone()));
         let made = match &kept {
+            // On a branch in the project's own folder: never a worktree moved there; its branch starts from the kept
+            // copy's work instead (in_place.rs).
+            _ if t.in_place => crate::desk::hub::landing::in_place::prepare_in_place_for(&mut t, id, kept.as_ref()),
             Some(k) => {
                 t.branch = k.branch.clone();
                 from_kept(&t, k)
@@ -169,14 +197,18 @@ impl Hub {
         match made {
             Ok((base, path)) => {
                 t.path = path;
-                self.write(|st| {
-                    if let Some(i) = st.desk.item_mut(id) {
-                        i.kept_copy = None;
-                        if let Some(it) = i.tree.as_mut() {
-                            (it.base, it.path, it.branch) = (base.clone(), t.path.clone(), t.branch.clone());
-                        }
+                let it = self.write(|st| {
+                    let i = st.desk.item_mut(id)?;
+                    i.kept_copy = None;
+                    if let Some(it) = i.tree.as_mut() {
+                        (it.base, it.path, it.branch) = (base.clone(), t.path.clone(), t.branch.clone());
                     }
+                    Some(i.clone())
                 });
+                // Its sessions kept with the folder's record, for a let-go after it's gone from the Desk (in_place.rs).
+                if let Some(it) = it.filter(|_| t.in_place) {
+                    crate::desk::hub::landing::in_place::save_owners(&t.repo, &it);
+                }
                 let mut line = tree_line(&t);
                 if kept.is_some() {
                     line.push_str(" It holds this item's work from before it was dropped: read it first (git status, git log).");
@@ -191,7 +223,20 @@ impl Hub {
                 eprintln!("cue: desk: couldn't make #{id} its own copy: {e}");
                 // One the lead asked for (COPY, #557), or its kept copy (#608): it and the holder are told, so the
                 // work isn't done elsewhere unknowingly.
-                if t.keep || kept.is_some() {
+                if t.in_place {
+                    let words = format!("Desk item #{id}: Cue couldn't put {} on its own branch {}: {e}. It works in that folder as it is, on the branch it's on, and lands as a shared folder item does.", t.repo, t.branch);
+                    // In its holder's message on it, as where its branch is would be.
+                    match fx.sends.iter_mut().find(|(s, text)| *s == to && names_item(text, id)) {
+                        Some((_, text)) => {
+                            text.push('\n');
+                            text.push_str(&words);
+                        }
+                        None => fx.sends.push((to.to_string(), words.clone())),
+                    }
+                    if let Some(lead) = self.read(|st| st.desk.item(id).and_then(|i| st.desk.lead_sid(&i.project)).map(str::to_string)) {
+                        fx.sends.push((lead, words));
+                    }
+                } else if t.keep || kept.is_some() {
                     let what = if kept.is_some() { "move its kept copy back" } else { "make its copy" };
                     let words = format!("Desk item #{id}: Cue couldn't {what} of {} on branch {}: {e}. Say where to work before changing files.", t.repo, t.branch);
                     fx.sends.push((to.to_string(), words.clone()));
@@ -224,6 +269,14 @@ impl Hub {
             return;
         }
         let Some(t) = it.tree.clone() else { return };
+        // On a branch in the project's own folder: the folder back on the main line, its work kept on the branch.
+        // Unless another session's changes are there too: then it stays, the lead told (in_place.rs).
+        if t.in_place {
+            if self.desk_in_place_let_go(&t.repo, &t.branch, Some(&it)) {
+                let _ = self.desk_trees_free(&t.repo);
+            }
+            return;
+        }
         let copies = self.read(|st| other_copies(&st.desk.items, &it.id));
         if let Some(why) = not_its_own(&copies, &t) {
             eprintln!("cue: desk: #{}'s copy record pointed at {}, left as it is: {why}", it.id, t.path);
@@ -276,17 +329,26 @@ impl Hub {
         let now = now_ms();
         // How many copies of it each project waiting for one may have at once, read before the store is taken.
         let projects: Vec<String> = self.read(|st| st.desk.items.iter().filter(|i| in_line(i) && i.tree_wait_repo == repo).map(|i| i.project.clone()).collect());
-        let at_once: HashMap<String, u32> = projects.into_iter().map(|p| { let n = crate::desk::lands::lands_of(&p, repo).at_once; (p, n) }).collect();
+        // A project set to a branch in the folder itself has one at a time, apart from the copies.
+        // Nor while the folder is still on an item's branch nobody works on (put back by the tick first).
+        let folder_off = crate::desk::hub::landing::in_place::folder_busy(self, repo);
+        let at_once: HashMap<String, (u32, bool)> = projects.into_iter().map(|p| { let l = crate::desk::lands::lands_of(&p, repo); let n = if l.at == "branch" { (1, true) } else { (l.at_once, false) }; (p, n) }).collect();
         let fx = self.write(|st| {
             let mut fx = Effects::default();
             // The oldest waiting whose own project's pool (desk/lands.rs) has room among the repository's copies.
             // A remote item's copy here (made at its DONE, only to land it) takes none of them.
-            let used = st.desk.items.iter().filter(|i| i.remote.is_none() && i.tree.as_ref().is_some_and(|t| t.repo == repo)).count() as u32;
+            let used = st.desk.items.iter().filter(|i| i.remote.is_none() && i.tree.as_ref().is_some_and(|t| t.repo == repo && !t.in_place)).count() as u32;
+            let used_in_place = st.desk.items.iter().filter(|i| i.tree.as_ref().is_some_and(|t| t.repo == repo && t.in_place)).count() as u32;
             // Never one still queued after another item (#512): that one isn't done, so it waits on, copy or not.
             let mut waiting: Vec<&DeskItem> = st.desk.items.iter().filter(|i| in_line(i) && i.tree_wait_repo == repo).collect();
             // Your order first (#387), then the one queued longest.
             waiting.sort_by_key(|i| (i.queue_order.unwrap_or(u32::MAX), i.updated));
-            let Some(id) = waiting.into_iter().find(|i| used < at_once.get(&i.project).copied().unwrap_or_else(|| crate::desk::lands::lands_known(&i.project, repo).at_once)).map(|i| i.id.clone()) else { return fx };
+            let room = |i: &DeskItem| match at_once.get(&i.project).copied() {
+                Some((n, true)) => used_in_place < n && !folder_off,
+                Some((n, false)) => used < n,
+                None => used < crate::desk::lands::lands_known(&i.project, repo).at_once,
+            };
+            let Some(id) = waiting.into_iter().find(|i| room(i)).map(|i| i.id.clone()) else { return fx };
             let rule = st.desk.item(&id).map(|i| crate::desk::hub::core::desk::rule_of(st, &i.project)).unwrap_or_default();
             let Some(it) = st.desk.item_mut(&id) else { return fx };
             // Already at work without one (started now with every copy in use, #566): told the copy is its now.
@@ -334,7 +396,7 @@ impl Hub {
             return;
         }
         let fx = Effects { items, ..Default::default() };
-        for (id, folder, _, _) in self.desk_trees_wanted(&fx) {
+        for (id, folder, ..) in self.desk_trees_wanted(&fx) {
             let Some(main) = tree_repo(&folder) else { continue };
             self.write(|st| {
                 if let Some(i) = st.desk.item_mut(&id).filter(|i| i.state == "working" && i.tree.is_none()) {
@@ -385,6 +447,10 @@ impl Hub {
             self.land_on_branch(id, &t);
             return Landed::Done;
         }
+        // In place, landed already, its folder not back on the main line yet: only that is tried again.
+        if t.in_place && !t.landed.is_empty() {
+            return self.land_in_place_back(id, &t);
+        }
         let Some((_, onto)) = main_checkout(&t.repo) else { return self.land_wait(id, "Cue can't read the main checkout") };
         if onto.is_empty() {
             return self.land_wait(id, "The main checkout isn't on a branch");
@@ -408,6 +474,13 @@ impl Hub {
         // Another Desk holds a file it changed (#540): it waits in the line, nobody asked, till the hold lifts. It's
         // brought up to the main line as it is then, as every landing is (below).
         let files = crate::desk::hold_check::changed(&t.repo, &base, &work);
+        // In the project's own folder, everything there is in its snapshot: another session's changes too. Never landed
+        // as this item's, nor taken out of the folder: it waits, saying whose and which.
+        if t.in_place {
+            if let Some(theirs) = self.desk_folder_theirs(&it, &t.repo, &files) {
+                return self.land_wait(id, &format!("{theirs} in the project's folder, not this item's work: it lands once those are committed or moved"));
+            }
+        }
         if let Some(why) = self.read(|st| crate::desk::hold_check::landing_wait(st, &it, &files)) {
             self.land_wait(id, &why);
             return Landed::Held;
@@ -439,6 +512,9 @@ impl Hub {
             // The main line moved while it was checked: brought up to it again.
             if rev(&t.repo, &onto).as_deref() != Some(main.as_str()) {
                 continue;
+            }
+            if t.in_place {
+                return self.land_in_place(id, &t, &onto, &main, &squash, &work);
             }
             return self.land_onto(id, &it, &t, &onto, &main, &squash, &message);
         }
@@ -555,6 +631,53 @@ impl Hub {
         Landed::Done
     }
 
+    /// Item `id`, on its own branch in the project's own folder, checked on the main line as it still is: the main
+    /// line moved to `squash` (only if still at `main`), then the folder put back on it, its files as it has them now,
+    /// and the branch deleted. Its files changed since they were squashed (`work`): it waits, nothing moved.
+    fn land_in_place(&self, id: &str, t: &ItemTree, onto: &str, main: &str, squash: &str, work: &str) -> Landed {
+        if !self.read(|st| still_landing(st.desk.item(id), &t.path)) {
+            return Landed::Done;
+        }
+        if let Some(what) = in_progress(&t.repo) {
+            return self.land_wait(id, &format!("The project's folder is in the middle of {what}"));
+        }
+        if snapshot(&t.path).as_deref() != Some(work) {
+            return self.land_wait(id, "Its files changed as it was landing: it's squashed again");
+        }
+        if let Err(why) = crate::desk::hub::landing::in_place::move_main(&t.repo, onto, main, squash) {
+            return self.land_wait(id, &crate::desk::hub::landing::git::because(format!("git wouldn't move {onto}"), &why));
+        }
+        // On the main line now: kept on it, so a folder that can't go back yet is all that's tried again.
+        let t = ItemTree { landed: squash.to_string(), landed_work: work.to_string(), ..t.clone() };
+        self.write(|st| {
+            if let Some(tr) = st.desk.item_mut(id).and_then(|i| i.tree.as_mut()) {
+                (tr.landed, tr.landed_work) = (t.landed.clone(), t.landed_work.clone());
+            }
+        });
+        self.land_in_place_back(id, &t)
+    }
+
+    /// Item `id`, in place, its work on the main line as `t.landed`: finished once its folder is back on the main line
+    /// (its branch gone). Till then it waits in the line, saying why, and the tick tries again.
+    fn land_in_place_back(&self, id: &str, t: &ItemTree) -> Landed {
+        let line = main_checkout(&t.repo).map(|(_, b)| b).filter(|b| !b.is_empty()).unwrap_or_else(|| "the main line".into());
+        match self.desk_in_place_back(id, t) {
+            Err(why) => return self.land_wait(id, &format!("It's on {line}, but the folder couldn't go back to {line}: {why}")),
+            // Changes its sessions made after it landed: kept on its branch, its holder and the lead told where.
+            Ok(Some(words)) => {
+                let to: Vec<String> = self.read(|st| {
+                    let it = st.desk.item(id);
+                    it.and_then(|i| i.holder.as_ref()).map(|h| h.to().to_string()).into_iter().chain(it.and_then(|i| st.desk.lead_sid(&i.project)).map(str::to_string)).collect()
+                });
+                self.desk_done(Effects { sends: to.into_iter().map(|s| (s, words.clone())).collect(), ..Default::default() });
+            }
+            Ok(None) => {}
+        }
+        let short = git("", &t.repo, &[], &["rev-parse", "--short", &t.landed]).map(|s| s.trim().to_string()).unwrap_or_default();
+        self.finish_landed(id, t, &short);
+        Landed::Done
+    }
+
     /// Item `id` waits in the landing line on `why` (said on it; nobody asked).
     fn land_wait(&self, id: &str, why: &str) -> Landed {
         let same = self.read(|st| st.desk.item(id).and_then(|i| i.finish.as_ref()).is_some_and(|f| f.step == "line" && f.wait == why));
@@ -576,7 +699,7 @@ impl Hub {
         let made = vec![(t.repo.clone(), short.to_string())];
         self.save_made(id, &made);
         // Its helpers' copies whose work is on the main line now go too; any other is moved out of its copy (#376).
-        self.desk_clear_helpers(id, &t.repo, Some(&t.path));
+        self.desk_clear_helpers(id, &t.repo, (!t.in_place).then_some(t.path.as_str()));
         remove(t);
         self.write(|st| {
             if let Some(i) = st.desk.item_mut(id) {
@@ -660,8 +783,11 @@ fn words_now(st: &mut Store, fx: &mut Effects, id: &str, to: &str) -> Vec<String
 
 /// Item `id`'s copy of `main`, in a slot free of the `at_once` its project allows: Some(Some) claimed, Some(None) none
 /// free (it's queued for one), None nothing to claim (not at work, has one, or started by the lead to go without).
-fn claim_tree(st: &mut Store, id: &str, main: &str, at_once: u32) -> Option<Option<ItemTree>> {
-    let used: Vec<u32> = st.desk.items.iter().filter_map(|i| i.tree.as_ref()).filter(|t| t.repo == main).map(|t| t.slot).collect();
+/// `in_place`: on a branch in `main` itself, one item at a time (slot 0, apart from the copies' slots).
+/// `busy`: the folder can't take it now (on an item's branch, or a landing under way): it waits as for a copy.
+fn claim_tree(st: &mut Store, id: &str, main: &str, at_once: u32, in_place: bool, busy: bool) -> Option<Option<ItemTree>> {
+    let used: Vec<u32> = st.desk.items.iter().filter_map(|i| i.tree.as_ref()).filter(|t| t.repo == main && !t.in_place).map(|t| t.slot).collect();
+    let folder_taken = busy || st.desk.items.iter().any(|i| i.id != id && i.tree.as_ref().is_some_and(|t| t.repo == main && t.in_place));
     // Its copy taken back earlier (TAKE COPY, #347) is kept on its branch: this one's is another.
     let again = if st.desk.kept.iter().any(|k| k.id == id) { "-again" } else { "" };
     let it = st.desk.item_mut(id).filter(|i| i.state == "working" && i.tree.is_none())?;
@@ -670,9 +796,12 @@ fn claim_tree(st: &mut Store, id: &str, main: &str, at_once: u32) -> Option<Opti
         Some(c) => (c.branch.clone(), true, c.cue.clone()),
         None => (format!("desk/{id}{again}"), false, String::new()),
     };
-    match (1..=at_once).find(|n| !used.contains(n)) {
+    let free = if in_place && !keep { (!folder_taken).then_some(0) } else { (1..=at_once).find(|n| !used.contains(n)) };
+    match free {
         Some(n) => {
-            let t = ItemTree { repo: main.to_string(), path: format!("{main}/{TREES}/desk-{n}"), branch, base: String::new(), slot: n, keep, addon_of };
+            let in_place = in_place && !keep;
+            let (path, branch) = if in_place { (main.to_string(), format!("desk/{id}")) } else { (format!("{main}/{TREES}/desk-{n}"), branch) };
+            let t = ItemTree { repo: main.to_string(), path, branch, base: String::new(), slot: n, keep, addon_of, in_place, landed: String::new(), landed_work: String::new() };
             it.tree = Some(t.clone());
             // Started another way (Start it now, or freed by its `after`) while it waited for a copy: that wait is over.
             it.tree_wait = false;
@@ -681,7 +810,8 @@ fn claim_tree(st: &mut Store, id: &str, main: &str, at_once: u32) -> Option<Opti
         }
         // Started now by the lead (START): it works where its holder is, message and all, in line for the next free
         // copy all the same (#566).
-        None if it.no_copy_wait => {
+        // Not on a branch in the folder itself: that would put it in another item's files. It waits for the folder.
+        None if it.no_copy_wait && !(in_place && !keep) => {
             (it.tree_wait, it.tree_wait_repo) = (true, main.to_string());
             None
         }
@@ -698,7 +828,7 @@ impl Hub {
     pub(crate) fn desk_hold_copies(&self, repo: &str, slots: &[u32]) {
         self.write(|st| {
             for n in slots {
-                let tree = ItemTree { repo: repo.to_string(), path: format!("{repo}/{TREES}/held-{n}"), branch: format!("held/{n}"), base: String::new(), slot: *n, keep: false, addon_of: String::new() };
+                let tree = ItemTree { repo: repo.to_string(), path: format!("{repo}/{TREES}/held-{n}"), branch: format!("held/{n}"), base: String::new(), slot: *n, keep: false, addon_of: String::new(), in_place: false, landed: String::new(), landed_work: String::new() };
                 st.desk.items.push(DeskItem { id: format!("held{n}"), project: "elsewhere".into(), state: "working".into(), tree: Some(tree), ..Default::default() });
             }
         });

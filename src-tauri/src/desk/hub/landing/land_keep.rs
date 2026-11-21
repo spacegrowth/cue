@@ -16,7 +16,12 @@ struct Kept {
 
 /// Move the branch checked out in `repo` from `main` to `squash` (a fast-forward), keeping the checkout's edits.
 /// Err: why it can't yet (git's own words, or which file clashes); nothing was changed then.
+/// While an item works on its own branch in `repo` (desk/hub/landing/in_place.rs), the main line isn't checked out
+/// there: only its ref moves, compare-and-swap, and no file is touched.
 pub(crate) fn fast_forward_keeping_edits(repo: &str, main: &str, squash: &str) -> Result<(), String> {
+    if let Some((_, line)) = crate::desk::hub::landing::in_place::on_item_branch(repo) {
+        return crate::desk::hub::landing::in_place::move_main(repo, &line, main, squash);
+    }
     let filters = safe_git::no_repo_filters("", repo);
     let mut extra = filters.clone();
     extra.push("--literal-pathspecs".into());

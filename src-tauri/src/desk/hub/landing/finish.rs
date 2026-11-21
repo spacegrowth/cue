@@ -43,12 +43,39 @@ impl<'a> Claim<'a> {
     /// The claim, unless a run of `key` holds it now.
     pub(crate) fn take(hub: &'a Hub, key: &str) -> Option<Self> {
         let claimed = hub.write(|st| st.desk.run.finish_claims.insert(key.to_string()));
+        if claimed && key == "landing" {
+            LANDING_HERE.with(|n| n.set(n.get() + 1));
+        }
         claimed.then(|| Claim { hub, key: key.to_string() })
     }
+
+    /// The landing line's claim for work that mustn't run beside a landing (an item's folder switched onto its branch
+    /// or back, desk/hub/landing/in_place.rs): Ok(None) when this thread holds it already (a landing that goes on to
+    /// start the next item), Err when another run holds it after a short wait (tried again later).
+    pub(crate) fn landing(hub: &'a Hub) -> Result<Option<Self>, ()> {
+        if LANDING_HERE.with(|n| n.get() > 0) {
+            return Ok(None);
+        }
+        for _ in 0..10 {
+            if let Some(c) = Claim::take(hub, "landing") {
+                return Ok(Some(c));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        Err(())
+    }
+}
+
+thread_local! {
+    /// How many landing claims this thread holds.
+    static LANDING_HERE: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
 
 impl Drop for Claim<'_> {
     fn drop(&mut self) {
+        if self.key == "landing" {
+            LANDING_HERE.with(|n| n.set(n.get().saturating_sub(1)));
+        }
         let key = std::mem::take(&mut self.key);
         self.hub.write(|st| st.desk.run.finish_claims.remove(&key));
     }
@@ -342,7 +369,8 @@ impl Hub {
             };
             match tried {
                 Ok(Some(main)) => {
-                    if let Some(sha) = git("", &main, &[], &["rev-parse", "HEAD"]).map(|h| h.trim().to_string()) {
+                    // Its main line's tip, not the folder's HEAD (on another item's branch there, in_place.rs).
+                    if let Some(sha) = crate::desk::hub::landing::in_place::main_head(&main) {
                         let m = main.clone();
                         self.finish_fin(&it.id, |f| f.merges.push((m, sha)));
                     }
@@ -391,7 +419,9 @@ impl Hub {
         let project = self.read(|st| st.desk.item(id).map(|i| i.project.clone())).unwrap_or_default();
         let cue = tops.iter().find(|t| crate::desk::hub::lead::checks::builds_this_cue(t) && crate::desk::lands::lands_of(&project, t).after == "install");
         let top = cue.or(tops.first()).cloned().unwrap_or_default();
-        let head = if top.is_empty() { String::new() } else { git("", &top, &[], &["rev-parse", "HEAD"]).map(|h| h.trim().to_string()).unwrap_or_default() };
+        // The main line's tip: the folder's HEAD, or, while another item works on its own branch there, the main line it
+        // came from (desk/hub/landing/in_place.rs).
+        let head = if top.is_empty() { String::new() } else { crate::desk::hub::landing::in_place::main_head(&top).unwrap_or_default() };
         // Not on main yet (the main checkout is on another branch, or a worktree's work wasn't merged): it waits
         // there, saying where, and goes on once it is (the tick looks again). Never to check, nor served, before.
         if !top.is_empty() {
@@ -403,13 +433,21 @@ impl Hub {
         if self.sent_back_off_main(id) {
             return;
         }
+        // Its steps after landing, and the window's files, run in the project's folder: never on another item's half-done
+        // files while that item works on its own branch there. It waits, saying so, till the folder is back.
+        if !top.is_empty() && (cue.is_some() || crate::desk::lands::lands_of(&project, &top).after == "command") {
+            if let Some((b, line)) = crate::desk::hub::landing::in_place::on_item_branch(&top) {
+                let why = format!("it's on {line}; its steps after landing wait till the project's folder is back on {line} (it's on {b}, another item's own branch, now)");
+                return self.finish_wait_folder(id, &top, &head, why);
+            }
+        }
         // On main: pushed now when its project pushes after each landing (desk/hub/landing/pr.rs).
         if !top.is_empty() {
             self.desk_push_after(id, &project, &top);
         }
         // After landing, your own steps (desk/lands.rs): in order in the project's main folder, each stopped past its cap;
         // the first that fails stops the rest, and the item waits for you, saying which. No lock is held here.
-        if cue.is_none() && !top.is_empty() && self.finish_after_steps(id, &project, &top) {
+        if cue.is_none() && !top.is_empty() && self.finish_after_steps(id, &project, &top, &head) {
             return;
         }
         if self.finish_in_place(id, &top, &head, cue.is_some()) {
@@ -440,10 +478,29 @@ impl Hub {
     }
 
     /// After landing, item `id`'s project's own steps in `top`: true when one failed (it waits for you, saying which).
-    fn finish_after_steps(&self, id: &str, project: &str, top: &str) -> bool {
+    /// Never while an item's branch is put in that folder ("A branch", in_place.rs): placing one waits while they run.
+    fn finish_after_steps(&self, id: &str, project: &str, top: &str, head: &str) -> bool {
         let l = crate::desk::lands::lands_of(project, top);
         if l.after == "command" {
-            if let Err(e) = crate::desk::lands::run_steps(top, &l.after_steps) {
+            // Beside no placement: checked holding the landing line's claim, and marked running before it's let go.
+            let Ok(guard) = Claim::landing(self) else {
+                self.finish_wait_folder(id, top, head, "it's on main; its steps after landing wait for a landing under way in the project's folder".into());
+                return true;
+            };
+            if let Some((b, line)) = crate::desk::hub::landing::in_place::on_item_branch(top) {
+                let why = format!("it's on {line}; its steps after landing wait till the project's folder is back on {line} (it's on {b}, another item's own branch, now)");
+                self.finish_wait_folder(id, top, head, why);
+                return true;
+            }
+            let running = Claim::take(self, &crate::desk::hub::landing::in_place::steps_key(top));
+            drop(guard);
+            let ran = crate::desk::lands::run_steps(top, &l.after_steps);
+            if running.is_some() {
+                drop(running);
+                // An item waiting for the folder may take it now.
+                let _ = self.desk_trees_free(top);
+            }
+            if let Err(e) = ran {
                 self.finish_ask(id, "after_failed", &format!("It landed, but after landing \"{}\" {}", e.step, e.why), &e.said);
                 return true;
             }
@@ -533,6 +590,24 @@ impl Hub {
         }
     }
 
+    /// Item `id`, on main at `top` (`head`), waits for the project's folder (`why`): never asked of you, it goes on by
+    /// itself once the folder is back (the tick looks again, as for "landing").
+    fn finish_wait_folder(&self, id: &str, top: &str, head: &str, why: String) {
+        let now = now_ms();
+        let same = self.read(|st| st.desk.item(id).and_then(|i| i.finish.as_ref()).is_some_and(|f| f.step == "landing" && f.wait == why && f.commit == head));
+        if same {
+            return;
+        }
+        self.finish_set(id, |i| {
+            if let Some(f) = i.finish.as_mut() {
+                if f.step != "landing" {
+                    (f.at, f.wait_from) = (now, now);
+                }
+                (f.step, f.repo, f.commit, f.wait) = ("landing".into(), top.into(), head.into(), why);
+            }
+        });
+    }
+
     /// Whether `head` of `repo` is in the running Cue without an install: what changed since the commit it was built
     /// from is only the window's files (then served from `head`, and the window told to reload: "ui-reload") or
     /// nothing it shows. Not while an install is under way or queued: the main line then has more than the window's
@@ -583,6 +658,8 @@ impl Hub {
         self.finish_tick();
         // Pull requests open for review: read once a minute (desk/hub/landing/pr.rs).
         self.desk_pr_tick();
+        // Folders left on an item's branch with nobody at work on it put back first, so one waiting may start there.
+        self.desk_in_place_tick();
         self.desk_trees_catch_up();
         self.desk_old_copies_tick();
         self.taken_out_tick();

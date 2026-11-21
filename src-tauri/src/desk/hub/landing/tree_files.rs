@@ -41,6 +41,9 @@ pub(crate) fn prepare(t: &ItemTree, id: &str) -> Result<(String, String), String
     if t.keep {
         return crate::desk::hub::landing::named_copy::prepare_named(t, id);
     }
+    if t.in_place {
+        return crate::desk::hub::landing::in_place::prepare_in_place(t);
+    }
     let (_, onto) = main_checkout(&t.repo).ok_or("no main checkout")?;
     let base = rev(&t.repo, &onto).ok_or("no main line")?;
     exclude_trees(&t.repo);
@@ -253,7 +256,15 @@ pub(crate) fn take_away(repo: &str, path: &str) {
 }
 
 /// Copy `t` and its branch removed (a branch the lead named, `keep`, stays: it's where the work is, #557).
+/// The project's own folder (an item on a branch there, or a record pointing at it) is never removed: it's switched
+/// back onto its main line, the item's work kept on its branch when there's any.
 pub(crate) fn remove(t: &ItemTree) {
+    if t.in_place || same_dir(&t.path, &t.repo) {
+        if t.in_place {
+                let _ = crate::desk::hub::landing::in_place::leave(t, false, None);
+        }
+        return;
+    }
     unlink_shared(&t.path);
     take_away(&t.repo, &t.path);
     if !t.branch.is_empty() && !t.keep {

@@ -1,7 +1,6 @@
 //! A finishing item's install (split from desk/hub/landing/finish.rs): the app's installer, the tick that follows installs and
 //! starts the next once it's due, Install now, a stopped install sent back to its holder, and Run again.
 
-use crate::desk::hub::landing::git::git;
 use crate::desk::hub::landing::finish::*;
 use crate::desk::hub::prelude::*;
 use crate::desk::{DeskItem, Finish, InstallStatus, Installer};
@@ -266,7 +265,9 @@ impl Hub {
                 return;
             }
         }
-        let Some(head) = git("", &repo, &[], &["rev-parse", "HEAD"]).map(|h| h.trim().to_string()) else {
+        // The main line's tip, not the folder's HEAD: an item may work on its own branch there (in_place.rs). Built from
+        // a clean copy at that commit, so the folder's files don't matter.
+        let Some(head) = crate::desk::hub::landing::in_place::main_head(&repo) else {
             // Said Install now: it says why nothing started, rather than nothing happening (#641).
             if now_said {
                 for it in batch {

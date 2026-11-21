@@ -32,12 +32,15 @@ pub(crate) fn on_main(top: &str, sha: &str, main: &str) -> bool {
     !marks.is_empty() && marks.iter().all(|l| l.starts_with('-'))
 }
 
-/// `folder`'s repository's main checkout (its first worktree) and the branch it's on ("" for a detached HEAD).
+/// `folder`'s repository's main checkout (its first worktree) and its main line: the branch it's on ("" for a
+/// detached HEAD), or, while an item works on a branch of its own there ("A branch", desk/hub/landing/in_place.rs),
+/// the main line it was switched from.
 pub(crate) fn main_checkout(folder: &str) -> Option<(String, String)> {
     let list = git("", folder, &[], &["worktree", "list", "--porcelain"])?;
     let mut lines = list.lines();
     let top = lines.next()?.strip_prefix("worktree ")?.to_string();
     let branch = lines.take_while(|l| !l.is_empty()).find_map(|l| l.strip_prefix("branch refs/heads/")).unwrap_or("").to_string();
+    let branch = crate::desk::hub::landing::in_place::main_line_of(&top, &branch).unwrap_or(branch);
     Some((top, branch))
 }
 
@@ -96,6 +99,15 @@ fn merge_into(project: &str, main: &str, onto: &str, sha: &str, branch: &str, wh
     let message = format!("Merge {branch}: {title}");
     if let Some(w) = words.iter().find(|w| message.to_lowercase().contains(&w.to_lowercase())) {
         return Err(("word", format!("Not merged: \"{w}\" is in the merge's message")));
+    }
+    // The main checkout is on an item's own branch (its files that item's): the merge is made beside it, and only
+    // the main line's ref moves.
+    if crate::desk::hub::landing::in_place::on_item_branch(&main).is_some() {
+        let old = git("", &main, &[], &["rev-parse", &format!("refs/heads/{onto}")]).map(|s| s.trim().to_string()).unwrap_or_default();
+        let made = git("", &main, &[], &["commit-tree", &tree, "-p", &old, "-p", sha, "-m", &message]).map(|c| c.trim().to_string());
+        let Some(made) = made else { return Err(("conflict", format!("Not merged: git couldn't make the merge of {branch}"))) };
+        crate::desk::hub::landing::in_place::move_main(&main, &onto, &old, &made).map_err(|why| ("conflict", crate::desk::hub::landing::git::because(format!("Not merged: git wouldn't move {onto}"), &why)))?;
+        return Ok(Some(main));
     }
     if let Some(what) = in_progress(&main) {
         return Err(("conflict", format!("Not merged: the main checkout is in the middle of {what}; finish it there first")));
@@ -229,7 +241,8 @@ impl Hub {
                 }
                 let Some(top) = of_folder.iter().find(|(f, _)| f == folder).and_then(|(_, t)| t.clone()) else { continue };
                 if !tops.iter().any(|(t, _)| *t == top) {
-                    let Some(head) = git("", &top, &[], &["rev-parse", "HEAD"]).map(|h| h.trim().to_string()) else { continue };
+                    // The main line's tip, not a commit on an item's own branch there (in_place.rs).
+                    let Some(head) = crate::desk::hub::landing::in_place::main_head(&top) else { continue };
                     tops.push((top.clone(), head));
                 }
                 if !mine.contains(&top) {

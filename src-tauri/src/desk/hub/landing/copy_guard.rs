@@ -132,9 +132,36 @@ fn makes_own(g: &GitCall) -> Option<&'static str> {
     }
 }
 
+/// Whether a git command run in `dir` moves the folder onto another branch or commit (`git switch`, `git checkout
+/// <branch>`): never for an item on its own branch in the project's own folder (desk/hub/landing/in_place.rs).
+fn switches(g: &GitCall, dir: &str) -> bool {
+    match g.verb.as_str() {
+        "switch" => true,
+        "checkout" => {
+            let Some(first) = g.args.iter().find(|a| !a.starts_with('-') || a.as_str() == "-" || a.as_str() == "--") else { return false };
+            match first.as_str() {
+                "--" => false,
+                "-" => true,
+                name => {
+                    // A path after it, or a name that's no commit: files restored, not a switch.
+                    !g.args.iter().any(|a| a == "--")
+                        && crate::desk::hub::landing::git::git("", dir, &[], &["rev-parse", "-q", "--verify", &format!("{name}^{{commit}}")]).is_some_and(|s| !s.trim().is_empty())
+                }
+            }
+        }
+        _ => false,
+    }
+}
+
 /// Why `tool` (with `input`, run in `cwd`) leaves the copies `copies` of `repo` (none: Cue gave it none), if it does.
+/// An item on its own branch in the project's own folder ("A branch") has the whole folder as its copy: it stays
+/// on that branch, and out of the copies Cue keeps in it (`.claude/worktrees`).
 fn leaves(tool: &str, input: &Value, cwd: &str, repo: &str, copies: &[ItemTree]) -> Option<String> {
+    let trees = copies.iter().find(|t| t.in_place).map(|t| format!("{}/{}", t.repo.trim_end_matches('/'), crate::desk::hub::landing::trees::TREES));
     if let Some(p) = edited_path(tool, input) {
+        if trees.as_deref().is_some_and(|d| inside(&p, d)) {
+            return Some(format!("{p} is in another copy of the project, outside it"));
+        }
         return (!copies.is_empty() && outside(&p, repo, copies)).then(|| format!("{p} is outside it"));
     }
     let command = input["command"].as_str()?;
@@ -143,6 +170,12 @@ fn leaves(tool: &str, input: &Value, cwd: &str, repo: &str, copies: &[ItemTree])
             return Some(format!("\"git {} {}\" makes {what}", g.verb, g.args.join(" ")).replace("  ", " "));
         }
         let dir = g.dir.clone().unwrap_or(at);
+        if trees.is_some() && switches(&g, &dir) {
+            return Some(format!("\"git {} {}\" would move the folder off its branch", g.verb, g.args.join(" ")).replace("  ", " "));
+        }
+        if trees.as_deref().is_some_and(|d| WRITES.contains(&g.verb.as_str()) && inside(&dir, d)) {
+            return Some(format!("\"git {}\" would run in {dir}, outside it", g.verb));
+        }
         if !copies.is_empty() && WRITES.contains(&g.verb.as_str()) && outside(&dir, repo, copies) {
             return Some(format!("\"git {}\" would run in {dir}, outside it", g.verb));
         }
@@ -170,6 +203,7 @@ impl Hub {
         let repo = copies.first().map(|t| t.repo.clone()).unwrap_or_default();
         let what = leaves(tool, input, &origin.cwd, &repo, &copies)?;
         let place = match tree {
+            Some(t) if t.in_place => format!("Desk item #{id} works only on its own branch {} in the project's own folder, {}", t.branch, t.path),
             Some(t) => format!("Desk item #{id} works only in its own copy, {} (branch {})", t.path, t.branch),
             None => format!("Desk item #{id} works where you are, on the branch that's there"),
         };

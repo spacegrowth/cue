@@ -40,7 +40,7 @@ pub const PARTS: &[Part] = &[
         choices: &[
             c("shared", "Shared folder", "Every session works in the project's own folder. The Desk commits only the item's own files.", true),
             c("copy", "Own copy", "Each item gets its own copy of the project, cut from main when it starts. Cue makes it and removes it once the item is on main.", true),
-            c("branch", "A branch", "", false),
+            c("branch", "A branch", "Each item works on its own branch in the project's own folder, one item at a time. Cue makes the branch when the item starts and removes it once the item is on main.", true),
         ],
     },
     Part {
@@ -303,7 +303,7 @@ pub fn allowed(part: &str, key: &str, place: Place) -> Result<&'static str, &'st
     }
     match (part, key, place) {
         ("check", "cue", p) | ("after", "install", p) if p != Place::Cue => Err("only for Cue's own project"),
-        ("where", "copy", Place::NoRepo) | ("how", "squash" | "pr", Place::NoRepo) => Err("needs a git repository"),
+        ("where", "copy" | "branch", Place::NoRepo) | ("how", "squash" | "pr", Place::NoRepo) => Err("needs a git repository"),
         _ => Ok(ch.key),
     }
 }
@@ -335,8 +335,9 @@ pub fn of_in(c: &Value, project: &str, place: Place) -> Lands {
     if l.how == "owner" {
         l.at = "shared";
     }
-    // A pull request: its branch is the item's own copy's, so there's none in the shared folder.
-    if l.how == "pr" && l.at == "shared" {
+    // A pull request: its branch is the item's own copy's, so there's none in the shared folder, nor on a branch
+    // there (the folder would wait on its branch till the pull request is merged).
+    if l.how == "pr" && l.at != "copy" {
         l.how = defaults(place).how;
     }
     l
@@ -597,7 +598,8 @@ mod tests {
 
     #[test]
     fn what_cant_be_picked_says_why_in_plain_words() {
-        assert_eq!(allowed("where", "branch", Place::Repo), Err(NOT_YET));
+        assert_eq!(allowed("where", "branch", Place::Repo), Ok("branch"));
+        assert_eq!(allowed("where", "branch", Place::NoRepo), Err("needs a git repository"));
         assert_eq!(allowed("how", "merge", Place::Cue), Err(NOT_YET));
         assert_eq!(allowed("how", "pr", Place::Repo), Ok("pr"));
         assert_eq!(allowed("how", "pr", Place::NoRepo), Err("needs a git repository"));
@@ -613,7 +615,13 @@ mod tests {
     fn a_saved_setting_holds_and_you_commit_means_the_shared_folder() {
         let c = json!({ "project": { "lands": { "p": { "where": "branch", "how": "owner", "check": "command", "at_once": 5, "push": "after" } } } });
         let l = of_in(&c, "p", Place::Repo);
-        assert_eq!((l.at, l.how, l.check, l.at_once, l.push), ("shared", "owner", "none", 5, "after"), "a choice not built yet, or your own steps with none, is never in effect");
+        assert_eq!((l.at, l.how, l.check, l.at_once, l.push), ("shared", "owner", "none", 5, "after"), "you commit: the shared folder; your own steps with none are never in effect");
+        let c = json!({ "project": { "lands": { "p": { "where": "branch", "how": "squash" } } } });
+        assert_eq!((of_in(&c, "p", Place::Repo).at, of_in(&c, "p", Place::NoRepo).at), ("branch", "shared"), "a branch, in a repository only");
+        let c = json!({ "project": { "lands": { "p": { "where": "branch", "how": "pr" } } } });
+        assert_eq!(of_in(&c, "p", Place::Repo).how, "squash", "a pull request needs a copy");
+        let c = json!({ "project": { "lands": { "p": { "where": "branch", "how": "merge" } } } });
+        assert_eq!(of_in(&c, "p", Place::Repo).how, "squash", "a choice not built yet is never in effect");
         let c = json!({ "project": { "lands": { "p": { "where": "shared", "how": "pr" } } } });
         assert_eq!(of_in(&c, "p", Place::Repo).how, "squash", "a pull request needs a copy");
         assert!(checked(&json!({ "p": { "where": "nowhere" } })).is_err());

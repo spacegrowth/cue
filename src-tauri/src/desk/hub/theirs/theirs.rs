@@ -203,6 +203,29 @@ impl Hub {
     }
 }
 
+impl Hub {
+    /// Of `files` (relative to `folder`), those another session (not `it`'s own) has a change in now: (path, who), who
+    /// "someone else" when Cue only guesses it.
+    pub(crate) fn others_in(&self, it: &DeskItem, folder: &str, files: &[String]) -> Vec<(String, String)> {
+        let abs = |p: &str| format!("{}/{p}", folder.trim_end_matches('/'));
+        let wanted: Vec<String> = files.iter().map(|p| abs(p)).collect();
+        let theirs = self.theirs(it, &wanted);
+        let mut out = Vec::new();
+        for p in files {
+            let who = match own_part(&theirs, folder, p) {
+                Own::Whole => continue,
+                Own::Mixed(by) if !by.is_empty() => by,
+                _ => {
+                    let a = abs(p);
+                    theirs.edits.iter().filter(|(f, _)| *f == a).max_by_key(|(_, e)| e.at).map(|(_, e)| e.who()).unwrap_or_else(|| SOMEONE.to_string())
+                }
+            };
+            out.push((p.clone(), who));
+        }
+        out
+    }
+}
+
 /// Of `path` in `folder`, the item's part: its text now with others' changes taken out, newest first. An Edit of
 /// theirs counts while its new text is in the file more often than in HEAD (else it's committed already, or undone);
 /// a change whose text isn't known counts when made since the file's last commit.

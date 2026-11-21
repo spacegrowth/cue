@@ -23,6 +23,16 @@ pub struct ItemTree {
     /// into the add-on's main line and that Cue installed with it, as Cue's own items land.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub addon_of: String,
+    /// On a branch of its own in the project's own folder ("A branch", desk/hub/landing/in_place.rs): `path` is the
+    /// main checkout itself, never removed or moved; at the end it's switched back onto the main line.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub in_place: bool,
+    /// In place: the commit its work landed as on the main line while the folder couldn't go back onto it yet, and the
+    /// folder's files as landed (a tree). It finishes once the folder is back (desk/hub/landing/trees.rs).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub landed: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub landed_work: String,
 }
 
 /// An item's work on another machine (#500, docs/desk-remote-items-plan.md).

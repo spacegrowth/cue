@@ -39,6 +39,7 @@ mod desk_own_work;
 mod desk_copy_guard;
 mod desk_copies;
 mod desk_lands;
+mod desk_branch;
 mod desk_pr;
 mod desk_land_moved;
 mod desk_moves;
