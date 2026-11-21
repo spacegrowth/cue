@@ -9,8 +9,8 @@ repository there, runs the checks it can run, and pushes its work as a branch to
 pushes main.
 
 The Desk on this Mac then fetches that branch and lands it the normal way, through the same landing line as every
-other item: caught up with main, word-checked, checked, and installed here. Before anything is pushed from this Mac,
-the check for things that must not go public still runs.
+other item: caught up with main, word-checked, checked, and installed here. The full check for things that must
+not go public runs before both pushes: the branch from the other machine, and main from this Mac.
 
 For this to work, main has to be pushed often, so the other machines start from current work. And the Desk has to
 say so when a machine goes quiet.
@@ -68,13 +68,15 @@ end, as a session does on this Mac.
 session says in its DONE which checks it ran and which it could not.
 
 **3. Its work is pushed as a branch.** Never main. The DONE line names the branch and its last commit. The plan is
-that Cue makes this push, not the session: Cue already runs git on the machine for Looks right, and it can run the
-word check there first. That keeps the rule that sessions don't push, and it keeps never-commit words off the
-shared remote. This matters most for a public project, where a pushed branch is public even if it never lands.
+that Cue makes this push, not the session. Cue already runs git on the machine for Looks right, so it can read the
+branch's changes and commit messages from there before anything leaves. For a public project a pushed branch is
+public at once, even if it never lands. So the word check alone is not enough here. The full check for things that
+must not go public runs first, the same one that runs before main is pushed from this Mac. If it finds anything,
+nothing is pushed, and the item says what was found and where. Sessions still never push.
 
 **4. The Desk fetches it.** On DONE, Cue fetches that branch into the repository on this Mac and checks that its
 last commit is the one the DONE named. If it isn't there, or it's a different commit, the item does not move on. It
-says "waiting for its branch" and asks the session to push again.
+says "waiting for its branch", and Cue tries the push again.
 
 **5. It joins the landing line.** From here nothing is special. The branch is brought up to main, word-checked,
 checked in a clean copy, and lands as one commit. Then the install runs here. The item's page shows the diff from
@@ -104,11 +106,12 @@ because only that run sees main plus the change.
 Landing moves main on this Mac. The other machines only see main once it is pushed. So:
 
 - **Push after each install.** Installs already batch landings about every half hour. One push per install keeps the
-  remote at most half an hour behind, and gives one moment for the by-hand check before the push.
+  remote at most half an hour behind, and the full check runs once per push. Until piece 2 below builds that
+  check in, it is done by hand at that moment.
 - **Push before a remote item starts.** If main here is ahead of the remote when the lead routes an item to a
   machine, the Desk says how many landings it is ahead and asks to push first.
 - **Cue's own project stays on "ask each time".** It is public, so each push still waits for your yes, with the
-  by-hand check first. A private project can use "after each landing" and never be asked.
+  full check first. A private project can use "after each landing" and never be asked.
 
 **If an item started from an old main.** Nothing breaks. The landing line brings every item up to main before it
 checks it, and a remote item is no different. If the two fit, it lands. If they clash, it goes back to the machine
@@ -130,8 +133,9 @@ the routing rules use before asking you about a stuck item.
 is gone. The clone on the machine still has the work if the machine itself is alive.
 
 **The branch was never pushed.** A DONE with no branch on the remote does not reach the landing line. The item says
-"waiting for its branch". If the session is alive it is asked to push. If the machine is gone, the work is only on
-that machine, and the item says exactly that: "its work is on the machine, not pushed".
+"waiting for its branch". If the machine answers, Cue tries the push again, and says why if it fails. If the
+machine is gone, the work is only on that machine, and the item says exactly that: "its work is on the machine,
+not pushed".
 
 **Half-pushed work.** Git moves a branch whole or not at all, so "half" means the branch is there but older than
 the work: later commits, or edits never committed. The commit named in the DONE line catches this, as in step 4.
@@ -145,7 +149,9 @@ note. Anything not pushed stays on the quiet machine. If it comes back, its sess
 
 1. **A remote DONE that lands.** Fetch the named branch, compare its last commit, and put it in the landing line in
    place of the straight jump to "to check". The lead's instructions stop saying remote work changes nothing.
-2. **Cue's push from the machine.** The word check there, then the branch pushed, at DONE and at each stop. Plus the
+2. **Cue's push from the machine.** The word check and the full check for things that must not go public, then
+   the branch pushed, at DONE and at each stop. That full check is done by hand today, so it has to be built into
+   Cue as part of this piece, and it then runs before the push of main from this Mac as well. Plus the
    "Ask me before" check added to the hooks on other machines, so a Claude or Codex session there can't push main
    unasked.
 3. **Starting a Desk session on a machine.** Per item, with a default per Desk, and the machine shown on the card.
@@ -154,8 +160,10 @@ note. Anything not pushed stays on the quiet machine. If it comes back, its sess
    question after thirty minutes.
 5. **Main pushed on time.** The ask before a remote start, and the push after each install.
 
-Still by hand after all five: the wider check before a push. Building it into the push question would be a sixth
-piece, worth doing before Cue's own project uses "after each landing".
+Piece 2 is built first. The full check covers both pushes: every branch pushed from another machine, and every
+push of main from this Mac. Until it is built into Cue, no branch is pushed from another machine, so remote items
+don't run at all, and the push of main keeps its by-hand check. Everything above about pushes at DONE and at each
+stop describes how it works once piece 2 is in place.
 
 To start small: one item at a time per clone on a machine. Several at once needs a copy per item there, not
 planned here.
@@ -163,8 +171,10 @@ planned here.
 ## Risks
 
 - **A public branch.** For a public project, anything pushed is public at once. That is why Cue pushes, after the
-  word check, and not the session. A private remote just for work branches is the safer choice if you want one.
+  full check, and not the session. A private remote just for work branches is the safer choice if you want one.
 - **Work only on the machine.** Between pushes the work lives in one place. Pushing at each stop limits the loss.
+  But if the full check finds something at a stop, that push is blocked, and the work stays only on the machine
+  until the finding is fixed.
 - **Two checks that disagree.** Passed there, failed here. The item goes back, and its page says which check failed
   where, so it doesn't read as a mystery.
 
