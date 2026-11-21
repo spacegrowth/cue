@@ -1,5 +1,6 @@
 //! The Desk lead unsticking its Desk itself (#347): lines that close an item whose work is already on main (CLOSE),
-//! take back a copy from a stuck or finished item (TAKE COPY), move an item up in the landing line (LAND FIRST) and
+//! take back a copy from a stuck or finished item (TAKE COPY), move an item up in the landing line (LAND FIRST) or
+//! to the front of the line for a free copy (COPY FIRST, #572) and
 //! start a waiting item now (START), and pause an item at work and resume it later (PAUSE, RESUME, #365), and drop one in any state (DROP, #544). Each is one of the item's Steps, shown on its Thread; what can't be done is told
 //! to the lead with why.
 
@@ -29,6 +30,7 @@ pub(crate) fn unstick(st: &mut Store, project: &str, by: &By, what: &str, id: &s
         "close" => "not closed",
         "take_copy" => "copy not taken back",
         "land_first" => "not moved up",
+        "copy_first" => "not moved up",
         "pause" => "not paused",
         "resume" => "not resumed",
         "hold" => "not parked",
@@ -45,6 +47,7 @@ pub(crate) fn unstick(st: &mut Store, project: &str, by: &By, what: &str, id: &s
         "close" => close(st, project, by, id, commit, why, fx),
         "take_copy" => take_copy(st, project, by, id, why, now, fx),
         "land_first" => land_first(st, project, by, id, why, now, fx),
+        "copy_first" => copy_first(st, project, by, id, why, now, fx),
         "pause" => pause(st, project, by, id, why, now, fx),
         "resume" => resume(st, project, by, id, why, now, fx),
         "hold" => hold(st, by.name, id, why, now, fx).map(|text| step(st, project, by, "hold", id, &text, why, now, fx)),
@@ -123,6 +126,31 @@ fn land_first(st: &mut Store, project: &str, by: &By, id: &str, why: &str, now: 
     fx.items.push(id.to_string());
     fx.land = true;
     step(st, project, by, "land_first", id, &format!("Moved #{id} up in the landing line"), why, now, fx);
+    Ok(())
+}
+
+/// COPY FIRST (#572): an item in line for a free copy of its repository goes to the front of that line, so it gets the
+/// next copy that frees. It takes the top of its Desk's queue order (#387), as a drag to the top does; those you placed
+/// keep their order below it.
+fn copy_first(st: &mut Store, project: &str, by: &By, id: &str, why: &str, now: u64, fx: &mut Effects) -> Result<(), String> {
+    let was = shown_state(st, id);
+    let it = st.desk.item(id).ok_or_else(|| format!("#{id} not moved up: this Desk has no item #{id}"))?;
+    if !crate::desk::hub::landing::trees::in_line(it) {
+        let after = it.after.as_ref().filter(|_| it.tree_wait).map(|a| format!(". It waits on #{a} first: START: #{id} | why: … starts it now"));
+        return Err(format!("#{id} not moved up: it isn't waiting for a free copy (it's {was}){}", after.unwrap_or_default()));
+    }
+    let placed: Vec<String> = st.desk.items.iter().filter(|i| i.project == project && i.id != id && i.queue_order.is_some()).map(|i| i.id.clone()).collect();
+    for x in placed {
+        if let Some(i) = st.desk.item_mut(&x) {
+            i.queue_order = i.queue_order.map(|q| q.saturating_add(1));
+            fx.items.push(x);
+        }
+    }
+    let it = st.desk.item_mut(id).ok_or("gone")?;
+    it.queue_order = Some(1);
+    it.updated = secs(now);
+    fx.items.push(id.to_string());
+    step(st, project, by, "copy_first", id, &format!("Moved #{id} to the front of the line for a free copy"), why, now, fx);
     Ok(())
 }
 

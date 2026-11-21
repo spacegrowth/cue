@@ -580,7 +580,7 @@ pub struct DeskDecision {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub delivery: Option<DeskDelivery>,
     /// What the lead did on its own (#360), shown in its chat as it happens and, for a while, in the Dispatcher's
-    /// panel, and kept in its "What the lead moved" list (#374): "close" | "take_copy" | "land_first" | "start" |
+    /// panel, and kept in its "What the lead moved" list (#374): "close" | "take_copy" | "land_first" | "copy_first" | "start" |
     /// "send_back" | "answer" | "call" (one of its DECIDED lines that's dispatch work, not a product choice: #420); "" for
     /// any other step.
     #[serde(default, skip_serializing_if = "String::is_empty")]

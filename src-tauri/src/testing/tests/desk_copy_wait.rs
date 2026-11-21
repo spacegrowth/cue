@@ -367,3 +367,48 @@ fn your_question_on_an_item_whose_copy_is_gone_reaches_its_holder_and_lead_at_on
     w.settle();
     assert_eq!(item(&w, &project, "Header jumps")["state"], "to_check", "a freed copy doesn't start it");
 }
+
+#[test]
+fn the_lead_moves_an_item_to_the_front_of_the_line_for_a_free_copy_and_it_gets_the_next_one() {
+    // #572: the lead had no line to move a queued item up the line for a free copy; only your drag could.
+    let w = World::new();
+    let top = super::desk_unstick::top;
+    let (_, project, a, _) = routed_with(&w, |w, _, _| w.hub().desk_hold_copies(&top(w), &[1, 2, 3]), |_, _, _| {});
+    let lead = super::desk::desk(&w, &project)["lead"]["sid"].as_str().unwrap().to_string();
+    super::desk::ends(&w, &lead, "ITEM: Footer\nROUTE: #new -> cue-teams | why: footer");
+    w.advance(1000);
+    let t = super::desk::second(&w, "cue-two");
+    super::desk::ends(&w, &lead, "ITEM: Logo\nROUTE: #new -> cue-two | why: logo");
+    w.advance(1000);
+    let b = item(&w, &project, "Footer")["id"].as_str().unwrap().to_string();
+    let c = item(&w, &project, "Logo")["id"].as_str().unwrap().to_string();
+    // You placed Footer above Header; Logo, the newest, is last in line.
+    w.hub().desk_item_act(&b, "reorder", &format!("{b} {a}")).unwrap();
+    w.settle();
+    super::desk::ends(&w, &lead, &format!("COPY FIRST: #{c} | why: the user needs the logo today"));
+    w.advance(1000);
+    w.settle();
+    // The Desk shows the new order: Logo, then yours as you left them.
+    let order = |t: &str| item(&w, &project, t)["queue_order"].as_u64();
+    assert_eq!((order("Logo"), order("Footer"), order("Header jumps")), (Some(1), Some(2), Some(3)));
+    let d = super::desk::desk(&w, &project);
+    assert!(
+        d["decisions"].as_array().unwrap().iter().any(|s| s["item_id"] == c.as_str() && s["act"] == "copy_first" && s["text"] == format!("Moved #{c} to the front of the line for a free copy")),
+        "{}",
+        d["decisions"]
+    );
+    // The next copy that frees goes to it.
+    w.hub().desk_let_go_copy(&top(&w), 2);
+    w.settle();
+    let logo = item(&w, &project, "Logo");
+    assert_eq!((logo["state"].as_str(), logo["tree"]["slot"].as_u64()), (Some("working"), Some(2)), "{logo}");
+    assert_eq!(item(&w, &project, "Footer")["state"], "queued");
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "queued");
+    assert!(w.hosted.sent().iter().any(|(s, m)| *s == t && m.contains(&format!("Desk item #{c}"))));
+    // One at work isn't in that line: refused, said plainly.
+    super::desk::ends(&w, &lead, &format!("COPY FIRST: #{c} | why: again"));
+    w.advance(1000);
+    w.settle();
+    let told: Vec<String> = w.hosted.sent().into_iter().filter(|(s, _)| *s == lead).map(|(_, m)| m).collect();
+    assert!(told.iter().any(|m| m.contains(&format!("#{c} not moved up: it isn't waiting for a free copy"))), "{told:?}");
+}

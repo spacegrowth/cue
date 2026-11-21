@@ -43,7 +43,8 @@ pub enum Line {
     Note { id: String, text: String },
     /// The lead unsticking item `id` itself (#347): `what` is "close" (`CLOSE: #<id> | commit: <sha> | why: …`: its
     /// work is already on main; `commit` when said), "take_copy" (`TAKE COPY: #<id> | why: …`: its copy back from a
-    /// stuck or finished item), "land_first" (`LAND FIRST: #<id> | why: …`: up in the landing line) or "start"
+    /// stuck or finished item), "land_first" (`LAND FIRST: #<id> | why: …`: up in the landing line), "copy_first"
+    /// (`COPY FIRST: #<id> | why: …`: to the front of the line for a free copy, #572) or "start"
     /// (`START: #<id> | why: …`: a waiting item, now), "pause" (`PAUSE: #<id> | why: …`: an item at work stops at a
     /// clean point and keeps its place, #365), "resume" (`RESUME: #<id> | why: …`: a paused one carries on) or
     /// "hold" (`PARK: #<id> | why: …`, or the old `HOLD:`: parked, as the user asked, #385/#391; "#new": the reply's last ITEM)
@@ -175,6 +176,7 @@ fn one(t: &str) -> Option<Line> {
         "CLOSE" => unstick("close", body),
         "TAKE COPY" => unstick("take_copy", body),
         "LAND FIRST" => unstick("land_first", body),
+        "COPY FIRST" => unstick("copy_first", body),
         "START" => unstick("start", body),
         // PARK (#391); HOLD, its first name (#385), still works.
         "PARK" | "HOLD" => unstick("hold", body),

@@ -84,6 +84,8 @@ at all: mocks, a doc, a plan, its done when saying no code)
 TAKE COPY: #<id> | why: <reason>      (take back the copy of a stuck or finished item: its work stays on its branch, \
 the item waiting longest for a copy gets it, and a stuck item is new again for you to route)
 LAND FIRST: #<id> | why: <reason>      (move an item waiting in the landing line up, so it lands next)
+COPY FIRST: #<id> | why: <reason>      (move an item waiting for a free copy of its repository to the front of that \
+line, so it gets the next copy that frees)
 START: #<id> | why: <reason>      (start a waiting item now: not after the item it waits on, nor for a free copy)
 COPY: #<id> | in: add-on | branch: <name> | why: <reason>      (work that belongs in the add-on's own repository, or \
 another one: put its full path after in:. The item gets a copy of it on that branch (made from its main line if new) \
