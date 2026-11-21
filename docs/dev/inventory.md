@@ -1224,6 +1224,8 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 |---|---|---|
 | `src-tauri/src/desk/hub/core/desk.rs::desk_done` |  |  |
 | `src-tauri/src/desk/hub/landing/trees.rs::land` |  |  |
+| `src-tauri/src/desk/hub/lead/handoff.rs::desk_carry` |  |  |
+| `src-tauri/src/desk/hub/turn/act.rs::send_back` |  |  |
 | `src-tauri/src/desk/hub/turn/said.rs::desk_turn_ended_said` |  |  |
 | `src-tauri/src/desk/hub/turn/said.rs::lead_said` |  |  |
 | `src-tauri/src/hosted/compat_tests.rs::compat_a_two_part_request_becomes_a_team_of_two_on_its_own_and_one_is_committed` | test |  |
