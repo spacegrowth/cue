@@ -564,7 +564,20 @@ let ownerNamesEdit = null;
 const ownerNamesList = (text) => text.split(/[\n,]/).map((n) => n.trim()).filter(Boolean);
 function ownerNamesRow(st) {
   const now = (st.owner?.names || []).join("\n");
-  return setRow("Keep out of pushes", "Your names and emails, one per line. Cue won't push a commit that contains them.", `<textarea class="names-in" data-owner-names rows="3" spellcheck="false" autocomplete="off" aria-label="Your names and emails">${esc(ownerNamesEdit ?? now)}</textarea>`);
+  return setRow("Keep out of pushes", "Your names and emails, one per line. Cue won't push a commit that contains them.", `<textarea class="names-in" data-owner-names rows="3" spellcheck="false" autocomplete="off" aria-label="Your names and emails">${esc(ownerNamesEdit ?? now)}</textarea>`) + foundWordsLine();
+}
+/** Under it, read-only: the words Cue finds by itself (your Mac and Claude accounts' names; your private projects'
+ *  names, kept out of a public project's pushes), asked for each time Settings opens (`push_words_found`). */
+let foundWords = null, foundAsked = 0;
+function foundWordsLine() {
+  if (Date.now() - foundAsked > 30000) {
+    foundAsked = Date.now();
+    invoke("push_words_found").then((v) => { foundWords = v || null; renderMain(); }).catch(() => {});
+  }
+  const mine = foundWords?.mine || [], projects = foundWords?.projects || [];
+  if (!mine.length && !projects.length) return "";
+  const parts = [mine.length ? mine.map(esc).join(", ") : "", projects.length ? `in public projects, ${projects.map(esc).join(", ")}` : ""].filter(Boolean);
+  return `<div class="set-row"><div class="set-text"><div class="set-sub" data-found-words>Cue also keeps out: ${parts.join("; ")}</div></div></div>`;
 }
 function saveOwnerNames() {
   if (ownerNamesEdit == null) return;

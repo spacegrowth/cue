@@ -85,15 +85,6 @@ function footStep(sid, turn, live, latest, replied) {
   if (x?.t === "step" && hookedPart(turn, x) && hookOpen.has(`${sid}|${turn.at_ms}`)) return null;
   return x?.t === "step" ? x : null;
 }
-/** Session → the step whose foot row its chat drew last (chatHtml): what the line under it then leaves out. */
-const footDrawn = new Map();
-/** The chat just drawn shows the newest turn's newest step at its foot (stepsBlock; not when a page folded that turn
- *  away), so the line under the chat doesn't say it again. */
-function footShown(s) {
-  const sid = s?.session_id, t = sid && stepsMode() !== "hidden" ? stepFeeds.get(sid)?.turns?.at(-1) : null;
-  const x = t && s.state === "working" ? footStep(sid, t, true, true, true) : null;
-  return !!x && footDrawn.get(sid) === x.id;
-}
 /** Replies the chat draws as its own rows (a turn's reply, words shown mid-turn): each one's "· N steps", the steps
  *  that led to it, by index into `ex` (the counts in the turn and these add up to its chip's). */
 function replyCounts(sid, s, ex, skip) {
@@ -114,20 +105,21 @@ function replyCounts(sid, s, ex, skip) {
   });
   return out;
 }
-/** A folded turn's newest step at its foot, on one line: its mark, what it's doing (cut with "…" where it doesn't
- *  fit), then on the right "· N steps before", which opens the turn (or the Stop hook's fold, for a step of that
- *  part), and its time while it runs (how it went once done). */
+/** A folded turn's newest step at its foot, on one line: its mark ($ for a command), what it's doing (cut with "…"
+ *  where it doesn't fit) followed by "· N steps before", which opens the turn (or the Stop hook's fold, for a step
+ *  of that part), and on the right its time while it runs (how it went once done). The line under the chat still
+ *  says what it's doing, with its live dot. */
 function lastStepRow(sid, turn, x, key, live) {
   const hook = hookedPart(turn, x), group = turn.items.filter((y) => hookedPart(turn, y) === hook);
   let n = 0;
   for (let k = group.indexOf(x) - 1; k >= 0 && group[k].t === "step"; k--) n++;
   const what = `${esc(x.verb)}${x.subject || stepFull(sid, x) ? ` <span class="${x.mono ? "mono" : ""}">${esc(stepFull(sid, x) || x.subject)}</span>` : ""}`;
   const label = `· ${n} step${n === 1 ? "" : "s"} before`;
-  const more = !n ? "" : hook ? `<button class="stx-cnt" data-hook-fold="${esc(key)}">${label}</button> ` : `${foldCount(key, n, " before")} `;
-  // Running: a live dot and its time; cut off mid-step (the turn ended under it), stopped: its mark, no time.
+  const more = !n ? "" : hook ? `<button class="stx-cnt" data-hook-fold="${esc(key)}">${label}</button>` : foldCount(key, n, " before");
+  // Running: its time; cut off mid-step (the turn ended under it), stopped: no time.
   const running = !x.done && live;
   const res = x.done ? stepResult(x) : running ? `<span data-ago="${x.at_ms}">${ago(x.at_ms)}</span>` : "";
-  return `<div class="stx-line stx-last ${x.bad ? "bad" : ""}" data-key="last:${esc(x.id)}"><i class="stx-ic k-${esc(x.kind)}">${running ? `<span class="dot-live"></span>` : STEP_ICON[x.kind] || "•"}</i><span class="stx-what">${what}</span><span class="stx-res">${more}${res}</span></div>`;
+  return `<div class="stx-line stx-last ${x.bad ? "bad" : ""}" data-key="last:${esc(x.id)}"><i class="stx-ic k-${esc(x.kind)}">${STEP_ICON[x.kind] || "•"}</i><span class="stx-what"><span class="stx-cut">${what}</span>${more}</span><span class="stx-res">${res}</span></div>`;
 }
 /** A turn's "After a stop hook": folded, what the hook made it do and write (a checklist, the commands it
  *  ran for it), so it never reads as the answer, live or after. "" when no hook sent it back. */
@@ -241,11 +233,6 @@ function chatHtml(it, s, harness, paged = false, page = null) {
   const c = { it, s, harness, paged, page, original, ex, asks, answers, decided, lastAgent, recent, project, sid, near,
     chose, reviews, reviewAt, fold, counts };
   const rows = withSteps(stepsOf, s, ex, ex.map((e, n) => keyed(chatRowHtml(c, e, n), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran, restarts, page?.extra || [], fold?.rows || [], chatWaitRows(s, page, K)), fold?.hides, page?.say);
-  // Whether its newest step's foot row was drawn here (a page may fold that turn away): the line under it asks (footShown).
-  if (sid) {
-    const x = stepsOf && stepFeeds.get(sid)?.turns?.at(-1)?.items?.at(-1);
-    if (x?.t === "step" && rows.some((r) => r.includes(`data-key="last:${esc(x.id)}"`))) footDrawn.set(sid, x.id); else footDrawn.delete(sid);
-  }
   for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(outboxRow(o, s, K(`out:${o.at}`)));
   if (s?.send_at) rows.push(sendAtRow(s));
   return rows.length ? (paged && sid ? keyed(olderRow(sid, harness), "older") : "") + rows.join("") : ran.length ? ran.map((r) => r.html).join("") : `<div class="dim cv-empty" data-key="empty">No messages yet in this session.</div>`;
@@ -472,8 +459,6 @@ function whereNow(it, s, steps = true) {
   if (s?.compacting_ms) return `<div class="mg-status cv-status"><span class="dot-live"></span>Compacting: summarizing the conversation to free up context<span class="dim"> · <span data-ago="${s.compacting_ms}">${ago(s.compacting_ms)}</span></span></div>`;
   // It finished compacting (until the next turn starts).
   if (s?.compacted_ms && s.state !== "working") return `<div class="mg-status cv-status"><span class="ok-dot"></span>Compacted: the conversation was summarized and its context freed<span class="dim"> · <span data-ago="${s.compacted_ms}">${ago(s.compacted_ms)}</span> ago</span></div>`;
-  // Its newest step already at the foot of its folded turn, with its time: not said again here.
-  if (s?.state === "working" && steps && footShown(s)) return "";
   // What it's doing right now (its latest step), else the prompt it's on.
   if (s?.state === "working" && s.doing) return `<div class="mg-status cv-status"><span class="dot-live"></span><span class="cv-what">${esc(s.doing)}</span><span class="dim"> · <span data-ago="${s.doing_ms}">${ago(s.doing_ms)}</span></span>${tipFor(it, s, "working")}</div>`;
   // Nothing in its transcript yet (it's thinking; Claude Code writes a message once it's whole): a live

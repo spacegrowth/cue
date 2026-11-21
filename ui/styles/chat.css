@@ -125,7 +125,9 @@ a[data-path]:hover, .msg a[data-path]:hover { text-decoration: underline; text-u
 .stx-res { flex: none; max-width: 42%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-top: 1px; font-size: var(--type-pill); color: var(--muted); text-align: right; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 /* A folded turn's newest step at its foot: a step line that isn't a button (its count is). */
 .stx-last { cursor: default; }
-.stx-last .stx-ic .dot-live { width: 7px; height: 7px; }
+.stx-last .stx-what { display: flex; align-items: baseline; }
+.stx-last .stx-cut { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.stx-last .stx-what > .stx-cnt { flex: none; }
 .stx-line.bad .stx-res { color: var(--deny); font-weight: 650; }
 .stx-res .add { color: var(--add-fg); font-weight: 650; } .stx-res .del { color: var(--del-fg); font-weight: 650; }
 .stx-chev { width: 10px; flex: none; color: var(--muted); font-size: var(--type-pill); text-align: center; }

@@ -51,18 +51,22 @@ test("folded by default: one chip for the turn, its message in view with its cou
   await msg.locator(".stx-cnt").hover();
   expect(await msg.locator(".stx-cnt").evaluate((el) => getComputedStyle(el).textDecorationLine)).toBe("none");
   await expect(msg).toBeInViewport();
-  // The newest step: Running, its command (the whole one, read for it) on one line cut with "…" where it doesn't fit,
-  // then on the right the steps before it and its time, never cut.
+  // The newest step: its $ mark, Running and its command (the whole one, read for it) on one line cut with "…" where
+  // it doesn't fit, right after it the steps before it (never cut), and on the right its time.
   const last = turn.locator(".stx-last");
+  await expect(last.locator(".stx-ic")).toHaveText("$");
   await expect(last).toContainText(`Running ${LONG}`);
-  await expect(last.locator(".stx-res .stx-cnt")).toHaveText("· 2 steps before");
-  await expect(last.locator(".stx-res [data-ago]")).toHaveText(/^\d+[sm]$/);
-  const what = await last.locator(".stx-what").evaluate((el) => ({ ws: getComputedStyle(el).whiteSpace, to: getComputedStyle(el).textOverflow, cut: el.scrollWidth > el.clientWidth + 1 }));
+  await expect(last.locator(".stx-what > .stx-cnt")).toHaveText("· 2 steps before");
+  await expect(last.locator(".stx-res")).toHaveText(/^\d+[sm]$/);
+  const what = await last.locator(".stx-cut").evaluate((el) => ({ ws: getComputedStyle(el).whiteSpace, to: getComputedStyle(el).textOverflow, cut: el.scrollWidth > el.clientWidth + 1 }));
   expect(what).toEqual({ ws: "nowrap", to: "ellipsis", cut: true });
-  const one = await last.evaluate((el) => { const lh = parseFloat(getComputedStyle(el.querySelector(".stx-what")).lineHeight) || 20; return el.querySelector(".stx-what").getBoundingClientRect().height < lh * 1.5; });
-  expect(one).toBe(true);
-  const res = await last.locator(".stx-res").evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
-  expect(res).toBe(true);
+  const fit = await last.evaluate((el) => {
+    const w = el.querySelector(".stx-what"), c = w.querySelector(":scope > .stx-cnt"), lh = parseFloat(getComputedStyle(w).lineHeight) || 20;
+    return { one: w.getBoundingClientRect().height < lh * 1.5, count: c.scrollWidth <= c.clientWidth + 1 && c.getBoundingClientRect().right <= w.getBoundingClientRect().right + 1 };
+  });
+  expect(fit).toEqual({ one: true, count: true });
+  // Under the chat, the working line still says what it's doing, with its live dot.
+  await expect(page.locator(".dk-right .dk-ichat .cv-status .dot-live")).toHaveCount(1);
 });
 
 test("the chip and a message's count each open and close the turn; open, every step is one line in place between the messages, and a click opens just that one", async ({ page, cue }) => {
@@ -214,12 +218,12 @@ test("your choice stays across polls and redraws; a running step's command is as
   expect(asked).toEqual(["s5"]);
 });
 
-test("the line under the chat doesn't repeat the foot row; with the turn open, it says what it's doing again", async ({ page, cue }) => {
+test("the line under the chat says what it's doing whether the turn is folded or open", async ({ page, cue }) => {
   const turn = await openWorking(page, cue);
   await cue.change((st, long) => Object.assign(st.sessions.find((x) => x.session_id === "host"), { doing: `Running: ${long.slice(0, 40)}…`, doing_ms: Date.now() - 60000 }), LONG);
   const chat = page.locator(".dk-right .dk-ichat");
   await expect(turn.locator(".stx-last .stx-what")).toHaveText(new RegExp(`^Running ${LONG.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
-  await expect(chat.locator(".cv-status")).toHaveCount(0);
+  await expect(chat.locator(".cv-status")).toContainText("Running: cargo test");
   await turn.locator(".stx-fold").click();
   await expect(turn.locator(".stx-last")).toHaveCount(0);
   await expect(chat.locator(".cv-status")).toContainText("Running: cargo test");
