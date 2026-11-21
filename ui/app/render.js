@@ -4,7 +4,8 @@
 /** The window's light or dark (Settings → Appearance). Away on a Desk keeps it (#459): only the head's mark says so
  *  (desk/away.js deskAwayHeadMark); `away-on` on the root for anything else that wants to know. */
 function applyTheme() {
-  const away = typeof deskAwayOnDesks === "function" && deskAwayOnDesks().length > 0;
+  // Only the Desk shown counts on its own page (#643): another Desk's Away doesn't mark this one.
+  const away = typeof deskAwayShown === "function" && deskAwayShown().length > 0;
   const mode = state.settings?.appearance?.mode ?? "system";
   const root = document.documentElement;
   if (mode === "system") root.removeAttribute("data-theme");

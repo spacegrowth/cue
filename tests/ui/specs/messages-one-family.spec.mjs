@@ -61,6 +61,9 @@ for (const scheme of ["light", "dark"]) {
         { role: "agent", text: "Made it blue." },
       ]);
       await page.evaluate(() => deskShow({ kind: "chat", sid: "host" }));
+      // Opening the chat fetches its steps once and redraws when they come (chat/thread.js loadSteps): measured after
+      // that, or a card swapped out by that redraw reads no size at all.
+      await page.waitForFunction(() => stepFeeds.has("host"));
       const chat = page.locator('.dk-right [data-desk-chat="host"]');
       await isCard(chat.locator(".mg.cue-msg"));
       await readsOn(chat.locator(".mg.cue-msg .mg-t"));

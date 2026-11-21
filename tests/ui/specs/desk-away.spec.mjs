@@ -137,9 +137,12 @@ for (const mode of ["light", "dark"]) {
     // The budget reached: it says it paused.
     await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").away.ended = "budget"; });
     await expect(mark).toHaveText("Away· Paused: budget reached");
-    // Two Desks away: how many.
+    // Two Desks away: this Desk's page speaks for this Desk only (#643); the Board says how many.
     await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").away.ended = ""; st.desk.projects.find((x) => x.project !== "cue").away = { on: true, active: true, ended: "", rules: {} }; });
+    await expect(mark).toHaveText(/^Away until \d\d:\d\d· \$3\.40 of \$10$/);
+    await page.locator('.switch-view [data-view="board"]').click();
     await expect(mark).toHaveText("Away on 2 Desks");
+    await page.locator('.switch-view [data-view="desk"]').click();
     // Off: no mark, still the same theme.
     await cue.change((st) => { for (const d of st.desk.projects) if (d.away) d.away.on = false; });
     await expect(page.locator(".top .top-away")).toHaveCount(0);
@@ -170,7 +173,7 @@ const keepAway = (cue) => cue.override("desk_away_set", (args) => (CueBridge.wor
 const passRuns = (cue) => cue.override("desk_away_sweep", (args) => { const d = CueBridge.world.state.desk.projects.find((x) => (x.id || x.project) === args.desk); d.away = { ...(d.away || {}), sweeping: true }; return true; });
 const RULES0 = { route: true, how: true, stopped: true, order: true, what: false, outside: false };
 
-test("one click turns Away on for every Desk (#612); the card opens to show the lead's pass, Done never waits; one Desk off on its own", async ({ page, cue }) => {
+test("one click turns Away on for this Desk only (#612, #643); the card opens to show the lead's pass, Done never waits; another Desk on and off on its own", async ({ page, cue }) => {
   await cue.open("desk");
   await keepAway(cue);
   // Something changed on the Desks since their last pass: the hub sends it.
@@ -178,43 +181,42 @@ test("one click turns Away on for every Desk (#612); the card opens to show the 
   await openDesk(page);
   await clear(cue);
   await page.locator(".dk-items .dk-aw-sw").click();
-  // On at once, on both Desks (the scenario has two: cue and website), 07:00 and $10 the first time.
+  // On at once, on this Desk only (the scenario has two: cue and website), 07:00 and $10 the first time.
   const call = await cue.called("desk_away_set", { desk: "cue" });
   expect(call.args.away).toMatchObject({ on: true, budget: 10, rules: RULES0 });
   expect(await page.evaluate((ms) => [new Date(ms).getHours(), new Date(ms).getMinutes()], call.args.away.until)).toEqual([7, 0]);
   const ahead = call.args.away.until - (await page.evaluate(() => Date.now()));
   expect(ahead > 0 && ahead <= 86400000).toBe(true);
-  await cue.called("desk_away_set", { desk: "website", away: call.args.away });
   await expect(page.locator(".dk-items .dk-aw-sw")).toHaveAttribute("aria-pressed", "true");
-  // Each lead asked to go through its items; the card shows it, and Done doesn't wait for it.
+  // This Desk's lead asked to go through its items, not the other's; the card shows it, and Done doesn't wait for it.
   await cue.called("desk_away_sweep", { desk: "cue", rules: RULES0 });
-  await cue.called("desk_away_sweep", { desk: "website", rules: RULES0 });
   const card = page.locator(".dk-aw-dialog");
   await expect(card).toBeVisible();
-  await expect(card.locator(".end-text")).toHaveText("Away is on. Each Desk's lead keeps it moving while you're away.");
-  await expect(card.locator(".dk-aw-sweep")).toHaveText("2 leads are going through the open items…");
+  await expect(card.locator(".end-text")).toHaveText("Away is on. The lead keeps this Desk moving while you're away.");
+  await expect(card.locator(".dk-aw-sweep")).toHaveText("The lead is going through the open items…");
   await expect(card.locator('[data-away="done"]')).toBeEnabled();
+  expect((await cue.calls("desk_away_set")).filter((c) => c.args.desk === "website")).toHaveLength(0);
+  expect((await cue.calls("desk_away_sweep")).map((c) => c.args.desk)).toEqual(["cue"]);
   await sweepEnds(cue);
-  await expect(card.locator(".dk-aw-sweep")).toHaveText(/^.+'s lead is going through the open items…$/);
-  await cue.change((st) => { for (const d of st.desk.projects) d.away = { ...(d.away || {}), sweeping: false }; });
   await expect(card.locator(".dk-aw-sweep")).toHaveCount(0);
   await expect(card.locator('[data-away-field="until"]')).toHaveValue("07:00");
   await expect(card.locator('[data-away-field="budget"]')).toHaveValue("10");
   // Nothing open: no "Before you go"; the rules fold into one row, the Desks on beside Until and Budget (#618).
   await expect(card.locator(".dk-aw-h")).toHaveCount(0);
   await expect(card.locator(".dk-aw-sum")).toContainText("The lead may decide routing, “how” questions, stopped items and order; the rest waits for you");
-  await expect(card.locator(".dk-aw-fld b")).toHaveText(/,/);
+  await expect(card.locator(".dk-aw-fld b")).not.toHaveText(/,/);
   await card.locator(".dk-aw-fld").click();
   await expect(card.locator(".dk-aw-h")).toHaveText(["Desks", "The lead may decide", "Always waits for you"]);
   await expect(card.locator("[data-away-desk]")).toHaveCount(2);
-  await expect(card.locator('[data-away-desk="website"]')).toHaveAttribute("aria-checked", "true");
+  await expect(card.locator('[data-away-desk="cue"]')).toHaveAttribute("aria-checked", "true");
+  await expect(card.locator('[data-away-desk="website"]')).toHaveAttribute("aria-checked", "false");
   await expect(card.locator("[data-away-rule]")).toHaveCount(6);
   await expect(card.locator(".dk-aw-row.locked")).toHaveText(["Ask me before: push to main, release, deleting files", "Picking a mock", "Looks right / Send back on a finished item"]);
   // "What" questions wait for you by default: its switch is on (the rule off).
   await expect(card.locator('[data-away-rule="what"]')).toHaveAttribute("aria-checked", "true");
   await expect(card).toContainText("One notification only when nothing can move without you.");
   await expect(card.locator("[title]")).toHaveCount(0);
-  // Changing the rules and budget right there: Done saves them on both.
+  // Changing the rules and budget right there: Done saves them on this Desk; the other stays off, untouched.
   await card.locator('[data-away-rule="order"]').click();
   await card.locator('[data-away-rule="what"]').click();
   await card.locator('[data-away-field="budget"]').fill("5");
@@ -224,22 +226,32 @@ test("one click turns Away on for every Desk (#612); the card opens to show the 
   const sets = (desk) => cue.calls("desk_away_set").then((c) => c.filter((x) => x.args.desk === desk));
   const set2 = (await sets("cue"))[1];
   expect(set2.args.away).toMatchObject({ on: true, budget: 5, rules: { ...RULES0, order: false, what: true } });
-  expect((await sets("website"))[1].args.away).toEqual(set2.args.away);
+  expect(await sets("website")).toHaveLength(0);
   // Opened again while on: no pass, no "Before you go".
   await leadAsks(cue, 1);
   await page.locator(".dk-items .dk-aw-sw").click();
   await expect(card.locator('[data-away-field="budget"]')).toHaveValue("5");
   await expect(card.locator(".dk-aw-first")).toHaveCount(0);
   await expect(card.locator('[data-away="done"]')).toHaveText("Done");
-  expect((await cue.calls("desk_away_sweep")).length).toBe(2);
-  // One Desk off on its own: website goes off, cue stays on.
+  expect((await cue.calls("desk_away_sweep")).length).toBe(1);
+  // The other Desk on from here, by its own switch: its lead goes through its items too, Done turns it on.
   await card.locator(".dk-aw-sum").click();
+  await card.locator('[data-away-desk="website"]').click();
+  await cue.called("desk_away_sweep", { desk: "website", rules: set2.args.away.rules });
+  await cue.change((st) => { for (const d of st.desk.projects) d.away = { ...(d.away || {}), sweeping: false }; });
+  await card.locator('[data-away="done"]').click();
+  await cue.called("desk_away_set", { desk: "website", away: set2.args.away });
+  await expect(card).toHaveCount(0);
+  // One Desk off on its own: website goes off, cue stays on.
+  await page.locator(".dk-items .dk-aw-sw").click();
+  await card.locator(".dk-aw-sum").click();
+  await expect(card.locator('[data-away-desk="website"]')).toHaveAttribute("aria-checked", "true");
   await card.locator('[data-away-desk="website"]').click();
   await card.locator('[data-away="done"]').click();
   await cue.called("desk_away_set", { desk: "website", away: { ...set2.args.away, on: false } });
   await expect(card).toHaveCount(0);
   await expect(page.locator(".dk-items .dk-aw-sw")).toHaveAttribute("aria-pressed", "true");
-  expect((await sets("cue")).map((c) => c.args.away.on)).toEqual([true, true, true]);
+  expect((await sets("cue")).map((c) => c.args.away.on)).toEqual([true, true, true, true]);
   // Turn Away off: cue goes off; website, already off, isn't touched again.
   await page.locator(".dk-items .dk-aw-sw").click();
   await card.locator(".dk-aw-sum").click();
@@ -247,7 +259,7 @@ test("one click turns Away on for every Desk (#612); the card opens to show the 
   await card.locator('[data-away="off"]').click();
   await cue.called("desk_away_set", { desk: "cue", away: { ...set2.args.away, on: false } });
   await expect(card).toHaveCount(0);
-  expect((await sets("website")).length).toBe(3);
+  expect((await sets("website")).length).toBe(2);
 });
 
 test("nothing changed since the lead's last pass: one click and Away is just on, no card; off and on again the same (#612)", async ({ page, cue }) => {
@@ -262,7 +274,7 @@ test("nothing changed since the lead's last pass: one click and Away is just on,
     await sw.click();
     await expect(sw).toHaveAttribute("aria-pressed", "true");
     expect((await cue.calls("desk_away_set")).filter((c) => c.args.desk === "cue").at(-1).args.away.on).toBe(true);
-    await expect.poll(async () => (await cue.calls("desk_away_sweep")).length).toBe(2 * k);
+    await expect.poll(async () => (await cue.calls("desk_away_sweep")).length).toBe(k);
     await expect(card).toHaveCount(0);
     await expect(page.locator(".dk-aw-sweep")).toHaveCount(0);
     // Not silent: a note says it's on, until when and on what budget.
@@ -277,6 +289,46 @@ test("nothing changed since the lead's last pass: one click and Away is just on,
   const ons = (await cue.calls("desk_away_set")).filter((c) => c.args.desk === "cue" && c.args.away.on);
   expect(ons[1].args.away).toMatchObject({ budget: 10, rules: RULES0 });
 });
+
+for (const mode of ["light", "dark"]) {
+  test(`Away turned on for one Desk shows only on that Desk; the other shows normal until you turn it on there (#643, ${mode})`, async ({ page, cue }) => {
+    await cue.open("desk");
+    await cue.change((st, mode) => { st.settings = { ...(st.settings || {}), appearance: { ...(st.settings?.appearance || {}), mode } }; }, mode);
+    await keepAway(cue);
+    await cue.override("desk_away_sweep", () => false);
+    // The second Desk gets a lead too, so it has its own Away switch.
+    await cue.change((st) => { const w = st.desk.projects.find((x) => x.project === "website"); w.lead = { sid: "site", name: "site-lead", state: "live" }; w.members = [...new Set([...(w.members || []), "site"])]; });
+    await openDesk(page);
+    await clear(cue);
+    const sw = page.locator(".dk-items .dk-aw-sw"), mark = page.locator(".top .top-away"), root = page.locator("html");
+    await sw.click();
+    await expect(sw).toHaveAttribute("aria-pressed", "true");
+    await expect(mark).toHaveText(/^Away until 07:00/);
+    await expect(root).toHaveClass(/away-on/);
+    // Only this Desk was set on.
+    expect((await cue.calls("desk_away_set")).map((c) => c.args.desk)).toEqual(["cue"]);
+    // The other Desk: no mark, its switch off, no calls line, the root not marked.
+    await openDesk(page, "website");
+    await expect(sw).toHaveAttribute("aria-pressed", "false");
+    await expect(sw.locator(".dk-aw-st")).toHaveCount(0);
+    await expect(mark).toHaveCount(0);
+    await expect(page.locator(".dk-aw-calls")).toHaveCount(0);
+    await expect(root).not.toHaveClass(/away-on/);
+    await expect(page.locator(".top [title], .dk-items .dk-ch [title]")).toHaveCount(0);
+    if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/cue-away-other-desk-${mode}.png` });
+    // Off the Desks, the head names the Desk that's away.
+    await page.locator('.switch-view [data-view="board"]').click();
+    await expect(mark).toHaveText(/^\S+: Away until 07:00/);
+    // Turned on there too, by its own switch: now it shows there, and the first Desk's stays as it was.
+    await page.locator('.switch-view [data-view="desk"]').click();
+    await sw.click();
+    await expect(sw).toHaveAttribute("aria-pressed", "true");
+    await expect(mark).toHaveText(/^Away until 07:00/);
+    expect((await cue.calls("desk_away_set")).map((c) => c.args.desk)).toEqual(["cue", "website"]);
+    await openDesk(page, "cue");
+    await expect(sw).toHaveAttribute("aria-pressed", "true");
+  });
+}
 
 for (const mode of ["light", "dark"]) {
   test(`Before you go is optional (#612): Done works with a question open, and it can still be answered right there (${mode})`, async ({ page, cue }) => {
@@ -322,11 +374,13 @@ test("while the lead sweeps, the card says so; Done works anyway (#618)", async 
   await clear(cue);
   await page.locator(".dk-items .dk-aw-sw").click();
   const card = page.locator(".dk-aw-dialog");
-  // Both Desks' leads sweep; with the other Desk switched off, only this one's lead is waited on.
-  await expect(card.locator(".dk-aw-sweep")).toHaveText(/^(2 leads are|.+'s lead is) going through the open items…$/);
+  // This Desk's lead sweeps; the other Desk switched on too, both are waited on; off again, only this one.
+  await expect(card.locator(".dk-aw-sweep")).toHaveText("The lead is going through the open items…");
   await card.locator(".dk-aw-sum").click();
   await card.locator('[data-away-desk="website"]').click();
-  await expect(card.locator(".dk-aw-sweep")).toHaveText(/^\S+'s lead is going through the open items…$/);
+  await expect(card.locator(".dk-aw-sweep")).toHaveText("2 leads are going through the open items…");
+  await card.locator('[data-away-desk="website"]').click();
+  await expect(card.locator(".dk-aw-sweep")).toHaveText("The lead is going through the open items…");
   await expect(card.locator('[data-away="done"]')).toBeEnabled();
   await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").away.sweeping = false; });
   await expect(card.locator(".dk-aw-sweep")).toHaveCount(0);
