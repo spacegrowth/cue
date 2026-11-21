@@ -13,15 +13,15 @@ body.mini { overflow: hidden; font-size: var(--type-body); }
 /* ---------- shared bits ---------- */
 .m-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; display: inline-block; }
 .m-dot.turn { width: 8px; height: 8px; background: repeating-linear-gradient(45deg, var(--accent) 0 2px, transparent 2px 3.5px); box-shadow: 0 0 0 1.5px var(--accent); }
-.m-dot.ask { background: #E8907F; }
+.m-dot.ask { background: var(--deny-bright); }
 .m-dot.work { background: var(--work); }
 .m-dot.idle { background: var(--line); }
-.m-tag { font: 600 var(--type-tag) var(--mono); letter-spacing: .12em; border-radius: var(--pill-radius); padding: 2px 7px; white-space: nowrap; }
+.m-tag { font: 600 var(--type-tag) var(--mono); letter-spacing: .12em; border-radius: var(--radius-pill); padding: 2px 7px; white-space: nowrap; }
 .m-tag.turn { background: var(--sel); color: var(--on-sel); }
-.m-tag.ask { background: var(--deny); color: #fff; }
+.m-tag.ask { background: var(--deny); color: var(--white); }
 .m-tag.work { background: var(--panel-2); color: var(--muted); }
 /* A session at work: its dot breathes on the rail and at the notch (still under reduced motion). */
-.m-tuck.work .m-live { animation: m-breathe 2.4s ease-in-out infinite; }
+.m-tuck.work .m-live { animation: m-breathe 2.4s ease-in-out infinite; background: var(--sel); }
 @keyframes m-breathe { 50% { opacity: .6; } }   /* a gentle breath, not a blink */
 /* The tabs: at work, a full dot that blinks; your turn in conversation (the last few minutes), a full dot, steady;
  *  your turn otherwise, the striped dot. */
@@ -31,7 +31,7 @@ body.mini { overflow: hidden; font-size: var(--type-body); }
 @media (prefers-reduced-motion: reduce) { .m-tuck.work .m-live, .m-tab .m-dot.work { animation: none; } }
 /* At work, at the notch and on the rail's tab: the dot blinks, as in the tabs. A blink is always work. */
 .m-island .m-dot.work, .m-tuck.work .m-live { animation: m-blink 1s steps(1, end) infinite; }
-.m-link { font-size: var(--type-small); font-weight: 600; border-radius: 8px; padding: 3px 8px; }
+.m-link { font-size: var(--type-small); font-weight: 600; border-radius: var(--radius-btn); padding: 3px 8px; }
 
 /* ---------- the chat (both shapes) ---------- */
 /* The chat is its window's full width, fixed (mini.js sets --chat-w): never wider (a long line wraps or scrolls
@@ -60,35 +60,33 @@ body.mini { overflow: hidden; font-size: var(--type-body); }
    shoulders where it meets the top, as the notch's own corners curve. Text in the dark theme's ink, colour only
    on the dots and the main button. Sizes from the notch Cue measured (mini.js measured: --nw, --nh). */
 .notch { --nw: 185px; --nh: 32px; --peek: 68px; --sh: 14px;
-  --panel: #000; --panel-2: #1c1c1c; --line: #2a2a2a; --slab: #161616; --on-slab: var(--ink);
-  --work: color-mix(in srgb, var(--accent) 75%, #000); }
-.notch #mini { justify-content: center; }
-.notch .m-panel { position: relative; background: #000; color: var(--ink); box-sizing: border-box; }
+  --panel: var(--shade); --panel-2: #1c1c1c; --line: #2a2a2a; --slab: #161616; --on-slab: var(--ink);   /* the notch's own greys: a token block for the island, near the hardware's black in either theme */
+  --work: color-mix(in srgb, var(--accent) 75%, var(--shade)); }
+.notch #mini { justify-content: center; position: relative; }
+.notch .m-panel { position: relative; background: var(--shade); color: var(--ink); box-sizing: border-box; }
 /* The shoulders: the window is the shape and a shoulder's width either side; they're drawn in its corners. */
-.notch:not(.s-quiet) #mini, .notch .m-island.peek { --shl: radial-gradient(circle at 0 100%, transparent calc(var(--sh) - .5px), #000 var(--sh));
-  --shr: radial-gradient(circle at 100% 100%, transparent calc(var(--sh) - .5px), #000 var(--sh)); }
-.notch #mini { position: relative; }
+.notch:not(.s-quiet) #mini, .notch .m-island.peek { --shl: radial-gradient(circle at 0 100%, transparent calc(var(--sh) - .5px), var(--shade) var(--sh));
+  --shr: radial-gradient(circle at 100% 100%, transparent calc(var(--sh) - .5px), var(--shade) var(--sh)); }
 .notch:not(.s-quiet) #mini::before, .notch:not(.s-quiet) #mini::after { content: ""; position: absolute; top: 0; width: var(--sh); height: var(--sh); transition: opacity .12s .24s; }
 .notch:not(.s-quiet) #mini::before { left: 0; background: var(--shl); }
 .notch:not(.s-quiet) #mini::after { right: 0; background: var(--shr); }
 .notch .m-island.peek::before, .notch .m-island.peek::after { content: ""; position: absolute; top: 0; width: var(--sh); height: var(--sh); }
 .notch .m-island.peek::before { left: calc(-1 * var(--sh)); background: var(--shl); }
 .notch .m-island.peek::after { right: calc(-1 * var(--sh)); background: var(--shr); }
-.notch .m-island { width: var(--nw); height: var(--nh); border-radius: 0 0 10px 10px; display: flex; align-items: center; padding: 0 12px; font: 600 var(--type-pill) var(--mono); }
-.notch .m-island.peek { width: calc(var(--nw) + 2 * var(--peek)); border-radius: 0 0 12px 12px; }
+.notch .m-island { width: var(--nw); height: var(--nh); border-radius: 0 0 var(--radius-tray) var(--radius-tray); display: flex; align-items: center; padding: 0 12px; font: 600 var(--type-pill) var(--mono); }
+.notch .m-island.peek { width: calc(var(--nw) + 2 * var(--peek)); border-radius: 0 0 var(--radius-card) var(--radius-card); }
 .m-wing { display: inline-flex; align-items: center; gap: 10px; }
 .m-n { display: inline-flex; align-items: center; gap: 5px; }
 .notch .m-island .m-dot { width: 8px; height: 8px; }
-.notch .m-chat { width: var(--chat-w); border-radius: 0 0 28px 28px; padding-top: var(--nh); }
+.notch .m-chat { width: var(--chat-w); border-radius: 0 0 var(--radius-sheet) var(--radius-sheet); padding-top: var(--nh); clip-path: inset(0 round 0 0 28px 28px); transition: clip-path .36s cubic-bezier(.2, 1.1, .3, 1); }
 .notch .m-chat-head .m-link { box-shadow: none; background: var(--panel-2); color: var(--ink); }
 .notch .m-tabs, .notch .m-chat-head { border-color: var(--line); }
 /* More tabs than fit: they scroll sideways, the last fading out at the edge rather than cut. */
-.notch .m-tabs { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
+.notch .m-tabs { -webkit-mask-image: linear-gradient(to right, var(--shade) calc(100% - 32px), transparent); mask-image: linear-gradient(to right, var(--shade) calc(100% - 32px), transparent); }
 
 /* Opening: drawn shut (.m-shut: clipped to the notch's own size), then opened once the window is its full size
    (mini.js opened), so the black shape grows out of the notch with a little spring in a window that's already big
    enough. Closing: shut again, quicker, then the window is the island again. The shoulders show only open. */
-.notch .m-chat { clip-path: inset(0 round 0 0 28px 28px); transition: clip-path .36s cubic-bezier(.2, 1.1, .3, 1); }
 .notch.m-shut .m-chat { clip-path: inset(0 calc(50% - var(--nw) / 2) calc(100% - var(--nh)) round 0 0 10px 10px); }
 .notch.m-leave .m-chat { transition: clip-path .2s cubic-bezier(.4, 0, 1, 1); }
 .notch.m-shut #mini::before, .notch.m-shut #mini::after { opacity: 0; transition-delay: 0s; }
@@ -97,7 +95,7 @@ body.mini { overflow: hidden; font-size: var(--type-body); }
 
 /* Tabs across the chat's top: a session each, the open one on the panel. */
 .m-tabs { display: flex; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid var(--line); overflow-x: auto; flex: none; }
-.m-tab { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 8px 8px 0 0; font-size: var(--type-small); color: var(--muted); white-space: nowrap; }
+.m-tab { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: var(--radius-btn) var(--radius-btn) 0 0; font-size: var(--type-small); color: var(--muted); white-space: nowrap; }
 .m-tab:hover { color: var(--ink); }
 .m-tab.on { color: var(--ink); font-weight: 650; background: var(--panel-2); }
 
@@ -108,25 +106,24 @@ body.mini { overflow: hidden; font-size: var(--type-body); }
    live dot. Its left 6px are hidden until it's pointed
    at: it grows out of the edge, its right side never leaving it. A click brings the panel out; a drag moves it. */
 .m-tuck { width: 36px; height: 76px; flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px;
-  padding: 0 0 0 6px; box-sizing: border-box; border-radius: 12px 0 0 12px; background: var(--slab); color: var(--on-slab);
+  padding: 0 0 0 6px; box-sizing: border-box; border-radius: var(--radius-card) 0 0 var(--radius-card); background: var(--slab); color: var(--on-slab);
   cursor: grab; touch-action: none;
   clip-path: inset(0 0 0 6px round 12px 0 0 12px); transition: clip-path .2s; font-size: var(--type-title); line-height: 1; }
 .m-tuck.over, .m-tuck:hover { clip-path: inset(0 round 12px 0 0 12px); }
 .m-live { width: 7px; height: 7px; border-radius: 50%; background: color-mix(in srgb, var(--on-slab) 30%, transparent); }
-.m-tuck.work .m-live { background: var(--sel); }
-.m-tuck.turn .m-live { background: #d99a3a; }
-.m-tuck.ask .m-live { background: #e8907f; }
+.m-tuck.turn .m-live { background: var(--caution); }
+.m-tuck.ask .m-live { background: var(--deny-bright); }
 .m-tuck.turn, .m-tuck.ask { animation: m-nudge .45s cubic-bezier(.22, 1, .36, 1); }   /* a soft lean out, no bounce */
 @keyframes m-nudge { from { transform: translateX(6px); } }
 
 /* Out: the panel where the tab was, its bar on top (the tabs, ⤢ and ⇥), dragged by that bar. */
-.rail .m-chat { background: var(--panel); color: var(--ink); border-radius: 14px 0 0 14px; box-shadow: inset 0 0 0 1px var(--line); }
+.rail .m-chat { background: var(--panel); color: var(--ink); border-radius: var(--radius-pane) 0 0 var(--radius-pane); box-shadow: inset 0 0 0 1px var(--line); }
 .m-bar { display: flex; align-items: flex-start; gap: 4px; min-height: 36px; padding: 6px 6px 6px 8px; box-sizing: border-box; flex: none; cursor: grab; border-bottom: 1px solid var(--line); touch-action: none; }
 .m-bar .m-tabs { border: 0; padding: 0; flex: 1; min-width: 0; gap: 2px; flex-wrap: wrap; overflow: visible; }
-.m-bar .m-tab { flex: none; height: 24px; padding: 0 8px; border-radius: 6px; font: 600 var(--type-pill) var(--sans); color: inherit; opacity: .65; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.m-bar .m-tab { flex: none; height: 24px; padding: 0 8px; border-radius: var(--radius-qp); font: 600 var(--type-pill) var(--sans); color: inherit; opacity: .65; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .m-bar .m-tab:hover { opacity: .9; background: color-mix(in srgb, var(--ink) 7%, transparent); }
 .m-bar .m-tab.on { opacity: 1; background: color-mix(in srgb, var(--ink) 11%, transparent); font-weight: 600; }
-.m-pipbtn { width: 26px; height: 24px; border-radius: 6px; color: inherit; opacity: .75; flex: none; font-size: var(--type-body); }
+.m-pipbtn { width: 26px; height: 24px; border-radius: var(--radius-qp); color: inherit; opacity: .75; flex: none; font-size: var(--type-body); }
 .m-pipbtn:hover { opacity: 1; background: color-mix(in srgb, var(--ink) 9%, transparent); }
 body.m-drag, body.m-drag * { cursor: grabbing !important; user-select: none; }
 /* It eases out from the edge a short way as it fades in, settling without overshoot; it leaves the same way,
@@ -138,11 +135,11 @@ body.m-drag, body.m-drag * { cursor: grabbing !important; user-select: none; }
 
 /* On the left edge: the same, mirrored (› to come out, the panel springs out rightwards). */
 .rail.side-left #mini { justify-content: flex-start; }
-.side-left .m-tuck { padding: 0 6px 0 0; border-radius: 0 12px 12px 0; clip-path: inset(0 6px 0 0 round 0 12px 12px 0); }
+.side-left .m-tuck { padding: 0 6px 0 0; border-radius: 0 var(--radius-card) var(--radius-card) 0; clip-path: inset(0 6px 0 0 round 0 12px 12px 0); }
 .side-left .m-tuck.over, .side-left .m-tuck:hover { clip-path: inset(0 round 0 12px 12px 0); }
 .side-left .m-tuck.turn, .side-left .m-tuck.ask { animation-name: m-nudge-r; }
 @keyframes m-nudge-r { from { transform: translateX(-6px); } }
-.rail.side-left .m-chat { border-radius: 0 14px 14px 0; }
+.rail.side-left .m-chat { border-radius: 0 var(--radius-pane) var(--radius-pane) 0; }
 .rail.side-left.m-enter .m-chat { animation-name: m-spring-r; }
 @keyframes m-spring-r { from { transform: translateX(-24px); opacity: 0; } }
 .rail.side-left.m-leave .m-chat { transform: translateX(-16px); }
@@ -163,7 +160,7 @@ body.m-drag, body.m-drag * { cursor: grabbing !important; user-select: none; }
 .m-dk-g { display: flex; align-items: baseline; gap: 6px; padding: 12px 16px 4px; font-size: var(--type-pill); font-weight: 650; color: var(--muted); }
 .m-dk-gn { font: 600 var(--type-pill) var(--mono); }
 .m-dk-none { padding: 16px; color: var(--muted); font-size: var(--type-body); }
-.m-dk-it { display: flex; flex-direction: column; gap: 3px; margin: 2px 8px; padding: 8px; border-radius: 10px; cursor: pointer; }
+.m-dk-it { display: flex; flex-direction: column; gap: 3px; margin: 2px 8px; padding: 8px; border-radius: var(--radius-tray); cursor: pointer; }
 .m-dk-it:hover { background: var(--panel-2); }
 .m-dk-1, .m-dk-2 { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .m-dk-1 .dk-si { margin: 0; flex: none; }
@@ -184,7 +181,7 @@ body.m-drag, body.m-drag * { cursor: grabbing !important; user-select: none; }
 .m-dk-acts .dk-soon { margin: 0; }
 /* "✓ You answered: …": the message family's foot status (.mg-f .mg-st), under the title. */
 .m-dk-said { padding: 4px 0 0 21px; }
-.m-dk-box { display: flex; align-items: flex-end; gap: 6px; padding: 4px 4px 4px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.m-dk-box { display: flex; align-items: flex-end; gap: 6px; padding: 4px 4px 4px 10px; border: 1px solid var(--line); border-radius: var(--radius-tray); background: var(--panel); }
 .m-dk-box:focus-within { border-color: color-mix(in srgb, var(--ink) 30%, var(--line)); }
 .m-dk-box textarea { flex: 1; min-height: 26px; max-height: 72px; padding: 4px 0; border: 0; outline: none; resize: none; background: none; color: var(--ink); font: var(--type-body)/1.4 var(--sans); field-sizing: content; }
 .m-dk-ask .dk-sb { margin-top: 0; }
@@ -193,4 +190,4 @@ body.m-drag, body.m-drag * { cursor: grabbing !important; user-select: none; }
 .m-dk-rest .m-cnt { color: var(--muted); font-family: var(--sans); font-weight: 500; font-size: var(--type-small); }
 /* At the notch the buttons are the dark theme's, on its black (the main one keeps its own color). */
 .notch .m-dk .btn:not(.primary) { background: var(--panel-2); border-color: var(--line); }
-.notch .m-dk-box, .notch .m-dk .dk-box { background: #000; }
+.notch .m-dk-box, .notch .m-dk .dk-box { background: var(--shade); }

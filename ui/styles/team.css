@@ -2,29 +2,28 @@
    foot's padding, board.css .foot), the same 1.5px accent edge, the border shared: the box's top corners go square
    under it. Closed, one line on panel-2; open, the same tray grows upward, its body white, scrolling inside past about
    half the pane (placeTeamRows). */
-.crew-tray { position: relative; flex: none; margin: 8px 12px 0; display: flex; flex-direction: column; border: 1.5px solid var(--line); border-bottom: 0; border-radius: 10px 10px 0 0; background: var(--panel-2); color: var(--ink); }
+.crew-tray { position: relative; flex: none; margin: 8px 12px 0; display: flex; flex-direction: column; border: 1.5px solid var(--line); border-bottom: 0; border-radius: var(--radius-tray) var(--radius-tray) 0 0; background: var(--panel-2); color: var(--ink); }
 .crew-tray + .foot { padding-top: 0; border-top: 0; }
 /* One edge for the tray and the box under it: quiet (the line colour) until you're in the box, then the accent, as
  *  the box alone does (board.css .field). */
-.crew-tray + .foot .field { border-radius: 0 0 8px 8px; box-shadow: inset 0 0 0 1.5px var(--line); }
+.crew-tray + .foot .field { border-radius: 0 0 var(--radius-btn) var(--radius-btn); box-shadow: inset 0 0 0 1.5px var(--line); }
 .crew-tray + .foot .field:focus-within { box-shadow: inset 0 0 0 1.5px var(--accent); }
 .crew-tray:has(+ .foot .field:focus-within) { border-color: var(--accent); }
 .crew-tray + .foot .cmd-slot { bottom: 100%; }
 /* No box under it (the lead's own ask stands there): it ends on its own edge. */
-.crew-tray:not(:has(+ .foot .field)) { border-bottom: 1.5px solid var(--line); border-radius: 10px; margin-bottom: 8px; }
-.crew-tray:not(:has(+ .foot .field)) .crew-body { border-radius: 0 0 9px 9px; }
-.crew-head { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 6px 0 12px; font-size: var(--type-body); font-weight: 700; white-space: nowrap; cursor: pointer; border-radius: 9px 9px 0 0; }
+.crew-tray:not(:has(+ .foot .field)) { border-bottom: 1.5px solid var(--line); border-radius: var(--radius-tray); margin-bottom: 8px; }
+.crew-tray:not(:has(+ .foot .field)) .crew-body { border-radius: 0 0 var(--radius-btn) var(--radius-btn); }
+.crew-head { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 6px 0 12px; font-size: var(--type-body); font-weight: 700; white-space: nowrap; cursor: pointer; border-radius: var(--radius-btn) var(--radius-btn) 0 0; }
 .crew-w { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .crew-need { color: var(--deny); }
 .crew-mu { color: var(--muted); font-weight: 600; }
 .crew-dot, .crew-head .dot-live { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
-.crew-mode { height: 24px; padding: 0 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--muted); font-size: var(--type-small); font-weight: 600; }
+.crew-mode { height: 24px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--radius-qp); background: var(--panel); color: var(--muted); font-size: var(--type-small); font-weight: 600; }
 .crew-mode:hover, .crew-mode.on { color: var(--ink); }
-.crew-car { flex: none; width: 22px; height: 24px; border-radius: 6px; color: var(--muted); font-weight: 700; }
+.crew-car { flex: none; width: 22px; height: 24px; border-radius: var(--radius-qp); color: var(--muted); font-weight: 700; }
 .crew-car:hover { color: var(--ink); background: var(--panel); }
 .crew-body { border-top: 1px solid var(--line); background: var(--panel); overflow-y: auto; overscroll-behavior: contain; padding-bottom: 4px; font-size: var(--type-body); }
 /* The chat behind an open tray steps back. */
-.ap-chat { transition: opacity 0.15s; }
 .active-pane:has(.crew-tray .crew-body) .ap-chat { opacity: 0.55; }
 
 /* Its groups: Needs you (red), Ready, Working, in small caps; the finished ones folded into "N done ›". */
@@ -76,7 +75,7 @@ button.mt-name:hover, .mt-name.on { text-decoration: underline; text-underline-o
 /* The crew's goal on top of the open tray (ui/team.js crewGoalHtml): four small boxes on panel-2, a small-caps label
    over a few words. */
 .crew-goal { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; padding: 10px 12px 2px; }
-.cg-box { min-width: 0; padding: 6px 8px; border-radius: 7px; background: var(--panel-2); }
+.cg-box { min-width: 0; padding: 6px 8px; border-radius: var(--radius-qp); background: var(--panel-2); }
 .cg-l { font-size: var(--type-tag); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 .cg-t { margin-top: 2px; font-size: var(--type-pill); line-height: 1.35; color: var(--ink); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 /* A narrow pane (and the mini window's chat, not a size container): two by two, a line each, so the goal doesn't push
@@ -117,21 +116,19 @@ button.mt-name:hover, .mt-name.on { text-decoration: underline; text-underline-o
    and its box under it, as wide as the board's chat pane, beside the list, which has the rest (The lead, the add-on's
    band, the crew's cards), each scrolling inside itself. */
 .board.cp-board { grid-template-columns: minmax(0, 1fr); }
-.crew-page { grid-column: 1 / -1; position: relative; min-width: 0; min-height: 0; margin: 0 0 4px; display: flex; flex-direction: column; background: var(--panel); color: var(--ink); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; font-size: var(--type-body); container: cp / inline-size; }
+.crew-page { grid-column: 1 / -1; position: relative; min-width: 0; min-height: 0; margin: 0 0 4px; display: flex; flex-direction: column; background: var(--panel); color: var(--ink); border-radius: var(--radius-pane); box-shadow: var(--shadow); overflow: hidden; font-size: var(--type-body); container: cp / inline-size; }
 .cp-head { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-height: 48px; padding: 6px 16px 6px 10px; background: var(--sel); color: var(--on-sel); }
-.cp-back { height: 30px; padding: 0 10px; border-radius: 8px; font-size: var(--type-body); font-weight: 650; color: var(--on-sel); }
+.cp-back { height: 30px; padding: 0 10px; border-radius: var(--radius-btn); font-size: var(--type-body); font-weight: 650; color: var(--on-sel); }
 .cp-back:hover { background: color-mix(in srgb, var(--on-sel) 10%, transparent); }
 .cp-name { min-width: 0; overflow-wrap: anywhere; font-size: var(--type-body); font-weight: 700; }
-/* The project on the add-on's head line (its loop's). */
-.cp-proj { flex: none; font-size: var(--type-small); color: color-mix(in srgb, var(--on-sel) 70%, transparent); }
 .cp-oc { flex: none; font-size: var(--type-small); font-weight: 600; color: color-mix(in srgb, var(--on-sel) 78%, transparent); }
 /* After the name: "Cue Crew", and one state pill, a word only (team_page.js crewPageHead). Colour says whose move it
    is: dark, it's working; red, yours now; amber, yours when you like; grey (dashed: paused), nobody's; green, done. */
 .cp-kind { flex: none; font-size: var(--type-body); font-weight: 600; color: color-mix(in srgb, var(--on-sel) 72%, transparent); }
-.cp-pill { flex: none; padding: 2px 9px; border-radius: var(--pill-radius); font: 650 var(--type-pill)/1.5 var(--mono); white-space: nowrap; background: color-mix(in srgb, var(--on-sel) 12%, transparent); color: var(--on-sel); }
+.cp-pill { flex: none; padding: 2px 9px; border-radius: var(--radius-pill); font: 650 var(--type-pill)/1.5 var(--mono); white-space: nowrap; background: color-mix(in srgb, var(--on-sel) 12%, transparent); color: var(--on-sel); }
 .cp-pill.run { background: var(--ink); color: var(--panel); }
-.cp-pill.need, .cp-pill.bad { background: var(--deny); color: #fff; }
-.cp-pill.review { background: var(--amber); color: #fff; }
+.cp-pill.need, .cp-pill.bad { background: var(--deny); color: var(--white); }
+.cp-pill.review { background: var(--amber); color: var(--white); }
 .cp-pill.green { background: var(--accent); color: var(--on-accent); }
 .cp-pill.wait { background: transparent; box-shadow: inset 0 0 0 1px currentColor; }
 .cp-oc:hover { color: var(--on-sel); text-decoration: underline; text-underline-offset: 2px; }
@@ -148,7 +145,7 @@ button.mt-name:hover, .mt-name.on { text-decoration: underline; text-underline-o
 .cp-goal.open .cp-lab { padding-top: 8px; }
 .cp-goal.open .cp-all { padding-top: 6px; }
 .crew-page .crew-goal { flex: 1; min-width: 0; gap: 10px; padding: 0; }
-.crew-page .cg-box { padding: 8px 12px; border-radius: 9px; }
+.crew-page .cg-box { padding: 8px 12px; border-radius: var(--radius-btn); }
 .crew-page .cg-l { font-size: var(--type-tag); }
 .crew-page .cg-t { margin-top: 3px; font-size: var(--type-body); line-height: 1.4; -webkit-line-clamp: 4; }
 
@@ -170,7 +167,7 @@ button.mt-name:hover, .mt-name.on { text-decoration: underline; text-underline-o
    rows say "Decided"), who, what, why and when, its button at the end. Activity (a teammate started, a review, fixes
    sent, a hold): a quiet step line, no card, no button. */
 .cp-dec { display: flex; flex-direction: column; }
-.cp-dec .cd-row.big { display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 11px; border: 0; border-radius: 9px; background: var(--panel-2); }
+.cp-dec .cd-row.big { display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 11px; border: 0; border-radius: var(--radius-btn); background: var(--panel-2); }
 .cp-dec .cd-row.big.can:hover, .cp-dec .cd-row.big.on { box-shadow: inset 0 0 0 1px var(--line); }
 .cp-dec .cd-row.big:not(.kinded):not(.step)::before { content: "Decided"; }
 .cp-dec .cd-row.big:not(.kinded):not(.step)::before, .cp-dec .cd-kind { flex: none; font-size: var(--type-tag); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
@@ -188,17 +185,17 @@ button.mt-name:hover, .mt-name.on { text-decoration: underline; text-underline-o
 .cp-dec .cd-row.big .cd-what code { font: var(--type-pill) var(--mono); }
 .cp-dec .cd-sub .cd-why { flex: 0 1 auto; max-width: 40%; white-space: normal; overflow-wrap: anywhere; line-height: 1.4; }
 .cp-dec .cd-back { height: 24px; font-size: var(--type-pill); background: var(--panel); }
-.cp-dec .mt-under.cd-under { margin-top: -4px; padding: 6px 11px 8px; border-radius: 0 0 9px 9px; }
+.cp-dec .mt-under.cd-under { margin-top: -4px; padding: 6px 11px 8px; border-radius: 0 0 var(--radius-btn) var(--radius-btn); }
 /* Needs you over the box, outlined red: its first row; "N more ›" shows the rest, scrolling inside past half the left. */
 /* Needs you (team_bar.js): one bar over the box, one ask at a time, always 68 high whatever the count. Line 1: the
    label, "2 of 5 ‹ ›", All 5 ›, the keys (or the one-way sentence) at the right. Line 2: who, what, the command on one
    line cut at its end, why dim and cut, its buttons. Its buttons are dimmed for the moment after the ask changed. */
-.cp-bar { flex: none; height: 68px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; gap: 5px; margin: 8px 12px; padding: 6px 8px 6px 14px; border-radius: 12px; box-shadow: inset 0 0 0 1.5px var(--deny); min-width: 0; }
+.cp-bar { flex: none; height: 68px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; gap: 5px; margin: 8px 12px; padding: 6px 8px 6px 14px; border-radius: var(--radius-card); box-shadow: inset 0 0 0 1.5px var(--deny); min-width: 0; container: cpbar / inline-size; }
 .cpb-1, .cpb-2 { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .cpb-1 { height: 18px; font-size: var(--type-pill); color: var(--muted); padding-right: 4px; }
 .cpb-lab { font-size: var(--type-tag); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--deny); }
 .cpb-n { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--ink); }
-.cpb-step { width: 20px; height: 18px; border-radius: 5px; box-shadow: inset 0 0 0 1px var(--line); font-size: var(--type-small); line-height: 1; color: var(--ink); }
+.cpb-step { width: 20px; height: 18px; border-radius: var(--radius-tag); box-shadow: inset 0 0 0 1px var(--line); font-size: var(--type-small); line-height: 1; color: var(--ink); }
 .cpb-step:hover { background: var(--panel-2); }
 .cpb-all { font-size: var(--type-pill); }
 .cpb-keys, .cpb-ow { flex: none; white-space: nowrap; font-size: var(--type-pill); }
@@ -208,10 +205,10 @@ button.mt-name:hover, .mt-name.on { text-decoration: underline; text-underline-o
 button.cpb-who:hover { text-decoration: underline; text-underline-offset: 2px; }
 .cpb-words { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; overflow: hidden; text-align: left; font-size: var(--type-body); color: var(--ink); }
 .cpb-what { flex: none; font-weight: 600; white-space: nowrap; }
-.cpb-cmd { flex: 0 1 auto; min-width: 40px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 8px; border-radius: 6px; background: var(--slab); color: var(--on-slab); font: var(--type-small) var(--mono); }
+.cpb-cmd { flex: 0 1 auto; min-width: 40px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 8px; border-radius: var(--radius-qp); background: var(--slab); color: var(--on-slab); font: var(--type-small) var(--mono); }
 .cpb-why { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: var(--type-small); }
 .cpb-why code { font: var(--type-pill) var(--mono); }
-.cpb-tag { flex: none; padding: 0 7px; border-radius: var(--pill-radius); background: var(--deny); color: #fff; font: 650 var(--type-tag)/1.6 var(--mono); }
+.cpb-tag { flex: none; padding: 0 7px; border-radius: var(--radius-pill); background: var(--deny); color: var(--white); font: 650 var(--type-tag)/1.6 var(--mono); }
 .cpb-btns { flex: none; display: flex; align-items: center; gap: 6px; }
 .cpb-btns .btn { height: 30px; min-width: 64px; padding: 0 12px; font-size: var(--type-body); }
 .cpb-btns .btn.cpb-redir, .cpb-btns .mt-lk { min-width: 0; }
@@ -221,7 +218,7 @@ button.cpb-who:hover { text-decoration: underline; text-underline-offset: 2px; }
 .cp-left .foot.held.cp-held { padding-top: 10px; border-top: 1px solid var(--line); }
 .cp-held .field { opacity: 0.7; }
 .cp-chipped { flex-direction: column; gap: 6px; }
-.cp-chip { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; padding: 2px 4px 2px 10px; border-radius: var(--pill-radius); background: var(--sel); color: var(--on-sel); font-size: var(--type-small); font-weight: 650; }
+.cp-chip { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; padding: 2px 4px 2px 10px; border-radius: var(--radius-pill); background: var(--sel); color: var(--on-sel); font-size: var(--type-small); font-weight: 650; }
 .cp-chip-x { width: 20px; height: 20px; border-radius: 50%; font-size: var(--type-body); line-height: 1; color: inherit; }
 .cp-chip-x:hover { background: color-mix(in srgb, var(--on-sel) 14%, transparent); }
 /* What the left shows in the chat's place (Needs you, a teammate): its head line, then its own scrolling body; the
@@ -237,7 +234,7 @@ button.cpb-who:hover { text-decoration: underline; text-underline-offset: 2px; }
    when it needs you; in both themes. */
 .cpv-head .cp-pill { background: var(--panel-2); color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
 .cpv-head .cp-pill.run { background: var(--ink); color: var(--panel); box-shadow: none; }
-.cpv-head .cp-pill.need { background: var(--deny); color: #fff; box-shadow: none; }
+.cpv-head .cp-pill.need { background: var(--deny); color: var(--white); box-shadow: none; }
 .cpv-n { flex: none; color: var(--muted); font-size: var(--type-small); }
 .cpv-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 4px 14px 10px; }
 .cpn-row { outline: none; border-top: 1px solid var(--line); }
@@ -249,11 +246,11 @@ button.cpb-who:hover { text-decoration: underline; text-underline-offset: 2px; }
 
 /* The list: The lead pinned, the add-on's band, the crew's line, then its cards scrolling inside, "N done ›" at their
    end. Its own width decides how a card lays out its parts (a size container). */
-.cp-list { min-width: 0; min-height: 0; display: flex; flex-direction: column; padding: 8px 10px 0; border-left: 1px solid var(--line); container: cpl / inline-size; }
+.cp-list { min-width: 0; min-height: 0; display: flex; flex-direction: column; padding: 8px 10px 0; border-left: 1px solid var(--line); container: cpl / inline-size; position: relative; }
 /* The add-on's band, under The lead: never more than half the list, scrolling inside past that. A size container of
    its own (cpband), so the add-on's rules lay the band out by its width, not the page's. */
 .cp-band { flex: 0 1 auto; min-height: 0; max-height: 50%; overflow-y: auto; overscroll-behavior: contain; margin: 4px -10px 0; container: cpband / inline-size; }
-.cp-lead { flex: none; display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 10px; font-size: var(--type-body); }
+.cp-lead { flex: none; display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: var(--radius-tray); font-size: var(--type-body); }
 .cp-lead.on { background: var(--sel); color: var(--on-sel); }
 .cp-lead b { font-weight: 700; }
 .cp-ld { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--type-small); color: color-mix(in srgb, currentColor 72%, transparent); }
@@ -290,28 +287,28 @@ button.cpb-who:hover { text-decoration: underline; text-underline-offset: 2px; }
 .cp-card > .mt-under { grid-column: 1 / -1; }
 .cp-dim { color: var(--muted); }
 .cp-t { flex: none; width: 34px; font-variant-numeric: tabular-nums; color: var(--muted); font-weight: 400; }
-.cp-list .mt-under { margin: 0 8px 8px; padding: 6px 10px; border-radius: 8px; background: var(--panel-2); }
+.cp-list .mt-under { margin: 0 8px 8px; padding: 6px 10px; border-radius: var(--radius-btn); background: var(--panel-2); }
 .cp-card.on .mt-under { background: var(--panel); }
 .cp-done > .mt-done-line { margin: 0; padding: 8px 10px; }
 .cp-done.open > .cp-cards > .cp-card:first-child { border-top-color: var(--line); }
 /* The meter: five small bars (working, checking, reviewed, fixing, committed), its stage in a word beside them. */
 .cp-meter { display: inline-flex; align-items: center; gap: 6px; }
 .cp-m { display: inline-flex; gap: 2px; }
-.cp-m b { width: 9px; height: 4px; border-radius: 2px; background: var(--line); }
+.cp-m b { width: 9px; height: 4px; border-radius: var(--radius-pill); background: var(--line); }
 .cp-m b.done { background: var(--muted); }
 .cp-m b.now { background: var(--ink); }
 .cp-m b.need { background: var(--deny); }
 .cp-ml { font-size: var(--type-pill); color: var(--muted); }
 /* A finding's kind as a small pill: should-fix (and worse) amber, the rest outlined. */
-.cp-f { display: inline-block; padding: 0 6px; margin-right: 4px; border-radius: var(--pill-radius); font: 650 var(--type-tag)/1.5 var(--mono); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); }
-.cp-f.fix { background: var(--amber); color: #fff; box-shadow: none; }
+.cp-f { display: inline-block; padding: 0 6px; margin-right: 4px; border-radius: var(--radius-pill); font: 650 var(--type-tag)/1.5 var(--mono); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); }
+.cp-f.fix { background: var(--amber); color: var(--white); box-shadow: none; }
 .cd-row.big { align-items: center; gap: 10px; padding: 8px 4px; border-radius: 0; }
 .cd-row.big + .cd-row.big, .cd-row.big + .cd-under + .cd-row.big { border-top: 1px solid var(--line); }
 .cd-main { flex: 1; min-width: 0; }
 .cd-row.big .cd-what { display: block; font-size: var(--type-body); font-weight: 600; white-space: normal; }
 .cd-sub { display: flex; align-items: baseline; gap: 6px; margin-top: 3px; min-width: 0; color: var(--muted); font-size: var(--type-small); }
 .cd-sub .cd-why { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cd-tag { flex: none; padding: 0 7px; border-radius: var(--pill-radius); box-shadow: inset 0 0 0 1px var(--line); font: 650 var(--type-tag)/1.6 var(--mono); color: var(--ink); }
+.cd-tag { flex: none; padding: 0 7px; border-radius: var(--radius-pill); box-shadow: inset 0 0 0 1px var(--line); font: 650 var(--type-tag)/1.6 var(--mono); color: var(--ink); }
 .cd-back { flex: none; }
 /* A narrower page: the goal's boxes two by two. */
 @container cp (max-width: 1000px) {
@@ -331,24 +328,24 @@ button.cpb-who:hover { text-decoration: underline; text-underline-offset: 2px; }
 /* The crew's mode on its tray line, and its menu (ui/team_send.js crewMode), opening upward: two segmented choices,
    split work (Auto · Always · Never) and what happens when a review comes back (Handle it · Ask me). */
 .crew-pick { position: relative; display: inline-flex; flex: none; }
-.crew-menu { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 30; width: 320px; display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 12px; background: var(--panel); box-shadow: 0 0 0 1px var(--line), 0 8px 24px rgba(0, 0, 0, 0.18); color: var(--ink); font-size: var(--type-body); font-weight: 400; white-space: normal; cursor: default; }
+.crew-menu { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 30; width: 320px; display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: var(--radius-card); background: var(--panel); box-shadow: 0 0 0 1px var(--line), 0 8px 24px color-mix(in srgb, var(--shade) 18%, transparent); color: var(--ink); font-size: var(--type-body); font-weight: 400; white-space: normal; cursor: default; }
 /* In the ⋯ menu: an item like the others, its settings opening under it, in the menu's flow. */
 .crew-in-more { display: flex; flex-direction: column; }
 .crew-in-more .crew-menu { position: static; width: auto; margin: 2px 4px 6px; box-shadow: 0 0 0 1px var(--line); }
-.crew-in-more .team-sw button { display: inline-flex; flex-direction: row; align-items: center; height: 26px; padding: 0 8px; border-radius: 6px; font-size: var(--type-pill); font-weight: 600; color: var(--muted); }
+.crew-in-more .team-sw button { display: inline-flex; flex-direction: row; align-items: center; height: 26px; padding: 0 8px; border-radius: var(--radius-qp); font-size: var(--type-pill); font-weight: 600; color: var(--muted); }
 .crew-in-more .team-sw button.on { color: var(--ink); background: var(--panel); }
 .crew-q { margin-top: 2px; color: var(--muted); font-size: var(--type-small); font-weight: 650; }
 .crew-menu .team-sw { align-self: flex-start; }
 .crew-foot { margin-top: 2px; color: var(--muted); font-size: var(--type-small); }
-.team-sw { flex: none; display: inline-flex; align-items: center; gap: 1px; height: 30px; padding: 2px; box-sizing: border-box; border-radius: 8px; background: var(--panel-2); font-size: var(--type-pill); font-weight: 600; }
-.team-sw button { height: 26px; padding: 0 8px; border-radius: 6px; color: var(--muted); }
+.team-sw { flex: none; display: inline-flex; align-items: center; gap: 1px; height: 30px; padding: 2px; box-sizing: border-box; border-radius: var(--radius-btn); background: var(--panel-2); font-size: var(--type-pill); font-weight: 600; }
+.team-sw button { height: 26px; padding: 0 8px; border-radius: var(--radius-qp); color: var(--muted); }
 .team-sw button:hover { color: var(--ink); }
 .team-sw button.on { color: var(--ink); background: var(--panel); box-shadow: 0 0 0 1px var(--line); }
 
 /* A task dragged over a hosted lead's card under Sessions, and once dropped, what it would touch before it goes. */
 .working.ho-over { outline: 2px dashed var(--accent); outline-offset: 3px; }
 /* Its own light panel: the card it sits in can be the board's dark one. */
-.ho { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; padding: 10px 12px; border-radius: 10px; background: var(--panel); box-shadow: 0 0 0 1px var(--line); font-size: var(--type-body); color: var(--ink); cursor: default; }
+.ho { display: flex; flex-direction: column; gap: var(--card-gap); margin-top: 8px; padding: var(--card-pad-y) var(--card-pad-x); border-radius: var(--radius-tray); background: var(--panel); box-shadow: 0 0 0 1px var(--line); font-size: var(--type-body); color: var(--ink); cursor: default; }
 .ho-title { font-weight: 700; }
 .ho-task { color: var(--muted); line-height: 1.4; overflow-wrap: anywhere; }
 .ho-cap { font-size: var(--type-tag); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
@@ -395,7 +392,7 @@ button.cp-lead:not(.on):hover { background: var(--panel-2); }
 /* Its files as chips over the reading area: a name and +/−, outlined; the one whose diff shows dark. Many wrap, and
    past three lines they scroll inside. */
 .cpm-chips { flex: none; display: flex; flex-wrap: wrap; gap: 6px; max-height: 92px; overflow-y: auto; padding: 10px 14px 0; }
-.cpm-chip { display: inline-flex; align-items: baseline; gap: 7px; max-width: 100%; box-sizing: border-box; padding: 4px 10px; border-radius: var(--pill-radius); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); font: var(--type-pill)/1.4 var(--mono); }
+.cpm-chip { display: inline-flex; align-items: baseline; gap: 7px; max-width: 100%; box-sizing: border-box; padding: 4px 10px; border-radius: var(--radius-pill); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); font: var(--type-pill)/1.4 var(--mono); }
 .cpm-chip:hover { background: var(--panel-2); }
 .cpm-chip.on { background: var(--ink); color: var(--panel); box-shadow: none; }
 .cpm-chip.on .cpm-n .add, .cpm-chip.on .cpm-n .del { color: var(--panel); }
@@ -413,7 +410,7 @@ button.cp-lead:not(.on):hover { background: var(--panel-2); }
 /* A file's diff in the reading area: one block, its lines on tints of --accent (added) and --deny (removed) over the
    panel, so it reads in both themes; long lines scroll sideways inside it. Each line's old and new numbers (team_mate.js
    crewDiffHtml: data-o, data-n, --ln their width) in a dim gutter that stays put as it scrolls, left out of a copy. */
-.cpm-diff { margin: 0; padding: 6px 0; border-radius: 8px; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); font: var(--type-small)/1.6 var(--mono); color: var(--ink); overflow-x: auto; }
+.cpm-diff { margin: 0; padding: 6px 0; border-radius: var(--radius-btn); background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); font: var(--type-small)/1.6 var(--mono); color: var(--ink); overflow-x: auto; }
 .cpm-diff > span { display: block; padding: 0 12px 0 0; white-space: pre; min-width: max-content; background: var(--panel); }
 .cpm-diff > .add { background: color-mix(in srgb, var(--accent) 15%, var(--panel)); }
 .cpm-diff > .del { background: color-mix(in srgb, var(--deny) 11%, var(--panel)); }
@@ -425,8 +422,7 @@ button.cp-lead:not(.on):hover { background: var(--panel-2); }
 .cpm-diff .ln::before { content: attr(data-o) "\200B"; }
 .cpm-diff .ln::after { content: attr(data-n) "\200B"; }
 /* An ask out of view: a red chip pinned at the list's bottom edge (top when it's above). */
-.cp-list { position: relative; }
-.cp-jump { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); z-index: 2; padding: 5px 13px; border-radius: var(--pill-radius); background: var(--deny); color: #fff; font-size: var(--type-body); font-weight: 650; white-space: nowrap; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18); }
+.cp-jump { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); z-index: 2; padding: 5px 13px; border-radius: var(--radius-pill); background: var(--deny); color: var(--white); font-size: var(--type-body); font-weight: 650; white-space: nowrap; box-shadow: 0 2px 10px color-mix(in srgb, var(--shade) 18%, transparent); }
 .cp-jump.up { bottom: auto; top: 120px; }
 .cp-jump[hidden] { display: none; }
 /* Narrow (SPEC §13). A teammate in a left under 600 wide: the size and the lit file's whole path give way (its chip
@@ -444,7 +440,6 @@ button.cp-lead:not(.on):hover { background: var(--panel-2); }
 .cpm-more { align-self: flex-start; padding: 0 0 2px; font-size: var(--type-pill); }
 /* The bar in a narrow left: one line each, what's left out first the keys (or the one-way sentence: its tag stays),
    then the reason and the verb ("wants to run"), so the command keeps its room. */
-.cp-bar { container: cpbar / inline-size; }
 .cpb-1 > *, .cpb-2 > * { white-space: nowrap; }
 @container cpbar (max-width: 480px) {
   .cpb-keys, .cpb-ow, .cpb-why, .cpb-what { display: none; }
@@ -453,12 +448,12 @@ button.cp-lead:not(.on):hover { background: var(--panel-2); }
 /* The add-on's page on the left (core/addon.js addOn.crewPageLeft), in the chat's place, scrolling inside itself; a record's
    left has nothing else. */
 .cp-addon-left { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-.cpm .mt-under { margin: 0 14px 8px; padding: 6px 10px; border-radius: 8px; background: var(--panel-2); }
+.cpm .mt-under { margin: 0 14px 8px; padding: 6px 10px; border-radius: var(--radius-btn); background: var(--panel-2); }
 .cpm-fl .cp-f { flex: none; white-space: nowrap; }
 /* The picked teammate's row is lit as The lead's is: every word and its meter in --on-sel; "needs you" a red pill. */
 .cp-card.on, .cp-card.on:has(> .cp-row:hover) { background: var(--sel); }
 .cp-card.on, .cp-card.on .cp-row, .cp-card.on .cp-ml, .cp-card.on .cp-tm, .cp-card.on .cp-now, .cp-card.on .mt-lk { color: var(--on-sel); }
 .cp-card.on .cp-m b { background: color-mix(in srgb, var(--on-sel) 22%, transparent); }
 .cp-card.on .cp-m b.done, .cp-card.on .cp-m b.now { background: var(--on-sel); }
-.cp-card.on.q .cp-ml { padding: 0 7px; border-radius: var(--pill-radius); background: var(--deny); color: #fff; }
+.cp-card.on.q .cp-ml { padding: 0 7px; border-radius: var(--radius-pill); background: var(--deny); color: var(--white); }
 .cp-card.on .cp-now.q { color: var(--on-sel); }

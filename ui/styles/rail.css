@@ -1,7 +1,7 @@
 /* ---------- collapse to the rail + full-screen chat ---------- */
 .collapse-x { color: var(--on-bg-muted); font-size: var(--type-body); line-height: 1; cursor: pointer; opacity: 0; transition: opacity .14s ease; }
 .col-head:hover .collapse-x { opacity: 1; }
-.esc-hint { font-size: var(--type-tag); color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 2px 7px; font-weight: 600; }
+.esc-hint { font-size: var(--type-tag); color: var(--muted); border: 1px solid var(--line); border-radius: var(--radius-qp); padding: 2px 7px; font-weight: 600; }
 .rail-col { justify-content: flex-start; }
 .rail { display: flex; flex-direction: column; gap: 24px; align-items: flex-start; }
 .pin { color: var(--on-bg-muted); cursor: pointer; border-left: 1px solid color-mix(in srgb, var(--on-bg) 16%, transparent); padding-left: 10px; }

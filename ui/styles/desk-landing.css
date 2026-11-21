@@ -4,7 +4,7 @@
 .dk-desks { width: 100%; max-width: 1340px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; min-height: 0; padding-bottom: 8px; }
 .dk-hh { margin: 6px 4px 2px; font: 700 var(--type-small) var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--on-bg); opacity: .8; }
 .dk-hh .dh-n { font-weight: 600; opacity: .8; }
-.dh-tbl { flex: none; background: var(--panel); color: var(--ink); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
+.dh-tbl { flex: none; background: var(--panel); color: var(--ink); border-radius: var(--radius-card); box-shadow: var(--shadow); overflow: hidden; }
 .dh-tr { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(120px, 1.2fr) repeat(3, minmax(100px, 1fr)) minmax(0, 1.1fr) 84px; align-items: center; gap: 12px; padding: 14px 18px; border-top: 1px solid var(--panel-2); }
 .dh-tr.dh-hd { border-top: 0; padding: 10px 18px; background: var(--panel-2); color: var(--muted); font: 700 var(--type-tag) var(--sans); letter-spacing: .08em; text-transform: uppercase; }
 .dh-tr.dk-desk { cursor: pointer; }
@@ -22,7 +22,7 @@
 .dh-big { display: inline-flex; align-items: center; font-weight: 650; }
 .dh-big .dk-kic { margin-right: 6px; vertical-align: 0; }
 .dh-cell.z .dh-big { color: var(--muted); font-weight: 500; opacity: .7; }
-.dh-ck { display: inline-flex; align-items: center; height: 18px; padding: 0 7px; border-radius: 999px; background: var(--sel); color: var(--on-sel); font-weight: 650; }
+.dh-ck { display: inline-flex; align-items: center; height: 18px; padding: 0 7px; border-radius: var(--radius-pill); background: var(--sel); color: var(--on-sel); font-weight: 650; }
 .dh-on { min-width: 0; color: var(--muted); font-size: var(--type-body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dh-on b { color: var(--ink); font-weight: 650; }
 .dh-none { font-style: italic; }
@@ -44,18 +44,18 @@
 }
 /* + New in the header: New session or New Desk. */
 .nw-wrap { position: relative; display: inline-flex; }
-.nw-pop { position: absolute; top: 34px; left: 0; z-index: 40; display: flex; flex-direction: column; min-width: 180px; padding: 5px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); }
-.nw-pop button { all: unset; display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 7px; font-size: var(--type-body); font-weight: 600; cursor: pointer; }
+.nw-pop { position: absolute; top: 34px; left: 0; z-index: 40; display: flex; flex-direction: column; min-width: 180px; padding: 5px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius-tray); box-shadow: var(--shadow); }
+.nw-pop button { all: unset; display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: var(--radius-qp); font-size: var(--type-body); font-weight: 600; cursor: pointer; }
 .nw-pop button:hover, .nw-pop button:focus-visible { background: var(--panel-2); }
 .nw-pop kbd { margin-left: auto; color: var(--muted); font: var(--type-pill) var(--sans); }
 /* New Desk: a project and a name. */
 .nd-scrim { z-index: 40; }
-.nd { width: min(460px, calc(100% - 40px)); gap: 6px; border-radius: 18px; padding: 20px 22px; }
+.nd { width: min(460px, calc(100% - 40px)); gap: 6px; border-radius: var(--radius-sheet); padding: 20px 22px; }
 .nd-head { display: flex; align-items: center; margin-bottom: 8px; }
 .nd-head b { font-size: var(--type-title); }
 .nd-x { all: unset; padding: 0 4px; color: var(--muted); font-size: var(--type-title); cursor: pointer; }
 .nd-l { margin-top: 8px; color: var(--muted); font-size: var(--type-small); font-weight: 650; }
-.nd-f { box-sizing: border-box; width: 100%; height: 38px; padding: 0 12px; border: 1.5px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); font: var(--type-body) var(--sans); }
+.nd-f { box-sizing: border-box; width: 100%; height: 38px; padding: 0 12px; border: 1.5px solid var(--line); border-radius: var(--radius-btn); background: var(--panel); color: var(--ink); font: var(--type-body) var(--sans); }
 .nd-f:focus { border-color: var(--ink); outline: none; }
 /* Project: Cue's own dropdown (New session's list), not the system's menu; the name first, its folder muted. */
 .nd-pickwrap { position: relative; }
@@ -63,7 +63,7 @@
 .nd-pn { flex: none; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .nd-pick .nd-pp, .nd-drop .nd-pp { flex: 1; min-width: 0; font-size: var(--type-small); }
 .nd-car { flex: none; margin-left: auto; color: var(--muted); font-size: var(--type-body); line-height: 1; }
-.nd-drop { max-height: 240px; border-radius: 10px; }
+.nd-drop { max-height: 240px; border-radius: var(--radius-tray); }
 .nd-drop .nf-dopt { display: flex; align-items: center; gap: 8px; padding: 7px 10px; font: var(--type-body) var(--sans); }
 .nd-drop .nf-dopt.on .nd-pp { color: inherit; opacity: .75; }
 .nd-drop .nf-dopt.on .pdot { box-shadow: 0 0 0 1.5px var(--on-accent); }   /* its dot stays seen on the lit row */
@@ -73,11 +73,11 @@
    into the window's dark green: ‹ Desks and ⋯ (hand the Desk on), the Desk's name with ✎ on hover, its meta line; then
    the lead's card inside it. Light: the accent with white text; dark: a dark green (see pick O
    below). */
-.dk-strip { flex: none; margin: 0; padding: 10px 20px 14px; border-radius: 14px 14px 0 0; background: var(--accent); color: var(--on-accent); }
+.dk-strip { flex: none; margin: 0; padding: 10px 20px 14px; border-radius: var(--radius-pane) var(--radius-pane) 0 0; background: var(--accent); color: var(--on-accent); }
 /* Pick O: the left column lifts off the window (a hairline light edge, a deeper shadow), and a lime line under the strip
    closes it off from the sessions. Dark: the strip is a dark green, not lime, so the lead's card lights lime when open
    exactly as a row does, in both themes. */
-.dk-sessions { box-shadow: 0 0 0 1px color-mix(in oklab, white 28%, transparent), 0 10px 28px rgba(0, 0, 0, .35); }
+.dk-sessions { box-shadow: 0 0 0 1px color-mix(in oklab, var(--white) 28%, transparent), 0 10px 28px color-mix(in srgb, var(--shade) 35%, transparent); }
 /* Under "Run by", over the lead's card (#263, #359): a plain lime line while the lead is idle; while it works, the chat's own working light
    (.sweep, chat.css) runs along it over the panel, exactly as along a chat's top. */
 .dk-lbar { position: relative; flex: none; height: 3px; overflow: hidden; background: var(--sel); }
@@ -90,20 +90,20 @@
 /* The strip's top line (‹ Desks … ⋯). Not .dk-stop: a stopped item's row is .dk-it.dk-stop and took this flex (#218). */
 /* The switcher (pick A, #240): the Desk's name is a button with ▾; its menu drops under it, over the sessions. */
 .dk-sw-anchor { position: relative; display: inline-flex; min-width: 0; }
-.dk-sw-btn { all: unset; display: inline-flex; align-items: center; gap: 6px; min-width: 0; min-height: 28px; margin-left: -6px; padding: 0 8px 0 6px; border-radius: 8px; color: inherit; cursor: pointer; }
+.dk-sw-btn { all: unset; display: inline-flex; align-items: center; gap: 6px; min-width: 0; min-height: 28px; margin-left: -6px; padding: 0 8px 0 6px; border-radius: var(--radius-btn); color: inherit; cursor: pointer; }
 .dk-sw-btn:hover, .dk-sw-btn:focus-visible, .dk-sw-btn[aria-expanded="true"] { background: color-mix(in oklab, currentColor 12%, transparent); }
 .dk-sw-caret { flex: none; opacity: .75; }
-.dk-sw-menu { position: absolute; z-index: 40; top: calc(100% + 6px); left: -6px; width: 300px; max-width: calc(100vw - 32px); padding: 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); box-shadow: 0 12px 32px rgba(0, 0, 0, .28); font-size: var(--type-body); font-weight: 400; }
-.dk-sw-find { box-sizing: border-box; width: 100%; height: 30px; margin-bottom: 4px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2, var(--panel)); color: var(--ink); font: inherit; outline: none; }
+.dk-sw-menu { position: absolute; z-index: 40; top: calc(100% + 6px); left: -6px; width: 300px; max-width: calc(100vw - 32px); padding: 6px; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--panel); color: var(--ink); box-shadow: 0 12px 32px color-mix(in srgb, var(--shade) 28%, transparent); font-size: var(--type-body); font-weight: 400; }
+.dk-sw-find { box-sizing: border-box; width: 100%; height: 30px; margin-bottom: 4px; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--radius-btn); background: var(--panel-2, var(--panel)); color: var(--ink); font: inherit; outline: none; }
 .dk-sw-find:focus { border-color: var(--sel); }
 .dk-sw-list { max-height: 320px; overflow-y: auto; }
-.dk-sw-row { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px; border-radius: 8px; cursor: pointer; }
+.dk-sw-row { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px; border-radius: var(--radius-btn); cursor: pointer; }
 .dk-sw-row.at, .dk-sw-row:hover { background: color-mix(in oklab, var(--sel) 22%, transparent); }
 .dk-sw-tick { flex: none; width: 12px; color: var(--sel); font-weight: 700; }
 /* The name takes the row's room up to the count, never over it. Too long: its end fades (the fade lies over 18px of
    padding, so a name that fits is never faded), and while its row is lit (keys or pointer) it slides left to show its
    end, back and forth; unlit, it's back at its start. 100cqw is the room, 100% the name's own width. */
-.dk-sw-nm { flex: 1 1 auto; min-width: 0; overflow: hidden; container-type: inline-size; white-space: nowrap; font-weight: 600; -webkit-mask-image: linear-gradient(to left, transparent, #000 18px); mask-image: linear-gradient(to left, transparent, #000 18px); }
+.dk-sw-nm { flex: 1 1 auto; min-width: 0; overflow: hidden; container-type: inline-size; white-space: nowrap; font-weight: 600; -webkit-mask-image: linear-gradient(to left, transparent, var(--shade) 18px); mask-image: linear-gradient(to left, transparent, var(--shade) 18px); }
 .dk-sw-nm > span { display: inline-block; padding-right: 18px; }
 .dk-sw-row:is(.at, :hover) .dk-sw-nm > span { animation: dk-sw-slide 5s ease-in-out .6s infinite alternate; }
 @keyframes dk-sw-slide { 0%, 15% { transform: none; } 85%, 100% { transform: translateX(min(0px, calc(100cqw - 100%))); } }
@@ -112,7 +112,7 @@
 .dk-sw-need { flex: none; margin-left: auto; color: var(--deny); font-size: var(--type-small); font-weight: 600; white-space: nowrap; }
 .dk-sw-none { padding: 8px; color: var(--muted); }
 .dk-sw-foot { display: flex; gap: 4px; margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--line); }
-.dk-sw-act { all: unset; flex: none; height: 30px; padding: 0 10px; display: inline-flex; align-items: center; border-radius: 8px; font-weight: 600; cursor: pointer; }
+.dk-sw-act { all: unset; flex: none; height: 30px; padding: 0 10px; display: inline-flex; align-items: center; border-radius: var(--radius-btn); font-weight: 600; cursor: pointer; }
 .dk-sw-act:hover, .dk-sw-act:focus-visible { background: color-mix(in oklab, var(--sel) 22%, transparent); }
 .dk-sw-keys { padding: 6px 8px 2px; color: var(--muted); font-size: var(--type-pill); }
 .dk-shr { display: flex; align-items: center; gap: 6px; min-width: 0; }
@@ -121,11 +121,11 @@
    name wraps there rather than being cut short, at any width. */
 .dk-steprow { display: flex; align-items: baseline; gap: 8px; min-width: 0; margin-top: 3px; }
 .dk-step { flex: none; display: inline-flex; align-items: center; gap: 2px; }
-.dk-step-btn { all: unset; width: 22px; height: 22px; border-radius: 6px; display: inline-grid; place-items: center; opacity: .85; cursor: pointer; }
+.dk-step-btn { all: unset; width: 22px; height: 22px; border-radius: var(--radius-qp); display: inline-grid; place-items: center; opacity: .85; cursor: pointer; }
 .dk-step-btn:hover, .dk-step-btn:focus-visible { background: color-mix(in oklab, currentColor 14%, transparent); opacity: 1; }
 .dk-dots { flex: none; display: inline-flex; align-items: center; gap: 4px; margin: 0 2px; align-self: center; }
 .dk-dots i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; opacity: .35; }
-.dk-dots i.at { width: 14px; border-radius: 3px; background: var(--sel); opacity: 1; }
+.dk-dots i.at { width: 14px; border-radius: var(--radius-pill); background: var(--sel); opacity: 1; }
 .dk-next { all: unset; display: inline; min-width: 0; font-size: var(--type-pill); opacity: .7; overflow-wrap: anywhere; cursor: pointer; }
 .dk-next:hover, .dk-next:focus-visible { opacity: 1; text-decoration: underline; text-underline-offset: 2px; }
 /* The Desk's mark takes the strip's text colour: in --accent it would vanish into the light strip. */
@@ -155,7 +155,7 @@
    exactly a session row's size, so it reads as a row you open, not part of the strip. */
 /* The lead's card (pick M1, #446): no "Run by" head; a lime "Lead" pill after its name, a divider under it. */
 .dk-lcard { margin: 0 -20px -14px; padding: 12px 20px; background: var(--panel); color: var(--ink); cursor: pointer; border-bottom: 1px solid var(--line); }
-.dk-ltag { flex: none; display: inline-flex; align-items: center; padding: 1px 7px; border-radius: 999px; font: 700 var(--type-tag) var(--sans); background: var(--sel); color: var(--on-sel); }
+.dk-ltag { flex: none; display: inline-flex; align-items: center; padding: 1px 7px; border-radius: var(--radius-pill); font: 700 var(--type-tag) var(--sans); background: var(--sel); color: var(--on-sel); }
 .dk-lcard.on .dk-ltag { background: var(--on-sel); color: var(--sel); }
 .dk-lcard:hover { background: var(--panel-2); }
 .dk-lcard.on { background: var(--sel); color: var(--on-sel); }
@@ -163,12 +163,12 @@
 .dk-lcard.on :is(.dk-lk, .dk-st, .dk-s2, .dk-s3:not(.hot), .dk-id, .dk-kic) { color: inherit; }
 .dk-lcard.on :is(.dk-lk, .dk-id, .dk-s3:not(.hot)) { opacity: .75; }
 .dk-larrow { flex: none; font: 600 var(--type-page)/1 var(--sans); }
-.dk-lcard .badge { width: 16px; height: 16px; border-radius: 4px; font-size: var(--type-tag); }
+.dk-lcard .badge { width: 16px; height: 16px; border-radius: var(--radius-tag); font-size: var(--type-tag); }
 .dk-lcard.on .badge:not(.h-pi) { background: var(--on-sel); color: var(--sel); }
 .dk-lcard .dk-lk { flex: none; font: 700 var(--type-tag) var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .dk-lcard:has(.dk-ric) > :is(.dk-s2, .dk-s3) { margin-left: 22px; }
 .dk-lcard:hover .dk-sren { opacity: 1; }
-.dk-ren { all: unset; flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; color: var(--muted); cursor: pointer; opacity: 0; }
+.dk-ren { all: unset; flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: var(--radius-qp); color: var(--muted); cursor: pointer; opacity: 0; }
 .dk-sh:hover .dk-ren, .dk-ren:focus-visible { opacity: 1; }
 .dk-ren:hover { background: var(--panel-2); color: var(--ink); }
 .dk-lcard.on .dk-ren { color: inherit; }

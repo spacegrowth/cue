@@ -31,6 +31,22 @@
   /* 10: your own Color (core/colors.js OWN), any hue (--oh) and strength (--ok), set on the window by core/colors.js projTheme. */
   --pcp10: oklch(0.66 calc(0.105 * var(--ok, 0)) var(--oh, 0)); --pcb10: oklch(0.82 calc(0.11 * var(--ok, 0)) var(--oh, 0)); --pc10: var(--pcp10);
   --shadow: 0 18px 40px -22px rgba(15, 20, 5, 0.55);
+  /* Colours that are the same in light and dark (#527: every colour in the CSS is a token). */
+  --white: #FFFFFF;          /* stays white in dark: words on a coloured fill, a switch's knob, behind a picture */
+  --shade: #000000;          /* shadows, dimming, masks and the notch's black */
+  --scrim-ink: #0A0C05;      /* moss-black behind a sheet or a picture, and a list's deep shadow */
+  --on-amber: #1E2410;       /* words and dots on an --amber fill */
+  --caution: #D99A3A;        /* orange: stuck, waiting on a terminal, usage near its limit */
+  --caution-ink: #B07A22;    /* the same as words */
+  --on-caution: #2A1D06;     /* words and dots on a --caution fill */
+  --caution-hot: #C0612B;    /* usage at its limit */
+  --caution-soft: #F6E7C8; --on-caution-soft: #5B3D05;   /* a soft "waits" tag and its words */
+  --fresh: #7FAE5A;          /* usage back, a limit lifted */
+  --deny-bright: #E8907F;    /* an ask on the notch's black */
+  --deny-pale: #F0C2B6;      /* an error on the slab */
+  --pi-badge: #111111;       /* Pi's badge, its black */
+  /* The ! shell field and what it printed: a neutral terminal grey, not the slab's moss. */
+  --shell-bg: #16171A; --shell-line: #3A3C44; --shell-ink: #F2F3F5; --shell-hint: #A3A7B3; --shell-muted: #8B8F99; --shell-out: #D8DAE0;
   --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
   --mono: "SF Mono", ui-monospace, Menlo, monospace;
   /* The type scale (#528, the Font sizes page's option B): whole pixels, one size per job, and every text size in the
@@ -42,10 +58,29 @@
   --type-title: 15px;    /* a pane's or a card's title, and the glyphs on small square buttons */
   --type-page: 20px;     /* a page's heading */
   --type-figure: 32px;   /* big numbers (Insights) */
-  /* Every small label (a role, a mode, a state, a count, a chip) is a full capsule: this one shape
-     (tests/ui/specs/pills.mjs checks every screen for one that isn't). */
-  --pill-radius: 999px;
+  /* The design system's corners (tokens.json): every border-radius in the app is one of these, or 50% for a circle.
+     Every small label (a role, a mode, a state, a count, a chip) is a full capsule, --radius-pill
+     (tests/ui/specs/pills.mjs checks every screen for one that isn't); --pill-radius is its older name. */
+  --radius-tag: 5px;
+  --radius-qp: 6px;
+  --radius-btn: 8px;
+  --radius-tray: 10px;
+  --radius-card: 12px;
+  --radius-pane: 14px;
+  --radius-tile: 16px;
+  --radius-sheet: 18px;
+  --radius-pill: 999px;
+  --pill-radius: var(--radius-pill);
   color-scheme: light;
+  /* The design system's space tokens (tokens.json): a card's padding, the gap inside one, the gap between
+     columns, a pane's and the window's edge. Named for their job; other spacing stays in px. */
+  --card-pad-y: 10px;
+  --card-pad-x: 12px;
+  --card-gap: 6px;
+  --col-gap: 10px;
+  --pane-pad: 16px;
+  --window-pad: 20px;
+  --on-deny: #FFFFFF;       /* text on a deny fill (an ask's tag) */
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -55,6 +90,10 @@
     --add-bg: #1C3A25; --add-fg: #56D364; --del-bg: #45201F; --del-fg: #FF8A80;
     --pcp0: #B5C27A; --pcp1: oklch(0.8 0.033 107); --pcp2: oklch(0.8 0.063 301); --pcp3: oklch(0.8 0.083 87); --pcp4: oklch(0.8 0.041 67); --pcp5: oklch(0.8 0.036 157); --pcp6: oklch(0.8 0.053 194); --pcp7: oklch(0.8 0.07 276); --pcp8: oklch(0.8 0.048 353); --pcp9: oklch(0.8 0.011 271); --pcb0: var(--pcp0); --pcb1: var(--pcp1); --pcb2: var(--pcp2); --pcb3: var(--pcp3); --pcb4: var(--pcp4); --pcb5: var(--pcp5); --pcb6: var(--pcp6); --pcb7: var(--pcp7); --pcb8: var(--pcp8); --pcb9: var(--pcp9); --pcp10: oklch(0.8 calc(0.11 * var(--ok, 0)) var(--oh, 0)); --pcb10: var(--pcp10);
     --shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.8); color-scheme: dark;
+    --white: #FFFFFF; --shade: #000000; --scrim-ink: #0A0C05; --on-amber: #1E2410; --caution: #D99A3A; --caution-ink: #B07A22; --on-caution: #2A1D06; --caution-hot: #C0612B;
+    --caution-soft: #F6E7C8; --on-caution-soft: #5B3D05; --fresh: #7FAE5A; --deny-bright: #E8907F; --deny-pale: #F0C2B6; --pi-badge: #111111;
+    --shell-bg: #16171A; --shell-line: #3A3C44; --shell-ink: #F2F3F5; --shell-hint: #A3A7B3; --shell-muted: #8B8F99; --shell-out: #D8DAE0;   /* the same as light */
+    --on-deny: #151A08;
   }
 }
 :root[data-theme="dark"] {
@@ -64,6 +103,10 @@
   --add-bg: #1C3A25; --add-fg: #56D364; --del-bg: #45201F; --del-fg: #FF8A80;
   --pcp0: #B5C27A; --pcp1: oklch(0.8 0.033 107); --pcp2: oklch(0.8 0.063 301); --pcp3: oklch(0.8 0.083 87); --pcp4: oklch(0.8 0.041 67); --pcp5: oklch(0.8 0.036 157); --pcp6: oklch(0.8 0.053 194); --pcp7: oklch(0.8 0.07 276); --pcp8: oklch(0.8 0.048 353); --pcp9: oklch(0.8 0.011 271); --pcb0: var(--pcp0); --pcb1: var(--pcp1); --pcb2: var(--pcp2); --pcb3: var(--pcp3); --pcb4: var(--pcp4); --pcb5: var(--pcp5); --pcb6: var(--pcp6); --pcb7: var(--pcp7); --pcb8: var(--pcp8); --pcb9: var(--pcp9); --pcp10: oklch(0.8 calc(0.11 * var(--ok, 0)) var(--oh, 0)); --pcb10: var(--pcp10);
   --shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.8); color-scheme: dark;
+  --white: #FFFFFF; --shade: #000000; --scrim-ink: #0A0C05; --on-amber: #1E2410; --caution: #D99A3A; --caution-ink: #B07A22; --on-caution: #2A1D06; --caution-hot: #C0612B;
+  --caution-soft: #F6E7C8; --on-caution-soft: #5B3D05; --fresh: #7FAE5A; --deny-bright: #E8907F; --deny-pale: #F0C2B6; --pi-badge: #111111;
+  --shell-bg: #16171A; --shell-line: #3A3C44; --shell-ink: #F2F3F5; --shell-hint: #A3A7B3; --shell-muted: #8B8F99; --shell-out: #D8DAE0;   /* the same as light */
+  --on-deny: #151A08;
 }
 
 /* One project picked: every color of the window from its hue (--ph) and strength (--pk: 0 for Graphite),
@@ -117,7 +160,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
    hit, a highlighted reply) a link takes that surface's own text colour. */
 a, a:visited { color: var(--link, var(--accent)); text-decoration: underline; text-underline-offset: 2px; }
 a:hover { color: var(--link-hover, color-mix(in oklab, var(--link, var(--accent)) 65%, var(--ink))); }
-a:focus-visible { outline: 2px solid var(--link, var(--accent)); outline-offset: 2px; border-radius: 2px; }
+a:focus-visible { outline: 2px solid var(--link, var(--accent)); outline-offset: 2px; border-radius: var(--radius-tag); }
 .mono { font-family: var(--mono); }
 
 /* ---------- shell ---------- */
@@ -130,15 +173,15 @@ a:focus-visible { outline: 2px solid var(--link, var(--accent)); outline-offset:
 .wordmark svg { display: block; pointer-events: none; }
 /* Header chips: click to open the oldest of each kind (again for the next). */
 .hchips { display: flex; gap: 8px; align-items: center; }
-.hchip { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border-radius: var(--pill-radius); font-size: var(--type-body); font-weight: 650; color: var(--on-bg); background: color-mix(in srgb, var(--on-bg) 12%, transparent); white-space: nowrap; }
+.hchip { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border-radius: var(--radius-pill); font-size: var(--type-body); font-weight: 650; color: var(--on-bg); background: color-mix(in srgb, var(--on-bg) 12%, transparent); white-space: nowrap; }
 .hchip:hover { background: color-mix(in srgb, var(--on-bg) 20%, transparent); }
 /* Stronger = closer to the header's own text color, in either theme. */
 .hchip.warm { background: color-mix(in srgb, var(--on-bg) 30%, transparent); }
 .hchip.hot { background: var(--on-bg); color: var(--bg); }
 /* A session waiting on you whose cache is in its last minutes (insights.js cacheWarn): amber, attention, not an error. */
-.hchip.cold { background: var(--amber); color: #1E2410; }
-.hchip.cold:hover { background: color-mix(in srgb, var(--amber) 85%, #fff); }
-.hdot.c { background: #1E2410; }
+.hchip.cold { background: var(--amber); color: var(--on-amber); }
+.hchip.cold:hover { background: color-mix(in srgb, var(--amber) 85%, var(--white)); }
+.hdot.c { background: var(--on-amber); }
 .hchip.cold .hsub { opacity: 0.8; font-variant-numeric: tabular-nums; }
 .hchip .hsub { font-weight: 500; opacity: 0.7; }
 .hchip.new-chip { flex: none; }   /* "+ New" always reads in full, however tight the bar */
@@ -155,11 +198,11 @@ a:focus-visible { outline: 2px solid var(--link, var(--accent)); outline-offset:
 @media (prefers-reduced-motion: reduce) { .hdot.back { animation: none; } }
 .hall { font-size: var(--type-body); color: var(--on-bg-muted); }
 .grow { flex: 1; }
-.top-btn { height: 32px; padding: 0 12px; border-radius: 8px; background: var(--panel); color: var(--ink); font-size: var(--type-small); font-weight: 600; }
+.top-btn { height: 32px; padding: 0 12px; border-radius: var(--radius-btn); background: var(--panel); color: var(--ink); font-size: var(--type-small); font-weight: 600; }
 .top-btn:hover { filter: brightness(0.97); }
 /* Board | History */
-.switch-view { display: flex; gap: 3px; padding: 3px; background: var(--panel); border-radius: 9px; }
-.switch-view button { height: 26px; padding: 0 12px; border-radius: 6px; font-size: var(--type-small); font-weight: 600; color: var(--muted); }
+.switch-view { display: flex; gap: 3px; padding: 3px; background: var(--panel); border-radius: var(--radius-btn); }
+.switch-view button { height: 26px; padding: 0 12px; border-radius: var(--radius-qp); font-size: var(--type-small); font-weight: 600; color: var(--muted); }
 .switch-view button.on { background: var(--accent); color: var(--on-accent); }
 /* Settings: just the gear, in the header's own colour (no box) until you point at it. */
 .top-btn.icon { width: 32px; padding: 0; display: grid; place-items: center; background: transparent; color: var(--on-bg); opacity: 0.75; }
@@ -168,5 +211,5 @@ a:focus-visible { outline: 2px solid var(--link, var(--accent)); outline-offset:
 
 .col-head { font-size: var(--type-pill); font-weight: 700; letter-spacing: 0.08em; color: var(--on-bg); display: flex; gap: 8px; align-items: baseline; }
 .col-head span { color: var(--on-bg-muted); font-weight: 600; letter-spacing: 0.02em; }
-.empty-col { border: 1px dashed var(--on-bg-muted); border-radius: 14px; padding: 16px; color: var(--on-bg-muted); font-size: var(--type-body); text-align: center; }
+.empty-col { border: 1px dashed var(--on-bg-muted); border-radius: var(--radius-pane); padding: 16px; color: var(--on-bg-muted); font-size: var(--type-body); text-align: center; }
 

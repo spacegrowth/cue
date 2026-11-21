@@ -7,29 +7,14 @@
    Colours are base.css's tokens, so light, dark and a project's tint all follow from there. work/501-spec.md says
    which kind, on which screen, takes which class. */
 :root {
-  /* The design system's space, shape and type tokens (tokens.json), which base.css doesn't carry yet. */
-  --card-pad-y: 10px;
-  --card-pad-x: 12px;
-  --card-gap: 6px;
-  --col-gap: 10px;
-  --radius-tag: 5px;
-  --radius-btn: 8px;
-  --radius-card: 12px;
-  --radius-pane: 14px;
-  --radius-pill: var(--pill-radius);
   /* The type scale itself (--type-tag … --type-figure) is in base.css; these name its jobs in a message. */
   --type-body-lh: 1.5;
   --type-button: var(--type-small);   /* Mac "button", 650 */
   --type-meta: var(--type-small);     /* who → to, how it went, the status line (the head row of option B) */
-  --on-deny: #FFFFFF;       /* text on a deny fill (the ask's tag) */
   /* The family's two sizes, by name, so a screen never picks its own. */
   --mg-body: 400 var(--type-body) / var(--type-body-lh) var(--sans);
   --mg-meta: 400 var(--type-meta) / 1.4 var(--sans);
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) { --on-deny: #151A08; }
-}
-:root[data-theme="dark"] { --on-deny: #151A08; }
 
 /* ---------- the card: Cue's message, a note, an item line set, another Desk's message, Ready to check ---------- */
 .mg {
@@ -89,7 +74,6 @@ button.mg-id:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
 }
 .mg-btn svg { width: 13px; height: 13px; flex: none; }
 .mg-btn:hover { background: var(--sel); color: var(--on-sel); border-color: transparent; }
-.mg-btn.pri { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .mg-btn.on { background: var(--sel); color: var(--on-sel); border-color: transparent; }
 
 /* ---------- an ask: the same card, outlined all round ---------- */
@@ -118,11 +102,11 @@ button.mg-id:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
 .mg-agent { align-self: stretch; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .mg-agent > .mg-h .mg-who { color: var(--muted); }
 .mg-text { font: var(--mg-body); color: var(--ink); }
-.mg-you { align-self: flex-end; max-width: 80%; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+.mg-you { align-self: flex-end; max-width: 80%; min-width: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
 /* The bubble; said by voice it sits in a row beside the mic (chat/thread.js yourBubble), and is the same bubble there. */
 .mg-you > .mg-text, .mg-you > .cv-you-row > .mg-text {
   box-sizing: border-box; max-width: 100%; padding: 8px 12px; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text;
-  border-radius: var(--radius-pane) var(--radius-pane) 4px var(--radius-pane); background: var(--panel-2);
+  border-radius: var(--radius-pane) var(--radius-pane) var(--radius-tag) var(--radius-pane); background: var(--panel-2);
 }
 /* Not with them yet (sending, kept in Cue, queued): the bubble dashed on the panel, sending also faint; couldn't send:
    outlined deny (#422, chat/thread.js msgLine). */
@@ -130,10 +114,18 @@ button.mg-id:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
 .mg-you.msg-sending .mg-text, .mg-you.msg-sending .thumbs { opacity: .65; }
 .mg-you.msg-failed .mg-text { background: var(--panel); border: 1.5px solid var(--deny); padding: 6.5px 10.5px; }
 .mg-you > .mg-f { justify-content: flex-end; font-weight: 400; }
+/* Your bubble picked out: a search hit in a chat, your reply in an opened History row. */
+.mg-you:is(.cv-hit, .hreply) .mg-text { background: var(--sel); color: var(--on-sel); box-shadow: 0 0 0 2px var(--sel); --link: var(--on-sel); --link-hover: var(--on-sel); }
+/* Markdown in a message: no margin above its first block or below its last. */
+:is(.mg, .mg-text) .dk-md > :first-child { margin-top: 0; }
+:is(.mg, .mg-text) .dk-md > :last-child, .mg :is(.msg, .mg-full) > :last-child { margin-bottom: 0; }
 
 /* ---------- the status line under a chat (Working on…, Compacted…, Waiting on you…) ---------- */
 .mg-status { align-self: center; display: flex; align-items: center; gap: 7px; min-width: 0; padding: 2px 0; font: var(--mg-meta); color: var(--muted); }
 .mg-status b { color: var(--ink); font-weight: 650; }
+/* A status line that needs you (out of usage, stuck, not started yet) is in ink; a button in one sits after its words. */
+.mg-status:is(.limit, .stuck, .dk-notyet) { color: var(--ink); }
+.mg-status .btn { margin-left: 6px; flex: none; }
 
 /* ---------- a plain line: the same message as text in a row (Inbox, a board card, Working on, the mini) ---------- */
 /* It takes the size of the row it sits in (a card's 12.5px), never a size of its own. */

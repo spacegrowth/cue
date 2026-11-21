@@ -1,6 +1,6 @@
 /* Read (read.js): one panel, as All history is; Recent down the left, the file in the middle (the reader's look,
    chat.css .rd), its headings down the right. */
-.rdv { margin-top: 14px; flex: 1; min-height: 0; display: grid; grid-template-columns: 240px minmax(0, 1fr) 230px; background: var(--panel); color: var(--ink); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; }
+.rdv { margin-top: 14px; flex: 1; min-height: 0; display: grid; grid-template-columns: 240px minmax(0, 1fr) 230px; background: var(--panel); color: var(--ink); border-radius: var(--radius-pane); box-shadow: var(--shadow); overflow: hidden; }
 .rdv.no-toc { grid-template-columns: 240px minmax(0, 1fr); }
 .rdv .col-head { color: var(--muted); padding: 14px 14px 8px; }
 .rdv-list, .rdv-toc { min-height: 0; overflow-y: auto; background: var(--panel-2); display: flex; flex-direction: column; padding-bottom: 12px; }
@@ -10,14 +10,14 @@
 .rdv-toc { border-left: 1px solid var(--line); }
 .rdv .quiet-line { color: var(--muted); padding: 4px 14px; }
 
-.rdv-item { display: flex; align-items: center; margin: 0 6px; border-radius: 8px; }
+.rdv-item { display: flex; align-items: center; margin: 0 6px; border-radius: var(--radius-btn); }
 .rdv-item:hover { background: color-mix(in srgb, var(--line) 55%, transparent); }
 .rdv-item.on { background: var(--sel); color: var(--on-sel); }
 .rdv-open { flex: 1; min-width: 0; text-align: left; padding: 6px 8px; display: flex; flex-direction: column; align-items: stretch; gap: 1px; color: inherit; }
 .rdv-name { font: 600 var(--type-body) var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rdv-sub { font-size: var(--type-pill); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rdv-item.on .rdv-sub { color: inherit; opacity: 0.75; }
-.rdv-x { flex: none; width: 22px; height: 22px; margin-right: 4px; border-radius: 6px; color: var(--muted); font-size: var(--type-title); line-height: 1; opacity: 0; }
+.rdv-x { flex: none; width: 22px; height: 22px; margin-right: 4px; border-radius: var(--radius-qp); color: var(--muted); font-size: var(--type-title); line-height: 1; opacity: 0; }
 .rdv-item:hover .rdv-x { opacity: 1; }
 .rdv-x:hover { background: var(--panel); color: var(--ink); }
 
@@ -29,7 +29,9 @@
 .rdv-title .rd-file { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rdv-plain { font-size: var(--type-small); margin-right: 4px; }
 .rdv-where { font-size: var(--type-pill); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rdv .rd { padding-top: 22px; }
+/* The file: wider than the reader in a chat, but a line stays readable on a big window, with room either side. */
+/* Room under the end, so a heading near it can still come to the top when picked in Contents. */
+.rdv .rd { padding-top: 22px; max-width: 54em; margin: 0 auto; padding-bottom: 70vh; }
 .rdv-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 40px; }
 .rdv-doc > .ls-player { flex: none; }
 
@@ -39,13 +41,9 @@
 .rdv .msg h4.dh3 { font-size: 1.12em; margin: 1.1em 0 0.35em; }
 .rdv .msg h4.dh4 { font-size: 1em; margin: 1em 0 0.3em; }
 
-.rdv-h { display: block; width: calc(100% - 12px); margin: 0 6px; text-align: left; padding: 5px 8px; border-radius: 7px; font-size: var(--type-body); line-height: 1.35; color: var(--ink); }
+.rdv-h { display: block; width: calc(100% - 12px); margin: 0 6px; text-align: left; padding: 5px 8px; border-radius: var(--radius-qp); font-size: var(--type-body); line-height: 1.35; color: var(--ink); }
 .rdv-h:hover { background: color-mix(in srgb, var(--line) 55%, transparent); }
 .rdv-h.l1 { font-weight: 650; }
 .rdv-h.l3 { padding-left: 20px; color: var(--muted); }
 .rdv-h.l4 { padding-left: 32px; color: var(--muted); }
 .rdv-h.on { background: var(--sel); color: var(--on-sel); font-weight: 650; }
-/* The file: wider than the reader in a chat, but a line stays readable on a big window, with room either side. */
-.rdv .rd { max-width: 54em; margin: 0 auto; }
-/* Room under the end, so a heading near it can still come to the top when picked in Contents. */
-.rdv .rd { padding-bottom: 70vh; }

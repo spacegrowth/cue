@@ -1,5 +1,5 @@
 /* ---------- Needs you ---------- */
-.nrow { background: var(--panel); color: var(--ink); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; cursor: pointer; box-shadow: var(--shadow); }
+.nrow { background: var(--panel); color: var(--ink); border-radius: var(--radius-card); padding: var(--card-pad-y) var(--card-pad-x); display: flex; flex-direction: column; gap: 6px; cursor: pointer; box-shadow: var(--shadow); }
 .nrow:hover { background: color-mix(in srgb, var(--panel-2) 60%, var(--panel)); }
 /* The one open in Active: a lime fill with dark text in both themes, so it can't be missed (an accent
    fill or outline vanishes in light mode, where the accent is the background's own green). */
@@ -17,14 +17,13 @@
 .nrow-top:has(> .nrow-side) { flex-wrap: wrap; gap: 6px 16px; }
 .nrow-who { display: flex; align-items: center; gap: 8px; flex: 1 1 7.5em; min-width: 0; }
 .nrow-side { display: flex; align-items: center; gap: 8px; flex: none; margin-left: auto; }
-.nrow-top .dim { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nrow-top .dim { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 100 auto; min-width: 0; }
 /* The name stays on one line (Later, the pin and × take the room); "your turn" shortens first. */
 .nrow-top .proj { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 2.6em; flex: 0 1 auto; }
-.nrow-top .dim { flex: 0 100 auto; min-width: 0; }
-.x-clear { width: 22px; height: 22px; margin: -3px -4px -3px 2px; border-radius: 6px; display: grid; place-items: center; font-size: var(--type-title); line-height: 1; color: var(--muted); flex: none; }
+.x-clear { width: 22px; height: 22px; margin: -3px -4px -3px 2px; border-radius: var(--radius-qp); display: grid; place-items: center; font-size: var(--type-title); line-height: 1; color: var(--muted); flex: none; }
 .x-clear:hover { background: var(--panel-2); color: var(--ink); }
 /* Send to back: the ↓ sits with Later and ×, icon-only, same quiet grey. */
-.back-btn { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; font-size: var(--type-title); line-height: 1; color: var(--muted); flex: none; }
+.back-btn { width: 22px; height: 22px; border-radius: var(--radius-qp); display: grid; place-items: center; font-size: var(--type-title); line-height: 1; color: var(--muted); flex: none; }
 .back-btn:hover { background: var(--panel-2); color: var(--ink); }
 .nrow.on .back-btn { color: var(--on-sel); }
 .nrow.on .back-btn:hover { background: color-mix(in srgb, var(--on-sel) 12%, transparent); }
@@ -47,12 +46,12 @@
 /* An interrupted turn: the one card state that's easy to miss and costs you the most. */
 .nrow .dim.intr { color: var(--deny); font-weight: 650; flex: none; }  /* the name truncates, not this */
 .nrow.on .dim.intr { color: var(--on-sel); text-decoration: underline; text-decoration-color: var(--deny); text-decoration-thickness: 2px; text-underline-offset: 2px; }
-.pill.intr { background: var(--deny); color: #fff; }
+.pill.intr { background: var(--deny); color: var(--white); }
 /* The top of the chat: "Earlier messages", loading, or where Cue's log starts. */
 /* One height whatever it shows (the button, "Loading earlier messages…", the start): the button's pill reaches into
    the row's padding, so swapping it for words doesn't move the chat below by its border and padding (#530). */
 .cv-older { text-align: center; font-size: var(--type-small); line-height: 18px; color: var(--muted); padding: 8px 0 12px; }
-.cv-older button { font: inherit; color: var(--muted); background: none; border: 1px solid var(--line); border-radius: var(--pill-radius); padding: 3px 12px; margin: -4px 0; cursor: pointer; }
+.cv-older button { font: inherit; color: var(--muted); background: none; border: 1px solid var(--line); border-radius: var(--radius-pill); padding: 3px 12px; margin: -4px 0; cursor: pointer; }
 .cv-older button:hover { color: var(--ink); border-color: var(--muted); }
 .nrow-done { font-size: var(--type-body); font-weight: 650; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nrow-done.ok { color: var(--accent); }
@@ -60,7 +59,7 @@
 /* The session the Active pane shows, where it's listed in Sessions: a solid lime border, not a fill. */
 .working.on, .working.on:hover { border: 1px solid var(--sel); box-shadow: inset 0 0 0 1px var(--sel); opacity: 1; }
 /* In the drop-down the lime fill is the keyboard highlight, so the open session gets a tag instead. */
-.viewing-tag { flex: none; margin: 0 6px; font-size: var(--type-tag); font-weight: 700; padding: 1px 7px; border-radius: var(--pill-radius); background: var(--ink); color: var(--panel); }
+.viewing-tag { flex: none; margin: 0 6px; font-size: var(--type-tag); font-weight: 700; padding: 1px 7px; border-radius: var(--radius-pill); background: var(--ink); color: var(--panel); }
 .tl.on { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .queued-note { margin-top: 6px; }
 /* A message's plain line in a picked row is on the selection's fill: its names and item take that row's ink (#501). */
@@ -74,7 +73,7 @@
 
 /* ---------- recently answered ---------- */
 .recent { padding: 8px; }   /* room around the lime row so it doesn't press on the card's edge */
-.recent .tl { padding: 7px 10px 7px 26px; }
+.recent .tl { padding: 7px 10px 7px 26px; border-radius: var(--radius-btn); }
 .recent .tl::before { left: 10px; top: 13px; }
 
 /* ---------- rows ---------- */
