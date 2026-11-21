@@ -163,6 +163,8 @@ function deskFinStep(i) {
   if (f.step === "review") return `In review${f.wait ? ` · ${esc(f.wait)}` : ""}${since}`;
   // Committed, and not on main yet: where it is ("on side, not main").
   if (f.step === "landing") return `Committed, not on main yet${f.wait ? ` · ${esc(f.wait)}` : ""}${since}`;
+  // Install now said while another install runs (#641): it starts the moment that one ends, and says so.
+  if (f.step === "queued" && f.now) return `On main · Install now: ${esc(f.wait || "starting")}`;
   if (f.step === "queued") {
     // Cue installs half an hour after the first item waits (desk/hub/landing/finish.rs), once no session is mid-turn.
     const due = state.desk?.install_at || 0;
@@ -186,8 +188,9 @@ function deskKeptRow(k) {
     : `<span class="dk-kept-f">No changes</span>`;
   return `<div class="dk-it dk-kept" data-kept="${esc(k.id)}"><button class="dk-kept-t" data-desk-item="${esc(k.id)}"><b>#${esc(k.id)}</b> ${esc(k.title)}<span class="dk-kept-s">${esc(k.path)} · ${esc(k.branch)} · dropped ${ago(k.at)} ago</span></button>${changed}<button class="btn small" data-desk-act="pickup_kept" data-id="${esc(k.id)}">Pick up again</button><button class="btn small${armed ? " armed" : ""}" data-desk-act="remove_kept" data-id="${esc(k.id)}">${armed ? "Remove it and its work" : "Remove"}</button></div>`;
 }
-/** Install now on a finishing item in the next install (step "queued"): everything waiting installs at once. */
-const deskInstallNow = (i, cls) => (deskFinishing(i) && i.finish?.step === "queued" ? `<button class="${cls}" data-desk-act="install_now" data-id="${esc(i.id)}">Install now</button>` : "");
+/** Install now on a finishing item in the next install (step "queued"): everything waiting installs at once. Gone once
+ *  said (#641): its step says what it waits on instead. */
+const deskInstallNow = (i, cls) => (deskFinishing(i) && i.finish?.step === "queued" && !i.finish.now ? `<button class="${cls}" data-desk-act="install_now" data-id="${esc(i.id)}">Install now</button>` : "");
 // Skip install (#490): an item waiting to install closed now, with no install of its own (its work stays on main
 // for the next one).
 const deskSkipInstall = (i, cls) => (deskFinishing(i) && i.finish?.step === "queued" ? `<button class="${cls}" data-desk-act="skip_install" data-id="${esc(i.id)}">Skip install</button>` : "");
@@ -220,7 +223,7 @@ function deskLaneStep(i, ahead) {
   if (f.step === "landing") return `Not on main yet${f.wait ? ` · ${esc(f.wait)}` : ""}${age}`;
   if (f.step === "commit_wait") return `Waits to be committed${f.wait ? ` · ${esc(f.wait)}` : ""}${age}`;
   const c = (f.commit || i.commit || "").slice(0, 7);
-  if (f.step === "queued") return `On main${c ? ` · ${esc(c)}` : ""}`;
+  if (f.step === "queued") return `On main${c ? ` · ${esc(c)}` : ""}${f.now ? " · installs next" : ""}`;
   return { building: "Building Cue", installing: "Installing Cue", starting: "Cue is restarting" }[f.step] || `Committing${age}`;
 }
 /** The Waiting to install lane's head, right side: when the next install is, counting down ("9:05pm · in 12m"), and
@@ -229,7 +232,8 @@ function deskLaneStep(i, ahead) {
 function deskInstallHead(items) {
   const waiting = items.find((i) => deskFinishing(i) && i.finish?.step === "queued");
   if (!waiting) return "";
-  const due = state.desk?.install_at || 0;
+  const due = state.desk?.install_at || 0, said = items.find((i) => deskFinishing(i) && i.finish?.step === "queued" && i.finish.now);
+  if (said) return `<span class="dk-next">next · ${esc(said.finish.wait || "starting")}</span>`;
   const when = !due ? "at the next install" : due > now() ? `${clockAt(due)} · <span data-until="${due}">${untilIn(due)}</span>` : "once no session is mid-turn";
   return `<span class="dk-next">${when}</span>${deskInstallNow(waiting, "dk-instnow")}`;
 }

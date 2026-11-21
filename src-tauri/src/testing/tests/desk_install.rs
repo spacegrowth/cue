@@ -91,6 +91,22 @@ fn install_now_skips_the_half_hour_wait() {
     assert_eq!(fake.started().len(), 1);
 }
 
+/// Install now while Cue's tick is mid-run (a landing's check, a pull request read: #641): the install starts at
+/// once, not when that tick ends, and only once.
+#[test]
+fn install_now_starts_at_once_while_cues_tick_is_mid_run() {
+    let w = World::new();
+    let (fake, _, project, id) = done_in_cue(&w);
+    let tick_held = crate::desk::hub::landing::finish::Claim::take(w.hub(), "tick").expect("no tick runs");
+    let it = w.hub().desk_item_act(&id, "install_now", "").unwrap();
+    assert_eq!(it.finish.as_ref().map(|f| f.step.as_str()), Some("building"), "started while the tick ran");
+    assert_eq!(fake.started().len(), 1);
+    drop(tick_held);
+    tick(&w);
+    assert_eq!(fake.started().len(), 1, "the tick doesn't start it again");
+    assert_eq!(step(&w, &project), "building");
+}
+
 /// An item waiting while an install runs that already has its commit (one a session began itself) goes with that
 /// install: no second one is started.
 #[test]
@@ -126,11 +142,15 @@ fn install_now_while_an_install_without_its_commit_runs_starts_the_moment_that_o
     w.settle();
     assert_eq!(step(&w, &project), "queued", "that install doesn't have it");
     assert!(fake.started().is_empty(), "one at a time");
+    // It says why it hasn't started (#641), rather than looking as it did before you clicked.
+    let shown = item(&w, &project, "Header jumps");
+    assert_eq!((shown["finish"]["now"].as_bool(), shown["finish"]["wait"].as_str()), (Some(true), Some(crate::desk::hub::landing::install::AFTER_THIS_INSTALL)), "{shown}");
     fake.goes("installed", "");
     tick(&w);
     let started = fake.started();
     assert_eq!((started.len(), started.first().map(|s| s.1.as_str())), (1, Some(head.as_str())), "started the moment the other ended");
     assert_eq!(step(&w, &project), "building");
+    assert_eq!(item(&w, &project, "Header jumps")["finish"]["wait"], serde_json::Value::Null, "its wait said, cleared");
 }
 
 #[test]

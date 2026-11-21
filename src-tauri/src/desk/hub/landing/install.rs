@@ -239,7 +239,7 @@ impl Hub {
         let to = s.step.clone();
         self.finish_set(id, |i| {
             if let Some(f) = i.finish.as_mut() {
-                (f.step, f.at, f.tag, f.now) = (to, now, tag, false);
+                (f.step, f.at, f.tag, f.now, f.wait) = (to, now, tag, false, String::new());
             }
         });
         true
@@ -248,8 +248,12 @@ impl Hub {
     /// The next install, when items are queued and it's due: half an hour after the first of them, and with no
     /// session that ends with Cue mid-turn; at once when you said Install now.
     fn finish_install_due(&self, now: u64) {
+        // Install now and Cue's tick both start installs: one at a time.
+        let Some(_claim) = Claim::take(self, "install") else { return };
         let queued: Vec<DeskItem> = self.read(|st| st.desk.items.iter().filter(|i| i.state == "finishing" && i.finish.as_ref().is_some_and(|f| f.step == "queued")).cloned().collect());
-        let Some(repo) = queued.iter().filter_map(|i| i.finish.as_ref()).map(|f| f.repo.clone()).find(|r| !r.is_empty()) else { return };
+        // What you said Install now on goes first: another repository's items waiting must not hold it back.
+        let said = queued.iter().filter_map(|i| i.finish.as_ref()).filter(|f| f.now).map(|f| f.repo.clone()).find(|r| !r.is_empty());
+        let Some(repo) = said.or_else(|| queued.iter().filter_map(|i| i.finish.as_ref()).map(|f| f.repo.clone()).find(|r| !r.is_empty())) else { return };
         let batch: Vec<&DeskItem> = queued.iter().filter(|i| i.finish.as_ref().is_some_and(|f| f.repo == repo)).collect();
         let fin = |i: &&DeskItem| i.finish.clone().unwrap_or_default();
         let now_said = batch.iter().any(|i| fin(i).now);
@@ -262,7 +266,15 @@ impl Hub {
                 return;
             }
         }
-        let Some(head) = git("", &repo, &[], &["rev-parse", "HEAD"]).map(|h| h.trim().to_string()) else { return };
+        let Some(head) = git("", &repo, &[], &["rev-parse", "HEAD"]).map(|h| h.trim().to_string()) else {
+            // Said Install now: it says why nothing started, rather than nothing happening (#641).
+            if now_said {
+                for it in batch {
+                    self.finish_failed(it, &format!("{NOT_STARTED}: Cue couldn't read the latest commit in {repo}"), "failed", "");
+                }
+            }
+            return;
+        };
         let tag = format!("desk-{now}");
         let started = self.installer().start(&repo, &head, &tag);
         for it in batch {
@@ -273,7 +285,7 @@ impl Hub {
                     // The commit built is the item's now: main as it is, a fix made since it last failed in it (#343).
                     self.finish_set(&it.id, |i| {
                         if let Some(f) = i.finish.as_mut() {
-                            (f.step, f.at, f.tag, f.now, f.commit) = ("building".into(), now, tag, false, head);
+                            (f.step, f.at, f.tag, f.now, f.commit, f.wait) = ("building".into(), now, tag, false, head, String::new());
                         }
                     });
                 }
@@ -351,11 +363,42 @@ impl Hub {
                 f.now = true;
             }
         });
-        self.desk_finish_tick();
+        // Started here, not through Cue's tick (#641): a tick already running (a landing's check, a pull request
+        // read) turned that one away, and nothing happened until the next. An install under way: it says so, and
+        // starts the moment that one ends.
+        self.install_now_start(now_ms());
         let it = self.item_shown(id);
         it.ok_or_else(|| "no such item".into())
     }
+
+    /// Install now's start: everything waiting goes into an install under way that has its commit, or into one
+    /// started now; when one without it runs, each says it starts the moment that one ends.
+    fn install_now_start(&self, now: u64) {
+        let inst = self.installer();
+        let status = inst.status();
+        let ours = self.read(|st| st.desk.items.iter().any(|i| i.state == "finishing" && i.finish.as_ref().is_some_and(|f| installing(&f.step))));
+        let running = status.as_ref().is_some_and(|s| installing(&s.step));
+        if !running && !ours {
+            self.finish_install_due(now);
+            return;
+        }
+        let queued: Vec<DeskItem> = self.read(|st| st.desk.items.iter().filter(|i| i.state == "finishing" && i.finish.as_ref().is_some_and(|f| f.step == "queued")).cloned().collect());
+        for it in queued {
+            let Some(f) = it.finish.as_ref() else { continue };
+            if running && self.finish_join(&it.id, f, status.as_ref(), now) {
+                continue;
+            }
+            self.finish_set(&it.id, |i| {
+                if let Some(f) = i.finish.as_mut() {
+                    f.wait = AFTER_THIS_INSTALL.into();
+                }
+            });
+        }
+    }
 }
+
+/// What an item you said Install now on says while another install is under way (#641).
+pub(crate) const AFTER_THIS_INSTALL: &str = "starts the moment the install under way ends";
 
 /// Item `id`'s check failed (`step` "check_failed", `question` the reason) for at least the second round: a row for
 /// its Desk's lead, once per round (its key the rounds so far), saved with the item by the caller.

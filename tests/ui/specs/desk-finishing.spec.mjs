@@ -57,6 +57,10 @@ test("a finishing item: amber and steady, out of In progress into Landing, then 
   await cue.change((st, t) => { st.desk.install_at = t; }, due);
   await expect(head.locator(".dk-instnow")).toHaveText("Install now");
   await expect(head.locator(".dk-instnow")).not.toHaveAttribute("title", /.*/);
+  // Its click asks for the install (#641).
+  await cue.override("desk_item_act", () => null);
+  await head.locator(".dk-instnow").click();
+  await cue.called("desk_item_act", { id: "d5", act: "install_now" });
   // Its page: the Finishing pill, the step in full, Install now among its buttons.
   await row.locator(".dk-t").click();
   const pane = page.locator(".dk-right .dk-pg");   // the item's page, its panel beside its chat (#418)
@@ -72,6 +76,16 @@ test("a finishing item: amber and steady, out of In progress into Landing, then 
   await cue.called("desk_item_act", { id: "d5", act: "skip_install" });
   // Clicking it doesn't close the page it's on.
   await expect(page.locator(".dk-right .dk-pg h1")).toContainText("#d5");
+  // Said while another install runs (#641): Install now gives way to what it waits on, on its page, its row and
+  // the lane's head; nothing looks as it did before the click.
+  await patchItem(cue, "d5", { finish: { step: "queued", commit: "abc9999", at: Date.now(), now: true, wait: "starts the moment the install under way ends" } });
+  await expect(pane.locator(".dk-pnow")).toContainText("On main · Install now: starts the moment the install under way ends");
+  await expect(page.locator('[data-desk-act="install_now"]')).toHaveCount(0);
+  await expect(pane.locator('.dk-acts [data-desk-act="skip_install"]')).toHaveText("Skip install");
+  await page.locator(".dk-back").click();
+  await expect(row.locator(".dk-who")).toHaveText("host-lead · On main · abc9999 · installs next");
+  await expect(head.locator(".dk-next")).toHaveText("next · starts the moment the install under way ends");
+  await row.locator(".dk-t").click();
 
   await patchItem(cue, "d5", { finish: { step: "building", commit: "abc9999", at: began } });
   await expect(pane.locator(".dk-pnow")).toContainText(`On main · building Cue · since ${since}`);
