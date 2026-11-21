@@ -1,5 +1,5 @@
 // An ask the agent made (the hub notes "<Tool>: <summary>" in its thread, then your answer as yours: hub/asks.rs) drawn
-// in the chat as an ask: what it asked, the command in a code block (folded when long), your answer beside it.
+// in the chat as an ask: what it asked, the command in a code block (whole, never folded), your answer beside it.
 import { test, expect } from "./cue.mjs";
 
 const ASK_CMD = "cat >> notes.md <<'EOF'\n## Router\n- split in two\n- partial fills next\n- tests pass\nEOF";
@@ -29,10 +29,10 @@ test("an ask in the chat: Asked to run, the command in a code block with Allowed
   await expect(ask).toHaveCount(1);
   await expect(ask.locator(".mg-t")).toHaveText("Asked to run");
   await expect(ask.locator(".mg-st")).toContainText("Allowed");
-  // Folded to its first lines; Show all opens it whole.
-  await expect(ask.locator("pre.mg-code")).toHaveText("$ cat >> notes.md <<'EOF'\n## Router\n- split in two\n- partial fills next");
-  await ask.locator(".cv-more").click();
-  await expect(chat.locator(".cv-ask pre.mg-code")).toHaveText(`$ ${ASK_CMD}`);
+  // The whole command at once: nothing folded, faded or behind a Show all.
+  await expect(ask.locator("pre.mg-code")).toHaveText(`$ ${ASK_CMD}`);
+  await expect(ask.locator(".cv-more")).toHaveCount(0);
+  await expect(ask.locator(".ask-code.folded")).toHaveCount(0);
   // Not its words: no reply paragraph holds the command, and "allowed" is no bubble of yours.
   await expect(chat.locator(".cv-agent")).toHaveCount(1);
   await expect(chat.locator(".cv-agent .cv-text")).toHaveText("Split the router in two; writing the notes now.");

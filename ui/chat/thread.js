@@ -178,7 +178,7 @@ const hookOpen = new Set();    // "sid|turn": its "After a stop hook" part, open
 /** A turn a Stop hook sent back to work (steps/model.rs `hooked_ms`): what it did and wrote from then on is the
  *  hook's follow-up, not its answer. */
 const hookedPart = (turn, x) => !!turn.hooked_ms && x.at_ms >= turn.hooked_ms;
-const turnAll = new Set();     // turns where "Show all" opened every step
+const runFull = new Map();     // "sid|id" -> a running command in full (step_detail's `full`), for its row at a folded turn's foot
 const stepDetail = new Map();  // "sid|id" -> { full, output | diff } | "loading"
 // Words and steps that come in while you watch appear smoothly, once: patchChat gives a new line the
 // `reveal` class as it goes in (a full draw gives nothing that class). This is the longest a new
@@ -212,33 +212,66 @@ async function loadSteps(sid) {
     if (r.turns) { renderMain(); wantDetails(sid); }
   } catch {} finally { stepsBusy = false; }
 }
-/** Fetch the output / diff of every step that's open and not fetched yet (one call). */
+/** Fetch the output / diff of every step that's open and not fetched yet (60 a call, the rest after). */
 async function wantDetails(sid) {
   const f = stepFeeds.get(sid);
   if (!f) return;
   const ids = [];
+  const lastTurn = f.turns.at(-1);
   for (const t of f.turns) {
-    const all = stepsMode() === "all" || turnAll.has(`${sid}|${t.at_ms}`);
+    // An open turn shows each step open (unless you closed it); a closed one, only steps you opened.
+    const all = turnOpen(`${sid}|${t.at_ms}`);
     for (const x of t.items) {
       const k = `${sid}|${x.id}`;
       if (x.t === "step" && x.done && all !== stepFlip.has(k) && !stepDetail.has(k)) ids.push(x.id);
     }
   }
+  // The newest step (a Stop hook's part too, as the turn's foot shows it): running, its command in full for its row
+  // (kept apart: its output isn't in yet), once per step; done, its detail as any open step's. A finished step's copy goes.
+  const last = lastTurn?.items.at(-1), lk = last && `${sid}|${last.id}`;
+  const running = last?.t === "step" && !last.done && last.kind === "run";
+  const runId = running && !runFull.has(lk) ? last.id : null;
+  if (runId) { runFull.set(lk, ""); ids.push(runId); }
+  if (last?.t === "step" && last.done && last.kind === "run" && !stepDetail.has(lk) && !ids.includes(last.id)) ids.push(last.id);
+  // 60 at a time, the newest first; the rest in further calls once these land.
   const want = ids.slice(-60);
+  // A finished step's copy goes once its detail is in (below, or before), so its line never falls back to the cut subject;
+  // one no longer wanted (not newest, not being read) goes now.
+  for (const k of runFull.keys()) {
+    if (!k.startsWith(`${sid}|`) || (running && k === lk)) continue;
+    const d = stepDetail.get(k), id = k.slice(sid.length + 1);
+    if ((d && d !== "loading") || (!want.includes(id) && d !== "loading")) runFull.delete(k);
+  }
   if (!want.length) return;
-  want.forEach((id) => stepDetail.set(`${sid}|${id}`, "loading"));
+  want.forEach((id) => { if (id !== runId) stepDetail.set(`${sid}|${id}`, "loading"); });
   let got = null;
   try { got = await invoke("step_detail", { sessionId: sid, ids: want }); } catch {}
   // Couldn't be read now: asked again next time, not kept as "No output".
-  want.forEach((id) => (got ? stepDetail.set(`${sid}|${id}`, got[id] || {}) : stepDetail.delete(`${sid}|${id}`)));
+  want.forEach((id) => {
+    const k = `${sid}|${id}`;
+    // A running step read once: no full kept as "" (its subject stays), so a redraw doesn't ask again; a failed read, again next time.
+    if (id === runId) { if (got) runFull.set(k, got[id]?.full || ""); else runFull.delete(k); return; }
+    if (got) { stepDetail.set(k, got[id] || {}); runFull.delete(k); } else stepDetail.delete(k);
+  });
   renderMain();
+  // More open steps than one call takes: the next ones (each asked once, so this ends; not after a failed call).
+  if (got && ids.length > want.length) wantDetails(sid);
 }
-/** "read 3 files · 2 edits · 4 commands · 1 failed": a folded turn in a few words. */
+/** "9 commands, 2 tools, 1 edit, 1 message": a folded turn's steps in a few words, by kind. */
 function turnSummary(steps) {
-  const n = (k) => steps.filter((x) => x.kind === k).length;
-  const bad = steps.filter((x) => x.bad).length;
-  return [[n("read"), "read %", "file"], [n("search"), "%", "search", "searches"], [n("edit"), "%", "edit"], [n("run"), "%", "command"], [bad, "% failed"]]
-    .filter(([c]) => c).map(([c, f, one, many]) => f.replace("%", one ? `${c} ${c === 1 ? one : many || one + "s"}` : c)).join(" · ");
+  const n = (f) => steps.filter(f).length;
+  const msg = (x) => x.kind === "agent" && /^Messag/.test(x.verb || "");
+  return [
+    [n((x) => x.kind === "run"), "command"], [n((x) => x.kind === "read"), "read"], [n((x) => x.kind === "search"), "search", "searches"],
+    [n((x) => x.kind === "edit"), "edit"], [n((x) => x.kind === "agent" && !msg(x)), "agent"], [n((x) => ["web", "todo", "ask", "other"].includes(x.kind)), "tool"],
+    [n(msg), "message"], [n((x) => x.bad), "failed", "failed"],
+  ].filter(([c]) => c).map(([c, one, many]) => `${c} ${c === 1 ? one : many || one + "s"}`).join(", ");
+}
+/** A command in full, when Cue has it (step_detail's `full`): a step line shows it whole in place of its first line. */
+function stepFull(sid, x) {
+  if (x.kind !== "run") return "";
+  const k = `${sid}|${x.id}`, d = stepDetail.get(k);
+  return (d && d !== "loading" && d.full) || runFull.get(k) || "";
 }
 function stepResult(x) {
   if (!x.done) return `<span class="dot-live"></span>`;
@@ -250,7 +283,8 @@ function stepDetailHtml(k, x) {
   const d = stepDetail.get(k);
   if (!d || d === "loading") return `<div class="stx-detail"><span class="dim">Loading…</span></div>`;
   // The whole command (or pattern, URL) when the line had to cut it; a file's full path, small.
-  const cutShort = d.full && d.full.trim() !== x.subject.replace(/^“|”$/g, "").trim();
+  // (A command's goes on its line instead: stepFull.)
+  const cutShort = d.full && x.kind !== "run" && d.full.trim() !== x.subject.replace(/^“|”$/g, "").trim();
   const full = !d.full ? "" : x.kind === "edit" || x.kind === "read" ? `<div class="stx-path mono">${esc(d.full)}</div>` : cutShort ? `<div class="stx-full mono">${esc(d.full)}</div>` : "";
   let body = "";
   if (d.diff) {
@@ -269,9 +303,9 @@ const keyed = (html, k) => html.replace(/^<([a-z]+)/i, `<$1 data-key="${esc(Stri
 const keyer = () => { const seen = new Map(); return (k) => { const n = (seen.get(k) || 0) + 1; seen.set(k, n); return n > 1 ? `${k}#${n}` : k; }; };
 function stepLine(sid, x, all, plain = false) {
   const k = `${sid}|${x.id}`;
-  const open = !plain && x.done && all !== stepFlip.has(k);
+  const open = !plain && x.done && all !== stepFlip.has(k), full = stepFull(sid, x);
   return `<button class="stx-line ${x.bad ? "bad" : ""} ${open ? "open" : ""}" data-key="${esc(x.id)}" ${x.done && !plain ? `data-step="${esc(k)}"` : "disabled"}>
-    <i class="stx-ic k-${esc(x.kind)}">${STEP_ICON[x.kind] || "•"}</i><span class="stx-what">${esc(x.verb)}${x.subject ? ` <span class="${x.mono ? "mono" : ""}">${esc(x.subject)}</span>` : ""}</span>
+    <i class="stx-ic k-${esc(x.kind)}">${STEP_ICON[x.kind] || "•"}</i><span class="stx-what">${esc(x.verb)}${x.subject || full ? ` <span class="${x.mono ? "mono" : ""}">${esc(full || x.subject)}</span>` : ""}</span>
     <span class="stx-res">${stepResult(x)}</span><span class="stx-chev">${x.done && !plain ? (open ? "⌄" : "›") : ""}</span></button>${open ? keyed(stepDetailHtml(k, x), `d:${x.id}`) : ""}`;
 }
 /** The open session's steps (or a quiet one's), every 0.5 s while it works, else every 2 s (only new lines are read;

@@ -97,29 +97,34 @@ a[data-path]:hover, .msg a[data-path]:hover { text-decoration: underline; text-u
 .cv-agent { font: var(--mg-body); }
 /* Steps: what the agent did between your message and its reply (a turn), one line per step. */
 .stx { display: flex; flex-direction: column; gap: 6px; }
+/* The turn's chip (option F): "Working · 13 steps · 9 commands, 2 tools, 1 edit ▸", a capsule that wraps rather than
+   cuts its words. It and every message's "· N steps" open and close the turn. */
 .stx-head { display: flex; align-items: center; gap: 8px; }
-.stx-fold { display: inline-flex; align-items: center; gap: 7px; min-width: 0; font-size: var(--type-small); color: var(--muted); padding: 4px 9px 4px 7px; border-radius: 8px; background: var(--panel-2); }
-.stx-fold b { color: var(--ink); font-weight: 650; }
+.stx-fold { display: inline-flex; flex-wrap: wrap; align-items: center; column-gap: 6px; min-width: 0; max-width: 100%; text-align: left; font-size: var(--type-small); color: var(--muted); padding: 3px 10px; border-radius: var(--pill-radius); background: var(--panel-2); }
+.stx-fold b { color: var(--ink); font-weight: 650; white-space: nowrap; }
 .stx-fold:hover { color: var(--ink); }
-.stx-tri { width: 11px; font-size: var(--type-small); color: var(--ink); }
-.stx-sum { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.stx-all { margin-left: auto; font-size: var(--type-pill); font-weight: 650; color: var(--muted); padding: 3px 8px; border-radius: 6px; }
-.stx-all:hover { color: var(--ink); background: var(--panel-2); }
+.stx-tri { width: 10px; font-size: var(--type-tag); color: var(--muted); }
+.stx-sum { white-space: normal; }
+.stx-cnt { display: inline; margin-left: 4px; padding: 0; user-select: none; -webkit-user-select: none; font-size: var(--type-pill); color: var(--muted); white-space: nowrap; }
+.stx-cnt:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
 .stx-more { font-size: var(--type-pill); padding-left: 4px; }
 .stx-say { font-size: var(--type-body); line-height: 1.55; }
 .stx-steps { display: flex; flex-direction: column; border-left: 2px solid var(--line); margin-left: 6px; padding-left: 8px; }
-.stx-line { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; font-size: var(--type-body); color: var(--ink); padding: 3px 4px; border-radius: 6px; min-width: 0; }
+.stx-line { display: flex; align-items: flex-start; gap: 8px; width: 100%; text-align: left; font-size: var(--type-body); color: var(--ink); padding: 3px 4px; border-radius: 6px; min-width: 0; }
 .stx-line[data-step]:hover { background: var(--panel-2); }
 .stx-line:disabled { cursor: default; }
-.stx-ic { width: 17px; height: 17px; border-radius: 4px; flex: none; display: grid; place-items: center; font: 800 var(--type-tag) var(--mono); font-style: normal; background: var(--panel-2); color: var(--muted); }
+.stx-ic { margin-top: 1px; width: 17px; height: 17px; border-radius: 4px; flex: none; display: grid; place-items: center; font: 800 var(--type-tag) var(--mono); font-style: normal; background: var(--panel-2); color: var(--muted); }
 .stx-ic.k-edit { background: var(--sel); color: var(--on-sel); }
 .stx-ic.k-run { background: var(--slab); color: var(--on-slab); }
 .stx-line.bad .stx-ic { background: color-mix(in srgb, var(--deny) 16%, var(--panel)); color: var(--deny); }
-.stx-what { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.stx-what .mono { font-size: var(--type-pill); }
-.stx-res { flex: none; max-width: 42%; font-size: var(--type-pill); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.stx-what { flex: 1; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.stx-what .mono { font-size: var(--type-pill); white-space: pre-wrap; }
+.stx-res { flex: none; max-width: 42%; padding-top: 1px; font-size: var(--type-pill); color: var(--muted); text-align: right; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+/* A folded turn's newest step at its foot: a step line that isn't a button (its count is). */
+.stx-last { cursor: default; }
+.stx-last .stx-ic .dot-live { width: 7px; height: 7px; }
 .stx-line.bad .stx-res { color: var(--deny); font-weight: 650; }
-.stx-res .add { color: var(--accent); font-weight: 650; } .stx-res .del { color: var(--deny); font-weight: 650; }
+.stx-res .add { color: var(--add-fg); font-weight: 650; } .stx-res .del { color: var(--del-fg); font-weight: 650; }
 .stx-chev { width: 10px; flex: none; color: var(--muted); font-size: var(--type-pill); text-align: center; }
 /* Background work (chat/helpers.js bgRow): one row like a step line. Its mark says the kind: an agent A on moss, a
    teammate a person in a ring (a script is $ on dark, as "Ran"). In the list above the box while it runs
@@ -226,13 +231,17 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .stx-detail { margin: 2px 0 6px 25px; display: flex; flex-direction: column; gap: 6px; min-width: 0; user-select: text; -webkit-user-select: text; }
 .stx-full { font-size: var(--type-pill); white-space: pre-wrap; word-break: break-word; background: var(--panel-2); border-radius: 7px; padding: 6px 9px; }
 .stx-path { font-size: var(--type-pill); color: var(--muted); word-break: break-all; }
-.stx-out, .stx-diff { font-size: var(--type-pill); line-height: 1.55; border-radius: 8px; padding: 7px 0; max-height: 360px; overflow: auto; }
+/* Output and diffs whole: lines wrap, nothing scrolls inside or fades. */
+.stx-out, .stx-diff { font-size: var(--type-pill); line-height: 1.55; border-radius: 8px; padding: 7px 0; }
 .stx-out { background: var(--slab); color: var(--on-slab); }
-.stx-out div, .stx-diff div { padding: 0 10px; white-space: pre; }
-.stx-diff { background: var(--panel-2); }
+.stx-out div, .stx-diff div { padding: 0 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.stx-diff { background: var(--panel); border: 1px solid var(--line); color: var(--ink); padding: 0; overflow: hidden; }
 .stx-diff i { display: inline-block; width: 14px; font-style: normal; color: var(--muted); }
-.stx-diff .a { background: color-mix(in srgb, var(--accent) 16%, transparent); }
-.stx-diff .d { background: color-mix(in srgb, var(--deny) 13%, transparent); }
+.stx-diff .a { background: var(--add-bg); }
+.stx-diff .a i { color: var(--add-fg); font-weight: 700; }
+.stx-diff .d { background: var(--del-bg); }
+.stx-diff .d i { color: var(--del-fg); font-weight: 700; }
+.stx-diff .gap { background: var(--panel-2); }
 .stx-out .gap, .stx-diff .gap { color: var(--muted); font-style: italic; }
 /* Arrived while you watch: words unroll top to bottom, a step line fades in. */
 .stx-say.reveal { animation: stxUnroll var(--rv, 600ms) linear both; }
@@ -416,9 +425,8 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 /* Eases in once, when it lands (chat/patch.js patchKids marks it): never again on a redraw. */
 .cv-result.reveal { animation: sentIn 0.25s ease; }
 .cv-result.no .sent-check { background: var(--deny); }
-/* An ask the agent made (.mg.ask, chat/render.js chatAskHtml): its command (.mg-code) folded to a few lines when long. */
+/* An ask the agent made (.mg.ask, chat/render.js chatAskHtml): its command (.mg-code) whole. */
 .ask-code { user-select: text; }
-.ask-code.folded { -webkit-mask-image: linear-gradient(#000 60%, transparent); mask-image: linear-gradient(#000 60%, transparent); }
 .ask-ps { opacity: 0.55; user-select: none; }
 .ask-q { overflow-wrap: anywhere; }
 /* Next: solid Moss, the one obvious thing to do after you act. */

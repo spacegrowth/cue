@@ -91,12 +91,13 @@ test("the box on an item at work goes straight to its holder, sent as the item, 
   await expect(mine).toHaveClass(/msg-delivered/);
 });
 
-test("while its holder works on it, the item's chat shows the turn it's writing, whole, with its steps", async ({ page, cue }) => {
+test("while its holder works on it, the item's chat shows the turn it's writing, whole, with its steps folded", async ({ page, cue }) => {
   await cue.open("desk");
   await cue.override("session_steps", ({ sessionId }, at = Date.now()) => (sessionId !== "host" ? { version: 1, turns: [] } : { version: 1, turns: [{ at_ms: at - 30000, prompt: "About #d5 (x): go on", more: 0, items: [
     { t: "step", id: "s1", kind: "read", verb: "Read", subject: "header.js", mono: true, result: "40 lines", bad: false, done: true, at_ms: at - 20000 },
     { t: "say", text: "Found it: the header **centres** on the wrong box.", at_ms: at - 15000 },
     { t: "step", id: "s2", kind: "run", verb: "Ran", subject: "npm test", mono: true, result: "", bad: false, done: false, at_ms: at - 5000 }] }] }));
+  await cue.override("step_detail", ({ ids }) => Object.fromEntries(ids.map((id) => [id, id === "s2" ? { full: "npm test" } : { full: "/repo/header.js" }])));
   await cue.change((st) => {
     Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5"), { state: "working", now_on: true, said: [] });
     Object.assign(st.sessions.find((x) => x.session_id === "host"), { state: "working", thread: [{ role: "you", text: "About #d5 (x): go on", at_ms: Date.now() - 30000 }] });
@@ -106,6 +107,9 @@ test("while its holder works on it, the item's chat shows the turn it's writing,
   await expect(live.locator(".stx-fold")).toContainText("Working · 2 steps");
   await expect(live.locator(".stx-fold .dot-live")).toHaveCount(1);
   await expect(live.locator(".stx-say")).toContainText("Found it: the header centres on the wrong box.");
+  // Folded (option F): only its newest step shows, at the foot; the chip opens every step in place.
+  await expect(live.locator(".stx-line")).toHaveText([/Ran npm test/]);
+  await live.locator(".stx-fold").click();
   await expect(live.locator(".stx-line")).toHaveText([/Read header\.js/, /Ran npm test/]);
   await expect(page.locator(".dk-panel[data-side-for] .dk-sfoot")).toContainText("Open host-lead");
   for (const theme of ["light", "dark"]) {

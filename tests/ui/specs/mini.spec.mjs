@@ -34,7 +34,7 @@ async function openLead(cue, page, shape) {
   if (shape === "notch") await page.evaluate(() => document.body.dispatchEvent(new MouseEvent("mouseenter")));
   else await page.locator("[data-out]").click();
   await page.locator('.m-tab.on[data-mopen="lead"]').waitFor();
-  await page.locator(".m-chat .ap-chat .stx-steps").waitFor();
+  await page.locator(".m-chat .ap-chat .stx-fold").waitFor();
 }
 /** The crew's tray open or closed, as `open` says (it opens by itself while one of the crew waits on you). */
 async function showCrew(page, open) {

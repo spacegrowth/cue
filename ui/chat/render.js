@@ -1,14 +1,17 @@
 // Cue UI chat — the chat's HTML: turns, status, the meta line and the ⋯ menu.
-/** One turn's steps, between your message and its reply. `live`: the turn it's working on now;
- *  `latest`: the newest turn (open by default, so you see what led to its reply). `part`: when you
- *  wrote mid-turn, the turn is drawn in parts around your messages ({ from, to } ms); only the first
- *  part has the header (its count is the whole turn's). `replied`: the chat has its reply (false when you
- *  cut it off: its last words then stay here, or they'd be nowhere). */
+/** One turn's steps, between your message and its reply, folded by default into one chip ("Working · 13 steps ·
+ *  9 commands, 2 tools, 1 edit"), with what it said between them left in view, each ending in a count of the steps
+ *  that led to it, and its newest step always at the bottom while it works. The chip or any count opens the turn: every
+ *  step back in place between its messages, each open in full (turnFold remembers your choice; Settings → Steps
+ *  "Open" opens every turn by default). `live`: the turn it's working on now. `latest`: the newest turn.
+ *  `part`: when you wrote mid-turn, the turn is drawn in parts around your messages ({ from, to } ms); only the first
+ *  part has the chip (its count is the whole turn's). `replied`: the chat has its reply (false when you cut it off:
+ *  its last words then stay here, or they'd be nowhere). */
 function stepsBlock(sid, turn, live, latest, part = { from: -Infinity, to: Infinity }, said = new Set(), replied = true, say = null) {
-  const mode = stepsMode();
   // What a Stop hook made it do goes in its own fold at the end (hookFold); the rest is the turn.
   const hooked = turn.items.filter((x) => hookedPart(turn, x) && (x.t !== "say" || !said.has(String(x.text || "").trim())));
-  let kept = turn.items.filter((x) => !hookedPart(turn, x));
+  const whole = turn.items.filter((x) => !hookedPart(turn, x));
+  let kept = whole;
   // A finished turn's last words are its reply, already in the chat; so are words the chat shows as a
   // reply mid-turn: not twice.
   if (!live && replied) { let end = kept.length; while (end && kept[end - 1].t === "say") end--; kept = kept.slice(0, end); }
@@ -19,15 +22,25 @@ function stepsBlock(sid, turn, live, latest, part = { from: -Infinity, to: Infin
   if (!steps.length) return fold ? `<div class="stx" data-key="${esc(`t:${turn.at_ms}:${part.from}`)}">${fold}</div>` : "";
   const items = kept.map((x, i) => [x, i]).filter(([x]) => x.at_ms >= part.from && x.at_ms < part.to);
   const key = `${sid}|${turn.at_ms}`;
-  const open = turnFold.has(key) ? turnFold.get(key) : mode === "all" || (mode === "line" && (live || latest));
-  const all = mode === "all" || turnAll.has(key);
+  const open = turnOpen(key);
   const count = `${steps.length}${turn.more ? "+" : ""} step${steps.length === 1 ? "" : "s"}`;
   const bk = `t:${turn.at_ms}:${part.from}`;
-  const head = `<div class="stx-head" data-key="head"><button class="stx-fold" data-turn-fold="${esc(key)}" data-open="${open ? 1 : 0}">${live ? `<span class="dot-live"></span>` : `<span class="stx-tri">${open ? "▾" : "▸"}</span>`}<b>${live ? `Working · ${count}` : count}</b>${open ? "" : `<span class="stx-sum"> · ${esc(turnSummary(steps))}</span>`}</button>${open ? `<button class="stx-all" data-turn-all="${esc(key)}">${all ? "Show less" : "Show all"}</button>` : ""}</div>`;
-  // Folded, only the steps go: what it said to you stays in the chat (a fold never hides its words).
+  // The steps since its previous words, for each thing it said (counted over the whole turn, its reply too: the
+  // chat's own reply rows carry theirs, replyCounts).
+  const before = turnBefore(turn);
+  const sayHtml = (x, i, style = "") => {
+    const body = withCount(md(say ? say(x.text) : x.text), foldCount(key, before.get(x) || 0));
+    return `<div class="stx-say msg" data-key="${esc(itemKey(turn, x, i))}"${style}>${body}</div>`;
+  };
+  const head = `<div class="stx-head" data-key="head"><button class="stx-fold" data-turn-fold="${esc(key)}" data-open="${open ? 1 : 0}" aria-expanded="${open}">${live ? `<span class="dot-live"></span>` : ""}<b>${live ? `Working · ${count}` : count}</b><span class="stx-sum"> · ${esc(turnSummary(steps))}</span><span class="stx-tri">${open ? "▾" : "▸"}</span></button></div>`;
+  // Folded: the steps go, what it said to you stays (a fold never hides its words), and while it works (or was cut
+  // off) its newest step stays at the bottom, in full.
   if (!open) {
-    const says = items.filter(([x]) => x.t === "say").map(([x, i]) => `<div class="stx-say msg" data-key="${esc(itemKey(turn, x, i))}">${md(say ? say(x.text) : x.text)}</div>`).join("");
-    return first || fold || says ? `<div class="stx" data-key="${esc(bk)}">${first ? head : ""}${says}${fold}</div>` : "";
+    const last = footStep(sid, turn, live, latest, replied);
+    const says = items.map(([x, i]) => (x.t === "say" ? sayHtml(x, i) : "")).join("");
+    // The newest step, a Stop hook's too, at the bottom of the part it falls in (under the hook's fold).
+    const foot = last && last.at_ms >= part.from && last.at_ms < part.to ? lastStepRow(sid, turn, last, key, live) : "";
+    return first || fold || says || foot ? `<div class="stx" data-key="${esc(bk)}">${first ? head : ""}${says}${fold}${foot}</div>` : "";
   }
   if (!items.length) return first || fold ? `<div class="stx" data-key="${esc(bk)}">${first ? head : ""}${fold}</div>` : "";
   let body = "", run = [], runKey = "";
@@ -36,15 +49,85 @@ function stepsBlock(sid, turn, live, latest, part = { from: -Infinity, to: Infin
   // Over: under the step that started it. A teammate stays in the list above the box instead.
   const finished = new Map(helpersOf(sid).filter((h) => !helperRunning(h) && !h.teammate).map((h) => [h.step, h]));
   items.forEach(([x, i]) => {
-    if (x.t !== "say") { if (!run.length) runKey = x.id; run.push(stepLine(sid, x, all)); const h = finished.get(x.id); if (h) run.push(bgRow(sid, h)); return; }
+    if (x.t !== "say") { if (!run.length) runKey = x.id; run.push(stepLine(sid, x, true)); const h = finished.get(x.id); if (h) run.push(bgRow(sid, h)); return; }
     flush();
     // New words unroll top to bottom, quicker for short ones.
     const ms = Math.min(REVEAL_MS, 250 + x.text.length * 2);
-    body += `<div class="stx-say msg" data-key="${esc(itemKey(turn, x, i))}" style="--rv:${ms}ms">${md(say ? say(x.text) : x.text)}</div>`;
+    body += sayHtml(x, i, ` style="--rv:${ms}ms"`);
   });
   flush();
   if (!first) return `<div class="stx" data-key="${esc(bk)}">${body}${fold}</div>`;
   return `<div class="stx" data-key="${esc(bk)}">${head}${turn.more ? `<div class="stx-more dim" data-key="more">${turn.more} earlier steps not shown</div>` : ""}${body}${fold}</div>`;
+}
+/** Whether a turn's steps are open: your choice, else folded (open with Settings → Steps "Open"). */
+const turnOpen = (key) => (turnFold.has(key) ? turnFold.get(key) : stepsMode() === "all");
+/** Each thing a turn said (outside a Stop hook's part) → the steps since its previous words. */
+function turnBefore(turn) {
+  const before = new Map();
+  let since = 0;
+  for (const x of turn.items) { if (hookedPart(turn, x)) continue; if (x.t === "step") since++; else { before.set(x, since); since = 0; } }
+  return before;
+}
+/** "· N steps": opens or closes turn `key` (the chip's fold); "" for none. */
+function foldCount(key, n, words = "") {
+  if (!n) return "";
+  return `<button class="stx-cnt" data-turn-fold="${esc(key)}" data-open="${turnOpen(key) ? 1 : 0}">· ${n} step${n === 1 ? "" : "s"}${words}</button>`;
+}
+/** Words' html with a count at their end: in their last paragraph, as their last words. */
+const withCount = (html, c) => (!c ? html : /<\/p>\s*$/.test(html) ? html.replace(/<\/p>\s*$/, `${c}</p>`) : html + c);
+/** A folded turn's newest step (a Stop hook's part too, as wantDetails reads it), shown at its foot while it works or
+ *  when it was cut off; null when the turn is open or ends in words. */
+function footStep(sid, turn, live, latest, replied) {
+  if (!(live || (latest && !replied)) || turnOpen(`${sid}|${turn.at_ms}`)) return null;
+  if (!turn.items.some((x) => x.t === "step" && !hookedPart(turn, x))) return null;
+  const x = turn.items.at(-1);
+  // A Stop hook's step with its fold open is in that list already: not twice.
+  if (x?.t === "step" && hookedPart(turn, x) && hookOpen.has(`${sid}|${turn.at_ms}`)) return null;
+  return x?.t === "step" ? x : null;
+}
+/** Session → the step whose foot row its chat drew last (chatHtml): what the line under it then leaves out. */
+const footDrawn = new Map();
+/** The chat just drawn shows the newest turn's newest step at its foot (stepsBlock; not when a page folded that turn
+ *  away), so the line under the chat doesn't say it again. */
+function footShown(s) {
+  const sid = s?.session_id, t = sid && stepsMode() !== "hidden" ? stepFeeds.get(sid)?.turns?.at(-1) : null;
+  const x = t && s.state === "working" ? footStep(sid, t, true, true, true) : null;
+  return !!x && footDrawn.get(sid) === x.id;
+}
+/** Replies the chat draws as its own rows (a turn's reply, words shown mid-turn): each one's "· N steps", the steps
+ *  that led to it, by index into `ex` (the counts in the turn and these add up to its chip's). */
+function replyCounts(sid, s, ex, skip) {
+  const out = new Map(), turns = (sid && stepFeeds.get(sid)?.turns) || [];
+  turns.forEach((t, k) => {
+    const start = t.items[0]?.at_ms ?? t.at_ms, next = turns[k + 1]?.at_ms ?? Infinity, key = `${sid}|${t.at_ms}`;
+    const mine = ex.flatMap((e, n) => (e.role === "agent" && !skip.has(n) && e.at_ms >= start && e.at_ms < next ? [n] : []));
+    const before = turnBefore(t), says = [...before.keys()];
+    const free = (n) => mine.includes(n) && !out.has(n);
+    for (const x of says) {
+      const n = mine.find((m) => free(m) && ex[m].text.trim() === String(x.text || "").trim());
+      if (n != null) out.set(n, foldCount(key, before.get(x)));
+    }
+    // A finished turn's last words are its reply even when the chat's copy reads a little differently (stepsBlock drops them).
+    const live = t === turns.at(-1) && s?.state === "working", tail = t.items.filter((x) => !hookedPart(t, x)).at(-1);
+    const rest = mine.filter(free);
+    if (!live && tail?.t === "say" && rest.length && !mine.some((m) => ex[m].text.trim() === String(tail.text || "").trim())) out.set(rest.at(-1), foldCount(key, before.get(tail)));
+  });
+  return out;
+}
+/** A folded turn's newest step, in full at its foot: its mark, what it's doing (a command whole, wrapped), its time
+ *  while it runs (how it went once done), then "· N steps before", which opens the turn (or the Stop hook's fold,
+ *  for a step of that part). */
+function lastStepRow(sid, turn, x, key, live) {
+  const hook = hookedPart(turn, x), group = turn.items.filter((y) => hookedPart(turn, y) === hook);
+  let n = 0;
+  for (let k = group.indexOf(x) - 1; k >= 0 && group[k].t === "step"; k--) n++;
+  const what = `${esc(x.verb)}${x.subject || stepFull(sid, x) ? ` <span class="${x.mono ? "mono" : ""}">${esc(stepFull(sid, x) || x.subject)}</span>` : ""}`;
+  const label = `· ${n} step${n === 1 ? "" : "s"} before`;
+  const more = !n ? "" : hook ? ` <button class="stx-cnt" data-hook-fold="${esc(key)}">${label}</button>` : ` ${foldCount(key, n, " before")}`;
+  // Running: a live dot and its time; cut off mid-step (the turn ended under it), stopped: its mark, no time.
+  const running = !x.done && live;
+  const res = x.done ? stepResult(x) : running ? `<span data-ago="${x.at_ms}">${ago(x.at_ms)}</span>` : "";
+  return `<div class="stx-line stx-last ${x.bad ? "bad" : ""}" data-key="last:${esc(x.id)}"><i class="stx-ic k-${esc(x.kind)}">${running ? `<span class="dot-live"></span>` : STEP_ICON[x.kind] || "•"}</i><span class="stx-what">${what}${more}</span><span class="stx-res">${res}</span></div>`;
 }
 /** A turn's "After a stop hook": folded, what the hook made it do and write (a checklist, the commands it
  *  ran for it), so it never reads as the answer, live or after. "" when no hook sent it back. */
@@ -77,8 +160,7 @@ function withSteps(sid, s, ex, rows, extra = [], hides = null, say = null) {
       const start = t.items[0]?.at_ms ?? t.at_ms, end = t.items.at(-1)?.at_ms ?? start;
       const next = turns[turns.indexOf(t) + 1]?.at_ms ?? Infinity;
       const replied = ex.some((e) => e.role === "agent" && !askLnOf(e) && e.at_ms >= start && e.at_ms < next);
-      // Open: the newest turn, and while that one works, the one before it too: the turn you were just
-      // reading doesn't fold the moment your next message starts another.
+      // The newest turn, and while that one works, the one before it too (cut off, its last step stays in view).
       const latest = t === lastTurn || (s?.state === "working" && t === turns.at(-2));
       const cuts = ex.map((e) => e.at_ms).concat(extra.filter((x) => x.cut).map((x) => x.at)).filter((a) => a > start && a <= end).sort((a, b) => a - b);
       const bounds = [-Infinity, ...cuts, Infinity];
@@ -154,9 +236,16 @@ function chatHtml(it, s, harness, paged = false, page = null) {
   const { reviews, reviewAt } = reviewFolds(ex, s?.team || []);
   const fold = page?.folds?.(ex);
   // `page.noSteps`: a chat without its turns' steps (the Desk lead's: what it read to route is not yours to read).
+  const stepsOf = page?.noSteps || stepsMode() === "hidden" ? null : sid;
+  const counts = replyCounts(stepsOf, s, ex, asks);
   const c = { it, s, harness, paged, page, original, ex, asks, answers, decided, lastAgent, recent, project, sid, near,
-    chose, reviews, reviewAt, fold };
-  const rows = withSteps(page?.noSteps ? null : sid, s, ex, ex.map((e, n) => keyed(chatRowHtml(c, e, n), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran, restarts, page?.extra || [], fold?.rows || [], chatWaitRows(s, page, K)), fold?.hides, page?.say);
+    chose, reviews, reviewAt, fold, counts };
+  const rows = withSteps(stepsOf, s, ex, ex.map((e, n) => keyed(chatRowHtml(c, e, n), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran, restarts, page?.extra || [], fold?.rows || [], chatWaitRows(s, page, K)), fold?.hides, page?.say);
+  // Whether its newest step's foot row was drawn here (a page may fold that turn away): the line under it asks (footShown).
+  if (sid) {
+    const x = stepsOf && stepFeeds.get(sid)?.turns?.at(-1)?.items?.at(-1);
+    if (x?.t === "step" && rows.some((r) => r.includes(`data-key="last:${esc(x.id)}"`))) footDrawn.set(sid, x.id); else footDrawn.delete(sid);
+  }
   for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(outboxRow(o, s, K(`out:${o.at}`)));
   if (s?.send_at) rows.push(sendAtRow(s));
   return rows.length ? (paged && sid ? keyed(olderRow(sid, harness), "older") : "") + rows.join("") : ran.length ? ran.map((r) => r.html).join("") : `<div class="dim cv-empty" data-key="empty">No messages yet in this session.</div>`;
@@ -210,7 +299,7 @@ function chatYouHtml(c, e, n) {
 }
 /** The agent's reply `e` (the `n`th) in chatHtml's thread: its words, Listen, Read, Fold and Send to…. */
 function chatAgentHtml(c, e, n) {
-  const { it, s, harness, paged, page, ex, lastAgent, recent, project, sid } = c;
+  const { it, s, harness, paged, page, ex, lastAgent, recent, project, sid, counts } = c;
   const key = `${s?.session_id || it?.id}:${e.at_ms}`;
   const long = e.text.length > 280 || e.text.split("\n").length > 4;
   const foldable = !recent.has(n) && long, folded = foldable && !openMsgs.has(key);
@@ -219,10 +308,12 @@ function chatAgentHtml(c, e, n) {
   // Listen and Read go together: a reply worth hearing is worth reading set larger (Read shows wherever Listen does).
   // A page's own split of a reply (the Desk's item chat: its own lines out, a stop hook's checklist folded under it).
   const split = page?.reply?.(e, key);
+  // The steps that led to it (replyCounts): at its last words, or with its buttons while it's folded to its first lines.
+  const cnt = counts?.get(n) || "";
   const said = addOn.reply(sid, split ? split.text : e.text), listen = sid && proseWords(said.text, page?.lines) >= LISTEN_WORDS;
   return `<div class="cv-agent mg-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}" data-at="${e.at_ms}"><div class="mg-h">${mgAgentHead(harness, it?.machine || s?.machine, e.at_ms)}${n === lastAgent ? toldMeta(s) : ""}</div>
-      <div class="msg mg-text cv-text">${md(said.text, { runIn: s?.session_id, lines: page?.lines })}</div>${split?.after || ""}${said.after}${thumbs(e.images)}${localImages(e.text)}
-      <div class="mg-f cv-acts">${listen ? listenBtn(key) : ""}${listen && paged ? `<button class="mg-btn" data-read="${esc(key)}">${BOOK_ICON}Read</button>` : ""}${foldable ? `<button class="mg-lk cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}${page?.noActs ? "" : `<button class="mg-btn cv-fwd" data-fwd="${esc(key)}">↗ Send to…</button>`}</div>${follow}</div>`;
+      <div class="msg mg-text cv-text">${withCount(md(said.text, { runIn: s?.session_id, lines: page?.lines }), folded ? "" : cnt)}</div>${split?.after || ""}${said.after}${thumbs(e.images)}${localImages(e.text)}
+      <div class="mg-f cv-acts">${folded ? cnt : ""}${listen ? listenBtn(key) : ""}${listen && paged ? `<button class="mg-btn" data-read="${esc(key)}">${BOOK_ICON}Read</button>` : ""}${foldable ? `<button class="mg-lk cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}${page?.noActs ? "" : `<button class="mg-btn cv-fwd" data-fwd="${esc(key)}">↗ Send to…</button>`}</div>${follow}</div>`;
 }
 /** The head row over an agent's words (#501, messages.css .mg-h): "Claude Code · 6m ago", its machine beside the name. */
 const mgAgentHead = (harness, machine, at) => `<span class="mg-who">${esc(agentName(harness))}</span>${machTag(machine)} · ${ago(at)} ago`;
@@ -358,7 +449,7 @@ function waitingFor(it, s) {
   return "your reply";
 }
 /** One line under the chat: where the session is now. */
-function whereNow(it, s) {
+function whereNow(it, s, steps = true) {
   // Started in a folder Claude Code doesn't trust yet: it's asking in its terminal before it does anything.
   if (s?.trust_ms) return `<div class="mg-status cv-status stuck"><span class="lim-dot"></span><span><b>Claude Code is asking whether you trust ${esc(homeless(s.cwd) || "this folder")}.</b> It won't start until you answer.</span><button class="btn small primary" data-act="trust" data-sid="${esc(s.session_id)}">Trust folder</button></div>`;
   // Waiting for Enter on a screen before Claude Code starts ("Security notes … Press Enter to continue").
@@ -375,6 +466,8 @@ function whereNow(it, s) {
   if (s?.compacting_ms) return `<div class="mg-status cv-status"><span class="dot-live"></span>Compacting: summarizing the conversation to free up context<span class="dim"> · <span data-ago="${s.compacting_ms}">${ago(s.compacting_ms)}</span></span></div>`;
   // It finished compacting (until the next turn starts).
   if (s?.compacted_ms && s.state !== "working") return `<div class="mg-status cv-status"><span class="ok-dot"></span>Compacted: the conversation was summarized and its context freed<span class="dim"> · <span data-ago="${s.compacted_ms}">${ago(s.compacted_ms)}</span> ago</span></div>`;
+  // Its newest step already at the foot of its folded turn, with its time: not said again here.
+  if (s?.state === "working" && steps && footShown(s)) return "";
   // What it's doing right now (its latest step), else the prompt it's on.
   if (s?.state === "working" && s.doing) return `<div class="mg-status cv-status"><span class="dot-live"></span><span class="cv-what">${esc(s.doing)}</span><span class="dim"> · <span data-ago="${s.doing_ms}">${ago(s.doing_ms)}</span></span>${tipFor(it, s, "working")}</div>`;
   // Nothing in its transcript yet (it's thinking; Claude Code writes a message once it's whole): a live
@@ -421,20 +514,15 @@ function chatAsks(ex) {
 }
 /** A decision as a line in the chat, in the result line's look: "✓ Chose 1. Yes", "✕ Denied". */
 const chatDecisionLine = ({ text, no }, at, cls = no ? "no" : "") => `<div class="cv-result ${cls}"><span class="sent-check">${no ? "✕" : "✓"}</span><span>${esc(text)}</span><span class="grow"></span><span class="dim nowrap">${ago(at)} ago</span></div>`;
-/** Lines of a command shown before it folds; a longer one opens whole with "Show all" (openMsgs, as a long reply). */
-const CHAT_ASK_LINES = 4;
 /** An ask the agent made, as the chat draws it (#501, messages.css .mg.ask): the family's card outlined in deny, its head
- *  "Claude Code · ASKS YOU · 6m ago", what it asked as its words ("Asked to run", "Asked: …"), the command in a code
- *  block (folded to a few lines when long), and how you answered as its foot's status, the card back to plain. */
+ *  "Claude Code · ASKS YOU · 6m ago", what it asked as its words ("Asked to run", "Asked: …"), the command whole in a code
+ *  block (never cut or faded), and how you answered as its foot's status, the card back to plain. */
 function chatAskHtml(key, e, { ask, answer }, harness, machine) {
-  const lines = ask.code.split("\n"), long = lines.length > CHAT_ASK_LINES, open = openMsgs.has(key);
-  const shown = long && !open ? lines.slice(0, CHAT_ASK_LINES).join("\n") : ask.code;
-  const code = !ask.code ? "" : `<pre class="mg-code ask-code ${long && !open ? "folded" : ""}"><code>${ask.tool === "Bash" ? `<span class="ask-ps">$ </span>` : ""}${esc(shown)}</code></pre>`;
-  const more = long ? `<span class="mg-acts"><button class="mg-lk cv-more" data-msg="${esc(key)}">${open ? "Fold" : `Show all ${lines.length} lines`}</button></span>` : "";
+  const code = !ask.code ? "" : `<pre class="mg-code ask-code"><code>${ask.tool === "Bash" ? `<span class="ask-ps">$ </span>` : ""}${esc(ask.code)}</code></pre>`;
   const what = ask.tool ? "" : ` <span class="ask-q">${esc(ask.what)}</span>`;
   const st = answer ? `<span class="mg-st ask-ans${answer.no ? " failed no" : ""}"><span class="mg-mark" aria-hidden="true">${answer.no ? "✕" : "✓"}</span> ${esc(answer.text)}</span>` : "";
   return `<div class="cv-ask mg ask${answer ? " answered" : ""}"><div class="mg-h">${mgAgentHead(harness, machine, e.at_ms).replace(/ · (.*)$/, `<span class="mg-tag">${answer ? "Asked you" : "Asks you"}</span><span class="mg-age">$1</span>`)}</div>
-    <div class="mg-t whole"><b class="ask-head">${esc(ask.head)}${ask.tool ? "" : ":"}</b>${what}</div>${code}${st || more ? `<div class="mg-f">${st}${more}</div>` : ""}</div>`;
+    <div class="mg-t whole"><b class="ask-head">${esc(ask.head)}${ask.tool ? "" : ":"}</b>${what}</div>${code}${st ? `<div class="mg-f">${st}</div>` : ""}</div>`;
 }
 /** After a decision: what you chose. Replies need no line, they're already in the chat. */
 function resultLine(it) {

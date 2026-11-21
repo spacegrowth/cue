@@ -83,7 +83,6 @@ const flipIn = (set, key) => (set.has(key) ? set.delete(key) : set.add(key));
 
 const THREAD_CLICKS = [
   rule("[data-turn-fold]", (tf) => { const k = tf.dataset.turnFold; turnFold.set(k, tf.dataset.open !== "1"); renderMain(); wantDetails(k.split("|")[0]); }),
-  rule("[data-turn-all]", (ta) => { const k = ta.dataset.turnAll; flipIn(turnAll, k); renderMain(); wantDetails(k.split("|")[0]); }),
   rule("[data-copy-code]", (cc) => copyCode(cc)),
   rule("[data-run-code]", (rc) => runCode(rc)),
   // A card's "N agents": open its session (its item, on a waiting card) on its Agents tab.
