@@ -89,6 +89,17 @@ test("the Desk's settings say where its new sessions start, with the folder ther
   await expect(sec.locator("[data-ld-folder]")).toHaveValue("");
   await sec.locator("[data-ld-folder]").fill("/srv/cue");
   await expect(dlg.locator('[data-ld="save"]')).toBeEnabled();
+  // Saved, it comes back as saved: reopened, gpu-1 with its folder.
+  await dlg.locator('[data-ld="save"]').click();
+  await expect(dlg).toHaveCount(0);
+  await page.locator(".dk-strip .dk-ab [data-lands-change]").click();
+  await expect(sec.locator('[data-ld-mach="gpu-1"]')).toHaveAttribute("aria-checked", "true");
+  await expect(sec.locator("[data-ld-folder]")).toHaveValue("/srv/cue");
+  // A folder that isn't a full path there isn't saved.
+  await sec.locator("[data-ld-folder]").fill("code/cue");
+  await dlg.locator('[data-ld="save"]').click();
+  await expect(page.locator(".toast")).toContainText("full path");
+  await sec.locator("[data-ld-folder]").fill("/srv/cue");
   // This Mac: no folder.
   await sec.locator('[data-ld-mach=""]').click();
   await expect(sec.locator("[data-ld-folder]")).toHaveCount(0);
