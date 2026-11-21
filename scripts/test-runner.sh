@@ -24,6 +24,34 @@ copy="$dir/$(basename "$bin")-$$"
 trap 'rm -f "$copy"' EXIT
 # A clone (instant, no extra space on APFS), keeping the program's times: a test reads them.
 cp -cp "$bin" "$copy" 2>/dev/null || cp -p "$bin" "$copy"
+
+# A full run of Cue's tests (no test named: every one) takes the whole Mac's attention for minutes, so only one goes at
+# a time across all of this repository's copies (its worktrees share one git folder, where the turn is kept); another
+# waits for it. A run of some tests by name goes at once.
+full=1
+case "$(basename "$bin")" in cue_lib-*) ;; *) full=0 ;; esac
+skip_value=0
+for a in "$@"; do
+  if [ "$skip_value" = 1 ]; then skip_value=0; continue; fi
+  case "$a" in
+    --skip|--test-threads|--format|--logfile|--color|--shuffle-seed|-Z) skip_value=1 ;;
+    -*) ;;
+    *) full=0 ;;
+  esac
+done
+if [ "$full" = 1 ]; then
+  shared="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || shared=""
+  [ -d "$shared" ] || shared="$dir"
+  lock="$shared/cue-full-test-run.lock"
+  exec 9>>"$lock"
+  if ! lockf -s -t 0 9; then
+    echo "test-runner: another full test run of this repository is going (in another copy); waiting for its end…" >&2
+    lockf -s 9
+    echo "test-runner: its turn is over; running." >&2
+  fi
+fi
+
 set +e
-"$copy" "$@"
+# Without the turn's file open: a program a test leaves running mustn't hold the turn after the run.
+"$copy" "$@" 9>&-
 exit $?

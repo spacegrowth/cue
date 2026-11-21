@@ -1,10 +1,9 @@
 //! The window's files served in place, against a git repo and a folder of each test's own.
 
 use super::*;
-use std::process::Command;
 
 fn git(dir: &Path, args: &[&str]) -> String {
-    let out = Command::new("git").arg("-C").arg(dir).args(args).output().unwrap();
+    let out = std::process::Command::new(crate::safe_git::git_bin()).arg("-C").arg(dir).args(args).output().unwrap();
     assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
     String::from_utf8_lossy(&out.stdout).trim().to_string()
 }

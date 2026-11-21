@@ -507,7 +507,7 @@ fn branch_in(cwd: &str, dir: Option<&str>) -> Option<String> {
     if at.is_empty() {
         return None;
     }
-    let out = Command::new("git").args(["-C", &at, "rev-parse", "--abbrev-ref", "HEAD"]).stderr(std::process::Stdio::null()).output().ok()?;
+    let out = std::process::Command::new(crate::safe_git::git_bin()).args(["-C", &at, "rev-parse", "--abbrev-ref", "HEAD"]).stderr(std::process::Stdio::null()).output().ok()?;
     let b = String::from_utf8_lossy(&out.stdout).trim().to_string();
     (out.status.success() && !b.is_empty() && b != "HEAD").then_some(b)
 }

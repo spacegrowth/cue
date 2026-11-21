@@ -25,15 +25,34 @@ pub fn sh_words<S: AsRef<str>>(words: &[S]) -> String {
     words.iter().map(|w| sh_quote(w.as_ref())).collect::<Vec<_>>().join(" ")
 }
 
-/// git, found where an app started from Finder can find it (its PATH is short).
+/// git, found where an app started from Finder can find it (its PATH is short), once. `/usr/bin/git` is Apple's
+/// stand-in that looks up the developer tools' git on every run (several times slower, and more processes for
+/// macOS to vet): the git it stands for is run instead, when the developer tools say where they are.
 pub(crate) fn git_bin() -> PathBuf {
-    let path = std::env::var("PATH").unwrap_or_default();
-    let found = path
-        .split(':')
-        .chain(["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"])
-        .map(|d| std::path::Path::new(d).join("git"))
-        .find(|p| p.is_file());
-    found.unwrap_or_else(|| PathBuf::from("/usr/bin/git"))
+    static BIN: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    BIN.get_or_init(|| {
+        let path = std::env::var("PATH").unwrap_or_default();
+        let found = path
+            .split(':')
+            .chain(["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"])
+            .map(|d| std::path::Path::new(d).join("git"))
+            .find(|p| p.is_file())
+            .unwrap_or_else(|| PathBuf::from("/usr/bin/git"));
+        if found != std::path::Path::new("/usr/bin/git") {
+            return found;
+        }
+        developer_git().unwrap_or(found)
+    })
+    .clone()
+}
+
+/// The developer tools' own git (Xcode's or the Command Line Tools'), as `xcode-select -p` names their folder;
+/// None when they aren't set up (then /usr/bin/git is what offers to install them).
+fn developer_git() -> Option<PathBuf> {
+    let out = Command::new("/usr/bin/xcode-select").arg("-p").stdin(Stdio::null()).stderr(Stdio::null()).output().ok()?;
+    let dir = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    let git = std::path::Path::new(&dir).join("usr/bin/git");
+    (out.status.success() && !dir.is_empty() && git.is_file()).then_some(git)
 }
 
 /// The words of one run: git, the switches above, `extra` (from no_repo_filters), then `rest`, in `dir`.
@@ -122,13 +141,29 @@ pub fn on_machine(machine: &str, script: &str) -> Result<String, String> {
     rx.recv_timeout(LIMIT).unwrap_or_else(|_| Err("it took too long".into()))
 }
 
+/// `no_repo_filters` for a run of `args`: none to read for a command that never reads a file's contents through
+/// a filter (it reads refs, commits or the list of copies), which saves a git run each time.
+pub fn filters_for(machine: &str, dir: &str, args: &[&str]) -> Vec<String> {
+    let reads_no_files = match args {
+        ["rev-parse" | "merge-base" | "symbolic-ref" | "rev-list" | "for-each-ref" | "show-ref" | "config", ..] => true,
+        ["worktree", "list" | "prune", ..] => true,
+        _ => false,
+    };
+    if reads_no_files { vec![] } else { no_repo_filters(machine, dir) }
+}
+
 /// The filters the repository's own config defines (`filter.<name>.clean`, `.smudge`, `.process`:
 /// programs git runs on files as it reads them), each switched off: clean and smudge pass a file through
 /// as it is, and no process runs. Reading config runs nothing.
 pub fn no_repo_filters(machine: &str, dir: &str) -> Vec<String> {
     let read = |scope: &'static str| ["config", scope, "--name-only", "--get-regexp", "^filter\\."];
     let out = if machine.is_empty() {
-        ["--local", "--worktree"].iter().filter_map(|s| run("", dir, &[], &read(s)).ok()).map(|(o, _)| o + "\n").collect::<String>()
+        // One read, each name with where it's set: the repository's own are "local" (with what it includes) and
+        // "worktree". A git too old to say where (before 2.26) is asked for each.
+        match run("", dir, &[], &["config", "--show-scope", "--name-only", "--get-regexp", "^filter\\."]) {
+            Ok((o, code)) if code <= 1 => o.lines().filter_map(|l| l.strip_prefix("local\t").or_else(|| l.strip_prefix("worktree\t"))).map(|k| format!("{k}\n")).collect(),
+            _ => ["--local", "--worktree"].iter().filter_map(|s| run("", dir, &[], &read(s)).ok()).map(|(o, _)| o + "\n").collect::<String>(),
+        }
     } else {
         let line = |scope| sh_words(&words(dir, &[], &read(scope)));
         on_machine(machine, &format!("{} 2>/dev/null; {} 2>/dev/null; true", line("--local"), line("--worktree"))).unwrap_or_default()
@@ -173,6 +208,27 @@ mod tests {
         run("", &d, &f, &[&["diff", "--numstat", "HEAD"][..], &QUIET_DIFF[..]].concat()).unwrap();
         let ran: Vec<String> = std::fs::read_dir(&dir).unwrap().flatten().map(|e| e.file_name().to_string_lossy().to_string()).filter(|n| n.starts_with("ran-")).collect();
         assert!(ran.is_empty(), "these ran: {ran:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_repositorys_own_filters_are_read_in_one_go_wherever_it_sets_them_and_never_for_a_ref_lookup() {
+        let dir = std::env::temp_dir().join(format!("cue-safegit-scopes-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let d = dir.canonicalize().unwrap().display().to_string();
+        let sh = |c: &str| assert!(Command::new("/bin/sh").arg("-c").arg(c).current_dir(&dir).status().unwrap().success(), "{c}");
+        sh("git init -q && git config filter.inrepo.clean cat && git config extensions.worktreeConfig true \
+            && git config --worktree filter.intree.smudge cat && printf '[filter \"included\"]\n\tprocess = x\n' > ../cue-safegit-inc-$PPID \
+            && git config include.path ../../cue-safegit-inc-$PPID");
+        let f = no_repo_filters("", &d);
+        for name in ["inrepo", "intree", "included"] {
+            assert!(f.iter().any(|a| *a == format!("filter.{name}.process=")), "{name}: {f:?}");
+        }
+        assert!(!f.iter().any(|a| a.contains("filter.lfs")), "your own (global) filters stay on: {f:?}");
+        assert!(filters_for("", &d, &["rev-parse", "HEAD"]).is_empty() && filters_for("", &d, &["worktree", "list", "--porcelain"]).is_empty());
+        assert_eq!(filters_for("", &d, &["stash", "create"]), f, "a run that reads files has them all off");
+        let _ = std::fs::remove_file(dir.parent().unwrap().join(format!("cue-safegit-inc-{}", std::process::id())));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

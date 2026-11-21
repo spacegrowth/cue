@@ -10,7 +10,7 @@ fn an_item_waiting_for_a_copy_starts_on_the_tick_when_a_copy_was_let_go_of_witho
     // nothing it waited on.
     let w = World::new();
     let top = |w: &World| {
-        let out = String::from_utf8(std::process::Command::new("git").arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
+        let out = String::from_utf8(std::process::Command::new(crate::safe_git::git_bin()).arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
         out.lines().next().and_then(|l| l.strip_prefix("worktree ")).unwrap().to_string()
     };
     let (_, project, id, h) = routed_with(&w, |w, _, _| w.hub().desk_hold_copies(&top(w), &[1, 2, 3]), |_, _, _| {});
@@ -36,7 +36,7 @@ fn a_dragged_order_picks_who_gets_the_next_free_copy_and_survives_a_restart() {
     // it waits on; one at work can't move.
     let mut w = World::new();
     let top = |w: &World| {
-        let out = String::from_utf8(std::process::Command::new("git").arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
+        let out = String::from_utf8(std::process::Command::new(crate::safe_git::git_bin()).arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
         out.lines().next().and_then(|l| l.strip_prefix("worktree ")).unwrap().to_string()
     };
     let (_, project, a, _) = routed_with(&w, |w, _, _| w.hub().desk_hold_copies(&top(w), &[1, 2, 3]), |_, _, _| {});
@@ -90,7 +90,7 @@ fn your_send_back_on_an_item_whose_copy_is_gone_reaches_its_holder_and_lead_at_o
     let w = World::new();
     let (_, project, id) = super::desk_commit::ready(&w);
     let top = |w: &World| {
-        let out = String::from_utf8(std::process::Command::new("git").arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
+        let out = String::from_utf8(std::process::Command::new(crate::safe_git::git_bin()).arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
         out.lines().next().and_then(|l| l.strip_prefix("worktree ")).unwrap().to_string()
     };
     assert!(item(&w, &project, "Header jumps")["tree"].is_null(), "its copy went as it landed");
@@ -134,7 +134,7 @@ fn a_sent_back_item_waiting_for_a_working_folder_names_who_uses_them_and_start_n
     let w = World::new();
     let (_, project, id) = super::desk_commit::ready(&w);
     let top = |w: &World| {
-        let out = String::from_utf8(std::process::Command::new("git").arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
+        let out = String::from_utf8(std::process::Command::new(crate::safe_git::git_bin()).arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
         out.lines().next().and_then(|l| l.strip_prefix("worktree ")).unwrap().to_string()
     };
     w.hub().desk_hold_copies(&top(&w), &[1, 2, 3]);
@@ -177,7 +177,7 @@ fn a_sent_back_item_waiting_for_a_working_folder_never_waits_on_you() {
     let w = World::new();
     let (_, project, id) = super::desk_commit::ready(&w);
     let top = |w: &World| {
-        let out = String::from_utf8(std::process::Command::new("git").arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
+        let out = String::from_utf8(std::process::Command::new(crate::safe_git::git_bin()).arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
         out.lines().next().and_then(|l| l.strip_prefix("worktree ")).unwrap().to_string()
     };
     w.hub().desk_hold_copies(&top(&w), &[1, 2, 3]);
@@ -203,7 +203,7 @@ fn an_item_queued_after_another_while_it_waits_for_a_copy_never_starts_until_tha
     // got its brief, the item it waited on not done.
     let w = World::new();
     let top = |w: &World| {
-        let out = String::from_utf8(std::process::Command::new("git").arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
+        let out = String::from_utf8(std::process::Command::new(crate::safe_git::git_bin()).arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
         out.lines().next().and_then(|l| l.strip_prefix("worktree ")).unwrap().to_string()
     };
     let (_, project, a, h) = routed_with(&w, |w, _, _| w.hub().desk_hold_copies(&top(w), &[1, 2, 3]), |_, _, _| {});
@@ -246,7 +246,7 @@ fn a_free_copy_goes_to_an_item_that_waits_only_for_a_copy_not_to_one_still_queue
     // before #512 loads it, both marks on). The free copy goes to the other.
     let w = World::new();
     let top = |w: &World| {
-        let out = String::from_utf8(std::process::Command::new("git").arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
+        let out = String::from_utf8(std::process::Command::new(crate::safe_git::git_bin()).arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
         out.lines().next().and_then(|l| l.strip_prefix("worktree ")).unwrap().to_string()
     };
     let (_, project, a, h) = routed_with(&w, |w, _, _| w.hub().desk_hold_copies(&top(w), &[1, 2, 3]), |_, _, _| {});
@@ -334,7 +334,7 @@ fn your_question_on_an_item_whose_copy_is_gone_reaches_its_holder_and_lead_at_on
     let w = World::new();
     let (_, project, id) = super::desk_commit::ready(&w);
     let top = |w: &World| {
-        let out = String::from_utf8(std::process::Command::new("git").arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
+        let out = String::from_utf8(std::process::Command::new(crate::safe_git::git_bin()).arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
         out.lines().next().and_then(|l| l.strip_prefix("worktree ")).unwrap().to_string()
     };
     w.hub().desk_hold_copies(&top(&w), &[1, 2, 3]);

@@ -74,22 +74,25 @@ pub(crate) fn rev_left(top: &str, rev_of: &str) -> usize {
     cherry.lines().filter(|l| l.starts_with('+')).count().max(1)
 }
 
-/// Whether a commit on `top`'s main since `at` (ms) changed one of `paths`.
-fn committed_since(top: &str, at: u64, paths: &[String]) -> bool {
+/// Whether a commit on `top`'s main since `at` (ms) changed one of `paths`, other than the item's own commits Cue
+/// already knew of when it was reopened (`known`, full or short). git dates a commit to the second, so the commit
+/// that landed it before it was sent back can fall in the second it was reopened, and `--since` takes it in.
+fn committed_since(top: &str, at: u64, paths: &[String], known: &[String]) -> bool {
     let Some(main) = main_ref(top) else { return false };
     if paths.is_empty() {
         return false;
     }
     let since = format!("--since=@{}", at / 1000);
-    let mut args = vec!["log", "-1", "--format=%H", since.as_str(), main.as_str(), "--"];
+    let mut args = vec!["log", "--max-count=50", "--format=%H", since.as_str(), main.as_str(), "--"];
     args.extend(paths.iter().map(String::as_str));
-    git("", top, &[], &args).is_some_and(|o| !o.trim().is_empty())
+    let old = |c: &str| known.iter().any(|k| !k.is_empty() && (c.starts_with(k.as_str()) || k.starts_with(c)));
+    git("", top, &[], &args).is_some_and(|o| o.lines().map(str::trim).any(|c| !c.is_empty() && !old(c)))
 }
 
 /// Whether a commit on main since `at` (ms) changed one of `files` (absolute, outside the item's folder) in its own
 /// repository: work landed in a repository beside the project's (#465: a private one linked into it, whose commits
 /// the project's main never shows). A file whose folder is gone is left out.
-fn landed_elsewhere(files: &[String], at: u64) -> bool {
+fn landed_elsewhere(files: &[String], at: u64, known: &[String]) -> bool {
     let mut tops: Vec<(String, Option<String>)> = Vec::new();
     let mut by_main: Vec<(String, Vec<String>)> = Vec::new();
     for f in files {
@@ -112,7 +115,7 @@ fn landed_elsewhere(files: &[String], at: u64) -> bool {
             None => by_main.push((main, vec![rel])),
         }
     }
-    by_main.iter().any(|(main, paths)| committed_since(main, at, paths))
+    by_main.iter().any(|(main, paths)| committed_since(main, at, paths, known))
 }
 
 /// Whether a commit on one of item `id`'s own branches in `top`'s repository made since `at` (ms) is on main now.
@@ -204,10 +207,13 @@ impl Hub {
             let here = |folder: &str| main_checkout(folder).is_some_and(|(m, _)| same_dir(&m, top));
             sources.iter().filter(|(f, _)| here(f)).flat_map(|(_, paths)| paths.iter().cloned()).collect()
         };
+        // Its commits Cue knew of when it was reopened: none of them is something new.
+        let known: Vec<String> =
+            it.commit_in.iter().take(had).map(|(_, c)| c.clone()).chain(std::iter::once(it.commit.clone())).chain(it.finish.iter().map(|f| f.commit.clone())).collect();
         if it.commit_in.len() > had
             || merged
-            || self.item_repos(&it).iter().any(|top| committed_since(top, at, &own(top)) || branch_landed_since(top, id, at))
-            || landed_elsewhere(&self.desk_edits_elsewhere(id), at)
+            || self.item_repos(&it).iter().any(|top| committed_since(top, at, &own(top), &known) || branch_landed_since(top, id, at))
+            || landed_elsewhere(&self.desk_edits_elsewhere(id), at, &known)
         {
             self.finish_set(id, |i| i.reopened = None);
             return false;

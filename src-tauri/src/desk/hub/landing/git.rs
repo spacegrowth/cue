@@ -4,13 +4,13 @@
 /// git in `dir` on `machine` ("" here), with the repository's own filters off (safe_git.rs): its output, when it
 /// worked.
 pub(crate) fn git(machine: &str, dir: &str, env: &[(&str, &str)], args: &[&str]) -> Option<String> {
-    let filters = crate::safe_git::no_repo_filters(machine, dir);
+    let filters = crate::safe_git::filters_for(machine, dir, args);
     crate::safe_git::run_env(machine, dir, &filters, env, args).ok().filter(|(_, code)| *code == 0).map(|(o, _)| o)
 }
 
 /// `git`, and when it fails, why in git's own words ("" when it said nothing): for a step whose failure you're shown.
 pub(crate) fn git_said(machine: &str, dir: &str, env: &[(&str, &str)], args: &[&str]) -> Result<String, String> {
-    let filters = crate::safe_git::no_repo_filters(machine, dir);
+    let filters = crate::safe_git::filters_for(machine, dir, args);
     crate::safe_git::run_said(machine, dir, &filters, env, args)
 }
 

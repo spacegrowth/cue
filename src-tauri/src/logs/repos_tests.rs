@@ -107,7 +107,7 @@ fn a_stalled_folder_is_unknown_and_holds_nothing_up() {
 /// A worktree, a subfolder of it and a submodule each find their repository; a plain folder doesn't.
 #[test]
 fn repo_of_worktree() {
-    let run = |dir: &Path, args: &[&str]| assert!(std::process::Command::new("git").current_dir(dir).args(args).output().unwrap().status.success(), "git {args:?}");
+    let run = |dir: &Path, args: &[&str]| assert!(std::process::Command::new(crate::safe_git::git_bin()).current_dir(dir).args(args).output().unwrap().status.success(), "git {args:?}");
     let base = std::env::temp_dir().join(format!("cue-repo-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&base);
     let main = base.join("app");
@@ -137,7 +137,7 @@ fn repo_of_worktree() {
 #[test]
 fn a_folders_project_by_the_three_rules() {
     use std::collections::HashMap;
-    let run = |dir: &Path, args: &[&str]| assert!(std::process::Command::new("git").current_dir(dir).args(args).output().unwrap().status.success(), "git {args:?}");
+    let run = |dir: &Path, args: &[&str]| assert!(std::process::Command::new(crate::safe_git::git_bin()).current_dir(dir).args(args).output().unwrap().status.success(), "git {args:?}");
     let base = std::env::temp_dir().canonicalize().unwrap().join(format!("cue-rules-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&base);
     let web = base.join("web-app");

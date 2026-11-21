@@ -446,7 +446,7 @@ fn compat_a_two_part_request_becomes_a_team_of_two_on_its_own_and_one_is_committ
     let w = crate::testing::World::new();
     let dir = w.home().canonicalize().unwrap();
     let git = |args: &[&str]| {
-        let o = std::process::Command::new("git").arg("-C").arg(&dir).args(args).output().unwrap();
+        let o = std::process::Command::new(crate::safe_git::git_bin()).arg("-C").arg(&dir).args(args).output().unwrap();
         assert!(o.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&o.stderr));
         String::from_utf8_lossy(&o.stdout).to_string()
     };
@@ -505,7 +505,7 @@ fn compat_a_two_part_request_becomes_a_team_of_two_on_its_own_and_one_is_committ
     eprintln!("live: {c}");
     assert!(c.starts_with(&format!("Committed {}'s", first["name"].as_str().unwrap())), "{c}");
     let wt = PathBuf::from(first["worktree"].as_str().unwrap());
-    let log = std::process::Command::new("git").arg("-C").arg(&wt).args(["log", "-1", "--name-only", "--format=%s%n%b"]).output().unwrap();
+    let log = std::process::Command::new(crate::safe_git::git_bin()).arg("-C").arg(&wt).args(["log", "-1", "--name-only", "--format=%s%n%b"]).output().unwrap();
     eprintln!("live: its commit:\n{}", String::from_utf8_lossy(&log.stdout));
     assert_eq!(git(&["rev-list", "--count", "main"]).trim(), "1", "main as it was");
 }

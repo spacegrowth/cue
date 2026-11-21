@@ -118,7 +118,10 @@ fn on(server: &Server, channel: crate::ipc::Channel) -> Result<Option<String>, S
 fn found(answer: Answer) -> Result<Option<String>, String> {
     let server = Server::new(answer);
     let app = app(&server);
-    tauri::async_runtime::block_on(crate::ipc::find_update(app.handle())).map(|u| u.map(|u| u.version))
+    // Cue waits 30 s for an answer; the test server answers at once (or after 1.5 s), so 10 s without one fails.
+    let check = crate::ipc::find_update(app.handle());
+    let r = tauri::async_runtime::block_on(async { tokio::time::timeout(Duration::from_secs(10), check).await });
+    r.expect("the release server here didn't answer").map(|u| u.map(|u| u.version))
 }
 
 #[test]
@@ -165,7 +168,7 @@ fn a_release_server_that_never_answers_is_given_up_on() {
     let app = app(&server);
     let start = Instant::now();
     let check = crate::ipc::check_within(app.handle(), Duration::from_secs(1), crate::ipc::Channel::Stable);
-    let r = tauri::async_runtime::block_on(async { tokio::time::timeout(Duration::from_secs(20), check).await });
+    let r = tauri::async_runtime::block_on(async { tokio::time::timeout(Duration::from_secs(5), check).await });
     let Err(err) = r.expect("the check waited on and on") else { panic!("a server that never answered offered a release") };
     assert!(err.starts_with("Couldn't check for updates: "), "{err}");
     assert!(start.elapsed() < Duration::from_secs(5), "{:?}", start.elapsed());
@@ -218,7 +221,7 @@ fn a_beta_check_with_no_answer_at_all_doesnt_fall_back() {
     let server = Server::with(Answers { stable: release("0.2.0"), beta: Some(Answer::Never) });
     let app = app(&server);
     let check = crate::ipc::check_within(app.handle(), Duration::from_secs(1), crate::ipc::Channel::Beta);
-    let r = tauri::async_runtime::block_on(async { tokio::time::timeout(Duration::from_secs(20), check).await }).expect("the check waited on and on");
+    let r = tauri::async_runtime::block_on(async { tokio::time::timeout(Duration::from_secs(5), check).await }).expect("the check waited on and on");
     let Err(err) = r else { panic!("a server that never answered offered a release") };
     assert!(err.starts_with("Couldn't check for updates: "), "{err}");
     assert_eq!(server.asked(), vec!["/latest-beta.json"], "a timeout isn't a missing file: stable isn't asked");

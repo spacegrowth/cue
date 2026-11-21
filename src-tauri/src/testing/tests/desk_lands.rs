@@ -47,7 +47,7 @@ pub(super) fn set(w: &World, h: &str, lands: Value) {
 
 /// The repository's main checkout (where its copies are made from).
 fn top(w: &World) -> String {
-    let out = String::from_utf8(std::process::Command::new("git").arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
+    let out = String::from_utf8(std::process::Command::new(crate::safe_git::git_bin()).arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
     out.lines().next().and_then(|l| l.strip_prefix("worktree ")).unwrap().to_string()
 }
 
@@ -169,7 +169,7 @@ fn a_folder_that_isnt_a_git_repository_with_nothing_saved_gets_no_copy_and_you_c
     // As routed_with, with no repository: the session works in a plain folder.
     let w = World::new();
     let dir = w.home().to_path_buf();
-    assert!(std::process::Command::new("git").arg("-C").arg(&dir).args(["rev-parse", "--show-toplevel"]).output().is_ok_and(|o| !o.status.success()), "a plain folder");
+    assert!(std::process::Command::new(crate::safe_git::git_bin()).arg("-C").arg(&dir).args(["rev-parse", "--show-toplevel"]).output().is_ok_and(|o| !o.status.success()), "a plain folder");
     let h = super::team::lead(&w, "hello");
     ends(&w, &h, "Hi.");
     let project = w.snapshot().session(&h)["project"].as_str().unwrap().to_string();

@@ -173,7 +173,7 @@ fn a_fourth_item_waits_for_a_free_copy_and_starts_in_it_once_one_is_free() {
     let main = std::fs::canonicalize(w.home()).unwrap().to_string_lossy().to_string();
     // Three of the repository's copies taken by other items.
     let hold = |w: &World| {
-        let top = String::from_utf8(std::process::Command::new("git").arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
+        let top = String::from_utf8(std::process::Command::new(crate::safe_git::git_bin()).arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
         top.lines().next().and_then(|l| l.strip_prefix("worktree ")).unwrap_or(&main).to_string()
     };
     let (_, project, id, h) = routed_with(
@@ -200,7 +200,7 @@ fn a_fourth_item_waits_for_a_free_copy_and_starts_in_it_once_one_is_free() {
 fn a_queued_item_whose_holder_is_on_it_anyway_shows_its_question_and_its_ask() {
     let w = World::new();
     let top = |w: &World| {
-        let out = String::from_utf8(std::process::Command::new("git").arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
+        let out = String::from_utf8(std::process::Command::new(crate::safe_git::git_bin()).arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
         out.lines().next().and_then(|l| l.strip_prefix("worktree ")).unwrap().to_string()
     };
     let (_, project, id, h) = routed_with(&w, |w, _, _| w.hub().desk_hold_copies(&top(w), &[1, 2, 3]), |_, _, _| {});
@@ -232,7 +232,7 @@ fn a_queued_item_whose_holder_is_on_it_anyway_shows_its_question_and_its_ask() {
 fn an_item_waiting_for_a_copy_but_started_now_forgets_that_wait_once_it_has_one() {
     let w = World::new();
     let top = |w: &World| {
-        let out = String::from_utf8(std::process::Command::new("git").arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
+        let out = String::from_utf8(std::process::Command::new(crate::safe_git::git_bin()).arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
         out.lines().next().and_then(|l| l.strip_prefix("worktree ")).unwrap().to_string()
     };
     let (_, project, id, _) = routed_with(&w, |w, _, _| w.hub().desk_hold_copies(&top(w), &[1, 2, 3]), |_, _, _| {});
@@ -404,7 +404,7 @@ fn an_item_sent_back_while_it_was_checked_doesnt_land_and_its_copy_stays() {
 fn a_freed_copy_goes_to_an_item_waiting_for_that_repository_not_one_waiting_elsewhere() {
     let w = World::new();
     let top = |w: &World| {
-        let out = String::from_utf8(std::process::Command::new("git").arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
+        let out = String::from_utf8(std::process::Command::new(crate::safe_git::git_bin()).arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
         out.lines().next().and_then(|l| l.strip_prefix("worktree ")).unwrap().to_string()
     };
     let (_, project, id, _) = routed_with(&w, |w, _, _| w.hub().desk_hold_copies(&top(w), &[1, 2, 3]), |_, _, _| {});
@@ -536,7 +536,7 @@ fn an_item_reopened_twice_is_done_only_once_every_commit_on_its_branch_is_on_mai
     let w = World::new();
     let (dir, project, id, h, path) = routed(&w);
     let top = |w: &World| {
-        let out = String::from_utf8(std::process::Command::new("git").arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
+        let out = String::from_utf8(std::process::Command::new(crate::safe_git::git_bin()).arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
         out.lines().next().and_then(|l| l.strip_prefix("worktree ")).unwrap().to_string()
     };
     // Round 1 lands from its copy.
@@ -588,7 +588,7 @@ fn a_reopened_item_said_done_with_no_new_commit_goes_back_to_its_session() {
     std::fs::write(path.join("a.txt"), "1\n").unwrap();
     ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
     assert_eq!(item(&w, &project, "Header jumps")["state"], "to_check");
-    let main = |dir: &PathBuf| String::from_utf8(std::process::Command::new("git").arg("-C").arg(dir).args(["rev-parse", "HEAD"]).output().unwrap().stdout).unwrap();
+    let main = |dir: &PathBuf| String::from_utf8(std::process::Command::new(crate::safe_git::git_bin()).arg("-C").arg(dir).args(["rev-parse", "HEAD"]).output().unwrap().stdout).unwrap();
     let before = main(&dir);
     // #418: reopened, its session says "already on main" and DONE with no new commit.
     w.hub().desk_item_act(&id, "send_back", "The right column is wrong").unwrap();

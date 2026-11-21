@@ -279,7 +279,7 @@ fn a_main_checkout_mid_merge_is_left_alone_and_goes_to_the_lead() {
         std::fs::write(dir.join("shared.txt"), "mine\n").unwrap();
         git(dir, &["add", "shared.txt"]);
         git(dir, &["commit", "-q", "-m", "mine"]);
-        let o = std::process::Command::new("git").arg("-C").arg(dir).args(["merge", "-q", "yours"]).output().unwrap();
+        let o = std::process::Command::new(crate::safe_git::git_bin()).arg("-C").arg(dir).args(["merge", "-q", "yours"]).output().unwrap();
         assert!(!o.status.success(), "a conflict");
     });
     let shown = item(&w, &project, "Header jumps");

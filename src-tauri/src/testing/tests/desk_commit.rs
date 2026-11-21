@@ -533,7 +533,7 @@ fn a_reopened_items_done_counts_its_work_landed_in_a_repository_beside_its_proje
     // Landed on that repository's main (dated by Cue's clock, as the reopen was): to check.
     let when = format!("@{} +0000", crate::clock::now_ms() / 1000 + 1);
     git(&beside, &["add", "mac/ui/addon.js"]);
-    let o = std::process::Command::new("git").arg("-C").arg(&beside).args(["commit", "-q", "-m", "No back arrow (#465)"]).env("GIT_COMMITTER_DATE", &when).env("GIT_AUTHOR_DATE", &when).output().unwrap();
+    let o = std::process::Command::new(crate::safe_git::git_bin()).arg("-C").arg(&beside).args(["commit", "-q", "-m", "No back arrow (#465)"]).env("GIT_COMMITTER_DATE", &when).env("GIT_AUTHOR_DATE", &when).output().unwrap();
     assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
     ends(&w, &h, &format!("Landed.\nDONE: #{id}"));
     let it = item(&w, &project, "Header jumps");

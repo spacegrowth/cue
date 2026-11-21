@@ -306,7 +306,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("cue-theirs-gone-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        let git = |args: &[&str]| assert!(std::process::Command::new("git").arg("-C").arg(&dir).args(args)
+        let git = |args: &[&str]| assert!(std::process::Command::new(crate::safe_git::git_bin()).arg("-C").arg(&dir).args(args)
             .env("GIT_COMMITTER_DATE", "@2000 +0000").env("GIT_AUTHOR_DATE", "@2000 +0000").output().unwrap().status.success(), "{args:?}");
         git(&["init", "-q"]);
         git(&["config", "user.email", "t@example.com"]);

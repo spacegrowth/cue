@@ -178,7 +178,7 @@ pub(super) fn writes(call: &str, id: &str, name: &str, files: &[String]) -> Vec<
 }
 
 pub(super) fn git(dir: &std::path::Path, args: &[&str]) -> String {
-    let o = std::process::Command::new("git").arg("-C").arg(dir).args(args).output().unwrap();
+    let o = std::process::Command::new(crate::safe_git::git_bin()).arg("-C").arg(dir).args(args).output().unwrap();
     assert!(o.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&o.stderr));
     String::from_utf8_lossy(&o.stdout).to_string()
 }

@@ -54,13 +54,13 @@ impl Drop for Fixture {
             unsafe { libc::kill(pid, libc::SIGKILL) };
         }
         let _ = Command::new("chmod").arg("-R").arg("u+w").arg(&self.root).status();
-        let _ = Command::new("git").arg("-C").arg(&self.repo).args(["worktree", "prune"]).status();
+        let _ = std::process::Command::new(crate::safe_git::git_bin()).arg("-C").arg(&self.repo).args(["worktree", "prune"]).status();
         let _ = std::fs::remove_dir_all(&self.root);
     }
 }
 
 fn git(dir: &Path, args: &[&str]) -> String {
-    let o = Command::new("git").arg("-C").arg(dir).args(args).output().unwrap();
+    let o = std::process::Command::new(crate::safe_git::git_bin()).arg("-C").arg(dir).args(args).output().unwrap();
     assert!(o.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&o.stderr));
     String::from_utf8_lossy(&o.stdout).trim().to_string()
 }

@@ -146,7 +146,7 @@ fn saved_projects_are_regrouped_by_repository() {
     let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let dir = std::env::temp_dir().join(format!("cue-db-regroup-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
-    let git = |at: &std::path::Path, args: &[&str]| assert!(std::process::Command::new("git").current_dir(at).args(args).output().unwrap().status.success());
+    let git = |at: &std::path::Path, args: &[&str]| assert!(std::process::Command::new(crate::safe_git::git_bin()).current_dir(at).args(args).output().unwrap().status.success());
     let main = dir.join("app");
     std::fs::create_dir_all(&main).unwrap();
     git(&main, &["init", "-q"]);
