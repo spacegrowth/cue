@@ -62,8 +62,8 @@ for (const scheme of ["light", "dark"]) {
     await expect(chat).toContainText("Reply 5");
     // Cue's "not done" message opened, a reply under the pointer, and the page scrolled up to read.
     const cueMsg = chat.locator(".cue-msg").filter({ hasText: "the header still jumps" });
-    await cueMsg.locator(".mg-lk").click();
-    await expect(cueMsg.locator(".mg-full")).toContainText("line two");
+    await cueMsg.locator(".mg-lk").click();   // (what it opens to is desk/cue_said.js's: here, only that it stays open)
+    await expect(cueMsg.locator(".mg-full")).toContainText("the header still jumps");
     await pane.evaluate((p) => { p.scrollTop = 300; });
     const read = chat.locator(".cv-agent").filter({ hasText: "Reply 2" });
     await read.hover();
@@ -82,7 +82,7 @@ for (const scheme of ["light", "dark"]) {
     expect(c.gone, "earlier messages are the same elements").toEqual([]);
     expect(c.reworded, "earlier messages keep their words").toEqual([]);
     // What you'd opened, where you were and the row under the pointer, as they were.
-    await expect(cueMsg.locator(".mg-full")).toContainText("line two");
+    await expect(cueMsg.locator(".mg-full")).toContainText("the header still jumps");
     expect(await pane.evaluate((p) => p.scrollTop)).toBe(top);
     expect(await read.evaluate((el) => el.matches(":hover"))).toBe(true);
     expect(await page.evaluate(() => document.querySelector(".dk-right .dk-ipane") === window.__w.pane.closest(".dk-ipane"))).toBe(true);
