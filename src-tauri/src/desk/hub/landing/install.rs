@@ -130,6 +130,7 @@ impl Hub {
         self.write(|st| st.desk.installer.0 = Some(i));
     }
 
+    /// The finishing items' tick: each taken a step on, from its commit to its install.
     pub(crate) fn finish_tick(&self) {
         // An older Cue's commit wait (gone): committed as any item said DONE.
         let old: Vec<String> = self.read(|st| st.desk.items.iter().filter(|i| i.state == "finishing" && i.finish.as_ref().is_some_and(|f| f.step == "commit_wait")).map(|i| i.id.clone()).collect());
@@ -141,8 +142,15 @@ impl Hub {
         if items.is_empty() {
             return;
         }
+        self.finish_tick_steps(&items);
+        self.finish_tick_installs(&items);
+    }
+
+    /// The tick's finishing `items` before an install: committed (fetched first when on another machine), put on the
+    /// landing line, or on their way once on main.
+    fn finish_tick_steps(&self, items: &[DeskItem]) {
         let step = |i: &DeskItem| i.finish.as_ref().map(|f| f.step.clone()).unwrap_or_default();
-        for it in &items {
+        for it in items {
             match step(it).as_str() {
                 // On another machine: fetched from there first (desk/hub/landing/remote_item.rs).
                 "commit" if it.tree.is_none() || it.remote.is_some() => self.desk_finish_commit(&it.id),
@@ -156,13 +164,19 @@ impl Hub {
         if items.iter().any(|i| i.tree.is_some() && (matches!(step(i).as_str(), "line" | "checking") || (step(i) == "commit" && i.remote.is_none()))) {
             self.desk_land_line();
         }
+    }
+
+    /// The tick's finishing `items` in an install: checked once the running Cue has their work, joined to one under
+    /// way, followed while it builds; then main lines just installed are offered for a push, and the next is started
+    /// when nothing builds.
+    fn finish_tick_installs(&self, items: &[DeskItem]) {
         let inst = self.installer();
         let status = inst.status();
         let now = now_ms();
         let mut running = status.as_ref().is_some_and(|s| installing(&s.step));
         // Main lines an install just brought into the running Cue: offered for a push once (desk/hub/landing/push_main.rs).
         let mut installed: Vec<(String, String)> = vec![];
-        for it in &items {
+        for it in items {
             // Stopped on a failed install too: a later install (main fixed, another item's) brought its work into the
             // running Cue, so nothing of its is left to install (#343).
             let Some(f) = it.finish.as_ref().filter(|f| f.step == "queued" || installing(&f.step) || stopped_install(&f.step)) else { continue };

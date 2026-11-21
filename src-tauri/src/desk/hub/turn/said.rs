@@ -86,9 +86,7 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, (repos, loop
             Line::Item { kind, title, see, done_when, follows, picked, .. } => {
                 let (id, _) = item_said(st, project, &kind, &title, &see, &done_when, &name, now, fx);
                 if !follows.is_empty() {
-                    if let Err(no) = follow_on(st, project, &id, &follows, &picked, now, fx) {
-                        answers.push(no);
-                    }
+                    answers.extend(follow_on(st, project, &id, &follows, &picked, now, fx).err());
                 }
                 last_new = Some(id);
             }
@@ -99,42 +97,17 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, (repos, loop
             Line::Title { id, title } => retitle(st, project, &by, &id, &title, now, fx),
             Line::See { id, see, done_when } => {
                 let id = st.desk.canon(&id);
-                if let Err(no) = see_said(st, project, &id, &see, &done_when, now, fx) {
-                    answers.push(no);
-                }
+                answers.extend(see_said(st, project, &id, &see, &done_when, now, fx).err());
             }
             Line::Split { id, titles } => split(st, project, &by, &id, &titles, now, fx, &mut answers),
             Line::Cut { id, on, why } => cut(st, project, &by, &id, &on, &why, now, fx, &mut answers),
             Line::Merge { id, into, why } => merge(st, project, &by, &id, &into, &why, now, fx, &mut answers),
             Line::Note { id, text } => {
                 let id = st.desk.canon(&id);
-                if let Err(no) = note(st, project, &by, &id, &text, now, fx) {
-                    answers.push(no);
-                }
+                answers.extend(note(st, project, &by, &id, &text, now, fx).err());
             }
-            Line::Unstick { what, id, commit, why } => {
-                // PARK: #new parks the reply's last ITEM (#385). LAND FIRST may name another Desk's item on the same code (#540).
-                let id = if what == "land_first" && id != "new" {
-                    match crate::desk::across::named(st, project, &id) {
-                        Ok(id) => id,
-                        Err(no) => {
-                            let id = crate::desk::across::split(&id).1;
-                            answers.push(format!("Refused: LAND FIRST #{id}: #{id} {no}. You can move up an item on this repository, or ask the user (ASK: #{id} | …)."));
-                            continue;
-                        }
-                    }
-                } else {
-                    new_or_canon(st, &id, last_new.as_deref())
-                };
-                if let Err(no) = crate::desk::hub::stall::unstick::unstick(st, project, &by, &what, &id, &commit, &why, now, fx) {
-                    answers.push(no);
-                }
-            }
-            Line::Feature { id, name, pieces } => {
-                if let Err(no) = crate::desk::hub::turn::features::feature_said(st, project, &by, id, &name, &pieces, last_new.as_deref(), now, fx) {
-                    answers.push(no);
-                }
-            }
+            Line::Unstick { what, id, commit, why } => answers.extend(unstick_line(st, project, &by, (&what, &id, &commit, &why), last_new.as_deref(), now, fx)),
+            Line::Feature { id, name, pieces } => answers.extend(crate::desk::hub::turn::features::feature_said(st, project, &by, id, &name, &pieces, last_new.as_deref(), now, fx).err()),
             Line::Copy { id, repo, branch, why } => copy_line(st, project, &by, (new_or_canon(st, &id, last_new.as_deref()), repo, branch, why), repos, now, fx, &mut answers),
             Line::Hold { id, area, till, why } => {
                 let id = new_or_canon(st, &id, last_new.as_deref());
@@ -154,14 +127,93 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, (repos, loop
             Line::Context { .. } | Line::Designs { .. } | Line::IfPicked { .. } | Line::ToLead { .. } | Line::Check { .. } | Line::NotDone { .. } => {}
         }
     }
+    lead_said_end(st, project, &by, text, (answers, back), now, fx);
+}
+
+/// What the lead is told once its lines are read: `answers` to them, any route it wrote that couldn't be read, and
+/// the questions sent `back` while you're away; then its calls on the Desk's list.
+fn lead_said_end(st: &mut Store, project: &str, by: &By, text: &str, (mut answers, back): (Vec<String>, Vec<(String, Option<String>)>), now: u64, fx: &mut Effects) {
     for line in parse::unread_routes(text) {
         answers.push(format!("Couldn't read this line as a route: {line}\nWrite it as ROUTE: #<id> -> <session> | why: <reason> ({}).", parse::route_fix(&line)));
     }
     if !back.is_empty() {
         answers.push(crate::desk::hub::away::away::sent_back_words(&back));
     }
-    route_answers(st, project, lsid, answers, fx);
-    lead_calls(st, project, &by, text, back, now, fx);
+    route_answers(st, project, by.sid, answers, fx);
+    lead_calls(st, project, by, text, back, now, fx);
+}
+
+/// The lead's PARK, LAND FIRST or other unstick line: what the lead is told when it's refused. PARK: #new parks the
+/// reply's last ITEM (#385); LAND FIRST may name another Desk's item on the same code (#540).
+fn unstick_line(st: &mut Store, project: &str, by: &By, (what, id, commit, why): (&str, &str, &str, &str), last_new: Option<&str>, now: u64, fx: &mut Effects) -> Option<String> {
+    let id = if what == "land_first" && id != "new" {
+        match crate::desk::across::named(st, project, id) {
+            Ok(id) => id,
+            Err(no) => {
+                let id = crate::desk::across::split(id).1;
+                return Some(format!("Refused: LAND FIRST #{id}: #{id} {no}. You can move up an item on this repository, or ask the user (ASK: #{id} | …)."));
+            }
+        }
+    } else {
+        new_or_canon(st, id, last_new)
+    };
+    crate::desk::hub::stall::unstick::unstick(st, project, by, what, &id, commit, why, now, fx).err()
+}
+
+/// What a turn's lines need that was found before the store was taken (Hub::turn_heard): each item's work not yet
+/// committed, feature pieces on disk, the repositories COPY lines name, the folders LOOP lines name, the files HOLD
+/// lines' copies changed, Claude Code's models, and the time.
+struct Heard {
+    loose: Vec<(String, Vec<String>)>,
+    from_disk: Vec<DeskItem>,
+    repos: Vec<(String, Result<(String, String), String>)>,
+    loops: Vec<(String, Option<String>)>,
+    changes: crate::desk::hold_check::Changes,
+    models: Option<Vec<(String, String)>>,
+    now: u64,
+}
+
+/// Session `sid`'s turn, saying `text`, acted on under the store's lock with what was `heard` before it was taken:
+/// a held DONE goes ahead, its reply goes to its items, its lines are read, and an item it ended on is asked about.
+fn turn_said(st: &mut Store, sid: &str, text: &str, turn: &[crate::model::TurnPart], said: bool, heard: Heard) -> Effects {
+    let Heard { loose, from_disk, repos, loops, changes, models, now } = heard;
+    crate::desk::hub::turn::features::bring_back(st, from_disk);
+    let mut fx = Effects::default();
+    // A DONE it said while its crew or agents worked: they're done now, so it goes ahead (#393).
+    crate::desk::hub::turn::heard::held_done(st, sid, now, &mut fx);
+    for (id, files) in &loose {
+        if let Some(it) = st.desk.item_mut(id) {
+            it.loose = files.clone();
+        }
+    }
+    // What it was at work on as its turn ended: what this turn's DONE lines don't close stalled there.
+    // Its reply goes only to the items it's tagged with (#176): the one the message it answers names, and
+    // those its DONE lines name; untagged, to none. A turn that ends untagged with one item at work still
+    // stalls there: Cue's ask names the item, so the answer to it is tagged.
+    let held = crate::desk::hub::stall::stall::at_work_with(st, sid);
+    let mut on = crate::desk::hub::stall::stall::about(st, text, &held, crate::desk::hub::stall::stall::now_on(st, sid).as_deref());
+    replied(st, sid, text, turn, &on, now, &mut fx);
+    crate::desk::hub::turn::asked::answered(st, sid, text, &loose, now, &mut fx);
+    // NOT DONE on an item to check (#627), after its question settled: back at work.
+    crate::desk::hub::turn::asked::not_done(st, sid, text, now, &mut fx);
+    if on.is_empty() && held.len() == 1 {
+        on = held;
+    }
+    if !said {
+        crate::desk::hub::stall::stall::stalls_asked(st, sid, text, &on, now, &mut fx);
+        return fx;
+    }
+    any_session_said(st, sid, text, &mut fx);
+    let lead = st.desk.lead_of(sid);
+    match &lead {
+        Some(project) => lead_said(st, project, sid, text, (&repos, &loops, models.as_deref()), &changes, now, &mut fx),
+        None => session_items(st, sid, text, now, &mut fx),
+    }
+    if st.desk.items.iter().any(|i| i.holder.as_ref().is_some_and(|h| h.is(sid))) {
+        holder_said(st, sid, text, lead.is_none(), now, &mut fx);
+    }
+    crate::desk::hub::stall::stall::stalls_asked(st, sid, text, &on, now, &mut fx);
+    fx
 }
 
 /// The lead's LOOP line (#583): a loop drafted for project `d.project`, kept on the Desk as one of the lead's moves
@@ -634,6 +686,14 @@ impl Hub {
         if !said && held.is_empty() && !done_held && asked.is_empty() {
             return;
         }
+        let heard = self.turn_heard(sid, text, said, &held, &asked);
+        let fx = self.write(|st| turn_said(st, sid, text, turn, said, heard));
+        self.desk_done(fx);
+    }
+
+    /// What a turn's lines need from git, disk and this Mac, found with the store let go: the items at work with
+    /// `sid` (`held`, and those it was `asked` on), and, when it `said` Desk lines, what they name.
+    fn turn_heard(&self, sid: &str, text: &str, said: bool, held: &[String], asked: &[String]) -> Heard {
         // Each item at work with it: its work git says isn't committed yet, asked with the store let go (#213).
         let loose: Vec<(String, Vec<String>)> = held.iter().chain(asked.iter().filter(|a| !held.contains(a))).map(|id| (id.clone(), self.desk_uncommitted(id))).collect();
         let from_disk = self.feature_pieces_on_disk(text);
@@ -652,46 +712,7 @@ impl Hub {
             Vec::new()
         };
         let (now, models) = (now_ms(), if said && text.contains("model:") { crate::desk::model_pick::listed() } else { None });
-        let fx = self.write(|st| {
-            crate::desk::hub::turn::features::bring_back(st, from_disk);
-            let mut fx = Effects::default();
-            // A DONE it said while its crew or agents worked: they're done now, so it goes ahead (#393).
-            crate::desk::hub::turn::heard::held_done(st, sid, now, &mut fx);
-            for (id, files) in &loose {
-                if let Some(it) = st.desk.item_mut(id) {
-                    it.loose = files.clone();
-                }
-            }
-            // What it was at work on as its turn ended: what this turn's DONE lines don't close stalled there.
-            // Its reply goes only to the items it's tagged with (#176): the one the message it answers names, and
-            // those its DONE lines name; untagged, to none. A turn that ends untagged with one item at work still
-            // stalls there: Cue's ask names the item, so the answer to it is tagged.
-            let held = crate::desk::hub::stall::stall::at_work_with(st, sid);
-            let mut on = crate::desk::hub::stall::stall::about(st, text, &held, crate::desk::hub::stall::stall::now_on(st, sid).as_deref());
-            replied(st, sid, text, turn, &on, now, &mut fx);
-            crate::desk::hub::turn::asked::answered(st, sid, text, &loose, now, &mut fx);
-            // NOT DONE on an item to check (#627), after its question settled: back at work.
-            crate::desk::hub::turn::asked::not_done(st, sid, text, now, &mut fx);
-            if on.is_empty() && held.len() == 1 {
-                on = held;
-            }
-            if !said {
-                crate::desk::hub::stall::stall::stalls_asked(st, sid, text, &on, now, &mut fx);
-                return fx;
-            }
-            any_session_said(st, sid, text, &mut fx);
-            let lead = st.desk.lead_of(sid);
-            match &lead {
-                Some(project) => lead_said(st, project, sid, text, (&repos, &loops, models.as_deref()), &changes, now, &mut fx),
-                None => session_items(st, sid, text, now, &mut fx),
-            }
-            if st.desk.items.iter().any(|i| i.holder.as_ref().is_some_and(|h| h.is(sid))) {
-                holder_said(st, sid, text, lead.is_none(), now, &mut fx);
-            }
-            crate::desk::hub::stall::stall::stalls_asked(st, sid, text, &on, now, &mut fx);
-            fx
-        });
-        self.desk_done(fx);
+        Heard { loose, from_disk, repos, loops, changes, models, now }
     }
 
     /// Session `sid`'s background agents have finished and it's at its prompt: a DONE it said while they worked goes

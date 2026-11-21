@@ -50,7 +50,12 @@ pub(crate) fn steps_key(repo: &str) -> String {
 
 /// Whether main checkout `repo` can't be put on an item's branch now: it's on one, or steps after landing run there.
 pub(crate) fn folder_busy(hub: &Hub, repo: &str) -> bool {
-    on_item_branch(repo).is_some() || hub.read(|st| st.desk.run.finish_claims.iter().any(|k| k.strip_prefix("steps:").is_some_and(|d| same_dir(d, repo))))
+    if on_item_branch(repo).is_some() {
+        return true;
+    }
+    // Compared once out of the store's lock: same_dir looks at the disk.
+    let steps: Vec<String> = hub.read(|st| st.desk.run.finish_claims.iter().filter_map(|k| k.strip_prefix("steps:").map(str::to_string)).collect());
+    steps.iter().any(|d| same_dir(d, repo))
 }
 
 fn forget(repo: &str) {

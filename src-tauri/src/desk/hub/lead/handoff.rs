@@ -71,18 +71,7 @@ impl Hub {
             let lead = st.desk.lead_of(old).map(|id| (id, name.clone()));
             for project in st.desk.scopes(old, &project) {
                 let held = held_items(st, &project, old);
-                // Items in the queue for it (#576) wait for the one that carries on, whether or not it is on the Desk.
-                for it in st.desk.items.iter_mut().filter(|i| i.project == project && i.holder.is_none()) {
-                    if let Some(h) = it.next_for.as_mut().filter(|h| h.sid == old || h.lead_sid == old) {
-                        if h.lead_sid == old {
-                            h.lead_sid = new.to_string();
-                        } else {
-                            (h.sid, h.name) = (new.to_string(), name.clone());
-                        }
-                        it.updated = secs(now);
-                        fx.items.push(it.id.clone());
-                    }
-                }
+                carry_queue(st, &project, (old, new, &name), now, &mut fx);
                 let on_desk = st.desk.on_desk(&project, old) || lead.is_some() || held.iter().any(Option::is_some);
                 if !on_desk {
                     continue;
@@ -123,6 +112,22 @@ impl Hub {
             if let Err(e) = crate::desk::hub::lead::lead_carried_on(self, &project, new, &name) {
                 eprintln!("cue: desk: {project}'s new lead wasn't sent the Desk: {e}");
             }
+        }
+    }
+}
+
+/// Items in `project`'s queue for session `old` (#576) wait for `new` (named `name`), the one that carries on,
+/// whether or not it is on the Desk.
+fn carry_queue(st: &mut Store, project: &str, (old, new, name): (&str, &str, &str), now: u64, fx: &mut Effects) {
+    for it in st.desk.items.iter_mut().filter(|i| i.project == project && i.holder.is_none()) {
+        if let Some(h) = it.next_for.as_mut().filter(|h| h.sid == old || h.lead_sid == old) {
+            if h.lead_sid == old {
+                h.lead_sid = new.to_string();
+            } else {
+                (h.sid, h.name) = (new.to_string(), name.to_string());
+            }
+            it.updated = secs(now);
+            fx.items.push(it.id.clone());
         }
     }
 }

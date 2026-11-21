@@ -27,6 +27,10 @@ pub struct ItemTree {
     /// main checkout itself, never removed or moved; at the end it's switched back onto the main line.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub in_place: bool,
+    /// In place: the main line the folder was switched from, as its holder is told it (`tree_line`), so the words
+    /// never ask git while the Desk is held. Saved; empty in a tree saved before it was kept.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub main_line: String,
     /// In place: the commit its work landed as on the main line while the folder couldn't go back onto it yet, and the
     /// folder's files as landed (a tree). It finishes once the folder is back (desk/hub/landing/trees.rs).
     #[serde(default, skip_serializing_if = "String::is_empty")]

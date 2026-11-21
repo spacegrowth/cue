@@ -208,20 +208,7 @@ impl Hub {
         for id in moved {
             self.remote_drop(&id);
         }
-        let asked: Vec<(String, String, String, String, String)> = self.read(|st| {
-            fx.items
-                .iter()
-                .filter_map(|id| {
-                    let it = st.desk.item(id).filter(|i| i.state == "working" && i.tree.is_none() && i.remote.is_none() && i.copy_on.is_none())?;
-                    if crate::desk::hub::landing::unlanded::rules_out_code(&it.done_when) {
-                        return None;
-                    }
-                    let h = it.holder.as_ref()?;
-                    let s = st.sessions.get(h.to()).filter(|s| !s.origin.machine.is_empty() && !s.origin.cwd.is_empty())?;
-                    Some((id.clone(), it.project.clone(), s.origin.machine.clone(), s.origin.cwd.clone(), h.to().to_string()))
-                })
-                .collect()
-        });
+        let asked = self.read(|st| remote_starts_of(st, &fx.items));
         for (id, project, machine, folder, to) in asked {
             let Some(local) = self.desk_folder(&project) else { continue };
             let Some((repo, onto)) = main_checkout(&local).filter(|(_, b)| !b.is_empty()) else { continue };
@@ -245,16 +232,8 @@ impl Hub {
                 // Its holder's message held while main here is compared with the remote the machine starts from, off
                 // this thread (a capped fetch can take a minute): even, it goes; behind or not known, pushed first on
                 // "after each landing", asked first on "ask" (push_main.rs).
-                let mut texts: Vec<String> = fx.sends.iter().filter(|(s, text)| *s == to && names_item(text, &id)).map(|(_, t)| t.clone()).collect();
-                fx.sends.retain(|(s, text)| !(*s == to && names_item(text, &id)));
-                if texts.is_empty() {
-                    texts.push(format!("Desk item #{id}: {line}"));
-                } else {
-                    let last = texts.len() - 1;
-                    texts[last].push('\n');
-                    texts[last].push_str(&line);
-                }
-                let s = crate::desk::hub::landing::push_main::HeldStart { desk: project, top: repo, id, machine, remote, onto, push: l.push.to_string(), to, text: texts.join("\n\n") };
+                let text = held_start_text(fx, &to, &id, &line);
+                let s = crate::desk::hub::landing::push_main::HeldStart { desk: project, top: repo, id, machine, remote, onto, push: l.push.to_string(), to, text };
                 self.later(0, move |h| h.desk_remote_start_checked(s));
                 continue;
             }
@@ -437,7 +416,7 @@ impl Hub {
             take_away(repo, &path);
         }
         git_said("", repo, &[], &["worktree", "add", "-q", "-B", &branch, &path, sha])?;
-        Ok(ItemTree { repo: repo.to_string(), path, branch, base: base.to_string(), slot: 0, keep: false, addon_of: String::new(), in_place: false, landed: String::new(), landed_work: String::new() })
+        Ok(ItemTree { repo: repo.to_string(), path, branch, base: base.to_string(), slot: 0, keep: false, addon_of: String::new(), in_place: false, main_line: String::new(), landed: String::new(), landed_work: String::new() })
     }
 
     /// Item `id`'s remote work forgotten (its holder moved): its copy here of that work goes, and what was fetched.
@@ -607,4 +586,35 @@ pub(crate) fn shown_machine(st: &Store, it: &mut DeskItem) {
     if let Some(r) = it.remote.as_mut() {
         r.quiet_since = crate::hub::machine_quiet_since(st, &r.machine).unwrap_or(0);
     }
+}
+
+/// Items among `ids` that just went to work with a holder on another machine, with no copy or remote work yet and
+/// done when allows code: each with its project, that machine, the holder's folder there, and the holder.
+fn remote_starts_of(st: &Store, ids: &[String]) -> Vec<(String, String, String, String, String)> {
+    ids.iter()
+        .filter_map(|id| {
+            let it = st.desk.item(id).filter(|i| i.state == "working" && i.tree.is_none() && i.remote.is_none() && i.copy_on.is_none())?;
+            if crate::desk::hub::landing::unlanded::rules_out_code(&it.done_when) {
+                return None;
+            }
+            let h = it.holder.as_ref()?;
+            let s = st.sessions.get(h.to()).filter(|s| !s.origin.machine.is_empty() && !s.origin.cwd.is_empty())?;
+            Some((id.clone(), it.project.clone(), s.origin.machine.clone(), s.origin.cwd.clone(), h.to().to_string()))
+        })
+        .collect()
+}
+
+/// Holder `to`'s messages naming item `id`, taken out of `fx` to be held, with `line` (where to work) added to the
+/// last; just that line when there were none.
+fn held_start_text(fx: &mut Effects, to: &str, id: &str, line: &str) -> String {
+    let mut texts: Vec<String> = fx.sends.iter().filter(|(s, text)| *s == to && names_item(text, id)).map(|(_, t)| t.clone()).collect();
+    fx.sends.retain(|(s, text)| !(*s == to && names_item(text, id)));
+    if texts.is_empty() {
+        texts.push(format!("Desk item #{id}: {line}"));
+    } else {
+        let last = texts.len() - 1;
+        texts[last].push('\n');
+        texts[last].push_str(line);
+    }
+    texts.join("\n\n")
 }

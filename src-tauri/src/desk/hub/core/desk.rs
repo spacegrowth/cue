@@ -535,24 +535,7 @@ impl Hub {
             self.desk_went(&kept_back, &Ok("kept in Cue".into()));
         }
         self.desk_send_out(std::mem::take(&mut fx.sends), went_with, &fx.restarts, &fx.now);
-        // A session's words for its lead (#474), to whoever leads that Desk as they go; when they can't, it's told.
-        for (desk, sid, text, words) in std::mem::take(&mut fx.to_lead) {
-            self.later(0, move |h| {
-                if let Err(e) = crate::desk::hub::lead::desk_send_with(h, &desk, &text) {
-                    eprintln!("cue: desk: {sid}'s TO LEAD didn't reach {desk}'s lead: {e}");
-                    let _ = h.tell(&sid, &format!("Your TO LEAD: line didn't reach the Desk's lead: {e}\nIt said: \"{words}\""));
-                }
-            });
-        }
-        // A band to another Desk's lead (#540), as Cue's own words to it; when it can't go, the sending lead is told.
-        for (desk, text, from) in std::mem::take(&mut fx.tells) {
-            self.later(0, move |h| {
-                if let Err(e) = crate::desk::hub::lead::desk_send_cue(h, &desk, &text) {
-                    eprintln!("cue: desk: a band didn't reach {desk}'s lead: {e}");
-                    let _ = h.tell(&from, &format!("Your TELL didn't reach {}'s lead: {e}", h.desk_name(&desk)));
-                }
-            });
-        }
+        self.desk_send_bands(std::mem::take(&mut fx.to_lead), std::mem::take(&mut fx.tells));
         for q in std::mem::take(&mut fx.to_user) {
             self.desk_to_user_ask(&q);
         }
@@ -574,6 +557,29 @@ impl Hub {
             self.later(0, |h| h.desk_land_line());
         }
         self.desk_pause_and_cleanup(fx.pause, fx.cleanup);
+    }
+
+    /// `desk_done`'s words between sessions and leads, each sent a moment later: `to_lead`, a session's TO LEAD lines,
+    /// and `tells`, a lead's bands to another Desk's lead.
+    fn desk_send_bands(&self, to_lead: Vec<(String, String, String, String)>, tells: Vec<(String, String, String)>) {
+        // A session's words for its lead (#474), to whoever leads that Desk as they go; when they can't, it's told.
+        for (desk, sid, text, words) in to_lead {
+            self.later(0, move |h| {
+                if let Err(e) = crate::desk::hub::lead::desk_send_with(h, &desk, &text) {
+                    eprintln!("cue: desk: {sid}'s TO LEAD didn't reach {desk}'s lead: {e}");
+                    let _ = h.tell(&sid, &format!("Your TO LEAD: line didn't reach the Desk's lead: {e}\nIt said: \"{words}\""));
+                }
+            });
+        }
+        // A band to another Desk's lead (#540), as Cue's own words to it; when it can't go, the sending lead is told.
+        for (desk, text, from) in tells {
+            self.later(0, move |h| {
+                if let Err(e) = crate::desk::hub::lead::desk_send_cue(h, &desk, &text) {
+                    eprintln!("cue: desk: a band didn't reach {desk}'s lead: {e}");
+                    let _ = h.tell(&from, &format!("Your TELL didn't reach {}'s lead: {e}", h.desk_name(&desk)));
+                }
+            });
+        }
     }
 
     /// `desk_done`'s saves, under the Desk's save lock: features settled, sends and holders stamped, then the items,

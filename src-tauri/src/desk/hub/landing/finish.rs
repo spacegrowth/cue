@@ -453,7 +453,12 @@ impl Hub {
         if self.finish_in_place(id, &top, &head, cue.is_some()) {
             return;
         }
-        let queued = cue.is_some();
+        self.finish_queue_or_check(id, top, head, cue.is_some(), now);
+    }
+
+    /// Item `id`, landed on main line `top` at `head`: `queued` for an install (`now`) when it's this Cue's source,
+    /// else to check.
+    fn finish_queue_or_check(&self, id: &str, top: String, head: String, queued: bool, now: u64) {
         // Nothing of it was ever on a main line (no commit, nothing merged: a plan, a doc, a decision): to check with
         // nothing to install, as an item whose work changed nothing the app runs (#543).
         let nothing = top.is_empty() && self.read(|st| st.desk.item(id).is_some_and(|i| i.commit_in.is_empty() && i.finish.as_ref().is_none_or(|f| f.merges.is_empty())));

@@ -19,6 +19,12 @@ use std::sync::{Arc, Mutex};
 use tauri::Listener;
 use tokio::sync::{mpsc, watch};
 
+mod colors;
+mod settings;
+mod spoken;
+pub use settings::settings;
+pub use spoken::spoken_pick;
+
 /// The line asking for a short answer. A session whose hook can add it (Claude Code on this Mac) gets it from the
 /// hook, as context only the agent reads, so the chat shows just what you said; any other gets it after your words.
 pub const ASK: &str = "(Voice: I'm listening, not reading. Answer in one or two short, plain sentences: no lists, code or file paths unless I ask for them. If there's a link I'll need, put it at the end: I'll see it on screen.)";
@@ -164,6 +170,11 @@ pub fn dictation() -> Option<Command> {
     Some(c)
 }
 
+/// How cue-voice last said it is (Null until it has), for Settings.
+fn status() -> Value {
+    crate::locking::lock(&STATUS, "talk status").clone()
+}
+
 /// A line from cue-voice saying how it is (`{"status": …}`), kept for Settings: true when it was one.
 fn noted_status(line: &Value) -> bool {
     let Some(st) = line.get("status") else { return false };
@@ -255,7 +266,7 @@ pub fn start(app: &tauri::App, hub: Arc<Hub>) {
         let v = serde_json::from_str::<Value>(e.payload()).unwrap_or_default();
         if let Some(i) = v["swatch"].as_u64() {
             if let (Some(h), Some(k)) = (v["hue"]["h"].as_f64(), v["hue"]["k"].as_f64()) {
-                *crate::locking::lock(&colors::OWN, "talk own hue") = (h, k);
+                colors::own_hue(h, k);
             }
             colors::THEME.store(i as usize, std::sync::atomic::Ordering::Relaxed);
         }
@@ -318,59 +329,6 @@ struct Link {
 
 /// The line that ends the conversation with cue-voice (talking turned off): its stdin closes and it quits.
 const END: &str = "end";
-
-/// Its rows in Settings → Voice, under Cue's own voice picker: the key, how the listening model is, reading out.
-pub fn settings() -> Option<Value> {
-    let p = prefs();
-    let on = p["talk"] == true;
-    let talk = json!({ "title": "Talk to sessions",
-        "sub": if on { "Hold right ⇧ in any app and talk; let go to send it." } else { "Off. On: hold right ⇧ in any app, talk, and let go to send it to the chat open in Cue. The first time, Cue asks for the microphone. What you say is written down by Apple's recognizer on this Mac, or by NVIDIA's if you pick it (Listening)." },
-        "pick": { "id": "talk", "value": if on { "on" } else { "off" }, "options": [["on", "On"], ["off", "Off"]] } });
-    let st = crate::locking::lock(&STATUS, "talk status").clone();
-    // Off, or on but cue-voice hasn't said how it is yet: only the switch.
-    if !on || st.is_null() {
-        return Some(json!({ "group": "Talking to a session", "tab": "Voice", "rows": [talk] }));
-    }
-    // Picked in Settings, else what cue-voice took (NVIDIA's when it was already here, else Apple's).
-    let pick = p["model"].as_str().or(st["pick"].as_str()).unwrap_or("apple").to_string();
-    let model = if pick != "parakeet" {
-        "Apple's recognizer, on this Mac. NVIDIA's Parakeet writes down what you say more accurately: pick it to download it (about 450 MB, once, from Hugging Face).".to_string()
-    } else {
-        match st["model"].as_str().unwrap_or("") {
-            "ready" => "NVIDIA's Parakeet, on this Mac: what's sent is its text. Nothing you say leaves the Mac.".to_string(),
-            "downloading" | "off" => format!("Getting NVIDIA's listening model ({}% of about 450 MB). Until it's here, Apple's recognizer is used.", (st["progress"].as_f64().unwrap_or(0.0) * 100.0) as u32),
-            "loading" => "Loading NVIDIA's listening model…".to_string(),
-            m => format!("NVIDIA's listening model isn't working ({}); Apple's recognizer is used.", m.trim_start_matches("failed: ")),
-        }
-    };
-    let key = if st["key"].as_bool() == Some(false) {
-        "In any app: hold right ⇧, talk, let go to send it to the chat open in Cue (else the session that moved last). ⌥Space can't be used: another app has it."
-    } else {
-        "In any app: hold right ⇧ (or ⌥Space), talk, let go to send it to the chat open in Cue (else the session that moved last). While holding, esc cancels and left ⇧ pauses. While it works it's a chip at the top; when it answers, the pill comes back and waits: Listen (or tap right ⇧) reads it out."
-    };
-    let read = if p["read"] == false { "off" } else { "on" };
-    let wake_on = p["wake"] == true;
-    let wake = json!({ "title": "Listen for “Hey Cue”",
-        "sub": if wake_on { "The mic stays on while the Mac is unlocked; nothing leaves it until you say “Hey Cue”. Off when the screen locks. Say “Hey Cue, ask four ninety-seven…” to pick a session by its name, else it goes to the chat open in Cue. A mark in the menu bar shows it's listening." } else { "Off. On: say “Hey Cue” and what you want, without touching the Mac. The mic stays on while the Mac is unlocked; nothing leaves it until you say “Hey Cue”." },
-        "pick": { "id": "wake", "value": if wake_on { "on" } else { "off" }, "options": [["on", "On"], ["off", "Off"]] } });
-    let mut rows = vec![talk, wake];
-    if wake_on {
-        rows.push(json!({ "title": "After an answer", "sub": "It's read out at once, then it listens 6 s for your reply: no “Hey Cue” needed. Nothing said: back to waiting for “Hey Cue”." }));
-    }
-    rows.extend(json!([
-        { "title": "Hold right ⇧ to talk", "sub": key },
-        { "title": "Listening", "sub": model,
-          "pick": { "id": "model", "value": pick, "options": [["apple", "Apple"], ["parakeet", "NVIDIA Parakeet"]] } },
-        { "title": "Read answers out", "sub": "When you talked and it answers, Listen (or right ⇧, a tap or a hold) reads it out in the voice above. Off: no Listen, it's only shown.",
-          "pick": { "id": "read", "value": read, "options": [["on", "On"], ["off", "Off"]] } },
-        { "title": "Live captions", "sub": "A bar along the bottom of the screen: the session, your words as you say them, its answer as it's read; while it works, a dot breathes in the bottom right corner. The bar shows no keys (they're below). Off: it's all in the island at the top, the keys too.",
-          "pick": { "id": "captions", "value": if p["captions"] == true { "on" } else { "off" }, "options": [["on", "On"], ["off", "Off"]] } },
-        { "title": "Keys", "sub": "While you talk: let go sends it, esc cancels, left ⇧ pauses (hold right ⇧ again to go on), ↩ types it into the chat instead, → with right ⇧ asks it by the way. When its answer is back: a tap on right ⇧ listens. While it reads: a tap on right ⇧ pauses and goes on, holding it talks back, esc stops (or goes to the next answer waiting). A click on the dot opens the chat." },
-        { "title": "Start reading by itself", "sub": "When its answer is back: read it out at once, always or only while Cue is the app in front. Never: it waits for Listen.",
-          "pick": { "id": "auto", "value": p["auto"].as_str().unwrap_or("never"), "options": [["always", "Always"], ["front", "When Cue is in front"], ["never", "Never"]] } },
-    ]).as_array().cloned().unwrap_or_default());
-    Some(json!({ "group": "Talking to a session", "tab": "Voice", "rows": rows }))
-}
 
 /// The conversation with cue-voice, and when it ends however it ends (cue-voice gone, Cue quitting), nothing it
 /// set stays: the sessions' notifications come back.
@@ -473,57 +431,19 @@ impl Conversation {
     /// A line from cue-voice: how it is, a click on the island, typing instead of talking, a side question,
     /// what you said, or (hands-free) what you're saying after "Hey Cue" and the switch turned off from the menu bar.
     fn on_line(&mut self, line: &Value, open: Option<&str>) -> std::io::Result<()> {
-        if noted_status(line) {
-            // Settings, if open, shows it now: turned on, it asked before cue-voice had said how it is (just
-            // the switch), and a download's progress moves.
-            use tauri::Emitter;
-            let _ = self.app.emit("voice-status", ());
-        } else {
-            heard();
-        }
-        // A click on the island: that session's chat (whether or not a card of it waits).
-        if let Some(sid) = line["open"].as_str() {
-            let (a, key) = (self.app.clone(), format!("s:{sid}"));
-            let _ = self.app.run_on_main_thread(move || crate::show_main(&a, Some(key)));
-        }
-        // Typing instead of talking: the chat opens with what you said in its box, unsent.
-        // Into the chat's own box (its draft "s:<session>"), whether or not a card waits: a card's box is the
-        // board's, and a working session has none.
-        if let (Some(text), Some(sid)) = (line["draft"].as_str(), line["sid"].as_str()) {
-            let (a, text, key) = (self.app.clone(), text.to_string(), format!("s:{sid}"));
-            let _ = self.app.run_on_main_thread(move || {
-                use tauri::Emitter;
-                crate::show_main(&a, Some(key.clone()));
-                if !text.is_empty() { let _ = a.emit_to("main", "fill", json!({ "id": key, "text": text })); }
-            });
-        }
+        self.note_status(line);
+        self.on_island(line);
         if let (Some(q), Some(sid)) = (line["btw"].as_str(), line["sid"].as_str()) {
             self.ask_by_the_way(q, sid);
         }
         if let (Some(said), Some(sid)) = (line["said"].as_str(), line["sid"].as_str()) {
             self.say(sid, said);
         }
-        // Hands-free, while you talk: whose name it hears (the island shows who it'll go to).
         if let Some(words) = line["hearing"].as_str() {
-            if let Some((sid, _)) = spoken_pick(&self.snap, open, words) {
-                let to = target(&self.snap, Some(&sid));
-                if to != self.told_hearing {
-                    tell(&mut self.to, &json!({ "to": to }))?;
-                    self.told_hearing = to;
-                }
-            }
+            self.on_hearing(open, words)?;
         }
-        // Hands-free, done talking: to the session named, else the open chat.
         if let Some(words) = line["heard"].as_str() {
-            self.told_hearing = Value::Null;
-            match spoken_pick(&self.snap, open, words) {
-                None => tell(&mut self.to, &json!({ "error": "No session to talk to: start one in Cue." }))?,
-                Some((_, msg)) if msg.is_empty() => tell(&mut self.to, &json!({ "error": "Heard a name, but nothing to tell it." }))?,
-                Some((sid, msg)) => {
-                    tell(&mut self.to, &json!({ "to": target(&self.snap, Some(&sid)) }))?;
-                    self.say(&sid, &msg);
-                }
-            }
+            self.on_heard(open, words)?;
         }
         // "Stop Listening" in the menu bar mark's menu: the switch goes off (and cue-voice is told, as from Settings).
         if line["wake"] == false {
@@ -532,6 +452,61 @@ impl Conversation {
             let _ = self.app.emit("voice-status", ());
         }
         Ok(())
+    }
+
+    /// A status line kept for Settings, which (if open) shows it now: turned on, it asked before cue-voice had
+    /// said how it is (just the switch), and a download's progress moves. Any other line: you're at this Mac.
+    fn note_status(&self, line: &Value) {
+        if noted_status(line) {
+            use tauri::Emitter;
+            let _ = self.app.emit("voice-status", ());
+        } else {
+            heard();
+        }
+    }
+
+    /// A click on the island opens that session's chat (whether or not a card of it waits). Typing instead of
+    /// talking: the chat opens with what you said in its box, unsent. Into the chat's own box (its draft
+    /// "s:<session>"), whether or not a card waits: a card's box is the board's, and a working session has none.
+    fn on_island(&self, line: &Value) {
+        if let Some(sid) = line["open"].as_str() {
+            let (a, key) = (self.app.clone(), format!("s:{sid}"));
+            let _ = self.app.run_on_main_thread(move || crate::show_main(&a, Some(key)));
+        }
+        if let (Some(text), Some(sid)) = (line["draft"].as_str(), line["sid"].as_str()) {
+            let (a, text, key) = (self.app.clone(), text.to_string(), format!("s:{sid}"));
+            let _ = self.app.run_on_main_thread(move || {
+                use tauri::Emitter;
+                crate::show_main(&a, Some(key.clone()));
+                if !text.is_empty() { let _ = a.emit_to("main", "fill", json!({ "id": key, "text": text })); }
+            });
+        }
+    }
+
+    /// Hands-free, while you talk: whose name it hears (the island shows who it'll go to).
+    fn on_hearing(&mut self, open: Option<&str>, words: &str) -> std::io::Result<()> {
+        if let Some((sid, _)) = spoken_pick(&self.snap, open, words) {
+            let to = target(&self.snap, Some(&sid));
+            if to != self.told_hearing {
+                tell(&mut self.to, &json!({ "to": to }))?;
+                self.told_hearing = to;
+            }
+        }
+        Ok(())
+    }
+
+    /// Hands-free, done talking: to the session named, else the open chat.
+    fn on_heard(&mut self, open: Option<&str>, words: &str) -> std::io::Result<()> {
+        self.told_hearing = Value::Null;
+        match spoken_pick(&self.snap, open, words) {
+            None => tell(&mut self.to, &json!({ "error": "No session to talk to: start one in Cue." })),
+            Some((_, msg)) if msg.is_empty() => tell(&mut self.to, &json!({ "error": "Heard a name, but nothing to tell it." })),
+            Some((sid, msg)) => {
+                tell(&mut self.to, &json!({ "to": target(&self.snap, Some(&sid)) }))?;
+                self.say(&sid, &msg);
+                Ok(())
+            }
+        }
     }
 
     /// What you said goes to `sid` (off this loop: a remote session can take seconds); how it went comes back.
@@ -809,150 +784,6 @@ fn desk_led_by(snap: &Value, sid: &str) -> Option<String> {
     desk_lead(snap, sid).and_then(|(d, _)| d["project"].as_str()).map(str::to_string)
 }
 
-/// A word as heard, or a number (said as digits or words: "497", "four ninety-seven", "four nine seven" each come
-/// as a run of numbers that reads 497 put together), with the word of what was said it came from.
-#[derive(Debug, Clone, PartialEq)]
-enum Heard {
-    Word(String),
-    Num(String),
-}
-
-/// `text` as words and numbers, each with the index of the word (split on spaces) it came from.
-fn heard_words(text: &str) -> Vec<(Heard, usize)> {
-    const UNITS: [&str; 10] = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
-    const TEENS: [&str; 10] = ["ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
-    const TENS: [&str; 8] = ["twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
-    let unit = |w: &str| UNITS.iter().position(|u| *u == w);
-    let teen = |w: &str| TEENS.iter().position(|u| *u == w).map(|n| n + 10);
-    let ten = |w: &str| TENS.iter().position(|u| *u == w).map(|n| n * 10 + 20);
-    // Pieces: lower case, split at - · / and the like, nothing but letters and digits.
-    let pieces: Vec<(String, usize)> = text
-        .split_whitespace()
-        .enumerate()
-        .flat_map(|(i, w)| w.split(|c: char| !c.is_alphanumeric()).filter(|p| !p.is_empty()).map(move |p| (p.to_lowercase(), i)).collect::<Vec<_>>())
-        .collect();
-    let mut out = Vec::new();
-    let mut i = 0;
-    while i < pieces.len() {
-        let (w, at) = (&pieces[i].0, pieces[i].1);
-        let next = |k: usize| pieces.get(i + k).map(|p| p.0.as_str()).unwrap_or("");
-        let (tok, used) = if w.chars().all(|c| c.is_ascii_digit()) {
-            (Heard::Num(w.clone()), 1)
-        } else if let Some(t) = ten(w) {
-            match unit(next(1)).filter(|u| *u > 0) {
-                Some(u) => (Heard::Num((t + u).to_string()), 2),
-                None => (Heard::Num(t.to_string()), 1),
-            }
-        } else if let Some(t) = teen(w) {
-            (Heard::Num(t.to_string()), 1)
-        } else if let Some(u) = unit(w) {
-            if next(1) == "hundred" {
-                // "four hundred (and) ninety seven"
-                let mut k = 2 + usize::from(next(2) == "and");
-                let rest = if let Some(t) = ten(next(k)) {
-                    k += 1;
-                    match unit(next(k)).filter(|u| *u > 0) {
-                        Some(u) => { k += 1; t + u }
-                        None => t,
-                    }
-                } else if let Some(t) = teen(next(k)).or_else(|| unit(next(k))) {
-                    k += 1;
-                    t
-                } else {
-                    k = 2;
-                    0
-                };
-                (Heard::Num((u * 100 + rest).to_string()), k)
-            } else {
-                (Heard::Num(u.to_string()), 1)
-            }
-        } else {
-            (Heard::Word(w.clone()), 1)
-        };
-        out.push((tok, pieces[i + used - 1].1.max(at)));
-        i += used;
-    }
-    out
-}
-
-/// Where `key` (a session's name as heard) ends when it's said at `from` in `said`: a number in it may be said
-/// as a run of numbers that reads it put together ("4", "97" for 497).
-fn said_at(said: &[(Heard, usize)], from: usize, key: &[Heard]) -> Option<usize> {
-    let mut j = from;
-    for k in key {
-        match k {
-            Heard::Word(w) => {
-                if said.get(j).map(|s| &s.0) != Some(&Heard::Word(w.clone())) {
-                    return None;
-                }
-                j += 1;
-            }
-            Heard::Num(n) => {
-                let mut acc = String::new();
-                while acc.len() < n.len() {
-                    let Some((Heard::Num(d), _)) = said.get(j) else { break };
-                    acc.push_str(d);
-                    j += 1;
-                }
-                if acc != *n {
-                    return None;
-                }
-            }
-        }
-    }
-    (j > from).then_some(j)
-}
-
-/// Hands-free: the session you named at the start of what you said ("ask four ninety-seven how far along it is",
-/// "tell cue 497 to run the tests"), and what goes to it, the rest ("How far along it is", "Run the tests"). A
-/// session is named by its name or its folder, or by the number in either. No name heard: the chat open in Cue,
-/// else the session that moved last, with all you said. None when no session runs.
-pub fn spoken_pick(snap: &Value, open: Option<&str>, said: &str) -> Option<(String, String)> {
-    const LEAD: [&str; 10] = ["ask", "tell", "to", "for", "with", "hey", "please", "ok", "okay", "session"];
-    let heard = heard_words(said);
-    let from = heard.iter().take_while(|(h, _)| matches!(h, Heard::Word(w) if LEAD.contains(&w.as_str()))).count();
-    let running = snap["sessions"].as_array().into_iter().flatten().filter(|s| s["state"] != "stopped");
-    // The longest name said; the same length, the session that moved last.
-    let mut best: Option<(usize, u64, String)> = None;
-    for s in running {
-        let names = [s["name"].as_str().map(|n| n.trim_start_matches("[Exec] ").trim_start_matches("[Lead] ")), s["cwd"].as_str().and_then(|c| c.rsplit('/').find(|p| !p.is_empty()))];
-        let mut keys: Vec<Vec<Heard>> = Vec::new();
-        for n in names.into_iter().flatten() {
-            let k: Vec<Heard> = heard_words(n).into_iter().map(|h| h.0).collect();
-            keys.extend(k.iter().filter(|h| matches!(h, Heard::Num(_))).map(|h| vec![h.clone()]));
-            if !k.is_empty() {
-                keys.push(k);
-            }
-        }
-        let since = s["since_ms"].as_u64().unwrap_or(0);
-        for k in &keys {
-            if let Some(end) = said_at(&heard, from, k) {
-                if best.as_ref().is_none_or(|b| end > b.0 || (end == b.0 && since > b.1)) {
-                    best = Some((end, since, s["session_id"].as_str().unwrap_or("").to_string()));
-                }
-            }
-        }
-    }
-    let Some((end, _, sid)) = best else {
-        let sid = target(snap, open)["sid"].as_str()?.to_string();
-        return Some((sid, said.trim().to_string()));
-    };
-    // The rest, from the word after the name; "to" or "that" after it goes too ("tell 497 to run the tests").
-    let words: Vec<&str> = said.split_whitespace().collect();
-    let mut rest = &words[(heard[end - 1].1 + 1).min(words.len())..];
-    while let Some(w) = rest.first().map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()).to_lowercase()) {
-        if w.is_empty() || w == "to" || w == "that" {
-            rest = &rest[1..];
-        } else {
-            break;
-        }
-    }
-    let msg = rest.join(" ").trim_start_matches(|c: char| c == ',' || c == ':' || c.is_whitespace()).to_string();
-    let mut c = msg.chars();
-    let msg = c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default();
-    Some((sid, msg))
-}
-
 fn session<'a>(snap: &'a Value, sid: &str) -> Option<&'a Value> {
     snap["sessions"].as_array()?.iter().find(|s| s["session_id"] == sid)
 }
@@ -962,82 +793,6 @@ fn items_of<'a>(snap: &'a Value, sid: &'a str) -> impl Iterator<Item = &'a Value
 /// The time of `sid`'s newest message (not the count: Cue keeps only a session's last few).
 fn newest(snap: &Value, sid: &str) -> u64 {
     session(snap, sid).and_then(|s| s["thread"].as_array()).and_then(|t| t.last()).and_then(|e| e["at_ms"].as_u64()).unwrap_or(0)
-}
-
-/// The window's colors (ui/styles/base.css .proj-theme): the same OKLCH lightness and chroma per
-/// token, at its swatch's hue. Light mode: the pill is light.
-mod colors {
-    use serde_json::Value;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    /// The swatch the window wears (its header's project, or All projects'), as it last said; MAX until it has.
-    pub static THEME: AtomicUsize = AtomicUsize::new(usize::MAX);
-    /// Your own Color's hue and strength (the window's swatch OWN), as the window last said.
-    pub const OWN_SWATCH: usize = 10;
-    pub static OWN: std::sync::Mutex<(f64, f64)> = std::sync::Mutex::new((0.0, 0.0));
-
-    /// Hue and strength per swatch (Moss, 0, is Cue's own).
-    const HUE: [(f64, f64); 10] = [(0.0, 0.0), (107.0, 0.3), (301.0, 0.57), (87.0, 0.75), (67.0, 0.37), (157.0, 0.33), (194.0, 0.48), (276.0, 0.64), (353.0, 0.44), (271.0, 0.1)];
-
-    /// (bg, onBg, sel, onSel): the window's, so the pill matches it; before the window has said, `project`'s.
-    pub fn of(snap: &Value, project: &str) -> (String, String, String, String) {
-        let i = match THEME.load(Ordering::Relaxed) {
-            usize::MAX => swatch(snap, project),
-            i => i,
-        };
-        let (h, k) = match i {
-            OWN_SWATCH => *crate::locking::lock(&OWN, "talk own hue"),
-            i if i > 0 && i < HUE.len() => HUE[i],
-            _ => return ("#3F4A22".into(), "#FFFFFF".into(), "#D2DE96".into(), "#1E2410".into()),
-        };
-        (oklch(0.385, 0.072 * k, h), "#FFFFFF".into(), oklch(0.875, 0.098 * k, h), oklch(0.25, 0.04 * k, h))
-    }
-
-    /// The swatch you picked for it in Cue, else one from its name (as the window does). Project colors off (the
-    /// default): every project wears the window's Color (All projects').
-    fn swatch(snap: &Value, project: &str) -> usize {
-        if snap["settings"]["appearance"]["project"] != true {
-            return snap["settings"]["project"]["all"].as_u64().map_or(0, |c| c as usize);
-        }
-        if let Some(c) = snap["settings"]["project"]["colors"][project].as_u64() {
-            return c as usize;
-        }
-        let mut h: u32 = 0;
-        for ch in project.encode_utf16() {
-            h = (h * 31 + ch as u32) % 9973;
-        }
-        (h % 10) as usize
-    }
-
-    /// OKLCH to #rrggbb, each channel clipped into sRGB.
-    pub fn oklch(l: f64, c: f64, h: f64) -> String {
-        let (a, b) = (c * h.to_radians().cos(), c * h.to_radians().sin());
-        let l_ = (l + 0.3963377774 * a + 0.2158037573 * b).powi(3);
-        let m_ = (l - 0.1055613458 * a - 0.0638541728 * b).powi(3);
-        let s_ = (l - 0.0894841775 * a - 1.291485548 * b).powi(3);
-        let lin = [
-            4.0767416621 * l_ - 3.3077115913 * m_ + 0.2309699292 * s_,
-            -1.2684380046 * l_ + 2.6097574011 * m_ - 0.3413193965 * s_,
-            -0.0041960863 * l_ - 0.7034186147 * m_ + 1.707614701 * s_,
-        ];
-        let ch = |v: f64| {
-            let g = if v <= 0.0031308 { 12.92 * v } else { 1.055 * v.powf(1.0 / 2.4) - 0.055 };
-            (g.clamp(0.0, 1.0) * 255.0).round() as u8
-        };
-        format!("#{:02x}{:02x}{:02x}", ch(lin[0]), ch(lin[1]), ch(lin[2]))
-    }
-
-    #[cfg(test)]
-    mod tests {
-        #[test]
-        fn moss_is_cues_own_and_a_swatch_gets_its_hue() {
-            let snap = serde_json::json!({ "settings": { "appearance": { "project": true }, "project": { "colors": { "cue": 0, "billing": 6 } } } });
-            assert_eq!(super::of(&snap, "cue").2, "#D2DE96");
-            let teal = super::of(&snap, "billing");
-            assert_ne!(teal.2, "#D2DE96");
-            assert!(teal.0.starts_with('#') && teal.0.len() == 7, "{teal:?}");
-        }
-    }
 }
 
 #[cfg(test)]

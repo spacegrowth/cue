@@ -19,7 +19,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | Lock acquisitions | 283 |
 | Lock-graph edges | 54 |
 | Spawn sites | 92 |
-| External calls: fs / db / process / notify / login / socket | 501 / 232 / 60 / 4 / 1 / 4 |
+| External calls: fs / db / process / notify / login / socket | 507 / 232 / 60 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -333,7 +333,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `voice/talk.rs::STATUS` | `Mutex<Value>` | "talk status" (2 sites) |
 | `voice/talk.rs::RETELL` | `Mutex<Option<mpsc::UnboundedSender<Value>>>` | "talk retell" (4 sites) |
 | `voice/talk.rs::LAUNCH` | `Mutex<Option<Launch>>` | "talk launch" (2 sites) |
-| `voice/talk.rs::OWN` | `std::sync::Mutex<(f64,f64)>` | "talk own hue" (2 sites) |
+| `voice/talk/colors.rs::OWN` | `std::sync::Mutex<(f64,f64)>` | "talk own hue" (2 sites) |
 
 Lock names not matched to a declaration: "FOUND" (4 sites), "agent checks passed" (2 sites), "btw: asked" (2 sites), "caches" (5 sites), "command list reader" (2 sites), "copies" (7 sites), "ended sessions read for their edits" (2 sites), "hosts: a session's queue" (2 sites), "hosts: older hosts" (8 sites), "hosts: sessions" (7 sites), "leads sweeping for Away" (4 sites), "logs read for their edits" (4 sites), "machine hosts placed" (2 sites), "machine tails" (5 sites), "music: Listen's holds" (1 sites), "open_terms" (8 sites), "remote poll schedule" (2 sites), "shell line: done" (2 sites), "shell line: timed out" (2 sites), "typing gate" (6 sites), "watchers" (2 sites).
 
@@ -496,7 +496,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (501)
+### fs (507)
 
 | In | Call | Times |
 |---|---|---|
@@ -547,6 +547,10 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `desk/hub/landing/copy_guard.rs::canon` | canonicalize | 1 |
 | `desk/hub/landing/copy_guard.rs::existing` | Path::is_dir | 1 |
 | `desk/hub/landing/found_words.rs::claude_account` | read_to_string | 1 |
+| `desk/hub/landing/in_place.rs::maybe_recorded` | Path::is_dir | 1 |
+| `desk/hub/landing/in_place.rs::maybe_recorded` | canonicalize | 1 |
+| `desk/hub/landing/in_place.rs::maybe_recorded` | read_to_string | 1 |
+| `desk/hub/landing/in_place.rs::prepare_in_place_for` | Path::exists | 1 |
 | `desk/hub/landing/land_keep.rs::edits_in_the_way` | read | 2 |
 | `desk/hub/landing/land_keep.rs::fast_forward_keeping_edits` | Path::exists | 1 |
 | `desk/hub/landing/land_keep.rs::fast_forward_keeping_edits` | read | 2 |
@@ -570,7 +574,6 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `desk/hub/landing/own_work.rs::worked_in` | Path::is_dir | 1 |
 | `desk/hub/landing/pr.rs::gh_bin` | Path::is_file | 1 |
 | `desk/hub/landing/remote_item.rs::Hub::remote_copy` | Path::exists | 1 |
-| `desk/hub/landing/remote_item.rs::Hub::remote_copy` | remove_dir_all | 1 |
 | `desk/hub/landing/tree_files.rs::check_steps_on` | create_dir_all | 1 |
 | `desk/hub/landing/tree_files.rs::check_steps_on` | remove_dir_all | 1 |
 | `desk/hub/landing/tree_files.rs::clear_build_leftovers` | File::open | 1 |
@@ -584,6 +587,8 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `desk/hub/landing/tree_files.rs::exclude_trees` | create_dir_all | 1 |
 | `desk/hub/landing/tree_files.rs::exclude_trees` | read_to_string | 1 |
 | `desk/hub/landing/tree_files.rs::exclude_trees` | write | 1 |
+| `desk/hub/landing/tree_files.rs::folder_id` | Path::exists | 1 |
+| `desk/hub/landing/tree_files.rs::folder_id` | metadata | 1 |
 | `desk/hub/landing/tree_files.rs::from_kept` | Path::exists | 3 |
 | `desk/hub/landing/tree_files.rs::has_work` | Path::exists | 1 |
 | `desk/hub/landing/tree_files.rs::left_has_work` | Path::exists | 1 |
@@ -594,9 +599,10 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `desk/hub/landing/tree_files.rs::not_its_own` | Path::exists | 1 |
 | `desk/hub/landing/tree_files.rs::prepare` | Path::exists | 3 |
 | `desk/hub/landing/tree_files.rs::prepare` | create_dir_all | 1 |
-| `desk/hub/landing/tree_files.rs::remove` | Path::exists | 1 |
-| `desk/hub/landing/tree_files.rs::remove` | remove_dir_all | 1 |
 | `desk/hub/landing/tree_files.rs::snapshot` | remove_file | 1 |
+| `desk/hub/landing/tree_files.rs::take_away` | Path::exists | 1 |
+| `desk/hub/landing/tree_files.rs::take_away` | remove_dir_all | 1 |
+| `desk/hub/landing/tree_files.rs::take_away` | rename | 1 |
 | `desk/hub/landing/tree_files.rs::unlink_shared` | Path::is_symlink | 1 |
 | `desk/hub/landing/tree_files.rs::unlink_shared` | remove_file | 1 |
 | `desk/hub/landing/tree_files.rs::unlink_shared` | symlink_metadata | 1 |
@@ -1235,14 +1241,6 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 
 | Function |  |  |
 |---|---|---|
-| `src-tauri/src/desk/hub/core/desk.rs::desk_done` |  |  |
-| `src-tauri/src/desk/hub/landing/install.rs::finish_tick` |  |  |
-| `src-tauri/src/desk/hub/landing/remote_item.rs::desk_remote_starts` |  |  |
-| `src-tauri/src/desk/hub/landing/trees.rs::land` |  |  |
-| `src-tauri/src/desk/hub/lead/handoff.rs::desk_carry` |  |  |
-| `src-tauri/src/desk/hub/turn/act.rs::send_back` |  |  |
-| `src-tauri/src/desk/hub/turn/said.rs::desk_turn_ended_said` |  |  |
-| `src-tauri/src/desk/hub/turn/said.rs::lead_said` |  |  |
 | `src-tauri/src/hosted/compat_tests.rs::compat_a_two_part_request_becomes_a_team_of_two_on_its_own_and_one_is_committed` | test |  |
 | `src-tauri/src/hosted/machine_tests.rs::live_on_a_real_machine_claude_code_asks_runs_a_command_past_a_dropped_connection_and_is_picked_up_after_a_restart` | test |  |
 | `src-tauri/src/hub/hand_off.rs::a_hand_off_goes_ahead_only_where_you_turned_it_on_and_holds_where_typing_could_hurt` | test |  |
@@ -1253,10 +1251,8 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `src-tauri/src/machines/hooks/tests.rs::a_checked_tool_call_on_a_machine_waits_for_cue_or_is_stopped_once_cue_had_it` | test |  |
 | `src-tauri/src/testing/tests/desk_away.rs::each_away_stretch_is_kept_with_what_moved_the_calls_and_what_was_held` | test |  |
 | `src-tauri/src/testing/tests/desk_feed.rs::every_desk_change_names_you_to_the_lead` | test |  |
-| `src-tauri/src/voice/talk.rs::on_line` |  |  |
-| `ui/sheets.js::settingsSheet` |  |  |
 
-Files over 1000 lines: `src-tauri/src/desk/hub/turn/act.rs`, `src-tauri/src/voice/talk.rs`.
+Files over 1000 lines: .
 
 ## What this can't see
 
