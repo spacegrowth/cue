@@ -1,5 +1,7 @@
-//! A pick means build (#281): you pick an option on an item's mocks, and Cue marks it picked and done, adds one
-//! "Build: <topic> (option X)" item linked both ways, and gives it to the Desk lead to route. A pick again makes none.
+//! A pick closes its item (#281, #543): you pick an option on any item, and Cue marks it picked and done, then files
+//! and routes what its holder said follows that option (IF PICKED: lines), with no lead step. An item with a canvas
+//! that named nothing gets one "Build: <topic> (option X)" item for the Desk lead to route; any other just closes.
+//! A pick again makes none.
 
 use super::desk::{desk, ends, holder, item, new_lead, sent_to};
 use crate::hub::{NewAsk, Reply};
@@ -51,8 +53,6 @@ fn a_pick_on_mocks_makes_one_build_item_linked_both_ways_for_the_lead_to_route()
     let l = new_lead(&w, &project);
     ends(&w, &l, "ITEM: feature | Mocks: working items | done when: three ways on the canvas\nROUTE: #new -> cue-teams | why: it knows the list");
     let m = item(&desk(&w, &project), "Mocks: working items")["id"].as_str().unwrap().to_string();
-    // No canvas yet: nothing to pick from.
-    assert_eq!(w.hub().desk_item_act(&m, "pick", "B").unwrap_err(), "It has no mocks to pick from");
     ends(&w, &h, &format!("Three on the canvas.\nDESIGNS: #{m} https://example.com/canvas\nPick one for working items: A, B or C."));
     assert_eq!(w.hub().desk_item_act(&m, "pick", "  ").unwrap_err(), "Say which option you picked");
     let told_lead = sent_to(&w, &l).len();
@@ -66,13 +66,13 @@ fn a_pick_on_mocks_makes_one_build_item_linked_both_ways_for_the_lead_to_route()
     assert_eq!(b["builds"], m.as_str(), "and the build item its mocks item");
     assert_eq!((b["state"].as_str(), b["kind"].as_str(), b["from"].as_str()), (Some("new"), Some("feature"), Some("you")));
     assert!(b["holder"].is_null());
-    assert!(b["why"].as_str().unwrap().contains("https://example.com/canvas"), "{b}");
+    assert_eq!(b["why"], format!("You picked option B on #{m}: https://example.com/canvas"), "{b}");
     // Its steps say so, on both.
     let steps = d["decisions"].as_array().unwrap();
     assert!(steps.iter().any(|s| s["item_id"] == m.as_str() && s["text"] == "Picked option B" && s["why"] == format!("being built as #{n}")), "{d}");
-    assert!(steps.iter().any(|s| s["item_id"] == n.as_str() && s["text"] == format!("Builds option B, picked on #{m}")), "{d}");
+    assert!(steps.iter().any(|s| s["item_id"] == n.as_str() && s["text"] == format!("Follows option B, picked on #{m}")), "{d}");
     // Its holder, still at work on the mocks, is told they're done.
-    assert!(sent_to(&w, &h).iter().any(|t| t.contains("option B was picked") && t.contains(&format!("#{n} builds it"))));
+    assert!(sent_to(&w, &h).iter().any(|t| t.contains("option B was picked, so it's done") && t.contains(&format!("#{n} goes to the Desk lead to route")) && t.contains("Mark \"Picked: B\" where it shows its options (https://example.com/canvas)")));
     // The lead is told a moment later, to route it now, with the mocks' link.
     w.advance(1000);
     let sent = sent_to(&w, &l);
@@ -92,14 +92,14 @@ fn a_pick_on_mocks_makes_one_build_item_linked_both_ways_for_the_lead_to_route()
 
     // Handed to a session, the build item says what was picked and where the mocks are.
     ends(&w, &l, &format!("ROUTE: #{n} -> cue-teams | why: it made the mocks"));
-    assert!(sent_to(&w, &h).iter().any(|t| t.starts_with(&format!("Desk item #{n} (feature): Build: working items (option B)")) && t.contains(&format!("You picked option B on #{m}'s mocks: https://example.com/canvas"))));
+    assert!(sent_to(&w, &h).iter().any(|t| t.starts_with(&format!("Desk item #{n} (feature): Build: working items (option B)")) && t.contains(&format!("You picked option B on #{m}: https://example.com/canvas"))));
 }
 
 #[test]
 fn a_mocks_title_gives_the_build_its_topic() {
     let w = World::new();
     let (h, project) = holder(&w);
-    for (title, built) in [("Mocks for the item page", "Build: the item page (option A)"), ("Search results (mocks)", "Build: Search results (option A)"), ("Header", "Build: Header (option A)")] {
+    for (title, built) in [("Mocks: the item page", "Build: the item page (option A)"), ("Search results (mocks)", "Build: Search results (option A)"), ("Header", "Build: Header (option A)")] {
         let it = w.hub().desk_add(&project, "", title, "", None).unwrap();
         ends(&w, &h, &format!("DESIGNS: #{} https://example.com/c", it.id));
         let done = w.hub().desk_item_act(&it.id, "pick", "a").unwrap();
@@ -146,7 +146,7 @@ fn answering_the_holders_question_with_an_option_is_the_pick() {
     ends(&w, &h, "Noted.");
     w.settle();
     let n = b[0]["id"].as_str().unwrap();
-    assert!(sent_to(&w, &h).last().unwrap().contains(&format!("option B was picked, so it's done. #{n} builds it")));
+    assert!(sent_to(&w, &h).last().unwrap().contains(&format!("option B was picked, so it's done. What follows: #{n} goes to the Desk lead to route.")));
 }
 
 #[test]
@@ -178,7 +178,7 @@ fn a_pick_doesnt_answer_an_ask_of_several_questions() {
     w.settle();
     ends(&w, &h, "Noted.");
     w.settle();
-    assert!(sent_to(&w, &h).iter().any(|t| t.contains(&format!("option B was picked, so it's done. #{} builds it", done.built_as))));
+    assert!(sent_to(&w, &h).iter().any(|t| t.contains(&format!("option B was picked, so it's done. What follows: #{} goes to the Desk lead to route.", done.built_as))));
 }
 
 #[test]
@@ -198,7 +198,7 @@ fn a_pick_while_the_holder_waits_on_its_question_answers_it() {
     w.settle();
     let sent = sent_to(&w, &h);
     assert_eq!(sent.len(), told + 1, "{sent:?}");
-    assert!(sent.last().unwrap().contains(&format!("option B was picked, so it's done. #{} builds it", done.built_as)), "then told it's done: {sent:?}");
+    assert!(sent.last().unwrap().contains(&format!("option B was picked, so it's done. What follows: #{} goes to the Desk lead to route.", done.built_as)), "then told it's done: {sent:?}");
 }
 
 #[test]
@@ -231,4 +231,69 @@ fn dropping_the_build_item_lets_the_mocks_be_picked_again() {
     // Or undone, once its build is gone.
     w.hub().desk_item_act(&again.built_as, "drop", "").unwrap();
     assert_eq!(w.hub().desk_item_act(&m, "reopen", "").unwrap().state, "to_check");
+}
+
+#[test]
+fn a_pick_files_and_routes_what_its_holder_said_follows_with_no_lead_step() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    ends(&w, &l, "ITEM: task | Which search box to keep | done when: you picked one\nROUTE: #new -> cue-teams | why: it knows search");
+    let id = item(&desk(&w, &project), "Which search box to keep")["id"].as_str().unwrap().to_string();
+    ends(&w, &h, &format!("Two ways, no canvas: A keeps the top box, B the side one. Pick one: A or B.\n\
+        IF PICKED: #{id} | B | feature | Move search to the side | you'll see: one search box, at the side | done when: the top box is gone | by: me\n\
+        IF PICKED: #{id} | any | task | Tell the docs which box stays | done when: the docs name it | by: new\n\
+        IF PICKED: #{id} | A | bug | Fix the top box's focus | by: me"));
+    let it = item(&desk(&w, &project), "Which search box to keep").clone();
+    assert_eq!(it["next"].as_array().map(Vec::len), Some(3), "{it}");
+    let told_lead = sent_to(&w, &l).len();
+
+    let done = w.hub().desk_item_act(&id, "pick", "B").unwrap();
+    assert_eq!((done.state.as_str(), done.picked.as_str()), ("done", "B"));
+    w.settle();
+    let d = desk(&w, &project);
+    let side = item(&d, "Move search to the side").clone();
+    let docs = item(&d, "Tell the docs which box stays").clone();
+    assert!(d["items"].as_array().unwrap().iter().all(|i| i["title"] != "Fix the top box's focus"), "option A's isn't filed: {d}");
+    assert_eq!(done.built_as, side["id"].as_str().unwrap());
+    for b in [&side, &docs] {
+        assert_eq!((b["builds"].as_str(), b["from"].as_str()), (Some(id.as_str()), Some("you")), "{b}");
+        assert_ne!(b["state"], "new", "routed at once: {b}");
+    }
+    assert_eq!((side["kind"].as_str(), side["see"].as_str(), side["done_when"].as_str()), (Some("feature"), Some("one search box, at the side"), Some("the top box is gone")));
+    // "me": its holder, the one that asked; "new": a new session.
+    assert_eq!(side["holder"]["name"], "cue-teams", "{side}");
+    assert!(sent_to(&w, &h).iter().any(|t| t.starts_with(&format!("Desk item #{} (feature): Move search to the side", side["id"].as_str().unwrap()))));
+    assert!(docs["holder"]["name"].as_str().is_some_and(|n| n != "cue-teams"), "{docs}");
+    // Its holder is told what follows; the lead has nothing to route.
+    let n = side["id"].as_str().unwrap();
+    assert!(sent_to(&w, &h).iter().any(|t| t.contains("option B was picked, so it's done. What follows:") && t.contains(&format!("#{n} to cue-teams")) && !t.contains("Mark \"Picked")), "{:?}", sent_to(&w, &h));
+    w.advance(2000);
+    assert_eq!(sent_to(&w, &l).len(), told_lead, "no lead step: {:?}", &sent_to(&w, &l)[told_lead..]);
+}
+
+#[test]
+fn a_pick_on_an_item_that_named_nothing_to_follow_just_closes_it() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let it = w.hub().desk_add(&project, "task", "Keep the old tab or not", "", None).unwrap();
+    let count = desk(&w, &project)["items"].as_array().unwrap().len();
+    let done = w.hub().desk_item_act(&it.id, "pick", "option a").unwrap();
+    assert_eq!((done.state.as_str(), done.picked.as_str(), done.built_as.as_str()), ("done", "A", ""));
+    let d = desk(&w, &project);
+    assert_eq!(d["items"].as_array().unwrap().len(), count, "nothing filed: {d}");
+    assert!(d["decisions"].as_array().unwrap().iter().any(|s| s["item_id"] == it.id.as_str() && s["text"] == "Picked option A" && s["why"] == "nothing follows it"), "{d}");
+    assert_eq!(w.hub().desk_item_act(&it.id, "pick", "B").unwrap_err(), "Option A is picked already");
+    let _ = h;
+}
+
+#[test]
+fn if_picked_lines_are_read() {
+    use crate::desk::parse::{lines, Line};
+    let got = lines("IF PICKED: #12 | option b | feature | Move search | you'll see: one box | done when: top box gone | by: cue-teams\nIF PICKED: #12 | any | task | Note it");
+    let next: Vec<_> = got.into_iter().filter_map(|l| if let Line::IfPicked { id, next } = l { Some((id, next)) } else { None }).collect();
+    assert_eq!(next.len(), 2, "{next:?}");
+    assert_eq!((next[0].0.as_str(), next[0].1.option.as_str(), next[0].1.kind.as_str(), next[0].1.title.as_str()), ("12", "B", "feature", "Move search"));
+    assert_eq!((next[0].1.see.as_str(), next[0].1.done_when.as_str(), next[0].1.by.as_str()), ("one box", "top box gone", "cue-teams"));
+    assert_eq!((next[1].1.option.as_str(), next[1].1.title.as_str(), next[1].1.by.as_str()), ("any", "Note it", "me"));
 }

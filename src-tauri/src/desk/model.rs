@@ -138,13 +138,18 @@ pub struct DeskItem {
     /// Its designs' canvas: the link a session gave last on a DESIGNS: line, shown as "Designs" on its page.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub designs: String,
-    /// The option you picked on its mocks ("B"), once you did (desk/hub/turn/act.rs `pick`): the item is done then.
+    /// The option you picked on it ("B"), once you did (desk/hub/turn/act.rs `pick`): the item is done then.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub picked: String,
-    /// The item that builds what you picked (`picked`): its id. A pick again names it and makes no other.
+    /// The item that builds what you picked (`picked`): its id (the first, when it named several). A pick again names
+    /// it and makes no other.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub built_as: String,
-    /// The mocks item whose pick this item builds: its id (the other end of that one's `built_as`).
+    /// What its holder said comes after each option you might pick (#543), on its IF PICKED: lines: filed and routed
+    /// as you pick. Its latest turn that names any replaces them all.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub next: Vec<FollowUp>,
+    /// The item whose pick this item carries on: its id (the other end of that one's `built_as`).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub builds: String,
     /// The commit Looks right made of its files (short; one per repository, space apart), once it did
@@ -280,6 +285,22 @@ pub struct DeskItem {
 
 /// One time item went back to be redone (#421, desk/hub/core/steps.rs): the step it was at, why (as its DONE's card keeps
 /// it), when, and that round's step stamps.
+/// One follow-up an item names for an option (#543): `IF PICKED: #<id> | <option> | <kind> | <title> | you'll see: …
+/// | done when: … | by: <me | new | a session's name>`.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct FollowUp {
+    /// The option it follows ("B"), or "any": whichever is picked.
+    pub option: String,
+    pub kind: String,
+    pub title: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub see: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub done_when: String,
+    /// Who takes it: "me" (whoever held the item it follows), "new" (a new session), or a session's name.
+    pub by: String,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct StepBack {
     pub from: usize,

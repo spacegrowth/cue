@@ -412,9 +412,9 @@ impl Hub {
         true
     }
 
-    /// Ask `id` answered with `d`: when it's the question of a mocks item's holder, and the answer is one of the
-    /// options the question names, that's your pick (#281): the item is picked and done, and its build item made, as
-    /// a Pick on the page does. What's left to do (its saves, the done note to its holder) for once the answer, as
+    /// Ask `id` answered with `d`: when it's the question of an item's holder, and the answer is one of the options
+    /// the question names, that's your pick (#281, #543): the item is picked and done, and what follows it filed, as a
+    /// Pick on the page does. What's left to do (its saves, the done note to its holder) for once the answer, as
     /// given, has gone to the holder.
     pub(crate) fn desk_question_picked(&self, id: &str, d: &Decision) -> Option<Effects> {
         let answer = d.answers.as_ref().and_then(|a| a.as_object()).and_then(|a| a.values().next()).and_then(Value::as_str).unwrap_or("").to_string();
@@ -424,8 +424,7 @@ impl Hub {
             let qs = ask.tool_input["questions"].as_array().filter(|q| q.len() == 1)?;
             let question = qs[0]["question"].as_str().unwrap_or("");
             let it = st.desk.items.iter().find(|i| {
-                !i.designs.trim().is_empty() && i.holder.as_ref().and_then(|h| ask_of(st, h)).is_some_and(|a| a.id == id)
-                    && (i.built_as.is_empty() || st.desk.item(&i.built_as).is_none())
+                i.picked.is_empty() && !matches!(i.state.as_str(), "done" | "dropped") && i.holder.as_ref().and_then(|h| ask_of(st, h)).is_some_and(|a| a.id == id)
             })?;
             // Only a question that asks you to pick, naming the lettered options in its words or its choices.
             let asks = question.split(|c: char| !c.is_alphanumeric()).any(|w| w.eq_ignore_ascii_case("pick") || w.eq_ignore_ascii_case("choose"));
@@ -495,7 +494,7 @@ impl Hub {
             self.later(0, |h| h.desk_feed_send());
         }
         self.changed();
-        // A pick on mocks whose holder waits on its question: answered with the option picked (#281).
+        // A pick on an item whose holder waits on its question: answered with the option picked (#281).
         for (ask, question, answer) in fx.answers {
             let d = Decision { behavior: "allow".into(), message: None, answers: Some(json!({ question: answer })), permission: None };
             if !self.respond(&ask, d) {

@@ -1329,7 +1329,7 @@ test("a pick on an item's mocks: Pick B closes it, its new build item is linked 
   await head.locator(`a[data-desk-item="${n}"]`).click();
   await expect(page.locator(".dk-right .dk-pg h1")).toContainText("Build: working items (option B)");
   const back = page.locator(".dk-panel[data-side-for] .dk-pnow .dk-built");
-  await expect(back).toHaveText("Builds what you picked on #d5's mocks");
+  await expect(back).toHaveText("Follows what you picked on #d5");
   await back.locator('a[data-desk-item="d5"]').click();
   await expect(page.locator(".dk-panel[data-side-for] .dk-pnow .dk-built")).toHaveText(`Picked B → being built as #${n}`);
   // A pick again (the button is gone, the hub refuses any other): no second build item, and it says which.

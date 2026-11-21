@@ -140,7 +140,9 @@ fn start(st: &mut Store, project: &str, by: &By, id: &str, why: &str, now: u64, 
         return Err(format!("#{id} not started: it isn't waiting (it's {was}). A new item starts with a ROUTE"));
     }
     let copy = it.tree_wait;
-    (it.after, it.tree_wait, it.no_copy_wait, it.updated) = (None, false, copy || it.no_copy_wait, secs(now));
+    // Not for a copy either, whatever it waited on: one queued after another item that finds every copy in use when
+    // it starts works where its holder is, not queued again (#548).
+    (it.after, it.tree_wait, it.no_copy_wait, it.updated) = (None, false, true, secs(now));
     it.tree_wait_repo.clear();
     it.after_why = why.to_string();
     if let Some(h) = it.holder.clone() {

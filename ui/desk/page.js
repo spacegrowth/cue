@@ -369,11 +369,12 @@ const deskDesignsA = (url) => `<a class="dk-dlink" href="#" data-href="${esc(url
 /** Its mocks' canvas: the DESIGNS: link its session gave, or for an item whose work was only mocks (#408, #436), the
  *  link it made. "" for none. */
 const deskCanvas = (i) => /^https?:\/\//.test(i?.designs || "") ? i.designs : i?.finish?.mocks ? (i.made || []).find((m) => /^https?:\/\//.test(m)) || "" : "";
-/** An item with mocks waiting on you to pick one: the line of its holder's newest words that asks you to, plain, for
- *  under its page's header ("Pick one for working items: D, E or F"). Its question first while it asks you, then its
- *  latest reply. An earlier pick can already have been answered. */
+/** An item waiting on you to pick an option, one with a canvas or with what follows each option (IF PICKED: lines,
+ *  #543): the line of its holder's newest words that asks you to, plain, for under its page's header ("Pick one for
+ *  working items: D, E or F"). Its question first while it asks you, then its latest reply. An earlier pick can
+ *  already have been answered. */
 function deskPickLine(i) {
-  if (!deskCanvas(i) || (i.state !== "needs_you" && i.state !== "to_check")) return "";
+  if (i.picked || (!deskCanvas(i) && !(i.next || []).length) || (i.state !== "needs_you" && i.state !== "to_check")) return "";
   for (const t of [i.state === "needs_you" ? deskQuestion(i) : "", i.said?.at(-1)?.text || ""]) {
     const line = deskPickLineIn(t);
     if (line) return line;
@@ -408,17 +409,21 @@ function deskOptionWords(i) {
   }
   return out;
 }
-/** The options a mocks item asks you to pick from, A, B, C… or M1, M2… (#445): those its pick line names ("… working
- *  items: D, E or F" → D, E, F), else the two or more its newest reply lists one to a line; none once picked. */
+/** The options an item asks you to pick from, A, B, C… or M1, M2… (#445, #543): those its pick line names ("…
+ *  working items: D, E or F" → D, E, F); else, for one with a canvas or with what follows each option (IF PICKED:
+ *  lines), the two or more its newest reply lists one to a line, or those its IF PICKED: lines name; none once picked. */
 function deskPickOptions(i) {
-  if (i.picked || !deskCanvas(i) || (i.state !== "needs_you" && i.state !== "to_check")) return [];
+  if (i.picked || (i.state !== "needs_you" && i.state !== "to_check")) return [];
   const run = deskPickLine(i).match(/\b[A-Z]\d{0,2}\b(?:\s*(?:,|\/|\bor\b|\band\b)\s*(?:(?:or|and)\s+)?[A-Z]\d{0,2}\b)+/);
   if (run) return [...new Set(run[0].match(/\b[A-Z]\d{0,2}\b/g))];
+  if (!deskCanvas(i) && !(i.next || []).length) return [];
   const listed = [...deskOptionWords(i).keys()];
-  return listed.length > 1 ? listed : [];
+  if (listed.length > 1) return listed;
+  const named = [...new Set((i.next || []).map((n) => n.option).filter((o) => o && o !== "any"))];
+  return named.length > 1 ? named : [];
 }
-/** Its options as a short list, each with what it is (when its reply says) and a Pick: a pick means build (#281,
- *  #445): Cue closes the mocks and adds the item that builds the one you picked, for the lead to route at once. */
+/** Its options as a short list, each with what it is (when its reply says) and a Pick (#281, #445, #543): Cue closes
+ *  the item, then files and routes what its holder said follows the one you picked. */
 function deskPickBtns(i, cls = "") {
   const opts = deskPickOptions(i);
   if (!opts.length) return "";
@@ -434,10 +439,10 @@ function deskPickReplyAt(i, ex) {
   const asks = (e) => (line ? deskPickLineIn(e.text) === line : deskOptionWords({ said: [{ text: e.text }] }).size > 1);
   return (ex || []).findLast((e) => e.role === "agent" && asks(e))?.at_ms ?? null;
 }
-/** A picked mocks item and the item that builds its pick, each linking to the other (#281). */
+/** A picked item and the item that builds its pick, each linking to the other (#281). */
 const deskBuiltLink = (i) => {
   const a = (id) => `<a href="#" data-desk-item="${esc(id)}">#${esc(id)}</a>`;
-  const words = i.picked && i.built_as ? `Picked ${esc(i.picked)} → being built as ${a(i.built_as)}` : i.builds ? `Builds what you picked on ${a(i.builds)}'s mocks` : "";
+  const words = i.picked && i.built_as ? `Picked ${esc(i.picked)} → being built as ${a(i.built_as)}` : i.builds ? `Follows what you picked on ${a(i.builds)}` : "";
   return words ? `<p class="dk-built">${words}</p>` : "";
 };
 const deskSec = (title, html) => (html ? `<div class="dk-sec"><h3>${title}</h3>${html}</div>` : "");

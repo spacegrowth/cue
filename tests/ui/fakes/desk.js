@@ -163,15 +163,18 @@ CueBridge.area("desk", (w) => {
         const m = it.builds && itemOf(it.builds);
         if (m && m.built_as === it.id) { delete m.picked; delete m.built_as; }
       }
-      // A pick on its mocks (#281): done and picked, one build item linked both ways; a pick again makes none.
+      // A pick on any item (#281, #543): done and picked; what its holder said follows that option (IF PICKED:, `next`)
+      // filed, linked both ways; named nothing, one with a canvas gets one build item; a pick again makes none.
       else if (act === "pick") {
         if (it.built_as && itemOf(it.built_as)) throw `Option ${it.picked} is picked already: it's being built as #${it.built_as}`;
-        // Its canvas: its DESIGNS: link, or the link a mocks-only item made (#445).
-        if (!it.designs && !(it.finish?.mocks && (it.made || []).some((m) => /^https?:\/\//.test(m)))) throw "It has no mocks to pick from";
-        const option = String(text || "").trim().toUpperCase(), d = deskOf(it.project);
-        const b = { id: `b${++n}`, project: it.project, kind: it.kind || "feature", title: `Build: ${it.title.replace(/^mocks:\s*/i, "")} (option ${option})`, done_when: "", state: "new", holder: null, from: "you", builds: it.id, created: t, updated: t, files: [] };
-        d.items.push(b);
-        Object.assign(it, { state: "done", done_at: t, picked: option, built_as: b.id });
+        if (it.picked) throw `Option ${it.picked} is picked already`;
+        const canvas = it.designs || (it.finish?.mocks && (it.made || []).some((m) => /^https?:\/\//.test(m)));
+        const option = String(text || "").trim().replace(/^option\s+/i, "").toUpperCase(), d = deskOf(it.project);
+        const named = (it.next || []).filter((x) => x.option === "any" || x.option.toUpperCase() === option);
+        const filed = named.map((x) => ({ id: `b${++n}`, project: it.project, kind: x.kind, title: x.title, see: x.see || "", done_when: x.done_when || "", state: "new", holder: null, from: "you", builds: it.id, created: t, updated: t, files: [] }));
+        if (!filed.length && canvas) filed.push({ id: `b${++n}`, project: it.project, kind: it.kind || "feature", title: `Build: ${it.title.replace(/^[^:\s]+(?:\s[^:\s]+)?:\s*/, "").replace(/\s\([^)]*\)$/, "")} (option ${option})`, done_when: "", state: "new", holder: null, from: "you", builds: it.id, created: t, updated: t, files: [] });
+        d.items.push(...filed);
+        Object.assign(it, { state: "done", done_at: t, picked: option, built_as: filed[0]?.id || "" });
       }
       else throw `Unknown act ${act}`;
       it.updated = t;

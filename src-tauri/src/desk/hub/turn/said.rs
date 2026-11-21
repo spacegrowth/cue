@@ -79,7 +79,7 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, repos: &[(St
             Line::Lands { part, to, steps, why } => fx.lands.push(crate::desk::hub::lead::lands::Proposal { lsid: lsid.to_string(), desk: project.to_string(), part, to, steps, why }),
             Line::Pause { on, why } => fx.pause.push((project.to_string(), on, name.clone(), lsid.to_string(), why)),
             Line::Pass { id, .. } => cleanup_said(st, project, &by, &id, None, now, fx, &mut answers),
-            Line::Context { .. } | Line::Designs { .. } | Line::ToLead { .. } | Line::Check { .. } => {}
+            Line::Context { .. } | Line::Designs { .. } | Line::IfPicked { .. } | Line::ToLead { .. } | Line::Check { .. } => {}
         }
     }
     for line in parse::unread_routes(text) {
@@ -440,6 +440,13 @@ fn keep(st: &mut Store, project: &str, by: &By, who: &str, why: &str, now: u64, 
     st.desk.run.keep.insert(sid, (now, id, working));
 }
 
+/// The lines any session's turn may say, lead or not: DESIGNS:, IF PICKED: (#543) and TO LEAD:.
+fn any_session_said(st: &mut Store, sid: &str, text: &str, fx: &mut Effects) {
+    designs_said(st, sid, text, fx);
+    crate::desk::hub::turn::heard::next_said(st, sid, text, fx);
+    crate::desk::hub::turn::heard::to_lead_said(st, sid, text, fx);
+}
+
 impl Hub {
     /// Session `sid`'s turn ended, saying `text`: a lead's lines (ITEM, ROUTE, ASK, DECIDED, and DONE for what it
     /// keeps), any session's ITEM lines, and a holder's (DONE, DECIDED) acted on; an item it ended on with no DONE
@@ -498,8 +505,7 @@ impl Hub {
                 crate::desk::hub::stall::stall::stalls_asked(st, sid, text, &on, now, &mut fx);
                 return fx;
             }
-            designs_said(st, sid, text, &mut fx);
-            crate::desk::hub::turn::heard::to_lead_said(st, sid, text, &mut fx);
+            any_session_said(st, sid, text, &mut fx);
             let lead = st.desk.lead_of(sid);
             match &lead {
                 Some(project) => lead_said(st, project, sid, text, &repos, now, &mut fx),

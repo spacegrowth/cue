@@ -32,8 +32,8 @@ function deskBox(d) {
     }
     else {
       ({ pre, ph } = deskToLine(it?.state === "to_check" && it.holder ? it.holder.name : lead, it));
-      // Mocks to pick from: the chat is for what you think of them; a pick is its Pick button (#445).
-      if (deskPickOptions(it || {}).length) ph = "Comments on the mocks… (Pick an option above to build it)";
+      // Options to pick from: the chat is for what you think of them; a pick is its Pick button (#445, #543).
+      if (deskPickOptions(it || {}).length) ph = "Comments… (Pick an option above to go ahead)";
     }
   }
   else if (o?.kind === "holder" || o?.kind === "crew" || o?.kind === "chat") {

@@ -51,6 +51,7 @@ mod desk_numbers;
 mod desk_owner;
 mod desk_waits;
 mod desk_routes;
+mod desk_no_code;
 mod desk_pick;
 mod desk_items;
 mod desk_see;

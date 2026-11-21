@@ -85,6 +85,11 @@ impl Hub {
                     let it = st.desk.item(id).filter(|i| i.state == "working" && i.tree.is_none())?;
                     let h = it.holder.as_ref()?;
                     let s = st.sessions.get(h.to()).filter(|s| s.origin.machine.is_empty() && !s.origin.cwd.is_empty())?;
+                    // No code at all (its "done when" says so: a plan, a doc, mocks): no copy, nor a wait for one; it
+                    // works where its holder is (#543). A copy the lead gave still goes.
+                    if it.copy_on.is_none() && crate::desk::hub::landing::unlanded::rules_out_code(&it.done_when) {
+                        return None;
+                    }
                     Some(match &it.copy_on {
                         Some(c) => (id.clone(), it.project.clone(), c.repo.clone(), h.to().to_string(), true),
                         None => (id.clone(), it.project.clone(), s.origin.cwd.clone(), h.to().to_string(), false),

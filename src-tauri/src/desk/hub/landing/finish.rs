@@ -419,8 +419,15 @@ impl Hub {
             return;
         }
         let queued = cue.is_some();
+        // Nothing of it was ever on a main line (no commit, nothing merged: a plan, a doc, a decision): to check with
+        // nothing to install, as an item whose work changed nothing the app runs (#543).
+        let nothing = top.is_empty() && self.read(|st| st.desk.item(id).is_some_and(|i| i.commit_in.is_empty() && i.finish.as_ref().is_none_or(|f| f.merges.is_empty())));
         self.finish_set(id, |i| {
+            if nothing {
+                i.mocks_only = true;
+            }
             if let Some(f) = i.finish.as_mut() {
+                f.mocks |= nothing;
                 (f.repo, f.commit) = (top, head);
                 if queued {
                     (f.step, f.at, f.wait, f.wait_from, f.question) = ("queued".into(), now, String::new(), 0, String::new());
@@ -457,6 +464,8 @@ impl Hub {
                 if let Some(f) = i.finish.as_mut() {
                     (f.repo, f.commit, f.mocks) = (top.to_string(), head.to_string(), true);
                 }
+                // Kept past a reopen, so its next DONE isn't held for something new on main (#549).
+                i.mocks_only = true;
             });
             self.finish_checked(id);
             return true;

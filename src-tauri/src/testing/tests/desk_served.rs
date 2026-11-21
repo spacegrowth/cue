@@ -182,9 +182,9 @@ fn a_mocks_only_items_pick_closes_it_and_makes_its_build_item_for_the_lead_marki
     assert_eq!((picked.built_as.as_str(), b["builds"].as_str(), b["state"].as_str()), (n.as_str(), Some(id.as_str()), Some("new")));
     assert!(b["why"].as_str().unwrap().contains("https://claude.ai/artifact/abc"), "{b}");
     assert!(b.to_string().contains("Picked: M2"), "its done when has the pick marked: {b}");
-    // Its holder marks the pick on its canvas row and the Ideas page, and does no more on it.
+    // Its holder marks the pick on its canvas, and does no more on it.
     let told = sent_to(&w, &h).into_iter().find(|t| t.contains("option M2 was picked")).expect("its holder is told");
-    assert!(told.contains(&format!("#{n} builds it")) && told.contains("Picked: M2") && told.contains("https://claude.ai/artifact/abc") && told.contains("Ideas page"), "{told}");
+    assert!(told.contains(&format!("#{n} goes to the Desk lead to route")) && told.contains("Picked: M2") && told.contains("https://claude.ai/artifact/abc"), "{told}");
     // The lead routes it at once.
     w.advance(1000);
     let sent = sent_to(&w, &lead);

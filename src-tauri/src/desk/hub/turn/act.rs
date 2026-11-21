@@ -164,7 +164,7 @@ fn reopen(st: &mut Store, id: &str, build_gone: bool) -> Result<bool, String> {
     if it.state != "done" {
         return Err("It isn't done: nothing to undo".into());
     }
-    // Done by your pick on its mocks: its build item carries it on.
+    // Done by your pick: what it filed carries it on.
     if !it.picked.is_empty() && !build_gone {
         return Err(format!("Option {} is picked: it's being built as #{}", it.picked, it.built_as));
     }
@@ -312,8 +312,12 @@ fn drop_item(st: &mut Store, id: &str, pr_open: &str, now: u64, fx: &mut Effects
         let who = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
         fx.sends.push((h.to().to_string(), format!("{who}Desk item #{id} ({title}) was dropped: it's off your list. Don't start it.")));
     }
-    // The build item of a pick on mocks: the mocks item is no longer picked, so it can be picked again.
+    // What a pick filed: once none of it is left, the picked item is no longer picked, so it can be picked again.
     let built = gone.as_ref().map(|g| g.builds.clone()).filter(|b| !b.is_empty());
+    let other = built.as_deref().and_then(|b| st.desk.items.iter().find(|i| i.builds == b).map(|i| i.id.clone()));
+    if let (Some(o), Some(m)) = (other, built.as_deref().and_then(|b| st.desk.item_mut(b)).filter(|m| m.built_as == id)) {
+        m.built_as = o;
+    }
     if let Some(m) = built.as_deref().and_then(|b| st.desk.item_mut(b)).filter(|m| m.built_as == id) {
         let (project, mid, option) = (m.project.clone(), m.id.clone(), std::mem::take(&mut m.picked));
         (m.built_as, m.updated) = (String::new(), secs(now));
@@ -366,15 +370,20 @@ fn option_of(text: &str) -> String {
     if t.chars().count() == 1 { t.to_uppercase() } else { t.chars().take(40).collect::<String>().trim().to_string() }
 }
 
-/// What a mocks item is about, from its title: "Mocks: working items" → "working items".
+/// What an item is about, from its title: its first words before a colon go ("Mocks: working items", "Plan: the
+/// landing line" → "working items", "the landing line"), as does a closing "(…)" note.
 fn topic_of(title: &str) -> String {
     let t = title.trim();
     let mut topic = t;
-    if let Some(p) = ["mocks for ", "mocks of ", "mocks:", "mock:", "mocks ", "designs for ", "designs:", "design:"].iter().find(|p| t.get(..p.len()).is_some_and(|h| h.eq_ignore_ascii_case(p))) {
-        topic = t[p.len()..].trim();
+    if let Some((head, rest)) = t.split_once(':') {
+        if head.split_whitespace().count() <= 2 && !rest.trim().is_empty() {
+            topic = rest.trim();
+        }
     }
-    if let Some(s) = [" (mocks)", " mocks"].iter().find(|s| topic.len() >= s.len() && topic.get(topic.len() - s.len()..).is_some_and(|e| e.eq_ignore_ascii_case(s))) {
-        topic = topic[..topic.len() - s.len()].trim();
+    if topic.ends_with(')') {
+        if let Some(at) = topic.rfind(" (") {
+            topic = topic[..at].trim();
+        }
     }
     if topic.is_empty() { t.to_string() } else { topic.to_string() }
 }
@@ -447,66 +456,150 @@ pub(crate) fn pick_letters(text: &str) -> Vec<String> {
     vec![]
 }
 
-/// You picked option `text` on mocks item `id` (one with a canvas): a pick means build. It's done, picked, and Cue
-/// adds one "Build: <topic> (option X)" item, linked both ways (`built_as`, `builds`), for its Desk lead to route at
-/// once. Picked already: no other build item, and the answer says which it's being built as.
+/// You picked option `text` on item `id` (#281, #543): it's done, picked. The follow-ups its holder named for that
+/// option (IF PICKED: lines, `DeskItem::next`) are filed, each linked back to it (`builds`), and routed at once to
+/// whom each names: its holder ("me"), a new session, or a session by name; one Cue can't route goes to the lead.
+/// Named none: an item with a canvas gets one "Build: <topic> (option X)" item for the lead to route; any other just
+/// closes. Picked already: nothing new, and the answer says what it's being built as.
 pub(crate) fn pick(st: &mut Store, id: &str, text: &str, now: u64) -> Result<Effects, String> {
     let mut fx = Effects::default();
     let id = st.desk.canon(id);
     let it = st.desk.item(&id).ok_or("no such item")?.clone();
+    let option = pickable(st, &it, text)?;
+    let canvas = canvas_of(&it);
+    let filed = file_follow_ups(st, &it, &option, &canvas, now);
+    fx.answers.extend(question_answered(st, &it, &option));
+    // Done first, so its holder is free to take what follows.
+    let first = filed.first().map(|(n, _)| n.clone()).unwrap_or_default();
+    let m = st.desk.item_mut(&id).ok_or("no such item")?;
+    (m.picked, m.built_as) = (option.clone(), first.clone());
+    (m.state, m.after, m.close_on_check, m.done_at, m.updated) = ("done".into(), None, false, Some(secs(now)), secs(now));
+    fx.items.push(id.clone());
+    let list = filed.iter().map(|(n, _)| format!("#{n}")).collect::<Vec<_>>().join(", ");
+    let whom = if filed.is_empty() { "nothing follows it".to_string() } else if filed.len() == 1 { format!("being built as #{first}") } else { format!("followed by {list}") };
+    you_wrote(st, &it.project, &id, &format!("Picked option {option}"), &whom, now, &mut fx);
+    release(st, &id, now, &mut fx);
+    let (routed, heard) = route_follow_ups(st, &it, &option, &filed, now, &mut fx);
+    // Something of it left for its lead to route: the lead hears the pick at once, ahead of the new item's row, so it
+    // routes it now. All of it routed already: no lead step.
+    if !heard.is_empty() {
+        let words = format!("You picked option {option} on #{id} ({}): \"{}\". #{id} is done; {}.", it.title, text.trim(), heard.join("; "));
+        crate::desk::hub::lead::feed::raise(st, &it.project, &id, crate::desk::feed::ChangeKind::Picked, words, &format!("{option}:{first}"), now);
+    }
+    // Its holder is told it's done and what follows, so it doesn't carry on there.
+    if let Some(h) = it.holder.as_ref() {
+        let next = if routed.is_empty() { "Nothing follows it.".to_string() } else { format!("What follows: {}.", routed.join("; ")) };
+        let mark = if canvas.is_empty() { String::new() } else { format!(" Mark \"Picked: {option}\" where it shows its options ({canvas}), keeping the others.") };
+        fx.sends.push((h.to().to_string(), format!("Desk item #{id} ({}): option {option} was picked, so it's done. {next}{mark} Do no other work on #{id}.", it.title)));
+    }
+    Ok(fx)
+}
+
+/// The option `text` picks on `it`, or why it can't be picked: picked already (and being built as an item still
+/// there), dropped, or no option named.
+fn pickable(st: &Store, it: &DeskItem, text: &str) -> Result<String, String> {
     if !it.built_as.is_empty() && st.desk.item(&it.built_as).is_some() {
         return Err(format!("Option {} is picked already: it's being built as #{}", it.picked, it.built_as));
     }
-    // Its canvas: the DESIGNS: link its session gave, or, for an item whose work was only mocks (#408, #436), the
-    // link it made.
-    let mocks_only = it.finish.as_ref().is_some_and(|f| f.mocks);
-    let canvas = if !it.designs.trim().is_empty() { it.designs.trim().to_string() } else if mocks_only { it.made.iter().find(|m| m.starts_with("http://") || m.starts_with("https://")).cloned().unwrap_or_default() } else { String::new() };
-    if canvas.is_empty() {
-        return Err("It has no mocks to pick from".into());
+    if !it.picked.is_empty() && it.built_as.is_empty() {
+        return Err(format!("Option {} is picked already", it.picked));
+    }
+    if it.state == "dropped" {
+        return Err("It was dropped".into());
     }
     let option = option_of(text);
     if option.is_empty() {
         return Err("Say which option you picked".into());
     }
-    let kind = if it.kind.is_empty() { "feature" } else { it.kind.as_str() };
-    let title = format!("Build: {} (option {option})", topic_of(&it.title));
-    let done_when = format!("option {option} of #{id}'s mocks is in the app and works as the mocks show; the canvas row and the Ideas page say \"Picked: {option}\"");
-    let mut b = new_item(st, &it.project, kind, &title, &done_when, "you", now);
-    b.builds = id.clone();
-    b.why = format!("You picked option {option} on #{id}'s mocks: {canvas}");
-    let n = b.id.clone();
-    st.desk.items.push(b);
-    fx.items.push(n.clone());
-    if st.desk.lead_sid(&it.project).is_some() {
-        fx.news.push((it.project.clone(), n.clone()));
-        // Its lead hears the pick at once, ahead of the new item's row, so it routes the build now.
-        let words = format!("You picked option {option} on #{id} ({}): \"{}\". #{id} is done; Cue filed #{n} {title} to build it: route it now.", it.title, text.trim());
-        crate::desk::hub::lead::feed::raise(st, &it.project, &id, crate::desk::feed::ChangeKind::Picked, words, &n, now);
+    Ok(option)
+}
+
+/// Its canvas: the DESIGNS: link its session gave, or, for an item whose work changed nothing the app runs (#408,
+/// #436), the link it made. Empty when it has none.
+fn canvas_of(it: &DeskItem) -> String {
+    let no_code = it.finish.as_ref().is_some_and(|f| f.mocks);
+    if !it.designs.trim().is_empty() {
+        it.designs.trim().to_string()
+    } else if no_code {
+        it.made.iter().find(|m| m.starts_with("http://") || m.starts_with("https://")).cloned().unwrap_or_default()
+    } else {
+        String::new()
     }
-    // Its holder waiting on its question (one): the question is answered with the option picked.
-    // One question only: an ask of several isn't answered for you.
+}
+
+/// Files what follows `option` picked on `it`: the follow-ups its holder named, or, with none named and a canvas,
+/// one "Build: <topic> (option X)" item. Each: (its id, whom it names to take it; empty for the lead).
+fn file_follow_ups(st: &mut Store, it: &DeskItem, option: &str, canvas: &str, now: u64) -> Vec<(String, String)> {
+    let id = &it.id;
+    let named: Vec<crate::desk::model::FollowUp> = it.next.iter().filter(|n| n.option == "any" || n.option.eq_ignore_ascii_case(option)).cloned().collect();
+    let on = if canvas.is_empty() { String::new() } else { format!(": {canvas}") };
+    let mut filed: Vec<(String, String)> = Vec::new();
+    for n in &named {
+        let mut b = new_item(st, &it.project, &n.kind, &n.title, &n.done_when, "you", now);
+        b.see = n.see.trim().to_string();
+        b.builds = id.clone();
+        b.why = format!("You picked option {option} on #{id}{on}");
+        filed.push((b.id.clone(), n.by.clone()));
+        st.desk.items.push(b);
+    }
+    if named.is_empty() && !canvas.is_empty() {
+        let kind = if it.kind.is_empty() { "feature" } else { it.kind.as_str() };
+        let title = format!("Build: {} (option {option})", topic_of(&it.title));
+        let done_when = format!("option {option} of #{id} is in the app and works as #{id} shows it; where #{id} shows its options ({canvas}), it says \"Picked: {option}\"");
+        let mut b = new_item(st, &it.project, kind, &title, &done_when, "you", now);
+        b.builds = id.clone();
+        b.why = format!("You picked option {option} on #{id}{on}");
+        filed.push((b.id.clone(), String::new()));
+        st.desk.items.push(b);
+    }
+    filed
+}
+
+/// Its holder waiting on its question (one): the question answered with the option picked. An ask of several
+/// questions isn't answered for you.
+fn question_answered(st: &Store, it: &DeskItem, option: &str) -> Option<(String, String, String)> {
     let one = |a: &&Item| a.tool_input["questions"].as_array().is_some_and(|q| q.len() == 1);
-    let asking = it.holder.as_ref().and_then(|h| ask_of(st, h)).filter(|a| a.kind == "question").filter(one).map(|a| {
+    it.holder.as_ref().and_then(|h| ask_of(st, h)).filter(|a| a.kind == "question").filter(one).map(|a| {
         let q = a.tool_input.pointer("/questions/0");
         let question = q.and_then(|q| q["question"].as_str()).unwrap_or("").to_string();
         let labels = q.and_then(|q| q["options"].as_array()).map(|o| o.iter().filter_map(|x| x["label"].as_str()).collect::<Vec<_>>()).unwrap_or_default();
-        let label = labels.into_iter().find(|l| letter_of(l).as_deref() == Some(option.as_str())).map_or_else(|| format!("Option {option}"), str::to_string);
+        let label = labels.into_iter().find(|l| letter_of(l).as_deref() == Some(option)).map_or_else(|| format!("Option {option}"), str::to_string);
         (a.id.clone(), question, label)
-    });
-    // Answered or not, its holder is told the mocks are done and what builds the pick, so it doesn't build it there.
-    fx.answers.extend(asking);
-    if let Some(h) = it.holder.as_ref() {
-        // It made the canvas, so it marks the pick there now, on the canvas row and the Ideas page (#445).
-        fx.sends.push((h.to().to_string(), format!("Desk item #{id} ({}): option {option} was picked, so it's done. #{n} builds it; the Desk lead routes that. Mark \"Picked: {option}, <today's date>\" on its row of the canvas ({canvas}) and on its row of the Ideas page, keeping the other options; do no other work on #{id}.", it.title)));
+    })
+}
+
+/// Each filed follow-up routed as it says, with no lead step; one with no taker, or one Cue can't route, to the
+/// lead. Returns where each went, in plain lines for its holder, and what's left to the lead, in lines for it.
+fn route_follow_ups(st: &mut Store, it: &DeskItem, option: &str, filed: &[(String, String)], now: u64, fx: &mut Effects) -> (Vec<String>, Vec<String>) {
+    let id = &it.id;
+    let lead = st.desk.lead.get(&it.project).cloned();
+    let (lead_name, lead_sid) = (lead.as_ref().map(|l| l.name.clone()).unwrap_or_else(|| "You".into()), st.desk.lead_sid(&it.project).unwrap_or_default().to_string());
+    let held = it.holder.as_ref().filter(|h| h.kind != "crew").map(|h| h.name.clone());
+    let mut routed: Vec<String> = Vec::new();
+    let mut heard: Vec<String> = Vec::new();
+    for (n, by) in filed {
+        let title = st.desk.item(n).map(|b| b.title.clone()).unwrap_or_default();
+        you_wrote(st, &it.project, n, &format!("Follows option {option}, picked on #{id}"), "", now, fx);
+        fx.items.push(n.clone());
+        let to = if by.eq_ignore_ascii_case("me") { held.clone() } else if by.is_empty() { None } else { Some(by.clone()) };
+        let said = to.as_ref().map(|to| {
+            let by = crate::desk::hub::turn::route::By { name: &lead_name, sid: &lead_sid };
+            let why = format!("you picked option {option} on #{id}, and #{id} named this to follow it");
+            crate::desk::hub::turn::route::route(st, &it.project, &by, n, to, None, &why, now, fx)
+        });
+        let taken = st.desk.item(n).is_some_and(|b| b.holder.is_some() || b.state != "new") || fx.starts.iter().any(|s| s.id == *n);
+        let refused = said.flatten().is_some_and(|w| w.starts_with("Refused"));
+        if taken && !refused {
+            routed.push(format!("#{n} to {}", to.unwrap_or_default()));
+        } else if lead_sid.is_empty() {
+            routed.push(format!("#{n} waits on the Desk for someone to take it"));
+        } else {
+            fx.news.push((it.project.clone(), n.clone()));
+            heard.push(format!("Cue filed #{n} {title} to follow it: route it now"));
+            routed.push(format!("#{n} goes to the Desk lead to route"));
+        }
     }
-    let m = st.desk.item_mut(&id).ok_or("no such item")?;
-    (m.picked, m.built_as) = (option.clone(), n.clone());
-    (m.state, m.after, m.close_on_check, m.done_at, m.updated) = ("done".into(), None, false, Some(secs(now)), secs(now));
-    fx.items.push(id.clone());
-    you_wrote(st, &it.project, &id, &format!("Picked option {option}"), &format!("being built as #{n}"), now, &mut fx);
-    you_wrote(st, &it.project, &n, &format!("Builds option {option}, picked on #{id}"), "", now, &mut fx);
-    release(st, &id, now, &mut fx);
-    Ok(fx)
+    (routed, heard)
 }
 
 /// Your drag in the Queued list (#387): `order`, the queued items' ids top first as the list now shows them (`id`, the

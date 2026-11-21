@@ -22,7 +22,7 @@ test("a mocks-only item lists its options M1, M2 with a Pick each; a pick closes
   await expect(head.locator(".dk-pickl")).toHaveText("Mocks · open the canvas · Pick one: M1 or M2.");
   await expect(page.locator(".dk-right [title]")).toHaveCount(0);
   // Its chat is for comments on the mocks; the pick is the button.
-  await expect(page.locator(".dk-right .dk-box textarea")).toHaveAttribute("placeholder", /^Comments on the mocks/);
+  await expect(page.locator(".dk-right .dk-box textarea")).toHaveAttribute("placeholder", /^Comments… \(Pick an option above/);
   for (const theme of ["light", "dark"]) {
     await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
     // The theme redraws the page: again once it's settled.
@@ -47,7 +47,7 @@ test("options listed one to a line are picked from even with no pick line; one o
   await expect(opts.locator(".dk-optw")).toHaveText(["rows", "cards", "a table"]);
   await patchItem(cue, "d5", { said: [{ at: Date.now(), by: "host-lead", text: "A: the one way, on the canvas." }] });
   await expect(page.locator(".dk-panel[data-side-for] .dk-pnow .dk-opts")).toHaveCount(0);
-  await expect(page.locator(".dk-right .dk-box textarea")).not.toHaveAttribute("placeholder", /^Comments on the mocks/);
+  await expect(page.locator(".dk-right .dk-box textarea")).not.toHaveAttribute("placeholder", /^Comments… \(Pick an option above/);
 });
 
 // #539: an item whose reply marks one option suggested ("**B (suggested):**") and asks "Which option do you want

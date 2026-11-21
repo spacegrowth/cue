@@ -112,7 +112,7 @@ function deskWhereLine(i) {
   const canvas = deskCanvas(i);
   if (canvas || i.finish?.mocks) {
     const pick = deskPickLine(i), tail = pick ? ` · ${pick}` : "";
-    if (!canvas) return plainLine(`Mocks · nothing to install${tail}`);
+    if (!canvas) return plainLine(`Nothing to install${tail}`);
     return { text: `Mocks · open the canvas${tail}`, html: `Mocks · <a class="dk-dlink" href="#" data-href="${esc(canvas)}">open the canvas</a>${esc(tail)}`, tried: false };
   }
   if (deskInstallWait(i)) return plainLine("Lands with the next install");

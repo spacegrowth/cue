@@ -16,6 +16,9 @@ pub enum Line {
     Ask { question: String, choices: Vec<String>, item: Option<String> },
     /// Items done, as their holder says.
     Done { ids: Vec<String> },
+    /// What comes after option `option` ("any": whichever) of item `id` is picked (#543), as its holder says:
+    /// `IF PICKED: #<id> | <option> | <kind> | <title> | you'll see: … | done when: … | by: <me | new | name>`.
+    IfPicked { id: String, next: crate::desk::model::FollowUp },
     /// Item `id`'s designs are at `url` (its canvas), as any session of its project says; a newer one replaces it.
     Designs { id: String, url: String },
     /// Item `id`'s two lines, from the lead (#382): what you'll see when it's done, in plain words, and (when said)
@@ -156,6 +159,7 @@ fn one(t: &str) -> Option<Line> {
         "CHECK" => check(body),
         "CONTEXT" => context(body),
         "DESIGNS" => designs(body),
+        "IF PICKED" => if_picked(body),
         "TITLE" => title(body),
         "SEE" => see(body),
         "SPLIT" => split(body),
@@ -287,6 +291,23 @@ fn item(body: &str) -> Option<Line> {
     let done_when = rest.iter().find_map(|s| labelled(s, "done when")).unwrap_or("").to_string();
     let why = rest.iter().find_map(|s| why_of(s)).unwrap_or("").to_string();
     (!title.is_empty()).then_some(Line::Item { kind, title, see, done_when, why })
+}
+
+/// "#12 | B | feature | <title> | you'll see: … | done when: … | by: me" (#543): what follows option B of item 12. Its
+/// kind may be left out (a task), and its by (whoever held #12).
+fn if_picked(body: &str) -> Option<Line> {
+    let p = parts(body);
+    let (head, option) = (p.first()?, p.get(1)?);
+    if !head.starts_with('#') || head.contains(' ') {
+        return None;
+    }
+    let option = option.trim().trim_start_matches("option ").trim_start_matches("Option ").trim();
+    let option = if option.eq_ignore_ascii_case("any") || option == "*" { "any".to_string() } else { crate::desk::hub::turn::act::letter_of(option)? };
+    let by = p[2..].iter().find_map(|s| labelled(s, "by").filter(|_| s[2..].trim_start().starts_with(':'))).unwrap_or("me").trim().trim_start_matches('@').to_string();
+    let rest: Vec<&str> = p[2..].iter().copied().filter(|s| !(labelled(s, "by").is_some() && s[2..].trim_start().starts_with(':'))).collect();
+    let Some(Line::Item { kind, title, see, done_when, .. }) = item(&rest.join(" | ")) else { return None };
+    let by = if by.is_empty() { "me".to_string() } else { by };
+    Some(Line::IfPicked { id: id_of(head)?, next: crate::desk::model::FollowUp { option, kind, title, see, done_when, by } })
 }
 
 /// `part` without its "you'll see:" label (or "you will see:", "see:"; a curly quote too), with its colon, so a

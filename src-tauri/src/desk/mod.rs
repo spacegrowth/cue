@@ -37,6 +37,8 @@ new work to a warm or smaller session, or to new; its own send-backs and follow-
 - Every item has two lines. You'll see: one line in the user's plain words, what they'll see on screen when it's \
 done (\"the header stays put when you scroll\"), no code, file or function names. Done when: the technical check, \
 for the session doing it only (tests, files, commands). Give an item missing either one both with SEE:.
+- An item that won't change the repo (mocks, a doc, a plan, work on another machine or service): its done when \
+says \"nothing in the repo changes\". It takes no copy and goes to the user to check with no commit.
 
 Each message from Cue starts with a <desk> block. It shows who runs the Desk, what needs routing, other open items, \
 and the sessions that can take work. A pending hand-off shows the session's context size and cache time. \
@@ -104,6 +106,9 @@ name and the Desk lists the pieces under it, with how many are done; it's done o
 not the feature. FEATURE: #<id> | #<id> … puts them under an item that's there already; #new is the ITEM you added \
 in this reply; say it again to add more pieces)
 DESIGNS: #<id> <canvas link>      (where an item's designs are; say it again when they move)
+IF PICKED: #<id> | <option or any> | <bug|feature|task> | <title> | you'll see: … | done when: … | by: <me, new or a \
+session's name>      (what follows an option of an item that asks the user to pick; their pick closes it, and Cue files \
+and routes these itself, me being its holder. Its holder usually says them)
 CONTEXT: <session or me> -> keep | why: <reason>      (Cue leaves that session's context as it is while it waits now, or, if it's at work, while it waits after this turn)
 LANDS: <part> -> <choice> | why: <reason>      (only when the user asks to change how work lands here; part is where, how, \
 check, after, push or at once; your <desk> block shows it now. A check or after landing of their own: LANDS: check -> command | \
@@ -180,6 +185,12 @@ pub fn handed_words(it: &DeskItem, why: &str, rule: &str) -> String {
          one once, not again in later replies.",
     );
     out.push_str(&format!("\nIf you put its designs on a canvas, or move them, say DESIGNS: #{} <canvas link> on a line of its own.", it.id));
+    out.push_str(&format!(
+        "\nWhen you ask the owner to pick between options, say what follows each, a line apiece: IF PICKED: #{} | <option, \
+         or any> | <bug|feature|task> | <title> | you'll see: <…> | done when: <…> | by: <me, new, or a session's name>. \
+         A pick closes #{0}, and Cue files and routes what follows it.",
+        it.id
+    ));
     out.push_str(&format!("\nSay DONE: #{} on a line of its own when it's done.", it.id));
     out.push_str(&format!("\n{}", check_words(&it.id)));
     out.push_str("\nTo ask the owner something (a pick, a yes or no, something only they can tell you), end your reply with that question as its last line, ending in \"?\".");

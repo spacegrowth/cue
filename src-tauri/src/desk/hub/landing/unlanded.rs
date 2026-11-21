@@ -125,12 +125,36 @@ fn branch_landed_since(top: &str, id: &str, at: u64) -> bool {
     })
 }
 
-/// Whether an item's "done when" rules out code ("no code", "no code changes"): the lead says so for mocks, docs and
-/// plans.
+/// Whether an item's "done when" says it won't change the repository: "no code changes", "no commit", "nothing in
+/// the repo changes". The lead says so for mocks, docs and plans, and for work done elsewhere (another machine, a
+/// service): none of it takes or waits for a copy, and its DONE with no commit goes to you to check.
 pub(crate) fn rules_out_code(done_when: &str) -> bool {
-    let w: String = done_when.to_lowercase().chars().map(|c| if c.is_alphanumeric() { c } else { ' ' }).collect();
-    format!(" {} ", w.split_whitespace().collect::<Vec<_>>().join(" ")).contains(" no code ")
+    // Clause by clause, so "no code" means no code there, not "no code path panics".
+    done_when.split([';', ',', '.', ':', '\n']).any(|clause| {
+        let w: String = clause.to_lowercase().chars().map(|c| if c.is_alphanumeric() { c } else { ' ' }).collect();
+        let w = format!(" {} ", w.split_whitespace().map(|x| if x == "repository" { "repo" } else { x }).collect::<Vec<_>>().join(" "));
+        w.ends_with(" no code ") || w.ends_with(" no commit ") || w.ends_with(" no commits ") || KEEPS_THE_REPO.iter().any(|p| w.contains(p))
+    })
 }
+
+/// Words in a "done when" that say the repository won't change, wherever they sit in a clause.
+const KEEPS_THE_REPO: [&str; 15] = [
+    " no code at all ",
+    " no code needed ",
+    " no code change ",
+    " no code changes ",
+    " nothing in the repo changes ",
+    " nothing in the repo is changed ",
+    " no repo changes ",
+    " no changes to the repo ",
+    " no change to the repo ",
+    " repo is unchanged ",
+    " repo stays unchanged ",
+    " repo unchanged ",
+    " doesn t change the repo ",
+    " does not change the repo ",
+    " nothing is committed ",
+];
 
 /// What a reopened item's DONE with nothing new landed says, back to its session.
 pub(crate) const NOTHING_NEW: &str = "Nothing of it landed on main since it was reopened, so it isn't done: what it was sent back for still needs a change. Make it, then say DONE";
@@ -192,8 +216,9 @@ impl Hub {
     }
 
     /// Whether item `it` has no code to land (#549): nothing ever committed or merged for it, nothing on its own
-    /// branches, and its work is mocks, notes or plans: it went to check as such (`mocks_only`), or its "done when"
-    /// says no code. Such an item is done once its holder says so and you (or the lead's CLOSE) agree; main never
+    /// branches, and its work is mocks, notes, plans or a decision: it went to check as such (`mocks_only`), its "done
+    /// when" says no code, or its result is somewhere else (a canvas its DESIGNS: line names, options with what
+    /// follows each: #543). Such an item is done once its holder says so and you (or the lead's CLOSE) agree; main never
     /// shows it.
     pub(crate) fn desk_no_code(&self, it: &DeskItem) -> bool {
         let merged = it.finish.as_ref().is_some_and(|f| !f.merges.is_empty());
@@ -201,7 +226,8 @@ impl Hub {
         if !it.commit.is_empty() || !it.commit_in.is_empty() || had > 0 || merged {
             return false;
         }
-        (it.mocks_only || rules_out_code(&it.done_when)) && self.desk_unlanded(&it.id) == 0
+        let result_elsewhere = !it.designs.trim().is_empty() || !it.next.is_empty();
+        (it.mocks_only || rules_out_code(&it.done_when) || result_elsewhere) && self.desk_unlanded(&it.id) == 0
     }
 
     /// How many of item `id`'s changes on its own branch aren't on main (none for a project that lands by pull

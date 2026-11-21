@@ -47,6 +47,29 @@ pub(crate) fn session_items(st: &mut Store, sid: &str, text: &str, now: u64, fx:
     }
 }
 
+/// Session `sid` said what follows each option of the items it holds (IF PICKED: lines, #543): an item's lines in
+/// this turn replace any it had. Lines about an item it doesn't hold (nor leads the Desk of) are left alone.
+pub(crate) fn next_said(st: &mut Store, sid: &str, text: &str, fx: &mut Effects) {
+    let mut said: Vec<(String, crate::desk::model::FollowUp)> = Vec::new();
+    for line in parse::lines(text) {
+        if let Line::IfPicked { id, next } = line {
+            said.push((st.desk.canon(&id), next));
+        }
+    }
+    let lead = st.desk.lead_of(sid);
+    let mut ids: Vec<String> = said.iter().map(|(i, _)| i.clone()).collect();
+    ids.dedup();
+    for id in ids {
+        let Some(it) = st.desk.item_mut(&id) else { continue };
+        let mine = it.holder.as_ref().is_some_and(|h| h.is(sid)) || lead.as_ref() == Some(&it.project);
+        if !mine || !it.picked.is_empty() || matches!(it.state.as_str(), "done" | "dropped") {
+            continue;
+        }
+        it.next = said.iter().filter(|(i, _)| *i == id).map(|(_, n)| n.clone()).collect();
+        fx.items.push(id);
+    }
+}
+
 /// Session `sid` said where items' designs are (DESIGNS: #id <link>): each item of its project gets that link, a newer
 /// one replacing the last (designs moved).
 pub(crate) fn designs_said(st: &mut Store, sid: &str, text: &str, fx: &mut Effects) {
@@ -270,5 +293,5 @@ pub(crate) fn desk_line_start(line: &str) -> bool {
     let l = parse::unmarked(line.trim().trim_start_matches('`')).trim_start_matches('`');
     let Some((word, _)) = l.split_once(':') else { return false };
     let word = word.trim_end_matches(['*', '`']).trim();
-    matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "CHECK" | "CONTEXT" | "DESIGNS" | "TITLE" | "SEE" | "SPLIT" | "CUT" | "MERGE" | "NOTE" | "FEATURE" | "CLOSE" | "TAKE COPY" | "LAND FIRST" | "START" | "PARK" | "HOLD" | "UNPARK" | "DROP" | "PAUSE" | "RESUME" | "ANSWER" | "PASS" | "LANDS" | "TO LEAD" | "COPY") || word.eq_ignore_ascii_case("DECIDED")
+    matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "CHECK" | "CONTEXT" | "DESIGNS" | "IF PICKED" | "TITLE" | "SEE" | "SPLIT" | "CUT" | "MERGE" | "NOTE" | "FEATURE" | "CLOSE" | "TAKE COPY" | "LAND FIRST" | "START" | "PARK" | "HOLD" | "UNPARK" | "DROP" | "PAUSE" | "RESUME" | "ANSWER" | "PASS" | "LANDS" | "TO LEAD" | "COPY") || word.eq_ignore_ascii_case("DECIDED")
 }
