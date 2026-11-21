@@ -19,6 +19,7 @@ mod desk_notes;
 mod desk_spec_asks;
 mod desk_spec_messages;
 mod desk_spec_notes;
+mod desk_loop;
 mod desk_to_lead;
 mod desk_approvals;
 mod desk_spaces;

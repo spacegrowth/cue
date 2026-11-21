@@ -686,7 +686,7 @@ pub struct DeskDecision {
     pub delivery: Option<DeskDelivery>,
     /// What the lead did on its own (#360), shown in its chat as it happens and, for a while, in the Dispatcher's
     /// panel, and kept in its "What the lead moved" list (#374): "close" | "take_copy" | "land_first" | "copy_first" | "start" |
-    /// "send_back" | "answer" | "call" (one of its DECIDED lines that's dispatch work, not a product choice: #420); "" for
+    /// "send_back" | "answer" | "call" (one of its DECIDED lines that's dispatch work, not a product choice: #420) | "loop" (a loop it drafted, #583); "" for
     /// any other step.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub act: String,
@@ -694,6 +694,10 @@ pub struct DeskDecision {
     /// decide itself; the call it writes next is shown with the question it answers. "" for any other.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub asked: String,
+    /// A loop the lead drafted (#583, act "loop"): the draft as a loop card reads it (name, project, folder, goal,
+    /// done_when, check, limits). Nothing is started: you start it from the card.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub draft: Option<serde_json::Value>,
 }
 
 /// Words that make one of the Desk lead's calls dispatch work (routing, starting, order, sending back, clashes,

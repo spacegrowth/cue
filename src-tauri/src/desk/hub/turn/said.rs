@@ -32,8 +32,9 @@ pub(crate) fn item_said(st: &mut Store, project: &str, kind: &str, title: &str, 
 
 /// Lead `lsid` of `project` said `text` at its turn's end: its ITEM, ROUTE, ASK and DECIDED lines.
 /// `repos`: the repositories its COPY lines name, found before the store was taken (desk/hub/landing/named_copy.rs).
+/// `loops`: each project its LOOP lines name, with its folder on this Mac when Cue knows one (Hub::desk_folder).
 #[allow(clippy::too_many_arguments)]
-fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, repos: &[(String, Result<(String, String), String>)], changes: &crate::desk::hold_check::Changes, now: u64, fx: &mut Effects) {
+fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, repos: &[(String, Result<(String, String), String>)], loops: &[(String, Option<String>)], changes: &crate::desk::hold_check::Changes, now: u64, fx: &mut Effects) {
     let name = st.sessions.get(lsid).map(shown_name).or_else(|| st.desk.lead.get(project).map(|l| l.name.clone())).unwrap_or_default();
     let by = By { name: &name, sid: lsid };
     let mut last_new: Option<String> = None;
@@ -101,6 +102,7 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, repos: &[(St
             Line::Lands { part, to, steps, why } => fx.lands.push(crate::desk::hub::lead::lands::Proposal { lsid: lsid.to_string(), desk: project.to_string(), part, to, steps, why }),
             Line::Pause { on, why } => fx.pause.push((project.to_string(), on, name.clone(), lsid.to_string(), why)),
             Line::Pass { id, .. } => cleanup_said(st, project, &by, &id, None, now, fx, &mut answers),
+            Line::Loop(d) => loop_said(st, project, &by, d, loops, now, fx, &mut answers),
             Line::Context { .. } | Line::Designs { .. } | Line::IfPicked { .. } | Line::ToLead { .. } | Line::Check { .. } => {}
         }
     }
@@ -112,6 +114,39 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, repos: &[(St
     }
     route_answers(st, project, lsid, answers, fx);
     lead_calls(st, project, &by, text, back, now, fx);
+}
+
+/// The lead's LOOP line (#583): a loop drafted for project `d.project`, kept on the Desk as one of the lead's moves
+/// with the draft a loop card reads, in that project's folder (`loops`). Nothing starts: you press Start loop on its
+/// card. One with no folder Cue knows, or no goal or done when, is refused and the lead is told why.
+#[allow(clippy::too_many_arguments)]
+fn loop_said(st: &mut Store, project: &str, by: &By, d: crate::desk::parse::LoopDraft, loops: &[(String, Option<String>)], now: u64, fx: &mut Effects, answers: &mut Vec<String>) {
+    let Some(folder) = loops.iter().find(|(p, _)| *p == d.project).and_then(|(_, f)| f.clone()) else {
+        answers.push(format!("Refused: LOOP: {}: Cue knows no folder of a project by that name on this Mac. You can name the project as its sessions are shown, or ask the user where it is.", d.project));
+        return;
+    };
+    if d.goal.is_empty() || d.done_when.is_empty() {
+        answers.push(format!("Refused: LOOP: {}: a loop needs goal: and done when:. Write the line again with both.", d.project));
+        return;
+    }
+    let mut draft = json!({ "name": d.name, "project": d.project, "folder": folder, "goal": d.goal, "done_when": d.done_when, "check": d.check,
+        "decisions": if d.decisions.is_empty() { "one-way" } else { d.decisions.as_str() } });
+    for (k, v) in [("rounds", d.rounds.map(Value::from)), ("time_min", d.time_min.map(Value::from)), ("spend_usd", d.spend_usd.map(Value::from))] {
+        if let Some(v) = v {
+            draft[k] = v;
+        }
+    }
+    // Said again in a later reply: the card is there already.
+    if st.desk.decisions.iter().any(|x| x.project == project && x.act == "loop" && x.draft.as_ref() == Some(&draft)) {
+        return;
+    }
+    let name = if d.name.is_empty() { "a loop".to_string() } else { format!("\"{}\"", d.name) };
+    decide(st, project, None, by.name, by.sid, &format!("Drafted {name} for {}, for you to start", d.project), "", now, fx);
+    if let Some(x) = st.desk.decisions.last_mut() {
+        x.act = "loop".into();
+        x.undo = "none".into();
+        x.draft = Some(draft);
+    }
 }
 
 /// The lead's ROUTE line (`#new`: the reply's last ITEM). On another machine (#500) only a new session starts there,
@@ -537,6 +572,12 @@ impl Hub {
         let from_disk = self.feature_pieces_on_disk(text);
         let from = self.read(|st| st.sessions.get(sid).filter(|s| s.origin.machine.is_empty()).map(|s| s.origin.cwd.clone())).unwrap_or_default();
         let repos = crate::desk::hub::landing::named_copy::repos_said(text, &from);
+        // The folder of each project a LOOP line names (#583), found before the store is taken.
+        let loops: Vec<(String, Option<String>)> = if said {
+            parse::lines(text).into_iter().filter_map(|l| if let Line::Loop(d) = l { Some(d.project) } else { None }).map(|p| { let f = self.desk_folder(&p); (p, f) }).collect()
+        } else {
+            Vec::new()
+        };
         // A HOLD lists the items whose copies already changed a held file (#540): their changes read off disk here.
         let changes = if said && parse::lines(text).iter().any(|l| matches!(l, Line::Hold { .. })) {
             crate::desk::hold_check::copies_changed(self.read(crate::desk::hold_check::open_copies))
@@ -572,7 +613,7 @@ impl Hub {
             any_session_said(st, sid, text, &mut fx);
             let lead = st.desk.lead_of(sid);
             match &lead {
-                Some(project) => lead_said(st, project, sid, text, &repos, &changes, now, &mut fx),
+                Some(project) => lead_said(st, project, sid, text, &repos, &loops, &changes, now, &mut fx),
                 None => session_items(st, sid, text, now, &mut fx),
             }
             if st.desk.items.iter().any(|i| i.holder.as_ref().is_some_and(|h| h.is(sid))) {

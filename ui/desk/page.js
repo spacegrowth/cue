@@ -164,8 +164,12 @@ function deskActLine(x, d, bare, chip) {
 const deskActRows = (d) => deskActs(d).filter((x) => x.act !== "call").map((x) => {
   const key = `act:${x.id}`;
   const head = `<div class="mg-line"><span class="mg-lh">${deskActLine(x, d, true, true)}</span><span class="mg-age">${ago(x.at * 1000)}</span></div>`;
-  return { at: x.at * 1000, html: keyed(`<div class="dk-act dk-ln">${head}${x.why ? deskCut(key, "mg-full", esc(x.why), x.why) : ""}</div>`, key) };
+  return { at: x.at * 1000, html: keyed(`<div class="dk-act dk-ln">${head}${x.why ? deskCut(key, "mg-full", esc(x.why), x.why) : ""}${deskLoopCard(d, x)}</div>`, key) };
 });
+/** A loop the lead drafted (#583, its LOOP: line): the add-on's loop card for it (Start loop, Edit, Not now), as a
+ *  chat's drafted loop shows; "" without the add-on. Drawn as the Desk's own, not the lead's chat's: Start gives the
+ *  loop a session of its own in that project's folder, never the lead, which only dispatches. */
+const deskLoopCard = (d, x) => (x.act === "loop" && x.draft ? addOn.reply(`desk:${d.project}`, `\`\`\`cue-loop\n${JSON.stringify(x.draft)}\n\`\`\``).after : "");
 /** How long the lead's last moves stay in the Dispatcher's panel, and how many. */
 const DESK_JUST_DID_MS = 30 * 60 * 1000, DESK_JUST_DID = 3;
 const deskJustDid = (d) => deskActs(d).filter((x) => now() - x.at * 1000 < DESK_JUST_DID_MS).slice(0, DESK_JUST_DID);

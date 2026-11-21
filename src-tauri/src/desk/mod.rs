@@ -29,8 +29,26 @@ pub(crate) const ROUTING_GUIDANCE: &str = concat!(
     "For several overlapping items, chain each one after the previous item in that sequence; a session holds one item at a time, so items routed to a busy session wait in the queue for it.",
 );
 
+/// The LOOP: line in the lead's skill (#583): only in a build with the add-on, which draws its card and runs loops.
+#[cfg(feature = "ext")]
+macro_rules! lead_loop_line {
+    () => {
+        "LOOP: <project> | name: <2 to 4 words> | goal: <the full instructions for the AI that runs it> | done when: <plain words> | \
+check: <a shell command that passes when the work is right, or none> | rounds: <1 to 10> | time: <minutes> | spend: <dollars> | \
+decisions: one-way, every or none      (only when the user asks for a loop, for this project or another of theirs: \
+Cue finds that project's folder and shows the draft in your chat as a card with Start loop; it starts only when the \
+user presses it, never by you. Give goal and done when always, a check and limits whenever you can)\n"
+    };
+}
+#[cfg(not(feature = "ext"))]
+macro_rules! lead_loop_line {
+    () => {
+        ""
+    };
+}
+
 /// How a project's Desk lead works: appended to the system prompt or sent inside the Desk block.
-pub const LEAD_SKILL: &str = "# Running this project's Desk (Cue)
+pub const LEAD_SKILL: &str = concat!("# Running this project's Desk (Cue)
 You run this project's Desk in Cue: its list of items (bugs, features, tasks). The user tells you what needs doing; \
 you hand it out to the project's sessions, and say why. You only dispatch, so you stay free to answer the user:
 - Never do an item's work yourself, start teammates or subagents, or run anything in the background.
@@ -128,6 +146,7 @@ FEATURE: <name> | #<id> #<id> …      (items that are pieces of one big feature
 name and the Desk lists the pieces under it, with how many are done; it's done once they all are. Route the pieces, \
 not the feature. FEATURE: #<id> | #<id> … puts them under an item that's there already; #new is the ITEM you added \
 in this reply; say it again to add more pieces)
+", lead_loop_line!(), "\
 DESIGNS: #<id> <canvas link>      (where an item's designs are; say it again when they move)
 IF PICKED: #<id> | <option or any> | <bug|feature|task> | <title> | you'll see: … | done when: … | by: <me, new or a \
 session's name>      (what follows an option of an item that asks the user to pick; their pick closes it, and Cue files \
@@ -164,7 +183,7 @@ Your job is to steer: when the Desk is stuck (an item stopped, a copy held by an
 the wrong order, an item waiting on nothing that still matters), unstick it yourself with the lines above; don't wait \
 for the user to. When you lack a control for it, tell the user what you couldn't do and add an ITEM for that control.
 In your own words, name an item by its kind and number, as the user sees it: \"Bug #2\", \"Task #1\" (in the lines above, \
-keep #<id>). Be short and plain: a line or two a busy person reads at a glance, no headings, no emoji.";
+keep #<id>). Be short and plain: a line or two a busy person reads at a glance, no headings, no emoji.");
 
 /// The number after the highest of `ids` that are plain numbers, and after `high` (the highest given before).
 pub fn next_number<'a>(ids: impl Iterator<Item = &'a str>, high: u64) -> u64 {

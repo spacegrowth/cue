@@ -84,6 +84,27 @@ pub enum Line {
     /// The lead can't agree with another Desk's lead on the repository (#540, desk/escalate.rs): `DISAGREE: <Desk> |
     /// <its side>`. Cue asks the user, both sides quoted. `item`: the #id the words start with.
     Disagree { to: String, item: Option<String>, text: String },
+    /// A loop the lead drafts for you to start (#583): `LOOP: <project> | name: … | goal: … | done when: … | check: … |
+    /// rounds: … | time: … | spend: … | decisions: …`. Cue finds the project's folder and shows it as a card with
+    /// Start loop; nothing starts until you press it.
+    Loop(LoopDraft),
+}
+
+/// What a LOOP: line says (#583). A part with no label of its own goes on the one before it, so a goal or a check
+/// may hold a "|" (`check: npm test | tail -5`).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct LoopDraft {
+    pub project: String,
+    pub name: String,
+    pub goal: String,
+    pub done_when: String,
+    /// The check command; "" when the line says none (the loop's lead proposes one at its start).
+    pub check: String,
+    pub rounds: Option<u32>,
+    pub time_min: Option<u32>,
+    pub spend_usd: Option<f64>,
+    /// "one-way" | "every" | "none"; "" when not said.
+    pub decisions: String,
 }
 
 /// The Desk lines in `text`, in order.
@@ -209,8 +230,44 @@ fn one(t: &str) -> Option<Line> {
         "LANDS" => lands(body),
         "TO LEAD" => to_lead(body),
         "COPY" => copy(body),
+        "LOOP" => loop_line(body),
         _ => None,
     }
+}
+
+/// `LOOP: <project> | name: … | goal: … | done when: … | check: … | rounds: … | time: … | spend: … | decisions: …`
+/// (#583): None without a project.
+fn loop_line(body: &str) -> Option<Line> {
+    const LABELS: [&str; 8] = ["name", "goal", "done when", "check", "rounds", "time", "spend", "decisions"];
+    let ps = parts(body);
+    let project = ps.first()?.trim_matches(['`', '*', '"']).trim();
+    if project.is_empty() || project.contains(':') {
+        return None;
+    }
+    let mut got: Vec<(&str, String)> = Vec::new();
+    for p in &ps[1..] {
+        let label = p.split_once(':').and_then(|(k, _)| LABELS.iter().find(|l| k.trim().eq_ignore_ascii_case(l)));
+        match (label, got.last_mut()) {
+            (Some(l), _) => got.push((l, labelled(p, l).unwrap_or_default().to_string())),
+            (None, Some(last)) => last.1 = format!("{} | {p}", last.1),
+            (None, None) => {}
+        }
+    }
+    let said = |l: &str| got.iter().rev().find(|(k, _)| *k == l).map(|(_, v)| v.trim().to_string()).unwrap_or_default();
+    let digits = |v: String| v.trim_start_matches('$').split(|c: char| !(c.is_ascii_digit() || c == '.')).next().unwrap_or("").to_string();
+    let check = said("check").trim_matches('`').to_string();
+    let decisions = said("decisions").to_ascii_lowercase().replace("oneway", "one-way");
+    Some(Line::Loop(LoopDraft {
+        project: project.to_string(),
+        name: said("name"),
+        goal: said("goal"),
+        done_when: said("done when"),
+        check: if ["none", "no", "-", "\"\""].contains(&check.to_ascii_lowercase().as_str()) { String::new() } else { check },
+        rounds: digits(said("rounds")).parse().ok(),
+        time_min: digits(said("time")).parse().ok(),
+        spend_usd: digits(said("spend")).parse().ok(),
+        decisions: if ["one-way", "every", "none"].contains(&decisions.as_str()) { decisions } else { String::new() },
+    }))
 }
 
 /// `COPY: #<id> | in: <repo> | branch: <name> | why: …` (#557): a branch name git would take, no spaces.

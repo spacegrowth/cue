@@ -293,5 +293,5 @@ pub(crate) fn desk_line_start(line: &str) -> bool {
     let l = parse::unmarked(line.trim().trim_start_matches('`')).trim_start_matches('`');
     let Some((word, _)) = l.split_once(':') else { return false };
     let word = word.trim_end_matches(['*', '`']).trim();
-    matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "CHECK" | "CONTEXT" | "DESIGNS" | "IF PICKED" | "TITLE" | "SEE" | "SPLIT" | "CUT" | "MERGE" | "NOTE" | "FEATURE" | "CLOSE" | "TAKE COPY" | "LAND FIRST" | "COPY FIRST" | "START" | "PARK" | "HOLD" | "UNHOLD" | "TELL DESK" | "TELL DESKS" | "DISAGREE" | "UNPARK" | "DROP" | "PAUSE" | "RESUME" | "ANSWER" | "PASS" | "LANDS" | "TO LEAD" | "COPY") || word.eq_ignore_ascii_case("DECIDED")
+    matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "CHECK" | "CONTEXT" | "DESIGNS" | "IF PICKED" | "TITLE" | "SEE" | "SPLIT" | "CUT" | "MERGE" | "NOTE" | "FEATURE" | "CLOSE" | "TAKE COPY" | "LAND FIRST" | "COPY FIRST" | "START" | "PARK" | "HOLD" | "UNHOLD" | "TELL DESK" | "TELL DESKS" | "DISAGREE" | "UNPARK" | "DROP" | "PAUSE" | "RESUME" | "ANSWER" | "PASS" | "LANDS" | "TO LEAD" | "COPY" | "LOOP") || word.eq_ignore_ascii_case("DECIDED")
 }
