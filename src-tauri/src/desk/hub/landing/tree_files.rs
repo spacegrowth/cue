@@ -298,3 +298,17 @@ mod tests {
         assert!(names_item("Desk item #12: x\nDesk item #1: y", "1"));
     }
 }
+
+/// Why folder `t.path`, on item `id`'s record, isn't that item's to remove (#558): another item's copy is there now,
+/// or the copy there is on another branch. None when it's the item's own (or gone).
+pub(crate) fn not_its_own(items: &[DeskItem], id: &str, t: &ItemTree) -> Option<String> {
+    if let Some(o) = items.iter().find(|i| i.id != id && i.tree.as_ref().is_some_and(|o| same_dir(&o.path, &t.path))) {
+        return Some(format!("#{}'s copy is there now", o.id));
+    }
+    // Only a copy of its own says its branch (no `.git` there: git would read the main checkout around it).
+    if t.branch.is_empty() || !std::path::Path::new(&t.path).join(".git").exists() {
+        return None;
+    }
+    let on = git("", &t.path, &[], &["symbolic-ref", "--short", "-q", "HEAD"]).map(|b| b.trim().to_string()).unwrap_or_default();
+    (!on.is_empty() && on != t.branch).then(|| format!("the copy there is on {on}, not {}", t.branch))
+}

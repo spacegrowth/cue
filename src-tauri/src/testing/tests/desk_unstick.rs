@@ -352,3 +352,25 @@ fn unpark_is_read_with_a_dash_or_a_bar() {
         assert_eq!(lines(l), [Line::Unstick { what: "unpark".into(), id: "12".into(), commit: String::new(), why: "you asked".into() }], "{l}");
     }
 }
+
+#[test]
+fn taking_back_a_copy_whose_record_points_at_another_items_folder_leaves_that_folder_alone() {
+    // #558: an item's copy record left pointing at a folder another item's copy is in now.
+    let w = World::new();
+    let (_, project, id, _) = routed_with(&w, |w, _, _| w.hub().desk_hold_copies(&top(w), &[3]), |_, _, _| {});
+    let f = footer(&w, &project);
+    let other = item(&w, &project, "Footer");
+    let theirs = other["tree"]["path"].as_str().unwrap_or_else(|| panic!("no copy: {other}")).to_string();
+    std::fs::write(std::path::Path::new(&theirs).join("b.txt"), "footer work\n").unwrap();
+    w.hub().write(|st| st.desk.item_mut(&id).and_then(|i| i.tree.as_mut()).unwrap().path = theirs.clone());
+    ends(&w, &lead_of(&w, &project), &format!("TAKE COPY: #{id} | why: it stalled"));
+    w.advance(1000);
+    w.settle();
+    let it = item(&w, &project, "Header jumps");
+    assert!(it["tree"].is_null(), "its own record goes: {it}");
+    let other = item(&w, &project, "Footer");
+    assert_eq!((other["state"].as_str(), other["tree"]["path"].as_str()), (Some("working"), Some(theirs.as_str())), "#{f} keeps its copy: {other}");
+    assert_eq!(std::fs::read_to_string(std::path::Path::new(&theirs).join("b.txt")).unwrap(), "footer work\n", "and its work in it");
+    assert!(desk(&w, &project)["kept"].as_array().is_none_or(|k| k.is_empty()), "#{f}'s folder isn't listed as #{id}'s kept copy");
+    assert!(git(std::path::Path::new(&top(&w)), &["branch", "--list", &format!("desk/{id}")]).contains(&format!("desk/{id}")), "#{id}'s branch kept");
+}

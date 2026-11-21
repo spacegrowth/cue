@@ -182,9 +182,13 @@ impl Hub {
     }
 
     /// A dropped item's copy: kept and listed when it has work in it, else removed (its slot free for the next).
+    /// Only its own folder: one another item's copy is in now (a record left pointing there) is left alone, and so is
+    /// its branch, which may hold its work (#558).
     fn desk_tree_dropped(&self, it: DeskItem) {
         let Some(t) = it.tree.clone() else { return };
-        if t.keep {
+        if let Some(why) = self.read(|st| not_its_own(&st.desk.items, &it.id, &t)) {
+            eprintln!("cue: desk: #{}'s copy record pointed at {}, left as it is: {why}", it.id, t.path);
+        } else if t.keep {
             // A branch the lead named (#557): its work stays on it, the copy goes.
             self.desk_named_dropped(&it.id, &it.title, &t);
         } else if has_work(&t) {
@@ -211,7 +215,14 @@ impl Hub {
     pub(crate) fn desk_kept_remove(&self, id: &str) -> Result<(), String> {
         let k = self.read(|st| st.desk.kept.iter().find(|k| k.id == id).cloned()).ok_or("no such kept copy")?;
         let t = ItemTree { repo: k.repo.clone(), path: k.path.clone(), branch: k.branch.clone(), ..Default::default() };
-        remove(&t);
+        // Its folder is another item's copy now (#558): only its branch goes (git keeps one checked out there).
+        match self.read(|st| not_its_own(&st.desk.items, id, &t)) {
+            Some(why) => {
+                eprintln!("cue: desk: #{id}'s kept copy at {} left as it is: {why}", t.path);
+                let _ = git("", &t.repo, &[], &["branch", "-q", "-D", &t.branch]);
+            }
+            None => remove(&t),
+        }
         crate::db::desk_drop_kept(id);
         self.write(|st| st.desk.kept.retain(|x| x.id != id));
         self.changed();
