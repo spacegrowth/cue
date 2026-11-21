@@ -11,6 +11,14 @@ impl Hub {
     /// Item `id`'s changes as one unified diff, paths from each folder (with more than one, under that folder's name):
     /// { diff, machine }. Nothing to show (done with no commit, say): an empty diff.
     pub(crate) fn desk_item_diff(&self, id: &str) -> Result<Value, String> {
+        // A dropped item's kept copy, or one picked up again whose copy hasn't moved back yet (#608): what's in it.
+        let kept = self.read(|st| match st.desk.item(id) {
+            Some(i) => i.kept_copy.clone().filter(|_| i.tree.is_none()),
+            None => st.desk.kept.iter().find(|k| k.id == id).cloned(),
+        });
+        if let Some(k) = kept {
+            return Ok(json!({ "diff": crate::desk::hub::landing::tree_files::kept_diff(&k), "machine": "" }));
+        }
         let it = self.read(|st| st.desk.item(id).cloned()).ok_or("no such item")?;
         let (machine, diff) = match (it.state.as_str(), &it.commit_wait) {
             // Committed as its holder said DONE (desk/hub/landing/finish.rs): its commit.

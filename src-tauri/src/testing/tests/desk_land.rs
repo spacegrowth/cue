@@ -267,6 +267,40 @@ fn a_dropped_items_copy_with_work_is_kept_and_listed_and_one_without_is_removed(
 }
 
 #[test]
+fn a_kept_copy_shows_its_changes_and_picked_up_again_goes_back_to_the_lead_and_its_work_moves_into_its_new_copy() {
+    let w = World::new();
+    let (dir, project, id, h, path) = routed(&w);
+    std::fs::write(path.join("a.txt"), "half done\n").unwrap();
+    w.hub().desk_item_act(&id, "drop", "").unwrap();
+    w.settle();
+    let at = PathBuf::from(desk(&w, &project)["kept"][0]["path"].as_str().unwrap());
+    // Its Diff: the work in the kept copy, against where the item started.
+    let diff = w.hub().desk_item_diff(&id).unwrap();
+    assert!(diff["diff"].as_str().unwrap().contains("+half done"), "{diff}");
+    // Pick up again: back on the Desk, new, off Kept copies, and handed to the lead to route.
+    let it = w.hub().desk_item_act(&id, "pickup_kept", "").unwrap();
+    assert_eq!(it.state, "new");
+    assert!(desk(&w, &project)["kept"].as_array().is_none_or(Vec::is_empty) && crate::db::desk_kept().is_empty());
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "new");
+    assert!(at.exists(), "its copy stays where it was until it's routed");
+    // Picked up twice: refused, it's on the Desk already.
+    assert!(w.hub().desk_item_act(&id, "pickup_kept", "").is_err());
+    // Routed: the kept copy moves into its working folder, on its own branch, work and all.
+    let lead = desk(&w, &project)["lead"]["sid"].as_str().unwrap().to_string();
+    ends(&w, &lead, &format!("ROUTE: #{id} -> cue-teams | why: it had started it"));
+    w.advance(1000);
+    let it = item(&w, &project, "Header jumps");
+    let now = PathBuf::from(it["tree"]["path"].as_str().unwrap_or_else(|| panic!("no copy: {it}")));
+    assert!(!at.exists(), "moved, not copied: {}", at.display());
+    assert_eq!(std::fs::read_to_string(now.join("a.txt")).unwrap(), "half done\n", "its work came with it");
+    assert_eq!(git(&now, &["branch", "--show-current"]).trim(), format!("desk/{id}"));
+    assert!(it["kept_copy"].is_null(), "{it}");
+    let told: Vec<String> = w.hosted.sent().into_iter().filter(|(s, t)| *s == h && t.contains(&format!("Desk item #{id}"))).map(|(_, t)| t).collect();
+    assert!(told.iter().any(|t| t.contains("from before it was dropped")), "{told:?}");
+    let _ = dir;
+}
+
+#[test]
 fn a_dropped_items_copy_with_nothing_in_it_is_removed() {
     let w = World::new();
     let (dir, project, id, _, path) = routed(&w);

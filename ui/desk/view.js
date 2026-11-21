@@ -25,7 +25,14 @@ function deskBox(d) {
     // Who gets it, as deskSendBox sends it: ready to check, it goes back to its holder; begun by a live session, straight
     // to it, sent as about the item, and the lead gets no copy (#276); else (no holder, not begun yet, or done) to the lead.
     const it = deskItem(d.project, o.id), hs = deskHolderSid(it);
-    if (it && hs && sessionOf(hs) && !["to_check", "done", "queued", "new", "dropped"].includes(it.state)) {
+    // A dropped item's kept copy (#608): to the session that held it, as its own chat's box (the item is off the Desk).
+    if (it?.kept && hs && sessionOf(hs)) {
+      to = { sid: hs };
+      pre = `To ${deskHolderName(hs, it.holder.kind === "crew" ? "" : it.holder.name)}, who held it`;
+      ph = "Write to it here…";
+    }
+    else if (it?.kept) { to = { project: d.project }; ({ pre, ph } = deskToLine(lead, null)); }
+    else if (it && hs && sessionOf(hs) && !["to_check", "done", "queued", "new", "dropped"].includes(it.state)) {
       to = it.holder.kind === "crew" ? { project: d.project, sid: hs, mate: it.holder.name, item: it.id } : { project: d.project, sid: hs, item: it.id };
       pre = it.holder.kind === "crew" ? `To ${it.holder.name}, through ${deskHolderName(hs)} · sent as #${it.id}` : `To ${it.holder.name}, who has this item · sent as #${it.id}`;
       ph = "Write to it here…";

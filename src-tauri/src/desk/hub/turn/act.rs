@@ -2,7 +2,7 @@
 //! send back, start now, put before, pick an option, drop) and undo.
 
 use crate::desk::hub::prelude::*;
-use crate::desk::{DeskDecision, DeskItem, Holder};
+use crate::desk::{DeskDecision, DeskItem, Holder, KeptTree};
 use crate::desk::hub::core::members::join;
 use crate::desk::hub::core::desk::{Effects, NewStart, ask_of, at_work, holder_of, rule_of, secs};
 use crate::desk::hub::core::view::shown;
@@ -448,7 +448,7 @@ fn drop_item(st: &mut Store, id: &str, pr_open: &str, now: u64, fx: &mut Effects
     }
     // What waited on it waits on what it waited on, or starts now.
     let ahead = gone.as_ref().and_then(|g| g.after.clone());
-    fx.trees_gone.extend(gone.filter(|g| g.tree.is_some()));
+    fx.trees_gone.extend(gone.filter(|g| g.tree.is_some() || g.kept_copy.is_some()));
     fx.dropped.push(id.to_string());
     hand_on(st, id, ahead.as_deref(), now, fx);
     false
@@ -878,6 +878,46 @@ impl Hub {
         self.desk_add_with(project, kind, title, "", done_when, holder, &[])
     }
 
+    /// Pick up again (#608): dropped item `id` back on its Desk from its kept copy, new, for the lead to route (as an
+    /// item you add). The copy, its branch and work as they were, goes back to it once its holder gets a working slot
+    /// (desk/hub/landing/trees.rs); off the Kept copies list now.
+    pub(crate) fn desk_kept_pickup(&self, id: &str) -> Result<DeskItem, String> {
+        let now = now_ms();
+        let fx = self.write(|st| -> Result<Effects, String> {
+            let k = st.desk.kept.iter().find(|k| k.id == id).cloned().ok_or("no such kept copy")?;
+            if st.desk.item(id).is_some() {
+                return Err(format!("#{id} is on the Desk already"));
+            }
+            let was = k.item.as_deref().cloned().unwrap_or_default();
+            let it = DeskItem {
+                id: id.to_string(),
+                project: k.project.clone(),
+                kind: if was.kind.is_empty() { "task".into() } else { was.kind.clone() },
+                title: if was.title.is_empty() { k.title.clone() } else { was.title.clone() },
+                done_when: was.done_when.clone(),
+                see: was.see.clone(),
+                images: was.images.clone(),
+                from: if was.from.is_empty() { "you".into() } else { was.from.clone() },
+                created: if was.created == 0 { secs(now) } else { was.created },
+                updated: secs(now),
+                state: "new".into(),
+                kept_copy: Some(KeptTree { item: None, ..k.clone() }),
+                ..Default::default()
+            };
+            let mut fx = Effects { items: vec![id.to_string()], ..Default::default() };
+            if st.desk.lead_sid(&k.project).is_some() {
+                fx.news.push((k.project.clone(), id.to_string()));
+            }
+            st.desk.kept.retain(|x| x.id != id);
+            st.desk.items.push(it);
+            you_wrote(st, &k.project, id, &format!("Picked #{id} up again, with its kept copy (branch {})", k.branch), "to the lead to route", now, &mut fx);
+            Ok(fx)
+        })?;
+        crate::db::desk_drop_kept(id);
+        self.desk_done(fx);
+        self.item_shown(id).ok_or_else(|| "no such item".into())
+    }
+
     /// You gave item `id` to session `sid`: see `give`. The item as it is now.
     pub(crate) fn desk_give(&self, id: &str, sid: &str) -> Result<DeskItem, String> {
         let now = now_ms();
@@ -909,6 +949,7 @@ impl Hub {
             }
             "install_now" => return self.desk_install_now(id),
             "rerun" => return self.desk_rerun_landing(id),
+            "pickup_kept" => return self.desk_kept_pickup(id),
             "remove_kept" => {
                 self.desk_kept_remove(id)?;
                 return Ok(DeskItem { id: id.to_string(), state: "dropped".into(), ..Default::default() });

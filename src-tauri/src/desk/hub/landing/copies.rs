@@ -101,6 +101,8 @@ fn users(st: &Store, except: &str) -> Vec<(String, &'static str, bool)> {
     let mut out: Vec<(String, &'static str, bool)> = Vec::new();
     out.extend(st.desk.items.iter().filter(|i| i.id != except).filter_map(|i| i.tree.as_ref()).map(|t| (t.path.clone(), "an item works in it", true)));
     out.extend(st.desk.kept.iter().map(|k| (k.path.clone(), "a dropped item's kept copy", false)));
+    // Picked up again (#608), its copy not moved back yet.
+    out.extend(st.desk.items.iter().filter_map(|i| i.kept_copy.as_ref()).map(|k| (k.path.clone(), "a picked-up item's kept copy", false)));
     let here = |o: &crate::model::Origin| (o.machine.is_empty() && !o.cwd.is_empty()).then(|| (o.cwd.clone(), "a session works in it", false));
     out.extend(st.sessions.iter().filter_map(|s| here(&s.origin)));
     out.extend(st.parked.iter().filter_map(|p| here(&p.session.origin)));

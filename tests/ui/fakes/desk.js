@@ -108,6 +108,16 @@ CueBridge.area("desk", (w) => {
       return null;
     },
     desk_item_act: ({ id, act, text, images }) => {
+      // A dropped item's kept copy (#608): Remove deletes it; Pick up again puts its item back, new, for the lead,
+      // with the copy (desk/hub/turn/act.rs desk_kept_pickup).
+      const keptIn = desk().projects.find((d) => (d.kept || []).some((k) => k.id === id));
+      if (keptIn && (act === "remove_kept" || act === "pickup_kept")) {
+        const k = keptIn.kept.find((x) => x.id === id), t = secs();
+        keptIn.kept = keptIn.kept.filter((x) => x.id !== id);
+        if (act === "pickup_kept") keptIn.items.push({ ...(k.item || { kind: "task", title: k.title, see: "", done_when: "" }), id, project: k.project, state: "new", holder: null, kept_copy: { ...k, item: undefined }, after: null, ask: null, files: [], updated: t, done_at: null });
+        w.changed();
+        return act === "pickup_kept" ? itemOf(id) : { id, state: "dropped" };
+      }
       const it = itemOf(id);
       if (!it) throw "No such item";
       const t = secs();

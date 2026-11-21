@@ -13,6 +13,7 @@ pub(crate) mod hub;
 pub(crate) mod lands;
 pub(crate) mod one_way;
 pub mod model;
+pub mod copies;
 pub mod installer;
 pub mod tell;
 pub mod parse;

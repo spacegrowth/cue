@@ -226,7 +226,7 @@ function deskItemPane(i, d, foot = "") {
   const decs = all.filter((c) => c.call);
   // Its Files tab (#149): each file it changed with its counts, a click opening its diff; while it's worked on, what's
   // changed so far (the files it's on, till they've changed).
-  const changed = deskFilesChanged(i), checking = i.state === "to_check" || i.state === "done";
+  const changed = deskFilesChanged(i), checking = deskChecking(i);
   const read = deskDiffs.get(i.id)?.files, nFiles = (checking ? read?.length : read?.length || null) ?? (i.commit_wait?.files || i.files || []).length;
   const files = changed ? `<div class="dk-fcs">${changed}</div>` : "";
   // A feature nobody holds is its pieces (#282): its page opens on them. The Steps tab of before is its Record tab.
@@ -257,7 +257,7 @@ function deskItemPane(i, d, foot = "") {
   // Its holder's chat from when it took the item (#575); an item from before stints were kept, all of it, folded.
   const span = (i.stints || []).some((t) => t.sid === s?.session_id) ? (deskStintLeft(i, s.session_id) ? "while it had this item" : "from when it took this item") : "other items' turns folded";
   const sub = s ? `<b>${esc(i.holder.kind === "crew" ? deskHolderName(s.session_id) : i.holder.name)}</b>'s chat${deskMachTag(i)} · ${span}` : `<span class="dk-state">${deskItemMeta(i, d)}</span>`;
-  return deskPage({ page: "item", kind: i.kind, panel: deskItemSide(i, d), aside: ` data-side-for="${esc(i.id)}"`, back: deskBack(deskLeadName(d) || "Back"), mark: `${deskNum(i)} · `, title: esc(i.title), meta: sub, main, foot });
+  return deskPage({ page: "item", kind: i.kind, panel: i.kept ? deskKeptSide(i, d) : deskItemSide(i, d), aside: ` data-side-for="${esc(i.id)}"`, back: deskBack(deskLeadName(d) || "Back"), mark: `${deskNum(i)} · `, title: esc(i.title), meta: sub, main, foot });
 }
 /** The session whose chat an item's page shows: its holder's (a crew member's lead's), when Cue has it. */
 function deskItemChatOf(i) {
@@ -479,6 +479,18 @@ function deskItemSide(i, d) {
   const drop = i.state !== "done" ? `<button class="btn small dk-drop${armed ? " armed" : ""}" data-desk-act="drop" data-id="${esc(i.id)}">${armed ? "Drop it" : "Drop this item"}</button>` : "";
   const foot = open || drop ? `<section class="dk-psec dk-sfoot">${open}${drop}</section>` : "";
   return `${now}${see}${tryIt}${pics}${deskItemFiles(i)}${foot}`;
+}
+/** A dropped item's page, from its kept copy (#608): dropped, where its work is kept, Pick up again (back on the Desk
+ *  with this copy, for the lead to route) and Remove (two clicks: the copy and its branch go); what it changed, with
+ *  Diff; its session, to open. */
+function deskKeptSide(i, d) {
+  const k = i.kept, id = esc(i.id), armed = deskDropArm === i.id, sid = deskHolderSid(i), lead = deskLeadName(d) || "the lead";
+  const acts = `<button class="btn small primary" data-desk-act="pickup_kept" data-id="${id}">Pick up again</button><div class="dk-acts"><button class="btn small dk-drop${armed ? " armed" : ""}" data-desk-act="remove_kept" data-id="${id}">${armed ? "Remove it and its work" : "Remove"}</button></div>`;
+  const say = `Its work is kept in ${esc(k.path)} on ${esc(k.branch)}. Pick up again puts it back on the Desk with this copy, for ${esc(lead)} to give out.`;
+  const now = deskPnow({ dot: "stop", word: "Dropped · copy kept", say, acts }).replace('<h4 class="dk-psh">Now</h4>', '<h4 class="dk-psh">This item</h4>')
+    .replace("</section>", `<div class="dk-pmeta">Dropped ${ago(k.at)} ago</div></section>`);
+  const open = sid && sessionOf(sid) ? `<section class="dk-psec dk-sfoot"><button class="btn small" ${deskChatAttrs(sid, d)}>Open ${esc(deskHolderName(sid, i.holder?.kind === "crew" ? "" : i.holder?.name))}</button></section>` : "";
+  return `${now}${deskItemFiles(i)}${open}`;
 }
 /** Item `i`'s steps for its Record tab (#418, the Steps tab of before): its hand-offs and what you wrote about it.
  *  The same step said again in a row is one (its last), not several. */

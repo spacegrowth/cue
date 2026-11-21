@@ -150,39 +150,62 @@ impl Hub {
                     });
                 }
             }
-            Some(Some(mut t)) => match prepare(&t, id) {
-                Ok((base, path)) => {
-                    t.path = path;
-                    self.write(|st| {
-                        if let Some(i) = st.desk.item_mut(id).and_then(|i| i.tree.as_mut()) {
-                            (i.base, i.path) = (base.clone(), t.path.clone());
+            Some(Some(t)) => self.desk_tree_made(fx, id, to, t),
+        }
+    }
+
+    /// Item `id` claimed copy `t`: made (or its kept copy moved in, #608), and its holder's message says where; or,
+    /// when that fails, it works in the shared folder, told so when the copy was asked for or held its work.
+    fn desk_tree_made(&self, fx: &mut Effects, id: &str, to: &str, mut t: ItemTree) {
+        // Picked up again (#608): its kept copy moves into the slot, on its own branch.
+        let kept = self.read(|st| st.desk.item(id).and_then(|i| i.kept_copy.clone()));
+        let made = match &kept {
+            Some(k) => {
+                t.branch = k.branch.clone();
+                from_kept(&t, k)
+            }
+            None => prepare(&t, id),
+        };
+        match made {
+            Ok((base, path)) => {
+                t.path = path;
+                self.write(|st| {
+                    if let Some(i) = st.desk.item_mut(id) {
+                        i.kept_copy = None;
+                        if let Some(it) = i.tree.as_mut() {
+                            (it.base, it.path, it.branch) = (base.clone(), t.path.clone(), t.branch.clone());
                         }
-                    });
-                    let line = tree_line(&t);
-                    for (_, text) in fx.sends.iter_mut().filter(|(s, text)| *s == to && names_item(text, id) && !text.contains(&t.path)) {
-                        text.push('\n');
-                        text.push_str(&line);
+                    }
+                });
+                let mut line = tree_line(&t);
+                if kept.is_some() {
+                    line.push_str(" It holds this item's work from before it was dropped: read it first (git status, git log).");
+                }
+                for (_, text) in fx.sends.iter_mut().filter(|(s, text)| *s == to && names_item(text, id) && !text.contains(&t.path)) {
+                    text.push('\n');
+                    text.push_str(&line);
+                }
+            }
+            Err(e) => {
+                // Its holder works in the shared folder, as before.
+                eprintln!("cue: desk: couldn't make #{id} its own copy: {e}");
+                // One the lead asked for (COPY, #557), or its kept copy (#608): it and the holder are told, so the
+                // work isn't done elsewhere unknowingly.
+                if t.keep || kept.is_some() {
+                    let what = if kept.is_some() { "move its kept copy back" } else { "make its copy" };
+                    let words = format!("Desk item #{id}: Cue couldn't {what} of {} on branch {}: {e}. Say where to work before changing files.", t.repo, t.branch);
+                    fx.sends.push((to.to_string(), words.clone()));
+                    if let Some(lead) = self.read(|st| st.desk.item(id).and_then(|i| st.desk.lead_sid(&i.project)).map(str::to_string)) {
+                        fx.sends.push((lead, words));
                     }
                 }
-                Err(e) => {
-                    // Its holder works in the shared folder, as before.
-                    eprintln!("cue: desk: couldn't make #{id} its own copy: {e}");
-                    // One the lead asked for (COPY, #557): it and the holder are told, so the work isn't done elsewhere unknowingly.
-                    if t.keep {
-                        let words = format!("Desk item #{id}: Cue couldn't make its copy of {} on branch {}: {e}. Say where to work before changing files.", t.repo, t.branch);
-                        fx.sends.push((to.to_string(), words.clone()));
-                        if let Some(lead) = self.read(|st| st.desk.item(id).and_then(|i| st.desk.lead_sid(&i.project)).map(str::to_string)) {
-                            fx.sends.push((lead, words));
-                        }
+                // Not in line again: a copy that can't be made would be tried at every free one (#566).
+                self.write(|st| {
+                    if let Some(i) = st.desk.item_mut(id) {
+                        (i.tree, i.no_copy_wait) = (None, false);
                     }
-                    // Not in line again: a copy that can't be made would be tried at every free one (#566).
-                    self.write(|st| {
-                        if let Some(i) = st.desk.item_mut(id) {
-                            (i.tree, i.no_copy_wait) = (None, false);
-                        }
-                    });
-                }
-            },
+                });
+            }
         }
     }
 
@@ -190,6 +213,16 @@ impl Hub {
     /// Only its own folder: one another item's copy is in now (a record left pointing there) is left alone, and so is
     /// its branch, which may hold its work (#558).
     fn desk_tree_dropped(&self, it: DeskItem) {
+        // Picked up again (#608) and dropped before its kept copy moved back: listed as kept again, as it was.
+        if let Some(mut k) = it.kept_copy.clone().filter(|_| it.tree.is_none()) {
+            (k.at, k.item) = (now_ms(), Some(Box::new(DeskItem { state: "dropped".into(), kept_copy: None, ..it.clone() })));
+            crate::db::desk_put_kept(&k);
+            self.write(|st| {
+                st.desk.kept.retain(|x| x.id != k.id);
+                st.desk.kept.push(k);
+            });
+            return;
+        }
         let Some(t) = it.tree.clone() else { return };
         let copies = self.read(|st| other_copies(&st.desk.items, &it.id));
         if let Some(why) = not_its_own(&copies, &t) {
@@ -207,7 +240,7 @@ impl Hub {
             }
             // Fetched from another machine: its work is in the kept copy now.
             let _ = git("", &t.repo, &[], &["update-ref", "-d", &format!("refs/cue/remote/{}", it.id)]);
-            let k = KeptTree { id: it.id.clone(), title: it.title.clone(), project: it.project.clone(), repo: t.repo.clone(), path, branch: t.branch.clone(), at: now_ms() };
+            let k = KeptTree { id: it.id.clone(), title: it.title.clone(), project: it.project.clone(), repo: t.repo.clone(), path, branch: t.branch.clone(), at: now_ms(), base: t.base.clone(), item: Some(Box::new(DeskItem { state: "dropped".into(), tree: None, kept_copy: None, ..it.clone() })) };
             crate::db::desk_put_kept(&k);
             self.write(|st| {
                 st.desk.kept.retain(|x| x.id != k.id);

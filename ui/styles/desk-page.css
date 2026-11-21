@@ -324,10 +324,17 @@
 .dk-cmenu button { all: unset; padding: 6px 10px; border-radius: var(--radius-qp); font-size: var(--type-body); cursor: pointer; white-space: nowrap; }
 .dk-cmenu button:hover, .dk-cmenu button:focus-visible { background: var(--panel-2); }
 
-/* A dropped item's kept copy (desk/hub/landing/trees.rs): its title and where it is, Remove at its end (red once armed). */
-.dk-it.dk-kept { display: flex; align-items: center; gap: 8px; cursor: default; }
-.dk-kept-t { flex: 1; min-width: 0; }
-.dk-kept-s { color: var(--muted); font-size: var(--type-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A dropped item's kept copy (desk/hub/landing/trees.rs): its title and where it is (a click opens its page, #608),
+   what it changed with Diff, then Pick up again and Remove at its end (red once armed). */
+.dk-it.dk-kept { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; cursor: default; }
+/* In a narrow list the title takes the whole line and what it changed, Pick up again and Remove go under it, at the right. */
+.dk-kept-t { all: unset; flex: 1 1 220px; min-width: 0; cursor: pointer; border-radius: var(--radius-qp); }
+.dk-kept-t:hover b, .dk-kept-t:focus-visible b { text-decoration: underline; }
+.dk-kept-t:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dk-kept-s { display: block; color: var(--muted); font-size: var(--type-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-kept-f { flex: none; margin-left: auto; color: var(--muted); font-size: var(--type-small); white-space: nowrap; }
+button.dk-kept-f { all: unset; flex: none; margin-left: auto; padding: 2px 8px; border-radius: var(--radius-pill); background: var(--panel-2); color: var(--ink); font-size: var(--type-small); white-space: nowrap; cursor: pointer; }
+button.dk-kept-f:hover, button.dk-kept-f:focus-visible { background: color-mix(in srgb, var(--ink) 8%, var(--panel-2)); }
 .dk-kept .btn.armed { color: var(--deny); }
 
 /* Away (#361, #373 pick C): a switch in the Items head (with until when and the spend while on), its rules card, and

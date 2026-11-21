@@ -5,7 +5,7 @@ use crate::desk::hub::landing::git::{git, git_said};
 use crate::desk::hub::landing::main_line::{main_checkout, same_dir};
 use crate::desk::hub::landing::trees::TREES;
 use crate::desk::hub::prelude::*;
-use crate::desk::{DeskItem, ItemTree};
+use crate::desk::{DeskItem, ItemTree, KeptTree};
 
 /// The build folder Cue's copies share, under `TREES`.
 pub(crate) const SHARED_TARGET: &str = "desk-target";
@@ -74,6 +74,53 @@ pub(crate) fn prepare(t: &ItemTree, id: &str) -> Result<(String, String), String
         link_shared(&t.repo, &path);
     }
     Ok((base, path))
+}
+
+/// Kept copy `k` (#608) moved back into working slot `t` for its item, its branch and work (committed or not) as they
+/// were: the commit it started from, and its folder. A leftover at the slot is cleared as `prepare` clears one.
+pub(crate) fn from_kept(t: &ItemTree, k: &KeptTree) -> Result<(String, String), String> {
+    let _ = git("", &t.repo, &[], &["worktree", "prune"]);
+    if !std::path::Path::new(&k.path).join(".git").exists() {
+        return Err(format!("its kept copy at {} is gone", k.path));
+    }
+    let mut path = t.path.clone();
+    if std::path::Path::new(&path).exists() {
+        let (_, onto) = main_checkout(&t.repo).ok_or("no main checkout")?;
+        let main = rev(&t.repo, &onto).ok_or("no main line")?;
+        if left_has_work(&t.repo, &path, &main) {
+            path = format!("{}-{}", t.path, k.id);
+            if std::path::Path::new(&path).exists() {
+                return Err(format!("{} and {path} are both in use", t.path));
+            }
+        } else {
+            remove(&ItemTree { path: path.clone(), branch: String::new(), ..t.clone() });
+        }
+    }
+    git_said("", &t.repo, &[], &["worktree", "move", &k.path, &path]).map_err(|e| crate::desk::hub::landing::git::because("git worktree move failed".into(), &e))?;
+    if crate::desk::hub::lead::checks::builds_this_cue(&t.repo) {
+        link_shared(&t.repo, &path);
+    }
+    Ok((kept_base(k), path))
+}
+
+/// Where kept copy `k`'s work starts: as saved, else where its branch left the main line (one kept before #608).
+pub(crate) fn kept_base(k: &KeptTree) -> String {
+    if !k.base.is_empty() {
+        return k.base.clone();
+    }
+    let onto = main_checkout(&k.repo).map(|(_, b)| b).unwrap_or_else(|| "main".into());
+    git("", &k.repo, &[], &["merge-base", &k.branch, &onto]).map(|s| s.trim().to_string()).unwrap_or_default()
+}
+
+/// What kept copy `k` changed (#608): everything in it, committed or not, new files too, against where it started.
+/// "" when it can't be read (its folder gone, say).
+pub(crate) fn kept_diff(k: &KeptTree) -> String {
+    let Some(work) = snapshot(&k.path) else { return String::new() };
+    let base = kept_base(k);
+    if base.is_empty() {
+        return String::new();
+    }
+    git("", &k.repo, &[], &["diff", "--no-color", "--no-ext-diff", "--no-textconv", &base, &work]).unwrap_or_default()
 }
 
 /// Whether a copy left at `path` (its item's start unknown) holds work: a change not committed, a commit not on the

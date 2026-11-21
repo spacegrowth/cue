@@ -19,7 +19,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | Lock acquisitions | 276 |
 | Lock-graph edges | 53 |
 | Spawn sites | 90 |
-| External calls: fs / db / process / notify / login / socket | 497 / 231 / 58 / 4 / 1 / 4 |
+| External calls: fs / db / process / notify / login / socket | 500 / 233 / 58 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -488,7 +488,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (497)
+### fs (500)
 
 | In | Call | Times |
 |---|---|---|
@@ -575,6 +575,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `desk/hub/landing/tree_files.rs::exclude_trees` | create_dir_all | 1 |
 | `desk/hub/landing/tree_files.rs::exclude_trees` | read_to_string | 1 |
 | `desk/hub/landing/tree_files.rs::exclude_trees` | write | 1 |
+| `desk/hub/landing/tree_files.rs::from_kept` | Path::exists | 3 |
 | `desk/hub/landing/tree_files.rs::has_work` | Path::exists | 1 |
 | `desk/hub/landing/tree_files.rs::left_has_work` | Path::exists | 1 |
 | `desk/hub/landing/tree_files.rs::left_has_work` | read_dir | 1 |
@@ -915,7 +916,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `voice/talk.rs::save` | write | 1 |
 | `voice/talk.rs::set` | write | 1 |
 
-### db (231)
+### db (233)
 
 | In | Call | Times |
 |---|---|---|
@@ -1066,7 +1067,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `desk/hub/core/view.rs::Hub::desk_moves_page` | db::desk_moves_page | 1 |
 | `desk/hub/landing/remote_item.rs::Hub::remote_drop` | db::desk_put_item | 1 |
 | `desk/hub/landing/trees.rs::Hub::desk_kept_remove` | db::desk_drop_kept | 1 |
-| `desk/hub/landing/trees.rs::Hub::desk_tree_dropped` | db::desk_put_kept | 1 |
+| `desk/hub/landing/trees.rs::Hub::desk_tree_dropped` | db::desk_put_kept | 2 |
 | `desk/hub/lead/feed.rs::Hub::desk_feed_flush` | db::desk_save | 1 |
 | `desk/hub/lead/feed.rs::Hub::desk_feed_save` | db::desk_feed_marks | 1 |
 | `desk/hub/lead/feed.rs::Hub::desk_feed_save` | db::desk_save | 1 |
@@ -1076,6 +1077,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `desk/hub/lead/run.rs::Hub::desk_start_new` | db::desk_put_space | 1 |
 | `desk/hub/theirs/theirs.rs::Hub::theirs` | db::ended_session | 1 |
 | `desk/hub/theirs/theirs.rs::ended_saved` | db::closed | 1 |
+| `desk/hub/turn/act.rs::Hub::desk_kept_pickup` | db::desk_drop_kept | 1 |
 | `desk/hub/turn/features.rs::Hub::feature_pieces_on_disk` | db::desk_get_item | 1 |
 | `hub/cache_tick.rs::ahead_would` | db::ahead_watched | 1 |
 | `hub/cache_tick.rs::ahead_would` | db::handoff | 1 |

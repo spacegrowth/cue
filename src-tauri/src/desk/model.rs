@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+pub use super::copies::{CopyOn, ItemTree, KeptTree, OnMachine, RemoteWork};
+
 /// Who holds an item: a live session (a plain one, or a lead with a crew), or one of a lead's crew.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct Holder {
@@ -214,6 +216,10 @@ pub struct DeskItem {
     /// holder started), while it has one: landed as one squash commit at its DONE (desk/hub/landing/trees.rs).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tree: Option<ItemTree>,
+    /// Picked up again from its kept copy (#608): that copy, moved back into a working slot (its branch and work as
+    /// they were) once it's routed and Cue gives it one (desk/hub/landing/trees.rs). Saved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kept_copy: Option<KeptTree>,
     /// Its work on another machine (#500): the holder there works on a branch of its own in its clone, and at DONE Cue
     /// pushes that branch from there, fetches it here and lands it like any copy's (desk/hub/landing/remote_item.rs).
     /// Saved.
@@ -543,89 +549,6 @@ pub struct Finish {
     pub unlanded: usize,
 }
 
-/// An item's own copy of its repository (desk/hub/landing/trees.rs): the main checkout it's from, the copy's folder, its
-/// branch ("desk/<item>"), the main line's commit it started from, and which of the repository's copies it is (1..).
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
-pub struct ItemTree {
-    pub repo: String,
-    pub path: String,
-    pub branch: String,
-    #[serde(default)]
-    pub base: String,
-    #[serde(default)]
-    pub slot: u32,
-    /// A branch the lead named for it (COPY, #557), in a repository of its choosing (the add-on's, say): its work is
-    /// committed on that branch and stays there. Never landed on a main line, and the branch is never removed.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub keep: bool,
-    /// A copy of Cue's add-on (#565): the main checkout of the Cue it's built into. At its DONE its branch is merged
-    /// into the add-on's main line and that Cue installed with it, as Cue's own items land.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub addon_of: String,
-}
-
-/// An item's work on another machine (#500, docs/desk-remote-items-plan.md).
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
-pub struct RemoteWork {
-    /// The machine (its name in Settings → Machines) and the folder of the clone there.
-    pub machine: String,
-    pub folder: String,
-    /// Its branch there ("desk/<id>"), the remote it's pushed to, and the main line it starts from and lands on.
-    pub branch: String,
-    pub remote: String,
-    pub onto: String,
-    /// Its last commit as Cue last pushed it, and when (ms; 0: not yet).
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub sha: String,
-    #[serde(default)]
-    pub pushed_at: u64,
-    /// Why its DONE waits ("Machine not answering", "Waiting for its branch"), and when Cue last tried (ms).
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub wait: String,
-    #[serde(default)]
-    pub tried_at: u64,
-    /// Since when its machine hasn't answered (ms): worked out as it's shown, never saved.
-    #[serde(default)]
-    pub quiet_since: u64,
-    /// The lead was told its machine is quiet (once per quiet spell). Saved.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub quiet_told: bool,
-    /// Tries in a row its DONE stopped on something that won't mend by itself (desk/hub/landing/remote_item.rs).
-    #[serde(default)]
-    pub fails: u32,
-}
-
-/// Where a new session for an item starts when not on this Mac: the machine and the folder of the clone there.
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
-pub struct OnMachine {
-    pub machine: String,
-    pub folder: String,
-}
-
-/// The copy the lead asked for an item (`COPY: #<id> | in: <repo> | branch: <name>`, #557): the main checkout of the
-/// repository it's cut from, and the branch it works on (desk/hub/landing/named_copy.rs).
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
-pub struct CopyOn {
-    pub repo: String,
-    pub branch: String,
-    /// The repository is Cue's add-on (`in: add-on`, #565): the main checkout of the Cue it's built into. Its work
-    /// then lands on the add-on's main line and that Cue is installed with it.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub cue: String,
-}
-
-/// A dropped item's copy that had work in it, kept (moved aside, its branch kept) and listed on its Desk until you
-/// remove it: its item, title and Desk, the copy, and when it was dropped (ms).
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
-pub struct KeptTree {
-    pub id: String,
-    pub title: String,
-    pub project: String,
-    pub repo: String,
-    pub path: String,
-    pub branch: String,
-    pub at: u64,
-}
 
 /// A file another session at work is editing, and that session's name.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]

@@ -94,7 +94,13 @@ const deskIdIs = (i, id) => i.id === id || (!!i.alias && i.alias === id);
 // A big feature's piece done days ago is only in its feature's `pieces` (#282): found there too.
 const deskItem = (p, id) => {
   const its = deskOf(p).items, old = typeof deskDonePages === "undefined" ? [] : deskDonePages.get(p)?.items || [];
-  return its.find((i) => deskIdIs(i, id)) || [...its, ...old].flatMap((i) => i.pieces || []).find((i) => deskIdIs(i, id)) || null;
+  return its.find((i) => deskIdIs(i, id)) || [...its, ...old].flatMap((i) => i.pieces || []).find((i) => deskIdIs(i, id)) || deskKeptItem(p, id);
+};
+/** A dropped item's kept copy (#608) as an item: its page opens on the item as it was dropped (its holder's chat
+ *  with it), `kept` its copy. null when Desk `p` keeps none for `id`. */
+const deskKeptItem = (p, id) => {
+  const k = (deskOf(p)?.kept || []).find((x) => deskIdIs(x, id));
+  return k ? { id: k.id, title: k.title, project: k.project, kind: "task", updated: Math.floor(k.at / 1000), ...(k.item || {}), state: "dropped", kept: k } : null;
 };
 /** Item `id`, on Desk `p` or another Desk on the same code (an item there may wait on it, #540). */
 const deskItemAny = (p, id) => deskItem(p, id) || (state.desk?.projects || []).flatMap((d) => d.items || []).find((i) => deskIdIs(i, id)) || null;
@@ -168,11 +174,17 @@ function deskFinStep(i) {
 }
 /** How many copies of one repository Desk `d`'s items work in at once (its How work lands, desk/lands.rs). */
 const deskCopies = (d) => d?.lands?.set?.at_once || 3;
-/** A dropped item's copy that had work in it (`k`: { id, title, path, branch, at }), kept on disk until you Remove it.
- *  Remove takes two clicks: it deletes the copy and its branch. */
+/** A dropped item's copy that had work in it (`k`: { id, title, path, branch, at, item }), kept on disk until you
+ *  Remove it. A click on it opens its item's page (#608); what it changed, with Diff, sits by Pick up again (the item
+ *  back on the Desk with this copy, for the lead to route) and Remove, which takes two clicks: it deletes the copy and
+ *  its branch. */
 function deskKeptRow(k) {
-  const armed = deskDropArm === k.id;
-  return `<div class="dk-it dk-kept" data-kept="${esc(k.id)}"><div class="dk-kept-t"><b>#${esc(k.id)}</b> ${esc(k.title)}<div class="dk-kept-s">${esc(k.path)} · ${esc(k.branch)} · dropped ${ago(k.at)} ago</div></div><button class="btn small${armed ? " armed" : ""}" data-desk-act="remove_kept" data-id="${esc(k.id)}">${armed ? "Remove it and its work" : "Remove"}</button></div>`;
+  const armed = deskDropArm === k.id, files = deskDiffRead({ id: k.id, kept: k });
+  const add = (files || []).reduce((n, f) => n + (f.add || 0), 0), del = (files || []).reduce((n, f) => n + (f.del || 0), 0);
+  const changed = !files ? `<span class="dk-kept-f">Reading…</span>`
+    : files.length ? `<button class="dk-kept-f dk-kept-d" data-desk-diff-file="${esc(k.id)}" data-n="0">${files.length} ${files.length === 1 ? "file" : "files"} <span class="dv-n dv-add">+${add}</span> <span class="dv-n dv-del">−${del}</span> · Diff</button>`
+    : `<span class="dk-kept-f">No changes</span>`;
+  return `<div class="dk-it dk-kept" data-kept="${esc(k.id)}"><button class="dk-kept-t" data-desk-item="${esc(k.id)}"><b>#${esc(k.id)}</b> ${esc(k.title)}<span class="dk-kept-s">${esc(k.path)} · ${esc(k.branch)} · dropped ${ago(k.at)} ago</span></button>${changed}<button class="btn small" data-desk-act="pickup_kept" data-id="${esc(k.id)}">Pick up again</button><button class="btn small${armed ? " armed" : ""}" data-desk-act="remove_kept" data-id="${esc(k.id)}">${armed ? "Remove it and its work" : "Remove"}</button></div>`;
 }
 /** Install now on a finishing item in the next install (step "queued"): everything waiting installs at once. */
 const deskInstallNow = (i, cls) => (deskFinishing(i) && i.finish?.step === "queued" ? `<button class="${cls}" data-desk-act="install_now" data-id="${esc(i.id)}">Install now</button>` : "");
@@ -272,19 +284,28 @@ function deskMadeLinks(i) {
  *  (files null while it's read). `key` is what it was read for, so a new check or commit reads it again; `page` the
  *  page it was read for. */
 const deskDiffs = new Map();
-const deskDiffKey = (i) => [i.state, i.commit || "", i.updated || "", (i.files || []).length, (i.commit_wait?.files || []).length].join("|");
-function deskFilesChanged(i) {
-  // Still being worked on: what's changed in its files so far (#149), once it's on some.
-  const checking = i.state === "to_check" || i.state === "done";
-  if (!checking && !(i.files || []).length) return "";
-  // Read again each time its page is opened too: its files can change on disk with nothing else about it changing.
+// A kept copy's (#608) by the copy alone: its row and its page read the same one.
+const deskDiffKey = (i) => (i.kept ? `kept|${i.kept.path}|${i.kept.at}` : null) ?? [i.state, i.commit || "", i.updated || "", (i.files || []).length, (i.commit_wait?.files || []).length].join("|");
+/** Whether item `i`'s Files are what it changed, all read (to check, done, or a dropped item's kept copy, #608),
+ *  rather than what's changed so far. */
+const deskChecking = (i) => i.state === "to_check" || i.state === "done" || !!i.kept;
+/** Item `i`'s files as read (desk_item_diff), asked for when not read yet for what it is now: null while it's read.
+ *  Read again each time a page is opened too: its files can change on disk with nothing else about it changing. */
+function deskDiffRead(i) {
   const key = deskDiffKey(i), got = deskDiffs.get(i.id);
   if (got?.key !== key || got.page !== deskOpen) {
     deskDiffs.set(i.id, { key, page: deskOpen, files: got?.files || null });
-    const keep = (files) => { if (deskDiffs.get(i.id)?.key !== key) return; deskDiffs.set(i.id, { ...deskDiffs.get(i.id), files }); if (deskOpen?.id === i.id) renderMain(); };
+    // The Desk's list draws a kept copy's files too (#608): it's drawn again once they're read, as its page is.
+    const keep = (files) => { if (deskDiffs.get(i.id)?.key !== key) return; deskDiffs.set(i.id, { ...deskDiffs.get(i.id), files }); if (deskOpen?.id === i.id || (i.kept && view === "desk")) renderMain(); };
     invoke("desk_item_diff", { id: i.id }).then((r) => keep(diffParse(r?.diff || "").files), () => keep([]));
   }
-  const files = deskDiffs.get(i.id).files;
+  return deskDiffs.get(i.id).files;
+}
+function deskFilesChanged(i) {
+  // Still being worked on: what's changed in its files so far (#149), once it's on some.
+  const checking = deskChecking(i);
+  if (!checking && !(i.files || []).length) return "";
+  const files = deskDiffRead(i);
   // While its first read is on the way: the same rows from the files it says it changed, counts to come. Without them
   // the page drew "Files" as a line, then swapped it for these rows a moment later: it flickered as it turned to check.
   // Being worked on with nothing changed in them yet (or not in git): the files it's on, as they are.
@@ -294,7 +315,8 @@ function deskFilesChanged(i) {
 /** Item `id`'s file `n`, over the Desk (diff_overlay.js): its Files changed on the left, that file's diff on the right.
  *  You stay on the Desk; Esc closes it. */
 function deskShowFile(id, n) {
-  const i = (state.desk?.projects || []).flatMap((d) => d.items).find((x) => x.id === id);
+  // A kept copy's (#608): from its Desk's list.
+  const i = (state.desk?.projects || []).flatMap((d) => d.items).find((x) => x.id === id) || deskKeptItem(deskSelection(), id);
   if (!i) return;
   deskSeeItem(id);
   diffOverlay(`${deskNum(i)} ${i.title || ""}`.trim(), "Files changed", deskDiffs.get(id)?.files || [], n);
