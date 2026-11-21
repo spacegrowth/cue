@@ -170,7 +170,7 @@ function deskChat(d) {
     && !thread.some((e) => e.role === "you" && e.at_ms >= p.at - 60000 && has(e, p)) && !has(s?.held, p) && !has(s?.queued, p));
   deskSent.set(d.project, pending);
   // The lead's own Desk lines drawn as lines, not raw text.
-  const rows = s ? deskChatRows(s, { extra: deskCheckRows(d).concat(deskActRows(d)), noSteps: true }) : "";
+  const rows = s ? deskChatRows(s, { extra: deskCheckRows(d).concat(deskActRows(d)), noSteps: true, you: deskLeadNote }) : "";
   // One that couldn't go: red, why, Retry and Edit (#422), till you pick one.
   const failed = (p) => ({ st: "failed", why: esc(p.failed), acts: ["lead_retry", "lead_edit"].map((a, n) => `<button class="q-now" data-desk-act="${a}" data-id="${esc(d.project)}" data-at="${p.at}">${n ? "Edit" : "Retry"}</button>`).join(" · ") });
   const mine = pending.map((p) => { const hd = deskAboutHead(p); return msgRow(p.failed ? { ...failed(p), to: deskLeadName(d) } : { st: "sending", to: deskLeadName(d) }, `${p.text ? `<div class="cv-you-text mg-text">${hd?.html || ""}${esc(hd ? hd.text : p.text).replace(/\n/g, "<br>")}</div>` : ""}${p.images?.length ? `<div class="thumbs">${p.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}`); }).join("");
@@ -341,7 +341,8 @@ function deskChatBack(from, d) {
 function deskSessChat(sid, from, d, foot = "") {
   const s = sessionOf(sid);
   if (!s) return null;
-  const rows = deskChatRows(s);
+  // A Desk's lead opened as a session: Cue's messages to it folded to a line, as in the Desk's chat (#616).
+  const rows = deskChatRows(s, (state.desk?.projects || []).some((x) => deskLead(x)?.sid === sid) ? { you: deskLeadNote } : undefined);
   const where = whereNow(null, s);
   const empty = !rows && !where ? `<div class="dk-empty">Nothing said yet.</div>` : "";
   const open = `<button class="btn small" data-desk-session="${esc(sid)}">Open its session</button>`;

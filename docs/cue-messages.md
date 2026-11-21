@@ -80,8 +80,16 @@ teammate's "not done" after a failed finish is the same line as above.
 
 ## To a Desk lead
 
+In the lead's own chat (the Desk's chat, or the lead opened from the Desk's sessions) these aren't the card: each is
+one quiet line at the left, "+ ◔ Cue · Desk changes · #id · 3m" with what it says under it (two lines at most), and a
+click on it opens Cue's full text under it, as + on a voice message does (#616, desk/lead.js `deskCueLine`). The lead
+still gets the full text. The cards under "Kinds that keep their own design" stay cards there.
+
 | Kind | Sent when | Hub | The line |
 | --- | --- | --- | --- |
+| Desk changes | Items finished, were sent back or asked, got stuck finishing, clashed, lost their holder… since the lead last heard | desk/hub/lead/feed.rs (ends "(Desk changes 4–6)") | Told lead · #d5 finished · #d3 sent back (one item: “you sent it back: “…””) |
+| Queued | Its ROUTE with after: is kept till the item before is checked | desk route replies (“Queued: #id is next for X, after #y…”) | Told lead · #id next for X, after #y · 1 more queued |
+| Your answer for several leads | Cue asked you on behalf of more than one Desk | desk/escalate.rs | Told lead · your answer: “…” |
 | Landing clean-up question | A session asks how to clear the way for its landing | desk_cleanup.rs `lead_words` | Asked lead · #id X's landing question: “…” · 2 choices |
 | Wait circle | Items wait on each other in a circle | desk_waits.rs `circle_note` | Asked lead · cut a wait circle: #a waits on #b waits on #a |
 | Desk paused, resumed | You pause or resume the Desk | desk_pause.rs | Told lead · the Desk is paused (by …), or the Desk is resumed |

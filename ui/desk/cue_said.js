@@ -61,6 +61,10 @@ const CUE_MSGS = [
   [/^The owner is away: Cue didn't show them (this ASK|these ASKs)|^.+? is away: Cue didn't show them (this ASK|these ASKs)/, (m, t) => ({ verb: "Asked", what: "decide the open ASKs yourself (away)", more: cueMore(cueLines(t).filter((l) => l.startsWith("- ")).length, "ASK") }), "Away"],
   [/^(?:The owner|.+?) is about to go away\. Go through every open item/, () => ({ verb: "Asked", what: "settle what you can before Away" }), "Away"],
   [/^Away mode is off/, () => ({ verb: "Told", what: "Away is off" }), "Away"],
+  // The Desk's changes since the lead last heard (desk/hub/lead/feed.rs, #616): a paragraph each, numbered at the end.
+  [/^([\s\S]+?)\n\n\(Desk changes [^)\n]*\)$/, (m) => cueChanges(m[1]), "Desk changes"],
+  [cueRe(String.raw`^Queued: #ID is next for (.+?), after #([\w.-]+)`), (m, t) => ({ verb: "Told", id: m[1], what: `next for ${m[2]}, after #${m[3]}`, more: cueMore(cueLines(t).length - 1, "more queued", "more queued") }), "Queued"],
+  [/^Cue asked .+?, for the leads of .+?: ([^\n]*)\nThe user's answer: ([^\n]*?)\./, (m) => ({ verb: "Told", what: `your answer: ${cueQ(m[2], 60)}` }), "Answered"],
   [/^Away mode:\n(?:Away is paused: ([^.\n]+)|(?:The owner|.+?) is away (until [^,\n]+))/, (m) => ({ verb: "Told", what: m[1] ? `Away paused: ${m[1]}` : `Away is on, ${m[2]}` }), "Away"],
   // Replies to the lead's own command lines (Refused:, not cut, not split, …): its first line, the rest folded.
   [cueRe(String.raw`^(?:Refused: |Noted: |#ID (?:note )?(?:not|copy not) |Couldn't read this line as a route|No question from #ID|FEATURE #ID: left out|Cue couldn't (?:route|queue|start) |Cue didn't reopen )`), (m, t) => {
@@ -70,6 +74,35 @@ const CUE_MSGS = [
     return { verb: "Told", ...(id ? { id } : {}), what: cueCut((rest || first).replace(/^Refused: /, "refused: "), 100), more: cueMore(ls.length - 1, "more line"), tag: /^Refused: /.test(first) ? "Refused" : /^Noted: /.test(first) ? "Noted" : "Reply" };
   }, "Reply"],
 ];
+
+/** How each of the Desk's changes reads in its line (desk/hub/lead/feed.rs, its rows' words): [what it is, pattern on
+ *  the row]. The first that fits names the row; one that fits none is "changed". */
+const CUE_CHANGES = [
+  ["sent back", / sent #[\w.-]+ \(.*\) back to its holder/], ["asked", /^.+? asked #[\w.-]+ \(.*\)'s holder/],
+  ["restarted", / restarted #/], ["dropped", / dropped #/], ["moved up", / put #[\w.-]+ \(.*\) before #/],
+  ["new", /^New item #/], ["finished", /^#[\w.-]+ \(.*\) finished: /], ["stuck finishing", /^#[\w.-]+ \(.*\) is stuck finishing/],
+  ["clashed", /^#[\w.-]+ \(.*\) clashed with the main line/], ["stopped", /^#[\w.-]+ \(.*\) stopped/],
+  ["asks you", /^#[\w.-]+ \(.*\)'s holder .*? asks /], ["holder gone", /^#[\w.-]+ \(.*\)'s holder /],
+];
+/** The Desk's changes `t` (their paragraphs, the numbers line dropped) as one line: "#528, #561 finished · #535 sent
+ *  back". A row's follow-up about an item already in it (where your words went) isn't counted again. */
+function cueChanges(t) {
+  const rows = t.split(/\n\n+/).map((r) => r.trim()).filter(Boolean);
+  const by = new Map(), seen = new Set();
+  for (const r of rows) {
+    const id = /#([\w.-]+)/.exec(r)?.[1];
+    const kind = CUE_CHANGES.find(([, re]) => re.test(r))?.[0] || "changed";
+    if (kind === "changed" && id && seen.has(id)) continue;
+    if (id) seen.add(id);
+    by.set(kind, [...(by.get(kind) || []), id ? `#${id}` : ""]);
+  }
+  const one = seen.size === 1 && by.size === 1;
+  // One item: what happened to it in words, and what you said with it.
+  const said = one && /: "([^\n]*)"\.?$/.exec(rows[0])?.[1];
+  const alone = { "sent back": "you sent it back", asked: "you asked its holder", restarted: "you restarted it", dropped: "you dropped it", "moved up": "you moved it up", new: "a new item" };
+  const what = [...by].map(([k, ids]) => (one ? `${alone[k] || k}${said ? `: ${cueQ(said, 60)}` : ""}` : `${ids.filter(Boolean).join(", ")} ${k}`.trim())).join(" · ");
+  return { verb: "Told", ...(one ? { id: [...seen][0] } : {}), what: cueCut(what, 100) };
+}
 
 /** The full text's first words up to the end of a sentence (or `max` characters, cut at a word). */
 function cueCut(t, max = 110) {

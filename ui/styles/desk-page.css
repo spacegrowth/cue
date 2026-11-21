@@ -15,6 +15,18 @@
 .dk-ln .mg-full { margin: 2px 0 4px; background: var(--panel-2); }
 .dk-ln-it { all: unset; cursor: pointer; color: var(--ink); }
 .dk-ln-it:hover { text-decoration: underline; }
+/* Cue's own message to the lead (#616, desk/lead.js deskCueLine): one quiet line at the left, + opening Cue's full text
+   under it as a voice message's + does. Its words cut to the line; the item's chip and the age stay whole. */
+.dk-cue { margin: 3px 0; }
+.dk-cue .mg-line { align-items: center; color: var(--muted); font: var(--mg-meta); }
+.dk-cue-t, .dk-cue-w { all: unset; cursor: pointer; }
+.dk-cue-t { flex: none; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.dk-cue-t .mg-who { color: var(--ink); }
+.dk-cue-w { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; margin-left: 14px; font: var(--mg-body); color: var(--ink); }
+.dk-cue-pm { width: 9px; font-weight: 650; color: var(--muted); }
+.dk-cue-t:focus-visible, .dk-cue-w:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+.dk-cue .mg-id { flex: none; }
+.dk-cue .mg-full { margin-left: 14px; }
 .mg-line .dk-dlink { font-size: inherit; }
 .mg-id > .dk-kic, .mg-chip > .dk-kic { width: 11px; height: 11px; margin: 0; vertical-align: 0; color: inherit; }
 .mg-chip .pdot { width: 8px; height: 8px; }

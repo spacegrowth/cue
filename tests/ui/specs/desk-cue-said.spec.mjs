@@ -1,6 +1,7 @@
 // What Cue itself sends a session or a Desk lead shows as one short plain line (#478): "Asked host-lead · #d5 not
 // done: “…”" where a line is all there's room for (the Inbox), and in a chat as the family's card (#501): its head
-// "Cue → host-lead · NOT DONE · #d5 · 3m", the line's words under it, More opening its full text.
+// "Cue → host-lead · NOT DONE · #d5 · 3m", the line's words under it, More opening its full text. In the lead's own
+// chat on the Desk, one quiet line instead (#616, desk-lead-cue-folded.spec).
 // The session still gets the full text. Every kind is listed in docs/cue-messages.md.
 import { test, expect, openDesk } from "./cue.mjs";
 import { NOW } from "./clock.mjs";
@@ -142,15 +143,23 @@ for (const scheme of ["light", "dark"]) {
     await lines.nth(0).locator("button.mg-id").click();
     await expect.poll(() => page.evaluate(() => deskOpen && [deskOpen.kind, deskOpen.id])).toEqual(["item", "d5"]);
 
-    // The lead's chat.
+    // The lead's chat: each one quiet line (#616), "+ Cue · its tag", its item's chip and age, its words under them;
+    // a click opens Cue's full text.
     await page.evaluate(() => deskShow({ kind: "chat", sid: "lead" }));
     const lchat = page.locator(".dk-chat");
-    const llines = lchat.locator(".mg.cue-msg");
+    const llines = lchat.locator(".dk-cue");
+    await expect(lchat.locator(".mg.cue-msg")).toHaveCount(0);
     await expect(llines).toHaveCount(IN_LEAD.length);
-    await expect(llines.locator(".mg-t")).toHaveText(words(IN_LEAD));
-    await heads(llines, IN_LEAD);
-    await expect(llines.nth(0).locator(".cue-more")).toHaveText("· 2 choices");
-    await expect(llines.nth(IN_LEAD.length - 2).locator(".cue-more")).toHaveText("· 1 more line");
+    await expect(llines.locator(".dk-cue-w")).toHaveText(words(IN_LEAD));
+    await expect(llines.locator(".dk-cue-t .mg-who")).toHaveText(IN_LEAD.map(() => "Cue"));
+    for (const [n, { id }] of card(IN_LEAD).entries()) {
+      if (id) await expect(llines.nth(n).locator(".mg-id")).toContainText(id);
+      else await expect(llines.nth(n).locator(".mg-id")).toHaveCount(0);
+    }
+    await expect(llines.nth(0).locator(".dk-cue-w .mg-v")).toHaveText("· 2 choices");
+    await expect(llines.nth(IN_LEAD.length - 2).locator(".dk-cue-w .mg-v")).toHaveText("· 1 more line");
+    await llines.nth(0).locator(".dk-cue-w").click();
+    await expect(llines.nth(0).locator(".mg-full")).toHaveText(IN_LEAD[0][0].trim());
     // Its start failure keeps its own note, and your answer to its ASK stays with the ASK's card.
     await expect(lchat).toContainText("no agent");
     await expect(lchat).not.toContainText("The answer: Blue");
