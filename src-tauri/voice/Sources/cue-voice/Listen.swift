@@ -19,6 +19,7 @@ final class Listen {
   /// The sound heard (mono, at `rate`), filled on the audio thread.
   private let kept = Kept()
   private var rate = 0.0
+  private var gen = 0
 
   var on: Bool { engine != nil }
 
@@ -39,6 +40,9 @@ final class Listen {
     rate = format.sampleRate
     kept.reset()
     words = ""
+    // This start's: a cancelled one's last words, arriving late, mustn't count as this one's.
+    gen += 1
+    let gen = gen
     // Apple's recognizer, only where it stays on this Mac.
     let recognizer = SFSpeechRecognizer(locale: Locale.current) ?? SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
     var request: SFSpeechAudioBufferRecognitionRequest?
@@ -53,7 +57,7 @@ final class Listen {
         let done = result?.isFinal ?? true
         DispatchQueue.main.async {
           MainActor.assumeIsolated {
-            guard let self else { return }
+            guard let self, self.gen == gen else { return }
             if let text { self.words = text; self.onWords(text) }
             if done { self.final?.resume(); self.final = nil }
           }

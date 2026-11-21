@@ -129,3 +129,77 @@ public struct VoiceTurns<Answer> {
     return .idle
   }
 }
+
+// MARK: Hands-free ("Hey Cue", Settings → Voice)
+
+/// "Hey Cue": whether it was said, and what was said after it. Apple's recognizer and NVIDIA's write it in many
+/// ways ("Hey Cue,", "hey queue", "Hey Q.", "Hay cue"), so any of those count.
+public enum WakeWord {
+  private static let pattern = try! NSRegularExpression(
+    pattern: #"\b(hey|hay|hei)[\s,.!-]*(cue|queue|q|kyu|kew|cu)\b[\s,.!?:;-]*"#, options: [.caseInsensitive])
+
+  /// What was said after "Hey Cue" in `heard` (its first time), nil when it hasn't been said.
+  public static func after(_ heard: String) -> String? {
+    let ns = heard as NSString
+    guard let m = pattern.firstMatch(in: heard, range: NSRange(location: 0, length: ns.length)) else { return nil }
+    return ns.substring(from: m.range.location + m.range.length).trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+}
+
+/// Whether the mic is armed for "Hey Cue": the switch is on, talking to sessions is on, the screen isn't locked,
+/// and it isn't busy with something that needs the mic quiet (you holding the key to talk, an answer being read:
+/// it mustn't hear itself).
+public enum WakeArm {
+  public static func armed(wanted: Bool, talking: Bool, locked: Bool, busy: Bool) -> Bool {
+    wanted && talking && !locked && !busy
+  }
+  /// The menu bar mark: shown while it's on and the screen isn't locked, busy or not (it comes back by itself).
+  public static func marked(wanted: Bool, talking: Bool, locked: Bool) -> Bool { wanted && talking && !locked }
+}
+
+/// When you've finished saying something hands-free: words heard, then `quiet` seconds with no new ones. Nothing
+/// at all for `giveUp` seconds after it started (said "Hey Cue", then nothing): over, with nothing to send.
+public struct SpeechEnd {
+  public static let quiet: Double = 1.5
+  public static let giveUp: Double = 6
+  public enum State: Equatable { case going, said(String), nothing }
+  private var started: Date
+  private var last: Date
+  private var words = ""
+  public init(at: Date) { started = at; last = at }
+
+  /// The words so far (the whole of them, as the recognizer has them now).
+  public mutating func heard(_ w: String, at: Date) {
+    let w = w.trimmingCharacters(in: .whitespacesAndNewlines)
+    if w != words { words = w; last = at }
+  }
+
+  public func state(at: Date) -> State {
+    if words.isEmpty { return at.timeIntervalSince(started) >= SpeechEnd.giveUp ? .nothing : .going }
+    return at.timeIntervalSince(last) >= SpeechEnd.quiet ? .said(words) : .going
+  }
+}
+
+/// After an answer is read out to you hands-free: `seconds` to reply without "Hey Cue". Once you start talking it
+/// stays open until you finish (SpeechEnd says when); said nothing, it's over and the mic waits for "Hey Cue" again.
+public struct ReplyWindow {
+  public static let seconds: Double = 6
+  public private(set) var opened: Date?
+  public private(set) var talking = false
+  public init() {}
+
+  public var open: Bool { opened != nil }
+  public mutating func start(at: Date) { opened = at; talking = false }
+  public mutating func close() { opened = nil; talking = false }
+  /// Words heard in it: you're replying (it no longer runs out).
+  public mutating func heard(_ w: String) {
+    if open, !w.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { talking = true }
+  }
+  /// Seconds left to start replying (0 once it's run out, or it isn't open).
+  public func left(at: Date) -> Double {
+    guard let opened else { return 0 }
+    return max(0, ReplyWindow.seconds - at.timeIntervalSince(opened))
+  }
+  /// It ran out with nothing said.
+  public func over(at: Date) -> Bool { open && !talking && left(at: at) == 0 }
+}

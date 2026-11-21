@@ -28,3 +28,13 @@ But nothing listens after an answer. To reply, you reach for the key again, ever
 ## What B costs
 
 A large amount of work. The parts that need the most care are false wake-ups (from a video or a call), the battery use of listening all the time, and matching spoken session names. The island, the reading and the mic are already there.
+
+## Built: option B (#538)
+
+Settings → Voice → Listen for “Hey Cue” (under Talk to sessions). cue-voice keeps Apple's recognizer listening on
+the Mac while it's on, the Mac is unlocked and nothing else is using the mic; a ring-and-dot mark in the menu bar
+shows it (its menu: Stop Listening). After "Hey Cue", what you say ends after 1.5 s of quiet (6 s with nothing
+said: back to waiting). Cue matches the session's name, folder or number at the start ("ask four ninety-seven…",
+"cue-497, …", "tell 497 to…"), else the chat open in Cue. After a hands-free answer is read out, "Reply?" waits
+6 s for a reply to the same session. Esc cancels either. Tests: VoiceCoreTests (wake word, on/off, end of speech,
+the reply window) and talk_tests (picking by name, the switch).

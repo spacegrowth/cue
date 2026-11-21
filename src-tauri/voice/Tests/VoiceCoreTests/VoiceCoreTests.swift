@@ -196,4 +196,57 @@ final class VoiceTurnsTests: XCTestCase {
     XCTAssertEqual(VoiceText.more(0), "")
     XCTAssertEqual(VoiceText.more(2), " · 2 MORE")
   }
+
+  func testHeyCueIsHeardHoweverItIsWrittenAndWhatFollowsIsKept() {
+    XCTAssertEqual(WakeWord.after("Hey Cue, ask four ninety-seven how far along it is"), "ask four ninety-seven how far along it is")
+    XCTAssertEqual(WakeWord.after("so anyway hey queue tell the site to deploy"), "tell the site to deploy")
+    XCTAssertEqual(WakeWord.after("Hey Q. How's it going?"), "How's it going?")
+    XCTAssertEqual(WakeWord.after("Hay cue"), "")
+    XCTAssertNil(WakeWord.after("hey you, cue the music"), "not the word")
+    XCTAssertNil(WakeWord.after("a queue of people"))
+    XCTAssertNil(WakeWord.after("hey cuetip"), "a whole word only")
+  }
+
+  func testTheMicIsArmedOnlyWhileOnUnlockedAndNotBusy() {
+    XCTAssertTrue(WakeArm.armed(wanted: true, talking: true, locked: false, busy: false), "turned on: it starts")
+    XCTAssertFalse(WakeArm.armed(wanted: false, talking: true, locked: false, busy: false), "turned off: it stops")
+    XCTAssertFalse(WakeArm.armed(wanted: true, talking: false, locked: false, busy: false), "talking to sessions off")
+    XCTAssertFalse(WakeArm.armed(wanted: true, talking: true, locked: true, busy: false), "screen locked")
+    XCTAssertFalse(WakeArm.armed(wanted: true, talking: true, locked: false, busy: true), "reading an answer, or the key held")
+    XCTAssertTrue(WakeArm.marked(wanted: true, talking: true, locked: false), "the mark stays while busy")
+    XCTAssertFalse(WakeArm.marked(wanted: true, talking: true, locked: true))
+  }
+
+  func testWhatYouSayEndsAfterAQuietMomentOrGivesUpWhenNothingIsSaid() {
+    let t0 = Date()
+    var e = SpeechEnd(at: t0)
+    XCTAssertEqual(e.state(at: t0.addingTimeInterval(5)), .going)
+    XCTAssertEqual(e.state(at: t0.addingTimeInterval(6)), .nothing, "\"Hey Cue\", then nothing")
+    e = SpeechEnd(at: t0)
+    e.heard("how far", at: t0.addingTimeInterval(1))
+    e.heard("how far along", at: t0.addingTimeInterval(2))
+    XCTAssertEqual(e.state(at: t0.addingTimeInterval(3)), .going, "a short pause mid-sentence")
+    e.heard("how far along it is", at: t0.addingTimeInterval(3))
+    e.heard("how far along it is ", at: t0.addingTimeInterval(4))
+    XCTAssertEqual(e.state(at: t0.addingTimeInterval(4.5)), .said("how far along it is"), "the same words again aren't new")
+  }
+
+  func testAfterAnAnswerYouHaveSixSecondsToReply() {
+    let t0 = Date()
+    var w = ReplyWindow()
+    XCTAssertFalse(w.over(at: t0), "not open")
+    w.start(at: t0)
+    XCTAssertEqual(w.left(at: t0.addingTimeInterval(2)), 4)
+    XCTAssertFalse(w.over(at: t0.addingTimeInterval(5.9)))
+    XCTAssertTrue(w.over(at: t0.addingTimeInterval(6)), "nothing said in 6 s: over")
+    w.start(at: t0)
+    w.heard("  ")
+    XCTAssertTrue(w.over(at: t0.addingTimeInterval(6)), "no words isn't replying")
+    w.start(at: t0)
+    w.heard("yes go")
+    XCTAssertFalse(w.over(at: t0.addingTimeInterval(20)), "replying: it waits for you to finish")
+    w.close()
+    XCTAssertFalse(w.open)
+    XCTAssertEqual(w.left(at: t0), 0)
+  }
 }

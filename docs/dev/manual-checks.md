@@ -9,6 +9,11 @@ notifications posted and taken back) is covered by `tests/run.sh unit`.
    session's chat, hold right ⇧, say "say the word banana", let go. The chip shows it working; when it
    answers, tap right ⇧: the answer is read out in the picked voice, and the session's chat shows what you
    said without the "(Voice: …)" line.
+   Hands-free: turn on Listen for “Hey Cue” too. The ring-and-dot mark shows in the menu bar. Without
+   touching the Mac say "Hey Cue, ask <a session's number> to say the word banana": the island shows
+   "Heard you" with that session's chip, then working; the answer is read out, then "Reply?" counts down
+   6 s; say "now say apple" before it ends and it goes to the same session. Say nothing: the island goes
+   and "Hey Cue" works again. Lock the screen: the mark goes; unlock: it's back.
 2. **Dictate into a text box.** Click the mic in a reply box, say "run the tests", stop. The words appear
    in the box as you speak and stay once it stops; nothing is sent until you press ↩.
 3. **A notification comes and goes.** With Cue in the background, finish a turn in any session: one

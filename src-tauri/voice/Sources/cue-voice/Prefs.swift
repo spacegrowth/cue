@@ -16,6 +16,8 @@ struct Prefs {
   var captions = false
   /// Talking to sessions at all (Settings → Voice): off, right ⇧ and ⌥Space are left alone and nothing is downloaded.
   var talk = false
+  /// Listen for "Hey Cue" (Settings → Voice, with talking on): the mic stays armed while the Mac is unlocked.
+  var wake = false
 
   static var file: URL {
     FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("dev.spacegrowth.cue/voice.json")
@@ -30,6 +32,7 @@ struct Prefs {
     p.auto = o["auto"] as? String ?? "never"
     p.captions = o["captions"] as? Bool ?? false
     p.talk = o["talk"] as? Bool ?? false
+    p.wake = o["wake"] as? Bool ?? false
     return p
   }
 }

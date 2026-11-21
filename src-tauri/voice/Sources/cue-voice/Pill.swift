@@ -36,6 +36,8 @@ final class PillModel: ObservableObject {
   @Published var speaking = false
   /// While it reads: how long is left, in seconds (the bar counts it down).
   @Published var left: Double?
+  /// Hands-free, after an answer was read: until when you can reply without "Hey Cue" (a bar counts it down).
+  @Published var replyUntil: Date?
   /// Since when the clock beside the label counts (nil: no clock).
   @Published var since: Date?
   @Published var keys: [(String, String)] = []
@@ -426,6 +428,12 @@ struct PillView: View {
         name
         label
         Spacer(minLength: 0)
+        if let until = m.replyUntil {
+          TimelineView(.periodic(from: .now, by: 0.5)) { t in
+            Text("\(Int(max(0, until.timeIntervalSince(t.date)).rounded(.up))) s")
+              .font(.system(size: TypeScale.small, weight: .semibold).monospacedDigit()).opacity(0.65)
+          }
+        }
         if m.showLevel { Bars(level: m.level).foregroundStyle(Color(hex: m.look.sel)) }
         if m.speaking { Image(systemName: "speaker.wave.2.fill").font(.system(size: TypeScale.body)).foregroundStyle(Color(hex: m.look.sel)) }
       }
@@ -438,6 +446,7 @@ struct PillView: View {
           .truncationMode(.head)
           .fixedSize(horizontal: false, vertical: true)
       }
+      if let until = m.replyUntil { ReplyBar(until: until, color: Color(hex: m.look.sel)) }
       if !m.buttons.isEmpty {
         HStack(spacing: 8) {
           ForEach(Array(m.buttons.enumerated()), id: \.offset) { _, b in
@@ -817,6 +826,24 @@ struct Bounce: ViewModifier {
 }
 
 /// How loud you are: bars that rise with your voice.
+/// The time left to reply hands-free, a thin bar running down to nothing.
+struct ReplyBar: View {
+  let until: Date
+  let color: Color
+  var body: some View {
+    TimelineView(.animation) { t in
+      let left = max(0, min(1, until.timeIntervalSince(t.date) / ReplyWindow.seconds))
+      GeometryReader { g in
+        ZStack(alignment: .leading) {
+          Capsule().fill(Color.white.opacity(0.12))
+          Capsule().fill(color).frame(width: g.size.width * left)
+        }
+      }
+      .frame(height: 3)
+    }
+  }
+}
+
 struct Bars: View {
   let level: Float
   private static let shape: [CGFloat] = [0.3, 0.5, 0.8, 1, 0.7, 0.4, 0.85, 1, 0.6, 0.3, 0.7, 0.9, 0.5, 0.3]

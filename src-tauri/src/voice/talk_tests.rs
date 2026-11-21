@@ -197,3 +197,56 @@ fn a_spoken_ask_handed_to_a_new_agent_waits_for_its_report() {
     lead.stop("All tests pass.");
     assert_eq!(outcome(&w.hub().state(), &t), Some(json!({ "answer": "All tests pass." })));
 }
+
+/// Sessions as the hub lists them: (sid, name, folder, moved at, stopped).
+fn sessions(list: &[(&str, &str, &str, u64, bool)]) -> Value {
+    json!({ "sessions": list.iter().map(|(sid, name, cwd, since, stopped)| json!({
+        "session_id": sid, "name": name, "cwd": cwd, "project": "cue", "since_ms": since,
+        "state": if *stopped { "stopped" } else { "working" },
+    })).collect::<Vec<_>>() })
+}
+
+/// Hands-free: the session named at the start of what you said gets the rest, however the name's number is said.
+#[test]
+fn hands_free_picks_the_session_you_name() {
+    let snap = sessions(&[
+        ("a", "cue-497", "/w/cue-497", 10, false),
+        ("b", "[Exec] fix the board", "/w/desk-3", 20, false),
+        ("c", "cue-49", "/w/cue-49", 30, false),
+        ("old", "cue-512", "/w/cue-512", 40, true),
+    ]);
+    let pick = |said: &str| spoken_pick(&snap, Some("b"), said);
+    let to = |sid: &str, msg: &str| Some((sid.to_string(), msg.to_string()));
+    assert_eq!(pick("cue-497, how's the refactor?"), to("a", "How's the refactor?"));
+    assert_eq!(pick("ask four ninety-seven how far along it is"), to("a", "How far along it is"));
+    assert_eq!(pick("ask four hundred and ninety seven how far along it is"), to("a", "How far along it is"));
+    assert_eq!(pick("four nine seven, run the tests"), to("a", "Run the tests"));
+    assert_eq!(pick("tell 497 to run the tests"), to("a", "Run the tests"));
+    assert_eq!(pick("forty-nine: stop"), to("c", "Stop"), "497 isn't 49");
+    assert_eq!(pick("fix the board, what's left?"), to("b", "What's left?"), "by its name, without [Exec]");
+    assert_eq!(pick("desk three, what's left?"), to("b", "What's left?"), "by its folder");
+    assert_eq!(pick("how's it going?"), to("b", "how's it going?"), "no name: the chat open in Cue, all of it");
+    assert_eq!(spoken_pick(&snap, None, "how's it going?"), to("c", "how's it going?"), "nothing open: the one that moved last");
+    assert_eq!(pick("five twelve, go on"), to("b", "five twelve, go on"), "a stopped session isn't picked");
+    assert_eq!(pick("cue 497"), to("a", ""), "a name and nothing to tell it");
+    assert_eq!(spoken_pick(&sessions(&[]), None, "hello"), None, "no session runs");
+}
+
+/// The "Hey Cue" switch: off until turned on, saved for cue-voice, and the reply row shows only while it's on.
+#[test]
+fn hey_cue_is_turned_on_and_off_in_settings() {
+    let v = Voice::with(json!({"talk": true}));
+    noted_status(&json!({"status": {"model": "ready"}}));
+    let wake = || settings().unwrap()["rows"].as_array().unwrap().iter().find(|r| r["title"] == "Listen for “Hey Cue”").unwrap()["pick"]["value"].clone();
+    let after = || settings().unwrap()["rows"].as_array().unwrap().iter().any(|r| r["title"] == "After an answer");
+    assert_eq!(wake(), "off");
+    assert!(!after());
+    set("wake", "on").unwrap();
+    assert_eq!(wake(), "on");
+    assert!(row("After an answer").contains("6 s"));
+    let saved: Value = serde_json::from_str(&std::fs::read_to_string(v.home.join("voice.json")).unwrap()).unwrap();
+    assert_eq!(saved["wake"], true, "cue-voice reads it from voice.json");
+    set("wake", "off").unwrap();
+    assert_eq!(wake(), "off");
+    assert!(!after());
+}

@@ -4,6 +4,9 @@
 // left ⇧ pauses (what you said waits; hold again to go on, and it all goes as one), and ↩ (or a click on the pill) goes
 // to typing instead: what you said lands in that chat's box in Cue, unsent. While it reads: ⌥Space talks back. Esc,
 // whenever the pill is up, gets out of it all. A click on the pill opens that session's chat in Cue.
+// Hands-free (Settings → Voice: Listen for "Hey Cue"): the mic stays armed for "Hey Cue" (a mark in the menu bar says
+// so); what you say after it goes to the session you name, else the open chat (Cue picks it), its answer is read at
+// once, and then you have 6 seconds to reply without the word. Never while it reads, nor while the screen is locked.
 import AppKit
 import Carbon.HIToolbox
 import VoiceCore
@@ -23,7 +26,7 @@ final class Voice {
   /// What's playing pauses while you talk and while it reads.
   private let hush = Hush()
   private let keys = HotKeys()
-  private var phase = Phase.idle { didSet { syncEsc() } }
+  private var phase = Phase.idle { didSet { syncEsc(); syncEar() } }
   /// The pill is up.
   private var shown = false
   /// When what you said went: how long it took.
@@ -78,6 +81,25 @@ final class Voice {
   /// Right ⇧ held a third of a second on its own; left ⇧ pauses.
   private var rightShift: HeldKey?
 
+  /// The mic armed for "Hey Cue": its own, apart from the key's.
+  private let ear = Listen()
+  private let mark = Mark()
+  private var wakeOn = Prefs.load().wake
+  private var locked = false
+  private var earOn = false
+  private var earGen = 0
+  private var earSince = Date()
+  private var earTimer: Timer?
+  /// Heard "Hey Cue" (or you started replying): what you say now is caught, and goes once you stop.
+  private var woke = false
+  private var end = SpeechEnd(at: Date())
+  /// The 6 s to reply after an answer read hands-free.
+  private var reply = ReplyWindow()
+  /// What you last said went hands-free: its answer is read at once and opens the 6 s.
+  private var handsFree = false
+  /// The answer up now (or being read) is that one.
+  private var answerHandsFree = false
+
   init() {
     listen.onWords = { [weak self] w in self?.words(w) }
     listen.onLevel = { [weak self] l in self?.pill.m.level = l }
@@ -89,6 +111,16 @@ final class Voice {
       if self.phase == .listening || self.phase == .paused { return self.toChat() }
       if self.phase == .answered { return self.openChat() }
       if let sid = (self.turnOn ? self.turnWho : nil)?.sid ?? (self.talkingTo ?? self.target)?.sid { emit(["open": sid]) }
+    }
+    ear.onWords = { [weak self] w in self?.earWords(w) }
+    ear.onLevel = { [weak self] l in if self?.woke == true { self?.pill.m.level = l } }
+    mark.onStop = { emit(["wake": false]) }   // Cue turns the setting off and says so back
+    // Off while the screen is locked, back on when it's unlocked.
+    let dnc = DistributedNotificationCenter.default()
+    for (name, on) in [("com.apple.screenIsLocked", true), ("com.apple.screenIsUnlocked", false)] {
+      dnc.addObserver(forName: .init(name), object: nil, queue: .main) { [weak self] _ in
+        MainActor.assumeIsolated { self?.locked = on; self?.syncEar() }
+      }
     }
     talk(Prefs.load().talk)
   }
@@ -105,6 +137,7 @@ final class Voice {
       rightShift = nil
       if phase == .listening || phase == .paused { holding = false; escape() }
       note("talking off")
+      syncEar()
       return report(keys: true)
     }
     let ok = keys.add(talkKey, key: kVK_Space, mods: optionKey) { [weak self] down in MainActor.assumeIsolated { down ? self?.down() : self?.up() } }
@@ -118,6 +151,7 @@ final class Voice {
     note("talking on; ⌥Space \(ok ? "taken" : "not free")")
     report(keys: ok)
     pickModel()
+    syncEar()
   }
 
   /// NVIDIA's listening model, got and loaded only once it's picked (Settings → Voice → Listening): until then, or
@@ -135,6 +169,14 @@ final class Voice {
   func heard(_ o: [String: Any]) {
     if let on = o["talk"] as? Bool { talk(on) }
     if o["model"] != nil, talking { pickModel() }   // Listening picked in Settings: NVIDIA's comes now
+    if let w = o["wake"] as? Bool { wakeOn = w; note("hey cue \(w ? "on" : "off")"); syncEar() }
+    // Hands-free: who what you're saying goes to, as Cue picks it from the name you say.
+    if let w = o["to"] as? [String: Any] {
+      let t = Voice.target(w)
+      talkingTo = t
+      saidTo = t
+      dress(t)
+    }
     if o.keys.contains("target") {
       target = (o["target"] as? [String: Any]).map(Voice.target)
       if phase == .idle, let t = target { dress(t) }
@@ -182,12 +224,16 @@ final class Voice {
     }
     if o["stopped"] != nil {
       turns.stopped()
+      handsFree = false
       if phase == .working { settle() }   // not while sending: what you said is on its way
     }
   }
 
   /// An answer up for you: whose it is, and how long its turn took.
   private func present(_ a: Told) {
+    // A turn's own answer (no other session's, no by the way) to something said hands-free.
+    answerHandsFree = handsFree && !a.btw && a.who == nil
+    if answerHandsFree { handsFree = false }
     if let w = a.who { talkingTo = w } else if !a.btw, let w = turnWho { talkingTo = w }
     sentAt = a.btw || a.who != nil ? nil : turnSentAt
     answered(a.text, voice: a.voice, btw: a.btw)
@@ -216,10 +262,13 @@ final class Voice {
 
   private func down() {
     note("key down, \(phase)")
-    if phase == .listening || holding { return }   // held (a repeat)
+    if phase == .listening || holding { return }   // held (a repeat), or saying something hands-free
+    answerHandsFree = false
+    if reply.open { reply.close() }   // talking back with the key instead
     // An answer waiting that you haven't heard: holding reads it (as a tap does). Hold again while it reads to talk.
     if phase == .answered, Prefs.load().read { return listenNow() }
     holding = true
+    syncEar()   // the key's mic, not the ear
     // Talking back over it: it isn't reading any more (first: the stop's "done" mustn't play the media again).
     if phase == .saying { phase = .idle; readPaused = false }
     speak.stop()
@@ -320,6 +369,15 @@ final class Voice {
   /// still under way, else the pill goes.
   private func escape() {
     btw = false
+    answerHandsFree = false
+    if woke || reply.open {
+      woke = false
+      reply.close()
+      hush.off()
+      phase = .idle
+      restartEar()
+      return settle()
+    }
     switch phase {
     case .listening, .paused:
       stopWatch()
@@ -431,6 +489,7 @@ final class Voice {
   /// at the notch's height) with Listen, Read it here and Later as icons, each acting at once; nothing is read
   /// until you pick, unless Settings → Voice reads it straight away. A click on its dot (or ANSWERED) opens the chat.
   private func answered(_ text: String, voice: String, btw: Bool = false) {
+    if reply.open { reply.close(); restartEar() }   // another answer up: the 6 s for the last one are over
     answer = text
     voiceName = voice
     phase = .answered
@@ -443,7 +502,9 @@ final class Voice {
     NSSound(named: "Tink")?.play()
     // Settings → Voice: read it out at once, always or while Cue is in front (no tab first).
     let auto = Prefs.load().auto
-    if out, auto == "always" || (auto == "front" && NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "dev.spacegrowth.cue") {
+    // Said hands-free: read at once (answers not read out: shown, with the 6 s to reply).
+    if answerHandsFree, !out { return openReply() }
+    if out, answerHandsFree || auto == "always" || (auto == "front" && NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "dev.spacegrowth.cue") {
       note("answer back, read at once (\(text.count) characters)")
       return listenNow()
     }
@@ -543,6 +604,11 @@ final class Voice {
 
   private func doneReading() {
     guard phase == .saying else { return }
+    if answerHandsFree {
+      pill.m.speaking = false
+      hush.off()
+      return openReply()
+    }
     // Done: it goes a second later, so you have everything back (hold right ⇧ to talk back as ever).
     phase = .said
     pill.m.speaking = false
@@ -556,6 +622,7 @@ final class Voice {
 
   private func fail(_ why: String) {
     btw = false
+    handsFree = false
     note("failed: \(why)")
     holding = false
     stopWatch()
@@ -579,6 +646,7 @@ final class Voice {
   private func show(label: String, text: String, yours: Bool, keys: [(String, String)], buttons: [PillButton] = [], compact: Bool = false, line: Bool = false, folded: Bool = false) {
     pill.m.compact = compact
     pill.m.waiting = folded
+    pill.m.replyUntil = nil   // only the 6 s to reply sets it (openReply)
     pill.m.buttons = buttons
     pill.m.label = label
     // Live captions (Settings → Voice): the bar along the bottom is all there is (who, what's happening, the words,
@@ -601,6 +669,167 @@ final class Voice {
 
   private func joined(_ a: String, _ b: String) -> String {
     [a, b].map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }.joined(separator: " ")
+  }
+
+  // MARK: Hey Cue
+
+  /// The ear's mic is quiet while you hold the key (its own mic), and while an answer is read (it mustn't hear
+  /// itself); paused, what you said waits on the key.
+  private var earBusy: Bool { holding || phase == .saying || phase == .paused || (phase == .listening && !woke) }
+
+  /// The ear armed or not, and the menu bar mark, as things are now.
+  private func syncEar() {
+    mark.show(WakeArm.marked(wanted: wakeOn, talking: talking, locked: locked))
+    let want = WakeArm.armed(wanted: wakeOn, talking: talking, locked: locked, busy: earBusy)
+    if want, !earOn { startEar() } else if !want, earOn { stopEar() }
+  }
+
+  private func startEar() {
+    earOn = true
+    earGen += 1
+    let gen = earGen
+    Task {
+      if let why = await ear.allowed() { return note("hey cue: \(why)") }
+      guard earOn, gen == earGen, !ear.on else { return }   // stopped (or started again) meanwhile
+      do { try ear.start() } catch { return note("hey cue: couldn't start the mic: \(error.localizedDescription)") }
+      earSince = Date()
+      note("hey cue: listening")
+    }
+    earTimer?.invalidate()
+    let t = Timer(timeInterval: 0.2, repeats: true) { [weak self] _ in MainActor.assumeIsolated { self?.earTick() } }
+    RunLoop.main.add(t, forMode: .common)
+    earTimer = t
+  }
+
+  private func stopEar() {
+    earOn = false
+    earGen += 1
+    earTimer?.invalidate()
+    earTimer = nil
+    ear.cancel()
+    note("hey cue: mic off")
+    reply.close()
+    if woke {   // locked or turned off mid-sentence: dropped
+      woke = false
+      hush.off()
+      phase = .idle
+      settle()
+    }
+  }
+
+  /// The ear started afresh: what it heard so far let go (after something was said, and every so often).
+  private func restartEar() {
+    end = SpeechEnd(at: Date())
+    guard earOn, !earBusy else { return }
+    ear.cancel()
+    do { try ear.start(); earSince = Date() } catch { note("hey cue: couldn't start the mic again: \(error.localizedDescription)") }
+  }
+
+  /// Apple's words as the ear hears them (all of them since it started).
+  private func earWords(_ w: String) {
+    if !woke {
+      if reply.open {
+        guard !w.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        reply.heard(w)   // replying: it doesn't run out now
+      } else {
+        guard WakeWord.after(w) != nil else { return }
+        // An answer waiting for you: "Hey Cue" reads it, then you can reply.
+        if phase == .answered {
+          note("hey cue: reads the answer waiting")
+          answerHandsFree = true
+          restartEar()
+          return Prefs.load().read ? listenNow() : openReply()
+        }
+      }
+      guard phase != .listening, phase != .paused, phase != .saying, !holding else { return }
+      woke = true
+      end = SpeechEnd(at: Date())
+      hush.on()
+      // A reply goes back to the session that answered; else Cue picks one from the name you say (the open chat
+      // until it hears one).
+      talkingTo = reply.open ? (talkingTo ?? target) : target
+      if let t = talkingTo { dress(t) }
+      phase = .listening
+      pill.m.since = Date()
+    }
+    let rest = reply.open ? (WakeWord.after(w) ?? w) : (WakeWord.after(w) ?? "")
+    end.heard(rest, at: Date())
+    show(label: reply.open ? "REPLYING" : "HEARD YOU", text: rest.isEmpty ? "…" : rest, yours: true, keys: [("esc", "cancel")])
+    pill.m.showLevel = true
+    pill.show()
+    if !reply.open { emit(["hearing": rest]) }   // Cue says back whose name it hears
+  }
+
+  private func earTick() {
+    let now = Date()
+    if woke {
+      switch end.state(at: now) {
+      case .going: break
+      case .nothing:
+        note("hey cue: nothing said after it")
+        woke = false
+        reply.close()
+        hush.off()
+        phase = .idle
+        restartEar()
+        settle()
+      case .said(let words): finishSaying(words)
+      }
+      return
+    }
+    if reply.over(at: now) { return closeReply() }
+    // Nothing for a while: what it heard is let go (the recognizer's and the sound kept).
+    if !reply.open, now.timeIntervalSince(earSince) > 50 { restartEar() }
+  }
+
+  /// You stopped talking (a quiet moment): what you said goes, NVIDIA's text of it when that's picked.
+  private func finishSaying(_ apple: String) {
+    let replying = reply.open
+    woke = false
+    reply.close()
+    hush.off()
+    phase = .sending
+    show(label: "SENDING", text: apple, yours: true, keys: [])
+    pill.m.since = nil
+    let to = talkingTo
+    finishing = true
+    Task {
+      let all = await ear.finish()
+      finishing = false
+      restartEar()
+      var said = WakeWord.after(all) ?? (replying ? all : apple)
+      if said.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { said = apple }
+      guard phase == .sending else { return }   // esc meanwhile
+      guard !said.isEmpty, !VoiceText.strayYeah(said) else { return settle() }
+      handsFree = true
+      show(label: "SENDING", text: said, yours: true, keys: [])
+      note("hey cue: said \(said.count) characters\(replying ? ", a reply" : "")")
+      if replying, let t = to {
+        saidTo = t
+        emit(["said": said, "sid": t.sid])
+      } else {
+        emit(["heard": said])   // Cue picks the session by the name said, else the open chat
+      }
+    }
+  }
+
+  /// The answer was read out hands-free: 6 s to reply without "Hey Cue", a bar counting them down.
+  private func openReply() {
+    answerHandsFree = false
+    phase = .said
+    reply.start(at: Date())
+    show(label: "REPLY?", text: Speak.plain(answer), yours: false, keys: [("say it", "reply"), ("esc", "done")])
+    pill.m.replyUntil = Date().addingTimeInterval(ReplyWindow.seconds)
+    pill.show()
+    restartEar()   // only what's said from now on
+  }
+
+  /// Nothing said in the 6 s: the island goes, the mic waits for "Hey Cue" again.
+  private func closeReply() {
+    reply.close()
+    pill.m.replyUntil = nil
+    restartEar()
+    if phase == .said { settle() }
   }
 
   // MARK: The listening model
