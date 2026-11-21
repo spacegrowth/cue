@@ -174,6 +174,7 @@ function peerBubble(from, how, at, body, quote) {
 const stepFeeds = new Map();   // sid -> { version, turns, at }
 const stepFlip = new Set();    // "sid|id": steps you opened (every step is one line until you click it)
 const turnFold = new Map();    // "sid|turn" -> open? (your choice over the default)
+const runOpen = new Set();     // "sid|first step id": a run of steps opened from its count (the rest of its turn stays folded)
 const hookOpen = new Set();    // "sid|turn": its "After a stop hook" part, opened
 /** A turn a Stop hook sent back to work (steps/model.rs `hooked_ms`): what it did and wrote from then on is the
  *  hook's follow-up, not its answer. */
