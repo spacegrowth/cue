@@ -17,8 +17,8 @@
 .dv-chip { display: inline-flex; align-items: center; gap: 6px; font: 600 var(--type-small) var(--sans); color: var(--ink); background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-pill); padding: 2px 4px 2px 10px; white-space: nowrap; }
 .dv-chip button { font: 600 var(--type-pill) var(--sans); color: var(--muted); background: none; border: 0; border-radius: var(--radius-pill); width: 18px; height: 18px; padding: 0; cursor: pointer; }
 .dv-chip button:hover { color: var(--ink); background: var(--panel); }
-.dv-add { color: color-mix(in srgb, var(--accent) 85%, var(--ink)); }
-.dv-del { color: var(--deny); }
+.dv-add { color: var(--add-fg); }   /* the same diff colours as the chat (base.css --add-*/--del-*) */
+.dv-del { color: var(--del-fg); }
 .dv-n { font-family: var(--mono); font-size: var(--type-small); }
 .dv-body { flex: 1; overflow: auto; padding: 12px 16px 24px; }
 .dv-file { border: 1px solid var(--line); border-radius: var(--radius-tray); margin-bottom: 10px; overflow: hidden; }
@@ -31,8 +31,8 @@
 .dv-repo { flex: none; color: var(--ink); }
 .dv-lines { padding: 4px 0; font: var(--type-small)/1.5 var(--mono); overflow-x: auto; }
 .dv-lines div { padding: 0 10px; white-space: pre; }
-.dv-lines .a { background: color-mix(in srgb, var(--sel) 45%, transparent); }
-.dv-lines .d { background: color-mix(in srgb, var(--deny) 13%, transparent); }
+.dv-lines .a { background: var(--add-bg); color: var(--add-ink); }
+.dv-lines .d { background: var(--del-bg); color: var(--del-ink); }
 .dv-lines .h { color: var(--muted); padding-top: 4px; }
 .dv-note { color: var(--muted); padding: 30px 4px; }
 .dv-quiet { margin-top: 14px; color: var(--muted); font-size: var(--type-small); }

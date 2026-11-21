@@ -128,8 +128,9 @@ test("a diff you open is plain green and red, whole, in light and dark; its +N â
   await turn.locator(".stx-line").filter({ hasText: "Edited header.js" }).click();
   const diff = turn.locator(".stx-diff");
   await expect(diff).toHaveCount(1);
-  const want = { light: { add: "rgb(218, 251, 225)", addFg: "rgb(26, 127, 55)", del: "rgb(255, 235, 233)", delFg: "rgb(207, 34, 46)" },
-    dark: { add: "rgb(28, 58, 37)", addFg: "rgb(86, 211, 100)", del: "rgb(69, 32, 31)", delFg: "rgb(255, 138, 128)" } };
+  // One fixed set in light and dark alike (#647): diffs aren't theme-aware.
+  const one = { add: "rgb(218, 251, 225)", addFg: "rgb(26, 127, 55)", del: "rgb(255, 235, 233)", delFg: "rgb(207, 34, 46)" };
+  const want = { light: one, dark: one };
   for (const theme of ["light", "dark"]) {
     await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
     const got = await diff.evaluate((el) => {

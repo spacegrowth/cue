@@ -20,8 +20,9 @@
   --deny: #9B2C1F;
   --amber: #B07812;   /* attention, not an error: a near-full context, a cache going cold, what was avoidable */
   --star: #C99A1E;   /* a starred session's star: the one other hue, kept to the star */
-  /* A diff's added and removed lines: plain green and red, behind ink (the mark and a step's +N −N in the -fg). */
-  --add-bg: #DAFBE1; --add-fg: #1A7F37; --del-bg: #FFEBE9; --del-fg: #CF222E;
+  /* A diff's added and removed lines (#647): plain green and red rows, the same in light and dark (never redefined
+     below), with their own dark text so they read on either theme; -fg is the + / − mark and the +N −N counts. */
+  --add-bg: #DAFBE1; --add-ink: #0C3A1B; --add-fg: #1A7F37; --del-bg: #FFEBE9; --del-ink: #5C120E; --del-fg: #CF222E;
   /* A project's dot, ten swatches (core/colors.js SWATCHES): Moss (0, Cue's own), then soft, greyed colors, each
      also the hue and strength its window takes when it's the one picked. On white, the color as picked; on the
      window's color (--pcb), a lighter one of the same hue. Saved as 0–9. */
@@ -91,7 +92,6 @@
     --bg: #14170D; --on-bg: #ECEEE3; --on-bg-muted: #A3AA8A; --panel: #1D2113; --panel-2: #232818;
     --line: #343B24; --ink: #E9ECDF; --muted: #A8AF90; --accent: #B5C27A; --on-accent: #151A08; --voice: #8FC7C2; --sel: #B5C27A; --on-sel: #151A08;
     --slab: #0D0F08; --on-slab: #E0E5CC; --work: #4E5733; --deny: #E8907F; --amber: #E0A84A; --star: #E0B84A;
-    --add-bg: #1C3A25; --add-fg: #56D364; --del-bg: #45201F; --del-fg: #FF8A80;
     --pcp0: #B5C27A; --pcp1: oklch(0.8 0.033 107); --pcp2: oklch(0.8 0.063 301); --pcp3: oklch(0.8 0.083 87); --pcp4: oklch(0.8 0.041 67); --pcp5: oklch(0.8 0.036 157); --pcp6: oklch(0.8 0.053 194); --pcp7: oklch(0.8 0.07 276); --pcp8: oklch(0.8 0.048 353); --pcp9: oklch(0.8 0.011 271); --pcb0: var(--pcp0); --pcb1: var(--pcp1); --pcb2: var(--pcp2); --pcb3: var(--pcp3); --pcb4: var(--pcp4); --pcb5: var(--pcp5); --pcb6: var(--pcp6); --pcb7: var(--pcp7); --pcb8: var(--pcp8); --pcb9: var(--pcp9); --pcp10: oklch(0.8 calc(0.11 * var(--ok, 0)) var(--oh, 0)); --pcb10: var(--pcp10);
     --shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.8); color-scheme: dark;
     --white: #FFFFFF; --shade: #000000; --scrim-ink: #0A0C05; --on-amber: #1E2410; --caution: #D99A3A; --caution-ink: #B07A22; --on-caution: #2A1D06; --caution-hot: #C0612B;
@@ -104,7 +104,6 @@
   --bg: #14170D; --on-bg: #ECEEE3; --on-bg-muted: #A3AA8A; --panel: #1D2113; --panel-2: #232818;
   --line: #343B24; --ink: #E9ECDF; --muted: #A8AF90; --accent: #B5C27A; --on-accent: #151A08; --voice: #8FC7C2; --sel: #B5C27A; --on-sel: #151A08;
   --slab: #0D0F08; --on-slab: #E0E5CC; --work: #4E5733; --deny: #E8907F; --star: #E0B84A;
-  --add-bg: #1C3A25; --add-fg: #56D364; --del-bg: #45201F; --del-fg: #FF8A80;
   --pcp0: #B5C27A; --pcp1: oklch(0.8 0.033 107); --pcp2: oklch(0.8 0.063 301); --pcp3: oklch(0.8 0.083 87); --pcp4: oklch(0.8 0.041 67); --pcp5: oklch(0.8 0.036 157); --pcp6: oklch(0.8 0.053 194); --pcp7: oklch(0.8 0.07 276); --pcp8: oklch(0.8 0.048 353); --pcp9: oklch(0.8 0.011 271); --pcb0: var(--pcp0); --pcb1: var(--pcp1); --pcb2: var(--pcp2); --pcb3: var(--pcp3); --pcb4: var(--pcp4); --pcb5: var(--pcp5); --pcb6: var(--pcp6); --pcb7: var(--pcp7); --pcb8: var(--pcp8); --pcb9: var(--pcp9); --pcp10: oklch(0.8 calc(0.11 * var(--ok, 0)) var(--oh, 0)); --pcb10: var(--pcp10);
   --shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.8); color-scheme: dark;
   --white: #FFFFFF; --shade: #000000; --scrim-ink: #0A0C05; --on-amber: #1E2410; --caution: #D99A3A; --caution-ink: #B07A22; --on-caution: #2A1D06; --caution-hot: #C0612B;

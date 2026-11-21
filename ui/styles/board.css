@@ -77,7 +77,8 @@ body.col-sizing, body.col-sizing * { cursor: col-resize !important; user-select:
 .why { font-size: var(--type-small); color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .diff { border-radius: var(--radius-btn); overflow: hidden; box-shadow: inset 0 0 0 1px var(--line); font: var(--type-small)/1.5 var(--mono); }
 .diff pre { margin: 0; padding: 6px 10px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 120px; overflow-y: auto; }
-.diff .del { background: var(--panel-2); color: var(--muted); }
+.diff pre { background: var(--add-bg); color: var(--add-ink); }
+.diff .del { background: var(--del-bg); color: var(--del-ink); }
 /* A session's question (#383, option C): every question at once, each answer a row with what it does, its suggestion
    picked and marked, then what will happen if you send it. */
 .qc { display: flex; flex-direction: column; gap: 8px; }
