@@ -227,3 +227,29 @@
 .dk-fchip-d { color: var(--muted); font-weight: 400; }
 .dk-fchip-n { font-weight: 600; }
 
+
+/* A message between Desks (#640 option B, desk/lead.js deskBand): a band across the whole chat in the sending Desk's
+   colour (--pc, its project's swatch; the one it went to for the lead's own TELL DESK), headed by a tile and the Desk,
+   then who sent it and the item; the words; the foot says whether it was answered, and Open <Desk>. No edge stripe,
+   no hover text; light and dark follow from --pc, --panel and --ink. */
+.dk-band {
+  --pc: var(--accent);
+  align-self: stretch; margin: 2px -20px; padding: 10px 20px 11px; display: flex; flex-direction: column; gap: 6px;
+  background: color-mix(in oklch, var(--pc) 16%, var(--panel)); color: var(--ink); user-select: text; -webkit-user-select: text;
+}
+.dk-band-h { display: flex; align-items: center; gap: 7px; min-width: 0; font: var(--mg-meta); color: var(--ink); }
+.dk-band-tile { flex: none; width: 22px; height: 22px; border-radius: var(--radius-qp); display: grid; place-items: center; background: var(--pc); color: var(--panel); }
+.dk-band-desk { flex: none; font-weight: 700; color: color-mix(in oklch, var(--pc) 45%, var(--ink)); white-space: nowrap; }
+.dk-band-by { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-band-who { font-weight: 650; }
+.dk-band-sub { color: var(--muted); }
+.dk-band-age { flex: none; margin-left: auto; font: var(--type-pill) var(--mono); color: var(--muted); white-space: nowrap; }
+.dk-band-t { font: var(--mg-body); color: var(--ink); overflow-wrap: anywhere; }
+.dk-band-t > :last-child { margin-bottom: 0; }
+.dk-band-f { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font: var(--mg-meta); color: var(--muted); }
+.dk-band-ok { display: inline-flex; align-items: center; gap: 5px; font-weight: 650; color: var(--ink); }
+.dk-band-ok i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.dk-band-open { all: unset; cursor: pointer; color: var(--accent); font-weight: 650; white-space: nowrap; user-select: none; -webkit-user-select: none; }
+.dk-band-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-tag); }
+/* The lead's own TELL DESK sits in its reply's words: the band still runs the chat's width. */
+.dk-chat .mg-text .dk-band { margin-block: 6px; }

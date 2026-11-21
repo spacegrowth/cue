@@ -141,3 +141,25 @@ fn a_tell_back_answers_the_open_bands_from_that_desk_and_bands_survive_a_relaunc
     w.relaunch();
     assert_eq!((open(&w, &a, &b), open(&w, &a, &d), open(&w, &b, &a)), (0, 1, 1), "kept over a relaunch");
 }
+
+#[test]
+fn both_desks_views_carry_the_band_and_whether_it_was_answered() {
+    // Both leads' chats draw the band from these (#640): the sender's TELL DESK line and the receiver's message.
+    let w = World::new();
+    let (a, lead_a) = start(&w, "Feature A");
+    let (b, lead_b) = start(&w, "Feature B");
+    let (c, _) = elsewhere(&w);
+    answer(&w, &lead_a, "TELL DESK: Feature B | Can your work wait 30 min?");
+    let of = |d: &str| desk(&w, d)["bands"].as_array().cloned().unwrap_or_default();
+    for d in [&a, &b] {
+        let got = of(d);
+        assert_eq!(got.len(), 1, "{d}: {got:?}");
+        assert_eq!((got[0]["from"].as_str(), got[0]["to"].as_str(), got[0]["text"].as_str(), got[0]["answered"].as_u64()), (Some(a.as_str()), Some(b.as_str()), Some("Can your work wait 30 min?"), Some(0)));
+    }
+    assert!(of(&c).is_empty(), "a Desk that wasn't told has none");
+    answer(&w, &lead_b, "TELL DESK: Feature A | Yes, after yours lands.");
+    let got = of(&a);
+    assert_eq!(got.len(), 2, "{got:?}");
+    let asked = got.iter().find(|x| x["from"] == a.as_str()).unwrap();
+    assert!(asked["answered"].as_u64().unwrap() > 0, "answered once B's lead told A back: {asked}");
+}

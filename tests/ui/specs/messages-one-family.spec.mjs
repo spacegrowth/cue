@@ -26,7 +26,9 @@ async function isCard(loc, body = CHAT) {
 /** Its words read on what's behind them, in this scheme: their colour far from the nearest background's. */
 async function readsOn(loc) {
   const [fg, bg] = await loc.first().evaluate((e) => {
-    const lum = (c) => { const [r, g, b, a = 1] = c.match(/[\d.]+/g).map(Number); return [0.2126 * r + 0.7152 * g + 0.0722 * b, a]; };
+    // Any CSS colour (rgb, or the oklch a color-mix computes to) as sRGB, by painting it.
+    const cx = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+    const lum = (c) => { cx.clearRect(0, 0, 1, 1); cx.fillStyle = c; cx.fillRect(0, 0, 1, 1); const [r, g, b, a] = cx.getImageData(0, 0, 1, 1).data; return [0.2126 * r + 0.7152 * g + 0.0722 * b, a / 255]; };
     let n = e, b = [255, 0];
     while (n && n.nodeType === 1) { b = lum(getComputedStyle(n).backgroundColor); if (b[1] > 0.5) break; n = n.parentElement; }
     if (b[1] <= 0.5) b = lum(getComputedStyle(document.body).backgroundColor);
@@ -115,16 +117,15 @@ for (const scheme of ["light", "dark"]) {
       await noHover(page);
     });
 
-    test("another Desk's message to the lead is the family's card with that Desk's chip, not a band", async ({ page, cue }) => {
+    test("another Desk's message to the lead is the band in that Desk's colour (#640 option B), not the family's card", async ({ page, cue }) => {
       await cue.open("desk");
       await openDesk(page);
       await push(page, "lead", [{ role: "peer", from: "site-lead", from_sid: "site", text: "Can you take the header colours from ours?" }]);
-      const peer = page.locator('.dk-chat .mg[data-mg="peer"]');
-      await expect(peer).toHaveCount(1);
-      await isCard(peer);
-      await expect(peer.locator(".mg-h .mg-chip")).toHaveCount(1);
-      await readsOn(peer.locator(".mg-t"));
-      await expect(page.locator(".dk-chat .dk-peer-band")).toHaveCount(0);
+      const band = page.locator('.dk-chat .dk-band[data-band="from"]');
+      await expect(band).toHaveCount(1);
+      await expect(page.locator('.dk-chat .mg[data-mg="peer"]')).toHaveCount(0);
+      await expect(band.locator(".dk-band-desk")).toHaveCount(1);
+      await readsOn(band.locator(".dk-band-t"));
       await noHover(page);
     });
 

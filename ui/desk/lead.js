@@ -18,11 +18,10 @@ let deskSaidItem = "";
 
 // ---------- the lead ----------
 
-/** A message another Desk's session sent this lead (#472; #501 option B): the family's card (messages.css .mg) with
- *  that Desk's chip (its mark, colour dot and name) in the head, the session, a FROM ANOTHER DESK tag and the item it
- *  holds there, then the message and a quiet foot that the lead answers it. Null for any other message: one from the lead's own
- *  Desk, from no Desk, or in a chat that isn't a lead's (chat/render.js draws those as today). The sender is found by
- *  its session id (the hub notes it when the message came through its hook), else by its name. */
+/** A message another Desk's session sent this lead (#472; #640 option B): the band in that Desk's colour
+ *  (deskBand), headed by the Desk, the session and the item it holds there. Null for any other message: one from the
+ *  lead's own Desk, from no Desk, or in a chat that isn't a lead's (chat/render.js draws those as today). The sender
+ *  is found by its session id (the hub notes it when the message came through its hook), else by its name. */
 function deskPeerBand(sid, e) {
   const own = (state.desk?.projects || []).find((d) => deskLead(d)?.sid === sid);
   if (!own) return null;
@@ -30,30 +29,71 @@ function deskPeerBand(sid, e) {
   const d = from && from !== sid ? deskForSession(from) : null;
   if (!d || d.project === own.project) return null;
   const it = deskSessItem(d, from);
-  return deskPeerCard(d, deskName(d), nameOf(from, e.from) || e.from || "a session", it?.id, e.at_ms, e.text);
+  return deskBand({ d, label: deskName(d), who: nameOf(from, e.from) || e.from || "a session", id: it?.id, title: it?.title, at: e.at_ms, text: e.text,
+    foot: `<span class="dk-band-st">${esc(deskLeadName(own) || "The lead")} answers it below; you don't need to.</span>` });
 }
 /** The head of a band Cue sent this lead for another Desk's lead (#540, desk/tell.rs `band_text`): its Desk's name, its
- *  lead's, the item it's about; then the words, and the line on how to answer, which the card leaves out. */
+ *  lead's, the item it's about; then the words, and the line on how to answer, which the band leaves out. */
 const DESK_TOLD = /^\[From another Desk: (.+?) · lead (.*?)(?: · about #([A-Za-z0-9]+))?\]\n([\s\S]*?)(?:\n\n\(To answer: TELL DESK: [^\n]*\))?$/;
-/** A TELL DESK, TELL DESKS or HOLD from another Desk's lead, as Cue delivered it to this lead (#540): the same band as
- *  a message from that Desk's session, its lead as the sender. Null for any other message, or outside a lead's chat. */
+/** A TELL DESK, TELL DESKS or HOLD from another Desk's lead, as Cue delivered it to this lead (#540, #640 option B):
+ *  the band in that Desk's colour, its lead as the sender, and whether this lead has answered it (the hub's bands,
+ *  desk/tell.rs `Band.answered`). Null for any other message, or outside a lead's chat. */
 function deskToldBand(sid, e) {
   const desks = state.desk?.projects || [];
   const own = desks.find((d) => deskLead(d)?.sid === sid);
   const m = own && DESK_TOLD.exec(deskSaid(e.text).trim());
   if (!m) return null;
   const d = desks.find((x) => x.project !== own.project && deskName(x) === m[1]) || null;
-  const from = d && deskLead(d)?.sid;
-  return deskPeerCard(d, m[1], (from && nameOf(from, m[2])) || m[2] || "its lead", m[3], e.at_ms, m[4]);
+  const from = d && deskLead(d)?.sid, words = m[4].trim();
+  const b = deskBandOf(own, (x) => x.to === own.project && (!d || x.from === d.project) && x.text.trim() === words, e.at_ms);
+  const me = esc(deskLeadName(own) || "the lead");
+  const st = b?.answered ? `<span class="dk-band-ok"><i></i>Answered by ${me} · ${ago(b.answered)}</span>`
+    : b && !b.ask ? `<span class="dk-band-st">A heads-up; nothing to answer</span>` : `<span class="dk-band-st">${me} answers it below; you don't need to.</span>`;
+  const it = d && m[3] ? (d.items || []).find((i) => deskIdIs(i, m[3])) : null;
+  return deskBand({ d, label: m[1], who: (from && nameOf(from, m[2])) || m[2] || "its lead", id: m[3], title: it?.title, at: e.at_ms, text: words, foot: st });
 }
-/** The FROM ANOTHER DESK card (#472): Desk `d`'s chip (`label` when it isn't loaded), `who` sent it, the item `id` it's
- *  about, its age and `text`. */
-function deskPeerCard(d, label, who, id, at, text) {
-  return deskMg({ kind: "peer", attrs: ` data-from-desk="${esc(d ? d.project : label)}"`,
-    chip: `<span class="mg-chip">${deskKindIcon("tray")}${d ? projDot(d.project) : ""}${esc(d ? deskName(d) : label)}</span>`,
-    who: esc(who), tag: "FROM ANOTHER DESK", id: id ? `<span class="mg-id">#${esc(id)}</span>` : "",
-    age: at, body: `<div class="mg-t whole dk-md">${md(text || "")}</div>`,
-    foot: `<span class="mg-st">The lead answers it below; you don't need to.</span>` });
+/** The band Desk `own` sent or got that `ok` picks (the hub's bands, desk/hub/core/view.rs), the one nearest `at`. */
+function deskBandOf(own, ok, at) {
+  const all = (state.desk?.projects || []).flatMap((d) => d.bands || []).filter(ok);
+  return all.sort((a, b) => Math.abs(a.at - at) - Math.abs(b.at - at))[0] || null;
+}
+/** A lead's own TELL DESK / TELL DESKS line in its reply (#640): the same band, in the colour of the Desk it went to,
+ *  "To Loops Desk", the words, and whether that lead has answered yet (the hub's bands). "" when no Desk by that name
+ *  is loaded and the hub kept no band of it (the line stays as the lead wrote it). */
+function deskLineTell(k) {
+  const { m, body } = k;
+  const desks = state.desk?.projects || [];
+  const many = /DESKS$/.test(m[1]);
+  const to = many ? "" : body.slice(0, body.indexOf("|")).trim().replace(/^["`*]+|["`*]+$/g, "");
+  const words = many ? body : body.slice(body.indexOf("|") + 1).trim();
+  if (!many && (!body.includes("|") || !to)) return "";
+  if (!words) return "";
+  const named = (d) => d.project === to || deskName(d).toLowerCase() === to.toLowerCase();
+  const sent = desks.flatMap((d) => d.bands || []).filter((b) => b.text.trim() === words && (many || desks.some((d) => d.project === b.to && named(d)) || b.to === to));
+  const targets = many ? [...new Set(sent.map((b) => b.to))].map((p) => desks.find((d) => d.project === p)).filter(Boolean) : desks.filter(named).slice(0, 1);
+  const d = targets.length === 1 ? targets[0] : null;
+  if (!many && !d && !sent.length) return "";
+  const label = many ? (targets.length ? targets.map(deskName).join(", ") : "every other Desk on this code") : d ? deskName(d) : to;
+  const b = sent.at(-1);
+  const answered = sent.filter((x) => x.answered);
+  const st = !b ? `<span class="dk-band-st">Sending…</span>`
+    : !b.ask ? `<span class="dk-band-st">A heads-up; nothing to answer</span>`
+    : answered.length === sent.length ? `<span class="dk-band-ok"><i></i>Answered${many ? "" : ` by ${esc(d ? deskLeadName(d) || "its lead" : "its lead")}`} · ${ago(Math.max(...answered.map((x) => x.answered)))}</span>`
+    : `<span class="dk-band-st">Not answered yet${answered.length ? ` · ${answered.length} of ${sent.length} answered` : ""}</span>`;
+  const item = b?.item, it = item ? desks.flatMap((x) => x.items || []).find((i) => deskIdIs(i, item)) : null;
+  return deskBand({ d, label, to: true, id: item, title: it?.title, at: b?.at ?? null, text: words, foot: st });
+}
+/** The band between Desks (#640 option B): across the whole chat in Desk `d`'s colour (its project's, styles
+ *  desk-lead.css .dk-band; the app's own when `d` isn't loaded), headed by a tile and the Desk ("Loops Desk", or "To
+ *  Loops Desk" for one this lead sent, `to`), `who` sent it, the item it's about (`id`, its `title`), its age; then
+ *  the words; then the foot (`foot`: whether it was answered) and Open <Desk>. */
+function deskBand({ d, label, to = false, who = "", id = "", title = "", at = null, text = "", foot = "" }) {
+  const name = `${esc(label)}${/desks?$/i.test(label) || label.includes(",") ? "" : " Desk"}`;
+  const tile = `<span class="dk-band-tile" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h14l-3-3"/><path d="M20 16H6l3 3"/></svg></span>`;
+  const sub = [who ? `<b class="dk-band-who">${esc(who)}</b>` : "", id ? `<span class="dk-band-sub">#${esc(id)}${title ? ` ${esc(title)}` : ""}</span>` : ""].filter(Boolean).join(" · ");
+  const head = `${tile}<span class="dk-band-desk">${to ? "To " : ""}${name}</span>${sub ? `<span class="dk-band-by">· ${sub}</span>` : ""}${at != null ? `<span class="dk-band-age">${ago(at)}</span>` : ""}`;
+  const open = d ? `<button class="dk-band-open" data-inbox-desk="${esc(d.project)}">Open ${esc(deskName(d))} Desk</button>` : "";
+  return `<div class="dk-band${to ? " out" : ""}" data-band="${to ? "to" : "from"}" data-from-desk="${esc(d ? d.project : label)}"${d ? ` style="${projStyle(d.project)}"` : ""}><div class="dk-band-h">${head}</div><div class="dk-band-t dk-md">${md(text || "")}</div>${foot || open ? `<div class="dk-band-f">${foot}${open}</div>` : ""}</div>`;
 }
 /** One message of the family (#501, option B, ui/styles/messages.css): the card on panel-2, its head row (Cue's mark
  *  with `cue`, another Desk's `chip`, who → to, the TAG, the item's chip, the age at the right), then `body` (its
@@ -325,7 +365,7 @@ const deskCut = (key, cls, html, text) => reqCut(`dk:${key}`, `<div class="${cls
  *  block, so not here; ASK is left out of the text (#427): Cue files it as a question, which the chat shows once as a
  *  small card ("Asked: …", your answer beside it once you give it) and the pop-up answers. NOTE (#449) is a small card
  *  too: "Note to cue-387 · Feature #418", the message under it. */
-const DESK_SAY = /^[-*+ ]*(ITEM|ROUTE|DONE|CONTEXT|DESIGNS|TITLE|SEE|MERGE|ASK|NOTE)\**\s*:(.*)$/;
+const DESK_SAY = /^[-*+ ]*(ITEM|ROUTE|DONE|CONTEXT|DESIGNS|TITLE|SEE|MERGE|ASK|NOTE|TELL DESKS|TELL DESK)\**\s*:(.*)$/;
 const DESK_KINDS = ["bug", "feature", "task"];
 /** `line` of a Desk chat's reply as one short plain sentence at the left (md's `lines` hook; #157, #173): ROUTE "Gave
  *  Task #2 to who" (or "Task #2 waits on #1"); ITEM "Added Bug #2: title"; DONE "Bug #2 is done"; TITLE "Renamed Bug
@@ -340,7 +380,7 @@ function deskLineHtml(line, inline) {
   if (m[1] === "ASK") return MD_DROP;
   const k = deskLineKit(m, body, inline);
   const kinds = { ITEM: deskLineItem, SEE: deskLineSee, ROUTE: deskLineRoute, DONE: deskLineDone, TITLE: deskLineTitle,
-    MERGE: deskLineMerge, NOTE: deskLineNote, DESIGNS: deskLineDesigns };
+    MERGE: deskLineMerge, NOTE: deskLineNote, DESIGNS: deskLineDesigns, "TELL DESK": deskLineTell, "TELL DESKS": deskLineTell };
   const run = kinds[m[1]] || deskLineContext;
   return run(k);
 }
