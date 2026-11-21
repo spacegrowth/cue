@@ -1146,4 +1146,23 @@ test.describe("Settings → Privacy", () => {
     await expect(page.locator(".sheet [data-owner-names]")).toHaveValue("Pat Example\npat@example.com\nPat E.");
     await expect(page.locator(".sheet [title]")).toHaveCount(0);
   });
+
+  test("what Cue finds by itself shows read-only under the field, which stays for extras (#595)", async ({ cue, page }) => {
+    await cue.open("board-waiting");
+    await cue.override("push_words_found", () => ({ mine: ["Pat Example", "pat@example.com"], projects: ["acme-secret"] }));
+    await page.keyboard.press(",");
+    const line = page.locator(".sheet [data-found-words]");
+    await expect(line).toHaveText("Cue also keeps out: Pat Example, pat@example.com; in public projects, acme-secret");
+    await cue.called("push_words_found");
+    await expect(line.locator("input, textarea")).toHaveCount(0);
+    await expect(page.locator(".sheet [data-owner-names]")).toHaveValue("");
+    await expect(page.locator(".sheet [title]")).toHaveCount(0);
+  });
+
+  test("with nothing found, no line shows (#595)", async ({ cue, page }) => {
+    await cue.open("board-waiting");
+    await page.keyboard.press(",");
+    await expect(page.locator(".sheet [data-owner-names]")).toBeVisible();
+    await expect(page.locator(".sheet [data-found-words]")).toHaveCount(0);
+  });
 });

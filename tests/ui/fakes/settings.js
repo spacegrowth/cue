@@ -138,6 +138,8 @@ CueBridge.area("settings", (w) => {
     // Settings rows an add-on adds: none without one.
     ext_settings: () => [],
     ext_set: () => null,
+    // Settings → Privacy: what Cue keeps out of pushes by itself (none here; a spec stubs some).
+    push_words_found: () => ({ mine: [], projects: [] }),
     // Up to date on stable; a newer build on beta (Settings → Get beta builds), as ipc/updates.rs picks the channel.
     // ?nobeta=1: no beta is published, so a beta check answers from stable and says so.
     update_check: () => {
