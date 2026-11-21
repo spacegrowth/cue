@@ -18,8 +18,9 @@ pub(crate) struct Hit {
 /// At most this many finds named in the refusal; the rest counted.
 const SHOWN: usize = 8;
 
-/// What no push of `project` may carry: its words never committed, your own names, and the words Cue finds by itself
-/// (found_words.rs: your accounts' names, and your private projects' names when `project` is public), any case.
+/// What no push, commit or landing of `project` may carry: its words never committed, your own names, and the words
+/// Cue finds by itself (found_words.rs: your accounts' names, and your private projects' names when `project` is
+/// public), any case.
 pub(crate) fn words_for(project: &str) -> Vec<String> {
     let mut words = crate::config::never_words(project);
     for n in crate::config::owner_names().into_iter().chain(crate::desk::hub::landing::found_words::words_for(project)) {

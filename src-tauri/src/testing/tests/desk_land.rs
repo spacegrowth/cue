@@ -122,6 +122,29 @@ fn a_main_line_that_moved_meanwhile_is_brought_up_to_and_landed_on_top_of() {
     assert!(dir.join("shared.txt").is_file());
 }
 
+/// Your own names are kept out of a landing as they are out of a push, in its added lines and in its title (#650):
+/// nothing lands, and the Desk lead is told what was found where.
+#[test]
+fn your_name_in_a_copys_work_or_its_title_stops_its_landing() {
+    for (title, line, at) in [("Header jumps", "thanks Zorvan\n", "a.txt"), ("Header jumps for Zorvan", "a\n", "its title")] {
+        let w = World::new();
+        let (dir, project, id, h) = routed_with(&w, |_, _, _| {}, |_, _, _| {});
+        w.hub().set_setting("owner.names", serde_json::json!(["Zorvan"])).unwrap();
+        if title != "Header jumps" {
+            w.hub().write(|st| st.desk.item_mut(&id).unwrap().title = title.to_string());
+        }
+        let path = PathBuf::from(item(&w, &project, title)["tree"]["path"].as_str().unwrap().to_string());
+        let main = git(&dir, &["rev-parse", "HEAD"]);
+        std::fs::write(path.join("a.txt"), line).unwrap();
+        ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
+        assert_eq!(git(&dir, &["rev-parse", "HEAD"]), main, "nothing landed ({at})");
+        let it = item(&w, &project, title);
+        assert_eq!(it["finish"]["step"], "word", "{it}");
+        let said = it["latest"].as_str().unwrap_or_default();
+        assert!(said.contains("\"Zorvan\"") && said.contains(at), "{it}");
+    }
+}
+
 #[test]
 fn a_clash_with_the_main_line_goes_back_to_its_holder_and_nothing_lands() {
     // #371: handed back to the session that did it, at work again: nothing about it waits on you.

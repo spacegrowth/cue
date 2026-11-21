@@ -92,7 +92,7 @@ fn merge_into(project: &str, main: &str, onto: &str, sha: &str, branch: &str, wh
     }
     let tree = out.lines().next().unwrap_or("").trim().to_string();
     let diff = git("", &main, &[], &["diff", "-U0", "--no-color", "--no-ext-diff", "--no-textconv", &onto, &tree]).ok_or(("conflict", format!("Not merged: git couldn't read the merge of {branch}")))?;
-    let words = crate::config::never_words(project);
+    let words = crate::desk::hub::landing::push_check::words_for(project);
     if let Some((w, at)) = word_in(&diff, &words) {
         return Err(("word", format!("Not merged: \"{w}\" is in {at}")));
     }

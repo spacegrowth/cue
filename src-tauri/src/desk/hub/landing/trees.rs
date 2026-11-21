@@ -486,7 +486,8 @@ impl Hub {
             return Landed::Held;
         }
         let project = self.read(|st| st.desk.project_of(&it.project).to_string());
-        let words = crate::config::never_words(&project);
+        // The same words as before a push (#650): the project's never-committed words and your names.
+        let words = crate::desk::hub::landing::push_check::words_for(&project);
         let message = format!("{} (#{id})", it.title);
         if let Some(w) = words.iter().find(|w| message.to_lowercase().contains(&w.to_lowercase())) {
             self.finish_ask(id, "word", &format!("Not landed: \"{w}\" is in its title"), "");
