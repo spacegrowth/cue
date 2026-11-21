@@ -145,6 +145,16 @@ impl Folders {
         std::mem::take(&mut known.changed)
     }
 
+    /// The main checkouts of the folders known now, each once: nothing looked up, nobody waits.
+    pub fn known_roots(&self) -> Vec<PathBuf> {
+        let known = crate::locking::lock(&self.known, "folder facts");
+        let mut out: Vec<PathBuf> = known.folders.values().filter_map(|e| e.facts.as_ref()?.root.clone()).collect();
+        drop(known);
+        out.sort();
+        out.dedup();
+        out
+    }
+
     /// Look `cwd` up on a thread of its own and keep what it finds.
     fn look_up(&'static self, cwd: String) {
         std::thread::spawn(move || {
@@ -182,6 +192,11 @@ pub fn first_look(cwd: &str) {
 /// Look the folders asked about lately up again (the 3-second tick); true when one changed.
 pub fn refresh() -> bool {
     FOLDERS.refresh()
+}
+
+/// The main checkouts of the repositories of every folder Cue knows now (desk/hub/landing/found_words.rs).
+pub fn known_roots() -> Vec<PathBuf> {
+    FOLDERS.known_roots()
 }
 
 /// The main checkout of the repository `cwd` is in (`Facts::root`).

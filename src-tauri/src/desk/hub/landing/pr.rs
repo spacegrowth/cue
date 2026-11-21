@@ -293,7 +293,7 @@ fn link_in(text: &str) -> Option<String> {
 }
 
 /// GitHub's gh: on the PATH, or where Homebrew puts it.
-fn gh_bin() -> std::path::PathBuf {
+pub(crate) fn gh_bin() -> std::path::PathBuf {
     let path = std::env::var("PATH").unwrap_or_default();
     let found = path.split(':').chain(["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"]).map(|d| std::path::Path::new(d).join("gh")).find(|p| p.is_file());
     found.unwrap_or_else(|| std::path::PathBuf::from("gh"))

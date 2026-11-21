@@ -74,6 +74,7 @@ mod desk_start_after;
 mod desk_crew_waits;
 mod desk_stuck;
 mod desk_asked;
+mod desk_not_done;
 mod desk_back_at_work;
 mod desk_comments;
 mod db_open;

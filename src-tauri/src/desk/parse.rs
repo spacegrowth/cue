@@ -19,6 +19,9 @@ pub enum Line {
     Ask { question: String, choices: Vec<String>, item: Option<String> },
     /// Items done, as their holder says.
     Done { ids: Vec<String> },
+    /// Item `id`, with you to check, isn't done after all, as its holder says (#627): `NOT DONE: #<id> | <what's left>`.
+    /// Cue puts it back in progress (in line for a copy when none is free). `text`: what's left, maybe empty.
+    NotDone { id: String, text: String },
     /// What comes after option `option` ("any": whichever) of item `id` is picked (#543), as its holder says:
     /// `IF PICKED: #<id> | <option> | <kind> | <title> | you'll see: … | done when: … | by: <me | new | name>`.
     IfPicked { id: String, next: crate::desk::model::FollowUp },
@@ -193,6 +196,7 @@ fn one(t: &str) -> Option<Line> {
         "ROUTE" => route(body),
         "ASK" => ask(body),
         "DONE" => done(body),
+        "NOT DONE" => not_done(body),
         "CHECK" => check(body),
         "CONTEXT" => context(body),
         "DESIGNS" => designs(body),
@@ -538,6 +542,15 @@ fn split_choices(part: &str) -> Vec<String> {
 fn done(body: &str) -> Option<Line> {
     let ids: Vec<String> = body.split([',', ' ']).filter(|w| w.trim().starts_with('#')).filter_map(id_of).collect();
     (!ids.is_empty()).then_some(Line::Done { ids })
+}
+
+/// "#627 | <what's left>" (or "#627 — …", "#627: …", or "#627" alone): Line::NotDone.
+fn not_done(body: &str) -> Option<Line> {
+    let rest = body.trim().strip_prefix('#')?;
+    let end = rest.find(|c: char| !c.is_ascii_alphanumeric()).unwrap_or(rest.len());
+    let id = id_of(&rest[..end])?;
+    let text = rest[end..].trim_start_matches([':', ',', '.', ')']).trim().trim_start_matches(['|', ':', '-', '—']).trim();
+    Some(Line::NotDone { id, text: text.to_string() })
 }
 
 /// "#111 | Try: <thing>" or "#111 | Nothing to see: <why>" (labels in any case; the words may hold `|`).

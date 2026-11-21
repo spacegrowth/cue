@@ -229,6 +229,10 @@ pub struct DeskItem {
     /// machine and the folder there. Saved, so a retry starts it there too.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub on_machine: Option<OnMachine>,
+    /// Where you chose its new session starts (#597), on its page before it started: a machine's name, or "" for this
+    /// Mac. It wins over the Desk's own setting, and the lead's route can't send it elsewhere. Saved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_on: Option<String>,
     /// The machine its holder runs on, as shown ("" on this Mac). Worked out as it's shown, never saved.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub machine: String,

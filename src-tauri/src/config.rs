@@ -343,7 +343,7 @@ pub fn history_keep() -> usize {
 
 /// The settings the window may save. A key it saves that isn't here fails as "unknown setting" (the test
 /// below reads the window's scripts for every key they save).
-pub(crate) const ALLOWED: &[&str] = &["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.text", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "usage.codex", "sessions.tmux", "project.colors", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "project.oneway", "project.lands", "project.asked", "project.never", "owner.names", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "tips.on", "updates.beta", "voice.pick", "mini.mode", "hosted.on"];
+pub(crate) const ALLOWED: &[&str] = &["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.text", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "usage.codex", "sessions.tmux", "project.colors", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "project.oneway", "project.lands", "project.machine", "project.asked", "project.never", "owner.names", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "tips.on", "updates.beta", "voice.pick", "mini.mode", "hosted.on"];
 
 /// Set one dotted key ("history.keep", "notify.finished", "pi.gate"), keeping everything else.
 pub fn set(key: &str, value: Value) -> Result<(), String> {
@@ -374,7 +374,7 @@ fn checked(key: &str, value: Value) -> Result<Value, String> {
     }
     match key {
         "pi.gate" | "appearance.mode" | "appearance.text" | "mini.mode" | "notify.sound" | "turn.mode" | "steps.mode" | "voice.pick" => checked_choice(key, &value),
-        "project.colors" | "project.all" | "project.hue" | "project.pins" | "project.made" | "project.names" | "project.moves" | "project.folders" | "project.oneway" | "project.lands" | "project.asked" | "project.never" => checked_project(key, value),
+        "project.colors" | "project.all" | "project.hue" | "project.pins" | "project.made" | "project.names" | "project.moves" | "project.folders" | "project.oneway" | "project.lands" | "project.machine" | "project.asked" | "project.never" => checked_project(key, value),
         "insights.skills" | "quick.phrases" | "owner.names" => checked_list(key, value),
         _ => checked_plain(key, value),
     }
@@ -445,6 +445,8 @@ fn checked_project(key: &str, value: Value) -> Result<Value, String> {
         "project.asked" => crate::desk::one_way::checked_asked(&value)?,
         // How work lands, per project (desk/lands.rs).
         "project.lands" => crate::desk::lands::checked(&value)?,
+        // Where each Desk's new sessions start, and its clone's folder on each machine (desk/machine_pref.rs).
+        "project.machine" => crate::desk::machine_pref::checked(&value)?,
         // Words never committed, per project (desk/hub/landing/commit.rs).
         "project.never" => never(&value)?,
         _ => return Err(format!("unknown setting {key}")),

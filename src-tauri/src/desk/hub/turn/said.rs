@@ -147,7 +147,7 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, repos: &[(St
             Line::Pause { on, why } => fx.pause.push((project.to_string(), on, name.clone(), lsid.to_string(), why)),
             Line::Pass { id, .. } => cleanup_said(st, project, &by, &id, None, now, fx, &mut answers),
             Line::Loop(d) => loop_said(st, project, &by, d, loops, now, fx, &mut answers),
-            Line::Context { .. } | Line::Designs { .. } | Line::IfPicked { .. } | Line::ToLead { .. } | Line::Check { .. } => {}
+            Line::Context { .. } | Line::Designs { .. } | Line::IfPicked { .. } | Line::ToLead { .. } | Line::Check { .. } | Line::NotDone { .. } => {}
         }
     }
     for line in parse::unread_routes(text) {
@@ -647,6 +647,8 @@ impl Hub {
             let mut on = crate::desk::hub::stall::stall::about(st, text, &held, crate::desk::hub::stall::stall::now_on(st, sid).as_deref());
             replied(st, sid, text, turn, &on, now, &mut fx);
             crate::desk::hub::turn::asked::answered(st, sid, text, &loose, now, &mut fx);
+            // NOT DONE on an item to check (#627), after its question settled: back at work.
+            crate::desk::hub::turn::asked::not_done(st, sid, text, now, &mut fx);
             if on.is_empty() && held.len() == 1 {
                 on = held;
             }

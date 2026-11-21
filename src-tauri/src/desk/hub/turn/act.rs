@@ -325,7 +325,11 @@ fn note_to_holder(st: &mut Store, id: &str, holder: Option<Holder>, text: &str, 
     let ask = it.ask.as_ref().and_then(|a| a.get("sid")).and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(str::to_string);
     let to = ask.unwrap_or_else(|| h.to().to_string());
     let mate = if h.kind == "crew" { format!(", for {}", h.name) } else { String::new() };
-    let message = format!("About #{id} ({}){mate}: {}", it.title, crate::desk::with_your_pictures(&words));
+    let mut message = format!("About #{id} ({}){mate}: {}", it.title, crate::desk::with_your_pictures(&words));
+    // To check, it stays so (#584), unless its holder says your words leave more to do (#627).
+    if it.state == "to_check" {
+        message.push_str(&format!("\n{}", crate::desk::not_done_words(id)));
+    }
     let project = it.project.clone();
     you_wrote(st, &project, id, crate::desk::your_words(&words).0.trim(), &format!("to {}", h.name), now, fx);
     send_step(st, id, &to, message, now, fx);
@@ -937,7 +941,7 @@ impl Hub {
     /// starts without waiting, desk/hub/landing/finish.rs), "skip_install" (waiting to install, done now with no install of its own,
     /// #490), "rerun" (its landing run again: a plain retry, offered only when Cue
     /// can name nothing in its way, desk/hub/landing/finish.rs), what clears a wait (desk/hub/core/waits.rs): "cut" (no longer waits on
-    /// item `text`), "drop", and "remove_kept" (a dropped item's kept copy deleted, desk/hub/landing/trees.rs: `id` is that item's).
+    /// item `text`), "drop", "start_on" (where its session starts: machine `text`, "" for this Mac, #597), and "remove_kept" (a dropped item's kept copy deleted, desk/hub/landing/trees.rs: `id` is that item's).
     pub(crate) fn desk_item_act(&self, id: &str, act: &str, text: &str) -> Result<DeskItem, String> {
         match act {
             // Not done while changes on its own branch aren't on main (#448).
@@ -950,6 +954,7 @@ impl Hub {
             "install_now" => return self.desk_install_now(id),
             "rerun" => return self.desk_rerun_landing(id),
             "pickup_kept" => return self.desk_kept_pickup(id),
+            "start_on" => return self.desk_start_on(id, text),
             "remove_kept" => {
                 self.desk_kept_remove(id)?;
                 return Ok(DeskItem { id: id.to_string(), state: "dropped".into(), ..Default::default() });

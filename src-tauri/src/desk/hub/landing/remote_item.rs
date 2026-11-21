@@ -37,30 +37,81 @@ fn fetched_ref(id: &str) -> String {
     format!("refs/cue/remote/{id}")
 }
 
-/// The lead's `on:` and `in:` on a ROUTE of item `id` to `to`: where a new session for it starts, set on the item once
-/// the route is made (Some: what to set; a route to new without `on:` starts it on this Mac again). Err: why it's
-/// refused, as the lead is told.
-pub(crate) fn route_on(st: &Store, project: &str, id: &str, to: &str, on: Option<&str>, in_dir: Option<&str>) -> Result<Option<Option<OnMachine>>, String> {
-    if st.desk.item(id).filter(|i| i.project == project).is_none() {
+/// Whether the lead's `on:` names this Mac (`on: this Mac`, `here`), not another machine.
+fn this_mac(on: &str) -> bool {
+    let on = on.trim().to_ascii_lowercase();
+    ["this mac", "mac", "here", "local", "this machine"].contains(&on.as_str())
+}
+
+/// The folder of Desk `desk`'s clone on `machine`, if the Desk has used it (desk/machine_pref.rs, then what it knew
+/// before that setting).
+pub(crate) fn desk_folder_on(st: &Store, desk: &str, machine: &str) -> Option<String> {
+    crate::desk::machine_pref::of(desk).folder(machine).map(str::to_string).or_else(|| st.desk.spaces.get(desk).and_then(|d| d.machine_folders.get(machine).cloned()))
+}
+
+/// Where a new session for item `it` starts (#597): None on this Mac, else the machine and its clone's folder there.
+/// The lead's `on:` first, then where you chose for it, then where its Desk's sessions start. Err: why it can't start
+/// there (no folder known for that machine), as the item says.
+pub(crate) fn start_place(st: &Store, it: &DeskItem) -> Result<Option<OnMachine>, String> {
+    if let Some(o) = &it.on_machine {
+        return Ok((!o.machine.is_empty()).then(|| o.clone()));
+    }
+    let m = match &it.start_on {
+        Some(m) => m.clone(),
+        None => crate::desk::machine_pref::of(&it.project).machine,
+    };
+    if m.is_empty() {
         return Ok(None);
     }
+    let folder = desk_folder_on(st, &it.project, &m).ok_or_else(|| format!("Cue doesn't know the folder of this repository's clone on {}", crate::machines::display_name(&m)))?;
+    Ok(Some(OnMachine { machine: m, folder }))
+}
+
+/// The lead's `on:` and `in:` on a ROUTE of item `id` to `to`: where a new session for it starts, set on the item once
+/// the route is made (Some: what to set; a route to new without `on:` starts it where you chose, else where the Desk's
+/// sessions start; `on: this Mac` here). Your choice on the item wins, and a Desk's first item on a machine waits for
+/// you: the lead asks you, then gives the folder there (`in:`). Err: why it's refused, as the lead is told.
+pub(crate) fn route_on(st: &Store, project: &str, id: &str, to: &str, on: Option<&str>, in_dir: Option<&str>) -> Result<Option<Option<OnMachine>>, String> {
+    let Some(it) = st.desk.item(id).filter(|i| i.project == project) else { return Ok(None) };
     let fresh = to.eq_ignore_ascii_case("new");
-    let Some(on) = on else { return Ok(fresh.then_some(None)) };
+    let pick = it.start_on.as_deref();
+    let pick_shown = |p: &str| if p.is_empty() { "this Mac".to_string() } else { crate::machines::display_name(p) };
+    let Some(on) = on else {
+        // To a session already at work: it has to be where you chose.
+        if let (false, Some(p)) = (fresh, pick) {
+            let there = st.sessions.iter().find(|s| crate::desk::hub::core::desk::shown_name(s).eq_ignore_ascii_case(to)).map(|s| s.origin.machine.clone());
+            if there.is_some_and(|m| m != p) {
+                return Err(format!("Refused: the user chose to start #{id} on {}, and {to} isn't there, so #{id} wasn't routed. Route it to a session there, or to new.", pick_shown(p)));
+            }
+        }
+        return Ok(fresh.then_some(None));
+    };
     if !fresh {
         return Err(format!("Refused: on: starts a new session on a machine, so it goes with -> new. To give #{id} to a session already on a machine, route it to that session by name."));
     }
     let machines = crate::machines::list();
     let named = |m: &crate::machines::Machine| [m.name.clone(), m.label.clone(), crate::machines::short_name(&m.name)].iter().any(|n| !n.is_empty() && n.eq_ignore_ascii_case(on));
-    let Some(m) = machines.iter().find(|m| named(m)) else {
+    let found = if this_mac(on) { None } else { machines.iter().find(|m| named(m)) };
+    let target = found.map(|m| m.name.as_str()).unwrap_or("");
+    if let Some(p) = pick.filter(|p| *p != target && (found.is_some() || this_mac(on))) {
+        return Err(format!("Refused: the user chose to start #{id} on {}, so it wasn't routed elsewhere. Route it again without on:.", pick_shown(p)));
+    }
+    if this_mac(on) {
+        return Ok(Some(Some(OnMachine::default())));
+    }
+    let Some(m) = found else {
         let known: Vec<String> = machines.iter().map(|m| crate::machines::display_name(&m.name)).collect();
         let known = if known.is_empty() { "none yet (the user adds one in + New → Machine)".to_string() } else { known.join(", ") };
         return Err(format!("Refused: Cue has no machine called {on}, so #{id} wasn't routed. Its machines: {known}. Route it again with one of them, or without on: to start it on this Mac."));
     };
-    let folder = in_dir.map(str::to_string).or_else(|| st.desk.spaces.get(project).and_then(|d| d.machine_folders.get(&m.name).cloned()));
-    let folder = folder.map(|f| f.trim().trim_end_matches('/').to_string()).filter(|f| !f.is_empty());
-    let Some(folder) = folder else {
-        return Err(format!("Refused: Cue doesn't know where this Desk's clone of the repository is on {0}, so #{id} wasn't routed. Ask the user, then route it again with | on: {0} | in: <folder there>.", crate::machines::display_name(&m.name)));
-    };
+    let shown = crate::machines::display_name(&m.name);
+    let known = desk_folder_on(st, project, &m.name);
+    let given = in_dir.map(|f| f.trim().trim_end_matches('/').to_string()).filter(|f| !f.is_empty());
+    // The Desk's first item there: you're asked first, and you say where its clone is.
+    if known.is_none() && given.is_none() {
+        return Err(format!("Refused: this Desk hasn't used {shown} yet, so #{id} wasn't routed. Ask the user first (ASK: #{id} | Start it on {shown}, in <the folder of this repository's clone there>? | Yes | No, this Mac). Once they say yes, route it again with | on: {shown} | in: <folder there>."));
+    }
+    let Some(folder) = given.or(known) else { unreachable!() };
     if !folder.starts_with('/') && !folder.starts_with('~') {
         return Err(format!("Refused: in: needs the folder's full path on the machine (it was {folder}), so #{id} wasn't routed."));
     }
@@ -114,6 +165,31 @@ pub(crate) fn remote_behind_note(st: &mut Store, id: &str, machine: &str, remote
 }
 
 impl Hub {
+    /// You chose where item `id`'s session starts (#597), on its page before it started: `machine` ("" for this Mac),
+    /// one the Desk has a folder on. The item as shown.
+    pub(crate) fn desk_start_on(&self, id: &str, machine: &str) -> Result<DeskItem, String> {
+        let machine = machine.trim();
+        let fx = self.write(|st| -> Result<Effects, String> {
+            let it = st.desk.item(id).ok_or("no such item")?;
+            if it.holder.is_some() || matches!(it.state.as_str(), "done" | "dropped") {
+                return Err("it has started already: it stays where it is".into());
+            }
+            if !machine.is_empty() {
+                let shown = crate::machines::get(machine).map(|m| crate::machines::display_name(&m.name)).ok_or_else(|| format!("Cue has no machine called {machine}"))?;
+                if desk_folder_on(st, &it.project, machine).is_none() {
+                    return Err(format!("set the folder of this repository's clone on {shown} in the Desk's settings first"));
+                }
+            }
+            let it = st.desk.item_mut(id).ok_or("no such item")?;
+            it.start_on = Some(machine.to_string());
+            it.on_machine = None;
+            it.start_failed.clear();
+            Ok(Effects { items: vec![id.to_string()], ..Default::default() })
+        })?;
+        self.desk_done(fx);
+        self.item_shown(id).ok_or_else(|| "no such item".into())
+    }
+
     /// Items in `fx` that just went to work with a holder on another machine, in a project whose items land from
     /// copies: each told to work on a branch of its own there, which lands here at its DONE. When main here is ahead of
     /// the shared remote, so the machine would start from old work, you're asked to push first (push_main.rs). Run as the Desk's changes are
@@ -482,6 +558,8 @@ pub(crate) fn is_remote_copy(t: &ItemTree, id: &str) -> bool {
 pub(crate) fn shown_machine(st: &Store, it: &mut DeskItem) {
     let machine = it.holder.as_ref().and_then(|h| st.sessions.get(h.to())).map(|s| s.origin.machine.clone()).filter(|m| !m.is_empty());
     let machine = machine.or_else(|| it.remote.as_ref().map(|r| r.machine.clone()));
+    // Not started yet (#597): the machine its session will start on.
+    let machine = machine.or_else(|| (it.holder.is_none() && !matches!(it.state.as_str(), "done" | "dropped")).then(|| start_place(st, it).ok().flatten().map(|o| o.machine)).flatten());
     it.machine = machine.as_deref().map(crate::machines::display_name).unwrap_or_default();
     if let Some(r) = it.remote.as_mut() {
         r.quiet_since = crate::hub::machine_quiet_since(st, &r.machine).unwrap_or(0);

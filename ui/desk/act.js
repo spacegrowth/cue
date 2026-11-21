@@ -107,6 +107,13 @@ async function deskSendLead(to, key, text) {
   });
 }
 /** What you wrote on item `id`'s page, sent (`act`: to its lead or its holder): kept in its Steps (desk/hub/core/desk.rs act_on). */
+// Starts on, on an item's page (#597): where its session starts, yours to pick until it starts.
+document.addEventListener("click", (e) => {
+  const b = e.target.closest?.("[data-desk-start-on]");
+  if (!b || b.classList.contains("on")) return;
+  e.stopPropagation();
+  invoke("desk_item_act", { id: b.dataset.id, act: "start_on", text: b.dataset.deskStartOn }).then(() => renderMain(), (err) => toast(`Couldn't change where it starts: ${err}`, 5000));
+}, true);
 const deskWrote = (id, act, text) => invoke("desk_item_act", { id, act, text }).catch((e) => console.error(e));
 /** Whether item `id` is done (its Send back is a Reopen, #577). */
 const deskDone = (id) => (state.desk?.projects || []).some((p) => (p.items || []).some((x) => x.id === id && x.state === "done"));
@@ -503,6 +510,8 @@ function deskClick(e) {
     queueMicrotask(renderMain);
     if (!e.target.closest?.("[data-desk-new-desk]")) return;
   }
+  // The new Desk page's menus close on a click outside them (desk/v2.js).
+  deskV2Outside(e);
   // Progress (#409) closes on a click outside it.
   if (deskProgShown && !e.target.closest?.(".dk-prog, [data-desk-prog-toggle]")) { deskProgShown = false; queueMicrotask(renderMain); }
   // A crew member's ⋯ menu closes on a click outside it.
@@ -569,6 +578,7 @@ function deskKey(e) {
   }
   if (e.metaKey && !e.shiftKey && !e.altKey && !e.ctrlKey && e.key?.toLowerCase() === "n" && deskSelection() && !sheet && !(crewPageSid && document.querySelector(".crew-page"))) return deskQaFocus();
   if (deskQaKey(e, key)) return true;
+  if (e.key === "Escape" && deskV2Escape()) return true;
   if (e.key === "Escape" && deskProgShown) { deskProgToggle(false); document.querySelector("[data-desk-prog-toggle]")?.focus(); return true; }
   if (e.key === "Escape" && key.startsWith("back:")) { deskAct(key.slice(5), "back_cancel"); return true; }
   // Esc: only when nothing over the Desk wants it (the crew page, a sheet, search and the live list, the projects

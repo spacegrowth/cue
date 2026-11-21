@@ -312,7 +312,7 @@ function deskItemRow(i, lit, held = false, lane = null) {
   const ask = vb || decision ? `<div class="dk-ask-row${yn ? " yn" : ""}">${vb ? (yn ? reqCut(request.id, `<div class="dk-h">${vb}</div>`, deskAllowLine(i), 2, 100) : `<div class="dk-h">${vb}</div>`) : ""}${question ? qFoldLine(request) : ""}${decision ? `<div class="dk-row-decisions">${decision}</div>` : ""}</div>` : "";
   return `<div class="dk-it ${i.state === "needs_you" ? "ask" : ""} ${look === "landed" ? "landed" : ""} dk-${deskStateOf(i)} ${on ? "on" : ""}${stalled ? " stalled" : ""}${i.state === "to_check" && deskLooksSoon.has(i.id) ? " soon" : ""}${deskLeaveStyle(i.id)}${feat ? " dk-feat" : ""}${piece ? " pc" : ""}" role="button" tabindex="0" data-desk-item="${esc(i.id)}"${feat ? ` aria-expanded="${fopen}"` : ""}>
     ${deskStateIcon(i)}<div class="dk-i1">${on ? '<span class="dk-larrow" aria-hidden="true">‹</span>' : ""}<span class="dk-tag ${look}">${tag}</span>${lane?.n ? `<span class="dk-rn">${lane.n}</span>` : ""}<span class="dk-t">${esc(i.title)}</span>${feat ? `<span class="dk-chev${fopen ? " open" : ""}" aria-hidden="true">›</span>` : ""}</div>
-    ${i.see && !piece && !deskWhereLine(i)?.tried ? `<div class="dk-see">You'll see: ${esc(deskOneLine(i.see))}</div>` : ""}<div class="dk-i2"><span class="dk-kid">${deskKindIcon(i)}<span class="dk-id">${esc(deskNum(i))}</span></span><span class="dk-who${s ? " held" : ""}${!feat && !lane && !deskCopyWaits(i) && deskQueueLine(i) ? " dk-qw" : ""}">${who}${who && i.holder && i.state !== "held" ? deskMachTag(i) : ""}</span>${doing}<span class="dk-age">${when}</span>${ok}</div>${deskRemoteLine(i) ? `<div class="dk-see dk-rmt">${esc(deskRemoteLine(i))}</div>` : ""}${built ? `<div class="dk-see dk-built">${built}</div>` : ""}${ask}${deskWaits(i) ? deskUnblocksHtml(i) : ""}</div>`;
+    ${i.see && !piece && !deskWhereLine(i)?.tried ? `<div class="dk-see">You'll see: ${esc(deskOneLine(i.see))}</div>` : ""}<div class="dk-i2"><span class="dk-kid">${deskKindIcon(i)}<span class="dk-id">${esc(deskNum(i))}</span></span><span class="dk-who${s ? " held" : ""}${!feat && !lane && !deskCopyWaits(i) && deskQueueLine(i) ? " dk-qw" : ""}">${who}${(who && i.holder && i.state !== "held") || (!i.holder && i.machine) ? deskMachTag(i) : ""}</span>${doing}<span class="dk-age">${when}</span>${ok}</div>${deskRemoteLine(i) ? `<div class="dk-see dk-rmt">${esc(deskRemoteLine(i))}</div>` : ""}${built ? `<div class="dk-see dk-built">${built}</div>` : ""}${ask}${deskWaits(i) ? deskUnblocksHtml(i) : ""}</div>`;
 }
 /** A permission's two buttons on the Desk (#426): No, then Allow, side by side on one line. */
 function deskAllowNo(id) {
@@ -409,7 +409,9 @@ function deskList(project, taskApprovals) {
   // A feature's row, then its pieces under it while it or one of them is open (#282): in place, nothing moves.
   const row = (i) => deskItemRow(i, i.id === crewLit, false) + (deskFeat(i) && deskFeatOpen(i) ? `<div class="dk-pcs">${i.pieces.map((p) => deskItemRow(p, p.id === crewLit, false, { piece: true })).join("")}</div>` : "");
   // Away (#415, calls 1): the lead's calls since it went on, in one foldable line at the top.
-  const parts = [deskAwayCallsHtml(g.d)].filter(Boolean);
+  const top = deskAwayCallsHtml(g.d), parts = [];
+  // Each group with its key, so the new Desk page (desk/v2.js) can put them in its own order.
+  const put = (k, html) => parts.push([k, html]);
   // Waiting on you stays at 0 (in red only while something waits), so you see there's nothing for you; while away it
   // says so in words. While away, the open asks from the Desk's sessions join it.
   const aw = deskAwayWaiting(g.d, taskApprovals), nWait = g.asks.length + aw.n;
@@ -417,23 +419,23 @@ function deskList(project, taskApprovals) {
   const group = deskGroupHtml;
   // The order, top to bottom (#602, Robin's): Waiting on you (questions), Ready to check, In progress (with the
   // landing lanes, nearly done, over it and what stopped under it), Queue, Parked (folded), Done (folded).
-  parts.push(group("you", `Waiting on you <span class="n">${nWait}</span>`, `${g.asks.map(row).join("")}${aw.html}${none}`, `you${nWait ? "" : " none"}`));
+  put("you", group("you", `Waiting on you <span class="n">${nWait}</span>`, `${g.asks.map(row).join("")}${aw.html}${none}`, `you${nWait ? "" : " none"}`));
   // Ready to check: what finished and waits for your Looks right or Send back (split out of Waiting on you, #602).
-  if (g.check.length) parts.push(group("check", `Ready to check <span class="n">${g.check.length}</span>`, g.check.map(row).join("")));
+  if (g.check.length) put("check", group("check", `Ready to check <span class="n">${g.check.length}</span>`, g.check.map(row).join("")));
   // The landing line (above In progress, #468), numbered in the order it lands (one at a time), then what's on main for the next install, with
   // its time and Install now (#346).
-  if (g.landing.length) parts.push(group("landing", `Landing <span class="n">${g.landing.length}</span><span class="dk-split">one at a time</span>`, g.landing.map((i, k) => deskItemRow(i, i.id === crewLit, false, { n: k + 1, ahead: g.landing[k - 1] })).join(""), "dk-lane", ' data-lane="landing"'));
-  if (g.install.length) parts.push(group("install", `Waiting to install <span class="n">${g.install.length}</span>${deskInstallHead(g.install)}`, g.install.map((i) => deskItemRow(i, i.id === crewLit, false, {})).join(""), "dk-lane", ' data-lane="install"'));
+  if (g.landing.length) put("landing", group("landing", `Landing <span class="n">${g.landing.length}</span><span class="dk-split">one at a time</span>`, g.landing.map((i, k) => deskItemRow(i, i.id === crewLit, false, { n: k + 1, ahead: g.landing[k - 1] })).join(""), "dk-lane", ' data-lane="landing"'));
+  if (g.install.length) put("install", group("install", `Waiting to install <span class="n">${g.install.length}</span>${deskInstallHead(g.install)}`, g.install.map((i) => deskItemRow(i, i.id === crewLit, false, {})).join(""), "dk-lane", ' data-lane="install"'));
   // In progress sits under Landing and Waiting to install (#468): what is nearly yours comes first.
-  if (g.working.length) parts.push(group("working", `In progress <span class="n">${g.working.length}</span>${deskSplitHtml(g.working)}`, g.working.map(row).join("")));
-  if (g.resume.length) parts.push(group("resume", `Needs resume <span class="n">${g.resume.length}</span>`, g.resume.map(row).join("")));
+  if (g.working.length) put("working", group("working", `In progress <span class="n">${g.working.length}</span>${deskSplitHtml(g.working)}`, g.working.map(row).join("")));
+  if (g.resume.length) put("resume", group("resume", `Needs resume <span class="n">${g.resume.length}</span>`, g.resume.map(row).join("")));
   // The Queue, under In progress (#602; at the top before, #576): what waits for a session hasn't started, so it comes
   // after what's yours and what's under way. In your order, dragged up and down into it (#387); each row says what it
   // waits for.
-  if (g.queued.length) parts.push(group("queued", `Queue <span class="n">${g.queued.length}</span>${g.queued.length > 1 ? '<span class="dk-qhint">drag to reorder</span>' : ""}`, g.queued.map(deskQRow(row)).join("")));
-  if (g.paused.length) parts.push(group("paused", `Paused <span class="n">${g.paused.length}</span>`, g.paused.map(row).join("")));
-  if (g.held.length) parts.push(group("held", `Parked <span class="n">${g.held.length}</span><span class="dk-split">start them when you want</span>`, `<div class="dk-held">${g.held.map(row).join("")}</div>`, "dk-heldh"));
-  for (const h of g.extra) parts.push(deskHolderHead({ ...h, addon: true, key: h.key || h.name }, o?.kind === "addon" && o.key === (h.key || h.name)) + (h.items || []).map(row).join(""));
+  if (g.queued.length) put("queued", group("queued", `Queue <span class="n">${g.queued.length}</span>${g.queued.length > 1 ? '<span class="dk-qhint">drag to reorder</span>' : ""}`, g.queued.map(deskQRow(row)).join("")));
+  if (g.paused.length) put("paused", group("paused", `Paused <span class="n">${g.paused.length}</span>`, g.paused.map(row).join("")));
+  if (g.held.length) put("held", group("held", `Parked <span class="n">${g.held.length}</span><span class="dk-split">start them when you want</span>`, `<div class="dk-held">${g.held.map(row).join("")}</div>`, "dk-heldh"));
+  for (const h of g.extra) put("extra", deskHolderHead({ ...h, addon: true, key: h.key || h.name }, o?.kind === "addon" && o.key === (h.key || h.name)) + (h.items || []).map(row).join(""));
   // Finished: the 10 newest, then 10 more each time the list's end comes into view (deskDoneWatch). Its end holds
   // its place while the next ones load, so nothing jumps.
   const pg = deskDonePages.get(project);
@@ -442,14 +444,19 @@ function deskList(project, taskApprovals) {
   const more = done.length > shown.length || !pg?.end;
   // Dropped items' copies kept with their work, till you remove them (desk/hub/landing/trees.rs).
   const kept = g.d?.kept || [];
-  if (kept.length) parts.push(group("kept", `Kept copies <span class="n">${kept.length}</span>`, kept.map(deskKeptRow).join("")));
+  if (kept.length) put("kept", group("kept", `Kept copies <span class="n">${kept.length}</span>`, kept.map(deskKeptRow).join("")));
   // Its "Loading older…" end goes in its fold, so a folded Done loads nothing more.
   const doneMore = more && (shown.length || pg?.loading || !pg) ? `<div class="dk-more" data-desk-done-more="${esc(project)}">${shown.length ? "Loading older…" : ""}</div>` : "";
-  if (shown.length) parts.push(group("done", "Done", shown.map(row).join("") + doneMore));
-  else if (doneMore) parts.push(doneMore);
-  const body = parts.join("") + (parts.length > (g.d?.away?.on ? 2 : 1) ? "" : `<div class="dk-empty">No items yet.</div>`);
-  return `<div class="dk-card dk-items"><div class="dk-ch"><b>Items</b>${deskPausedTag(g.d)}${deskProgButtonHead()}${deskPauseButton(g.d)}${deskAwaySwitch(g.d)}</div>
-    ${deskQuickAdd()}<div class="dk-scroll" data-scroll-key="desk-items:${esc(project)}">${body}</div></div>`;
+  if (shown.length) put("done", group("done", "Done", shown.map(row).join("") + doneMore));
+  else if (doneMore) put("done", doneMore);
+  if (deskV2) parts.sort((a, b) => deskV2Order(a[0]) - deskV2Order(b[0]));
+  const n = parts.length + (top ? 1 : 0);
+  let body = top + parts.map((x) => x[1]).join("") + (n > (g.d?.away?.on ? 2 : 1) ? "" : `<div class="dk-empty">No items yet.</div>`);
+  // The new Desk page: List or Progress in its head, one at a time; Progress is its rows in place of the list.
+  if (deskV2 && deskV2Mode === "progress") body = deskV2Progress(g);
+  const head = deskV2 ? deskV2ListSwitch() : deskProgButtonHead();
+  return `<div class="dk-card dk-items"><div class="dk-ch"><b>Items</b>${deskPausedTag(g.d)}${head}${deskPauseButton(g.d)}${deskAwaySwitch(g.d)}</div>
+    ${deskQuickAdd()}<div class="dk-scroll" data-scroll-key="desk-items:${esc(project)}${deskV2 && deskV2Mode === "progress" ? ":progress" : ""}">${body}</div></div>`;
 }
 
 // ---------- the Queued list in your order (#387) ----------

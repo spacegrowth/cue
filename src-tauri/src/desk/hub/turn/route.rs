@@ -191,6 +191,12 @@ fn route_under_way(st: &mut Store, project: &str, by: &By, id: &str, holder: Opt
     Some(format!("Refused: #{id} {busy}. You can wait for it, tell its holder something (NOTE: #{id} | …), or ask the user (ASK: #{id} | …)."))
 }
 
+/// Item `it` is to check, or at work only to answer your question on it while it was (#627): routing it back to its
+/// holder reopens it.
+fn reopens(it: &DeskItem) -> bool {
+    it.state == "to_check" || it.asked.as_ref().is_some_and(|(was, _)| was == "to_check")
+}
+
 /// Item `id` to `holder` (none: no session goes by `to`), now or after another item: held by it and sent, or the
 /// same route said again, or a reopen refused.
 #[allow(clippy::too_many_arguments)]
@@ -206,7 +212,7 @@ fn route_to_holder(st: &mut Store, project: &str, by: &By, id: &str, to: &str, h
         return None;
     };
     let it = st.desk.item_mut(id)?;
-    let reopen = it.state == "to_check";
+    let reopen = reopens(it);
     let before = it.holder.clone();
     let same = before.as_ref().is_some_and(|b| b.sid == h.sid && b.lead_sid == h.lead_sid);
     // The same route said again (a later turn repeating itself): nothing to do. Sent back to its holder at work with
@@ -283,7 +289,10 @@ pub(crate) fn note(st: &mut Store, project: &str, by: &By, id: &str, words: &str
         _ => "",
     };
     let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
-    let message = format!("{crew}Note from the Desk lead on Desk item #{id} ({}{stage}): {words}", it.title);
+    let mut message = format!("{crew}Note from the Desk lead on Desk item #{id} ({}{stage}): {words}", it.title);
+    if it.state == "to_check" {
+        message.push_str(&format!("\n{}", crate::desk::not_done_words(id)));
+    }
     decide(st, project, Some(id.to_string()), by.name, by.sid, words, &format!("note to {}", h.name), now, fx);
     if let Some(step) = st.desk.decisions.last_mut() {
         step.undo = "none".into();
@@ -397,6 +406,9 @@ pub(crate) fn held_by(it: &mut DeskItem, h: &Holder, refused: String, waits: Opt
     it.crew.clear();
     // Routed or given (again): no longer paused (#365).
     it.paused = None;
+    // Routed while its holder answered your question on it (#627): it's moved on, so that answer's end no longer puts
+    // it back where it was.
+    it.asked = None;
     it.after_why = why.to_string();
     it.done_at = None;
     it.state = if waits.is_some() { "queued" } else { "working" }.into();

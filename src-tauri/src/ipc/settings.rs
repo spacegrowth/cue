@@ -25,6 +25,17 @@ pub(crate) async fn connect_agent(app: tauri::AppHandle, hub: State<'_, Arc<Hub>
     .await?
 }
 
+/// Settings → Privacy: the words Cue keeps out of pushes by itself (desk/hub/landing/found_words.rs): `mine` (your
+/// accounts' names, every push) and `projects` (your private projects' names, a public project's pushes).
+#[tauri::command]
+pub(crate) async fn push_words_found() -> Result<serde_json::Value, String> {
+    blocking(|| {
+        let f = crate::desk::hub::landing::found_words::found();
+        serde_json::json!({ "mine": f.mine, "projects": f.private_names() })
+    })
+    .await
+}
+
 /// Settings rows that talking from anywhere (talk.rs) and an add-on add ([{ group, tab?, rows: [{ title, sub, art?,
 /// pick? }] }], `pick`: { id, value, options: [[value, label]] }).
 /// Fetched each time Settings opens, so macOS is asked again then what Settings shows (Open at login).

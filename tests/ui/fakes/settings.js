@@ -107,6 +107,19 @@ CueBridge.area("settings", (w) => {
       landsFill();
       const d = (w.state.desk?.projects || []).find((x) => x.id === desk || x.project === desk);
       if (!d) throw "no such Desk";
+      // Where its new sessions start (#597, desk/machine_pref.rs save): a machine Cue has, with the folder of the
+      // clone there (given, or the one it knows); "" for this Mac. Sent on its own.
+      if ("machine" in lands) {
+        const ms = d.machines || { machine: "", machines: [] }, m = ms.machines.find((x) => x.name === lands.machine);
+        if (lands.machine && !m) throw `where new sessions start: Cue has no machine called ${lands.machine}`;
+        const folder = (lands.machine_folder || "").trim().replace(/(.)\/+$/, "$1") || m?.folder || "";
+        if (m && !folder) throw `where new sessions start: give the folder of this repository's clone on ${m.label}`;
+        if (m && !/^[\/~]/.test(folder)) throw `where new sessions start: the folder needs its full path on the machine (${folder} isn't one)`;
+        if (m) m.folder = folder;
+        d.machines = { ...ms, machine: lands.machine };
+        w.changed(10);
+        return d.lands;
+      }
       const place = d.lands.place;
       for (const [part] of LANDS_PARTS) if (lands[part] && landsWhy(part, lands[part], place)) throw `${part}: ${lands[part]} can't be picked (${landsWhy(part, lands[part], place)})`;
       d.lands = landsView(d.lands.project, place, lands);
@@ -138,6 +151,8 @@ CueBridge.area("settings", (w) => {
     // Settings rows an add-on adds: none without one.
     ext_settings: () => [],
     ext_set: () => null,
+    // Settings → Privacy: what Cue keeps out of pushes by itself (none here; a spec stubs some).
+    push_words_found: () => ({ mine: [], projects: [] }),
     // Up to date on stable; a newer build on beta (Settings → Get beta builds), as ipc/updates.rs picks the channel.
     // ?nobeta=1: no beta is published, so a beta check answers from stable and says so.
     update_check: () => {

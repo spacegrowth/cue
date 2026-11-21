@@ -55,4 +55,5 @@ digraph locks {
   "typing gate" -> "shown snapshot";
   "typing gate" -> "state drawn";
   "typing gate" -> "the hub's store";
+  "working out found words" -> "found words";
 }

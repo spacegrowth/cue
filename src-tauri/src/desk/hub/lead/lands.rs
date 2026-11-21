@@ -61,7 +61,23 @@ impl Hub {
     /// How work lands on Desk `desk`, as its lead reads it (desk/hub/lead/run.rs desk_summary).
     pub(crate) fn desk_lands_line(&self, desk: &str) -> String {
         let folder = self.read(|st| desk_folder(st, desk));
-        crate::desk::lands::lead_line(&crate::desk::lands::lands_of(desk, &folder))
+        let mut line = crate::desk::lands::lead_line(&crate::desk::lands::lands_of(desk, &folder));
+        // Where new sessions start, and the machines this Desk has used (#597).
+        let p = crate::desk::machine_pref::of(desk);
+        let used: Vec<String> = self.read(|st| {
+            let mut all: Vec<String> = p.folders.keys().cloned().collect();
+            all.extend(st.desk.spaces.get(desk).map(|d| d.machine_folders.keys().cloned().collect::<Vec<_>>()).unwrap_or_default());
+            all.sort();
+            all.dedup();
+            all.iter().filter(|m| crate::machines::get(m).is_some()).map(|m| crate::desk::machine_pref::of(desk).folder(m).map_or_else(|| crate::machines::display_name(m), |f| format!("{} ({f})", crate::machines::display_name(m)))).collect()
+        });
+        if !p.machine.is_empty() && crate::machines::get(&p.machine).is_some() {
+            line.push_str(&format!("New sessions start on {} (the user's setting): a ROUTE to new goes there unless you say on: this Mac.\n", crate::desk::machine_pref::of(desk).folder(&p.machine).map_or_else(|| crate::machines::display_name(&p.machine), |f| format!("{} in {f}", crate::machines::display_name(&p.machine)))));
+        }
+        if !used.is_empty() {
+            line.push_str(&format!("Machines this Desk has used: {}.\n", used.join(", ")));
+        }
+        line
     }
 
     fn desk_lands_tell(&self, lsid: &str, words: String) {

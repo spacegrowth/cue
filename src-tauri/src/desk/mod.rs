@@ -11,6 +11,7 @@ pub(crate) mod hold_check;
 pub mod holds;
 pub(crate) mod hub;
 pub(crate) mod lands;
+pub(crate) mod machine_pref;
 pub(crate) mod one_way;
 pub mod model;
 pub mod copies;
@@ -33,6 +34,46 @@ pub fn without_block(text: &str) -> &str {
         Some(end) => t[end + "\n</desk>".len()..].trim_start(),
         None => text,
     }
+}
+
+/// `text` holds a `<desk …>…</desk>` block (one message to a lead, or several kept together, #627).
+pub fn has_block(text: &str) -> bool {
+    blocks(text).next().is_some()
+}
+
+/// Where each `<desk …>…</desk>` block in `text` is (from, to, the whitespace after it included): one at its start,
+/// or after a blank line (where messages kept together join).
+fn blocks(text: &str) -> impl Iterator<Item = (usize, usize)> + '_ {
+    let mut from = 0;
+    std::iter::from_fn(move || {
+        while from < text.len() {
+            let at = text[from..].find("<desk").map(|i| from + i)?;
+            let starts = text[..at].trim_end_matches([' ', '\t']).is_empty() || text[..at].ends_with("\n\n");
+            let opens = text[at + 5..].starts_with([' ', '>']);
+            match text[at..].find("\n</desk>").filter(|_| starts && opens) {
+                Some(end) => {
+                    let close = at + end + "\n</desk>".len();
+                    let after = close + (text[close..].len() - text[close..].trim_start().len());
+                    from = after;
+                    return Some((at, after));
+                }
+                None => from = at + 5,
+            }
+        }
+        None
+    })
+}
+
+/// `text` with every `<desk …>…</desk>` block taken out and `block` (a summary made now) put first, once.
+pub fn with_fresh_block(text: &str, block: &str) -> String {
+    let mut rest = String::new();
+    let mut last = 0;
+    for (from, to) in blocks(text).collect::<Vec<_>>() {
+        rest.push_str(&text[last..from]);
+        last = to;
+    }
+    rest.push_str(&text[last..]);
+    format!("{block}\n\n{}", rest.trim())
 }
 
 /// Routing policy in every Desk summary, including for already-running leads.
@@ -102,7 +143,7 @@ give it when the item has none yet, as items the user adds don't)
 ROUTE: #<id> -> new | why: <reason>      (no session fits: Cue starts a new session of this project for it; \
 an item a session already holds moves to it, as when its holder is too full and wrote a hand-off: the old holder \
 stops, and the new session is sent the item with that hand-off note)
-ROUTE: #<id> -> new | on: <machine> | in: <folder there> | why: <reason>   (the new session starts on another of the user's machines, in this repository's clone there; Cue remembers the folder, so in: is needed only the first time. Ask the user before a Desk's first item on a machine, and for the folder. An item given to a session on another machine, this way or by name, is worked on a branch of its own there and lands here at its DONE like any other)
+ROUTE: #<id> -> new | on: <machine> | in: <folder there> | why: <reason>   (the new session starts on another of the user's machines, in this repository's clone there, from the latest main; on: this Mac starts it here. Without on:, it starts where the user chose for the item, else where the Desk's sessions start (its settings). Cue remembers the folder, so in: is needed only the first time. Before a Desk's first item on a machine, ask the user (ASK: #<id> | Start it on <machine>, in <folder>? | Yes | No, this Mac), and route it there only once they say yes. An item given to a session on another machine, this way or by name, is worked on a branch of its own there and lands here at its DONE like any other)
 ROUTE: #<id> -> <name> | after: #<other id> | why: <reason>   (it starts once #<other id> is done; use it whenever \
 an item really waits on another, as when both would change the same files: the Desk shows the user what each waiting item unblocks)
 One item per session, at work or waiting for the user's check: a session keeps its item until the user's Looks right. \
@@ -215,6 +256,15 @@ pub fn check_words(id: &str) -> String {
         "With your DONE, on a line of its own, write the one line shown to whoever checks it, built from its you'll-see (if \
          it has one) and what you changed: CHECK: #{id} | Try: <one concrete thing to do in the app> when there's something to see, or \
          CHECK: #{id} | Nothing to see: <why, e.g. tests passed, or a change nobody can see>, close it."
+    )
+}
+
+/// How the holder of item `id`, with the user to check, says it isn't done after all (#627).
+pub fn not_done_words(id: &str) -> String {
+    format!(
+        "If there's more to do on it after all (the user wants more, or you found something left), say NOT DONE: #{id} | <what's \
+         left> on a line of its own: Cue puts it back in progress (in line for a copy when none is free). Else it stays \
+         with the user to check."
     )
 }
 

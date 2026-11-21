@@ -30,7 +30,9 @@ function landsChange(desk) {
   // Your own steps, one per line while you edit them.
   const steps = { check: (l.set.check_steps || []).join("\n"), after: (l.set.after_steps || []).join("\n") };
   const ab = project && askBeforeKinds().length ? { project, ticks: [...askBeforeNow(project)], more: false } : null;
-  lands = { desk, set: { ...l.set }, steps, ab, was: { set: { ...l.set }, steps: { ...steps }, ticks: ab ? [...ab.ticks] : null } };
+  // Where its new sessions start (#597): this Mac or a machine, with the folder of the Desk's clone there.
+  const ms = d.machines?.machines || [], mach = ms.length ? { machine: d.machines.machine || "", folder: ms.find((m) => m.name === d.machines.machine)?.folder || "" } : null;
+  lands = { desk, set: { ...l.set }, steps, ab, mach, was: { set: { ...l.set }, steps: { ...steps }, ticks: ab ? [...ab.ticks] : null, mach: mach ? { ...mach } : null } };
   renderMain();
 }
 /** How work lands as it's saved: your own steps go with a part only when that part is "Your own steps". */
@@ -45,7 +47,8 @@ const landsSame = (x, y) => JSON.stringify(Object.keys({ ...x, ...y }).sort().ma
 /** What you changed on the screen and haven't saved: how work lands, Ask me before. */
 const landsSetChanged = (a) => !landsSame(landsOut(a.set, a.steps), landsOut(a.was.set, a.was.steps));
 const landsAskChanged = (a) => !!a.ab && [...a.ab.ticks].sort().join() !== [...a.was.ticks].sort().join();
-const landsChanged = (a) => !!a && (landsSetChanged(a) || landsAskChanged(a));
+const landsMachChanged = (a) => !!a.mach && (a.mach.machine !== a.was.mach.machine || (!!a.mach.machine && a.mach.folder.trim() !== a.was.mach.folder.trim()));
+const landsChanged = (a) => !!a && (landsSetChanged(a) || landsAskChanged(a) || landsMachChanged(a));
 /** Where an item works changed while items are open: what happens to them, said before it's saved. An item already
  *  started keeps the folder it has (desk/hub/landing/trees.rs gives a copy only as an item starts working). */
 function landsWhereNote() {
@@ -128,6 +131,20 @@ function landsOldRemove() {
     (e) => { a.old = null; toast(`Couldn't remove the old working folders: ${e}`, 5000); renderMain(); },
   );
 }
+/** Where the Desk's new sessions start (#597): This Mac or one of your machines, and for a machine the folder of this
+ *  repository's clone there. Only when Cue has a machine. */
+function landsMach() {
+  const m = lands.mach;
+  if (!m) return "";
+  const ms = deskOf(lands.desk)?.machines?.machines || [];
+  const opt = (key, label) => `<button role="radio" aria-checked="${m.machine === key}" class="${m.machine === key ? "on" : ""}" data-ld-mach="${esc(key)}">${esc(label)}</button>`;
+  const seg = `<div class="seg ld-seg" role="radiogroup" aria-label="New sessions start on">${opt("", "This Mac")}${ms.map((x) => opt(x.name, x.label)).join("")}</div>`;
+  const on = ms.find((x) => x.name === m.machine);
+  const folder = on ? `<input class="ld-cmd ld-folder" type="text" spellcheck="false" aria-label="Folder of this repository's clone on ${esc(on.label)}" placeholder="Full path there, e.g. ~/code/project" data-ld-folder value="${esc(m.folder)}">
+    <div class="ld-hint">The folder of this repository's clone on ${esc(on.label)}. Each new session starts there from the latest main, on a branch of its own, and its work lands here.</div>` : `<div class="ld-hint">The lead asks you before a Desk's first item on another machine. You can also choose per item, on its page.</div>`;
+  return `<div class="ld-sec" data-ld-sec="machine"><div class="set-group ld-h">Where new sessions start</div>
+    <div class="ld-rows"><div class="ld-row"><div class="ld-label">Starts on</div><div class="ld-body">${seg}${folder}</div></div></div></div>`;
+}
 /** Ask me before, its kinds on one line, saved with the rest (ask_before.js has the rows and their words). */
 function landsAskBefore() {
   if (!lands.ab) return "";
@@ -135,7 +152,8 @@ function landsAskBefore() {
     <div class="ld-hint ld-sub">The lead and its sessions stop and ask you first.</div>${askBeforeRows(lands.ab)}</div>`;
 }
 function landsHtml() {
-  if (!lands) return "";
+  // Opened from the new Desk page's Desk settings: its drawer shows them (desk/v2.js).
+  if (!lands || lands.inDrawer) return "";
   const d = deskOf(lands.desk), l = d?.lands;
   if (!l) { lands = null; return ""; }
   // Named as the Desk is: its settings are its own (#460).
@@ -144,12 +162,13 @@ function landsHtml() {
   // As Settings is (sheets.js settingsSheet): a sheet, its title and Esc on one line, groups under it; a click
   // outside or Esc closes it (#447).
   return `<div class="scrim ld-scrim" data-ld="scrim"><div class="sheet ld-dialog" role="dialog" aria-labelledby="ld-title">
-    <div class="sheet-head"><h3 class="move-title" id="ld-title">Settings for ${esc(name)}</h3><span class="grow"></span><kbd class="ld-esc" data-ld="close" role="button" aria-label="Close">Esc</kbd></div>
+    <div class="sheet-head"><h3 class="move-title" id="ld-title">Settings for ${esc(name)}</h3><span class="grow"></span>${typeof deskV2Toggle === "function" ? deskV2Toggle() : ""}<kbd class="ld-esc" data-ld="close" role="button" aria-label="Close">Esc</kbd></div>
     <div class="sheet-body">
     <div class="ld-hint ld-intro">Kept in Cue, not in the project. Changes apply when you press Save; you can also tell the lead, and it asks you first.</div>
     <div class="ld-sec" data-ld-sec="lands"><div class="set-group ld-h">How work lands</div>
     ${l.why ? `<div class="ld-why">${esc(l.why)}</div>` : ""}
     <div class="ld-rows">${parts}</div></div>
+    ${landsMach()}
     ${landsAskBefore()}
     <div class="ld-sec" data-ld-sec="old"><div class="set-group ld-h">Old working folders</div><div class="ld-rows">${landsOld()}</div></div>
   </div>${landsFoot()}</div></div>`;
@@ -181,6 +200,13 @@ function landsSave() {
     jobs.push(invoke("desk_lands_set", { desk: a.desk, lands: set }).then(
       () => { a.was.set = { ...a.set }; a.was.steps = steps; },
       (e) => { throw `how work lands: ${e}`; },
+    ));
+  }
+  if (landsMachChanged(a)) {
+    const mach = { ...a.mach };
+    jobs.push(invoke("desk_lands_set", { desk: a.desk, lands: { machine: mach.machine, machine_folder: mach.folder.trim() } }).then(
+      () => { a.was.mach = mach; },
+      (e) => { throw `${e}`; },
     ));
   }
   if (landsAskChanged(a)) {
@@ -215,6 +241,14 @@ document.addEventListener("click", (e) => {
   landsChange(c.dataset.landsChange);
 }, true);
 document.addEventListener("click", (e) => {
+  const mp = e.target.closest?.("[data-ld-mach]");
+  if (lands?.mach && mp) {
+    e.stopPropagation();
+    const name = mp.dataset.ldMach;
+    lands.mach = { machine: name, folder: (deskOf(lands.desk)?.machines?.machines || []).find((x) => x.name === name)?.folder || "" };
+    lands.leaving = false;
+    return renderMain();
+  }
   const pick = e.target.closest?.("[data-ld-pick]"), b = e.target.closest?.("[data-ld]:not([data-ld=scrim])") || (e.target.dataset?.ld === "scrim" ? e.target : null);
   if (!lands || (!pick && !b)) return;
   e.stopPropagation();
@@ -252,6 +286,13 @@ document.addEventListener("click", (e) => {
   if (askBeforeClick(lands.ab, e) && was !== lands.ab.ticks.join() && lands.leaving) { lands.leaving = false; renderMain(); }
 }, true);
 document.addEventListener("input", (e) => {
+  const f = e.target.closest?.("[data-ld-folder]");
+  if (f && lands?.mach) {
+    const was = landsChanged(lands);
+    lands.mach.folder = f.value;
+    if (was !== landsChanged(lands)) { const foot = document.querySelector(".ld-dialog .ld-foot"); if (foot) foot.outerHTML = landsFoot(); }
+    return;
+  }
   const t = e.target.closest?.("[data-ld-steps]");
   if (!t || !lands) return;
   const was = landsChanged(lands);

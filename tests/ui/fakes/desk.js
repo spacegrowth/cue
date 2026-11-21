@@ -121,6 +121,16 @@ CueBridge.area("desk", (w) => {
       const it = itemOf(id);
       if (!it) throw "No such item";
       const t = secs();
+      // Where an unstarted item's session starts (#597, desk/hub/landing/remote_item.rs desk_start_on): "" this Mac,
+      // or a machine the Desk has a folder on.
+      if (act === "start_on") {
+        if (it.holder || ["done", "dropped"].includes(it.state)) throw "it has started already: it stays where it is";
+        const m = (deskOf(it.project).machines?.machines || []).find((x) => x.name === text);
+        if (text && !m?.folder) throw `set the folder of this repository's clone on ${m?.label || text} in the Desk's settings first`;
+        Object.assign(it, { start_on: text, on_machine: null, machine: m?.label || "", updated: t });
+        w.changed();
+        return it;
+      }
       // A question on an item to check or done (#475): to its holder with Cue's words around it, as asked.rs sends it;
       // the item back at work while it answers.
       if (act === "note" && ["to_check", "done"].includes(it.state) && it.holder && /\?\s*$/.test(text || "")) {

@@ -71,6 +71,13 @@ impl Sessions {
         h.delivery.clear();
     }
 
+    /// The kept message's words, now `text` (a Desk lead's, its Desk's summary made fresh as it goes, #627).
+    pub fn held_text_to(&mut self, session_id: &str, text: String) {
+        if let Some(h) = self.0.get_mut(session_id).and_then(|s| s.held.as_mut()) {
+            h.text = text;
+        }
+    }
+
     pub fn held(&self, session_id: &str) -> Option<Exchange> {
         self.0.get(session_id)?.held.clone()
     }
