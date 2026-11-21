@@ -4,11 +4,16 @@
 //! message (`summary`). The hub keeps the store and does the sending (desk/hub/core/desk.rs, desk/hub/lead/run.rs); this module is
 //! the data and the words.
 
+pub(crate) mod across;
+pub mod escalate;
 pub mod feed;
+pub(crate) mod hold_check;
+pub mod holds;
 pub(crate) mod hub;
 pub(crate) mod lands;
 pub(crate) mod one_way;
 pub mod model;
+pub mod tell;
 pub mod parse;
 pub mod state;
 
@@ -86,6 +91,8 @@ the item waiting longest for a copy gets it, and a stuck item is new again for y
 LAND FIRST: #<id> | why: <reason>      (move an item waiting in the landing line up, so it lands next)
 COPY FIRST: #<id> | why: <reason>      (move an item waiting for a free copy of its repository to the front of that \
 line, so it gets the next copy that frees)
+after: and LAND FIRST may name another Desk's item on this repository too, as #<id> or <Desk's name>#<id>: \
+the item then waits for it, or it lands next, as within this Desk.
 START: #<id> | why: <reason>      (start a waiting item now: not after the item it waits on, nor for a free copy)
 COPY: #<id> | in: add-on | branch: <name> | why: <reason>      (work that belongs in the add-on's own repository, or \
 another one: put its full path after in:. The item gets a copy of it on that branch (made from its main line if new) \
@@ -97,6 +104,16 @@ PARK: #<id> | why: <reason>      (only when the user asks: an item not at work i
 the ITEM just above. Neither Cue nor you start a parked item: no ROUTE, no START; it waits until the user presses Start or asks you to unpark it)
 UNPARK: #<id> — why: <reason>      (only when the user asks for it in the message you're answering: a parked item \
 is new again and you route it as any new item; Cue refuses it otherwise)
+HOLD: #<id> | area: <files or globs, comma-separated> | till: <it lands, or a time> | why: <reason>      (the item \
+will move or rewrite that part of the code: Cue keeps the hold for the repository, and every Desk on it sees it in its \
+Desk block and under its header till the item lands, is dropped or parks)
+UNHOLD: #<id>      (lift that hold early)
+TELL DESK: <Desk's name> | <words>      (to another Desk's lead on this repository, e.g. to agree who lands first; \
+start the words with #<id> when it's about one of your items. Its answer comes back to you the same way)
+TELL DESKS: <words>      (to every other Desk's lead on this repository: a heads-up before you change shared code)
+DISAGREE: <Desk's name> | <your side>      (only when you and that Desk's lead can't agree an order: Cue puts one \
+question to the user on both Desks, your side and its lead's last words to you quoted; start your side with #<id> when \
+it's about one of your items. The user's answer comes to you both)
 DROP: #<id> | why: <reason>      (take an item off the list in any state, e.g. when the user says to drop it or it's no \
 longer wanted: whoever holds it stops (or never starts it), its copy goes (kept if it holds work), what waited on it \
 goes ahead, and it shows as dropped with your reason, not done. Never DONE or CLOSE an item to get rid of it)
@@ -134,6 +151,11 @@ the form above comes back as one it couldn't read. Write it again, correctly.
 An item that's finishing (its commit and install) and stopped on a question: send it back to its holder with what to fix \
 as the why, route it to another session (or new), or ASK: #<id>. While its commit or install is under way, it stays as it is: a ROUTE back to its holder with a why goes to it as a note, \
 and NOTE: #<id> reaches it too.
+Before an item will move or rewrite a part of the code other Desks might touch (a refactor, a rename, a folder \
+move), take a HOLD on that part. Before routing into a part another Desk holds, wait after its item, or ask its lead \
+with TELL DESK. Agree the order between you, and answer another lead's band with TELL DESK. Cue asks the user only \
+when you can't agree (DISAGREE), a band goes unanswered for 15 minutes, or a hold stands an hour past its till; \
+never ASK the user about a heads-up you settled.
 Your job is to steer: when the Desk is stuck (an item stopped, a copy held by an item that's done, the landing line in \
 the wrong order, an item waiting on nothing that still matters), unstick it yourself with the lines above; don't wait \
 for the user to. When you lack a control for it, tell the user what you couldn't do and add an ITEM for that control.

@@ -144,6 +144,9 @@
 .dk-ab-sep { flex: none; white-space: pre; opacity: .75; }
 .dk-ab-change { flex: none; padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: 600; opacity: .85; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 .dk-ab-change:hover, .dk-ab-change:focus-visible { opacity: 1; }
+/* Holds on this Desk's code (#540): a quiet line each under the header, as the settings line is. */
+.dk-strip .dk-holds { display: flex; flex-direction: column; min-width: 0; margin-top: 2px; font-family: var(--mono); font-size: var(--type-pill); }
+.dk-hold { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .75; }
 .dk-sh .dk-ren, .dk-strip .dk-more-btn { color: inherit; }
 .dk-sh .dk-ren:hover, .dk-strip .dk-more-btn:hover, .dk-strip .dk-more-btn:focus-visible { background: color-mix(in oklab, currentColor 14%, transparent); color: inherit; }
 /* The lead's card: white (dark: the panel); while its chat shows, lit lime as an open row is. */

@@ -49,6 +49,9 @@ enum Landed {
     Done,
     /// Waits (the main checkout busy): the next item in the line goes first; the tick tries this one again.
     Wait,
+    /// Waits for a hold another Desk took on files it changed (desk/hold_check.rs): the next goes first; tried again
+    /// as soon as another item lands (the hold may have ended with it), or on the tick.
+    Held,
 }
 
 impl Hub {
@@ -313,20 +316,23 @@ impl Hub {
         for id in cut_short {
             self.finish_fin(&id, |f| f.step = "line".into());
         }
-        let mut later: Vec<String> = Vec::new();
+        let (mut later, mut held): (Vec<String>, Vec<String>) = (Vec::new(), Vec::new());
         loop {
             let next = self.read(|st| {
                 st.desk
                     .items
                     .iter()
-                    .filter(|i| i.state == "finishing" && i.tree.is_some() && !later.contains(&i.id))
+                    .filter(|i| i.state == "finishing" && i.tree.is_some() && !later.contains(&i.id) && !held.contains(&i.id))
                     .filter_map(|i| i.finish.as_ref().filter(|f| matches!(f.step.as_str(), "commit" | "line")).map(|f| (f.first == 0, std::cmp::Reverse(f.first), f.at, i.id.clone())))
                     .min()
                     .map(|(_, _, _, id)| id)
             });
             let Some(id) = next else { break };
-            if let Landed::Wait = self.land(&id) {
-                later.push(id);
+            match self.land(&id) {
+                Landed::Wait => later.push(id),
+                Landed::Held => held.push(id),
+                // Out of the line: those waiting for a hold are tried again (it may have ended with this one).
+                Landed::Done => held.clear(),
             }
         }
     }
@@ -359,6 +365,13 @@ impl Hub {
         }
         if fin.step == "commit" {
             self.finish_step(id, "line");
+        }
+        // Another Desk holds a file it changed (#540): it waits in the line, nobody asked, till the hold lifts. It's
+        // brought up to the main line as it is then, as every landing is (below).
+        let files = crate::desk::hold_check::changed(&t.repo, &base, &work);
+        if let Some(why) = self.read(|st| crate::desk::hold_check::landing_wait(st, &it, &files)) {
+            self.land_wait(id, &why);
+            return Landed::Held;
         }
         let project = self.read(|st| st.desk.project_of(&it.project).to_string());
         let words = crate::config::never_words(&project);

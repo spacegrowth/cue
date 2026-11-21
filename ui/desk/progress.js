@@ -53,7 +53,9 @@ function deskProgNow(i) {
   }
   if (deskCopyWaits(i)) return esc(deskCopyWaitLine(i));
   if (!i.holder) return i.start_failed ? "Couldn't start a session for it" : "Nobody has it yet";
-  return i.after ? `Queued with ${who}, after #${esc(i.after)}` : `Queued with ${who}`;
+  if (!i.after) return `Queued with ${who}`;
+  const on = deskAfterName(i);
+  return on.startsWith("#") ? `Queued with ${who}, after ${esc(on)}` : `Waits for ${esc(on)} · queued with ${who}`;
 }
 /** Its one button when it needs you: Answer (its page), Allow / No, Looks right. */
 function deskProgButton(i) {

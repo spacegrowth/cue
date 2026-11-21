@@ -68,6 +68,14 @@ pub(crate) struct Effects {
     /// A session's TO LEAD: words (#474): (Desk, the session, the message, its own words), sent to that Desk's lead as
     /// it is then; its words quoted back to it when they can't be.
     pub(crate) to_lead: Vec<(String, String, String, String)>,
+    /// Holds taken or lifted (#540, desk/holds.rs), to save; those whose item ended are added as the Desk saves.
+    pub(crate) holds: Vec<crate::desk::holds::HoldSave>,
+    /// Bands to other Desks' leads (#540, desk/tell.rs): (that Desk, the message, the sending lead's session), sent as
+    /// Cue's own words to it; and the bands sent or answered, to save.
+    pub(crate) tells: Vec<(String, String, String)>,
+    pub(crate) bands: Vec<crate::desk::tell::Band>,
+    /// Questions to the user when Desks' leads can't settle it (#540, desk/escalate.rs), each on all its Desks.
+    pub(crate) to_user: Vec<crate::desk::escalate::ToUser>,
 }
 
 
@@ -226,6 +234,14 @@ impl Hub {
                 crate::db::desk_put_decision(d);
             }
         }
+        // Holds (#540): those whose item ended while Cue was off (or is no longer loaded) are gone.
+        st.desk.holds = crate::db::desk_holds();
+        let ended = crate::desk::holds::ended(st);
+        if let Err(e) = crate::db::desk_save_holds(&ended) {
+            eprintln!("cue: desk: couldn't drop ended holds: {e}");
+        }
+        // Bands between Desks (#540): the last day's.
+        st.desk.bands = crate::db::desk_bands(now_ms().saturating_sub(crate::desk::tell::BAND_KEEP_MS));
         st.desk.members.clear();
         for (p, sid) in crate::db::desk_members() {
             st.desk.join(&p, &sid);
@@ -388,8 +404,14 @@ impl Hub {
         let answer = d.answers.as_ref().and_then(|a| a.as_object()).and_then(|a| a.values().next()).map(|v| v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string()));
         let answer = answer.or_else(|| d.message.clone()).unwrap_or_else(|| if d.behavior == "deny" { "no".into() } else { "yes".into() });
         let answer = crate::desk::parse::plain_choice(&answer).to_string();
+        // Cue's question when Desks' leads can't settle it (desk/escalate.rs): read before the card is filed.
+        let to_user = self.read(|st| st.items.iter().find(|i| i.id == id).and_then(|i| serde_json::from_value::<crate::desk::escalate::ToUser>(i.tool_input["desk_to_user"].clone()).ok()));
         self.write(|st| st.waiters.remove(id));
         self.finish(id, "answered", &format!("answered: {answer}"));
+        if let Some(q) = to_user {
+            self.desk_to_user_answered(id, q, &answer);
+            return true;
+        }
         // The lead's proposed change to how work lands (desk/hub/lead/lands.rs): saved only on your yes, the lead told.
         if let Some(lands) = lands {
             self.desk_lands_answered(&sid, &lands, d.behavior != "deny" && answer == "Yes");
@@ -514,6 +536,18 @@ impl Hub {
                 }
             });
         }
+        // A band to another Desk's lead (#540), as Cue's own words to it; when it can't go, the sending lead is told.
+        for (desk, text, from) in std::mem::take(&mut fx.tells) {
+            self.later(0, move |h| {
+                if let Err(e) = crate::desk::hub::lead::desk_send_cue(h, &desk, &text) {
+                    eprintln!("cue: desk: a band didn't reach {desk}'s lead: {e}");
+                    let _ = h.tell(&from, &format!("Your TELL didn't reach {}'s lead: {e}", h.desk_name(&desk)));
+                }
+            });
+        }
+        for q in std::mem::take(&mut fx.to_user) {
+            self.desk_to_user_ask(&q);
+        }
         for (lsid, project, q, choices, item) in fx.asks {
             self.desk_ask(&lsid, &project, &q, &choices, None, item.as_deref());
         }
@@ -553,8 +587,19 @@ impl Hub {
                 crate::desk::hub::lead::feed::new_item(st, &project, &id, now);
             }
             let (items, decisions) = stamp_sends(st, fx, now);
+            // A hold whose item is now done, dropped or parked ends with it (#540).
+            let ended = crate::desk::holds::ended(st);
+            // Items that waited at landing for it land now (desk/hold_check.rs).
+            fx.land |= !ended.is_empty();
+            fx.holds.extend(ended);
             (items, decisions, crate::desk::hub::lead::feed::unsaved(st))
         });
+        if let Err(e) = crate::db::desk_save_holds(&std::mem::take(&mut fx.holds)) {
+            eprintln!("cue: desk: couldn't save its holds: {e}");
+        }
+        if let Err(e) = crate::db::desk_save_bands(&std::mem::take(&mut fx.bands)) {
+            eprintln!("cue: desk: couldn't save the bands between Desks: {e}");
+        }
         if let Err(e) = crate::db::desk_save(&items, &fx.dropped, &rows) {
             eprintln!("cue: desk: couldn't save {} item(s) and {} change(s): {e}", items.len() + fx.dropped.len(), rows.len());
         }
@@ -637,7 +682,7 @@ impl Hub {
 
 /// Whether a change left nothing for `desk_done` to do.
 fn left_nothing(fx: &Effects) -> bool {
-    fx.items.is_empty() && fx.said.is_empty() && fx.dropped.is_empty() && fx.decisions.is_empty() && fx.sends.is_empty() && fx.asks.is_empty() && fx.lands.is_empty() && fx.news.is_empty() && fx.starts.is_empty() && fx.joined.is_empty() && fx.uses.is_empty() && fx.stopped.is_empty() && fx.trees_gone.is_empty() && fx.closes.is_empty() && fx.on_main.is_empty() && fx.cleanup.is_empty() && !fx.land && fx.pause.is_empty() && fx.to_lead.is_empty()
+    fx.items.is_empty() && fx.said.is_empty() && fx.dropped.is_empty() && fx.decisions.is_empty() && fx.sends.is_empty() && fx.asks.is_empty() && fx.lands.is_empty() && fx.news.is_empty() && fx.starts.is_empty() && fx.joined.is_empty() && fx.uses.is_empty() && fx.stopped.is_empty() && fx.trees_gone.is_empty() && fx.closes.is_empty() && fx.on_main.is_empty() && fx.cleanup.is_empty() && !fx.land && fx.pause.is_empty() && fx.to_lead.is_empty() && fx.holds.is_empty() && fx.tells.is_empty() && fx.bands.is_empty() && fx.to_user.is_empty()
 }
 
 /// Steps whose message goes now, by the send that carries it; the rest Cue keeps (a paused Desk, an item waiting

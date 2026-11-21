@@ -593,6 +593,8 @@ impl Hub {
         self.taken_out_tick();
         // Circles the waits list has now told to their lead, gone ones let go (#250).
         self.circle_check();
+        // Desks' leads that can't settle it: a band unanswered 15 minutes, a hold an hour past its till (#540).
+        self.desk_to_user_tick();
         // The change feed: what time raises (a finishing stuck, a holder gone), then its backstop: rows past "sent" go
         // once the lead is free (desk/hub/lead/feed.rs).
         self.desk_feed_watch();

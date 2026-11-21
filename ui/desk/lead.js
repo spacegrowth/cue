@@ -30,10 +30,29 @@ function deskPeerBand(sid, e) {
   const d = from && from !== sid ? deskForSession(from) : null;
   if (!d || d.project === own.project) return null;
   const it = deskSessItem(d, from);
-  return deskMg({ kind: "peer", attrs: ` data-from-desk="${esc(d.project)}"`,
-    chip: `<span class="mg-chip">${deskKindIcon("tray")}${projDot(d.project)}${esc(deskName(d))}</span>`,
-    who: esc(nameOf(from, e.from) || e.from || "a session"), tag: "FROM ANOTHER DESK", id: it ? `<span class="mg-id">#${esc(it.id)}</span>` : "",
-    age: e.at_ms, body: `<div class="mg-t whole dk-md">${md(e.text || "")}</div>`,
+  return deskPeerCard(d, deskName(d), nameOf(from, e.from) || e.from || "a session", it?.id, e.at_ms, e.text);
+}
+/** The head of a band Cue sent this lead for another Desk's lead (#540, desk/tell.rs `band_text`): its Desk's name, its
+ *  lead's, the item it's about; then the words, and the line on how to answer, which the card leaves out. */
+const DESK_TOLD = /^\[From another Desk: (.+?) · lead (.*?)(?: · about #([A-Za-z0-9]+))?\]\n([\s\S]*?)(?:\n\n\(To answer: TELL DESK: [^\n]*\))?$/;
+/** A TELL DESK, TELL DESKS or HOLD from another Desk's lead, as Cue delivered it to this lead (#540): the same band as
+ *  a message from that Desk's session, its lead as the sender. Null for any other message, or outside a lead's chat. */
+function deskToldBand(sid, e) {
+  const desks = state.desk?.projects || [];
+  const own = desks.find((d) => deskLead(d)?.sid === sid);
+  const m = own && DESK_TOLD.exec(deskSaid(e.text).trim());
+  if (!m) return null;
+  const d = desks.find((x) => x.project !== own.project && deskName(x) === m[1]) || null;
+  const from = d && deskLead(d)?.sid;
+  return deskPeerCard(d, m[1], (from && nameOf(from, m[2])) || m[2] || "its lead", m[3], e.at_ms, m[4]);
+}
+/** The FROM ANOTHER DESK card (#472): Desk `d`'s chip (`label` when it isn't loaded), `who` sent it, the item `id` it's
+ *  about, its age and `text`. */
+function deskPeerCard(d, label, who, id, at, text) {
+  return deskMg({ kind: "peer", attrs: ` data-from-desk="${esc(d ? d.project : label)}"`,
+    chip: `<span class="mg-chip">${deskKindIcon("tray")}${d ? projDot(d.project) : ""}${esc(d ? deskName(d) : label)}</span>`,
+    who: esc(who), tag: "FROM ANOTHER DESK", id: id ? `<span class="mg-id">#${esc(id)}</span>` : "",
+    age: at, body: `<div class="mg-t whole dk-md">${md(text || "")}</div>`,
     foot: `<span class="mg-st">The lead answers it below; you don't need to.</span>` });
 }
 /** One message of the family (#501, option B, ui/styles/messages.css): the card on panel-2, its head row (Cue's mark

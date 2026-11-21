@@ -114,7 +114,9 @@ fn circle_note(c: &[Wait]) -> String {
 
 /// The circles in item `id`'s project now, with when each was found and whether its lead was told.
 pub(crate) fn circles_of(st: &Store, project: &str) -> Vec<(Vec<Wait>, u64, bool)> {
-    circles(&waits(st, Some(project))).into_iter().map(|c| {
+    // Every circle with an item of `project`'s in it: one may run through another Desk's items on the same code (#540).
+    let ours = |w: &Wait| st.desk.item(&w.item).is_some_and(|i| i.project == project);
+    circles(&waits(st, None)).into_iter().filter(|c| c.iter().any(ours)).map(|c| {
         let (at, told) = st.desk.run.circles.get(&circle_key(&c)).copied().unwrap_or((0, false));
         (c, at, told)
     }).collect()
@@ -122,7 +124,15 @@ pub(crate) fn circles_of(st: &Store, project: &str) -> Vec<(Vec<Wait>, u64, bool
 
 /// `project`'s waits, for the window: who waits on whom, on what, since when.
 pub(crate) fn waits_view(st: &Store, project: &str) -> Value {
-    Value::Array(waits(st, Some(project)).iter().map(wait_json).collect())
+    // Its own items' waits, and other Desks' items waiting on one of its own (#540); each names the other Desk.
+    let of = |id: &str| st.desk.item(id).map(|i| i.project.clone()).unwrap_or_default();
+    Value::Array(waits(st, None).iter().filter(|w| of(&w.item) == project || of(&w.on) == project).map(|w| {
+        let mut j = wait_json(w);
+        let other = |id: &str| Some(of(id)).filter(|p| !p.is_empty() && p != project).map(|p| st.desk.name_of(&p).to_string()).unwrap_or_default();
+        j["item_desk"] = json!(other(&w.item));
+        j["on_desk"] = json!(other(&w.on));
+        j
+    }).collect())
 }
 
 /// `project`'s circles, for the window: each with its links in order, when it was found and whether its lead was told.
@@ -152,13 +162,20 @@ impl Hub {
                 if told {
                     continue;
                 }
-                let project = c.first().and_then(|w| st.desk.item(&w.item)).map(|i| i.project.clone()).unwrap_or_default();
-                let lead = st.desk.lead_sid(&project).filter(|l| st.sessions.get(*l).is_some_and(|s| s.state != "stopped")).map(str::to_string);
-                if let Some(lead) = &lead {
-                    fx.sends.push((lead.clone(), circle_note(c)));
+                // Each Desk with an item in it (#540: a circle may run across Desks on the same code): its lead told.
+                let mut projects: Vec<String> = c.iter().filter_map(|w| st.desk.item(&w.item)).map(|i| i.project.clone()).collect();
+                projects.sort();
+                projects.dedup();
+                let mut told = false;
+                for project in &projects {
+                    let lead = st.desk.lead_sid(project).filter(|l| st.sessions.get(*l).is_some_and(|s| s.state != "stopped")).map(str::to_string);
+                    if let Some(lead) = lead {
+                        fx.sends.push((lead, circle_note(c)));
+                        told = true;
+                    }
                 }
                 let at = st.desk.run.circles.get(&key).map_or(now, |(at, _)| *at);
-                st.desk.run.circles.insert(key, (at, lead.is_some()));
+                st.desk.run.circles.insert(key, (at, told));
             }
             fx
         });

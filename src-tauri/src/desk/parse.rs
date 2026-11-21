@@ -70,6 +70,18 @@ pub enum Line {
     /// The lead giving item `id` a copy of another repository on a branch it names (#557):
     /// `COPY: #<id> | in: <add-on, or a repository's folder> | branch: <name> | why: …`.
     Copy { id: String, repo: String, branch: String, why: String },
+    /// The lead's item `id` holds part of the repository's code for every Desk on it (#540):
+    /// `HOLD: #<id> | area: <globs, comma-separated> | till: <words> | why: …` (desk/holds.rs). A HOLD with no `area:`
+    /// is PARK's first name.
+    Hold { id: String, area: Vec<String>, till: String, why: String },
+    /// That hold lifted early (#540): `UNHOLD: #<id>`.
+    Unhold { id: String },
+    /// To another Desk's lead on the repository (#540, desk/tell.rs): `TELL DESK: <Desk> | <words>` (`to` Some), or
+    /// to every other one, `TELL DESKS: <words>`. `item`: the #id the words start with.
+    Tell { to: Option<String>, item: Option<String>, text: String },
+    /// The lead can't agree with another Desk's lead on the repository (#540, desk/escalate.rs): `DISAGREE: <Desk> |
+    /// <its side>`. Cue asks the user, both sides quoted. `item`: the #id the words start with.
+    Disagree { to: String, item: Option<String>, text: String },
 }
 
 /// The Desk lines in `text`, in order.
@@ -178,8 +190,13 @@ fn one(t: &str) -> Option<Line> {
         "LAND FIRST" => unstick("land_first", body),
         "COPY FIRST" => unstick("copy_first", body),
         "START" => unstick("start", body),
-        // PARK (#391); HOLD, its first name (#385), still works.
-        "PARK" | "HOLD" => unstick("hold", body),
+        "PARK" => unstick("hold", body),
+        // HOLD with an area holds code for every Desk on the repository (#540); without one it's PARK's first name
+        // (#385), which still works.
+        "HOLD" => hold(body).or_else(|| unstick("hold", body)),
+        "UNHOLD" => unhold(body),
+        w @ ("TELL DESK" | "TELL DESKS") => crate::desk::tell::parse(w, body),
+        "DISAGREE" => crate::desk::escalate::parse(body),
         // UNPARK (#499): its why after a dash ("UNPARK: #12 — why: …") or a "|" as the other lines have it.
         "UNPARK" => unstick("unpark", &dashed(body)),
         // DROP (#544): the item is gone, as its Drop does; its why after a dash or a "|".
@@ -218,6 +235,32 @@ fn copy(body: &str) -> Option<Line> {
     Some(Line::Copy { id: id_of(head)?, repo, branch, why })
 }
 
+/// `HOLD: #<id> | area: <globs> | till: <words> | why: …` (#540): None without an `area:` part (then it's a PARK).
+fn hold(body: &str) -> Option<Line> {
+    let ps = parts(body);
+    let head = ps.first()?;
+    if !head.starts_with('#') || head.contains(' ') {
+        return None;
+    }
+    let (mut area, mut till, mut why) = (None, String::new(), String::new());
+    for p in &ps[1..] {
+        if let Some(a) = labelled(p, "area") {
+            area = Some(a.split(',').map(|g| g.trim().trim_matches('`').to_string()).filter(|g| !g.is_empty()).collect());
+        } else if let Some(t) = labelled(p, "till") {
+            till = t.to_string();
+        } else if let Some(w) = labelled(p, "why") {
+            why = w.to_string();
+        }
+    }
+    Some(Line::Hold { id: id_of(head)?, area: area?, till, why })
+}
+
+/// `UNHOLD: #<id>` (#540); anything after a "|" is left alone.
+fn unhold(body: &str) -> Option<Line> {
+    let head = *parts(body).first()?;
+    (head.starts_with('#') && !head.contains(' ')).then(|| id_of(head)).flatten().map(|id| Line::Unhold { id })
+}
+
 /// `PAUSE: why: …` / `RESUME: why: …` with no item: the whole Desk (#366). None for one naming an item.
 fn whole_desk(on: bool, body: &str) -> Option<Line> {
     (!body.trim_start().starts_with('#')).then(|| Line::Pause { on, why: labelled(body, "why").unwrap_or(body).to_string() })
@@ -228,7 +271,9 @@ fn whole_desk(on: bool, body: &str) -> Option<Line> {
 fn unstick(what: &str, body: &str) -> Option<Line> {
     let ps = parts(body);
     let head = ps.first()?;
-    if !head.starts_with('#') || head.contains(' ') {
+    // LAND FIRST may name another Desk's item (#540): "loops#533", "loops #533".
+    let other = what == "land_first" && !head.starts_with('#') && head.contains('#');
+    if !other && (!head.starts_with('#') || head.contains(' ')) {
         return None;
     }
     let (mut commit, mut why) = (String::new(), String::new());
@@ -243,7 +288,7 @@ fn unstick(what: &str, body: &str) -> Option<Line> {
     if !commit.chars().all(|c| c.is_ascii_hexdigit()) {
         return None;
     }
-    Some(Line::Unstick { what: what.into(), id: id_of(head)?, commit: commit.to_ascii_lowercase(), why })
+    Some(Line::Unstick { what: what.into(), id: if other { item_ref(head)? } else { id_of(head)? }, commit: commit.to_ascii_lowercase(), why })
 }
 
 /// `body` with a dash between its item and its why ("#12 — why: …") read as a "|" (#499).
@@ -269,6 +314,16 @@ fn parts(body: &str) -> Vec<&str> {
 fn labelled<'a>(part: &'a str, label: &str) -> Option<&'a str> {
     let head = part.get(..label.len())?;
     head.eq_ignore_ascii_case(label).then(|| part[label.len()..].trim_start().trim_start_matches(':').trim())
+}
+
+/// An item `after:` or LAND FIRST names (#540): its id as `id_of` reads it, or "<Desk>#<id>" when a Desk's name is
+/// written before it ("loops#533", "loops #533"); desk/across.rs reads that back and checks it.
+fn item_ref(s: &str) -> Option<String> {
+    let s = s.trim().trim_matches(['`', '*']);
+    match s.split_once('#') {
+        Some((desk, rest)) if !desk.trim().is_empty() => Some(format!("{}#{}", desk.trim().to_ascii_lowercase(), id_of(rest)?)),
+        _ => id_of(s),
+    }
 }
 
 /// An item id as written ("#d7k2", "d7k2."), lower case.
@@ -348,7 +403,7 @@ fn route(body: &str) -> Option<Line> {
     if to.is_empty() {
         return None;
     }
-    let after = p[1..].iter().find_map(|s| labelled(s, "after")).and_then(id_of);
+    let after = p[1..].iter().find_map(|s| labelled(s, "after")).and_then(item_ref);
     let why = p[1..].iter().find_map(|s| labelled(s, "why")).unwrap_or("").to_string();
     let kind = p[1..].iter().find_map(|s| labelled(s, "kind")).map(|k| k.trim_matches(['"', '`', '*', '.']).to_ascii_lowercase()).filter(|k| matches!(k.as_str(), "bug" | "feature" | "task"));
     let crew = p[1..].iter().find_map(|s| labelled(s, "crew")).map(|c| c.trim_start_matches('@').trim_matches(['"', '`', '*']).trim().to_string()).filter(|c| !c.is_empty());

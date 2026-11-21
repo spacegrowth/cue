@@ -510,12 +510,12 @@ function deskChain(i) {
     return q ? `<div class="dk-chain"><div class="dk-cn dk-q"><div class="dk-lt dk-md">${deskMd(q)}</div></div></div>` : "";
   }
   if (i.state !== "queued" || !i.after) return "";
-  const first = deskItem(i.project, i.after);
+  const first = deskItemAny(i.project, i.after);
   if (!first) return "";
   const who = first.holder?.kind === "crew" ? `${first.holder.name} (${deskHolderName(first.holder.lead_sid)}'s crew)` : first.crew && first.holder ? `${first.holder.name} → ${first.crew}` : first.holder?.name || "";
   const files = deskFilesShort(first.files);
   const sub = [who, first.latest, files ? `has ${files} open` : ""].filter(Boolean).join(" · ");
-  return `<div class="dk-chain"><div class="dk-cn"><i></i><div><div class="dk-lt">${esc(first.title)}</div><div class="dk-ls">${esc(sub)}</div></div></div>
+  return `<div class="dk-chain"><div class="dk-cn"><i></i><div><div class="dk-lt">${first.project !== i.project ? `${esc(deskAfterName(i))} · ` : ""}${esc(first.title)}</div><div class="dk-ls">${esc(sub)}</div></div></div>
     <div class="dk-cn"><i class="wait"></i><div><div class="dk-lt">This one</div><div class="dk-ls">starts when ${esc(deskShort(first.title))} is done${i.after_why ? `: ${esc(i.after_why)}` : ""}</div></div></div></div>`;
 }
 /** An item's files, short: a few names, the rest as "+N more" ("" for none). */

@@ -260,6 +260,9 @@ function chatRowHtml(c, e, n) {
   if (answers.has(n)) return "";
   if (decided.has(n)) return chose.length && near(e.at_ms) ? "" : chatDecisionLine(decided.get(n), e.at_ms);
   if (asks.has(n)) return chatAskHtml(`${s?.session_id || it?.id}:${e.at_ms}`, e, asks.get(n), harness, it?.machine || s?.machine);
+  // Another Desk's lead, through Cue (TELL DESK, TELL DESKS, a HOLD, #540): the same band (desk/lead.js).
+  const told = e.role === "you" && typeof deskToldBand === "function" && deskToldBand(sid, e);
+  if (told) return told;
   // What Cue sent the lead for its crew: Cue's bubble on the right, never yours (team.js). A page's own drawing first.
   const own = e.role === "you" && page?.you?.(e, n);
   if (own) return own;

@@ -253,6 +253,24 @@ CREATE TABLE IF NOT EXISTS desk_kept (
   data        TEXT NOT NULL
 );
 
+-- Holds on a repository's code (#540, desk/holds.rs): an item holds part of it for every Desk on that repository
+-- (`repo`, its main checkout) till it ends. `project` is the holding Desk. One row an item, as JSON.
+CREATE TABLE IF NOT EXISTS desk_holds (
+  item        TEXT PRIMARY KEY,
+  project     TEXT NOT NULL,
+  repo        TEXT NOT NULL,
+  data        TEXT NOT NULL
+);
+
+-- Bands one Desk's lead sent another's (#540, desk/tell.rs), the last day's: `project` is the sending Desk, `at` when
+-- (ms). One row a band, as JSON.
+CREATE TABLE IF NOT EXISTS desk_bands (
+  key         TEXT PRIMARY KEY,
+  project     TEXT NOT NULL,
+  at          INTEGER NOT NULL,
+  data        TEXT NOT NULL
+);
+
 -- Each project's sessions on its Desk: the ones its lead may route to.
 CREATE TABLE IF NOT EXISTS desk_members (
   project     TEXT NOT NULL,

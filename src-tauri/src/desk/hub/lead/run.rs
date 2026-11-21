@@ -306,6 +306,10 @@ fn summary_head(st: &Store, project: &str, lead: &str, lands: &str, now: u64) ->
             .unwrap_or_else(|| lead.chars().take(8).collect());
         out.push_str(&format!("Desk lead: {name} (you){}\n{lands}\n", context_note(st, lead, false, now)));
     }
+    // Holds on this repository's code, every Desk's (#540): a lead that starts later, or after a compact, sees them.
+    if let Some(holds) = crate::desk::holds::summary_line(st, project) {
+        out.push_str(&holds);
+    }
     out
 }
 

@@ -20,7 +20,7 @@ pub fn desk_put_space(desk: &crate::desk::model::DeskSpace) -> Result<(), String
 pub fn desk_delete(id: &str) -> Result<(), String> {
     with(|c| {
         let tx = c.unchecked_transaction()?;
-        for table in ["desk_items", "desk_decisions", "desk_lead", "desk_members", "desk_moves", "desk_moves_cleared", "desk_feed", "desk_feed_marks"] {
+        for table in ["desk_items", "desk_decisions", "desk_lead", "desk_members", "desk_moves", "desk_moves_cleared", "desk_feed", "desk_feed_marks", "desk_holds", "desk_bands"] {
             tx.execute(&format!("DELETE FROM {table} WHERE project = ?1"), params![id])?;
         }
         tx.execute("DELETE FROM desk_spaces WHERE id = ?1", params![id])?;
@@ -34,6 +34,71 @@ pub fn desk_spaces() -> Vec<crate::desk::model::DeskSpace> {
         let rows = q.query_map([], |r| r.get::<_, String>(0))?;
         Ok(rows.flatten().filter_map(|data| serde_json::from_str(&data).ok()).collect())
     }).unwrap_or_default()
+}
+
+/// The holds on code saved (#540, desk/holds.rs).
+pub fn desk_holds() -> Vec<crate::desk::holds::Hold> {
+    with(|c| {
+        let mut q = c.prepare("SELECT data FROM desk_holds ORDER BY rowid")?;
+        let rows = q.query_map([], |r| r.get::<_, String>(0))?;
+        Ok(rows.flatten().filter_map(|data| serde_json::from_str(&data).ok()).collect())
+    }).unwrap_or_default()
+}
+
+/// The bands between Desks saved since `since` (ms; #540, desk/tell.rs), oldest first; older ones are deleted.
+pub fn desk_bands(since: u64) -> Vec<crate::desk::tell::Band> {
+    with(|c| {
+        c.execute("DELETE FROM desk_bands WHERE at < ?1", params![since as i64])?;
+        let mut q = c.prepare("SELECT data FROM desk_bands ORDER BY at, rowid")?;
+        let rows = q.query_map([], |r| r.get::<_, String>(0))?;
+        Ok(rows.flatten().filter_map(|data| serde_json::from_str(&data).ok()).collect())
+    }).unwrap_or_default()
+}
+
+/// Bands sent or answered (#540), each saved as it is now, in one transaction.
+pub fn desk_save_bands(bands: &[crate::desk::tell::Band]) -> Result<(), String> {
+    if bands.is_empty() {
+        return Ok(());
+    }
+    let data: Vec<String> = bands.iter().map(|b| serde_json::to_string(b).map_err(|e| e.to_string())).collect::<Result<_, _>>()?;
+    with(|c| {
+        let tx = c.unchecked_transaction()?;
+        for (b, data) in bands.iter().zip(&data) {
+            tx.execute(
+                "INSERT INTO desk_bands (key, project, at, data) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(key) DO UPDATE SET data = excluded.data",
+                params![b.key(), b.from, b.at as i64, data],
+            )?;
+        }
+        tx.commit()
+    })
+    .ok_or_else(|| "the database refused it".to_string())
+}
+
+/// Holds taken, taken again or gone (#540), in one transaction, in order.
+pub fn desk_save_holds(saves: &[crate::desk::holds::HoldSave]) -> Result<(), String> {
+    use crate::desk::holds::HoldSave;
+    if saves.is_empty() {
+        return Ok(());
+    }
+    let data: Vec<Option<String>> = saves.iter().map(|s| match s {
+        HoldSave::Put(h) => serde_json::to_string(h).map(Some).map_err(|e| e.to_string()),
+        HoldSave::Gone(_) => Ok(None),
+    }).collect::<Result<_, _>>()?;
+    with(|c| {
+        let tx = c.unchecked_transaction()?;
+        for (s, data) in saves.iter().zip(&data) {
+            match (s, data) {
+                (HoldSave::Put(h), Some(data)) => tx.execute(
+                    "INSERT INTO desk_holds (item, project, repo, data) VALUES (?1, ?2, ?3, ?4)
+                     ON CONFLICT(item) DO UPDATE SET project = excluded.project, repo = excluded.repo, data = excluded.data",
+                    params![h.item, h.desk, h.repo, data],
+                )?,
+                (HoldSave::Gone(item), _) | (HoldSave::Put(crate::desk::holds::Hold { item, .. }), None) => tx.execute("DELETE FROM desk_holds WHERE item = ?1", params![item])?,
+            };
+        }
+        tx.commit()
+    })
+    .ok_or_else(|| "the database refused it".to_string())
 }
 
 /// An item saved as it is now (`desk_save`; a failed save is logged).

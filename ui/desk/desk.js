@@ -96,6 +96,14 @@ const deskItem = (p, id) => {
   const its = deskOf(p).items, old = typeof deskDonePages === "undefined" ? [] : deskDonePages.get(p)?.items || [];
   return its.find((i) => deskIdIs(i, id)) || [...its, ...old].flatMap((i) => i.pieces || []).find((i) => deskIdIs(i, id)) || null;
 };
+/** Item `id`, on Desk `p` or another Desk on the same code (an item there may wait on it, #540). */
+const deskItemAny = (p, id) => deskItem(p, id) || (state.desk?.projects || []).flatMap((d) => d.items || []).find((i) => deskIdIs(i, id)) || null;
+/** What queued item `i` waits for, as its row says it: "#509", or "cue #509" when it's another Desk's (#540; the
+ *  hub's waits list names that Desk). */
+const deskAfterName = (i) => {
+  const d = deskOf(i.project)?.waits?.find((w) => w.item === i.id && w.on === i.after)?.on_desk;
+  return d ? `${d} #${i.after}` : `#${i.after}`;
+};
 /** An item as people name it: its kind and number, "Bug #2", "Task #1"; "#2" while it has no kind yet. */
 /** An item's kind as a small line icon in the one theme color (the "Type marks" pick): a checked box, a bug, a
  *  sparkle. The one helper for it: every place an item's kind shows (the item list, the left list, the item page,
@@ -133,6 +141,9 @@ const deskFinCommit = (i) => (i?.finish ? i.finish.commit || i.commit || "" : ""
 const deskUncommitted = (i) => i?.state === "to_check" && !i.finish && !i.commit && (i.files || []).length > 0;
 /** Item `i`'s DONE on its way into the app: Cue commits, builds and installs it. Nothing for you to do yet. */
 const deskFinishing = (i) => i?.state === "finishing";
+/** Whether a landing-line wait is for another Desk's hold on files the item changed (desk/hold_check.rs): its words
+ *  are a whole line already. */
+const deskHoldWait = (w) => /^Waits for /.test(w || "");
 /** Where a finishing item is, in a short line (HTML): what it's doing and since when ("Checking before it lands · since
  *  8:31pm"); in the next install, that it's on main and when it installs, counting down ("On main · installs at 9:05pm ·
  *  in 12m"), so a finished item never looks stuck while it waits (#339). */
@@ -140,7 +151,8 @@ function deskFinStep(i) {
   const f = i.finish || {};
   const since = f.at ? ` · since ${clockAt(f.at)}` : "";
   // In its own copy, waiting its turn to land (desk/hub/landing/trees.rs): one item lands at a time.
-  if (f.step === "line") return `In the landing line${f.wait ? ` · waits: ${esc(f.wait)}` : ""}${since}`;
+  // A wait for another Desk's hold (#540) already reads "Waits for cue #509's hold on …".
+  if (f.step === "line") return `In the landing line${f.wait ? ` · ${deskHoldWait(f.wait) ? esc(f.wait) : `waits: ${esc(f.wait)}`}` : ""}${since}`;
   // Its pull request is open (desk/hub/landing/pr.rs): it lands once that's merged.
   if (f.step === "review") return `In review${f.wait ? ` · ${esc(f.wait)}` : ""}${since}`;
   // Committed, and not on main yet: where it is ("on side, not main").
@@ -191,7 +203,7 @@ function deskLaneStep(i, ahead) {
   const age = f.at ? ` · <span data-ago="${f.at}">${ago(f.at)}</span>` : "";
   if (deskInstallWait(i)) return "waiting for install";
   if (f.step === "checking") return `Checking${age}`;
-  if (f.step === "line") return f.wait ? `Waits: ${esc(f.wait)}${age}` : ahead ? `Waits on #${esc(ahead.id)}${age}` : `Next to land${age}`;
+  if (f.step === "line") return f.wait ? `${deskHoldWait(f.wait) ? "" : "Waits: "}${esc(f.wait)}${age}` : ahead ? `Waits on #${esc(ahead.id)}${age}` : `Next to land${age}`;
   if (f.step === "review") return `In review${age}`;
   if (f.step === "landing") return `Not on main yet${f.wait ? ` · ${esc(f.wait)}` : ""}${age}`;
   if (f.step === "commit_wait") return `Waits to be committed${f.wait ? ` · ${esc(f.wait)}` : ""}${age}`;

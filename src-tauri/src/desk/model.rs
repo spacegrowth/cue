@@ -721,6 +721,10 @@ pub struct Desk {
     pub moves_cleared: HashMap<String, u64>,
     /// Each Desk's change feed for its lead (desk/feed.rs): rows past "heard" and the two marks (saved: db/desk.rs).
     pub feed: super::feed::Feeds,
+    /// Holds on each repository's code (#540, desk/holds.rs), by item (saved: db/desk.rs).
+    pub holds: Vec<super::holds::Hold>,
+    /// Bands one Desk's lead sent another's (#540, desk/tell.rs), the last day's (saved: db/desk.rs).
+    pub bands: Vec<super::tell::Band>,
     /// What the Desk keeps only while Cue runs (desk/state.rs): never saved, empty after a restart.
     pub run: super::state::DeskRun,
 }

@@ -69,3 +69,32 @@ for (const scheme of ["light", "dark"]) {
     await expect(band.locator(".mg-chip")).toHaveText("Docs site");
   });
 }
+
+test("a TELL DESK from another Desk's lead, delivered by Cue, is the same band with its lead as the sender (#540)", async ({ page, cue }) => {
+  await page.setViewportSize({ width: 1500, height: 950 });
+  await cue.open("desk");
+  await openDesk(page);
+  const words = "#w118 is 20 min from landing. Land it first?";
+  await cue.change((st, { words, at }) => {
+    const site = st.desk.projects.find((p) => p.project === "website");
+    site.name = "Docs site";
+    const lead = st.sessions.find((x) => x.session_id === "lead");
+    // As desk/tell.rs `band_text` writes it, after the Desk's summary block.
+    const summary = `<desk id="cue" name="cue" project="cue">\nItems: none.\n</desk>\n\n`;
+    lead.thread.push({ role: "you", text: `${summary}[From another Desk: Docs site · lead site-lead · about #w118]\n${words}\n\n(To answer: TELL DESK: Docs site | <your words>.)`, at_ms: at });
+    lead.thread.push({ role: "you", text: "[From another Desk: Gone desk · lead old-lead]\nA heads-up.", at_ms: at + 1000 });
+  }, { words, at: NOW - 2 * 60 * 1000 });
+  const band = page.locator(".dk-chat .mg[data-from-desk]");
+  await expect(band).toHaveCount(2);
+  const b = band.first();
+  await expect(b.locator(".mg-tag")).toHaveText("FROM ANOTHER DESK");
+  await expect(b.locator(".mg-chip")).toHaveText("Docs site");
+  await expect(b.locator(".mg-chip .pdot")).toHaveCount(1);
+  await expect(b.locator(".mg-id")).toHaveText("#w118");
+  await expect(b.locator(".mg-t")).toHaveText(words);
+  await expect(b.locator(".mg-f")).toHaveText("The lead answers it below; you don't need to.");
+  await expect(band.nth(1).locator(".mg-chip")).toHaveText("Gone desk");
+  await expect(band.nth(1).locator(".mg-who")).toHaveText("old-lead");
+  await expect(page.locator(".dk-chat")).not.toContainText("To answer:");
+  await expect(page.locator("[title]")).toHaveCount(0);
+});

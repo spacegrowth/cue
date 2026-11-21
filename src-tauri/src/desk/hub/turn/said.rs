@@ -32,7 +32,8 @@ pub(crate) fn item_said(st: &mut Store, project: &str, kind: &str, title: &str, 
 
 /// Lead `lsid` of `project` said `text` at its turn's end: its ITEM, ROUTE, ASK and DECIDED lines.
 /// `repos`: the repositories its COPY lines name, found before the store was taken (desk/hub/landing/named_copy.rs).
-fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, repos: &[(String, Result<String, String>)], now: u64, fx: &mut Effects) {
+#[allow(clippy::too_many_arguments)]
+fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, repos: &[(String, Result<String, String>)], changes: &crate::desk::hold_check::Changes, now: u64, fx: &mut Effects) {
     let name = st.sessions.get(lsid).map(shown_name).or_else(|| st.desk.lead.get(project).map(|l| l.name.clone())).unwrap_or_default();
     let by = By { name: &name, sid: lsid };
     let mut last_new: Option<String> = None;
@@ -63,8 +64,19 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, repos: &[(St
                 }
             }
             Line::Unstick { what, id, commit, why } => {
-                // PARK: #new parks the reply's last ITEM (#385).
-                let id = new_or_canon(st, &id, last_new.as_deref());
+                // PARK: #new parks the reply's last ITEM (#385). LAND FIRST may name another Desk's item on the same code (#540).
+                let id = if what == "land_first" && id != "new" {
+                    match crate::desk::across::named(st, project, &id) {
+                        Ok(id) => id,
+                        Err(no) => {
+                            let id = crate::desk::across::split(&id).1;
+                            answers.push(format!("Refused: LAND FIRST #{id}: #{id} {no}. You can move up an item on this repository, or ask the user (ASK: #{id} | …)."));
+                            continue;
+                        }
+                    }
+                } else {
+                    new_or_canon(st, &id, last_new.as_deref())
+                };
                 if let Err(no) = crate::desk::hub::stall::unstick::unstick(st, project, &by, &what, &id, &commit, &why, now, fx) {
                     answers.push(no);
                 }
@@ -75,6 +87,16 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, repos: &[(St
                 }
             }
             Line::Copy { id, repo, branch, why } => copy_line(st, project, &by, (new_or_canon(st, &id, last_new.as_deref()), repo, branch, why), repos, now, fx, &mut answers),
+            Line::Hold { id, area, till, why } => {
+                let id = new_or_canon(st, &id, last_new.as_deref());
+                answers.push(crate::desk::holds::hold_said(st, project, &by, &id, area, till, why, changes, now, fx));
+            }
+            Line::Unhold { id } => {
+                let id = st.desk.canon(&id);
+                answers.push(crate::desk::holds::unhold_said(st, project, &id, fx));
+            }
+            Line::Tell { to, item, text } => answers.push(crate::desk::tell::tell_said(st, project, &name, lsid, to, item, &text, now, fx)),
+            Line::Disagree { to, item, text } => answers.push(crate::desk::escalate::disagree_said(st, project, &name, lsid, &to, item, &text, now, fx)),
             Line::Answer { id, text } => cleanup_said(st, project, &by, &id, Some(text), now, fx, &mut answers),
             Line::Lands { part, to, steps, why } => fx.lands.push(crate::desk::hub::lead::lands::Proposal { lsid: lsid.to_string(), desk: project.to_string(), part, to, steps, why }),
             Line::Pause { on, why } => fx.pause.push((project.to_string(), on, name.clone(), lsid.to_string(), why)),
@@ -117,10 +139,22 @@ fn route_said(st: &mut Store, project: &str, by: &By, line: (String, String, Opt
     let (id, to, after, why, kind) = line;
     // An old tag ("#d7k2") names the item by its number from now.
     let id = if id == "new" { last_new.map(str::to_string) } else { Some(st.desk.canon(&id)) };
-    let after = if after.as_deref() == Some("new") { last_new.map(str::to_string) } else { after.map(|a| st.desk.canon(&a)) };
     let Some(id) = id else {
         answers.push("Refused: ROUTE #new has no ITEM line before it in this reply. You can add the ITEM: line first, or route the item by its number.".into());
         return;
+    };
+    // After another Desk's item (#540): only one on the same code (desk/across.rs).
+    let after = match after.as_deref() {
+        Some("new") => last_new.map(str::to_string),
+        Some(a) => match crate::desk::across::named(st, project, a) {
+            Ok(a) => Some(a),
+            Err(why) => {
+                let a = crate::desk::across::split(a).1;
+                answers.push(format!("Refused: #{id} can't wait after #{a}: #{a} {why}. You can route #{id} without after:, or ask the user (ASK: #{id} | …)."));
+                return;
+            }
+        },
+        None => None,
     };
     // The lead says what it is as it routes it (before, so whoever takes it is told).
     if let (Some(k), Some(it)) = (kind, st.desk.item_mut(&id).filter(|i| i.project == project)) {
@@ -479,6 +513,12 @@ impl Hub {
         let from_disk = self.feature_pieces_on_disk(text);
         let from = self.read(|st| st.sessions.get(sid).filter(|s| s.origin.machine.is_empty()).map(|s| s.origin.cwd.clone())).unwrap_or_default();
         let repos = crate::desk::hub::landing::named_copy::repos_said(text, &from);
+        // A HOLD lists the items whose copies already changed a held file (#540): their changes read off disk here.
+        let changes = if said && parse::lines(text).iter().any(|l| matches!(l, Line::Hold { .. })) {
+            crate::desk::hold_check::copies_changed(self.read(crate::desk::hold_check::open_copies))
+        } else {
+            Vec::new()
+        };
         let now = now_ms();
         let fx = self.write(|st| {
             crate::desk::hub::turn::features::bring_back(st, from_disk);
@@ -508,7 +548,7 @@ impl Hub {
             any_session_said(st, sid, text, &mut fx);
             let lead = st.desk.lead_of(sid);
             match &lead {
-                Some(project) => lead_said(st, project, sid, text, &repos, now, &mut fx),
+                Some(project) => lead_said(st, project, sid, text, &repos, &changes, now, &mut fx),
                 None => session_items(st, sid, text, now, &mut fx),
             }
             if st.desk.items.iter().any(|i| i.holder.as_ref().is_some_and(|h| h.is(sid))) {

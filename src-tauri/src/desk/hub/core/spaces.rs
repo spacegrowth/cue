@@ -73,6 +73,8 @@ impl Hub {
                 st.desk.lead.remove(id);
                 st.desk.members.remove(id);
                 st.desk.feed.remove(id);
+                st.desk.holds.retain(|h| h.desk != id);
+                st.desk.bands.retain(|b| b.from != id && b.to != id);
                 st.desk.run.lead_claims.retain(|_, desk| desk != id);
                 for item in ids {
                     st.desk.run.done_told.remove(&item);

@@ -9,14 +9,16 @@ use crate::desk::hub::core::desk::{Effects, NewStart, ask_of, at_work, holder_of
 /// Items queued after `id` start now, with no reason (why it was queued isn't why it starts).
 /// While its Desk is paused (#366), nothing starts: they stay queued, and Resume starts them.
 pub(crate) fn release(st: &mut Store, id: &str, now: u64, fx: &mut Effects) {
-    let project = st.desk.item(id).map(|i| &i.project)
-        .or_else(|| st.desk.items.iter().find(|i| i.after.as_deref() == Some(id)).map(|i| &i.project));
-    if project.is_some_and(|p| crate::desk::hub::away::pause::is_paused(p)) {
-        return;
-    }
-    let rule = project.map(|p| rule_of(st, p)).unwrap_or_default();
-    let lead = project.and_then(|p| st.desk.lead.get(p)).cloned();
-    for it in st.desk.items.iter_mut().filter(|i| i.after.as_deref() == Some(id) && i.state == "queued") {
+    // Each waiter by its own Desk (#540: one on another Desk on the same code waits on it too): its rule, its lead,
+    // and whether it's paused.
+    let waiting: Vec<(String, String)> = st.desk.items.iter().filter(|i| i.after.as_deref() == Some(id) && i.state == "queued").map(|i| (i.id.clone(), i.project.clone())).collect();
+    for (wid, project) in waiting {
+        if crate::desk::hub::away::pause::is_paused(&project) {
+            continue;
+        }
+        let rule = rule_of(st, &project);
+        let lead = st.desk.lead.get(&project).cloned();
+        let Some(it) = st.desk.item_mut(&wid) else { continue };
         it.after = None;
         it.updated = secs(now);
         start_released(it, &rule, lead.as_ref(), fx);
@@ -93,8 +95,9 @@ pub(crate) fn decide_call(st: &mut Store, project: &str, item: Option<String>, b
 /// that's unknown or over, nor one that (through those it waits on) waits on this one: both would wait forever.
 /// The item then starts now.
 fn after_refused(st: &Store, a: &str, id: &str) -> Option<String> {
-    if st.desk.item(a).zip(st.desk.item(id)).is_some_and(|(a, i)| a.project != i.project) {
-        return Some(format!("#{a} belongs to another Desk"));
+    // Another Desk's item on the same code is fine (#540); one on other code isn't.
+    if st.desk.item(a).zip(st.desk.item(id)).is_some_and(|(a, i)| !crate::desk::across::same_code(st, &a.project, &i.project)) {
+        return Some(format!("#{a}, which is on a Desk on other code"));
     }
     if a == id {
         return Some(format!("#{a}, itself"));

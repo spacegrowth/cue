@@ -38,7 +38,9 @@ pub(crate) fn unstick(st: &mut Store, project: &str, by: &By, what: &str, id: &s
         "drop" => "not dropped",
         _ => "not started",
     };
-    let it = st.desk.item(id).filter(|i| i.project == project).ok_or_else(|| format!("#{id} {line}: this Desk has no item #{id}"))?;
+    // LAND FIRST may move up another Desk's item on the same code (#540; desk/across.rs).
+    let ours = |p: &str| p == project || (what == "land_first" && crate::desk::across::same_code(st, project, p));
+    let it = st.desk.item(id).filter(|i| ours(&i.project)).ok_or_else(|| format!("#{id} {line}: this Desk has no item #{id}"))?;
     // DROP takes a done item off the list too (#544).
     if it.state == "done" && !matches!(what, "take_copy" | "drop") {
         return Err(format!("#{id} {line}: it's done already"));
@@ -123,8 +125,16 @@ fn land_first(st: &mut Store, project: &str, by: &By, id: &str, why: &str, now: 
     };
     f.first = now;
     it.updated = secs(now);
+    let of = it.project.clone();
     fx.items.push(id.to_string());
     fx.land = true;
+    // Another Desk's item (#540): the step on its own Desk, where its Thread shows it, and the move noted on both.
+    if of != project {
+        let (mine, theirs) = (st.desk.name_of(project).to_string(), st.desk.name_of(&of).to_string());
+        step(st, &of, by, "land_first", id, &format!("{mine}'s lead moved #{id} up in the landing line"), why, now, fx);
+        crate::desk::hub::turn::route::decide_call(st, project, None, by.name, by.sid, (&format!("Moved {theirs} #{id} up in the landing line"), why, false), true, now, fx);
+        return Ok(());
+    }
     step(st, project, by, "land_first", id, &format!("Moved #{id} up in the landing line"), why, now, fx);
     Ok(())
 }
