@@ -52,8 +52,9 @@ The #560 page keeps its piece of the chat, from pick-up to Looks right, as a rec
   "Reopened with cue-301", so the page still reads top to bottom.
 
 **The cost of this:** a session sits idle while its item waits for you to check it. With five items waiting on you,
-five sessions sit idle. That's cheap in money (an idle session costs nothing until it's woken, and waking a warm one
-is cheap), but it means more sessions on the Desk, and new work starts in a fresh session more often. A limit keeps
+five sessions sit idle. An idle session costs nothing until it's woken, but after a few minutes idle it goes cold,
+so the first follow-up after a long wait costs a full re-read of its chat (still cheaper than a fresh session
+learning the area again). It also means more sessions on the Desk, and new work starts in a fresh session more often. A limit keeps
 it in hand: a session whose item has waited for checking over a day lets go of it (the page keeps the record, and
 Reopen works as above).
 
@@ -94,6 +95,12 @@ go to a fresh session with a short hand-off.**
 
 20 minutes because most items take 10 to 40 minutes, and a fresh session costs a few minutes of reading; the
 figure is a setting, not a rule baked in.
+
+**Does the wait make anything go cold?** No. The waiting item has no session yet, so there is nothing of its own to
+go cold. The session it waits for is busy, which means it is working, so its context stays warm. When it's freed,
+the next item starts in it right away, still warm. What does go cold is a session sitting idle while its item waits
+for your check: after a few minutes idle, its saved context expires, and waking it means reading its whole chat in
+again. That is the real idle cost under A (below), not the 20-minute wait.
 
 **Context.** The session keeps everything it learned, item to item. That is what the routing rules want ("the session
 that last finished work in this area goes first"). Nothing is lost by moving on. The cost is that each session's chat
