@@ -349,7 +349,15 @@ fn stored<'c>(c: &'c Value, project: &str) -> Option<&'c Value> {
 
 /// How work lands for `project`, its items working in `folder` (a session's on this Mac, or a repository): as the
 /// Desk shows it, so the engine and the window never disagree. "" when the folder isn't known here (another machine).
+/// The first time `folder` is asked about it waits a moment for its lookup: call with no lock held (under the store's
+/// lock, `lands_known`).
 pub fn lands_of(project: &str, folder: &str) -> Lands {
+    crate::logs::repos::first_look(folder);
+    lands_known(project, folder)
+}
+
+/// `lands_of` from what's known of `folder` now, never waiting: for code that holds the store's lock.
+pub fn lands_known(project: &str, folder: &str) -> Lands {
     of_in(&crate::config::load(), project, place_of(folder))
 }
 
@@ -366,6 +374,7 @@ pub enum Check {
 
 /// The check a landing of `project` in `repo` runs.
 pub fn check_of(project: &str, repo: &str) -> Check {
+    crate::logs::repos::first_look(repo);
     check_in(&crate::config::load(), project, place_of(repo))
 }
 
@@ -381,33 +390,18 @@ fn check_in(c: &Value, project: &str, place: Place) -> Check {
     }
 }
 
-/// What `folder` (on this Mac) is. Read from what Cue already knows of the folder (logs/repos.rs, never a wait): a
-/// folder not looked at yet counts as a repository until it is. Call `repos::first_look` first to wait for it.
+/// What `folder` (on this Mac) is. Read from what Cue already knows of the folder (logs/repos.rs, never a wait, so
+/// never the disk under the store's lock): a folder not looked at yet counts as a repository until it is. Call
+/// `repos::first_look` first to wait for it.
 pub fn place_of(folder: &str) -> Place {
     if folder.is_empty() {
         return Place::Repo;
     }
-    if is_cue(folder) {
-        return Place::Cue;
-    }
     match crate::logs::repos::facts(folder) {
+        Some(f) if f.cue => Place::Cue,
         Some(f) if f.top.is_none() => Place::NoRepo,
-        Some(f) if f.root.as_deref().is_some_and(|r| is_cue(&r.to_string_lossy())) => Place::Cue,
         _ => Place::Repo,
     }
-}
-
-/// Whether `repo` is Cue's own source, remembered per folder (read under the store's lock, on each redraw).
-fn is_cue(repo: &str) -> bool {
-    static SEEN: std::sync::Mutex<Option<std::collections::HashMap<String, bool>>> = std::sync::Mutex::new(None);
-    let mut seen = crate::locking::lock(&SEEN, "lands cue folders");
-    let map = seen.get_or_insert_with(Default::default);
-    if let Some(v) = map.get(repo) {
-        return *v;
-    }
-    let v = crate::hub::builds_this_cue(repo);
-    map.insert(repo.to_string(), v);
-    v
 }
 
 /// The short words for each choice in a Desk's header ("Lands: own copy, checked, one commit per item").

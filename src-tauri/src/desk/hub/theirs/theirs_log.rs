@@ -80,7 +80,12 @@ impl SoFar {
 
 /// Each log's changes so far, by path, so a finish check every 10 s reads only what each log added since (#284):
 /// reading every session's whole log each time cost seconds of CPU a minute. Logs no session has any more are dropped.
-pub(crate) fn read_so_far() -> &'static std::sync::Mutex<std::collections::HashMap<String, SoFar>> {
+/// What's been read of each log so far, held: the one place that takes this lock.
+pub(crate) fn so_far_kept() -> crate::locking::Locked<std::sync::MutexGuard<'static, std::collections::HashMap<String, SoFar>>> {
+    crate::locking::lock(read_so_far(), "logs read for their edits")
+}
+
+fn read_so_far() -> &'static std::sync::Mutex<std::collections::HashMap<String, SoFar>> {
     static SO_FAR: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, SoFar>>> = std::sync::OnceLock::new();
     SO_FAR.get_or_init(Default::default)
 }
@@ -92,7 +97,7 @@ pub(crate) fn read_so_far() -> &'static std::sync::Mutex<std::collections::HashM
 /// one said, else in `cwd`.
 pub(crate) fn read_edits(log: &str, cwd: &str, wanted: &[String]) -> (Vec<(String, TheirEdit)>, Vec<(String, u64)>) {
     let kept = {
-        let mut so_far = crate::locking::lock(read_so_far(), "logs read for their edits");
+        let mut so_far = so_far_kept();
         so_far.remove(log)
     };
     let fresh = || SoFar::new(cwd, crate::logs::steps::harness_of(log));
@@ -127,7 +132,7 @@ pub(crate) fn read_edits(log: &str, cwd: &str, wanted: &[String]) -> (Vec<(Strin
     }
     let edits = so_far.edits.iter().filter(|(f, _)| wanted.contains(f)).cloned().collect();
     let ran = so_far.ran.iter().filter(|(d, _)| wanted.iter().any(|f| f.starts_with(&format!("{d}/")))).map(|(d, at)| (d.clone(), *at)).collect();
-    let mut all = crate::locking::lock(read_so_far(), "logs read for their edits");
+    let mut all = so_far_kept();
     all.insert(log.to_string(), so_far);
     (edits, ran)
 }

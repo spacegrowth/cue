@@ -91,7 +91,7 @@ impl Hub {
         } else {
             self.desk_finish_commit(id);
         }
-        let it = self.read(|st| st.desk.item(id).map(|i| crate::desk::hub::core::desk::shown(st, i)));
+        let it = self.item_shown(id);
         it.ok_or_else(|| "no such item".into())
     }
 }
@@ -332,7 +332,7 @@ impl Hub {
             }
         });
         self.desk_finish_tick();
-        let it = self.read(|st| st.desk.item(id).map(|i| crate::desk::hub::core::desk::shown(st, i)));
+        let it = self.item_shown(id);
         it.ok_or_else(|| "no such item".into())
     }
 }

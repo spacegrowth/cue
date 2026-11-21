@@ -63,6 +63,8 @@ pub enum Frame {
     ClosureArg { target: FnId, index: usize },
     /// A closure bound to a name that the body never calls nor passes on in a way this follows.
     Unfollowed,
+    /// A closure boxed or shared (`Box::new(move |…| …)`): a value kept and called later, not run here.
+    Kept,
 }
 
 /// What one function's body says.

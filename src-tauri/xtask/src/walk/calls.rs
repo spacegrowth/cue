@@ -136,6 +136,9 @@ impl Walker<'_, '_, '_> {
         if let Some(label) = classify::spawn(path) {
             return self.spawn_call(label, args, line);
         }
+        if classify::keeps(path) {
+            return self.kept(args, line);
+        }
         self.args(args, ArgMode::Inline);
         let literal = args.first().and_then(str_literal);
         if let Some((effect, detail)) = classify::effect(path, literal.as_deref()) {

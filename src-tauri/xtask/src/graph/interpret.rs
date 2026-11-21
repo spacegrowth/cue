@@ -72,7 +72,7 @@ pub fn interpret(events: &[Ev], ctx: &Ctx, sums: &[Summary], obs: &mut impl Obse
     }
 }
 
-/// A frame's events, in the context its code runs in: a spawned thread's or an unfollowed closure's on
+/// A frame's events, in the context its code runs in: a spawned thread's, an unfollowed or kept closure's on
 /// its own; a closure argument's as the function it's handed to runs it (in line under that function's
 /// locks and the caller's, or on a thread of its own, or never seen run: kept for later).
 fn frame_events(frame: &Frame, held: &[String], events: &[Ev], ctx: &Ctx, sums: &[Summary], obs: &mut impl Observer) {

@@ -175,18 +175,8 @@ reason = "the typing gate is taken first and held while a message is sent, by de
 
 [[lock_order]]
 from = "typing gate"
-to = "logs read for their edits"
-reason = "a turn's end can reach the Desk's finish check (desk/hub/theirs/theirs.rs read_edits); that lock only guards how far each log was read, is held for a lookup or an insert, and takes no other lock"
-
-[[lock_order]]
-from = "typing gate"
 to = "CLAUDE"
 reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); typing into iTerm reads Claude Code's running list for the agent's tty (focus/apps.rs current_tty). Seen since the hub types through terminal::keys, which the check follows"
-
-[[lock_order]]
-from = "typing gate"
-to = "live_ui.served"
-reason = "the typing gate is taken first and held while a message is sent, by design (hub/send.rs wait_turn); a turn's end can finish a Desk item whose work only touched the window's files, which sets the copy served in place (live_ui::take). live_ui.served is a leaf: held only to set or read one path, never while taking another lock"
 
 [[lock_order]]
 from = "typing gate"
@@ -212,11 +202,6 @@ reason = "the typing gate is taken first and held while a message is typed, by d
 from = "typing gate"
 to = "folder facts"
 reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, a folder's project included"
-
-[[lock_order]]
-from = "typing gate"
-to = "desk saves"
-reason = "the typing gate is taken first and held while a message is typed (hub/send.rs wait_turn); a hosted turn that ends under it saves the Desk lines it said (desk/hub/core/desk.rs desk_done), the store and database after the save lock (gate before save lock, never the reverse)"
 
 [[lock_order]]
 from = "typing gate"
@@ -310,7 +295,3 @@ from = "typing gate"
 to = "machine tails: links"
 reason = "hosted::tails: starting or looking at a transcript copy over a machine's cue-host connection (machines/log_mirror.rs) reads and writes these two maps only; they are leaves (nothing is taken under them, and the request goes on a thread of its own)"
 
-[[lock_order]]
-from = "typing gate"
-to = "approval trace"
-reason = "An ask can arrive while a send holds the typing gate. Approval tracing holds only its file writer, releases it before any host operation, and never takes a typing gate or the hub store."

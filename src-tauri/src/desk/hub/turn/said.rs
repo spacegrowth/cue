@@ -445,7 +445,15 @@ impl Hub {
     /// keeps), any session's ITEM lines, and a holder's (DONE, DECIDED) acted on; an item it ended on with no DONE
     /// is asked about once (desk/hub/stall/stall.rs).
     /// `turn`: its parts, so a reply keeps what a Stop hook made it write apart from its answer.
+    /// A turn just ended, so a holder may have stopped: when each holder last wrote is looked at first (off the store's
+    /// lock), so its item reads as still at work or to resume at once, not a second later (view.rs wrote_just_now).
     pub(crate) fn desk_turn_ended(&self, sid: &str, text: &str, turn: &[crate::model::TurnPart]) {
+        self.look_at_holder_logs(now_ms());
+        self.desk_turn_ended_said(sid, text, turn);
+    }
+
+    /// `desk_turn_ended`'s work: the turn's lines acted on.
+    fn desk_turn_ended_said(&self, sid: &str, text: &str, turn: &[crate::model::TurnPart]) {
         self.keep_from_now(sid);
         // Away mode ends by itself (its end time, its budget): noticed as a Desk session's turn ends.
         self.desk_away_check(sid);

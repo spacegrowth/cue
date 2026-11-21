@@ -30,6 +30,18 @@ impl Walker<'_, '_, '_> {
         });
     }
 
+    /// Handed to `Box::new` and the like: a closure in it is kept for later (called whenever and wherever its
+    /// keeper calls it, under none of the locks held here), anything else runs in line.
+    pub(super) fn kept(&mut self, args: &Args, line: usize) {
+        for a in args {
+            match (a, single_ident(a)) {
+                (Expr::Closure(c), _) => self.in_frame(Frame::Kept, line, |w| w.closure_body(c)),
+                (_, Some(ident)) if self.is_local_closure(&ident) => self.in_frame(Frame::Kept, line, |w| w.inline_closure(&ident)),
+                _ => self.code_arg(a),
+            }
+        }
+    }
+
     pub(super) fn args(&mut self, args: &Args, mode: ArgMode) {
         for (i, a) in args.iter().enumerate() {
             match mode {

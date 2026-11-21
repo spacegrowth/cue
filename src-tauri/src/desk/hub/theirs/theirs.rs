@@ -10,7 +10,7 @@
 use crate::desk::hub::prelude::*;
 use crate::desk::DeskItem;
 use crate::desk::hub::landing::commit::SOMEONE_ELSE as SOMEONE;
-use crate::desk::hub::theirs::theirs_log::{read_edits, read_so_far};
+use crate::desk::hub::theirs::theirs_log::{read_edits, so_far_kept};
 
 /// One change a session made to a file: when, who (as the Desk shows it), and what. `old`/`new` are an Edit's
 /// strings (`all`: its replace_all); `blind` is a change whose text isn't known (Write, NotebookEdit, a shell command).
@@ -167,7 +167,7 @@ impl Hub {
             }
         }
         // A log (or agent log) of a session gone from Cue isn't kept.
-        let mut so_far = crate::locking::lock(read_so_far(), "logs read for their edits");
+        let mut so_far = so_far_kept();
         so_far.retain(|path, _| all.iter().any(|a| path.starts_with(a.as_str())));
         out
     }

@@ -169,7 +169,7 @@ pub(crate) fn clear_build_leftovers(target: &std::path::Path) {
     }
     for dir in profiles.into_iter().filter(|d| d.join("deps").is_dir()) {
         let locks: Vec<std::fs::File> = [".cargo-lock", ".cargo-build-lock"].iter().filter_map(|n| std::fs::File::open(dir.join(n)).ok()).collect();
-        if locks.iter().any(|l| l.try_lock().is_err()) {
+        if locks.iter().any(|l| std::fs::File::try_lock(l).is_err()) {
             continue;
         }
         for e in std::fs::read_dir(dir.join("deps")).into_iter().flatten().flatten() {

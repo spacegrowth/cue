@@ -184,10 +184,21 @@ fn stops_view(st: &Store, it: &DeskItem, h: &Holder, out: &mut DeskItem) {
 }
 
 /// Holder `h`, a session on this Mac, wrote to its conversation within the last minute: at work, whatever its state
-/// says (#291).
+/// says (#291). As of the last second's look (`holder_logs`): the file isn't read here, under the store's lock.
 fn wrote_just_now(st: &Store, h: &Holder) -> bool {
-    st.sessions.get(&h.sid).filter(|s| s.origin.machine.is_empty() && !s.origin.transcript_path.is_empty())
-        .and_then(|s| crate::hub::activity::written_ms(&s.origin.transcript_path)).is_some_and(|at| crate::hub::activity::wrote_lately(at, now_ms()))
+    st.holder_logs.get(&h.sid).is_some_and(|&at| crate::hub::activity::wrote_lately(at, now_ms()))
+}
+
+/// The conversations to look at for `wrote_just_now`: each open item's holder on this Mac (session, its log).
+pub(crate) fn holder_logs(st: &Store) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    for h in st.desk.items.iter().filter(|i| i.state != "done").filter_map(|i| i.holder.as_ref()) {
+        let Some(s) = st.sessions.get(&h.sid).filter(|s| s.origin.machine.is_empty() && !s.origin.transcript_path.is_empty()) else { continue };
+        if !out.iter().any(|(sid, _)| sid == &h.sid) {
+            out.push((h.sid.clone(), s.origin.transcript_path.clone()));
+        }
+    }
+    out
 }
 
 /// Lead `s`'s teammate named `name` (any case): the latest started, when it named more than one so.
@@ -287,6 +298,12 @@ pub(crate) fn item_sources(st: &Store, it: &DeskItem) -> (String, Vec<(String, V
 }
 
 impl Hub {
+    /// Item `id` as the window shows it, with when its holder last wrote looked at first (off the store's lock).
+    pub(crate) fn item_shown(&self, id: &str) -> Option<DeskItem> {
+        self.look_at_holder_logs(now_ms());
+        self.read(|st| st.desk.item(id).map(|i| shown(st, i)))
+    }
+
     /// How work lands on Desk `desk`, saved from the window's setting (desk/lands.rs), for the folder the Desk works in.
     /// Kept per Desk, the key its items land by (`it.project`), so a Desk on another repository never shares Cue's
     /// own (#460). Returns it as the Desk shows it.

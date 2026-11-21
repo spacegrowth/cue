@@ -193,6 +193,11 @@ pub(crate) struct Store {
     open_scan_ms: u64,
     open_scanning: bool,
     open_again: bool,
+    /// When each Desk holder's conversation on this Mac was last written (ms), read every second with the store let
+    /// go (activity.rs note_holder_logs): a holder that wrote in the last minute is at work (#291).
+    pub(crate) holder_logs: HashMap<String, u64>,
+    /// When `holder_logs` was last read (ms): who counted as at work then.
+    holder_logs_at: u64,
 }
 
 /// The store's part of the window's state, copied out under its lock: the cards and sessions as they are,

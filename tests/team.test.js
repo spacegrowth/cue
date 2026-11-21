@@ -35,6 +35,10 @@ const ctx = {
   questions: () => [],
 };
 vm.createContext(ctx);
+// The ask-line readers team.js uses live in window.js (its ask lines section): loaded as written there.
+const win = fs.readFileSync(__dirname + "/../ui/window.js", "utf8");
+const askLines = win.slice(win.indexOf("// ---------- ask lines:"), win.indexOf("\n", win.indexOf("const askLnSaid")));
+vm.runInContext(askLines.replace(/^(const|let) /gm, "var "), ctx);
 vm.runInContext(fs.readFileSync(__dirname + "/../ui/team.js", "utf8").replace(/^(const|let) /gm, "var "), ctx);
 vm.runInContext(fs.readFileSync(__dirname + "/../ui/team_page.js", "utf8").replace(/^(const|let) /gm, "var "), ctx);
 vm.runInContext(fs.readFileSync(__dirname + "/../ui/team_bar.js", "utf8").replace(/^(const|let) /gm, "var "), ctx);

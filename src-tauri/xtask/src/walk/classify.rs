@@ -14,6 +14,13 @@ pub fn spawn(path: &[String]) -> Option<String> {
     Some(if parent.is_empty() { last.clone() } else { format!("{parent}::{last}") })
 }
 
+/// `Box::new`, `Arc::new`, `Rc::new`: a closure handed to one is kept as a value (a callback stored and called
+/// later, often on another thread), not run where it's made.
+pub fn keeps(path: &[String]) -> bool {
+    let n = path.len();
+    n >= 2 && path[n - 1] == "new" && matches!(path[n - 2].as_str(), "Box" | "Arc" | "Rc")
+}
+
 /// The effect of an outside call, with what to show for it; `literal`: its first argument when that is a
 /// string literal (`Command::new("tmux")`, `AnyClass::get(c"SMAppService")`).
 pub fn effect(path: &[String], literal: Option<&str>) -> Option<(Effect, String)> {
@@ -56,6 +63,14 @@ mod tests {
         assert_eq!(spawn(&p("std::thread::spawn")).as_deref(), Some("thread::spawn"));
         assert_eq!(spawn(&p("tauri::async_runtime::spawn_blocking")).as_deref(), Some("async_runtime::spawn_blocking"));
         assert_eq!(spawn(&p("std::thread::sleep")), None);
+    }
+
+    #[test]
+    fn a_box_arc_or_rc_keeps_what_it_is_handed() {
+        assert!(keeps(&p("Box::new")));
+        assert!(keeps(&p("std::sync::Arc::new")));
+        assert!(!keeps(&p("Command::new")));
+        assert!(!keeps(&p("new")));
     }
 
     #[test]

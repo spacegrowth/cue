@@ -52,7 +52,7 @@ impl Hub {
     /// Atomically select only this Desk's unshared sessions while removing its records.
     pub(crate) fn desk_delete_selected(&self, id: &str, selected: &[String]) -> Result<Vec<String>, String> {
         let eligible = self.desk_saving(|| -> Result<Vec<String>, String> {
-            self.write(|st| {
+            let eligible = self.write(|st| {
                 if !st.desk.spaces.contains_key(id) && !st.desk.lead.contains_key(id) && !st.desk.items.iter().any(|i| i.project == id) && !st.desk.members.contains_key(id) { return Err("no such Desk".to_string()); }
                 if st.desk.run.starting.contains_key(id) || st.desk.items.iter().any(|i| i.project == id && st.desk.run.finish_claims.contains(&i.id)) {
                     return Err("The Desk is starting or finishing work. Try again when it finishes.".to_string());
@@ -60,8 +60,12 @@ impl Hub {
                 let belongs = |desk: &str, sid: &str| st.desk.lead.get(desk).is_some_and(|l| l.sid == sid)
                     || st.desk.members.get(desk).is_some_and(|m| m.iter().any(|s| s == sid))
                     || st.desk.items.iter().any(|i| i.project == desk && i.state != "done" && i.holder.as_ref().is_some_and(|h| h.is(sid)));
-                let eligible: Vec<String> = selected.iter().filter(|sid| belongs(id, sid) && !st.desk.spaces.keys().chain(st.desk.lead.keys()).chain(st.desk.members.keys()).chain(st.desk.items.iter().map(|i| &i.project)).any(|other| other != id && belongs(other, sid))).cloned().collect();
-                crate::db::desk_delete(id)?;
+                Ok(selected.iter().filter(|sid| belongs(id, sid) && !st.desk.spaces.keys().chain(st.desk.lead.keys()).chain(st.desk.members.keys()).chain(st.desk.items.iter().map(|i| &i.project)).any(|other| other != id && belongs(other, sid))).cloned().collect::<Vec<String>>())
+            })?;
+            // The database is written off the store's lock; the Desk's saves stay held throughout, so no other
+            // save lands in between.
+            crate::db::desk_delete(id)?;
+            self.write(|st| {
                 let ids: Vec<String> = st.desk.items.iter().filter(|i| i.project == id).map(|i| i.id.clone()).collect();
                 st.desk.spaces.remove(id);
                 st.desk.items.retain(|i| i.project != id);
@@ -76,8 +80,8 @@ impl Hub {
                     st.desk.run.left_said.remove(&item);
                     st.desk.run.sent_at.remove(&item);
                 }
-                Ok(eligible)
-            })
+            });
+            Ok(eligible)
         })?;
         self.changed();
         Ok(eligible)

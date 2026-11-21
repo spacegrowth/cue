@@ -31,6 +31,8 @@ pub struct Facts {
     pub declared_top: Option<String>,
     /// ...and at the main checkout, when that's another folder.
     pub declared_root: Option<String>,
+    /// It (or a folder a few above it), or its main checkout, holds the source this Cue is built from.
+    pub cue: bool,
 }
 
 /// How long the first asker of a new folder waits for its lookup.
@@ -209,7 +211,8 @@ fn look_on_disk(cwd: &str) -> Facts {
     let top = dir.ancestors().find(|d| d.join(".git").exists()).map(Path::to_path_buf);
     let root = find_root(dir);
     let declared_root = root.as_deref().filter(|r| Some(*r) != top.as_deref()).and_then(declared);
-    Facts { branch: head_file(dir).map(|h| branch_in(&h)).unwrap_or_default(), declared_top: top.as_deref().and_then(declared), declared_root, root, top }
+    let cue = crate::hub::builds_this_cue(cwd) || root.as_deref().is_some_and(|r| crate::hub::builds_this_cue(&r.to_string_lossy()));
+    Facts { branch: head_file(dir).map(|h| branch_in(&h)).unwrap_or_default(), declared_top: top.as_deref().and_then(declared), declared_root, root, top, cue }
 }
 
 /// The git folder a checkout's `.git` file points at (a worktree's, a submodule's).

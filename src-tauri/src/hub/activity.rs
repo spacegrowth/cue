@@ -50,6 +50,7 @@ impl Hub {
         self.catch_interrupted(now);
         self.catch_stuck(now);
         self.catch_cut_but_writing(now);
+        self.note_holder_logs(now);
         self.watch_helpers();
         self.note_task_failures();
         self.watch_compacting(now);
@@ -121,6 +122,27 @@ impl Hub {
                 self.hosted_at_work(o);
             }
         }
+    }
+
+    /// When each Desk holder's conversation was last written, read here with the store let go (the Desk's view reads
+    /// it under the lock, desk/hub/core/view.rs wrote_just_now). Redrawn when one starts or stops counting as at work.
+    fn note_holder_logs(&self, now: u64) {
+        if self.look_at_holder_logs(now) {
+            self.changed();
+        }
+    }
+
+    /// When each open item's holder last wrote its conversation, looked at with the store let go and kept in
+    /// `Store::holder_logs` for the Desk's view. Whether the sessions that wrote lately differ from the last look.
+    pub(crate) fn look_at_holder_logs(&self, now: u64) -> bool {
+        let logs = self.read(crate::desk::hub::core::view::holder_logs);
+        let seen: HashMap<String, u64> = logs.into_iter().filter_map(|(sid, path)| written_ms(&path).map(|at| (sid, at))).collect();
+        let lately = |m: &HashMap<String, u64>, at_ms: u64| m.iter().filter(|(_, &at)| wrote_lately(at, at_ms)).map(|(sid, _)| sid.clone()).collect::<HashSet<_>>();
+        self.write(|st| {
+            let flipped = lately(&st.holder_logs, st.holder_logs_at) != lately(&seen, now);
+            (st.holder_logs, st.holder_logs_at) = (seen, now);
+            flipped
+        })
     }
 
     /// Stuck: working, but nothing new in its transcript for 10 minutes while it runs a command (a long

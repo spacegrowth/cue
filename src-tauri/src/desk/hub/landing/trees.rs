@@ -76,21 +76,32 @@ impl Hub {
     /// A project set to the shared folder, or to commit its work yourself, gets none (desk/lands.rs). One the lead
     /// gave a copy of another repository (COPY, #557) gets that, wherever its holder works.
     fn desk_trees_wanted(&self, fx: &Effects) -> Vec<(String, String, String, u32)> {
-        self.read(|st| {
+        // (item, its project, the folder that decides, whom its message goes to, whether the lead gave it a copy). Read
+        // under the store's lock; how each project lands is read after, with it let go (the folder may need a look).
+        let asked: Vec<(String, String, String, String, bool)> = self.read(|st| {
             fx.items
                 .iter()
                 .filter_map(|id| {
                     let it = st.desk.item(id).filter(|i| i.state == "working" && i.tree.is_none())?;
                     let h = it.holder.as_ref()?;
                     let s = st.sessions.get(h.to()).filter(|s| s.origin.machine.is_empty() && !s.origin.cwd.is_empty())?;
-                    if let Some(c) = &it.copy_on {
-                        return Some((id.clone(), c.repo.clone(), h.to().to_string(), crate::desk::lands::lands_of(&it.project, &c.repo).at_once.max(1)));
-                    }
-                    let l = crate::desk::lands::lands_of(&it.project, &s.origin.cwd);
-                    (l.at == "copy").then(|| (id.clone(), s.origin.cwd.clone(), h.to().to_string(), l.at_once))
+                    Some(match &it.copy_on {
+                        Some(c) => (id.clone(), it.project.clone(), c.repo.clone(), h.to().to_string(), true),
+                        None => (id.clone(), it.project.clone(), s.origin.cwd.clone(), h.to().to_string(), false),
+                    })
                 })
                 .collect()
-        })
+        });
+        asked
+            .into_iter()
+            .filter_map(|(id, project, folder, to, given)| {
+                let l = crate::desk::lands::lands_of(&project, &folder);
+                if given {
+                    return Some((id, folder, to, l.at_once.max(1)));
+                }
+                (l.at == "copy").then_some((id, folder, to, l.at_once))
+            })
+            .collect()
     }
 
     /// Going now (a copy, or none needed): your Send back kept while it waited goes with its message (#396).
@@ -201,6 +212,9 @@ impl Hub {
     /// One of `repo`'s copies is free: the top one you dragged up (#387), else the item queued longest for one, starts in it. Whether one started.
     pub(crate) fn desk_trees_free(&self, repo: &str) -> bool {
         let now = now_ms();
+        // How many copies of it each project waiting for one may have at once, read before the store is taken.
+        let projects: Vec<String> = self.read(|st| st.desk.items.iter().filter(|i| i.tree_wait && i.tree_wait_repo == repo).map(|i| i.project.clone()).collect());
+        let at_once: HashMap<String, u32> = projects.into_iter().map(|p| { let n = crate::desk::lands::lands_of(&p, repo).at_once; (p, n) }).collect();
         let fx = self.write(|st| {
             let mut fx = Effects::default();
             // The oldest waiting whose own project's pool (desk/lands.rs) has room among the repository's copies.
@@ -209,7 +223,7 @@ impl Hub {
             let mut waiting: Vec<&DeskItem> = st.desk.items.iter().filter(|i| i.tree_wait && i.state == "queued" && i.after.is_none() && i.tree_wait_repo == repo).collect();
             // Your order first (#387), then the one queued longest.
             waiting.sort_by_key(|i| (i.queue_order.unwrap_or(u32::MAX), i.updated));
-            let Some(id) = waiting.into_iter().find(|i| used < crate::desk::lands::lands_of(&i.project, repo).at_once).map(|i| i.id.clone()) else { return fx };
+            let Some(id) = waiting.into_iter().find(|i| used < at_once.get(&i.project).copied().unwrap_or_else(|| crate::desk::lands::lands_known(&i.project, repo).at_once)).map(|i| i.id.clone()) else { return fx };
             let rule = st.desk.item(&id).map(|i| crate::desk::hub::core::desk::rule_of(st, &i.project)).unwrap_or_default();
             let Some(it) = st.desk.item_mut(&id) else { return fx };
             (it.state, it.tree_wait, it.updated, it.queue_order) = ("working".into(), false, crate::desk::hub::core::desk::secs(now), None);
@@ -469,7 +483,7 @@ impl Hub {
 pub(crate) fn copy_wait(st: &Store, project: &str, repo: &str) -> String {
     let mut held: Vec<String> = st.desk.items.iter().filter(|i| i.tree.as_ref().is_some_and(|t| t.repo == repo)).map(|i| format!("#{}", i.id)).collect();
     held.sort();
-    let at_once = crate::desk::lands::lands_of(project, repo).at_once;
+    let at_once = crate::desk::lands::lands_known(project, repo).at_once;
     format!(
         "waiting for a free copy of its repository ({} of {at_once} held, by {}): it starts by itself once one lands or is dropped",
         held.len(),

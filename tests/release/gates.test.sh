@@ -87,6 +87,12 @@ echo "tests/run.sh $*" >>"$CALLS"
 echo "$1: ok"
 STUB
   chmod +x "$repo/tests/run.sh"
+  # cue-host's build (scripts/build-host.sh, a cargo build): a stand-in like everything else that builds.
+  cat >"$repo/scripts/build-host.sh" <<'STUB'
+#!/bin/bash
+echo "build-host.sh $*" >>"$CALLS"
+STUB
+  chmod +x "$repo/scripts/build-host.sh"
   (cd "$repo" && git init -q && git add -A && git -c user.email=t@t -c user.name=t commit -qm init)
   echo "$repo"
 }

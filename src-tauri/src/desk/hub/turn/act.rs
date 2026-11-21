@@ -639,7 +639,7 @@ impl Hub {
         })?;
         // As shown once its sends are stamped (desk_done).
         self.desk_done(fx);
-        let it = self.read(|st| st.desk.item(id).map(|i| shown(st, i)));
+        let it = self.item_shown(id);
         it.ok_or_else(|| "no such item".into())
     }
 
@@ -667,7 +667,7 @@ impl Hub {
             }
             "cut" => {
                 self.desk_cut(id, text)?;
-                let it = self.read(|st| st.desk.item(id).map(|i| shown(st, i)));
+                let it = self.item_shown(id);
                 return it.ok_or_else(|| "no such item".into());
             }
             _ => {}
@@ -676,7 +676,7 @@ impl Hub {
         let fx = self.write(|st| act_on(st, id, act, text, now))?;
         // As shown once its sends are stamped (desk_done).
         self.desk_done(fx);
-        let it = self.read(|st| st.desk.item(id).map(|i| shown(st, i)));
+        let it = self.item_shown(id);
         Ok(it.unwrap_or_else(|| DeskItem { id: id.to_string(), state: "dropped".into(), ..Default::default() }))
     }
 
