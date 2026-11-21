@@ -87,7 +87,7 @@ function deskThreadPending(rows, i, d) {
     const name = p.why === "lead" ? deskLead(d)?.name : i.holder?.name;
     // One that couldn't go: red, why, and Retry · Edit (#422).
     const m = p.failed != null ? { st: "failed", why: esc(p.failed), retry: p.at } : deskMsgState({ text: p.text, at: p.at / 1000 }, i, p.why === "back" ? "" : deskToSid(i, name), "sending");
-    rows.push({ key: `p:${p.at}`, at: p.at, by: "You", you: true, back: p.why === "back", msg: { ...m, to: name, item: i.id }, text: p.text, html: deskBackWords(p.text, p.pics) });
+    rows.push({ key: `p:${p.at}`, at: p.at, by: "You", you: true, back: p.why === "back", msg: { ...m, to: name, item: i.id }, text: p.text, html: deskPendWords(p) });
   }
 }
 /** Item `i`'s last words when it isn't `live` (deskThread): the turn it just wrote, till its reply is saved, else its
@@ -195,6 +195,10 @@ function deskBackPics(i, d, log) {
   return out;
 }
 const deskBackWords = (text, pics = 0) => `<div class="dk-md">${deskMd(text)}</div>${pics ? `<div class="dk-tpn">${pics === 1 ? "1 picture" : `${pics} pictures`}</div>` : ""}`;
+/** What you sent from an item's page, not in its chat yet (deskPend `p`): your words, and the pictures with them as
+ *  pictures, as a session's own chat shows one it's sending (chat/render.js); only their count when it no longer has
+ *  them. */
+const deskPendWords = (p) => (p.images?.length ? `<div class="dk-md">${deskMd(p.text)}</div><div class="thumbs">${p.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : deskBackWords(p.text, p.pics));
 /** An item page's suggested reply (`key` "<project>|<id>"): the words its newest message asks you to reply with
  *  (Reply "merge"), while nothing's at work on it and you haven't written since (#186). */
 function deskItemSuggestion(key) {
@@ -332,7 +336,8 @@ function deskItemChat(i, d, s) {
   // couldn't go.
   const mine = (deskPending.get(i.id) || []).filter((p) => !sent(p)).map((p) => {
     const m = { ...(p.failed != null ? { st: "failed", why: esc(p.failed), retry: p.at } : deskCopyWait(i) || { st: "sending" }), to: p.why === "lead" ? deskLeadName(d) : i.holder?.name, item: i.id };
-    const pics = p.pics ? `<div class="dk-tpn">${p.pics === 1 ? "1 picture" : `${p.pics} pictures`}</div>` : "";
+    const pics = p.images?.length ? `<div class="thumbs">${p.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>`
+      : p.pics ? `<div class="dk-tpn">${p.pics === 1 ? "1 picture" : `${p.pics} pictures`}</div>` : "";
     return keyed(msgRow({ ...m, acts: deskMsgActs(m), extra: p.why === "back" ? ' · <span class="ml-back">sent back</span>' : "" }, `<div class="cv-you-text mg-text">${esc(p.text).replace(/\n/g, "<br>")}</div>${pics}`), `p:${p.at}`);
   }).join("");
   const failed = lost.map((c) => {

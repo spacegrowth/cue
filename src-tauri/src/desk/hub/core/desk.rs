@@ -563,7 +563,9 @@ impl Hub {
             let now = now_ones.contains(&sid);
             // Off this thread: typing into a terminal session waits for it to take the message.
             self.later(0, move |h| {
-                let sent = h.send_to_session(&sid, &text, &[], now);
+                // Your pictures from an item's page go as pictures, as a session's own chat sends them (#541).
+                let (text, pictures) = crate::desk::as_sent(&text);
+                let sent = if pictures.is_empty() { h.send_to_session(&sid, &text, &[], now) } else { h.send_saved(&sid, &text, pictures, now) };
                 if let Err(e) = &sent {
                     eprintln!("cue: desk: couldn't send {sid} its item: {e}");
                 }
@@ -662,7 +664,10 @@ fn went_with(fx: &mut Effects) -> (Vec<Vec<String>>, Vec<String>) {
 fn stamp_sends(st: &mut Store, fx: &Effects, now: u64) -> (Vec<DeskItem>, Vec<DeskDecision>) {
     for (to, text) in &fx.sends {
         let sent = st.desk.run.sent.entry(to.clone()).or_default();
-        sent.push(text.clone());
+        // As the session gets it: pictures as their paths after the words (hub/send.rs deliver), so its prompt is
+        // known as the Desk's (desk_prompt_taken).
+        let (words, pictures) = crate::desk::as_sent(text);
+        sent.push(if pictures.is_empty() { words } else { crate::uploads::with_paths(&words, &pictures) });
         if sent.len() > 8 {
             sent.remove(0);
         }

@@ -180,12 +180,14 @@ fn send_back(st: &mut Store, id: &str, holder: Option<Holder>, text: &str, pr_op
     it.mark_reopened();
     // Kept on the DONE it answers, so its card says why (the pictures, added by ipc desk_item_act, counted).
     if let Some(c) = it.checks.last_mut() {
-        let (why, pics) = words.split_once("\nPictures with it").unwrap_or((&words, ""));
-        (c.back, c.back_pics) = (why.trim().to_string(), pics.matches('`').count() / 2);
+        let (why, pics) = crate::desk::your_words(&words);
+        (c.back, c.back_pics) = (why.trim().to_string(), pics.len());
     }
     let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
     let (title, project) = (it.title.clone(), it.project.clone());
-    you_wrote(st, &project, id, words.split_once("\nPictures with it").map_or(words.as_str(), |(w, _)| w).trim(), &format!("sent back to {}", h.name), now, fx);
+    you_wrote(st, &project, id, crate::desk::your_words(&words).0.trim(), &format!("sent back to {}", h.name), now, fx);
+    // Your pictures go as pictures (desk_send_out), not as paths in its words (#541).
+    let words = crate::desk::with_your_pictures(&words);
     let message = format!("{crew}Desk item #{id} ({title}) isn't done: {words}\nIts fixes stay in #{id}; don't add new items for them. Say DONE: #{id} when it is.\n{}{pr_open}", crate::desk::check_words(id));
     fx.backs.push((id.to_string(), message.clone()));
     send_step(st, id, h.to(), message, now, fx);
@@ -206,9 +208,9 @@ fn note_to_holder(st: &mut Store, id: &str, holder: Option<Holder>, text: &str, 
     let ask = it.ask.as_ref().and_then(|a| a.get("sid")).and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(str::to_string);
     let to = ask.unwrap_or_else(|| h.to().to_string());
     let mate = if h.kind == "crew" { format!(", for {}", h.name) } else { String::new() };
-    let message = format!("About #{id} ({}){mate}: {words}", it.title);
+    let message = format!("About #{id} ({}){mate}: {}", it.title, crate::desk::with_your_pictures(&words));
     let project = it.project.clone();
-    you_wrote(st, &project, id, words.split_once("\nPictures with it").map_or(words.as_str(), |(w, _)| w).trim(), &format!("to {}", h.name), now, fx);
+    you_wrote(st, &project, id, crate::desk::your_words(&words).0.trim(), &format!("to {}", h.name), now, fx);
     send_step(st, id, &to, message, now, fx);
     fx.items.push(id.to_string());
     Ok(false)

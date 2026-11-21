@@ -471,3 +471,33 @@ fn the_lead_can_fold_a_repeated_ask_into_the_item_it_repeats() {
     assert!(sent_to(&w, &l).last().unwrap().contains(&format!("#{first} not merged: ")));
     assert!(desk(&w, &project)["items"].as_array().unwrap().iter().any(|i| i["id"] == first.as_str()));
 }
+
+#[test]
+fn pictures_you_send_from_an_items_page_reach_its_holder_as_pictures_not_paths() {
+    use base64::Engine;
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    let it = w.hub().desk_add(&project, "task", "Steps folded", "", None).unwrap();
+    w.advance(1000);
+    ends(&w, &l, &format!("ROUTE: #{} -> cue-teams | why: it knows the chat", it.id));
+    // Two pictures, saved and named after your words as ipc desk_item_act does.
+    let png = |name: &str| crate::model::Upload { name: name.into(), mime: "image/png".into(), data: format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(b"not really a png")) };
+    let saved = crate::uploads::save(&[png("a.png"), png("b.png")]).unwrap();
+    let paths: Vec<String> = saved.iter().map(|s| s.path.clone()).collect();
+    let named: Vec<String> = paths.iter().map(|p| format!("`{p}`")).collect();
+    let text = format!("is A this?{}{}", crate::desk::YOUR_PICTURES, named.join(" "));
+    w.hub().desk_item_act(&it.id, "note", &text).unwrap();
+    w.settle();
+    // In its chat: your words, with the two pictures as pictures, and no paths in the words.
+    let thread = w.snapshot().session(&h)["thread"].clone();
+    let mine = thread.as_array().unwrap().iter().rev().find(|e| e["role"] == "you" && e["text"].as_str().unwrap_or("").contains("is A this?")).cloned().unwrap();
+    assert_eq!(mine["images"], json!(paths), "{mine}");
+    assert!(!mine["text"].as_str().unwrap().contains('`') && !mine["text"].as_str().unwrap().contains("Pictures"), "{mine}");
+    // The session still reads where they are: their paths after the words, as a picture from its own chat goes.
+    let went = sent_to(&w, &h).pop().unwrap();
+    assert!(paths.iter().all(|p| went.contains(p.as_str())) && !went.contains('`'), "{went}");
+    // Its page keeps your words without the paths.
+    let mine = desk(&w, &project)["decisions"].as_array().unwrap().iter().find(|c| c["by"] == "You" && c["item_id"] == it.id.as_str()).cloned().unwrap();
+    assert_eq!(mine["text"], "is A this?");
+}

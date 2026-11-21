@@ -152,7 +152,7 @@ pub(crate) async fn desk_item_act(hub: State<'_, Arc<Hub>>, id: String, act: Str
         let mut text = text.unwrap_or_default();
         if !saved.is_empty() {
             let paths: Vec<String> = saved.iter().map(|s| format!("`{}`", s.path)).collect();
-            text = format!("{}\nPictures with it (open each to see it): {}", text.trim(), paths.join(" "));
+            text = format!("{}{}{}", text.trim(), crate::desk::YOUR_PICTURES, paths.join(" "));
         }
         h.desk_item_act(&id, &act, &text)
     })

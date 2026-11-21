@@ -11,6 +11,9 @@ CueBridge.area("desk", (w) => {
   const join = (p, sid) => { const d = deskOf(p); d.members ||= []; if (!d.members.includes(sid)) d.members.push(sid); };
   const itemOf = (id) => desk().projects.flatMap((d) => d.items).find((i) => i.id === id);
   const secs = () => Math.floor(w.now() / 1000);
+  /** Pictures sent from an item's page as its session's chat keeps them (desk/hub/core/desk.rs desk_send_out): each
+   *  saved, and named by where it is (here its data, which the window shows as it would a saved file). */
+  const pics = (images) => (images || []).map((im) => im.data);
   let n = 0;
   /** A project's folder: where a session of it runs (the fake knows none for a project with no session). */
   const folderOf = (p) => deskOf(p).folder || w.state.sessions.find((s) => s.project === (deskOf(p).workspace_project || p) && s.cwd)?.cwd || "";
@@ -118,8 +121,8 @@ CueBridge.area("desk", (w) => {
         const message = `About #${id} (${it.title})${it.holder.kind === "crew" ? `, for ${it.holder.name}` : ""}: ${text}`;
         const went = !s ? "failed: its session has ended" : s.state === "working" ? "kept" : "sent";
         deskOf(it.project).decisions.unshift({ id: `w${++n}`, project: it.project, item_id: id, by: "You", sid: "", text: text.trim(), why: `to ${it.holder.name}`, at: t, undo: "none", call: false, delivery: { session_id: sid, text: message, at_ms: w.now(), went } });
-        if (s?.state === "working") s.held = { role: "you", text: s.held ? `${s.held.text}\n\n${message}` : message, at_ms: s.held?.at_ms || w.now() };
-        else if (s) w.working(s, message, images);
+        if (s?.state === "working") s.held = { role: "you", text: s.held ? `${s.held.text}\n\n${message}` : message, at_ms: s.held?.at_ms || w.now(), images: [...(s.held?.images || []), ...pics(images)] };
+        else if (s) w.working(s, message, pics(images));
         w.changed();
         return it;
       }
@@ -146,8 +149,8 @@ CueBridge.area("desk", (w) => {
         const prefix = it.holder?.kind === "crew" ? `For your teammate ${it.holder.name}: ` : "";
         const message = `${prefix}Desk item #${id} (${it.title}) isn't done: ${text}\nIts fixes stay in #${id}; don't add new items for them. Say DONE: #${id} when it is.`;
         deskOf(it.project).decisions.unshift({ id: `back${++n}`, project: it.project, item_id: id, by: "You", sid: "", text: text.trim(), why: `sent back to ${it.holder?.name}`, at: secs(), undo: "none", delivery: { session_id: sid, text: message, at_ms: w.now() } });
-        if (s?.state === "working") s.held = { role: "you", text: s.held ? `${s.held.text}\n\n${message}` : message, at_ms: s.held?.at_ms || w.now() };
-        else if (s) w.working(s, message, images);
+        if (s?.state === "working") s.held = { role: "you", text: s.held ? `${s.held.text}\n\n${message}` : message, at_ms: s.held?.at_ms || w.now(), images: [...(s.held?.images || []), ...pics(images)] };
+        else if (s) w.working(s, message, pics(images));
       }
       // Your drag in Queued (#387): each takes its place.
       else if (act === "reorder") { text.split(" ").forEach((x, k) => { const q = itemOf(x); if (q) q.queue_order = k + 1; }); w.changed(); return it; }

@@ -238,6 +238,51 @@ pub fn new_items_words(items: &[DeskItem]) -> String {
     out
 }
 
+/// The line ipc `desk_item_act` (and the add-on) puts your pictures in, after your words on an item's page.
+pub const YOUR_PICTURES: &str = "\nPictures with it (open each to see it): ";
+/// The line those pictures go in on the Desk's message to a session (send-back, note, question): taken off as the
+/// Desk sends it (`as_sent`), and the pictures sent as pictures, as a session's own chat sends them (#541).
+const SENT_PICTURES: &str = "Pictures you attached: ";
+
+/// Your words from an item's page (`YOUR_PICTURES` and on left out), and the pictures' paths.
+pub fn your_words(text: &str) -> (&str, Vec<String>) {
+    match text.split_once("\nPictures with it") {
+        Some((words, pics)) => (words, backticked(pics)),
+        None => (text, vec![]),
+    }
+}
+
+/// Your words from an item's page as the Desk's message carries them: the words, then the pictures on their own line.
+pub fn with_your_pictures(text: &str) -> String {
+    let (words, pics) = your_words(text);
+    if pics.is_empty() {
+        return words.trim().to_string();
+    }
+    format!("{}\n{SENT_PICTURES}{}", words.trim(), pics.iter().map(|p| format!("`{p}`")).collect::<Vec<_>>().join(" "))
+}
+
+/// A Desk message as it's sent: its pictures line taken off, and those pictures, to send as pictures.
+pub fn as_sent(message: &str) -> (String, Vec<crate::uploads::Saved>) {
+    let mut pics = vec![];
+    let words: Vec<&str> = message
+        .split('\n')
+        .filter(|l| match l.strip_prefix(SENT_PICTURES) {
+            Some(rest) => {
+                pics.extend(backticked(rest));
+                false
+            }
+            None => true,
+        })
+        .collect();
+    let saved = pics.into_iter().map(|p| crate::uploads::Saved { mime: crate::uploads::mime_of(&p).into(), path: p }).collect();
+    (words.join("\n"), saved)
+}
+
+/// The paths written in backticks in `text`.
+fn backticked(text: &str) -> Vec<String> {
+    text.split('`').skip(1).step_by(2).map(str::trim).filter(|p| !p.is_empty()).map(str::to_string).collect()
+}
+
 /// An item's pictures, each path in backticks (the window shows a path written so as the picture).
 fn pictures(it: &DeskItem) -> String {
     it.images.iter().map(|p| format!("`{p}`")).collect::<Vec<_>>().join(" ")

@@ -11,8 +11,7 @@ use crate::desk::parse;
 /// Your words on an item's page ask something, rather than say what isn't right: they end on a question mark (the
 /// pictures listed after them left out).
 pub(crate) fn is_question(text: &str) -> bool {
-    let words = text.split_once("\nPictures with it").map_or(text, |(w, _)| w);
-    words.trim_end().ends_with('?')
+    crate::desk::your_words(text).0.trim_end().ends_with('?')
 }
 
 /// Your question `text` on item `id` (to check or done, held): sent to its holder as a question about the item, and
@@ -23,15 +22,16 @@ pub(crate) fn ask(st: &mut Store, id: &str, text: &str, now: u64) -> Result<Effe
     let it = st.desk.item_mut(id).ok_or("no such item")?;
     let h = it.holder.clone().ok_or("nobody holds it: it goes to the lead")?;
     let stage = if it.state == "done" { "done" } else { "with the user to check" };
-    let question = words.split_once("\nPictures with it").map_or(words.as_str(), |(w, _)| w).trim().to_string();
+    let question = crate::desk::your_words(&words).0.trim().to_string();
     // Asked again before it answered: still where it first was.
     let was = it.asked.as_ref().map_or_else(|| it.state.clone(), |(was, _)| was.clone());
     it.asked = Some((was, question.clone()));
     (it.state, it.stopped, it.updated) = ("working".into(), false, secs(now));
     let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
     let message = format!(
-        "{crew}A question about Desk item #{id} ({}), which is {stage}: {words}\nAnswer it. If you change code for it, say DONE: #{id} once that's done; if you don't, the item stays as it was.\n{}",
+        "{crew}A question about Desk item #{id} ({}), which is {stage}: {}\nAnswer it. If you change code for it, say DONE: #{id} once that's done; if you don't, the item stays as it was.\n{}",
         it.title,
+        crate::desk::with_your_pictures(&words),
         crate::desk::check_words(id)
     );
     let project = it.project.clone();
