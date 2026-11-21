@@ -172,10 +172,11 @@ TAKE COPY: #<id> | why: <reason>      (take back the copy of a stuck or finished
 the item waiting longest for a copy gets it, and a stuck item is new again for you to route)
 LAND FIRST: #<id> | why: <reason>      (move an item waiting in the landing line up, so it lands next)
 COPY FIRST: #<id> | why: <reason>      (move an item waiting for a free copy of its repository to the front of that \
-line, so it gets the next copy that frees)
+line, so it gets the next copy that frees; an item at work without a copy waits in that line too)
 after: and LAND FIRST may name another Desk's item on this repository too, as #<id> or <Desk's name>#<id>: \
 the item then waits for it, or it lands next, as within this Desk.
-START: #<id> | why: <reason>      (start a waiting item now: not after the item it waits on, nor for a free copy)
+START: #<id> | why: <reason>      (start a waiting item now: not after the item it waits on, nor for a free copy; on one at work \
+that only waits for a copy, it moves it to the front of that line)
 COPY: #<id> | in: add-on | branch: <name> | why: <reason>      (work that belongs in the add-on's own repository, or \
 another one: put its full path after in:. The item gets a copy of it on that branch (made from its main line if new) \
 as it starts, or now if it's at work; at its DONE its work is committed on that branch and stays there, never on main)

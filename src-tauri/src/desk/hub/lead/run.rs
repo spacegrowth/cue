@@ -483,7 +483,7 @@ fn item_lines(st: &Store, it: &DeskItem, out: &mut String, failed: &mut Vec<(Str
         out.push_str(&format!(" | {}", crate::desk::hub::landing::trees::copy_wait(st, &it.project, &it.tree_wait_repo)));
     } else if it.state == "working" && it.tree_wait && it.tree.is_none() {
         // At work without a copy (#566): in line for the next free one.
-        out.push_str(&format!(" | at work where its holder is, in line for the next free copy of its repository ({})", it.tree_wait_repo));
+        out.push_str(&format!(" | at work where its holder is, in line for the next free copy of its repository ({}); COPY FIRST puts it first in that line", it.tree_wait_repo));
     }
     item_details(it, out);
     out.push('\n');

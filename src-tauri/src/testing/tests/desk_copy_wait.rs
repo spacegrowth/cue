@@ -457,3 +457,62 @@ fn a_holder_ending_its_turn_while_its_item_waits_for_a_copy_is_not_a_stop() {
     assert!(w.hosted.sent()[before..].iter().any(|(s, t)| *s == h && t.contains("it's yours") && t.contains(&path)), "woken with its copy");
     assert!(it["waiting"].as_str().is_none_or(|x| !x.starts_with("Waiting for a free copy")), "{it}");
 }
+
+/// #634: an item at work where its holder is, only waiting for a free copy (#566), was refused by START ("it isn't
+/// waiting (it's working)"), and the lead had no way to see it could go first. START or COPY FIRST on it now puts it at
+/// the front of its repository's copy line, and it takes the next copy that frees.
+#[test]
+fn the_lead_moves_a_working_item_that_waits_for_a_copy_to_the_front_and_it_gets_the_next_one() {
+    let w = World::new();
+    let top = super::desk_unstick::top;
+    let (_, project, a, h) = routed_with(&w, |w, _, _| w.hub().desk_hold_copies(&top(w), &[1, 2, 3]), |_, _, _| {});
+    let lead = super::desk::desk(&w, &project)["lead"]["sid"].as_str().unwrap().to_string();
+    // Header starts where its holder is, in line for a copy.
+    super::desk::ends(&w, &lead, &format!("START: #{a} | why: needed now"));
+    w.advance(1000);
+    w.settle();
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!((it["state"].as_str(), it["tree_wait"].as_bool(), it["tree"].is_null()), (Some("working"), Some(true), true), "{it}");
+    let summary = w.hub().desk_summary(&project, "", false).0;
+    let line = summary.lines().find(|l| l.starts_with(&format!("- #{a} "))).unwrap_or_else(|| panic!("{summary}"));
+    assert!(line.contains("COPY FIRST puts it first in that line"), "the lead is told how: {line}");
+    // Footer, queued after it, the lead moves ahead of it in the line.
+    let t = super::desk::second(&w, "cue-two");
+    super::desk::ends(&w, &lead, "ITEM: Footer\nROUTE: #new -> cue-two | why: footer");
+    w.advance(1000);
+    w.settle();
+    let b = item(&w, &project, "Footer")["id"].as_str().unwrap().to_string();
+    assert_eq!(item(&w, &project, "Footer")["state"], "queued");
+    super::desk::ends(&w, &lead, &format!("COPY FIRST: #{b} | why: footer first"));
+    w.advance(1000);
+    w.settle();
+    assert_eq!(item(&w, &project, "Footer")["queue_order"].as_u64(), Some(1));
+    // START on the working one: not refused as working, it goes to the front.
+    super::desk::ends(&w, &lead, &format!("START: #{a} | why: the user needs the header first"));
+    w.advance(1000);
+    w.settle();
+    let told: Vec<String> = w.hosted.sent().into_iter().filter(|(s, _)| *s == lead).map(|(_, m)| m).collect();
+    assert!(!told.iter().any(|m| m.contains(&format!("#{a} not started"))), "{told:?}");
+    let order = |t: &str| item(&w, &project, t)["queue_order"].as_u64();
+    assert_eq!((order("Header jumps"), order("Footer")), (Some(1), Some(2)));
+    let d = super::desk::desk(&w, &project);
+    assert!(
+        d["decisions"].as_array().unwrap().iter().any(|s| s["item_id"] == a.as_str() && s["act"] == "copy_first" && s["text"] == format!("Moved #{a} to the front of the line for a free copy")),
+        "{}",
+        d["decisions"]
+    );
+    // COPY FIRST on it is taken too, not refused.
+    super::desk::ends(&w, &lead, &format!("COPY FIRST: #{a} | why: still first"));
+    w.advance(1000);
+    w.settle();
+    let told: Vec<String> = w.hosted.sent().into_iter().filter(|(s, _)| *s == lead).map(|(_, m)| m).collect();
+    assert!(!told.iter().any(|m| m.contains(&format!("#{a} not moved up"))), "{told:?}");
+    // The next copy that frees is the header's; the footer still waits.
+    w.hub().desk_let_go_copy(&top(&w), 2);
+    w.settle();
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!((it["state"].as_str(), it["tree"]["slot"].as_u64()), (Some("working"), Some(2)), "{it}");
+    assert!(w.hosted.sent().iter().any(|(s, m)| *s == h && m.contains(&format!("Desk item #{a}")) && m.contains(it["tree"]["path"].as_str().unwrap())), "its holder is sent its copy");
+    assert_eq!(item(&w, &project, "Footer")["state"], "queued");
+    let _ = t;
+}

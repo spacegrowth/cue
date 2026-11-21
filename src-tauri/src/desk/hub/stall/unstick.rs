@@ -174,6 +174,11 @@ fn start(st: &mut Store, project: &str, by: &By, id: &str, why: &str, now: u64, 
     if it.state == "held" {
         return Err(format!("#{id} not started: the user parked it. Only they start it (its Start button); you can ask them (ASK: #{id} | …)"));
     }
+    // At work already, only waiting for a free copy (#566): it can't start sooner than it has, so START moves it to the
+    // front of that line (#634), as COPY FIRST does, instead of being refused as "working".
+    if it.state == "working" && crate::desk::hub::landing::trees::in_line(it) {
+        return copy_first(st, project, by, id, why, now, fx);
+    }
     if it.state != "queued" {
         return Err(format!("#{id} not started: it isn't waiting (it's {was}). A new item starts with a ROUTE"));
     }
