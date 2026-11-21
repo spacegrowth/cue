@@ -284,6 +284,8 @@ test("nothing changed since the lead's last pass: one click and Away is just on,
     await sw.click();
     await card.locator('[data-away="off"]').click();
     await expect(sw).toHaveAttribute("aria-pressed", "false");
+    // Not silent either way.
+    await expect(page.locator(".toast.show")).toHaveText("Away is off. Everything waits for you again.");
   }
   // The second time it took the settings it had: 07:00 and $10 kept.
   const ons = (await cue.calls("desk_away_set")).filter((c) => c.args.desk === "cue" && c.args.away.on);

@@ -423,7 +423,11 @@ async function deskAwaySave(on) {
   // off and stays off isn't touched.
   const failed = await deskAwaySetAll(e, on);
   if (failed.length) { e.busy = false; toast(`Couldn't change Away on ${failed.join("; ")}`); }
-  else if (deskAwayEdit === e) deskAwayEdit = null;
+  else {
+    if (deskAwayEdit === e) deskAwayEdit = null;
+    // Turned off (on every Desk): say so, as turning it on does.
+    if (!on || e.desks.every((r) => !r.on)) toast("Away is off. Everything waits for you again.", 5000);
+  }
   renderMain();
 }
 /** The Desk's own buttons in the rules card (an item's Allow / No, a choice, Looks right): as on the Desk. One that
