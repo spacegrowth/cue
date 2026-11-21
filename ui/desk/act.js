@@ -13,8 +13,9 @@ function deskShow(what) {
   renderMain();
 }
 /** Send what's in box `key`: to the lead (naming the open item), or to the lead (naming its crew member). Only what's
- *  sent is named: the box keeps what you typed if it doesn't go. */
-async function deskSendBox(key) {
+ *  sent is named: the box keeps what you typed if it doesn't go. `sendNow` (⌘↵, as in a session's chat, #630): to a
+ *  session or lead at work, it goes at once instead of being kept in Cue until its turn ends. */
+async function deskSendBox(key, sendNow = false) {
   const to = deskBoxes.get(key);
   const text = draft(key).text.trim();
   const images = boxImages(draft(key).images);
@@ -24,11 +25,11 @@ async function deskSendBox(key) {
   if (to.item && !/^[/!]/.test(text)) return deskSendItem(to, key, text);
   if (to.sid) {
     // To a crew member: through its lead, named (the guards, "It's restarting" and the rest, look at the lead).
-    if (!to.mate) await sendTo(to.sid, false, key);
+    if (!to.mate) await sendTo(to.sid, sendNow, key);
     else await deliver(to.sid, key, (typed, images) => boxToSession(to.sid)(`About ${to.mate}: ${typed}`, images), true);
     return;
   }
-  return deskSendLead(to, key, text);
+  return deskSendLead(to, key, text, sendNow);
 }
 /** What you wrote about item `to.item` from box `key` (#437). Held by a live session: to it, at any stage, as a note
  *  the hub keeps on the item's Thread before it goes and marks sent, queued or not sent (with Retry); ready to check,
@@ -70,7 +71,7 @@ async function deskNote(id, p) {
 }
 /** Words from box `key` (`text`: what's in it, trimmed) to the lead of `to.project`, about item `to.item` when there
  *  is one. */
-async function deskSendLead(to, key, text) {
+async function deskSendLead(to, key, text, sendNow = false) {
   const { project, item: id } = to;
   const it = id && deskItem(project, id);
   // About an item ready to check: it's sent back with your words, to its holder, as Send back does (off Waiting on you).
@@ -96,7 +97,7 @@ async function deskSendLead(to, key, text) {
       pend = it && t ? deskPend(it.id, t, "lead", 0, { key, lead: mine }) : null;
       return mine;
     },
-    call: (t, images, mine) => invoke("desk_send", { project, text: mine.text, images }),
+    call: (t, images, mine) => invoke("desk_send", { project, text: mine.text, images, ...(sendNow ? { now: true } : {}) }),
     sent: (r, mine) => {
       mine.sent = now();
       if (it) { toast(`Sent to ${deskLeadName(deskOf(project)) || "the lead"}`); if (text) deskWrote(it.id, "wrote_lead", text); }
@@ -529,11 +530,26 @@ function deskKeptBox(sid) {
   const lead = (to) => !to.sid && !to.item && deskLead(deskOf(to.project))?.sid === sid;
   return [...deskBoxes].filter(([, to]) => (to.sid === sid && !to.mate && !to.item) || lead(to)).map(([k]) => k).find(shown) || "";
 }
+/** The session Desk box `key` writes to itself: a session's or holder's page's, or the lead's chat's (its lead); null
+ *  for one that goes about an item or a crew member. */
+function deskBoxSid(key) {
+  const to = deskBoxes.get(key);
+  if (!to || to.item || to.mate) return null;
+  return to.sid || deskLead(deskOf(to.project))?.sid || null;
+}
 // The Desk's boxes, on the window's shared box (box/send.js BOX_OWNERS): Enter and a quick phrase send them, ↑ ↓ bring
 // back what went to their session, an item page's suggested reply, and the Desk's chat end for the reader.
 BOX_OWNERS.push({
   owns: (key) => key.startsWith("back:") || deskBoxes.has(key),
   send: (key) => (key.startsWith("back:") ? deskAct(key.slice(5), "back_go") : deskSendBox(key)),
+  // ↵ sends; ⌘↵ as in a session's box (app/keys.js enterInSessionBox, #630): what's typed goes now, and with nothing
+  // typed, the message Cue kept for the session this box writes to goes now.
+  enter(e, key) {
+    if (key.startsWith("back:") || !(e.metaKey || e.ctrlKey)) return this.send(key);
+    const typed = draft(key).text.trim() || draft(key).images.length, sid = deskBoxSid(key);
+    if (!typed && sid && sendWaitingNow(sid)) return;
+    return deskSendBox(key, true);
+  },
   recall: (key) => deskRecall(key),
   suggestion: (sid) => (sid?.startsWith?.("item:") ? deskItemSuggestion(sid.slice(5)) : null),
   view: "desk",

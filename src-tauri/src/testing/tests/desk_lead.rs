@@ -433,3 +433,26 @@ fn what_you_say_by_voice_to_the_lead_goes_as_your_typed_words_do_and_its_bubble_
     assert!(mine["text"].as_str().unwrap_or("").ends_with(said.as_str()), "{thread}");
     assert_eq!(mine["voice"], true, "{mine}");
 }
+
+/// #630: ⌘↵ in the lead's chat, as in a session's. With the lead at work, a plain send is kept in Cue for its turn's
+/// end; one sent now goes at once and stops the turn it's on, so it reads it next.
+#[test]
+fn a_message_sent_now_to_a_lead_at_work_goes_at_once() {
+    let w = World::new();
+    let (_, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    crate::ipc::desk_send_with(w.hub(), &project, "look at the board").unwrap();
+    w.hosted_says(&l, crate::hosted::HostedEvent::TurnStarted);
+    assert_eq!(w.snapshot().state(&l), "working");
+    let before = sent_to(&w, &l).len();
+    crate::ipc::desk_send_now(w.hub(), &project, "and the footer", &[], false).unwrap();
+    assert_eq!(sent_to(&w, &l).len(), before, "kept for its turn's end");
+    assert!(w.snapshot().session(&l)["held"]["text"].as_str().unwrap_or("").ends_with("and the footer"));
+    w.hub().unhold(&l);
+    crate::ipc::desk_send_now(w.hub(), &project, "stop, the footer is fine", &[], true).unwrap();
+    let sent = sent_to(&w, &l);
+    assert_eq!(sent.len(), before + 1, "handed over now");
+    assert!(sent.last().unwrap().starts_with("<desk") && sent.last().unwrap().ends_with("stop, the footer is fine"), "{sent:?}");
+    assert_eq!(w.hosted.interrupted(), [l.clone()], "the turn it was on is stopped");
+    assert!(w.snapshot().session(&l)["held"].is_null());
+}

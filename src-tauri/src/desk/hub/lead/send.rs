@@ -7,13 +7,20 @@ use crate::hub::{DeskClaim, Hub};
 use std::sync::Arc;
 
 /// Your words and the pictures you pasted or dropped to `project`'s lead. Returns { sid }.
+#[cfg_attr(not(feature = "ext"), allow(dead_code))]
 pub(crate) fn desk_send_images(h: &Arc<Hub>, project: &str, text: &str, images: &[crate::model::Upload]) -> Result<serde_json::Value, String> {
+    desk_send_now(h, project, text, images, false)
+}
+
+/// The same; `now` (⌘↵ in the lead's chat, as in a session's, #630): sent to a lead at work at once rather than kept
+/// in Cue until its turn ends.
+pub(crate) fn desk_send_now(h: &Arc<Hub>, project: &str, text: &str, images: &[crate::model::Upload], now: bool) -> Result<serde_json::Value, String> {
     if text.trim().is_empty() && images.is_empty() {
         return Err("nothing to send".into());
     }
     let saved = crate::uploads::save(images)?;
     let lost = |e: String| format!("{}'s lead didn't come up ({e}), so this wasn't sent: {}", h.desk_name(project), text.trim());
-    let sid = deliver(h, project, text, saved, &lost)?;
+    let sid = deliver(h, project, text, saved, now, &lost)?;
     h.desk_yours(&sid, text);
     Ok(serde_json::json!({ "sid": sid }))
 }
@@ -23,7 +30,7 @@ pub(crate) fn desk_send_with(h: &Arc<Hub>, project: &str, text: &str) -> Result<
         return Err("nothing to send".into());
     }
     let lost = |e: String| format!("{}'s lead didn't come up ({e}), so this wasn't sent: {}", h.desk_name(project), text.trim());
-    let sid = deliver(h, project, text, vec![], &lost)?;
+    let sid = deliver(h, project, text, vec![], false, &lost)?;
     h.desk_yours(&sid, text);
     Ok(serde_json::json!({ "sid": sid }))
 }
@@ -32,19 +39,19 @@ pub(crate) fn desk_send_with(h: &Arc<Hub>, project: &str, text: &str) -> Result<
 /// with the Desk's summary when parked), not kept as yours: its id.
 pub(crate) fn desk_send_cue(h: &Arc<Hub>, project: &str, text: &str) -> Result<String, String> {
     let lost = |e: String| format!("{}'s lead didn't come up ({e})", h.desk_name(project));
-    deliver(h, project, text, vec![], &lost)
+    deliver(h, project, text, vec![], false, &lost)
 }
 
 /// Your words (`text`) and pictures (`saved`) to `project`'s lead, however it's reached (`desk_claim`), after the
 /// Desk's summary as built for that lead: its id. Sent to it live, the pictures go as a session chat's do (shown in its
 /// chat); held while it starts or resumed with it, the message names them by where they are, as a hosted session is
-/// sent them. `lost`: what you're told when it was waited for or resumed and didn't come up.
-fn deliver(h: &Arc<Hub>, project: &str, text: &str, saved: Vec<crate::uploads::Saved>, lost: &dyn Fn(String) -> String) -> Result<String, String> {
+/// sent them. `now`: sent live to a lead at work at once, not kept until its turn ends. `lost`: what you're told when it was waited for or resumed and didn't come up.
+fn deliver(h: &Arc<Hub>, project: &str, text: &str, saved: Vec<crate::uploads::Saved>, now: bool, lost: &dyn Fn(String) -> String) -> Result<String, String> {
     let named = crate::uploads::with_paths(text, &saved);
     let (sid, failed) = match h.desk_claim(project, &named)? {
         DeskClaim::Send(sid) => {
             let (message, failed) = for_lead(h, project, &sid, text);
-            h.send_saved(&sid, &message, saved, false)?;
+            h.send_saved(&sid, &message, saved, now)?;
             (sid, failed)
         }
         // Another message is resuming it (or a lead is starting or changing): this one is sent by that call once
@@ -110,7 +117,7 @@ impl<'a> DeskStart<'a> {
     pub(crate) fn back(mut self) {
         self.open = false;
         for w in self.h.desk_claim_done(self.project) {
-            let sent = deliver(self.h, self.project, &w.text, vec![], &|e| e);
+            let sent = deliver(self.h, self.project, &w.text, vec![], false, &|e| e);
             // Its sender may have gone (the window closed): nothing more to tell then.
             let _ = w.reply.send(sent);
         }

@@ -3,7 +3,7 @@
 
 use super::with_hub;
 use crate::hub::Hub;
-pub(crate) use crate::desk::hub::lead::{desk_send_images, desk_send_with, desk_set_lead_with, desk_start_with_agent};
+pub(crate) use crate::desk::hub::lead::{desk_send_images, desk_send_now, desk_send_with, desk_set_lead_with, desk_start_with_agent};
 // Kept at this path for the tests.
 #[allow(unused_imports)]
 pub(crate) use crate::desk::hub::lead::{desk_start_named, DeskStart};
@@ -11,10 +11,11 @@ use std::sync::Arc;
 use tauri::State;
 
 /// Write to `project`'s lead: each message sent after the Desk's summary; resumed with it when parked. An error
-/// ("no lead", "lead ended") when there's none to write to. Returns { sid }.
+/// ("no lead", "lead ended") when there's none to write to. `now` (⌘↵): sent to a lead at work at once, not kept in
+/// Cue until its turn ends. Returns { sid }.
 #[tauri::command]
-pub(crate) async fn desk_send(hub: State<'_, Arc<Hub>>, project: String, text: String, images: Option<Vec<crate::model::Upload>>) -> Result<serde_json::Value, String> {
-    with_hub(&hub, move |h| desk_send_images(h, &project, &text, &images.unwrap_or_default())).await?
+pub(crate) async fn desk_send(hub: State<'_, Arc<Hub>>, project: String, text: String, images: Option<Vec<crate::model::Upload>>, now: Option<bool>) -> Result<serde_json::Value, String> {
+    with_hub(&hub, move |h| desk_send_now(h, &project, &text, &images.unwrap_or_default(), now.unwrap_or(false))).await?
 }
 
 /// Pick `project`'s lead: session `sid` (of the project: live, parked or ended), or, without one, a new hosted
