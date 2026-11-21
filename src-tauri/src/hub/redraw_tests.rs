@@ -28,3 +28,34 @@ fn the_draw_worker_holds_the_hub_only_while_it_draws() {
     drop(hub);
     assert!(gone.upgrade().is_none(), "dropped with the app's");
 }
+
+/// A state goes to the windows only once they drew the last (#587): a window slower to draw than DRAW_EVERY
+/// would get states faster than it draws them, each waiting behind the last, your clicks behind all of them.
+#[test]
+fn the_next_state_waits_for_the_windows_to_draw_the_last() {
+    let r = Arc::new(Redraws::default());
+    // No window has said it draws states: nothing to wait for.
+    r.sending();
+    assert!(r.wait_drawn(std::time::Duration::from_millis(1)));
+    // The main window drew one: the next waits for it to draw that too.
+    r.drawn("main");
+    r.sending();
+    let drew = std::thread::spawn({
+        let r = r.clone();
+        move || {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            r.drawn("main");
+        }
+    });
+    let t0 = std::time::Instant::now();
+    assert!(r.wait_drawn(std::time::Duration::from_secs(5)), "back once it drew it");
+    assert!(t0.elapsed() >= std::time::Duration::from_millis(40), "waited for it: {:?}", t0.elapsed());
+    drew.join().unwrap();
+    // A window that never says so (closed, hidden) is waited for once, then not until it draws one again.
+    r.sending();
+    assert!(!r.wait_drawn(std::time::Duration::from_millis(20)), "gave up on it");
+    r.sending();
+    let t0 = std::time::Instant::now();
+    assert!(r.wait_drawn(std::time::Duration::from_secs(5)));
+    assert!(t0.elapsed() < std::time::Duration::from_secs(1), "not waited for again");
+}

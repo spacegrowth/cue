@@ -80,7 +80,9 @@ async function boot() {
   addOn.boot();
   loadMachines();   // their names (and what you renamed them to) for every label, before + New is opened
   restoreSpot();
-  await T.event.listen("state", (e) => setState(e.payload));
+  // Each state drawn, Cue's told, and sends the next only then: states sent faster than they're drawn would wait
+  // in line, your clicks behind them (hub/redraw.rs, DRAWN_WAIT).
+  await T.event.listen("state", (e) => { try { setState(e.payload); } finally { invoke("state_drawn").catch(() => {}); } });
   await T.event.listen("dictation", (e) => onDictation(e.payload));
   await T.event.listen("speak", (e) => kokoroLine(e.payload));
   await T.event.listen("voice-status", () => extReload());

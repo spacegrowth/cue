@@ -14,10 +14,10 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 
 | What | Count |
 |---|---|
-| `#[tauri::command]` | 176 (3 sync) |
-| Lock declarations (static or field) | 114 |
-| Lock acquisitions | 273 |
-| Lock-graph edges | 52 |
+| `#[tauri::command]` | 177 (3 sync) |
+| Lock declarations (static or field) | 115 |
+| Lock acquisitions | 276 |
+| Lock-graph edges | 53 |
 | Spawn sites | 89 |
 | External calls: fs / db / process / notify / login / socket | 493 / 231 / 58 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 0 |
@@ -152,6 +152,7 @@ Sync commands run on the main thread. "Hands work to": the threads or pools its 
 | `set_draft` | async | `ipc/settings.rs::set_draft` | ipc::blocking |
 | `page_look_said` | async | `ipc/settings.rs::page_look_said` | — |
 | `get_state` | async | `ipc/state.rs::get_state` | ipc::with_hub |
+| `state_drawn` | async | `ipc/state.rs::state_drawn` | — |
 | `history_item` | async | `ipc/state.rs::history_item` | ipc::with_hub |
 | `respond` | async | `ipc/state.rs::respond` | ipc::with_hub |
 | `dismiss` | async | `ipc/state.rs::dismiss` | ipc::with_hub |
@@ -261,6 +262,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `hub/picking_up.rs::PickingUp.0` | `Mutex<(bool,Option<ThreadId>)>` | "hosted pickup" (2 sites) |
 | `hub/redraw.rs::Redraws.dirty` | `Mutex<bool>` | "redraw wanted" (3 sites) |
 | `hub/redraw.rs::Redraws.worker` | `OnceLock<()>` | — |
+| `hub/redraw.rs::Redraws.drawn` | `Mutex<Drawn>` | "state drawn" (3 sites) |
 | `hub/saves.rs::SaveLocks.review_queue` | `Mutex<()>` | "review queue saves" (1 sites) |
 | `hub/saves.rs::SaveLocks.parked` | `Mutex<()>` | "parked saves" (1 sites) |
 | `hub/saves.rs::SaveLocks.desk` | `Mutex<()>` | "desk saves" (3 sites) |
@@ -387,6 +389,7 @@ An edge A → B: B is taken (here or in something called) while A is held. Also 
 | "typing gate" | "quiet sessions" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/send.rs::Hub::deliver` → `hub/send.rs::Hub::settle_typed` → `hub/asks.rs::Hub::terminal_ask_with` → `hub/mod.rs::Hub::notify` → `hub/mod.rs::Hub::notify_card` → `notify/mod.rs::is_quiet`, takes it |
 | "typing gate" | "redraw wanted" |  | `hub/hosted.rs::Hub::send_to_hosted` → `hub/hosted.rs::Hub::send_to_hosted_held` → `hub/terminal_only.rs::Hub::run_own_command` → `hub/terminal_only.rs::Hub::codex_model` → `hub/terminal_only.rs::Hub::codex_models` → `hub/hosted.rs::Hub::wake_hosted` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Redraws::mark`, takes it |
 | "typing gate" | "shown snapshot" |  | `hub/hosted.rs::Hub::send_to_hosted` → `hub/hosted.rs::Hub::send_to_hosted_held` → `hub/terminal_only.rs::Hub::run_own_command` → `hub/terminal_only.rs::Hub::codex_model` → `hub/terminal_only.rs::Hub::codex_models` → `hub/hosted.rs::Hub::wake_hosted` → `hub/redraw.rs::Hub::changed` → `hub/mod.rs::Hub::unshown` → `hub/shown.rs::Shown::forget`, takes it |
+| "typing gate" | "state drawn" |  | `hub/hosted.rs::Hub::send_to_hosted` → `hub/hosted.rs::Hub::send_to_hosted_held` → `hub/terminal_only.rs::Hub::run_own_command` → `hub/terminal_only.rs::Hub::codex_model` → `hub/terminal_only.rs::Hub::codex_models` → `hub/hosted.rs::Hub::wake_hosted` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Redraws::sending`, takes it |
 | "typing gate" | "the hub's store" |  | `hub/hosted.rs::Hub::send_to_hosted` → `hub/hosted.rs::Hub::send_to_hosted_held` → `hub/terminal_only.rs::Hub::run_own_command` → `hub/hosted.rs::Hub::hosted_origin` → `hub/store_access.rs::Hub::read`, takes it |
 
 ## External calls under the hub's store

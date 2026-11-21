@@ -18,6 +18,14 @@ use std::sync::{Condvar, OnceLock, Weak};
 /// draw, which shows them all.
 const DRAW_EVERY: std::time::Duration = std::time::Duration::from_millis(200);
 
+/// How long a draw waits for the windows to say they drew the state before (`Hub::state_drawn`). A window
+/// takes each state in turn: one that takes longer to draw it than DRAW_EVERY would get the next before it's
+/// done, and the next, each waiting behind the last, and your clicks and their answers behind all of them
+/// (#587: a message to the Desk's lead sat at "Sending…" for most of a minute). So the next is sent once
+/// the last is drawn: one waits at most, holding the latest. A window that doesn't say so in this long
+/// (hidden, closed, an old page) isn't waited for again until it does.
+const DRAWN_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
+
 #[derive(Default)]
 pub(super) struct Redraws {
     /// A change not drawn yet.
@@ -29,6 +37,17 @@ pub(super) struct Redraws {
     draws: AtomicU64,
     /// How many times the worker has started waiting for a change (where it must hold no hub).
     waits: AtomicU64,
+    /// The windows that say when they've drawn a state, and which of them haven't drawn the last one sent.
+    drawn: Mutex<Drawn>,
+    drawn_now: Condvar,
+}
+
+#[derive(Default)]
+struct Drawn {
+    /// Windows that said they drew a state (by label): each draw waits for these.
+    windows: HashSet<String>,
+    /// Those that haven't drawn the one sent last.
+    owed: HashSet<String>,
 }
 
 impl Redraws {
@@ -54,6 +73,37 @@ impl Redraws {
             dirty = crate::locking::Guard::wait(dirty, &self.wake);
         }
         *dirty = false;
+    }
+
+    /// A state is on its way to the windows: each that says when it's drawn one owes this one.
+    fn sending(&self) {
+        let mut d = crate::locking::lock(&self.drawn, "state drawn");
+        d.owed = d.windows.clone();
+    }
+
+    /// Window `label` drew the state it was sent.
+    fn drawn(&self, label: &str) {
+        let mut d = crate::locking::lock(&self.drawn, "state drawn");
+        d.windows.insert(label.to_string());
+        d.owed.remove(label);
+        self.drawn_now.notify_all();
+    }
+
+    /// Back once every window drew the last state, or after `most`: those still drawing it then aren't waited for
+    /// again until they say they drew one. True when none was left waiting.
+    fn wait_drawn(&self, most: std::time::Duration) -> bool {
+        let until = std::time::Instant::now() + most;
+        let mut d = crate::locking::lock(&self.drawn, "state drawn");
+        while !d.owed.is_empty() {
+            let left = until.saturating_duration_since(std::time::Instant::now());
+            if left.is_zero() {
+                let late = std::mem::take(&mut d.owed);
+                d.windows.retain(|w| !late.contains(w));
+                return false;
+            }
+            d = crate::locking::Guard::wait_timeout(d, &self.drawn_now, left);
+        }
+        true
     }
 }
 
@@ -108,7 +158,11 @@ impl Hub {
         self.save_live();
         // No window (the World's hub): nothing to send, and the next ask builds the state.
         match &self.app {
-            Some(app) => drop(app.emit("state", &*self.snapshot())),
+            Some(app) => {
+                let snapshot = self.snapshot();
+                self.redraws.sending();
+                drop(app.emit("state", &*snapshot));
+            }
             None => self.unshown(),
         }
         let (decisions, answered) = self.write(|st| {
@@ -126,6 +180,12 @@ impl Hub {
         if let Some(w) = self.app.as_ref().and_then(|a| a.get_webview_window("main")) {
             let _ = w.set_badge_count(if decisions > 0 { Some(decisions as i64) } else { None });
         }
+    }
+
+    /// Window `label` drew the last state it was sent (its `state` listener, ui/app.js and ui/mini.js): the next
+    /// can go (see DRAWN_WAIT).
+    pub(crate) fn state_drawn(&self, label: &str) {
+        self.redraws.drawn(label);
     }
 
     /// The live sessions and waiting cards saved as the store has them now (a relaunch shows them), the sessions
@@ -180,6 +240,8 @@ fn draw_when_wanted(redraws: Arc<Redraws>, hub: Weak<Hub>) {
         let Some(h) = hub.upgrade() else { return };
         h.draw();
         drop(h);
+        // The windows draw it before the next is sent (see DRAWN_WAIT); then at most one per DRAW_EVERY.
+        redraws.wait_drawn(DRAWN_WAIT);
         std::thread::sleep(DRAW_EVERY.saturating_sub(started.elapsed()));
     }
 }

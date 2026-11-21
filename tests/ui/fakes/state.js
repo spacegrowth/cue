@@ -46,6 +46,7 @@ CueBridge.area("state", (w) => {
 
   return {
     get_state: () => w.snapshot(),
+    state_drawn: () => null,
     history_item: ({ id }) => structuredClone(w.state.items.find((i) => i.id === id) || (w.state.history || []).find((i) => i.id === id) || null),
     respond: ({ id, decision }) => !!w.answer(id, decision.behavior === "allow" ? (decision.answers ? `answered — ${Object.values(decision.answers).join(", ")}` : "allowed") : decision.message ? `denied — “${decision.message}”` : "denied"),
     dismiss: ({ id }) => { w.answer(id, "dismissed", { idle: true }); return null; },

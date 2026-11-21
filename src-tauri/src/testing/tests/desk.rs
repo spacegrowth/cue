@@ -28,7 +28,9 @@ pub(super) fn holder(w: &World) -> (String, String) {
 pub(super) fn new_lead(w: &World, project: &str) -> String {
     let r = crate::ipc::desk_set_lead_with(w.hub(), project, None, true).unwrap();
     let sid = r["sid"].as_str().unwrap().to_string();
-    w.hosted_says(&sid, HostedEvent::Taken { text: "hello".into() });
+    // It takes what it was started with (the Desk's summary), as a real one does: nothing of yours left on its way.
+    let first = w.hosted.sent().into_iter().filter(|(s, _)| *s == sid).map(|(_, t)| t).next_back().unwrap_or_default();
+    w.hosted_says(&sid, HostedEvent::Taken { text: first });
     ends(w, &sid, "I run the Desk now.");
     sid
 }

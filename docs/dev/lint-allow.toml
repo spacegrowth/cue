@@ -225,6 +225,11 @@ reason = "the typing gate is taken first and held while a message is typed, by d
 
 [[lock_order]]
 from = "typing gate"
+to = "state drawn"
+reason = "the typing gate is held while a message is typed, by design (hub/send.rs wait_turn); a draw under it (a hub without the draw worker) notes the windows it now waits on to draw the state (hub/redraw.rs Redraws::sending), a leaf held only to copy a set"
+
+[[lock_order]]
+from = "typing gate"
 to = "shown snapshot"
 reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
 

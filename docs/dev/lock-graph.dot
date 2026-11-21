@@ -53,5 +53,6 @@ digraph locks {
   "typing gate" -> "quiet sessions";
   "typing gate" -> "redraw wanted";
   "typing gate" -> "shown snapshot";
+  "typing gate" -> "state drawn";
   "typing gate" -> "the hub's store";
 }

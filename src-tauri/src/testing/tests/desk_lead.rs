@@ -380,3 +380,37 @@ fn a_picture_in_the_leads_box_reaches_the_lead_live_or_resumed() {
     let resumed = sent_to(&w, &l).pop().unwrap();
     assert!(resumed.contains("And this one") && resumed.contains(".png"), "{resumed}");
 }
+
+/// Your message to an idle lead (#587): handed to it before the send returns, with no wait (no draw, no step after), in
+/// its chat at once; taken the moment its turn starts. The next one, after that turn ends, the same: every message
+/// starts with the same Desk summary, and the first one's turn mustn't be taken for the second's.
+#[test]
+fn a_message_to_an_idle_lead_is_handed_over_at_once_and_taken_when_its_turn_starts() {
+    let w = World::new();
+    let (_, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    assert_eq!(w.snapshot().state(&l), "waiting", "idle");
+    for (n, words) in ["you are ok?", "I see a bug, I'll file it tomorrow"].into_iter().enumerate() {
+        let before = sent_to(&w, &l).len();
+        crate::ipc::desk_send_with(w.hub(), &project, words).unwrap();
+        // Nothing settled: it went with the send itself.
+        let sent = sent_to(&w, &l);
+        assert_eq!(sent.len(), before + 1, "handed over before the send returned");
+        assert!(sent.last().unwrap().ends_with(words), "{:?}", sent.last());
+        let s = w.snapshot();
+        let mine = s.last_yours(&l);
+        assert!(mine["text"].as_str().unwrap().ends_with(words), "in its chat at once: {mine}");
+        assert_eq!(mine["pending"], true, "handed over, not yet taken");
+        w.hosted_says(&l, crate::hosted::HostedEvent::TurnStarted);
+        let s = w.snapshot();
+        assert_eq!(s.state(&l), "working");
+        let mine = s.last_yours(&l);
+        assert!(mine["text"].as_str().unwrap().ends_with(words) && mine["pending"].is_null() && mine["unsent"].is_null(), "message {n} taken: {mine}");
+        ends(&w, &l, "Fine.");
+    }
+    // Neither is left looking as if it wasn't taken.
+    let s = w.snapshot();
+    let thread = s.session(&l)["thread"].as_array().unwrap().clone();
+    let yours: Vec<&Value> = thread.iter().filter(|e| e["role"] == "you").collect();
+    assert!(yours.iter().all(|e| e["pending"].is_null() && e["unsent"].is_null()), "{yours:?}");
+}

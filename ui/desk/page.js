@@ -138,8 +138,10 @@ function deskChat(d) {
   // One that couldn't go: red, why, Retry and Edit (#422), till you pick one.
   const failed = (p) => ({ st: "failed", why: esc(p.failed), acts: ["lead_retry", "lead_edit"].map((a, n) => `<button class="q-now" data-desk-act="${a}" data-id="${esc(d.project)}" data-at="${p.at}">${n ? "Edit" : "Retry"}</button>`).join(" · ") });
   const mine = pending.map((p) => { const hd = deskAboutHead(p); return msgRow(p.failed ? { ...failed(p), to: deskLeadName(d) } : { st: "sending", to: deskLeadName(d) }, `${p.text ? `<div class="cv-you-text mg-text">${hd?.html || ""}${esc(hd ? hd.text : p.text).replace(/\n/g, "<br>")}</div>` : ""}${p.images?.length ? `<div class="thumbs">${p.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}`); }).join("");
-  // Where the lead is now (working on what, its latest step, stuck, compacting), as under any session's chat.
-  const where = s && sessionOf(s.session_id) ? whereNow(null, s, false) : "";
+  // Where the lead is now (working on what, its latest step, stuck, compacting), as under any session's chat. Not while
+  // a message of yours is on its way: "Waiting on you for your reply" under it would be wrong (#587).
+  const sending = pending.some((p) => !p.failed);
+  const where = s && sessionOf(s.session_id) && !sending ? whereNow(null, s, false) : "";
   const empty = !rows && !mine && !where ? `<div class="dk-empty">Tell ${esc(deskLeadName(d))} about a bug, a feature or a task. It adds them here, hands each to a session, and says why.</div>` : "";
   return `<div class="dk-chat" data-desk-chat="${esc(d.project)}">${empty}${rows}${mine}${where}</div>`;
 }

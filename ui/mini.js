@@ -662,7 +662,8 @@
     bind();
     await loadDrafts();   // the drafts Cue's chat keeps (window.js): what you typed to a session, here or there
     take(await invoke("get_state"));
-    await T.event.listen("state", (e) => take(e.payload));
+    // Drawn, Cue's told, as Cue's window does (app.js): the next state comes only then.
+    await T.event.listen("state", (e) => { try { take(e.payload); } finally { invoke("state_drawn").catch(() => {}); } });
     // The mic in the box (chat/compose.js), and a reply read out in a natural voice (chat/listen.js), as in Cue.
     await T.event.listen("dictation", (e) => onDictation(e.payload));
     await T.event.listen("speak", (e) => { if (listening || kokoroAt) kokoroLine(e.payload); });

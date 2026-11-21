@@ -17,6 +17,14 @@ pub(crate) async fn get_state(hub: State<'_, Arc<Hub>>) -> Result<serde_json::Va
     }
 }
 
+/// The window that asks drew the last state it was sent: the next can go to it (hub/redraw.rs, DRAWN_WAIT). Not on
+/// the main thread (a command that isn't async runs there), and never waits.
+#[tauri::command]
+pub(crate) async fn state_drawn(window: tauri::WebviewWindow, hub: State<'_, Arc<Hub>>) -> Result<(), String> {
+    hub.state_drawn(window.label());
+    Ok(())
+}
+
 /// A card in full, waiting or in History: the state's History rows are brief (hub/kept_history.rs), and a
 /// row opened (in History, or in Active from Recently answered) asks for the rest. None once it's gone.
 #[tauri::command]
