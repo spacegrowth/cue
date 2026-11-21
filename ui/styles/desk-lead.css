@@ -60,7 +60,8 @@
 .dk-dlink { font-size: var(--type-body); font-weight: 600; color: var(--accent); text-decoration: none; }
 .dk-dlink:hover { text-decoration: underline; }
 .dk-sec { padding: 16px 24px 0; }
-.dk-sec h3 { margin: 0 0 8px; font: 700 var(--type-pill) var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+/* A section's head on a Desk page: quiet, in normal case, at the message family's meta size (#501). */
+.dk-sec h3 { margin: 0 0 8px; font: 600 var(--type-small) / 1.4 var(--sans); color: var(--muted); }
 .dk-sec p { margin: 0 0 6px; line-height: 1.5; }
 .dk-sec p.dk-split { color: var(--muted); font-size: var(--type-body); }
 .dk-quiet { color: var(--muted); }
@@ -180,7 +181,7 @@
 .dk-mb { grid-template-columns: 14px minmax(0, 1fr) auto; cursor: pointer; }
 .dk-mb:hover { background: var(--panel-2); }
 .dk-mb .dk-ls { grid-column: 2 / -1; }
-.dk-chain > .dk-cn + .dk-ln, .dk-mb + .dk-mb { border-top: 1px solid var(--line); }
+.dk-chain > .dk-cn + .dk-cn, .dk-mb + .dk-mb { border-top: 1px solid var(--line); }
 .dk-chain > .dk-cn > i, .dk-mb > i { width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: var(--work); }
 .dk-chain > .dk-cn > i.wait, .dk-mb > i.idle { background: none; border: 1.5px solid var(--muted); width: 5px; height: 5px; }
 .dk-chain > .dk-cn > i.ask, .dk-mb > i.ask { background: var(--deny); }
@@ -192,6 +193,9 @@
 .dk-picked .sent-check { width: 16px; height: 16px; font-size: var(--type-tag); }
 /* An ask answered on the item's page: its card, as under a chat, inside the chain's frame. */
 .dk-chain > .dk-cn .dk-md > :last-child { margin-bottom: 0; }
+/* What it asked reads as an ask does in a chat: the family's body; what you answered, its meta line (#501). */
+.dk-chain > .dk-cn.dk-q .dk-lt { font: var(--mg-body); }
+.dk-chain > .dk-cn.dk-q .dk-picked { font: var(--mg-meta); margin-top: 4px; }
 .dk-lt { font-weight: 600; }
 .dk-ls { color: var(--muted); font-size: var(--type-body); margin-top: 2px; }
 

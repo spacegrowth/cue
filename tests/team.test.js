@@ -233,7 +233,15 @@ for (const c of cases.replies) {
 // A review request's bubble folds the lead's review under its own line (the review isn't a message of its own).
 world.sessions.L.team.push({ call: "c9", agent_id: "id-docs", name: "docs", state: "reviewed", findings: ["1. d.md:1 — note — fine"], recommendation: "commit", review: "1. d.md:1 — note — fine\nRecommendation: commit" });
 const folded = ctx.cueSaidLine(ctx.cueSaid("Review your teammate docs's work with a fork"), "L:1", "Review your teammate docs's work with a fork", "2m ago", { name: "docs", text: "1. d.md:1 — note — fine\nRecommendation: commit", team: world.sessions.L.team });
-assert.match(folded, /<note L:1\|What Cue sent\|[^>]*><note L:1:review\|docs reviewed: commit · 1 note\|1. d.md:1 — note — fine\nRecommendation: commit><\/div>/, "the review behind its one line");
+// Its review behind its own fold in the card's foot (#501): after What Cue sent, labelled with the review's one line,
+// closed till opened; opened, the review's whole text under the words, the fold marked "−".
+assert.match(folded, /<button class="mg-lk" data-ask-open="L:1" aria-expanded="true">− What Cue sent<\/button><button class="mg-lk" data-ask-open="L:1:review" aria-expanded="false">\+ docs reviewed: commit · 1 note<\/button>/, "the review behind its one line");
+assert.equal((folded.match(/class="mg-full"/g) || []).length, 1, "closed: only what Cue sent is open");
+assert.doesNotMatch(folded, /Recommendation: commit/, "closed: the review's text isn't shown");
+ctx.openAsks.add("L:1:review");
+const opened = ctx.cueSaidLine(ctx.cueSaid("Review your teammate docs's work with a fork"), "L:1", "Review your teammate docs's work with a fork", "2m ago", { name: "docs", text: "1. d.md:1 — note — fine\nRecommendation: commit", team: world.sessions.L.team });
+assert.match(opened, /<div class="mg-full">1. d.md:1 — note — fine\nRecommendation: commit<\/div>/, "opened: the review's whole text");
+assert.match(opened, /data-ask-open="L:1:review" aria-expanded="true">− docs reviewed: commit · 1 note</, "opened: its fold marked open");
 assert.doesNotMatch(folded, /data-mt-act|data-crew-open|Open ›/, "no buttons in the chat: they're on its row");
 
 // ---- a finished member whose files Cue never saw (shell commands outside the lead's folder); one the hub says needs you ----

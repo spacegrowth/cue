@@ -150,6 +150,46 @@ for (const scheme of ["light", "dark"]) {
       await readsOn(card.locator(".mg-t"));
       await noHover(page);
     });
+
+    test("an item's page: what it asked at the body size, your answer and the section heads at the meta size, heads in normal case", async ({ page, cue }) => {
+      await page.setViewportSize({ width: 1500, height: 950 });
+      await cue.open("desk");
+      await openDesk(page);
+      // Its ask answered and the item at work again: "It asked you", the question, then "You answered: …".
+      await page.evaluate(() => {
+        const i = deskItem("cue", "d1");
+        deskAnswers.set("d1", { q: deskQuestion(i), a: "Keep it in the box", ask: i.ask?.item_id || "", at: now() });
+        deskShow({ kind: "item", id: "d1" });
+      });
+      await cue.change((st) => {
+        st.items = st.items.filter((i) => i.id !== "n-focus-ask");
+        const d1 = st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d1");
+        d1.state = "working"; d1.ask = null;
+      });
+      const chain = page.locator(".dk-pane .dk-chain");
+      await expect(chain).toContainText("You answered: Keep it in the box");
+      expect(await sizes(chain.locator(".dk-q .dk-lt"))).toEqual([BODY]);
+      expect(await chain.locator(".dk-q .dk-lt").evaluate((e) => getComputedStyle(e).fontWeight)).toBe("400");
+      expect(await sizes(chain.locator(".dk-picked"))).toEqual([META]);
+      const heads = page.locator(".dk-pane .dk-sec h3");
+      await expect(heads.filter({ hasText: "It asked you" })).toHaveCount(1);
+      for (const [size, tt, ls] of await heads.evaluateAll((es) => es.map((e) => { const c = getComputedStyle(e); return [c.fontSize, c.textTransform, c.letterSpacing]; }))) {
+        expect(size).toBe(META);
+        expect(tt).toBe("none");
+        expect(ls).toBe("normal");
+      }
+      await readsOn(chain.locator(".dk-picked"));
+      // Waiting on another item: the two rows of its wait chain have a line between them.
+      await cue.change((st) => {
+        const it = st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d1");
+        it.state = "queued"; it.ask = null; it.after = "d2";
+      });
+      await page.evaluate(() => { deskAnswers.delete("d1"); renderMain(); });
+      const rows = page.locator(".dk-pane .dk-chain > .dk-cn");
+      await expect(rows).toHaveCount(2);
+      expect(await rows.evaluateAll((es) => es.map((e) => getComputedStyle(e).borderTopWidth))).toEqual(["0px", "1px"]);
+      await noHover(page);
+    });
   });
 }
 
