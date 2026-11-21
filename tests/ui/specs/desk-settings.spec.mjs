@@ -1,11 +1,11 @@
-// A project's settings on one screen (#381, lands.js): how work lands, Ask me before and old working folders, each
-// change saved as you make it (#417). Opened from the Desk header's one Change link (#417); Away is on the Desk's own switch. The lead can propose a change in
+// A project's settings on one screen (#381, lands.js): how work lands, Ask me before and old working folders, saved
+// together when you press Save (#600); Cancel drops them, and leaving with changes unsaved asks first. Opened from the Desk header's one Change link (#417); Away is on the Desk's own switch. The lead can propose a change in
 // plain words: it shows as its ask, and only your Yes saves it (desk/hub/lead/lands.rs); the screen shows it after.
 import { test, expect, openDesk } from "./cue.mjs";
 
 const lands = (page) => page.locator(".dk-strip .dk-ab");
 
-test("the screen has its parts, no Away and no Save, Ask me before on one line, and Esc at its top right as Settings has (#417, #447)", async ({ page, cue }) => {
+test("the screen has its parts, no Away, Ask me before on one line, and Esc at its top right as Settings has (#417, #447)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await lands(page).locator("[data-lands-change]").click();
@@ -14,7 +14,10 @@ test("the screen has its parts, no Away and no Save, Ask me before on one line, 
   await expect(dlg.getByRole("button", { name: "Remove old working folders" })).toBeVisible();
   await expect(dlg.locator('[data-ab-kind="main"]')).toHaveAttribute("aria-checked", "true");
   await expect(dlg.locator('[data-ld-sec="away"]')).toHaveCount(0);
-  await expect(dlg.locator('[data-ld="save"]')).toHaveCount(0);
+  // Save and Cancel at its foot; Save comes on only once something changed.
+  await expect(dlg.locator('[data-ld="save"]')).toBeDisabled();
+  await expect(dlg.locator('[data-ld="cancel"]')).toHaveText("Cancel");
+  await expect(dlg.locator(".ld-intro")).toContainText("Changes apply when you press Save");
   // The three kinds side by side on one line.
   const tops = await dlg.locator('[data-ld-sec="ask"] .ab-row').evaluateAll((rs) => rs.map((r) => Math.round(r.getBoundingClientRect().top)));
   expect(tops.length).toBe(3);
@@ -68,7 +71,7 @@ test("the screen is built as Settings is: the same sheet, its title and Esc on o
   await expect(dlg.locator("[title]")).toHaveCount(0);
 });
 
-test("your own check: steps one per line, saved in order when you leave the box; a tick saves at once with Saved shown", async ({ page, cue }) => {
+test("your own check: steps one per line, saved in order with a tick by one Save, and the screen closes", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await lands(page).locator("[data-lands-change]").click();
@@ -80,8 +83,12 @@ test("your own check: steps one per line, saved in order when you leave the box;
   await expect(check.locator(".ld-hint")).toContainText("The first that fails stops the rest");
   await expect(check.locator(".ld-hint")).toContainText("all of them 30 minutes together; anything a step leaves running in the background counts toward that time");
   await dlg.locator('[data-ab-kind="release"]').click();
-  await expect(dlg.locator(".ld-saved")).toHaveText("Saved");
-  await expect(dlg).toBeVisible();
+  // Nothing saved yet: the foot says so.
+  await expect(dlg.locator(".ld-foot-t")).toHaveText("Unsaved changes");
+  expect(await cue.calls("desk_lands_set")).toHaveLength(0);
+  expect(await cue.calls("ask_before_set")).toHaveLength(0);
+  await dlg.locator('[data-ld="save"]').click();
+  await expect(dlg).toHaveCount(0);
   const call = await cue.called("desk_lands_set");
   expect(call.args.lands.check).toBe("command");
   expect(call.args.lands.check_steps).toEqual(["npm test", "npm run lint"]);
@@ -90,16 +97,18 @@ test("your own check: steps one per line, saved in order when you leave the box;
   expect(ab.args.kinds).toContain("release");
 });
 
-test("a tick that can't be saved says so and goes back; the screen stays", async ({ page, cue }) => {
+test("a tick that can't be saved says so on Save; the screen stays with it ticked", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await cue.override("ask_before_set", () => { throw "offline"; });
   await lands(page).locator("[data-lands-change]").click();
   const dlg = page.locator(".ld-dialog");
   await dlg.locator('[data-ab-kind="release"]').click();
+  await dlg.locator('[data-ld="save"]').click();
   await expect(page.locator(".toast").last()).toHaveText("Couldn't save Ask me before: offline");
   await expect(dlg).toBeVisible();
-  await expect(dlg.locator('[data-ab-kind="release"]')).toHaveAttribute("aria-checked", "false");
+  await expect(dlg.locator('[data-ab-kind="release"]')).toHaveAttribute("aria-checked", "true");
+  await expect(dlg.locator(".ld-foot-t")).toHaveText("Unsaved changes");
 });
 
 test("the lead's proposed change is its ask; it shows on the screen only after your Yes", async ({ page, cue }) => {
@@ -155,4 +164,89 @@ test("the settings screen is short: it fits a 900-high window without scrolling 
   const [sh, ch] = await dlg.evaluate((e) => [e.scrollHeight, e.clientHeight]);
   expect(sh).toBeLessThanOrEqual(ch);
   expect(sh).toBeLessThan(780);
+});
+
+test("Cancel drops what you changed; nothing is saved and the screen shows the setting as it was (#600)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await lands(page).locator("[data-lands-change]").click();
+  const dlg = page.locator(".ld-dialog");
+  const check = dlg.locator(".ld-row", { has: page.locator(".ld-label", { hasText: "Check before landing" }) });
+  await check.locator('[data-ld-pick="none"]').click();
+  await dlg.locator('[data-ld="more"]').click();
+  await dlg.locator('[data-ab-kind="release"]').click();
+  await expect(dlg.locator('[data-ld="save"]')).toBeEnabled();
+  await dlg.locator('[data-ld="cancel"]').click();
+  await expect(dlg).toHaveCount(0);
+  expect(await cue.calls("desk_lands_set")).toHaveLength(0);
+  expect(await cue.calls("ask_before_set")).toHaveLength(0);
+  await lands(page).locator("[data-lands-change]").click();
+  await expect(check.locator("button.on")).toHaveText("Cue's own check");
+  await expect(dlg.locator(".ld-n")).toHaveText("3");
+  await expect(dlg.locator('[data-ab-kind="release"]')).toHaveAttribute("aria-checked", "false");
+  // Changed back by hand counts as nothing changed: Save goes off, and Esc leaves without asking.
+  await check.locator('[data-ld-pick="none"]').click();
+  await check.locator('[data-ld-pick="cue"]').click();
+  await expect(dlg.locator('[data-ld="save"]')).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(dlg).toHaveCount(0);
+});
+
+test("leaving with changes unsaved asks first: Esc, its Esc or a click outside; Keep editing, Discard or Save (#600)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await lands(page).locator("[data-lands-change]").click();
+  const dlg = page.locator(".ld-dialog");
+  await dlg.locator('[data-ld="less"]').click();
+  const ask = dlg.locator(".ld-leaving");
+  // Esc asks; Esc again goes back to editing, the change kept.
+  await page.keyboard.press("Escape");
+  await expect(ask.locator(".ld-foot-t")).toHaveText("Leave without saving your changes?");
+  await expect(ask.locator("button")).toHaveText(["Keep editing", "Discard", "Save"]);
+  await expect(dlg.locator("[title]")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(ask).toHaveCount(0);
+  await expect(dlg.locator(".ld-n")).toHaveText("2");
+  // A click outside asks; Keep editing stays.
+  await page.locator(".ld-scrim").click({ position: { x: 5, y: 5 } });
+  await ask.locator('[data-ld="stay"]').click();
+  await expect(ask).toHaveCount(0);
+  await expect(dlg).toBeVisible();
+  // Its Esc asks; Discard leaves with nothing saved.
+  await dlg.locator('[data-ld="close"]').click();
+  await ask.locator('[data-ld="discard"]').click();
+  await expect(dlg).toHaveCount(0);
+  expect(await cue.calls("desk_lands_set")).toHaveLength(0);
+  // Again, and Save from the ask saves it and closes.
+  await lands(page).locator("[data-lands-change]").click();
+  await expect(dlg.locator(".ld-n")).toHaveText("3");
+  await dlg.locator('[data-ld="less"]').click();
+  await page.keyboard.press("Escape");
+  await ask.locator('[data-ld="save"]').click();
+  await expect(dlg).toHaveCount(0);
+  expect((await cue.called("desk_lands_set")).args.lands.at_once).toBe(2);
+});
+
+test("changing where an item works while items are open says what happens to them before it's saved (#600)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await cue.change((st) => {
+    const d = st.desk.projects.find((x) => x.project === "cue");
+    const it = (id, state) => ({ ...d.items[0], id, state });
+    d.items = [it("o1", "working"), it("o2", "to_check"), it("o3", "queued"), it("o4", "done")];
+  });
+  await openDesk(page);
+  await lands(page).locator("[data-lands-change]").click();
+  const dlg = page.locator(".ld-dialog");
+  const where = dlg.locator(".ld-row", { has: page.locator(".ld-label", { hasText: "Where an item works" }) });
+  await expect(where.locator("[data-ld-move]")).toHaveCount(0);
+  await where.locator('[data-ld-pick="shared"]').click();
+  await expect(where.locator("[data-ld-move]")).toHaveText("3 items are open: 2 already started stay where they are and land from there; 1 not started yet works in the shared folder when it starts.");
+  expect(await cue.calls("desk_lands_set")).toHaveLength(0);
+  // Back to Own copy: nothing changes, nothing to say.
+  await where.locator('[data-ld-pick="copy"]').click();
+  await expect(where.locator("[data-ld-move]")).toHaveCount(0);
+  await where.locator('[data-ld-pick="shared"]').click();
+  await dlg.locator('[data-ld="save"]').click();
+  await expect(dlg).toHaveCount(0);
+  expect((await cue.called("desk_lands_set")).args.lands.where).toBe("shared");
 });

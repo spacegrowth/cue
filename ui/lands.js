@@ -1,11 +1,13 @@
 "use strict";
 /** A project's settings (#381): how work lands (desk/lands.rs: where a Desk item works, how it lands, its check, what
  *  follows, push, and how many at once), Ask me before and old working folders, on one screen. Opened from the
- *  Desk header's Settings (#417). Each change is saved the moment you make it, with a short "Saved"; Away is on the
- *  Desk's own switch, not here. A Desk's `lands` (desk_view) has the setting now,
+ *  Desk header's Settings (#417). Changes wait on the screen until you press Save (#600), which applies them together;
+ *  Cancel drops them, and leaving with some unsaved asks first. Away is on the Desk's own switch, not here. A Desk's `lands` (desk_view) has the setting now,
  *  its parts with each choice's words and whether it can be picked, and why when the folder decides it. Kept in Cue's
  *  own settings, never in the project. The lead can propose a change too (a LANDS: line): asked of you, saved on yes. */
-let lands = null;   // { desk, set: { where, how, check, after, push, at_once, check_steps, after_steps }, steps, ab, busy, old }
+let lands = null;   // { desk, set: { where, how, check, after, push, at_once, check_steps, after_steps }, steps, ab, was, leaving, busy, old }
+// `was`: the settings as saved when the screen opened ({ set, steps, ticks }), to tell what you changed; `leaving`: you
+// asked to leave with changes unsaved, and the screen asks first.
 // Remove old working folders (#397, desk/hub/landing/copies.rs): looked at when you press it, listed with their size, removed
 // on a second press. `old`: null, { looking }, { list: { copies, kb } }, or { removing }.
 
@@ -28,8 +30,34 @@ function landsChange(desk) {
   // Your own steps, one per line while you edit them.
   const steps = { check: (l.set.check_steps || []).join("\n"), after: (l.set.after_steps || []).join("\n") };
   const ab = project && askBeforeKinds().length ? { project, ticks: [...askBeforeNow(project)], more: false } : null;
-  lands = { desk, set: { ...l.set }, steps, ab };
+  lands = { desk, set: { ...l.set }, steps, ab, was: { set: { ...l.set }, steps: { ...steps }, ticks: ab ? [...ab.ticks] : null } };
   renderMain();
+}
+/** How work lands as it's saved: your own steps go with a part only when that part is "Your own steps". */
+function landsOut(set, steps) {
+  const out = { ...set };
+  delete out.check_steps;
+  delete out.after_steps;
+  for (const k of ["check", "after"]) if (out[k] === "command") out[`${k}_steps`] = (steps[k] || "").split("\n").map((x) => x.trim()).filter(Boolean);
+  return out;
+}
+const landsSame = (x, y) => JSON.stringify(Object.keys({ ...x, ...y }).sort().map((k) => [k, x[k] ?? null])) === JSON.stringify(Object.keys({ ...x, ...y }).sort().map((k) => [k, y[k] ?? null]));
+/** What you changed on the screen and haven't saved: how work lands, Ask me before. */
+const landsSetChanged = (a) => !landsSame(landsOut(a.set, a.steps), landsOut(a.was.set, a.was.steps));
+const landsAskChanged = (a) => !!a.ab && [...a.ab.ticks].sort().join() !== [...a.was.ticks].sort().join();
+const landsChanged = (a) => !!a && (landsSetChanged(a) || landsAskChanged(a));
+/** Where an item works changed while items are open: what happens to them, said before it's saved. An item already
+ *  started keeps the folder it has (desk/hub/landing/trees.rs gives a copy only as an item starts working). */
+function landsWhereNote() {
+  const was = lands.was.set.where, now = lands.set.where;
+  if (was === now) return "";
+  const open = (deskOf(lands.desk)?.items || []).filter((i) => !["done", "dropped"].includes(i.state));
+  if (!open.length) return "";
+  const started = open.filter((i) => !["new", "queued"].includes(i.state)).length, waiting = open.length - started;
+  const parts = [];
+  if (started) parts.push(`${started} already started ${started === 1 ? "stays where it is and lands" : "stay where they are and land"} from there`);
+  if (waiting) parts.push(`${waiting} not started yet ${now === "copy" ? (waiting === 1 ? "works in its own copy when it starts" : "work in their own copies when they start") : (waiting === 1 ? "works in the shared folder when it starts" : "work in the shared folder when they start")}`);
+  return `<div class="ld-move" data-ld-move>${open.length} ${open.length === 1 ? "item is" : "items are"} open: ${parts.join("; ")}.</div>`;
 }
 /** The Desk whose settings show Ask me before for `project`, if any. */
 const landsDeskFor = (project) => (state.desk?.projects || []).find((d) => d.lead && d.lands && (d.ask_before?.project || d.workspace_project || d.lands.project) === project);
@@ -50,7 +78,7 @@ function landsPart(p, l) {
     ? `<ol class="ld-steps">${(l.steps || []).map((s) => `<li><b>${esc(s.label)}</b></li>`).join("")}</ol>`
     : (p.key === "check" || p.key === "after") && lands.set[p.key] === "command"
       ? `<textarea class="ld-cmd" rows="3" spellcheck="false" aria-label="${esc(p.label)}: your steps, one per line" placeholder="One step per line, e.g. npm test" data-ld-steps="${p.key}">${esc(lands.steps[p.key])}</textarea>` : "";
-  return `<div class="ld-row"><div class="ld-label">${esc(p.label)}</div><div class="ld-body">${landsSeg(p)}${steps}${now?.hint ? `<div class="ld-hint">${esc(now.hint)}</div>` : ""}</div></div>`;
+  return `<div class="ld-row"><div class="ld-label">${esc(p.label)}</div><div class="ld-body">${landsSeg(p)}${steps}${now?.hint ? `<div class="ld-hint">${esc(now.hint)}</div>` : ""}${p.key === "where" ? landsWhereNote() : ""}</div></div>`;
 }
 function landsAtOnce(l) {
   if (lands.set.where !== "copy") return "";
@@ -100,7 +128,7 @@ function landsOldRemove() {
     (e) => { a.old = null; toast(`Couldn't remove the old working folders: ${e}`, 5000); renderMain(); },
   );
 }
-/** Ask me before, its kinds on one line, each saved as you tick it (ask_before.js has the rows and their words). */
+/** Ask me before, its kinds on one line, saved with the rest (ask_before.js has the rows and their words). */
 function landsAskBefore() {
   if (!lands.ab) return "";
   return `<div class="ld-sec" data-ld-sec="ask"><div class="set-group ld-h">Ask me before</div>
@@ -116,54 +144,68 @@ function landsHtml() {
   // As Settings is (sheets.js settingsSheet): a sheet, its title and Esc on one line, groups under it; a click
   // outside or Esc closes it (#447).
   return `<div class="scrim ld-scrim" data-ld="scrim"><div class="sheet ld-dialog" role="dialog" aria-labelledby="ld-title">
-    <div class="sheet-head"><h3 class="move-title" id="ld-title">Settings for ${esc(name)}</h3><span class="ld-saved" aria-live="polite">${lands.saved ? "Saved" : ""}</span><span class="grow"></span><kbd class="ld-esc" data-ld="close" role="button" aria-label="Close">Esc</kbd></div>
+    <div class="sheet-head"><h3 class="move-title" id="ld-title">Settings for ${esc(name)}</h3><span class="grow"></span><kbd class="ld-esc" data-ld="close" role="button" aria-label="Close">Esc</kbd></div>
     <div class="sheet-body">
-    <div class="ld-hint ld-intro">Kept in Cue, not in the project. Each change saves at once; you can also tell the lead, and it asks you first.</div>
+    <div class="ld-hint ld-intro">Kept in Cue, not in the project. Changes apply when you press Save; you can also tell the lead, and it asks you first.</div>
     <div class="ld-sec" data-ld-sec="lands"><div class="set-group ld-h">How work lands</div>
     ${l.why ? `<div class="ld-why">${esc(l.why)}</div>` : ""}
     <div class="ld-rows">${parts}</div></div>
     ${landsAskBefore()}
     <div class="ld-sec" data-ld-sec="old"><div class="set-group ld-h">Old working folders</div><div class="ld-rows">${landsOld()}</div></div>
-  </div></div></div>`;
+  </div>${landsFoot()}</div></div>`;
 }
-/** "Saved" for a moment after a change goes through. */
-function landsSaved(a) {
-  a.saved = true;
-  clearTimeout(a.savedT);
-  a.savedT = setTimeout(() => { a.saved = false; if (lands === a) renderMain(); }, 1600);
-  if (lands === a) renderMain();
+/** Save and Cancel under the screen; leaving with changes unsaved asks there first. */
+function landsFoot() {
+  const a = lands, changed = landsChanged(a);
+  const save = `<button class="btn primary" data-ld="save"${a.busy || !changed ? " disabled" : ""}>${a.busy ? "Saving…" : "Save"}</button>`;
+  if (a.leaving && changed) return `<div class="ld-foot ld-leaving" role="alertdialog" aria-label="Unsaved changes"><span class="ld-foot-t">Leave without saving your changes?</span><span class="grow"></span>
+    <button class="btn" data-ld="stay">Keep editing</button><button class="btn deny" data-ld="discard">Discard</button>${save}</div>`;
+  return `<div class="ld-foot"><span class="ld-foot-t" aria-live="polite">${changed ? "Unsaved changes" : ""}</span><span class="grow"></span>
+    <button class="btn" data-ld="cancel">Cancel</button>${save}</div>`;
 }
-/** How work lands, saved as it is on the screen now: at once for a pick, a moment after the last + or −, and steps
- *  when you leave their box. Your own steps go with a part only when that part is "Your own steps". */
-function landsSaveSet(wait = 0) {
+/** Leave the screen (Esc, its Esc, a click outside): at once with nothing changed, else it asks first. */
+function landsLeave() {
+  if (!lands) return;
+  if (landsChanged(lands) && !lands.busy) lands.leaving = true;
+  else if (!lands.busy) lands = null;
+  renderMain();
+}
+/** Save: what you changed, applied together, then the screen closes. A part that couldn't be saved says so and
+ *  stays on the screen, changed; one that was saved counts as saved. */
+function landsSave() {
   const a = lands;
-  if (!a) return;
-  clearTimeout(a.setT);
-  a.setT = setTimeout(() => {
-    const set = { ...a.set };
-    delete set.check_steps;
-    delete set.after_steps;
-    for (const k of ["check", "after"]) if (set[k] === "command") set[`${k}_steps`] = (a.steps[k] || "").split("\n").map((x) => x.trim()).filter(Boolean);
-    invoke("desk_lands_set", { desk: a.desk, lands: set }).then(
-      () => landsSaved(a),
-      (e) => toast(`Couldn't save how work lands: ${e}`, 6000),
-    );
-  }, wait);
+  if (!a || a.busy || !landsChanged(a)) return;
+  const jobs = [];
+  if (landsSetChanged(a)) {
+    const set = landsOut(a.set, a.steps), steps = { ...a.steps };
+    jobs.push(invoke("desk_lands_set", { desk: a.desk, lands: set }).then(
+      () => { a.was.set = { ...a.set }; a.was.steps = steps; },
+      (e) => { throw `how work lands: ${e}`; },
+    ));
+  }
+  if (landsAskChanged(a)) {
+    const ticks = [...a.ab.ticks], kinds = askBeforeKinds().map((x) => x.key).filter((x) => ticks.includes(x));
+    jobs.push(invoke("ask_before_set", { project: a.ab.project, kinds }).then(
+      () => { a.was.ticks = ticks; },
+      (e) => { throw `Ask me before: ${e}`; },
+    ));
+  }
+  a.busy = true;
+  a.leaving = false;
+  renderMain();
+  Promise.allSettled(jobs).then((rs) => {
+    a.busy = false;
+    const bad = rs.filter((r) => r.status === "rejected").map((r) => r.reason);
+    if (bad.length) toast(`Couldn't save ${bad.join("; ")}`, 6000);
+    else if (lands === a) lands = null;
+    renderMain();
+  });
 }
-/** Ask me before, saved as ticked; a tick that couldn't be saved goes back. */
-function landsSaveAsk(was) {
-  const a = lands, ab = a?.ab;
-  if (!ab) return;
-  const kinds = askBeforeKinds().map((x) => x.key).filter((x) => ab.ticks.includes(x));
-  invoke("ask_before_set", { project: ab.project, kinds }).then(
-    () => landsSaved(a),
-    (e) => { ab.ticks = was; toast(`Couldn't save Ask me before: ${e}`, 6000); renderMain(); },
-  );
-}
+/** Esc: back to editing while it asks, else leave. */
 function landsEscape() {
   if (!lands) return false;
-  lands = null;
-  renderMain();
+  if (lands.leaving) { lands.leaving = false; renderMain(); }
+  else landsLeave();
   return true;
 }
 document.addEventListener("click", (e) => {
@@ -185,32 +227,35 @@ document.addEventListener("click", (e) => {
     // A pull request is opened from an item's own copy, so it has none in the shared folder.
     if (pick.dataset.ldPart === "how" && s.how === "pr") s.where = "copy";
     if (pick.dataset.ldPart === "where" && s.where === "shared" && s.how === "pr") s.how = "squash";
-    // Your own steps with none written yet waits for them (saved when you leave the box).
-    if (s[pick.dataset.ldPart] !== "command") landsSaveSet();
+    lands.leaving = false;
     return renderMain();
   }
   const act = b.dataset.ld;
   const range = deskOf(lands.desk)?.lands?.at_once || {};
   if (act === "less" || act === "more") {
     s.at_once = act === "less" ? Math.max(range.min ?? 1, s.at_once - 1) : Math.min(range.max ?? 9, s.at_once + 1);
-    landsSaveSet(500);
+    lands.leaving = false;
   }
   else if (act === "old") return landsOldLook();
   else if (act === "old-yes") return landsOldRemove();
   else if (act === "old-no") lands.old = null;
-  else if (act === "close" || act === "scrim") lands = null;
+  else if (act === "close" || act === "scrim") return landsLeave();
+  else if (act === "save") return landsSave();
+  else if (act === "cancel" || act === "discard") { if (!lands.busy) lands = null; }
+  else if (act === "stay") lands.leaving = false;
   renderMain();
 }, true);
 // Ask me before's rows and More on the screen (ask_before.js).
 document.addEventListener("click", (e) => {
   if (!lands?.ab || !e.target.closest?.(".ld-dialog")) return;
-  const was = [...lands.ab.ticks];
-  if (askBeforeClick(lands.ab, e) && was.join() !== lands.ab.ticks.join()) landsSaveAsk(was);
+  const was = lands.ab.ticks.join();
+  if (askBeforeClick(lands.ab, e) && was !== lands.ab.ticks.join() && lands.leaving) { lands.leaving = false; renderMain(); }
 }, true);
 document.addEventListener("input", (e) => {
   const t = e.target.closest?.("[data-ld-steps]");
-  if (t && lands) lands.steps[t.dataset.ldSteps] = t.value;
-}, true);
-document.addEventListener("change", (e) => {
-  if (lands && e.target.closest?.("[data-ld-steps]")) landsSaveSet();
+  if (!t || !lands) return;
+  const was = landsChanged(lands);
+  lands.steps[t.dataset.ldSteps] = t.value;
+  // The foot says "Unsaved changes" and Save comes on; only it is drawn again, so the box keeps your caret.
+  if (was !== landsChanged(lands)) { const f = document.querySelector(".ld-dialog .ld-foot"); if (f) f.outerHTML = landsFoot(); }
 }, true);

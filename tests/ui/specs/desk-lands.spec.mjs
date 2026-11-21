@@ -52,11 +52,11 @@ test("a change saved shows on the screen next time; you commit means the shared 
   await dlg.locator('[data-ld-pick="owner"]').click();
   await expect(dlg.locator('[data-ld-part="where"].on')).toHaveText("Shared folder");
   await expect(dlg.locator(".ld-n")).toHaveCount(0);
-  // Each change saved as made: the + and − a moment after the last press, no Save.
-  await expect(dlg.locator(".ld-saved")).toHaveText("Saved");
-  await expect.poll(async () => (await cue.calls("desk_lands_set")).at(-1)?.args.lands).toMatchObject({ check: "none", how: "owner", where: "shared" });
-  await page.keyboard.press("Escape");
+  // Saved together by Save (#600), and the screen closes.
+  expect(await cue.calls("desk_lands_set")).toHaveLength(0);
+  await dlg.locator('[data-ld="save"]').click();
   await expect(dlg).toHaveCount(0);
+  await expect.poll(async () => (await cue.calls("desk_lands_set")).at(-1)?.args.lands).toMatchObject({ check: "none", how: "owner", where: "shared" });
   await line(page).locator("[data-lands-change]").click();
   await expect(dlg.locator('[data-ld-part="where"].on')).toHaveText("Shared folder");
 });
@@ -112,8 +112,8 @@ test("a Desk on another project offers no Cue's own check or install, and keeps 
   // Its own steps saved for it alone.
   await seg("After landing").filter({ hasText: "Your own steps" }).click();
   await dlg.locator('[data-ld-steps="after"]').fill("npm run deploy");
+  await dlg.locator('[data-ld="save"]').click();
   await expect.poll(async () => (await cue.calls("desk_lands_set")).at(-1)?.args).toMatchObject({ desk: "desk-web", lands: { after: "command", after_steps: ["npm run deploy"] } });
-  await page.keyboard.press("Escape");
   // Cue's own Desk keeps its own check and install.
   await page.evaluate(() => { deskSelect("cue"); renderMain(); });
   await line(page).locator("[data-lands-change]").click();

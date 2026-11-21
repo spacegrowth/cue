@@ -91,7 +91,10 @@ kbd { font: 600 var(--type-tag) var(--mono); padding: 2px 6px; border-radius: va
 .ld-dialog .ab-row, .ld-dialog .ab-more { padding: 4px; }
 .ld-dialog .ab-note { flex-basis: 100%; padding-top: 0; }
 .ld-old .ld-body > .btn { align-self: flex-start; }
-.ld-saved { font-size: var(--type-small); color: var(--muted); }
+.ld-foot { display: flex; align-items: center; gap: 8px; padding: 10px 22px 14px; border-top: 1px solid var(--line); }
+.ld-foot-t { font-size: var(--type-small); color: var(--muted); }
+.ld-leaving .ld-foot-t { color: var(--ink); font-weight: 650; }
+.ld-move { margin-top: 2px; font-size: var(--type-small); line-height: 1.45; color: var(--ink); }
 @media (max-width: 560px) { .ld-row { grid-template-columns: 1fr; gap: 6px; } .ld-label { padding-top: 0; } }
 /* An add-on row's choice of many (sheets.js extPick): a button, and the choices listed under its row. */
 .xp-btn { flex: none; display: inline-flex; align-items: center; gap: 8px; max-width: 280px; padding: 6px 10px; border-radius: var(--radius-btn); background: var(--panel-2); color: var(--ink); font-size: var(--type-body); font-weight: 650; }
