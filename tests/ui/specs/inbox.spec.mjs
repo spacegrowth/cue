@@ -930,7 +930,10 @@ for (const [shape, size] of [["with room", null], ["narrow", { width: 900, heigh
   await page.locator('.switch-view [data-view="inbox"]').click();
   await page.locator('.ib-row[data-inbox-open="det"]').click();
   const pg = page.locator('.inbox-page[data-inbox-page="det"]');
-  const look = () => pg.evaluate((p) => {
+  // Found and measured in one go: every redraw replaces the page, and a locator's evaluate finds it first and measures it
+  // in a second call, which a redraw can land between (then it measures the old page, gone: all zeros).
+  const look = () => page.evaluate(() => {
+    const p = document.querySelector('.inbox-page[data-inbox-page="det"]');
     const card = p.querySelector(".ib-card.run"), th = p.querySelector(".ib-thread");
     return {
       boxTop: Math.round(p.querySelector(".ib-box").getBoundingClientRect().top),

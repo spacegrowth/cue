@@ -209,7 +209,10 @@ async function loadSteps(sid) {
     const r = await invoke("session_steps", { sessionId: sid, version: f?.version || 0 });
     // Its first feed: what was already there when the chat opened, not steps landing while you watch.
     stepFeeds.set(sid, { version: r.version, turns: r.turns ?? f?.turns ?? [], meta: r.turns ? r.meta : f?.meta, helpers: (r.turns ? r.helpers : f?.helpers) || [], at: Date.now(), fresh: !f });
-    if (r.turns) { renderMain(); wantDetails(sid); }
+    // Nothing to draw when it's still empty: a session with no steps of its own answers "none" at version 0 every
+    // time, and redrawing the whole window for that, twice a second, rebuilt everything on it while you used it.
+    const same = f && r.version === f.version && !r.turns?.length && !f.turns.length;
+    if (r.turns && !same) { renderMain(); wantDetails(sid); }
   } catch {} finally { stepsBusy = false; }
 }
 /** Fetch the output / diff of every step that's open and not fetched yet (60 a call, the rest after). */

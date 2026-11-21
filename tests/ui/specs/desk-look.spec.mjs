@@ -6,6 +6,9 @@ import { listOrder, crewNotLead, blinkOf, boxOf } from "./desk.mjs";
 // ---------- the left column's head and rows (#153: option B) ----------
 
 const cssOf = (loc, ...props) => loc.evaluate((el, ps) => { const c = getComputedStyle(el); return ps.map((p) => c.getPropertyValue(p)); }, props);
+// The same, found and measured in one go by a CSS selector: a redraw replaces the Desk, and a locator finds its element in
+// one call and reads it in the next, which a redraw can land between (then it reads the old element, gone: no style).
+const liveCss = (page, sel, ...props) => page.evaluate(([sel, ps]) => { const c = getComputedStyle(document.querySelector(sel)); return ps.map((p) => c.getPropertyValue(p)); }, [sel, props]);
 
 test("the head is one strip in the accent, flush across the card's top: the name (a switcher), its meta, then the lead's card in it", async ({ page, cue }) => {
   await cue.open("desk");
@@ -64,23 +67,21 @@ test("Run by gives idle and its icons contrasting colors in both themes", async 
   });
   const card = page.locator(".dk-lcard");
   const status = card.locator(".dk-st");
-  const dot = status.locator("i.idle");
-  const badge = card.getByRole("img", { name: "Codex" });
   await expect(status).toHaveText("idle");
   for (const colorScheme of ["light", "dark"]) {
     await page.emulateMedia({ colorScheme });
     await card.click();
     await expect(card).toHaveClass(/\bon\b/);
-    const [surface, ink] = await cssOf(card, "background-color", "color");
-    expect(await cssOf(status, "color", "opacity")).toEqual([ink, "1"]);
-    expect((await cssOf(dot, "box-shadow"))[0]).toContain(ink);
-    expect(await cssOf(card.locator(".dk-ric svg"), "color")).toEqual([ink]);
-    expect(await cssOf(card.locator(".dk-sren"), "color")).toEqual([ink]);
-    expect(await cssOf(badge, "background-color", "color")).toEqual([ink, surface]);
+    const [surface, ink] = await liveCss(page, ".dk-lcard", "background-color", "color");
+    expect(await liveCss(page, ".dk-lcard .dk-st", "color", "opacity")).toEqual([ink, "1"]);
+    expect((await liveCss(page, ".dk-lcard .dk-st i.idle", "box-shadow"))[0]).toContain(ink);
+    expect(await liveCss(page, ".dk-lcard .dk-ric svg", "color")).toEqual([ink]);
+    expect(await liveCss(page, ".dk-lcard .dk-sren", "color")).toEqual([ink]);
+    expect(await liveCss(page, '.dk-lcard [role="img"][aria-label="Codex"]', "background-color", "color")).toEqual([ink, surface]);
     await page.locator('.dk-sessions [data-desk-chat-of="host"]').click();
     await expect(card).not.toHaveClass(/\bon\b/);
-    const [statusInk] = await cssOf(status, "color");
-    expect((await cssOf(dot, "box-shadow"))[0]).toContain(statusInk);
+    const [statusInk] = await liveCss(page, ".dk-lcard .dk-st", "color");
+    expect((await liveCss(page, ".dk-lcard .dk-st i.idle", "box-shadow"))[0]).toContain(statusInk);
   }
 });
 

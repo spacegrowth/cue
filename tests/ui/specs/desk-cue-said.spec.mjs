@@ -126,10 +126,14 @@ for (const scheme of ["light", "dark"]) {
     await expect(first.locator(".mg-full")).toHaveText(TO_SESSION[0][0]);
     await expect(first.locator(".mg-lk")).toHaveAttribute("aria-expanded", "true");
     // Left-aligned, no left stripe, no hover text.
-    const css = await first.evaluate((e) => { const c = getComputedStyle(e); return [c.borderLeftWidth, c.textAlign]; });
-    expect(css[0]).toBe("0px");
-    const [lb, cb] = [await first.boundingBox(), await chat.boundingBox()];
-    expect(lb.x - cb.x).toBeLessThan(40);
+    // Found and measured in one go: a redraw replaces the chat, and a locator finds it in one call and measures it in the
+    // next, which a redraw can land between (then it measures the old line, gone: no box, no style).
+    const [border, dx] = await page.evaluate(() => {
+      const chat = document.querySelector('.dk-right [data-desk-chat="host"]'), line = chat.querySelector(".mg.cue-msg");
+      return [getComputedStyle(line).borderLeftWidth, line.getBoundingClientRect().x - chat.getBoundingClientRect().x];
+    });
+    expect(border).toBe("0px");
+    expect(dx).toBeLessThan(40);
     await expect(page.locator("[title]")).toHaveCount(0);
     if (process.env.SHOT_DIR) await chat.screenshot({ path: `${process.env.SHOT_DIR}/desk-cue-said-session-${scheme}.png` });
     await first.locator(".mg-lk", { hasText: "Less" }).click();

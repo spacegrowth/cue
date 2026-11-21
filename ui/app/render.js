@@ -102,7 +102,10 @@ function beforeDraw() {
   const focused = document.activeElement;
   const focusKey = focused?.dataset?.text;
   const focusId = !focusKey && focused?.matches?.("input[id], select[id]") ? focused.id : null;   // e.g. a quick phrase field, the Model pick
-  const was = { focused, flipFrom: flipRects(), focusKey, focusId };
+  // A button that has the keyboard (Esc closed its menu, Tab reached it) is built afresh too: found again by what it
+  // does, its data-* attributes, so the keyboard stays on it rather than falling to nothing at every redraw.
+  const focusBtn = !focusKey && !focusId && focused?.matches?.("button, [role=button], a[href]") && focused.attributes ? `${focused.localName}${[...focused.attributes].filter((a) => a.name.startsWith("data-")).map((a) => `[${a.name}="${CSS.escape(a.value)}"]`).join("")}` : null;
+  const was = { focused, flipFrom: flipRects(), focusKey, focusId, focusBtn };
   was.caret = focusKey || (focusId && focused.setSelectionRange) ? [focused.selectionStart, focused.selectionEnd] : null;
   // Each text box is built afresh too, scrolled to its top: a long message would jump there on every redraw.
   was.boxTops = new Map([...document.querySelectorAll("textarea[data-text]")].map((el) => [el.dataset.text, el.scrollTop]));
@@ -168,7 +171,7 @@ function settleDraftEditors(root, editors) {
     if (!old) continue;
     morphAttrs(old, fresh);
     if (old.value !== fresh.value) old.value = fresh.value;
-    moveTo(fresh.parentNode, old, fresh);
+    moveBack(fresh.parentNode, old, fresh);
     fresh.remove();
   }
   for (const remaining of editors.values()) for (const el of remaining) el.remove();
@@ -321,7 +324,7 @@ function tellChatOpen(chat) {
 }
 /** The cursor back where it was, or into the text box of something new. */
 function restoreFocus(was) {
-  const { focusKey, focusId, caret } = was;
+  const { focusKey, focusId, focusBtn, caret } = was;
   // Something new opened in Active: its text box takes the cursor, so you can just type. Done once it
   // has (at launch the first draw comes before the sessions do: no box yet, so the next draw tries again).
   const target = `${active?.id}|${active?.sid}`;
@@ -337,6 +340,10 @@ function restoreFocus(was) {
     if (el) { el.focus({ preventScroll: true }); el.setSelectionRange(...caret); } else if (view === "inbox") focusComposer(undefined, { home: "inbox", end: false });
   }
   else if (focusId) { const el = document.getElementById(focusId); if (el) { el.focus({ preventScroll: true }); if (caret) el.setSelectionRange(...caret); } }
+  else if (focusBtn && !was.focused.isConnected && document.activeElement === document.body) {
+    const els = document.querySelectorAll(focusBtn);   // only one just like it: two would be a guess
+    if (els.length === 1) els[0].focus({ preventScroll: true });
+  }
   // Where each box was scrolled, after the cursor is back (putting it back can scroll the box itself).
   document.querySelectorAll("textarea[data-text]").forEach((el) => { const top = was.boxTops.get(el.dataset.text); if (top != null) el.scrollTop = top; });
   document.querySelectorAll("input[data-text]").forEach((el) => { const left = was.lineLefts.get(el.dataset.text); if (left) el.scrollLeft = left; });

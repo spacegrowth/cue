@@ -624,7 +624,7 @@ function deskListsSettle(kept) {
     document.body.append(spare);
     deskKeepAttrs(el, fresh);
     deskKeepPatch(el, fresh, pool, spare);
-    moveTo(fresh.parentNode, el, fresh);
+    moveBack(fresh.parentNode, el, fresh);
     fresh.remove();
     spare.remove();
   }

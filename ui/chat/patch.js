@@ -15,6 +15,13 @@
 // taken off at the next draw. A selection in the chat collapses on either move, so it's noted and put back.
 const KEEPS_STATE = typeof Element.prototype.moveBefore === "function";
 const moveTo = (parent, node, before = null) => (KEEPS_STATE ? parent.moveBefore(node, before) : parent.insertBefore(node, before));
+/** A kept element put back into the window just drawn. The fresh parent is styled first: moved into one the engine hasn't
+ *  styled yet, the element's running transitions and animations are dropped (a group sliding shut snapped shut, a fade
+ *  started over), though moveBefore keeps them otherwise. */
+const moveBack = (parent, node, before = null) => {
+  if (KEEPS_STATE) getComputedStyle(parent).display;
+  moveTo(parent, node, before);
+};
 let chatPending = null;   // what the slot stands for: the chat's HTML, until settleChat patches it in
 /** Before the window's HTML is set: the chat, the sweep and a flick move aside, out of what's replaced. */
 function liftChat() {
@@ -49,15 +56,15 @@ function settleChat({ kept, top, picked }) {
   const { forKey, html, turns } = chatPending;
   chatPending = null;
   const pane = slot.closest(".active-pane");
-  moveTo(slot.parentNode, old, slot);
+  moveBack(slot.parentNode, old, slot);
   slot.remove();
   if (top != null && old.scrollTop !== top) old.scrollTop = top;
   // The sweep carries on where it was (its class and speed follow the new draw); so does a flick mid-pass.
   const sw = pane?.querySelector("[data-sweep]"), oldSw = kept.find((el) => el.matches("[data-sweep]"));
-  if (sw && oldSw) { oldSw.className = sw.className; oldSw.style.cssText = sw.style.cssText; moveTo(sw.parentNode, oldSw, sw); sw.remove(); }
+  if (sw && oldSw) { oldSw.className = sw.className; oldSw.style.cssText = sw.style.cssText; moveBack(sw.parentNode, oldSw, sw); sw.remove(); }
   else oldSw?.remove();
   const oldFlick = kept.find((el) => el.matches("[data-flick]"));
-  if (sw && oldFlick) moveTo(pane, oldFlick, (pane.querySelector("[data-sweep]") || pane.firstChild).nextSibling);
+  if (sw && oldFlick) moveBack(pane, oldFlick, (pane.querySelector("[data-sweep]") || pane.firstChild).nextSibling);
   else oldFlick?.remove();
   if (!KEEPS_STATE) old.querySelectorAll(".reveal").forEach((el) => el.classList.remove("reveal"));
   const f = stepFeeds.get(forKey.slice(2));

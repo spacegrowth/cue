@@ -222,7 +222,7 @@ function deskThreadSettle(lifted) {
   if (!fresh) return el.remove();
   patchKids(el, fresh, false);
   morphAttrs(el, fresh);
-  moveTo(fresh.parentNode, el, fresh);
+  moveBack(fresh.parentNode, el, fresh);
   fresh.remove();
   if (picked && picked[0].isConnected && picked[2].isConnected) try { getSelection().setBaseAndExtent(...picked); } catch {}
 }
