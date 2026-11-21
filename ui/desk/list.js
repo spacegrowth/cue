@@ -257,12 +257,13 @@ function deskMachTag(i) {
   return i?.machine === undefined ? machTag(sessionOf(deskHolderSid(i))?.machine) : "";
 }
 /** Item `i` worked on another machine (`i.remote`), in one plain line: the machine not answering, what it waits for,
- *  when its work was last pushed. "" when it's worked here or there's nothing to say. */
+ *  when its work was last pushed (pushed at each of its holder's stops, #598), or that none of it was while the machine
+ *  is quiet. "" when it's worked here or there's nothing to say. */
 function deskRemoteLine(i) {
   const r = i?.remote;
   if (!r) return "";
   const mins = (ms) => { const m = Math.max(1, Math.round((now() - ms) / 60000)); return m < 60 ? `${m} min` : ago(ms); };
-  return [r.quiet_since > 0 ? `machine not answering for ${mins(r.quiet_since)}` : "", r.wait ? firstLine(r.wait) : "", r.pushed_at > 0 ? `last pushed ${mins(r.pushed_at)} ago` : ""].filter(Boolean).join(" · ");
+  return [r.quiet_since > 0 ? `machine not answering for ${mins(r.quiet_since)}` : "", r.wait ? firstLine(r.wait) : "", r.pushed_at > 0 ? `last pushed ${mins(r.pushed_at)} ago` : r.quiet_since > 0 && !r.wait ? "its work is on the machine, not pushed" : ""].filter(Boolean).join(" · ");
 }
 /** The model item `i`'s session was asked to start on (#620: the lead's `model:`, else the Desk's default), short
  *  ("Fable"), beside its holder; "" when Claude Code picked or none was asked. */

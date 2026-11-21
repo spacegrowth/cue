@@ -118,9 +118,10 @@ pub(crate) fn route_on(st: &Store, project: &str, id: &str, to: &str, on: Option
     Ok(Some(Some(OnMachine { machine: m.name.clone(), folder })))
 }
 
-/// What a holder on another machine is told of its item's branch.
-pub(crate) fn remote_line(r: &RemoteWork, id: &str) -> String {
-    format!(
+/// What a holder on another machine is told of its item's branch. `from`: the work last pushed from the machine its
+/// last holder was on (#598), which it starts from.
+pub(crate) fn remote_line(r: &RemoteWork, id: &str, from: Option<&RemoteWork>) -> String {
+    let line = format!(
         "You work on another machine: in {folder}, fetch {onto} from {remote} and make the branch {branch} from it \
          (git fetch {remote} && git switch -c {branch} {remote}/{onto}; if it's there already, switch to it and merge \
          {remote}/{onto}). Commit all your work on {branch}. Don't push, and don't change {onto}: at your DONE, Cue \
@@ -132,7 +133,26 @@ pub(crate) fn remote_line(r: &RemoteWork, id: &str) -> String {
         onto = r.onto,
         remote = r.remote,
         branch = r.branch,
+    );
+    let Some(f) = from else { return line };
+    format!(
+        "{line}\nIt moved here from {shown}: its work there was last pushed {when}, as {fb} (commit {sha}). Start from \
+         it, not from {onto}: git fetch {remote} && git switch -c {branch} {remote}/{fb}, then merge {remote}/{onto}. \
+         Anything not pushed stays on {shown}.",
+        shown = crate::machines::display_name(&f.machine),
+        when = pushed_when(f.pushed_at),
+        fb = f.branch,
+        sha = short(&f.sha),
+        onto = r.onto,
+        remote = r.remote,
+        branch = r.branch,
     )
+}
+
+/// When work was pushed (ms), as a holder or the lead is told: "4 min ago", "2 h ago".
+pub(crate) fn pushed_when(at: u64) -> String {
+    let mins = now_ms().saturating_sub(at) / 60_000;
+    if mins < 60 { format!("{} min ago", mins.max(1)) } else { format!("{} h ago", mins / 60) }
 }
 
 /// The DONE line a holder of item `id` on another machine says (#596): its branch and the last commit on it, which
@@ -218,15 +238,14 @@ impl Hub {
             }
             let Some(remote) = remote_of("", &repo, &onto) else { continue };
             let r = RemoteWork { machine: machine.clone(), folder, branch: format!("desk/{id}"), remote: remote.clone(), onto: onto.clone(), ..Default::default() };
-            let line = remote_line(&r, &id);
+            // Moved from a machine that pushed its work (#598): it starts from that, taken off the item.
             let set = self.write(|st| {
-                let Some(it) = st.desk.item_mut(&id).filter(|i| i.remote.is_none()) else { return false };
-                it.remote = Some(r);
-                true
+                let it = st.desk.item_mut(&id).filter(|i| i.remote.is_none())?;
+                it.remote = Some(r.clone());
+                Some(it.pushed_before.take())
             });
-            if !set {
-                continue;
-            }
+            let Some(from) = set else { continue };
+            let line = remote_line(&r, &id, from.as_ref());
             // A project set to never push: it starts now, nothing fetched or asked.
             if l.push != "never" {
                 // Its holder's message held while main here is compared with the remote the machine starts from, off
@@ -326,10 +345,7 @@ impl Hub {
             self.remote_back(it, &format!("{e}. Every commit on {branch} there is pushed, so take each out of the branch's history (amend or rebase it, not a new commit on top; set user.name and user.email there for an author) and say DONE again"));
             return false;
         }
-        // Who made each commit goes with it: never the email git guessed from the machine (user@host).
-        let who = git(m, dir, &[], &["log", "--format=%an%n%ae%n%cn%n%ce", range]).unwrap_or_default();
-        let guessed = who.lines().skip(1).step_by(2).map(str::trim).find(|e| e.is_empty() || e.split_once('@').is_some_and(|(_, host)| !host.contains('.')));
-        if let Some(e) = guessed {
+        if let Some(e) = guessed_email(m, dir, range) {
             self.remote_back(it, &format!("Not pushed: a commit on {branch} has the email \"{e}\", which git made up from the machine. Set user.email there, redo those commits (git rebase --reset-author), and say DONE again"));
             return false;
         }
@@ -406,7 +422,7 @@ impl Hub {
         exclude_trees(repo);
         let _ = git("", repo, &[], &["worktree", "prune"]);
         // What was fetched for items no longer open (closed mid-finish, say) goes.
-        let open: Vec<String> = self.read(|st| st.desk.items.iter().filter(|i| i.state != "done" && i.remote.is_some()).map(|i| i.id.clone()).collect());
+        let open: Vec<String> = self.read(|st| st.desk.items.iter().filter(|i| i.state != "done" && (i.remote.is_some() || i.pushed_before.is_some())).map(|i| i.id.clone()).collect());
         let fetched = git("", repo, &[], &["for-each-ref", "--format=%(refname)", "refs/cue/remote/"]).unwrap_or_default();
         for name in fetched.lines().map(str::trim).filter(|n| n.strip_prefix("refs/cue/remote/").is_some_and(|x| !open.iter().any(|o| o == x))) {
             let _ = git("", repo, &[], &["update-ref", "-d", name]);
@@ -424,7 +440,10 @@ impl Hub {
         let old = self.desk_saving(|| {
             let it = self.write(|st| {
                 let i = st.desk.item_mut(id).filter(|i| i.remote.is_some())?;
-                i.remote = None;
+                // Work pushed from there: its next holder starts from it (#598), its fetched commit kept here for that.
+                if let Some(r) = i.remote.take().filter(|r| r.pushed_at > 0 && !r.sha.is_empty()) {
+                    i.pushed_before = Some(r);
+                }
                 let t = i.tree.take_if(|t| is_remote_copy(t, id));
                 Some((i.clone(), t))
             });
@@ -436,7 +455,6 @@ impl Hub {
         let Some((_, t)) = old else { return };
         if let Some(t) = t {
             remove(&t);
-            let _ = git("", &t.repo, &[], &["update-ref", "-d", &fetched_ref(id)]);
         }
         self.changed();
     }
@@ -511,6 +529,64 @@ impl Hub {
         self.finish_ask(id, "remote", &format!("{why} (Cue tried {STUCK_AFTER} times)"), "");
     }
 
+    /// Session `sid`'s turn ended saying `text` (#598): each item it holds at work on another machine that answers has
+    /// its branch pushed from there and fetched here, off this thread, so its work isn't only on that machine and its
+    /// next holder can start from it. Not for an item this turn says DONE on: its DONE pushes it.
+    pub(crate) fn desk_remote_stops(&self, sid: &str, text: &str) {
+        let ids: Vec<String> = self.read(|st| {
+            st.desk
+                .items
+                .iter()
+                .filter(|i| i.state == "working" && i.holder.as_ref().is_some_and(|h| h.is(sid)) && holder_has(st, i))
+                .filter(|i| i.remote.as_ref().is_some_and(|r| crate::hub::machine_quiet_since(st, &r.machine).is_none()))
+                .map(|i| i.id.clone())
+                .filter(|id| !text.contains(&format!("DONE: #{id}")))
+                .collect()
+        });
+        for id in ids {
+            self.later(0, move |h| h.remote_stop_push(&id));
+        }
+    }
+
+    /// Item `id`'s branch on its machine pushed at a stop (#598), when it has new commits past the main line: checked
+    /// as at DONE first (no never-commit word, no made-up email). Nothing to say when it can't go: it stays on the
+    /// machine, and its DONE says why.
+    fn remote_stop_push(&self, id: &str) {
+        let Some(it) = self.read(|st| st.desk.item(id).filter(|i| i.state == "working" && holder_has(st, i)).cloned()) else { return };
+        let Some(r) = it.remote.clone() else { return };
+        let (m, dir, branch) = (r.machine.as_str(), r.folder.as_str(), r.branch.as_str());
+        let Some(head) = git(m, dir, &[], &["rev-parse", "-q", "--verify", &format!("refs/heads/{branch}")]).map(|h| h.trim().to_string()).filter(|h| !h.is_empty()) else { return };
+        if head == r.sha {
+            return;
+        }
+        let there = remote_of(m, dir, &r.onto).unwrap_or_else(|| r.remote.clone());
+        let range = format!("{there}/{}..refs/heads/{branch}", r.onto);
+        if git(m, dir, &[], &["rev-list", "--count", &range]).and_then(|n| n.trim().parse::<u32>().ok()).unwrap_or(0) == 0 {
+            return;
+        }
+        let project = self.read(|st| st.desk.project_of(&it.project).to_string());
+        if let Err(e) = crate::desk::hub::landing::push_check::push_allowed(m, dir, &project, &there, &format!("refs/heads/{branch}")) {
+            eprintln!("cue: desk: #{id} not pushed at a stop: {e}");
+            return;
+        }
+        if guessed_email(m, dir, &range).is_some() {
+            return;
+        }
+        if let Err(e) = git_said(m, dir, &[("GIT_TERMINAL_PROMPT", "0")], &["push", "-q", &there, &format!("+{head}:refs/heads/{branch}")]) {
+            eprintln!("cue: desk: #{id} not pushed at a stop: {e}");
+            return;
+        }
+        let now = now_ms();
+        self.remote_set(id, |r| (r.sha, r.pushed_at) = (head.clone(), now));
+        // Fetched here too, so a holder here can start from it without the network.
+        if let Some((repo, onto)) = self.desk_folder(&it.project).and_then(|l| main_checkout(&l)).filter(|(_, b)| !b.is_empty()) {
+            let here = remote_of("", &repo, &onto).unwrap_or_else(|| r.remote.clone());
+            if let Err(e) = self.net_git(&repo, &["fetch", "-q", &here, &format!("+refs/heads/{branch}:{}", fetched_ref(id))]) {
+                eprintln!("cue: desk: #{id}'s push not fetched here: {e}");
+            }
+        }
+    }
+
     /// Items on a machine that has been quiet for `QUIET_ASK_MS`: the lead is told once per quiet spell, to ask you
     /// whether to wait or move the item. Run by the finishing tick.
     pub(crate) fn desk_remote_quiet(&self) {
@@ -540,10 +616,15 @@ impl Hub {
                     continue;
                 }
                 r.quiet_told = true;
+                let pushed = (r.pushed_at > 0).then(|| (r.branch.clone(), pushed_when(r.pushed_at)));
                 let title = st.desk.item(&id).map(|i| i.title.clone()).unwrap_or_default();
                 let mins = (now - since) / 60_000;
+                let from = match pushed {
+                    Some((b, when)) => format!("it starts from {b}, last pushed {when}; what's newer stays there"),
+                    None => "nothing of it was pushed yet, so it starts over from main".to_string(),
+                };
                 let words = format!(
-                    "#{id} ({title}) is on {}, which hasn't answered for {mins} minutes. Its work there is safe while the machine is. ASK the user: wait for it, or move #{id} to another session (it starts from its last pushed branch).",
+                    "#{id} ({title}) is on {}, which hasn't answered for {mins} minutes. Its work there is safe while the machine is. ASK: #{id} | Wait for {0}, or move #{id} to another session ({from})? | Wait | Move it",
                     crate::machines::display_name(&machine)
                 );
                 crate::desk::hub::lead::feed::note(st, &project, &id, crate::desk::feed::ChangeKind::Machine, words, &format!("quiet:{since}"), now);
@@ -557,6 +638,29 @@ impl Hub {
             self.later(0, |h| h.desk_feed_send());
         }
     }
+}
+
+/// Item `id`'s new copy here (`path`, made in `repo` from main at `base`) when it moved from another machine (#598):
+/// put on its work last pushed from there (`from`, fetched here as it was pushed), its base then where that work
+/// meets main. The base, and the words its holder is told.
+pub(crate) fn carry_moved(repo: &str, path: &str, base: &str, from: &RemoteWork, id: &str) -> (String, String) {
+    let shown = crate::machines::display_name(&from.machine);
+    let fetched = crate::desk::hub::landing::tree_files::rev(repo, &fetched_ref(id)).filter(|s| *s == from.sha);
+    let moved = fetched.as_deref().and_then(|sha| {
+        git_said("", path, &[], &["reset", "-q", "--hard", sha]).ok()?;
+        git("", repo, &[], &["merge-base", sha, base]).map(|b| b.trim().to_string()).filter(|b| !b.is_empty())
+    });
+    match moved {
+        Some(b) => (b, format!("It moved here from {shown}: your copy starts from its work last pushed from there {} (commit {}), not from main. Read it first (git log). Anything not pushed stays on {shown}.", pushed_when(from.pushed_at), short(&from.sha))),
+        None => (base.to_string(), format!("It moved here from {shown}, but Cue couldn't bring its pushed work here ({}), so your copy starts from main.", from.branch)),
+    }
+}
+
+/// An email git made up from machine `m` (user@host, or none) on a commit in `range` of the clone `dir` there: who
+/// made each commit goes with it when pushed.
+fn guessed_email(m: &str, dir: &str, range: &str) -> Option<String> {
+    let who = git(m, dir, &[], &["log", "--format=%an%n%ae%n%cn%n%ce", range]).unwrap_or_default();
+    who.lines().skip(1).step_by(2).map(str::trim).find(|e| e.is_empty() || e.split_once('@').is_some_and(|(_, host)| !host.contains('.'))).map(str::to_string)
 }
 
 /// Commit `sha` as shown: its first 10 characters.

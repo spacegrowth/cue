@@ -19,6 +19,13 @@ pub(crate) fn machine_quiet_since(st: &Store, machine: &str) -> Option<u64> {
     st.unreachable.contains(machine).then(|| st.unreachable_since.get(machine).copied().unwrap_or(0)).filter(|s| *s > 0)
 }
 
+/// `machine` marked as not answering since `since` (ms), as the sweep marks it (a test's).
+#[cfg(test)]
+pub(crate) fn machine_quiet_from(st: &mut Store, machine: &str, since: u64) {
+    st.unreachable.insert(machine.to_string());
+    st.unreachable_since.insert(machine.to_string(), since);
+}
+
 #[cfg(test)]
 pub(crate) fn desk_pause_words() -> &'static str {
     crate::desk::hub::away::pause::PAUSE_WORDS

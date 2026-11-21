@@ -225,6 +225,10 @@ pub struct DeskItem {
     /// Saved.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub remote: Option<RemoteWork>,
+    /// Its work last pushed from another machine before it moved to another holder (#598): the branch and commit on
+    /// the shared remote (fetched here), which its next holder starts from. Taken as that holder starts. Saved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pushed_before: Option<RemoteWork>,
     /// Where the lead asked a new session for it to start (`ROUTE: #id -> new | on: <machine> | in: <folder>`): the
     /// machine and the folder there. Saved, so a retry starts it there too.
     #[serde(default, skip_serializing_if = "Option::is_none")]

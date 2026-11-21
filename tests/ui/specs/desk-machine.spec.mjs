@@ -31,6 +31,11 @@ test("a holder on another machine shows the machine, and its item says how that 
   // The machine answers again and nothing waits: only when it last pushed.
   await cue.change((st) => Object.assign(st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d5").remote, { quiet_since: 0, wait: "" }));
   await expect(right.locator(".dk-pmeta.dk-rmt")).toHaveText("last pushed 5 min ago");
+  // Quiet, and nothing of it was ever pushed (#598): its work is only there, and the item says so.
+  await cue.change((st) => Object.assign(st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d5").remote, { quiet_since: Date.now() - 31 * 60000, pushed_at: 0, sha: "" }));
+  await expect(right.locator(".dk-pmeta.dk-rmt")).toHaveText("machine not answering for 31 min · its work is on the machine, not pushed");
+  await expect(row.locator(".dk-rmt")).toHaveText("machine not answering for 31 min · its work is on the machine, not pushed");
+  await expect(page.locator(".dk-rmt[title], .dk-rmt [title]")).toHaveCount(0);
 });
 
 // Where an item's session starts (#597): the Desk's machine on an unstarted item's card, a "Starts on" choice on its

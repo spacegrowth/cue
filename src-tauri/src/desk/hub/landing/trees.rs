@@ -184,6 +184,8 @@ impl Hub {
     fn desk_tree_made(&self, fx: &mut Effects, id: &str, to: &str, mut t: ItemTree) {
         // Picked up again (#608): its kept copy moves into the slot, on its own branch.
         let kept = self.read(|st| st.desk.item(id).and_then(|i| i.kept_copy.clone()));
+        // Moved from another machine (#598): a plain copy starts from the work last pushed from there.
+        let moved = if kept.is_none() && !t.in_place && !t.keep { self.write(|st| st.desk.item_mut(id).and_then(|i| i.pushed_before.take())) } else { None };
         let made = match &kept {
             // On a branch in the project's own folder: never a worktree moved there; its branch starts from the kept
             // copy's work instead (in_place.rs).
@@ -195,19 +197,26 @@ impl Hub {
             None => prepare(&t, id),
         };
         match made {
-            Ok((base, path)) => self.desk_tree_ready(fx, id, to, t, path, base, kept.is_some()),
+            Ok((base, path)) => self.desk_tree_ready(fx, id, to, t, path, base, kept.is_some(), moved),
             Err(e) => self.desk_tree_failed(fx, id, to, &t, kept.is_some(), &e),
         }
     }
 
-    /// Item `id`'s copy `t` made at `path` from `base` (its kept copy moved back in, when `kept`): saved on the item,
-    /// and its holder's message says where.
+    /// Item `id`'s copy `t` made at `path` from `base` (its kept copy moved back in, when `kept`; `moved`, its work
+    /// pushed from another machine, carried in, #598): saved on the item, and its holder's message says where.
     #[allow(clippy::too_many_arguments)]
-    fn desk_tree_ready(&self, fx: &mut Effects, id: &str, to: &str, mut t: ItemTree, path: String, base: String, kept: bool) {
+    fn desk_tree_ready(&self, fx: &mut Effects, id: &str, to: &str, mut t: ItemTree, path: String, base: String, kept: bool, moved: Option<crate::desk::RemoteWork>) {
         t.path = path;
         if t.in_place {
             t.main_line = crate::desk::hub::landing::in_place::recorded(&t.repo).map(|(_, m)| m).unwrap_or_default();
         }
+        let (base, carried) = match &moved {
+            Some(from) => {
+                let (b, words) = crate::desk::hub::landing::remote_item::carry_moved(&t.repo, &t.path, &base, from, id);
+                (b, Some(words))
+            }
+            None => (base, None),
+        };
         let it = self.write(|st| {
             let i = st.desk.item_mut(id)?;
             i.kept_copy = None;
@@ -223,6 +232,10 @@ impl Hub {
         let mut line = tree_line(&t);
         if kept {
             line.push_str(" It holds this item's work from before it was dropped: read it first (git status, git log).");
+        }
+        if let Some(w) = carried {
+            line.push(' ');
+            line.push_str(&w);
         }
         let mut told = false;
         for (_, text) in fx.sends.iter_mut().filter(|(s, text)| *s == to && names_item(text, id)) {

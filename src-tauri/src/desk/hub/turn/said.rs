@@ -668,6 +668,8 @@ impl Hub {
     /// lock), so its item reads as still at work or to resume at once, not a second later (view.rs wrote_just_now).
     pub(crate) fn desk_turn_ended(&self, sid: &str, text: &str, turn: &[crate::model::TurnPart]) {
         self.look_at_holder_logs(now_ms());
+        // Its work on another machine pushed at this stop (#598, desk/hub/landing/remote_item.rs).
+        self.desk_remote_stops(sid, text);
         self.desk_turn_ended_said(sid, text, turn);
     }
 

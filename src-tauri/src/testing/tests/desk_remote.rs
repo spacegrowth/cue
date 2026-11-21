@@ -534,3 +534,91 @@ fn on_this_mac_starts_it_here_whatever_the_desk_starts_on() {
     assert_eq!(it["on_machine"]["machine"].as_str(), Some(""), "{it}");
     assert!(it["machine"].as_str().unwrap_or("").is_empty(), "{it}");
 }
+
+// A quiet machine (#598): the holder's branch there is pushed at each of its stops, so its work isn't only on that
+// machine; after half an hour quiet the lead asks you to wait or move it; moved, its new holder starts from that push.
+
+/// Item `id`'s machine "box" gone quiet since now: it doesn't answer, and Cue has marked it so.
+fn box_quiet(w: &World, ssh: &crate::testing::FakeSsh) {
+    ssh.unplug("box");
+    let now = crate::clock::now_ms();
+    w.hub().write(|st| crate::hub::machine_quiet_from(st, "box", now));
+}
+
+#[test]
+fn a_holder_on_another_machine_has_its_branch_pushed_at_each_stop() {
+    let w = World::new();
+    let ((dir, bare, there, project, id, h), _ssh) = routed_there(&w);
+    let branch = format!("desk/{id}");
+    // A stop before any commit: nothing to push.
+    ends(&w, &h, "Looking around.");
+    w.advance(1000);
+    assert!(git(&bare, &["branch", "--list", &branch]).trim().is_empty(), "nothing pushed before a commit");
+    works_there(&there, &id, "a.txt", "a\n", "first go");
+    ends(&w, &h, "Half way.");
+    w.advance(1000);
+    let head = git(&there, &["rev-parse", &branch]).trim().to_string();
+    assert_eq!(git(&bare, &["rev-parse", &format!("refs/heads/{branch}")]).trim(), head, "pushed at its stop");
+    assert_eq!(git(&dir, &["rev-parse", &format!("refs/cue/remote/{id}")]).trim(), head, "and fetched here");
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!(it["remote"]["sha"].as_str(), Some(head.as_str()), "{it}");
+    assert!(it["remote"]["pushed_at"].as_u64().unwrap_or(0) > 0, "{it}");
+    assert_eq!(it["state"].as_str(), Some("working"), "still at work: {it}");
+    // A never-commit word on it: that stop pushes nothing, and the remote keeps the last good push.
+    w.hub().set_setting("project.never", serde_json::json!({ project.clone(): ["sekrit"] })).unwrap();
+    works_there(&there, &id, "b.txt", "the sekrit plan\n", "second go");
+    ends(&w, &h, "More.");
+    w.advance(1000);
+    assert_eq!(git(&bare, &["rev-parse", &format!("refs/heads/{branch}")]).trim(), head, "not pushed past the word");
+}
+
+#[test]
+fn a_machine_quiet_for_half_an_hour_has_the_lead_ask_you_to_wait_or_move_it() {
+    let w = World::new();
+    let ((_, _, there, project, id, h), ssh) = routed_there(&w);
+    let lead = w.hub().desk_lead_sid(&project).unwrap();
+    works_there(&there, &id, "a.txt", "a\n", "first go");
+    ends(&w, &h, "Half way.");
+    w.advance(1000);
+    box_quiet(&w, &ssh);
+    // The item says so, with how long.
+    w.advance(12 * 60_000);
+    let it = item(&w, &project, "Header jumps");
+    assert!(it["remote"]["quiet_since"].as_u64().unwrap_or(0) > 0, "{it}");
+    super::desk_commit::tick(&w);
+    assert!(told_lead(&w, &lead, "hasn't answered").is_empty(), "not asked before half an hour");
+    w.advance(20 * 60_000);
+    super::desk_commit::tick(&w);
+    let asked = told_lead(&w, &lead, "hasn't answered");
+    assert!(asked.contains(&format!("ASK: #{id}")) && asked.contains("Wait") && asked.contains("Move it"), "{asked}");
+    assert!(asked.contains(&format!("starts from desk/{id}, last pushed")), "{asked}");
+}
+
+#[test]
+fn an_item_moved_off_a_quiet_machine_starts_its_new_holder_here_from_its_last_push() {
+    let w = World::new();
+    let ((dir, _, there, project, id, h), ssh) = routed_there(&w);
+    let lead = w.hub().desk_lead_sid(&project).unwrap();
+    works_there(&there, &id, "a.txt", "a\n", "first go");
+    ends(&w, &h, "Half way.");
+    w.advance(1000);
+    let pushed = git(&there, &["rev-parse", &format!("desk/{id}")]).trim().to_string();
+    // Not pushed: work after its last stop stays there.
+    works_there(&there, &id, "b.txt", "b\n", "second go");
+    box_quiet(&w, &ssh);
+    w.advance(31 * 60_000);
+    // You said move it: the lead routes it to a new session here.
+    ends(&w, &lead, &format!("ROUTE: #{id} -> new | on: this Mac | why: you said move it"));
+    w.advance(1000);
+    let it = item(&w, &project, "Header jumps");
+    assert!(it["remote"].is_null() && it["pushed_before"].is_null(), "taken as its new holder started: {it}");
+    let copy = it["tree"]["path"].as_str().unwrap_or_else(|| panic!("a copy here: {it}")).to_string();
+    let copy = std::path::Path::new(&copy);
+    assert_eq!(git(copy, &["rev-parse", "HEAD"]).trim(), pushed, "its copy starts from the last push");
+    assert!(copy.join("a.txt").is_file() && !copy.join("b.txt").exists());
+    assert_eq!(it["tree"]["base"].as_str(), Some(git(&dir, &["rev-parse", "main"]).trim()), "{it}");
+    let holder = it["holder"]["sid"].as_str().unwrap().to_string();
+    assert_ne!(holder, h);
+    let told = w.hosted.sent().into_iter().filter(|(s, t)| *s == holder && t.contains("moved here from box")).count();
+    assert_eq!(told, 1, "its new holder is told where it starts");
+}
