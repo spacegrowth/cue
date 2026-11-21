@@ -253,7 +253,7 @@ function itabClimb(r) {
       ${hx != null ? `<line class="mark" x1="${X(r.handoff_turn).toFixed(1)}" x2="${X(r.handoff_turn).toFixed(1)}" y1="0" y2="${H}"></line>` : ""}
     </svg>
     <span class="itab-limit mono" style="top:${((Y(300000) / H) * 100).toFixed(1)}%">300k</span>
-    ${hx != null ? `<span class="itab-handoff" style="left:${hx.toFixed(1)}%;transform:translateX(-${hx.toFixed(1)}%)">hand off here · turn ${r.handoff_turn + 1}</span>` : ""}
+    ${hx != null ? `<span class="itab-handoff${hx > 60 ? " end" : ""}" style="left:${hx.toFixed(1)}%">hand off here · turn ${r.handoff_turn + 1}</span>` : ""}
   </div>` : "";
   return `<button class="itab-tile" data-itab-open="${esc(r.session_id)}">
     <span class="itab-tilehead"><span class="itab-who">${r.project && r.project !== name ? `<span class="itab-proj">${esc(r.project)}</span>` : ""}<span class="itab-name">${esc(name)}</span></span><b>${esc(itabUsd(r.usd))}</b></span>

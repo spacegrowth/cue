@@ -179,17 +179,6 @@ function retheme() {
   const theme = termTheme();
   for (const t of terms) t.options.theme = theme;
 }
-/** A terminal's text: the type scale's small size (Settings → Text size), whole pixels. */
-const termPx = () => parseFloat(cssVar("--type-small")) || 12;
-/** The open terminals' text at the size picked now, each fitted again to its box. */
-function termText() {
-  const px = termPx();
-  for (const t of terms) {
-    if (t.options.fontSize === px) continue;
-    t.options.fontSize = px;
-    try { t.cueFit?.fit(); } catch {}
-  }
-}
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", retheme);
 
 /** What arrived since the last frame, decoded and written as one. */
@@ -227,7 +216,7 @@ function termTyping(host, sid, shown = () => true) {
  *  from xterm's fixed 600ms to 700ms (keep that on an update), and the default renderer's in styles/shells.css. */
 function xterm(host) {
   const term = new Terminal({
-    fontFamily: cssVar("--mono") || "Menlo, monospace", fontSize: termPx(), lineHeight: 1.1, cursorBlink: true, scrollback: 5000, macOptionIsMeta: true,
+    fontFamily: cssVar("--mono") || "Menlo, monospace", fontSize: 12, lineHeight: 1.1, cursorBlink: true, scrollback: 5000, macOptionIsMeta: true,
     // ⌥-drag: a selection of the terminal's own, even with tmux taking the mouse.
     macOptionClickForcesSelection: true,
     theme: termTheme(),
@@ -237,7 +226,6 @@ function xterm(host) {
   term.dispose = () => { terms.delete(term); dispose(); };
   const fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
-  term.cueFit = fit;
   term.open(host);
   try {
     const gl = new WebglAddon.WebglAddon();

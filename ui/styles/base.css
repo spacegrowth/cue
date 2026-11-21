@@ -83,10 +83,16 @@
   --window-pad: 20px;
   --on-deny: #FFFFFF;       /* text on a deny fill (an ask's tag) */
 }
-/* Text size (Settings → Text size, #594): the type scale above is Compact, and Cue's window sets data-text on the root
-   to step every size up together. Only the text grows: gaps, panels and buttons keep their place and fit it. */
-:root[data-text="default"] { --type-tag: 11px; --type-pill: 13px; --type-small: 14px; --type-body: 15px; --type-title: 17px; --type-page: 23px; --type-figure: 37px; }
-:root[data-text="large"] { --type-tag: 12px; --type-pill: 14px; --type-small: 15px; --type-body: 16px; --type-title: 18px; --type-page: 25px; --type-figure: 39px; }
+/* Text size (Settings → Text size, #594): the chat's words only. Cue's window sets data-text on the root; a chat's
+   messages and the words typed in its box (not the box's buttons) read at --type-chat, everything else (lists, panels, labels, buttons, the notch)
+   stays on the scale above. */
+:root { --type-chat: 13px; }
+:root[data-text="default"] { --type-chat: 15px; }
+:root[data-text="large"] { --type-chat: 16px; }
+:is(.ap-chat, .dk-chat, .dk-thread, .dk-ichat, .ib-thread, :is(.composer .field, .dk-box, .ib-box) :is(.ta-wrap, textarea)) {
+  --type-body: var(--type-chat);
+  --mg-body: 400 var(--type-chat) / var(--type-body-lh) var(--sans);
+}
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #14170D; --on-bg: #ECEEE3; --on-bg-muted: #A3AA8A; --panel: #1D2113; --panel-2: #232818;

@@ -78,7 +78,7 @@ test("the Desk lead's box: composing Enter never sends, ⇧↵ a new line, ↵ s
 test("a Desk item's box: opening it puts the cursor there; composing Enter never sends, ⇧↵ a new line, ↵ sends", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  await page.locator('[data-desk-item="d6"] .dk-t').click();
+  await page.locator('[data-desk-item="d6"]').click();
   const box = page.locator(".dk-right .dk-box textarea");
   await expect(box).toBeFocused();
   await enterKeys(page, cue, box, "desk_send", { project: "cue", text: "About #d6 (Tidy the Settings copy): keep the old one" });

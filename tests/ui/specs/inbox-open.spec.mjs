@@ -30,9 +30,8 @@ test("Open N sits under Running now: each row is one short line, what's open · 
   expect((await page.locator(".ib-open .ib-op-o").allTextContents()).slice(0, 4)).toEqual(["cue-lead", "desk-merge", "desk-ui", "desk-core"]);
   // One line each, however long: what doesn't fit ends in an ellipsis.
   await page.evaluate(() => { state.open[0].rows[0].title = "A very long question ".repeat(12); state.open[0].rows[0].item = ""; renderMain(); });
-  // (One line of the row's own text at any text size, #594: under two of its line heights, its button included.)
-  const lines = await rows(page).evaluateAll((els) => els.map((el) => [el.getBoundingClientRect().height / parseFloat(getComputedStyle(el.querySelector(".ib-op-w")).lineHeight), getComputedStyle(el.querySelector(".ib-op-w")).textOverflow]));
-  expect(lines.every(([h, t]) => h < 2.5 && t === "ellipsis")).toBe(true);
+  const lines = await rows(page).evaluateAll((els) => els.map((el) => [el.getBoundingClientRect().height, getComputedStyle(el.querySelector(".ib-op-w")).textOverflow]));
+  expect(lines.every(([h, t]) => h < 40 && t === "ellipsis")).toBe(true);
   expect((await page.locator(".ib-open .ib-op-act").allTextContents()).slice(0, 4)).toEqual(["Reply", "Open", "Open", "Send fixes"]);
   expect(await page.locator(".ib-open [title]").count()).toBe(0);
   // Under the pointer a button lights up, so you know a click lands.

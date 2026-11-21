@@ -74,8 +74,8 @@ function toast(msg, ms = 2600) {
 async function setSetting(key, value) {
   try { await invoke("set_setting", { key, value }); } catch (e) { toast(`Couldn't save: ${e}`); }
 }
-/** Text size (config.rs TEXT_SIZES): the type scale's step (styles/base.css data-text), not a zoom, so only the words
- *  grow and the layout stays. Cue keeps the one you pick. */
+/** Text size (config.rs TEXT_SIZES): the chat's words (styles/base.css --type-chat), not a zoom; the rest of the
+ *  window stays as it is. Cue keeps the one you pick. */
 const TEXT_SIZES = [["compact", "Compact"], ["default", "Default"], ["large", "Large"]];
 const textSize = () => (TEXT_SIZES.some(([k]) => k === state.settings?.appearance?.text) ? state.settings.appearance.text : "default");
 /** One step bigger (1) or smaller (-1), or back to Default (0). */

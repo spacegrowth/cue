@@ -305,7 +305,7 @@
 /* "3 more ↓" over the bottom edge of a list that's cut off: small, quiet, out of the way until wanted. */
 /* Its cards' offsets count from the list itself (for "N more" and ending on a whole card). */
 .sec-body, .card.recent { position: relative; }
-.more-below { position: absolute; left: 50%; transform: translateX(-50%); z-index: 3; height: 20px; line-height: 1; padding: 0 9px; border-radius: var(--radius-pill);
+.more-below { position: absolute; left: 50%; transform: translateX(-50%); z-index: 3; height: 20px; padding: 0 9px; border-radius: var(--radius-pill);
   font-size: var(--type-pill); font-weight: 600; letter-spacing: 0.01em; white-space: nowrap; color: var(--on-bg);
   background: var(--bg); border: 1px solid color-mix(in srgb, var(--on-bg) 22%, transparent); transition: opacity 0.15s; }
 .more-below:hover { border-color: color-mix(in srgb, var(--on-bg) 45%, transparent); }
@@ -383,9 +383,3 @@
 .sx-more { margin: 6px 0 0 8px; padding: 4px 10px; border-radius: var(--radius-qp); font-size: var(--type-pill); color: var(--on-bg-muted); }
 .sx-more:hover { color: var(--on-bg); background: color-mix(in srgb, var(--on-bg) 8%, transparent); }
 
-/* The last step (a larger text size at the narrowest window, #594): tighter gaps and view buttons; nothing hidden. */
-.top.tfit5 { gap: 6px; }
-.top.tfit5 .switch-view button { padding: 0 8px; }
-.top.tfit5 .usage-wrap { margin-right: 0; }
-.top.tfit5 .usage-combined { padding: 0 8px; }
-.top.tfit5 .hchip { padding: 0 8px; }

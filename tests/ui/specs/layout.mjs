@@ -40,13 +40,3 @@ export const LINE = (box) => ({
 
 /** The smallest the window goes (tauri.conf.json minWidth). */
 export const NARROWEST = { width: 900, height: 600 };
-
-/** How many lines of text the element `loc` matches is drawn on (its words' distinct line boxes), at whatever text size
- *  is set: a "one line" check that doesn't hang on a pixel height. */
-export const textLines = (loc) => loc.evaluate((el) => {
-  const range = document.createRange();
-  range.selectNodeContents(el);
-  const tops = [];
-  for (const r of range.getClientRects()) if (r.width && !tops.some((t) => Math.abs(t - r.top) < r.height / 2)) tops.push(r.top);
-  return tops.length;
-});

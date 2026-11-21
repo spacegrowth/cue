@@ -111,7 +111,7 @@ test("an item opens in the middle, its panel beside its chat, its row lit in pla
 test("written about an item no session holds, the box goes to the lead naming it (one held goes to its holder, #276)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  await page.locator('[data-desk-item="d6"] .dk-t').click();
+  await page.locator('[data-desk-item="d6"]').click();
   await page.locator(".dk-box textarea").fill("The More menu is cut off");
   await page.locator(".dk-box textarea").press("Enter");
   await cue.called("desk_send", { project: "cue", text: "About #d6 (Tidy the Settings copy): The More menu is cut off" });
@@ -174,7 +174,7 @@ test("the lead at work shows it in its chat: the working line, live, but not its
 test("a send from an item that doesn't go keeps the item open, red on its Thread with why, Retry and Edit (#422)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  await page.locator('[data-desk-item="d6"] .dk-t').click();
+  await page.locator('[data-desk-item="d6"]').click();
   await cue.override("desk_send", () => { throw "offline"; });
   await page.locator(".dk-box textarea").fill("The More menu is cut off");
   await page.locator(".dk-box textarea").press("Enter");
@@ -192,7 +192,7 @@ test("a send from an item that doesn't go keeps the item open, red on its Thread
 test("Edit on an item's message that didn't go puts it back in the box; the lead's chat shows it red with Retry (#422)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  await page.locator('[data-desk-item="d6"] .dk-t').click();
+  await page.locator('[data-desk-item="d6"]').click();
   await cue.override("desk_send", () => { throw "offline"; });
   await page.locator(".dk-box textarea").fill("The More menu is cut off");
   await page.locator(".dk-box textarea").press("Enter");
@@ -835,7 +835,7 @@ test("what's open on the right, and Change, close when the header picks another 
 test("Drop this item asks once more before it drops", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  await page.locator('[data-desk-item="d6"] .dk-t').click();
+  await page.locator('[data-desk-item="d6"]').click();
   const drop = page.locator(".dk-panel[data-side-for] .dk-drop");
   await drop.click();
   await expect(drop).toHaveText("Drop it");
@@ -873,7 +873,7 @@ test("an item that couldn't be given out says why; a dropped one is gone", async
   expect(card).not.toContain(" open");
   await expect(page.locator('[data-desk-item="d6"] .dk-tag')).toHaveText("stuck");
   await expect(page.locator('[data-desk-item="d6"] .dk-who')).toHaveText("Give to…");
-  await page.locator('[data-desk-item="d6"] .dk-t').click();
+  await page.locator('[data-desk-item="d6"]').click();
   await expect(page.locator(".dk-right .dk-pg")).toContainText("Couldn't give it out");
   await expect(page.locator(".dk-right .dk-pg")).toContainText("No session in this project could take it.");
 });

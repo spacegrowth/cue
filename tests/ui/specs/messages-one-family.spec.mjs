@@ -4,18 +4,18 @@
 import { readFileSync } from "node:fs";
 import { test, expect, openDesk } from "./cue.mjs";
 
-// At the Default text size (#594): --type-body and --type-small.
-const BODY = "15px", META = "14px", SIZES = [BODY, META];
-// The notch stays at Compact whatever the window's text size.
-const NOTCH = ["13px", "12px"];
+const BODY = "13px", META = "12px";
+// Inside a chat (Board, Desk lead, an item's thread, the Inbox thread) the words read at the chat's text size, Default
+// here (Settings → Text size, #594: styles/base.css --type-chat); heads and meta lines stay at META.
+const CHAT = "15px";
 
 /** The font size of each element `loc` matches. */
 const sizes = (loc) => loc.evaluateAll((es) => es.map((e) => getComputedStyle(e).fontSize));
 /** `loc` is drawn as the family's card: head at the meta size, its words at the body size, no edge stripe. */
-async function isCard(loc, [BODY, META] = SIZES) {
+async function isCard(loc, body = CHAT) {
   await expect(loc.first()).toBeVisible();
   for (const s of await sizes(loc.locator(":scope > .mg-h"))) expect(s).toBe(META);
-  for (const s of await sizes(loc.locator(".mg-t"))) expect(s).toBe(BODY);
+  for (const s of await sizes(loc.locator(".mg-t"))) expect(s).toBe(body);
   for (const s of await sizes(loc.locator(":scope > .mg-f"))) expect(s).toBe(META);
   // No edge stripe: the left border is no wider, nor another colour, than the right one.
   for (const [lw, rw, lc, rc] of await loc.evaluateAll((es) => es.map((e) => { const c = getComputedStyle(e); return [c.borderLeftWidth, c.borderRightWidth, c.borderLeftColor, c.borderRightColor]; }))) {
@@ -63,8 +63,8 @@ for (const scheme of ["light", "dark"]) {
       await isCard(chat.locator(".mg.cue-msg"));
       await readsOn(chat.locator(".mg.cue-msg .mg-t"));
       const you = chat.locator(".mg-you", { hasText: "make the header blue" });
-      await expect(you.locator(".mg-text")).toHaveCSS("font-size", BODY);
-      await expect(chat.locator(".mg-agent").last().locator(".mg-text")).toHaveCSS("font-size", BODY);
+      await expect(you.locator(".mg-text")).toHaveCSS("font-size", CHAT);
+      await expect(chat.locator(".mg-agent").last().locator(".mg-text")).toHaveCSS("font-size", CHAT);
       await expect(chat.locator(".mg-agent").last().locator(".mg-h")).toHaveCSS("font-size", META);
       await isCard(chat.locator(".mg.ask"));
       await expect(chat.locator(".mg.ask pre.mg-code")).toHaveCount(1);
@@ -106,7 +106,7 @@ for (const scheme of ["light", "dark"]) {
       await expect(chat.locator(".mg-btn", { hasText: /Listen|Read/ }).first()).toBeVisible();
       // Whatever is said: one size.
       const bodies = chat.locator(":is(.mg-agent .mg-text, .mg-t, .mg-line)");
-      expect(new Set(await sizes(bodies))).toEqual(new Set([BODY]));
+      expect(new Set(await sizes(bodies))).toEqual(new Set([CHAT]));
       // Everything around it: one smaller size (heads, "who · when", feet, Listen/Read, the status line).
       const meta = chat.locator(":is(.mg-h, .mg > .mg-f, .mg-status, .mg-btn)");
       expect(new Set(await sizes(meta))).toEqual(new Set([META]));
@@ -149,7 +149,7 @@ for (const scheme of ["light", "dark"]) {
       await cue.openMini("world-team", "notch", { frozen: true });
       await page.evaluate(() => document.body.dispatchEvent(new MouseEvent("mouseenter")));
       const card = page.locator(".m-chat .mg").first();
-      await isCard(card, NOTCH);
+      await isCard(card, BODY); // the notch has no text size: always Compact
       await readsOn(card.locator(".mg-t"));
       await noHover(page);
     });
@@ -182,7 +182,7 @@ for (const scheme of ["light", "dark"]) {
         expect(ls).toBe("normal");
       }
       await readsOn(chain.locator(".dk-picked"));
-      // Waiting on another item (#626): its not-started card, what it waits for at the body size, the rest at meta.
+      // Waiting on another item (#626): its not-started card in the item's chat, what it waits for at the chat's size, the rest at meta.
       await cue.change((st) => {
         const it = st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d1");
         it.state = "queued"; it.ask = null; it.after = "d2";
@@ -190,7 +190,7 @@ for (const scheme of ["light", "dark"]) {
       await page.evaluate(() => { deskAnswers.delete("d1"); renderMain(); });
       const card = page.locator(".dk-pane .dk-ns");
       await expect(card.locator(".dk-ns-t")).toHaveCount(1);
-      expect(await sizes(card.locator(".dk-ns-t"))).toEqual([BODY]);
+      expect(await sizes(card.locator(".dk-ns-t"))).toEqual([CHAT]);
       expect(await sizes(card.locator(".dk-ns-n"))).toEqual([META]);
       await noHover(page);
     });

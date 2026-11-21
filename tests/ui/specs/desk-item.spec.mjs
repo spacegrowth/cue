@@ -3,7 +3,6 @@
 import { test, expect, pick, openDesk } from "./cue.mjs";
 import { NOW } from "./clock.mjs";
 import { listOrder } from "./desk.mjs";
-import { textLines } from "./layout.mjs";
 
 /** A session of cue's that isn't on its Desk ("spare", holding nothing). */
 const spare = (cue) => cue.change((st) => st.sessions.push({ ...st.sessions.find((x) => x.session_id === "site"), session_id: "spare", project: "cue", name: "spare", thread: [] }));
@@ -68,9 +67,7 @@ test("Add session toggles project sessions on and off this Desk", async ({ page,
   // The click was the button's, not the row's: the lead's chat still shows.
   await expect(page.locator('.dk-sessions [data-desk-lead-chat="lead"]')).toHaveClass(/\bon\b/);
 
-  // A click, not uncheck(): unticking redraws the box as plain "web-lead", so uncheck() would look for it again by its
-  // old name; the lines below check it went.
-  await dispatcher.click();
+  await dispatcher.uncheck();
   await expect.poll(async () => (await cue.calls("desk_member")).at(-1).args).toEqual({ project: "cue", sid: "lead", on: false });
   await expect(page.locator('[data-desk-lead-chat="lead"]')).toHaveCount(0);
   await expect(picker.getByRole("checkbox", { name: "web-lead", exact: true })).not.toBeChecked();
@@ -145,12 +142,12 @@ test("a DONE is one Ready to check card in the lead's chat: its item, its age, C
   await expect(line.locator(".mg-h .mg-age")).toHaveText(/^\d+[smhd]$/);
   await expect(line.locator(".mg-t")).toHaveText("Quick phrases at the right of Send");
   await expect(line.locator(".mg-f .mg-lk")).toHaveText("Check it ›");
-  // No edge stripe, the family's body size, no buttons of its own but the two that open the item.
+  // No edge stripe, the chat's body size (Default, #594), no buttons of its own but the two that open the item.
   await expect(line).toHaveCSS("border-left-width", "0px");
   await expect(line.locator(".mg-t")).toHaveCSS("font-size", "15px");
   await expect(line.locator("[data-desk-act]")).toHaveCount(0);
   // Compact: its title on one line of the body size.
-  expect(await textLines(line.locator(".mg-t"))).toBe(1);
+  expect(await line.locator(".mg-t").evaluate((el) => el.getBoundingClientRect().height)).toBeLessThan(23);
 
   // Not installed yet: nothing to try, so it's waiting for install, on its line, row and page (#130).
   await page.evaluate(() => { state.desk.installed_ms = 1793984280000 - 60000; renderMain(); });
@@ -396,7 +393,7 @@ test("Waiting on you is never red, with items or at 0; an open item takes the so
 test("an open item's box keeps the cursor: through redraws, and after Enter sends it, as you go on typing", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  await page.locator('[data-desk-item="d6"] .dk-t').click();
+  await page.locator('[data-desk-item="d6"]').click();
   const box = page.locator(".dk-right .dk-box textarea");
   await box.click();
   await page.keyboard.type("half a thought");
@@ -491,7 +488,7 @@ test("an approval in Waiting on you says in a line or two what it wants; the who
   // Else the programs it runs and where.
   await ask({});
   await expect(line).toHaveText("Allow: run cat, rm and grep in l2-i");
-  expect(await textLines(line)).toBeLessThanOrEqual(2);   // a line or two
+  expect((await line.boundingBox()).height).toBeLessThan(40);
   await page.locator('[data-desk-item="d1"] .dk-t').click();
   await expect(page.locator(".dk-ask")).toContainText("bodylistmac.txt headmac.txt footmac.txt");
 });
@@ -686,7 +683,7 @@ test("a reply that asks for set words (Reply \"…\") offers them as the suggest
 test("what you write on an item's page shows in its Steps, with whom it went to (#136)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  await page.locator('[data-desk-item="d6"] .dk-t').click();
+  await page.locator('[data-desk-item="d6"]').click();
   const box = page.locator(".dk-right .dk-box textarea");
   await box.fill("Keep the search box centred on narrow windows too");
   await page.locator(".dk-right [data-desk-send]").click();
@@ -821,7 +818,7 @@ test("an item page's header (title, tabs) stays at the top as its thread scrolls
   await openDesk(page);
   // A long thread, so the page scrolls.
   await cue.change((st) => { const it = st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d4"); it.said = Array.from({ length: 30 }, (_, n) => ({ at: Date.now() - (30 - n) * 60000, by: "cue-117", text: `Step ${n} of the fix, written out at some length so it takes a line or two.` })); });
-  await page.locator('[data-desk-item="d4"] .dk-t').click();
+  await page.locator('[data-desk-item="d4"]').click();
   const pane = page.locator(".dk-right .dk-ipane"), head = pane.locator(".dk-ihead"), title = page.locator(".dk-right .dk-ph h1");
   const before = await head.boundingBox(), tabs = await pane.locator(".dk-itabs").boundingBox(), h1 = await title.boundingBox();
   await pane.evaluate((e) => { e.scrollTop = e.scrollHeight; });
@@ -1201,7 +1198,7 @@ test("an item whose new session couldn't start says so, with why and Retry, not 
     renderMain();
   });
   await expect(page.locator('[data-desk-item="f1"] .dk-tag')).toHaveText("couldn't start");
-  await page.locator('[data-desk-item="f1"] .dk-t').click();
+  await page.locator('[data-desk-item="f1"]').click();
   const pane = page.locator(".dk-right .dk-pg");   // the item's page, its panel beside its chat (#418)
   await expect(pane).toContainText("Couldn't start");
   await expect(pane).toContainText("Cue couldn't start a new session for it: the folder is gone");

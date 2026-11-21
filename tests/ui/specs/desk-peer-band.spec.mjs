@@ -38,7 +38,7 @@ for (const scheme of ["light", "dark"]) {
     const css = await b.evaluate((e) => { const c = getComputedStyle(e); return [c.borderLeftWidth, c.backgroundColor, getComputedStyle(e.querySelector(".mg-t")).fontSize]; });
     expect(css[0]).toBe("0px");
     expect(css[1]).not.toBe(await chat.evaluate((e) => getComputedStyle(e.closest(".dk-card, .chat-card, .card") || e).backgroundColor));
-    expect(css[2]).toBe("15px");
+    expect(css[2]).toBe("15px"); // the chat's text size at Default (#594)
     // The one from the lead's own Desk keeps the usual bubble.
     await expect(chat.locator(".peer-msg")).toHaveCount(1);
     await expect(chat.locator(".peer-msg")).toContainText("From this Desk's own session.");
