@@ -191,12 +191,10 @@ function drawWindow() {
   </div>${overlaysHtml()}`;
   const root = document.getElementById("app");
   const editors = liftDraftEditors(root);
-  const thread = typeof deskThreadLift === "function" ? deskThreadLift() : null;   // an item's Thread, kept (desk/view.js)
   const lists = typeof deskListsLift === "function" ? deskListsLift() : null;   // the Desk's Items and Progress, kept (desk/list.js)
-  root.innerHTML = html;
+  drawAround(root, html);   // the Desk's open chat kept where it is, drawn around (chat/patch.js)
   if (lists) deskListsSettle(lists);
   settleDraftEditors(root, editors);
-  if (thread) deskThreadSettle(thread);
   return lifted;
 }
 
@@ -263,10 +261,12 @@ function replayMotion(was, kept) {
   // land (several a second just after a Send). Not the kept chat's dots: those elements live on, and
   // their pulse with them. The Inbox's "Thinking" dots and its live step too.
   const liveChat = kept ? document.querySelector("[data-chat]") : null;
+  // A Desk chat kept in place (chat/patch.js drawAround): a dot it had already is left as it runs; a new one is set once.
+  const inPlace = (el) => el._phased && keptInPlace.some((c) => c.contains(el));
   // Each looping animation a redraw would restart, and its length (as its CSS has it).
   for (const [sel, ms] of [[".dot-live, .pdot.live, .lv-chip .hdot", PULSE_MS], [".ib-dots i", 1200], [".ib-step.now i", 1600]]) {
     const phase = `-${Date.now() % ms}ms`;
-    document.querySelectorAll(sel).forEach((el) => { if (!liveChat?.contains(el)) el.style.animationDelay = phase; });
+    document.querySelectorAll(sel).forEach((el) => { if (!liveChat?.contains(el) && !inPlace(el)) { el.style.animationDelay = phase; el._phased = true; } });
   }
   markMore();   // lists end on whole cards before anything measures where cards landed
   if (view === "sessions") fitSvRest();
