@@ -106,7 +106,7 @@ a[data-path]:hover, .msg a[data-path]:hover { text-decoration: underline; text-u
 .stx-tri { width: 10px; font-size: var(--type-tag); color: var(--muted); }
 .stx-sum { white-space: normal; }
 .stx-cnt { display: inline; margin-left: 4px; padding: 0; user-select: none; -webkit-user-select: none; font-size: var(--type-pill); color: var(--muted); white-space: nowrap; }
-.stx-cnt:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
+.stx-cnt:hover { color: var(--ink); }   /* darker under the pointer, never underlined (#604) */
 .stx-more { font-size: var(--type-pill); padding-left: 4px; }
 .stx-say { font-size: var(--type-body); line-height: 1.55; }
 .stx-steps { display: flex; flex-direction: column; border-left: 2px solid var(--line); margin-left: 6px; padding-left: 8px; }

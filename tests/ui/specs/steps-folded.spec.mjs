@@ -47,6 +47,9 @@ test("folded by default: one chip for the turn, its message in view with its cou
   const msg = turn.locator(".stx-say");
   await expect(msg).toContainText("Found it: the header centres on the wrong box.");
   await expect(msg.locator(".stx-cnt")).toHaveText("· 2 steps");
+  // Under the pointer it darkens; never underlined.
+  await msg.locator(".stx-cnt").hover();
+  expect(await msg.locator(".stx-cnt").evaluate((el) => getComputedStyle(el).textDecorationLine)).toBe("none");
   await expect(msg).toBeInViewport();
   // The newest step: Running, its command (the whole one, read for it) on one line cut with "…" where it doesn't fit,
   // then on the right the steps before it and its time, never cut.
