@@ -261,6 +261,13 @@ async function deskAwayQuick(project) {
   } finally { deskAwayTurning = false; }
   if (deskAwayEdit) return;
   if (e.desks.some((r) => r.ran) || deskAwayFirst(e).length) { deskAwayEdit = e; renderMain(); }
+  // Nothing to show: say it's on, with what it runs on, so the click isn't silent.
+  else toast(deskAwayOnLine(e), 5000);
+}
+/** "Away is on until 07:00 · budget $10. Click Away again to change it or turn it off." */
+function deskAwayOnLine(e) {
+  const b = String(e.budget).trim();
+  return `Away is on${e.until ? ` until ${e.until}` : ""} · ${b === "" ? "no budget limit" : `budget $${b}`}. Click Away again to change it or turn it off.`;
 }
 /** Ask Desk row `r`'s lead to sort its items out before Away (only when its Desk changed since its last pass: the hub
  *  says whether it sent it). Sent means the hub now has it sweeping (desk_away_sweep sets it before it returns): kept

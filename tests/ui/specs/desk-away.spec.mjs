@@ -265,6 +265,9 @@ test("nothing changed since the lead's last pass: one click and Away is just on,
     await expect.poll(async () => (await cue.calls("desk_away_sweep")).length).toBe(2 * k);
     await expect(card).toHaveCount(0);
     await expect(page.locator(".dk-aw-sweep")).toHaveCount(0);
+    // Not silent: a note says it's on, until when and on what budget.
+    await expect(page.locator(".toast.show")).toHaveText("Away is on until 07:00 · budget $10. Click Away again to change it or turn it off.");
+    await expect(page.locator(".toast[title]")).toHaveCount(0);
     // Off again from its card.
     await sw.click();
     await card.locator('[data-away="off"]').click();
