@@ -107,3 +107,23 @@ fn a_hosted_pi_is_checked_the_same_way() {
     until("the hosted guard answered", || answered(&w, "g2").is_some());
     assert_eq!(answered(&w, "g2").as_deref(), Some("deny"));
 }
+
+/// On another machine a push to main always waits on your yes: no Desk on its project, nothing ticked. Its other
+/// steps pass as anywhere without a Desk.
+#[test]
+fn a_push_to_main_from_another_machine_always_waits_on_your_yes() {
+    let w = World::new();
+    let s = w.session("on-box").on_machine("box").in_folder(std::path::Path::new("/srv/app"));
+    let ask = s.guard_bash("git push origin main", "work").expect("a push to main from a machine waits");
+    let snap = w.snapshot();
+    let card = snap.cards().into_iter().find(|c| c["id"] == ask.id.as_str()).expect("its card");
+    assert_eq!(card["one_way"], json!(true), "{card}");
+    w.answer(&ask.id, json!({"behavior": "deny"}));
+    assert_eq!(ask.told().unwrap()["behavior"], "deny");
+    assert!(s.guard_bash("git push", "main").is_some(), "a plain push from main");
+    assert!(s.guard_bash("git push origin desk/12", "desk/12").is_none(), "its own branch isn't main");
+    assert!(s.guard_bash("rm -rf build", "main").is_none(), "no Desk: deleting isn't asked about");
+    // This Mac, no Desk: it passes as before.
+    let here = w.session("here").in_folder(w.home());
+    assert!(here.guard_bash("git push origin main", "main").is_none());
+}

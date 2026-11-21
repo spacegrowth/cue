@@ -5,6 +5,7 @@
  *  every text box's draft, with what each box does as you type. */
 function onInput(e) {
   if (e.target.matches?.("[data-hsession]")) { histSession = e.target.value; histOpen = null; return renderMain(); }
+  if (e.target.matches?.("[data-owner-names]")) { ownerNamesEdit = e.target.value; return; }
   if (e.target.matches?.("[data-quick-edit]")) { qpEdit = [...document.querySelectorAll("[data-quick-edit]")].map((i) => i.value); clearTimeout(qpSaveAt); qpSaveAt = setTimeout(saveQuickPhrases, 500); return; }
   if (e.target.matches?.("[data-send-at-time]")) { sendAtTime = e.target.value || sendAtTime; const go = e.target.parentElement?.querySelector("[data-send-at-go]"); if (go) go.textContent = `Send ${sendAtWhen(sendAtTime).words}`; return; }
   const id = e.target.dataset?.text;
@@ -48,11 +49,12 @@ function onDrop(e) {
   attach(key, [...(e.dataTransfer?.files || [])].filter((f) => f.type.startsWith("image/")));
 }
 
-/** A setting's field changed: History's keep count, the usage file, + New's model (Other…: the id you typed last
+/** A setting's field changed: History's keep count, the usage file, your names (Privacy), + New's model (Other…: the id you typed last
  *  time comes back, so a one-off pick of a listed model doesn't lose it), a quick phrase. */
 function onChange(e) {
   if (e.target.matches("[data-keep-custom]")) setSetting("history.keep", Math.max(10, Math.round(+e.target.value || 0)));
   if (e.target.matches("[data-usage-file]")) setSetting("usage.file", e.target.value.trim());
+  if (e.target.matches("[data-owner-names]")) { ownerNamesEdit = e.target.value; saveOwnerNames(); }
   if (e.target.matches("[data-model]")) {
     newModel = e.target.value === OTHER ? remembered("newModelOther") || "" : e.target.value;
     remember("newModel", newModel); renderMain();
@@ -68,6 +70,6 @@ function bindInputs(app) {
   app.addEventListener("paste", onPaste);
   app.addEventListener("dragover", (e) => { if (dropKey(e)) e.preventDefault(); });
   app.addEventListener("drop", onDrop);
-  app.addEventListener("focusout", (e) => { if (e.target.matches?.("[data-quick-edit]")) saveQuickPhrases(); });
+  app.addEventListener("focusout", (e) => { if (e.target.matches?.("[data-quick-edit]")) saveQuickPhrases(); if (e.target.matches?.("[data-owner-names]")) saveOwnerNames(); });
   app.addEventListener("change", onChange);
 }

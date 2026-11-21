@@ -60,6 +60,9 @@ impl Hub {
                 return Err(format!("Its branch is {}, not one of the Desk's own, so nothing was pushed", t.branch));
             }
             let remote = remote_of("", &t.repo, onto).ok_or("This project has no remote to push to, so no pull request was opened")?;
+            // Nothing goes out before the check of every commit the remote doesn't have yet (push_check.rs).
+            let project = self.read(|st| st.desk.project_of(&it.project).to_string());
+            crate::desk::hub::landing::push_check::push_allowed("", &t.repo, &project, &remote, squash).map_err(|e| format!("{e}. So no pull request was opened"))?;
             self.net_git(&t.repo, &["push", "-q", &remote, &format!("+{squash}:refs/heads/{}", t.branch)])
                 .map_err(|e| because(format!("Its branch couldn't be pushed to {remote}, so no pull request was opened"), &e))?;
             // Opened before (the landing run again): that one.
@@ -218,7 +221,8 @@ impl Hub {
     }
 
     /// Item `id` landed on `top`'s main line: pushed there now when its project pushes after each landing (not one
-    /// whose pull request was merged: that's on the remote already). What happened is kept on the item.
+    /// whose pull request was merged: that's on the remote already), once the check before a push passes
+    /// (push_check.rs). What happened is kept on the item, a refusal naming each find.
     pub(crate) fn desk_push_after(&self, id: &str, project: &str, top: &str) {
         let l = crate::desk::lands::lands_of(project, top);
         if l.push != "after" || l.how == "pr" {
@@ -227,9 +231,12 @@ impl Hub {
         let Some((_, onto)) = main_checkout(top).filter(|(_, b)| !b.is_empty()) else { return };
         let said = match remote_of("", top, &onto) {
             None => "Not pushed: this project has no remote".to_string(),
-            Some(r) => match self.net_git(top, &["push", "-q", &r, &format!("refs/heads/{onto}:refs/heads/{onto}")]) {
-                Ok(_) => format!("Pushed to {r}"),
-                Err(e) => because(format!("Not pushed to {r}"), &e),
+            Some(r) => match crate::desk::hub::landing::push_check::push_allowed("", top, project, &r, &format!("refs/heads/{onto}")) {
+                Err(refused) => refused,
+                Ok(()) => match self.net_git(top, &["push", "-q", &r, &format!("refs/heads/{onto}:refs/heads/{onto}")]) {
+                    Ok(_) => format!("Pushed to {r}"),
+                    Err(e) => because(format!("Not pushed to {r}"), &e),
+                },
             },
         };
         self.finish_fin(id, |f| f.pushed = said);

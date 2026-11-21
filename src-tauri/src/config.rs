@@ -113,6 +113,7 @@ fn from_config(c: &Value) -> Value {
         "turn": { "mode": turn_mode() },
         "quick": { "phrases": quick_phrases() },
         "steps": { "mode": c.pointer("/steps/mode").and_then(Value::as_str).unwrap_or("line") },
+        "owner": { "names": c.pointer("/owner/names").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])) },
         // A project's dot color, by folder name: the swatch you picked (0–7); unlisted folders hash to one.
         "project": { "colors": c.pointer("/project/colors").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "all": c.pointer("/project/all").and_then(Value::as_u64).filter(|n| *n < 10), "hue": c.pointer("/project/hue").cloned().filter(own_hue), "pins": c.pointer("/project/pins").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])), "names": c.pointer("/project/names").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "moves": c.pointer("/project/moves").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "folders": c.pointer("/project/folders").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "made": c.pointer("/project/made").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])), "oneway": crate::desk::one_way::view(c), "never": c.pointer("/project/never").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})) },
     })
@@ -332,7 +333,7 @@ pub fn history_keep() -> usize {
 
 /// The settings the window may save. A key it saves that isn't here fails as "unknown setting" (the test
 /// below reads the window's scripts for every key they save).
-pub(crate) const ALLOWED: &[&str] = &["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "usage.codex", "sessions.tmux", "project.colors", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "project.oneway", "project.lands", "project.asked", "project.never", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "tips.on", "updates.beta", "voice.pick", "mini.mode", "hosted.on"];
+pub(crate) const ALLOWED: &[&str] = &["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "usage.codex", "sessions.tmux", "project.colors", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "project.oneway", "project.lands", "project.asked", "project.never", "owner.names", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "tips.on", "updates.beta", "voice.pick", "mini.mode", "hosted.on"];
 
 /// Set one dotted key ("history.keep", "notify.finished", "pi.gate"), keeping everything else.
 pub fn set(key: &str, value: Value) -> Result<(), String> {
@@ -364,7 +365,7 @@ fn checked(key: &str, value: Value) -> Result<Value, String> {
     match key {
         "pi.gate" | "appearance.mode" | "mini.mode" | "notify.sound" | "turn.mode" | "steps.mode" | "voice.pick" => checked_choice(key, &value),
         "project.colors" | "project.all" | "project.hue" | "project.pins" | "project.made" | "project.names" | "project.moves" | "project.folders" | "project.oneway" | "project.lands" | "project.asked" | "project.never" => checked_project(key, value),
-        "insights.skills" | "quick.phrases" => checked_list(key, value),
+        "insights.skills" | "quick.phrases" | "owner.names" => checked_list(key, value),
         _ => checked_plain(key, value),
     }
 }
@@ -467,7 +468,12 @@ pub(crate) fn never_words(project: &str) -> Vec<String> {
     c.pointer("/project/never").and_then(|m| m.get(project)).and_then(Value::as_array).map(|l| l.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default()
 }
 
-/// A setting that's a list or a map: hand-off skills, quick phrases.
+/// Your own names and emails (`owner.names`), as config.json says now: never in anything Cue pushes.
+pub(crate) fn owner_names() -> Vec<String> {
+    load().pointer("/owner/names").and_then(Value::as_array).map(|l| l.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default()
+}
+
+/// A setting that's a list or a map: hand-off skills, quick phrases, your names.
 fn checked_list(key: &str, value: Value) -> Result<Value, String> {
     Ok(match key {
         // The skill that hands a session off, per machine and agent ("build-box|claude", "|codex" for this
@@ -479,6 +485,24 @@ fn checked_list(key: &str, value: Value) -> Result<Value, String> {
                 return Err("each hand-off skill is one command name".into());
             }
             value
+        }
+        // Your own names and emails: never in anything Cue pushes, any project (desk/hub/landing/push_check.rs).
+        "owner.names" => {
+            let list = value.as_array().ok_or("your names must be a list")?;
+            let mut names: Vec<String> = Vec::new();
+            for n in list {
+                let n = n.as_str().ok_or("a name is text")?.trim();
+                if n.chars().count() > 120 {
+                    return Err("a name is at most 120 characters".into());
+                }
+                if !n.is_empty() && !names.iter().any(|x| x.eq_ignore_ascii_case(n)) {
+                    names.push(n.to_string());
+                }
+            }
+            if names.len() > 20 {
+                return Err("at most 20 names".into());
+            }
+            json!(names)
         }
         "quick.phrases" => {
             let list = value.as_array().ok_or("phrases must be a list")?;
@@ -640,13 +664,16 @@ fn wanted(hook: &str, harness: &str, on_mac: bool) -> Vec<(&'static str, Value)>
         ("SessionEnd", json!({ "hooks": [{ "type": "command", "command": cmd("end"), "timeout": 3 }] })),
     ];
     // Ask me before (desk/one_way.rs): a tool call checked before it runs, and stopped to ask you when it's a step its
-    // project's Desk asks first about. Here for this Mac; a machine gets its own entry from its setup
-    // (machines/hooks/setup.rs), for Bash only there. Claude Code
-    // runs its commands through Bash; Codex names its shell tools in more ways, and deletes with a patch. Edits are
-    // checked too: a Desk item's holder stays in its own copy (desk/hub/landing/copy_guard.rs, #483).
-    if on_mac {
-        want.push(("PreToolUse", json!({ "matcher": if harness == "claude" { "Bash|Edit|Write|MultiEdit|NotebookEdit" } else { "*" }, "hooks": [{ "type": "command", "command": cmd("guard"), "timeout": wait }] })));
-    }
+    // project's Desk asks first about (on a machine, a push to main always is: hub/guard.rs). Here and on a machine.
+    // Claude Code runs its commands through Bash; Codex names its shell tools in more ways, and deletes with a patch.
+    // On this Mac edits are checked too: a Desk item's holder stays in its own copy (desk/hub/landing/copy_guard.rs,
+    // #483), and copies are only here.
+    let matcher = match (harness, on_mac) {
+        ("claude", true) => "Bash|Edit|Write|MultiEdit|NotebookEdit",
+        ("claude", false) => "Bash",
+        _ => "*",
+    };
+    want.push(("PreToolUse", json!({ "matcher": matcher, "hooks": [{ "type": "command", "command": cmd("guard"), "timeout": wait }] })));
     if harness == "claude" {
         // A turn that ends on an API error (a usage limit) fires this, not Stop.
         want.push(("StopFailure", json!({ "hooks": [{ "type": "command", "command": cmd("failure"), "timeout": 5 }] })));
@@ -827,10 +854,14 @@ mod tests {
         for e in ["PermissionRequest", "UserPromptSubmit", "SessionEnd", "StopFailure", "SessionStart"] {
             assert!(v["hooks"][e].to_string().contains("/new/bin/cue-hook"), "{e}");
         }
-        // The tmux guard is on this Mac only: a machine's settings get no SessionStart.
+        // The tmux guard is on this Mac only: a machine's settings get no SessionStart. Ask me before's check is on
+        // both (a machine's for Bash only: an item's copies, whose edits are checked, are on this Mac).
         assert!(v["hooks"]["PreToolUse"][1].to_string().contains("guard claude"), "Ask me before's check, after yours");
         let machine = merge_hooks(json!({}), "$HOME/.cue/cue-hook", "claude", false).unwrap();
-        assert!(machine["hooks"]["SessionStart"].is_null() && machine["hooks"]["PreToolUse"].is_null() && !machine["hooks"]["Stop"].is_null());
+        assert!(machine["hooks"]["SessionStart"].is_null() && !machine["hooks"]["Stop"].is_null());
+        assert_eq!(machine["hooks"]["PreToolUse"], json!([{ "matcher": "Bash", "hooks": [{ "type": "command", "command": "\"$HOME/.cue/cue-hook\" guard claude", "timeout": 86400 }] }]), "a machine gets the guard");
+        let codex = merge_hooks(json!({}), "$HOME/.cue/cue-hook", "codex", false).unwrap();
+        assert_eq!(codex["hooks"]["PreToolUse"][0]["matcher"], "*");
         // Connecting again doesn't add a second copy.
         add_hooks(&path, "/new/bin/cue-hook", "claude").unwrap();
         let again: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();

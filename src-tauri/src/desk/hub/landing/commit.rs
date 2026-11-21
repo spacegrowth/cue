@@ -333,7 +333,7 @@ pub(crate) fn commit_files(project: &str, machine: &str, todo: &[(String, Vec<St
 /// Err when `message`, or a line `todo` adds (a file in `parts`: its part only), has one of `project`'s
 /// never-committed words.
 pub(crate) fn words_checked(project: &str, machine: &str, todo: &[(String, Vec<String>)], parts: &[Part], message: &str) -> Result<(), String> {
-    let words = crate::config::never_words(project);
+    let words = crate::desk::hub::landing::push_check::words_for(project);
     if let Some(w) = words.iter().find(|w| message.to_lowercase().contains(&w.to_lowercase())) {
         return Err(format!("Not committed: \"{w}\" is in the message"));
     }

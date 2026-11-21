@@ -15,7 +15,7 @@
 //! again. A machine quiet for half an hour with an item on it is the lead's to ask you about.
 
 use crate::desk::hub::core::desk::Effects;
-use crate::desk::hub::landing::git::{because, git, git_said, word_in};
+use crate::desk::hub::landing::git::{because, git, git_said};
 use crate::desk::hub::landing::main_line::main_checkout;
 use crate::desk::hub::landing::tree_files::{exclude_trees, names_item, remove, rev};
 use crate::desk::hub::landing::trees::TREES;
@@ -177,7 +177,7 @@ impl Hub {
         }
         self.remote_set(id, |r| r.tried_at = now);
         let Some((there, range)) = self.remote_ready(&it, &r) else { return true };
-        if !self.remote_clean(&it, &r, &range) {
+        if !self.remote_clean(&it, &r, &there, &range) {
             return true;
         }
         if let Some((repo, onto, sha)) = self.remote_pushed(&it, &r, &there, now) {
@@ -222,32 +222,21 @@ impl Hub {
         Some((there, range))
     }
 
-    /// Step 3, there, before anything leaves the machine: no never-commit word in its commits' messages, authors or
-    /// added lines, and no email git made up from the machine. False: handed back to its holder.
-    fn remote_clean(&self, it: &DeskItem, r: &RemoteWork, range: &str) -> bool {
+    /// Step 3, there, before anything leaves the machine: the check before every push (push_check.rs: no never-commit
+    /// word nor your name in a message, an author or an added line of any commit the remote doesn't have yet), and no
+    /// email git made up from the machine. False: handed back to its holder.
+    fn remote_clean(&self, it: &DeskItem, r: &RemoteWork, there: &str, range: &str) -> bool {
         let (m, dir, branch) = (r.machine.as_str(), r.folder.as_str(), r.branch.as_str());
         let project = self.read(|st| st.desk.project_of(&it.project).to_string());
-        let words = crate::config::never_words(&project);
-        let found = |text: &str| words.iter().filter(|w| !w.trim().is_empty()).find(|w| text.to_lowercase().contains(&w.to_lowercase())).cloned();
-        let said = git(m, dir, &[], &["log", "--format=%B", range]).unwrap_or_default();
-        if let Some(w) = found(&said) {
-            self.remote_back(it, &format!("Not pushed: \"{w}\" is in a commit message on {branch}. Reword that commit there (amend or rebase) and say DONE again"));
+        if let Err(e) = crate::desk::hub::landing::push_check::push_allowed(m, dir, &project, there, &format!("refs/heads/{branch}")) {
+            self.remote_back(it, &format!("{e}. Every commit on {branch} there is pushed, so take each out of the branch's history (amend or rebase it, not a new commit on top; set user.name and user.email there for an author) and say DONE again"));
             return false;
         }
-        // Who made each commit goes with it: never a word, nor the name git guessed from the machine (user@host).
+        // Who made each commit goes with it: never the email git guessed from the machine (user@host).
         let who = git(m, dir, &[], &["log", "--format=%an%n%ae%n%cn%n%ce", range]).unwrap_or_default();
-        if let Some(w) = found(&who) {
-            self.remote_back(it, &format!("Not pushed: \"{w}\" is in a commit's author on {branch}. Set user.name and user.email there, redo those commits (git rebase --reset-author or amend --reset-author), and say DONE again"));
-            return false;
-        }
         let guessed = who.lines().skip(1).step_by(2).map(str::trim).find(|e| e.is_empty() || e.split_once('@').is_some_and(|(_, host)| !host.contains('.')));
         if let Some(e) = guessed {
             self.remote_back(it, &format!("Not pushed: a commit on {branch} has the email \"{e}\", which git made up from the machine. Set user.email there, redo those commits (git rebase --reset-author), and say DONE again"));
-            return false;
-        }
-        let diff = git(m, dir, &[], &["log", "-p", "-U0", "--no-color", "--no-ext-diff", "--no-textconv", "--format=", range]).unwrap_or_default();
-        if let Some((w, at)) = word_in(&diff, &words) {
-            self.remote_back(it, &format!("Not pushed: \"{w}\" is in {at}, in a commit on {branch}. Every commit there is pushed, so take it out of the branch's history (amend or rebase it, not a new commit on top) and say DONE again"));
             return false;
         }
         true

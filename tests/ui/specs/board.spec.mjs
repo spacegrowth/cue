@@ -1131,3 +1131,19 @@ test("a session's card under Sessions ends with its size · cache, no bar (#423,
   await expect(line).toHaveText("126k · cache 52m");
   await expect(line.locator(".dk-meter")).toHaveCount(0);
 });
+
+test.describe("Settings → Privacy", () => {
+  test("your names and emails save as a list, one per line or comma-separated, and load back (#595)", async ({ cue, page }) => {
+    await cue.open("board-waiting");
+    await page.keyboard.press(",");
+    const box = page.locator(".sheet [data-owner-names]");
+    await expect(box).toHaveValue("");
+    await box.fill("Pat Example\npat@example.com, Pat E.\n\n");
+    await box.blur();
+    await cue.called("set_setting", { key: "owner.names", value: ["Pat Example", "pat@example.com", "Pat E."] });
+    await page.keyboard.press("Escape");
+    await page.keyboard.press(",");
+    await expect(page.locator(".sheet [data-owner-names]")).toHaveValue("Pat Example\npat@example.com\nPat E.");
+    await expect(page.locator(".sheet [title]")).toHaveCount(0);
+  });
+});

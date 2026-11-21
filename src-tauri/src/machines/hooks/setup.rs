@@ -45,20 +45,11 @@ pub fn setup(m: &Machine, tools: &Value) -> Result<Vec<String>, String> {
 }
 
 /// An agent's settings on a machine with Cue's hook entries in (any older ones of Cue's replaced, yours kept): the
-/// machine's set (config::merge_hooks), and Ask me before's check of each tool call before it runs (PreToolUse,
-/// `cue-hook guard`), as on this Mac. Claude Code runs its commands through Bash (an edit is only checked on this
-/// Mac, where a Desk item's copies are); Codex names its shell tools in more ways, and deletes with a patch.
+/// machine's set (config::merge_hooks), Ask me before's check of each tool call before it runs among them
+/// (PreToolUse, `cue-hook guard`), as on this Mac. Claude Code runs its commands through Bash (an edit is only checked
+/// on this Mac, where a Desk item's copies are); Codex names its shell tools in more ways, and deletes with a patch.
 pub(super) fn settings_with_hooks(cfg: Value, harness: &str) -> Result<Value, String> {
-    let mut merged = crate::config::merge_hooks(cfg, "$HOME/.cue/cue-hook", harness, false)?;
-    // Claude Code waits as long as you take; Codex caps hooks (600 s by default).
-    let wait = if harness == "claude" { 86400 } else { 3600 };
-    let matcher = if harness == "claude" { "Bash" } else { "*" };
-    let entry = json!({ "matcher": matcher, "hooks": [{ "type": "command", "command": format!("\"$HOME/.cue/cue-hook\" guard {harness}"), "timeout": wait }] });
-    match merged["hooks"].get_mut("PreToolUse").and_then(Value::as_array_mut) {
-        Some(list) => list.push(entry),
-        None => merged["hooks"]["PreToolUse"] = json!([entry]),
-    }
-    Ok(merged)
+    crate::config::merge_hooks(cfg, "$HOME/.cue/cue-hook", harness, false)
 }
 
 /// The hook on the machine brought up to this Cue's, when it was set up there and has changed since

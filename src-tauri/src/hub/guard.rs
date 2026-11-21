@@ -1,7 +1,8 @@
 //! Ask me before (desk/one_way.rs), checked before each tool call runs (from its command's words): a tool call that is one of the steps a project's Desk asks first
 //! about (a push to main, a release, deleting files) waits on your yes. The agent's hook (hook.rs `guard`) or Pi's
 //! extension sends it here before it runs; on any session of a project with a Desk lead it becomes a one-way card,
-//! answered with a click. Elsewhere (no Desk on the project, or a step not ticked) it passes.
+//! answered with a click. Elsewhere (no Desk on the project, or a step not ticked) it passes, but for a push to main
+//! from another machine, which always waits on your yes.
 //!
 //! And your answer to the question: saved, and every session on the project's Desks told the new rule.
 
@@ -32,7 +33,11 @@ impl Hub {
     fn guarded(&self, origin: Origin, tool_input: &Value, hits: &[String], branch: &str) -> Option<(Origin, Vec<String>)> {
         let origin = self.read(|st| st.sessions.get(&origin.session_id).map(|s| s.origin.clone()).filter(|o| o.hosted)).unwrap_or(origin);
         let project = super::crew_log::project_shown_for(&origin);
-        if !self.read(|st| has_desk(st, &project)) {
+        // On another machine a push to main always waits on your yes, Desk or not, ticked or not: only Cue pushes
+        // there, after its check (desk/hub/landing/push_check.rs).
+        let on_machine = !origin.machine.is_empty();
+        let desk = self.read(|st| has_desk(st, &project));
+        if !desk && !on_machine {
             return None;
         }
         let hits: Vec<&str> = if hits.is_empty() {
@@ -41,7 +46,10 @@ impl Hub {
         } else {
             hits.iter().map(String::as_str).collect()
         };
-        let kinds = crate::desk::one_way::kinds(&project);
+        let mut kinds = if desk { crate::desk::one_way::kinds(&project) } else { vec![] };
+        if on_machine && !kinds.contains(&"main") {
+            kinds.push("main");
+        }
         asked_about(&kinds, &hits).then(|| (origin, hits.iter().filter(|h| kinds.contains(h)).map(|h| h.to_string()).collect()))
     }
 

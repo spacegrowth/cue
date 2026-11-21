@@ -264,6 +264,8 @@
 .up-err { font-size: var(--type-small); line-height: 1.5; color: var(--deny); padding: 4px 0 2px; }
 .up-bar.none { visibility: hidden; }
 .path-in { width: 280px; height: 32px; border-radius: var(--radius-btn); border: 0; padding: 0 10px; background: var(--panel-2); color: var(--ink); font: var(--type-small) var(--mono); flex: none; }
+/* Settings → Privacy: your names and emails, one per line; the path box's look, a few lines tall. */
+.names-in { width: 280px; min-height: 72px; border-radius: var(--radius-btn); border: 0; padding: 7px 10px; background: var(--panel-2); color: var(--ink); font: var(--type-small) var(--mono); line-height: 1.5; resize: vertical; flex: none; }
 .up-row.money { grid-template-columns: 72px 1fr auto; }
 .tl-name { color: var(--ink); font-weight: 650; }
 /* The open session's numbers, grey, on the line under the chat's title. The line is tight (the folder path

@@ -557,6 +557,21 @@ document.addEventListener("click", (e) => {
   projResetAsk = v === "ask";
   renderMain();
 }, true);
+/** Settings → General → Privacy: your names and emails (`owner.names`), one per line or comma-separated; Cue won't
+ *  push a commit that contains them (desk/hub/landing/push_check.rs). What you're typing is kept across redraws
+ *  (`ownerNamesEdit`) and saved when you leave the field (app/inputs.js). */
+let ownerNamesEdit = null;
+const ownerNamesList = (text) => text.split(/[\n,]/).map((n) => n.trim()).filter(Boolean);
+function ownerNamesRow(st) {
+  const now = (st.owner?.names || []).join("\n");
+  return setRow("Keep out of pushes", "Your names and emails, one per line. Cue won't push a commit that contains them.", `<textarea class="names-in" data-owner-names rows="3" spellcheck="false" autocomplete="off" aria-label="Your names and emails">${esc(ownerNamesEdit ?? now)}</textarea>`);
+}
+function saveOwnerNames() {
+  if (ownerNamesEdit == null) return;
+  const list = ownerNamesList(ownerNamesEdit);
+  ownerNamesEdit = null;
+  if (JSON.stringify(list) !== JSON.stringify(state.settings?.owner?.names || [])) setSetting("owner.names", list);
+}
 const SET_TABS = [["general", "General"], ["agents", "Agents"], ["chat", "Chat"], ["voice", "Voice"], ["insights", "Insights"], ["usage", "Usage"]];
 let setTab = (() => { try { return localStorage.getItem("cue.setTab") || "general"; } catch { return "general"; } })();
 function settingsSheet() {
@@ -585,7 +600,9 @@ function settingsSheet() {
     ${setRow("Mini window", "Cue at the edge of your screen while you work in another app: what needs you, newest first, and its whole chat with a box to answer it. It steps aside while this window is in front.", seg("mini.mode", st.mini?.mode ?? "off", [["off", "Off"], ["rail", "Right edge"], ["notch", "Notch"]]))}
     ${setRow("Open at login", "Start Cue when you log in to your Mac. It's listed under System Settings → General → Login Items.", toggle("login.open", st.login?.open ?? false))}
     <div class="set-group">Projects</div>
-    ${projResetRows()}`,
+    ${projResetRows()}
+    <div class="set-group">Privacy</div>
+    ${ownerNamesRow(st)}`,
     agents: `
     <div class="set-group">Connected agents</div>
     ${agentRows()}
