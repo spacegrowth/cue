@@ -47,6 +47,9 @@ Wake at once:
   files the "Build: <topic> (option X)" item and routes it at once.
 - **A route or new-session start that failed.**
 - **A holder that ended or hit its limit** with an item at work.
+- **Your words on an item that waits for a copy** (#567): a Send back or a question went to its holder at once, told
+  not to change files until its copy is ready. The row carries your words, so the lead can free a copy or start it now.
+  Words on an item that starts at once ride the silent "you did" row, which now carries them too.
 
 Wake, but grouped (they go out with the next wake, or on their own after 5 minutes if nothing else comes):
 - **Needs you**: a holder's question is yours by design (#249); the lead only needs to know. While Away is on, it

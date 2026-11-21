@@ -12,7 +12,13 @@ use crate::desk::hub::turn::heard::new_item;
 /// What you did to item `id` ("looks_right" | "reopen" | "send_back" | "start_now" | "put_before" | "hold" | "drop"), in the store.
 fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<Effects, String> {
     // What you did, for the lead's picture: read first, as a drop removes the item.
-    let did = crate::desk::hub::lead::feed::you_did(st, id, act);
+    // Words on its page (a note) to check are a Send back, or a question (#475): said to the lead as such (#567).
+    let said = match st.desk.item(id).filter(|i| act == "note" && i.holder.is_some()) {
+        Some(i) if crate::desk::hub::turn::asked::is_question(text) && matches!(i.state.as_str(), "to_check" | "done") => "ask",
+        Some(i) if i.state == "to_check" => "send_back",
+        _ => act,
+    };
+    let did = crate::desk::hub::lead::feed::you_did(st, id, said, text);
     let mut fx = acted_on(st, id, act, text, now)?;
     if let Some((project, words)) = did.filter(|(p, _)| st.desk.lead_sid(p).is_some()) {
         crate::desk::feed::add(&mut st.desk.feed, &project, id, crate::desk::feed::ChangeKind::YouDid, words, &now.to_string(), now);

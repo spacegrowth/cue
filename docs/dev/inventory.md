@@ -14,12 +14,12 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 
 | What | Count |
 |---|---|
-| `#[tauri::command]` | 175 (3 sync) |
+| `#[tauri::command]` | 176 (3 sync) |
 | Lock declarations (static or field) | 113 |
 | Lock acquisitions | 273 |
 | Lock-graph edges | 52 |
 | Spawn sites | 89 |
-| External calls: fs / db / process / notify / login / socket | 488 / 220 / 56 / 4 / 1 / 4 |
+| External calls: fs / db / process / notify / login / socket | 488 / 220 / 57 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -145,6 +145,7 @@ Sync commands run on the main thread. "Hands work to": the threads or pools its 
 | `agents_installed` | async | `ipc/settings.rs::agents_installed` | ipc::blocking |
 | `set_setting` | async | `ipc/settings.rs::set_setting` | ipc::with_hub |
 | `copy_text` | async | `ipc/settings.rs::copy_text` | ipc::blocking |
+| `clipboard_has_picture` | async | `ipc/settings.rs::clipboard_has_picture` | ipc::blocking |
 | `clipboard_image` | async | `ipc/settings.rs::clipboard_image` | ipc::blocking |
 | `test_notification` | async | `ipc/settings.rs::test_notification` | ipc::blocking |
 | `get_drafts` | async | `ipc/settings.rs::get_drafts` | ipc::blocking |
@@ -1107,7 +1108,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/turns.rs::read_so_far` | db::turns_read | 1 |
 | `startup/mod.rs::settle_folder_and_hooks` | db::rewrite_paths | 1 |
 
-### process (56)
+### process (57)
 
 | In | Call | Times |
 |---|---|---|
@@ -1162,6 +1163,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `terminal/shells.rs::tmux` | (program computed) | 1 |
 | `terminal/shells.rs::what` | /bin/ps | 1 |
 | `terminal/speak.rs::send` | (program computed) | 1 |
+| `uploads.rs::clipboard_has_image` | osascript | 1 |
 | `uploads.rs::clipboard_image` | osascript | 2 |
 | `uploads.rs::clipboard_image` | sips | 1 |
 | `voice/talk.rs::dictation` | (program computed) | 1 |

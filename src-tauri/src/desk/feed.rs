@@ -33,6 +33,9 @@ pub enum ChangeKind {
     Away,
     /// What you did on the Desk yourself (Send back, Restart, Drop, Put it before): never wakes the lead.
     YouDid,
+    /// Your words on it (a Send back, a question) went to its holder, but it waits for a free copy (#567): the lead
+    /// hears them at once, so they don't sit unseen in the line.
+    WordsWait,
 }
 
 /// How a row reaches the lead.
@@ -56,7 +59,7 @@ pub const GROUPED_ALONE_MS: u64 = 5 * 60_000;
 pub const LANDING_STUCK_MS: u64 = 15 * 60_000;
 
 impl ChangeKind {
-    pub const ALL: [ChangeKind; 12] = [
+    pub const ALL: [ChangeKind; 13] = [
         ChangeKind::NewItem,
         ChangeKind::Stopped,
         ChangeKind::StuckLanding,
@@ -69,6 +72,7 @@ impl ChangeKind {
         ChangeKind::Finished,
         ChangeKind::Away,
         ChangeKind::YouDid,
+        ChangeKind::WordsWait,
     ];
 
     pub fn wake(self) -> Wake {
@@ -79,7 +83,8 @@ impl ChangeKind {
             | ChangeKind::PermissionStop
             | ChangeKind::Picked
             | ChangeKind::RouteFailed
-            | ChangeKind::HolderGone => Wake::AtOnce,
+            | ChangeKind::HolderGone
+            | ChangeKind::WordsWait => Wake::AtOnce,
             ChangeKind::NeedsYou | ChangeKind::Clash | ChangeKind::Finished | ChangeKind::Away => Wake::Grouped,
             ChangeKind::YouDid => Wake::Silent,
         }
@@ -105,6 +110,7 @@ impl ChangeKind {
             ChangeKind::Finished => "finished",
             ChangeKind::Away => "away",
             ChangeKind::YouDid => "you",
+            ChangeKind::WordsWait => "words_wait",
         }
     }
 

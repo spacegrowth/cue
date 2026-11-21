@@ -67,12 +67,13 @@ pub(crate) fn finished(st: &mut Store, id: &str, how: &str, now: u64) -> bool {
 }
 
 /// What you did on item `id` yourself (`act`, from the Desk): a silent row, so its lead's picture is right when it
-/// next hears from the Desk. Read before the act (a drop removes the item).
-pub(crate) fn you_did(st: &Store, id: &str, act: &str) -> Option<(String, String)> {
+/// next hears from the Desk. Read before the act (a drop removes the item). A Send back carries your words (`text`, #567).
+pub(crate) fn you_did(st: &Store, id: &str, act: &str, text: &str) -> Option<(String, String)> {
     let it = st.desk.item(id)?;
     let t = format!("#{id} ({})", it.title);
     let words = match act {
-        "send_back" => format!("You sent {t} back to its holder."),
+        "send_back" => format!("You sent {t} back to its holder: \"{}\".", crate::desk::your_words(text).0.trim()),
+        "ask" => format!("You asked {t}'s holder: \"{}\".", crate::desk::your_words(text).0.trim()),
         "start_now" => format!("You restarted {t}."),
         "drop" => format!("You dropped {t}."),
         "put_before" => format!("You put {t} before #{}, which now waits on it.", it.after.clone().unwrap_or_default()),
@@ -165,6 +166,8 @@ fn applies(st: &Store, r: &Change) -> bool {
         ChangeKind::NeedsYou => it.asks.as_ref().is_some_and(|(_, at)| at.to_string() == r.key),
         // Still at work with the holder it went back to.
         ChangeKind::Clash => it.state == "working" && it.holder.as_ref().is_some_and(|h| r.key.rsplit_once(':').is_some_and(|(sid, _)| sid == h.sid)),
+        // Still waiting for its copy (once it has one, its holder is at work with the words).
+        ChangeKind::WordsWait => it.tree_wait,
         // Not sent back to work since.
         ChangeKind::Finished => matches!(it.state.as_str(), "finishing" | "to_check" | "done"),
         ChangeKind::YouDid | ChangeKind::Away | ChangeKind::Picked => true,

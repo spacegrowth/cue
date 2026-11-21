@@ -58,6 +58,15 @@ pub(crate) fn answered(st: &mut Store, sid: &str, text: &str, loose: &[(String, 
         let Some((was, question)) = it.asked.take() else { continue };
         it.updated = secs(now);
         fx.items.push(id.clone());
+        // Answered while it waited for a copy (#567: your question went at once): no code changed and no DONE, so it
+        // goes back where it was and leaves the line; else it waits on for its copy, to build there.
+        if it.state == "queued" && it.tree_wait && it.after.is_none() {
+            if !changed && !said_done {
+                (it.state, it.stopped, it.waits, it.tree_wait) = (was, false, None, false);
+                it.tree_wait_repo.clear();
+            }
+            continue;
+        }
         if it.state != "working" {
             // Moved on meanwhile (sent back, dropped, routed): nothing to put back.
             continue;

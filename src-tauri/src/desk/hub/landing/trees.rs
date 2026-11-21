@@ -132,7 +132,10 @@ impl Hub {
             // None free: its message waits for its copy. The item's own words go then (`desk_trees_free`), and your
             // Send back's message with them: kept on it, as only it has your words (#396).
             Some(None) => {
-                fx.sends.retain(|(s, text)| !(*s == to && names_item(text, id)));
+                // Your words (a Send back, a question) and the lead's notes go now all the same (#567): its holder reads
+                // them while it waits, told not to change files yet, and the lead hears your words at once.
+                let now_ones = self.write(|st| words_now(st, fx, id, to));
+                fx.sends.retain(|(s, text)| !(*s == to && names_item(text, id)) || now_ones.contains(text));
                 let backs: Vec<String> = fx.backs.iter().filter(|(b, _)| *b == id).map(|(_, m)| m.clone()).collect();
                 if !backs.is_empty() {
                     self.write(|st| {
@@ -528,6 +531,41 @@ pub(crate) fn copy_wait(st: &Store, project: &str, repo: &str) -> String {
         held.len(),
         if held.is_empty() { "none".to_string() } else { held.join(", ") }
     )
+}
+
+/// Item `id` just queued for a copy (`claim_tree` found none free), held by session `to`: the messages in `fx.sends`
+/// that carry someone's words on it (your Send back or question, the lead's note: steps in `fx.went`) still go now
+/// (#567), each told it waits for a copy, so nobody's words sit unseen in the line. Your words wake its lead too.
+/// The messages that go, as they now read.
+fn words_now(st: &mut Store, fx: &mut Effects, id: &str, to: &str) -> Vec<String> {
+    let Some(it) = st.desk.item(id) else { return Vec::new() };
+    let (project, title, repo) = (it.project.clone(), it.title.clone(), it.tree_wait_repo.clone());
+    let wait = format!("\nIt waits for a free copy of {repo}: every copy is in use. Don't change any files until Cue sends you where its copy is; reading, planning and answering now are fine.");
+    let steps: Vec<String> = fx.went.iter().filter(|(_, s, i)| s == to && i == id).map(|(step, ..)| step.clone()).collect();
+    let mut now_ones = Vec::new();
+    let mut yours = Vec::new();
+    for d in st.desk.decisions.iter_mut().filter(|d| steps.contains(&d.id)) {
+        let Some(del) = d.delivery.as_mut() else { continue };
+        let Some((_, text)) = fx.sends.iter_mut().find(|(s, text)| s == to && *text == del.text) else { continue };
+        if !text.contains(&wait) {
+            text.push_str(&wait);
+        }
+        del.text = text.clone();
+        now_ones.push(text.clone());
+        if d.by == "You" {
+            yours.push((d.id.clone(), d.why.clone(), d.text.clone()));
+        }
+    }
+    for (step, why, words) in yours {
+        let row = format!(
+            "#{id} ({title}): the user's words, {why}: \"{}\". It waits for a free copy of {repo} (every copy is in use); Cue sent its holder the words now, told not to change files until its copy is ready. If it can't wait, free a copy or start it now.",
+            words.trim()
+        );
+        if crate::desk::hub::lead::feed::note(st, &project, id, crate::desk::feed::ChangeKind::WordsWait, row, &step, now_ms()) {
+            fx.items.push(id.to_string());
+        }
+    }
+    now_ones
 }
 
 /// Item `id`'s copy of `main`, in a slot free of the `at_once` its project allows: Some(Some) claimed, Some(None) none

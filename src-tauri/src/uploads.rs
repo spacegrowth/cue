@@ -107,6 +107,14 @@ fn prune(d: &std::path::Path) {
 
 /// The image on the macOS clipboard, as a data: URL — for pastes the web view doesn't hand over.
 /// Tries PNG, then TIFF (converted with sips). None when the clipboard holds no image.
+/// The clipboard holds a picture (a screenshot, a copied image): what a selection's copy must not replace (#567).
+pub fn clipboard_has_image() -> bool {
+    std::process::Command::new("osascript").args(["-e", "clipboard info"]).output().is_ok_and(|o| {
+        let info = String::from_utf8_lossy(&o.stdout);
+        ["PNGf", "TIFF", "JPEG", "GIFf", "picture"].iter().any(|k| info.contains(k))
+    })
+}
+
 pub fn clipboard_image() -> Option<String> {
     let tmp = std::env::temp_dir().join(format!("cue-clip-{}", now_ms()));
     let (png, tiff) = (tmp.with_extension("png"), tmp.with_extension("tiff"));

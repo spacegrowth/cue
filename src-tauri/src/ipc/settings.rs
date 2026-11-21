@@ -225,6 +225,12 @@ pub(crate) async fn copy_text(text: String) -> Result<(), String> {
     .await?
 }
 
+/// A picture is on the clipboard: text you select isn't copied over it (#567).
+#[tauri::command]
+pub(crate) async fn clipboard_has_picture() -> bool {
+    blocking(uploads::clipboard_has_image).await.unwrap_or(false)
+}
+
 /// Paste fallback: the clipboard's image as a data: URL, if there is one.
 #[tauri::command]
 pub(crate) async fn clipboard_image() -> Option<String> {

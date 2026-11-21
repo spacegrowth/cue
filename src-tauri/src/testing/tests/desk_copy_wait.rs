@@ -83,9 +83,10 @@ fn a_dragged_order_picks_who_gets_the_next_free_copy_and_survives_a_restart() {
 }
 
 #[test]
-fn your_send_back_on_an_item_whose_copy_is_gone_waits_with_it_and_reaches_its_holder_word_for_word() {
+fn your_send_back_on_an_item_whose_copy_is_gone_reaches_its_holder_and_lead_at_once_and_again_with_its_copy() {
     // #396: an item that landed has no copy any more. Sent back with every copy in use, it waited for one, and the
     // message with your words was dropped: once a copy was free its holder got only the item's own words (#386).
+    // #567: and until then your words sat unseen: they go to its holder and its lead at once now.
     let w = World::new();
     let (_, project, id) = super::desk_commit::ready(&w);
     let top = |w: &World| {
@@ -102,16 +103,24 @@ fn your_send_back_on_an_item_whose_copy_is_gone_waits_with_it_and_reaches_its_ho
     w.settle();
     let it = item(&w, &project, "Header jumps");
     assert_eq!((it["state"].as_str(), it["tree_wait"].as_bool()), (Some("queued"), Some(true)), "waits for a copy: {it}");
-    assert!(!w.hosted.sent()[before..].iter().any(|(s, t)| *s == h && t.contains(&format!("#{id}"))), "nothing sent yet");
-    // A second Send back while it waits: both go.
+    let to_holder = |w: &World, from: usize| -> Vec<String> { w.hosted.sent()[from..].iter().filter(|(s, t)| *s == h && t.contains(&format!("#{id}"))).map(|(_, t)| t.clone()).collect() };
+    let now = to_holder(&w, before);
+    assert!(now.len() == 1 && now[0].contains(words) && now[0].contains("Don't change any files until Cue sends you where its copy is"), "your words now, told to wait for its copy: {now:?}");
+    let lead = super::desk_finish::lead_of(&w, &project);
+    let heard: Vec<String> = w.hosted.sent().into_iter().filter(|(s, t)| *s == lead && t.contains("(Desk changes ") && t.contains(words)).map(|(_, t)| t).collect();
+    assert!(heard.iter().any(|t| t.contains("It waits for a free copy")), "the lead hears your words and that it waits: {heard:?}");
+    // A second Send back while it waits: it goes now too, and both go again with its copy.
     w.hub().desk_item_act(&id, "send_back", "Lets try A one last time").unwrap();
     w.settle();
+    let now = to_holder(&w, before);
+    assert!(now.len() == 2 && now[1].contains("Lets try A one last time"), "{now:?}");
+    let mid = w.hosted.sent().len();
     w.hub().desk_let_go_copy(&top(&w), 2);
     w.settle();
     let it = item(&w, &project, "Header jumps");
     assert_eq!((it["state"].as_str(), it["tree"]["slot"].as_u64()), (Some("working"), Some(2)), "{it}");
     let path = it["tree"]["path"].as_str().unwrap().to_string();
-    let sent: Vec<String> = w.hosted.sent()[before..].iter().filter(|(s, t)| *s == h && t.contains(&format!("#{id}"))).map(|(_, t)| t.clone()).collect();
+    let sent = to_holder(&w, mid);
     assert_eq!(sent.len(), 1, "one message: {sent:?}");
     let t = &sent[0];
     assert!(t.contains(&format!("isn't done: {words}")) && t.contains("isn't done: Lets try A one last time"), "your words, as you wrote them: {t}");
@@ -138,6 +147,9 @@ fn a_sent_back_item_waiting_for_a_working_folder_names_who_uses_them_and_start_n
     assert_eq!((it["state"].as_str(), it["tree_wait"].as_bool()), (Some("queued"), Some(true)), "{it}");
     assert_eq!(it["copy_users"], serde_json::json!(["held1", "held2", "held3"]), "who uses the working folders: {it}");
     assert!(it["back_waiting"].as_str().is_some_and(|b| b.contains("The dot is too big")), "sent back, and says so: {it}");
+    // Your words went at once (#567); Start now sends them again, with where to work.
+    assert!(w.hosted.sent()[before..].iter().any(|(s, t)| *s == h && t.contains("The dot is too big")), "your words, now");
+    let before = w.hosted.sent().len();
     // Start now: at once, where its holder is, with your words; the wait is over.
     w.hub().desk_item_act(&id, "start_now", "").unwrap();
     w.settle();
@@ -313,4 +325,45 @@ fn an_item_saved_at_work_without_a_copy_is_put_in_line_and_gets_the_next_free_on
     w.hub().desk_tick_now();
     w.settle();
     assert_eq!(w.hosted.sent().len(), n);
+}
+
+#[test]
+fn your_question_on_an_item_whose_copy_is_gone_reaches_its_holder_and_lead_at_once_and_an_answer_puts_it_back() {
+    // #567 (#501's case): a question on an item to check, its copy gone as it landed, every copy in use. The item went
+    // to the line for a copy and the question was dropped: its holder never got it, nor did the lead.
+    let w = World::new();
+    let (_, project, id) = super::desk_commit::ready(&w);
+    let top = |w: &World| {
+        let out = String::from_utf8(std::process::Command::new("git").arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
+        out.lines().next().and_then(|l| l.strip_prefix("worktree ")).unwrap().to_string()
+    };
+    w.hub().desk_hold_copies(&top(&w), &[1, 2, 3]);
+    let snap = w.snapshot();
+    let h = snap.session_ids().into_iter().find(|s| snap.session(s)["name"] == "cue-teams").unwrap();
+    let lead = super::desk_finish::lead_of(&w, &project);
+    let before = w.hosted.sent().len();
+    let question = "Wondering why Feature #542 stopped. Was it waiting for a copy?";
+    w.hub().desk_item_act(&id, "note", question).unwrap();
+    w.settle();
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!((it["state"].as_str(), it["tree_wait"].as_bool()), (Some("queued"), Some(true)), "waits for a copy: {it}");
+    let sent: Vec<String> = w.hosted.sent()[before..].iter().filter(|(s, _)| *s == h).map(|(_, t)| t.clone()).collect();
+    assert!(
+        sent.len() == 1 && sent[0].starts_with(&format!("A question about Desk item #{id}")) && sent[0].contains(question) && sent[0].contains("Don't change any files until Cue sends you where its copy is"),
+        "your question, now: {sent:?}"
+    );
+    let heard: Vec<String> = w.hosted.sent()[before..].iter().filter(|(s, t)| *s == lead && t.contains("(Desk changes ")).map(|(_, t)| t.clone()).collect();
+    assert!(heard.iter().any(|t| t.contains(question) && t.contains("It waits for a free copy")), "the lead hears it at once: {heard:?}");
+    // Its holder answers without changing code: back to check, off the line for a copy.
+    w.advance(1000);
+    w.hosted_says(&h, crate::hosted::HostedEvent::Taken { text: question.into() });
+    w.settle();
+    w.advance(1000);
+    super::desk_commit::ends(&w, &h, "It stopped because every copy was in use; it starts once one frees.");
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!((it["state"].as_str(), it["tree_wait"].as_bool().unwrap_or(false)), (Some("to_check"), false), "back where it was: {it}");
+    assert!(it["asked"].is_null(), "{it}");
+    w.hub().desk_let_go_copy(&top(&w), 2);
+    w.settle();
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "to_check", "a freed copy doesn't start it");
 }

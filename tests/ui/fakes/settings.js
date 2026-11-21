@@ -167,6 +167,7 @@ CueBridge.area("settings", (w) => {
     },
     image_data: () => `data:image/png;base64,${PIXEL}`,
     clipboard_image: () => null,
+    clipboard_has_picture: () => false,
     copy_text: () => null,
     page_look_said: () => null,
     test_notification: () => "Sent a test notification",

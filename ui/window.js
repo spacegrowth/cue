@@ -25,11 +25,7 @@ addEventListener("mouseup", () => {
   mouseDown = false;
   const wasPress = onPress;
   // Selected text in the window (not in a box you type in, where ⌘C works as ever): on your clipboard now.
-  if (fresh && text.trim() && !inField(sel.anchorNode)) {
-    if (!document.execCommand("copy")) navigator.clipboard?.writeText(text);
-    copied = { at: Date.now(), words: text.length > 40 ? text.trim().split(/\s+/).length : 0 };
-    if (!heldDraw && !showCopied()) toast("Copied");
-  }
+  if (fresh && text.trim() && !inField(sel.anchorNode)) copySelected(text);
   // Pressed on a link or a button: after the click (it fires after this), so it's still there for it.
   if (wasPress) {
     setTimeout(() => {
@@ -41,6 +37,18 @@ addEventListener("mouseup", () => {
 }, true);
 // Let go outside the window (no mouseup here): the held redraw happens anyway.
 addEventListener("blur", () => { mouseDown = onPress = false; if (heldDraw) { heldDraw = false; renderMain(); } });
+
+/** Text you selected, onto your clipboard: unless a picture is there (a screenshot you're about to paste), which it
+ *  would silently replace, so ⌘V pasted the selected words instead of the picture (#567). ⌘C still copies it. */
+function copySelected(text) {
+  invoke("clipboard_has_picture").catch(() => false).then((picture) => {
+    if (picture) return toast("Not copied: a picture is on your clipboard. ⌘C copies the text.");
+    return invoke("copy_text", { text }).then(() => {
+      copied = { at: Date.now(), words: text.length > 40 ? text.trim().split(/\s+/).length : 0 };
+      if (!heldDraw && !showCopied()) toast("Copied");
+    });
+  }).catch(() => navigator.clipboard?.writeText(text));
+}
 
 /** "Copied", in Moss, at the right end just above the chat's text box (or its bottom, with no box). Put back
  *  after each redraw, its fade carrying on where it was. False when there's no chat to show it in. */
