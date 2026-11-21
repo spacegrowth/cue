@@ -214,7 +214,6 @@ impl Hub {
             if let Some(m) = merge {
                 self.finish_fin(id, |f| f.merges.push(m));
             }
-            self.finish_release(id);
             self.install_addon(id, t, &before);
             return;
         }
