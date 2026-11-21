@@ -122,7 +122,7 @@ function helperPane(sid, h) {
   const steps = [], tail = [];
   // Finished: its last words are its reply, shown apart from the steps.
   const end = helperTail(h);
-  h.items.slice(0, end).forEach((x) => steps.push(x.t === "step" ? stepLine(sid, x, false, true) : `<div class="stx-say msg small" data-key="${esc(x.id || `s:${x.at_ms}`)}">${md(x.text)}</div>`));
+  h.items.slice(0, end).forEach((x) => steps.push(x.t === "step" ? stepLine(sid, x, true) : `<div class="stx-say msg small" data-key="${esc(x.id || `s:${x.at_ms}`)}">${md(x.text)}</div>`));
   h.items.slice(end).forEach((x) => tail.push(x.text));
   const tok = helperTokens(h.tokens);
   // The head every agent's view has (agents.js agentHead): ‹ Back, its mark, name, kind, state, whose it is.

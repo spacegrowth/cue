@@ -1,9 +1,9 @@
 // Cue UI chat — the chat's HTML: turns, status, the meta line and the ⋯ menu.
 /** One turn's steps, between your message and its reply, folded by default into one chip ("Working · 13 steps ·
  *  9 commands, 2 tools, 1 edit"), with what it said between them left in view, each ending in a count of the steps
- *  that led to it, and its newest step always at the bottom while it works. The chip or any count opens the turn: every
- *  step back in place between its messages, each open in full (turnFold remembers your choice; Settings → Steps
- *  "Open" opens every turn by default). `live`: the turn it's working on now. `latest`: the newest turn.
+ *  that led to it, and its newest step always at the bottom while it works, on one line cut with "…". The chip or any
+ *  count opens the turn: every step back in place between its messages, each one line; a step opens in full only when
+ *  you click it (turnFold remembers your choice; Settings → Steps "Open" opens every turn by default). `live`: the turn it's working on now. `latest`: the newest turn.
  *  `part`: when you wrote mid-turn, the turn is drawn in parts around your messages ({ from, to } ms); only the first
  *  part has the chip (its count is the whole turn's). `replied`: the chat has its reply (false when you cut it off:
  *  its last words then stay here, or they'd be nowhere). */
@@ -34,7 +34,7 @@ function stepsBlock(sid, turn, live, latest, part = { from: -Infinity, to: Infin
   };
   const head = `<div class="stx-head" data-key="head"><button class="stx-fold" data-turn-fold="${esc(key)}" data-open="${open ? 1 : 0}" aria-expanded="${open}">${live ? `<span class="dot-live"></span>` : ""}<b>${live ? `Working · ${count}` : count}</b><span class="stx-sum"> · ${esc(turnSummary(steps))}</span><span class="stx-tri">${open ? "▾" : "▸"}</span></button></div>`;
   // Folded: the steps go, what it said to you stays (a fold never hides its words), and while it works (or was cut
-  // off) its newest step stays at the bottom, in full.
+  // off) its newest step stays at the bottom, on one line.
   if (!open) {
     const last = footStep(sid, turn, live, latest, replied);
     const says = items.map(([x, i]) => (x.t === "say" ? sayHtml(x, i) : "")).join("");
@@ -49,7 +49,7 @@ function stepsBlock(sid, turn, live, latest, part = { from: -Infinity, to: Infin
   // Over: under the step that started it. A teammate stays in the list above the box instead.
   const finished = new Map(helpersOf(sid).filter((h) => !helperRunning(h) && !h.teammate).map((h) => [h.step, h]));
   items.forEach(([x, i]) => {
-    if (x.t !== "say") { if (!run.length) runKey = x.id; run.push(stepLine(sid, x, true)); const h = finished.get(x.id); if (h) run.push(bgRow(sid, h)); return; }
+    if (x.t !== "say") { if (!run.length) runKey = x.id; run.push(stepLine(sid, x)); const h = finished.get(x.id); if (h) run.push(bgRow(sid, h)); return; }
     flush();
     // New words unroll top to bottom, quicker for short ones.
     const ms = Math.min(REVEAL_MS, 250 + x.text.length * 2);
@@ -114,20 +114,20 @@ function replyCounts(sid, s, ex, skip) {
   });
   return out;
 }
-/** A folded turn's newest step, in full at its foot: its mark, what it's doing (a command whole, wrapped), its time
- *  while it runs (how it went once done), then "· N steps before", which opens the turn (or the Stop hook's fold,
- *  for a step of that part). */
+/** A folded turn's newest step at its foot, on one line: its mark, what it's doing (cut with "…" where it doesn't
+ *  fit), then on the right "· N steps before", which opens the turn (or the Stop hook's fold, for a step of that
+ *  part), and its time while it runs (how it went once done). */
 function lastStepRow(sid, turn, x, key, live) {
   const hook = hookedPart(turn, x), group = turn.items.filter((y) => hookedPart(turn, y) === hook);
   let n = 0;
   for (let k = group.indexOf(x) - 1; k >= 0 && group[k].t === "step"; k--) n++;
   const what = `${esc(x.verb)}${x.subject || stepFull(sid, x) ? ` <span class="${x.mono ? "mono" : ""}">${esc(stepFull(sid, x) || x.subject)}</span>` : ""}`;
   const label = `· ${n} step${n === 1 ? "" : "s"} before`;
-  const more = !n ? "" : hook ? ` <button class="stx-cnt" data-hook-fold="${esc(key)}">${label}</button>` : ` ${foldCount(key, n, " before")}`;
+  const more = !n ? "" : hook ? `<button class="stx-cnt" data-hook-fold="${esc(key)}">${label}</button> ` : `${foldCount(key, n, " before")} `;
   // Running: a live dot and its time; cut off mid-step (the turn ended under it), stopped: its mark, no time.
   const running = !x.done && live;
   const res = x.done ? stepResult(x) : running ? `<span data-ago="${x.at_ms}">${ago(x.at_ms)}</span>` : "";
-  return `<div class="stx-line stx-last ${x.bad ? "bad" : ""}" data-key="last:${esc(x.id)}"><i class="stx-ic k-${esc(x.kind)}">${running ? `<span class="dot-live"></span>` : STEP_ICON[x.kind] || "•"}</i><span class="stx-what">${what}${more}</span><span class="stx-res">${res}</span></div>`;
+  return `<div class="stx-line stx-last ${x.bad ? "bad" : ""}" data-key="last:${esc(x.id)}"><i class="stx-ic k-${esc(x.kind)}">${running ? `<span class="dot-live"></span>` : STEP_ICON[x.kind] || "•"}</i><span class="stx-what">${what}</span><span class="stx-res">${more}${res}</span></div>`;
 }
 /** A turn's "After a stop hook": folded, what the hook made it do and write (a checklist, the commands it
  *  ran for it), so it never reads as the answer, live or after. "" when no hook sent it back. */
@@ -135,7 +135,7 @@ function hookFold(sid, turn, hooked) {
   if (!hooked.length) return "";
   const key = `${sid}|${turn.at_ms}`, open = hookOpen.has(key);
   const busy = hooked.some((x) => x.t === "step" && !x.done);
-  const body = open ? hooked.map((x, i) => x.t === "step" ? `<div class="stx-steps">${stepLine(sid, x, false)}</div>` : `<div class="stx-say msg" data-key="${esc(itemKey(turn, x, i))}">${md(x.text)}</div>`).join("") : "";
+  const body = open ? hooked.map((x, i) => x.t === "step" ? `<div class="stx-steps">${stepLine(sid, x)}</div>` : `<div class="stx-say msg" data-key="${esc(itemKey(turn, x, i))}">${md(x.text)}</div>`).join("") : "";
   return `<div class="follow stx-hook" data-key="hook"><button class="thread-toggle" data-hook-fold="${esc(key)}">${busy ? `<span class="dot-live"></span>` : ""}After a stop hook ${open ? "▴" : "▾"}</button>${open ? `<div class="follow-body">${body}</div>` : ""}</div>`;
 }
 /** A turn since your last message (`since`) has its "After a stop hook" in the chat, so the reply's own copy

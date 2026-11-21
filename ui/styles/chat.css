@@ -117,9 +117,12 @@ a[data-path]:hover, .msg a[data-path]:hover { text-decoration: underline; text-u
 .stx-ic.k-edit { background: var(--sel); color: var(--on-sel); }
 .stx-ic.k-run { background: var(--slab); color: var(--on-slab); }
 .stx-line.bad .stx-ic { background: color-mix(in srgb, var(--deny) 16%, var(--panel)); color: var(--deny); }
-.stx-what { flex: 1; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
-.stx-what .mono { font-size: var(--type-pill); white-space: pre-wrap; }
-.stx-res { flex: none; max-width: 42%; padding-top: 1px; font-size: var(--type-pill); color: var(--muted); text-align: right; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+/* A step is one line, cut with "…", until you open it (#604); open, it wraps whole. */
+.stx-what { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stx-what .mono { font-size: var(--type-pill); }
+.stx-line.open .stx-what { white-space: normal; overflow-wrap: anywhere; }
+.stx-line.open .stx-what .mono { white-space: pre-wrap; }
+.stx-res { flex: none; max-width: 42%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-top: 1px; font-size: var(--type-pill); color: var(--muted); text-align: right; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 /* A folded turn's newest step at its foot: a step line that isn't a button (its count is). */
 .stx-last { cursor: default; }
 .stx-last .stx-ic .dot-live { width: 7px; height: 7px; }
