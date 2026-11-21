@@ -9,7 +9,7 @@ test("the Desk is in the header after Board, and lists Waiting on you, then a gr
   const views = await page.locator(".switch-view button").evaluateAll((els) => els.map((el) => el.dataset.view));
   expect(views.slice(0, 3)).toEqual(["inbox", "board", "desk"]);
   await openDesk(page);
-  expect(await listOrder(page)).toEqual(["# Queue", "d4", "d6", "# Waiting on you", "d1", "# Ready to review", "d2", "# In progress", "d3", "d5", "# Done", "d7", "d8", "d9"]);
+  expect(await listOrder(page)).toEqual(["# Waiting on you", "d1", "# Ready to check", "d2", "# In progress", "d3", "d5", "# Queue", "d4", "d6", "# Done", "d7", "d8", "d9"]);
   await expect(page.locator(".dk-items .dk-gh.you .n")).toHaveText("1");
   // Grouped by state only: no head a session (the sessions are on the left).
   await expect(page.locator(".dk-items .dk-holder")).toHaveCount(0);

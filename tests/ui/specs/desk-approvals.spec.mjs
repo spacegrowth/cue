@@ -27,8 +27,9 @@ test("a checked Cue fix without a commit hash waits for verification in both Inb
       { ...base, id: "awaits-install", title: "Queued for install", state: "finishing", finish: { step: "queued", at }, checks: [{ at, edited, cue: true }] }
     );
   });
-  await expect(page.locator(".dk-items .dk-gh.you .n")).toHaveText("1");
-  await expect(page.locator(".dk-items .dk-gh.you + .dk-gbody > .dk-gin > [data-desk-item='265']:first-child")).toBeVisible();
+  // On the Desk it's in Ready to check, not Waiting on you, which holds only questions (#602).
+  await expect(page.locator(".dk-items .dk-gh.you .n")).toHaveText("0");
+  await expect(page.locator(".dk-items [data-desk-group='check'] + .dk-gbody > .dk-gin > [data-desk-item='265']:first-child")).toBeVisible();
   await expect(page.locator('[data-desk-item="265"] .dk-ok')).toHaveAccessibleName("Looks right");
   await expect(page.locator('[data-desk-item="awaits-install"] .dk-ok')).toHaveCount(0);
   await expect(page.locator('[data-view="inbox"] .ib-count')).toHaveText("1");
@@ -42,7 +43,7 @@ test("a checked Cue fix without a commit hash waits for verification in both Inb
   await cue.called("desk_looks_right", { id: "265" });
   // Back to the Items list (#418: it's hidden while an item is open).
   await page.locator(".dk-right .dk-back").click();
-  await expect(page.locator(".dk-items .dk-gh.you .n")).toHaveText("0");
+  await expect(page.locator('.dk-items [data-desk-gbody="check"] [data-desk-item="265"]')).toHaveCount(0);
   await expect(page.locator('[data-view="inbox"] .ib-count')).toHaveCount(0);
 });
 
@@ -62,7 +63,7 @@ test("Inbox and Desk count the same open decisions, excluding resolved requests 
   });
   await expect(deskCount).toHaveText("2");
   expect((await deskRows()).sort()).toEqual(["d1", "d5"]);
-  await expect(page.locator(".dk-items .dk-gh", { hasText: "Ready to review" }).locator("+ .dk-gbody > .dk-gin > [data-desk-item='d2']:first-child")).toBeVisible();
+  await expect(page.locator(".dk-items .dk-gh", { hasText: "Ready to check" }).locator("+ .dk-gbody > .dk-gin > [data-desk-item='d2']:first-child")).toBeVisible();
   await expect(page.locator('[data-desk-request="codex-approval"]')).toHaveCount(0);
   await expect(inboxBadge).toHaveText("2");
   await page.locator('[data-view="inbox"]').click();

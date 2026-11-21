@@ -183,7 +183,7 @@ test("mini: a Desk's rows answer in place", async ({ cue, page }) => {
   await openDesk(cue, page, "notch");
   await openDeskTab(page, "notch");
   const row = (id) => page.locator(`.m-dk-it[data-mdesk-item="${id}"]`);
-  await expect(page.locator(".m-dk-g")).toHaveText(["Waiting on you2", "Ready to review1", "In progress2"]);
+  await expect(page.locator(".m-dk-g")).toHaveText(["Waiting on you2", "Ready to check1", "In progress2"]);
   // Its holder: the lead → its crew member.
   await expect(row("d1").locator(".m-dk-who")).toHaveText("web-lead→focus-fix");
   await expect(row("d1").locator(".m-dk-who .dk-kic")).toHaveCount(2);

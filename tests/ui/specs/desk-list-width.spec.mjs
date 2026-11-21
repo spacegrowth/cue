@@ -2,6 +2,7 @@
 // ef66ab27 · Thu 9:45pm") and its Undo made the list wider than its pane, so it slid sideways and cut off the group
 // headings and row icons at its left edge.
 import { test, expect, openDesk } from "./cue.mjs";
+import { openDone } from "./desk.mjs";
 
 test("a long done row doesn't widen the item list; it can't scroll sideways and its left edge shows in full", async ({ page, cue }) => {
   await cue.open("desk");
@@ -10,6 +11,7 @@ test("a long done row doesn't widen the item list; it can't scroll sideways and 
     for (const i of d.items.filter((x) => x.state === "done")) Object.assign(i, { commit: "2f2448c7 ef66ab27 9a1b2c3d", holder: { name: "cue-387-a-long-session-name" } });
   });
   await openDesk(page);
+  await openDone(page);
   const list = page.locator(".dk-items .dk-scroll");
   await page.locator('.dk-items [data-desk-item="d7"]').waitFor();
   const row = page.locator('.dk-items [data-desk-item="d7"]');

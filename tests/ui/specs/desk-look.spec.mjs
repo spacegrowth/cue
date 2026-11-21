@@ -1,7 +1,7 @@
 // The Desk's look: the head strip, Run by, the lead's card, the session rows and their dots, the Working group,
 // and Commit to main on a row.
 import { test, expect, openDesk } from "./cue.mjs";
-import { listOrder, crewNotLead, blinkOf, boxOf } from "./desk.mjs";
+import { listOrder, crewNotLead, blinkOf, boxOf, openDone } from "./desk.mjs";
 
 // ---------- the left column's head and rows (#153: option B) ----------
 
@@ -444,6 +444,7 @@ test("Undo on a done row: only on hover; back to waiting on you, its commit kept
   await cue.open("desk");
   await cue.change((s) => { Object.assign(s.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d2"), { state: "done", done_at: Math.floor(Date.now() / 1000), commit: "abc1234" }); });
   await openDesk(page);
+  await openDone(page);
   const row = page.locator('.dk-items [data-desk-item="d2"]');
   await expect(row).toHaveClass(/\bdk-done\b/);
   const undo = row.locator('.dk-undo[data-desk-act="reopen"]');

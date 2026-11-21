@@ -279,12 +279,19 @@ test("finished items: the 10 newest, then 10 more as the list's end comes into v
   const doneIds = async () => { const o = await listOrder(page); return o.slice(o.indexOf("# Done") + 1); };
   const count = (n) => expect.poll(async () => (await doneIds()).length).toBe(n);
   await count(10);
+  // Done starts folded (#602): opened, it loads more as its end comes into view.
+  const doneHead = list.locator('[data-desk-group="done"]');
+  await expect(doneHead).toHaveAttribute("aria-expanded", "false");
+  await doneHead.click();
+  await expect(doneHead).toHaveAttribute("aria-expanded", "true");
+  await expect(list.locator('[data-desk-gbody="done"]')).not.toHaveClass(/moving/);   // its slide open is over
   await expect(list.locator('[data-desk-done-more="cue"]')).toHaveCount(1);
   // The newest first: today's three, then the newest of the old.
   expect((await doneIds()).slice(0, 5)).toEqual(["d7", "d8", "d9", "o499", "o498"]);
   // To the end: 10 more, and where you were reading stays where it was.
   const anchor = list.locator('[data-desk-item="o495"]');
-  const top0 = await anchor.evaluate((e) => e.getBoundingClientRect().top);
+  // (Its place in the list, by where it's drawn plus how far the list is scrolled: opening Done scrolled it already.)
+  const top0 = await anchor.evaluate((e) => e.getBoundingClientRect().top) + await list.evaluate((e) => e.scrollTop);
   await list.evaluate((e) => { e.scrollTop = e.scrollHeight; });
   await count(20);
   const scrolled = await list.evaluate((e) => e.scrollTop);

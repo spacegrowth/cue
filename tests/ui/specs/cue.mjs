@@ -68,6 +68,6 @@ export const pick = async (page, p) => {
 export const openDesk = async (page, p = "cue") => {
   await pick(page, p);
   await page.locator('.switch-view [data-view="desk"]').click();
-  // A row in view, in whichever group: the Queue on top may be folded (#576).
+  // A row in view, in whichever group: the Queue may be folded (#576).
   await page.locator(".dk-items .dk-it:visible").first().waitFor();
 };

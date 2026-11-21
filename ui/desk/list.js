@@ -207,7 +207,10 @@ function deskGroups(project, taskApprovals) {
   // In your order (#387): those you dragged into place first, then the rest oldest first.
   const queued = rest.filter((i) => i.state !== "needs_resume" && i.state !== "paused" && i.state !== "held" && !going(i) && !deskLane(i));
   deskQSort(project, queued);
-  return { d, waiting, review, working: rest.filter(going), landing, install, resume, paused, queued, held, extra, done, all: items };
+  // The list splits what's yours (#602): Waiting on you holds only questions (and picks); what finished and waits
+  // for your Looks right or Send back is Ready to check. `waiting` and `review` stay whole for the counts.
+  const asks = waiting.filter((i) => !deskNeedsVerification(i)), check = [...waiting.filter(deskNeedsVerification), ...review];
+  return { d, waiting, review, asks, check, working: rest.filter(going), landing, install, resume, paused, queued, held, extra, done, all: items };
 }
 
 // ---------- the list ----------
@@ -369,21 +372,25 @@ function deskDoneWatch() {
 }
 
 /** The item list's groups you folded (#430), by name ("queued", "working", …), the same on every Desk; kept across
- *  restarts. */
+ *  restarts. Parked and Done start folded (#602): for those it keeps the ones you opened. */
 const deskGroupsShut = (() => { try { return new Set(JSON.parse(localStorage.getItem("cue.deskGroupsShut") || "[]")); } catch { return new Set(); } })();
+const deskGroupsOpened = (() => { try { return new Set(JSON.parse(localStorage.getItem("cue.deskGroupsOpened") || "[]")); } catch { return new Set(); } })();
+const DESK_GROUPS_FOLDED = new Set(["held", "done"]);
+const deskGroupShut = (key) => (DESK_GROUPS_FOLDED.has(key) ? !deskGroupsOpened.has(key) : deskGroupsShut.has(key));
 const DESK_GCHEV = `<svg class="dk-gchev" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 2l3 3-3 3"/></svg>`;
 /** A group of the item list: its header (a chevron, its name and count) folds or opens it; its rows sit in a box that
  *  slides shut. */
 function deskGroupHtml(key, head, body, cls = "", attrs = "") {
-  const shut = deskGroupsShut.has(key);
+  const shut = deskGroupShut(key);
   return `<div class="dk-gh dk-gf${cls ? ` ${cls}` : ""}"${attrs} role="button" tabindex="0" data-desk-group="${key}" aria-expanded="${!shut}">${DESK_GCHEV}${head}</div><div class="dk-gbody${shut ? " shut" : ""}" data-desk-gbody="${key}"><div class="dk-gin">${body}</div></div>`;
 }
 /** A group's header clicked: it folds or opens in place with a short slide (the list isn't drawn again, so nothing
  *  jumps), and stays so. */
 function deskGroupFold(key) {
-  const shut = !deskGroupsShut.delete(key);
-  if (shut) deskGroupsShut.add(key);
-  try { localStorage.setItem("cue.deskGroupsShut", JSON.stringify([...deskGroupsShut])); } catch { /* kept for this window only */ }
+  const shut = !deskGroupShut(key), kept = DESK_GROUPS_FOLDED.has(key) ? deskGroupsOpened : deskGroupsShut;
+  if (shut === (kept === deskGroupsShut)) kept.add(key);
+  else kept.delete(key);
+  try { localStorage.setItem("cue.deskGroupsShut", JSON.stringify([...deskGroupsShut])); localStorage.setItem("cue.deskGroupsOpened", JSON.stringify([...deskGroupsOpened])); } catch { /* kept for this window only */ }
   const h = document.querySelector(`.dk-items [data-desk-group="${key}"]`), b = document.querySelector(`.dk-items [data-desk-gbody="${key}"]`);
   if (!h || !b) return renderMain();
   h.setAttribute("aria-expanded", String(!shut));
@@ -403,15 +410,14 @@ function deskList(project, taskApprovals) {
   const parts = [deskAwayCallsHtml(g.d)].filter(Boolean);
   // Waiting on you stays at 0 (in red only while something waits), so you see there's nothing for you; while away it
   // says so in words. While away, the open asks from the Desk's sessions join it.
-  const aw = deskAwayWaiting(g.d, taskApprovals), nWait = g.waiting.length + aw.n;
+  const aw = deskAwayWaiting(g.d, taskApprovals), nWait = g.asks.length + aw.n;
   const none = !nWait && g.d?.away?.on ? `<div class="dk-aw-none">Nothing waits on you.</div>` : "";
   const group = deskGroupHtml;
-  // The Queue, at the top (#576): what waits for a session, in your order, dragged up and down into it (#387); each
-  // row says what it waits for.
-  if (g.queued.length) parts.push(group("queued", `Queue <span class="n">${g.queued.length}</span>${g.queued.length > 1 ? '<span class="dk-qhint">drag to reorder</span>' : ""}`, g.queued.map(deskQRow(row)).join("")));
-  parts.push(group("you", `Waiting on you <span class="n">${nWait}</span>`, `${g.waiting.map(row).join("")}${aw.html}${none}`, `you${nWait ? "" : " none"}`));
-  // Ready to review sits right under Waiting on you (#275): both are yours to look at.
-  if (g.review.length) parts.push(group("review", `Ready to review <span class="n">${g.review.length}</span>`, g.review.map(row).join("")));
+  // The order, top to bottom (#602, Robin's): Waiting on you (questions), Ready to check, In progress (with the
+  // landing lanes, nearly done, over it and what stopped under it), Queue, Parked (folded), Done (folded).
+  parts.push(group("you", `Waiting on you <span class="n">${nWait}</span>`, `${g.asks.map(row).join("")}${aw.html}${none}`, `you${nWait ? "" : " none"}`));
+  // Ready to check: what finished and waits for your Looks right or Send back (split out of Waiting on you, #602).
+  if (g.check.length) parts.push(group("check", `Ready to check <span class="n">${g.check.length}</span>`, g.check.map(row).join("")));
   // The landing line (above In progress, #468), numbered in the order it lands (one at a time), then what's on main for the next install, with
   // its time and Install now (#346).
   if (g.landing.length) parts.push(group("landing", `Landing <span class="n">${g.landing.length}</span><span class="dk-split">one at a time</span>`, g.landing.map((i, k) => deskItemRow(i, i.id === crewLit, false, { n: k + 1, ahead: g.landing[k - 1] })).join(""), "dk-lane", ' data-lane="landing"'));
@@ -419,6 +425,10 @@ function deskList(project, taskApprovals) {
   // In progress sits under Landing and Waiting to install (#468): what is nearly yours comes first.
   if (g.working.length) parts.push(group("working", `In progress <span class="n">${g.working.length}</span>${deskSplitHtml(g.working)}`, g.working.map(row).join("")));
   if (g.resume.length) parts.push(group("resume", `Needs resume <span class="n">${g.resume.length}</span>`, g.resume.map(row).join("")));
+  // The Queue, under In progress (#602; at the top before, #576): what waits for a session hasn't started, so it comes
+  // after what's yours and what's under way. In your order, dragged up and down into it (#387); each row says what it
+  // waits for.
+  if (g.queued.length) parts.push(group("queued", `Queue <span class="n">${g.queued.length}</span>${g.queued.length > 1 ? '<span class="dk-qhint">drag to reorder</span>' : ""}`, g.queued.map(deskQRow(row)).join("")));
   if (g.paused.length) parts.push(group("paused", `Paused <span class="n">${g.paused.length}</span>`, g.paused.map(row).join("")));
   if (g.held.length) parts.push(group("held", `Parked <span class="n">${g.held.length}</span><span class="dk-split">start them when you want</span>`, `<div class="dk-held">${g.held.map(row).join("")}</div>`, "dk-heldh"));
   for (const h of g.extra) parts.push(deskHolderHead({ ...h, addon: true, key: h.key || h.name }, o?.kind === "addon" && o.key === (h.key || h.name)) + (h.items || []).map(row).join(""));

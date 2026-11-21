@@ -13,3 +13,10 @@ export const blinkOf = (loc) => loc.evaluate((el) => [...document.styleSheets].f
   .filter((r) => r.selectorText && !r.selectorText.startsWith("*") && el.matches(r.selectorText) && r.style?.animationName).map((r) => r.style.animationName).pop() || "none");
 
 export const boxOf = (loc) => loc.evaluate((el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, right: r.right }; });
+
+/** Opens the item list's Done, folded at first (#602), and waits for its slide to end. */
+export async function openDone(page) {
+  const head = page.locator('.dk-items [data-desk-group="done"]');
+  if ((await head.getAttribute("aria-expanded")) === "false") await head.click();
+  await page.locator('.dk-items [data-desk-gbody="done"]:not(.shut):not(.moving)').waitFor();
+}

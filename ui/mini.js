@@ -242,14 +242,15 @@
       <div class="m-dk-2">${deskKindIcon(i)}<span class="m-dk-id">#${esc(i.id)}</span><span class="m-dk-who">${deskWhoHtml(i)}</span></div>${deskAskHtml(i, wait)}</div>`;
   }
   const IN_PROGRESS = 3;   // rows of what's in progress; the rest counted under them
-  /** The Desk's list: Waiting on you, then In progress, then a line counting the rest. */
+  /** The Desk's list as the full one has it (#602): Waiting on you (questions), Ready to check, In progress, then a line
+   *  counting the rest. */
   function deskBodyHtml(id) {
     const g = deskGroups(id);
     const rows = (list, wait) => list.map((i) => deskRowHtml({ ...i, project: i.project || id }, wait)).join("");
     const more = g.working.length - IN_PROGRESS, q = g.queued.length + g.resume.length + g.paused.length;
     const rest = more > 0 || q ? `<div class="m-dk-rest">${more > 0 ? `<span class="m-cnt"><i class="m-dot acc"></i>+${more} working</span>` : ""}${q ? `<span class="m-cnt">${deskStateIcon({ state: "queued" })}${q} queued</span>` : ""}</div>` : "";
     const head = (words, n) => `<div class="m-dk-g">${words}<span class="m-dk-gn">${n}</span></div>`;
-    return `${g.waiting.length ? `${head("Waiting on you", g.waiting.length)}${rows(g.waiting, true)}` : `<div class="m-dk-none">Nothing waits on you here.</div>`}${g.review.length ? `${head("Ready to review", g.review.length)}${rows(g.review, true)}` : ""}${g.working.length ? `${head("In progress", g.working.length)}${rows(g.working.slice(0, IN_PROGRESS), false)}` : ""}${rest}`;
+    return `${g.asks.length ? `${head("Waiting on you", g.asks.length)}${rows(g.asks, true)}` : `<div class="m-dk-none">Nothing waits on you here.</div>`}${g.check.length ? `${head("Ready to check", g.check.length)}${rows(g.check, true)}` : ""}${g.working.length ? `${head("In progress", g.working.length)}${rows(g.working.slice(0, IN_PROGRESS), false)}` : ""}${rest}`;
   }
   /** The Desk's list drawn again: where it was scrolled and the box with the cursor kept. */
   function drawDesk(id) {
