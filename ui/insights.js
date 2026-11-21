@@ -433,6 +433,13 @@ function handoffLine(sid) {
   if (!s || insSnoozed() || s.state === "working" || insStale(s, sid) || ctx / win < HANDOFF.late || !start || ctx / start < HANDOFF.growth || insLaterOf(sid) > ctx) return "";
   return `<div class="ins-line">${BULB}<span><b>${Math.round((ctx / win) * 100)}% of its window,</b> ${Math.round(ctx / start)}× its start. Open it for a fresh session.</span></div>`;
 }
+/** insight_state for any number of sessions: asked 50 at a time, the most the Mac answers in one ask
+ *  (ipc/insights.rs insight_states); a longer list's tail was dropped, and read as "no numbers" (#592). */
+async function insAskMany(sids) {
+  const out = {};
+  for (let i = 0; i < sids.length; i += 50) Object.assign(out, (await invoke("insight_state", { sessionIds: sids.slice(i, i + 50) })) || {});
+  return out;
+}
 /** Sessions waiting on you (a reply or a decision, or put aside in Need to decide) whose log isn't open here, and a parked or closed one
  *  open in Active: ask the Mac for their insights' numbers (every 30 s). The board's cards on this Mac also
  *  get theirs with every state change (setState); this catches parked ones and other machines'. */
@@ -442,7 +449,7 @@ async function insPoll() {
   const sids = [...new Set([...state.items.map((i) => i.session_id), ...parkedIds(), ...shelved])].filter((sid) => sid && !stepFeeds.get(sid)?.meta);
   if (!sids.length) return;
   try {
-    const r = (await invoke("insight_state", { sessionIds: sids })) || {};
+    const r = await insAskMany(sids);
     // Merged, not replaced: a state change may have pushed newer numbers while this was asked.
     for (const sid of sids) {
       const c = r[sid], had = insCache.get(sid);

@@ -27,33 +27,46 @@ const deskSessItem = (d, sid) => deskSessItems(d, sid)[0] || null;
 /** Every open item session `sid` holds, the one it's on now first (working, then waiting on you, then the newest). */
 const deskSessItems = (d, sid) => d.items.filter((i) => i.state !== "done" && i.holder && i.holder.kind !== "crew" && i.holder.sid === sid)
   .sort((a, b) => (b.state === "working") - (a.state === "working") || (b.state === "needs_you") - (a.state === "needs_you") || (b.updated ?? 0) - (a.updated ?? 0));
-/** A session row's size and cache, as its card says them: "142k · cache 3m" (minutes its cache has left)
- *  or "142k · cold"; amber with under 5 minutes left. With `when` (an idle row), when its latest reply came first:
- *  "2h ago · 142k · cold". From its card's numbers (insights.js insCache), asked for here when no card brings them
- *  (deskInsAsk). Without them: "", or with `hold` (a Desk row) an empty line of the same height (#485). */
+/** A session's size and cache numbers: its open log's (stepFeeds) or its card's (insights.js insCache), whichever is
+ *  newer; null when neither is in yet. */
+function deskSessNums(sid) {
+  const m = stepFeeds.get(sid)?.meta, c = typeof insCache !== "undefined" ? insCache.get(sid) : null;
+  const fromLog = m?.context ? { tokens: m.context, until_ms: m.cache_ttl_s && m.last_call_ms ? m.last_call_ms + m.cache_ttl_s * 1000 : 0, last_ms: m.last_call_ms || 0 } : null;
+  if (fromLog && (!c?.tokens || fromLog.last_ms > (c.last_ms || 0))) return fromLog;
+  return c?.tokens || c?.until_ms ? c : null;
+}
+/** A session row's size and cache, as its card says them: "142k · cache 3m" (minutes its cache has left),
+ *  "142k · cold", or "142k · cache unknown" (an agent whose log doesn't say how long it caches: Codex, Pi); amber
+ *  with under 5 minutes left. With `when` (an idle row), when its latest reply came first: "2h ago · 142k · cold".
+ *  From deskSessNums, asked for here when no card brings them (deskInsAsk). With `hold` (a Desk row) it's never
+ *  blank (#592): "no reply yet · no cache" once its log was read and has none; only while the first answer is on its
+ *  way, an empty line of the same height (#485). A Board card shows nothing till they're in (#524). No bar: the size
+ *  is the number (#592). */
 function deskSessCache(sid, when = false, hold = false) {
   deskInsAsk(sid);
-  const c = typeof insCache !== "undefined" ? insCache.get(sid) : null;
-  // Not known yet: on a Desk row an empty line of the same height, so the row keeps its shape when the numbers come in
-  // (#485); a Board card shows nothing, as it did (#524).
-  if (!c?.tokens && !c?.until_ms) return hold ? '<div class="dk-s3 dk-size" aria-hidden="true">&nbsp;</div>' : "";
+  const c = deskSessNums(sid);
+  if (!c) {
+    if (!hold) return "";
+    return deskInsNone.has(sid) ? `<div class="dk-s3 dk-size">${DESK_NO_NUMS}</div>` : `<div class="dk-s3 dk-size" data-ins-wait="${esc(sid)}" aria-hidden="true">&nbsp;</div>`;
+  }
   const left = (c.until_ms || 0) - now();
-  const cache = left > 0 ? `cache ${Math.ceil(left / 60000)}m` : c.until_ms ? "cold" : "";
-  const details = [c.tokens && insTok(c.tokens), cache].filter(Boolean).join(" · ");
+  const cache = left > 0 ? `cache ${Math.ceil(left / 60000)}m` : c.until_ms ? "cold" : "cache unknown";
+  const size = c.tokens ? insTok(c.tokens) : "size unknown";
   const at = when && c.last_ms ? `<span data-ago="${c.last_ms}">${ago(c.last_ms)}</span> ago · ` : "";
-  // How full its window is, as a short bar at the end of the line (no % written; amber from 80% full, #423).
-  const pct = c.tokens ? Math.min(100, Math.round((c.tokens / (c.window || HANDOFF.window)) * 100)) : 0;
-  const meter = pct ? ` · <span class="dk-meter${pct >= 80 ? " full" : ""}" role="img" aria-label="${pct}% of its window"><i style="width:${Math.max(3, pct)}%"></i></span>` : "";
-  return `<div class="dk-s3 dk-size${left > 0 && left < HOT_CACHE_MS ? " hot" : ""}">${at}${esc(details)}${meter}</div>`;
+  return `<div class="dk-s3 dk-size${left > 0 && left < HOT_CACHE_MS ? " hot" : ""}">${at}${esc(size)} · ${esc(cache)}</div>`;
 }
 /** The first line of a session's latest reply, from the same numbers ("" until they're in). */
 const deskSessSaid = (sid) => (typeof insCache !== "undefined" && insCache.get(sid)?.said) || "";
-/** Sessions on a Desk whose numbers no card brings (an idle one with its card gone, #185): asked for together,
- *  each again a minute after it was last asked, so its last reply, size and cache show and stay current. */
+const DESK_NO_NUMS = "no reply yet · no cache";
+/** Sessions on a Desk whose numbers the window's state doesn't bring (Hub::cache_tick reads only this Mac's waiting
+ *  cards): asked for together, each again a minute after it was last answered (a failed ask again in 5 s), so its
+ *  last reply, size and cache show and stay current. `deskInsNone`: asked, and its log has no numbers (no reply): its
+ *  empty line says so in place, no redraw (rows drawn while it was asked carry data-ins-wait). */
 const deskInsAt = new Map();
+const deskInsNone = new Set();
 let deskInsWant = null;
 function deskInsAsk(sid) {
-  if (!sid || typeof insCache === "undefined" || (state.items || []).some((i) => i.session_id === sid)) return;
+  if (!sid || typeof insCache === "undefined" || state.insight?.[sid]) return;
   if (now() - (deskInsAt.get(sid) || 0) < 60000) return;
   deskInsAt.set(sid, now());
   if (deskInsWant) return deskInsWant.add(sid);
@@ -62,14 +75,21 @@ function deskInsAsk(sid) {
     const sids = [...deskInsWant];
     deskInsWant = null;
     try {
-      const r = (await invoke("insight_state", { sessionIds: sids })) || {};
+      const r = await insAskMany(sids);
       let changed = false;
       for (const id of sids) {
         const c = r[id], had = insCache.get(id);
+        if (!c && !deskInsNone.has(id)) {
+          deskInsNone.add(id);
+          for (const el of document.querySelectorAll(`[data-ins-wait="${CSS.escape(id)}"]`)) { el.textContent = DESK_NO_NUMS; el.removeAttribute("aria-hidden"); el.removeAttribute("data-ins-wait"); }
+        }
+        if (c) deskInsNone.delete(id);
         if (c && (!had || (c.last_ms || 0) >= (had.last_ms || 0)) && JSON.stringify(c) !== JSON.stringify(had)) { insCache.set(id, c); changed = true; }
       }
       if (changed) renderMain();
-    } catch {}
+    } catch {
+      for (const id of sids) deskInsAt.set(id, now() - 55000);
+    }
   }, 0);
 }
 /** A working session's (or teammate's) current step and how long it's been at it, kept live (window.js ticks

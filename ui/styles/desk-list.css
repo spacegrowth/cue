@@ -59,12 +59,6 @@
 .dk-s2 > .dk-w { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .dk-s3 { margin: 3px 0 0; color: var(--muted); font: var(--type-pill) var(--mono); }
 .dk-s3.hot { color: var(--amber); font-weight: 600; }
-/* How full a session's window is: a short bar at the end of its size · cache line (#423). */
-.dk-meter { display: inline-block; vertical-align: middle; width: 56px; height: 5px; margin-top: -2px; border-radius: var(--radius-pill); background: var(--line); overflow: hidden; }
-.dk-meter i { display: block; height: 100%; border-radius: var(--radius-pill); background: var(--muted); }
-.dk-meter.full i { background: var(--amber); }
-.on .dk-meter { background: color-mix(in oklab, var(--on-sel) 22%, transparent); }
-.on .dk-meter:not(.full) i { background: var(--on-sel); }
 .dk-s3.dk-now { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-srow.on .dk-st, .dk-srow.on .dk-s2, .dk-srow.on .dk-s3:not(.hot), .dk-srow.on .dk-id { color: var(--on-sel); }
 .dk-add-anchor { position: relative; flex: none; z-index: 1; }

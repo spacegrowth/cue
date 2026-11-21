@@ -12,7 +12,7 @@ test("a session on no item says the first line of its latest reply, when it came
   await page.locator('.dk-sessions [data-desk-older="side:cue"]').click({ position: { x: 24, y: 6 } });
   const row = page.locator('.dk-sessions [data-desk-chat-of="spare"]');
   await expect(row.locator(".dk-s2 .dk-w")).toHaveText("Done: spare's rows read as rows.");
-  await expect(row.locator(".dk-size")).toHaveText("4h ago · 600k · cold ·");
+  await expect(row.locator(".dk-size")).toHaveText("4h ago · 600k · cold");
   await expect(row.locator("[data-desk-member]")).toHaveCount(0);
 });
 
@@ -119,8 +119,8 @@ test("three columns: the project's sessions on the left, the lead's chat in the 
 test("each session row says its size and cache: \"142k · cache 12m\", \"cold\", amber in its last 5 minutes", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  // No numbers yet: a blank line holding the row's shape (#485).
-  await expect(page.locator('.dk-sessions [data-desk-chat-of="host"] .dk-size')).toHaveText("\u00a0");
+  // Its log read and no numbers in it: it says so, never a blank line (#592).
+  await expect(page.locator('.dk-sessions [data-desk-chat-of="host"] .dk-size')).toHaveText("no reply yet · no cache");
   await cue.change((st) => {
     const t = Date.now();
     st.insight = { lead: { tokens: 142000, until_ms: t + 12 * 60000 - 2000 }, host: { tokens: 88000, until_ms: t + 3 * 60000 } };
@@ -131,25 +131,22 @@ test("each session row says its size and cache: \"142k · cache 12m\", \"cold\",
   const left = page.locator(".dk-sessions");
   // spare is cold and on no item, so it sits under Older (#485): open it.
   await left.locator('[data-desk-older="side:cue"]').click({ position: { x: 24, y: 6 } });
-  await expect(left.locator('[data-desk-lead-chat="lead"] .dk-size')).toHaveText("142k · cache 12m ·");
+  await expect(left.locator('[data-desk-lead-chat="lead"] .dk-size')).toHaveText("142k · cache 12m");
   await expect(left.locator('[data-desk-lead-chat="lead"] .dk-size')).not.toHaveClass(/hot/);
-  await expect(left.locator('[data-desk-chat-of="host"] .dk-size')).toHaveText("88k · cache 3m ·");
+  await expect(left.locator('[data-desk-chat-of="host"] .dk-size')).toHaveText("88k · cache 3m");
   await expect(left.locator('[data-desk-chat-of="host"] .dk-size')).toHaveClass(/hot/);
-  await expect(left.locator('[data-desk-chat-of="spare"] .dk-size')).toHaveText("51k · cold ·");
-  // How full its window is: a short bar last on the line, no % written; amber from 80% full (#423).
-  await expect(left.locator('[data-desk-lead-chat="lead"] .dk-size .dk-meter')).toHaveAccessibleName("71% of its window");
-  await expect(left.locator('[data-desk-lead-chat="lead"] .dk-meter')).not.toHaveClass(/full/);
-  await expect(left.locator('[data-desk-lead-chat="lead"] .dk-size')).not.toContainText("%");
-  await expect(left.locator('[data-desk-chat-of="spare"] .dk-meter')).toHaveAccessibleName("26% of its window");
-  await cue.change((st) => { st.insight.spare = { tokens: 170000, until_ms: Date.now() - 60000 }; });
-  await expect(left.locator('[data-desk-chat-of="spare"] .dk-meter')).toHaveClass(/full/);
+  await expect(left.locator('[data-desk-chat-of="spare"] .dk-size')).toHaveText("51k · cold");
+  // No context bar on any row: the size is the number (#592).
+  await expect(left.locator(".dk-meter")).toHaveCount(0);
   // Each with its state and what it's on.
   await expect(left.locator('[data-desk-chat-of="host"] .dk-st')).toHaveText("working");
   await expect(left.locator('[data-desk-chat-of="host"] .dk-s2')).toContainText("#d5");
   await expect(left.locator('[data-desk-chat-of="spare"] .dk-st')).toHaveText("idle");
   await cue.change((st) => { st.insight.lead = { until_ms: Date.now() + 4 * 60000 - 2000 }; });
-  await expect(left.locator('[data-desk-lead-chat="lead"] .dk-size')).toHaveText("cache 4m");
-  await expect(left.locator('[data-desk-lead-chat="lead"] .dk-meter')).toHaveCount(0);   // no size, no bar
+  await expect(left.locator('[data-desk-lead-chat="lead"] .dk-size')).toHaveText("size unknown · cache 4m");
+  // An agent whose log doesn't say how long it caches (Codex, Pi): said, not left out.
+  await cue.change((st) => { st.insight.lead = { tokens: 90000, until_ms: 0 }; });
+  await expect(left.locator('[data-desk-lead-chat="lead"] .dk-size')).toHaveText("90k · cache unknown");
 });
 
 test("a working session's dot blinks and its current step shows under its title, with its time, live", async ({ page, cue }) => {
@@ -174,4 +171,23 @@ test("a working session's dot blinks and its current step shows under its title,
   await crewNotLead(cue);
   const mate = page.locator('.dk-sessions [data-desk-crew="id-search"]');
   expect(await blinkOf(mate.locator(".dk-st > i"))).toBe("pulse");
+});
+
+test("on first load every session row shows its size and its cache, the lead's too though it holds a card (#592)", async ({ page, cue }) => {
+  // The lead waits on a question card the window's state brings no numbers for (they come only for this Mac's waiting
+  // cards): its row asked for them itself, as every other row does.
+  await cue.open("desk", { flags: "cost=warm" });
+  await openDesk(page);
+  const left = page.locator(".dk-sessions");
+  await expect(left.locator('[data-desk-lead-chat="lead"] .dk-size')).toHaveText("600k · cache 8m");
+  await expect(left.locator('[data-desk-chat-of="host"] .dk-size')).toHaveText("600k · cache 8m");
+  await expect(left.locator(".dk-meter, .ctx-bar")).toHaveCount(0);
+});
+
+test("more than 50 sessions' numbers are all asked for, 50 at a time (#592)", async ({ page, cue }) => {
+  await cue.open("desk", { flags: "cost=warm" });
+  const before = (await cue.calls("insight_state")).length;
+  const got = await page.evaluate(async () => Object.keys(await insAskMany(Array.from({ length: 120 }, (_, i) => `s${i}`))).length);
+  expect(got).toBe(120);
+  expect((await cue.calls("insight_state")).slice(before).map((c) => c.args.sessionIds.length)).toEqual([50, 50, 20]);
 });

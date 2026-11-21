@@ -1122,13 +1122,12 @@ for (const scheme of ["light", "dark"]) {
   });
 }
 
-test("a session's card under Sessions ends with its size · cache · how full its window is, as a bar (#423)", async ({ cue, page }) => {
+test("a session's card under Sessions ends with its size · cache, no bar (#423, #592)", async ({ cue, page }) => {
   await cue.open("board-waiting");
   const card = page.locator(".working[data-session]").first();
   const sid = await card.getAttribute("data-session");
   await cue.change((st, id) => { st.insight = { ...(st.insight || {}), [id]: { tokens: 126000, until_ms: Date.now() + 52 * 60000 - 2000 } }; }, sid);
   const line = page.locator(`.working[data-session="${sid}"] .dk-size`);
-  await expect(line).toHaveText("126k · cache 52m ·");
-  await expect(line.locator(".dk-meter")).toHaveAccessibleName("63% of its window");
-  await expect(line.locator(".dk-meter")).not.toHaveClass(/full/);
+  await expect(line).toHaveText("126k · cache 52m");
+  await expect(line.locator(".dk-meter")).toHaveCount(0);
 });

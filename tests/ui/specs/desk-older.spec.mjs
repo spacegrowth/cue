@@ -107,7 +107,8 @@ test("a session row keeps its shape and place whether or not its size and cache 
   });
   const side = page.locator(".dk-sessions"), row = side.locator('[data-desk-chat-of="spare"]');
   const shape = () => row.evaluate((el) => ({ h: el.getBoundingClientRect().height, lines: [...el.children].map((c) => c.className) }));
-  await expect(row.locator(".dk-size")).toHaveCount(1);
+  // Its log read and nothing in it: said in words, never a blank line (#592).
+  await expect(row.locator(".dk-size")).toHaveText("no reply yet · no cache");
   const before = await shape(), at = await order(side);
   expect(before.lines).toEqual(["dk-s1", "dk-s2", "dk-s3 dk-size"]);
   // The numbers come in: the same lines, the same height, the same place.
@@ -117,7 +118,7 @@ test("a session row keeps its shape and place whether or not its size and cache 
   expect(await order(side)).toEqual(at);
   // And gone again (a card that brought them closed): still the same.
   await page.evaluate(() => { insCache.delete("spare"); renderMain(); });
-  await expect(row.locator(".dk-size")).not.toContainText("51k");
+  await expect(row.locator(".dk-size")).toHaveText("no reply yet · no cache");
   expect(await shape()).toEqual(before);
 });
 
