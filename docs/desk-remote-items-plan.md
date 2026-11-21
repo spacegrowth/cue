@@ -1,160 +1,182 @@
 # Plan: Desk items worked on other machines
 
-Item #491. A plan only: no code changes. Written to be read aloud.
+Item #585. It replaces the plan from #491. A plan only: no code changes. Written to be read aloud.
 
 ## In short
 
-Cue can already run a session on another machine, show its chat, answer its questions and commit its files there.
-What it can't do yet is treat that session as a full Desk worker: it gets no copy of its own, its work never reaches
-the main line on your Mac, nothing checks or installs it, and nothing happens when the machine goes quiet.
+Another machine, a Linux machine or a second Mac, does a whole item by itself. It works in its own clone of the
+repository there, runs the checks it can run, and pushes its work as a branch to the shared remote. It never
+pushes main.
 
-The suggestion is option B below: a remote item works in its own copy on the remote machine, and at its DONE Cue
-brings that copy's work back to your Mac as one branch and lands it through the same landing line as every other
-item. You pick the machine per item, with a per-Desk default.
+The Desk on this Mac then fetches that branch and lands it the normal way, through the same landing line as every
+other item: caught up with main, word-checked, checked, and installed here. Before anything is pushed from this Mac,
+the check for things that must not go public still runs.
 
-## What Cue does with remote sessions today
+For this to work, main has to be pushed often, so the other machines start from current work. And the Desk has to
+say so when a machine goes quiet.
 
-This is read from the code as it is now, not from memory.
+Most of the parts exist. Five pieces are new work, listed near the end.
 
-**Machines.** You add a machine once (New, then Machine). Cue reaches it with your own secure-shell setup, never asks
-for or keeps a password, and keeps one shared connection per machine. When a machine needs a login, Cue opens a
-terminal tab and you log in there yourself. Cue installs no agent there; it only puts its own hooks there and,
-for hosted sessions, its small host program in a hidden folder in your home on that machine.
+## What Cue does today
 
-**Starting a session there.** A hosted session can start on a machine: the agent runs under Cue's host program on
-that machine, which keeps it running when Cue on your Mac quits or the connection drops. Cue asks you once to trust
-each folder on each machine. A session can also run in a terminal on the machine, which Cue shows in its built-in
-terminal.
+This was read from the code as it is now.
 
-**Seeing its state.** Cue copies the session's conversation log from the machine to your Mac as it is written, within
-a fraction of a second, so the chat, steps and context look the same as for a local session. Hook events from the
-machine arrive as if they came from your Mac, including permission questions, and your answers go back. Cue reads
-every machine on a timer: every ten seconds where it has a live session, every minute elsewhere, backing off to
-every five minutes for a machine that doesn't answer, without holding the others up.
+**Machines and sessions.** You add a machine once. Cue reaches it over your own secure-shell setup and keeps one
+shared connection per machine. A hosted session can run there under Cue's small host program, which keeps the agent
+running when Cue quits or the connection drops. Cue carries that host program for Linux and for macOS.
 
-**Connection drops.** Messages to a hosted session on a machine are held while the connection is made again, then
-sent once, in order. When the connection comes back, Cue picks each session up where it left off. If the host there
-died and lost the session, Cue lets it go and says it ended. Pictures you paste are copied to the machine first.
+**Seeing a session there.** Cue copies the session's log to this Mac as it is written, so its chat, its DONE line and
+its TO LEAD lines read the same as a local session's. Cue reads every machine on a timer: every ten seconds where it
+has a live session, every minute elsewhere, and less and less often, down to every five minutes, for a machine that
+doesn't answer. A machine that can't be reached is marked so on its sessions.
 
-**The Desk and a remote session.** A remote session can hold a Desk item: the lead can route to it by name. Its
-DONE line moves the item to finishing, and its TO LEAD lines reach the lead the same way as anyone's. After that,
-remote work takes a separate, older path:
+**Drops.** Messages to a hosted session are held while the connection is made again, then sent once, in order. If
+the host there died and lost the session, Cue says the session ended.
 
-- It gets **no copy of its own**. Every new Desk item that works on your Mac gets its own copy of the repository and
-  its own branch; a remote session keeps working wherever it already is.
-- At DONE it goes **straight to "to check"**. Nothing is committed or landed at that point.
-- **Looks right commits its files on the remote machine**, in that machine's checkout, with the word check run there.
-  Undo takes that commit back, also there. The commit never reaches the main line on your Mac.
-- **No checks and no install.** The project's check and Cue's own window check run only for local work. The install
-  step is skipped: "nothing to install here".
-- **Files another session is busy with** are not looked at on a machine, so two sessions there can tread on each
-  other's files without Cue noticing.
-- **Starting a fresh session for an item** ("route to new") always starts it on your Mac, in the project's folder
-  there. There is no way to say "start it on that machine".
-- Crew teammates of a remote lead work there too, and their files are only seen at their finish, not after each
-  command.
+**A remote session holding a Desk item.** This works, but on an older, shorter path:
 
-So today a remote session can do Desk work, but it ends as a commit sitting on another machine that you then have
-to move by hand.
+- It gets no copy of its own. Only a session on this Mac gets a copy and a branch from the Desk.
+- Its DONE goes straight to "to check". Nothing is committed, checked or installed at that point.
+- Looks right commits its changed files on that machine, never pushed. Cue first reads the changes from there and
+  checks them and the title against the never-commit words kept on this Mac. That commit stays on the machine.
+- The lead is told today that work on another machine "changes nothing in the repo", so it expects no commit.
+- A new session for an item always starts on this Mac. The lead can't say "start it on that machine".
+- "Ask me before", the rule that a push to main waits for your yes, is checked on every session on this Mac,
+  hosted ones too. The hooks Cue sets up on another machine leave that check out. Only a Pi session there carries
+  it, through Cue's own extension.
 
-## What a Desk item needs to run on another machine
+**The landing line.** For an item in its own copy on this Mac, the line does this, one item at a time: bring the
+work up to main, check the title and the added lines against the project's never-commit words, run the project's
+check in a clean copy, then move main forward by one commit. A clash goes back to the holder. For Cue itself the
+check is the build, the Rust tests, and the window loaded from the clean copy. After landing, Cue installs, or
+serves a window-only change in place.
 
-**1. Getting its copy there.** The machine needs the repository, at the main line as it is on your Mac right now,
-plus a branch for the item. Two ways: the machine keeps its own clone and fetches the main line from a shared
-remote repository, or Cue sends the main line straight from your Mac to the machine over the connection it already
-has. The second works even for work you haven't pushed anywhere, which is the usual case for the Desk, since landing
-moves your Mac's main line before anything is pushed. Each item then gets a copy on the machine, the same shape as
-the local ones: a separate folder, its own branch, at most a few per repository.
+**Pushing and fetching.** The Desk can already push and fetch, with every network call cut off after a minute. It
+pushes an item's branch for a pull request, and it fetches the remote's main once a pull request is merged. The
+push setting has three choices: never, ask each time, after each landing. Cue's own project is on "ask each time".
 
-**2. Running the session.** This part exists: start a hosted session on that machine, in that copy's folder, with
-the item's brief. The new piece is letting the Desk start one there (today "route to new" only starts on your Mac),
-and trusting the copies' folder once so it doesn't ask per item.
+**Not in Cue at all.** The wider check before a push, reading commit messages and added lines for things that must
+never be public, is done by hand today. The landing line's word check covers part of it, not all.
 
-**3. How Cue sees its state.** Also mostly there: the log copy, hook events and the timer read. What's missing is
-the Desk's own view of the copy: which files changed, the diff on the item page, and busy-file checks. These can be
-read over the same connection when asked, the way Looks right already reads changed files there today, not on every
-tick, so a slow machine doesn't slow the Desk.
+## How a remote item runs
 
-**4. How its work comes back and lands on main.** At DONE, Cue takes everything in the remote copy, committed or
-not, as one commit on the item's branch there, then brings that branch to your Mac. From there it joins the landing
-line like any other item: brought up to date with main, word-checked, checked, then main moves forward. A clash with
-main goes back to its holder, who resolves it in the remote copy. The landing line itself doesn't change; only the
-step before it does.
+**1. It starts from the shared remote.** The machine has its own clone. The session fetches main from the shared
+remote and makes the item's branch from it, named the same way the Desk names branches here. It works there to the
+end, as a session does on this Mac.
 
-**5. Checks and installs.** Once the work is on your Mac, the project's check and Cue's window check run here, as
-for any item, and the install runs here as today. Running checks on the remote machine is possible later, for
-projects that need its hardware, but it isn't needed to start.
+**2. It runs what it can.** On a second Mac that is the whole check. On Linux it is less, see the next section. The
+session says in its DONE which checks it ran and which it could not.
 
-**6. TO LEAD messages.** Already work: they come from the session's reply, which Cue reads from the log copy. No
-change needed.
+**3. Its work is pushed as a branch.** Never main. The DONE line names the branch and its last commit. The plan is
+that Cue makes this push, not the session: Cue already runs git on the machine for Looks right, and it can run the
+word check there first. That keeps the rule that sessions don't push, and it keeps never-commit words off the
+shared remote. This matters most for a public project, where a pushed branch is public even if it never lands.
 
-**7. Hand-offs.** Moving an item from a remote session to another session already writes a hand-off note. The new
-part is where the work is: if it moves to a session on your Mac, Cue first brings the remote copy's work over as a
-branch, so the new holder starts from it. Moving it to another machine works the same way through your Mac.
+**4. The Desk fetches it.** On DONE, Cue fetches that branch into the repository on this Mac and checks that its
+last commit is the one the DONE named. If it isn't there, or it's a different commit, the item does not move on. It
+says "waiting for its branch" and asks the session to push again.
 
-**8. When the machine goes away.** Today the session just looks quiet and the item stays "working". Needed:
-- After a few minutes with no answer from the machine, the item shows "machine not answering" in plain words,
-  with how long.
-- Messages to it are held and sent when it's back, as they are now.
-- After a longer time (say thirty minutes, the same wait the Desk uses before asking you), the lead asks you: wait,
-  or move the item. Moving it takes whatever Cue last brought back, which is why step 4 also brings the branch over
-  at each DONE and can bring it over on request.
-- A machine that comes back with the copy intact picks up where it was. A machine that comes back empty (wiped,
-  or a fresh container) means the item restarts from its last brought-back branch, or from main.
+**5. It joins the landing line.** From here nothing is special. The branch is brought up to main, word-checked,
+checked in a clean copy, and lands as one commit. Then the install runs here. The item's page shows the diff from
+the fetched branch, so Looks right and Send back work as for any item.
 
-## How you pick where an item runs
+**6. A clash or a failed check goes back to the machine.** The holder there fetches main, fixes its branch, and says
+DONE again. So the remote session has to stay reachable until its item has landed, not only until its DONE.
 
-- **Per Desk default.** In the Desk's settings: "New sessions start on: this Mac / <machine>". Most Desks stay on
-  this Mac.
-- **Per item.** On the item page and in the new-item box, a small "Runs on" choice with the same list. Setting it
-  on an item that's already working asks first, since it means a hand-off.
-- **The lead can suggest it**, for example for a heavy build or a long test run, but routing an item to another
-  machine for the first time asks you, the same way the lead asks before pulling in a session outside the Desk.
-- The item card shows the machine's name next to the holder, so you always see where the work is.
+## What can't run on Linux
 
-## Cost and risks
+Two things, said plainly.
 
-**Cost.** Option B is roughly four pieces of work: start a Desk session on a chosen machine; make and remove copies
-there; bring a copy's work back to your Mac at DONE and on hand-off; show a machine that stopped answering. Each is
-about the size of one of the recent Desk landing items. Running cost: one extra transfer per item at DONE, small
-for code changes.
+**Cue's window checks.** The window load and the window tests drive the Mac's own web view. There is no such thing
+on Linux. The plain script tests can run there. Whether the app's build and the Rust tests run on Linux is not
+known: the build skips its Mac-only helper programs off a Mac, but nobody has tried the rest. It needs one try on a
+real machine; this plan doesn't promise it.
 
-**Risks.**
-- **Two copies of the truth.** Work lives on the machine until it's brought back. A machine that dies before that
-  loses what wasn't brought back. Bringing work back at each DONE and on request limits this.
-- **Slow or flaky connections.** Anything the Desk reads from the machine must never block the Desk's own updates.
-  Cue already has a rule that it never looks up a remote folder from your Mac on the spot; the new reads must follow it.
-- **Different tools on the machine.** A project's check may not run the same there. Running checks on your Mac
-  avoids this for now.
-- **Private code on another machine.** The repository goes to a machine you chose; nothing goes anywhere new beyond
-  that. Worth saying once when you first pick a machine for a Desk.
-- **Containers that reset.** A container that loses its disk on restart loses unreturned work. The "comes back
-  empty" path above covers it, but the work since the last DONE is gone.
+**The install.** Cue installs on this Mac. Nothing installs from another machine.
 
-## Options
+So for a Linux item, the real check is the one in the landing line here. The remote run is a first pass that
+catches the cheap mistakes early. An item that passes there can still fail here, and then it goes back, as in
+step 6. A second Mac can run everything except the install, but the landing line runs the check again anyway,
+because only that run sees main plus the change.
 
-**A. Keep today's path, finish it.** The remote session works where it is, as now, and Looks right commits there.
-Add only: start a Desk session on a machine, show "machine not answering", and a button to bring the commit to your
-Mac by hand. Smallest change. But remote items never go through the landing line, so they skip checks, the word check
-on your Mac, and the "one item, one commit on main" rule. You'd still move work by hand.
+## Keeping main current on the remote
 
-**B. Remote copy, local landing (suggested).** Each remote item gets its own copy on the machine; at DONE its work is
-brought back to your Mac as a branch and lands through the same landing line as every other item. Checks and install
-run on your Mac. Every item lands the same way no matter where it ran, the landing line doesn't change, and a machine
-that goes away loses at most the work since its last DONE or bring-back.
+Landing moves main on this Mac. The other machines only see main once it is pushed. So:
 
-**C. Fully remote Desk.** The remote machine has its own main line, its own landing and checks, and pushes to a
-shared remote repository; your Mac only fetches. Best for a machine that is the real home of a project (for example
-a server project you never build on your Mac). But it's two landing lines to keep in step, and installs of Cue
-itself can't happen there. Too much for now; B can grow into it later for one project at a time.
+- **Push after each install.** Installs already batch landings about every half hour. One push per install keeps the
+  remote at most half an hour behind, and gives one moment for the by-hand check before the push.
+- **Push before a remote item starts.** If main here is ahead of the remote when the lead routes an item to a
+  machine, the Desk says how many landings it is ahead and asks to push first.
+- **Cue's own project stays on "ask each time".** It is public, so each push still waits for your yes, with the
+  by-hand check first. A private project can use "after each landing" and never be asked.
 
-**Suggested: B.** It reuses everything that already works for remote sessions (starting, log copies, held messages,
-reconnecting) and everything that already works for landing, and only adds the step between them.
+**If an item started from an old main.** Nothing breaks. The landing line brings every item up to main before it
+checks it, and a remote item is no different. If the two fit, it lands. If they clash, it goes back to the machine
+with the clashing files named, and by then main should be pushed so the session can fetch it. The cost of a stale
+start is a wasted round, not wrong work on main. The item page shows how far behind it started, so you can tell.
 
-## Suggested order, if you pick B
+## When a machine goes quiet
 
-1. Desk starts a new session on a chosen machine (per-Desk default, per-item choice, machine name on the card).
-2. Remote copies: made at start, removed after landing, kept on a drop, as local copies are.
-3. Bring back at DONE and on hand-off, then into the landing line.
-4. "Machine not answering" on the item, and the lead asking you after thirty minutes.
-5. Later, only if a project needs it: checks run on the machine.
+What you see, and what the Desk does.
+
+**The connection drops.** Today the machine is marked as not reachable on its sessions, and the item just stays
+"working". New: the item says "machine not answering" with how long. Your messages are held and sent when it is
+back, as today. The session keeps working there under the host program, so a short drop costs nothing.
+
+**It stays quiet.** After thirty minutes the lead asks you: wait, or move the item. Thirty minutes is the same wait
+the routing rules use before asking you about a stuck item.
+
+**The host died.** Cue already says the session ended. The item then goes to the lead like any item whose holder
+is gone. The clone on the machine still has the work if the machine itself is alive.
+
+**The branch was never pushed.** A DONE with no branch on the remote does not reach the landing line. The item says
+"waiting for its branch". If the session is alive it is asked to push. If the machine is gone, the work is only on
+that machine, and the item says exactly that: "its work is on the machine, not pushed".
+
+**Half-pushed work.** Git moves a branch whole or not at all, so "half" means the branch is there but older than
+the work: later commits, or edits never committed. The commit named in the DONE line catches this, as in step 4.
+To keep the loss small when a machine dies mid-item, the branch is also pushed at each natural stop, not only at
+DONE. The item page shows when it was last pushed.
+
+**Moving an item away.** The new holder starts from the last pushed branch, fetched here, with the usual hand-off
+note. Anything not pushed stays on the quiet machine. If it comes back, its session is told the item moved.
+
+## What is new work
+
+1. **A remote DONE that lands.** Fetch the named branch, compare its last commit, and put it in the landing line in
+   place of the straight jump to "to check". The lead's instructions stop saying remote work changes nothing.
+2. **Cue's push from the machine.** The word check there, then the branch pushed, at DONE and at each stop. Plus the
+   "Ask me before" check added to the hooks on other machines, so a Claude or Codex session there can't push main
+   unasked.
+3. **Starting a Desk session on a machine.** Per item, with a default per Desk, and the machine shown on the card.
+   The first time the lead wants to use a machine for a Desk, it asks you.
+4. **Quiet machines on the item.** "Machine not answering", "waiting for its branch", last pushed, and the lead's
+   question after thirty minutes.
+5. **Main pushed on time.** The ask before a remote start, and the push after each install.
+
+Still by hand after all five: the wider check before a push. Building it into the push question would be a sixth
+piece, worth doing before Cue's own project uses "after each landing".
+
+To start small: one item at a time per clone on a machine. Several at once needs a copy per item there, not
+planned here.
+
+## Risks
+
+- **A public branch.** For a public project, anything pushed is public at once. That is why Cue pushes, after the
+  word check, and not the session. A private remote just for work branches is the safer choice if you want one.
+- **Work only on the machine.** Between pushes the work lives in one place. Pushing at each stop limits the loss.
+- **Two checks that disagree.** Passed there, failed here. The item goes back, and its page says which check failed
+  where, so it doesn't read as a mystery.
+
+## Considered
+
+**Keep today's path and add a button to bring the commit over.** The smallest change. Not chosen: remote items
+would still skip the landing line, so no check, no word check here, and work moved by hand.
+
+**Cue brings the remote copy's work back itself (the #491 suggestion).** Cue would send main to the machine over
+its own connection and pull the work back at DONE, with no shared remote in between. Not chosen: it makes Cue a
+second way to move git history, and the machine can't work at all without this Mac. A pushed branch is plain git,
+is still there when this Mac is off, and is how a second person would work too.
+
+**A fully remote Desk.** The machine keeps its own main, lands and checks there, and this Mac only fetches. Not
+chosen: two landing lines to keep in step, and for Cue the window checks and the install can't run there anyway.
