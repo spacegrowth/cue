@@ -107,6 +107,13 @@ async function deskSendLead(to, key, text) {
   });
 }
 /** What you wrote on item `id`'s page, sent (`act`: to its lead or its holder): kept in its Steps (desk/hub/core/desk.rs act_on). */
+// Starts on, on an item's page (#597): where its session starts, yours to pick until it starts.
+document.addEventListener("click", (e) => {
+  const b = e.target.closest?.("[data-desk-start-on]");
+  if (!b || b.classList.contains("on")) return;
+  e.stopPropagation();
+  invoke("desk_item_act", { id: b.dataset.id, act: "start_on", text: b.dataset.deskStartOn }).then(() => renderMain(), (err) => toast(`Couldn't change where it starts: ${err}`, 5000));
+}, true);
 const deskWrote = (id, act, text) => invoke("desk_item_act", { id, act, text }).catch((e) => console.error(e));
 /** Whether item `id` is done (its Send back is a Reopen, #577). */
 const deskDone = (id) => (state.desk?.projects || []).some((p) => (p.items || []).some((x) => x.id === id && x.state === "done"));

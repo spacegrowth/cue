@@ -14,12 +14,12 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 
 | What | Count |
 |---|---|
-| `#[tauri::command]` | 177 (3 sync) |
-| Lock declarations (static or field) | 115 |
-| Lock acquisitions | 276 |
-| Lock-graph edges | 53 |
-| Spawn sites | 90 |
-| External calls: fs / db / process / notify / login / socket | 500 / 233 / 58 / 4 / 1 / 4 |
+| `#[tauri::command]` | 178 (3 sync) |
+| Lock declarations (static or field) | 118 |
+| Lock acquisitions | 283 |
+| Lock-graph edges | 54 |
+| Spawn sites | 92 |
+| External calls: fs / db / process / notify / login / socket | 501 / 232 / 60 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -138,6 +138,7 @@ Sync commands run on the main thread. "Hands work to": the threads or pools its 
 | `run_line` | async | `ipc/sessions.rs::run_line` | ipc::blocking |
 | `move_to_cue` | async | `ipc/sessions.rs::move_to_cue` | ipc::with_hub |
 | `connect_agent` | async | `ipc/settings.rs::connect_agent` | ipc::with_hub |
+| `push_words_found` | async | `ipc/settings.rs::push_words_found` | ipc::blocking |
 | `ext_settings` | async | `ipc/settings.rs::ext_settings` | ipc::blocking |
 | `ext_set` | async | `ipc/settings.rs::ext_set` | ipc::blocking |
 | `open_link` | async | `ipc/settings.rs::open_link` | ipc::blocking |
@@ -226,6 +227,9 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `db/handoffs.rs::Kept.kept` | `Mutex<Option<(u64,std::time::Instant,T)>>` | "a kept db answer" (2 sites) |
 | `db/mod.rs::DB` | `Mutex<Option<Connection>>` | "DB" (1 sites) |
 | `desk/hub/away/away.rs::SWEEPING` | `std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String,u8>>>` | — |
+| `desk/hub/landing/found_words.rs::KEPT` | `Mutex<Option<Found>>` | "found words" (3 sites) |
+| `desk/hub/landing/found_words.rs::WORKING` | `Mutex<()>` | "working out found words" (1 sites) |
+| `desk/hub/landing/found_words.rs::SEEN` | `LazyLock<Mutex<HashMap<String,(Instant,Option<bool>)>>>` | "repo visibility" (2 sites) |
 | `desk/hub/theirs/theirs.rs::SAVED` | `std::sync::OnceLock<std::sync::Mutex<Option<(u64,Vec<Known>)>>>` | — |
 | `desk/hub/theirs/theirs_log.rs::SO_FAR` | `std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String,SoFar>>>` | — |
 | `extensions.rs::ONE` | `std::sync::Mutex<()>` | "extensions log" (1 sites) |
@@ -284,7 +288,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `logs/archive.rs::INDEX` | `Mutex<Option<HashMap<String,(u64,Entry)>>>` | "archive INDEX" (4 sites) |
 | `logs/live.rs::CLAUDE` | `Mutex<Vec<Quiet>>` | "CLAUDE" (2 sites) |
 | `logs/live.rs::THROWAWAY` | `Mutex<Option<HashMap<i32,(u64,bool)>>>` | "throwaway runs" (2 sites) |
-| `logs/repos.rs::Folders.known` | `Mutex<Known>` | "folder facts" (4 sites) |
+| `logs/repos.rs::Folders.known` | `Mutex<Known>` | "folder facts" (5 sites) |
 | `logs/repos.rs::FOLDERS` | `LazyLock<Folders>` | — |
 | `logs/steps/history.rs::HISTORY` | `Mutex<Option<HashMap<String,(Arc<Mutex<Feed>>,Instant)>>>` | "HISTORY" (2 sites) |
 | `logs/steps/pi.rs::STORE` | `std::sync::OnceLock<Value>` | — |
@@ -391,6 +395,7 @@ An edge A → B: B is taken (here or in something called) while A is held. Also 
 | "typing gate" | "shown snapshot" |  | `hub/hosted.rs::Hub::send_to_hosted` → `hub/hosted.rs::Hub::send_to_hosted_held` → `hub/terminal_only.rs::Hub::run_own_command` → `hub/terminal_only.rs::Hub::codex_model` → `hub/terminal_only.rs::Hub::codex_models` → `hub/hosted.rs::Hub::wake_hosted` → `hub/redraw.rs::Hub::changed` → `hub/mod.rs::Hub::unshown` → `hub/shown.rs::Shown::forget`, takes it |
 | "typing gate" | "state drawn" |  | `hub/hosted.rs::Hub::send_to_hosted` → `hub/hosted.rs::Hub::send_to_hosted_held` → `hub/terminal_only.rs::Hub::run_own_command` → `hub/terminal_only.rs::Hub::codex_model` → `hub/terminal_only.rs::Hub::codex_models` → `hub/hosted.rs::Hub::wake_hosted` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Redraws::sending`, takes it |
 | "typing gate" | "the hub's store" |  | `hub/hosted.rs::Hub::send_to_hosted` → `hub/hosted.rs::Hub::send_to_hosted_held` → `hub/terminal_only.rs::Hub::run_own_command` → `hub/hosted.rs::Hub::hosted_origin` → `hub/store_access.rs::Hub::read`, takes it |
+| "working out found words" | "found words" |  | `desk/hub/landing/found_words.rs::work_out`, takes it |
 
 ## External calls under the hub's store
 
@@ -410,6 +415,8 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `commands.rs::read_folder` | thread::spawn | 1 |
 | `config.rs::watch` | thread::spawn | 1 |
 | `config/mac.rs::Kept::refresh_soon` | thread::spawn | 1 |
+| `desk/hub/landing/found_words.rs::keep_warm` | thread::spawn | 1 |
+| `desk/hub/landing/found_words.rs::visibility` | thread::spawn | 1 |
 | `extensions.rs::run_program` | thread::spawn | 1 |
 | `hosted/conn.rs::machine` | thread::spawn | 2 |
 | `hosted/host_link.rs::HostLink::lost` | thread::spawn | 1 |
@@ -488,7 +495,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (500)
+### fs (501)
 
 | In | Call | Times |
 |---|---|---|
@@ -538,6 +545,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `desk/hub/landing/copies.rs::work_on_main` | Path::exists | 1 |
 | `desk/hub/landing/copy_guard.rs::canon` | canonicalize | 1 |
 | `desk/hub/landing/copy_guard.rs::existing` | Path::is_dir | 1 |
+| `desk/hub/landing/found_words.rs::claude_account` | read_to_string | 1 |
 | `desk/hub/landing/land_keep.rs::edits_in_the_way` | read | 2 |
 | `desk/hub/landing/land_keep.rs::fast_forward_keeping_edits` | Path::exists | 1 |
 | `desk/hub/landing/land_keep.rs::fast_forward_keeping_edits` | read | 2 |
@@ -916,7 +924,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `voice/talk.rs::save` | write | 1 |
 | `voice/talk.rs::set` | write | 1 |
 
-### db (233)
+### db (232)
 
 | In | Call | Times |
 |---|---|---|
@@ -1074,7 +1082,6 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `desk/hub/lead/handoff.rs::Hub::desk_hand_on` | db::handoff | 1 |
 | `desk/hub/lead/handoff.rs::Hub::desk_hand_on_now` | db::handoff_continued | 1 |
 | `desk/hub/lead/run.rs::Hub::desk_lead_candidate` | db::ended_session | 1 |
-| `desk/hub/lead/run.rs::Hub::desk_start_new` | db::desk_put_space | 1 |
 | `desk/hub/theirs/theirs.rs::Hub::theirs` | db::ended_session | 1 |
 | `desk/hub/theirs/theirs.rs::ended_saved` | db::closed | 1 |
 | `desk/hub/turn/act.rs::Hub::desk_kept_pickup` | db::desk_drop_kept | 1 |
@@ -1132,7 +1139,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/turns.rs::read_so_far` | db::turns_read | 1 |
 | `startup/mod.rs::settle_folder_and_hooks` | db::rewrite_paths | 1 |
 
-### process (58)
+### process (60)
 
 | In | Call | Times |
 |---|---|---|
@@ -1142,6 +1149,8 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `chaos/ssh.rs::refused` | /bin/sh | 1 |
 | `commands.rs::read_folder` | (program computed) | 1 |
 | `desk/hub/landing/copies.rs::size_kb` | du | 1 |
+| `desk/hub/landing/found_words.rs::gh_public` | (program computed) | 1 |
+| `desk/hub/landing/found_words.rs::mac_full_name` | /usr/bin/id | 1 |
 | `desk/hub/landing/pr.rs::Hub::gh` | (program computed) | 1 |
 | `desk/hub/landing/pr.rs::Hub::net_git` | (program computed) | 1 |
 | `desk/lands.rs::run_steps` | (program computed) | 1 |
@@ -1244,7 +1253,7 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `src-tauri/src/voice/talk.rs::on_line` |  |  |
 | `ui/sheets.js::settingsSheet` |  |  |
 
-Files over 1000 lines: `src-tauri/src/desk/model.rs`, `src-tauri/src/voice/talk.rs`.
+Files over 1000 lines: `src-tauri/src/desk/hub/turn/act.rs`, `src-tauri/src/voice/talk.rs`.
 
 ## What this can't see
 

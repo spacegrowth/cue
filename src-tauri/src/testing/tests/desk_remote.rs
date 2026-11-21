@@ -175,3 +175,72 @@ fn a_holder_no_longer_on_that_machine_finishes_its_item_here_and_nothing_is_push
     assert!(it["remote"].is_null() && it["machine"].as_str().unwrap_or("").is_empty(), "{it}");
     assert!(git(&bare, &["branch", "--list", &format!("desk/{id}")]).trim().is_empty(), "nothing pushed from there");
 }
+
+/// What the lead was told after it routed, the last message to it holding `words`.
+fn told_lead(w: &World, lead: &str, words: &str) -> String {
+    w.hosted.sent().into_iter().filter(|(s, t)| s == lead && t.contains(words)).map(|(_, t)| t).last().unwrap_or_default()
+}
+
+#[test]
+fn a_desks_first_item_on_a_machine_waits_for_your_yes_and_its_folder_then_the_machine_is_the_desks() {
+    let w = World::new();
+    let ((_, _, _, project, _, _), _ssh) = routed_there(&w);
+    let lead = w.hub().desk_lead_sid(&project).unwrap();
+    // Never used here: refused, and told to ask first.
+    ends(&w, &lead, "ITEM: bug | Footer jumps | done when: it stays put\nROUTE: #new -> new | on: box | why: there");
+    let back = told_lead(&w, &lead, "hasn't used");
+    assert!(back.contains("ASK: #") && back.contains("in: <folder there>"), "{back}");
+    assert!(item(&w, &project, "Footer jumps")["on_machine"].is_null());
+    // A folder that isn't a full path there isn't taken either.
+    let id = item(&w, &project, "Footer jumps")["id"].as_str().unwrap().to_string();
+    ends(&w, &lead, &format!("ROUTE: #{id} -> new | on: box | in: code/app | why: you said yes"));
+    assert!(told_lead(&w, &lead, "full path").contains("code/app"));
+    // After your yes, with its folder: routed, and the Desk remembers the folder.
+    ends(&w, &lead, &format!("ROUTE: #{id} -> new | on: box | in: /srv/app/ | why: you said yes"));
+    let it = item(&w, &project, "Footer jumps");
+    assert_eq!((it["on_machine"]["machine"].as_str(), it["on_machine"]["folder"].as_str()), (Some("box"), Some("/srv/app")), "{it}");
+    // Once started there the folder is the Desk's; until then the next item there is asked about too.
+    crate::desk::machine_pref::remember(&project, "box", "/srv/app");
+    ends(&w, &lead, "ITEM: bug | Sidebar jumps | done when: it stays put\nROUTE: #new -> new | on: box | why: there too");
+    assert_eq!(item(&w, &project, "Sidebar jumps")["on_machine"]["folder"].as_str(), Some("/srv/app"));
+}
+
+#[test]
+fn an_item_nobody_has_shows_the_desks_machine_and_your_choice_beats_the_leads() {
+    let w = World::new();
+    let ((_, _, _, project, header, _), _ssh) = routed_there(&w);
+    let lead = w.hub().desk_lead_sid(&project).unwrap();
+    // No folder known there: you can't pick it yet.
+    ends(&w, &lead, "ITEM: bug | Footer jumps | done when: it stays put");
+    let id = item(&w, &project, "Footer jumps")["id"].as_str().unwrap().to_string();
+    assert!(w.hub().desk_start_on(&id, "box").unwrap_err().contains("folder"));
+    assert!(item(&w, &project, "Footer jumps")["machine"].as_str().unwrap_or("").is_empty(), "this Mac by default");
+    // The Desk starts its sessions on box: its unstarted items show it.
+    w.hub().desk_lands_set(&project, &serde_json::json!({ "machine": "box", "machine_folder": "/srv/app" })).unwrap();
+    assert_eq!(item(&w, &project, "Footer jumps")["machine"].as_str(), Some("box"));
+    // You chose this Mac for it: shown, and the lead can't send it elsewhere.
+    let it = w.hub().desk_start_on(&id, "").unwrap();
+    assert!(it.on_machine.is_none() && it.start_on.as_deref() == Some(""));
+    assert!(item(&w, &project, "Footer jumps")["machine"].as_str().unwrap_or("").is_empty());
+    ends(&w, &lead, &format!("ROUTE: #{id} -> new | on: box | why: there"));
+    assert!(told_lead(&w, &lead, "chose to start").contains("this Mac"));
+    assert!(item(&w, &project, "Footer jumps")["on_machine"].is_null());
+    // On box: the lead's on: this Mac is refused too, and a route without on: is taken.
+    w.hub().desk_start_on(&id, "box").unwrap();
+    ends(&w, &lead, &format!("ROUTE: #{id} -> new | on: this Mac | why: here"));
+    assert!(told_lead(&w, &lead, "chose to start").contains("box"));
+    // An item already started stays where it is.
+    assert!(w.hub().desk_start_on(&header, "").unwrap_err().contains("started"));
+}
+
+#[test]
+fn on_this_mac_starts_it_here_whatever_the_desk_starts_on() {
+    let w = World::new();
+    let ((_, _, _, project, _, _), _ssh) = routed_there(&w);
+    let lead = w.hub().desk_lead_sid(&project).unwrap();
+    w.hub().desk_lands_set(&project, &serde_json::json!({ "machine": "box", "machine_folder": "/srv/app" })).unwrap();
+    ends(&w, &lead, "ITEM: bug | Footer jumps | done when: it stays put\nROUTE: #new -> new | on: this Mac | why: here");
+    let it = item(&w, &project, "Footer jumps");
+    assert_eq!(it["on_machine"]["machine"].as_str(), Some(""), "{it}");
+    assert!(it["machine"].as_str().unwrap_or("").is_empty(), "{it}");
+}

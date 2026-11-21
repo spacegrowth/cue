@@ -474,7 +474,7 @@ function deskItemSide(i, d) {
   const tryIt = deskPsec(deskCheckBox(i) ? "Its work" : "What to try", deskCheckInfo(i, d) || (i.state === "done" ? "" : `<p class="dk-note">Shows here when ${esc(who)} says it's done, with Close and Send back.</p>`));
   const now = deskPnow({ ...deskItemNow(i), acts: `${backing ? deskBackActs(i) : deskLooksTop(i) + deskPickBtns(i) + deskItemActs(i)}${deskBuiltLink(i)}${deskDesignsLink(i)}`, fold: pts.length ? `${ticked} of ${pts.length} done` : "", box: deskCheckBox(i) })
     .replace('<h4 class="dk-psh">Now</h4>', '<h4 class="dk-psh">This item</h4>')
-    .replace("</section>", `<div class="dk-pmeta">${deskItemMeta(i, d)}</div>${deskRemoteLine(i) ? `<div class="dk-pmeta dk-rmt">${esc(deskRemoteLine(i))}</div>` : ""}</section>`);
+    .replace("</section>", `<div class="dk-pmeta">${deskItemMeta(i, d)}</div>${deskRemoteLine(i) ? `<div class="dk-pmeta dk-rmt">${esc(deskRemoteLine(i))}</div>` : ""}${deskStartsOn(i, d)}</section>`);
   const open = sid && sessionOf(sid) ? `<button class="btn small" ${deskChatAttrs(sid, d)}>Open ${esc(deskHolderName(sid, h.kind === "crew" ? "" : h.name))}</button>` : "";
   const drop = i.state !== "done" ? `<button class="btn small dk-drop${armed ? " armed" : ""}" data-desk-act="drop" data-id="${esc(i.id)}">${armed ? "Drop it" : "Drop this item"}</button>` : "";
   const foot = open || drop ? `<section class="dk-psec dk-sfoot">${open}${drop}</section>` : "";
@@ -509,6 +509,19 @@ function deskBackActs(i) {
 }
 /** An item's quiet line under its title (#200): who has it, its commit, who added it and when; its state is the
  *  panel's, said once there. */
+/** Where item `i`'s session starts (#597), on its page while nobody has it: This Mac or one of the machines its Desk
+ *  has a folder on, the one now marked; picking one is yours, and the lead's route keeps it. Only when Cue has a
+ *  machine. */
+function deskStartsOn(i, d) {
+  const ms = d?.machines?.machines || [];
+  if (!ms.length || i.holder || ["done", "dropped"].includes(i.state) || deskFeat(i)) return "";
+  const now = i.on_machine ? i.on_machine.machine : i.start_on ?? d.machines.machine ?? "";
+  const ok = ms.filter((m) => m.folder);
+  const opt = (key, label) => `<button role="radio" aria-checked="${now === key}" class="${now === key ? "on" : ""}" data-desk-start-on="${esc(key)}" data-id="${esc(i.id)}">${esc(label)}</button>`;
+  const seg = `<div class="seg dk-on-seg" role="radiogroup" aria-label="Starts on">${opt("", "This Mac")}${ok.map((m) => opt(m.name, m.label)).join("")}</div>`;
+  const hint = ok.length < ms.length ? `<div class="dk-on-hint">${ok.length ? "Other machines need" : "A machine needs"} this repository's folder there, set in the Desk's Settings.</div>` : "";
+  return `<div class="dk-pmeta dk-starts"><span class="dk-on-l">Starts on</span>${seg}</div>${hint}`;
+}
 function deskItemMeta(i, d) {
   const who = i.holder ? `<b>${esc(i.holder.name)}</b>${deskMachTag(i)}${i.crew ? ` → <b>${esc(i.crew)}</b>` : ""}`
     // Queued with no session yet (#576): the one it's marked for.

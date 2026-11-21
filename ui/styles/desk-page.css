@@ -629,3 +629,8 @@ button.dk-al-row:focus-visible { outline: 2px solid var(--accent); outline-offse
   .dk-pg[data-desk-page="item"]:not(.hid) .dk-pbox { display: block; padding: 12px; border-radius: var(--radius-card); background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
   .dk-pg[data-desk-page="item"]:not(.hid) .dk-pbox .dk-psay { margin-top: 6px; }
 }
+/* Starts on (#597): where an item's session starts, on its page while nobody has it. */
+.dk-starts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dk-on-l { color: var(--muted); }
+.dk-on-seg button { font-size: var(--type-small); padding: 2px 8px; }
+.dk-on-hint { margin-top: 4px; color: var(--muted); font-size: var(--type-small); }

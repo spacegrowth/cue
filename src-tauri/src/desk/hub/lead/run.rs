@@ -144,11 +144,14 @@ impl Hub {
         let ready = |st: &Store| st.desk.item(&s.id).is_some_and(|i| i.project == s.project && i.state != "done" && i.after.is_none());
         if !self.read(ready) { return; }
         let name = self.free_name(&format!("{}-{}", self.read(|st| st.desk.name_of(&s.project).to_string()), s.id));
-        // Routed on a machine (`on:`, desk/hub/landing/remote_item.rs): it starts in the Desk's clone there.
-        let on = self.read(|st| st.desk.item(&s.id).and_then(|i| i.on_machine.clone()));
-        let dir = match &on {
-            Some(o) => Ok(o.folder.clone()),
-            None => self.desk_folder(&s.project).ok_or_else(|| format!("no folder known for {}", s.project)),
+        // On a machine (the lead's `on:`, your choice on the item, or the Desk's setting: desk/hub/landing/remote_item.rs
+        // `start_place`, #597): it starts in the Desk's clone there, from the latest main (`desk_remote_starts`).
+        let place = self.read(|st| st.desk.item(&s.id).map(|i| crate::desk::hub::landing::remote_item::start_place(st, i)).unwrap_or(Ok(None)));
+        let on = place.clone().ok().flatten();
+        let dir = match (&place, &on) {
+            (Err(e), _) => Err(e.clone()),
+            (_, Some(o)) => Ok(o.folder.clone()),
+            _ => self.desk_folder(&s.project).ok_or_else(|| format!("no folder known for {}", s.project)),
         };
         // Its folder is one a session of the project already works in, or the one the lead named on a machine: trusted,
         // as you trust it there.
@@ -161,16 +164,7 @@ impl Hub {
         let last = moved.map(|(_, _, last)| last).unwrap_or_default();
         // Started there: that machine's folder is remembered for the Desk's next item on it.
         if let (Some(o), Ok(_)) = (&on, &started) {
-            let space = self.write(|st| {
-                let d = st.desk.spaces.get_mut(&s.project)?;
-                (d.machine_folders.get(&o.machine) != Some(&o.folder)).then(|| {
-                    d.machine_folders.insert(o.machine.clone(), o.folder.clone());
-                    d.clone()
-                })
-            });
-            if let Some(d) = space {
-                let _ = crate::db::desk_put_space(&d);
-            }
+            crate::desk::machine_pref::remember(&s.project, &o.machine, &o.folder);
         }
         let sid = started.and_then(|v| v["session_id"].as_str().filter(|s| !s.is_empty()).map(str::to_string).ok_or_else(|| "it started without a session id".to_string()));
         let now = now_ms();

@@ -32,3 +32,66 @@ test("a holder on another machine shows the machine, and its item says how that 
   await cue.change((st) => Object.assign(st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d5").remote, { quiet_since: 0, wait: "" }));
   await expect(right.locator(".dk-pmeta.dk-rmt")).toHaveText("last pushed 5 min ago");
 });
+
+// Where an item's session starts (#597): the Desk's machine on an unstarted item's card, a "Starts on" choice on its
+// page (only machines the Desk has a folder on), and the Desk's own setting on its settings screen.
+const machines = { machine: "build-box", machines: [{ name: "build-box", label: "build-box", folder: "~/code/cue" }, { name: "gpu-1", label: "gpu-1", folder: "" }] };
+const fresh = { id: "n597", project: "cue", kind: "bug", title: "Runs on the box", see: "", done_when: "", state: "new", holder: null, after: null, ask: null, files: [], created: 1, updated: 1, done_at: null, from: "you", machine: "build-box" };
+
+test("an item nobody has yet shows where it will start, and you can choose another place on its page", async ({ page, cue }) => {
+  await cue.open("desk");
+  await cue.change((st, [ms, it]) => {
+    const d = st.desk.projects.find((x) => x.project === "cue");
+    d.machines = ms;
+    d.items.push(it);
+  }, [machines, fresh]);
+  await openDesk(page);
+  const row = page.locator('.dk-it[data-desk-item="n597"]');
+  await expect(row.locator(".dk-who .mach")).toHaveText("build-box");
+  await row.locator(".dk-t").click();
+  const right = page.locator(".dk-right");
+  const seg = right.locator(".dk-starts");
+  await expect(seg.locator("[data-desk-start-on]")).toHaveText(["This Mac", "build-box"]);
+  await expect(seg.locator('[data-desk-start-on="build-box"]')).toHaveAttribute("aria-checked", "true");
+  await expect(right.locator(".dk-on-hint")).toContainText("Other machines need this repository's folder there");
+  await expect(right.locator("[title]")).toHaveCount(0);
+  // This Mac: chosen, and the card's machine goes.
+  await seg.locator('[data-desk-start-on=""]').click();
+  await expect(seg.locator('[data-desk-start-on=""]')).toHaveAttribute("aria-checked", "true");
+  await expect(row.locator(".mach")).toHaveCount(0);
+  // An item someone has: no choice, it stays where it is.
+  await page.locator('.dk-it[data-desk-item="d5"] .dk-t').click();
+  await expect(right.locator(".dk-pmeta").first()).toBeVisible();
+  await expect(right.locator(".dk-starts")).toHaveCount(0);
+  await row.locator(".dk-t").click();
+  await expect(page.locator(".dk-right .dk-pg")).toContainText("Runs on the box");
+  await expect(seg).toBeVisible();
+  for (const c of ["light", "dark"]) {
+    await page.emulateMedia({ colorScheme: c });
+    if (process.env.SHOT_DIR) await right.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-starts-on-${c}.png` });
+  }
+});
+
+test("the Desk's settings say where its new sessions start, with the folder there for a machine", async ({ page, cue }) => {
+  await cue.open("desk");
+  await cue.change((st, ms) => { st.desk.projects.find((x) => x.project === "cue").machines = ms; }, machines);
+  await openDesk(page);
+  await page.locator(".dk-strip .dk-ab [data-lands-change]").click();
+  const dlg = page.locator(".ld-dialog");
+  const sec = dlg.locator('[data-ld-sec="machine"]');
+  await expect(sec.locator(".ld-h")).toHaveText("Where new sessions start");
+  await expect(sec.locator("[data-ld-mach]")).toHaveText(["This Mac", "build-box", "gpu-1"]);
+  await expect(sec.locator('[data-ld-mach="build-box"]')).toHaveAttribute("aria-checked", "true");
+  await expect(sec.locator("[data-ld-folder]")).toHaveValue("~/code/cue");
+  await expect(dlg.locator('[data-ld="save"]')).toBeDisabled();
+  // A machine the Desk hasn't used: its folder to fill in, and Save comes on.
+  await sec.locator('[data-ld-mach="gpu-1"]').click();
+  await expect(sec.locator("[data-ld-folder]")).toHaveValue("");
+  await sec.locator("[data-ld-folder]").fill("/srv/cue");
+  await expect(dlg.locator('[data-ld="save"]')).toBeEnabled();
+  // This Mac: no folder.
+  await sec.locator('[data-ld-mach=""]').click();
+  await expect(sec.locator("[data-ld-folder]")).toHaveCount(0);
+  await expect(sec.locator(".ld-hint")).toContainText("asks you before");
+  await expect(dlg.locator("[title]")).toHaveCount(0);
+});
