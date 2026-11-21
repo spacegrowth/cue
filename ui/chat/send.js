@@ -160,10 +160,10 @@ async function forkBtw(sid, i) {
   btwForking = null;
   renderMain();
 }
-// ---------- by the way, offered on a message waiting for a session that has been at its turn a long time (#535) ----------
-// Kept in Cue until its turn ends, a message to a session busy for 45 minutes may wait a while: it can go as a side
-// question instead (out of Cue's keeping, answered by a copy that can't run anything), and back if that didn't help.
-const BTW_OFFER_MS = 45 * 60_000;
+// ---------- by the way, offered on a message waiting for a busy session (#535) ----------
+// Kept in Cue until its turn ends, a message can go as a side question instead, at once (out of Cue's keeping,
+// answered by a copy that can't run anything), and back if that didn't help. Past 45 minutes it says it may wait a while.
+const LONG_TURN_MS = 45 * 60_000;
 const btwKept = new Set();   // `${sid}:${at_ms}`: Keep it queued, said for that message
 /** When its current turn started, while it works (sessions/mod.rs turn_started): the first bar segment since it last
  *  waited on you. */
@@ -173,12 +173,12 @@ function turnStart(s) {
   return segs[w + 1]?.start_ms ?? s.since_ms ?? 0;
 }
 /** The offer under kept message `h` of session `s`, or "": only a Claude Code session's (by the way asks a copy of
- *  its conversation), words alone (a side question takes no images), and only once its turn has run 45 minutes. */
+ *  its conversation), and words alone (a side question takes no images). Its turn 45 minutes on: why it may wait. */
 function btwOffer(s, h) {
   const t = turnStart(s), sid = s.session_id;
-  if (s.harness !== "claude" || !t || now() - t < BTW_OFFER_MS || h.images?.length || !h.text.trim() || btwKept.has(`${sid}:${h.at_ms}`)) return "";
-  const d = esc(sid);
-  return `<div class="btw-offer"><div class="btw-offer-why">It's been at this ${esc(hm(now() - t))}, so this may wait a while.</div>
+  if (s.harness !== "claude" || h.images?.length || !h.text.trim() || btwKept.has(`${sid}:${h.at_ms}`)) return "";
+  const d = esc(sid), long = t && now() - t >= LONG_TURN_MS;
+  return `<div class="btw-offer">${long ? `<div class="btw-offer-why">It's been at this ${esc(hm(now() - t))}, so this may wait a while.</div>` : ""}
     <div class="btw-offer-acts"><button class="btn primary" data-act="btw-offer" data-sid="${d}">Ask it now, by the way</button><button class="btn" data-act="btw-keep" data-sid="${d}" data-at="${h.at_ms}">Keep it queued</button></div>
     <div class="btw-offer-note">A side question gets an answer from what it already knows. It can't run anything or change what it's doing.</div></div>`;
 }

@@ -1,6 +1,7 @@
 // A message kept for a session that has been at its turn a long time (#535): under it, why it may wait a while, Ask it
 // now, by the way (the message out of Cue's keeping, asked on the side) and Keep it queued. Under the side answer, Queue
-// it again puts it back. Only a Claude Code session's, and only once its turn has run 45 minutes.
+// it again puts it back. Only a Claude Code session's; shown at once, and once its turn has run 45 minutes it says why
+// it may wait a while.
 import { test, expect } from "./cue.mjs";
 
 /** Session `sid` working for `min` minutes, with `text` kept for it. */
@@ -48,13 +49,14 @@ test("Keep it queued: the offer goes, the message stays kept", async ({ cue, pag
   await expect(mine.locator(".msg-line")).toContainText("Not sent yet");
 });
 
-test("no offer before 45 minutes, nor for a session by the way can't ask", async ({ cue, page }) => {
+test("at once, as soon as it's kept: the offer without the long-wait line; none for a session by the way can't ask", async ({ cue, page }) => {
   await cue.open("board-waiting");
-  await keptFor(cue, "eng", 30, "and the footer too");
+  await keptFor(cue, "eng", 5, "and the footer too");
   await openEng(page);
   const mine = page.locator(".active-pane .cv-you", { hasText: "and the footer too" });
   await expect(mine.locator(".msg-line")).toContainText("Not sent yet");
-  await expect(mine.locator(".btw-offer")).toHaveCount(0);
+  await expect(mine.locator(".btw-offer button")).toHaveText(["Ask it now, by the way", "Keep it queued"]);
+  await expect(mine.locator(".btw-offer-why")).toHaveCount(0);
   await keptFor(cue, "eng", 90, "and the footer too", "codex");
   await expect(mine.locator(".msg-line")).toContainText("Not sent yet");
   await expect(mine.locator(".btw-offer")).toHaveCount(0);
