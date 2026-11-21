@@ -18,7 +18,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | Lock declarations (static or field) | 115 |
 | Lock acquisitions | 276 |
 | Lock-graph edges | 53 |
-| Spawn sites | 89 |
+| Spawn sites | 90 |
 | External calls: fs / db / process / notify / login / socket | 497 / 231 / 58 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 0 |
 
@@ -484,7 +484,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `voice/talk.rs::Conversation::say` | tokio::spawn | 1 |
 | `voice/talk.rs::launch` | async_runtime::spawn | 1 |
 | `voice/talk.rs::launch` | thread::spawn | 1 |
-| `voice/talk.rs::send` | task::spawn_blocking | 1 |
+| `voice/talk.rs::send` | task::spawn_blocking | 2 |
 
 ## External calls
 
@@ -1240,6 +1240,7 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `src-tauri/src/testing/tests/desk_away.rs::each_away_stretch_is_kept_with_what_moved_the_calls_and_what_was_held` | test |  |
 | `src-tauri/src/testing/tests/desk_feed.rs::every_desk_change_names_you_to_the_lead` | test |  |
 | `src-tauri/src/voice/talk.rs::on_line` |  |  |
+| `ui/sheets.js::settingsSheet` |  |  |
 
 Files over 1000 lines: `src-tauri/src/voice/talk.rs`.
 

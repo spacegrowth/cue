@@ -135,6 +135,18 @@ function deskShownChat(sid) {
   const d = deskOf(deskSelection());
   return deskLead(d)?.sid === sid && !deskLeadEnded(d) ? deskLeadSession(d) : null;
 }
+/** The session whose chat the Desk shows now (deskShownChat's), for talking to it by voice (app/render.js
+ *  tellChatOpen, #617): its lead's (a parked one's too: sending resumes it), a session opened from the left, or an item's
+ *  holder on its page. Null when it shows none. */
+function deskShownSid() {
+  const p = deskSelection();
+  if (!p) return null;
+  if (deskOpen?.kind === "chat") return deskOpen.project === p ? deskOpen.sid || null : null;
+  if (deskOpen?.kind === "item") { const i = deskItem(p, deskOpen.id), sid = i && deskHolderSid(i); return sid && deskShownChat(sid) ? sid : null; }
+  if (deskOpen || deskTab !== "lead" || deskPick === p) return null;
+  const d = deskOf(p);
+  return deskLead(d) && !deskLeadEnded(d) ? deskLead(d).sid : null;
+}
 /** Read on a reply in a Desk chat (chat/reader.js): the reader in the chat's place, its bar, the reply set larger at
  *  the size picked, and its foot (Listen's player; Back to chat while `ask` waits). Null when no reply of `s`'s is
  *  open in it. Not a .dk-chat: the Desk's chat-end scroll (deskSettle) leaves it alone. */

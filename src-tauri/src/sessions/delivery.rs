@@ -156,7 +156,8 @@ pub(super) fn taken(s: &mut Session, received: &str, witness: &str) -> bool {
 /// Is `e` your message `text`, as Cue sent it? The same words; a long one may have been cut short in
 /// the thread (YOURS_CHARS) or had its spacing changed, so for those the same start is enough.
 fn is_yours(e: &Exchange, text: &str) -> bool {
-    e.text.trim() == text.trim() || (is_long(text) && (crate::logs::transcript::is_message(&e.text, text) || crate::logs::transcript::is_message(text, &e.text)))
+    // A message to a Desk's lead: its words follow the Desk's block (#617, said by voice to the lead).
+    e.text.trim() == text.trim() || crate::desk::without_block(&e.text).trim() == text.trim() || (is_long(text) && (crate::logs::transcript::is_message(&e.text, text) || crate::logs::transcript::is_message(text, &e.text)))
 }
 
 /// Your message `text` in the thread: one Cue is still unsure about, however many came since; else among the last

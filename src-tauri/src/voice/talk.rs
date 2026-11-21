@@ -77,7 +77,8 @@ pub fn hook_context(prompt: &str) -> Option<&'static str> {
     hook_context_in(&said_dir(), prompt, crate::model::now_ms())
 }
 fn hook_context_in(dir: &std::path::Path, prompt: &str, now: u64) -> Option<&'static str> {
-    let want = plain(prompt);
+    // To a Desk's lead it comes after the Desk's block (desk/hub/lead/send.rs).
+    let want = plain(crate::desk::without_block(prompt));
     let (at, _, _) = said_in(dir).into_iter().filter(|(at, t, used)| !used && *t == want && at + SAID_FRESH_MS >= now).max_by_key(|s| s.0)?;
     std::fs::rename(dir.join(format!("{at}.txt")), dir.join(format!("{at}.used"))).ok()?;
     Some(ASK)
@@ -542,6 +543,8 @@ impl Conversation {
             let (h2, sid2) = (h.clone(), sid.clone());
             let helpers = tokio::task::spawn_blocking(move || helpers_at_work(&h2, &sid2)).await.unwrap_or(0);
             let reply = send(&h, &s, &sid, &said).await;
+            // A Desk's lead resumed to hear it may come back as another session: its answer is that one's.
+            let sid = reply.as_ref().map_or(sid, |to| to.clone());
             let _ = tx.send((Turn { sid, after, helpers }, reply));
         });
     }
@@ -649,13 +652,19 @@ fn tell(to: &mut ChildStdin, v: &Value) -> std::io::Result<()> {
     to.flush()
 }
 
-/// What you said goes to `sid`: as the reply to its finished turn when one waits, else as a new message.
+/// What you said goes to `sid`: as the reply to its finished turn when one waits, else as a new message. To a
+/// Desk's lead, as the Desk sends it your typed words (after the Desk's block; a parked lead is resumed with it), so
+/// its chat shows it as yours (#617). The session it went to.
 async fn send(hub: &Arc<Hub>, snap: &Value, sid: &str, said: &str) -> Result<String, String> {
     let hooked = hooked(hub, sid);
     let msg = message(said, hooked).ok_or("nothing was said")?;
     // Known as yours before it's typed in, so the hook finds it as soon as the agent takes it.
     if hooked {
         remember_in(&said_dir(), &msg, crate::model::now_ms());
+    }
+    if let Some(desk) = desk_led_by(snap, sid) {
+        let h = hub.clone();
+        return tokio::task::spawn_blocking(move || to_lead(&h, &desk, &msg)).await.map_err(|e| e.to_string())?;
     }
     let waiting = items_of(snap, sid).find(|i| i["kind"] == "waiting").and_then(|i| i["id"].as_str()).map(str::to_string);
     let (h, sid) = (hub.clone(), sid.to_string());
@@ -668,10 +677,19 @@ async fn send(hub: &Arc<Hub>, snap: &Value, sid: &str, said: &str) -> Result<Str
         if sent.is_ok() {
             h.said_by_voice(&sid, &msg);
         }
-        sent
+        sent.map(|_| sid)
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// What you said (`msg`, as `message` made it) to Desk `desk`'s lead, as the Desk sends your typed words, its bubble
+/// marked said by voice: the lead it went to.
+pub(crate) fn to_lead(h: &Arc<Hub>, desk: &str, msg: &str) -> Result<String, String> {
+    let went = crate::desk::hub::lead::desk_send_with(h, desk, msg)?;
+    let to = went["sid"].as_str().unwrap_or_default().to_string();
+    h.said_by_voice(&to, msg);
+    Ok(to)
 }
 
 /// The turn's end, once there is one: its answer, a question or permission it asks meanwhile, or that it was
@@ -755,6 +773,18 @@ fn asking(i: &Value) -> String {
 /// moved last. Its name and colors, as the pill shows them.
 fn target(snap: &Value, open: Option<&str>) -> Value {
     let running = || snap["sessions"].as_array().into_iter().flatten().filter(|s| s["state"] != "stopped");
+    // A Desk's lead whose chat is open but that's parked: you'd still be talking to it (sending resumes it).
+    if let Some(l) = open.filter(|sid| !running().any(|s| s["session_id"] == *sid)).and_then(|sid| desk_lead(snap, sid)) {
+        let project = l.0["workspace_project"].as_str().or(l.0["project"].as_str()).unwrap_or("");
+        let name = l.1["name"].as_str().filter(|n| !n.is_empty()).unwrap_or(project);
+        let look = colors::of(snap, project);
+        return json!({
+            "sid": l.1["sid"],
+            "name": if name == project { name.to_string() } else { format!("{project} · {name}") },
+            "agent": "Claude Code",
+            "bg": look.0, "onBg": look.1, "sel": look.2, "onSel": look.3,
+        });
+    }
     let s = open.and_then(|sid| running().find(|s| s["session_id"] == sid)).or_else(|| running().max_by_key(|s| s["since_ms"].as_u64().unwrap_or(0)));
     let Some(s) = s else { return Value::Null };
     let project = s["project"].as_str().unwrap_or("");
@@ -768,6 +798,15 @@ fn target(snap: &Value, open: Option<&str>) -> Value {
         "agent": match s["harness"].as_str().unwrap_or("") { "codex" => "Codex", "pi" => "Pi", _ => "Claude Code" },
         "bg": look.0, "onBg": look.1, "sel": look.2, "onSel": look.3,
     })
+}
+
+/// The Desk `sid` leads (its Desk, its lead), when it leads one that hasn't ended.
+fn desk_lead<'a>(snap: &'a Value, sid: &str) -> Option<(&'a Value, &'a Value)> {
+    snap["desk"]["projects"].as_array()?.iter().map(|d| (d, &d["lead"])).find(|(_, l)| l["sid"] == sid && l["state"] != "ended")
+}
+/// The id of the Desk `sid` leads, as `desk_lead`.
+fn desk_led_by(snap: &Value, sid: &str) -> Option<String> {
+    desk_lead(snap, sid).and_then(|(d, _)| d["project"].as_str()).map(str::to_string)
 }
 
 /// A word as heard, or a number (said as digits or words: "497", "four ninety-seven", "four nine seven" each come
@@ -1138,6 +1177,39 @@ mod tests {
         assert_eq!(target(&s, Some("a"))["name"], "cue · voice");
         assert_eq!(target(&s, None)["sid"], "b", "the latest running one, not the stopped one");
         assert_eq!(target(&json!({ "sessions": [] }), None), Value::Null);
+    }
+
+    #[test]
+    fn with_a_desk_lead_s_chat_open_it_talks_to_the_lead_parked_or_not() {
+        let s = json!({
+            "sessions": [{ "session_id": "b", "project": "site", "state": "working", "since_ms": 20 }, { "session_id": "l", "project": "cue", "state": "idle", "since_ms": 5, "name": "cue-lead" }],
+            "desk": { "projects": [
+                { "project": "cue", "lead": { "sid": "l", "name": "cue-lead", "state": "live" } },
+                { "project": "web", "workspace_project": "site", "lead": { "sid": "p", "name": "web-lead", "state": "parked" } },
+                { "project": "old", "lead": { "sid": "e", "name": "old-lead", "state": "ended" } },
+            ] },
+        });
+        assert_eq!(target(&s, Some("l"))["sid"], "l");
+        assert_eq!(desk_led_by(&s, "l").as_deref(), Some("cue"));
+        // Parked: not among the sessions, still the one you'd talk to (sending resumes it).
+        assert_eq!(target(&s, Some("p"))["sid"], "p");
+        assert_eq!(target(&s, Some("p"))["name"], "site · web-lead");
+        assert_eq!(desk_led_by(&s, "p").as_deref(), Some("web"));
+        // Ended: gone for good, so the session that moved last, as before.
+        assert_eq!(target(&s, Some("e"))["sid"], "b");
+        assert_eq!(desk_led_by(&s, "e"), None);
+        assert_eq!(desk_led_by(&s, "b"), None, "not a lead: sent as to any session");
+    }
+
+    #[test]
+    fn the_hook_finds_what_you_said_to_a_lead_after_the_desk_s_block() {
+        let d = said_dir_for("hook-lead");
+        remember_in(&d, "add an item for the notch", 1_000);
+        let prompt = "<desk id=\"cue\" name=\"cue\" project=\"cue\">\nItems: none.\n</desk>\n\nadd an item for the notch";
+        assert_eq!(hook_context_in(&d, prompt, 2_000), Some(ASK));
+        let _ = std::fs::remove_dir_all(&d);
+        assert_eq!(crate::desk::without_block("plain words"), "plain words");
+        assert_eq!(crate::desk::without_block("<desk project=\"x\">\nunclosed"), "<desk project=\"x\">\nunclosed");
     }
 }
 

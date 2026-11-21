@@ -319,9 +319,10 @@ function revealAfterDraw(was) {
   }
   histShown = view === "history" ? histOpen : null;
 }
-/** Which chat is open, and the window's color, told to an add-on (once each time either changes). */
+/** Which chat is open, and the window's color, told to an add-on and to talking (voice/talk.rs: what you say goes to
+ *  that chat), once each time either changes. On the Desk, the chat it shows: its lead's, or a session's (#617). */
 function tellChatOpen(chat) {
-  const openNow = chat ? active?.sid || null : null, swatch = themeIdx(), hue = swatch === OWN ? ownHue() : null;
+  const openNow = chat ? active?.sid || null : view === "desk" && typeof deskShownSid === "function" ? deskShownSid() : null, swatch = themeIdx(), hue = swatch === OWN ? ownHue() : null;
   const told = `${openNow}|${swatch}|${hue?.h}|${hue?.k}`;
   if (told !== chatOpenTold) { chatOpenTold = told; T.event.emit("chat-open", { sid: openNow, swatch, hue }).catch(() => {}); }
 }

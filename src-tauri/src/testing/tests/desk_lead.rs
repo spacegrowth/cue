@@ -414,3 +414,22 @@ fn a_message_to_an_idle_lead_is_handed_over_at_once_and_taken_when_its_turn_star
     let yours: Vec<&Value> = thread.iter().filter(|e| e["role"] == "you").collect();
     assert!(yours.iter().all(|e| e["pending"].is_null() && e["unsent"].is_null()), "{yours:?}");
 }
+
+#[test]
+fn what_you_say_by_voice_to_the_lead_goes_as_your_typed_words_do_and_its_bubble_has_the_mic() {
+    let w = World::new();
+    let (_, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    let said = crate::voice::talk::message("add an item for the notch", false).unwrap();
+    let to = crate::voice::talk::to_lead(w.hub(), &project, &said).unwrap();
+    assert_eq!(to, l);
+    w.settle();
+    // After the Desk's block, as a typed message to the lead (#617).
+    let last = sent_to(&w, &l).pop().unwrap();
+    assert!(last.starts_with("<desk") && last.ends_with(said.as_str()), "{last}");
+    // In its chat as yours, said by voice.
+    let thread = w.snapshot().session(&l)["thread"].clone();
+    let mine = thread.as_array().unwrap().iter().rev().find(|e| e["role"] == "you").cloned().unwrap_or(Value::Null);
+    assert!(mine["text"].as_str().unwrap_or("").ends_with(said.as_str()), "{thread}");
+    assert_eq!(mine["voice"], true, "{mine}");
+}

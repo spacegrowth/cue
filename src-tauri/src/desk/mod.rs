@@ -21,6 +21,19 @@ pub mod state;
 pub use installer::{InstallStatus, Installer};
 pub use model::{Act, BusyFile, CommitWait, Desk, DeskDecision, DeskItem, Finish, Holder, ItemTree, CopyOn, KeptTree, OnMachine, RemoteWork, Lead, Stint, Waiting};
 
+/// `text` without the `<desk …>…</desk>` block a message to a lead starts with (lead/send.rs `desk_message`): the words
+/// you sent it. `text` itself when it has none.
+pub fn without_block(text: &str) -> &str {
+    let t = text.trim_start();
+    if !(t.starts_with("<desk ") || t.starts_with("<desk>")) {
+        return text;
+    }
+    match t.find("\n</desk>") {
+        Some(end) => t[end + "\n</desk>".len()..].trim_start(),
+        None => text,
+    }
+}
+
 /// Routing policy in every Desk summary, including for already-running leads.
 pub(crate) const ROUTING_GUIDANCE: &str = concat!(
     "For independent work, prefer a suitable idle Desk session over a busy one. ",
