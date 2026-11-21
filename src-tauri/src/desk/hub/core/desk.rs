@@ -392,13 +392,14 @@ impl Hub {
 
     /// Card `id` answered with `d`: a lead's ASK is filed and its answer sent to the lead. False for any other.
     pub(crate) fn desk_answered(&self, id: &str, d: &Decision) -> bool {
-        let Some((sid, question, using, about, old, lands)) = self.read(|st| {
+        let Some((sid, question, using, about, old, lands, push)) = self.read(|st| {
             st.items.iter().find(|i| i.id == id && i.desk).map(|i| {
                 let old = i.tool_input["desk_old"].as_str().map(str::to_string);
+                let push = i.tool_input.get("desk_push").filter(|v| v.is_object()).cloned();
                 let lands = i.tool_input.get("desk_lands").filter(|v| v.is_object()).cloned();
                 let using = serde_json::from_value::<UseAsk>(i.tool_input["desk_use"].clone()).ok();
                 let about = i.tool_input["desk_item"].as_str().map(|x| format!(" about #{x}")).unwrap_or_default();
-                (i.origin.session_id.clone(), i.tool_input.pointer("/questions/0/question").and_then(Value::as_str).unwrap_or("").to_string(), using, about, old, lands)
+                (i.origin.session_id.clone(), i.tool_input.pointer("/questions/0/question").and_then(Value::as_str).unwrap_or("").to_string(), using, about, old, lands, push)
             })
         }) else { return false };
         let answer = d.answers.as_ref().and_then(|a| a.as_object()).and_then(|a| a.values().next()).map(|v| v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string()));
@@ -420,6 +421,11 @@ impl Hub {
         // Cue's own question, put in the lead's chat (desk/hub/landing/copies.rs): answered here, nothing sent to the lead.
         if let Some(desk) = old {
             self.desk_old_copies_answered(desk, d.behavior != "deny" && answer == "Yes");
+            return true;
+        }
+        // Cue's push of main (desk/hub/landing/push_main.rs): pushed only on your yes, a held start sent either way.
+        if let Some(push) = push {
+            self.desk_push_answered(push, d.behavior != "deny" && answer == "Yes");
             return true;
         }
         let mut words = format!("Your ASK{about}: {question}\nThe answer: {answer}");

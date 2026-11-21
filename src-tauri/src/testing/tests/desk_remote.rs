@@ -25,6 +25,12 @@ fn with_remote(dir: &Path) -> (PathBuf, PathBuf) {
 /// An item routed to a session on "box", working in the machine's clone: (repo, bare remote, clone there, project,
 /// id, holder), and the machine (kept for the test).
 fn routed_there(w: &World) -> ((PathBuf, PathBuf, PathBuf, String, String, String), crate::testing::FakeSsh) {
+    routed_there_with(w, |_, _, _| {})
+}
+
+/// `routed_there`, `before` run (with the project and the main checkout) once its remote is there, before the item is
+/// routed.
+fn routed_there_with(w: &World, before: impl Fn(&World, &str, &Path)) ->((PathBuf, PathBuf, PathBuf, String, String, String), crate::testing::FakeSsh) {
     let ssh = crate::testing::FakeSsh::new();
     ssh.host("box", crate::testing::RUNS_IT);
     crate::machines::add("box", "").unwrap();
@@ -39,6 +45,7 @@ fn routed_there(w: &World) -> ((PathBuf, PathBuf, PathBuf, String, String, Strin
     ends(w, &d, "I run the Desk now.");
     // The Desk's session that takes the item is on "box", in its clone there.
     let (bare, there) = with_remote(&dir);
+    before(w, &project, &dir);
     let cwd = there.to_string_lossy().to_string();
     w.hub().write(|st| {
         if let Some(s) = st.sessions.get_mut(&h) {
@@ -174,6 +181,196 @@ fn a_holder_no_longer_on_that_machine_finishes_its_item_here_and_nothing_is_push
     let it = item(&w, &project, "Header jumps");
     assert!(it["remote"].is_null() && it["machine"].as_str().unwrap_or("").is_empty(), "{it}");
     assert!(git(&bare, &["branch", "--list", &format!("desk/{id}")]).trim().is_empty(), "nothing pushed from there");
+}
+
+/// Two landings on main here the shared copy doesn't have.
+fn two_ahead(_: &World, _: &str, dir: &Path) {
+    for (f, m) in [("c.txt", "one landing"), ("d.txt", "another landing")] {
+        std::fs::write(dir.join(f), "x\n").unwrap();
+        git(dir, &["add", "-f", f]);
+        git(dir, &["commit", "-q", "-m", m]);
+    }
+}
+
+/// The push card waiting in the lead's chat, if any.
+pub(super) fn push_card(w: &World, project: &str) -> Option<serde_json::Value> {
+    let lead = w.hub().desk_lead_sid(project)?;
+    let snap = w.snapshot();
+    snap.cards_of(&lead).into_iter().find(|c| !c["tool_input"]["desk_push"].is_null() && c["status"] == "pending").cloned()
+}
+
+pub(super) fn answer(w: &World, id: &str, a: &str) {
+    w.hub().respond(id, crate::model::Decision { behavior: "allow".into(), answers: Some(serde_json::json!({ "q": a })), ..Default::default() });
+    w.settle();
+    w.advance(1000);
+}
+
+/// Messages to `h` that start item `id` on its branch there.
+fn starts(w: &World, h: &str, id: &str) -> Vec<String> {
+    let made = format!("switch -c desk/{id}");
+    w.hosted.sent().into_iter().filter(|(s, t)| s == h && t.contains(&made)).map(|(_, t)| t).collect()
+}
+
+fn same_main(dir: &Path, bare: &Path) -> bool {
+    git(bare, &["rev-parse", "main"]).trim() == git(dir, &["rev-parse", "main"]).trim()
+}
+
+/// Main here ahead of the shared copy as an item starts on another machine (#599): you're asked to push first, its
+/// holder's start held; a yes pushes main (checked) and then it starts from current work.
+#[test]
+fn main_ahead_asks_to_push_before_an_item_starts_on_another_machine_and_a_yes_pushes_then_starts() {
+    let w = World::new();
+    let ((dir, bare, _, project, id, h), _ssh) = routed_there_with(&w, two_ahead);
+    let card = push_card(&w, &project).expect("asked to push first");
+    assert!(card.to_string().contains("Main is 2 landings ahead of the shared copy; the other machine would start from old work. Push main first?"), "{card}");
+    assert!(starts(&w, &h, &id).is_empty(), "held till you answer");
+    assert!(!same_main(&dir, &bare));
+    answer(&w, card["id"].as_str().unwrap(), "Yes");
+    assert!(same_main(&dir, &bare), "main pushed");
+    let told = starts(&w, &h, &id);
+    assert_eq!(told.len(), 1, "{told:?}");
+    assert!(told[0].contains(&format!("Desk item #{id}")) && !told[0].contains("older work"), "{}", told[0]);
+    assert!(push_card(&w, &project).is_none());
+}
+
+#[test]
+fn a_no_starts_the_item_anyway_saying_it_starts_from_older_work() {
+    let w = World::new();
+    let ((dir, bare, _, project, id, h), _ssh) = routed_there_with(&w, two_ahead);
+    let card = push_card(&w, &project).expect("asked");
+    answer(&w, card["id"].as_str().unwrap(), "No");
+    assert!(!same_main(&dir, &bare), "nothing pushed");
+    let told = starts(&w, &h, &id);
+    assert_eq!(told.len(), 1, "{told:?}");
+    assert!(told[0].contains("starts from older work") && told[0].contains("2 landings"), "{}", told[0]);
+}
+
+#[test]
+fn even_with_the_shared_copy_nothing_is_asked_before_a_remote_start() {
+    let w = World::new();
+    let ((_, _, _, project, id, h), _ssh) = routed_there(&w);
+    assert!(push_card(&w, &project).is_none());
+    assert_eq!(starts(&w, &h, &id).len(), 1);
+}
+
+#[test]
+fn a_project_set_to_never_push_isnt_asked_before_a_remote_start() {
+    let w = World::new();
+    let ((dir, bare, _, project, id, h), _ssh) = routed_there_with(&w, |w, project, dir| {
+        w.hub().set_setting("project.lands", serde_json::json!({ project: { "push": "never" } })).unwrap();
+        two_ahead(w, project, dir);
+    });
+    assert!(push_card(&w, &project).is_none(), "never: nothing asked");
+    assert!(!same_main(&dir, &bare), "nothing pushed");
+    assert_eq!(starts(&w, &h, &id).len(), 1, "started at once");
+}
+
+/// "After each landing": main ahead is pushed (checked) before the item starts there, nothing asked.
+#[test]
+fn a_project_pushed_after_each_landing_pushes_main_before_a_remote_start_without_asking() {
+    let w = World::new();
+    let ((dir, bare, _, project, id, h), _ssh) = routed_there_with(&w, |w, project, dir| {
+        w.hub().set_setting("project.lands", serde_json::json!({ project: { "push": "after" } })).unwrap();
+        two_ahead(w, project, dir);
+    });
+    w.settle();
+    assert!(push_card(&w, &project).is_none(), "after: nothing asked");
+    assert!(same_main(&dir, &bare), "main pushed before it started");
+    let told = starts(&w, &h, &id);
+    assert_eq!(told.len(), 1, "{told:?}");
+    assert!(!told[0].contains("older work"), "{}", told[0]);
+}
+
+/// A yes before a remote start still goes through the word check: refused with the find named, nothing pushed, and
+/// the item starts saying it starts from older work.
+#[test]
+fn a_yes_before_a_remote_start_is_refused_when_the_leak_check_finds_a_word() {
+    let w = World::new();
+    let ((dir, bare, _, project, id, h), _ssh) = routed_there_with(&w, |w, project, dir| {
+        w.hub().set_setting("project.never", serde_json::json!({ project: ["zorblax"] })).unwrap();
+        std::fs::write(dir.join("shared.txt"), "the zorblax plan\n").unwrap();
+        git(dir, &["add", "-f", "shared.txt"]);
+        git(dir, &["commit", "-q", "-m", "a landing"]);
+    });
+    let card = push_card(&w, &project).expect("asked to push first");
+    answer(&w, card["id"].as_str().unwrap(), "Yes");
+    assert!(!same_main(&dir, &bare), "nothing pushed");
+    let told = starts(&w, &h, &id);
+    assert_eq!(told.len(), 1, "{told:?}");
+    assert!(told[0].contains("starts from older work"), "{}", told[0]);
+    let said: Vec<String> = w.hub().read(|st| st.desk.decisions.iter().map(|d| d.text.clone()).collect());
+    assert!(said.iter().any(|t| t.starts_with("Not pushed") && t.contains("zorblax")), "{said:?}");
+}
+
+/// The push card closed without an answer (the lead's session ended): the start it held still goes, saying it starts
+/// from older work, so the item isn't left working with a holder that was never told.
+#[test]
+fn a_push_card_that_closes_unanswered_still_sends_the_held_start_with_the_note() {
+    let w = World::new();
+    let ((dir, bare, _, project, id, h), _ssh) = routed_there_with(&w, two_ahead);
+    let card = push_card(&w, &project).expect("asked");
+    assert!(starts(&w, &h, &id).is_empty(), "held");
+    w.hub().finish(card["id"].as_str().unwrap(), "gone", "session ended");
+    w.settle();
+    w.advance(1000);
+    assert!(!same_main(&dir, &bare), "nothing pushed");
+    let told = starts(&w, &h, &id);
+    assert_eq!(told.len(), 1, "{told:?}");
+    assert!(told[0].contains("starts from older work"), "{}", told[0]);
+}
+
+/// Two items starting on another machine while main is ahead share one push card; a yes pushes once and starts both.
+#[test]
+fn two_items_starting_together_share_one_push_card_and_a_yes_starts_both() {
+    let w = World::new();
+    let ((dir, bare, there, project, id, h), _ssh) = routed_there_with(&w, two_ahead);
+    assert!(push_card(&w, &project).is_some(), "asked for the first");
+    // A second session of the Desk, on the same machine's clone, given another item.
+    let opts = crate::ipc::StartOpts { hosted: true, perm: "auto".into(), ..Default::default() };
+    let r = crate::ipc::start_session_with(w.hub(), "claude", &w.home().to_string_lossy(), "hi", "cue-footer", &opts).unwrap();
+    let h2 = r["session_id"].as_str().unwrap().to_string();
+    w.hosted_says(&h2, HostedEvent::Taken { text: "hi".into() });
+    ends(&w, &h2, "Hi.");
+    w.hub().desk_set_member(&project, &h2, true).unwrap();
+    let cwd = there.to_string_lossy().to_string();
+    w.hub().write(|st| {
+        if let Some(s) = st.sessions.get_mut(&h2) {
+            (s.origin.machine, s.origin.cwd) = ("box".into(), cwd);
+        }
+    });
+    let d = w.hub().desk_lead_sid(&project).unwrap();
+    ends(&w, &d, "ITEM: bug | Footer jumps | done when: it stays put\nROUTE: #new -> cue-footer | why: it made the footer");
+    w.advance(1000);
+    let id2 = item(&w, &project, "Footer jumps")["id"].as_str().unwrap().to_string();
+    let lead = w.hub().desk_lead_sid(&project).unwrap();
+    let cards: Vec<serde_json::Value> = w.snapshot().cards_of(&lead).into_iter().filter(|c| !c["tool_input"]["desk_push"].is_null() && c["status"] == "pending").cloned().collect();
+    assert_eq!(cards.len(), 1, "one card for the project: {cards:?}");
+    assert_eq!(cards[0]["tool_input"]["desk_push"]["starts"].as_array().map(Vec::len), Some(2), "{}", cards[0]);
+    assert!(starts(&w, &h2, &id2).is_empty(), "the second held too");
+    answer(&w, cards[0]["id"].as_str().unwrap(), "Yes");
+    assert!(same_main(&dir, &bare), "pushed");
+    for (s, i) in [(&h, &id), (&h2, &id2)] {
+        let told = starts(&w, s, i);
+        assert_eq!(told.len(), 1, "{told:?}");
+        assert!(!told[0].contains("older work"), "{}", told[0]);
+    }
+}
+
+/// A shared copy that doesn't answer isn't taken as even: you're still asked, saying Cue couldn't compare.
+#[test]
+fn a_shared_copy_that_cant_be_reached_is_still_asked_about_before_a_remote_start() {
+    let w = World::new();
+    let ((_, _, _, project, id, h), _ssh) = routed_there_with(&w, |_, _, dir| {
+        let gone = dir.join("no-such-remote.git");
+        git(dir, &["remote", "set-url", "origin", gone.to_str().unwrap()]);
+    });
+    let card = push_card(&w, &project).expect("asked although it couldn't compare");
+    assert!(card.to_string().contains("couldn't compare main with the shared copy"), "{card}");
+    assert!(starts(&w, &h, &id).is_empty(), "held till you answer");
+    answer(&w, card["id"].as_str().unwrap(), "No");
+    let told = starts(&w, &h, &id);
+    assert_eq!(told.len(), 1, "{told:?}");
+    assert!(told[0].contains("starts from older work"), "{}", told[0]);
 }
 
 /// What the lead was told after it routed, the last message to it holding `words`.

@@ -281,6 +281,8 @@ impl Hub {
         let Some(answered) = answered else { return Err(it) };
         self.save_answered_with_draw(answered);
         self.changed();
+        // A Desk push card replied to in words: no yes, so its held starts go as a no would.
+        self.desk_push_card_closed(it.tool_input.get("desk_push").cloned());
         Ok("kept in Cue: it goes when this turn ends".into())
     }
 
@@ -304,6 +306,8 @@ impl Hub {
     /// The card a reply answered, off the board and into History, saying what you replied (`note`: how it went).
     fn file_reply(&self, it: Item, id: &str, text: &str, saved: &[crate::uploads::Saved], note: &str) {
         let pics = if saved.is_empty() { String::new() } else { format!(" + {} image{}", saved.len(), if saved.len() == 1 { "" } else { "s" }) };
+        // A Desk push card replied to in words: no yes, so its held starts go as a no would.
+        let push = it.tool_input.get("desk_push").cloned();
         let mut h = it;
         h.images = saved.iter().map(|s| s.path.clone()).collect();
         h.status = "answered".into();
@@ -315,6 +319,7 @@ impl Hub {
         });
         self.save_answered_with_draw(answered);
         self.changed();
+        self.desk_push_card_closed(push);
     }
 
     /// Send a message to any live session — a working one included (the "say something" box).

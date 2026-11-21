@@ -161,12 +161,17 @@ impl Hub {
         let status = inst.status();
         let now = now_ms();
         let mut running = status.as_ref().is_some_and(|s| installing(&s.step));
+        // Main lines an install just brought into the running Cue: offered for a push once (desk/hub/landing/push_main.rs).
+        let mut installed: Vec<(String, String)> = vec![];
         for it in &items {
             // Stopped on a failed install too: a later install (main fixed, another item's) brought its work into the
             // running Cue, so nothing of its is left to install (#343).
             let Some(f) = it.finish.as_ref().filter(|f| f.step == "queued" || installing(&f.step) || stopped_install(&f.step)) else { continue };
             if !f.commit.is_empty() && inst.has(&f.repo, &f.commit) && (f.addon.is_empty() || inst.has_addon(&f.addon_repo, &f.addon)) {
                 self.finish_checked(&it.id);
+                if !f.repo.is_empty() && !installed.iter().any(|(_, r)| *r == f.repo) {
+                    installed.push((it.project.clone(), f.repo.clone()));
+                }
                 continue;
             }
             if stopped_install(&f.step) {
@@ -179,6 +184,10 @@ impl Hub {
                 continue;
             }
             self.finish_follow(it, f, status.as_ref(), running, now);
+        }
+        // Off this thread: the offer fetches (capped, up to a minute) before it counts.
+        for (desk, repo) in installed {
+            self.later(0, move |h| h.desk_push_offer(&desk, &repo));
         }
         // Still building one of ours (or anything): the next waits for it.
         running = running || self.read(|st| st.desk.items.iter().any(|i| i.state == "finishing" && i.finish.as_ref().is_some_and(|f| installing(&f.step))));
