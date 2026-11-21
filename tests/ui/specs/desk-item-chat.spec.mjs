@@ -107,3 +107,61 @@ test("a reply that asks you shows once, in the chat: no second box under it repe
   await expect(right.getByText("Should the canvas open in a new window or in place?")).toHaveCount(1);
   await expect(right.locator(".dk-chain")).toHaveCount(0);
 });
+
+// One chat per item (#575, step 1 of option A in docs/item-chat-plan.md): the item's page draws its session's chat only
+// for the times the session held it (its stints), so what you type there or in the session on the left shows in both.
+const held = (cue, stints) => cue.change((st, stints) => {
+  const i = st.desk.projects.find((x) => x.project === "cue").items.find((x) => x.id === "d5");
+  const now = Date.now();
+  i.stints = stints.map((t) => ({ sid: "host", from: now - t.from, until: t.until == null ? null : now - t.until, next: t.next || "" }));
+}, stints);
+
+test("its page is its session's chat from when it took the item: what came before isn't drawn, not even folded", async ({ page, cue }) => {
+  await cue.open("desk");
+  await chat(cue);
+  await held(cue, [{ from: 610000 }]);
+  await openItem(page, "d5");
+  const right = page.locator(".dk-right"), ichat = right.locator(".dk-ichat");
+  await expect(right.locator(".dk-ph3")).toContainText("host-lead's chat · from when it took this item");
+  await expect(ichat).toContainText("Chose an environment setting over a settings file.");
+  await expect(ichat).not.toContainText("Looking at the rail dot.");
+  await expect(ichat.locator(".dk-fold")).toHaveCount(0);
+  // Something you type in the session on the left, without "#d5", is the item's too: it's in its stint.
+  await cue.change((st) => { st.sessions.find((x) => x.session_id === "host").thread.push({ role: "you", text: "Also check the narrow window", at_ms: Date.now() - 1000 }); });
+  await expect(ichat.getByText("Also check the narrow window")).toHaveCount(1);
+  expect(await page.locator(".dk-right .dk-pg [title]").count()).toBe(0);
+});
+
+test("once its session moved on, its page keeps that piece of the chat and says where it went", async ({ page, cue }) => {
+  await cue.open("desk");
+  await chat(cue);
+  await cue.change((st) => {
+    const s = st.sessions.find((x) => x.session_id === "host"), now = Date.now();
+    s.thread.push({ role: "you", text: "#d4 Rail dot blinks for a reply you didn't send.", at_ms: now - 200000 }, { role: "agent", text: "On the rail dot now.", at_ms: now - 100000 });
+  });
+  await held(cue, [{ from: 610000, until: 199000, next: "d4" }]);
+  await openItem(page, "d5");
+  const right = page.locator(".dk-right"), ichat = right.locator(".dk-ichat");
+  await expect(right.locator(".dk-ph3")).toContainText("host-lead's chat · while it had this item");
+  await expect(ichat).toContainText("Chose an environment setting over a settings file.");
+  await expect(ichat).not.toContainText("On the rail dot now.");
+  const moved = ichat.locator(".dk-moved");
+  await expect(moved).toHaveCount(1);
+  await expect(moved).toContainText("host-lead moved on to #d4 Rail dot blinks");
+  // Its session's own line now is its next item's: not here.
+  await expect(ichat.locator('[data-key="where"]')).toHaveCount(0);
+  await page.screenshot({ path: test.info().outputPath("item-chat-moved-on.png") });
+  await moved.locator("[data-desk-item]").click();
+  await expect(page.locator('.dk-panel[data-side-for="d4"]')).toBeVisible();
+});
+
+test("a stint that began before the loaded messages loads earlier ones until it's in", async ({ page, cue }) => {
+  await cue.open("desk");
+  await chat(cue);
+  // The fake log's earlier messages start three hours back, a minute apart: the stint starts in them.
+  await held(cue, [{ from: 3 * 3600000 - 30 * 60000 }]);
+  await openItem(page, "d5");
+  const ichat = page.locator(".dk-right .dk-ichat");
+  await expect(ichat.getByText("Earlier message 31", { exact: true })).toHaveCount(1);
+  await expect(ichat.getByText("Earlier message 29", { exact: true })).toHaveCount(0);
+});

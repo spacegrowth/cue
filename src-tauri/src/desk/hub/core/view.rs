@@ -17,6 +17,7 @@ pub(crate) fn with_pieces(st: &Store, it: &DeskItem) -> DeskItem {
 /// with its holder's latest and files.
 pub(crate) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
     let mut out = it.clone();
+    out.stints = stints(st, it);
     // Waiting for a free copy (#401): which items are using them.
     if it.tree_wait && it.state == "queued" {
         out.copy_users = st.desk.items.iter().filter(|i| i.tree.as_ref().is_some_and(|t| t.repo == it.tree_wait_repo)).map(|i| i.id.clone()).collect();
@@ -265,6 +266,24 @@ pub(crate) fn held_window(st: &Store, sid: &str, it: &DeskItem) -> Option<(u64, 
     Some((*from, until))
 }
 
+/// Item `it`'s stints, oldest first (#575): each session it went to at work, from then until that session's next item
+/// went to it at work, the item went to another holder, or you said it looks right (whichever came first; open while
+/// none has), and the item it moved on to. Its page draws that session's chat for those times only.
+pub(crate) fn stints(st: &Store, it: &DeskItem) -> Vec<crate::desk::Stint> {
+    let own = it.held_before.iter().map(|(by, from, until)| (by, *from, Some(*until))).chain(it.held_from.iter().map(|(by, from)| (by, *from, None)));
+    let checked = (it.state == "done").then(|| it.done_at.map(|s| s * 1000)).flatten();
+    own.map(|(sid, from, until)| {
+        // The first item the same session went on to after this one, and when.
+        let next = st.desk.items.iter().filter(|o| o.id != it.id).flat_map(|o| {
+            o.held_before.iter().map(|(by, at, _)| (by, *at)).chain(o.held_from.iter().map(|(by, at)| (by, *at))).filter(|(by, at)| *by == sid && *at > from).map(move |(_, at)| (at, o.id.as_str()))
+        }).min();
+        let ends = [until, next.map(|(at, _)| at), checked.filter(|&c| c > from)];
+        let end = ends.iter().flatten().min().copied();
+        let next = next.filter(|(at, _)| Some(*at) == end).map_or(String::new(), |(_, id)| id.to_string());
+        crate::desk::Stint { sid: sid.clone(), from, until: end, next }
+    }).collect()
+}
+
 /// Where `it`'s files (as `shown` gives them) were changed: the machine, and each folder with its files in it (paths
 /// relative to that folder), for Looks right's commit (desk/hub/landing/commit.rs).
 pub(crate) fn item_sources(st: &Store, it: &DeskItem) -> (String, Vec<(String, Vec<String>)>) {
@@ -394,5 +413,40 @@ impl Hub {
         let folder = self.read(|st| holder_folder(st, it));
         crate::logs::repos::first_look(&folder);
         crate::desk::lands::lands_of(&it.project, &folder)
+    }
+}
+
+#[cfg(test)]
+mod stint_tests {
+    use super::*;
+    use crate::desk::Stint;
+
+    fn item(id: &str, state: &str, from: Option<(&str, u64)>, before: Vec<(&str, u64, u64)>) -> DeskItem {
+        DeskItem { id: id.into(), state: state.into(), held_from: from.map(|(s, a)| (s.into(), a)), held_before: before.into_iter().map(|(s, a, b)| (s.into(), a, b)).collect(), ..Default::default() }
+    }
+    fn stint(sid: &str, from: u64, until: Option<u64>, next: &str) -> Stint {
+        Stint { sid: sid.into(), from, until, next: next.into() }
+    }
+
+    #[test]
+    fn an_item_is_its_sessions_from_pick_up_till_its_next_item_another_holder_or_looks_right() {
+        let mut st = Store::default();
+        // a went to s1, then to s2; s1 moved on to b before a left it; s2 still on a.
+        st.desk.items.push(item("a", "working", Some(("s2", 5_000)), vec![("s1", 1_000, 5_000)]));
+        st.desk.items.push(item("b", "working", Some(("s1", 3_000)), vec![]));
+        assert_eq!(stints(&st, &st.desk.items[0]), vec![stint("s1", 1_000, Some(3_000), "b"), stint("s2", 5_000, None, "")]);
+        // b is still on s1: open, nothing after it.
+        assert_eq!(stints(&st, &st.desk.items[1]), vec![stint("s1", 3_000, None, "")]);
+        // An item s1 had before a doesn't end a's stint.
+        st.desk.items.push(item("old", "done", None, vec![("s1", 500, 900)]));
+        assert_eq!(stints(&st, &st.desk.items[0])[0], stint("s1", 1_000, Some(3_000), "b"));
+        // Looks right on b at 4s: its stint ends there, with no next.
+        st.desk.items[1].state = "done".into();
+        st.desk.items[1].done_at = Some(4);
+        assert_eq!(stints(&st, &st.desk.items[1]), vec![stint("s1", 3_000, Some(4_000), "")]);
+        // Shown with it; never on an item with no holder yet.
+        assert_eq!(shown(&st, &st.desk.items[0]).stints.len(), 2);
+        st.desk.items.push(item("c", "new", None, vec![]));
+        assert!(shown(&st, &st.desk.items[3]).stints.is_empty());
     }
 }

@@ -29,6 +29,19 @@ impl Holder {
     }
 }
 
+/// A stretch of time an item was one session's to work on (#575): from when it went to that session at work until the
+/// session's next item did, it went to another holder, or you said it looks right (ms; `until` None while it's still
+/// on it). `next`: the item the session moved on to, "" when it didn't.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct Stint {
+    pub sid: String,
+    pub from: u64,
+    #[serde(default)]
+    pub until: Option<u64>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub next: String,
+}
+
 /// A bug, feature or task on a project's Desk.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct DeskItem {
@@ -213,6 +226,10 @@ pub struct DeskItem {
     /// moved on still ends the window of an item its old holder kept (desk/hub/core/view.rs `held_window`, #302).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub held_before: Vec<(String, u64, u64)>,
+    /// Its stints with each session, oldest first, for its page to draw that session's chat for those times (#575):
+    /// worked out as it's shown (desk/hub/core/view.rs `stints`), never saved.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stints: Vec<Stint>,
     pub created: u64,
     pub updated: u64,
     #[serde(default)]

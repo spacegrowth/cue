@@ -252,7 +252,9 @@ function deskItemPane(i, d, foot = "") {
     : `${s ? deskItemChat(i, d, s) : deskThreadHtml(thread, `${i.project}|${i.id}`)}<div class="dk-inow">${at}</div>`;
   const main = `<div class="dk-pane dk-ipane${s && tab === "thread" ? " chat" : ""}" data-scroll-key="item:${esc(i.id)}"><div class="dk-ihead"><div class="dk-itabs" role="tablist">${feat ? tabBtn("pieces", "Pieces", i.pieces.length) : ""}${tabBtn("thread", "Chat", null)}${tabBtn("record", "Record", steps.length)}${tabBtn("decisions", "Decisions", decs.filter((c) => !c.minor).length)}${tabBtn("files", "Files", nFiles)}</div></div>
     <div class="dk-ibody dk-itab-${tab}">${body}</div></div>`;
-  const sub = s ? `<b>${esc(i.holder.kind === "crew" ? deskHolderName(s.session_id) : i.holder.name)}</b>'s chat · other items' turns folded` : `<span class="dk-state">${deskItemMeta(i, d)}</span>`;
+  // Its holder's chat from when it took the item (#575); an item from before stints were kept, all of it, folded.
+  const span = (i.stints || []).some((t) => t.sid === s?.session_id) ? (deskStintLeft(i, s.session_id) ? "while it had this item" : "from when it took this item") : "other items' turns folded";
+  const sub = s ? `<b>${esc(i.holder.kind === "crew" ? deskHolderName(s.session_id) : i.holder.name)}</b>'s chat · ${span}` : `<span class="dk-state">${deskItemMeta(i, d)}</span>`;
   return deskPage({ page: "item", kind: i.kind, panel: deskItemSide(i, d), aside: ` data-side-for="${esc(i.id)}"`, back: deskBack(deskLeadName(d) || "Back"), mark: `${deskNum(i)} · `, title: esc(i.title), meta: sub, main, foot });
 }
 /** The session whose chat an item's page shows: its holder's (a crew member's lead's), when Cue has it. */
@@ -268,12 +270,41 @@ function deskTurnItem(text, d) {
   const items = d?.items || [];
   return items.find((x) => deskNames(text, x.id)) || (/^About #([\w.-]+)/.exec(text || "") ? { id: /^About #([\w.-]+)/.exec(text)[1], title: "" } : null);
 }
-/** Item `i`'s chat folds (chat/render.js chatHtml `folds`): each run of turns about another item (your message naming
- *  it, and the replies after) as one line, "Worked on #d4 Rail dot blinks · 3 replies ›", that opens them in place;
- *  turns naming this item, or none, stay as they are. */
-function deskChatFolds(i, d) {
+/** Item `i`'s stints with session `sid` in its chat `ex` (#575): [{ from, to, next, until }] (ms; `to` Infinity while
+ *  it's still on it). Each starts at the hand-off that gave the session the item and ends at the one that gave it its
+ *  next item, when those were sent a moment before the hub marked the change. */
+function deskStintsOf(i, sid, ex) {
+  const handed = (id, at) => ex.findLast((e) => e.role === "you" && e.at_ms <= at + 2000 && e.at_ms >= at - 600000 && deskNames(e.text, id))?.at_ms;
+  return (i.stints || []).filter((t) => t.sid === sid).map((t) => ({
+    from: Math.min(t.from - 2000, handed(i.id, t.from) ?? Infinity),
+    to: t.until == null ? Infinity : t.next ? Math.min(t.until, handed(t.next, t.until) ?? t.until) : t.until,
+    next: t.next || "", until: t.until,
+  }));
+}
+/** Item `i`'s chat folds (chat/render.js chatHtml `folds`) for its session `sid` (#575): only the times the session held
+ *  the item (`deskStintsOf`), and any turn of yours naming it after that; the rest isn't drawn. Where the session moved
+ *  on, one line says to what. In those times, a run of turns about another item (your message naming it, and the
+ *  replies after) is one line, "Worked on #d4 Rail dot blinks · 3 replies ›", that opens them in place. An item from
+ *  before stints were kept has none: its whole session's chat, other items' turns folded. */
+function deskChatFolds(i, d, sid) {
   return (ex) => {
-    const skip = new Set(), rows = [], spans = [];
+    const skip = new Set(), rows = [], spans = [], wins = deskStintsOf(i, sid, ex);
+    const inWin = (at) => !wins.length || wins.some((w) => at >= w.from && at < w.to);
+    // Each turn (your message and the replies after it; replies before any message of yours are a turn of their own):
+    // drawn when it started in a stint or names this item.
+    const turns = [];
+    for (let n = 0; n < ex.length;) {
+      let m = n + 1;
+      while (m < ex.length && ex[m].role !== "you") m++;
+      turns.push({ n, m, mine: ex[n].role === "you" && deskNames(ex[n].text, i.id) });
+      n = m;
+    }
+    const hidden = [];
+    for (const t of turns) {
+      if (t.mine || inWin(ex[t.n].at_ms)) continue;
+      for (let k = t.n; k < t.m; k++) skip.add(k);
+      hidden.push([ex[t.n].at_ms - 2000, t.m < ex.length ? ex[t.m].at_ms - 2000 : Infinity]);
+    }
     let run = null;
     const close = () => {
       if (!run) return;
@@ -286,18 +317,28 @@ function deskChatFolds(i, d) {
       }
       run = null;
     };
-    for (let n = 0; n < ex.length;) {
-      if (ex[n].role !== "you") { n++; continue; }
-      let m = n + 1;
-      while (m < ex.length && ex[m].role !== "you") m++;
+    for (const { n, m } of turns) {
+      if (skip.has(n) || ex[n].role !== "you") { close(); continue; }
       const it = deskNames(ex[n].text, i.id) ? null : deskTurnItem(ex[n].text, d);
       const replies = ex.slice(n + 1, m).filter((e) => e.role === "agent").length;
-      if (it && run?.it.id === it.id) Object.assign(run, { to: m, replies: run.replies + replies });
+      if (it && run?.it.id === it.id && run.to === n) Object.assign(run, { to: m, replies: run.replies + replies });
       else { close(); if (it) run = { it, from: n, to: m, replies }; }
-      n = m;
     }
     close();
-    return { skip, rows, hides: (at) => spans.some(([a, b]) => at >= a && at < b) };
+    // Where it moved on: "cue-268 moved on to #271 Copy code blocks · 11:52".
+    const name = esc(deskHolderName(sid) || "Its session");
+    for (const w of wins.filter((w) => w.next && w.until != null)) {
+      const nx = deskItem(i.project, w.next), hm = new Date(w.until).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+      rows.push({ at: w.to - 1, html: keyed(`<div class="dk-cl dk-moved"><span class="dk-cl-t"><b>${name}</b> moved on to <a href="#" data-desk-item="${esc(w.next)}">#${esc(w.next)}${nx?.title ? ` ${esc(deskShort(nx.title))}` : ""}</a> · ${esc(hm)}</span></div>`, `moved:${w.next}:${w.until}`) });
+    }
+    // Held by another session before this one: who, and its chat a click away.
+    const before = [...new Set((i.stints || []).filter((t) => t.sid !== sid && (!wins.length || t.from < wins[0].from)).map((t) => t.sid))];
+    if (before.length && wins.length) {
+      const who = before.map((b) => `<a href="#" ${deskChatAttrs(b, d)}>${esc(deskHolderName(b) || "another session")}</a>`).join(", ");
+      rows.push({ at: wins[0].from - 1, html: keyed(`<div class="dk-cl dk-before"><span class="dk-cl-t">Before this, ${who} had it</span></div>`, "before") });
+    }
+    const all = spans.concat(hidden);
+    return { skip, rows, hides: (at) => all.some(([a, b]) => at >= a && at < b), wins };
   };
 }
 /** A reply's words on an item's chat: the Desk's own lines out, as its saved reply has them (deskSaidWords), but the
@@ -320,7 +361,9 @@ function deskItemChat(i, d, s) {
   // Its held and queued lines' controls as the item's own (#422): Edit back into this page's box, not the session's.
   const acts = (m) => deskMsgActs({ ...m, item: i.id });
   const pickAt = deskPickReplyAt(i, thread);
-  const rows = deskChatRows(s, { extra: checks, folds: deskChatFolds(i, d), say: deskSaidWords, reply: (e) => deskChatReply(i, e, pickAt), acts, wait: (e) => deskNoteWaits(i, e) });
+  const rows = deskChatRows(s, { extra: checks, folds: deskChatFolds(i, d, s.session_id), say: deskSaidWords, reply: (e) => deskChatReply(i, e, pickAt), acts, wait: (e) => deskNoteWaits(i, e) });
+  // Its stint began before the messages loaded here: load earlier ones until it's in (#575).
+  deskLoadStint(i, s);
   // Not twice: what the chat's own outbox shows already (chat/send.js), its held or queued line, or its thread has.
   const waits = (p) => p.text.trim() && [s.held, s.queued].some((w) => String(w?.text || "").includes(p.text.trim()));
   // What the hub says didn't reach it (#437: Cue stopped, the session was gone): red with why and Retry, kept across
@@ -346,8 +389,20 @@ function deskItemChat(i, d, s) {
   }).join("");
   // Not started yet (#476): that, and its holder's own line only when it really waits on you (its question, a step).
   const notYet = deskNotStarted(i), asks = ["waiting", "deciding"].includes(s.state) && waitingFor(null, s) !== "your reply";
-  const where = sessionOf(s.session_id) && (!notYet || asks) ? whereNow(null, s) : "";
+  // Moved on from it: where the session is now is its next item's, not this one's.
+  const left = deskStintLeft(i, s.session_id);
+  const where = sessionOf(s.session_id) && !left && (!notYet || asks) ? whereNow(null, s) : "";
   return `<div class="dk-ichat" data-thread-for="${esc(`${i.project}|${i.id}`)}">${rows}${failed}${mine}${notYet ? keyed(notYet, "notyet") : ""}${where ? keyed(where, "where") : ""}</div>`;
+}
+/** Session `sid` has moved on from item `i` (#575): its last stint with it has ended. */
+const deskStintLeft = (i, sid) => { const t = (i.stints || []).filter((x) => x.sid === sid).at(-1); return !!t && t.until != null; };
+/** Load session `s`'s earlier messages while its first stint on item `i` began before them (#575): the item page shows
+ *  that part of its chat, however far back. */
+function deskLoadStint(i, s) {
+  const sid = s.session_id, t = (i.stints || []).find((x) => x.sid === sid), o = older.get(sid);
+  if (!t || !o || o.busy || o.done) return;
+  const first = conversation(null, s)[0]?.at_ms;
+  if (first != null && first > t.from - 600000) queueMicrotask(() => loadOlder(sid));
 }
 /** Item `i` given to a session but not started yet (#476): one plain line under its chat saying so and why, a free
  *  working folder or the item before it, with Start now as its panel offers; in place of its holder's own line, which

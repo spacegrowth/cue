@@ -104,6 +104,9 @@ function deskRecall(key) {
 function deskShownChat(sid) {
   if (!deskSelection()) return null;
   if (deskOpen?.kind === "chat") return deskOpen.project === deskSelection() && deskOpen.sid === sid ? sessionOf(sid) : null;
+  // An item's page shows its holder's chat from when it took the item (#575): that chat loads earlier messages till
+  // that time is in (thread.js deskLoadStint).
+  if (deskOpen?.kind === "item") { const i = deskItem(deskSelection(), deskOpen.id); return i && deskHolderSid(i) === sid && (i.stints || []).some((t) => t.sid === sid) ? sessionOf(sid) : null; }
   if (deskOpen || deskTab !== "lead" || deskPick === deskSelection()) return null;
   const d = deskOf(deskSelection());
   return deskLead(d)?.sid === sid && !deskLeadEnded(d) ? deskLeadSession(d) : null;

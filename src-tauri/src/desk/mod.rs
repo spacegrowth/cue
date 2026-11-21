@@ -12,7 +12,7 @@ pub mod model;
 pub mod parse;
 pub mod state;
 
-pub use model::{Act, BusyFile, CommitWait, Desk, DeskDecision, DeskItem, Finish, Holder, InstallStatus, Installer, ItemTree, CopyOn, KeptTree, Lead, Waiting};
+pub use model::{Act, BusyFile, CommitWait, Desk, DeskDecision, DeskItem, Finish, Holder, InstallStatus, Installer, ItemTree, CopyOn, KeptTree, Lead, Stint, Waiting};
 
 /// Routing policy in every Desk summary, including for already-running leads.
 pub(crate) const ROUTING_GUIDANCE: &str = concat!(
