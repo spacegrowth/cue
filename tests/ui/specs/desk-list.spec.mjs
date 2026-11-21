@@ -147,6 +147,10 @@ test("each session row says its size and cache: \"142k · cache 12m\", \"cold\",
   // An agent whose log doesn't say how long it caches (Codex, Pi): said, not left out.
   await cue.change((st) => { st.insight.lead = { tokens: 90000, until_ms: 0 }; });
   await expect(left.locator('[data-desk-lead-chat="lead"] .dk-size')).toHaveText("90k · cache unknown");
+  // The model its log says it runs on goes first (#620); none said, none shown.
+  await cue.change((st) => { st.insight.host = { ...st.insight.host, model: "claude-opus-5-5" }; });
+  await expect(left.locator('[data-desk-chat-of="host"] .dk-size')).toHaveText(/^Opus 5\.5 · 88k · cache \dm$/);
+  await expect(left.locator('[data-desk-chat-of="spare"] .dk-size')).toHaveText("51k · cold");
 });
 
 test("a working session's dot blinks and its current step shows under its title, with its time, live", async ({ page, cue }) => {

@@ -66,11 +66,15 @@ pub(crate) fn follow_on(st: &mut Store, project: &str, id: &str, from: &str, pic
     Ok(())
 }
 
+/// Read before the store was taken: the repositories COPY lines name, the projects LOOP lines name with their folders,
+/// and Claude Code's models on this Mac when the turn says model: (desk/model_pick.rs listed).
+type Read<'a> = (&'a [(String, Result<(String, String), String>)], &'a [(String, Option<String>)], Option<&'a [(String, String)]>);
+
 /// Lead `lsid` of `project` said `text` at its turn's end: its ITEM, ROUTE, ASK and DECIDED lines.
 /// `repos`: the repositories its COPY lines name, found before the store was taken (desk/hub/landing/named_copy.rs).
 /// `loops`: each project its LOOP lines name, with its folder on this Mac when Cue knows one (Hub::desk_folder).
 #[allow(clippy::too_many_arguments)]
-fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, repos: &[(String, Result<(String, String), String>)], loops: &[(String, Option<String>)], changes: &crate::desk::hold_check::Changes, now: u64, fx: &mut Effects) {
+fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, (repos, loops, models): Read<'_>, changes: &crate::desk::hold_check::Changes, now: u64, fx: &mut Effects) {
     let name = st.sessions.get(lsid).map(shown_name).or_else(|| st.desk.lead.get(project).map(|l| l.name.clone())).unwrap_or_default();
     let by = By { name: &name, sid: lsid };
     let mut last_new: Option<String> = None;
@@ -88,7 +92,7 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, repos: &[(St
                 }
                 last_new = Some(id);
             }
-            route @ Line::Route { .. } => route_line(st, project, &by, route, last_new.as_deref(), now, fx, &mut answers),
+            route @ Line::Route { .. } => route_line(st, project, &by, route, (last_new.as_deref(), models), now, fx, &mut answers),
             Line::Ask { question, choices, item } => ask_said(st, project, lsid, (question, choices, item), away.then_some(&mut back), fx),
             Line::Context { who, what, why } if what == "keep" => keep(st, project, &by, &who, &why, now, fx),
             Line::Done { ids } => lead_done(st, project, lsid, &ids, fx),
@@ -196,8 +200,8 @@ fn loop_said(st: &mut Store, project: &str, by: &By, d: crate::desk::parse::Loop
 /// The lead's ROUTE line (`#new`: the reply's last ITEM). On another machine (#500) only a new session starts there,
 /// and only a route made (not refused, so not answered) says on its item where it starts.
 #[allow(clippy::too_many_arguments)]
-fn route_line(st: &mut Store, project: &str, by: &By, line: Line, last_new: Option<&str>, now: u64, fx: &mut Effects, answers: &mut Vec<String>) {
-    let Line::Route { id, to, after, why, kind, on, in_dir, .. } = line else { return };
+fn route_line(st: &mut Store, project: &str, by: &By, line: Line, (last_new, models): (Option<&str>, Option<&[(String, String)]>), now: u64, fx: &mut Effects, answers: &mut Vec<String>) {
+    let Line::Route { id, to, after, why, kind, on, in_dir, model, .. } = line else { return };
     let id = match last_new.filter(|_| id == "new") {
         Some(n) => n.to_string(),
         None => id,
@@ -207,8 +211,27 @@ fn route_line(st: &mut Store, project: &str, by: &By, line: Line, last_new: Opti
         Err(no) => return answers.push(no),
         Ok(set) => set,
     };
+    // The model a new session starts on (#620): only with -> new; named as Claude Code here names it.
+    let fresh = to.eq_ignore_ascii_case("new");
+    let model = match model.as_deref() {
+        None => None,
+        Some(_) if !fresh => return answers.push(format!("Refused: model: picks the model a new session starts on, so it goes with -> new. #{canon} wasn't routed.")),
+        Some(m) => {
+            let claude = st.sessions.get(by.sid).is_none_or(|s| s.origin.harness.is_empty() || s.origin.harness == "claude");
+            match crate::desk::model_pick::named(m, models.filter(|_| claude)) {
+                Ok(m) => Some(m),
+                Err(no) => return answers.push(format!("Refused: {no} #{canon} wasn't routed. Route it again with one of them, or without model: for the Desk's default.")),
+            }
+        }
+    };
     let before = answers.len();
     route_said(st, project, by, (id, to, after, why, kind), last_new, now, fx, answers);
+    if answers.len() == before && fresh {
+        if let Some(it) = st.desk.item_mut(&canon).filter(|i| i.project == project) {
+            it.model = model.unwrap_or_default();
+            fx.items.push(canon.clone());
+        }
+    }
     if let (Some(set), true) = (set, answers.len() == before) {
         if let Some(it) = st.desk.item_mut(&canon) {
             it.on_machine = set;
@@ -628,7 +651,7 @@ impl Hub {
         } else {
             Vec::new()
         };
-        let now = now_ms();
+        let (now, models) = (now_ms(), if said && text.contains("model:") { crate::desk::model_pick::listed() } else { None });
         let fx = self.write(|st| {
             crate::desk::hub::turn::features::bring_back(st, from_disk);
             let mut fx = Effects::default();
@@ -659,7 +682,7 @@ impl Hub {
             any_session_said(st, sid, text, &mut fx);
             let lead = st.desk.lead_of(sid);
             match &lead {
-                Some(project) => lead_said(st, project, sid, text, &repos, &loops, &changes, now, &mut fx),
+                Some(project) => lead_said(st, project, sid, text, (&repos, &loops, models.as_deref()), &changes, now, &mut fx),
                 None => session_items(st, sid, text, now, &mut fx),
             }
             if st.desk.items.iter().any(|i| i.holder.as_ref().is_some_and(|h| h.is(sid))) {

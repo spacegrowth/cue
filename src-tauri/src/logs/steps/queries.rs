@@ -272,7 +272,7 @@ pub fn insight_state(path: &str) -> Option<InsightState> {
         let m = &feed.meta;
         let until = if m.cache_ttl_s > 0 && m.last_call_ms > 0 { m.last_call_ms + m.cache_ttl_s * 1000 } else { 0 };
         let said = feed.turns.iter().rev().find_map(|t| t.items.iter().rev().find_map(|i| match i { Item::Say { text, .. } => first_line(text), _ => None })).unwrap_or_default();
-        (m.context > 0).then_some(InsightState { until_ms: until, tokens: m.context, start: m.start_context, window: m.window, last_ms: m.last_call_ms, cold_x: m.cold_x, cold_cents: m.cold_cents, auto_at: m.auto_at, said })
+        (m.context > 0).then_some(InsightState { until_ms: until, tokens: m.context, start: m.start_context, window: m.window, last_ms: m.last_call_ms, cold_x: m.cold_x, cold_cents: m.cold_cents, auto_at: m.auto_at, said, model: m.model.clone() })
     })
 }
 

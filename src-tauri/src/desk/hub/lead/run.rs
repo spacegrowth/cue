@@ -155,7 +155,11 @@ impl Hub {
         };
         // Its folder is one a session of the project already works in, or the one the lead named on a machine: trusted,
         // as you trust it there.
-        let opts = crate::hub::StartOpts { trust: true, machine: on.as_ref().map(|o| o.machine.clone()).unwrap_or_default(), ..Default::default() };
+        // Its model (#620): the lead's on the route, else the Desk's default, else Claude Code's pick. Kept on the item,
+        // so its card says what it started on.
+        let asked = self.read(|st| st.desk.item(&s.id).map(|i| i.model.clone()).unwrap_or_default());
+        let model = if asked.is_empty() { crate::desk::model_pick::default_of(&s.project) } else { asked };
+        let opts = crate::hub::StartOpts { trust: true, machine: on.as_ref().map(|o| o.machine.clone()).unwrap_or_default(), extra: crate::desk::model_pick::flag(&model), ..Default::default() };
         let agent = self.session_origin(&s.by_sid).and_then(|o| crate::hosted::Agent::named(&o.harness)).unwrap_or(crate::hosted::Agent::Claude);
         let started = dir.and_then(|dir| crate::hub::start_hosted(self, agent, &dir, "", &name, &opts, &[]));
         // Moved off a holder (#364): its hand-off note goes with it, one written since it took the item.
@@ -172,6 +176,9 @@ impl Hub {
             let mut fx = crate::desk::hub::core::desk::Effects::default();
             if !ready(st) { return fx; }
             let handoff = st.desk.item(&s.id).map(|it| crate::desk::hub::core::desk::handoff_words(it, &note, &last)).unwrap_or_default();
+            if let (Ok(_), Some(it)) = (&sid, st.desk.item_mut(&s.id)) {
+                it.model = if model.is_empty() { crate::desk::model_pick::DEFAULT.into() } else { model.clone() };
+            }
             let given = sid.and_then(|sid| crate::desk::hub::core::desk::give_started(st, &s.id, &sid, (&s.by, &s.by_sid, &s.why), &handoff, now, &mut fx));
             if let Err(e) = given {
                 start_failed(st, &s, &e, now, &mut fx);
@@ -208,7 +215,7 @@ impl Hub {
     /// With the routes it couldn't make that it's told of: `desk_told` once the message has reached it.
     pub(crate) fn desk_summary(&self, project: &str, lead: &str, with_skill: bool) -> (String, Vec<(String, String)>) {
         let now = now_ms();
-        let lands = if lead.is_empty() { String::new() } else { self.desk_lands_line(project) };
+        let lands = if lead.is_empty() { String::new() } else { format!("{}\n{}\n", self.desk_lands_line(project).trim_end(), crate::desk::model_pick::lead_line(project)) };
         let (text, failed) = self.read(|st| {
             let mut out = summary_head(st, project, lead, &lands, now);
             let mut failed = vec![];

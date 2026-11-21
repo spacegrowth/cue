@@ -39,6 +39,7 @@ fn round_trips() -> Vec<(&'static str, Value, Value)> {
         ("project.folders", json!({"/w/app/": "app", "box:/srv": "srv"}), json!({"/w/app": "app", "box:/srv": "srv"})),
         ("project.made", json!([" new ", "new"]), json!(["new"])),
         ("project.never", json!({"api": [" secret ", "Secret", "token", ""], "web": []}), json!({"api": ["secret", "token"], "web": []})),
+        ("project.model", json!({"cue": " opus ", "web": "default", "api": ""}), json!({"cue": "opus"})),
         ("project.oneway", json!({"api": ["deploy", "main", "deploy"], "web": []}), json!({"api": ["main", "deploy"], "web": []})),
         ("project.asked", json!(["api", "api", ""]), json!(["api"])),
         ("owner.names", json!([" Pat Example ", "pat example", "", "pat@example.com"]), json!(["Pat Example", "pat@example.com"])),

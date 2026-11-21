@@ -335,6 +335,13 @@ impl Hub {
     /// How work lands on Desk `desk`, saved from the window's setting (desk/lands.rs), for the folder the Desk works in.
     /// Kept per Desk, the key its items land by (`it.project`), so a Desk on another repository never shares Cue's
     /// own (#460). Returns it as the Desk shows it.
+    /// Desk `desk`'s default model for new sessions set (#620; "" or "default": Claude Code's pick). Returns it.
+    pub(crate) fn desk_model_set(&self, desk: &str, model: &str) -> Result<String, String> {
+        let m = crate::desk::model_pick::set_default(desk, model)?;
+        self.changed();
+        Ok(m)
+    }
+
     /// With `machine` (and `machine_folder`) in it, where the Desk's new sessions start is saved first (#597,
     /// desk/machine_pref.rs); sent with nothing else, how work lands is left as it is.
     pub(crate) fn desk_lands_set(&self, desk: &str, lands: &Value) -> Result<Value, String> {
@@ -407,7 +414,7 @@ impl Hub {
                 let work_history = crate::desk::hub::core::members::work_history(st, p);
                 // The sessions its lists show (#363); the rest fold into one "older" line.
                 let with_work = crate::desk::hub::core::members::with_work(st, p, now);
-                json!({ "with_work": with_work, "work_history": work_history, "id": p, "project": p, "name": st.desk.spaces.get(p).map(|d| &d.name), "independent": st.desk.spaces.contains_key(p), "workspace_project": st.desk.project_of(p), "folder": st.desk.spaces.get(p).map(|d| &d.folder), "lead": Self::desk_lead_view(st, p), "items": items, "decisions": decisions, "older": older, "moves_cleared": st.desk.moves_cleared.get(p).copied().unwrap_or(0), "members": members, "checks": crate::desk::hub::lead::checks::checks_view(st, p), "kept": st.desk.kept.iter().filter(|k| &k.project == p).collect::<Vec<_>>(), "waits": crate::desk::hub::core::waits::waits_view(st, p), "circles": crate::desk::hub::core::waits::circles_view(st, p), "ask_before": crate::desk::one_way::desk_view(st.desk.project_of(p)), "away": crate::desk::hub::away::away::away_view(st, p, now), "held": crate::desk::hub::away::away_holds::held_view(st, p), "away_log": crate::desk::hub::away::away_log::log_view(st, p), "paused": crate::desk::hub::away::pause::pause_view(p), "lands": crate::desk::lands::desk_view(p, &desk_folder(st, p)), "machines": crate::desk::machine_pref::desk_view(p, &st.desk.spaces.get(p).map(|d| d.machine_folders.clone()).unwrap_or_default()), "holds": crate::desk::holds::holds_view(st, p) })
+                json!({ "with_work": with_work, "work_history": work_history, "id": p, "project": p, "name": st.desk.spaces.get(p).map(|d| &d.name), "independent": st.desk.spaces.contains_key(p), "workspace_project": st.desk.project_of(p), "folder": st.desk.spaces.get(p).map(|d| &d.folder), "lead": Self::desk_lead_view(st, p), "items": items, "decisions": decisions, "older": older, "moves_cleared": st.desk.moves_cleared.get(p).copied().unwrap_or(0), "members": members, "checks": crate::desk::hub::lead::checks::checks_view(st, p), "kept": st.desk.kept.iter().filter(|k| &k.project == p).collect::<Vec<_>>(), "waits": crate::desk::hub::core::waits::waits_view(st, p), "circles": crate::desk::hub::core::waits::circles_view(st, p), "ask_before": crate::desk::one_way::desk_view(st.desk.project_of(p)), "away": crate::desk::hub::away::away::away_view(st, p, now), "held": crate::desk::hub::away::away_holds::held_view(st, p), "away_log": crate::desk::hub::away::away_log::log_view(st, p), "paused": crate::desk::hub::away::pause::pause_view(p), "lands": crate::desk::lands::desk_view(p, &desk_folder(st, p)), "machines": crate::desk::machine_pref::desk_view(p, &st.desk.spaces.get(p).map(|d| d.machine_folders.clone()).unwrap_or_default()), "model": crate::desk::model_pick::default_of(p), "holds": crate::desk::holds::holds_view(st, p) })
             })
             .collect();
         json!({ "projects": list, "installed_ms": crate::desk::hub::lead::checks::installed_ms(), "install_at": crate::desk::hub::landing::install::install_at(st) })

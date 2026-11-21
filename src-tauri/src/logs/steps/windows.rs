@@ -94,6 +94,8 @@ pub struct InsightState {
     /// The first line of its latest reply, cut short ("" when it has none): the Desk's row for a session on
     /// no item says it (#185).
     pub said: String,
+    /// The model its latest reply came from ("" when its log doesn't say): its Desk row says it (#620).
+    pub model: String,
 }
 
 /// How many of the latest auto-compactions on a model auto_compact_at looks at, and the fewest it says anything from.

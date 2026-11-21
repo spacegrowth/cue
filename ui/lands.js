@@ -32,7 +32,8 @@ function landsChange(desk) {
   const ab = project && askBeforeKinds().length ? { project, ticks: [...askBeforeNow(project)], more: false } : null;
   // Where its new sessions start (#597): this Mac or a machine, with the folder of the Desk's clone there.
   const ms = d.machines?.machines || [], mach = ms.length ? { machine: d.machines.machine || "", folder: ms.find((m) => m.name === d.machines.machine)?.folder || "" } : null;
-  lands = { desk, set: { ...l.set }, steps, ab, mach, was: { set: { ...l.set }, steps: { ...steps }, ticks: ab ? [...ab.ticks] : null, mach: mach ? { ...mach } : null } };
+  const model = d.model || "default";
+  lands = { desk, set: { ...l.set }, steps, ab, mach, model, was: { set: { ...l.set }, steps: { ...steps }, ticks: ab ? [...ab.ticks] : null, mach: mach ? { ...mach } : null, model } };
   renderMain();
 }
 /** How work lands as it's saved: your own steps go with a part only when that part is "Your own steps". */
@@ -47,8 +48,9 @@ const landsSame = (x, y) => JSON.stringify(Object.keys({ ...x, ...y }).sort().ma
 /** What you changed on the screen and haven't saved: how work lands, Ask me before. */
 const landsSetChanged = (a) => !landsSame(landsOut(a.set, a.steps), landsOut(a.was.set, a.was.steps));
 const landsAskChanged = (a) => !!a.ab && [...a.ab.ticks].sort().join() !== [...a.was.ticks].sort().join();
+const landsModelChanged = (a) => (a.model || "default") !== (a.was.model || "default");
 const landsMachChanged = (a) => !!a.mach && (a.mach.machine !== a.was.mach.machine || (!!a.mach.machine && a.mach.folder.trim() !== a.was.mach.folder.trim()));
-const landsChanged = (a) => !!a && (landsSetChanged(a) || landsAskChanged(a) || landsMachChanged(a));
+const landsChanged = (a) => !!a && (landsSetChanged(a) || landsAskChanged(a) || landsMachChanged(a) || landsModelChanged(a));
 /** Where an item works changed while items are open: what happens to them, said before it's saved. An item already
  *  started keeps the folder it has (desk/hub/landing/trees.rs gives a copy only as an item starts working). */
 function landsWhereNote() {
@@ -86,8 +88,10 @@ function landsPart(p, l) {
 function landsAtOnce(l) {
   if (lands.set.where !== "copy") return "";
   const n = lands.set.at_once, min = l.at_once?.min ?? 1, max = l.at_once?.max ?? 9;
-  return `<div class="ld-row"><div class="ld-label">Items at once</div><div class="ld-body"><div class="ld-step">
+  // The model new sessions start on shares this line (#620): the screen stays short enough not to scroll (#447).
+  return `<div class="ld-row"><div class="ld-label">Items at once</div><div class="ld-body"><div class="ld-line"><div class="ld-step">
     <button class="btn" data-ld="less" aria-label="Fewer"${n <= min ? " disabled" : ""}>−</button><b class="ld-n">${n}</b><button class="btn" data-ld="more" aria-label="More"${n >= max ? " disabled" : ""}>+</button></div>
+    <label class="ld-model-at" data-ld-sec="model"><span class="ld-model-l">New sessions start on</span>${landsModelPick()}</label></div>
     <div class="ld-hint">More than ${n === 1 ? "one waits" : `${n === 2 ? "two" : n === 3 ? "three" : n} wait`} for a free copy.</div></div></div>`;
 }
 /** A size given in KB, as people say it. */
@@ -131,6 +135,21 @@ function landsOldRemove() {
     (e) => { a.old = null; toast(`Couldn't remove the old working folders: ${e}`, 5000); renderMain(); },
   );
 }
+/** The model a Desk's new sessions start on (#620): Claude Code's list on this Mac, Default its own pick. */
+function landsModelPick() {
+  const list = typeof modelsOf === "function" ? modelsOf("") : null;
+  // Asked once per opening: a list that can't be read isn't asked for again on every draw.
+  if (!list && !lands.modelsAsked && typeof readModels === "function") { lands.modelsAsked = true; readModels(false, ""); }
+  const opts = [...(list || [{ value: "default", label: "Default" }])];
+  if (!opts.some((m) => m.value === "default")) opts.unshift({ value: "default", label: "Default" });
+  if (!opts.some((m) => m.value === lands.model)) opts.push({ value: lands.model, label: lands.model });
+  return `<select class="nf-in nf-sel ld-model" data-ld-model aria-label="Model new sessions start on">${opts.map((m) => `<option value="${esc(m.value)}" ${m.value === lands.model ? "selected" : ""}>${esc(m.label || m.value)}</option>`).join("")}</select>`;
+}
+/** Its own row when there's no Items at once line to share (work in the shared folder). */
+function landsModel() {
+  if (lands.set.where === "copy") return "";
+  return `<div class="ld-row" data-ld-sec="model"><div class="ld-label">New sessions</div><div class="ld-body">${landsModelPick()}</div></div>`;
+}
 /** Where the Desk's new sessions start (#597): This Mac or one of your machines, and for a machine the folder of this
  *  repository's clone there. Only when Cue has a machine. */
 function landsMach() {
@@ -167,7 +186,7 @@ function landsHtml() {
     <div class="ld-hint ld-intro">Kept in Cue, not in the project. Changes apply when you press Save; you can also tell the lead, and it asks you first.</div>
     <div class="ld-sec" data-ld-sec="lands"><div class="set-group ld-h">How work lands</div>
     ${l.why ? `<div class="ld-why">${esc(l.why)}</div>` : ""}
-    <div class="ld-rows">${parts}</div></div>
+    <div class="ld-rows">${parts}${landsModel()}</div></div>
     ${landsMach()}
     ${landsAskBefore()}
     <div class="ld-sec" data-ld-sec="old"><div class="set-group ld-h">Old working folders</div><div class="ld-rows">${landsOld()}</div></div>
@@ -200,6 +219,13 @@ function landsSave() {
     jobs.push(invoke("desk_lands_set", { desk: a.desk, lands: set }).then(
       () => { a.was.set = { ...a.set }; a.was.steps = steps; },
       (e) => { throw `how work lands: ${e}`; },
+    ));
+  }
+  if (landsModelChanged(a)) {
+    const model = a.model;
+    jobs.push(invoke("desk_model_set", { desk: a.desk, model }).then(
+      () => { a.was.model = model; },
+      (e) => { throw `the model: ${e}`; },
     ));
   }
   if (landsMachChanged(a)) {
@@ -284,6 +310,13 @@ document.addEventListener("click", (e) => {
   if (!lands?.ab || !e.target.closest?.(".ld-dialog")) return;
   const was = lands.ab.ticks.join();
   if (askBeforeClick(lands.ab, e) && was !== lands.ab.ticks.join() && lands.leaving) { lands.leaving = false; renderMain(); }
+}, true);
+document.addEventListener("change", (e) => {
+  const t = e.target.closest?.("[data-ld-model]");
+  if (!t || !lands) return;
+  lands.model = t.value || "default";
+  lands.leaving = false;
+  renderMain();
 }, true);
 document.addEventListener("input", (e) => {
   const f = e.target.closest?.("[data-ld-folder]");

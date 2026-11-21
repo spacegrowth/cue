@@ -31,9 +31,17 @@ const deskSessItems = (d, sid) => d.items.filter((i) => i.state !== "done" && i.
  *  newer; null when neither is in yet. */
 function deskSessNums(sid) {
   const m = stepFeeds.get(sid)?.meta, c = typeof insCache !== "undefined" ? insCache.get(sid) : null;
-  const fromLog = m?.context ? { tokens: m.context, until_ms: m.cache_ttl_s && m.last_call_ms ? m.last_call_ms + m.cache_ttl_s * 1000 : 0, last_ms: m.last_call_ms || 0 } : null;
+  const fromLog = m?.context ? { tokens: m.context, until_ms: m.cache_ttl_s && m.last_call_ms ? m.last_call_ms + m.cache_ttl_s * 1000 : 0, last_ms: m.last_call_ms || 0, model: m.model || "" } : null;
   if (fromLog && (!c?.tokens || fromLog.last_ms > (c.last_ms || 0))) return fromLog;
   return c?.tokens || c?.until_ms ? c : null;
+}
+/** The model a session runs on, short ("Fable 5.2"), for its row (#620): its log's, else the one Cue started it on for
+ *  an item (`model` on the item it holds, before its first reply). "" when neither says, or Claude Code picked. */
+function deskSessModel(sid, c) {
+  const pretty = (m) => (m && m !== "default" && typeof prettyModel === "function" ? prettyModel(m) : "");
+  if (c?.model) return pretty(c.model);
+  for (const d of state.desk?.projects || []) for (const i of d.items || []) if (i.model && i.state !== "done" && i.holder?.sid === sid) return pretty(i.model);
+  return "";
 }
 /** A session row's size and cache, as its card says them: "142k · cache 3m" (minutes its cache has left),
  *  "142k · cold", or "142k · cache unknown" (an agent whose log doesn't say how long it caches: Codex, Pi); amber
@@ -45,15 +53,17 @@ function deskSessNums(sid) {
 function deskSessCache(sid, when = false, hold = false) {
   deskInsAsk(sid);
   const c = deskSessNums(sid);
+  const model = hold ? deskSessModel(sid, c) : "", mp = model ? `${esc(model)} · ` : "";
   if (!c) {
     if (!hold) return "";
+    if (model) return `<div class="dk-s3 dk-size">${mp}${DESK_NO_NUMS}</div>`;
     return deskInsNone.has(sid) ? `<div class="dk-s3 dk-size">${DESK_NO_NUMS}</div>` : `<div class="dk-s3 dk-size" data-ins-wait="${esc(sid)}" aria-hidden="true">&nbsp;</div>`;
   }
   const left = (c.until_ms || 0) - now();
   const cache = left > 0 ? `cache ${Math.ceil(left / 60000)}m` : c.until_ms ? "cold" : "cache unknown";
   const size = c.tokens ? insTok(c.tokens) : "size unknown";
   const at = when && c.last_ms ? `<span data-ago="${c.last_ms}">${ago(c.last_ms)}</span> ago · ` : "";
-  return `<div class="dk-s3 dk-size${left > 0 && left < HOT_CACHE_MS ? " hot" : ""}">${at}${esc(size)} · ${esc(cache)}</div>`;
+  return `<div class="dk-s3 dk-size${left > 0 && left < HOT_CACHE_MS ? " hot" : ""}">${at}${mp}${esc(size)} · ${esc(cache)}</div>`;
 }
 /** The first line of a session's latest reply, from the same numbers ("" until they're in). */
 const deskSessSaid = (sid) => (typeof insCache !== "undefined" && insCache.get(sid)?.said) || "";

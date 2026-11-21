@@ -11,6 +11,7 @@ pub(crate) mod hold_check;
 pub mod holds;
 pub(crate) mod hub;
 pub(crate) mod lands;
+pub(crate) mod model_pick;
 pub(crate) mod machine_pref;
 pub(crate) mod one_way;
 pub mod model;
@@ -143,6 +144,7 @@ give it when the item has none yet, as items the user adds don't)
 ROUTE: #<id> -> new | why: <reason>      (no session fits: Cue starts a new session of this project for it; \
 an item a session already holds moves to it, as when its holder is too full and wrote a hand-off: the old holder \
 stops, and the new session is sent the item with that hand-off note)
+ROUTE: #<id> -> new | model: <name> | why: <reason>   (the new session starts on that model, as Claude Code names it: fable, opus, sonnet, haiku, or a full id; without model: it starts on the Desk's default, which the user sets in the Desk's settings. Pick a model only when the work calls for it)
 ROUTE: #<id> -> new | on: <machine> | in: <folder there> | why: <reason>   (the new session starts on another of the user's machines, in this repository's clone there, from the latest main; on: this Mac starts it here. Without on:, it starts where the user chose for the item, else where the Desk's sessions start (its settings). Cue remembers the folder, so in: is needed only the first time. Before a Desk's first item on a machine, ask the user (ASK: #<id> | Start it on <machine>, in <folder>? | Yes | No, this Mac), and route it there only once they say yes. An item given to a session on another machine, this way or by name, is worked on a branch of its own there and lands here at its DONE like any other)
 ROUTE: #<id> -> <name> | after: #<other id> | why: <reason>   (it starts once #<other id> is done; use it whenever \
 an item really waits on another, as when both would change the same files: the Desk shows the user what each waiting item unblocks)

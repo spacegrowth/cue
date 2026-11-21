@@ -250,7 +250,7 @@ fn a_working_item_whose_holder_stopped_is_sent_again_on_a_route_or_restart() {
 fn a_route_to_me_can_name_the_teammate_doing_it() {
     assert_eq!(
         lines("ROUTE: #a1 -> me | crew: `fixer` | why: two files"),
-        vec![Line::Route { id: "a1".into(), to: "me".into(), after: None, why: "two files".into(), kind: None, crew: Some("fixer".into()), on: None, in_dir: None }]
+        vec![Line::Route { id: "a1".into(), to: "me".into(), after: None, why: "two files".into(), kind: None, crew: Some("fixer".into()), on: None, in_dir: None, model: None }]
     );
 }
 
@@ -372,4 +372,73 @@ fn a_route_to_nobody_leaves_a_held_item_with_its_holder() {
     assert_eq!(item(&now, "Header")["holder"]["name"], "cue-teams");
     let s = summary(&w, &project);
     assert!(s.contains("nobody-here") && s.contains("It stays with cue-teams.") && !s.contains("still new"), "{s}");
+}
+
+/// #620: a route to a new session can name the model it starts on: the name is matched to Claude Code's ("Opus" is
+/// opus), kept on the item, and the session starts with --model. Without one, the Desk's default from its settings;
+/// set to Default, no --model at all. A name Claude Code doesn't list, or model: on a route to a session already
+/// running, is refused and the item isn't routed.
+#[test]
+fn a_route_to_new_can_name_the_model_its_session_starts_on() {
+    let w = World::new();
+    let (_, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    let args = || w.hosted.launched().last().map(|x| x.args.join(" ")).unwrap_or_default();
+    ends(&w, &l, "ITEM: Typo in the footer\nROUTE: #new -> new | model: Opus | why: big");
+    w.settle();
+    let it = item(&desk(&w, &project), "Typo in the footer").clone();
+    assert_eq!(it["model"], "opus", "{it}");
+    assert!(it["holder"]["sid"].as_str().is_some_and(|s| s != l), "{it}");
+    assert!(args().contains("--model opus"), "{}", args());
+
+    // Not named: the Desk's default.
+    crate::desk::model_pick::set_default(&project, "fable").unwrap();
+    let told = w.hub().desk_summary(&project, &l, false).0;
+    assert!(told.contains("New sessions start on: fable (the Desk's default"), "{told}");
+    ends(&w, &l, "ITEM: Footer colour\nROUTE: #new -> new | why: small");
+    w.settle();
+    assert_eq!(item(&desk(&w, &project), "Footer colour")["model"], "fable");
+    assert!(args().contains("--model fable"), "{}", args());
+    assert_eq!(desk(&w, &project)["model"], "fable");
+
+    // Default: Claude Code picks, no flag.
+    crate::desk::model_pick::set_default(&project, "default").unwrap();
+    ends(&w, &l, "ITEM: Footer font\nROUTE: #new -> new | why: small");
+    w.settle();
+    assert_eq!(item(&desk(&w, &project), "Footer font")["model"], "default");
+    assert!(!args().contains("--model"), "{}", args());
+
+    // Refused: a model Claude Code doesn't list, and model: on a route to a running session.
+    let launches = w.hosted.launched().len();
+    ends(&w, &l, "ITEM: Footer link\nROUTE: #new -> new | model: gpt | why: small");
+    w.settle();
+    let said = sent_to(&w, &l).last().cloned().unwrap_or_default();
+    assert!(said.starts_with("Refused: Claude Code here has no model called gpt. Its models: Fable, Opus, Sonnet, Haiku."), "{said}");
+    assert!(item(&desk(&w, &project), "Footer link")["holder"].is_null(), "not routed");
+    let link = item(&desk(&w, &project), "Footer link")["id"].as_str().unwrap().to_string();
+    ends(&w, &l, &format!("ROUTE: #{link} -> cue-teams | model: opus | why: small"));
+    w.settle();
+    let said = sent_to(&w, &l).last().cloned().unwrap_or_default();
+    assert!(said.contains("model: picks the model a new session starts on, so it goes with -> new"), "{said}");
+    assert!(item(&desk(&w, &project), "Footer link")["holder"].is_null(), "not routed");
+    assert_eq!(w.hosted.launched().len(), launches, "nothing started");
+}
+
+#[test]
+fn a_model_word_is_matched_to_claude_codes_names() {
+    use crate::desk::model_pick::named;
+    let list: Vec<(String, String)> =
+        [("default", "Default (recommended)"), ("opus", "Opus"), ("claude-fable-5-2", "Fable 5.2"), ("sonnet[1m]", "Sonnet (1M context)")]
+            .iter().map(|(v, l)| (v.to_string(), l.to_string())).collect();
+    let n = |w: &str| named(w, Some(&list));
+    assert_eq!(n("Opus"), Ok("opus".into()));
+    assert_eq!(n("fable"), Ok("claude-fable-5-2".into()), "a label's first word");
+    assert_eq!(n("Fable 5.2").is_err(), true, "a space isn't a model name");
+    assert_eq!(n("sonnet"), Ok("sonnet[1m]".into()));
+    assert_eq!(n("DEFAULT"), Ok("default".into()));
+    assert_eq!(n("claude-opus-5-5"), Ok("claude-opus-5-5".into()), "a full id goes as typed");
+    assert!(n("gpt").unwrap_err().contains("Its models: Opus, Fable 5.2, Sonnet (1M context)."));
+    assert_eq!(named("Opus", None), Ok("opus".into()), "list not read yet");
+    assert!(named("rm -rf", None).is_err());
+    assert!(matches!(&lines("ROUTE: #4 -> new | model: opus | why: big")[0], Line::Route { model: Some(m), .. } if m == "opus"));
 }

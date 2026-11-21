@@ -49,6 +49,12 @@ pub(crate) async fn desk_lands_set(hub: State<'_, Arc<Hub>>, desk: String, lands
     with_hub(&hub, move |h| h.desk_lands_set(&desk, &lands)).await?
 }
 
+/// Desk `desk`'s default model for new sessions (#620): "" or "default" for Claude Code's own pick.
+#[tauri::command]
+pub(crate) async fn desk_model_set(hub: State<'_, Arc<Hub>>, desk: String, model: String) -> Result<String, String> {
+    with_hub(&hub, move |h| h.desk_model_set(&desk, &model)).await?
+}
+
 /// How work lands' Remove old working folders: the Desk's repository looked at now, its old copies and their size.
 #[tauri::command]
 pub(crate) async fn desk_old_copies_list(hub: State<'_, Arc<Hub>>, desk: String) -> Result<crate::hub::OldCopies, String> {

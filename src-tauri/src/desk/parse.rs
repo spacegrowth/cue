@@ -13,7 +13,7 @@ pub enum Line {
     /// when said: the lead's teammate doing it (with `to` "me").
     /// `on`, when said: the machine a new session for it starts on (`| on: <machine>`), with `in` the folder of the
     /// clone there (`| in: <folder>`, else the one this Desk used there last).
-    Route { id: String, to: String, after: Option<String>, why: String, kind: Option<String>, crew: Option<String>, on: Option<String>, in_dir: Option<String> },
+    Route { id: String, to: String, after: Option<String>, why: String, kind: Option<String>, crew: Option<String>, on: Option<String>, in_dir: Option<String>, model: Option<String> },
     /// A question for you, with its choices (none: answered in words).
     /// `item`: the item it's about (`ASK: #<id> | <question> | …`), shown on that item as waiting on you.
     Ask { question: String, choices: Vec<String>, item: Option<String> },
@@ -487,7 +487,8 @@ fn route(body: &str) -> Option<Line> {
     }
     let on = p[1..].iter().find_map(|s| colon(s, "on")).map(clean).filter(|m| !m.is_empty());
     let in_dir = p[1..].iter().find_map(|s| colon(s, "in")).map(clean).filter(|m| !m.is_empty());
-    Some(Line::Route { id, to, after, why, kind, crew, on, in_dir })
+    let model = p[1..].iter().find_map(|s| colon(s, "model")).map(clean).filter(|m| !m.is_empty());
+    Some(Line::Route { id, to, after, why, kind, crew, on, in_dir, model })
 }
 
 fn ask(body: &str) -> Option<Line> {

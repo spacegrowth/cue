@@ -127,6 +127,14 @@ CueBridge.area("settings", (w) => {
       w.changed(10);
       return view;
     },
+    // A Desk's default model for new sessions (desk/model_pick.rs set_default): "default" is Claude Code's own pick.
+    desk_model_set: ({ desk, model }) => {
+      const d = (w.state.desk?.projects || []).find((x) => x.id === desk || x.project === desk);
+      if (!d) throw "no such Desk";
+      d.model = model === "default" ? "" : model;
+      w.changed(10);
+      return d.model;
+    },
     // Pausing a whole Desk (desk/hub/away/pause.rs desk_pause_set): its `paused` view, as the hub returns it.
     desk_pause: ({ desk, on }) => {
       const d = (w.state.desk?.projects || []).find((x) => x.id === desk || x.project === desk);

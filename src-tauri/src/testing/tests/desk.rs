@@ -72,7 +72,7 @@ fn lines_are_read_outside_code_and_quotes() {
         vec![
             Line::Item { kind: "feature".into(), title: "Dark mode".into(), see: String::new(), done_when: "it follows the Mac".into(), why: String::new(), follows: String::new(), picked: String::new() },
             Line::Item { kind: "task".into(), title: "Plain title".into(), see: String::new(), done_when: String::new(), why: String::new(), follows: String::new(), picked: String::new() },
-            Line::Route { id: "new".into(), to: "cue-teams".into(), after: Some("a1b2".into()), why: "it knows the header".into(), kind: None, crew: None, on: None, in_dir: None },
+            Line::Route { id: "new".into(), to: "cue-teams".into(), after: Some("a1b2".into()), why: "it knows the header".into(), kind: None, crew: None, on: None, in_dir: None, model: None },
             Line::Ask { question: "Which first?".into(), choices: vec!["A".into(), "B".into()], item: None },
             Line::Done { ids: vec!["a1".into(), "b2".into()] },
         ]

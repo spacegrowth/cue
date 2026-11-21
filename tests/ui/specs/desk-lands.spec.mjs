@@ -122,3 +122,32 @@ test("a Desk on another project offers no Cue's own check or install, and keeps 
   await expect(seg("After landing").and(page.locator(".on"))).toHaveText("Install or serve Cue");
   await expect(seg("After landing")).toHaveText(["Nothing", "Install or serve Cue", "Your own steps"]);
 });
+
+test("a Desk's model for new sessions is picked in its settings, and an item started on a model says so (#620)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await line(page).locator("[data-lands-change]").click();
+  const dlg = page.locator(".ld-dialog");
+  const pick = dlg.locator("[data-ld-model]");
+  await expect(dlg.locator('[data-ld-sec="model"] .ld-model-l')).toHaveText("New sessions start on");
+  await expect(pick).toHaveValue("default");
+  await pick.selectOption("opus");
+  await dlg.locator('[data-ld="save"]').click();
+  await expect(dlg).toHaveCount(0);
+  await expect.poll(async () => (await cue.calls("desk_model_set")).at(-1)?.args).toMatchObject({ model: "opus" });
+  await line(page).locator("[data-lands-change]").click();
+  await expect(page.locator(".ld-dialog [data-ld-model]")).toHaveValue("opus");
+  await expect(page.locator(".ld-dialog [title]")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  // An item a new session was started for on Fable: its card names the model; one on Claude Code's own pick doesn't.
+  await cue.change((st) => {
+    const desk = st.desk.projects.find((d) => d.project === "cue");
+    const base = desk.items.find((i) => i.id === "d2");
+    desk.items.push(
+      { ...base, id: "620a", title: "Started on Fable", state: "queued", holder: null, model: "fable" },
+      { ...base, id: "620b", title: "Started on the default", state: "queued", holder: null, model: "default" }
+    );
+  });
+  await expect(page.locator('[data-desk-item="620a"]').locator(".dk-model")).toHaveText("Fable");
+  await expect(page.locator('[data-desk-item="620b"]').locator(".dk-model")).toHaveCount(0);
+});

@@ -46,8 +46,8 @@ fn a_session_you_make_the_lead_is_sent_the_lead_skill_in_the_block() {
     assert_eq!(told.len(), before + 1, "one message");
     let (block, rest) = told.last().unwrap().split_once("</desk>\n\n").unwrap();
     let (_, summary) = block.split_once(">\n").unwrap();
-    assert!(summary.starts_with("Desk lead: cue-teams (you)\nHow work lands now (LANDS: to propose a change): ") && summary.contains(" · at once: 3\n\nNeeds routing:\n"), "{block}");
-    assert!(summary.lines().nth(4).unwrap().contains("Footer"), "{block}");
+    assert!(summary.starts_with("Desk lead: cue-teams (you)\nHow work lands now (LANDS: to propose a change): ") && summary.contains(" · at once: 3\nNew sessions start on: Claude Code's own pick (the Desk's default; name another on a route to new with | model: <name>).\n\nNeeds routing:\n"), "{block}");
+    assert!(summary.lines().nth(5).unwrap().contains("Footer"), "{block}");
     assert!(block.contains("You run this project's Desk in Cue"), "{block}");
     assert!(rest.starts_with(&format!("You run {project}'s Desk now")), "{rest}");
     assert_eq!(desk(&w, &project)["lead"], json!({ "sid": h, "name": "cue-teams", "state": "live" }));

@@ -127,6 +127,8 @@
 /* Its kind and number lead the second line, beside who holds it: "Task #43 · host-lead · 4m". */
 .dk-kid { flex: none; display: inline-flex; align-items: center; }
 .dk-i2 .dk-kid + .dk-who:empty { display: none; }
+/* The model its session runs on (#620), beside its holder: quiet, in the row's own color. */
+.dk-i2 .dk-model { margin-left: 6px; font: var(--type-pill) var(--mono); opacity: .75; white-space: nowrap; }
 .dk-i2 .dk-kid + .dk-who:not(:empty)::before, .dk-i2 .dk-kid + .dk-who:empty + .dk-age::before { content: "· "; }
 .dk-i2 .dk-age:empty { display: none; }
 /* A long age ("committed 2f2448c7 ef66ab27 · Thu 9:45pm") gives way, cut at "…", so Undo stays on the row and the list
