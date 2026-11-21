@@ -144,3 +144,9 @@ button.mg-id:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
 .mg-plain.on-bg { color: var(--on-bg-muted); }
 .mg-plain.on-bg :is(.mg-who, .mg-w, b) { color: var(--on-bg); }
 .mg-plain.on-bg .mg-id { background: color-mix(in srgb, var(--on-bg) 14%, transparent); color: var(--on-bg); }
+/* A message waiting on a session that has been at its turn 45 minutes: why it may wait, ask it by the way instead or keep
+   it waiting, and what a side question can and can't do (#535). */
+.btw-offer { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; text-align: right; }
+.btw-offer-why { color: var(--muted); font-size: var(--type-small); }
+.btw-offer-acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.btw-offer-note { color: var(--muted); font-size: var(--type-small); max-width: 46ch; }

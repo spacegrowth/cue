@@ -75,6 +75,10 @@
 /* Fork, under an answer: quiet until wanted, like Clear. */
 .btw-fork { align-self: flex-start; margin: -4px 0 0 -6px; font-size: var(--type-pill); font-weight: 650; color: var(--muted); padding: 2px 6px; border-radius: 6px; }
 .btw-fork:hover:not(:disabled) { color: var(--ink); background: var(--panel-2); }
+/* Under a side answer: Queue it again (a waiting message asked on the side, #535) beside Fork. */
+.btw-a-acts { display: flex; align-items: center; gap: 2px; margin: -4px 0 0 -6px; }
+.btw-a-acts .btw-fork { margin: 0; }
+.btw-requeued { font-size: var(--type-pill); padding: 2px 6px; }
 .btw-fork:disabled { opacity: 0.6; cursor: default; }
 .btw-empty { font-size: var(--type-small); padding: 2px 0 4px; }
 .copied { position: absolute; right: 12px; bottom: calc(100% + 8px); padding: 3px 10px; border-radius: 6px; background: var(--accent); color: var(--on-accent); font-size: var(--type-small); font-weight: 650; pointer-events: none; z-index: 5; animation: copied 1.6s ease forwards; }

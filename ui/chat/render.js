@@ -298,7 +298,9 @@ function heldRow(s, page, key = "held") {
   const cm = typeof cueMsgHtml === "function" && cueMsgHtml(s.held, s, `${s.session_id}:held:cue`, m);
   if (cm) return keyed(cm, key);
   const hd = page?.youHead?.(s.held);
-  return msgRow(m, yourBubble(hd ? { ...s.held, text: hd.text } : s.held, `${s.session_id}:held`, "", true, hd?.html || "") + thumbs(s.held.images), "queued held", ` data-key="${esc(key)}"`);
+  // Busy a long time: ask it by the way instead (#535). Not where a page has its own controls for it (the Desk).
+  const offer = !heldWhy && mine == null ? btwOffer(s, s.held) : "";
+  return msgRow(m, yourBubble(hd ? { ...s.held, text: hd.text } : s.held, `${s.session_id}:held`, "", true, hd?.html || "") + thumbs(s.held.images), "queued held", ` data-key="${esc(key)}"`, offer);
 }
 /** A message Cue sends by itself later: at your time, or (Cue's carry-on) when the usage limit it stopped on resets. */
 function sendAtRow(s) {
