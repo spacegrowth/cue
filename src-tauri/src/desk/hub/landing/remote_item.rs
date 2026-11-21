@@ -17,7 +17,7 @@
 use crate::desk::hub::core::desk::Effects;
 use crate::desk::hub::landing::git::{because, git, git_said};
 use crate::desk::hub::landing::main_line::main_checkout;
-use crate::desk::hub::landing::tree_files::{exclude_trees, names_item, remove, rev};
+use crate::desk::hub::landing::tree_files::{exclude_trees, names_item, remove, rev, take_away};
 use crate::desk::hub::landing::trees::TREES;
 use crate::desk::hub::prelude::*;
 use crate::desk::{DeskItem, ItemTree, OnMachine, RemoteWork};
@@ -434,9 +434,7 @@ impl Hub {
         }
         let path = format!("{repo}/{TREES}/remote-{}", it.id);
         if std::path::Path::new(&path).exists() {
-            let _ = git("", repo, &[], &["worktree", "remove", "--force", "--force", &path]);
-            let _ = std::fs::remove_dir_all(&path);
-            let _ = git("", repo, &[], &["worktree", "prune"]);
+            take_away(repo, &path);
         }
         git_said("", repo, &[], &["worktree", "add", "-q", "-B", &branch, &path, sha])?;
         Ok(ItemTree { repo: repo.to_string(), path, branch, base: base.to_string(), slot: 0, keep: false, addon_of: String::new() })

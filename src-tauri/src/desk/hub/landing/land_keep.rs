@@ -128,7 +128,7 @@ fn blob(repo: &str, filters: &[String], rev: &str, path: &str) -> Option<Vec<u8>
 fn merge(repo: &str, filters: &[String], main: &str, path: &str, ours: &[u8], theirs: &[u8]) -> Result<Vec<u8>, String> {
     let clash = || format!("its work and unsaved edits in the main checkout change the same lines of {path}");
     let base = blob(repo, filters, main, path).ok_or_else(clash)?;
-    let dir = std::env::temp_dir().join(format!("cue-land-{}-{}", std::process::id(), crate::clock::now_ms()));
+    let dir = super::tree_files::scratch("merge");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let (o, b, t) = (dir.join("ours"), dir.join("base"), dir.join("theirs"));
     let wrote = std::fs::write(&o, ours).and(std::fs::write(&b, &base)).and(std::fs::write(&t, theirs));

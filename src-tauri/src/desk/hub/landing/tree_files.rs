@@ -237,13 +237,25 @@ pub(crate) fn unlink_shared(path: &str) {
     }
 }
 
+/// The copy at `path` of `repo` deleted, and git told it's gone. Moved out of its place in one step before anything in it
+/// is deleted (#648): what reads it meanwhile (a landing's `snapshot`) finds it whole or gone, never half deleted.
+pub(crate) fn take_away(repo: &str, path: &str) {
+    // A lock (a copy git was told to keep) would keep git's record of it past the prune, and its branch with it.
+    let _ = git("", repo, &[], &["worktree", "unlock", path]);
+    let at = std::path::Path::new(path);
+    let name = at.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let gone = at.with_file_name(format!(".gone-{name}-{}", now_ms()));
+    let at = if std::fs::rename(at, &gone).is_ok() { gone.as_path() } else { at };
+    if at.exists() {
+        let _ = std::fs::remove_dir_all(at);
+    }
+    let _ = git("", repo, &[], &["worktree", "prune"]);
+}
+
 /// Copy `t` and its branch removed (a branch the lead named, `keep`, stays: it's where the work is, #557).
 pub(crate) fn remove(t: &ItemTree) {
     unlink_shared(&t.path);
-    if git("", &t.repo, &[], &["worktree", "remove", "--force", "--force", &t.path]).is_none() && std::path::Path::new(&t.path).exists() {
-        let _ = std::fs::remove_dir_all(&t.path);
-    }
-    let _ = git("", &t.repo, &[], &["worktree", "prune"]);
+    take_away(&t.repo, &t.path);
     if !t.branch.is_empty() && !t.keep {
         let _ = git("", &t.repo, &[], &["branch", "-q", "-D", &t.branch]);
     }
@@ -262,21 +274,70 @@ pub(crate) fn has_work(t: &ItemTree) -> bool {
 
 /// The tree of everything in copy `path` (committed or not, new files too, ignored ones and the shared links left
 /// out), written with an index of its own so the copy's isn't touched.
+/// None as well for a copy removed while it was read (#648): `remove` moves a copy away before deleting anything in
+/// it, so a folder gone, or another in its place, by the end was being removed, and what was read may be missing half
+/// its files. That's refused, never committed as if those files were deleted.
 pub(crate) fn snapshot(path: &str) -> Option<String> {
-    let dir = std::env::temp_dir().join(format!("cue-land-{}-{}", std::process::id(), now_ms()));
+    let was = folder_id(path)?;
+    let dir = scratch("index");
     let index = dir.to_string_lossy().to_string();
     let env = [("GIT_INDEX_FILE", index.as_str())];
     let out = (|| {
         git("", path, &env, &["read-tree", "HEAD"])?;
+        #[cfg(test)]
+        mid_snapshot("read");
         // Everything, then the shared links put back as the copy's HEAD has them (left out). Not an exclude in the
         // add: git takes a path there as named on purpose, and fails when the repository ignores it or a folder
         // above it.
         git("", path, &env, &["add", "-A", "--", "."])?;
+        #[cfg(test)]
+        mid_snapshot("added");
         git("", path, &env, &["reset", "-q", "--", "node_modules", "src-tauri/target"])?;
         git("", path, &env, &["write-tree"]).map(|t| t.trim().to_string())
     })();
     let _ = std::fs::remove_file(&dir);
-    out
+    out.filter(|_| folder_id(path) == Some(was))
+}
+
+/// A temporary path of a landing's own: two at once (in the same millisecond) never share one, and one's cleanup never
+/// takes the other's.
+pub(crate) fn scratch(what: &str) -> std::path::PathBuf {
+    static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    std::env::temp_dir().join(format!("cue-land-{what}-{}-{}-{n}", std::process::id(), now_ms()))
+}
+
+/// Which folder `path` is (its device and inode), while it's a git checkout; None when it's gone or isn't one.
+fn folder_id(path: &str) -> Option<(u64, u64)> {
+    let at = std::path::Path::new(path);
+    let m = std::fs::metadata(at).ok()?;
+    if !at.join(".git").exists() {
+        return None;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        Some((m.dev(), m.ino()))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = m;
+        Some((0, 0))
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Run once inside the next `snapshot` at its step (`read`: HEAD read; `added`: the copy's files read): a removal
+    /// starting just then.
+    static MID_SNAPSHOT: std::cell::RefCell<Option<(&'static str, Box<dyn FnOnce()>)>> = const { std::cell::RefCell::new(None) };
+}
+#[cfg(test)]
+fn mid_snapshot(step: &str) {
+    let due = MID_SNAPSHOT.with(|m| if m.borrow().as_ref().is_some_and(|(s, _)| *s == step) { m.borrow_mut().take() } else { None });
+    if let Some((_, f)) = due {
+        f();
+    }
 }
 
 /// `.claude/worktrees/` left out of `repo`'s changes (this checkout's own exclude list), so its copies never show
@@ -300,6 +361,95 @@ pub(crate) fn exclude_trees(repo: &str) {
 #[cfg(test)]
 mod tests {
     use super::names_item;
+    use crate::desk::ItemTree;
+    use std::path::{Path, PathBuf};
+
+    fn git(dir: &Path, args: &[&str]) -> String {
+        let out = std::process::Command::new("git").arg("-C").arg(dir).args(args).output().unwrap();
+        assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    /// A repository with 20 committed files and a copy of it (a worktree) on its own branch, as Cue makes for an item.
+    fn repo_and_copy(tag: &str) -> (PathBuf, ItemTree) {
+        let dir = std::env::temp_dir().join(format!("cue-test-snap-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let repo = dir.join("repo");
+        std::fs::create_dir_all(repo.join("ui")).unwrap();
+        git(&repo, &["init", "-q", "-b", "main"]);
+        git(&repo, &["config", "user.email", "t@example.com"]);
+        git(&repo, &["config", "user.name", "t"]);
+        for n in 0..20 {
+            std::fs::write(repo.join(format!("ui/f{n}.js")), format!("{n}\n")).unwrap();
+        }
+        git(&repo, &["add", "-A"]);
+        git(&repo, &["commit", "-q", "-m", "start"]);
+        let copy = repo.join(".claude/worktrees/desk-1");
+        git(&repo, &["worktree", "add", "-q", "-b", "desk/1", copy.to_str().unwrap()]);
+        let t = ItemTree { repo: repo.to_string_lossy().into(), path: copy.to_string_lossy().into(), branch: "desk/1".into(), ..Default::default() };
+        (dir, t)
+    }
+
+    fn during_snapshot(step: &'static str, f: impl FnOnce() + 'static) {
+        super::MID_SNAPSHOT.with(|m| *m.borrow_mut() = Some((step, Box::new(f))));
+    }
+
+    /// Half of a copy's files deleted where it is, as a removal in place does.
+    fn delete_half(copy: &Path) {
+        for n in 0..10 {
+            let _ = std::fs::remove_file(copy.join(format!("ui/f{n}.js")));
+        }
+    }
+
+    /// A copy whole is read as it is: its change in, nothing else lost.
+    #[test]
+    fn a_whole_copy_is_read_with_its_changes() {
+        let (dir, t) = repo_and_copy("whole");
+        std::fs::write(Path::new(&t.path).join("ui/f3.js"), "changed\n").unwrap();
+        let tree = super::snapshot(&t.path).expect("read");
+        let files = git(Path::new(&t.repo), &["ls-tree", "-r", "--name-only", &tree]);
+        assert_eq!(files.lines().count(), 20);
+        assert_eq!(git(Path::new(&t.repo), &["show", &format!("{tree}:ui/f3.js")]), "changed");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The landing race (#648): a copy removed while a landing reads it is refused, never read as half its files
+    /// deleted, whichever step the removal starts at, and whether the folder is gone or a new copy is in its place.
+    #[test]
+    fn a_copy_removed_while_it_is_read_is_refused_not_committed() {
+        // Cue's own removal starting once HEAD is read: the copy moves away, its files go.
+        let (dir, t) = repo_and_copy("removed");
+        let t2 = t.clone();
+        during_snapshot("read", move || super::remove(&t2));
+        assert_eq!(super::snapshot(&t.path), None);
+        assert!(!Path::new(&t.path).exists(), "the copy is removed");
+        assert!(!git(Path::new(&t.repo), &["worktree", "list"]).contains("desk-1"), "git is told it's gone");
+        let left: Vec<_> = std::fs::read_dir(Path::new(&t.path).parent().unwrap()).unwrap().collect();
+        assert!(left.is_empty(), "nothing of it is left beside the copies");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        // Its files read, then removed and a new copy made at the same path (another item's), before the tree is
+        // written: not the folder it read.
+        let (dir, t) = repo_and_copy("replaced");
+        let (repo, path) = (t.repo.clone(), t.path.clone());
+        let t2 = t.clone();
+        during_snapshot("added", move || {
+            super::remove(&t2);
+            git(Path::new(&repo), &["worktree", "add", "-q", "-b", "desk/2", &path]);
+        });
+        assert_eq!(super::snapshot(&t.path), None);
+        let _ = std::fs::remove_dir_all(&dir);
+
+        // Half deleted in place and then gone, as a removal by git or by hand goes: refused.
+        let (dir, t) = repo_and_copy("half");
+        let path = t.path.clone();
+        during_snapshot("read", move || {
+            delete_half(Path::new(&path));
+            std::fs::remove_dir_all(&path).unwrap();
+        });
+        assert_eq!(super::snapshot(&t.path), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// A check cut off by a crash leaves its copy in `<Cue folder>/checks`: cleared at start-up, while a running Cue's
     /// copy and anything not named as a check's copy stay.
