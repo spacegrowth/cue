@@ -38,7 +38,7 @@ pub(crate) fn note(st: &mut Store, project: &str, id: &str, kind: ChangeKind, wo
 pub(crate) fn needs_you(st: &mut Store, id: &str, q: &str, asked: u64) -> bool {
     let Some(it) = st.desk.item(id) else { return false };
     let who = it.holder.as_ref().map(|h| format!(" {}", h.name)).unwrap_or_default();
-    let words = format!("#{id} ({})'s holder{who} asks the user: \"{}\". It waits on the answer, shown on the item; while Away is on, answer it for the user.", it.title, q.trim());
+    let words = format!("#{id} ({})'s holder{who} asks the owner: \"{}\". It waits on the answer, shown on the item; while Away is on, answer it for the owner.", it.title, q.trim());
     let project = it.project.clone();
     note(st, &project, id, ChangeKind::NeedsYou, words, &asked.to_string(), asked)
 }
@@ -59,7 +59,7 @@ pub(crate) fn finished(st: &mut Store, id: &str, how: &str, now: u64) -> bool {
     let what = match how {
         "said" => "its holder said DONE; Cue lands it now",
         "landed" => "it landed on the main line",
-        _ => "it's ready for the user's check",
+        _ => "it's ready for the owner's check",
     };
     let words = format!("#{id} ({}) finished: {what}. Nothing to do unless it gets stuck.", it.title);
     let (project, key) = (it.project.clone(), format!("{how}:{}", it.checks.len()));
@@ -72,11 +72,11 @@ pub(crate) fn you_did(st: &Store, id: &str, act: &str, text: &str) -> Option<(St
     let it = st.desk.item(id)?;
     let t = format!("#{id} ({})", it.title);
     let words = match act {
-        "send_back" => format!("You sent {t} back to its holder: \"{}\".", crate::desk::your_words(text).0.trim()),
-        "ask" => format!("You asked {t}'s holder: \"{}\".", crate::desk::your_words(text).0.trim()),
-        "start_now" => format!("You restarted {t}."),
-        "drop" => format!("You dropped {t}."),
-        "put_before" => format!("You put {t} before #{}, which now waits on it.", it.after.clone().unwrap_or_default()),
+        "send_back" => format!("The owner sent {t} back to its holder: \"{}\".", crate::desk::your_words(text).0.trim()),
+        "ask" => format!("The owner asked {t}'s holder: \"{}\".", crate::desk::your_words(text).0.trim()),
+        "start_now" => format!("The owner restarted {t}."),
+        "drop" => format!("The owner dropped {t}."),
+        "put_before" => format!("The owner put {t} before #{}, which now waits on it.", it.after.clone().unwrap_or_default()),
         _ => return None,
     };
     Some((it.project.clone(), words))
@@ -109,7 +109,7 @@ fn landing_stuck(it: &DeskItem, now: u64) -> Option<(String, String)> {
     }
     let wait = if f.wait.is_empty() { String::new() } else { format!(" ({})", f.wait) };
     let mins = now.saturating_sub(f.at) / 60_000;
-    let words = format!("#{} ({}) is stuck finishing: its {} step hasn't moved for {mins} minutes{wait}. Find what holds it and clear it, or ask the user (ASK: #{} | …).", it.id, it.title, f.step, it.id);
+    let words = format!("#{} ({}) is stuck finishing: its {} step hasn't moved for {mins} minutes{wait}. Find what holds it and clear it, or ask the owner (ASK: #{} | …).", it.id, it.title, f.step, it.id);
     Some((format!("{}:{}", f.step, f.at), words))
 }
 

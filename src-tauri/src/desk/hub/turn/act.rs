@@ -489,7 +489,7 @@ pub(crate) fn pick(st: &mut Store, id: &str, text: &str, now: u64) -> Result<Eff
     // Something of it left for its lead to route: the lead hears the pick at once, ahead of the new item's row, so it
     // routes it now. All of it routed already: no lead step.
     if !heard.is_empty() {
-        let words = format!("You picked option {option} on #{id} ({}): \"{}\". #{id} is done; {}.", it.title, text.trim(), heard.join("; "));
+        let words = format!("The owner picked option {option} on #{id} ({}): \"{}\". #{id} is done; {}.", it.title, text.trim(), heard.join("; "));
         crate::desk::hub::lead::feed::raise(st, &it.project, &id, crate::desk::feed::ChangeKind::Picked, words, &format!("{option}:{first}"), now);
     }
     // Its holder is told it's done and what follows, so it doesn't carry on there.

@@ -258,7 +258,7 @@ fn a_held_item_waits_on_its_shelf_until_you_start_it() {
     // Its lead isn't asked to route it, and sees it listed apart.
     assert!(!sent_to(&w, &l).iter().any(|t| t.contains(&format!("New item #{id}"))), "{:?}", sent_to(&w, &l));
     let sum = lead_summary(&w, &project, &l);
-    let (before, shelf) = sum.split_once("Parked (the user starts these themselves").expect(&sum);
+    let (before, shelf) = sum.split_once("Parked (the owner starts these themselves").expect(&sum);
     assert!(shelf.contains(&format!("#{id} feature: Dark sidebar | parked")) && !before.contains(&format!("#{id} ")), "{sum}");
     // Neither a route nor a START moves it.
     ends(&w, &l, &format!("ROUTE: #{id} -> new | why: free hands\nSTART: #{id} | why: go"));

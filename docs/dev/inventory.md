@@ -1208,6 +1208,7 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `src-tauri/src/logs/steps/tests/agents.rs::a_background_agent_sent_a_message_after_it_finished_is_at_work_again_until_it_reports_again` | test |  |
 | `src-tauri/src/logs/steps/tests/agents.rs::a_background_agent_shows_at_work_under_its_step_until_its_session_hears_it_finished` | test |  |
 | `src-tauri/src/testing/tests/desk_away.rs::each_away_stretch_is_kept_with_what_moved_the_calls_and_what_was_held` | test |  |
+| `src-tauri/src/testing/tests/desk_feed.rs::every_desk_change_names_you_to_the_lead` | test |  |
 
 Files over 1000 lines: .
 

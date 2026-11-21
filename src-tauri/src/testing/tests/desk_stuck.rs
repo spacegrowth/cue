@@ -115,3 +115,14 @@ fn a_holder_whose_long_command_still_prints_is_not_stuck() {
     pass(&w, SILENT_MS + MIN);
     assert_eq!(told(&w, &l, &id).len(), 1, "{:?}", told(&w, &l, &id));
 }
+
+#[test]
+fn a_stuck_notice_names_you_to_the_lead() {
+    crate::owner::test_name::set(Some("Robin"));
+    let w = World::new();
+    let (_h, l, id, _) = at_work(&w);
+    pass(&w, SILENT_MS + MIN);
+    let t = told(&w, &l, &id);
+    assert!(t.len() == 1 && t[0].contains("only if Robin must decide") && !t[0].contains("the user") && !t[0].contains("the owner"), "{t:?}");
+    crate::owner::test_name::set(None);
+}

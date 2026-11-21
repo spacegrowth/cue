@@ -24,7 +24,7 @@ fn a_new_lead_starts_with_the_lead_skill_and_the_summary_and_gets_each_message()
     let last = sent_to(&w, &l).pop().unwrap();
     assert!(last.starts_with("<desk") && last.contains("cue-teams") && last.ends_with("and the footer"), "{last}");
     assert!(last.contains(&format!("Desk lead: {project}-lead (you)")), "{last}");
-    assert!(last.contains("Answer the user's question or request directly in plain language before any Desk command lines."), "{last}");
+    assert!(last.contains("Answer the owner's question or request directly in plain language before any Desk command lines."), "{last}");
     // A second new lead takes the next free name, and the first is told it's replaced.
     let l2 = new_lead(&w, &project);
     assert_eq!(desk(&w, &project)["lead"]["name"], format!("{project}-lead-2"));

@@ -12,8 +12,12 @@ use std::sync::Arc;
 const MIN: u64 = 60_000;
 
 /// The messages to `sid` that carry Desk changes.
+/// Each is checked to speak of you as Cue does to a lead ("the owner", your name when the account has one), never as
+/// "the user" (#574).
 fn changes(w: &World, sid: &str) -> Vec<String> {
-    sent_to(w, sid).into_iter().filter(|t| t.contains("(Desk changes ")).collect()
+    let c: Vec<String> = sent_to(w, sid).into_iter().filter(|t| t.contains("(Desk changes ")).collect();
+    assert!(c.iter().all(|t| !t.contains("the user")), "{c:?}");
+    c
 }
 
 /// Lead `l` at work on a turn of yours.
@@ -315,7 +319,7 @@ fn a_pick_reaches_its_holder_closes_the_item_and_tells_the_lead_which_option() {
     assert_eq!(told.len(), before + 1, "{told:?}");
     let last = told.last().unwrap();
     let build = item(&desk(&w, &project), "Build: working items (option C)")["id"].as_str().unwrap().to_string();
-    assert!(last.starts_with(&format!("You picked option C on #{m} (Mocks: working items)")) && last.contains(&format!("New item #{build}")) && last.contains("Route it now"), "{last}");
+    assert!(last.starts_with(&format!("The owner picked option C on #{m} (Mocks: working items)")) && last.contains(&format!("New item #{build}")) && last.contains("Route it now"), "{last}");
 }
 
 #[test]
@@ -357,7 +361,7 @@ fn a_holder_asking_you_reaches_the_lead_alone_after_five_minutes() {
     assert!(told(&w, &l, &asks).is_empty(), "a grouped row waits for a wake: {:?}", sent_to(&w, &l));
     pass(&w, 2 * MIN);
     let t = told(&w, &l, &asks);
-    assert!(t.len() == 1 && t[0].contains("asks the user: \"Should the header stay blue or turn green?\""), "then goes alone: {:?}", sent_to(&w, &l));
+    assert!(t.len() == 1 && t[0].contains("asks the owner: \"Should the header stay blue or turn green?\""), "then goes alone: {:?}", sent_to(&w, &l));
 }
 
 #[test]
@@ -372,7 +376,7 @@ fn a_holder_asking_you_wakes_the_lead_at_once_while_you_are_away() {
     ends(&w, &h, "Looked at it.\nShould the header stay blue or turn green?");
     let t = told(&w, &l, &format!("#{id} (Header)'s holder"));
     assert!(t.len() == 1 && t[0].contains("Away mode:"), "at once, Away's row with it: {:?}", sent_to(&w, &l));
-    assert!(t[0].find("Away mode:").unwrap() < t[0].find("asks the user").unwrap(), "in order: {}", t[0]);
+    assert!(t[0].find("Away mode:").unwrap() < t[0].find("asks the owner").unwrap(), "in order: {}", t[0]);
 }
 
 #[test]
@@ -443,7 +447,7 @@ fn what_you_did_never_wakes_the_lead_but_goes_with_its_next_message() {
     let b = w.hub().desk_add(&project, "task", "Footer", "", None).unwrap();
     w.settle();
     let last = changes(&w, &l).pop().unwrap();
-    assert!(last.starts_with(&format!("You dropped #{id} (Header).")) && last.contains(&format!("New item #{}", b.id)), "{last}");
+    assert!(last.starts_with(&format!("The owner dropped #{id} (Header).")) && last.contains(&format!("New item #{}", b.id)), "{last}");
 }
 
 /// Desk `project`'s feed marks: (sent, heard).
@@ -606,7 +610,7 @@ fn a_pick_reaches_the_lead_after_its_mocks_item_left_memory() {
     w.hub().write(|st| st.desk.items.retain(|i| i.id != m));
     ends(&w, &l, "Done looking.");
     let last = changes(&w, &l).pop().unwrap_or_default();
-    assert!(last.starts_with(&format!("You picked option C on #{m} (Mocks: working items)")), "{last}");
+    assert!(last.starts_with(&format!("The owner picked option C on #{m} (Mocks: working items)")), "{last}");
 }
 
 #[test]
@@ -624,4 +628,115 @@ fn rows_heard_already_never_stay_saved() {
     let f = crate::db::desk_feed_load();
     assert_eq!(f["d"].rows.iter().map(|r| r.n).collect::<Vec<_>>(), vec![6]);
     assert_eq!(saved(5), 0);
+}
+
+/// Every kind of Desk change that speaks of you, as the lead hears it with a name on the account (#574): the name,
+/// never "the user", "the owner", or "You …" for what you did.
+#[test]
+fn every_desk_change_names_you_to_the_lead() {
+    use crate::owner::test_name;
+    test_name::set(Some("Robin"));
+    let named = |t: &str, has: &[&str]| {
+        assert!(!t.contains("the user") && !t.contains("the owner") && !t.contains("The owner"), "{t}");
+        for h in has {
+            assert!(t.contains(h), "{h:?} in {t}");
+        }
+    };
+    // A new item of yours, and what you did.
+    {
+        let w = World::new();
+        let (h, project) = holder(&w);
+        let l = new_lead(&w, &project);
+        let id = at_work(&w, &h, &l, &project);
+        w.hub().desk_item_act(&id, "drop", "").unwrap();
+        w.settle();
+        let b = w.hub().desk_add(&project, "task", "Footer", "", None).unwrap();
+        w.settle();
+        let last = changes(&w, &l).pop().unwrap();
+        named(&last, &[&format!("Robin dropped #{id} (Header)."), "If one of Robin's items holds", &format!("New item #{}", b.id)]);
+    }
+    // A pick.
+    {
+        let w = World::new();
+        let (h, project) = holder(&w);
+        let l = new_lead(&w, &project);
+        ends(&w, &l, "ITEM: feature | Mocks: working items | done when: three ways on the canvas\nROUTE: #new -> cue-teams | why: it knows the list");
+        let m = item(&desk(&w, &project), "Mocks: working items")["id"].as_str().unwrap().to_string();
+        ends(&w, &h, &format!("Three on the canvas.\nDESIGNS: #{m} https://example.com/canvas\nPick one for working items: A, B or C."));
+        ends(&w, &l, "Waiting on the pick.");
+        w.hub().desk_item_act(&m, "pick", "option C").unwrap();
+        w.settle();
+        named(&changes(&w, &l).pop().unwrap(), &[&format!("Robin picked option C on #{m}")]);
+    }
+    // A holder asking you, while you're away.
+    {
+        let w = World::new();
+        let (h, project) = holder(&w);
+        let l = new_lead(&w, &project);
+        let id = at_work(&w, &h, &l, &project);
+        w.hub().desk_away_set(&project, &json!({ "on": true, "until": null, "budget": null, "rules": {} })).unwrap();
+        w.settle();
+        ends(&w, &h, "Looked at it.\nShould the header stay blue or turn green?");
+        let t = told(&w, &l, &format!("#{id} (Header)'s holder"));
+        assert_eq!(t.len(), 1, "{:?}", sent_to(&w, &l));
+        named(&t[0], &["asks Robin: \"Should", "answer it for Robin", "Away mode:"]);
+    }
+    // A stop with no question.
+    {
+        let w = World::new();
+        let (h, project) = holder(&w);
+        let l = new_lead(&w, &project);
+        let id = stop_header(&w, &h, &l, &project);
+        let t = told(&w, &l, &format!("#{id} (Header) stopped:"));
+        assert_eq!(t.len(), 1, "{:?}", sent_to(&w, &l));
+        named(&t[0], &["no question for Robin", "only if Robin must", "waiting on Robin"]);
+    }
+    // A finishing stuck on one step.
+    {
+        let w = World::new();
+        let (h, project) = holder(&w);
+        let l = new_lead(&w, &project);
+        let id = at_work(&w, &h, &l, &project);
+        let at = crate::clock::now_ms();
+        w.hub().write(|st| {
+            let it = st.desk.item_mut(&id).unwrap();
+            (it.state, it.finish) = ("finishing".into(), Some(Finish { step: "checking".into(), at, ..Default::default() }));
+        });
+        pass(&w, 16 * MIN);
+        let t = told(&w, &l, "is stuck finishing");
+        assert_eq!(t.len(), 1, "{:?}", sent_to(&w, &l));
+        named(&t[0], &["or ask Robin (ASK"]);
+    }
+    // A permission prompt.
+    {
+        let w = World::new();
+        let (h, project) = holder(&w);
+        let l = new_lead(&w, &project);
+        at_work(&w, &h, &l, &project);
+        w.hosted_says(&h, HostedEvent::Ask(Ask {
+            request_id: "r1".into(), kind: AskKind::Permission, tool_name: "Bash".into(), input: json!({ "command": "rm -rf build" }),
+            suggestions: json!([]), agent_id: String::new(), tool_use_id: "t1".into(), server: String::new(), message: String::new(), form: Value::Null,
+        }));
+        w.settle();
+        for _ in 0..6 {
+            w.advance(MIN);
+            w.tick(false);
+        }
+        let t = told(&w, &l, "stuck on a permission prompt");
+        assert_eq!(t.len(), 1, "{:?}", sent_to(&w, &l));
+        named(&t[0], &["Robin should allow it"]);
+    }
+    // Done, and ready for your check: checked as words (landing and installing are desk_land's).
+    {
+        let w = World::new();
+        let (h, project) = holder(&w);
+        let l = new_lead(&w, &project);
+        let id = at_work(&w, &h, &l, &project);
+        let words = w.hub().write(|st| {
+            crate::desk::hub::lead::feed::finished(st, &id, "check", 0);
+            st.desk.feed.get(&project).and_then(|f| f.rows.iter().rev().find(|r| r.item == id)).map(|r| r.words.clone()).unwrap_or_default()
+        });
+        named(&crate::desk::feed::message(&[&crate::desk::feed::Change { desk: project.clone(), n: 1, item: id.clone(), kind: crate::desk::feed::ChangeKind::Finished, words, key: String::new(), created_ms: 0 }], ""), &["ready for Robin's check"]);
+    }
+    test_name::set(None);
 }

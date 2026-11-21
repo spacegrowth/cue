@@ -349,7 +349,7 @@ fn stuck_twice(st: &mut Store, project: &str, id: &str, step: &str, question: &s
     if failed < 2 {
         return;
     }
-    let words = format!("#{id} ({}) failed its check {failed} times: {question}. Its holder has it back; see whether it needs another session or a word from the user.", it.title);
+    let words = format!("#{id} ({}) failed its check {failed} times: {question}. Its holder has it back; see whether it needs another session or a word from the owner.", it.title);
     let key = format!("checks:{}", it.checks.len());
     crate::desk::hub::lead::feed::raise(st, project, id, crate::desk::feed::ChangeKind::StuckLanding, words, &key, now);
 }

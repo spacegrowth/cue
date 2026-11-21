@@ -286,19 +286,19 @@ fn stop_words(it: &DeskItem, holder: &str, last: &str) -> String {
     if !it.loose.is_empty() {
         return format!(
             "#{id} ({title}) stopped, not committed: {holder} ended its turn on it with no DONE, and its work isn't \
-             committed ({files}), so it isn't in the user's app. Its last line: {last}\n\
+             committed ({files}), so it isn't in the owner's app. Its last line: {last}\n\
              Settle it: ROUTE #{id} to {holder} again with what's left as the why (Cue commits its work when it says \
-             DONE: #{id}), or route it on; only if the user must decide, ASK: #{id} | <question> | choices: … Until \
-             then it isn't shown as waiting on the user.",
+             DONE: #{id}), or route it on; only if the owner must decide, ASK: #{id} | <question> | choices: … Until \
+             then it isn't shown as waiting on the owner.",
             id = it.id,
             title = it.title,
             files = it.loose.join(", "),
         );
     }
     format!(
-        "#{id} ({title}) stopped: {holder} ended its turn on it with no DONE and no question for the user. Its last line: {last}\n\
-         Settle it: ROUTE #{id} to {holder} again with what to do next as the why, or route it on; only if the user must \
-         decide, ASK: #{id} | <question> | choices: … Until then it isn't shown as waiting on the user.",
+        "#{id} ({title}) stopped: {holder} ended its turn on it with no DONE and no question for the owner. Its last line: {last}\n\
+         Settle it: ROUTE #{id} to {holder} again with what to do next as the why, or route it on; only if the owner must \
+         decide, ASK: #{id} | <question> | choices: … Until then it isn't shown as waiting on the owner.",
         id = it.id,
         title = it.title,
     )

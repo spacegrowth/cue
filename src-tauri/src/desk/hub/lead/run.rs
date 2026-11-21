@@ -334,7 +334,7 @@ fn summary_items(st: &Store, project: &str, out: &mut String, failed: &mut Vec<(
         }
     }
     if !held.is_empty() {
-        out.push_str("\nParked (the user starts these themselves; don't ROUTE or START them):\n");
+        out.push_str("\nParked (the owner starts these themselves; don't ROUTE or START them):\n");
         for it in &held {
             item_lines(st, it, out, failed, &mut told);
         }
@@ -410,7 +410,7 @@ fn summary_tail(st: &Store, project: &str, with_skill: bool, out: &mut String, n
     out.push('\n');
     out.push_str(crate::desk::ROUTING_GUIDANCE);
     out.push('\n');
-    out.push_str("\nAnswer the user's question or request directly in plain language before any Desk command lines.\n");
+    out.push_str("\nAnswer the owner's question or request directly in plain language before any Desk command lines.\n");
     // Your name (owner.rs): running leads get it too, and Cue's own words above use it.
     out.push_str(&crate::owner::told_line());
     if with_skill {

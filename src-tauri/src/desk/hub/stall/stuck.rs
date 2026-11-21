@@ -80,7 +80,7 @@ impl Hub {
                             fx.items.push(id.clone());
                         }
                     }
-                    None => fx.sends.push((lead, s.words.clone())),
+                    None => fx.sends.push((lead, crate::owner::in_prompt(&s.words))),
                 }
             }
             fx
@@ -171,7 +171,7 @@ fn silent_words(h: &Held, quiet: u64) -> String {
     let last = if h.doing.trim().is_empty() { String::new() } else { format!(" Its last step: {}.", crate::desk::hub::stall::stall::act_words(&h.doing, 0, false).now) };
     format!(
         "#{id} ({title}) looks stuck: {name} has shown no new output for {m} minutes while marked working on it.{last}\n\
-         Step in: look at its chat, then nudge it (NOTE: #{id} | …), PAUSE: #{id} or ROUTE it on; only if the user must \
+         Step in: look at its chat, then nudge it (NOTE: #{id} | …), PAUSE: #{id} or ROUTE it on; only if the owner must \
          decide, ASK: #{id} | <question> | choices: … Cue tells you again only if it goes quiet again after moving.",
         id = h.id,
         title = h.title,
@@ -184,7 +184,7 @@ fn silent_words(h: &Held, quiet: u64) -> String {
 fn prompt_words(h: &Held, what: &str, waited: u64) -> String {
     format!(
         "#{id} ({title}) is stuck on a permission prompt: {name} has waited {m} minutes for leave to run {what}, and \
-         nobody has answered it.\nStep in: if it's safe and the user should allow it, ASK: #{id} | Allow {name} to run \
+         nobody has answered it.\nStep in: if it's safe and the owner should allow it, ASK: #{id} | Allow {name} to run \
          that? | choices: Allow / Deny; if the work can go another way, NOTE: #{id} | … or ROUTE it on.",
         id = h.id,
         title = h.title,

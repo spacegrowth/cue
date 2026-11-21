@@ -249,10 +249,10 @@ pub fn new_item_words(it: &DeskItem) -> String {
 pub fn new_items_tail(items: &[&DeskItem]) -> String {
     let mut out = String::new();
     if items.iter().any(|i| i.from == "you" && i.words.is_empty() && i.split_from.is_empty()) {
-        out.push_str("If one of yours holds two separate problems, SPLIT it first (Cue tells you the new numbers); if its title isn't short and plain, TITLE it. ");
+        out.push_str("If one of the owner's items holds two separate problems, SPLIT it first (Cue tells you the new numbers); if its title isn't short and plain, TITLE it. ");
     }
     if items.iter().any(|i| i.see.trim().is_empty() || i.done_when.trim().is_empty()) {
-        out.push_str("Give one missing its two lines both first: SEE: #<id> | <what the user sees when it's done> | done when: <the check>. ");
+        out.push_str("Give one missing its two lines both first: SEE: #<id> | <what the owner sees when it's done> | done when: <the check>. ");
     }
     out.push_str(if items.len() == 1 { "Route it now: ROUTE it to a session, or -> new." } else { "Route each now: ROUTE it to a session, or -> new." });
     if items.iter().any(|i| i.kind.is_empty()) {

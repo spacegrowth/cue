@@ -248,7 +248,8 @@ pub fn message(rows: &[&Change], tail: &str) -> String {
     if !tail.trim().is_empty() {
         words.push(tail.trim());
     }
-    format!("{}\n\n{NUMBERS}{})", words.join("\n\n"), numbers(rows))
+    // Cue's words say "the owner": the lead hears your name (#574).
+    crate::owner::in_prompt(&format!("{}\n\n{NUMBERS}{})", words.join("\n\n"), numbers(rows)))
 }
 
 #[cfg(test)]
