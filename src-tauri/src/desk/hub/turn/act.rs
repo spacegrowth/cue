@@ -234,9 +234,9 @@ fn send_back(st: &mut Store, id: &str, holder: Option<Holder>, text: &str, pr_op
     if done {
         (it.picked, it.built_as, it.commit_wait) = (String::new(), String::new(), None);
     }
-    (it.state, it.done_at, it.finish, it.close_on_check) = ("working".into(), None, None, false);
-    it.check = None;
-    it.mark_reopened();
+    let unseen = it.state == "finishing";
+    (it.state, it.done_at, it.finish, it.close_on_check, it.check) = ("working".into(), None, None, false, None);
+    it.mark_reopened_unseen(unseen);
     // What follows each option was said for the round being redone (#619): it goes, and the redone round's ask names its own.
     let again = if it.next.is_empty() { "" } else { "\nThe IF PICKED: lines you gave were for the options being redone, so they're cleared: when you ask for a pick again, give them again for the options you ask about." };
     it.next.clear();

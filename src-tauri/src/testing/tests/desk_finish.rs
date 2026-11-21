@@ -373,6 +373,62 @@ fn work_its_holder_committed_itself_still_waits_until_the_running_cue_has_it() {
     assert_eq!(item(&w, &project, "Header jumps")["state"], "to_check");
 }
 
+/// #646: sent back while it waited for its install (its fix already on main, the app you checked without it), its
+/// holder's DONE with nothing new goes on to that install, and to check once the app has it; never back to its session
+/// as "nothing landed since it was reopened", round and round. Once the app you check has it, nothing new still goes back.
+#[test]
+fn an_item_sent_back_before_its_install_ran_waits_for_that_install_on_its_next_done() {
+    let w = World::new();
+    let fake = Arc::new(Fake::default());
+    w.hub().desk_set_installer(fake.clone());
+    let (dir, project, id, h) = routed_with(&w, |_, _, dir| as_this_cue(dir), |w, h, dir| {
+        writes_both(w, h, dir);
+    });
+    ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
+    let head = git(&dir, &["rev-parse", "HEAD"]).trim().to_string();
+    assert_eq!(step(&w, &project), "queued", "{}", item(&w, &project, "Header jumps"));
+    // You send it back before the install ran: the app you looked at hadn't got the fix.
+    w.hub().desk_item_act(&id, "send_back", "I don't see it").unwrap();
+    w.settle();
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "working");
+    ends(&w, &h, &format!("The fix is already on main; it needs the install.\nDONE: #{id}"));
+    let shown = item(&w, &project, "Header jumps");
+    assert_eq!((shown["state"].as_str(), shown["finish"]["step"].as_str()), (Some("finishing"), Some("queued")), "waits for the install: {shown}");
+    assert!(!w.hosted.sent().iter().any(|(s, t)| *s == h && t.contains("Nothing of it landed on main since it was reopened")), "never sent back as nothing new");
+    assert_eq!(git(&dir, &["rev-parse", "HEAD"]).trim(), head, "nothing new landed");
+    fake.runs(&head);
+    tick(&w);
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "to_check", "to check once the app has it");
+    // Sent back again, the app you checked has it this time: a DONE with nothing new goes back to its session.
+    w.hub().desk_item_act(&id, "send_back", "Still wrong").unwrap();
+    w.settle();
+    ends(&w, &h, &format!("It's on main.\nDONE: #{id}"));
+    let shown = item(&w, &project, "Header jumps");
+    assert_eq!(shown["state"], "working", "{shown}");
+    assert!(w.hosted.sent().iter().any(|(s, t)| *s == h && t.contains("Nothing of it landed on main since it was reopened")));
+}
+
+/// #646: sent back before its install ran, and the install ran before its holder's DONE: to check at once.
+#[test]
+fn an_item_sent_back_before_its_install_ran_is_to_check_when_that_install_ran_before_its_done() {
+    let w = World::new();
+    let fake = Arc::new(Fake::default());
+    w.hub().desk_set_installer(fake.clone());
+    let (dir, project, id, h) = routed_with(&w, |_, _, dir| as_this_cue(dir), |w, h, dir| {
+        writes_both(w, h, dir);
+    });
+    ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
+    let head = git(&dir, &["rev-parse", "HEAD"]).trim().to_string();
+    w.hub().desk_item_act(&id, "send_back", "I don't see it").unwrap();
+    w.settle();
+    fake.runs(&head);
+    ends(&w, &h, &format!("It's on main, and installed now.\nDONE: #{id}"));
+    tick(&w);
+    let shown = item(&w, &project, "Header jumps");
+    assert_eq!(shown["state"], "to_check", "{shown}");
+    assert_eq!(commits(&dir), "2", "no second commit");
+}
+
 #[test]
 fn a_commit_that_takes_an_items_work_back_out_reopens_it_and_says_so() {
     let w = World::new();

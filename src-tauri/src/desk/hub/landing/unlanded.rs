@@ -197,6 +197,12 @@ impl Hub {
     pub(crate) fn desk_nothing_new(&self, id: &str) -> bool {
         let Ok((it, _, sources)) = self.desk_change_sources(id) else { return false };
         let Some((at, had)) = it.reopened else { return false };
+        // Sent back before its install ran (#646): its work is on main already, you just hadn't had it in the app. Its
+        // DONE goes on to that install, or to check once the app has it.
+        if it.reopened_unseen {
+            self.finish_set(id, |i| (i.reopened, i.reopened_unseen) = (None, false));
+            return false;
+        }
         // Mocks, a doc, a plan: nothing of it was ever for main, so nothing new there is asked of it (#549).
         if self.desk_no_code(&it) {
             self.finish_set(id, |i| i.reopened = None);

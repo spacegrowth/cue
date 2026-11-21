@@ -321,6 +321,11 @@ pub struct DeskItem {
     /// session. Cleared once something new did.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reopened: Option<(u64, usize)>,
+    /// Sent back while it was finishing (#646): its work had landed on main, but the app you checked didn't have it
+    /// yet. Its next DONE goes on to the install (or to check, once the app has it) with nothing new, never back to
+    /// its session as "nothing landed since it was reopened". Cleared with `reopened`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub reopened_unseen: bool,
     /// Its work went to check as mocks, notes or plans only, nothing the app runs (#408, `Finish::mocks`): kept past
     /// a reopen, which clears its `finish`, so its next DONE isn't held for something new on main (#549).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -418,6 +423,14 @@ impl DeskItem {
     pub(crate) fn mark_reopened(&mut self) {
         let wall = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
         self.reopened = Some((wall, self.commit_in.len()));
+        self.reopened_unseen = false;
+    }
+
+    /// `mark_reopened`, sent back while it was still finishing (`unseen`: its install not run yet, so what you checked
+    /// didn't have its work, #646).
+    pub(crate) fn mark_reopened_unseen(&mut self, unseen: bool) {
+        self.mark_reopened();
+        self.reopened_unseen = unseen;
     }
 
     pub(crate) fn remember_holder(&mut self) {
