@@ -220,15 +220,14 @@ function deskLeadFailed(project, at, edit) {
 /** The box on item `id`'s page, as drawn now ("" for none). */
 const deskItemBox = (id) => [...deskBoxes].filter(([, to]) => to.item === id).map(([k]) => k).find((k) => document.querySelector(`textarea[data-text="${CSS.escape(k)}"]`)) || "";
 /** Edit on a message Cue keeps for session `sid` (sent from item `id`'s page): taken back, as the session's chat's Edit
- *  does (chat/compose.js pullHeld), into this page's box, without the "About #…" Cue put before it (#422). */
+ *  does (chat/compose.js pullHeld), into this page's box, as your words alone (deskYourWords, #422, #605). */
 async function deskHeldEdit(id, sid) {
   const key = deskItemBox(id);
   if (!key) return pullHeld(sid);
   forgetSent(sid);
   const h = await invoke("unhold_message", { sessionId: sid }).catch(() => null);
   if (!h) { toast("Too late: it had already gone"); return renderMain(); }
-  const it = deskItem(deskSelection(), id), about = it ? `About #${it.id} (${it.title}): ` : "";
-  boxPutBack(key, about && h.text.startsWith(about) ? h.text.slice(about.length) : h.text, await boxHeldImages(h.images), { focus: true });
+  boxPutBack(key, deskYourWords(h.text)?.words ?? h.text, await boxHeldImages(h.images), { focus: true });
 }
 /** Cancel on a message Cue keeps for session `sid`: taken back and dropped (#422). */
 async function deskHeldCancel(sid) {

@@ -111,6 +111,18 @@ CueBridge.area("desk", (w) => {
       const it = itemOf(id);
       if (!it) throw "No such item";
       const t = secs();
+      // A question on an item to check or done (#475): to its holder with Cue's words around it, as asked.rs sends it;
+      // the item back at work while it answers.
+      if (act === "note" && ["to_check", "done"].includes(it.state) && it.holder && /\?\s*$/.test(text || "")) {
+        const sid = it.holder.lead_sid || it.holder.sid, s = w.session(sid);
+        const stage = it.state === "done" ? "done" : "with the user to check";
+        const message = `${it.holder.kind === "crew" ? `For your teammate ${it.holder.name}: ` : ""}A question about Desk item #${id} (${it.title}), which is ${stage}: ${text.trim()}\nAnswer it. If you change code for it, say DONE: #${id} once that's done; if you don't, the item stays as it was.\nWith your DONE, on a line of its own, write the one line shown to whoever checks it: CHECK: #${id} | Try: <…>, or CHECK: #${id} | Nothing to see: <why>, close it.`;
+        deskOf(it.project).decisions.unshift({ id: `w${++n}`, project: it.project, item_id: id, by: "You", sid: "", text: text.trim(), why: `asked ${it.holder.name}`, at: t, undo: "none", call: false, delivery: { session_id: sid, text: message, at_ms: w.now(), went: s ? "sent" : "failed: its session has ended" } });
+        Object.assign(it, { state: "working", updated: t });
+        if (s) w.working(s, message, pics(images));
+        w.changed();
+        return it;
+      }
       // A note on an item to check sends it back with the note (#437); a quick phrase is a note that never does (#488).
       if (act === "note" && it.state === "to_check" && it.holder) act = "send_back";
       if (act === "phrase") act = "note";

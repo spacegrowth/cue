@@ -122,7 +122,6 @@ on the right with Cue's full text, as if you had typed it:
 
 | Kind | Sent when | Hub | How it shows today |
 | --- | --- | --- | --- |
-| Question from the item's page | You ask about an item that's to check or done | desk_asked.rs | your bubble: “A question about Desk item #id (title), which is …: your words”, Cue's “Answer it…” words under it |
 | Carry on after the usage limit | A turn stopped on the usage limit, and it reset (Carry on is on) | sessions/send_at.rs `CARRY_ON` | your bubble: “Carry on where you stopped: your usage limit reset.” |
 | Resume with the hand-off skill | The next session after a hand-off, when the skill takes `resume` | hub/hand_off_note.rs | your bubble: “/handoff resume” |
 | Background agent quiet, or stop it | You wake or stop a session's background agent | ui/agents.js (the window) | your bubble: “Your background agent “X” has gone quiet…”, or “Stop your background agent “X” now…” |
@@ -217,5 +216,8 @@ family's status line (`.mg-status`), centred at the meta size:
 ## Your own words, kept as your bubble
 
 - What you type to a session or the lead (a lead's copy has its `<desk …>` block dropped, as before).
-- Your note from an item's page ("About #id (title): …", #410's style).
+- Your note or question from an item's page ("About #id (title): …", "A question about Desk item #id (title), which is
+  …: …"): your words alone under the item's number and title, in the item's page, the lead's chat and the session's own
+  chat; Cue's words around them (Answer it…, CHECK…, where its copy is, a wait for one) go to the session but aren't
+  shown (#605, desk/page.js `deskYourWords`).
 - The "(Crew: on / off …)" line Cue adds to what you type to a crew lead.

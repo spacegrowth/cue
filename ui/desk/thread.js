@@ -427,7 +427,8 @@ function deskNotStarted(i) {
  *  note goes in next" }. null for a note about something else. */
 function deskNoteWaits(i, e) {
   const t = String(e?.text || ""), id = i.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const about = new RegExp(`^About #${id} \\(`).test(t) && deskAboutHead(e);
+  // A plain note only, as before #605: a teammate's or a question keeps the chat's own Not sent yet line.
+  const y = deskYourWords(t), about = y && !y.ask && !y.crew && deskIdIs(i, y.id) ? { text: y.words } : null;
   const back = new RegExp(`^(?:For your teammate [^:\\n]+: )?Desk item #${id} \\([^\\n]*?\\) isn't done: `).exec(t);
   const words = about ? about.text : back ? t.slice(back[0].length).replace(/\n+Its fixes stay in #[\s\S]*$/, "") : null;
   if (words == null) return null;

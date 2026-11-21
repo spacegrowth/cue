@@ -281,6 +281,9 @@ function chatRowHtml(c, e, n) {
   if (e.role === "you") return chatYouHtml(c, e, n);
   return chatAgentHtml(c, e, n);
 }
+/** A page's own head on your words `e` (the Desk: what item they're about) and the words without it. Anywhere else (a
+ *  session's own chat) your words from an item's page show the same way, Cue's words around them left out (#605). */
+const youHeadOf = (page, e) => (page?.youHead ? page.youHead(e) : typeof deskAboutHead === "function" ? deskAboutHead(e) : null);
 /** Your message `e` (the `n`th) in chatHtml's thread: your bubble, with how it went. */
 function chatYouHtml(c, e, n) {
   const { it, s, page, original, sid } = c;
@@ -297,7 +300,7 @@ function chatYouHtml(c, e, n) {
   // Sent now right after the one above, before it answered: the agent got both as one (sessions.rs note_with).
   const joined = e.joined ? " · went to the agent with your message above, as one" : "";
   // A page's own head on your words (the Desk: what item they're about), and the words without it.
-  const hd = page?.youHead?.(e);
+  const hd = youHeadOf(page, e);
   return msgRow({ ...m, to: msgTo(s), extra: via + joined }, yourBubble(hd ? { ...e, text: hd.text } : e, `${sid}:${e.at_ms}`, "", false, hd?.html || "") + thumbs(e.images), `${e.unsent ? "unsent" : ""} ${e.pending ? "pending" : ""}`.trim());
 }
 /** The agent's reply `e` (the `n`th) in chatHtml's thread: its words, Listen, Read, Fold and Send to…. */
@@ -371,7 +374,7 @@ function queuedRow(s, page, key = "queued") {
   if (cue) return keyed(cueSaidLine({ ...cue, html: cueWill(cue.html) }, `${s.session_id}:queued`, s.queued.text, m), key);
   const cm = typeof cueMsgHtml === "function" && cueMsgHtml(s.queued, s, `${s.session_id}:queued:cue`, m);
   if (cm) return keyed(cm, key);
-  const hd = page?.youHead?.(s.queued);
+  const hd = youHeadOf(page, s.queued);
   return msgRow(m, yourBubble(hd ? { ...s.queued, text: hd.text } : s.queued, `${s.session_id}:queued`, "", true, hd?.html || "") + thumbs(s.queued.images), "queued", ` data-key="${esc(key)}"`);
 }
 /** A message kept for a session at work, to go when its turn ends: Cue's own crew message as Cue's bubble in the
@@ -391,7 +394,7 @@ function heldRow(s, page, key = "held") {
   if (cue && !heldWhy) return keyed(cueSaidLine({ ...cue, html: cueWill(cue.html) }, `${s.session_id}:held`, s.held.text, m), key);
   const cm = typeof cueMsgHtml === "function" && cueMsgHtml(s.held, s, `${s.session_id}:held:cue`, m);
   if (cm) return keyed(cm, key);
-  const hd = page?.youHead?.(s.held);
+  const hd = youHeadOf(page, s.held);
   // Busy a long time: ask it by the way instead (#535). Not where a page has its own controls for it (the Desk).
   const offer = !heldWhy && mine == null ? btwOffer(s, s.held) : "";
   return msgRow(m, yourBubble(hd ? { ...s.held, text: hd.text } : s.held, `${s.session_id}:held`, "", true, hd?.html || "") + thumbs(s.held.images), "queued held", ` data-key="${esc(key)}"`, offer);

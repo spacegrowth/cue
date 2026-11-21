@@ -70,17 +70,41 @@ async function deskGoBackSend() {
 /** Undo at a row's end: a small quiet icon shown while the pointer is on the row; "asked" once it was. */
 const deskUndoLink = (c) => (c.undo === "can" ? `<button class="dk-undo-l" data-desk-undo="${esc(c.id)}" aria-label="Undo">${DESK_UNDO_ICON}</button>`
   : c.undo === "asked" ? `<span class="dk-u">Undo asked</span>` : "");
-/** Your words about an item ("About #69 (its title): …", as deskSendBox sends them): a head over them with its kind's
- *  icon, its kind and number and its title (a click opens it), and your words under it. null for any other words. */
-function deskAboutHead(e) {
-  const m = /^About #([^\s(]+) \(/.exec(e?.text || "");
+/** Lines Cue adds after your words on their way to the session (the hub's desk/hub/landing: a wait for a free copy,
+ *  where its copy is, another machine; desk/mod.rs: your pictures): the session reads them, you don't see them. */
+const DESK_CUE_TAIL = /\n(?:It waits for a free copy of |Work in its own copy of |You work on another machine: |Pictures you attached: )[\s\S]*$/;
+/** Your words from an item's page as Cue sent them to a session or the lead (#605): "About #69 (its title)[, for x]: …"
+ *  (a note, desk/hub/turn/act.rs) or "A question about Desk item #69 (its title), which is …: …\nAnswer it. …" (a
+ *  question, desk/hub/turn/asked.rs), either maybe for a teammate. { id, title, words }: your words alone, Cue's around
+ *  them left out. null for any other message. */
+function deskYourWords(text) {
+  const t = String(text || "").replace(/^For your teammate [^:\n]+: /, "");
+  const m = /^(?:About|A question about Desk item) #([^\s(]+) \(/.exec(t);
   if (!m) return null;
+  const ask = t.startsWith("A question"), rest = t.slice(m[0].length);
   const it = (state.desk?.projects || []).flatMap((d) => d.items).find((i) => deskIdIs(i, m[1]));
-  // The title as sent; when the item is gone or renamed since, up to the first "): ".
-  const rest = e.text.slice(m[0].length), title = it && rest.startsWith(`${it.title}): `) ? it.title : rest.split("): ")[0];
-  if (rest.length === title.length) return null;
-  const html = `<button class="dk-about" data-desk-chk-item="${esc(it?.id ?? m[1])}">${deskKindIcon(it)}<b>${esc(it ? deskNum(it) : `#${m[1]}`)}</b> · ${esc(title)}</button>`;
-  return { html, text: rest.slice(title.length + 3) };
+  // What closes the title: "): " (or "), for x: ") on a note, "), which is …: " on a question.
+  const close = ask ? /^\), which is [^:\n]*: / : /^\)(?:, for [^:\n]+)?: /;
+  // The title as sent; when the item is gone or renamed since, up to the first closing.
+  let title = it && close.test(rest.slice(it.title.length)) && rest.startsWith(it.title) ? it.title : null;
+  if (title == null) {
+    const at = rest.search(ask ? /\), which is [^:\n]*: / : /\)(?:, for [^:\n]+)?: /);
+    if (at < 0) return null;
+    title = rest.slice(0, at);
+  }
+  let words = rest.slice(title.length).replace(close, "");
+  if (ask) words = words.replace(/\nAnswer it\. If you change code for it, say DONE:[\s\S]*$/, "");
+  // `crew`: for a teammate; `ask`: a question.
+  const crew = t !== String(text || "") || !close.exec(rest.slice(title.length))?.[0].startsWith("): ");
+  return { id: it?.id ?? m[1], it, title, ask, crew: !ask && crew, words: words.replace(DESK_CUE_TAIL, "").trim() };
+}
+/** Your words about an item (deskYourWords): a head over them with its kind's icon, its kind and number and its title
+ *  (a click opens it), and your words under it. null for any other words. */
+function deskAboutHead(e) {
+  const y = deskYourWords(e?.text);
+  if (!y) return null;
+  const html = `<button class="dk-about" data-desk-chk-item="${esc(y.id)}">${deskKindIcon(y.it)}<b>${esc(y.it ? deskNum(y.it) : `#${y.id}`)}</b> · ${esc(y.title)}</button>`;
+  return { html, text: y.words };
 }
 /** A chat the Desk shows: its earlier messages from Cue's log too (its thread keeps only the last few, all a restart
  *  starts with), loaded as it first shows, and Earlier messages above them, as in a session's chat (chat/thread.js). */
