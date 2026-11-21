@@ -200,7 +200,7 @@ button.ins-n { cursor: pointer; }
 .itab-tile { all: unset; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 9px; border-radius: var(--radius-tray); box-shadow: inset 0 0 0 1px var(--line); cursor: pointer; min-width: 0; }
 .itab-tilehead { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: var(--type-body); min-width: 0; }
 .itab-tilehead b { font-weight: 700; color: var(--amber); font-variant-numeric: tabular-nums; }
-.itab-tilefoot { display: flex; justify-content: space-between; gap: 8px; font-size: var(--type-pill); color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.itab-tilefoot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 8px; font-size: var(--type-pill); color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .itab-climb { position: relative; height: 84px; margin-top: 12px; }
 .itab-climb svg { width: 100%; height: 100%; display: block; overflow: visible; }
 .itab-climb .area { fill: color-mix(in srgb, var(--ink) 10%, transparent); }
@@ -210,8 +210,9 @@ button.ins-n { cursor: pointer; }
 .itab-climb .limit { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 1 3; vector-effect: non-scaling-stroke; }
 .itab-climb .mark { stroke: var(--amber); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .itab-limit { position: absolute; left: 0; transform: translateY(-110%); font-size: var(--type-tag); color: var(--muted); }
-.itab-handoff { position: absolute; top: -14px; transform: translateX(-3px); font: 600 var(--type-tag) var(--mono); color: var(--amber); white-space: nowrap; }
-.itab-handoff.end { transform: translateX(calc(-100% + 3px)); }
+/* The hand-off's label over its mark, slid along by as much of its own width as the mark is along the chart, so it
+   never leaves the tile at any text size (insights_tab.js). */
+.itab-handoff { position: absolute; top: -14px; font: 600 var(--type-tag) var(--mono); color: var(--amber); white-space: nowrap; }
 
 /* Corrections: what you asked, then what you said, the correction in ink behind an amber quote mark. */
 .itab-more { font-size: var(--type-body); color: var(--muted); }

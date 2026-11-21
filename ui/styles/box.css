@@ -78,7 +78,7 @@
 .talk-said { font-size: var(--type-small); color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .nrow.on .talk-said { color: color-mix(in srgb, var(--on-sel) 70%, transparent); }
 .nrow.later { box-shadow: none; background: color-mix(in srgb, var(--panel) 70%, transparent); }
-.park-btn { height: 20px; padding: 0 7px; border-radius: var(--radius-qp); font-size: var(--type-pill); font-weight: 600; color: var(--muted); border: 1px solid color-mix(in srgb, var(--muted) 30%, transparent); flex: none; }
+.park-btn { height: 20px; line-height: 1; padding: 0 7px; border-radius: var(--radius-qp); font-size: var(--type-pill); font-weight: 600; color: var(--muted); border: 1px solid color-mix(in srgb, var(--muted) 30%, transparent); flex: none; }
 .park-btn:hover { background: var(--panel-2); color: var(--ink); }
 .nrow.on .park-btn { color: var(--on-sel); border-color: color-mix(in srgb, var(--on-sel) 35%, transparent); }
 

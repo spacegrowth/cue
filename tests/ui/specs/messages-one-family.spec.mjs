@@ -4,12 +4,15 @@
 import { readFileSync } from "node:fs";
 import { test, expect, openDesk } from "./cue.mjs";
 
-const BODY = "13px", META = "12px";
+// At the Default text size (#594): --type-body and --type-small.
+const BODY = "15px", META = "14px", SIZES = [BODY, META];
+// The notch stays at Compact whatever the window's text size.
+const NOTCH = ["13px", "12px"];
 
 /** The font size of each element `loc` matches. */
 const sizes = (loc) => loc.evaluateAll((es) => es.map((e) => getComputedStyle(e).fontSize));
 /** `loc` is drawn as the family's card: head at the meta size, its words at the body size, no edge stripe. */
-async function isCard(loc) {
+async function isCard(loc, [BODY, META] = SIZES) {
   await expect(loc.first()).toBeVisible();
   for (const s of await sizes(loc.locator(":scope > .mg-h"))) expect(s).toBe(META);
   for (const s of await sizes(loc.locator(".mg-t"))) expect(s).toBe(BODY);
@@ -146,7 +149,7 @@ for (const scheme of ["light", "dark"]) {
       await cue.openMini("world-team", "notch", { frozen: true });
       await page.evaluate(() => document.body.dispatchEvent(new MouseEvent("mouseenter")));
       const card = page.locator(".m-chat .mg").first();
-      await isCard(card);
+      await isCard(card, NOTCH);
       await readsOn(card.locator(".mg-t"));
       await noHover(page);
     });

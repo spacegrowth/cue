@@ -500,11 +500,6 @@ impl Hub {
                 crate::mini::apply(app);
             }
         }
-        if key == "appearance.zoom" {
-            if let Some(app) = &self.app {
-                crate::apply_zoom(app);
-            }
-        }
         self.changed();
     }
 

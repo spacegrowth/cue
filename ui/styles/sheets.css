@@ -64,14 +64,14 @@ kbd { font: 600 var(--type-tag) var(--mono); padding: 2px 6px; border-radius: va
    built yet is shown greyed, saying so. */
 .ld-scrim { z-index: 30; }
 .ld-dialog { width: min(760px, calc(100vw - 32px)); }
-.ld-rows { display: flex; flex-direction: column; gap: 9px; margin: 6px 0 4px; }
+.ld-rows { display: flex; flex-direction: column; gap: 4px; margin: 4px 0; }
 .ld-row { display: grid; grid-template-columns: 140px 1fr; gap: 12px; align-items: start; }
 .ld-label { padding-top: 6px; font-size: var(--type-body); font-weight: 650; color: var(--ink); }
-.ld-body { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.ld-body { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .ld-seg { flex-wrap: wrap; align-self: flex-start; }
 .ld-seg button:disabled { opacity: .55; cursor: default; }
 .ld-not { font-weight: 500; font-size: var(--type-pill); }
-.ld-hint, .ld-why { font-size: var(--type-small); line-height: 1.45; color: var(--muted); }
+.ld-hint, .ld-why { font-size: var(--type-small); line-height: 1.3; color: var(--muted); }
 .ld-why { margin: 2px 0 4px; color: var(--ink); }
 .ld-old-list { max-height: 140px; overflow-y: auto; font-size: var(--type-small); line-height: 1.6; color: var(--muted); word-break: break-all; }
 .ld-old-b { display: flex; gap: 8px; margin: 6px 0 2px; }
@@ -82,7 +82,9 @@ kbd { font: 600 var(--type-tag) var(--mono); padding: 2px 6px; border-radius: va
 .ld-step { display: inline-flex; align-items: center; gap: 10px; align-self: flex-start; }
 .ld-step .btn { min-width: 30px; padding: 4px 8px; }
 .ld-n { min-width: 14px; text-align: center; font-size: var(--type-body); }
-.ld-dialog .set-group { margin: 14px 0 6px; }
+/* Tight rows so the whole screen fits a 900-high window at the Default text size too (#447, #594). */
+.ld-dialog .set-group { margin: 10px 0 4px; }
+.ld-dialog .sheet-body { padding-bottom: 12px; }
 .ld-sub { margin: -2px 0 4px; }
 .ld-esc { cursor: pointer; }
 .ld-intro { margin: 0 0 2px; }

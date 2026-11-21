@@ -24,7 +24,7 @@ button.tm-chip:hover { background: var(--panel-2); }
 .ap-head .dim { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 
 /* Renaming a session: ✎ beside its name (on hover), and the name as an input while you edit it. */
-.rename-btn { width: 22px; height: 22px; border-radius: var(--radius-qp); font-size: var(--type-body); color: var(--muted); opacity: 0; transition: opacity 0.12s; }
+.rename-btn { width: 22px; height: 22px; line-height: 1; border-radius: var(--radius-qp); font-size: var(--type-body); color: var(--muted); opacity: 0; transition: opacity 0.12s; }
 .ap-head:hover .rename-btn, .rename-btn:focus-visible { opacity: 1; }
 .rename-btn:hover { background: var(--panel-2); color: var(--ink); }
 .rename-in { width: 240px; padding: 4px 8px; border-radius: var(--radius-qp); border: 1.5px solid var(--accent); background: var(--panel); color: var(--ink); font: 650 var(--type-body) var(--sans); outline: none; }

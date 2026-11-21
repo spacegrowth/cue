@@ -1,4 +1,4 @@
-// Cue UI core — the window's own state: held redraws while you select, toasts, zoom, icons, what stays in memory,
+// Cue UI core — the window's own state: held redraws while you select, toasts, text size, icons, what stays in memory,
 // the open session, and drafts.
 let toastTimer;
 // ---------- selecting text: redraws wait while you drag, and letting go copies it ----------
@@ -74,15 +74,17 @@ function toast(msg, ms = 2600) {
 async function setSetting(key, value) {
   try { await invoke("set_setting", { key, value }); } catch (e) { toast(`Couldn't save: ${e}`); }
 }
-/** Text size: the window zooms in steps (config.rs ZOOM_STEPS); Cue keeps the one you pick. */
-const ZOOMS = [[0.9, "Compact"], [1, "Default"], [1.15, "Large"], [1.3, "Larger"]];
+/** Text size (config.rs TEXT_SIZES): the type scale's step (styles/base.css data-text), not a zoom, so only the words
+ *  grow and the layout stays. Cue keeps the one you pick. */
+const TEXT_SIZES = [["compact", "Compact"], ["default", "Default"], ["large", "Large"]];
+const textSize = () => (TEXT_SIZES.some(([k]) => k === state.settings?.appearance?.text) ? state.settings.appearance.text : "default");
 /** One step bigger (1) or smaller (-1), or back to Default (0). */
-function stepZoom(dir) {
-  const cur = ZOOMS.findIndex(([z]) => z === (state.settings?.appearance?.zoom ?? 1));
-  const i = dir === 0 ? 1 : Math.max(0, Math.min(ZOOMS.length - 1, (cur < 0 ? 1 : cur) + dir));
-  const [z, name] = ZOOMS[i];
+function stepText(dir) {
+  const cur = TEXT_SIZES.findIndex(([k]) => k === textSize());
+  const i = dir === 0 ? 1 : Math.max(0, Math.min(TEXT_SIZES.length - 1, cur + dir));
+  const [k, name] = TEXT_SIZES[i];
   toast(`Text size: ${name}${i === cur && dir ? (dir > 0 ? " (the largest)" : " (the smallest)") : ""}`);
-  if (i !== cur) setSetting("appearance.zoom", z);
+  if (i !== cur) setSetting("appearance.text", k);
 }
 const SEARCH_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>`;
 const INSIGHTS_ICON = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16"/><path d="M7.5 16v-5"/><path d="M12 16V5"/><path d="M16.5 16V9"/></svg>`;

@@ -558,11 +558,12 @@ button.dk-al-row:focus-visible { outline: 2px solid var(--accent); outline-offse
   .dk-pg[data-desk-page="item"]:not(.hid) { grid-template-columns: minmax(0, 1fr) 300px; }
   .dk-pg[data-desk-page="item"]:not(.hid) > .dk-panel > .dk-sfoot { display: flex; }
 }
-/* Too narrow for both side by side: the whole panel over the chat, scrolling within a third of the window, with Hide
+/* Too narrow for both side by side: the whole panel over the chat, scrolling within 28% of the window (a third left
+   the chat too little room at the larger text sizes, #594), with Hide
    panel to fold it to its Now line (#418). */
 @container dkcard (max-width: 640px) {
   .dk-pg[data-desk-page="item"] .dk-ptog { display: inline-flex; }
-  .dk-pg[data-desk-page="item"]:not(.hid) > .dk-panel { max-height: 34vh; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding: 12px 20px 14px; background: var(--panel-2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .dk-pg[data-desk-page="item"]:not(.hid) > .dk-panel { max-height: 28vh; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding: 12px 20px 14px; background: var(--panel-2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
   .dk-pg[data-desk-page="item"]:not(.hid) :is(.dk-psec, .dk-pnow > .dk-psh, .dk-psay) { display: block; }
   .dk-pg[data-desk-page="item"]:not(.hid) > .dk-panel > .dk-sfoot { display: flex; }
   .dk-pg[data-desk-page="item"]:not(.hid) .dk-pnow { padding: 0; border-radius: 0; background: none; }

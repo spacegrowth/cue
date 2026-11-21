@@ -2,7 +2,7 @@
 // paused and parked items, and items back to check.
 import { test, expect, pick, openDesk } from "./cue.mjs";
 import { listOrder } from "./desk.mjs";
-
+import { textLines } from "./layout.mjs";
 // ---------- the quick-add line ----------
 
 test("the quick-add line keeps its height as you type (a one-line field doesn't grow or shrink)", async ({ page, cue }) => {
@@ -103,7 +103,7 @@ test("a picture dropped on the quick-add line (or picked with its button) goes w
   // The item, with its picture kept: the pane shows it under Pictures.
   const id = await page.evaluate(() => deskOf("cue").items[0].id);
   await cue.change((st, id) => { Object.assign(st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === id), { images: ["data:image/png;base64,iVBORw0KGgo="], holder: null }); }, id);
-  await page.locator(`[data-desk-item="${id}"]`).click();
+  await page.locator(`[data-desk-item="${id}"] .dk-t`).click();
   await expect(page.locator(".dk-pane .thumbs .thumb")).toHaveCount(1);
 });
 
@@ -130,7 +130,7 @@ test("one item that doesn't go comes back in the line", async ({ page, cue }) =>
 test("⋯ in the head strip with an item open: the open pane closes and the picker shows", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  await page.locator('[data-desk-item="d6"]').click();
+  await page.locator('[data-desk-item="d6"] .dk-t').click();
   await page.locator(".dk-panel[data-side-for] .dk-drop").click();
   await page.locator(".dk-strip [data-desk-change]").click();
   await expect(page.locator(".dk-pick h2")).toHaveText("Who runs this Desk?");
@@ -203,7 +203,7 @@ test("the lead's own Desk lines are drawn as lines in its chat, code blocks left
   await expect(said.locator(".own-lines")).not.toContainText("⌄");
   const lay = await route.evaluate((el) => { const r = el.getBoundingClientRect(), t = el.querySelector(".mg-lh").getBoundingClientRect(), m = el.closest(".cv-text").getBoundingClientRect(); return { left: t.left - m.left, h: r.height }; });
   expect(lay.left).toBeLessThan(4);
-  expect(lay.h).toBeLessThan(24);
+  expect(await textLines(route)).toBe(1);
   await expect(route.locator(".mg-full")).toHaveCount(0);
   await expect(route.locator(".mg-line")).toHaveAttribute("aria-expanded", "false");
   // A click opens its why under it, the family's .mg-full (a soft fill, no border, #501); it stays open through a redraw, and a click shuts it.
@@ -280,13 +280,13 @@ test("a reply of only routing lines is short lines at the left: TITLE and ROUTE,
   // Stacked tight: the second starts right under the first.
   const [a, b] = [await ln.nth(0).boundingBox(), await ln.nth(1).boundingBox()];
   expect(b.y - (a.y + a.height)).toBeLessThan(2);
-  // One body line (#501: 13.5px/1.5) and the row's 1px above and below.
-  expect(a.height).toBeLessThan(23);
+  // One body line each (#501), at any text size (#594).
+  expect(await textLines(ln.nth(0))).toBe(1);
   // Only the item numbers carry an icon, their kind's (#292); the lines themselves have none.
   await expect(last.locator(".dk-ln svg")).toHaveCount(2);
   await expect(last.locator(".dk-ln button.mg-id > svg.dk-kic")).toHaveCount(2);
   await expect(last.locator(".cv-text")).not.toContainText("TITLE:");
-  for (const l of await ln.all()) expect(await l.evaluate((el) => el.getBoundingClientRect().height)).toBeLessThan(24);
+  for (const l of await ln.all()) expect(await textLines(l)).toBe(1);
   await ln.nth(1).locator(".mg-line").dispatchEvent("click");
   await expect(ln.nth(1).locator(".mg-full")).toContainText("free and warm");
   await expect(ln.nth(1).locator(".mg-full .dk-ln-it")).toHaveCount(1);

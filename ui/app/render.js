@@ -10,6 +10,9 @@ function applyTheme() {
   if (mode === "system") root.removeAttribute("data-theme");
   else if (root.dataset.theme !== mode) root.dataset.theme = mode;
   root.classList.toggle("away-on", away);
+  // Text size: the type scale's step (styles/base.css), and the terminals' text with it.
+  const text = textSize();
+  if (root.dataset.text !== text) { root.dataset.text = text; termText(); }
   retheme();
 }
 /** The chat and color the window last said ("chat-open"), so they're said only when they change. */

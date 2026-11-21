@@ -57,7 +57,7 @@
 @media (max-width: 1100px) { .dk-s1 .dk-st { flex-shrink: 3; } }
 .dk-s2 { display: flex; align-items: center; gap: 8px; margin: 6px 0 0; color: var(--ink); font-size: var(--type-body); white-space: nowrap; }
 .dk-s2 > .dk-w { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.dk-s3 { margin: 3px 0 0; color: var(--muted); font: var(--type-pill) var(--mono); }
+.dk-s3 { margin: 3px 0 0; color: var(--muted); font: var(--type-pill) var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dk-s3.hot { color: var(--amber); font-weight: 600; }
 .dk-s3.dk-now { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-srow.on .dk-st, .dk-srow.on .dk-s2, .dk-srow.on .dk-s3:not(.hot), .dk-srow.on .dk-id { color: var(--on-sel); }

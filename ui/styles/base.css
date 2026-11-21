@@ -82,6 +82,10 @@
   --window-pad: 20px;
   --on-deny: #FFFFFF;       /* text on a deny fill (an ask's tag) */
 }
+/* Text size (Settings → Text size, #594): the type scale above is Compact, and Cue's window sets data-text on the root
+   to step every size up together. Only the text grows: gaps, panels and buttons keep their place and fit it. */
+:root[data-text="default"] { --type-tag: 11px; --type-pill: 13px; --type-small: 14px; --type-body: 15px; --type-title: 17px; --type-page: 23px; --type-figure: 37px; }
+:root[data-text="large"] { --type-tag: 12px; --type-pill: 14px; --type-small: 15px; --type-body: 16px; --type-title: 18px; --type-page: 25px; --type-figure: 39px; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #14170D; --on-bg: #ECEEE3; --on-bg-muted: #A3AA8A; --panel: #1D2113; --panel-2: #232818;
