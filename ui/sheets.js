@@ -247,7 +247,7 @@ function convoSheet() {
     return `<div class="cv-agent mg-agent${hit}"><div class="mg-h"><span class="mg-who">${esc(e.role === "peer" ? "Another session" : agentName(c.harness))}</span>${e.role === "peer" ? "" : machTag(live?.machine)} · ${when(e.at_ms)}</div><div class="msg mg-text cv-text">${md(e.text)}</div></div>`;
   }).join("");
   return `<div class="sheet convo-sheet"><div class="sheet-head">${c.from === "search" ? `<button class="btn" data-act="convo-back">← Results</button>` : `<button class="btn" data-act="convo-close">← ${esc(c.from)}</button>`}${badge(c.harness)}<h3>${esc(c.name)}</h3>
-      <span class="dim" style="font-size:12px">${live ? (live.state === "working" ? "working" : "live") : "ended"} · ${c.items.length} messages</span><span class="grow"></span>
+      <span class="dim" style="font-size:var(--type-small)">${live ? (live.state === "working" ? "working" : "live") : "ended"} · ${c.items.length} messages</span><span class="grow"></span>
       ${live ? `<button class="btn primary" data-act="convo-open" data-sid="${esc(c.sid)}">Open in Active</button>` : c.harness === "claude" ? `<button class="btn primary" data-act="convo-resume">Resume</button>` : ""}<kbd>Esc</kbd></div>
     <div class="sheet-body convo-body">${msgs || `<div class="dim">Nothing logged for this session.</div>`}</div></div>`;
 }

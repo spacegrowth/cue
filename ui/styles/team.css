@@ -13,22 +13,22 @@
 /* No box under it (the lead's own ask stands there): it ends on its own edge. */
 .crew-tray:not(:has(+ .foot .field)) { border-bottom: 1.5px solid var(--line); border-radius: 10px; margin-bottom: 8px; }
 .crew-tray:not(:has(+ .foot .field)) .crew-body { border-radius: 0 0 9px 9px; }
-.crew-head { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 6px 0 12px; font-size: 12.5px; font-weight: 700; white-space: nowrap; cursor: pointer; border-radius: 9px 9px 0 0; }
+.crew-head { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 6px 0 12px; font-size: var(--type-body); font-weight: 700; white-space: nowrap; cursor: pointer; border-radius: 9px 9px 0 0; }
 .crew-w { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .crew-need { color: var(--deny); }
 .crew-mu { color: var(--muted); font-weight: 600; }
 .crew-dot, .crew-head .dot-live { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
-.crew-mode { height: 24px; padding: 0 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--muted); font-size: 12px; font-weight: 600; }
+.crew-mode { height: 24px; padding: 0 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--muted); font-size: var(--type-small); font-weight: 600; }
 .crew-mode:hover, .crew-mode.on { color: var(--ink); }
 .crew-car { flex: none; width: 22px; height: 24px; border-radius: 6px; color: var(--muted); font-weight: 700; }
 .crew-car:hover { color: var(--ink); background: var(--panel); }
-.crew-body { border-top: 1px solid var(--line); background: var(--panel); overflow-y: auto; overscroll-behavior: contain; padding-bottom: 4px; font-size: 12.5px; }
+.crew-body { border-top: 1px solid var(--line); background: var(--panel); overflow-y: auto; overscroll-behavior: contain; padding-bottom: 4px; font-size: var(--type-body); }
 /* The chat behind an open tray steps back. */
 .ap-chat { transition: opacity 0.15s; }
 .active-pane:has(.crew-tray .crew-body) .ap-chat { opacity: 0.55; }
 
 /* Its groups: Needs you (red), Ready, Working, in small caps; the finished ones folded into "N done ›". */
-.mt-grp { padding: 9px 12px 2px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.mt-grp { padding: 9px 12px 2px; font-size: var(--type-tag); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 .mt-grp.red { color: var(--deny); }
 /* A row: its name and line on the left, its one button (Deny and Allow for an ask) on the right; under it, what it asks,
    its findings or its files. Every button one width, so a group's line up. */
@@ -36,35 +36,35 @@
 .mt-row + .mt-row { border-top: 1px solid var(--line); }
 .mt-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mt-n i { margin-left: 6px; font-style: normal; font-weight: 500; color: var(--muted); }
-.mt-name { padding: 0; font-weight: 700; font-size: 12.5px; color: var(--ink); white-space: nowrap; }
+.mt-name { padding: 0; font-weight: 700; font-size: var(--type-body); color: var(--ink); white-space: nowrap; }
 button.mt-name:hover, .mt-name.on { text-decoration: underline; text-underline-offset: 2px; }
 .mt-btns { grid-row: 1; grid-column: 2; display: flex; gap: 6px; align-items: center; }
 /* With a one-line sub-line (its files) the button centres on both lines, as the mock's clean row. */
 .mt-row:has(> .mt-l) .mt-btns { grid-row: 1 / 3; }
 .mt-btns:empty { display: none; }
-.mt-b { width: 92px; height: 28px; padding: 0; justify-content: center; font-size: 12px; }
+.mt-b { width: 92px; height: 28px; padding: 0; justify-content: center; font-size: var(--type-small); }
 .mt-b.held, .mt-lk.held { opacity: 0.45; cursor: default; }
-.mt-redir { width: 32px; height: 28px; padding: 0; justify-content: center; font-size: 12px; }
-.mt-l { grid-column: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12px; }
+.mt-redir { width: 32px; height: 28px; padding: 0; justify-content: center; font-size: var(--type-small); }
+.mt-l { grid-column: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: var(--type-small); }
 .mt-ask { grid-column: 1 / 3; min-width: 0; margin-top: 4px; }
 .mt-ask .code-wrap, .mt-ask .slab { margin: 0; }
 .mt-ask .row-btns { margin-top: 6px; }
-.mt-fx { grid-column: 1 / 3; margin: 4px 0 0; padding-left: 18px; font-size: 12px; line-height: 1.45; user-select: text; }
+.mt-fx { grid-column: 1 / 3; margin: 4px 0 0; padding-left: 18px; font-size: var(--type-small); line-height: 1.45; user-select: text; }
 .mt-fx li { margin: 2px 0; }
-.mt-fx code { font: 11.5px var(--mono); }
+.mt-fx code { font: var(--type-pill) var(--mono); }
 .mt-fx em { font-style: normal; font-weight: 600; color: var(--amber); }
 /* Working and finished: one line each, a plain action at its end. */
-.mt-one { display: flex; align-items: center; gap: 8px; min-height: 26px; padding: 2px 12px; font-size: 12px; }
+.mt-one { display: flex; align-items: center; gap: 8px; min-height: 26px; padding: 2px 12px; font-size: var(--type-small); }
 .mt-one .mt-line { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
-.mt-one code { font: 11.5px var(--mono); color: var(--ink); }
-.mt-lk { flex: none; padding: 2px 0; color: var(--muted); font-size: 12px; font-weight: 600; }
+.mt-one code { font: var(--type-pill) var(--mono); color: var(--ink); }
+.mt-lk { flex: none; padding: 2px 0; color: var(--muted); font-size: var(--type-small); font-weight: 600; }
 .mt-lk:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
 .mt-one .mt-lk + .mt-lk { margin-left: 4px; }
 /* The finished ones, out of the way at the bottom: "N done ›", unfolding to one line each. */
 .mt-done { margin-top: 4px; padding-top: 2px; border-top: 1px solid var(--line); }
 .mt-done-line { display: block; margin: 0 12px; padding: 4px 0; }
 /* What opened under a row from its menu (its full review, what it was asked), why a button didn't go: plain text. */
-.mt-under { grid-column: 1 / 3; margin: 4px 0 2px; color: var(--ink); font-size: 12px; line-height: 1.45; user-select: text; }
+.mt-under { grid-column: 1 / 3; margin: 4px 0 2px; color: var(--ink); font-size: var(--type-small); line-height: 1.45; user-select: text; }
 .mt-one + .mt-under { margin: 0 12px 6px; }
 .mt-review { max-height: 260px; overflow-y: auto; }
 .mt-asked { white-space: pre-wrap; max-height: 160px; overflow-y: auto; color: var(--muted); }
@@ -77,8 +77,8 @@ button.mt-name:hover, .mt-name.on { text-decoration: underline; text-underline-o
    over a few words. */
 .crew-goal { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; padding: 10px 12px 2px; }
 .cg-box { min-width: 0; padding: 6px 8px; border-radius: 7px; background: var(--panel-2); }
-.cg-l { font-size: 9.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
-.cg-t { margin-top: 2px; font-size: 11.5px; line-height: 1.35; color: var(--ink); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.cg-l { font-size: var(--type-tag); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.cg-t { margin-top: 2px; font-size: var(--type-pill); line-height: 1.35; color: var(--ink); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 /* A narrow pane (and the mini window's chat, not a size container): two by two, a line each, so the goal doesn't push
    what needs you out of the tray. */
 @container ap (max-width: 480px) {
@@ -88,19 +88,19 @@ button.mt-name:hover, .mt-name.on { text-decoration: underline; text-underline-o
 .m-chat .crew-goal { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .m-chat .cg-t { -webkit-line-clamp: 1; }
 /* Nothing needs you: one quiet line under its label. */
-.crew-none { padding: 2px 12px 4px; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crew-none { padding: 2px 12px 4px; color: var(--muted); font-size: var(--type-small); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Decisions and steps (crewLogHtml): one line each, who · what, then how long ago and, on what can be undone, Undo
    this at its end; activity (`.step`) quieter, with no button. A line with a review or files opens in place under it. */
-.cd-row { display: flex; align-items: baseline; gap: 8px; min-height: 24px; padding: 3px 12px; font-size: 12px; box-sizing: border-box; }
+.cd-row { display: flex; align-items: baseline; gap: 8px; min-height: 24px; padding: 3px 12px; font-size: var(--type-small); box-sizing: border-box; }
 .cd-row.can { cursor: pointer; }
 .cd-row.can:hover, .cd-row.on { background: var(--panel-2); }
 .cd-who { flex: none; font-weight: 700; color: var(--ink); }
 .cd-what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
-.cd-what code, .cd-under code { font: 11.5px var(--mono); }
+.cd-what code, .cd-under code { font: var(--type-pill) var(--mono); }
 .cd-why { color: var(--muted); }
 .cd-at { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
 .cd-one { flex: none; color: var(--muted); }
-.cd-going { flex: none; color: var(--muted); font-size: 12px; font-style: italic; }
+.cd-going { flex: none; color: var(--muted); font-size: var(--type-small); font-style: italic; }
 .cd-row.step .cd-who { font-weight: 600; color: var(--muted); }
 .cd-row.step .cd-what { color: var(--muted); }
 .mt-under.cd-under { margin: 0; padding: 2px 12px 8px; background: var(--panel-2); }
@@ -117,18 +117,18 @@ button.mt-name:hover, .mt-name.on { text-decoration: underline; text-underline-o
    and its box under it, as wide as the board's chat pane, beside the list, which has the rest (The lead, the add-on's
    band, the crew's cards), each scrolling inside itself. */
 .board.cp-board { grid-template-columns: minmax(0, 1fr); }
-.crew-page { grid-column: 1 / -1; position: relative; min-width: 0; min-height: 0; margin: 0 0 4px; display: flex; flex-direction: column; background: var(--panel); color: var(--ink); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; font-size: 13px; container: cp / inline-size; }
+.crew-page { grid-column: 1 / -1; position: relative; min-width: 0; min-height: 0; margin: 0 0 4px; display: flex; flex-direction: column; background: var(--panel); color: var(--ink); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; font-size: var(--type-body); container: cp / inline-size; }
 .cp-head { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-height: 48px; padding: 6px 16px 6px 10px; background: var(--sel); color: var(--on-sel); }
-.cp-back { height: 30px; padding: 0 10px; border-radius: 8px; font-size: 12.5px; font-weight: 650; color: var(--on-sel); }
+.cp-back { height: 30px; padding: 0 10px; border-radius: 8px; font-size: var(--type-body); font-weight: 650; color: var(--on-sel); }
 .cp-back:hover { background: color-mix(in srgb, var(--on-sel) 10%, transparent); }
-.cp-name { min-width: 0; overflow-wrap: anywhere; font-size: 14px; font-weight: 700; }
+.cp-name { min-width: 0; overflow-wrap: anywhere; font-size: var(--type-body); font-weight: 700; }
 /* The project on the add-on's head line (its loop's). */
-.cp-proj { flex: none; font-size: 12px; color: color-mix(in srgb, var(--on-sel) 70%, transparent); }
-.cp-oc { flex: none; font-size: 12px; font-weight: 600; color: color-mix(in srgb, var(--on-sel) 78%, transparent); }
+.cp-proj { flex: none; font-size: var(--type-small); color: color-mix(in srgb, var(--on-sel) 70%, transparent); }
+.cp-oc { flex: none; font-size: var(--type-small); font-weight: 600; color: color-mix(in srgb, var(--on-sel) 78%, transparent); }
 /* After the name: "Cue Crew", and one state pill, a word only (team_page.js crewPageHead). Colour says whose move it
    is: dark, it's working; red, yours now; amber, yours when you like; grey (dashed: paused), nobody's; green, done. */
-.cp-kind { flex: none; font-size: 12.5px; font-weight: 600; color: color-mix(in srgb, var(--on-sel) 72%, transparent); }
-.cp-pill { flex: none; padding: 2px 9px; border-radius: var(--pill-radius); font: 650 11px/1.5 var(--mono); white-space: nowrap; background: color-mix(in srgb, var(--on-sel) 12%, transparent); color: var(--on-sel); }
+.cp-kind { flex: none; font-size: var(--type-body); font-weight: 600; color: color-mix(in srgb, var(--on-sel) 72%, transparent); }
+.cp-pill { flex: none; padding: 2px 9px; border-radius: var(--pill-radius); font: 650 var(--type-pill)/1.5 var(--mono); white-space: nowrap; background: color-mix(in srgb, var(--on-sel) 12%, transparent); color: var(--on-sel); }
 .cp-pill.run { background: var(--ink); color: var(--panel); }
 .cp-pill.need, .cp-pill.bad { background: var(--deny); color: #fff; }
 .cp-pill.review { background: var(--amber); color: #fff; }
@@ -139,18 +139,18 @@ button.mt-name:hover, .mt-name.on { text-decoration: underline; text-underline-o
 .cp-upper { flex: 0 1 auto; max-height: 45%; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; border-bottom: 1px solid var(--line); }
 /* The goal on one line, cut at its end, All of it › opening its four boxes in place. */
 .cp-top { flex: none; padding: 4px 4px 5px; }
-.cp-goal { display: flex; align-items: center; gap: 12px; min-height: 34px; padding: 2px 12px; color: var(--muted); font-size: 12.5px; }
-.cp-lab { flex: none; width: 64px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.cp-goal { display: flex; align-items: center; gap: 12px; min-height: 34px; padding: 2px 12px; color: var(--muted); font-size: var(--type-body); }
+.cp-lab { flex: none; width: 64px; font-size: var(--type-tag); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .cp-gt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cp-gt b { color: var(--ink); font-weight: 650; }
-.cp-gt code { font: 11.5px var(--mono); }
+.cp-gt code { font: var(--type-pill) var(--mono); }
 .cp-goal.open { align-items: flex-start; padding-top: 6px; padding-bottom: 6px; }
 .cp-goal.open .cp-lab { padding-top: 8px; }
 .cp-goal.open .cp-all { padding-top: 6px; }
 .crew-page .crew-goal { flex: 1; min-width: 0; gap: 10px; padding: 0; }
 .crew-page .cg-box { padding: 8px 12px; border-radius: 9px; }
-.crew-page .cg-l { font-size: 10.5px; }
-.crew-page .cg-t { margin-top: 3px; font-size: 13px; line-height: 1.4; -webkit-line-clamp: 4; }
+.crew-page .cg-l { font-size: var(--type-tag); }
+.crew-page .cg-t { margin-top: 3px; font-size: var(--type-body); line-height: 1.4; -webkit-line-clamp: 4; }
 
 /* The left reads, the list picks. The left exactly as wide as the board's chat pane beside its cards (board/columns.js
    boardChatWidth sets --cp-chat-w, a length of the page's width, which is the board's); the list has the rest. */
@@ -173,21 +173,21 @@ button.mt-name:hover, .mt-name.on { text-decoration: underline; text-underline-o
 .cp-dec .cd-row.big { display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 11px; border: 0; border-radius: 9px; background: var(--panel-2); }
 .cp-dec .cd-row.big.can:hover, .cp-dec .cd-row.big.on { box-shadow: inset 0 0 0 1px var(--line); }
 .cp-dec .cd-row.big:not(.kinded):not(.step)::before { content: "Decided"; }
-.cp-dec .cd-row.big:not(.kinded):not(.step)::before, .cp-dec .cd-kind { flex: none; font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
-.cp-dec .cd-row.big.step { align-items: baseline; gap: 6px; min-height: 0; padding: 1px 11px; background: none; color: var(--muted); font-size: 12px; }
+.cp-dec .cd-row.big:not(.kinded):not(.step)::before, .cp-dec .cd-kind { flex: none; font-size: var(--type-tag); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.cp-dec .cd-row.big.step { align-items: baseline; gap: 6px; min-height: 0; padding: 1px 11px; background: none; color: var(--muted); font-size: var(--type-small); }
 .cp-dec .cd-row.big.step.can:hover, .cp-dec .cd-row.big.step.on { box-shadow: none; background: var(--panel-2); }
 .cp-dec .cd-row.big.step .cd-who { font-weight: 600; color: var(--muted); }
-.cp-dec .cd-row.big.step .cd-what { flex: 0 1 auto; color: var(--muted); font-size: 12px; }
+.cp-dec .cd-row.big.step .cd-what { flex: 0 1 auto; color: var(--muted); font-size: var(--type-small); }
 .cp-dec .cd-row.big.step .cd-why { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cp-dec .cd-row.big.step .cd-why:not(:empty)::before { content: "· "; }
 .cp-dec .cd-main { display: flex; align-items: center; gap: 10px; }
 .cp-dec .cd-row.big .cd-at, .cp-dec .cd-row.big .cd-back { align-self: center; }
 .cp-dec .cd-sub { display: contents; }
 .cp-dec .cd-tag { order: -1; }
-.cp-dec .cd-row.big .cd-what { flex: 1 1 0; min-width: 0; white-space: normal; overflow-wrap: anywhere; font-size: 12.5px; line-height: 1.4; }
-.cp-dec .cd-row.big .cd-what code { font: 11.5px var(--mono); }
+.cp-dec .cd-row.big .cd-what { flex: 1 1 0; min-width: 0; white-space: normal; overflow-wrap: anywhere; font-size: var(--type-body); line-height: 1.4; }
+.cp-dec .cd-row.big .cd-what code { font: var(--type-pill) var(--mono); }
 .cp-dec .cd-sub .cd-why { flex: 0 1 auto; max-width: 40%; white-space: normal; overflow-wrap: anywhere; line-height: 1.4; }
-.cp-dec .cd-back { height: 24px; font-size: 11.5px; background: var(--panel); }
+.cp-dec .cd-back { height: 24px; font-size: var(--type-pill); background: var(--panel); }
 .cp-dec .mt-under.cd-under { margin-top: -4px; padding: 6px 11px 8px; border-radius: 0 0 9px 9px; }
 /* Needs you over the box, outlined red: its first row; "N more ›" shows the rest, scrolling inside past half the left. */
 /* Needs you (team_bar.js): one bar over the box, one ask at a time, always 68 high whatever the count. Line 1: the
@@ -195,25 +195,25 @@ button.mt-name:hover, .mt-name.on { text-decoration: underline; text-underline-o
    line cut at its end, why dim and cut, its buttons. Its buttons are dimmed for the moment after the ask changed. */
 .cp-bar { flex: none; height: 68px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; gap: 5px; margin: 8px 12px; padding: 6px 8px 6px 14px; border-radius: 12px; box-shadow: inset 0 0 0 1.5px var(--deny); min-width: 0; }
 .cpb-1, .cpb-2 { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.cpb-1 { height: 18px; font-size: 11.5px; color: var(--muted); padding-right: 4px; }
-.cpb-lab { font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--deny); }
+.cpb-1 { height: 18px; font-size: var(--type-pill); color: var(--muted); padding-right: 4px; }
+.cpb-lab { font-size: var(--type-tag); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--deny); }
 .cpb-n { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--ink); }
-.cpb-step { width: 20px; height: 18px; border-radius: 5px; box-shadow: inset 0 0 0 1px var(--line); font-size: 12px; line-height: 1; color: var(--ink); }
+.cpb-step { width: 20px; height: 18px; border-radius: 5px; box-shadow: inset 0 0 0 1px var(--line); font-size: var(--type-small); line-height: 1; color: var(--ink); }
 .cpb-step:hover { background: var(--panel-2); }
-.cpb-all { font-size: 11.5px; }
-.cpb-keys, .cpb-ow { flex: none; white-space: nowrap; font-size: 11px; }
-.cpb-keys kbd { font-size: 10px; padding: 1px 4px; }
+.cpb-all { font-size: var(--type-pill); }
+.cpb-keys, .cpb-ow { flex: none; white-space: nowrap; font-size: var(--type-pill); }
+.cpb-keys kbd { font-size: var(--type-tag); padding: 1px 4px; }
 .cpb-ow { color: var(--deny); font-weight: 600; }
-.cpb-who { flex: none; font-size: 13px; font-weight: 700; color: var(--ink); }
+.cpb-who { flex: none; font-size: var(--type-body); font-weight: 700; color: var(--ink); }
 button.cpb-who:hover { text-decoration: underline; text-underline-offset: 2px; }
-.cpb-words { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; overflow: hidden; text-align: left; font-size: 13px; color: var(--ink); }
+.cpb-words { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; overflow: hidden; text-align: left; font-size: var(--type-body); color: var(--ink); }
 .cpb-what { flex: none; font-weight: 600; white-space: nowrap; }
-.cpb-cmd { flex: 0 1 auto; min-width: 40px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 8px; border-radius: 6px; background: var(--slab); color: var(--on-slab); font: 12px var(--mono); }
-.cpb-why { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12px; }
-.cpb-why code { font: 11.5px var(--mono); }
-.cpb-tag { flex: none; padding: 0 7px; border-radius: var(--pill-radius); background: var(--deny); color: #fff; font: 650 10.5px/1.6 var(--mono); }
+.cpb-cmd { flex: 0 1 auto; min-width: 40px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 8px; border-radius: 6px; background: var(--slab); color: var(--on-slab); font: var(--type-small) var(--mono); }
+.cpb-why { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: var(--type-small); }
+.cpb-why code { font: var(--type-pill) var(--mono); }
+.cpb-tag { flex: none; padding: 0 7px; border-radius: var(--pill-radius); background: var(--deny); color: #fff; font: 650 var(--type-tag)/1.6 var(--mono); }
 .cpb-btns { flex: none; display: flex; align-items: center; gap: 6px; }
-.cpb-btns .btn { height: 30px; min-width: 64px; padding: 0 12px; font-size: 12.5px; }
+.cpb-btns .btn { height: 30px; min-width: 64px; padding: 0 12px; font-size: var(--type-body); }
 .cpb-btns .btn.cpb-redir, .cpb-btns .mt-lk { min-width: 0; }
 .cp-bar.dead .cpb-btns { opacity: 0.55; pointer-events: none; }
 /* The lead's box while the lead itself asks: in place, at its height, greyed, the draft kept. With ↪'s chip: live,
@@ -221,24 +221,24 @@ button.cpb-who:hover { text-decoration: underline; text-underline-offset: 2px; }
 .cp-left .foot.held.cp-held { padding-top: 10px; border-top: 1px solid var(--line); }
 .cp-held .field { opacity: 0.7; }
 .cp-chipped { flex-direction: column; gap: 6px; }
-.cp-chip { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; padding: 2px 4px 2px 10px; border-radius: var(--pill-radius); background: var(--sel); color: var(--on-sel); font-size: 12px; font-weight: 650; }
-.cp-chip-x { width: 20px; height: 20px; border-radius: 50%; font-size: 14px; line-height: 1; color: inherit; }
+.cp-chip { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; padding: 2px 4px 2px 10px; border-radius: var(--pill-radius); background: var(--sel); color: var(--on-sel); font-size: var(--type-small); font-weight: 650; }
+.cp-chip-x { width: 20px; height: 20px; border-radius: 50%; font-size: var(--type-body); line-height: 1; color: inherit; }
 .cp-chip-x:hover { background: color-mix(in srgb, var(--on-sel) 14%, transparent); }
 /* What the left shows in the chat's place (Needs you, a teammate): its head line, then its own scrolling body; the
    bar and the box stay under it. */
 .active-pane.cp-alt { display: flex; flex-direction: column; min-height: 0; }
 .cp-view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .cpv-head { flex: none; display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 8px 14px 4px; min-width: 0; }
-.cpv-back { flex: none; font-size: 12.5px; font-weight: 650; color: var(--ink); }
+.cpv-back { flex: none; font-size: var(--type-body); font-weight: 650; color: var(--ink); }
 .cpv-back:hover { text-decoration: underline; text-underline-offset: 2px; }
 .cpv-sep { flex: none; width: 1px; height: 18px; margin: 0 4px; background: var(--line); }
-.cpv-name { flex: none; font-size: 15px; font-weight: 700; }
+.cpv-name { flex: none; font-size: var(--type-title); font-weight: 700; }
 /* A teammate's pill on the panel (the head's are on the lime): grey on panel-2 when nobody's move, dark at work, red
    when it needs you; in both themes. */
 .cpv-head .cp-pill { background: var(--panel-2); color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
 .cpv-head .cp-pill.run { background: var(--ink); color: var(--panel); box-shadow: none; }
 .cpv-head .cp-pill.need { background: var(--deny); color: #fff; box-shadow: none; }
-.cpv-n { flex: none; color: var(--muted); font-size: 12px; }
+.cpv-n { flex: none; color: var(--muted); font-size: var(--type-small); }
 .cpv-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 4px 14px 10px; }
 .cpn-row { outline: none; border-top: 1px solid var(--line); }
 .cpn-row:first-child { border-top: 0; }
@@ -253,12 +253,12 @@ button.cpb-who:hover { text-decoration: underline; text-underline-offset: 2px; }
 /* The add-on's band, under The lead: never more than half the list, scrolling inside past that. A size container of
    its own (cpband), so the add-on's rules lay the band out by its width, not the page's. */
 .cp-band { flex: 0 1 auto; min-height: 0; max-height: 50%; overflow-y: auto; overscroll-behavior: contain; margin: 4px -10px 0; container: cpband / inline-size; }
-.cp-lead { flex: none; display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 10px; font-size: 13px; }
+.cp-lead { flex: none; display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 10px; font-size: var(--type-body); }
 .cp-lead.on { background: var(--sel); color: var(--on-sel); }
 .cp-lead b { font-weight: 700; }
-.cp-ld { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: color-mix(in srgb, currentColor 72%, transparent); }
-.cp-lr { flex: none; font-size: 11.5px; color: color-mix(in srgb, currentColor 72%, transparent); font-variant-numeric: tabular-nums; }
-.cp-status { flex: none; display: flex; align-items: center; gap: 8px; padding: 9px 10px 3px; color: var(--muted); font-size: 12px; }
+.cp-ld { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--type-small); color: color-mix(in srgb, currentColor 72%, transparent); }
+.cp-lr { flex: none; font-size: var(--type-pill); color: color-mix(in srgb, currentColor 72%, transparent); font-variant-numeric: tabular-nums; }
+.cp-status { flex: none; display: flex; align-items: center; gap: 8px; padding: 9px 10px 3px; color: var(--muted); font-size: var(--type-small); }
 .cp-status .mt-grp { flex: none; padding: 0; }
 .cp-count { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cp-q { color: var(--deny); font-weight: 700; }
@@ -276,16 +276,16 @@ button.cpb-who:hover { text-decoration: underline; text-underline-offset: 2px; }
 .cp-row > span { display: block; }
 .cp-card:has(> .cp-row:hover) { background: var(--panel-2); }
 .cp-row .cp-l1 { display: flex; align-items: center; gap: 10px; }
-.cp-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 700; }
+.cp-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--type-body); font-weight: 700; }
 .cp-row .cp-meter { margin-left: auto; flex: none; flex-direction: row-reverse; gap: 7px; }
-.cp-tm { flex: none; min-width: 26px; text-align: right; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.cp-tm { flex: none; min-width: 26px; text-align: right; font-size: var(--type-pill); color: var(--muted); font-variant-numeric: tabular-nums; }
 .cp-card.q .cp-ml { color: var(--deny); font-weight: 700; }
-.cp-row .cp-now { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 5px; font-size: 12.5px; color: var(--muted); }
+.cp-row .cp-now { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 5px; font-size: var(--type-body); color: var(--muted); }
 .cp-row .cp-now.q { color: var(--deny); font-weight: 600; }
-.cp-row .cp-now code { font: 11.5px var(--mono); }
+.cp-row .cp-now code { font: var(--type-pill) var(--mono); }
 /* Its one action (Stop, Resume, Skip, Diff) at the right of line 1, beside the row's button, not in it. */
-.cp-act { display: flex; align-items: flex-start; gap: 10px; padding: 11px 10px 0 2px; font-size: 12px; }
-.cp-act .mt-lk { padding: 0; height: 18px; line-height: 18px; font-size: 12px; }
+.cp-act { display: flex; align-items: flex-start; gap: 10px; padding: 11px 10px 0 2px; font-size: var(--type-small); }
+.cp-act .mt-lk { padding: 0; height: 18px; line-height: 18px; font-size: var(--type-small); }
 .cp-act:empty { padding: 0; }
 .cp-card > .mt-under { grid-column: 1 / -1; }
 .cp-dim { color: var(--muted); }
@@ -301,17 +301,17 @@ button.cpb-who:hover { text-decoration: underline; text-underline-offset: 2px; }
 .cp-m b.done { background: var(--muted); }
 .cp-m b.now { background: var(--ink); }
 .cp-m b.need { background: var(--deny); }
-.cp-ml { font-size: 11.5px; color: var(--muted); }
+.cp-ml { font-size: var(--type-pill); color: var(--muted); }
 /* A finding's kind as a small pill: should-fix (and worse) amber, the rest outlined. */
-.cp-f { display: inline-block; padding: 0 6px; margin-right: 4px; border-radius: var(--pill-radius); font: 650 10px/1.5 var(--mono); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); }
+.cp-f { display: inline-block; padding: 0 6px; margin-right: 4px; border-radius: var(--pill-radius); font: 650 var(--type-tag)/1.5 var(--mono); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); }
 .cp-f.fix { background: var(--amber); color: #fff; box-shadow: none; }
 .cd-row.big { align-items: center; gap: 10px; padding: 8px 4px; border-radius: 0; }
 .cd-row.big + .cd-row.big, .cd-row.big + .cd-under + .cd-row.big { border-top: 1px solid var(--line); }
 .cd-main { flex: 1; min-width: 0; }
-.cd-row.big .cd-what { display: block; font-size: 13px; font-weight: 600; white-space: normal; }
-.cd-sub { display: flex; align-items: baseline; gap: 6px; margin-top: 3px; min-width: 0; color: var(--muted); font-size: 12px; }
+.cd-row.big .cd-what { display: block; font-size: var(--type-body); font-weight: 600; white-space: normal; }
+.cd-sub { display: flex; align-items: baseline; gap: 6px; margin-top: 3px; min-width: 0; color: var(--muted); font-size: var(--type-small); }
 .cd-sub .cd-why { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cd-tag { flex: none; padding: 0 7px; border-radius: var(--pill-radius); box-shadow: inset 0 0 0 1px var(--line); font: 650 10.5px/1.6 var(--mono); color: var(--ink); }
+.cd-tag { flex: none; padding: 0 7px; border-radius: var(--pill-radius); box-shadow: inset 0 0 0 1px var(--line); font: 650 var(--type-tag)/1.6 var(--mono); color: var(--ink); }
 .cd-back { flex: none; }
 /* A narrower page: the goal's boxes two by two. */
 @container cp (max-width: 1000px) {
@@ -331,16 +331,16 @@ button.cpb-who:hover { text-decoration: underline; text-underline-offset: 2px; }
 /* The crew's mode on its tray line, and its menu (ui/team_send.js crewMode), opening upward: two segmented choices,
    split work (Auto · Always · Never) and what happens when a review comes back (Handle it · Ask me). */
 .crew-pick { position: relative; display: inline-flex; flex: none; }
-.crew-menu { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 30; width: 320px; display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 12px; background: var(--panel); box-shadow: 0 0 0 1px var(--line), 0 8px 24px rgba(0, 0, 0, 0.18); color: var(--ink); font-size: 12.5px; font-weight: 400; white-space: normal; cursor: default; }
+.crew-menu { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 30; width: 320px; display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 12px; background: var(--panel); box-shadow: 0 0 0 1px var(--line), 0 8px 24px rgba(0, 0, 0, 0.18); color: var(--ink); font-size: var(--type-body); font-weight: 400; white-space: normal; cursor: default; }
 /* In the ⋯ menu: an item like the others, its settings opening under it, in the menu's flow. */
 .crew-in-more { display: flex; flex-direction: column; }
 .crew-in-more .crew-menu { position: static; width: auto; margin: 2px 4px 6px; box-shadow: 0 0 0 1px var(--line); }
-.crew-in-more .team-sw button { display: inline-flex; flex-direction: row; align-items: center; height: 26px; padding: 0 8px; border-radius: 6px; font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.crew-in-more .team-sw button { display: inline-flex; flex-direction: row; align-items: center; height: 26px; padding: 0 8px; border-radius: 6px; font-size: var(--type-pill); font-weight: 600; color: var(--muted); }
 .crew-in-more .team-sw button.on { color: var(--ink); background: var(--panel); }
-.crew-q { margin-top: 2px; color: var(--muted); font-size: 12px; font-weight: 650; }
+.crew-q { margin-top: 2px; color: var(--muted); font-size: var(--type-small); font-weight: 650; }
 .crew-menu .team-sw { align-self: flex-start; }
-.crew-foot { margin-top: 2px; color: var(--muted); font-size: 12px; }
-.team-sw { flex: none; display: inline-flex; align-items: center; gap: 1px; height: 30px; padding: 2px; box-sizing: border-box; border-radius: 8px; background: var(--panel-2); font-size: 11.5px; font-weight: 600; }
+.crew-foot { margin-top: 2px; color: var(--muted); font-size: var(--type-small); }
+.team-sw { flex: none; display: inline-flex; align-items: center; gap: 1px; height: 30px; padding: 2px; box-sizing: border-box; border-radius: 8px; background: var(--panel-2); font-size: var(--type-pill); font-weight: 600; }
 .team-sw button { height: 26px; padding: 0 8px; border-radius: 6px; color: var(--muted); }
 .team-sw button:hover { color: var(--ink); }
 .team-sw button.on { color: var(--ink); background: var(--panel); box-shadow: 0 0 0 1px var(--line); }
@@ -348,16 +348,16 @@ button.cpb-who:hover { text-decoration: underline; text-underline-offset: 2px; }
 /* A task dragged over a hosted lead's card under Sessions, and once dropped, what it would touch before it goes. */
 .working.ho-over { outline: 2px dashed var(--accent); outline-offset: 3px; }
 /* Its own light panel: the card it sits in can be the board's dark one. */
-.ho { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; padding: 10px 12px; border-radius: 10px; background: var(--panel); box-shadow: 0 0 0 1px var(--line); font-size: 12.5px; color: var(--ink); cursor: default; }
+.ho { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; padding: 10px 12px; border-radius: 10px; background: var(--panel); box-shadow: 0 0 0 1px var(--line); font-size: var(--type-body); color: var(--ink); cursor: default; }
 .ho-title { font-weight: 700; }
 .ho-task { color: var(--muted); line-height: 1.4; overflow-wrap: anywhere; }
-.ho-cap { font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
-.ho-f { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; font-size: 12px; }
+.ho-cap { font-size: var(--type-tag); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.ho-f { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; font-size: var(--type-small); }
 .ho-f .mono { font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ho-by { color: var(--amber); font-weight: 650; text-align: right; }
-.ho-dim { color: var(--muted); font-size: 12px; }
+.ho-dim { color: var(--muted); font-size: var(--type-small); }
 .ho-acts { display: flex; gap: 6px; padding-top: 2px; }
-.ho-acts .btn { height: 28px; padding: 0 11px; font-size: 12px; }
+.ho-acts .btn { height: 28px; padding: 0 11px; font-size: var(--type-small); }
 
 /* A crew member's line in even-width digits, so the words after its time hold still as it changes (team.js mateLine). */
 .mt-line { font-variant-numeric: tabular-nums; }
@@ -371,13 +371,13 @@ button.cp-lead:not(.on):hover { background: var(--panel-2); }
 .cp-lead.on .cp-said { background: var(--on-sel); }
 /* A teammate on the left (team_mate.js): one head line, what it was asked on one line, its files as chips, then the
    reading area with its three tabs, the left's whole width. Its steps and review unfold under its card in the list. */
-.cpm-now { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: 600; }
+.cpm-now { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--type-body); font-weight: 600; }
 .cpm-now.q { color: var(--deny); }
-.cpm-now code, .cpm-at code, .cpm-sw code { font: 11.5px var(--mono); }
-.cpm-acts { flex: none; display: flex; align-items: center; gap: 14px; font-size: 12.5px; }
-.cpm-acts .mt-lk { font-size: 12.5px; }
-.cpm-asked { flex: none; display: flex; align-items: baseline; gap: 10px; padding: 2px 14px 8px; font-size: 12.5px; min-width: 0; border-bottom: 1px solid var(--line); }
-.cpm-al, .cpm-pl { flex: none; font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.cpm-now code, .cpm-at code, .cpm-sw code { font: var(--type-pill) var(--mono); }
+.cpm-acts { flex: none; display: flex; align-items: center; gap: 14px; font-size: var(--type-body); }
+.cpm-acts .mt-lk { font-size: var(--type-body); }
+.cpm-asked { flex: none; display: flex; align-items: baseline; gap: 10px; padding: 2px 14px 8px; font-size: var(--type-body); min-width: 0; border-bottom: 1px solid var(--line); }
+.cpm-al, .cpm-pl { flex: none; font-size: var(--type-tag); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .cpm-at { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
 .cpm-size { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
 .cpm-part { display: flex; flex-direction: column; gap: 3px; }
@@ -395,7 +395,7 @@ button.cp-lead:not(.on):hover { background: var(--panel-2); }
 /* Its files as chips over the reading area: a name and +/−, outlined; the one whose diff shows dark. Many wrap, and
    past three lines they scroll inside. */
 .cpm-chips { flex: none; display: flex; flex-wrap: wrap; gap: 6px; max-height: 92px; overflow-y: auto; padding: 10px 14px 0; }
-.cpm-chip { display: inline-flex; align-items: baseline; gap: 7px; max-width: 100%; box-sizing: border-box; padding: 4px 10px; border-radius: var(--pill-radius); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); font: 11.5px/1.4 var(--mono); }
+.cpm-chip { display: inline-flex; align-items: baseline; gap: 7px; max-width: 100%; box-sizing: border-box; padding: 4px 10px; border-radius: var(--pill-radius); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); font: var(--type-pill)/1.4 var(--mono); }
 .cpm-chip:hover { background: var(--panel-2); }
 .cpm-chip.on { background: var(--ink); color: var(--panel); box-shadow: none; }
 .cpm-chip.on .cpm-n .add, .cpm-chip.on .cpm-n .del { color: var(--panel); }
@@ -404,16 +404,16 @@ button.cp-lead:not(.on):hover { background: var(--panel-2); }
 .cpm-n .add { color: var(--accent); font-weight: 650; }
 .cpm-n .del { color: var(--deny); font-weight: 650; }
 .cpm-read { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; padding: 8px 14px 0; }
-.cpm-tabs { flex: none; display: flex; align-items: center; gap: 16px; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+.cpm-tabs { flex: none; display: flex; align-items: center; gap: 16px; border-bottom: 1px solid var(--line); font-size: var(--type-body); }
 .cpm-tabs button { flex: none; white-space: nowrap; padding: 4px 0 7px; color: var(--muted); font-weight: 600; border-bottom: 2px solid transparent; margin-bottom: -1px; }
 .cpm-tabs button.on { color: var(--ink); border-bottom-color: var(--ink); }
-.cpm-lit { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 11.5px var(--mono); color: var(--muted); }
-.cpm-body { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 10px 0 12px; font-size: 13px; }
+.cpm-lit { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--type-pill) var(--mono); color: var(--muted); }
+.cpm-body { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 10px 0 12px; font-size: var(--type-body); }
 .cpm-nodiff { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
 /* A file's diff in the reading area: one block, its lines on tints of --accent (added) and --deny (removed) over the
    panel, so it reads in both themes; long lines scroll sideways inside it. Each line's old and new numbers (team_mate.js
    crewDiffHtml: data-o, data-n, --ln their width) in a dim gutter that stays put as it scrolls, left out of a copy. */
-.cpm-diff { margin: 0; padding: 6px 0; border-radius: 8px; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); font: 12px/1.6 var(--mono); color: var(--ink); overflow-x: auto; }
+.cpm-diff { margin: 0; padding: 6px 0; border-radius: 8px; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); font: var(--type-small)/1.6 var(--mono); color: var(--ink); overflow-x: auto; }
 .cpm-diff > span { display: block; padding: 0 12px 0 0; white-space: pre; min-width: max-content; background: var(--panel); }
 .cpm-diff > .add { background: color-mix(in srgb, var(--accent) 15%, var(--panel)); }
 .cpm-diff > .del { background: color-mix(in srgb, var(--deny) 11%, var(--panel)); }
@@ -426,7 +426,7 @@ button.cp-lead:not(.on):hover { background: var(--panel-2); }
 .cpm-diff .ln::after { content: attr(data-n) "\200B"; }
 /* An ask out of view: a red chip pinned at the list's bottom edge (top when it's above). */
 .cp-list { position: relative; }
-.cp-jump { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); z-index: 2; padding: 5px 13px; border-radius: var(--pill-radius); background: var(--deny); color: #fff; font-size: 12.5px; font-weight: 650; white-space: nowrap; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18); }
+.cp-jump { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); z-index: 2; padding: 5px 13px; border-radius: var(--pill-radius); background: var(--deny); color: #fff; font-size: var(--type-body); font-weight: 650; white-space: nowrap; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18); }
 .cp-jump.up { bottom: auto; top: 120px; }
 .cp-jump[hidden] { display: none; }
 /* Narrow (SPEC §13). A teammate in a left under 600 wide: the size and the lit file's whole path give way (its chip
@@ -438,10 +438,10 @@ button.cp-lead:not(.on):hover { background: var(--panel-2); }
 }
 /* Under the picked teammate's card (team_mate.js crewMateExp): its steps and what its review found, on panel-2 under
    the lit row, in the ink of the page. */
-.cp-exp { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 12px; padding: 8px 12px 12px; border-top: 1px solid var(--line); background: var(--panel-2); color: var(--ink); font-size: 12px; cursor: default; }
+.cp-exp { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 12px; padding: 8px 12px 12px; border-top: 1px solid var(--line); background: var(--panel-2); color: var(--ink); font-size: var(--type-small); cursor: default; }
 .cp-card.on .cp-exp .mt-lk { color: var(--muted); }
 .cp-card.on .cp-exp .mt-lk:hover { color: var(--ink); }
-.cpm-more { align-self: flex-start; padding: 0 0 2px; font-size: 11.5px; }
+.cpm-more { align-self: flex-start; padding: 0 0 2px; font-size: var(--type-pill); }
 /* The bar in a narrow left: one line each, what's left out first the keys (or the one-way sentence: its tag stays),
    then the reason and the verb ("wants to run"), so the command keeps its room. */
 .cp-bar { container: cpbar / inline-size; }

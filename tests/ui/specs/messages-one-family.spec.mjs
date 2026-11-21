@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import { test, expect, openDesk } from "./cue.mjs";
 
-const BODY = "13.5px", META = "12px";
+const BODY = "13px", META = "12px";
 
 /** The font size of each element `loc` matches. */
 const sizes = (loc) => loc.evaluateAll((es) => es.map((e) => getComputedStyle(e).fontSize));

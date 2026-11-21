@@ -10,6 +10,13 @@ import AppKit
 import SwiftUI
 import VoiceCore
 
+/// Cue's type scale (#528, option B; ui/styles/base.css --type-*): whole points, one size per job. Every text size on
+/// the island and the captions bar is one of these.
+enum TypeScale {
+  static let tag: CGFloat = 10, pill: CGFloat = 11, small: CGFloat = 12, body: CGFloat = 13
+  static let title: CGFloat = 15, page: CGFloat = 20, figure: CGFloat = 32
+}
+
 /// A session's colors as Cue's talk.rs sends them (#rrggbb): its window's green and the color on it.
 struct Look: Equatable {
   var bg = "#3F4A22", onBg = "#FFFFFF", sel = "#D2DE96", onSel = "#1E2410"
@@ -322,7 +329,7 @@ struct PillView: View {
       HStack(spacing: 7) {
         Circle().fill(Color(hex: m.look.sel)).frame(width: 8, height: 8)
         Text(m.short + (m.more > 0 ? " · +\(m.more)" : ""))
-          .font(.system(size: 10, weight: .bold)).tracking(1.1)
+          .font(.system(size: TypeScale.tag, weight: .bold)).tracking(1.1)
           .foregroundStyle(Color(hex: m.look.sel))
           .lineLimit(1).minimumScaleFactor(0.75)
       }
@@ -350,7 +357,7 @@ struct PillView: View {
     return HStack(spacing: 0) {
       TimelineView(.periodic(from: m.since ?? Date(), by: 1)) { t in
         Text(m.since.map { clock(t.date.timeIntervalSince($0)) } ?? "")
-          .font(.system(size: 10.5, weight: .semibold).monospacedDigit())
+          .font(.system(size: TypeScale.tag, weight: .semibold).monospacedDigit())
           .foregroundStyle(ink.opacity(0.65))
       }
       .frame(width: left, alignment: .leading)
@@ -365,7 +372,7 @@ struct PillView: View {
               Text(m.doing.hasPrefix("By the way") ? "By the way" : "Thinking")
               Text(String(repeating: ".", count: Int(t.date.timeIntervalSinceReferenceDate / 0.4) % 4 + 1)).frame(width: 12, alignment: .leading)
             }
-            .font(.system(size: 11, weight: .medium))
+            .font(.system(size: TypeScale.pill, weight: .medium))
             .foregroundStyle(ink.opacity(0.85))
             .lineLimit(1)
             .fixedSize()   // one line always: it wrapped when the space was a little short
@@ -393,7 +400,7 @@ struct PillView: View {
   private var name: some View {
     HStack(spacing: 6) {
       Circle().fill(Color(hex: m.look.bg)).frame(width: 7, height: 7)
-      Text(m.name).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+      Text(m.name).font(.system(size: TypeScale.small, weight: .semibold)).lineLimit(1)
     }
     .foregroundStyle(Color(hex: m.look.onSel))
     .padding(.horizontal, 9).padding(.vertical, 3)
@@ -407,7 +414,7 @@ struct PillView: View {
           TimelineView(.periodic(from: since, by: 1)) { t in Text("\(m.label) · \(clock(t.date.timeIntervalSince(since)))") }
         } else { Text(m.label) }
       }
-      .font(.system(size: 11, weight: .bold)).tracking(1.2).opacity(0.8)
+      .font(.system(size: TypeScale.pill, weight: .bold)).tracking(1.2).opacity(0.8)
     }
   }
 
@@ -420,11 +427,11 @@ struct PillView: View {
         label
         Spacer(minLength: 0)
         if m.showLevel { Bars(level: m.level).foregroundStyle(Color(hex: m.look.sel)) }
-        if m.speaking { Image(systemName: "speaker.wave.2.fill").font(.system(size: 13)).foregroundStyle(Color(hex: m.look.sel)) }
+        if m.speaking { Image(systemName: "speaker.wave.2.fill").font(.system(size: TypeScale.body)).foregroundStyle(Color(hex: m.look.sel)) }
       }
       if !m.text.isEmpty {
         Text(m.text)
-          .font(.system(size: 16, weight: m.yours ? .medium : .semibold))
+          .font(.system(size: TypeScale.title, weight: m.yours ? .medium : .semibold))
           .lineSpacing(3)
           .opacity(m.yours ? 0.7 : 1)
           .lineLimit(6)
@@ -436,8 +443,8 @@ struct PillView: View {
           ForEach(Array(m.buttons.enumerated()), id: \.offset) { _, b in
             Button(action: b.action) {
               HStack(spacing: 6) {
-                if let icon = b.icon { Image(systemName: icon).font(.system(size: 12)) }
-                Text(b.title).font(.system(size: 13, weight: .semibold))
+                if let icon = b.icon { Image(systemName: icon).font(.system(size: TypeScale.small)) }
+                Text(b.title).font(.system(size: TypeScale.body, weight: .semibold))
               }
               .foregroundStyle(b.primary ? Color(hex: m.look.onSel) : ink)
               .padding(.horizontal, 14).padding(.vertical, 6)
@@ -452,9 +459,9 @@ struct PillView: View {
         HStack(spacing: 14) {
           ForEach(Array(m.keys.enumerated()), id: \.offset) { _, k in
             HStack(spacing: 5) {
-              Text(k.0).font(.system(size: 11, weight: .semibold)).padding(.horizontal, 6).padding(.vertical, 1)
+              Text(k.0).font(.system(size: TypeScale.pill, weight: .semibold)).padding(.horizontal, 6).padding(.vertical, 1)
                 .background(RoundedRectangle(cornerRadius: 5).fill(ink.opacity(0.16)))
-              Text(k.1).font(.system(size: 12))
+              Text(k.1).font(.system(size: TypeScale.small))
             }
           }
         }
@@ -478,7 +485,7 @@ struct Crawl: View {
   let width: CGFloat
   var ink: Color = onIsland
   /// Digits all as wide, so the clock ticking doesn't change the text's width (where it is, is a remainder of it).
-  private static let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+  private static let font = NSFont.monospacedDigitSystemFont(ofSize: TypeScale.pill, weight: .medium)
 
   var body: some View {
     let w = max(1, NSAttributedString(string: text, attributes: [.font: Crawl.font]).size().width + 24)
@@ -486,7 +493,7 @@ struct Crawl: View {
     HStack(spacing: 24) {
       ForEach(0..<(Int(width / w) + 2), id: \.self) { _ in Text(text) }
     }
-    .font(.system(size: 11, weight: .medium).monospacedDigit())
+    .font(.system(size: TypeScale.pill, weight: .medium).monospacedDigit())
     .foregroundStyle(ink.opacity(0.85))
     .lineLimit(1)
     .fixedSize()
@@ -504,16 +511,16 @@ struct LineView: View {
   /// A click anywhere on it (but its buttons): the chat opens, as a click on the island does.
   var click: () -> Void = {}
   @StateObject private var follow = Follower()
-  private static let size: CGFloat = 22
+  private static let size: CGFloat = TypeScale.page
   private static let font = NSFont.systemFont(ofSize: size, weight: .semibold)
-  static let textFont = NSFont.systemFont(ofSize: 16, weight: .semibold)
+  static let textFont = NSFont.systemFont(ofSize: TypeScale.title, weight: .semibold)
   private var ink: Color { Color(hex: m.look.onSel) }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       if !m.text.isEmpty {
         Text(m.text)
-          .font(.system(size: 16, weight: .semibold))
+          .font(.system(size: TypeScale.title, weight: .semibold))
           .lineSpacing(3)
           .lineLimit(6)
           .truncationMode(.head)
@@ -538,7 +545,7 @@ struct LineView: View {
             .opacity(talking ? 0.35 + 0.65 * (0.5 + 0.5 * sin(t.date.timeIntervalSinceReferenceDate * 2 * .pi / 1.6)) : 1)
         }
         .frame(width: 7, height: 7)
-        Text(m.yours ? "You · to \(m.name)" : m.name).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+        Text(m.yours ? "You · to \(m.name)" : m.name).font(.system(size: TypeScale.small, weight: .semibold)).lineLimit(1)
       }
       .foregroundStyle(Color(hex: m.look.onBg))
       .padding(.horizontal, 10).padding(.vertical, 3)
@@ -552,7 +559,7 @@ struct LineView: View {
           Text(LineView.clock(left.rounded(.up)))
         }
       }
-      .font(.system(size: 12, weight: .semibold).monospacedDigit())
+      .font(.system(size: TypeScale.small, weight: .semibold).monospacedDigit())
       .foregroundStyle(Color(hex: m.look.bg))
       .fixedSize()
       if m.line.isEmpty { Spacer(minLength: 0) } else { words }
@@ -568,8 +575,8 @@ struct LineView: View {
       ForEach(Array(m.buttons.enumerated()), id: \.offset) { _, b in
         Button(action: b.action) {
           HStack(spacing: 6) {
-            if let icon = b.icon { Image(systemName: icon).font(.system(size: 11)) }
-            Text(b.title).font(.system(size: 12.5, weight: .semibold))
+            if let icon = b.icon { Image(systemName: icon).font(.system(size: TypeScale.pill)) }
+            Text(b.title).font(.system(size: TypeScale.body, weight: .semibold))
           }
           .foregroundStyle(b.primary ? Color(hex: m.look.onBg) : ink)
           .padding(.horizontal, 12).padding(.vertical, 5)
@@ -581,9 +588,9 @@ struct LineView: View {
       if m.keys.indices.contains(m.hint) {
         let k = m.keys[m.hint]
         HStack(spacing: 4) {
-          Text(k.0).font(.system(size: 11, weight: .semibold)).padding(.horizontal, 6).padding(.vertical, 1)
+          Text(k.0).font(.system(size: TypeScale.pill, weight: .semibold)).padding(.horizontal, 6).padding(.vertical, 1)
             .background(RoundedRectangle(cornerRadius: 5).fill(ink.opacity(0.12)))
-          Text(k.1).font(.system(size: 12))
+          Text(k.1).font(.system(size: TypeScale.small))
         }
         .foregroundStyle(Color(hex: m.look.bg))
       }
@@ -725,7 +732,7 @@ struct Peek: View {
         .onTapGesture(perform: click)
       if m.more > 0 {
         Text("+\(m.more)")
-          .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
+          .font(.system(size: TypeScale.tag, weight: .semibold, design: .monospaced))
           .foregroundStyle(Color(hex: m.look.sel))
           .padding(.horizontal, 6).padding(.vertical, 1)
           .background(Capsule().fill(Color(hex: m.look.bg)))

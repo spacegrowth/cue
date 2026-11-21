@@ -17,12 +17,10 @@
   --radius-card: 12px;
   --radius-pane: 14px;
   --radius-pill: var(--pill-radius);
-  --type-body: 13.5px;      /* Mac "body": anything a message says */
+  /* The type scale itself (--type-tag … --type-figure) is in base.css; these name its jobs in a message. */
   --type-body-lh: 1.5;
-  --type-button: 12px;      /* Mac "button", 650 */
-  --type-meta: 12px;        /* who → to, how it went, the status line (the head row of option B) */
-  --type-pill: 11px;        /* Mac mono "pill", 600: the item's number, the age */
-  --type-tag: 10.5px;       /* mono tag, 0.12em: NOTE, ASKS YOU, FROM ANOTHER DESK */
+  --type-button: var(--type-small);   /* Mac "button", 650 */
+  --type-meta: var(--type-small);     /* who → to, how it went, the status line (the head row of option B) */
   --on-deny: #FFFFFF;       /* text on a deny fill (the ask's tag) */
   /* The family's two sizes, by name, so a screen never picks its own. */
   --mg-body: 400 var(--type-body) / var(--type-body-lh) var(--sans);

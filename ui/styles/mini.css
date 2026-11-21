@@ -5,7 +5,7 @@
    theme), in your Color. Tucked away, the rail's tab and the notch's island are the slab's dark, one shape with
    the edge or the notch. */
 html, body.mini { background: transparent; height: auto; }
-body.mini { overflow: hidden; font-size: 13px; }
+body.mini { overflow: hidden; font-size: var(--type-body); }
 #mini { display: flex; }
 .mini .g { flex-grow: 1; }
 .m-panel { width: 100%; }
@@ -16,7 +16,7 @@ body.mini { overflow: hidden; font-size: 13px; }
 .m-dot.ask { background: #E8907F; }
 .m-dot.work { background: var(--work); }
 .m-dot.idle { background: var(--line); }
-.m-tag { font: 600 10px var(--mono); letter-spacing: .12em; border-radius: var(--pill-radius); padding: 2px 7px; white-space: nowrap; }
+.m-tag { font: 600 var(--type-tag) var(--mono); letter-spacing: .12em; border-radius: var(--pill-radius); padding: 2px 7px; white-space: nowrap; }
 .m-tag.turn { background: var(--sel); color: var(--on-sel); }
 .m-tag.ask { background: var(--deny); color: #fff; }
 .m-tag.work { background: var(--panel-2); color: var(--muted); }
@@ -31,7 +31,7 @@ body.mini { overflow: hidden; font-size: 13px; }
 @media (prefers-reduced-motion: reduce) { .m-tuck.work .m-live, .m-tab .m-dot.work { animation: none; } }
 /* At work, at the notch and on the rail's tab: the dot blinks, as in the tabs. A blink is always work. */
 .m-island .m-dot.work, .m-tuck.work .m-live { animation: m-blink 1s steps(1, end) infinite; }
-.m-link { font-size: 12px; font-weight: 600; border-radius: 8px; padding: 3px 8px; }
+.m-link { font-size: var(--type-small); font-weight: 600; border-radius: 8px; padding: 3px 8px; }
 
 /* ---------- the chat (both shapes) ---------- */
 /* The chat is its window's full width, fixed (mini.js sets --chat-w): never wider (a long line wraps or scrolls
@@ -51,7 +51,7 @@ body.mini { overflow: hidden; font-size: 13px; }
 .rail .m-chat textarea[data-text] { max-height: 112px; }
 .m-chat-head { display: flex; align-items: center; gap: 8px; padding: 0 12px; height: 40px; flex: none; border-bottom: 1px solid var(--line); }
 .m-chat-head .m-link { color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
-.m-quiet { font-size: 12px; color: var(--muted); }
+.m-quiet { font-size: var(--type-small); color: var(--muted); }
 
 /* ---------- the notch: the notch itself opens, all one black shape ---------- */
 /* Pure black like the hardware, so with nothing to show the island is just the notch (black on its black; on a
@@ -74,7 +74,7 @@ body.mini { overflow: hidden; font-size: 13px; }
 .notch .m-island.peek::before, .notch .m-island.peek::after { content: ""; position: absolute; top: 0; width: var(--sh); height: var(--sh); }
 .notch .m-island.peek::before { left: calc(-1 * var(--sh)); background: var(--shl); }
 .notch .m-island.peek::after { right: calc(-1 * var(--sh)); background: var(--shr); }
-.notch .m-island { width: var(--nw); height: var(--nh); border-radius: 0 0 10px 10px; display: flex; align-items: center; padding: 0 12px; font: 600 11.5px var(--mono); }
+.notch .m-island { width: var(--nw); height: var(--nh); border-radius: 0 0 10px 10px; display: flex; align-items: center; padding: 0 12px; font: 600 var(--type-pill) var(--mono); }
 .notch .m-island.peek { width: calc(var(--nw) + 2 * var(--peek)); border-radius: 0 0 12px 12px; }
 .m-wing { display: inline-flex; align-items: center; gap: 10px; }
 .m-n { display: inline-flex; align-items: center; gap: 5px; }
@@ -97,7 +97,7 @@ body.mini { overflow: hidden; font-size: 13px; }
 
 /* Tabs across the chat's top: a session each, the open one on the panel. */
 .m-tabs { display: flex; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid var(--line); overflow-x: auto; flex: none; }
-.m-tab { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 8px 8px 0 0; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.m-tab { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 8px 8px 0 0; font-size: var(--type-small); color: var(--muted); white-space: nowrap; }
 .m-tab:hover { color: var(--ink); }
 .m-tab.on { color: var(--ink); font-weight: 650; background: var(--panel-2); }
 
@@ -110,7 +110,7 @@ body.mini { overflow: hidden; font-size: 13px; }
 .m-tuck { width: 36px; height: 76px; flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px;
   padding: 0 0 0 6px; box-sizing: border-box; border-radius: 12px 0 0 12px; background: var(--slab); color: var(--on-slab);
   cursor: grab; touch-action: none;
-  clip-path: inset(0 0 0 6px round 12px 0 0 12px); transition: clip-path .2s; font-size: 18px; line-height: 1; }
+  clip-path: inset(0 0 0 6px round 12px 0 0 12px); transition: clip-path .2s; font-size: var(--type-title); line-height: 1; }
 .m-tuck.over, .m-tuck:hover { clip-path: inset(0 round 12px 0 0 12px); }
 .m-live { width: 7px; height: 7px; border-radius: 50%; background: color-mix(in srgb, var(--on-slab) 30%, transparent); }
 .m-tuck.work .m-live { background: var(--sel); }
@@ -123,10 +123,10 @@ body.mini { overflow: hidden; font-size: 13px; }
 .rail .m-chat { background: var(--panel); color: var(--ink); border-radius: 14px 0 0 14px; box-shadow: inset 0 0 0 1px var(--line); }
 .m-bar { display: flex; align-items: flex-start; gap: 4px; min-height: 36px; padding: 6px 6px 6px 8px; box-sizing: border-box; flex: none; cursor: grab; border-bottom: 1px solid var(--line); touch-action: none; }
 .m-bar .m-tabs { border: 0; padding: 0; flex: 1; min-width: 0; gap: 2px; flex-wrap: wrap; overflow: visible; }
-.m-bar .m-tab { flex: none; height: 24px; padding: 0 8px; border-radius: 6px; font: 600 11.5px var(--sans); color: inherit; opacity: .65; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.m-bar .m-tab { flex: none; height: 24px; padding: 0 8px; border-radius: 6px; font: 600 var(--type-pill) var(--sans); color: inherit; opacity: .65; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .m-bar .m-tab:hover { opacity: .9; background: color-mix(in srgb, var(--ink) 7%, transparent); }
 .m-bar .m-tab.on { opacity: 1; background: color-mix(in srgb, var(--ink) 11%, transparent); font-weight: 600; }
-.m-pipbtn { width: 26px; height: 24px; border-radius: 6px; color: inherit; opacity: .75; flex: none; font-size: 14px; }
+.m-pipbtn { width: 26px; height: 24px; border-radius: 6px; color: inherit; opacity: .75; flex: none; font-size: var(--type-body); }
 .m-pipbtn:hover { opacity: 1; background: color-mix(in srgb, var(--ink) 9%, transparent); }
 body.m-drag, body.m-drag * { cursor: grabbing !important; user-select: none; }
 /* It eases out from the edge a short way as it fades in, settling without overshoot; it leaves the same way,
@@ -152,33 +152,33 @@ body.m-drag, body.m-drag * { cursor: grabbing !important; user-select: none; }
 .mini .m-tab .dk-kic, .m-island .dk-kic, .m-dk-who .dk-kic { color: inherit; margin-right: 0; }
 .m-island .m-dk-n { gap: 6px; }
 .m-dot.acc { background: var(--accent); }
-.m-tn { font: 600 11px var(--mono); color: var(--muted); }
+.m-tn { font: 600 var(--type-pill) var(--mono); color: var(--muted); }
 .m-tab.on .m-tn { color: var(--ink); }
-.m-cnt { display: inline-flex; align-items: center; gap: 5px; font: 600 11.5px var(--mono); color: var(--ink); }
+.m-cnt { display: inline-flex; align-items: center; gap: 5px; font: 600 var(--type-pill) var(--mono); color: var(--ink); }
 .m-cnt .dk-si { margin: 0; }
 .m-chat-head .m-cnt + .m-cnt { margin-left: 4px; }
 .m-dk-cnts { display: flex; gap: 12px; padding: 8px 14px; border-bottom: 1px solid var(--line); flex: none; }
 /* The list scrolls inside the panel's height, as the chat does. */
 .m-dk { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 0 12px; }
-.m-dk-g { display: flex; align-items: baseline; gap: 6px; padding: 12px 16px 4px; font-size: 11.5px; font-weight: 650; color: var(--muted); }
-.m-dk-gn { font: 600 11px var(--mono); }
-.m-dk-none { padding: 16px; color: var(--muted); font-size: 12.5px; }
+.m-dk-g { display: flex; align-items: baseline; gap: 6px; padding: 12px 16px 4px; font-size: var(--type-pill); font-weight: 650; color: var(--muted); }
+.m-dk-gn { font: 600 var(--type-pill) var(--mono); }
+.m-dk-none { padding: 16px; color: var(--muted); font-size: var(--type-body); }
 .m-dk-it { display: flex; flex-direction: column; gap: 3px; margin: 2px 8px; padding: 8px; border-radius: 10px; cursor: pointer; }
 .m-dk-it:hover { background: var(--panel-2); }
 .m-dk-1, .m-dk-2 { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .m-dk-1 .dk-si { margin: 0; flex: none; }
-.m-dk-t { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.m-dk-age { flex: none; font: 11px var(--mono); color: var(--muted); }
+.m-dk-t { flex: 1; min-width: 0; font-size: var(--type-body); font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.m-dk-age { flex: none; font: var(--type-pill) var(--mono); color: var(--muted); }
 /* Under the title, lined up with it (past the state icon): the kind and number, who holds it. */
-.m-dk-2 { padding-left: 21px; font-size: 11.5px; color: var(--muted); }
+.m-dk-2 { padding-left: 21px; font-size: var(--type-pill); color: var(--muted); }
 .m-dk-2 .dk-kic { margin: 0; color: inherit; }
-.m-dk-id { font: 11px var(--mono); flex: none; }
+.m-dk-id { font: var(--type-pill) var(--mono); flex: none; }
 .m-dk-who { display: inline-flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; white-space: nowrap; margin-left: 4px; }
 .m-dk-who > span { overflow: hidden; text-overflow: ellipsis; }
 .m-dk-to { flex: none; }
 .m-dk-ask { display: flex; flex-direction: column; gap: 6px; padding: 4px 0 2px 21px; cursor: default; }
 /* What it asks, as the message family's plain line (#501) at the row's size; the ask itself reads in ink. */
-.m-dk-q { font-size: 12.5px; line-height: 1.4; }
+.m-dk-q { font-size: var(--type-body); line-height: 1.4; }
 .m-dk-q.mg-plain { color: var(--ink); }
 .m-dk-acts { display: flex; flex-wrap: wrap; gap: 6px; }
 .m-dk-acts .dk-soon { margin: 0; }
@@ -186,11 +186,11 @@ body.m-drag, body.m-drag * { cursor: grabbing !important; user-select: none; }
 .m-dk-said { padding: 4px 0 0 21px; }
 .m-dk-box { display: flex; align-items: flex-end; gap: 6px; padding: 4px 4px 4px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
 .m-dk-box:focus-within { border-color: color-mix(in srgb, var(--ink) 30%, var(--line)); }
-.m-dk-box textarea { flex: 1; min-height: 26px; max-height: 72px; padding: 4px 0; border: 0; outline: none; resize: none; background: none; color: var(--ink); font: 13px/1.4 var(--sans); field-sizing: content; }
+.m-dk-box textarea { flex: 1; min-height: 26px; max-height: 72px; padding: 4px 0; border: 0; outline: none; resize: none; background: none; color: var(--ink); font: var(--type-body)/1.4 var(--sans); field-sizing: content; }
 .m-dk-ask .dk-sb { margin-top: 0; }
 .m-dk-ask .dk-box.dk-sb-box { padding: 6px 6px 6px 10px; }
 .m-dk-rest { display: flex; gap: 14px; padding: 8px 16px 0; }
-.m-dk-rest .m-cnt { color: var(--muted); font-family: var(--sans); font-weight: 500; font-size: 12px; }
+.m-dk-rest .m-cnt { color: var(--muted); font-family: var(--sans); font-weight: 500; font-size: var(--type-small); }
 /* At the notch the buttons are the dark theme's, on its black (the main one keeps its own color). */
 .notch .m-dk .btn:not(.primary) { background: var(--panel-2); border-color: var(--line); }
 .notch .m-dk-box, .notch .m-dk .dk-box { background: #000; }

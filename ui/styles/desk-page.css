@@ -39,14 +39,14 @@
 .dk-mfiles summary:hover { color: var(--ink); }
 .dk-mfl { margin: 4px 0 0 14px; font: 400 var(--type-pill) / 1.6 var(--mono); overflow-wrap: anywhere; }
 /* A centred line between thin rules (.dk-cl): the lead's lines, Cue's notes, a check you made. */
-.dk-cl { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+.dk-cl { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: var(--type-body); line-height: 1.45; }
 .dk-cl::before, .dk-cl::after { content: ""; flex: 1; min-width: 16px; height: 1px; background: var(--line); }
 .dk-cl-t { flex: 0 1 auto; max-width: 80%; text-align: center; overflow-wrap: anywhere; }
 .dk-cl-t b { color: var(--ink); font-weight: 650; }
 .dk-inum { font-weight: 650; color: var(--ink); }
 /* #203: icon and number on one line, the title under them across the card's width, never a column beside the icon. */
 
-.dk-cm { font-family: var(--mono); font-size: 11px; }
+.dk-cm { font-family: var(--mono); font-size: var(--type-pill); }
 .dk-chk-done { margin: 8px 0; }
 /* What the lead did on its own (#360): a line in its chat, its item's number opening the item. */
 .dk-act { margin: 6px 0; text-align: left; }
@@ -56,13 +56,13 @@
 /* Dispatcher Actions (#374, named #390): a list of its own moves, newest first: time, then its words and why. */
 .dk-moves { padding: 8px 16px 16px; }
 .dk-mv-h { display: flex; align-items: center; gap: 8px; padding: 6px 0 10px; }
-.dk-mv-t { font: 700 11px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-.dk-mv-ask { color: var(--muted); font-size: 12px; }
-.dk-mv { display: flex; gap: 12px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 13px; line-height: 1.45; }
+.dk-mv-t { font: 700 var(--type-pill) var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.dk-mv-ask { color: var(--muted); font-size: var(--type-small); }
+.dk-mv { display: flex; gap: 12px; padding: 7px 0; border-top: 1px solid var(--line); font-size: var(--type-body); line-height: 1.45; }
 .dk-mv-at { flex: none; width: 92px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .dk-mv-line { min-width: 0; }
-.dk-mv-more { min-height: 24px; padding: 8px 0; color: var(--muted); font-size: 12px; }
-.dk-pall { all: unset; cursor: pointer; padding: 4px 8px; color: var(--muted); font-size: 12px; }
+.dk-mv-more { min-height: 24px; padding: 8px 0; color: var(--muted); font-size: var(--type-small); }
+.dk-pall { all: unset; cursor: pointer; padding: 4px 8px; color: var(--muted); font-size: var(--type-small); }
 .dk-pall:hover { color: var(--ink); text-decoration: underline; }
 .dk-prow.dk-pdid { cursor: default; }
 .dk-prow.dk-pdid:hover { background: none; }
@@ -75,18 +75,18 @@
 /* The Desk chats' unset buttons (a line, a title, who did it, waits on you ›): a ring when
    reached by keyboard, as the item page's tabs have. */
 .dk-sch-t:focus-visible, .dk-chk-a:focus-visible, .dk-ln-it:focus-visible, .mg-line[role="button"]:focus-visible, .dk-undo-c:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
-.dk-chk-after { padding-top: 6px; font-size: 12.5px; color: var(--muted); }
+.dk-chk-after { padding-top: 6px; font-size: var(--type-body); color: var(--muted); }
 /* Send back, open on its item (desk.js deskBackHtml): why, in a box like the Desk's own. */
 .dk-sb { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
 .dk-sb-h { display: flex; align-items: baseline; gap: 8px; }
-.dk-sb-l { flex: 1; font-size: 12.5px; font-weight: 600; color: var(--ink); }
-.dk-sb-x { all: unset; cursor: pointer; font-size: 12px; color: var(--muted); }
+.dk-sb-l { flex: 1; font-size: var(--type-body); font-weight: 600; color: var(--ink); }
+.dk-sb-x { all: unset; cursor: pointer; font-size: var(--type-small); color: var(--muted); }
 .dk-sb-x:hover { color: var(--ink); }
 .dk-box.dk-sb-box { margin: 0; }
 .dk-pane .dk-sb { padding: 14px 24px 0; }
 .dk-box.dk-sb-box:focus-within { border-color: color-mix(in srgb, var(--ink) 30%, var(--line)); }
 /* "Done when" as a checklist (desk.js deskDoneWhenHtml): a point a line, small, room between; a quiet ring in front. */
-.dk-dwl { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-direction: column; gap: 7px; font-size: 12.5px; line-height: 1.45; color: var(--ink); }
+.dk-dwl { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-direction: column; gap: 7px; font-size: var(--type-body); line-height: 1.45; color: var(--ink); }
 .dk-dwl li { display: flex; gap: 9px; align-items: baseline; }
 .dk-dwl li > i { flex: none; width: 9px; height: 9px; border: 1.5px solid color-mix(in srgb, var(--muted) 70%, transparent); border-radius: 50%; transform: translateY(1px); }
 .dk-dwl li > span { min-width: 0; overflow-wrap: anywhere; }
@@ -104,7 +104,7 @@
 /* A card's words cut to two lines (desk/lead.js deskCut, #452): More and Less under them, as words, not a button look. */
 .dk-chat .req-cut .req-more { text-transform: capitalize; margin-top: 2px; }
 /* Your words about an item in the lead's chat (deskAboutHead): its kind, number and title over them, quiet. */
-.dk-about { all: unset; display: block; margin-bottom: 4px; font-size: 12px; color: var(--muted); cursor: pointer; overflow-wrap: anywhere; }
+.dk-about { all: unset; display: block; margin-bottom: 4px; font-size: var(--type-small); color: var(--muted); cursor: pointer; overflow-wrap: anywhere; }
 .dk-about b { color: var(--ink); font-weight: 650; }
 .dk-about:hover b { color: var(--link, var(--accent)); }
 /* Looks right's moment to take it back (desk/commit.js): "Done · Undo" on the item, and Undo in the toast. */
@@ -116,7 +116,7 @@
   40% { opacity: 0; }
   to { height: 0; padding-top: 0; padding-bottom: 0; margin-bottom: 0; opacity: 0; }
 }
-.dk-soon { flex: none; margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.dk-soon { flex: none; margin-left: auto; font-size: var(--type-small); color: var(--muted); white-space: nowrap; }
 .toast.acts { pointer-events: auto; }
 .toast-undo { all: unset; color: var(--link, var(--accent)); font-weight: 600; cursor: pointer; }
 .toast-undo:hover { text-decoration: underline; }
@@ -140,7 +140,7 @@
 .dk-chip-line { display: flex; margin-top: 4px; min-width: 0; }
 /* Not a pill (#260, picked C): one quiet line on the card's own ground, the tray and "Desk" in on-bg-muted, the Desk's
    name in on-bg, then ›. A light-grey pill was the one bright block on a see-through Working card. */
-.dk-chip { all: unset; display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; box-sizing: border-box; cursor: pointer; font-size: 12px; font-weight: 500; line-height: 1.5; padding: 1px 0; color: var(--on-bg-muted); white-space: nowrap; }
+.dk-chip { all: unset; display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; box-sizing: border-box; cursor: pointer; font-size: var(--type-small); font-weight: 500; line-height: 1.5; padding: 1px 0; color: var(--on-bg-muted); white-space: nowrap; }
 .dk-chip:focus-visible { outline: 2px solid var(--on-bg); outline-offset: 2px; border-radius: 4px; }
 .dk-chip > .dk-kic { margin: 0; flex: none; color: inherit; }
 .dk-chip-k { flex: none; }
@@ -158,20 +158,20 @@
 .dk-pg { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); grid-template-areas: "head" "panel" "main"; }
 .dk-ph { grid-area: head; min-width: 0; display: flex; flex-direction: column; gap: 8px; padding: 14px 20px 10px; }
 .dk-ph1 { display: flex; align-items: center; gap: 8px; min-height: 28px; }
-.dk-ph1 .dk-back { margin: 0 0 0 -6px; font-size: 12px; font-weight: 600; }
+.dk-ph1 .dk-back { margin: 0 0 0 -6px; font-size: var(--type-small); font-weight: 600; }
 .dk-back.dk-here { cursor: default; }
 .dk-back.dk-here:hover { background: none; color: var(--muted); }
 .dk-ptog { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
 .dk-ptog:hover { color: var(--ink); }
 .dk-ptog svg { flex: none; }
-.dk-ph2 { margin: 0; font: 700 19px/1.22 var(--sans); letter-spacing: -.01em; color: var(--ink); overflow-wrap: anywhere; }
+.dk-ph2 { margin: 0; font: 700 var(--type-page)/1.22 var(--sans); letter-spacing: -.01em; color: var(--ink); overflow-wrap: anywhere; }
 .dk-ph2 .dk-hk > .dk-kic { width: 18px; height: 18px; margin-right: 7px; color: var(--muted); vertical-align: -2px; }
 .dk-hk, .dk-hsep { color: var(--muted); font-weight: 600; white-space: nowrap; }
 .dk-ph2 .dk-tname { display: inline; }
 .dk-ph2 .dk-shn { font: inherit; overflow: visible; white-space: normal; }
 .dk-ph2 .dk-sren { display: inline-grid; vertical-align: -3px; margin-left: 4px; }
 .dk-ph2:hover .dk-sren { opacity: 1; }
-.dk-ph3 { color: var(--muted); font-size: 12px; line-height: 1.45; }
+.dk-ph3 { color: var(--muted); font-size: var(--type-small); line-height: 1.45; }
 .dk-ph3 b { color: var(--ink); font-weight: 600; }
 .dk-ph3 .dk-sch-t { color: var(--ink); font-weight: 600; }
 /* Its own column: the chat or the thread (it scrolls), then the box. */
@@ -179,7 +179,7 @@
 /* Four tabs (#416): each on one line; in a narrow column the row scrolls sideways rather than wrap a name. */
 .dk-ptabs { flex: none; display: flex; align-items: stretch; min-height: 38px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
 .dk-ptabs::-webkit-scrollbar { display: none; }
-.dk-ptabs .dk-tab { flex: none; font-size: 12.5px; white-space: nowrap; }
+.dk-ptabs .dk-tab { flex: none; font-size: var(--type-body); white-space: nowrap; }
 .dk-pg .dk-ipane > .dk-ihead { background: var(--panel); }
 .dk-pg .dk-itabs { margin: 0; padding: 0 12px; gap: 0; }
 .dk-pg .dk-itab { padding: 9px 8px; flex: none; }
@@ -192,8 +192,8 @@
 /* The panel. */
 .dk-panel { grid-area: panel; min-width: 0; padding: 0 20px 12px; border-bottom: 1px solid var(--line); user-select: text; -webkit-user-select: text; }
 .dk-panel button { user-select: none; -webkit-user-select: none; }
-.dk-psh { margin: 0 0 8px; font: 700 10.5px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-.dk-pnr { flex: 1 1 160px; display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 12.5px; }
+.dk-psh { margin: 0 0 8px; font: 700 var(--type-tag) var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.dk-pnr { flex: 1 1 160px; display: flex; align-items: center; gap: 7px; min-width: 0; font-size: var(--type-body); }
 .dk-pword { font-weight: 650; color: var(--ink); white-space: nowrap; }
 .dk-pdot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
 .dk-pdot.ask { background: var(--deny); }
@@ -202,8 +202,8 @@
 .dk-pdot.work { background: var(--accent); }
 .dk-pdot.stop { background: none; box-shadow: inset 0 0 0 1.5px var(--muted); }
 .dk-pfc { display: inline; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
-.dk-psay { margin-top: 6px; font-size: 12px; line-height: 1.45; color: var(--ink); overflow-wrap: anywhere; }
-.dk-psay .dk-pickl { margin: 0; font-size: 12px; }
+.dk-psay { margin-top: 6px; font-size: var(--type-small); line-height: 1.45; color: var(--ink); overflow-wrap: anywhere; }
+.dk-psay .dk-pickl { margin: 0; font-size: var(--type-small); }
 .dk-psay .dk-iub { margin: 3px 0 0; }
 .dk-psay .dk-kic { width: 12px; height: 12px; margin-right: 3px; vertical-align: -2px; color: var(--muted); }
 .dk-pacts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; }
@@ -213,28 +213,28 @@
 /* A picked mocks item and the item that builds its pick, each linking to the other (#281). */
 /* A mocks item's options, each with a Pick (#445). */
 .dk-opts { flex-basis: 100%; list-style: none; margin: 2px 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.dk-opts li { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; }
+.dk-opts li { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: var(--type-body); }
 .dk-optk { flex: none; min-width: 22px; font-weight: 600; }
 .dk-optw { flex: 1; min-width: 0; color: var(--muted); }
 .dk-opts .btn { flex: none; }
 /* The same options under the reply that asks you to pick, in the item's chat (#539). */
 .dk-chat-opts { margin: 8px 0 2px; max-width: 520px; }
-.dk-built { flex-basis: 100%; margin: 0; font-size: 12px; color: var(--muted); }
+.dk-built { flex-basis: 100%; margin: 0; font-size: var(--type-small); color: var(--muted); }
 .dk-built a { color: var(--accent); text-decoration: none; }
 .dk-built a:hover { text-decoration: underline; }
-.dk-pacts .dk-chk-after { font-size: 12px; color: var(--muted); }
+.dk-pacts .dk-chk-after { font-size: var(--type-small); color: var(--muted); }
 /* Send back while you write why (#394): pressed, in place, beside Looks right (greyed till you're done). */
 .dk-pacts .btn[aria-pressed="true"] { background: var(--panel-2); border-color: var(--muted); }
 /* Done when as ticks: a ring each, filled in the accent once it's to check or done. */
-.dk-ptk { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; font-size: 12px; line-height: 1.4; color: var(--ink); }
+.dk-ptk { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; font-size: var(--type-small); line-height: 1.4; color: var(--ink); }
 .dk-ptk li { display: grid; grid-template-columns: 14px minmax(0, 1fr); column-gap: 8px; align-items: start; }
 .dk-tk { width: 14px; height: 14px; margin-top: 1px; box-sizing: border-box; display: grid; place-items: center; border: 1.6px solid var(--muted); border-radius: 50%; }
 .dk-tk.y { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
-.dk-pdw .dk-chk-info { margin-top: 10px; font-size: 11.5px; }
+.dk-pdw .dk-chk-info { margin-top: 10px; font-size: var(--type-pill); }
 /* A note in the panel starts at the same edge as everything else in it (#394). */
 .dk-pg .dk-panel .dk-note { margin: 0; }
 /* WHO: a quiet label, then its value. */
-.dk-pw { display: flex; align-items: baseline; gap: 8px; padding: 2px 0; font-size: 12px; }
+.dk-pw { display: flex; align-items: baseline; gap: 8px; padding: 2px 0; font-size: var(--type-small); }
 .dk-pwl { flex: none; color: var(--muted); }
 .dk-pwv { min-width: 0; color: var(--ink); font-weight: 650; overflow-wrap: anywhere; }
 .dk-pwv .dk-sch-t { color: var(--ink); }
@@ -243,14 +243,14 @@
 .dk-pwa:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 /* The Dispatcher's rows: what waits on you, the sessions at work. */
 .dk-prows { display: flex; flex-direction: column; margin: 0 -8px; }
-.dk-prow { all: unset; display: grid; grid-template-columns: 8px minmax(0, 1fr); column-gap: 9px; row-gap: 1px; align-items: center; padding: 6px 8px; border-radius: 8px; cursor: pointer; font-size: 12.5px; color: var(--ink); }
+.dk-prow { all: unset; display: grid; grid-template-columns: 8px minmax(0, 1fr); column-gap: 9px; row-gap: 1px; align-items: center; padding: 6px 8px; border-radius: 8px; cursor: pointer; font-size: var(--type-body); color: var(--ink); }
 .dk-prow:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
 .dk-prow:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .dk-prt { min-width: 0; display: flex; align-items: center; gap: 6px; overflow: hidden; white-space: nowrap; }
 .dk-prt b { font-weight: 650; overflow: hidden; text-overflow: ellipsis; }
 .dk-prt .dk-kic { flex: none; color: var(--muted); }
 .dk-prow > .dk-prs { grid-column: 2; }
-.dk-prs { color: var(--muted); font-size: 12px; font-weight: 400; }
+.dk-prs { color: var(--muted); font-size: var(--type-small); font-weight: 400; }
 /* Folded is how the rules above draw it: the panel one line under the header, its NOW's dot, word, counts and
    buttons. Hidden by you, or on a card too narrow for both, it stays so; else the two columns. */
 .dk-psec:not(.dk-pnow), .dk-pnow > .dk-psh, .dk-psay { display: none; }
@@ -284,43 +284,43 @@
 /* An item's kind icon wherever its number shows (#292): in the line's own colour, just before the number. */
 :is(.dh-ab, .dk-sch-t, .dk-prs) > .dk-kic { color: inherit; margin-right: 4px; }
 /* Waits on (#250): what an item waits on, in a box, its buttons under it; a circle's tag red, its links each with Cut. */
-.dk-wo { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); font-size: 12.5px; line-height: 1.45; color: var(--ink); }
+.dk-wo { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); font-size: var(--type-body); line-height: 1.45; color: var(--ink); }
 .dk-wo + .dk-wo { margin-top: 8px; }
-.dk-wo-l { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 10.5px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; }
-.dk-wo-tag { padding: 1px 7px; border-radius: var(--pill-radius); background: var(--deny); color: var(--panel); font-size: 10.5px; letter-spacing: 0; text-transform: none; }
+.dk-wo-l { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: var(--type-tag); font-weight: 650; letter-spacing: .06em; text-transform: uppercase; }
+.dk-wo-tag { padding: 1px 7px; border-radius: var(--pill-radius); background: var(--deny); color: var(--panel); font-size: var(--type-tag); letter-spacing: 0; text-transform: none; }
 .dk-wo-t { margin-top: 4px; }
 .dk-wo-t a { color: var(--ink); font-weight: 600; }
-.dk-wo-s { margin-top: 3px; color: var(--muted); font-size: 11.5px; }
-.dk-wo-loop { margin-top: 8px; padding: 6px 8px; border-radius: 6px; background: var(--panel); font: 11.5px/1.45 var(--mono); }
+.dk-wo-s { margin-top: 3px; color: var(--muted); font-size: var(--type-pill); }
+.dk-wo-loop { margin-top: 8px; padding: 6px 8px; border-radius: 6px; background: var(--panel); font: var(--type-pill)/1.45 var(--mono); }
 .dk-wo-link { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
 .dk-wo-link > span { flex: 1; min-width: 0; }
 .dk-wo .dk-acts { padding: 8px 0 0; }
 /* A crew member's page (#303, pick A): Doing, Why, Result. */
 .dk-crewpg .dk-csp { margin-left: 6px; font-weight: 600; letter-spacing: 0; text-transform: none; }
-.dk-cnow { margin: 0 0 8px; font-size: 14.5px; font-weight: 600; line-height: 1.45; }
+.dk-cnow { margin: 0 0 8px; font-size: var(--type-body); font-weight: 600; line-height: 1.45; }
 .dk-cnow .dk-quiet { font-weight: 400; }
-.dk-csteps { list-style: none; margin: 0 0 4px; padding: 0; display: grid; gap: 4px; font-size: 12.5px; color: var(--muted); }
+.dk-csteps { list-style: none; margin: 0 0 4px; padding: 0; display: grid; gap: 4px; font-size: var(--type-body); color: var(--muted); }
 .dk-csteps li { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
 .dk-csteps li > span { min-width: 0; overflow-wrap: anywhere; }
 .dk-csteps i { flex: none; width: 12px; font-style: normal; text-align: center; }
 .dk-csteps li.now { color: var(--ink); }
 .dk-csteps li.ask { color: var(--deny); }
 .dk-cwhy { margin: 0 0 8px; padding: 10px 12px; border-radius: 10px; background: var(--panel-2); }
-.dk-cwho { margin-bottom: 4px; font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.dk-cwho { margin-bottom: 4px; font-size: var(--type-pill); font-weight: 600; color: var(--muted); }
 .dk-cmore { position: relative; display: inline-flex; }
 .dk-cmenu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 20; display: grid; min-width: 160px; padding: 4px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); box-shadow: 0 6px 20px rgb(0 0 0 / .12); }
-.dk-cmenu button { all: unset; padding: 6px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.dk-cmenu button { all: unset; padding: 6px 10px; border-radius: 6px; font-size: var(--type-body); cursor: pointer; white-space: nowrap; }
 .dk-cmenu button:hover, .dk-cmenu button:focus-visible { background: var(--panel-2); }
 
 /* A dropped item's kept copy (desk/hub/landing/trees.rs): its title and where it is, Remove at its end (red once armed). */
 .dk-it.dk-kept { display: flex; align-items: center; gap: 8px; cursor: default; }
 .dk-kept-t { flex: 1; min-width: 0; }
-.dk-kept-s { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-kept-s { color: var(--muted); font-size: var(--type-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-kept .btn.armed { color: var(--deny); }
 
 /* Away (#361, #373 pick C): a switch in the Items head (with until when and the spend while on), its rules card, and
    each call the lead made while away as a quiet line under the item it changed. */
-.dk-aw-sw { all: unset; margin-left: auto; display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px 4px 5px; border-radius: 999px; background: var(--panel-2); color: var(--muted); font: 650 12px var(--sans); cursor: pointer; }
+.dk-aw-sw { all: unset; margin-left: auto; display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px 4px 5px; border-radius: 999px; background: var(--panel-2); color: var(--muted); font: 650 var(--type-small) var(--sans); cursor: pointer; }
 .dk-aw-sw:hover { color: var(--ink); }
 /* Pause (#366): a plain button before Away, and "Paused" by the Items title while the Desk is paused. */
 .dk-pz { margin-left: auto; }
@@ -330,7 +330,7 @@
 .dk-items > .dk-ch { flex-wrap: wrap; row-gap: 8px; padding-top: 8px; padding-bottom: 8px; }
 .dk-items > .dk-ch > * { flex: none; max-width: 100%; }
 .dk-items > .dk-ch > .dk-aw-sw { flex: 0 1 auto; min-width: 0; }
-.dk-pz-tag { padding: 2px 8px; border-radius: 999px; background: var(--panel-2); color: var(--deny); font: 650 11.5px var(--sans); }
+.dk-pz-tag { padding: 2px 8px; border-radius: 999px; background: var(--panel-2); color: var(--deny); font: 650 var(--type-pill) var(--sans); }
 .dk-aw-sw.on { background: var(--sel); color: var(--on-sel); }
 .dk-aw-sw:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .dk-knob, .dk-tg { position: relative; flex: none; width: 26px; height: 16px; border-radius: 999px; background: var(--line); }
@@ -348,61 +348,61 @@
 .dk-aw-calls.open { padding-bottom: 8px; }
 .dk-items .dk-scroll > .dk-aw-calls + .dk-gh { margin-top: 14px; }
 .dk-items .dk-scroll > .dk-aw-calls + .dk-gh::before { display: none; }
-.dk-aw-fold { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 16px; color: var(--ink); font-size: 12.5px; cursor: pointer; }
+.dk-aw-fold { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 16px; color: var(--ink); font-size: var(--type-body); cursor: pointer; }
 .dk-aw-fold:disabled { cursor: default; }
 .dk-aw-fold:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 8px; }
 .dk-aw-fold b { flex: none; font-weight: 650; }
 .dk-aw-fold .grow { flex: 1; min-width: 4px; }
-.dk-aw-chev { flex: none; width: 10px; color: var(--muted); font-size: 13px; line-height: 1; transition: transform .15s ease; }
+.dk-aw-chev { flex: none; width: 10px; color: var(--muted); font-size: var(--type-body); line-height: 1; transition: transform .15s ease; }
 .dk-aw-chev.open { transform: rotate(90deg); }
 .dk-aw-w { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .dk-aw-w.ended { color: var(--deny); }
 .dk-aw-w.dk-aw-since { flex: none; }
 .dk-aw-meter { flex: none; width: 56px; height: 5px; border-radius: 999px; background: var(--line); overflow: hidden; }
 .dk-aw-meter i { display: block; height: 100%; background: var(--accent); }
-.dk-aw-mark { display: flex; align-items: baseline; gap: 8px; padding: 5px 16px 5px 34px; font-size: 12.5px; }
-.dk-aw-tm { flex: none; width: 36px; font: 11px var(--mono); color: var(--muted); }
+.dk-aw-mark { display: flex; align-items: baseline; gap: 8px; padding: 5px 16px 5px 34px; font-size: var(--type-body); }
+.dk-aw-tm { flex: none; width: 36px; font: var(--type-pill) var(--mono); color: var(--muted); }
 .dk-aw-ic { flex: none; color: var(--muted); }
 .dk-aw-mt { flex: 1; min-width: 0; color: var(--ink); }
 .dk-aw-mt b { font-weight: 600; }
 .dk-aw-why { color: var(--muted); }
-.dk-aw-asked { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
-.dk-aw-undo { all: unset; flex: none; padding: 1px 7px; border-radius: 6px; color: var(--ink); font: 600 11.5px var(--sans); cursor: pointer; }
+.dk-aw-asked { display: block; color: var(--muted); font-size: var(--type-small); margin-top: 2px; }
+.dk-aw-undo { all: unset; flex: none; padding: 1px 7px; border-radius: 6px; color: var(--ink); font: 600 var(--type-pill) var(--sans); cursor: pointer; }
 .dk-aw-undo:hover { background: var(--line); }
 .dk-aw-undo:focus-visible { outline: 2px solid var(--accent); }
-.dk-aw-none, .dk-aw-quiet { padding: 2px 20px 6px; color: var(--muted); font-size: 12.5px; }
+.dk-aw-none, .dk-aw-quiet { padding: 2px 20px 6px; color: var(--muted); font-size: var(--type-body); }
 .dk-aw-dialog { width: min(480px, calc(100% - 40px)); max-height: calc(100vh - 60px); overflow-y: auto; }
 .dk-aw-flds { display: flex; gap: 10px; }
-.dk-aw-flds label { flex: 1; display: flex; flex-direction: column; gap: 3px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); font-size: 11px; }
-.dk-aw-flds input { all: unset; color: var(--ink); font: 13px var(--sans); }
-.dk-aw-h { margin-top: 6px; font: 700 11px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.dk-aw-flds label { flex: 1; display: flex; flex-direction: column; gap: 3px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); font-size: var(--type-pill); }
+.dk-aw-flds input { all: unset; color: var(--ink); font: var(--type-body) var(--sans); }
+.dk-aw-h { margin-top: 6px; font: 700 var(--type-pill) var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .dk-aw-rows { display: flex; flex-direction: column; }
-.dk-aw-row { all: unset; display: flex; align-items: center; gap: 12px; padding: 7px 2px; font-size: 12.5px; color: var(--ink); cursor: pointer; }
+.dk-aw-row { all: unset; display: flex; align-items: center; gap: 12px; padding: 7px 2px; font-size: var(--type-body); color: var(--ink); cursor: pointer; }
 .dk-aw-row + .dk-aw-row { border-top: 1px solid var(--line); }
 .dk-aw-row.locked { cursor: default; color: var(--muted); }
 .dk-aw-row:focus-visible { outline: 2px solid var(--accent); border-radius: 6px; }
 .dk-aw-lock { width: 26px; display: grid; place-items: center; color: var(--muted); }
-.dk-aw-foot { color: var(--muted); font-size: 12px; }
+.dk-aw-foot { color: var(--muted); font-size: var(--type-small); }
 /* Turning it on: the lead's sweep, then what needs you before you go, each answered in place. */
-.dk-aw-sweep { display: flex; align-items: center; gap: 9px; padding: 8px 2px; color: var(--muted); font-size: 12.5px; }
+.dk-aw-sweep { display: flex; align-items: center; gap: 9px; padding: 8px 2px; color: var(--muted); font-size: var(--type-body); }
 .dk-aw-spin { flex: none; width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--line); border-top-color: var(--muted); animation: dkAwSpin 1.1s linear infinite; }
 @keyframes dkAwSpin { to { transform: rotate(360deg); } }
 .dk-aw-first { display: flex; flex-direction: column; gap: 8px; }
 .dk-aw-first > .dk-it { margin: 0; border: 1px solid var(--line); border-radius: 10px; }
-.dk-aw-ask { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+.dk-aw-ask { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; font-size: var(--type-body); }
 .dk-aw-ask p { margin: 0; }
-.dk-aw-ask pre { margin: 0; white-space: pre-wrap; font: 11.5px var(--mono); }
-.dk-aw-ask .dk-request-who { all: unset; color: var(--muted); font-weight: 650; font-size: 12px; }
+.dk-aw-ask pre { margin: 0; white-space: pre-wrap; font: var(--type-pill) var(--mono); }
+.dk-aw-ask .dk-request-who { all: unset; color: var(--muted); font-weight: 650; font-size: var(--type-small); }
 .dk-aw-ask .dk-row-decisions { display: flex; flex-wrap: wrap; gap: 6px; }
-.dk-aw-more { color: var(--muted); font-size: 12px; }
+.dk-aw-more { color: var(--muted); font-size: var(--type-small); }
 
 /* Decisions: tick several to go back on them together (#362); housekeeping calls behind "Show all". */
 .dk-tick { all: unset; display: grid; place-items: center; width: 14px; height: 14px; margin-right: 4px; border: 1.5px solid var(--muted); border-radius: 4px; color: var(--panel); cursor: pointer; opacity: 0; }
 .dk-tick.on { background: var(--ink); border-color: var(--ink); opacity: 1; }
 .dk-lr:hover .dk-tick, .dk-tick:focus-visible { opacity: 1; }
-.dk-showall { all: unset; display: inline-block; margin: 8px 4px; color: var(--muted); font-size: 12px; cursor: pointer; }
+.dk-showall { all: unset; display: inline-block; margin: 8px 4px; color: var(--muted); font-size: var(--type-small); cursor: pointer; }
 .dk-showall:hover { color: var(--ink); }
-.dk-gb { display: flex; align-items: center; gap: 8px; margin: 8px 4px; font-size: 12.5px; }
+.dk-gb { display: flex; align-items: center; gap: 8px; margin: 8px 4px; font-size: var(--type-body); }
 .dk-gb-n { color: var(--muted); }
 .dk-gb-box { margin: 8px 0; }
 /* Parked (#385, #391): a quiet group; its titles muted, a plain Start at the row's end (Park on a queued row). */
@@ -444,7 +444,7 @@ body.dk-dragging, body.dk-dragging * { cursor: grabbing !important; user-select:
 .dk-it.on .dk-chev { color: inherit; }
 .dk-pcs { margin: 0 0 4px; }
 .dk-it.pc { margin-left: 30px; padding: 5px 10px; }
-.dk-it.pc .dk-i1 { font-size: 12.5px; font-weight: 550; }
+.dk-it.pc .dk-i1 { font-size: var(--type-body); font-weight: 550; }
 .dk-it.pc.dk-done .dk-i1 { color: var(--muted); font-weight: 500; }
 /* On its page: the bar in the line under the title, longer. */
 .dk-fp.big .dk-pbar { width: 160px; height: 5px; }
@@ -453,9 +453,9 @@ body.dk-dragging, body.dk-dragging * { cursor: grabbing !important; user-select:
 .dk-pc { display: grid; grid-template-columns: 14px minmax(0, 1fr); column-gap: 10px; row-gap: 2px; padding: 8px 12px; border-radius: 8px; cursor: pointer; }
 .dk-pc:hover { background: var(--panel-2); }
 .dk-pc .dk-si { grid-row: span 2; }
-.dk-pc-t { font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
+.dk-pc-t { font-size: var(--type-body); line-height: 1.4; overflow-wrap: anywhere; }
 .dk-pc.done .dk-pc-t { color: var(--muted); }
-.dk-pc-m { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+.dk-pc-m { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: var(--type-small); }
 
 /* Progress (#409, desk/progress.js; mock J2 of the "Live progress" canvas page): a popover over the Desk from the Items
    head, one row per item under way, the six steps as columns named once, each row's marks joined by a line with how
@@ -463,20 +463,20 @@ body.dk-dragging, body.dk-dragging * { cursor: grabbing !important; user-select:
 .dk-prog-btn { margin-left: auto; }
 .dk-prog-btn + :is(.dk-pz, .dk-aw-sw) { margin-left: 0; }
 .dk-prog-btn.on { background: var(--sel); color: var(--on-sel); }
-.dk-board > .dk-prog { position: absolute; z-index: 40; top: 56px; right: 0; width: min(1180px, 100%); max-height: calc(100% - 64px); display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); color: var(--ink); box-shadow: 0 12px 32px rgba(0, 0, 0, .28); overflow: clip; font-size: 13px; }
+.dk-board > .dk-prog { position: absolute; z-index: 40; top: 56px; right: 0; width: min(1180px, 100%); max-height: calc(100% - 64px); display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); color: var(--ink); box-shadow: 0 12px 32px rgba(0, 0, 0, .28); overflow: clip; font-size: var(--type-body); }
 .dk-prog .dk-ch { flex: none; display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 14px 0 24px; border-bottom: 1px solid var(--line); }
 .dk-prog-x { margin-left: auto; }
-.dk-grcount { margin-left: 4px; color: var(--muted); font: 12px var(--sans); }
+.dk-grcount { margin-left: 4px; color: var(--muted); font: var(--type-small) var(--sans); }
 .dk-prog .dk-scroll { min-height: 0; padding-top: 0; overflow: auto; }
 .dk-gr { display: grid; grid-template-columns: minmax(220px, 300px) repeat(6, 96px) minmax(220px, 1fr); align-items: start; padding: 12px 24px; border-top: 1px solid var(--line); cursor: pointer; }
 .dk-gr:not(.dk-grh):hover { background: var(--panel-2); }
 .dk-gr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.dk-gr.dk-grh { position: sticky; top: 0; z-index: 1; padding-top: 10px; padding-bottom: 8px; border-top: 0; background: var(--panel); color: var(--muted); font: 700 10.5px var(--sans); letter-spacing: .04em; text-transform: uppercase; cursor: default; }
+.dk-gr.dk-grh { position: sticky; top: 0; z-index: 1; padding-top: 10px; padding-bottom: 8px; border-top: 0; background: var(--panel); color: var(--muted); font: 700 var(--type-tag) var(--sans); letter-spacing: .04em; text-transform: uppercase; cursor: default; }
 .dk-grhc { text-align: center; }
 .dk-grn { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding-right: 14px; }
-.dk-grtl { overflow: hidden; color: var(--ink); font: 600 13px/1.3 var(--sans); text-overflow: ellipsis; white-space: nowrap; }
-.dk-grmeta { display: flex; align-items: center; gap: 5px; overflow: hidden; color: var(--muted); font: 11.5px var(--sans); white-space: nowrap; }
-.dk-grmono { font: 11px var(--mono); }
+.dk-grtl { overflow: hidden; color: var(--ink); font: 600 var(--type-body)/1.3 var(--sans); text-overflow: ellipsis; white-space: nowrap; }
+.dk-grmeta { display: flex; align-items: center; gap: 5px; overflow: hidden; color: var(--muted); font: var(--type-pill) var(--sans); white-space: nowrap; }
+.dk-grmono { font: var(--type-pill) var(--mono); }
 .dk-grc { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .dk-grl, .dk-grr { position: absolute; top: 9px; width: 50%; height: 2px; background: var(--line); }
 .dk-grl { left: 0; }
@@ -485,25 +485,25 @@ body.dk-dragging, body.dk-dragging * { cursor: grabbing !important; user-select:
 .dk-grm { position: relative; display: block; }
 .dk-grm .dk-blink { animation: pulse 1.4s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .dk-grm .dk-blink { animation: none; } }
-.dk-grt { min-height: 13px; color: var(--muted); font: 10px var(--mono); }
+.dk-grt { min-height: 13px; color: var(--muted); font: var(--type-tag) var(--mono); }
 .dk-grt.cur { font-weight: 700; }
 .dk-grt.cur.work { color: var(--accent); }
 .dk-grt.cur:is(.wait, .check) { color: var(--ink); }
 .dk-grt.cur:is(.you, .fail) { color: var(--deny); }
 .dk-grnow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; padding-left: 14px; }
-.dk-grw { min-width: 0; color: var(--ink); font: 12.5px/1.4 var(--sans); }
+.dk-grw { min-width: 0; color: var(--ink); font: var(--type-body)/1.4 var(--sans); }
 .dk-grw.wait { color: var(--muted); }
 .dk-grw:is(.you, .fail) { color: var(--deny); font-weight: 600; }
 .dk-grb { display: inline-flex; gap: 6px; }
 .dk-grbk { grid-column: 2 / 8; display: flex; min-width: 0; margin-top: 4px; }
-.dk-grbk-t { overflow: hidden; max-width: 100%; padding: 0; border: 0; background: none; color: var(--muted); font: 11.5px/1.35 var(--sans); text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.dk-grbk-t { overflow: hidden; max-width: 100%; padding: 0; border: 0; background: none; color: var(--muted); font: var(--type-pill)/1.35 var(--sans); text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 span.dk-grbk-t { cursor: default; }
 .dk-grbk-t.open { white-space: pre-wrap; overflow-wrap: anywhere; }
 .dk-grbk-t b { color: var(--ink); font-weight: 600; }
 /* Away on a Desk (#415, #459): the window keeps its light or dark; in the head's middle a lime capsule says
    "Away until 18:00 · $3.40 of $10" (or "Away on 2 Desks"), lime on the head's dark ground in either theme. In a
    narrow window the spend goes first, then the words shorten. */
-.top-away { flex: 0 1 auto; min-width: 0; display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 12px 0 9px; border-radius: var(--pill-radius); background: var(--sel); color: var(--on-sel); font: 650 13px var(--sans); white-space: nowrap; overflow: hidden; box-sizing: border-box; }
+.top-away { flex: 0 1 auto; min-width: 0; display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 12px 0 9px; border-radius: var(--pill-radius); background: var(--sel); color: var(--on-sel); font: 650 var(--type-body) var(--sans); white-space: nowrap; overflow: hidden; box-sizing: border-box; }
 .top-away > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .top-away .dk-aw-ic { flex: none; color: inherit; }
 .top-away-m { flex: 0 100 auto; font-weight: 500; opacity: .75; }
@@ -516,12 +516,12 @@ span.dk-grbk-t { cursor: default; }
 .dk-al-tx { flex: 1; min-width: 0; line-height: 1.45; }
 .dk-al-tx b { font-weight: 650; margin-right: 4px; }
 .dk-away-log .dk-al-h .dk-aw-w { white-space: normal; }
-.dk-al-s { padding: 8px 16px 2px 34px; font: 700 10.5px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-button.dk-al-row { all: unset; box-sizing: border-box; display: flex; width: 100%; padding: 5px 16px 5px 34px; font-size: 12.5px; cursor: pointer; border-radius: 6px; }
+.dk-al-s { padding: 8px 16px 2px 34px; font: 700 var(--type-tag) var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+button.dk-al-row { all: unset; box-sizing: border-box; display: flex; width: 100%; padding: 5px 16px 5px 34px; font-size: var(--type-body); cursor: pointer; border-radius: 6px; }
 button.dk-al-row:hover { background: var(--line); }
 button.dk-al-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .dk-al-t { color: var(--ink); }
-.dk-al-cmd { display: block; margin-top: 3px; font: 11.5px var(--mono); color: var(--muted); white-space: pre-wrap; word-break: break-all; }
+.dk-al-cmd { display: block; margin-top: 3px; font: var(--type-pill) var(--mono); color: var(--muted); white-space: pre-wrap; word-break: break-all; }
 /* A list row's permission opened with more (#426): all its words, not two lines. */
 .dk-it .req-cut.open .dk-h { display: block; -webkit-line-clamp: unset; }
 /* An item's page (#418, option B of the item chat mocks): its holder's own chat in the middle, its turns about other
@@ -531,7 +531,7 @@ button.dk-al-row:focus-visible { outline: 2px solid var(--accent); outline-offse
 .dk-ichat .mg-status.dk-notyet { color: var(--ink); }
 .dk-ichat .mg-status.dk-notyet .dk-si { flex: none; }
 .dk-ichat .mg-status.dk-notyet .btn { margin-left: 6px; flex: none; }
-.dk-fold { all: unset; box-sizing: border-box; display: flex; align-items: baseline; gap: 6px; min-width: 0; padding: 8px 12px; border-radius: var(--radius-btn, 8px); background: var(--panel-2); color: var(--muted); font-size: 12.5px; cursor: pointer; user-select: none; -webkit-user-select: none; }
+.dk-fold { all: unset; box-sizing: border-box; display: flex; align-items: baseline; gap: 6px; min-width: 0; padding: 8px 12px; border-radius: var(--radius-btn, 8px); background: var(--panel-2); color: var(--muted); font-size: var(--type-body); cursor: pointer; user-select: none; -webkit-user-select: none; }
 .dk-fold b { flex: none; color: var(--ink); font-weight: 650; }
 .dk-fold .dk-fold-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
 .dk-fold .dk-fold-n { flex: none; }
@@ -555,12 +555,12 @@ button.dk-al-row:focus-visible { outline: 2px solid var(--accent); outline-offse
   .dk-pg[data-desk-page="item"]:not(.hid) .dk-pfc { display: none; }
   .dk-pg[data-desk-page="item"]:not(.hid) .dk-pacts { margin-top: 8px; min-height: 28px; }
 }
-.dk-pg[data-desk-page="item"] > .dk-panel .dk-note { margin: 0; font-size: 12px; color: var(--muted); }
+.dk-pg[data-desk-page="item"] > .dk-panel .dk-note { margin: 0; font-size: var(--type-small); color: var(--muted); }
 .dk-pg[data-desk-page="item"] > .dk-panel > .dk-sfoot { flex-wrap: wrap; gap: 8px; margin-top: auto; padding: 12px 0 0; border-top: 1px solid var(--line); }
-.dk-pmeta { margin-top: 8px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.dk-pmeta { margin-top: 8px; color: var(--muted); font-size: var(--type-small); line-height: 1.45; }
 .dk-recs { display: flex; flex-direction: column; gap: 10px; padding: 16px 20px; user-select: text; -webkit-user-select: text; }
-.dk-rec { font-size: 13px; line-height: 1.45; color: var(--ink); overflow-wrap: anywhere; white-space: pre-wrap; }
-.dk-rec .dk-age { color: var(--muted); font: 11px var(--mono); }
+.dk-rec { font-size: var(--type-body); line-height: 1.45; color: var(--ink); overflow-wrap: anywhere; white-space: pre-wrap; }
+.dk-rec .dk-age { color: var(--muted); font: var(--type-pill) var(--mono); }
 .dk-sfoot { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--line); }
 .dk-sfoot .dk-drop { margin: 0 0 0 auto; align-self: center; font-weight: 600; }
 
@@ -569,9 +569,9 @@ button.dk-al-row:focus-visible { outline: 2px solid var(--accent); outline-offse
    ("Try:" / "Nothing to see:" bold), a quiet note of where that line came from, then Close and Send back. Folded, the
    box is no box: the same one line as any Now. */
 .dk-pbox { display: contents; }
-.dk-ckl { margin: 0; font-size: 15px; line-height: 1.4; color: var(--ink); overflow-wrap: anywhere; }
+.dk-ckl { margin: 0; font-size: var(--type-title); line-height: 1.4; color: var(--ink); overflow-wrap: anywhere; }
 .dk-ckl .dk-vb { font-weight: 750; }
-.dk-cks { margin: 4px 0 0; font-size: 11.5px; line-height: 1.4; color: var(--muted); }
+.dk-cks { margin: 4px 0 0; font-size: var(--type-pill); line-height: 1.4; color: var(--muted); }
 /* "Cue's words" on a row: quiet, after the line. */
 .dk-cw { color: var(--muted); }
 .dk-it.on .dk-cw { color: var(--on-sel); opacity: .8; }

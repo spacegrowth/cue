@@ -220,11 +220,11 @@ function requestBody(it) {
   if (t === "bash") return reqCut(it.id, `<div class="code-wrap"><pre class="slab"><span class="ps">$ </span>${esc(i.command)}</pre>${COPY_BTN}</div>`, i.command);
   if (t === "edit" || t === "multiedit") {
     const edits = t === "multiedit" ? i.edits || [] : [{ old_string: i.old_string, new_string: i.new_string }];
-    return `<div class="dim" style="font-size:12px">${esc(shortPath(i.file_path || ""))}</div>` + edits.map((e) => `<div class="diff"><pre class="del">− ${esc(e.old_string)}</pre><pre>+ ${esc(e.new_string)}</pre></div>`).join("");
+    return `<div class="dim" style="font-size:var(--type-small)">${esc(shortPath(i.file_path || ""))}</div>` + edits.map((e) => `<div class="diff"><pre class="del">− ${esc(e.old_string)}</pre><pre>+ ${esc(e.new_string)}</pre></div>`).join("");
   }
-  if (t === "write") return `<div class="dim" style="font-size:12px">${esc(shortPath(i.file_path || i.path || ""))}</div>${reqCut(it.id, `<pre class="slab">${esc(i.content)}</pre>`, i.content)}`;
+  if (t === "write") return `<div class="dim" style="font-size:var(--type-small)">${esc(shortPath(i.file_path || i.path || ""))}</div>${reqCut(it.id, `<pre class="slab">${esc(i.content)}</pre>`, i.content)}`;
   // Codex's file change: the files, and the change to each as Codex wrote it.
-  if (t === "apply_patch") return `<div class="dim" style="font-size:12px">${esc((i.files || [i.file_path]).map(shortPath).join(", "))}</div>${reqCut(it.id, `<pre class="slab">${esc(i.patch || "")}</pre>`, i.patch)}`;
+  if (t === "apply_patch") return `<div class="dim" style="font-size:var(--type-small)">${esc((i.files || [i.file_path]).map(shortPath).join(", "))}</div>${reqCut(it.id, `<pre class="slab">${esc(i.patch || "")}</pre>`, i.patch)}`;
   // A plan to approve: the plan as written, not its JSON.
   if (t === "exitplanmode" && typeof i.plan === "string") return `<div class="plan-body">${md(i.plan)}</div>`;
   const json = JSON.stringify(i, null, 2);

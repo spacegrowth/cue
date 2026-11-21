@@ -31,6 +31,15 @@
   --shadow: 0 18px 40px -22px rgba(15, 20, 5, 0.55);
   --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
   --mono: "SF Mono", ui-monospace, Menlo, monospace;
+  /* The type scale (#528, the Font sizes page's option B): whole pixels, one size per job, and every text size in the
+     app is one of these. Weight, caps and mono set things apart, never a half-pixel step. */
+  --type-tag: 10px;      /* caps tags and badges: NOTE, ASKS YOU, a count */
+  --type-pill: 11px;     /* small heads, mono meta: an item's number, an age, a column head */
+  --type-small: 12px;    /* buttons, secondary lines, the meta row of a message */
+  --type-body: 13px;     /* everything people read: card text, names, messages */
+  --type-title: 15px;    /* a pane's or a card's title, and the glyphs on small square buttons */
+  --type-page: 20px;     /* a page's heading */
+  --type-figure: 32px;   /* big numbers (Insights) */
   /* Every small label (a role, a mode, a state, a count, a chip) is a full capsule: this one shape
      (tests/ui/specs/pills.mjs checks every screen for one that isn't). */
   --pill-radius: 999px;
@@ -93,7 +102,7 @@
 /* No scrollbars anywhere: everything still scrolls with the trackpad or wheel. */
 ::-webkit-scrollbar { display: none; width: 0; height: 0; }
 html, body { margin: 0; height: 100%; }
-body { background: var(--bg); color: var(--ink); font: 13.5px/1.5 var(--sans); -webkit-font-smoothing: antialiased; overflow: hidden; user-select: none; -webkit-user-select: none; transition: background-color .3s ease; }
+body { background: var(--bg); color: var(--ink); font: var(--type-body)/1.5 var(--sans); -webkit-font-smoothing: antialiased; overflow: hidden; user-select: none; -webkit-user-select: none; transition: background-color .3s ease; }
 @media (prefers-reduced-motion: reduce) { body { transition: none; } }
 .sel, .msg, pre, code, input, textarea { user-select: text; -webkit-user-select: text; }
 button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; padding: 0; }
@@ -111,13 +120,13 @@ a:focus-visible { outline: 2px solid var(--link, var(--accent)); outline-offset:
 .app { height: 100vh; display: flex; flex-direction: column; padding: 34px 20px 16px; }
 /* The band under the traffic lights: grab anywhere here to move the window. */
 .dragbar { position: fixed; top: 0; left: 0; right: 0; height: 30px; z-index: 30; }
-.quiet-line { color: var(--on-bg-muted); font-size: 12.5px; padding: 2px 2px 6px; }
+.quiet-line { color: var(--on-bg-muted); font-size: var(--type-body); padding: 2px 2px 6px; }
 .top { display: flex; align-items: center; gap: 12px; color: var(--on-bg); position: relative; }
 .wordmark { display: grid; place-items: center; color: var(--on-bg); }
 .wordmark svg { display: block; pointer-events: none; }
 /* Header chips: click to open the oldest of each kind (again for the next). */
 .hchips { display: flex; gap: 8px; align-items: center; }
-.hchip { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border-radius: var(--pill-radius); font-size: 12.5px; font-weight: 650; color: var(--on-bg); background: color-mix(in srgb, var(--on-bg) 12%, transparent); white-space: nowrap; }
+.hchip { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border-radius: var(--pill-radius); font-size: var(--type-body); font-weight: 650; color: var(--on-bg); background: color-mix(in srgb, var(--on-bg) 12%, transparent); white-space: nowrap; }
 .hchip:hover { background: color-mix(in srgb, var(--on-bg) 20%, transparent); }
 /* Stronger = closer to the header's own text color, in either theme. */
 .hchip.warm { background: color-mix(in srgb, var(--on-bg) 30%, transparent); }
@@ -132,7 +141,7 @@ a:focus-visible { outline: 2px solid var(--link, var(--accent)); outline-offset:
 /* The chip you're stepping through: ‹ 2 of 3 waiting ›. */
 .hchip.nav { padding: 0 3px; gap: 2px; }
 .hchip.nav .hnav { display: inline-flex; align-items: center; gap: 7px; height: 100%; padding: 0 6px; color: inherit; font: inherit; }
-.hstep { width: 24px; height: 24px; border-radius: 50%; font-size: 17px; line-height: 1; color: inherit; display: grid; place-items: center; }
+.hstep { width: 24px; height: 24px; border-radius: 50%; font-size: var(--type-title); line-height: 1; color: inherit; display: grid; place-items: center; }
 .hstep:hover { background: color-mix(in srgb, currentColor 18%, transparent); }
 .hdot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
 .hdot.z { background: repeating-linear-gradient(45deg, currentColor 0 2px, transparent 2px 4px); box-shadow: 0 0 0 1px currentColor; }
@@ -140,20 +149,20 @@ a:focus-visible { outline: 2px solid var(--link, var(--accent)); outline-offset:
 /* Waiting's dot: a session you wrote to came back and waits, not yet open. */
 .hdot.back { animation: pulse 1.4s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .hdot.back { animation: none; } }
-.hall { font-size: 13px; color: var(--on-bg-muted); }
+.hall { font-size: var(--type-body); color: var(--on-bg-muted); }
 .grow { flex: 1; }
-.top-btn { height: 32px; padding: 0 12px; border-radius: 8px; background: var(--panel); color: var(--ink); font-size: 12px; font-weight: 600; }
+.top-btn { height: 32px; padding: 0 12px; border-radius: 8px; background: var(--panel); color: var(--ink); font-size: var(--type-small); font-weight: 600; }
 .top-btn:hover { filter: brightness(0.97); }
 /* Board | History */
 .switch-view { display: flex; gap: 3px; padding: 3px; background: var(--panel); border-radius: 9px; }
-.switch-view button { height: 26px; padding: 0 12px; border-radius: 6px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.switch-view button { height: 26px; padding: 0 12px; border-radius: 6px; font-size: var(--type-small); font-weight: 600; color: var(--muted); }
 .switch-view button.on { background: var(--accent); color: var(--on-accent); }
 /* Settings: just the gear, in the header's own colour (no box) until you point at it. */
 .top-btn.icon { width: 32px; padding: 0; display: grid; place-items: center; background: transparent; color: var(--on-bg); opacity: 0.75; }
 .top-btn.icon:hover { opacity: 1; filter: none; background: color-mix(in srgb, var(--on-bg) 12%, transparent); }
 .insights-btn[aria-pressed="true"] { opacity: 1; background: color-mix(in srgb, var(--on-bg) 16%, transparent); }
 
-.col-head { font-size: 11.5px; font-weight: 700; letter-spacing: 0.08em; color: var(--on-bg); display: flex; gap: 8px; align-items: baseline; }
+.col-head { font-size: var(--type-pill); font-weight: 700; letter-spacing: 0.08em; color: var(--on-bg); display: flex; gap: 8px; align-items: baseline; }
 .col-head span { color: var(--on-bg-muted); font-weight: 600; letter-spacing: 0.02em; }
-.empty-col { border: 1px dashed var(--on-bg-muted); border-radius: 14px; padding: 16px; color: var(--on-bg-muted); font-size: 12.5px; text-align: center; }
+.empty-col { border: 1px dashed var(--on-bg-muted); border-radius: 14px; padding: 16px; color: var(--on-bg-muted); font-size: var(--type-body); text-align: center; }
 
