@@ -281,6 +281,8 @@ impl Hub {
         // Never another item's copy, wherever its holder looked: that work lands with that item (#551).
         let others = self.read(|st| crate::desk::hub::landing::own_work::other_copies(st, it));
         out.retain(|f| !crate::desk::hub::landing::own_work::in_copies(f, &others));
+        // Nor a worktree on another item's branch (desk/<n>), its item done and its copy not yet handed on (#578).
+        out.retain(|f| !crate::desk::hub::landing::own_work::on_others_branch(f, &it.id));
         out
     }
 

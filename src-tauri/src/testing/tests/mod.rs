@@ -36,6 +36,7 @@ mod desk_land_moved;
 mod desk_moves;
 mod desk_unstick;
 mod desk_drop;
+mod desk_on_main;
 mod desk_spec_check;
 mod desk_spec_copies;
 mod desk_spec_landing;

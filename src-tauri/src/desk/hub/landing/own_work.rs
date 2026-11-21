@@ -85,6 +85,17 @@ pub(crate) fn other_copies(st: &Store, it: &DeskItem) -> Vec<(String, String)> {
     st.desk.items.iter().filter(|i| i.id != it.id && i.state != "done").filter_map(|i| i.tree.as_ref()).filter(|t| !t.path.is_empty() && t.path != own).map(|t| (t.path.clone(), t.branch.clone())).collect()
 }
 
+/// `f` is a worktree on another item's branch ("desk/<n>", "desk/<n>-again"…, `n` not `id`): that work is that item's (#578).
+pub(crate) fn on_others_branch(f: &str, id: &str) -> bool {
+    if !std::path::Path::new(f).is_dir() {
+        return false;
+    }
+    let branch = git("", f, &[], &["symbolic-ref", "--short", "-q", "HEAD"]).map(|b| b.trim().to_string()).unwrap_or_default();
+    let Some(rest) = branch.strip_prefix("desk/") else { return false };
+    let n: String = rest.chars().take_while(|c| c.is_ascii_alphanumeric()).collect();
+    !n.is_empty() && n != id
+}
+
 /// `f` is in one of `copies` (its folder or one inside it).
 pub(crate) fn in_copies(f: &str, copies: &[(String, String)]) -> bool {
     let canon = |p: &str| std::fs::canonicalize(p).map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|_| p.trim_end_matches('/').to_string());

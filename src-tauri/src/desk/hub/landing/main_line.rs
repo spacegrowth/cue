@@ -17,6 +17,21 @@ pub(crate) fn main_ref(top: &str) -> Option<String> {
     main_checkout(top).map(|(_, b)| b).filter(|b| !b.is_empty())
 }
 
+/// Commit `sha` of `top` is on `main`: in its history, or its change there under another commit (main's history
+/// rewritten since, or the change picked onto it: #578). A commit git doesn't have any more holds nothing back.
+pub(crate) fn on_main(top: &str, sha: &str, main: &str) -> bool {
+    if matches!(crate::safe_git::run("", top, &[], &["merge-base", "--is-ancestor", sha, main]), Ok((_, 0))) {
+        return true;
+    }
+    if git("", top, &[], &["cat-file", "-e", &format!("{sha}^{{commit}}")]).is_none() {
+        return true;
+    }
+    // Each of its changes main already has, as git cherry marks them ("-").
+    let said = git("", top, &[], &["cherry", main, sha, &format!("{sha}^")]).unwrap_or_default();
+    let marks: Vec<&str> = said.lines().filter(|l| !l.trim().is_empty()).collect();
+    !marks.is_empty() && marks.iter().all(|l| l.starts_with('-'))
+}
+
 /// `folder`'s repository's main checkout (its first worktree) and the branch it's on ("" for a detached HEAD).
 pub(crate) fn main_checkout(folder: &str) -> Option<(String, String)> {
     let list = git("", folder, &[], &["worktree", "list", "--porcelain"])?;
@@ -327,7 +342,7 @@ impl Hub {
         if !head.is_empty() {
             shas.push(head.to_string());
         }
-        let off = shas.iter().find(|s| !matches!(crate::safe_git::run("", top, &[], &["merge-base", "--is-ancestor", s, &main]), Ok((_, 0))))?;
+        let off = shas.iter().find(|s| !on_main(top, s, &main))?;
         let on = git("", top, &[], &["branch", "--contains", off, "--format=%(refname:short)"]).unwrap_or_default();
         let branch = on.lines().map(str::trim).find(|b| !b.is_empty() && *b != main).map(str::to_string);
         Some(match branch {
