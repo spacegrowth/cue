@@ -174,16 +174,17 @@ impl Hub {
                 return;
             }
         };
-        let words = crate::owner::in_prompt(&release_words(&ready));
+        let words = release_words(&ready);
         if let Err(e) = self.tell(sid, &words) {
             eprintln!("cue: couldn't tell {sid} the owner's answers to its held steps: {e}");
         }
     }
 }
 
-/// What a session is told once you've answered its held steps `ready` (oldest first).
+/// What a session is told once you've answered its held steps `ready` (oldest first). Your name goes in Cue's own
+/// words only: each command stays word for word, or the run of it wouldn't match what you allowed (#655).
 fn release_words(ready: &[Value]) -> String {
-    let mut out = String::from("The owner answered the steps held while they were away (Ask me before), in the order you asked:\n");
+    let mut out = crate::owner::in_prompt("The owner answered the steps held while they were away (Ask me before), in the order you asked:\n");
     for (n, h) in ready.iter().enumerate() {
         let verdict = if str_of(h, "answer") == "allow" { "ALLOWED: run it now, exactly as written" } else { "NO: don't run it" };
         out.push_str(&format!("{}. {verdict}:\n{}\n", n + 1, str_of(h, "command")));
@@ -212,5 +213,14 @@ mod tests {
         let w = release_words(&[json!({ "command": "rm -rf build", "answer": "allow" }), json!({ "command": "git push", "answer": "no" })]);
         let (a, b) = (w.find("rm -rf build").unwrap(), w.find("git push").unwrap());
         assert!(a < b && w.contains("1. ALLOWED") && w.contains("2. NO"), "{w}");
+    }
+
+    #[test]
+    fn a_command_keeps_the_owner_word_for_word() {
+        crate::owner::test_name::set(Some("Robin"));
+        let cmd = "git commit -m 'Ask the owner first'";
+        let w = release_words(&[json!({ "command": cmd, "answer": "allow" })]);
+        crate::owner::test_name::set(None);
+        assert!(w.starts_with("Robin answered") && w.contains(cmd), "{w}");
     }
 }

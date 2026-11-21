@@ -54,17 +54,20 @@ pub(crate) fn told_line() -> String {
     first_name().map_or(String::new(), |n| format!("The user is {n}. In everything you write for them or about them (items, DECIDED and ASK lines, notes, replies), call them {n}, or \"you\" when speaking to them; never \"the owner\" or \"the user\".\n"))
 }
 
-/// Every string in `v` as the screen shows it (on_screen).
+/// Every string in `v` as the screen shows it (on_screen), but commands (`VERBATIM`): a held step's own text, a tool
+/// call's input and landing steps are shown and matched word for word (#655).
 pub(crate) fn on_screen_json(v: &mut Value) {
     let name = first_name();
     walk(v, name.as_deref());
 }
 
+const VERBATIM: [&str; 5] = ["command", "tool_input", "input", "check_steps", "after_steps"];
+
 fn walk(v: &mut Value, name: Option<&str>) {
     match v {
         Value::String(s) if s.contains("he owner") => *s = said(s, name),
         Value::Array(a) => a.iter_mut().for_each(|x| walk(x, name)),
-        Value::Object(o) => o.values_mut().for_each(|x| walk(x, name)),
+        Value::Object(o) => o.iter_mut().filter(|(k, _)| !VERBATIM.contains(&k.as_str())).for_each(|(_, x)| walk(x, name)),
         _ => {}
     }
 }
@@ -169,14 +172,27 @@ mod tests {
     #[test]
     fn the_screen_and_the_lead_get_it() {
         test_name::set(Some("Robin"));
-        let mut v = json!({ "items": [{ "title": "Ask the owner", "n": 3 }], "log": ["The owner was away"] });
+        let mut v = json!({ "items": [{ "title": "Ask the owner", "n": 3 }], "log": ["The owner was away"], "held": [{ "command": "echo the owner" }] });
         on_screen_json(&mut v);
-        assert_eq!(v, json!({ "items": [{ "title": "Ask Robin", "n": 3 }], "log": ["Robin was away"] }));
+        assert_eq!(v, json!({ "items": [{ "title": "Ask Robin", "n": 3 }], "log": ["Robin was away"], "held": [{ "command": "echo the owner" }] }));
         assert_eq!(in_prompt("waits for the owner"), "waits for Robin");
         assert!(told_line().contains("call them Robin"));
         test_name::set(None);
         assert_eq!(in_prompt("waits for the owner"), "waits for the owner");
         assert_eq!(on_screen("waits for the owner"), "waits for you");
         assert_eq!(told_line(), "");
+    }
+
+    #[test]
+    fn commands_keep_their_words() {
+        test_name::set(Some("Robin"));
+        let cmd = "git filter-repo --replace-message <(echo 'the owner==>x')";
+        let mut v = json!({ "held": [{ "what": "push for the owner", "command": cmd }], "lands": { "check_steps": ["echo the owner"] }, "tool_input": { "command": cmd } });
+        on_screen_json(&mut v);
+        assert_eq!(v["held"][0]["command"], cmd);
+        assert_eq!(v["held"][0]["what"], "push for Robin");
+        assert_eq!(v["lands"]["check_steps"][0], "echo the owner");
+        assert_eq!(v["tool_input"]["command"], cmd);
+        test_name::set(None);
     }
 }
