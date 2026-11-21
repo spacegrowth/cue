@@ -134,6 +134,8 @@ function morph(a, b) {
 }
 function morphAttrs(a, b) {
   if (a.classList.contains("reveal")) b.classList.add("reveal");
+  // A fold you opened (a <details>) stays open: the draw never says it is.
+  if (a.nodeName === "DETAILS" && a.open) b.setAttribute("open", "");
   for (const { name, value } of [...b.attributes]) if (a.getAttribute(name) !== value) a.setAttribute(name, value);
   for (const { name } of [...a.attributes]) if (!b.hasAttribute(name)) a.removeAttribute(name);
 }
@@ -240,4 +242,53 @@ async function attach(key, files) {
   }
   renderMain();
   document.querySelector(`[data-text="${CSS.escape(key)}"]`)?.focus();
+}
+
+// ---------- a chat kept where it is through a draw (#624) ----------
+// The Desk's chats (an item page's, the lead's, a session's) were lifted out of the window before its HTML was set and
+// put back after. WebKit has no moveBefore, so that took each one out of the page and back on every draw (several a
+// second while a session works): the row under the pointer lost its hover till the mouse moved, the buttons shown on
+// hover went and came back, and its scroll box was a new one each time. So the chat blinked as it updated. Now it is
+// never taken out: the window is drawn around it. Each element from the window down to the chat stays where it is (its
+// attributes as the draw has them), everything beside them is replaced, and the chat's messages are brought up to date
+// by key (patchKids): only what's new or changed is touched.
+/** The chats kept in place: where one sits and what names it (its dataset key). */
+const KEPT_IN_PLACE = [[".dk-ipane [data-thread-for]", "threadFor"], [".dk-chat[data-desk-chat]", "deskChat"]];
+/** The chats kept by the last draw: their pulsing dots carry on as they are (app/render.js replayMotion). */
+let keptInPlace = [];
+/** `root`'s HTML set to `html`, with each Desk chat on screen kept in place where the draw has it too. Returns the
+ *  chats kept. A chat whose place changed shape (another page, another tab) is drawn afresh. */
+function drawAround(root, html) {
+  const live = KEPT_IN_PLACE.flatMap(([q, k]) => [...root.querySelectorAll(q)].map((el) => ({ el, q, k })));
+  if (!live.length) { root.innerHTML = html; return (keptInPlace = []); }
+  const tpl = document.createElement("template");
+  tpl.innerHTML = html;
+  // Each fresh element on the way down to a kept chat, paired with the live one it stands for.
+  const pairs = new Map(), chain = new Set(), ends = new Map();
+  for (const { el, q, k } of live) {
+    const f = [...tpl.content.querySelectorAll(q)].find((x) => x.dataset[k] === el.dataset[k]);
+    if (!f) continue;
+    const way = [];
+    let l = el, x = f;
+    while (l !== root && x && x !== tpl.content && l.nodeName === x.nodeName && (!pairs.has(x) || pairs.get(x) === l)) { way.push([x, l]); l = l.parentNode; x = x.parentNode; }
+    if (l !== root || x !== tpl.content) continue;
+    for (const [a, b] of way) { pairs.set(a, b); chain.add(b); }
+    ends.set(el, f);
+  }
+  if (!ends.size) { root.replaceChildren(tpl.content); return (keptInPlace = []); }
+  const fill = (l, f) => {
+    for (const c of [...l.childNodes]) if (!chain.has(c)) c.remove();
+    let at = l.firstChild;
+    for (const c of [...f.childNodes]) {
+      const m = pairs.get(c);
+      if (!m) { l.insertBefore(c, at); continue; }
+      if (m === at) at = at.nextSibling;
+      else l.insertBefore(m, at);   // out of order: moved (rare: the page's parts don't swap places)
+      morphAttrs(m, c);
+      if (ends.has(m)) patchKids(m, c, false);
+      else fill(m, c);
+    }
+  };
+  fill(root, tpl.content);
+  return (keptInPlace = [...ends.keys()]);
 }

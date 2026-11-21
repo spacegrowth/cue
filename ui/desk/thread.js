@@ -361,7 +361,7 @@ function deskChatReply(i, e, pickAt = null) {
 }
 /** Item `i`'s chat: its holder's session `s`, drawn as its own page draws it (deskChatRows), other items' turns folded;
  *  your send-backs of this item as their lines (#410); what you sent from here that it doesn't show yet (#395); and
- *  where it is now, its Working line (#407). Kept across draws, only what changed touched (deskThreadLift). */
+ *  where it is now, its Working line (#407). Kept in place across draws, only what changed touched (chat/patch.js drawAround). */
 function deskItemChat(i, d, s) {
   const thread = s.thread || [];
   const checks = (d.checks || []).filter((c) => c.id === i.id).map((c) => ({ at: c.at, html: keyed(deskCheckLine(c, d), `chk:${c.id}:${c.at}`) }));

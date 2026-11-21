@@ -39,7 +39,7 @@ async function loadOlder(sid, fromTranscript = false, pressed = false) {
     o.tdone = Array.isArray(probe) && probe.every((e) => sameMessage(e, top));
   }
   o.busy = false;
-  const where = view === "desk" ? ".dk-chat" : "[data-chat]", chat = document.querySelector(where);
+  const where = view === "desk" ? ".dk-chat, .dk-ipane" : "[data-chat]", chat = document.querySelector(where);
   if (chat && !pressed) holdChat = chat.scrollHeight - chat.scrollTop;
   renderMain();
   // Moved by code, not you (ui/box/end.js): its scroll to the top loads nothing more (app/bind.js onChatScroll).

@@ -173,13 +173,14 @@ function deskChat(d) {
   const rows = s ? deskChatRows(s, { extra: deskCheckRows(d).concat(deskActRows(d)), noSteps: true, you: deskLeadNote }) : "";
   // One that couldn't go: red, why, Retry and Edit (#422), till you pick one.
   const failed = (p) => ({ st: "failed", why: esc(p.failed), acts: ["lead_retry", "lead_edit"].map((a, n) => `<button class="q-now" data-desk-act="${a}" data-id="${esc(d.project)}" data-at="${p.at}">${n ? "Edit" : "Retry"}</button>`).join(" · ") });
-  const mine = pending.map((p) => { const hd = deskAboutHead(p); return msgRow(p.failed ? { ...failed(p), to: deskLeadName(d) } : { st: "sending", to: deskLeadName(d) }, `${p.text ? `<div class="cv-you-text mg-text">${hd?.html || ""}${esc(hd ? hd.text : p.text).replace(/\n/g, "<br>")}</div>` : ""}${p.images?.length ? `<div class="thumbs">${p.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}`); }).join("");
+  const mine = pending.map((p) => { const hd = deskAboutHead(p); return keyed(msgRow(p.failed ? { ...failed(p), to: deskLeadName(d) } : { st: "sending", to: deskLeadName(d) }, `${p.text ? `<div class="cv-you-text mg-text">${hd?.html || ""}${esc(hd ? hd.text : p.text).replace(/\n/g, "<br>")}</div>` : ""}${p.images?.length ? `<div class="thumbs">${p.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}`), `p:${p.at}`); }).join("");
   // Where the lead is now (working on what, its latest step, stuck, compacting), as under any session's chat. Not while
   // a message of yours is on its way: "Waiting on you for your reply" under it would be wrong (#587).
   const sending = pending.some((p) => !p.failed);
   const where = s && sessionOf(s.session_id) && !sending ? whereNow(null, s, false) : "";
-  const empty = !rows && !mine && !where ? `<div class="dk-empty">Tell ${esc(deskLeadName(d))} about a bug, a feature or a task. It adds them here, hands each to a session, and says why.</div>` : "";
-  return `<div class="dk-chat" data-desk-chat="${esc(d.project)}">${empty}${rows}${mine}${where}</div>`;
+  // Each part keyed: the chat is kept in place across draws, brought up to date by key (chat/patch.js drawAround).
+  const empty = !rows && !mine && !where ? `<div class="dk-empty" data-key="empty">Tell ${esc(deskLeadName(d))} about a bug, a feature or a task. It adds them here, hands each to a session, and says why.</div>` : "";
+  return `<div class="dk-chat" data-desk-chat="${esc(d.project)}">${empty}${rows}${mine}${where ? keyed(where, "where") : ""}</div>`;
 }
 /** What the lead did on its own (#360: closed, started, sent back, moved up, took back a copy, answered a session; #420: its
  *  routing and housekeeping calls, already in its chat as its own DECIDED lines), newest first. */
@@ -344,7 +345,7 @@ function deskSessChat(sid, from, d, foot = "") {
   // A Desk's lead opened as a session: Cue's messages to it folded to a line, as in the Desk's chat (#616).
   const rows = deskChatRows(s, (state.desk?.projects || []).some((x) => deskLead(x)?.sid === sid) ? { you: deskLeadNote } : undefined);
   const where = whereNow(null, s);
-  const empty = !rows && !where ? `<div class="dk-empty">Nothing said yet.</div>` : "";
+  const empty = !rows && !where ? `<div class="dk-empty" data-key="empty">Nothing said yet.</div>` : "";
   const open = `<button class="btn small" data-desk-session="${esc(sid)}">Open its session</button>`;
   // One page (#200): back, Open its session; "Session · " (or Lead, Dispatcher: what the session is, never an item's
   // kind) and its name; quiet, the item it's on ("on #191 · its title", the number opening it). Its chat at the left,
@@ -360,7 +361,7 @@ function deskSessChat(sid, from, d, foot = "") {
     mark: `${DESK_MARKS[kind]} · `, title: deskSessName(sid, deskHolderName(sid), "dk-shn"), meta,
     now: deskPnow({ dot, word, say, acts: stop, fold: on ? `on #${esc(on.id)}` : "" }),
     panel: deskPsec("Who", deskPwho("On", its.length ? its.map(deskItemLink).join(", ") : "nothing yet")) + deskSessFiles(sid),
-    main: `<div class="dk-chat" data-desk-chat="${esc(sid)}">${empty}${rows}${where}</div>`, foot });
+    main: `<div class="dk-chat" data-desk-chat="${esc(sid)}">${empty}${rows}${where ? keyed(where, "where") : ""}</div>`, foot });
 }
 /** The session whose steps the Desk follows live (chat/thread.js followSteps): its lead's, while its chat shows, or
  *  the session's whose chat is open. */

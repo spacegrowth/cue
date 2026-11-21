@@ -214,27 +214,6 @@ function deskThreadFollow() {
   }
   if (down > 0) pane.scrollTop += down;
 }
-/** An item's open Thread across a draw (#395): the element itself is kept, and only its messages that changed are
- *  touched (chat/patch.js patchKids, by each message's key), as a session's chat is kept. So the words being written
- *  grow in place, and what you'd selected in it stays. Lifted before the window's HTML is set, back after. */
-function deskThreadLift() {
-  const el = document.querySelector(".dk-ipane [data-thread-for]");
-  if (!el) return null;
-  const sel = getSelection();
-  const picked = sel.rangeCount && !sel.isCollapsed && el.contains(sel.getRangeAt(0).commonAncestorContainer) ? [sel.anchorNode, sel.anchorOffset, sel.focusNode, sel.focusOffset] : null;
-  moveTo(document.body, el);
-  return { el, picked };
-}
-function deskThreadSettle(lifted) {
-  if (!lifted) return;
-  const { el, picked } = lifted, fresh = [...document.querySelectorAll(".dk-ipane [data-thread-for]")].find((x) => x.dataset.threadFor === el.dataset.threadFor);
-  if (!fresh) return el.remove();
-  patchKids(el, fresh, false);
-  morphAttrs(el, fresh);
-  moveBack(fresh.parentNode, el, fresh);
-  fresh.remove();
-  if (picked && picked[0].isConnected && picked[2].isConnected) try { getSelection().setBaseAndExtent(...picked); } catch {}
-}
 /** After the draw: the lead's chat at its end, as a chat opens (unless you'd scrolled up in it); an item's Thread at
  *  a message that just came. */
 /** What's open on the Desk when its box last had the chance to take the cursor ("desk|{open}"), null off the Desk. */
@@ -260,8 +239,9 @@ function deskSettle() {
   deskMovesWatch();
   deskThreadFollow();
   deskFocusOpened();
-  const c = document.querySelector(".dk-chat");
-  // Earlier messages just went in above (chat/thread.js loadOlder): what you were reading stays put.
+  const c = document.querySelector(".dk-chat"), ip = !c && document.querySelector(".dk-ipane");
+  // Earlier messages just went in above (chat/thread.js loadOlder): what you were reading stays put. An item's page too.
+  if (ip && holdChat != null) { ip.scrollTop = ip.scrollHeight - holdChat; holdChat = null; }
   if (c && holdChat != null) { c.scrollTop = c.scrollHeight - holdChat; holdChat = null; }
   else if (c && deskTurnAt && c.querySelector(".cv-agent[data-at]")) {
     // The reply "This turn in …" was on: its session's last reply at or before that time (the reply's own time can
