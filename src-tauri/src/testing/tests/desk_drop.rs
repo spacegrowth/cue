@@ -72,12 +72,31 @@ fn an_item_at_work_is_dropped_its_holder_stops_and_the_one_queued_after_it_start
     assert_eq!(item(&w, &project, "Footer")["state"], "working", "what waited on it goes ahead");
 }
 
-/// Queued for a session that hasn't started it: that session is told it's off its list.
+/// Queued for a session that hasn't started it: it waits in the Desk's queue with no holder (#576), so the session
+/// was never told of it and isn't told now; it never starts there.
 #[test]
 fn a_queued_item_is_dropped_and_its_session_never_starts_it() {
     let w = World::new();
-    let (_, project, _, h) = routed_with(&w, |_, _, _| {}, |_, _, _| {});
+    let (_, project, hid, h) = routed_with(&w, |_, _, _| {}, |_, _, _| {});
     let id = footer(&w, &project)["id"].as_str().unwrap().to_string();
+    drops(&w, &project, &id, "folded into the header fix");
+    assert!(!sent_to(&w, &h).iter().any(|t| t.contains(&format!("#{id}"))), "{:?}", sent_to(&w, &h));
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "working", "the other item is untouched");
+    ends(&w, &h, &format!("Fixed.\nDONE: #{hid}"));
+    assert!(!sent_to(&w, &h).iter().any(|t| t.contains(&format!("Desk item #{id}"))), "{:?}", sent_to(&w, &h));
+}
+
+/// Old data (#576): queued behind another item for a session that already holds it, as a Desk saved before one item
+/// per session has it. That session is told it's off its list.
+#[test]
+fn a_queued_item_its_session_holds_is_dropped_and_that_session_is_told() {
+    let w = World::new();
+    let (_, project, hid, h) = routed_with(&w, |_, _, _| {}, |_, _, _| {});
+    let id = w.hub().desk_add(&project, "bug", "Footer", "it shows", Some(&h)).unwrap().id;
+    w.settle();
+    w.hub().desk_queue_after_unchecked(&id, &hid);
+    let it = item(&w, &project, "Footer");
+    assert_eq!((it["state"].as_str(), it["holder"]["sid"].as_str()), (Some("queued"), Some(h.as_str())), "{it}");
     drops(&w, &project, &id, "folded into the header fix");
     assert!(sent_to(&w, &h).iter().any(|t| t.contains(&format!("Desk item #{id} (Footer) was dropped: it's off your list. Don't start it."))), "{:?}", sent_to(&w, &h));
     assert_eq!(item(&w, &project, "Header jumps")["state"], "working", "the other item is untouched");

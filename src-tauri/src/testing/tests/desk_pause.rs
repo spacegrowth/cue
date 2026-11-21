@@ -38,13 +38,17 @@ fn a_paused_desk_holds_its_sessions_and_queue_and_resume_picks_them_up() {
     ends(&w, &h, "Stopped after the header markup; styles are next.");
     assert_eq!((sent_to(&w, &h).len(), sent_to(&w, &d).len()), (to_h, to_d), "{:?} / {:?}", sent_to(&w, &h), sent_to(&w, &d));
 
-    // #a done meanwhile doesn't start #b; a route the lead makes meanwhile is held. (It routes once #a is done: before,
-    // cue-teams holds two open items, the most a session holds.)
+    // #a done and checked meanwhile doesn't start #b; a route the lead makes meanwhile is held. (To another session:
+    // cue-teams takes #b next, one item per session, #576.)
     ends(&w, &h, &format!("DONE: #{a}"));
-    ends(&w, &d, "ITEM: Sidebar\nROUTE: #new -> cue-teams | why: near it");
+    w.hub().desk_item_act(&a, "looks_right", "").unwrap();
+    w.settle();
+    let t = super::desk::second(&w, "cue-two");
+    ends(&w, &d, "ITEM: Sidebar\nROUTE: #new -> cue-two | why: near it");
     let c = item(&desk(&w, &project), "Sidebar")["id"].as_str().unwrap().to_string();
     assert_eq!(item(&desk(&w, &project), "Footer")["state"], "queued");
-    assert!(!sent_to(&w, &h).iter().any(|t| t.contains(&format!("#{b}")) || t.contains(&format!("#{c}"))), "{:?}", sent_to(&w, &h));
+    assert!(!sent_to(&w, &h).iter().any(|t| t.contains(&format!("#{b}"))), "{:?}", sent_to(&w, &h));
+    assert!(!sent_to(&w, &t).iter().any(|m| m.contains(&format!("#{c}"))), "{:?}", sent_to(&w, &t));
     assert!(desk(&w, &project)["paused"]["held"].as_u64().unwrap() >= 1);
 
     // The lead resumes it: what was held goes, and #b starts.
@@ -52,7 +56,7 @@ fn a_paused_desk_holds_its_sessions_and_queue_and_resume_picks_them_up() {
     let view = desk(&w, &project);
     assert_eq!(view["paused"], json!({ "on": false }));
     assert_eq!(item(&view, "Footer")["state"], "working", "{view}");
-    assert!(sent_to(&w, &h).iter().any(|t| t.contains(&format!("#{c}"))), "{:?}", sent_to(&w, &h));
+    assert!(sent_to(&w, &t).iter().any(|m| m.contains(&format!("#{c}"))), "{:?}", sent_to(&w, &t));
     assert!(sent_to(&w, &h).iter().any(|t| t.contains(&format!("Desk item #{b}"))), "{:?}", sent_to(&w, &h));
     assert!(!summary(&w, &project).contains("The Desk is paused"));
     let decided: Vec<String> = view["decisions"].as_array().unwrap().iter().map(|x| x["text"].as_str().unwrap_or("").to_string()).collect();

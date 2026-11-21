@@ -828,7 +828,7 @@ test("written about an item ready to check, it's sent back with your words: off 
   await expect(page.locator(".dk-pane")).toHaveCount(1);
   // Off Waiting on you: back in the Items list, it's In progress (#418: the list is behind ‹ Items while it's open).
   await page.locator(".dk-back").click();
-  await expect.poll(() => listOrder(page)).toEqual(["# Waiting on you", "d1", "# In progress", "d3", "d2", "d5", "# Queued", "d4", "d6", "# Done", "d7", "d8", "d9"]);
+  await expect.poll(() => listOrder(page)).toEqual(["# Queue", "d4", "d6", "# Waiting on you", "d1", "# In progress", "d3", "d2", "d5", "# Done", "d7", "d8", "d9"]);
   // One that doesn't go: still waiting on you, red in its chat with why, Retry and Edit (#422).
   await page.locator('[data-desk-item="d1"]').click();
   await cue.change((st) => { st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d1").state = "to_check"; });

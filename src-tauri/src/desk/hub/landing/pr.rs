@@ -147,7 +147,6 @@ impl Hub {
                 let short = git("", &t.repo, &[], &["rev-parse", "--short", &oid]).map(|s| s.trim().to_string()).unwrap_or_default();
                 if t.path.is_empty() {
                     self.save_made(id, &[(t.repo.clone(), short)]);
-                    self.finish_release(id);
                     self.finish_after(id, std::slice::from_ref(&t.repo));
                 } else {
                     self.finish_landed(id, &t, &short);

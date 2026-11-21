@@ -33,9 +33,10 @@ doesn't count. (The idle sessions in the review were all on the Desk.)
    in rule 2's order, between two sessions that both have a record.
    Why: a cold session re-reads its context once. That costs far less than an item waiting an hour.
 
-4. **A session holds at most two open items: one at work, one waiting behind it.**
-   If the best fit already has two, or holds 150k or more, take the next session with a record.
-   Why: one chat about one thing. Past two, replies for different items mix.
+4. **One item per session, at work or waiting for your check.** A route to a busy session queues the
+   item for it: it starts there once that session's item gets Looks right, or in a fresh session
+   with a hand-off after 20 minutes. If the best fit holds 150k or more, take the next session with a record.
+   Why: one chat about one thing. A second item in the same chat mixes their replies.
 
 5. **Start a new session when** no session passes rules 1 to 4, when you ask, or when the work
    needs fresh eyes (a review). Never wake a cold session for work it has no record in.

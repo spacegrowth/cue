@@ -16,7 +16,7 @@ test("a finishing item: amber and steady, out of In progress into Landing, then 
   const row = page.locator('.dk-items [data-desk-item="d5"]');
   await expect(row).toHaveClass(/\bdk-fin\b/);
   // Its own lane, the landing line, numbered; its row says what it waits on, short, after its holder (#346).
-  expect(await listOrder(page)).toEqual(["# Waiting on you", "d1", "# Ready to review", "d2", "# Landing", "d5", "# In progress", "d3", "# Queued", "d4", "d6", "# Done", "d7", "d8", "d9"]);
+  expect(await listOrder(page)).toEqual(["# Queue", "d4", "d6", "# Waiting on you", "d1", "# Ready to review", "d2", "# Landing", "d5", "# In progress", "d3", "# Done", "d7", "d8", "d9"]);
   await expect(page.locator('.dk-items .dk-gh[data-lane="landing"] .dk-split')).toHaveText("one at a time");
   await expect(row.locator(".dk-rn")).toHaveText("1");
   await expect(row.locator(".dk-who")).toHaveText("host-lead · Waits: The main checkout is in the middle of a merge · 3m");
@@ -37,7 +37,7 @@ test("a finishing item: amber and steady, out of In progress into Landing, then 
   await cue.change((st, t) => { st.desk.install_at = t; }, due);
   await patchItem(cue, "d5", { finish: { step: "queued", commit: "abc9999", at: Date.now() } });
   const clock = await page.evaluate((t) => clockAt(t), due);
-  expect(await listOrder(page)).toEqual(["# Waiting on you", "d1", "# Ready to review", "d2", "# Waiting to install", "d5", "# In progress", "d3", "# Queued", "d4", "d6", "# Done", "d7", "d8", "d9"]);
+  expect(await listOrder(page)).toEqual(["# Queue", "d4", "d6", "# Waiting on you", "d1", "# Ready to review", "d2", "# Waiting to install", "d5", "# In progress", "d3", "# Done", "d7", "d8", "d9"]);
   await expect(row.locator(".dk-who")).toHaveText("host-lead · On main · abc9999");
   await expect(row.locator(".dk-rn")).toHaveCount(0);
   await expect(row.locator('[data-desk-act="install_now"]')).toHaveCount(0);
@@ -207,7 +207,8 @@ test("each waiting row says what to do in one line, and what it unblocks; the mo
   });
   const you = page.locator(".dk-items .dk-gh.you");
   await expect(you).toContainText("2");
-  expect((await listOrder(page)).slice(0, 3)).toEqual(["# Waiting on you", "d2", "d1"]);
+  const order = await listOrder(page);
+  expect(order.slice(order.indexOf("# Waiting on you"), order.indexOf("# Waiting on you") + 3)).toEqual(["# Waiting on you", "d2", "d1"]);
   await expect(page.locator('[data-desk-item="d2"] .dk-h')).toHaveText("Phrases left or right of Send?");
   await expect(page.locator('[data-desk-item="d2"] .dk-ub')).toHaveText("unblocks #d4, #d10, #d6 +1 more");
   await expect(page.locator('[data-desk-item="d1"] .dk-h')).toHaveText("Allow: Run npm test");

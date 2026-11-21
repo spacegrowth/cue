@@ -9,7 +9,7 @@ test("the Desk is in the header after Board, and lists Waiting on you, then a gr
   const views = await page.locator(".switch-view button").evaluateAll((els) => els.map((el) => el.dataset.view));
   expect(views.slice(0, 3)).toEqual(["inbox", "board", "desk"]);
   await openDesk(page);
-  expect(await listOrder(page)).toEqual(["# Waiting on you", "d1", "# Ready to review", "d2", "# In progress", "d3", "d5", "# Queued", "d4", "d6", "# Done", "d7", "d8", "d9"]);
+  expect(await listOrder(page)).toEqual(["# Queue", "d4", "d6", "# Waiting on you", "d1", "# Ready to review", "d2", "# In progress", "d3", "d5", "# Done", "d7", "d8", "d9"]);
   await expect(page.locator(".dk-items .dk-gh.you .n")).toHaveText("1");
   // Grouped by state only: no head a session (the sessions are on the left).
   await expect(page.locator(".dk-items .dk-holder")).toHaveCount(0);
@@ -853,7 +853,7 @@ test("an item no one holds yet, or waiting on nothing, reads plain: next", async
   const it = { kind: "bug", state: "queued", holder: null, after: null, from: "you", created: Date.now() / 1000 };
   // Its page's meta line and NOW (#200): no holder named, plain "Next".
   expect(await page.evaluate((i) => deskItemMeta(i, { items: [] }), it)).toMatch(/^added by you · /);
-  expect(await page.evaluate((i) => deskItemNow(i), it)).toEqual({ dot: "stop", word: "Next", say: "Next up, not given to a session yet." });
+  expect(await page.evaluate((i) => deskItemNow(i), it)).toEqual({ dot: "stop", word: "Next", say: "Any free session." });
   expect(await page.evaluate((i) => deskTag(i), it)).toEqual(["", ""]);
   // One whose hand-off failed is tagged stuck instead.
   expect(await page.evaluate((i) => deskTag({ ...i, route_failed: "web-lead is gone" }), it)).toEqual(["stuck", "ask"]);

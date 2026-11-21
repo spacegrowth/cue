@@ -23,6 +23,13 @@ pub(crate) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
         out.copy_users = st.desk.items.iter().filter(|i| i.tree.as_ref().is_some_and(|t| t.repo == it.tree_wait_repo)).map(|i| i.id.clone()).collect();
         out.copy_users.sort_by_key(|x| (x.parse::<u64>().unwrap_or(u64::MAX), x.clone()));
     }
+    // Next for a busy session (#576): its name as shown now, and when it goes to a fresh session.
+    if let Some(n) = out.next_for.as_mut() {
+        if let Some(s) = st.sessions.get(&n.sid).filter(|_| n.lead_sid.is_empty()) {
+            n.name = shown_name(s);
+        }
+        out.fresh_at = crate::desk::hub::turn::queue::fresh_at(it);
+    }
     // The machine its holder is on (#500), and how long one with its work has been quiet.
     crate::desk::hub::landing::remote_item::shown_machine(st, &mut out);
     let Some(h) = it.holder.as_ref() else { return out };

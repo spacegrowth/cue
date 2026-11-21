@@ -479,7 +479,9 @@ function deskBackActs(i) {
 /** An item's quiet line under its title (#200): who has it, its commit, who added it and when; its state is the
  *  panel's, said once there. */
 function deskItemMeta(i, d) {
-  const who = i.holder ? `<b>${esc(i.holder.name)}</b>${deskMachTag(i)}${i.crew ? ` → <b>${esc(i.crew)}</b>` : ""}` : "";
+  const who = i.holder ? `<b>${esc(i.holder.name)}</b>${deskMachTag(i)}${i.crew ? ` → <b>${esc(i.crew)}</b>` : ""}`
+    // Queued with no session yet (#576): the one it's marked for.
+    : i.state === "queued" && i.next_for ? `<b>${esc(deskHolderOf({ holder: i.next_for }))}</b>` : "";
   const cm = i.state === "done" ? i.commit : i.state === "to_check" ? deskFinCommit(i) : "";
   // Landed with no check to run (its repository has none).
   const unchecked = cm && i.finish?.unchecked ? " · landed, not checked" : "";
@@ -511,6 +513,7 @@ function deskItemNow(i) {
     : deskFinishing(i) ? ["work", "Finishing", `<span class="dk-fstep">${deskFinStep(i)}</span>`]
     : deskCopyWaits(i) ? ["stop", "Next", `${esc(deskCopyWaitLine(i))}. It starts by itself when one is free, or now with Start now.`]
     : i.state === "queued" && i.tree_wait ? ["stop", "Next", `Starts when one of its repository's ${deskCopies(deskOf(i.project))} copies is free.`]
+    : deskQueueLine(i) ? ["stop", "Next", `${esc(deskQueueLine(i).replace(/^./, (c) => c.toUpperCase()))}.`]
     : i.state === "queued" ? ["stop", "Next", first ? `Starts when ${esc(deskShort(first.title))} is done.` : i.holder ? `Next for ${who}.` : "Next up, not given to a session yet."]
     : i.state === "new" ? ["stop", "Not given out", "Not given to a session yet."]
     : i.state === "held" ? ["stop", "Parked", `${i.held?.[1] && i.held[1] !== "You" ? `The Desk lead parked it for you${i.held[2] ? `: ${esc(firstLine(i.held[2]))}` : ""}. ` : "You parked it. "}Nothing starts it until you press Start.`]

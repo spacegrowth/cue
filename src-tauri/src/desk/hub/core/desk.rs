@@ -503,6 +503,8 @@ impl Hub {
     /// What a change left to do, with the store let go: its saves, then its messages and questions, and new items
     /// for their lead (told a moment later, with any others that came meanwhile).
     pub(crate) fn desk_done(&self, mut fx: Effects) {
+        // Items queued for a session start there once it's free, or in a fresh one once their wait is up (#576).
+        self.desk_queue_sweep(&mut fx);
         if left_nothing(&fx) {
             return;
         }

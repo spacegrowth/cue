@@ -28,9 +28,9 @@ fn sent_to(w: &World, sid: &str) -> Vec<String> {
     w.hosted.sent().into_iter().filter(|(s, _)| s == sid).map(|(_, t)| t).collect()
 }
 
-/// A second item, "Footer", routed to the same holder.
+/// A second item, "Footer", routed to a new session (one item per session, #576: the first's holder is busy with it).
 fn footer(w: &World, project: &str) -> String {
-    ends(w, &lead_of(w, project), "ITEM: bug | Footer | done when: it shows\nROUTE: #new -> cue-teams | why: it made the footer");
+    ends(w, &lead_of(w, project), "ITEM: bug | Footer | done when: it shows\nROUTE: #new -> new | why: it made the footer");
     w.advance(1000);
     item(w, project, "Footer")["id"].as_str().unwrap().to_string()
 }
@@ -116,7 +116,8 @@ fn the_lead_moves_an_item_up_in_the_landing_line_and_it_lands_first() {
     std::fs::write(dir.join(".git/MERGE_HEAD"), git(&dir, &["rev-parse", "HEAD"])).unwrap();
     ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
     w.advance(1000);
-    ends(&w, &h, &format!("Fixed too.\nDONE: #{f}"));
+    let fh = item(&w, &project, "Footer")["holder"]["sid"].as_str().unwrap().to_string();
+    ends(&w, &fh, &format!("Fixed too.\nDONE: #{f}"));
     w.advance(1000);
     assert_eq!(item(&w, &project, "Footer")["finish"]["step"], "line", "{}", item(&w, &project, "Footer"));
     ends(&w, &lead_of(&w, &project), &format!("LAND FIRST: #{f} | why: the user waits on the footer"));

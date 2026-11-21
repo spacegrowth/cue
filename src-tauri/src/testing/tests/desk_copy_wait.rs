@@ -41,11 +41,12 @@ fn a_dragged_order_picks_who_gets_the_next_free_copy_and_survives_a_restart() {
     };
     let (_, project, a, _) = routed_with(&w, |w, _, _| w.hub().desk_hold_copies(&top(w), &[1, 2, 3]), |_, _, _| {});
     let lead = super::desk::desk(&w, &project)["lead"]["sid"].as_str().unwrap().to_string();
-    super::desk::ends(&w, &lead, "ITEM: Footer\nROUTE: #new -> cue-teams | why: footer");
+    // One item per session (#576): cue-teams holds Header, so Footer and Logo go to sessions of their own.
+    super::desk::second(&w, "cue-two");
+    super::desk::ends(&w, &lead, "ITEM: Footer\nROUTE: #new -> cue-two | why: footer");
     w.advance(1000);
-    // cue-teams holds two open items, the most a session holds: Logo goes to another session.
-    let t = super::desk::second(&w, "cue-two");
-    super::desk::ends(&w, &lead, "ITEM: Logo\nROUTE: #new -> cue-two | why: logo");
+    let t = super::desk::second(&w, "cue-three");
+    super::desk::ends(&w, &lead, "ITEM: Logo\nROUTE: #new -> cue-three | why: logo");
     let b = item(&w, &project, "Footer")["id"].as_str().unwrap().to_string();
     let c = item(&w, &project, "Logo")["id"].as_str().unwrap().to_string();
     for t in ["Header jumps", "Footer", "Logo"] {
@@ -254,7 +255,9 @@ fn a_free_copy_goes_to_an_item_that_waits_only_for_a_copy_not_to_one_still_queue
     super::desk::ends(&w, &lead, "ITEM: bug | Footer moves | done when: it stays put");
     let b = item(&w, &project, "Footer moves")["id"].as_str().unwrap().to_string();
     w.advance(1000);
-    super::desk::ends(&w, &lead, "ITEM: Logo\nROUTE: #new -> cue-teams | why: logo");
+    // One item per session (#576): cue-teams holds Header, so Logo goes to a session of its own.
+    let t = super::desk::second(&w, "cue-two");
+    super::desk::ends(&w, &lead, "ITEM: Logo\nROUTE: #new -> cue-two | why: logo");
     let c = item(&w, &project, "Logo")["id"].as_str().unwrap().to_string();
     assert_eq!(item(&w, &project, "Logo")["tree_wait"], true, "waits for a copy");
     w.hub().desk_queue_after_unchecked(&a, &b);
@@ -270,7 +273,7 @@ fn a_free_copy_goes_to_an_item_that_waits_only_for_a_copy_not_to_one_still_queue
     let logo = item(&w, &project, "Logo");
     assert_eq!((logo["state"].as_str(), logo["tree"]["slot"].as_u64()), (Some("working"), Some(2)), "{logo}");
     assert!(!w.hosted.sent()[before..].iter().any(|(s, t)| *s == h && t.contains(&format!("Desk item #{a}"))), "no brief for #{a}");
-    assert!(w.hosted.sent()[before..].iter().any(|(s, t)| *s == h && t.contains(&format!("Desk item #{c}"))), "a brief for #{c}");
+    assert!(w.hosted.sent()[before..].iter().any(|(s, m)| *s == t && m.contains(&format!("Desk item #{c}"))), "a brief for #{c}");
 }
 
 /// #566 (#542's case): the lead STARTs an item while every copy is in use. It works where its holder is for now, in

@@ -17,7 +17,7 @@ fn a_decided_line_in_the_turn_that_says_done_is_the_finished_items() {
     ends(&w, &d, &format!("ITEM: Footer\nROUTE: #new -> cue-teams | after: #{a} | why: same file"));
     ends(&w, &h, &format!("Moved it.\nDECIDED: kept the class name — renaming it touches the tests\nDONE: #{a}"));
     let now = desk(&w, &project);
-    assert_eq!(item(&now, "Footer")["state"], "working", "the next one started");
+    assert_eq!(item(&now, "Footer")["state"], "queued", "the next one waits for #{a}'s Looks right (#576)");
     let c = now["decisions"].as_array().unwrap().iter().find(|c| c["text"].as_str().unwrap().starts_with("kept the class name")).unwrap();
     assert_eq!(c["item_id"].as_str(), Some(a.as_str()), "{now}");
 }

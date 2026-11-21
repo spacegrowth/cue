@@ -178,6 +178,13 @@ fn start(st: &mut Store, project: &str, by: &By, id: &str, why: &str, now: u64, 
         return Err(format!("#{id} not started: it isn't waiting (it's {was}). A new item starts with a ROUTE"));
     }
     let copy = it.tree_wait;
+    // Next for a session (#576): it starts there if that one's free, else in a fresh session with a hand-off.
+    if it.holder.is_none() && it.next_for.is_some() {
+        let (name, sid) = lead.as_ref().map_or(("Desk".to_string(), String::new()), |l| (l.name.clone(), l.sid.clone()));
+        crate::desk::hub::turn::queue::start_next_now(st, project, id, why, (&name, &sid), now, fx);
+        step(st, project, by, "start", id, &format!("Started #{id} now"), why, now, fx);
+        return Ok(());
+    }
     // Not for a copy either, whatever it waited on: one queued after another item that finds every copy in use when
     // it starts works where its holder is, not queued again (#548).
     (it.after, it.tree_wait, it.no_copy_wait, it.updated) = (None, false, true, secs(now));
@@ -274,6 +281,7 @@ pub(crate) fn hold(st: &mut Store, by: &str, id: &str, why: &str, now: u64, fx: 
     }
     let ahead = it.after.take();
     (it.state, it.holder, it.moved_from) = ("held".into(), None, None);
+    (it.next_for, it.queued_at) = (None, 0);
     (it.tree_wait, it.no_copy_wait) = (false, false);
     it.tree_wait_repo.clear();
     it.after_why.clear();

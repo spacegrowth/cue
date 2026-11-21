@@ -57,11 +57,14 @@ pub(super) fn lead_of(w: &World, project: &str) -> String {
     desk(w, project)["lead"]["sid"].as_str().unwrap().to_string()
 }
 
-/// A second item, `title`, routed by the lead to the same holder as "Header jumps": its id.
-pub(super) fn another(w: &World, project: &str, title: &str) -> String {
-    ends(w, &lead_of(w, project), &format!("ITEM: bug | {title} | done when: it shows\nROUTE: #new -> cue-teams | why: it made it"));
+/// A second item, `title`, routed by the lead to a new session (the holder of "Header jumps" is busy with it: one item
+/// per session, #576): (its id, the session that took it).
+pub(super) fn another(w: &World, project: &str, title: &str) -> (String, String) {
+    ends(w, &lead_of(w, project), &format!("ITEM: bug | {title} | done when: it shows\nROUTE: #new -> new | why: it made it"));
     w.advance(1000);
-    item(w, project, title)["id"].as_str().unwrap().to_string()
+    let it = item(w, project, title);
+    let by = it["holder"]["sid"].as_str().unwrap_or_else(|| panic!("nobody took it: {it}")).to_string();
+    (it["id"].as_str().unwrap().to_string(), by)
 }
 
 /// Item `title`'s copy, as the Desk shows it.
@@ -98,7 +101,7 @@ pub(super) fn listed(w: &World, project: &str, id: &str) -> bool {
 fn two_items_at_once_work_in_copies_of_their_own_and_each_lands_only_its_own_work() {
     let w = World::new();
     let (dir, project, id, h) = routed_with(&w, |_, _, _| {}, |_, _, _| {});
-    let f = another(&w, &project, "Footer");
+    let (f, fh) = another(&w, &project, "Footer");
     let (a, b) = (copy_of(&w, &project, "Header jumps"), copy_of(&w, &project, "Footer"));
     assert_ne!(a, b, "a copy each");
     assert_eq!(git(&a, &["branch", "--show-current"]).trim(), format!("desk/{id}"));
@@ -116,7 +119,7 @@ fn two_items_at_once_work_in_copies_of_their_own_and_each_lands_only_its_own_wor
     assert_eq!(std::fs::read_to_string(b.join("b.txt")).ok().as_deref(), Some("footer\n"), "the other copy is left as it was");
     assert_eq!(item(&w, &project, "Footer")["state"], "working");
 
-    ends(&w, &h, &format!("Fixed the footer.\nDONE: #{f}"));
+    ends(&w, &fh, &format!("Fixed the footer.\nDONE: #{f}"));
     assert_eq!(subject(&dir, "HEAD"), format!("Footer (#{f})"));
     assert_eq!(subject(&dir, "HEAD~1"), format!("Header jumps (#{id})"), "on top of the first");
     assert_eq!(files_of(&dir, "HEAD"), "b.txt", "only the footer's work");

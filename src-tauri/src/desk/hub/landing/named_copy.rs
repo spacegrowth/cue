@@ -224,7 +224,6 @@ impl Hub {
             return;
         }
         self.save_made(id, &made);
-        self.finish_release(id);
         // No main line to wait for, nothing to install: to check.
         self.finish_after(id, &[]);
     }

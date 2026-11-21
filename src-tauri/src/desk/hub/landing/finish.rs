@@ -185,17 +185,6 @@ impl Hub {
         said
     }
 
-    /// Items queued after `id` start now (its commit is made, or there was none to make).
-    pub(crate) fn finish_release(&self, id: &str) {
-        let now = now_ms();
-        let fx = self.write(|st| {
-            let mut fx = crate::desk::hub::core::desk::Effects::default();
-            crate::desk::hub::core::desk::release(st, id, now, &mut fx);
-            fx
-        });
-        self.desk_done(fx);
-    }
-
     /// Item `id` just said DONE: in its own copy, it joins the landing line (desk/hub/landing/trees.rs); else its commit made (with its crew's branch merged), then queued
     /// for an install when it changed this Cue, else to check. One run per item at a time.
     pub(crate) fn desk_finish_commit(&self, id: &str) {
@@ -224,7 +213,6 @@ impl Hub {
         // no `finish`, so Looks right commits it there and Undo takes that back, as before. A project whose work you
         // commit yourself (desk/lands.rs) goes the same way, and Looks right then commits nothing.
         if !machine.is_empty() || self.item_lands(&it).how == "owner" {
-            self.finish_release(id);
             let now = now_ms();
             if self.finish_set(id, |i| (i.state, i.finish, i.updated) = ("to_check".into(), None, crate::desk::hub::core::desk::secs(now))).is_some() {
                 self.desk_finished(id, "check");
@@ -247,7 +235,6 @@ impl Hub {
         for top in &tops {
             self.desk_clear_helpers(id, top, None);
         }
-        self.finish_release(id);
         self.finish_after(id, &tops);
     }
 
@@ -603,6 +590,8 @@ impl Hub {
         // once the lead is free (desk/hub/lead/feed.rs).
         self.desk_feed_watch();
         self.desk_feed_tick();
+        // Items queued for a session whose wait is up (desk/hub/turn/queue.rs), should its own timer have been lost.
+        self.desk_queue_tick();
     }
 }
 

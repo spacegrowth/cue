@@ -94,6 +94,14 @@ pub struct DeskItem {
     /// (#577): what that session is told of the work so far, your words with it. Cleared once a session takes it.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub reopen_note: String,
+    /// Reopened while the session that held it was at work on another item (#576): queued for that session, and
+    /// this is what it's sent when it takes the item back. Cleared once a session takes it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub back_message: String,
+    /// The items queued after this one that its Looks right let go (#576): an Undo puts them back after it while
+    /// none has started.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub released: Vec<String>,
     /// The lead's teammate doing it, when the lead keeps it and says so (`ROUTE: #id -> me | crew: <name>`): the name
     /// the lead gave it, matched to its teammate of that name once there is one (desk/hub/core/view.rs `shown`).
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -101,6 +109,14 @@ pub struct DeskItem {
     /// The item it waits on (queued behind it), and why.
     #[serde(default)]
     pub after: Option<String>,
+    /// The session it's next for while it waits in the Desk's queue with no holder (#576): routed to a session busy
+    /// with another item, it starts there once that one is free (desk/hub/turn/queue.rs), or in a fresh session once
+    /// it has waited `queue::WAIT_MS`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_for: Option<Holder>,
+    /// When its wait for `next_for` began (ms): it entered the queue, or the item it waited on (`after`) was done.
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    pub queued_at: u64,
     #[serde(default)]
     pub after_why: String,
     /// Its holder's latest, in one line, while its holder is on it: worked out as it's shown.
@@ -228,6 +244,10 @@ pub struct DeskItem {
     /// on what the window is shown (desk/hub/core/view.rs `shown`), never saved.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub copy_users: Vec<String>,
+    /// Waiting for `next_for` (#576): when it goes to a fresh session if that one is still busy (ms). Only on what
+    /// the window is shown (desk/hub/core/view.rs `shown`), never saved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fresh_at: Option<u64>,
     /// Started now by the lead (START, #347) while it waited: it works where its holder is when no copy is free,
     /// rather than queue for one again.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]

@@ -8,6 +8,7 @@ use crate::testing::World;
 /// Routing rules, "Fit with the context bands": "an item routed to a session marked 'will hand off at expiry' must
 /// move with the hand-off"; merged rule 17: "a fresh session takes over with its record". Every item it holds that
 /// isn't done, at work, waiting behind it, or with you to check, is the fresh session's, and that one is on the Desk.
+/// Items in the queue for it (#576: it keeps one item at a time) wait for the fresh session instead.
 #[test]
 fn every_item_a_handed_off_session_holds_moves_to_the_session_that_took_over() {
     let w = World::new();
@@ -24,10 +25,13 @@ fn every_item_a_handed_off_session_holds_moves_to_the_session_that_took_over() {
     w.hub().desk_carry(&h, &next, "fresh");
     w.settle();
     let dk = desk(&w, &project);
-    for (title, state) in [("Header jumps", "to_check"), ("Footer is cut off", "working"), ("Menu flickers", "queued")] {
+    let it = item(&dk, "Header jumps");
+    assert_eq!((it["holder"]["sid"].as_str(), it["state"].as_str()), (Some(next.as_str()), Some("to_check")), "{it}");
+    for title in ["Footer is cut off", "Menu flickers"] {
         let it = item(&dk, title);
-        assert_eq!((it["holder"]["sid"].as_str(), it["state"].as_str()), (Some(next.as_str()), Some(state)), "{title}: {it}");
+        assert_eq!((it["holder"].is_null(), it["next_for"]["sid"].as_str(), it["state"].as_str()), (true, Some(next.as_str()), Some("queued")), "{title}: {it}");
     }
+    assert!(!sent_to(&w, &h).iter().any(|t| t.contains(&format!("Desk item #{two}"))), "the one handed off never starts it");
     let members: Vec<String> = dk["members"].as_array().unwrap().iter().map(|m| m.as_str().unwrap().to_string()).collect();
     assert!(members.contains(&next), "the fresh session is on the Desk: {members:?}");
     // A send-back now goes to the session that took over (merged rule 17), not to the one handed off.

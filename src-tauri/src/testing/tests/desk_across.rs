@@ -68,8 +68,8 @@ fn after_and_land_first_read_another_desks_item() {
     assert!(lines("START: loops#533 | why: x").is_empty(), "only LAND FIRST names another Desk's item");
 }
 
-/// An item queued after another Desk's item on the same code starts when that one is done, as within one Desk; the
-/// waits list of both Desks shows the wait, naming the other Desk.
+/// An item queued after another Desk's item on the same code starts when that one is done (Looks right, #576), as
+/// within one Desk; the waits list of both Desks shows the wait, naming the other Desk.
 #[test]
 fn an_item_queued_after_another_desks_item_starts_when_it_is_done() {
     let w = World::new();
@@ -81,6 +81,9 @@ fn an_item_queued_after_another_desks_item_starts_when_it_is_done() {
     let wa = desk(&w, &pa)["waits"].as_array().unwrap().iter().find(|x| x["item"] == b.as_str()).cloned().unwrap_or_default();
     assert_eq!((wa["on"].as_str(), wa["item_desk"].as_str()), (Some(a.as_str()), Some("Loops")), "the Desk waited on sees it too: {}", desk(&w, &pa)["waits"]);
     ends(&w, &h, &format!("DONE: #{a}"));
+    assert_eq!(item(&desk(&w, &pb), "Footer")["after"], a.as_str(), "DONE isn't enough");
+    w.hub().desk_item_act(&a, "looks_right", "").unwrap();
+    w.settle();
     let it = item(&desk(&w, &pb), "Footer").clone();
     assert!(it["state"] != "queued" && it["after"].is_null(), "{it}");
 }

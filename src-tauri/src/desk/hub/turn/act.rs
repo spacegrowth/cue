@@ -81,7 +81,7 @@ fn apply(st: &mut Store, id: &str, act: &str, text: &str, now: u64, fx: &mut Eff
     let stamp = match act {
         "looks_right" => looks_right(st, id, now, fx)?,
         "skip_install" => skip_install(st, id, holder, now, fx)?,
-        "reopen" => reopen(st, id, build_gone)?,
+        "reopen" => reopen(st, id, build_gone, now, fx)?,
         "send_back" => send_back(st, id, holder, text, &pr_open, now, fx)?,
         "note" => note_to_holder(st, id, holder, text, now, fx)?,
         "start_now" => start_now(st, id, holder, busy, &rule, now, fx)?,
@@ -130,8 +130,27 @@ fn pr_open(st: &mut Store, id: &str, act: &str) -> String {
     pr.map(|u| format!(" Its pull request stays open on GitHub: {u}")).unwrap_or_default()
 }
 
+/// The items queued after `id` now (on a Desk that isn't paused): what its Looks right lets go.
+fn waiting_on(st: &Store, id: &str) -> Vec<String> {
+    st.desk.items.iter().filter(|i| i.after.as_deref() == Some(id) && i.state == "queued" && !crate::desk::hub::away::pause::is_paused(&i.project)).map(|i| i.id.clone()).collect()
+}
+
+/// Item `id` is no longer done (Undo, or Reopen): those its Looks right let go wait for it again, while none has
+/// started (no holder yet, #576).
+fn hold_released(st: &mut Store, id: &str, now: u64, fx: &mut Effects) {
+    let Some(ids) = st.desk.item_mut(id).map(|i| std::mem::take(&mut i.released)) else { return };
+    for w in ids {
+        let Some(it) = st.desk.item_mut(&w).filter(|i| i.holder.is_none() && i.state == "queued" && i.after.is_none()) else { continue };
+        it.after = Some(id.to_string());
+        it.updated = secs(now);
+        fx.items.push(w);
+    }
+}
+
 fn looks_right(st: &mut Store, id: &str, now: u64, fx: &mut Effects) -> Result<bool, String> {
+    let released = waiting_on(st, id);
     let it = item_of(st, id)?;
+    it.released = released;
     it.state = "done".into();
     it.after = None;
     it.close_on_check = false;
@@ -152,6 +171,8 @@ fn skip_install(st: &mut Store, id: &str, holder: Option<Holder>, now: u64, fx: 
     }
     (it.state, it.after, it.close_on_check, it.done_at) = ("done".into(), None, false, Some(secs(now)));
     let (title, project) = (it.title.clone(), it.project.clone());
+    let released = waiting_on(st, id);
+    item_of(st, id)?.released = released;
     release(st, id, now, fx);
     you_wrote(st, &project, id, "Done, skip install", "closed without an install", now, fx);
     if let Some(h) = holder {
@@ -164,7 +185,7 @@ fn skip_install(st: &mut Store, id: &str, holder: Option<Holder>, now: u64, fx: 
 
 // Undo on a done item: back to waiting on you, nothing in the work touched (a commit made stays; one still
 // waiting isn't made).
-fn reopen(st: &mut Store, id: &str, build_gone: bool) -> Result<bool, String> {
+fn reopen(st: &mut Store, id: &str, build_gone: bool, now: u64, fx: &mut Effects) -> Result<bool, String> {
     let it = item_of(st, id)?;
     if it.state != "done" {
         return Err("It isn't done: nothing to undo".into());
@@ -175,22 +196,17 @@ fn reopen(st: &mut Store, id: &str, build_gone: bool) -> Result<bool, String> {
     }
     (it.picked, it.built_as) = (String::new(), String::new());
     (it.state, it.done_at, it.commit_wait) = ("to_check".into(), None, None);
+    hold_released(st, id, now, fx);
     Ok(true)
 }
 
 /// Where Send back, or Reopen on a done item, takes item `id` (#577): back to `h`, the session that held it, unless it's
-/// closed, or (for a done item, whose session may have moved on) at work on another of its items. Err: why not, in
-/// words for its page and the fresh session ("cue-268 is closed").
-fn back_to(st: &Store, id: &str, h: &Holder, done: bool) -> Result<(), String> {
-    if st.sessions.get(h.to()).is_none() {
-        return Err(format!("{} is closed", h.name));
-    }
-    let other = st.desk.items.iter().find(|o| {
-        o.id != id && matches!(o.state.as_str(), "working" | "queued" | "finishing") && o.holder.as_ref().is_some_and(|b| b.sid == h.sid && b.lead_sid == h.lead_sid)
-    });
-    match other.filter(|_| done) {
-        Some(o) => Err(format!("{} is at work on #{}", h.name, o.id)),
-        None => Ok(()),
+/// closed. Err: why not, in words for its page and the fresh session ("cue-268 is closed"). A done item whose session
+/// has moved on to another item queues for it (#576, `send_back`).
+fn back_to(st: &Store, h: &Holder) -> Result<(), String> {
+    match st.sessions.get(h.to()) {
+        None => Err(format!("{} is closed", h.name)),
+        Some(_) => Ok(()),
     }
 }
 
@@ -208,7 +224,12 @@ fn send_back(st: &mut Store, id: &str, holder: Option<Holder>, text: &str, pr_op
         return Err(format!("Option {} is picked: it's being built as #{b}", item_of(st, id)?.picked));
     }
     // With a copy of its own still (a landing that stopped), it stays with its holder: the copy is that session's.
-    let gone = back_to(st, id, &h, done).err().filter(|_| item_of(st, id).is_ok_and(|i| i.tree.is_none()));
+    if done {
+        hold_released(st, id, now, fx);
+    }
+    let gone = back_to(st, &h).err().filter(|_| item_of(st, id).is_ok_and(|i| i.tree.is_none()));
+    // Done, and its session has moved on to another item (one item per session, #576): it waits for that session.
+    let busy = crate::desk::hub::turn::queue::busy_with(st, &h, id).filter(|_| done && gone.is_none() && item_of(st, id).is_ok_and(|i| i.tree.is_none()));
     let it = item_of(st, id)?;
     if done {
         (it.picked, it.built_as, it.commit_wait) = (String::new(), String::new(), None);
@@ -224,6 +245,17 @@ fn send_back(st: &mut Store, id: &str, holder: Option<Holder>, text: &str, pr_op
     let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
     let (title, project) = (it.title.clone(), it.project.clone());
     let did = if done { "reopened" } else { "sent back" };
+    if let Some(x) = busy {
+        // What it's told once it's free; a fresh session's hand-off if it stays busy 20 minutes.
+        let message = format!("{crew}Desk item #{id} ({title}) isn't done (you said it looks right, and now it's reopened): {}\nIts fixes stay in #{id}; don't add new items for them. Say DONE: #{id} when it is.\n{}{pr_open}", crate::desk::with_your_pictures(&words), crate::desk::check_words(id));
+        let hand = reopen_handoff(it, &h, &format!("{} is at work on #{x}", h.name), &words);
+        it.remember_holder();
+        (it.moved_from, it.reopen_note, it.back_message) = (Some(h.clone()), hand, message);
+        (it.holder, it.state, it.after, it.next_for, it.queued_at) = (None, "queued".into(), None, Some(h.clone()), now);
+        it.crew.clear();
+        you_wrote(st, &project, id, crate::desk::your_words(&words).0.trim(), &format!("{did}: next for {} once it's free (at work on #{x})", h.name), now, fx);
+        return Ok(true);
+    }
     // Its session can't take it back: a fresh one does, with a hand-off (#577).
     if let Some(why) = gone {
         let hand = reopen_handoff(it, &h, &why, &words);
@@ -299,6 +331,12 @@ fn note_to_holder(st: &mut Store, id: &str, holder: Option<Holder>, text: &str, 
 }
 
 fn start_now(st: &mut Store, id: &str, holder: Option<Holder>, busy: Option<String>, rule: &str, now: u64, fx: &mut Effects) -> Result<bool, String> {
+    // Next for a session (#576): it starts there if that one's free, else in a fresh session with a hand-off.
+    let project = item_of(st, id)?.project.clone();
+    if holder.is_none() && crate::desk::hub::turn::queue::start_next_now(st, &project, id, "", ("You", ""), now, fx) {
+        you_wrote(st, &project, id, "Start now", "without waiting", now, fx);
+        return Ok(true);
+    }
     let it = item_of(st, id)?;
     // Waiting for a free copy (#401), its holder's (sent back, or given out with all copies in use): it starts now
     // where its holder is, as the lead's START does, with its words and your Send back's.
@@ -725,8 +763,8 @@ fn put_before(st: &mut Store, id: &str, now: u64, fx: &mut Effects) -> Result<()
     let (other, why) = st.desk.item(id).and_then(|it| it.after.clone().map(|a| (a, it.after_why.clone()))).ok_or("it isn't waiting on another item")?;
     let rule = st.desk.item(id).map(|i| rule_of(st, &i.project)).unwrap_or_default();
     let lead = st.desk.item(id).and_then(|i| st.desk.lead.get(&i.project)).cloned();
-    // What that one waits on, if it's still to be done: this one waits on it in its place.
-    let open = |a: &String| st.desk.item(a).is_some_and(|w| !matches!(w.state.as_str(), "finishing" | "to_check" | "done"));
+    // What that one waits on, if it hasn't had Looks right yet (#576): this one waits on it in its place.
+    let open = |a: &String| st.desk.item(a).is_some_and(|w| w.state != "done");
     let ahead = st.desk.item(&other).and_then(|o| o.after.clone()).filter(open);
     let o = st.desk.item_mut(&other).ok_or("the item it waited on is gone")?;
     if o.state == "working" && o.holder.is_some() {
@@ -757,7 +795,7 @@ fn put_before(st: &mut Store, id: &str, now: u64, fx: &mut Effects) -> Result<()
         }
         None => {
             it.after = None;
-            start_released(it, &rule, lead.as_ref(), fx);
+            start_released(it, &rule, lead.as_ref(), now, fx);
         }
     }
     Ok(())
@@ -781,6 +819,7 @@ impl Hub {
             let mut fx = Effects { items: vec![it.id.clone()], ..Default::default() };
             match holder {
                 Some(sid) => {
+                    // Given by hand: you override one item per session (#576), so a busy session takes it as another item.
                     let h = holder_of(st, sid).ok_or("that session isn't open")?;
                     if st.sessions.get(sid).is_some_and(|s| s.project != st.desk.project_of(project)) {
                         return Err(format!("{} isn't a session of {}", h.name, st.desk.project_of(project)));

@@ -175,12 +175,15 @@ fn everything_waiting_goes_in_one_install_half_an_hour_after_the_first() {
     let h = item(&w, &project, "Header jumps")["holder"]["sid"].as_str().unwrap().to_string();
     let lead = super::desk::desk(&w, &project)["lead"]["sid"].as_str().unwrap().to_string();
     w.advance(20 * 60_000);
-    ends(&w, &lead, "ITEM: bug | Footer jumps | done when: it stays put\nROUTE: #new -> cue-teams | why: it made the footer");
+    // To a new session: cue-teams keeps Header until its Looks right (one item per session, #576).
+    ends(&w, &lead, "ITEM: bug | Footer jumps | done when: it stays put\nROUTE: #new -> new | why: it made the footer");
     w.settle();
     let id2 = item(&w, &project, "Footer jumps")["id"].as_str().unwrap().to_string();
+    let h2 = item(&w, &project, "Footer jumps")["holder"]["sid"].as_str().unwrap().to_string();
     std::fs::write(dir.join("shared.txt"), "footer\n").unwrap();
-    super::desk_commit::log_edit(&w, &h, &dir.join("shared.txt"));
-    ends(&w, &h, &format!("Fixed.\nDONE: #{id2}"));
+    super::desk_commit::log_edit(&w, &h2, &dir.join("shared.txt"));
+    ends(&w, &h2, &format!("Fixed.\nDONE: #{id2}"));
+    let _ = h;
     assert_eq!(item(&w, &project, "Footer jumps")["finish"]["step"], "queued");
     let due = w.snapshot().0["desk"]["install_at"].as_u64().unwrap();
     w.advance(9 * 60_000);
@@ -196,7 +199,7 @@ fn everything_waiting_goes_in_one_install_half_an_hour_after_the_first() {
 }
 
 #[test]
-fn an_item_queued_after_another_starts_once_its_commit_is_made() {
+fn an_item_queued_after_another_waits_for_its_looks_right_not_its_commit() {
     let w = World::new();
     let fake = Arc::new(Fake::default());
     w.hub().desk_set_installer(fake.clone());
@@ -213,7 +216,7 @@ fn an_item_queued_after_another_starts_once_its_commit_is_made() {
     });
     assert_eq!(queued.into_inner(), "queued", "waits on the first");
     assert_eq!(item(&w, &project, "Header jumps")["finish"]["step"], "queued", "the first waits for its install");
-    assert_eq!(item(&w, &project, "Footer jumps")["state"], "working", "started at the commit, not the install");
+    assert_eq!(item(&w, &project, "Footer jumps")["state"], "queued", "not started at the commit: it waits for the first's Looks right (#576)");
 }
 
 #[test]

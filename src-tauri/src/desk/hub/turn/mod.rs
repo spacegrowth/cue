@@ -2,6 +2,7 @@
 
 pub(crate) mod act;
 pub(crate) mod route;
+pub(crate) mod queue;
 pub(crate) mod said;
 pub(crate) mod heard;
 pub(crate) mod asked;

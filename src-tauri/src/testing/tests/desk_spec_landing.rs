@@ -17,14 +17,14 @@ fn the_second_item_in_the_landing_line_is_checked_with_the_first_already_on_main
     checker.say(Some(Ok(())));
     w.hub().desk_set_installer(checker.clone());
     let (dir, project, id, h) = routed_with(&w, |_, _, _| {}, |_, _, _| {});
-    let f = another(&w, &project, "Footer");
+    let (f, fh) = another(&w, &project, "Footer");
     std::fs::write(copy_of(&w, &project, "Header jumps").join("a.txt"), "a\n").unwrap();
     std::fs::write(copy_of(&w, &project, "Footer").join("b.txt"), "b\n").unwrap();
     // The main checkout mid-merge: both wait in the line.
     std::fs::write(dir.join(".git/MERGE_HEAD"), head(&dir)).unwrap();
     ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
     w.advance(1000);
-    ends(&w, &h, &format!("Fixed too.\nDONE: #{f}"));
+    ends(&w, &fh, &format!("Fixed too.\nDONE: #{f}"));
     assert_eq!(item(&w, &project, "Footer")["finish"]["step"], "line", "{}", item(&w, &project, "Footer"));
     std::fs::remove_file(dir.join(".git/MERGE_HEAD")).unwrap();
     w.hub().desk_tick_now();

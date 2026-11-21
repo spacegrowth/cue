@@ -14,8 +14,12 @@ fn band_and_older_pages(w: &World, state: &str) -> (String, String, String, Stri
     let m = w.hub().desk_add(&project, "feature", "Band", "", None).unwrap();
     w.hub().desk_give(&m.id, &h).unwrap();
     w.settle();
+    // Both the holder's, Older pages queued behind Band: as a Desk saved before one item per session (#576) has it
+    // (a route now queues it with no holder).
     let n = w.hub().desk_add(&project, "bug", "Older pages", "", None).unwrap();
-    ends(w, &l, &format!("ROUTE: #{} -> cue-teams | after: #{} | why: starts once #{} has landed", n.id, m.id, m.id));
+    w.hub().desk_give(&n.id, &h).unwrap();
+    w.settle();
+    w.hub().desk_queue_after_unchecked(&n.id, &m.id);
     w.hub().desk_put_in_state(&m.id, state);
     let d = desk(w, &project);
     let it = item(&d, "Older pages");

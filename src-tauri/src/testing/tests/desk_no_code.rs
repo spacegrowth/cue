@@ -91,9 +91,9 @@ fn a_doc_only_item_takes_no_copy_even_when_one_is_free() {
     let it = item(&w, &project, "Designers' advice on Loops");
     assert_eq!(it["state"], "working", "{it}");
     assert!(it["tree"].is_null(), "no copy taken: {it}");
-    // A code item routed next gets the free copy at once.
+    // A code item routed next (to a new session: cue-teams is busy with the doc, #576) gets the free copy at once.
     w.advance(1000);
-    ends(&w, &d, "ITEM: feature | Loops B build | done when: Loops looks like option B\nROUTE: #new -> cue-teams | why: it knows Loops");
+    ends(&w, &d, "ITEM: feature | Loops B build | done when: Loops looks like option B\nROUTE: #new -> new | why: it knows Loops");
     let b = item(&w, &project, "Loops B build");
     assert_eq!((b["state"].as_str(), b["tree"]["slot"].as_u64()), (Some("working"), Some(1)), "{b}");
 }

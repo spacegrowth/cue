@@ -452,7 +452,10 @@ fn a_teammate_started_for_an_item_that_moved_to_another_session_stays_out_of_the
     w.advance(1000);
     says(&w, &h, writes("toolu_A", "agentA", "header-fix", &[f("a.txt")]));
     w.advance(1000);
-    ends(&w, &d, "ITEM: bug | Footer jumps | done when: it stays put\nROUTE: #new -> cue-teams | why: it made the footer");
+    // Both held by cue-teams at once, as a Desk saved before one item per session (#576) has it: given, not routed.
+    let given = w.hub().desk_add(&project, "bug", "Footer jumps", "it stays put", Some(&h)).unwrap();
+    assert_eq!(given.holder.as_ref().map(|g| g.sid.as_str()), Some(h.as_str()));
+    w.settle();
     w.advance(1000);
     says(&w, &h, writes("toolu_B", "agentB", "footer-fix", &[f("b.txt")]));
     w.advance(1000);

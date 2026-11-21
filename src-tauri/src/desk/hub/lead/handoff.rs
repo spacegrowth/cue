@@ -71,6 +71,18 @@ impl Hub {
             let lead = st.desk.lead_of(old).map(|id| (id, name.clone()));
             for project in st.desk.scopes(old, &project) {
                 let held = held_items(st, &project, old);
+                // Items in the queue for it (#576) wait for the one that carries on, whether or not it is on the Desk.
+                for it in st.desk.items.iter_mut().filter(|i| i.project == project && i.holder.is_none()) {
+                    if let Some(h) = it.next_for.as_mut().filter(|h| h.sid == old || h.lead_sid == old) {
+                        if h.lead_sid == old {
+                            h.lead_sid = new.to_string();
+                        } else {
+                            (h.sid, h.name) = (new.to_string(), name.clone());
+                        }
+                        it.updated = secs(now);
+                        fx.items.push(it.id.clone());
+                    }
+                }
                 let on_desk = st.desk.on_desk(&project, old) || lead.is_some() || held.iter().any(Option::is_some);
                 if !on_desk {
                     continue;

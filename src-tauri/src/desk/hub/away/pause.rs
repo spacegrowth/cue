@@ -61,9 +61,9 @@ pub(crate) fn pause_block(desk: &str, now: u64) -> Option<String> {
     })
 }
 
-/// Whether item `id` is over for what's queued after it: finishing, to check, done, or gone.
+/// Whether item `id` is over for what's queued after it: done (Looks right, #576), or gone.
 fn over(st: &Store, id: &str) -> bool {
-    st.desk.item(id).is_none_or(|i| matches!(i.state.as_str(), "finishing" | "to_check" | "done"))
+    st.desk.item(id).is_none_or(|i| i.state == "done")
 }
 
 impl Hub {
@@ -160,6 +160,12 @@ impl Hub {
         }).collect();
         let fx = self.write(|st| {
             let mut fx = Effects::default();
+            // A pause doesn't count toward an item's 20 minutes for its session (#576): its clock moves on by the
+            // pause, or to now for one queued during it.
+            let gap = now.saturating_sub(was.get("since").and_then(Value::as_u64).unwrap_or(now));
+            for it in st.desk.items.iter_mut().filter(|i| i.project == desk && i.state == "queued" && i.holder.is_none() && i.next_for.is_some()) {
+                it.queued_at = (it.queued_at + gap).min(now);
+            }
             // Queued after an item that finished while paused: they start now.
             let mut afters: Vec<String> = st.desk.items.iter().filter(|i| i.project == desk && i.state == "queued" && !i.tree_wait).filter_map(|i| i.after.clone()).collect();
             afters.dedup();

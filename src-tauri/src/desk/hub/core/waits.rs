@@ -210,6 +210,9 @@ pub(crate) fn cut_in(st: &mut Store, id: &str, on: &str, now: u64) -> Result<cra
             if let Some(h) = &it.holder {
                 it.state = "working".into();
                 fx.sends.push((h.to().to_string(), crate::desk::handed_words(it, "", &rule)));
+            } else if it.next_for.is_some() {
+                // Next for a session (#576): it waits for that one from now.
+                it.queued_at = now;
             } else {
                 it.state = "new".into();
                 fx.news.push((it.project.clone(), id.clone()));

@@ -467,6 +467,9 @@ fn item_lines(st: &Store, it: &DeskItem, out: &mut String, failed: &mut Vec<(Str
             out.push_str(&format!(" → {} (crew)", it.crew));
         }
     }
+    if let Some(n) = it.next_for.as_ref().filter(|_| it.holder.is_none()) {
+        out.push_str(&format!(" | next for {}", n.name));
+    }
     if let Some(a) = &it.after {
         out.push_str(&format!(" | after #{a}"));
     }

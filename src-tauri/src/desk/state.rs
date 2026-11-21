@@ -8,6 +8,8 @@ use super::model::Waiting;
 /// The Desk's runtime-only state (`Desk::run`). Not saved.
 #[derive(Default, Debug)]
 pub struct DeskRun {
+    /// When the queue's next wait runs out and a sweep is set for it (ms; 0: none set): desk/hub/turn/queue.rs.
+    pub queue_timer: u64,
     /// Sessions being selected as leads, reserved across concurrent Desk changes.
     pub lead_claims: HashMap<String, String>,
     /// Projects whose lead is being started or resumed, with the messages that arrived while it was starting, sent
