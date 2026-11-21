@@ -20,7 +20,7 @@ pub fn desk_put_space(desk: &crate::desk::model::DeskSpace) -> Result<(), String
 pub fn desk_delete(id: &str) -> Result<(), String> {
     with(|c| {
         let tx = c.unchecked_transaction()?;
-        for table in ["desk_items", "desk_decisions", "desk_lead", "desk_members", "desk_moves", "desk_moves_cleared"] {
+        for table in ["desk_items", "desk_decisions", "desk_lead", "desk_members", "desk_moves", "desk_moves_cleared", "desk_feed", "desk_feed_marks"] {
             tx.execute(&format!("DELETE FROM {table} WHERE project = ?1"), params![id])?;
         }
         tx.execute("DELETE FROM desk_spaces WHERE id = ?1", params![id])?;
@@ -36,17 +36,91 @@ pub fn desk_spaces() -> Vec<crate::desk::model::DeskSpace> {
     }).unwrap_or_default()
 }
 
-/// An item saved as it is now.
+/// An item saved as it is now (`desk_save`; a failed save is logged).
 pub fn desk_put_item(it: &DeskItem) {
-    let data = serde_json::to_string(it).unwrap_or_default();
+    if let Err(e) = desk_save(std::slice::from_ref(it), &[], &[]) {
+        eprintln!("cue: desk: couldn't save item #{}: {e}", it.id);
+    }
+}
+
+/// The one save every Desk item goes through: items as they are now, items dropped, and the feed rows their
+/// change added (desk/feed.rs), in one transaction, so a row is never saved without its change or the other way.
+pub fn desk_save(items: &[DeskItem], dropped: &[String], rows: &[crate::desk::feed::Change]) -> Result<(), String> {
+    if items.is_empty() && dropped.is_empty() && rows.is_empty() {
+        return Ok(());
+    }
+    let data: Vec<String> = items.iter().map(|it| serde_json::to_string(it).map_err(|e| e.to_string())).collect::<Result<_, _>>()?;
     with(|c| {
-        c.execute(
-            "INSERT INTO desk_items (id, project, state, updated_ms, data) VALUES (?1, ?2, ?3, ?4, ?5)
-             ON CONFLICT(id) DO UPDATE SET project = excluded.project, state = excluded.state, updated_ms = excluded.updated_ms, data = excluded.data",
-            params![it.id, it.project, it.state, (it.updated * 1000) as i64, data],
+        let tx = c.unchecked_transaction()?;
+        for (it, data) in items.iter().zip(&data) {
+            tx.execute(
+                "INSERT INTO desk_items (id, project, state, updated_ms, data) VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT(id) DO UPDATE SET project = excluded.project, state = excluded.state, updated_ms = excluded.updated_ms, data = excluded.data",
+                params![it.id, it.project, it.state, (it.updated * 1000) as i64, data],
+            )?;
+        }
+        for id in dropped {
+            tx.execute("DELETE FROM desk_items WHERE id = ?1", params![id])?;
+        }
+        for r in rows {
+            tx.execute(
+                // Not one "heard" has passed since it was numbered (its marks saved first, in a write of their own).
+                "INSERT OR REPLACE INTO desk_feed (project, n, item, kind, words, key, created_ms) SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7
+                 WHERE ?2 > COALESCE((SELECT heard FROM desk_feed_marks WHERE project = ?1), 0)",
+                params![r.desk, r.n as i64, r.item, r.kind.as_str(), r.words, r.key, r.created_ms as i64],
+            )?;
+        }
+        tx.commit()
+    })
+    .ok_or_else(|| "the database refused it".to_string())
+}
+
+/// Desk `desk`'s feed marks saved: sent and heard, each with its lead. Rows heard are deleted with it.
+pub fn desk_feed_marks(desk: &str, sent: &crate::desk::feed::Mark, heard: &crate::desk::feed::Mark) -> Result<(), String> {
+    with(|c| {
+        let tx = c.unchecked_transaction()?;
+        tx.execute(
+            "INSERT INTO desk_feed_marks (project, sent, sent_lead, heard, heard_lead) VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(project) DO UPDATE SET sent = excluded.sent, sent_lead = excluded.sent_lead, heard = excluded.heard, heard_lead = excluded.heard_lead",
+            params![desk, sent.n as i64, sent.lead, heard.n as i64, heard.lead],
         )?;
-        Ok(())
-    });
+        tx.execute("DELETE FROM desk_feed WHERE project = ?1 AND n <= ?2", params![desk, heard.n as i64])?;
+        tx.commit()
+    })
+    .ok_or_else(|| "the database refused it".to_string())
+}
+
+/// Every Desk's feed as saved: its marks, and its rows past "heard", in order (those not past it deleted).
+pub fn desk_feed_load() -> crate::desk::feed::Feeds {
+    use crate::desk::feed::{Change, ChangeKind, Feed, Mark};
+    let mut feeds = crate::desk::feed::Feeds::new();
+    let marks: Vec<(String, u64, String, u64, String)> = with(|c| {
+        let mut q = c.prepare("SELECT project, sent, sent_lead, heard, heard_lead FROM desk_feed_marks")?;
+        let rows = q.query_map([], |r| Ok((r.get(0)?, r.get::<_, i64>(1)? as u64, r.get(2)?, r.get::<_, i64>(3)? as u64, r.get(4)?)))?;
+        Ok(rows.flatten().collect())
+    })
+    .unwrap_or_default();
+    for (desk, sent, sent_lead, heard, heard_lead) in marks {
+        feeds.insert(desk, Feed { sent: Mark { n: sent, lead: sent_lead }, heard: Mark { n: heard, lead: heard_lead }, next: sent.max(heard), ..Default::default() });
+    }
+    // Rows heard already: a save of rows that ran after "heard" passed them (each save is its own write) left them.
+    with(|c| c.execute("DELETE FROM desk_feed WHERE n <= (SELECT m.heard FROM desk_feed_marks m WHERE m.project = desk_feed.project)", []));
+    let rows: Vec<Change> = with(|c| {
+        let mut q = c.prepare("SELECT project, n, item, kind, words, key, created_ms FROM desk_feed ORDER BY project, n")?;
+        let rows = q.query_map([], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as u64, r.get::<_, String>(2)?, r.get::<_, String>(3)?, r.get::<_, String>(4)?, r.get::<_, String>(5)?, r.get::<_, i64>(6)? as u64))
+        })?;
+        Ok(rows.flatten().filter_map(|(desk, n, item, kind, words, key, created_ms)| Some(Change { desk, n, item, kind: ChangeKind::parse(&kind)?, words, key, created_ms })).collect())
+    })
+    .unwrap_or_default();
+    for r in rows {
+        let f = feeds.entry(r.desk.clone()).or_default();
+        if r.n > f.heard.n {
+            f.next = f.next.max(r.n);
+            f.rows.push(r);
+        }
+    }
+    feeds
 }
 
 /// A dropped item's kept copy, saved.
@@ -97,7 +171,9 @@ pub fn desk_pieces(id: &str) -> Vec<DeskItem> {
 
 /// An item dropped.
 pub fn desk_drop_item(id: &str) {
-    with(|c| c.execute("DELETE FROM desk_items WHERE id = ?1", params![id]).map(|_| ()));
+    if let Err(e) = desk_save(&[], &[id.to_string()], &[]) {
+        eprintln!("cue: desk: couldn't drop item #{id}: {e}");
+    }
 }
 
 /// Items `Desk::number_old` numbered (old id, new id) saved under their numbers (the old rows dropped), with the

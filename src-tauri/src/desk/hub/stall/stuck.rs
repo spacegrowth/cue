@@ -8,6 +8,8 @@ use crate::hub::activity::written_ms;
 use crate::desk::hub::core::desk::{ask_of, crew_parts, Effects};
 use crate::desk::hub::stall::stall::lead_live;
 use crate::desk::hub::prelude::*;
+use crate::desk::feed::ChangeKind;
+use crate::desk::hub::lead::feed::raise;
 use crate::desk::Holder;
 
 /// No new output for this long while marked working: stuck.
@@ -71,7 +73,15 @@ impl Hub {
                 let Some(project) = st.desk.item(id).map(|i| i.project.clone()) else { continue };
                 let Some(lead) = st.desk.lead_sid(&project).filter(|l| *l != sid.as_str() && lead_live(st, &project)).map(str::to_string) else { continue };
                 st.desk.run.stuck_told.insert(id.clone(), (sid.clone(), s.spell.clone()));
-                fx.sends.push((lead, s.words.clone()));
+                // On a permission prompt: a row of its Desk's change feed, saved with the item; quiet: told now.
+                match s.spell.strip_prefix("prompt:") {
+                    Some(ask) => {
+                        if raise(st, &project, id, ChangeKind::PermissionStop, s.words.clone(), ask, now) {
+                            fx.items.push(id.clone());
+                        }
+                    }
+                    None => fx.sends.push((lead, s.words.clone())),
+                }
             }
             fx
         });

@@ -474,6 +474,7 @@ impl Hub {
         });
         let _ = self.desk_trees_free(&t.repo);
         self.finish_release(id);
+        self.desk_finished(id, "landed");
         self.finish_after(id, std::slice::from_ref(&t.repo));
         clear_build_leftovers(&std::path::Path::new(&t.repo).join(TREES).join(SHARED_TARGET));
     }

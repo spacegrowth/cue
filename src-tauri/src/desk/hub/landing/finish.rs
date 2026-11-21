@@ -107,13 +107,16 @@ impl Hub {
     /// Item `id` to check: nothing (more) to install for it. Closed then when the lead said DONE on it for you.
     pub(crate) fn finish_checked(&self, id: &str) {
         let now = now_ms();
-        self.finish_set(id, |i| {
+        let checked = self.finish_set(id, |i| {
             i.state = "to_check".into();
             i.updated = crate::desk::hub::core::desk::secs(now);
             if let Some(f) = i.finish.as_mut() {
                 (f.step, f.at, f.question, f.wait) = ("checked".into(), now, String::new(), String::new());
             }
         });
+        if checked.is_some() {
+            self.desk_finished(id, "check");
+        }
         self.desk_close_on_check(id);
     }
 
@@ -219,9 +222,9 @@ impl Hub {
         if !machine.is_empty() || self.item_lands(&it).how == "owner" {
             self.finish_release(id);
             let now = now_ms();
-            self.finish_set(id, |i| {
-                (i.state, i.finish, i.updated) = ("to_check".into(), None, crate::desk::hub::core::desk::secs(now));
-            });
+            if self.finish_set(id, |i| (i.state, i.finish, i.updated) = ("to_check".into(), None, crate::desk::hub::core::desk::secs(now))).is_some() {
+                self.desk_finished(id, "check");
+            }
             self.desk_close_on_check(id);
             return;
         }
@@ -579,6 +582,10 @@ impl Hub {
         self.taken_out_tick();
         // Circles the waits list has now told to their lead, gone ones let go (#250).
         self.circle_check();
+        // The change feed: what time raises (a finishing stuck, a holder gone), then its backstop: rows past "sent" go
+        // once the lead is free (desk/hub/lead/feed.rs).
+        self.desk_feed_watch();
+        self.desk_feed_tick();
     }
 }
 

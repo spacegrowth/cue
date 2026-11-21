@@ -11,7 +11,12 @@ use crate::desk::hub::turn::heard::new_item;
 
 /// What you did to item `id` ("looks_right" | "reopen" | "send_back" | "start_now" | "put_before" | "hold" | "drop"), in the store.
 fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<Effects, String> {
+    // What you did, for the lead's picture: read first, as a drop removes the item.
+    let did = crate::desk::hub::lead::feed::you_did(st, id, act);
     let mut fx = acted_on(st, id, act, text, now)?;
+    if let Some((project, words)) = did.filter(|(p, _)| st.desk.lead_sid(p).is_some()) {
+        crate::desk::feed::add(&mut st.desk.feed, &project, id, crate::desk::feed::ChangeKind::YouDid, words, &now.to_string(), now);
+    }
     // Anything you did to it but write to its lead answers what its holder asked you (#475).
     if !matches!(act, "retry" | "wrote_lead") && st.desk.item_mut(id).and_then(|i| i.asks.take()).is_some() {
         fx.items.push(id.to_string());
@@ -474,6 +479,9 @@ pub(crate) fn pick(st: &mut Store, id: &str, text: &str, now: u64) -> Result<Eff
     fx.items.push(n.clone());
     if st.desk.lead_sid(&it.project).is_some() {
         fx.news.push((it.project.clone(), n.clone()));
+        // Its lead hears the pick at once, ahead of the new item's row, so it routes the build now.
+        let words = format!("You picked option {option} on #{id} ({}): \"{}\". #{id} is done; Cue filed #{n} {title} to build it: route it now.", it.title, text.trim());
+        crate::desk::hub::lead::feed::raise(st, &it.project, &id, crate::desk::feed::ChangeKind::Picked, words, &n, now);
     }
     // Its holder waiting on its question (one): the question is answered with the option picked.
     // One question only: an ask of several isn't answered for you.

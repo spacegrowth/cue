@@ -238,21 +238,6 @@ impl Hub {
             words
         })
     }
-
-    /// `project`'s new items, waited on for a moment (`desk_done`): its lead is told of those still new and held by
-    /// nobody, in one message, to route them. Not sent (no lead, or it has ended): they stay new on the Desk.
-    pub(crate) fn desk_tell_fresh(self: &Arc<Self>, project: &str) {
-        let items: Vec<DeskItem> = self.write(|st| {
-            let ids = st.desk.run.fresh.remove(project).unwrap_or_default();
-            ids.iter().filter_map(|id| st.desk.item(id)).filter(|i| i.state == "new" && i.holder.is_none()).cloned().collect()
-        });
-        if items.is_empty() {
-            return;
-        }
-        if let Err(e) = crate::desk::hub::lead::desk_send_with(self, project, &crate::desk::new_items_words(&items)) {
-            eprintln!("cue: desk: {project}'s lead wasn't told of its new items: {e}");
-        }
-    }
 }
 
 fn idle_route(st: &Store, s: &crate::sessions::Session) -> bool {
@@ -303,11 +288,10 @@ pub(crate) fn start_failed(st: &mut Store, s: &crate::desk::hub::core::desk::New
     it.start_failed = e.to_string();
     it.updated = crate::desk::hub::core::desk::secs(now);
     let words = format!("Cue couldn't start a new session for #{} ({}): {e}. It's still {}; ROUTE it to a session, or to new to try again.", it.id, it.title, it.state.replace('_', " "));
+    let key = format!("start:{}", it.updated);
     fx.items.push(s.id.clone());
-    let lead = if s.by_sid.is_empty() { st.desk.lead_sid(&s.project).unwrap_or_default().to_string() } else { s.by_sid.clone() };
-    if st.sessions.get(&lead).is_some() {
-        fx.sends.push((lead, words));
-    }
+    // A row of its Desk's change feed, saved with the item.
+    crate::desk::hub::lead::feed::raise(st, &s.project, &s.id, crate::desk::feed::ChangeKind::RouteFailed, words, &key, now);
 }
 
 /// The Desk summary's opening: which Desk, and the lead told (its name, its context, how its project lands).

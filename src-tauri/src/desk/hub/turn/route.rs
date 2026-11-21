@@ -187,12 +187,12 @@ fn route_to_holder(st: &mut Store, project: &str, by: &By, id: &str, to: &str, h
     // turn cut off by a crash or a quit, the item still "working"): the route sends it again.
     let busy = holder.as_ref().is_some_and(|h| at_work(st, h) || ask_of(st, h).is_some());
     // With you to check: routing it reopens it (back to work, sent again).
-    let it = st.desk.item_mut(id)?;
-    let reopen = it.state == "to_check";
     let Some(h) = holder else {
-        no_such_session(it, to, now, fx);
+        no_such_session(st, project, id, to, now, fx);
         return None;
     };
+    let it = st.desk.item_mut(id)?;
+    let reopen = it.state == "to_check";
     let before = it.holder.clone();
     let same = before.as_ref().is_some_and(|b| b.sid == h.sid && b.lead_sid == h.lead_sid);
     // The same route said again (a later turn repeating itself): nothing to do. Sent back to its holder at work with
@@ -409,10 +409,14 @@ fn routed_text(id: &str, name: &str, waits: Option<&str>, reopened: bool, again:
 }
 
 /// The lead routed `it` to `to`, a name no session of the project goes by: it stays as it is, and the lead is told.
-fn no_such_session(it: &mut DeskItem, to: &str, now: u64, fx: &mut Effects) {
+fn no_such_session(st: &mut Store, project: &str, id: &str, to: &str, now: u64, fx: &mut Effects) {
+    let Some(it) = st.desk.item_mut(id) else { return };
     it.updated = secs(now);
     it.route_failed = to.to_string();
     fx.items.push(it.id.clone());
+    // A row of its Desk's change feed, saved with the item.
+    let words = format!("Your route of #{id} ({}) to \"{to}\" found no session by that name. ROUTE it to a session by name, or to new.", it.title);
+    crate::desk::hub::lead::feed::raise(st, project, id, crate::desk::feed::ChangeKind::RouteFailed, words, &format!("route:{to}"), now);
 }
 
 /// No session fits ("new"), or the lead naming itself, which only hands work out: a new session of the project takes

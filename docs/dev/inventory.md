@@ -19,7 +19,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | Lock acquisitions | 273 |
 | Lock-graph edges | 52 |
 | Spawn sites | 89 |
-| External calls: fs / db / process / notify / login / socket | 488 / 212 / 56 / 4 / 1 / 4 |
+| External calls: fs / db / process / notify / login / socket | 488 / 220 / 56 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -903,7 +903,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `voice/talk.rs::save` | write | 1 |
 | `voice/talk.rs::set` | write | 1 |
 
-### db (212)
+### db (220)
 
 | In | Call | Times |
 |---|---|---|
@@ -919,10 +919,12 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `db/commands.rs::stale_commands` | db::with | 1 |
 | `db/desk.rs::desk_delete` | db::with | 1 |
 | `db/desk.rs::desk_done_page` | db::with | 1 |
-| `db/desk.rs::desk_drop_item` | db::with | 1 |
+| `db/desk.rs::desk_drop_item` | db::desk_save | 1 |
 | `db/desk.rs::desk_drop_kept` | db::with | 1 |
 | `db/desk.rs::desk_drop_lead` | db::with | 1 |
 | `db/desk.rs::desk_drop_member` | db::with | 1 |
+| `db/desk.rs::desk_feed_load` | db::with | 3 |
+| `db/desk.rs::desk_feed_marks` | db::with | 1 |
 | `db/desk.rs::desk_get_item` | db::with | 1 |
 | `db/desk.rs::desk_kept` | db::with | 1 |
 | `db/desk.rs::desk_load` | db::desk_prune | 1 |
@@ -934,7 +936,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `db/desk.rs::desk_pieces` | db::with | 1 |
 | `db/desk.rs::desk_prune` | db::with | 1 |
 | `db/desk.rs::desk_put_decision` | db::with | 1 |
-| `db/desk.rs::desk_put_item` | db::with | 1 |
+| `db/desk.rs::desk_put_item` | db::desk_save | 1 |
 | `db/desk.rs::desk_put_kept` | db::with | 1 |
 | `db/desk.rs::desk_put_lead` | db::with | 1 |
 | `db/desk.rs::desk_put_member` | db::with | 1 |
@@ -942,6 +944,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `db/desk.rs::desk_put_numbered` | db::desk_put_decision | 1 |
 | `db/desk.rs::desk_put_numbered` | db::desk_put_item | 1 |
 | `db/desk.rs::desk_put_space` | db::with | 1 |
+| `db/desk.rs::desk_save` | db::with | 1 |
 | `db/desk.rs::desk_spaces` | db::with | 1 |
 | `db/drafts.rs::draft_text` | db::with | 1 |
 | `db/drafts.rs::drafts` | db::with | 1 |
@@ -1017,6 +1020,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `desk/hub/core/desk.rs::Hub::desk_lead_to` | db::desk_put_member | 1 |
 | `desk/hub/core/desk.rs::Hub::desk_restart_went` | db::desk_put_decision | 1 |
 | `desk/hub/core/desk.rs::Hub::desk_restart_went` | db::desk_put_item | 1 |
+| `desk/hub/core/desk.rs::Hub::desk_restore` | db::desk_feed_load | 1 |
 | `desk/hub/core/desk.rs::Hub::desk_restore` | db::desk_kept | 1 |
 | `desk/hub/core/desk.rs::Hub::desk_restore` | db::desk_load | 1 |
 | `desk/hub/core/desk.rs::Hub::desk_restore` | db::desk_members | 1 |
@@ -1024,10 +1028,9 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `desk/hub/core/desk.rs::Hub::desk_restore` | db::desk_put_decision | 2 |
 | `desk/hub/core/desk.rs::Hub::desk_restore` | db::desk_put_numbered | 1 |
 | `desk/hub/core/desk.rs::Hub::desk_restore` | db::desk_spaces | 1 |
-| `desk/hub/core/desk.rs::Hub::desk_save` | db::desk_drop_item | 1 |
 | `desk/hub/core/desk.rs::Hub::desk_save` | db::desk_put_decision | 1 |
-| `desk/hub/core/desk.rs::Hub::desk_save` | db::desk_put_item | 1 |
 | `desk/hub/core/desk.rs::Hub::desk_save` | db::desk_put_member | 1 |
+| `desk/hub/core/desk.rs::Hub::desk_save` | db::desk_save | 1 |
 | `desk/hub/core/desk.rs::Hub::desk_went` | db::desk_put_decision | 1 |
 | `desk/hub/core/members.rs::Hub::desk_retire_idle` | db::desk_drop_member | 1 |
 | `desk/hub/core/members.rs::Hub::desk_set_member` | db::desk_drop_lead | 1 |
@@ -1042,6 +1045,9 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `desk/hub/core/view.rs::Hub::desk_moves_page` | db::desk_moves_page | 1 |
 | `desk/hub/landing/trees.rs::Hub::desk_kept_remove` | db::desk_drop_kept | 1 |
 | `desk/hub/landing/trees.rs::Hub::desk_tree_dropped` | db::desk_put_kept | 1 |
+| `desk/hub/lead/feed.rs::Hub::desk_feed_flush` | db::desk_save | 1 |
+| `desk/hub/lead/feed.rs::Hub::desk_feed_save` | db::desk_feed_marks | 1 |
+| `desk/hub/lead/feed.rs::Hub::desk_feed_save` | db::desk_save | 1 |
 | `desk/hub/lead/handoff.rs::Hub::desk_hand_on` | db::handoff | 1 |
 | `desk/hub/lead/handoff.rs::Hub::desk_hand_on_now` | db::handoff_continued | 1 |
 | `desk/hub/lead/run.rs::Hub::desk_lead_candidate` | db::ended_session | 1 |
@@ -1199,6 +1205,7 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `src-tauri/src/hub/sessions.rs::a_parked_session_is_kept_through_a_restart_and_comes_back_whole` | test |  |
 | `src-tauri/src/logs/steps/tests/agents.rs::a_background_agent_sent_a_message_after_it_finished_is_at_work_again_until_it_reports_again` | test |  |
 | `src-tauri/src/logs/steps/tests/agents.rs::a_background_agent_shows_at_work_under_its_step_until_its_session_hears_it_finished` | test |  |
+| `src-tauri/src/sessions/mod.rs::first_seen` |  |  |
 | `src-tauri/src/testing/tests/desk_away.rs::each_away_stretch_is_kept_with_what_moved_the_calls_and_what_was_held` | test |  |
 
 Files over 1000 lines: .

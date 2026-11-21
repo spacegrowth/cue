@@ -28,6 +28,13 @@ pub(crate) fn desk_send_with(h: &Arc<Hub>, project: &str, text: &str) -> Result<
     Ok(serde_json::json!({ "sid": sid }))
 }
 
+/// Cue's own words (its Desk changes, desk/hub/lead/feed.rs) to `project`'s lead as `deliver` sends them (resumed
+/// with the Desk's summary when parked), not kept as yours: its id.
+pub(crate) fn desk_send_cue(h: &Arc<Hub>, project: &str, text: &str) -> Result<String, String> {
+    let lost = |e: String| format!("{}'s lead didn't come up ({e})", h.desk_name(project));
+    deliver(h, project, text, vec![], &lost)
+}
+
 /// Your words (`text`) and pictures (`saved`) to `project`'s lead, however it's reached (`desk_claim`), after the
 /// Desk's summary as built for that lead: its id. Sent to it live, the pictures go as a session chat's do (shown in its
 /// chat); held while it starts or resumed with it, the message names them by where they are, as a hosted session is

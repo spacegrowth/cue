@@ -3,6 +3,7 @@
 //! a hand-off carried on in. Writing to the lead: send.rs. The window's commands are in ipc/desk.rs.
 
 mod send;
+pub(crate) mod feed;
 pub(crate) mod run;
 pub(crate) mod handoff;
 pub(crate) mod cleanup;

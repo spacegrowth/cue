@@ -218,6 +218,26 @@ CREATE TABLE IF NOT EXISTS desk_moves_cleared (
   at_ms       INTEGER NOT NULL
 );
 
+-- Each Desk's change feed (desk/feed.rs): numbered rows, saved in the same write as the item change they come from.
+CREATE TABLE IF NOT EXISTS desk_feed (
+  project     TEXT NOT NULL,
+  n           INTEGER NOT NULL,
+  item        TEXT NOT NULL,
+  kind        TEXT NOT NULL,
+  words       TEXT NOT NULL,
+  key         TEXT NOT NULL DEFAULT '',
+  created_ms  INTEGER NOT NULL,
+  PRIMARY KEY (project, n)
+);
+-- Each Desk's two feed marks: rows sent up to `sent` (to lead `sent_lead`), heard up to `heard` (by `heard_lead`).
+CREATE TABLE IF NOT EXISTS desk_feed_marks (
+  project     TEXT PRIMARY KEY,
+  sent        INTEGER NOT NULL,
+  sent_lead   TEXT NOT NULL DEFAULT '',
+  heard       INTEGER NOT NULL,
+  heard_lead  TEXT NOT NULL DEFAULT ''
+);
+
 -- Each project's Desk lead: the session that runs its Desk, and the name it went by when last seen.
 CREATE TABLE IF NOT EXISTS desk_lead (
   project     TEXT PRIMARY KEY,

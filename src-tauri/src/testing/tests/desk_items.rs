@@ -29,10 +29,9 @@ fn an_item_line_from_any_session_is_the_projects_and_its_lead_is_told() {
     let it = item(&desk(&w, &project), "Logo blurs").clone();
     assert_eq!((it["state"].as_str(), it["from"].as_str()), (Some("new"), Some("cue-teams")));
     assert!(it["holder"].is_null());
-    assert_eq!(sent_to(&w, &l).len(), before, "told a moment later");
-    w.advance(1000);
+    assert_eq!(sent_to(&w, &l).len(), before + 1, "told at once, its lead being free");
     let told = sent_to(&w, &l).pop().unwrap();
-    assert!(told.contains(&format!("New item #{} (bug): Logo blurs", it["id"].as_str().unwrap())) && told.contains("from cue-teams") && told.ends_with("Route it now: ROUTE it to a session, or -> new."), "{told}");
+    assert!(told.contains(&format!("New item #{} (bug): Logo blurs", it["id"].as_str().unwrap())) && told.contains("from cue-teams") && told.contains("Route it now: ROUTE it to a session, or -> new.") && told.ends_with("(Desk changes 1)"), "{told}");
     // Said again: no second item.
     ends(&w, &h, "ITEM: bug | Logo blurs");
     assert_eq!(desk(&w, &project)["items"].as_array().unwrap().len(), 1);
@@ -45,15 +44,12 @@ fn items_you_add_together_reach_the_lead_in_one_message() {
     let l = new_lead(&w, &project);
     let before = sent_to(&w, &l).len();
     let a = w.hub().desk_add(&project, "bug", "Header", "", None).unwrap();
-    w.advance(300);
     let b = w.hub().desk_add(&project, "task", "Footer", "", None).unwrap();
     w.settle();
-    assert_eq!(sent_to(&w, &l).len(), before);
-    w.advance(1000);
     let told = sent_to(&w, &l);
     assert_eq!(told.len(), before + 1, "{told:?}");
     let last = told.last().unwrap();
-    assert!(last.starts_with("<desk") && last.contains(&format!("New item #{} (bug): Header", a.id)) && last.contains(&format!("New item #{} (task): Footer", b.id)), "{last}");
+    assert!(!last.contains("<desk") && last.ends_with("(Desk changes 1–2)") && last.contains(&format!("New item #{} (bug): Header", a.id)) && last.contains(&format!("New item #{} (task): Footer", b.id)), "{last}");
     // No lead: an item stays new, and nobody is told.
     let none = w.hub().desk_add("web", "task", "Menu", "", None).unwrap();
     w.advance(2000);
@@ -70,7 +66,7 @@ fn an_item_you_add_has_no_kind_till_the_lead_routes_it_with_one() {
     assert_eq!(it.kind, "");
     w.advance(1000);
     let told = sent_to(&w, &l).pop().unwrap();
-    assert!(told.contains(&format!("New item #{}: Logo blurs", it.id)) && told.contains("no kind yet") && told.ends_with("| kind: bug, feature or task."), "{told}");
+    assert!(told.contains(&format!("New item #{}: Logo blurs", it.id)) && told.contains("no kind yet") && told.contains("| kind: bug, feature or task.\n\n(Desk changes 1)"), "{told}");
     ends(&w, &l, &format!("ROUTE: #{} -> cue-teams | kind: Bug | why: it knows the header", it.id));
     assert_eq!(item(&desk(&w, &project), "Logo blurs")["kind"], "bug");
     assert!(sent_to(&w, &h).last().unwrap().contains(&format!("Desk item #{} (bug): Logo blurs", it.id)));

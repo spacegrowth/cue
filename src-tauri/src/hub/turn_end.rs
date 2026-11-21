@@ -124,6 +124,7 @@ impl Hub {
             let sid = origin.session_id.clone();
             st.items.retain(|i| !(i.kind == "waiting" && i.origin.session_id == sid));
             st.sessions.mark(origin, "agent", None);
+            st.sessions.turn_ended(&sid);
             st.sessions.set_driven_by(&sid, driven_by);
             st.sessions.set_helpers(&sid, helpers);
             st.sessions.set_background(&sid, background);
@@ -159,6 +160,8 @@ impl Hub {
     /// that does count.
     fn waiting_for_you(st: &mut Store, origin: Origin, end: TurnEnd, context: Vec<Ctx>) -> Option<EndedCard> {
         let sid = origin.session_id.clone();
+        // Counted even with a decision open (its turn ended all the same).
+        st.sessions.turn_ended(&sid);
         if st.items.iter().any(|i| i.kind != "waiting" && i.origin.session_id == sid) {
             return None;
         }

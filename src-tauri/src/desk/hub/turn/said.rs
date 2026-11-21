@@ -443,7 +443,7 @@ fn keep(st: &mut Store, project: &str, by: &By, who: &str, why: &str, now: u64, 
 impl Hub {
     /// Session `sid`'s turn ended, saying `text`: a lead's lines (ITEM, ROUTE, ASK, DECIDED, and DONE for what it
     /// keeps), any session's ITEM lines, and a holder's (DONE, DECIDED) acted on; an item it ended on with no DONE
-    /// is asked about once (desk/hub/stall/stall.rs).
+    /// is asked about once (desk/hub/stall/stall.rs). A lead's Desk changes sent before it are heard (desk/feed.rs).
     /// `turn`: its parts, so a reply keeps what a Stop hook made it write apart from its answer.
     /// A turn just ended, so a holder may have stopped: when each holder last wrote is looked at first (off the store's
     /// lock), so its item reads as still at work or to resume at once, not a second later (view.rs wrote_just_now).
@@ -455,13 +455,13 @@ impl Hub {
     /// `desk_turn_ended`'s work: the turn's lines acted on.
     fn desk_turn_ended_said(&self, sid: &str, text: &str, turn: &[crate::model::TurnPart]) {
         self.keep_from_now(sid);
+        self.desk_feed_turn_ended(sid);
         // Away mode ends by itself (its end time, its budget): noticed as a Desk session's turn ends.
         self.desk_away_check(sid);
         // Most turns say none of the Desk's lines and end on no item at work: then the store is only read.
         // A route in the wrong form counts too: the lead is told it couldn't be read (#248).
         let said = text.lines().any(|l| desk_line_start(l) || parse::route_like(l));
-        let held = self.read(|st| crate::desk::hub::stall::stall::at_work_with(st, sid));
-        let done_held = self.read(|st| st.desk.run.done_held.contains_key(sid));
+        let (held, done_held) = self.read(|st| (crate::desk::hub::stall::stall::at_work_with(st, sid), st.desk.run.done_held.contains_key(sid)));
         // Items it was answering your question on (#475): settled as its turn ends (desk/hub/turn/asked.rs).
         let asked: Vec<String> = self.read(|st| st.desk.items.iter().filter(|i| i.asked.is_some() && i.holder.as_ref().is_some_and(|h| h.is(sid))).map(|i| i.id.clone()).collect());
         if !said && held.is_empty() && !done_held && asked.is_empty() {

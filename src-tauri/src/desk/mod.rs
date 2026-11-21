@@ -4,6 +4,7 @@
 //! message (`summary`). The hub keeps the store and does the sending (desk/hub/core/desk.rs, desk/hub/lead/run.rs); this module is
 //! the data and the words.
 
+pub mod feed;
 pub(crate) mod hub;
 pub(crate) mod lands;
 pub(crate) mod one_way;
@@ -116,6 +117,7 @@ never make one up. A ROUTE to another session of the project makes Cue ask the u
 adds that session to the Desk and makes the route, a no leaves the item as it was. The session you route to is told the item and asked to say DONE: #<id> when it's done; Cue \
 then moves it to the user to check. To reopen one that's to check, route it again to the session holding it, \
 with what's left as the why. When Cue tells you of new items, route each one now; first TITLE or SPLIT one that needs it, and MERGE one that repeats another.
+Cue's messages of Desk changes end with their numbers, (Desk changes 41–44): skip any change whose number you've already seen.
 When Cue tells you an item stopped (its session ended its turn with no DONE and no question), settle it: ROUTE it \
 to that session again with what to do next as the why, or route it on. ASK: #<id> only if the user must decide; \
 until then the user doesn't see it as waiting on them.
@@ -198,33 +200,41 @@ pub fn handed_words(it: &DeskItem, why: &str, rule: &str) -> String {
     }
 }
 
-/// What a lead is told of new items it hasn't routed yet (added by you, or by a session's ITEM: line).
-pub fn new_items_words(items: &[DeskItem]) -> String {
-    let mut out = String::new();
-    for it in items {
-        out.push_str(&format!("New item #{}{}: {}", it.id, kind_words(it), it.title));
-        if !it.see.trim().is_empty() {
-            out.push_str(&format!(" | you'll see: {}", it.see.trim()));
-        }
-        if !it.done_when.trim().is_empty() {
-            out.push_str(&format!(" | done when: {}", it.done_when.trim()));
-        }
-        if !it.images.is_empty() {
-            out.push_str(&format!(" | pictures: {}", pictures(it)));
-        }
-        if it.from != "you" && !it.from.is_empty() {
-            out.push_str(&format!(" | from {}", it.from));
-        }
-        if !it.builds.is_empty() {
-            out.push_str(&format!(" | {}", it.why.trim()));
-        } else if !it.why.trim().is_empty() {
-            out.push_str(&format!(" | why separate: {}", it.why.trim()));
-        }
-        if !it.split_from.is_empty() {
-            out.push_str(&format!(" | split from #{}", it.split_from));
-        }
-        out.push('\n');
+/// What a lead is told of a new item it hasn't routed yet (added by you, or by a session's ITEM: line): one line.
+/// What it's to do with them is said once per message (`new_items_tail`).
+pub fn new_item_words(it: &DeskItem) -> String {
+    let mut out = format!("New item #{}{}: {}", it.id, kind_words(it), it.title);
+    if !it.see.trim().is_empty() {
+        out.push_str(&format!(" | you'll see: {}", it.see.trim()));
     }
+    if !it.done_when.trim().is_empty() {
+        out.push_str(&format!(" | done when: {}", it.done_when.trim()));
+    }
+    if !it.images.is_empty() {
+        out.push_str(&format!(" | pictures: {}", pictures(it)));
+    }
+    if it.from != "you" && !it.from.is_empty() {
+        out.push_str(&format!(" | from {}", it.from));
+    }
+    if !it.builds.is_empty() {
+        out.push_str(&format!(" | {}", it.why.trim()));
+    } else if !it.why.trim().is_empty() {
+        out.push_str(&format!(" | why separate: {}", it.why.trim()));
+    }
+    if !it.split_from.is_empty() {
+        out.push_str(&format!(" | split from #{}", it.split_from));
+    }
+    // Said in the row itself: the lead hears of a new item in the feed, not in the Desk's summary.
+    if it.kind.is_empty() {
+        out.push_str(" | no kind yet");
+    }
+    out
+}
+
+/// What the lead is to do with new items `items` (those in one message), said once after them: SPLIT/TITLE, SEE,
+/// and route them now.
+pub fn new_items_tail(items: &[&DeskItem]) -> String {
+    let mut out = String::new();
     if items.iter().any(|i| i.from == "you" && i.words.is_empty() && i.split_from.is_empty()) {
         out.push_str("If one of yours holds two separate problems, SPLIT it first (Cue tells you the new numbers); if its title isn't short and plain, TITLE it. ");
     }

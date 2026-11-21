@@ -32,7 +32,7 @@ pub(crate) struct Effects {
     pub(crate) asks: Vec<(String, String, String, Vec<String>, Option<String>)>,
     /// A lead's proposed changes to how work lands (LANDS:), each asked of you (desk/hub/lead/lands.rs).
     pub(crate) lands: Vec<crate::desk::hub::lead::lands::Proposal>,
-    /// New items for their project's lead to route: (project, item), told together a moment later.
+    /// New items for their project's lead to route: (project, item), rows on its Desk's feed as they're saved.
     pub(crate) news: Vec<(String, String)>,
     /// Items a lead gave to a new session (`-> new`): each started a moment later (desk/hub/lead/run.rs).
     pub(crate) starts: Vec<NewStart>,
@@ -80,8 +80,6 @@ pub(crate) struct NewStart {
     pub(crate) by_sid: String,
 }
 
-/// How long new items wait for others before their lead is told of them, in one message.
-const NEWS_WAIT_MS: u64 = 1000;
 
 pub(crate) fn secs(ms: u64) -> u64 {
     ms / 1000
@@ -209,6 +207,11 @@ impl Hub {
         // Items from before numbering get their numbers once, saved under them.
         let changed = st.desk.number_old();
         crate::db::desk_put_numbered(&st.desk, &changed);
+        // The change feed: its marks and its rows not heard yet. Sending starts again from "heard" (desk/feed.rs).
+        st.desk.feed = crate::db::desk_feed_load();
+        for f in st.desk.feed.values_mut() {
+            f.sent = f.heard.clone();
+        }
         st.desk.lead = leads.into_iter().map(|(p, sid, name)| (p, crate::desk::Lead { sid, name })).collect();
         // Calls from before #403 (once the leads are known): the lead's dispatch work sorted off the Decisions list, as new ones are.
         for id in st.desk.sort_calls() {
@@ -487,7 +490,10 @@ impl Hub {
         self.desk_pause_hold(&mut fx);
         self.desk_trees(&mut fx);
         let (went_with, kept_back) = went_with(&mut fx);
-        self.desk_save(&mut fx);
+        // Rows on a Desk's feed: its lead is sent them once it's free (desk/hub/lead/feed.rs).
+        if self.desk_save(&mut fx) {
+            self.later(0, |h| h.desk_feed_send());
+        }
         self.changed();
         // A pick on mocks whose holder waits on its question: answered with the option picked (#281).
         for (ask, question, answer) in fx.answers {
@@ -516,7 +522,6 @@ impl Hub {
             self.desk_lands_ask(p);
         }
         self.desk_ask_first(fx.uses);
-        self.desk_news(fx.news);
         self.desk_later(fx.starts, fx.checked);
         for id in fx.closes {
             self.later(0, move |h| h.desk_close_on_check(&id));
@@ -532,7 +537,8 @@ impl Hub {
 
     /// `desk_done`'s saves, under the Desk's save lock: features settled, sends and holders stamped, then the items,
     /// drops, steps and members written.
-    fn desk_save(&self, fx: &mut Effects) {
+    fn desk_save(&self, fx: &mut Effects) -> bool {
+        let fed;
         // Each save writes what the store holds now (saves.rs), in the order the saves run.
         let _saving = crate::locking::lock(&self.saves.desk, "desk saves");
         let now = now_ms();
@@ -542,17 +548,23 @@ impl Hub {
                 crate::desk::hub::turn::features::settle(st, &f, now, fx);
             }
         });
-        let (items, decisions) = self.write(|st| stamp_sends(st, fx, now));
-        for it in &items {
-            crate::db::desk_put_item(it);
+        let (items, decisions, rows) = self.write(|st| {
+            // New items for their lead: rows on its Desk's feed (desk/feed.rs), saved with them.
+            for (project, id) in std::mem::take(&mut fx.news) {
+                crate::desk::hub::lead::feed::new_item(st, &project, &id, now);
+            }
+            let (items, decisions) = stamp_sends(st, fx, now);
+            (items, decisions, crate::desk::hub::lead::feed::unsaved(st))
+        });
+        if let Err(e) = crate::db::desk_save(&items, &fx.dropped, &rows) {
+            eprintln!("cue: desk: couldn't save {} item(s) and {} change(s): {e}", items.len() + fx.dropped.len(), rows.len());
         }
-        for id in &fx.dropped {
-            crate::db::desk_drop_item(id);
-        }
+        fed = !rows.is_empty();
         for d in &decisions {
             crate::db::desk_put_decision(d);
         }
         fx.joined.iter().filter(|(project, _)| !project.starts_with("desk-") || self.read(|st| st.desk.spaces.contains_key(project))).for_each(|(project, sid)| crate::db::desk_put_member(project, sid, now));
+        fed
     }
 
     /// `desk_done`'s messages, each sent off this thread with the steps that go with it.
@@ -577,21 +589,6 @@ impl Hub {
                     h.desk_restart_went(&id, &name, sent);
                 }
             });
-        }
-    }
-
-    /// New items for their lead: the first since it was last told starts the wait before it's told.
-    fn desk_news(&self, news: Vec<(String, String)>) {
-        for (project, id) in news {
-            let first = self.write(|st| {
-                if !st.desk.item(&id).is_some_and(|i| i.project == project) { return false; }
-                let fresh = st.desk.run.fresh.entry(project.clone()).or_default();
-                fresh.push(id);
-                fresh.len() == 1
-            });
-            if first {
-                self.later(NEWS_WAIT_MS, move |h| h.desk_tell_fresh(&project));
-            }
         }
     }
 

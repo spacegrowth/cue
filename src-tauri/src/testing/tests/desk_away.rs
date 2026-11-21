@@ -11,6 +11,14 @@ fn summary(w: &World, project: &str) -> String {
     w.hub().desk_summary(project, "", false).0
 }
 
+/// Long enough, with Cue's ticks, for a row on the Desk's change feed that waits for a wake to go on its own.
+fn feed_goes(w: &World) {
+    for _ in 0..6 {
+        w.advance(60_000);
+        w.tick(true);
+    }
+}
+
 #[test]
 fn away_mode_turns_on_tells_the_lead_ends_at_its_time_and_turns_off() {
     let w = World::new();
@@ -34,6 +42,8 @@ fn away_mode_turns_on_tells_the_lead_ends_at_its_time_and_turns_off() {
     assert!(!may.contains("'How' questions") && !may.contains("'What' questions"), "switched off: not decided alone: {s}");
     assert!(s.contains("- Picking a mock") && s.contains("- 'What' questions") && s.contains("don't ASK about it"), "{s}");
     assert!(s.contains("stopped on a permission it can't grant itself waits for the owner") && s.contains("Never grant it yourself") && s.contains("Move the other items along meanwhile"), "{s}");
+    // Told on the Desk's change feed: with its next wake, or alone after a while.
+    feed_goes(&w);
     assert!(sent_to(&w, &d).iter().any(|t| t.starts_with("Away mode:")), "the lead is told: {:?}", sent_to(&w, &d));
 
     // Ask me before still waits for the owner while Away is on, even with every rule switched on.
@@ -48,6 +58,7 @@ fn away_mode_turns_on_tells_the_lead_ends_at_its_time_and_turns_off() {
     // Its end time passes on an idle Desk (no turn ends): noticed then, the lead told once, though Away was set three
     // times (three timers) and a turn ends after.
     w.advance(2 * 60 * 60 * 1000);
+    feed_goes(&w);
     assert_eq!(sent_to(&w, &d).iter().filter(|t| t.contains("Away is paused")).count(), 1, "{:?}", sent_to(&w, &d));
     let away = desk(&w, &project)["away"].clone();
     assert_eq!((away["on"].clone(), away["active"].clone(), away["ended"].clone()), (json!(true), json!(false), json!("until")), "{away}");
@@ -61,6 +72,7 @@ fn away_mode_turns_on_tells_the_lead_ends_at_its_time_and_turns_off() {
     w.settle();
     assert_eq!((v["on"].clone(), v["active"].clone(), v["ended"].clone(), v["rules"]["how"].clone()), (json!(false), json!(false), json!(""), json!(false)), "rules kept: {v}");
     assert!(!summary(&w, &project).contains("Away mode"));
+    feed_goes(&w);
     assert!(sent_to(&w, &d).iter().any(|t| t.starts_with("Away mode is off")), "{:?}", sent_to(&w, &d));
 }
 
@@ -140,7 +152,9 @@ fn away_keeps_its_limits_honest_a_zero_budget_is_none_routing_off_starts_nothing
     ends(&w, &d, "Still routing.");
     w.settle();
     assert_eq!(desk(&w, &project)["away"]["ended"], json!("until"));
-    assert_eq!(sent_to(&w, &d).iter().filter(|t| t.contains("Away is paused")).count(), 2, "told at the end, and with the rule change's block only: {:?}", sent_to(&w, &d));
+    // Both on the Desk's change feed before it went: folded into the latest, the rule change's block.
+    feed_goes(&w);
+    assert_eq!(sent_to(&w, &d).iter().filter(|t| t.contains("Away is paused")).count(), 1, "told once, with the rule change's block: {:?}", sent_to(&w, &d));
     // A later end time: it holds again.
     let v = w.hub().desk_away_set(&project, &json!({ "on": true, "until": crate::clock::now_ms() + 60 * 60 * 1000, "budget": null, "rules": { "route": true } })).unwrap();
     assert_eq!((v["active"].clone(), v["ended"].clone()), (json!(true), json!("")), "{v}");

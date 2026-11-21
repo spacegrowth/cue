@@ -17,8 +17,8 @@ use std::sync::{Arc, Mutex};
 /// An installer whose check says what each test sets (None: the repository has no check), and that installs
 /// nothing: what it was asked to check.
 #[derive(Default)]
-struct Checker {
-    says: Mutex<Option<Result<(), String>>>,
+pub(super) struct Checker {
+    pub(super) says: Mutex<Option<Result<(), String>>>,
     checked: Mutex<Vec<String>>,
     /// While it checks: this item sent back on this hub.
     sends_back: Mutex<Option<(std::sync::Weak<crate::hub::Hub>, String)>>,

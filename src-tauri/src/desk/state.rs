@@ -13,8 +13,6 @@ pub struct DeskRun {
     /// Projects whose lead is being started or resumed, with the messages that arrived while it was starting, sent
     /// once it's up.
     pub starting: HashMap<String, Vec<Waiting>>,
-    /// Each project's new items its lead hasn't been told of yet: told in one message a moment after the first.
-    pub fresh: HashMap<String, Vec<String>>,
     /// Sessions whose context the lead said to keep as it is (CONTEXT: … -> keep): session → (when it said so, its
     /// decision, whether it was at work then). Cue asks no hand-off note of it for the idle stretch it was in then,
     /// or, said while it worked, the one after that turn (stamped as the turn ends: desk/hub/core/desk.rs; hub/cache_tick.rs).

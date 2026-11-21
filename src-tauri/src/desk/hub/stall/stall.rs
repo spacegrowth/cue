@@ -375,6 +375,7 @@ fn stall_held(st: &mut Store, turn: &Turn, id: &str, updated: u64, now: u64, fx:
         if let Some(it) = st.desk.item_mut(id) {
             (it.asks, it.waits) = (Some((q.clone(), now)), None);
         }
+        crate::desk::hub::lead::feed::needs_you(st, id, q, now);
         st.desk.run.nudged.remove(id);
         st.desk.run.left_said.remove(id);
         fx.items.push(id.to_string());
@@ -460,16 +461,14 @@ fn to_lead(st: &mut Store, sid: &str, id: &str, now: u64, fx: &mut Effects) {
     let last = st.sessions.get(sid).map(last_line).unwrap_or_default();
     let holder = st.sessions.get(sid).map(crate::desk::hub::core::desk::shown_name).unwrap_or_else(|| sid.to_string());
     let words = stop_words(it, &holder, &last);
-    let lead = st.desk.lead_sid(&project).filter(|_| lead_live(st, &project)).map(str::to_string);
+    let updated = it.updated;
     let Some(it) = st.desk.item_mut(id) else { return };
-    it.stop = Some((it.updated, now));
+    it.stop = Some((updated, now));
     fx.said.push(id.to_string());
-    // Each stop is the lead's (#435): told of every one, once while the item is unchanged.
+    // Each stop is the lead's (#435): a row on its Desk's feed, once while the item is unchanged. It goes when the
+    // lead is free (never to one a usage limit stopped), and `told` is marked as it goes (desk/hub/lead/feed.rs).
     fx.stopped.push(id.to_string());
-    if let Some(lead) = lead {
-        it.told = Some(it.updated);
-        fx.sends.push((lead, words));
-    }
+    crate::desk::feed::add(&mut st.desk.feed, &project, id, crate::desk::feed::ChangeKind::Stopped, words, &updated.to_string(), now);
 }
 
 /// What holder `h` did last while at work on its item, and when (#285): its latest step, else its last words; for a

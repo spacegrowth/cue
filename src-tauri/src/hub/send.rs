@@ -504,6 +504,8 @@ impl Hub {
             // The kept message: its copy says when you wrote it and takes its place, in this one write (#422).
             if let Some(h) = held {
                 st.sessions.kept_went(session_id, t0, h);
+                // A Desk lead's changes in it: heard by the turn it starts (desk/hub/lead/feed.rs).
+                crate::desk::hub::lead::feed::kept_went(st, session_id, &h.text);
             }
             st.sessions.note_delivery(session_id, text, &delivery_step(&via, submitted));
             if busy {

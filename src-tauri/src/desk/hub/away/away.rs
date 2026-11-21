@@ -454,19 +454,9 @@ impl Hub {
         }
     }
 
-    /// `words` to Desk `desk`'s lead, if it's live. Sent on the hub's own thread (`later`), since a
-    /// turn's end can arrive while a send holds the typing gate.
+    /// `words` to Desk `desk`'s lead: a row on its Desk's change feed, so it hears it in order with the rest (the
+    /// sender holds it while a usage limit has the lead stopped; the Desk's summary carries Away's words then too).
     fn tell_lead_away(&self, desk: &str, words: &str) {
-        // A lead a usage limit stopped isn't sent it (it would bounce, and cancel Cue's carry-on): the Desk's summary
-        // carries Away's words when it next hears from the Desk.
-        let lead = self.read(|st| st.desk.lead.get(desk).map(|l| l.sid.clone()).filter(|sid| st.sessions.get(sid).is_some() && !limited(st, sid)));
-        if let Some(sid) = lead {
-            let words = words.to_string();
-            self.later(0, move |h| {
-                if let Err(e) = h.tell(&sid, &words) {
-                    eprintln!("cue: couldn't tell {sid} about Away mode: {e}");
-                }
-            });
-        }
+        self.desk_feed_away(desk, words);
     }
 }

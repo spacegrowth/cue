@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 /// Who holds an item: a live session (a plain one, or a lead with a crew), or one of a lead's crew.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -164,6 +164,10 @@ pub struct DeskItem {
     /// lead_done, #337). Saved, so an install's restart keeps it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub close_on_check: bool,
+    /// The change-feed rows raised of it once per change (desk/hub/lead/feed.rs `raise`): kind -> the key of the last
+    /// one, so a timer or a check that sees the same change again adds no row, even after the lead heard it. Saved.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub fed: BTreeMap<String, String>,
     /// Its own copy of its repository to work in (a git worktree on a branch of its own, from the main line as its
     /// holder started), while it has one: landed as one squash commit at its DONE (desk/hub/landing/trees.rs).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -677,6 +681,8 @@ pub struct Desk {
     pub kept: Vec<KeptTree>,
     /// When each Desk's list of what its lead moved (#374) was last cleared (ms; saved: db/desk.rs).
     pub moves_cleared: HashMap<String, u64>,
+    /// Each Desk's change feed for its lead (desk/feed.rs): rows past "heard" and the two marks (saved: db/desk.rs).
+    pub feed: super::feed::Feeds,
     /// What the Desk keeps only while Cue runs (desk/state.rs): never saved, empty after a restart.
     pub run: super::state::DeskRun,
 }

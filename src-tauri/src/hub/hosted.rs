@@ -116,6 +116,8 @@ impl Hub {
             st.sessions.note_yours(sid, text, &paths, crate::config::context_keep());
             if let Some(h) = held {
                 st.sessions.kept_went(sid, t0, h);
+                // A Desk lead's changes in it: heard by the turn it starts (desk/hub/lead/feed.rs).
+                crate::desk::hub::lead::feed::kept_went(st, sid, &h.text);
             }
             st.sessions.set_pending(sid, text, true);
             if busy {

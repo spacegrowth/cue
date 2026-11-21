@@ -201,6 +201,7 @@ fn dones(st: &mut Store, sid: &str, text: &str, now: u64, fx: &mut Effects) -> O
             it.after = None;
             it.updated = secs(now);
             fx.items.push(id.clone());
+            crate::desk::hub::lead::feed::finished(st, &id, "said", now);
             finished = Some(id);
         }
     }

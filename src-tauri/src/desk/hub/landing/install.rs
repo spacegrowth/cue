@@ -314,6 +314,10 @@ impl Hub {
                 d.undo = "none".into();
             }
             fx.items.push(id.clone());
+            stuck_twice(st, &project, &id, step, question, now);
+            if hand_back && step == "conflict" {
+                crate::desk::hub::lead::feed::clash(st, &id, question, now);
+            }
             fx
         });
         self.desk_done(fx);
@@ -335,4 +339,17 @@ impl Hub {
         let it = self.item_shown(id);
         it.ok_or_else(|| "no such item".into())
     }
+}
+
+/// Item `id`'s check failed (`step` "check_failed", `question` the reason) for at least the second round: a row for
+/// its Desk's lead, once per round (its key the rounds so far), saved with the item by the caller.
+fn stuck_twice(st: &mut Store, project: &str, id: &str, step: &str, question: &str, now: u64) {
+    let Some(it) = st.desk.item(id).filter(|_| step == "check_failed") else { return };
+    let failed = it.checks.iter().filter(|c| c.back == question).count();
+    if failed < 2 {
+        return;
+    }
+    let words = format!("#{id} ({}) failed its check {failed} times: {question}. Its holder has it back; see whether it needs another session or a word from the user.", it.title);
+    let key = format!("checks:{}", it.checks.len());
+    crate::desk::hub::lead::feed::raise(st, project, id, crate::desk::feed::ChangeKind::StuckLanding, words, &key, now);
 }

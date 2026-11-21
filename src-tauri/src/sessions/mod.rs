@@ -199,6 +199,10 @@ pub struct Session {
     /// are already saved (their paths).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub held: Option<Exchange>,
+    /// How many of its turns have ended (each end counted as its session is marked at its prompt, in that same
+    /// write): what a Desk lead was sent is heard only at the end of a turn counted after it went (desk/feed.rs).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub turn_ends: u64,
     /// A message Cue sends by itself later: at a time you picked, or when the usage limit it stopped on resets
     /// (send_at.rs).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -336,6 +340,7 @@ impl Session {
             teammates_read_ms: 0,
             stuck_ms: 0,
             held: None,
+            turn_ends: 0,
             send_at: None,
             carry_tries: 0,
             team: vec![],
@@ -467,6 +472,18 @@ impl Sessions {
     }
 
     /// The project of the live session running as process `pid`.
+    /// Its turn ended: counted (`turn_ends`), in the same write that marks it at its prompt.
+    pub fn turn_ended(&mut self, session_id: &str) {
+        if let Some(s) = self.0.get_mut(session_id) {
+            s.turn_ends += 1;
+        }
+    }
+
+    /// How many of its turns have ended (0 for one Cue doesn't know).
+    pub fn turn_ends(&self, session_id: &str) -> u64 {
+        self.0.get(session_id).map_or(0, |s| s.turn_ends)
+    }
+
     /// The session whose agent runs as `pid`, by id.
     pub fn sid_by_pid(&self, pid: i32) -> Option<String> {
         self.0.iter().find(|(_, s)| s.origin.agent_pid == Some(pid)).map(|(k, _)| k.clone())
