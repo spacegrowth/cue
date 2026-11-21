@@ -1,6 +1,7 @@
 # Desks on the same code: knowing about each other
 
-A plan for #534. Status: option B picked on 20 November 2026. Nothing is built yet.
+A plan for #534. Status: option B picked on 20 November 2026, built and landed as #540 (cb8f211dc) on
+21 November 2026. That build covers all five steps below.
 
 ## The problem
 
@@ -176,7 +177,7 @@ The canvas page "Desks on the same code" shows option B, in light and dark:
   `ui/desk_*` till it lands". A waiting row: "Waits for cue #509's hold". Nothing in Waiting on you.
 - **You, when they can't agree.** One question in Waiting on you, with both sides and two answers.
 
-## Steps, if B is picked
+## Steps (B, all built in #540)
 
 1. HOLD and UNHOLD lines, the hold saved per repo, holds in the lead's summary and on the Desk header.
 2. TELL DESK and TELL DESKS lines, sent as the #472 band, with no lookups by the lead.
@@ -186,3 +187,16 @@ The canvas page "Desks on the same code" shows option B, in light and dark:
 5. The question to you when the leads can't agree, a band goes unanswered or a hold overstays.
 
 Steps 1 and 2 are useful on their own. With them, leads can already hold and talk, as A does.
+
+What #540 (cb8f211dc) built, step by step:
+
+1. Holds: `src-tauri/src/desk/holds.rs`, saved in `desk_holds`, shown in the lead's Desk block and under
+   the Desk header. A hold ends by itself when its item lands, is done, dropped or parked.
+2. TELL DESK / TELL DESKS: `src-tauri/src/desk/tell.rs`, sent as the FROM ANOTHER DESK band
+   (`ui/desk/lead.js`), each band kept in `desk_bands` with whether it was answered.
+3. `after:` and LAND FIRST across Desks: `src-tauri/src/desk/across.rs`, as `#509` or `cue #509`, in the
+   one waits list and its circle check.
+4. The check against held files: `src-tauri/src/desk/hold_check.rs`, both when a hold is taken (the clash
+   list) and at landing ("Waits for cue #509's hold on …").
+5. The question to you: `src-tauri/src/desk/escalate.rs`, for a DISAGREE line, a band unanswered for
+   15 minutes, or a hold more than an hour past its till.
