@@ -54,6 +54,16 @@ pub fn to_cue(machine: &str, ev: &Value) -> Option<Value> {
             msg.insert("tool_input".into(), p.get("tool_input").cloned().unwrap_or(json!({})));
             msg.insert("suggestions".into(), p.get("permission_suggestions").cloned().unwrap_or(json!([])));
         }
+        // Ask me before: a tool call the hook let through its word check, with the branch of the session's folder
+        // there (Cue can't look on the machine). Cue reads it whole, as it does a hosted Pi's (hub/guard.rs).
+        "guard" => {
+            msg.insert("type".into(), json!("guard"));
+            msg.insert("tool_name".into(), json!(s(p, "tool_name")));
+            msg.insert("tool_input".into(), p.get("tool_input").cloned().unwrap_or(json!({})));
+            msg.insert("branch".into(), json!(s(ev, "branch")));
+            msg.insert("agent_id".into(), json!(s(p, "agent_id")));
+            msg.insert("checked".into(), json!(false));
+        }
         _ => return None,
     }
     Some(Value::Object(msg))
@@ -89,7 +99,9 @@ pub(crate) fn log_raw(machine: &str, line: &str) {
 }
 
 /// Hand an event to Cue. A permission question waits for your answer (on its own thread) and sends it
-/// back to the machine; answered elsewhere, an empty answer lets the agent's own prompt stand.
+/// back to the machine; answered elsewhere, an empty answer lets the agent's own prompt stand. A tool call
+/// Ask me before checks waits the same way, for the answer the Mac's hook would give (hook::guard_answer):
+/// empty lets it run, else it's the agent's PreToolUse output.
 pub(super) fn handle(m: &Machine, id: &str, ev: Value) {
     log(&m.name, id, &ev);
     let Some(mut msg) = to_cue(&m.name, &ev) else { return };
@@ -112,7 +124,8 @@ pub(super) fn handle(m: &Machine, id: &str, ev: Value) {
     if ev["hosted"] == "1" {
         return;
     }
-    if msg["type"] != "ask" {
+    let guard = msg["type"] == "guard";
+    if msg["type"] != "ask" && !guard {
         if let Some(mut s) = crate::hook::connect(Duration::from_millis(800)) {
             if s.write_all(format!("{msg}\n").as_bytes()).is_ok() {
                 // Cue hangs up once it has taken the event in: wait for that (up to the timeout), so
@@ -125,14 +138,21 @@ pub(super) fn handle(m: &Machine, id: &str, ev: Value) {
     }
     let (m, id, p) = (m.clone(), id.to_string(), ev["input"].clone());
     std::thread::spawn(move || {
-        let answer = ask(&msg).map(|d| crate::hook::to_claude(&d, &p).to_string()).unwrap_or_default();
+        let answer = if guard {
+            crate::hook::guard_answer(&msg, msg["harness"].as_str().unwrap_or("claude")).map(|o| o.to_string()).unwrap_or_default()
+        } else {
+            ask(&msg).map(|d| crate::hook::to_claude(&d, &p).to_string()).unwrap_or_default()
+        };
         let wrote = machines::run_with_input(&m.host, &format!(r#"umask 077; cat >"$HOME/.cue/out/{id}.tmp" && mv "$HOME/.cue/out/{id}.tmp" "$HOME/.cue/out/{id}.json""#), &answer);
         // The hook takes an answer within a fifth of a second. Still there after a few: the hook had
         // stopped waiting (Cue was out of reach too long), so the agent never got it and is asking in
-        // its terminal: Cue says so, instead of showing it at work on an answer it never had.
+        // its terminal: Cue says so, instead of showing it at work on an answer it never had. A checked call
+        // the hook stopped waiting on was stopped there (it never runs unasked): nothing to say.
         if !answer.is_empty() && wrote.is_ok() && !collected(&m.host, &id) {
             let _ = machines::run(&m.host, &format!(r#"rm -f "$HOME/.cue/out/{id}.json""#));
-            not_delivered(msg);
+            if !guard {
+                not_delivered(msg);
+            }
         }
     });
 }

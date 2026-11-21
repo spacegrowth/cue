@@ -28,6 +28,19 @@ impl Hub {
             }
             ("done", _) if !it.commit.is_empty() => self.commit_diff(&it),
             ("done", _) => (String::new(), String::new()),
+            // On another machine (desk/hub/landing/remote_item.rs): its branch there, committed or not, from where it
+            // left the main line; once fetched here, what's fetched.
+            ("working" | "finishing", _) if it.remote.is_some() => {
+                let r = it.remote.as_ref().expect("matched");
+                let base = it.tree.as_ref().map(|t| t.base.clone()).filter(|b| !b.is_empty());
+                let fetched = it.tree.as_ref().and_then(|t| base.as_ref().map(|b| (t.repo.clone(), b.clone())));
+                let diff = match fetched {
+                    Some((repo, base)) => git("", &repo, &[], &["diff", "--no-color", "--no-ext-diff", "--no-textconv", &base, &format!("refs/cue/remote/{}", it.id)]),
+                    None => git(&r.machine, &r.folder, &[], &["diff", "--no-color", "--no-ext-diff", "--no-textconv", "--merge-base", &format!("{}/{}", r.remote, r.onto)]),
+                };
+                let machine = if it.tree.is_some() { String::new() } else { r.machine.clone() };
+                (machine, diff.unwrap_or_default())
+            }
             // Still being worked on (#149): what's changed in its files so far, as Looks right would read it then.
             // Not in a git repository: no diff, and its page lists the files as they are.
             _ => {
@@ -57,7 +70,9 @@ impl Hub {
             }).collect();
             (machine, made)
         } else {
-            let machine = self.read(|st| it.holder.as_ref().and_then(|h| st.sessions.get(crate::desk::hub::core::desk::crew_parts(h).map_or(h.sid.as_str(), |(l, _)| l))).map(|s| s.origin.machine.clone())).unwrap_or_default();
+            // Landed from another machine: its commit is here, on the main line.
+            let machine = if it.remote.is_some() { Some(String::new()) } else { None };
+            let machine = machine.or_else(|| self.read(|st| it.holder.as_ref().and_then(|h| st.sessions.get(crate::desk::hub::core::desk::crew_parts(h).map_or(h.sid.as_str(), |(l, _)| l))).map(|s| s.origin.machine.clone()))).unwrap_or_default();
             (machine, it.commit_in.clone())
         };
         let many = made.len() > 1;

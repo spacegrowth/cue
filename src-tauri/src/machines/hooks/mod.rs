@@ -4,6 +4,8 @@
 //! Cue is watching. On the Mac, one SSH stream per machine picks the events up and hands each to Cue
 //! as a local hook would, so everything after that is the same as on this Mac. Nothing listens on the
 //! network. When Cue isn't watching, the script leaves at once and the agent asks in its terminal.
+//! Ask me before works the same way: a tool call that may be a step it checks (a push, a release,
+//! deleting files) waits in ~/.cue/out/ for the answer the Mac's hook would give (hook::guard_answer).
 //!
 //! The scripts put on the machine live in `scripts`, setting them up in `setup`, the SSH stream that
 //! watches a machine in `watch`, and handing each event to Cue in `events`.

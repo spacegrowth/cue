@@ -168,6 +168,8 @@ fn applies(st: &Store, r: &Change) -> bool {
         ChangeKind::Clash => it.state == "working" && it.holder.as_ref().is_some_and(|h| r.key.rsplit_once(':').is_some_and(|(sid, _)| sid == h.sid)),
         // Still waiting for its copy (once it has one, its holder is at work with the words).
         ChangeKind::WordsWait => it.tree_wait,
+        // Still on its machine, not landed yet.
+        ChangeKind::Machine => it.remote.is_some() && matches!(it.state.as_str(), "working" | "finishing"),
         // Not sent back to work since.
         ChangeKind::Finished => matches!(it.state.as_str(), "finishing" | "to_check" | "done"),
         ChangeKind::YouDid | ChangeKind::Away | ChangeKind::Picked => true,

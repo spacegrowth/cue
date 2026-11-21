@@ -14,6 +14,11 @@ pub(crate) mod asks;
 pub(crate) mod cache_tick;
 pub(crate) mod crew_log;
 pub(crate) use crate::desk::hub::away::pause::pause_view as desk_pause_view;
+/// Since when (ms) Cue hasn't reached `machine`: None while it answers.
+pub(crate) fn machine_quiet_since(st: &Store, machine: &str) -> Option<u64> {
+    st.unreachable.contains(machine).then(|| st.unreachable_since.get(machine).copied().unwrap_or(0)).filter(|s| *s > 0)
+}
+
 #[cfg(test)]
 pub(crate) fn desk_pause_words() -> &'static str {
     crate::desk::hub::away::pause::PAUSE_WORDS
@@ -177,6 +182,8 @@ pub(crate) struct Store {
     unsaved_ends: Vec<(u64, crate::sessions::Session)>,
     /// Your machines Cue couldn't reach on its last try: their sessions say so, and × removes them.
     unreachable: HashSet<String>,
+    /// Since when (ms) each of those has been out of reach: a Desk item on one quiet too long is the lead's to ask about.
+    unreachable_since: HashMap<String, u64>,
     /// Sessions Cue is restarting (stopped and started again: after an MCP change, or ⋯ → Restart session): see `Restart`.
     restarting: HashMap<String, Restart>,
     /// Each session's last few restarts, oldest first, for a line in its chat at the time it happened.

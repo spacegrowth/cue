@@ -86,13 +86,13 @@ function deskSessName(sid, name, cls) {
  *  #202), its name, its state; then the item it's on (no line when it's on none, #179); then its size and cache. `cls`
  *  is dk-srow; the lead's card in the head strip is dk-lcard, with `tag` "Lead" as a pill after its name (pick M1, #446).
  *  Rows run edge to edge, so their hover and their lime reach both sides of the column. */
-function deskSessRow({ name, sid = "", mark = "", dot, word, item, line, on, attrs, crew, step = "", size = "", loose = false, past = false, cls = "dk-srow", pre = "", harness = "", tag = "" }) {
+function deskSessRow({ name, sid = "", mark = "", dot, word, item, line, on, attrs, crew, step = "", size = "", loose = false, past = false, cls = "dk-srow", pre = "", harness = "", tag = "", mach = "" }) {
   const what = item ? `<span class="dk-w">${deskKindIcon(item)}<span class="dk-id">${esc(deskNum(item))}</span> ${esc(item.title)}</span>` : line ? `<span class="dk-w">${esc(line)}</span>` : "";
   const arrow = on ? '<span class="dk-larrow" aria-hidden="true">›</span>' : "";   // only on the open row or card (#219)
   const loosePill = loose ? `<span class="dk-pill loose">not committed</span>` : "";
   const ic = DESK_MARKS[mark] ? `<span class="dk-ric" role="img" data-desk-type="${mark}" aria-label="${DESK_MARKS[mark]}">${deskKindIcon(mark)}</span>` : "";
   return `<div class="${cls} ${crew ? "crew" : ""} ${past ? "past" : ""} ${on ? "on" : ""}" role="button" tabindex="0" ${attrs}>
-    <div class="dk-s1">${pre ? `<span class="dk-lk">${pre}</span>` : ""}${ic}${sid ? deskSessName(sid, name, "dk-nm") : `<span class="dk-nm">${esc(name)}</span>`}${harness ? agentBadge(harness) : ""}${tag ? `<span class="dk-ltag">${esc(tag)}</span>` : ""}<span class="dk-st"><i class="${dot}"></i><b>${word}</b></span>${arrow}</div>
+    <div class="dk-s1">${pre ? `<span class="dk-lk">${pre}</span>` : ""}${ic}${sid ? deskSessName(sid, name, "dk-nm") : `<span class="dk-nm">${esc(name)}</span>`}${harness ? agentBadge(harness) : ""}${machTag(mach)}${tag ? `<span class="dk-ltag">${esc(tag)}</span>` : ""}<span class="dk-st"><i class="${dot}"></i><b>${word}</b></span>${arrow}</div>
     ${what || loosePill ? `<div class="dk-s2">${what}${loosePill}</div>` : ""}${step}${size}</div>`;
 }
 /** The lead and the sessions already on this Desk, with their crew. */
@@ -149,12 +149,12 @@ function deskSessionsRow(x, s, card) {
   // of its latest reply, else how many items it has open; a one-line card read as the strip's header.
   if (card) {
     const cItem = deskSessItem(d, sid), open = d.items.filter((i) => i.state !== "done").length;
-    return deskSessRow({ name: deskHolderName(sid), sid, cls: "dk-lcard", mark: "desk", harness: s.harness, tag: "Lead", dot, word, item: cItem, line: cItem ? "" : deskSessSaid(sid) || (open ? `${open} open item${open === 1 ? "" : "s"} on this Desk` : "No open items on this Desk"), on: lit(sid), attrs, step: deskStepLine(dot === "", s.compacting_ms ? "Compacting…" : s.doing, s.compacting_ms || s.doing_ms), size: deskSessCache(sid, !cItem && dot !== "", true) });
+    return deskSessRow({ name: deskHolderName(sid), sid, cls: "dk-lcard", mark: "desk", harness: s.harness, mach: s.machine, tag: "Lead", dot, word, item: cItem, line: cItem ? "" : deskSessSaid(sid) || (open ? `${open} open item${open === 1 ? "" : "s"} on this Desk` : "No open items on this Desk"), on: lit(sid), attrs, step: deskStepLine(dot === "", s.compacting_ms ? "Compacting…" : s.doing, s.compacting_ms || s.doing_ms), size: deskSessCache(sid, !cItem && dot !== "", true) });
   }
   // On no item: the first line of its latest reply, and when it came beside its size (#185).
   const item = deskSessItem(d, sid), idle = dot !== "" && !item;
   // Its reply's line stays while it's idle, empty till the reply is in, so the row doesn't grow a line (#485).
-  return deskSessRow({ name: deskHolderName(sid), sid, mark: sid === leadSid ? "desk" : lead ? "lead" : "session", dot, word, item, line: idle ? deskSessSaid(sid) || "\u00a0" : "", on: lit(sid), attrs, step: deskStepLine(dot === "", s.compacting_ms ? "Compacting…" : s.doing, s.compacting_ms || s.doing_ms), size: deskSessCache(sid, idle, true) }) + crew;
+  return deskSessRow({ name: deskHolderName(sid), sid, mark: sid === leadSid ? "desk" : lead ? "lead" : "session", mach: s.machine, dot, word, item, line: idle ? deskSessSaid(sid) || "\u00a0" : "", on: lit(sid), attrs, step: deskStepLine(dot === "", s.compacting_ms ? "Compacting…" : s.doing, s.compacting_ms || s.doing_ms), size: deskSessCache(sid, idle, true) }) + crew;
 }
 /** Crew member `t` of session `sid` as a row under it (deskSessionsRow); `past`: one folded under "N done". */
 function deskSessionsMate({ project, o }, sid, t, past) {

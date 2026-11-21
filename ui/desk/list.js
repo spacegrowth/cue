@@ -247,6 +247,20 @@ const DESK_STATE_SVG = {
 };
 const deskStateIcon = (i) => `<svg class="dk-si" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${DESK_STATE_SVG[deskStateOf(i)]}</svg>`;
 /** Who holds an item, in a few words: "web-lead → search-centre" for its crew member. */
+/** Where item `i`'s holder runs when it isn't this Mac: the machine label beside its name (core/helpers.js machTag),
+ *  "" on this Mac. The hub's `machine` (its display name) first, else its holder session's own. */
+function deskMachTag(i) {
+  if (i?.machine) return `<span class="mach"><span>${esc(i.machine.length > 10 ? `${i.machine.slice(0, 5)}…${i.machine.slice(-5)}` : i.machine)}</span></span>`;
+  return i?.machine === undefined ? machTag(sessionOf(deskHolderSid(i))?.machine) : "";
+}
+/** Item `i` worked on another machine (`i.remote`), in one plain line: the machine not answering, what it waits for,
+ *  when its work was last pushed. "" when it's worked here or there's nothing to say. */
+function deskRemoteLine(i) {
+  const r = i?.remote;
+  if (!r) return "";
+  const mins = (ms) => { const m = Math.max(1, Math.round((now() - ms) / 60000)); return m < 60 ? `${m} min` : ago(ms); };
+  return [r.quiet_since > 0 ? `machine not answering for ${mins(r.quiet_since)}` : "", r.wait ? firstLine(r.wait) : "", r.pushed_at > 0 ? `last pushed ${mins(r.pushed_at)} ago` : ""].filter(Boolean).join(" · ");
+}
 const deskHolderOf = (i) => (!i.holder ? "" : i.holder.kind === "crew" ? `${deskHolderName(i.holder.lead_sid)} → ${i.holder.name}` : i.crew ? `${i.holder.name} → ${i.crew}` : i.holder.name);
 /** One item in two rows: its state, #id and title (what you'll see when it's done under it, a quiet line, #382); under them who holds it (Give to… when no one does), its age (a
  *  done one's time it finished), and a quiet ✓ when it's ready to check (Looks right; it fills on hover); an ask's question below that. Lit
@@ -293,7 +307,7 @@ function deskItemRow(i, lit, held = false, lane = null) {
   const ask = vb || decision ? `<div class="dk-ask-row${yn ? " yn" : ""}">${vb ? (yn ? reqCut(request.id, `<div class="dk-h">${vb}</div>`, deskAllowLine(i), 2, 100) : `<div class="dk-h">${vb}</div>`) : ""}${question ? qFoldLine(request) : ""}${decision ? `<div class="dk-row-decisions">${decision}</div>` : ""}</div>` : "";
   return `<div class="dk-it ${i.state === "needs_you" ? "ask" : ""} ${look === "landed" ? "landed" : ""} dk-${deskStateOf(i)} ${on ? "on" : ""}${stalled ? " stalled" : ""}${i.state === "to_check" && deskLooksSoon.has(i.id) ? " soon" : ""}${deskLeaveStyle(i.id)}${feat ? " dk-feat" : ""}${piece ? " pc" : ""}" role="button" tabindex="0" data-desk-item="${esc(i.id)}"${feat ? ` aria-expanded="${fopen}"` : ""}>
     ${deskStateIcon(i)}<div class="dk-i1">${on ? '<span class="dk-larrow" aria-hidden="true">‹</span>' : ""}<span class="dk-tag ${look}">${tag}</span>${lane?.n ? `<span class="dk-rn">${lane.n}</span>` : ""}<span class="dk-t">${esc(i.title)}</span>${feat ? `<span class="dk-chev${fopen ? " open" : ""}" aria-hidden="true">›</span>` : ""}</div>
-    ${i.see && !piece && !deskWhereLine(i)?.tried ? `<div class="dk-see">You'll see: ${esc(deskOneLine(i.see))}</div>` : ""}<div class="dk-i2"><span class="dk-kid">${deskKindIcon(i)}<span class="dk-id">${esc(deskNum(i))}</span></span><span class="dk-who${s ? " held" : ""}">${who}</span>${doing}<span class="dk-age">${when}</span>${ok}</div>${ask}${deskWaits(i) ? deskUnblocksHtml(i) : ""}</div>`;
+    ${i.see && !piece && !deskWhereLine(i)?.tried ? `<div class="dk-see">You'll see: ${esc(deskOneLine(i.see))}</div>` : ""}<div class="dk-i2"><span class="dk-kid">${deskKindIcon(i)}<span class="dk-id">${esc(deskNum(i))}</span></span><span class="dk-who${s ? " held" : ""}">${who}${who && i.holder && i.state !== "held" ? deskMachTag(i) : ""}</span>${doing}<span class="dk-age">${when}</span>${ok}</div>${deskRemoteLine(i) ? `<div class="dk-see dk-rmt">${esc(deskRemoteLine(i))}</div>` : ""}${ask}${deskWaits(i) ? deskUnblocksHtml(i) : ""}</div>`;
 }
 /** A permission's two buttons on the Desk (#426): No, then Allow, side by side on one line. */
 function deskAllowNo(id) {

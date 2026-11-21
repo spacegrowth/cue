@@ -12,6 +12,7 @@
 use crate::desk::hub::landing::git::{because, git};
 use crate::desk::hub::landing::finish::Claim;
 use crate::desk::hub::landing::main_line::{in_progress, main_checkout, main_ref};
+use crate::desk::hub::landing::remote_item::remote_of;
 use crate::desk::hub::prelude::*;
 use crate::desk::{DeskItem, ItemTree};
 use std::process::{Command, Stdio};
@@ -58,7 +59,7 @@ impl Hub {
             if !t.branch.starts_with("desk/") || t.branch == onto {
                 return Err(format!("Its branch is {}, not one of the Desk's own, so nothing was pushed", t.branch));
             }
-            let remote = remote_of(&t.repo, onto).ok_or("This project has no remote to push to, so no pull request was opened")?;
+            let remote = remote_of("", &t.repo, onto).ok_or("This project has no remote to push to, so no pull request was opened")?;
             self.net_git(&t.repo, &["push", "-q", &remote, &format!("+{squash}:refs/heads/{}", t.branch)])
                 .map_err(|e| because(format!("Its branch couldn't be pushed to {remote}, so no pull request was opened"), &e))?;
             // Opened before (the landing run again): that one.
@@ -194,7 +195,7 @@ impl Hub {
         if has(&local) {
             return Ok(());
         }
-        let Some(remote) = remote_of(repo, base) else { return Err(Onto::Unseen) };
+        let Some(remote) = remote_of("", repo, base) else { return Err(Onto::Unseen) };
         let theirs = format!("refs/remotes/{remote}/{base}");
         if let Err(e) = self.net_git(repo, &["fetch", "-q", &remote, &format!("+{local}:{theirs}")]) {
             return Err(Onto::Wait(because(format!("Merged; Cue couldn't fetch {base} from {remote}"), &e)));
@@ -225,7 +226,7 @@ impl Hub {
             return;
         }
         let Some((_, onto)) = main_checkout(top).filter(|(_, b)| !b.is_empty()) else { return };
-        let said = match remote_of(top, &onto) {
+        let said = match remote_of("", top, &onto) {
             None => "Not pushed: this project has no remote".to_string(),
             Some(r) => match self.net_git(top, &["push", "-q", &r, &format!("refs/heads/{onto}:refs/heads/{onto}")]) {
                 Ok(_) => format!("Pushed to {r}"),
@@ -284,19 +285,6 @@ impl Hub {
 /// Whether item `i` is in review: finishing, its pull request open.
 fn in_review(i: &DeskItem) -> bool {
     i.state == "finishing" && i.finish.as_ref().is_some_and(|f| f.step == "review" && !f.pr.is_empty())
-}
-
-/// The remote `onto` of `repo` pushes to: its branch's own, else origin, else the only one.
-fn remote_of(repo: &str, onto: &str) -> Option<String> {
-    if let Some(r) = git("", repo, &[], &["config", &format!("branch.{onto}.remote")]).map(|s| s.trim().to_string()).filter(|s| !s.is_empty() && s != ".") {
-        return Some(r);
-    }
-    let all = git("", repo, &[], &["remote"])?;
-    let all: Vec<&str> = all.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
-    if all.contains(&"origin") {
-        return Some("origin".into());
-    }
-    (all.len() == 1).then(|| all[0].to_string())
 }
 
 /// The first web link in `text`.

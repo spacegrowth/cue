@@ -52,7 +52,7 @@ pub(crate) fn desk_start_with_agent(h: &Arc<Hub>, folder: &str, trust: bool, nam
         return Err("a Desk needs a name of 1–80 characters".into());
     }
     let id = format!("desk-{}", crate::focus::new_session_id());
-    let space = crate::desk::model::DeskSpace { id: id.clone(), name, project: workspace, folder: dir.clone() };
+    let space = crate::desk::model::DeskSpace { id: id.clone(), name, project: workspace, folder: dir.clone(), machine_folders: Default::default() };
     h.desk_put_space(space)?;
     let result = set_lead(h, &id, None, trust, Some(dir), agent);
     let r = result?;

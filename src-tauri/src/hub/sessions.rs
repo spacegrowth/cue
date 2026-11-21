@@ -392,8 +392,14 @@ impl Hub {
     /// `live`; the ones missing too long, to end.
     fn missing_now(st: &mut Store, machine: &str, live: Option<&HashSet<String>>, judged: &[(String, bool)], now: u64) -> (Vec<String>, bool) {
         let reach_changed = match live {
-            None => st.unreachable.insert(machine.to_string()),
-            Some(_) => st.unreachable.remove(machine),
+            None => {
+                st.unreachable_since.entry(machine.to_string()).or_insert(now);
+                st.unreachable.insert(machine.to_string())
+            }
+            Some(_) => {
+                st.unreachable_since.remove(machine);
+                st.unreachable.remove(machine)
+            }
         };
         let mut gone = vec![];
         // A session ended while its file was looked at is no longer this sweep's to judge.

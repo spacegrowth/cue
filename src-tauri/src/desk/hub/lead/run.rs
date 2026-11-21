@@ -144,15 +144,34 @@ impl Hub {
         let ready = |st: &Store| st.desk.item(&s.id).is_some_and(|i| i.project == s.project && i.state != "done" && i.after.is_none());
         if !self.read(ready) { return; }
         let name = self.free_name(&format!("{}-{}", self.read(|st| st.desk.name_of(&s.project).to_string()), s.id));
-        let dir = self.desk_folder(&s.project).ok_or_else(|| format!("no folder known for {}", s.project));
-        // Its folder is one a session of the project already works in: trusted, as you trust it there.
-        let opts = crate::hub::StartOpts { trust: true, ..Default::default() };
+        // Routed on a machine (`on:`, desk/hub/landing/remote_item.rs): it starts in the Desk's clone there.
+        let on = self.read(|st| st.desk.item(&s.id).and_then(|i| i.on_machine.clone()));
+        let dir = match &on {
+            Some(o) => Ok(o.folder.clone()),
+            None => self.desk_folder(&s.project).ok_or_else(|| format!("no folder known for {}", s.project)),
+        };
+        // Its folder is one a session of the project already works in, or the one the lead named on a machine: trusted,
+        // as you trust it there.
+        let opts = crate::hub::StartOpts { trust: true, machine: on.as_ref().map(|o| o.machine.clone()).unwrap_or_default(), ..Default::default() };
         let agent = self.session_origin(&s.by_sid).and_then(|o| crate::hosted::Agent::named(&o.harness)).unwrap_or(crate::hosted::Agent::Claude);
         let started = dir.and_then(|dir| crate::hub::start_hosted(self, agent, &dir, "", &name, &opts, &[]));
         // Moved off a holder (#364): its hand-off note goes with it, one written since it took the item.
         let moved = self.read(|st| st.desk.item(&s.id).and_then(|it| crate::desk::hub::core::desk::moved_from_of(st, it)));
         let note = moved.as_ref().and_then(|(sid, from, _)| sid.as_deref().and_then(crate::db::handoff).filter(|k| !k.note.is_empty() && k.note_ms >= *from)).map(|k| k.note).unwrap_or_default();
         let last = moved.map(|(_, _, last)| last).unwrap_or_default();
+        // Started there: that machine's folder is remembered for the Desk's next item on it.
+        if let (Some(o), Ok(_)) = (&on, &started) {
+            let space = self.write(|st| {
+                let d = st.desk.spaces.get_mut(&s.project)?;
+                (d.machine_folders.get(&o.machine) != Some(&o.folder)).then(|| {
+                    d.machine_folders.insert(o.machine.clone(), o.folder.clone());
+                    d.clone()
+                })
+            });
+            if let Some(d) = space {
+                let _ = crate::db::desk_put_space(&d);
+            }
+        }
         let sid = started.and_then(|v| v["session_id"].as_str().filter(|s| !s.is_empty()).map(str::to_string).ok_or_else(|| "it started without a session id".to_string()));
         let now = now_ms();
         let fx = self.write(|st| {
@@ -381,6 +400,9 @@ fn route_of(st: &Store, s: &crate::sessions::Session, now: u64) -> String {
     let sid = &s.origin.session_id;
     let id: String = sid.chars().take(8).collect();
     let mut r = format!("{} (sid:{id}", shown_name(s));
+    if !s.origin.machine.is_empty() {
+        r.push_str(&format!(", on {}", crate::machines::display_name(&s.origin.machine)));
+    }
     if idle_route(st, s) {
         r.push_str(", idle");
     } else if matches!(s.state.as_str(), "waiting" | "stopped") && !s.running.is_empty() {

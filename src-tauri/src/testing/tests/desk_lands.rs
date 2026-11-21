@@ -300,7 +300,7 @@ fn a_desk_on_another_project_never_offers_cues_own_check_or_install_and_each_kee
     // #460: two Desks in one workspace, one on Cue's own folder, one on another repository.
     let w = World::new();
     let (_h, project) = super::desk::holder(&w);
-    let space = |id: &str, name: &str, folder: String| crate::desk::model::DeskSpace { id: id.into(), name: name.into(), project: project.clone(), folder };
+    let space = |id: &str, name: &str, folder: String| crate::desk::model::DeskSpace { id: id.into(), name: name.into(), project: project.clone(), folder, machine_folders: Default::default() };
     w.hub().desk_put_space(space("desk-cue", "Cue work", repo_beside(&w, "cue", true))).unwrap();
     w.hub().desk_put_space(space("desk-web", "Web app", repo_beside(&w, "web", false))).unwrap();
     let shown = |desk: &str, part: &str| -> Vec<String> {

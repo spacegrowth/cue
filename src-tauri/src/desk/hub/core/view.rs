@@ -23,6 +23,8 @@ pub(crate) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
         out.copy_users = st.desk.items.iter().filter(|i| i.tree.as_ref().is_some_and(|t| t.repo == it.tree_wait_repo)).map(|i| i.id.clone()).collect();
         out.copy_users.sort_by_key(|x| (x.parse::<u64>().unwrap_or(u64::MAX), x.clone()));
     }
+    // The machine its holder is on (#500), and how long one with its work has been quiet.
+    crate::desk::hub::landing::remote_item::shown_machine(st, &mut out);
     let Some(h) = it.holder.as_ref() else { return out };
     let mut h = h.clone();
     holder_view(st, it, &mut h, &mut out);

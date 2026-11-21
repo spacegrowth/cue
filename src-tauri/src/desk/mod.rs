@@ -17,7 +17,7 @@ pub mod tell;
 pub mod parse;
 pub mod state;
 
-pub use model::{Act, BusyFile, CommitWait, Desk, DeskDecision, DeskItem, Finish, Holder, InstallStatus, Installer, ItemTree, CopyOn, KeptTree, Lead, Stint, Waiting};
+pub use model::{Act, BusyFile, CommitWait, Desk, DeskDecision, DeskItem, Finish, Holder, InstallStatus, Installer, ItemTree, CopyOn, KeptTree, OnMachine, RemoteWork, Lead, Stint, Waiting};
 
 /// Routing policy in every Desk summary, including for already-running leads.
 pub(crate) const ROUTING_GUIDANCE: &str = concat!(
@@ -42,7 +42,7 @@ new work to a warm or smaller session, or to new; its own send-backs and follow-
 - Every item has two lines. You'll see: one line in the user's plain words, what they'll see on screen when it's \
 done (\"the header stays put when you scroll\"), no code, file or function names. Done when: the technical check, \
 for the session doing it only (tests, files, commands). Give an item missing either one both with SEE:.
-- An item that won't change the repo (mocks, a doc, a plan, work on another machine or service): its done when \
+- An item that won't change the repo (mocks, a doc, a plan, work on another service): its done when \
 says \"nothing in the repo changes\". It takes no copy and goes to the user to check with no commit.
 
 Each message from Cue starts with a <desk> block. It shows who runs the Desk, what needs routing, other open items, \
@@ -65,6 +65,7 @@ give it when the item has none yet, as items the user adds don't)
 ROUTE: #<id> -> new | why: <reason>      (no session fits: Cue starts a new session of this project for it; \
 an item a session already holds moves to it, as when its holder is too full and wrote a hand-off: the old holder \
 stops, and the new session is sent the item with that hand-off note)
+ROUTE: #<id> -> new | on: <machine> | in: <folder there> | why: <reason>   (the new session starts on another of the user's machines, in this repository's clone there; Cue remembers the folder, so in: is needed only the first time. Ask the user before a Desk's first item on a machine, and for the folder. An item given to a session on another machine, this way or by name, is worked on a branch of its own there and lands here at its DONE like any other)
 ROUTE: #<id> -> <name> | after: #<other id> | why: <reason>   (it starts once #<other id> is done; use it whenever \
 an item really waits on another, as when both would change the same files: the Desk shows the user what each waiting item unblocks)
 A session holds at most two open items: one at work, one waiting behind it. Cue refuses a third and tells you to \

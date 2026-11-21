@@ -407,3 +407,105 @@ fn a_hosted_agents_events_stay_on_the_machine() {
     assert_eq!(written, 0, "nothing handed to Cue");
     let _ = std::fs::remove_dir_all(&home);
 }
+
+/// Ask me before on a machine: Cue's PreToolUse entry goes into each agent's settings with the rest, once, next to
+/// yours, as on this Mac (Claude Code's Bash; any tool for Codex), with the agent's own long wait.
+#[test]
+fn a_machines_agents_get_the_ask_me_before_check_once_beside_their_own() {
+    let yours = json!({ "matcher": "Read", "hooks": [{ "type": "command", "command": "my-check" }] });
+    for (harness, matcher, wait) in [("claude", "Bash", 86400), ("codex", "*", 3600)] {
+        let cfg = json!({ "hooks": { "PreToolUse": [yours.clone()] }, "model": "x" });
+        let once = super::setup::settings_with_hooks(cfg, harness).unwrap();
+        let pre = once["hooks"]["PreToolUse"].as_array().unwrap();
+        assert_eq!(pre.len(), 2, "{harness}: yours and Cue's: {once}");
+        assert_eq!(pre[0], yours, "{harness}: yours kept as it was");
+        assert_eq!(pre[1], json!({ "matcher": matcher, "hooks": [{ "type": "command", "command": format!("\"$HOME/.cue/cue-hook\" guard {harness}"), "timeout": wait }] }));
+        assert_eq!(once["model"], "x");
+        assert!(once["hooks"]["PermissionRequest"].is_array(), "{harness}: the rest of Cue's hooks too");
+        assert_eq!(super::setup::settings_with_hooks(once.clone(), harness).unwrap(), once, "{harness}: set up already: nothing changes");
+    }
+    let fresh = super::setup::settings_with_hooks(json!({}), "claude").unwrap();
+    assert_eq!(fresh["hooks"]["PreToolUse"].as_array().map(Vec::len), Some(1), "none of yours: Cue's alone");
+}
+
+/// A checked tool call from a machine reaches Cue as the guard a hosted Pi's does: its whole input and the branch the
+/// hook read there, for Cue to read the kinds from (it can't look on the machine), placed on that machine.
+#[test]
+fn a_checked_tool_call_from_a_machine_reaches_cue_with_its_branch() {
+    let ev = json!({ "event": "guard", "harness": "codex", "branch": "work", "input": { "session_id": "s9", "cwd": "/srv/app", "tool_name": "shell", "tool_input": { "command": ["bash", "-lc", "git push"] } } });
+    let m = to_cue("box", &ev).unwrap();
+    assert_eq!(m["type"], "guard");
+    assert_eq!((m["harness"].as_str(), m["machine"].as_str(), m["session_id"].as_str(), m["cwd"].as_str()), (Some("codex"), Some("box"), Some("s9"), Some("/srv/app")));
+    assert_eq!((m["tool_name"].as_str(), m["branch"].as_str(), m["checked"].as_bool()), (Some("shell"), Some("work"), Some(false)));
+    assert_eq!(m["tool_input"], json!({ "command": ["bash", "-lc", "git push"] }));
+    let claude = to_cue("box", &json!({ "event": "guard", "input": { "session_id": "s9", "tool_name": "Bash", "tool_input": { "command": "rm -rf build" } } })).unwrap();
+    assert_eq!((claude["harness"].as_str(), claude["branch"].as_str()), (Some("claude"), Some("")), "no harness said: Claude Code; no branch read: none");
+}
+
+/// The hook's side of Ask me before: a call with none of the words of a checked step runs at once without Cue; one
+/// with them, with nobody watching, runs too (Cue never reached, as on this Mac); with Cue watching it goes to Cue with
+/// the branch of its folder and prints Cue's answer; and Cue gone after taking it stops it with why.
+#[test]
+fn a_checked_tool_call_on_a_machine_waits_for_cue_or_is_stopped_once_cue_had_it() {
+    let home = std::env::temp_dir().join(format!("cue-mh-guard-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let repo = home.join("app");
+    std::fs::create_dir_all(&repo).unwrap();
+    assert!(Command::new("git").args(["init", "-q", "-b", "work"]).current_dir(&repo).status().unwrap().success());
+    let call = |cmd: &str| json!({ "session_id": "s1", "cwd": repo.to_string_lossy(), "tool_name": "Bash", "tool_input": { "command": cmd } }).to_string();
+    let inbox = || std::fs::read_dir(home.join(".cue/in")).map(|d| d.count()).unwrap_or(0);
+    let now = || std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+    // None of the words: nothing for Cue, no wait.
+    let t = std::time::Instant::now();
+    assert_eq!(run_sh(SCRIPT, &home, &["guard", "claude"], &call("ls -la")), "");
+    assert_eq!(inbox(), 0, "nothing handed to Cue");
+    // The words, nobody watching: it runs, at once.
+    assert_eq!(run_sh(SCRIPT, &home, &["guard", "claude"], &call("git push origin main")), "");
+    assert!(t.elapsed() < Duration::from_secs(3), "never waits when Cue isn't watching");
+    assert_eq!(inbox(), 0, "the event taken back");
+    // Watching: Cue's answer, as Cue wrote it; the event carried the branch.
+    std::fs::create_dir_all(home.join(".cue/out")).unwrap();
+    std::fs::write(home.join(".cue/watching"), format!("{}\n", now())).unwrap();
+    let answer = crate::hook::guard_output(&json!({ "behavior": "deny", "message": "not today" }), "claude").unwrap().to_string();
+    let take = |gone: bool| {
+        let (h2, answer) = (home.clone(), answer.clone());
+        std::thread::spawn(move || {
+            for _ in 0..50 {
+                std::thread::sleep(Duration::from_millis(100));
+                let Some(f) = std::fs::read_dir(h2.join(".cue/in")).ok().and_then(|mut d| d.next()).and_then(|e| e.ok()) else { continue };
+                let id = f.path().file_stem().unwrap().to_string_lossy().to_string();
+                let ev: Value = serde_json::from_str(&std::fs::read_to_string(f.path()).unwrap()).unwrap();
+                std::fs::rename(f.path(), h2.join(format!(".cue/in/{id}.json.1"))).unwrap();
+                if gone {
+                    // Cue took it, then nothing for over ten minutes.
+                    let then = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() - 700;
+                    std::fs::write(h2.join(".cue/watching"), format!("{then}\n")).unwrap();
+                } else {
+                    std::fs::write(h2.join(format!(".cue/out/{id}.json")), &answer).unwrap();
+                }
+                return Some(ev);
+            }
+            None
+        })
+    };
+    let taker = take(false);
+    let out = run_sh(SCRIPT, &home, &["guard", "claude"], &call("git push"));
+    let ev = taker.join().unwrap().expect("the call went to Cue");
+    assert_eq!(out, answer, "Cue's answer, as the agent's PreToolUse output");
+    assert_eq!((ev["event"].as_str(), ev["branch"].as_str()), (Some("guard"), Some("work")), "{ev}");
+    assert_eq!(to_cue("box", &ev).unwrap()["tool_input"]["command"], "git push");
+    let _ = std::fs::remove_file(home.join(".cue/in").read_dir().unwrap().next().unwrap().unwrap().path());
+    // Cue gone after it had the call: stopped, with the same why the Mac's hook gives, for Claude Code and Codex.
+    for harness in ["claude", "codex"] {
+        std::fs::write(home.join(".cue/watching"), format!("{}\n", now())).unwrap();
+        let taker = take(true);
+        let out = run_sh(SCRIPT, &home, &["guard", harness], &call("rm -rf src"));
+        assert!(taker.join().unwrap().is_some());
+        let got: Value = serde_json::from_str(&out).unwrap_or_else(|e| panic!("{harness}: {e}: {out:?}"));
+        assert_eq!(Some(got), crate::hook::guard_output(&json!({ "behavior": "deny", "message": crate::hook::LOST }), harness), "{harness}");
+        for f in std::fs::read_dir(home.join(".cue/in")).unwrap().flatten() {
+            let _ = std::fs::remove_file(f.path());
+        }
+    }
+    let _ = std::fs::remove_dir_all(&home);
+}

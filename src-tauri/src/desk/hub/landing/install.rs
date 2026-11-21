@@ -133,6 +133,7 @@ impl Hub {
         for id in old {
             self.finish_fin(&id, |f| (f.step, f.wait) = ("commit".into(), String::new()));
         }
+        self.desk_remote_quiet();
         let items: Vec<DeskItem> = self.read(|st| st.desk.items.iter().filter(|i| i.state == "finishing" && i.finish.is_some()).cloned().collect());
         if items.is_empty() {
             return;
@@ -140,7 +141,8 @@ impl Hub {
         let step = |i: &DeskItem| i.finish.as_ref().map(|f| f.step.clone()).unwrap_or_default();
         for it in &items {
             match step(it).as_str() {
-                "commit" if it.tree.is_none() => self.desk_finish_commit(&it.id),
+                // On another machine: fetched from there first (desk/hub/landing/remote_item.rs).
+                "commit" if it.tree.is_none() || it.remote.is_some() => self.desk_finish_commit(&it.id),
                 // In its own copy: the landing line takes it (below).
                 "commit" | "line" | "checking" => {}
                 // Waiting to be on main: on its way once it is (its main line as it is now).
@@ -148,7 +150,7 @@ impl Hub {
                 _ => {}
             }
         }
-        if items.iter().any(|i| i.tree.is_some() && matches!(step(i).as_str(), "commit" | "line" | "checking")) {
+        if items.iter().any(|i| i.tree.is_some() && (matches!(step(i).as_str(), "line" | "checking") || (step(i) == "commit" && i.remote.is_none()))) {
             self.desk_land_line();
         }
         let inst = self.installer();

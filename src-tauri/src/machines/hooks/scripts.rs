@@ -17,16 +17,28 @@ echo "$id $1 ${TMUX_PANE:-}" >>"$d/hook.log" 2>/dev/null
 input=$(cat)
 # A session cue-host runs for Cue (CUE_HOSTED): Cue hears all of it from the session directly.
 [ -z "${CUE_HOSTED:-}" ] || exit 0
+branch=
+if [ "$1" = guard ]; then
+  # Ask me before: a tool call about to run. Only one that may be a step it checks (a push, a release, deleting
+  # files) goes to Cue, which reads it whole; anything else runs at once. With it, the branch of its folder.
+  one=$(printf '%s' "$input" | tr '\n' ' ' | sed 's/\\[nt]/ /g')
+  printf '%s' "$one" | grep -qiE '(^|[^a-z0-9_-])(push|tag|branch|rm|rmdir|unlink|shred|trash|srm|clean|merge|publish|upload|release|delete|drop|truncate)([^a-z0-9_-]|$)|-delete' || exit 0
+  cwd=$(printf '%s' "$one" | sed -n 's/.*"cwd" *: *"\([^"]*\)".*/\1/p')
+  [ -z "$cwd" ] || branch=$(git -C "$cwd" symbolic-ref --short -q HEAD 2>/dev/null | tr -d '"\\')
+fi
 ( umask 077; {
-  printf '{"event":"%s","harness":"%s","pane":"%s","tmux":"%s","hosted":"%s","input":' "$1" "$2" "${TMUX_PANE:-}" "${TMUX:+1}" "${CUE_HOSTED:+1}"
+  printf '{"event":"%s","harness":"%s","pane":"%s","tmux":"%s","hosted":"%s","branch":"%s","input":' "$1" "$2" "${TMUX_PANE:-}" "${TMUX:+1}" "${CUE_HOSTED:+1}" "$branch"
   printf '%s' "$input"
   printf '}\n'
 } >"$d/in/$id.tmp" ) 2>/dev/null && mv "$d/in/$id.tmp" "$d/in/$id.json"
-[ "$1" = permission ] || exit 0
-# A permission question: wait for the answer while Cue is watching (it stamps the time every second).
-# Not watching now: leave at once. Once it has the question, a dropped line (the Mac asleep, Wi-Fi)
-# isn't the end of it: Cue reconnects and the answer still comes, so it waits up to 10 minutes of
-# silence. The terminal asks meanwhile either way, so answering there still works.
+case "$1" in permission|guard) ;; *) exit 0 ;; esac
+# A permission question, or a step Ask me before checks: wait for the answer while Cue is watching (it
+# stamps the time every second). Not watching now: leave at once. Once it has the question, a dropped line
+# (the Mac asleep, Wi-Fi) isn't the end of it: Cue reconnects and the answer still comes, so it waits up
+# to 10 minutes of silence. A permission's terminal asks meanwhile either way, so answering there still
+# works. A checked step goes as on the Mac: Cue never reached, it's left to the agent's own flow; Cue gone
+# after it took the step, it's stopped (never let through unasked) and the agent is told why.
+lost="{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Cue went away while this waited on the user (Ask me before), so it didn't run. Ask the user again.\"}}"
 quiet=20
 while :; do
   if [ -e "$d/out/$id.json" ]; then cat "$d/out/$id.json"; rm -f "$d/out/$id.json"; exit 0; fi
@@ -36,7 +48,7 @@ while :; do
   # all: Cue never watched.
   seen=$(cat "$d/watching" 2>/dev/null) || seen=0
   [ -n "$seen" ] || seen=$(date +%s)
-  [ $(( $(date +%s) - seen )) -lt $quiet ] || { rm -f "$d/in/$id.json"; exit 0; }
+  [ $(( $(date +%s) - seen )) -lt $quiet ] || { [ "$1" = guard ] && [ $quiet = 600 ] && printf '%s' "$lost"; rm -f "$d/in/$id.json"; exit 0; }
   sleep 0.2 2>/dev/null || sleep 1
 done
 "#;

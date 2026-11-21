@@ -10,7 +10,9 @@ pub enum Line {
     /// Item `id` ("new": the reply's last ITEM) to the session named `to`, now or `after` another item; `kind`, when
     /// said: the lead's call on what it is ("bug" | "feature" | "task"; an item you add has none till then); `crew`,
     /// when said: the lead's teammate doing it (with `to` "me").
-    Route { id: String, to: String, after: Option<String>, why: String, kind: Option<String>, crew: Option<String> },
+    /// `on`, when said: the machine a new session for it starts on (`| on: <machine>`), with `in` the folder of the
+    /// clone there (`| in: <folder>`, else the one this Desk used there last).
+    Route { id: String, to: String, after: Option<String>, why: String, kind: Option<String>, crew: Option<String>, on: Option<String>, in_dir: Option<String> },
     /// A question for you, with its choices (none: answered in words).
     /// `item`: the item it's about (`ASK: #<id> | <question> | …`), shown on that item as waiting on you.
     Ask { question: String, choices: Vec<String>, item: Option<String> },
@@ -407,7 +409,14 @@ fn route(body: &str) -> Option<Line> {
     let why = p[1..].iter().find_map(|s| labelled(s, "why")).unwrap_or("").to_string();
     let kind = p[1..].iter().find_map(|s| labelled(s, "kind")).map(|k| k.trim_matches(['"', '`', '*', '.']).to_ascii_lowercase()).filter(|k| matches!(k.as_str(), "bug" | "feature" | "task"));
     let crew = p[1..].iter().find_map(|s| labelled(s, "crew")).map(|c| c.trim_start_matches('@').trim_matches(['"', '`', '*']).trim().to_string()).filter(|c| !c.is_empty());
-    Some(Line::Route { id, to, after, why, kind, crew })
+    let clean = |x: &str| x.trim_matches(['"', '`', '*']).trim().to_string();
+    // Short labels, so only with their colon: "on: box", never "one reason".
+    fn colon<'a>(s: &'a str, l: &str) -> Option<&'a str> {
+        labelled(s, l).filter(|_| s.get(l.len()..).is_some_and(|r| r.trim_start().starts_with(':')))
+    }
+    let on = p[1..].iter().find_map(|s| colon(s, "on")).map(clean).filter(|m| !m.is_empty());
+    let in_dir = p[1..].iter().find_map(|s| colon(s, "in")).map(clean).filter(|m| !m.is_empty());
+    Some(Line::Route { id, to, after, why, kind, crew, on, in_dir })
 }
 
 fn ask(body: &str) -> Option<Line> {

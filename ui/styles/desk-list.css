@@ -213,6 +213,8 @@
 .dk-h { min-width: 0; margin-top: 1px; color: var(--ink); font-size: var(--type-body); line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Selected: its words in the selected ink, as the Board's selected card. */
 .dk-it.on .dk-id, .dk-it.on .dk-who, .dk-it.on .dk-age, .dk-it.on .dk-h { color: var(--on-sel); }
+/* A holder on another machine: its label (board.css .mach) takes a lit row's text color, as the board's does. */
+:is(.dk-it, .dk-srow, .dk-lcard).on .mach { color: var(--on-sel); border-color: var(--on-sel); }
 /* An ask in two lines at most (#298): what it wants, not the whole command; that is in the opened item. */
 .dk-it.ask .dk-h { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 /* Links to what an item's holder made, in its pane. */

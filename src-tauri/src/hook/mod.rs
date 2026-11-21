@@ -465,22 +465,35 @@ fn guard(p: &Value, harness: &str) -> Option<()> {
     msg.insert("hits".into(), json!(hits));
     msg.insert("agent_id".into(), json!(s(p, "agent_id")));
     msg.insert("checked".into(), json!(true));
-    let m = match wait_for_answer(&Value::Object(msg)) {
-        Answer::Said(m) => m,
-        Answer::Pass | Answer::Never => return None,
-        Answer::Closed => json!({"behavior": "deny", "message": CLOSED}),
-        Answer::Lost => json!({"behavior": "deny", "message": LOST}),
-    };
-    if let Some(out) = guard_output(&m, harness) {
+    if let Some(out) = guard_answer(&Value::Object(msg), harness) {
         print!("{out}");
         let _ = std::io::stdout().flush();
     }
     Some(())
 }
 
+/// A checked call's message (`{"type": "guard", …}`) sent to Cue and its answer waited for: the PreToolUse output the
+/// agent gets, or None to say nothing (leave the call to its own flow). Here, and for a machine's session
+/// (machines/hooks/events.rs), whose hook on the machine prints it.
+pub(crate) fn guard_answer(msg: &Value, harness: &str) -> Option<Value> {
+    guard_reply(wait_for_answer(msg), harness)
+}
+
+/// How a wait on Cue ended, as the PreToolUse output: your yes or no; nothing when there was nothing to ask, or Cue
+/// was never reached; stopped when the card closed without a click, or Cue went mid-wait.
+fn guard_reply(a: Answer, harness: &str) -> Option<Value> {
+    let m = match a {
+        Answer::Said(m) => m,
+        Answer::Pass | Answer::Never => return None,
+        Answer::Closed => json!({"behavior": "deny", "message": CLOSED}),
+        Answer::Lost => json!({"behavior": "deny", "message": LOST}),
+    };
+    guard_output(&m, harness)
+}
+
 /// Why a checked call stopped with no answer from you: its card closed without a click, or Cue went mid-wait.
-const CLOSED: &str = "Cue closed this ask without an answer from the user (Ask me before), so it didn't run. Ask the user again.";
-const LOST: &str = "Cue went away while this waited on the user (Ask me before), so it didn't run. Ask the user again.";
+pub(crate) const CLOSED: &str = "Cue closed this ask without an answer from the user (Ask me before), so it didn't run. Ask the user again.";
+pub(crate) const LOST: &str = "Cue went away while this waited on the user (Ask me before), so it didn't run. Ask the user again.";
 
 /// Your answer to a stopped tool call as the PreToolUse output: Claude Code runs it on a yes (you've said yes to
 /// this very call) and stops it on a no; Codex takes only a no from this hook, so a yes says nothing and leaves
@@ -654,6 +667,22 @@ mod tests {
         }
         let plain = guard_output(&json!({"behavior": "deny"}), "claude").unwrap();
         assert_eq!(plain["hookSpecificOutput"]["permissionDecisionReason"], "The user said no in Cue (Ask me before).");
+    }
+
+    /// How a wait on Cue ended, as the agent hears it: nothing to ask, or Cue never reached, says nothing; a card
+    /// closed without a click, or Cue gone mid-wait, stops the call with why, for either agent.
+    #[test]
+    fn a_guard_wait_ends_in_a_yes_a_no_or_nothing() {
+        let why = |o: Option<Value>| o.map(|v| (v["hookSpecificOutput"]["permissionDecision"].as_str().unwrap().to_string(), v["hookSpecificOutput"]["permissionDecisionReason"].as_str().unwrap().to_string()));
+        for harness in ["claude", "codex"] {
+            assert_eq!(guard_reply(Answer::Pass, harness), None, "nothing to ask");
+            assert_eq!(guard_reply(Answer::Never, harness), None, "Cue never reached");
+            assert_eq!(why(guard_reply(Answer::Closed, harness)), Some(("deny".into(), CLOSED.into())));
+            assert_eq!(why(guard_reply(Answer::Lost, harness)), Some(("deny".into(), LOST.into())));
+            assert_eq!(why(guard_reply(Answer::Said(json!({"type": "decision", "behavior": "deny", "message": "not today"})), harness)), Some(("deny".into(), "not today".into())));
+        }
+        assert_eq!(why(guard_reply(Answer::Said(json!({"type": "decision", "behavior": "allow"})), "claude")).map(|w| w.0).as_deref(), Some("allow"));
+        assert_eq!(guard_reply(Answer::Said(json!({"type": "decision", "behavior": "allow"})), "codex"), None, "Codex takes a yes as silence");
     }
 
     /// A tmux that doesn't answer holds the hook up for the cap at most, and counts as "can't be asked".

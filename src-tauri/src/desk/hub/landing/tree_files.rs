@@ -200,6 +200,10 @@ pub(crate) fn remove(t: &ItemTree) {
     if !t.branch.is_empty() && !t.keep {
         let _ = git("", &t.repo, &[], &["branch", "-q", "-D", &t.branch]);
     }
+    // A copy of work fetched from another machine (desk/hub/landing/remote_item.rs): what was fetched goes with it.
+    if let Some(id) = std::path::Path::new(&t.path).file_name().and_then(|n| n.to_str()).and_then(|n| n.strip_prefix("remote-")) {
+        let _ = git("", &t.repo, &[], &["update-ref", "-d", &format!("refs/cue/remote/{id}")]);
+    }
 }
 
 /// Whether copy `t` has work in it: a change not committed, or a commit past where it started.

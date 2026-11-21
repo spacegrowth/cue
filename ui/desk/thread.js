@@ -254,7 +254,7 @@ function deskItemPane(i, d, foot = "") {
     <div class="dk-ibody dk-itab-${tab}">${body}</div></div>`;
   // Its holder's chat from when it took the item (#575); an item from before stints were kept, all of it, folded.
   const span = (i.stints || []).some((t) => t.sid === s?.session_id) ? (deskStintLeft(i, s.session_id) ? "while it had this item" : "from when it took this item") : "other items' turns folded";
-  const sub = s ? `<b>${esc(i.holder.kind === "crew" ? deskHolderName(s.session_id) : i.holder.name)}</b>'s chat · ${span}` : `<span class="dk-state">${deskItemMeta(i, d)}</span>`;
+  const sub = s ? `<b>${esc(i.holder.kind === "crew" ? deskHolderName(s.session_id) : i.holder.name)}</b>'s chat${deskMachTag(i)} · ${span}` : `<span class="dk-state">${deskItemMeta(i, d)}</span>`;
   return deskPage({ page: "item", kind: i.kind, panel: deskItemSide(i, d), aside: ` data-side-for="${esc(i.id)}"`, back: deskBack(deskLeadName(d) || "Back"), mark: `${deskNum(i)} · `, title: esc(i.title), meta: sub, main, foot });
 }
 /** The session whose chat an item's page shows: its holder's (a crew member's lead's), when Cue has it. */
@@ -455,7 +455,7 @@ function deskItemSide(i, d) {
   const tryIt = deskPsec(deskCheckBox(i) ? "Its work" : "What to try", deskCheckInfo(i, d) || (i.state === "done" ? "" : `<p class="dk-note">Shows here when ${esc(who)} says it's done, with Close and Send back.</p>`));
   const now = deskPnow({ ...deskItemNow(i), acts: `${backing ? deskBackActs(i) : deskLooksTop(i) + deskPickBtns(i) + deskItemActs(i)}${deskBuiltLink(i)}${deskDesignsLink(i)}`, fold: pts.length ? `${ticked} of ${pts.length} done` : "", box: deskCheckBox(i) })
     .replace('<h4 class="dk-psh">Now</h4>', '<h4 class="dk-psh">This item</h4>')
-    .replace("</section>", `<div class="dk-pmeta">${deskItemMeta(i, d)}</div></section>`);
+    .replace("</section>", `<div class="dk-pmeta">${deskItemMeta(i, d)}</div>${deskRemoteLine(i) ? `<div class="dk-pmeta dk-rmt">${esc(deskRemoteLine(i))}</div>` : ""}</section>`);
   const open = sid && sessionOf(sid) ? `<button class="btn small" ${deskChatAttrs(sid, d)}>Open ${esc(deskHolderName(sid, h.kind === "crew" ? "" : h.name))}</button>` : "";
   const drop = i.state !== "done" ? `<button class="btn small dk-drop${armed ? " armed" : ""}" data-desk-act="drop" data-id="${esc(i.id)}">${armed ? "Drop it" : "Drop this item"}</button>` : "";
   const foot = open || drop ? `<section class="dk-psec dk-sfoot">${open}${drop}</section>` : "";
@@ -479,7 +479,7 @@ function deskBackActs(i) {
 /** An item's quiet line under its title (#200): who has it, its commit, who added it and when; its state is the
  *  panel's, said once there. */
 function deskItemMeta(i, d) {
-  const who = i.holder ? `<b>${esc(i.holder.name)}</b>${i.crew ? ` → <b>${esc(i.crew)}</b>` : ""}` : "";
+  const who = i.holder ? `<b>${esc(i.holder.name)}</b>${deskMachTag(i)}${i.crew ? ` → <b>${esc(i.crew)}</b>` : ""}` : "";
   const cm = i.state === "done" ? i.commit : i.state === "to_check" ? deskFinCommit(i) : "";
   // Landed with no check to run (its repository has none).
   const unchecked = cm && i.finish?.unchecked ? " · landed, not checked" : "";
@@ -581,7 +581,7 @@ function deskHolderPane(sid, d, foot = "") {
     ${deskSec(`Decided by ${esc(name)} · ${decs.length}`, decHtml)}
     ${deskSec(`Latest from ${esc(name)}`, latest ? `<p class="dk-quiet">${latest}</p>` : "")}</div>`;
   return deskPage({ page: kind === "lead" ? "lead" : kind === "desk" ? "dispatcher" : "session", kind, back: deskBack(deskLeadName(d) || "Back"),
-    acts: s ? `<button class="btn small" ${deskChatAttrs(sid, d)}>Open its chat</button>` : "", mark: `${DESK_MARKS[kind]} · `, title: esc(name), meta: esc(head), now, panel: who + deskSessFiles(sid), main, foot });
+    acts: s ? `<button class="btn small" ${deskChatAttrs(sid, d)}>Open its chat</button>` : "", mark: `${DESK_MARKS[kind]} · `, title: esc(name), meta: esc(head) + machTag(s?.machine), now, panel: who + deskSessFiles(sid), main, foot });
 }
 /** The crew member whose ⋯ menu is open on its page ("lead|agent"), so a redraw while it works keeps it open. */
 let deskCrewMenu = "";

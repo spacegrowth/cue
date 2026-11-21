@@ -640,7 +640,8 @@ fn wanted(hook: &str, harness: &str, on_mac: bool) -> Vec<(&'static str, Value)>
         ("SessionEnd", json!({ "hooks": [{ "type": "command", "command": cmd("end"), "timeout": 3 }] })),
     ];
     // Ask me before (desk/one_way.rs): a tool call checked before it runs, and stopped to ask you when it's a step its
-    // project's Desk asks first about. On this Mac only: a machine's hook script reads no tool calls. Claude Code
+    // project's Desk asks first about. Here for this Mac; a machine gets its own entry from its setup
+    // (machines/hooks/setup.rs), for Bash only there. Claude Code
     // runs its commands through Bash; Codex names its shell tools in more ways, and deletes with a patch. Edits are
     // checked too: a Desk item's holder stays in its own copy (desk/hub/landing/copy_guard.rs, #483).
     if on_mac {

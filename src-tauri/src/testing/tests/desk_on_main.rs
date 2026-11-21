@@ -27,7 +27,7 @@ fn an_item_whose_commit_main_has_under_a_new_commit_goes_on_to_install() {
     let old = git(&dir, &["rev-parse", "side"]).trim().to_string();
     // Main's history rewritten: the same change on main as a new commit, the old one on no branch.
     git(&dir, &["checkout", "-q", "main"]);
-    git(&dir, &["cherry-pick", &old]);
+    git(&dir, &["cherry-pick", "-x", &old]);
     git(&dir, &["branch", "-q", "-D", "side"]);
     let new = git(&dir, &["rev-parse", "HEAD"]).trim().to_string();
     assert_ne!(new, old);

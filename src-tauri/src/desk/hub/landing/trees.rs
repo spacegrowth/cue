@@ -63,6 +63,8 @@ impl Hub {
         for it in std::mem::take(&mut fx.trees_gone) {
             self.desk_tree_dropped(it);
         }
+        // Holders on another machine: told to work on a branch of their own there (desk/hub/landing/remote_item.rs).
+        self.desk_remote_starts(fx);
         if fx.items.is_empty() {
             return;
         }
@@ -203,6 +205,8 @@ impl Hub {
             if let Err(e) = moved {
                 eprintln!("cue: desk: #{}'s copy stays at {}: {e}", it.id, t.path);
             }
+            // Fetched from another machine: its work is in the kept copy now.
+            let _ = git("", &t.repo, &[], &["update-ref", "-d", &format!("refs/cue/remote/{}", it.id)]);
             let k = KeptTree { id: it.id.clone(), title: it.title.clone(), project: it.project.clone(), repo: t.repo.clone(), path, branch: t.branch.clone(), at: now_ms() };
             crate::db::desk_put_kept(&k);
             self.write(|st| {
@@ -243,7 +247,8 @@ impl Hub {
         let fx = self.write(|st| {
             let mut fx = Effects::default();
             // The oldest waiting whose own project's pool (desk/lands.rs) has room among the repository's copies.
-            let used = st.desk.items.iter().filter(|i| i.tree.as_ref().is_some_and(|t| t.repo == repo)).count() as u32;
+            // A remote item's copy here (made at its DONE, only to land it) takes none of them.
+            let used = st.desk.items.iter().filter(|i| i.remote.is_none() && i.tree.as_ref().is_some_and(|t| t.repo == repo)).count() as u32;
             // Never one still queued after another item (#512): that one isn't done, so it waits on, copy or not.
             let mut waiting: Vec<&DeskItem> = st.desk.items.iter().filter(|i| in_line(i) && i.tree_wait_repo == repo).collect();
             // Your order first (#387), then the one queued longest.
@@ -323,7 +328,8 @@ impl Hub {
                     .items
                     .iter()
                     .filter(|i| i.state == "finishing" && i.tree.is_some() && !later.contains(&i.id) && !held.contains(&i.id))
-                    .filter_map(|i| i.finish.as_ref().filter(|f| matches!(f.step.as_str(), "commit" | "line")).map(|f| (f.first == 0, std::cmp::Reverse(f.first), f.at, i.id.clone())))
+                    // A remote item at "commit" is still to be fetched (its copy here an older round's).
+                    .filter_map(|i| i.finish.as_ref().filter(|f| f.step == "line" || (f.step == "commit" && i.remote.is_none())).map(|f| (f.first == 0, std::cmp::Reverse(f.first), f.at, i.id.clone())))
                     .min()
                     .map(|(_, _, _, id)| id)
             });
@@ -436,12 +442,25 @@ impl Hub {
         let Ok((out, code)) = tried else { return Err(self.land_wait(id, "git couldn't bring it up to the main line")) };
         if code != 0 {
             let files: Vec<&str> = out.lines().skip(1).take_while(|l| !l.is_empty()).collect();
-            let q = format!(
-                "Its work clashes with {onto} in {}: in {}, merge {onto} into {}, settle the clash there, and say DONE again",
-                files.join(", "),
-                t.path,
-                t.branch
-            );
+            let q = match &it.remote {
+                // Worked on another machine: settled there, on its branch (desk/hub/landing/remote_item.rs).
+                Some(r) => format!(
+                    "Its work clashes with {onto} in {}: on {}, in {}, fetch {} and merge {}/{} into {}, settle the clash there, commit it, and say DONE again",
+                    files.join(", "),
+                    crate::machines::display_name(&r.machine),
+                    r.folder,
+                    r.remote,
+                    r.remote,
+                    r.onto,
+                    r.branch
+                ),
+                None => format!(
+                    "Its work clashes with {onto} in {}: in {}, merge {onto} into {}, settle the clash there, and say DONE again",
+                    files.join(", "),
+                    t.path,
+                    t.branch
+                ),
+            };
             self.finish_clash(it, &q);
             return Err(Landed::Done);
         }

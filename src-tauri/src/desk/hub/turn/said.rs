@@ -43,7 +43,7 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, repos: &[(St
     for line in parse::lines(text) {
         match line {
             Line::Item { kind, title, see, done_when, .. } => last_new = Some(item_said(st, project, &kind, &title, &see, &done_when, &name, now, fx).0),
-            Line::Route { id, to, after, why, kind, .. } => route_said(st, project, &by, (id, to, after, why, kind), last_new.as_deref(), now, fx, &mut answers),
+            route @ Line::Route { .. } => route_line(st, project, &by, route, last_new.as_deref(), now, fx, &mut answers),
             Line::Ask { question, choices, item } => ask_said(st, project, lsid, (question, choices, item), away.then_some(&mut back), fx),
             Line::Context { who, what, why } if what == "keep" => keep(st, project, &by, &who, &why, now, fx),
             Line::Done { ids } => lead_done(st, project, lsid, &ids, fx),
@@ -112,6 +112,30 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, repos: &[(St
     }
     route_answers(st, project, lsid, answers, fx);
     lead_calls(st, project, &by, text, back, now, fx);
+}
+
+/// The lead's ROUTE line (`#new`: the reply's last ITEM). On another machine (#500) only a new session starts there,
+/// and only a route made (not refused, so not answered) says on its item where it starts.
+#[allow(clippy::too_many_arguments)]
+fn route_line(st: &mut Store, project: &str, by: &By, line: Line, last_new: Option<&str>, now: u64, fx: &mut Effects, answers: &mut Vec<String>) {
+    let Line::Route { id, to, after, why, kind, on, in_dir, .. } = line else { return };
+    let id = match last_new.filter(|_| id == "new") {
+        Some(n) => n.to_string(),
+        None => id,
+    };
+    let canon = st.desk.canon(&id);
+    let set = match crate::desk::hub::landing::remote_item::route_on(st, project, &canon, &to, on.as_deref(), in_dir.as_deref()) {
+        Err(no) => return answers.push(no),
+        Ok(set) => set,
+    };
+    let before = answers.len();
+    route_said(st, project, by, (id, to, after, why, kind), last_new, now, fx, answers);
+    if let (Some(set), true) = (set, answers.len() == before) {
+        if let Some(it) = st.desk.item_mut(&canon) {
+            it.on_machine = set;
+            fx.items.push(canon);
+        }
+    }
 }
 
 /// An item named on a lead's line: `#new` is the reply's last ITEM (`last_new`), else its number from now.

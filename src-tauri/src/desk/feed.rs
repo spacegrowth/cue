@@ -36,6 +36,9 @@ pub enum ChangeKind {
     /// Your words on it (a Send back, a question) went to its holder, but it waits for a free copy (#567): the lead
     /// hears them at once, so they don't sit unseen in the line.
     WordsWait,
+    /// Its work is on another machine (#500) and needs the user: main here isn't pushed for it to start from, or the
+    /// machine hasn't answered for a while.
+    Machine,
 }
 
 /// How a row reaches the lead.
@@ -59,7 +62,7 @@ pub const GROUPED_ALONE_MS: u64 = 5 * 60_000;
 pub const LANDING_STUCK_MS: u64 = 15 * 60_000;
 
 impl ChangeKind {
-    pub const ALL: [ChangeKind; 13] = [
+    pub const ALL: [ChangeKind; 14] = [
         ChangeKind::NewItem,
         ChangeKind::Stopped,
         ChangeKind::StuckLanding,
@@ -73,6 +76,7 @@ impl ChangeKind {
         ChangeKind::Away,
         ChangeKind::YouDid,
         ChangeKind::WordsWait,
+        ChangeKind::Machine,
     ];
 
     pub fn wake(self) -> Wake {
@@ -84,7 +88,8 @@ impl ChangeKind {
             | ChangeKind::Picked
             | ChangeKind::RouteFailed
             | ChangeKind::HolderGone
-            | ChangeKind::WordsWait => Wake::AtOnce,
+            | ChangeKind::WordsWait
+            | ChangeKind::Machine => Wake::AtOnce,
             ChangeKind::NeedsYou | ChangeKind::Clash | ChangeKind::Finished | ChangeKind::Away => Wake::Grouped,
             ChangeKind::YouDid => Wake::Silent,
         }
@@ -111,6 +116,7 @@ impl ChangeKind {
             ChangeKind::Away => "away",
             ChangeKind::YouDid => "you",
             ChangeKind::WordsWait => "words_wait",
+            ChangeKind::Machine => "machine",
         }
     }
 

@@ -250,7 +250,7 @@ fn a_working_item_whose_holder_stopped_is_sent_again_on_a_route_or_restart() {
 fn a_route_to_me_can_name_the_teammate_doing_it() {
     assert_eq!(
         lines("ROUTE: #a1 -> me | crew: `fixer` | why: two files"),
-        vec![Line::Route { id: "a1".into(), to: "me".into(), after: None, why: "two files".into(), kind: None, crew: Some("fixer".into()) }]
+        vec![Line::Route { id: "a1".into(), to: "me".into(), after: None, why: "two files".into(), kind: None, crew: Some("fixer".into()), on: None, in_dir: None }]
     );
 }
 

@@ -204,6 +204,10 @@ impl Hub {
     }
 
     fn finish_commit(&self, id: &str) {
+        // Worked on another machine: its branch pushed from there and fetched here first.
+        if self.desk_remote_done(id) {
+            return;
+        }
         // In its own copy: it lands through the landing line, one item at a time.
         if self.read(|st| st.desk.item(id).is_some_and(|i| i.tree.is_some())) {
             return self.desk_land_line();

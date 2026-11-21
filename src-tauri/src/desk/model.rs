@@ -194,6 +194,18 @@ pub struct DeskItem {
     /// holder started), while it has one: landed as one squash commit at its DONE (desk/hub/landing/trees.rs).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tree: Option<ItemTree>,
+    /// Its work on another machine (#500): the holder there works on a branch of its own in its clone, and at DONE Cue
+    /// pushes that branch from there, fetches it here and lands it like any copy's (desk/hub/landing/remote_item.rs).
+    /// Saved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote: Option<RemoteWork>,
+    /// Where the lead asked a new session for it to start (`ROUTE: #id -> new | on: <machine> | in: <folder>`): the
+    /// machine and the folder there. Saved, so a retry starts it there too.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub on_machine: Option<OnMachine>,
+    /// The machine its holder runs on, as shown ("" on this Mac). Worked out as it's shown, never saved.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub machine: String,
     /// The copy the lead asked for it (COPY, #557): another repository's, on a branch it named. Its copy is made from
     /// this as it starts, wherever its holder works.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -518,6 +530,44 @@ pub struct ItemTree {
     pub keep: bool,
 }
 
+/// An item's work on another machine (#500, docs/desk-remote-items-plan.md).
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct RemoteWork {
+    /// The machine (its name in Settings → Machines) and the folder of the clone there.
+    pub machine: String,
+    pub folder: String,
+    /// Its branch there ("desk/<id>"), the remote it's pushed to, and the main line it starts from and lands on.
+    pub branch: String,
+    pub remote: String,
+    pub onto: String,
+    /// Its last commit as Cue last pushed it, and when (ms; 0: not yet).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub sha: String,
+    #[serde(default)]
+    pub pushed_at: u64,
+    /// Why its DONE waits ("Machine not answering", "Waiting for its branch"), and when Cue last tried (ms).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub wait: String,
+    #[serde(default)]
+    pub tried_at: u64,
+    /// Since when its machine hasn't answered (ms): worked out as it's shown, never saved.
+    #[serde(default)]
+    pub quiet_since: u64,
+    /// The lead was told its machine is quiet (once per quiet spell). Saved.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub quiet_told: bool,
+    /// Tries in a row its DONE stopped on something that won't mend by itself (desk/hub/landing/remote_item.rs).
+    #[serde(default)]
+    pub fails: u32,
+}
+
+/// Where a new session for an item starts when not on this Mac: the machine and the folder of the clone there.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct OnMachine {
+    pub machine: String,
+    pub folder: String,
+}
+
 /// The copy the lead asked for an item (`COPY: #<id> | in: <repo> | branch: <name>`, #557): the main checkout of the
 /// repository it's cut from, and the branch it works on (desk/hub/landing/named_copy.rs).
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -778,6 +828,9 @@ pub struct DeskSpace {
     pub name: String,
     pub project: String,
     pub folder: String,
+    /// The folder of this Desk's clone on each machine its sessions started on (#500): machine -> folder there.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub machine_folders: BTreeMap<String, String>,
 }
 
 /// The session that runs a project's Desk, and the name it went by when last seen (shown once it has ended).
