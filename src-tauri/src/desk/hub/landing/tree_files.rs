@@ -299,11 +299,13 @@ mod tests {
     }
 }
 
-/// Why folder `t.path`, on item `id`'s record, isn't that item's to remove (#558): another item's copy is there now,
+/// Why folder `t.path`, on an item's record, isn't that item's to remove (#558): another item's copy is there now,
 /// or the copy there is on another branch. None when it's the item's own (or gone).
-pub(crate) fn not_its_own(items: &[DeskItem], id: &str, t: &ItemTree) -> Option<String> {
-    if let Some(o) = items.iter().find(|i| i.id != id && i.tree.as_ref().is_some_and(|o| same_dir(&o.path, &t.path))) {
-        return Some(format!("#{}'s copy is there now", o.id));
+/// `copies`: every other item's copy, (its id, its folder), read from the store with `other_copies`; this looks at
+/// the disk, so it runs with the store let go.
+pub(crate) fn not_its_own(copies: &[(String, String)], t: &ItemTree) -> Option<String> {
+    if let Some((o, _)) = copies.iter().find(|(_, path)| same_dir(path, &t.path)) {
+        return Some(format!("#{o}'s copy is there now"));
     }
     // Only a copy of its own says its branch (no `.git` there: git would read the main checkout around it).
     if t.branch.is_empty() || !std::path::Path::new(&t.path).join(".git").exists() {
@@ -311,4 +313,9 @@ pub(crate) fn not_its_own(items: &[DeskItem], id: &str, t: &ItemTree) -> Option<
     }
     let on = git("", &t.path, &[], &["symbolic-ref", "--short", "-q", "HEAD"]).map(|b| b.trim().to_string()).unwrap_or_default();
     (!on.is_empty() && on != t.branch).then(|| format!("the copy there is on {on}, not {}", t.branch))
+}
+
+/// Every item's copy but `id`'s: (its id, its folder), for `not_its_own`. Only read, no disk.
+pub(crate) fn other_copies(items: &[DeskItem], id: &str) -> Vec<(String, String)> {
+    items.iter().filter(|i| i.id != id).filter_map(|i| i.tree.as_ref().map(|t| (i.id.clone(), t.path.clone()))).collect()
 }

@@ -186,7 +186,8 @@ impl Hub {
     /// its branch, which may hold its work (#558).
     fn desk_tree_dropped(&self, it: DeskItem) {
         let Some(t) = it.tree.clone() else { return };
-        if let Some(why) = self.read(|st| not_its_own(&st.desk.items, &it.id, &t)) {
+        let copies = self.read(|st| other_copies(&st.desk.items, &it.id));
+        if let Some(why) = not_its_own(&copies, &t) {
             eprintln!("cue: desk: #{}'s copy record pointed at {}, left as it is: {why}", it.id, t.path);
         } else if t.keep {
             // A branch the lead named (#557): its work stays on it, the copy goes.
@@ -216,7 +217,8 @@ impl Hub {
         let k = self.read(|st| st.desk.kept.iter().find(|k| k.id == id).cloned()).ok_or("no such kept copy")?;
         let t = ItemTree { repo: k.repo.clone(), path: k.path.clone(), branch: k.branch.clone(), ..Default::default() };
         // Its folder is another item's copy now (#558): only its branch goes (git keeps one checked out there).
-        match self.read(|st| not_its_own(&st.desk.items, id, &t)) {
+        let copies = self.read(|st| other_copies(&st.desk.items, id));
+        match not_its_own(&copies, &t) {
             Some(why) => {
                 eprintln!("cue: desk: #{id}'s kept copy at {} left as it is: {why}", t.path);
                 let _ = git("", &t.repo, &[], &["branch", "-q", "-D", &t.branch]);
