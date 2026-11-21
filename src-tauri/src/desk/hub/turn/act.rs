@@ -174,7 +174,7 @@ fn skip_install(st: &mut Store, id: &str, holder: Option<Holder>, now: u64, fx: 
     let released = waiting_on(st, id);
     item_of(st, id)?.released = released;
     release(st, id, now, fx);
-    you_wrote(st, &project, id, "Skip install", "closed without an install", now, fx);
+    you_wrote(st, &project, id, "Skip", "closed without an install", now, fx);
     if let Some(h) = holder {
         let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
         let message = format!("{crew}Desk item #{id} ({title}) is done: closed without an install, none is needed for it. Its work stays on main and goes into the next install. Nothing more to do on it.");

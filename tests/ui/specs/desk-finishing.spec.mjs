@@ -41,8 +41,8 @@ test("a finishing item: amber and steady, out of In progress into Landing, then 
   await expect(row.locator(".dk-who")).toHaveText("host-lead · On main · abc9999");
   await expect(row.locator(".dk-rn")).toHaveCount(0);
   await expect(row.locator('[data-desk-act="install_now"]')).toHaveCount(0);
-  // Skip install on its row (#490), no hover text.
-  await expect(row.locator('[data-desk-act="skip_install"]')).toHaveText("Skip install");
+  // Skip on its row (#490, #645), no hover text.
+  await expect(row.locator('[data-desk-act="skip_install"]')).toHaveText("Skip");
   await expect(row.locator('[data-desk-act="skip_install"]')).not.toHaveAttribute("title", /.*/);
   await expect(page.locator(".dk-items .dk-ch .dk-instnow, .dk-items .dk-ch .dk-next")).toHaveCount(0);
   const head = page.locator('.dk-items .dk-gh[data-lane="install"]');
@@ -67,7 +67,7 @@ test("a finishing item: amber and steady, out of In progress into Landing, then 
   await expect(pane.locator(".dk-pnow .dk-pword")).toHaveText("Finishing");
   await expect(pane.locator(".dk-pnow")).toContainText(`On main · installs at ${clock} · in 30m`);
   await expect(pane.locator('.dk-acts [data-desk-act="install_now"]')).toHaveText("Install now");
-  await expect(pane.locator('.dk-acts [data-desk-act="skip_install"]')).toHaveText("Skip install");   // #621
+  await expect(pane.locator('.dk-acts [data-desk-act="skip_install"]')).toHaveText("Skip");   // #621
   await expect(pane.locator('[data-desk-act="looks_right"]')).toHaveCount(0);
   await cue.override("desk_item_act", () => null);
   await pane.locator('.dk-acts [data-desk-act="install_now"]').click();
@@ -81,7 +81,7 @@ test("a finishing item: amber and steady, out of In progress into Landing, then 
   await patchItem(cue, "d5", { finish: { step: "queued", commit: "abc9999", at: Date.now(), now: true, wait: "starts the moment the install under way ends" } });
   await expect(pane.locator(".dk-pnow")).toContainText("On main · Install now: starts the moment the install under way ends");
   await expect(page.locator('[data-desk-act="install_now"]')).toHaveCount(0);
-  await expect(pane.locator('.dk-acts [data-desk-act="skip_install"]')).toHaveText("Skip install");
+  await expect(pane.locator('.dk-acts [data-desk-act="skip_install"]')).toHaveText("Skip");
   await page.locator(".dk-back").click();
   await expect(row.locator(".dk-who")).toHaveText("host-lead · On main · abc9999 · installs next");
   await expect(head.locator(".dk-next")).toHaveText("next · starts the moment the install under way ends");
