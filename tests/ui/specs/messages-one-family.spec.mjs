@@ -9,8 +9,19 @@ const BODY = "13px", META = "12px";
 // here (Settings → Text size, #594: styles/base.css --type-chat); heads and meta lines stay at META.
 const CHAT = "15px";
 
+/** `read` run on what `loc` finds now (`all`: every match, else the first), again when a redraw replaced it between
+ *  finding it and reading it: a chat redraws as its older messages and steps come in, and a replaced element reads as
+ *  no size and no colour (#609). */
+async function onPage(loc, read, all) {
+  for (let n = 0; ; n++) {
+    const got = all
+      ? await loc.evaluateAll((es, f) => (es.every((e) => e.isConnected) ? (0, eval)(`(${f})`)(es) : null), read.toString())
+      : await loc.first().evaluate((e, f) => (e.isConnected ? (0, eval)(`(${f})`)(e) : null), read.toString());
+    if (got !== null || n === 20) return got;
+  }
+}
 /** The font size of each element `loc` matches. */
-const sizes = (loc) => loc.evaluateAll((es) => es.map((e) => getComputedStyle(e).fontSize));
+const sizes = (loc) => onPage(loc, (es) => es.map((e) => getComputedStyle(e).fontSize), true);
 /** `loc` is drawn as the family's card: head at the meta size, its words at the body size, no edge stripe. */
 async function isCard(loc, body = CHAT) {
   await expect(loc.first()).toBeVisible();
@@ -18,14 +29,14 @@ async function isCard(loc, body = CHAT) {
   for (const s of await sizes(loc.locator(".mg-t"))) expect(s).toBe(body);
   for (const s of await sizes(loc.locator(":scope > .mg-f"))) expect(s).toBe(META);
   // No edge stripe: the left border is no wider, nor another colour, than the right one.
-  for (const [lw, rw, lc, rc] of await loc.evaluateAll((es) => es.map((e) => { const c = getComputedStyle(e); return [c.borderLeftWidth, c.borderRightWidth, c.borderLeftColor, c.borderRightColor]; }))) {
+  for (const [lw, rw, lc, rc] of await onPage(loc, (es) => es.map((e) => { const c = getComputedStyle(e); return [c.borderLeftWidth, c.borderRightWidth, c.borderLeftColor, c.borderRightColor]; }), true)) {
     expect(lw).toBe(rw);
     expect(lc).toBe(rc);
   }
 }
 /** Its words read on what's behind them, in this scheme: their colour far from the nearest background's. */
 async function readsOn(loc) {
-  const [fg, bg] = await loc.first().evaluate((e) => {
+  const [fg, bg] = await onPage(loc, (e) => {
     // Any CSS colour (rgb, or the oklch a color-mix computes to) as sRGB, by painting it.
     const cx = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
     const lum = (c) => { cx.clearRect(0, 0, 1, 1); cx.fillStyle = c; cx.fillRect(0, 0, 1, 1); const [r, g, b, a] = cx.getImageData(0, 0, 1, 1).data; return [0.2126 * r + 0.7152 * g + 0.0722 * b, a / 255]; };
@@ -33,7 +44,7 @@ async function readsOn(loc) {
     while (n && n.nodeType === 1) { b = lum(getComputedStyle(n).backgroundColor); if (b[1] > 0.5) break; n = n.parentElement; }
     if (b[1] <= 0.5) b = lum(getComputedStyle(document.body).backgroundColor);
     return [lum(getComputedStyle(e).color)[0], b[0]];
-  });
+  }, false);
   expect(Math.abs(fg - bg)).toBeGreaterThan(90);
 }
 const noHover = (page) => expect(page.locator("[title]")).toHaveCount(0);
@@ -61,9 +72,9 @@ for (const scheme of ["light", "dark"]) {
         { role: "agent", text: "Made it blue." },
       ]);
       await page.evaluate(() => deskShow({ kind: "chat", sid: "host" }));
-      // Opening the chat fetches its steps once and redraws when they come (chat/thread.js loadSteps): measured after
-      // that, or a card swapped out by that redraw reads no size at all.
-      await page.waitForFunction(() => stepFeeds.has("host"));
+      // Opening the chat loads its older messages and its steps, each redrawing it once it's in (chat/thread.js): measure
+      // after those, or a card found before a redraw is gone by the time it's read (#609).
+      await page.waitForFunction(() => stepFeeds.has("host") && !stepsBusy && older.get("host") && !older.get("host").busy);
       const chat = page.locator('.dk-right [data-desk-chat="host"]');
       await isCard(chat.locator(".mg.cue-msg"));
       await readsOn(chat.locator(".mg.cue-msg .mg-t"));
@@ -143,7 +154,7 @@ for (const scheme of ["light", "dark"]) {
       const lines = page.locator('.inbox-page[data-inbox-page="sec"] .ib-msg-line.mg-plain');
       await expect(lines.first()).toBeVisible();
       // The plain line takes its row's size (messages.css .mg-plain inherits), whatever the row.
-      for (const [own, row] of await lines.evaluateAll((es) => es.map((e) => [getComputedStyle(e).fontSize, getComputedStyle(e.closest(".ib-msg")).fontSize]))) expect(own).toBe(row);
+      for (const [own, row] of await onPage(lines, (es) => es.map((e) => [getComputedStyle(e).fontSize, getComputedStyle(e.closest(".ib-msg")).fontSize]), true)) expect(own).toBe(row);
       await readsOn(lines);
       await noHover(page);
     });
@@ -176,11 +187,11 @@ for (const scheme of ["light", "dark"]) {
       const chain = page.locator(".dk-pane .dk-chain");
       await expect(chain).toContainText("You answered: Keep it in the box");
       expect(await sizes(chain.locator(".dk-q .dk-lt"))).toEqual([BODY]);
-      expect(await chain.locator(".dk-q .dk-lt").evaluate((e) => getComputedStyle(e).fontWeight)).toBe("400");
+      expect(await onPage(chain.locator(".dk-q .dk-lt"), (e) => getComputedStyle(e).fontWeight, false)).toBe("400");
       expect(await sizes(chain.locator(".dk-picked"))).toEqual([META]);
       const heads = page.locator(".dk-pane .dk-sec h3");
       await expect(heads.filter({ hasText: "It asked you" })).toHaveCount(1);
-      for (const [size, tt, ls] of await heads.evaluateAll((es) => es.map((e) => { const c = getComputedStyle(e); return [c.fontSize, c.textTransform, c.letterSpacing]; }))) {
+      for (const [size, tt, ls] of await onPage(heads, (es) => es.map((e) => { const c = getComputedStyle(e); return [c.fontSize, c.textTransform, c.letterSpacing]; }), true)) {
         expect(size).toBe(META);
         expect(tt).toBe("none");
         expect(ls).toBe("normal");

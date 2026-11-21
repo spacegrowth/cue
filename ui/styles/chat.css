@@ -252,7 +252,9 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 @keyframes stxUnroll { from { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0 0 0 0); } }
 @keyframes stxIn { from { opacity: 0; transform: translateY(3px); } }
 @media (prefers-reduced-motion: reduce) { .stx-say.reveal, .stx-line.reveal, .cv-result.reveal { animation: none; } }
-.cv-agent.folded .cv-text { max-height: 4.8em; overflow: hidden; -webkit-mask-image: linear-gradient(var(--shade) 55%, transparent); mask-image: linear-gradient(var(--shade) 55%, transparent); }
+/* A folded reply: its first three lines, cut at whole lines (#609: by line count, never a height, which at some text
+   sizes cut through a line); "…" ends the last, Show all opens the rest. */
+.cv-agent.folded .cv-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
 /* The meta line of markup not yet on the family (chat/parked.js, chat/send.js's "You ran"): the family's meta size. */
 /* Under an agent message (.mg-f): Listen, Read, fold, and send it on to another session (shown on hover; always on the latest). */
 .cv-acts { margin-top: 4px; }
@@ -327,7 +329,9 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .cv-fwd { opacity: 0; transition: opacity 0.12s, background 0.12s, color 0.12s; }
 .cv-agent:hover .cv-fwd, .cv-agent.last .cv-fwd, .cv-fwd:focus-visible { opacity: 1; }
 /* A message from another session (.mg with its chip, thread.js peerBubble): a forward's original under it, as text. */
-.peer-msg .mg-full { white-space: normal; max-height: 9em; overflow: hidden; -webkit-mask-image: linear-gradient(var(--shade) 70%, transparent); mask-image: linear-gradient(var(--shade) 70%, transparent); }
+/* Its first six lines, cut at whole lines (#609). The bottom padding is a border in the card's colour: a clamped box
+   clips at its padding's edge, so padding there would show the top of the next line. */
+.peer-msg .mg-full { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; overflow: hidden; padding-bottom: 0; border-bottom: 8px solid var(--panel); }
 /* The "send to another session" menu, right above its button. */
 .fwd-catch { position: fixed; inset: 0; z-index: 25; }
 .fwd-pop { position: fixed; z-index: 26; width: 320px; background: var(--panel); color: var(--ink); border-radius: var(--radius-card); padding: 10px; box-shadow: 0 18px 50px -12px color-mix(in srgb, var(--shade) 45%, transparent), 0 0 0 1px var(--line); }
