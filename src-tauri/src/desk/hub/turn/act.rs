@@ -178,12 +178,40 @@ fn reopen(st: &mut Store, id: &str, build_gone: bool) -> Result<bool, String> {
     Ok(true)
 }
 
+/// Where Send back, or Reopen on a done item, takes item `id` (#577): back to `h`, the session that held it, unless it's
+/// closed, or (for a done item, whose session may have moved on) at work on another of its items. Err: why not, in
+/// words for its page and the fresh session ("cue-268 is closed").
+fn back_to(st: &Store, id: &str, h: &Holder, done: bool) -> Result<(), String> {
+    if st.sessions.get(h.to()).is_none() {
+        return Err(format!("{} is closed", h.name));
+    }
+    let other = st.desk.items.iter().find(|o| {
+        o.id != id && matches!(o.state.as_str(), "working" | "queued" | "finishing") && o.holder.as_ref().is_some_and(|b| b.sid == h.sid && b.lead_sid == h.lead_sid)
+    });
+    match other.filter(|_| done) {
+        Some(o) => Err(format!("{} is at work on #{}", h.name, o.id)),
+        None => Ok(()),
+    }
+}
+
 fn send_back(st: &mut Store, id: &str, holder: Option<Holder>, text: &str, pr_open: &str, now: u64, fx: &mut Effects) -> Result<bool, String> {
-    let it = item_of(st, id)?;
     let h = holder.ok_or("nobody holds it yet")?;
     let words = text.trim().to_string();
+    let done = item_of(st, id)?.state == "done";
     if words.is_empty() {
-        return Err("Say what isn't right first: type it in the box, then Send back".into());
+        let what = if done { "Reopen" } else { "Send back" };
+        return Err(format!("Say what isn't right first: type it in the box, then {what}"));
+    }
+    // Done by your pick: what it filed carries it on, as for Undo (`reopen`).
+    let built = st.desk.item(id).map(|i| i.built_as.clone()).filter(|b| st.desk.item(b).is_some());
+    if let Some(b) = built.filter(|_| done) {
+        return Err(format!("Option {} is picked: it's being built as #{b}", item_of(st, id)?.picked));
+    }
+    // With a copy of its own still (a landing that stopped), it stays with its holder: the copy is that session's.
+    let gone = back_to(st, id, &h, done).err().filter(|_| item_of(st, id).is_ok_and(|i| i.tree.is_none()));
+    let it = item_of(st, id)?;
+    if done {
+        (it.picked, it.built_as, it.commit_wait) = (String::new(), String::new(), None);
     }
     (it.state, it.done_at, it.finish, it.close_on_check) = ("working".into(), None, None, false);
     it.check = None;
@@ -195,13 +223,57 @@ fn send_back(st: &mut Store, id: &str, holder: Option<Holder>, text: &str, pr_op
     }
     let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
     let (title, project) = (it.title.clone(), it.project.clone());
-    you_wrote(st, &project, id, crate::desk::your_words(&words).0.trim(), &format!("sent back to {}", h.name), now, fx);
+    let did = if done { "reopened" } else { "sent back" };
+    // Its session can't take it back: a fresh one does, with a hand-off (#577).
+    if let Some(why) = gone {
+        let hand = reopen_handoff(it, &h, &why, &words);
+        it.remember_holder();
+        (it.moved_from, it.reopen_note) = (Some(h.clone()), hand);
+        (it.holder, it.state, it.after) = (None, "new".into(), None);
+        it.crew.clear();
+        you_wrote(st, &project, id, crate::desk::your_words(&words).0.trim(), &format!("{did} for a fresh session: {why}"), now, fx);
+        let why = format!("{did} from the Desk; {why}, so a fresh session takes it");
+        fx.starts.push(NewStart { project, id: id.into(), why, by: "You".into(), by_sid: String::new() });
+        return Ok(true);
+    }
+    // Back to the same session after it moved on: a new stint, so its page shows this part of its chat too (#575).
+    if done {
+        it.held_by(&h.sid, now);
+    }
+    you_wrote(st, &project, id, crate::desk::your_words(&words).0.trim(), &format!("{did} to {}", h.name), now, fx);
     // Your pictures go as pictures (desk_send_out), not as paths in its words (#541).
     let words = crate::desk::with_your_pictures(&words);
-    let message = format!("{crew}Desk item #{id} ({title}) isn't done: {words}\nIts fixes stay in #{id}; don't add new items for them. Say DONE: #{id} when it is.\n{}{pr_open}", crate::desk::check_words(id));
+    let was = if done { " (you said it looks right, and now it's reopened)" } else { "" };
+    let message = format!("{crew}Desk item #{id} ({title}) isn't done{was}: {words}\nIts fixes stay in #{id}; don't add new items for them. Say DONE: #{id} when it is.\n{}{pr_open}", crate::desk::check_words(id));
     fx.backs.push((id.to_string(), message.clone()));
     send_step(st, id, h.to(), message, now, fx);
     Ok(true)
+}
+
+/// What a fresh session taking item `it` back from `h` (closed, or busy: `why`) is told first (#577): what the item
+/// was, who did it and what's on main, its files, and your words. Its holder's note or last reply follow
+/// (route.rs `handoff_words`).
+fn reopen_handoff(it: &DeskItem, h: &Holder, why: &str, words: &str) -> String {
+    let id = &it.id;
+    let mut out = format!("Hand-off: #{id} was done by {} and is reopened; {why}, so it's yours now.", h.name);
+    let commits: Vec<&str> = it.commit_in.iter().map(|(_, c)| c.as_str()).chain(it.commit.split_whitespace()).collect();
+    let mut seen = Vec::new();
+    for c in commits {
+        if !seen.contains(&c) {
+            seen.push(c);
+        }
+    }
+    if !seen.is_empty() {
+        out.push_str(&format!(" Its work so far is on main: {} (git show them first).", seen.join(", ")));
+    }
+    let files = it.checks.last().map(|c| c.files.as_slice()).filter(|f| !f.is_empty()).unwrap_or(&it.files);
+    if !files.is_empty() {
+        let shown: Vec<&str> = files.iter().take(12).map(String::as_str).collect();
+        out.push_str(&format!(" Its files: {}{}.", shown.join(", "), if files.len() > 12 { ", …" } else { "" }));
+    }
+    let said = crate::desk::with_your_pictures(words);
+    out.push_str(&format!("\nWhat isn't right, in the user's words: {said}"));
+    out
 }
 
 // A note from its page to whoever holds it (#437), at any stage (to check too, #584: it stays to check): noted on

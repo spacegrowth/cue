@@ -70,6 +70,23 @@ doesn't count. (The idle sessions in the review were all on the Desk.)
 10. **The why line names the record.** Example: "cue-125: built #160 and #165 on the item page,
     nothing open, idle 5 h."
 
+## Send back and Reopen
+
+Cue routes these itself; the lead doesn't pick a session for them (docs/item-chat-plan.md option A,
+step 3).
+
+11. **Send back and Reopen go to the session that held the item.** Send back is on an item waiting
+    for your check; Reopen is on a done item, with what isn't right typed in the box first. The
+    words go to that session, the item is at work again with it, and on a done item its page shows
+    the new part of the chat under "Reopened · <time>".
+    Why: that session already knows the work.
+
+12. **A fresh session takes it when that one can't.** That is when the session is closed, or, for a
+    done item, when it is at work on another item (working, queued or finishing). The fresh
+    session gets a hand-off: who did the item, its commits on main, its files, and your words.
+    An item that still has its own copy stays with its session (rule 7 queues it there).
+    Why: a done item's session has often moved on; waiting behind its new work would hide yours.
+
 ## What Cue would need to change
 
 - **The lead's instructions.** At the time of the review they said "Route new work to a small or

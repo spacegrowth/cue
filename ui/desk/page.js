@@ -595,7 +595,8 @@ function deskItemActs(i) {
     : deskCanRestart(i) ? b("start_now", "Resume")
     : deskFinishing(i) ? deskInstallNow(i, "btn small") + deskSkipInstall(i, "btn small")
     // Done by your pick on its mocks (#281): its build item says where it went (deskBuiltLink), nothing to undo here.
-    : i.state === "done" && !i.picked ? `<div class="dk-chk-after">${deskCommitLine(i)}</div>` : "";
+    // Reopen (#577): your words back to the session that did it, or a fresh one when it's closed or on other work.
+    : i.state === "done" && !i.picked ? `<div class="dk-chk-after">${deskCommitLine(i)}</div>${i.holder ? b("send_back", "Reopen") : ""}` : "";
   const give = !i.holder && i.state !== "done" && i.state !== "held" ? deskGive(i, "pane") : "";
   return acts || give ? `<div class="dk-acts">${give}${acts}</div>` : "";
 }

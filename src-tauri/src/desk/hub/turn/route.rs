@@ -387,6 +387,7 @@ fn held_by(it: &mut DeskItem, h: &Holder, refused: String, waits: Option<String>
     }
     it.holder = Some(h.clone());
     it.moved_from = None;
+    it.reopen_note.clear();
     it.crew.clear();
     // Routed or given (again): no longer paused (#365).
     it.paused = None;
@@ -513,10 +514,14 @@ pub(crate) fn give_started(st: &mut Store, id: &str, sid: &str, by: (&str, &str,
 pub(crate) fn handoff_words(it: &DeskItem, note: &str, last: &str) -> String {
     let Some(b) = it.moved_from.as_ref() else { return String::new() };
     let who = if b.kind == "crew" { format!("teammate {}", b.name) } else { b.name.clone() };
-    let mut out = format!("Hand-off: #{} was with {who} before you, and the Desk lead moved it to you.", it.id);
+    // Reopened to a fresh session (#577): what was done and your words, said at the reopen.
+    let mut out = if it.reopen_note.is_empty() { format!("Hand-off: #{} was with {who} before you, and the Desk lead moved it to you.", it.id) } else { it.reopen_note.clone() };
     if !note.trim().is_empty() {
         out.push_str(&format!(" Read its hand-off note at {} first. Check it against git status and the files it names, then carry on from its next step.", note.trim()));
     } else {
+        // Its session closed: its last reply on the item, as Cue kept it.
+        let kept = it.said.iter().rev().find(|s| s.sid.is_empty() || s.sid == b.sid).map(|s| s.text.as_str()).unwrap_or_default();
+        let last = if last.trim().is_empty() { kept } else { last };
         let last: String = last.trim().chars().take(1500).collect();
         if !last.is_empty() {
             out.push_str(&format!(" It left no hand-off note Cue saw; its last reply:\n\n{}", last.lines().map(|l| format!("> {l}")).collect::<Vec<_>>().join("\n")));
@@ -555,6 +560,7 @@ fn give_to(st: &mut Store, id: &str, sid: &str, by: (&str, &str, &str), started:
     }
     it.holder = Some(h.clone());
     it.moved_from = None;
+    it.reopen_note.clear();
     it.crew.clear();
     // Routed or given (again): no longer paused (#365).
     it.paused = None;

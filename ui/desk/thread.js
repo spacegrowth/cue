@@ -331,6 +331,11 @@ function deskChatFolds(i, d, sid) {
       const nx = deskItem(i.project, w.next), hm = new Date(w.until).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
       rows.push({ at: w.to - 1, html: keyed(`<div class="dk-cl dk-moved"><span class="dk-cl-t"><b>${name}</b> moved on to <a href="#" data-desk-item="${esc(w.next)}">#${esc(w.next)}${nx?.title ? ` ${esc(deskShort(nx.title))}` : ""}</a> · ${esc(hm)}</span></div>`, `moved:${w.next}:${w.until}`) });
     }
+    // Back with the same session after it had moved on (#577): "Reopened · 15:10" where its next piece starts.
+    for (const w of wins.slice(1)) {
+      const hm = new Date(w.from + 2000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+      rows.push({ at: w.from - 1, html: keyed(`<div class="dk-cl dk-moved"><span class="dk-cl-t">Reopened · ${esc(hm)}</span></div>`, `reopened:${w.from}`) });
+    }
     // Held by another session before this one: who, and its chat a click away.
     const before = [...new Set((i.stints || []).filter((t) => t.sid !== sid && (!wins.length || t.from < wins[0].from)).map((t) => t.sid))];
     if (before.length && wins.length) {

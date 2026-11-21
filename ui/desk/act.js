@@ -108,18 +108,21 @@ async function deskSendLead(to, key, text) {
 }
 /** What you wrote on item `id`'s page, sent (`act`: to its lead or its holder): kept in its Steps (desk/hub/core/desk.rs act_on). */
 const deskWrote = (id, act, text) => invoke("desk_item_act", { id, act, text }).catch((e) => console.error(e));
+/** Whether item `id` is done (its Send back is a Reopen, #577). */
+const deskDone = (id) => (state.desk?.projects || []).some((p) => (p.items || []).some((x) => x.id === id && x.state === "done"));
 /** Item `id` sent back to its holder with what's in box `key`: the box emptied once it went (kept when it didn't).
  *  Whether it went. */
 async function deskSendBack(id, key) {
   // A quick phrase (compose.js sendPhrase): the box holds what you typed, so it isn't emptied, whether it goes or not.
-  const phrase = phraseSending;
+  const phrase = phraseSending, reopen = deskDone(id);
   let pend = null;
   const r = await boxSend({}, key, {
     clear: "sent",
     pending: (text, images) => (pend = text ? deskPend(id, text, "back", images.length, { key, images }) : null),
     draw: (p) => { if (p) renderMain(); },
     call: (text, images) => invoke("desk_item_act", { id, act: "send_back", text, images }),
-    sent: (it) => toast(`Sent back${it?.holder?.name ? ` to ${it.holder.name}` : ""}`),
+    // Its session closed or busy on another item (#577): a fresh one takes it, with a hand-off.
+    sent: (it) => toast(`${reopen ? "Reopened" : "Sent back"}${it?.holder?.name ? ` to ${it.holder.name}` : it && !it.holder ? " · a fresh session takes it" : ""}`),
     // Red on its Thread with why, Retry and Edit (#422), the box closed; a picture alone keeps its box and says why.
     failed: (e) => {
       if (!pend) { toast(`Not sent: ${e}`, 5000); return true; }
@@ -281,8 +284,8 @@ async function deskAct(id, act, el = null) {
 /** Item `id`'s Send back, open: "Why send it back?" and Cancel over a box of its own (never the lead's), as the Desk's
  *  boxes are: words, the mic, a picture, Send. Enter sends, ⇧Enter a new line, Esc closes it. */
 function deskBackHtml(id) {
-  const key = `back:${id}`, label = "Why send it back?";
-  return boxHtml({ key, label, placeholder: "What isn't right yet", head: { label, cancel: `data-desk-act="back_cancel" data-id="${esc(id)}"` }, send: { attrs: `data-desk-act="back_go" data-id="${esc(id)}"` } });
+  const done = deskDone(id), key = `back:${id}`, label = done ? "Why reopen it?" : "Why send it back?";
+  return boxHtml({ key, label, placeholder: done ? "What isn't right" : "What isn't right yet", head: { label, cancel: `data-desk-act="back_cancel" data-id="${esc(id)}"` }, send: { attrs: `data-desk-act="back_go" data-id="${esc(id)}"` } });
 }
 async function deskUndo(id) {
   try { toast((await invoke("desk_undo", { decisionId: id })) || "Asked to undo it"); }

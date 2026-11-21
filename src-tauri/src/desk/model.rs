@@ -90,6 +90,10 @@ pub struct DeskItem {
     /// until a session takes it: the new one is sent that holder's hand-off note with it (desk/hub/lead/run.rs).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub moved_from: Option<Holder>,
+    /// Reopened, or sent back, to a fresh session because the one that held it is closed or at work on another item
+    /// (#577): what that session is told of the work so far, your words with it. Cleared once a session takes it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub reopen_note: String,
     /// The lead's teammate doing it, when the lead keeps it and says so (`ROUTE: #id -> me | crew: <name>`): the name
     /// the lead gave it, matched to its teammate of that name once there is one (desk/hub/core/view.rs `shown`).
     #[serde(default, skip_serializing_if = "String::is_empty")]
