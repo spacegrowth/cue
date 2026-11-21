@@ -240,9 +240,9 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .stx-out div, .stx-diff div { padding: 0 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .stx-diff { background: var(--panel); border: 1px solid var(--line); color: var(--ink); padding: 0; overflow: hidden; }
 .stx-diff i { display: inline-block; width: 14px; font-style: normal; color: var(--muted); }
-.stx-diff .a { background: var(--add-bg); }
+.stx-diff .a { background: var(--add-bg); color: var(--add-ink); }
 .stx-diff .a i { color: var(--add-fg); font-weight: 700; }
-.stx-diff .d { background: var(--del-bg); }
+.stx-diff .d { background: var(--del-bg); color: var(--del-ink); }
 .stx-diff .d i { color: var(--del-fg); font-weight: 700; }
 .stx-diff .gap { background: var(--panel-2); }
 .stx-out .gap, .stx-diff .gap { color: var(--muted); font-style: italic; }
