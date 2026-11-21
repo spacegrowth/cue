@@ -7,7 +7,9 @@
 /** Each kind of message Cue sends, by how it starts (the hub's own words, quoted in docs/cue-messages.md): [pattern,
  *  (match, text) => { verb, id, what, more }, tag]: `tag` is the card's word for its kind (NOT DONE, NOTE…, #501). `verb` and the session's name make "Asked cue-383"; `id` is the item it's
  *  about (its number opens it); `what` says what it asks or tells, plain (`more`: a count of what's folded besides).
- *  Its standing words for the session (Say DONE…, Its fixes stay in…) are never in the line, only in the fold. */
+ *  Its standing words for the session (Say DONE…, Its fixes stay in…) are never shown, not even opened (#625): what
+ *  opens is cueFoldHtml's rows, from `by` (whose words), `said` (those words, whole), `label` (their name when they
+ *  aren't someone's: "Why", "Its call"…) and `next` (what happens next, `{who}` the session it went to). */
 const cueQ = (t, max = 90) => `“${cueCut(String(t ?? "").replace(/\.$/, ""), max)}”`;
 const cueLines = (t) => String(t).split("\n").map((l) => l.trim()).filter(Boolean);
 const cueMore = (n, one, many = `${one}s`) => (n > 0 ? `${n} ${n === 1 ? one : many}` : "");
@@ -15,56 +17,56 @@ const CUE_ID = String.raw`#([\w.-]+)`;
 const cueRe = (src, flags = "") => new RegExp(src.replaceAll("#ID", CUE_ID), flags);
 const CUE_MSGS = [
   // To the session on an item (its holder, or a teammate through its lead).
-  [cueRe(String.raw`^Desk item #ID \((.*)\) isn't done: ([^\n]*)`), (m, t) => ({ verb: "Asked", id: m[1], what: `not done: ${cueQ(m[3])}`, more: /\nThe end of its log:/.test(t) ? "its log" : "" }), "Not done"],
-  [cueRe(String.raw`^Desk item #ID \((.*)\) is open again: ([^\n]*?)\. Put it back`), (m) => ({ verb: "Asked", id: m[1], what: `open again: ${cueQ(m[3])}` }), "Open again"],
-  [cueRe(String.raw`^Desk item #ID \((.*)\): you stopped before it was done`), (m) => ({ verb: "Asked", id: m[1], what: "pick up where it stopped" }), "Pick up"],
-  [cueRe(String.raw`^Note from the Desk lead on Desk item #ID \((.*)\): ([^]*)$`), (m) => ({ verb: "Told", id: m[1], what: `the lead's note: ${cueQ(m[3])}` }), "Lead's note"],
-  [cueRe(String.raw`^Desk item #ID \((.*)\) has moved to (.+?): stop work on it`), (m) => ({ verb: "Told", id: m[1], what: `moved to ${m[3]}: stop work on it` }), "Moved"],
-  [cueRe(String.raw`^Desk item #ID \((.*)\) is parked: it's off your list`), (m) => ({ verb: "Told", id: m[1], what: "parked: off its list" }), "Parked"],
-  [cueRe(String.raw`^Desk item #ID is paused by the Desk lead(?: \((.*?)\))?\. Stop`), (m) => ({ verb: "Asked", id: m[1], what: `paused${m[2] ? ` (${m[2]})` : ""}: stop at a clean point` }), "Paused"],
-  [cueRe(String.raw`^Desk item #ID is resumed(?: \((.*?)\))?: carry on`), (m) => ({ verb: "Told", id: m[1], what: `resumed${m[2] ? ` (${m[2]})` : ""}: carry on` }), "Resumed"],
-  [cueRe(String.raw`^Desk item #ID: the Desk lead took back its copy`), (m) => ({ verb: "Told", id: m[1], what: "copy taken back: stop work on it" }), "Taken back"],
-  [cueRe(String.raw`^Desk item #ID is closed: its work is already on (\S+)`), (m) => ({ verb: "Told", id: m[1], what: `closed: already on ${m[2]}` }), "Closed"],
-  [cueRe(String.raw`^Desk item #ID was dropped: stop work on it`), (m) => ({ verb: "Told", id: m[1], what: "dropped: stop work on it" }), "Dropped"],
-  [cueRe(String.raw`^Desk item #ID \((.*)\): option (\S+) was picked, so it's done\. #([\w.-]+) builds it`), (m) => ({ verb: "Told", id: m[1], what: `option ${m[3]} picked: done, #${m[4]} builds it` }), "Picked"],
-  [cueRe(String.raw`^Desk item #ID was folded into #([\w.-]+), which you have\. It said: ([^\n]*)`), (m) => ({ verb: "Told", id: m[1], what: `folded into #${m[2]}: ${cueQ(m[3])}` }), "Folded"],
-  [cueRe(String.raw`^Done\? Write DONE: #ID, or say what's left`), (m, t) => cueLines(t).every((l) => /^Done\? Write DONE: #/.test(l)) && { verb: "Asked", id: m[1], what: "done? or what's left", more: cueMore(cueLines(t).length - 1, "more item") }, "Done?"],
-  [/^The Desk is paused\. Stop at the next safe point/, () => ({ verb: "Asked", what: "the Desk is paused: stop at a safe point" }), "Paused"],
-  [/^The Desk is resumed: carry on with (.+?) from where you stopped/, (m) => ({ verb: "Told", what: `the Desk is resumed: carry on with ${m[1]}` }), "Resumed"],
-  [/^Your TO LEAD: line didn't reach the Desk's lead: ([^\n]*)/, (m) => ({ verb: "Told", what: `TO LEAD didn't reach the lead: ${cueQ(m[1])}` }), "To lead"],
-  [/^TO LEAD: not sent: ([^\n]*)/, (m) => ({ verb: "Told", what: `TO LEAD not sent: ${cueQ(m[1])}` }), "To lead"],
-  [cueRe(String.raw`^Not added as a new item: (.+?)\. Its fix or next step stays in #ID`), (m) => ({ verb: "Told", id: m[2], what: `not a new item: ${cueQ(m[1])} stays here` }), "Not new"],
-  [/^Several Desks could receive this item/, () => ({ verb: "Told", what: "item not added: several Desks could take it" }), "Not added"],
+  [cueRe(String.raw`^Desk item #ID \((.*)\) isn't done(?: \(you said it looks right, and now it's reopened\))?: ([^\n]*)`), (m, t) => { const log = /\nThe end of its log:/.test(t); return { verb: "Asked", id: m[1], what: `not done: ${cueQ(m[3])}`, more: log ? "its log" : "", by: log ? "" : "You", said: cueSentBack(t), next: "{who} fixes it and says it's done" }; }, "Not done"],
+  [cueRe(String.raw`^Desk item #ID \((.*)\) is open again: ([^\n]*?)\. Put it back`), (m) => ({ verb: "Asked", id: m[1], what: `open again: ${cueQ(m[3])}`, said: m[3], next: "{who} puts its work back on main" }), "Open again"],
+  [cueRe(String.raw`^Desk item #ID \((.*)\): you stopped before it was done`), (m) => ({ verb: "Asked", id: m[1], what: "pick up where it stopped", next: "{who} picks up where it stopped" }), "Pick up"],
+  [cueRe(String.raw`^Note from the Desk lead on Desk item #ID \((.*)\): ([^]*)$`), (m) => ({ verb: "Told", id: m[1], what: `the lead's note: ${cueQ(m[3])}`, by: "The lead", said: m[3], next: "{who} reads it and carries on" }), "Lead's note"],
+  [cueRe(String.raw`^Desk item #ID \((.*)\) has moved to (.+?): stop work on it`), (m) => ({ verb: "Told", id: m[1], what: `moved to ${m[3]}: stop work on it`, next: `{who} stops; ${m[3]} takes it over` }), "Moved"],
+  [cueRe(String.raw`^Desk item #ID \((.*)\) is parked: it's off your list`), (m) => ({ verb: "Told", id: m[1], what: "parked: off its list", next: "{who} leaves it; Cue tells it if the item comes back" }), "Parked"],
+  [cueRe(String.raw`^Desk item #ID is paused by the Desk lead(?: \((.*?)\))?\. Stop`), (m) => ({ verb: "Asked", id: m[1], what: `paused${m[2] ? ` (${m[2]})` : ""}: stop at a clean point`, said: m[2] || "", next: "{who} stops at a clean point and waits to be resumed" }), "Paused"],
+  [cueRe(String.raw`^Desk item #ID is resumed(?: \((.*?)\))?: carry on`), (m) => ({ verb: "Told", id: m[1], what: `resumed${m[2] ? ` (${m[2]})` : ""}: carry on`, next: "{who} carries on from where it stopped" }), "Resumed"],
+  [cueRe(String.raw`^Desk item #ID: the Desk lead took back its copy`), (m) => ({ verb: "Told", id: m[1], what: "copy taken back: stop work on it", next: "{who} stops until it's routed to it again" }), "Taken back"],
+  [cueRe(String.raw`^Desk item #ID is closed: its work is already on (\S+)`), (m) => ({ verb: "Told", id: m[1], what: `closed: already on ${m[2]}`, next: `Nothing more: its work is already on ${m[2]}` }), "Closed"],
+  [cueRe(String.raw`^Desk item #ID was dropped: stop work on it`), (m) => ({ verb: "Told", id: m[1], what: "dropped: stop work on it", next: "{who} stops work on it" }), "Dropped"],
+  [cueRe(String.raw`^Desk item #ID \((.*)\): option (\S+) was picked, so it's done\. #([\w.-]+) builds it`), (m) => ({ verb: "Told", id: m[1], what: `option ${m[3]} picked: done, #${m[4]} builds it`, next: `#${m[4]} builds option ${m[3]}` }), "Picked"],
+  [cueRe(String.raw`^Desk item #ID was folded into #([\w.-]+), which you have\. It said: ([^\n]*)`), (m) => ({ verb: "Told", id: m[1], what: `folded into #${m[2]}: ${cueQ(m[3])}`, said: m[3], label: "It asked", next: `{who} does it as part of #${m[2]}` }), "Folded"],
+  [cueRe(String.raw`^Done\? Write DONE: #ID, or say what's left`), (m, t) => cueLines(t).every((l) => /^Done\? Write DONE: #/.test(l)) && { verb: "Asked", id: m[1], what: "done? or what's left", more: cueMore(cueLines(t).length - 1, "more item"), next: "{who} says it's done, or what's left" }, "Done?"],
+  [/^The Desk is paused\. Stop at the next safe point/, () => ({ verb: "Asked", what: "the Desk is paused: stop at a safe point", next: "{who} stops at a safe point until the Desk is resumed" }), "Paused"],
+  [/^The Desk is resumed: carry on with (.+?) from where you stopped/, (m) => ({ verb: "Told", what: `the Desk is resumed: carry on with ${m[1]}`, next: `{who} carries on with ${m[1]}` }), "Resumed"],
+  [/^Your TO LEAD: line didn't reach the Desk's lead: ([^\n]*)/, (m) => ({ verb: "Told", what: `TO LEAD didn't reach the lead: ${cueQ(m[1])}`, said: m[1], next: "{who} can send it again once the lead is back" }), "To lead"],
+  [/^TO LEAD: not sent: ([^\n]*)/, (m) => ({ verb: "Told", what: `TO LEAD not sent: ${cueQ(m[1])}`, said: m[1], next: "{who} fixes the line and sends it again" }), "To lead"],
+  [cueRe(String.raw`^Not added as a new item: (.+?)\. Its fix or next step stays in #ID`), (m) => ({ verb: "Told", id: m[2], what: `not a new item: ${cueQ(m[1])} stays here`, said: m[1], label: "Its idea", next: `{who} does it in #${m[2]}, not as a new item` }), "Not new"],
+  [/^Several Desks could receive this item/, () => ({ verb: "Told", what: "item not added: several Desks could take it", next: "{who} adds it through the Desk it's meant for" }), "Not added"],
   [/^.+? answered the steps held while they were away/, (m, t) => {
     const ok = (t.match(/ALLOWED: run it now/g) || []).length, no = (t.match(/NO: don't run it/g) || []).length;
     return { verb: "Told", what: `held steps answered: ${[ok && `${ok} allowed`, no && `${no} refused`].filter(Boolean).join(", ") || "none"}` };
   }, "Answered"],
-  [/^Ask me before, changed by .+? just now: (?:ask .+? first, and end your turn, before (.+?)\. This replaces|(nothing is set))/, (m) => ({ verb: "Told", what: m[2] ? "Ask me before changed: nothing set" : `Ask me before changed: before ${m[1]}` }), "Ask me before"],
-  [cueRe(String.raw`^Go back on your call(?: on #ID)?: you decided (.+?)(?: \(your reason: .*?\))?\. (?:The user's answer instead|.+?'s answer instead|Undo it)`), (m) => ({ verb: "Asked", id: m[1] || "", what: `go back on: ${cueQ(m[2])}` }), "Go back"],
+  [/^Ask me before, changed by .+? just now: (?:ask .+? first, and end your turn, before (.+?)\. This replaces|(nothing is set))/, (m) => ({ verb: "Told", what: m[2] ? "Ask me before changed: nothing set" : `Ask me before changed: before ${m[1]}`, next: m[2] ? "{who} goes on without asking first" : `{who} asks first before ${m[1]}` }), "Ask me before"],
+  [cueRe(String.raw`^Go back on your call(?: on #ID)?: you decided (.+?)(?: \(your reason: .*?\))?\. (?:The user's answer instead|.+?'s answer instead|Undo it)`), (m) => ({ verb: "Asked", id: m[1] || "", what: `go back on: ${cueQ(m[2])}`, said: m[2], label: "Its call", next: "{who} undoes it and takes the other way" }), "Go back"],
   [/^(Bring (.+?) back: it was set aside|Make a revert: (.+?): |Undo this: (.+?): )/, (m, t) => ({ verb: "Asked", what: m[2] ? `bring ${m[2]} back` : `revert: ${cueQ(t.split("\n")[0].replace(/^[^:]+: /, ""))}` }), "Undo"],
-  [/^(?:\(Cue\) )?Your teammate (.+?) has (?:gone quiet|been quiet for (\d+) min)/, (m) => ({ verb: "Asked", what: `check on teammate ${m[1]}${m[2] ? ` (quiet ${m[2]} min)` : ""}` }), "Crew"],
-  [/^Hand off: write a short note so a fresh session can carry on/, () => ({ verb: "Asked", what: "hand off: write a note for a fresh session" }), "Hand-off"],
-  [/^Carry on from (an earlier session in this folder|the previous session's hand-off)/, (m) => ({ verb: "Asked", what: m[1].startsWith("an") ? "carry on from an earlier session" : "carry on from the hand-off note" }), "Carry on"],
-  [/^You no longer run (.+?)'s Desk/, (m) => ({ verb: "Told", what: `no longer runs ${m[1]}'s Desk` }), "Not lead"],
+  [/^(?:\(Cue\) )?Your teammate (.+?) has (?:gone quiet|been quiet for (\d+) min)/, (m) => ({ verb: "Asked", what: `check on teammate ${m[1]}${m[2] ? ` (quiet ${m[2]} min)` : ""}`, next: `{who} asks ${m[1]} where it is` }), "Crew"],
+  [/^Hand off: write a short note so a fresh session can carry on/, () => ({ verb: "Asked", what: "hand off: write a note for a fresh session", next: "{who} writes a hand-off note; a fresh session carries on from it" }), "Hand-off"],
+  [/^Carry on from (an earlier session in this folder|the previous session's hand-off)/, (m) => ({ verb: "Asked", what: m[1].startsWith("an") ? "carry on from an earlier session" : "carry on from the hand-off note", next: "{who} reads what came before and carries on" }), "Carry on"],
+  [/^You no longer run (.+?)'s Desk/, (m) => ({ verb: "Told", what: `no longer runs ${m[1]}'s Desk`, next: "{who} keeps on with the items it holds" }), "Not lead"],
   [/^The team from the session before you\./, (m, t) => ({ verb: "Told", what: "the team from the session before", more: cueMore(cueLines(t).filter((l) => l.startsWith("- ")).length, "teammate") }), "Crew"],
   // To a Desk lead.
-  [cueRe(String.raw`^(.+?), on #ID, asks about clearing the way for its landing[^\n]*\n([^\n]*)`), (m, t) => ({ verb: "Asked", id: m[2], what: `${m[1]}'s landing question: ${cueQ(m[3])}`, more: cueMore(cueLines(t).filter((l) => /^\d+\. /.test(l)).length, "choice") }), "Landing"],
-  [/^Circle on the Desk: (.+?)\. None of them can move/, (m) => ({ verb: "Asked", what: `cut a wait circle: ${m[1]}` }), "Waits"],
-  [cueRe(String.raw`^Cue couldn't start a new session for #ID \((.*)\): (.+?)\. It's still`), (m) => ({ verb: "Told", id: m[1], what: `no new session: ${cueQ(m[3])}` }), "Couldn't start"],
-  [/^The Desk is paused \(by (.+?), /, (m) => ({ verb: "Told", what: `the Desk is paused (by ${m[1]})` }), "Paused"],
-  [/^The Desk is resumed: its sessions carry on/, () => ({ verb: "Told", what: "the Desk is resumed" }), "Resumed"],
-  [cueRe(String.raw`^Your ASK(?: about #ID)?: ([^\n]*)\nThe answer: ([^\n]*)`), (m) => ({ verb: "Told", id: m[1] || "", what: `its ASK answered: ${cueQ(m[3], 70)}` }), "Answered"],
+  [cueRe(String.raw`^(.+?), on #ID, asks about clearing the way for its landing[^\n]*\n([^\n]*)`), (m, t) => ({ verb: "Asked", id: m[2], what: `${m[1]}'s landing question: ${cueQ(m[3])}`, more: cueMore(cueLines(t).filter((l) => /^\d+\. /.test(l)).length, "choice"), by: m[1], said: [m[3], ...cueLines(t).filter((l) => /^\d+\. /.test(l))].join("\n"), next: "The lead answers it; if it doesn't in 10 minutes, it comes to you" }), "Landing"],
+  [/^Circle on the Desk: (.+?)\. None of them can move/, (m) => ({ verb: "Asked", what: `cut a wait circle: ${m[1]}`, next: "The lead cuts one of the waits so they can move" }), "Waits"],
+  [cueRe(String.raw`^Cue couldn't start a new session for #ID \((.*)\): (.+?)\. It's still`), (m) => ({ verb: "Told", id: m[1], what: `no new session: ${cueQ(m[3])}`, said: m[3], next: "It stays new until the lead routes it again" }), "Couldn't start"],
+  [/^The Desk is paused \(by (.+?), /, (m) => ({ verb: "Told", what: `the Desk is paused (by ${m[1]})`, next: "Its sessions wait at a safe point until it's resumed" }), "Paused"],
+  [/^The Desk is resumed: its sessions carry on/, () => ({ verb: "Told", what: "the Desk is resumed", next: "Its sessions carry on" }), "Resumed"],
+  [cueRe(String.raw`^Your ASK(?: about #ID)?: ([^\n]*)\nThe answer: ([^\n]*)`), (m) => ({ verb: "Told", id: m[1] || "", what: `its ASK answered: ${cueQ(m[3], 70)}`, by: "You", said: m[3], next: "The lead carries on with your answer" }), "Answered"],
   [cueRe(String.raw`^Cue asked .+? before routing #ID to (.+?), which isn't on the Desk\. The answer: (.*?)\. #`), (m) => ({ verb: "Told", id: m[1], what: `not routed to ${m[2]}: answer ${cueQ(m[3], 60)}` }), "Routed"],
   [cueRe(String.raw`^.+? said yes: (.+?) is on the Desk now, and Cue routed #ID`), (m) => ({ verb: "Told", id: m[2], what: `routed to ${m[1]} (a yes)` }), "Routed"],
   [cueRe(String.raw`^.+? said yes, but Cue couldn't route #ID to (.+?)\. ([^\n]*)`), (m) => ({ verb: "Told", id: m[1], what: `not routed to ${m[2]}: ${cueQ(m[3], 70)}` }), "Not routed"],
   [/^(?:Not asked: LANDS: .+|.+? said (?:no to changing how|yes: how|yes, but how) work lands on .+)/, (m, t) => ({ verb: "Told", what: cueCut(t.split("\n")[0], 90) }), "Landing"],
-  [/^The owner is away: Cue didn't show them (this ASK|these ASKs)|^.+? is away: Cue didn't show them (this ASK|these ASKs)/, (m, t) => ({ verb: "Asked", what: "decide the open ASKs yourself (away)", more: cueMore(cueLines(t).filter((l) => l.startsWith("- ")).length, "ASK") }), "Away"],
-  [/^(?:The owner|.+?) is about to go away\. Go through every open item/, () => ({ verb: "Asked", what: "settle what you can before Away" }), "Away"],
+  [/^The owner is away: Cue didn't show them (this ASK|these ASKs)|^.+? is away: Cue didn't show them (this ASK|these ASKs)/, (m, t) => ({ verb: "Asked", what: "decide the open ASKs yourself (away)", more: cueMore(cueLines(t).filter((l) => l.startsWith("- ")).length, "ASK"), said: cueLines(t).filter((l) => l.startsWith("- ")).map((l) => l.slice(2)).join("\n"), label: "Its ASKs", next: "The lead decides them itself while you're away" }), "Away"],
+  [/^(?:The owner|.+?) is about to go away\. Go through every open item/, () => ({ verb: "Asked", what: "settle what you can before Away", next: "The lead settles what it can; at most 5 questions wait for you" }), "Away"],
   [/^Away mode is off/, () => ({ verb: "Told", what: "Away is off" }), "Away"],
   // The Desk's changes since the lead last heard (desk/hub/lead/feed.rs, #616): a paragraph each, numbered at the end.
   [/^([\s\S]+?)\n\n\(Desk changes [^)\n]*\)$/, (m) => cueChanges(m[1]), "Desk changes"],
-  [cueRe(String.raw`^Queued: #ID is next for (.+?), after #([\w.-]+)`), (m, t) => ({ verb: "Told", id: m[1], what: `next for ${m[2]}, after #${m[3]}`, more: cueMore(cueLines(t).length - 1, "more queued", "more queued") }), "Queued"],
-  [/^Cue asked .+?, for the leads of .+?: ([^\n]*)\nThe user's answer: ([^\n]*?)\./, (m) => ({ verb: "Told", what: `your answer: ${cueQ(m[2], 60)}` }), "Answered"],
+  [cueRe(String.raw`^Queued: #ID is next for (.+?), after #([\w.-]+)`), (m, t) => ({ verb: "Told", id: m[1], what: `next for ${m[2]}, after #${m[3]}`, more: cueMore(cueLines(t).length - 1, "more queued", "more queued"), next: t.split("\n")[0].split("; ")[1] || "" }), "Queued"],
+  [/^Cue asked .+?, for the leads of .+?: ([^\n]*)\nThe user's answer: ([^\n]*?)\./, (m) => ({ verb: "Told", what: `your answer: ${cueQ(m[2], 60)}`, by: "You", said: m[2], next: "The lead carries on with your answer" }), "Answered"],
   [/^Away mode:\n(?:Away is paused: ([^.\n]+)|(?:The owner|.+?) is away (until [^,\n]+))/, (m) => ({ verb: "Told", what: m[1] ? `Away paused: ${m[1]}` : `Away is on, ${m[2]}` }), "Away"],
   // Replies to the lead's own command lines (Refused:, not cut, not split, …): its first line, the rest folded.
   [cueRe(String.raw`^(?:Refused: |Noted: |#ID (?:note )?(?:not|copy not) |Couldn't read this line as a route|No question from #ID|FEATURE #ID: left out|Cue couldn't (?:route|queue|start) |Cue didn't reopen )`), (m, t) => {
@@ -101,7 +103,10 @@ function cueChanges(t) {
   const said = one && /: "([^\n]*)"\.?$/.exec(rows[0])?.[1];
   const alone = { "sent back": "you sent it back", asked: "you asked its holder", restarted: "you restarted it", dropped: "you dropped it", "moved up": "you moved it up", new: "a new item" };
   const what = [...by].map(([k, ids]) => (one ? `${alone[k] || k}${said ? `: ${cueQ(said, 60)}` : ""}` : `${ids.filter(Boolean).join(", ")} ${k}`.trim())).join(" · ");
-  return { verb: "Told", ...(one ? { id: [...seen][0] } : {}), what: cueCut(what, 100) };
+  // Opened (#625): your words, whole, and what happens next.
+  const next = { "sent back": "Its holder fixes it and says it's done", asked: "Its holder answers you", restarted: "A session starts on it again", "moved up": "It goes before the other in line" };
+  const fold = one && said ? { by: "You", said, next: next[[...by.keys()][0]] || "" } : {};
+  return { verb: "Told", ...(one ? { id: [...seen][0] } : {}), what: cueCut(what, 100), ...fold };
 }
 
 /** The full text's first words up to the end of a sentence (or `max` characters, cut at a word). */
@@ -109,6 +114,38 @@ function cueCut(t, max = 110) {
   t = String(t ?? "").replace(/[`*]/g, "").replace(/\s+/g, " ").trim();
   if (t.length <= max) return t;
   return t.slice(0, max).replace(/\s+\S*$/, "") + "…";
+}
+/** The words an item was sent back with (act.rs send_back: "…isn't done[ (…)]: <words>\nIts fixes stay in…"), whole,
+ *  without its log or its pictures line ("Pictures you attached: …", counted instead). */
+function cueSentBack(t) {
+  const m = /isn't done(?: \([^)]*\))?: ([\s\S]*?)(?:\nIts fixes stay in |$)/.exec(t);
+  if (!m) return "";
+  const ls = m[1].replace(/\nThe end of its log:[\s\S]*$/, "").split("\n");
+  const pics = ls.filter((l) => l.startsWith("Pictures you attached: ")).flatMap((l) => l.match(/`[^`]+`/g) || []).length;
+  return ls.filter((l) => !l.startsWith("Pictures you attached: ")).join("\n").trim().replace(/\.$/, "") + (pics ? `\n(+ ${cueMore(pics, "picture")})` : "");
+}
+/** Cue's standing words to the session (how to say DONE and CHECK, don't add items, don't change files…): never shown
+ *  to you when a message is opened (#625); the session still gets them. A sentence that matches one is dropped. */
+const CUE_RULES = /\b(?:DONE: #|CHECK: #|NOT DONE: #|ITEM: |IF PICKED: |DECIDED|ANSWER: #|PASS: #|TO LEAD: <)|on a line of its own|don't add new items|Its fixes stay in|Fixes and next steps|Don't change any files|Nothing to do unless|No reply needed|This replaces any earlier|Answer or close any ASK|^Then stop\.?$/;
+/** Text `t` without CUE_RULES' sentences, empty lines folded. */
+const cueNoRules = (t) => String(t).split("\n").map((l) => l.split(/(?<=[.!?]) (?=[A-Z(])/).filter((x) => !CUE_RULES.test(x.trim())).join(" ")).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+/** What Cue's message `c` (cueMsgOf) shows once opened (#625): only what matters to you, in up to three rows: whose
+ *  words ("You said “…”", the lead's note, a reason), which item, and what happens next, in one plain line. `t`: its
+ *  full text (for a kind without its own rows: that text, Cue's standing words to the session dropped). `who`: who it
+ *  went to; `title`: the item's title. Inside .mg-full. */
+function cueFoldHtml(c, t, who = "", title = "") {
+  // Waiting for a copy of its repository (trees.rs): that comes first.
+  // A session's name stays as it is; any other first word is capitalized, or lowercased after "then".
+  const tpl = String(c.next || "").replace(/\.$/, ""), waits = /It waits for a free copy\b/.test(t);
+  const lead = (up) => (tpl.startsWith("{who}") ? (who || (up ? "It" : "it")) + tpl.slice(5) : tpl && (up ? tpl[0].toUpperCase() : tpl[0].toLowerCase()) + tpl.slice(1));
+  const next = waits ? `Waits for a free copy${tpl ? `, then ${lead(false)}` : ""}` : lead(true);
+  const said = String(c.said || "").trim().replace(/\.$/, "");
+  if (!said && !next) return `<div class="mg-full">${esc(cueNoRules(t))}</div>`;
+  const row = (k, v, cls = "") => `<div class="cue-fold-k">${esc(k)}</div><div class="cue-fold-v${cls}">${v}</div>`;
+  const by = c.by ? `${c.by === "You" ? "You" : c.by} said` : c.label || "Why";
+  const title2 = title || (c.id && new RegExp(`#${c.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\((.*?)\\)(?: is | isn't|: |$)`).exec(t)?.[1]) || "";
+  return `<div class="mg-full cue-fold">${said ? row(by, esc(`“${said}”`), " said") : ""}`
+    + `${c.id ? row("Item", `#${esc(c.id)}${title2 ? ` · ${esc(title2)}` : ""}`) : ""}${next ? row("Next", esc(next)) : ""}</div>`;
 }
 /** A teammate's message ("For your teammate X: …"): the teammate, and the text without it. */
 const cueMate = (text) => { const m = /^For your teammate (.+?): /.exec(text); return m ? [m[1], text.slice(m[0].length)] : ["", text]; };
@@ -163,5 +200,5 @@ function cueMsgHtml(e, s, key, m = null) {
   const lk = `<button class="mg-lk" data-ask-open="${esc(key)}" aria-expanded="${open}">${open ? "Less" : "More"}</button>`;
   const foot = m ? msgLine({ ...m, acts: `${m.acts ? `${m.acts} ` : ""}${lk}` }) : `<div class="mg-f"><span class="mg-acts">${lk}</span></div>`;
   return `<div class="mg cue-msg${open ? " open" : ""}${m && m.st !== "delivered" ? ` ${m.st}` : ""}"><div class="mg-h">${head}</div><div class="mg-t">${words}</div>`
-    + `${open ? `<div class="mg-full">${esc(full)}</div>` : ""}${foot}</div>`;
+    + `${open ? cueFoldHtml(c, full, who, it?.title || "") : ""}${foot}</div>`;
 }

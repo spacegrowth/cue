@@ -515,7 +515,7 @@ const deskCueNote = (e) => deskNewItems(e) ?? deskDoneNotes(e) ?? deskStopNote(e
  *  back, the Desk's changes, a reply to its lines: desk/cue_said.js CUE_MSGS) as one short line, folded. */
 const deskLeadNote = (e) => deskCueNote(e) ?? deskCueLine(e);
 /** Cue's message `e` to the lead as one short line at the left saying what it is: "+ Cue · Desk changes  3m", then
- *  "#528 finished · #535 sent back" (two lines at most in a narrow chat). A click on it opens Cue's full text under it, as + on a voice message does (the
+ *  "#528 finished · #535 sent back" (two lines at most in a narrow chat). A click on it opens what matters in it under it (#625, cueFoldHtml: whose words, the item, what's next), as + on a voice message does (the
  *  lead still got all of it); the item's chip opens the item. null for a message that isn't one of Cue's. */
 function deskCueLine(e) {
   const c = typeof cueMsgOf === "function" && cueMsgOf(e.text);
@@ -529,7 +529,7 @@ function deskCueLine(e) {
   return `<div class="dk-ln dk-cue${open ? " open" : ""}"><div class="mg-line"><button class="dk-cue-t" data-ask-open="${esc(key)}" aria-expanded="${open}">`
     + `<span class="dk-cue-pm">${open ? "−" : "+"}</span>${cueMark()}<b class="mg-who">Cue</b> <span class="mg-v">· ${esc(c.tag)}${st}</span></button>${chip}`
     + `${e.at_ms ? `<span class="mg-age">${ago(e.at_ms)}</span>` : ""}</div><button class="dk-cue-w" data-ask-open="${esc(key)}" aria-expanded="${open}">${words}</button>`
-    + `${open ? `<div class="mg-full">${esc(full)}</div>` : ""}</div>`;
+    + `${open ? cueFoldHtml(c, full, c.mate || "", it?.title || "") : ""}</div>`;
 }
 /** Cue telling the lead your answer to its ASK (desk/hub/core/desk.rs desk_answered: "Your ASK[ about #12]: question\nThe answer:
  *  …"): not drawn (#427), the question's card above already has your answer beside it. null for any other message.

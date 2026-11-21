@@ -112,6 +112,7 @@ for (const scheme of ["light", "dark"]) {
     await expect(lines.locator(".mg-t")).toHaveText(words(IN_CHAT));
     await heads(lines, IN_CHAT);
     await expect(lines.first().locator(".mg-tag")).toHaveText("Not done");
+    await expect(lines.first().locator(".mg-tag")).toHaveCSS("text-transform", "none");
     await expect(chat.locator(".mg-hand")).toHaveCount(0);
     // Each has the one line every message has (#422): delivered, to whom.
     await expect(lines.locator(".msg-line.ml-delivered")).toHaveCount(IN_CHAT.length);
@@ -124,7 +125,10 @@ for (const scheme of ["light", "dark"]) {
     await expect(first).not.toContainText("Its fixes stay");
     await expect(first.locator(".mg-full")).toHaveCount(0);
     await first.locator(".mg-lk", { hasText: "More" }).click();
-    await expect(first.locator(".mg-full")).toHaveText(TO_SESSION[0][0]);
+    // Opened, it shows what matters, not the session's rules (#625, desk-cue-fold.spec): your words, the item, what's next.
+    await expect(first.locator(".mg-full .cue-fold-v.said")).toHaveText("“Are we done here completely?”");
+    await expect(first.locator(".mg-full")).toContainText("host-lead fixes it and says it's done");
+    await expect(first.locator(".mg-full")).not.toContainText("Its fixes stay");
     await expect(first.locator(".mg-lk")).toHaveAttribute("aria-expanded", "true");
     // Left-aligned, no left stripe, no hover text.
     // Found and measured in one go: a redraw replaces the chat, and a locator finds it in one call and measures it in the
@@ -159,7 +163,9 @@ for (const scheme of ["light", "dark"]) {
     await expect(llines.nth(0).locator(".dk-cue-w .mg-v")).toHaveText("· 2 choices");
     await expect(llines.nth(IN_LEAD.length - 2).locator(".dk-cue-w .mg-v")).toHaveText("· 1 more line");
     await llines.nth(0).locator(".dk-cue-w").click();
-    await expect(llines.nth(0).locator(".mg-full")).toHaveText(IN_LEAD[0][0].trim());
+    await expect(llines.nth(0).locator(".mg-full .cue-fold-v.said")).toHaveText("“There are leftover edits in main. Commit them?\n1. Yes: commit\n2. No”");
+    await expect(llines.nth(0).locator(".mg-full")).toContainText("The lead answers it");
+    await expect(llines.nth(0).locator(".mg-full")).not.toContainText("ANSWER: #d5");
     // Its start failure keeps its own note, and your answer to its ASK stays with the ASK's card.
     await expect(lchat).toContainText("no agent");
     await expect(lchat).not.toContainText("The answer: Blue");

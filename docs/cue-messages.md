@@ -17,8 +17,11 @@ your own words stay your bubble at the right. Colours come from the theme's toke
 
 - **Asked**: Cue wants the session to do something or answer. **Told**: it informs.
 - A message for a teammate ("For your teammate ui-tests: …") names the teammate, not its lead.
-- Cue's standing words to the session ("Its fixes stay in #…", "Say DONE: #… when it is"), a log, the choices are
-  only in the fold. When there's more, the line ends with what: "· its log", "· 2 choices", "· 1 more line".
+- Cue's standing words to the session ("Its fixes stay in #…", "Say DONE: #… when it is", how to write CHECK, "Don't
+  change any files…") are never shown, not even opened (#625). More opens what matters to you, a row each: whose
+  words ("You said “looks good but no underline”", "The lead said …", or Why), the item, and Next in one plain line
+  ("Waits for a free copy, then cue-605 fixes it and says it's done"). A kind without its own rows opens its text with
+  those standing words taken out. The tag reads in its own case ("Not done"), not capitals. When there's more, the line ends with what: "· its log", "· 2 choices", "· 1 more line".
 - Left-aligned, the item number the same chip everywhere; up to two lines in a narrow chat.
   No stripe, no hover text. Light and dark.
 
