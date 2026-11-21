@@ -84,24 +84,29 @@ pub(crate) async fn desk_pause(hub: State<'_, Arc<Hub>>, desk: String, on: bool)
     .await?
 }
 
-/// The owner pressed Away (before it's on): Desk `desk`'s lead (woken if parked) is asked to settle what it can under
-/// `rules` and leave at most 5 questions; the Desk shows it's sorting things out until its next turn ends.
+/// The owner turned Away on: Desk `desk`'s lead (woken if parked) is asked to settle what it can under `rules` and
+/// leave at most 5 questions; the Desk shows it's sorting things out until its next turn ends. Only when something
+/// changed on the Desk since its last pass (#612): true when it was asked, false when there was nothing to go through.
 #[tauri::command]
-pub(crate) async fn desk_away_sweep(hub: State<'_, Arc<Hub>>, desk: String, rules: serde_json::Value) -> Result<(), String> {
+pub(crate) async fn desk_away_sweep(hub: State<'_, Arc<Hub>>, desk: String, rules: serde_json::Value) -> Result<bool, String> {
     with_hub(&hub, move |h| desk_away_sweep_with(h, &desk, &rules)).await?
 }
 
-pub(crate) fn desk_away_sweep_with(h: &Arc<Hub>, desk: &str, rules: &serde_json::Value) -> Result<(), String> {
+pub(crate) fn desk_away_sweep_with(h: &Arc<Hub>, desk: &str, rules: &serde_json::Value) -> Result<bool, String> {
+    // Nothing new since the lead last went through the items, or it's going through them now: no second pass.
+    if !h.desk_away_pass_due(desk) {
+        return Ok(false);
+    }
     // Its lead stopped by a usage limit: nothing sent now (Cue carries it on after the reset).
     if !h.desk_away_sweeping(desk) {
-        return Ok(());
+        return Ok(false);
     }
     let words = crate::owner::in_prompt(&crate::hub::desk_away_sweep_words(rules));
     if let Err(e) = desk_send_with(h, desk, &words) {
         h.desk_away_sweep_failed(desk);
         return Err(e);
     }
-    Ok(())
+    Ok(true)
 }
 
 #[tauri::command]

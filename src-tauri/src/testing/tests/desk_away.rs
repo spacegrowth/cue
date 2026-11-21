@@ -131,6 +131,50 @@ fn pressing_away_asks_the_lead_to_sort_things_out_until_its_turn_ends() {
     assert_eq!(desk(&w, &project)["away"]["sweeping"], json!(false), "cleared at the lead's turn end");
 }
 
+/// #612: the lead's pass before Away runs only when something changed on the Desk since its last one (an item added
+/// or moved, a new question); turning Away off and on again with nothing new doesn't send it again.
+#[test]
+fn the_pass_before_away_runs_only_when_the_desk_changed_since_the_last_one() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let d = new_lead(&w, &project);
+    let passes = |w: &World| sent_to(w, &d).iter().filter(|t| t.contains("The owner is about to go away")).count();
+    let away = |on: bool| {
+        w.hub().desk_away_set(&project, &json!({ "on": on, "until": null, "budget": null, "rules": {} })).unwrap();
+        w.settle();
+    };
+    // The first time: it goes through the items.
+    assert!(crate::ipc::desk_away_sweep_with(w.hub(), &project, &json!({})).unwrap());
+    w.settle();
+    // Pressed again while it's still going through them: not sent twice.
+    assert!(!crate::ipc::desk_away_sweep_with(w.hub(), &project, &json!({})).unwrap());
+    away(true);
+    ends(&w, &d, "DECIDED: Nothing to settle — the Desk is quiet");
+    assert_eq!(passes(&w), 1);
+
+    // Off and on again, nothing changed: no second pass, and nothing waits on one.
+    away(false);
+    assert!(!crate::ipc::desk_away_sweep_with(w.hub(), &project, &json!({})).unwrap());
+    away(true);
+    assert_eq!((passes(&w), desk(&w, &project)["away"]["sweeping"].clone()), (1, json!(false)));
+
+    // A new item: the next Away goes through the items again.
+    away(false);
+    w.hub().desk_add(&project, "bug", "Header overlaps", "", None).unwrap();
+    w.settle();
+    assert!(crate::ipc::desk_away_sweep_with(w.hub(), &project, &json!({})).unwrap());
+    w.settle();
+    ends(&w, &d, "Routed it.");
+    assert_eq!(passes(&w), 2);
+    assert!(!crate::ipc::desk_away_sweep_with(w.hub(), &project, &json!({})).unwrap(), "nothing new since that pass");
+
+    // A new question from a session on the Desk: due again.
+    let input = json!({ "questions": [{ "question": "Which color?", "header": "Color", "options": [{ "label": "Blue" }, { "label": "Red" }], "multiSelect": false }] });
+    w.hub().add_ask(w.hub().session_origin(&h).unwrap(), crate::hub::NewAsk { kind: "question".into(), tool_name: "AskUserQuestion".into(), tool_input: input, suggestions: serde_json::Value::Null, context: vec![], agent_id: String::new() });
+    w.settle();
+    assert!(crate::ipc::desk_away_sweep_with(w.hub(), &project, &json!({})).unwrap(), "a new question is worth a pass");
+}
+
 #[test]
 fn away_keeps_its_limits_honest_a_zero_budget_is_none_routing_off_starts_nothing_ended_stays_ended() {
     let w = World::new();

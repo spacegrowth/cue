@@ -407,6 +407,7 @@
 .dk-aw-ask .dk-request-who { all: unset; color: var(--muted); font-weight: 650; font-size: var(--type-small); }
 .dk-aw-ask .dk-row-decisions { display: flex; flex-wrap: wrap; gap: 6px; }
 .dk-aw-more { color: var(--muted); font-size: var(--type-small); }
+.dk-aw-opt { margin-top: -4px; color: var(--muted); font-size: var(--type-small); }
 /* Before you go (#618, pick C): one question at a time, marks per Desk, Skip; the rules fold into one row. */
 .dk-aw-flds .dk-aw-fld { all: unset; flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--radius-btn); color: var(--muted); font-size: var(--type-pill); cursor: pointer; }
 .dk-aw-fld b { color: var(--ink); font: 400 var(--type-body) var(--sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

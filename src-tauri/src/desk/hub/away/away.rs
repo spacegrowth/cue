@@ -128,6 +128,32 @@ fn is_sweeping(sid: &str) -> bool {
     held.contains_key(sid)
 }
 
+/// What the lead's pass before Away goes by (#612): each of Desk `desk`'s items with its state, and the open asks from
+/// its sessions.
+fn pass_marks(st: &Store, desk: &str) -> Value {
+    let sids = desk_sids(st, desk);
+    let mut asks: Vec<&str> = st.items.iter().filter(|it| it.status == "pending" && it.kind != "waiting" && sids.contains(&it.origin.session_id)).map(|it| it.id.as_str()).collect();
+    asks.sort_unstable();
+    json!({ "items": crate::desk::hub::away::away_log::item_states(st, desk), "asks": asks })
+}
+
+/// Whether the Desk changed since the lead's last pass (`last`, its marks then; Null: none yet): an item added or
+/// moved, or a new question. One answered, closed or dropped from the list isn't a change worth another pass.
+fn changed_since(last: &Value, now: &Value) -> bool {
+    if last.is_null() {
+        return true;
+    }
+    let moved = now["items"].as_object().is_some_and(|m| m.iter().any(|(id, s)| last["items"].get(id) != Some(s)));
+    let was: Vec<&Value> = last["asks"].as_array().map(|a| a.iter().collect()).unwrap_or_default();
+    let asked = now["asks"].as_array().is_some_and(|a| a.iter().any(|x| !was.contains(&x)));
+    moved || asked
+}
+
+/// The marks of Desk `desk`'s lead's last pass (config.json `desk.away_pass`), Null when it never made one.
+fn last_pass(desk: &str) -> Value {
+    crate::config::load().pointer("/desk/away_pass").and_then(|m| m.get(desk)).cloned().unwrap_or(Value::Null)
+}
+
 /// Whether session `sid` is stopped by a usage limit (Cue carries it on after the reset).
 fn limited(st: &Store, sid: &str) -> bool {
     st.sessions.get(sid).is_some_and(|s| s.state == "limited")
@@ -373,6 +399,10 @@ impl Hub {
     /// and its lead told, once.
     pub(crate) fn desk_away_check(&self, sid: &str) {
         if self.desk_away_turn_over(sid, false) {
+            let desks: Vec<String> = self.read(|st| st.desk.lead.iter().filter(|(_, l)| l.sid == sid).map(|(d, _)| d.clone()).collect());
+            for desk in &desks {
+                self.desk_away_pass_kept(desk);
+            }
             self.changed();
         }
         let all = crate::config::load().pointer("/desk/away").and_then(Value::as_object).cloned().unwrap_or_default();
@@ -425,6 +455,29 @@ impl Hub {
         }
         self.changed();
         true
+    }
+
+    /// Whether Desk `desk`'s lead should go through its items before Away (#612): only when something changed on the
+    /// Desk since its last pass, and not while it's on one now.
+    pub(crate) fn desk_away_pass_due(&self, desk: &str) -> bool {
+        let (lead, marks) = self.read(|st| (st.desk.lead.get(desk).map(|l| l.sid.clone()), pass_marks(st, desk)));
+        if lead.as_deref().is_some_and(is_sweeping) {
+            return false;
+        }
+        changed_since(&last_pass(desk), &marks)
+    }
+
+    /// Desk `desk`'s lead finished its pass: the Desk as it left it is kept, so the next Away goes by what changed since.
+    fn desk_away_pass_kept(&self, desk: &str) {
+        let marks = self.read(|st| pass_marks(st, desk));
+        let r = crate::config::update_with("desk.away_pass", |c| {
+            let mut map = c.pointer("/desk/away_pass").cloned().filter(Value::is_object).unwrap_or_else(|| json!({}));
+            map[desk] = marks;
+            Ok((Some(map), ()))
+        });
+        if let Err(e) = r {
+            eprintln!("cue: couldn't keep {desk}'s pass before Away: {e}");
+        }
     }
 
     /// The sweep didn't reach Desk `desk`'s lead: nothing to wait for.

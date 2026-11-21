@@ -80,7 +80,8 @@ test("+ New's menu over the diff overlay: Esc closes the menu, then the overlay,
 
 test("the Desk's away sheet: Esc closes it only; the item's holder isn't touched (#521)", async ({ page, cue }) => {
   await deskItem(page, cue);
-  await page.evaluate(() => deskAwayOpen("cue"));
+  // Away on: its switch opens the sheet (from off, one click turns it on instead: #612).
+  await page.evaluate(() => { deskOf("cue").away = { on: true, active: true, ended: "", since: 1, until: null, budget: null, spent: 0, rules: {} }; deskAwayOpen("cue"); });
   await expect.poll(() => get(page, () => !!deskAwayEdit)).toBe(true);
   await esc(page);
   expect(await get(page, () => deskAwayEdit)).toBeNull();
