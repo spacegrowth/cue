@@ -124,7 +124,7 @@ button.mg-id:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
 .mg-status { align-self: center; display: flex; align-items: center; gap: 7px; min-width: 0; padding: 2px 0; font: var(--mg-meta); color: var(--muted); }
 .mg-status b { color: var(--ink); font-weight: 650; }
 /* A status line that needs you (out of usage, stuck, not started yet) is in ink; a button in one sits after its words. */
-.mg-status:is(.limit, .stuck, .dk-notyet) { color: var(--ink); }
+.mg-status:is(.limit, .stuck) { color: var(--ink); }
 .mg-status .btn { margin-left: 6px; flex: none; }
 
 /* ---------- a plain line: the same message as text in a row (Inbox, a board card, Working on, the mini) ---------- */

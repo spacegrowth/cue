@@ -560,7 +560,15 @@ button.dk-al-row:focus-visible { outline: 2px solid var(--accent); outline-offse
 /* An item's page (#418, option B of the item chat mocks): its holder's own chat in the middle, its turns about other
    items folded to a line each; the item itself in the column at the right, in the Items list's place. */
 .dk-ichat { display: flex; flex-direction: column; gap: 14px; }
-.dk-ichat .mg-status.dk-notyet .dk-si { flex: none; }
+/* Not started yet (#626): a status card, panel-2 on the pane, its head small caps, what it waits for at 13px. */
+.dk-ns { align-self: stretch; box-sizing: border-box; padding: var(--card-pad-y) var(--card-pad-x); border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--panel-2); color: var(--ink); font-size: var(--type-body); line-height: 1.45; }
+.dk-inow > .dk-ns { margin-top: 12px; }
+.dk-ns-h { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: var(--type-tag); font-weight: 650; letter-spacing: .06em; text-transform: uppercase; }
+.dk-ns-h .dk-si { flex: none; }
+.dk-ns-t { margin-top: 6px; }
+.dk-ns a { color: var(--ink); font-weight: 600; }
+.dk-ns-s, .dk-ns-n { margin-top: 2px; color: var(--muted); font-size: var(--type-small); }
+.dk-ns-a { display: flex; gap: 6px; margin-top: 10px; }
 .dk-fold { all: unset; box-sizing: border-box; display: flex; align-items: baseline; gap: 6px; min-width: 0; padding: 8px 12px; border-radius: var(--radius-btn); background: var(--panel-2); color: var(--muted); font-size: var(--type-body); cursor: pointer; user-select: none; -webkit-user-select: none; }
 .dk-fold b { flex: none; color: var(--ink); font-weight: 650; }
 .dk-fold .dk-fold-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }

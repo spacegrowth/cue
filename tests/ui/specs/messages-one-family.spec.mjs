@@ -182,15 +182,16 @@ for (const scheme of ["light", "dark"]) {
         expect(ls).toBe("normal");
       }
       await readsOn(chain.locator(".dk-picked"));
-      // Waiting on another item: the two rows of its wait chain have a line between them.
+      // Waiting on another item (#626): its not-started card, what it waits for at the body size, the rest at meta.
       await cue.change((st) => {
         const it = st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d1");
         it.state = "queued"; it.ask = null; it.after = "d2";
       });
       await page.evaluate(() => { deskAnswers.delete("d1"); renderMain(); });
-      const rows = page.locator(".dk-pane .dk-chain > .dk-cn");
-      await expect(rows).toHaveCount(2);
-      expect(await rows.evaluateAll((es) => es.map((e) => getComputedStyle(e).borderTopWidth))).toEqual(["0px", "1px"]);
+      const card = page.locator(".dk-pane .dk-ns");
+      await expect(card.locator(".dk-ns-t")).toHaveCount(1);
+      expect(await sizes(card.locator(".dk-ns-t"))).toEqual([BODY]);
+      expect(await sizes(card.locator(".dk-ns-n"))).toEqual([META]);
       await noHover(page);
     });
   });

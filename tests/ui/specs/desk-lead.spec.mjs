@@ -71,8 +71,8 @@ test("an item opens in the middle, its panel beside its chat, its row lit in pla
   await expect(page.locator(".dk-right .dk-markrow")).toHaveCount(0);
   await expect(side.locator(".dk-pmeta")).toContainText("next for web-lead · added by you · 20m ago");
   await expect(side.locator(".dk-pnow .dk-pword")).toHaveText("Next");
-  await expect(pane.locator(".dk-chain")).toContainText("Search stays centred in the header");
-  await expect(pane.locator(".dk-chain")).toContainText("This one");
+  // Not started yet (#626): its card names the item it waits for, in place of the chain.
+  await expect(pane.locator(".dk-ns-t")).toHaveText("It waits for Search stays centred in the header.");
   // Its record (the Steps tab of before) in its Record tab, beside Chat (#418).
   await expect(pane.locator('[data-desk-itab="record"] .n')).toHaveText("1");
   await pane.locator('[data-desk-itab="record"]').click();

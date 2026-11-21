@@ -239,8 +239,10 @@ function deskItemPane(i, d, foot = "") {
   // build log, what it made. Not what it asks when the chat is its holder's and the question is its reply: once, there
   // (a lead's ask, or Cue's own question while it finishes it, stays: the chat never had those).
   const backing = deskBackFor === i.id;
+  // Not started yet (#626): its status card, under its holder's chat (deskItemChat), else here, in place of the chain.
+  const notYet = deskNotStarted(i);
   const at = `${backing ? deskBackHtml(i.id) : ""}${deskSec("Couldn't give it out", i.route_failed ? `<p>${esc(i.route_failed)}</p>` : "")}${deskSec("Couldn't start", !i.holder && i.start_failed ? `<p>Cue couldn't start a new session for it: ${esc(i.start_failed)}</p>` : "")}
-    ${s && !i.ask && !i.finish?.question && i.state === "needs_you" && !deskAnswerOf(i) ? "" : i.state === "needs_you" ? deskChain(i) : deskSec(deskAnswerOf(i) ? "It asked you" : "What's holding it up", deskChain(i))}${deskSec("Build log", deskFinLog(i))}${deskSec("What it made", i.state === "to_check" || i.state === "done" ? deskMadeLinks(i) : "")}
+    ${notYet ? (s ? "" : notYet) : s && !i.ask && !i.finish?.question && i.state === "needs_you" && !deskAnswerOf(i) ? "" : i.state === "needs_you" ? deskChain(i) : deskSec(deskAnswerOf(i) ? "It asked you" : "What's holding it up", deskChain(i))}${deskSec("Build log", deskFinLog(i))}${deskSec("What it made", i.state === "to_check" || i.state === "done" ? deskMadeLinks(i) : "")}
     ${i.part_of ? `<p class="dk-split">Part of <a href="#" data-desk-item="${esc(i.part_of)}">${esc(deskItem(i.project, i.part_of)?.title || `#${i.part_of}`)}</a></p>` : ""}
     ${i.split_from ? `<p class="dk-split">Split from <a href="#" data-desk-item="${esc(i.split_from)}">#${esc(i.split_from)}</a></p>` : ""}`;
   // Its pieces, oldest first (#282): each its state, title, and kind, number, who and age; a click opens it.
@@ -409,18 +411,34 @@ function deskLoadStint(i, s) {
   const first = conversation(null, s)[0]?.at_ms;
   if (first != null && first > t.from - 600000) queueMicrotask(() => loadOlder(sid));
 }
-/** Item `i` given to a session but not started yet (#476): one plain line under its chat saying so and why, a free
- *  working folder or the item before it, with Start now as its panel offers; in place of its holder's own line, which
- *  says "Waiting on you for your reply" of an idle holder when nothing waits on you. "" once it has started. */
+/** Item `i` not started yet (#476, #626): a status card saying so, what it waits for by title (the item before it, or
+ *  the items using the working folders), what happens next, and Start now. In place of its holder's own line, which
+ *  says "Waiting on you for your reply" of an idle holder when nothing waits on you. Shown for one given to a session,
+ *  or queued after another; "" once it has started. */
 function deskNotStarted(i) {
-  if (!["queued", "new"].includes(i.state) || !i.holder) return "";
-  const who = esc(i.holder.name || "its session"), first = i.after && deskItem(i.project, i.after);
-  const why = deskCopyWaits(i) ? `${esc(deskCopyWaitLine(i))}. It starts by itself when one is free.`
-    : i.state === "queued" && i.tree_wait ? `Waiting for a free working folder. It starts by itself when one is free.`
-    : first ? `It starts after <a href="#" data-desk-item="${esc(first.id)}">#${esc(first.id)} ${esc(deskShort(first.title))}</a>${first.state === "working" && first.holder ? `, which ${esc(first.holder.name)} is on now` : ""}.`
-    : sessionOf(deskHolderSid(i))?.state === "working" ? `It's next for ${who}, after what it's on now.` : `It's next for ${who}.`;
-  const go = `<button class="btn small" data-desk-act="start_now" data-id="${esc(i.id)}">Start now</button>`;
-  return `<div class="mg-status dk-notyet">${deskStateIcon(i)}<span><b>Hasn't started yet.</b> ${why}</span>${go}</div>`;
+  if (!["queued", "new"].includes(i.state) || !(i.holder || (i.state === "queued" && i.after))) return "";
+  const who = esc(i.holder?.name || "its session"), link = (id, it) => `<a href="#" data-desk-item="${esc(id)}">${it ? esc(it.title) : `#${esc(id)}`}</a>`;
+  const first = i.after && deskItemAny(i.project, i.after);
+  let t, sub = "", next;
+  if (i.state === "queued" && i.tree_wait) {
+    const by = (i.copy_users || []).map((x) => link(x, deskItem(i.project, x)));
+    t = `${i.back_waiting ? "Sent back. It waits" : "It waits"} for a free working folder.`;
+    sub = by.length ? `In use by ${by.length > 1 ? `${by.slice(0, -1).join(", ")} and ${by.at(-1)}` : by[0]}.` : "";
+    next = "It starts by itself when one is free.";
+  } else if (i.after) {
+    const on = first ? `${first.project !== i.project ? `${esc(deskAfterName(i))} · ` : ""}${link(first.id, first)}` : esc(deskAfterName(i));
+    t = `It waits for ${on}.`;
+    const busy = first?.state === "working" && first.holder ? `${esc(first.holder.name)} is on it now` : "";
+    const files = first?.state === "working" ? deskFilesShort(first.files) : "";
+    sub = [busy, first?.state === "working" && first.latest ? esc(firstLine(first.latest)) : "", files ? `has ${esc(files)} open` : ""].filter(Boolean).join(" · ");
+    next = `It starts by itself when that's done${i.after_why ? `: ${esc(i.after_why)}` : ""}.`;
+  } else {
+    const busy = sessionOf(deskHolderSid(i))?.state === "working";
+    t = busy ? `It's next for ${who}, after what it's on now.` : `It's next for ${who}.`;
+    next = busy ? `${who} starts on it when that's done.` : `${who} starts on it when it's free.`;
+  }
+  const go = `<button class="btn small primary" data-desk-act="start_now" data-id="${esc(i.id)}">${i.holder ? "Start now" : "Start now in a new session"}</button>`;
+  return `<div class="dk-ns" role="status"><div class="dk-ns-h">${deskStateIcon(i)}<span>Not started yet</span></div><div class="dk-ns-t">${t}</div>${sub ? `<div class="dk-ns-s">${sub}</div>` : ""}<div class="dk-ns-n">${next}</div><div class="dk-ns-a">${go}</div></div>`;
 }
 /** Your note about item `i` waiting for its holder at work, kept in Cue or queued (#419): { words: yours alone, without
  *  the "About #id (title): " or send-back wrapping Cue sent it in; line: "Waiting: cue-12 is finishing something, your
