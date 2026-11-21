@@ -119,7 +119,7 @@ pub fn edited_between_named(path: &str, from: u64, until: u64) -> Vec<(String, b
 }
 
 /// `script_writes`, each path as seen from where the command started: a script run after `cd` writes there.
-fn script_writes_in(command: &str) -> Vec<String> {
+pub(crate) fn script_writes_in(command: &str) -> Vec<String> {
     use crate::logs::shell_writes::{from_dir, runs_in};
     let here = runs_in(command);
     script_writes(command).into_iter().filter_map(|p| from_dir(here.as_deref(), &p)).collect()

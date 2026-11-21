@@ -37,6 +37,8 @@ impl TheirEdit {
 #[derive(Default)]
 pub(crate) struct Theirs {
     edits: Vec<(String, TheirEdit)>,
+    /// The item they're others' to: its own commits ("… (#id)") aren't a file's last commit (`own_part`).
+    id: String,
 }
 
 impl Theirs {
@@ -158,7 +160,7 @@ impl Hub {
         let mut seen = std::collections::HashSet::new();
         known.retain(|k| k.here && !k.log.is_empty() && seen.insert(k.id.clone()));
         let all: Vec<String> = known.iter().map(|k| k.log.trim_end_matches(".jsonl").to_string()).collect();
-        let mut out = Theirs::default();
+        let mut out = Theirs { id: it.id.clone(), ..Theirs::default() };
         for k in known.into_iter().filter(|k| !mine_ids.contains(&k.id)) {
             let agents = k.agents.clone().unwrap_or_else(|| agents_of(&k.log));
             for path in std::iter::once(k.log.clone()).chain(agents) {
@@ -237,7 +239,12 @@ pub(crate) fn own_part(theirs: &Theirs, folder: &str, path: &str) -> Own {
     }
     edits.sort_by_key(|e| std::cmp::Reverse(e.at));
     let git = |args: &[&str]| crate::desk::hub::landing::git::git("", folder, &[], args);
-    let committed = git(&["log", "-1", "--format=%ct", "--", path]).and_then(|t| t.trim().parse::<u64>().ok()).map_or(0, |s| s * 1000);
+    // Its last commit not the item's own: a commit its holder made of only its own part of the file (#650's of
+    // trees.rs) says nothing of others' changes made before it, still there uncommitted (#653, e7361cace).
+    let own = format!("(#{})", theirs.id);
+    let committed = git(&["log", "-50", "--format=%ct %s", "--", path])
+        .and_then(|t| t.lines().find(|l| theirs.id.is_empty() || !l.contains(&own)).and_then(|l| l.split(' ').next()?.parse::<u64>().ok()))
+        .map_or(0, |s| s * 1000);
     let head = git(&["show", &format!("HEAD:./{path}")]).unwrap_or_default();
     let Ok(now) = std::fs::read_to_string(&abs) else {
         // Gone, or not text: theirs can't be taken out of it. Only a change since its last commit is named (#248).

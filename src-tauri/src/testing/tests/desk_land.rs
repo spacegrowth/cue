@@ -601,7 +601,7 @@ fn an_item_reopened_twice_is_done_only_once_every_commit_on_its_branch_is_on_mai
     ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
     assert_eq!(item(&w, &project, "Header jumps")["state"], "to_check");
     assert!(dir.join("a.txt").is_file());
-    // Round 2 (#417): sent back while every copy is in use, started without one; its holder makes a worktree of its
+    // Round 2 (#417): sent back while every copy is in use, at work without one; its holder makes a worktree of its
     // own on the item's branch and commits there. Its DONE merges that branch.
     w.hub().desk_hold_copies(&top(&w), &[1, 2, 3]);
     let reopen = |w: &World| {
@@ -609,6 +609,8 @@ fn an_item_reopened_twice_is_done_only_once_every_commit_on_its_branch_is_on_mai
         w.settle();
         w.hub().desk_item_act(&id, "start_now", "").unwrap();
         w.settle();
+        // Without one as a Cue before #653 left it (one started now gets a copy past the count since).
+        w.hub().desk_at_work_without_copy(&id, &top(w));
         let it = item(w, &project, "Header jumps");
         assert!(it["state"] == "working" && it["tree"].is_null(), "{it}");
     };

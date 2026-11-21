@@ -164,8 +164,8 @@ fn copy_first(st: &mut Store, project: &str, by: &By, id: &str, why: &str, now: 
     Ok(())
 }
 
-/// START: a queued item starts now, not waiting for the item it was after, nor for a free copy (it works where its
-/// holder is when none is free). Nobody holds it: a new session starts on it.
+/// START: a queued item starts now, not waiting for the item it was after, nor for a free copy (one past its
+/// project's count when none is free, #653). Nobody holds it: a new session starts on it.
 fn start(st: &mut Store, project: &str, by: &By, id: &str, why: &str, now: u64, fx: &mut Effects) -> Result<(), String> {
     let rule = rule_of(st, project);
     let lead = st.desk.lead.get(project).cloned();

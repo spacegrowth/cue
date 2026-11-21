@@ -122,7 +122,11 @@ pub(crate) fn folder_of_url(u: &str) -> Option<String> {
 
 /// What a shell command run in `dir` writes, as changes whose text isn't known.
 pub(crate) fn shell_changes(cmd: &str, dir: &str, at: u64) -> Vec<(String, TheirEdit)> {
-    crate::logs::shell_writes::writes(cmd).iter().map(|f| (resolve(dir, f), TheirEdit { guess: true, ..change(at, "", "", false, true) })).collect()
+    // An inline script's writes too (`python3 - <<'EOF' … open(p, 'w') …`): most sessions edit that way, and unread
+    // they were committed with an item's work (#653, e7361cace).
+    let mut files = crate::logs::shell_writes::writes(cmd);
+    files.extend(crate::logs::steps::script_writes_in(cmd).into_iter().filter(|f| !files.contains(f)).collect::<Vec<_>>());
+    files.iter().map(|f| (resolve(dir, f), TheirEdit { guess: true, ..change(at, "", "", false, true) })).collect()
 }
 
 /// A Codex change list (by path: `{type, unified_diff, move_path}`, or `{update: {unified_diff, move_path}}` and

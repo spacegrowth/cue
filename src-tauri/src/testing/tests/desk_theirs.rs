@@ -128,3 +128,62 @@ fn a_former_holders_change_stays_the_items_and_is_committed() {
     assert_eq!(shown["state"], "to_check", "not waiting on cue-teams: {shown}");
     assert_eq!(git(&dir, &["show", "HEAD:a.txt"]), "fixer wrote this\n", "the first holder's change is committed");
 }
+
+/// Another session's edit made by an inline script (`python3 - <<'EOF'`), the way most sessions edit: its file is
+/// left out of the item's commit, in the folder as it is (#653: e7361cace took such edits into #650's commit).
+#[test]
+fn another_sessions_python_heredoc_edit_leaves_its_file_out_of_the_commit() {
+    let w = World::new();
+    let (dir, project) = done_after_tidier_changed(&w, |w, o, a| {
+        std::fs::write(a, "fixer wrote this\ntidier's line\n").unwrap();
+        let script = format!("cd {} && python3 - <<'EOF'\np='a.txt'\ns=open(p).read()\nopen(p,'w').write(s+\"tidier's line\\n\")\nEOF", dir_of(a));
+        log(w, o).tool_use("toolu_t2", "Bash", json!({ "command": script }));
+        w.settle();
+    });
+    let shown = item(&w, &project, "Header jumps");
+    assert_eq!(shown["state"], "to_check", "{shown}");
+    assert!(!git(&dir, &["show", "HEAD:b.txt"]).is_empty(), "the item's other file is committed");
+    assert!(git(&dir, &["ls-files", "a.txt"]).trim().is_empty(), "a.txt isn't committed");
+    assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "fixer wrote this\ntidier's line\n", "a.txt stays in the folder as it is");
+}
+
+/// Another session's shell edit made before the item's holder committed its own part of the same file ("… (#id)"):
+/// that commit isn't the file's last for the other session's edit, so it's still theirs and left out (#653: #650's
+/// holder committed its hunk of trees.rs, and others' earlier edits there were then taken as committed).
+#[test]
+fn another_sessions_shell_edit_before_the_holders_own_commit_of_the_file_still_stays_out() {
+    let w = World::new();
+    let (dir, project, id) = super::desk_commit::done_with(&w, |_, _, _| {}, |w, h, dir| {
+        let a = dir.join("a.txt");
+        says(w, h, writes("toolu_A", "agentA", "fixer", &[a.to_string_lossy().to_string(), dir.join("b.txt").to_string_lossy().to_string()]));
+        let opts = StartOpts { hosted: true, perm: "auto".into(), ..Default::default() };
+        let r = start_session_with(w.hub(), "claude", &w.home().to_string_lossy(), "tidy a", "tidier", &opts).unwrap();
+        let o = r["session_id"].as_str().unwrap().to_string();
+        w.hosted_says(&o, HostedEvent::Taken { text: "tidy a".into() });
+        w.advance(1000);
+        // The tidier's line, by a shell command, before the holder's own commit.
+        std::fs::write(&a, "tidier's line\n").unwrap();
+        log(w, &o).tool_use("toolu_t3", "Bash", json!({ "command": format!("echo \"tidier's line\" > {}", a.display()) }));
+        ends(w, &o, "Tidied.");
+        w.advance(2000);
+        // The holder commits only its own part of a.txt, then puts the file back as it is.
+        std::fs::write(&a, "fixer wrote this\n").unwrap();
+        let project = w.snapshot().session(h)["project"].as_str().unwrap().to_string();
+        let id = item(w, &project, "Header jumps")["id"].as_str().unwrap().to_string();
+        let at = format!("@{} +0000", crate::clock::now_ms() / 1000);
+        git(dir, &["add", "a.txt"]);
+        let o = std::process::Command::new(crate::safe_git::git_bin()).arg("-C").arg(dir).args(["commit", "-q", "-m", &format!("Its part (#{id})")])
+            .env("GIT_COMMITTER_DATE", &at).env("GIT_AUTHOR_DATE", &at).output().unwrap();
+        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+        std::fs::write(&a, "fixer wrote this\ntidier's line\n").unwrap();
+        w.advance(1000);
+    });
+    let shown = item(&w, &project, "Header jumps");
+    assert_eq!(shown["state"], "to_check", "{shown}");
+    assert_eq!(git(&dir, &["show", "HEAD:a.txt"]), "fixer wrote this\n", "the tidier's line isn't committed: {id}");
+    assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "fixer wrote this\ntidier's line\n", "a.txt stays in the folder as it is");
+}
+
+fn dir_of(a: &std::path::Path) -> String {
+    a.parent().unwrap().to_string_lossy().to_string()
+}

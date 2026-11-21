@@ -217,16 +217,26 @@ impl Hub {
             Some(i.clone())
         });
         // Its sessions kept with the folder's record, for a let-go after it's gone from the Desk (in_place.rs).
-        if let Some(it) = it.filter(|_| t.in_place) {
-            crate::desk::hub::landing::in_place::save_owners(&t.repo, &it);
+        if let Some(it) = it.as_ref().filter(|_| t.in_place) {
+            crate::desk::hub::landing::in_place::save_owners(&t.repo, it);
         }
         let mut line = tree_line(&t);
         if kept {
             line.push_str(" It holds this item's work from before it was dropped: read it first (git status, git log).");
         }
-        for (_, text) in fx.sends.iter_mut().filter(|(s, text)| *s == to && names_item(text, id) && !text.contains(&t.path)) {
-            text.push('\n');
-            text.push_str(&line);
+        let mut told = false;
+        for (_, text) in fx.sends.iter_mut().filter(|(s, text)| *s == to && names_item(text, id)) {
+            told = true;
+            if !text.contains(&t.path) {
+                text.push('\n');
+                text.push_str(&line);
+            }
+        }
+        // Already at work with no message on it now (one an older Cue left at work in the main folder, given its copy
+        // by START or COPY FIRST): told all the same, or it goes on changing the main folder (#653).
+        if !told {
+            let title = it.as_ref().map(|i| i.title.clone()).unwrap_or_default();
+            fx.sends.push((to.to_string(), format!("Desk item #{id} ({title}): a copy of its repository is yours now. Move any work you've done for it so far into it, then carry on there.\n{line}")));
         }
     }
 
@@ -258,10 +268,11 @@ impl Hub {
                 fx.sends.push((lead, words));
             }
         }
-        // Not in line again: a copy that can't be made would be tried at every free one (#566).
+        // Not in line again: a copy that can't be made would be tried at every free one (#566). Nor queued for one,
+        // nor given one past the count, at its next claim: it stays at work where its holder is (#653).
         self.write(|st| {
             if let Some(i) = st.desk.item_mut(id) {
-                (i.tree, i.no_copy_wait) = (None, false);
+                (i.tree, i.no_copy_wait, i.copy_failed) = (None, false, true);
             }
         });
     }
@@ -480,6 +491,10 @@ impl Hub {
         if rev(&t.repo, &format!("{base}^{{tree}}")).as_deref() == Some(work.as_str()) {
             return self.land_nothing(id, &t);
         }
+        // Files its holder changed in the main folder, not in its copy, are never left behind unsaid (#653).
+        if let Some(landed) = self.land_main_left(id, &it, &t) {
+            return landed;
+        }
         if fin.step == "commit" {
             self.finish_step(id, "line");
         }
@@ -539,6 +554,51 @@ impl Hub {
             return self.land_onto(id, it, t, onto, &main, &squash, message);
         }
         self.land_wait(id, "The main line kept moving")
+    }
+
+    /// Item `id`'s holder changed files in the main folder that its copy `t` doesn't have (#653): the first time, it's
+    /// sent back naming them (its turn ends); the same ones still there at its next DONE, it lands without them and
+    /// the lead is told which (they stay in the folder, uncommitted). None: nothing left there, it lands.
+    fn land_main_left(&self, id: &str, it: &DeskItem, t: &ItemTree) -> Option<Landed> {
+        let left = self.main_leftovers(it, t);
+        if left.is_empty() {
+            return None;
+        }
+        if it.main_left != left {
+            self.write(|st| {
+                if let Some(i) = st.desk.item_mut(id) {
+                    i.main_left = left.clone();
+                }
+            });
+            let words = crate::desk::hub::landing::own_work::main_left_words(&left, t);
+            self.finish_back(it, &words, "main_left", "", true);
+            return Some(Landed::Done);
+        }
+        let fx = self.write(|st| {
+            let mut fx = Effects::default();
+            let Some(i) = st.desk.item_mut(id) else { return fx };
+            let title = i.title.clone();
+            i.main_left.clear();
+            if let Some(f) = i.finish.as_mut() {
+                for p in left.iter().map(|p| format!("{}/{p}", t.repo.trim_end_matches('/'))) {
+                    if !f.without.contains(&p) {
+                        f.without.push(p);
+                    }
+                }
+            }
+            let project = i.project.clone();
+            if let Some(lead) = st.desk.lead_sid(&project) {
+                let words = format!(
+                    "#{id} ({title}) lands from its copy without these files its session changed in the main folder ({}), named to it once already: {}. They stay there, uncommitted; tell the user whose they are.",
+                    t.repo,
+                    left.join(", ")
+                );
+                fx.sends.push((lead.to_string(), words));
+            }
+            fx
+        });
+        self.desk_done(fx);
+        None
     }
 
     /// Nothing in item `id`'s copy `t`: its holder worked where it was. That's landed as before; the copy goes.
@@ -802,7 +862,8 @@ fn words_now(st: &mut Store, fx: &mut Effects, id: &str, to: &str) -> Vec<String
 }
 
 /// Item `id`'s copy of `main`, in a slot free of the `at_once` its project allows: Some(Some) claimed, Some(None) none
-/// free (it's queued for one), None nothing to claim (not at work, has one, or started by the lead to go without).
+/// free (it's queued for one), None nothing to claim (not at work, or has one). One started now (START, Start now)
+/// with every copy in use gets one past the count (#653).
 /// `in_place`: on a branch in `main` itself, one item at a time (slot 0, apart from the copies' slots).
 /// `busy`: the folder can't take it now (on an item's branch, or a landing under way): it waits as for a copy.
 fn claim_tree(st: &mut Store, id: &str, main: &str, at_once: u32, in_place: bool, busy: bool) -> Option<Option<ItemTree>> {
@@ -817,24 +878,28 @@ fn claim_tree(st: &mut Store, id: &str, main: &str, at_once: u32, in_place: bool
         None => (format!("desk/{id}{again}"), false, String::new()),
     };
     let free = if in_place && !keep { (!folder_taken).then_some(0) } else { (1..=at_once).find(|n| !used.contains(n)) };
+    // Started now by the lead or you (START, Start now) with every copy in use: a copy of its own all the same, past
+    // the project's count, never the main folder (#653: #598's, #624's and #625's holders worked there, unguarded, and
+    // their landings left edits behind in it). Not on a branch in the folder itself: that would put it in another
+    // item's files; it waits for the folder.
+    // Not once its copy couldn't be made: it works where its holder is then (below).
+    let free = free.or_else(|| (it.no_copy_wait && !it.copy_failed && !(in_place && !keep)).then(|| (at_once.max(1) + 1..).find(|n| !used.contains(n)).unwrap_or(u32::MAX)));
     match free {
         Some(n) => {
             let in_place = in_place && !keep;
             let (path, branch) = if in_place { (main.to_string(), format!("desk/{id}")) } else { (format!("{main}/{TREES}/desk-{n}"), branch) };
             let t = ItemTree { repo: main.to_string(), path, branch, base: String::new(), slot: n, keep, addon_of, in_place, main_line: String::new(), landed: String::new(), landed_work: String::new() };
             it.tree = Some(t.clone());
+            it.copy_failed = false;
             // Started another way (Start it now, or freed by its `after`) while it waited for a copy: that wait is over.
             it.tree_wait = false;
             it.tree_wait_repo.clear();
             Some(Some(t))
         }
-        // Started now by the lead (START): it works where its holder is, message and all, in line for the next free
-        // copy all the same (#566).
-        // Not on a branch in the folder itself: that would put it in another item's files. It waits for the folder.
-        None if it.no_copy_wait && !(in_place && !keep) => {
-            (it.tree_wait, it.tree_wait_repo) = (true, main.to_string());
-            None
-        }
+        // At work already, its copy not to be made (its branch is out in a worktree of its holder's, say): it goes on
+        // where its holder is, not queued again, nor in line (#566). Not on a branch in the folder itself: that would
+        // put it in another item's files. It waits for the folder.
+        None if it.copy_failed && !(in_place && !keep) => None,
         None => {
             (it.state, it.tree_wait, it.tree_wait_repo) = ("queued".into(), true, main.to_string());
             Some(None)
@@ -872,14 +937,31 @@ impl Hub {
         });
     }
 
-    /// Item `id` as an older Cue saved one started now with every copy in use: at work, not in line for one (#566).
+    /// Item `id` as an older Cue saved one started now with every copy in use: at work, no copy (any it has now goes),
+    /// not in line for one (#566).
     pub(crate) fn desk_out_of_copy_line(&self, id: &str) {
-        self.write(|st| {
-            if let Some(i) = st.desk.item_mut(id) {
-                (i.tree_wait, i.no_copy_wait) = (false, true);
-                i.tree_wait_repo.clear();
-            }
+        let had = self.write(|st| {
+            let i = st.desk.item_mut(id)?;
+            (i.tree_wait, i.no_copy_wait) = (false, true);
+            i.tree_wait_repo.clear();
+            i.tree.take()
         });
+        if let Some(t) = had {
+            remove(&t);
+        }
+    }
+
+    /// Item `id` as a Cue before #653 left one started now with every copy in use: at work where its holder is, no
+    /// copy of its own (any it has now goes), in line for the next free one of `repo` (#566).
+    pub(crate) fn desk_at_work_without_copy(&self, id: &str, repo: &str) {
+        let had = self.write(|st| {
+            let i = st.desk.item_mut(id)?;
+            (i.tree_wait, i.no_copy_wait, i.tree_wait_repo) = (true, true, repo.to_string());
+            i.tree.take()
+        });
+        if let Some(t) = had {
+            remove(&t);
+        }
     }
 
     /// The finishing tick, as on Cue's next start.

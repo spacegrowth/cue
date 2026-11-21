@@ -14,11 +14,13 @@ fn top(dir: &Path) -> String {
     git(dir, &["worktree", "list", "--porcelain"]).lines().next().and_then(|l| l.strip_prefix("worktree ")).unwrap().to_string()
 }
 
-/// An item routed while every copy is in use, then started without one (as #455 was): (repo, project, id, holder).
+/// An item routed while every copy is in use, then started without one (as #455 was, before #653 gave one started now
+/// a copy past the count; an item saved so is still at work that way): (repo, project, id, holder).
 fn started_without_a_copy(w: &World) -> (PathBuf, String, String, String) {
     let (dir, project, id, h) = routed_with(w, |w, _, dir| w.hub().desk_hold_copies(&top(dir), &[1, 2, 3]), |_, _, _| {});
     w.hub().desk_item_act(&id, "start_now", "").unwrap();
     w.settle();
+    w.hub().desk_at_work_without_copy(&id, &top(&dir));
     let it = item(w, &project, "Header jumps");
     assert!(it["state"] == "working" && it["tree"].is_null(), "{it}");
     (dir, project, id, h)

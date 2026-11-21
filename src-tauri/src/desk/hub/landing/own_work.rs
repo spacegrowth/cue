@@ -206,6 +206,73 @@ fn own_branch_left(m: &str, id: &str, keep: &[String], skip: &Skip, out: &mut Ow
     }
 }
 
+/// `abs` as a path inside folder `top` (relative), as given or with either one's links read; None when outside it.
+fn rel_in(abs: &str, top: &str) -> Option<String> {
+    let real = |p: &str| -> String {
+        let path = std::path::Path::new(p);
+        match (path.parent().and_then(|d| std::fs::canonicalize(d).ok()), path.file_name()) {
+            (Some(d), Some(n)) => d.join(n).to_string_lossy().to_string(),
+            _ => p.to_string(),
+        }
+    };
+    let tops = [top.trim_end_matches('/').to_string(), std::fs::canonicalize(top).map(|t| t.to_string_lossy().to_string()).unwrap_or_default()];
+    for a in [abs.to_string(), real(abs)] {
+        for t in tops.iter().filter(|t| !t.is_empty()) {
+            if let Some(rel) = a.strip_prefix(&format!("{t}/")) {
+                return Some(rel.to_string());
+            }
+        }
+    }
+    None
+}
+
+impl Hub {
+    /// The files item `it`'s holder changed in its repository's main folder while it held it, not in its copy `t`
+    /// (#653), that its copy's landing would leave behind: still changed there (git says so; ignored ones, build
+    /// output, aren't) and not as its copy has them. Relative to the main folder. #598's holder worked in the main
+    /// folder before its copy was free and moved only part of it over; the rest stayed there, uncommitted. None for a
+    /// branch in the folder itself (everything there is in its snapshot), a branch the lead named, or another machine.
+    pub(crate) fn main_leftovers(&self, it: &DeskItem, t: &crate::desk::ItemTree) -> Vec<String> {
+        if t.in_place || t.keep || it.remote.is_some() {
+            return Vec::new();
+        }
+        let Some(own) = self.read(|st| own_log(st, it)) else { return Vec::new() };
+        let others = self.read(|st| other_copies(st, it));
+        let own_copy = [(t.path.clone(), t.branch.clone())];
+        let mut out: Vec<String> = Vec::new();
+        for f in crate::logs::steps::edited_between(&own.log, own.from, own.until) {
+            let abs = if f.starts_with('/') { f } else { format!("{}/{}", own.folder.trim_end_matches('/'), f.trim_start_matches("./")) };
+            if in_copies(&abs, &own_copy) || in_copies(&abs, &others) {
+                continue;
+            }
+            let Some(rel) = rel_in(&abs, &t.repo) else { continue };
+            if rel.is_empty() || out.contains(&rel) || rel == ".git" || rel.starts_with(".git/") {
+                continue;
+            }
+            let changed = git("", &t.repo, &[], &["status", "--porcelain", "--untracked-files=all", "--", &rel]).unwrap_or_default();
+            if changed.trim().is_empty() {
+                continue;
+            }
+            let in_main = std::fs::read(std::path::Path::new(&t.repo).join(&rel)).ok();
+            let in_copy = std::fs::read(std::path::Path::new(&t.path).join(&rel)).ok();
+            if in_main != in_copy {
+                out.push(rel);
+            }
+        }
+        out
+    }
+}
+
+/// What item `id`'s holder is told when files it changed are in the main folder, not in its copy (#653).
+pub(crate) fn main_left_words(left: &[String], t: &crate::desk::ItemTree) -> String {
+    format!(
+        "Not landed: these files you changed for it are in the main folder ({}), not in its copy, and landing the copy would leave them behind: {}. Move this item's changes in them into its copy at {} (leave any that are another session's), then say DONE. Files still there at that DONE land without them, named to the lead.",
+        t.repo,
+        left.join(", "),
+        t.path
+    )
+}
+
 /// What its session is told when its work isn't all on main after its DONE: which commits, and where.
 pub(crate) fn off_main_words(off: &[String], unlanded: usize, id: &str) -> String {
     let mut parts: Vec<String> = off.to_vec();

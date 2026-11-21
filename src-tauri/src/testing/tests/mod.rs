@@ -33,6 +33,7 @@ mod desk_commit;
 mod desk_reopen;
 mod desk_copy_wait;
 mod desk_land;
+mod desk_main_left;
 mod desk_remote;
 mod desk_named_copy;
 mod desk_own_work;

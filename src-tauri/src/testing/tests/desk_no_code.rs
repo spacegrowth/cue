@@ -129,8 +129,8 @@ fn start_on_a_doc_only_item_queued_after_another_starts_it_with_every_copy_in_us
 
 #[test]
 fn start_on_a_code_item_queued_after_another_starts_it_with_every_copy_in_use() {
-    // The same for an item with code (#548): START means now, where its holder is, not queued again. Its code is to
-    // land, so it stays in line for the next free copy (#566, #581), unlike a doc-only item.
+    // The same for an item with code (#548): START means now, not queued again. Its code is to land, so it gets a
+    // copy of its own past the count (#653), unlike a doc-only item.
     let w = World::new();
     let (project, a, _) = routed(&w, "Designers' advice on Loops", "a local doc; no code changes");
     let d = desk(&w, &project)["lead"]["sid"].as_str().unwrap().to_string();
@@ -142,10 +142,8 @@ fn start_on_a_code_item_queued_after_another_starts_it_with_every_copy_in_use() 
     ends(&w, &d, &format!("START: #{id} | why: no need to wait"));
     w.settle();
     let b = item(&w, &project, "Footer moves");
-    assert_eq!((b["state"].as_str(), b["tree"].is_null()), (Some("working"), true), "at work now, where its holder is: {b}");
-    assert_eq!(b["tree_wait"], true, "in line for the next free copy: {b}");
-    let held = w.hub().read(|st| st.desk.item(&id).cloned()).unwrap();
-    assert!(crate::desk::hub::landing::trees::in_line(&held), "{b}");
+    assert_eq!((b["state"].as_str(), b["tree"]["path"].is_string()), (Some("working"), true), "at work now, in a copy of its own: {b}");
+    assert!(b.get("tree_wait").is_none_or(|t| t.is_null() || t == false), "not in line for another: {b}");
 }
 
 #[test]

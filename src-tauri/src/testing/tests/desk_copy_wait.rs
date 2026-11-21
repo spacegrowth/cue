@@ -151,24 +151,23 @@ fn a_sent_back_item_waiting_for_a_working_folder_names_who_uses_them_and_start_n
     // Your words went at once (#567); Start now sends them again, with where to work.
     assert!(w.hosted.sent()[before..].iter().any(|(s, t)| *s == h && t.contains("The dot is too big")), "your words, now");
     let before = w.hosted.sent().len();
-    // Start now: at once, where its holder is, with your words; the wait is over.
+    // Start now: at once, in a copy of its own past the count (#653), with your words; the wait is over.
     w.hub().desk_item_act(&id, "start_now", "").unwrap();
     w.settle();
     let it = item(&w, &project, "Header jumps");
     assert_eq!(it["state"], "working", "{it}");
-    for gone in ["copy_users", "back_waiting", "tree"] {
+    for gone in ["copy_users", "back_waiting"] {
         assert!(it.get(gone).is_none_or(|v| v.is_null()), "{gone}: {it}");
     }
-    // In line for the next free one all the same (#566).
-    assert_eq!(it["tree_wait"], true, "{it}");
+    assert_eq!((it["tree"]["slot"].as_u64(), it["tree_wait"].as_bool().unwrap_or(false)), (Some(4), false), "{it}");
     let sent: Vec<String> = w.hosted.sent()[before..].iter().filter(|(s, t)| *s == h && t.contains(&format!("#{id}"))).map(|(_, t)| t.clone()).collect();
     assert_eq!(sent.len(), 1, "one message: {sent:?}");
     assert!(sent[0].contains("isn't done: The dot is too big"), "{}", sent[0]);
-    // A working folder let go of later is its (#566): it stays at work, now in its own copy.
+    // A working folder let go of later isn't its: it has its own already.
     w.hub().desk_let_go_copy(&top(&w), 2);
     w.settle();
     let it = item(&w, &project, "Header jumps");
-    assert_eq!((it["state"].as_str(), it["tree"]["slot"].as_u64()), (Some("working"), Some(2)), "{it}");
+    assert_eq!((it["state"].as_str(), it["tree"]["slot"].as_u64()), (Some("working"), Some(4)), "{it}");
 }
 
 #[test]
@@ -276,8 +275,9 @@ fn a_free_copy_goes_to_an_item_that_waits_only_for_a_copy_not_to_one_still_queue
     assert!(w.hosted.sent()[before..].iter().any(|(s, m)| *s == t && m.contains(&format!("Desk item #{c}"))), "a brief for #{c}");
 }
 
-/// #566 (#542's case): the lead STARTs an item while every copy is in use. It works where its holder is for now, in
-/// line for the next free copy, and gets it once one is let go of, its holder told where it is.
+/// #566 (#542's case): the lead STARTed an item while every copy was in use, and before #653 it worked where its
+/// holder is, in line for the next free copy. One left so by an older Cue gets it once one is let go of, its holder
+/// told where it is. (Started now, it gets a copy of its own at once: desk_main_left.rs.)
 #[test]
 fn an_item_started_with_every_copy_in_use_gets_the_next_free_copy() {
     let w = World::new();
@@ -286,6 +286,7 @@ fn an_item_started_with_every_copy_in_use_gets_the_next_free_copy() {
     let lead = super::desk::desk(&w, &project)["lead"]["sid"].as_str().unwrap().to_string();
     super::desk_commit::ends(&w, &lead, &format!("START: #{id} | why: the user needs it now"));
     w.advance(1000);
+    w.hub().desk_at_work_without_copy(&id, &repo);
     let it = item(&w, &project, "Header jumps");
     assert_eq!((it["state"].as_str(), it["tree"].is_null(), it["tree_wait"].as_bool()), (Some("working"), true, Some(true)), "{it}");
     let summary = w.hub().desk_summary(&project, "", false).0;
@@ -427,6 +428,8 @@ fn a_holder_ending_its_turn_while_its_item_waits_for_a_copy_is_not_a_stop() {
     let lead = super::desk::desk(&w, &project)["lead"]["sid"].as_str().unwrap().to_string();
     super::desk_commit::ends(&w, &lead, &format!("START: #{id} | why: the user needs it now"));
     w.advance(1000);
+    // At work in line for a copy, as a Cue before #653 left one started now.
+    w.hub().desk_at_work_without_copy(&id, &repo);
     let sent_from = w.hosted.sent().len();
     // Two turns of its end with no DONE and no word of waiting: the second is what used to go to the lead as a stop.
     for (prompt, reply) in [(format!("Desk item #{id}: Header jumps"), "Read the header code and planned the fix."), (format!("Desk item #{id}: carry on"), "Plan is ready.")] {
@@ -459,18 +462,19 @@ fn a_holder_ending_its_turn_while_its_item_waits_for_a_copy_is_not_a_stop() {
 }
 
 /// #634: an item at work where its holder is, only waiting for a free copy (#566), was refused by START ("it isn't
-/// waiting (it's working)"), and the lead had no way to see it could go first. START or COPY FIRST on it now puts it at
-/// the front of its repository's copy line, and it takes the next copy that frees.
+/// waiting (it's working)"), and the lead had no way to see it could go first. COPY FIRST on it is taken, and since
+/// #653 it gives it a copy of its own at once (past the project's count), never more work in the main folder.
 #[test]
-fn the_lead_moves_a_working_item_that_waits_for_a_copy_to_the_front_and_it_gets_the_next_one() {
+fn copy_first_on_a_working_item_in_line_for_a_copy_gives_it_one_of_its_own_at_once() {
     let w = World::new();
     let top = super::desk_unstick::top;
     let (_, project, a, h) = routed_with(&w, |w, _, _| w.hub().desk_hold_copies(&top(w), &[1, 2, 3]), |_, _, _| {});
     let lead = super::desk::desk(&w, &project)["lead"]["sid"].as_str().unwrap().to_string();
-    // Header starts where its holder is, in line for a copy.
+    // Header at work where its holder is, in line for a copy, as a Cue before #653 left it.
     super::desk::ends(&w, &lead, &format!("START: #{a} | why: needed now"));
     w.advance(1000);
     w.settle();
+    w.hub().desk_at_work_without_copy(&a, &top(&w));
     let it = item(&w, &project, "Header jumps");
     assert_eq!((it["state"].as_str(), it["tree_wait"].as_bool(), it["tree"].is_null()), (Some("working"), Some(true), true), "{it}");
     let summary = w.hub().desk_summary(&project, "", false).0;
@@ -487,32 +491,41 @@ fn the_lead_moves_a_working_item_that_waits_for_a_copy_to_the_front_and_it_gets_
     w.advance(1000);
     w.settle();
     assert_eq!(item(&w, &project, "Footer")["queue_order"].as_u64(), Some(1));
-    // START on the working one: not refused as working, it goes to the front.
-    super::desk::ends(&w, &lead, &format!("START: #{a} | why: the user needs the header first"));
-    w.advance(1000);
-    w.settle();
-    let told: Vec<String> = w.hosted.sent().into_iter().filter(|(s, _)| *s == lead).map(|(_, m)| m).collect();
-    assert!(!told.iter().any(|m| m.contains(&format!("#{a} not started"))), "{told:?}");
-    let order = |t: &str| item(&w, &project, t)["queue_order"].as_u64();
-    assert_eq!((order("Header jumps"), order("Footer")), (Some(1), Some(2)));
-    let d = super::desk::desk(&w, &project);
-    assert!(
-        d["decisions"].as_array().unwrap().iter().any(|s| s["item_id"] == a.as_str() && s["act"] == "copy_first" && s["text"] == format!("Moved #{a} to the front of the line for a free copy")),
-        "{}",
-        d["decisions"]
-    );
-    // COPY FIRST on it is taken too, not refused.
-    super::desk::ends(&w, &lead, &format!("COPY FIRST: #{a} | why: still first"));
+    // COPY FIRST on the working one: not refused as working, and (#653) not left at work in the main folder for the
+    // next copy that frees: a copy of its own at once, past the project's count, its holder told where.
+    let n = w.hosted.sent().len();
+    super::desk::ends(&w, &lead, &format!("COPY FIRST: #{a} | why: the user needs the header first"));
     w.advance(1000);
     w.settle();
     let told: Vec<String> = w.hosted.sent().into_iter().filter(|(s, _)| *s == lead).map(|(_, m)| m).collect();
     assert!(!told.iter().any(|m| m.contains(&format!("#{a} not moved up"))), "{told:?}");
-    // The next copy that frees is the header's; the footer still waits.
-    w.hub().desk_let_go_copy(&top(&w), 2);
-    w.settle();
     let it = item(&w, &project, "Header jumps");
-    assert_eq!((it["state"].as_str(), it["tree"]["slot"].as_u64()), (Some("working"), Some(2)), "{it}");
-    assert!(w.hosted.sent().iter().any(|(s, m)| *s == h && m.contains(&format!("Desk item #{a}")) && m.contains(it["tree"]["path"].as_str().unwrap())), "its holder is sent its copy");
+    assert_eq!((it["state"].as_str(), it["tree"]["slot"].as_u64(), it["tree_wait"].as_bool().unwrap_or(false)), (Some("working"), Some(4), false), "{it}");
+    let path = it["tree"]["path"].as_str().unwrap().to_string();
+    assert!(w.hosted.sent()[n..].iter().any(|(s, m)| *s == h && m.contains(&format!("Desk item #{a}")) && m.contains(&path)), "its holder is told where its copy is");
+    // The footer still waits for a free one.
     assert_eq!(item(&w, &project, "Footer")["state"], "queued");
     let _ = t;
+}
+
+/// #653: START on an item an older Cue left at work in line for a copy (#566) gives it a copy of its own at once, past
+/// the project's count, not a place in line: it never stays at work in the main folder.
+#[test]
+fn start_on_an_item_at_work_in_line_for_a_copy_gives_it_a_copy_of_its_own_at_once() {
+    let w = World::new();
+    let top = super::desk_unstick::top;
+    let (_, project, a, h) = routed_with(&w, |w, _, _| w.hub().desk_hold_copies(&top(w), &[1, 2, 3]), |_, _, _| {});
+    let lead = super::desk::desk(&w, &project)["lead"]["sid"].as_str().unwrap().to_string();
+    super::desk::ends(&w, &lead, &format!("START: #{a} | why: needed now"));
+    w.advance(1000);
+    w.settle();
+    w.hub().desk_at_work_without_copy(&a, &top(&w));
+    let n = w.hosted.sent().len();
+    super::desk::ends(&w, &lead, &format!("START: #{a} | why: the user needs the header first"));
+    w.advance(1000);
+    w.settle();
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!((it["state"].as_str(), it["tree"]["slot"].as_u64(), it["tree_wait"].as_bool().unwrap_or(false)), (Some("working"), Some(4), false), "{it}");
+    let path = it["tree"]["path"].as_str().unwrap();
+    assert!(w.hosted.sent()[n..].iter().any(|(s, m)| *s == h && m.contains(&format!("Desk item #{a}")) && m.contains(path)), "its holder is sent its copy");
 }
