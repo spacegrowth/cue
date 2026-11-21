@@ -325,7 +325,11 @@ fn note_to_holder(st: &mut Store, id: &str, holder: Option<Holder>, text: &str, 
     let ask = it.ask.as_ref().and_then(|a| a.get("sid")).and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(str::to_string);
     let to = ask.unwrap_or_else(|| h.to().to_string());
     let mate = if h.kind == "crew" { format!(", for {}", h.name) } else { String::new() };
-    let message = format!("About #{id} ({}){mate}: {}", it.title, crate::desk::with_your_pictures(&words));
+    let mut message = format!("About #{id} ({}){mate}: {}", it.title, crate::desk::with_your_pictures(&words));
+    // To check, it stays so (#584), unless its holder says your words leave more to do (#627).
+    if it.state == "to_check" {
+        message.push_str(&format!("\n{}", crate::desk::not_done_words(id)));
+    }
     let project = it.project.clone();
     you_wrote(st, &project, id, crate::desk::your_words(&words).0.trim(), &format!("to {}", h.name), now, fx);
     send_step(st, id, &to, message, now, fx);

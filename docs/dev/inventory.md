@@ -1244,7 +1244,7 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `src-tauri/src/voice/talk.rs::on_line` |  |  |
 | `ui/sheets.js::settingsSheet` |  |  |
 
-Files over 1000 lines: `src-tauri/src/voice/talk.rs`.
+Files over 1000 lines: `src-tauri/src/desk/model.rs`, `src-tauri/src/voice/talk.rs`.
 
 ## What this can't see
 

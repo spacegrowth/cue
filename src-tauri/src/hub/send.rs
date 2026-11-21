@@ -605,8 +605,17 @@ impl Hub {
     pub fn send_held(&self, session_id: &str, now: bool) -> Result<String, String> {
         // Under the typing gate, read but not taken: it stays kept (its bubble in place) until its copy is in the
         // thread, and goes from there in that same write (send_as_seen). Cancel meanwhile takes it back.
+        // A lead's Desk news that its summary couldn't carry is told after, outside the gate.
+        let mut failed = Vec::new();
+        let sent = self.send_held_gated(session_id, now, &mut failed);
+        self.desk_told(&failed);
+        sent
+    }
+
+    fn send_held_gated(&self, session_id: &str, now: bool, failed: &mut Vec<(String, String)>) -> Result<String, String> {
         let gate = self.typing_gate(session_id);
         let _typing = wait_turn(&gate)?;
+        *failed = self.desk_fresh_held(session_id);
         let h = self.read(|st| st.sessions.held(session_id)).ok_or("nothing kept for it")?;
         let saved = h.images.iter().map(|p| crate::uploads::Saved { path: p.clone(), mime: crate::uploads::mime_of(p).into() }).collect();
         let sent = self.send_in_turn(session_id, &h.text, saved, now, Some(&h)).inspect_err(|e| {
@@ -618,6 +627,20 @@ impl Hub {
             self.team_kept_left(session_id, &h.text, true);
         }
         Ok(sent)
+    }
+
+    /// A message kept for a Desk lead while it worked starts with its Desk's summary as it was when kept (#627): made
+    /// fresh as it goes, so the lead reads where items are now, not before its own last turn's routes. One summary,
+    /// first, however many messages were kept. Under the session's typing gate, so nothing is kept meanwhile.
+    /// What the summary couldn't carry, for `desk_told` once the gate is let go.
+    fn desk_fresh_held(&self, session_id: &str) -> Vec<(String, String)> {
+        let Some((project, text)) = self.read(|st| Some((st.desk.lead_of(session_id)?, st.sessions.held(session_id)?.text))) else { return Vec::new() };
+        if !crate::desk::has_block(&text) {
+            return Vec::new();
+        }
+        let (summary, failed) = self.desk_summary(&project, session_id, false);
+        self.write(|st| st.sessions.held_text_to(session_id, crate::desk::with_fresh_block(&text, &summary)));
+        failed
     }
 
     /// Enter once more, for a typed message the agent hasn't reported taking. Not when Cue can see the

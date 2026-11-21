@@ -50,7 +50,7 @@ fn your_comment_on_an_item_to_check_reaches_its_session_and_leaves_it_to_check()
     w.hub().desk_item_act(&id, "note", "ok testing now").unwrap();
     w.settle();
     let sent = sent_to(&w, &h)[before..].to_vec();
-    assert_eq!(sent, vec![format!("About #{id} (Header jumps): ok testing now")], "your words, as a comment");
+    assert_eq!(sent, vec![format!("About #{id} (Header jumps): ok testing now\n{}", crate::desk::not_done_words(&id))], "your words, as a comment, and how its holder says there's more to do (#627)");
     still_to_check(&w, &project);
     answers(&w, &h, &sent[0], "Thanks, I'll wait for your check.");
     still_to_check(&w, &project);

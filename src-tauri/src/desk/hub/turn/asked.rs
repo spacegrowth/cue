@@ -29,9 +29,10 @@ pub(crate) fn ask(st: &mut Store, id: &str, text: &str, now: u64) -> Result<Effe
     (it.state, it.stopped, it.updated) = ("working".into(), false, secs(now));
     let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
     let message = format!(
-        "{crew}A question about Desk item #{id} ({}), which is {stage}: {}\nAnswer it. If you change code for it, say DONE: #{id} once that's done; if you don't, the item stays as it was.\n{}",
+        "{crew}A question about Desk item #{id} ({}), which is {stage}: {}\nAnswer it. If you change code for it, say DONE: #{id} once that's done; if you don't, the item stays as it was.{}\n{}",
         it.title,
         crate::desk::with_your_pictures(&words),
+        if it.asked.as_ref().is_some_and(|(was, _)| was == "to_check") { format!("\n{}", crate::desk::not_done_words(id)) } else { String::new() },
         crate::desk::check_words(id)
     );
     let project = it.project.clone();
@@ -136,13 +137,7 @@ impl Hub {
         let fx = self.write(|st| {
             let mut fx = Effects::default();
             for it in st.desk.items.iter_mut().filter(|i| about(i)) {
-                (it.state, it.done_at, it.finish, it.close_on_check, it.updated) = ("working".into(), None, None, false, secs(now));
-                it.check = None;
-                it.mark_reopened();
-                // Kept on the DONE it reopens, so its card and Progress say why it's at work again.
-                if let Some(c) = it.checks.last_mut().filter(|c| c.back.is_empty()) {
-                    c.back = why.clone();
-                }
+                back_at_work(it, &why, now);
                 fx.items.push(it.id.clone());
             }
             fx
@@ -166,6 +161,31 @@ impl Hub {
             fx
         });
         self.desk_done(fx);
+    }
+}
+
+/// Item `it`, with you to check, at work again (`why`: what reopened it, kept on the DONE it reopens, so its card and
+/// Progress say why). Saved with it in `fx.items`, it gets its copy, or waits in line for one (desk_trees).
+pub(crate) fn back_at_work(it: &mut crate::desk::DeskItem, why: &str, now: u64) {
+    (it.state, it.done_at, it.finish, it.close_on_check, it.updated) = ("working".into(), None, None, false, secs(now));
+    (it.check, it.asked) = (None, None);
+    it.mark_reopened();
+    if let Some(c) = it.checks.last_mut().filter(|c| c.back.is_empty()) {
+        c.back = why.to_string();
+    }
+}
+
+/// Holder `sid` said NOT DONE on items it holds that are with you to check (#627): each is at work again, in line for
+/// a copy when none is free, until it says DONE again. One it doesn't hold, or not to check, stays as it is.
+pub(crate) fn not_done(st: &mut Store, sid: &str, text: &str, now: u64, fx: &mut Effects) {
+    for line in parse::lines(text) {
+        let parse::Line::NotDone { id, text: left } = line else { continue };
+        let id = st.desk.canon(&id);
+        let Some(it) = st.desk.item_mut(&id).filter(|i| i.state == "to_check" && i.holder.as_ref().is_some_and(|h| h.is(sid))) else { continue };
+        let name = it.holder.as_ref().map(|h| h.name.clone()).unwrap_or_default();
+        let why = if left.is_empty() { format!("{name}: not done yet") } else { format!("{name}: {left}") };
+        back_at_work(it, &why, now);
+        fx.items.push(id);
     }
 }
 

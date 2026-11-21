@@ -35,6 +35,46 @@ pub fn without_block(text: &str) -> &str {
     }
 }
 
+/// `text` holds a `<desk …>…</desk>` block (one message to a lead, or several kept together, #627).
+pub fn has_block(text: &str) -> bool {
+    blocks(text).next().is_some()
+}
+
+/// Where each `<desk …>…</desk>` block in `text` is (from, to, the whitespace after it included): one at its start,
+/// or after a blank line (where messages kept together join).
+fn blocks(text: &str) -> impl Iterator<Item = (usize, usize)> + '_ {
+    let mut from = 0;
+    std::iter::from_fn(move || {
+        while from < text.len() {
+            let at = text[from..].find("<desk").map(|i| from + i)?;
+            let starts = text[..at].trim_end_matches([' ', '\t']).is_empty() || text[..at].ends_with("\n\n");
+            let opens = text[at + 5..].starts_with([' ', '>']);
+            match text[at..].find("\n</desk>").filter(|_| starts && opens) {
+                Some(end) => {
+                    let close = at + end + "\n</desk>".len();
+                    let after = close + (text[close..].len() - text[close..].trim_start().len());
+                    from = after;
+                    return Some((at, after));
+                }
+                None => from = at + 5,
+            }
+        }
+        None
+    })
+}
+
+/// `text` with every `<desk …>…</desk>` block taken out and `block` (a summary made now) put first, once.
+pub fn with_fresh_block(text: &str, block: &str) -> String {
+    let mut rest = String::new();
+    let mut last = 0;
+    for (from, to) in blocks(text).collect::<Vec<_>>() {
+        rest.push_str(&text[last..from]);
+        last = to;
+    }
+    rest.push_str(&text[last..]);
+    format!("{block}\n\n{}", rest.trim())
+}
+
 /// Routing policy in every Desk summary, including for already-running leads.
 pub(crate) const ROUTING_GUIDANCE: &str = concat!(
     "For independent work, prefer a suitable idle Desk session over a busy one. ",
@@ -215,6 +255,15 @@ pub fn check_words(id: &str) -> String {
         "With your DONE, on a line of its own, write the one line shown to whoever checks it, built from its you'll-see (if \
          it has one) and what you changed: CHECK: #{id} | Try: <one concrete thing to do in the app> when there's something to see, or \
          CHECK: #{id} | Nothing to see: <why, e.g. tests passed, or a change nobody can see>, close it."
+    )
+}
+
+/// How the holder of item `id`, with the user to check, says it isn't done after all (#627).
+pub fn not_done_words(id: &str) -> String {
+    format!(
+        "If there's more to do on it after all (the user wants more, or you found something left), say NOT DONE: #{id} | <what's \
+         left> on a line of its own: Cue puts it back in progress (in line for a copy when none is free). Else it stays \
+         with the user to check."
     )
 }
 
