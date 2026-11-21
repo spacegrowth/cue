@@ -478,14 +478,15 @@ impl Hub {
             let q = match &it.remote {
                 // Worked on another machine: settled there, on its branch (desk/hub/landing/remote_item.rs).
                 Some(r) => format!(
-                    "Its work clashes with {onto} in {}: on {}, in {}, fetch {} and merge {}/{} into {}, settle the clash there, commit it, and say DONE again",
+                    "Its work clashes with {onto} in {}: on {}, in {}, fetch {} and merge {}/{} into {}, settle the clash there, commit it, and say {}",
                     files.join(", "),
                     crate::machines::display_name(&r.machine),
                     r.folder,
                     r.remote,
                     r.remote,
                     r.onto,
-                    r.branch
+                    r.branch,
+                    crate::desk::hub::landing::remote_item::done_form(r, &it.id)
                 ),
                 None => format!(
                     "Its work clashes with {onto} in {}: in {}, merge {onto} into {}, settle the clash there, and say DONE again",

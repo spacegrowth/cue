@@ -71,6 +71,12 @@ fn works_there(there: &Path, id: &str, file: &str, text: &str, message: &str) {
     git(there, &["commit", "-q", "-m", message]);
 }
 
+/// The holder's DONE, naming its branch there and the last commit on it (#596).
+fn done_there(there: &Path, id: &str) -> String {
+    let sha = git(there, &["rev-parse", &format!("desk/{id}")]).trim().to_string();
+    format!("Fixed.\nDONE: #{id} | branch: desk/{id} | commit: {sha}")
+}
+
 #[test]
 fn an_item_routed_to_a_session_on_another_machine_is_worked_on_a_branch_there_and_lands_here_at_its_done() {
     let w = World::new();
@@ -83,10 +89,11 @@ fn an_item_routed_to_a_session_on_another_machine_is_worked_on_a_branch_there_an
     let told: Vec<String> = w.hosted.sent().into_iter().filter(|(s, t)| *s == h && t.contains(&format!("Desk item #{id}"))).map(|(_, t)| t).collect();
     assert_eq!(told.len(), 1, "{told:?}");
     assert!(told[0].contains(&format!("git switch -c desk/{id} origin/main")) && told[0].contains("Don't push"), "{}", told[0]);
+    assert!(told[0].contains(&format!("DONE: #{id} | branch: desk/{id} | commit: ")), "told to name its branch and commit: {}", told[0]);
     assert!(!told[0].contains(".claude/worktrees"), "no copy here named: {}", told[0]);
     works_there(&there, &id, "a.txt", "a\n", "first go");
     works_there(&there, &id, "b.txt", "b\n", "second go");
-    ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
+    ends(&w, &h, &done_there(&there, &id));
     // Pushed from there (its own branch only), landed here as one commit.
     let pushed = git(&there, &["rev-parse", &format!("desk/{id}")]).trim().to_string();
     assert_eq!(git(&bare, &["rev-parse", &format!("refs/heads/desk/{id}")]).trim(), pushed, "its branch on the remote");
@@ -108,7 +115,7 @@ fn a_never_commit_word_on_the_branch_there_hands_it_back_before_anything_is_push
     let ((dir, bare, there, project, id, h), _ssh) = routed_there(&w);
     w.hub().set_setting("project.never", serde_json::json!({ project.clone(): ["sekrit"] })).unwrap();
     works_there(&there, &id, "a.txt", "the sekrit plan\n", "first go");
-    ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
+    ends(&w, &h, &done_there(&there, &id));
     let it = item(&w, &project, "Header jumps");
     assert_eq!(it["state"].as_str(), Some("working"), "back at work: {it}");
     assert!(git(&bare, &["branch", "--list", &format!("desk/{id}")]).trim().is_empty(), "nothing pushed");
@@ -119,7 +126,7 @@ fn a_never_commit_word_on_the_branch_there_hands_it_back_before_anything_is_push
     // Taken out of the branch's history there, DONE again: it lands.
     git(&there, &["reset", "-q", "--hard", "origin/main"]);
     works_there(&there, &id, "a.txt", "the plan\n", "reworded");
-    ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
+    ends(&w, &h, &done_there(&there, &id));
     assert_eq!(git(&dir, &["log", "-1", "--format=%s"]).trim(), format!("Header jumps (#{id})"));
     assert_eq!(item(&w, &project, "Header jumps")["state"].as_str(), Some("to_check"));
 }
@@ -131,7 +138,7 @@ fn a_machine_that_doesnt_answer_at_done_waits_and_is_tried_again() {
     works_there(&there, &id, "a.txt", "a\n", "first go");
     // The machine's gone quiet.
     ssh.unplug("box");
-    ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
+    ends(&w, &h, &done_there(&there, &id));
     let it = item(&w, &project, "Header jumps");
     assert_eq!((it["state"].as_str(), it["finish"]["wait"].as_str()), (Some("finishing"), Some("Machine not answering")), "{it}");
     assert_eq!(git(&dir, &["rev-list", "--count", "HEAD"]).trim(), "1");
@@ -159,7 +166,7 @@ fn a_commit_with_an_email_git_made_up_from_the_machine_is_handed_back_unpushed()
     let ((_, bare, there, project, id, h), _ssh) = routed_there(&w);
     git(&there, &["config", "user.email", "t@box"]);
     works_there(&there, &id, "a.txt", "a\n", "first go");
-    ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
+    ends(&w, &h, &done_there(&there, &id));
     assert_eq!(item(&w, &project, "Header jumps")["state"].as_str(), Some("working"));
     assert!(git(&bare, &["branch", "--list", &format!("desk/{id}")]).trim().is_empty(), "nothing pushed");
     let back = w.hosted.sent().into_iter().filter(|(s, t)| *s == h && t.contains("isn't done")).map(|(_, t)| t).last().unwrap_or_default();
@@ -177,10 +184,96 @@ fn a_holder_no_longer_on_that_machine_finishes_its_item_here_and_nothing_is_push
             s.origin.machine.clear();
         }
     });
-    ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
+    ends(&w, &h, &done_there(&there, &id));
     let it = item(&w, &project, "Header jumps");
     assert!(it["remote"].is_null() && it["machine"].as_str().unwrap_or("").is_empty(), "{it}");
     assert!(git(&bare, &["branch", "--list", &format!("desk/{id}")]).trim().is_empty(), "nothing pushed from there");
+}
+
+#[test]
+fn a_done_that_names_no_commit_is_handed_back_with_the_line_to_say() {
+    let w = World::new();
+    let ((dir, bare, there, project, id, h), _ssh) = routed_there(&w);
+    works_there(&there, &id, "a.txt", "a\n", "first go");
+    ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
+    assert_eq!(item(&w, &project, "Header jumps")["state"].as_str(), Some("working"));
+    assert!(git(&bare, &["branch", "--list", &format!("desk/{id}")]).trim().is_empty(), "nothing pushed");
+    let back = w.hosted.sent().into_iter().filter(|(s, t)| *s == h && t.contains("isn't done")).map(|(_, t)| t).last().unwrap_or_default();
+    assert!(back.contains("didn't name the last commit") && back.contains(&format!("DONE: #{id} | branch: desk/{id} | commit:")), "{back}");
+    // Said as it was told: it lands.
+    ends(&w, &h, &done_there(&there, &id));
+    assert_eq!(git(&dir, &["log", "-1", "--format=%s"]).trim(), format!("Header jumps (#{id})"));
+}
+
+#[test]
+fn a_done_naming_another_commit_waits_for_its_branch_and_lands_once_the_done_is_right() {
+    let w = World::new();
+    let ((dir, bare, there, project, id, h), _ssh) = routed_there(&w);
+    works_there(&there, &id, "a.txt", "a\n", "first go");
+    let named = done_there(&there, &id);
+    // A commit after the one its DONE names: the branch there isn't what it said.
+    works_there(&there, &id, "b.txt", "b\n", "second go");
+    ends(&w, &h, &named);
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!(it["state"].as_str(), Some("finishing"), "{it}");
+    assert!(it["finish"]["wait"].as_str().unwrap_or("").starts_with("Waiting for its branch"), "{it}");
+    assert!(git(&bare, &["branch", "--list", &format!("desk/{id}")]).trim().is_empty(), "nothing pushed");
+    assert_eq!(git(&dir, &["rev-list", "--count", "HEAD"]).trim(), "1", "nothing landed");
+    let told = || w.hosted.sent().into_iter().filter(|(s, t)| *s == h && t.contains("waits for its branch")).map(|(_, t)| t).collect::<Vec<_>>();
+    assert_eq!(told().len(), 1, "{:?}", told());
+    assert!(told()[0].contains(&format!("DONE: #{id} | branch: desk/{id} | commit:")), "{:?}", told());
+    // Tried again a minute on: still waiting, its holder not told again.
+    w.advance(61_000);
+    super::desk_commit::tick(&w);
+    assert!(item(&w, &project, "Header jumps")["finish"]["wait"].as_str().unwrap_or("").starts_with("Waiting for its branch"));
+    assert_eq!(told().len(), 1, "told once: {:?}", told());
+    // Its DONE again, naming its last commit: it lands at once.
+    ends(&w, &h, &done_there(&there, &id));
+    assert_eq!(git(&dir, &["log", "-1", "--format=%s"]).trim(), format!("Header jumps (#{id})"));
+    assert_eq!(git(&dir, &["show", "--name-only", "--format=", "HEAD"]).trim(), "a.txt\nb.txt");
+}
+
+#[test]
+fn a_missing_branch_waits_and_lands_once_its_there() {
+    let w = World::new();
+    let ((dir, _, there, project, id, h), _ssh) = routed_there(&w);
+    works_there(&there, &id, "a.txt", "a\n", "first go");
+    let named = done_there(&there, &id);
+    // Its work is on a branch of another name there.
+    git(&there, &["branch", "-q", "-m", &format!("desk/{id}"), "wip"]);
+    ends(&w, &h, &named);
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!(it["state"].as_str(), Some("finishing"), "not handed back: {it}");
+    assert!(it["finish"]["wait"].as_str().unwrap_or("").starts_with("Waiting for its branch"), "{it}");
+    let told = w.hosted.sent().into_iter().filter(|(s, t)| *s == h && t.contains("waits for its branch")).map(|(_, t)| t).collect::<Vec<_>>();
+    assert!(told.len() == 1 && told[0].contains(&format!("can't find the branch desk/{id}")), "{told:?}");
+    // Its branch is back: the tick a minute on lands it.
+    git(&there, &["branch", "-q", "-m", "wip", &format!("desk/{id}")]);
+    w.advance(61_000);
+    super::desk_commit::tick(&w);
+    assert_eq!(git(&dir, &["log", "-1", "--format=%s"]).trim(), format!("Header jumps (#{id})"));
+}
+
+#[test]
+fn a_clash_goes_back_to_the_holder_on_the_machine_and_the_page_shows_what_was_fetched() {
+    let w = World::new();
+    let ((dir, _, there, project, id, h), _ssh) = routed_there(&w);
+    // The main line here moved on in the same file.
+    std::fs::write(dir.join("a.txt"), "here\n").unwrap();
+    git(&dir, &["add", "a.txt"]);
+    git(&dir, &["commit", "-q", "-m", "here first"]);
+    works_there(&there, &id, "a.txt", "there\n", "first go");
+    ends(&w, &h, &done_there(&there, &id));
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!(it["state"].as_str(), Some("working"), "back to its holder: {it}");
+    assert_eq!(git(&dir, &["log", "-1", "--format=%s"]).trim(), "here first", "nothing landed");
+    let back = w.hosted.sent().into_iter().filter(|(s, t)| *s == h && t.contains("isn't done")).map(|(_, t)| t).last().unwrap_or_default();
+    assert!(back.contains("clashes") && back.contains(&format!("merge origin/main into desk/{id}")), "settled there: {back}");
+    assert!(back.contains(&format!("DONE: #{id} | branch: desk/{id} | commit:")), "{back}");
+    // Its page: the work fetched here, read here.
+    let d = w.hub().desk_item_diff(&id).unwrap();
+    assert_eq!(d["machine"].as_str(), Some(""), "{d}");
+    assert!(d["diff"].as_str().unwrap_or("").contains("+there"), "{d}");
 }
 
 /// Two landings on main here the shared copy doesn't have.

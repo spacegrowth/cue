@@ -545,6 +545,34 @@ fn done(body: &str) -> Option<Line> {
     (!ids.is_empty()).then_some(Line::Done { ids })
 }
 
+/// What a DONE line for item `id` in `text` names of its work on another machine (#596): its branch and its last
+/// commit, from "DONE: #<id> | branch: <branch> | commit: <sha>" (labels in any case; either may be missing, then "").
+/// None: no DONE line names `id`.
+pub fn done_names(text: &str, id: &str) -> Option<(String, String)> {
+    read(text).find_map(|t| {
+        let (word, body) = unmarked(t).split_once(':')?;
+        if word.trim_end_matches('*').trim() != "DONE" {
+            return None;
+        }
+        let mut p = body.split('|');
+        let ids = p.next()?;
+        if !ids.split([',', ' ']).filter(|w| w.trim().starts_with('#')).filter_map(id_of).any(|i| i == id) {
+            return None;
+        }
+        let (mut branch, mut commit) = (String::new(), String::new());
+        for part in p {
+            let Some((label, v)) = part.split_once(':') else { continue };
+            let v = v.trim().trim_matches(['`', '*', '"', '.']).trim().to_string();
+            match label.trim().to_ascii_lowercase().as_str() {
+                "branch" => branch = v,
+                "commit" => commit = v.to_ascii_lowercase(),
+                _ => {}
+            }
+        }
+        Some((branch, commit))
+    })
+}
+
 /// "#627 | <what's left>" (or "#627 — …", "#627: …", or "#627" alone): Line::NotDone.
 fn not_done(body: &str) -> Option<Line> {
     let rest = body.trim().strip_prefix('#')?;
@@ -812,5 +840,14 @@ mod tests {
         let (_, to, steps, why) = steps_why("check -> none | the user asked");
         assert_eq!((to.as_str(), steps.len(), why.as_str()), ("none", 0, "the user asked"), "a why without its label");
         assert!(lands("check | why: x").is_none(), "no arrow");
+    }
+    #[test]
+    fn a_done_names_its_branch_and_commit() {
+        let text = "All in.\nDONE: #a1 | branch: desk/a1 | commit: `ABC123`\nCHECK: #a1 | Try: it";
+        assert_eq!(done_names(text, "a1"), Some(("desk/a1".into(), "abc123".into())));
+        assert_eq!(done_names("DONE: #a1", "a1"), Some((String::new(), String::new())));
+        assert_eq!(done_names("DONE: #a1 | Branch: b", "b2"), None);
+        assert_eq!(done_names("```\nDONE: #a1 | commit: abc\n```", "a1"), None);
+        assert!(matches!(&lines("DONE: #a1 | branch: desk/a1 | commit: abc")[..], [Line::Done { ids }] if ids == &["a1".to_string()]));
     }
 }

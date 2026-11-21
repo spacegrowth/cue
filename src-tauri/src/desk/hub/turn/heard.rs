@@ -207,13 +207,19 @@ fn dones(st: &mut Store, sid: &str, text: &str, now: u64, fx: &mut Effects) -> O
     let here = st.sessions.get(sid).is_some_and(|s| s.origin.machine.is_empty());
     for line in parse::lines(text) {
         let Line::Done { ids } = line else { continue };
-        for id in ids {
-            let id = st.desk.canon(&id);
+        for said in ids {
+            let id = st.desk.canon(&said);
             // At work, or finishing and stopped on a question (a word in it, a conflict, a failed build): finishing
             // (again), its commit made a moment later (desk/hub/landing/finish.rs), and what waits on it started once it is.
-            let again = |i: &DeskItem| i.state == "finishing" && i.finish.as_ref().is_some_and(|f| !f.question.is_empty());
+            // Or waiting for its branch on another machine: a DONE naming its new commit is tried at once (#596).
+            let waits = |i: &DeskItem| i.remote.as_ref().is_some_and(|r| !r.wait.is_empty());
+            let again = |i: &DeskItem| i.state == "finishing" && (i.finish.as_ref().is_some_and(|f| !f.question.is_empty()) || waits(i));
             let Some(it) = st.desk.item_mut(&id).filter(|i| i.holder.as_ref().is_some_and(|h| h.is(sid)) && (matches!(i.state.as_str(), "working" | "queued") || again(i))) else { continue };
             it.made = parse::made_in(text, here);
+            // Work on another machine: the branch and commit its DONE names are the ones Cue lands (#596).
+            if let Some(r) = it.remote.as_mut() {
+                (r.said_branch, r.said_commit) = parse::done_names(text, &said).unwrap_or_default();
+            }
             let by = if it.crew.is_empty() { it.holder.as_ref().map(|h| h.name.clone()).unwrap_or_default() } else { it.crew.clone() };
             it.checks.push(crate::desk::model::DeskCheck { at: now, by, ..Default::default() });
             fx.checked.push(id.clone());

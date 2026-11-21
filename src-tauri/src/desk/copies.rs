@@ -54,6 +54,11 @@ pub struct RemoteWork {
     /// Tries in a row its DONE stopped on something that won't mend by itself (desk/hub/landing/remote_item.rs).
     #[serde(default)]
     pub fails: u32,
+    /// What its holder's last DONE named (#596): the branch and the last commit Cue lands ("": not named).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub said_branch: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub said_commit: String,
 }
 
 /// Where a new session for an item starts when not on this Mac: the machine and the folder of the clone there.

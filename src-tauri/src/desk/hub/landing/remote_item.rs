@@ -125,12 +125,20 @@ pub(crate) fn remote_line(r: &RemoteWork, id: &str) -> String {
          (git fetch {remote} && git switch -c {branch} {remote}/{onto}; if it's there already, switch to it and merge \
          {remote}/{onto}). Commit all your work on {branch}. Don't push, and don't change {onto}: at your DONE, Cue \
          checks it for words that must not go public, pushes {branch} from there, and lands it on {onto} like any item. \
-         Say in your DONE which checks you ran and which you couldn't run there. Your fixes for #{id} go on {branch} too.",
+         Say in your DONE which checks you ran and which you couldn't run there, and name your branch and its last \
+         commit in it: {done}. Your fixes for #{id} go on {branch} too.",
+        done = done_form(r, id),
         folder = r.folder,
         onto = r.onto,
         remote = r.remote,
         branch = r.branch,
     )
+}
+
+/// The DONE line a holder of item `id` on another machine says (#596): its branch and the last commit on it, which
+/// Cue checks is the one it pushes and fetches.
+pub(crate) fn done_form(r: &RemoteWork, id: &str) -> String {
+    format!("DONE: #{id} | branch: {b} | commit: <its last commit in full, from git rev-parse {b}>", b = r.branch)
 }
 
 /// The remote main checkout `repo`'s branch `onto` is pushed to: its own setting, else "origin", else the only one.
@@ -299,10 +307,10 @@ impl Hub {
             return None;
         }
         let shown = crate::machines::display_name(m);
-        if git(m, dir, &[], &["rev-parse", "-q", "--verify", &format!("refs/heads/{branch}")]).is_none() {
-            self.remote_back(it, &format!("{NO_BRANCH}: Cue can't find the branch {branch} in {dir} on {shown}. Make it there from {}/{} as you were told, commit your work on it, and say DONE again", r.remote, r.onto));
+        let Some(head) = git(m, dir, &[], &["rev-parse", "-q", "--verify", &format!("refs/heads/{branch}")]).map(|h| h.trim().to_string()) else {
+            self.remote_missing(it, &format!("Cue can't find the branch {branch} in {dir} on {shown}. Make it there from {}/{} as you were told, commit your work on it, and say {}", r.remote, r.onto, done_form(r, &it.id)));
             return None;
-        }
+        };
         let loose = git(m, dir, &[], &["status", "--porcelain", "--untracked-files=normal"]).unwrap_or_default();
         let on = git(m, dir, &[], &["symbolic-ref", "--short", "-q", "HEAD"]).map(|s| s.trim().to_string()).unwrap_or_default();
         if on == branch && !loose.trim().is_empty() {
@@ -321,6 +329,9 @@ impl Hub {
         if count == 0 {
             self.remote_set(&it.id, |r| r.wait.clear());
             self.desk_finish_shared(&it.id);
+            return None;
+        }
+        if !self.remote_named(it, r, &head) {
             return None;
         }
         Some((there, range))
@@ -375,7 +386,7 @@ impl Hub {
             self.remote_stuck(id, &because(format!("{NO_BRANCH}: not fetched here"), &e));
             return None;
         }
-        if rev(&repo, &fetched_ref(id)).as_deref() != Some(sha.as_str()) {
+        if rev(&repo, &fetched_ref(id)).as_deref() != Some(sha.as_str()) || (!r.said_commit.is_empty() && !sha.starts_with(&r.said_commit)) {
             self.remote_stuck(id, &format!("{NO_BRANCH}: the remote's {branch} isn't the commit pushed"));
             return None;
         }
@@ -482,6 +493,35 @@ impl Hub {
         self.finish_back(it, question, "remote", "", true);
     }
 
+    /// Whether item `it`'s DONE named its branch and last commit, and that commit is `head`, its branch's head there
+    /// (#596). A DONE naming none goes back to its holder with the line to say; another branch or commit waits for its
+    /// branch, tried again by the tick, and its holder is told once what Cue found.
+    fn remote_named(&self, it: &DeskItem, r: &RemoteWork, head: &str) -> bool {
+        let shown = crate::machines::display_name(&r.machine);
+        if r.said_commit.is_empty() {
+            self.remote_back(it, &format!("Not landed: your DONE didn't name the last commit on {}. Say it as {}", r.branch, done_form(r, &it.id)));
+            return false;
+        }
+        let branch_ok = r.said_branch.is_empty() || r.said_branch == r.branch;
+        if branch_ok && r.said_commit.len() >= 7 && head.starts_with(&r.said_commit) {
+            return true;
+        }
+        let named = if branch_ok { format!("commit {}", r.said_commit) } else { format!("branch {}", r.said_branch) };
+        self.remote_missing(it, &format!("your DONE names {named}, but {} on {shown} is at {}. Commit your work on {}, and say {}", r.branch, short(head), r.branch, done_form(r, &it.id)));
+        false
+    }
+
+    /// Item `it`'s branch there isn't (yet) the one its DONE names, or isn't there (#596): it waits for its branch,
+    /// tried again by the tick (asking you after `STUCK_AFTER` tries), and its holder is told `what` once.
+    fn remote_missing(&self, it: &DeskItem, what: &str) {
+        let told = it.remote.as_ref().is_some_and(|r| r.fails > 0);
+        self.remote_stuck(&it.id, &format!("{NO_BRANCH}: {}", what.split(". ").next().unwrap_or(what)));
+        let Some(h) = it.holder.clone().filter(|_| !told) else { return };
+        let mut fx = Effects::default();
+        fx.sends.push((h.to().to_string(), format!("Desk item #{} ({}) waits for its branch: {what}. Cue tries again each minute.", it.id, it.title)));
+        self.desk_done(fx);
+    }
+
     /// Item `id`'s DONE stopped on `why`, which a minute won't mend by itself (a push refused, a fetch here failing):
     /// tried again by the tick, and after `STUCK_AFTER` tries in a row it stops and asks you.
     fn remote_stuck(&self, id: &str, why: &str) {
@@ -540,6 +580,11 @@ impl Hub {
             self.later(0, |h| h.desk_feed_send());
         }
     }
+}
+
+/// Commit `sha` as shown: its first 10 characters.
+fn short(sha: &str) -> &str {
+    sha.get(..10).unwrap_or(sha)
 }
 
 /// Whether item `it`'s remote work (if any) is its holder's: the holder is on that machine, in that folder.
