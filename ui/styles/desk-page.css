@@ -218,6 +218,9 @@
 /* The same options under the reply that asks you to pick, in the item's chat (#539). */
 .dk-chat-opts { margin: 8px 0 2px; max-width: 520px; }
 .dk-built { flex-basis: 100%; margin: 0; font-size: var(--type-small); color: var(--muted); }
+/* The same line on its row in Done (#606), under its title. */
+.dk-it .dk-built { flex-basis: auto; margin: 1px 0 2px; }
+.dk-it.on .dk-built a { color: inherit; text-decoration: underline; }
 .dk-built a { color: var(--accent); text-decoration: none; }
 .dk-built a:hover { text-decoration: underline; }
 .dk-pacts .dk-chk-after { font-size: var(--type-small); color: var(--muted); }

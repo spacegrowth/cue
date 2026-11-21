@@ -297,3 +297,30 @@ fn if_picked_lines_are_read() {
     assert_eq!((next[0].1.see.as_str(), next[0].1.done_when.as_str(), next[0].1.by.as_str()), ("one box", "top box gone", "cue-teams"));
     assert_eq!((next[1].1.option.as_str(), next[1].1.title.as_str(), next[1].1.by.as_str()), ("any", "Note it", "me"));
 }
+
+#[test]
+fn a_build_item_the_lead_files_for_your_pick_links_both_ways() {
+    // #606: you picked in the lead's chat; the lead closes the mocks item and files what builds it itself, naming
+    // where it came from. Both items link to each other, as a Pick does.
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let m = mocks(&w, &h, &project);
+    let l = desk(&w, &project)["lead"]["sid"].as_str().unwrap().to_string();
+    w.advance(1000);
+    ends(&w, &l, &format!("CLOSE: #{m} | why: B was picked in the chat\nITEM: feature | Build: working items (option B) | you'll see: the compact list | done when: it's in the app | from: #{m} | picked: option B"));
+    let b = item(&desk(&w, &project), "Build: working items (option B)").clone();
+    let n = b["id"].as_str().unwrap().to_string();
+    assert_eq!((b["builds"].as_str(), b["from_pick"].as_str()), (Some(m.as_str()), Some("B")), "{b}");
+    assert_eq!(b["done_when"], "it's in the app", "the from: and picked: parts aren't its title or check: {b}");
+    let mk = item(&desk(&w, &project), "Mocks: working items").clone();
+    assert_eq!((mk["picked"].as_str(), mk["built_as"].as_str()), (Some("B"), Some(n.as_str())), "{mk}");
+
+    // A follow-on that isn't a pick: linked, no option. One naming an item that isn't there is refused, in words.
+    w.advance(1000);
+    ends(&w, &l, &format!("ITEM: task | Write the release note | done when: it's in the notes | from: #{n}\nITEM: task | Something else | from: #zz9"));
+    let f = item(&desk(&w, &project), "Write the release note").clone();
+    assert_eq!((f["builds"].as_str(), f["from_pick"].as_str()), (Some(n.as_str()), None), "{f}");
+    let b = item(&desk(&w, &project), "Build: working items (option B)").clone();
+    assert_eq!((b["built_as"].as_str(), b["picked"].as_str()), (f["id"].as_str(), None), "{b}");
+    assert!(sent_to(&w, &l).iter().any(|t| t.contains("from: #zz9") && t.contains("there's no #zz9")), "{:?}", sent_to(&w, &l));
+}

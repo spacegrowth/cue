@@ -1334,14 +1334,14 @@ test("a pick on an item's mocks: Pick B closes it, its new build item is linked 
   await expect(head.locator(".dk-pword")).toHaveText("Done");
   const n = (await items()).find((i) => i.id === "d5").built_as;
   await expect(picks).toHaveCount(0);
-  await expect(head.locator(".dk-built")).toHaveText(`Picked B → being built as #${n}`);
+  await expect(head.locator(".dk-built")).toHaveText(`You picked option B. It's being built as #${n}`);
   // Its link opens the build item, whose page links back to the mocks.
   await head.locator(`a[data-desk-item="${n}"]`).click();
   await expect(page.locator(".dk-right .dk-pg h1")).toContainText("Build: working items (option B)");
   const back = page.locator(".dk-panel[data-side-for] .dk-pnow .dk-built");
-  await expect(back).toHaveText("Follows what you picked on #d5");
+  await expect(back).toHaveText("From your pick on #d5");
   await back.locator('a[data-desk-item="d5"]').click();
-  await expect(page.locator(".dk-panel[data-side-for] .dk-pnow .dk-built")).toHaveText(`Picked B → being built as #${n}`);
+  await expect(page.locator(".dk-panel[data-side-for] .dk-pnow .dk-built")).toHaveText(`You picked option B. It's being built as #${n}`);
   // A pick again (the button is gone, the hub refuses any other): no second build item, and it says which.
   const before = (await items()).length;
   await page.evaluate(() => deskAct("d5", "pick", { dataset: { on: "C" } }));

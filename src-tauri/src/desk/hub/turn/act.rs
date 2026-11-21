@@ -652,7 +652,7 @@ fn file_follow_ups(st: &mut Store, it: &DeskItem, option: &str, canvas: &str, no
     for n in &named {
         let mut b = new_item(st, &it.project, &n.kind, &n.title, &n.done_when, "you", now);
         b.see = n.see.trim().to_string();
-        b.builds = id.clone();
+        (b.builds, b.from_pick) = (id.clone(), option.to_string());
         b.why = format!("You picked option {option} on #{id}{on}");
         filed.push((b.id.clone(), n.by.clone()));
         st.desk.items.push(b);
@@ -662,7 +662,7 @@ fn file_follow_ups(st: &mut Store, it: &DeskItem, option: &str, canvas: &str, no
         let title = format!("Build: {} (option {option})", topic_of(&it.title));
         let done_when = format!("option {option} of #{id} is in the app and works as #{id} shows it; where #{id} shows its options ({canvas}), it says \"Picked: {option}\"");
         let mut b = new_item(st, &it.project, kind, &title, &done_when, "you", now);
-        b.builds = id.clone();
+        (b.builds, b.from_pick) = (id.clone(), option.to_string());
         b.why = format!("You picked option {option} on #{id}{on}");
         filed.push((b.id.clone(), String::new()));
         st.desk.items.push(b);

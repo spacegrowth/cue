@@ -5,8 +5,9 @@
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Line {
-    /// A new item.
-    Item { kind: String, title: String, see: String, done_when: String, why: String },
+    /// A new item. `follows`: the item it carries on from (`| from: #<id>`, #606), with `picked` the option you picked
+    /// there (`| picked: <option>`), when the lead files a build item for your pick itself; both empty otherwise.
+    Item { kind: String, title: String, see: String, done_when: String, why: String, follows: String, picked: String },
     /// Item `id` ("new": the reply's last ITEM) to the session named `to`, now or `after` another item; `kind`, when
     /// said: the lead's call on what it is ("bug" | "feature" | "task"; an item you add has none till then); `crew`,
     /// when said: the lead's teammate doing it (with `to` "me").
@@ -402,11 +403,20 @@ fn item(body: &str) -> Option<Line> {
     fn why_of(s: &str) -> Option<&str> {
         labelled(s, "why").filter(|_| s[3..].trim_start().starts_with(':'))
     }
-    let title = rest.iter().find(|s| labelled(s, "done when").is_none() && why_of(s).is_none() && see_of(s).is_none()).map(|s| s.to_string()).unwrap_or_default();
+    // "from: #593" and "picked: B" with their colons and the from's #, so a title "From …" or "Picked …" stays the title.
+    fn from_of(s: &str) -> Option<String> {
+        labelled(s, "from").filter(|v| s[4..].trim_start().starts_with(':') && v.starts_with('#')).and_then(id_of)
+    }
+    fn picked_of(s: &str) -> Option<&str> {
+        labelled(s, "picked").filter(|_| s[6..].trim_start().starts_with(':'))
+    }
+    let title = rest.iter().find(|s| labelled(s, "done when").is_none() && why_of(s).is_none() && see_of(s).is_none() && from_of(s).is_none() && picked_of(s).is_none()).map(|s| s.to_string()).unwrap_or_default();
     let see = rest.iter().find_map(|s| see_of(s)).unwrap_or("").to_string();
     let done_when = rest.iter().find_map(|s| labelled(s, "done when")).unwrap_or("").to_string();
     let why = rest.iter().find_map(|s| why_of(s)).unwrap_or("").to_string();
-    (!title.is_empty()).then_some(Line::Item { kind, title, see, done_when, why })
+    let follows = rest.iter().find_map(|s| from_of(s)).unwrap_or_default();
+    let picked = rest.iter().find_map(|s| picked_of(s)).map(|p| p.trim_start_matches("option ").trim_start_matches("Option ").trim().to_string()).unwrap_or_default();
+    (!title.is_empty()).then_some(Line::Item { kind, title, see, done_when, why, follows, picked })
 }
 
 /// "#12 | B | feature | <title> | you'll see: … | done when: … | by: me" (#543): what follows option B of item 12. Its

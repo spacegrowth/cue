@@ -183,8 +183,8 @@ CueBridge.area("desk", (w) => {
         const canvas = it.designs || (it.finish?.mocks && (it.made || []).some((m) => /^https?:\/\//.test(m)));
         const option = String(text || "").trim().replace(/^option\s+/i, "").toUpperCase(), d = deskOf(it.project);
         const named = (it.next || []).filter((x) => x.option === "any" || x.option.toUpperCase() === option);
-        const filed = named.map((x) => ({ id: `b${++n}`, project: it.project, kind: x.kind, title: x.title, see: x.see || "", done_when: x.done_when || "", state: "new", holder: null, from: "you", builds: it.id, created: t, updated: t, files: [] }));
-        if (!filed.length && canvas) filed.push({ id: `b${++n}`, project: it.project, kind: it.kind || "feature", title: `Build: ${it.title.replace(/^[^:\s]+(?:\s[^:\s]+)?:\s*/, "").replace(/\s\([^)]*\)$/, "")} (option ${option})`, done_when: "", state: "new", holder: null, from: "you", builds: it.id, created: t, updated: t, files: [] });
+        const filed = named.map((x) => ({ id: `b${++n}`, project: it.project, kind: x.kind, title: x.title, see: x.see || "", done_when: x.done_when || "", state: "new", holder: null, from: "you", builds: it.id, from_pick: option, created: t, updated: t, files: [] }));
+        if (!filed.length && canvas) filed.push({ id: `b${++n}`, project: it.project, kind: it.kind || "feature", title: `Build: ${it.title.replace(/^[^:\s]+(?:\s[^:\s]+)?:\s*/, "").replace(/\s\([^)]*\)$/, "")} (option ${option})`, done_when: "", state: "new", holder: null, from: "you", builds: it.id, from_pick: option, created: t, updated: t, files: [] });
         d.items.push(...filed);
         Object.assign(it, { state: "done", done_at: t, picked: option, built_as: filed[0]?.id || "" });
       }

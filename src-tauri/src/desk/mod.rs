@@ -85,6 +85,9 @@ The user's own words come after the block.
 
 Act by writing lines of their own, outside code blocks, exactly like this:
 ITEM: bug | <title> | you'll see: <what the user sees when it's done> | done when: <the check>      (kind is bug, feature or task)
+ITEM: feature | <title> | you'll see: … | done when: … | from: #<id> | picked: <option>      (an item that carries \
+on from #<id>, as when the user picks an option in your chat and you close #<id> and file what builds it: #<id> then \
+says which item builds their pick, and the new one links back. Leave picked out for a follow-on that isn't a pick)
 SEE: #<id> | <what the user sees when it's done> | done when: <the check>      (an item missing either line, as \
 the user's often are: Cue shows the first, not the second)
 TITLE: #<id> | <short plain title>      (an item whose title isn't short and plain, as the user's often aren't: \

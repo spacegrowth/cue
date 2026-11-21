@@ -26,7 +26,7 @@ pub(crate) fn session_items(st: &mut Store, sid: &str, text: &str, now: u64, fx:
     let mine = st.desk.items.iter().filter(on).max_by_key(|i| i.updated).map(|i| i.id.clone());
     let mut kept = Vec::new();
     for line in parse::lines(text) {
-        let Line::Item { kind, title, see, done_when, why } = line else { continue };
+        let Line::Item { kind, title, see, done_when, why, .. } = line else { continue };
         if let Some(mine) = mine.as_ref().filter(|_| why.trim().is_empty()) {
             kept.push(format!("Not added as a new item: {}. Its fix or next step stays in #{mine}, the item you're on: do it there, or say it in your reply.", title.trim()));
             continue;

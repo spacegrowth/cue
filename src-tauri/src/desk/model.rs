@@ -185,6 +185,10 @@ pub struct DeskItem {
     /// The item whose pick this item carries on: its id (the other end of that one's `built_as`).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub builds: String,
+    /// The option you picked on `builds` that this item builds ("B"), when it came from your pick (#606): its page and
+    /// row say "From your pick on #<builds>". Empty for a follow-on that isn't a pick.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub from_pick: String,
     /// The commit Looks right made of its files (short; one per repository, space apart), once it did
     /// (desk/hub/landing/commit.rs).
     #[serde(default, skip_serializing_if = "String::is_empty")]

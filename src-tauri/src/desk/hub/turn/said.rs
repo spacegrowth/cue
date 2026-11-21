@@ -30,6 +30,42 @@ pub(crate) fn item_said(st: &mut Store, project: &str, kind: &str, title: &str, 
     (id, true)
 }
 
+/// The lead filed item `id` to carry on from item `from` of `project` (`ITEM: … | from: #<from> | picked: <option>`,
+/// #606), as when you picked an option in its chat and it closes the mocks item itself: each links to the other, as
+/// a Pick does (`builds` / `built_as`), so the finished item says which item builds your pick and that one where it
+/// came from. `picked` (may be empty: a follow-on that isn't a pick) is kept on both. A link already there to an
+/// item still on the Desk is kept.
+pub(crate) fn follow_on(st: &mut Store, project: &str, id: &str, from: &str, picked: &str, now: u64, fx: &mut Effects) -> Result<(), String> {
+    let from = st.desk.canon(from);
+    if from == id {
+        return Err(format!("Refused: from: #{from} on #{id}: an item can't follow itself."));
+    }
+    match st.desk.item(&from) {
+        None => return Err(format!("Refused: from: #{from} on #{id}: there's no #{from}.")),
+        Some(f) if f.project != project => return Err(format!("Refused: from: #{from} on #{id}: #{from} is on another Desk.")),
+        _ => {}
+    }
+    let picked = if picked.is_empty() { String::new() } else { crate::desk::hub::turn::act::letter_of(picked).unwrap_or_else(|| picked.trim().to_string()) };
+    let kept = st.desk.item(&from).map(|f| f.built_as.clone()).filter(|b| !b.is_empty() && b != id && st.desk.item(b).is_some());
+    let f = st.desk.item_mut(&from).ok_or("no such item")?;
+    if kept.is_none() {
+        f.built_as = id.to_string();
+    }
+    if f.picked.is_empty() && !picked.is_empty() {
+        f.picked = picked.clone();
+    }
+    let option = f.picked.clone();
+    f.updated = secs(now);
+    let b = st.desk.item_mut(id).ok_or("no such item")?;
+    if b.builds.is_empty() {
+        b.builds = from.clone();
+        b.from_pick = if picked.is_empty() { option } else { picked };
+    }
+    fx.items.push(from);
+    fx.items.push(id.to_string());
+    Ok(())
+}
+
 /// Lead `lsid` of `project` said `text` at its turn's end: its ITEM, ROUTE, ASK and DECIDED lines.
 /// `repos`: the repositories its COPY lines name, found before the store was taken (desk/hub/landing/named_copy.rs).
 /// `loops`: each project its LOOP lines name, with its folder on this Mac when Cue knows one (Hub::desk_folder).
@@ -43,7 +79,15 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, repos: &[(St
     let (away, mut back) = (crate::desk::hub::away::away::away_in_force(st, project, now), Vec::new());
     for line in parse::lines(text) {
         match line {
-            Line::Item { kind, title, see, done_when, .. } => last_new = Some(item_said(st, project, &kind, &title, &see, &done_when, &name, now, fx).0),
+            Line::Item { kind, title, see, done_when, follows, picked, .. } => {
+                let (id, _) = item_said(st, project, &kind, &title, &see, &done_when, &name, now, fx);
+                if !follows.is_empty() {
+                    if let Err(no) = follow_on(st, project, &id, &follows, &picked, now, fx) {
+                        answers.push(no);
+                    }
+                }
+                last_new = Some(id);
+            }
             route @ Line::Route { .. } => route_line(st, project, &by, route, last_new.as_deref(), now, fx, &mut answers),
             Line::Ask { question, choices, item } => ask_said(st, project, lsid, (question, choices, item), away.then_some(&mut back), fx),
             Line::Context { who, what, why } if what == "keep" => keep(st, project, &by, &who, &why, now, fx),

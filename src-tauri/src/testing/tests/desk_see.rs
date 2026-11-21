@@ -9,12 +9,12 @@ use crate::testing::World;
 fn item_and_see_lines_are_read() {
     assert_eq!(
         lines("ITEM: bug | Header jumps | you’ll see: the header stays put | done when: scroll test passes"),
-        vec![Line::Item { kind: "bug".into(), title: "Header jumps".into(), see: "the header stays put".into(), done_when: "scroll test passes".into(), why: String::new() }]
+        vec![Line::Item { kind: "bug".into(), title: "Header jumps".into(), see: "the header stays put".into(), done_when: "scroll test passes".into(), why: String::new(), follows: String::new(), picked: String::new() }]
     );
     // A title that starts "See" stays the title.
     assert_eq!(
         lines("ITEM: task | See the logs | see: one list of logs"),
-        vec![Line::Item { kind: "task".into(), title: "See the logs".into(), see: "one list of logs".into(), done_when: String::new(), why: String::new() }]
+        vec![Line::Item { kind: "task".into(), title: "See the logs".into(), see: "one list of logs".into(), done_when: String::new(), why: String::new(), follows: String::new(), picked: String::new() }]
     );
     assert_eq!(
         lines("SEE: #12 | the header stays put | done when: scroll test passes\nSEE: #13 | you'll see: a green dot\nSEE: 14 | no hash"),

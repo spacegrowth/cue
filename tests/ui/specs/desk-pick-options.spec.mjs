@@ -33,7 +33,7 @@ test("a mocks-only item lists its options M1, M2 with a Pick each; a pick closes
   await expect(head.locator(".dk-pword")).toHaveText("Done");
   await expect(head.locator(".dk-opts")).toHaveCount(0);
   const n = (await items(page)).find((i) => i.id === "d5").built_as;
-  await expect(head.locator(".dk-built")).toHaveText(`Picked M2 → being built as #${n}`);
+  await expect(head.locator(".dk-built")).toHaveText(`You picked option M2. It's being built as #${n}`);
   expect((await items(page)).find((i) => i.id === n).title).toBe("Build: working items (option M2)");
 });
 

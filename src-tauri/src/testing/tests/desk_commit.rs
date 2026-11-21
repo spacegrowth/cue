@@ -179,7 +179,7 @@ fn a_sessions_follow_up_stays_in_its_item_and_only_a_separate_one_with_a_why_is_
 fn an_items_why_needs_its_colon_so_a_title_starting_why_stays_the_title() {
     use crate::desk::parse::{lines, Line};
     let got = lines("ITEM: bug | Why the header jumps | done when: it stays put | why: not the item I'm on");
-    let want = Line::Item { kind: "bug".into(), title: "Why the header jumps".into(), see: String::new(), done_when: "it stays put".into(), why: "not the item I'm on".into() };
+    let want = Line::Item { kind: "bug".into(), title: "Why the header jumps".into(), see: String::new(), done_when: "it stays put".into(), why: "not the item I'm on".into(), follows: String::new(), picked: String::new() };
     assert_eq!(got, vec![want]);
 }
 

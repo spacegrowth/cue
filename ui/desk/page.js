@@ -484,10 +484,25 @@ function deskPickReplyAt(i, ex) {
   const asks = (e) => (line ? deskPickLineIn(e.text) === line : deskOptionWords({ said: [{ text: e.text }] }).size > 1);
   return (ex || []).findLast((e) => e.role === "agent" && asks(e))?.at_ms ?? null;
 }
-/** A picked item and the item that builds its pick, each linking to the other (#281). */
-const deskBuiltLink = (i) => {
+/** Item `id` wherever the window has it: a Desk's open items, or the finished ones fetched for its Done list. */
+const deskItemAnywhere = (id) => (state.desk?.projects || []).flatMap((p) => p.items || []).find((x) => x.id === id)
+  || [...deskDonePages.values()].flatMap((pg) => pg.items).find((x) => x.id === id) || null;
+/** A finished item and the item that carries it on, each linking to the other (#281, #606): "You picked option B.
+ *  It's being built as #604" (built: "It was built as #604"), or, not a pick, "Followed by #604"; on the other end
+ *  "From your pick on #593", or "Follows #593". Empty when it has neither. */
+function deskBuiltWords(i) {
   const a = (id) => `<a href="#" data-desk-item="${esc(id)}">#${esc(id)}</a>`;
-  const words = i.picked && i.built_as ? `Picked ${esc(i.picked)} → being built as ${a(i.built_as)}` : i.builds ? `Follows what you picked on ${a(i.builds)}` : "";
+  if (i.built_as) {
+    const b = deskItemAnywhere(i.built_as), done = b?.state === "done";
+    if (!i.picked) return `Followed by ${a(i.built_as)}`;
+    return `You picked option ${esc(i.picked)}. ${done ? "It was built as" : "It's being built as"} ${a(i.built_as)}`;
+  }
+  if (!i.builds) return "";
+  const from = i.from_pick || deskItemAnywhere(i.builds)?.picked;
+  return from ? `From your pick on ${a(i.builds)}` : `Follows ${a(i.builds)}`;
+}
+const deskBuiltLink = (i) => {
+  const words = deskBuiltWords(i);
   return words ? `<p class="dk-built">${words}</p>` : "";
 };
 const deskSec = (title, html) => (html ? `<div class="dk-sec"><h3>${title}</h3>${html}</div>` : "");
