@@ -103,18 +103,25 @@ one idea.
 
 Fix: comes free with fix 2 (both show a note, and A+ still greys out).
 
-## Recommended setup
+## Recommendation: one size (picked 2026-11-21)
 
-One name per thing, both in one place, one reset:
+The part that reads worst is the mismatch: with A− / A+ changing only the chat, its sentences can be 18 px next to
+12 px names, times and buttons. So instead of naming two sizes, have one:
 
-1. "Text size" means the chat's words: A− / A+, 13 to 18. It shows a short note with the size, and has its own row
-   in Settings.
-2. "Zoom" means the whole window: ⌘+ / ⌘−, Compact to Larger. Its note and Settings row say "Zoom", and it's in a
-   View menu.
-3. Settings → Look has the two rows together, with one line saying the mini window keeps its own size.
-4. ⌘0 puts both back to normal.
-5. A− / A+ also sits on the Inbox.
+1. A− / A+ and ⌘+ / ⌘− do the same thing: the whole main window steps bigger or smaller together (Compact, Default,
+   Large, Larger). The chat stays the same small amount bigger than the labels at every step.
+2. The separate chat-only size goes away. A chat that was set off 15 goes back to it.
+3. One "Text size" row in Settings, one note when it changes ("Text size: Large"), ⌘0 goes back to Default.
+4. A− / A+ stays on a chat's tab row and the Desk's chat, and is added to the Inbox; it greys out at the ends.
+5. Settings says in one line that the mini window keeps its own size.
 
-That is fixes 1, 2, 3, 4 (Settings row and Inbox only), 5, 7 and 8: about one small build. Fix 6 (window growing
-and not coming back) is separate and worth doing on its own. Leave a chat's small labels and the mini window's size
-as they are.
+This settles 1, 2, 3, 4, 5 and 8 in one small build. What it gives up: you can no longer make only the chat
+bigger; bigger words also mean bigger cards and buttons, so less fits in the window.
+
+Worth doing next to it, each small: a View menu showing the keys (7), and the window going back to its size when
+the zoom drops (6).
+
+### The other option, not picked: two named sizes
+
+Keep both, call the chat's "Text size" and the window's "Zoom", give each a note and a Settings row, and let ⌘0
+reset both. It keeps chat-only sizing but also keeps the mismatch at the ends.
