@@ -160,7 +160,7 @@ function landsMach() {
   const seg = `<div class="seg ld-seg" role="radiogroup" aria-label="New sessions start on">${opt("", "This Mac")}${ms.map((x) => opt(x.name, x.label)).join("")}</div>`;
   const on = ms.find((x) => x.name === m.machine);
   const folder = on ? `<input class="ld-cmd ld-folder" type="text" spellcheck="false" aria-label="Folder of this repository's clone on ${esc(on.label)}" placeholder="Full path there, e.g. ~/code/project" data-ld-folder value="${esc(m.folder)}">
-    <div class="ld-hint">The folder of this repository's clone on ${esc(on.label)}. Each new session starts there from the latest main, on a branch of its own, and its work lands here.</div>` : `<div class="ld-hint">The lead asks you before a Desk's first item on another machine. You can also choose per item, on its page.</div>`;
+    <div class="ld-hint">The folder of this repository's clone on ${esc(on.label)}. If the project isn't there yet, Cue downloads it there first. Each new session starts there from the latest main, on a branch of its own, and its work lands here.</div>` : `<div class="ld-hint">The lead asks you before a Desk's first item on another machine. You can also choose per item, on its page.</div>`;
   return `<div class="ld-sec" data-ld-sec="machine"><div class="set-group ld-h">Where new sessions start</div>
     <div class="ld-rows"><div class="ld-row"><div class="ld-label">Starts on</div><div class="ld-body">${seg}${folder}</div></div></div></div>`;
 }

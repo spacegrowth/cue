@@ -672,3 +672,47 @@ fn the_machine_picked_in_desk_settings_is_saved_to_disk_and_comes_back() {
     assert_eq!(d["machines"]["machine"].as_str(), Some("box"), "{}", d["machines"]);
     assert_eq!(item(&w, &project, "Footer jumps")["machine"].as_str(), Some("box"));
 }
+
+// A machine that never had the project (#664): Cue downloads it into the folder there from its online home, then
+// starts the session; when it can't, the item says why.
+
+#[test]
+fn a_new_session_on_a_machine_without_the_project_downloads_it_there_first() {
+    let w = World::new();
+    let ((_, _, _, project, _, _), ssh) = routed_there(&w);
+    let lead = w.hub().desk_lead_sid(&project).unwrap();
+    // You picked box for the Desk, in a folder that isn't there yet.
+    w.hub().desk_lands_set(&project, &serde_json::json!({ "machine": "box", "machine_folder": "~/code/app" })).unwrap();
+    let folder = ssh.home("box").join("code/app");
+    assert!(!folder.exists());
+    ends(&w, &lead, "ITEM: bug | Footer jumps | done when: it stays put\nROUTE: #new -> new | why: next");
+    w.advance(1000);
+    let it = item(&w, &project, "Footer jumps");
+    assert!(it["start_failed"].as_str().unwrap_or("").is_empty(), "{it}");
+    assert!(it["holder"]["sid"].as_str().is_some(), "started there: {it}");
+    assert_eq!(git(&folder, &["rev-parse", "HEAD"]).trim(), git(&folder, &["rev-parse", "origin/main"]).trim(), "a clone of its online home");
+    // The next item there: it's there now, nothing downloaded again.
+    let calls = ssh.calls().iter().filter(|(_, c)| c.contains("git clone")).count();
+    ends(&w, &lead, "ITEM: bug | Sidebar jumps | done when: it stays put\nROUTE: #new -> new | why: next");
+    w.advance(1000);
+    assert!(item(&w, &project, "Sidebar jumps")["holder"]["sid"].as_str().is_some());
+    assert_eq!(ssh.calls().iter().filter(|(_, c)| c.contains("git clone")).count(), calls, "no second download");
+}
+
+#[test]
+fn a_folder_there_with_other_files_in_it_isnt_downloaded_over_and_the_item_says_why() {
+    let w = World::new();
+    let ((_, _, _, project, _, _), ssh) = routed_there(&w);
+    let lead = w.hub().desk_lead_sid(&project).unwrap();
+    let folder = ssh.home("box").join("notes");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join("todo.txt"), "mine\n").unwrap();
+    w.hub().desk_lands_set(&project, &serde_json::json!({ "machine": "box", "machine_folder": "~/notes" })).unwrap();
+    ends(&w, &lead, "ITEM: bug | Footer jumps | done when: it stays put\nROUTE: #new -> new | why: next");
+    w.advance(1000);
+    let it = item(&w, &project, "Footer jumps");
+    assert!(it["holder"].is_null(), "{it}");
+    assert!(it["start_failed"].as_str().unwrap_or("").contains("isn't a copy of the project"), "{it}");
+    assert_eq!(std::fs::read_to_string(folder.join("todo.txt")).unwrap(), "mine\n", "left as it was");
+    assert!(!folder.join(".git").exists());
+}
