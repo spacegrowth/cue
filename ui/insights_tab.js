@@ -300,7 +300,7 @@ function itabWaitWhen(grid, gSum) {
 }
 /** Waiting past the cache: when, how long, which sessions. */
 function itabWaiting(w) {
-  if (!w.turns) return itabFind("Waiting past the cache", "$0", "No answer came after its session's cache ran out.", "", "", "Keep answering before the countdown on a waiting card runs out.");
+  if (!w.turns) return itabFind("Waiting past the cache", "$0", "No answer came after its session's cache ran out.", "", "", "Keep answering before the countdown on a waiting item runs out.");
   const ws = w.sessions || [], wTop = Math.max(0.01, ...ws.map((r) => r.usd));
   const grid = w.grid_usd || [], gSum = grid.reduce((a, x) => a + x, 0);
   const ans = w.answers || [];
@@ -308,7 +308,7 @@ function itabWaiting(w) {
   return itabFind("Waiting past the cache", itabUsd(w.usd),
     `Answering after a session's cache ran out re-wrote ${itabNum(w.tokens)} tokens: ${w.turns} late answer${w.turns === 1 ? "" : "s"}, ${itabPct(w.share_of_writes)} of all cache writes.`,
     "", "",
-    "Answer before its cache runs out: the countdown on a waiting card says how long is left. For a session that's gone stale, start fresh from a hand-off instead of resuming it.",
+    "Answer before its cache runs out: the countdown on a waiting item says how long is left. For a session that's gone stale, start fresh from a hand-off instead of resuming it.",
     `${wPics}${ws.length ? itabFig("The sessions behind it", "", `<div class="itab-list">${ws.map((r) => itabSess(r, [`${r.times}×`, `waited up to ${itabDur(r.longest_wait_ms)}`, `<b>${itabUsd(r.usd)}</b>`], r.usd / wTop)).join("")}</div>`) : ""}`, itabBad("avoidable"));
 }
 /** Long sessions: each one's climb, the hand-off point marked. */

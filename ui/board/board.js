@@ -532,7 +532,7 @@ function recentDrawer() {
 function starredDrawer(isOpen) {
   const stars = [...state.sessions, ...(state.parked || [])].filter((s) => isStarred(s.session_id) && inProj(s.project)).sort((a, c) => (a.starred_ms || Infinity) - (c.starred_ms || Infinity));
   const starNeeds = stars.filter((s) => state.items.some((i) => i.session_id === s.session_id)).length;
-  return drawerHtml("starred", "STARRED", stars.length ? `${stars.length}${starNeeds ? ` · ${starNeeds} need${starNeeds === 1 ? "s" : ""} you` : ""}` : "", () => stars.length ? `<div class="card recent">${stars.map((s) => (s.parked_ms ? starParkedEntry(s, isOpen(s.session_id)) : starEntry(s, isOpen(s.session_id)))).join("")}</div>` : `<div class="quiet-line">Star a session (★ on its card) to keep it here.</div>`);
+  return drawerHtml("starred", "STARRED", stars.length ? `${stars.length}${starNeeds ? ` · ${starNeeds} need${starNeeds === 1 ? "s" : ""} you` : ""}` : "", () => stars.length ? `<div class="card recent">${stars.map((s) => (s.parked_ms ? starParkedEntry(s, isOpen(s.session_id)) : starEntry(s, isOpen(s.session_id)))).join("")}</div>` : `<div class="quiet-line">Star a session (★ on its row) to keep it here.</div>`);
 }
 /** The Sessions column: its cards (`workCol`; `count`: how many), then the drawers. */
 function sessionsColumn(b, workCol, count) {

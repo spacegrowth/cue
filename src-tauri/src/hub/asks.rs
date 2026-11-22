@@ -171,8 +171,8 @@ impl Hub {
     /// Pick choice `n` (1-based) of the dialog a terminal card shows: that number pressed in its pane, and
     /// Enter if the dialog is still there a moment later. Blocking: call off the UI thread.
     pub fn answer_terminal(&self, id: &str, n: usize) -> Result<String, String> {
-        let it = self.get(id).filter(|i| i.status == "pending").ok_or("that card is gone")?;
-        let d: crate::dialog::Dialog = serde_json::from_value(it.tool_input.get("dialog").cloned().unwrap_or(Value::Null)).map_err(|_| "that card has no choices")?;
+        let it = self.get(id).filter(|i| i.status == "pending").ok_or("that item is gone")?;
+        let d: crate::dialog::Dialog = serde_json::from_value(it.tool_input.get("dialog").cloned().unwrap_or(Value::Null)).map_err(|_| "that item has no choices")?;
         let label = d.options.get(n.wrapping_sub(1)).ok_or("that isn't one of its choices")?.clone();
         let o = &it.origin;
         // The screen now, not the card's copy of it: the dialog may have closed since, and a permission
@@ -385,9 +385,9 @@ impl Hub {
     /// still on its original order comes first. Its age stays when the turn finished.
     pub fn send_to_back(&self, id: &str) -> Result<(), String> {
         self.write(|st| {
-            let it = st.items.iter_mut().find(|i| i.id == id).ok_or("that card is gone")?;
+            let it = st.items.iter_mut().find(|i| i.id == id).ok_or("that item is gone")?;
             if it.kind != "waiting" || it.status != "pending" {
-                return Err("that card isn't waiting".to_string());
+                return Err("that item isn't waiting".to_string());
             }
             it.back_ms = Some(now_ms());
             Ok(())
@@ -438,7 +438,7 @@ impl Hub {
 
     /// Compact from a notification (it names the card; Compact goes to its session).
     pub fn compact_for_item(&self, id: &str) -> Result<String, String> {
-        let sid = self.get(id).map(|i| i.origin.session_id).ok_or("that card is gone")?;
+        let sid = self.get(id).map(|i| i.origin.session_id).ok_or("that item is gone")?;
         self.session_command(&sid, "compact")
     }
 

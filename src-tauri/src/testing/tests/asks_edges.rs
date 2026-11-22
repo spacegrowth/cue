@@ -44,7 +44,7 @@ fn dismissing_an_ask_tells_its_hook_to_stand_down_so_the_terminal_asks_instead()
 fn only_a_finished_turn_goes_to_the_back_not_an_ask() {
     let w = World::new();
     let ask = w.session("a").prompt("go").ask_bash("ls");
-    assert_eq!(w.hub().send_to_back(&ask.id), Err("that card isn't waiting".to_string()));
+    assert_eq!(w.hub().send_to_back(&ask.id), Err("that item isn't waiting".to_string()));
     assert_eq!(w.snapshot().card("a")["id"], ask.id.as_str(), "it stays where it was");
 }
 

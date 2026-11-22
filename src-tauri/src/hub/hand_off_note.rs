@@ -239,7 +239,7 @@ fn close_replaced(h: &Arc<Hub>, session_id: &str, done: &str) -> (bool, String) 
     h.redraw();
     match close {
         Ok(_) => (true, format!("{done}; the old one is closed (Closed keeps it)")),
-        Err(e) => (false, format!("{done}. The old one is still open ({e}): close it from its card")),
+        Err(e) => (false, format!("{done}. The old one is still open ({e}): close it from its item in Waiting")),
     }
 }
 

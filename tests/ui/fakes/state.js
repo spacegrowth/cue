@@ -31,7 +31,7 @@ CueBridge.area("state", (w) => {
     (it.tool_input.desk_said ||= []).push({ text: words, at });
     const q = it.tool_input.questions?.[0]?.question || "";
     const s = w.session(it.session_id);
-    if (s) s.thread = [...(s.thread || []), { role: "you", at_ms: at, text: `On Cue's question in your chat ("${q}"), the user wrote: "${words}"\nThe card is still open and waits for their Yes or No: Cue took neither. Answer them here in plain words (what it means, what each choice does, what you'd pick); don't answer the card for them.` }];
+    if (s) s.thread = [...(s.thread || []), { role: "you", at_ms: at, text: `On Cue's question in your chat ("${q}"), the user wrote: "${words}"\nThe question is still open and waits for their Yes or No: Cue took neither. Answer them here in plain words (what it means, what each choice does, what you'd pick); don't answer it for them.` }];
     w.changed();
     return true;
   };

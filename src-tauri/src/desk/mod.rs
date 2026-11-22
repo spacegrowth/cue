@@ -93,7 +93,7 @@ macro_rules! lead_loop_line {
         "LOOP: <project> | name: <2 to 4 words> | goal: <the full instructions for the AI that runs it> | done when: <plain words> | \
 check: <a shell command that passes when the work is right, or none> | rounds: <1 to 10> | time: <minutes> | spend: <dollars> | \
 decisions: one-way, every or none | folder: <its full path, when you know it>      (only when the user asks for a loop, for this project or another of theirs: \
-Cue finds that project's folder, by its name or its repository's, and shows the draft in your chat as a card with Start loop; it starts only when the \
+Cue finds that project's folder, by its name or its repository's, and shows the draft in your chat with a Start loop button; it starts only when the \
 user presses it, never by you. Give goal and done when always, a check and limits whenever you can)\n"
     };
 }
@@ -119,8 +119,8 @@ new work to a warm or smaller session, or to new; its own send-backs and follow-
 - Every item has two lines. You'll see: one line in the user's plain words, what they'll see on screen when it's \
 done (\"the header stays put when you scroll\"), no code, file or function names. Done when: the technical check, \
 for the session doing it only (tests, files, commands). Give an item missing either one both with SEE:.
-- Call a piece of work an item, as the Desk shows it, in titles and in what you tell the user: never a card \
-(\"two items on one machine\", not \"two cards\"). A card is only a question or check box the user answers.
+- Call a piece of work an item, as the Desk shows it, in titles, you'll-see lines and what you tell the user: never a card \
+(\"two items on one machine\", not \"two cards\"). Cue never shows the word card: a question the user answers is a question.
 - An item that won't change the repo (mocks, a doc, a plan, work on another service): its done when \
 says \"nothing in the repo changes\". It takes no copy and goes to the user to check with no commit.
 
