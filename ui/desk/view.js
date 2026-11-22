@@ -160,7 +160,7 @@ function deskB2ItemFull(i, d, foot) {
     <div class="dk-pane dk-ipane dk2b-ipb${live ? " chat" : ""}" data-scroll-key="item:${esc(i.id)}"><div><div class="dk2b-sec">PROGRESS</div><div class="dk2b-steps">${bar}</div></div>
     <div class="dk2b-kv">${kv("Who", who)}${kv("Doing now", now, mono ? " mono" : "")}${kv("Tests", tests)}${kv("Next", next)}</div>
     ${btns}${files ? `<div class="dk2b-files">${ft.html}</div>` : ""}
-    <div class="dk2b-ichat"><div class="dk2b-ichd"><span class="dk2b-sec">${chat ? "ITS CHAT" : "ITS THREAD"}</span><div class="dk-itabs" role="tablist">${tabs}</div></div><div class="dk2b-ichsub">${deskItemSub(i, d, chat)}</div><div class="dk-ibody dk-itab-${tab}">${body}</div></div></div>${panel}<div class="dk2b-ifoot">${foot}</div></div>`;
+    <div class="dk2b-ichat"><div class="dk2b-ichd"><span class="dk2b-sec">${chat ? "ITS CHAT" : "ITS THREAD"}</span><div class="dk-itabs" role="tablist">${tabs}</div></div><div class="dk2b-ichsub">${deskItemSub(i, d, chat)}</div><div class="dk-ibody dk-itab-${tab}">${body}</div></div></div>${panel}${foot}</div>`;
 }
 /** The chat card with nothing open: who runs the Desk (no lead yet, or Change), else the lead's chat (or the line
  *  saying it ended), or Decisions. */
