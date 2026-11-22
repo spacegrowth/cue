@@ -26,3 +26,18 @@ test("the Waiting and Sessions group labels stay at the top as their lists scrol
   expect(Math.abs(s.gap)).toBeLessThanOrEqual(1);
   expect(s.covers, "Sessions' label spans the column edge to edge").toBe(true);
 });
+
+test("a card Cue scrolls up to stops below the pinned label, not under it", async ({ cue, page }) => {
+  await cue.open("board-waiting", { frozen: true });
+  await page.setViewportSize({ width: 1000, height: 667 });
+  await expect(page.locator('.nrow[data-big="n5"]')).toBeVisible();
+  // The column at its end, so the second card's top is cut off above; then Cue shows it (as opening it does).
+  await page.evaluate(() => { const c = document.querySelector(".col.split.col-waiting"); c.scrollTop = c.scrollHeight; });
+  expect(await page.evaluate(() => document.querySelector('.nrow[data-big="n5"]').getBoundingClientRect().top
+    < document.querySelector(".col.split.col-waiting").getBoundingClientRect().top)).toBe(true);
+  await page.evaluate(() => glideIntoView(document.querySelector('.nrow[data-big="n5"]')));
+  await expect.poll(() => page.evaluate(() => {
+    const label = document.querySelector(".sec-waiting .sec-body > .col-sub").getBoundingClientRect();
+    return Math.round(document.querySelector('.nrow[data-big="n5"]').getBoundingClientRect().top - label.bottom);
+  })).toBeGreaterThanOrEqual(0);
+});

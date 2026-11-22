@@ -199,7 +199,7 @@ function selectedCards() {
   for (const el of document.querySelectorAll(".working.on, .nrow.on, .tl.on")) {
     const sc = scrollerOf(el);
     const a = el.getBoundingClientRect(), b = (sc || document.documentElement).getBoundingClientRect();
-    out.set(el.closest(".sec, .col")?.className || "", { el, full: a.top >= b.top - 1 && a.bottom <= b.bottom + 1 });
+    out.set(el.closest(".sec, .col")?.className || "", { el, full: a.top >= b.top + pinnedOver(el) - 1 && a.bottom <= b.bottom + 1 });
   }
   return out;
 }
@@ -209,20 +209,30 @@ function scrollerOf(el) {
   while (sc && sc !== document.body && !/(auto|scroll)/.test(getComputedStyle(sc).overflowY)) sc = sc.parentElement;
   return sc && sc !== document.body ? sc : null;
 }
+/** How much of a list's top its group label covers while you're at `el`: the label of `el`'s group stays pinned there
+ *  (#706), so a card at the very top would sit half under it. 0 when no label is pinned above it. */
+function pinnedOver(el) {
+  const body = el.closest(".sec-body");
+  if (!body) return 0;
+  const above = [...body.querySelectorAll(":scope > .col-sub")].filter((l) => l.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING && getComputedStyle(l).position === "sticky");
+  return above.length ? above[above.length - 1].getBoundingClientRect().height : 0;
+}
 /** Glide a list just enough to show a card in full (with a little room past it). Your own scrolling stops it. */
 let glide = null;
 function glideIntoView(el) {
   const sc = scrollerOf(el);
   if (!sc) return;
   const a = el.getBoundingClientRect(), b = sc.getBoundingClientRect(), M = 12;
+  // The list's top as you see it: below its group label pinned there.
+  const top = b.top + pinnedOver(el);
   // Cut off below: up, but never past its top. Cut off above: down to its top.
-  let delta = a.bottom + M > b.bottom ? Math.min(a.bottom + M - b.bottom, a.top - M - b.top) : a.top - M < b.top ? a.top - M - b.top : 0;
+  let delta = a.bottom + M > b.bottom ? Math.min(a.bottom + M - b.bottom, a.top - M - top) : a.top - M < top ? a.top - M - top : 0;
   if (Math.abs(delta) < 1) return;
   // Down: on to where a card starts, so the one at the list's top isn't cut in half (it was, under the card you'd
   // just replied to, until the list was drawn again). Never past this card's own top.
   if (delta > 0) {
-    const tops = [...el.parentElement.children].map((c) => c.getBoundingClientRect().top - b.top).filter((t) => t >= delta - 1);
-    if (tops.length) delta = Math.min(Math.min(...tops), a.top - b.top);
+    const tops = [...el.parentElement.children].filter((c) => !c.classList.contains("col-sub")).map((c) => c.getBoundingClientRect().top - top).filter((t) => t >= delta - 1);
+    if (tops.length) delta = Math.min(Math.min(...tops), a.top - top);
   }
   // Found again by its list and what it is (a redraw makes new elements).
   const list = el.closest(".sec, .col"), attr = ["data-session", "data-detail", "data-big"].find((n) => el.hasAttribute(n));

@@ -26,8 +26,20 @@ const ITEMS = ["d1", "d2", "d5", "d6"];
 
 /** Cue's state at text size `s` in `mode`, as the window has it after Settings saves them. */
 const setLook = (cue, s, mode) => cue.change((st, [s, mode]) => { st.settings.appearance = { ...st.settings.appearance, zoom: s.zoom, mode }; }, [s, mode]);
-/** Laid out and still: fonts in, two frames drawn. */
-const settled = (page) => page.evaluate(() => document.fonts.ready.then(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))));
+/** Laid out and still: fonts in, two frames drawn, and no list still gliding (opening a session glides its column to
+ *  its card over 280 ms; measured part-way, a card's line passing under a group label pinned at the column's top
+ *  (#706) is half hidden there, where it's only going by). The same wait as the screens' agents-quiet. */
+const settled = (page) => page.evaluate(() => document.fonts.ready.then(() => new Promise((r) => {
+  const at = () => [...document.querySelectorAll("*")].filter((e) => e.scrollHeight > e.clientHeight + 1).map((e) => e.scrollTop).join();
+  let last = at(), still = 0, frames = 0;
+  const tick = () => {
+    const now = at();
+    still = now === last ? still + 1 : 0;
+    last = now;
+    if (still >= 2 || ++frames > 120) r(); else requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+})));
 /** What doesn't fit on screen now, each said with where it is. */
 const check = async (page, where, root = "#app") => { await settled(page); return (await fitProblems(page, root)).map((p) => `${where}: ${p}`); };
 

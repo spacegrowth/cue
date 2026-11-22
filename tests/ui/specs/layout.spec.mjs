@@ -113,8 +113,10 @@ test("a card brought into view from below the list's edge leaves no card cut in 
       await new Promise((r) => setTimeout(r, 400));
       markMore();
       const b = list().getBoundingClientRect(), a = list().querySelector(`:scope > [data-session="${sid}"]`).getBoundingClientRect();
-      const top = cards().find((c) => c.getBoundingClientRect().bottom > b.top + 1);
-      out.push({ sid, shown: a.top >= b.top - 1 && a.bottom <= b.bottom + 1, topCut: top.getBoundingClientRect().top < b.top - 1 });
+      // The list's top as you see it: below the group label pinned there (#706), which hides what passes under it.
+      const seen = Math.max(b.top, ...[...list().querySelectorAll(":scope > .col-sub")].map((l) => l.getBoundingClientRect()).filter((l) => Math.abs(l.top - b.top) < 1).map((l) => l.bottom));
+      const top = cards().find((c) => c.getBoundingClientRect().bottom > seen + 1);
+      out.push({ sid, shown: a.top >= seen - 1 && a.bottom <= b.bottom + 1, topCut: top.getBoundingClientRect().top < seen - 1 });
     }
     return out;
   });
