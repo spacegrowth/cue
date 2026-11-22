@@ -83,10 +83,34 @@ fn alive(pid: u32) -> bool {
 }
 
 /// `exe` with these arguments, started so it isn't this process's child (a child of ours, once stopped, would linger
-/// unreaped and still answer `kill -0`): its PID.
+/// unreaped and still answer `kill -0`): its PID, once it runs `exe`. The shell hands the PID back as it forks, before
+/// the program is started there; under load that came after the helper had moved the app away, and the start found
+/// no program (the "hook" was gone though nothing had stopped it).
 fn detached(exe: &str, args: &[&str]) -> u32 {
     let o = Command::new("/bin/sh").arg("-c").arg("\"$0\" \"$@\" </dev/null >/dev/null 2>&1 & echo $!").arg(exe).args(args).output().unwrap();
-    String::from_utf8_lossy(&o.stdout).trim().parse().unwrap()
+    let pid: u32 = String::from_utf8_lossy(&o.stdout).trim().parse().unwrap();
+    let t = Instant::now();
+    while running_program(pid) != squeeze(exe) {
+        assert!(t.elapsed() < Duration::from_secs(20), "{exe} didn't start as PID {pid}");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    pid
+}
+
+/// The program PID `pid` runs, as ps shows it (doubled slashes made one, as the helper reads it).
+fn running_program(pid: u32) -> String {
+    let o = Command::new("ps").args(["-o", "comm=", "-p", &pid.to_string()]).output().unwrap();
+    squeeze(String::from_utf8_lossy(&o.stdout).trim())
+}
+
+fn squeeze(path: &str) -> String {
+    let mut out = String::new();
+    for c in path.chars() {
+        if !(c == '/' && out.ends_with('/')) {
+            out.push(c);
+        }
+    }
+    out
 }
 
 impl Fixture {
