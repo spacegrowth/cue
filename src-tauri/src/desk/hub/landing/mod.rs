@@ -17,6 +17,7 @@ pub(crate) mod land_keep;
 pub(crate) mod named_copy;
 pub(crate) mod other_repo;
 pub(crate) mod remote_item;
+pub(crate) mod remote_setup;
 pub(crate) mod push_check;
 pub(crate) mod push_main;
 pub(crate) mod found_words;

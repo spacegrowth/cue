@@ -109,7 +109,7 @@ pub(crate) fn route_on(st: &Store, project: &str, id: &str, to: &str, on: Option
     let given = in_dir.map(|f| f.trim().trim_end_matches('/').to_string()).filter(|f| !f.is_empty());
     // The Desk's first item there: you're asked first, and you say where its clone is.
     if known.is_none() && given.is_none() {
-        return Err(format!("Refused: this Desk hasn't used {shown} yet, so #{id} wasn't routed. Ask the user first (ASK: #{id} | Start it on {shown}, in <the folder of this repository's clone there>? | Yes | No, this Mac). Once they say yes, route it again with | on: {shown} | in: <folder there>."));
+        return Err(format!("Refused: this Desk hasn't used {shown} yet, so #{id} wasn't routed. Ask the user first (ASK: #{id} | Start it on {shown}, in <the folder of this repository's clone there>? If the project isn't there yet, Cue downloads it into that folder first. | Yes | No, this Mac). Once they say yes, route it again with | on: {shown} | in: <folder there>."));
     }
     let Some(folder) = given.or(known) else { unreachable!() };
     if !folder.starts_with('/') && !folder.starts_with('~') {
