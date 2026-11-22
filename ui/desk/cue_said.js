@@ -64,7 +64,11 @@ const CUE_MSGS = [
   [/^(?:Not asked: LANDS: .+|.+? said (?:no to changing how|yes: how|yes, but how) work lands on .+)/, (m, t) => ({ verb: "Told", what: cueCut(t.split("\n")[0], 90) }), "Landing"],
   [/^The owner is away: Cue didn't show them (this ASK|these ASKs)|^.+? is away: Cue didn't show them (this ASK|these ASKs)/, (m, t) => ({ verb: "Asked", what: "decide the open ASKs yourself (away)", more: cueMore(cueLines(t).filter((l) => l.startsWith("- ")).length, "ASK"), said: cueLines(t).filter((l) => l.startsWith("- ")).map((l) => l.slice(2)).join("\n"), label: "Its ASKs", next: "The lead decides them itself while you're away" }), "Away"],
   [/^(?:The owner|.+?) is about to go away\. Go through every open item/, () => ({ verb: "Asked", what: "settle what you can before Away", next: "The lead settles what it can; at most 5 questions wait for you" }), "Away"],
-  [/^Away mode is off/, () => ({ verb: "Told", what: "Away is off" }), "Away"],
+  // Back from Away (desk/hub/away/away.rs back_words, #612): how long and what moved, one line with the way to the Away tab.
+  [/^Away mode is off: the owner is back(?: \(([^)\n]+)\))?/, (m) => {
+    const [long, ...rest] = (m[1] || "").split(", "), did = rest.filter((r) => !r.startsWith("no "));
+    return { verb: "Told", what: long ? `you're back after ${long}` : "you're back", more: long ? (did.length ? did.join(" · ") : "nothing moved") : "", next: "Cue shows you what happened in the Away tab; the lead doesn't recap it", go: ["away", "See what happened"] };
+  }, "Back"],
   // The Desk's changes since the lead last heard (desk/hub/lead/feed.rs, #616): a paragraph each, numbered at the end.
   [/^([\s\S]+?)\n\n\(Desk changes [^)\n]*\)$/, (m) => cueChanges(m[1]), "Desk changes"],
   [cueRe(String.raw`^Queued: #ID is next for (.+?), after #([\w.-]+)`), (m, t) => ({ verb: "Told", id: m[1], what: `next for ${m[2]}, after #${m[3]}`, more: cueMore(cueLines(t).length - 1, "more queued", "more queued"), next: t.split("\n")[0].split("; ")[1] || "" }), "Queued"],

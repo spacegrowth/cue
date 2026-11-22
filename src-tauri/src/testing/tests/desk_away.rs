@@ -74,6 +74,8 @@ fn away_mode_turns_on_tells_the_lead_ends_at_its_time_and_turns_off() {
     assert!(!summary(&w, &project).contains("Away mode"));
     feed_goes(&w);
     assert!(sent_to(&w, &d).iter().any(|t| t.starts_with("Away mode is off")), "{:?}", sent_to(&w, &d));
+    // How long (to its end time, an hour) and what moved, in one line, and no recap from the lead (#612).
+    assert!(sent_to(&w, &d).iter().any(|t| t.starts_with("Away mode is off: the owner is back (1h, ") && t.contains("calls made)") && t.contains("don't welcome them back or recap it")), "{:?}", sent_to(&w, &d));
 }
 
 #[test]

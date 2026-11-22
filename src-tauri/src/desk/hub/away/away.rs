@@ -187,6 +187,24 @@ pub(crate) fn away_block(st: &Store, desk: &str, now: u64) -> Option<String> {
     a.on.then(|| block(&a, now))
 }
 
+/// How long a stretch ran (`ms`), as the Away tab says it: "under a minute", "45m", "2h 10m".
+fn away_long(ms: u64) -> String {
+    let m = (ms + 30_000) / 60_000;
+    match (m / 60, m % 60) {
+        (0, 0) => "under a minute".into(),
+        (0, m) => format!("{m}m"),
+        (h, 0) => format!("{h}h"),
+        (h, m) => format!("{h}h {m}m"),
+    }
+}
+
+/// What Cue tells the lead as Away goes off (#612): how long and what moved (`back`: "2h 10m, 4 items moved, 3 calls
+/// made"), in one line its chat folds into a "Back" card; the owner sees the rest in the Away tab, so no recap.
+fn back_words(back: &str) -> String {
+    let after = if back.is_empty() { String::new() } else { format!(" ({back})") };
+    format!("Away mode is off: the owner is back{after}. Cue shows them what happened while they were away; don't welcome them back or recap it. Ask and decide as usual.")
+}
+
 fn block(a: &Away, now: u64) -> String {
     let mut out = String::from("Away mode:\n");
     if !a.active() {
@@ -306,13 +324,11 @@ impl Hub {
             Ok((Some(map), (was_on, rules != old_rules, before)))
         })?;
         // Back (#416): what happened while away kept for the dispatcher's Away tab.
-        if was_on && !on {
-            self.desk_away_back(desk, &before, &pre, now);
-        }
+        let back = if was_on && !on { self.desk_away_back(desk, &before, &pre, now) } else { String::new() };
         if on != was_on || (on && rules_changed) {
             let words = self.read(|st| {
                 let a = Away::read(st, desk, now);
-                if a.on { block(&a, now) } else { "Away mode is off: the owner is back. Ask and decide as usual.".to_string() }
+                if a.on { block(&a, now) } else { back_words(&back) }
             });
             self.tell_lead_away(desk, &words);
         }
@@ -328,13 +344,17 @@ impl Hub {
     }
 
     /// Back from Away on Desk `desk` (`before`: its settings as it went off; `pre`: as it stood): the stretch kept.
-    fn desk_away_back(&self, desk: &str, before: &Value, pre: &Away, now: u64) {
+    fn desk_away_back(&self, desk: &str, before: &Value, pre: &Away, now: u64) -> String {
         let since = before.get("since").and_then(Value::as_u64).unwrap_or(0);
         let end = before.get("ended_at").and_then(Value::as_u64).or_else(|| before.get("until").and_then(Value::as_u64).filter(|u| pre.ended == "until" && *u < now)).unwrap_or(now);
         let start = before.get("items").cloned().unwrap_or_else(|| json!({}));
         let (items, calls) = self.read(|st| crate::desk::hub::away::away_log::stretch(st, desk, since, end, &start));
+        let n = |v: &Value| v.as_array().map_or(0, Vec::len);
+        let moved = match n(&items) { 0 => "no items moved".to_string(), 1 => "1 item moved".into(), k => format!("{k} items moved") };
+        let made = match n(&calls) { 0 => "no calls made".to_string(), 1 => "1 call made".into(), k => format!("{k} calls made") };
         crate::desk::hub::away::away_log::keep(json!({ "id": format!("away-{since}"), "desk": desk, "since": since, "end": end, "until": before.get("until"), "budget": before.get("budget"),
             "spent": (pre.spent * 100.0).round() / 100.0, "ended": pre.ended, "items": items, "calls": calls }));
+        format!("{}, {moved}, {made}", away_long(end.saturating_sub(since)))
     }
 
     /// Away on Desk `desk` was just set (`on`): in force now, its lead's ASKs still waiting on the owner go back to it

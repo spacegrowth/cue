@@ -72,3 +72,28 @@ for (const scheme of ["light", "dark"]) {
     expect(sent.some((t) => t.endsWith(AWAY))).toBe(true);
   });
 }
+
+// Back from Away (#612): Cue's words to the lead show as one tidy line, how long and what moved, with the way to the
+// Away tab; no dump of Cue's words. Light and dark, no hover text.
+const BACK = "Away mode is off: the owner is back (2h 10m, 4 items moved, 3 calls made). Cue shows them what happened while they were away; don't welcome them back or recap it. Ask and decide as usual.";
+for (const scheme of ["light", "dark"]) {
+  test(`coming back from Away shows one tidy line with the way to the Away tab (${scheme}) (#612)`, async ({ page, cue }) => {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.setViewportSize({ width: 1500, height: 950 });
+    await cue.open("desk");
+    await openDesk(page);
+    await cue.change((st, { msg }) => { st.sessions.find((x) => x.session_id === "lead").thread.push(msg); }, { msg: { role: "you", text: BLOCK + BACK, at_ms: NOW - 5000 } });
+    const line = page.locator(".dk-chat .dk-cue");
+    await expect(line).toHaveCount(1);
+    await expect(line).toContainText("Back");
+    await expect(line.locator(".dk-cue-w")).toHaveText("You're back after 2h 10m · 4 items moved · 3 calls made");
+    await expect(page.locator(".dk-chat")).not.toContainText("recap");
+    const h = await page.evaluate(() => document.querySelector(".dk-chat .dk-cue").getBoundingClientRect().height);
+    expect(h).toBeLessThan(80);
+    if (process.env.SHOT_DIR) await page.locator(".dk-chat").screenshot({ path: `${process.env.SHOT_DIR}/desk-away-back-${scheme}.png` });
+    await expect(page.locator("[title]")).toHaveCount(0);
+    await line.locator(".dk-cue-go").click();
+    await expect(page.locator(".dk-tab.on")).toHaveText("Away");
+    await expect(page.locator(".dk-away-log")).toBeVisible();
+  });
+}

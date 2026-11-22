@@ -528,6 +528,7 @@ function deskCueLine(e) {
   const st = e.unsent ? " · not sent" : e.pending ? " · not read yet" : "";
   return `<div class="dk-ln dk-cue${open ? " open" : ""}"><div class="mg-line"><button class="dk-cue-t" data-ask-open="${esc(key)}" aria-expanded="${open}">`
     + `<span class="dk-cue-pm">${open ? "−" : "+"}</span>${cueMark()}<b class="mg-who">Cue</b> <span class="mg-v">· ${esc(c.tag)}${st}</span></button>${chip}`
+    + `${c.go ? `<button class="dk-cue-go" data-desk-tab="${esc(c.go[0])}">${esc(c.go[1])} ›</button>` : ""}`
     + `${e.at_ms ? `<span class="mg-age">${ago(e.at_ms)}</span>` : ""}</div><button class="dk-cue-w" data-ask-open="${esc(key)}" aria-expanded="${open}">${words}</button>`
     + `${open ? cueFoldHtml(c, full, c.mate || "", it?.title || "") : ""}</div>`;
 }
