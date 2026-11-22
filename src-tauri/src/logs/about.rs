@@ -16,6 +16,8 @@ struct Kept {
     at: u64,
     mtime: Option<SystemTime>,
     prompt: String,
+    /// How many times a read found another prompt.
+    changes: u64,
 }
 
 static ABOUT: Mutex<Option<HashMap<String, Kept>>> = Mutex::new(None);
@@ -60,6 +62,14 @@ pub fn reads() -> u64 {
     READS.load(Ordering::SeqCst)
 }
 
+/// How many times a read of these transcripts found another prompt: the window's kept state is current only
+/// with the count it was built at (hub/shown.rs), since a read lands on its own thread, after the tick that
+/// asked for it.
+pub fn reads_of(transcripts: &[String]) -> u64 {
+    let about = crate::locking::lock(&ABOUT, "ABOUT");
+    transcripts.iter().filter_map(|t| about.as_ref()?.get(t)).map(|k| k.changes).sum()
+}
+
 /// Look at one transcript again: read when it changed. Gone (not found): no prompt. Any other failure (a
 /// file that can't be read just now) keeps what was last read.
 fn read_one(transcript: &str, now: u64) {
@@ -78,11 +88,12 @@ fn read_one(transcript: &str, now: u64) {
 /// Note a look at `transcript`: when, its modified time, and its prompt when one was read (None: the same).
 fn keep(transcript: &str, now: u64, mtime: Option<SystemTime>, prompt: Option<String>) {
     let mut about = crate::locking::lock(&ABOUT, "ABOUT");
-    let kept = about.get_or_insert_with(HashMap::new).entry(transcript.to_string()).or_insert(Kept { at: now, mtime, prompt: String::new() });
+    let kept = about.get_or_insert_with(HashMap::new).entry(transcript.to_string()).or_insert(Kept { at: now, mtime, prompt: String::new(), changes: 0 });
     kept.at = now;
     kept.mtime = mtime;
     if let Some(p) = prompt.filter(|p| *p != kept.prompt) {
         kept.prompt = p;
+        kept.changes += 1;
         READS.fetch_add(1, Ordering::SeqCst);
     }
 }

@@ -375,6 +375,7 @@ async function loadDrafts() {
     if (Object.keys(old).length) saveDrafts();
   } catch { /* nothing to move */ }
 }
+let untilNext = null;   // the moment a countdown's shown number next changes
 /** The live "what it's doing · 3s" counts, every second, without redrawing everything; the going-cold chip counts
  *  down, and redraws without it once its soonest goes cold. Both windows tick it (app.js, mini.js). */
 function tickAges() {
@@ -382,8 +383,17 @@ function tickAges() {
   document.querySelectorAll("[data-ago]").forEach((el) => { const t = ago(+el.dataset.ago); if (el.textContent !== t) el.textContent = t; });
   let coldDone = false;
   document.querySelectorAll("[data-cold-in]").forEach((el) => { if (+el.dataset.coldIn <= now()) coldDone = true; else el.textContent = coldIn(+el.dataset.coldIn); });
-  // A countdown (a finishing item's next install, #339): redraws once it's due, to say what it waits on then.
-  document.querySelectorAll("[data-until]").forEach((el) => { if (+el.dataset.until <= now()) coldDone = true; else el.textContent = untilIn(+el.dataset.until); });
+  // A countdown (a finishing item's next install, #339): redraws once it's due, to say what it waits on then. Its
+  // last minute moves on the second it counts, not at the next tick: that came up to a second late.
+  let next = Infinity;
+  document.querySelectorAll("[data-until]").forEach((el) => {
+    const left = +el.dataset.until - now();
+    if (left <= 0) { coldDone = true; return; }
+    el.textContent = untilIn(+el.dataset.until);
+    if (left < 60_000) next = Math.min(next, left - (Math.ceil(left / 1000) - 1) * 1000);
+  });
+  clearTimeout(untilNext);
+  untilNext = next < Infinity ? setTimeout(tickAges, next) : null;
   // A working Desk row that goes quiet (#285): redraws once its quiet time is up, so it reads Stalled.
   document.querySelectorAll("[data-stalls]").forEach((el) => { if (+el.dataset.stalls <= now()) coldDone = true; });
   if (coldDone) renderMain();

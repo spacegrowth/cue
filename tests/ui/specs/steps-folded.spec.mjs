@@ -132,7 +132,7 @@ test("a diff you open is plain green and red, whole, in light and dark; its +N â
   const one = { add: "rgb(218, 251, 225)", addFg: "rgb(26, 127, 55)", del: "rgb(255, 235, 233)", delFg: "rgb(207, 34, 46)" };
   const want = { light: one, dark: one };
   for (const theme of ["light", "dark"]) {
-    await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
+    await page.emulateMedia({ colorScheme: theme });   // as the Mac switches it: a redraw puts Settings â†’ Appearance (system) back over a data-theme set by hand
     const got = await diff.evaluate((el) => {
       const cs = (q, p) => getComputedStyle(el.querySelector(q))[p];
       return { add: cs(".a", "backgroundColor"), addFg: cs(".a i", "color"), del: cs(".d", "backgroundColor"), delFg: cs(".d i", "color"),

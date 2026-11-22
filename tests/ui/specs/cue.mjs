@@ -47,6 +47,7 @@ class Cue {
 
 export const test = base.extend({
   cue: async ({ page }, use) => {
+    readOnScreen(Object.getPrototypeOf(page.locator("html")));
     const errors = [];
     page.on("pageerror", (e) => errors.push(`page error: ${e.message}`));
     page.on("console", (m) => { if (m.type() === "error") errors.push(`console: ${m.text()}`); });
@@ -118,3 +119,37 @@ export const openDesk = async (page, p = "cue") => {
   // A row in view, in whichever group: the Queue may be folded (#576).
   await page.locator(".dk-items .dk-it:visible").first().waitFor();
 };
+
+// Cue draws its window afresh at many moments (a load coming back, a state change, a click), and a locator finds its
+// element in one call and reads it in the next: a redraw between the two leaves the read on the old element, gone (no
+// style, no box). So every locator's evaluate, evaluateAll and boundingBox read what's on the screen: found again until
+// the element read is still there.
+const ONE = (el, [src, a]) => (el.isConnected ? { v: (0, eval)(`(${src})`)(el, a) } : null);
+const ALL = (els, [src, a]) => (els.every((el) => el.isConnected) ? { v: (0, eval)(`(${src})`)(els, a) } : null);
+const REDRAWN = (loc) => new Error(`${loc} was redrawn under every read`);
+function readOnScreen(L) {
+  if (L.__onScreen) return;
+  L.__onScreen = true;
+  const { evaluate, evaluateAll, boundingBox } = L;
+  const read = (orig, wrap) => async function (fn, arg, opts) {
+    if (typeof fn !== "function") return orig.call(this, fn, arg, opts);
+    for (let n = 0; n < 20; n++) { const r = await orig.call(this, wrap, [fn.toString(), arg], opts); if (r) return r.v; }
+    throw REDRAWN(this);
+  };
+  L.evaluate = read(evaluate, ONE);
+  L.evaluateAll = read(evaluateAll, ALL);
+  // Null for an element gone mid-read as for one not shown: one not shown stays null when found again.
+  L.boundingBox = async function (opts) {
+    for (let n = 0; n < 20; n++) {
+      const b = await boundingBox.call(this, opts);
+      if (b || !(await evaluate.call(this, (el) => el.isConnected, undefined, { timeout: 500 }).catch(() => false))) return b;
+    }
+    throw REDRAWN(this);
+  };
+}
+/** `fn(el, arg)` in the page, on the element `loc` finds, as it is on the screen. */
+export const onScreen = (loc, fn, arg) => loc.evaluate(fn, arg);
+/** `fn(els, arg)` in the page, on every element `loc` finds, as they are on the screen. */
+export const allOnScreen = (loc, fn, arg) => loc.evaluateAll(fn, arg);
+/** `loc`'s box on the screen, as boundingBox gives it. */
+export const boxNow = (loc) => loc.boundingBox();

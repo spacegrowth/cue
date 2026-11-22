@@ -911,11 +911,15 @@ mod tests {
         // that is macOS's automounter here (its lookup stalled a launch once).
         let here = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().to_str().unwrap().to_string();
         let there = "/home/someone/cue";
-        crate::logs::repos::first_look(&here); // as a hook from it does (server::inbound)
+        crate::logs::repos::known_now(&here); // as a hook from it does (server::inbound), however long a busy Mac takes
         hub.event(Origin { session_id: "here".into(), harness: "claude".into(), cwd: here.clone(), ..Default::default() }, "stopped", "done".into(), vec![], "");
         hub.event(Origin { session_id: "there".into(), harness: "claude".into(), cwd: there.into(), machine: "box".into(), ..Default::default() }, "stopped", "done".into(), vec![], "");
         let snap = hub.snapshot();
-        assert_eq!(snap["projects"][&here]["name"], "cue", "a folder here is looked up");
+        // Named after its repository's main folder, whatever this copy of Cue was cloned as (git's own answer).
+        let common = std::process::Command::new("git").args(["-C", &here, "rev-parse", "--path-format=absolute", "--git-common-dir"]).output().unwrap();
+        let common = std::path::PathBuf::from(String::from_utf8_lossy(&common.stdout).trim());
+        let name = common.parent().unwrap().file_name().unwrap().to_str().unwrap();
+        assert_eq!(snap["projects"][&here]["name"], name, "a folder here is looked up");
         assert!(snap["branches"].get(&here).is_some());
         assert!(snap["projects"].get(there).is_none() && snap["branches"].get(there).is_none(), "{}", snap["branches"]);
     }

@@ -85,7 +85,7 @@ fn a_folder_that_isnt_a_git_repository_works_in_place_and_says_why() {
     let dir = std::env::temp_dir().join(format!("cue-lands-plain-{}-{}", std::process::id(), crate::clock::now_ms()));
     std::fs::create_dir_all(&dir).unwrap();
     let folder = dir.to_string_lossy().to_string();
-    crate::logs::repos::first_look(&folder);
+    crate::logs::repos::known_now(&folder);
     let v = crate::desk::lands::desk_view("plain", &folder);
     assert_eq!((v["place"].as_str(), v["summary"].as_str()), (Some("folder"), Some("shared folder, not checked, you commit")), "{v}");
     assert!(v["why"].as_str().unwrap().contains("isn't a git repository"), "{v}");
@@ -170,6 +170,7 @@ fn a_folder_that_isnt_a_git_repository_with_nothing_saved_gets_no_copy_and_you_c
     let w = World::new();
     let dir = w.home().to_path_buf();
     assert!(std::process::Command::new(crate::safe_git::git_bin()).arg("-C").arg(&dir).args(["rev-parse", "--show-toplevel"]).output().is_ok_and(|o| !o.status.success()), "a plain folder");
+    crate::logs::repos::known_now(&dir.to_string_lossy());
     let h = super::team::lead(&w, "hello");
     ends(&w, &h, "Hi.");
     let project = w.snapshot().session(&h)["project"].as_str().unwrap().to_string();
@@ -243,6 +244,7 @@ fn a_check_of_your_own_sees_main_moved_since_the_item_started() {
 #[test]
 fn the_leads_change_waits_for_your_yes() {
     let w = World::new();
+    crate::logs::repos::known_now(&w.home().to_string_lossy());
     let (_h, project) = super::desk::holder(&w);
     let l = super::desk::new_lead(&w, &project);
     let now = |w: &World| super::desk::desk(w, &project)["lands"]["set"].clone();
@@ -301,8 +303,12 @@ fn a_desk_on_another_project_never_offers_cues_own_check_or_install_and_each_kee
     let w = World::new();
     let (_h, project) = super::desk::holder(&w);
     let space = |id: &str, name: &str, folder: String| crate::desk::model::DeskSpace { id: id.into(), name: name.into(), project: project.clone(), folder, machine_folders: Default::default() };
-    w.hub().desk_put_space(space("desk-cue", "Cue work", repo_beside(&w, "cue", true))).unwrap();
-    w.hub().desk_put_space(space("desk-web", "Web app", repo_beside(&w, "web", false))).unwrap();
+    let (cue, web) = (repo_beside(&w, "cue", true), repo_beside(&w, "web", false));
+    // What each Desk offers once its folder is known (a busy Mac can take longer than the view's first short wait).
+    crate::logs::repos::known_now(&cue);
+    crate::logs::repos::known_now(&web);
+    w.hub().desk_put_space(space("desk-cue", "Cue work", cue)).unwrap();
+    w.hub().desk_put_space(space("desk-web", "Web app", web)).unwrap();
     let shown = |desk: &str, part: &str| -> Vec<String> {
         let d = desk_of(&w, desk);
         let p = d["lands"]["parts"].as_array().unwrap().iter().find(|p| p["key"] == part).cloned().unwrap();

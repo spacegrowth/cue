@@ -816,6 +816,17 @@ test.describe("a hosted lead's crew on its own page", () => {
     expect(await cue.calls("interrupt_session"), "Esc never stops the lead here").toHaveLength(0);
   });
 
+  test("Esc a while after your last click still takes the cursor out of the box, and it stays out", async ({ cue, page }) => {
+    const box = page.locator('.cp-left textarea[data-text="s:lead"]');
+    await box.fill("just the team tests");
+    await page.waitForTimeout(600);   // past the half second after a click when Cue leaves focus alone
+    await page.keyboard.press("Escape");
+    await expect(box, "the cursor leaves the box").not.toBeFocused();
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    await expect(box, "and isn't put back a frame later").not.toBeFocused();
+    await expect(box).toHaveValue("just the team tests");
+  });
+
   test("it closes when its lead goes away", async ({ cue, page }) => {
     await cue.change((st) => { st.sessions = st.sessions.filter((s) => s.session_id !== "lead"); st.items = st.items.filter((i) => i.session_id !== "lead"); });
     await expect(page.locator(".crew-page")).toHaveCount(0);

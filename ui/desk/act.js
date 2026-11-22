@@ -674,4 +674,13 @@ if (typeof document !== "undefined") {
     deskChatEnd = end;
   }, true);
   for (const type of ["wheel", "touchmove", "pointerdown", "keydown"]) document.addEventListener(type, (e) => { const c = e.target?.closest?.(".dk-chat"); if (c) c._youAt = Date.now(); }, { capture: true, passive: true });
+  // The switcher's row under the pointer is its lit row, as ↑ ↓ light one: a redraw under a still pointer kept the row
+  // but not its :hover, so it went dark (its long name stopped sliding) till the mouse moved.
+  document.addEventListener("mouseover", (e) => {
+    const row = e.target.closest?.(".dk-sw-menu .dk-sw-row");
+    if (!row || row.classList.contains("at")) return;
+    const rows = [...row.parentNode.children].filter((r) => r.matches(".dk-sw-row"));
+    deskSwitchAt = rows.indexOf(row);
+    for (const r of rows) r.classList.toggle("at", r === row);
+  });
 }

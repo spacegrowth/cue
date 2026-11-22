@@ -956,3 +956,19 @@ test("written about an item ready to check, it's sent back with your words: off 
   await expect(page.locator(".dk-right .dk-ipane .cv-you.msg-failed .msg-line")).toContainText("Couldn't send · its session has ended · Send again");
   await expect(page.locator(".dk-right .dk-pg h1")).toHaveText("Bug #d1 · Reply box loses focus after Send");
 });
+
+test("words you select stay selected when an update came while you dragged", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await page.locator('[data-desk-item="d2"]').click();
+  const h1 = page.locator(".dk-right .dk-pg h1"), box = await h1.boundingBox();
+  await page.mouse.move(box.x + 2, box.y + 14);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width - 2, box.y + 14, { steps: 5 });
+  const picked = await page.evaluate(() => String(getSelection()));
+  expect(picked.length).toBeGreaterThan(3);
+  // The redraw waits while you drag, and runs as you let go: what you selected is still selected after it.
+  await cue.change((st) => { st.sessions[0].doing = "an update"; }, "an update mid-drag");
+  await page.mouse.up();
+  await expect.poll(() => page.evaluate(() => String(getSelection()))).toBe(picked);
+});

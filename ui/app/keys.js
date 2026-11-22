@@ -123,12 +123,18 @@ function keyLightbox(e) {
  *  session has neither. */
 function escSession(sid = active?.sid, key = undefined, pull = pullHeld) {
   const s = !sheet && !menuFor && !redirectFor ? sessionOf(sid) : null;
-  if (s?.held) { escArmed = 0; pull(s.session_id, key); return true; }
+  // Taken back: gone here at once, as it is from the hub, so an Esc before the hub's next update arms Stop rather
+  // than taking it back again ("Too late") and stopping nothing.
+  if (s?.held) { escArmed = 0; s.held = null; pull(s.session_id, key); return true; }
   if (s?.state !== "working") return false;
-  if (Date.now() - escArmed < 1500) { escArmed = 0; interrupt(s.session_id); }
-  else { escArmed = Date.now(); toast(`Esc again to stop ${s.project}`); }
+  const armed = !(Date.now() - escArmed < 1500);
+  if (!armed) { escArmed = 0; interrupt(s.session_id); }
+  else toast(`Esc again to stop ${s.project}`);
   renderMain();
   focusComposer(key);
+  // The second Esc's 1.5 s run from when "Esc again" shows, after the window is drawn: on a busy Mac that draw can
+  // take most of them, and an Esc pressed during it would only arm Stop again.
+  if (armed) escArmed = Date.now();
   return true;
 }
 /** Esc: the side question's panel, a background agent's view, the reader, History's open row, the open session

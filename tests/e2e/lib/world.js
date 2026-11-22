@@ -72,6 +72,9 @@ export class World {
     await waitFor(() => this.alive() && call(this.sock, { type: "list" }, 2000), "Cue's socket", { timeout: 30_000, every: 100 });
     const browser = await waitFor(() => remote({ hostname: "127.0.0.1", port, logLevel: "silent", connectionRetryCount: 0,
       capabilities: { browserName: "tauri" } }), "Cue's WebDriver server", { timeout: 30_000, every: 100 });
+    // A script call sent while the page is still loading can go unanswered (WKWebView never calls back); the plugin
+    // waits its default 30 s on it, the whole wait below. 5 s each, so a lost one is asked again within that wait.
+    await browser.setTimeouts(undefined, undefined, 5_000);
     this.ui = new Window(browser);
     await this.ui.waitUntil(() => typeof state === "object" && Object.keys(state.settings || {}).length > 0, "the window's first state", 30_000);
   }

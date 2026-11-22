@@ -166,6 +166,9 @@ fn saved_projects_are_regrouped_by_repository() {
         c.pragma_update(None, "user_version", 0)
     })
     .unwrap();
+    // The worktree's lookup back first: a busy Mac can take longer than the launch's short first wait (a late
+    // answer is put right as it comes in, caches.rs's tests).
+    crate::logs::repos::known_now(&wt);
     reset(); // the next launch
     let row = |sql: &str| with(|c| c.query_row(sql, [], |r| r.get::<_, String>(0))).unwrap();
     assert_eq!(row("SELECT project || ' ' || json_extract(data, '$.project') FROM sessions WHERE id = 'here'"), "app app");

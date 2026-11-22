@@ -588,3 +588,28 @@ fn a_commit_ask_waits_on_the_members_row_not_in_the_chat_and_goes_once_the_lead_
     assert_eq!(t["step"], "Asked its lead to commit it");
     let _: Value = t;
 }
+
+/// On a busy Mac the lead takes your kept message more than a moment after its turn ends: Cue's ask still waits
+/// for it (yours goes first), and goes after the turn yours started.
+#[test]
+fn a_commit_ask_waits_for_your_kept_message_the_lead_takes_late() {
+    let w = World::new();
+    repo(&w);
+    let sid = lead(&w, "one part, done with shell commands elsewhere");
+    w.hub().set_crew_review(&sid, "always").unwrap();
+    w.hub().set_crew_commit(&sid, "wait").unwrap();
+    says(&w, &sid, writes("toolu_A", "agentA", "board", &[]));
+    w.hub().unqueue_review(&format!("team:{sid}:agentA")).unwrap();
+    w.hub().team_action(&sid, "agentA", "commit").unwrap();
+    w.send_to(&sid, "and check the tray");
+    ends(&w, &sid, "Started on it.", false);
+    // Not taken yet, well past the turn end's drain.
+    w.advance(5000);
+    w.hub().drain_reviews();
+    w.settle();
+    assert!(sent(&w, &sid, "Commit your teammate board").is_empty(), "{:?}", w.hosted.sent());
+    w.hosted_says(&sid, HostedEvent::Taken { text: "and check the tray".into() });
+    ends(&w, &sid, "Checked.", false);
+    w.advance(2000);
+    assert_eq!(sent(&w, &sid, "Commit your teammate board's work now").len(), 1, "{:?}", w.hosted.sent());
+}

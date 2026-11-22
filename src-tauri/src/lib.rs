@@ -253,7 +253,12 @@ mod tests {
         let repo = repo.to_string_lossy();
         let out = std::process::Command::new(crate::safe_git::git_bin()).args(["-C", &repo, "rev-parse", "HEAD"]).output().unwrap();
         let head = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        if let Err(said) = crate::install::live_ui::check(&repo, &head) {
+        // Its copy in a folder of its own, as the other check tests: Cue's folder follows CUE_HOME, which other tests
+        // point at folders of their own and delete as they end, taking the copy with them mid-check.
+        let live = std::env::temp_dir().join(format!("cue-window-check-{}", std::process::id()));
+        let checked = crate::install::live_ui::check_in(&live, &repo, &head);
+        let _ = std::fs::remove_dir_all(&live);
+        if let Err(said) = checked {
             panic!("the window at HEAD doesn't pass its check:\n{said}");
         }
     }

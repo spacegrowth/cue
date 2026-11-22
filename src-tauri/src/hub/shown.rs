@@ -23,25 +23,48 @@ use std::time::{Duration, Instant};
 /// become values each with its own version, read in the same step as the store.
 #[derive(Default)]
 pub(super) struct Shown {
-    kept: RwLock<(u64, Option<Arc<Value>>)>,
+    /// The store's point it accounts for, and the snapshot with what it read of the transcripts (`Reads`).
+    kept: RwLock<(u64, Option<(Reads, Arc<Value>)>)>,
     /// The timer's thread, told each new time to build again (None: no time-based change ahead). Started
     /// by the first `rebuild_at`; it ends with this.
     timer: OnceLock<Sender<Option<Instant>>>,
 }
 
-impl Shown {
-    /// The last snapshot, if one is current. Held for no longer than it takes to clone an `Arc`.
-    pub(super) fn get(&self) -> Option<Arc<Value>> {
-        crate::locking::read(&self.kept, "shown snapshot").1.clone()
+/// The transcripts a snapshot read each Claude session's latest request from, and how many times their reads
+/// had found another prompt then (`about::reads_of`). A read lands on its own thread, after the tick that asked
+/// for it has looked for news: one landing after the snapshot makes it out of date, as a change in the store
+/// does.
+#[derive(Default)]
+pub(super) struct Reads {
+    pub transcripts: Vec<String>,
+    pub count: u64,
+}
+
+impl Reads {
+    pub(super) fn now(transcripts: Vec<String>) -> Self {
+        let count = crate::about::reads_of(&transcripts);
+        Self { transcripts, count }
     }
 
-    /// `snap`, taken from the store at `seq`: kept unless a later one (or a later `forget`) is already in.
-    /// Whether it was kept.
-    pub(super) fn put(&self, seq: u64, snap: Arc<Value>) -> bool {
+    fn current(&self) -> bool {
+        crate::about::reads_of(&self.transcripts) == self.count
+    }
+}
+
+impl Shown {
+    /// The last snapshot, if one is current. Held for no longer than it takes to clone an `Arc` (and count
+    /// its transcripts' reads).
+    pub(super) fn get(&self) -> Option<Arc<Value>> {
+        crate::locking::read(&self.kept, "shown snapshot").1.as_ref().filter(|(r, _)| r.current()).map(|(_, s)| s.clone())
+    }
+
+    /// `snap`, taken from the store at `seq` with the transcripts' reads at `reads` (counted before it read
+    /// them): kept unless a later one (or a later `forget`) is already in. Whether it was kept.
+    pub(super) fn put(&self, seq: u64, reads: Reads, snap: Arc<Value>) -> bool {
         let mut cur = crate::locking::write(&self.kept, "shown snapshot");
         let newer = seq > cur.0;
         if newer {
-            *cur = (seq, Some(snap));
+            *cur = (seq, Some((reads, snap)));
         }
         newer
     }
@@ -169,18 +192,50 @@ mod tests {
     fn an_older_snapshot_landing_late_never_replaces_a_newer_one() {
         let s = Shown::default();
         assert!(s.get().is_none());
-        s.put(2, Arc::new(json!("newer")));
-        s.put(1, Arc::new(json!("older")));
+        s.put(2, Reads::default(), Arc::new(json!("newer")));
+        s.put(1, Reads::default(), Arc::new(json!("older")));
         assert_eq!(*s.get().unwrap(), json!("newer"));
-        s.put(3, Arc::new(json!("newest")));
+        s.put(3, Reads::default(), Arc::new(json!("newest")));
         assert_eq!(*s.get().unwrap(), json!("newest"));
         // Changed at 5: one built from before that, landing now, isn't current; one built after is.
         s.forget(5);
         assert!(s.get().is_none());
-        s.put(4, Arc::new(json!("stale")));
+        s.put(4, Reads::default(), Arc::new(json!("stale")));
         assert!(s.get().is_none(), "built before the change");
-        s.put(6, Arc::new(json!("rebuilt")));
+        s.put(6, Reads::default(), Arc::new(json!("rebuilt")));
         assert_eq!(*s.get().unwrap(), json!("rebuilt"));
+    }
+
+    /// A transcript read lands on its own thread, after the tick that asked for it looked for news: the snapshot
+    /// kept from before it isn't current any more (it would say no request until the store next changed), while
+    /// a read of a transcript it didn't read from leaves it current.
+    #[test]
+    fn a_transcript_read_landing_after_the_snapshot_makes_it_out_of_date() {
+        let dir = std::env::temp_dir().join(format!("cue-shown-reads-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (mine, other) = (dir.join("mine.jsonl"), dir.join("other.jsonl"));
+        for f in [&mine, &other] {
+            std::fs::write(f, "{\"type\":\"last-prompt\",\"lastPrompt\":\"make it faster\"}\n").unwrap();
+        }
+        let (mine, other) = (mine.to_string_lossy().into_owned(), other.to_string_lossy().into_owned());
+        let landed = |t: &str| {
+            let end = Instant::now() + Duration::from_secs(10);
+            while crate::about::about(t) != "make it faster" {
+                assert!(Instant::now() < end, "the read of {t} landed");
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        };
+        let s = Shown::default();
+        s.put(1, Reads::now(vec![mine.clone()]), Arc::new(json!("before the read")));
+        assert!(s.get().is_some());
+        crate::about::read_about(vec![other.clone()], crate::model::now_ms());
+        landed(&other);
+        assert!(s.get().is_some(), "another transcript's read");
+        crate::about::read_about(vec![mine.clone()], crate::model::now_ms());
+        landed(&mine);
+        assert!(s.get().is_none(), "built before its read landed");
+        s.put(2, Reads::now(vec![mine]), Arc::new(json!("with it")));
+        assert_eq!(*s.get().unwrap(), json!("with it"));
     }
 
     /// A hub call that holds the store (a slow one, or one stuck): the window still gets its state at once,

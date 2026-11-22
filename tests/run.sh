@@ -25,6 +25,9 @@ set -eo pipefail   # a failed step ends the run here
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # Nothing here may reach the tmux server you're in: a Cue or test started from a tmux pane would inherit it.
 unset TMUX TMUX_PANE
+# Nor say it runs in a session Cue hosts or drives (run from one, it would): hooks started from such a session tell Cue
+# nothing, so every test of a hook would wait for what never comes.
+unset CUE_HOSTED CUE_DRIVEN_BY CUE_HOOK_RECONNECT_FOR
 
 # A Desk item's copy doesn't run every Rust test itself: its own tests go by `card`, the full run after landing.
 in_desk_copy() {
@@ -38,7 +41,8 @@ unit() {
   fi
   export CUE_HOME="$(mktemp -d /tmp/cue-test.XXXX)"
   export CUE_QUIET=1
-  export CUE_BIN="$ROOT/src-tauri/target/debug/cue"
+  # The Cue this run built: from its CARGO_TARGET_DIR when it has one (copies that share target/ build over each other).
+  export CUE_BIN="${CARGO_TARGET_DIR:-$ROOT/src-tauri/target}/debug/cue"
   # The protocol tests' stand-in agents, and the private Cue typing into them, on a tmux server of their own:
   # with $TMUX unset, a bare `tmux` would otherwise start sessions on your default server.
   export TMUX_TMPDIR="$CUE_HOME/tmux"
@@ -153,14 +157,20 @@ soak() {
   mkdir -p "$dir"
   rm -f "$dir/rust.json" "$dir/e2e.json"
   echo "soak: $CUE_SOAK_MINUTES min, its files in $dir" >&2
-  # Both built first, one after the other: a run that starts while the other still compiles measures the
-  # compiler, not Cue.
-  (cd "$ROOT/src-tauri" && cargo test -q --lib --no-run && cargo build -q --features e2e --target-dir target/e2e) >"$dir/build.log" 2>&1 \
+  # Both built first, one after the other, then run as built: a run that starts while the other still compiles
+  # measures the compiler, not Cue. And two builds side by side clash: Cue's build reruns whenever .git/packed-refs
+  # moves (any copy's landing moves it), and each build rewrites src-tauri/gen/schemas/acl-manifests.json (the e2e
+  # build's has one more plugin), which the other may copy half written ("failed to parse plugin manifest map").
+  local lib
+  lib=$(cd "$ROOT/src-tauri" && cargo test -q --lib --no-run --message-format=json 2>"$dir/build.log" \
+    | python3 -c 'import json,sys; print(next(m["executable"] for m in map(json.loads, sys.stdin) if m.get("reason") == "compiler-artifact" and m.get("executable") and m["target"]["name"] == "cue_lib"))') \
+    && (cd "$ROOT/src-tauri" && cargo build -q --features e2e --target-dir "${CARGO_TARGET_DIR:-target}/e2e") >>"$dir/build.log" 2>&1 \
     || { echo "soak: the build failed (see $dir/build.log)" >&2; return 1; }
-  # Side by side: the gate takes the run's length, not twice it. Each one's output goes to its own log.
-  (cd "$ROOT/src-tauri" && CUE_SOAK_OUT="$dir/rust.json" cargo test -q --lib -- --ignored testing::soak::soak --nocapture) >"$dir/rust.log" 2>&1 &
+  # Side by side: the gate takes the run's length, not twice it. Each one's output goes to its own log. The test
+  # program runs through cargo's runner (a private copy, scripts/test-runner.sh), from where cargo test runs it.
+  (cd "$ROOT/src-tauri" && CUE_SOAK_OUT="$dir/rust.json" "$ROOT/scripts/test-runner.sh" "$lib" --ignored testing::soak::soak --nocapture) >"$dir/rust.log" 2>&1 &
   local rust=$!
-  CUE_SOAK_OUT="$dir/e2e.json" "$ROOT/tests/e2e/run.sh" soak/soak.test.js >"$dir/e2e.log" 2>&1 &
+  CUE_E2E_BUILT=1 CUE_SOAK_OUT="$dir/e2e.json" "$ROOT/tests/e2e/run.sh" soak/soak.test.js >"$dir/e2e.log" 2>&1 &
   local e2e=$!
   # Interrupted: both runs end with it, each by its pid with everything it started (the e2e run's own trap
   # then ends its Cue and tmux server), never left soaking in the background.

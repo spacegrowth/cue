@@ -1,0 +1,13 @@
+--- a/tests/ui/specs/desk-item-your-words.spec.mjs
++++ b/tests/ui/specs/desk-item-your-words.spec.mjs
+@@ -26,8 +26,8 @@
+   await page.locator(".dk-right .dk-box textarea").fill("Try it in a hosted session too");
+   await page.locator(".dk-right [data-desk-send]").click();
+   await cue.called("desk_item_act", { id: "d5", act: "note", text: "Try it in a hosted session too" });
+-  // The session got Cue's whole message.
+-  expect(await page.evaluate(() => deskOf("cue").decisions.find((c) => c.item_id === "d5" && c.delivery)?.delivery.text)).toBe(`About #d5 (${TITLE}): Try it in a hosted session too`);
++  // The session got Cue's whole message (the window hears of it after the call, as from the hub).
++  await expect.poll(() => page.evaluate(() => deskOf("cue").decisions.find((c) => c.item_id === "d5" && c.delivery)?.delivery.text)).toBe(`About #d5 (${TITLE}): Try it in a hosted session too`);
+   const mine = page.locator(".dk-right .dk-ichat .cv-you .cv-you-text").filter({ hasText: "Try it in a hosted session too" });
+   await expect(mine).toHaveCount(1);
+   expect(await wordsOf(mine)).toBe("Try it in a hosted session too");

@@ -39,6 +39,28 @@ test("an item's page: Esc brings back what Cue kept for its holder without the A
   expect((await cue.calls("interrupt_session")).map((c) => c.args.sessionId)).toEqual(["host"]);
 });
 
+test("Esc twice right after a kept message came back stops its holder, before the window hears from the hub again", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await page.locator('.dk-items [data-desk-item="d5"]').click();
+  const title = await page.evaluate(() => deskItem("cue", "d5").title);
+  await hold(cue, "host", `About #d5 (${title}): try the other port`);
+  // The hub's update after it's taken back comes 3 s late, as on a busy Mac (a real wait: tests run w.changed's at 0).
+  await cue.override("unhold_message", ({ sessionId }) => {
+    const w = CueBridge.world, s = w.session(sessionId), held = s?.held || null;
+    if (s) delete s.held;
+    setTimeout(() => w.emit("state", w.snapshot()), 3000);
+    return held;
+  });
+  const box = page.locator(".dk-right .dk-box textarea");
+  await page.keyboard.press("Escape");
+  await expect(box).toHaveValue("try the other port");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await cue.called("interrupt_session", { sessionId: "host" });
+  expect(await cue.calls("unhold_message")).toHaveLength(1);
+});
+
 test("a session's page: Esc twice stops it; once it's stopped, Esc goes back as before", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);

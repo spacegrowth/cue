@@ -7,7 +7,8 @@ import { existsSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 // A port of this checkout's own, so two worktrees can run their UI tests at once.
-const port = +process.env.CUE_UI_PORT || 20000 + (parseInt(createHash("sha1").update(import.meta.url).digest("hex").slice(0, 6), 16) % 20000);
+const mine = createHash("sha1").update(import.meta.url).digest("hex");
+const port = +process.env.CUE_UI_PORT || 20000 + (parseInt(mine.slice(0, 6), 16) % 20000);
 
 // The optional add-on's UI tests (src-tauri/ext/ui/tests), when it's there: a project of their own, run on the window
 // with the add-on's part in it (load.js ?addon=1). They reach this folder's helpers through CUE_UI_SPECS.
@@ -24,7 +25,8 @@ export default defineConfig({
   forbidOnly: true,
   retries: 0,
   reporter: [["list"]],
-  outputDir: process.env.TMPDIR ? `${process.env.TMPDIR}/cue-ui-results` : "/tmp/cue-ui-results",
+  // This checkout's own too: a run empties its folder as it starts, so a shared one loses another run's traces.
+  outputDir: `${process.env.TMPDIR || "/tmp"}/cue-ui-results-${mine.slice(0, 8)}`,
   use: {
     baseURL: `http://127.0.0.1:${port}/tests/ui/`,
     browserName: "chromium",

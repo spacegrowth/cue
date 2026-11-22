@@ -7,7 +7,9 @@ import { waitFor } from "../lib/poll.js";
 const pendingFor = async (world, sid) => (await world.list()).items.filter((i) => i.session_id === sid && i.kind !== "waiting");
 
 journey("a fresh Cue shows an empty board", async (world) => {
-  await world.ui.waitText("Nothing waiting.");
+  // The board's empty columns say so in their heads (as world.spec.mjs checks); the window reads them in capitals.
+  await world.ui.waitText("NOTHING WAITING");
+  await world.ui.waitText("NO OTHER SESSIONS");
   const { items, sessions } = await world.list();
   assert.deepEqual([items.length, sessions.length], [0, 0]);
   const png = await world.ui.screenshot();

@@ -24,7 +24,7 @@ test("a mocks-only item lists its options M1, M2 with a Pick each; a pick closes
   // Its chat is for comments on the mocks; the pick is the button.
   await expect(page.locator(".dk-right .dk-box textarea")).toHaveAttribute("placeholder", /^Comments… \(Pick an option above/);
   for (const theme of ["light", "dark"]) {
-    await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
+    await page.emulateMedia({ colorScheme: theme });   // as the Mac switches it: a redraw puts Settings → Appearance (system) back over a data-theme set by hand
     // The theme redraws the page: again once it's settled.
     if (process.env.SHOT_DIR) await expect(async () => page.locator(".dk-panel[data-side-for]").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-445-${theme}.png`, timeout: 2000 })).toPass();
   }
@@ -90,7 +90,7 @@ test("three options with the middle one suggested: all three get a Pick, in the 
   await expect(inChat.locator('[data-desk-act="pick"]')).toHaveText(["Pick", "Pick", "Pick"]);
   await expect(page.locator(".dk-right [title]")).toHaveCount(0);
   for (const theme of ["light", "dark"]) {
-    await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
+    await page.emulateMedia({ colorScheme: theme });   // as the Mac switches it: a redraw puts Settings → Appearance (system) back over a data-theme set by hand
     if (process.env.SHOT_DIR) await expect(async () => page.locator(".dk-right").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-539-${theme}.png`, timeout: 2000 })).toPass();
   }
   await inChat.nth(1).locator('[data-desk-act="pick"]').click();

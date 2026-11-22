@@ -16,7 +16,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 |---|---|
 | `#[tauri::command]` | 179 (3 sync) |
 | Lock declarations (static or field) | 122 |
-| Lock acquisitions | 290 |
+| Lock acquisitions | 291 |
 | Lock-graph edges | 54 |
 | Spawn sites | 94 |
 | External calls: fs / db / process / notify / login / socket | 533 / 232 / 61 / 4 / 1 / 4 |
@@ -275,7 +275,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `hub/saves.rs::SaveLocks.review_queue` | `Mutex<()>` | "review queue saves" (1 sites) |
 | `hub/saves.rs::SaveLocks.parked` | `Mutex<()>` | "parked saves" (1 sites) |
 | `hub/saves.rs::SaveLocks.desk` | `Mutex<()>` | "desk saves" (3 sites) |
-| `hub/shown.rs::Shown.kept` | `RwLock<(u64,Option<Arc<Value>>)>` | "shown snapshot" (3 sites) |
+| `hub/shown.rs::Shown.kept` | `RwLock<(u64,Option<(Reads,Arc<Value>)>)>` | "shown snapshot" (3 sites) |
 | `hub/shown.rs::Shown.timer` | `OnceLock<Sender<Option<Instant>>>` | — |
 | `hub/store_access.rs::StoreCell.0` | `Mutex<Store>` | "the hub's store" (2 sites) |
 | `install/live_ui.rs::SERVED` | `RwLock<Option<PathBuf>>` | "live_ui.served" (3 sites) |
@@ -288,7 +288,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `locking/stats.rs::PINGS` | `Mutex<VecDeque<u64>>` | — |
 | `locking/stats.rs::HOLDS` | `Mutex<BTreeMap<(&'staticstr,&'staticstr,u32),Holds>>` | — |
 | `locking/watchdog.rs::THREAD` | `OnceLock<Option<std::thread::Thread>>` | — |
-| `logs/about.rs::ABOUT` | `Mutex<Option<HashMap<String,Kept>>>` | "ABOUT" (4 sites) |
+| `logs/about.rs::ABOUT` | `Mutex<Option<HashMap<String,Kept>>>` | "ABOUT" (5 sites) |
 | `logs/about.rs::READING` | `Mutex<Option<HashSet<String>>>` | "about READING" (3 sites) |
 | `logs/archive.rs::INDEX` | `Mutex<Option<HashMap<String,(u64,Entry)>>>` | "archive INDEX" (4 sites) |
 | `logs/live.rs::CLAUDE` | `Mutex<Vec<Quiet>>` | "CLAUDE" (2 sites) |

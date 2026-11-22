@@ -71,6 +71,31 @@ function notePlaces() {
   }
   return out;
 }
+/** Text selected in the window (not in a box you type in): each end as its node, and as its place to find again
+ *  when the draw made that node afresh. A redraw held while you dragged runs as you let go (window.js), and
+ *  would otherwise wipe what you just selected. */
+function noteSelection() {
+  const s = getSelection();
+  if (!s.rangeCount || s.isCollapsed || inField(s.anchorNode) || inField(s.focusNode)) return null;
+  const end = (node, off) => {
+    const el = node.nodeType === 1 ? node : node.parentElement;
+    return { node, off, steps: el && placeOf(el), kid: node.nodeType === 1 ? -1 : [...el.childNodes].indexOf(node) };
+  };
+  return { a: end(s.anchorNode, s.anchorOffset), f: end(s.focusNode, s.focusOffset), text: s.toString() };
+}
+/** The selection noted before the draw, over the same words again; gone when they aren't there any more. */
+function putSelectionBack(noted) {
+  if (!noted || inField(document.activeElement)) return;
+  const back = (e) => {
+    if (e.node.isConnected) return [e.node, e.off];   // kept through the draw (the open chat)
+    const el = e.steps && atPlace(e.steps);
+    const node = el && (e.kid < 0 ? el : el.childNodes[e.kid]);
+    return node ? [node, e.off] : null;
+  };
+  const a = back(noted.a), f = back(noted.f), s = getSelection();
+  try { if (a && f) s.setBaseAndExtent(a[0], a[1], f[0], f[1]); } catch { /* an end past its node's text */ }
+  if (s.toString() !== noted.text) s.removeAllRanges();
+}
 function putPlacesBack(noted) {
   for (const [steps, top, left] of noted) {
     const el = atPlace(steps);
@@ -115,6 +140,7 @@ function beforeDraw() {
   // A one-line box is scrolled sideways once its words run past its end: built afresh it shows their start (#308).
   was.lineLefts = new Map([...document.querySelectorAll("input[data-text]")].map((el) => [el.dataset.text, el.scrollLeft]));
   was.places = notePlaces();
+  was.sel = noteSelection();
   was.scrolls = new Map(scrollerKeys().map(([key, el]) => [key, el.scrollTop]));
   for (const [key, top] of was.scrolls) if (AWAY_KEPT.test(key)) scrollsAway.set(key, top);
   was.mcpTops = new Map([...document.querySelectorAll(".mcp-list[data-mcp-key]")].map((el) => [el.dataset.mcpKey, el.scrollTop]));   // the MCP picker, redrawn on every tick
@@ -214,6 +240,7 @@ function afterDraw(was, lifted, kept) {
   if (listening) listenFollow(listening);
   tellChatOpen(chat);
   restoreFocus(was);
+  putSelectionBack(was.sel);
   fitAfterDraw(was.focused);
   reqFit();
 }

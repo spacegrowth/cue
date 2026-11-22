@@ -52,6 +52,14 @@ impl Sessions {
     pub fn kept_went(&mut self, session_id: &str, since: u64, h: &Exchange) {
         self.sent_written(session_id, since, h.at_ms);
         self.sent_held(session_id, h);
+        if let Some(s) = self.0.get_mut(session_id) {
+            s.kept_on_way = Some(h.text.clone());
+        }
+    }
+
+    /// The kept message that went, while Cue hasn't seen the agent take it yet (its turn over, it went to the agent).
+    pub fn kept_on_way(&self, session_id: &str) -> bool {
+        self.0.get(session_id).and_then(|s| s.kept_on_way.as_deref()).is_some_and(|t| self.is_pending(session_id, t))
     }
 
     /// The kept message `sent` went (its copy is in the thread now, from the same write): off the kept slot, so

@@ -22,6 +22,13 @@ const moveBack = (parent, node, before = null) => {
   if (KEEPS_STATE) getComputedStyle(parent).display;
   moveTo(parent, node, before);
 };
+/** Where a long kept part (the Desk's lists) waits while the window is drawn: hidden by content-visibility, so moveBack's
+ *  style pass skips it (styling 500 rows there and again back in place doubled a redraw), and its animations go on. */
+const parkSpot = () => {
+  let p = document.getElementById("cue-park");
+  if (!p) { p = document.createElement("div"); p.id = "cue-park"; p.style.contentVisibility = "hidden"; document.body.append(p); }
+  return p;
+};
 let chatPending = null;   // what the slot stands for: the chat's HTML, until settleChat patches it in
 /** Before the window's HTML is set: the chat, the sweep and a flick move aside, out of what's replaced. */
 function liftChat() {
@@ -176,8 +183,12 @@ function homeFocus() {
     focusComposer();
   });
 }
-// Focus let go to nothing (Tab past the last control, an element that blurs as it closes): home.
-document.addEventListener("focusout", (e) => { if (!e.relatedTarget) homeFocus(); });
+// Focus let go to nothing (Tab past the last control, an element that blurs as it closes): home. Not by Esc, which
+// takes the cursor out of its box on purpose (on a crew page, a box with words in it): home again, it undid that Esc
+// whenever your last click was more than half a second before it.
+let escLetGo = false;
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") { escLetGo = true; setTimeout(() => { escLetGo = false; }, 0); } }, true);
+document.addEventListener("focusout", (e) => { if (!e.relatedTarget && !escLetGo) homeFocus(); });
 
 /** The chat jumps to its end when you open something else; a new row follows only if you were at the end.
  *  New target: jump to the end. Same chat, you were at the end (within 24 px, measured before the patch): stay

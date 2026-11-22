@@ -116,7 +116,7 @@ pub fn check(repo: &str, head: &str) -> Result<(), String> {
 }
 
 /// `check`, its copy made in `dir` and removed after.
-fn check_in(dir: &Path, repo: &str, head: &str) -> Result<(), String> {
+pub(crate) fn check_in(dir: &Path, repo: &str, head: &str) -> Result<(), String> {
     if !looks_like_commit(head) {
         return Err(format!("not a commit: {head}"));
     }

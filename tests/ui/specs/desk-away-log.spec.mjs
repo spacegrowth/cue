@@ -1,7 +1,7 @@
 // The dispatcher's Away tab (#416): beside Decisions and Dispatcher Actions, each past Away stretch, newest first, folded
 // to one line (when, how long, spend, counts); open, the items that moved, the lead's calls with Undo while it can
 // still be undone, and the steps held for you, allowed or refused.
-import { test, expect, openDesk } from "./cue.mjs";
+import { test, expect, openDesk, boxNow } from "./cue.mjs";
 import { NOW } from "./clock.mjs";
 
 const H = 60 * 60 * 1000;
@@ -39,7 +39,7 @@ test("past Away stretches in their own tab, newest first, each one line opening 
   await expect(rows.nth(1).locator(".dk-al-h")).toHaveText(/^›\w{3} \d+, \d\d:\d\d – \d\d:\d\d 1h · nothing happened · ran to its end time$/);
   await expect(rows.locator(".dk-aw-list")).toHaveCount(0);
   // Each tab on one line, though there are four now.
-  for (const t of await tabs.all()) expect((await t.boundingBox()).height).toBeLessThan(40);
+  for (const t of await tabs.all()) expect((await boxNow(t)).height).toBeLessThan(40);
 
   await rows.nth(0).locator(".dk-al-h").click();
   await expect(rows.nth(0).locator(".dk-al-h")).toHaveAttribute("aria-expanded", "true");

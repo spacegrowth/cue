@@ -736,7 +736,7 @@ function deskKeepPatch(live, fresh, pool, spare) {
 /** Before the window's HTML is set: the lists lifted out, by their scroll key. */
 function deskListsLift() {
   const kept = new Map();
-  for (const el of document.querySelectorAll(DESK_KEPT_LISTS)) { moveTo(document.body, el); kept.set(el.dataset.scrollKey, el); }
+  for (const el of document.querySelectorAll(DESK_KEPT_LISTS)) { moveTo(parkSpot(), el); kept.set(el.dataset.scrollKey, el); }
   return kept;
 }
 /** After: each list back in its fresh place, brought up to date; one not drawn any more is dropped. */

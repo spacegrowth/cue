@@ -117,9 +117,9 @@ fn repo_of_worktree() {
     run(&main, &["worktree", "add", "-q", "../app-wt/fix-it"]);
     let wt = base.join("app-wt/fix-it");
     std::fs::create_dir_all(wt.join("deep")).unwrap();
-    // Each folder looked at first, as a session's hook does (first_look): asking alone doesn't wait.
+    // Each folder known first (a session's hook waits a moment, first_look): asking alone doesn't wait.
     for p in [main.join("src"), wt.clone(), wt.join("deep")] {
-        first_look(p.to_str().unwrap());
+        known_now(p.to_str().unwrap());
     }
     let name = |p: &Path| repo_root(p.to_str().unwrap()).map(|r| repo_name(&r));
     assert_eq!(name(&main.join("src")).as_deref(), Some("app"));
@@ -156,7 +156,7 @@ fn a_folders_project_by_the_three_rules() {
     let said = |p: &Path, put: &HashMap<String, String>| crate::model::project_said(&s(p), "", put);
     let none = HashMap::new();
     for p in [web.join("ui"), web.clone(), base.join("web-app-fix"), scratch.clone(), scratch.join("deep"), scratch.join("deep/inner-repo"), docs.clone()] {
-        first_look(&s(&p));
+        known_now(&s(&p));
     }
     // 3. its own: the repository, from a subfolder and a worktree too; else the folder.
     assert_eq!(crate::model::own_project(&s(&web.join("ui")), ""), "web-app");
@@ -193,15 +193,15 @@ fn reads_the_branch_of_a_repo_and_a_worktree() {
     std::fs::create_dir_all(d.join("repo/.git")).unwrap();
     std::fs::create_dir_all(d.join("repo/src/deep")).unwrap();
     std::fs::write(d.join("repo/.git/HEAD"), "ref: refs/heads/chart-lines\n").unwrap();
-    first_look(d.join("repo/src/deep").to_str().unwrap());
-    first_look(d.join("repo").to_str().unwrap());
+    known_now(d.join("repo/src/deep").to_str().unwrap());
+    known_now(d.join("repo").to_str().unwrap());
     assert_eq!(branch(d.join("repo/src/deep").to_str().unwrap()), "chart-lines", "found from a subfolder");
     assert_eq!(branch(d.join("repo").to_str().unwrap()), "chart-lines");
     std::fs::create_dir_all(d.join("repo/.git/worktrees/wt")).unwrap();
     std::fs::write(d.join("repo/.git/worktrees/wt/HEAD"), "4f2a9c1e0b7d\n").unwrap();
     std::fs::create_dir_all(d.join("wt")).unwrap();
     std::fs::write(d.join("wt/.git"), format!("gitdir: {}\n", d.join("repo/.git/worktrees/wt").display())).unwrap();
-    first_look(d.join("wt").to_str().unwrap());
+    known_now(d.join("wt").to_str().unwrap());
     assert_eq!(branch(d.join("wt").to_str().unwrap()), "4f2a9c1", "a detached worktree shows its commit");
     std::fs::write(d.join("repo/.git/HEAD"), "ref: refs/heads/main\n").unwrap();
     assert_eq!(branch(d.join("repo").to_str().unwrap()), "chart-lines", "read from memory until a refresh");

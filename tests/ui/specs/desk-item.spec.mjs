@@ -1290,9 +1290,11 @@ test("the Desk's hand-off shows in the session's chat as a card: from the lead a
   await expect(card).not.toContainText("DESIGNS:");
   await expect(card).not.toContainText("on a line of its own");
   const dir = process.env.SHOT_DIR || process.env.TMPDIR || "/tmp";
-  await card.screenshot({ path: `${dir}/cue-desk-hand-light.png` });
+  // Shot where it is on the screen: a locator's own shot finds the card, then shoots it, and a redraw between leaves it gone.
+  await card.evaluate((el) => el.scrollIntoView({ block: "nearest" }));
+  await page.screenshot({ clip: await card.boundingBox(), path: `${dir}/cue-desk-hand-light.png` });
   await page.emulateMedia({ colorScheme: "dark" });
-  await card.screenshot({ path: `${dir}/cue-desk-hand-dark.png` });
+  await page.screenshot({ clip: await card.boundingBox(), path: `${dir}/cue-desk-hand-dark.png` });
   await page.emulateMedia({ colorScheme: "light" });
   // Its number opens the item.
   await card.locator(".mg-id[data-desk-hand]").click();
@@ -1328,7 +1330,7 @@ test("an item's thread holds only its own messages: its session's words about an
   await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5").state = "working"; st.sessions.find((x) => x.session_id === "host").state = "working"; });
   await expect(pane.locator('.dk-ichat [data-key="where"]')).toHaveCount(1);
   for (const theme of ["light", "dark"]) {
-    await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
+    await page.emulateMedia({ colorScheme: theme });   // as the Mac switches it: a redraw puts Settings → Appearance (system) back over a data-theme set by hand
     if (process.env.SHOT_DIR) await page.locator(".dk-right").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-176-${theme}.png` });
   }
 });
@@ -1348,7 +1350,7 @@ test("an item with mocks has \"Open the mocks\" in its NOW; waiting on a pick, a
   expect((await box(head.locator(".dk-pacts a.dk-dlink")))[0]).toBeGreaterThanOrEqual((await box(head.locator(".dk-psay")))[1]);
   await expect(head.locator(".dk-pickl")).toHaveText("Mocks · open the canvas · Pick one for working items: D, E or F.");
   for (const theme of ["light", "dark"]) {
-    await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
+    await page.emulateMedia({ colorScheme: theme });   // as the Mac switches it: a redraw puts Settings → Appearance (system) back over a data-theme set by hand
     if (process.env.SHOT_DIR) await page.locator(".dk-right").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-178-${theme}.png` });
   }
   // Picked (no reply asks for one): no pick line, only the mocks (#182, #436); no mocks: no link, in the app.
@@ -1394,7 +1396,7 @@ test("a pick on an item's mocks: Pick B closes it, its new build item is linked 
   await expect(page.locator(".toast").last()).toContainText(`Option B is picked already: it's being built as #${n}`);
   expect((await items()).length).toBe(before);
   for (const theme of ["light", "dark"]) {
-    await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
+    await page.emulateMedia({ colorScheme: theme });   // as the Mac switches it: a redraw puts Settings → Appearance (system) back over a data-theme set by hand
     if (process.env.SHOT_DIR) await page.locator(".dk-right").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-281-${theme}.png` });
   }
 });

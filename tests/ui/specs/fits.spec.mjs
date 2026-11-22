@@ -90,16 +90,14 @@ const SCREENS = {
 
 for (const [screen, { scenario, look }] of Object.entries(SCREENS)) {
   for (const s of SIZES) {
-    for (const [win, size] of WINDOWS) {
-      test(`${screen}, text size ${s.name}, ${win}, light and dark: every word fits`, async ({ cue, page }) => {
+    // Light and dark each a test of its own: both in one took up to half the test's time on a Mac that's busy
+    // (4 items' pages, measured twice), and a busier one ran out of it.
+    for (const [win, size] of WINDOWS) for (const mode of ["light", "dark"]) {
+      test(`${screen}, text size ${s.name}, ${win}, ${mode}: every word fits`, async ({ cue, page }) => {
         await page.setViewportSize(zoomed(size(s.zoom), s.zoom));
-        const out = [];
-        for (const mode of ["light", "dark"]) {
-          await cue.open(scenario, { frozen: true });
-          await setLook(cue, s, mode);
-          out.push(...(await look(page, mode)));
-        }
-        expect(out).toEqual([]);
+        await cue.open(scenario, { frozen: true });
+        await setLook(cue, s, mode);
+        expect(await look(page, mode)).toEqual([]);
       });
     }
   }

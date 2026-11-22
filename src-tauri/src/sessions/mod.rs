@@ -199,6 +199,10 @@ pub struct Session {
     /// are already saved (their paths).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub held: Option<Exchange>,
+    /// The kept message's text once it went (its turn over): until the agent is seen taking it, Cue's own asks wait
+    /// behind it (hub lead_waits). Not saved: after a restart nothing is on its way.
+    #[serde(skip)]
+    pub kept_on_way: Option<String>,
     /// How many of its turns have ended (each end counted as its session is marked at its prompt, in that same
     /// write): what a Desk lead was sent is heard only at the end of a turn counted after it went (desk/feed.rs).
     #[serde(default, skip_serializing_if = "is_zero")]

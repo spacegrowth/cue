@@ -55,10 +55,11 @@ impl FakeCue {
         let _ = std::fs::remove_file(self.sock());
     }
 
-    /// `cue hook <args>` started, `stdin` written to it and closed.
+    /// `cue hook <args>` started, `stdin` written to it and closed. Run as from a session in a terminal, whatever
+    /// session runs the tests: a session Cue hosts (CUE_HOSTED) has its hooks tell Cue nothing.
     pub fn hook(&self, args: &[&str], stdin: &[u8], env: &[(&str, &str)]) -> Child {
         let mut c = Command::new(env!("CARGO_BIN_EXE_cue"));
-        c.arg("hook").args(args).env("CUE_HOME", &self.home).env_remove("TMUX").env_remove("TMUX_PANE").env_remove("CUE_DRIVEN_BY").env_remove("CUE_HOOK_RECONNECT_FOR");
+        c.arg("hook").args(args).env("CUE_HOME", &self.home).env_remove("TMUX").env_remove("TMUX_PANE").env_remove("CUE_DRIVEN_BY").env_remove("CUE_HOOK_RECONNECT_FOR").env_remove("CUE_HOSTED");
         for (k, v) in env {
             c.env(k, v);
         }

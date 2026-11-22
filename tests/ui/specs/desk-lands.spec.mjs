@@ -139,7 +139,16 @@ test("a Desk on another project offers no Cue's own check or install, and keeps 
   await expect(dlg.locator("[title]")).toHaveCount(0);
   // Its own steps saved for it alone.
   await seg("After landing").filter({ hasText: "Your own steps" }).click();
-  await dlg.locator('[data-ld-steps="after"]').fill("npm run deploy");
+  // Saved when you leave the box, not while you type in it. A redraw on the way (anything changing) keeps the cursor
+  // where it was: without that, the box lost it mid-word and, gone, counted as left.
+  const box = dlg.locator('[data-ld-steps="after"]');
+  await box.click();
+  await page.keyboard.type("npm run");
+  await page.evaluate(() => renderMain());
+  await expect(box).toBeFocused();
+  await page.keyboard.type(" deploy");
+  await expect(box).toHaveValue("npm run deploy");
+  await page.keyboard.press("Tab");
   await dlg.locator('[data-ld="save"]').click();
   await expect.poll(async () => (await cue.calls("desk_lands_set")).at(-1)?.args).toMatchObject({ desk: "desk-web", lands: { after: "command", after_steps: ["npm run deploy"] } });
   // Cue's own Desk keeps its own check and install.

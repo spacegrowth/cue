@@ -139,7 +139,7 @@ impl Hub {
         let mut due: Vec<QueuedReview> = vec![];
         let leads: Vec<String> = st.review_queue.iter().map(|q| q.lead.clone()).collect();
         for lead in leads {
-            if due.iter().any(|d| d.lead == lead) || st.sessions.held(&lead).is_some() || Self::lead_busy(st, &lead, now).is_some() {
+            if due.iter().any(|d| d.lead == lead) || Self::lead_waits(st, &lead, now) {
                 continue;
             }
             let Some(i) = st.review_queue.iter().position(|q| q.lead == lead) else { continue };

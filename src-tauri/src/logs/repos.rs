@@ -119,6 +119,23 @@ impl Folders {
         }
     }
 
+    /// `cwd`'s facts once its lookup is back, however long a busy machine takes (tests: what a folder shows once
+    /// it's known, not whether that came within `first_wait`).
+    #[cfg(test)]
+    fn known_now(&'static self, cwd: &str) -> Facts {
+        let mut known = crate::locking::lock(&self.known, "folder facts");
+        self.asked(&mut known, cwd);
+        let deadline = Instant::now() + Duration::from_secs(60);
+        loop {
+            if let Some(f) = known.folders.get(cwd).and_then(|e| e.facts.clone()) {
+                return f;
+            }
+            let left = deadline.saturating_duration_since(Instant::now());
+            assert!(!left.is_zero(), "{cwd}'s lookup never came back");
+            known = crate::locking::Guard::wait_timeout(known, &self.found, left);
+        }
+    }
+
     /// Look every folder asked about lately up again, and wait a little for them. True when one changed (or a
     /// folder unknown till now came back) since the last refresh.
     pub fn refresh(&'static self) -> bool {
@@ -187,6 +204,12 @@ pub fn first_look(cwd: &str) {
     if !cwd.is_empty() {
         FOLDERS.first_look(cwd);
     }
+}
+
+/// `cwd` looked up and waited for until it's known (tests).
+#[cfg(test)]
+pub fn known_now(cwd: &str) -> Facts {
+    FOLDERS.known_now(cwd)
 }
 
 /// Look the folders asked about lately up again (the 3-second tick); true when one changed.

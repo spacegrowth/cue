@@ -18,9 +18,10 @@ function coldIn(until) {
   const s = Math.max(0, Math.round((until - now()) / 1000));
   return s < 60 ? `in ${s}s` : `in ${Math.floor(s / 60)}m ${String(s % 60).padStart(2, "0")}s`;
 }
-/** How long until `until`, counting down: "in 12m", "in 1h 05m", "in 40s"; "now" once it's passed. */
+/** How long until `until`, counting down: "in 12m", "in 1h 05m", "in 40s"; "now" once it's passed. Rounded up, so
+ *  it reads "in 1s" until it's due, never "now" before. */
 function untilIn(until) {
-  const s = Math.max(0, Math.round((until - now()) / 1000));
+  const s = Math.max(0, Math.ceil((until - now()) / 1000));
   return !s ? "now" : s < 60 ? `in ${s}s` : s < 3600 ? `in ${Math.ceil(s / 60)}m` : `in ${Math.floor(s / 3600)}h ${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}m`;
 }
 const firstLine = (s) => String(s ?? "").split("\n").find((l) => l.trim()) || "";

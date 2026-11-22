@@ -26,8 +26,8 @@ test("a note sent from an item's page shows only your words, in its chat and the
   await page.locator(".dk-right .dk-box textarea").fill("Try it in a hosted session too");
   await page.locator(".dk-right [data-desk-send]").click();
   await cue.called("desk_item_act", { id: "d5", act: "note", text: "Try it in a hosted session too" });
-  // The session got Cue's whole message.
-  expect(await page.evaluate(() => deskOf("cue").decisions.find((c) => c.item_id === "d5" && c.delivery)?.delivery.text)).toBe(`About #d5 (${TITLE}): Try it in a hosted session too`);
+  // The session got Cue's whole message (the window hears of it after the call, as from the hub).
+  await expect.poll(() => page.evaluate(() => deskOf("cue").decisions.find((c) => c.item_id === "d5" && c.delivery)?.delivery.text)).toBe(`About #d5 (${TITLE}): Try it in a hosted session too`);
   const mine = page.locator(".dk-right .dk-ichat .cv-you .cv-you-text").filter({ hasText: "Try it in a hosted session too" });
   await expect(mine).toHaveCount(1);
   expect(await wordsOf(mine)).toBe("Try it in a hosted session too");
@@ -46,7 +46,10 @@ test("a question sent from an item's page shows only your question, never Cue's 
   await page.locator(".dk-right .dk-box textarea").fill("Does it open on the second try too?");
   await page.locator(".dk-right [data-desk-send]").click();
   await cue.called("desk_item_act", { id: "d5", act: "note", text: "Does it open on the second try too?" });
-  const sent = await page.evaluate(() => deskOf("cue").decisions.find((c) => c.item_id === "d5" && c.delivery)?.delivery.text);
+  // What the session got, once the window hears of it (after the call, as from the hub).
+  const delivered = () => page.evaluate(() => deskOf("cue").decisions.find((c) => c.item_id === "d5" && c.delivery)?.delivery.text);
+  await expect.poll(delivered).toBeDefined();
+  const sent = await delivered();
   expect(sent).toMatch(/^A question about Desk item #d5 \(.+\), which is with the user to check: Does it open on the second try too\?\nAnswer it\./);
   expect(sent).toContain("CHECK: #d5");
   for (const where of [page.locator(".dk-right .dk-ichat"), null]) {

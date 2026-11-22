@@ -122,7 +122,7 @@ test("while its holder works on it, the item's chat shows the turn it's writing,
   await expect(live.locator(".stx-line")).toHaveText([/Read header\.js/, /Ran npm test/]);
   await expect(page.locator(".dk-panel[data-side-for] .dk-sfoot")).toContainText("Open host-lead");
   for (const theme of ["light", "dark"]) {
-    await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
+    await page.emulateMedia({ colorScheme: theme });   // as the Mac switches it: a redraw puts Settings → Appearance (system) back over a data-theme set by hand
     if (process.env.SHOT_DIR) await page.locator(".dk-right").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-276-${theme}.png` });
   }
 });

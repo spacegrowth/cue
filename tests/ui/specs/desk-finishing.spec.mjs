@@ -33,7 +33,10 @@ test("a finishing item: in WORKING at Landing, then waiting to install with the 
   expect(await groupOf(page, "d5")).toBe("WORKING");
   await expect(st).toHaveText(`On main · installs at ${clock} · in 30m`);
   await expect(page.locator('.dk-items [data-desk-act="install_now"], .dk-items [data-desk-act="skip_install"]')).toHaveCount(0);
-  // Counting down: due in under a minute, it says the seconds left, then what it waits on once it's due.
+  // Counting down: due in under a minute, it says the seconds left, then what it waits on once it's due. The clock held
+  // still for it, moved only by the test: running on, a busy machine's second went by before "in 1s" was read.
+  await page.clock.pauseAt(await page.evaluate(() => Date.now()));
+  await page.clock.resume();
   await cue.change((st, t) => { st.desk.install_at = t; }, due - 30 * 60_000 + 2_000);
   await expect(st).toHaveText(/ · in 2s$/);
   await page.clock.runFor(1000);
@@ -107,7 +110,7 @@ test("the landing line: the one being checked first, then the one moved up, then
   expect(await groupOf(page, "d5")).toBe("WORKING");
   await expect(page.locator('.dk-items [data-desk-item="d5"] .dk2b-ok')).toHaveText("still fail");
   for (const theme of ["light", "dark"]) {
-    await page.evaluate((th) => document.documentElement.setAttribute("data-theme", th), theme);
+    await page.emulateMedia({ colorScheme: theme });   // as the Mac switches it: a redraw puts Settings → Appearance (system) back over a data-theme set by hand
     if (process.env.SHOT_DIR) await page.locator(".dk-items").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-346-${theme}.png` });
   }
 });
@@ -229,7 +232,7 @@ test("each waiting row says what it asks in one line; the most-unblocking first,
   await expect(statusOf(page, "d3")).toHaveText("Stopped · the Desk lead is on it");
   await expect(d3).not.toHaveClass(/\bask\b/);
   for (const theme of ["light", "dark"]) {
-    await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
+    await page.emulateMedia({ colorScheme: theme });   // as the Mac switches it: a redraw puts Settings → Appearance (system) back over a data-theme set by hand
     if (process.env.SHOT_DIR) await page.locator(".dk-items").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-182-${theme}.png` });
   }
   // Its page: the same line, and what it unblocks.

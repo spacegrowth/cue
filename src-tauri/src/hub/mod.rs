@@ -470,9 +470,9 @@ impl Hub {
 
     /// The window's state built now, and kept as the last one (shown.rs) unless a newer one is in already.
     pub fn snapshot(&self) -> Arc<Value> {
-        let (seq, snap, next) = self.build_snapshot();
+        let (seq, snap, next, reads) = self.build_snapshot();
         let snap = Arc::new(snap);
-        if self.shown.put(seq, snap.clone()) {
+        if self.shown.put(seq, reads, snap.clone()) {
             self.rebuild_when(&next);
         }
         snap
@@ -500,11 +500,12 @@ impl Hub {
 
     /// The snapshot, its place in the order snapshots were taken from the store, and when it next changes
     /// with time alone.
-    fn build_snapshot(&self) -> (u64, Value, shown::NextChange) {
+    fn build_snapshot(&self) -> (u64, Value, shown::NextChange, shown::Reads) {
         // What the files say (each folder's git HEAD; each Claude session's latest request, as last read) and
         // what other parts of Cue keep are taken with the store let go: this runs on every change, and a slow
         // disk mustn't hold every hook and tick behind it.
         let (live, transcripts, cwds) = self.snapshot_sources();
+        let reads = shown::Reads::now(transcripts.iter().map(|(_, p)| p.clone()).collect());
         let put = crate::config::folders_put();
         let mut outside = folders_view(live, transcripts, cwds, &put);
         outside.extend(apart_view());
@@ -516,7 +517,7 @@ impl Hub {
             snap.extend(outside);
         }
         settle_projects(&mut snap, &put);
-        (seq, snap, next)
+        (seq, snap, next, reads)
     }
 
     /// The snapshot's part that is the store's, as copies (see `StoreParts`), taken as the next in the order

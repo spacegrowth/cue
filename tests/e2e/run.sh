@@ -8,11 +8,16 @@
 set -eo pipefail
 # An inherited $TMUX would send tmux to the server you work in, whatever else is set: never let it through.
 unset TMUX TMUX_PANE
+# Hooks started from a session Cue hosts or drives tell Cue nothing (tests/run.sh says why).
+unset CUE_HOSTED CUE_DRIVEN_BY CUE_HOOK_RECONNECT_FOR
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
-export CUE_E2E_BIN="$REPO/src-tauri/target/e2e/debug/cue"
+# In the run's own CARGO_TARGET_DIR when it has one (copies that share target/ build over each other).
+E2E_TARGET="${CARGO_TARGET_DIR:-$REPO/src-tauri/target}/e2e"
+export CUE_E2E_BIN="$E2E_TARGET/debug/cue"
 
-(cd "$REPO/src-tauri" && cargo build -q --features e2e --target-dir target/e2e)
+# CUE_E2E_BUILT=1: the caller built it just now (the soak, so no build runs beside its other run).
+[ "${CUE_E2E_BUILT:-}" = 1 ] || (cd "$REPO/src-tauri" && cargo build -q --features e2e --target-dir "$E2E_TARGET")
 [ -d "$HERE/node_modules" ] || (cd "$HERE" && npm ci --no-audit --no-fund --silent)
 
 # Short: Unix socket paths (Cue's, tmux's) must fit in 104 bytes.

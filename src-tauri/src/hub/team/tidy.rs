@@ -206,9 +206,10 @@ impl Hub {
     }
 
     /// Lead `lead` can't be sent anything of Cue's now: busy (`lead_busy`: working, settling after Cue's last message,
-    /// compacting, asking you something), or a message of yours kept for it (yours goes first).
-    fn lead_waits(st: &Store, lead: &str, now: u64) -> bool {
-        Self::lead_busy(st, lead, now).is_some() || st.sessions.held(lead).is_some()
+    /// compacting, asking you something), or a message of yours kept for it, or kept and gone at its turn's end but
+    /// not yet seen taken (yours goes first: on a busy Mac it takes it more than a moment after its turn ends).
+    pub(in crate::hub) fn lead_waits(st: &Store, lead: &str, now: u64) -> bool {
+        Self::lead_busy(st, lead, now).is_some() || st.sessions.held(lead).is_some() || st.sessions.kept_on_way(lead)
     }
 
     /// Each free lead's members whose commit ask waits (`commit_wait_ms`), sent to it now, joined into one message.
