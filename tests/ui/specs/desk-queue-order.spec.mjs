@@ -46,7 +46,8 @@ test("Queued items drag into your order; one can't go above the item it waits on
     d.items.push({ ...d4, id: "d10", title: "Footer links", after: "d4", after_why: "same file", created: Math.max(...d.items.map((i) => i.created)) + 1 });
   });
   await openSettled(page);
-  await expect(page.locator(".dk-items .dk-gh", { hasText: "Queue" })).toContainText("drag to reorder");
+  // They're UP NEXT (B2, #666), each with its grip.
+  await expect(page.locator('.dk-items [data-desk2b-group="queued"]')).toHaveText("UP NEXT 3");
   expect(await order(page)).toEqual(["d4", "d6", "d10"]);
   // Footer links above Rail dot, which it waits on: back in its place, and why.
   await drag(page, "d10", "d4");

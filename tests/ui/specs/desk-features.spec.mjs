@@ -1,6 +1,7 @@
 // A big feature's items show together under its name (#282, option A of the #162 mocks): one row in its state's
 // group with "n of m done" and a bar; opened, its pieces show under it, indented, in place; its page has a Pieces tab.
 import { test, expect, openDesk } from "./cue.mjs";
+import { groupOf } from "./desk.mjs";
 
 
 test("the How work lands steps show as one feature with its pieces under it (#282)", async ({ page, cue }) => {
@@ -17,10 +18,11 @@ test("the How work lands steps show as one feature with its pieces under it (#28
     renderMain();
   });
   const feat = page.locator('.dk-items .dk-it.dk-feat[data-desk-item="253f"]');
-  // In progress (a piece is at work), with how many are done; its working piece isn't a row of its own.
+  // Working (a piece is at work, B2 #666), with how many are done on its status line; its working piece isn't a row of its own.
   await expect(feat).toHaveCount(1);
   await expect(feat.locator(".dk-fp")).toHaveText("5 of 6 done");
-  expect(await feat.evaluate((el) => { let h = el.closest(".dk-gbody").previousElementSibling; while (h && !h.classList.contains("dk-gh")) h = h.previousElementSibling; return h?.textContent || ""; })).toMatch(/^In progress/);
+  await expect(feat.locator(".dk2b-ts .dk-fp")).toHaveCount(1);
+  expect(await groupOf(page, "253f")).toBe("WORKING");
   await expect(page.locator('.dk-items > .dk-scroll > .dk-it[data-desk-item="253"]')).toHaveCount(0);
   await expect(page.locator(".dk-items .dk-it.pc")).toHaveCount(0);
   // Opened (#418: the item at the right, in the Items list's place): its page on the Pieces tab, its pieces in order.

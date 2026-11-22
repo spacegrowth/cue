@@ -233,13 +233,15 @@ function deskAwayShown() {
   const on = deskAwayOnDesks(), p = view === "desk" && typeof deskSelection === "function" ? deskSelection() : "";
   return p ? on.filter((d) => d.project === p) : on;
 }
-/** The head's mark: "Away until 18:00 · $3.40 of $10" (or why it paused); with several Desks away, how many. Off a
- *  Desk's own page, one Desk away is named: "cue: Away until 18:00". */
+/** The head's mark off a Desk's own page: one Desk away named, "cue: Away until 18:00 · $3.40 of $10" (or why it
+ *  paused); with several Desks away, how many. On a Desk's page none: its Items card's switch says it. */
 function deskAwayHeadMark() {
+  // On a Desk's own page the Items card's Away switch says it (until when), so the head leaves room (#666).
+  const own = view === "desk" && typeof deskSelection === "function" && !!deskSelection();
+  if (own) return "";
   const on = deskAwayShown();
   if (!on.length) return "";
   const a = deskAwayOf(on[0]);
-  const own = view === "desk" && typeof deskSelection === "function" && !!deskSelection();
   const main = on.length > 1 ? `Away on ${on.length} Desks` : `${own ? "" : `${deskName(deskOf(on[0].project))}: `}${a.ended ? "Away" : a.until ? `Away until ${deskHm(a.until)}` : "Away"}`;
   const rest = on.length > 1 ? "" : a.ended ? deskAwayStatus(a) : a.budget != null ? `${deskMoney(a.spent)} of ${deskMoney(a.budget)}` : "";
   return `<span class="top-away" data-tauri-drag-region>${DESK_AWAY_ICON.replace('width="12" height="12"', 'width="14" height="14"')}<span>${esc(main)}</span>${rest ? `<span class="top-away-m">· ${esc(rest)}</span>` : ""}</span>`;

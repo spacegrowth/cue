@@ -84,7 +84,8 @@ test("a Desk item's box: opening it puts the cursor there; composing Enter never
   await enterKeys(page, cue, box, "desk_send", { project: "cue", text: "About #d6 (Tidy the Settings copy): keep the old one" });
 });
 
-// The item opens in the list's place (B2, #666): its row is gone, so the keys stay on its page's way back, not its box.
+// The item opens in the lead chat's place (B2, #666) and the list stays, its row lit: the keys stay on that row, not
+// the page's box.
 test("a Desk item opened from the keyboard keeps the keys out of its box; one opened by a click puts them there", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
@@ -92,8 +93,10 @@ test("a Desk item opened from the keyboard keeps the keys out of its box; one op
   await row.focus();
   await page.keyboard.press("Enter");
   await expect(page.locator(".dk-right .dk-pg h1")).toContainText("Tidy the Settings copy");
-  await expect(page.locator(".dk-right .dk-ph [data-desk-back]")).toBeFocused();
-  await page.keyboard.press("Enter");
+  await expect(row).toBeFocused();
+  await expect(page.locator(".dk-right .dk-box textarea")).not.toBeFocused();
+  await page.locator(".dk-right .dk-ph [data-desk-back]").click();
+  await expect(page.locator(".dk-right .dk-pg[data-desk-page=\"item\"]")).toHaveCount(0);
   await page.locator('.dk-items [data-desk-item="d5"]').click();
   await expect(page.locator(".dk-right .dk-box textarea")).toBeFocused();
 });

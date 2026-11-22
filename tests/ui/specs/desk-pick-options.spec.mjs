@@ -11,7 +11,7 @@ test("a mocks-only item lists its options M1, M2 with a Pick each; a pick closes
   // Mocks only (#408, #436): no DESIGNS: line, the canvas is the link its DONE made.
   const text = "Two ways on the canvas: https://claude.ai/artifact/MOCKS\n- **M1**: a strip under the header\n- **M2** — a card in the list\nPick one: M1 or M2.";
   await patchItem(cue, "d5", { state: "to_check", title: "Mocks: working items", designs: "", made: ["https://claude.ai/artifact/MOCKS"], finish: { step: "checked", at: Date.now(), mocks: true }, said: [{ at: Date.now(), by: "host-lead", text }] });
-  await page.locator('[data-desk-item="d5"] .dk-t').click();
+  await page.locator('.dk-items [data-desk-item="d5"]').click();
   const head = page.locator(".dk-panel[data-side-for] .dk-pnow");
   const opts = head.locator(".dk-opts li");
   await expect(opts).toHaveCount(2);
@@ -41,7 +41,7 @@ test("options listed one to a line are picked from even with no pick line; one o
   await cue.open("desk");
   await openDesk(page);
   await patchItem(cue, "d5", { state: "to_check", designs: "https://claude.ai/artifact/MOCKS", said: [{ at: Date.now(), by: "host-lead", text: "On the canvas:\nA: rows\nB) cards\nC — a table" }] });
-  await page.locator('[data-desk-item="d5"] .dk-t').click();
+  await page.locator('.dk-items [data-desk-item="d5"]').click();
   const opts = page.locator(".dk-panel[data-side-for] .dk-pnow .dk-opts li");
   await expect(opts.locator(".dk-optk")).toHaveText(["A", "B", "C"]);
   await expect(opts.locator(".dk-optw")).toHaveText(["rows", "cards", "a table"]);
@@ -75,7 +75,7 @@ test("three options with the middle one suggested: all three get a Pick, in the 
     Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5"), { state: "to_check", title: "Plan and mocks: Desks on the same code", designs: "https://claude.ai/artifact/MOCKS", said: [{ at, by: "host-lead", text }] });
     st.sessions.find((x) => x.session_id === "host").thread = [{ role: "you", text: "About #d5 (Plan and mocks): go on", at_ms: at - 60000 }, { role: "agent", text: "Reading the code first.", at_ms: at - 30000 }, { role: "agent", text, at_ms: at }];
   }, [text, at]);
-  await page.locator('[data-desk-item="d5"] .dk-t').click();
+  await page.locator('.dk-items [data-desk-item="d5"]').click();
   const side = page.locator(".dk-panel[data-side-for] .dk-pnow .dk-opts li");
   await expect(side.locator(".dk-optk")).toHaveText(["A", "B", "C"]);
   await expect(side.locator(".dk-optw")).toHaveText(["heads-up only: a lead sends a note to the other Desks' leads.", /^holds with heads-up \(suggested\): /, /^Cue spots overlaps itself: /]);
@@ -107,7 +107,7 @@ test("options one to a line with the middle one marked suggested and no pick lin
     Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5"), { state: "to_check", designs: "https://claude.ai/artifact/MOCKS", said: [{ at, by: "host-lead", text }] });
     st.sessions.find((x) => x.session_id === "host").thread = [{ role: "agent", text, at_ms: at }];
   }, [text, at]);
-  await page.locator('[data-desk-item="d5"] .dk-t').click();
+  await page.locator('.dk-items [data-desk-item="d5"]').click();
   for (const opts of [page.locator(".dk-panel[data-side-for] .dk-pnow .dk-opts li"), page.locator(".dk-right .dk-ichat .dk-chat-opts li")]) {
     await expect(opts.locator(".dk-optk")).toHaveText(["A", "B", "C"]);
     await expect(opts.locator(".dk-optw")).toHaveText(["rows", "cards (suggested)", "a table"]);
@@ -127,7 +127,7 @@ test("a redone mocks item asks again with numbered options: the new ones replace
     Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5"), { state: "to_check", title: "Mocks: the Desk page", designs: "https://claude.ai/artifact/MOCKS", next, said: [{ at, by: "host-lead", text }] });
     st.sessions.find((x) => x.session_id === "host").thread = [{ role: "agent", text, at_ms: at }];
   }, [first, at, [plan("A", "Old band"), plan("B", "Old lanes"), plan("C", "Old track")]]);
-  await page.locator('[data-desk-item="d5"] .dk-t').click();
+  await page.locator('.dk-items [data-desk-item="d5"]').click();
   const side = page.locator(".dk-panel[data-side-for] .dk-pnow .dk-opts li");
   await expect(side.locator(".dk-optk")).toHaveText(["A", "B", "C"]);
   // Sent back: the old round's plans go with it.
@@ -155,7 +155,7 @@ test("a redone mocks item asks again with numbered options: the new ones replace
   // The Desk row says what to pick (in the Items list, ‹ Items: the item's page took its place, #666); then the item again.
   await page.locator(".dk-right .dk-ph .dk-back").first().click();
   await expect(page.locator('[data-desk-item="d5"]').first()).toContainText("4, 6, 8 or 9");
-  await page.locator('[data-desk-item="d5"] .dk-t').click();
+  await page.locator('.dk-items [data-desk-item="d5"]').click();
   await expect(side.locator(".dk-optk")).toHaveText(["4", "6", "8", "9"]);
   await expect(page.locator(".dk-right [title]")).toHaveCount(0);
   for (const theme of ["light", "dark"]) {
@@ -173,7 +173,7 @@ test("numbered options one to a line, or a pick line's range, are picked from (#
   await cue.open("desk");
   await openDesk(page);
   await patchItem(cue, "d5", { state: "to_check", designs: "https://claude.ai/artifact/MOCKS", next: [], said: [{ at: Date.now(), by: "host-lead", text: "Three versions:\n1. **Calmest:** a Desk menu in the head\n2. **Closest to today:** Desk pills\n3. **Most on screen:** a Desk strip" }] });
-  await page.locator('[data-desk-item="d5"] .dk-t').click();
+  await page.locator('.dk-items [data-desk-item="d5"]').click();
   const opts = page.locator(".dk-panel[data-side-for] .dk-pnow .dk-opts li");
   await expect(opts.locator(".dk-optk")).toHaveText(["1", "2", "3"]);
   await expect(opts.locator(".dk-optw")).toHaveText(["Calmest: a Desk menu in the head", "Closest to today: Desk pills", "Most on screen: a Desk strip"]);

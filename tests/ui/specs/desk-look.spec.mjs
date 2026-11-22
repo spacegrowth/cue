@@ -1,7 +1,7 @@
 // The Desk's look: the head strip, Run by, the lead's card, the session rows and their dots, the Working group,
 // and Commit to main on a row.
 import { test, expect, openDesk } from "./cue.mjs";
-import { listOrder, crewNotLead, blinkOf, boxOf, openDone, openSessions } from "./desk.mjs";
+import { listOrder, crewNotLead, blinkOf, boxOf, openDone, openSessions, groupOf } from "./desk.mjs";
 
 // ---------- the left column's head and rows (#153: option B) ----------
 
@@ -145,8 +145,10 @@ test("the lead's card in the strip: a Lead pill, its state and the item it holds
   expect(ring).toBe("none");
   await lead.click();
   await expect(lead).toHaveClass(/\bon\b/);
-  await expect(page.locator('.dk-right [data-desk-page="dispatcher"] [data-desk-chat="cue"]')).toBeVisible();
-  await expect(page.locator(".dk-tab.on")).toHaveText("web-lead");
+  // B2 (#666): the lead's chat is the card the sessions list stands in for; picking the lead lights it there, the
+  // list staying open (desk/act.js deskLeadChat).
+  await expect(page.locator(".dk-board > .dk-sessions")).toHaveCount(1);
+  expect(await page.evaluate(() => deskTab)).toBe("lead");
   // Dark: the strip is a dark green with the ink, not lime, so the card lights exactly as an open row does.
   await page.emulateMedia({ colorScheme: "dark" });
   const strip = page.locator(".dk-strip");
@@ -473,50 +475,35 @@ test("Commit to main commits the item's files at once: no sheet; the row and a t
   expect(await cue.calls("desk_commit_undo")).toHaveLength(0);
 });
 
-test("Undo on a done row: only on hover; back to waiting on you, its commit kept, nothing else; readable on the dimmed row; no hover text (#159)", async ({ page, cue }) => {
+test("a done row has no Undo and no ✓ (B2, #666): it sits under DONE TODAY with when it finished; Undo is on its page", async ({ page, cue }) => {
   await cue.open("desk");
   await cue.change((s) => { Object.assign(s.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d2"), { state: "done", done_at: Math.floor(Date.now() / 1000), commit: "abc1234" }); });
   await openDesk(page);
-  await openDone(page);
+  await page.locator('.dk-items [data-desk2b-fold="done"]').click();
+  expect(await groupOf(page, "d2")).toBe("DONE TODAY");
   const row = page.locator('.dk-items [data-desk-item="d2"]');
-  await expect(row).toHaveClass(/\bdk-done\b/);
-  const undo = row.locator('.dk-undo[data-desk-act="reopen"]');
-  // Only on hover: hidden until the pointer is on the row.
-  await page.mouse.move(0, 0);
-  await expect(undo).toBeHidden();
+  await expect(row.locator(".dk2b-ts")).toHaveText(/^Done · \d{1,2}(:\d\d)?(am|pm)$/);
+  await expect(row.locator(".dk2b-st > span").last()).toHaveText("6/6 · Done");
   await row.hover();
-  await expect(undo).toBeVisible();
-  await expect(undo).toHaveText("Undo");
-  await expect(undo).not.toHaveAttribute("title", /.*/);
-  expect(await undo.evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
-  expect(await row.locator(".dk-t").evaluate((el) => getComputedStyle(el.parentElement).opacity)).toBe("0.55");
-  await undo.click();
+  await expect(row.locator(".dk-undo, [data-desk-act], .dk-ok")).toHaveCount(0);
+  // Its page has the Undo: back to check, its commit kept.
+  await row.locator(".dk2b-tt").click();
+  await page.locator('.dk-right [data-desk-act="reopen"]').first().click();
   await cue.called("desk_item_act", { id: "d2", act: "reopen" });
-  // Clicking Undo doesn't open the item; the row is waiting on you again, its ✓ back.
-  await expect(page.locator('.dk-right .dk-pg h1:has-text("#d2")')).toHaveCount(0);
-  await expect(row).toHaveClass(/\bdk-you\b/);
-  await expect(row.locator(".dk-ok")).toBeVisible();
-  await expect(row.locator(".dk-undo")).toHaveCount(0);
   expect(await cue.calls("desk_commit_undo")).toHaveLength(0);
 });
 
-test("✓ on a row: it dims while Undo can take it back, then folds away (height to nothing) before it goes", async ({ page, cue }) => {
+test("a row ready to check has Check, not ✓ (B2, #666): Check opens its page, where Looks right is; nothing closes from the row", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   const row = page.locator('.dk-items [data-desk-item="d2"]');
-  await row.locator(".dk-ok").click();
-  await expect(row).toHaveClass(/\bsoon\b/);
-  await expect(row.locator(".dk-i1")).toHaveCSS("opacity", "0.45");
-  // The fold lasts a moment: watched as it happens, its height then.
-  const h = await page.evaluate(() => new Promise((done) => {
-    const seen = () => { const el = document.querySelector('.dk-items .dk-it.dk-leave[data-desk-item="d2"]'); if (el) { obs.disconnect(); done(parseFloat(el.style.getPropertyValue("--h"))); } };
-    const obs = new MutationObserver(seen);
-    obs.observe(document.body, { subtree: true, childList: true, attributes: true });
-    seen();
-  }));
-  expect(h).toBeGreaterThan(20);
-  await cue.called("desk_looks_right", { id: "d2" });
-  await expect(page.locator('.dk-items .dk-it.dk-leave')).toHaveCount(0);
+  await expect(row.locator(".dk-ok")).toHaveCount(0);
+  await row.locator(".dk2b-chk").click();
+  await expect(row).toHaveClass(/\bon\b/);
+  await expect(page.locator('.dk-right [data-desk-act="looks_right"]').first()).toBeVisible();
+  expect(await cue.calls("desk_looks_right")).toHaveLength(0);
+  // The row stays where it was, waiting on you.
+  expect(await groupOf(page, "d2")).toBe("WAITS ON YOU");
 });
 
 test("Commit to main on an item whose file another session is editing: done at once, \"Commit waiting: <file> (<session> is editing it)\", then \"Committed <hash>\" with Undo once it's made; with no files Looks right, just done", async ({ page, cue }) => {
@@ -545,12 +532,11 @@ test("Commit to main on an item whose file another session is editing: done at o
   await expect(line).toContainText('Commit not made: Not committed: "x" is in ui/send.js');
 
   await cue.change((s) => { const i = s.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d2"); Object.assign(i, { state: "to_check", commit: "", commit_wait: null, files: [] }); });
-  await page.locator(".dk-right .dk-back").click();   // the Items list is back once the item's page closes (#418)
-  await page.locator('[data-desk-item="d2"] .dk-ok').click();
+  // With no files: its page's Looks right, just done (B2 has no ✓ on a row, #666).
+  await page.locator('.dk-right [data-desk-act="looks_right"]').first().click();
   await expect(page.locator(".toast").last()).toContainText("Done");
   await expect(page.locator('[data-desk-item="d2"] .dk-cm')).toHaveCount(0);
   // Done with nothing committed still has its Undo on its page: back to check, no code changed.
-  await page.locator('.dk-items [data-desk-item="d2"]').click();
   const plain = page.locator('.dk-cmt:has-text("Looked right")').first();
   await expect(plain).toHaveText("Looked right · Undo · back to check");
   await plain.locator('[data-desk-act="reopen"]').click();

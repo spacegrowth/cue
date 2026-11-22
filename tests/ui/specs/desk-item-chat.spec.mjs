@@ -20,13 +20,14 @@ const chat = (cue) => cue.change((st) => {
   ];
 });
 
-test("an item's page is its holder's chat, other items' turns folded, the item beside it, the Items list at the right", async ({ page, cue }) => {
+test("an item's page is its holder's chat, other items' turns folded, the item over it, the Items list at the right", async ({ page, cue }) => {
   await cue.open("desk");
   await chat(cue);
   await openItem(page, "d5");
   const right = page.locator(".dk-right"), ichat = right.locator(".dk-ichat");
-  await expect(right.locator(".dk-ph3")).toContainText("host-lead's chat · other items' turns folded");
-  await expect(right.locator(".dk-itab")).toHaveText(["Chat", "Record0", "Decisions0", "Files0"].map((t) => new RegExp(t.replace(/\d/, ""))));
+  // B2 (#666): no tabs; under its summary and panel, its chat with the line saying whose it is.
+  await expect(right.locator(".dk2b-ichd .dk2b-sec")).toHaveText("ITS CHAT");
+  await expect(right.locator(".dk2b-ichsub")).toContainText("host-lead's chat · other items' turns folded");
   // This item's turn as the chat shows it; #d4's folded to one line.
   await expect(ichat).toContainText("Chose an environment setting over a settings file.");
   await expect(ichat).not.toContainText("Looking at the rail dot.");
@@ -40,16 +41,17 @@ test("an item's page is its holder's chat, other items' turns folded, the item b
   await expect(ichat.locator(".dk-fold")).toHaveAttribute("aria-expanded", "true");
   await ichat.locator(".dk-fold").click();
   await expect(ichat).not.toContainText("Looking at the rail dot.");
-  // The item in its panel beside the chat; the Items list behind ‹ Items N, the item in its place (#666).
-  const side = right.locator('.dk-pg[data-desk-page="item"] > .dk-panel[data-side-for="d5"]');
+  // The item in its panel on its page, under the part that scrolls with its chat and over the box (B2 #666: the page
+  // is on the left, the Items list at the right); ‹ Items N goes back to the lead's chat.
+  const side = right.locator('.dk-pg[data-desk-page="item"] .dk-panel[data-side-for="d5"]');
   await expect(side).toBeVisible();
-  await expect(page.locator(".dk-board > .dk-items")).toHaveCount(0);
+  await expect(page.locator(".dk-board .dk2b-list")).toBeVisible();
   await expect(right.locator(".dk-ph .dk-back")).toHaveText(/^‹ Items \d+$/);
-  // Narrow, the whole panel over the chat; wide enough for both, beside it.
   // (Polled: a redraw can catch either one between boxes.)
-  await expect(async () => { const [c, p] = [await ichat.boundingBox(), await side.boundingBox()]; expect(p.y + p.height).toBeLessThanOrEqual(c.y + 1); }).toPass();
+  const under = async () => { const [c, p, f] = [await right.locator(".dk-ipane").boundingBox(), await side.boundingBox(), await right.locator(".dk-box").boundingBox()]; expect(p.y).toBeGreaterThanOrEqual(c.y + c.height - 1); expect(p.y + p.height).toBeLessThanOrEqual(f.y + 1); };
+  await expect(under).toPass();
   await page.setViewportSize({ width: 1728, height: 1000 });
-  await expect(async () => { const [c, p] = [await ichat.boundingBox(), await side.boundingBox()]; expect(p.x).toBeGreaterThan(c.x + 200); }).toPass();
+  await expect(under).toPass();
   await page.screenshot({ path: test.info().outputPath("item-chat-wide.png") });
   await page.setViewportSize({ width: 1280, height: 800 });
   await expect(side.locator(".dk-pnow .dk-psh")).toHaveText("This item");
@@ -62,7 +64,7 @@ test("an item's page is its holder's chat, other items' turns folded, the item b
   // Back to the lead's chat; the Items list still there.
   await right.locator(".dk-back").click();
   await expect(page.locator(".dk-panel[data-side-for]")).toHaveCount(0);
-  await expect(page.locator(".dk-board > .dk-items")).toBeVisible();
+  await expect(page.locator(".dk-board .dk2b-list")).toBeVisible();
 });
 
 test("its working line and your send-back of it show in the chat", async ({ page, cue }) => {
@@ -105,7 +107,8 @@ test("a reply that asks you shows once, in the chat: no second box under it repe
   await openItem(page, "d5");
   const right = page.locator(".dk-right");
   await expect(right.locator(".dk-ichat .cv-agent", { hasText: "Should the canvas open" })).toHaveCount(1);
-  await expect(right.getByText("Should the canvas open in a new window or in place?")).toHaveCount(1);
+  // Not again under the chat, nor in its panel or foot (B2's summary says what it's doing, over the chat, #666).
+  await expect(right.locator(".dk2b-ichat, .dk-panel[data-side-for], .dk-ask, .dk-box").getByText("Should the canvas open in a new window or in place?")).toHaveCount(1);
   await expect(right.locator(".dk-chain")).toHaveCount(0);
 });
 
@@ -123,7 +126,7 @@ test("its page is its session's chat from when it took the item: what came befor
   await held(cue, [{ from: 610000 }]);
   await openItem(page, "d5");
   const right = page.locator(".dk-right"), ichat = right.locator(".dk-ichat");
-  await expect(right.locator(".dk-ph3")).toContainText("host-lead's chat · from when it took this item");
+  await expect(right.locator(".dk2b-ichsub")).toContainText("host-lead's chat · from when it took this item");
   await expect(ichat).toContainText("Chose an environment setting over a settings file.");
   await expect(ichat).not.toContainText("Looking at the rail dot.");
   await expect(ichat.locator(".dk-fold")).toHaveCount(0);
@@ -143,7 +146,7 @@ test("once its session moved on, its page keeps that piece of the chat and says 
   await held(cue, [{ from: 610000, until: 199000, next: "d4" }]);
   await openItem(page, "d5");
   const right = page.locator(".dk-right"), ichat = right.locator(".dk-ichat");
-  await expect(right.locator(".dk-ph3")).toContainText("host-lead's chat · while it had this item");
+  await expect(right.locator(".dk2b-ichsub")).toContainText("host-lead's chat · while it had this item");
   await expect(ichat).toContainText("Chose an environment setting over a settings file.");
   await expect(ichat).not.toContainText("On the rail dot now.");
   const moved = ichat.locator(".dk-moved");

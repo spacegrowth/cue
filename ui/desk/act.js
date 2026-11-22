@@ -4,10 +4,11 @@
 
 /** Open `what` in the chat card (null: back to the lead's chat). */
 function deskShow(what) {
-  // Today's page (B2, desk/b2.js) has the lead's chat at the left always: opening it brings that chat to the front and
-  // leaves the right as it was, rather than a second copy of it there.
+  // Today's page (B2, desk/b2.js): the lead's chat is the chat card's own, so opening it goes back to it, rather than a
+  // second copy of it.
   if (what?.kind === "chat" && deskB2On() && what.sid === deskLead(deskOf(deskSelection()))?.sid) {
     deskPick = null;
+    deskOpen = null;
     deskTab = "lead";
     // "This turn in …" on the lead: its chat goes to that turn (desk/view.js deskSettle), not to its end.
     deskTurnLead = !!deskTurnAt;
@@ -599,8 +600,8 @@ function deskKey(e) {
   if (row && (e.key === "Enter" || e.key === " ") && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
     const at = Object.keys(DESK_CLICKS).find((k) => k in row.dataset), sel = `[${deskAttr(at)}="${CSS.escape(row.dataset[at])}"]`;
     deskTake(row);
-    // Today's page (B2, desk/b2.js) opens an item in the list's place: its row gone, the keyboard goes to the page's
-    // way back (‹ Items N), not into its box.
+    // Today's page (B2, desk/b2.js) opens an item in the lead chat's place and the list stays: the keyboard stays on
+    // its row (else the page's way back, ‹ Items N), never in its box.
     (document.querySelector(`.dk-board ${sel}`) || document.querySelector(".dk-right .dk-ph [data-desk-back]"))?.focus();
     return true;
   }

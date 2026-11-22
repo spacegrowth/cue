@@ -1,0 +1,13 @@
+/* The Desk's two columns as you dragged them (board/columns.js deskColDrag): the chat a share (--dk-fr) of the Desk's 3.75
+   as the Board's Active is, never under 560px, and never leaving Items under 520px (its rows' #id, title, 6-step bar
+   and Check stay readable). The grip sits in the gap after the chat, as the Board's do (board.css .col-grip). */
+.board.dk-board.dk-b2.dk-cols {
+  --dk-chat: clamp(560px, calc((100% - 28px) * var(--dk-fr, 1.9) / 3.75), calc(100% - 534px));
+  grid-template-columns: var(--dk-chat) minmax(0, 1fr);
+}
+/* Too narrow for both (a board under 1094px: the window's 40px of padding on top): today's split, no grip. */
+@media (max-width: 1133px) {
+  .board.dk-board.dk-b2.dk-cols { grid-template-columns: calc((100% - 28px) * 1.9 / 3.75) minmax(0, 1fr); }
+  .board.dk-b2 > [data-col-grip] { display: none; }
+}
+@media (max-width: 820px) { .board.dk-board.dk-b2.dk-cols { grid-template-columns: minmax(0, 1fr); } }

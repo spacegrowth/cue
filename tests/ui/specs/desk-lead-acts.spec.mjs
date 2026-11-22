@@ -1,13 +1,14 @@
 // What the lead does on the Desk (#360): anything that needs you, its own asks too, waits in the Dispatcher's
 // panel until it's answered; what it did on its own (closed, started, moved up, took back a copy, answered a
-// session) is a line in its chat as it happens, and its last few show in the panel for a while, then drop off.
+// session) is a line in its chat as it happens. B2 (#666) has no Just did in the panel: its chat and Dispatcher
+// Actions hold them.
 import { test, expect, openDesk, deskShowPanel } from "./cue.mjs";
 import { NOW } from "./clock.mjs";
 
 const s = (ms) => Math.floor(ms / 1000);
 const act = (id, item, act, text, why, at) => ({ id, project: "cue", item_id: item, by: "web-lead", sid: "lead", text, why, at: s(at), undo: "none", act });
 
-test("the lead's own moves show in its chat and, for a while, in the panel; its ask waits there till answered (#360)", async ({ page, cue }) => {
+test("the lead's own moves show in its chat, not the panel; its ask waits in the panel till answered (#360, #666)", async ({ page, cue }) => {
   await page.setViewportSize({ width: 1728, height: 1000 });
   await cue.open("desk");
   await openDesk(page);
@@ -31,32 +32,33 @@ test("the lead's own moves show in its chat and, for a while, in the panel; its 
   await expect(a2.locator(".mg-full")).toHaveText("the user waits on it");
   await expect(a2.locator(".req-more")).toHaveCount(0);
   await expect(chat.locator('.dk-act[data-key="act:a3"]')).toContainText("Closed #d8: its work is on main (ab12cd3)");
-  // In the panel: only the last ones, newest first; the close two hours ago has dropped off.
+  // The panel has no Just did (B2, #666).
   const panel = page.locator(".dk-right .dk-panel");
-  const did = panel.locator(".dk-psec", { hasText: "Just did" }).locator(".dk-pdid");
-  await expect(did).toHaveCount(2);
-  await expect(did.first().locator(".dk-pdt")).toHaveText("Moved #d3 up in the landing line");
-  await expect(did.first().locator(".dk-prs")).toHaveText("the user waits on it · 1m");
-  await expect(did.nth(1)).toContainText("Started #d4 now");
+  await expect(panel.locator(".dk-pnow")).toBeVisible();
+  await expect(panel.locator(".dk-psec", { hasText: "Just did" })).toHaveCount(0);
+  await expect(panel.locator(".dk-pdid")).toHaveCount(0);
   // The lead's own ask waits on you there, first, until it's answered.
   const waits = panel.locator(".dk-psec:not(.dk-pnow)", { hasText: "Waits on you" });
-  await expect(waits.locator(".dk-psh")).toHaveText("Waits on you · 2");
+  // As the list's WAITS ON YOU (B2, #666): its ask, #d1's question and #d2 ready to check.
+  await expect(waits.locator(".dk-psh")).toHaveText("Waits on you · 3");
   await expect(waits.locator(".dk-prow").first()).toContainText("web-lead");
   await expect(panel.locator(".dk-pnow")).toContainText("It asks you something");
-  // Its item number opens the item.
-  await did.first().locator('[data-desk-chk-item="d3"]').click();
+  // Its item number in the chat opens the item.
+  await a2.locator('[data-desk-chk-item="d3"]').click();
   await expect(page.locator('.dk-right .dk-pg[data-desk-page="item"]')).toBeVisible();
   // Answered: it no longer waits on you.
   await cue.change((st) => { st.items = st.items.filter((i) => i.id !== "n-lead-ask"); });
   await page.locator(".dk-right .dk-back").first().click();
-  await expect(page.locator(".dk-right .dk-panel .dk-psec:not(.dk-pnow)", { hasText: "Waits on you" }).locator(".dk-psh")).toHaveText("Waits on you · 1");
-  // On a small window the panel folds into the Now line: what waits and the newest move are in it.
+  await expect(page.locator(".dk-right .dk-panel .dk-psec:not(.dk-pnow)", { hasText: "Waits on you" }).locator(".dk-psh")).toHaveText("Waits on you · 2");
+  // On a small window the panel folds and the strip over the chat says what waits (B2, #666); no Just did there.
   await page.setViewportSize({ width: 1100, height: 800 });
-  await expect(page.locator(".dk-right .dk-pnow .dk-pfc")).toContainText("1 waiting");
-  await expect(page.locator(".dk-right .dk-pnow .dk-pfc")).toContainText("Just did: Moved #d3 up in the landing line");
+  const strip = page.locator(".dk2b-chat .dk2b-strip");
+  await expect(strip.locator(".dk2b-wn")).toHaveText(/^\d+ waits? on you$/);
+  await expect(strip.locator('.dk2b-chip[data-desk-chk-item="d1"]')).toHaveText("#d1");
+  await expect(strip).not.toContainText("Just did");
 });
 
-test("Just did and Working read as lines, not pieces, at the panel's narrowest (#392)", async ({ page, cue }) => {
+test("Working reads as lines, not pieces, at the panel's narrowest; no Just did (#392, #666)", async ({ page, cue }) => {
   // The narrowest window that still shows the panel beside the chat: the chat under 660px, the panel 272px.
   await page.setViewportSize({ width: 1500, height: 900 });
   await cue.open("desk");
@@ -79,27 +81,20 @@ test("Just did and Working read as lines, not pieces, at the panel's narrowest (
   const [chatPart, side] = await page.evaluate(() => [".dk-right .dk-pgm", ".dk-right .dk-panel"].map((q) => { const r = document.querySelector(q).getBoundingClientRect(); return { x: r.x, right: r.right, w: r.width }; }));
   expect(chatPart.w).toBeLessThan(660);
   expect(side.x).toBeGreaterThanOrEqual(chatPart.right - 1);
-  const did = panel.locator(".dk-psec", { hasText: "Just did" }).locator(".dk-pdid");
-  // What it did on one line, why and when under it.
-  const parked = did.nth(1);
-  await expect(parked.locator(".dk-pdt")).toHaveText("Parked #d3");
-  await expect(parked.locator(".dk-prs")).toHaveText("the owner wants it held · 4m");
-  await expect(did.first().locator(".dk-prs")).toHaveText("1m");
+  // No Just did (B2, #666): the moves are in the chat and in Dispatcher Actions.
+  await expect(panel.locator(".dk-psec", { hasText: "Just did" })).toHaveCount(0);
+  await expect(panel.locator(".dk-pdid, .dk-pall")).toHaveCount(0);
   const lineH = async (l) => l.evaluate((e) => [e.getBoundingClientRect().height, parseFloat(getComputedStyle(e).lineHeight)]);
-  for (const l of [parked.locator(".dk-pdt"), parked.locator(".dk-prs")]) {
-    const [h, lh] = await lineH(l);
-    expect(h, "one line").toBeLessThan(lh * 1.5);
-  }
-  // The link under it says More and opens Dispatcher Actions.
-  await expect(panel.locator(".dk-pall")).toHaveText("More");
   // Working: "host on #d5", one line.
   const work = panel.locator(".dk-psec", { hasText: "Working" }).locator(".dk-prow").first();
   await expect(work).toHaveText(/^\S+ on #d5$/);
   const [wh] = await lineH(work.locator(".dk-prt"));
   expect(wh, "one line").toBeLessThan(24);
   if (process.env.SHOT_DIR) await panel.screenshot({ path: `${process.env.SHOT_DIR}/just-did-working.png` });
-  await panel.locator(".dk-pall").click();
+  // Dispatcher Actions lists the moves.
+  await page.locator('.dk-right .dk-tab[data-desk-tab="moves"]').click();
   await expect(page.locator('.dk-right .dk-tab[data-desk-tab="moves"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".dk-right")).toContainText("Parked #d3");
 });
 
 test("a long reopen, note and start each show at most three lines in the lead's chat, More opening the rest in place and Less folding it (#433, #452)", async ({ page, cue }) => {
@@ -133,9 +128,6 @@ test("a long reopen, note and start each show at most three lines in the lead's 
   await expect(r.locator(".req-more")).toHaveText(/^less$/i);
   await expect.poll(() => lines(r)).toBeGreaterThan(10);
   await expect(r.locator(".req-t")).toContainText("12. The right column");
-  // In the panel's Just did, the same reopen is cut to two lines too.
-  const did = page.locator(".dk-right .dk-panel .dk-pdid", { hasText: "Reopened" }).locator(".dk-prs");
-  await expect.poll(() => did.evaluate((e) => Math.round(e.getBoundingClientRect().height / parseFloat(getComputedStyle(e).lineHeight)))).toBeLessThanOrEqual(2);
   await r.locator(".req-more").click();
   await expect.poll(() => lines(r)).toBeLessThanOrEqual(2);
   // Open stays open through a redraw; the other cards stay cut.

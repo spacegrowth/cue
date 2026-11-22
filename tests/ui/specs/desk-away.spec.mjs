@@ -8,6 +8,14 @@ import { test, expect, openDesk } from "./cue.mjs";
 const SINCE = 1793984100 * 1000;   // between the scenario's two calls: c1 after it, c2 before
 
 
+/** CALLS WHILE AWAY, folded to a line after the list's groups (B2, #666), opened; it says `n`. */
+async function openCalls(page, n) {
+  const line = page.locator('.dk-items [data-desk2b-fold="away"]');
+  await expect(line).toHaveText(new RegExp(`^CALLS WHILE AWAY ${n}`));
+  if ((await line.getAttribute("aria-expanded")) !== "true") await line.click();
+  await expect(line).toHaveAttribute("aria-expanded", "true");
+}
+
 test("Away on: no column; the calls since it went on in one line at the top of Items with Undo, asks join Waiting on you, a limited session is a quiet line (#373, #415)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
@@ -29,17 +37,19 @@ test("Away on: no column; the calls since it went on in one line at the top of I
   const sw = page.locator(".dk-items .dk-aw-sw");
   await expect(sw).toHaveAttribute("aria-pressed", "true");
   // No column of its own: the lead's chat card and the item list (B2, #666).
-  await expect(page.locator(".dk-board > *")).toHaveCount(2);
+  await expect(page.locator(".dk-board > :not(.col-grip)")).toHaveCount(2);
   // The switch says until when and what it spent of the budget.
   await expect(sw.locator(".dk-aw-st")).toHaveText(/^until \d\d:\d\d · \$3\.20 of \$10$/);
-  // Waiting on you counts the waiting item and the asker's ask, not the session on a usage limit.
+  // Waiting on you counts the waiting item, the one ready to check and the asker's ask, not the session on a usage limit.
   const items = page.locator(".dk-items");
-  await expect(items.locator(".dk-gh.you")).toHaveText("Waiting on you 2");
+  await expect(items.locator('.dk2b-gh[data-desk2b-group="you"]')).toHaveText("WAITS ON YOU 3");
   await expect(items.locator('.dk-aw-asks [data-desk-chat-of="asker"]')).toHaveCount(1);
   await expect(items.locator('[data-desk-chat-of="capped"]')).toHaveCount(0);
   await expect(items.locator(".dk-aw-quiet")).toHaveText(/^capped paused till \d\d:\d\d · Cue carries on then$/);
-  // Only the call made since Away went on, in the open list at the top of Items: its time, what, its item, why, Undo.
-  const fold = items.locator(".dk-scroll > .dk-aw-calls:first-child .dk-aw-fold");
+  // Only the call made since Away went on, under CALLS WHILE AWAY (B2, #666), folded to a line after the groups;
+  // opened, the list: its time, what, its item, why, Undo.
+  await openCalls(page, 1);
+  const fold = items.locator(".dk-scroll > .dk2b-fold.open + .dk-aw-calls .dk-aw-fold");
   await expect(fold).toHaveText(/^›1 call while awaysince \d\d:\d\dtill \d\d:\d\d · \$3\.20 of \$10$/);
   await expect(fold.locator(".dk-aw-meter i")).toHaveAttribute("style", "width:32%");
   await expect(items.locator(".dk-aw-mark")).toHaveCount(1);
@@ -56,7 +66,8 @@ test("Away on: no column; the calls since it went on in one line at the top of I
   await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").away.on = false; });
   await expect(page.locator(".dk-aw-mark")).toHaveCount(0);
   await expect(page.locator(".dk-aw-calls")).toHaveCount(0);
-  await expect(page.locator(".dk-items .dk-gh.you")).toHaveText("Waiting on you 1");
+  await expect(page.locator('.dk-items .dk2b-gh[data-desk2b-group="you"]')).toHaveText("WAITS ON YOU 2");
+  await expect(page.locator('.dk-items [data-desk2b-fold="away"]')).toHaveCount(0);
 });
 
 test("a call the lead made in place of asking you shows the question under it (#471)", async ({ page, cue }) => {
@@ -67,6 +78,7 @@ test("a call the lead made in place of asking you shows the question under it (#
     d.away = { on: true, active: true, ended: "", since, until: null, budget: null, spent: 0, rules: {} };
     d.decisions.find((x) => x.id === "c1").asked = "Settings file or environment setting?";
   }, SINCE);
+  await openCalls(page, 1);
   const mark = page.locator('.dk-aw-list [data-desk-call="c1"]');
   await expect(mark.locator(".dk-aw-asked")).toHaveText("Instead of asking you: Settings file or environment setting?");
   await expect(mark.locator("b")).toHaveText("An environment setting, not a settings file");
@@ -79,17 +91,19 @@ test("the calls line folds to one line and stays folded for that Desk; a call wi
     d.away = { on: true, active: true, ended: "", since, until: null, budget: null, spent: 0, rules: {} };
     d.decisions.push({ project: "cue", why: "No session knew that area.", undo: "can", id: "c9", call: true, by: "web-lead", sid: "lead", text: "Started a new session", at: since / 1000 + 60 });
     d.items.find((i) => i.id === "d1").state = "working";
+    d.items.find((i) => i.id === "d2").state = "working";
     st.items.find((i) => i.id === "n-focus-ask").status = "answered";
   }, SINCE);
   const items = page.locator(".dk-items");
+  await openCalls(page, 2);
   const fold = items.locator(".dk-aw-fold");
   // Oldest first, the one with no item as well; no till, spend or bar without them.
   await expect(fold).toHaveText(/^›2 calls while awaysince \d\d:\d\d$/);
   await expect(fold.locator(".dk-aw-meter")).toHaveCount(0);
   expect(await items.locator(".dk-aw-mark").evaluateAll((els) => els.map((e) => e.dataset.deskCall))).toEqual(["c9", "c1"]);
-  // Waiting on you 0 says so in words.
-  await expect(items.locator(".dk-gh.you")).toHaveText("Waiting on you 0");
-  await expect(items.locator(".dk-gh.you + .dk-gbody > .dk-gin > .dk-aw-none")).toHaveText("Nothing waits on you.");
+  // Nothing waiting: no WAITS ON YOU group, its tab says 0, and opened it says so in words.
+  await expect(items.locator('.dk2b-gh[data-desk2b-group="you"]')).toHaveCount(0);
+  await expect(items.locator('[data-desk2b-tab="you"] .n')).toHaveText("0");
   if (process.env.SHOT_DIR) await page.locator(".dk-items").screenshot({ path: `${process.env.SHOT_DIR}/cue-away-calls.png` });
   // Folded: one line, the Undos gone with the list; it stays folded through a redraw and a reload.
   const order = await items.locator(".dk-it").evaluateAll((els) => els.map((e) => e.dataset.deskItem));
@@ -107,7 +121,7 @@ test("the calls line folds to one line and stays folded for that Desk; a call wi
 });
 
 for (const mode of ["light", "dark"]) {
-  test(`while away the window keeps its ${mode} theme and only the head says Away until when, with the spend, readable; off, it's gone (#415, #459)`, async ({ page, cue }) => {
+  test(`while away the window keeps its ${mode} theme; off the Desk's page the head says Away until when, with the spend, readable; on it the Items card's switch does, for room (#415, #459, #666); off, it's gone`, async ({ page, cue }) => {
     await cue.open("desk");
     await cue.change((st, mode) => { st.settings = { ...(st.settings || {}), appearance: { ...(st.settings?.appearance || {}), mode } }; }, mode);
     await openDesk(page);
@@ -120,7 +134,11 @@ for (const mode of ["light", "dark"]) {
       st.desk.projects.find((x) => x.project === "cue").away = { on: true, active: true, ended: "", since, until: since + 9 * 3600000, budget: 10, spent: 3.4, rules: {} };
     }, SINCE);
     const mark = page.locator(".top .top-away");
-    await expect(mark).toHaveText(/^Away until \d\d:\d\d· \$3\.40 of \$10$/);
+    // On the Desk's own page the head leaves it to the Items card's switch.
+    await expect(page.locator(".dk-items .dk-aw-sw")).toHaveAttribute("aria-pressed", "true");
+    await expect(mark).toHaveCount(0);
+    await page.locator('.switch-view [data-view="board"]').click();
+    await expect(mark).toHaveText(/^cue: Away until \d\d:\d\d· \$3\.40 of \$10$/);
     await expect(mark.locator(".dk-aw-ic")).toHaveCount(1);
     // The window's own theme stays: same theme, same ground.
     await expect(root).toHaveAttribute("data-theme", mode);
@@ -138,11 +156,9 @@ for (const mode of ["light", "dark"]) {
     if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/cue-away-${mode}.png` });
     // The budget reached: it says it paused.
     await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").away.ended = "budget"; });
-    await expect(mark).toHaveText("Away· Paused: budget reached");
-    // Two Desks away: this Desk's page speaks for this Desk only (#643); the Board says how many.
+    await expect(mark).toHaveText("cue: Away· Paused: budget reached");
+    // Two Desks away: the Board says how many.
     await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").away.ended = ""; st.desk.projects.find((x) => x.project !== "cue").away = { on: true, active: true, ended: "", rules: {} }; });
-    await expect(mark).toHaveText(/^Away until \d\d:\d\d· \$3\.40 of \$10$/);
-    await page.locator('.switch-view [data-view="board"]').click();
     await expect(mark).toHaveText("Away on 2 Desks");
     await page.locator('.switch-view [data-view="desk"]').click();
     // Off: no mark, still the same theme.
@@ -307,7 +323,8 @@ for (const mode of ["light", "dark"]) {
     const sw = page.locator(".dk-items .dk-aw-sw"), mark = page.locator(".top .top-away"), root = page.locator("html");
     await sw.click();
     await expect(sw).toHaveAttribute("aria-pressed", "true");
-    await expect(mark).toHaveText(/^Away until 07:00/);
+    // The Desk's own page leaves it to its switch (#666).
+    await expect(mark).toHaveCount(0);
     await expect(root).toHaveClass(/away-on/);
     // Only this Desk was set on.
     expect((await cue.calls("desk_away_set")).map((c) => c.args.desk)).toEqual(["cue"]);
@@ -327,7 +344,10 @@ for (const mode of ["light", "dark"]) {
     await page.locator('.switch-view [data-view="desk"]').click();
     await sw.click();
     await expect(sw).toHaveAttribute("aria-pressed", "true");
-    await expect(mark).toHaveText(/^Away until 07:00/);
+    await expect(mark).toHaveCount(0);
+    await page.locator('.switch-view [data-view="board"]').click();
+    await expect(mark).toHaveText("Away on 2 Desks");
+    await page.locator('.switch-view [data-view="desk"]').click();
     expect((await cue.calls("desk_away_set")).map((c) => c.args.desk)).toEqual(["cue", "website"]);
     await openDesk(page, "cue");
     await expect(sw).toHaveAttribute("aria-pressed", "true");
@@ -515,13 +535,14 @@ test("steps held while you were away list under Waiting on you in plain words wi
   await cue.open("desk");
   await openDesk(page);
   const items = page.locator(".dk-items");
-  await expect(items.locator(".dk-gh.you")).toHaveText("Waiting on you 1");
+  const you = items.locator('.dk2b-gh[data-desk2b-group="you"]');
+  await expect(you).toHaveText("WAITS ON YOU 2");
   await cue.change((st) => {
     const d = st.desk.projects.find((x) => x.project === "cue");
     d.held = [{ id: "held-1", sid: "site", who: "site", what: "delete files", command: "rm -rf build", at: 1 },
       { id: "held-2", sid: "site", who: "site", what: "push", command: "git push origin main", at: 2 }];
   });
-  await expect(items.locator(".dk-gh.you")).toHaveText("Waiting on you 3");
+  await expect(you).toHaveText("WAITS ON YOU 4");
   const rows = items.locator(".dk-held");
   await expect(rows).toHaveCount(2);
   await expect(rows.nth(0).locator(".dk-request-who")).toHaveText("site wants to delete files · held while you were away");
@@ -544,7 +565,7 @@ test("the Away switch shows in full, its until time with it, in the Items head a
     const d = st.desk.projects.find((x) => x.project === "cue");
     d.away = { on: true, active: true, ended: "", since, until: since + 9 * 3600000, budget: 10, spent: 3.2, rules: {} };
   }, SINCE);
-  const head = page.locator(".dk-items .dk-ch"), sw = head.locator(".dk-aw-sw");
+  const head = page.locator(".dk-items .dk2b-ih"), sw = head.locator(".dk-aw-sw");
   for (const width of [1600, 1360, 1200, 1100, 1000, 900, 821, 700, 420]) {
     await page.setViewportSize({ width, height: 900 });
     await expect(sw.locator(".dk-aw-st")).toHaveText(/^until \d\d:\d\d · \$3\.20 of \$10$/);
@@ -557,8 +578,12 @@ test("the Away switch shows in full, its until time with it, in the Items head a
       return out;
     });
     expect(cut, `at ${width}px`).toEqual([]);
-    if (process.env.SHOT_DIR) await page.locator(".dk-items .dk-ch").screenshot({ path: `${process.env.SHOT_DIR}/away-${width}.png` });
-    await expect(head.locator(".dk-prog-btn, .dk-pz, .dk-aw-sw")).toHaveCount(3);
+    if (process.env.SHOT_DIR) await head.screenshot({ path: `${process.env.SHOT_DIR}/away-${width}.png` });
+    // One dot between Away and its until time, never two (#666).
+    // ("Away · until 01:53": the dot is the status's ::before, so the until time has none of its own.)
+    // (Polled: a redraw on resize can swap the head between finding it and reading it, and a swapped-out node has no style.)
+    await expect.poll(() => sw.evaluate((el) => [".dk-aw-st", ".dk-aw-until"].map((q) => getComputedStyle(el.querySelector(q), "::before").content))).toEqual(['"· "', "none"]);
+    await expect(head.locator(".dk-aw-sw, .dk-qa")).toHaveCount(2);
   }
 });
 

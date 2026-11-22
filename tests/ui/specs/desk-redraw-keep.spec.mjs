@@ -41,6 +41,10 @@ test("the Items list and Give to…'s menu stay where you scrolled them through 
   await tick(cue, 1);
   await expect.poll(() => list.evaluate((el) => el.scrollTop)).toBe(400);
 
+  // Give to… is on the item's page (B2, #666), not its row: the row opened, the list stays where it was.
+  await expect(page.locator('.dk-items [data-desk-item="n0"] [data-desk-give]')).toHaveCount(0);
+  await page.locator('.dk-items [data-desk-item="n0"]').click();
+  const at = await list.evaluate((el) => el.scrollTop);
   await page.locator('[data-desk-give="n0"]').first().click();
   const menu = page.locator(".dk-givemenu");
   await expect.poll(() => menu.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
@@ -49,7 +53,8 @@ test("the Items list and Give to…'s menu stay where you scrolled them through 
   await expect(menu).toBeVisible();
   await frames(page);   // past the menu's own placing (a microtask after the draw)
   expect(await menu.evaluate((el) => el.scrollTop)).toBe(200);
-  // Scrolling the list under it moves the menu with its button, not to its top.
+  expect(await list.evaluate((el) => el.scrollTop)).toBe(at);
+  // Scrolling the list beside it leaves the menu where you scrolled it, not at its top.
   await list.evaluate((el) => { el.scrollTop -= 10; });
   await frames(page);   // the scroll event, which places the menu again
   expect(await menu.evaluate((el) => el.scrollTop)).toBe(200);

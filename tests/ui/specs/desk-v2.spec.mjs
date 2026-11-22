@@ -24,15 +24,19 @@ test("Today's Desk page is the default", async ({ page, cue }) => {
   await expect(page.locator(".dk-board")).toHaveCount(1);
   await expect(page.locator(".dk-board.dk-v2")).toHaveCount(0);
   // Today's page is B2 (#666): the lead's chat at the left and the item list beside it, no sessions column; the
-  // sessions open on the right, in the list's place, from All N sessions under the Working pill.
+  // sessions open on the left, in the chat's place, from All N sessions under the Working pill.
   await expect(page.locator(".dk-board.dk-b2")).toHaveCount(1);
   const [c, l] = await Promise.all([page.locator(".dk-board > .dk-card.dk2b-chat").boundingBox(), page.locator(".dk-board > .dk-card.dk-items").boundingBox()]);
   expect(l.x).toBeGreaterThan(c.x + c.width);
   await expect(page.locator(".dk-sessions")).toHaveCount(0);
-  await expect(page.locator(".dk-items [data-desk-prog-toggle]")).toHaveCount(1);
+  // No Progress toggle in the B2 list head (#666).
+  await expect(page.locator(".dk-items [data-desk-prog-toggle]")).toHaveCount(0);
+  // The sessions open in the lead's chat's place on the left; the item list stays on the right.
   await openSessions(page);
-  await expect(page.locator(".dk-items")).toHaveCount(0);
-  expect((await page.locator(".dk-board > .dk-sessions").boundingBox()).x).toBeGreaterThan(c.x + c.width);
+  await expect(page.locator(".dk-board > .dk2b-chat")).toHaveCount(0);
+  await expect(page.locator(".dk-board > .dk-items")).toHaveCount(1);
+  const [s, l2] = await Promise.all([page.locator(".dk-board > .dk-sessions").boundingBox(), page.locator(".dk-board > .dk-items").boundingBox()]);
+  expect(l2.x).toBeGreaterThan(s.x + s.width - 1);
 });
 
 test("The switch in Desk settings flips the page, and it's remembered", async ({ page, cue }) => {

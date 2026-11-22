@@ -79,6 +79,36 @@ function resetCol(name) {
   saveColWidths();
   renderMain();
 }
+/** A grip's press and drag, shared by the Board's grips and the Desk's (deskColDrag): twice in a row without a drag
+ *  calls `reset`; a drag past 3px marks the grip as sizing and calls `move` with how far it went; letting go calls `done`. */
+function gripDrag(e, name, { reset, move, done }) {
+  if (lastGripPress.name === name && Date.now() - lastGripPress.at < 400) {
+    lastGripPress = {};
+    return reset();
+  }
+  lastGripPress = { name, at: Date.now() };
+  const x0 = e.clientX;
+  let moved = false;
+  const mv = (m) => {
+    if (!moved) {
+      if (Math.abs(m.clientX - x0) < 3) return;
+      moved = true;
+      lastGripPress = {};
+      colSizing = { name, edge: "" };
+      document.body.classList.add("col-sizing");
+    }
+    move(m.clientX - x0);
+  };
+  const up = () => {
+    window.removeEventListener("pointermove", mv);
+    if (!moved) return;
+    colSizing = null;
+    document.body.classList.remove("col-sizing");
+    done();
+  };
+  window.addEventListener("pointermove", mv);
+  window.addEventListener("pointerup", up, { once: true });
+}
 /** Drag a grip: the column after it and the one before it trade width. The grip between Waiting and
  *  Sessions trades between those two; any other gives to or takes from Active. Near the usual width it
  *  clicks onto it; at a limit it stops and says so. Live: only the board's columns change until you let go. */
@@ -87,60 +117,86 @@ function dragColGrip(e) {
   if (!grip || e.button !== 0) return;
   e.preventDefault();
   const board = grip.closest(".board"), name = grip.dataset.colGrip;
+  if (board.classList.contains("dk-b2")) return deskColDrag(e, board);
   const wColl = !board.querySelector(".col-waiting"), sColl = !board.querySelector(".col-sessions");
   const left = name === "sessions" && !wColl ? "waiting" : null;   // null: Active is on its left
   const unit = (board.clientWidth - 28) / 3.75;   // px per share
   if (unit <= 0) return;
-  const x0 = e.clientX, start = { ...colFr };
+  const start = { ...colFr };
   const px = (fr) => fr * unit;
   // Limits widen to take in where it starts, so a small window never jumps on the first move.
   const lim = (n) => ({ min: Math.min(COLS[n].min, px(start[n])), max: Math.max(COLS[n].max, px(start[n])) });
-  // Twice in a row without a drag: back to its usual width.
-  if (lastGripPress.name === name && Date.now() - lastGripPress.at < 400) {
-    lastGripPress = {};
-    if (left) colFr[left] = COLS[left].fr;
-    return resetCol(name);
-  }
-  lastGripPress = { name, at: Date.now() };
   const otherStart = board.querySelector(left ? ".col-waiting" : ".col.main").getBoundingClientRect().width;
   const me = lim(name), other = left ? lim(left) : { min: Math.min(ACTIVE_MIN, otherStart), max: Infinity };
-  let moved = false;
-  const move = (m) => {
-    if (!moved) {
-      if (Math.abs(m.clientX - x0) < 3) return;
-      moved = true;
-      lastGripPress = {};
-      colSizing = { name, edge: "" };
-      document.body.classList.add("col-sizing");
-    }
-    let w = px(start[name]) + (x0 - m.clientX);   // its left edge moves; it grows leftward
-    const usual = px(COLS[name].fr);
-    if (Math.abs(w - usual) < SNAP) w = usual;
-    // what the column on its left can give or take
-    const hi = Math.min(me.max, otherStart + px(start[name]) - other.min), lo = Math.max(me.min, otherStart + px(start[name]) - other.max);
-    const edge = w >= hi ? "widest" : w <= lo ? "narrowest" : "";
-    w = Math.max(lo, Math.min(hi, w));
-    colFr[name] = w / unit;
-    if (left) colFr[left] = start[left] + start[name] - colFr[name];
-    colSizing.edge = edge;
-    const lay = colLayout(wColl, sColl), live = document.querySelector(".board");
-    if (!live) return;
-    live.style.gridTemplateColumns = lay.tpl;
-    for (const g of lay.grips) {
-      const el = live.querySelector(`[data-col-grip="${g.name}"]`);
-      if (el) el.outerHTML = colGrip(g);
-    }
-  };
-  const up = () => {
-    window.removeEventListener("pointermove", move);
-    if (!moved) return;
-    colSizing = null;
-    document.body.classList.remove("col-sizing");
-    saveColWidths();
-    renderMain();
-  };
-  window.addEventListener("pointermove", move);
-  window.addEventListener("pointerup", up, { once: true });
+  gripDrag(e, name, {
+    // Twice in a row without a drag: back to its usual width.
+    reset: () => {
+      if (left) colFr[left] = COLS[left].fr;
+      resetCol(name);
+    },
+    move: (dx) => {
+      let w = px(start[name]) - dx;   // its left edge moves; it grows leftward
+      const usual = px(COLS[name].fr);
+      if (Math.abs(w - usual) < SNAP) w = usual;
+      // what the column on its left can give or take
+      const hi = Math.min(me.max, otherStart + px(start[name]) - other.min), lo = Math.max(me.min, otherStart + px(start[name]) - other.max);
+      const edge = w >= hi ? "widest" : w <= lo ? "narrowest" : "";
+      w = Math.max(lo, Math.min(hi, w));
+      colFr[name] = w / unit;
+      if (left) colFr[left] = start[left] + start[name] - colFr[name];
+      colSizing.edge = edge;
+      const lay = colLayout(wColl, sColl), live = document.querySelector(".board");
+      if (!live) return;
+      live.style.gridTemplateColumns = lay.tpl;
+      for (const g of lay.grips) {
+        const el = live.querySelector(`[data-col-grip="${g.name}"]`);
+        if (el) el.outerHTML = colGrip(g);
+      }
+    },
+    done: () => { saveColWidths(); renderMain(); },
+  });
 }
 let lastGripPress = {};
 document.addEventListener("pointerdown", dragColGrip);
+
+// The Desk's two columns (desk/view.js deskView): the lead's chat (or what's open in its place) and Items, with a grip in
+// the gap between them. The chat is a share of the Desk's 3.75, as the Board's Active is (1.9: as wide as the Board's
+// chat beside both its columns, 878px at 1800 wide); the drag trades it with Items. Items never narrower than its rows
+// read (#id, title, the 6-step bar, Check), the chat never narrower than its strip and box: the clamp in
+// styles/desk-cols.css keeps both as the window changes. Remembered per window; a double-click puts it back.
+const DESK_COLS = { fr: 1.9, chatMin: 560, itemsMin: 520 };
+let deskColFr = DESK_COLS.fr;
+try {
+  const v = JSON.parse(localStorage.getItem("cue.deskCols") || "null");
+  if (Number.isFinite(v) && v > 0.3 && v < 3.5) deskColFr = v;
+} catch {}
+function saveDeskCols() { try { localStorage.setItem("cue.deskCols", JSON.stringify(deskColFr)); } catch {} }
+/** The Desk board's own style (its chat's share) and its grip, for deskView. */
+const deskColStyle = () => `--dk-fr:${deskColFr}`;
+const deskColGrip = () => colGrip({ name: "items", left: "var(--dk-chat)" });
+/** Drag the Desk's grip: the chat and Items trade width, between their mins; near the usual width it clicks onto it. */
+function deskColDrag(e, board) {
+  const W = board.clientWidth, unit = (W - 28) / 3.75;
+  const chat0 = board.firstElementChild?.getBoundingClientRect().width || 0;
+  const lo = DESK_COLS.chatMin, hi = W - 14 - DESK_COLS.itemsMin;
+  // Too narrow for both (the grip is hidden then): today's split stays.
+  if (unit <= 0 || hi < lo) return;
+  gripDrag(e, "items", {
+    reset: () => { deskColFr = DESK_COLS.fr; saveDeskCols(); renderMain(); },
+    move: (dx) => {
+      let w = chat0 + dx;
+      if (Math.abs(w - DESK_COLS.fr * unit) < SNAP) w = DESK_COLS.fr * unit;
+      // Named for Items: the chat at its widest is Items at its narrowest.
+      const edge = w >= hi ? "narrowest" : w <= lo ? "widest" : "";
+      w = Math.max(lo, Math.min(hi, w));
+      deskColFr = w / unit;
+      colSizing.edge = edge;
+      const live = document.querySelector(".board.dk-b2");
+      if (!live) return;
+      live.style.setProperty("--dk-fr", deskColFr);
+      const el = live.querySelector('[data-col-grip="items"]');
+      if (el) el.outerHTML = deskColGrip();
+    },
+    done: () => { saveDeskCols(); renderMain(); },
+  });
+}

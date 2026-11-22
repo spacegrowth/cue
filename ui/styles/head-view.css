@@ -35,3 +35,8 @@
 .hv-find:focus { border-color: var(--sel); }
 .hv-tick { flex: none; width: 12px; color: var(--sel); font-weight: 700; }
 .hv-none { padding: 8px 10px; color: var(--muted); font-size: var(--type-small); }
+/* The Desks menu's rows open their Desk; each has a pin that puts it among the header's chips (shown on hover, or pinned). */
+.hv-row[data-hv-desk] { cursor: pointer; }
+.hv-row .hv-pin { margin: -3px -4px -3px 6px; }
+.hv-row:is(:hover, .at) .hv-pin { opacity: 0.7; }
+.hv-row .hv-pin:is(:hover, .on) { opacity: 1; }

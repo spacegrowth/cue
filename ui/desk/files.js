@@ -11,7 +11,7 @@ const deskPfiles = (head, files, attrs, more) => (files.length ? deskPsec(`${hea
 /** Item `i`'s files, from the read its Files tab makes (deskFilesChanged, drawn first); till that's back, or while
  *  nothing in them has changed yet, the files it's on, "more" opening its Files tab. */
 function deskItemFiles(i) {
-  const checking = deskChecking(i), read = deskDiffs.get(i.id)?.files, id = esc(i.id);
+  const checking = deskChecking(i), read = deskDiffs.get(deskDiffId(i))?.files, id = esc(i.id);
   if (read?.length) {
     const at = (n) => `data-desk-diff-file="${id}" data-n="${n}"`;
     return deskPfiles(checking ? "Files changed" : "Changed so far", read, at, at(DESK_PFILES));

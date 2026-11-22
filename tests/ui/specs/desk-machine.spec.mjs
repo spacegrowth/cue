@@ -2,6 +2,7 @@
 // the Desk's sessions list; nothing for this Mac), and an item worked there says how that machine is doing in one quiet
 // line: not answering for how long, what it waits for, when it last pushed.
 import { test, expect, openDesk, deskAllSessions } from "./cue.mjs";
+import { statusOf } from "./desk.mjs";
 
 test("a holder on another machine shows the machine, and its item says how that machine is doing", async ({ page, cue }) => {
   await cue.open("desk");
@@ -14,12 +15,13 @@ test("a holder on another machine shows the machine, and its item says how that 
   });
   await openDesk(page);
   const row = page.locator('.dk-it[data-desk-item="d5"]');
-  await expect(row.locator(".dk-who .mach")).toHaveText("remote-1");
-  await expect(row.locator(".dk-rmt")).toHaveText("machine not answering for 12 min · Its work is on the machine, not pushed · last pushed 5 min ago");
+  // B2 (#666): the label by the row's title, the machine's line its status line.
+  await expect(row.locator(".dk2b-tt .mach")).toHaveText("remote-1");
+  await expect(statusOf(page, "d5")).toHaveText("Machine not answering for 12 min · Its work is on the machine, not pushed · last pushed 5 min ago");
   // This Mac's: no label, no line.
   const mine = page.locator('.dk-it[data-desk-item="d2"]');
   await expect(mine.locator(".mach")).toHaveCount(0);
-  await expect(mine.locator(".dk-rmt")).toHaveCount(0);
+  await expect(statusOf(page, "d2")).not.toContainText("machine");
   // The sessions list (All N sessions, on the right in the list's place): the label on the session there, none on
   // the lead's card here.
   await deskAllSessions(page);
@@ -39,8 +41,8 @@ test("a holder on another machine shows the machine, and its item says how that 
   await expect(right.locator(".dk-pmeta.dk-rmt")).toHaveText("machine not answering for 31 min · its work is on the machine, not pushed");
   // Its row, back in the list (‹ Items N: the item opens in the list's place).
   await right.locator(".dk2b-items").click();
-  await expect(row.locator(".dk-rmt")).toHaveText("machine not answering for 31 min · its work is on the machine, not pushed");
-  await expect(page.locator(".dk-rmt[title], .dk-rmt [title]")).toHaveCount(0);
+  await expect(statusOf(page, "d5")).toHaveText("Machine not answering for 31 min · its work is on the machine, not pushed");
+  await expect(page.locator(".dk-rmt[title], .dk-rmt [title], .dk-items [title]")).toHaveCount(0);
 });
 
 // Where an item's session starts (#597): the Desk's machine on an unstarted item's card, a "Starts on" choice on its
@@ -57,8 +59,8 @@ test("an item nobody has yet shows where it will start, and you can choose anoth
   }, [machines, fresh]);
   await openDesk(page);
   const row = page.locator('.dk-it[data-desk-item="n597"]');
-  await expect(row.locator(".dk-who .mach")).toHaveText("build-box");
-  await row.locator(".dk-t").click();
+  await expect(row.locator(".dk2b-tt .mach")).toHaveText("build-box");
+  await row.locator(".dk2b-tt").click();
   const right = page.locator(".dk-right");
   const seg = right.locator(".dk-starts");
   await expect(seg.locator("[data-desk-start-on]")).toHaveText(["This Mac", "build-box"]);
@@ -72,11 +74,11 @@ test("an item nobody has yet shows where it will start, and you can choose anoth
   await right.locator(".dk2b-items").click();
   await expect(row.locator(".mach")).toHaveCount(0);
   // An item someone has: no choice, it stays where it is.
-  await page.locator('.dk-it[data-desk-item="d5"] .dk-t').click();
+  await page.locator('.dk-it[data-desk-item="d5"] .dk2b-tt').click();
   await expect(right.locator(".dk-pmeta").first()).toBeVisible();
   await expect(right.locator(".dk-starts")).toHaveCount(0);
   await right.locator(".dk2b-items").click();
-  await row.locator(".dk-t").click();
+  await row.locator(".dk2b-tt").click();
   await expect(page.locator(".dk-right .dk-pg")).toContainText("Runs on the box");
   await expect(seg).toBeVisible();
   for (const c of ["light", "dark"]) {
@@ -133,6 +135,7 @@ test("the new Desk page's settings drawer has where new sessions start, and a ma
   await cue.open("desk");
   await page.evaluate(() => localStorage.setItem("cue.deskV2", "1"));
   await page.reload();
+  await page.locator('#app [data-view="board"]').waitFor();
   await cue.change((st, ms) => { st.desk.projects.find((x) => x.project === "cue").machines = { ...ms, machine: "" }; }, machines);
   await openDesk(page);
   await page.locator("[data-desk2-set]").click();

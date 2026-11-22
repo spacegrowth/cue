@@ -12,7 +12,7 @@ const backToItems = async (page) => {
 };
 const openItem = async (page, id) => {
   await backToItems(page);
-  await page.locator(`.dk-items [data-desk-item="${id}"] .dk-t`).click();
+  await page.locator(`.dk-items [data-desk-item="${id}"] .dk2b-tt`).click();
   await page.locator(`.dk-panel[data-side-for="${id}"]`).waitFor();
   return page.locator(".dk-board");
 };

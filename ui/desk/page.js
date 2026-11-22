@@ -112,8 +112,8 @@ function deskChatRows(s, page) {
   const sid = s.session_id;
   if (!older.has(sid)) queueMicrotask(() => loadOlder(sid));
   const any = (s.thread || []).length || older.get(sid)?.msgs.length;
-  // Conversation only or Everything, as you set it for this chat (desk/runs.js, #685).
-  return any ? chatHtml(null, s, s.harness || "claude", true, { lines: deskLineHtml, you: deskCueNote, youHead: deskAboutHead, noActs: true, talk: chatTalkOnly(sid), ...page }) : "";
+  // Everything, always: no Conversation only switch on the Desk's chats (#666; the Board's chat keeps it).
+  return any ? chatHtml(null, s, s.harness || "claude", true, { lines: deskLineHtml, you: deskCueNote, youHead: deskAboutHead, noActs: true, talk: false, ...page }) : "";
 }
 /** For ↑ ↓ in a Desk's box (chat/compose.js recallSent): the session it goes to ({ s, said }: your words as its chat
  *  shows them), the lead's for the lead's box; null for a box of no session's. */
@@ -128,8 +128,6 @@ function deskRecall(key) {
  *  opened from the sessions on the left. Null otherwise. */
 function deskShownChat(sid) {
   if (!deskSelection()) return null;
-  // B2 (desk/b2.js): the lead's chat stays in its card whatever is open on the right.
-  if (deskB2On() && deskOpen && deskTab === "lead" && deskPick !== deskSelection()) { const d = deskOf(deskSelection()); if (deskLead(d)?.sid === sid && !deskLeadEnded(d)) return deskLeadSession(d); }
   if (deskOpen?.kind === "chat") return deskOpen.project === deskSelection() && deskOpen.sid === sid ? sessionOf(sid) : null;
   // An item's page shows its holder's chat from when it took the item (#575): that chat loads earlier messages till
   // that time is in (thread.js deskLoadStint).
@@ -210,9 +208,6 @@ const deskActRows = (d) => deskActs(d).filter((x) => x.act !== "call").map((x) =
  *  chat's drafted loop shows; "" without the add-on. Drawn as the Desk's own, not the lead's chat's: Start gives the
  *  loop a session of its own in that project's folder, never the lead, which only dispatches. */
 const deskLoopCard = (d, x) => (x.act === "loop" && x.draft ? addOn.reply(`desk:${d.project}`, `\`\`\`cue-loop\n${JSON.stringify(x.draft)}\n\`\`\``).after : "");
-/** How long the lead's last moves stay in the Dispatcher's panel, and how many. */
-const DESK_JUST_DID_MS = 30 * 60 * 1000, DESK_JUST_DID = 3;
-const deskJustDid = (d) => deskActs(d).filter((x) => now() - x.at * 1000 < DESK_JUST_DID_MS).slice(0, DESK_JUST_DID);
 /** "Dispatcher Actions" (#374, named #390): every move the lead made on its own, kept until you clear it. Today's come with the
  *  Desk's state; older ones load from Cue (desk_moves) as you scroll: { items, end, loading } a Desk each. */
 const deskMovePages = new Map(), deskMovesShown = new Map();
@@ -300,10 +295,31 @@ const DESK_MARKS = { desk: "Dispatcher", session: "Session", crew: "Crew", lead:
 const DESK_PANEL_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M15 4v16"/></svg>`;
 /** Kinds of page whose panel you hid ("item", "session", "crew", "lead", "dispatcher"), kept across restarts. */
 const deskPanelHid = (() => { try { return new Set(JSON.parse(localStorage.getItem("cue.deskPanelHidden") || "[]")); } catch { return new Set(); } })();
-/** On today's Desk page (B2, desk/b2.js) the lead's panel starts hidden, its Now and Waits on you in the strip over
- *  the chat: Show panel brings it back, remembered as "dispatcher-shown". Every other page as before. */
-const deskPanelKey = (page) => (page === "dispatcher" && deskB2On() ? "dispatcher-shown" : page);
-const deskPanelHidden = (page) => (deskPanelKey(page) === page ? deskPanelHid.has(page) : !deskPanelHid.has(deskPanelKey(page)));
+/** On today's Desk page (B2, desk/b2.js) the lead's panel starts shown (#666); Hide panel puts its Now and Waits on you
+ *  in the strip over the chat, remembered as "dispatcher-hidden". Every other page as before. */
+const deskPanelKey = (page) => (page === "dispatcher" && deskB2On() ? "dispatcher-hidden" : page);
+const deskPanelHidden = (page) => deskPanelHid.has(deskPanelKey(page)) || (page === "dispatcher" && deskB2On() && deskB2Narrow());
+/** B2: the lead's chat card is too narrow for its panel (under 641px, desk-page.css's own rule), so the panel can't show
+ *  and the strip takes its place, as with Hide panel. Read off the card in the chat's place as drawn last (else the
+ *  board's width at the chat's share); a watcher on that card redraws when its width crosses the line. */
+let deskB2NarrowDrawn = null;
+const deskB2Sizer = typeof ResizeObserver === "function" ? new ResizeObserver((es) => {
+  const w = es.at(-1)?.contentRect.width;
+  if (view === "desk" && w > 0 && deskB2NarrowDrawn !== null && (w < 641) !== deskB2NarrowDrawn) renderMain();
+}) : null;
+function deskB2Narrow() {
+  const card = document.querySelector("#app .dk-board.dk-b2 > .dk-card:is(.dk2b-chat, .dk2b-open)");
+  const board = document.querySelector("#app .board");
+  const w = card ? card.getBoundingClientRect().width : board ? (board.clientWidth - 28) * 1.9 / 3.75 : 0;
+  deskB2NarrowDrawn = w > 0 && w < 641;
+  // Watch the card this draw puts there (a new element each draw).
+  if (deskB2Sizer) requestAnimationFrame(() => {
+    const next = document.querySelector("#app .dk-board.dk-b2 > .dk-card.dk2b-chat");
+    deskB2Sizer.disconnect();
+    if (next) deskB2Sizer.observe(next);
+  });
+  return deskB2NarrowDrawn;
+}
 function deskPanelToggle(page) {
   if (!deskPanelHid.delete(page)) deskPanelHid.add(page);
   try { localStorage.setItem("cue.deskPanelHidden", JSON.stringify([...deskPanelHid])); } catch { /* kept for this window only */ }
@@ -364,7 +380,7 @@ function deskSessChat(sid, from, d, foot = "") {
   const stop = dot === "work" ? `<button class="btn small" data-act="interrupt" data-sid="${esc(sid)}">Stop</button>` : "";
   // The new Desk page (#628): back to the lead's chat, and the item it's on a click away.
   const v2 = deskV2 ? deskV2ChatBack(sid, from, d) : null;
-  return deskPage({ page: kind === "desk" ? "dispatcher" : kind === "lead" ? "lead" : "session", kind, back: v2 ? v2.back : deskChatBack(from, d), acts: chatModeSwitch(sid, rows) + (v2 ? v2.its : "") + open,
+  return deskPage({ page: kind === "desk" ? "dispatcher" : kind === "lead" ? "lead" : "session", kind, back: v2 ? v2.back : deskChatBack(from, d), acts: (v2 ? v2.its : "") + open,
     mark: `${DESK_MARKS[kind]} · `, title: deskSessName(sid, deskHolderName(sid), "dk-shn"), meta,
     now: deskPnow({ dot, word, say, acts: stop, fold: on ? `on #${esc(on.id)}` : "" }),
     panel: deskPsec("Who", deskPwho("On", its.length ? its.map(deskItemLink).join(", ") : "nothing yet")) + deskSessFiles(sid),

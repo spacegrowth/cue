@@ -35,7 +35,7 @@ test("the sessions on the left: working first, then each group most recent first
   await expect.poll(ids).toEqual(["# Working", "host", "# Idle", "older", "newest", "middle"]);
 });
 
-test("two cards: the lead's chat at the left, the items at the right; All N sessions puts the project's sessions in the items' place (#666)", async ({ page, cue }) => {
+test("two cards: the lead's chat at the left, the items at the right; All N sessions puts the project's sessions in the chat's place (#666)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   const cols = () => page.locator(".dk-board > .dk-card").evaluateAll((els) => els.map((el) => [...el.classList].find((c) => ["dk-sessions", "dk2b-chat", "dk-items"].includes(c))));
@@ -44,7 +44,7 @@ test("two cards: the lead's chat at the left, the items at the right; All N sess
   const [x0, x1] = await xs();
   expect(x0 < x1).toBe(true);
   await openSessions(page);
-  expect(await cols()).toEqual(["dk2b-chat", "dk-sessions"]);
+  expect(await cols()).toEqual(["dk-sessions", "dk-items"]);
   expect(await xs()).toEqual([x0, x1]);
   // A Desk member with no item.
   await cue.change((st) => st.sessions.push({ ...st.sessions.find((x) => x.session_id === "site"), session_id: "spare", project: "cue", name: "spare", thread: [] }));
@@ -63,14 +63,12 @@ test("two cards: the lead's chat at the left, the items at the right; All N sess
   // Rows run edge to edge, so their hover and lime reach both sides of the column.
   const [rx, rw, cx, cw] = await left.locator('[data-desk-chat-of="host"]').evaluate((el) => { const r = el.getBoundingClientRect(), c = el.closest(".dk-scroll").getBoundingClientRect(); return [r.x, r.width, c.x, c.width]; });
   expect([rx, Math.round(rw)]).toEqual([cx, Math.round(cw)]);
-  // The right list: each item's kind as a small icon in the theme color before its number.
-  // ‹ Items N: the list again, in the sessions' place.
+  // The right list (B2): each row starts with its number, no kind icon (B2 rows are compact).
+  // ‹ back: the lead's chat again, in the sessions' place.
   await page.locator(".dk-sessions .dk-back").click();
   const items = page.locator(".dk-items");
-  await expect(items.locator('[data-desk-item="d1"] .dk-i2 .dk-kid > svg.dk-kic')).toHaveCount(1);
-  expect(await items.locator(".dk-it").evaluateAll((els) => els.every((el) => el.querySelector(".dk-kic")))).toBe(true);
-  const ic = await items.locator('[data-desk-item="d1"] .dk-kic').evaluate((el) => [getComputedStyle(el).color, getComputedStyle(document.documentElement).getPropertyValue("--accent")]);
-  expect(ic[0]).not.toBe("");
+  await expect(items.locator('[data-desk-item="d1"] .dk2b-n')).toHaveText("#d1");
+  await expect(items.locator(".dk-it .dk-kic")).toHaveCount(0);
   await openSessions(page);
   await expect(left.locator(".dk-srow.crew")).toHaveCount(0);
   await expect(left.locator("[data-desk-done-fold]")).toHaveCount(0);
@@ -118,11 +116,12 @@ test("two cards: the lead's chat at the left, the items at the right; All N sess
   await page.keyboard.press("Escape");
   await cue.called("interrupt_session", { sessionId: "host" });
   await expect(hostChat).toHaveCount(1);
-  // Stopped: Esc goes back, to the list, its row lit; the lead's chat at the left all along.
+  // Stopped: Esc goes back, to the sessions, its row lit; the items at the right all along (B2: the sessions and a
+  // session's chat take the lead's chat's place on the left).
   await expect.poll(() => page.evaluate(() => sessionOf("host").state)).toBe("waiting");
   await page.keyboard.press("Escape");
   await expect(left.locator(".dk-srow.on")).toHaveAttribute("data-desk-chat-of", "host");
-  await expect(page.locator(".dk-board > .dk2b-chat")).toHaveCount(1);
+  await expect(page.locator(".dk-board > .dk-items")).toHaveCount(1);
   // Another session's crew sit under it; a crew row opens its pane, lit in the list when back.
   await crewNotLead(cue);
   await expect(left.locator('[data-desk-crew="id-focus"] .dk-st')).toHaveText("needs you");

@@ -1,7 +1,7 @@
 // Cue UI app — the header's area after the waiting count follows the view (#666). Loaded before app/render.js.
-// Board and Read (and the views not in the switch): the projects, as before, under a "Projects" label. Desk: the Desks,
-// up to three as chips (a dot when that Desk waits on you) and a Desks ▾ menu with every Desk, All Desks, New Desk… and Desk
-// settings…; a chip opens its Desk, the one open brings its lead's chat back. Inbox: a Show filter, All or one project,
+// Board and Read (and the views not in the switch): the projects, as before, under a "Projects" label. Desk: a Desks ▾
+// menu first, with every Desk (each with a pin), All Desks, New Desk… and Desk settings…, then the pinned Desks as chips in
+// the order pinned (a dot when that Desk waits on you), never reordered by use; a chip opens its Desk, the one open brings its lead's chat back. Inbox: a Show filter, All or one project,
 // each with how many need you. An add-on's view: what its optional head() gives, else nothing.
 
 /** The menu open in this area: "desks", "inbox" (the Inbox filter's other projects), or "" for none. */
@@ -43,11 +43,26 @@ function hvDeskGoing(d) {
 const hvGoingText = ({ waits, working }) => waits ? `${waits} wait${waits === 1 ? "s" : ""} on you` : working ? `${working} working` : "nothing going";
 /** The Desk open on the Desk view ("" on the list of Desks). */
 const hvDeskNow = () => { const p = typeof deskSelection === "function" ? deskSelection() : ""; return (state.desk?.projects || []).some((d) => d.project === p) ? p : ""; };
-/** The Desks as chips: the one open first, then those waiting on you, then the ones opened last, then the rest. */
-function hvDeskChips(all, now) {
+/** The Desks pinned to the header, in the order you pinned them (kept across launches); null until you first pin or
+ *  unpin one, when the chips shown then become the pins, so nothing you saw goes away. */
+let hvPins = (() => { try { const v = JSON.parse(localStorage.getItem("cue.deskPins") || "null"); return Array.isArray(v) ? v.filter((x) => typeof x === "string") : null; } catch { return null; } })();
+/** The Desks pinned, those still there: the first few Desks by name until you pin any. */
+function hvDeskPins(all) {
   const by = new Map(all.map((d) => [d.project, d]));
-  const order = [now, ...all.filter((d) => hvDeskGoing(d).waits).map((d) => d.project), ...(typeof deskRecent !== "undefined" ? deskRecent : []), ...all.map((d) => d.project)];
-  return [...new Set(order)].filter((p) => by.has(p)).slice(0, HV_DESK_CHIPS).map((p) => by.get(p));
+  const pins = hvPins ?? [...all].sort((a, b) => deskName(a).localeCompare(deskName(b))).slice(0, HV_DESK_CHIPS).map((d) => d.project);
+  return pins.filter((p) => by.has(p));
+}
+/** Pin Desk `p` to the header (at the end), or unpin it. */
+function hvPinToggle(p) {
+  const all = typeof deskSorted === "function" ? deskSorted() : [];
+  const pins = hvDeskPins(all);
+  hvPins = pins.includes(p) ? pins.filter((x) => x !== p) : [...pins, p];
+  try { localStorage.setItem("cue.deskPins", JSON.stringify(hvPins)); } catch {}
+}
+/** The Desks as chips: the pinned ones, always in the order you pinned them; opening one never moves them. */
+function hvDeskChips(all) {
+  const by = new Map(all.map((d) => [d.project, d]));
+  return hvDeskPins(all).map((p) => by.get(p));
 }
 /** The Desks the menu lists: those whose name holds what's typed in its find box. */
 function hvDeskFound() {
@@ -73,11 +88,16 @@ function headDesks() {
   };
   const open = hvMenu === "desks";
   const found = hvDeskFound(), at = Math.min(hvAt, found.length - 1);
-  const row = (d, k) => { const g = hvDeskGoing(d), on = d.project === now; return `<button class="hv-row${on ? " on" : ""}${k === at ? " at" : ""}" role="menuitem" data-hv-desk="${esc(d.project)}"><span class="hv-tick" aria-hidden="true">${on ? "✓" : ""}</span>${dot(g)}<span class="hv-rn">${esc(deskName(d))}</span><span class="hv-rs">${esc(hvGoingText(g))}</span></button>`; };
+  const pins = hvDeskPins(all);
+  const pin = (d) => { const p = pins.includes(d.project); return `<button class="pj-pin hv-pin${p ? " on" : ""}" data-hv-pin="${esc(d.project)}" aria-label="${p ? "Unpin" : "Pin"} ${esc(deskName(d))}" aria-pressed="${p}">${PIN_ICON}</button>`; };
+  const row = (d, k) => { const g = hvDeskGoing(d), on = d.project === now; return `<div class="hv-row${on ? " on" : ""}${k === at ? " at" : ""}" role="menuitem" tabindex="-1" data-hv-desk="${esc(d.project)}"><span class="hv-tick" aria-hidden="true">${on ? "✓" : ""}</span>${dot(g)}<span class="hv-rn">${esc(deskName(d))}</span><span class="hv-rs">${esc(hvGoingText(g))}</span>${pin(d)}</div>`; };
   const find = `<input class="hv-find" data-text="hv-desk-find" placeholder="Find a Desk…" aria-label="Find a Desk" spellcheck="false" autocomplete="off" value="${esc(draft("hv-desk-find").text || "")}"/>`;
   const menu = open ? `<div class="hv-menu" role="menu">${find}${found.map(row).join("") || `<div class="hv-none">No Desk matches.</div>`}${all.length ? `<div class="hv-sep"></div>` : ""}<button class="hv-row" role="menuitem" data-hv-desk-home>All Desks</button><button class="hv-row" role="menuitem" data-hv-new-desk>New Desk…</button>${now && hvSettingsOpener() ? `<button class="hv-row" role="menuitem" data-hv-desk-set="${esc(now)}">Desk settings…</button>` : ""}${now && hvB2() ? `<button class="hv-row" role="menuitem" data-hv-desk-sessions>All sessions</button><button class="hv-row" role="menuitem" data-hv-desk-ren="${esc(now)}">Rename this Desk…</button>` : ""}</div>` : "";
   const car = `<svg class="hv-car" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>`;
-  return `${hvLabel("Desks")}${hvDeskChips(all, now).map(chip).join("")}<span class="hv-wrap"><button class="hchip hv-chip hv-open" data-hv-menu="desks" aria-expanded="${open}">Desks${car}</button>${menu}</span>`;
+  // The Desks menu first, as the projects chip is on the Board: it reads the Desk open when that one isn't pinned.
+  const loose = now && !pins.includes(now) ? all.find((d) => d.project === now) : null;
+  const main = `<span class="hv-wrap"><button class="hchip hv-chip hv-open${loose ? " hot" : ""}" data-hv-menu="desks" aria-expanded="${open}">${loose ? `${dot(hvDeskGoing(loose))}<span class="hv-cn">${esc(deskName(loose))}</span>` : "Desks"}${car}</button>${menu}</span>`;
+  return `${hvLabel("Desks")}${main}${hvDeskChips(all).map(chip).join("")}`;
 }
 
 /** Today's Desk page (B2, desk/b2.js), whose All sessions list holds the Desk's name to rename: reached from here too,
@@ -139,6 +159,9 @@ function headViewClick(t) {
   // Closed after this click's own handling (a microtask): the element clicked stays the one on the page while the rule
   // that takes it acts, instead of a copy a redraw just took out.
   if (hvMenu && !t.closest(".hv-wrap")) { hvMenu = ""; delete drafts["hv-desk-find"]; queueMicrotask(renderMain); }
+  // A Desk's pin in the menu: pinned to the header, or not; the menu stays open.
+  const pinEl = t.closest("[data-hv-pin]");
+  if (pinEl && pinEl.closest(".top")) { hvPinToggle(pinEl.dataset.hvPin); renderMain(); return true; }
   const el = t.closest("[data-hv-menu], [data-hv-desk], [data-hv-desk-set], [data-hv-desk-home], [data-hv-new-desk], [data-hv-desk-sessions], [data-hv-desk-ren], [data-hv-inbox]");
   if (!el || !el.closest(".top")) return false;
   const d = el.dataset;

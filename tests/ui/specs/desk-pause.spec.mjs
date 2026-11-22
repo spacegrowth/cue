@@ -6,7 +6,7 @@ import { test, expect, openDesk } from "./cue.mjs";
 test("Pause pauses the Desk; while paused it shows Paused and Resume", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  const btn = page.locator(".dk-items .dk-ch .dk-pz");
+  const btn = page.locator(".dk-items .dk2b-ih .dk-pz");
   await expect(btn).toHaveText("Pause");
   await expect(page.locator(".dk-items .dk-pz-tag")).toHaveCount(0);
   await btn.click();

@@ -170,7 +170,8 @@ test("a Desk's model for new sessions is picked in its settings, and an item sta
   await expect(page.locator(".ld-dialog [data-ld-model]")).toHaveValue("opus");
   await expect(page.locator(".ld-dialog [title]")).toHaveCount(0);
   await page.keyboard.press("Escape");
-  // An item a new session was started for on Fable: its card names the model; one on Claude Code's own pick doesn't.
+  // An item a new session was started for on Fable: its page names the model by Who (B2 #666: rows are compact); one
+  // on Claude Code's own pick doesn't.
   await cue.change((st) => {
     const desk = st.desk.projects.find((d) => d.project === "cue");
     const base = desk.items.find((i) => i.id === "d2");
@@ -183,6 +184,10 @@ test("a Desk's model for new sessions is picked in its settings, and an item sta
   await page.locator(".dk-sessions .dk2b-items").click();
   const all = page.locator('.dk-items [data-desk2b-all="queued"]');
   await all.click();
-  await expect(page.locator('[data-desk-item="620a"]').locator(".dk-model")).toHaveText("Fable");
-  await expect(page.locator('[data-desk-item="620b"]').locator(".dk-model")).toHaveCount(0);
+  const who = page.locator(".dk-right .dk2b-kv .dk2b-iv").first();
+  await page.locator('.dk-items [data-desk-item="620a"]').click();
+  await expect(who.locator(".dk-model")).toHaveText("Fable");
+  await page.locator('.dk-items [data-desk-item="620b"]').click();
+  await expect(page.locator(".dk-right .dk2b-ititle")).toHaveText("Started on the default");
+  await expect(who.locator(".dk-model")).toHaveCount(0);
 });

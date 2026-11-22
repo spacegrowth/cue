@@ -350,7 +350,7 @@ assert.strictEqual(c._pinTop, 1000);
   const pends = [];
   Object.assign(ctx, {
     deskPending: new Map(), deskSent: new Map(), deskAnswers: new Map(), deskQuestion: () => "Which?", deskOf: () => ({}),
-    deskTab: "items", deskChatEnd: false, deskBackFor: null,
+    deskTab: "items", deskChatEnd: false, deskBackFor: null, deskAwayNoteSent: () => {},   // desk/away.js, not loaded here
     deskPend: (id, text, why, pics, more) => { const p = { id, text, why, pics, at: 1000, ...more }; pends.push(p); ctx.deskPending.set(id, [...(ctx.deskPending.get(id) || []), p]); return p; },
   });
   ctx.sessions.H = { session_id: "H", state: "working" };

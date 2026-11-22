@@ -216,25 +216,46 @@ function deskThreadHtml(rows, id = "") {
   const msg = (r) => `<div class="dk-tm dk-tmsg" data-key="${key(r)}"><span class="dk-age"></span><span class="dk-tdot"></span><div class="dk-tb">${msgRow({ ...r.msg, acts: deskMsgActs(r.msg), extra: r.back ? ' · <span class="ml-back">sent back</span>' : "" }, `<div class="cv-you-text mg-text">${r.html}</div>`)}</div></div>`;
   return `<div class="dk-thread"${id ? ` data-thread-for="${esc(id)}"` : ""}>${rows.map((r) => r.msg ? msg(r) : r.rec ? `<div class="dk-tm rec" data-key="${key(r)}"><span class="dk-age">${esc(ago(r.at))}</span><span class="dk-tdot"><i></i></span><div class="dk-tb"><b>${esc(r.rec)}</b> · ${r.html}</div></div>` : `<div class="dk-tm${r.live ? " live" : ""}" data-key="${key(r)}"><span class="dk-age">${r.live ? "now" : esc(ago(r.at))}</span><span class="dk-tdot${r.back ? " back" : r.you || r.live ? " on" : ""}"><i></i></span><div class="dk-tb"><div class="dk-tw"><b>${esc(r.by)}</b>${r.tag ? `<span class="dk-ttag${r.back ? " back" : r.on ? " on" : ""}">${esc(r.tag)}</span>` : ""}</div>${r.html}</div></div>`).join("")}</div>`;
 }
+/** Item `i`'s tabs (Pieces for a feature, Chat, Record: the Steps tab of before, Decisions, and with `files` Files) and
+ *  what the open one shows: { tab, tabs: their buttons, body }. B2's page has Changes for Files (desk/view.js): there
+ *  the Files tab is left out, and its files show over the chat, so the chat is the body. */
+function deskItemTabbed(i, d, s, files) {
+  const decs = deskItemLog(i, d).reverse().filter((c) => c.call);
+  const { n: nFiles, html: filesTab } = deskItemFilesTab(i);
+  // A feature nobody holds is its pieces (#282): its page opens on them. The Steps tab of before is its Record tab.
+  const feat = deskFeat(i);
+  let tab = deskItemTabs.get(i.id) || (feat && !i.holder ? "pieces" : "thread");
+  if (tab === "steps") tab = "record";
+  const steps = deskItemSteps(i, d);
+  const on = (k) => tab === k || (!files && k === "thread" && tab === "files");
+  const tabBtn = (k, label, n) => `<button class="dk-itab${on(k) ? " on" : ""}" role="tab" aria-selected="${on(k)}" data-desk-itab="${k}" data-id="${esc(i.id)}">${label}${n == null ? "" : `<span class="n">${n}</span>`}</button>`;
+  // Its pieces, oldest first (#282): each its state, title, and kind, number, who and age; a click opens it.
+  const pieceRow = (p) => `<div class="dk-pc${p.state === "done" ? " done" : ""}" role="button" tabindex="0" data-desk-item="${esc(p.id)}">${deskStateIcon(p)}<div class="dk-pc-t">${esc(p.title)}</div><div class="dk-pc-m">${deskKindIcon(p)}<span>${[esc(deskNum(p)), esc(deskHolderOf(p)), `${ago(deskMs(p.state === "done" ? p.done_at || p.updated : p.created))} ago`].filter(Boolean).join(" · ")}</span></div></div>`;
+  const body = tab === "pieces" && feat ? `<div class="dk-pcl">${i.pieces.map(pieceRow).join("")}</div>`
+    : tab === "decisions" ? deskCallsBox(decs, `item:${i.id}`, deskDecList, `<p class="dk-note">No decisions on it yet.</p>`)
+    : tab === "record" ? deskItemRecord(steps)
+    : tab === "files" && files ? filesTab
+    : deskItemWork(i, d, s);
+  const tabs = `${feat ? tabBtn("pieces", "Pieces", i.pieces.length) : ""}${tabBtn("thread", "Chat", null)}${tabBtn("record", "Record", steps.length)}${tabBtn("decisions", "Decisions", decs.filter((c) => !c.minor).length)}${files ? tabBtn("files", "Files", nFiles) : ""}`;
+  return { tab: on("thread") ? "thread" : tab, tabs, body };
+}
 /** Item `i`'s page (#418, option B of the item chat mocks): its holder's own chat in the middle, the same live chat its
  *  session's page shows (writing here is writing there), its turns about other items each folded to a line that opens
  *  in place. With no session to show (not given out yet, its session gone), its Thread as before. The item itself
  *  (state, You'll see, What to try, its record, Open and Drop) is its panel, beside the chat (deskItemSide); the Items
  *  list stays at the right. */
 function deskItemPane(i, d, foot = "") {
-  const all = deskItemLog(i, d).reverse();
-  const decs = all.filter((c) => c.call);
-  // Its Files tab (#149): each file it changed with its counts, a click opening its diff; while it's worked on, what's
-  // changed so far (the files it's on, till they've changed).
-  const changed = deskFilesChanged(i), checking = deskChecking(i);
-  const read = deskDiffs.get(i.id)?.files, nFiles = (checking ? read?.length : read?.length || null) ?? (i.commit_wait?.files || i.files || []).length;
-  const files = changed ? `<div class="dk-fcs">${changed}</div>` : "";
-  // A feature nobody holds is its pieces (#282): its page opens on them. The Steps tab of before is its Record tab.
-  const feat = deskFeat(i), s = deskItemChatOf(i), thread = s ? null : deskThread(i, d);
-  let tab = deskItemTabs.get(i.id) || (feat && !i.holder ? "pieces" : "thread");
-  if (tab === "steps") tab = "record";
-  const steps = deskItemSteps(i, d);
-  const tabBtn = (k, label, n) => `<button class="dk-itab${tab === k ? " on" : ""}" role="tab" aria-selected="${tab === k}" data-desk-itab="${k}" data-id="${esc(i.id)}">${label}${n == null ? "" : `<span class="n">${n}</span>`}</button>`;
+  const s = deskItemChatOf(i), { tab, tabs, body } = deskItemTabbed(i, d, s, true);
+  // The new page (desk/v2.js): its steps, who, what it's doing, tests and what's next over its tabs, scrolling with its
+  // page so the tabs stay pinned over what they show.
+  const main = `<div class="dk-pane dk-ipane${s && tab === "thread" ? " chat" : ""}" data-scroll-key="item:${esc(i.id)}">${deskV2 ? deskV2ItemTop(i, d, tab) : ""}<div class="dk-ihead"><div class="dk-itabs" role="tablist">${tabs}</div></div>
+    <div class="dk-ibody dk-itab-${tab}">${body}</div></div>`;
+  const sub = deskItemSub(i, d, s);
+  return deskPage({ page: "item", kind: i.kind, panel: i.kept ? deskKeptSide(i, d) : deskItemSide(i, d), aside: ` data-side-for="${esc(i.id)}"`, back: deskV2 ? "" : deskBack(deskLeadName(d) || "Back"), mark: `${deskNum(i)} · `, title: esc(i.title), meta: sub, main, foot });
+}
+/** Item `i`'s chat on its page (its holder's, `s`; with none its Thread), and under it, by the newest message and the
+ *  box, what it waits on: deskItemPane's Chat tab, and B2's item page under its summary (desk/view.js). */
+function deskItemWork(i, d, s = deskItemChatOf(i)) {
   // Under the chat, by the newest message and the box: writing why to send it back, what held it up or what it asks, a
   // build log, what it made. Not what it asks when the chat is its holder's and the question is its reply: once, there
   // (a lead's ask, or Cue's own question while it finishes it, stays: the chat never had those).
@@ -245,21 +266,21 @@ function deskItemPane(i, d, foot = "") {
     ${notYet ? (s ? "" : notYet) : s && !i.ask && !i.finish?.question && i.state === "needs_you" && !deskAnswerOf(i) ? "" : i.state === "needs_you" ? deskChain(i) : deskSec(deskAnswerOf(i) ? "It asked you" : "What's holding it up", deskChain(i))}${deskSec("Build log", deskFinLog(i))}${deskSec("What it made", i.state === "to_check" || i.state === "done" ? deskMadeLinks(i) : "")}
     ${i.part_of ? `<p class="dk-split">Part of <a href="#" data-desk-item="${esc(i.part_of)}">${esc(deskItem(i.project, i.part_of)?.title || `#${i.part_of}`)}</a></p>` : ""}
     ${i.split_from ? `<p class="dk-split">Split from <a href="#" data-desk-item="${esc(i.split_from)}">#${esc(i.split_from)}</a></p>` : ""}`;
-  // Its pieces, oldest first (#282): each its state, title, and kind, number, who and age; a click opens it.
-  const pieceRow = (p) => `<div class="dk-pc${p.state === "done" ? " done" : ""}" role="button" tabindex="0" data-desk-item="${esc(p.id)}">${deskStateIcon(p)}<div class="dk-pc-t">${esc(p.title)}</div><div class="dk-pc-m">${deskKindIcon(p)}<span>${[esc(deskNum(p)), esc(deskHolderOf(p)), `${ago(deskMs(p.state === "done" ? p.done_at || p.updated : p.created))} ago`].filter(Boolean).join(" · ")}</span></div></div>`;
-  const body = tab === "pieces" && feat ? `<div class="dk-pcl">${i.pieces.map(pieceRow).join("")}</div>`
-    : tab === "decisions" ? deskCallsBox(decs, `item:${i.id}`, deskDecList, `<p class="dk-note">No decisions on it yet.</p>`)
-    : tab === "record" ? deskItemRecord(steps)
-    : tab === "files" ? (files ? deskSec(checking ? "Files changed" : deskDiffs.get(i.id)?.files?.length ? "Changed so far" : "Files it's on", files) : `<p class="dk-note">No files on it yet.</p>`)
-    : `${s ? deskItemChat(i, d, s) : deskThreadHtml(thread, `${i.project}|${i.id}`)}<div class="dk-inow">${at}</div>`;
-  // Today's page (B2, desk/b2.js): its steps, who, what it's doing, tests and what's next over its tabs, scrolling with
-  // its page (as the new page's top does) so the tabs stay pinned over what they show.
-  const main = `<div class="dk-pane dk-ipane${s && tab === "thread" ? " chat" : ""}" data-scroll-key="item:${esc(i.id)}">${deskV2 ? deskV2ItemTop(i, d, tab) : deskB2On() ? deskB2ItemTop(i, d) : ""}<div class="dk-ihead"><div class="dk-itabs" role="tablist">${feat ? tabBtn("pieces", "Pieces", i.pieces.length) : ""}${tabBtn("thread", "Chat", null)}${tabBtn("record", "Record", steps.length)}${tabBtn("decisions", "Decisions", decs.filter((c) => !c.minor).length)}${tabBtn("files", "Files", nFiles)}${s && tab === "thread" ? `<span class="grow"></span>${chatModeSwitch(s.session_id, body)}` : ""}</div></div>
-    <div class="dk-ibody dk-itab-${tab}">${body}</div></div>`;
+  return `${s ? deskItemChat(i, d, s) : deskThreadHtml(deskThread(i, d), `${i.project}|${i.id}`)}<div class="dk-inow">${at}</div>`;
+}
+/** The line over item `i`'s chat: whose chat it is and how much of it (`s` its holder's session), else its state. */
+function deskItemSub(i, d, s) {
   // Its holder's chat from when it took the item (#575); an item from before stints were kept, all of it, folded.
   const span = (i.stints || []).some((t) => t.sid === s?.session_id) ? (deskStintLeft(i, s.session_id) ? "while it had this item" : "from when it took this item") : "other items' turns folded";
-  const sub = s ? `<b>${esc(i.holder.kind === "crew" ? deskHolderName(s.session_id) : i.holder.name)}</b>'s chat${deskMachTag(i)} · ${span}` : `<span class="dk-state">${deskItemMeta(i, d)}</span>`;
-  return deskPage({ page: "item", kind: i.kind, panel: i.kept ? deskKeptSide(i, d) : deskItemSide(i, d), aside: ` data-side-for="${esc(i.id)}"`, back: deskV2 ? "" : deskBack(deskLeadName(d) || "Back"), mark: `${deskNum(i)} · `, title: esc(i.title), meta: sub, main, foot });
+  return s ? `<b>${esc(i.holder.kind === "crew" ? deskHolderName(s.session_id) : i.holder.name)}</b>'s chat${deskMachTag(i)} · ${span}` : `<span class="dk-state">${deskItemMeta(i, d)}</span>`;
+}
+/** Item `i`'s Files tab (#149; B2's Changes): each file it changed with its counts, a click opening its diff; while
+ *  it's worked on, what's changed so far (the files it's on, till they've changed). { n: how many, html }. */
+function deskItemFilesTab(i) {
+  const changed = deskFilesChanged(i), checking = deskChecking(i);
+  const read = deskDiffs.get(deskDiffId(i))?.files, n = (checking ? read?.length : read?.length || null) ?? (i.commit_wait?.files || i.files || []).length;
+  const html = changed ? deskSec(checking ? "Files changed" : read?.length ? "Changed so far" : "Files it's on", `<div class="dk-fcs">${changed}</div>`) : `<p class="dk-note">No files on it yet.</p>`;
+  return { n, html };
 }
 /** The session whose chat an item's page shows: its holder's (a crew member's lead's), when Cue has it. */
 function deskItemChatOf(i) {

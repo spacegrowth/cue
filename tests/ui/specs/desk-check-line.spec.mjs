@@ -1,5 +1,5 @@
-// Items to check say where they are, in one plain line (#436): in the app since its install with what to try, landing
-// with the next install, or mocks with the canvas to open. On the Desk row and the item page; it changes by itself as
+// Items to check say where they are, in one plain line (#436): in the app since its install with what to try, waiting
+// for the install, or mocks with the canvas to open. On the Desk row and the item page; it changes by itself as
 // the install finishes.
 import { test, expect, openDesk } from "./cue.mjs";
 
@@ -15,27 +15,28 @@ test("an item installed says In the app since its install, and what to try, on i
   // Its session said nothing of what to try: Cue's words, its You'll see (#526).
   const since = `In the app since ${await clock(page, at)}`;
   const row = page.locator('.dk-items [data-desk-item="d2"]');
-  await expect(row.locator(".dk-h")).toHaveText(`${since} · Try: Quick phrases sit at the right of Send; More opens the rest. · Cue's words`);
+  await expect(row.locator(".dk2b-ts")).toHaveText(`${since} · Try: Quick phrases sit at the right of Send; More opens the rest. · Cue's words`);
   // Said once: no You'll see line under it as well.
   await expect(row.locator(".dk-see")).toHaveCount(0);
-  await row.locator(".dk-t").click();
+  await row.click();
   await expect(page.locator(".dk-panel[data-side-for] .dk-pnow .dk-ckl")).toHaveText("Try: Quick phrases sit at the right of Send; More opens the rest.");
   await expect(page.locator(".dk-panel[data-side-for] .dk-pnow .dk-cks")).toContainText(since.replace(/^In/, "in"));
   await expect(page.locator(".dk-right [title]")).toHaveCount(0);
 });
 
-test("an item not in the installed app yet says Lands with the next install, and turns to In the app when the install is done (#436)", async ({ page, cue }) => {
+test("an item not in the installed app yet says Waiting for install, and turns to In the app when the install is done (#436, #666)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   // Its work changed after the running Cue was installed: nothing to try yet.
   await patchCheck(cue, "d2", { edited: 1793984400000 + 60000, at: 1793984400000 + 60000 });
   const row = page.locator('.dk-items [data-desk-item="d2"]');
-  await expect(row.locator(".dk-h")).toHaveText("Lands with the next install");
-  await expect(row.locator(".dk-see")).toHaveText("You'll see: Quick phrases sit at the right of Send; More opens the rest.");
+  // B2's row says it short, with no You'll see line (#666): that's on its page.
+  await expect(row.locator(".dk2b-ts")).toHaveText("Waiting for install");
+  await expect(row.locator(".dk2b-chk")).toHaveCount(0);
   // The install finishes: the hub says so, and the line changes with nothing pressed.
   const at = await page.evaluate(() => now());
   await patchItem(cue, "d2", { finish: { step: "checked", at, commit: "c71e0b4" } });
-  await expect(row.locator(".dk-h")).toHaveText(`In the app since ${await clock(page, at)} · Try: Quick phrases sit at the right of Send; More opens the rest. · Cue's words`);
+  await expect(row.locator(".dk2b-ts")).toHaveText(`In the app since ${await clock(page, at)} · Try: Quick phrases sit at the right of Send; More opens the rest. · Cue's words`);
 });
 
 test("a mocks item says Mocks · open the canvas, the link opening it, on its row and its page (#436)", async ({ page, cue }) => {
@@ -44,13 +45,13 @@ test("a mocks item says Mocks · open the canvas, the link opening it, on its ro
   // Mocks, notes or plans that changed nothing the app runs (#408), its canvas among what it made.
   await patchItem(cue, "d2", { finish: { step: "checked", at: Date.now(), commit: "c71e0b4", mocks: true }, made: ["https://claude.ai/artifact/abc"] });
   const row = page.locator('.dk-items [data-desk-item="d2"]');
-  await expect(row.locator(".dk-h")).toHaveText("Mocks · open the canvas");
-  await expect(row.locator('.dk-h a[data-href="https://claude.ai/artifact/abc"]')).toHaveText("open the canvas");
+  await expect(row.locator(".dk2b-ts")).toHaveText("Mocks · open the canvas");
+  await expect(row.locator('.dk2b-ts a[data-href="https://claude.ai/artifact/abc"]')).toHaveText("open the canvas");
   // The link opens the canvas, not the item.
-  await row.locator(".dk-h a").click();
+  await row.locator(".dk2b-ts a").click();
   await cue.called("open_link", { url: "https://claude.ai/artifact/abc" });
   await expect(row).not.toHaveClass(/\bon\b/);
-  await row.locator(".dk-t").click();
+  await row.click();
   await expect(page.locator(".dk-panel[data-side-for] .dk-pnow .dk-pickl")).toHaveText("Mocks · open the canvas");
   // Its DESIGNS link, when it gave one, is the canvas.
   await patchItem(cue, "d2", { finish: null, made: [], designs: "https://claude.ai/artifact/xyz" });
@@ -62,8 +63,8 @@ test("an item with changes left on its branch says how many aren't landed yet, o
   await openDesk(page);
   await patchItem(cue, "d2", { finish: { step: "checked", at: await page.evaluate(() => now()), commit: "c71e0b4", unlanded: 2 } });
   const row = page.locator('.dk-items [data-desk-item="d2"]');
-  await expect(row.locator(".dk-h")).toHaveText("2 changes not landed yet · send it back so they land");
-  await row.locator(".dk-t").click();
+  await expect(row.locator(".dk2b-ts")).toHaveText("2 changes not landed yet · send it back so they land");
+  await row.click();
   await expect(page.locator(".dk-panel .dk-pnow .dk-pword")).toHaveText("Not landed yet");
   await expect(page.locator(".dk-panel .dk-pnow .dk-psay")).toHaveText("2 changes not landed yet · send it back so they land");
 });
@@ -81,10 +82,10 @@ async function openChecked(page, cue, patch) {
 
 test("a Try line from its session: on its row, and in a box at the top of its panel with who said it, Close and Send back (#526)", async ({ page, cue }) => {
   const { since, row } = await openChecked(page, cue, { check: { kind: "try", text: "open any item waiting on you; the top line says what to do" } });
-  await expect(row.locator(".dk-h")).toHaveText(`${since} · Try: open any item waiting on you; the top line says what to do`);
-  await expect(row.locator(".dk-h b")).toHaveText("Try:");
+  await expect(row.locator(".dk2b-ts")).toHaveText(`${since} · Try: open any item waiting on you; the top line says what to do`);
+  await expect(row.locator(".dk2b-ts b")).toHaveText("Try:");
   await expect(row.locator(".dk-see")).toHaveCount(0);
-  await row.locator(".dk-t").click();
+  await row.click();
   const b = box(page);
   await expect(b.locator(".dk-pword")).toHaveText("Ready to check");
   await expect(b.locator(".dk-ckl")).toHaveText("Try: open any item waiting on you; the top line says what to do");
@@ -102,9 +103,9 @@ test("a Try line from its session: on its row, and in a box at the top of its pa
 
 test("a Nothing to try line from its session, on its row and in its panel's box (#526, #668)", async ({ page, cue }) => {
   const { since, row } = await openChecked(page, cue, { check: { kind: "nothing", text: "tests passed, close it" } });
-  await expect(row.locator(".dk-h")).toHaveText(`${since} · Nothing to try: tests passed, close it`);
-  await expect(row.locator(".dk-h b")).toHaveText("Nothing to try:");
-  await row.locator(".dk-t").click();
+  await expect(row.locator(".dk2b-ts")).toHaveText(`${since} · Nothing to try: tests passed, close it`);
+  await expect(row.locator(".dk2b-ts b")).toHaveText("Nothing to try:");
+  await row.click();
   const b = box(page);
   await expect(b.locator(".dk-ckl")).toHaveText("Nothing to try: tests passed, close it");
   await expect(b.locator(".dk-ckl b")).toHaveText("Nothing to try:");
@@ -118,8 +119,8 @@ const steps = { kind: "try", text: "pick a machine, close and reopen", where: "D
 
 test("three steps from its session: numbered Where, Do, Expect in its box, the Do and where on its row, no Show me without a page (#668)", async ({ page, cue }) => {
   const { since, row } = await openChecked(page, cue, { check: steps });
-  await expect(row.locator(".dk-h")).toHaveText(`${since} · Try: pick a machine, close and reopen · Desk settings`);
-  await row.locator(".dk-t").click();
+  await expect(row.locator(".dk2b-ts")).toHaveText(`${since} · Try: pick a machine, close and reopen · Desk settings`);
+  await row.click();
   const b = box(page);
   await expect(b.locator(".dk-steps li")).toHaveText(["Where Desk settings", "Do pick a machine, close and reopen", "Expect it's still picked"]);
   await expect(b.locator(".dk-steps li b")).toHaveText(["Where", "Do", "Expect"]);
@@ -133,7 +134,7 @@ test("three steps from its session: numbered Where, Do, Expect in its box, the D
 test("Show me opens the page its steps name (#668)", async ({ page, cue }) => {
   const url = "https://claude.ai/artifact/abc123";
   const { row } = await openChecked(page, cue, { check: { ...steps, where: `the Desk mocks page, ${url}.` } });
-  await row.locator(".dk-t").click();
+  await row.click();
   const show = box(page).locator(".dk-show");
   await expect(show).toHaveText("Show me");
   await expect(show).toHaveAttribute("data-href", url);
@@ -141,8 +142,8 @@ test("Show me opens the page its steps name (#668)", async ({ page, cue }) => {
 
 test("no line from its session: Cue's words, its You'll see to try, else that nothing said what to try (#526)", async ({ page, cue }) => {
   const { since, row } = await openChecked(page, cue, {});
-  await expect(row.locator(".dk-h")).toHaveText(`${since} · Try: Quick phrases sit at the right of Send; More opens the rest. · Cue's words`);
-  await row.locator(".dk-t").click();
+  await expect(row.locator(".dk2b-ts")).toHaveText(`${since} · Try: Quick phrases sit at the right of Send; More opens the rest. · Cue's words`);
+  await row.click();
   const b = box(page);
   await expect(b.locator(".dk-ckl")).toHaveText("Try: Quick phrases sit at the right of Send; More opens the rest.");
   await expect(b.locator(".dk-cks")).toHaveText(`Cue's words: web-lead didn't say what to try, so this is its You'll see · ${since.replace(/^In/, "in")}`);
@@ -153,13 +154,13 @@ test("no line from its session: Cue's words, its You'll see to try, else that no
   await expect(b.locator(".dk-pacts button")).toHaveText(["Close", "Send back"]);
   // Its row says so too, in the Items list (‹ Items: the item's page took the list's place, #666).
   await page.locator(".dk-right .dk-ph .dk-back").first().click();
-  await expect(row.locator(".dk-h")).toHaveText(`${since} · Nothing said what to try: Send back to ask its session · Cue's words`);
+  await expect(row.locator(".dk2b-ts")).toHaveText(`${since} · Nothing said what to try: Send back to ask its session · Cue's words`);
 });
 
 test("the steps in dark: their words in the dark theme's ink (#668)", async ({ page, cue }) => {
   await page.emulateMedia({ colorScheme: "dark" });
   const { row } = await openChecked(page, cue, { check: steps });
-  await row.locator(".dk-t").click();
+  await row.click();
   const ink = await box(page).locator(".dk-steps").evaluate((el) => getComputedStyle(el).color);
   expect(ink).toBe("rgb(233, 236, 223)");
 });
@@ -167,7 +168,7 @@ test("the steps in dark: their words in the dark theme's ink (#668)", async ({ p
 test("the box in dark: the line and its note readable on the box (#526)", async ({ page, cue }) => {
   await page.emulateMedia({ colorScheme: "dark" });
   const { row } = await openChecked(page, cue, { check: { kind: "try", text: "open any item" } });
-  await row.locator(".dk-t").click();
+  await row.click();
   const b = box(page);
   await expect(b.locator(".dk-ckl")).toHaveText("Try: open any item");
   // A filled box, on the panel's own color, with its line in the dark theme's ink.

@@ -37,6 +37,8 @@ test("two named Desks share a folder, keep separate items, and rename independen
   await page.locator(".pj-name-in").press("Enter");
   await cue.called("desk_rename", { id: b, name: "Bob's feature" });
   await expect(page.locator(".dk-sh b")).toHaveText("Bob's feature");
+  // Back to the lead's chat, which the sessions list stood in for: its head has the new name too.
+  await page.locator(".dk-sessions .dk-back").first().click();
   await expect(deskTitle(page)).toHaveText("Bob's feature");
   await page.locator('.top [data-hv-menu="desks"]').click(); await page.locator(".top .hv-menu [data-hv-desk-home]").click();
   await page.locator(`[data-desk-project="${a}"]`).click();

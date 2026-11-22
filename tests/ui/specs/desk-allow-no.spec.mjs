@@ -1,6 +1,7 @@
 // Permission cards (#426): No and Allow sit side by side on one line at the right, No first, the ask beside them (or
-// above them when narrow); on the Desk's item list, its Progress view, and the item page's / session chat's card.
-// A long command shows its first lines with more, which opens the rest in place, and less, which folds it back.
+// above them when narrow); on the Desk's Progress view, and the item page's / session chat's card. The item list's
+// row only says what it asks, in its one line (B2, #666). A long command shows its first lines with more on the card,
+// which opens the rest in place, and less, which folds it back.
 import { test, expect, openDesk } from "./cue.mjs";
 
 const CMD = "node node_modules/@playwright/test/cli.js test --config tests/ui/playwright.config.mjs --grep 'a Desk can start in a folder|three columns'";
@@ -30,24 +31,32 @@ const layout = (page, box, no, yes, ask) => page.evaluate(([box, no, yes, ask]) 
   return Q.right <= N.left && Q.width > 120 ? "ok:beside" : Q.bottom <= N.top + 1 ? "ok:above" : "ask overlaps";
 }, [box, no, yes, ask]);
 
-const ROW = '.dk-items [data-desk-item="227"] .dk-ask-row';
+const ROW = '.dk-items [data-desk-item="227"]';
 const NO = '[data-desk-decision="deny"]', YES = '[data-desk-decision="allow"]';
+/** The open item's card: the page's ask, where No and Allow are (B2's row has none, #666). */
+const CARD = ".dk-right .act-card";
+/** The row's one status line, and whether it holds on one line, cut with … when long. */
+const oneLine = (page) => page.locator(`${ROW} .dk2b-ts`).evaluate((e) => [Math.round(e.getBoundingClientRect().height / parseFloat(getComputedStyle(e).lineHeight)), e.scrollWidth > e.clientWidth]);
 
-test("the item list's permission: No then Allow on one line at the right, the ask to their left (#426)", async ({ cue, page }) => {
+test("the item list's permission: its row says what it asks in one line, No then Allow on its page's card (#426, #666)", async ({ cue, page }) => {
   await setup(cue, page);
-  await expect(page.locator(`${ROW} [data-desk-decision]`)).toHaveText(["No", "Allow"]);
-  await expect.poll(() => layout(page, ROW, NO, YES, ".dk-h")).toBe("ok:beside");
+  await expect(page.locator(`${ROW} .dk2b-ts`)).toContainText(/^Asks: Allow node node_modules/);
+  // No answer buttons on the row: the row opens the item, its card answers.
+  await expect(page.locator(`${ROW} :is(${NO}, ${YES}, button)`)).toHaveCount(0);
+  await page.locator(ROW).click();
+  await expect.poll(() => layout(page, CARD, '[data-act="deny"]', '[data-act="allow"]')).toBe("ok");
 });
 
-test("on a narrow list the ask goes above No and Allow, still side by side (#426)", async ({ cue, page }) => {
+test("on a narrow list the row's ask stays one line, cut with … (#426, #666)", async ({ cue, page }) => {
   await setup(cue, page);
-  await page.addStyleTag({ content: `${ROW} { width: 200px; }` });
-  await expect.poll(() => layout(page, ROW, NO, YES, ".dk-h")).toBe("ok:above");
+  await page.addStyleTag({ content: `${ROW} { width: 300px; }` });
+  await expect.poll(() => oneLine(page)).toEqual([1, true]);
 });
 
 test("Progress puts No before Allow on one line (#426)", async ({ cue, page }) => {
   await setup(cue, page);
-  await page.locator("[data-desk-prog-toggle]").click();
+  // B2's list head has no Progress button (#666): the view opens as it did.
+  await page.evaluate(() => deskProgToggle(true));
   const cell = '[data-desk-prog-row="227"] .dk-grb';
   await expect(page.locator(`${cell} [data-desk-decision]`)).toHaveText(["No", "Allow"]);
   await expect.poll(() => layout(page, cell, NO, YES)).toBe("ok");
@@ -64,18 +73,9 @@ const LONG = `node scripts/check.mjs ${Array.from({ length: 40 }, (_, n) => `--c
 
 test("a long command shows a few lines with more; more opens the rest in place, less folds it back (#426)", async ({ cue, page }) => {
   await setup(cue, page, LONG);
-  // The list row: two lines and more; more opens the words, not the item.
-  const row = page.locator(ROW);
-  // How many lines its words take.
-  const lines = () => row.locator(".dk-h").evaluate((e) => Math.round(e.getBoundingClientRect().height / parseFloat(getComputedStyle(e).lineHeight)));
-  await expect.poll(lines).toBe(2);
-  await row.getByRole("button", { name: "more", exact: true }).click();
-  await expect(row.getByRole("button", { name: "less", exact: true })).toBeVisible();
-  await expect.poll(lines).toBeGreaterThan(4);
-  await expect(page.locator(".dk-right h1")).not.toContainText("#227");
-  await row.getByRole("button", { name: "less", exact: true }).click();
-  await expect.poll(lines).toBe(2);
-  await expect.poll(() => layout(page, ROW, NO, YES, ".dk-h")).toBe("ok:beside");
+  // The list row: one line, cut with …; no more on the row (#666), the card has it.
+  await expect.poll(() => oneLine(page)).toEqual([1, true]);
+  await expect(page.locator(`${ROW} [data-req-more]`)).toHaveCount(0);
   // The item page's card: three lines of the command, more for the rest.
   await page.locator('.dk-items [data-desk-item="227"]').click();
   const card = page.locator(".dk-right .act-card");
@@ -92,7 +92,7 @@ test("a long command shows a few lines with more; more opens the rest in place, 
 
 test("a short command shows in full, with no more (#426)", async ({ cue, page }) => {
   await setup(cue, page, "npm test");
-  await expect(page.locator(`${ROW} .dk-h`)).toContainText("npm test");
+  await expect(page.locator(`${ROW} .dk2b-ts`)).toContainText("Asks: Allow npm test?");
   await expect(page.locator(`${ROW} [data-req-more]`)).toHaveCount(0);
   await page.locator('.dk-items [data-desk-item="227"]').click();
   await expect(page.locator(".dk-right .act-card pre.slab")).toContainText("npm test");

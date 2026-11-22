@@ -1,7 +1,7 @@
 // The Desk opens with asks in play (#279): a session asking you something reads "waiting on you"; one whose turn
 // just finished doesn't. 89466073 put the Desk's use of actionableRequest (ui/core/state.js) on main without it, and
 // the Desk threw on every draw.
-import { test, expect, openDesk } from "./cue.mjs";
+import { test, expect, openDesk, deskAllSessions } from "./cue.mjs";
 
 test("the Desk opens with a pending ask and a finished turn: only the ask reads waiting on you (#279)", async ({ page, cue }) => {
   await cue.open("desk");
@@ -14,9 +14,9 @@ test("the Desk opens with a pending ask and a finished turn: only the ask reads 
     st.items.push({ ...ask, id: "n-asker", session_id: "asker" }, { ...ask, id: "n-done1", session_id: "done1", kind: "waiting" });
     st.desk.projects.find((d) => d.project === "cue").members.push("asker", "done1");
   });
-  // B2 (#666): the sessions list opens on the right from the strip's Working ▾, then All N sessions ›.
-  await page.locator("[data-desk2b-work]").click();
-  await page.locator("[data-desk2b-sessions]").click();
+  // B2 (#666): the sessions list takes the lead chat's place, from the header's Desks menu (the strip's Working pill
+  // shows only with the panel hidden and nothing waiting on you).
+  await deskAllSessions(page);
   const left = page.locator(".dk-sessions");
   await expect(left.locator('[data-desk-chat-of="asker"] .dk-st')).toHaveText("needs you");
   await expect(left.locator('[data-desk-chat-of="done1"] .dk-st')).not.toHaveText("needs you");

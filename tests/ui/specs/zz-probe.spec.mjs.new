@@ -1,0 +1,13 @@
+import { test, expect, openDesk } from "./cue.mjs";
+test.use({ viewport: { width: 1728, height: 1000 } });
+test("probe", async ({ page, cue }) => {
+  await cue.open("desk");
+  await cue.change((st) => {
+    st.sessions.find((s) => s.session_id === "host").state = "deciding";
+    st.items.push({ id: "perm-d5", session_id: "host", harness: "claude", hosted: true, project: "cue", kind: "permission", status: "pending", tool_name: "Bash", tool_input: { command: "npm test" }, suggestions: [], created_ms: Date.now(), thread: [{ role: "you", text: "Desk item #d5 (bug): Hosted sessions can't open the canvas" }] });
+  });
+  await openDesk(page);
+  await page.locator('.dk-items [data-desk-item="d5"]').click();
+  await page.waitForTimeout(500);
+  console.log(await page.evaluate(() => [...document.querySelectorAll(".dk-right button")].map((b) => b.outerHTML.slice(0, 160)).join("\n")));
+});

@@ -15,7 +15,7 @@ test("an item's panel lines up and stays put when you press its buttons (#394)",
   await openDesk(page);
   await cue.change((st) => { const d2 = st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d2"); d2.files = ["ui/a.js", "ui/b.js"]; d2.see = ""; });
   await cue.override("desk_item_diff", (_, diff) => ({ machine: "", diff }), DIFF);
-  await page.locator('.dk-items [data-desk-item="d2"] .dk-t').click();
+  await page.locator('.dk-items [data-desk-item="d2"]').click();
   const panel = page.locator(".dk-panel");
   await expect(panel.locator(".dk-pfiles .ib-file")).toHaveCount(2);
   const right = (loc) => loc.evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().right)));

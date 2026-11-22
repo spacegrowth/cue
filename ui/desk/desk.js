@@ -270,18 +270,21 @@ const deskDiffs = new Map();
 const deskDiffKey = (i) => (i.kept ? `kept|${i.kept.path}|${i.kept.at}` : null) ?? [i.state, i.commit || "", i.updated || "", (i.files || []).length, (i.commit_wait?.files || []).length].join("|");
 /** Whether item `i`'s Files are what it changed, all read (to check, done, or a dropped item's kept copy, #608),
  *  rather than what's changed so far. */
+/** Item `i`'s place in deskDiffs: a kept copy's apart from a live item of the same number, or the two would each read
+ *  theirs over the other's on every draw, and never stop drawing. */
+const deskDiffId = (i) => (i.kept ? `kept:${i.id}` : i.id);
 const deskChecking = (i) => i.state === "to_check" || i.state === "done" || !!i.kept;
 /** Item `i`'s files as read (desk_item_diff), asked for when not read yet for what it is now: null while it's read.
  *  Read again each time a page is opened too: its files can change on disk with nothing else about it changing. */
 function deskDiffRead(i) {
-  const key = deskDiffKey(i), got = deskDiffs.get(i.id);
+  const at = deskDiffId(i), key = deskDiffKey(i), got = deskDiffs.get(at);
   if (got?.key !== key || got.page !== deskOpen) {
-    deskDiffs.set(i.id, { key, page: deskOpen, files: got?.files || null });
+    deskDiffs.set(at, { key, page: deskOpen, files: got?.files || null });
     // The Desk's list draws a kept copy's files too (#608): it's drawn again once they're read, as its page is.
-    const keep = (files) => { if (deskDiffs.get(i.id)?.key !== key) return; deskDiffs.set(i.id, { ...deskDiffs.get(i.id), files }); if (deskOpen?.id === i.id || (i.kept && view === "desk")) renderMain(); };
+    const keep = (files) => { if (deskDiffs.get(at)?.key !== key) return; deskDiffs.set(at, { ...deskDiffs.get(at), files }); if (deskOpen?.id === i.id || (i.kept && view === "desk")) renderMain(); };
     invoke("desk_item_diff", { id: i.id }).then((r) => keep(diffParse(r?.diff || "").files), () => keep([]));
   }
-  return deskDiffs.get(i.id).files;
+  return deskDiffs.get(at).files;
 }
 function deskFilesChanged(i) {
   // Still being worked on: what's changed in its files so far (#149), once it's on some.
@@ -301,7 +304,7 @@ function deskShowFile(id, n) {
   const i = (state.desk?.projects || []).flatMap((d) => d.items).find((x) => x.id === id) || deskKeptItem(deskSelection(), id);
   if (!i) return;
   deskSeeItem(id);
-  diffOverlay(`${deskNum(i)} ${i.title || ""}`.trim(), "Files changed", deskDiffs.get(id)?.files || [], n);
+  diffOverlay(`${deskNum(i)} ${i.title || ""}`.trim(), "Files changed", deskDiffs.get(deskDiffId(i))?.files || [], n);
 }
 const deskDoneToday = (i) => i.state === "done" && deskToday(i.done_at || i.updated);
 const deskMoving = (i) => (i.state === "working" && !i.stopped) || deskFinishing(i);

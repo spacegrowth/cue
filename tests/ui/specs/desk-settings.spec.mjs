@@ -67,14 +67,16 @@ test("the screen is built as Settings is: the same sheet, its title and Esc on o
     const s = getComputedStyle(e), h = getComputedStyle(e.querySelector(".sheet-head h3")), k = getComputedStyle(e.querySelector(".sheet-head kbd")), g = getComputedStyle(e.querySelector(".set-group"));
     return { radius: s.borderRadius, bg: s.backgroundColor, title: h.fontSize, kbd: [k.fontSize, k.backgroundColor], group: [g.fontSize, g.textTransform, g.color] };
   });
-  const theirs = await look(set);
+  // Read once it's drawn for good: a redraw can swap the sheet between finding it and reading it (a swapped-out node has no style).
+  let theirs;
+  await expect.poll(async () => (theirs = await look(set)).radius).not.toBe("");
   await page.keyboard.press("Escape");
   await expect(set).toHaveCount(0);
   await deskAllSessions(page);
   await lands(page).locator("[data-lands-change]").click();
   const dlg = page.locator(".ld-dialog");
   await expect(dlg.locator(".sheet-head kbd")).toHaveText("Esc");
-  expect(await look(dlg)).toEqual(theirs);
+  await expect.poll(() => look(dlg)).toEqual(theirs);
   await expect(dlg.locator("[title]")).toHaveCount(0);
 });
 
@@ -126,7 +128,7 @@ test("a tick that can't be saved says so on Save; the screen stays with it ticke
 test("the lead's proposed change is its ask; it shows on the screen only after your Yes", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  await deskAllSessions(page);
+  // The lead's ask is under its chat (B2, #666: the sessions list would take that chat's place, so it isn't open yet).
   const q = "Change how work lands on cue: check → none?";
   await cue.change((st, q) => {
     const d = st.desk.projects.find((x) => x.project === "cue");

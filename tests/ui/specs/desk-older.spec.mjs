@@ -131,9 +131,11 @@ test("Give to… lists the sessions with work, the rest under one older line", a
   await cue.open("desk");
   await openDesk(page);
   await twoIdle(cue);
-  await page.locator('[data-desk-item="d6"] [data-desk-give]').scrollIntoViewIfNeeded();
-  await page.locator('[data-desk-item="d6"] [data-desk-give]').click();
-  const menu = page.locator('[data-desk-item="d6"] .dk-givemenu');
+  // B2 (#666): no Give to… on the row; it's on the item's page.
+  await expect(page.locator('.dk-items [data-desk-item="d6"] [data-desk-give]')).toHaveCount(0);
+  await page.locator('.dk-items [data-desk-item="d6"]').click();
+  await page.locator('[data-desk-give="d6"]').click();
+  const menu = page.locator(".dk-givemenu");
   await expect(menu.locator('[data-desk-give-to="busy"]')).toHaveCount(1);
   await expect(menu.locator('[data-desk-give-to="spare"]')).toHaveCount(0);
   const older = menu.locator('[data-desk-older="give:d6"]');

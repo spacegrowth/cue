@@ -149,24 +149,38 @@ test("an add-on's view shows what its head() gives there, and nothing when it ha
   await expect(area(page).locator('[data-chip-list="waiting"]')).toHaveCount(1);
 });
 
-test("Desk chips: after the open one and those waiting on you, the Desks opened last, newest first", async ({ cue, page }) => {
+test("Desk chips: the Desks menu first, then the pinned Desks in the order pinned; opening one never moves them", async ({ cue, page }) => {
   await cue.open("desk");
   await cue.change((st) => {
     const base = st.desk.projects.find((x) => x.project === "website");
     for (const p of ["alpha", "beta", "gamma"]) st.desk.projects.push({ ...structuredClone(base), id: p, project: p, name: p, items: [], decisions: [], waits: [], circles: [], checks: [], kept: [] });
   });
   await openDesk(page);
-  const waiting = await page.evaluate(() => deskSorted().filter((d) => hvDeskGoing(d).waits).map((d) => d.project));
-  expect(waiting.length, "at most one Desk waits on you, so the Desks opened last decide the rest").toBeLessThanOrEqual(1);
-  for (const p of ["gamma", "alpha", "beta"]) {
-    await page.locator('.top [data-hv-menu="desks"]').click();
-    await page.locator(`.top .hv-menu [data-hv-desk="${p}"]`).click();
-    await expect.poll(() => page.evaluate(() => deskSelection())).toBe(p);
-  }
-  // Now on beta, alpha and gamma opened before it.
-  const want = [...new Set(["beta", ...waiting, "alpha", "gamma"])].slice(0, 3);
-  await expect(area(page).locator(".hv-chip[data-hv-desk]")).toHaveCount(3);
-  expect(await area(page).locator(".hv-chip[data-hv-desk]").evaluateAll((els) => els.map((e) => e.dataset.hvDesk))).toEqual(want);
+  const ids = () => area(page).locator(".hv-chip[data-hv-desk]").evaluateAll((els) => els.map((e) => e.dataset.hvDesk));
+  // Nothing pinned yet: the first three Desks by name, after the Desks menu.
+  await expect(area(page).locator(".hv-chip").first()).toHaveAttribute("data-hv-menu", "desks");
+  expect(await ids()).toEqual(["alpha", "beta", "cue"]);
+  // Opening Desks, by chip or from the menu, leaves the chips where they are.
+  await area(page).locator('.hv-chip[data-hv-desk="beta"]').click();
+  await expect.poll(() => page.evaluate(() => deskSelection())).toBe("beta");
+  expect(await ids()).toEqual(["alpha", "beta", "cue"]);
+  await page.locator('.top [data-hv-menu="desks"]').click();
+  await page.locator('.top .hv-menu [data-hv-desk="gamma"]').click();
+  await expect.poll(() => page.evaluate(() => deskSelection())).toBe("gamma");
+  expect(await ids()).toEqual(["alpha", "beta", "cue"]);
+  // gamma isn't pinned: the Desks menu's chip names it, lit.
+  await expect(area(page).locator('.hv-open')).toContainText("gamma");
+  await expect(area(page).locator('.hv-open')).toHaveClass(/\bhot\b/);
+  // Its pin in the menu puts it last among the chips; alpha's takes alpha off. The menu stays open.
+  await page.locator('.top [data-hv-menu="desks"]').click();
+  await page.locator('.top .hv-menu [data-hv-pin="gamma"]').click();
+  await page.locator('.top .hv-menu [data-hv-pin="alpha"]').click();
+  await expect(page.locator(".top .hv-menu")).toHaveCount(1);
+  await expect(page.locator('.top .hv-menu [data-hv-pin="gamma"]')).toHaveAttribute("aria-pressed", "true");
+  expect(await ids()).toEqual(["beta", "cue", "gamma"]);
+  await expect(area(page).locator('.hv-open')).toHaveText("Desks");
+  // Kept across a reload.
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("cue.deskPins"))).toBe(JSON.stringify(["beta", "cue", "gamma"]));
 });
 
 test("the Desks menu: open on a list row's click, that row opens and the menu closes; left open on another view, it takes no keys", async ({ cue, page }) => {

@@ -1,4 +1,4 @@
-// Progress (#409, mock J2): Progress in the Items head opens a popover over the Desk with every item under way (not the
+// Progress (#409, mock J2): Progress (no button in the Items head since B2, #666; deskProgToggle opens it) opens a popover over the Desk with every item under way (not the
 // queued or parked ones) as a row of six step marks (from Cue's `steps` stamps) with how long each took, and a Now
 // column; a row opens the item; Esc or a click outside closes it.
 import { test, expect, openDesk } from "./cue.mjs";
@@ -13,7 +13,7 @@ test("Progress pops up each item under way with its steps, what it's doing now, 
     items.find((i) => i.id === "d3").steps = [now - 600000, now - 480000, now - 60000, 0, 0, 0];
     items.find((i) => i.id === "d2").steps = [now - 900000, now - 800000, now - 700000, now - 600000, now - 500000, now - 120000];
   }, now);
-  await page.locator(".dk-items .dk-ch [data-desk-prog-toggle]").click();
+  await page.evaluate(() => deskProgToggle(true));
   const prog = page.locator(".dk-prog");
   await expect(prog.locator(".dk-grh .dk-grhc")).toHaveText(["Picked up", "Building", "Tests", "Commit", "Landing", "To check"]);
   // One row per item under way: not the queued (d4), new (d6), done or dropped ones.
@@ -54,14 +54,15 @@ test("Progress pops up each item under way with its steps, what it's doing now, 
   // Esc closes it; so does a click outside.
   await page.keyboard.press("Escape");
   await expect(prog).toHaveCount(0);
-  await page.locator(".dk-items .dk-ch [data-desk-prog-toggle]").click();
-  await page.locator(".dk-items .dk-ch b").click();
+  await page.evaluate(() => deskProgToggle(true));
+  await page.locator(".dk-items .dk2b-ih b").click();
   await expect(prog).toHaveCount(0);
   // A row opens its item and closes the popover.
-  await page.locator(".dk-items .dk-ch [data-desk-prog-toggle]").click();
+  await page.evaluate(() => deskProgToggle(true));
   await d3.locator(".dk-grtl").click();
   await expect(prog).toHaveCount(0);
-  // Its page, the item in the column at the right (#418), in the Items list's place.
+  // Its page, on the left in the lead's chat's place (B2, #666); no Progress button in the Items head.
+  await expect(page.locator(".dk-items [data-desk-prog-toggle]")).toHaveCount(0);
   await expect(page.locator('.dk-panel[data-side-for="d3"]')).toBeVisible();
   await expect(page.locator(".dk-right h1")).toContainText("Search stays centred");
 });
@@ -75,7 +76,7 @@ test("A reopened item shows a plain line under its steps, its round and your not
     d3.steps = [now - 900000, now - 60000, 0, 0, 0, 0];
     d3.backs = [{ from: 5, why: "The arrow is missing on Progress\nand more", at_ms: now - 60000, steps: [now - 900000, now - 780000, 0, now - 400000, 0, now - 300000] }];
   }, now);
-  await page.locator(".dk-items .dk-ch [data-desk-prog-toggle]").click();
+  await page.evaluate(() => deskProgToggle(true));
   const d3 = page.locator('.dk-prog [data-desk-prog-row="d3"]');
   // No arrow under its steps: one plain line.
   await expect(d3.locator(".dk-grbk svg")).toHaveCount(0);
@@ -101,7 +102,7 @@ test("Progress lists items landing or waiting to install above those in progress
   await cue.open("desk");
   await openDesk(page);
   await cue.change((st) => { Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5"), { state: "finishing", finish: { step: "line", wait: "Landing", at: Date.now() } }); });
-  await page.locator(".dk-items .dk-ch [data-desk-prog-toggle]").click();
+  await page.evaluate(() => deskProgToggle(true));
   const ids = await page.locator(".dk-prog [data-desk-prog-row]").evaluateAll((r) => r.map((e) => e.dataset.deskProgRow));
   expect(ids.indexOf("d5")).toBeGreaterThan(-1);
   expect(ids.indexOf("d5")).toBeLessThan(ids.indexOf("d3"));

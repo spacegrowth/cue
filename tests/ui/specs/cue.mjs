@@ -77,21 +77,40 @@ export const pick = async (page, p) => {
  *  sessions count, How work lands, holds, the lead's card and ⋯). Resolves once it's drawn. */
 export const deskAllSessions = async (page) => {
   if (await page.locator(".dk-card.dk-sessions").count()) return;
-  const strip = page.locator(".dk2b-strip");
-  if (!(await strip.locator(".dk2b-wlist").count())) await strip.locator("[data-desk2b-work]").click();
-  await strip.locator("[data-desk2b-sessions]").click();
+  // The Desks menu's All sessions: the strip's Working pill shows only while nothing waits on you (#666).
+  await page.locator('.top [data-hv-menu="desks"]').click();
+  await page.locator(".top .hv-menu [data-hv-desk-sessions]").click();
   await page.locator(".dk-card.dk-sessions").waitFor();
+  await deskSessionsSettled(page);
 };
-/** The lead's full panel (Now, Waits on you, Just did, Working) shown: B2 opens with it hidden behind Show panel, and
+/** All sessions settled: the chat's steps come in a moment after it opens and redraw the window once (chat/thread.js
+ *  loadSteps); reading the list before then can read a row that's being swapped out. */
+export const deskSessionsSettled = (page) => page.waitForFunction(() => new Promise((r) => {
+  const card = document.querySelector(".dk-card.dk-sessions");
+  setTimeout(() => requestAnimationFrame(() => r(!stepsBusy && !!card?.isConnected)), 400);
+}), null, { polling: 100 });
+/** The strip over the lead's chat (Working, what waits on you, Check) in the panel's place: B2 opens with the panel
+ *  shown (#666), so Hide panel first when it is. */
+export const deskShowStrip = async (page) => {
+  if (await page.locator(".dk2b-chat .dk2b-strip").count()) return;
+  await page.locator('.dk2b-chat [data-desk-panel="dispatcher-hidden"]').click();
+  await page.locator(".dk2b-chat .dk2b-strip").waitFor();
+};
+/** The lead's full panel (Now, Waits on you, Working) shown: B2 opens with it shown (#666), and
  *  a chat card too narrow for it (the 1280 default) has no Show panel, so the window is made as wide as the Board's
  *  design size (1800) first when it's narrower. */
 export const deskShowPanel = async (page) => {
-  const tog = page.locator('.dk2b-chat [data-desk-panel="dispatcher-shown"]');
+  const tog = page.locator('.dk2b-chat [data-desk-panel="dispatcher-hidden"]');
   const vp = page.viewportSize();
   if (vp.width < 1800) await page.setViewportSize({ width: 1800, height: Math.max(vp.height, 900) });
   await tog.waitFor();
-  if ((await tog.textContent()).trim() === "Show panel") await tog.click();
-  await page.locator(".dk2b-chat .dk-panel .dk-pnow").waitFor();
+  // After a resize the card redraws once it has measured itself: read the toggle again until the panel is in.
+  const now = page.locator(".dk2b-chat .dk-panel .dk-pnow");
+  await expect.poll(async () => {
+    if (await now.isVisible()) return true;
+    if ((await tog.textContent().catch(() => "")).trim() === "Show panel") await tog.click().catch(() => {});
+    return now.isVisible();
+  }, { timeout: 10000 }).toBe(true);
 };
 export const openDesk = async (page, p = "cue") => {
   await pick(page, p);

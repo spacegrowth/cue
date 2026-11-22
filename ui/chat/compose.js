@@ -101,6 +101,9 @@ async function pullHeld(sid, key = `s:${sid}`) {
   forgetSent(sid);
   const h = await invoke("unhold_message", { sessionId: sid }).catch(() => null);
   if (!h) return;
+  // Taken back: this window's copy says so now, so an Esc before Cue's next update arms Stop rather than pulling again.
+  const s = sessionOf(sid);
+  if (s) delete s.held;
   boxPutBack(key, deskSaid(h.text), await boxHeldImages(h.images), { imagesLast: true, focus: focusComposer });
 }
 /** Cancel on the message Cue kept for a working session: dropped, never sent (taken back as Edit does, not into the box). */
