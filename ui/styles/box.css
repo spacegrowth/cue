@@ -69,6 +69,9 @@
    and a later one has 18px of room above it. */
 .sec-body > .col-sub { margin-top: 8px; margin-bottom: -2px; }
 .sec-body > .col-sub:first-child { margin-top: 0; }
+/* Each group label stays at the top of its column while you scroll through its group; the next one takes its
+   place (#706). Its band covers the cards passing under it, 4px below the text, held there by the margin. */
+.sec-body > .col-sub { position: sticky; top: 0; z-index: 1; background: var(--bg); padding-bottom: 4px; margin-bottom: -6px; }
 /* Waiting in two groups: IN CONVERSATION, then NEWEST FIRST; a conversation card says why it's there. */
 .sec-waiting .col-sub { margin-left: 2px; margin-right: 2px; }
 .sub-fold { display: block; width: auto; background: none; border: 0; padding: 0; font-family: inherit; }
