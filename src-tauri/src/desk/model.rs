@@ -580,10 +580,22 @@ pub struct Finish {
     /// It went to check with nothing to install, its own work outside the app (mocks, notes, plans, #408): its line
     /// says "Mocks · open the canvas", not "In the app" (#436).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub mocks: bool,    /// How many of its changes on its own branch aren't on main (#448, desk/hub/landing/unlanded.rs): it stays to check,
+    pub mocks: bool,
+    /// How many of its changes on its own branch aren't on main (#448, desk/hub/landing/unlanded.rs): it stays to check,
     /// saying so, and isn't closed till they are.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub unlanded: usize,
+    /// Stopped on edits in the main folder that are already on its branch (#659, desk/hub/landing/clear_land.rs):
+    /// those files (relative to `clear_in`), what Clear and land sets back; `clear_keep` the files in the way that
+    /// also hold another session's edits, left alone, with who; `clear_sha` its branch tip they were matched to.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub clear: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub clear_keep: Vec<(String, String)>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub clear_in: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub clear_sha: String,
 }
 
 

@@ -731,7 +731,8 @@ impl Hub {
     /// (not waiting on another any more), "put_before" (ahead of the item it waited on), "install_now" (its install
     /// starts without waiting, desk/hub/landing/finish.rs), "skip_install" (waiting to install, done now with no install of its own,
     /// #490), "rerun" (its landing run again: a plain retry, offered only when Cue
-    /// can name nothing in its way, desk/hub/landing/finish.rs), what clears a wait (desk/hub/core/waits.rs): "cut" (no longer waits on
+    /// can name nothing in its way, desk/hub/landing/finish.rs), "clear_land" (its leftover edits in the main folder, already on its
+    /// branch, set back to main and its landing run again: desk/hub/landing/clear_land.rs, #659), what clears a wait (desk/hub/core/waits.rs): "cut" (no longer waits on
     /// item `text`), "drop", "start_on" (where its session starts: machine `text`, "" for this Mac, #597), and "remove_kept" (a dropped item's kept copy deleted, desk/hub/landing/trees.rs: `id` is that item's).
     pub(crate) fn desk_item_act(&self, id: &str, act: &str, text: &str) -> Result<DeskItem, String> {
         match act {
@@ -744,6 +745,7 @@ impl Hub {
             }
             "install_now" => return self.desk_install_now(id),
             "rerun" => return self.desk_rerun_landing(id),
+            "clear_land" => return self.desk_clear_and_land(id),
             "pickup_kept" => return self.desk_kept_pickup(id),
             "start_on" => return self.desk_start_on(id, text),
             "remove_kept" => {

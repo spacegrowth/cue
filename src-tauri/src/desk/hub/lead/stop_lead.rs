@@ -35,7 +35,7 @@ pub(crate) fn edits_line(files: &[String], by: &[String]) -> String {
 }
 
 /// The files `edits_line` named (None: it's another line).
-fn edits_of(line: &str) -> Option<Vec<String>> {
+pub(crate) fn edits_of(line: &str) -> Option<Vec<String>> {
     let rest = line.strip_prefix(EDITS)?;
     let (files, _) = rest.split_once(NOT_COMMITTED)?;
     Some(files.split(", ").map(str::to_string).collect())

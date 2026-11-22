@@ -389,6 +389,15 @@ impl Hub {
                     };
                     let question = self.main_edits_named(it, &main, &question);
                     self.finish_ask(&it.id, step, &question, "");
+                    // Edits in its way already on its branch: Clear and land offered (#659).
+                    let (plain, _) = crate::desk::hub::lead::stop_lead::plain_and_said(&question);
+                    if let Some(files) = crate::desk::hub::lead::stop_lead::edits_of(&plain) {
+                        let sha = match &m {
+                            Merge::Folder(folder) => crate::desk::hub::landing::git::git("", folder, &[], &["rev-parse", "HEAD"]).map(|s| s.trim().to_string()).unwrap_or_default(),
+                            Merge::Ref { sha, .. } => sha.clone(),
+                        };
+                        self.finish_clearable(it, &main, &sha, &files);
+                    }
                     return None;
                 }
             }
