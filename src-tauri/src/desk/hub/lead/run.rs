@@ -370,7 +370,8 @@ fn claim_place(st: &mut Store, s: &crate::desk::hub::core::desk::NewStart) -> (R
     let place = st.desk.item(&s.id).map(|i| crate::desk::hub::landing::remote_item::start_place(st, i)).unwrap_or(Ok(None));
     if let Ok(p) = &place {
         let m = p.as_ref().map(|o| o.machine.clone()).unwrap_or_default();
-        if !crate::desk::hub::landing::remote_item::has_room(st, &s.project, &m) {
+        let slot = st.desk.item(&s.id).is_some_and(|i| crate::desk::hub::landing::remote_item::takes_slot(i, &m));
+        if slot && !crate::desk::hub::landing::remote_item::has_room(st, &s.project, &m) {
             let mut fx = crate::desk::hub::core::desk::Effects::default();
             st.desk.run.new_starts.remove(&s.id);
             if start_ready(st, s) {
@@ -391,8 +392,9 @@ fn machine_wait(st: &mut Store, s: &crate::desk::hub::core::desk::NewStart, mach
     if it.holder.is_some() {
         return;
     }
-    let again = it.machine_wait == machine && it.state == "queued";
-    (it.state, it.machine_wait, it.next_for, it.after) = ("queued".into(), machine.to_string(), None, None);
+    let wait = crate::desk::hub::landing::remote_item::wait_name(machine);
+    let again = it.machine_wait == wait && it.state == "queued";
+    (it.state, it.machine_wait, it.next_for, it.after) = ("queued".into(), wait, None, None);
     if !s.why.trim().is_empty() {
         it.after_why = s.why.clone();
     }
@@ -587,8 +589,10 @@ fn item_lines(st: &Store, it: &DeskItem, out: &mut String, failed: &mut Vec<(Str
     }
     // Its own wait, said (#340): with nothing else shown it read as free to start, and was nudged by hand.
     if it.state == "queued" && it.holder.is_none() && !it.machine_wait.is_empty() {
-        let n = crate::desk::machine_pref::of(&it.project).at_once(&it.machine_wait);
-        out.push_str(&format!(" | waiting for room on {} (the user's setting: {n} of this Desk's items at once there): it starts by itself once one there is done", crate::machines::display_name(&it.machine_wait)));
+        let m = crate::desk::hub::landing::remote_item::waited_machine(&it.machine_wait);
+        let n = crate::desk::hub::landing::remote_item::machine_cap(st, &it.project, &m).unwrap_or(0);
+        let name = if m.is_empty() { "this Mac".to_string() } else { crate::machines::display_name(&m) };
+        out.push_str(&format!(" | waiting for room on {name} (the user's setting: {n} of this Desk's items at once there): it starts by itself, there or on another machine ticked, once one has room"));
     } else if it.state == "queued" && it.tree_wait {
         out.push_str(&format!(" | {}", crate::desk::hub::landing::trees::copy_wait(st, &it.project, &it.tree_wait_repo)));
     } else if it.state == "working" && it.tree_wait && it.tree.is_none() {

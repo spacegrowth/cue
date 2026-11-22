@@ -541,7 +541,7 @@ const deskCopyWaits = (i) => i.state === "queued" && !!i.tree_wait && !!i.holder
 /** Why it waits, in plain words: sent back or not, and which items are using the working folders. */
 function deskCopyWaitLine(i) {
   const by = (i.copy_users || []).map((x) => `#${x}`).join(", ");
-  return `${i.back_waiting ? "Sent back · waiting" : "Waiting"} for a free working folder${by ? ` (in use by ${by})` : ""}`;
+  return `${i.back_waiting ? "Sent back · waiting" : "Waiting"} for a free working folder on This Mac${by ? ` (in use by ${by})` : ""}`;
 }
 /** A time as h:mm, local, 24-hour ("9:05", "14:20"). */
 const deskQHm = (ms) => { const d = new Date(ms); return `${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`; };

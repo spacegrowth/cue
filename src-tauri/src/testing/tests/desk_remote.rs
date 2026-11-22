@@ -10,7 +10,7 @@ use crate::testing::World;
 use std::path::{Path, PathBuf};
 
 /// The main checkout pushed to a bare remote, and the machine's clone of it.
-fn with_remote(dir: &Path) -> (PathBuf, PathBuf) {
+pub(super) fn with_remote(dir: &Path) -> (PathBuf, PathBuf) {
     let bare = dir.join("shared.git");
     let there = dir.join("there");
     git(dir, &["init", "-q", "--bare", "-b", "main", &bare.to_string_lossy()]);
@@ -24,7 +24,7 @@ fn with_remote(dir: &Path) -> (PathBuf, PathBuf) {
 
 /// An item routed to a session on "box", working in the machine's clone: (repo, bare remote, clone there, project,
 /// id, holder), and the machine (kept for the test).
-fn routed_there(w: &World) -> ((PathBuf, PathBuf, PathBuf, String, String, String), crate::testing::FakeSsh) {
+pub(super) fn routed_there(w: &World) -> ((PathBuf, PathBuf, PathBuf, String, String, String), crate::testing::FakeSsh) {
     routed_there_with(w, |_, _, _| {})
 }
 
@@ -741,76 +741,6 @@ fn a_desk_with_two_machines_ticked_spreads_its_new_items_over_both() {
     assert_eq!(super::desk::desk(&w, &project)["machines"]["picked"], serde_json::json!(["box"]));
     // None ticked is refused.
     assert!(w.hub().desk_lands_set(&project, &serde_json::json!({ "machines": [] })).is_err());
-}
-
-// How many items at once on each machine (#711): a machine with its number at work takes no more; a new item goes to
-// another place ticked, or waits and starts there by itself once one is done.
-
-#[test]
-fn a_machine_set_to_one_at_once_takes_one_item_and_the_next_waits_then_starts_there() {
-    let w = World::new();
-    let ((_, _, _, project, id, _), _ssh) = routed_there(&w);
-    let lead = w.hub().desk_lead_sid(&project).unwrap();
-    w.hub().desk_lands_set(&project, &serde_json::json!({ "machines": ["box"], "machine_folders": { "box": "~/code/app" }, "machine_at_once": { "box": 1 } })).unwrap();
-    let c: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(crate::server::cue_dir().join("config.json")).unwrap()).unwrap();
-    assert_eq!(c.pointer(&format!("/project/machine/{project}/at_once/box")), Some(&serde_json::json!(1)), "{c}");
-    let d = super::desk::desk(&w, &project);
-    assert_eq!(d["machines"]["machines"][0]["at_once"], 1, "{}", d["machines"]);
-    // Out of range is refused.
-    assert!(w.hub().desk_lands_set(&project, &serde_json::json!({ "machine_at_once": { "box": 0 } })).is_err());
-    // Box has one at work already (Header jumps): both new ones wait for room there, and the lead is told why.
-    ends(&w, &lead, "ITEM: bug | Footer jumps | done when: it stays put\nROUTE: #new -> new | why: next\nITEM: bug | Sidebar jumps | done when: it stays put\nROUTE: #new -> new | why: next");
-    w.advance(1000);
-    for t in ["Footer jumps", "Sidebar jumps"] {
-        let it = item(&w, &project, t);
-        assert!(it["holder"].is_null(), "box is full: {it}");
-        assert_eq!((it["state"].as_str(), it["machine_wait"].as_str()), (Some("queued"), Some("box")), "{it}");
-    }
-    let summary = w.hub().desk_summary(&project, "", false).0;
-    assert!(summary.contains("waiting for room on box"), "the lead is told why it waits: {summary}");
-    // Started again meanwhile: it still waits.
-    w.hub().desk_queue_tick();
-    w.advance(1000);
-    assert!(item(&w, &project, "Footer jumps")["holder"].is_null());
-    let done = |id: &str| {
-        let id = id.to_string();
-        w.hub().write(|st| st.desk.item_mut(&id).unwrap().state = "done".into());
-        w.hub().desk_queue_tick();
-        w.advance(1000);
-    };
-    let started = |t: &str| item(&w, &project, t)["holder"]["sid"].as_str().is_some();
-    // Header jumps is done: one of them starts on box by itself, the first waiting; the other still waits.
-    done(&id);
-    let (first, second) = if started("Footer jumps") { ("Footer jumps", "Sidebar jumps") } else { ("Sidebar jumps", "Footer jumps") };
-    let now = item(&w, &project, first);
-    assert!(started(first), "started once there was room: {now}");
-    assert_eq!(now["machine"].as_str(), Some("box"), "{now}");
-    assert!(now["machine_wait"].is_null(), "{now}");
-    assert!(!started(second), "only one at once on box: {}", item(&w, &project, second));
-    // That one is done too: the other starts.
-    done(now["id"].as_str().unwrap());
-    assert!(started(second), "{}", item(&w, &project, second));
-}
-
-#[test]
-fn a_full_machine_sends_the_next_item_to_another_place_ticked() {
-    let w = World::new();
-    let ((_, _, _, project, id, _), _ssh) = routed_there(&w);
-    // Box free: the item it had is done.
-    w.hub().write(|st| st.desk.item_mut(&id).unwrap().state = "done".into());
-    let lead = w.hub().desk_lead_sid(&project).unwrap();
-    w.hub().desk_lands_set(&project, &serde_json::json!({ "machines": ["box", ""], "machine_folders": { "box": "~/code/app" }, "machine_at_once": { "box": 1 } })).unwrap();
-    ends(&w, &lead, "ITEM: bug | Footer jumps | done when: it stays put\nROUTE: #new -> new | why: next\nITEM: bug | Sidebar jumps | done when: it stays put\nROUTE: #new -> new | why: next\nITEM: bug | Menu jumps | done when: it stays put\nROUTE: #new -> new | why: next");
-    w.advance(1000);
-    let on: Vec<String> = ["Footer jumps", "Sidebar jumps", "Menu jumps"]
-        .iter()
-        .map(|t| {
-            let it = item(&w, &project, t);
-            assert!(it["holder"]["sid"].as_str().is_some(), "started: {it}");
-            it["machine"].as_str().unwrap_or("").to_string()
-        })
-        .collect();
-    assert_eq!(on.iter().filter(|m| *m == "box").count(), 1, "one on box, the rest here: {on:?}");
 }
 
 // A machine that never had the project (#664): Cue downloads it into the folder there from its online home, then

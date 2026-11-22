@@ -139,6 +139,7 @@ pub(crate) fn sweep(st: &mut Store, now: u64, fx: &mut Effects) {
 /// items at work than its number in Desk settings starts now, in your order then the one waiting longest. One taken
 /// by other means meanwhile (routed to a session) stops waiting. A paused Desk's wait.
 pub(crate) fn machine_sweep(st: &mut Store, now: u64, fx: &mut Effects) {
+    move_off_full_mac(st, now, fx);
     for it in st.desk.items.iter_mut().filter(|i| !i.machine_wait.is_empty() && (i.holder.is_some() || i.state != "queued" || i.next_for.is_some() || i.after.is_some())) {
         it.machine_wait.clear();
     }
@@ -160,10 +161,10 @@ pub(crate) fn machine_sweep(st: &mut Store, now: u64, fx: &mut Effects) {
         let m = match crate::desk::hub::landing::remote_item::start_place(st, it) {
             Ok(p) => p.map(|o| o.machine).unwrap_or_default(),
             // It can't start there at all: its start says why.
-            Err(_) => it.machine_wait.clone(),
+            Err(_) => crate::desk::hub::landing::remote_item::waited_machine(&it.machine_wait),
         };
         let mine = sent.iter().filter(|(p, x)| *p == project && *x == m).count();
-        let room = m.is_empty() || crate::desk::hub::landing::remote_item::machine_load(st, &project, &m) + mine < crate::desk::machine_pref::of(&project).at_once(&m) as usize;
+        let room = crate::desk::hub::landing::remote_item::machine_cap(st, &project, &m).is_none_or(|n| crate::desk::hub::landing::remote_item::machine_load(st, &project, &m) + mine < n);
         if !room {
             continue;
         }
@@ -172,6 +173,49 @@ pub(crate) fn machine_sweep(st: &mut Store, now: u64, fx: &mut Effects) {
         let Some(it) = st.desk.item_mut(&id) else { continue };
         let why = it.after_why.clone();
         (it.machine_wait, it.state, it.updated) = (String::new(), "new".into(), secs(now));
+        fx.items.push(id.clone());
+        let (by, by_sid) = lead.as_ref().map_or(("Desk", ""), |l| (l.name.as_str(), l.sid.as_str()));
+        fx.starts.push(NewStart { project, id, why, by: by.into(), by_sid: by_sid.into() });
+    }
+}
+
+/// Items given to a session on this Mac and waiting in line for a folder of their own there, not begun (#711): with a
+/// machine ticked for the Desk that has room, each goes to a new session there instead (its session told to leave
+/// it), one per free slot. One you chose to start on this Mac, or sent back with your words, stays in line.
+fn move_off_full_mac(st: &mut Store, now: u64, fx: &mut Effects) {
+    use crate::desk::hub::landing::remote_item::{has_room, machine_cap, machine_load};
+    let mut line: Vec<(u32, u64, String)> = st.desk.items.iter()
+        .filter(|i| i.state == "queued" && i.tree.is_none() && i.remote.is_none() && crate::desk::hub::landing::trees::in_line(i) && i.back_waiting.is_empty())
+        .filter(|i| i.start_on.is_none() && i.on_machine.is_none() && i.in_repo.is_none() && i.copy_on.is_none())
+        .filter(|i| i.holder.as_ref().is_some_and(|h| h.kind == "session" && st.sessions.get(h.to()).is_some_and(|s| s.origin.machine.is_empty())))
+        .map(|i| (i.queue_order.unwrap_or(u32::MAX), i.updated, i.id.clone())).collect();
+    line.sort();
+    let mut sent: Vec<(String, String)> = Vec::new();
+    for (_, _, id) in line {
+        let Some(it) = st.desk.item(&id) else { continue };
+        let project = it.project.clone();
+        if crate::desk::hub::away::pause::is_paused(&project) {
+            continue;
+        }
+        let ticked = crate::desk::machine_pref::of(&project).spread();
+        let room = |st: &Store, m: &String| {
+            let mine = sent.iter().filter(|(p, x)| *p == project && x == m).count();
+            has_room(st, &project, m) && machine_cap(st, &project, m).is_none_or(|n| machine_load(st, &project, m) + mine < n)
+        };
+        let Some(m) = ticked.iter().filter(|m| !m.is_empty()).find(|m| room(st, m)).cloned() else { continue };
+        sent.push((project.clone(), m.clone()));
+        let lead = st.desk.lead.get(&project).cloned();
+        let name = crate::machines::display_name(&m);
+        let Some(it) = st.desk.item_mut(&id) else { continue };
+        if let Some(h) = it.holder.clone() {
+            fx.sends.push((h.to().to_string(), format!("Desk item #{} ({}) has moved to a new session on {name}, which has room: this Mac's folders are all in use. Leave it; don't start on it.", it.id, it.title)));
+            it.remember_holder();
+            it.moved_from = Some(h);
+        }
+        (it.holder, it.state, it.updated) = (None, "new".into(), secs(now));
+        (it.tree_wait, it.no_copy_wait) = (false, false);
+        it.tree_wait_repo.clear();
+        let why = [it.after_why.trim(), &format!("Moved to {name}: this Mac's folders for this Desk were all in use.")].iter().filter(|w| !w.is_empty()).copied().collect::<Vec<_>>().join("\n\n");
         fx.items.push(id.clone());
         let (by, by_sid) = lead.as_ref().map_or(("Desk", ""), |l| (l.name.as_str(), l.sid.as_str()));
         fx.starts.push(NewStart { project, id, why, by: by.into(), by_sid: by_sid.into() });

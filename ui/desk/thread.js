@@ -448,7 +448,7 @@ function deskNotStarted(i) {
   if (i.state === "queued" && i.tree_wait) {
     // One short line (#671): how many hold the working folders; their titles only once you open the fold.
     const by = (i.copy_users || []).map((x) => `<li>${link(x, deskItem(i.project, x))}</li>`), n = by.length;
-    const wait = n > 1 ? `Waiting for one of ${n} items to finish.` : n ? "Waiting for an item to finish." : "Waiting for a free working folder.";
+    const wait = n > 1 ? `Waiting for one of ${n} items on This Mac to finish.` : n ? "Waiting for an item on This Mac to finish." : "Waiting for a free working folder on This Mac.";
     t = `${i.back_waiting ? "Sent back. " : ""}${wait}`;
     sub = n ? `<details class="dk-ns-by"><summary>${n > 1 ? "Show which" : "Show which one"}</summary><ul>${by.join("")}</ul></details>` : "";
     next = "It starts by itself when one is free.";
@@ -596,7 +596,7 @@ function deskItemNow(i) {
     : deskFinishing(i) ? ["work", "Finishing", `<span class="dk-fstep">${deskFinStep(i)}</span>`]
     : deskCopyWaits(i) ? ["stop", "Next", `${esc(deskCopyWaitLine(i))}. It starts by itself when one is free, or now with Start now.`]
     : i.state === "queued" && !i.holder && i.machine_wait ? ["stop", "Next", `Starts when ${esc(i.machine || i.machine_wait)} has room: it already has as many of this Desk's items working as its number in Desk settings.`]
-    : i.state === "queued" && i.tree_wait ? ["stop", "Next", `Starts when one of its repository's ${deskCopies(deskOf(i.project))} copies is free.`]
+    : i.state === "queued" && i.tree_wait ? ["stop", "Next", `Starts when one of This Mac's ${deskCopies(deskOf(i.project))} working folders is free.`]
     : deskQueueLine(i) ? ["stop", "Next", `${esc(deskQueueLine(i).replace(/^./, (c) => c.toUpperCase()))}.`]
     : i.state === "queued" ? ["stop", "Next", first ? `Starts when ${esc(deskShort(first.title))} is done.` : i.holder ? `Next for ${who}.` : "Next up, not given to a session yet."]
     : i.state === "new" ? ["stop", "Not given out", "Not given to a session yet."]

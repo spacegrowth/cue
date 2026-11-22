@@ -81,10 +81,30 @@ pub(crate) fn spread_pick(st: &Store, project: &str, list: &[String]) -> String 
     from.into_iter().min_by_key(|m| machine_load(st, project, m)).cloned().unwrap_or_default()
 }
 
-/// How many of Desk `project`'s items are at work on `machine` ("" for this Mac) now: held by a session there and
-/// not done or waiting for your check, or starting there (#661, #711).
+/// How many of Desk `project`'s slots on `machine` ("" for this Mac) are taken now (#661, #711). On another machine:
+/// its items held by a session there and not done or waiting for your check, or starting there. On this Mac, when
+/// its items work in folders of their own: those folders held (an item keeps its own until it lands), the items
+/// waiting in line for one, and those starting here.
 pub(crate) fn machine_load(st: &Store, project: &str, machine: &str) -> usize {
     let starting = st.desk.run.start_machine.iter().filter(|(id, m)| m.as_str() == machine && st.desk.item(id).is_some_and(|i| i.project == project && i.holder.is_none())).count();
+    if machine.is_empty() {
+        // The folders are its repository's, shared with any other Desk on it: those of every Desk count.
+        // Its folder as git names it (`/private/var/…` for `/var/…`): a repository is the Desk's when it holds it.
+        let folder = crate::desk::hub::core::view::desk_folder(st, project);
+        // Read as written, never looked up with the store held: macOS's /var and /tmp are /private/….
+        let plain = |p: &str| { let p = p.trim_end_matches('/'); p.strip_prefix("/private").filter(|r| ["/var/", "/tmp/", "/etc/"].iter().any(|d| r.starts_with(d))).unwrap_or(p).to_string() };
+        let folder = plain(&folder);
+        let mut repos: Vec<&str> = Vec::new();
+        for i in st.desk.items.iter().filter(|i| i.project == project) {
+            repos.extend(i.tree.as_ref().filter(|t| !t.in_place).map(|t| t.repo.as_str()));
+            repos.extend(Some(i.tree_wait_repo.as_str()).filter(|r| !r.is_empty()));
+        }
+        let ours = |r: &str| !r.is_empty() && (repos.contains(&r) || { let r = plain(r); folder == r || folder.starts_with(&format!("{r}/")) });
+        let open = |i: &&DeskItem| !matches!(i.state.as_str(), "done" | "dropped");
+        let held = st.desk.items.iter().filter(open).filter(|i| i.remote.is_none() && i.tree.as_ref().is_some_and(|t| !t.in_place && ours(&t.repo))).count();
+        let waiting = st.desk.items.iter().filter(open).filter(|i| i.tree.is_none() && crate::desk::hub::landing::trees::in_line(i) && ours(&i.tree_wait_repo)).count();
+        return starting + held + waiting;
+    }
     let held = st.desk.items.iter()
         .filter(|i| i.project == project && !matches!(i.state.as_str(), "done" | "dropped" | "to_check" | "held"))
         .filter_map(|i| i.holder.as_ref())
@@ -93,10 +113,44 @@ pub(crate) fn machine_load(st: &Store, project: &str, machine: &str) -> usize {
     starting + held
 }
 
-/// Whether one more of Desk `project`'s items may start on `machine` (#711): fewer than its number in Desk settings
-/// are at work there. This Mac always: its items wait for a free copy instead (desk/hub/landing/trees.rs).
+/// The most of Desk `project`'s items at work on `machine` at once (#711): another machine's number in Desk settings;
+/// this Mac's is its Items at once, the folders of their own its items work in. None: no limit (this Mac, when its
+/// items work in the shared folder or on a branch there).
+pub(crate) fn machine_cap(st: &Store, project: &str, machine: &str) -> Option<usize> {
+    if !machine.is_empty() {
+        return Some(crate::desk::machine_pref::of(project).at_once(machine) as usize);
+    }
+    let folder = crate::desk::hub::core::view::desk_folder(st, project);
+    let l = crate::desk::lands::lands_known(project, &folder);
+    (l.at == "copy").then_some(l.at_once.max(1) as usize)
+}
+
+/// What `DeskItem::machine_wait` holds for this Mac, waiting for one of its own folders there (#711).
+pub(crate) const THIS_MAC: &str = "This Mac";
+
+/// `machine` as `DeskItem::machine_wait` holds it ("" for this Mac is `THIS_MAC`), and back.
+pub(crate) fn wait_name(machine: &str) -> String {
+    if machine.is_empty() { THIS_MAC.into() } else { machine.into() }
+}
+pub(crate) fn waited_machine(wait: &str) -> String {
+    if wait == THIS_MAC { String::new() } else { wait.into() }
+}
+
+/// Whether item `it` waits for a slot on `machine` before its session starts there. On this Mac only while its Desk
+/// has another machine ticked to go to (else its session starts and waits in line for a folder there, as before), and
+/// only one that works in a folder of its own (not a plan or doc, not routed to another repository, not started now
+/// to work where its session is).
+pub(crate) fn takes_slot(it: &DeskItem, machine: &str) -> bool {
+    if !machine.is_empty() {
+        return true;
+    }
+    let elsewhere = crate::desk::machine_pref::of(&it.project).spread().iter().any(|m| !m.is_empty());
+    elsewhere && !(it.no_copy_wait || it.in_repo.is_some() || (it.copy_on.is_none() && crate::desk::hub::landing::unlanded::rules_out_code(&it.done_when)))
+}
+
+/// Whether one more of Desk `project`'s items may start on `machine` (#711): fewer than its number are at work there.
 pub(crate) fn has_room(st: &Store, project: &str, machine: &str) -> bool {
-    machine.is_empty() || machine_load(st, project, machine) < crate::desk::machine_pref::of(project).at_once(machine) as usize
+    machine_cap(st, project, machine).is_none_or(|n| machine_load(st, project, machine) < n)
 }
 
 /// Err when session `to` is on a machine, in a folder another open item's work is in (#679): both would commit in one

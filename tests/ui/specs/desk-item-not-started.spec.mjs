@@ -55,7 +55,7 @@ test("a queued item waiting for a free working folder says how many, with their 
   });
   await openItem(page, "d4");
   const ichat = page.locator(".dk-right .dk-ichat"), card = ichat.locator(".dk-ns");
-  await expect(card.locator(".dk-ns-t")).toHaveText("Waiting for one of 2 items to finish.");
+  await expect(card.locator(".dk-ns-t")).toHaveText("Waiting for one of 2 items on This Mac to finish.");
   // The titles stay folded away till you ask (#671).
   await expect(card.locator(".dk-ns-s a").first()).toBeHidden();
   await card.locator(".dk-ns-s summary").click();

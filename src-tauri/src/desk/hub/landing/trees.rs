@@ -822,8 +822,8 @@ pub(crate) fn copy_wait_line(st: &Store, it: &DeskItem) -> String {
     by.sort_by_key(|i| (i.id.parse::<u64>().unwrap_or(u64::MAX), i.id.clone()));
     let by: Vec<String> = by.iter().map(|i| format!("#{}", i.id)).collect();
     match by.is_empty() {
-        true => "Waiting for a free copy of its repository".into(),
-        false => format!("Waiting for a free copy of its repository (in use by {})", by.join(", ")),
+        true => "Waiting for a free copy of its repository on This Mac".into(),
+        false => format!("Waiting for a free copy of its repository on This Mac (in use by {})", by.join(", ")),
     }
 }
 
@@ -833,7 +833,7 @@ pub(crate) fn copy_wait(st: &Store, project: &str, repo: &str) -> String {
     held.sort();
     let at_once = crate::desk::lands::lands_known(project, repo).at_once;
     format!(
-        "waiting for a free copy of its repository ({} of {at_once} held, by {}): it starts by itself once one lands or is dropped",
+        "waiting for a free copy of its repository on this Mac ({} of {at_once} held, by {}): it starts by itself once one lands or is dropped, or on a new session on another machine ticked for this Desk once one has room",
         held.len(),
         if held.is_empty() { "none".to_string() } else { held.join(", ") }
     )

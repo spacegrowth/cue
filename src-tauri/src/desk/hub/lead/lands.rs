@@ -85,6 +85,11 @@ impl Hub {
         // How many at once on each (#711): a new session for a machine that has that many of the Desk's items at work
         // waits for room there, or goes to another place ticked.
         let mut caps: Vec<String> = spread.iter().filter(|m| !m.is_empty() && crate::machines::get(m).is_some()).map(|m| format!("{} {}", crate::machines::display_name(m), p.at_once(m))).collect();
+        // This Mac's is its Items at once (its folders for items of their own), when another machine is ticked too.
+        let mac = crate::desk::lands::lands_known(desk, &folder);
+        if !caps.is_empty() && spread.iter().any(String::is_empty) && mac.at == "copy" {
+            caps.insert(0, format!("this Mac {}", mac.at_once));
+        }
         caps.dedup();
         if !caps.is_empty() {
             line.push_str(&format!("Most of this Desk's items at work at once (the user's setting): {}. A new session for a machine at its number waits for room there, or starts on another place ticked; it starts by itself.\n", caps.join(", ")));

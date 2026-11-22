@@ -16,7 +16,7 @@ fn an_item_waiting_for_a_copy_starts_on_the_tick_when_a_copy_was_let_go_of_witho
     let (_, project, id, h) = routed_with(&w, |w, _, _| w.hub().desk_hold_copies(&top(w), &[1, 2, 3]), |_, _, _| {});
     let summary = w.hub().desk_summary(&project, "", false).0;
     let line = summary.lines().find(|l| l.starts_with(&format!("- #{id} "))).unwrap_or_else(|| panic!("{summary}"));
-    assert!(line.contains("| queued") && line.contains("waiting for a free copy of its repository (3 of 3 held, by #held1, #held2, #held3)"), "{line}");
+    assert!(line.contains("| queued") && line.contains("waiting for a free copy of its repository on this Mac (3 of 3 held, by #held1, #held2, #held3)"), "{line}");
     w.hub().desk_let_go_copy_quietly(2);
     w.settle();
     assert_eq!(item(&w, &project, "Header jumps")["state"], "queued", "nothing handed the copy on");

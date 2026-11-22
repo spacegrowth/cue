@@ -208,24 +208,29 @@ test("Desk settings open on Machines, where every machine has how many items may
   await expect(dlg.locator(".ld-h").first()).toHaveText("Machines");
   const sec = dlg.locator('[data-ld-sec="machine"]');
   await expect(sec.locator(".ld-sub")).toContainText("how many of its items each machine works on at once");
-  // Only This Mac ticked: every machine still has its number.
-  await expect(sec.locator(".ld-mach-name")).toHaveText(["build-box", "gpu-1"]);
+  // Only This Mac ticked: every machine still has its number, This Mac's too (the Desk's Items at once, now only
+  // here: no Desk-wide row under How work lands).
+  await expect(sec.locator(".ld-mach-name")).toHaveText(["This Mac", "build-box", "gpu-1"]);
   const n = sec.locator(".ld-mach-n .ld-n");
-  await expect(n).toHaveText(["3", "3"]);
-  await expect(sec.locator(".ld-mach-at")).toHaveText(["at once", "at once"]);
+  await expect(n).toHaveText(["3", "3", "3"]);
+  await expect(sec.locator(".ld-mach-at")).toHaveText(["at once", "at once", "at once"]);
+  await expect(dlg.locator(".ld-row", { hasText: "Items at once" })).toHaveCount(0);
+  await expect(dlg.locator('[data-ld-sec="lands"] [data-ld-model]')).toHaveCount(1);
   await expect(sec.locator(".ld-hint", { hasText: "The most of this Desk's items working on each machine together" })).toHaveCount(1);
   for (let k = 0; k < 2; k++) await sec.locator('[data-ld-mach-n="build-box"][data-ld-by="-1"]').click();
-  await expect(n).toHaveText(["1", "3"]);
+  await expect(n).toHaveText(["3", "1", "3"]);
   await expect(sec.locator('[data-ld-mach-n="build-box"][data-ld-by="-1"]')).toBeDisabled();
   await expect(dlg.locator('[data-ld="save"]')).toBeEnabled();
   // Two places ticked: the hint says more go to the other one.
   await sec.locator('[data-ld-mach="build-box"]').click();
   await expect(sec.locator(".ld-hint", { hasText: "go to another place you ticked" })).toHaveCount(1);
   await sec.locator('[data-ld-mach-n="gpu-1"][data-ld-by="1"]').click();
+  await sec.locator('[aria-label="More at once on This Mac"]').click();
+  await expect(n).toHaveText(["4", "1", "4"]);
   await dlg.locator('[data-ld="save"]').click();
   await expect(dlg).toHaveCount(0);
   await page.locator(".dk-strip .dk-ab [data-lands-change]").click();
-  await expect(n).toHaveText(["1", "4"]);
+  await expect(n).toHaveText(["4", "1", "4"]);
   await expect(dlg.locator('[data-ld="save"]')).toBeDisabled();
   for (const c of ["light", "dark"]) {
     await page.emulateMedia({ colorScheme: c });
