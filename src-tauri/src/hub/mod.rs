@@ -285,6 +285,8 @@ pub struct Hub {
     redraws: Arc<redraw::Redraws>,
     /// The hosted sessions an earlier Cue left running, being picked up at launch (picking_up.rs).
     picking_up: picking_up::PickingUp,
+    /// How many latest-request reads (`crate::about::reads`) the tick had seen when it last looked.
+    about_seen: std::sync::atomic::AtomicU64,
 }
 
 impl Hub {
@@ -312,7 +314,7 @@ impl Hub {
         st.review_queue = crate::db::review_queue().into_iter().map(|(exec, lead, text, at_ms)| QueuedReview { exec, lead, text, at_ms }).collect();
         // Ids keep counting from the clock so they never collide with ids in saved history.
         st.next = now_ms();
-        Self { store: store_access::StoreCell::new(st), app, typing: Mutex::new(HashMap::new()), shown: shown::Shown::default(), ports, saves: saves::SaveLocks::default(), redraws: Arc::default(), picking_up: Default::default() }
+        Self { store: store_access::StoreCell::new(st), app, typing: Mutex::new(HashMap::new()), shown: shown::Shown::default(), ports, saves: saves::SaveLocks::default(), redraws: Arc::default(), picking_up: Default::default(), about_seen: Default::default() }
     }
 
     /// The session terminals, to type into and look at.

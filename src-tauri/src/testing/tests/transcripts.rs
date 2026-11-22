@@ -83,9 +83,12 @@ fn a_sessions_latest_request_is_read_from_its_transcript() {
     let a = w.session("a");
     a.prompt("go");
     a.transcript().last_prompt("make the login page faster");
-    // Read off the watcher's tick, not while the window's state is built.
-    w.tick(false);
-    until("the tick's read of it", || w.snapshot().0["about"]["a"]["prompt"] == "make the login page faster");
+    // Read off the watcher's tick, not while the window's state is built: on a thread of its own, so it may land
+    // after that tick, for the next one (the watcher ticks every second).
+    until("the tick's read of it", || {
+        w.tick(false);
+        w.snapshot().0["about"]["a"]["prompt"] == "make the login page faster"
+    });
 }
 
 #[test]
@@ -137,8 +140,10 @@ fn the_windows_state_is_built_without_reading_a_transcript() {
     a.prompt("tidy up");
     let log = w.home().join("claude").join("a.jsonl");
     a.transcript().last_prompt("tidy up");
-    w.tick(false);
-    until("the tick's read of it", || w.snapshot().0["about"]["a"]["prompt"] == "tidy up");
+    until("the tick's read of it", || {
+        w.tick(false);
+        w.snapshot().0["about"]["a"]["prompt"] == "tidy up"
+    });
     // Its transcript stops answering, and what was read of it is old.
     std::fs::remove_file(&log).unwrap();
     let stalled = Stall::at(&log);

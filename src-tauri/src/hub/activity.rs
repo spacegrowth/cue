@@ -61,11 +61,13 @@ impl Hub {
     }
 
     /// Your latest request to each Claude session the window lists, read again off the tick (`about`: each
-    /// transcript on a thread of its own); what came in since the last tick redraws the window.
+    /// transcript on a thread of its own); what came in since this hub's last tick redraws the window. A read
+    /// still going when the tick ends lands for the next tick.
     fn read_about(&self) {
         let (_, transcripts, _) = self.snapshot_sources();
         crate::about::read_about(transcripts.into_iter().map(|(_, p)| p).collect(), now_ms());
-        if crate::about::about_news() {
+        let reads = crate::about::reads();
+        if self.about_seen.swap(reads, std::sync::atomic::Ordering::SeqCst) != reads {
             self.changed();
         }
     }

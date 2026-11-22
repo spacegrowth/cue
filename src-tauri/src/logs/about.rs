@@ -4,7 +4,7 @@
 //! holds up only its own session's: never the tick, the window's state, or another session's.
 
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::SystemTime;
 
@@ -21,8 +21,9 @@ struct Kept {
 static ABOUT: Mutex<Option<HashMap<String, Kept>>> = Mutex::new(None);
 /// Transcripts being read now.
 static READING: Mutex<Option<HashSet<String>>> = Mutex::new(None);
-/// A read since the tick last asked found another prompt.
-static NEWS: AtomicBool = AtomicBool::new(false);
+/// How many reads have found another prompt: each hub's tick redraws when it grew since it last looked
+/// (hub/activity.rs), so no hub's look takes the news from another's.
+static READS: AtomicU64 = AtomicU64::new(0);
 
 /// Your latest request to a Claude session, as last read ("" before its transcript was, or once it's gone):
 /// nothing is read here.
@@ -54,9 +55,9 @@ pub fn read_about(transcripts: Vec<String>, now: u64) {
     }
 }
 
-/// Whether a read since the last ask found another prompt (the tick then redraws).
-pub fn about_news() -> bool {
-    NEWS.swap(false, Ordering::SeqCst)
+/// How many reads so far found another prompt.
+pub fn reads() -> u64 {
+    READS.load(Ordering::SeqCst)
 }
 
 /// Look at one transcript again: read when it changed. Gone (not found): no prompt. Any other failure (a
@@ -82,7 +83,7 @@ fn keep(transcript: &str, now: u64, mtime: Option<SystemTime>, prompt: Option<St
     kept.mtime = mtime;
     if let Some(p) = prompt.filter(|p| *p != kept.prompt) {
         kept.prompt = p;
-        NEWS.store(true, Ordering::SeqCst);
+        READS.fetch_add(1, Ordering::SeqCst);
     }
 }
 
