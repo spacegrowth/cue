@@ -523,9 +523,9 @@ test("steps held while you were away list under Waiting on you in plain words wi
   const rows = items.locator(".dk-held");
   await expect(rows).toHaveCount(2);
   await expect(rows.nth(0).locator(".dk-request-who")).toHaveText("site wants to delete files · held while you were away");
-  await expect(rows.nth(0).locator("pre")).toHaveText("rm -rf build");
+  await expect(rows.nth(0).locator("pre")).toHaveText("$ rm -rf build");
   await expect(rows.nth(1).locator(".dk-request-who")).toHaveText("site wants to push · held while you were away");
-  await expect(rows.nth(0).locator("button")).toHaveText(["No", "Allow"]);
+  await expect(rows.nth(0).locator(".row-btns button")).toHaveText(["No", "Allow"]);
   await expect(items.locator(".dk-held [title]")).toHaveCount(0);
   await rows.nth(1).locator('[data-allow="1"]').click();
   await cue.called("desk_held_answer", { id: "held-2", allow: true });

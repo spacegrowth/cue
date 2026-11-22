@@ -413,7 +413,7 @@ button.dk-kept-f:hover, button.dk-kept-f:focus-visible { background: color-mix(i
 .dk-aw-first > .dk-it { margin: 0; border: 1px solid var(--line); border-radius: var(--radius-tray); }
 .dk-aw-ask { border: 1px solid var(--line); border-radius: var(--radius-tray); padding: var(--card-pad-y) var(--card-pad-x); display: flex; flex-direction: column; gap: 6px; font-size: var(--type-body); }
 .dk-aw-ask p { margin: 0; }
-.dk-aw-ask pre { margin: 0; white-space: pre-wrap; font: var(--type-pill) var(--mono); }
+.dk-aw-ask pre:not(.slab) { margin: 0; white-space: pre-wrap; font: var(--type-pill) var(--mono); }
 .dk-aw-ask .dk-request-who { all: unset; color: var(--muted); font-weight: 650; font-size: var(--type-small); }
 .dk-aw-ask .dk-row-decisions { display: flex; flex-wrap: wrap; gap: 6px; }
 .dk-aw-more { color: var(--muted); font-size: var(--type-small); }
