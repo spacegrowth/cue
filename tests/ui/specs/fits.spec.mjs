@@ -2,21 +2,20 @@
 // tab, and the mini window at the notch and on the rail — at each text size, in the smallest window and a normal one,
 // in light and dark, with no line of text cut off, run out of its box, past the window, or over other words
 // (fits.mjs says how each is found). Settings → Text size zooms the whole window (WebKit's page zoom), so a size here is
-// the window laid out that much smaller; a chat's own A− / A+ (--type-chat) goes with it, its smallest with the
-// smallest and its largest with the largest. The smallest window grows with the zoom (lib.rs min_window), up to the
-// screen's room: here a 13-inch screen's, the smallest Cue runs on. The mini window isn't zoomed: its text size is the
-// chat's.
+// the window laid out that much smaller (A− / A+ on a chat and ⌘+ / ⌘− step the same size). The smallest window grows with the zoom (lib.rs min_window), up to the
+// screen's room: here a 13-inch screen's, the smallest Cue runs on. The mini window isn't zoomed: it keeps its own
+// size.
 import { test, expect, openDesk } from "./cue.mjs";
 import { NARROWEST } from "./layout.mjs";
 import { fitProblems, zoomed } from "./fits.mjs";
 
 const NORMAL = { width: 1280, height: 800 };
-/** The text sizes: Settings → Text size's steps, each with a chat text size (13–18px). */
+/** The text sizes: Settings → Text size's steps. */
 const SIZES = [
-  { zoom: 0.9, chat: 13, name: "Compact" },
-  { zoom: 1, chat: 15, name: "Default" },
-  { zoom: 1.15, chat: 16, name: "Large" },
-  { zoom: 1.3, chat: 18, name: "Larger" },
+  { zoom: 0.9, name: "Compact" },
+  { zoom: 1, name: "Default" },
+  { zoom: 1.15, name: "Large" },
+  { zoom: 1.3, name: "Larger" },
 ];
 /** A 13-inch screen's room (1280×800, without the menu bar). */
 const ROOM = { width: 1280, height: 775 };
@@ -27,7 +26,7 @@ const SETTINGS_TABS = ["general", "agents", "chat", "voice", "insights", "usage"
 const ITEMS = ["d1", "d2", "d5", "d6"];
 
 /** Cue's state at text size `s` in `mode`, as the window has it after Settings saves them. */
-const setLook = (cue, s, mode) => cue.change((st, [s, mode]) => { st.settings.appearance = { ...st.settings.appearance, zoom: s.zoom, chat_text: s.chat, mode }; }, [s, mode]);
+const setLook = (cue, s, mode) => cue.change((st, [s, mode]) => { st.settings.appearance = { ...st.settings.appearance, zoom: s.zoom, mode }; }, [s, mode]);
 /** Laid out and still: fonts in, two frames drawn. */
 const settled = (page) => page.evaluate(() => document.fonts.ready.then(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))));
 /** What doesn't fit on screen now, each said with where it is. */
@@ -98,15 +97,15 @@ for (const [screen, { scenario, look }] of Object.entries(SCREENS)) {
 const SCREENS_MINI = [["a 13-inch screen", { width: 1280, height: 800 }], ["a 16-inch screen", { width: 1728, height: 1117 }]];
 const MINI = (shape, screen) => (shape === "notch" ? { width: 560 + 2 * 14, height: Math.round(screen.height * 0.5) } : { width: 420, height: Math.round(screen.height * 0.45) });
 for (const shape of ["notch", "rail"]) {
-  for (const chat of [13, 15, 16, 18]) {
+  {
     for (const [scr, screen] of SCREENS_MINI) {
-      test(`the mini window at the ${shape}, chat text ${chat}px, ${scr}, light and dark: every word fits`, async ({ cue, page }) => {
+      test(`the mini window at the ${shape}, ${scr}, light and dark: every word fits`, async ({ cue, page }) => {
         await page.setViewportSize(MINI(shape, screen));
         await page.addInitScript((h) => Object.defineProperty(Screen.prototype, "height", { get: () => h }), screen.height);
         const out = [];
         for (const mode of ["light", "dark"]) {
           await cue.openMini("world-team", shape, { frozen: true });
-          await cue.change((st, [t, mode]) => { st.settings.appearance = { ...st.settings.appearance, chat_text: t, mode }; }, [chat, mode]);
+          await cue.change((st, mode) => { st.settings.appearance = { ...st.settings.appearance, mode }; }, mode);
           if (shape === "notch") await page.evaluate(() => document.body.dispatchEvent(new MouseEvent("mouseenter")));
           // The rail keeps itself out once brought out (the second load finds it so).
           else if (await page.locator("[data-out]").count()) await page.locator("[data-out]").click();

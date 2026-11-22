@@ -1,7 +1,6 @@
 // A permission for a long script (#611): its card shows the first three lines, cut at whole lines, with more to open
 // the rest; Deny and Allow in view without scrolling. On an item's page the script showed whole above its card (the
-// item's question block repeated the ask's text, the full command); now only the folded card has it. Light and dark,
-// at each chat text size.
+// item's question block repeated the ask's text, the full command); now only the folded card has it. Light and dark.
 import { test, expect, openDesk } from "./cue.mjs";
 
 const SCRIPT = Array.from({ length: 30 }, (_, n) => `echo "step ${n}" && ls -la build/out/part-${n} | grep -v tmp`).join("\n");
@@ -45,11 +44,10 @@ const inView = (page, sel) => page.locator(sel).evaluate((el) => {
   return true;
 });
 
-for (const scheme of ["light", "dark"]) for (const size of [13, 15, 18]) {
-  test(`an item's permission for a long script: three whole lines with more, Deny and Allow in view (${size}px, ${scheme}) (#611)`, async ({ cue, page }) => {
+for (const scheme of ["light", "dark"]) {
+  test(`an item's permission for a long script: three whole lines with more, Deny and Allow in view (${scheme}) (#611)`, async ({ cue, page }) => {
     await page.emulateMedia({ colorScheme: scheme });
     await setup(cue, page, SCRIPT);
-    await cue.change((st, s) => { st.settings.appearance = { ...(st.settings.appearance || {}), chat_text: s }; }, size);
     await page.locator('.dk-items [data-desk-item="227"]').click();
     const card = ".dk-right .act-card";
     await expect(page.locator(card)).toBeVisible();

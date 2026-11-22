@@ -74,7 +74,8 @@ function toast(msg, ms = 2600) {
 async function setSetting(key, value) {
   try { await invoke("set_setting", { key, value }); } catch (e) { toast(`Couldn't save: ${e}`); }
 }
-/** Text size: the window zooms in steps (config.rs ZOOM_STEPS); Cue keeps the one you pick. */
+/** Text size, the one there is: the window zooms in steps (config.rs ZOOM_STEPS), a chat's words with everything
+ *  around them; Cue keeps the one you pick. ⌘+ / ⌘− / ⌘0, A− / A+ on a chat's head and Settings → Text size all set it. */
 const ZOOMS = [[0.9, "Compact"], [1, "Default"], [1.15, "Large"], [1.3, "Larger"]];
 /** One step bigger (1) or smaller (-1), or back to Default (0). */
 function stepZoom(dir) {
@@ -84,19 +85,12 @@ function stepZoom(dir) {
   toast(`Text size: ${name}${i === cur && dir ? (dir > 0 ? " (the largest)" : " (the smallest)") : ""}`);
   if (i !== cur) setSetting("appearance.zoom", z);
 }
-/** A chat's words (config.rs CHAT_TEXT_STEPS, #594): its messages and the words in its box, in px, on top of the
- *  window's zoom (styles/base.css --type-chat). A− / A+ on a chat's head step it; Cue keeps the one you pick. */
-const CHAT_TEXT = [13, 14, 15, 16, 18];
-const chatText = () => (CHAT_TEXT.includes(state.settings?.appearance?.chat_text) ? state.settings.appearance.chat_text : 15);
-function stepChatText(dir) {
-  const cur = CHAT_TEXT.indexOf(chatText()), i = Math.max(0, Math.min(CHAT_TEXT.length - 1, cur + dir));
-  if (i !== cur) setSetting("appearance.chat_text", CHAT_TEXT[i]);
-}
-/** A− / A+: the chat's words a step smaller or bigger; the end step's button is off. */
-function chatTextBtns() {
-  const i = CHAT_TEXT.indexOf(chatText());
-  const b = (dir, label, say, off) => `<button class="ctext-b" data-act="chat-text" data-dir="${dir}" aria-label="${say}"${off ? " disabled" : ""}>${label}</button>`;
-  return `<span class="ctext" role="group" aria-label="Chat text size">${b(-1, "A−", "Smaller chat text", i === 0)}${b(1, "A+", "Larger chat text", i === CHAT_TEXT.length - 1)}</span>`;
+/** A− / A+ on a chat's head: the same text size as ⌘+ / ⌘− and Settings → Text size, a step smaller or bigger; the
+ *  end step's button is off. */
+function textSizeBtns() {
+  const cur = ZOOMS.findIndex(([z]) => z === (state.settings?.appearance?.zoom ?? 1)), i = cur < 0 ? 1 : cur;
+  const b = (dir, label, say, off) => `<button class="ctext-b" data-act="text-size" data-dir="${dir}" aria-label="${say}"${off ? " disabled" : ""}>${label}</button>`;
+  return `<span class="ctext" role="group" aria-label="Text size">${b(-1, "A−", "Smaller text", i === 0)}${b(1, "A+", "Larger text", i === ZOOMS.length - 1)}</span>`;
 }
 const SEARCH_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>`;
 const INSIGHTS_ICON = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16"/><path d="M7.5 16v-5"/><path d="M12 16V5"/><path d="M16.5 16V9"/></svg>`;

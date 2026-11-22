@@ -1,19 +1,19 @@
-// Text size, two controls (#594). ⌘+ / ⌘− / ⌘0 and Settings → Text size zoom the whole window, as before #594
-// (appearance.zoom; the app's webview zooms, so here only what's saved and said is seen). A− / A+ on a chat's head size
-// that chat's words only (appearance.chat_text, styles/base.css --type-chat): its messages and the words in its box;
-// the lists, labels, buttons and panels around it stay as they are. At every step, wide and at the narrowest window, in
-// light and dark, the open chat stays inside the window and its buttons still hold their words.
+// Text size, one for the whole window (#684). A− / A+ on a chat's head (the Board's, the Desk's, the Inbox's), ⌘+ / ⌘− /
+// ⌘0 and Settings → Text size all set the same step (appearance.zoom: Compact, Default, Large, Larger; the app's
+// webview zooms, so here only what's saved and said is seen). A chat's words stay 15px on the page at every step, the
+// labels around them 13px: they grow and shrink together. There is no size for a chat alone any more.
 import { test, expect, openDesk } from "./cue.mjs";
 import { NARROWEST } from "./layout.mjs";
 
-const STEPS = [13, 14, 15, 16, 18];
-const setChat = (cue, t, mode = "system") => cue.change((st, [t, mode]) => { st.settings.appearance = { ...st.settings.appearance, chat_text: t, mode }; }, [t, mode]);
-/** A− / A+ saved step `t`, and Cue's state has it back (the next click steps from there). */
-const chatSaved = async (cue, page, t) => { await cue.called("set_setting", { key: "appearance.chat_text", value: t }); await expect.poll(() => page.evaluate(() => state.settings.appearance.chat_text)).toBe(t); };
+const STEPS = [[0.9, "Compact"], [1, "Default"], [1.15, "Large"], [1.3, "Larger"]];
+const setZoom = (cue, z, mode = "system") => cue.change((st, [z, mode]) => { st.settings.appearance = { ...st.settings.appearance, zoom: z, mode }; }, [z, mode]);
+/** Step `z` was saved, and Cue's state has it back (the next click or key steps from there). */
+const saved = async (cue, page, z) => { await cue.called("set_setting", { key: "appearance.zoom", value: z }); await expect.poll(() => page.evaluate(() => state.settings.appearance.zoom)).toBe(z); };
 const px = (loc) => loc.evaluate((el) => getComputedStyle(el).fontSize);
 const typeBody = (loc) => loc.evaluate((el) => getComputedStyle(el).getPropertyValue("--type-body").trim());
 // Its top-left corner: in a narrow window the card's middle is its Move to bottom button.
 const openChat = (page) => page.locator('.nrow[data-big="n1"]').click({ position: { x: 12, y: 12 } }).then(() => page.locator(".active-pane .ap-chat").first().waitFor());
+const smaller = (ctl) => ctl.getByRole("button", { name: "Smaller text" }), larger = (ctl) => ctl.getByRole("button", { name: "Larger text" });
 
 /** Shown elements under `sel` past the window's right or bottom edge, or a button or chip too small for its own words. */
 const outOfPlace = (page, sel) => page.evaluate((sel) => {
@@ -36,63 +36,98 @@ const outOfPlace = (page, sel) => page.evaluate((sel) => {
   return out;
 }, sel);
 
-for (const t of STEPS) {
+for (const [z, name] of STEPS) {
   for (const mode of ["light", "dark"]) {
     for (const [where, viewport] of [["", null], [" at the narrowest window", NARROWEST]]) {
-      test(`chat text ${t}px, ${mode}${where}: an open chat's messages and box read at ${t}px; the list, the top bar and the box's buttons don't change`, async ({ cue, page }) => {
+      test(`text size ${name}, ${mode}${where}: A− / A+ on an open chat, the end step's one off; the chat's words 15px, the rest 13px`, async ({ cue, page }) => {
         if (viewport) await page.setViewportSize(viewport);
         await cue.open("board-waiting", { frozen: true });
-        await setChat(cue, t, mode);
+        await setZoom(cue, z, mode);
         await openChat(page);
-        const chat = page.locator(".active-pane .ap-chat").first();
-        expect(await typeBody(chat)).toBe(`${t}px`);
-        expect(await px(page.locator(".active-pane .composer textarea").first())).toBe(`${t}px`);
-        // Around the chat, the scale's sizes: a Waiting card's words, the top bar's buttons, the box's own Send.
+        expect(await typeBody(page.locator(".active-pane .ap-chat").first())).toBe("15px");
+        expect(await px(page.locator(".active-pane .composer textarea").first())).toBe("15px");
         expect(await px(page.locator(".sec-waiting .nrow").first())).toBe("13px");
-        expect(await px(page.locator(".switch-view button").first())).toBe("12px");
         expect(await px(page.locator(".active-pane .composer .send"))).toBe("13px");
-        expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--type-body").trim())).toBe("13px");
-        // A− / A+ next to the Chat tab, the end step's one off.
         const ctl = page.locator(".active-pane .stabs .ctext button");
         await expect(ctl).toHaveText(["A−", "A+"]);
-        await expect(ctl.first()).toBeEnabled({ enabled: t !== STEPS[0] });
-        await expect(ctl.last()).toBeEnabled({ enabled: t !== STEPS.at(-1) });
+        await expect(ctl.first()).toBeEnabled({ enabled: z !== STEPS[0][0] });
+        await expect(ctl.last()).toBeEnabled({ enabled: z !== STEPS.at(-1)[0] });
         expect(await outOfPlace(page, ".active-pane")).toEqual([]);
       });
     }
   }
 }
 
-test("A+ and A− step the chat's words and save the step; nothing else changes size, and no hover text", async ({ cue, page }) => {
+test("A+ and A− step the whole window's text size, one step a click, with a note each time; no hover text", async ({ cue, page }) => {
   await cue.open("board-waiting", { frozen: true });
   await openChat(page);
-  const sizes = () => page.evaluate(() => ({
-    body: getComputedStyle(document.body).fontSize, card: getComputedStyle(document.querySelector(".nrow")).fontSize,
-    tab: getComputedStyle(document.querySelector(".stab")).fontSize, send: getComputedStyle(document.querySelector(".composer .send")).fontSize,
-    chat: getComputedStyle(document.querySelector(".ap-chat")).getPropertyValue("--type-body").trim(),
-  }));
-  const before = await sizes();
-  expect(before).toEqual({ body: "13px", card: "13px", tab: "13px", send: "13px", chat: "15px" });
   const ctl = page.locator(".active-pane .stabs .ctext");
   await expect(ctl.locator("[title]")).toHaveCount(0);
-  await ctl.getByRole("button", { name: "Larger chat text" }).click();
-  await chatSaved(cue, page, 16);
-  await expect.poll(sizes).toEqual({ ...before, chat: "16px" });
-  await ctl.getByRole("button", { name: "Larger chat text" }).click();
-  await chatSaved(cue, page, 18);
-  await expect(ctl.getByRole("button", { name: "Larger chat text" })).toBeDisabled();
-  for (const t of [16, 15, 14, 13]) {
-    await ctl.getByRole("button", { name: "Smaller chat text" }).click();
-    await chatSaved(cue, page, t);
+  await larger(ctl).click();
+  await saved(cue, page, 1.15);
+  await expect(page.locator(".toast")).toHaveText("Text size: Large");
+  await larger(ctl).click();
+  await saved(cue, page, 1.3);
+  await expect(page.locator(".toast")).toHaveText("Text size: Larger");
+  await expect(larger(ctl)).toBeDisabled();
+  for (const [z, name] of [...STEPS].reverse().slice(1)) {
+    await smaller(ctl).click();
+    await saved(cue, page, z);
+    await expect(page.locator(".toast")).toHaveText(`Text size: ${name}`);
   }
-  await expect.poll(sizes).toEqual({ ...before, chat: "13px" });
-  await expect(ctl.getByRole("button", { name: "Smaller chat text" })).toBeDisabled();
-  // No zoom saved by any of it.
-  expect((await cue.calls("set_setting")).filter((c) => c.args.key !== "appearance.chat_text")).toEqual([]);
+  await expect(smaller(ctl)).toBeDisabled();
+  await expect(larger(ctl)).toBeEnabled();
+  // The one size: nothing else is saved, and the chat's words are where they were on the page.
+  expect((await cue.calls("set_setting")).filter((c) => c.args.key !== "appearance.zoom")).toEqual([]);
+  expect(await typeBody(page.locator(".active-pane .ap-chat").first())).toBe("15px");
+});
+
+test("A− / A+ and ⌘+ / ⌘− are one size: each steps from where the other left it, Settings shows it, ⌘0 goes back to Default", async ({ cue, page }) => {
+  await cue.open("board-waiting", { frozen: true });
+  await openChat(page);
+  const ctl = page.locator(".active-pane .stabs .ctext");
+  await larger(ctl).click();
+  await saved(cue, page, 1.15);
+  await page.keyboard.press("Meta+=");
+  await saved(cue, page, 1.3);
+  await expect(larger(ctl)).toBeDisabled();
+  await page.keyboard.press("Meta+=");
+  await expect(page.locator(".toast")).toHaveText("Text size: Larger (the largest)");
+  await page.keyboard.press("Meta+-");
+  await saved(cue, page, 1.15);
+  await expect(larger(ctl)).toBeEnabled();
+  await page.keyboard.press(",");
+  const seg = page.locator('.seg:has([data-set="appearance.zoom"])');
+  await expect(seg.locator("button")).toHaveText(["Compact", "Default", "Large", "Larger"]);
+  await expect(seg.locator("button.on")).toHaveText("Large");
+  // One row for it, and it says the mini window keeps its own size.
+  const row = page.locator(".set-row", { has: seg });
+  await expect(row).toContainText("A− and A+ on a chat, or ⌘+ and ⌘−");
+  await expect(row).toContainText("The mini window keeps its own size.");
+  await expect(page.locator(".sheet-body").getByText("Text size", { exact: true })).toHaveCount(1);
+  await page.keyboard.press("Meta+0");
+  await saved(cue, page, 1);
+  await expect(page.locator(".toast")).toHaveText("Text size: Default");
+  await expect(seg.locator("button.on")).toHaveText("Default");
+  await page.keyboard.press("Escape");
+  await smaller(ctl).click();
+  await saved(cue, page, 0.9);
+  await expect(smaller(ctl)).toBeDisabled();
+  await page.keyboard.press("Meta+0");
+  await saved(cue, page, 1);
+  await expect(smaller(ctl)).toBeEnabled();
+});
+
+test("a chat-only size saved by an older Cue changes nothing: the chat's words stay 15px", async ({ cue, page }) => {
+  await cue.open("board-waiting", { frozen: true });
+  await cue.change((st) => { st.settings.appearance = { ...st.settings.appearance, chat_text: 18 }; });
+  await openChat(page);
+  expect(await typeBody(page.locator(".active-pane .ap-chat").first())).toBe("15px");
+  expect(await px(page.locator(".active-pane .composer textarea").first())).toBe("15px");
 });
 
 for (const [where, viewport] of [["", null], [" at the narrowest window", NARROWEST]]) {
-  test(`the Desk lead's chat has A− / A+ too${where}: its chat and box follow them, the item list doesn't`, async ({ cue, page }) => {
+  test(`the Desk lead's chat has A− / A+ too${where}: they step the same text size`, async ({ cue, page }) => {
     if (viewport) await page.setViewportSize(viewport);
     await cue.open("desk", { frozen: true });
     await openDesk(page);
@@ -100,10 +135,9 @@ for (const [where, viewport] of [["", null], [" at the narrowest window", NARROW
     await chat.waitFor();
     // Polled: the Desk redraws as it opens, and a replaced (detached) node has no styles.
     await expect.poll(() => typeBody(chat)).toBe("15px");
-    await page.locator(".dk-ptabs .ctext").getByRole("button", { name: "Larger chat text" }).click();
-    await chatSaved(cue, page, 16);
-    await expect.poll(() => typeBody(page.locator(".dk-chat").first())).toBe("16px");
-    await expect.poll(() => px(page.locator(".dk-box textarea").first())).toBe("16px");
+    await larger(page.locator(".dk-ptabs .ctext")).click();
+    await saved(cue, page, 1.15);
+    await expect.poll(() => typeBody(page.locator(".dk-chat").first())).toBe("15px");
     await expect.poll(() => px(page.locator(".dk-it .dk-t").first())).toBe("13px");
     expect(await outOfPlace(page, "#app")).toEqual([]);
   });
@@ -115,35 +149,31 @@ test("an item's chat has A− / A+ on its Chat tab row; the other tabs don't", a
   await page.locator('[data-desk-item="d5"]').first().click();
   const head = page.locator(".dk-right .dk-itabs");
   await expect(head.locator(".ctext button")).toHaveText(["A−", "A+"]);
-  await head.locator(".ctext").getByRole("button", { name: "Smaller chat text" }).click();
-  await chatSaved(cue, page, 14);
-  await expect.poll(() => typeBody(page.locator(".dk-right .dk-ichat").first())).toBe("14px");
+  await smaller(head.locator(".ctext")).click();
+  await saved(cue, page, 0.9);
+  await expect(smaller(page.locator(".dk-right .dk-itabs .ctext"))).toBeDisabled();
   await page.locator(".dk-right .dk-itab", { hasText: "Record" }).click();
   await expect(page.locator(".dk-right .dk-itabs .ctext")).toHaveCount(0);
 });
 
-test("⌘+ / ⌘− / ⌘0 zoom the whole window in Settings → Text size's four steps, as before; the chat's own size stays", async ({ cue, page }) => {
-  await cue.open("board-waiting", { frozen: true });
-  await page.keyboard.press(",");
-  const seg = page.locator('.seg:has([data-set="appearance.zoom"])');
-  await expect(seg.locator("button")).toHaveText(["Compact", "Default", "Large", "Larger"]);
-  await expect(seg.locator("button.on")).toHaveText("Default");
-  await page.keyboard.press("Escape");
-  // Each step from the zoom Cue's state has; the next key waits for the saved one to come back in it.
-  const saved = async (z) => { await cue.called("set_setting", { key: "appearance.zoom", value: z }); await expect.poll(() => page.evaluate(() => state.settings.appearance.zoom)).toBe(z); };
-  await page.keyboard.press("Meta+=");
-  await saved(1.15);
-  await expect(page.locator(".toast")).toHaveText("Text size: Large");
-  await page.keyboard.press("Meta+=");
-  await saved(1.3);
-  await page.keyboard.press("Meta+=");
-  await expect(page.locator(".toast")).toHaveText("Text size: Larger (the largest)");
-  await page.keyboard.press("Meta+0");
-  await saved(1);
-  await page.keyboard.press("Meta+-");
-  await saved(0.9);
-  await expect(page.locator(".toast")).toHaveText("Text size: Compact");
-  expect((await cue.calls("set_setting")).filter((c) => c.args.key === "appearance.chat_text")).toEqual([]);
-  await openChat(page);
-  expect(await typeBody(page.locator(".active-pane .ap-chat").first())).toBe("15px");
-});
+for (const [where, viewport] of [["", null], [" at the narrowest window", NARROWEST]]) {
+  test(`the Inbox has A− / A+ in an open session's top row${where}, greyed out at the ends, light and dark`, async ({ cue, page }) => {
+    if (viewport) await page.setViewportSize(viewport);
+    for (const mode of ["light", "dark"]) {
+      await cue.open("board-waiting", { frozen: true });
+      await setZoom(cue, 1, mode);
+      await page.locator('.switch-view [data-view="inbox"]').click();
+      await page.locator(".ib-row").first().click();
+      const ctl = page.locator(".inbox-page .ib-head .ctext");
+      await expect(ctl.locator("button")).toHaveText(["A−", "A+"]);
+      await expect(ctl.locator("[title]")).toHaveCount(0);
+      await larger(ctl).click();
+      await saved(cue, page, 1.15);
+      await larger(ctl).click();
+      await saved(cue, page, 1.3);
+      await expect(larger(ctl)).toBeDisabled();
+      await expect(page.locator(".toast")).toHaveText("Text size: Larger");
+      expect(await outOfPlace(page, ".inbox-page .ib-head")).toEqual([]);
+    }
+  });
+}

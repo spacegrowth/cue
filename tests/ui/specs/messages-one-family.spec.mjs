@@ -5,8 +5,8 @@ import { readFileSync } from "node:fs";
 import { test, expect, openDesk } from "./cue.mjs";
 
 const BODY = "13px", META = "12px";
-// Inside a chat (Board, Desk lead, an item's thread, the Inbox thread) the words read at the chat's text size, Default
-// here (Settings → Text size, #594: styles/base.css --type-chat); heads and meta lines stay at META.
+// Inside a chat (Board, Desk lead, an item's thread, the Inbox thread) the words read at the chat's own size
+// (styles/base.css --type-chat); heads and meta lines stay at META.
 const CHAT = "15px";
 
 /** `read` run on what `loc` finds now (`all`: every match, else the first), again when a redraw replaced it between

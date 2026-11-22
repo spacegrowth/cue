@@ -83,15 +83,16 @@
   --window-pad: 20px;
   --on-deny: #FFFFFF;       /* text on a deny fill (an ask's tag) */
 }
-/* A chat's words (A− / A+ on a chat's head, #594): Cue's window sets --type-chat on its root (13–18px, 15 until you
-   pick; index.html starts it at 15); the mini window keeps 13. A chat's messages and the words typed in its box (not the box's buttons) read at it; everything else (lists,
-   panels, labels, buttons, the notch) stays on the scale above. Settings → Text size zooms the whole window on top. */
+/* A chat's words: Cue's window reads them at 15px (index.html sets --type-chat on its root); the mini window keeps
+   13. A chat's messages and the words typed in its box (not the box's buttons) read at it; everything else (lists,
+   panels, labels, buttons, the notch) stays on the scale above. Text size (A− / A+, ⌘+ / ⌘−, Settings) zooms the whole
+   window, the chat's words with the rest. */
 :root { --type-chat: 13px; }
 :is(.ap-chat, .dk-chat, .dk-thread, .dk-ichat, .ib-thread, :is(.composer .field, .dk-box, .ib-box) :is(.ta-wrap, textarea)) {
   --type-body: var(--type-chat);
   --mg-body: 400 var(--type-chat) / var(--type-body-lh) var(--sans);
 }
-/* A− / A+ on a chat's head (window.js chatTextBtns): two quiet letters, A+ a size up; the end step's is off. */
+/* A− / A+ on a chat's head (window.js textSizeBtns): two quiet letters, A+ a size up; the end step's is off. */
 .ctext { display: inline-flex; align-items: center; gap: 2px; flex: none; align-self: center; }
 .ctext-b { font: 600 var(--type-small) / 1 var(--sans); color: var(--muted); background: none; border: 0; border-radius: var(--radius-tag); padding: 4px 6px; cursor: pointer; white-space: nowrap; }
 .ctext-b + .ctext-b { font-size: var(--type-body); }
