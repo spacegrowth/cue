@@ -36,6 +36,36 @@ test("the switch shows List first and keeps Cards across a reload", async ({ pag
   await expect(cards(page)).toHaveCount(0);
 });
 
+test("the switch is two buttons side by side, the picked one filled, and flips both ways at once (#666)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  const look = (k) => sw(page, k).evaluate((el) => { const c = getComputedStyle(el), r = el.getBoundingClientRect(); return { bg: c.backgroundColor, pad: parseFloat(c.paddingLeft), x: r.x, right: r.right, y: r.y }; });
+  const seg = items(page).locator(".dkc-sw");
+  // A switch, not words run together: its own background, each option padded, List then Cards on one line with room between their words.
+  expect(await seg.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)");
+  let l = await look("list"), c = await look("cards");
+  expect(l.pad).toBeGreaterThan(4);
+  expect(Math.abs(l.y - c.y)).toBeLessThan(1);
+  expect(c.x).toBeGreaterThanOrEqual(l.right);
+  expect(await sw(page, "list").evaluate((el) => { const t = document.createRange(); t.selectNodeContents(el); return el.getBoundingClientRect().right - t.getBoundingClientRect().right; })).toBeGreaterThan(4);
+  // The picked one filled, the other not.
+  expect(l.bg).not.toBe(c.bg);
+  expect(c.bg).toBe("rgba(0, 0, 0, 0)");
+  // Cards, List, Cards again with no reload: each click shows its view and marks its button.
+  for (const k of ["cards", "list", "cards", "list"]) {
+    await sw(page, k).click();
+    await expect(sw(page, k)).toHaveAttribute("aria-pressed", "true");
+    await expect(sw(page, k === "list" ? "cards" : "list")).toHaveAttribute("aria-pressed", "false");
+    if (k === "cards") { await expect(cards(page).first()).toBeVisible(); await expect(items(page).locator(".dk2b-row")).toHaveCount(0); }
+    else { await expect(items(page).locator(".dk2b-row").first()).toBeVisible(); await expect(cards(page)).toHaveCount(0); }
+    l = await look("list"); c = await look("cards");
+    expect((k === "list" ? c : l).bg).toBe("rgba(0, 0, 0, 0)");
+    expect((k === "list" ? l : c).bg).not.toBe("rgba(0, 0, 0, 0)");
+  }
+  await expect(page.locator(".dkc-sw [title]")).toHaveCount(0);
+  if (process.env.SHOT_DIR) await seg.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-items-switch.png` });
+});
+
 test("Cards: the items with sessions at the left, Up next, Done today and the calls at the right, side by side", async ({ page, cue }) => {
   await page.setViewportSize({ width: 2600, height: 1100 });
   await cue.open("desk");

@@ -2,7 +2,8 @@
    calls while away as quiet dashed boxes at the right, like the Board's Idle column. One column when the card is
    narrower than 1000px. Tokens only, light and dark alike. */
 .dk-card.dkc-list { container: dkcards / inline-size; }
-.dkc-sw { margin-right: 0; }
+.dkc-sw { margin-right: 0; padding: 2px; }
+.dkc-sw button { padding: 3px 10px; font-size: var(--type-small); }
 .dkc-list > .dk-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0; }
 .dkc-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; padding: 12px 14px 18px; }
 @container dkcards (min-width: 1000px) { .dkc-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; } }

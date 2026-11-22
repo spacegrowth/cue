@@ -13,8 +13,8 @@ let deskCardsAllCalls = false;
 /** How many calls the box shows before "N more ›". */
 const DESK_CARDS_CALLS = 5;
 
-/** The List / Cards switch in the Items head. */
-const deskCardsSwitch = () => `<span class="seg2 dkc-sw" role="group" aria-label="Items view">${[["list", "List"], ["cards", "Cards"]].map(([k, l]) => `<button class="seg2-b${deskCardsView === k ? " on" : ""}" data-desk-cards-view="${k}" aria-pressed="${deskCardsView === k}">${l}</button>`).join("")}</span>`;
+/** The List / Cards switch in the Items head: the app's two-option switch (styles/sheets.css .seg), the one picked filled. */
+const deskCardsSwitch = () => `<span class="seg dkc-sw" role="group" aria-label="Items view">${[["list", "List"], ["cards", "Cards"]].map(([k, l]) => `<button type="button" class="${deskCardsView === k ? "on" : ""}" data-desk-cards-view="${k}" aria-pressed="${deskCardsView === k}">${l}</button>`).join("")}</span>`;
 
 /** Its kind as a word: Bug, Task, Feature. */
 const deskCardsKind = (i) => (["bug", "task", "feature"].includes(i.kind) ? i.kind[0].toUpperCase() + i.kind.slice(1) : "");
