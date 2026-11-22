@@ -1,6 +1,6 @@
 # The Desk chat next to the board's chat (#688)
 
-This is a full list of how the Desk lead's chat differs from a session chat on the board, written to be listened to. The board's chat is the model. Mocks for three ways to bring the Desk chat back to it are on the "Cue chat" canvas.
+This is a full list of how the Desk lead's chat differs from a session chat on the board, written to be listened to. The board's chat is the model. Mocks for four ways to bring the Desk chat back to it are on the "Cue chat" canvas.
 
 ## The short version
 
@@ -26,7 +26,7 @@ There is already a place for the lead's actions: the **Dispatcher Actions** tab,
 
 It sits in the tab row. Everything is the default. Conversation only folds every run of Desk lines into one line, such as "4 Desk updates, gave #15 to…", with a rule above and below. Your messages, the lead's own words, bands from other Desks and asks are never folded.
 
-**Verdict: the switch should go.** It hides the noise but leaves it in the chat, and it starts on Everything, so the noise is what you see first. Every option on the canvas takes the Desk lines out of the chat and puts them somewhere else, so there is nothing left for the switch to fold. Option B keeps one plain line per gap in the conversation, which is the switch's folded line, but on by default and without the rules.
+**Verdict: stays until an option is picked.** You never asked for it and the board's chat has nothing like it, but it is kept for now and goes when the chosen option is built. Every option on the canvas takes the Desk lines out of the chat and puts them somewhere else, so there is nothing left for the switch to fold. Options B and D keep one plain line per gap in the conversation, which is the switch's folded line, but on by default and without the rules.
 
 ### The styled lines from #685, one by one
 
@@ -128,7 +128,7 @@ Those were steps in the right direction, but the Desk chat then gained the routi
 - **#660** measured the Desk chat card at 878 pixels wide with an 842-pixel text line, close to the board's. Width is no longer the issue.
 - **#665** counted the lines on one Desk on 21 November and found the Desk talking to itself more than to you. Its option C became #685's switch. This audit's view is that the switch was the smallest fix and not enough: the lines need to leave, not fold.
 
-## What all three options share
+## What all four options share
 
 - Only your messages have a background.
 - The lead's replies are plain, as on the board.
@@ -137,10 +137,59 @@ Those were steps in the right direction, but the Desk chat then gained the routi
 - Listen, Read and the Listening bar are as on the board.
 - Kept: bands between Desks, the chat itself, and the item list on the right.
 - Lines meant for you stay in the chat: the lead's asks, Ready to check, Stopped, How to check, If you pick, For you to try, and Not done.
-- The #685 switch goes.
+- The #685 switch goes when the option is built; until then it stays in the app.
+- Something shows when activity arrives while you look elsewhere (see below).
 
 They differ only in where the Desk lines go:
 
 - **A**: into an Activity tab, the renamed Dispatcher Actions.
 - **B**: the same tab, plus one plain line counting them between your turns.
 - **C**: into the item list, as a third view next to List and Progress.
+- **D**: B's count lines in the chat, and C's Activity list on the right cut to the last 3 rows, with "14 more in Activity ›" opening A's Activity tab. No "2 new" badge anywhere.
+
+Activity holds Cue's own lines as well as the lead's: copies made, items finished or stuck, send-backs, and notes to sessions. A Cue line meant for you, such as Ready to check or Stopped, stays in the chat.
+
+## The other chats
+
+The same problems are in the other chats on the Desk and the crew page.
+
+- **Item page chat.** Folds "Worked on #x" in a grey fill, centred rule lines ("cue-611 took this item"), a capital "Not started yet" card, a "To cue-611 · Task #611 · sent as #611" tag over the box, a box that always says Send, no Listening bar, and a side panel with capital Now and Who labels. Tabs: Chat, Record, Decisions, Files.
+- **A Desk session's chat.** The same Desk lines as the lead's chat, a box that always says Send, no Listening bar, and the same Now and Who panel.
+- **Crew member chat (crew page).** Already uses the board's box, so the Listening bar is there. Capitals in the kind tags (Committed, Decided), "Needs you", "The crew · N" and the side labels. The Undo and Make a revert buttons on decisions stay.
+- **Not chats:** the Desk's crew member page is a list, not a chat. There is no loop chat.
+
+Each option treats them the way it treats the lead's chat:
+
+- **A**: each gets an Activity tab next to Chat. On the item page Activity takes Record's place.
+- **B**: plain count lines between your turns in each.
+- **C**: an Activity list on the right of each ("Crew activity" on the crew page), in place of the Now and Who panel.
+- **D**: count lines in each, and the last 3 Activity rows on the right with a link to its Activity tab.
+
+## Seeing activity as it happens
+
+Today nothing tells you that Desk or crew activity happened in a chat you are not looking at. The only marks are "said something since you left" on the crew page, the blinking dot, and the Desk's "landed" mark.
+
+- **A**: the Activity tab shows a dot and "2 new" while lines arrive; new rows are marked until you open it.
+- **B**: the newest count line has a dot and "just now" and grows as lines come in.
+- **C**: the Activity view's tab has a dot; new rows are bold until seen, and the item they touched shows "just now".
+- **D**: the newest count line has a dot and grows; new rows appear at the top of the last-3 list. No badge.
+
+## Your message, every state
+
+The canvas has a grid of every state your message can be in, with the board, the Desk lead's chat and the Desk item chat side by side, and how it looks in every chat after #688. Today:
+
+- **Sending.** All three say "Sending…". After half a minute the board adds "Cue hasn't seen it take this yet"; the Desk doesn't, and its lead chat drops the row after 10 minutes with no word.
+- **Kept by Cue** (sent while it works). Board and lead chat: "Not sent yet · Cue sends it when its turn ends" with Edit, Send now, Cancel. The item chat says "Waiting: cue-12 is finishing something, your note goes in next".
+- **Kept a long time.** The board and lead chat offer "Ask it now, by the way" after a while. The item chat doesn't.
+- **Queued in it.** "Queued for cue-12 · it reads this after its current step" with Send now, the same everywhere.
+- **Typed in its terminal.** "Queued · goes in when it's free" everywhere.
+- **Delivered.** "✓ Delivered to cue-12 · 14:02", plus "via iTerm" or "went with your message above, as one" where that happened. The item chat adds "sent back".
+- **Couldn't send.** Red outline. The board offers Send again; the Desk offers Retry and Edit.
+- **Waiting for a folder.** Only the item chat: "Sent back · waiting for a free working folder (in use by #654)".
+- **Sent at a time / after the usage limit.** Only the board; the Desk box has no clock.
+- **Said by voice.** Mic beside the bubble everywhere except while the item chat is still sending.
+- **By the way.** Only the board, with a panel headed in capitals.
+- **To another Desk.** Only the lead chat: a band that goes Sending…, Not answered yet, Answered by its lead.
+- **Cue's own message.** The board folds it into one short line; the lead chat shows a capital-tagged card.
+
+After #688 every chat uses the board's set: the same words, the same buttons, Retry and Edit when a send fails, the by-the-way button and the clock on the Desk too, the folder wait shown as "Not sent yet", and Cue's own messages never as bubbles.
