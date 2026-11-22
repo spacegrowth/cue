@@ -32,7 +32,7 @@ const TO_SESSION = [
   ["Desk item #d5: the Desk lead took back its copy (/w/desk-5). Its work, if any, is kept on branch desk/d5. Stop work on it until it's routed to you again.", "Told host-lead · #d5 copy taken back: stop work on it"],
   ["Desk item #d5 is closed: its work is already on main (abc1234). Stop work on it.", "Told host-lead · #d5 closed: already on main"],
   ["Desk item #d5 was dropped: stop work on it.", "Told host-lead · #d5 dropped: stop work on it"],
-  ["Desk item #d5 (Mocks): option B was picked, so it's done. #d9 builds it; the Desk lead routes that. Mark \"Picked: B\" on its row.", "Told host-lead · #d5 option B picked: done, #d9 builds it"],
+  ["Desk item #d5 (Mocks): option B was picked, so it's done. #d9 builds it; the Desk lead routes that. Mark \"Picked: B\" on its row.", "Told host-lead · #d5 You picked B; #d9 builds it"],
   ["Desk item #d3 was folded into #d5, which you have. It said: Make it blue", "Told host-lead · #d3 folded into #d5: “Make it blue”"],
   ["Done? Write DONE: #d5, or say what's left\nDone? Write DONE: #d3, or say what's left", "Asked host-lead · #d5 done? or what's left"],
   ["The Desk is paused. Stop at the next safe point: finish the step you're on, leave your work as it is in your copy (don't commit, push or undo anything, and don't say DONE), say in one line where you stopped, and end your turn. Cue tells you when to go on.", "Asked host-lead · the Desk is paused: stop at a safe point"],
