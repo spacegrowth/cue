@@ -185,6 +185,7 @@ const MESSAGE_CLICKS = [
 
 const CHAT_FOOT_CLICKS = [
   rule("[data-run-fold]", (rf) => { flipIn(runOpen, rf.dataset.runFold); renderMain(); }),
+  rule("[data-agent-run]", (ar) => { flipIn(agentRunOpen, ar.dataset.agentRun); renderMain(); }),
   rule("[data-hook-fold]", (hk) => { flipIn(hookOpen, hk.dataset.hookFold); renderMain(); }),
   rule("[data-follow]", (fo) => { flipIn(openFollow, fo.dataset.follow); renderMain(); }),
   rule("[data-act=interrupt]", (stop) => interrupt(stop.dataset.sid)),

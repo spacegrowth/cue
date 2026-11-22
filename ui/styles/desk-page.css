@@ -310,18 +310,10 @@
 .dk-wo-link { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
 .dk-wo-link > span { flex: 1; min-width: 0; }
 .dk-wo .dk-acts { padding: 8px 0 0; }
-/* A crew member's page (#303, pick A): Doing, Why, Result. */
-.dk-crewpg .dk-csp { margin-left: 6px; font-weight: 600; letter-spacing: 0; text-transform: none; }
-.dk-cnow { margin: 0 0 8px; font-size: var(--type-body); font-weight: 600; line-height: 1.45; }
-.dk-cnow .dk-quiet { font-weight: 400; }
-.dk-csteps { list-style: none; margin: 0 0 4px; padding: 0; display: grid; gap: 4px; font-size: var(--type-body); color: var(--muted); }
-.dk-csteps li { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
-.dk-csteps li > span { min-width: 0; overflow-wrap: anywhere; }
-.dk-csteps i { flex: none; width: 12px; font-style: normal; text-align: center; }
-.dk-csteps li.now { color: var(--ink); }
-.dk-csteps li.ask { color: var(--deny); }
-.dk-cwhy { margin: 0 0 8px; padding: 10px 12px; border-radius: var(--radius-tray); background: var(--panel-2); }
-.dk-cwho { margin-bottom: 4px; font-size: var(--type-pill); font-weight: 600; color: var(--muted); }
+/* A crew member's page (#689): its chat (chat.css .ag-chat), then what it changed so far. */
+.dk-pg .dk-crewpg { padding: 16px 20px 18px; }
+.dk-csofar { margin-top: 14px; display: grid; gap: 4px; }
+.dk-csofar .dk-quiet { margin: 0; }
 .dk-cmore { position: relative; display: inline-flex; }
 .dk-cmenu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 20; display: grid; min-width: 160px; padding: 4px; border: 1px solid var(--line); border-radius: var(--radius-tray); background: var(--panel); box-shadow: 0 6px 20px color-mix(in srgb, var(--shade) 12%, transparent); }
 .dk-cmenu button { all: unset; padding: 6px 10px; border-radius: var(--radius-qp); font-size: var(--type-body); cursor: pointer; white-space: nowrap; }
