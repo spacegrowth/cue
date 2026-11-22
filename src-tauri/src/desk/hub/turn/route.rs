@@ -287,10 +287,13 @@ fn queues(st: &Store, h: &Holder, id: &str) -> bool {
 /// The lead's note on item `id` of `project` (NOTE:, or a route back to its holder while its finish is under way),
 /// sent to whoever holds it, at any stage (#338): at work, queued, finishing, in the landing line or with you to check.
 /// The item stays as it is; the note is one of its Steps, shown on its Thread, with how it was delivered.
+/// An item on another Desk than the lead's (`from`) takes it too (#714): kept on that item, on its own Desk, and its
+/// holder told which Desk's lead it's from.
 /// Err: what the lead is told when there's no one to send it to.
-pub(crate) fn note(st: &mut Store, project: &str, by: &By, id: &str, words: &str, now: u64, fx: &mut Effects) -> Result<(), String> {
+pub(crate) fn note(st: &mut Store, from: &str, by: &By, id: &str, words: &str, now: u64, fx: &mut Effects) -> Result<(), String> {
     let words = words.trim();
-    let it = st.desk.item(id).filter(|i| i.project == project).ok_or_else(|| format!("#{id} note not sent: this Desk has no item #{id}"))?;
+    let it = st.desk.item(id).ok_or_else(|| format!("#{id} note not sent: no Desk has an item #{id}"))?;
+    let project = it.project.clone();
     let h = it.holder.clone().ok_or_else(|| format!("#{id} note not sent: nobody holds it yet; route it first"))?;
     let stage = match it.state.as_str() {
         "finishing" => match it.finish.as_ref().map(|f| f.step.as_str()) {
@@ -303,11 +306,12 @@ pub(crate) fn note(st: &mut Store, project: &str, by: &By, id: &str, words: &str
         _ => "",
     };
     let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
-    let mut message = format!("{crew}Note from the Desk lead on Desk item #{id} ({}{stage}): {words}", it.title);
+    let lead = if from == project { "the Desk lead".to_string() } else { format!("the lead of the {} Desk", st.desk.name_of(from)) };
+    let mut message = format!("{crew}Note from {lead} on Desk item #{id} ({}{stage}): {words}", it.title);
     if it.state == "to_check" {
         message.push_str(&format!("\n{}", crate::desk::not_done_words(id)));
     }
-    decide(st, project, Some(id.to_string()), by.name, by.sid, words, &format!("note to {}", h.name), now, fx);
+    decide(st, &project, Some(id.to_string()), by.name, by.sid, words, &format!("note to {}", h.name), now, fx);
     if let Some(step) = st.desk.decisions.last_mut() {
         step.undo = "none".into();
     }

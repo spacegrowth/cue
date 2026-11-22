@@ -85,8 +85,8 @@ pub(crate) fn designs_said(st: &mut Store, sid: &str, text: &str, fx: &mut Effec
 }
 
 /// Session `sid` (not a lead) wrote TO LEAD: lines (#474): each goes to the lead of its item's Desk, as from it and
-/// that item. Without #<id>, the item it's on (the one it holds that changed last); holding none, its one Desk. An item
-/// it names that isn't on its Desks, or words with no Desk to go to, come back to it saying why.
+/// that item, on whichever Desk that is (#714). Without #<id>, the item it's on (the one it holds that changed last);
+/// holding none, its one Desk. An item no Desk has, or words with no Desk to go to, come back to it saying why.
 pub(crate) fn to_lead_said(st: &mut Store, sid: &str, text: &str, fx: &mut Effects) {
     let wants: Vec<(Option<String>, String)> = parse::lines(text).into_iter().filter_map(|l| if let Line::ToLead { id, text } = l { Some((id, text)) } else { None }).collect();
     if wants.is_empty() || st.desk.lead_of(sid).is_some() {
@@ -101,12 +101,13 @@ pub(crate) fn to_lead_said(st: &mut Store, sid: &str, text: &str, fx: &mut Effec
         let id = id.map(|i| st.desk.canon(&i)).or_else(|| on.clone());
         let it = id.as_deref().and_then(|i| st.desk.item(i));
         let message = match (&id, it) {
-            (Some(_), Some(it)) if scopes.contains(&it.project) || it.holder.as_ref().is_some_and(|h| h.is(sid)) => (
+            // An item on any Desk (#714): to that Desk's lead.
+            (Some(_), Some(it)) => (
                 it.project.clone(),
                 format!("From {name} on #{} ({}):\n{words}\nAnswer it with NOTE: #{} | <your words>.", it.id, it.title, it.id),
             ),
             (Some(i), _) => {
-                back.push(format!("TO LEAD: not sent: #{i} isn't an item on your Desk. Name one you're on, or leave the # out."));
+                back.push(format!("TO LEAD: not sent: no Desk has an item #{i}. Name one you're on, or leave the # out."));
                 continue;
             }
             (None, _) if scopes.len() == 1 => (scopes[0].clone(), format!("From {name}:\n{words}\nIt holds no item here, so a NOTE can't reach it.")),

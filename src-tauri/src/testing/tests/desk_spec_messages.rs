@@ -129,3 +129,32 @@ fn to_lead_that_cannot_reach_the_lead_tells_the_session_with_its_words() {
     // Its first line says why, as the chat's short line quotes it (ui/desk/cue_said.js).
     assert_eq!(back.lines().next(), Some("Your TO LEAD: line didn't reach the Desk's lead: it won't start"), "{back}");
 }
+
+/// #714: the lead of one Desk notes an item on another Desk: it reaches that item's holder, saying which Desk's lead
+/// it's from, and shows on that item, on its own Desk. A holder's TO LEAD: about an item on another Desk reaches that
+/// Desk's lead, not a refusal.
+#[test]
+fn notes_and_messages_reach_an_item_on_another_desk() {
+    let w = World::new();
+    let (a, la, b, lb) = two_desks(&w);
+    let h = super::team::lead(&w, "hello");
+    ends(&w, &h, "Hi.");
+    let it = w.hub().desk_add(&b, "bug", "Loop folder", "", Some(&h)).unwrap();
+    w.hub().desk_set_state(&it.id, "working");
+    w.settle();
+    ends(&w, &la, &format!("Telling it.\nNOTE: #{} | use the loop's own folder", it.id));
+    w.settle();
+    let want = format!("Note from the lead of the Feature A Desk on Desk item #{} (Loop folder): use the loop's own folder", it.id);
+    assert!(sent_to(&w, &h).contains(&want), "{:?}", sent_to(&w, &h));
+    assert!(!sent_to(&w, &la).iter().any(|t| t.contains("note not sent")), "{:?}", sent_to(&w, &la));
+    let on_b = desk(&w, &b)["decisions"].as_array().unwrap().iter().any(|d| d["item_id"] == it.id.as_str() && d["text"] == "use the loop's own folder" && d["delivery"]["session_id"] == h.as_str());
+    assert!(on_b, "on its own Desk's item: {}", desk(&w, &b)["decisions"]);
+    assert!(!desk(&w, &a)["decisions"].as_array().unwrap().iter().any(|d| d["item_id"] == it.id.as_str()), "not on Desk A");
+    // A session on neither Desk's items writes to the lead about it: to Desk B's lead.
+    let other = super::team::lead(&w, "hello");
+    ends(&w, &other, "Hi.");
+    ends(&w, &other, &format!("TO LEAD: #{} | the folder is set up", it.id));
+    w.settle();
+    assert!(sent_to(&w, &lb).iter().any(|t| t.contains("the folder is set up")), "{:?}", sent_to(&w, &lb));
+    assert!(!sent_to(&w, &other).iter().any(|t| t.starts_with("TO LEAD: not sent")), "{:?}", sent_to(&w, &other));
+}

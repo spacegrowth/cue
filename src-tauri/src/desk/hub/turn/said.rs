@@ -445,7 +445,7 @@ fn cleanup_said(st: &mut Store, project: &str, by: &By, id: &str, answer: Option
         }
         // No card, but its holder asked the user something (#559): the lead's answer goes to it, as a note would,
         // and the item no longer waits on the user.
-        None if answer.is_some() && st.desk.item(&id).is_some_and(|i| i.project == project && i.asks.is_some()) => {
+        None if answer.is_some() && st.desk.item(&id).is_some_and(|i| i.asks.is_some()) => {
             if let Err(no) = note(st, project, by, &id, &format!("Answer to your question: {}", answer.unwrap_or_default()), now, fx) {
                 told.push(no);
             }

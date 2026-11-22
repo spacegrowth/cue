@@ -163,7 +163,7 @@ DECIDED: <what you chose> — <why>      (a key judgment call you made on your o
 DECIDED (minor): <what you chose> — <why>      (housekeeping: folders, routing, ordering, copies; kept, but off the user's Decisions list)
 DONE: #<id>      (the user tells you an item is done)
 NOTE: #<id> | <words>      (a message to whoever holds the item, at any stage, even finishing or with the user to check: \
-Cue sends it and shows it on the item; the item stays as it is)
+Cue sends it and shows it on the item; the item stays as it is; an item on another Desk takes it too)
 ANSWER: #<id> | <a choice's number, or your words>      (when Cue brings you an item holder's question about clearing \
 the way for its landing (leftover edits, stray copies): answer it yourself; Cue gives your answer to it as the user's. \
 Also for an item waiting on the user with its holder's question, when you know the answer: it goes to the holder, and \

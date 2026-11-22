@@ -53,7 +53,7 @@ desk_asked.rs, desk_install.rs, desk_main_line.rs). The line drops the prefix an
 teammate's "not done" after a failed finish is the same line as above.
 | Open again | A later commit on main took its work back out | desk_finish.rs | Asked X · #id open again: “Commit … took its work back out” |
 | Pick up where you left off | Start on an item that stopped before done | desk_act.rs | Asked X · #id pick up where it stopped |
-| Lead's note | The lead's NOTE:, or a ROUTE back with a why while finishing | desk_route.rs | Told X · #id the lead's note: “…” |
+| Lead's note | The lead's NOTE: (an item on any Desk; another Desk's lead is named), or a ROUTE back with a why while finishing | desk_route.rs | Told X · #id the lead's note: “…” |
 | Moved | The item went to another session | desk_route.rs `moved_words` | Told X · #id moved to Y: stop work on it |
 | Parked | PARK on a queued item | desk_unstick.rs | Told X · #id parked: off its list |
 | Paused | The lead's PAUSE | desk_unstick.rs `pause_words` | Asked X · #id paused (why): stop at a clean point |
@@ -67,7 +67,7 @@ teammate's "not done" after a failed finish is the same line as above.
 | Desk paused | The Desk is paused | desk_pause.rs `PAUSE_WORDS` | Asked X · the Desk is paused: stop at a safe point |
 | Desk resumed | The Desk resumes | desk_pause.rs | Told X · the Desk is resumed: carry on with #a, #b |
 | TO LEAD failed | Its TO LEAD: line didn't reach the lead | desk.rs | Told X · TO LEAD didn't reach the lead: “…” |
-| TO LEAD not sent | Its TO LEAD: named no item of its Desk | heard lines | Told X · TO LEAD not sent: “…” |
+| TO LEAD not sent | Its TO LEAD: named an item no Desk has, or none while it's on several Desks | heard lines | Told X · TO LEAD not sent: “…” |
 | Not a new item | Its ITEM: line was a fix of the item it's on | heard lines | Told X · #id not a new item: “title” stays here |
 | Several Desks | Its ITEM: could go to more than one Desk | heard lines | Told X · item not added: several Desks could take it |
 | Held steps answered | You answered its Ask-me-before steps held while away | desk_held.rs | Told X · held steps answered: 1 allowed, 1 refused |
