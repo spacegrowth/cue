@@ -645,6 +645,16 @@ function deskWaitsOn(i) {
     const show = f.log ? btn("log_all", deskFinLogOpen.has(i.id) ? "Hide the output" : "Show the output") : "";
     return box(q, deskSince(f.at), `<div class="dk-acts">${btn("fix_back", "Send back to fix", "primary")}${btn("rerun", "Run the landing again")}${show}</div>`);
   }
+  // Edits in the main folder already on its branch (#659): Clear and land, your one OK. Files that also hold another
+  // session's edits are named and left alone.
+  if (deskClearable(i)) {
+    const names = (l) => l.length === 1 ? l[0] : `${l.slice(0, -1).join(", ")} and ${l[l.length - 1]}`;
+    const one = f.clear.length === 1;
+    const text = `Leftover edits in the main folder are in its way. ${esc(names(f.clear))} already ${one ? "has" : "have"} this item's changes.`;
+    const keep = (f.clear_keep || []).map(([p, who]) => `${esc(p)} also has ${esc(who)}'s edits: left alone.`).join(" ");
+    const how = `Clear and land saves ${one ? "its" : "each file's"} diff to work/, sets ${one ? "it" : "them"} back to main, and lands it.`;
+    return box(text, deskSince(f.at), `${keep ? `<div class="dk-wo-s">${keep}</div>` : ""}<div class="dk-wo-s">${esc(how)}</div><div class="dk-acts">${btn("clear_land", "Clear and land", "primary")}${btn("fix_back", "Send back to fix")}</div>`);
+  }
   // A word that mustn't go in, a clash with the main line: its holder's to fix.
   if (f.step === "word" || f.step === "conflict") return box(q, deskSince(f.at), `<div class="dk-acts">${btn("fix_back", "Send back to fix", "primary")}</div>`);
   // Its branch couldn't be pushed or its pull request opened (it says why), or the pull request was closed unmerged.
