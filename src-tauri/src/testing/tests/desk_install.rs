@@ -479,7 +479,7 @@ fn after_an_install_main_ahead_of_the_shared_copy_is_offered_and_a_yes_pushes_it
     let mut w = World::new();
     let (dir, bare, project) = installed_with_shared_copy(&mut w, |_, _, _| {});
     let card = super::desk_remote::push_card(&w, &project).expect("offered");
-    assert!(card.to_string().contains("Main is 1 landing ahead of the shared copy. Push it?"), "{card}");
+    assert!(card.to_string().contains("Update from the shared copy, then upload 1 landing? Yes rebases main onto the newest on the shared copy, checks it for private words, then pushes."), "{card}");
     assert!(!same_main(&dir, &bare), "nothing pushed before your yes");
     super::desk_remote::answer(&w, card["id"].as_str().unwrap(), "Yes");
     assert!(same_main(&dir, &bare), "pushed");

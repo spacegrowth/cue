@@ -346,7 +346,7 @@ fn main_ahead_asks_to_push_before_an_item_starts_on_another_machine_and_a_yes_pu
     let w = World::new();
     let ((dir, bare, _, project, id, h), _ssh) = routed_there_with(&w, two_ahead);
     let card = push_card(&w, &project).expect("asked to push first");
-    assert!(card.to_string().contains("Main is 2 landings ahead of the shared copy; the other machine would start from old work. Push main first?"), "{card}");
+    assert!(card.to_string().contains("Update from the shared copy, then upload 2 landings before the other machine starts? Without them it starts from old work. Yes rebases main onto the newest on the shared copy, checks them for private words, then pushes."), "{card}");
     assert!(starts(&w, &h, &id).is_empty(), "held till you answer");
     assert!(!same_main(&dir, &bare));
     answer(&w, card["id"].as_str().unwrap(), "Yes");
@@ -374,7 +374,7 @@ fn words_typed_on_the_push_card_go_to_the_lead_and_the_card_stays_open() {
     assert!(starts(&w, &h, &id).is_empty(), "the start still waits on your Yes or No");
     let told: Vec<String> = w.hosted.sent().into_iter().filter(|(s, t)| *s == lead && t.contains("what does it mean? what do i do")).map(|(_, t)| t).collect();
     assert_eq!(told.len(), 1, "{told:?}");
-    assert!(told[0].starts_with("On Cue's question in your chat (\"Main is 2 landings ahead") && told[0].contains("Cue took neither"), "{}", told[0]);
+    assert!(told[0].starts_with("On Cue's question in your chat (\"Update from the shared copy, then upload 2 landings") && told[0].contains("Cue took neither"), "{}", told[0]);
     // Typed in the card's reply box instead: the same.
     w.hub().reply(&cid, "and if I say no?", &[]).unwrap();
     w.settle();
