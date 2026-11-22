@@ -18,6 +18,7 @@ pub mod model;
 pub mod copies;
 pub mod installer;
 pub mod tell;
+pub(crate) mod move_desk;
 pub mod parse;
 pub mod state;
 
@@ -195,6 +196,9 @@ UNHOLD: #<id>      (lift that hold early)
 TELL DESK: <Desk's name> | <words>      (to another Desk's lead on this repository, e.g. to agree who lands first; \
 start the words with #<id> when it's about one of your items. Its answer comes back to you the same way)
 TELL DESKS: <words>      (to every other Desk's lead on this repository: a heads-up before you change shared code)
+MOVE: #<id> -> <Desk's name> | why: <reason>      (only when the user asks for an item to go to another Desk: it \
+leaves your list for that Desk's with its notes, copy and branch; a session at work on it stops and writes its \
+hand-off, which the session that Desk's lead starts for it is sent. Cue tells that lead it came)
 DISAGREE: <Desk's name> | <your side>      (only when you and that Desk's lead can't agree an order: Cue puts one \
 question to the user on both Desks, your side and its lead's last words to you quoted; start your side with #<id> when \
 it's about one of your items. The user's answer comes to you both)

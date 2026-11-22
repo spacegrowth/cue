@@ -44,6 +44,7 @@ mod desk_lands;
 mod desk_branch;
 mod desk_pr;
 mod desk_land_moved;
+mod desk_move_desk;
 mod desk_moves;
 mod desk_unstick;
 mod desk_drop;

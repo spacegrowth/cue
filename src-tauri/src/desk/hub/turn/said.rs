@@ -126,6 +126,10 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, (repos, loop
             Line::Pause { on, why } => fx.pause.push((project.to_string(), on, name.clone(), lsid.to_string(), why)),
             Line::Pass { id, .. } => cleanup_said(st, project, &by, &id, None, now, fx, &mut answers),
             Line::Loop(d) => loop_said(st, project, &by, d, loops, now, fx, &mut answers),
+            Line::Move { id, to, why } => {
+                let id = new_or_canon(st, &id, last_new.as_deref());
+                answers.push(crate::desk::move_desk::move_said(st, project, &name, lsid, &id, &to, &why, now, fx));
+            }
             Line::Context { .. } | Line::Designs { .. } | Line::IfPicked { .. } | Line::ToLead { .. } | Line::Check { .. } | Line::NotDone { .. } => {}
         }
     }

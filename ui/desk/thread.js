@@ -152,7 +152,7 @@ const deskSaidHas = (i, line) => (i.said || []).some((r) => r.text.includes(line
 /** Whether `text` names item `id` as "#id" (not the start of a longer number or name), as the hub reads it. */
 const deskNames = (text, id) => new RegExp(`#${String(id).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w-])`).test(text || "");
 /** The lines that are the Desk's (DONE:, ITEM:, DECIDED: …), as the hub knows them (desk/hub/turn/heard.rs desk_line_start). */
-const DESK_LINE = /^(?:ITEM|ROUTE|ASK|DONE|CONTEXT|DESIGNS|TITLE|SEE|SPLIT|CUT|MERGE|NOTE|FEATURE|CLOSE|TAKE COPY|LAND FIRST|COPY FIRST|START|PARK|HOLD|UNPARK|DROP|PAUSE|RESUME|ANSWER|PASS|CHECK|LANDS|TO LEAD|[Dd][Ee][Cc][Ii][Dd][Ee][Dd])[*`]*\s*:/;
+const DESK_LINE = /^(?:ITEM|ROUTE|ASK|DONE|CONTEXT|DESIGNS|TITLE|SEE|SPLIT|CUT|MERGE|NOTE|FEATURE|CLOSE|TAKE COPY|LAND FIRST|COPY FIRST|START|PARK|HOLD|UNPARK|DROP|PAUSE|RESUME|ANSWER|PASS|CHECK|LANDS|TO LEAD|MOVE|[Dd][Ee][Cc][Ii][Dd][Ee][Dd])[*`]*\s*:/;
 /** A turn's words as its saved reply has them: without the Desk's own lines. */
 const deskUnmarked = (l) => l.trim().replace(/^`+/, "").replace(/^[-*+ ]+/, "").replace(/^\d+[.)]\s+[-*+ ]*/, "").replace(/^`+/, "");
 const deskSaidWords = (text) => String(text || "").split("\n").filter((l) => !DESK_LINE.test(deskUnmarked(l))).join("\n").trim();

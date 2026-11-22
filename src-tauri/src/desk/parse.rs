@@ -92,6 +92,9 @@ pub enum Line {
     /// rounds: … | time: … | spend: … | decisions: … | folder: …`. Cue finds the project's folder and shows it as a card with
     /// Start loop; nothing starts until you press it.
     Loop(LoopDraft),
+    /// The lead moving item `id` to another Desk, named `to` (#639, desk/move_desk.rs): `MOVE: #<id> -> <Desk> | why: …`.
+    /// It goes with its notes, copy and branch, and its holder's hand-off.
+    Move { id: String, to: String, why: String },
 }
 
 /// What a LOOP: line says (#583). A part with no label of its own goes on the one before it, so a goal or a check
@@ -238,6 +241,7 @@ fn one(t: &str) -> Option<Line> {
         "TO LEAD" => to_lead(body),
         "COPY" => copy(body),
         "LOOP" => loop_line(body),
+        "MOVE" => crate::desk::move_desk::parse(body),
         _ => None,
     }
 }
