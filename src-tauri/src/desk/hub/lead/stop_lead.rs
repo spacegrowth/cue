@@ -107,13 +107,9 @@ impl Hub {
         })
     }
 
-    /// A merge into the main checkout refused (`question`): when edits there were in its way, its plain line names
-    /// who made them.
-    pub(crate) fn main_edits_named(&self, it: &DeskItem, main: &str, question: &str) -> String {
-        let (plain, said) = plain_and_said(question);
-        let Some(files) = edits_of(&plain) else { return question.to_string() };
-        // Logs name files as their session's folder is spelled (a link like /var for /private/var kept): each spelling
-        // of the main checkout a session here uses.
+    /// Each spelling of main checkout `main` a session here uses: logs name files as their session's folder is spelled
+    /// (a link like /var for /private/var kept).
+    pub(crate) fn spellings_of(&self, main: &str) -> Vec<String> {
         let real = |p: &str| std::fs::canonicalize(p).map(|c| c.to_string_lossy().to_string()).unwrap_or_else(|_| p.to_string());
         let target = real(main);
         let mut spellings: Vec<String> = vec![main.trim_end_matches('/').to_string()];
@@ -124,6 +120,15 @@ impl Hub {
                 spellings.push(c);
             }
         }
+        spellings
+    }
+
+    /// A merge into the main checkout refused (`question`): when edits there were in its way, its plain line names
+    /// who made them.
+    pub(crate) fn main_edits_named(&self, it: &DeskItem, main: &str, question: &str) -> String {
+        let (plain, said) = plain_and_said(question);
+        let Some(files) = edits_of(&plain) else { return question.to_string() };
+        let spellings = self.spellings_of(main);
         let abs: Vec<String> = spellings.iter().flat_map(|m| files.iter().map(move |f| format!("{m}/{f}"))).collect();
         because_plain(edits_line(&files, &self.who_changed(it, &abs)), &said)
     }

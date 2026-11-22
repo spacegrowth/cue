@@ -147,6 +147,9 @@ const deskFinCommit = (i) => (i?.finish ? i.finish.commit || i.commit || "" : ""
 const deskUncommitted = (i) => i?.state === "to_check" && !i.finish && !i.commit && (i.files || []).length > 0;
 /** Item `i`'s DONE on its way into the app: Cue commits, builds and installs it. Nothing for you to do yet. */
 const deskFinishing = (i) => i?.state === "finishing";
+/** Item `i` stopped landing on edits in the main folder already on its own branch (#659): Clear and land sets them
+ *  back to main (each one's diff saved to work/) and lands it. */
+const deskClearable = (i) => (i?.state === "finishing" || i?.state === "needs_you") && !!i.finish?.question && (i.finish?.clear || []).length > 0;
 /** Whether a landing-line wait is for another Desk's hold on files the item changed (desk/hold_check.rs): its words
  *  are a whole line already. */
 const deskHoldWait = (w) => /^Waits for /.test(w || "");

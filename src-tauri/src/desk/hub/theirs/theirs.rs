@@ -238,8 +238,22 @@ impl Hub {
 
 impl Hub {
     /// Of `files` (relative to `folder`), those another session (not `it`'s own) has a change in now: (path, who), who
-    /// "someone else" when Cue only guesses it.
+    /// "someone else" when Cue only guesses it. Read under each spelling of `folder` a session uses (a link like /var
+    /// for /private/var kept: logs name files as their session's folder is spelled, #659).
     pub(crate) fn others_in(&self, it: &DeskItem, folder: &str, files: &[String]) -> Vec<(String, String)> {
+        let mut out: Vec<(String, String)> = Vec::new();
+        for f in self.spellings_of(folder) {
+            for (p, who) in self.others_in_spelled(it, &f, files) {
+                if !out.iter().any(|(q, _)| *q == p) {
+                    out.push((p, who));
+                }
+            }
+        }
+        out
+    }
+
+    /// `others_in` for one spelling of `folder`.
+    fn others_in_spelled(&self, it: &DeskItem, folder: &str, files: &[String]) -> Vec<(String, String)> {
         let abs = |p: &str| format!("{}/{p}", folder.trim_end_matches('/'));
         let wanted: Vec<String> = files.iter().map(|p| abs(p)).collect();
         let theirs = self.theirs(it, &wanted);
