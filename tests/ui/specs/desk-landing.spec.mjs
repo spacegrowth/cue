@@ -146,3 +146,26 @@ test("Kept copies lists a dropped item's copy with its work; Remove takes two cl
   // No colored left edge on the row.
   await expect(kept).toHaveCSS("border-left-width", "0px");
 });
+
+test("a landing stopped on leftover edits already on its branch says so and offers Clear and land, one OK (#659)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  const row = page.locator('.dk-items [data-desk-item="d5"]');
+  await patchItem(cue, "d5", { state: "finishing", stopped: true, tree: tree("d5"), finish: { step: "conflict", at: Date.now(), lead: true, question: "Not merged: the main checkout has edits of its own in a.txt, ui/b.js, c.txt that aren't committed", clear: ["a.txt", "ui/b.js"], clear_keep: [["c.txt", "tidier"]], clear_in: "/r/cue", clear_sha: "abc1234" } });
+  // Its row: what stopped it in plain words, and the button.
+  await expect(row.locator(".dk-who")).toHaveText("stopped · leftover edits in the main folder");
+  await expect(row.locator('[data-desk-act="clear_land"]')).toHaveText("Clear and land");
+  const pane = await openItem(page, "d5");
+  const box = pane.locator(".dk-wo");
+  await expect(box.locator(".dk-wo-t")).toHaveText("Leftover edits in the main folder are in its way. a.txt and ui/b.js already have this item's changes.");
+  await expect(box).toContainText("c.txt also has tidier's edits: left alone.");
+  await expect(box).toContainText("Clear and land saves each file's diff to work/, sets them back to main, and lands it.");
+  const btn = box.locator('[data-desk-act="clear_land"]');
+  await expect(btn).toHaveText("Clear and land");
+  await expect(btn).toHaveClass(/primary/);
+  // No hover text on it.
+  await expect(btn).not.toHaveAttribute("title", /./);
+  if (process.env.SHOT_DIR) for (const c of ["light", "dark"]) { await page.emulateMedia({ colorScheme: c }); await page.waitForTimeout(150); await page.screenshot({ clip: await box.boundingBox(), path: `${process.env.SHOT_DIR}/cue-clear-land-${c}.png` }); }
+  await btn.click();
+  await cue.called("desk_item_act", { id: "d5", act: "clear_land" });
+});

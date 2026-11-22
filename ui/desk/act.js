@@ -284,6 +284,7 @@ async function deskAct(id, act, el = null) {
     if (act === "drop") deskOpen = null;
     // A plain retry that stopped once more: what stopped it this time, in git's own words when it said any.
     if (act === "rerun" && it?.finish?.question) toast(`Stopped again. ${it.finish.question}`, 8000);
+    if (act === "clear_land" && it?.finish?.question) toast(`Cleared, and it stopped again. ${it.finish.question}`, 8000);
   }
   catch (e) { toast(String(e), 5000); }
   renderMain();
