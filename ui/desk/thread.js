@@ -446,9 +446,11 @@ function deskNotStarted(i) {
   const first = i.after && deskItemAny(i.project, i.after);
   let t, sub = "", next;
   if (i.state === "queued" && i.tree_wait) {
-    const by = (i.copy_users || []).map((x) => link(x, deskItem(i.project, x)));
-    t = `${i.back_waiting ? "Sent back. It waits" : "It waits"} for a free working folder.`;
-    sub = by.length ? `In use by ${by.length > 1 ? `${by.slice(0, -1).join(", ")} and ${by.at(-1)}` : by[0]}.` : "";
+    // One short line (#671): how many hold the working folders; their titles only once you open the fold.
+    const by = (i.copy_users || []).map((x) => `<li>${link(x, deskItem(i.project, x))}</li>`), n = by.length;
+    const wait = n > 1 ? `Waiting for one of ${n} items to finish.` : n ? "Waiting for an item to finish." : "Waiting for a free working folder.";
+    t = `${i.back_waiting ? "Sent back. " : ""}${wait}`;
+    sub = n ? `<details class="dk-ns-by"><summary>${n > 1 ? "Show which" : "Show which one"}</summary><ul>${by.join("")}</ul></details>` : "";
     next = "It starts by itself when one is free.";
   } else if (i.after) {
     const on = first ? `${first.project !== i.project ? `${esc(deskAfterName(i))} · ` : ""}${link(first.id, first)}` : esc(deskAfterName(i));
@@ -462,7 +464,7 @@ function deskNotStarted(i) {
     t = busy ? `It's next for ${who}, after what it's on now.` : `It's next for ${who}.`;
     next = busy ? `${who} starts on it when that's done.` : `${who} starts on it when it's free.`;
   }
-  const go = `<button class="btn small primary" data-desk-act="start_now" data-id="${esc(i.id)}">${i.holder ? "Start now" : "Start now in a new session"}</button>`;
+  const go = `<button class="btn small" data-desk-act="start_now" data-id="${esc(i.id)}">${i.holder ? "Start now" : "Start now in a new session"}</button>`;
   return `<div class="dk-ns" role="status"><div class="dk-ns-h">${deskStateIcon(i)}<span>Not started yet</span></div><div class="dk-ns-t">${t}</div>${sub ? `<div class="dk-ns-s">${sub}</div>` : ""}<div class="dk-ns-n">${next}</div><div class="dk-ns-a">${go}</div></div>`;
 }
 /** Item `i`'s panel, beside its chat on its page (#418): This item (its state, what
