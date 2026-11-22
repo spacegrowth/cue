@@ -92,6 +92,32 @@ test("Desk: a dot on a Desk that waits on you; the Desks menu lists every Desk w
   await expect.poll(() => page.evaluate(() => window.__set)).toBe("website");
 });
 
+test("the Desks menu: a long Desk name stops before its count, fades at its end and slides only while its row is lit (#240)", async ({ cue, page }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.change((st) => { st.desk.projects.find((d) => d.project === "website").name = "Website launch checklist and the whole pricing page redo, start to end"; });
+  await page.locator('.top [data-hv-menu="desks"]').click();
+  const menu = page.locator(".top .hv-menu"), long = menu.locator('.hv-row[data-hv-desk="website"]');
+  // The menu doesn't grow to the name: it stops at 360px.
+  expect((await menu.boundingBox()).width).toBeLessThanOrEqual(360);
+  const fit = await long.evaluate((r) => {
+    const nm = r.querySelector(".hv-rn"), rs = r.querySelector(".hv-rs");
+    return { right: nm.getBoundingClientRect().right, rs: rs.getBoundingClientRect().left, rsFits: rs.scrollWidth <= rs.clientWidth, over: nm.firstElementChild.scrollWidth > nm.clientWidth, mask: getComputedStyle(nm).maskImage || getComputedStyle(nm).webkitMaskImage };
+  });
+  expect(fit.right).toBeLessThanOrEqual(fit.rs);   // never over the count
+  expect(fit.rsFits).toBe(true);                   // and the count is never squeezed
+  expect(fit.over).toBe(true);
+  expect(fit.mask).toContain("gradient");
+  // (Tests run with animations off: the slide's rule is there, and it takes the name only while its row is lit.)
+  expect(await page.evaluate(() => [...document.styleSheets].some((sh) => { try { return [...sh.cssRules].some((r) => r.cssText?.includes("hv-rn-slide") && r.selectorText?.includes(".at")); } catch { return false; } }))).toBe(true);
+  const slides = () => long.locator(".hv-rn > span").evaluate((el) => el.matches(".hv-row:is(.at, :hover) .hv-rn > span"));
+  await page.mouse.move(0, 0);
+  expect(await slides()).toBe(await long.evaluate((r) => r.classList.contains("at")));
+  await long.hover();
+  expect(await slides()).toBe(true);
+  expect(await menu.locator("[title]").count()).toBe(0);
+});
+
 test("Inbox: Show filters the list to one project, each with how many need you; All shows every one", async ({ cue, page }) => {
   await cue.open("desk-inbox");
   await goView(page, "inbox");

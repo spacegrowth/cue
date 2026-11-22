@@ -26,8 +26,17 @@
 .hv-row.on { background: var(--panel-2); font-weight: 700; }
 .hv-row .hv-dot { opacity: 1; background: var(--ink); }
 .hv-row .hv-dot.ask { background: var(--amber); }
-.hv-rn { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.hv-rs { margin-left: auto; padding-left: 16px; color: var(--muted); font-size: var(--type-small); font-weight: 500; }
+/* A Desk's name takes the row's room up to its count, never over it (#240). Too long: its end fades (the fade lies over
+   18px of padding, so a name that fits is never faded), and while its row is lit (keys or pointer) it slides left to
+   show the rest, back and forth; unlit, it's back at its start. 100cqw is the room, 100% the name's own width. The menu
+   stops at 360px so a long name fades instead of widening it. */
+.hv-menu:has(.hv-rn) { max-width: min(360px, calc(100vw - 32px)); }
+.hv-rn { flex: 1 1 auto; min-width: 0; overflow: hidden; container-type: inline-size; -webkit-mask-image: linear-gradient(to left, transparent, #000 18px); mask-image: linear-gradient(to left, transparent, #000 18px); }
+.hv-rn > span { display: inline-block; padding-right: 18px; }
+.hv-row:is(.at, :hover) .hv-rn > span { animation: hv-rn-slide 5s ease-in-out .6s infinite alternate; }
+@keyframes hv-rn-slide { 0%, 15% { transform: none; } 85%, 100% { transform: translateX(min(0px, calc(100cqw - 100%))); } }
+@media (prefers-reduced-motion: reduce) { .hv-row:is(.at, :hover) .hv-rn > span { animation: none; } }
+.hv-rs { flex: none; margin-left: auto; padding-left: 16px; color: var(--muted); font-size: var(--type-small); font-weight: 500; }
 .hv-sep { margin: 4px 6px; border-top: 1px solid var(--line); }
 
 /* The Desks menu's find box, the current Desk's tick, and the line when nothing matches. */
