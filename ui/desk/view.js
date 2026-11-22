@@ -127,7 +127,7 @@ function deskOpenCard(project, taskApprovals) {
  *  question's card or the box at the foot. */
 function deskB2ItemFull(i, d, foot) {
   const at = deskB2At(i);
-  const bar = DESK_B2_STEPS.map((n, k) => `<div class="dk2b-step ${k < at ? "done" : k === at ? "cur" : ""}"><i></i><span>${esc(n)}</span></div>`).join("");
+  const bar = DESK_B2_STEPS.map((n, k) => `<div class="dk2b-step ${deskB2StepCls(i, at, k)}"><i></i><span>${esc(n)}</span></div>`).join("");
   const sid = deskHolderSid(i), s = sid ? sessionOf(sid) : null;
   const since = s && i.state === "working" ? deskProgStamps(i)[0] || s.since_ms || 0 : 0;
   // The model its new session was started on, when not Claude Code's own pick (#620): the old row's tag.

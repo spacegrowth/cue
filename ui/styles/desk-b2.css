@@ -100,6 +100,10 @@
 .dk2b-wrow .dk2b-trk i { flex: none; width: 12px; height: 4px; }
 .dk2b-trk i.done { background: var(--accent); }
 .dk2b-trk i.cur { background: repeating-linear-gradient(90deg, var(--accent) 0 4px, var(--line) 4px 7px); }
+/* While a session works on it right now (#729), the current step's dots drift gently along; still otherwise. */
+:is(.dk2b-trk i.cur.live, .dk2b-step.cur.live i) { background-size: 7px 100%; animation: dk2b-drift 1.4s linear infinite; }
+@keyframes dk2b-drift { to { background-position: 7px 0; } }
+@media (prefers-reduced-motion: reduce) { :is(.dk2b-trk i.cur.live, .dk2b-step.cur.live i) { animation: none; } }
 .dk2b-row.on .dk2b-trk i:not(.done):not(.cur), .dk2b-wrow.on .dk2b-trk i:not(.done):not(.cur) { background: color-mix(in srgb, var(--on-sel) 25%, transparent); }
 
 /* ---------- an item's page, on the left in the lead's chat's place ---------- */

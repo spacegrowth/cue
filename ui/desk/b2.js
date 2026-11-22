@@ -96,10 +96,18 @@ function deskB2At(i) {
   if (deskFinishing(i)) return Math.max(at, 3);
   return i.state === "working" ? Math.max(at, 1) : at;
 }
+/** The class for step `k` of an item at step `at`: done, cur (dotted; its dots move while a session works on it right
+ *  now, #729: not while it waits its turn, on you, or to be checked), or none. */
+const deskB2StepCls = (i, at, k) => (k < at ? "done" : k === at ? (deskProgLook(i) === "work" ? "cur live" : "cur") : "");
+/** After a draw (app/render.js replayMotion): every moving step's dots keep time with the page's clock, so a step drawn
+ *  afresh carries on where it was, never starting over, and a kept one stays as it runs. */
+function deskB2Drift() {
+  for (const el of document.querySelectorAll(".dk2b-trk i.cur.live, .dk2b-step.cur.live i")) for (const a of el.getAnimations?.() || []) if (a.startTime !== 0) a.startTime = 0;
+}
 /** An item's six steps as six short bars: done filled, the one it's at dotted, the rest faint. */
 function deskB2Track(i) {
   const at = deskB2At(i);
-  return `<span class="dk2b-trk" aria-hidden="true">${DESK_B2_STEPS.map((_, k) => `<i class="${k < at ? "done" : k === at ? "cur" : ""}"></i>`).join("")}</span>`;
+  return `<span class="dk2b-trk" aria-hidden="true">${DESK_B2_STEPS.map((_, k) => `<i class="${deskB2StepCls(i, at, k)}"></i>`).join("")}</span>`;
 }
 /** Under the bar: "3/6 · Tests", or "not started". */
 const deskB2StepWord = (i) => { const at = deskB2At(i); return at < 0 ? "not started" : at >= 6 ? "6/6 · Done" : `${at + 1}/6 · ${DESK_B2_STEPS[at]}`; };
@@ -262,7 +270,7 @@ function deskB2List(project, taskApprovals) {
  *  and Changes. Its question's card, or the box, at its foot. */
 function deskB2ItemPage(i, d, foot) {
   const at = deskB2At(i);
-  const bar = DESK_B2_STEPS.map((n, k) => `<div class="dk2b-step ${k < at ? "done" : k === at ? "cur" : ""}"><i></i><span>${esc(n)}</span></div>`).join("");
+  const bar = DESK_B2_STEPS.map((n, k) => `<div class="dk2b-step ${deskB2StepCls(i, at, k)}"><i></i><span>${esc(n)}</span></div>`).join("");
   const sid = deskHolderSid(i), s = sid ? sessionOf(sid) : null;
   const since = s && i.state === "working" ? deskProgStamps(i)[0] || s.since_ms || 0 : 0;
   const who = i.holder ? `<b>${esc(deskHolderOf(i))}</b>${since ? ` · working for <span data-ago="${since}">${ago(since)}</span>` : ""}` : "Nobody has it yet";
