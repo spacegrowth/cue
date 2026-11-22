@@ -7,7 +7,10 @@ const firstLabelAfterScroll = (page, scroller) => page.evaluate((s) => {
   const box = document.querySelector(s);
   box.scrollTop = 60;
   const sub = box.querySelector(".sec-body > .col-sub");
-  return { scrolled: box.scrollTop, gap: Math.round(sub.getBoundingClientRect().top - box.getBoundingClientRect().top) };
+  const [b, l] = [box.getBoundingClientRect(), sub.getBoundingClientRect()];
+  // Its band reaches both edges of the column, so no strip of a card passing under it shows beside it.
+  const covers = l.left <= b.left + 0.5 && l.right >= b.right - 0.5;
+  return { scrolled: box.scrollTop, gap: Math.round(l.top - b.top), covers };
 }, scroller);
 
 test("the Waiting and Sessions group labels stay at the top as their lists scroll", async ({ cue, page }) => {
@@ -17,7 +20,9 @@ test("the Waiting and Sessions group labels stay at the top as their lists scrol
   const w = await firstLabelAfterScroll(page, ".col.split.col-waiting");
   expect(w.scrolled).toBe(60);
   expect(Math.abs(w.gap)).toBeLessThanOrEqual(1);
+  expect(w.covers, "Waiting's label spans the column edge to edge").toBe(true);
   const s = await firstLabelAfterScroll(page, ".sec-sessions > .sec-body");
   expect(s.scrolled).toBe(60);
   expect(Math.abs(s.gap)).toBeLessThanOrEqual(1);
+  expect(s.covers, "Sessions' label spans the column edge to edge").toBe(true);
 });
