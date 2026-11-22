@@ -5,7 +5,7 @@
 .rail-col { justify-content: flex-start; }
 .rail { display: flex; flex-direction: column; gap: 24px; align-items: flex-start; }
 .pin { color: var(--on-bg-muted); cursor: pointer; border-left: 1px solid color-mix(in srgb, var(--on-bg) 16%, transparent); padding-left: 10px; }
-.pin .vt { writing-mode: vertical-rl; transform: rotate(180deg); font-size: var(--type-pill); font-weight: 650; white-space: nowrap; color: var(--on-bg-muted); }
+.pin .vt { writing-mode: vertical-rl; transform: rotate(180deg); font-size: var(--type-pill); font-weight: 700; letter-spacing: .08em; white-space: nowrap; color: var(--on-bg-muted); }
 @keyframes bubble-vt {
   0%   { transform: rotate(180deg) scale(1); }
   30%  { transform: rotate(180deg) scale(1.35); color: var(--sel); }

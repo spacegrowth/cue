@@ -85,7 +85,7 @@ async function unparkSession(sid) {
   if (active?.sid === sid) active = null;
   toast("Unparked: its conversation is still in History");
 }
-/** The last drawer (below Recently answered), headed "▸ Parked 8 · Closed 30": each word opens its list,
+/** The last drawer (below Recently answered), headed "▸ PARKED 8 · CLOSED 30": each word opens its list,
  *  Parked (the latest parked first) or Closed (what ended in the last 30 days, at most 30, to find the
  *  ones that got lost). One slim line per session; a list too long for its room ends on "N more". */
 const pkTab = () => { try { return localStorage.getItem("cue.pkTab") === "closed" ? "closed" : "parked"; } catch { return "parked"; } };

@@ -16,7 +16,7 @@ body.mini { overflow: hidden; font-size: var(--type-body); }
 .m-dot.ask { background: var(--deny-bright); }
 .m-dot.work { background: var(--work); }
 .m-dot.idle { background: var(--line); }
-.m-tag { font: 600 var(--type-pill) var(--sans); border-radius: var(--radius-pill); padding: 2px 7px; white-space: nowrap; }
+.m-tag { font: 600 var(--type-tag) var(--mono); letter-spacing: .12em; border-radius: var(--radius-pill); padding: 2px 7px; white-space: nowrap; }
 .m-tag.turn { background: var(--sel); color: var(--on-sel); }
 .m-tag.ask { background: var(--deny); color: var(--white); }
 .m-tag.work { background: var(--panel-2); color: var(--muted); }

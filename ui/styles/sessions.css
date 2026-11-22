@@ -108,7 +108,7 @@
 .hrow.nested .hwho { border-left: 2px solid var(--line); height: 100%; margin-left: 14px; }
 .hgroup + .hrow, .hsrow + .hrow.nested { border-top: 0; }
 .hrow .age, .hhead span:last-child { white-space: nowrap; text-align: right; }
-.sr-sec { padding: 10px 10px 4px; font-size: var(--type-pill); font-weight: 650; color: var(--muted); }
+.sr-sec { padding: 10px 10px 4px; font-size: var(--type-tag); font-weight: 700; letter-spacing: 0.1em; color: var(--muted); }
 .sr-sec span { letter-spacing: 0; font-weight: 600; opacity: 0.8; }
 .sr-sec ~ .sr-sec { margin-top: 6px; border-top: 1px solid var(--line); }
 
@@ -192,7 +192,7 @@
 .nf-pdrop .nf-dopt { display: flex; align-items: center; gap: 6px; font: inherit; font-size: var(--type-body); }
 .nf-pdrop .nf-dopt .nf-hint { margin-left: auto; }
 .nf-hint { font-size: var(--type-pill); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.nf-k { font-size: var(--type-pill); font-weight: 650; color: var(--muted); }
+.nf-k { font-size: var(--type-tag); font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
 .nf-row.top .nf-k { padding-top: 7px; }
 .nf-in { width: 100%; border: 0; border-radius: var(--radius-btn); padding: 6px 9px; background: var(--panel); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); font: 500 var(--type-body) var(--sans); outline: none; resize: vertical; }
 .nf-in.mono { font: var(--type-small) var(--mono); }
@@ -294,7 +294,7 @@
 .more-menu button.armed { color: var(--deny); }
 .proj-move button { flex-direction: row; align-items: center; gap: 8px; flex-wrap: wrap; }
 .proj-move button span { flex-basis: 100%; padding-left: 16px; margin-top: -2px; }
-.pm-title { font-size: var(--type-pill); font-weight: 650; color: var(--muted); padding: 6px 10px 4px; }
+.pm-title { font-size: var(--type-pill); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 6px 10px 4px; }
 .pm-note { font-size: var(--type-small); color: var(--muted); padding: 0 10px 6px; }
 .more-menu button.pm-add { color: var(--muted); font-weight: 600; }
 .pm-new { padding: 4px 6px 2px; }
@@ -362,7 +362,7 @@
 .shelf-head .fold-arrow { color: inherit; padding: 0 2px 0 0; }
 .shelf-word { font: inherit; letter-spacing: inherit; color: var(--on-bg-muted); }
 .shelf-word:hover, .shelf-word.on { color: var(--on-bg); }
-.shelf-word span { color: var(--on-bg-muted); font-weight: 600; }
+.shelf-word span { color: var(--on-bg-muted); font-weight: 600; letter-spacing: 0.02em; }
 .shelf-sep { color: var(--on-bg-muted); }
 .sec-parked .sec-body { gap: 2px; max-height: 322px; }   /* ten lines (30px + 2px gap each); the rest scroll, under "N more" */
 
@@ -370,8 +370,8 @@
    the heading stays at the top while its section scrolls under it. */
 .sx-sec + .sx-sec { margin-top: 22px; }
 .sx-sec.shut + .sx-sec { margin-top: 4px; }
-.sx-sec-h { position: sticky; top: 0; z-index: 2; background: var(--bg); display: flex; align-items: baseline; gap: 8px; padding: 2px 2px 9px; font-size: var(--type-pill); font-weight: 650; color: var(--on-bg); }
-.sx-sec-h > span { color: var(--on-bg-muted); font-weight: 600; text-transform: none; }
+.sx-sec-h { position: sticky; top: 0; z-index: 2; background: var(--bg); display: flex; align-items: baseline; gap: 8px; padding: 2px 2px 9px; font-size: var(--type-pill); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--on-bg); }
+.sx-sec-h > span { color: var(--on-bg-muted); font-weight: 600; letter-spacing: 0.02em; text-transform: none; }
 .sx-sec-fold { display: inline-flex; align-items: baseline; gap: 6px; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; padding: 0; }
 .sx-sec-fold:hover { opacity: 0.8; }
 .sx-arrow { width: 9px; font-size: var(--type-tag); color: var(--on-bg-muted); }

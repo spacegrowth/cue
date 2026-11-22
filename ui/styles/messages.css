@@ -31,7 +31,7 @@
 .mg-to { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mg-tag {
   flex: none; padding: 1px 7px; border-radius: var(--radius-pill); background: var(--panel); color: var(--muted);
-  font: 600 var(--type-pill) var(--sans); white-space: nowrap;
+  font: 600 var(--type-tag) var(--mono); letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap;
 }
 .mg-age { flex: none; margin-left: auto; font: var(--type-pill) var(--mono); color: var(--muted); white-space: nowrap; }
 /* An item's number: the same chip everywhere (head row, a line, a plain line); a button when it opens the item. */

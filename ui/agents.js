@@ -109,7 +109,7 @@ function agentTray(sid) {
   const { rows, more } = agentTrayRows(agentsOf(sid).filter((a) => !mates.has(a.id)));
   const scripts = helpersOf(sid).filter((h) => h.script && helperRunning(h)).sort((a, b) => a.started_ms - b.started_ms).map((h) => bgRow(sid, h)).join("");
   if (!rows.length && !scripts) return "";
-  const head = rows.length ? `<div class="ag-head" data-key="ag-head"><span>Agents</span><span class="grow"></span>${more ? `<button class="ag-more" data-bg-tab="agents" data-sid="${esc(sid)}">${more} more · Agents ›</button>` : ""}</div>` : "";
+  const head = rows.length ? `<div class="ag-head" data-key="ag-head"><span>AGENTS</span><span class="grow"></span>${more ? `<button class="ag-more" data-bg-tab="agents" data-sid="${esc(sid)}">${more} more · Agents ›</button>` : ""}</div>` : "";
   return `<div class="bg-rows" data-key="bg-rows">${head}${rows.map((a) => agentRow(a)).join("")}${scripts}</div>`;
 }
 /** The Agents tab's page: every agent of the session, any kind, grouped (needs you, working, done), with clock times
@@ -117,7 +117,7 @@ function agentTray(sid) {
 function agentsPage(sid, helpers) {
   const g = agentGroups(agentsOf(sid, helpers));
   const part = (label, list) => list.length ? `<div class="ag-group">${label}</div>${list.map((a) => agentRow(a, true)).join("")}` : "";
-  return part("Needs you", g.needs) + part("Working", g.working) + part("Done", g.done);
+  return part("NEEDS YOU", g.needs) + part("WORKING", g.working) + part("DONE", g.done);
 }
 /** On the title line: a chip for each agent that needs you ("<name> needs you"), then "N agents ›", which opens the
  *  Agents tab. */
@@ -142,5 +142,5 @@ function agentPill(sid) {
 function agentHead(a, back) {
   const forName = nameOf(a.sid, sessionOf(a.sid)?.project);
   const st = a.state === "needs" || agentLive(a) ? `<span class="pill soft ${AGENT_CLS[a.state]}">${agentLive(a) ? `<span class="dot-live ${a.state === "stuck" ? "stuck" : ""}"></span>` : ""}${AGENT_WORDS[a.state]}</span>` : `<span class="dim">${AGENT_WORDS[a.state]}</span>`;
-  return `<div class="bg-view-head ag-view-head" data-key="head">${back}${agentMark(a)}<b class="ag-view-name">${esc(a.name)}</b><span class="role ag-kind">${esc(a.type[0].toUpperCase() + a.type.slice(1))}</span>${st}<button class="tm-chip" data-helper-back="1"><span class="tm-n">for ${esc(forName)}</span> <span class="tm-sub">›</span></button></div>`;
+  return `<div class="bg-view-head ag-view-head" data-key="head">${back}${agentMark(a)}<b class="ag-view-name">${esc(a.name)}</b><span class="role ag-kind">${esc(a.type.toUpperCase())}</span>${st}<button class="tm-chip" data-helper-back="1"><span class="tm-n">for ${esc(forName)}</span> <span class="tm-sub">›</span></button></div>`;
 }

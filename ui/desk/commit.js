@@ -125,6 +125,6 @@ function deskCheckLine(c, d) {
   }
   const open = `data-desk-chk-item="${esc(c.id)}"`;
   const wait = deskChkUninstalled(c) && !deskFinCommit(d && deskItem(d.project, c.id));
-  return deskMg({ kind: "check", cue: true, who: "Cue", tag: wait ? "Waiting for install" : "Ready to check", id: deskMgId(c.id, c, deskNum(c)), age: c.at,
+  return deskMg({ kind: "check", cue: true, who: "Cue", tag: wait ? "WAITING FOR INSTALL" : "READY TO CHECK", id: deskMgId(c.id, c, deskNum(c)), age: c.at,
     body: `<div class="mg-t">${esc(c.title || "")}</div>`, foot: `<span class="mg-acts"><button class="mg-lk" ${open}>Check it ›</button></span>` });
 }

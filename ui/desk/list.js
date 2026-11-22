@@ -220,15 +220,15 @@ function deskGroups(project, taskApprovals) {
 function deskTag(i) {
   // An ask carries no tag: its question, boxed under the title, says it.
   // In a circle of waits (#250): none of it can move till a link is cut.
-  if (deskCircleOf(i)) return ["Circle", "ask"];
+  if (deskCircleOf(i)) return ["circle", "ask"];
   if (i.state === "needs_you") return ["", "ask"];
   if (deskInstallWait(i)) return ["", ""];
   if (i.state === "to_check") return deskLanded(i) ? ["", "landed"] : ["", "check"];
   // Its new session wouldn't start (#172): says so, its page has why and Retry.
-  if ((i.state === "new" || i.state === "queued") && !i.holder && i.start_failed) return ["Couldn't start", "ask"];
-  if ((i.state === "new" || i.state === "queued") && i.route_failed) return ["Stuck", "ask"];
+  if ((i.state === "new" || i.state === "queued") && !i.holder && i.start_failed) return ["couldn't start", "ask"];
+  if ((i.state === "new" || i.state === "queued") && i.route_failed) return ["stuck", "ask"];
   // Parked (#391): a quiet tag, so the row says it on its own too.
-  if (i.state === "held") return ["Parked", ""];
+  if (i.state === "held") return ["parked", ""];
   return ["", i.state === "done" ? "done" : ""];
 }
 /** Where an item stands, as its row's icon: waiting on you (an ask, or back to check), in progress, queued (also

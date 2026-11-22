@@ -95,7 +95,7 @@ world.items = [];
 
 // The Agents tab: grouped.
 h = ctx.agentsPage("L", world.helpers.L);
-assert.ok(h.indexOf(">Working") < h.indexOf(">Done"), "grouped Working then Done");
+assert.ok(h.indexOf("WORKING") < h.indexOf("DONE"), "grouped Working then Done");
 assert.ok(h.includes("68000 tokens"), "tokens in the tab");
 
 // More than four at work: four rows, then "N more · Agents ›".
@@ -107,7 +107,7 @@ assert.ok(h.includes("1 more · Agents ›"), "then how many more");
 // One agent's view: the same head for every kind.
 const a = ctx.agentsOf("L").find((x) => x.id === "x0");
 h = ctx.agentHead(a, "<back>");
-assert.ok(h.startsWith('<div class="bg-view-head ag-view-head"') && h.includes("<back>") && h.includes("job 0") && h.includes(">Agent<") && h.includes("working") && h.includes("for L"), "‹ Back · mark · name · kind · state · for <session>");
+assert.ok(h.startsWith('<div class="bg-view-head ag-view-head"') && h.includes("<back>") && h.includes("job 0") && h.includes(">AGENT<") && h.includes("working") && h.includes("for L"), "‹ Back · mark · name · kind · state · for <session>");
 console.log("agents ok");
 
 // ---- a hosted lead's crew is in its strip, never also in its agents ----

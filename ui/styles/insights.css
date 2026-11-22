@@ -97,7 +97,7 @@ button.ins-n { cursor: pointer; }
 .itab-empty { padding: 18px; background: var(--panel); color: var(--muted); border-radius: var(--radius-pane); }
 .itab-fine { font-size: var(--type-pill); color: var(--on-bg-muted); line-height: 1.5; }
 .itab-find { background: var(--panel); color: var(--ink); border-radius: var(--radius-pane); padding: 16px 18px 14px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-.itab-kicker { font: 600 var(--type-pill) var(--sans); color: var(--muted); display: flex; align-items: center; gap: 10px; }
+.itab-kicker { font: 600 var(--type-pill) var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; display: flex; align-items: center; gap: 10px; }
 .itab-tag { font: 600 var(--type-tag) var(--mono); letter-spacing: .04em; color: var(--amber); background: color-mix(in srgb, var(--amber) 12%, transparent); padding: 2px 7px; border-radius: var(--radius-pill); }
 .itab-claim { display: flex; align-items: baseline; gap: 16px; }
 .itab-big { font-size: var(--type-figure); font-weight: 700; line-height: 1; white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -227,7 +227,7 @@ button.ins-n { cursor: pointer; }
 .itab-qlabel { font: 600 var(--type-tag) var(--mono); color: var(--muted); margin-right: 8px; }
 
 /* The trends: small line charts. */
-.itab-sub { margin-top: 6px; font: 600 var(--type-pill) var(--sans); color: var(--on-bg-muted); }
+.itab-sub { margin-top: 6px; font: 600 var(--type-pill) var(--mono); color: var(--on-bg-muted); text-transform: uppercase; letter-spacing: .06em; }
 .itab-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .itab-card { background: var(--panel); color: var(--ink); border-radius: var(--radius-pane); padding: 12px 16px 10px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .itab-head { display: flex; align-items: baseline; gap: 10px; }

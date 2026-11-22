@@ -309,7 +309,7 @@ function itabWaiting(w) {
     `Answering after a session's cache ran out re-wrote ${itabNum(w.tokens)} tokens: ${w.turns} late answer${w.turns === 1 ? "" : "s"}, ${itabPct(w.share_of_writes)} of all cache writes.`,
     "", "",
     "Answer before its cache runs out: the countdown on a waiting card says how long is left. For a session that's gone stale, start fresh from a hand-off instead of resuming it.",
-    `${wPics}${ws.length ? itabFig("The sessions behind it", "", `<div class="itab-list">${ws.map((r) => itabSess(r, [`${r.times}×`, `waited up to ${itabDur(r.longest_wait_ms)}`, `<b>${itabUsd(r.usd)}</b>`], r.usd / wTop)).join("")}</div>`) : ""}`, itabBad("Avoidable"));
+    `${wPics}${ws.length ? itabFig("The sessions behind it", "", `<div class="itab-list">${ws.map((r) => itabSess(r, [`${r.times}×`, `waited up to ${itabDur(r.longest_wait_ms)}`, `<b>${itabUsd(r.usd)}</b>`], r.usd / wTop)).join("")}</div>`) : ""}`, itabBad("avoidable"));
 }
 /** Long sessions: each one's climb, the hand-off point marked. */
 function itabLong(l) {
@@ -319,7 +319,7 @@ function itabLong(l) {
     `Sessions that ran on past their hand-off point re-read ${itabNum(l.tokens)} tokens of context above where they started.${hoLine}`,
     "", "",
     "Hand off when Cue offers it: past 300k and four times what it started with (150k and three times once its cache has run out), a fresh one with a short summary re-reads far less.",
-    ls.length ? itabFig("How their context climbed", "amber: re-read above the start, past the hand-off point", `<div class="itab-tiles">${ls.slice(0, 6).map(itabClimb).join("")}</div>`) : "", l.usd ? itabBad("Avoidable") : "");
+    ls.length ? itabFig("How their context climbed", "amber: re-read above the start, past the hand-off point", `<div class="itab-tiles">${ls.slice(0, 6).map(itabClimb).join("")}</div>`) : "", l.usd ? itabBad("avoidable") : "");
 }
 /** Could have delegated: turns that looked around themselves, and long sessions across several areas. */
 function itabDelegate(dl) {
@@ -336,7 +336,7 @@ function itabDelegate(dl) {
     `${looked}${spreadLine} ${used}`,
     "", "",
     `Hand the looking to a background agent (“have an agent find where …”): it reads in a context of its own and sends back a summary. ${split}`,
-    `${delSess || delSpread ? `<div class="itab-evidence itab-pics">${delSess}${delSpread}</div>` : ""}`, dl.usd ? itabBad("Avoidable") : "");
+    `${delSess || delSpread ? `<div class="itab-evidence itab-pics">${delSess}${delSpread}</div>` : ""}`, dl.usd ? itabBad("avoidable") : "");
 }
 /** A correction: what you asked, then what you said; it opens its session there. */
 function itabPair(e) {

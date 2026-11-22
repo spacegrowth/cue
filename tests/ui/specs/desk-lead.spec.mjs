@@ -856,7 +856,7 @@ test("an item no one holds yet, or waiting on nothing, reads plain: next", async
   expect(await page.evaluate((i) => deskItemNow(i), it)).toEqual({ dot: "stop", word: "Next", say: "Any free session." });
   expect(await page.evaluate((i) => deskTag(i), it)).toEqual(["", ""]);
   // One whose hand-off failed is tagged stuck instead.
-  expect(await page.evaluate((i) => deskTag({ ...i, route_failed: "web-lead is gone" }), it)).toEqual(["Stuck", "ask"]);
+  expect(await page.evaluate((i) => deskTag({ ...i, route_failed: "web-lead is gone" }), it)).toEqual(["stuck", "ask"]);
 });
 
 test("an item that couldn't be given out says why; a dropped one is gone", async ({ page, cue }) => {
@@ -871,7 +871,7 @@ test("an item that couldn't be given out says why; a dropped one is gone", async
   expect(card).toContain("Nothing on it yet.");
   expect(card).not.toContain("Gone");
   expect(card).not.toContain(" open");
-  await expect(page.locator('[data-desk-item="d6"] .dk-tag')).toHaveText("Stuck");
+  await expect(page.locator('[data-desk-item="d6"] .dk-tag')).toHaveText("stuck");
   await expect(page.locator('[data-desk-item="d6"] .dk-who')).toHaveText("Give to…");
   await page.locator('[data-desk-item="d6"]').click();
   await expect(page.locator(".dk-right .dk-pg")).toContainText("Couldn't give it out");

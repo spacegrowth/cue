@@ -343,9 +343,9 @@ function shelfDrawer(isOpen) {
   }
   // Every session, as tiles (sessions.js), the way All history sits under Recently answered.
   if (open) body += `<button class="shelf-all" data-lv="all">All sessions →</button>`;
-  return `<div class="sec sec-drawer sec-parked ${open ? "" : "shut"}"><div class="col-head fold-head shelf-head"><button class="fold-arrow" data-fold="parked" aria-expanded="${open}" aria-label="${open ? "Fold" : "Open"}">${open ? "▾" : "▸"}</button>${word("parked", "Parked", ps.length)}<span class="shelf-sep">·</span>${word("closed", "Closed", closedHere?.length)}</div>${open ? `<div class="sec-body">${body}</div>` : ""}</div>`;
+  return `<div class="sec sec-drawer sec-parked ${open ? "" : "shut"}"><div class="col-head fold-head shelf-head"><button class="fold-arrow" data-fold="parked" aria-expanded="${open}" aria-label="${open ? "Fold" : "Open"}">${open ? "▾" : "▸"}</button>${word("parked", "PARKED", ps.length)}<span class="shelf-sep">·</span>${word("closed", "CLOSED", closedHere?.length)}</div>${open ? `<div class="sec-body">${body}</div>` : ""}</div>`;
 }
-/** Parked or Closed in the heading: opens the drawer on that list; the one already showing folds it. */
+/** PARKED or CLOSED in the heading: opens the drawer on that list; the one already showing folds it. */
 function pickShelf(t) {
   const open = drawerOpen("parked"), same = pkTab() === t;
   try { localStorage.setItem("cue.pkTab", t); } catch {}
@@ -433,9 +433,9 @@ function waitingRows(b) {
   const rest = others.filter((i) => !deskTurn(i)), deskRest = others.filter(deskTurn);
   // The add-on's rows that wait on you sit in Waiting with the rest.
   const more = addOn.waiting();
-  const restRows = rest.length || more.count ? `<button class="col-sub fold-head sub-fold" data-fold-newest aria-expanded="${!newestShut()}"><span class="fold-arrow">${newestShut() ? "▸" : "▾"}</span> Newest first · ${count(rest) + more.count}</button>${newestShut() ? "" : more.html + draw(rest)}` : "";
+  const restRows = rest.length || more.count ? `<button class="col-sub fold-head sub-fold" data-fold-newest aria-expanded="${!newestShut()}"><span class="fold-arrow">${newestShut() ? "▸" : "▾"}</span> NEWEST FIRST · ${count(rest) + more.count}</button>${newestShut() ? "" : more.html + draw(rest)}` : "";
   const html = (talks.length || talkWork.length
-    ? `<div class="col-sub">In conversation · last ${TALK_MS / 60000} min${count(talks) + talkWork.length ? ` · ${count(talks) + talkWork.length}` : ""}</div>${draw(talks)}${talkWork.map((x) => talkWorkRow(x, isOpen(x.session_id))).join("")}`
+    ? `<div class="col-sub">IN CONVERSATION · LAST ${TALK_MS / 60000} MIN${count(talks) + talkWork.length ? ` · ${count(talks) + talkWork.length}` : ""}</div>${draw(talks)}${talkWork.map((x) => talkWorkRow(x, isOpen(x.session_id))).join("")}`
     : "") + restRows + deskWaitFold(deskRest, draw, count);
   return { html, count: count(talks) + talkWork.length + count(rest) + count(deskRest) + more.count + later.filter((l) => !needs.some((i) => i.session_id === l.sid)).length };
 }
@@ -444,7 +444,7 @@ function waitingRows(b) {
 function deskWaitFold(list, draw, count) {
   if (!list.length) return "";
   const shut = deskShut();
-  return `<button class="col-sub fold-head sub-fold desk-fold" data-fold-desk aria-expanded="${!shut}"><span class="fold-arrow">${shut ? "▸" : "▾"}</span> ${deskKindIcon("tray")}Desk sessions · ${count(list)}<span class="desk-fold-n">· your turn</span></button>`
+  return `<button class="col-sub fold-head sub-fold desk-fold" data-fold-desk aria-expanded="${!shut}"><span class="fold-arrow">${shut ? "▸" : "▾"}</span> ${deskKindIcon("tray")}DESK SESSIONS · ${count(list)}<span class="desk-fold-n">· your turn</span></button>`
     + (shut ? "" : draw(list));
 }
 /** What a Sessions card says under its name: its card's ask, a start that needs its terminal, or why it's idle. */
@@ -475,11 +475,11 @@ function workColumn(all, isOpen) {
   // Desk work sits at the foot under its own fold line (out of usage stays up top: that one needs you).
   const desk = all.filter((s) => s.state !== "limited" && deskWorksFor(s.session_id)), shown = all.filter((s) => !desk.includes(s));
   const busy = shown.filter((s) => !idleNote(s)), idle = shown.filter((s) => idleNote(s) && s.state !== "limited"), outs = shown.filter((s) => s.state === "limited");
-  return (busy.length ? `<div class="col-sub">Working · ${busy.length}</div>${busy.map(card).join("")}` : "")
-    + (outs.length ? `<div class="col-sub lim">${outs.every((s) => lifted(s.limit)) ? "Ready to resend" : "Out of usage"} · ${outs.length}</div>${outs.map(card).join("")}` : "")
-    + (idle.length ? `<div class="col-sub">Idle · ${idle.length}</div>${idle.map(card).join("")}` : "")
+  return (busy.length ? `<div class="col-sub">WORKING · ${busy.length}</div>${busy.map(card).join("")}` : "")
+    + (outs.length ? `<div class="col-sub lim">${outs.every((s) => lifted(s.limit)) ? "READY TO RESEND" : "OUT OF USAGE"} · ${outs.length}</div>${outs.map(card).join("")}` : "")
+    + (idle.length ? `<div class="col-sub">IDLE · ${idle.length}</div>${idle.map(card).join("")}` : "")
     + deskFold(desk, card)
-    || `<div class="col-sub">No other sessions</div>`;
+    || `<div class="col-sub">NO OTHER SESSIONS</div>`;
 }
 /** Sessions' Desk group: one fold line (open until you fold it, remembered), then the Desks' cards, working first. */
 const deskShut = () => { try { return localStorage.getItem("cue.deskShut") === "1"; } catch { return false; } };
@@ -490,7 +490,7 @@ function foldDesk() {
 function deskFold(desk, card) {
   if (!desk.length) return "";
   const busy = desk.filter((s) => !idleNote(s)), shut = deskShut();
-  return `<button class="col-sub fold-head sub-fold desk-fold" data-fold-desk aria-expanded="${!shut}"><span class="fold-arrow">${shut ? "▸" : "▾"}</span> ${deskKindIcon("tray")}Desk sessions · ${desk.length}${busy.length ? `<span class="desk-fold-n">· ${busy.length} working</span>` : ""}</button>`
+  return `<button class="col-sub fold-head sub-fold desk-fold" data-fold-desk aria-expanded="${!shut}"><span class="fold-arrow">${shut ? "▸" : "▾"}</span> ${deskKindIcon("tray")}DESK SESSIONS · ${desk.length}${busy.length ? `<span class="desk-fold-n">· ${busy.length} working</span>` : ""}</button>`
     + (shut ? "" : [...busy, ...desk.filter((s) => idleNote(s))].map(card).join(""));
 }
 
@@ -504,7 +504,7 @@ function railLabel(name, count) {
   const prev = railLast[name];
   if (prev !== undefined && count > prev) railBubble[name] = Date.now() + 900;
   railLast[name] = count;
-  return `<button class="pin ${railBubble[name] > Date.now() ? "bubble" : ""}" data-open-section="${name}" aria-label="Open ${name}"><span class="vt">${name[0].toUpperCase() + name.slice(1)} · ${count}</span></button>`;
+  return `<button class="pin ${railBubble[name] > Date.now() ? "bubble" : ""}" data-open-section="${name}" aria-label="Open ${name}"><span class="vt">${name.toUpperCase()} · ${count}</span></button>`;
 }
 
 /** The Waiting column: its cards, a line for what's waiting in other projects while one is picked (never out of
@@ -513,8 +513,8 @@ function waitingColumn(b, wait) {
   const { needs, later } = b;
   const elsewhere = projFilter ? state.items.filter((i) => !inProj(i.project) && !parkedIds().has(i.session_id)).length : 0;
   return `<div class="col split col-waiting">
-      <div class="sec sec-waiting"><div class="col-head col-tools"><span class="grow"></span>${colReset("waiting")}<button class="collapse-x" data-collapse="waiting" aria-label="Fold Waiting">»</button></div><div class="sec-body">${wait.html || `<div class="col-sub">Nothing waiting</div>`}${elsewhere ? `<button class="quiet-line link" data-pj="pick" data-project="">${elsewhere} waiting in other projects · show all</button>` : ""}</div></div>
-      ${later.length ? drawerHtml("later", "Need to decide", later.length, () => later.map(laterRow).join("")) : ""}
+      <div class="sec sec-waiting"><div class="col-head col-tools"><span class="grow"></span>${colReset("waiting")}<button class="collapse-x" data-collapse="waiting" aria-label="Fold Waiting">»</button></div><div class="sec-body">${wait.html || `<div class="col-sub">NOTHING WAITING</div>`}${elsewhere ? `<button class="quiet-line link" data-pj="pick" data-project="">${elsewhere} waiting in other projects · show all</button>` : ""}</div></div>
+      ${later.length ? drawerHtml("later", "NEED TO DECIDE", later.length, () => later.map(laterRow).join("")) : ""}
     </div>`;
 }
 /** Recently answered: one entry per session, its latest answer (the rest are in History). */
@@ -525,14 +525,14 @@ function recentDrawer() {
     ? `<div class="card recent">${recent.map(recentEntry).join("")}
         ${state.history.length > recent.length ? `<button class="link" style="padding:4px 12px 10px" data-act="open-history">All history →</button>` : ""}</div>`
     : `<div class="empty-col">Your answers show up here.</div>`;
-  return drawerHtml("recent", "Recently answered", recent.length ? `${recent.length} session${recent.length === 1 ? "" : "s"}` : "", recentList);
+  return drawerHtml("recent", "RECENTLY ANSWERED", recent.length ? `${recent.length} session${recent.length === 1 ? "" : "s"}` : "", recentList);
 }
 /** Starred, in the order you starred them (so they don't shuffle as they work). A starred one you parked stays
  *  here too, as parked. */
 function starredDrawer(isOpen) {
   const stars = [...state.sessions, ...(state.parked || [])].filter((s) => isStarred(s.session_id) && inProj(s.project)).sort((a, c) => (a.starred_ms || Infinity) - (c.starred_ms || Infinity));
   const starNeeds = stars.filter((s) => state.items.some((i) => i.session_id === s.session_id)).length;
-  return drawerHtml("starred", "Starred", stars.length ? `${stars.length}${starNeeds ? ` · ${starNeeds} need${starNeeds === 1 ? "s" : ""} you` : ""}` : "", () => stars.length ? `<div class="card recent">${stars.map((s) => (s.parked_ms ? starParkedEntry(s, isOpen(s.session_id)) : starEntry(s, isOpen(s.session_id)))).join("")}</div>` : `<div class="quiet-line">Star a session (★ on its card) to keep it here.</div>`);
+  return drawerHtml("starred", "STARRED", stars.length ? `${stars.length}${starNeeds ? ` · ${starNeeds} need${starNeeds === 1 ? "s" : ""} you` : ""}` : "", () => stars.length ? `<div class="card recent">${stars.map((s) => (s.parked_ms ? starParkedEntry(s, isOpen(s.session_id)) : starEntry(s, isOpen(s.session_id)))).join("")}</div>` : `<div class="quiet-line">Star a session (★ on its card) to keep it here.</div>`);
 }
 /** The Sessions column: its cards (`workCol`; `count`: how many), then the drawers. */
 function sessionsColumn(b, workCol, count) {

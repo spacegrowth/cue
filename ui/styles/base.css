@@ -52,7 +52,7 @@
   --mono: "SF Mono", ui-monospace, Menlo, monospace;
   /* The type scale (#528, the Font sizes page's option B): whole pixels, one size per job, and every text size in the
      app is one of these. Weight, caps and mono set things apart, never a half-pixel step. */
-  --type-tag: 10px;      /* tags and badges in normal case: Note, Asks you, a count (none are in caps, #622) */
+  --type-tag: 10px;      /* caps tags and badges: NOTE, ASKS YOU, a count */
   --type-pill: 11px;     /* small heads, mono meta: an item's number, an age, a column head */
   --type-small: 12px;    /* buttons, secondary lines, the meta row of a message */
   --type-body: 13px;     /* everything people read: card text, names, messages */
@@ -222,7 +222,7 @@ a:focus-visible { outline: 2px solid var(--link, var(--accent)); outline-offset:
 .top-btn.icon:hover { opacity: 1; filter: none; background: color-mix(in srgb, var(--on-bg) 12%, transparent); }
 .insights-btn[aria-pressed="true"] { opacity: 1; background: color-mix(in srgb, var(--on-bg) 16%, transparent); }
 
-.col-head { font-size: var(--type-pill); font-weight: 650; color: var(--on-bg); display: flex; gap: 8px; align-items: baseline; }
-.col-head span { color: var(--on-bg-muted); font-weight: 600; }
+.col-head { font-size: var(--type-pill); font-weight: 700; letter-spacing: 0.08em; color: var(--on-bg); display: flex; gap: 8px; align-items: baseline; }
+.col-head span { color: var(--on-bg-muted); font-weight: 600; letter-spacing: 0.02em; }
 .empty-col { border: 1px dashed var(--on-bg-muted); border-radius: var(--radius-pane); padding: 16px; color: var(--on-bg-muted); font-size: var(--type-body); text-align: center; }
 

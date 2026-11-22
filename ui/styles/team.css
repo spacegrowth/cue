@@ -27,7 +27,7 @@
 .active-pane:has(.crew-tray .crew-body) .ap-chat { opacity: 0.55; }
 
 /* Its groups: Needs you (red), Ready, Working, in small caps; the finished ones folded into "N done ›". */
-.mt-grp { padding: 9px 12px 2px; font-size: var(--type-pill); font-weight: 650; color: var(--muted); }
+.mt-grp { padding: 9px 12px 2px; font-size: var(--type-tag); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 .mt-grp.red { color: var(--deny); }
 /* A row: its name and line on the left, its one button (Deny and Allow for an ask) on the right; under it, what it asks,
    its findings or its files. Every button one width, so a group's line up. */
@@ -72,11 +72,11 @@ button.mt-name:hover, .mt-name.on { text-decoration: underline; text-underline-o
 .mt-note.offer { color: var(--ink); }
 .mt-note-acts { display: flex; gap: 6px; padding-top: 4px; }
 .mt-note-acts .mt-b { width: auto; padding: 0 11px; }
-/* The crew's goal on top of the open tray (ui/team.js crewGoalHtml): four small boxes on panel-2, a small semibold label
+/* The crew's goal on top of the open tray (ui/team.js crewGoalHtml): four small boxes on panel-2, a small-caps label
    over a few words. */
 .crew-goal { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; padding: 10px 12px 2px; }
 .cg-box { min-width: 0; padding: 6px 8px; border-radius: var(--radius-qp); background: var(--panel-2); }
-.cg-l { font-size: var(--type-pill); font-weight: 650; color: var(--muted); }
+.cg-l { font-size: var(--type-tag); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 .cg-t { margin-top: 2px; font-size: var(--type-pill); line-height: 1.35; color: var(--ink); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 /* A narrow pane (and the mini window's chat, not a size container): two by two, a line each, so the goal doesn't push
    what needs you out of the tray. */
@@ -137,7 +137,7 @@ button.mt-name:hover, .mt-name.on { text-decoration: underline; text-underline-o
 /* The goal on one line, cut at its end, All of it › opening its four boxes in place. */
 .cp-top { flex: none; padding: 4px 4px 5px; }
 .cp-goal { display: flex; align-items: center; gap: 12px; min-height: 34px; padding: 2px 12px; color: var(--muted); font-size: var(--type-body); }
-.cp-lab { flex: none; width: 64px; font-size: var(--type-pill); font-weight: 650; color: var(--muted); }
+.cp-lab { flex: none; width: 64px; font-size: var(--type-tag); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .cp-gt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cp-gt b { color: var(--ink); font-weight: 650; }
 .cp-gt code { font: var(--type-pill) var(--mono); }
@@ -170,7 +170,7 @@ button.mt-name:hover, .mt-name.on { text-decoration: underline; text-underline-o
 .cp-dec .cd-row.big { display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 11px; border: 0; border-radius: var(--radius-btn); background: var(--panel-2); }
 .cp-dec .cd-row.big.can:hover, .cp-dec .cd-row.big.on { box-shadow: inset 0 0 0 1px var(--line); }
 .cp-dec .cd-row.big:not(.kinded):not(.step)::before { content: "Decided"; }
-.cp-dec .cd-row.big:not(.kinded):not(.step)::before, .cp-dec .cd-kind { flex: none; font-size: var(--type-pill); font-weight: 650; color: var(--muted); }
+.cp-dec .cd-row.big:not(.kinded):not(.step)::before, .cp-dec .cd-kind { flex: none; font-size: var(--type-tag); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 .cp-dec .cd-row.big.step { align-items: baseline; gap: 6px; min-height: 0; padding: 1px 11px; background: none; color: var(--muted); font-size: var(--type-small); }
 .cp-dec .cd-row.big.step.can:hover, .cp-dec .cd-row.big.step.on { box-shadow: none; background: var(--panel-2); }
 .cp-dec .cd-row.big.step .cd-who { font-weight: 600; color: var(--muted); }
@@ -193,7 +193,7 @@ button.mt-name:hover, .mt-name.on { text-decoration: underline; text-underline-o
 .cp-bar { flex: none; height: 68px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; gap: 5px; margin: 8px 12px; padding: 6px 8px 6px 14px; border-radius: var(--radius-card); box-shadow: inset 0 0 0 1.5px var(--deny); min-width: 0; container: cpbar / inline-size; }
 .cpb-1, .cpb-2 { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .cpb-1 { height: 18px; font-size: var(--type-pill); color: var(--muted); padding-right: 4px; }
-.cpb-lab { font-size: var(--type-pill); font-weight: 650; color: var(--deny); }
+.cpb-lab { font-size: var(--type-tag); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--deny); }
 .cpb-n { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--ink); }
 .cpb-step { width: 20px; height: 18px; border-radius: var(--radius-tag); box-shadow: inset 0 0 0 1px var(--line); font-size: var(--type-small); line-height: 1; color: var(--ink); }
 .cpb-step:hover { background: var(--panel-2); }
@@ -348,7 +348,7 @@ button.cpb-who:hover { text-decoration: underline; text-underline-offset: 2px; }
 .ho { display: flex; flex-direction: column; gap: var(--card-gap); margin-top: 8px; padding: var(--card-pad-y) var(--card-pad-x); border-radius: var(--radius-tray); background: var(--panel); box-shadow: 0 0 0 1px var(--line); font-size: var(--type-body); color: var(--ink); cursor: default; }
 .ho-title { font-weight: 700; }
 .ho-task { color: var(--muted); line-height: 1.4; overflow-wrap: anywhere; }
-.ho-cap { font-size: var(--type-pill); font-weight: 650; color: var(--muted); }
+.ho-cap { font-size: var(--type-tag); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .ho-f { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; font-size: var(--type-small); }
 .ho-f .mono { font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ho-by { color: var(--amber); font-weight: 650; text-align: right; }
@@ -374,7 +374,7 @@ button.cp-lead:not(.on):hover { background: var(--panel-2); }
 .cpm-acts { flex: none; display: flex; align-items: center; gap: 14px; font-size: var(--type-body); }
 .cpm-acts .mt-lk { font-size: var(--type-body); }
 .cpm-asked { flex: none; display: flex; align-items: baseline; gap: 10px; padding: 2px 14px 8px; font-size: var(--type-body); min-width: 0; border-bottom: 1px solid var(--line); }
-.cpm-al, .cpm-pl { flex: none; font-size: var(--type-pill); font-weight: 650; color: var(--muted); }
+.cpm-al, .cpm-pl { flex: none; font-size: var(--type-tag); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .cpm-at { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
 .cpm-size { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
 .cpm-part { display: flex; flex-direction: column; gap: 3px; }

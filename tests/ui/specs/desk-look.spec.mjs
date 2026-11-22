@@ -292,7 +292,7 @@ test("done teammates fold under their lead as \"N done · show\", opened in plac
   const fold = left.locator('[data-desk-done-fold="lead"]');
   await expect(fold).toHaveText("3 done · show");
   expect(await crewNames()).toEqual(["id-search", "id-focus", "id-tidy"]);
-  await expect(left.locator('[data-desk-crew="id-tidy"] .dk-pill.loose')).toHaveText("Not committed");
+  await expect(left.locator('[data-desk-crew="id-tidy"] .dk-pill.loose')).toHaveText("not committed");
   await expect(left.locator('[data-desk-crew="id-search"] .dk-pill.loose')).toHaveCount(0);
   // Opened in place, under the line; nothing above it moves.
   await fold.scrollIntoViewIfNeeded();
