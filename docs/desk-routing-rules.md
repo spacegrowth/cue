@@ -6,7 +6,7 @@ is a Cue setting today.
 
 **The sizes here are superseded.** The 150k limit and the 180k hand-off in rules 3 and 4 and in
 "Fit with the context bands" are replaced by the sizes in docs/desk-routing-merged.md (its
-rule 17). Sessions compact on their own at about 166k, so the 180k hand-off never acts.
+rule 17). Since 2026-11-21 sessions compact near 500k and the hand-off mark is 400k (#687).
 
 **Open** means at work or waiting in line. An item waiting for your check does not count toward
 the cap of two below: Cue won't queue anything behind it either. If you send it back, it is at

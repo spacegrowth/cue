@@ -8,6 +8,12 @@ being what the lead can see. It now carries a pointer at the top to rule 17 here
 sizes, but its ten rules are unchanged and still say 150 thousand. Nothing in Cue has been
 changed for this. You pick.
 
+**Sizes refitted 2026-11-21 (#687).** Sessions now compact near 500 thousand, not 166, and Cue's
+hand-off mark is 400. Rules 3, 4, 5 and 17 below carry the new sizes: new work under 340, own
+send-backs up to 370, hand-off at 400. The cold limits (50, 60, 100) are about the price of a
+cold cache and did not move. The review above the rules still speaks of 110, 140 and 166; that
+is how it stood when written.
+
 ## Do its numbers hold up?
 
 Mostly yes. I counted again from the session logs for the same 28 hours, with Cue's own prices.
@@ -96,14 +102,14 @@ The lead picks among sessions on the Desk. For any other session, Cue asks you f
    from memory. If that session was handed off, the session that took over has its record.
 2. When two sessions both have a record: the one with nothing open; then the one that finished
    there most recently; then a warm one over a cold one; then the smaller one.
-3. A session takes new work only under 110 thousand while its cache is warm, and only under 60
+3. A session takes new work only under 340 thousand while its cache is warm, and only under 60
    thousand once it is cold: waking a cold session writes its whole context to the cache again,
    and on 2026-11-18 such wakes were about a fifth of the tokens spent (docs/token-burn-2026-11-18.md).
    Cue marks a session "cold: no new work" in the lead's list. A session Cue handed off (rule 17)
    is not woken. The session that took over has its record and takes the work.
 4. A send-back, or a direct follow-on to an item it just finished, stays with the session up to
-   140 thousand.
-5. A session over 110 thousand finishes its item, writes a note, and a fresh session with that
+   370 thousand.
+5. A session over 340 thousand finishes its item, writes a note, and a fresh session with that
    note takes the next item in that area.
 6. A session holds at most two open items: one at work, one waiting. If the best fit has two,
    take the next session with a record. Cue refuses a third and tells the lead to route it again.
@@ -141,11 +147,11 @@ The lead picks among sessions on the Desk. For any other session, Cue asks you f
     50 to 100, Cue asks for a hand-off note when the cache runs out only if the session has an
     item at work; that is how Cue works today. From 100 up to 200, it asks if the session
     holds any item not done, one waiting for your check included, or is the lead, which is
-    asked even holding no item. From 200 Cue asks for no note: the session compacts on its own.
+    asked even holding no item. From 200 Cue asks for no note: Claude Code compacts a session that size itself when it is left idle.
     When a note is written, a fresh session takes over with
     its record; a ping from rule 16 puts that off, and Cue never asks during a limit stop. A
-    session that was not handed off takes new work up to 110 while warm, up to 60 once cold. Over 110 it
-    takes only its own send-backs and follow-ons, and hands off when its item is done. At 140
+    session that was not handed off takes new work up to 340 while warm, up to 60 once cold. Over 340 it
+    takes only its own send-backs and follow-ons, and hands off when its item is done. At 400
     Cue hands it off whatever it is doing. So rule 4 holds only while the session is still
     there; once it is handed off, the send-back goes to the session that took over.
 

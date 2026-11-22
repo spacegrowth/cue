@@ -1,6 +1,7 @@
 # Why sessions squash their history at 200k on a 1M model
 
-Checked 2026-11-21 against Claude Code 2.1.330. Nothing was changed; this is only the list.
+Checked 2026-11-21 against Claude Code 2.1.330. The suggested values below were applied the same
+day: see "Applied" at the end. The tables show how it stood before.
 
 ## Short answer
 
@@ -58,8 +59,14 @@ Every turn reads the whole context from the cache, and a cold return writes all 
 500k session costs about three times a 166k one per turn, and its cold return about three times
 as much. Fewer squashes mid-item is what that buys.
 
-## To apply
+## Applied 2026-11-21
 
-Two lines to edit (`autoCompactWindow` in Claude Code's settings, `desk.handoff_k` in Cue's
-config), then the wording of rule 17. New sessions pick the window up when they start; I did
-not check whether running ones do without a restart. Nothing is done until you say which numbers.
+- `autoCompactWindow` is now `500000` in Claude Code's settings.
+- `desk.handoff_k` is now `400` in Cue's config. Cue reads that file again within seconds.
+- `idleCompaction` was left on: a session over 200k left idle for an hour is still summarized.
+- Rule 17 and rules 3, 4 and 5 in `docs/desk-routing-merged.md` now say 340 for new work, 370 for
+  a session's own send-backs, 400 for the hand-off. The room for one item under the hand-off mark
+  is the same as before (about 60k).
+
+New sessions start with the 500k window. I did not check whether a session already running picks
+it up without a restart. To go back: put `200000` back and remove `handoff_k`.
