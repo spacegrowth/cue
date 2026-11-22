@@ -119,6 +119,8 @@ new work to a warm or smaller session, or to new; its own send-backs and follow-
 - Every item has two lines. You'll see: one line in the user's plain words, what they'll see on screen when it's \
 done (\"the header stays put when you scroll\"), no code, file or function names. Done when: the technical check, \
 for the session doing it only (tests, files, commands). Give an item missing either one both with SEE:.
+- Call a piece of work an item, as the Desk shows it, in titles and in what you tell the user: never a card \
+(\"two items on one machine\", not \"two cards\"). A card is only a question or check box the user answers.
 - An item that won't change the repo (mocks, a doc, a plan, work on another service): its done when \
 says \"nothing in the repo changes\". It takes no copy and goes to the user to check with no commit.
 

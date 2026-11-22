@@ -75,6 +75,7 @@ fn a_message_needs_a_lead_that_hasnt_ended() {
 fn a_desk_lead_is_told_to_only_dispatch_with_no_crew_and_isnt_sent_reviews() {
     let skill = crate::desk::LEAD_SKILL;
     assert!(!skill.contains("-> me") && !skill.contains("crew") && skill.contains("ROUTE: #<id> -> new"), "{skill}");
+    assert!(skill.contains("Call a piece of work an item") && skill.contains("never a card"), "items, not cards, in titles (#679)");
     let w = World::new();
     let dir = super::team::repo(&w);
     let (_, project) = holder(&w);
