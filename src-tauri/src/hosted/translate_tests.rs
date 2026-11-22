@@ -196,6 +196,16 @@ fn a_turn_is_under_way_from_your_message_to_its_end() {
 }
 
 #[test]
+fn a_background_tasks_finish_notice_is_no_message_taken() {
+    let mut t = Translator::default();
+    let notice = r#"{"type":"user","isReplay":true,"origin":{"kind":"task-notification","producer":"session-task","runId":"r1"},"message":{"role":"user","content":"<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n</task-notification>"}}"#;
+    assert_eq!(t.step(&wire::parse(notice)), vec![], "nobody wrote it");
+    assert!(t.in_turn(), "it still starts or carries a turn");
+    let yours = t.step(&wire::parse(r#"{"type":"user","isReplay":true,"message":{"role":"user","content":"look at rule.py"}}"#));
+    assert_eq!(yours, vec![HostedEvent::Taken { text: "look at rule.py".into() }]);
+}
+
+#[test]
 fn a_turn_that_fails_before_saying_anything_says_why() {
     let mut t = Translator::default();
     let line = r#"{"type":"result","subtype":"error_during_execution","is_error":true,"errors":["No conversation found with session ID: x"],"total_cost_usd":0}"#;

@@ -102,6 +102,11 @@ impl Translator {
         if v.get("isReplay").and_then(Value::as_bool) == Some(true) {
             self.in_turn = true;
             self.prompted = true;
+            // A background task's finish notice comes back the same way, but nobody wrote it: no message taken
+            // (a loop took one for yours and paused mid-round, #700).
+            if v.pointer("/origin/kind").and_then(Value::as_str) == Some("task-notification") {
+                return vec![];
+            }
             return vec![HostedEvent::Taken { text: plain_text(content) }];
         }
         blocks(content)
