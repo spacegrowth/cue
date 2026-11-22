@@ -12,7 +12,7 @@ test("a picked mocks item in Done says which item builds your pick; each page li
   await patchItem(cue, "d6", { title: "Build: header count (option B)", builds: "d7", from_pick: "B" });
   await page.locator('.dk-items [data-desk-group="done"]').click();
   const row = page.locator('.dk-items .dk-it[data-desk-item="d7"]');
-  await expect(row.locator(".dk-built")).toHaveText("You picked option B. It's being built as #d6");
+  await expect(row.locator(".dk-built")).toHaveText("You picked B on #d7; #d6 builds it");
   await expect(page.locator(".dk-items [title]")).toHaveCount(0);
   // Its number opens the build item, not the row's own page.
   await row.locator('.dk-built a[data-desk-item="d6"]').click();
@@ -21,11 +21,11 @@ test("a picked mocks item in Done says which item builds your pick; each page li
   await expect(line).toHaveText("From your pick on #d7");
   await line.locator('a[data-desk-item="d7"]').click();
   await expect(page.locator(".dk-right .dk-pg h1")).toContainText("Mocks: header count");
-  await expect(line).toHaveText("You picked option B. It's being built as #d6");
+  await expect(line).toHaveText("You picked B on #d7; #d6 builds it");
   await expect(page.locator(".dk-right [title]")).toHaveCount(0);
   // The build item done too: the mocks item says it was built, and the build item's card in Done says where it came from.
   await patchItem(cue, "d6", { state: "done", done_at: Date.now() / 1000 });
-  await expect(line).toHaveText("You picked option B. It was built as #d6");
+  await expect(line).toHaveText("You picked B on #d7; #d6 built it");
   await expect(page.locator('.dk-items .dk-it[data-desk-item="d6"] .dk-built')).toHaveText("From your pick on #d7");
   for (const theme of ["light", "dark"]) {
     await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
