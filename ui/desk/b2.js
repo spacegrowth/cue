@@ -232,6 +232,7 @@ function deskB2DoneFold(project, d, today) {
   if (!pg) queueMicrotask(() => deskDoneFetch(project));
   const all = deskDoneList(d), shown = all.slice(0, Math.max(deskDoneShown.get(project) || DESK_DONE_STEP, today.length));
   if (!shown.length) return "";
+  deskDoneDrawn.set(project, { n: deskB2Folds.has("done") ? shown.length : 0, last: shown.at(-1).id, row: deskB2Row, least: today.length, b2: true });
   const end = all.length > shown.length || !pg?.end ? `<div class="dk-more" data-desk-done-more="${esc(project)}">Loading older…</div>` : "";
   return deskB2Fold("done", "DONE TODAY", today.length, shown.map(deskB2Row).join("") + end);
 }

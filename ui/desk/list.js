@@ -379,7 +379,7 @@ async function deskDoneFetch(project) {
   } catch (e) { console.error(e); pg.end = true; }
   pg.loading = false;
   // Fetched ahead of what shows: nothing to draw till its end comes into view (each draw of a long Done list is slow).
-  if (deskSelection() === project && view === "desk" && deskDoneSeenNow(project) !== was) renderMain();
+  if (deskSelection() === project && view === "desk" && deskDoneSeenNow(project) !== was && !deskDonePatch(project)) renderMain();
 }
 /** What a project's Done shows: how many rows, and whether its end ("Loading older…") is there. */
 function deskDoneSeenNow(project) {
@@ -392,8 +392,26 @@ function deskDoneSeenNow(project) {
 function deskDoneMore(project) {
   const pg = deskDonePages.get(project);
   const all = deskDoneList(deskOf(project)).length, n = deskDoneShown.get(project) || DESK_DONE_STEP;
-  if (all > n) { deskDoneShown.set(project, n + DESK_DONE_STEP); renderMain(); }
+  if (all > n) { deskDoneShown.set(project, n + DESK_DONE_STEP); if (!deskDonePatch(project)) renderMain(); }
   if (!pg?.end && all < n + DESK_DONE_STEP * 2) deskDoneFetch(project);
+}
+/** What each project's Done last drew (#733): its rows' count, the last one's id, how a row is drawn, and the fewest
+ *  it shows (B2's Done today shows all of today's). Each draw sets it. */
+const deskDoneDrawn = new Map();
+/** 10 more finished items, or the end gone, put in at the list's end in place (#733): the rest of the window isn't
+ *  drawn again, so each step stays quick however long the list grows and however busy the Mac is. False when the
+ *  list on screen isn't the one last drawn (a full draw then). `b2`: drawn for B2's list (deskB2Row) or the old one. */
+function deskDonePatch(project) {
+  const at = deskDoneDrawn.get(project), d = deskOf(project), pg = deskDonePages.get(project);
+  const end = document.querySelector(`.dk-items [data-desk-done-more="${CSS.escape(project)}"]`);
+  if (!at || !d || !end || !at.n || at.b2 !== !!end.closest(".dk-b2") || end.closest(".dk-gbody.shut")) return false;
+  const all = deskDoneList(d), n = Math.min(all.length, Math.max(deskDoneShown.get(project) || DESK_DONE_STEP, at.least));
+  if (n < at.n || all[at.n - 1]?.id !== at.last) return false;
+  if (n > at.n) end.insertAdjacentHTML("beforebegin", all.slice(at.n, n).map(at.row).join(""));
+  deskDoneDrawn.set(project, { ...at, n, last: all[n - 1].id });
+  if (all.length <= n && pg?.end) end.remove();
+  deskDoneWatch();
+  return true;
 }
 let deskDoneSeen = null;
 /** Watches the list's end (after each draw): in view, 10 more. */
@@ -449,6 +467,7 @@ function deskListDone(project, g, put, row) {
   if (kept.length) put("kept", group("kept", `Kept copies <span class="n">${kept.length}</span>`, kept.map(deskKeptRow).join("")));
   // Its "Loading older…" end goes in its fold, so a folded Done loads nothing more.
   const doneMore = more && (shown.length || pg?.loading || !pg) ? `<div class="dk-more" data-desk-done-more="${esc(project)}">${shown.length ? "Loading older…" : ""}</div>` : "";
+  deskDoneDrawn.set(project, { n: deskB2On() && deskB2Tab === "done" ? 0 : shown.length, last: shown.at(-1)?.id, row, least: 0, b2: false });
   if (shown.length) put("done", group("done", "Done", shown.map(row).join("") + doneMore));
   else if (doneMore) put("done", doneMore);
 }

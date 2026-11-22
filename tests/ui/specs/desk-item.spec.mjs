@@ -316,9 +316,12 @@ test("finished items: the 10 newest, then 10 more as the list's end comes into v
   expect(await anchor.evaluate((e) => e.getBoundingClientRect().top) + scrolled).toBeCloseTo(top0, 0);
   await list.evaluate((e) => { e.scrollTop = e.scrollHeight; });
   await count(30);
+  await page.evaluate(() => { const draw = renderMain; window.drawsWhileScrolling = 0; window.renderMain = (...a) => { window.drawsWhileScrolling++; return draw(...a); }; });
   // Every one loaded: the end goes, and redrawing 500 stays quick.
   await expect.poll(async () => { await list.evaluate((e) => { e.scrollTop = e.scrollHeight; }); return (await doneIds()).length; }, { timeout: 20000, intervals: [50] }).toBe(503);
   await expect(list.locator('[data-desk-done-more]')).toHaveCount(0);
+  // Each 10 more went in at the list's end in place, not by drawing the whole window again (#733).
+  expect(await page.evaluate(() => window.drawsWhileScrolling)).toBeLessThan(5);
   const ms = await page.evaluate(() => { const t = performance.now(); for (let n = 0; n < 10; n++) deskList("cue"); return (performance.now() - t) / 10; });
   expect(ms).toBeLessThan(50);
 });
