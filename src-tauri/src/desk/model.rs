@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-pub use super::copies::{CopyOn, ItemTree, KeptTree, OnMachine, RemoteWork};
+pub use super::copies::{CopyOn, InRepo, ItemTree, KeptTree, OnMachine, RemoteWork};
 
 /// Who holds an item: a live session (a plain one, or a lead with a crew), or one of a lead's crew.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -247,6 +247,10 @@ pub struct DeskItem {
     /// this as it starts, wherever its holder works.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub copy_on: Option<CopyOn>,
+    /// Another repository the lead routed it to (`repo:` on its ROUTE, #635): its new session starts there, its copy
+    /// is of that repository, and it lands on that repository's main line. Saved, so a retry goes there too.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub in_repo: Option<InRepo>,
     /// Its place in its Desk's queue as you dragged it (#387), 1 at the top: the next free copy goes to the top one, and
     /// the lead sees what needs routing in this order. None: after those you placed, oldest first. Saved.
     #[serde(default, skip_serializing_if = "Option::is_none")]

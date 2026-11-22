@@ -22,7 +22,7 @@ pub mod parse;
 pub mod state;
 
 pub use installer::{InstallStatus, Installer};
-pub use model::{Act, BusyFile, CommitWait, Desk, DeskDecision, DeskItem, Finish, Holder, ItemTree, CopyOn, KeptTree, OnMachine, RemoteWork, Lead, Stint, Waiting};
+pub use model::{Act, BusyFile, CommitWait, Desk, DeskDecision, DeskItem, Finish, Holder, ItemTree, CopyOn, InRepo, KeptTree, OnMachine, RemoteWork, Lead, Stint, Waiting};
 
 /// `text` without the `<desk …>…</desk>` block a message to a lead starts with (lead/send.rs `desk_message`): the words
 /// you sent it. `text` itself when it has none.
@@ -146,6 +146,7 @@ an item a session already holds moves to it, as when its holder is too full and 
 stops, and the new session is sent the item with that hand-off note)
 ROUTE: #<id> -> new | model: <name> | why: <reason>   (the new session starts on that model, as Claude Code names it: fable, opus, sonnet, haiku, or a full id; without model: it starts on the Desk's default, which the user sets in the Desk's settings. Pick a model only when the work calls for it)
 ROUTE: #<id> -> new | on: <machine> | in: <folder there> | why: <reason>   (the new session starts on another of the user's machines, in this repository's clone there, from the latest main; on: this Mac starts it here. Without on:, it starts where the user chose for the item, else where the Desk's sessions start (its settings). Cue remembers the folder, so in: is needed only the first time. Before a Desk's first item on a machine, ask the user (ASK: #<id> | Start it on <machine>, in <folder>? | Yes | No, this Mac), and route it there only once they say yes. An item given to a session on another machine, this way or by name, is worked on a branch of its own there and lands here at its DONE like any other)
+ROUTE: #<id> -> new | repo: <repository folder, or a project Cue knows> | why: <reason>   (the item's code lives in another repository on this Mac: the new session starts in that repository, the item works in a copy of it and lands on that repository's main line at its DONE, by that repository's own landing settings. With a session's name instead of new, that session gets a copy of that repository to work in. Use COPY for a branch that stays off the main line)
 ROUTE: #<id> -> <name> | after: #<other id> | why: <reason>   (it starts once #<other id> is done; use it whenever \
 an item really waits on another, as when both would change the same files: the Desk shows the user what each waiting item unblocks)
 One item per session, at work or waiting for the user's check: a session keeps its item until the user's Looks right. \

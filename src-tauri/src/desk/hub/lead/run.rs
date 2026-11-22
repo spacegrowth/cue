@@ -148,9 +148,12 @@ impl Hub {
         // `start_place`, #597): it starts in the Desk's clone there, from the latest main (`desk_remote_starts`).
         let place = self.read(|st| st.desk.item(&s.id).map(|i| crate::desk::hub::landing::remote_item::start_place(st, i)).unwrap_or(Ok(None)));
         let on = place.clone().ok().flatten();
-        let dir = match (&place, &on) {
-            (Err(e), _) => Err(e.clone()),
-            (_, Some(o)) => Ok(o.folder.clone()),
+        // Routed to another repository on this Mac (#635): it starts there.
+        let in_repo = self.read(|st| st.desk.item(&s.id).and_then(|i| i.in_repo.as_ref()).map(|r| r.repo.clone()));
+        let dir = match (&place, &on, in_repo) {
+            (Err(e), _, _) => Err(e.clone()),
+            (_, Some(o), _) => Ok(o.folder.clone()),
+            (_, _, Some(repo)) => Ok(repo),
             _ => self.desk_folder(&s.project).ok_or_else(|| format!("no folder known for {}", s.project)),
         };
         // Its folder is one a session of the project already works in, or the one the lead named on a machine: trusted,

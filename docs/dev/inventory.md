@@ -19,7 +19,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | Lock acquisitions | 283 |
 | Lock-graph edges | 54 |
 | Spawn sites | 92 |
-| External calls: fs / db / process / notify / login / socket | 511 / 232 / 60 / 4 / 1 / 4 |
+| External calls: fs / db / process / notify / login / socket | 513 / 232 / 60 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -496,7 +496,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (511)
+### fs (513)
 
 | In | Call | Times |
 |---|---|---|
@@ -568,6 +568,8 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `desk/hub/landing/named_copy.rs::repo_named` | Path::exists | 3 |
 | `desk/hub/landing/named_copy.rs::repo_named` | Path::is_dir | 1 |
 | `desk/hub/landing/named_copy.rs::repo_named` | canonicalize | 1 |
+| `desk/hub/landing/other_repo.rs::Hub::repo_of` | Path::is_dir | 1 |
+| `desk/hub/landing/other_repo.rs::Hub::repo_of` | canonicalize | 1 |
 | `desk/hub/landing/own_work.rs::Hub::holder_work` | Path::is_dir | 1 |
 | `desk/hub/landing/own_work.rs::Hub::main_leftovers` | read | 2 |
 | `desk/hub/landing/own_work.rs::in_copies` | canonicalize | 2 |

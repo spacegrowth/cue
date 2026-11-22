@@ -61,7 +61,7 @@ impl Hub {
             }
             let remote = remote_of("", &t.repo, onto).ok_or("This project has no remote to push to, so no pull request was opened")?;
             // Nothing goes out before the check of every commit the remote doesn't have yet (push_check.rs).
-            let project = self.read(|st| st.desk.project_of(&it.project).to_string());
+            let project = self.read(|st| it.in_repo.as_ref().map_or_else(|| st.desk.project_of(&it.project).to_string(), |r| r.project.clone()));
             crate::desk::hub::landing::push_check::push_allowed("", &t.repo, &project, &remote, squash).map_err(|e| format!("{e}. So no pull request was opened"))?;
             self.net_git(&t.repo, &["push", "-q", &remote, &format!("+{squash}:refs/heads/{}", t.branch)])
                 .map_err(|e| because(format!("Its branch couldn't be pushed to {remote}, so no pull request was opened"), &e))?;

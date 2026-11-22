@@ -415,8 +415,8 @@ impl Hub {
         // before, so it's installed all the same.
         let before = self.read(|st| st.desk.item(id).and_then(|i| i.finish.as_ref()).map(|f| f.repo.clone())).unwrap_or_default();
         let tops: Vec<String> = if tops.is_empty() && !before.is_empty() { vec![before] } else { tops.to_vec() };
-        // Its project set to nothing after landing (desk/lands.rs): Cue's own work isn't installed or served.
-        let project = self.read(|st| st.desk.item(id).map(|i| i.project.clone())).unwrap_or_default();
+        // Its project (another repository's when routed there, #635) set to nothing after landing (desk/lands.rs): Cue's own work isn't installed or served.
+        let project = self.read(|st| st.desk.item(id).map(|i| crate::desk::hub::landing::other_repo::lands_project(i).to_string())).unwrap_or_default();
         let cue = tops.iter().find(|t| crate::desk::hub::lead::checks::builds_this_cue(t) && crate::desk::lands::lands_of(&project, t).after == "install");
         let top = cue.or(tops.first()).cloned().unwrap_or_default();
         // The main line's tip: the folder's HEAD, or, while another item works on its own branch there, the main line it

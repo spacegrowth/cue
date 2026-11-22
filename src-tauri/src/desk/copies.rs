@@ -94,6 +94,15 @@ pub struct CopyOn {
     pub cue: String,
 }
 
+/// The repository the lead routed an item to (`ROUTE: #<id> -> new | repo: <folder or project>`, #635): its main
+/// checkout, where a new session for it starts and its copy is made, and the project Cue knows that repository as,
+/// whose landing settings and never-commit words its landing there follows (desk/hub/landing/other_repo.rs).
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct InRepo {
+    pub repo: String,
+    pub project: String,
+}
+
 /// A dropped item's copy that had work in it, kept (moved aside, its branch kept) and listed on its Desk until you
 /// remove it: its item, title and Desk, the copy, and when it was dropped (ms).
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]

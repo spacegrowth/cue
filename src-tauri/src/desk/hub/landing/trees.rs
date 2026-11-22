@@ -113,12 +113,14 @@ impl Hub {
                     let s = st.sessions.get(h.to()).filter(|s| s.origin.machine.is_empty() && !s.origin.cwd.is_empty())?;
                     // No code at all (its "done when" says so: a plan, a doc, mocks): no copy, nor a wait for one; it
                     // works where its holder is (#543). A copy the lead gave still goes.
-                    if it.copy_on.is_none() && crate::desk::hub::landing::unlanded::rules_out_code(&it.done_when) {
+                    if it.copy_on.is_none() && it.in_repo.is_none() && crate::desk::hub::landing::unlanded::rules_out_code(&it.done_when) {
                         return None;
                     }
-                    Some(match &it.copy_on {
-                        Some(c) => (id.clone(), it.project.clone(), c.repo.clone(), h.to().to_string(), true),
-                        None => (id.clone(), it.project.clone(), s.origin.cwd.clone(), h.to().to_string(), false),
+                    // Routed to another repository (#635): a copy of it, by its project's settings, wherever its holder works.
+                    Some(match (&it.copy_on, &it.in_repo) {
+                        (Some(c), _) => (id.clone(), it.project.clone(), c.repo.clone(), h.to().to_string(), true),
+                        (None, Some(r)) => (id.clone(), r.project.clone(), r.repo.clone(), h.to().to_string(), true),
+                        (None, None) => (id.clone(), it.project.clone(), s.origin.cwd.clone(), h.to().to_string(), false),
                     })
                 })
                 .collect()
@@ -364,7 +366,7 @@ impl Hub {
     pub(crate) fn desk_trees_free(&self, repo: &str) -> bool {
         let now = now_ms();
         // How many copies of it each project waiting for one may have at once, read before the store is taken.
-        let projects: Vec<String> = self.read(|st| st.desk.items.iter().filter(|i| in_line(i) && i.tree_wait_repo == repo).map(|i| i.project.clone()).collect());
+        let projects: Vec<String> = self.read(|st| st.desk.items.iter().filter(|i| in_line(i) && i.tree_wait_repo == repo).map(|i| crate::desk::hub::landing::other_repo::lands_project(i).to_string()).collect());
         // A project set to a branch in the folder itself has one at a time, apart from the copies.
         // Nor while the folder is still on an item's branch nobody works on (put back by the tick first).
         let folder_off = crate::desk::hub::landing::in_place::folder_busy(self, repo);
@@ -379,7 +381,7 @@ impl Hub {
             let mut waiting: Vec<&DeskItem> = st.desk.items.iter().filter(|i| in_line(i) && i.tree_wait_repo == repo).collect();
             // Your order first (#387), then the one queued longest.
             waiting.sort_by_key(|i| (i.queue_order.unwrap_or(u32::MAX), i.updated));
-            let room = |i: &DeskItem| match at_once.get(&i.project).copied() {
+            let room = |i: &DeskItem| match at_once.get(crate::desk::hub::landing::other_repo::lands_project(i)).copied() {
                 Some((n, true)) => used_in_place < n && !folder_off,
                 Some((n, false)) => used < n,
                 None => used < crate::desk::lands::lands_known(&i.project, repo).at_once,
@@ -526,8 +528,8 @@ impl Hub {
             return Landed::Held;
         }
         let project = self.read(|st| st.desk.project_of(&it.project).to_string());
-        // The same words as before a push (#650): the project's never-committed words and your names.
-        let words = crate::desk::hub::landing::push_check::words_for(&project);
+        // The same words as before a push (#650), and the other repository's when routed to one (#635).
+        let words = crate::desk::hub::landing::other_repo::never_words(&project, &it);
         let message = format!("{} (#{id})", it.title);
         if let Some(w) = words.iter().find(|w| message.to_lowercase().contains(&w.to_lowercase())) {
             self.finish_ask(id, "word", &format!("Not landed: \"{w}\" is in its title"), "");
@@ -680,7 +682,7 @@ impl Hub {
             self.finish_fin(id, |f| (f.step, f.wait) = ("checking".into(), String::new()));
             // Its project's check (desk/lands.rs), on the same tree: main plus the item (`squash`). Your own steps run
             // in a clean copy of it; set to none, it lands "not checked"; else the repository's own (Cue's).
-            let check = match crate::desk::lands::check_of(&it.project, &t.repo) {
+            let check = match crate::desk::lands::check_of(crate::desk::hub::landing::other_repo::lands_project(it), &t.repo) {
                 crate::desk::lands::Check::Steps(steps) => Some(check_steps_on(&t.repo, squash, &steps)),
                 crate::desk::lands::Check::Off => None,
                 crate::desk::lands::Check::Repo => self.installer().check(&t.repo, squash),
@@ -708,7 +710,7 @@ impl Hub {
         }
         // Its project lands by pull request: checked, its branch pushed and a pull request opened; it lands when that's
         // merged (desk/hub/landing/pr.rs). Main isn't touched here.
-        if crate::desk::lands::lands_of(&it.project, &t.repo).how == "pr" {
+        if crate::desk::lands::lands_of(crate::desk::hub::landing::other_repo::lands_project(it), &t.repo).how == "pr" {
             self.desk_open_pr(it, t, onto, squash, message);
             return Landed::Done;
         }
