@@ -32,7 +32,7 @@ const ctx = {
 ctx.draft = (id) => (ctx.drafts[id] ||= { text: "", choices: {}, images: [] });
 vm.createContext(ctx);
 // In the windows' order (index.html): desk/act.js puts its boxes on box/send.js BOX_OWNERS as it loads.
-for (const f of ["box/markup.js", "box/send.js", "box/end.js", "chat/send.js", "chat/compose.js", "desk/clicks.js", "desk/page.js", "desk/view.js", "desk/act.js", "inbox/list.js", "inbox/box.js", "inbox/side.js", "inbox/keys.js", "sheets.js"]) {
+for (const f of ["box/markup.js", "box/send.js", "box/end.js", "chat/send.js", "chat/compose.js", "desk/clicks.js", "desk/page.js", "desk/away.js", "desk/view.js", "desk/act.js", "inbox/list.js", "inbox/box.js", "inbox/side.js", "inbox/keys.js", "sheets.js"]) {
   vm.runInContext(fs.readFileSync(`${__dirname}/../ui/${f}`, "utf8").replace(/^(const|let) /gm, "var "), ctx, { filename: f });
 }
 // What the builders call that isn't theirs to draw.
