@@ -39,13 +39,14 @@ test("an item's replies show whole, a Done is the Desk's line, and Open host-lea
 
 test("what a stop hook made it write after its reply folds under the reply, as the chat folds it (#310)", async ({ page, cue }) => {
   await cue.open("desk");
-  const hooked = (cue, on) => cue.override("session_steps", ({ sessionId }, on) => {
-    const at = Date.now() - 600000;
+  // The turn's time fixed once: a turn that starts at another time each fetch is a new turn, folded again.
+  const at = await page.evaluate(() => Date.now() - 600000);
+  const hooked = (cue, on) => cue.override("session_steps", ({ sessionId }, [on, at]) => {
     return sessionId !== "host" ? { version: 1, turns: [] } : { version: 1, turns: [{ at_ms: at, prompt: "About #d5 (x): go on", more: 0, ...(on ? { hooked_ms: at + 70000 } : {}), items: [
       { t: "step", id: "s1", kind: "read", verb: "Read", subject: "header.js", mono: true, result: "40 lines", bad: false, done: true, at_ms: at + 5000 },
       { t: "say", text: "Fixed the header.", at_ms: at + 60000 },
       ...(on ? [{ t: "say", text: "1. SHAPE: the checklist answer.", at_ms: at + 80000 }] : [])] }] };
-  }, on);
+  }, [on, at]);
   await hooked(cue, true);
   await replies(cue, ["Fixed the header."]);
   await openItem(page, cue, "d5");
@@ -71,8 +72,10 @@ test("the box on an item at work goes straight to its holder, sent as the item, 
   await page.locator(".dk-right .dk-box textarea").fill("Check the narrow window too");
   await page.locator(".dk-right [data-desk-send]").click();
   await cue.called("desk_item_act", { id: "d5", act: "note", text: "Check the narrow window too" });
-  const sent = { args: { text: await page.evaluate(() => deskOf("cue").decisions.find((c) => c.item_id === "d5" && c.delivery)?.delivery.text) } };
-  expect(await page.evaluate(() => deskOf("cue").decisions.find((c) => c.item_id === "d5" && c.delivery)?.delivery.session_id)).toBe("host");
+  // The window hears of it shortly after the call, as from the hub.
+  const delivery = () => page.evaluate(() => deskOf("cue").decisions.find((c) => c.item_id === "d5" && c.delivery)?.delivery);
+  await expect.poll(async () => (await delivery())?.session_id).toBe("host");
+  const sent = { args: { text: (await delivery()).text } };
   expect(sent.args.text).toMatch(/^About #d5 \(.+\): Check the narrow window too$/);
   expect(await cue.calls("desk_send")).toHaveLength(0);
   // In its chat, not taken yet while its holder works: queued, it goes in when it's free (#531); taken, that goes.
@@ -91,16 +94,18 @@ test("the box on an item at work goes straight to its holder, sent as the item, 
   const line = mine.locator(".msg-line");
   await expect(line).toContainText("✓ Delivered to host-lead ·");
   if (process.env.SHOT_DIR) await line.locator("xpath=..").screenshot({ path: `${process.env.SHOT_DIR}/took.png` });
-  expect(await line.evaluate((e) => { const c = getComputedStyle(e); return [c.borderTopWidth, c.backgroundColor, c.cursor, e.tagName]; })).toEqual(["0px", "rgba(0, 0, 0, 0)", "auto", "DIV"]);
+  // (Polled: a redraw between finding the line and reading it would leave a detached one, with no style.)
+  await expect.poll(() => line.evaluate((e) => { const c = getComputedStyle(e); return [c.borderTopWidth, c.backgroundColor, c.cursor, e.tagName]; })).toEqual(["0px", "rgba(0, 0, 0, 0)", "auto", "DIV"]);
   await expect(mine).toHaveClass(/msg-delivered/);
 });
 
 test("while its holder works on it, the item's chat shows the turn it's writing, whole, with its steps folded", async ({ page, cue }) => {
   await cue.open("desk");
-  await cue.override("session_steps", ({ sessionId }, at = Date.now()) => (sessionId !== "host" ? { version: 1, turns: [] } : { version: 1, turns: [{ at_ms: at - 30000, prompt: "About #d5 (x): go on", more: 0, items: [
+  // The turn's time fixed once: a turn that starts at another time each fetch is a new turn, folded again.
+  await cue.override("session_steps", ({ sessionId }, at) => (sessionId !== "host" ? { version: 1, turns: [] } : { version: 1, turns: [{ at_ms: at - 30000, prompt: "About #d5 (x): go on", more: 0, items: [
     { t: "step", id: "s1", kind: "read", verb: "Read", subject: "header.js", mono: true, result: "40 lines", bad: false, done: true, at_ms: at - 20000 },
     { t: "say", text: "Found it: the header **centres** on the wrong box.", at_ms: at - 15000 },
-    { t: "step", id: "s2", kind: "run", verb: "Ran", subject: "npm test", mono: true, result: "", bad: false, done: false, at_ms: at - 5000 }] }] }));
+    { t: "step", id: "s2", kind: "run", verb: "Ran", subject: "npm test", mono: true, result: "", bad: false, done: false, at_ms: at - 5000 }] }] }), await page.evaluate(() => Date.now()));
   await cue.override("step_detail", ({ ids }) => Object.fromEntries(ids.map((id) => [id, id === "s2" ? { full: "npm test" } : { full: "/repo/header.js" }])));
   await cue.change((st) => {
     Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5"), { state: "working", now_on: true, said: [] });

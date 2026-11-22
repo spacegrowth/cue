@@ -576,7 +576,8 @@ test("an item's question opens at the page's foot and keeps the answer on its pa
   await page.locator(".dk-right [data-desk-send]").click();
   // Sent as about this item, so its session answers on it (#176).
   await cue.called("desk_item_act", { id: "d1", act: "note", text: "It stays put now" });
-  expect(await page.evaluate(() => deskOf("cue").decisions.find((c) => c.item_id === "d1" && c.delivery)?.delivery)).toMatchObject({ session_id: "site", text: "About #d1 (Reply box loses focus after Send): It stays put now" });
+  // The window hears of it shortly after the call, as from the hub.
+  await expect.poll(() => page.evaluate(() => deskOf("cue").decisions.find((c) => c.item_id === "d1" && c.delivery)?.delivery)).toMatchObject({ session_id: "site", text: "About #d1 (Reply box loses focus after Send): It stays put now" });
   await expect(chain).toContainText("You answered: It stays put now");
   expect(await page.evaluate(() => [view, deskOpen.kind])).toEqual(["desk", "item"]);
   // Its session at work again: the old ask and your answer leave the page.
@@ -983,12 +984,14 @@ test("the chats' pages: the Dispatcher's NOW (its state, routing, with sessions,
   await expect(sp.locator(".dk-ph3")).toHaveText(/^on #d5 · /);
   await expect(sp.locator(".dk-pnow .dk-pword")).toHaveText(/^(Working|Idle|Needs you)$/);
   // The same type as the Dispatcher's header.
+  // Read on a connected element: a redraw between finding it and reading it would leave a detached one, with no style.
   const font = (l) => l.evaluate((e) => { const c = getComputedStyle(e); return [c.fontSize, c.fontWeight]; });
+  const fontNow = (l) => expect.poll(() => font(l)).not.toEqual(["", ""]).then(() => font(l));
   await page.evaluate(() => deskShow(null));
-  const leadFont = await font(pg.locator("h1"));
+  const leadFont = await fontNow(pg.locator("h1"));
   await openSessions(page);   // the sessions list is in All sessions (#666)
   await page.locator('.dk-sessions .dk-srow:not(.crew)', { hasText: "host-lead" }).first().click();
-  expect(await font(sp.locator("h1"))).toEqual(leadFont);
+  await expect.poll(() => font(sp.locator("h1"))).toEqual(leadFont);
   if (process.env.SHOT_DIR) for (const c of ["light", "dark"]) { await page.emulateMedia({ colorScheme: c }); await sp.locator(".dk-ph").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-sess-held-${c}.png` }); }
   await page.emulateMedia({ colorScheme: "light" });
   await sp.locator(".dk-ph3 .dk-sch-t").click();
@@ -1093,9 +1096,9 @@ test("the Board Desk link uses the tray and omits repeated task details", async 
   await expect(lead).toHaveCount(1);
   await expect(lead).toHaveText("DeskFeature Desk›");
   // A quiet line on the card's own ground, not a light pill (#260): no fill, no border, the name in on-bg.
-  const look = await lead.evaluate((el) => { const cs = getComputedStyle(el); return { bg: cs.backgroundColor, bw: cs.borderTopWidth }; });
-  expect(look.bg).toBe("rgba(0, 0, 0, 0)");
-  expect(look.bw).toBe("0px");
+  // (Read on the chip as drawn now: a redraw between finding it and reading it would leave a detached one.)
+  await expect(lead).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(lead).toHaveCSS("border-top-width", "0px");
   await expect(lead).toHaveAttribute("data-inbox-desk", "desk-feature");
   await expect(lead.locator("svg path").first()).toHaveAttribute("d", /^M4 13l3-7/);
   await expect(card("host-lead")).not.toContainText("Hosted sessions can't open the canvas");
@@ -1313,7 +1316,7 @@ test("an item's thread holds only its own messages: its session's words about an
   await page.locator(".dk-right .dk-box textarea").fill("Check the narrow window too");
   await page.locator(".dk-right [data-desk-send]").click();
   await cue.called("desk_item_act", { id: "d5", act: "note", text: "Check the narrow window too" });
-  expect(await page.evaluate(() => deskOf("cue").decisions.find((c) => c.item_id === "d5" && c.delivery)?.delivery.text)).toMatch(/^About #d5 \(.+\): Check the narrow window too$/);
+  await expect.poll(() => page.evaluate(() => deskOf("cue").decisions.find((c) => c.item_id === "d5" && c.delivery)?.delivery.text)).toMatch(/^About #d5 \(.+\): Check the narrow window too$/);
   await expect(pane.locator(".dk-ichat .cv-you").last()).toContainText("Check the narrow window too");
   // Its session on it now: its working row comes back.
   await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5").state = "working"; st.sessions.find((x) => x.session_id === "host").state = "working"; });
