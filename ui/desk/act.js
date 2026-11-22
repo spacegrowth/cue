@@ -281,6 +281,13 @@ async function deskAct(id, act, el = null) {
     if (await deskSendBack(id, key)) deskBackFor = null;
     return renderMain();
   }
+  // Start now at the limit on items at once (#712): asked first, never past it unless you raise it.
+  if (act === "start_now") {
+    const f = (state.desk?.projects || []).flatMap((p) => p.items || []).find((x) => x.id === id)?.start_full;
+    if (f) { deskFullAsk = { id, ...f }; renderMain(); return; }
+  }
+  if (act === "full_wait") { deskFullAsk = null; return renderMain(); }
+  if (act === "full_raise") { deskFullAsk = null; act = "start_now_raise"; }
   try {
     const it = await invoke("desk_item_act", { id, act, text: el?.dataset.on || el?.dataset.path || "" });
     if (act === "drop") deskOpen = null;
@@ -290,6 +297,21 @@ async function deskAct(id, act, el = null) {
   }
   catch (e) { toast(String(e), 5000); }
   renderMain();
+}
+/** Start now's warning (#712): where the item waits already has as many of the Desk's items at work as its number
+ *  there. Raise it by one and start now (Enter), or keep waiting (Esc); at the most it can take, only keep waiting. */
+let deskFullAsk = null;
+function deskFullHtml() {
+  const f = deskFullAsk;
+  if (!f) return "";
+  const can = f.n < f.max, id = esc(f.id);
+  const text = can ? `That's the most this Desk runs there at once. Raise it to ${f.n + 1} and #${id} starts now, or it waits its turn.` : `That's the most it can take, so #${id} waits its turn.`;
+  const yes = can ? `<button class="btn primary" data-act="desk-full-raise" data-id="${id}">Raise to ${f.n + 1} and start <kbd>↵</kbd></button>` : "";
+  return `<div class="move-scrim"><div class="move-dialog end-dialog" role="alertdialog" aria-labelledby="dk-full-title">
+    <div class="move-title" id="dk-full-title">${esc(f.on)} already has ${f.n} item${f.n === 1 ? "" : "s"} working</div>
+    <div class="end-text">${text}</div>
+    <div class="row-btns"><span class="grow"></span><button class="btn" data-act="desk-full-wait" data-id="${id}">Keep waiting <kbd>Esc</kbd></button>${yes}</div>
+  </div></div>`;
 }
 /** Item `id`'s Send back, open: "Why send it back?" and Cancel over a box of its own (never the lead's), as the Desk's
  *  boxes are: words, the mic, a picture, Send. Enter sends, ⇧Enter a new line, Esc closes it. */
@@ -602,7 +624,7 @@ function deskKey(e) {
   if (e.key === "Escape" && key.startsWith("back:")) { deskAct(key.slice(5), "back_cancel"); return true; }
   // Esc: only when nothing over the Desk wants it (the crew page, a sheet, search and the live list, the projects
   // list, a menu, a rename, a dialog: How work lands, Ask me before, quitting, trusting a folder), as the Inbox's keys do.
-  const over = sheet || lightbox || liveOpen || deleteAsk || quitAsk || trustAsk || (typeof lands !== "undefined" && lands) || (typeof askBefore !== "undefined" && askBefore) || renaming || pjRenaming || pjOpen || pjNewOpen || colorFor || newProjFor || btwFor || menuFor || redirectFor || (typeof moreFor !== "undefined" && moreFor) || (crewPageSid && document.querySelector(".crew-page"));
+  const over = sheet || lightbox || liveOpen || deleteAsk || quitAsk || trustAsk || deskFullAsk || (typeof lands !== "undefined" && lands) || (typeof askBefore !== "undefined" && askBefore) || renaming || pjRenaming || pjOpen || pjNewOpen || colorFor || newProjFor || btwFor || menuFor || redirectFor || (typeof moreFor !== "undefined" && moreFor) || (crewPageSid && document.querySelector(".crew-page"));
   if (e.key === "Escape" && !e.metaKey && !e.ctrlKey && !e.altKey && !over) {
     if (deskAddingSession && deskAddingSession === deskSelection()) {
       deskAddingSession = null;

@@ -123,3 +123,34 @@ fn an_item_waiting_for_a_folder_on_this_mac_moves_to_a_ticked_machine_with_room(
     assert!(it["holder"]["sid"].as_str().is_some(), "started once this Mac had room: {it}");
     assert!(it["machine"].as_str().unwrap_or("").is_empty() || it["machine"] == "This Mac", "{it}");
 }
+
+// Start now on an item waiting for room on a machine (#712): never past its number there unless you raise it first.
+#[test]
+fn start_now_on_an_item_waiting_for_room_on_a_machine_starts_it_only_once_you_raise_the_number() {
+    let w = World::new();
+    let ((_, _, _, project, _, _), _ssh) = routed_there(&w);
+    let lead = w.hub().desk_lead_sid(&project).unwrap();
+    w.hub().desk_lands_set(&project, &serde_json::json!({ "machines": ["box"], "machine_folders": { "box": "~/code/app" }, "machine_at_once": { "box": 1 } })).unwrap();
+    ends(&w, &lead, "ITEM: bug | Footer jumps | done when: it stays put\nROUTE: #new -> new | why: next");
+    w.advance(1000);
+    let it = item(&w, &project, "Footer jumps");
+    let id = it["id"].as_str().unwrap().to_string();
+    assert_eq!((it["state"].as_str(), it["machine_wait"].as_str()), (Some("queued"), Some("box")), "{it}");
+    assert_eq!((it["start_full"]["on"].as_str(), it["start_full"]["n"].as_u64()), (Some("box"), Some(1)), "the window warns first: {it}");
+    // Start now anyway: refused, and it keeps waiting its turn.
+    let no = w.hub().desk_item_act(&id, "start_now", "").unwrap_err();
+    assert!(no.contains("box already has 1 of this Desk's items working at once"), "{no}");
+    w.advance(1000);
+    let it = item(&w, &project, "Footer jumps");
+    assert!(it["holder"].is_null(), "{it}");
+    assert_eq!((it["state"].as_str(), it["machine_wait"].as_str()), (Some("queued"), Some("box")), "{it}");
+    // Raised: 2 at once on box, saved as Desk settings says it, and it starts there now.
+    w.hub().desk_item_act(&id, "start_now_raise", "").unwrap();
+    w.advance(1000);
+    let c: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(crate::server::cue_dir().join("config.json")).unwrap()).unwrap();
+    assert_eq!(c.pointer(&format!("/project/machine/{project}/at_once/box")), Some(&serde_json::json!(2)), "{c}");
+    let it = item(&w, &project, "Footer jumps");
+    assert!(it["holder"]["sid"].as_str().is_some(), "started: {it}");
+    assert_eq!(it["machine"].as_str(), Some("box"), "{it}");
+    assert!(it["start_full"].is_null(), "{it}");
+}

@@ -282,6 +282,14 @@ function keyDeleteAsk(e) {
     quitAnswer(false);
     return false;
   }
+  // Start now's warning (#712): Esc keeps the item waiting, Enter raises the limit and starts it.
+  if (typeof deskFullAsk !== "undefined" && deskFullAsk && (e.key === "Escape" || e.key === "Enter")) {
+    e.preventDefault();
+    e.stopPropagation();
+    const f = deskFullAsk;
+    deskAct(f.id, e.key === "Enter" && f.n < f.max ? "full_raise" : "full_wait");
+    return false;
+  }
   if (trustAsk && e.key === "Escape") {
     e.preventDefault();
     e.stopPropagation();

@@ -23,7 +23,7 @@ pub mod parse;
 pub mod state;
 
 pub use installer::{InstallStatus, Installer};
-pub use model::{Act, BusyFile, CommitWait, Desk, DeskDecision, DeskItem, Finish, Holder, ItemTree, CopyOn, InRepo, KeptTree, OnMachine, RemoteWork, Lead, Stint, Waiting};
+pub use model::{Act, BusyFile, CommitWait, Desk, DeskDecision, DeskItem, Finish, Holder, ItemTree, CopyOn, InRepo, KeptTree, OnMachine, RemoteWork, Lead, StartFull, Stint, Waiting};
 
 /// `text` without the `<desk …>…</desk>` block a message to a lead starts with (lead/send.rs `desk_message`): the words
 /// you sent it. `text` itself when it has none.

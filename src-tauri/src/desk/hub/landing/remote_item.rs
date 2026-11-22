@@ -153,6 +153,38 @@ pub(crate) fn has_room(st: &Store, project: &str, machine: &str) -> bool {
     machine_cap(st, project, machine).is_none_or(|n| machine_load(st, project, machine) < n)
 }
 
+/// Where item `it`, waiting its turn, would go past its Desk's limit on items at once if started now (#712): one
+/// waiting for a free folder of its own on this Mac with every one of the Desk's in use, or for room on a machine
+/// with its number at work. None when it waits for nothing of the kind, or there's room now.
+pub(crate) fn start_full(st: &Store, it: &DeskItem) -> Option<crate::desk::StartFull> {
+    if it.state != "queued" {
+        return None;
+    }
+    let machine = if it.tree_wait && it.holder.is_some() {
+        String::new()
+    } else if it.holder.is_none() && !it.machine_wait.is_empty() {
+        waited_machine(&it.machine_wait)
+    } else {
+        return None;
+    };
+    let n = machine_cap(st, &it.project, &machine)?;
+    let full = if it.tree_wait && !it.tree_wait_repo.is_empty() {
+        // Its slots as the copies count them (desk/hub/landing/trees.rs `claim_tree`): every one of them taken.
+        let used: Vec<u32> = st.desk.items.iter().filter_map(|i| i.tree.as_ref()).filter(|t| t.repo == it.tree_wait_repo && !t.in_place).map(|t| t.slot).collect();
+        (1..=n as u32).all(|k| used.contains(&k))
+    } else {
+        !has_room(st, &it.project, &machine)
+    };
+    let on = if machine.is_empty() { THIS_MAC.to_string() } else { crate::machines::display_name(&machine) };
+    let max = if machine.is_empty() { crate::desk::lands::AT_ONCE.1 } else { crate::desk::machine_pref::AT_ONCE.1 };
+    full.then_some(crate::desk::StartFull { machine, on, n: n as u32, max })
+}
+
+/// What Start now says when it would go past the limit (#712).
+pub(crate) fn start_full_words(f: &crate::desk::StartFull) -> String {
+    format!("{} already has {} of this Desk's items working at once, the most it takes. Raise that number to start it now, or let it wait its turn", f.on, f.n)
+}
+
 /// Err when session `to` is on a machine, in a folder another open item's work is in (#679): both would commit in one
 /// folder, and one's work would land under the other's name.
 fn folder_free(st: &Store, id: &str, to: &str) -> Result<(), String> {

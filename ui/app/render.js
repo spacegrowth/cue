@@ -154,7 +154,7 @@ const viewHtml = () => (typeof crewPageShown === "function" && crewPageShown()) 
 /** What sits over the window: Move to Cue, a delete to confirm, a picture full size, Send to, a sheet, the live
  *  list in the middle of the window. */
 function overlaysHtml() {
-  return `${moving ? movingDialog() : ""}${deleteAsk ? deleteDialog() : ""}${quitAsk ? quitDialog() : ""}${lightboxHtml()}${sheet === "forward" && forward ? forwardPop() : ""}${sheet && sheet !== "forward" ? `<div class="scrim" data-act="close-sheet">${sheet === "convo" && convo ? convoSheet() : sheet === "setup" ? setupSheet() : settingsSheet()}</div>` : ""}${liveOpen ? `<div class="scrim spot-scrim"><span class="lv-wrap spot">${livePop(liveRows())}</span></div>` : ""}${trustAsk ? trustDialog() : ""}${askBeforeHtml()}${typeof landsHtml === "function" ? landsHtml() : ""}`;
+  return `${moving ? movingDialog() : ""}${deleteAsk ? deleteDialog() : ""}${quitAsk ? quitDialog() : ""}${lightboxHtml()}${sheet === "forward" && forward ? forwardPop() : ""}${sheet && sheet !== "forward" ? `<div class="scrim" data-act="close-sheet">${sheet === "convo" && convo ? convoSheet() : sheet === "setup" ? setupSheet() : settingsSheet()}</div>` : ""}${liveOpen ? `<div class="scrim spot-scrim"><span class="lv-wrap spot">${livePop(liveRows())}</span></div>` : ""}${trustAsk ? trustDialog() : ""}${typeof deskFullHtml === "function" ? deskFullHtml() : ""}${askBeforeHtml()}${typeof landsHtml === "function" ? landsHtml() : ""}`;
 }
 // Each text box with its words kept through a redraw, not built afresh: its undo stays with it (chat/patch.js moveTo,
 // morphAttrs). Matched by its draft key, so another draft's undo never carries over.

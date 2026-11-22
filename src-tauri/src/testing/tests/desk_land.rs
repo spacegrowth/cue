@@ -607,7 +607,7 @@ fn an_item_reopened_twice_is_done_only_once_every_commit_on_its_branch_is_on_mai
     let reopen = |w: &World| {
         w.hub().desk_item_act(&id, "send_back", "Not like that").unwrap();
         w.settle();
-        w.hub().desk_item_act(&id, "start_now", "").unwrap();
+        w.hub().desk_item_act(&id, "start_now_raise", "").unwrap();
         w.settle();
         // Without one as a Cue before #653 left it (one started now gets a copy past the count since).
         w.hub().desk_at_work_without_copy(&id, &top(w));

@@ -402,16 +402,21 @@ fn note_to_holder(st: &mut Store, id: &str, holder: Option<Holder>, text: &str, 
 
 fn start_now(st: &mut Store, id: &str, holder: Option<Holder>, busy: Option<String>, rule: &str, now: u64, fx: &mut Effects) -> Result<bool, String> {
     // Next for a session (#576): it starts there if that one's free, else in a fresh session with a hand-off.
+    // Never past the limit on items at once (#712): you raise it first (Start now's warning), or it waits its turn.
+    if let Some(f) = st.desk.item(id).and_then(|i| crate::desk::hub::landing::remote_item::start_full(st, i)) {
+        return Err(crate::desk::hub::landing::remote_item::start_full_words(&f));
+    }
     let project = item_of(st, id)?.project.clone();
     if holder.is_none() && crate::desk::hub::turn::queue::start_next_now(st, &project, id, "", ("You", ""), now, fx) {
         you_wrote(st, &project, id, "Start now", "without waiting", now, fx);
         return Ok(true);
     }
     let it = item_of(st, id)?;
-    // Waiting for a free copy (#401), its holder's (sent back, or given out with all copies in use): it starts now
-    // where its holder is, as the lead's START does, with its words and your Send back's.
+    // Waiting for a free copy (#401), its holder's (sent back, or given out with all copies in use): one is free now
+    // (none free is refused above, #712), and it starts in it, with its words and your Send back's. Not past the
+    // count as the lead's START goes: should that copy be taken meanwhile, it waits for the next.
     if it.state == "queued" && it.tree_wait && holder.is_some() {
-        (it.after, it.tree_wait, it.no_copy_wait, it.state) = (None, false, true, "working".into());
+        (it.after, it.tree_wait, it.state) = (None, false, "working".into());
         it.tree_wait_repo.clear();
         let words = crate::desk::handed_words(it, "", rule);
         let (to, project) = (holder.as_ref().map(|h| h.to().to_string()).unwrap_or_default(), it.project.clone());
@@ -750,6 +755,8 @@ impl Hub {
             "clear_land" => return self.desk_clear_and_land(id),
             "pickup_kept" => return self.desk_kept_pickup(id),
             "start_on" => return self.desk_start_on(id, text),
+            // Start now's warning answered yes (#712): its limit raised by one, then started, unless it started meanwhile.
+            "start_now_raise" => return self.desk_start_now_raised(id),
             "remove_kept" => {
                 self.desk_kept_remove(id)?;
                 return Ok(DeskItem { id: id.to_string(), state: "dropped".into(), ..Default::default() });
@@ -767,6 +774,35 @@ impl Hub {
         self.desk_done(fx);
         let it = self.item_shown(id);
         Ok(it.unwrap_or_else(|| DeskItem { id: id.to_string(), state: "dropped".into(), ..Default::default() }))
+    }
+
+    /// Start now after its warning (#712): the limit on items at once where it waits raised by one (Desk settings →
+    /// Machines, as if set there), then started as Start now does. Started meanwhile (a folder came free), only that.
+    fn desk_start_now_raised(&self, id: &str) -> Result<DeskItem, String> {
+        let full = self.read(|st| st.desk.item(id).map(|i| (i.project.clone(), crate::desk::hub::landing::remote_item::start_full(st, i))));
+        let (project, full) = full.ok_or("no such item")?;
+        if let Some(f) = full {
+            if f.n >= f.max {
+                return Err(format!("{} already takes {} of this Desk's items at once, the most it can", f.on, f.n));
+            }
+            if f.machine.is_empty() {
+                let folder = self.read(|st| crate::desk::hub::core::view::desk_folder(st, &project));
+                let mut lands = crate::desk::lands::lands_known(&project, &folder).to_json();
+                lands["at_once"] = serde_json::json!(f.n + 1);
+                crate::desk::lands::save(&project, crate::desk::lands::place_of(&folder), &lands)?;
+            } else {
+                let n = std::collections::BTreeMap::from([(f.machine.clone(), f.n + 1)]);
+                crate::desk::machine_pref::save_at_once(&project, &n)?;
+            }
+            self.changed();
+        }
+        let now = now_ms();
+        let fx = self.write(|st| match st.desk.item(id).map(|i| i.state.as_str()) {
+            Some("queued" | "new") => act_on(st, id, "start_now", "", now),
+            _ => Ok(Effects::default()),
+        })?;
+        self.desk_done(fx);
+        self.item_shown(id).ok_or_else(|| "no such item".into())
     }
 
     /// Undo this: whoever made decision `id` is told to undo it (through the normal send path: kept in Cue while

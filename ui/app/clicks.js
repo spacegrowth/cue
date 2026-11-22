@@ -26,6 +26,9 @@ const ACTS = {
   "delete-no": () => deleteAnswer(false),
   "quit-go": () => quitAnswer(true),
   "quit-keep": () => quitAnswer(false),
+  // Start now's warning on the Desk (#712): raise the limit and start, or keep waiting.
+  "desk-full-raise": (el) => deskAct(el.dataset.id, "full_raise"),
+  "desk-full-wait": (el) => deskAct(el.dataset.id, "full_wait"),
   "trust-start": () => trustAnswer(true),
   "trust-cancel": () => trustAnswer(false),
   "host-restart": () => hostRestart(),

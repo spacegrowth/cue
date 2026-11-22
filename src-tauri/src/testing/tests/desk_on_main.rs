@@ -63,7 +63,7 @@ fn an_item_never_waits_on_or_takes_another_items_branch_its_holder_worked_in() {
     let w = World::new();
     let top = |d: &std::path::Path| git(d, &["worktree", "list", "--porcelain"]).lines().next().and_then(|l| l.strip_prefix("worktree ")).unwrap().to_string();
     let (dir, project, id, h) = routed_with(&w, |w, _, dir| w.hub().desk_hold_copies(&top(dir), &[1, 2, 3]), |_, _, _| {});
-    w.hub().desk_item_act(&id, "start_now", "").unwrap();
+    w.hub().desk_item_act(&id, "start_now_raise", "").unwrap();
     w.settle();
     let other = w.home().join("desk-9");
     git(&dir, &["worktree", "add", "-q", "-b", "desk/77", other.to_str().unwrap()]);

@@ -130,7 +130,7 @@ fn your_send_back_on_an_item_whose_copy_is_gone_reaches_its_holder_and_lead_at_o
 }
 
 #[test]
-fn a_sent_back_item_waiting_for_a_working_folder_names_who_uses_them_and_start_now_starts_it_at_once() {
+fn a_sent_back_item_waiting_for_a_working_folder_names_who_uses_them_and_start_now_raises_the_limit_first() {
     // #401: sent back with every working folder in use, it only said "waiting for a free copy", with no way to go now.
     let w = World::new();
     let (_, project, id) = super::desk_commit::ready(&w);
@@ -150,13 +150,24 @@ fn a_sent_back_item_waiting_for_a_working_folder_names_who_uses_them_and_start_n
     assert!(it["back_waiting"].as_str().is_some_and(|b| b.contains("The dot is too big")), "sent back, and says so: {it}");
     // Your words went at once (#567); Start now sends them again, with where to work.
     assert!(w.hosted.sent()[before..].iter().any(|(s, t)| *s == h && t.contains("The dot is too big")), "your words, now");
+    // Start now with every folder in use (#712): the window warns first; pressed anyway, it's refused and still waits.
+    assert_eq!((it["start_full"]["on"].as_str(), it["start_full"]["n"].as_u64(), it["start_full"]["max"].as_u64()), (Some("This Mac"), Some(3), Some(9)), "{it}");
     let before = w.hosted.sent().len();
-    // Start now: at once, in a copy of its own past the count (#653), with your words; the wait is over.
-    w.hub().desk_item_act(&id, "start_now", "").unwrap();
+    let no = w.hub().desk_item_act(&id, "start_now", "").unwrap_err();
+    assert!(no.contains("This Mac already has 3 of this Desk's items working at once"), "{no}");
     w.settle();
     let it = item(&w, &project, "Header jumps");
+    assert_eq!((it["state"].as_str(), it["tree_wait"].as_bool()), (Some("queued"), Some(true)), "it keeps waiting: {it}");
+    assert_eq!(w.hosted.sent().len(), before, "nothing sent");
+    // Raised (the warning's yes): 4 at once, as if set in Desk settings, and it starts at once in the 4th folder, with
+    // your words; the wait is over.
+    w.hub().desk_item_act(&id, "start_now_raise", "").unwrap();
+    w.settle();
+    let c: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(crate::server::cue_dir().join("config.json")).unwrap()).unwrap();
+    assert_eq!(c.pointer(&format!("/project/lands/{project}/at_once")), Some(&serde_json::json!(4)), "{c}");
+    let it = item(&w, &project, "Header jumps");
     assert_eq!(it["state"], "working", "{it}");
-    for gone in ["copy_users", "back_waiting"] {
+    for gone in ["copy_users", "back_waiting", "start_full"] {
         assert!(it.get(gone).is_none_or(|v| v.is_null()), "{gone}: {it}");
     }
     assert_eq!((it["tree"]["slot"].as_u64(), it["tree_wait"].as_bool().unwrap_or(false)), (Some(4), false), "{it}");

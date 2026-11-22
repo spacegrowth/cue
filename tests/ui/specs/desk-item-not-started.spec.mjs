@@ -69,6 +69,45 @@ test("a queued item waiting for a free working folder says how many, with their 
   await expect(page.locator(".dk-right .dk-ns")).toHaveCount(0);
 });
 
+test("Start now with every working folder in use warns first: Keep waiting leaves it, Raise starts it (#712)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await cue.change((st) => {
+    Object.assign(st.sessions.find((x) => x.session_id === "lead"), { state: "waiting", thread: [], since_ms: Date.now() - 60000 }); st.items = st.items.filter((i) => !(i.session_id === "lead" && i.status === "pending"));
+    Object.assign(st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d4"), { after: null, tree_wait: true, copy_users: ["d3", "d5", "d6"], start_full: { machine: "", on: "This Mac", n: 3, max: 9 } });
+  });
+  await openItem(page, "d4");
+  const go = page.locator('.dk-right .dk-ichat .dk-ns button[data-desk-act="start_now"]');
+  const dialog = page.locator('[role="alertdialog"]');
+  await go.click();
+  await expect(dialog.locator(".move-title")).toHaveText("This Mac already has 3 items working");
+  await expect(dialog.locator(".end-text")).toHaveText("That's the most this Desk runs there at once. Raise it to 4 and #d4 starts now, or it waits its turn.");
+  await expect(dialog.locator('[data-act="desk-full-raise"]')).toContainText("Raise to 4 and start");
+  // No: nothing is asked of Cue, and the item still waits.
+  await dialog.locator('[data-act="desk-full-wait"]').click();
+  await expect(dialog).toHaveCount(0);
+  expect((await cue.calls("desk_item_act")).filter((c) => c.args.id === "d4")).toEqual([]);
+  await expect(page.locator(".dk-right .dk-ns")).toHaveCount(1);
+  // Esc says no too.
+  await go.click();
+  await expect(dialog).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  expect((await cue.calls("desk_item_act")).filter((c) => c.args.id === "d4")).toEqual([]);
+  // Yes: the limit is raised and it starts.
+  await go.click();
+  await dialog.locator('[data-act="desk-full-raise"]').click();
+  await cue.called("desk_item_act", { id: "d4", act: "start_now_raise" });
+  await expect(dialog).toHaveCount(0);
+  // At the most it can take: only Keep waiting.
+  await cue.change((st) => { const i = st.desk.projects.find((d) => d.project === "cue").items.find((x) => x.id === "d4"); Object.assign(i, { state: "queued", tree_wait: true, start_full: { machine: "", on: "This Mac", n: 9, max: 9 } }); });
+  await page.locator('.dk-right button[data-desk-act="start_now"]').first().click();
+  await expect(dialog.locator(".end-text")).toHaveText("That's the most it can take, so #d4 waits its turn.");
+  await expect(dialog.locator('[data-act="desk-full-raise"]')).toHaveCount(0);
+  await page.keyboard.press("Enter");
+  await expect(dialog).toHaveCount(0);
+  expect((await cue.calls("desk_item_act")).filter((c) => c.args.act === "start_now")).toEqual([]);
+});
+
 test("with no chat of its holder's, the card shows on its page in place of What's holding it up", async ({ page, cue }) => {
   await cue.open("desk");
   await cue.change((st) => { st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d4").holder = null; });

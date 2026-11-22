@@ -44,6 +44,16 @@ pub struct Stint {
     pub next: String,
 }
 
+/// Where a waiting item's Start now would go past its Desk's limit on items at once (#712), as the window's warning
+/// says it: the machine ("" for this Mac), its name as shown, the limit there, and the most it can be raised to.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct StartFull {
+    pub machine: String,
+    pub on: String,
+    pub n: u32,
+    pub max: u32,
+}
+
 /// A bug, feature or task on a project's Desk.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct DeskItem {
@@ -273,6 +283,10 @@ pub struct DeskItem {
     /// on what the window is shown (desk/hub/core/view.rs `shown`), never saved.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub copy_users: Vec<String>,
+    /// Start now would put it past the limit on how many of its Desk's items work at once there (#712): where, and
+    /// that number, for the window's warning. Only on what the window is shown (desk/hub/core/view.rs `shown`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_full: Option<StartFull>,
     /// Waiting for `next_for` (#576): when it goes to a fresh session if that one is still busy (ms). Only on what
     /// the window is shown (desk/hub/core/view.rs `shown`), never saved.
     #[serde(default, skip_serializing_if = "Option::is_none")]

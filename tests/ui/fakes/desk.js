@@ -187,6 +187,9 @@ CueBridge.area("desk", (w) => {
       }
       // Your drag in Queued (#387): each takes its place.
       else if (act === "reorder") { text.split(" ").forEach((x, k) => { const q = itemOf(x); if (q) q.queue_order = k + 1; }); w.changed(); return it; }
+      // At the limit on items at once (#712): refused, as the hub does; Raise and start goes.
+      else if (act === "start_now" && it.start_full) throw `${it.start_full.on} already has ${it.start_full.n} of this Desk's items working at once, the most it takes. Raise that number to start it now, or let it wait its turn`;
+      else if (act === "start_now_raise" && it.tree_wait && it.holder) { Object.assign(it, { state: "working", tree_wait: false, back_waiting: "" }); delete it.copy_users; delete it.start_full; }
       else if (act === "start_now" && it.tree_wait && it.holder) { Object.assign(it, { state: "working", tree_wait: false, back_waiting: "" }); delete it.copy_users; }
       else if (act === "start_now") Object.assign(it, { state: "working", after: null, after_why: "", latest: "starting in a new session" });
       else if (act === "put_before") { const first = itemOf(it.after); if (first) Object.assign(first, { state: "queued", after: it.id, after_why: it.after_why }); Object.assign(it, { state: "working", after: null, after_why: "" }); }
