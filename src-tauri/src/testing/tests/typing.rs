@@ -44,7 +44,7 @@ fn a_reply_to_a_card_that_is_gone_is_refused() {
     let id = card_id(&w, "a");
     w.reply(&id, "first");
     let r = w.reply(&id, "second");
-    assert_eq!((r["ok"].as_bool(), detail(&r)), (Some(false), "that card is gone".to_string()));
+    assert_eq!((r["ok"].as_bool(), detail(&r)), (Some(false), "that item is gone".to_string()));
     assert_eq!(w.terminal.typed("a"), ["first"]);
 }
 

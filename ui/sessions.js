@@ -139,14 +139,14 @@ function whereRow() {
   if (!tmux && !hostedOffered()) return "";
   const opts = [...(hostedOffered() ? [["hosted", "Hosted"]] : []), ...(tmux ? [[true, "Cue"]] : []), [false, termName()]];
   const cur = newHosted() ? "hosted" : newTmux() && tmux;
-  const hint = cur === "hosted" ? `no terminal: Cue talks to ${agentName(newAgent)} directly, and every ask is a card` : cur ? "its terminal opens in Cue; it keeps running if Cue quits" : tmux ? "a tab there, kept running by tmux underneath" : "a tab there";
+  const hint = cur === "hosted" ? `no terminal: Cue talks to ${agentName(newAgent)} directly, and every ask is an item in Waiting` : cur ? "its terminal opens in Cue; it keeps running if Cue quits" : tmux ? "a tab there, kept running by tmux underneath" : "a tab there";
   return `<div class="nf-row"><span class="nf-k">Runs in</span><div class="nf-where"><div class="seg">${opts.map(([v, l]) => `<button class="${cur === v ? "on" : ""} with-icon" data-lv="where" data-tmux="${v}">${v === false ? TERM_ICON : CUE_MARK_SM}${esc(l)}</button>`).join("")}</div><span class="nf-hint">${hint}</span></div></div>`;
 }
 /** Runs in, on a machine: hosted there (cue-host, which Cue puts there) or tmux there. */
 function machineWhereRow() {
   if (!hostedOffered()) return "";
   const cur = newHosted() ? "hosted" : true;
-  const hint = cur === "hosted" ? `no terminal: it runs on that machine under cue-host (Cue puts it in ~/.cue there), every ask a card, and it carries on if Cue quits or the connection drops` : "in tmux there, shown in Cue's terminal";
+  const hint = cur === "hosted" ? `no terminal: it runs on that machine under cue-host (Cue puts it in ~/.cue there), every ask an item in Waiting, and it carries on if Cue quits or the connection drops` : "in tmux there, shown in Cue's terminal";
   return `<div class="nf-row"><span class="nf-k">Runs in</span><div class="nf-where"><div class="seg">${[["hosted", "Hosted"], [true, "Cue"]].map(([v, l]) => `<button class="${cur === v ? "on" : ""} with-icon" data-lv="where" data-tmux="${v}">${CUE_MARK_SM}${esc(l)}</button>`).join("")}</div><span class="nf-hint">${hint}</span></div></div>`;
 }
 const OTHER = "other…";   // the drop-down's "Other…" entry's value: no model id has an ellipsis

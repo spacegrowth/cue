@@ -168,7 +168,7 @@ pub(crate) fn replied(st: &mut Store, sid: &str, text: &str, turn: &[crate::mode
 }
 
 /// How a session on an item adds one that's truly separate (said after an ITEM: line Cue didn't add).
-const SEPARATE_ITEM_WORDS: &str = "Only something truly separate from it is a new item, with why in one line: ITEM: <bug|feature|task> | <title> | you'll see: <what the user sees when it's done, plain words> | done when: <the check> | why: <how it's separate>";
+const SEPARATE_ITEM_WORDS: &str = "Only something truly separate from it is a new item, with why in one line: ITEM: <bug|feature|task> | <title> | you'll see: <what the user sees when it's done, plain words, an item never a card> | done when: <the check> | why: <how it's separate>";
 
 /// Holder `sid` said `text` at its turn's end: items it says are done go to you to check (and what was queued after
 /// them starts), and (unless it's the lead, whose DECIDED lines are the lead's) its DECIDED lines are decisions on

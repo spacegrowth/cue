@@ -229,7 +229,7 @@ impl Hub {
         if text.trim().is_empty() && images.is_empty() {
             return Err("nothing to send".into());
         }
-        let it = self.get(id).filter(|i| i.status == "pending").ok_or("that card is gone")?;
+        let it = self.get(id).filter(|i| i.status == "pending").ok_or("that item is gone")?;
         // Your words on Cue's own Yes / No card in a lead's chat: never a yes or a no; the card stays open and the
         // lead answers you (#651).
         if images.is_empty() && self.desk_card_words(id, text) {

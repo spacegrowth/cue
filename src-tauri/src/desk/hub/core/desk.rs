@@ -811,5 +811,5 @@ fn stamp_sends(st: &mut Store, fx: &Effects, now: u64) -> (Vec<DeskItem>, Vec<De
 
 /// What the lead is told when you write your own words on Cue's Yes / No card `question` (#651).
 pub(crate) fn card_words(question: &str, text: &str) -> String {
-    format!("On Cue's question in your chat (\"{question}\"), the user wrote: \"{text}\"\nThe card is still open and waits for their Yes or No: Cue took neither. Answer them here in plain words (what it means, what each choice does, what you'd pick); don't answer the card for them.")
+    format!("On Cue's question in your chat (\"{question}\"), the user wrote: \"{text}\"\nThe question is still open and waits for their Yes or No: Cue took neither. Answer them here in plain words (what it means, what each choice does, what you'd pick); don't answer it for them.")
 }

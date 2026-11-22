@@ -297,7 +297,7 @@ const setRow = (title, sub, control) => `<div class="set-row"><div class="set-te
 /** Settings → Agents' New sessions: where they run, and the hosted trial. */
 const newSessionRows = (st) => `
     ${st.sessions?.tmux_installed ? setRow("New sessions run in", `Cue: its terminal opens right in Cue, above the reply box, and keeps running if Cue quits (tmux runs it, out of sight). ${esc(st.sessions.terminal || "Terminal")}: a new tab there, as you'd open one. + New session can pick the other one for a session.`, seg("sessions.tmux", !!st.sessions?.tmux, [[true, "Cue"], [false, st.sessions.terminal || "Terminal"]])) : setRow("New sessions run in", `${esc(st.sessions?.terminal || "Terminal")}. To run them right in Cue instead, install tmux (<span class="mono">brew install tmux</span>) and reopen Settings.`, "")}
-    ${setRow("Cue-hosted sessions (trial)", "On: + New session can start Claude Code, Pi or Codex hosted by Cue, with no terminal. Cue talks to it directly, so every permission, question and input request is a card, and a message goes to it directly. Move to Cue brings a terminal app's session in this way, and Move to hosted one in Cue's own terminal. Off: sessions start as before; hosted ones you already have keep working.", toggle("hosted.on", !!st.hosted?.on))}
+    ${setRow("Cue-hosted sessions (trial)", "On: + New session can start Claude Code, Pi or Codex hosted by Cue, with no terminal. Cue talks to it directly, so every permission, question and input request is an item in Waiting, and a message goes to it directly. Move to Cue brings a terminal app's session in this way, and Move to hosted one in Cue's own terminal. Off: sessions start as before; hosted ones you already have keep working.", toggle("hosted.on", !!st.hosted?.on))}
     ${st.hosted?.on ? hostRow() : ""}`;
 /** Settings → Agents' cue-host row: what it's doing, and Restart cue-host (twice: it ends every hosted agent). Asked
  *  again every few seconds while Settings shows it. */
@@ -619,8 +619,8 @@ function setChatPane(st, keep) {
     <div class="set-group">Steps</div>
     ${setRow("Steps in the chat", "What the agent did between your message and its reply, read from its transcript when you look. Folded: one line per turn, what it said left in view, its newest step shown on one line while it works; click the line or a message's step count to list every step, one line each, and click a step to open it.", seg("steps.mode", st.steps?.mode ?? "line", [["line", "Folded"], ["all", "Open"], ["hidden", "Hidden"]]))}
     <div class="set-group">Context</div>
-    ${setRow("Earlier in this session", "How many past exchanges (what it said or asked, what you answered) each card keeps.", seg("context.keep", st.context?.keep ?? 5, [[5, "5"], [10, "10"], [20, "20"]]))}
-    ${setRow("When a Stop hook makes the agent continue, the card shows", "The answer: the agent's final reply, with the hook's output (e.g. a checklist) tucked underneath. The last message: whatever it wrote last, usually the hook's output.", seg("turn.mode", st.turn?.mode ?? "answer", [["answer", "The answer"], ["last", "The last message"]]))}
+    ${setRow("Earlier in this session", "How many past exchanges (what it said or asked, what you answered) each item keeps.", seg("context.keep", st.context?.keep ?? 5, [[5, "5"], [10, "10"], [20, "20"]]))}
+    ${setRow("When a Stop hook makes the agent continue, the item shows", "The answer: the agent's final reply, with the hook's output (e.g. a checklist) tucked underneath. The last message: whatever it wrote last, usually the hook's output.", seg("turn.mode", st.turn?.mode ?? "answer", [["answer", "The answer"], ["last", "The last message"]]))}
     <div class="set-group">History</div>
     ${setRow("Keep the last", `${state.history.length.toLocaleString()} saved now · ~/.cue/history.jsonl`, `<div style="display:flex;gap:8px;align-items:center">${seg("history.keep", keep, [[100, "100"], [300, "300"], [1000, "1,000"], [5000, "5,000"]])}<input class="num" type="number" min="10" step="50" value="${keep}" data-keep-custom aria-label="Custom history size"/></div>`)}`;
 }
@@ -642,7 +642,7 @@ function settingsSheet() {
     <div class="set-group">Pi</div>
     ${setRow("Ask me before", "Pi doesn't ask on its own; Cue's extension adds the prompt.", seg("pi.gate", st.pi?.gate ?? "dangerous", [["dangerous", "Risky commands"], ["all", "Every command & edit"], ["off", "Never"]]))}
     <div class="set-group">Agents driving agents</div>
-    ${setRow("Show sessions another agent drives in Waiting", "Off: when a helper agent finishes (one another agent started and labelled with CUE_DRIVEN_BY), its lead handles it, so it stays in Working as \"waiting on its lead\" with no card or notification. Turn on to treat them like your own sessions.", toggle("agents.show_driven", st.agents?.show_driven ?? false))}`,
+    ${setRow("Show sessions another agent drives in Waiting", "Off: when a helper agent finishes (one another agent started and labelled with CUE_DRIVEN_BY), its lead handles it, so it stays in Working as \"waiting on its lead\" with no item or notification. Turn on to treat them like your own sessions.", toggle("agents.show_driven", st.agents?.show_driven ?? false))}`,
     chat: setChatPane(st, keep),
     voice: voiceSettings() + extRows("Voice"),
     insights: insSettings(st) + tipsSettings(st),
