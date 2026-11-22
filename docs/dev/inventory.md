@@ -19,7 +19,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | Lock acquisitions | 290 |
 | Lock-graph edges | 54 |
 | Spawn sites | 94 |
-| External calls: fs / db / process / notify / login / socket | 532 / 232 / 61 / 4 / 1 / 4 |
+| External calls: fs / db / process / notify / login / socket | 533 / 232 / 61 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -502,7 +502,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (532)
+### fs (533)
 
 | In | Call | Times |
 |---|---|---|
@@ -731,6 +731,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `install/self_install.rs::start_in` | File::create | 1 |
 | `install/self_install.rs::start_in` | Path::exists | 1 |
 | `install/self_install.rs::start_in` | create_dir_all | 1 |
+| `install/self_install.rs::start_in` | rename | 1 |
 | `install/self_install.rs::start_in` | write | 2 |
 | `install/self_install.rs::status_in` | read_to_string | 1 |
 | `install/self_install.rs::write_running` | create_dir_all | 1 |
