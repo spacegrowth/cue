@@ -189,7 +189,7 @@ function deskChat(d) {
   const where = s && sessionOf(s.session_id) && !sending ? whereNow(null, s, false) : "";
   // Each part keyed: the chat is kept in place across draws, brought up to date by key (chat/patch.js drawAround).
   const empty = !rows && !where ? `<div class="dk-empty" data-key="empty">Tell ${esc(deskLeadName(d))} about a bug, a feature or a task. It adds them here, hands each to a session, and says why.</div>` : "";
-  // Ask it now, by the way (under a message Cue keeps for it): its panel over the chat, as in a session's chat.
+  // By the way's panel over the chat, as in a session's chat.
   return `${s ? btwPanel(s.session_id) : ""}<div class="dk-chat" data-desk-chat="${esc(d.project)}">${empty}${rows}${where ? keyed(where, "where") : ""}</div>`;
 }
 /** What the lead did on its own (#360: closed, started, sent back, moved up, took back a copy, answered a session; #420: its

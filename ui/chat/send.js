@@ -139,13 +139,6 @@ function askBtw(sid, q) {
     failed: (err, e) => { e.err = err; renderMain(); return true; },
   });
 }
-/** askBtw, and the log entry it made (null if it never got one). */
-function askBtwEntry(sid, q) {
-  const n = (btwLog.get(sid) || []).length;
-  const p = askBtw(sid, q);
-  const e = btwLog.get(sid)?.[n] || null;
-  return Promise.resolve(p).then(() => e, () => e);
-}
 // Fork: the conversation copied into a new session that keeps going ("<name>-fork", then -fork-2…), in Active
 // beside this one, which goes on untouched. From ⋯ it starts with nothing said; under a btw answer, that side
 // question and its answer are its first message (the copy that answered was never saved), so it picks up there.
@@ -160,58 +153,13 @@ async function forkBtw(sid, i) {
   btwForking = null;
   renderMain();
 }
-// ---------- by the way, offered on a message waiting for a busy session (#535) ----------
-// Kept in Cue until its turn ends, a message can go as a side question instead, at once (out of Cue's keeping,
-// answered by a copy that can't run anything), and back if that didn't help. Past 45 minutes it says it may wait a while.
-const LONG_TURN_MS = 45 * 60_000;
-const btwKept = new Set();   // `${sid}:${at_ms}`: Keep it queued, said for that message
-/** When its current turn started, while it works (sessions/mod.rs turn_started): the first bar segment since it last
- *  waited on you. */
-function turnStart(s) {
-  if (s?.state !== "working" && s?.state !== "agent") return 0;
-  const segs = s.segments || [], w = segs.findLastIndex((g) => g.kind === "waiting");
-  return segs[w + 1]?.start_ms ?? s.since_ms ?? 0;
-}
-/** The offer under kept message `h` of session `s`, or "": only a Claude Code session's (by the way asks a copy of
- *  its conversation), and words alone (a side question takes no images). Its turn 45 minutes on: why it may wait. */
-function btwOffer(s, h) {
-  const t = turnStart(s), sid = s.session_id;
-  if (s.harness !== "claude" || h.images?.length || !h.text.trim() || btwKept.has(`${sid}:${h.at_ms}`)) return "";
-  const d = esc(sid), long = t && now() - t >= LONG_TURN_MS;
-  return `<div class="btw-offer">${long ? `<div class="btw-offer-why">It's been at this ${esc(hm(now() - t))}, so this may wait a while.</div>` : ""}
-    <div class="btw-offer-acts"><button class="btn primary" data-act="btw-offer" data-sid="${d}">Ask it now, by the way</button><button class="btn" data-act="btw-keep" data-sid="${d}" data-at="${h.at_ms}">Keep it queued</button></div>
-    <div class="btw-offer-note">A side question gets an answer from what it already knows. It can't run anything or change what it's doing.</div></div>`;
-}
-/** "1h 04m", "52m". */
-const hm = (ms) => { const m = Math.floor(ms / 60_000); return m >= 60 ? `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m` : `${m}m`; };
-/** Ask it now, by the way: the kept message out of Cue's keeping (too late if it already went), then asked on the
- *  side, its answer with Queue it again under it. */
-async function btwFromKept(sid) {
-  let h;
-  try { h = await invoke("unhold_message", { sessionId: sid }); } catch (e) { return toast(`Couldn't take it back: ${e}`); }
-  if (!h) return toast("Too late: it had already gone");
-  forgetSent(sid);
-  openBtw(sid);
-  const e = await askBtwEntry(sid, h.text);
-  if (e) { e.kept = h.text; renderMain(); }
-}
-/** Queue it again: the side question's words back to the session, kept in Cue till its turn ends as before. */
-function btwRequeue(sid, i) {
-  const e = btwLog.get(sid)?.[i];
-  if (!e?.kept || e.requeued) return;
-  e.requeued = true;
-  renderMain();
-  invoke("send_to_session", { sessionId: sid, text: e.kept, images: [], now: false })
-    .then(() => toast("Queued again: it reads this when it finishes"), (x) => { e.requeued = false; renderMain(); toast(`Couldn't queue it: ${x}`); });
-}
-const requeueBtn = (sid, i, e) => e.kept ? (e.requeued ? `<span class="dim btw-requeued">Queued again</span>` : `<button class="btw-fork" data-act="btw-requeue" data-sid="${esc(sid)}" data-i="${i}">Queue it again</button>`) : "";
 const forkBtn = (sid, i) => `<button class="btw-fork" data-act="btw-fork" data-sid="${esc(sid)}" data-i="${i}" ${btwForking != null ? "disabled" : ""}>${btwForking === i ? "Forking…" : "Fork"}</button>`;
 function btwPanel(sid) {
   if (!sid || btwFor !== sid) return "";
   const log = btwLog.get(sid) || [];
   // On its crew's page (team_page.js) it is the lead it asks, and it says so.
   const lead = typeof crewPageOn === "function" && crewPageOn(sid);
-  const rows = log.map((e, i) => [e, i]).reverse().map(([e, i]) => `<div class="btw-q">${esc(e.q)}</div>${e.a != null ? `<div class="btw-a msg">${md(e.a)}</div><div class="btw-a-acts">${requeueBtn(sid, i, e)}${forkBtn(sid, i)}</div>` : e.err ? `<div class="btw-a bad">${esc(e.err)}</div>${e.kept ? `<div class="btw-a-acts">${requeueBtn(sid, i, e)}</div>` : ""}` : `<div class="btw-a dim"><span class="dot-live"></span>Thinking…</div>`}`).join("");
+  const rows = log.map((e, i) => [e, i]).reverse().map(([e, i]) => `<div class="btw-q">${esc(e.q)}</div>${e.a != null ? `<div class="btw-a msg">${md(e.a)}</div><div class="btw-a-acts">${forkBtn(sid, i)}</div>` : e.err ? `<div class="btw-a bad">${esc(e.err)}</div>` : `<div class="btw-a dim"><span class="dot-live"></span>Thinking…</div>`}`).join("");
   return `<div class="btw-pop">
     <div class="btw-head">${lead ? "BY THE WAY · ASKS THE LEAD, NOT PART OF ITS CHAT" : "BY THE WAY · NOT PART OF THE CHAT"}${log.length ? `<button class="btw-clear" data-act="btw-clear" data-sid="${esc(sid)}">Clear</button>` : ""}<button class="btw-x" data-act="btw-close" aria-label="Close">×</button></div>
     ${boxHtml({ look: "btw", key: `btw:${sid}`, placeholder: lead ? "Ask the lead without interrupting it…  ↵" : "Ask without interrupting it…  ↵" })}

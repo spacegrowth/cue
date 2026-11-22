@@ -5,9 +5,6 @@
 const BTW_CLICKS = [
   // Fork under a side answer: this conversation as a new session, picking up from that question and answer.
   rule("[data-act=btw-fork]", (bf) => forkBtw(bf.dataset.sid, +bf.dataset.i)),
-  rule("[data-act=btw-offer]", (bo) => btwFromKept(bo.dataset.sid)),
-  rule("[data-act=btw-keep]", (bk) => { btwKept.add(`${bk.dataset.sid}:${bk.dataset.at}`); renderMain(); }),
-  rule("[data-act=btw-requeue]", (br) => btwRequeue(br.dataset.sid, +br.dataset.i)),
   // Clear: forget this session's side questions (they were only ever in this window).
   rule("[data-act=btw-clear]", (bc) => { btwLog.delete(bc.dataset.sid); renderMain(); document.querySelector(`[data-text="${CSS.escape(`btw:${bc.dataset.sid}`)}"]`)?.focus(); }),
 ];

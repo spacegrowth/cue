@@ -416,8 +416,8 @@ function deskItemChat(i, d, s) {
     const m = { ...deskMsgState(c, i, s.session_id), to: c.why?.replace(/^(to |sent back to |note to )/, "") || i.holder?.name, item: i.id };
     return { text: c.text, at: deskMs(c.at), key: `lost:${c.id}`, head: c.by === "You" ? head : "", m: { ...m, acts: deskMsgActs(m) } };
   });
-  // Its held and queued lines are the chat's own (heldRow, queuedRow): the board's words, its head, and Ask it now, by
-  // the way (#688); only their controls are this page's, Edit back into its box (#422).
+  // Its held and queued lines are the chat's own (heldRow, queuedRow): the board's words and its head (#688); only their
+  // controls are this page's, Edit back into its box (#422).
   const rows = deskChatRows(s, { extra: checks, folds: deskChatFolds(i, d, s.session_id), say: deskSaidWords, reply: (e) => deskChatReply(i, e, pickAt), acts, pending: failed.concat(mine) });
   // Not started yet (#476): that, and its holder's own line only when it really waits on you (its question, a step).
   const notYet = deskNotStarted(i), asks = ["waiting", "deciding"].includes(s.state) && waitingFor(null, s) !== "your reply";

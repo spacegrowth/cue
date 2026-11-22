@@ -1,6 +1,6 @@
 // Your own messages in every Desk chat are drawn by the board's chat code (#688): the same bubble, the item's head over
-// your words, the board's line for each state (sending, queued, kept, delivered, couldn't send), its Send again and its
-// Ask it now, by the way. A send-back ("Not done") is yours too, never Cue's card. What you sent from the Desk's box
+// your words, the board's line for each state (sending, queued, kept, delivered, couldn't send) and its Send again
+// (no by-the-way offer under a kept one, #731). A send-back ("Not done") is yours too, never Cue's card. What you sent from the Desk's box
 // sits among the chat's own rows, one list with its kept and queued messages.
 import { test, expect, openDesk } from "./cue.mjs";
 
@@ -16,7 +16,7 @@ const busyHost = (cue, field, text) => cue.change((st, [field, text]) => {
   s[field] = { role: "you", text: text.replace("TITLE", st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d5").title), at_ms: Date.now(), images: [] };
 }, [field, text]);
 
-test("a note kept for the item's busy holder reads as on the board: its head, the board's words, Ask it now, by the way", async ({ page, cue }) => {
+test("a note kept for the item's busy holder reads as on the board: its head, the board's words, Edit · Send now · Cancel", async ({ page, cue }) => {
   await cue.open("desk");
   await busyHost(cue, "held", "About #d5 (TITLE): make the button bigger");
   await openItem(page, "d5");
@@ -26,12 +26,9 @@ test("a note kept for the item's busy holder reads as on the board: its head, th
   await expect(held.locator(".cv-you-text")).toContainText("make the button bigger");
   await expect(held.locator(".ml-words")).toHaveText(HELD);
   await expect(held.locator(".ml-acts")).toContainText("Edit · Send now · Cancel");
-  await expect(held.locator('.btw-offer [data-act="btw-offer"]')).toHaveText("Ask it now, by the way");
   await expect(page.locator(".dk-right")).not.toContainText("is finishing something");
-  // Asked by the way: its panel opens over the Desk's chat, as over a session's.
-  await held.locator('[data-act="btw-offer"]').click();
-  await cue.called("unhold_message", { sessionId: "host" });
-  await expect(page.locator(".btw-pop")).toBeInViewport();
+  await expect(held).not.toContainText("by the way");
+  await expect(held).not.toContainText("Keep it queued");
 });
 
 test("Not done is your own bubble in the item's chat, in every state, never Cue's card", async ({ page, cue }) => {

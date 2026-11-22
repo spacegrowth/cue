@@ -427,9 +427,7 @@ function heldRow(s, page, key = "held") {
     if (cm) return keyed(cm, key);
   }
   const hd = youHeadOf(page, s.held);
-  // Busy a long time: ask it by the way instead (#535), on the Desk's chats too (#688).
-  const offer = !heldWhy ? btwOffer(s, s.held) : "";
-  return msgRow(m, yourBubble(hd ? { ...s.held, text: hd.text } : s.held, `${s.session_id}:held`, "", true, hd?.html || "") + thumbs(s.held.images), "queued held", ` data-key="${esc(key)}"`, offer);
+  return msgRow(m, yourBubble(hd ? { ...s.held, text: hd.text } : s.held, `${s.session_id}:held`, "", true, hd?.html || "") + thumbs(s.held.images), "queued held", ` data-key="${esc(key)}"`);
 }
 /** A message Cue sends by itself later: at your time, or (Cue's carry-on) when the usage limit it stopped on resets.
  *  Its words under the page's head when they're about an item (youHeadOf), as your other words. */
