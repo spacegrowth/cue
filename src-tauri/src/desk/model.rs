@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-pub use super::copies::{CopyOn, InRepo, ItemTree, KeptTree, OnMachine, RemoteWork};
+pub use super::copies::{CopyOn, InRepo, ItemTree, KeptTree, OnMachine, RemoteWork, StartFull};
 
 /// Who holds an item: a live session (a plain one, or a lead with a crew), or one of a lead's crew.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -42,16 +42,6 @@ pub struct Stint {
     pub until: Option<u64>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub next: String,
-}
-
-/// Where a waiting item's Start now would go past its Desk's limit on items at once (#712), as the window's warning
-/// says it: the machine ("" for this Mac), its name as shown, the limit there, and the most it can be raised to.
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
-pub struct StartFull {
-    pub machine: String,
-    pub on: String,
-    pub n: u32,
-    pub max: u32,
 }
 
 /// A bug, feature or task on a project's Desk.

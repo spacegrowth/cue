@@ -91,6 +91,16 @@ pub struct RemoteWork {
     pub said_commit: String,
 }
 
+/// Where a waiting item's Start now would go past its Desk's limit on items at once (#712), as the window's warning
+/// says it: the machine ("" for this Mac), its name as shown, the limit there, and the most it can be raised to.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct StartFull {
+    pub machine: String,
+    pub on: String,
+    pub n: u32,
+    pub max: u32,
+}
+
 /// Where a new session for an item starts when not on this Mac: the machine and the folder of the clone there.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct OnMachine {
