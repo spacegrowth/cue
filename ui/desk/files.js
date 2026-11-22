@@ -17,7 +17,32 @@ function deskItemFiles(i) {
     return deskPfiles(checking ? "Files changed" : "Changed so far", read, at, at(DESK_PFILES));
   }
   if (checking && read) return "";
-  return deskPfiles("Files it's on", (i.commit_wait?.files || i.files || []).map((path) => ({ path })), () => "", `data-desk-itab="files" data-id="${id}"`);
+  const on = deskFilesOn(i), open = (n) => deskOpenFileAttrs(i, on[n]);
+  return deskPfiles("Files it's on", on.map((f) => ({ path: f.path })), open, `data-desk-itab="files" data-id="${id}"`);
+}
+
+/** The files item `i` is on, each with the folder its path is in (#677): a commit waiting on busy files says it per
+ *  file ([folder, path]); the others are in the card's own working folder (deskItemFolder). */
+const deskFilesOn = (i) => (i.commit_wait?.files || i.files || []).map((f) => (Array.isArray(f) ? { folder: f[0], path: f[1] } : { folder: "", path: f }));
+/** The folder item `i` works in: its own copy, else its teammate's worktree, else its holder's folder; null if none
+ *  is known (the viewer then looks from the path alone). */
+function deskItemFolder(i) {
+  if (i.tree?.path) return i.tree.path;
+  const sid = deskHolderSid(i), lead = i.holder?.kind === "crew" ? i.holder.lead_sid : sid;
+  const mate = i.holder?.kind === "crew" ? deskMate(lead, i.holder.sid) : i.crew ? deskMate(lead, i.crew) : null;
+  return mate?.worktree || (sid && sessionOf(sid)?.cwd) || null;
+}
+/** A file row's click (desk/act.js deskOpenFile): item `i`'s file `f`, opened in Cue's file viewer. */
+const deskOpenFileAttrs = (i, f) => `data-desk-open-file="${esc(f.path)}" data-id="${esc(i.id)}"${f.folder ? ` data-folder="${esc(f.folder)}"` : ""}`;
+/** Item `id`'s file `path` in Cue's file viewer (or Read, for markdown), as a file named in a chat opens
+ *  (chat/reader.js openPathOrDoc), found from the card's working folder. Works before anything in it has changed. */
+function deskOpenFile(id, path, folder = "") {
+  const i = deskItem(deskSelection(), id) || deskKeptItem(deskSelection(), id);
+  if (!i) return;
+  deskSeeItem(id);
+  const sid = deskHolderSid(i) || null;
+  // Another machine's files aren't on this Mac: openPathOrDoc says so as it does for a chat's.
+  return openPathOrDoc(path, sid, folder || deskItemFolder(i));
 }
 
 /** Session `sid`'s files: what its turn changed, as Inbox's "Changed this turn" (inbox_side.js inboxTurnDiff). Without

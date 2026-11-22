@@ -446,6 +446,7 @@ deskClicks({
     openPathOrDoc(el.dataset.deskMade, deskHolderSid(deskItem(deskSelection(), id)) || null);
     renderMain();
   },
+  deskOpenFile: (el) => deskOpenFile(el.dataset.id, el.dataset.deskOpenFile, el.dataset.folder || ""),
   deskDiffFile: (el) => deskShowFile(el.dataset.deskDiffFile, +el.dataset.n),
   deskTurnFile: (el) => deskShowTurnFile(el.dataset.deskTurnFile, +el.dataset.n),
   deskMateFile: (el) => deskShowMateFile(el.dataset.deskMateFile, +el.dataset.n),

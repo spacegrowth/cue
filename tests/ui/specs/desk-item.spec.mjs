@@ -613,7 +613,7 @@ test("an item's Files tab: what's changed so far while it's worked on, with coun
   await page.locator('[data-desk-item="d3"]').click();
   await pane.locator('[data-desk-itab="files"]').click();
   await expect(pane.locator(".dk-sec h3")).toHaveText("Files it's on");
-  await expect(pane.locator(".dk-fc.wait")).toHaveCount(n);
+  await expect(pane.locator("button.dk-fc[data-desk-open-file]")).toHaveCount(n);
   await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d3").files = []; });
   await expect(pane.locator(".dk-note")).toHaveText("No files on it yet.");
   await expect(pane.locator('[data-desk-itab="files"] .n')).toHaveText("0");

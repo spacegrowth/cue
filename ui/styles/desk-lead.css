@@ -69,8 +69,7 @@
 .dk-files { font-family: var(--mono); font-size: var(--type-small); color: var(--ink); }
 .dk-fcs { display: flex; flex-direction: column; }
 .dk-fc { display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 3px 6px; margin: 0 -6px; border: 0; border-radius: var(--radius-qp); background: none; color: var(--ink); font: var(--type-small) var(--mono); text-align: left; cursor: pointer; }
-.dk-fc.wait { cursor: default; }
-.dk-fc:not(.wait):hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.dk-fc:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
 .dk-fc-p { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-fc-new { font: 600 var(--type-tag) var(--sans); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
 .dk-acts { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 24px 0; }

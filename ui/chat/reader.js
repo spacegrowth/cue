@@ -28,18 +28,18 @@ function openReader(sid, key) {
 /** A markdown file a reply named: in Read (read.js), found from the session's folder (ipc/docs.rs read_doc: the path
  *  as written, from the folders up to the repo's top, or by name). Read's ‹ goes back to the chat you came from: a
  *  link in the mini window opens its own chat behind Read first. */
-function openDoc(sid, path) {
+function openDoc(sid, path, cwd = null) {
   if (current()?.s?.session_id !== sid && sessionOf(sid)) setActive(null, sid);
-  return readOpen(path, sid, sessionOf(sid)?.cwd || null);
+  return readOpen(path, sid, cwd || sessionOf(sid)?.cwd || null);
 }
 const isDocPath = (p) => /\.(md|markdown)$/i.test(p);
 /** A path or link a click opens, anywhere in Cue: a file on this Mac (found from session `sid`'s folder when one is
  *  given; a file:// link as its path) in Read when it's markdown, any other in the pop-up viewer (file_view.js); a web
  *  link where it opens (settings.rs how_to_open). Another machine's files never open here: they aren't on this Mac. */
-function openPathOrDoc(path, sid = null) {
+function openPathOrDoc(path, sid = null, cwd = null) {
   const url = String(path || ""), file = /^file:\/\//i.test(url) ? decodeURI(url.replace(/^file:\/\//i, "")) : url;
   const s = sid ? sessionOf(sid) : null, here = !/^[a-z][\w+.-]*:/i.test(file) && !s?.machine;
-  if (here && (s || /^[/~]/.test(file))) return isDocPath(file) ? openDoc(s ? sid : null, file) : fileView(file, s ? sid : null);
+  if (here && (s || cwd || /^[/~]/.test(file))) return isDocPath(file) ? openDoc(s ? sid : null, file, cwd) : fileView(file, s ? sid : null, cwd);
   return invoke("open_link", { url }).catch((err) => toast(`Couldn't open: ${err}`));
 }
 /** The session the reader shows, as readerViewed takes it: the open chat's (its ask too), or, on the Desk, whose chat

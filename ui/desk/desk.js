@@ -313,7 +313,7 @@ function deskFilesChanged(i) {
   // While its first read is on the way: the same rows from the files it says it changed, counts to come. Without them
   // the page drew "Files" as a line, then swapped it for these rows a moment later: it flickered as it turned to check.
   // Being worked on with nothing changed in them yet (or not in git): the files it's on, as they are.
-  if (!files || (!checking && !files.length)) return (i.commit_wait?.files || i.files || []).map((f) => `<div class="dk-fc wait"><span class="dk-fc-p">${esc(f)}</span></div>`).join("");
+  if (!files || (!checking && !files.length)) return deskFilesOn(i).map((f) => `<button class="dk-fc" ${deskOpenFileAttrs(i, f)}><span class="dk-fc-p">${esc(f.path)}</span></button>`).join("");
   return files.map((f, n) => `<button class="dk-fc" data-desk-diff-file="${esc(i.id)}" data-n="${n}"><span class="dk-fc-p">${esc(f.path)}</span>${f.isNew ? `<span class="dk-fc-new">new</span>` : ""}<span class="dv-n dv-add">+${f.add}</span><span class="dv-n dv-del">−${f.del}</span></button>`).join("");
 }
 /** Item `id`'s file `n`, over the Desk (diff_overlay.js): its Files changed on the left, that file's diff on the right.

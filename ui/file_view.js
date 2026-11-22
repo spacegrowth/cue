@@ -11,10 +11,11 @@
 let fv = null;
 let fvEl = null;
 
-/** Opens file `path` (as session `sid` named it: found from its folder, ipc/docs.rs peek_file) in the viewer. */
-function fileView(path, sid = null) {
+/** Opens file `path` (as session `sid` named it: found from its folder, or from `cwd` when given — a Desk card's own
+ *  working folder — ipc/docs.rs peek_file) in the viewer. */
+function fileView(path, sid = null, cwd = null) {
   const s = sid ? sessionOf(sid) : null;
-  return invoke("peek_file", { path, cwd: s?.cwd || null, sid }).then((f) => {
+  return invoke("peek_file", { path, cwd: cwd || s?.cwd || null, sid }).then((f) => {
     if (f.kind !== "text" && f.kind !== "image") return invoke("open_link", { url: f.path }).catch((err) => toast(`Couldn't open: ${err}`));
     fv = { ...f, sid, img: null, back: fv?.back || document.activeElement };
     fvDraw();
