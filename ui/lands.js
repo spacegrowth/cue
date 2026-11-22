@@ -306,6 +306,9 @@ document.addEventListener("click", (e) => {
     // A pull request is opened from an item's own copy, so it has none in the shared folder.
     if (pick.dataset.ldPart === "how" && s.how === "pr") s.where = "copy";
     if (pick.dataset.ldPart === "where" && s.where === "shared" && s.how === "pr") s.how = "squash";
+    // Merge keeps an item's own commits, so it needs a branch of its own: an own copy, or a branch.
+    if (pick.dataset.ldPart === "how" && s.how === "merge" && s.where === "shared") s.where = "copy";
+    if (pick.dataset.ldPart === "where" && s.where === "shared" && s.how === "merge") s.how = "squash";
     lands.leaving = false;
     return renderMain();
   }

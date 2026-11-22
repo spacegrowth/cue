@@ -23,6 +23,7 @@ pub(crate) mod push_check;
 pub(crate) mod push_main;
 pub(crate) mod found_words;
 pub(crate) mod in_place;
+pub(crate) mod merge_land;
 pub(crate) mod clear_land;
 pub(crate) mod full_run;
 pub(crate) mod full_run_kit;

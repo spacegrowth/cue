@@ -160,6 +160,7 @@ src-tauri/src/desk/hub/landing/tree_files.rs   rust @copies
 src-tauri/src/desk/hub/landing/copies.rs       rust @copies
 src-tauri/src/desk/hub/landing/copy_guard.rs   rust @copies
 src-tauri/src/desk/hub/landing/in_place.rs     rust @copies
+src-tauri/src/desk/hub/landing/merge_land.rs   rust desk_lands @copies
 src-tauri/src/desk/copies.rs                   rust @copies
 src-tauri/src/desk/hub/landing/named_copy.rs   rust desk_named_copy desk_copies
 src-tauri/src/desk/hub/landing/other_repo.rs   rust desk_other_repo

@@ -58,22 +58,22 @@ fn edits(w: &World, h: &str, dir: &std::path::Path) {
 }
 
 #[test]
-fn a_new_project_shows_the_defaults_and_what_cant_be_picked_yet_says_so() {
+fn a_new_project_shows_the_defaults_and_what_cant_be_picked_says_why() {
     let w = World::new();
     let (_, project, _, _) = routed_with(&w, |_, _, _| {}, |_, _, _| {});
     let l = &desk(&w, &project)["lands"];
     assert_eq!(l["set"], json!({ "where": "copy", "how": "squash", "check": "none", "after": "nothing", "push": "ask", "at_once": 3, "check_steps": [], "after_steps": [] }), "{l}");
     assert_eq!(l["summary"], "own copy, not checked, one commit per item");
     let choice = |part: &str, key: &str| l["parts"].as_array().unwrap().iter().find(|p| p["key"] == part).unwrap()["choices"].as_array().unwrap().iter().find(|c| c["key"] == key).cloned().unwrap();
-    assert_eq!((choice("how", "merge")["ok"].as_bool(), choice("how", "merge")["why"].as_str()), (Some(false), Some("not yet")));
+    assert_eq!(choice("how", "merge")["ok"], true, "merge can be picked in a repository");
     assert_eq!(choice("where", "branch")["ok"], true, "a branch can be picked in a repository");
     assert!(choice("where", "branch")["hint"].as_str().is_some_and(|h| h.contains("one item at a time")), "{}", choice("where", "branch"));
     assert_eq!(choice("check", "cue")["why"], "only for Cue's own project");
     for (part, key) in [("how", "pr"), ("push", "after"), ("push", "never"), ("check", "command"), ("after", "command")] {
         assert_eq!(choice(part, key)["ok"], true, "{part} {key} can be picked");
     }
-    let err = w.hub().desk_lands_set(&project, &json!({ "how": "merge" })).unwrap_err();
-    assert!(err.contains("not yet"), "{err}");
+    let err = w.hub().desk_lands_set(&project, &json!({ "where": "shared", "how": "merge" })).unwrap_err();
+    assert!(err.contains("Merge needs"), "{err}");
     let saved = w.hub().desk_lands_set(&project, &json!({ "where": "shared", "at_once": 2 })).unwrap();
     assert_eq!((saved["set"]["where"].as_str(), saved["set"]["at_once"].as_u64(), saved["summary"].as_str()), (Some("shared"), Some(2), Some("shared folder, not checked, one commit per item")));
     assert_eq!(desk(&w, &project)["lands"]["set"]["where"], "shared", "kept in Cue's settings");
@@ -339,4 +339,73 @@ fn a_desk_on_another_project_never_offers_cues_own_check_or_install_and_each_kee
 fn desk_of(w: &World, id: &str) -> Value {
     let snap = w.snapshot();
     snap.0["desk"]["projects"].as_array().unwrap().iter().find(|p| p["id"] == id).cloned().unwrap_or_else(|| panic!("no Desk {id}"))
+}
+
+/// The holder's commits in its copy, each changing a.txt: (title, contents).
+fn commit_in(path: &std::path::Path, commits: &[(&str, &str)]) {
+    for (title, text) in commits {
+        std::fs::write(path.join("a.txt"), text).unwrap();
+        git(path, &["add", "a.txt"]);
+        git(path, &["commit", "-q", "-m", title]);
+    }
+}
+
+/// Merge (#693): the item lands as a merge commit named after it, its own commits kept under it, and what its holder
+/// left uncommitted is a commit of its own there, so nothing in its copy is left out.
+#[test]
+fn merge_lands_a_merge_commit_with_the_items_own_commits_under_it() {
+    let w = World::new();
+    let (dir, project, id, h) = routed_with(&w, |w, h, _| set(w, h, json!({ "how": "merge" })), |_, _, _| {});
+    assert_eq!(desk(&w, &project)["lands"]["summary"], "own copy, not checked, merge");
+    let path = std::path::PathBuf::from(item(&w, &project, "Header jumps")["tree"]["path"].as_str().unwrap());
+    let main = git(&dir, &["rev-parse", "HEAD"]).trim().to_string();
+    commit_in(&path, &[("First step", "one\n"), ("Second step", "two\n")]);
+    std::fs::write(path.join("b.txt"), "left uncommitted\n").unwrap();
+    ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
+    assert_eq!(git(&dir, &["log", "-1", "--format=%s"]).trim(), format!("Header jumps (#{id})"), "{}", item(&w, &project, "Header jumps"));
+    let parents: Vec<String> = git(&dir, &["log", "-1", "--format=%P"]).split_whitespace().map(str::to_string).collect();
+    assert_eq!((parents.len(), parents[0].as_str()), (2, main.as_str()), "a merge commit on top of main");
+    let under = git(&dir, &["log", "--format=%s", &format!("{main}..HEAD^2")]);
+    assert_eq!(under.lines().collect::<Vec<_>>(), [format!("Header jumps (#{id}): the rest of its work").as_str(), "Second step", "First step"], "its own commits kept");
+    assert_eq!(git(&dir, &["show", "HEAD:a.txt"]), "two\n");
+    assert_eq!(git(&dir, &["show", "HEAD:b.txt"]), "left uncommitted\n");
+    assert_eq!(git(&dir, &["diff", "HEAD", "HEAD^2"]).trim(), "", "the merge has its work as it was");
+    assert!(git(&dir, &["status", "--porcelain"]).trim().is_empty(), "the main checkout is clean");
+}
+
+/// Merge with main moved since the item started, and nothing committed in its copy: its work is one commit of its
+/// own under the merge, and what landed meanwhile stays.
+#[test]
+fn merge_on_a_moved_main_with_nothing_committed_makes_one_commit_of_its_own() {
+    let w = World::new();
+    let (dir, project, id, h) = routed_with(&w, |w, h, _| set(w, h, json!({ "how": "merge" })), |_, _, _| {});
+    let path = std::path::PathBuf::from(item(&w, &project, "Header jumps")["tree"]["path"].as_str().unwrap());
+    let started = git(&dir, &["rev-parse", "HEAD"]).trim().to_string();
+    std::fs::write(dir.join("shared.txt"), "meanwhile\n").unwrap();
+    git(&dir, &["add", "shared.txt"]);
+    git(&dir, &["commit", "-q", "-m", "Landed meanwhile"]);
+    let meanwhile = git(&dir, &["rev-parse", "HEAD"]).trim().to_string();
+    std::fs::write(path.join("a.txt"), "its work\n").unwrap();
+    ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
+    assert_eq!(git(&dir, &["rev-parse", "HEAD^1"]).trim(), meanwhile, "{}", item(&w, &project, "Header jumps"));
+    assert_eq!(git(&dir, &["rev-parse", "HEAD^2^"]).trim(), started, "its commit starts where it was cut");
+    assert_eq!(git(&dir, &["log", "-1", "--format=%s", "HEAD^2"]).trim(), format!("Header jumps (#{id})"));
+    assert_eq!(git(&dir, &["show", "HEAD:a.txt"]), "its work\n");
+    assert_eq!(git(&dir, &["show", "HEAD:shared.txt"]), "meanwhile\n");
+}
+
+/// Its own commits land with a merge, so your names are kept out of their messages too (#650): nothing lands.
+#[test]
+fn merge_stops_on_your_name_in_one_of_its_commits() {
+    let w = World::new();
+    let (dir, project, id, h) = routed_with(&w, |w, h, _| set(w, h, json!({ "how": "merge" })), |_, _, _| {});
+    w.hub().set_setting("owner.names", json!(["Zorvan"])).unwrap();
+    let path = std::path::PathBuf::from(item(&w, &project, "Header jumps")["tree"]["path"].as_str().unwrap());
+    let main = git(&dir, &["rev-parse", "HEAD"]);
+    commit_in(&path, &[("Asked by Zorvan", "one\n")]);
+    ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
+    assert_eq!(git(&dir, &["rev-parse", "HEAD"]), main, "nothing landed");
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!(it["finish"]["step"], "word", "{it}");
+    assert!(it["latest"].as_str().unwrap_or_default().contains("\"Zorvan\""), "{it}");
 }

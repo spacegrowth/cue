@@ -5,7 +5,7 @@
 //! a push. Cue's own project has Cue's setup (its check, then installed or served in place), and a folder that isn't a
 //! git repository can only work in place, its work committed by you.
 //!
-//! Some choices are shown before Cue can do them (a branch, merge): they can't be picked, and say so. A check or an
+//! A choice shown before Cue can do it can't be picked, and says so (none now). A check or an
 //! after landing of your own is its steps, kept here too (`check_steps`, `after_steps`): run in order, the first that
 //! fails stops the rest (`run_steps`). Cue's own check and install stay Cue's (its project's defaults); any other
 //! project starts with no check and nothing after landing. A pull request and the push choices are built (desk/hub/landing/pr.rs). The Desk reads the rest as it works (desk/hub/landing/trees.rs,
@@ -48,7 +48,7 @@ pub const PARTS: &[Part] = &[
         label: "How it lands",
         choices: &[
             c("squash", "One commit per item", "The Desk puts each item on main as one commit, named after the item. One at a time.", true),
-            c("merge", "Merge", "", false),
+            c("merge", "Merge", "The Desk puts each item on main as a merge commit, named after the item, with the item's own commits kept under it. One at a time.", true),
             c("pr", "Pull request", "The Desk checks each item, pushes its branch and opens a pull request. It lands once the pull request is merged.", true),
             c("owner", "You commit", "The Desk commits nothing. A finished item shows its changed files and waits for you.", true),
         ],
@@ -303,7 +303,7 @@ pub fn allowed(part: &str, key: &str, place: Place) -> Result<&'static str, &'st
     }
     match (part, key, place) {
         ("check", "cue", p) | ("after", "install", p) if p != Place::Cue => Err("only for Cue's own project"),
-        ("where", "copy" | "branch", Place::NoRepo) | ("how", "squash" | "pr", Place::NoRepo) => Err("needs a git repository"),
+        ("where", "copy" | "branch", Place::NoRepo) | ("how", "squash" | "merge" | "pr", Place::NoRepo) => Err("needs a git repository"),
         _ => Ok(ch.key),
     }
 }
@@ -334,6 +334,10 @@ pub fn of_in(c: &Value, project: &str, place: Place) -> Lands {
     // You commit: there's no copy for it to land from.
     if l.how == "owner" {
         l.at = "shared";
+    }
+    // Merge: its commits are on a branch of its own (a copy or a branch); in the shared folder there are none.
+    if l.how == "merge" && l.at == "shared" {
+        l.how = defaults(place).how;
     }
     // A pull request: its branch is the item's own copy's, so there's none in the shared folder, nor on a branch
     // there (the folder would wait on its branch till the pull request is merged).
@@ -422,6 +426,7 @@ fn short(part: &str, key: &str) -> &'static str {
         ("how", "squash") => "one commit per item",
         ("how", "owner") => "you commit",
         ("how", "pr") => "pull request",
+        ("how", "merge") => "merge",
         ("check", "none") => "not checked",
         _ => "checked",
     }
@@ -490,6 +495,9 @@ pub fn save(project: &str, place: Place, value: &Value) -> Result<Lands, String>
     if out.get("how").and_then(Value::as_str) == Some("pr") && out.get("where").and_then(Value::as_str) == Some("shared") {
         return Err("A pull request needs each item in its own copy".into());
     }
+    if out.get("how").and_then(Value::as_str) == Some("merge") && out.get("where").and_then(Value::as_str) == Some("shared") {
+        return Err("Merge needs each item in its own copy or on a branch".into());
+    }
     crate::config::update("project.lands", |c| {
         let mut map = c.pointer("/project/lands").cloned().filter(Value::is_object).unwrap_or_else(|| json!({}));
         // Where its full run goes isn't on the screen: kept as it is unless given.
@@ -556,12 +564,13 @@ pub fn propose(c: &Value, project: &str, place: Place, part: &str, to: &str, ste
             set[format!("{}_steps", p.key)] = json!(steps);
             w = format!("{} → {}", part_words(p.key), steps.join(", then "));
         }
-        // You commit and a pull request decide where an item works, as on the screen.
+        // You commit, a pull request and merge decide where an item works, as on the screen.
         match (p.key, ch.key) {
             ("how", "owner") => set["where"] = json!("shared"),
             ("how", "pr") => set["where"] = json!("copy"),
+            ("how", "merge") if set.get("where").and_then(Value::as_str).is_none_or(|w| w == "shared") => set["where"] = json!("copy"),
             ("where", at) if at != "shared" && set.get("how").and_then(Value::as_str) == Some("owner") => set["how"] = json!("squash"),
-            ("where", "shared") if set.get("how").and_then(Value::as_str) == Some("pr") => set["how"] = json!("squash"),
+            ("where", "shared") if matches!(set.get("how").and_then(Value::as_str), Some("pr" | "merge")) => set["how"] = json!("squash"),
             _ => {}
         }
         w
@@ -614,7 +623,8 @@ mod tests {
     fn what_cant_be_picked_says_why_in_plain_words() {
         assert_eq!(allowed("where", "branch", Place::Repo), Ok("branch"));
         assert_eq!(allowed("where", "branch", Place::NoRepo), Err("needs a git repository"));
-        assert_eq!(allowed("how", "merge", Place::Cue), Err(NOT_YET));
+        assert_eq!(allowed("how", "merge", Place::Cue), Ok("merge"));
+        assert_eq!(allowed("how", "merge", Place::NoRepo), Err("needs a git repository"));
         assert_eq!(allowed("how", "pr", Place::Repo), Ok("pr"));
         assert_eq!(allowed("how", "pr", Place::NoRepo), Err("needs a git repository"));
         assert_eq!(allowed("push", "after", Place::Cue), Ok("after"));
@@ -635,7 +645,9 @@ mod tests {
         let c = json!({ "project": { "lands": { "p": { "where": "branch", "how": "pr" } } } });
         assert_eq!(of_in(&c, "p", Place::Repo).how, "squash", "a pull request needs a copy");
         let c = json!({ "project": { "lands": { "p": { "where": "branch", "how": "merge" } } } });
-        assert_eq!(of_in(&c, "p", Place::Repo).how, "squash", "a choice not built yet is never in effect");
+        assert_eq!(of_in(&c, "p", Place::Repo).how, "merge", "merge works on a branch");
+        let c = json!({ "project": { "lands": { "p": { "where": "shared", "how": "merge" } } } });
+        assert_eq!(of_in(&c, "p", Place::Repo).how, "squash", "merge needs a branch of the item's own");
         let c = json!({ "project": { "lands": { "p": { "where": "shared", "how": "pr" } } } });
         assert_eq!(of_in(&c, "p", Place::Repo).how, "squash", "a pull request needs a copy");
         assert!(checked(&json!({ "p": { "where": "nowhere" } })).is_err());

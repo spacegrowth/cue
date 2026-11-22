@@ -26,13 +26,13 @@ test("Cue's own Desk says how its work lands, and Change opens the setting with 
   await expect(seg("After landing").locator("button.on")).toHaveText("Install or serve Cue");
   await expect(seg("Send finished work to GitHub").locator("button.on")).toHaveText("Ask me first");
   // Not built yet: shown, can't be picked.
-  for (const [label, name] of [["Where an item works", "A branch"], ["How it lands", "Merge"]]) {
+  for (const [label, name] of [["Where an item works", "A branch"]]) {
     const b = seg(label).locator("button", { hasText: name });
     await expect(b).toBeDisabled();
     await expect(b.locator(".ld-not")).toHaveText("not yet");
   }
-  // Built: a pull request, and every push choice.
-  for (const [label, name] of [["How it lands", "Pull request"], ["Send finished work to GitHub", "Never"], ["Send finished work to GitHub", "Right away"], ["Check before landing", "Your own steps"], ["After landing", "Your own steps"]]) {
+  // Built: merge, a pull request, and every push choice.
+  for (const [label, name] of [["How it lands", "Merge"], ["How it lands", "Pull request"], ["Send finished work to GitHub", "Never"], ["Send finished work to GitHub", "Right away"], ["Check before landing", "Your own steps"], ["After landing", "Your own steps"]]) {
     await expect(seg(label).locator("button", { hasText: name })).toBeEnabled();
   }
   // Pushing is said once, on its own row: Ask me before has no push to main row (#692).
@@ -65,6 +65,24 @@ test("a change saved shows on the screen next time; you commit means the shared 
   await deskAllSessions(page);
   await line(page).locator("[data-lands-change]").click();
   await expect(dlg.locator('[data-ld-part="where"].on')).toHaveText("Shared folder");
+});
+
+test("Merge keeps each item on its own copy: picked with the shared folder, an own copy comes with it", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await deskAllSessions(page);
+  await line(page).locator("[data-lands-change]").click();
+  const dlg = page.locator(".ld-dialog");
+  await dlg.locator('[data-ld-part="where"][data-ld-pick="shared"]').click();
+  await dlg.locator('[data-ld-part="how"][data-ld-pick="merge"]').click();
+  await expect(dlg.locator('[data-ld-part="how"].on')).toHaveText("Merge");
+  await expect(dlg.locator('[data-ld-part="where"].on')).toHaveText("Own copy");
+  // The shared folder picked again: back to one commit per item.
+  await dlg.locator('[data-ld-part="where"][data-ld-pick="shared"]').click();
+  await expect(dlg.locator('[data-ld-part="how"].on')).toHaveText("One commit per item");
+  await dlg.locator('[data-ld-part="how"][data-ld-pick="merge"]').click();
+  await dlg.locator('[data-ld="save"]').click();
+  await expect.poll(async () => (await cue.calls("desk_lands_set")).at(-1)?.args.lands).toMatchObject({ how: "merge", where: "copy" });
 });
 
 test("a folder that isn't a git repository works in place and its settings say why", async ({ page, cue }) => {

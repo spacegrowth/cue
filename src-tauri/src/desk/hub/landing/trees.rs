@@ -53,7 +53,7 @@ pub(crate) fn tree_line(t: &ItemTree) -> String {
 }
 
 /// How a turn in the landing line went.
-enum Landed {
+pub(super) enum Landed {
     /// On the main line, or stopped on a question: the line goes on.
     Done,
     /// Waits (the main checkout busy): the next item in the line goes first; the tick tries this one again.
@@ -544,6 +544,7 @@ impl Hub {
     /// checked, and landed: tried again when the main line moved meanwhile, three times at most.
     #[allow(clippy::too_many_arguments)]
     fn land_tries(&self, id: &str, it: &DeskItem, t: &ItemTree, onto: &str, base: &str, work: &str, words: &[String], message: &str) -> Landed {
+        let tip = match self.land_merge_tip(id, it, t, base, work, words) { Ok(tip) => tip, Err(landed) => return landed };
         for _ in 0..3 {
             let Some(main) = rev(&t.repo, onto) else { return self.land_wait(id, "Cue can't read the main line") };
             let merged = match self.land_merged(id, it, t, onto, base, &main, work) {
@@ -555,7 +556,7 @@ impl Hub {
                 self.finish_ask(id, "word", &format!("Not landed: \"{w}\" is in {at}"), "");
                 return Landed::Done;
             }
-            let Some(squash) = git("", &t.repo, &[], &["commit-tree", &merged, "-p", &main, "-m", message]).map(|c| c.trim().to_string()) else {
+            let Some(squash) = crate::desk::hub::landing::merge_land::land_commit(&t.repo, &merged, &main, tip.as_deref(), message) else {
                 return self.land_wait(id, "git couldn't make its commit");
             };
             if let Some(landed) = self.land_check(id, it, t, &merged, &squash) {
@@ -776,7 +777,7 @@ impl Hub {
     }
 
     /// Item `id` waits in the landing line on `why` (said on it; nobody asked).
-    fn land_wait(&self, id: &str, why: &str) -> Landed {
+    pub(super) fn land_wait(&self, id: &str, why: &str) -> Landed {
         let same = self.read(|st| st.desk.item(id).and_then(|i| i.finish.as_ref()).is_some_and(|f| f.step == "line" && f.wait == why));
         if !same {
             let why = why.to_string();
