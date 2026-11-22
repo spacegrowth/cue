@@ -241,7 +241,8 @@ test("an item waiting for room on a full machine says so on its row and page", a
   }, [machines, fresh]);
   await openDesk(page);
   const row = page.locator('.dk-it[data-desk-item="w711"]');
-  await expect(row.locator(".dk-who")).toContainText("waits for room on build-box");
-  await row.locator(".dk-t").click();
+  // B2's row (#666): its status line under the title.
+  await expect(row.locator(".dk2b-ts")).toHaveText("Waits for room on build-box");
+  await row.click();
   await expect(page.locator(".dk-right")).toContainText("Starts when build-box has room");
 });
