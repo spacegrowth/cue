@@ -89,7 +89,7 @@ function inboxOpened(sid) {
   inboxToEnd = inboxAtEnd(sid, r.kind);
   const name = `${deskSessMark(sid)}<span class="ib-hname">${esc(nameOf(sid, r.project))}</span>`;
   const head = `<div class="ib-head"><button class="ib-back" data-inbox-back aria-label="Back to the list">‹</button><span class="ib-dot">${inboxDot(r)}</span>${name}<span class="ib-status">${esc(inboxStatus(r))}</span><span class="grow"></span>`
-    + `${textSizeBtns()}<span class="ib-hacts">${inboxAddDeskBtn(r)}<button class="ib-act" data-inbox-full="${esc(sid)}">Open chat</button>${inboxActs(sid, s, "head")}${inboxCloseBtn(r)}</span>${inboxStep(sid)}</div>`;
+    + `<span class="ib-hacts">${inboxAddDeskBtn(r)}<button class="ib-act" data-inbox-full="${esc(sid)}">Open chat</button>${inboxActs(sid, s, "head")}${inboxCloseBtn(r)}</span>${inboxStep(sid)}</div>`;
   const body = `${inboxForBar(r)}<div class="ib-brief" data-scroll-key="inbox-brief">${inboxMain(r)}${inboxAside(r)}</div>`;
   return `<div class="inbox-page" data-inbox-page="${esc(sid)}" data-kind="${r.kind}" style="${projStyle(r.project)}">${head}${body}</div>`.replace(/\stitle="[^"]*"/g, "");
 }
@@ -109,7 +109,7 @@ function inboxParkedPage(p) {
     .replace(/<button class="icon-btn" data-attach=[^>]*>[\s\S]*?<\/button>/, "");   // resuming sends words only
   const status = w ? "resuming…" : p.parked_ms ? `parked · ${ago(p.parked_ms)}` : "parked";
   const head = `<div class="ib-head"><button class="ib-back" data-inbox-back aria-label="Back to the list">‹</button><span class="ib-dot">${P_SIGN}</span><span class="ib-hname">${esc(name)}</span><span class="ib-status">${esc(status)}</span><span class="grow"></span>`
-    + `${textSizeBtns()}<span class="ib-hacts"><button class="ib-act" data-unpark="${esc(sid)}" ${w ? "disabled" : ""}>Unpark</button><button class="ib-act" data-wake="${esc(sid)}" ${w ? "disabled" : ""}>↺ Resume</button></span></div>`;
+    + `<span class="ib-hacts"><button class="ib-act" data-unpark="${esc(sid)}" ${w ? "disabled" : ""}>Unpark</button><button class="ib-act" data-wake="${esc(sid)}" ${w ? "disabled" : ""}>↺ Resume</button></span></div>`;
   const body = `<div class="ib-brief one" data-scroll-key="inbox-brief"><div class="ib-main"><div class="ib-page-body ib-thread" data-scroll-key="inbox-main">${inboxEarlier(r, thread.msgs)}${saidHtml}${empty}</div><div class="ib-foot">${foot}</div></div></div>`;
   return `<div class="inbox-page parked" data-inbox-page="${esc(sid)}" data-kind="parked" style="${projStyle(p.project)}">${head}${body}</div>`;
 }

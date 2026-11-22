@@ -2,6 +2,9 @@
 
 Review for #673, 2026-11-21. Nothing in the app is changed.
 
+Update, same day (#684): the one-size build that followed this review looked uneven and was taken out again. The two
+controls below are back exactly as described here; see [Put back](#put-back) at the end.
+
 How this was checked: the real window code, opened in the test browser on sample sessions, on the session list,
 a chat, the Desk, the Inbox, Settings and the mini window. The whole-window zoom was shown the way the app lays it
 out (same page, a window that much smaller, drawn bigger). Three points below are marked "from the code": they
@@ -125,3 +128,18 @@ the zoom drops (6).
 
 Keep both, call the chat's "Text size" and the window's "Zoom", give each a note and a Settings row, and let ⌘0
 reset both. It keeps chat-only sizing but also keeps the mismatch at the ends.
+
+## Put back
+
+The one-size build is undone. A− / A+ change only a chat's words again (13, 14, 15, 16, 18; starts at 15), and
+⌘+ / ⌘− / ⌘0 zoom the whole window (Compact, Default, Large, Larger; ⌘0 goes back to Default). Each shot below is the
+test window after really clicking or pressing; sizes are the page's own, before the zoom.
+
+| Step | Chat words | List beside it | Zoom | Light | Dark |
+|---|---|---|---|---|---|
+| Open a chat | 15 | 13 | Default | ![light](text-size-review/put-back/1-start-light.png) | ![dark](text-size-review/put-back/1-start-dark.png) |
+| A+ twice | 18 | 13 | Default | ![light](text-size-review/put-back/2-a-plus-twice-light.png) | ![dark](text-size-review/put-back/2-a-plus-twice-dark.png) |
+| A− four times | 13 | 13 | Default | ![light](text-size-review/put-back/3-a-minus-to-smallest-light.png) | ![dark](text-size-review/put-back/3-a-minus-to-smallest-dark.png) |
+| A+ twice | 15 | 13 | Default | ![light](text-size-review/put-back/4-back-with-a-plus-light.png) | ![dark](text-size-review/put-back/4-back-with-a-plus-dark.png) |
+| ⌘+ twice (note: "Text size: Larger") | 15 | 13 | Larger | ![light](text-size-review/put-back/5-cmd-plus-twice-light.png) | ![dark](text-size-review/put-back/5-cmd-plus-twice-dark.png) |
+| ⌘0 (note: "Text size: Default") | 15 | 13 | Default | ![light](text-size-review/put-back/6-cmd-0-light.png) | ![dark](text-size-review/put-back/6-cmd-0-dark.png) |

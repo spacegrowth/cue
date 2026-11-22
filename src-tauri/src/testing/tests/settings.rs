@@ -19,6 +19,7 @@ fn round_trips() -> Vec<(&'static str, Value, Value)> {
         same("appearance.mode", json!("dark")),
         same("mini.mode", json!("rail")),
         same("appearance.zoom", json!(1.15)),
+        same("appearance.chat_text", json!(16)),
         same("appearance.project", json!(true)),
         ("context.keep", json!(99), json!(50)),
         same("turn.mode", json!("last")),
@@ -97,7 +98,7 @@ fn a_wrong_value_is_refused_and_nothing_is_written() {
     let before = std::fs::read_to_string(w.home().join("config.json")).unwrap();
     for (key, bad) in [
         ("history.keep", json!("lots")), ("pi.gate", json!("sometimes")), ("appearance.mode", json!(1)), ("mini.mode", json!("left")),
-        ("appearance.zoom", json!(2.0)), ("appearance.chat_text", json!(16)), ("notify.sound", json!("klaxon")), ("context.keep", json!(-1)),
+        ("appearance.zoom", json!(2.0)), ("appearance.chat_text", json!(17)), ("notify.sound", json!("klaxon")), ("context.keep", json!(-1)),
         ("quick.phrases", json!(["a", "b", "c", "d", "e"])), ("project.colors", json!({"web": 12})),
         ("project.hue", json!({"h": 400, "k": 0.5})), ("project.folders", json!({"relative/dir": "x"})),
         ("insights.skills", json!({"no-bar": "handoff"})),
@@ -143,8 +144,7 @@ fn hand_written_values_of_the_wrong_kind_read_as_their_defaults() {
     assert_eq!(all["history"]["keep"], crate::config::HISTORY_DEFAULT);
     assert_eq!(all["notify"]["finished"], true);
     assert_eq!((all["appearance"]["zoom"].clone(), all["appearance"]["mode"].clone()), (json!(1.0), json!("system")));
-    // A chat-only size saved by an older Cue is no longer read.
-    assert_eq!(all["appearance"].get("chat_text"), None);
+    assert_eq!(all["appearance"]["chat_text"], json!(crate::config::CHAT_TEXT_DEFAULT));
     assert_eq!(all["quick"]["phrases"], json!(["Commit", "Go ahead", "Think hard"]));
     assert_eq!((all["project"]["pins"].clone(), all["project"]["colors"].clone()), (json!([]), json!({})));
     assert_eq!(all["context"]["keep"], crate::config::context_keep());

@@ -1,5 +1,5 @@
 // Folded text cuts at whole lines (#609): an older reply folded to its first lines, a NOTE folded to two, a forwarded
-// message's original folded to six. None shows any part of the line after its last, light and dark.
+// message's original folded to six. None shows any part of the line after its last, at each chat text size (A− / A+), light and dark.
 // The folds are set by line count (-webkit-line-clamp), never a fixed height, which at some sizes ended mid-line.
 import { test, expect, openDesk } from "./cue.mjs";
 
@@ -20,12 +20,13 @@ const folds = (page) => page.evaluate(() => [...document.querySelectorAll(".dk-c
   return { cls: el.className, clamp: cs.webkitLineClamp, maxHeight: cs.maxHeight, more: el.scrollHeight > el.clientHeight + 1, cut: cut.length };
 }));
 
-for (const scheme of ["light", "dark"]) {
-  test(`folded notes, replies and forwards cut at whole lines (${scheme}) (#609)`, async ({ page, cue }) => {
+for (const scheme of ["light", "dark"]) for (const size of [13, 15, 18]) {
+  test(`folded notes, replies and forwards cut at whole lines (chat text ${size}px, ${scheme}) (#609)`, async ({ page, cue }) => {
     await page.emulateMedia({ colorScheme: scheme });
     await cue.open("desk");
     await openDesk(page);
-    await expect.poll(() => page.evaluate(() => getComputedStyle(document.querySelector(".dk-chat")).getPropertyValue("--type-body").trim())).toBe("15px");
+    await cue.change((st, s) => { st.settings.appearance = { ...(st.settings.appearance || {}), chat_text: s }; }, size);
+    await expect.poll(() => page.evaluate(() => getComputedStyle(document.querySelector(".dk-chat")).getPropertyValue("--type-body").trim())).toBe(`${size}px`);
     await push(page, "you", `keep the old one\n\n[Forwarded from the api session]\n${LONG}\n\n${LONG}\n\n${LONG}`);
     await push(page, "agent", `Sent a note.\n\n- **NOTE:** #d2 | ${LONG}`);
     // Five long replies: the older ones fold (the newest three stay open).

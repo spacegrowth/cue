@@ -108,7 +108,7 @@ fn from_config(c: &Value) -> Value {
         "setup": { "done": b("/setup/done", false) },
         "usage": { "file": usage_file(), "claude": b("/usage/claude", true), "codex": b("/usage/codex", true) },
         "pi": { "gate": c.pointer("/pi/gate").and_then(Value::as_str).unwrap_or("dangerous") },
-        "appearance": { "mode": c.pointer("/appearance/mode").and_then(Value::as_str).unwrap_or("system"), "zoom": zoom(), "project": c.pointer("/appearance/project").and_then(Value::as_bool).unwrap_or(false) },
+        "appearance": { "mode": c.pointer("/appearance/mode").and_then(Value::as_str).unwrap_or("system"), "zoom": zoom(), "chat_text": chat_text_in(c), "project": c.pointer("/appearance/project").and_then(Value::as_bool).unwrap_or(false) },
         "context": { "keep": context_keep() },
         "turn": { "mode": turn_mode() },
         "quick": { "phrases": quick_phrases() },
@@ -236,8 +236,7 @@ pub(crate) fn beta_updates_in(c: &Value) -> bool {
     c.pointer("/updates/beta").and_then(Value::as_bool).unwrap_or(false)
 }
 
-/// Text size: the window's zoom, one of these steps (⌘+ / ⌘− / ⌘0, A− / A+ on a chat's head, or Settings → Text
-/// size). The one text size there is: a size once saved for a chat's words alone (appearance.chat_text) is no longer read.
+/// Text size: the window's zoom, one of these steps (⌘+ / ⌘− / ⌘0, or Settings → Text size).
 pub const ZOOM_STEPS: [f64; 4] = [0.9, 1.0, 1.15, 1.3];
 
 /// The text size you picked (1.0 until you pick one; anything not a step reads as 1.0).
@@ -246,6 +245,14 @@ pub fn zoom() -> f64 {
 }
 fn zoom_step(z: f64) -> Option<f64> {
     ZOOM_STEPS.into_iter().find(|s| (s - z).abs() < 0.001)
+}
+
+/// A chat's words (A− / A+ on a chat's head, #594): the px its messages and the words in its box read at, on top of
+/// the window's zoom. Only the chat; everything around it stays on the type scale (ui/styles/base.css --type-chat).
+pub const CHAT_TEXT_STEPS: [u64; 5] = [13, 14, 15, 16, 18];
+pub const CHAT_TEXT_DEFAULT: u64 = 15;
+fn chat_text_in(c: &Value) -> u64 {
+    c.pointer("/appearance/chat_text").and_then(Value::as_u64).filter(|t| CHAT_TEXT_STEPS.contains(t)).unwrap_or(CHAT_TEXT_DEFAULT)
 }
 
 /// How many earlier exchanges each session keeps for context (Settings → Context; default 5).
@@ -334,7 +341,7 @@ pub fn history_keep() -> usize {
 
 /// The settings the window may save. A key it saves that isn't here fails as "unknown setting" (the test
 /// below reads the window's scripts for every key they save).
-pub(crate) const ALLOWED: &[&str] = &["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "usage.codex", "sessions.tmux", "project.colors", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "project.oneway", "project.lands", "project.machine", "project.model", "project.asked", "project.never", "owner.names", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "tips.on", "updates.beta", "voice.pick", "mini.mode", "hosted.on"];
+pub(crate) const ALLOWED: &[&str] = &["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.chat_text", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "usage.codex", "sessions.tmux", "project.colors", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "project.oneway", "project.lands", "project.machine", "project.model", "project.asked", "project.never", "owner.names", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "tips.on", "updates.beta", "voice.pick", "mini.mode", "hosted.on"];
 
 /// Set one dotted key ("history.keep", "notify.finished", "pi.gate"), keeping everything else.
 pub fn set(key: &str, value: Value) -> Result<(), String> {
@@ -531,6 +538,7 @@ fn checked_plain(key: &str, value: Value) -> Result<Value, String> {
         "sessions.tmux" => json!(value.as_bool().ok_or("tmux must be on or off")?),
         "context.keep" => json!(value.as_u64().ok_or("keep must be a number")?.clamp(1, 50)),
         "appearance.zoom" => json!(value.as_f64().and_then(zoom_step).ok_or("text size must be 0.9, 1, 1.15 or 1.3")?),
+        "appearance.chat_text" => json!(value.as_u64().filter(|t| CHAT_TEXT_STEPS.contains(t)).ok_or("chat text must be 13, 14, 15, 16 or 18")?),
         // Your usage meters' CSV file (a path; ~ is your home folder). Empty: back to the default.
         "usage.file" => {
             let p = value.as_str().ok_or("the usage file must be a path")?.trim();
@@ -800,6 +808,17 @@ mod tests {
         assert_eq!(zoom_step(1.1500000001), Some(1.15));
         for z in [0.0, 0.5, 1.2, 2.0, -1.0, f64::NAN] {
             assert_eq!(zoom_step(z), None, "{z}");
+        }
+    }
+
+    #[test]
+    fn chat_text_is_a_step_or_the_default() {
+        assert_eq!(chat_text_in(&json!({})), CHAT_TEXT_DEFAULT);
+        for t in CHAT_TEXT_STEPS {
+            assert_eq!(chat_text_in(&json!({"appearance": {"chat_text": t}})), t);
+        }
+        for bad in [json!(17), json!("16"), json!(-1), json!(15.5)] {
+            assert_eq!(chat_text_in(&json!({"appearance": {"chat_text": bad}})), CHAT_TEXT_DEFAULT, "{bad}");
         }
     }
 

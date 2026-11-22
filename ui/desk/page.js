@@ -358,7 +358,7 @@ function deskSessChat(sid, from, d, foot = "") {
   const stop = dot === "work" ? `<button class="btn small" data-act="interrupt" data-sid="${esc(sid)}">Stop</button>` : "";
   // The new Desk page (#628): back to the lead's chat, and the item it's on a click away.
   const v2 = deskV2 ? deskV2ChatBack(sid, from, d) : null;
-  return deskPage({ page: kind === "desk" ? "dispatcher" : kind === "lead" ? "lead" : "session", kind, back: v2 ? v2.back : deskChatBack(from, d), acts: chatModeSwitch(sid, rows) + textSizeBtns() + (v2 ? v2.its : "") + open,
+  return deskPage({ page: kind === "desk" ? "dispatcher" : kind === "lead" ? "lead" : "session", kind, back: v2 ? v2.back : deskChatBack(from, d), acts: chatModeSwitch(sid, rows) + chatTextBtns() + (v2 ? v2.its : "") + open,
     mark: `${DESK_MARKS[kind]} · `, title: deskSessName(sid, deskHolderName(sid), "dk-shn"), meta,
     now: deskPnow({ dot, word, say, acts: stop, fold: on ? `on #${esc(on.id)}` : "" }),
     panel: deskPsec("Who", deskPwho("On", its.length ? its.map(deskItemLink).join(", ") : "nothing yet")) + deskSessFiles(sid),
