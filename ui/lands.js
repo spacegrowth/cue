@@ -61,7 +61,7 @@ const landsSame = (x, y) => JSON.stringify(Object.keys({ ...x, ...y }).sort().ma
 const landsSetChanged = (a) => !landsSame(landsOut(a.set, a.steps), landsOut(a.was.set, a.was.steps));
 const landsAskChanged = (a) => !!a.ab && [...a.ab.ticks].sort().join() !== [...a.was.ticks].sort().join();
 const landsModelChanged = (a) => (a.model || "default") !== (a.was.model || "default");
-const landsMachChanged = (a) => !!a.mach && (a.mach.list.join("\n") !== a.was.mach.list.join("\n") || a.mach.list.some((n) => !!n && ((a.mach.folders[n] || "").trim() !== (a.was.mach.folders[n] || "").trim() || a.mach.at[n] !== a.was.mach.at[n])));
+const landsMachChanged = (a) => !!a.mach && (a.mach.list.join("\n") !== a.was.mach.list.join("\n") || a.mach.list.some((n) => !!n && (a.mach.folders[n] || "").trim() !== (a.was.mach.folders[n] || "").trim()) || Object.keys(a.mach.at).some((n) => a.mach.at[n] !== a.was.mach.at[n]));
 const landsChanged = (a) => !!a && (landsSetChanged(a) || landsAskChanged(a) || landsMachChanged(a) || landsModelChanged(a));
 /** Where an item works changed while items are open: what happens to them, said before it's saved. An item already
  *  started keeps the folder it has (desk/hub/landing/trees.rs gives a copy only as an item starts working). */
@@ -175,13 +175,17 @@ function landsMach() {
   const input = (x) => `<input class="ld-cmd ld-folder" type="text" spellcheck="false" aria-label="Folder of this repository's clone on ${esc(x.label)}" placeholder="Full path there, e.g. ~/code/project" data-ld-folder="${esc(x.name)}" value="${esc(m.folders[x.name] || "")}">`;
   const range = deskOf(lands.desk)?.machines?.at_once || {}, min = range.min ?? 1, max = range.max ?? 9;
   const n = (x) => { const k = m.at[x.name] || 3; return `<div class="ld-step ld-mach-n"><button class="btn" data-ld-mach-n="${esc(x.name)}" data-ld-by="-1" aria-label="Fewer at once on ${esc(x.label)}"${k <= min ? " disabled" : ""}>−</button><b class="ld-n">${k}</b><button class="btn" data-ld-mach-n="${esc(x.name)}" data-ld-by="1" aria-label="More at once on ${esc(x.label)}"${k >= max ? " disabled" : ""}>+</button><span class="ld-mach-at">at once</span></div>`; };
-  const folders = ons.map((x) => `<div class="ld-folder-on">${ons.length > 1 ? `<span class="ld-folder-name">${esc(x.label)}</span>` : ""}${input(x)}${n(x)}</div>`).join("");
-  const cap = ons.length ? `<div class="ld-hint">At once: the most of this Desk's items working on ${ons.length > 1 ? "each machine" : "it"} together. More ${many ? "go to another place you ticked, or " : ""}wait until one there is done.</div>` : "";
+  const folders = ons.length > 1 ? ons.map((x) => `<div class="ld-folder-on"><span class="ld-folder-name">${esc(x.label)}</span>${input(x)}</div>`).join("") : ons.map(input).join("");
+  // Every machine's number, ticked or not (#711): a per-item choice or the lead can start items on any of them.
+  const at = `<div class="ld-row" data-ld-sec="at-once"><div class="ld-label">At once</div><div class="ld-body">${ms.map((x) => `<div class="ld-folder-on ld-mach-row"><span class="ld-mach-name">${esc(x.label)}</span>${n(x)}</div>`).join("")}
+    <div class="ld-hint">The most of this Desk's items working on each machine together. More ${many ? "go to another place you ticked, or " : ""}wait until one there is done, then start by themselves.</div></div></div>`;
   const where = ons.length ? `<div class="ld-hint">The folder of this repository's clone on ${ons.length > 1 ? "each machine" : esc(ons[0].label)}. If the project isn't there yet, Cue downloads it there first. Each new session starts there from the latest main, on a branch of its own, and its work lands here.</div>` : "";
   const spread = many ? `<div class="ld-hint">New items start on whichever of these has the fewest of this Desk's items at work. Each item says where it's working.</div>` : "";
-  const folder = `${folders}${spread}${cap}${where || (many ? "" : `<div class="ld-hint">The lead asks you before a Desk's first item on another machine. You can also choose per item, on its page. Tick more than one to spread new items over them.</div>`)}`;
-  return `<div class="ld-sec" data-ld-sec="machine"><div class="set-group ld-h">Where new sessions start</div>
-    <div class="ld-rows"><div class="ld-row"><div class="ld-label">Starts on</div><div class="ld-body">${seg}${folder}</div></div></div></div>`;
+  const folder = `${folders}${spread}${where || (many ? "" : `<div class="ld-hint">The lead asks you before a Desk's first item on another machine. You can also choose per item, on its page. Tick more than one to spread new items over them.</div>`)}`;
+  // First on the screen, named for what it holds (#711: under How work lands, as "Where new sessions start", it wasn't found).
+  return `<div class="ld-sec" data-ld-sec="machine"><div class="set-group ld-h">Machines</div>
+    <div class="ld-hint ld-sub">Where this Desk's new sessions start, and how many of its items each machine works on at once.</div>
+    <div class="ld-rows"><div class="ld-row"><div class="ld-label">Starts on</div><div class="ld-body">${seg}${folder}</div></div>${at}</div></div>`;
 }
 /** Ask me before, its kinds on one line, saved with the rest (ask_before.js has the rows and their words). */
 function landsAskBefore() {
@@ -203,10 +207,10 @@ function landsHtml() {
     <div class="sheet-head"><h3 class="move-title" id="ld-title">Settings for ${esc(name)}</h3><span class="grow"></span>${typeof deskV2Toggle === "function" ? deskV2Toggle() : ""}<kbd class="ld-esc" data-ld="close" role="button" aria-label="Close">Esc</kbd></div>
     <div class="sheet-body">
     <div class="ld-hint ld-intro">Kept in Cue, not in the project. Changes apply when you press Save; you can also tell the lead, and it asks you first.</div>
+    ${landsMach()}
     <div class="ld-sec" data-ld-sec="lands"><div class="set-group ld-h">How work lands</div>
     ${l.why ? `<div class="ld-why">${esc(l.why)}</div>` : ""}
     <div class="ld-rows">${parts}${landsModel()}</div></div>
-    ${landsMach()}
     ${landsAskBefore()}
     <div class="ld-sec" data-ld-sec="old"><div class="set-group ld-h">Old working folders</div><div class="ld-rows">${landsOld()}</div></div>
   </div>${landsFoot()}</div></div>`;
@@ -250,7 +254,7 @@ function landsSave() {
   if (landsMachChanged(a)) {
     const mach = { list: [...a.mach.list], folders: { ...a.mach.folders }, at: { ...a.mach.at } };
     const machine_folders = Object.fromEntries(mach.list.filter(Boolean).map((n) => [n, (mach.folders[n] || "").trim()]));
-    const machine_at_once = Object.fromEntries(mach.list.filter(Boolean).map((n) => [n, mach.at[n] || 3]));
+    const machine_at_once = Object.fromEntries(Object.keys(mach.at).map((n) => [n, mach.at[n] || 3]));
     jobs.push(invoke("desk_lands_set", { desk: a.desk, lands: { machines: mach.list, machine_folders, machine_at_once } }).then(
       () => { a.was.mach = mach; },
       (e) => { throw `${e}`; },

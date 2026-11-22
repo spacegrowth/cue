@@ -92,8 +92,11 @@ kbd { font: 600 var(--type-tag) var(--mono); padding: 2px 6px; border-radius: va
 .ld-folder-on { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .ld-folder-on .ld-folder { margin-top: 0; flex: 1; min-width: 0; }
 .ld-folder-on .ld-mach-n { flex: none; gap: 6px; }
+.ld-mach-row { margin-top: 4px; }
+.ld-mach-row:first-child { margin-top: 0; }
+.ld-mach-row .ld-mach-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ld-mach-at { font-size: var(--type-small); color: var(--muted); }
-.ld-folder-name { flex: none; min-width: 72px; font-size: var(--type-small); color: var(--muted); }
+.ld-folder-name, .ld-mach-name { flex: none; min-width: 72px; font-size: var(--type-small); color: var(--muted); }
 .ld-cmd { width: 100%; box-sizing: border-box; font: var(--type-body)/1.5 var(--mono); padding: 6px 8px; border-radius: var(--radius-qp); border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); resize: vertical; }
 .ld-dialog .ab-rows { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 0 16px; margin: 0; }
 .ld-dialog .ab-row, .ld-dialog .ab-more { padding: 4px; }

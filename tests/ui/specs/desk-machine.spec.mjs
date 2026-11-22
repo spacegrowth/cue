@@ -95,7 +95,7 @@ test("the Desk's settings say where its new sessions start, with the folder ther
   await page.locator(".dk-strip .dk-ab [data-lands-change]").click();
   const dlg = page.locator(".ld-dialog");
   const sec = dlg.locator('[data-ld-sec="machine"]');
-  await expect(sec.locator(".ld-h")).toHaveText("Where new sessions start");
+  await expect(sec.locator(".ld-h")).toHaveText("Machines");
   await expect(sec.locator("[data-ld-mach]")).toHaveText(["This Mac", "build-box", "gpu-1"]);
   await expect(sec.locator('[data-ld-mach="build-box"]')).toHaveAttribute("aria-checked", "true");
   await expect(sec.locator("[data-ld-folder]")).toHaveValue("~/code/cue");
@@ -125,7 +125,7 @@ test("the Desk's settings say where its new sessions start, with the folder ther
   await expect(sec.locator("[data-ld-folder]")).toHaveCount(0);
   await sec.locator('[data-ld-mach=""]').click();
   await expect(sec.locator('[data-ld-mach=""]')).toHaveAttribute("aria-checked", "true");
-  await expect(sec.locator(".ld-hint")).toContainText("asks you before");
+  await expect(sec.locator(".ld-hint", { hasText: "asks you before" })).toHaveCount(1);
   await expect(dlg.locator("[title]")).toHaveCount(0);
 });
 
@@ -141,7 +141,7 @@ test("the new Desk page's settings drawer has where new sessions start, and a ma
   await page.locator("[data-desk2-set]").click();
   const dr = page.locator(".dk2-drawer");
   const sec = dr.locator('[data-ld-sec="machine"]');
-  await expect(sec.locator(".ld-h")).toHaveText("Where new sessions start");
+  await expect(sec.locator(".ld-h")).toHaveText("Machines");
   await expect(sec.locator('[data-ld-mach=""]')).toHaveAttribute("aria-checked", "true");
   await sec.locator('[data-ld-mach="gpu-1"]').click();
   await sec.locator("[data-ld-folder]").fill("/srv/cue");
@@ -175,7 +175,7 @@ test("the Desk's settings can tick two machines, each with its folder, and both 
   await expect(sec.locator('[data-ld-mach="gpu-1"]')).toHaveAttribute("aria-checked", "true");
   await expect(sec.locator(".ld-folder-name")).toHaveText(["build-box", "gpu-1"]);
   await expect(sec.locator('[data-ld-folder="build-box"]')).toHaveValue("~/code/cue");
-  await expect(sec.locator(".ld-hint").first()).toContainText("fewest");
+  await expect(sec.locator(".ld-hint", { hasText: "fewest" })).toHaveCount(1);
   // gpu-1 has no folder yet: Save says so and nothing is saved.
   await dlg.locator('[data-ld="save"]').click();
   await expect(page.locator(".toast")).toContainText("give the folder");
@@ -197,27 +197,30 @@ test("the Desk's settings can tick two machines, each with its folder, and both 
 
 // How many items at once on each machine (#711): a − n + on each ticked machine's row, 1 to 9, saved with the rest and
 // there when the settings open again.
-test("each ticked machine in the Desk's settings has how many items may work there at once", async ({ page, cue }) => {
+test("Desk settings open on Machines, where every machine has how many items may work there at once", async ({ page, cue }) => {
   await cue.open("desk");
-  await cue.change((st, ms) => { st.desk.projects.find((x) => x.project === "cue").machines = ms; }, machines);
+  await cue.change((st, ms) => { st.desk.projects.find((x) => x.project === "cue").machines = { ...ms, machine: "", picked: [""] }; }, machines);
   await openDesk(page);
   await deskAllSessions(page);
   await page.locator(".dk-strip .dk-ab [data-lands-change]").click();
   const dlg = page.locator(".ld-dialog");
+  // First on the screen, named Machines.
+  await expect(dlg.locator(".ld-h").first()).toHaveText("Machines");
   const sec = dlg.locator('[data-ld-sec="machine"]');
+  await expect(sec.locator(".ld-sub")).toContainText("how many of its items each machine works on at once");
+  // Only This Mac ticked: every machine still has its number.
+  await expect(sec.locator(".ld-mach-name")).toHaveText(["build-box", "gpu-1"]);
   const n = sec.locator(".ld-mach-n .ld-n");
-  await expect(n).toHaveText(["3"]);
-  await expect(sec.locator(".ld-mach-at")).toHaveText(["at once"]);
-  await expect(sec.locator(".ld-hint").first()).toContainText("At once: the most of this Desk's items working on it together");
+  await expect(n).toHaveText(["3", "3"]);
+  await expect(sec.locator(".ld-mach-at")).toHaveText(["at once", "at once"]);
+  await expect(sec.locator(".ld-hint", { hasText: "The most of this Desk's items working on each machine together" })).toHaveCount(1);
   for (let k = 0; k < 2; k++) await sec.locator('[data-ld-mach-n="build-box"][data-ld-by="-1"]').click();
-  await expect(n).toHaveText(["1"]);
+  await expect(n).toHaveText(["1", "3"]);
   await expect(sec.locator('[data-ld-mach-n="build-box"][data-ld-by="-1"]')).toBeDisabled();
   await expect(dlg.locator('[data-ld="save"]')).toBeEnabled();
-  // A second machine: its own number, and the hint says more go to another place ticked.
-  await sec.locator('[data-ld-mach="gpu-1"]').click();
-  await expect(n).toHaveText(["1", "3"]);
-  await expect(sec.locator(".ld-hint").nth(1)).toContainText("go to another place you ticked");
-  await sec.locator('[data-ld-folder="gpu-1"]').fill("/srv/cue");
+  // Two places ticked: the hint says more go to the other one.
+  await sec.locator('[data-ld-mach="build-box"]').click();
+  await expect(sec.locator(".ld-hint", { hasText: "go to another place you ticked" })).toHaveCount(1);
   await sec.locator('[data-ld-mach-n="gpu-1"][data-ld-by="1"]').click();
   await dlg.locator('[data-ld="save"]').click();
   await expect(dlg).toHaveCount(0);
