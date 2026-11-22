@@ -35,7 +35,7 @@
 .dk-ask { flex: none; max-height: 55%; overflow-y: auto; padding: 0 20px 14px; }
 .dk-request { margin: 0 10px 12px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-tray); background: var(--panel); }
 .dk-request-who { font: inherit; font-weight: 600; text-align: left; color: var(--ink); }
-.dk-request pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 160px; overflow: auto; font-size: var(--type-small); margin: 10px 0; }
+.dk-request pre:not(.slab) { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 160px; overflow: auto; font-size: var(--type-small); margin: 10px 0; }
 .dk-request p { margin: 10px 0; overflow-wrap: anywhere; }
 .dk-request .row-btns, .dk-ask .row-btns { justify-content: flex-end; }
 .dk-request .row-btns > .btn.flex, .dk-ask .row-btns > .btn.flex { flex: 0 0 auto; min-width: 76px; }

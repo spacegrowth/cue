@@ -99,7 +99,7 @@ function reqCut(key, inner, text, lines = 3, chars = 180) {
 /** After a draw: a cut whose words fit in their lines after all (reqCut guesses by length; a wide window fits more)
  *  hides its More, so More always has more under it (#452). */
 function reqFit() {
-  for (const t of document.querySelectorAll(".req-cut:not(.open) > .req-t")) t.parentElement.classList.toggle("fits", t.scrollHeight <= t.clientHeight + 1);
+  for (const t of document.querySelectorAll(".req-cut:not(.open) > :is(.req-t, .code-wrap > pre)")) t.closest(".req-cut").classList.toggle("fits", t.scrollHeight <= t.clientHeight + 1);
 }
 // Before any row's own click (capture): more / less opens or folds just the words, not the row it sits on.
 document.addEventListener("click", (e) => {
@@ -116,6 +116,10 @@ document.addEventListener("click", (e) => {
   }
 }, true);
 const COPY_BTN = `<button class="code-copy" data-copy-code aria-label="Copy">Copy</button>`;
+/** A shell command someone asks to run, as every card draws it (#670): the chat's script block (a slab, "$ ", Copy),
+ *  cut to its first lines with a fade and more / less when long. `key`: what keeps it open (reqCut). The chat's
+ *  permission card, the Desk's Away asks and its held steps all use this one, so they look the same. */
+const cmdCut = (key, cmd) => reqCut(key, `<div class="code-wrap"><pre class="slab"><span class="ps">$ </span>${esc(cmd)}</pre>${COPY_BTN}</div>`, cmd);
 /** The text of the code block a button sits on, without a "$ " prompt Cue drew before a command. */
 function codeText(btn) {
   const pre = btn.closest(".code-wrap")?.querySelector("pre")?.cloneNode(true);

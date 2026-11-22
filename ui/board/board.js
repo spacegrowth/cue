@@ -217,7 +217,7 @@ function requestBody(it) {
   const t = tool(it);
   if (it.kind === "question") return questionHtml(it);
   if (it.kind === "input") return formBody(it);
-  if (t === "bash") return reqCut(it.id, `<div class="code-wrap"><pre class="slab"><span class="ps">$ </span>${esc(i.command)}</pre>${COPY_BTN}</div>`, i.command);
+  if (t === "bash") return cmdCut(it.id, i.command);
   if (t === "edit" || t === "multiedit") {
     const edits = t === "multiedit" ? i.edits || [] : [{ old_string: i.old_string, new_string: i.new_string }];
     return `<div class="dim" style="font-size:var(--type-small)">${esc(shortPath(i.file_path || ""))}</div>` + edits.map((e) => `<div class="diff"><pre class="del">− ${esc(e.old_string)}</pre><pre>+ ${esc(e.new_string)}</pre></div>`).join("");
