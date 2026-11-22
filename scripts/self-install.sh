@@ -219,12 +219,13 @@ still_cue() {
 }
 
 # Wait up to $1 seconds, by the clock, for these PIDs ($2…) to be gone (or no longer Cue). Each look runs ps, which
-# takes a while itself: counted in looks, "30 s" was near a minute.
+# takes a while itself: counted in looks, "30 s" was near a minute. SECONDS counts whole seconds, so the start may be
+# late in one: given up only once it has gone past $1, never sooner (at -ge, "30 s" was sometimes 29.x).
 gone() {
   local until=$((SECONDS + $1)); shift
   while :; do
     [ -z "$(still_cue "$@")" ] && return 0
-    [ "$SECONDS" -ge "$until" ] && return 1
+    [ "$SECONDS" -gt "$until" ] && return 1
     sleep 0.1
   done
 }
