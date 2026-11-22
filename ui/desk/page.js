@@ -612,13 +612,12 @@ function deskCheckInfo(i, d) {
   if (!c) return "";
   const by = c.by || "its session", ses = (state.sessions || []).find((s) => s.name === c.by && s.project === deskWorkspace(d));
   const who = ses ? `<button class="dk-chk-a" ${deskChatAttrs(ses.session_id, d)}>${esc(by)}</button>` : `<b>${esc(by)}</b>`;
-  const n = (c.files || []).length, files = n ? ` · ${n === 1 ? "1 file" : `${n} files`}` : "";
   // In it when Cue was installed after the work last changed (`edited`), not after the DONE: you install, then say DONE.
   const mocks = /^https?:\/\//.test(c.designs || "") ? `<a class="dk-dlink" href="#" data-href="${esc(c.designs)}">Open the mocks ↗</a>` : "";
   const inst = mocks || !c.cue ? mocks : deskInstallWait({ ...i, state: "to_check" }) ? "Not installed yet: install Cue to try it"
     : i.finish?.step === "checked" ? (deskCheckBox(i) ? "" : "Ready to verify in Cue")
     : `In the installed Cue · installed ${esc(deskChkWhen(state.desk?.installed_ms || 0))}`;
-  return `<div class="dk-chk-info"><div class="dk-chk-w">Done by ${who} · ${ago(c.at)} ago${files}</div>${inst ? `<div class="dk-chk-in">${inst}</div>` : ""}</div>`;
+  return `<div class="dk-chk-info"><div class="dk-chk-w">Done by ${who} · ${ago(c.at)} ago</div>${inst ? `<div class="dk-chk-in">${inst}</div>` : ""}</div>`;
 }
 const deskChkWhen = (ms) => new Date(ms).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
 /** Back to `to` (a holder's sid), else to what shows with nothing open: the lead's chat, or on today's page (B2,

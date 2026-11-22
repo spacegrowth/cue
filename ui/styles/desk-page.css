@@ -632,6 +632,10 @@ button.dk-al-row:focus-visible { outline: 2px solid var(--accent); outline-offse
 }
 .dk-pg[data-desk-page="item"] > .dk-panel .dk-note { margin: 0; font-size: var(--type-small); color: var(--muted); }
 .dk-pg[data-desk-page="item"] > .dk-panel > .dk-sfoot { flex-wrap: wrap; gap: 8px; margin-top: auto; padding: 12px 0 0; border-top: 1px solid var(--line); }
+/* Whether it's ready for you to check (#710), under its state's word. */
+.dk-pready { margin-top: 6px; font-size: var(--type-small); font-weight: 600; line-height: 1.4; }
+.dk-pready.yes { color: var(--pcp5); }
+.dk-pready.no, .dk-pready.done { color: var(--muted); }
 .dk-pmeta { margin-top: 8px; color: var(--muted); font-size: var(--type-small); line-height: 1.45; }
 .dk-recs { display: flex; flex-direction: column; gap: 10px; padding: 16px 20px; user-select: text; -webkit-user-select: text; }
 .dk-rec { font-size: var(--type-body); line-height: 1.45; color: var(--ink); overflow-wrap: anywhere; white-space: pre-wrap; }

@@ -189,14 +189,14 @@ test("a DONE is one Ready to check card in the lead's chat: its item, its age, C
   await page.evaluate(() => { state.desk.installed_ms = 1793984280000 - 60000; renderMain(); });
   await expect(line.locator(".mg-tag")).toHaveText("Ready to check");
 
-  // Check it › opens the item's page: what to test as a checklist, then quiet under it who did it, when and how many
-  // files, and that the installed Cue has it; Looks right and Send back.
+  // Check it › opens the item's page: what to test as a checklist, then quiet under it who did it and when (how many
+  // files is its Files section's, #710), and that the installed Cue has it; Looks right and Send back.
   // A window wide enough for the panel to show beside the thread (#200).
   await page.setViewportSize({ width: 1512, height: 945 });
   await line.locator(".mg-lk").click();
   await expect(page.locator('.dk-panel[data-side-for="d2"]')).toBeVisible();
   await expect(pane.locator(".dk-ptk li").first()).toBeVisible();
-  await expect(info.locator(".dk-chk-w")).toHaveText(/^Done by web-lead · \d+[smhd] ago · 2 files$/);
+  await expect(info.locator(".dk-chk-w")).toHaveText(/^Done by web-lead · \d+[smhd] ago$/);
   await expect(info.locator(".dk-chk-in")).toContainText("In the installed Cue · installed ");
   // It sits under what to test, the section after You'll see (#418); with the check box at the top saying what to
   // try (#526), it's "Its work", so "What to try" isn't said twice.

@@ -478,20 +478,24 @@ function deskItemSide(i, d) {
   const pts = deskDoneWhenPoints(i.see), ticked = checking ? pts.length : 0;
   const tk = (y) => `<i class="dk-tk${y ? " y" : ""}" aria-hidden="true">${y ? `<svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>` : ""}</i>`;
   const dw = pts.length ? `<div class="dk-idw"><ul class="dk-ptk">${pts.map((p) => `<li${checking ? ` class="y"` : ""}>${tk(checking)}<span>${linkify(esc(p), sessBase(sid))}</span></li>`).join("")}</ul></div>` : "";
-  const see = deskPsec(`You'll see${pts.length > 1 ? ` · ${ticked} of ${pts.length}` : ""}`, dw || (i.state === "done" ? "" : `<p class="dk-note">The lead hasn't said yet.</p>`), "dk-pdw");
+  // Nothing said yet: no section (#710), not a line saying so.
+  const see = deskPsec(`You'll see${pts.length > 1 ? ` · ${ticked} of ${pts.length}` : ""}`, dw, "dk-pdw");
   const who = h?.name || "its session";
   // The pictures it was added with: its chat is its holder's, which never had them (#418).
   const shots = thumbs(i.images), pics = shots ? deskPsec("Pictures", `<div class="dk-tpics">${shots}</div>`) : "";
   // The check box at the top says what to try (#526): under it, this section is only who did it (and its mocks), so
   // it isn't a second "What to try".
-  const tryIt = deskPsec(deskCheckBox(i) ? "Its work" : "What to try", deskCheckInfo(i, d) || (i.state === "done" ? "" : `<p class="dk-note">Shows here when ${esc(who)} says it's done, with Close and Send back.</p>`));
+  // Before it's done, no section: the line under its state says it isn't ready to check (#710).
+  const tryIt = deskPsec(deskCheckBox(i) ? "Its work" : "What to try", deskCheckInfo(i, d));
   const now = deskPnow({ ...deskItemNow(i), acts: `${backing ? deskBackActs(i) : deskLooksTop(i) + deskPickBtns(i) + deskItemActs(i)}${deskBuiltLink(i)}${deskDesignsLink(i)}`, fold: pts.length ? `${ticked} of ${pts.length} done` : "", box: deskCheckBox(i) })
     .replace('<h4 class="dk-psh">Now</h4>', '<h4 class="dk-psh">This item</h4>')
+    .replace(/<div class="dk-pnr">.*?<\/div>/, (row) => row + deskReadyLine(i))
     .replace("</section>", `<div class="dk-pmeta">${deskItemMeta(i, d)}</div>${deskRemoteLine(i) ? `<div class="dk-pmeta dk-rmt">${esc(deskRemoteLine(i))}</div>` : ""}${deskStartsOn(i, d)}</section>`);
   const open = sid && sessionOf(sid) ? `<button class="btn small" ${deskChatAttrs(sid, d)}>Open ${esc(deskHolderName(sid, h.kind === "crew" ? "" : h.name))}</button>` : "";
   const drop = i.state !== "done" ? `<button class="btn small dk-drop${armed ? " armed" : ""}" data-desk-act="drop" data-id="${esc(i.id)}">${armed ? "Drop it" : "Drop this item"}</button>` : "";
   const foot = open || drop ? `<section class="dk-psec dk-sfoot">${open}${drop}</section>` : "";
-  return `${now}${see}${tryIt}${pics}${deskItemFiles(i)}${foot}`;
+  // What matters first (#710): where it stands and whether it's ready to check, then the files it changed.
+  return `${now}${deskItemFiles(i)}${see}${tryIt}${pics}${foot}`;
 }
 /** A dropped item's page, from its kept copy (#608): dropped, where its work is kept, Pick up again (back on the Desk
  *  with this copy, for the lead to route) and Remove (two clicks: the copy and its branch go); what it changed, with
@@ -501,9 +505,29 @@ function deskKeptSide(i, d) {
   const acts = `<button class="btn small primary" data-desk-act="pickup_kept" data-id="${id}">Pick up again</button><div class="dk-acts"><button class="btn small dk-drop${armed ? " armed" : ""}" data-desk-act="remove_kept" data-id="${id}">${armed ? "Remove it and its work" : "Remove"}</button></div>`;
   const say = `Its work is kept in ${esc(k.path)} on ${esc(k.branch)}. Pick up again puts it back on the Desk with this copy, for ${esc(lead)} to give out.`;
   const now = deskPnow({ dot: "stop", word: "Dropped · copy kept", say, acts }).replace('<h4 class="dk-psh">Now</h4>', '<h4 class="dk-psh">This item</h4>')
+    .replace(/<div class="dk-pnr">.*?<\/div>/, (row) => row + deskReadyLine(i))
     .replace("</section>", `<div class="dk-pmeta">Dropped ${ago(k.at)} ago</div></section>`);
   const open = sid && sessionOf(sid) ? `<section class="dk-psec dk-sfoot"><button class="btn small" ${deskChatAttrs(sid, d)}>Open ${esc(deskHolderName(sid, i.holder?.kind === "crew" ? "" : i.holder?.name))}</button></section>` : "";
   return `${now}${deskItemFiles(i)}${open}`;
+}
+/** Whether item `i` is ready for you to check (#710), one line under its state on its panel: "Ready to check", or
+ *  not and why, or that it's checked and closed. "" when its state's word already says "Ready to check". */
+function deskReadyLine(i) {
+  const who = esc(i.holder?.name || "its session"), fs = deskFeat(i) && !i.holder ? deskFeatState(i) : null;
+  const [yes, why] = i.kept ? [false, "it was dropped"]
+    : i.state === "done" || fs === "done" ? [true, "checked and closed"]
+    : fs ? [false, "its pieces are checked one by one"]
+    : deskUncommitted(i) ? [true, ""]
+    : i.state === "to_check" && deskInstallWait(i) ? [false, "Cue isn't installed with it yet"]
+    : i.state === "to_check" && i.finish?.unlanded ? [false, "it isn't on main yet"]
+    : i.state === "to_check" ? [true, null]
+    : deskFinishing(i) ? [false, "Cue is still landing it"]
+    : ["queued", "new", "held"].includes(i.state) ? [false, "it hasn't started"]
+    : i.state === "needs_you" ? [false, `${who} waits on your answer first`]
+    : [false, `${who} hasn't said it's done`];
+  if (why === null) return "";
+  if (yes && why) return `<div class="dk-pready done">${esc(why[0].toUpperCase() + why.slice(1))}</div>`;
+  return `<div class="dk-pready ${yes ? "yes" : "no"}">${yes ? "Ready to check" : `Not ready to check: ${why}`}</div>`;
 }
 /** Item `i`'s steps for its Record tab (#418, the Steps tab of before): its hand-offs and what you wrote about it.
  *  The same step said again in a row is one (its last), not several. */
