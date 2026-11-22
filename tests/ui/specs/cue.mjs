@@ -35,8 +35,8 @@ class Cue {
   }
 
   /** `cmd` answered by `fn` (a function of its args, run in the page) instead of its fake; `arg` is passed after
-   *  the command's args. */
-  override(cmd, fn, arg) { return this.page.evaluate(([c, src, a]) => CueBridge.override(c, (args) => (0, eval)(`(${src})`)(args, a)), [cmd, fn.toString(), arg]); }
+   *  the command's args, then the fake's own answer (a function of the args) to call through to. */
+  override(cmd, fn, arg) { return this.page.evaluate(([c, src, a]) => CueBridge.override(c, (args, area) => (0, eval)(`(${src})`)(args, a, area)), [cmd, fn.toString(), arg]); }
 
   /** An event from the app (state, term, …). */
   emit(name, payload) { return this.page.evaluate(([n, p]) => CueBridge.emit(n, p), [name, payload]); }

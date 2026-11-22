@@ -289,6 +289,9 @@ test("finished items: the 10 newest, then 10 more as the list's end comes into v
     const d = st.desk.projects.find((x) => x.project === "cue");
     d.older = Array.from({ length: 500 }, (_, k) => ({ id: `o${String(k).padStart(3, "0")}`, project: "cue", kind: "task", title: `Old ${k}`, state: "done", holder: null, created: 1000 + k, updated: 1000 + k, done_at: 1000 + k, from: "you" }));
   });
+  // Each page of them comes a little late, as from a busy Mac: the list's end comes into view while the next is
+  // still on its way, and it loads on once that arrives (#735).
+  await cue.override("desk_done", (a, _, area) => new Promise((r) => setTimeout(() => r(area(a)), 150)));
   await openDesk(page);
   await page.evaluate(() => { deskDonePages.clear(); renderMain(); });   // as the Desk opens with them there
   const list = page.locator(".dk-items .dk-scroll");
