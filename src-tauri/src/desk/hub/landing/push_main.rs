@@ -3,17 +3,17 @@
 //! matters.
 //!
 //! - **After an install.** Once the running Cue has an install's work, a main ahead of its remote is offered as a
-//!   Yes / No card in the Desk lead's chat ("Main is N landings ahead of the shared copy. Push it?"), Cue's own
+//!   Yes / No card in the Desk lead's chat ("Update from GitHub, then upload N landings? Yes rebases …"), Cue's own
 //!   question as the old copies one is (nothing is sent to the lead). A project on "after each landing" is pushed
 //!   then without asking; one on "never" is never pushed nor asked.
 //! - **Before an item starts on another machine.** Its holder's message is held while you're asked to push first. A yes
 //!   pushes, then the message goes; a no sends it at once, saying the item starts from older work.
 //!
-//! Every push goes through one checked path (`desk_push_main`): the word check of every commit the remote doesn't have
+//! Every push goes through one checked path (`desk_push_main`): main rebased onto what's new on the remote, then the word check of every commit the remote doesn't have
 //! yet (push_check.rs) first, refused with each find named. Never forced.
 
 use crate::desk::hub::core::desk::Effects;
-use crate::desk::hub::landing::git::{because, git};
+use crate::desk::hub::landing::git::{because, git, git_said};
 use crate::desk::hub::landing::main_line::main_checkout;
 use crate::desk::hub::landing::remote_item::remote_of;
 use crate::desk::hub::prelude::*;
@@ -30,22 +30,37 @@ fn landings(n: u32) -> String {
     format!("{n} landing{}", if n == 1 { "" } else { "s" })
 }
 
-/// What Cue says when it couldn't compare main with the shared copy.
-const UNKNOWN: &str = "Cue couldn't compare main with the shared copy (it didn't answer)";
+/// Where main is pushed to, by name for you: "GitHub" for a remote there, else "the shared copy".
+pub(crate) fn place_of(repo: &str, remote: &str) -> String {
+    let url = git("", repo, &[], &["remote", "get-url", remote]).unwrap_or_default();
+    if url.to_lowercase().contains("github.com") { "GitHub".to_string() } else { "the shared copy".to_string() }
+}
 
-/// The offer after an install, `n` landings ahead (None: not known).
-pub(crate) fn offer_words(n: Option<u32>) -> String {
+/// What Yes does, said on every push question (#675): the rebase first, then the word check, then the push.
+fn what_yes_does(at: &str, them: &str) -> String {
+    format!("Yes rebases main onto the newest on {at}, checks {them} for private words, then pushes. If a private word turns up, nothing is uploaded.")
+}
+
+/// The offer after an install, `n` landings ahead (None: not known) of `at` (`place_of`).
+pub(crate) fn offer_words(n: Option<u32>, at: &str) -> String {
     match n {
-        Some(n) => format!("Main is {} ahead of the shared copy. Push it?", landings(n)),
-        None => format!("{UNKNOWN}, so it may be behind. Push main?"),
+        Some(n) => format!("Update from {at}, then upload {}? {}", landings(n), what_yes_does(at, if n == 1 { "it" } else { "them" })),
+        None => format!("Cue couldn't compare main with {at} (it didn't answer). Update from {at}, then upload main? {}", what_yes_does(at, "it")),
     }
 }
 
 /// The ask before an item starts on another machine.
-pub(crate) fn start_words(n: Option<u32>) -> String {
+pub(crate) fn start_words(n: Option<u32>, at: &str) -> String {
     match n {
-        Some(n) => format!("Main is {} ahead of the shared copy; the other machine would start from old work. Push main first?", landings(n)),
-        None => format!("{UNKNOWN}, so the other machine may start from old work. Push main first?"),
+        Some(n) => format!(
+            "Update from {at}, then upload {} before the other machine starts? Without them it starts from old work. {}",
+            landings(n),
+            what_yes_does(at, if n == 1 { "it" } else { "them" })
+        ),
+        None => format!(
+            "Cue couldn't compare main with {at} (it didn't answer), so the other machine may start from old work. Update from {at}, then upload main first? {}",
+            what_yes_does(at, "it")
+        ),
     }
 }
 
@@ -78,6 +93,35 @@ fn open_push_card(st: &Store, desk: &str) -> Option<String> {
     st.items.iter().find(|i| i.status == "pending" && i.tool_input["desk_push"]["desk"].as_str() == Some(desk)).map(|i| i.id.clone())
 }
 
+/// Main (`onto`, checked out in `top`) rebased onto `remote`'s copy of it (already fetched), when that has commits
+/// main doesn't. Nothing to do when it hasn't, or has no copy yet. Refused, with main left as it was, when main
+/// isn't checked out there, the checkout is mid-way through something, has changes of its own, or the rebase clashes
+/// (undone at once).
+pub(crate) fn rebase_onto_remote(top: &str, remote: &str, onto: &str) -> Result<(), String> {
+    let theirs = format!("refs/remotes/{remote}/{onto}");
+    if git("", top, &[], &["rev-parse", "--verify", "-q", &theirs]).is_none() {
+        return Ok(());
+    }
+    let new: u32 = git("", top, &[], &["rev-list", "--count", &format!("refs/heads/{onto}..{theirs}")]).and_then(|n| n.trim().parse().ok()).ok_or("Not pushed: Cue couldn't compare main with what's new on the remote")?;
+    if new == 0 {
+        return Ok(());
+    }
+    let on = git("", top, &[], &["symbolic-ref", "--short", "-q", "HEAD"]).map(|b| b.trim().to_string()).unwrap_or_default();
+    if on != onto {
+        return Err(format!("Not pushed: {remote} has {new} new commit{} and {onto} isn't checked out in {top}, so Cue couldn't rebase onto them", if new == 1 { "" } else { "s" }));
+    }
+    if let Some(what) = crate::desk::hub::landing::main_line::in_progress(top) {
+        return Err(format!("Not pushed: {top} is in the middle of {what}, so Cue couldn't rebase {onto} onto {remote}"));
+    }
+    if let Err(e) = git_said("", top, &[], &["rebase", "-q", &theirs]) {
+        if crate::desk::hub::landing::main_line::in_progress(top).is_some() {
+            let _ = git_said("", top, &[], &["rebase", "--abort"]);
+        }
+        return Err(because(format!("Not pushed: couldn't rebase {onto} onto {remote}'s newest, so it was left as it was"), &e));
+    }
+    Ok(())
+}
+
 impl Hub {
     /// Main of `top` fetched from its remote (capped, as every network git of the Desk's), then how far ahead it is:
     /// (remote, branch, count). None when it has no main line or no remote. The count is None when the fetch failed
@@ -98,6 +142,14 @@ impl Hub {
     pub(crate) fn desk_push_main(&self, project: &str, top: &str) -> Result<String, String> {
         let (top, onto) = main_checkout(top).filter(|(_, b)| !b.is_empty()).ok_or("Not pushed: Cue can't find this project's main line")?;
         let r = remote_of("", &top, &onto).ok_or("Not pushed: this project has no remote")?;
+        // Updated from the remote first (#675): what's new there fetched, main rebased onto it.
+        if let Err(e) = self.net_git(&top, &["fetch", "-q", &r, &format!("+refs/heads/{onto}:refs/remotes/{r}/{onto}")]) {
+            // A remote without main yet has nothing to rebase onto: the push makes it.
+            if !e.contains("couldn't find remote ref") {
+                return Err(because(format!("Not pushed: couldn't update from {r}"), &e));
+            }
+        }
+        rebase_onto_remote(&top, &r, &onto)?;
         crate::desk::hub::landing::push_check::push_allowed("", &top, project, &r, &format!("refs/heads/{onto}"))?;
         match self.net_git(&top, &["push", "-q", &r, &format!("refs/heads/{onto}:refs/heads/{onto}")]) {
             Ok(_) => Ok(format!("Pushed to {r}")),
@@ -114,7 +166,7 @@ impl Hub {
         if l.push == "never" || l.how == "pr" {
             return;
         }
-        let Some((_, _, n)) = self.desk_main_ahead(top) else { return };
+        let Some((remote, _, n)) = self.desk_main_ahead(top) else { return };
         if n == Some(0) {
             return;
         }
@@ -127,7 +179,7 @@ impl Hub {
         if self.read(|st| open_push_card(st, desk).is_some()) {
             return;
         }
-        self.desk_push_ask(&lead, desk, &offer_words(n), json!({ "desk": desk, "top": top, "ahead": n, "starts": [] }));
+        self.desk_push_ask(&lead, desk, &offer_words(n, &place_of(top, &remote)), json!({ "desk": desk, "top": top, "ahead": n, "starts": [] }));
     }
 
     /// Cue's own push question `q` in lead `lead`'s chat on Desk `desk`, `push` kept on the card for the answer.
@@ -147,7 +199,9 @@ impl Hub {
     /// question covers every start); with no lead to ask in it starts and the lead's told. Run off the thread that
     /// changed the Desk (`later`), so a remote that doesn't answer holds nothing for its minute.
     pub(crate) fn desk_remote_start_checked(&self, s: HeldStart) {
-        let n = self.desk_main_ahead(&s.top).and_then(|(_, _, n)| n);
+        let ahead = self.desk_main_ahead(&s.top);
+        let at = ahead.as_ref().map(|(r, _, _)| place_of(&s.top, r)).unwrap_or_else(|| "the shared copy".to_string());
+        let n = ahead.and_then(|(_, _, n)| n);
         if n == Some(0) {
             self.desk_held_start_send(&s.id, &s.to, s.text);
             return;
@@ -178,7 +232,7 @@ impl Hub {
         }
         if let Some(lead) = self.read(|st| st.desk.lead_sid(&s.desk).map(str::to_string)) {
             let push = json!({ "desk": s.desk, "top": s.top, "ahead": n, "starts": [start] });
-            if self.desk_push_ask(&lead, &s.desk, &start_words(n), push).is_some() {
+            if self.desk_push_ask(&lead, &s.desk, &start_words(n, &at), push).is_some() {
                 return;
             }
         }
@@ -277,6 +331,7 @@ mod tests {
         git(&dir, &["init", "-q", "-b", "main"]);
         git(&dir, &["config", "user.name", "Tester"]);
         git(&dir, &["config", "user.email", "tester@example.com"]);
+        git(&dir, &["config", "commit.gpgsign", "false"]);
         git(&dir, &["remote", "add", "origin", bare.to_str().unwrap()]);
         commit(&dir, "README", "hello\n", "start");
         git(&dir, &["push", "-q", "-u", "origin", "main"]);
@@ -308,11 +363,82 @@ mod tests {
     }
 
     #[test]
-    fn the_words_say_how_many_landings() {
-        assert_eq!(offer_words(Some(1)), "Main is 1 landing ahead of the shared copy. Push it?");
-        assert_eq!(start_words(Some(3)), "Main is 3 landings ahead of the shared copy; the other machine would start from old work. Push main first?");
+    fn the_words_say_what_yes_does() {
+        assert_eq!(
+            offer_words(Some(5), "GitHub"),
+            "Update from GitHub, then upload 5 landings? Yes rebases main onto the newest on GitHub, checks them for private words, then pushes. If a private word turns up, nothing is uploaded."
+        );
+        assert!(offer_words(Some(1), "GitHub").starts_with("Update from GitHub, then upload 1 landing? Yes rebases"));
+        let start = start_words(Some(3), "the shared copy");
+        assert!(start.starts_with("Update from the shared copy, then upload 3 landings before the other machine starts?"), "{start}");
+        assert!(start.contains("rebases") && start.contains("private words"), "{start}");
         assert!(older_words(Some(2)).contains("starts from older work"));
-        assert!(offer_words(None).contains("couldn't compare"));
-        assert!(start_words(None).ends_with("Push main first?"));
+        assert!(offer_words(None, "GitHub").contains("couldn't compare") && offer_words(None, "GitHub").contains("rebases"));
+        assert!(start_words(None, "GitHub").contains("upload main first?"));
+    }
+
+    #[test]
+    fn the_place_is_github_for_a_github_remote() {
+        let (dir, root) = repo("place");
+        let d = dir.to_str().unwrap();
+        assert_eq!(place_of(d, "origin"), "the shared copy");
+        git(&dir, &["remote", "add", "gh", "git@github.com:someone/thing.git"]);
+        assert_eq!(place_of(d, "gh"), "GitHub");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// A second clone of `root`'s remote with one commit of `file` pushed from it: what's new on the remote.
+    fn pushed_elsewhere(root: &Path, file: &str, text: &str) {
+        let other = root.join("other");
+        git(root, &["clone", "-q", root.join("remote.git").to_str().unwrap(), other.to_str().unwrap()]);
+        git(&other, &["config", "user.name", "Tester"]);
+        git(&other, &["config", "user.email", "tester@example.com"]);
+        commit(&other, file, text, "from elsewhere");
+        git(&other, &["push", "-q", "origin", "main"]);
+    }
+
+    #[test]
+    fn main_is_rebased_onto_whats_new_on_the_remote() {
+        let (dir, root) = repo("rebase");
+        let d = dir.to_str().unwrap();
+        // Even: nothing to do.
+        assert_eq!(rebase_onto_remote(d, "origin", "main"), Ok(()));
+        commit(&dir, "mine.txt", "mine\n", "mine");
+        pushed_elsewhere(&root, "theirs.txt", "theirs\n");
+        git(&dir, &["fetch", "-q", "origin"]);
+        assert_eq!(rebase_onto_remote(d, "origin", "main"), Ok(()));
+        // Theirs under, mine on top: one ahead, nothing behind, so the push goes as a fast-forward.
+        assert_eq!(git(&dir, &["log", "--format=%s", "-2"]), "mine\nfrom elsewhere");
+        assert_eq!(ahead(d, "origin", "main"), Some(1));
+        git(&dir, &["push", "-q", "origin", "main"]);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_clashing_rebase_is_undone_and_main_left_as_it_was() {
+        let (dir, root) = repo("clash");
+        let d = dir.to_str().unwrap();
+        commit(&dir, "README", "mine\n", "mine");
+        pushed_elsewhere(&root, "README", "theirs\n");
+        git(&dir, &["fetch", "-q", "origin"]);
+        let before = git(&dir, &["rev-parse", "HEAD"]);
+        let said = rebase_onto_remote(d, "origin", "main").unwrap_err();
+        assert!(said.starts_with("Not pushed: couldn't rebase main"), "{said}");
+        assert_eq!(git(&dir, &["rev-parse", "HEAD"]), before);
+        assert_eq!(git(&dir, &["symbolic-ref", "--short", "HEAD"]), "main");
+        assert!(crate::desk::hub::landing::main_line::in_progress(d).is_none());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn main_not_checked_out_is_not_rebased() {
+        let (dir, root) = repo("away");
+        let d = dir.to_str().unwrap();
+        pushed_elsewhere(&root, "theirs.txt", "theirs\n");
+        git(&dir, &["fetch", "-q", "origin"]);
+        git(&dir, &["switch", "-q", "-c", "side"]);
+        let said = rebase_onto_remote(d, "origin", "main").unwrap_err();
+        assert!(said.contains("isn't checked out"), "{said}");
+        let _ = std::fs::remove_dir_all(root);
     }
 }

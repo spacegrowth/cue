@@ -50,14 +50,16 @@ test("a line that only mentions ASK in its words stays as it is", async ({ page,
 test("words typed on the push card go to the lead and the card stays open for its Yes or No (#651)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  const q = "Main is 87 landings ahead of the shared copy. Push it?";
+  const q = "Update from GitHub, then upload 87 landings? Yes rebases main onto the newest on GitHub, checks them for private words, then pushes. If a private word turns up, nothing is uploaded.";
   await cue.change((st, q) => {
     st.sessions.find((s) => s.session_id === "lead").state = "deciding";
     st.items.push({ ...st.items[0], id: "n-push", agent_id: "", agent_name: "", desk: true, hosted: false,
       tool_input: { questions: [{ question: q, header: "", multiSelect: false, options: [{ label: "Yes", description: "" }, { label: "No", description: "" }] }], desk_push: { desk: "cue", top: "/work/cue", ahead: 87, starts: [] } } });
   }, q);
   const ask = page.locator(".dk-right .dk-ask");
+  // #675: the card says plainly what Yes does: the rebase, how many landings, the private-word check.
   await expect(ask).toContainText(q);
+  await expect(ask).not.toContainText("ahead of the shared copy");
   await ask.locator('[data-act="redirect"]').click();
   const box = ask.locator('textarea[data-text="n-push"]');
   await box.fill("what does it mean? what do i do");
