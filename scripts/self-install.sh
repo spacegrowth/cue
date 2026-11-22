@@ -92,7 +92,9 @@ take_lock() {
     echo "self-install: another one is running (PID $held)" >&2
     exit 3
   fi
-  echo "$$" > "$LOCK"
+  # Written whole, then moved into place: written in place, Cue looking in between would find it empty, as good as free.
+  echo "$$" > "$LOCK.$$"
+  mv -f "$LOCK.$$" "$LOCK"
 }
 take_lock
 trap '[ "$(cat "$LOCK" 2>/dev/null)" = "$$" ] && rm -f "$LOCK"' EXIT

@@ -127,7 +127,11 @@ fn start_in(dir: &Path, home: &Path, repo: &str, commit: &str, tag: &str, env: &
     }
     let mut child = cmd.spawn().map_err(|e| format!("couldn't start the install: {e}"))?;
     // The helper writes its own PID there too as it starts; written here first, so the next `start` sees it at once.
-    let _ = std::fs::write(dir.join("lock"), child.id().to_string());
+    // Written whole, then moved into place, so a look at it never finds it half-written.
+    let tmp = dir.join(format!("lock.{}", std::process::id()));
+    if std::fs::write(&tmp, child.id().to_string()).is_ok() {
+        let _ = std::fs::rename(&tmp, dir.join("lock"));
+    }
     // Reaped when it ends, if this Cue is still running then.
     std::thread::spawn(move || {
         let _ = child.wait();
