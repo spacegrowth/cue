@@ -3,7 +3,8 @@
 // Listen under any reply (and in the reader) reads it out a sentence at a time in the Mac's voice, at 1× to 1.6× in
 // small steps (remembered). The sentence it's on goes lime with the word it's saying underlined, what it read goes gray
 // (CSS highlights over the reply as shown, so the chat's own HTML is untouched), and it scrolls along. A click on a
-// sentence starts there. Code blocks are said as "Code block." once, a table a row at a time. In the chat one line
+// sentence starts there. Code blocks are said as "Code block." once, a table a row at a time, each marked as a
+// sentence is. In the chat one line
 // above the box says it's listening (Pause, Stop); in the reader the foot is its player, and it goes on to the next
 // reply when "Then the next reply" is on. Opening another session keeps it reading (from the reply as last shown);
 // that session's line says whose reply it is, a click goes back, and there the marks are where it got to.
@@ -61,24 +62,37 @@ function listenSource(l) {
   el.innerHTML = l.html;
   return el;
 }
-/** A reply's sentences as shown, in reading order: each its text (what's said), and a Range over it when it's
- *  marked (not a table row or a code block: those keep their element, for following them). */
+/** A reply's sentences as shown, in reading order: each its text (what's said) and a Range over it, for its mark:
+ *  a sentence's own words, a table row's cells (said and marked as one, "File, Change"), a code block whole. */
 function listenSents(root) {
   const out = [];
   const els = [...root.querySelectorAll(LISTEN_BLOCKS)].filter((el) => !(el.matches("blockquote") && el.querySelector(LISTEN_BLOCKS)));
   for (const el of els.length ? els : [root]) {
-    if (el.matches("pre")) { if (!listenPlain && !el.parentElement.closest("pre")) out.push({ say: "Code block.", el }); continue; }
-    if (el.matches("tr") && listenPlain) continue;
-    if (el.matches("tr")) { const say = [...el.cells].map((c) => c.textContent.trim()).filter(Boolean).join(", "); if (/\w/.test(say)) out.push({ say, el }); continue; }
+    if (el.matches("pre")) {
+      if (listenPlain || el.parentElement.closest("pre")) continue;
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      out.push({ say: "Code block.", el, range, block: true });
+      continue;
+    }
+    const row = el.matches("tr");
+    if (row && listenPlain) continue;
     // This block's own text (not a nested list's or a code block's), as one string over its text nodes.
     // A reply's "· N steps" (.stx-cnt) is a button, not its words.
     const nodes = [], walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, { acceptNode: (n) => (n.parentElement.closest(LISTEN_BLOCKS) === el && !n.parentElement.closest(".stx-cnt") ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT) });
-    let text = "";
-    for (let n; (n = walk.nextNode());) { nodes.push({ n, at: text.length }); text += n.data; }
+    // A row's cells are said with a pause between them: ", " in the text, which no cell holds (pos() stays in the cells).
+    let text = "", cell = null;
+    for (let n; (n = walk.nextNode());) {
+      const c = row ? n.parentElement.closest("td, th") : null;
+      if (row && text && c !== cell) text += ", ";
+      cell = c;
+      nodes.push({ n, at: text.length });
+      text += n.data;
+    }
     const keep = listenPlain ? listenPlainOf(el, text, nodes) : null;
     const pos = (i) => { let k = nodes.length - 1; while (k > 0 && nodes[k].at > i) k--; return [nodes[k].n, Math.min(i - nodes[k].at, nodes[k].n.data.length)]; };
-    // A heading is said whole ("1. What and why", not "1." and then the rest).
-    const whole = /^H[1-6]$/.test(el.tagName) ? [Object.assign([text.trimEnd()], { index: 0 })] : null;
+    // A heading is said whole ("1. What and why", not "1." and then the rest), and so is a table's row.
+    const whole = row || /^H[1-6]$/.test(el.tagName) ? [Object.assign([text.trimEnd()], { index: 0 })] : null;
     for (const m of whole || text.matchAll(/(?:[^.!?\n]|[.!?]+(?=[^\s.!?"')\]]))+(?:[.!?]+["')\]]*(?=\s|$)|\n|$)/g)) {
       const a = m.index + (m[0].length - m[0].trimStart().length), b = m.index + m[0].trimEnd().length;
       if (b <= a || !/\w/.test(m[0])) continue;
@@ -86,29 +100,80 @@ function listenSents(root) {
       range.setStart(...pos(a)); range.setEnd(...pos(b));
       const say = listenSay1(text, keep, a, b);
       if (!/\w/.test(say)) continue;
-      out.push({ say, range, pos, a });
+      out.push({ say, range, pos, a, src: text.slice(a, b) });
     }
   }
   return out;
 }
-/** The marks: read in gray, the sentence it's on in lime, the word at `w` ([char, length] in it) underlined. */
+// The three marks are CSS highlights registered once and never replaced or removed: the WebKit in macOS 26 doesn't
+// repaint a highlight replaced with CSS.highlights.set() or taken out with CSS.highlights.delete() (the old one stayed
+// on screen until something else repainted that text), but it does repaint a range added to or deleted from a
+// Highlight. So a mark moves by its ranges, and only those that differ: the read text and the sentence aren't touched
+// while the word moves along them (redrawing them all for every word made them flicker).
+const LISTEN_MARKS = ["cue-said", "cue-say", "cue-word"];
+function listenHl(name) {
+  let h = CSS.highlights.get(name);
+  if (!h) { h = new Highlight(); h.priority = LISTEN_MARKS.indexOf(name); CSS.highlights.set(name, h); }   // the word over its sentence
+  return h;
+}
+const listenSame = (p, q) => p.startContainer === q.startContainer && p.startOffset === q.startOffset && p.endContainer === q.endContainer && p.endOffset === q.endOffset;
+/** Mark `name` put on exactly `want` (Ranges): one already there over the same text stays as it is. */
+function listenSet(name, want) {
+  const h = listenHl(name);
+  if (h.size === want.length && want.every((r) => h.has(r))) return;
+  const have = new Map();   // the ranges there now, by the node each starts in
+  for (const r of h) { const at = have.get(r.startContainer); if (at) at.push(r); else have.set(r.startContainer, [r]); }
+  const keep = new Set(), add = [];
+  for (const r of want) {
+    const same = have.get(r.startContainer)?.find((x) => !keep.has(x) && listenSame(x, r));
+    if (same) keep.add(same); else add.push(r);
+  }
+  for (const r of [...h]) if (!keep.has(r)) h.delete(r);
+  for (const r of add) h.add(r);
+}
+/** The marks: read in gray, the sentence it's on in lime, the word at `w` ([char, length] in what's said) on it. */
 function listenMark(sents, i, w) {
   if (!CSS.highlights) return;
-  const done = sents.slice(0, i).filter((x) => x.range).map((x) => x.range), on = sents[i];
-  CSS.highlights.set("cue-said", new Highlight(...done));
-  CSS.highlights.set("cue-say", new Highlight(...(on?.range ? [on.range] : [])));
-  CSS.highlights.delete("cue-word");
-  const r = listenWord(on, w);
-  if (r) CSS.highlights.set("cue-word", new Highlight(r));
+  const on = sents[i], word = listenWord(on, w);
+  listenSet("cue-said", sents.slice(0, i).filter((x) => x.range && !x.block).map((x) => x.range));   // a code block keeps its own colors once read
+  listenSet("cue-say", on?.range ? [on.range] : []);
+  listenSet("cue-word", word ? [word] : []);
 }
-/** A Range over the word at `w` ([char, length]) in sentence `x`, when it's marked. */
+/** Where the word at `w` ([char, length] in what's said) is in sentence `x`'s own text: the same place when it's said
+ *  as written; when not (Skip code & tables left a path out, or said it by its last part), the written word that
+ *  matches it, found by going through both in order. Null when it isn't in the text. */
+function listenWordAt(x, w) {
+  if (x.say === x.src.replace(/\s/g, " ")) return [w[0], w[0] + w[1]];
+  if (!x.words) {
+    const norm = (t) => t.toLowerCase().replace(/[^\p{L}\p{N}]/gu, ""), src = [...x.src.matchAll(/\S+/g)];
+    let j = 0;
+    x.words = [...x.say.matchAll(/\S+/g)].map((m) => {
+      const t = norm(m[0]), k = t ? src.findIndex((q, n) => n >= j && norm(q[0]) === t) : -1;
+      if (k < 0) return { at: m.index, in: null };
+      j = k + 1;
+      return { at: m.index, in: [src[k].index, src[k].index + src[k][0].length] };
+    });
+  }
+  return x.words.findLast((q) => q.at <= w[0])?.in || null;
+}
+/** A Range over the word at `w` ([char, length] in what's said) in sentence `x`, when it has its words. */
 function listenWord(x, w) {
-  if (!x?.range || !w) return null;
+  const at = x?.pos && w ? listenWordAt(x, w) : null;
+  if (!at) return null;
   const r = document.createRange();
-  r.setStart(...x.pos(x.a + w[0])); r.setEnd(...x.pos(x.a + w[0] + w[1]));
+  r.setStart(...x.pos(x.a + at[0])); r.setEnd(...x.pos(x.a + at[1]));
   return r;
 }
-function listenUnmark() { if (CSS.highlights) ["cue-said", "cue-say", "cue-word"].forEach((h) => CSS.highlights.delete(h)); }
+/** The reply being read out is marked as such (.ls-on: the plain arrow over it, no text selected in it, as a click
+ *  in it reads from there), and no other. */
+function listenOn(root) {
+  document.querySelectorAll(".msg.ls-on").forEach((m) => { if (m !== root) m.classList.remove("ls-on"); });
+  root?.classList.add("ls-on");
+}
+function listenUnmark() {
+  listenOn(null);
+  if (CSS.highlights) LISTEN_MARKS.forEach((h) => CSS.highlights.get(h)?.clear());
+}
 /** The chat scrolls along with what's read: the line being heard (the word, else the sentence's first line, a code
  *  block or table row as a whole) is held a third down, the chat moving up a line as the reading goes down one.
  *  Above that mark it's left where it is (the start of a reply near the top), unless it's out of view. A step is
@@ -154,7 +219,7 @@ function listenView(l, fresh = false) {
 /** The marks where it is: the sentence `l.i` and the word in it (`l.w`, [at, length] in its words), if shown. */
 function listenMarkNow(l, fresh = false) {
   const v = listenView(l, fresh);
-  if (v) { listenMark(v.sents, l.i, l.w); listenFollow(l); }
+  if (v) { listenOn(v.root); listenMark(v.sents, l.i, l.w); listenFollow(l); }
 }
 /** Say the sentence it's on, then the next, to the end (and then the reader's next reply, when that's on). */
 function listenSay() {
@@ -165,7 +230,7 @@ function listenSay() {
   if (l.i >= sents.length) return listenNext();
   const x = sents[l.i], run = ++listenRun;
   l.w = null;
-  if (shown) { l.view = { root, sents }; listenMark(sents, l.i, null); listenFollow(l); } else listenUnmark();
+  if (shown) { l.view = { root, sents }; listenOn(root); listenMark(sents, l.i, null); listenFollow(l); } else listenUnmark();
   if (kokoroOn() && l.mac !== l.i) return kokoroSay(x, sents[l.i + 1], run);
   const u = new SpeechSynthesisUtterance(x.say);
   u.rate = LISTEN_SPEEDS[listenSpeed];
@@ -397,12 +462,15 @@ function listenThenNext() {
   try { localStorage.setItem("cue.listenThen", listenThen ? "1" : "0"); } catch {}
   renderMain();
 }
-/** A click in the reply being read, on a sentence (not a selection): it reads from there. */
+/** A click in the reply being read, on a sentence, a table's row or a code block: it reads from there. Found by
+ *  where each is drawn (a row anywhere in it), else by the text nearest the click (between two lines). */
 function listenFrom(ev) {
   const l = listening, root = l && ev.target.closest(".msg");
-  if (!root || root !== listenRoot(l.key) || !document.getSelection()?.isCollapsed) return false;
-  const at = document.caretRangeFromPoint?.(ev.clientX, ev.clientY);
-  const i = at ? listenSents(root).findIndex((x) => x.range?.isPointInRange(at.startContainer, at.startOffset)) : -1;
+  if (!root || root !== listenRoot(l.key)) return false;
+  const sents = listenSents(root), x = ev.clientX, y = ev.clientY;
+  let i = sents.findIndex((s) => [...s.range.getClientRects()].some((b) => x >= b.left && x <= b.right && y >= b.top && y <= b.bottom));
+  const at = i < 0 ? document.caretRangeFromPoint?.(x, y) : null;
+  if (at) i = sents.findIndex((s) => s.range.isPointInRange(at.startContainer, at.startOffset));
   if (i < 0) return false;
   l.i = i;
   l.follow = true;

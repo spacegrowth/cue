@@ -265,6 +265,10 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 /* A reply read out (Listen): what it read in gray, the sentence it's on in lime, the word it's saying underlined. */
 ::highlight(cue-said) { color: var(--muted); }
 ::highlight(cue-say) { background-color: var(--sel); color: var(--on-sel); }
+/* The reply being read (chat/listen.js listenOn): a click in it reads from there, so the pointer is the plain arrow, not
+   the text cursor, and a click, a double click or a drag selects nothing in it. Its links keep the hand. */
+.msg.ls-on, .msg.ls-on * { cursor: default; user-select: none; -webkit-user-select: none; }
+.msg.ls-on :is(a, button), .msg.ls-on :is(a, button) * { cursor: pointer; }
 ::highlight(cue-word) { background-color: var(--accent); color: var(--on-accent); text-decoration: underline 2px; text-underline-offset: 3px; }
 .ls-line { display: flex; align-items: center; gap: 8px; margin: 0 16px 6px; padding: 5px 6px 5px 12px; border-radius: var(--radius-tray); background: var(--panel-2); font-size: var(--type-body); }
 .ls-where { font: inherit; color: var(--ink); font-weight: 650; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line); }
