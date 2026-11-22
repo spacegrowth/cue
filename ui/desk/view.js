@@ -143,22 +143,24 @@ function deskB2ItemFull(i, d, foot) {
   // (the old Files tab) shows its files under these buttons instead, over its chat, pressed again to fold.
   const chat = deskItemChatOf(i), { tab, tabs, body } = deskItemTabbed(i, d, chat, false);
   const files = deskItemTabs.get(i.id) === "files", ft = deskItemFilesTab(i);
-  const btns = `<div class="dk2b-iacts">${s ? `<button class="btn small" ${deskChatAttrs(sid, d)}>Open its chat</button>` : ""}<button class="btn small dk2b-chg" data-desk-itab="${files ? "thread" : "files"}" data-id="${esc(i.id)}" aria-pressed="${files}">Changes<span class="n">${ft.n}</span></button></div>`;
-  // Its panel, as the old page had it beside its chat (deskItemSide; a dropped item's kept copy, deskKeptSide): under
-  // the page that scrolls, over the box, so its buttons stay in reach however far the chat is scrolled.
+  // Open its chat only with the panel hidden: shown, the panel's own Open <name> is the same button (#727).
+  const hid = deskPanelHidden("item");
+  const btns = `<div class="dk2b-iacts">${s && hid ? `<button class="btn small" ${deskChatAttrs(sid, d)}>Open its chat</button>` : ""}<button class="btn small dk2b-chg" data-desk-itab="${files ? "thread" : "files"}" data-id="${esc(i.id)}" aria-pressed="${files}">Changes<span class="n">${ft.n}</span></button></div>`;
+  // Its panel, as the old page had it (deskItemSide; a dropped item's kept copy, deskKeptSide): beside its chat and box
+  // (#727), so its buttons stay in reach however far the chat is scrolled; on a card too narrow for both, under the
+  // page that scrolls, over the box.
   const panel = `<aside class="dk-panel dk2b-ipanel" data-side-for="${esc(i.id)}">${i.kept ? deskKeptSide(i, d) : deskItemSide(i, d)}${deskPageActivity()}</aside>`;
   const live = chat && tab === "thread";
   // Its head, as the old page's (deskPage): back on its own line with Hide panel, which folds the panel to its one line
   // (where it stands and its buttons), remembered for every item's page; then its kind's icon, kind and number, and its
   // name.
-  const hid = deskPanelHidden("item");
   const tog = `<button class="btn small dk-ptog" data-desk-panel="item" aria-pressed="${!hid}">${DESK_PANEL_ICON}<span>${hid ? "Show panel" : "Hide panel"}</span></button>`;
   const kind = deskNum(i).slice(0, -`#${i.id}`.length);
   return `<div class="dk-pg dk2b-ipage${hid ? " hid" : ""}" data-desk-page="item"><div class="dk-ph dk2b-iph"><div class="dk-ph1">${deskBack("")}<span class="grow"></span>${tog}</div><h1 class="dk-ph2"><span class="dk-hk">${deskKindIcon(i)}${esc(kind)}<span class="dk2b-in">#${esc(i.id)}</span></span><span class="dk-hsep"> · </span><span class="dk-tname dk2b-ititle">${esc(i.title)}</span></h1></div>
     <div class="dk-pane dk-ipane dk2b-ipb${live ? " chat" : ""}" data-scroll-key="item:${esc(i.id)}"><div><div class="dk2b-sec">PROGRESS</div><div class="dk2b-steps">${bar}</div></div>
     <div class="dk2b-kv">${kv("Who", who)}${kv("Doing now", now, mono ? " mono" : "")}${kv("Tests", tests)}${kv("Next", next)}</div>
     ${btns}${files ? `<div class="dk2b-files">${ft.html}</div>` : ""}
-    <div class="dk2b-ichat"><div class="dk2b-ichd"><span class="dk2b-sec">${chat ? "ITS CHAT" : "ITS THREAD"}</span><div class="dk-itabs" role="tablist">${tabs}</div></div><div class="dk2b-ichsub">${deskItemSub(i, d, chat)}</div><div class="dk-ibody dk-itab-${tab}">${body}</div></div></div>${panel}${foot}</div>`;
+    <div class="dk2b-ichat"><div class="dk2b-ichd"><span class="dk2b-sec">${chat ? "ITS CHAT" : "ITS THREAD"}</span><div class="dk-itabs" role="tablist">${tabs}</div></div><div class="dk2b-ichsub">${deskItemSub(i, d, chat)}</div><div class="dk-ibody dk-itab-${tab}">${body}</div></div></div>${panel}<div class="dk2b-ifoot">${foot}</div></div>`;
 }
 /** The chat card with nothing open: who runs the Desk (no lead yet, or Change), else the lead's chat (or the line
  *  saying it ended), or Decisions. */

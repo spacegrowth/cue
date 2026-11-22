@@ -174,12 +174,14 @@ test("a working session opens its item on the left with ‹ Items N back to the 
   const open = page.locator(".dk-card.dk-right.dk2b-open");
   await expect(open.locator(".dk-ph")).toContainText("#d5");
   await expect(page.locator('.dk-items .dk2b-row.on[data-desk-item="d5"]')).toHaveCount(1);
-  // Its progress, who has it, Open its chat and Changes; under them its chat in place (its last messages of before).
+  // Its progress, who has it and Changes (Open its chat is the panel's Open <name> while the panel shows, #727); under
+  // them its chat in place (its last messages of before).
   await expect(open.locator(".dk2b-step")).toHaveCount(6);
   await expect(open.locator(".dk2b-sec")).toHaveText(["PROGRESS", "ITS CHAT"]);
   await expect(open.locator(".dk-ichat")).toHaveCount(1);
   await expect(open.locator(".dk2b-ik")).toHaveText(["Who", "Doing now", "Tests", "Next"]);
-  await expect(open.locator(".dk2b-iacts")).toContainText("Open its chat");
+  await expect(open.locator(".dk2b-iacts")).not.toContainText("Open its chat");
+  await expect(open.locator(".dk2b-ipanel .dk-sfoot")).toContainText("Open host-lead");
   await expect(open.locator(".dk2b-iacts")).toContainText("Changes");
   const back = open.locator(".dk2b-items");
   await expect(back).toHaveText(/^‹ Items \d+$/);
@@ -394,4 +396,36 @@ test("the tabs: an empty one says so; Done today counts only today's; Waits on y
   await page.evaluate(() => { deskB2Tab = "done"; renderMain(); });
   await expect(list.locator(".dk-empty")).toHaveText("Nothing done today.");
   await expect(list.locator(".dk-it")).toHaveCount(0);
+});
+
+test("on a laptop window an item's panel sits beside its chat, the chat keeping its room (#727)", async ({ page, cue }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await cue.open("desk");
+  await openDesk(page);
+  await page.locator('[data-desk-item="d5"]').click();
+  const pg = page.locator(".dk-card.dk2b-open .dk2b-ipage");
+  await expect(pg).not.toHaveClass(/\bhid\b/);
+  // (Polled: a redraw can catch a box between draws.)
+  let pane;
+  await expect(async () => {
+    const [p, panel, foot, head, list] = await Promise.all([...[".dk2b-ipb", ".dk2b-ipanel", ".dk2b-ifoot", ".dk2b-iph"].map((s) => pg.locator(`:scope > ${s}`).boundingBox()), page.locator(".dk-card.dk-items").boundingBox()]);
+    // The panel at the right of the chat and its box, from under the head to the card's foot.
+    expect(panel.x).toBeGreaterThanOrEqual(p.x + p.width - 1);
+    expect(Math.abs(panel.y - p.y)).toBeLessThan(2);
+    expect(panel.y + panel.height).toBeGreaterThanOrEqual(foot.y + foot.height - 1);
+    expect(foot.y).toBeGreaterThanOrEqual(p.y + p.height - 1);
+    expect(p.y).toBeGreaterThanOrEqual(head.y + head.height - 1);
+    // The chat keeps room to read, and the list stays beside it.
+    expect(p.width).toBeGreaterThanOrEqual(420);
+    expect(list.x).toBeGreaterThan(panel.x + panel.width);
+    pane = p;
+  }).toPass();
+  // Its summary at the top of the page, and the panel's parts once each.
+  await expect(pg.locator(".dk2b-sec").first()).toHaveText("PROGRESS");
+  await expect(pg.locator(".dk2b-ipanel")).toHaveCount(1);
+  // Hide panel: the chat takes the card's whole width again.
+  await pg.locator(".dk-ptog").click();
+  await expect(pg).toHaveClass(/\bhid\b/);
+  const wide = await pg.locator(":scope > .dk2b-ipb").boundingBox();
+  expect(wide.width).toBeGreaterThan(pane.width);
 });

@@ -41,17 +41,22 @@ test("an item's page is its holder's chat, other items' turns folded, the item o
   await expect(ichat.locator(".dk-fold")).toHaveAttribute("aria-expanded", "true");
   await ichat.locator(".dk-fold").click();
   await expect(ichat).not.toContainText("Looking at the rail dot.");
-  // The item in its panel on its page, under the part that scrolls with its chat and over the box (B2 #666: the page
-  // is on the left, the Items list at the right); ‹ Items N goes back to the lead's chat.
+  // The item in its panel on its page, beside the part that scrolls with its chat and the box (#727; B2 #666: the
+  // page is on the left, the Items list at the right); ‹ Items N goes back to the lead's chat.
   const side = right.locator('.dk-pg[data-desk-page="item"] .dk-panel[data-side-for="d5"]');
   await expect(side).toBeVisible();
   await expect(page.locator(".dk-board .dk2b-list")).toBeVisible();
   await expect(right.locator(".dk-ph .dk-back")).toHaveText(/^‹ Items \d+$/);
   // (Polled: a redraw can catch either one between boxes.)
+  // At 1280 wide the card is too narrow for both: the panel under the chat, over the box.
   const under = async () => { const [c, p, f] = [await right.locator(".dk-ipane").boundingBox(), await side.boundingBox(), await right.locator(".dk-box").boundingBox()]; expect(p.y).toBeGreaterThanOrEqual(c.y + c.height - 1); expect(p.y + p.height).toBeLessThanOrEqual(f.y + 1); };
   await expect(under).toPass();
+  // A laptop window and wider: beside them.
+  const beside = async () => { const [c, p, f] = [await right.locator(".dk-ipane").boundingBox(), await side.boundingBox(), await right.locator(".dk-box").boundingBox()]; expect(p.x).toBeGreaterThanOrEqual(c.x + c.width - 1); expect(p.x).toBeGreaterThanOrEqual(f.x + f.width - 1); expect(Math.abs(p.y - c.y)).toBeLessThan(2); };
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(beside).toPass();
   await page.setViewportSize({ width: 1728, height: 1000 });
-  await expect(under).toPass();
+  await expect(beside).toPass();
   await page.screenshot({ path: test.info().outputPath("item-chat-wide.png") });
   await page.setViewportSize({ width: 1280, height: 800 });
   await expect(side.locator(".dk-pnow .dk-psh")).toHaveText("This item");
