@@ -408,7 +408,7 @@ test("on a laptop window an item's panel sits beside its chat, the chat keeping 
   // (Polled: a redraw can catch a box between draws.)
   let pane;
   await expect(async () => {
-    const [p, panel, foot, head, list] = await Promise.all([...[".dk2b-ipb", ".dk2b-ipanel", ".dk2b-ifoot", ".dk2b-iph"].map((s) => pg.locator(`:scope > ${s}`).boundingBox()), page.locator(".dk-card.dk-items").boundingBox()]);
+    const [p, panel, foot, head, list] = await Promise.all([...[".dk2b-ipb", ".dk2b-ipanel", ".dk-box", ".dk2b-iph"].map((s) => pg.locator(`:scope > ${s}`).boundingBox()), page.locator(".dk-card.dk-items").boundingBox()]);
     // The panel at the right of the chat and its box, from under the head to the card's foot.
     expect(panel.x).toBeGreaterThanOrEqual(p.x + p.width - 1);
     expect(Math.abs(panel.y - p.y)).toBeLessThan(2);

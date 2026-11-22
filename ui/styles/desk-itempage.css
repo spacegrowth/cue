@@ -28,14 +28,18 @@
 .dk2b-ichd > .dk-itabs { display: flex; gap: 2px; margin: 0; padding: 0; border: 0; }
 /* The model an item's session started on, after Who (#620): the old row's tag. */
 .dk2b-iv .dk-model { margin-left: 8px; font: var(--type-pill) var(--mono); color: var(--muted); white-space: nowrap; }
-.dk2b-ipage > .dk2b-ifoot { flex: none; min-width: 0; }
 /* Wide enough for both (#727; the card as it is on a 1440 window): the chat and its box at the left, the panel beside
-   them the whole height, as the old page had it (desk-page.css .dk-pg "main panel"). The card keeps its width, so the
+   them the whole height, as the old page had it (desk-page.css .dk-pg "main panel"), as wide as a session's panel so
+   its widest pair of buttons (Commit to main, Send back) sits on one line and Looks right's Done doesn't shift it. The card keeps its width, so the
    Items list beside it doesn't move as an item opens. */
 @container dkcard (min-width: 680px) {
-  .dk-pg.dk2b-ipage:not(.hid) { display: grid; grid-template-columns: minmax(0, 1fr) 260px; grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: "head head" "pane panel" "foot panel"; }
+  .dk-pg.dk2b-ipage:not(.hid) { display: grid; grid-template-columns: minmax(0, 1fr) 272px; grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: "head head" "pane panel" "foot panel"; }
   .dk-pg.dk2b-ipage:not(.hid) > .dk-ph { grid-area: head; }
   .dk-pg.dk2b-ipage:not(.hid) > .dk-pane { grid-area: pane; }
-  .dk-pg.dk2b-ipage:not(.hid) > .dk2b-ifoot { grid-area: foot; }
-  .dk-pg.dk2b-ipage:not(.hid) > .dk-panel.dk2b-ipanel { grid-area: panel; min-height: 0; max-height: none; padding: 14px 16px; border-top: 0; border-bottom: 0; border-left: 1px solid var(--line); }
+  /* Its foot (deskItemFoot: the box, a question's or permission's card, or the line saying its session ended) under
+     the chat. A card keeps the share of the page desk-lead.css .dk-ask gives it, which a grid row has no height to be
+     a share of, so Deny and Allow stay in view (#611). */
+  .dk-pg.dk2b-ipage:not(.hid) > :not(.dk-ph, .dk-pane, .dk-panel) { grid-area: foot; min-width: 0; }
+  .dk-pg.dk2b-ipage:not(.hid) > .dk-ask { max-height: 50vh; }
+  .dk-pg.dk2b-ipage:not(.hid) > .dk-panel.dk2b-ipanel { grid-area: panel; min-height: 0; max-height: none; padding: 14px; border-top: 0; border-bottom: 0; border-left: 1px solid var(--line); }
 }
