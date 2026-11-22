@@ -77,6 +77,26 @@ fn a_route_back_while_its_holder_answers_your_question_stays() {
     assert_ne!(it["state"], "to_check", "the send back held: {it}");
 }
 
+/// #721: your Send back while its holder answers your question on it (a window that hadn't redrawn yet) holds too.
+#[test]
+fn your_send_back_while_its_holder_answers_your_question_stays() {
+    let w = World::new();
+    let (_, project, id, h) = to_check(&w);
+    w.hub().desk_item_act(&id, "note", "Is the footer done too?").unwrap();
+    w.settle();
+    let q = sent_to(&w, &h).into_iter().find(|t| t.starts_with(&format!("A question about Desk item #{id}"))).expect("question sent");
+    w.advance(1000);
+    w.hosted_says(&h, HostedEvent::Taken { text: q });
+    w.settle();
+    w.hub().desk_item_act(&id, "send_back", "The footer still jumps").unwrap();
+    w.settle();
+    assert_eq!(item(&w, &project, "Header jumps")["asked"], serde_json::Value::Null);
+    w.advance(1000);
+    ends(&w, &h, "Not yet: the footer still needs the same fix.");
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!(it["state"], "working", "the send back held: {it}");
+}
+
 /// #595: a message kept for the lead while it worked went with the summary from when it was kept, so the lead read its
 /// own send back as not taken.
 #[test]

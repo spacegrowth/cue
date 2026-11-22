@@ -74,15 +74,21 @@ pub(crate) fn rev_left(top: &str, rev_of: &str) -> usize {
     cherry.lines().filter(|l| l.starts_with('+')).count().max(1)
 }
 
+/// git's `--since` for commits made after `at` (ms): from the next whole second. git dates a commit to the second, so
+/// a commit made before the reopen in the same second (the one that landed it, or any other there: #721) would
+/// otherwise count as made since; nothing made in answer to a reopen lands within the second it was sent.
+fn since_after(at: u64) -> String {
+    format!("--since=@{}", at / 1000 + 1)
+}
+
 /// Whether a commit on `top`'s main since `at` (ms) changed one of `paths`, other than the item's own commits Cue
-/// already knew of when it was reopened (`known`, full or short). git dates a commit to the second, so the commit
-/// that landed it before it was sent back can fall in the second it was reopened, and `--since` takes it in.
+/// already knew of when it was reopened (`known`, full or short).
 fn committed_since(top: &str, at: u64, paths: &[String], known: &[String]) -> bool {
     let Some(main) = main_ref(top) else { return false };
     if paths.is_empty() {
         return false;
     }
-    let since = format!("--since=@{}", at / 1000);
+    let since = since_after(at);
     let mut args = vec!["log", "--max-count=50", "--format=%H", since.as_str(), main.as_str(), "--"];
     args.extend(paths.iter().map(String::as_str));
     let old = |c: &str| known.iter().any(|k| !k.is_empty() && (c.starts_with(k.as_str()) || k.starts_with(c)));
@@ -121,7 +127,7 @@ fn landed_elsewhere(files: &[String], at: u64, known: &[String]) -> bool {
 /// Whether a commit on one of item `id`'s own branches in `top`'s repository made since `at` (ms) is on main now.
 fn branch_landed_since(top: &str, id: &str, at: u64) -> bool {
     let Some(main) = main_ref(top) else { return false };
-    let since = format!("--since=@{}", at / 1000);
+    let since = since_after(at);
     own_branches(id).iter().any(|b| {
         let made = git("", top, &[], &["rev-list", "--max-count=50", &since, &format!("refs/heads/{b}"), "--"]).unwrap_or_default();
         made.lines().any(|c| matches!(crate::safe_git::run("", top, &[], &["merge-base", "--is-ancestor", c.trim(), &main]), Ok((_, 0))))
@@ -285,5 +291,46 @@ impl Hub {
             }
         }
         n
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A commit in `top` touching a.txt, dated `secs` (git's whole seconds).
+    fn commit_at(top: &std::path::Path, n: &str, secs: u64) {
+        std::fs::write(top.join("a.txt"), n).unwrap();
+        let when = format!("@{secs} +0000");
+        let o = std::process::Command::new(crate::safe_git::git_bin())
+            .arg("-C")
+            .arg(top)
+            .args(["-c", "user.email=t@example.com", "-c", "user.name=T", "commit", "-qam", n])
+            .env("GIT_COMMITTER_DATE", &when)
+            .env("GIT_AUTHOR_DATE", &when)
+            .output()
+            .unwrap();
+        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    }
+
+    #[test]
+    fn a_commit_in_the_second_it_was_reopened_isnt_one_made_since() {
+        // #721: the commit before the reopen fell in its second, so a reopened item's DONE with nothing new went to check.
+        let dir = std::env::temp_dir().join(format!("cue-since-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let run = |args: &[&str]| assert!(std::process::Command::new(crate::safe_git::git_bin()).arg("-C").arg(&dir).args(args).status().unwrap().success());
+        run(&["init", "-q", "-b", "main"]);
+        std::fs::write(dir.join("a.txt"), "0").unwrap();
+        run(&["add", "a.txt"]);
+        let top = dir.to_string_lossy().to_string();
+        let paths = vec!["a.txt".to_string()];
+        let reopened = 1_790_000_000_500;
+        commit_at(&dir, "before", reopened / 1000);
+        assert!(!committed_since(&top, reopened, &paths, &[]), "made in the second it was reopened, before it");
+        commit_at(&dir, "after", reopened / 1000 + 1);
+        let new = committed_since(&top, reopened, &paths, &[]);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(new, "made the next second");
     }
 }

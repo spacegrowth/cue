@@ -283,6 +283,8 @@ fn at_work_again(it: &mut DeskItem, done: bool, words: &str) -> &'static str {
     }
     let unseen = it.state == "finishing";
     (it.state, it.done_at, it.finish, it.close_on_check, it.check) = ("working".into(), None, None, false, None);
+    // Sent back while its holder answered your question on it (#721): that answer's end no longer puts it back to check.
+    it.asked = None;
     it.mark_reopened_unseen(unseen);
     // What follows each option was said for the round being redone (#619): it goes, and the redone round's ask names its own.
     let again = if it.next.is_empty() { "" } else { "\nThe IF PICKED: lines you gave were for the options being redone, so they're cleared: when you ask for a pick again, give them again for the options you ask about." };
