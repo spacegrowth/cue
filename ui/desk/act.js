@@ -36,7 +36,7 @@ async function deskSendBox(key, sendNow = false) {
   deskAwayNoteSent(to);
   // From the lead's own box, however it goes (words, a "/" command, a "!" line): its chat goes to its end, to show
   // what you sent and follow the answer (#704).
-  if (deskLeadBoxTo(to)) deskChatEnd = true;
+  if (deskLeadBoxTo(to)) { deskChatEnd = true; deskChatSent = true; }
   // About an item, from its page or its row: where it goes is read now, from where the item stands, not from when the
   // box was drawn (#437).
   if (to.item && !/^[/!]/.test(text)) return deskSendItem(to, key, text);

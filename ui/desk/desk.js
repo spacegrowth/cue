@@ -51,6 +51,8 @@ const deskBoxes = new Map();
 const deskSent = new Map();
 /** The lead's chat was at its end before the draw (it stays there as new messages come). */
 let deskChatEnd = true;
+/** You just sent from the lead's box: the next draw puts its chat at its end and keeps it there as it settles (#704). */
+let deskChatSent = false;
 /** A reply's "This turn in …" opened its session here (#306): the time of the reply to bring into view, once. */
 let deskTurnAt = 0;
 let deskTurnLead = false;   // B2: that turn is in the lead's chat at the left (desk/act.js deskShow), not the right card's
